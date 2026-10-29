@@ -23,6 +23,9 @@ use std::process::exit;
 #[cfg(feature = "test-case-batch")]
 #[path = "../test_batch.rs"]
 mod test_batch;
+#[cfg(feature = "test-case-batch")]
+#[path = "../test_combined.rs"]
+mod test_combined;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -51,6 +54,13 @@ fn main() {
         }
         #[cfg(feature = "test-case-batch")]
         "test-batch-capabilities" => println!("{}", test_batch::capabilities()),
+        #[cfg(feature = "test-case-batch")]
+        "test-combined-serve" => {
+            if let Err(error) = test_combined::serve() {
+                eprintln!("test combined: {error}");
+                exit(2);
+            }
+        }
         "load-revision" => load_revision(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
         "frontend-attribution" => frontend_attribution(),

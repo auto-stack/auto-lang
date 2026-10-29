@@ -112,6 +112,75 @@ mod batch {
     }
 
     #[test]
+    fn combined_d3_counts_real_producers_maps_source_and_preserves_parent_failures() {
+        let mut values = pilot("combined-d3");
+        let report =
+            test_batch::combined::run(&values[12..], std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(report["worker_starts"], 1);
+        assert_eq!(report["observation"]["metrics"]["calls"]["compile"], 1);
+        assert_eq!(report["observation"]["metrics"]["calls"]["vm"], 1);
+        assert_eq!(report["observation"]["profile"], "av.owned/1");
+        assert!(report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["status"] == "PASS"));
+        assert!(!process_is_live(
+            report["worker_pid"].as_u64().unwrap() as u32
+        ));
+        let source = report["source"].as_str().unwrap().as_bytes();
+        for row in report["items"].as_array().unwrap() {
+            let origin = &row["origin"];
+            let original = std::fs::read(origin["path"].as_str().unwrap()).unwrap();
+            let begin = origin["source_byte_range"][0].as_u64().unwrap() as usize;
+            let end = origin["source_byte_range"][1].as_u64().unwrap() as usize;
+            assert_eq!(&source[begin..end], original);
+        }
+        values[12].oracle.exit = Some(4);
+        values[14].oracle.exit = Some(10);
+        let wrong =
+            test_batch::combined::run(&values[12..], std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            wrong["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v["status"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["FAIL", "PASS", "FAIL"]
+        );
+        for (fault, expected) in [
+            ("wrong-source", "identity"),
+            ("wrong-index", "identity"),
+            ("wrong-count", "count"),
+            ("wrong-vm-count", "count"),
+            ("extra-after-done", "extra combined"),
+            ("no-read", "deadline"),
+        ] {
+            let start = std::time::Instant::now();
+            let error = test_batch::combined::run_with_fault(
+                &values[12..],
+                std::time::Duration::from_secs(1),
+                Some(fault),
+            )
+            .unwrap_err();
+            assert!(error.contains(expected), "{fault}: {error}");
+            assert!(start.elapsed() < std::time::Duration::from_secs(4));
+        }
+        let fresh = pilot("after-combined-fatal");
+        let independent = ac_av::run_check(
+            &fresh[12].case,
+            &fresh[12].check,
+            &fresh[12].oracle,
+            &fresh[12].root,
+            &fresh[12].root,
+            &fresh[12].root,
+        )
+        .unwrap();
+        assert_eq!(independent.status, Status::Pass);
+    }
+
+    #[test]
     fn batch_real_15_matches_independent_with_k1_k3_k10_and_tail() {
         let baseline = pilot("independent");
         let mut expected = Vec::new();
@@ -255,9 +324,18 @@ mod batch {
             let values = pilot(fault);
             let borrowed = items(&values[..3], "group");
             let started = std::time::Instant::now();
+            // Deadline probes deliberately have a one-second budget. For
+            // protocol probes give the three original programs enough time
+            // to reach the injected frame, rather than accepting a timeout
+            // under machine load as evidence of the intended rejection.
+            let seconds = if ["hang-init", "no-read"].contains(&fault) {
+                1
+            } else {
+                5
+            };
             let report = test_batch::run_group_with_fault(
                 &borrowed,
-                std::time::Duration::from_secs(1),
+                std::time::Duration::from_secs(seconds),
                 Some(fault),
             )
             .unwrap();
@@ -287,7 +365,7 @@ mod batch {
                 "{fault}: worker still live"
             );
             assert!(
-                started.elapsed() < std::time::Duration::from_secs(4),
+                started.elapsed() < std::time::Duration::from_secs(seconds + 3),
                 "{fault}: unbounded cleanup"
             );
             assert_eq!(report.items.len(), 3);

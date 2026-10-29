@@ -263,6 +263,8 @@ impl Driver {
         // untouched; the entry-unit path compiles the same way plus the
         // entry matrix / Unit result, into its own HIR domain.
         let compiled = obs.span("frontend", Some("request"), |o| {
+            #[cfg(feature = "test-case-batch")]
+            o.counter("frontend_compile_calls", 1);
             let result = match self.profile {
                 RequestProfile::Scalar => compile_scalar_source(src, "probe.at", caps),
                 RequestProfile::EntryUnit => {

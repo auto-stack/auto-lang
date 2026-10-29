@@ -53,6 +53,32 @@ class PilotCLI(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertTrue(result.stderr)
 
+    def test_combined_is_separate_d3_observation_with_real_counts_and_replay(self):
+        result = self.call('--mode', 'combined', '--repeat', '3', '--parallelism', '2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['set'], 'd3')
+        self.assertEqual(len(report['groups']), 3)
+        self.assertEqual(len({g['worker_pid'] for g in report['groups']}), 3)
+        for group in report['groups']:
+            self.assertEqual(group['observation']['metrics']['calls']['compile'], 1)
+            self.assertEqual(group['observation']['metrics']['calls']['vm'], 1)
+            self.assertEqual([r['actual'] for r in group['items']], [3, -6, 9])
+        row = report['groups'][0]['items'][0]
+        replay = subprocess.run(row['replay_argv'], cwd=ROOT, timeout=65,
+                                capture_output=True, text=True,
+                                env=dict(os.environ, AC_AV_CASE_WORKER=str(WORKER)))
+        self.assertEqual(replay.returncode, 0, replay.stderr)
+        self.assertEqual(sum(len(g['items']) for g in json.loads(replay.stdout)['groups']), 1)
+
+    def test_pilot_requires_explicit_prebuilt_worker(self):
+        env = dict(os.environ)
+        env.pop('AC_AV_CASE_WORKER', None)
+        result = subprocess.run([str(EXE), '--mode', 'group'], cwd=ROOT,
+                                capture_output=True, text=True, timeout=5, env=env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('prebuilt', result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

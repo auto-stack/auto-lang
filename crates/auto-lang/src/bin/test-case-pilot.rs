@@ -69,6 +69,7 @@ mod enabled {
                 "--group-size",
                 "--repeat",
                 "--parallelism",
+                "--set",
             ]
             .contains(&pair[0].as_str())
                 || flags.insert(pair[0].as_str(), pair[1].as_str()).is_some()
@@ -77,8 +78,25 @@ mod enabled {
             }
         }
         let mode = *flags.get("--mode").unwrap_or(&"independent");
-        if !["independent", "group"].contains(&mode) {
-            return Err("mode must be independent or group".into());
+        if !["independent", "group", "combined"].contains(&mode) {
+            return Err("mode must be independent, group or combined".into());
+        }
+        let case_set = flags
+            .get("--set")
+            .copied()
+            .unwrap_or(if mode == "combined" { "d3" } else { "pilot15" });
+        if !["d3", "pilot15"].contains(&case_set) || (mode == "combined" && case_set != "d3") {
+            return Err("set must be d3 or pilot15; combined is limited to d3".into());
+        }
+        if std::env::var_os("AC_AV_CASE_WORKER")
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_file())
+            .is_none()
+        {
+            return Err(
+                "pilot requires an explicitly prebuilt AC_AV_CASE_WORKER; build costs are separate"
+                    .into(),
+            );
         }
         let number = |name, default| -> Result<usize, String> {
             flags
@@ -97,8 +115,60 @@ mod enabled {
         let started = Instant::now();
         let mut rounds = Vec::new();
         let mut code = 0;
+        if mode == "combined" {
+            if selected.is_some() {
+                return Err(
+                    "C requires all D3 expressions; replay a single case with independent mode"
+                        .into(),
+                );
+            }
+            let mut invocations = Vec::new();
+            for repeat in 0..repeats {
+                let mut values = pilot::load(&format!("cli-c-{repeat}"))?;
+                values.retain(|b| b.case.spec.id.starts_with("gov.d."));
+                invocations.push(values);
+            }
+            for wave in invocations.chunks(parallelism) {
+                let reports = std::thread::scope(|scope| {
+                    let handles: Vec<_> = wave
+                        .iter()
+                        .map(|values| {
+                            scope.spawn(|| {
+                                test_batch::combined::run(values, Duration::from_secs(60))
+                            })
+                        })
+                        .collect();
+                    handles
+                        .into_iter()
+                        .map(|h| h.join().map_err(|_| "combined task panicked".to_owned())?)
+                        .collect::<Result<Vec<_>, String>>()
+                })?;
+                for mut report in reports {
+                    report["repeat"] = json!(rounds.len());
+                    for item in report["items"].as_array_mut().ok_or("missing C items")? {
+                        item["replay_argv"][0] =
+                            json!(std::env::current_exe().map_err(|e| e.to_string())?);
+                    }
+                    for item in report["items"].as_array().ok_or("missing C items")? {
+                        if item["status"] != "PASS" {
+                            code = 1;
+                        }
+                    }
+                    rounds.push(report);
+                }
+            }
+            return Ok((
+                json!({"schema":"test-case-pilot/1","mode":mode,"set":case_set,
+                "parallelism":parallelism,"group_size":3,"repeat":repeats,
+                "wall_ms":started.elapsed().as_secs_f64()*1000.0,"groups":rounds,"exit":code}),
+                code,
+            ));
+        }
         for repeat in 0..repeats {
             let mut bindings = pilot::load(&format!("cli-{repeat}"))?;
+            if case_set == "d3" {
+                bindings.retain(|b| b.case.spec.id.starts_with("gov.d."));
+            }
             if let Some(id) = selected {
                 bindings.retain(|b| b.case.spec.id == id);
             }
@@ -151,7 +221,7 @@ mod enabled {
             }
         }
         Ok((
-            json!({"schema":"test-case-pilot/1","mode":mode,"parallelism":parallelism,
+            json!({"schema":"test-case-pilot/1","mode":mode,"set":case_set,"parallelism":parallelism,
             "group_size":if mode=="independent" {1}else{k},"repeat":repeats,
             "wall_ms":started.elapsed().as_secs_f64()*1000.0,"groups":rounds,"exit":code}),
             code,

@@ -50,3 +50,30 @@ fn c_three_original_expressions_return_distinct_actuals() {
         Err(error) => panic!("C feasibility requires explicit unsupported decision: {error}"),
     }
 }
+
+#[cfg(feature = "test-case-batch")]
+#[test]
+fn c_observations_count_producer_calls_and_stop_before_vm_on_compile_rejection() {
+    let (rejected, metrics) = auto_av_probe::test_observations::capture(|| {
+        auto_av_probe::owned_driver::request_owned(
+            None,
+            "c-rejected",
+            "fn main() int { return missing_name }",
+            "d_main",
+            &[],
+        )
+    })
+    .unwrap();
+    assert!(rejected.is_err());
+    assert_eq!(metrics.calls.get("compile"), Some(&1));
+    assert!(!metrics.calls.contains_key("vm"));
+    let source = combined_source();
+    let (accepted, metrics) = auto_av_probe::test_observations::capture(|| {
+        auto_av_probe::owned_driver::request_owned(None, "c-accepted", &source, "d_main", &[])
+    })
+    .unwrap();
+    assert!(accepted.is_ok());
+    assert_eq!(metrics.calls.get("compile"), Some(&1));
+    assert_eq!(metrics.calls.get("vm"), Some(&1));
+    assert_eq!(metrics.spans_ms.len(), 6);
+}

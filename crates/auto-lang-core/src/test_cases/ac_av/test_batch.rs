@@ -10,6 +10,7 @@ use std::sync::{
 const SCHEMA: &str = "avworker-test-batch/1";
 const FRAME_CAP: usize = 4 << 20;
 
+pub mod combined;
 pub mod pilot;
 
 pub struct Item<'a> {
@@ -196,6 +197,10 @@ pub fn run_group_with_fault(
     if worker.overflow.load(Ordering::SeqCst) {
         error.get_or_insert("batch stderr cap exceeded".into());
     }
+    if Instant::now() >= started + budget {
+        error
+            .get_or_insert("batch absolute deadline includes parent comparison and cleanup".into());
+    }
     let stderr = String::from_utf8_lossy(&worker.stderr.lock().unwrap_or_else(|e| e.into_inner()))
         .into_owned();
     Ok(GroupResult {
@@ -230,12 +235,26 @@ struct Transport {
 
 impl Transport {
     fn start(group: &str, deadline: Instant, fault: Option<&str>) -> Result<Self, String> {
+        Self::start_command(group, deadline, fault, "test-batch-serve")
+    }
+
+    fn start_command(
+        group: &str,
+        deadline: Instant,
+        fault: Option<&str>,
+        subcommand: &str,
+    ) -> Result<Self, String> {
         if !cfg!(windows) {
             return Err(
                 "test batch requires implemented process-tree containment on this platform".into(),
             );
         }
-        let exe = worker_binary()?;
+        // Test grouping's absolute wall cannot hide an implicit release build.
+        // Ordinary independent run_check keeps its existing build behaviour.
+        let exe = std::env::var_os("AC_AV_CASE_WORKER")
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .ok_or("batch/combined requires an explicitly prebuilt AC_AV_CASE_WORKER")?;
         let lease = lease_executable(&exe)?;
         let exe_sha = worker_file_sha256(&exe)?;
         let mut command = Command::new(&exe);
@@ -243,7 +262,7 @@ impl Transport {
             command.env("AV888_BATCH_FAULT", fault);
         }
         command
-            .arg("test-batch-serve")
+            .arg(subcommand)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

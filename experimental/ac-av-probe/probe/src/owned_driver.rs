@@ -20,8 +20,21 @@ use auto_av_core::mir_verify::verify_mir;
 use std::path::Path;
 
 use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
-use auto_mir_lower::lower_checked_owned;
 use ac_artifact_probe::identity::QueryKey;
+use auto_mir_lower::lower_checked_owned;
+
+#[inline]
+fn observe_test_call<T>(stage: &str, f: impl FnOnce() -> T) -> T {
+    #[cfg(feature = "test-case-batch")]
+    {
+        crate::test_observations::observed(stage, f)
+    }
+    #[cfg(not(feature = "test-case-batch"))]
+    {
+        let _ = stage;
+        f()
+    }
+}
 
 /// The owned profile's ABC layer (A21): whole-module AVAD v2 artifacts
 /// keyed on the content axes that invalidate them.
@@ -142,25 +155,31 @@ pub fn request_owned(
     let started = std::time::Instant::now();
     crate::driver::front_door_admit(src)
         .map_err(|d| format!("front door: {} {}", d.stage, d.code))?;
-    let compiled = auto_ac_prototype::source::compile_text_record_source(src, "owned.at", caps)
-        .map_err(|ds| {
-            ds.first()
-                .map(|d| format!("frontend: {} {}", d.code, d.message))
-                .unwrap_or_else(|| "frontend failed".to_string())
-        })?;
-    let mir =
-        lower_checked_owned(&compiled.checked, entry, fnv1a64(src.as_bytes())).map_err(|e| {
-            format!(
-                "lower: {} {}",
-                e.code(),
-                match e {
-                    auto_mir_lower::AdapterError::Unsupported { message, .. }
-                    | auto_mir_lower::AdapterError::Invalid { message, .. } => message,
-                }
-            )
-        })?;
-    verify_mir(&mir).map_err(|e| format!("mir verify: {:?}", e))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode: {}", e.code()))?;
+    let compiled = observe_test_call("compile", || {
+        auto_ac_prototype::source::compile_text_record_source(src, "owned.at", caps)
+    })
+    .map_err(|ds| {
+        ds.first()
+            .map(|d| format!("frontend: {} {}", d.code, d.message))
+            .unwrap_or_else(|| "frontend failed".to_string())
+    })?;
+    let mir = observe_test_call("lower", || {
+        lower_checked_owned(&compiled.checked, entry, fnv1a64(src.as_bytes()))
+    })
+    .map_err(|e| {
+        format!(
+            "lower: {} {}",
+            e.code(),
+            match e {
+                auto_mir_lower::AdapterError::Unsupported { message, .. }
+                | auto_mir_lower::AdapterError::Invalid { message, .. } => message,
+            }
+        )
+    })?;
+    observe_test_call("verify_mir", || verify_mir(&mir))
+        .map_err(|e| format!("mir verify: {:?}", e))?;
+    let wire = observe_test_call("encode", || encode_abc(&mir))
+        .map_err(|e| format!("encode: {}", e.code()))?;
     let flat = wire.to_flat();
 
     let owner = mir.owner.module.clone();
@@ -196,7 +215,8 @@ pub fn request_owned(
         artifact = Some(art);
     }
 
-    let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(|e| format!("abc admit: {e}"))?;
+    let loaded = observe_test_call("verify_abc", || verify_abc_bytes(&flat, &mir.owner))
+        .map_err(|e| format!("abc admit: {e}"))?;
     // R3-F09: the managed-memory partition peaks, in the data pipeline's
     // working-set dimension — hot = the loaded closure retained through
     // execution (wire + MIR + decoded module), staging = the transient
@@ -206,7 +226,9 @@ pub fn request_owned(
     let staging_peak = (flat.len() + mir.heap_estimate())
         + loaded.stats().analysis_bytes as usize
         + loaded.module().heap_estimate();
-    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let (out, trace) = observe_test_call("vm", || {
+        execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false))
+    });
     let arena = trace.arena.clone();
     Ok(OwnedRequestOutcome {
         av: Some(out),

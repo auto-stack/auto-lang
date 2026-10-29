@@ -37,6 +37,8 @@ pub mod owned_session;
 pub mod resident;
 pub mod semrefs;
 pub mod session;
+#[cfg(feature = "test-case-batch")]
+pub mod test_observations;
 pub mod text_runtime;
 pub mod typed_fixture;
 pub mod wire;
