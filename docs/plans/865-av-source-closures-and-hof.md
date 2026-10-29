@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 6
+current_step: 7
 total_steps: 9
 ---
 
@@ -165,9 +165,11 @@ K 族目前走 typed fixture（`ac-av/closures-run-v1` + `av.entry: "closures:<i
 | T-04 | work | T-03 | **[x]** `lower_function_closures_unit` 接入 `experimental/auto-mir-lower/src/hir_adapter.rs`；源码会话走 823 `ClosuresUpdateSession`，env 漂移保留旧 creator，release/live 与分配平衡在 K 源父侧检查；lowering 2 项、会话/捕获 5 项曾通过；修复 R865-F03；捕获集与签名源编辑分别只重编 creator 与 closure，untouched 单元保持缓存 ；R865-F05已闭合：拥有型闭包由 make 返回后传入 apply 的 fn 参数并在参数体内间接调用，session结果42且释放平衡 | AC-03/04 | [x] |
 | T-05 | work | T-04 | **[x]** 新增 K01–K06 源码 TestCase、父侧 oracle、`binding.tsv` AV 状态及 `scripts/verify-av-865.ps1`；K02/K05 legacy diff 保持，K06 标注 `gap:R5-O`；执行 V-06 file cache、restart、body-edit、P90/热集和 823 兼容验证，原始证据仅本地；受影响 AC-01..03 已定向重跑；K01-K06 与 V-06 证据沿用已通过记录 ；依赖复跑 K01-K06 file-backed TestCase：8 checks 全 PASS、coverage gaps=0 | AC-05/04 | [x] |
 | T-06 | review | T-05 | **[x]** final artifact-based review pass on `7491be94`; AC-07/08 remain merge-owned closeout gates | AC-06 | [x] |
-| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
+| T-07 | merge | T-06 pass | **[x]** 冻结代码/Spec 提交 fe2923ba9 + ledger projection SHA-256 718255cc08a50ec2af79597be78cdefb78adab19925a9af67016cdc2af73f722：裸 `cargo t` 3207/3207 PASS（673 skipped，1 slow），`cargo tv` 163/163 PASS（2061 skipped）；此前超时项空闲定向复跑 1/1 PASS | AC-07 | [x] |
 | T-08 | merge | T-07 | Spec/矩阵/ledger/归档/guard | AC-08 | [ ] |
 | T-09 | merge | T-08 | 交接863及后续HOF切片的实际基面与限制 | AC-08 | [ ] |
+
+T-07 merge gate receipt (2026-10-29): exact commands `cargo t` and `cargo tv` passed on the reviewed code/spec content plus the read-back-validated v140 ledger projection; filtered replay of ac_av_probe_mixed_recipe_stale_identity_is_order_independent passed 1/1. Full results: 3207/3207 (673 skipped; 1 slow) and 163/163 (2061 skipped). No implementation files changed after these gates; T-08/T-09 remain merge-owned until landing, actual archive, guard, and cleanup.
 
 ## 9. 复审记录
 
