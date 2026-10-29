@@ -136,6 +136,12 @@ total_steps: 5
 - cleaned：wt-guard 先行后移除 `D:/autostack/.wt/lang-886/auto-lang`（plan-886-dev）、`D:/autostack/.wt/lang-886/auto-ui`（detached 诊断兄弟，WIP 已摘出并清零）、`D:/autostack/.wt/fix-synth-surface/auto-ui`（fix-synth-surface）；删分支；组目录移除。
 - residual：无功能残留。AC-02 的自动化断言仍缺（负控为人工/驱动协议），已登记为诊断面测试基建债务。
 
+### 2026-10-29 goal 链收尾回执
+
+- stage: goal | plan_id: PLAN-886 | plan_revision: 1 | round: 1 | from: merge | to: done | status: archived | outcome: **pass**
+- 链路：work（三处散落诊断面收拢 + 计划改写）→ review pass（diff/根因/门禁归因）→ merge（auto-lang `--ff-only` 落 master；auto-ui ff 落 master）→ canonical delta（ADR-25 + auto-ui-runtime `[SYNTH-FAIL]` 节）+ ledger v131 → 归档 → 重建 `auto`/`auto-ui-tool` 并做 AC-02 负控（pass）→ worktree/分支/组清理（wt-guard clean）
+- 交付提交：auto-lang `3cee0fa10`（代码）/`12e8050a9`（归档）；auto-ui `66062bb` / `31e4bd2`
+- next: done | pending: 无（诊断面自动化断言缺口已如实登记为测试基建债务）
 ## 待澄清事项
 
 - 原"根因若落在 handler_codegen（auto-ui）预注册/合成形态"的悬置项：**已定案**——预注册 `or_insert(0)` 未参与本次缺陷（毒化来自 fn 未编译完成），auto-ui 侧以 rider 交付诊断面（`66062bb`），不再需要判定面豁免改动。
