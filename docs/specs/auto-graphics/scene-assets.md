@@ -102,3 +102,39 @@ Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-
 The existing GLB rules, budgets, root lock, one-entry rename and resource ownership remain. A save Snapshot additionally owns one accepted code payload; both code and GLB install/readback precede scene commit and both are checked before Verify confirms saved state. scripts has its independent8file/2MiB disk quota including reservations/residuals; source payload union has8identity/2MiB memory bounds. Entry cannot overwrite source/blob/locks/reserved paths through Windows aliases, even before an earlier receipt Verify. Postcommit source/GLB failure stays pending, not clean; precommit residuals remain explicit. SaveAs uses accepted bytes, not an import reread. [Behavior projects](behavior-project.md) specifies recovery and scope.
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+## PNG visual resources in the project closure (PLAN-004)
+
+The closure is no longer model-only: an accepted static PNG may live beside GLB
+payloads in the same `assets/` directory as `<lowercase64sha>.png`. The image
+identity is the complete original SHA256, byte length, `png` format and its
+declared width/height; a display name never binds a payload. Models remain
+`<lowercase64sha>.glb`, and a `model` object must name a model payload, while an
+image payload is never treated as a geometry or as an empty mesh model.
+
+Image and model payloads share one union budget rather than each adding a quota:
+eight original content identities, 32MiB raw bytes, 64MiB decoded CPU payload
+plus geometry, and 64MiB expected GPU texture plus mesh arrays, counted once per
+content identity across accepted/history/candidate states. The finite image
+domain and its pre-decode admission are specified in
+[sprites-and-image-resources.md](sprites-and-image-resources.md).
+
+Scene schema 5 adds the per-leaf visual binding (`sprite: null | {asset,
+frame:[x,y,w,h], flip}`). Schemas 1-4 keep their exact meaning: a legacy file
+that carries the field, or a resource whose format is not `glb`, is rejected
+rather than silently upgraded. Only 2-D leaves may bind an image, at most eight
+per scene, and the referenced frame must lie inside the declared image.
+
+Save As and Open keep the own-root lock, no-overwrite blob install, single-entry
+commit and complete closure readback. The 8-file/32MiB disk budget includes both
+formats, residuals and temporary reservations; foreign or incomplete files are
+reported and never overwritten; a missing, corrupted or wrong-SHA blob rejects
+the reopen and restoring the exact original bytes recovers the project. Moving
+the whole project directory and opening it from the new location keeps working
+because identity is content, not path.
+
+Provenance: auto-ui PLAN-004 (r1), archived at
+`auto-ui/docs/plans/archived/004-autographics-public-images-and-sprite-frames.md`;
+delivery `e0fce13810f9e1af28182950d62cfce8722aa30a` on auto-ui master (identical
+`experimental/**` tree, fully equal range-diff from reviewed `0e6e361`),
+independent final review pass; both Cargo.lock files and the SDK pin unchanged.

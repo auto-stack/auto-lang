@@ -159,3 +159,52 @@ Before admission/namespace, required component sentinels, unique ordered transpo
 The historical v5 pre-namespace `_ag_derive` text replacement had no match because the transport was still named `derive`. Its removal deliberately preserves emitted bytes; it does not activate the guard, change Auto algorithms or claim runtime acceleration. No user-visible API, version inference, template language or new cache is added.
 
 Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md), [independent final R1 review](../../plans/attachments/854/review-r1/review.md), [merge receipt](../../plans/attachments/854/merge-r1/receipt.md). Source: autographics-dev at 523d27b863dbe306c89af0ea546334225a29f8e9; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 compatibility/maintenance work; new M2 capabilities and production I2/I3 remain pending.
+
+## 2D sprite frames extension (PLAN-004)
+
+`autographics.sprites2d/1` (number 109, profile 20) composes the unchanged
+triggers2d surface (character/1, runtime_camera2d/1, objects2d/1, triggers2d/1)
+with one sprite unit; every earlier profile keeps its exact assembled bytes and
+the managed 96KiB envelope, 256KiB user source and 352KiB combined source limits
+are unchanged. The public entry selects the profile explicitly:
+
+```powershell
+autographics-authoring --open C:/project/scene.agscene --behavior main.at --behavior-api sprites2d
+```
+
+The accepted `--behavior-api` value list is derived from the same profile names
+that the parser resolves, so a profile cannot ship without also being
+selectable; an unknown value exits2 with the full list.
+
+| API | Result |
+|---|---|
+| `ag_sprite_frame(id,x,y,w,h,flip)` | 1/0; one bound 2-D leaf's frame rectangle and horizontal flip in a single all-or-nothing write |
+| `ag_sprite_slot(token,x,y,w,h,flip)` | 1/0; the same write for one live reserved-slot instance |
+| `ag_sprite_bound(id)` | 0/1 legal absence; an unbound id answers0 without a sticky error |
+
+`id` is the stable document id and `token` is the reserved-slot handle, matching
+`ag_char_bind`/`ag_object_*`. Frames are integer pixels with positive extent
+inside the bound image; the flip mirrors the sampled U axis only, so the world
+rectangle, the entity box and every collision/solid/trigger result are
+unchanged. Writes cost one of the shared 32 callback credits, and the 33rd
+sprite write in one callback is a named error. Slot visuals follow the admitted
+generation: a destroyed slot stops carrying a row and a reborn generation starts
+from the template default until Auto writes it again.
+
+The admitted block rides every tick after the rounds block as a fixed table for
+the Run: four header ints and seven values per row for each bound leaf plus each
+of the eight reserved slots. The host re-validates the node/asset ordinals, the
+registry identity and dimensions, the frame bounds, the run/tick and the slot
+generation independently of the unit; any failure keeps the whole last-good
+candidate. Named sticky codes are 41 (not a bound 2-D target / incomplete
+configuration), 42 (frame domain or flip), 43 (sprite write budget) and 44
+(group or non-2-D target). Pause does not advance the visual, Step advances one
+neutral tick, Stop restores the editing default frame, and a new Run starts on
+the initialization frame.
+
+Provenance: auto-ui PLAN-004 (r1), archived at
+`auto-ui/docs/plans/archived/004-autographics-public-images-and-sprite-frames.md`;
+delivery `e0fce13810f9e1af28182950d62cfce8722aa30a` on auto-ui master (identical
+`experimental/**` tree, fully equal range-diff from reviewed `0e6e361`),
+independent final review pass; SDK pin `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`
+and both Cargo.lock files unchanged.
