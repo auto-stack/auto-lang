@@ -242,7 +242,7 @@ fn typed_list_and_variant_clone_preserve_independent_owned_payloads() {
             "{}",
             String::from_utf8_lossy(&run.stderr)
         );
-        common::collections::assert_balanced(&run.stderr);
+        common::collections::assert_balanced(&run);
         let text = String::from_utf8_lossy(&run.stderr);
         assert_eq!(
             text.lines()
@@ -266,4 +266,122 @@ fn typed_wrong_list_element_rejected_before_object_production() {
     let error = ac_mn::collections_lower::emit_unit_coff(&m).unwrap_err();
     assert!(matches!(error, ac_mn::MnError::Admit("mir", _)), "{error}");
     assert!(error.message().contains("mir.list-type"), "{error}");
+}
+
+#[test]
+fn typed_container_signatures_and_places_remain_outside_source_native_abi() {
+    fn unit(value: MirType, parameter: bool, result_value: bool) -> MirModule {
+        let mut m = MirModule::new_collections(OwnerScope {
+            schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.into(),
+            module: "admit".into(),
+        });
+        m.is_unit = true;
+        m.types = vec![
+            MirType::I32,
+            MirType::Bool,
+            value,
+            MirType::Fn(FnSig {
+                params: if parameter { vec![2] } else { vec![] },
+                result: if result_value { 2 } else { 0 },
+            }),
+        ];
+        m.consts = vec![MirConst::I32(42)];
+        let (slots, instrs, ret) = if result_value {
+            (
+                vec![MirSlot {
+                    ty: 2,
+                    kind: SlotKind::Temp,
+                    name: None,
+                }],
+                vec![MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: 2,
+                    cap: 0,
+                }],
+                0,
+            )
+        } else if parameter {
+            (
+                vec![
+                    MirSlot {
+                        ty: 2,
+                        kind: SlotKind::Param,
+                        name: None,
+                    },
+                    MirSlot {
+                        ty: 0,
+                        kind: SlotKind::Temp,
+                        name: None,
+                    },
+                ],
+                vec![MirInstr::Const { dst: 1, value: 0 }],
+                1,
+            )
+        } else {
+            (
+                vec![MirSlot {
+                    ty: 0,
+                    kind: SlotKind::Temp,
+                    name: None,
+                }],
+                vec![MirInstr::Const { dst: 0, value: 0 }],
+                0,
+            )
+        };
+        m.funcs = vec![MirFunction {
+            owner: m.owner.clone(),
+            source_snapshot: 0,
+            env: None,
+            name: "d_main".into(),
+            sig: 3,
+            slots,
+            blocks: vec![MirBlock {
+                instrs,
+                term: Terminator::Return { value: ret },
+            }],
+            entry: 0,
+            spans: vec![],
+        }];
+        m
+    }
+    let legal = unit(MirType::List(ListTypeRef { elem: 0 }), false, false);
+    ac_mn::collections_lower::admit_unit(&legal).unwrap();
+    for (m, expected) in [
+        (
+            unit(MirType::List(ListTypeRef { elem: 0 }), true, false),
+            "mn.unsupported.param",
+        ),
+        (
+            unit(
+                MirType::Variant(VariantTypeRef {
+                    owner_module: "admit".into(),
+                    name: "Token".into(),
+                    arms: vec![VariantArm {
+                        name: "End".into(),
+                        payload: None,
+                    }],
+                }),
+                true,
+                false,
+            ),
+            "mn.unsupported.param",
+        ),
+        (
+            unit(MirType::List(ListTypeRef { elem: 0 }), false, true),
+            "mn.unsupported.result",
+        ),
+    ] {
+        auto_av_core::verify_mir(&m).unwrap();
+        let error = ac_mn::collections_lower::emit_unit_coff(&m).unwrap_err();
+        assert_eq!(error.code(), expected, "{error}");
+    }
+    let mut place = legal;
+    place.types.push(MirType::Place(ListTypeRef { elem: 0 }));
+    auto_av_core::verify_mir(&place).unwrap();
+    assert_eq!(
+        ac_mn::collections_lower::emit_unit_coff(&place)
+            .unwrap_err()
+            .code(),
+        "mn.unsupported.type"
+    );
 }

@@ -7,7 +7,8 @@ then COFF/PE. The original17 source faces, owned combinations and typed clone
 probes have actual native results. Product driver/cache/worker/recipe integration
 is still pending; do not close formal M1 bindings based only on this private entry.
 
-The private draft ABI is `mn.collections.runtime/1`, Win64. A machine Cell is
+The private draft ABI is `mn.collections.runtime/2`, with generated call ABI
+`mn.collections.cell/2`, Win64. A machine Cell is
 16 bytes: scalar bits or a node address, then a 64-bit destructor-right flag.
 Native generated arithmetic/control flow will operate directly on scalar bits;
 the runtime only supplies buffer/record/list/active-payload/owner primitives.
@@ -39,22 +40,77 @@ libraries is unnecessary. Do not permit duplicate symbols with linker flags.
 
 Open before T-02 can pass or the layout/ABI can be frozen:
 
-- Complete source-produced closure/signature and nominal descriptor admission,
-  and its production/cache/worker use. The new emitter re-verifies units and
+- The production/cache/worker use of the source-produced closure. The emitter re-verifies units and
   has an explicit instruction/type whitelist; its verified-whole-module split
   proves original L/V and supplemental paths but is not arbitrary typed support.
-- Nominal type/layout descriptor binding and the complete source-produced
-  instruction/signature closure, including copyable record semantics and
-  borrowed projection lifetime across all supported paths. Current generic
+- Remaining source-produced closure controls beyond original17 and named
+  supplementary witnesses, including all ownership/boundary paths. Current generic
   unsafe helper callers are verified generated code or explicit native probe
   code, not an exposed language FFI. Copyable records use immutable retained
   nodes; resource reads share without buffer allocation; explicit clone deep-copies.
-- Process private peak/delta, object/linker descriptor storage and compiler
-  partitions still need their separate observations; the bounded runtime arena
-  below is not evidence of the whole-process128MiB gate.
+- Compiler/worker private peak/delta and partition observations. A cold whole
+  frontend probe of the frozen345483-byte/116-function load has a release
+  OS peak commit214061056B, despite its post-frontend live private23490560B.
+  This is over128MiB, so T-02 is still pending; do not shrink the load or call
+  endpoint memory a peak. The next mechanism to prove is bounded cold per-body
+  production against the retained environment already required by T-05.
+- Combined frame-registration/native-stack boundary accounting, and linker/
+  object metadata. The arena alone is not the complete execution or worker gate.
 - Remaining helper deadline/cancellation integration and boundary controls,
   runtime content/build/dependency binding and bounded parent trap admission.
-- Performance workload/sample/timing freeze and all formal measurements.
+- All formal performance/resource measurements and formal driver integration.
+
+Implemented layout candidate `mn.collections.layout/1` uses canonical BLAKE3
+identities for nominal owner/name, ordered named fields/arms and transitive
+element/payload shapes, independent of type-table indices/spans. Iterative
+dependency ordering rejects cycles/bad references and handles4096 variants on
+a64KiB host stack. Borrowed views share the physical value descriptor; closure
+and function-signature identities additionally bind borrow/own modes.
+
+Every generated resource use validates registry membership/kind/layout binding;
+constructors bind their verified descriptor words (never dereference an input
+descriptor pointer). Clone copies the binding; function entry/result and each
+field-path step validate it. A legitimate unit returning a different nominal
+record to an independently legitimate caller traps23 before consumption and
+still releases every caller owner. This is additional defense; persisted
+closure signature/type admission remains required at T-04 before execution.
+
+The new codegen/profile/recipe candidates are `mn.collections.codegen/1`,
+`mn.collections.source/1`, `ac/mir-native-collections-v1`. Old five-domain
+identities stay unchanged. T-04 must bind these axes, layout closure and exact
+runtime library content/build/dependencies in A09'/A10'; no current product
+cache uses this entry yet. A later891 package receives this final delivered
+contract; it does not acquire N writes while889 owns it.
+
+Parent `collections_observe::decode` caps raw bytes, requires an exact single
+known trap reason plus exit70 and complete balanced runtime/text/OS observations.
+Return70 without a reason stays Return70. Forged prefixes, missing/duplicate/
+truncated fields, unknown reason, non70 trap exit, over-budget and failed OS
+observations reject. The existing raw stderr and process status remain evidence,
+not an authenticated PASS protocol for arbitrary external programs.
+
+The PE queries OS private baseline/end and historical peak process commit.
+It reports `process_commit_delta=peak_commit-private_baseline`, separately from
+arena/requested bytes and the compiler worker. The8MiB boundary witness returns
+to private557056B after peak8966144B (delta8409088B); no missing/zero OS sample
+passes. The native stack and image are included in the PE process observation.
+
+Formal workload: preserve the original115-function, ≥256KiB scalar arithmetic
+and loop counts (use equivalent loop/break on the collections source surface),
+plus one owned List<Variant<Item>>/Str.clone/return helper and main consumption.
+The frozen source has116 functions and345483 bytes, base result1786 from the
+old closed-form mirror plus42. Only collections_helper changes for revision n,
+yielding1786+n; main and old115 functions stay byte-identical across edits.
+Source hash at n0:9fbf68139857bf473e291240df8ac48f6fc2bb493ffe4e9c2df8cc6830ba70de.
+Minimum30 samples each fresh/hit/restart/body-edit/historical-return path,
+512 distinct real churn revisions, P90 sorted one-based N-floor(N/10)≤2000ms,
+P95/P99 reported. Release worker; record machine/tools/library hashes and all
+failures. Start at parent request/edit enqueue; finish after result/trap/resource
+validation. Runtime preparation/build/content checks, compile/link/run are inside
+that window; unchanged helper reuse must be demonstrated, not rebuilt off-clock.
+Compiler managed16/24/8MiB (total48), worker delta128, PE delta128 and guest8/
+execution32MiB remain separate gates; cold results cannot be replaced by warm
+baselines. Current single feasibility timings are not formal samples or PASS.
 
 The runtime now installs an exclusive allocator/poll hook before its first
 allocation. A VirtualAlloc arena reserves32MiB of address space and commits at

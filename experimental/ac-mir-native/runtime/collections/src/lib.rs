@@ -9,6 +9,7 @@
 // this static library. Linking two independent no_std panic handlers conflicts.
 extern crate ac_text_runtime;
 mod arena;
+mod physical;
 
 use core::ptr::{null_mut, read, write};
 
@@ -23,7 +24,7 @@ extern "system" {
     fn ac_rt_summary();
 }
 
-pub const ABI: &str = "mn.collections.runtime/1";
+pub const ABI: &str = "mn.collections.runtime/2";
 pub const GUEST_CAP: usize = 8 << 20;
 pub const MANAGED_CAP: usize = 32 << 20;
 pub const LIST_CAP: usize = 65536;
@@ -52,6 +53,7 @@ unsafe extern "system" fn poll(work: u64) -> i32 {
     }
 }
 fn ensure_allocator() -> Result<(), i32> {
+    physical::begin();
     unsafe {
         if !INSTALLED {
             if ac_text_runtime::ac_rt_install_allocator(
@@ -112,6 +114,8 @@ const LIST: u32 = 3;
 const TAGGED: u32 = 4;
 #[repr(C)]
 struct Node {
+    type_fp: [u64; 4],
+    type_bound: bool,
     prev: *mut Node,
     next: *mut Node,
     drop_next: *mut Node,
@@ -225,6 +229,53 @@ fn of_kind(bits: u64, kind: u32) -> Result<*mut Node, i32> {
         Err(INVALID)
     } else {
         Ok(p)
+    }
+}
+/// Descriptor words are constants emitted only after shared verification and
+/// native layout admission. Never interpret a caller-provided descriptor pointer.
+/// Mode1 binds a newly constructed node; mode0 requires an existing binding.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_type(
+    bits: u64,
+    kind: u32,
+    arity: u32,
+    a: u64,
+    b: u64,
+    c: u64,
+    d: u64,
+    mode: u32,
+) -> i32 {
+    let Ok(p) = of_kind(bits, kind) else {
+        line(b"MN-COLL-TYPE refusal=", 1);
+        return INVALID;
+    };
+    if mode > 1 || !matches!(kind, TEXT | RECORD | LIST | TAGGED) {
+        line(b"MN-COLL-TYPE refusal=", 2);
+        return INVALID;
+    }
+    if (kind == RECORD && (*p).len != arity as usize)
+        || (kind == LIST && arity != 1)
+        || (kind == TAGGED && (*p).disc >= arity)
+        || (kind == TEXT && arity != 0)
+    {
+        line(b"MN-COLL-TYPE refusal=", 3);
+        return INVALID;
+    }
+    let fp = [a, b, c, d];
+    if (*p).type_bound {
+        if (*p).type_fp == fp {
+            0
+        } else {
+            line(b"MN-COLL-TYPE refusal=", 4);
+            INVALID
+        }
+    } else if mode == 1 {
+        (*p).type_fp = fp;
+        (*p).type_bound = true;
+        0
+    } else {
+        line(b"MN-COLL-TYPE refusal=", 5);
+        INVALID
     }
 }
 fn retain(c: Cell) -> Result<(), i32> {
@@ -358,6 +409,8 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
         write(
             p,
             Node {
+                type_fp: [0; 4],
+                type_bound: false,
                 prev: null_mut(),
                 next: state().head,
                 drop_next: null_mut(),
@@ -399,6 +452,7 @@ pub unsafe extern "system" fn mn_coll_frame_enter(
     cells: *mut Cell,
     count: u64,
 ) -> i32 {
+    physical::begin();
     status((|| {
         let bytes = (count as usize)
             .checked_mul(16)
@@ -741,6 +795,8 @@ unsafe fn clone_shallow(source: *mut Node) -> Result<*mut Node, i32> {
         return Err(CANCELLED);
     }
     let dest = new_node((*source).kind, (*source).cap, (*source).guest)?;
+    (*dest).type_fp = (*source).type_fp;
+    (*dest).type_bound = (*source).type_bound;
     (*dest).len = (*source).len;
     (*dest).disc = (*source).disc;
     (*dest).moved = (*source).moved;
@@ -962,6 +1018,12 @@ fn line(prefix: &[u8], value: u64) {
 }
 #[no_mangle]
 pub extern "system" fn mn_coll_summary() {
+    let process = physical::finish();
+    line(b"MN-COLL process_private_base=", process.base);
+    line(b"MN-COLL process_private_end=", process.current);
+    line(b"MN-COLL process_commit_peak=", process.peak_commit);
+    line(b"MN-COLL process_commit_delta=", process.delta);
+    line(b"MN-COLL process_sample_ok=", process.ok as u64);
     line(b"MN-COLL live=", state().nodes as u64);
     line(b"MN-COLL bytes=", state().managed as u64);
     line(b"MN-COLL guest=", state().guest as u64);

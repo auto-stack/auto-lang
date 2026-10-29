@@ -11,8 +11,11 @@
 
 pub mod backend;
 pub mod cache;
-pub mod config;
+pub mod collections_layout;
 pub mod collections_lower;
+pub mod collections_observe;
+pub mod collections_workload;
+pub mod config;
 pub mod driver;
 pub mod emit;
 pub mod entry;

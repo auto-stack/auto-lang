@@ -25,7 +25,7 @@ fn collections_original_owned_first_cases() {
             "{id}: {}",
             String::from_utf8_lossy(&run.stderr)
         );
-        assert_balanced(&run.stderr);
+        assert_balanced(&run);
     }
 }
 
@@ -51,7 +51,7 @@ fn collections_original_remaining_cases() {
             "{id}: {}",
             String::from_utf8_lossy(&run.stderr)
         );
-        assert_balanced(&run.stderr);
+        assert_balanced(&run);
     }
 }
 
@@ -78,7 +78,7 @@ fn collections_list_variant_and_nested_cross_function_sources() {
             "{tag}: {}",
             String::from_utf8_lossy(&run.stderr)
         );
-        assert_balanced(&run.stderr);
+        assert_balanced(&run);
     }
 }
 
@@ -87,11 +87,11 @@ fn collections_list_index_trap_and_normal70_are_distinct() {
     let trap = run_source(&original("L06"), "L06");
     assert_eq!(trap.exit_code, Some(70));
     assert!(String::from_utf8_lossy(&trap.stderr).contains("MN-COLL-TRAP code=21\n"));
-    assert_balanced(&trap.stderr);
+    assert_balanced(&trap);
     let normal = run_source("fn main() int { return 70 }", "normal70");
     assert_eq!(normal.exit_code, Some(70));
     assert!(!String::from_utf8_lossy(&normal.stderr).contains("MN-COLL-TRAP"));
-    assert_balanced(&normal.stderr);
+    assert_balanced(&normal);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn main() int { let t = Token.Data(Item("caller", 41))
     let run = run_source(source, "caller-callee-trap");
     assert_eq!(run.exit_code, Some(70));
     assert!(String::from_utf8_lossy(&run.stderr).contains("MN-COLL-TRAP code=21\n"));
-    assert_balanced(&run.stderr);
+    assert_balanced(&run);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn main() int { let t = Token.Data("caller")
     let run = run_source(source, "direct-text-caller-trap");
     assert_eq!(run.exit_code, Some(70));
     assert!(String::from_utf8_lossy(&run.stderr).contains("MN-COLL-TRAP code=21\n"));
-    assert_balanced(&run.stderr);
+    assert_balanced(&run);
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn collections_scalar_machine_checks_and_copyable_record_calls() {
     ] {
         let run = run_source(source, tag);
         assert_eq!(run.exit_code, Some(42), "{tag}: {}", String::from_utf8_lossy(&run.stderr));
-        assert_balanced(&run.stderr);
+        assert_balanced(&run);
     }
     for (tag, source, reason) in [
         (
@@ -166,6 +166,6 @@ fn collections_scalar_machine_checks_and_copyable_record_calls() {
         assert!(
             String::from_utf8_lossy(&run.stderr).contains(&format!("MN-COLL-TRAP code={reason}\n"))
         );
-        assert_balanced(&run.stderr);
+        assert_balanced(&run);
     }
 }

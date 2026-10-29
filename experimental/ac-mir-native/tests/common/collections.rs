@@ -2,6 +2,29 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+fn memory_stage(tag: &str, stage: &str) {
+    if tag != "frozen-load-first" {
+        return;
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::{
+            ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX},
+            Threading::GetCurrentProcess,
+        };
+        let mut c: PROCESS_MEMORY_COUNTERS_EX = std::mem::zeroed();
+        c.cb = std::mem::size_of_val(&c) as u32;
+        assert_ne!(
+            GetProcessMemoryInfo(GetCurrentProcess(), &mut c as *mut _ as *mut _, c.cb),
+            0
+        );
+        eprintln!(
+            "feasibility-memory {stage}: private={} os_peak_commit={}",
+            c.PrivateUsage, c.PeakPagefileUsage
+        );
+    }
+}
+
 pub fn libraries() -> &'static [PathBuf] {
     static LIBRARIES: OnceLock<Vec<PathBuf>> = OnceLock::new();
     LIBRARIES.get_or_init(|| {
@@ -22,10 +45,15 @@ pub fn libraries() -> &'static [PathBuf] {
 }
 
 pub fn run_source(source: &str, tag: &str) -> ac_mn::link_driver::PeRun {
+    let memory = |stage| memory_stage(tag, stage);
     let compiled = auto_ac_prototype::source::compile_collections_source(source, "p889.at", &[])
         .unwrap_or_else(|e| panic!("{tag}: frontend {e:?}"));
+    memory("frontend");
     let m = auto_mir_lower::lower_checked_collections(&compiled.checked, "d_main", 0)
         .unwrap_or_else(|e| panic!("{tag}: lower {e:?}"));
+    memory("mir");
+    drop(compiled);
+    memory("release-checked");
     run_module(&m, tag, Some(source))
 }
 
@@ -34,7 +62,18 @@ pub fn run_module(
     tag: &str,
     source: Option<&str>,
 ) -> ac_mn::link_driver::PeRun {
+    run_module_with_units(m, tag, source, |_| {})
+}
+
+pub fn run_module_with_units(
+    m: &auto_av_core::mir::MirModule,
+    tag: &str,
+    source: Option<&str>,
+    mut rewrite: impl FnMut(&mut auto_av_core::mir::MirModule),
+) -> ac_mn::link_driver::PeRun {
+    let memory = |stage| memory_stage(tag, stage);
     auto_av_core::verify_mir(&m).unwrap();
+    memory("verify");
     let entry = &m.funcs[m.entry as usize];
     let signature = m.sig_of(entry.sig).unwrap();
     assert!(signature.params.is_empty());
@@ -51,7 +90,12 @@ pub fn run_module(
         std::process::id()
     ));
     std::fs::create_dir_all(&work).unwrap();
-    let units = auto_av_probe::cache::split_units(&m).unwrap();
+    let mut units = auto_av_probe::cache::split_units(&m).unwrap();
+    memory("split");
+    for unit in &mut units {
+        rewrite(unit);
+        auto_av_core::verify_mir(unit).unwrap();
+    }
     let mut objects = Vec::new();
     for unit in &units {
         let object = ac_mn::collections_lower::emit_unit_coff(unit)
@@ -66,6 +110,7 @@ pub fn run_module(
             bytes: object.bytes,
         });
     }
+    memory("emit");
     let symbol = ac_mn::symbols::function_symbol(&m.owner, &entry.name);
     let wrapper = ac_mn::collections_lower::emit_wrapper_coff(&symbol).unwrap();
     let run = ac_mn::link_driver::link_and_run(
@@ -87,7 +132,10 @@ pub fn run_module(
     run
 }
 
-pub fn assert_balanced(stderr: &[u8]) {
+pub fn assert_balanced(run: &ac_mn::link_driver::PeRun) {
+    // Balance admission is independent of the expected business result.
+    ac_mn::collections_observe::decode(run.exit_code, &run.stderr).unwrap();
+    let stderr = &run.stderr;
     let text = String::from_utf8_lossy(stderr);
     for item in [
         "MN-COLL live=0\n",

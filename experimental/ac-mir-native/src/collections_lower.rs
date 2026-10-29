@@ -15,7 +15,7 @@ use cranelift_module::{default_libcall_names, DataDescription, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::BTreeMap;
 
-pub const ABI: &str = "mn.collections.cell/1";
+pub const ABI: &str = "mn.collections.cell/2";
 
 fn unsupported(kind: &'static str, message: impl Into<String>) -> MnError {
     MnError::Unsupported(kind, message.into())
@@ -121,6 +121,7 @@ pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
             ));
         }
     }
+    crate::collections_layout::descriptors(m)?;
     Ok(())
 }
 
@@ -204,6 +205,7 @@ pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
             literals: BTreeMap::new(),
             import_refs,
             scratch: f.slots.len() as u32,
+            descriptors: crate::collections_layout::descriptors(m)?,
         };
         let count = lower.i64(f.slots.len() as i64 + 2);
         let cells = lower
@@ -241,6 +243,7 @@ pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
                 };
                 lower.checked(name, &[(dst, types::I64), (params[i], types::I64)])?;
             }
+            lower.check_slot(i as u32, false)?;
         }
         let mut order: Vec<_> = (0..f.blocks.len()).collect();
         order.retain(|i| *i != f.entry as usize);
@@ -267,6 +270,7 @@ pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
                     );
                 }
                 Terminator::Return { value } => {
+                    lower.check_slot(*value, false)?;
                     let src = lower.addr(*value);
                     let name =
                         if auto_av_core::ownership::type_is_owned(m, f.slots[*value as usize].ty) {
@@ -314,8 +318,32 @@ struct Lower<'a, 'b> {
     literals: BTreeMap<u32, cranelift_module::DataId>,
     import_refs: Vec<FuncRef>,
     scratch: u32,
+    descriptors: Vec<crate::collections_layout::Descriptor>,
 }
 impl Lower<'_, '_> {
+    fn check_bits(&mut self, bits: Value, ty: TypeIdx, bind: bool) -> Result<(), MnError> {
+        let desc = self.descriptors[ty as usize].clone();
+        if desc.kind == 0 {
+            return Ok(());
+        }
+        let mut args = vec![(bits, types::I64)];
+        args.push((self.i32(desc.kind as i32), types::I32));
+        args.push((self.i32(desc.arity as i32), types::I32));
+        for word in desc.words() {
+            args.push((self.i64(word as i64), types::I64));
+        }
+        args.push((self.i32(bind as i32), types::I32));
+        self.checked("mn_coll_type", &args)?;
+        Ok(())
+    }
+    fn check_slot(&mut self, slot: SlotId, bind: bool) -> Result<(), MnError> {
+        let ty = self.m.funcs[0].slots[slot as usize].ty;
+        if self.descriptors[ty as usize].kind != 0 {
+            let bits = self.bits(slot);
+            self.check_bits(bits, ty, bind)?;
+        }
+        Ok(())
+    }
     fn i64(&mut self, n: i64) -> Value {
         self.fb.ins().iconst(types::I64, n)
     }
@@ -395,10 +423,16 @@ impl Lower<'_, '_> {
             Ok(src)
         }
     }
-    fn field(&mut self, dst: u32, base: u32, path: &[u16]) -> Result<(), MnError> {
+    fn field(&mut self, dst: u32, base: u32, mut ty: TypeIdx, path: &[u16]) -> Result<(), MnError> {
         let temp = self.addr(self.scratch);
         let mut bits = self.bits(base);
         for &index in path {
+            self.check_bits(bits, ty, false)?;
+            let r = match &self.m.types[ty as usize] {
+                MirType::Record(r) | MirType::RecordView(r) => r,
+                _ => return Err(unsupported("field", "non-record field path")),
+            };
+            ty = r.fields[index as usize].ty;
             let index = self.i64(index as i64);
             self.checked(
                 "mn_coll_field_get",
@@ -406,11 +440,73 @@ impl Lower<'_, '_> {
             )?;
             bits = self.bits(self.scratch);
         }
+        self.check_bits(bits, ty, false)?;
         let dst = self.addr(dst);
         self.checked("mn_coll_move", &[(dst, types::I64), (temp, types::I64)])?;
         Ok(())
     }
     fn instruction(&mut self, instruction: &MirInstr) -> Result<(), MnError> {
+        use MirInstr::*;
+        let reads = match instruction {
+            Copy { src, .. }
+            | Move { src, .. }
+            | Clone { src, .. }
+            | View { src, .. }
+            | ListLen { src, .. }
+            | VariantGuard { src, .. } => vec![*src],
+            // Shared MIR permits an already-ended initialized token to end
+            // again. This only clears the token; it must not dereference it.
+            BorrowEnd { .. } => vec![],
+            Drop { slot } => vec![*slot],
+            StrLen { view, .. } => vec![*view],
+            FieldGet { base, .. } => vec![*base],
+            Aggregate { operands, .. } | Call { args: operands, .. } => operands.clone(),
+            ListPush { root, value }
+            | ListInsert { root, value, .. }
+            | ListSet { root, value, .. } => vec![*root, *value],
+            ListGet { base, .. } | ListFieldGet { base, .. } => vec![*base],
+            ListRemove { root, .. } | VariantProject { root, .. } => vec![*root],
+            VariantPack { payload, .. } => payload.iter().copied().collect(),
+            // Switch is also used to initialize an uninitialized source local.
+            VariantSwitch { payload, .. } => payload.iter().copied().collect(),
+            _ => vec![],
+        };
+        for slot in reads {
+            self.check_slot(slot, false)?;
+        }
+        self.instruction_inner(instruction)?;
+        let dst = match instruction {
+            Const { dst, .. }
+            | Copy { dst, .. }
+            | Move { dst, .. }
+            | Clone { dst, .. }
+            | View { dst, .. }
+            | Aggregate { dst, .. }
+            | FieldGet { dst, .. }
+            | ListNew { dst, .. }
+            | ListGet { dst, .. }
+            | ListRemove { dst, .. }
+            | ListFieldGet { dst, .. }
+            | VariantPack { dst, .. }
+            | VariantProject { dst, .. }
+            | Call { dst, .. } => Some(*dst),
+            VariantSwitch { root, .. } => Some(*root),
+            _ => None,
+        };
+        if let Some(dst) = dst {
+            let bind = matches!(
+                instruction,
+                Const { .. }
+                    | Aggregate { .. }
+                    | ListNew { .. }
+                    | VariantPack { .. }
+                    | VariantSwitch { .. }
+            );
+            self.check_slot(dst, bind)?;
+        }
+        Ok(())
+    }
+    fn instruction_inner(&mut self, instruction: &MirInstr) -> Result<(), MnError> {
         use MirInstr::*;
         match instruction {
             Const { dst, value } => match &self.m.consts[*value as usize] {
@@ -499,7 +595,9 @@ impl Lower<'_, '_> {
                     )?;
                 }
             }
-            FieldGet { dst, base, path } => self.field(*dst, *base, path)?,
+            FieldGet { dst, base, path } => {
+                self.field(*dst, *base, self.m.funcs[0].slots[*base as usize].ty, path)?
+            }
             ListNew { dst, cap, .. } => {
                 let dst = self.addr(*dst);
                 let cap = self.i64(*cap as i64);
@@ -564,7 +662,11 @@ impl Lower<'_, '_> {
                     "mn_coll_list_peek",
                     &[(temp, types::I64), (bits, types::I64), (i, types::I32)],
                 )?;
-                self.field(*dst, self.scratch, path)?;
+                let ty = self.m.funcs[0].slots[*base as usize].ty;
+                let MirType::List(l) = &self.m.types[ty as usize] else {
+                    unreachable!()
+                };
+                self.field(*dst, self.scratch, l.elem, path)?;
             }
             VariantPack {
                 dst, disc, payload, ..
