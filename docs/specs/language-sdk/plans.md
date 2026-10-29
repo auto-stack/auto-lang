@@ -13,4 +13,5 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 ## PLAN-842
 
 - [PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)：兼容入口按 0.2.0 边界退役，正式保留面、来源校验和迁移见项目规格。
+| 873 | 构建成本基线测量与 member 拆分决策（THR-D1 闭合：暂不拆；触发条件 T-A..T-D）；crate 粒度与增量成本现状入 project.md | [archive](../../plans/archive/873-build-cost-and-member-split-decision.md) · [build-cost-baseline](../repository-boundaries/build-cost-baseline.md) |
 | 843 | 七热点+根 lib 按语义职责拆主题模块（parser/codegen/engine/native/ffi/trans 家族+entry/flags）；纯搬移零算法变化；结构合同沉淀为 [architecture.md](architecture.md) | [plan](../../plans/843-language-core-structure-and-module-ownership.md) |

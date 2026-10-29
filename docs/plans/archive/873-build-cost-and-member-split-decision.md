@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-873
-status: executing
+status: archived
 feature_name: 构建成本测量与 workspace member 拆分决策（THR-D1）
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-29
 plan_revision: 3
-current_step: 2
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/language-sdk/project.md]
 new_spec_components: [docs/specs/repository-boundaries/build-cost-baseline.md]
@@ -59,6 +59,10 @@ cargo / rustc / sccache（`--show-stats`）/ `cargo nextest`（list 与 run）/ 
 
 - 用户 2026-10-28 要求把"867 之后的后续计划"写成文档；本计划是其中一份（THR-D1）。
 - 本轮只写合同：未跑任何测量、未改配置、未建树。
+- **2026-10-29 goal 授权（/auto-plan-goal 完成计划 873）**：用户单条 goal 指令授权整链——
+  work（含 T-03 起全部测量与建模）、review、限额内修复、merge（canonical/ledger/归档/清理）；
+  各阶段继承授权不再重复请示；不改目标/验收阈值/仓库范围/预算，merge 须绑定当前
+  plan_revision 与复审 pass 的提交。T-03 测量会话按此授权入场（§9 2026-10-29 T-03 记录）。
 
 ### 4.2 已观察事实（2026-10-28）
 
@@ -158,20 +162,74 @@ cargo / rustc / sccache（`--show-stats`）/ `cargo nextest`（list 与 run）/ 
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
 | [✅] | T-01 | work | G873 | 冻结M873窗口、三仓输入/工具链、隔离target/cache、变体/复位/污染/预算协议；不清共享缓存（协议=[m873-protocol.md](attachments/873/m873-protocol.md) r1；组/pin/隔离目录已建，见§9 2026-10-29） | AC-01 |
-| [ ] | T-02 | work | G873；T-01；**W873（864/866/880 merged）**；M873每次入场 | L1与L3构建/链接/list/定向启动测量；完整档只读可比merge收据，无样本记限制，不新跑整档 | AC-02 |
-|   |   |   |   | ↳ [✅ 2026-10-29 W873成立（864/866/880均archive）后执行：re-pin（仅auto-lang a5d8a4fa8→a748017da，三仓Cargo.lock不变）；L1冷check中位 lang/-p auto-lang **80.0s**（4有效样本，污染风暴3样本拒收/存疑）、lang-core **55.5s**、ui workspace **84.2s**、man workspace **105.9s**（方差大下界90–95）；热重check全仓 **0.4–0.9s**；L3 no-run冷 lang **196.6/226.6s**、ui-runtime **276.7s**、man/auto **181.1s**；nextest list 1.2–2.9s（lang 511测/ui-runtime默认面1测/man 10测）；定向启动 lang 3.2s/ui 1.1s/man 1.4s；L4只读收据 880批量回归 tf 84.0s/tt 512.4s/tb 61.0s@03f851505（输入差866落地，按近似参考标注）。证据=.measure/logs/index.md+35样本log+污染记录；运行器 scripts/measure-build-cost-873.sh（commit 63cb3e1dd，plan-873-dev）] | AC-02 |
-| [ ] | T-03 | work | G873；T-02；M873每次入场 | ≥7真实函数体站点+无改动/mtime对照，编译调用/缓存观测，逐站复位hash和污染拒绝 | AC-03 |
-| [ ] | T-04 | work | G873；T-03 | 汇总表 + 三方案决策模型（收益/成本/触发条件） | AC-04 |
-| [ ] | T-05 | work | G873；T-04 | 结论页 + 若拆的范围草案；THR-D1 闭合或转阶段 | AC-05 |
-| [ ] | T-06 | work | G873；T-05 | SD-01/02 proposal及handoff冻结，写后续未编号结构包适用版本/差额重测门；canonical仅merge | AC-02,AC-04 |
-| [ ] | T-07 | review | G873；T-06冻结提交；抽测须M873 | 独立复审协议/数据/估算与限制，必要独占抽点复测，不触发整档 | AC-06 |
-| [ ] | T-08 | merge | G873；T-07 pass | 输入差额核验、SD/ledger/归档/逐树guard清理；输出U873和后续工作包设计输入，不取号不实施member拆分 | AC-07 |
+| [✅] | T-02 | work | G873；T-01；**W873（864/866/880 merged）**；M873每次入场 | L1与L3构建/链接/list/定向启动测量；完整档只读可比merge收据，无样本记限制，不新跑整档 | AC-02 |
+|   |   |   |   | ↳ [✅ 2026-10-29 W873成立（864/866/880均archive）后执行：re-pin（仅auto-lang a5d8a4fa8→a748017da，三仓Cargo.lock不变）；L1冷check中位 lang/-p auto-lang **80.0s**（4有效样本，污染风暴3样本拒收/存疑）、lang-core **55.5s**、ui workspace **84.2s**、man workspace **105.9s**（方差大下界90–95）；热重check全仓 **0.4–0.9s**；L3 no-run冷 lang **196.6/226.6s**、ui-runtime **276.7s**、man/auto **181.1s**；nextest list 1.2–2.9s（枚举数 2026-10-29 终审 F-1 修正为日志实数：lang **1559** 测/22 二进制、ui-runtime **1889** 测/2 二进制、man **34** 测/4 二进制；原记 511/1/10 为 T-02 提取错误）；定向启动 lang 3.2s/ui 1.1s/man 1.4s；L4只读收据 880批量回归 tf 84.0s/tt 512.4s/tb 61.0s@03f851505（输入差866落地，按近似参考标注）。证据=.measure/logs/index.md+35样本log+污染记录；运行器 scripts/measure-build-cost-873.sh（commit 63cb3e1dd，plan-873-dev）] | AC-02 |
+| [✅] | T-03 | work | G873；T-02；M873每次入场 | ≥7真实函数体站点+无改动/mtime对照，编译调用/缓存观测，逐站复位hash和污染拒绝。↳ [✅ 2026-10-29：L2 三控制 7 站点 ×3 样本 + L2e 编辑→测试二进制 3 站点 ×3；驱动=scripts/measure-l2-873.sh（c310e296f/07d9578b6）；lang 四站点 body 中位 6.9s/重编 4 crate 跨 2 仓、mtime 5.9s 同链、无改动 0.7s；ui-compiler 4.6s/4 crate、ui-runtime 4.6s/3 crate、man 1.2s/单 crate；L2e no-run：lang 27.4s、ui-runtime 22.9s、man 4.9s；首批样本跨仓 mtime 级联已归因单列（O5）；证据=.measure/logs/index.md T-03 节 + L2-*/L2e-* 样本 log] | AC-03 |
+| [✅] | T-04 | work | G873；T-03 | 汇总表 + 三方案决策模型（收益/成本/触发条件）。↳ [✅ 2026-10-29：build-cost-baseline.md §2 基线数字 + §3 三方案模型（收益上界全标注估算：冷≈0/<2s check/10–15s 测试二进制；成本=迁移面/结构风险/CI 面/链地板反压）+ 触发条件 T-A..T-D] | AC-04 |
+| [✅] | T-05 | work | G873；T-04 | 结论页 + 若拆的范围草案；THR-D1 闭合或转阶段。↳ [✅ 2026-10-29：结论=**暂不拆**（不立项 member 拆分）；THR-D1 以"已测量+结论闭合"处理；替代手段 A1(ui-iced 默认特性门控，建议独立签核)/A2(sccache 常态)/A3(测试档位已交付)/A4(mtime 级联观察项)；若拆范围草案=先拆 trans（§4.3，含验收指标与风险清单）；适用版本+缺测限制披露（§4.1/§5）] | AC-05 |
+| [✅] | T-06 | work | G873；T-05 | SD-01/02 proposal及handoff冻结，写后续未编号结构包适用版本/差额重测门；canonical仅merge。↳ [✅ r1 冻结 601aeb95a（SD-01 新增 + SD-02 增节）；🔄 终审 needs_fix F-1/F-2/F-3 后修复重冻 **41b474e03**：F-1 nextest 枚举实数 lang 1559/22 二进制、ui 1889/2、man **34**/4（复审人原判 man=10 亦沿用旧错，work 从日志重数修正为 34，三样本一致）；F-2 ui-compiler mtime 中位 3.8；F-3 n=2 格与 >10% 极差组披露入 §2.2；同步修 index.md 与 §8 T-02 行] | AC-02,AC-04 |
+| [✅] | T-07 | review | G873；T-06冻结提交；抽测须M873 | 独立复审协议/数据/估算与限制，必要独占抽点复测，不触发整档。↳ [✅ 2026-10-29 独立子代理终审（final）：首轮 needs_fix（F-1 nextest 计数/F-2 中位/F-3 统计披露，全文档级）→ 修复重冻 41b474e03 → 受限复审 **pass** 绑定 41b474e03；测量/模型/结论独立复算成立，抽点复测复现（no-change 0.7s 精确、mtime 6.0s +1.7%）；复审人独立确认 man=34（其首轮"10"为正则漏 / 错误，已自纠）；AC-01..AC-06 全达成；merge 门 pending 见 §9] | AC-06 |
+| [✅] | T-08 | merge | G873；T-07 pass | 输入差额核验、SD/ledger/归档/逐树guard清理；输出U873和后续工作包设计输入，不取号不实施member拆分。↳ [✅ 2026-10-29：输入差额核验（master 仅 docs 前进，三仓 pin 不变）；SD-01/02 canonical 随交付提交落地 master **54f4ae6e9**（rebase 后等价 range-diff 全 =；reviewed 41b474e03→d670e47fc）；ledger v127 守卫式离线投影（designs P873-DESIGN-BUILD-COST-BASELINE + P840-SDK 溯源、reviews P873-R、reports P873-M）；repository-boundaries/project.md 索引 + language-sdk/plans.md 登记；THR-D1 行闭合改写；归档+清理回执见 §9 merge 记录] | AC-07 |
 
 **实施树**：G873后按需建立 `D:/autostack/.wt/lang-873/{auto-lang,auto-ui,auto-man}`，每个测量仓一个权威树，分支 `codex/plan-873-dev`；同组固定输入，禁止junction/symlink。全部check、编译、定向运行与临时源探针只在组内，设置专属target/cache，不借主检出target、不清共享sccache。每树移除前fresh wt-guard clean；只读原始收据可在主检出核对。
 
 **门禁与证据**：测量M873独占构建测试资源；无Rust交付改动，不跑Cargo整档/docs_gen。原始日志/探针/转储本地保留，md摘要含命令/退出码/数字/本地路径+hash；长期可复跑协议/工具需受管在scripts，不依赖attachments未入库脚本。
 
 ## 9. 复审记录
+
+2026-10-29 / stage: merge / plan_id: PLAN-873 / plan_revision: 3 / outcome: **pass（delivered）** / delivery_commit: **54f4ae6e9**（master tip，ff-only） / reviewed_commit: 41b474e03 → rebase 映射 d670e47fc（`git range-diff` 六提交全 `=` 补丁等价） / channel: ledger=守卫式离线投影（无 store writer；备份+脚本改写+diff 零扰动证明+schema/读回验证）：
+
+- **prepared**：reviewed 基线核验（r3 pass 绑 41b474e03，依赖 867 archived）；worktree 内补 repository-boundaries/project.md 索引引用 + ledger v127 投影（f115fee45，docs/projection-only 后裔 → 合法 delivery 候选）；输入差额核验：master a748017da→4cf7bfdb1 仅 docs/plans 簿记，三仓构建输入与测量 pin 一致，无需复测。
+- **landed**：rebase plan-873-dev（a748017da 基）到 master 后 `git merge --ff-only` 于主检出，master tip=54f4ae6e9=分支 tip（uniq=1）；落地内容=scripts/measure-build-cost-873.sh、scripts/measure-l2-873.sh、docs/specs/repository-boundaries/build-cost-baseline.md（SD-01）、docs/specs/language-sdk/project.md（SD-02）、.autoos/specs.json v127、repository-boundaries/project.md 索引；零 Rust 产品代码。
+- **ledger_refreshed**：v126→127；designs +P873-DESIGN-BUILD-COST-BASELINE（file=build-cost-baseline.md）、P840-SDK 追加 873 溯源 tags；reviews +P873-R；reports +P873-M；全条目带 file/tags；schema 六节校验+读回 ID/内容核验通过；diff 68+/2− 零扰动。
+- **回归门禁归属**：AGENTS Category A（未改 crates/ 下 Rust 源码——diff 仅 scripts/shell+docs/specs/ledger）→ 裸 cargo t/docs_gen 按规禁跑，终审双轮确认无 Cargo 门禁到期；批量回归到期判定=**未到期**（收据 .last-batch-regression.json last_covered_plan_id=880 @2026-10-28T18:55Z≈6.5h 前 <48h；873%5=3 非 %5==0；其后无 %5==0 合并与 L0 fix-* 合并）。
+- **落地产物观察（landing≠deployment 豁免核验）**：本计划零代码/零配置/零生成物变更——backend release 二进制、依赖仓 release、gen/front/vue/dist 均不受影响，无 stale 产物需要重建/重启。
+- **archived**：本文件 git mv 至 docs/plans/archive/，status: archived，current_step=8/8；KNOWN-DEBT THR-D1 行闭合改写（已测+已决：暂不拆，A1 跟进项独立签核）；language-sdk/plans.md 登记 873 行。
+- **cleaned**：见下方追记。
+
+`stage: goal | plan_id: PLAN-873 | plan_revision: r3 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 54f4ae6e9 | next: done`
+
+2026-10-29 / stage: review（受限复审，final）/ review_scope: final / reviewer: 同一独立子代理上下文（agent_1a32efd1；修复轮同一复审人，仅核 F-1/F-2/F-3 闭合）/ plan_id: PLAN-873 / plan_revision: 3 / reviewed_commit: **41b474e03**（基 601aeb95a）/ outcome: **pass（final）→ reviewed，merge 绑定 41b474e03** / worktree: D:/autostack/.wt/lang-873/auto-lang @ plan-873-dev（树 clean 已核）/ next: merge（T-08）：
+
+- F-1/F-2/F-3 全部闭合：计数 lang 1559/22、ui 1889/2、**man 34/4**（复审人独立重验三样本一致，并确认其首轮"man=10"判定为正则字符类漏 `/` 所致——`auto::bin/auto` 24 行被漏；与 T-02 原错同源，修复正确）；中位 3.8；统计披露段六项全覆盖。簿记同步（index.md/§8 行）核验 ✓。
+- 修复 diff 601aeb95a..41b474e03 = 仅 build-cost-baseline.md（+8/−2），零代码/脚本/测试改动，无新到期门禁。
+- 非阻塞备注：man-auto mtime 表值 1.2（严格中位 1.15）已由 n=2 披露段覆盖。
+- **终审链**：needs_fix（F-1/F-2/F-3）→ 修复 41b474e03 → pass。AC-01..AC-06 全达成；AC-07 归 merge。
+- **merge-owned pending**：SD-01/SD-02 canonical 发布 + specs.json/README/overview 回填；KNOWN-DEBT THR-D1 行闭合改写；归档+status 翻转；逐树 wt-guard + worktree/分支/组清理（含 .measure 48G 处置）；无 Cargo 门禁到期（measurement-only，diff 零 Rust 代码——终审双轮确认）。
+
+`stage: goal | plan_id: PLAN-873 | plan_revision: r3 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-873/auto-lang | commit: 41b474e03 | next: merge`
+
+2026-10-29 / stage: work（修复轮，终审 needs_fix 回路由）/ plan_id: PLAN-873 / plan_revision: 3 / outcome: F-1/F-2/F-3 修复完成，重新冻结 / worktree: D:/autostack/.wt/lang-873/auto-lang @ plan-873-dev / code_commit: **41b474e03**（基 601aeb95a，仅 docs/specs/repository-boundaries/build-cost-baseline.md 一个文件）：
+
+- **F-1**（medium）：nextest 枚举计数修正为日志实数——从 L3-list-* 原始日志按条目格式（`<二进制> <测试名>`）重数：lang 1559/22 二进制、ui-runtime 1889/2、man **34**/4（复审报告判 man=10 沿用了 T-02 旧错，本修复以三样本一致的重数为准）；baseline §2.4、index.md L3 节、§8 T-02 行三处同步。时序结论（list 1.2–2.9s 非瓶颈）不变。
+- **F-2**（minor）：ui-compiler mtime 干净中位 3.8/3.8/4.2 → **3.8**（原 4.0 系均值误入）；baseline §2.2 表与脚注、index.md 同步。
+- **F-3**（minor）：统计披露补入 baseline §2.2——O5 剔除后三格 n=2（man-auto mtime、L2e ui-runtime/man no-run）按披露中位；极差>10% 三组（ui-compiler-restore、man-restore、L1 lang 冷组）归因负载方差/多会话时段；不补测（复审裁定）。
+- §9 T-02 历史回执中的 511/1/10 按追加纪律保留原文，以本条与前述修正为准。
+- next: review（受限复审 F-1/F-2/F-3 闭合，冻结提交 41b474e03）。
+
+`stage: goal | plan_id: PLAN-873 | plan_revision: r3 | round: 2 | from: work | to: review | status: execution_done | outcome: needs_fix_repaired | worktree: D:/autostack/.wt/lang-873/auto-lang | commit: 41b474e03 | next: review`
+
+2026-10-29 / stage: review / review_scope: final / reviewer: 独立子代理上下文（general-purpose agent，与执行会话无共享历史；实现会话内派发为既有限制）/ plan_id: PLAN-873 / plan_revision: 3 / reviewed_commit: 601aeb95a / outcome: **needs_fix**（F-1 medium/F-2/F-3 minor，全部文档级；测量/模型/结论/抽点复测全部独立复算成立——AC-01/03/04/05 pass，AC-02 partial）：
+
+- 独立复算：151 份原始 log 重算 L1/L2/L2e/L3/L4 吻合；规模数字独立重数一致（301/250,441/32,852、vm 106,479/trans 52,058/parser 12,221、renderer 42,337）；O1 特性链实证（Cargo.toml L83 default 含 auto-ui-runtime/ui-iced）。
+- 抽点复测（E）：复测 no-change 第二样 0.7s/0 单元精确复现；mtime 复测 6.0s/4 crate 链复现（+1.7% vs 中位 5.9）；首样 7.0s/4 单元为间隔后链刷新（O2 现象重演）。原始 L2-LANG-base-S1.log 已备份 .orig-pre-review-backup.log。
+- findings：F-1 nextest 计数（511/1/10 → 实数；**注：复审报告判 man=10，work 重数修正为 34**）；F-2 ui-compiler mtime 中位 4.0→3.8；F-3 n=2 格与 >10% 极差组披露。证据=.measure/logs/L3-list-*.log。
+- 规范增量：SD-01 修 F-1/F-2 后可发布；SD-02 无需改动可发布；frontmatter supersedes/new 与交付一致。
+- 冻结 diff 复核：a748017da..601aeb95a = 4 文件（两脚本+两 docs），零产品代码/crates/test/Cargo 变更，无越界。
+- merge-owned pending（复审人列出）：文档修正→新冻结（本轮已完成 41b474e03）、canonical 发布+ledger、THR-D1 行闭合、归档、guard 清理、无 Cargo 门禁到期（measurement-only）。
+
+2026-10-29 / stage: work / plan_id: PLAN-873 / plan_revision: 3 / outcome: **pass（T-03..T-06 完成，全部 work 任务交付，execution_done → review）** / worktree: D:/autostack/.wt/lang-873/auto-lang @ plan-873-dev / base: 63cb3e1dd（T-02 冻结）/ code_commit: **601aeb95a**（含 c310e296f L2 驱动、07d9578b6 L2e 扩展）/ dependency_revisions: 组内 auto-ui 4adf2d03、auto-man e6cc06f、auto-down c3464d0（detached）= measurement pin 不变；master a748017da→4cf7bfdb1 仅 docs 簿记（crates/test/Cargo.lock 零变化，未 re-pin，L1/L2/L3 输入可比）/ authorization: 用户 2026-10-29 goal 指令（§4.1）：
+
+- **T-03 L2/L2e 测量**（M873 窗口 08:26–08:55，29min ≤4h）：入场/出场检查全绿（四树 clean、HEAD=pin、rustc 进程 0、.measure 48G≤60G、共享 sccache 零接触）。L2 基线（无改动）三仓 0.6–0.7s/0 单元；7 站点 ×[mtime/body/restore]×3 全部有效（lang 四站点：mtime 5.9–6.0 / body 6.8–7.5 中位 6.9 / 重编 core+auto-lang+ui-compiler+ui-runtime 跨 2 仓 4 crate；ui-compiler body 4.6s/4 crate 仓内；ui-runtime body 4.6s/3 crate；man-auto body 1.2s/单 crate）；L2e 编辑→no-run：lang 27.4s、ui-runtime 22.9s、man 4.9s。**跨仓 mtime 级联归因**（O5）：前序电池 git checkout 复位推新 core/auto-ui 源 mtime → 晚跑仓首样本多编 6–11 单元（ui-compiler-mtime-S1/man-mtime-S1/ui-runtime-norun-S1/man-norun-S1），按机制归因单列、干净样本另行中位，未按污染拒收（非并发重负载）。逐站复位 sha256 核验 + restore 构建全过；探针 diff 断言 1 插入/0 删除全过。
+- **关键观测 O1–O5**（建模输入）：O1 `-p auto-lang` 默认特性拖 UI 图形栈（ui-iced→iced/wgpu，冷差 ~25s）；O2 单行改动爆炸半径=4 crate 跨 2 仓且 mtime 链地板（5.9s）主导、内容边际 ~1s，四家族不可区分；O3 man 9 成员冷 check 反最慢（105.9s）——成员数非冷成本杠杆；O4 温态编辑周期秒级 vs 冷态分钟级；O5 跨仓 mtime 级联实测。
+- **T-04/T-05**：决策模型三方案对照+收益上界（冷≈0 / check <2s / 测试二进制 10–15s，全标注估算）+成本面（迁移 301 文件/250k 行/32,852 inline 测试、结构风险、CI/发布面、链地板反压）+触发条件 T-A..T-D；**结论=暂不拆**，THR-D1 以"已测量+结论闭合"处理，替代手段 A1（ui-iced 出默认特性，独立签核）为唯一建议跟进项；若拆范围草案=先拆 trans（验收指标+风险清单）；适用版本绑定 pin+inventory 指纹差额披露；缺测限制 5 项入册（per-binary 链接分解/warm-sccache 变体/完整档近似/man 方差/inventory 差额）。
+- **T-06**：SD-01=docs/specs/repository-boundaries/build-cost-baseline.md（新增 proposal）、SD-02=language-sdk/project.md 增节；handoff 冻结提交 601aeb95a（树 clean）。
+- **AC/V 对照**：AC-01..AC-05 全部 work-owned 达成（V-01 L2 组极差<10% 一致；V-02 三态可区分 0.7/5.9/6.9；V-03 rustc-only 守卫+复位核验+O5 归因；V-04 全数字带 log/pin、历史(2026-10-02 样点)/当前分列、估算标注；V-05 三方案+推荐+触发条件+可独立执行范围草案）。无未闭合 in-contract finding。
+- **测试面**：本计划无 Rust 交付改动，按合同 §8 未跑 Cargo 整档/docs_gen；证据=.measure/logs/（L2-*/L2e-* 44 样本 log + index.md T-03 节，本地保留不入库）。
+- **merge-owned pending**（不阻塞 review）：T-07 独立复审（AC-06）、T-08 merge（AC-07：输入差额核验、SD-01/02 canonical 发布、ledger upsert、KNOWN-DEBT THR-D1 行闭合改写、归档、逐树 guard 清理）；无 Cargo 门禁到期（docs/measurement-only 计划）。
+- next: review（T-07 独立终审，冻结提交 601aeb95a）。
+
+`stage: goal | plan_id: PLAN-873 | plan_revision: r3 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-873/auto-lang | commit: 601aeb95a | next: review`
 
 2026-10-29 / stage: work / plan_id: PLAN-873 / plan_revision: 3 / outcome: T-02完成（W873成立后L1/L3/L4测量），T-03待续 / authorization: 用户goal指令（推进并等待864/866/880 merged后测量）：
 

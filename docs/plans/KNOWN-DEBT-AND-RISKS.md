@@ -1719,7 +1719,7 @@ The following unique review and debt sections are carried forward from v0.6-dev.
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| THR-D1 | medium | 构建面 | **crate 拆分前置测量**——单 crate 76.6 万行/1,650 文件（2026-10-02 实测），Rust crate 粒度增量下任何改动触发整 crate 重编+测试二进制重链；先测量冷 worktree check/链接时间占比（样点：sccache 79% 命中下 `cargo check -p auto-lang` 57s、lang-724 target 17G、non-cacheable 801 次），数据支撑再决定 workspace member 拆分立项——不测不做 | .cargo/config.toml jobs=12；sccache --show-stats；2026-10-02 会话实测样点 |
+| THR-D1 | ~~medium~~ **已闭合（PLAN-873，2026-10-29）** | 构建面 | **crate 拆分前置测量——已测+已决：暂不拆**。测量（隔离 target/无 sccache/≥3 样本中位）：冷 check lang 80.0s（其中 ~25s 为根包默认特性拖的 UI 图形闭包 O1）、core 55.5s、ui 84.2s、man 9 成员反最慢 105.9s（O3=成员数非冷成本杠杆）；温态单行函数体改动=4 crate 跨 2 仓 check 6.9s、`test --no-run` 27.4s（lang），man 1.2s/4.9s；mtime 链地板 5.9s 主导（O2）。结论=拆分收益上界 ~0 冷/<2s check/估算 10-15s 测试二进制，不立项；触发条件 T-A..T-D 与"先拆 trans"范围草案见 [build-cost-baseline.md](../specs/repository-boundaries/build-cost-baseline.md)；唯一跟进替代手段 A1（ui-iced 出 auto-lang 默认特性，独立签核小计划）。原始样点（2026-10-02 57s/17G/801 次）为历史对照 | .cargo/config.toml jobs=12；sccache --show-stats；PLAN-873 归档（docs/plans/archive/873-build-cost-and-member-split-decision.md）；.measure/logs 本地证据 |
 | THR-D2 | medium | 构建面 | **共享 target/链接缓存评估**——REG-3 已实证共享 target 候选撞名红（auto-edit.exe 撞名翻转策展测试），评估带产物命名空间隔离的跨 worktree 共享方案；未评估不实施 | 本文件 REG-3；clean-autolang-targets.cmd |
 | THR-D3 | medium | 验证信号 | **master 14 红族清偿**（musk p053×4/p054×2/plan606/projector/plan707/e4→PLAN-726 承接/app_registry×2/desktop_protocol/iced renderer/a2vue 金样/plan484 streaming）——跨仓跨域，逐族立项；目标=验证信号零噪音、复审零定案税 | 711 §10② 红册；PLAN-715 批收据基线 |
 | THR-D4 | low | flake 族 | **ffi_dual_019 / plan502_m3 并行负载序敏感 flake**——批量档观察名单积累复现率，频率上升再立项查并发交互 | 本文件 REG-2；PLAN-715 登记 |
