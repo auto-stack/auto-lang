@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-863
-status: executing
+status: execution_done
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -19,7 +19,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 3
+current_step: 5
 total_steps: 8
 ---
 
@@ -126,7 +126,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | SD-03 | modify | docs/specs/auto-test-case/architecture.md | 追加输出断言轴（stdout/stderr 精确字节+上限），infra 规则不变 | 可判决 | AC-05 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加 console 行与轴映射 | 证据落点 | AC-05 |
 | SD-05 | modify | docs/specs/auto-av/project.md | 追加新 profile 与旧 profile 边界 | 模块可见 | AC-03 |
-| SD-06 | modify | docs/specs/auto-mir/hir-lowering-boundary.md | current lowering version 2→3，记录 863 HostConsole/host table/call 与三消费者镜像；公开面追加 lower_checked_console，保留历史 2/881 与 1/868 | SD-01 已实现版本的 canonical 同步；R2 知识增量最终化，非合同扩面 | AC-06/08 |
+| SD-06 | modify | docs/specs/auto-mir/hir-lowering-boundary.md | current lowering version 2→3，记录 HostConsole/host table/call 与三消费者镜像；ac/run backend tag 复用 MN mirror、stale 按每行当前身份比较；公开面追加 lower_checked_console，保留历史 2/881 与 1/868 | 已实现 producer/consumer 身份规则同步；M1 同因路径补齐，非合同扩面 | AC-05/06/08 |
 
 ## 6. 测试设计
 
@@ -160,8 +160,8 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-01 | work | D862 | 核实 ABC/MIR import、AV 派发、test-case 父侧路径；`attachments/863/work/baseline.md`，提交 b1d8b68b2 | AC-01/02 | [x] |
 | T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
-| T-04 | work | T-03 | 3ff90f15e 已关闭 R1-01..03，20 runtime + 1 artifact 证据保留；merge R1 新发现 F-863-M1：第四个 parent ac/run backend tag lowering mirror 仍 2（worker=3），须定向修复 | AC-02/03/04 | [ ] |
-| T-05 | work | T-04 | R1-04 候选文字修复与 parent 11/11 等原通过证据保留；依赖 T-04 身份同步重开，F-M1 关闭后恢复 readiness | AC-05 | [ ] |
+| T-04 | work | T-03 | R1-01..03 关闭证据保留；486fe3e7e 修复 F-863-M1：ac/run 复用 MN admission mirror，native stale 比较每行当前身份；2 反例红→绿 +3 stale 同族控制绿；见 repair-m1-summary.md | AC-02/03/04 | [x] |
+| T-05 | work | T-04 | R1-04 与 parent 原证据保留；486fe3e7e 恢复身份链 readiness，候选 SD-01/06 与 prepared canonical 反映 tag/stale 规则；prepared ledger 源 hash 刷新仍为 merge-owned pending | AC-05 | [x] |
 | T-06 | review | T-05 | R2 historical pass 3ff90f15e，F01..04 保持关闭；新 F-M1 修复提交必须再次 affected final review，旧 pass 不覆盖新改动 | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
@@ -256,6 +256,17 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - 下一 work 仅定向修复/测试/提交，affected final review 后才再次执行 merge-owned t/tv。`cargo tv` 未运行；无任何整档测试 pass 及合入授权推定。canonical/ledger prepared commit 需按新代码核对后复用，不得重复投影或覆盖其它工作。
 
 2026-10-30 goal round 8：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 8 | from: merge | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | next: work`。上一轮 progress；本轮完成 rebase/知识准备并发现真实门禁回归，目标 active、无外部阻塞。原 final review 累计2（1 fail/1 pass），新 merge finding 归第二次有界修复；未再次花费 final review 周期。
+
+2026-10-30 work M1 repair：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | code_commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（clean detached） | task_ids: T-04,T-05 | blockers: none | next_responsible_role: affected final review T-06`。
+
+- 当前 closure/readiness 见实施树已提交 `docs/plans/attachments/863/work/repair-m1-summary.md`。F-M1 主因：ac/run 版本字面量=2 未同步；同 consumer 追踪另发现 stale 计算 current_row 却读取 current，原测试注入完整 backend 轴掩盖该问题。修复为 ac/run alias 既有 ac_mn expected mirror，以及按每行/profile current_row 比较。原始真实 worker + 真实报告反例在生产修复前 **0 pass/2 fail**（exit100），最终两项 **2/2 pass**（exit0）；保留旧 worker hash drift、legacy/scoped/malformed 控制；新增 current shared map 无 backend→Fresh、旧报告+旧 shared backend→具名 Stale，非仅比较常量。
+- 存量永久 `r1_backend_axis_mirror_matches_the_real_worker` 扩充 ac-case-worker **实际接纳的 core/scalar** unset/mn 四种正控。中间探针曾误把共享 MN backend 的 record/text/text-record 也喂 ac-case-worker，收到已存在的 request.profile 拒绝；归类 fixture 错误并按真实 worker 受理边界更正，未改产品准入，未弱化既定验收。raw `work-m1/green.log` 保留为该探针错误记录。
+- shared stale 比较循环改为 current_row，非 linked native 行的该 map 与 current 等价；为覆盖同函数的其它实际消费者，额外定向 `stale_check_detects_oracle_drift`、`ac_av_probe_mixed_recipe_stale_identity_is_order_independent`、`cte_adapter_stale_identity_order_independent_and_drift_red`，**3/3 pass**（exit0、5.183s）。未重跑无关模块或任何整档。
+- 两组命令均 `cargo nextest run -p auto-lang --lib --features ui-iced,test-cases -E <明确 exact test 名 OR>`；2 个反例/3 个 sibling 实际入口与断言见摘要及提交。local prefix `D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/work-m1/`：`red.log` SHA256 `d8307e10e33cb5807d0414b52777324a3a863af694d1e9052b61793829ed93c6`；`final-green.log` `f2c7c21472bfe283dfedb101b12ae8b606931cc8f95df94fb93e6fbfcbdd11f4`；`stale-siblings.log` `e9010874ad798f5c5ffe26e663e530939c8dabaab30e54af0cbafd4f2ee399ae`。所有 raw 忽略未暂存。3 个改动 Rust 文件 rustfmt check/diff-check exit0，编译由定向测试覆盖，无新增诊断。
+- 全仓版本/tag 触点检查：三处 AV/CTE/MN expected=3；ac/run 无第四字面量，借用 MN；experimental 后端与 console worker 直接用 shared producer 常量；保留的 mir-v2 仅负控 fixture。未新增依赖或 parent→experimental 链接；未改变 native console 拒绝、后端选择语法、预算/AC/范围。两个 prepared canonical 文档与候选 SD-01/06 同步；候选 hash `c0899a31510e618115ce429d9248e65da35a87bbcbbee2f48ffb39792a84a281`。prepared ledger 仍未发布且未改动；P863-HOST-CONSOLE/P868-HIR-LOWERING-BOUNDARY 两项 source hash 与最终 review 历史刷新归 merge-owned（原 v142 byte backup/一次 unpublished v143 increment 必须保留，禁止盲目重复投影）。
+- readiness：work-owned AC-01..05 完成，open in-contract findings/required gaps/contract decisions 空；R1-01..04 与 source/runtime/provider/console parent 原证据受影响代码和输入未变，继续有界复用。代码已提交、树 clean，等待再次 final review；AC-06/T-06 pending，AC-07 裸 cargo t+tv 与 AC-08 落地/ledger/归档/guard/清理 pending。本轮未跑 t/tv/tf/docs_gen，主检出 unrelated docs WIP 与只读 siblings 原样保留。
+
+2026-10-30 goal round 9：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 9 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | next: review`。上一轮 progress；本轮关闭 M1 实现与同因 stale consumer、完成红绿和 sibling 控制并提交；第二次有界修复，目标 active。
 
 ## 10. 待澄清事项
 
