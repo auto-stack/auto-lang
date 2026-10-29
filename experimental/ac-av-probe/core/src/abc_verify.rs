@@ -115,6 +115,12 @@ pub fn verify_abc(
                 crate::contract::ABC_PROFILE_DYNAMIC,
                 crate::contract::AV_DYNAMIC_SEMANTICS,
             )
+        } else if decoded.profile == crate::contract::ABC_PROFILE_HOST_CONSOLE {
+            (
+                crate::contract::ABC_HOST_CONSOLE_VERSION,
+                crate::contract::ABC_PROFILE_HOST_CONSOLE,
+                crate::contract::AV_HOST_CONSOLE_SEMANTICS,
+            )
         } else if decoded.profile == crate::contract::ABC_PROFILE_ENTRY_UNIT {
             // PLAN-862: the entry-unit generation (`AVAU` v1, id 7).
             (
@@ -139,6 +145,22 @@ pub fn verify_abc(
             "decoded profile id {} is not the admitted profile id {}",
             decoded.profile, want_profile
         )));
+    }
+    let profile_name = match want_profile {
+        crate::abc::ABC_PROFILE_CORE_I32 => crate::contract::AV_PROFILE,
+        crate::contract::ABC_PROFILE_DATA => crate::contract::AV_DATA_PROFILE,
+        crate::contract::ABC_PROFILE_OWNED => crate::contract::AV_OWNED_PROFILE,
+        crate::contract::ABC_PROFILE_COLLECTIONS => crate::contract::AV_COLLECTIONS_PROFILE,
+        crate::contract::ABC_PROFILE_CLOSURES => crate::contract::AV_CLOSURES_PROFILE,
+        crate::contract::ABC_PROFILE_DYNAMIC => crate::contract::AV_DYNAMIC_PROFILE,
+        crate::contract::ABC_PROFILE_ENTRY_UNIT => crate::contract::AV_ENTRY_UNIT_PROFILE,
+        crate::contract::ABC_PROFILE_HOST_CONSOLE => crate::contract::AV_HOST_CONSOLE_PROFILE,
+        _ => unreachable!("identity checked above"),
+    };
+    if decoded.module.profile != profile_name {
+        return Err(AbcAdmissionError::Identity(
+            "wire profile and module semantic profile differ".into(),
+        ));
     }
     let mut module = decoded.module;
     // Identity re-stamp: the decoded content is admitted under the CALLER's

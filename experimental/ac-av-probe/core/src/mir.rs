@@ -264,6 +264,11 @@ pub enum CalleeRef {
 
 #[derive(Clone, Debug)]
 pub enum MirInstr {
+    /// PLAN-863: a host-table reference, separate from guest Call/Import.
+    HostCall {
+        host: u32,
+        arg: SlotId,
+    },
     Const {
         dst: SlotId,
         value: u32,
@@ -756,6 +761,7 @@ pub struct MirModule {
     pub types: Vec<MirType>,
     pub consts: Vec<MirConst>,
     pub imports: Vec<MirImport>,
+    pub host_imports: Vec<MirHostImport>,
     pub funcs: Vec<MirFunction>,
     pub entry: FuncIdx,
     /// Document-level capabilities this unit requires (e.g. trace).
@@ -772,6 +778,7 @@ impl MirModule {
             types: Vec::new(),
             consts: Vec::new(),
             imports: Vec::new(),
+            host_imports: Vec::new(),
             funcs: Vec::new(),
             entry: 0,
             capabilities: Vec::new(),
@@ -862,6 +869,15 @@ impl MirModule {
     }
 
     /// Whether this module declares the data profile.
+    pub fn new_host_console(owner: OwnerScope) -> Self {
+        let mut m = Self::new(owner);
+        m.profile = crate::contract::AV_HOST_CONSOLE_PROFILE.into();
+        m.entry_kind = Some(EntryKind::Int);
+        m
+    }
+    pub fn is_host_console_profile(&self) -> bool {
+        self.profile == crate::contract::AV_HOST_CONSOLE_PROFILE
+    }
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
     }
@@ -1046,6 +1062,7 @@ impl MirModule {
         self.types.len()
             + self.consts.len()
             + self.imports.len()
+            + self.host_imports.len()
             + self.funcs.len()
             + self
                 .funcs
@@ -1064,7 +1081,18 @@ impl MirModule {
     pub fn heap_estimate(&self) -> usize {
         const STR: usize = std::mem::size_of::<String>(); // 24
         const VEC: usize = std::mem::size_of::<usize>() * 3; // 24
-        let mut b = std::mem::size_of::<MirModule>()
+        let host_bytes = self
+            .host_imports
+            .iter()
+            .map(|h| {
+                std::mem::size_of::<MirHostImport>()
+                    + h.category.len()
+                    + h.symbol.len()
+                    + h.capability.len()
+            })
+            .sum::<usize>();
+        let mut b = host_bytes
+            + std::mem::size_of::<MirModule>()
             + self.profile.len()
             + self.owner.schema.len()
             + self.owner.module.len()
@@ -1189,4 +1217,14 @@ impl MirModule {
         }
         b
     }
+}
+
+/// Portable declaration only: no pointer, provider, handle or current grant.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MirHostImport {
+    pub category: String,
+    pub symbol: String,
+    pub sig: TypeIdx,
+    pub capability: String,
+    pub max_call_bytes: u32,
 }

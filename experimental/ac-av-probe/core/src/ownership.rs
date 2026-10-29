@@ -418,6 +418,10 @@ pub fn verify_owned_function(
             variant_moved: std::collections::BTreeMap::new(),
         };
         for (si, s) in f.slots.iter().enumerate() {
+            // PLAN-863: Unit return operands have zero width; placement is already verified.
+            if matches!(m.types.get(s.ty as usize), Some(MirType::Unit)) {
+                st.init.set(si);
+            }
             if s.kind == SlotKind::Param {
                 st.init.set(si);
                 if is_token[si] && !matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))) {
@@ -629,6 +633,9 @@ pub fn verify_owned_function(
                 }};
             }
             match instr {
+                MirInstr::HostCall { arg, .. } => {
+                    check_read!(arg, "console input");
+                }
                 MirInstr::Const { dst, .. }
                 | MirInstr::Bin { dst, .. }
                 | MirInstr::Un { dst, .. } => {

@@ -99,6 +99,13 @@ fn escape(s: &str) -> String {
 
 /// Canonical text rendering of one unit (single function).
 pub fn render_unit(unit: &MirModule) -> Result<String, MnError> {
+    if unit.is_host_console_profile() || !unit.host_imports.is_empty() {
+        return Err(MnError::Unsupported(
+            "host-console",
+            "console declarations are outside the native fingerprint contract".into(),
+        ));
+    }
+
     if !unit.is_unit || unit.funcs.len() != 1 {
         return Err(MnError::Unsupported(
             "unit-shape",
@@ -194,6 +201,12 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
                 )
             }
         },
+        MirInstr::HostCall { .. } => {
+            return Err(MnError::Unsupported(
+                "host-console",
+                "host calls are outside the native profile".into(),
+            ))
+        }
         MirInstr::Trace { event } => format!("trace {event:?}"),
         // PLAN-820 shared-core widening: the data-profile instructions are
         // outside mn's frozen instruction surface — a fingerprint render

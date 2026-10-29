@@ -849,7 +849,7 @@ pub fn lower_checked_owned(
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
     match checked.domain() {
-        hir::HirDomain::TextRecord | hir::HirDomain::Text => {}
+        hir::HirDomain::TextRecord | hir::HirDomain::Text | hir::HirDomain::HostConsole => {}
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
@@ -871,10 +871,19 @@ pub fn lower_checked_owned(
     }
     let module = &checked.bundle().modules[0];
     let owner = OwnerScope {
-        schema: auto_av_core::contract::MIR_OWNED_SCHEMA.to_string(),
+        schema: if checked.domain() == hir::HirDomain::HostConsole {
+            auto_av_core::contract::MIR_HOST_CONSOLE_SCHEMA
+        } else {
+            auto_av_core::contract::MIR_OWNED_SCHEMA
+        }
+        .to_string(),
         module: module.id_text.clone(),
     };
-    let mut out = MirModule::new_owned(owner);
+    let mut out = if checked.domain() == hir::HirDomain::HostConsole {
+        MirModule::new_host_console(owner)
+    } else {
+        MirModule::new_owned(owner)
+    };
     out.capabilities = checked.required_capabilities().to_vec();
 
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
@@ -894,6 +903,14 @@ pub fn lower_checked_owned(
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
                 fn_order.push((di as u32, *ty, *body, mir_name_of_def(module, di)?));
+            }
+            hir::DefKind::Intrinsic { symbol, ty, .. }
+                if checked.domain() == hir::HirDomain::HostConsole =>
+            {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                let h = auto_av_core::host::declaration(symbol, sig)
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                out.host_imports.push(h);
             }
             hir::DefKind::Intrinsic { .. } => {
                 return Err(AdapterError::uns(
@@ -933,6 +950,18 @@ pub fn lower_checked_owned(
         )
     })?;
     out.entry = entry;
+    if out.is_host_console_profile() {
+        let sig = out.sig_of(out.funcs[entry as usize].sig).ok_or_else(|| {
+            AdapterError::inv("lower.entry", "missing console entry signature".into())
+        })?;
+        out.entry_kind = Some(
+            if out.types.get(sig.result as usize) == Some(&MirType::Unit) {
+                auto_av_core::mir::EntryKind::Unit
+            } else {
+                auto_av_core::mir::EntryKind::Int
+            },
+        );
+    }
     Ok(out)
 }
 
@@ -1982,6 +2011,9 @@ fn owned_type_idx_of(
             hir::BuiltinType::StrSlice => Ok(out.intern_type(MirType::StrView)),
             // PLAN-862: Unit is a RESULT type of the entry-unit profile,
             // which this owned-profile lowering never sees (defense).
+            hir::BuiltinType::Unit if out.is_host_console_profile() => {
+                Ok(out.intern_type(MirType::Unit))
+            }
             hir::BuiltinType::Unit => Err(AdapterError::uns(
                 "lower.type-use",
                 "the unit result type belongs to the av.entry-unit/1 profile".to_string(),
@@ -2622,6 +2654,38 @@ impl<'a> FnLower<'a> {
                 let mut arg_slots = Vec::with_capacity(eval_args.len());
                 for a in eval_args {
                     arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                }
+                if self.out.is_host_console_profile() {
+                    if let hir::DefKind::Intrinsic { symbol, .. } =
+                        &self.hir_module.defs[callee.0 as usize].kind
+                    {
+                        let host = self
+                            .out
+                            .host_imports
+                            .iter()
+                            .position(|h| &h.symbol == symbol)
+                            .ok_or_else(|| {
+                                AdapterError::inv(
+                                    "host.reference",
+                                    "host declaration missing".into(),
+                                )
+                            })? as u32;
+                        if arg_slots.len() != 1 {
+                            return Err(AdapterError::inv(
+                                "host.signature",
+                                "console call needs one argument".into(),
+                            ));
+                        }
+                        self.emit(
+                            MirInstr::HostCall {
+                                host,
+                                arg: arg_slots[0],
+                            },
+                            sp,
+                        );
+                        // No runtime Unit local/dst: HIR has already forbidden value consumers.
+                        return Ok(u32::MAX);
+                    }
                 }
                 let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
                     AdapterError::inv(
@@ -4452,4 +4516,19 @@ fn lower_function(
         spans: lower.spans,
         env,
     })
+}
+
+/// PLAN-863: explicit checked console front door; shared text lowering stays unique.
+pub fn lower_checked_console(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    if checked.domain() != hir::HirDomain::HostConsole {
+        return Err(AdapterError::uns(
+            "lower.domain",
+            "console lowering requires the host-console HIR domain".into(),
+        ));
+    }
+    lower_checked_owned(checked, entry_name, source_snapshot)
 }

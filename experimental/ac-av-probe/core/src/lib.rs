@@ -64,3 +64,6 @@ pub use mir_verify::{verify_mir, verify_mir_with_deadline, CheckedMir, MirVerify
 pub use program_snapshot::ProgramSnapshot;
 pub use span_map::SpanSegments;
 pub mod frame_allocation;
+
+/// Typed native host import contract (PLAN-863).
+pub mod host;

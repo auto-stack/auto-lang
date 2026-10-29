@@ -971,5 +971,7 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
         .iter()
         .map(|s: &InstructionSpec| s.name)
         .collect();
-    assert_eq!(all_mnemonics.len(), 52);
+    // PLAN-863: + HOST_CALL (0x35), exercised by host_console_863 = 53.
+    assert_eq!(all_mnemonics.len(), 53);
+    assert!(all_mnemonics.contains(&"HOST_CALL"));
 }

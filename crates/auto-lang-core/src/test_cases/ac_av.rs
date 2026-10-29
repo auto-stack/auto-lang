@@ -169,7 +169,7 @@ pub const EXPECTED_AV_CORE_VERSION: &str = "av.core-i32/1";
 /// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
 /// every av recipe family lowers HIR→MIR through the shared crate; a
 /// lowering contract bump without a mirror update fails the identity axis.
-pub const EXPECTED_MIR_LOWERING_VERSION: &str = "2";
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "3";
 
 /// Current av toolchain identity (the axes stale adjudication binds probe
 /// rows of THIS recipe to).

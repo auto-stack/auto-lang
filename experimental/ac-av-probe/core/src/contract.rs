@@ -888,6 +888,8 @@ impl TrapKind {
 /// never valid members of this taxonomy.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ResourceKind {
+    /// PLAN-863: bounded console bytes, never truncated success.
+    ConsoleOutput,
     InputTooLarge,
     CodecPage,
     TableEntries,
@@ -913,6 +915,7 @@ pub enum ResourceKind {
 impl ResourceKind {
     pub fn code(&self) -> &'static str {
         match self {
+            ResourceKind::ConsoleOutput => "resource.console-output",
             ResourceKind::InputTooLarge => "av.resource.input-size",
             ResourceKind::CodecPage => "av.resource.codec-page",
             ResourceKind::TableEntries => "av.resource.table-entries",
@@ -993,3 +996,15 @@ pub fn fnv1a64_parts(parts: &[&[u8]]) -> u64 {
     }
     h
 }
+
+// PLAN-863: an independent wire/profile family; AVAD and AVAU remain frozen.
+pub const MIR_HOST_CONSOLE_SCHEMA: &str = "auto.mir.av-host-console/1";
+pub const ABC_HOST_CONSOLE_SCHEMA: &str = "auto.abc.av-host-console/1";
+pub const AV_HOST_CONSOLE_PROFILE: &str = "av.host-console/1";
+pub const HOST_CONSOLE_PRODUCER_ID: &str = "plan863/av-host-console";
+pub const ABC_HOST_CONSOLE_MAGIC: [u8; 4] = *b"AVHC";
+pub const ABC_HOST_CONSOLE_VERSION: u16 = 1;
+pub const ABC_PROFILE_HOST_CONSOLE: u16 = 8;
+pub const MIR_HOST_CONSOLE_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_HOST_CONSOLE_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_HOST_CONSOLE_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);

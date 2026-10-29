@@ -120,12 +120,12 @@ pub fn verify_mir_with_deadline(
         deadline,
         analysis_bytes: 0,
         is_data: module.is_data_profile(),
-        is_owned: module.is_owned_profile(),
+        is_owned: module.is_owned_profile() || module.is_host_console_profile(),
         is_collections: module.is_collections_profile(),
         is_closures: module.is_closures_profile(),
         closure_bodies: std::collections::BTreeSet::new(),
         is_dynamic: module.is_dynamic_profile(),
-        is_entry_unit: module.is_entry_unit_profile(),
+        is_entry_unit: module.is_entry_unit_profile() || module.is_host_console_profile(),
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -204,6 +204,28 @@ impl<'a> Verifier<'a> {
     }
 
     fn run(&mut self) -> Result<(), MirVerifyError> {
+        crate::host::validate(self.module).map_err(|e| MirVerifyError::inv(e.code, e.message))?;
+        if self.module.is_host_console_profile() && self.module.is_unit {
+            return Err(MirVerifyError::uns("mir.host-unit", "host-console/1 is a whole-module profile; host function-unit linking is not admitted".into()));
+        }
+
+        if self.module.is_host_console_profile() {
+            for t in &self.module.types {
+                if let MirType::Fn(sig) = t {
+                    if sig
+                        .params
+                        .iter()
+                        .any(|p| self.module.types.get(*p as usize) == Some(&MirType::Unit))
+                    {
+                        return Err(MirVerifyError::inv(
+                            "mir.unit-placement",
+                            "Unit cannot be a parameter type".into(),
+                        ));
+                    }
+                }
+            }
+        }
+
         // ---- identity -------------------------------------------------
         if self.module.profile != crate::contract::AV_PROFILE
             && self.module.profile != crate::contract::AV_DATA_PROFILE
@@ -212,6 +234,7 @@ impl<'a> Verifier<'a> {
             && self.module.profile != crate::contract::AV_CLOSURES_PROFILE
             && self.module.profile != crate::contract::AV_DYNAMIC_PROFILE
             // PLAN-862: the entry-unit profile (scalar surface + Unit result).
+            && self.module.profile != crate::contract::AV_HOST_CONSOLE_PROFILE
             && self.module.profile != crate::contract::AV_ENTRY_UNIT_PROFILE
         {
             return Err(MirVerifyError::uns(
@@ -239,7 +262,10 @@ impl<'a> Verifier<'a> {
                 ),
             ));
         }
-        if self.is_owned && self.module.owner.schema != crate::contract::MIR_OWNED_SCHEMA {
+        if self.is_owned
+            && !self.module.is_host_console_profile()
+            && self.module.owner.schema != crate::contract::MIR_OWNED_SCHEMA
+        {
             return Err(MirVerifyError::inv(
                 "mir.schema-profile",
                 format!(
@@ -281,7 +307,13 @@ impl<'a> Verifier<'a> {
                 ),
             ));
         }
-        if self.is_entry_unit && self.module.owner.schema != crate::contract::MIR_ENTRY_UNIT_SCHEMA
+        if self.is_entry_unit
+            && self.module.owner.schema
+                != (if self.module.is_host_console_profile() {
+                    crate::contract::MIR_HOST_CONSOLE_SCHEMA
+                } else {
+                    crate::contract::MIR_ENTRY_UNIT_SCHEMA
+                })
         {
             return Err(MirVerifyError::inv(
                 "mir.schema-profile",
@@ -724,7 +756,9 @@ impl<'a> Verifier<'a> {
         // not a runtime grant (F798-R3-01).
         for c in &self.module.capabilities {
             let known = c == TRACE_CAPABILITY
-                || (self.is_owned && c == crate::contract::TEXT_RUNTIME_CAPABILITY);
+                || (self.is_owned && c == crate::contract::TEXT_RUNTIME_CAPABILITY)
+                || (self.module.is_host_console_profile()
+                    && matches!(c.as_str(), crate::host::STDOUT | crate::host::STDERR));
             if !known {
                 return Err(MirVerifyError::uns(
                     "mir.capability-unknown",
@@ -789,7 +823,7 @@ impl<'a> Verifier<'a> {
         // §6). Single-function units verify their one function as-is —
         // closure assembly selects and re-checks the real module entry.
         if !self.module.is_unit {
-            if self.is_owned {
+            if self.is_owned && !self.module.is_host_console_profile() {
                 // PLAN-821 entry contract (contract-decision §6): params
                 // are the six scalars plus Char; the result may ADD owned
                 // Str and records (the host receives the owned result with
@@ -1912,9 +1946,18 @@ impl<'a> Verifier<'a> {
             // a unit entry (the entry kind says the result is Unit). No
             // other slot may be Unit — it would be a value of unit type.
             if matches!(self.module.types.get(s.ty as usize), Some(MirType::Unit)) {
+                if self.module.is_host_console_profile() && (s.kind != SlotKind::Temp || !f.blocks.iter().any(|b| matches!(b.term, Terminator::Return { value } if value == si as u32))) {
+                    return Err(MirVerifyError::inv("mir.unit-placement", "Unit slots may only be zero-width return temporaries".into()));
+                }
                 let entry_unit = self.is_entry_unit
                     && self.module.entry_kind == Some(crate::mir::EntryKind::Unit)
-                    && _fi == self.module.entry;
+                    && _fi == self.module.entry
+                    || (self.module.is_host_console_profile()
+                        && self
+                            .module
+                            .sig_of(f.sig)
+                            .and_then(|sig| self.module.types.get(sig.result as usize))
+                            == Some(&MirType::Unit));
                 if !entry_unit {
                     return Err(MirVerifyError::inv(
                         "mir.unit-placement",
@@ -2328,6 +2371,28 @@ impl<'a> Verifier<'a> {
                                     dt, callee_sig.result
                                 ),
                             ));
+                        }
+                    }
+                    MirInstr::HostCall { host, arg } => {
+                        if !self.module.is_host_console_profile() {
+                            return Err(err(
+                                "host.profile",
+                                "host call in a legacy profile".into(),
+                            ));
+                        }
+                        let h = self
+                            .module
+                            .host_imports
+                            .get(*host as usize)
+                            .ok_or_else(|| {
+                                err("host.reference", "host index out of range".into())
+                            })?;
+                        let sig = self.module.sig_of(h.sig).ok_or_else(|| {
+                            err("host.signature", "invalid host signature".into())
+                        })?;
+                        let at = slot_ty_of(f, *arg, sp, "host arg")?;
+                        if !self.ty_equiv(at, sig.params[0]) {
+                            return Err(err("host.signature", "host operand type mismatch".into()));
                         }
                     }
                     MirInstr::Trace { .. } => {}
@@ -4066,7 +4131,8 @@ impl MirInstr {
             MirInstr::CreateClosure { dst, .. }
             | MirInstr::CallClosure { dst, .. }
             | MirInstr::EnvGet { dst, .. } => Some(*dst),
-            MirInstr::Trace { .. }
+            MirInstr::HostCall { .. }
+            | MirInstr::Trace { .. }
             | MirInstr::BorrowEnd { .. }
             | MirInstr::Drop { .. }
             | MirInstr::PlaceSet { .. } => None,
@@ -4087,6 +4153,7 @@ impl MirInstr {
             MirInstr::Bin { lhs, rhs, .. } => vec![*lhs, *rhs],
             MirInstr::Un { operand, .. } => vec![*operand],
             MirInstr::Call { args, .. } => args.clone(),
+            MirInstr::HostCall { arg, .. } => vec![*arg],
             MirInstr::FieldGet { base, .. } => vec![*base],
             // FieldSet READS the root record (structural rebuild source) and
             // the already-materialized value slot.

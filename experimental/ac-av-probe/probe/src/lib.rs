@@ -41,3 +41,6 @@ pub mod text_runtime;
 pub mod typed_fixture;
 pub mod wire;
 pub mod worker_restore;
+
+/// Typed console host probe (PLAN-863).
+pub mod console_host;

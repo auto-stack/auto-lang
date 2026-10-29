@@ -30,4 +30,5 @@ pub use hir_adapter::*;
 /// as ordinary MIR functions (`m.<Owner>.<name>` identity) in the
 /// av.data/1 + av.owned/1 whole-module and single-function surfaces —
 /// the previously rejected `lower.method` rows become admitted.
-pub const MIR_LOWERING_VERSION: &str = "2";
+/// v3 (PLAN-863): independent console HIR -> typed host references, with no change to existing domain mappings.
+pub const MIR_LOWERING_VERSION: &str = "3";

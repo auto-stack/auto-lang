@@ -46,6 +46,8 @@ pub const OP_BIN: u8 = 0x03;
 pub const OP_UN: u8 = 0x04;
 pub const OP_CALL: u8 = 0x05;
 pub const OP_TRACE: u8 = 0x06;
+/// PLAN-863: not admitted by any earlier wire family.
+pub const OP_HOST_CALL: u8 = 0x35;
 pub const OP_FIELD_GET: u8 = 0x07;
 pub const OP_FIELD_SET: u8 = 0x08;
 pub const OP_AGGREGATE: u8 = 0x09;
@@ -268,6 +270,7 @@ pub enum WireFamily {
     /// at wire version 1 / profile id 7. A separate family, not a version of
     /// `AVAD`: neither generation can be read as the other.
     EntryUnit,
+    HostConsole,
 }
 
 impl WireFamily {
@@ -281,6 +284,7 @@ impl WireFamily {
             | WireFamily::Dynamic => crate::contract::ABC_DATA_MAGIC,
             // PLAN-862: the entry-unit family has its own magic (`AVAU`).
             WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_MAGIC,
+            WireFamily::HostConsole => crate::contract::ABC_HOST_CONSOLE_MAGIC,
         }
     }
     fn version(&self) -> u16 {
@@ -292,6 +296,7 @@ impl WireFamily {
             WireFamily::Closures => crate::contract::ABC_CLOSURES_VERSION,
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_VERSION,
             WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_VERSION,
+            WireFamily::HostConsole => crate::contract::ABC_HOST_CONSOLE_VERSION,
         }
     }
     fn profile_id(&self) -> u16 {
@@ -303,6 +308,7 @@ impl WireFamily {
             WireFamily::Closures => crate::contract::ABC_PROFILE_CLOSURES,
             WireFamily::Dynamic => crate::contract::ABC_PROFILE_DYNAMIC,
             WireFamily::EntryUnit => crate::contract::ABC_PROFILE_ENTRY_UNIT,
+            WireFamily::HostConsole => crate::contract::ABC_PROFILE_HOST_CONSOLE,
         }
     }
     fn allows_data_tags(&self) -> bool {
@@ -310,6 +316,7 @@ impl WireFamily {
             self,
             WireFamily::Data
                 | WireFamily::Owned
+                | WireFamily::HostConsole
                 | WireFamily::Collections
                 | WireFamily::Closures
                 | WireFamily::Dynamic
@@ -318,7 +325,8 @@ impl WireFamily {
     fn allows_owned_tags(&self) -> bool {
         matches!(
             self,
-            WireFamily::Owned
+            WireFamily::HostConsole
+                | WireFamily::Owned
                 | WireFamily::Collections
                 | WireFamily::Closures
                 | WireFamily::Dynamic
@@ -339,7 +347,7 @@ impl WireFamily {
     /// PLAN-862: the Unit type tag and the entry-kind header byte exist
     /// only in the entry-unit family.
     fn allows_unit_tags(&self) -> bool {
-        matches!(self, WireFamily::EntryUnit)
+        matches!(self, WireFamily::EntryUnit | WireFamily::HostConsole)
     }
 }
 
@@ -514,6 +522,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         crate::contract::AV_CLOSURES_PROFILE => WireFamily::Closures,
         crate::contract::AV_DYNAMIC_PROFILE => WireFamily::Dynamic,
         crate::contract::AV_ENTRY_UNIT_PROFILE => WireFamily::EntryUnit,
+        crate::contract::AV_HOST_CONSOLE_PROFILE => WireFamily::HostConsole,
         other => {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
@@ -521,6 +530,13 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             ))
         }
     };
+    if (!m.host_imports.is_empty() && family != WireFamily::HostConsole) || m.host_imports.len() > 8
+    {
+        return Err(AbcDecodeError::fmt_err(
+            "abc.encode.host-section",
+            "host imports require AVHC and at most eight declarations".into(),
+        ));
+    }
     let mut w = PageWriter::new();
     // Header.
     let magic = family.magic();
@@ -580,6 +596,24 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         w.push(b);
     }
 
+    if family == WireFamily::HostConsole {
+        w.push(b"HOST");
+        put_u16(&mut w, m.host_imports.len() as u16);
+        for h in &m.host_imports {
+            for field in [&h.category, &h.symbol, &h.capability] {
+                if field.len() > 128 {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.host-section",
+                        "host field exceeds 128 bytes".into(),
+                    ));
+                }
+                put_u16(&mut w, field.len() as u16);
+                w.push(field.as_bytes());
+            }
+            put_u32(&mut w, h.sig);
+            put_u32(&mut w, h.max_call_bytes);
+        }
+    }
     // Types.
     for t in &m.types {
         match t {
@@ -987,6 +1021,17 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             put_u32(&mut w, b.instrs.len() as u32);
             for instr in &b.instrs {
                 match instr {
+                    MirInstr::HostCall { host, arg } => {
+                        if family != WireFamily::HostConsole {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "host call in a legacy family".into(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_HOST_CALL);
+                        put_u32(&mut w, *host);
+                        put_u32(&mut w, *arg);
+                    }
                     MirInstr::Const { dst, value } => {
                         put_u8(&mut w, OP_CONST);
                         put_u32(&mut w, *dst);
@@ -1823,6 +1868,8 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let magic = c.take(4)?;
     let family = if magic == ABC_MAGIC {
         WireFamily::Core
+    } else if magic == crate::contract::ABC_HOST_CONSOLE_MAGIC {
+        WireFamily::HostConsole
     } else if magic == crate::contract::ABC_ENTRY_UNIT_MAGIC {
         // PLAN-862: a SEPARATE magic family (AVAU), not an AVAD version.
         WireFamily::EntryUnit
@@ -1925,6 +1972,51 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             )
         })?);
     }
+    let mut host_imports = Vec::new();
+    if family == WireFamily::HostConsole {
+        if c.take(4)? != b"HOST" {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.host-section",
+                "missing host-import section".into(),
+            ));
+        }
+        let n = c.u16()? as usize;
+        if n > 8 {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.host-section",
+                "too many host imports".into(),
+            ));
+        }
+        for _ in 0..n {
+            let mut fields = Vec::with_capacity(3);
+            for _ in 0..3 {
+                let len = c.u16()? as usize;
+                if len > 128 {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.host-section",
+                        "host field exceeds 128 bytes".into(),
+                    ));
+                }
+                fields.push(
+                    std::str::from_utf8(c.take(len)?)
+                        .map_err(|_| {
+                            AbcDecodeError::fmt_err(
+                                "abc.decode.host-section",
+                                "invalid host field UTF-8".into(),
+                            )
+                        })?
+                        .to_string(),
+                );
+            }
+            host_imports.push(MirHostImport {
+                category: fields.remove(0),
+                symbol: fields.remove(0),
+                capability: fields.remove(0),
+                sig: c.u32()?,
+                max_call_bytes: c.u32()?,
+            });
+        }
+    }
     // Quota: counts alone are bounded by the frozen table budget (checked
     // again post-assembly by the verifier; checked HERE before allocation).
     if n_types
@@ -1948,7 +2040,15 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     // rejects as `av.resource.decode-memory` — decode itself must never
     // finish (let alone hand out) an over-budget object. Per-element
     // estimates mirror `MirModule::heap_estimate` semantics.
-    let mut decoded_est: usize = 0usize;
+    let mut decoded_est: usize = host_imports
+        .iter()
+        .map(|h| {
+            std::mem::size_of::<MirHostImport>()
+                + h.category.len()
+                + h.symbol.len()
+                + h.capability.len()
+        })
+        .sum();
     {
         let est_vec_overhead = std::mem::size_of::<usize>() * 3;
         decoded_est += std::mem::size_of::<MirModule>()
@@ -1996,6 +2096,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     }
 
     let mut module = MirModule {
+        host_imports,
         profile: match family {
             WireFamily::Core => crate::contract::AV_PROFILE.to_string(),
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
@@ -2005,6 +2106,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Dynamic => crate::contract::AV_DYNAMIC_PROFILE.to_string(),
             // PLAN-862: the entry-unit family (new magic, wire v1).
             WireFamily::EntryUnit => crate::contract::AV_ENTRY_UNIT_PROFILE.to_string(),
+            WireFamily::HostConsole => crate::contract::AV_HOST_CONSOLE_PROFILE.to_string(),
         },
         // PLAN-862: filled from the wire header for the entry-unit family
         // and None for every earlier generation (their bytes carry no
@@ -2512,6 +2614,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         }
                         MirInstr::Call { callee, dst, args }
                     }
+                    OP_HOST_CALL => {
+                        if family != WireFamily::HostConsole {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.profile",
+                                "host opcode in a legacy family".into(),
+                            ));
+                        }
+                        MirInstr::HostCall {
+                            host: c.u32()?,
+                            arg: c.u32()?,
+                        }
+                    }
                     OP_TRACE => {
                         let ev = c.u8()?;
                         let event = match ev {
@@ -2978,6 +3092,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA.to_string(),
             // PLAN-862: the entry-unit family has its own schema identity.
             WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_SCHEMA.to_string(),
+            WireFamily::HostConsole => crate::contract::ABC_HOST_CONSOLE_SCHEMA.to_string(),
         },
         module: String::new(),
     };

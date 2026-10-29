@@ -244,7 +244,47 @@ fn execute_module_impl(
     arena: crate::owned_text::StrArena,
     optimize: bool,
 ) -> (ExecOutcome, ExecTrace) {
+    execute_module_impl_with_host(module, limits, cancel, args, arena, optimize, None)
+}
+
+/// PLAN-863: structural credentials carry no authority; current grants are checked per run.
+pub fn execute_console(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    provider: &mut dyn crate::host::ConsoleHost,
+) -> Result<(ExecOutcome, ExecTrace), crate::host::AdmissionError> {
+    crate::host::authorize(module.module(), grants)?;
+    Ok(execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+        Some(provider),
+    ))
+}
+
+fn execute_module_impl_with_host(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+    arena: crate::owned_text::StrArena,
+    optimize: bool,
+    host: Option<&mut dyn crate::host::ConsoleHost>,
+) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
+    if !m.host_imports.is_empty() && host.is_none() {
+        return (
+            ExecOutcome::Infra(
+                "host.unauthorized: explicit console execution/provider required".into(),
+            ),
+            ExecTrace::default(),
+        );
+    }
     if !module.executable() {
         let unit_kind = m.is_unit;
         return (
@@ -280,7 +320,19 @@ fn execute_module_impl(
     } else {
         None
     };
+    let retained = host.as_ref().map_or(0, |h| h.retained_bytes());
+    if retained > crate::host::MAX_RUN_BYTES || retained > limits.max_slot_bytes {
+        return (
+            ExecOutcome::Resource {
+                kind: ResourceKind::ConsoleOutput,
+                message: "existing provider capture exceeds budget".into(),
+            },
+            ExecTrace::default(),
+        );
+    }
     let mut st = LoopState {
+        slot_bytes: retained,
+        output_bytes: retained,
         arena,
         ..Default::default()
     };
@@ -294,7 +346,7 @@ fn execute_module_impl(
         st.trace.loaded_index_builds = loaded.builds();
         st.trace.loaded_index_reuses = loaded.reuses();
         st.trace.loaded_index_bytes = loaded.usage().1 as u64;
-        dispatch(
+        dispatch_with_host(
             &LoadedView(m, loaded),
             &limits,
             cancel,
@@ -302,9 +354,19 @@ fn execute_module_impl(
             &mut st,
             None,
             false,
+            host,
         )
     } else {
-        dispatch(&MergedView(m), &limits, cancel, args, &mut st, None, false)
+        dispatch_with_host(
+            &MergedView(m),
+            &limits,
+            cancel,
+            args,
+            &mut st,
+            None,
+            false,
+            host,
+        )
     }
     .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
@@ -643,6 +705,7 @@ fn resume_program_mode(
 /// Resumable interpreter state: the live call chain of one top-level run.
 #[derive(Default)]
 struct LoopState {
+    output_bytes: usize,
     frames: Vec<Frame>,
     slot_bytes: usize,
     steps: u64,
@@ -730,6 +793,9 @@ fn closure_ref_valid(st: &LoopState, cref: crate::contract::ClosureRefV) -> bool
 /// UNIT-LOCAL — and resolves cross-function calls through the link-time
 /// binding table instead of a re-materialized merged copy.
 pub(crate) trait ModuleView {
+    fn host_imports(&self) -> &[crate::mir::MirHostImport] {
+        &[]
+    }
     /// The function payload execution reads (blocks/slots/spans).
     fn fn_at(&self, idx: u32) -> Option<&MirFunction>;
     /// A constant by the index space function `func`'s instructions use
@@ -778,6 +844,9 @@ pub(crate) trait ModuleView {
 pub(crate) struct MergedView<'a>(pub &'a MirModule);
 
 impl ModuleView for MergedView<'_> {
+    fn host_imports(&self) -> &[crate::mir::MirHostImport] {
+        &self.0.host_imports
+    }
     fn fn_at(&self, idx: u32) -> Option<&MirFunction> {
         self.0.funcs.get(idx as usize)
     }
@@ -2032,6 +2101,24 @@ fn dispatch<V: ModuleView>(
     budget: Option<u64>,
     stop_before_call: bool,
 ) -> Option<ExecOutcome> {
+    dispatch_with_host(v, limits, cancel, args, st, budget, stop_before_call, None)
+}
+
+fn dispatch_with_host<V: ModuleView>(
+    v: &V,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+    st: &mut LoopState,
+    budget: Option<u64>,
+    stop_before_call: bool,
+    mut host: Option<&mut dyn crate::host::ConsoleHost>,
+) -> Option<ExecOutcome> {
+    if !v.host_imports().is_empty() && host.is_none() {
+        return Some(ExecOutcome::Infra(
+            "host.unauthorized: no console provider".into(),
+        ));
+    }
     let started = Instant::now();
     // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
     // budget — `resume(.., Some(n))` grants n MORE steps); the cumulative
@@ -2157,7 +2244,7 @@ fn dispatch<V: ModuleView>(
         let mut visited = 0u64;
         let root_slot_bytes = frame_slots_bytes(&frame.slots, &mut visited);
         st.steps += visited;
-        if root_slot_bytes > limits.max_slot_bytes {
+        if st.slot_bytes.saturating_add(root_slot_bytes) > limits.max_slot_bytes {
             return Some(ExecOutcome::Resource {
                 kind: ResourceKind::SlotBytes,
                 message: format!(
@@ -4572,6 +4659,108 @@ fn dispatch<V: ModuleView>(
                         }
                     }
                 }
+                MirInstr::HostCall { host: index, arg } => {
+                    let Some(h) = v.host_imports().get(*index as usize) else {
+                        return Some(ExecOutcome::Infra(
+                            "host.reference: missing declaration".into(),
+                        ));
+                    };
+                    let Some((_, stream)) = crate::host::signature(&h.symbol) else {
+                        return Some(ExecOutcome::Infra("host.unknown-symbol".into()));
+                    };
+                    if st.frames.len() >= limits.max_frames {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::Frames,
+                            message: "host call exceeds call depth".into(),
+                        });
+                    }
+                    if CancelCheck::poll(cancel) {
+                        return Some(ExecOutcome::Cancelled);
+                    }
+                    let input = st.frames.last().expect("frame").slots[*arg as usize].clone();
+                    let result = with_console_input(&input, |bytes| {
+                        let len = bytes
+                            .len()
+                            .checked_add(1)
+                            .ok_or_else(|| console_output_limit("call length overflow"))?;
+                        let total = st
+                            .output_bytes
+                            .checked_add(len)
+                            .ok_or_else(|| console_output_limit("run length overflow"))?;
+                        if len > crate::host::MAX_CALL_BYTES || total > crate::host::MAX_RUN_BYTES {
+                            return Err(console_output_limit(
+                                "console output byte budget exceeded",
+                            ));
+                        }
+                        let peak = st
+                            .slot_bytes
+                            .checked_add(len.saturating_mul(2))
+                            .ok_or_else(|| console_output_limit("output memory overflow"))?;
+                        if peak > limits.max_slot_bytes {
+                            return Err(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "console staging + retained output exceeds memory budget"
+                                    .into(),
+                            });
+                        }
+                        let steps = st
+                            .steps
+                            .checked_add(len as u64)
+                            .ok_or_else(|| console_output_limit("fuel overflow"))?;
+                        if steps > limits.max_steps {
+                            return Err(ExecOutcome::Resource {
+                                kind: ResourceKind::InstrSteps,
+                                message: "console byte work exceeds fuel".into(),
+                            });
+                        }
+                        st.steps = steps;
+                        let mut line = Vec::new();
+                        line.try_reserve_exact(len)
+                            .map_err(|_| ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "cannot reserve console staging".into(),
+                            })?;
+                        line.extend_from_slice(bytes);
+                        line.push(b'\n');
+                        if CancelCheck::poll(cancel) {
+                            return Err(ExecOutcome::Cancelled);
+                        }
+                        if started.elapsed() > limits.wall {
+                            return Err(ExecOutcome::Resource {
+                                kind: ResourceKind::ExecutionWall,
+                                message: "console preparation exceeded wall budget".into(),
+                            });
+                        }
+                        st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(peak as u64);
+                        let provider = host.as_deref_mut().ok_or_else(|| {
+                            ExecOutcome::Infra("host.unauthorized: no provider".into())
+                        })?;
+                        provider.write(stream, &line, cancel).map_err(|e| match e {
+                            crate::host::HostError::Resource => {
+                                console_output_limit("provider output resource failure")
+                            }
+                            crate::host::HostError::Cancelled => ExecOutcome::Cancelled,
+                            crate::host::HostError::Io(message) => {
+                                ExecOutcome::Infra(format!("host.io: {message}"))
+                            }
+                        })?;
+                        st.output_bytes = total;
+                        st.slot_bytes += len;
+                        if CancelCheck::poll(cancel) {
+                            return Err(ExecOutcome::Cancelled);
+                        }
+                        if started.elapsed() > limits.wall {
+                            return Err(ExecOutcome::Resource {
+                                kind: ResourceKind::ExecutionWall,
+                                message: "host call exceeded wall budget".into(),
+                            });
+                        }
+                        Ok(())
+                    });
+                    if let Err(out) = result {
+                        return Some(out);
+                    }
+                }
                 MirInstr::Trace { event } => {
                     st.trace.events.push(*event);
                     if st.trace.events.len() > limits.max_trace_bytes {
@@ -5826,5 +6015,66 @@ mod tests {
             arena.free_events().iter().map(|e| e.id).collect::<Vec<_>>(),
             vec![2, 1, 0]
         );
+    }
+}
+
+fn console_output_limit(message: &str) -> ExecOutcome {
+    ExecOutcome::Resource {
+        kind: ResourceKind::ConsoleOutput,
+        message: message.into(),
+    }
+}
+/// Borrow/projection happens before formatting; never clone an unbounded text root.
+fn with_console_input<T>(
+    input: &Value,
+    f: impl FnOnce(&[u8]) -> Result<T, ExecOutcome>,
+) -> Result<T, ExecOutcome> {
+    match input {
+        Value::I32(n) => {
+            let mut buf = [0u8; 11];
+            let mut cursor = buf.len();
+            let mut v = n.unsigned_abs();
+            loop {
+                cursor -= 1;
+                buf[cursor] = b'0' + (v % 10) as u8;
+                v /= 10;
+                if v == 0 {
+                    break;
+                }
+            }
+            if *n < 0 {
+                cursor -= 1;
+                buf[cursor] = b'-';
+            }
+            f(&buf[cursor..])
+        }
+        Value::Bool(v) => f(if *v { b"true" } else { b"false" }),
+        Value::Char(c) => {
+            let mut buf = [0u8; 4];
+            f(c.encode_utf8(&mut buf).as_bytes())
+        }
+        Value::StrView(view) => {
+            let project = |bytes: &[u8]| -> Result<T, ExecOutcome> {
+                let (s, e) = crate::owned_text::scalar_range_to_bytes(
+                    bytes,
+                    view.start as i32,
+                    view.end as i32,
+                )
+                .map_err(|_| ExecOutcome::Infra("host.signature: invalid text range".into()))?;
+                f(&bytes[s..e])
+            };
+            match &view.src {
+                crate::contract::StrViewSrc::Static { buf } => project(buf),
+                crate::contract::StrViewSrc::Share(_) => {
+                    let resolved = crate::place::resolve_share_view(view).ok_or_else(|| {
+                        ExecOutcome::Infra("host.signature: stale text view".into())
+                    })?;
+                    project(resolved.handle.bytes())
+                }
+            }
+        }
+        _ => Err(ExecOutcome::Infra(
+            "host.signature: wrong runtime argument".into(),
+        )),
     }
 }

@@ -1618,6 +1618,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     "av.closures/1 instructions are outside the mn scalar surface".to_string(),
                 );
             }
+            MirInstr::HostCall { .. } => {
+                return Err("av.host-console/1 calls are outside the native surface".into())
+            }
             MirInstr::DynPack { .. } | MirInstr::DynIs { .. } | MirInstr::DynTake { .. } => {
                 return Err(
                     "av.dynamic/1 dyn instructions are outside the mn scalar surface".to_string(),

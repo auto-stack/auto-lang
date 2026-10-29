@@ -43,6 +43,7 @@ pub struct InstructionSpec {
 
 /// The frozen instruction contract of both wire families.
 pub const SPECS: &[InstructionSpec] = &[
+    InstructionSpec { opcode: 0x35, name: "HOST_CALL", family: "instr", operands: &[("host", "R"), ("arg", "R")], type_rule: "host table exact signature; current capability admission precedes execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "readonly borrow; bounded output; no guest reentry" },
     InstructionSpec {
         opcode: 0x01,
         name: "CONST",
@@ -51,7 +52,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "const shape == dst slot type (shape compare, index-free)",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -62,7 +63,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type under structural (nominal record) equivalence",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (record: shallow Rc clone == deep copy, immutable)",
     },
     InstructionSpec {
@@ -73,7 +74,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "i32 arithmetic I32×I32→I32; comparisons same-scalar→Bool (Eq/Ne any equal scalar pair, ordered only I32); wide scalars rejected (mir.type-op)",
         traps: true,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -84,7 +85,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "NegI32 I32→I32; NotBool Bool→Bool",
         traps: true,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -95,7 +96,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "args structurally equal to callee sig params; dst == sig result (records nominal)",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (aggregate params/returns by value)",
     },
     InstructionSpec {
@@ -106,7 +107,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "trace capability required for mark imports",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "observation only",
     },
     InstructionSpec {
@@ -117,7 +118,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "base slot is a record; path segments validated against each owner record; dst == final field type",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned", "collections", "dynamic"],
+        profiles: &["data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (rvalue copy out of an immutable value)",
     },
     InstructionSpec {
@@ -128,7 +129,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "root slot is a record; path validated against owners; value == final field type; RHS pre-materialized (overlap invariant)",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned", "collections", "dynamic"],
+        profiles: &["data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (structural rebuild into the root slot)",
     },
     InstructionSpec {
@@ -139,7 +140,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "operands count == field count, each structurally equal to its field type; dst == record_ty",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned", "collections", "dynamic"],
+        profiles: &["data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (fresh immutable aggregate)",
     },
     InstructionSpec {
@@ -150,7 +151,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type; source must be Str or resource record (782 clone: per-field independent buffers)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "fresh owner; source unchanged (explicit deep clone)",
     },
     InstructionSpec {
@@ -161,7 +162,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type; src owned+init+unmoved+borrow-free; kill src (move-kill); copyable src rejected (mir.ownership-required)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "ownership transfer; source slot dies (Moved)",
     },
     InstructionSpec {
@@ -172,7 +173,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src slot type Str, dst StrView; register read-borrow rooted at src",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only token; no drop right; root-conservative conflicts",
     },
     InstructionSpec {
@@ -183,7 +184,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src slot Str/resource record, dst MutRef; exclusive (T-03 admission)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "exclusive write token; blocks root move/replace while live",
     },
     InstructionSpec {
@@ -194,7 +195,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "token slot StrView/MutRef, init; releases the borrow",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "borrow release; roots accept conflicting access again",
     },
     InstructionSpec {
@@ -205,7 +206,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "owned+init slot; cleans exactly once, slot -> Dropped (T-03 admission)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "explicit cleanup; uninit/moved/dropped source is mir.drop-uninit",
     },
     InstructionSpec {
@@ -216,7 +217,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst I32 (Unicode scalar count)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -227,7 +228,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst I32 (UTF-8 byte length)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -238,7 +239,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView, index: I32 -> dst Char",
         traps: true,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only view use; out-of-range traps av.trap.str-index",
     },
     InstructionSpec {
@@ -249,7 +250,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView, start/end: I32 -> dst StrView sharing the source",
         traps: true,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only view use; invalid range traps av.trap.str-index",
     },
     InstructionSpec {
@@ -260,7 +261,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "lhs/rhs: StrView -> dst Str (fresh owned buffer)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "fresh owned allocation",
     },
     InstructionSpec {
@@ -271,7 +272,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst Str (deep copy of the range)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "fresh owned allocation (770 to)",
     },
     InstructionSpec {
@@ -282,7 +283,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "lhs/rhs: StrView -> dst Bool (byte-wise range equality/inequality)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -293,7 +294,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "ch: Char -> dst I32",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -304,7 +305,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "code: I32 -> dst Char; invalid scalar traps av.trap.char-invalid",
         traps: true,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -315,7 +316,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "path over root record -> owned field type == dst type; root dies (use-once)",
         traps: false,
         fuel: 1,
-        profiles: &["owned", "collections", "dynamic"],
+        profiles: &["owned", "collections", "dynamic", "host-console"],
         ownership: "R2-F08' write-back machinery: destructive whole-field move-out (Rc share to dst, root killed)",
     },
     // PLAN-822 collections surface (contract-decision §3).
@@ -596,7 +597,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "target block index in range",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "—",
     },
     InstructionSpec {
@@ -607,7 +608,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "cond slot type Bool; targets in range",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "—",
     },
     InstructionSpec {
@@ -618,7 +619,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "value structurally equal to the signature result",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned", "collections", "dynamic"],
+        profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (value passes to caller frame)",
     },
 ];
@@ -655,6 +656,7 @@ pub fn coverage_check() -> Result<(), String> {
         "UN",
         "CALL",
         "TRACE",
+        "HOST_CALL",
         "FIELD_GET",
         "FIELD_SET",
         "AGGREGATE",
@@ -721,6 +723,7 @@ pub fn coverage_check() -> Result<(), String> {
 /// `MirInstr`/`Terminator` variant maps to its contract row's mnemonic.
 pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
     match i {
+        MirInstr::HostCall { .. } => "HOST_CALL",
         MirInstr::Const { .. } => "CONST",
         MirInstr::Copy { .. } => "COPY",
         MirInstr::Bin { .. } => "BIN",
