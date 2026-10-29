@@ -25,6 +25,18 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_milestone_keeps_original_tower_config_and_driver_budget(self):
+        from run_selected import execution_settings
+        recipe={'args':['--lib','--config-file','.config/nextest-full.toml']}
+        module={'conditions':[{'kind':'milestone','required_env':{'T3_MILESTONE':'1'}}]}
+        args,budget=execution_settings(recipe,module)
+        self.assertTrue(args[-1].endswith('nextest-t3.toml'))
+        self.assertEqual(budget,14400)
+        self.assertEqual(recipe['args'][-1],'.config/nextest-full.toml')
+        self.assertEqual(execution_settings(recipe,{'conditions':[]})[1],1800)
+        self.assertEqual(execution_settings(recipe,module,20000)[1],20000)
+        with self.assertRaises(ValueError):execution_settings({'args':[]},module)
+
     @unittest.skipUnless(os.name=='nt','PowerShell consumer is Windows-only')
     def test_powershell_consumer_rejects_prose_missing_id_and_failed_body(self):
         import json,subprocess,tempfile
