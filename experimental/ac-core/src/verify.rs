@@ -5144,3 +5144,51 @@ impl hir::TypeUse {
         }
     }
 }
+
+/// PLAN-871 T-06: the build-side capability backstop, MOVED here from the
+/// retiring `native` lowering module — it reads verifier facts only (the
+/// required-capability set plus the DERIVED text-runtime need) and never
+/// touches lowering. Every backend and consumer enforces the same set
+/// through this one entry.
+pub fn capabilities_check(
+    checked: &CheckedModule,
+    provided: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    let mut diags = Vec::new();
+    // r2 QA-02: the DERIVED runtime need gates even without a declaration
+    // (verify_text already rejects undeclared usage; this is the build-side
+    // backstop).
+    if checked.requires_runtime_text()
+        && !provided
+            .iter()
+            .any(|p| p == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+    {
+        diags.push(Diagnostic::new(
+            Stage::Capability,
+            "capability.missing",
+            format!(
+                "document requires capability `{}`, which this build does not provide",
+                crate::text_resources::RUNTIME_TEXT_CAPABILITY
+            ),
+            Span { start: 0, end: 0 },
+        ));
+    }
+    for req in checked.required_capabilities() {
+        if !provided.iter().any(|p| p == req) {
+            diags.push(Diagnostic::new(
+                Stage::Capability,
+                "capability.missing",
+                format!(
+                    "document requires capability `{}`, which this build does not provide",
+                    req
+                ),
+                Span { start: 0, end: 0 },
+            ));
+        }
+    }
+    if diags.is_empty() {
+        Ok(())
+    } else {
+        Err(diags)
+    }
+}

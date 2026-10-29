@@ -111,6 +111,38 @@ fn gap871_r01_hir_plain_method_ids_and_forward_mutret_wrapper() {
 }
 
 #[test]
+fn gap871_ctor_operand_snapshot_survives_a_sibling_mut_call() {
+    // 771 SP05 (F-771-R2-01): a constructor operand is captured at its own
+    // source-order evaluation point; the later `.mut` sibling must not
+    // retroactively change it. Exit 11 is the fixture's own assertion of the
+    // captured field, 10 the sibling's post-call view.
+    if !common::tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+        return;
+    }
+    let named = "type Q {\n    v int\n}\ntype P {\n    a Q\n    b int\n}\nfn bump(mut q Q) int {\n    q.v = 2\n    return 0\n}\nfn main() int {\n    var q = Q(1)\n    let p = P { a: q, b: bump(q.mut) }\n    if q.v != 2 { return 10 }\n    if p.a.v != 1 { return 11 }\n    return 0\n}\n";
+    let positional = "type Q {\n    v int\n}\ntype P {\n    a Q\n    b int\n}\nfn bump(mut q Q) int {\n    q.v = 2\n    return 0\n}\nfn main() int {\n    var q = Q(1)\n    let p = P(q, bump(q.mut))\n    if q.v != 2 { return 10 }\n    if p.a.v != 1 { return 11 }\n    return 0\n}\n";
+    for (tag, src) in [("named", named), ("positional", positional)] {
+        let compiled = auto_ac_prototype::source::compile_record_source(src, "main.at", &[])
+            .expect("SP05 compiles");
+        let dir = scratch(&format!("ctor-{tag}"));
+        let mut d = MnDriver::ephemeral();
+        let built = d
+            .build_checked(
+                &compiled.checked,
+                "d_main",
+                &dir,
+                None,
+                None,
+                auto_av_core::contract::fnv1a64(src.as_bytes()),
+            )
+            .expect("SP05 lowers");
+        assert_eq!(run_exe(&built.exe_path), Some(0), "SP05 {tag} snapshot");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
 fn gap871_hp01_text_record_hir_entry_runs() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");

@@ -123,7 +123,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
 
     // R2 (F01): the build-side capability backstop — a checked module
     // requiring undeclared capabilities is a typed capability failure.
-    if let Err(ds) = native::capabilities_check(&checked, &req.capabilities) {
+    if let Err(ds) = verify::capabilities_check(&checked, &req.capabilities) {
         check_total(&started, req)?;
         return Ok(OkOut {
             diagnostics: diags_mapped(&ds, "capability"),
@@ -883,7 +883,7 @@ fn exec_mn(
 
     // The verified capability backstop is frontend/verify-level and thus
     // backend-independent — both backends enforce the same set.
-    if let Err(ds) = native::capabilities_check(&checked, &req.capabilities) {
+    if let Err(ds) = verify::capabilities_check(&checked, &req.capabilities) {
         check_total(&started, req)?;
         return Ok(OkOut {
             diagnostics: diags_mapped(&ds, "capability"),

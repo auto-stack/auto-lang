@@ -273,8 +273,26 @@ fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Ve
         }
     };
 
-    if let Err(ds) = auto_ac_prototype::native::capabilities_check(&compiled, &req.capabilities) {
+    if let Err(ds) = auto_ac_prototype::verify::capabilities_check(&compiled, &req.capabilities) {
         return Err((EXIT_PIPELINE, ds));
+    }
+    // PLAN-871 T-06: the text runtime CONTRACT gate follows the owned
+    // domains. mn auto-locates the repo's own runtime library, but an
+    // EXPLICIT --support-lib is caller-supplied and must prove its identity
+    // (api/revision/target + lib_sha256 sidecar) exactly like the retiring
+    // CLI did — the capability string alone is never trusted.
+    {
+        use auto_ac_prototype::hir::HirDomain;
+        let domain = compiled.domain();
+        if matches!(domain, HirDomain::Text | HirDomain::TextRecord) {
+            if let Some(lib) = req.support_libs.first() {
+                if let Err(ds) =
+                    auto_ac_prototype::runtime_contract::check(std::slice::from_ref(lib))
+                {
+                    return Err((EXIT_PIPELINE, ds));
+                }
+            }
+        }
     }
     let (entry_id, entry_symbol) =
         ac_mn::entry::resolve(&compiled, &req.entry).map_err(|ds| (EXIT_PIPELINE, ds))?;

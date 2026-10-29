@@ -2990,7 +2990,28 @@ impl<'a> FnLower<'a> {
                 // AGGREGATE (contract-decision §4/§7).
                 let mut arg_slots = Vec::with_capacity(eval_args.len());
                 for a in eval_args {
-                    arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                    let s = self.eval_expr(*a, depth + 1)?;
+                    // PLAN-871 T-05 gap (771 SP05 "named-then-mut", F-771-R2-01):
+                    // a constructor operand is CAPTURED at its own source-order
+                    // evaluation point. A copyable record argument evaluated to
+                    // a LIVE local slot must be snapshotted NOW — a later
+                    // sibling `.mut` call (by-value borrow) rewrites that local
+                    // through its copy-back, which would retroactively change
+                    // the already-evaluated field. Owned (resource) operands
+                    // are already fresh transfer temps (move/clone required by
+                    // the source surface), so they need no extra copy.
+                    let t = self.slot_ty_all(s);
+                    let copyable_record = matches!(
+                        self.out.types.get(t as usize),
+                        Some(MirType::Record(_))
+                    ) && !auto_av_core::ownership::type_is_owned(self.out, t);
+                    if copyable_record {
+                        let snap = self.temp_ty(t);
+                        self.emit(MirInstr::Copy { dst: snap, src: s }, sp);
+                        arg_slots.push(snap);
+                    } else {
+                        arg_slots.push(s);
+                    }
                 }
                 let shape = match self.hir_module.types.get(record.0 as usize) {
                     Some(hir::TypeDef {
