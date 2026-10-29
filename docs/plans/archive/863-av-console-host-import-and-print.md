@@ -1,6 +1,8 @@
 ---
 plan_id: PLAN-863
-status: reviewed
+status: archived
+completion_kind: delivered
+delivery_commit: 2d5f3d842a73157afdc96ba6cd005e77201bcaf8
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -19,7 +21,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 6
+current_step: 7
 total_steps: 8
 ---
 
@@ -27,7 +29,7 @@ total_steps: 8
 
 ## 0. 变更摘要
 
-本Plan领取[AV源码与替换路线](../design/strategy/av-source-programs-and-avm-replacement-roadmap.md) **R2-E** 的“typed console/普通CLI结果”部分，并交付能力矩阵 **C-29** 的首个真实能力面：让真实Auto源码可以 `print`/`eprint` 并把输出作为**可独立判决的观察轴**，而不靠退出码猜测程序行为。
+本Plan领取[AV源码与替换路线](../../design/strategy/av-source-programs-and-avm-replacement-roadmap.md) **R2-E** 的“typed console/普通CLI结果”部分，并交付能力矩阵 **C-29** 的首个真实能力面：让真实Auto源码可以 `print`/`eprint` 并把输出作为**可独立判决的观察轴**，而不靠退出码猜测程序行为。
 
 同时本Plan建立ACE的第一类**类型化宿主导入（host import）**合同：ABC 模块级声明 + 能力授权 + 受检派发 + 有界预算，供后续 FS/argv/env/stdlib（R3-H）与 FFI（R6-F）复用同一形状。当前 ABC 的 import 只承载闭包单元链接（`CalleeRef::Import` 在 AV 派发中不可执行），宿主导入是新增类别，不是旧 import 的放宽。
 
@@ -43,7 +45,7 @@ total_steps: 8
 
 ## 2. 架构方案
 
-按[Design43 §4 宿主与互操作](../design/43-ac-av-typed-mir-and-abc.md)与 §12.1 三层表示：
+按[Design43 §4 宿主与互操作](../../design/43-ac-av-typed-mir-and-abc.md)与 §12.1 三层表示：
 
 | 层 | 本Plan动作 | 边界 |
 |---|---|---|
@@ -71,11 +73,11 @@ total_steps: 8
 
 用户 2026-10-28 授权同上（只规划）；2026-10-30 `/goal 完成计划863` 授权本计划执行、独立复审、合同内有界修复、合入、Spec/ledger 沉淀、归档与 guard 清树，后续阶段继承授权。事实基础：
 
-- [auto-av/project](../specs/auto-av/project.md)：798 交付 Checked HIR→Typed MIR→ABC→私有 LoadedProgram→Rust AV；ABC 有 `MirImport{env,symbol}`，仅用于闭包单元链接（[resident-function-install](../specs/auto-av/resident-function-install.md)：`fn:<name>` 绑定/import 闭包门）。
+- [auto-av/project](../../specs/auto-av/project.md)：798 交付 Checked HIR→Typed MIR→ABC→私有 LoadedProgram→Rust AV；ABC 有 `MirImport{env,symbol}`，仅用于闭包单元链接（[resident-function-install](../../specs/auto-av/resident-function-install.md)：`fn:<name>` 绑定/import 闭包门）。
 - `experimental/ac-av-probe/core/src/av.rs` 的 `CalleeRef::Import(_)` 在派发路径返回不可执行（注释：pending unit linkage / unresolved import = infra），`abc_verify.rs` 明确“no Call may target an import”。→ 宿主导入是**新类别**，不是现有字段的复用。
 - 能力矩阵 C-29：`print/stdin/stderr、普通CLI结果` 当前为“—：trace 不是 print”，归 G2/G4 + R2-E/R4-P；C-30（FS/argv/env/进程）与 C-31（JSON/regex 等）仍缺，本Plan不认领。
 - 852 判定协议：成功=exit 值、diag 分级、infra 非语言判定；`binding.tsv`（124 行 = 63 corpus + 40 scenario + 注释）以 i32 exit 为唯一值观察。→ 输出需要**新增观察轴**，否则 print 只能靠副作用外的间接推断，不可反控。
-- 旧源码打印语义（[能力矩阵 §3 SEM-05/SEM-06](../design/strategy/av-language-capability-matrix.md)、C-25）：显示格式历史存在差异，`trace` 不是 print；旧 bug 不自动成为新规范。
+- 旧源码打印语义（[能力矩阵 §3 SEM-05/SEM-06](../../design/strategy/av-language-capability-matrix.md)、C-25）：显示格式历史存在差异，`trace` 不是 print；旧 bug 不自动成为新规范。
 
 ## 5. 详细设计
 
@@ -105,7 +107,7 @@ T-02 产出 `attachments/863/work/host-console-contract.md`，冻结：
 - verifier：未知符号/签名不符/能力越权/重复声明 → 各自具名码；**在任何派发前**拒绝。
 - AV：host call 计入 fuel 与调用深度；宿主返回类型化结果（成功/资源失败/取消/宿主错误），宿主错误不得伪装成 guest trap。
 - provider：console 有界缓冲 + 上限检查；写失败（宿主 I/O）为 infra，与语言结果分列。
-- store/恢复：host 声明与授权事实进入 envelope/身份轴；恢复后重新准入；授权撤回后旧产物不得继续执行该能力（沿用 [822 授权预检](../specs/auto-av/resident-function-install.md)形状）。
+- store/恢复：host 声明与授权事实进入 envelope/身份轴；恢复后重新准入；授权撤回后旧产物不得继续执行该能力（沿用 [822 授权预检](../../specs/auto-av/resident-function-install.md)形状）。
 
 ### 5.4 测试框架接入（协议层的真实改动点）
 
@@ -163,12 +165,12 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-04 | work | T-03 | R1-01..03 关闭证据保留；486fe3e7e 修复 F-863-M1：ac/run 复用 MN admission mirror，native stale 比较每行当前身份；2 反例红→绿 +3 stale 同族控制绿；见 repair-m1-summary.md | AC-02/03/04 | [x] |
 | T-05 | work | T-04 | R1-04 与 parent 原证据保留；486fe3e7e 恢复身份链 readiness，候选 SD-01/06 与 prepared canonical 反映 tag/stale 规则；prepared ledger 源 hash 刷新仍为 merge-owned pending | AC-05 | [x] |
 | T-06 | review | T-05 | R3 final pass 486fe3e7e，F-M1（含 stale consumer）关闭；R1-01..04 原证据保持；同会话 artifact-based review，无独立模型/会话；merge 门 pending | AC-06 | [x] |
-| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
+| T-07 | merge | T-06 pass | gate freeze 4c3ed9d81：裸 cargo t 3209/3209（425.635s）+tv 163/163（5.079s），均exit0；delivery2d5f3d842与gate的代码/配置/输入 diff=0，详见merge-r2.md | AC-07 | [x] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
 
 ## 9. 复审记录
 
-2026-10-28 new r1：`stage: new | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass（等待 D862 实施前置，合同可预检） | next: D862 交付后 work T-01`。全部 AC/V/T 未执行；profile 号/符号名/能力名/上限值均为建议值，T-02 冻结。未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
+2026-10-28 new r1：`stage: new | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass（等待 D862 实施前置，合同可预检） | next: D862 交付后 work T-01`。全部 AC/V/T 未执行；profile 号/符号名/能力名/上限值均为建议值，T-02 冻结。未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](../reports/ace-next-batch-2026-10-28.md)。
 
 2026-10-30 work（T-01/T-02 完成，实施仍在执行）：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: progress（非 work pass，不进入 execution_done） | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | code_commit: b1d8b68b2（仅基线与合同文档） | dependency_revisions: D862 delivery 0e62d8c4c、D868 delivery 7754c4e4c，均已在 master 历史 | task_ids: T-01,T-02 | blockers: none | next_responsible_role: work T-03`。
 
@@ -216,7 +218,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 2026-10-30 final review R1：`stage: review | review_scope: final | reviewer_identity: Codex（同实施会话，独立 artifact-based review 步骤；无独立模型/会话上下文，未指定其他 final reviewer） | plan_id: PLAN-863 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 84f1d20546bfc683b9abbbecf22e6006be3b9145 | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（均 clean detached） | next: work 修复 R1`。
 
-- 完整 findings/AC/V/SD/Spec 输入 hash 与最小关闭 oracle 见 [R1 审查报告](attachments/863/review-r1.md)。实施代码在 review 全程冻结，入/出 HEAD 均 84f1d2054、clean；本轮只写本地忽略探针与主检出审查/Plan/债务记录。未发布 canonical Spec 或 ledger。
+- 完整 findings/AC/V/SD/Spec 输入 hash 与最小关闭 oracle 见 [R1 审查报告](../attachments/863/review-r1.md)。实施代码在 review 全程冻结，入/出 HEAD 均 84f1d2054、clean；本轮只写本地忽略探针与主检出审查/Plan/债务记录。未发布 canonical Spec 或 ledger。
 - F-863-R1-01（P2，AC-01/T-04）：`lower_checked_console(...,d_helper)` 拒绝，但新接纳 HostConsole 的公开 `lower_checked_owned` 绕过固定 main；真实 compile→MIR→ABC→verify→AV 输出 **99\n / I32(11)**，合法 main 控制组 **7\n / I32(42)**。须在所有接受该域的公开 source lowering 路径统一约束，保留旧 text/owned 的原入口选择能力。
 - F-863-R1-02（P2，AC-03/T-04）：capture 已有 3 bytes、memory cap=2、output cap=1MiB，实际 ConsoleOutput（root/dispatch=0），应 SlotBytes；现有测试仅测 retained==memorycap 之后的 root 相加分支，漏掉 strict-greater 前置分支。关闭需 memory-only/output-only/合法复用三控制。
 - F-863-R1-03（P2，AC-04/T-04）：`print(1)` reference snapshot **14081312560767487292→14081312560767487293**，wire sidecar 仍旧值，却 load/persist/restore/执行全部成功（stdout `[49,10]`、Unit）。期望 source identity 必须对 portable payload 实核，不能只把 caller 标签放进 key/envelope；保留真实 fresh-process/current-grant 控制。
@@ -240,7 +242,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 2026-10-30 final review R2：`stage: review | review_scope: final | reviewer_identity: Codex（同实施会话 artifact-based review，无独立模型/会话上下文，未指定其他 final reviewer） | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（clean detached） | findings: R1-01..04 closed; no new blocking findings | next: merge`。
 
-- 完整闭环/AC/V/SD/复用边界见 [R2 审查报告](attachments/863/review-r2.md)。原始公开 API 探针复查：console/owned helper 皆 lower.entry，main 皆 7\n/I32(42)；retained memory-only→SlotBytes 且 root/dispatch=0；reference snapshot 改值后的 load/persist/run 与**修复前已写入的 forged store restore**皆 host.identity/零输出。Unit-tail→Unit/1\n、return-effect→source.unit-return-value、no-host generic→I32(42)；旧 owned slice→世界\n/I32(7)。三项永久回归定向复跑各 1 pass / 0 ignored，exit0；逐函数 sidecar 篡改、四准入边界及合法控制均实核。44 个 Rust 文件 rustfmt + 全 diff-check exit0，无新增告警/延期/workaround。
+- 完整闭环/AC/V/SD/复用边界见 [R2 审查报告](../attachments/863/review-r2.md)。原始公开 API 探针复查：console/owned helper 皆 lower.entry，main 皆 7\n/I32(42)；retained memory-only→SlotBytes 且 root/dispatch=0；reference snapshot 改值后的 load/persist/run 与**修复前已写入的 forged store restore**皆 host.identity/零输出。Unit-tail→Unit/1\n、return-effect→source.unit-return-value、no-host generic→I32(42)；旧 owned slice→世界\n/I32(7)。三项永久回归定向复跑各 1 pass / 0 ignored，exit0；逐函数 sidecar 篡改、四准入边界及合法控制均实核。44 个 Rust 文件 rustfmt + 全 diff-check exit0，无新增告警/延期/workaround。
 - 实施入/出 HEAD 同为 3ff90f15e 且 clean；代码、依赖、配置、原始语料身份稳定，复用 repair 20 runtime+1 artifact 和 R1 未受影响 source/parent/compat 证据；未重跑整档。canonical 6 输入 SHA256 与 R1 一致。候选 SD-01..05 hash 仍 `a449f02667884c8ceae3324e4bbb1052480692dc415c484a1ad2c982699af813`；R2 报告补充明确的 SD-06 canonical lowering version 2→3 同步文字与 supersedes 路径（原 SD-01 已描述/实现的版本，不改语义合同）。未发布 canonical Specs/ledger。
 - 本地 raw prefix `D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/review-r2/`：`public-replay.log` SHA256 `12bcb8fbec07cc61881680835ced0fda1f1564a349144fc96b6327ff4b33f005`；`entry.log` `ec591afa0d4f905dd048622c3cef583df57c54abd2007f8333703e5e3aaea5c9`；`budget.log` `0f5e150f3a7a02cd27581cdaf5f12cdc4626437de8f556efb54591b89f545448`；`snapshot.log` `c8386f19c3a086269ea99997e602d114853e8b7ab25e4da051e82e98fb9cbcd3`。命令/探针 hash 与实际值已保存在报告；所有 raw 仅本地忽略，未入库。
 - AC-01..06 pass，T-01..06 完成（current_step=6/8）；AC-07 裸 cargo t + cargo tv **merge-owned pending**；AC-08 Spec/ledger/archive/guard/landing **merge-owned pending**。未跑 t/tv/tf/docs_gen；门禁成功前不得合入或宣称交付。D-863-NB-01 保留显式 peer parity gap，不替代任何合同内要求。
@@ -249,7 +251,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 2026-10-30 merge R1：`stage: merge | plan_id: PLAN-863 | plan_revision: 1 | outcome: needs_fix | checkpoint: prepared only | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | equivalent_rebased_commit: a07da2b6b305b90e1ed97b16dc79b092a35ca9da | prepared_commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | delivery_commit: none | next: work F-863-M1`。
 
-- 完整 checkpoint、8 对 rebase 全等映射、ledger guard/IDs、真实门禁与可复现 finding 见 [merge R1 收据](attachments/863/merge-r1.md)。SD-01..06/模块导航与 ledger v142→143 仅准备在 worktree 的 docs-only descendant，**未落主线/未发布**；合入/归档/清树均未发生。`git range-diff` 全 `=`；实现 tree clean。
+- 完整 checkpoint、8 对 rebase 全等映射、ledger guard/IDs、真实门禁与可复现 finding 见 [merge R1 收据](../attachments/863/merge-r1.md)。SD-01..06/模块导航与 ledger v142→143 仅准备在 worktree 的 docs-only descendant，**未落主线/未发布**；合入/归档/清树均未发生。`git range-diff` 全 `=`；实现 tree clean。
 - 裸 `cargo t` exit100：118/3209 实跑，98 passed、20 cold-build TIMEOUT、673 skipped，余3091 fail-fast未跑；顺序预建 native/CTE/MN worker 后，原 20 个定向回放最终为 **19 passed / 1 failed / 0 TIMEOUT**（exit100）。ABI cold build 的混合 recipe 100.002s 后通过。早期进度行不等于最终判决；门禁未通过，不豁免。
 - **F-863-M1（P2，合同内身份镜像遗漏）**：`crates/auto-lang-core/src/test_cases/ac.rs:1224` 的 `AC_MIR_LOWERING_VERSION="2"` 遗漏同步；真实 worker backend tag `mn:msvc-x64/priv-i32-bool-v1+mir-v3`，parent `...+mir-v2`。既有永久 `r1_backend_axis_mirror_matches_the_real_worker` line610 实红。三处 ac_av/ac_cte/ac_mn 的 expected mirror 已=3，但 ac/run 的独立纯父侧 backend tag 是第四触点。修复需关闭所有同因 tag/stale 路径，保留 worker 真实 tag、legacy 拒绝及 scoped/malformed 控制。T-04/05/06 重开，current_step=3/8；R1 原四 finding 与不受影响证据保留。未改 AC/预算/范围，非 needs_replan。
 - 本地 `.../attachments/863/merge/` 日志 hashes：`cargo-t.log` `915d51c123b6b6bca2e97afc6c84bfcac5676e0b18aad5a3a8609005a1738fdc`；`timeout-replay.log` `0c45321df2b3116a52efec871aba092dfd9600a7a432fd5e0e648c4285b295ef`；其它 prebuild/range-diff/hash 与命令见收据。所有非md raw仍忽略未暂存。主检出 unrelated docs WIP 保留；3 个 exe anchor 已存 `D:/autostack/plan-artifacts/plan-863/bin/`，不构成交付/清理。
@@ -270,17 +272,32 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 2026-10-30 final review R3：`stage: review | review_scope: final | reviewer_identity: Codex（同实施会话 artifact-based review，无独立模型/会话上下文，未指定其他 final reviewer） | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | base_commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（clean detached） | findings: F-863-M1 closed including stale consumer; no new implementation blockers | next: merge`。
 
-- [R3 审查报告](attachments/863/review-r3.md) 核对实际 code diff、worker/tag/stale 数据流与永久断言，未依赖 work 总结授信。ac/run alias MN admission mirror，无第四版本字面量；native linked 行以当前 profile backend 覆盖 per-row map 后实际用于比较，其它 family/轴保持 clone 等价，不污染共享 map。真实 worker core/scalar unset/mn 与 legacy/scoped/malformed 控制、真实报告 current/缺 shared backend/旧行+旧shared tag/worker content drift 已复核。两个 exact 永久回归复跑 **2/2 pass**（exit0 / 1.547s /2222 deliberate filter skips）；原 work 红2fail与三项 sibling绿代码/配置/输入相同，直接复用，不扩跑整档。
+- [R3 审查报告](../attachments/863/review-r3.md) 核对实际 code diff、worker/tag/stale 数据流与永久断言，未依赖 work 总结授信。ac/run alias MN admission mirror，无第四版本字面量；native linked 行以当前 profile backend 覆盖 per-row map 后实际用于比较，其它 family/轴保持 clone 等价，不污染共享 map。真实 worker core/scalar unset/mn 与 legacy/scoped/malformed 控制、真实报告 current/缺 shared backend/旧行+旧shared tag/worker content drift 已复核。两个 exact 永久回归复跑 **2/2 pass**（exit0 / 1.547s /2222 deliberate filter skips）；原 work 红2fail与三项 sibling绿代码/配置/输入相同，直接复用，不扩跑整档。
 - 实跑命令 `cargo nextest run -p auto-lang --lib --features ui-iced,test-cases -E <two exact permanent tests>`；local `D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/review-r3/replay.log` SHA256 `25056e39d68fbd7143fc15303c5be2487db7edf84a18649b73d956ab1f5461d6`；具体入口/断言在报告。46 个变更 Rust 文件 rustfmt check pass，无新增诊断/延期/workaround；完整原基面 diff-check 检出 prepared 两个新 Spec 的 EOF 空行，明确由 merge 在落地前机械清理并刷新hash（非代码缺口），不得在最终 diff-check 中掩盖。
 - frozen candidate SD-01..06 SHA256 `c0899a31510e618115ce429d9248e65da35a87bbcbbee2f48ffb39792a84a281`；两个相关 canonical prepared 文本与修复相符，细节/hash 见报告。metadata/GOAL-002 有效；旧2/881与1/868历史、native console拒绝边界保留。prepared ledger 未发布（branch143/main142）；merge-owned 按最终 canonical 刷 P863-HOST-CONSOLE/P863-SOURCE-CONSOLE/P868-HIR-LOWERING-BOUNDARY 来源hash，并增加稳定历史ID P863-REVIEW-R3、保留R2历史，仍守一次 unpublished 142→143 增量与原 byte backup。此未完成发布不推定交付。
 - AC-01..06 pass；R1-01..04 unchanged evidence继续有效，F-M1无剩余合同内缺口；AC-07 裸 cargo t+tv **merge-owned pending**，原失败门禁不豁免；AC-08 格式/hash/landing/ledger/archive/guard/cleanup/landing checks **merge-owned pending**。代码入/出 HEAD486fe3e7e clean且冻结，主检出其它文档WIP未触碰；本轮未跑t/tv/tf/docs_gen，未落主线/发布/归档/清树。D-863-NB-01 peer gap保持显式。
 
 2026-10-30 goal round 10：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 10 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | next: merge`。上一轮 progress；本轮最终复审 pass，final review累计3（R1 needs_fix/R2 pass/R3 pass）、有界修复2；目标 active，下一轮合入门禁与收尾。
 
+2026-10-30 merge R2 archive checkpoint：`stage: merge | plan_id: PLAN-863 | plan_revision: 1 | outcome: progress | completion_kind: delivered | checkpoints: prepared,landed,ledger_refreshed; archive commit/cleanup pending | reviewed_commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | equivalent_rebased_code: 1d09dda57ef317b1cd239410f41753fda9c58036 | tested_freeze: 4c3ed9d811f458ea6d1e2226359932dee559fc14 | delivery_commit: 2d5f3d842a73157afdc96ba6cd005e77201bcaf8 | next: archive actual-state check + guarded cleanup`。
+
+- 完整证据/并发对账/来源hash/产物观察见 [merge R2收据](../attachments/863/merge-r2.md)。裸cargo t **3209/3209 pass**（673过滤skip、425.635s）、tv **163/163 pass**（2061过滤skip、5.079s），均exit0，原失败不豁免。consumer重建auto-case exit0（12.67s），实跑**已落main**的console15行语料 **15/15 PASS** exit0。Gate后8个自动生成timing/inventory报告复制本地后恢复原跟踪字节；原始基面完整diff-check pass，46 Rust文件fmt证据有效。代码与测试配置/输入从冻结4c到delivery2d无diff，gate复用有直接身份依据。
+- 测试期间另一会话落458276fd3/664145b79 AutoGraphics文档+ledger，首次ff-only拒绝；保留其最新账本和GOAL变更后重放，代码patch全等，仅两条docs/projection patch按新base对账。最终 **664145b79→2d5f3d842 ff-only**，master tip等于delivery，无merge commit；并发交付祖先保留。R3代码486→709→1d09dda等价；完整range-diff本地留存，delivery后的源码树直接diff=0，未借doc冲突修改代码。
+- SD-01..06 canonical、四模块导航/plans、AV ADR/GOAL-002关联已落main。源Markdown EOF整理完成；spec-index再生62 projects、无内容差。source-hash读回7项全部匹配。ledger服务2s超时，channel=**guarded offline projection**：旧142→143仅草稿从未发布；以并发主线143的byte backup为新基面一次投影 **143→144**，保留foreign/unknown/top-level字段和目标外原字节；latest-before SHA256 `de927a0be1073ed91ec6888e1c0a11c89f36f064bb7d4ddaa4c69c8f0ece3c34`，main-after `64a3ba942f8af749bf6c72be52dc8032f1aac06ee984581f3ff95a923e8d15fd`。designs3/tests1/reviews2/reports1：P863-HOST-CONSOLE/SOURCE-CONSOLE、复用P868-HIR-LOWERING-BOUNDARY、P863-CONSOLE-OBSERVATIONS、P863-REVIEW-R2/R3、P863-MERGE，均file/tags齐全，源hash与ID均读回验证。
+- raw证据已保留到 **D:/autostack/plan-artifacts/plan-863/evidence/**（原目录层级完整），exe anchors到bin/，main-input smoke到landing-smoke/。raw从未暂存。copied evidence/merge 下：cargo-t-final.log SHA256 `cef3b79e19d902966eadf9d18505415d730b9cec5dd318062470bf8f06bb18d9`；cargo-tv-final.log `fb22e126f0c6c70d4c5732a21a087f433abb19443e2a6faf4e580e0d550ecd95`；landing-smoke.log `d941281302d02bb187a408bc8b43d765ec85c41112d238ffe550f5fb5f58b418`；range-diff-concurrent.log `b2bf4e4aff0f5befe6931cc7c184646135831dcba7b7f73bf4a6bb0509dacdc6`。门禁20项cold timeout与M1 fail原日志保留，不改写成pass。
+- pinned依赖auto-ui2349/auto-downc346仍clean；main UI已到c681，但与pin的Cargo.toml/Cargo.lock/crates/.cargo diff=0（仅docs/experimental AG更新），消费者输入等价；down仍同rev。主检出其它会话tracked docs WIP hash与before一致，untracked资料保留；仅本任务路径clean，不宣称全仓无foreign WIP。标准main release auto.exe/auto-case.exe与Vue dist入口实测不存在；实验profile不切默认，未重启产品进程，已重建probe/parent并验证实际main源码语料。
+- Git-for-Windows bash 的 wt-guard clean 已核（系统WSL bash不识Windows路径后改用正确执行器，未绕过）；马上归档后将再跑三个tree fresh guard并移除，只删本组空目录。当前T-01..07完成（7/8），T-08 cleanup pending，cleanup完成后回填8/8。批量回归receipt覆盖887、时间2026-10-29T15:53:56Z不足48h，863不新增receipt后整五计划，batch **not due**，不运行tf、不修改该receipt。
+
+## spec-sync 回写记录
+
+SD-01/02新增 `docs/specs/auto-av/host-import-and-console.md` 与 `docs/specs/auto-ac/source-console-output.md`；SD-03/04/05/06更新 test-case architecture/conformance、AV project与共享lowering boundary（version3，ac/run alias和per-row stale）；四模块导航/plans、AV ADR、全局overview/GOAL关联已沉淀，INDEX已再生。derived ledger v144七项投影验证完成，current知识指向canonical，review历史指向R2/R3；不复制Plan章节为第二规范。
+
 ## 10. 待澄清事项
+
+当前无待决事项；下列为T-02已按默认项冻结的历史问题。
 
 - 首批是否同时交付 stderr（`eprint`）与 stdout，还是只 stdout。默认两者同批（同一派发形状，边际成本小），如用户要求收窄可只留 stdout。
 - `print` 是否作为**关键字**还是**预导入符号**（可被用户函数遮蔽/拒绝遮蔽）。默认：保留字不可作名字，且不允许用户重定义（与既有“用户函数不能被 intrinsic 劫持”规则一致，T-01 核实）。
 - 输出上限的具体数值（每行/总字节）需 T-02 按 852/825/826 既有资源预算口径给出，不由本草案编造。
 
-2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../../specs/auto-mir/hir-lowering-boundary.md)）。
