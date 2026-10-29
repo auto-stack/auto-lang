@@ -136,6 +136,14 @@ pub fn stdlib_assembly_fingerprint(
     mix(fnv1a64(include_str!("../vm/ffi/stdlib/sqlite.rs")));
     mix(fnv1a64(include_str!("../vm/ffi/stdlib/strings_json.rs")));
     mix(fnv1a64(include_str!("../vm/ffi/stdlib/sys_env.rs")));
+    // PLAN-884 T-04：基础设施域文件入指纹闭包（迁移源不得静默缺列）。
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/request_root.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/storage.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/exit_audit.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/http_async.rs")));
+    mix(fnv1a64(include_str!(
+        "../vm/ffi/stdlib/rust_stdlib_dispatch.rs"
+    )));
     mix(fnv1a64(include_str!("../vm/native_catalog.rs")));
     mix(match target {
         super::model::AssemblyTarget::Vm => 1,

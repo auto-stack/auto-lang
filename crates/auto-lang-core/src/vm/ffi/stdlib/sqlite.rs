@@ -88,3 +88,57 @@ pub fn shim_sqlite_last_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     let msg: String = a2r_std::sqlite::last_error();
     VMConvertible::push_to_stack(&msg, task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
 }
+
+// ---- PLAN-884 T-04：自 stdlib 壳迁入（原样搬移） ----
+
+use a2r_std::sqlite::SqliteDb;
+
+static SQLITE_HANDLE_COUNTER: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
+pub const SQLITE_NATIVE_NAMES: &[&str] = &[
+    "auto.sqlite.open",
+    "auto.sqlite.exec",
+    "auto.sqlite.query",
+    "auto.sqlite.last_insert_rowid",
+    "auto.sqlite.last_error",
+    // Type.method form (List.push -> auto.list.push canonicalization rule)
+    "auto.sqlitedb.exec",
+    "auto.sqlitedb.query",
+    "auto.sqlitedb.last_insert_rowid",
+];
+
+fn sqlite_from_handle(vm: &AutoVM, handle: i64) -> Option<SqliteDb> {
+    vm.sqlite_handle(handle)
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_sqlite_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Plan 744 / D-VM-SQLITE: sqlite module on the VM track. Names are seeded
+    // explicitly (same cwd caveat as image.vm.at below) and bound under both
+    // the module form (auto.sqlite.*) and the Type.method form
+    // (auto.sqlitedb.*) — the bytecode emits either depending on the call site.
+    {
+        let mut registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+        for name in SQLITE_NATIVE_NAMES {
+            registry.register(name);
+        }
+        // Plan 744 D9 runtime face: fs.dir_names (receipts enumeration).
+        registry.register("auto.fs.dir_names");
+    }
+    natives.register_shim_by_name("auto.sqlite.open", shim_sqlite_open);
+    natives.register_shim_by_name("auto.sqlite.exec", shim_sqlite_exec);
+    natives.register_shim_by_name("auto.sqlite.query", shim_sqlite_query);
+    natives.register_shim_by_name(
+        "auto.sqlite.last_insert_rowid",
+        shim_sqlite_last_insert_rowid,
+    );
+    natives.register_shim_by_name("auto.sqlite.last_error", shim_sqlite_last_error);
+    natives.register_shim_by_name("auto.sqlitedb.exec", shim_sqlite_exec);
+    natives.register_shim_by_name("auto.sqlitedb.query", shim_sqlite_query);
+    natives.register_shim_by_name(
+        "auto.sqlitedb.last_insert_rowid",
+        shim_sqlite_last_insert_rowid,
+    );
+    natives.register_shim_by_name("auto.fs.dir_names", shim_fs_dir_names);
+}

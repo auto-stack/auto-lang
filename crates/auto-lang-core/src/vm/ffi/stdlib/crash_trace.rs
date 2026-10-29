@@ -111,3 +111,14 @@ pub fn shim_process_spawn_with_output(task: &mut AutoTask, vm: &AutoVM) -> Resul
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_process_spawn_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Process functions (manual shims only)
+    natives.register_shim_by_name(
+        "auto.process.spawn_with_output",
+        shim_process_spawn_with_output,
+    );
+    natives.register_shim_by_name("auto.sys.exec", shim_sys_exec);
+}

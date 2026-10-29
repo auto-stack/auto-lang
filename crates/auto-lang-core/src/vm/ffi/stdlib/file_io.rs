@@ -365,7 +365,7 @@ pub fn shim_io_read_line_opt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// `io.lines(path: String) -> iterator_id`
 /// Stream lines from a file using BufReader. Non-blocking (Plan 348 yield).
 pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
@@ -425,7 +425,7 @@ pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stream fixed-size chunks from a binary file. Non-blocking.
 pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let chunk_size: i32 = crate::vm::native::pop_arg_i32(task);
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
     let chunk_size = chunk_size.max(1) as usize;
@@ -487,7 +487,7 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `fs.entries(path: String) -> iterator_id`
 /// Stream directory entries (name, is_dir, size). Non-blocking.
 pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
@@ -553,7 +553,7 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// `io.buffered_writer(path: String) -> handle (i32)`
 /// Create a buffered file writer (BufWriter<File>).
 pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
@@ -573,7 +573,7 @@ pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// `io.buffered_reader(path: String) -> handle (i32)`
 /// Create a buffered file reader (BufReader<File>).
 pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
@@ -592,7 +592,7 @@ pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// `io.open(path: String) -> handle (i32)`
 /// Open a file for random access (seek + read/write).
 pub fn shim_io_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
     let file = std::fs::OpenOptions::new()
@@ -706,7 +706,7 @@ pub fn shim_file_position(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// `Path.new(path: String) -> handle`
 /// Create a Path object for chainable path operations.
 pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let obj =
         crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Path", std::sync::Mutex::new(path));
@@ -718,7 +718,7 @@ pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `Path.join(handle: i32, other: String) -> handle`
 /// Join a path component. Returns new Path handle.
 pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let other: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let other: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let new_path = if let Some(obj) = vm.get_heap_object(handle as u64) {
@@ -812,9 +812,9 @@ pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// `io.scanner(path: String, delimiter: String) -> iterator_id`
 /// Stream tokens split by delimiter from a file. Non-blocking.
 pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let delimiter: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let delimiter: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let stream_id = alloc_async_id();
@@ -891,7 +891,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     // First call — pop the path, register the live token, spawn the read and
     // yield. PLAN-705 T-02: 登记先于提交 worker（协议顺序，完成端只在
     // live 令牌上投递）。
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
@@ -926,9 +926,9 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         return Ok(());
     }
 
-    let content: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let content: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let path: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     crate::vm::ffi::async_http::register_live_op(req_id);
@@ -988,4 +988,240 @@ pub fn shim_fs_dir_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let names: Vec<String> = a2r_std::fs::dir_names(path.as_str());
     VMConvertible::push_to_stack(&names, task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+// ---- PLAN-884 T-04：自 stdlib 壳迁入（原样搬移） ----
+
+// ============================================================================
+// IO Functions
+// ============================================================================
+
+fn read_process_stdin_line() -> Option<String> {
+    use std::io::BufRead;
+    let mut line = String::new();
+    let read = std::io::stdin().lock().read_line(&mut line).ok()?;
+    if read == 0 {
+        return None;
+    }
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    Some(line)
+}
+
+// ============================================================================
+// Plan 353: IO stream natives (lines/chunks) + eprint/eprintln
+// ============================================================================
+
+/// `eprint(text: String)` — Write to stderr (no newline).
+pub fn shim_eprint(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    use std::io::Write;
+    let _ = std::io::stderr().write_all(text.as_bytes());
+    Ok(())
+}
+
+/// `eprintln(text: String)` — Write to stderr with newline.
+pub fn shim_eprintln(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    eprintln!("{}", text);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 353 stages 3-8: fs.entries, buffered writer/reader, seek, async IO,
+// Path object, Scanner
+// ============================================================================
+
+/// `BufWriter.write_line(handle: i32, text: String) -> handle`
+/// Write a line to a buffered writer.
+pub fn shim_bufwriter_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
+
+    use std::io::Write;
+    if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>()
+            {
+                if let Ok(mut w) = mutex.lock() {
+                    let _ = writeln!(w, "{}", text);
+                }
+            }
+        }
+    }
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// `BufWriter.flush(handle: i32) -> handle`
+pub fn shim_bufwriter_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
+    use std::io::Write;
+    if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>()
+            {
+                if let Ok(mut w) = mutex.lock() {
+                    let _ = w.flush();
+                }
+            }
+        }
+    }
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+/// `BufReader.read_line(handle: i32) -> String`
+/// Read one line from a buffered reader. Returns "" at EOF.
+pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
+    use std::io::BufRead;
+    let line = if let Some(obj) = vm.get_heap_object(handle as u64) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufReader<std::fs::File>>>()
+            {
+                if let Ok(mut r) = mutex.lock() {
+                    let mut s = String::new();
+                    let _ = r.read_line(&mut s);
+                    // Trim trailing newline.
+                    if s.ends_with('\n') {
+                        s.pop();
+                        if s.ends_with('\r') {
+                            s.pop();
+                        }
+                    }
+                    s
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let idx = vm.add_string(line.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+// ============================================================================
+// Path Functions (ID 1400-1499)
+// ============================================================================
+
+/// Join path components together
+#[allow(non_snake_case)]
+pub fn __shim_Path_join(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
+    // 1. Pop argument count
+    let n = task.ram.pop_i32() as usize;
+
+    // 2. Pop arguments in reverse order
+    let mut parts: Vec<String> = Vec::with_capacity(n);
+    for _ in 0..n {
+        let part: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
+            .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
+        parts.push(part);
+    }
+    parts.reverse();
+
+    // 3. Join using PathBuf
+    let mut result = std::path::PathBuf::new();
+    for part in parts {
+        result.push(part);
+    }
+
+    let joined = result.to_string_lossy().to_string();
+
+    // 4. Push result
+    crate::vm::ffi::convert::VMConvertible::push_to_stack(&joined, task, vm)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
+
+    Ok(())
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_io_stream_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Plan 353: IO stream natives
+    natives.register_shim_by_name("auto.io.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("IO.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("io.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("auto.io.read_line_opt", shim_io_read_line_opt);
+    natives.register_shim_by_name("IO.read_line_opt", shim_io_read_line_opt);
+    natives.register_shim_by_name("io.read_line_opt", shim_io_read_line_opt);
+    natives.register_shim_by_name("auto.io.lines", shim_io_lines);
+    natives.register_shim_by_name("io.lines", shim_io_lines);
+    natives.register_shim_by_name("auto.io.chunks", shim_io_chunks);
+    natives.register_shim_by_name("io.chunks", shim_io_chunks);
+    // Plan 353: eprint/eprintln
+    natives.register_shim_by_name("auto.io.eprint", shim_eprint);
+    natives.register_shim_by_name("eprint", shim_eprint);
+    natives.register_shim_by_name("auto.io.eprintln", shim_eprintln);
+    natives.register_shim_by_name("eprintln", shim_eprintln);
+    // Plan 353 stage 3: fs.entries iterator
+    natives.register_shim_by_name("auto.fs.entries", shim_fs_entries);
+    natives.register_shim_by_name("fs.entries", shim_fs_entries);
+    // Plan 353 stage 4: buffered writer/reader
+    natives.register_shim_by_name("auto.io.buffered_writer", shim_io_buffered_writer);
+    natives.register_shim_by_name("io.buffered_writer", shim_io_buffered_writer);
+    natives.register_shim_by_name("auto.io.buffered_reader", shim_io_buffered_reader);
+    natives.register_shim_by_name("io.buffered_reader", shim_io_buffered_reader);
+    natives.register_shim_by_name("BufWriter.write_line", shim_bufwriter_write_line);
+    natives.register_shim_by_name("BufWriter.flush", shim_bufwriter_flush);
+    natives.register_shim_by_name("BufReader.read_line", shim_bufreader_read_line);
+    // Plan 353 stage 5: Seek/random access
+    natives.register_shim_by_name("auto.io.open", shim_io_open);
+    natives.register_shim_by_name("io.open", shim_io_open);
+    natives.register_shim_by_name("File.seek", shim_file_seek);
+    natives.register_shim_by_name("File.read", shim_file_read);
+    natives.register_shim_by_name("File.position", shim_file_position);
+    // Plan 353 stage 7: Path object
+    natives.register_shim_by_name("auto.path.new", shim_path_new);
+    natives.register_shim_by_name("Path.new", shim_path_new);
+    natives.register_shim_by_name("Path.join", shim_path_join);
+    natives.register_shim_by_name("Path.exists", shim_path_exists);
+    natives.register_shim_by_name("Path.to_string", shim_path_to_string);
+    // Plan 353 stage 8: Scanner
+    natives.register_shim_by_name("auto.io.scanner", shim_io_scanner);
+    natives.register_shim_by_name("io.scanner", shim_io_scanner);
+    // Plan 353 stage 6: Async file IO
+    natives.register_shim_by_name("auto.io.read_text_async", shim_io_read_text_async);
+    natives.register_shim_by_name("io.read_text_async", shim_io_read_text_async);
+    natives.register_shim_by_name("auto.io.write_text_async", shim_io_write_text_async);
+    natives.register_shim_by_name("io.write_text_async", shim_io_write_text_async);
+    // Plan 394 Phase A: external-future fixtures (bare names for codegen)
+    natives.register_shim_by_name("delay_async", shim_test_delay_async);
+    natives.register_shim_by_name("fail_async", shim_test_fail_async);
+    // Plan 394 Phase C: combinators
+    natives.register_shim_by_name("future_all", shim_future_all);
+    natives.register_shim_by_name("future_race", shim_future_race);
 }

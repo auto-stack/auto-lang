@@ -386,7 +386,7 @@ pub fn shim_json_parse(s: String) -> String {
 /// 注册在 engine 的 inventory 覆盖块（build_from_inventory 之后），与
 /// str.contains 等 nanbox 覆盖同款惯例。
 pub fn shim_json_parse_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let s: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let s: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("json.parse: {}", e)))?;
     let value: serde_json::Value = serde_json::from_str(&s)
         .map_err(|e| VMError::RuntimeError(format!("json.parse: invalid JSON: {}", e)))?;
@@ -415,7 +415,7 @@ pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         return Ok(());
     }
     task.ram.push_nv(nv);
-    let json_str: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let json_str: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let trimmed = json_str.trim();
     if trimmed.is_empty() || trimmed == "undefined" || trimmed == "None" || trimmed == "nil" {
@@ -770,4 +770,530 @@ pub fn shim_regex_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
     task.ram.push_nv(auto_val::encode_bool(re.is_match(&text)));
     Ok(())
+}
+
+// ---- PLAN-884 T-04：自 stdlib 壳迁入（原样搬移） ----
+
+// ============================================================================
+// Plan 446 批三 D1(续): 文档类 json native 双态入参
+// ============================================================================
+
+/// 判定栈值是否为 JSON 文档堆对象（__json_object GenericInstanceData /
+/// ListData<Value>——json.parse 的产物；ListData<i32>——json.keys 等
+/// 文本工具链的返回形态，批四 D5 补齐）。命中则返回堆 id。
+fn json_doc_heap_id(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
+    let id = if auto_val::is_object(nv) {
+        auto_val::decode_object(nv) as u64
+    } else if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if v > 0 {
+            v as u64
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+    let is_doc = vm
+        .get_heap_object(id)
+        .map(|o| {
+            let guard = o.read().unwrap();
+            let any = guard.as_any();
+            any.downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .is_some()
+                || any
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    .is_some()
+                || any
+                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                    .is_some()
+        })
+        .unwrap_or(false);
+    if is_doc {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// ListData<i32> 的 JSON 序列化（D5）：全负元素 = 字符串池负索引编码
+/// （`Vec<String>::push_to_stack` 的形态，json.keys 的返回）→ 解码为
+/// key 字符串数组；含非负元素 = 真 int 数组。不进共享的 vm_value_to_json
+/// （其 i32 臂直读数值，负索引会被当负数）。
+fn json_serialize_i32_list(vm: &AutoVM, id: u64) -> Option<String> {
+    use crate::vm::types::ListData;
+    use serde_json::Value as J;
+    let obj = vm.get_heap_object(id)?;
+    let guard = obj.read().unwrap();
+    let list = guard.as_any().downcast_ref::<ListData<i32>>()?;
+    let elems: Vec<J> = if list.elems.iter().all(|i| *i < 0) {
+        let strings = vm.strings.read().unwrap();
+        list.elems
+            .iter()
+            .map(|i| {
+                strings
+                    .get((-*i - 1) as usize)
+                    .map(|b| J::String(String::from_utf8_lossy(b).to_string()))
+                    .unwrap_or(J::Null)
+            })
+            .collect()
+    } else {
+        list.elems.iter().map(|i| serde_json::json!(*i)).collect()
+    };
+    serde_json::to_string(&J::Array(elems)).ok()
+}
+
+/// 文档类 json native（get/get_at/has_key/len/keys/is_valid）的首参规整：
+/// 若首参是 json.parse 产出的堆文档，序列化回 JSON 文本原位替换；文本/
+/// 其它形态原样透传。下游 rust_fn shim 的字符串语义（片段切片/type_of）
+/// 字节级不变——`json.get(json.parse(x), k)` 文本工具链与 `json.parse` +
+/// 点访问两种idiom自此互通（批三"语义统一"目标）。
+fn normalize_json_doc_head(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    extra_args: usize,
+) -> Result<(), VMError> {
+    let mut extras: Vec<auto_val::NanoValue> = Vec::with_capacity(extra_args);
+    for _ in 0..extra_args {
+        extras.push(task.ram.pop_nv());
+    }
+    let doc_nv = task.ram.pop_nv();
+    let serialized: Option<String> = json_doc_heap_id(vm, doc_nv).and_then(|id| {
+        // ListData<i32>（负索引编码）走专用解码；其余经共享转换器。
+        let direct = json_serialize_i32_list(vm, id);
+        if direct.is_some() {
+            return direct;
+        }
+        let jv = vm_value_to_json(
+            vm,
+            &auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }),
+            0,
+        )
+        .ok()?;
+        serde_json::to_string(&jv).ok()
+    });
+    match serialized {
+        Some(text) => {
+            let idx = vm.add_string(text.into_bytes());
+            vm.rc_push_str_idx(task, idx);
+        }
+        None => task.ram.push_nv(doc_nv),
+    }
+    for nv in extras {
+        task.ram.push_nv(nv);
+    }
+    Ok(())
+}
+
+/// 原始（inventory rust_fn）shim 的暂存表：wrapper 规整首参后委托原实现。
+lazy_static::lazy_static! {
+    static ref JSON_DOC_ORIGINALS: std::sync::Mutex<std::collections::HashMap<u16, crate::vm::native::ShimFunc>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// 覆盖文档类 json native 为双态版（engine 的 AutoVM::new 覆盖块调用，
+/// 须在 build_from_inventory 之后）。命名面含 auto.json.* 与 Json.* 双轨
+/// （inventory 注册名经 canonical 归一到同一固定 ID）。
+pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::NativeInterface) {
+    use crate::vm::native_registry::BIGVM_NATIVES;
+    const DOC_NATIVES: &[(&str, usize)] = &[
+        ("auto.json.get", 1),
+        ("auto.json.get_at", 1),
+        ("auto.json.has_key", 1),
+        ("auto.json.len", 0),
+        ("auto.json.keys", 0),
+        ("auto.json.is_valid", 0),
+    ];
+    for (name, extra) in DOC_NATIVES {
+        let id = match BIGVM_NATIVES.lock().unwrap().resolve_qualified(name) {
+            Some(id) => id,
+            None => continue,
+        };
+        let original = match native_interface.get(id) {
+            Some(f) => f.clone(),
+            None => continue,
+        };
+        JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original);
+        let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
+            normalize_json_doc_head(task, vm, *extra)?;
+            let original = JSON_DOC_ORIGINALS
+                .lock()
+                .unwrap()
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| {
+                    VMError::RuntimeError("json doc native: original shim missing".into())
+                })?;
+            original(task, vm)
+        };
+        native_interface.register(id, wrapper);
+    }
+}
+
+/// Parse a TOML string (placeholder)
+#[auto_macros::rust_fn("toml.from_str")]
+pub fn shim_toml_from_str(s: String) -> String {
+    s
+}
+
+// ============================================================================
+// Plan 340: JSON ↔ VM value conversion natives (for VM+VM split mode HTTP API)
+// ============================================================================
+
+/// Recursively convert a `serde_json::Value` into a VM heap object and return
+/// the encoded object id (pushed onto the stack as a NaN-boxed object ref).
+///
+/// - JSON object  → GenericInstanceData (field_names = JSON keys)
+/// - JSON array   → ListData<Value> (elements recurse)
+/// - scalars      → pushed directly (int/bool/nil/string)
+///
+/// Returns `Some(obj_id)` for compound values (the caller pushes the encoded
+/// ref), or `None` for scalars (already pushed by this function).
+pub fn json_to_vm_value(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    value: &serde_json::Value,
+    depth: u32,
+) -> Result<(), VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "json_to_vm_value: nesting depth exceeded ({})",
+            MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        serde_json::Value::Null => {
+            task.ram.push_nv(auto_val::encode_null());
+        }
+        serde_json::Value::Bool(b) => {
+            task.ram.push_nv(auto_val::encode_bool(*b));
+        }
+        serde_json::Value::Number(n) => {
+            // PLAN-734 T-03（E4 修复）：Auto int 语义 = i64 全域——
+            // 此前 `as i32` 静默截断；48 位内联/堆装箱经共享 helper。
+            if let Some(i) = n.as_i64() {
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_i64_with_heap(vm, i));
+            } else if let Some(u) = n.as_u64() {
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_u64_with_heap(vm, u));
+            } else if let Some(f) = n.as_f64() {
+                task.ram.push_f64(f);
+            } else {
+                return Err(VMError::RuntimeError(
+                    "json_to_vm_value: unrepresentable number".into(),
+                ));
+            }
+        }
+        serde_json::Value::String(s) => {
+            // 2026-08-22(池去重):宿主桥/JSON 每次调用都重解析全量历史
+            // (438+ 条),直推令池随每条命令膨胀;去重后重复内容零增长。
+            let str_idx = vm.add_string(s.as_bytes().to_vec());
+            vm.rc_push_str_idx(task, str_idx as usize);
+        }
+        serde_json::Value::Array(arr) => {
+            use crate::vm::types::ListData;
+            // Recurse each element, collecting as Value (VmRef for compound).
+            let mut list: ListData<Value> = ListData::new();
+            for elem in arr {
+                let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
+                // Plan 419 §9(复活): 外层容器组装同样「插入即 retain」——
+                // 与 inner 两臂对齐。此前此处漏 retain,顶层容器的直接子引用
+                // 无持有即被 child_refs 声明,父死连坐释放时抵消他人真实
+                // stake(ash-gui UAF:__json_object 子数组被提前释放)。
+                if let Value::VmRef(r) = &v {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                list.push(v);
+            }
+            let id = vm.insert_heap_object(list);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+        serde_json::Value::Object(obj) => {
+            use crate::vm::generic_registry::GenericInstanceData;
+            let mut field_names = Vec::with_capacity(obj.len());
+            let mut fields = Vec::with_capacity(obj.len());
+            for (k, v) in obj {
+                field_names.push(k.clone());
+                let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
+                // Plan 419 §9(复活): 同上,外层字段插入即 retain。
+                if let Value::VmRef(r) = &fv {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                fields.push(fv);
+            }
+            let inst = GenericInstanceData::new_with_names(
+                "__json_object".to_string(),
+                fields,
+                field_names,
+            );
+            let id = vm.insert_heap_object(inst);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+    }
+    Ok(())
+}
+
+/// Inner helper: convert a JSON value to a `Value` without touching the task
+/// stack. Used when building compound values (array elements / object fields)
+/// where the element must be a `Value::VmRef`, not pushed to the stack.
+fn json_to_vm_value_inner(
+    vm: &AutoVM,
+    value: &serde_json::Value,
+    depth: u32,
+) -> Result<auto_val::Value, VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "json_to_vm_value_inner: nesting depth exceeded ({})",
+            MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        serde_json::Value::Null => Ok(Value::Nil),
+        serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Value::Int(i as i32))
+            } else if let Some(f) = n.as_f64() {
+                Ok(Value::Double(f))
+            } else {
+                Ok(Value::Int(0))
+            }
+        }
+        serde_json::Value::String(s) => Ok(Value::Str(auto_val::AutoStr::from(s.as_str()))),
+        serde_json::Value::Array(arr) => {
+            use crate::vm::types::ListData;
+            let mut list: ListData<Value> = ListData::new();
+            for elem in arr {
+                let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
+                // Plan 419: 子 VmRef 的持有随父容器建立(插入即 retain)。
+                if let Value::VmRef(r) = &v {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                list.push(v);
+            }
+            let id = vm.insert_heap_object(list);
+            Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
+        }
+        serde_json::Value::Object(obj) => {
+            use crate::vm::generic_registry::GenericInstanceData;
+            let mut field_names = Vec::with_capacity(obj.len());
+            let mut fields = Vec::with_capacity(obj.len());
+            for (k, v) in obj {
+                field_names.push(k.clone());
+                let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
+                // Plan 419: 同上。
+                if let Value::VmRef(r) = &fv {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                fields.push(fv);
+            }
+            let inst = GenericInstanceData::new_with_names(
+                "__json_object".to_string(),
+                fields,
+                field_names,
+            );
+            let id = vm.insert_heap_object(inst);
+            Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
+        }
+    }
+}
+
+/// Recursively serialize a VM heap object into a `serde_json::Value`.
+pub(crate) fn vm_value_to_json(
+    vm: &AutoVM,
+    value: &auto_val::Value,
+    depth: u32,
+) -> Result<serde_json::Value, VMError> {
+    const MAX_DEPTH: u32 = 64;
+    if depth >= MAX_DEPTH {
+        return Err(VMError::RuntimeError(format!(
+            "vm_value_to_json: nesting depth exceeded ({})",
+            MAX_DEPTH
+        )));
+    }
+    use auto_val::Value;
+    match value {
+        Value::Nil => Ok(serde_json::Value::Null),
+        Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+        Value::Int(i) => Ok(serde_json::json!(*i)),
+        Value::Uint(u) => Ok(serde_json::json!(*u)),
+        // PLAN-734 R2（T-08 提交时意外丢失的臂——nv_to_vm_value 自 T-07 起
+        // 把 i32/i64 统一产 Value::I64；缺此臂时 42 走兜底路径 → stringify
+        // 形态漂移 → 664 值域 e2e 红（Json.type_of 比较两个不同字符串）。
+        Value::I64(i) => Ok(serde_json::json!(*i)),
+        Value::Float(f) => serde_json::Number::from_f64(*f as f64)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| VMError::RuntimeError("json.from_value: NaN/Inf float".into())),
+        Value::Double(d) => serde_json::Number::from_f64(*d)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| VMError::RuntimeError("json.from_value: NaN/Inf double".into())),
+        Value::Str(s) => Ok(serde_json::Value::String(s.to_string())),
+        Value::Char(c) => Ok(serde_json::Value::String(c.to_string())),
+        Value::VmRef(vmref) => {
+            let id = vmref.id as u64;
+            if let Some(heap_ref) = vm.heap_objects.get(&id) {
+                let obj = heap_ref.read().unwrap();
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::types::ListData;
+                if let Some(inst) = obj.as_any().downcast_ref::<GenericInstanceData>() {
+                    let mut map = serde_json::Map::new();
+                    for (i, name) in inst.field_names.iter().enumerate() {
+                        if let Some(fv) = inst.fields.get(i) {
+                            map.insert(name.clone(), vm_value_to_json(vm, fv, depth + 1)?);
+                        }
+                    }
+                    Ok(serde_json::Value::Object(map))
+                } else if let Some(odata) =
+                    obj.as_any().downcast_ref::<crate::vm::types::ObjectData>()
+                {
+                    // PLAN-057 T6：对象字面量（ObjectData）——此前落末尾 else
+                    // 静默序列化成 null（JSON.stringify({a:1}) 现场根因）。
+                    // 键序：ObjectData 是 HashMap 无序，按字典序出键保确定性
+                    // （JS 为插入序——登记为已知观感差，非语义差）。
+                    let mut pairs: Vec<(String, &auto_val::Value)> = odata
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            let key = match k {
+                                auto_val::ValueKey::Str(s) => s.to_string(),
+                                auto_val::ValueKey::Int(i) => i.to_string(),
+                                auto_val::ValueKey::Bool(b) => b.to_string(),
+                            };
+                            (key, v)
+                        })
+                        .collect();
+                    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                    let mut map = serde_json::Map::new();
+                    for (key, v) in pairs {
+                        map.insert(key, vm_value_to_json(vm, v, depth + 1)?);
+                    }
+                    Ok(serde_json::Value::Object(map))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                {
+                    let mut arr = Vec::with_capacity(list.elems.len());
+                    for elem in &list.elems {
+                        arr.push(vm_value_to_json(vm, elem, depth + 1)?);
+                    }
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<i32>>() {
+                    let arr = list.elems.iter().map(|i| serde_json::json!(*i)).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<String>>() {
+                    let arr = list.elems.iter().map(|s| serde_json::json!(s)).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<char>>() {
+                    // Plan 340 audit: char list → JSON array of 1-char strings.
+                    let arr = list
+                        .elems
+                        .iter()
+                        .map(|c| serde_json::json!(c.to_string()))
+                        .collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<bool>>() {
+                    // Plan 340 audit: bool list → JSON array of booleans.
+                    let arr = list.elems.iter().map(|b| serde_json::json!(*b)).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else {
+                    Ok(serde_json::Value::Null)
+                }
+            } else {
+                Ok(serde_json::Value::Null)
+            }
+        }
+        _ => Ok(serde_json::Value::Null),
+    }
+}
+
+// ============================================================================
+// Regex Functions (Plan 159: 2400-2499)
+// ============================================================================
+
+/// 匹配结果列表推送（堆 List<Value::Str>；fresh 列表 rc_push(+1) 与
+/// Plan 419 配平——元素为 Str 非堆引用，无子份额需求）。无匹配 → 空列表
+/// （length 0）。global 250 条上限沿 find_all 口径。
+fn push_regex_match_list(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    text: &str,
+    pattern: &str,
+    global: bool,
+    case_insensitive: bool,
+) -> Result<(), VMError> {
+    let mut builder = regex::RegexBuilder::new(pattern);
+    builder.case_insensitive(case_insensitive);
+    let re = builder.build().map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.match failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+    use crate::vm::types::ListData;
+    let mut list: ListData<auto_val::Value> = ListData::new();
+    let mut count = 0usize;
+    if global {
+        for m in re.find_iter(text) {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(m.as_str())));
+            count += 1;
+            if count >= 250 {
+                break;
+            }
+        }
+    } else if let Some(caps) = re.captures(text) {
+        for g in caps.iter().flatten() {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(g.as_str())));
+        }
+    }
+    let id = vm.insert_heap_object(list);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
+    Ok(())
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_string_find_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // String method — manual shim
+    natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
+    // str-parity: .slice/.sub are END-semantics (a2r s[a..b]) — distinct
+    // from .substr's (start, LEN). All three previously aliased one shim;
+    // shim_str_slice registers via its #[rust_fn("Str.slice\)] attribute +
+    // the catalog's auto.str.slice/sub entries (id 1524).
+    natives.register_shim_by_name("Str.find", shim_str_find_manual);
+    natives.register_shim_by_name("str.find", shim_str_find_manual);
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_json_value_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Plan 340: JSON ↔ VM value conversion (for VM+VM split mode HTTP API).
+    // These replace the placeholder Json.parse (returns string as-is) with real
+    // (de)serialization that produces/consumes VM heap objects.
+    natives.register_shim_by_name("auto.json.to_value", shim_json_to_value);
+    natives.register_shim_by_name("auto.json.from_value", shim_json_from_value);
+    natives.register_shim_by_name("Json.to_value", shim_json_to_value);
+    natives.register_shim_by_name("Json.from_value", shim_json_from_value);
+
+    // Plan 340: Simple JSON HTTP helpers (return body string directly) for
+    // VM+VM split mode codegen rewriting.
+    natives.register_shim_by_name("auto.http.get_json", shim_http_get_json);
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Regex (manual shim — heap objects for compiled regex)
+    natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
+    natives.register_shim_by_name("auto.regex.match", shim_regex_match);
+    // PLAN-053 P-053-6: web 生态静态形态（CALL_SPEC Regex.replace/test 路由）。
+    natives.register_shim_by_name("auto.regex.replace", shim_regex_replace);
+    natives.register_shim_by_name("auto.regex.test", shim_regex_test);
+    // PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
+    natives.register_shim_by_name("auto.i18n.t", shim_i18n_t);
+    // PLAN-066 T-06：str.includes 字符串包含（实例方法 CALL_NAT：[pat,
+    // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
+    natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 }

@@ -295,6 +295,27 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 "vm/ffi/stdlib/sys_env.rs",
                 include_str!("../vm/ffi/stdlib/sys_env.rs"),
             ),
+            // PLAN-884 T-04：基础设施域文件入 Vm provider 输入（迁移源不得缺列）。
+            (
+                "vm/ffi/stdlib/request_root.rs",
+                include_str!("../vm/ffi/stdlib/request_root.rs"),
+            ),
+            (
+                "vm/ffi/stdlib/storage.rs",
+                include_str!("../vm/ffi/stdlib/storage.rs"),
+            ),
+            (
+                "vm/ffi/stdlib/exit_audit.rs",
+                include_str!("../vm/ffi/stdlib/exit_audit.rs"),
+            ),
+            (
+                "vm/ffi/stdlib/http_async.rs",
+                include_str!("../vm/ffi/stdlib/http_async.rs"),
+            ),
+            (
+                "vm/ffi/stdlib/rust_stdlib_dispatch.rs",
+                include_str!("../vm/ffi/stdlib/rust_stdlib_dispatch.rs"),
+            ),
             (
                 "vm/ffi/http_server/server_argbind.rs",
                 include_str!("../vm/ffi/http_server/server_argbind.rs"),
@@ -509,6 +530,52 @@ mod plan814_build_input_boundary {
         assert!(
             missing.is_empty(),
             "path deps missing from IDENTITY_SOURCE_CRATES (update build.rs): {missing:?}"
+        );
+    }
+}
+
+/// PLAN-884 V-09：迁移源不得静默缺列——stdlib 域目录（及 http_server/
+/// native/ trans/rust 主题目录）中的每个 .rs 文件都必须出现在 Vm 目标的
+/// provider 输入闭包里；新增域文件而漏登记会在此红，而不是静默不入指纹。
+#[cfg(test)]
+mod plan884_provider_input_coverage {
+    use super::provider_inputs;
+    use crate::stdlib_assembly::manifest::AssemblyTarget;
+
+    #[test]
+    fn domain_dir_sources_all_covered_by_vm_provider_inputs() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let covered: std::collections::HashSet<String> = provider_inputs(AssemblyTarget::Vm)
+            .into_iter()
+            .map(|p| p.source_id)
+            .map(|id| {
+                id.strip_prefix("crates/auto-lang/src/")
+                    .unwrap_or(&id)
+                    .to_string()
+            })
+            .collect();
+        let mut missing = Vec::new();
+        for dir in [
+            "vm/ffi/stdlib",
+            "vm/ffi/http_server",
+            "vm/native",
+            "trans/rust",
+        ] {
+            let path = std::path::Path::new(manifest_dir).join("src").join(dir);
+            for entry in std::fs::read_dir(&path).expect("read domain dir") {
+                let entry = entry.expect("entry");
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    let rel = format!("{}/{}", dir, p.file_name().unwrap().to_string_lossy());
+                    if !covered.contains(&rel) {
+                        missing.push(rel);
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "PLAN-884 V-09: 域目录源码未入 Vm provider 指纹闭包（漏登记=静默不入指纹）: {missing:?}"
         );
     }
 }

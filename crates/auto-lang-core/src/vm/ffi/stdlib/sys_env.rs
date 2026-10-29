@@ -160,7 +160,7 @@ pub fn shim_test_delay_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
 /// Plan 394 Phase A fixture: `test.fail_async(msg) -> Future` (External Failed).
 pub fn shim_test_fail_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _msg: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let _msg: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let fid = vm.register_external_future(task.id);
     if let Some(future_arc) = vm.futures.get(&fid) {
@@ -282,7 +282,7 @@ pub fn shim_log_error(msg: String) {
 /// `session.create(data_json: String) -> String`
 /// Create a new session with the given JSON data. Returns a random session ID.
 pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let data: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let data: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     // Generate a simple session ID (timestamp + counter).
@@ -300,7 +300,7 @@ pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// `session.get(id: String) -> String`
 /// Get session data by ID. Returns the JSON data string, or "null" if not found.
 pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let id: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let id: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let data = SESSIONS
@@ -317,9 +317,9 @@ pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// `session.set(id: String, data_json: String) -> bool`
 /// Update session data. Returns true if session existed.
 pub fn shim_session_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let data: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let data: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let id: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let id: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let exists = SESSIONS
@@ -342,7 +342,7 @@ pub fn shim_session_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// `session.destroy(id: String) -> bool`
 /// Destroy a session. Returns true if session existed.
 pub fn shim_session_destroy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let id: String = super::super::convert::VMConvertible::pop_from_stack(task, vm)
+    let id: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let existed = SESSIONS
@@ -1140,4 +1140,499 @@ pub fn shim_test_run_a2r_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
+}
+
+// ---- PLAN-884 T-04：自 stdlib 壳迁入（原样搬移） ----
+
+// ============================================================================
+// Plan 353 stage 6: Async file IO (non-blocking yield, same pattern as
+// Plan 349 step7's async HTTP)
+// ============================================================================
+
+/// Plan 349 table consolidation: payload shape for the unified async result
+/// table. Each variant corresponds to a former specialized table.
+pub enum AsyncResult {
+    /// Body string (former ASYNC_HTTP_RESULTS / ASYNC_IO_RESULTS).
+    Body(String),
+    /// Structured HTTP response (former ASYNC_HTTP_RESULTS_HANDLE).
+    Structured {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    },
+    /// Auth-bearing HTTP response (former ASYNC_HTTP_RESULTS_AUTH).
+    /// status is i32 to match LAST_HTTP_STATUS.
+    Auth { status: i32, body: String },
+}
+
+/// Plan 394 Phase C: extract future ids from a stack list (array literal → ListData<Value>).
+fn pop_future_ids_from_list(task: &mut AutoTask, vm: &AutoVM) -> Result<Vec<u32>, VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+    let mut fids = Vec::new();
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
+            for i in 0..list.len() {
+                // PLAN-776 R8-01：句柄元素为 Value::Future（保真映射）；
+                // legacy 位形态 Int 兼容保留（无生产者，防手工构造）。
+                match list.get(i) {
+                    Some(auto_val::Value::Future(f)) => fids.push(f.id as u32),
+                    Some(auto_val::Value::Int(bits)) if (bits & 0xFF) == 0xF0 => {
+                        fids.push((bits >> 8) as u32)
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    if fids.is_empty() {
+        return Err(VMError::RuntimeError(
+            "future_all/race: empty or invalid future list".into(),
+        ));
+    }
+    Ok(fids)
+}
+
+/// Plan 394 Phase C: `future_all([f1, f2, ...]) -> Future` (External).
+/// Resolves when every component future is Ready/Failed; result is `"[v1, v2, ...]"`.
+pub fn shim_future_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let fids = pop_future_ids_from_list(task, vm)?;
+    let mut arcs = Vec::new();
+    for fid in &fids {
+        match vm.futures.get(fid) {
+            Some(a) => arcs.push(a.clone()),
+            None => {
+                return Err(VMError::RuntimeError(format!(
+                    "future_all: missing future {fid}"
+                )))
+            }
+        }
+    }
+    let combo = vm.register_external_future(task.id);
+    if let Some(combo_arc) = vm.futures.get(&combo) {
+        let combo_arc = combo_arc.clone();
+        std::thread::spawn(move || {
+            loop {
+                let all_done = arcs.iter().all(|a| {
+                    a.read()
+                        .map(|f| f.state != crate::vm::engine::FutureState::Pending)
+                        .unwrap_or(true)
+                });
+                if all_done {
+                    let parts: Vec<String> = arcs
+                        .iter()
+                        .map(|a| {
+                            let f = a.read().unwrap();
+                            match &f.result {
+                                Some(auto_val::Value::Int(n)) => n.to_string(),
+                                Some(other) => format!("{:?}", other),
+                                None => "nil".to_string(),
+                            }
+                        })
+                        .collect();
+                    // PLAN-705 T-02: 完成走统一入口（含完成通知）。
+                    crate::vm::ffi::async_http::complete_external_future(
+                        &combo_arc,
+                        Ok(auto_val::Value::Str(
+                            format!("[{}]", parts.join(", ")).into(),
+                        )),
+                    );
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        });
+    }
+    task.ram.push_nv(auto_val::encode_future(combo));
+    Ok(())
+}
+
+/// Plan 394 Phase C: `future_race([f1, f2, ...]) -> Future` (External).
+/// Resolves with the first Ready component's result.
+pub fn shim_future_race(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let fids = pop_future_ids_from_list(task, vm)?;
+    let mut arcs = Vec::new();
+    for fid in &fids {
+        match vm.futures.get(fid) {
+            Some(a) => arcs.push(a.clone()),
+            None => {
+                return Err(VMError::RuntimeError(format!(
+                    "future_race: missing future {fid}"
+                )))
+            }
+        }
+    }
+    let combo = vm.register_external_future(task.id);
+    if let Some(combo_arc) = vm.futures.get(&combo) {
+        let combo_arc = combo_arc.clone();
+        std::thread::spawn(move || {
+            loop {
+                for a in &arcs {
+                    let ready = a
+                        .read()
+                        .map(|f| f.state != crate::vm::engine::FutureState::Pending)
+                        .unwrap_or(true);
+                    if ready {
+                        let result = a.read().unwrap().result.clone();
+                        // PLAN-705 T-02: 完成走统一入口（含完成通知）。
+                        crate::vm::ffi::async_http::complete_external_future(
+                            &combo_arc,
+                            Ok(result.unwrap_or(auto_val::Value::Nil)),
+                        );
+                        return;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        });
+    }
+    task.ram.push_nv(auto_val::encode_future(combo));
+    Ok(())
+}
+
+/// Execute a shell command string, capture stdout+stderr, truncate at 64KB.
+/// Takes: cmd (String), timeout_ms (i32) — timeout currently unused.
+/// Returns: JSON string {"exit_code": N, "stdout": "...", "stderr": "..."}
+pub fn shim_sys_exec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop timeout as i32 (Auto int = i32, not i64, to avoid slot mismatch)
+    let timeout_ms: i32 = crate::vm::native::pop_arg_i32(task);
+    let cmd: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let shell = if cfg!(windows) { "cmd" } else { "sh" };
+    let flag = if cfg!(windows) { "/C" } else { "-c" };
+
+    let output = std::process::Command::new(shell)
+        .arg(flag)
+        .arg(&cmd)
+        .output()
+        .map_err(|e| VMError::RuntimeError(format!("sys.exec failed: {} - {}", cmd, e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    let stdout_truncated = if stdout.len() > 65536 {
+        format!(
+            "{}...(truncated, {} bytes total)",
+            &stdout[..65536],
+            stdout.len()
+        )
+    } else {
+        stdout
+    };
+
+    let result_json = serde_json::json!({
+        "exit_code": exit_code,
+        "stdout": stdout_truncated,
+        "stderr": stderr,
+    });
+
+    let result_str = serde_json::to_string(&result_json)
+        .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
+
+    result_str
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let _ = timeout_ms;
+    Ok(())
+}
+
+/// 运行时值类型名（PLAN-781 T-25 R05 r6）：`type_of(x) -> str`——
+/// int/float/str/bool/null/list/object/future。多态参数须裸 shim（rust_fn
+/// 的类型化编组不支持 any）；.at 调用形如 `type_of(x)`（auto. 前缀省略，
+/// 同 json.parse 先例）。动机：Reader meta 数字字段的消费域判别——
+/// 字符串形态判别（concat 位模式 vs to_string 截断）对浮点 0.0 失真
+/// 且受池/槽混叠（F-781-E02 家族）波及，类型谓词为可靠面。
+pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // F-781-R07：消费参数须配平所有权——pop_arg_nv 取值并清槽、
+    // StakeGuard 恰一次释放其堆/池引用份额（同 shim_json_from_value
+    // 先例）。裸 pop_nv 只读 tag 不释放：复审实证 100 次调用残留
+    // 100 份输入引用（对象 heap 0→100、动态串 pool +100）。
+    let nv = crate::vm::native::pop_arg_nv(task);
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+    let t: &'static str = if auto_val::is_i32(nv) {
+        "int"
+    } else if auto_val::is_f32(nv) || auto_val::is_f64(nv) {
+        "float"
+    } else if auto_val::is_string(nv) {
+        "str"
+    } else if auto_val::is_bool(nv) {
+        "bool"
+    } else if auto_val::is_null(nv) {
+        "null"
+    } else if auto_val::is_list(nv) {
+        "list"
+    } else if auto_val::is_object(nv) {
+        "object"
+    } else if auto_val::is_future(nv) {
+        "future"
+    } else {
+        "unknown"
+    };
+    push_string_result(task, vm, t.to_string())
+}
+
+// ============================================================================
+// Option Functions (ID 1550-1559) — Plan 200 Task 2.4
+// ============================================================================
+
+/// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
+pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop default value
+    let default_val = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        auto_val::decode_i32(nv)
+    };
+
+    // Pop option value — check for None (null or -1 sentinel)
+    {
+        let opt_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_opt_nv = crate::vm::native::StakeGuard::nv(vm, opt_nv);
+        // None is represented as encode_null() (TAG_NULL) or encode_i32(-1)
+        if auto_val::is_null(opt_nv) {
+            task.ram.push_i32(default_val);
+            return Ok(());
+        }
+        let opt_val = auto_val::decode_i32(opt_nv);
+        if opt_val == -1 {
+            task.ram.push_i32(default_val);
+            return Ok(());
+        }
+        // Check for heap-based Option
+        if opt_val > 0 {
+            let instance_id = opt_val as u64;
+            if vm.is_option_none(instance_id) {
+                task.ram.push_i32(default_val);
+                return Ok(());
+            }
+            if vm.is_option_some(instance_id) {
+                if let Some(inner) = vm.get_option_inner(instance_id) {
+                    match inner {
+                        auto_val::Value::Int(n) => task.ram.push_i32(n),
+                        auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(b)),
+                        _other => task.ram.push_i32(opt_val),
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        task.ram.push_nv(opt_nv);
+        return Ok(());
+    }
+}
+
+// ============================================================================
+// PLAN-057 T6: web 内建 natives 补齐（等价性缺陷族③——未实现者原运行期
+// 静默 None 桩）。手动 shim（非 rust_fn 宏：需按 nv 标签分支/固 arity 弹栈），
+// 注册在 engine 的 AutoVM::new 覆盖块（build_from_inventory 之后，沿
+// shim_json_parse_vm 惯例）。
+// ============================================================================
+
+/// 堆 id 提取：object-tag 引用 / i32 裸句柄（≥ HEAP_ID_BASE）/ list-tag。
+/// 命中返回堆 id；标量与非法形态返回 None。
+fn web_builtin_heap_id(nv: auto_val::NanoValue) -> Option<u64> {
+    if auto_val::is_object(nv) {
+        Some(auto_val::decode_object(nv) as u64)
+    } else if auto_val::is_list(nv) {
+        Some(auto_val::decode_list(nv) as u64)
+    } else if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if v as i64 >= crate::vm::rc::HEAP_ID_BASE as i64 {
+            Some(v as u64)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn heap_is_list(vm: &AutoVM, id: u64) -> bool {
+    use crate::vm::types::ListData;
+    vm.get_heap_object(id)
+        .map(|o| {
+            let guard = o.read().unwrap();
+            let any = guard.as_any();
+            any.downcast_ref::<ListData<i32>>().is_some()
+                || any.downcast_ref::<ListData<String>>().is_some()
+                || any.downcast_ref::<ListData<bool>>().is_some()
+                || any.downcast_ref::<ListData<auto_val::Value>>().is_some()
+        })
+        .unwrap_or(false)
+}
+
+/// 栈 nv → `auto_val::Value`（stringify 序列化入口；标量直编码、堆引用
+/// 包 VmRef 交 vm_value_to_json 递归）。
+/// PLAN-057 T11 实机补遗：堆引用判定必须在 i32 标量臂**之前**——嵌套
+/// VmRef 字段读（GET_FIELD ObjectData 臂经 rc_push_id）以裸 int 句柄
+/// （≥HEAP_ID_BASE 约定，数组/列表槽同款）出栈，先走 Int 臂会把句柄
+/// 序列化成数字（实机工具卡 Arguments 显示 "4067504" 现场根因）。
+fn nv_to_vm_value(vm: &AutoVM, nv: auto_val::NanoValue) -> auto_val::Value {
+    use auto_val::Value;
+    if auto_val::is_null(nv) {
+        Value::Nil
+    } else if auto_val::is_bool(nv) {
+        Value::Bool(auto_val::decode_bool(nv))
+    } else if let Some(id) = web_builtin_heap_id(nv) {
+        Value::VmRef(auto_val::VmRef { id: id as usize })
+    } else if auto_val::is_i32(nv) {
+        Value::I64(auto_val::decode_i32(nv) as i64)
+    } else if auto_val::is_i64(nv) {
+        // PLAN-734 T-03（E2 修复）：48 位内联 i64——此前无臂落 Value::Nil，
+        // json.encode(5000000001) 输出 4294967295（decode_i32 跨 tag 误读）。
+        Value::I64(auto_val::decode_i64(nv))
+    } else if auto_val::is_u64(nv) {
+        // 算术 lane 的 U64 形态（Plan 377 单槽编码）——按数值交付。
+        Value::I64(auto_val::decode_u64(nv) as i64)
+    } else if auto_val::is_bigint(nv) {
+        let id = auto_val::decode_bigint_handle(nv) as u64;
+        let v = vm
+            .get_heap_object(id)
+            .and_then(|o| {
+                let g = o.read().ok()?;
+                let b = g
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()?;
+                Some(b.as_i64())
+            })
+            .unwrap_or(0);
+        Value::I64(v)
+    } else if auto_val::is_f64(nv) {
+        Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        Value::Float(auto_val::decode_f32(nv).into())
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        let s = vm
+            .get_string(idx)
+            .map(|b| String::from_utf8_lossy(b.as_slice()).to_string())
+            .unwrap_or_default();
+        Value::Str(s.into())
+    } else {
+        Value::Nil
+    }
+}
+
+// ============================================================================
+// Log Functions (debug/info/warn/error = 1805-1808, noop = 1804;P499-7 移段)
+// ============================================================================
+
+/// PLAN-066 T-12（F-W1）：`i18n.t(key)` VM 轨查表——接 PLAN-050 C7 的
+/// i18n_lookup 注册表（front 根目录 i18n/{lang}.json，AUTO_LOCALE 装载；
+/// 查不中回落 key 本身）。此前 computed/handler 合成体的 `i18n.t(...)`
+/// 无路由：`i18n` 标识符在合成作用域未绑定（组件级
+/// `let i18n = useI18n()` 不进合成体）→ codegen "Undefined variable:
+/// i18n" → computed 导出毒化 → App link failed 启动 exit 1（KD-066
+/// F-W1）。codegen P240 map ("i18n","t") 路由至此，接收者不再编译。
+/// 入参 CALL_NAT 约定（自顶向下）：[key]。
+// PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
+pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let out = crate::i18n_lookup(&key).unwrap_or_else(|| key.clone());
+    VMConvertible::push_to_stack(&out, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+// ============================================================================
+// Task/Msg Functions (Plan 121)
+// ============================================================================
+
+use crate::vm::task_system::{TaskHandle, TaskInstance, TaskRegistry};
+
+// TaskHandle wrapper for passing through VM
+// The handle is stored as a tuple: (task_type: String, instance_id: u64, tx_ptr: u64)
+// We use a thread-local storage to keep actual handles alive
+thread_local! {
+    static TASK_HANDLES: std::cell::RefCell<std::collections::HashMap<u64, TaskHandle>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    // Keep TaskInstance alive so the receiver (rx) doesn't get dropped
+    static TASK_INSTANCES: std::cell::RefCell<std::collections::HashMap<u64, TaskInstance>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    // Map task_type name -> handle_id for singleton tasks (#[single] annotation)
+    static SINGLETON_TASKS: std::cell::RefCell<std::collections::HashMap<String, u64>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Global TaskRegistry for TaskSystem operations
+static GLOBAL_TASK_REGISTRY: std::sync::OnceLock<TaskRegistry> = std::sync::OnceLock::new();
+
+/// Get or initialize the global TaskRegistry
+fn get_global_task_registry() -> &'static TaskRegistry {
+    GLOBAL_TASK_REGISTRY.get_or_init(TaskRegistry::new)
+}
+
+/// Plan 224: Helper for executing async operations in FFI shims.
+/// Creates an independent tokio runtime and runs the future with block_on.
+/// Note: This blocks the current thread. Do not call from within an existing tokio runtime.
+pub fn ffi_async_block_on<F, T>(f: F) -> Result<T, crate::vm::engine::VMError>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let rt = tokio::runtime::Runtime::new().map_err(|e| {
+        crate::vm::engine::VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e))
+    })?;
+    rt.block_on(f)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e))
+}
+
+// Plan 127 Phase 3: ctx.reply() - Send reply from message handler
+//
+// This function is called from task message handlers that have a context parameter:
+//
+//   on(ctx) {
+//       "ping" => { ctx.reply("pong") }
+//   }
+//
+// The reply is sent via the current task's MessageContext, which was set up
+// when the handler was invoked by HANDLE_MSG.
+//
+// Note: This FFI shim is for fallback compatibility. The primary execution
+// path uses the REPLY OpCode directly, which reads the MessageContext from
+// task.current_msg_context set by HANDLE_MSG.
+#[auto_macros::rust_fn("ctx.reply")]
+pub fn shim_ctx_reply(value: i64) -> Result<(), String> {
+    // The actual reply is handled by REPLY OpCode in engine.rs
+    // This shim exists for FFI registration and potential future use
+    // For now, we just return Ok - the real work is done by OpCode::REPLY
+    if crate::is_vm_debug() {
+        eprintln!("[ctx.reply] FFI called with value: {}", value);
+    }
+    Ok(())
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_sys_exec_option_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Option functions (manual shims only)
+    natives.register_shim_by_name("Option.or", shim_option_or);
+    natives.register_shim_by_name("Option.unwrap_or", shim_option_or);
+
+    // Math functions (abs/min/max now via #[rust_fn] multi-name registration)
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_task_run_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Task system (manual shim — VM access for event loop)
+    natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
+}
+
+/// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
+/// （连续原语句切片，序=原序）。注册序是 plan872 有效绑定的载荷，不得重排。
+pub(super) fn register_test_runner_shims(natives: &mut crate::vm::native::NativeInterface) {
+    // Plan 263 Phase 2-3: Test runners (manual shims — calls discover/run from test_runner)
+    natives.register_shim_by_name("auto.test.run_a2r_dir", shim_test_run_a2r_dir);
+    natives.register_shim_by_name("auto.test.run_vm_dir", shim_test_run_vm_dir);
+    natives.register_shim_by_name("auto.test.run_a2c_dir", shim_test_run_a2c_dir);
+    natives.register_shim_by_name("auto.test.run_a2ts_dir", shim_test_run_a2ts_dir);
 }
