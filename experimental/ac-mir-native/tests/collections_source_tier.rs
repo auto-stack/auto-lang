@@ -26,6 +26,17 @@ fn collections_original_owned_first_cases() {
             String::from_utf8_lossy(&run.stderr)
         );
         assert_balanced(&run);
+        if matches!(id, "L04" | "L05") {
+            let text = String::from_utf8_lossy(&run.stderr);
+            assert!(
+                text.contains("allocs=1 frees=1 live=0"),
+                "{id}: extra buffer event: {text}"
+            );
+            assert!(
+                !text.lines().any(|l| l.starts_with("CLONE id=")),
+                "{id}: implicit clone"
+            );
+        }
     }
 }
 

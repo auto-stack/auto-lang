@@ -268,6 +268,144 @@ fn typed_wrong_list_element_rejected_before_object_production() {
     assert!(error.message().contains("mir.list-type"), "{error}");
 }
 
+fn clone_mutation_fixture() -> MirModule {
+    use MirInstr::*;
+    let mut m = fixture(false);
+    let f = &mut m.funcs[0];
+    f.slots.push(MirSlot {
+        ty: 4,
+        kind: SlotKind::Temp,
+        name: None,
+    }); //27, replacement End
+    f.slots.push(MirSlot {
+        ty: 1,
+        kind: SlotKind::Temp,
+        name: None,
+    }); //28, switched guard
+    let remove = f.blocks[0]
+        .instrs
+        .iter()
+        .position(|i| matches!(i, ListRemove { dst: 7, .. }))
+        .unwrap();
+    f.blocks[0].instrs.splice(
+        remove..remove,
+        [
+            VariantPack {
+                dst: 27,
+                variant_ty: 4,
+                disc: 1,
+                payload: None,
+            },
+            ListSet {
+                root: 5,
+                index: 6,
+                value: 27,
+            },
+        ],
+    );
+    for i in &mut f.blocks[0].instrs {
+        if let VariantGuard { dst: 8, disc, .. } = i {
+            *disc = 1;
+        }
+    }
+    f.blocks[0].term = Terminator::Branch {
+        cond: 8,
+        then: 4,
+        else_: 2,
+    };
+    f.blocks[1].instrs[0] = VariantProject {
+        dst: 9,
+        root: 26,
+        disc: 0,
+    };
+    f.blocks.push(MirBlock {
+        instrs: vec![
+            Clone { dst: 26, src: 7 },
+            Const { dst: 0, value: 0 },
+            Aggregate {
+                dst: 2,
+                record_ty: 3,
+                operands: vec![0, 1],
+            },
+            VariantSwitch {
+                root: 26,
+                disc: 0,
+                payload: Some(2),
+            },
+            VariantGuard {
+                dst: 28,
+                src: 26,
+                disc: 0,
+            },
+        ],
+        term: Terminator::Branch {
+            cond: 28,
+            then: 1,
+            else_: 2,
+        },
+    });
+    m
+}
+
+#[test]
+fn typed_clone_list_set_and_variant_switch_leave_original_owned_payload_alive() {
+    let m = clone_mutation_fixture();
+    auto_av_core::verify_mir(&m).unwrap();
+    let run = common::collections::run_module(&m, "typed-independent-set-switch", None);
+    assert_eq!(
+        run.exit_code,
+        Some(84),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    common::collections::assert_balanced(&run);
+    let text = String::from_utf8_lossy(&run.stderr);
+    assert!(text.contains("allocs=3 frees=3 live=0"), "{text}");
+    assert_eq!(
+        text.lines().filter(|l| l.starts_with("CLONE id=")).count(),
+        1,
+        "{text}"
+    );
+}
+
+#[test]
+fn typed_double_payload_projection_and_read_after_move_reject_before_codegen() {
+    let mut m = clone_mutation_fixture();
+    auto_av_core::verify_mir(&m).unwrap();
+    m.is_unit = true;
+    m.funcs[0].blocks[1].instrs.insert(
+        1,
+        MirInstr::VariantProject {
+            dst: 9,
+            root: 26,
+            disc: 0,
+        },
+    );
+    let error = ac_mn::collections_lower::emit_unit_coff(&m).unwrap_err();
+    assert!(
+        matches!(error, ac_mn::MnError::Admit("mir", _))
+            && error.message().contains("payload-moved"),
+        "{error}"
+    );
+    let mut m = fixture(false);
+    m.is_unit = true;
+    let after_move = m.funcs[0].blocks[0]
+        .instrs
+        .iter()
+        .position(|i| matches!(i, MirInstr::ListPush { .. }))
+        .unwrap()
+        + 1;
+    m.funcs[0].blocks[0]
+        .instrs
+        .insert(after_move, MirInstr::Clone { dst: 26, src: 3 });
+    let error = ac_mn::collections_lower::emit_unit_coff(&m).unwrap_err();
+    assert!(
+        matches!(error, ac_mn::MnError::Admit("mir", _))
+            && error.message().contains("use-after-move"),
+        "{error}"
+    );
+}
+
 #[test]
 fn typed_container_signatures_and_places_remain_outside_source_native_abi() {
     fn unit(value: MirType, parameter: bool, result_value: bool) -> MirModule {

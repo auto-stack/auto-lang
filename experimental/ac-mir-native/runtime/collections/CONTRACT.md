@@ -56,7 +56,7 @@ Remaining delivery work, owned by T-03..06 and not closed by the first chain:
   silent whole-module collections fallback.
 - Linker/object metadata and formal16/24/8MiB compiler partition observations;
   the worker OS peak alone cannot prove each partition.
-- Remaining helper deadline/cancellation integration and full mutation controls,
+- Remaining driver deadline/cancellation integration and formal failure replay,
   runtime content/build/dependency and parent observation integration in the driver.
 - All formal performance/resource measurements and formal driver integration.
 
@@ -164,3 +164,16 @@ boundaries plus one, text/list clone cancellation rollback and allocator
 takeover refusal. Existing partial-clone/deep-stack/caller-trap/leak controls
 remain in place. These first-case mechanisms do not close the remaining formal
 delivery work listed above.
+
+T-03 resource closure adds a verified typed-MIR machine witness that changes
+the cloned List element to End, removes it, clones/switches that Variant to a
+new owned Item, then projects/drops it and still reads the original List Item.
+Result84 and actual text alloc/free3/3 distinguish shared aliasing and hidden
+clone; End clone allocates no text buffer. Duplicate moved-payload projection
+and read-after-move reject before object production. Runtime-only mutation
+probes separately exercise invalid ListSet and failure of switching an already
+owned Variant, preserving both old target and incoming owner; successful set/
+switch drop the previous payload exactly once. Wrong-arm/repeated projections
+leave the destination unchanged. Four literal buffers free4/4 with no clone.
+Original L04/L05 projection/removal uses one text buffer each and no clone;
+resource mutation probes do not masquerade as source or typed codegen evidence.

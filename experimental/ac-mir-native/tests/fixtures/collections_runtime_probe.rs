@@ -21,8 +21,11 @@ extern "system" {
     fn mn_coll_list_new(dst: *mut Cell, cap: u64) -> i32;
     fn mn_coll_list_insert(list: u64, index: i32, src: *mut Cell) -> i32;
     fn mn_coll_list_remove(dst: *mut Cell, list: u64, index: i32) -> i32;
+    fn mn_coll_list_set(list: u64, index: i32, value: *mut Cell) -> i32;
+    fn mn_coll_list_peek(dst: *mut Cell, list: u64, index: i32) -> i32;
     fn mn_coll_list_len(list: u64) -> i32;
     fn mn_coll_variant_pack(dst: *mut Cell, disc: u64, payload: *mut Cell) -> i32;
+    fn mn_coll_variant_disc(bits: u64) -> i32;
     fn mn_coll_variant_project(dst: *mut Cell, root: u64, disc: u64, moving: u64) -> i32;
     fn mn_coll_str_len(text: u64) -> i32;
     fn mn_coll_clone(dst: *mut Cell, src: *const Cell) -> i32;
@@ -110,6 +113,83 @@ unsafe fn callee() -> ! {
 
 #[no_mangle]
 pub unsafe extern "system" fn ac_start() -> ! {
+    if cfg!(mn_probe_mutations) {
+        let mut frame = [0u64; 4];
+        let mut cells = [EMPTY; 10];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            10,
+        ));
+        ok(mn_coll_literal(&mut cells[0], b"first".as_ptr(), 5));
+        let first = cells[0].bits;
+        ok(mn_coll_list_new(&mut cells[1], 1));
+        ok(mn_coll_list_insert(cells[1].bits, 0, &mut cells[0]));
+        ok(mn_coll_literal(&mut cells[2], b"second".as_ptr(), 6));
+        let second = cells[2].bits;
+        let before = mn_coll_live_bytes();
+        check(
+            mn_coll_list_set(cells[1].bits, 1, &mut cells[2]) == -21,
+            153,
+        );
+        ok(mn_coll_list_peek(&mut cells[3], cells[1].bits, 0));
+        check(
+            cells[3].bits == first
+                && cells[2].bits == second
+                && cells[2].owned == 1
+                && mn_coll_live_bytes() == before,
+            154,
+        );
+        ok(mn_coll_list_set(cells[1].bits, 0, &mut cells[2]));
+        ok(mn_coll_list_peek(&mut cells[3], cells[1].bits, 0));
+        check(
+            cells[3].bits == second && cells[2].owned == 0 && mn_coll_str_len(cells[3].bits) == 6,
+            155,
+        );
+        ok(mn_coll_literal(&mut cells[4], b"live".as_ptr(), 4));
+        ok(mn_coll_variant_pack(&mut cells[5], 0, &mut cells[4]));
+        let old = cells[5].bits;
+        ok(mn_coll_literal(&mut cells[6], b"new".as_ptr(), 3));
+        let incoming = cells[6].bits;
+        let before = mn_coll_live_bytes();
+        mn_coll_fail_nth(1);
+        check(
+            mn_coll_variant_pack(&mut cells[5], 1, &mut cells[6]) == -25,
+            156,
+        );
+        check(
+            cells[5].bits == old
+                && cells[6].bits == incoming
+                && cells[6].owned == 1
+                && mn_coll_live_bytes() == before,
+            157,
+        );
+        ok(mn_coll_variant_project(&mut cells[7], cells[5].bits, 0, 0));
+        check(mn_coll_str_len(cells[7].bits) == 4, 158);
+        mn_coll_drop(&mut cells[7]);
+        mn_coll_fail_nth(0);
+        ok(mn_coll_variant_pack(&mut cells[5], 1, &mut cells[6]));
+        check(
+            cells[5].bits != old && mn_coll_variant_disc(cells[5].bits) == 1 && cells[6].owned == 0,
+            159,
+        );
+        cells[8].bits = 70;
+        check(
+            mn_coll_variant_project(&mut cells[8], cells[5].bits, 0, 1) == -24
+                && cells[8].bits == 70,
+            160,
+        );
+        ok(mn_coll_variant_project(&mut cells[9], cells[5].bits, 1, 1));
+        check(mn_coll_str_len(cells[9].bits) == 3, 161);
+        check(
+            mn_coll_variant_project(&mut cells[8], cells[5].bits, 1, 1) == -24
+                && cells[8].bits == 70,
+            162,
+        );
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    }
     if cfg!(mn_probe_frames) {
         let mut outer = [0u64; 4];
         let mut inner = [0u64; 4];

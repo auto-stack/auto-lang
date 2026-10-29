@@ -96,6 +96,25 @@ fn zero_live(stderr: &[u8]) {
 }
 
 #[test]
+fn runtime_set_switch_failure_and_active_payload_transfer_release_once() {
+    let run = runtime_probe("set-switch-atomic", Some("mn_probe_mutations"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+    ac_mn::collections_observe::decode(run.exit_code, &run.stderr).unwrap();
+    let text = String::from_utf8_lossy(&run.stderr);
+    assert!(text.contains("allocs=4 frees=4 live=0"), "{text}");
+    assert!(
+        !text.lines().any(|l| l.starts_with("CLONE id=")),
+        "implicit clone: {text}"
+    );
+}
+
+#[test]
 fn runtime_managed_pages_and_actual_frame_storage_share_one_ceiling() {
     let run = runtime_probe("frame-budget", Some("mn_probe_frames"));
     assert_eq!(
