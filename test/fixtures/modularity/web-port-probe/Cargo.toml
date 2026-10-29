@@ -1,0 +1,13 @@
+[package]
+name = "web-port-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+
+[profile.dev]
+debug = "line-tables-only"
