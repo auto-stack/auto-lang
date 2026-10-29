@@ -154,3 +154,32 @@ pub trait ConsoleHost {
     fn write(&mut self, stream: Stream, bytes: &[u8], cancel: &CancelFlag)
         -> Result<(), HostError>;
 }
+
+// This is an execution-scope guard, not a provider registry or a portable grant.
+// Providers receive no guest callback; public guest entries also refuse synchronous reentry.
+std::thread_local! {
+    static IN_PROVIDER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn inside_provider() -> bool {
+    IN_PROVIDER.with(|flag| flag.get())
+}
+
+pub(crate) struct ProviderScope;
+impl ProviderScope {
+    pub(crate) fn enter() -> Option<Self> {
+        IN_PROVIDER.with(|flag| {
+            if flag.get() {
+                None
+            } else {
+                flag.set(true);
+                Some(Self)
+            }
+        })
+    }
+}
+impl Drop for ProviderScope {
+    fn drop(&mut self) {
+        IN_PROVIDER.with(|flag| flag.set(false));
+    }
+}

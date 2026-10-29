@@ -2114,6 +2114,11 @@ fn dispatch_with_host<V: ModuleView>(
     stop_before_call: bool,
     mut host: Option<&mut dyn crate::host::ConsoleHost>,
 ) -> Option<ExecOutcome> {
+    if crate::host::inside_provider() {
+        return Some(ExecOutcome::Infra(
+            "host.reentry: guest execution from a host call is forbidden".into(),
+        ));
+    }
     if !v.host_imports().is_empty() && host.is_none() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: no console provider".into(),
@@ -4735,7 +4740,12 @@ fn dispatch_with_host<V: ModuleView>(
                         let provider = host.as_deref_mut().ok_or_else(|| {
                             ExecOutcome::Infra("host.unauthorized: no provider".into())
                         })?;
-                        provider.write(stream, &line, cancel).map_err(|e| match e {
+                        let provider_result = {
+                            let _scope = crate::host::ProviderScope::enter()
+                                .ok_or_else(|| ExecOutcome::Infra("host.reentry".into()))?;
+                            provider.write(stream, &line, cancel)
+                        };
+                        provider_result.map_err(|e| match e {
                             crate::host::HostError::Resource => {
                                 console_output_limit("provider output resource failure")
                             }

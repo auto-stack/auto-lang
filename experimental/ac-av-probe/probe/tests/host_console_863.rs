@@ -41,6 +41,79 @@ fn av_console_863_exact_source_bytes_and_result() {
 }
 
 #[test]
+fn av_console_863_provider_cannot_reenter_guest_and_scope_clears() {
+    use auto_av_core::host::{ConsoleHost, HostError, Stream};
+    let old = auto_ac_prototype::source::compile_scalar_source(
+        "fn main() int { return 99 }",
+        "old.at",
+        &[],
+    )
+    .unwrap();
+    let m = auto_mir_lower::lower_checked(&old.checked, "d_main", 0).unwrap();
+    let loaded =
+        auto_av_core::verify_abc_bytes(&auto_av_core::encode_abc(&m).unwrap().to_flat(), &m.owner)
+            .unwrap();
+    struct ReenterHost<'a> {
+        target: &'a auto_av_core::LoadedModule,
+        capture: ConsoleCapture,
+        attempted: bool,
+    }
+    impl ConsoleHost for ReenterHost<'_> {
+        fn retained_bytes(&self) -> usize {
+            self.capture.stdout.len() + self.capture.stderr.len()
+        }
+        fn write(
+            &mut self,
+            stream: Stream,
+            bytes: &[u8],
+            cancel: &CancelFlag,
+        ) -> Result<(), HostError> {
+            self.attempted = true;
+            let (out, trace) =
+                auto_av_core::av::execute(self.target, &ExecLimits::default(), cancel);
+            assert!(
+                matches!(out, ExecOutcome::Infra(ref m) if m.starts_with("host.reentry:")),
+                "{out:?}"
+            );
+            assert_eq!(trace.root_frame_commits, 0);
+            self.capture.write(stream, bytes, cancel)
+        }
+    }
+    let p = compile("print(7)\n", "d_main").unwrap();
+    let mut provider = ReenterHost {
+        target: &loaded,
+        capture: ConsoleCapture::default(),
+        attempted: false,
+    };
+    let (out, _) = p
+        .run(
+            &grants(),
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &mut provider,
+        )
+        .unwrap();
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::Unit,
+            ..
+        }
+    ));
+    assert!(provider.attempted);
+    assert_eq!(provider.capture.stdout, b"7\n");
+    let (out, _) =
+        auto_av_core::av::execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(99),
+            ..
+        }
+    ));
+}
+
+#[test]
 fn av_console_863_owned_borrowed_and_unit_script() {
     for src in [
         "fn main() void {\n let text Str = \"世界\"\n print(text)\n eprint(text)\n}\n",
