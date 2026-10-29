@@ -93,7 +93,10 @@ pub fn record_layout(
     let mut pending: Vec<TypeIdx> = vec![ty];
     let mut in_flight = std::collections::BTreeSet::from([ty]);
     while let Some(cur) = pending.last().copied() {
-        let Some(MirType::Record(cr)) = m.types.get(cur as usize) else {
+        // PLAN-881: the entry type may be a RecordView (a view base); its
+        // layout equals the underlying record's.
+        let Some(MirType::Record(cr) | MirType::RecordView(cr)) = m.types.get(cur as usize)
+        else {
             return Err(MnError::Unsupported(
                 "layout",
                 format!("type {cur} is not a record but entered record layout"),
@@ -209,7 +212,9 @@ pub fn path_offset(
     let mut off = 0u64;
     let mut cur = ty;
     for seg in path {
-        let Some(MirType::Record(r)) = m.types.get(cur as usize) else {
+        // PLAN-881: a RecordView base (an owned-profile view param or a
+        // method receiver) has the same field layout as its record.
+        let Some(MirType::Record(r) | MirType::RecordView(r)) = m.types.get(cur as usize) else {
             return Err(MnError::Unsupported(
                 "layout",
                 format!("path segment {seg} escapes a non-record type {cur}"),
@@ -233,7 +238,8 @@ pub fn path_offset(
 pub fn path_ty(m: &MirModule, ty: TypeIdx, path: &[u16]) -> Result<TypeIdx, MnError> {
     let mut cur = ty;
     for seg in path {
-        let Some(MirType::Record(r)) = m.types.get(cur as usize) else {
+        // PLAN-881: RecordView bases carry their record's field table.
+        let Some(MirType::Record(r) | MirType::RecordView(r)) = m.types.get(cur as usize) else {
             return Err(MnError::Unsupported(
                 "layout",
                 format!("path segment {seg} escapes a non-record type {cur}"),

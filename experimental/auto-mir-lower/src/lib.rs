@@ -26,4 +26,8 @@ pub use hir_adapter::*;
 /// Semantic contract version of the HIR→Typed MIR lowering. Bump ONLY when
 /// lowering semantics change (mapping rules, admitted domains, error
 /// taxonomy); pure refactors and consumer-side moves keep it frozen.
-pub const MIR_LOWERING_VERSION: &str = "1";
+/// v2 (PLAN-881): record/text-record type-bound static/view methods lower
+/// as ordinary MIR functions (`m.<Owner>.<name>` identity) in the
+/// av.data/1 + av.owned/1 whole-module and single-function surfaces —
+/// the previously rejected `lower.method` rows become admitted.
+pub const MIR_LOWERING_VERSION: &str = "2";

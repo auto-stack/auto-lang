@@ -159,8 +159,12 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             require: [name]
             forbid: [symbol, effect, record, receiver]
         }
+        // PLAN-881: a method's body is optional at the SCHEMA level —
+        // body-less method scaffolds (owner/receiver/mode facts only)
+        // are the single-method document convention, mirroring
+        // `function`. Whole-module verify still requires a real body.
         branch(key: "method") {
-            require: [name, body, record, receiver]
+            require: [name, record, receiver]
             forbid: [symbol, effect]
         }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body, record, receiver] }

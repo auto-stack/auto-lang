@@ -53,7 +53,7 @@ pub const EXPECTED_MN_WORKER_VERSION: &str = "mnworker/1.0";
 /// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
 /// the mn pipeline lowers through the shared crate; a lowering contract
 /// bump without a mirror update fails the identity axis loudly.
-pub const EXPECTED_MIR_LOWERING_VERSION: &str = "1";
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "2";
 
 pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();

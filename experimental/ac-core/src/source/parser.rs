@@ -573,8 +573,15 @@ impl<'s> Parser<'s> {
                     self.pos += 1;
                     self.expect_kw(Kw::Fn, "`fn` after `static`")
                         .map_err(|_| self.syntax("expected `fn` after `static`"))?;
-                    let _ = sp;
-                    methods.push(self.fn_body_from_fn_kw(name.clone(), Receiver::Static)?);
+                    // PLAN-881: the item span STARTS at the `static`
+                    // keyword — a span begun at `fn` would leave a
+                    // dangling `static ` behind any byte-range masking
+                    // of the method (the single-method document path).
+                    methods.push(self.fn_body_from_fn_kw_span(
+                        name.clone(),
+                        Receiver::Static,
+                        sp,
+                    )?);
                 }
                 Some(Tok::Kw(Kw::Fn)) => {
                     self.pos += 1;
@@ -661,6 +668,21 @@ impl<'s> Parser<'s> {
     ) -> Result<FnItem, Diagnostic> {
         let fn_span = self.toks[self.pos - 1].span; // the `fn` keyword
         let mut item = self.fn_item_tail(fn_span, receiver)?;
+        item.owner = Some(owner);
+        Ok(item)
+    }
+
+    /// [`fn_body_from_fn_kw`] with an explicit leading span (the `static`
+    /// keyword) joined into the item span — static methods span from
+    /// `static`, view methods from `fn` (PLAN-881).
+    fn fn_body_from_fn_kw_span(
+        &mut self,
+        owner: Ident,
+        receiver: Receiver,
+        lead: crate::atom_text::Span,
+    ) -> Result<FnItem, Diagnostic> {
+        let fn_span = self.toks[self.pos - 1].span; // the `fn` keyword
+        let mut item = self.fn_item_tail(fn_span.join(lead), receiver)?;
         item.owner = Some(owner);
         Ok(item)
     }

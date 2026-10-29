@@ -174,8 +174,24 @@ pub struct EditReport {
 struct OutlineEntry {
     is_fn: bool,
     name: String,
+    /// PLAN-881: owning record name for METHOD entries (`None` for free
+    /// functions and type shells).
+    owner: Option<String>,
     start: usize,
     end: usize,
+}
+
+impl OutlineEntry {
+    /// The unit key of a fn-axis entry: `d_<name>` for free functions,
+    /// the owner-based `m.<Rec>.<name>` for methods — the MIR-level unit
+    /// identity the adapter/split/link chain already keys on, stable
+    /// under unrelated declaration insertion/reorder.
+    fn unit_key(&self) -> String {
+        match &self.owner {
+            None => format!("d_{}", self.name),
+            Some(rec) => format!("m.{rec}.{}", self.name),
+        }
+    }
 }
 
 /// The data-profile incremental session.
@@ -244,10 +260,14 @@ impl DataIncrementalSession {
                 .map(|d| format!("resolve env: {} {}", d.code, d.message))
                 .unwrap_or_else(|| "resolve env failed".to_string())
         })?;
+        // PLAN-881: methods are unit citizens — the resident key is the
+        // owner-based unit key (`m.<Rec>.<name>`); the ORDER still mirrors
+        // the environment's flat slot sequence (free fns and type methods
+        // interleaved exactly as `resolve_detailed` flattens them).
         let fn_order: Vec<String> = outline
             .iter()
             .filter(|o| o.is_fn)
-            .map(|o| format!("d_{}", o.name))
+            .map(|o| o.unit_key())
             .collect();
         if !fn_order.iter().any(|n| n == entry) {
             return Err(format!("entry def `{entry}` not found"));
@@ -321,14 +341,15 @@ impl DataIncrementalSession {
         ev: &mut ProductionEvents,
     ) -> Result<(Arc<hir::Body>, Arc<FunctionCode>), String> {
         let m = bundle.modules.first().ok_or("bundle has no module")?;
-        let di = m
-            .defs
-            .iter()
-            .position(|d| d.id_text == def)
+        // PLAN-881: the resident key is the UNIT key — free functions
+        // share their HIR def id with it; a method resolves through the
+        // adapter's owner-based MIR name to its (transient, fi-indexed)
+        // HIR def id.
+        let (di, hir_def) = def_position_of_key(m, def)
             .ok_or_else(|| format!("def `{def}` missing in bundle"))?;
         let body_id = match &m.defs[di].kind {
-            hir::DefKind::Function { body, .. } => *body,
-            _ => return Err(format!("def `{def}` is not a plain function")),
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
+            _ => return Err(format!("def `{def}` is not a function or method def")),
         };
         let body_arc = Arc::new(
             m.bodies
@@ -338,7 +359,7 @@ impl DataIncrementalSession {
         );
         let mir = auto_mir_lower::lower_function_data_unit(
             bundle,
-            def,
+            &hir_def,
             &self.caps,
             fnv1a64(src_for_hash.as_bytes()),
         )
@@ -387,10 +408,7 @@ impl DataIncrementalSession {
         //    the fn-item count comes back MEASURED from the parse.
         let (item, changed_span, parse_fn_items) =
             self.plan_single_def_item(new_src, changed_def)?;
-        let changed_name = changed_def
-            .strip_prefix("d_")
-            .unwrap_or(changed_def)
-            .to_string();
+        let changed_name = work_name_of_key(changed_def);
         let idx = self
             .fn_order
             .iter()
@@ -402,7 +420,7 @@ impl DataIncrementalSession {
         crate::driver::front_door_admit(new_src).map_err(|d| d.message)?;
 
         // 3. The 828 single-body transaction under the producer window.
-        let (cand, work) = body_work::capture_body_work(|| {
+        let (cand, mut work) = body_work::capture_body_work(|| {
             prepare_candidate_document(&mut self.env, &item, idx, new_src, "sess.at")
         });
         let candidate = cand.map_err(|ds| {
@@ -413,6 +431,22 @@ impl DataIncrementalSession {
                     .unwrap_or_else(|| "no diagnostics".to_string())
             )
         })?;
+        // PLAN-881: the descriptor's bind meter keys a METHOD body by its
+        // fi-indexed body-id stem (`f<fi>_<name>`); the gate judges
+        // owner-qualified work keys. Re-key the window's ONE bind record
+        // (only the changed def's body document binds on this path).
+        {
+            let bind_key = bind_key_of(changed_def, idx);
+            if bind_key != changed_name {
+                if let Some(w) = work.remove(&bind_key) {
+                    let e = work.entry(changed_name.clone()).or_default();
+                    e.resolve += w.resolve;
+                    e.typecheck += w.typecheck;
+                    e.plan += w.plan;
+                    e.bind += w.bind;
+                }
+            }
+        }
         let receipt = candidate.receipt();
         let cand_bundle = Arc::new(candidate.parts().bundle.clone());
 
@@ -509,7 +543,7 @@ impl DataIncrementalSession {
         if let Some(e) = self
             .outline
             .iter_mut()
-            .find(|o| o.is_fn && format!("d_{}", o.name) == changed_def)
+            .find(|o| o.is_fn && o.unit_key() == changed_def)
         {
             e.start = changed_span.0;
             e.end = changed_span.1;
@@ -669,10 +703,10 @@ impl DataIncrementalSession {
             ));
         }
         let hit = overlapped.remove(0);
-        if !hit.is_fn || format!("d_{}", hit.name) != changed_def {
+        if !hit.is_fn || hit.unit_key() != changed_def {
             return Err(format!(
                 "non-fast-path: the edit changes `{}` (a `{changed_def}` body edit was requested)",
-                hit.name
+                hit.unit_key()
             ));
         }
         let new_span = (
@@ -680,11 +714,14 @@ impl DataIncrementalSession {
             (new_len as i64 - (old.len() as i64 - hit.end as i64)) as usize,
         );
 
-        // Mask every OTHER fn to an equal-length comment block; type items
-        // and the changed fn keep their bytes (offsets preserved).
+        // Mask every OTHER fn-axis entry (free functions AND sibling
+        // methods) to an equal-length comment block; type shells and the
+        // changed entry keep their bytes (offsets preserved). The owner
+        // type's shell survives, so a method still parses inside its
+        // `type Rec { ... }` context at its ABSOLUTE source position.
         let mut mask_ranges: Vec<(usize, usize)> = Vec::new();
         for o in &self.outline {
-            if !o.is_fn || format!("d_{}", o.name) == changed_def {
+            if !o.is_fn || o.unit_key() == changed_def {
                 continue;
             }
             let (a, b) = if o.end <= old_lo {
@@ -704,7 +741,10 @@ impl DataIncrementalSession {
                 d.message
             )
         })?;
-        let fns: Vec<&FnItem> = program
+        // PLAN-881: the single fn item is either the free function or the
+        // one surviving method of its owner type; the count measures BOTH
+        // shapes (free fns + methods).
+        let mut fns: Vec<&FnItem> = program
             .items
             .iter()
             .filter_map(|i| match i {
@@ -712,6 +752,13 @@ impl DataIncrementalSession {
                 _ => None,
             })
             .collect();
+        for i in &program.items {
+            if let Item::Type(t) = i {
+                for m in &t.methods {
+                    fns.push(m);
+                }
+            }
+        }
         let measured = fns.len();
         if measured != 1 || fns[0].name.name != hit.name {
             return Err(format!(
@@ -727,7 +774,7 @@ impl DataIncrementalSession {
         let changed_end = self
             .outline
             .iter()
-            .find(|o| o.is_fn && format!("d_{}", o.name) == changed_def)
+            .find(|o| o.is_fn && o.unit_key() == changed_def)
             .map(|o| o.end)
             .unwrap_or(0);
         for e in self.outline.iter_mut() {
@@ -792,7 +839,7 @@ impl DataIncrementalSession {
         let new_fn_defs: Vec<String> = new_outline
             .iter()
             .filter(|o| o.is_fn)
-            .map(|o| format!("d_{}", o.name))
+            .map(|o| o.unit_key())
             .collect();
         if !new_fn_defs.contains(&self.entry) {
             return Err(format!(
@@ -818,18 +865,20 @@ impl DataIncrementalSession {
             }
             set
         };
+        // PLAN-881: the fn-axis segment map is already keyed by UNIT KEY
+        // (`d_<fn>` / `m.<Rec>.<method>`) — no second prefixing.
         let changed_fns: BTreeSet<String> = {
             let old_segs = segment_map(&self.outline, &self.src, true);
             let new_segs = segment_map(&new_outline, new_src, true);
             let mut set = BTreeSet::new();
             for (name, seg) in &new_segs {
                 if old_segs.get(name) != Some(seg) {
-                    set.insert(format!("d_{name}"));
+                    set.insert(name.clone());
                 }
             }
             for name in old_segs.keys() {
                 if !new_segs.contains_key(name) {
-                    set.insert(format!("d_{name}"));
+                    set.insert(name.clone());
                 }
             }
             set
@@ -1138,28 +1187,31 @@ impl DataIncrementalSession {
         // degradation would install.
         let mut after_hir = before_hir.clone();
         let mut after_code = before_code.clone();
-        for d in m.defs.iter() {
-            if let hir::DefKind::Function { body, .. } = &d.kind {
+        for (di, d) in m.defs.iter().enumerate() {
+            if let Ok(key) = auto_mir_lower::mir_name_of_def(m, di) {
+                let body = match &d.kind {
+                    hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
+                        *body
+                    }
+                    _ => continue,
+                };
                 if let Some(b) = m.bodies.get(body.0 as usize) {
                     after_hir.insert(
-                        d.id_text.clone(),
+                        key.clone(),
                         HirIdentity {
                             body_ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
                             bundle_ptr: Arc::as_ptr(&fresh_bundle) as u64,
                         },
                     );
                 }
-            }
-            if let Some(c) = after_code.get_mut(&d.id_text) {
-                c.generation += 1;
-                c.ptr = c.ptr.wrapping_add(1);
+                if let Some(c) = after_code.get_mut(&key) {
+                    c.generation += 1;
+                    c.ptr = c.ptr.wrapping_add(1);
+                }
             }
         }
         let facts = EditFacts {
-            changed_name: changed_def
-                .strip_prefix("d_")
-                .unwrap_or(changed_def)
-                .to_string(),
+            changed_name: work_name_of_key(changed_def),
             body_work: work,
             receipt: BodyEmitReceipt {
                 real_body_plans: fn_count,
@@ -1201,30 +1253,28 @@ impl DataIncrementalSession {
             if def == changed_def {
                 continue;
             }
-            let di = m
-                .defs
-                .iter()
-                .position(|d| d.id_text == *def)
+            let di = def_position_of_key(m, def)
+                .map(|(di, _)| di)
                 .ok_or_else(|| format!("def `{def}` missing in bundle"))?;
-            if let hir::DefKind::Function { body, .. } = &m.defs[di].kind {
-                let b = m
-                    .bodies
-                    .get(body.0 as usize)
-                    .ok_or_else(|| format!("body of `{def}` out of range"))?;
-                after_hir.insert(
-                    def.clone(),
-                    HirIdentity {
-                        body_ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
-                        bundle_ptr: Arc::as_ptr(&fresh_bundle) as u64,
-                    },
-                );
+            match &m.defs[di].kind {
+                hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
+                    let b = m
+                        .bodies
+                        .get(body.0 as usize)
+                        .ok_or_else(|| format!("body of `{def}` out of range"))?;
+                    after_hir.insert(
+                        def.clone(),
+                        HirIdentity {
+                            body_ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
+                            bundle_ptr: Arc::as_ptr(&fresh_bundle) as u64,
+                        },
+                    );
+                }
+                _ => {}
             }
         }
         let facts = EditFacts {
-            changed_name: changed_def
-                .strip_prefix("d_")
-                .unwrap_or(changed_def)
-                .to_string(),
+            changed_name: work_name_of_key(changed_def),
             body_work: BTreeMap::new(),
             receipt: BodyEmitReceipt {
                 real_body_plans: 1,
@@ -1387,6 +1437,49 @@ fn hir_identity_of(
 // Source outline helpers
 // ----------------------------------------------------------------------
 
+/// PLAN-881: resolve a UNIT KEY to its def position + HIR def id in a
+/// module — free functions' keys are their def ids; methods match by the
+/// adapter's owner-based MIR name (`m.<Rec>.<name>`), never by bare name
+/// or table position.
+fn def_position_of_key(m: &hir::Module, key: &str) -> Option<(usize, String)> {
+    for (di, d) in m.defs.iter().enumerate() {
+        let mir_name = auto_mir_lower::mir_name_of_def(m, di).ok()?;
+        if mir_name == key {
+            return Some((di, d.id_text.clone()));
+        }
+    }
+    None
+}
+
+/// The body-work meter name behind a unit key: `d_<fn>` -> `<fn>`,
+/// `m.<Rec>.<method>` -> `<Rec>::<method>` (PLAN-881 — matches the
+/// producer's owner-qualified `ResolvedFn::work_key`).
+/// The BIND-meter key the producer records for one resident's body
+/// document: free functions bind under their bare name (`b_<name>`), a
+/// method under its fi-indexed body id stem (`b_f<fi>_<name>` ->
+/// `f<fi>_<name>`). The edit window binds exactly ONE body (the changed
+/// def), so this deterministic slot-derived key identifies it without
+/// ambiguity.
+fn bind_key_of(key: &str, slot: usize) -> String {
+    if let Some(rest) = key.strip_prefix("m.") {
+        let name = rest.rsplit('.').next().unwrap_or(rest);
+        format!("f{slot}_{name}")
+    } else {
+        key.strip_prefix("d_").unwrap_or(key).to_string()
+    }
+}
+
+fn work_name_of_key(key: &str) -> String {
+    if let Some(rest) = key.strip_prefix("m.") {
+        match rest.rsplit_once('.') {
+            Some((rec, name)) => format!("{rec}::{name}"),
+            None => rest.to_string(),
+        }
+    } else {
+        key.strip_prefix("d_").unwrap_or(key).to_string()
+    }
+}
+
 fn outline_of(
     program: &auto_ac_prototype::source::ast::Program,
 ) -> Result<Vec<OutlineEntry>, String> {
@@ -1396,19 +1489,43 @@ fn outline_of(
             Item::Fn(f) => out.push(OutlineEntry {
                 is_fn: true,
                 name: f.name.name.clone(),
+                owner: None,
                 start: f.span.start,
                 end: f.span.end,
             }),
-            Item::Type(t) => out.push(OutlineEntry {
-                is_fn: false,
-                name: t.name.name.clone(),
-                start: t.span.start,
-                end: t.span.end,
-            }),
+            // PLAN-881: a type contributes ONE shell entry (its
+            // header+fields region, methods EXCLUDED) plus one entry per
+            // method — a method body edit then meets exactly the method's
+            // own entry, never the type shell, and shell/fn segment diff
+            // stay independent axes.
+            Item::Type(t) => {
+                let shell_end = t
+                    .methods
+                    .first()
+                    .map(|m| m.span.start)
+                    .unwrap_or(t.span.end);
+                out.push(OutlineEntry {
+                    is_fn: false,
+                    name: t.name.name.clone(),
+                    owner: None,
+                    start: t.span.start,
+                    end: shell_end,
+                });
+                for m in &t.methods {
+                    out.push(OutlineEntry {
+                        is_fn: true,
+                        name: m.name.name.clone(),
+                        owner: Some(t.name.name.clone()),
+                        start: m.span.start,
+                        end: m.span.end,
+                    });
+                }
+            }
             // PLAN-864: enum declarations outline like types.
             Item::Enum(e) => out.push(OutlineEntry {
                 is_fn: false,
                 name: e.name.name.clone(),
+                owner: None,
                 start: e.span.start,
                 end: e.span.end,
             }),
@@ -1418,11 +1535,23 @@ fn outline_of(
 }
 
 /// name -> source segment text of all items (`fns_only` selects the axis).
+/// PLAN-881: the fn axis keys by UNIT KEY (`d_<fn>`, `m.<Rec>.<method>`);
+/// the type axis keys by type name over the SHELL region (fields only —
+/// method bodies are the fn axis, so a method edit is never a type edit).
 fn segment_map(outline: &[OutlineEntry], src: &str, fns_only: bool) -> BTreeMap<String, String> {
     outline
         .iter()
         .filter(|o| o.is_fn == fns_only)
-        .map(|o| (o.name.clone(), src[o.start..o.end].to_string()))
+        .map(|o| {
+            (
+                if fns_only {
+                    o.unit_key()
+                } else {
+                    o.name.clone()
+                },
+                src[o.start..o.end].to_string(),
+            )
+        })
         .collect()
 }
 
@@ -1552,13 +1681,18 @@ fn p_path(kind: &hir::PlaceKind) -> &[hir::FieldId] {
     }
 }
 
-/// def id -> record names mentioned.
+/// unit key -> record names mentioned (PLAN-881: methods participate —
+/// a record-shape change must invalidate its methods' units too).
 fn per_def_record_mentions(m: &hir::Module) -> BTreeMap<String, BTreeSet<String>> {
     let mut out = BTreeMap::new();
-    for d in m.defs.iter() {
-        if let hir::DefKind::Function { body, .. } = &d.kind {
-            if let Some(b) = m.bodies.get(body.0 as usize) {
-                out.insert(d.id_text.clone(), record_mentions_of(m, b));
+    for (di, d) in m.defs.iter().enumerate() {
+        let body = match &d.kind {
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
+            _ => continue,
+        };
+        if let Some(b) = m.bodies.get(body.0 as usize) {
+            if let Ok(key) = auto_mir_lower::mir_name_of_def(m, di) {
+                out.insert(key, record_mentions_of(m, b));
             }
         }
     }
@@ -1647,9 +1781,13 @@ fn builtin_tag(b: hir::BuiltinType) -> &'static str {
 /// A def's signature as a name+shape tree (`fn(O) -> O` reduces O to its
 /// full field shape, so an O-layout change IS a signature change).
 fn sig_shape_of(m: &hir::Module, def: &str) -> Option<(Vec<TypeShape>, TypeShape)> {
-    let d = m.defs.iter().find(|d| d.id_text == def)?;
+    let (di, d) = match def_position_of_key(m, def) {
+        Some((di, _)) => (di, &m.defs[di]),
+        None => return None,
+    };
+    let _ = di;
     let ty = match &d.kind {
-        hir::DefKind::Function { ty, .. } => *ty,
+        hir::DefKind::Function { ty, .. } | hir::DefKind::Method { ty, .. } => *ty,
         _ => return None,
     };
     match m.types.get(ty.0 as usize).map(|t| &t.kind) {

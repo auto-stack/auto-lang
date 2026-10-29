@@ -594,6 +594,22 @@ pub struct ResolvedFn {
     pub owner_rec: Option<usize>,
 }
 
+impl ResolvedFn {
+    /// PLAN-881: the body-work meter key — owner-qualified for methods so
+    /// a bare method name can never alias a same-named free function in
+    /// the observation window (the structural gate keys on this).
+    pub fn work_key(&self, records: &[ResolvedRecord]) -> String {
+        match self.owner_rec {
+            None => self.name.clone(),
+            Some(ri) => format!(
+                "{}::{}",
+                records.get(ri).map(|r| r.name.as_str()).unwrap_or("?"),
+                self.name
+            ),
+        }
+    }
+}
+
 pub struct ResolvedProgram {
     pub fns: Vec<ResolvedFn>,
     /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
@@ -1572,6 +1588,46 @@ pub(crate) fn recheck_swap(
             item.name.span,
         )]);
     }
+    // PLAN-881: a method's graft keeps its RECEIVER/OWNER shape — the
+    // retained entry at this slot is the authority; a bare name match
+    // must never let a same-named free function and method cross-wire
+    // into each other's slot. Methods key the cold sigs registry as
+    // `<Owner>::<name>` (the cold pass's exact rule).
+    let retained_recv = env.program.fns[fn_index].receiver;
+    let (recv, owner_rec) = if retained_recv == ast::Receiver::Free {
+        (ast::Receiver::Free, None)
+    } else {
+        let owner_name = item
+            .owner
+            .as_ref()
+            .map(|o| o.name.clone())
+            .unwrap_or_default();
+        match env.rec_index.get(&owner_name) {
+            Some(&ri) => (item.receiver, Some(ri)),
+            None => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.incremental",
+                    format!(
+                        "method `{}` names owner record `{}` which does not exist",
+                        item.name.name, owner_name
+                    ),
+                    item.name.span,
+                )])
+            }
+        }
+    };
+    let sig_key = if recv == ast::Receiver::Free {
+        item.name.name.clone()
+    } else {
+        format!(
+            "{}::{}",
+            owner_rec
+                .and_then(|ri| env.program.records.get(ri).map(|r| r.name.clone()))
+                .unwrap_or_default(),
+            item.name.name
+        )
+    };
     // Signature drift guard: rebuild the item's signature with the cold
     // pass's exact rules; any difference is a controlled rejection.
     let mut guard_diags = Vec::new();
@@ -1591,8 +1647,8 @@ pub(crate) fn recheck_swap(
         }
         fn_sig_of_coll(
             item,
-            ast::Receiver::Free,
-            None,
+            recv,
+            owner_rec,
             &env.rec_index,
             &mut c2,
             &mut guard_diags,
@@ -1602,14 +1658,14 @@ pub(crate) fn recheck_swap(
     } else {
         fn_sig_of(
             item,
-            ast::Receiver::Free,
-            None,
+            recv,
+            owner_rec,
             &env.rec_index,
             &mut guard_diags,
             fn_index,
         )
     };
-    let expected = &env.sigs[&item.name.name];
+    let expected = &env.sigs[&sig_key];
     if !guard_diags.is_empty()
         || rebuilt.param_names != expected.param_names
         || rebuilt.params != expected.params
@@ -1627,7 +1683,9 @@ pub(crate) fn recheck_swap(
     }
     let mut diags = Vec::new();
     env.resolve_walks += 1;
-    crate::body_work::record_resolve(&item.name.name);
+    // PLAN-881: body-work meters under the OWNER-QUALIFIED key — a bare
+    // method name is ambiguous against a same-named free function.
+    crate::body_work::record_resolve(&sig_key);
     // PLAN-864: rebuild the collections tables from the retained program
     // (the same lists/variants the cold pass interned); new interning
     // inside the rechecked body is rejected by the drift guards below it.
@@ -1650,8 +1708,8 @@ pub(crate) fn recheck_swap(
         env.trace_enabled,
         env.profile,
         &mut diags,
-        ast::Receiver::Free,
-        None,
+        recv,
+        owner_rec,
         &env.program.records,
         &env.rec_index,
         &mut coll,

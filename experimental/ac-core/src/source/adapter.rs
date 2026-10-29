@@ -940,7 +940,7 @@ struct PlanCtx<'p> {
 
 impl PlanCtx<'_> {
     fn plan_fn(&mut self, f: &ResolvedFn) -> FnPlan {
-        crate::body_work::record_plan(&f.name);
+        crate::body_work::record_plan(&f.work_key(&self.program.records));
         // r3 R3-04: a `move Str` parameter is a CLEANUP obligation (its
         // exit frees lower to ac_rt_own_free) even with zero text
         // operations in the body — such a function needs the runtime too.
@@ -2857,17 +2857,25 @@ impl<'p> Emitter<'p> {
                 crate::source::ast::Receiver::Static => "static",
                 _ => "view",
             };
+            // PLAN-881 (R3-F07 parity): a SCAFFOLD method declaration is
+            // body-less — the single-method document keeps the owner/
+            // receiver/mode facts without a body document (the binder
+            // rejects a dangling body reference otherwise).
+            let body_field = if scaffold {
+                String::new()
+            } else {
+                format!("; body: \"b_f{}_{}\"", fi, f.name)
+            };
             frag!(
                 &format!(
-                    "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"; body: \"b_f{}_{}\"; record: t_rec_{}; receiver: {} }}",
+                    "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"{}; record: t_rec_{}; receiver: {} }}",
                     fi,
                     f.name,
                     fi,
                     f.name,
                     rec_name,
                     f.name,
-                    fi,
-                    f.name,
+                    body_field,
                     rec_name,
                     recv_word
                 ),

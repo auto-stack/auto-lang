@@ -64,6 +64,67 @@ impl AdapterError {
 /// anything deeper reaching this adapter is a hand-made bundle.
 const MAX_EXPR_DEPTH: u32 = 512;
 
+/// PLAN-881: the MIR-level name of a type-bound method —
+/// `m.<RecordName>.<MethodName>`, derived from the NOMINAL owner, never
+/// from the def-table position (the HIR def id `d_f<fi>_<name>` is
+/// fi-indexed and churns on unrelated declaration insertion/reorder).
+/// Source identifiers cannot contain `.`, so the mapping is injective
+/// against free functions' `d_<name>` and against every other method —
+/// two same-named methods on different records, or a method sharing a
+/// name with a free function, can never collide.
+fn method_mir_name(
+    module: &hir::Module,
+    record: hir::TypeId,
+    method_name: &str,
+) -> Result<String, AdapterError> {
+    let rec_name = module
+        .types
+        .get(record.0 as usize)
+        .map(|t| t.id_text.strip_prefix("t_rec_").unwrap_or(&t.id_text).to_string())
+        .ok_or_else(|| {
+            AdapterError::inv(
+                "lower.method-owner",
+                format!("method `{method_name}` references a missing owner type"),
+            )
+        })?;
+    Ok(format!("m.{rec_name}.{method_name}"))
+}
+
+/// PLAN-881: the MIR-level name of any function-or-method def — free
+/// functions keep their def id (`d_<name>`); methods take the
+/// owner-based [`method_mir_name`]. This is the unit/import identity the
+/// whole split/link/cache chain keys on.
+///
+/// A method's BARE name is recovered from its fi-indexed def id
+/// (`d_f<fi>_<name>` — the digits end at the first `_`, the rest is the
+/// identifier, underscores included): the HIR `name` field holds the
+/// emitter's internal symbol (`sm_<Rec>_<name>`), which cannot be split
+/// unambiguously.
+pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, AdapterError> {
+    match &module.defs[di].kind {
+        hir::DefKind::Method { record, .. } => {
+            let id = &module.defs[di].id_text;
+            let rest = id.strip_prefix("d_f").ok_or_else(|| {
+                AdapterError::inv(
+                    "lower.method-owner",
+                    format!("method def id `{id}` is not in the `d_f<fi>_<name>` shape"),
+                )
+            })?;
+            let name = match rest.find('_') {
+                Some(u) if u > 0 => &rest[u + 1..],
+                _ => {
+                    return Err(AdapterError::inv(
+                        "lower.method-owner",
+                        format!("method def id `{id}` has no `<fi>_<name>` separator"),
+                    ))
+                }
+            };
+            method_mir_name(module, *record, name)
+        }
+        _ => Ok(module.defs[di].id_text.clone()),
+    }
+}
+
 /// Lower a checked scalar/core module to an unchecked MIR module with
 /// `entry_name` selected as the entry (zero-param i32 per the frozen entry
 /// contract — enforced by `verify_mir`, not here).
@@ -278,12 +339,16 @@ pub fn lower_checked_data(
                 next_fn_idx += 1;
                 fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
             }
-            hir::DefKind::Method { .. } => {
-                return Err(AdapterError::uns(
-                    "lower.method",
-                    "type-bound methods (incl. static fn) are outside the av.data/1 first cut"
-                        .to_string(),
-                ));
+            // PLAN-881: record-domain methods lower as ordinary MIR
+            // functions — a view method's receiver is ALREADY the HIR
+            // signature's params[0] (a read-only record view) and a
+            // static method carries no receiver, so the call structure
+            // needs no second runtime. The owner-based `m.<Rec>.<name>`
+            // keeps unit/cache identity stable under def reordering.
+            hir::DefKind::Method { ty, body, .. } => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((di as u32, *ty, *body, mir_name_of_def(module, di)?));
             }
             hir::DefKind::Intrinsic { symbol, effect, ty } => {
                 if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
@@ -633,12 +698,13 @@ pub fn lower_checked_owned(
                 next_fn_idx += 1;
                 fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
             }
-            hir::DefKind::Method { .. } => {
-                return Err(AdapterError::uns(
-                    "lower.method",
-                    "type-bound methods (incl. static fn) are outside the av.owned/1 first cut"
-                        .to_string(),
-                ));
+            // PLAN-881: text-record methods ride the same shared lowering
+            // as av.data (owner-based `m.<Rec>.<name>` identity; the view
+            // receiver is the HIR signature's params[0]).
+            hir::DefKind::Method { ty, body, .. } => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((di as u32, *ty, *body, mir_name_of_def(module, di)?));
             }
             hir::DefKind::Intrinsic { .. } => {
                 return Err(AdapterError::uns(
@@ -761,11 +827,21 @@ pub fn lower_function_owned_unit_with_modes(
                     target = Some((di as u32, *ty, *body));
                 }
             }
-            hir::DefKind::Method { .. } => {
-                return Err(AdapterError::uns(
-                    "lower.method",
-                    "type-bound methods are outside the av.owned/1 first cut".to_string(),
-                ));
+            // PLAN-881: methods import under the owner-based `fn:m.<Rec>.<n>`
+            // symbol (stable identity); the target is still selected by its
+            // HIR def id — a transient handle the session re-resolves.
+            hir::DefKind::Method { ty, body, .. } => {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?;
+                let imp = out.intern_import(MirImport {
+                    symbol: format!("fn:{}", mir_name_of_def(module, di)?),
+                    effect: Effect::Pure,
+                    sig,
+                    env: None,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(imp));
+                if d.id_text == def_id_text {
+                    target = Some((di as u32, *ty, *body));
+                }
             }
             hir::DefKind::Intrinsic { .. } => {
                 return Err(AdapterError::uns(
@@ -790,7 +866,7 @@ pub fn lower_function_owned_unit_with_modes(
         sig,
         source_snapshot,
         &def_map,
-        def_id_text.to_string(),
+        mir_name_of_def(module, di as usize)?,
         true,
         true,
         mode_overrides,
@@ -965,12 +1041,29 @@ fn lower_function_unit_impl(
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 }
             }
-            hir::DefKind::Method { .. } => {
-                return Err(AdapterError::uns(
-                    "lower.method",
-                    "type-bound methods belong to the record domain, outside the av profile"
-                        .to_string(),
-                ));
+            // PLAN-881: methods are unit citizens with the owner-based
+            // `fn:m.<Rec>.<name>` import identity; the target is still
+            // selected by HIR def id (a transient handle).
+            hir::DefKind::Method { ty, body, .. } => {
+                let symbol = format!("fn:{}", mir_name_of_def(module, di)?);
+                let sig = fn_type_index(
+                    *ty,
+                    module,
+                    &mut out,
+                    data,
+                    &mut std::collections::BTreeMap::new(),
+                    &mut std::collections::BTreeSet::new(),
+                )?;
+                let idx = out.intern_import(MirImport {
+                    symbol,
+                    effect: Effect::Pure,
+                    sig,
+                    env: None,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(idx));
+                if d.id_text == def_id_text {
+                    target = Some((di as u32, *ty, *body));
+                }
             }
             hir::DefKind::Intrinsic { symbol, effect, ty } => {
                 if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
@@ -1022,7 +1115,7 @@ fn lower_function_unit_impl(
         sig,
         source_snapshot,
         &def_map,
-        def_id_text.to_string(),
+        mir_name_of_def(module, di as usize)?,
         data,
         false,
         &BTreeMap::new(),
@@ -1207,7 +1300,10 @@ fn owned_fn_sig_for_def(
         .defs
         .get(def_index as usize)
         .and_then(|d| match &d.kind {
-            hir::DefKind::Function { body, .. } => {
+            // PLAN-881: methods keep their explicit param modes too — a
+            // view receiver is params[0] (mode View), but a mut/move
+            // EXPLICIT param must not decay to the default borrow.
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
                 if body.0 == u32::MAX {
                     None
                 } else {
@@ -1278,13 +1374,14 @@ fn owned_fn_sig_for_def(
     }
     let wrapper = out.intern_type(MirType::Record(RecordTypeRef {
         owner_module: module.id_text.clone(),
+        // PLAN-881: methods name the wrapper after their owner-based MIR
+        // identity (not the fi-indexed def id) so unrelated declaration
+        // shifts cannot churn the unit's type-table fingerprint.
         name: format!(
             "t_MutRet_{}",
-            module
-                .defs
-                .get(def_index as usize)
-                .map(|d| d.id_text.trim_start_matches("d_").to_string())
-                .unwrap_or_else(|| "fn".into())
+            mir_name_of_def(module, def_index as usize)
+                .map(|n| n.strip_prefix("d_").unwrap_or(&n).to_string())
+                .unwrap_or_else(|_| "fn".into())
         ),
         fields,
     }));
@@ -1877,7 +1974,11 @@ impl<'a> FnLower<'a> {
         let def = self.hir_module.defs.get(callee_def.0 as usize);
         let modes: Option<Vec<hir::ParamMode>> = def
             .and_then(|d| match &d.kind {
-                hir::DefKind::Function { body, .. } => {
+                // PLAN-881: a method callee's mut-record params wrap
+                // exactly like a free function's (modes are positional
+                // facts of the body's param locals; the receiver is
+                // params[0] with mode View).
+                hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
                     if body.0 == u32::MAX {
                         // Scaffold sentinel: no body — retained facts.
                         None

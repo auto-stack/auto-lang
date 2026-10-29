@@ -79,7 +79,7 @@ fn check_block(
     f: &ResolvedFn,
     diags: &mut Vec<Diagnostic>,
 ) {
-    crate::body_work::record_typecheck(&f.name);
+    crate::body_work::record_typecheck(&f.work_key(&program.records));
     // Iterative walk (R6: block nesting is unlimited, so no recursion).
     // Frames advance one statement at a time; an if pushes its else-arm
     // frame before its then-arm frame (LIFO), so conditions, arms and

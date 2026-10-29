@@ -1402,18 +1402,24 @@ impl<'d> Binder<'d> {
                         "view" => hir::ReceiverKind::View,
                         _ => continue,
                     };
-                    let Some((t, span)) = self.text_ref(&dfields, "body") else {
-                        continue;
-                    };
-                    let body = match self.resolve_in(
-                        &t,
-                        span,
-                        "BodyRef",
-                        &tables.bodies,
-                        &[("type", &tables.types), ("declaration", &tables.defs)],
-                    ) {
-                        Some(b) => hir::BodyId(b),
-                        None => continue,
+                    // PLAN-881 (828 D-01 parity): a BODY-LESS method
+                    // declaration is a checked scaffold — the def keeps
+                    // its name/type/owner/receiver facts so cross-method
+                    // references in a single-method document resolve,
+                    // with the sentinel BodyId never dereferenced
+                    // outside function-level documents.
+                    let body = match self.text_ref(&dfields, "body") {
+                        Some((t, span)) => match self.resolve_in(
+                            &t,
+                            span,
+                            "BodyRef",
+                            &tables.bodies,
+                            &[("type", &tables.types), ("declaration", &tables.defs)],
+                        ) {
+                            Some(b) => hir::BodyId(b),
+                            None => continue,
+                        },
+                        None => hir::BodyId(u32::MAX),
                     };
                     hir::DefKind::Method {
                         name,
