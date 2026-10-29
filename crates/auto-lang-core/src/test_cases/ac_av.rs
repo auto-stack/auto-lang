@@ -33,6 +33,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "test-case-batch")]
+pub mod parent_observations;
+#[cfg(feature = "test-case-batch")]
 pub mod test_batch;
 
 const READ_CAP: usize = (4 << 20) + (64 << 10);
@@ -695,6 +697,8 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn av worker ({}): {}", exe.display(), e))?;
+    #[cfg(feature = "test-case-batch")]
+    parent_observations::spawned(child.id());
     #[cfg(windows)]
     let mut job = match containment::JobGuard::for_child(&child) {
         Some(j) => Some(j),
@@ -813,6 +817,8 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             }
         }
         if exit_status.is_some() {
+            #[cfg(feature = "test-case-batch")]
+            let _cleanup = parent_observations::Phase::start("cleanup_ms");
             // Child gone: closing the job reaps descendants holding the
             // inherited pipes, then bounded reader joins.
             drop(job.take());
@@ -846,6 +852,8 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         });
     }
     // Normal exit: job already dropped (descendants reaped).
+    #[cfg(feature = "test-case-batch")]
+    let cleanup = parent_observations::Phase::start("cleanup_ms");
     drop(job.take());
     if write_rx.recv_timeout(READER_GRACE).is_err() {
         return Err("av worker request writer did not finish within the drain grace".into());
@@ -874,6 +882,8 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             .unwrap_or_default(),
     };
     // F798-R3-05: process identity — a non-zero exit is Infra even when a
+    #[cfg(feature = "test-case-batch")]
+    drop(cleanup);
     // plausible JSON line preceded it.
     let status = exit_status.unwrap_or_else(|| child.wait().unwrap_or_default());
     if !status.success() {
@@ -1304,6 +1314,8 @@ fn run_check_with_transport(
     mut transport: impl FnMut(&str, Duration) -> Result<WorkerResponse, String>,
     leased_worker_sha: Option<&str>,
 ) -> Result<Verdict, String> {
+    #[cfg(feature = "test-case-batch")]
+    let mut parent_clock = parent_observations::Clock::new();
     let started = Instant::now();
     let recipe = family.recipe();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
@@ -1603,7 +1615,12 @@ fn run_check_with_transport(
         .and_then(|s| s.parse::<u64>().ok())
         .map(Duration::from_millis)
         .unwrap_or(SESSION_WALL);
-    let resp_result = transport(&request.to_string(), wall);
+    let request_text = request.to_string();
+    #[cfg(feature = "test-case-batch")]
+    parent_clock.lap("prepare_ms");
+    let resp_result = transport(&request_text, wall);
+    #[cfg(feature = "test-case-batch")]
+    parent_clock.lap("transport_ms");
     let worker_us = worker_started.elapsed().as_micros() as u64;
 
     let mut mismatches: Vec<Mismatch> = Vec::new();
@@ -2006,7 +2023,7 @@ fn run_check_with_transport(
     } else {
         Status::Fail
     };
-    Ok(Verdict {
+    let verdict = Verdict {
         status,
         mismatches,
         detail: Some(format!(
@@ -2016,7 +2033,10 @@ fn run_check_with_transport(
         )),
         artifacts: vec![],
         native: Some(native),
-    })
+    };
+    #[cfg(feature = "test-case-batch")]
+    parent_clock.lap("admission_compare_receipt_ms");
+    Ok(verdict)
 }
 
 /// Judge the observed step outcome against the declared expectations.

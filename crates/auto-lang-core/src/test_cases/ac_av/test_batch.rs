@@ -57,6 +57,8 @@ pub fn run_group_with_fault(
     budget: Duration,
     fault: Option<&str>,
 ) -> Result<GroupResult, String> {
+    let started = Instant::now();
+    let mut parent_clock = parent_observations::Clock::new();
     if items.is_empty() || items.len() > 10 || budget.is_zero() || budget > SESSION_WALL {
         return Err("batch requires 1..10 items and group wall in (0,60s]".into());
     }
@@ -65,6 +67,9 @@ pub fn run_group_with_fault(
         return Err("duplicate batch item identity".into());
     }
     for item in items {
+        if Instant::now() >= started + budget {
+            return Err("batch deadline includes whitelist preparation".into());
+        }
         let av = item
             .check
             .options
@@ -119,14 +124,20 @@ pub fn run_group_with_fault(
             ));
         }
     }
-    let started = Instant::now();
+    if Instant::now() >= started + budget {
+        return Err("batch deadline includes whitelist preparation".into());
+    }
     let group = hex(&sha256(
         format!("{}|{:?}|{:?}", std::process::id(), started, ids).as_bytes(),
     ));
+    parent_clock.lap("prepare_ms");
     let mut worker = Transport::start(&group, started + budget, fault)?;
     let pid = worker.child.id();
     let mut results = Vec::new();
-    let mut error = worker.initialize(&ids).err();
+    let mut error = {
+        let _transport = parent_observations::Phase::start("transport_ms");
+        worker.initialize(&ids).err()
+    };
     for (index, item) in items.iter().enumerate() {
         if error.is_some() {
             results.push(ItemResult {
@@ -185,11 +196,15 @@ pub fn run_group_with_fault(
         // An assertion FAIL is safe: preserve it and continue the next item.
     }
     if error.is_none() {
+        let _transport = parent_observations::Phase::start("transport_ms");
         if let Err(e) = worker.finish(items.len()) {
             error = Some(e);
         }
     }
-    let cleanup = worker.shutdown();
+    let cleanup = {
+        let _cleanup = parent_observations::Phase::start("cleanup_ms");
+        worker.shutdown()
+    };
     let cleanup_complete = cleanup.is_ok();
     if let Err(e) = cleanup {
         error = Some(format!("{}; cleanup: {e}", error.unwrap_or_default()));
@@ -244,6 +259,7 @@ impl Transport {
         fault: Option<&str>,
         subcommand: &str,
     ) -> Result<Self, String> {
+        let _transport = parent_observations::Phase::start("transport_ms");
         if !cfg!(windows) {
             return Err(
                 "test batch requires implemented process-tree containment on this platform".into(),
@@ -272,6 +288,7 @@ impl Transport {
             command.creation_flags(containment::CREATE_SUSPENDED);
         }
         let mut child = command.spawn().map_err(|e| format!("batch spawn: {e}"))?;
+        parent_observations::spawned(child.id());
         let Some(job) = containment::JobGuard::for_child(&child) else {
             let _ = child.kill();
             let _ = child.wait();

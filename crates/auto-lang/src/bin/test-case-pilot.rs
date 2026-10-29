@@ -30,6 +30,27 @@ mod enabled {
     use serde_json::{json, Value};
     use std::time::{Duration, Instant};
 
+    fn observed(operation: impl FnOnce() -> Result<Value, String>) -> Result<Value, String> {
+        let (result, observations) = ac_av::parent_observations::capture(operation);
+        let mut report = result?;
+        if report["worker_starts"].as_u64() != Some(observations.worker_pids.len() as u64)
+            || observations.worker_pids.len() != 1
+        {
+            return Err(
+                "reported worker count differs from actual successful parent spawns".into(),
+            );
+        }
+        if let Some(pid) = report["worker_pid"].as_u64() {
+            if pid != observations.worker_pids[0] as u64 {
+                return Err("reported worker PID differs from actual spawn".into());
+            }
+        }
+        report["worker_pid"] = json!(observations.worker_pids[0]);
+        report["parent_observations"] =
+            serde_json::to_value(observations).map_err(|e| e.to_string())?;
+        Ok(report)
+    }
+
     fn row(
         bound: &pilot::Bound,
         status: Status,
@@ -113,6 +134,7 @@ mod enabled {
         }
         let selected = flags.get("--case").copied();
         let started = Instant::now();
+        let mut input_load_ms = 0.0;
         let mut rounds = Vec::new();
         let mut code = 0;
         if mode == "combined" {
@@ -124,7 +146,9 @@ mod enabled {
             }
             let mut invocations = Vec::new();
             for repeat in 0..repeats {
+                let loading = Instant::now();
                 let mut values = pilot::load(&format!("cli-c-{repeat}"))?;
+                input_load_ms += loading.elapsed().as_secs_f64() * 1000.0;
                 values.retain(|b| b.case.spec.id.starts_with("gov.d."));
                 invocations.push(values);
             }
@@ -134,7 +158,9 @@ mod enabled {
                         .iter()
                         .map(|values| {
                             scope.spawn(|| {
-                                test_batch::combined::run(values, Duration::from_secs(60))
+                                observed(|| {
+                                    test_batch::combined::run(values, Duration::from_secs(60))
+                                })
                             })
                         })
                         .collect();
@@ -160,12 +186,14 @@ mod enabled {
             return Ok((
                 json!({"schema":"test-case-pilot/1","mode":mode,"set":case_set,
                 "parallelism":parallelism,"group_size":3,"repeat":repeats,
-                "wall_ms":started.elapsed().as_secs_f64()*1000.0,"groups":rounds,"exit":code}),
+                "wall_ms":started.elapsed().as_secs_f64()*1000.0,"input_load_ms":input_load_ms,"parent_pid":std::process::id(),"groups":rounds,"exit":code}),
                 code,
             ));
         }
         for repeat in 0..repeats {
+            let loading = Instant::now();
             let mut bindings = pilot::load(&format!("cli-{repeat}"))?;
+            input_load_ms += loading.elapsed().as_secs_f64() * 1000.0;
             if case_set == "d3" {
                 bindings.retain(|b| b.case.spec.id.starts_with("gov.d."));
             }
@@ -180,7 +208,7 @@ mod enabled {
                 .collect();
             for wave in chunks.chunks(parallelism) {
                 let reports = std::thread::scope(|scope| {
-                    let handles: Vec<_> = wave.iter().map(|chunk|scope.spawn(move || -> Result<Value,String> {
+                    let handles: Vec<_> = wave.iter().map(|chunk|scope.spawn(move || observed(|| {
                         let begin = Instant::now();
                         if mode=="independent" {
                             let b = &chunk[0];
@@ -196,7 +224,7 @@ mod enabled {
                             "wall_ms":report.wall_ms,"error":report.error,"cleanup_complete":report.cleanup_complete,
                             "worker_sha256":report.worker_exe_sha256,
                             "items":chunk.iter().zip(&report.items).map(|(b,r)|row(b,r.status,r.verdict.as_ref(),r.detail.as_deref())).collect::<Vec<_>>()}))
-                    })).collect();
+                    }))).collect();
                     handles
                         .into_iter()
                         .map(|h| h.join().map_err(|_| "pilot task panicked".to_owned())?)
@@ -223,7 +251,7 @@ mod enabled {
         Ok((
             json!({"schema":"test-case-pilot/1","mode":mode,"set":case_set,"parallelism":parallelism,
             "group_size":if mode=="independent" {1}else{k},"repeat":repeats,
-            "wall_ms":started.elapsed().as_secs_f64()*1000.0,"groups":rounds,"exit":code}),
+            "wall_ms":started.elapsed().as_secs_f64()*1000.0,"input_load_ms":input_load_ms,"parent_pid":std::process::id(),"groups":rounds,"exit":code}),
             code,
         ))
     }

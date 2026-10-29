@@ -15,6 +15,8 @@ pub fn run_with_fault(
     budget: Duration,
     fault: Option<&str>,
 ) -> Result<Value, String> {
+    let started = Instant::now();
+    let mut parent_clock = parent_observations::Clock::new();
     if budget.is_zero()
         || budget > SESSION_WALL
         || values.len() != 3
@@ -24,7 +26,6 @@ pub fn run_with_fault(
     {
         return Err("combined requires original ordered D3 and wall in (0,60s]".into());
     }
-    let started = Instant::now();
     let deadline = started + budget;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../auto-lang/test/cases/governance-887/src");
@@ -54,8 +55,10 @@ pub fn run_with_fault(
     let nonce = hex(&sha256(
         format!("{}|{started:?}|{source_blake3}", std::process::id()).as_bytes(),
     ));
+    parent_clock.lap("prepare_ms");
     let mut worker = Transport::start_command(&nonce, deadline, fault, "test-combined-serve")?;
     let observed = (|| -> Result<Value, String> {
+        let mut clock = parent_observations::Clock::new();
         worker.send(
             json!({"schema":C_SCHEMA,"nonce":nonce,"source":source,
             "source_blake3":source_blake3,"ids":IDS}),
@@ -78,6 +81,7 @@ pub fn run_with_fault(
             }
             std::thread::sleep(Duration::from_millis(1));
         }
+        clock.lap("transport_ms");
         let allowed = [
             "schema",
             "nonce",
@@ -159,12 +163,17 @@ pub fn run_with_fault(
                 return Err("combined actual identity/type mismatch".into());
             }
         }
+        clock.lap("admission_compare_receipt_ms");
         Ok(response)
     })();
     let pid = worker.child.id();
     let worker_sha = worker.exe_sha.clone();
-    worker.shutdown()?;
+    {
+        let _cleanup = parent_observations::Phase::start("cleanup_ms");
+        worker.shutdown()?;
+    }
     let response = observed?;
+    let mut comparison_clock = parent_observations::Clock::new();
     let mut items = Vec::new();
     for (index, bound) in values.iter().enumerate() {
         let actual = response["actuals"][index]["value"]
@@ -183,6 +192,7 @@ pub fn run_with_fault(
             "mismatches":mismatches.iter().map(|m|json!({"observation":m.observation,"expected":m.expected,"actual":m.actual})).collect::<Vec<_>>(),
             "replay_argv":["test-case-pilot","--mode","independent","--case",bound.case.spec.id]}));
     }
+    comparison_clock.lap("admission_compare_receipt_ms");
     if Instant::now() >= deadline {
         return Err("combined deadline includes parent comparison/cleanup".into());
     }

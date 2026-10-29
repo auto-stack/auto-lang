@@ -320,6 +320,16 @@ mod batch {
 
     #[test]
     fn batch_rejects_unlisted_source_and_negative_oracle_before_dispatch() {
+        let values = pilot("preparation-deadline");
+        let borrowed = items(&values[..1], "deadline");
+        let (result, observations) = ac_av::parent_observations::capture(|| {
+            test_batch::run_group(&borrowed, std::time::Duration::from_nanos(1))
+        });
+        assert!(result.err().unwrap().contains("whitelist preparation"));
+        assert!(
+            observations.worker_pids.is_empty(),
+            "expired preparation must not spawn a worker"
+        );
         let mut values = pilot("whitelist-negative");
         values[0].case.files[0]
             .bytes
