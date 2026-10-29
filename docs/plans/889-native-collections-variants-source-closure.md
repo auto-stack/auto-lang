@@ -334,6 +334,13 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 
 2026-10-30 T-05/S窗重新接受：main代码零WIP，888已更新至a436985c5，新增提交与WIP仍不触及ac-core/source、verify_function、共享hir_adapter及集合session；890 afea065b2亦无这些S改动。前S子集已在b5302262e提交释放，本次仅接受`ac-core/src/source/{resolve,adapter,parser,mod,ast}.rs`中CheckedEnv/recheck_swap/FnCandidate/prepare_candidate_document及必要单函数fragment解析、坐标与容量观察接口，`auto-mir-lower/src/hir_adapter.rs::lower_function_collections_unit`必要缺口和新定向测试；N消费者本Plan保有。优先扩同一828生产接口，不复制frontend/lower，不写现有AV executor/worker或H、不消费他方WIP。新intern List/Option等body局部类型池需与body一起候选提交/恢复，不能漏池引用后以whole回退隐藏；纯body无变化函数必须实际各生产阶段0工作并保对象身份。接口/声明编辑走显式受检失效路径；提交后记录精确S释放。无用户决策阻塞，不请求重复执行许可。
 
+### 2026-10-30 work 第7轮检查点D：T-05源候选类型池与单体解析前置
+
+- S提交`3d8a3d0b3`后树clean；T-05仍未勾，4/10，继续N真实单体消费者。新反例：完整frontend接受helper body从List<int>编辑为List<Str>并引入?int，保留环境prepare却在原Str push处报expected i32/found Str；原红说明新body引用了旧类型池，不是源规则限制。修复`recheck_swap`只在Collections域把body+新intern类型池作为移动状态临时graft/check，prepare还原完整current、候选持有完整新状态；commit同owner/base/slot验证后一起安装，cancel/drop/检查失败均不写当前。旧core/scalar/record/closure的池发布行为不扩面，close显式释放本体类型池。
+- 同一Parser新增`parse_function_fragment`：仅将授权UTF-8字节range交给原lexer/parser，token span直接加绝对offset，EOF锚定fragment边界；不解析/词法重扫前缀或未改函数、不建第二语法实现。producer侧独立SyntaxWork观察实际tokenize range和body parser入口，828原四字段BodyWork接口保持。CheckedEnv公开冷函数区间与实际body statement allocation身份供消费者核保留；FnCandidate可只validate后再在native事务成功点commit，原commit仍重验。
+- 新源候选3/3：新List/Option类型与body提交/取消一致，失败/foreign/stale/close均保旧；native未接入前不冒领全链。fragment在故意非法前缀和UTF-8注释之后仍只解析helper，实际range/name/错误span绝对、边界合法；main原producer allocation在候选提交后不变。此前Collections单体/whole等价及view/context控制4/4，旧828 scalar候选事务8/8（prepare/cancel/多候选stale/public recheck/failed recheck/foreign/post-verify/close）通过；scoped check/fmt/diff检查通过。未跑整档/未写H。
+- 精确S本次完成子集释放：source/{resolve,adapter,parser,mod}.rs上述新接口/事务与新collections_889_candidates测试，代码3d8a3d0b3；后续必要S若改动再核窗，不占所有source/AV session。证据本地baseline/t05-new-types-before.log SHA256 `ab3cf24b8619fdc02ee4ef8f262e837263abfaf273b8b265f36edcd07131317c`；t05-source-candidate-controls.log `bf143b6f0f7f4e620634b5e0ae1705e49c3390bde0577088b8d8f6803f88a13a`；t05-scalar-transaction-compat.log `0ab8bf475d780728195021b321b08806a2dce9cc1152b8413134f51e00ae2600`。对应manifest ac-core的两个具名test文件与ac-av-probe/probe的function_incremental_828_contract/contract_828_transaction_过滤，exit0非零选择。raw不入库，依赖版本/合同门不变。
+
 ## 10. 待澄清事项
 
 - 支持面已选864完整合法源码与其MIR闭包，不留“是否包含List<Str>/拥有record/Variant”的开放裁定。T-02选择等价native表示/allocator/helper机制；若预算内无法实现，给最小反例与方案needs_replan，不自行缩范围或加语言深度限制。
