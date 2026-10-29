@@ -18,17 +18,19 @@
 pub mod adapter;
 pub mod ast;
 pub(crate) mod closure_capture;
+pub mod console;
 pub mod lexer;
 pub mod parser;
 pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_closures_source, compile_collections_source, compile_entry_unit_source, compile_parts,
-    compile_parts_with, compile_program_parts, compile_record_source, compile_scalar_source,
-    compile_source, compile_text_record_source, compile_text_source, emit_function_body,
-    prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt, CompiledSource,
-    FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_closures_source, compile_collections_source, compile_entry_unit_source,
+    compile_host_console_source, compile_parts, compile_parts_with, compile_program_parts,
+    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
+    compile_text_source, emit_function_body, prepare_candidate_document,
+    prepare_function_candidate, BodyEmitReceipt, CompiledSource, FnCandidate, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::{
@@ -91,6 +93,7 @@ pub enum SourceProfile {
     Record,
     TextRecord,
     EntryUnit,
+    HostConsole,
     Collections,
     Closures,
 }
@@ -104,6 +107,7 @@ impl SourceProfile {
             SourceProfile::Record => RECORD_SOURCE_PROFILE,
             SourceProfile::TextRecord => TEXT_RECORD_SOURCE_PROFILE,
             SourceProfile::EntryUnit => ENTRY_UNIT_SOURCE_PROFILE,
+            SourceProfile::HostConsole => HOST_CONSOLE_SOURCE_PROFILE,
             SourceProfile::Collections => COLLECTIONS_SOURCE_PROFILE,
             SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
         }
@@ -118,6 +122,7 @@ impl SourceProfile {
             SourceProfile::Record => crate::hir::HirDomain::Record,
             SourceProfile::TextRecord => crate::hir::HirDomain::TextRecord,
             SourceProfile::EntryUnit => crate::hir::HirDomain::EntryUnit,
+            SourceProfile::HostConsole => crate::hir::HirDomain::HostConsole,
             SourceProfile::Collections => crate::hir::HirDomain::Collections,
             SourceProfile::Closures => crate::hir::HirDomain::Closures,
         }
@@ -132,6 +137,7 @@ impl SourceProfile {
             SourceProfile::Scalar
                 | SourceProfile::Text
                 | SourceProfile::TextRecord
+                | SourceProfile::HostConsole
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
                 | SourceProfile::Closures
@@ -161,7 +167,10 @@ impl SourceProfile {
     /// Whether the text surface (str/Str/char, literals, text methods,
     /// mode words) is accepted (PLAN-770).
     pub fn is_text(&self) -> bool {
-        matches!(self, SourceProfile::Text | SourceProfile::TextRecord)
+        matches!(
+            self,
+            SourceProfile::Text | SourceProfile::TextRecord | SourceProfile::HostConsole
+        )
     }
 
     /// Whether the record surface (type declarations, construction, field
@@ -180,7 +189,10 @@ impl SourceProfile {
     /// the single-file script form, leading/trailing expression
     /// statements and the entry uniqueness matrix.
     pub fn is_entry_unit(&self) -> bool {
-        matches!(self, SourceProfile::EntryUnit | SourceProfile::Closures)
+        matches!(
+            self,
+            SourceProfile::EntryUnit | SourceProfile::Closures | SourceProfile::HostConsole
+        )
     }
 
     /// The widest operator surface this profile accepts: record builds on
@@ -195,6 +207,7 @@ impl SourceProfile {
                 | SourceProfile::Text
                 | SourceProfile::Record
                 | SourceProfile::TextRecord
+                | SourceProfile::HostConsole
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
                 | SourceProfile::Closures
@@ -209,6 +222,7 @@ impl SourceProfile {
             RECORD_SOURCE_PROFILE => Some(SourceProfile::Record),
             TEXT_RECORD_SOURCE_PROFILE => Some(SourceProfile::TextRecord),
             ENTRY_UNIT_SOURCE_PROFILE => Some(SourceProfile::EntryUnit),
+            HOST_CONSOLE_SOURCE_PROFILE => Some(SourceProfile::HostConsole),
             COLLECTIONS_SOURCE_PROFILE => Some(SourceProfile::Collections),
             CLOSURES_SOURCE_PROFILE => Some(SourceProfile::Closures),
             _ => None,
@@ -229,3 +243,6 @@ pub fn trace_intrinsic(callee: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+/// PLAN-863: explicitly selected typed console source profile.
+pub const HOST_CONSOLE_SOURCE_PROFILE: &str = "auto.source.host-console.draft";

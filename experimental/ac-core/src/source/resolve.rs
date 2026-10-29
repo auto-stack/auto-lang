@@ -231,6 +231,7 @@ pub enum RExprKind {
     },
     CallIntrinsic {
         symbol: &'static str,
+        args: Vec<ResolvedExpr>,
     },
     Binary {
         op: BinOp,
@@ -411,6 +412,9 @@ impl Drop for ResolvedExpr {
                 let b = std::mem::replace(base.as_mut(), dummy());
                 stack.push(b);
             }
+            RExprKind::CallIntrinsic { args, .. } => {
+                stack.extend(args.drain(..));
+            }
             RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
                 for a in args.iter_mut() {
                     let v = std::mem::replace(&mut a.value, dummy());
@@ -490,7 +494,6 @@ impl Drop for ResolvedExpr {
             | RExprKind::Method { .. }
             | RExprKind::Move { .. }
             | RExprKind::ReadLocal(_)
-            | RExprKind::CallIntrinsic { .. }
             | RExprKind::BorrowMut { .. } => {}
         };
         let mut stack: Vec<ResolvedExpr> = Vec::new();
@@ -1044,8 +1047,10 @@ fn resolve_detailed(
             // must see. Emitting the generic duplicate-fn code here would
             // surface FIRST and hide the entry-specific one; every other
             // name (and every other profile) keeps the generic rule.
-            let entry_main_duplicate = surface == SourceProfile::EntryUnit
-                && fn_receiver[i] == ast::Receiver::Free
+            let entry_main_duplicate = matches!(
+                surface,
+                SourceProfile::EntryUnit | SourceProfile::HostConsole
+            ) && fn_receiver[i] == ast::Receiver::Free
                 && f.name.name == "main";
             if !entry_main_duplicate {
                 diags.push(Diagnostic::new(
@@ -1213,6 +1218,9 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
             let RStmt::ExprStmt { value, span } = stmt else {
                 continue;
             };
+            if is_console_effect(value) {
+                continue;
+            }
             if i + 1 == n {
                 if value.vt == VT::I32 {
                     tail_is_i32 = true;
@@ -1373,7 +1381,9 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
                         },
                     );
                     *last = match taken {
-                        RStmt::ExprStmt { value, span } => RStmt::Return { value, span },
+                        RStmt::ExprStmt { value, span } if !is_console_effect(&value) => {
+                            RStmt::Return { value, span }
+                        }
                         other => other,
                     };
                 }
@@ -1427,8 +1437,10 @@ fn nested_expr_stmts(root: &RBlock) -> Vec<Span> {
     }
     while let Some(b) = stack.pop() {
         for s in b.stmts.iter() {
-            if let RStmt::ExprStmt { span, .. } = s {
-                out.push(*span);
+            if let RStmt::ExprStmt { span, value } = s {
+                if !is_console_effect(value) {
+                    out.push(*span);
+                }
             }
             match s {
                 RStmt::If { els, then, .. } => {
@@ -1453,10 +1465,15 @@ fn first_return(root: &RBlock) -> Option<Span> {
     })
 }
 
-/// First expression statement in the body (any depth, root included).
+/// Console effects are statements, never script-tail values.
+fn is_console_effect(value: &ResolvedExpr) -> bool {
+    matches!(&value.kind, RExprKind::CallIntrinsic { symbol, .. } if symbol.starts_with("auto.console."))
+}
+
+/// First non-console expression statement, including nested blocks.
 fn first_expr_stmt(root: &RBlock) -> Option<Span> {
     walk_stmts(root).into_iter().find_map(|s| match s {
-        RStmt::ExprStmt { span, .. } => Some(*span),
+        RStmt::ExprStmt { span, value } if !is_console_effect(value) => Some(*span),
         _ => None,
     })
 }
@@ -6167,6 +6184,44 @@ impl<'a> FnResolver<'a> {
         let args = &rargs[..];
         let _ = &args;
 
+        if self.profile == SourceProfile::HostConsole
+            && matches!(callee.name.as_str(), "print" | "eprint")
+        {
+            if rargs.len() != 1 || rargs.iter().any(|a| a.name.is_some()) {
+                self.bind_err(
+                    "source.console-argument",
+                    "console calls require exactly one positional argument",
+                    call_span,
+                );
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                };
+            }
+            let arg = rargs.remove(0).value;
+            let Some(symbol) = super::console::symbol(&callee.name, arg.vt) else {
+                self.bind_err(
+                    "source.console-argument",
+                    "console argument must be int, bool, str, Str or char",
+                    call_span,
+                );
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                };
+            };
+            self.used_intrinsics.insert(symbol);
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::Unit,
+                kind: RExprKind::CallIntrinsic {
+                    symbol,
+                    args: vec![arg],
+                },
+            };
+        }
         // Locals shadow functions and intrinsics in callee position.
         if let Some(local) = self.lookup(&callee.name) {
             if matches!(self.locals[local.0].vt, VT::Function(_)) {
@@ -6263,7 +6318,10 @@ impl<'a> FnResolver<'a> {
                 return ResolvedExpr {
                     span: call_span,
                     vt: VT::I32,
-                    kind: RExprKind::CallIntrinsic { symbol },
+                    kind: RExprKind::CallIntrinsic {
+                        symbol,
+                        args: Vec::new(),
+                    },
                 };
             }
         }

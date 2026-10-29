@@ -356,6 +356,7 @@ pub fn emit_function_body(
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
         crate::hir::HirDomain::Collections => crate::collections_descriptor(),
         crate::hir::HirDomain::Closures => crate::closures_descriptor(),
     };
@@ -633,6 +634,7 @@ fn compile_program_observed(
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
         crate::hir::HirDomain::Collections => crate::collections_descriptor(),
         crate::hir::HirDomain::Closures => crate::closures_descriptor(),
     };
@@ -2384,17 +2386,37 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::CallIntrinsic { symbol } => {
+            RExprKind::CallIntrinsic { symbol, args } => {
+                let mut eval: Vec<usize> = Vec::new();
+                for arg in args {
+                    let mut i = self.plan_expr(plan, f, arg);
+                    if arg.vt == VT::StrOwned {
+                        plan.exprs.push(ENode {
+                            kind: EKind::Text {
+                                method: super::resolve::BuiltinMethod::To,
+                                recv: i,
+                                args: Vec::new(),
+                                to: Some(VT::Str),
+                            },
+                            vt: VT::Str,
+                            span: arg.span,
+                        });
+                        i = plan.exprs.len() - 1;
+                    }
+                    eval.push(i);
+                }
+                let bindings = (0..eval.len()).map(|i| (i as u32, i as u32)).collect();
+                let moved = vec![false; eval.len()];
                 self.intrinsic_first_use.entry(symbol).or_insert(e.span);
                 plan.exprs.push(ENode {
                     kind: EKind::Call {
                         callee_fn: None,
                         callee_intrinsic: Some(symbol),
-                        eval: Vec::new(),
-                        bindings: Vec::new(),
-                        moved: Vec::new(),
+                        eval,
+                        bindings,
+                        moved,
                     },
-                    vt: VT::I32,
+                    vt: e.vt,
                     span: e.span,
                 });
                 plan.exprs.len() - 1
@@ -2702,6 +2724,9 @@ impl<'p> Emitter<'p> {
             }
             // PLAN-862: the entry-unit emitter is gated off before render.
             crate::hir::HirDomain::EntryUnit => ("auto.hir.entry-unit.draft", "entry-unit-draft"),
+            crate::hir::HirDomain::HostConsole => {
+                ("auto.hir.host-console.draft", "host-console-draft")
+            }
             // PLAN-864: the collections emitter renders the collections
             // identity triple (List/Variant types + collection expressions).
             crate::hir::HirDomain::Collections => {
@@ -2721,8 +2746,13 @@ impl<'p> Emitter<'p> {
         nl!(4);
 
         let mut requires: Vec<&'static str> = Vec::new();
-        if !use_intrinsics.is_empty() {
-            requires.push(TRACE_CAPABILITY);
+        for sym in &use_intrinsics {
+            let cap = super::console::signature(sym)
+                .map(|(_, cap)| cap)
+                .unwrap_or(TRACE_CAPABILITY);
+            if !requires.contains(&cap) {
+                requires.push(cap);
+            }
         }
         if self.profile.is_text() && self.plans.iter().any(|p| p.has_text_ops) {
             requires.push(RUNTIME_TEXT_CAPABILITY);
@@ -2926,8 +2956,16 @@ impl<'p> Emitter<'p> {
             let span = self.intrinsic_first_use[*sym];
             frag!(
                 &format!(
-                    "type {} function {{ params: []; result: \"t_i32\" }}",
-                    intrinsic_type_id(sym)
+                    "type {} function {{ params: [{}]; result: {} }}",
+                    intrinsic_type_id(sym),
+                    super::console::signature(sym)
+                        .map(|(ty, _)| self.ty_use_ref(ty))
+                        .unwrap_or_default(),
+                    if super::console::signature(sym).is_some() {
+                        "unit"
+                    } else {
+                        "\"t_i32\""
+                    }
                 ),
                 span
             );
@@ -3667,7 +3705,7 @@ impl<'p> Emitter<'p> {
 }
 
 fn intrinsic_type_id(sym: &str) -> String {
-    format!("t_i_{}", sym.rsplit('.').next().unwrap_or("x"))
+    format!("t_i_{}", intrinsic_id_suffix(sym))
 }
 
 /// Atom-text encoding of a surface binary operator: the descriptor word
@@ -3698,5 +3736,29 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
 pub use crate::text_resources::RUNTIME_TEXT_CAPABILITY;
 
 fn intrinsic_def_id(sym: &str) -> String {
-    format!("i_{}", sym.rsplit('.').next().unwrap_or("x"))
+    format!("i_{}", intrinsic_id_suffix(sym))
+}
+
+/// Compile the explicit PLAN-863 console source domain. Grants are checked at AV admission.
+pub fn compile_host_console_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::HostConsole)?;
+    let checked = crate::verify::verify_host_console(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::HOST_CONSOLE_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
+fn intrinsic_id_suffix(sym: &str) -> String {
+    if sym.starts_with("auto.console.") {
+        sym.replace('.', "_")
+    } else {
+        sym.rsplit('.').next().unwrap_or("x").to_string()
+    }
 }

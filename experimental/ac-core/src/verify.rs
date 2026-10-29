@@ -530,21 +530,28 @@ pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// the CheckedModule so the build gates (capability + runtime contract)
 /// fire on REAL usage, not the caller-controlled declaration alone.
 pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    if bundle.domain != HirDomain::Text {
+    verify_text_domain(bundle, HirDomain::Text)
+}
+
+fn verify_text_domain(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != expected {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.domain",
             format!(
                 "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
                 bundle.domain.as_str(),
-                HirDomain::Text.as_str()
+                expected.as_str()
             ),
             Span { start: 0, end: 0 },
         )]);
     }
     let mut v = Verifier {
         diags: Vec::new(),
-        domain: HirDomain::Text,
+        domain: expected,
     };
     for m in &bundle.modules {
         v.check_module(m);
@@ -1087,7 +1094,11 @@ impl Verifier {
         }
         if !matches!(
             self.domain,
-            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections | HirDomain::Closures
+            HirDomain::HostConsole
+                | HirDomain::Text
+                | HirDomain::TextRecord
+                | HirDomain::Collections
+                | HirDomain::Closures
         ) {
             for e in &body.exprs {
                 // PLAN-864: the collections surface admits exactly the
@@ -1158,9 +1169,10 @@ impl Verifier {
                         self.domain,
                         HirDomain::Text | HirDomain::Record | HirDomain::TextRecord
                     ),
-                    hir::ParamMode::MoveOwn => {
-                        !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
-                    }
+                    hir::ParamMode::MoveOwn => !matches!(
+                        self.domain,
+                        HirDomain::HostConsole | HirDomain::Text | HirDomain::TextRecord
+                    ),
                 };
                 if bad_mode {
                     self.error(
@@ -1826,6 +1838,18 @@ impl Verifier {
     }
 
     fn check_module(&mut self, m: &hir::Module) {
+        if self.domain != HirDomain::HostConsole {
+            for d in &m.defs {
+                if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. } if symbol.starts_with("auto.console."))
+                {
+                    self.error(
+                        "host.profile",
+                        "console declarations require the host-console profile",
+                        d.span,
+                    );
+                }
+            }
+        }
         // Module-level type-reference bounds FIRST (review P767-R2): a
         // programmatically mutated bundle may carry out-of-range TypeIds in
         // function-signature params/results. `value_of` would silently
@@ -1840,7 +1864,11 @@ impl Verifier {
         // str/Str/char named types into an older profile's signatures.
         if !matches!(
             self.domain,
-            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections | HirDomain::Closures
+            HirDomain::HostConsole
+                | HirDomain::Text
+                | HirDomain::TextRecord
+                | HirDomain::Collections
+                | HirDomain::Closures
         ) {
             for t in &m.types {
                 // PLAN-864: the collections domain owns the named owned-Str
@@ -3261,9 +3289,11 @@ impl Verifier {
                     l.span,
                 );
             } else if text_vt
-                && !(matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
-                    || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
-                        && lvt == ValueType::StrOwned)
+                && !(matches!(
+                    self.domain,
+                    HirDomain::HostConsole | HirDomain::Text | HirDomain::TextRecord
+                ) || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
+                    && lvt == ValueType::StrOwned)
                     || (self.domain == HirDomain::Closures
                         && l.role == hir::LocalRole::Capture
                         && lvt == ValueType::Str))
@@ -3472,7 +3502,8 @@ impl Verifier {
                         // of a Unit function — checked where returns are
                         // verified.
                         hir::ExprKind::Unit => {
-                            if self.domain != HirDomain::EntryUnit {
+                            if !matches!(self.domain, HirDomain::EntryUnit | HirDomain::HostConsole)
+                            {
                                 self.error(
                                     "verify.unit-expr",
                                     format!(
@@ -5799,6 +5830,82 @@ pub fn capabilities_check(
     }
     if diags.is_empty() {
         Ok(())
+    } else {
+        Err(diags)
+    }
+}
+
+/// PLAN-863: text/entry verification under an independent identity.
+pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    let checked = verify_text_domain(bundle, HirDomain::HostConsole)?;
+    let mut diags = Vec::new();
+    for m in &checked.bundle.modules {
+        check_unit_placement(m, &mut diags);
+        let types = Verifier::build_type_map(m);
+        let mut seen = BTreeSet::new();
+        for d in &m.defs {
+            let hir::DefKind::Intrinsic { symbol, effect, ty } = &d.kind else {
+                continue;
+            };
+            if matches!(symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b") {
+                continue;
+            }
+            let Some((input, cap)) = crate::source::console::signature(symbol) else {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "host.unknown-symbol",
+                    "unknown host-console declaration",
+                    d.span,
+                ));
+                continue;
+            };
+            if !seen.insert(symbol) {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "host.duplicate",
+                    "duplicate host symbol",
+                    d.span,
+                ));
+            }
+            let expected = match input {
+                crate::source::resolve::VT::I32 => ValueType::I32,
+                crate::source::resolve::VT::Bool => ValueType::Bool,
+                crate::source::resolve::VT::Str => ValueType::Str,
+                crate::source::resolve::VT::Char => ValueType::Char,
+                _ => unreachable!(),
+            };
+            let sig_ok = match m.types.get(ty.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::Function(sig)) => {
+                    let v = Verifier {
+                        diags: Vec::new(),
+                        domain: HirDomain::HostConsole,
+                    };
+                    sig.params.len() == 1
+                        && v.value_of(&sig.params[0], &types) == expected
+                        && v.value_of(&sig.result, &types) == ValueType::Unit
+                }
+                _ => false,
+            };
+            if !sig_ok || *effect != hir::Effect::Observable {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "host.signature",
+                    "host symbol/signature/effect mismatch",
+                    d.span,
+                ));
+            }
+            if !checked.bundle.requires.iter().any(|r| r == cap) {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "host.unauthorized",
+                    "host capability requirement is missing",
+                    d.span,
+                ));
+            }
+        }
+    }
+    if diags.is_empty() {
+        Ok(checked)
     } else {
         Err(diags)
     }

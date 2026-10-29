@@ -831,6 +831,8 @@ pub enum HirDomain {
     /// function result, the entry matrix and the single-file script form.
     /// Unit is a RESULT-only type in this domain.
     EntryUnit,
+    /// PLAN-863: typed console host calls, text values and the entry matrix.
+    HostConsole,
     /// `auto.hir.collections.draft / 1 / collections-draft` (PLAN-864): the
     /// source-domain twin of `av.collections/1` — typed `List<T>` locals,
     /// nominal `?T`/`Result<T,E>`/finite `enum` variants with payload
@@ -854,6 +856,7 @@ impl HirDomain {
             HirDomain::Record => "record-i32-draft",
             HirDomain::TextRecord => "text-record-i32-draft",
             HirDomain::EntryUnit => "entry-unit-draft",
+            HirDomain::HostConsole => "host-console-draft",
             HirDomain::Collections => "collections-draft",
             HirDomain::Closures => "source-closures-draft",
         }
@@ -867,6 +870,7 @@ impl HirDomain {
             HirDomain::Record => "auto.hir.record.draft",
             HirDomain::TextRecord => "auto.hir.text-record.draft",
             HirDomain::EntryUnit => "auto.hir.entry-unit.draft",
+            HirDomain::HostConsole => "auto.hir.host-console.draft",
             HirDomain::Collections => "auto.hir.collections.draft",
             HirDomain::Closures => "auto.hir.closures.draft",
         }

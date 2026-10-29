@@ -285,6 +285,11 @@ impl Descriptor {
         {
             // PLAN-862: the entry/Unit domain (Unit result + script form).
             Some(hir::HirDomain::EntryUnit)
+        } else if self.schema == "auto.hir.host-console.draft"
+            && self.revision == 1
+            && self.profile == "host-console-draft"
+        {
+            Some(hir::HirDomain::HostConsole)
         } else if self.schema == "auto.hir.collections.draft"
             && self.revision == 1
             && self.profile == "collections-draft"
@@ -3110,6 +3115,7 @@ impl<'d> Binder<'d> {
                     && matches!(
                         self.desc.domain(),
                         Some(hir::HirDomain::EntryUnit)
+                            | Some(hir::HirDomain::HostConsole)
                             | Some(hir::HirDomain::Collections)
                             | Some(hir::HirDomain::Closures)
                     ) =>
@@ -3128,6 +3134,7 @@ impl<'d> Binder<'d> {
                 if matches!(
                     self.desc.domain(),
                     Some(hir::HirDomain::Text)
+                        | Some(hir::HirDomain::HostConsole)
                         | Some(hir::HirDomain::TextRecord)
                         | Some(hir::HirDomain::Collections)
                         | Some(hir::HirDomain::Closures)

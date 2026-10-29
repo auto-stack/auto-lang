@@ -545,6 +545,8 @@ fn verify_profile(
         // update — this contract test never feeds it; route it to the
         // real collections verifier to keep the match honest.
         SourceProfile::Collections => verify::verify_collections(b),
+        SourceProfile::Closures => verify::verify_closures(b),
+        SourceProfile::HostConsole => verify::verify_host_console(b),
         SourceProfile::Scalar => verify::verify_scalar(b),
         SourceProfile::Text => verify::verify_text(b),
         SourceProfile::Record => verify::verify_record(b),

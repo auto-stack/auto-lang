@@ -107,6 +107,7 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
             ));
         }
         auto_ac_prototype::hir::HirDomain::Closures => verify::verify_closures(bundle),
+        auto_ac_prototype::hir::HirDomain::HostConsole => verify::verify_host_console(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -191,6 +192,13 @@ fn check_source(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "source.at".to_string());
     let compile = match args.profile {
+        SourceProfile::HostConsole => {
+            auto_ac_prototype::source::adapter::compile_host_console_source(
+                &src,
+                &module_path,
+                &args.capabilities,
+            )
+        }
         SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
         SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
         SourceProfile::Text => {

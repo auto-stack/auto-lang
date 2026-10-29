@@ -261,3 +261,12 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         header.span,
     )])
 }
+
+/// PLAN-863: independent host-console HIR descriptor.
+pub fn host_console_descriptor() -> &'static descriptor::Descriptor {
+    static DESC: std::sync::OnceLock<descriptor::Descriptor> = std::sync::OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(include_str!("../schema/host-console.atom"))
+            .expect("host-console descriptor must parse")
+    })
+}

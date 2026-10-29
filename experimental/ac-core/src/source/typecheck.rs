@@ -244,7 +244,9 @@ fn check_expr(
                     e.span,
                 ));
             }
-            RExprKind::CallIntrinsic { .. } => {}
+            RExprKind::CallIntrinsic { args, .. } => {
+                stack.extend(args.iter());
+            }
             RExprKind::CallFn { fn_index, args } => {
                 let callee = program.fns.get(*fn_index);
                 for (idx, a) in args.iter().enumerate() {

@@ -313,6 +313,16 @@ impl<'s> Parser<'s> {
             }) => {
                 self.pos += 1;
                 self.last_line = line;
+                if self.surface == SourceProfile::HostConsole
+                    && matches!(name.as_str(), "print" | "eprint")
+                {
+                    return Err(Diagnostic::new(
+                        Stage::Text,
+                        "source.console-reserved",
+                        "console names cannot be bound in the host-console profile",
+                        span,
+                    ));
+                }
                 Ok(Ident { name, span })
             }
             // An excluded-surface token where a name is expected is an
