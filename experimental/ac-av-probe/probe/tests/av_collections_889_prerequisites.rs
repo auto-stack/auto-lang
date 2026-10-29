@@ -50,6 +50,21 @@ fn borrowed_copyable_record_signature_and_return_agree() {
 }
 
 #[test]
+fn named_variant_owned_text_literal_is_contextual() {
+    let source="enum Token { Data(Str)\nEnd }\nfn main() int { let t = Token.Data(\"中\")\n is t { Token.Data(s) -> { return s.len() + 41 }\n Token.End -> { return 0 } } }";
+    let run = compile_and_execute(source, "d_main").unwrap();
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, 1);
+    assert_eq!(run.frees, 1);
+    let bad = source.replace("Data(\"中\")", "Data(42)");
+    let errors = auto_ac_prototype::source::compile_collections_source(&bad, "p889.at", &[])
+        .err()
+        .expect("wrong payload must reject");
+    assert!(errors.iter().any(|d| d.code == "source.type-mismatch"));
+}
+
+#[test]
 fn single_function_collection_units_preserve_clone_and_borrowed_signatures() {
     for source in [
         "fn main() int { let a Str = \"中\"\n let b = a.clone()\n return a.len() * 40 + b.len() * 2 }",

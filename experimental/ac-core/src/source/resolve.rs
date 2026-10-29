@@ -5821,7 +5821,15 @@ impl<'a> FnResolver<'a> {
                             // single resolved argument.
                             let payload = match rargs.len() {
                                 0 => None,
-                                1 => Some(Box::new(rargs.remove(0).value)),
+                                1 => {
+                                    let mut value = rargs.remove(0).value;
+                                    if let Some(expected) =
+                                        self.coll.variants[vi].arms[disc as usize].1
+                                    {
+                                        retag_literal(&mut value, expected);
+                                    }
+                                    Some(Box::new(value))
+                                }
                                 _ => None, // rejected at classification
                             };
                             out[dest] = ResolvedExpr {
