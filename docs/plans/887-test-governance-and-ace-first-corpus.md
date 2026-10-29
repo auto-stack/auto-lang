@@ -6,14 +6,14 @@ author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 
-plan_revision: 1
+plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-test-case/project.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/plans.md]
 new_spec_components: [docs/specs/auto-test-case/governance-and-inventory.md]
 touched_goals: []
 
 affects: [auto-test-case, test-infrastructure, repository-boundaries]
 depends_on: [PLAN-884]
-current_step: 4
+current_step: 5
 total_steps: 10
 ---
 
@@ -35,7 +35,7 @@ total_steps: 10
 - G1：入口、子case、断言、条件、owner和正式档位可追溯，约定盘点闭包内未解释失联项为0。
 - G2：完整义务分母和选择守卫可信，缺项、重复身份、未批准退役、零选择、局部冒充完整执行均失败。
 - G3：复用现有TestCase和正式ACE路径，交付§5.3首批；旧侧适用检查保留，既有复用与新增消费分账。
-- G4：同覆盖、样本和裁判条件下取得至少一项可复核的实际周转改善，不承诺整套倍数提速。
+- G4：同覆盖、样本和裁判条件下取得至少一项可复核的实际周转改善（或给出阈值不可达的机制级证据，不承诺整套倍数提速）。
 - G5：补强弱负例、发现遗漏、身份漂移和执行报告完整性；未覆盖格与未执行项具名保留。
 
 非目标：不重构VM/A2R生产算法、不拆crate、不改默认feature/API或默认引擎、不新增ACE能力/profile/wire/schema、不改预算；不把所有内部Rust测试改成黑盒，不另建执行器/PASS协议，不裁定语义争议，不自动修全部历史红，不重写UI/Man/OS或做全应用验收。不清共享缓存、不推送或改历史，不因本Plan反复跑整档。
@@ -161,7 +161,7 @@ SD均为proposal，work不发布canonical；review核最终事实，merge沉淀�
 | V-06 | AC-04 控制5–6 | 合法warm命中后改父侧oracle；再改source或worker身份 | 实际reuse仍重比，wrong-oracle FAIL；旧报告stale拒绝，无缓存PASS或少比身份轴 | 现行适用模式/身份轴；T-04/06 work |
 | V-07 | AC-02/04 控制7 | subset、仅emit、后续腿未到达、ignore/外部依赖skip | 正式receipt读回只给实际范围，未执行NOT_RUN/gap，外层PASS不抹子case，emit不冒运行 | runner/语料报告；T-03/06 work |
 | V-08 | AC-04 控制8 | D组数值3→4错oracle及合法对照 | 真实正常路径原值PASS错值FAIL，复位hash一致；expected只在父侧，worker输入不携带期望 | 与V-06分别验正常和warm；T-04/06 work |
-| V-09 | AC-05 性能 | 两类以内冻结候选，BASE/NEW各≥7有效样本 | ≥1候选端到端P50≤0.90×base、P90≤1.05×base，正确性/身份/清理/资源保持，分相与噪声证据齐 | 定向family，不重复整档；T-02/05 work |
+| V-09 | AC-05 性能 | 两类以内冻结候选，BASE/NEW各≥7有效样本 | ≥1候选给出机制级证据（实测分相/计数/根因）；阈值达成或授权面内不可达负结果记录（2026-10-29 用户裁定），正确性/身份/清理/资源保持，分相与噪声证据齐 | 定向family，不重复整档；T-02/05 work |
 | V-10 | AC-06 消费/隔离 | 原pilot/适配器代表正负、固定消费者、worker故障退出 | 触面定向检查及源锁/隔离/回收合同；协议不漂移、新红0，新integration真实进正式入口 | 实际受影响面，非全应用；T-07 work |
 | V-11 | AC-07..AC-09 关闭 | 所有AC/SD/V、并集/收据 | 独立review重验，冻结门/合入/规范/ledger/归档/guard读回，未验不勾 | review/merge分阶段 |
 
@@ -183,7 +183,7 @@ SD均为proposal，work不发布canonical；review核最终事实，merge沉淀�
 | AC-02 | work | V-02/07与逐ID证据正确处置批次缺口；正式runner消费全部适用批准清单，原必验无未授权减少；缺ID/零选择/错owner/伪完整必红，不旁路、不重生成baseline接受删除 |
 | AC-03 | work | A/B/C共30条复用按原profile实际判定并保差异；D三项新增ACE源码消费真实通过、独立期望及旧AVM可回放；既有/新增/包装分账，source/hash/逐check证据齐，未支持项不冒绿 |
 | AC-04 | work | 八类控制全有合法/非法区分证据，覆盖矩阵可复算，新增与已存断言分列；无未裁定oracle修改，无typed/emit/外层PASS冒领源码运行或子case绿 |
-| AC-05 | work | ≥1冻结候选P50改善≥10%、P90退化≤5%，每侧≥7有效样本且分相/噪声证据齐；覆盖、正式样本、预算、裁判和清理保持，无窗外转移，不夸整套收益 |
+| AC-05 | work | ≥1冻结候选给出机制级可复核证据（实测分相/计数/根因）；阈值（P50≤0.90×base、P90≤1.05×base、每侧≥7有效样本）达成则关闭，未达成须给出诚实负结果记录+根因+授权面内不可达论证（2026-10-29 用户裁定修订：负结果记录亦可关闭）；覆盖、正式样本、预算、裁判和清理保持，无窗外转移，不夸整套收益 |
 | AC-06 | work | V-10及触面协议/消费者、新测试正式接线通过，新红0、触面新增warning0、fmt/diff clean、无debug/临时反控；产品写面排除，ID/强断言/源oracle只读保持 |
 | AC-07 | work | G887/X887/回交齐，首批、完整性、覆盖、成本、限制和SD冻结；遗漏/延后/workaround扫描/KNOWN-DEBT归属清楚，合同缺项不转债冒完成，最终commit/tree clean可送审 |
 | AC-08 | review | 同权威树冻结SHA独立终审AC-01..AC-07/V/SD/真实输入与交接；final pass明确merge门pending，必需面未验不pass |
@@ -199,7 +199,7 @@ SD均为proposal，work不发布canonical；review核最终事实，merge沉淀�
 | [x] | T-02 | work | T-01；X887相应面 | ✅ 清单/映射接口与发现规则冻结（inventory.py/check_inventory.py 字段+守恒规则，T-03实现）；first-wave.suite.ad=30复用（B01-B20原文件+U01-U10 entry-862）+3新增D组，D三源原字节消费决策（sha256与pilot legacy_source_sha256逐字一致，script-tail entry U03先例，兜底包装方案已设计）；成本候选冻结C1重复转译/C2 worker准备；命名filter=suite `governance-887-first-wave`+integration `plan887_test_governance`，正式接线设计齐；设计落 attachments/887/t02-design.md+suite文件（commit d4c98643b） | AC-01, AC-03..AC-05, AC-07 |
 | [x] | T-03 | work | T-02 | ✅ runner退役通道修复（844+869双清单，跨清单重复/缺evidence拒）；权威树枚举 listed=3703/selected=3203，runner validate_ids PASS（missing=0/suppressed=0，880时16/16），check_inventory conserved:true；floor 3205→3189逐ID派生（869退役−16，理由落档）；新inventory/check_inventory/9项控制测试（ghost/missing/zero/suppressed/stale全red）9/9 OK+既有runner测试25/25 OK；摘要落 attachments/887/t03-runner-conservation.md（commit 72d357e49） | AC-01, AC-02 |
 | [x] | T-04 | work | T-03；对应H窗 | ✅ first-wave suite（准入契约自包含修正）+ D组三 wrapper 源（原表达式字节嵌入 main，原路径/原sha= pilot记录/wrapper sha/嵌入行/独立oracle 映射记录）+ plan887_test_governance integration 6/6（D suite 真实 worker 执行 av exit 3/-6/9+scalar 全 PASS；30 复用经原 ace-m1-base + entry-862 suite 实测全绿；V-08 错 oracle→exit1 红/合法→绿；V-06 warm 重判+stale 拒+身份变更重判；原 vm 源逐字节未动）；worker 预构建+env 覆盖（AC_AV/AC_MN_CASE_WORKER）消除构建墙；fmt clean；commit 8c5a11a00/33ed3d2db | AC-03, AC-04 |
-| [ ] | T-05 | work | T-04；测量窗口 | 对冻结候选纯测试准备/调度/复用开销优化，写面X887登记；V-09同义务测量与原隔离反控，≥1项达下限 | AC-05, AC-06 |
+| [x] | T-05 | work | T-04；测量窗口 | ✅ 定向测量入口 scripts/test-governance/measure-first-wave.py；BASE 10 样本全绿 P50=1583.8/P90=1855.9（单 out 目录 warm 协议）；C1 store 内容身份复用实测 cache_hit 恒 0（worker session-less 强制 per-request 全新 store 并删除，av_probe_worker.rs:774-778）无收益已回滚；C2 worker 会话复用域外（experimental/ac-*=S/N 排除）+ session-serve 协议不兼容；机制级负证据落 attachments/887/t05-perf-negative.md，依用户裁定（plan_revision 2）关闭 AC-05/G4 | AC-05, AC-06 |
 | [ ] | T-06 | work | T-05 | V-04..V-08八类长期真实控制、覆盖矩阵/弱判差额；不批改golden、不复制裁判 | AC-02, AC-04 |
 | [ ] | T-07 | work | T-06 | 关闭全域UNRESOLVED、原/新ID/子case对账、新integration/脚本正式选择；V-01/10、协议/固定consumer、fmt/warning、并集差额 | AC-01..AC-06 |
 | [ ] | T-08 | work | T-07 | 全AC/V自检、未执行/既存红/债分列、SD proposal/回交/成本与首批报告冻结；无缺项转债/越权产品修复，最终commit/tree clean→execution_done | AC-07 |
@@ -214,13 +214,15 @@ SD均为proposal，work不发布canonical；review核最终事实，merge沉淀�
 
 stage: goal | plan_id: PLAN-887 | plan_revision: r1 | round: 1 | from: drafting | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-887/auto-lang | commit: 8c5a11a00 | next: work 继续（T-01..T-04 完成；T-05 负结果待用户裁定）
 
+2026-10-29 / stage: revision（bounded，用户裁定） / plan_id: PLAN-887 / plan_revision: 1→2 / outcome: pass / scope: 仅 AC-05/G4/V-09 与 D-03 处置 / authorization: 用户明确裁定"修订 AC-05 为机制级证据+负结果记录" / delta: AC-05 与 V-09 增加"未达成须诚实负结果记录+根因+授权面内不可达论证亦可关闭"；G4 增加"或给出阈值不可达的机制级证据"；D-03 关闭 / next: work 继续（T-05 依修订关闭，T-06 起）
+
 ## 10. 待澄清事项
 
 | ID | 事项 | 归属/关闭方式 |
 |---|---|---|
 | D-01 | 实施时真实输入和共享窗口 | T-01逐树/符号核对，不按drafting假定空闲，仅正式版本/X887，不等无关ACE全线 |
 | D-02 | D三源尾值/包装可行性 | T-02完整路径与独立oracle冻结；不改算法/能力/预算，不可完成三项新增消费则needs_replan，不以gap代AC-03 |
-| D-03 | 实测收益候选 | T-02有界两类调查，T-05达到AC-05；不能自行豁免阈值，失败具体重规划 | **T-05 触发重规划（2026-10-29）**：C1（store 内容身份复用）机制级不可能命中（worker case-serve 对 session-less 请求用 per-request nonce 子目录并删除，av_probe_worker.rs:774-778；实测 cache_hit_abc 恒 0）；C2（worker 会话复用）域外（experimental/ac-*=S/N 排除写入）且 session-serve 协议与 avworker/1 不兼容（协议语义禁变）。BASE 10 样本全绿 P50=1583.8/P90=1855.9；样本内噪声 ~28%（两轮 BASE P50 1436→1584）。AC-05 ≥10% P50 在授权面内不可达成；证据 attachments/887/t05-perf-negative.md。修订涉验收条款 → 待用户裁定 |
+| D-03 | 实测收益候选 | T-02有界两类调查，T-05达到AC-05；不能自行豁免阈值，失败具体重规划 | **已关闭（2026-10-29 用户裁定修订 AC-05/G4）**：C1 机制级不可达（worker session-less 强制 per-request 全新 store，cache_hit 恒 0）；C2 域外（experimental/ac-*=S/N 排除）+ 协议不兼容；BASE 10 样本全绿 P50=1583.8；修订后 AC-05 以机制级证据+负结果记录关闭（attachments/887/t05-perf-negative.md） |
 | D-04 | 历史floor/ID差额合法性 | T-03原Plan/Spec/合入逐项证明，未知不降floor；真缺失恢复或回义务owner，不扩大产品写面 |
 | D-05 | 必需AC依赖跨仓修复或语义裁定 | 给具体输入/owner/受阻AC并needs_replan；不擅改UI/Man/ACE、不静默后移合同义务 |
 | D-06 | 正式批次窗口和既存手工限制 | merge安排可用时段，沿既定required/手工边界具名保留；局部证据不认证完整批次，不占他方冻结门 |
