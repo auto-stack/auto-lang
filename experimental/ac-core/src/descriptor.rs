@@ -290,6 +290,13 @@ impl Descriptor {
             // PLAN-864: the collections domain (List/Variant source twin of
             // av.collections/1).
             Some(hir::HirDomain::Collections)
+        } else if self.schema == "auto.hir.closures.draft"
+            && self.revision == 1
+            && self.profile == "source-closures-draft"
+        {
+            // PLAN-865: source closure declarations and call sites have a
+            // separate identity from the collections-only descriptor.
+            Some(hir::HirDomain::Closures)
         } else {
             None
         }
@@ -2969,7 +2976,9 @@ impl<'d> Binder<'d> {
                 if word == "unit"
                     && matches!(
                         self.desc.domain(),
-                        Some(hir::HirDomain::EntryUnit) | Some(hir::HirDomain::Collections)
+                        Some(hir::HirDomain::EntryUnit)
+                            | Some(hir::HirDomain::Collections)
+                            | Some(hir::HirDomain::Closures)
                     ) =>
             {
                 // PLAN-862: the entry-unit result word. PLAN-864: also the
@@ -2988,6 +2997,7 @@ impl<'d> Binder<'d> {
                     Some(hir::HirDomain::Text)
                         | Some(hir::HirDomain::TextRecord)
                         | Some(hir::HirDomain::Collections)
+                        | Some(hir::HirDomain::Closures)
                 ) && text_builtin(word).is_some() =>
             {
                 // PLAN-864: the collections surface admits `Str` (owned

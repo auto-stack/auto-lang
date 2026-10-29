@@ -804,6 +804,10 @@ pub enum HirDomain {
     /// element views under the 822 execution contract (no new MIR
     /// instructions; profile id 4 is consumed unchanged).
     Collections,
+    /// `auto.hir.closures.draft / 1 / source-closures-draft` (PLAN-865):
+    /// the entry-unit and collections source domain plus typed closure
+    /// values, environment construction, and indirect calls.
+    Closures,
 }
 
 impl HirDomain {
@@ -816,6 +820,7 @@ impl HirDomain {
             HirDomain::TextRecord => "text-record-i32-draft",
             HirDomain::EntryUnit => "entry-unit-draft",
             HirDomain::Collections => "collections-draft",
+            HirDomain::Closures => "source-closures-draft",
         }
     }
 
@@ -828,6 +833,7 @@ impl HirDomain {
             HirDomain::TextRecord => "auto.hir.text-record.draft",
             HirDomain::EntryUnit => "auto.hir.entry-unit.draft",
             HirDomain::Collections => "auto.hir.collections.draft",
+            HirDomain::Closures => "auto.hir.closures.draft",
         }
     }
 

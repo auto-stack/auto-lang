@@ -152,6 +152,24 @@ pub fn compile_collections_source(
     })
 }
 
+/// Compile under PLAN-865's source-closures profile. The frontend inherits
+/// collections and entry-unit syntax but emits the separate closures HIR
+/// identity and verifier entry.
+pub fn compile_closures_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Closures)?;
+    let checked = crate::verify::verify_closures(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::CLOSURES_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// Compile under the record source profile (PLAN-771): the scalar surface
 /// plus records — parse/resolve/typecheck, bind against the record
 /// descriptor, verify through the record entry.
@@ -339,6 +357,7 @@ pub fn emit_function_body(
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
         crate::hir::HirDomain::Collections => crate::collections_descriptor(),
+        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -615,6 +634,7 @@ fn compile_program_observed(
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
         crate::hir::HirDomain::Collections => crate::collections_descriptor(),
+        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -2611,6 +2631,7 @@ impl<'p> Emitter<'p> {
             crate::hir::HirDomain::Collections => {
                 ("auto.hir.collections.draft", "collections-draft")
             }
+            crate::hir::HirDomain::Closures => ("auto.hir.closures.draft", "source-closures-draft"),
         };
         frag!(
             &format!(

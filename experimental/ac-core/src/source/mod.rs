@@ -23,9 +23,9 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_collections_source, compile_entry_unit_source, compile_parts, compile_parts_with,
-    compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
-    compile_text_record_source, compile_text_source, emit_function_body,
+    compile_closures_source, compile_collections_source, compile_entry_unit_source, compile_parts,
+    compile_parts_with, compile_program_parts, compile_record_source, compile_scalar_source,
+    compile_source, compile_text_record_source, compile_text_source, emit_function_body,
     prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt, CompiledSource,
     FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
@@ -77,6 +77,8 @@ pub const ENTRY_UNIT_SOURCE_PROFILE: &str = "auto.source.entry-unit.draft";
 /// reuses the frozen 822 instruction set; profile 4 semantics are
 /// consumed unchanged.
 pub const COLLECTIONS_SOURCE_PROFILE: &str = "auto.source.collections.draft";
+/// PLAN-865: the entry-unit and collections surface with source closures.
+pub const CLOSURES_SOURCE_PROFILE: &str = "auto.source.closures.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -89,6 +91,7 @@ pub enum SourceProfile {
     TextRecord,
     EntryUnit,
     Collections,
+    Closures,
 }
 
 impl SourceProfile {
@@ -101,6 +104,7 @@ impl SourceProfile {
             SourceProfile::TextRecord => TEXT_RECORD_SOURCE_PROFILE,
             SourceProfile::EntryUnit => ENTRY_UNIT_SOURCE_PROFILE,
             SourceProfile::Collections => COLLECTIONS_SOURCE_PROFILE,
+            SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
         }
     }
 
@@ -114,6 +118,7 @@ impl SourceProfile {
             SourceProfile::TextRecord => crate::hir::HirDomain::TextRecord,
             SourceProfile::EntryUnit => crate::hir::HirDomain::EntryUnit,
             SourceProfile::Collections => crate::hir::HirDomain::Collections,
+            SourceProfile::Closures => crate::hir::HirDomain::Closures,
         }
     }
 
@@ -128,6 +133,7 @@ impl SourceProfile {
                 | SourceProfile::TextRecord
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
+                | SourceProfile::Closures
         )
     }
 
@@ -136,7 +142,13 @@ impl SourceProfile {
     /// construction with owned fields, Str literals and the restricted
     /// method surface.
     pub fn is_collections(&self) -> bool {
-        matches!(self, SourceProfile::Collections)
+        matches!(self, SourceProfile::Collections | SourceProfile::Closures)
+    }
+
+    /// PLAN-865: whether lambda expressions and closure indirect calls are
+    /// accepted on this otherwise collection-compatible source surface.
+    pub fn is_closures(&self) -> bool {
+        matches!(self, SourceProfile::Closures)
     }
 
     /// PLAN-864: whether string literals lex on this surface (the text
@@ -156,7 +168,10 @@ impl SourceProfile {
     pub fn is_record(&self) -> bool {
         matches!(
             self,
-            SourceProfile::Record | SourceProfile::TextRecord | SourceProfile::Collections
+            SourceProfile::Record
+                | SourceProfile::TextRecord
+                | SourceProfile::Collections
+                | SourceProfile::Closures
         )
     }
 
@@ -164,7 +179,7 @@ impl SourceProfile {
     /// the single-file script form, leading/trailing expression
     /// statements and the entry uniqueness matrix.
     pub fn is_entry_unit(&self) -> bool {
-        matches!(self, SourceProfile::EntryUnit)
+        matches!(self, SourceProfile::EntryUnit | SourceProfile::Closures)
     }
 
     /// The widest operator surface this profile accepts: record builds on
@@ -181,6 +196,7 @@ impl SourceProfile {
                 | SourceProfile::TextRecord
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
+                | SourceProfile::Closures
         )
     }
 
@@ -193,6 +209,7 @@ impl SourceProfile {
             TEXT_RECORD_SOURCE_PROFILE => Some(SourceProfile::TextRecord),
             ENTRY_UNIT_SOURCE_PROFILE => Some(SourceProfile::EntryUnit),
             COLLECTIONS_SOURCE_PROFILE => Some(SourceProfile::Collections),
+            CLOSURES_SOURCE_PROFILE => Some(SourceProfile::Closures),
             _ => None,
         }
     }

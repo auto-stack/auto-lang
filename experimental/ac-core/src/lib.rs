@@ -198,6 +198,20 @@ pub fn collections_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// PLAN-865 source-closures descriptor. It starts from the collections
+/// vocabulary and adds closure-only nodes without widening that older
+/// descriptor's acceptance set.
+pub const CLOSURES_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/closures.atom");
+
+pub fn closures_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(CLOSURES_DESCRIPTOR_SCHEMA)
+            .expect("embedded source-closures descriptor must parse")
+    })
+}
+
 /// Convenience: bind a source document with the embedded core descriptor.
 pub fn bind_source(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnostic>> {
     descriptor::bind(descriptor(), source)
@@ -216,6 +230,7 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         (text_record_descriptor(), "text-record"),
         (entry_unit_descriptor(), "entry-unit"),
         (collections_descriptor(), "collections"),
+        (closures_descriptor(), "closures"),
     ];
     let header = match descriptor::peek_identity(source) {
         Ok(h) => h,

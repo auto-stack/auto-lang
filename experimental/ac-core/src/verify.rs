@@ -210,8 +210,8 @@ pub fn verify_function(
         );
         // PLAN-864: the collections domain owns owned-`Str` values (the
         // `t_Str` table entry); `char`/borrowed `str` stay excluded.
-        let admitted =
-            matches!(t.kind, hir::TypeKind::StrOwned) && v.domain == HirDomain::Collections;
+        let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
+            && matches!(v.domain, HirDomain::Collections | HirDomain::Closures);
         if text_kind && !admitted {
             v.error(
                 "verify.local-type",
@@ -742,21 +742,34 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
 /// `.len()` (the TextLen view shape). Cleanup carries no plan — profile 4
 /// releases frame-owned values at exits.
 pub fn verify_collections(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    if bundle.domain != HirDomain::Collections {
+    verify_collection_family(bundle, HirDomain::Collections)
+}
+
+/// PLAN-865: source closures retain every collections-domain rule while
+/// using their own descriptor/verifier identity.
+pub fn verify_closures(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family(bundle, HirDomain::Closures)
+}
+
+fn verify_collection_family(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != expected {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.domain",
             format!(
                 "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
                 bundle.domain.as_str(),
-                HirDomain::Collections.as_str()
+                expected.as_str()
             ),
             Span { start: 0, end: 0 },
         )]);
     }
     let mut v = Verifier {
         diags: Vec::new(),
-        domain: HirDomain::Collections,
+        domain: expected,
     };
     v.check_bundle(&bundle);
     for m in &bundle.modules {
@@ -1047,14 +1060,14 @@ impl Verifier {
     fn check_profile_ops(&mut self, m: &hir::Module, body: &hir::Body) {
         if !matches!(
             self.domain,
-            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections
+            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections | HirDomain::Closures
         ) {
             for e in &body.exprs {
                 // PLAN-864: the collections surface admits exactly the
                 // restricted text face: literals, `.len()` and `.move`.
                 let text_kind = match self.domain {
                     // PLAN-864: only the non-admitted text face rejects.
-                    HirDomain::Collections => matches!(
+                    HirDomain::Collections | HirDomain::Closures => matches!(
                         &e.kind,
                         hir::ExprKind::CharLit { .. }
                             | hir::ExprKind::TextLenBytes { .. }
@@ -1174,7 +1187,10 @@ impl Verifier {
         }
         if !matches!(
             self.domain,
-            HirDomain::Record | HirDomain::TextRecord | HirDomain::Collections
+            HirDomain::Record
+                | HirDomain::TextRecord
+                | HirDomain::Collections
+                | HirDomain::Closures
         ) {
             for t in &m.types {
                 if matches!(t.kind, hir::TypeKind::Record(_)) {
@@ -1211,9 +1227,9 @@ impl Verifier {
                         hir::ExprKind::BorrowView { .. }
                         | hir::ExprKind::BorrowMut { .. }
                         | hir::ExprKind::RecordClone { .. },
-                        HirDomain::Collections,
+                        HirDomain::Collections | HirDomain::Closures,
                     ) => None,
-                    (_, HirDomain::Collections) => match &e.kind {
+                    (_, HirDomain::Collections | HirDomain::Closures) => match &e.kind {
                         hir::ExprKind::RecordCtor { .. } => Some("record_ctor"),
                         hir::ExprKind::FieldGet { .. } => Some("field_get"),
                         _ => None,
@@ -1541,13 +1557,13 @@ impl Verifier {
         // str/Str/char named types into an older profile's signatures.
         if !matches!(
             self.domain,
-            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections
+            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections | HirDomain::Closures
         ) {
             for t in &m.types {
                 // PLAN-864: the collections domain owns the named owned-Str
                 // entry (`t_Str`); borrowed `str` and `char` stay excluded.
                 let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
-                    && self.domain == HirDomain::Collections;
+                    && matches!(self.domain, HirDomain::Collections | HirDomain::Closures);
                 if matches!(
                     t.kind,
                     hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
@@ -2924,7 +2940,8 @@ impl Verifier {
                 );
             } else if text_vt
                 && !(matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
-                    || (self.domain == HirDomain::Collections && lvt == ValueType::StrOwned))
+                    || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
+                        && lvt == ValueType::StrOwned))
             {
                 self.error(
                     "verify.local-type",

@@ -106,6 +106,7 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
                 )],
             ));
         }
+        auto_ac_prototype::hir::HirDomain::Closures => verify::verify_closures(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -218,6 +219,11 @@ fn check_source(
                 )],
             ));
         }
+        SourceProfile::Closures => auto_ac_prototype::source::compile_closures_source(
+            &src,
+            &module_path,
+            &args.capabilities,
+        ),
     };
     match compile {
         Ok(c) => Ok(format!(
