@@ -178,6 +178,7 @@ pub fn check_with_families(
     let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_cte: Option<BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
@@ -287,6 +288,17 @@ pub fn check_with_families(
                         })
                     })
                     .unwrap_or(false);
+            let console_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .is_some_and(|axes| {
+                        axes.iter().any(|p| {
+                            p[0].as_str() == Some("recipe")
+                                && p[1].as_str()
+                                    == Some(crate::test_cases::ac_av::AV_CONSOLE_RECIPE)
+                        })
+                    });
             let abi_probe_row = is_probe
                 && r.get("native")
                     .and_then(|n| n.get("toolchain"))
@@ -319,6 +331,10 @@ pub fn check_with_families(
             } else if cte_probe_row {
                 current_probe_cte
                     .get_or_insert_with(crate::test_cases::ac_cte::current_toolchain_identity)
+            } else if console_probe_row {
+                current_probe_console.get_or_insert_with(
+                    crate::test_cases::ac_av::current_console_toolchain_identity,
+                )
             } else if av_probe_row {
                 current_probe_av
                     .get_or_insert_with(crate::test_cases::ac_av::current_toolchain_identity)
@@ -385,6 +401,17 @@ pub fn check_with_families(
                             // shared auto-mir-lower crate; the contract axis
                             // is mandatory (missing = stale).
                             "mir-lowering",
+                        ],
+                        Some(false) if console_probe_row => vec![
+                            "av-worker-exe-sha256",
+                            "av-worker-version",
+                            "av-protocol",
+                            "recipe",
+                            "mir-lowering",
+                            "av-core-version",
+                            "av-profile",
+                            "av-source-profile",
+                            "av-wire-codec",
                         ],
                         Some(false) if av_probe_row => vec![
                             "av-worker-exe-sha256",

@@ -1,0 +1,5 @@
+fn main() int {
+ print("before")
+ eprint("fail")
+ return 1 / 0
+}

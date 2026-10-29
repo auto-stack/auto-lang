@@ -1,0 +1,4 @@
+fn main() int {
+ let print = 1
+ return print
+}

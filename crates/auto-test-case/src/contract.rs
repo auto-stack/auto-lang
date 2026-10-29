@@ -1052,7 +1052,55 @@ fn decode_check(
         }
     };
 
-    let expect = decode_expect(f.req("expect")?, &f.path_of("expect"), adapter, action)?;
+    let console_recipe = options.probe_recipe.as_deref() == Some("ac-av/console-run-v1");
+    let expect = decode_expect(
+        f.req("expect")?,
+        &f.path_of("expect"),
+        adapter,
+        action,
+        console_recipe,
+    )?;
+    if adapter == Adapter::Probe {
+        if console_recipe {
+            if expect.probe.is_some() {
+                return Err(err(
+                    &f.path_of("expect"),
+                    "console recipe exposes byte streams and result/error, not a probe-step oracle",
+                ));
+            }
+            validate_console_oracle(
+                expect.stdout.as_ref(),
+                expect.stderr.as_ref(),
+                expect.exit,
+                expect.av_channel.as_deref(),
+                &expect.completion,
+            )
+            .map_err(|m| err(&f.path_of("expect"), m))?;
+            let av = options.probe_av.as_ref().ok_or_else(|| {
+                err(
+                    &f.path_of("options"),
+                    "console recipe requires an av binding",
+                )
+            })?;
+            if av.entry != "d_main" || av.session.is_some() || av.profile.is_some() {
+                return Err(err(
+                    &f.path_of("options"),
+                    "console-run-v1 requires d_main and no session/profile override",
+                ));
+            }
+            if !matches!(options.probe_steps.as_deref(), Some([ProbeStep::Run])) {
+                return Err(err(
+                    &f.path_of("options"),
+                    "console-run-v1 requires exactly one run step",
+                ));
+            }
+        } else if expect.stdout.is_some() || expect.stderr.is_some() {
+            return Err(err(
+                &f.path_of("expect"),
+                "probe streams are observable only with ac-av/console-run-v1",
+            ));
+        }
+    }
 
     Ok(CheckSpec {
         id,
@@ -1428,6 +1476,7 @@ fn decode_options(
                         let allowed = match recipe.as_str() {
                             // T-07 edit-session: runs + discriminating edits.
                             "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                            "ac-av/console-run-v1" => op == "run",
                             // PLAN-820: the data recipe shares the core recipe's
                             // step vocabulary (runs + discriminating edits).
                             "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
@@ -1540,6 +1589,7 @@ fn decode_options(
                         out.push(step);
                     }
                     if recipe == "ac-av/core-run-v1"
+                        || recipe == "ac-av/console-run-v1"
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
@@ -1684,6 +1734,7 @@ fn decode_options(
             let av = match f.sub("av") {
                 None => {
                     if recipe == "ac-av/core-run-v1"
+                        || recipe == "ac-av/console-run-v1"
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
@@ -1706,6 +1757,7 @@ fn decode_options(
                 }
                 Some(v) => {
                     if recipe != "ac-av/core-run-v1"
+                        && recipe != "ac-av/console-run-v1"
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
                         && recipe != "ac-av/collections-run-v1"
@@ -1984,6 +2036,8 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-865: the closures SOURCE recipe — real .at sources through the
     // closures frontend onto the frozen 823 execution, same seam contract.
     "ac-av/closures-source-run-v1",
+    // PLAN-863: exact byte-stream observations, separate host-console profile.
+    "ac-av/console-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
@@ -2131,6 +2185,7 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         // PLAN-798 T-07: value-reporting probe recipes (ac-av/core-run-v1
         // reports the AV Success value) observe the generic `exit` face.
         (Adapter::Probe, "exit") => true,
+        (Adapter::Probe, "stdout" | "stderr") => true,
         _ => false,
     }
 }
@@ -2145,6 +2200,7 @@ fn decode_expect(
     path: &str,
     adapter: Adapter,
     action: Action,
+    console_recipe: bool,
 ) -> Result<ExpectSpec, ContractError> {
     let v2_channels = adapter == Adapter::Ac;
     let probe_channels = adapter == Adapter::Probe;
@@ -2162,7 +2218,14 @@ fn decode_expect(
     } else if probe_channels {
         // PLAN-798 T-07: + exit (value-reporting recipes).
         // PLAN-862: + av_channel (the Unit/value channel discriminant).
-        &["completion", "probe", "exit", "av_channel"]
+        &[
+            "completion",
+            "probe",
+            "exit",
+            "av_channel",
+            "stdout",
+            "stderr",
+        ]
     } else {
         &["completion", "result", "stdout", "stderr", "artifacts"]
     };
@@ -2174,7 +2237,7 @@ fn decode_expect(
     let channels: &[&str] = if v2_channels {
         &["result", "stdout", "stderr", "artifacts", "exit", "perf"]
     } else if probe_channels {
-        &["probe", "exit"]
+        &["probe", "exit", "stdout", "stderr"]
     } else {
         &["result", "stdout", "stderr", "artifacts"]
     };
@@ -2323,7 +2386,7 @@ fn decode_expect(
                 // error completion exposes no streams to compare against,
                 // so declaring one there is an admission error instead of a
                 // silently-ignored assertion.
-                if matches!(completion, Completion::Error { .. }) {
+                if matches!(completion, Completion::Error { .. }) && !console_recipe {
                     return Err(err(
                         &sp,
                         format!("`{}` expectations require completion \"success\" (error completions expose no streams in this pilot)", key),
@@ -2633,5 +2696,37 @@ fn decode_compare(v: Option<&CVal>, path: &str) -> Result<Compare, ContractError
             path,
             format!("compare must be a string, got {}", other.type_name()),
         )),
+    }
+}
+
+/// PLAN-863: both byte-stream oracles and the result/error axis are mandatory.
+/// Parent callers also use this for programmatically constructed checks.
+pub fn validate_console_oracle(
+    stdout: Option<&StreamExpect>,
+    stderr: Option<&StreamExpect>,
+    exit: Option<i32>,
+    channel: Option<&str>,
+    completion: &Completion,
+) -> Result<(), String> {
+    let (Some(out), Some(err)) = (stdout, stderr) else {
+        return Err("console recipe requires explicit stdout and stderr byte assertions".into());
+    };
+    if out.compare != Compare::Bytes || err.compare != Compare::Bytes {
+        return Err("console streams require compare bytes".into());
+    }
+    if out.text.len().saturating_add(err.text.len()) > 1_048_576 {
+        return Err("console expected streams exceed the combined 1 MiB cap".into());
+    }
+    match completion {
+        Completion::Success if exit.is_none() && channel != Some("unit") => {
+            Err("console success requires an exit oracle or explicit unit channel".into())
+        }
+        Completion::Success if channel == Some("unit") && exit.is_some() => {
+            Err("unit has no exit payload".into())
+        }
+        Completion::Error { code: None, .. } => {
+            Err("console errors require an explicit diagnostic or trap code".into())
+        }
+        _ => Ok(()),
     }
 }

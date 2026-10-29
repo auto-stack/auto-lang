@@ -4524,6 +4524,13 @@ pub fn lower_checked_console(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
+    if entry_name != "d_main" {
+        return Err(AdapterError::inv(
+            "lower.entry",
+            "console source entry is main; selecting another function is not allowed".into(),
+        ));
+    }
+
     if checked.domain() != hir::HirDomain::HostConsole {
         return Err(AdapterError::uns(
             "lower.domain",

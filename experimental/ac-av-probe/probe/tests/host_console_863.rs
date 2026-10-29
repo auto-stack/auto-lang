@@ -9,6 +9,17 @@ fn grants() -> Vec<String> {
 }
 
 #[test]
+fn av_console_863_entry_selection_cannot_bypass_main_policy() {
+    let error = compile(
+        "fn helper() int { return 1 }\nfn main() int { return 2 }\n",
+        "d_helper",
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.code, "lower.entry");
+}
+
+#[test]
 fn av_console_863_exact_source_bytes_and_result() {
     let program = compile("fn main() int {\n print(-2147483648)\n print(-7)\n print(0)\n print(true)\n eprint(false)\n print(\"你好\\0\\n\")\n eprint('界')\n return 7\n}\n", "d_main").unwrap();
     assert_eq!(&program.wire()[..8], b"AVHC\x01\x00\x08\x00");

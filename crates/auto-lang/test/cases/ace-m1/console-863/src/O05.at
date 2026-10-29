@@ -1,0 +1,6 @@
+fn main() int {
+ let text Str = "Auto"
+ print(text)
+ eprint(text)
+ return text.len()
+}

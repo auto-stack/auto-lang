@@ -767,6 +767,18 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_CONSOLE_RECIPE) =>
+        {
+            ac_av::run_console_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-820: the data-profile av recipe (append-only registration;
         // core recipe contract untouched).
         (Adapter::Probe, auto_test_case::contract::Action::Run)

@@ -1,0 +1,152 @@
+# PLAN-863 typed console source corpus. All stdout/stderr/result/error oracles below are hand-computed.
+# NUL transport is additionally tested by the parent API regression (Atom contract escape syntax is unchanged).
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o01", tags: ["ace-m1", "console", "signed-int"], links: ["PLAN-863"],
+  source: { file: "src/O01.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "-2147483648\n-7\n0\n42\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" }, exit: 7 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o02", tags: ["ace-m1", "console", "bool"], links: ["PLAN-863"],
+  source: { file: "src/O02.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "true\nfalse\n", compare: "bytes" }, stderr: { text: "true\nfalse\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o03", tags: ["ace-m1", "console", "utf8-newline"], links: ["PLAN-863"],
+  source: { file: "src/O03.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "你好\n\n", compare: "bytes" }, stderr: { text: "é\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o04", tags: ["ace-m1", "console", "char"], links: ["PLAN-863"],
+  source: { file: "src/O04.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "界\n", compare: "bytes" }, stderr: { text: "😀\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o05", tags: ["ace-m1", "console", "owned-borrow"], links: ["PLAN-863"],
+  source: { file: "src/O05.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "Auto\n", compare: "bytes" }, stderr: { text: "Auto\n", compare: "bytes" }, exit: 4 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o06", tags: ["ace-m1", "console", "guest-order"], links: ["PLAN-863"],
+  source: { file: "src/O06.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "9\n3\n", compare: "bytes" }, stderr: { text: "8\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o07", tags: ["ace-m1", "console", "unit-entry"], links: ["PLAN-863"],
+  source: { file: "src/O07.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "7\n", compare: "bytes" }, stderr: { text: "unit\n", compare: "bytes" }, av_channel: "unit" } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o08", tags: ["ace-m1", "console", "script-value"], links: ["PLAN-863"],
+  source: { file: "src/O08.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "1\n", compare: "bytes" }, stderr: { text: "2\n", compare: "bytes" }, exit: 42, av_channel: "value" } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o09", tags: ["ace-m1", "console", "script-unit"], links: ["PLAN-863"],
+  source: { file: "src/O09.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "", compare: "bytes" }, stderr: { text: "done\n", compare: "bytes" }, av_channel: "unit" } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o10", tags: ["ace-m1", "console", "trap-keeps-output"], links: ["PLAN-863"],
+  source: { file: "src/O10.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", code: "av.trap.div-by-zero" }, stdout: { text: "before\n", compare: "bytes" }, stderr: { text: "fail\n", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o11", tags: ["ace-m1", "console", "arity-reject"], links: ["PLAN-863"],
+  source: { file: "src/O11.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "source.console-argument" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o12", tags: ["ace-m1", "console", "grant-reject"], links: ["PLAN-863"],
+  source: { file: "src/O12.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "parse", code: "host.unauthorized" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o13", tags: ["ace-m1", "console", "unit-argument-reject"], links: ["PLAN-863"],
+  source: { file: "src/O13.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "source.console-argument" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o14", tags: ["ace-m1", "console", "reserved-reject"], links: ["PLAN-863"],
+  source: { file: "src/O14.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "parse", code: "source.console-reserved" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m1.o15", tags: ["ace-m1", "console", "empty-text-lines"], links: ["PLAN-863"],
+  source: { file: "src/O15.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "\n", compare: "bytes" }, stderr: { text: "\n", compare: "bytes" }, av_channel: "unit" } }]
+}
+```

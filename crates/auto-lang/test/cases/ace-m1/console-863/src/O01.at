@@ -1,0 +1,7 @@
+fn main() int {
+ print(-2147483648)
+ print(-7)
+ print(0)
+ print(42)
+ return 7
+}

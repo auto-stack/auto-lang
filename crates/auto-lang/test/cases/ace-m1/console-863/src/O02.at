@@ -1,0 +1,7 @@
+fn main() int {
+ print(true)
+ print(false)
+ eprint(true)
+ eprint(false)
+ return 0
+}

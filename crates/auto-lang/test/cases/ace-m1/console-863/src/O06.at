@@ -1,0 +1,9 @@
+fn helper() int {
+ eprint(8)
+ return 9
+}
+fn main() int {
+ print(helper())
+ print(3)
+ return 0
+}

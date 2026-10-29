@@ -30,6 +30,65 @@ fn decode(
     decode_case(&v, &Limits::defaults())
 }
 
+#[test]
+fn av_console_863_contract_requires_observable_byte_and_result_axes() {
+    let expected =
+        "completion: \"success\", exit: 7, stdout: { text: \"7\\n\" }, stderr: { text: \"\" }";
+    let good = probe_case(
+        "ac-av/console-run-v1",
+        "entry: \"d_main\", caps: [\"console.stdout\"]",
+        expected,
+    );
+    let decoded = decode(&good).unwrap();
+    assert_eq!(
+        decoded.checks[0].expect.stdout.as_ref().unwrap().text,
+        "7\n"
+    );
+    for bad in [
+        good.replace(", stdout: { text: \"7\\n\" }", ""),
+        good.replace(", stderr: { text: \"\" }", ""),
+        good.replace(", exit: 7", ""),
+        good.replace(
+            "stdout: { text: \"7\\n\" }",
+            "stdout: { text: \"7\\n\", compare: \"lf\" }",
+        ),
+        good.replace("entry: \"d_main\"", "entry: \"d_helper\""),
+        good.replace(
+            "entry: \"d_main\"",
+            "entry: \"d_main\", session: \"session\"",
+        ),
+        good.replace(
+            "steps: [ { op: \"run\" } ]",
+            "steps: [{ op: \"run\" }, { op: \"run\" }]",
+        ),
+    ] {
+        assert_ne!(bad, good, "negative control must change its input");
+        assert!(
+            decode(&bad).is_err(),
+            "must reject missing/unsupported contract: {bad}"
+        );
+    }
+    assert!(decode(&probe_case(
+        "ac-av/core-run-v1",
+        "entry: \"d_main\"",
+        expected
+    ))
+    .is_err());
+    assert!(decode(&probe_case("sema/query-v1", "entry: \"d_main\"", expected)).is_err());
+    let unit = probe_case("ac-av/console-run-v1", "entry: \"d_main\"", "completion: \"success\", av_channel: \"unit\", stdout: { text: \"\" }, stderr: { text: \"\" }");
+    decode(&unit).unwrap();
+    assert!(decode(&unit.replace("av_channel: \"unit\"", "av_channel: \"value\"")).is_err());
+}
+
+#[test]
+fn av_console_863_error_streams_are_console_only_and_code_is_required() {
+    let expected = "completion: { stage: \"run\", code: \"av.trap.div-by-zero\" }, stdout: { text: \"before\\n\" }, stderr: { text: \"\" }";
+    let case = probe_case("ac-av/console-run-v1", "entry: \"d_main\"", expected);
+    decode(&case).unwrap();
+    assert!(decode(&case.replace(", code: \"av.trap.div-by-zero\"", "")).is_err());
+    assert!(decode(&case.replace("ac-av/console-run-v1", "ac-av/core-run-v1")).is_err());
+}
+
 fn minimal_case() -> String {
     concat!(
         "case { schema: \"autolang.case/1\", id: \"ok.min\", ",

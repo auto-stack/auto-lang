@@ -638,6 +638,15 @@ fn case_serve() -> ! {
         std::io::stdout().write_all(line.as_bytes()).ok();
         exit(0)
     };
+    if recipe == auto_av_probe::console_worker::RECIPE {
+        match auto_av_probe::console_worker::serve(&req) {
+            Ok(observations) => echo(observations),
+            Err(error) => {
+                eprintln!("console request: {error}");
+                exit(2);
+            }
+        }
+    }
     let data_recipe = recipe == "ac-av/data-run-v1";
     // PLAN-821 T-02: the owned-profile recipe (`avworker/1` envelope domain
     // — the recipe id itself is the discriminator, no field grows).

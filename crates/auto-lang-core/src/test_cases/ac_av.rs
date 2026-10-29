@@ -40,6 +40,9 @@ const SESSION_WALL: Duration = Duration::from_secs(60);
 const BUILD_WALL: Duration = Duration::from_secs(300);
 
 pub const AV_RECIPE: &str = "ac-av/core-run-v1";
+/// PLAN-863: independent typed host-console recipe and profile.
+pub const AV_CONSOLE_RECIPE: &str = "ac-av/console-run-v1";
+pub const EXPECTED_AV_CONSOLE_CORE_VERSION: &str = "av.host-console/1";
 /// PLAN-820: the data-profile recipe — record source → data MIR → AVAD →
 /// AV through the same worker/executor contract; judgement stays
 /// parent-side. Registered as its own recipe identity (append-only; the
@@ -105,6 +108,7 @@ pub const EXPECTED_AV_ENTRY_UNIT_CORE_VERSION: &str = "av.entry-unit/1";
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecipeFamily {
     Core,
+    Console,
     Data,
     Owned,
     Collections,
@@ -127,6 +131,7 @@ impl RecipeFamily {
     pub fn recipe(&self) -> &'static str {
         match self {
             RecipeFamily::Core => AV_RECIPE,
+            RecipeFamily::Console => AV_CONSOLE_RECIPE,
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
@@ -143,6 +148,7 @@ impl RecipeFamily {
         match self {
             RecipeFamily::Core | RecipeFamily::Loaded => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
+            RecipeFamily::Console => EXPECTED_AV_CONSOLE_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
@@ -224,6 +230,11 @@ fn probe_toolchain_axes(
     }
     // PLAN-821 contract-decision §10: the owned tool-identity axis carries
     // the frozen profile id (3) explicitly (core/data receipts unchanged).
+    if family == RecipeFamily::Console {
+        v.push(("av-profile".into(), "8".into()));
+        v.push(("av-source-profile".into(), "host-console".into()));
+        v.push(("av-wire-codec".into(), "auto.abc.av-host-console/1".into()));
+    }
     if family == RecipeFamily::Owned {
         v.push(("av-profile".into(), "3".into()));
     }
@@ -625,6 +636,21 @@ struct StepOut {
     /// Absent on older responses and on trap/diag steps.
     #[serde(default)]
     channel: Option<String>,
+    #[serde(default)]
+    console: Option<ConsoleOut>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct ConsoleOut {
+    schema: String,
+    mir_lowering: String,
+    stdout_b64: String,
+    stderr_b64: String,
+    stdout_present: bool,
+    stderr_present: bool,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
 }
 
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
@@ -947,6 +973,25 @@ pub fn run_compact_check(
     )
 }
 
+pub fn run_console_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Console,
+    )
+}
+
 /// PLAN-820: the data-recipe entry — same executor/judgement contract,
 /// data-profile pipeline (record source front door in the worker).
 /// PLAN-820 F820-R6-01: the PARENT's frozen av.data-fixture/1 expectation
@@ -1238,6 +1283,35 @@ fn run_check_impl(
             "{recipe} consumes .at sources; syntax {:?} is not accepted by this recipe",
             case.spec.source.syntax.as_str()
         ));
+    }
+    if family == RecipeFamily::Console {
+        auto_test_case::contract::validate_console_oracle(
+            oracle.stdout.as_ref(),
+            oracle.stderr.as_ref(),
+            oracle.exit,
+            oracle.av_channel.as_deref(),
+            &oracle.completion,
+        )?;
+        let binding = check
+            .options
+            .probe_av
+            .as_ref()
+            .ok_or("console binding missing")?;
+        if check.options.probe_recipe.as_deref() != Some(AV_CONSOLE_RECIPE)
+            || binding.entry != "d_main"
+            || binding.session.is_some()
+            || binding.profile.is_some()
+            || !matches!(
+                check.options.probe_steps.as_deref(),
+                Some([auto_test_case::contract::ProbeStep::Run])
+            )
+        {
+            return Err(
+                "console-run-v1 requires d_main, one run and no session/profile override".into(),
+            );
+        }
+    } else if oracle.stdout.is_some() || oracle.stderr.is_some() {
+        return Err("this probe recipe does not expose console streams".into());
     }
     let av = check
         .options
@@ -1540,6 +1614,16 @@ fn run_check_impl(
             infra_detail = Some(format!("av worker recipe mismatch: {}", ok.recipe));
             break 'admit;
         }
+        if family == RecipeFamily::Console {
+            if let Some(step) = ok.steps.first() {
+                // Preserve raw observations for resource/infra diagnostics too; no PASS is trusted.
+                std::fs::write(artifact_dir.join("console-observation.json"), serde_json::to_vec_pretty(&serde_json::json!({"outcome":step.outcome,"diag":step.diag,"console":step.console})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            }
+        }
+        if let Some(error) = console_admission(family, &ok.steps) {
+            infra_detail = Some(error);
+            break 'admit;
+        }
         // F820-R7-01: the typed report is a DATA-recipe protocol
         // increment — its presence on any non-data (core/owned) response
         // is an admission violation, never a pass-shaped extra channel.
@@ -1815,6 +1899,13 @@ fn run_check_impl(
         }
     }
 
+    if family == RecipeFamily::Console {
+        let capture = step.console.as_ref().expect("console admitted");
+        let run =
+            serde_json::json!({"stdout_b64":capture.stdout_b64,"stderr_b64":capture.stderr_b64});
+        super::ac::compare_stream_field(&run, "stdout", oracle.stdout.as_ref(), &mut mismatches)?;
+        super::ac::compare_stream_field(&run, "stderr", oracle.stderr.as_ref(), &mut mismatches)?;
+    }
     // Receipt (probe-receipt.json in the artifact dir). `request_wall_ms`
     // is the continuous parent-side window from request build to judged
     // response — spawn, request write, worker session, response read and
@@ -1831,6 +1922,7 @@ fn run_check_impl(
             "outcome": step.outcome,
             "value": step.value,
             "channel": step.channel,
+            "console": step.console,
             "trap": step.trap,
             "diag": step.diag,
             "owned": step.owned,
@@ -3128,6 +3220,7 @@ mod judge_tests {
             closures_source: None,
             dynamic: None,
             channel: None,
+            console: None,
         }
     }
 
@@ -3426,6 +3519,7 @@ mod closures_judge_tests {
             closures_source: None,
             dynamic: None,
             channel: None,
+            console: None,
         }
     }
 
@@ -3499,6 +3593,7 @@ mod closures_source_judge_tests {
             closures_source: None,
             dynamic: None,
             channel: None,
+            console: None,
         }
     }
 
@@ -3608,5 +3703,188 @@ mod closures_source_judge_tests {
             mismatches.iter().any(|m| m.kind == "source-diagnostic"),
             "the source diagnostic code is independently frozen: {mismatches:?}"
         );
+    }
+}
+
+/// PLAN-863: exact current identity used by stale adjudication for console rows.
+pub fn current_console_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    match worker_exe_sha256() {
+        Ok(sha) => probe_toolchain_axes(&sha, RecipeFamily::Console, None)
+            .into_iter()
+            .collect(),
+        Err(_) => std::collections::BTreeMap::new(),
+    }
+}
+
+/// Console transport admission is independent of a matching oracle.
+fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> {
+    if family != RecipeFamily::Console {
+        return steps
+            .iter()
+            .any(|s| s.console.is_some())
+            .then(|| "console capture on a non-console recipe".into());
+    }
+    if steps.len() != 1 || steps[0].op != "run" {
+        return Some("console response requires exactly one run".into());
+    }
+    let step = &steps[0];
+    let Some(c) = &step.console else {
+        return Some("console capture is missing; never an empty stream".into());
+    };
+    if c.schema != "av.console-capture/1" || c.mir_lowering != EXPECTED_MIR_LOWERING_VERSION {
+        return Some("console schema/lowering identity mismatch".into());
+    }
+    if !c.stdout_present || !c.stderr_present {
+        return Some("console stream was not captured".into());
+    }
+    if c.stdout_truncated || c.stderr_truncated {
+        return Some("console stream is truncated; never successful output".into());
+    }
+    let mut total = 0usize;
+    for raw in [&c.stdout_b64, &c.stderr_b64] {
+        if raw.len() > ((super::ac::MAX_STREAM_BYTES + 2) / 3) * 4 {
+            return Some("encoded console stream exceeds its cap".into());
+        }
+        let bytes = match super::ac::b64d_strict(raw) {
+            Ok(b) => b,
+            Err(e) => return Some(format!("invalid console base64: {e}")),
+        };
+        if base64::engine::general_purpose::STANDARD.encode(&bytes) != *raw {
+            return Some("non-canonical console base64".into());
+        }
+        total = total.saturating_add(bytes.len());
+        if bytes.len() > super::ac::MAX_STREAM_BYTES || total > super::ac::MAX_STREAM_BYTES {
+            return Some("decoded console output exceeds the combined 1 MiB cap".into());
+        }
+    }
+    if step.typed.is_some()
+        || step.owned.is_some()
+        || step.collections.is_some()
+        || step.closures.is_some()
+        || step.dynamic.is_some()
+        || step.closures_source.is_some()
+    {
+        return Some("foreign result face on a console recipe".into());
+    }
+    match step.outcome.as_str() {
+        "success"
+            if matches!(
+                (step.channel.as_deref(), step.value),
+                (Some("value"), Some(_)) | (Some("unit"), None)
+            ) && step.trap.is_none()
+                && step.diag.is_none() =>
+        {
+            None
+        }
+        "trap"
+            if step.trap.as_deref().is_some_and(|t| !t.is_empty())
+                && step.value.is_none()
+                && step.channel.is_none()
+                && step.diag.is_none() =>
+        {
+            None
+        }
+        "diag"
+            if step.value.is_none()
+                && step.channel.is_none()
+                && step.trap.is_none()
+                && step.diag.as_ref().is_some_and(|d| {
+                    d["stage"].is_string()
+                        && d["code"].as_str().is_some_and(|c| !c.is_empty())
+                        && d["message"].is_string()
+                }) =>
+        {
+            None
+        }
+        "resource" | "cancelled" | "infra" => Some(format!(
+            "console {} outcome: {}",
+            step.outcome,
+            step.diag
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default()
+        )),
+        _ => Some("malformed console outcome/result channel".into()),
+    }
+}
+
+#[cfg(test)]
+mod console_863_tests {
+    use super::*;
+
+    fn observation() -> serde_json::Value {
+        serde_json::json!({"op":"run","outcome":"success","channel":"value","value":7,
+            "console":{"schema":"av.console-capture/1","mir_lowering":EXPECTED_MIR_LOWERING_VERSION,
+            "stdout_b64":"YQBiCg==","stderr_b64":"","stdout_present":true,"stderr_present":true,
+            "stdout_truncated":false,"stderr_truncated":false}})
+    }
+    fn admit(v: serde_json::Value) -> Option<String> {
+        console_admission(RecipeFamily::Console, &[serde_json::from_value(v).unwrap()])
+    }
+    #[test]
+    fn console_863_admission_rejects_missing_truncated_malformed_and_foreign_faces() {
+        assert!(admit(observation()).is_none());
+        let mut missing = observation();
+        missing.as_object_mut().unwrap().remove("console");
+        assert!(admit(missing).is_some());
+        for field in ["stdout_present", "stderr_present"] {
+            let mut v = observation();
+            v["console"][field] = false.into();
+            assert!(admit(v).is_some(), "{field}");
+        }
+        for field in ["stdout_truncated", "stderr_truncated"] {
+            let mut v = observation();
+            v["console"][field] = true.into();
+            assert!(admit(v).is_some(), "{field}");
+        }
+        for raw in ["!", "YQ", "YR==", "YQ==\n"] {
+            let mut v = observation();
+            v["console"]["stdout_b64"] = raw.into();
+            assert!(admit(v).is_some(), "{raw:?}");
+        }
+        let mut v = observation();
+        v["console"]["mir_lowering"] = "2".into();
+        assert!(admit(v).is_some());
+        let mut v = observation();
+        v["owned"] = serde_json::json!({});
+        assert!(admit(v).is_some());
+        let step = serde_json::from_value(observation()).unwrap();
+        assert!(console_admission(RecipeFamily::Core, &[step]).is_some());
+        for field in [
+            "stdout_b64",
+            "stderr_b64",
+            "stdout_present",
+            "stderr_truncated",
+        ] {
+            let mut v = observation();
+            v["console"].as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<StepOut>(v).is_err(), "{field}");
+        }
+    }
+    #[test]
+    fn console_863_admission_caps_combined_bytes_and_keeps_resources_errors() {
+        let mut v = observation();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(vec![0u8; (1 << 19) + 1]);
+        v["console"]["stdout_b64"] = encoded.clone().into();
+        v["console"]["stderr_b64"] = encoded.into();
+        assert!(admit(v).unwrap().contains("combined"));
+        for outcome in ["resource", "cancelled", "infra"] {
+            let mut v = observation();
+            v["outcome"] = outcome.into();
+            v["diag"] = serde_json::json!({"stage":"run","code":"resource.console-output","message":"limit"});
+            assert!(admit(v).unwrap().contains(outcome));
+        }
+        let mut v = observation();
+        v["channel"] = "unit".into();
+        assert!(admit(v.clone()).is_some());
+        v["value"] = serde_json::Value::Null;
+        assert!(admit(v).is_none());
+        let mut v = observation();
+        v["outcome"] = "trap".into();
+        v["trap"] = "av.trap.div-by-zero".into();
+        assert!(admit(v.clone()).is_some());
+        v["value"] = serde_json::Value::Null;
+        v["channel"] = serde_json::Value::Null;
+        assert!(admit(v).is_none());
     }
 }

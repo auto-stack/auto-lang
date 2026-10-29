@@ -44,3 +44,6 @@ pub mod worker_restore;
 
 /// Typed console host probe (PLAN-863).
 pub mod console_host;
+
+/// Console recipe observation producer (PLAN-863).
+pub mod console_worker;
