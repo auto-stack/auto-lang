@@ -254,3 +254,8 @@ examples/rust-workspace/testt1/
 /crates/Cargo.lock
 /test/fixtures/modularity/tool-client-consumer/
 /test/fixtures/modularity/*/Cargo.lock
+
+# PLAN-888: durable module contracts; runtime receipts remain ignored.
+!scripts/test-governance/recipes.json
+!scripts/test-governance/modules.json
+!scripts/test-governance/impact_rules.json
