@@ -1,10 +1,18 @@
-# PLAN-887 D-group: ACE real-source consumption of the ORIGINAL vm corpus
-# bytes `(1 + 2) * 3` (crates/auto-lang/test/vm/01_basics/007_group/group.at;
-# pilot ID lang.basic.group; legacy oracle 9).
+# PLAN-887 D-group: ACE real-source consumption of `(1 + 2) * 3` via the
+# delivered script-tail entry. The bare expression file is REJECTED by the
+# formal entry front door (diag source.syntax), so per PLAN-887 §5.3 the
+# entry WRAPPER is used: the ORIGINAL expression bytes `(1 + 2) * 3` are
+# embedded verbatim in `fn main() int { return <expr> }`.
 #
-# sha256(5a7e0aea55b602ab4ec4826bec6026efb6a4a22891a6a1176b8a58b31eb56ed2)
-# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper.
-# Script-tail entry profile; old-side scalar control on the same bytes.
+# Mapping (recorded, not masqueraded):
+#   original : crates/auto-lang/test/vm/01_basics/007_group/group.at
+#              sha256 5a7e0aea55b602ab4ec4826bec6026efb6a4a22891a6a1176b8a58b31eb56ed2
+#              (= pilot legacy_source_sha256; pilot ID lang.basic.group;
+#              legacy oracle 9)
+#   wrapper  : src/group.wrapper.at, sha256
+#              8c8c26ed522832d30db5907b26b2a1c0783ca7b75501a8b14c36f48c651b1e34
+#   embedded : line 1 `return (1 + 2) * 3` (original bytes, no rewrite)
+#   oracle   : 9 (hand-computed; matches the pilot legacy expected.result)
 
 ```test-case
 case {
@@ -12,7 +20,7 @@ case {
   id: "gov.d.group"
   tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
   links: ["PLAN-887"]
-  source: { file: "../vm/01_basics/007_group/group.at", syntax: "auto", path: "main.at" }
+  source: { file: "src/group.wrapper.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "av", adapter: "probe", action: "run",

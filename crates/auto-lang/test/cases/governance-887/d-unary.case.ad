@@ -1,10 +1,18 @@
-# PLAN-887 D-unary: ACE real-source consumption of the ORIGINAL vm corpus
-# bytes `-2 * 3` (crates/auto-lang/test/vm/01_basics/006_unary/unary.at;
-# pilot ID lang.basic.unary; legacy oracle -6).
+# PLAN-887 D-unary: ACE real-source consumption of `-2 * 3` via the
+# delivered script-tail entry. The bare expression file is REJECTED by the
+# formal entry front door (diag source.syntax), so per PLAN-887 §5.3 the
+# entry WRAPPER is used: the ORIGINAL expression bytes `-2 * 3` are embedded
+# verbatim in `fn main() int { return <expr> }`.
 #
-# sha256(c85ac4c786ef797783df4b2c58840ad717b70022fe78ff4f7753826ea929e405)
-# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper.
-# Script-tail entry profile; old-side scalar control on the same bytes.
+# Mapping (recorded, not masqueraded):
+#   original : crates/auto-lang/test/vm/01_basics/006_unary/unary.at
+#              sha256 c85ac4c786ef797783df4b2c58840ad717b70022fe78ff4f7753826ea929e405
+#              (= pilot legacy_source_sha256; pilot ID lang.basic.unary;
+#              legacy oracle -6)
+#   wrapper  : src/unary.wrapper.at, sha256
+#              48fb1c9e53b81b730dc7e44c3578889de5d092d2fba9b83c7a40ca9c444e5ac2
+#   embedded : line 1 `return -2 * 3` (original bytes, no rewrite)
+#   oracle   : -6 (hand-computed; matches the pilot legacy expected.result)
 
 ```test-case
 case {
@@ -12,7 +20,7 @@ case {
   id: "gov.d.unary"
   tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
   links: ["PLAN-887"]
-  source: { file: "../vm/01_basics/006_unary/unary.at", syntax: "auto", path: "main.at" }
+  source: { file: "src/unary.wrapper.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "av", adapter: "probe", action: "run",

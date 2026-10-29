@@ -1,13 +1,22 @@
-# PLAN-887 D-arithmetic: ACE real-source consumption of the ORIGINAL vm
-# corpus bytes `1 + 2` (crates/auto-lang/test/vm/01_basics/002_arithmetic/
-# arithmetic.at; pilot ID lang.basic.arithmetic; legacy oracle 3).
+# PLAN-887 D-arithmetic: ACE real-source consumption of `1 + 2` via the
+# delivered script-tail entry. The bare expression file is REJECTED by the
+# formal entry front door (diag source.syntax — expression-only files are
+# not a supported entry shape), so per PLAN-887 §5.3 the entry WRAPPER is
+# used: the ORIGINAL expression bytes `1 + 2` are embedded verbatim in
+# `fn main() int { return <expr> }` — no operator/branch/argument change.
 #
-# sha256(cb898749d76e51fdaf6c6636920ccdb4f415fc1cffd1e2497636b38cc2469807)
-# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper:
-# the delivered script-tail entry profile consumes the expression as the
-# tail value (U03 precedent, PLAN-862). The av-scalar-control check keeps
-# the old-side applicability on the SAME bytes. Native/legacy paths are not
-# required to judge this row (entry-unit NA-4 profile).
+# Mapping (recorded, not masqueraded):
+#   original : crates/auto-lang/test/vm/01_basics/002_arithmetic/arithmetic.at
+#              sha256 cb898749d76e51fdaf6c6636920ccdb4f415fc1cffd1e2497636b38cc2469807
+#              (= pilot legacy_source_sha256; pilot ID lang.basic.arithmetic;
+#              legacy oracle 3)
+#   wrapper  : src/arithmetic.wrapper.at, sha256
+#              ed06f8479a10521dcf62f7ae05e77489c5bde3f28a415c00a152d5845251bae8
+#   embedded : line 1 `return 1 + 2` (original bytes, no rewrite)
+#   oracle   : 3 (hand-computed; matches the pilot legacy expected.result)
+#
+# Not claimed: bare-script or original-bytes M1 four-path support. The
+# checks run the wrapper through the real av worker (parent-side oracle).
 
 ```test-case
 case {
@@ -15,7 +24,7 @@ case {
   id: "gov.d.arithmetic"
   tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
   links: ["PLAN-887"]
-  source: { file: "../vm/01_basics/002_arithmetic/arithmetic.at", syntax: "auto", path: "main.at" }
+  source: { file: "src/arithmetic.wrapper.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "av", adapter: "probe", action: "run",
