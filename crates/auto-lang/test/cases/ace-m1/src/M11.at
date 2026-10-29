@@ -1,0 +1,10 @@
+type P {
+    v int
+    fn mix(mut q P, d int) int { q.v = q.v + d; return .v * 10 + q.v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(7)
+    let r = p.mix(p.mut, 3)
+    return r
+}

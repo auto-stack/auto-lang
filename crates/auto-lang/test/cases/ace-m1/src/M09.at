@@ -1,0 +1,9 @@
+type P {
+    v int
+    fn get() int { return .v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return P.get(p)
+}

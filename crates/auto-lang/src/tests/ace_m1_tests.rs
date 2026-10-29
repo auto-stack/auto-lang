@@ -194,8 +194,8 @@ fn ace_m1_tr_native_suite_green() {
     );
     assert_eq!(
         report.results.len(),
-        31,
-        "tr-native suite check count (14 two-leg + 3 mn-only rows); got: {:?}",
+        33,
+        "tr-native suite check count (16 two-leg + 1 mn-only row; R07+R08 flipped to value by 881); got: {:?}",
         report
             .results
             .iter()
@@ -203,6 +203,88 @@ fn ace_m1_tr_native_suite_green() {
             .collect::<Vec<_>>()
     );
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
+}
+
+/// PLAN-881 T-05: the record/text-record METHOD suite — every method row
+/// runs the real mn + av worker legs against the hand-audited oracles
+/// (42/0/57/75/135/42/52/84 + R08 42), diagnostics carry the mn leg.
+#[test]
+fn ace_m1_method_881_suite_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("method-881");
+    let out = root.join("out");
+    let report = run_suite(
+        &suite_dir.join("method-881.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("ace-m1 method-881 suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "ace-m1 method-881 suite has non-PASS checks:
+{}",
+        failing.join("
+")
+    );
+    assert_eq!(
+        report.results.len(),
+        22,
+        "method-881 check count (9 two-leg value rows + 4 diagnostic rows)"
+    );
+    assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
+}
+
+/// PLAN-881 V-08 counter-control: mutating one frozen oracle (M03 75 ->
+/// 76) must turn the parent gate RED — the file suite is a real judge,
+/// never a green stamp.
+#[test]
+fn ace_m1_method_881_negative_oracle_fails() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("method-881-neg");
+    let corpus = root.join("corpus");
+    copy_tree(&suite_dir, &corpus);
+    let cases = corpus.join("method-881.case.ad");
+    let text = std::fs::read_to_string(&cases).unwrap();
+    // Flip BOTH legs' expected exits for the m03 case (75 -> 76), keeping
+    // the fence delimiters intact.
+    let mut rebuilt = String::new();
+    for (i, sec) in text.split("```test-case").enumerate() {
+        if i > 0 {
+            rebuilt.push_str("```test-case");
+        }
+        if sec.contains("ace.m1.m03") {
+            rebuilt.push_str(&sec.replace("exit: 75", "exit: 76"));
+        } else {
+            rebuilt.push_str(sec);
+        }
+    }
+    std::fs::write(&cases, rebuilt).unwrap();
+    let out = root.join("out");
+    let report = run_suite(&corpus.join("method-881.suite.ad"), &out, &Limits::defaults())
+        .expect("mutated suite still runs");
+    let red: Vec<&str> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| r.case_id.as_str())
+        .collect();
+    assert!(
+        red.contains(&"ace.m1.m03"),
+        "the mutated oracle must redden m03 exactly: {red:?}"
+    );
 }
 
 /// PLAN-870 V-06 counter-control: mutating one frozen exit expectation

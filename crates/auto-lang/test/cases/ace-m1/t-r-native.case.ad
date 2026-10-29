@@ -1,5 +1,6 @@
 # PLAN-870 T-05 — the ACE-M1 T*/R* record/text rows bound for REAL on the
-# ac-native (mn) path (the ac column of binding.tsv flips from
+# ac-native (mn) path. PLAN-881 flipped R08 to its VALUE form (mn+av 42 —
+# the method rows lower shared; the old gap row is historical). (the ac column of binding.tsv flips from
 # `gap:mn-scalar-only` to graded results). Value/trap rows carry the mn leg
 # and — where PLAN-862's T-06 bound the AV result `ok` — the matching av
 # data/owned leg, both against the SAME frozen oracle (independent expected
@@ -259,14 +260,17 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.r07"
-  tags: ["ace-m1", "diagnostic", "record"]
-  links: ["PLAN-852", "PLAN-870"]
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870", "PLAN-881"]
   source: { file: "src/R07.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
       options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "typecheck", code: "mn.unsupported.adapter" } } },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
   ]
 }
 ```
@@ -275,14 +279,17 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.r08"
-  tags: ["ace-m1", "diagnostic", "record"]
-  links: ["PLAN-852", "PLAN-870"]
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870", "PLAN-881"]
   source: { file: "src/R08.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
       options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "typecheck", code: "mn.unsupported.adapter" } } },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
   ]
 }
 ```

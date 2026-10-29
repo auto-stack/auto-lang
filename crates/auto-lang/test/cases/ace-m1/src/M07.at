@@ -1,0 +1,16 @@
+type R {
+    n int
+    static fn down(k int) int {
+        if k <= 0 { return 42 }
+        return R.down(k - 1)
+    }
+    fn vdown(k int) int {
+        if k <= 0 { return .n }
+        return self.vdown(k - 1)
+    }
+    static fn mk(n int) R { return R { n: n } }
+}
+fn main() int {
+    let r = R.mk(42)
+    return R.down(9) + r.vdown(9)
+}

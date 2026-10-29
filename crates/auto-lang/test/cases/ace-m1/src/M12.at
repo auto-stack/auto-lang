@@ -1,0 +1,10 @@
+type P {
+    s Str
+    v int
+    fn clone() int { return .v }
+    static fn mk(n int) P { return P { s: "x", v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.clone()
+}

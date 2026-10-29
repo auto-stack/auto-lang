@@ -1,0 +1,9 @@
+# PLAN-881 T-05 — the record/text-record METHOD suite: the shared-lowering
+# method rows (value + diagnostic) on the parent-side SDK (real mn/av
+# worker processes), each against an independent hand-audited oracle.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-method-881", include: [
+  "method-881.case.ad",
+] }
+```

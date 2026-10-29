@@ -1,0 +1,10 @@
+type P {
+    v int
+    static fn update(mut q P) Str { q.v = 5; return "A中" }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var q = P.mk(1)
+    let r Str = P.update(q.mut)
+    return q.v * 10 + r.len()
+}

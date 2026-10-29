@@ -1,0 +1,13 @@
+type P {
+    v int
+    fn bad(n int) int {
+        let q = P { v: n }
+        q.v = n + 1
+        return q.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.bad(2)
+}

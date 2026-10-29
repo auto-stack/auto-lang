@@ -1,0 +1,10 @@
+type P {
+    v int
+    fn eat(move a Str, k int, move b Str) int { return .v + a.len() * 10 + k + b.len() }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(17)
+    let r = p.eat(b: "Z", k: 4, a: "A中")
+    return r
+}

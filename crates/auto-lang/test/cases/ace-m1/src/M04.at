@@ -1,0 +1,19 @@
+type P {
+    v int
+    static fn mixed(ro P, mut a P, k int, mut b P) int {
+        a.v = a.v + k;
+        b.v = b.v + 2 * k;
+        return ro.v * 100 + a.v * 10 + b.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var ro = P.mk(1)
+    var a = P.mk(2)
+    var b = P.mk(3)
+    let r = P.mixed(ro, a.mut, 1, b.mut)
+    let diff = ro.v * 100 + a.v * 10 + b.v - r
+    if diff != 0 { return 60 }
+    if ro.v != 1 { return 70 + ro.v }
+    return r
+}

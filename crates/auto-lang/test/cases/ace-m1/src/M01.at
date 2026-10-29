@@ -1,0 +1,24 @@
+type Pair {
+    left int
+    right bool
+    static fn new(l int, r bool) Pair { return Pair { left: l, right: r } }
+    fn left_is(v int) bool { return .left == v }
+}
+type Inner {
+    flag bool
+    p Pair
+}
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = 5
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}
