@@ -2523,7 +2523,11 @@ impl<'a> FnLower<'a> {
                                     Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
                                 )
                         );
-                        if already_wrapped || !(self.owned || self.data) {
+                        // The def-level derivation belongs to the data/owned
+                        // profiles (their t_MutRet ABI). The COLLECTIONS
+                        // profile has its own type walker (Variants/lists are
+                        // outside av.owned/1), so it keeps the table answer.
+                        if already_wrapped || self.collections() || !(self.owned || self.data) {
                             table
                         } else {
                             let overrides = self.sig_mode_overrides.clone();
