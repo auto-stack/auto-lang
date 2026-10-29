@@ -1296,10 +1296,41 @@ impl Codegen {
         // 毒化导出:调用方得到清晰的 HandlerNotFound,而非运行时内存炸弹。
         let mut exports = self.exports;
         for n in poisoned_fn_exports(&self.code, &exports) {
+            // PLAN-886（reader N-r8-2 诊断面）：毒化导出=该 fn 未编译完成，但
+            // 旧消息只指向 "earlier handler errors"——失败发生在消费者合成
+            // 路径（逐 handler 容错、错误另存自有记录）时，上游没有可看的
+            // 错误行，排障被引向不存在的线索。故在丢弃点直接给出可判读的
+            // 落点事实：entry 地址、该字节 opcode、code_len、±4 字节窗口
+            // （`*` 标记 entry 本身），并说明消费者侧另有失败记录。
+            let addr = *exports.get(&n).unwrap_or(&u32::MAX);
+            let at = addr as usize;
+            let opcode = self
+                .code
+                .get(at)
+                .map(|b| format!("{:#04x}", b))
+                .unwrap_or_else(|| "OOB".to_string());
+            let window: Vec<String> = (at.saturating_sub(4)..at.saturating_add(4))
+                .map(|i| {
+                    format!(
+                        "{:04x}:{:#04x}{}",
+                        i,
+                        self.code.get(i).copied().unwrap_or(0),
+                        if i == at { "*" } else { "" }
+                    )
+                })
+                .collect();
             exports.remove(&n);
             eprintln!(
-                "[CODEGEN] dropping poisoned export '{}' (entry not at FN_PROLOG) — its fn failed to compile; see earlier handler errors",
-                n
+                "[CODEGEN] dropping poisoned export '{}': entry {} is not FN_PROLOG \
+                 (byte {}, code_len {}, window {}±4 = [{}]) — the fn did not compile to \
+                 completion. If no error appeared above, the failure was recorded only in \
+                 the consumer's own list (auto-ui surfaces it as [SYNTH-FAIL] on stderr).",
+                n,
+                addr,
+                opcode,
+                self.code.len(),
+                at,
+                window.join(" | ")
             );
         }
         Module {
