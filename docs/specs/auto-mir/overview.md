@@ -35,3 +35,5 @@ PLAN-871 起 native 消费面的**唯一后端**是共享 MIR：`ac-mn` 消费
 A09'/A10' cache 身份规则见
 [auto-ac/native-backend-and-retirement.md](../auto-ac/native-backend-and-retirement.md)；
 本案的 `MIR_LOWERING_VERSION` 仍是其后端身份轴的一部分。
+
+PLAN-863 在共享 lowering 增加 HostConsole→独立 host 表/HostCall 的映射与 console 固定 main 策略，MIR_LOWERING_VERSION=3；见 [边界合同](hir-lowering-boundary.md) 与 [console profile](../auto-av/host-import-and-console.md)。

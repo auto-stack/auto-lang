@@ -96,3 +96,9 @@ PLAN-868 起 probe 不再是 HIR→MIR lowering 的提供者：唯一实现出�
 版本经 `mir-lowering` 报告轴上报（详见
 [auto-mir/hir-lowering-boundary](../auto-mir/hir-lowering-boundary.md)）；av-worker/
 会话/cache 宿主职责与 av 各 profile 合同不变。
+
+### PLAN-863: typed host-console profile
+
+`av.host-console/1` / AVHC/1 / profile 8 executes typed print/eprint from real Auto source with separate host imports, current-grant admission, bounded output and portable artifact reauthorization. Exact lifecycle/budget/diagnostic contract is in `host-import-and-console.md`, source syntax/formatting in `../auto-ac/source-console-output.md`. Whole-module console only; old profiles keep their contracts. This does not switch default CLI/SDK engines, expose arbitrary host FFI, or add FS/network/stdin/async/native/resident-console support. C-29 has this AV output surface; peer parity remains explicitly unverified.
+
+来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。

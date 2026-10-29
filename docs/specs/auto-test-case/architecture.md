@@ -282,3 +282,15 @@ toolchain 轴 `backend`，父侧绑定为报告轴 **`ac-native-backend`**：
   且 worker 域 887 排除 → 不借"会话复用"宣称提速，新计划先核此轴。
 - 套件自包含：suite.include 与 case source 的 virtual path 拒绝 ..（admission），跨目录引用
   须以原 suite 独立运行或受管复制+身份记录实现。
+
+### PLAN-863: console byte observations
+
+Append-only recipe `ac-av/console-run-v1` selects profile 8 / `av.host-console/1`, source host-console, AVHC/1, entry `d_main`, exactly one run, no session or profile override. It persists/restores its artifact before executing under current grants. `avworker/1` envelope nonce/request hash/recipe/version/source binding and containment/deadline rules are unchanged; the worker observes, the parent decides PASS.
+
+Only this probe recipe exposes `stdout`/`stderr`. Both explicit expectations are mandatory, compare `bytes`, with combined expected bytes ≤1 MiB. Success requires an integer `exit` oracle or explicit `av_channel: "unit"` (Unit cannot also assert exit). Language errors/traps require an explicit code and both byte oracles, so a trap after output checks the retained prefix. Other probe recipes reject declared console streams; unavailable observations never become empty streams.
+
+The required run face is `console` schema `av.console-capture/1`: `mir_lowering`, `stdout_b64`, `stderr_b64`, `stdout_present`, `stderr_present`, `stdout_truncated`, `stderr_truncated`. Every field is required; unknown fields reject. Both streams must be present, neither truncated, base64 canonical, decoded per-stream and combined bytes ≤1 MiB, and MIR lowering identity must match. Parent independently compares stdout, stderr and exit/Unit/trap. Malformed/missing capture, foreign result faces, resource/cancelled/infra outcomes are ERROR, never a language-negative PASS. Raw resource-prefix evidence is retained as `console-observation.json`; valid observations also enter `probe-receipt.json`. No output is reconstructed from an oracle.
+
+Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-lowering=3`, `av-profile=8`, `av-source-profile=host-console`, `av-wire-codec=auto.abc.av-host-console/1`. Missing/drifted axes invalidate old PASS. Whole-suite PASS requires actual required rows; SKIP/NOT_RUN/zero-match are not verified coverage.
+
+来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。

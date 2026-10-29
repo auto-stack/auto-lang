@@ -86,3 +86,5 @@ typed stages/exit/原始 bytes 流/预算硬 cap/部分产物边界/783 cache �
 - 剩余缺口（具名）：B17-B19 pending 语义裁定（language 语义 owner）、ui-tn 手工 pending/
   Windows 限制（不扩豁免）、D 组 hit/edit/restart 生命周期扩展（不在首批）、	f --batch
   完整批次由 merge 验收（候选 runner）。
+
+PLAN-863 的 [console byte 观察轴](architecture.md) 由父侧独立判断 stdout/stderr/exit 或 Unit/trap；O01–O15 绑定真实 AV console 源码，其他后端保留具名 gap，见 [conformance](ace-m1-conformance.md)。

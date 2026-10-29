@@ -149,3 +149,5 @@ PLAN-846 adds the experimental [finite spatial-query profile](auto-graphics/spat
 PLAN-848 adds the experimental [finite segment-query profile](auto-graphics/segment-query-profile.md) on autographics-dev; master retains knowledge only, production I2/I3 remain pending.
 
 PLAN-849 adds experimental [finite swept-AABB queries](auto-graphics/swept-aabb-profile.md), explicit behavior/4 and portable Auto stop/clearance examples on autographics-dev. Original limits/denominator remain; production I2/I3 remain pending.
+
+PLAN-863 adds experimental [typed host console](auto-av/host-import-and-console.md) and [console source profile](auto-ac/source-console-output.md), with exact parent-side byte observations. Product defaults and peer coverage gaps remain unchanged.

@@ -12,7 +12,7 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 公开面（签名自 PLAN-798 冻结沿用，不改名/不重构）：
 
 - `AdapterError`（+ `code()`）
-- `lower_checked` / `lower_checked_data` / `lower_checked_owned`
+- `lower_checked` / `lower_checked_data` / `lower_checked_owned` / `lower_checked_console`
 - `lower_function_unit` / `lower_function_data_unit`
 - `lower_function_owned_unit` / `lower_function_owned_unit_with_modes`
 - `owned_entry_ok`
@@ -46,7 +46,8 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 - `auto_mir_lower::MIR_LOWERING_VERSION` = lowering **契约**版本：仅当
   lowering 语义变化（映射规则/准入域/错误分类）时升版；纯重构与消费侧搬移不升。
-  当前 `"2"`（PLAN-881：record/text-record 方法准入扩面 + av.data/1 按值
+  当前 `"3"`（PLAN-863：HostConsole 源码域、独立 host 声明表/调用映射与固定 main
+  策略；AV/CTE/MN 三消费者镜像同步为 "3"）。此前 `"2"`（PLAN-881：record/text-record 方法准入扩面 + av.data/1 按值
   mut-record 写回 ABI + copyable `.mut` Copy 表示；三消费者镜像同步为 "2"，
   旧语义 cache/报告身份失效）。初值 `"1"`（PLAN-868）。
 - 报告身份轴 `mir-lowering`（**必报**）：三消费者经测试侧镜像 admission 常量

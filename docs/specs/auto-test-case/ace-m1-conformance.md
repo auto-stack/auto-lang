@@ -157,3 +157,11 @@ V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot 
   原路径 + 原 sha（=pilot legacy_source_sha256）+ wrapper sha + 嵌入行 + 独立 oracle（3/-6/9）。
   不冒称原字节四路径或裸脚本支持；原 vm 源零改动。
 - 适用起点：entry-unit 为 NA-4 AV-only profile（native/legacy 不要求判 U 行与 D 行）。
+
+### PLAN-863: O01–O15 console source rows
+
+`console-863/console-863.suite.ad` is an independent 15-row source suite under the existing 12-column binding schema. Hand-computed byte oracles cover int MIN/negative/zero/multi-line, bool, UTF-8/newline, char, owned readonly borrowing, nested guest evaluation, main/script int/Unit, output-before-trap, compile-time rejection, revoked/missing grant and empty text. Parent API tests additionally distinguish embedded NUL without changing the Atom contract escape grammar.
+
+AV bindings are `ok:av-host-console-source-863` only after real parent-side execution. Native is `gap:ac-console-profile` (explicit profile rejection); legacy VM/a2r are `gap:console-profile-parity` (this new profile's exact parity is unverified). These are explicit remaining coverage gaps, not new `na:m1` rules or whole-M1 certification. No prior expected outcome, required denominator or certificate is rewritten. `verify-av-863.ps1` provides targeted/compat/console/acceptance scopes; sabotage of either byte oracle or exit must fail, missing axes reject and SKIP remains SKIP.
+
+来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
