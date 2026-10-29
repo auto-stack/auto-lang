@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-865
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AV闭包源码语法与间接调用（R2-L 闭包）
 author: [Codex]
 created_at: 2026-10-28
@@ -17,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 7
+current_step: 9
 total_steps: 9
 ---
 
@@ -25,7 +26,7 @@ total_steps: 9
 
 ## 0. 变更摘要
 
-PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSURE tag 17）：typed owned 闭包环境、move/显式 clone 逃逸捕获、静态可证非逃逸同步借用、受检间接调用与 env/frame 身份，并明确排除**源码闭包语法/前端推导**（[auto-av/project](../specs/auto-av/project.md)、[closure-environments](../specs/auto-av/closure-environments.md)）。
+PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSURE tag 17）：typed owned 闭包环境、move/显式 clone 逃逸捕获、静态可证非逃逸同步借用、受检间接调用与 env/frame 身份，并明确排除**源码闭包语法/前端推导**（[auto-av/project](../../specs/auto-av/project.md)、[closure-environments](../../specs/auto-av/closure-environments.md)）。
 
 852 语料把 K02/K05 登记为 `diff-legacy-grammar(parse)`：两条 legacy 路径**都不能解析 move 闭包语法**，owner 写为 `823-future-source`。本Plan承接该缺口：为闭包建立源码域（语法/捕获分析/间接调用/逃逸诊断），使 K01–K06 从 typed 证据变为**真实源码执行**。
 
@@ -64,13 +65,13 @@ PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSUR
 
 用户 2026-10-28 授权同上（只规划）。事实基础：
 
-- [closure-environments](../specs/auto-av/closure-environments.md) 与 [closure-capture-profile](../specs/auto-mir/closure-capture-profile.md)：owned env、move/显式 clone、静态非逃逸 borrow、间接调用、env/frame 身份与 A23 代码层恢复已冻结；源码语法/推导/共享 RC/async 为显式非目标。
-- [resident-function-install §823](../specs/auto-av/resident-function-install.md)：闭包 body 自带 `env` 声明，`CREATE_CLOSURE.callee` 走 `CalleeRef`；link 期 `fn:` 绑定做 env 等价检查，声明漂移精确拒绝。
+- [closure-environments](../../specs/auto-av/closure-environments.md) 与 [closure-capture-profile](../../specs/auto-mir/closure-capture-profile.md)：owned env、move/显式 clone、静态非逃逸 borrow、间接调用、env/frame 身份与 A23 代码层恢复已冻结；源码语法/推导/共享 RC/async 为显式非目标。
+- [resident-function-install §823](../../specs/auto-av/resident-function-install.md)：闭包 body 自带 `env` 声明，`CREATE_CLOSURE.callee` 走 `CalleeRef`；link 期 `fn:` 绑定做 env 等价检查，声明漂移精确拒绝。
 - 852 binding：K01（move 捕获）typed 行 `ok:av-closures-823`；K02/K05 两条 legacy 路径 `diff-legacy-grammar(parse)`，注记“owner 823 freezes source syntax”；K03/K04/K06 已有 typed 证据与借用/逃逸负控。
 - 语料 `src/K01.at`：`let f = move (n int) => { return base + n }`；`src/K02.at` 与 `src/K05.at` 使用同一 move-closure 形态。
 - SEM-04：823 首批为 move/显式 clone 的 owned 闭包；旧调用面含隐式捕获/可变共享与 alias → 必须按用例裁定，不能用深 clone 统一。
 
-本次授权与输入：用户明确要求修订波次/实际写面、补871旧能力覆盖及删除门、让864支持List与拥有型type元素；允许动作仅计划/设计/战略文档修订，不实施代码、不调整预算、不改868。基面路径、内容SHA-256、旧稿快照及静态预检见[修订收据](attachments/ace-wave-20261028/revision-summary.md)；观察到的current Spec/调用点与未来拟建入口分开记录。
+本次授权与输入：用户明确要求修订波次/实际写面、补871旧能力覆盖及删除门、让864支持List与拥有型type元素；允许动作仅计划/设计/战略文档修订，不实施代码、不调整预算、不改868。基面路径、内容SHA-256、旧稿快照及静态预检见[修订收据](../attachments/ace-wave-20261028/revision-summary.md)；观察到的current Spec/调用点与未来拟建入口分开记录。
 
 2026-10-29 goal 授权：用户通过 `/goal 完成计划865` 授权按本计划 r2 完整交付，包括在专用 worktree 实施、独立复审、最多三轮有依据修复及合并归档；该授权不改变目标、验收标准、阈值、仓库范围或预算。此前“仅计划修订”的范围已由本次明确交付授权取代。
 
@@ -78,7 +79,7 @@ PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSUR
 
 ### 5.0 波次、实际写面与交接（本次修订）
 
-按[波次交接合同](reports/ace-wave-handoff-2026-10-28.md)§1–2执行：S为共享source/HIR/lowering/MIR/ABC/AV及会话接口，N为ac-mn，H为公共driver/SDK适配/测试注册与binding；分别单写，跨窗同时取窗。共享lowering的未来写面为D868后的`experimental/auto-mir-lower/src/**`，旧`probe/src/hir_adapter.rs`仅作搬前调查，不能再落新实现。T-02及接线前核验实际已合入revision、Spec/API/版本、owner释放与消费者兼容证据并记录接受；review/repair未完不交WIP。
+按[波次交接合同](../reports/ace-wave-handoff-2026-10-28.md)§1–2执行：S为共享source/HIR/lowering/MIR/ABC/AV及会话接口，N为ac-mn，H为公共driver/SDK适配/测试注册与binding；分别单写，跨窗同时取窗。共享lowering的未来写面为D868后的`experimental/auto-mir-lower/src/**`，旧`probe/src/hir_adapter.rs`仅作搬前调查，不能再落新实现。T-02及接线前核验实际已合入revision、Spec/API/版本、owner释放与消费者兼容证据并记录接受；review/repair未完不交WIP。
 
 第3波在D864等真实前置满足后，S默认866释放后接本Plan，再释放给863；866→本Plan→863是写面排序，不新增D866语义依赖。共享source/lowering/closures会话和H绑定均按窗交接；可在先期只读准备独立捕获分析测试材料，不提前注册公共定义或复制上游WIP。D864交付的List<Str>/List<拥有型type>仍须按823合法捕获类型范围逐项核验，不把集合支持自动推成所有闭包组合。
 
@@ -160,22 +161,22 @@ K 族目前走 typed fixture（`ac-av/closures-run-v1` + `av.entry: "closures:<i
 | ID | owner_stage | 依赖 | 实际位置/操作与结果 | AC | 状态 |
 |---|---|---|---|---|---|
 | T-01 | work | D862、D864、D823 | **[x]** 基线：D862/D864/D868 已归档；HIR 已有 `TypeKind::Function(FnSig)`，但 source AST/VT/parser 无 lambda 或闭包类型；MIR 已有 `CreateClosure`/`CallClosure` 与 CalleeRef，`ClosuresUpdateSession::apply_revision` 可消费闭包 MIR；K01–K06 原源示例存在，K02/K05 使用 move lambda；MIR List/Variant 元素域允许标量、Str、Record、Variant，不允许嵌套 List/Fn/borrow view。823 owned env/capture 及 link 等价合同沿用。写树 `D:/autostack/.wt/lang-865/auto-lang`，base `5af8e0cbe3f5a5a4971d5142abb4fb53b0f983b4`，auto-down `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4` | AC-01/02 | [x] |
-| T-02 | work | T-01 | **[x]** 冻结语法、`fn(...)->...` 高阶签名、Copy/owned/clone/borrow SEM-04、捕获顺序、823 env/link 规则、D864 List 交集、具名拒绝面及 V-06 计量口径；交接沿 §5.0，未提高预算。合同 [closures-source-contract.md](attachments/865/work/closures-source-contract.md)，SHA-256 `3b13327d8c6ebc68f42b7b643e169f32fdcaf6f59268dfdb303aa03fa0ae2d00`，提交 `0275805f0` | AC-01..05 | [x] |
+| T-02 | work | T-01 | **[x]** 冻结语法、`fn(...)->...` 高阶签名、Copy/owned/clone/borrow SEM-04、捕获顺序、823 env/link 规则、D864 List 交集、具名拒绝面及 V-06 计量口径；交接沿 §5.0，未提高预算。合同 [closures-source-contract.md](../attachments/865/work/closures-source-contract.md)，SHA-256 `3b13327d8c6ebc68f42b7b643e169f32fdcaf6f59268dfdb303aa03fa0ae2d00`，提交 `0275805f0` | AC-01..05 | [x] |
 | T-03 | work | T-02 | **[x]** `experimental/ac-core/src/source/{parser,resolve,typecheck,closure_capture}.rs`、HIR/descriptor/schema 接入 lambda、函数类型、捕获与具名拒绝；修复 R865-F01/F02；surface 9 tests pass，源会话零参/多参/直接调用与元数、签名、async负例通过；R865-M01：`ac-semantics` 限定适配器显式拒绝函数类型/间接调用/闭包表达式，保留旧 `VT::Function` 分类 | AC-01/02 | [x] |
 | T-04 | work | T-03 | **[x]** `lower_function_closures_unit` 接入 `experimental/auto-mir-lower/src/hir_adapter.rs`；源码会话走 823 `ClosuresUpdateSession`，env 漂移保留旧 creator，release/live 与分配平衡在 K 源父侧检查；lowering 2 项、会话/捕获 5 项曾通过；修复 R865-F03；捕获集与签名源编辑分别只重编 creator 与 closure，untouched 单元保持缓存 ；R865-F05已闭合：拥有型闭包由 make 返回后传入 apply 的 fn 参数并在参数体内间接调用，session结果42且释放平衡 | AC-03/04 | [x] |
 | T-05 | work | T-04 | **[x]** 新增 K01–K06 源码 TestCase、父侧 oracle、`binding.tsv` AV 状态及 `scripts/verify-av-865.ps1`；K02/K05 legacy diff 保持，K06 标注 `gap:R5-O`；执行 V-06 file cache、restart、body-edit、P90/热集和 823 兼容验证，原始证据仅本地；受影响 AC-01..03 已定向重跑；K01-K06 与 V-06 证据沿用已通过记录 ；依赖复跑 K01-K06 file-backed TestCase：8 checks 全 PASS、coverage gaps=0 | AC-05/04 | [x] |
 | T-06 | review | T-05 | **[x]** final artifact-based review pass on `7491be94`; AC-07/08 remain merge-owned closeout gates | AC-06 | [x] |
 | T-07 | merge | T-06 pass | **[x]** 冻结代码/Spec 提交 fe2923ba9 + ledger projection SHA-256 718255cc08a50ec2af79597be78cdefb78adab19925a9af67016cdc2af73f722：裸 `cargo t` 3207/3207 PASS（673 skipped，1 slow），`cargo tv` 163/163 PASS（2061 skipped）；此前超时项空闲定向复跑 1/1 PASS | AC-07 | [x] |
-| T-08 | merge | T-07 | Spec/矩阵/ledger/归档/guard | AC-08 | [ ] |
-| T-09 | merge | T-08 | 交接863及后续HOF切片的实际基面与限制 | AC-08 | [ ] |
+| T-08 | merge | T-07 | **[x]** Spec/矩阵/索引与 ledger v139→v140 读回一致；106 条历史兼容修复；补充既有 823/852 索引；新增 6 条 865 条目；归档链接 12/12 有效；Windows guard clean | AC-08 | [x] |
+| T-09 | merge | T-08 | **[x]** PLAN-863 保持 drafting，以 delivery baseline 5fa3133fa6401904b0760986ecb2e83b0534cbd4 接续；HOF（map/filter/reduce）留给独立 R3-H/stdlib 切片，C-19 共享可变捕获仍由 R5-O 裁定 | AC-08 | [x] |
 
-T-07 merge gate receipt (2026-10-29): exact commands `cargo t` and `cargo tv` passed on the reviewed code/spec content plus the read-back-validated v140 ledger projection; filtered replay of ac_av_probe_mixed_recipe_stale_identity_is_order_independent passed 1/1. Full results: 3207/3207 (673 skipped; 1 slow) and 163/163 (2061 skipped). No implementation files changed after these gates; T-08/T-09 remain merge-owned until landing, actual archive, guard, and cleanup.
+T-07 merge gate receipt (2026-10-29): exact commands `cargo t` and `cargo tv` passed on the reviewed code/spec content plus the read-back-validated v140 ledger projection; filtered replay of ac_av_probe_mixed_recipe_stale_identity_is_order_independent passed 1/1. Full results: 3207/3207 (673 skipped; 1 slow) and 163/163 (2061 skipped). No implementation files changed after these gates; at that checkpoint T-08/T-09 remained merge-owned and are now completed in the archive checkpoint below.
 
 ## 9. 复审记录
 
 `stage: new | plan_id: PLAN-865 | plan_revision: 2 | outcome: pass（修订草案静态预检；实施仍等真实D门/写面释放） | next: D864等前置后T-01/T-02，S按866→865交接`
 
-2026-10-28 r1→r2（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-06补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](reports/ace-wave-handoff-2026-10-28.md)和[修订收据](attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
+2026-10-28 r1→r2（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-06补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[后继批次排序报告](../reports/ace-next-batch-2026-10-28.md)和[PLAN-865波次静态校验收据](../attachments/ace-wave-20261028/static-validation.json)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
 
 2026-10-29 work：T-03/T-04/T-05 已完成；执行提交 `7d708e36f51e75686f77a28e50734220935ea4f0`（parent `f49c28054c1c1d09b29a68a457672fdbab4ec383`），实现树 `D:/autostack/.wt/lang-865/auto-lang`，branch `plan-865-dev`；依赖 revision：auto-down `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4`、测试解析所需 auto-ui `0261ae9dacf786beb6dceb630be6af267f242625`（均未改动）。
 
@@ -183,7 +184,7 @@ T-07 merge gate receipt (2026-10-29): exact commands `cargo t` and `cargo tv` pa
 
 handoff：`stage: work | plan_id: PLAN-865 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-865/auto-lang | branch: plan-865-dev | base_commit: f49c28054c1c1d09b29a68a457672fdbab4ec383 | code_commit: 7d708e36f51e75686f77a28e50734220935ea4f0 | dependency_revisions: auto-down=c3464d0a0d36e4f8a7988b0c0c26448fc52361b4, auto-ui=0261ae9dacf786beb6dceb630be6af267f242625 | task_ids: T-03,T-04,T-05 | evidence: verify-av-865.ps1 acceptance exit=0; P90=271.3219ms/20 samples; hot peak=4933B; local evidence SHA-256 above | blockers: none | next_responsible_role: review`。Work-owned AC-01..05/V-01..06 已交付；K06 共享可变捕获按原合同诚实拒绝并保留 owner R5-O，HOF 仍排除。AC-06 独立复核与 merge-owned `cargo t`/`tv`、Spec/ledger/归档/guard 均未完成，分别归 review/merge。
 
-2026-10-28 new r1：`stage: new | plan_id: PLAN-865 | plan_revision: 1 | outcome: pass（等 D862/D864，合同可预检） | next: D864 后 work T-01`。全部 AC/V/T 未执行；语法/捕获规则/诊断码待 T-02 冻结；未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
+2026-10-28 new r1：`stage: new | plan_id: PLAN-865 | plan_revision: 1 | outcome: pass（等 D862/D864，合同可预检） | next: D864 后 work T-01`。全部 AC/V/T 未执行；语法/捕获规则/诊断码待 T-02 冻结；未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](../reports/ace-next-batch-2026-10-28.md)。
 
 stage: goal | plan_id: PLAN-865 | plan_revision: r2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-865/auto-lang | commit: 7d708e36f51e75686f77a28e50734220935ea4f0 | next: review
 
@@ -292,4 +293,7 @@ stage: goal | plan_id: PLAN-865 | plan_revision: r2 | round: 11 | from: review |
 - 共享可变捕获（C-19）若旧消费者实际依赖，不能永久排除：本Plan只登记为 unsupported + owner，须在 R5-O 设计后决定。
 - 闭包能否作为 `record` 字段/List 元素：默认不含（组合面另立），如首批需要须扩 T-02 与资源预算。
 
-2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../../specs/auto-mir/hir-lowering-boundary.md)）。
+
+
+Archive checkpoint (2026-10-29): fast-forwarded master from 674871e2a3bcc1a9cf594ac7446f3c1d1129ecbb to delivery baseline 5fa3133fa6401904b0760986ecb2e83b0534cbd4; ledger v139→v140 read-back passed at SHA-256 718255cc08a50ec2af79597be78cdefb78adab19925a9af67016cdc2af73f722; status=archived, completion_kind=delivered. Worktree removal, artifact cleanup, and due batch regression remain closeout work.

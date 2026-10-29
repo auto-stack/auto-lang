@@ -2,7 +2,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
-| 865 | AV闭包源码语法与间接调用 | reviewed → pending merge | [865](../plans/archive/865-av-source-closures-and-hof.md) | 显式源码闭包域接入 823 环境/调用合同；K01/K02/K03/K05 实际执行，K04 编译期拒绝，K06 保留 R5-O。 |
+| 865 | AV闭包源码语法与间接调用 | reviewed → archived (delivered) | [865](../plans/archive/865-av-source-closures-and-hof.md) | 显式源码闭包域接入 823 环境/调用合同；K01/K02/K03/K05 实际执行，K04 编译期拒绝，K06 保留 R5-O。 |
 | 797 | autoabi-v01-bidirectional-probe | reviewed → archived | [797](../plans/archive/797-autoabi-v01-bidirectional-probe.md) | 首版 AutoABI 候选 profile：descriptor/3 如实边界（多出参/handle 归属/callback ctx/record mut-out 原生控制）、三腿真实 COFF 互调、观测依赖闭包+候选位置全集缓存（版本化代际键）、正式父路径硬门与逐请求原始行；[auto-abi/](auto-abi/) 三件 canonical |
 | 802 | code-editor-host-provider | reviewed → archived | [802](../plans/archive/802-code-editor-host-provider.md) | code editor 22 native 全族迁 CodeEditorHostProvider 宿主装配（19 具名方法 owned DTO+三级装配+缺席矩阵逐字面值含 9913 唯一值缺席臂，UI adapter 委托原 registry 零语义迁移，外部 no-ui consumer+实机三分判定 oracle；R1 修复轮补 VM 轨 scroller bind 预存缺口） |
 | 787 | ac-grammar-incremental-cst | reviewed → archived | [787](../plans/archive/787-ac-grammar-incremental-cst.md) | Atom 语法增量词法+无损 CST 首闭环（双 profile 配置驱动/迭代引擎/嫁接共享块/A03 规范形幂等/子树 admission/有界查询窗口/64MiB 流式预算），A01/A02/A03 真实生产者接入 783 store（experimental，零生产面） |
