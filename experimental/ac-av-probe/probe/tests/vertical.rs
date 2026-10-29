@@ -81,22 +81,13 @@ fn t01_vertical_store_round_and_hit() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The vertical native cross-check rode the OLD HIR-native entry; PLAN-871
+/// T-06 retires it with the lowering. VERTICAL_EXPECTED stays validated by
+/// the AV vertical test above and by the shared-MIR frozen oracles.
 #[test]
 #[cfg(windows)]
-fn t01_vertical_native_cross_check() {
-    use auto_av_probe::native_reference as nr;
-    let root = auto_ac_prototype::link::find_rust_lld().ok();
-    if root.is_none() {
-        eprintln!("infra-blocked: rust-lld unavailable — native cross-check skipped");
-        return;
-    }
-    let workdir = std::env::temp_dir().join(format!("av798-t01-native-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&workdir);
-    let run =
-        nr::build_and_run(VERTICAL_SRC, &[], "d_main", &workdir, None).expect("native build+run");
-    assert_eq!(
-        run.exit_code, VERTICAL_EXPECTED,
-        "native exit must match the independent expected"
-    );
-    let _ = std::fs::remove_dir_all(&workdir);
+fn t01_vertical_native_cross_check_retired_after_871() {
+    assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/native_reference.rs")
+        .exists());
 }

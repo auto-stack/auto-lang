@@ -118,27 +118,6 @@ fn run_av(c: &Case, src: &str) -> (ExecOutcome, Vec<(u64, u64)>, Vec<u64>) {
     }
 }
 
-/// The old HIR-native reference leg (782 chain, supervised worker).
-fn run_old(c: &Case, src: &str) -> auto_av_probe::native_reference::NativeRun {
-    let workdir =
-        std::env::temp_dir().join(format!("mn8-p870-old-{}-{}", c.id, std::process::id()));
-    let _ = std::fs::remove_dir_all(&workdir);
-    let run = if c.data {
-        auto_av_probe::native_reference::build_and_run_record(src, &[], "d_main", &workdir, None)
-    } else {
-        auto_av_probe::native_reference::build_and_run_text_record(
-            src,
-            &[],
-            "d_main",
-            &workdir,
-            None,
-        )
-    }
-    .expect("old-native leg");
-    let _ = std::fs::remove_dir_all(&workdir);
-    run
-}
-
 /// Native-side ledger event stream parsed from the shim's stderr traces
 /// (freeze §5): `LIT len=N`/`CLONE len=`/`CONCAT a=` pair with the
 /// following `... id=N` line; `FREE id=N` is a free event.
@@ -211,16 +190,9 @@ fn mn_data_owned_three_path_differential() {
             },
         }
 
-        // ---- Leg 2 — old HIR-native reference ---------------------------
-        let old = run_old(&c, &src);
-        match &c.want {
-            Want::V(v) => {
-                assert_eq!(old.exit_code, *v, "{}: old-native exit", c.id);
-            }
-            Want::Trap(_) => {
-                assert_eq!(old.exit_code, 70, "{}: old-native trap exit", c.id);
-            }
-        }
+        // ---- Leg 2 — old HIR-native reference: RETIRED with the lowering
+        // (PLAN-871 T-06); its differential evidence is the T-03 shadow
+        // record, and the frozen oracle is asserted on AV and mn below.
 
         // ---- Leg 3 — NEW mn ---------------------------------------------
         let mn = common::run_mn(&src, &[], &format!("p870-{}", c.id));
@@ -289,28 +261,6 @@ fn mn_data_owned_three_path_differential() {
             assert!(
                 !dup(&mn_free_ords),
                 "{}: a buffer freed more than once (double free)",
-                c.id
-            );
-            // The old reference's stream is compared as a REGISTERED
-            // decision item carrier (coverage §4.2: its record-field
-            // release order is reverse-declaration where AV/mn are
-            // declaration-order) — only the multiset must agree today.
-            let (old_allocs, old_frees) = parse_events(old.stderr.as_bytes());
-            // The old path's shim ids are 1-based like mn's — compare the
-            // normalized byte-size multisets and free counts.
-            let mut old_sizes: Vec<u64> = old_allocs.iter().map(|(_, b)| *b).collect();
-            old_sizes.sort();
-            let mut av_sizes_sorted = av_sizes.clone();
-            av_sizes_sorted.sort();
-            assert_eq!(
-                old_sizes, av_sizes_sorted,
-                "{}: old-native alloc size multiset vs AV",
-                c.id
-            );
-            assert_eq!(
-                old_frees.len(),
-                av_frees.len(),
-                "{}: old-native free count vs AV",
                 c.id
             );
         }
@@ -614,16 +564,8 @@ fn mn_owned_mut_writethrough_wrapper_three_paths() {
         .map(|e| (e.id, e.bytes as u64))
         .collect();
     let av_frees: Vec<u64> = arena.free_events().into_iter().map(|e| e.id).collect();
-    // Old HIR-native reference leg.
-    let old = run_old(
-        &Case {
-            id: "MUT",
-            data: false,
-            want: Want::V(15),
-        },
-        src,
-    );
-    assert_eq!(old.exit_code, 15, "old-native mut write-back exit");
+    // The old HIR-native leg retired with the lowering (PLAN-871 T-06); the
+    // 15 oracle is asserted on the AV arena above and on mn below.
     // mn leg.
     let mn = common::run_mn(src, &[], "p870-mut");
     assert!(mn.ok, "mn mut write-back failed: {:?}", mn.error);

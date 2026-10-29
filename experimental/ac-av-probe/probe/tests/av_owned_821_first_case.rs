@@ -331,30 +331,13 @@ fn av_owned_821_first_case_move_negative_controls() {
     );
 }
 
-/// The INDEPENDENT native oracle (§5.2): the int TWIN through the 782
-/// HIR-native chain must agree with the hand-audited 404 (= len*100+len).
+/// The INDEPENDENT native oracle (§5.2) was the 782 HIR-native chain.
+/// PLAN-871 T-06 retires it with the old lowering; the hand-audited 404
+/// (= len*100+len) now lives in the shared-MIR frozen oracles
+/// (`ac-mir-native/tests/shadow_tier_871.rs` owned rows).
 #[test]
-fn av_owned_821_first_case_native_independent_comparison() {
-    let workdir = std::env::temp_dir().join(format!(
-        "av821-native-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    let run = auto_av_probe::native_reference::build_and_run_text_record(
-        FIRST_CASE_INT_TWIN,
-        &[],
-        "d_main",
-        &workdir,
-        None,
-    )
-    .expect("the 782 native path builds and runs the text-record twin");
-    assert_eq!(
-        run.exit_code, 404,
-        "native independent oracle: hand-audited 404, stderr: {}",
-        run.stderr
-    );
-    let _ = std::fs::remove_dir_all(&workdir);
+fn av_owned_821_first_case_native_channel_retired_after_871() {
+    assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/native_reference.rs")
+        .exists());
 }

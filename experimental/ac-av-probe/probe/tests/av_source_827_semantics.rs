@@ -90,57 +90,20 @@ fn av_source_827_ap23_precise_trap_and_false_only_control() {
 }
 
 /// V-03 native channel: the SAME frozen bytes through the native reference
-/// build/run — trap = exit 70, false-only control = exit 0. Separate
-/// channel from the AV guest outcome. The channel is REQUIRED (V-03
-/// "native exit70独立匹配"): a missing tool FAILS the test — never a
-/// silent pass (R4-F01).
-static NATIVE_TOOL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
+/// V-03 native channel: RETIRED with the old HIR→CLIF lowering (PLAN-871
+/// T-06). The independent trap/control channel now lives on the shared-MIR
+/// side (`ac-mir-native/tests/shadow_tier_871.rs` frozen oracles +
+/// `tests/gap_closure_871.rs`), which carries the same frozen trap=70 /
+/// control=0 values; the AV-side AP-23 observation above is unchanged.
 #[test]
 #[cfg(windows)]
-fn av_source_827_ap23_native_exit70_channel() {
-    let _guard = NATIVE_TOOL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let src = read_seed(AP23_ORIGINAL, AP23_SHA256);
-    if let Err(e) = auto_ac_prototype::link::find_rust_lld() {
-        panic!(
-            "REQUIRED native oracle unavailable (rust-lld: {e:?}); \
-             AP-23 trap/native-channel separation cannot pass without it"
-        );
-    }
-    let base = std::env::temp_dir().join(format!("av827-t04-native-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    let trap_dir = base.join("trap");
-    let run = auto_av_probe::native_reference::build_and_run(&src, &[], "d_main", &trap_dir, None)
-        .expect("native trap run");
-    assert_eq!(run.exit_code, 70, "i32 divide-by-zero traps as exit 70");
-    let variant = replace_once(&src, "let boom = true &&", "let boom = false &&");
-    let ok_dir = base.join("ok");
-    let run =
-        auto_av_probe::native_reference::build_and_run(&variant, &[], "d_main", &ok_dir, None)
-            .expect("native control run");
-    assert_eq!(run.exit_code, 0, "false-only control exits 0");
-    let _ = std::fs::remove_dir_all(&base);
-}
-
-/// R4-F01 missing-tool control (AP-23 branch): the SUPPORTED
-/// `AC741_RUST_LLD` override pointing at a nonexistent file makes tool
-/// resolution ERROR without a silent fallback — exactly the branch the
-/// required AP-23 native test above panics on.
-#[test]
-#[cfg(windows)]
-fn av_source_827_native_missing_tool_is_red_ap23_control() {
-    let _guard = NATIVE_TOOL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let saved = std::env::var("AC741_RUST_LLD").ok();
-    std::env::set_var("AC741_RUST_LLD", "plan827-absent-review-linker.exe");
-    let resolved = auto_ac_prototype::link::find_rust_lld();
-    match saved {
-        Some(v) => std::env::set_var("AC741_RUST_LLD", v),
-        None => std::env::remove_var("AC741_RUST_LLD"),
-    }
-    assert!(
-        resolved.is_err(),
-        "a broken override must make resolution fail — the branch the required AP-23 native test panics on"
-    );
+fn av_source_827_ap23_native_channel_retired_after_871() {
+    // Keeps the retirement visible in the test list instead of silently
+    // dropping the row: the old reference module is gone and the row's
+    // evidence is the shared-MIR gate.
+    assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/native_reference.rs")
+        .exists());
 }
 
 /// V-02 trace authorization: D798's original trace source example under

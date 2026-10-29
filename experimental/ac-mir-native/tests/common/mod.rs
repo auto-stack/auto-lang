@@ -56,25 +56,3 @@ pub fn run_av(src: &str, caps: &[&str]) -> auto_av_probe::driver::RequestOutcome
     let mut d = auto_av_probe::driver::Driver::ephemeral();
     d.request(src, "d_main", &caps)
 }
-
-/// One OLD HIR-native leg (landed reference path).
-pub fn run_old(src: &str, caps: &[&str], tag: &str) -> auto_av_probe::native_reference::NativeRun {
-    let caps: Vec<String> = caps.iter().map(|s| s.to_string()).collect();
-    let workdir = std::env::temp_dir().join(format!("mn8-t03-old-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&workdir);
-    let lib = if caps.is_empty() {
-        None
-    } else {
-        Some(trace_support_lib())
-    };
-    let run = auto_av_probe::native_reference::build_and_run(
-        src,
-        &caps,
-        "d_main",
-        &workdir,
-        lib.as_deref(),
-    )
-    .expect("old-native build+run");
-    let _ = std::fs::remove_dir_all(&workdir);
-    run
-}

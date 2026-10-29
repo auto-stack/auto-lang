@@ -549,9 +549,9 @@ impl MnDriver {
         let text_lib: Option<std::path::PathBuf> = if needs_text_runtime {
             match text_override {
                 Some(p) => Some(p.to_path_buf()),
-                None => Some(
-                    auto_av_probe::text_runtime::text_runtime_lib().map_err(MnError::Infra)?,
-                ),
+                None => {
+                    Some(auto_av_probe::text_runtime::text_runtime_lib().map_err(MnError::Infra)?)
+                }
             }
         } else {
             None

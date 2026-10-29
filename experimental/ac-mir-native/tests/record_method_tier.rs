@@ -63,18 +63,10 @@ fn mn_method_r08_differential() {
         } => v,
         other => panic!("av outcome: {other:?}"),
     };
-    let workdir = std::env::temp_dir().join(format!("mn881-old-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&workdir);
-    let old =
-        auto_av_probe::native_reference::build_and_run_record(R08, &[], "d_main", &workdir, None)
-            .expect("old-native record build+run");
-    let _ = std::fs::remove_dir_all(&workdir);
-    assert_eq!(
-        old.exit_code, 42,
-        "old-native exit (stderr {:?})",
-        old.stderr
-    );
-    assert_eq!((mn_v, av_v), (42, 42), "three legs agree on 42");
+    // The old HIR-native leg retired with the lowering (PLAN-871 T-06); its
+    // 42 oracle is the shared frozen value this row asserts on both
+    // remaining legs.
+    assert_eq!((mn_v, av_v), (42, 42), "mn and AV agree on the frozen 42");
 }
 
 /// V-09 P-02 through mn: view receiver + explicit mut record param —

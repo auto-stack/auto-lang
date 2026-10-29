@@ -1,28 +1,25 @@
-//! PLAN-871 T-03 shadow gate (`shadow871_`): the five named profiles —
-//! core / scalar / text / record / text-record — each row run through BOTH
-//! backends in THIS process on the SAME Checked module: the old ac-core
-//! HIR→CLIF lowering (`native_reference::build_stages_with_support` +
-//! `run_stage`) and the mn backend (`MnDriver::request_checked`). Every
-//! leg is first checked against the INDEPENDENT frozen oracle (hand-audited
-//! exit/trap values from the 745/767/770/771/782 surfaces and the ACE-M1
-//! binding table), then old and mn are compared: exit value/trap, stdout,
-//! trace stderr marks, and — on owned (text/text-record) rows — the
-//! resource ledger event stream (LIT/CLONE/CONCAT/FREE). Any difference is
-//! red; there is no "different backend" exemption (freeze F2).
+//! PLAN-871 T-03 shadow gate (`shadow871_`), POST-RETIREMENT state: the
+//! five named profiles — core / scalar / text / record / text-record — each
+//! row is built and RUN through the shared-MIR backend and judged against
+//! the INDEPENDENT frozen oracle (hand-audited exit/trap values from the
+//! 745/767/770/771/782 surfaces and the ACE-M1 binding table), plus the
+//! trace stderr marks and — on owned (text/text-record) rows — the resource
+//! ledger event stream (LIT/CLONE/CONCAT/FREE ownership invariants).
 //!
-//! Migration-window artifact: the old legs exist until the G-DELETE
-//! retirement (T-06) — they retire WITH the old lowering, and the frozen
-//! oracles then guard mn alone (the plan file records both states).
+//! The migration-window form of this gate ran BOTH legs (old ac-core HIR→
+//! CLIF lowering vs mn) and compared them; that two-leg evidence is recorded
+//! in `docs/plans/attachments/871/work/shadow-t03.md` (two consecutive green
+//! rounds) and the old leg retired with the lowering (G-DELETE, T-06). The
+//! frozen oracles stay the same, so a shared-MIR regression cannot hide
+//! behind "the other backend agrees".
 
 mod common;
 
 use ac_mn::driver::MnDriver;
-use auto_ac_prototype::hir::HirDomain;
 use auto_ac_prototype::source::{
     compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
     compile_text_source, CompiledSource,
 };
-use auto_ac_prototype::verify::CheckedModule;
 
 const TRACE_CAP: &str = "hir.test.trace.v1";
 
@@ -187,126 +184,77 @@ fn parse_events(stderr: &[u8]) -> (Vec<(u64, u64)>, Vec<std::collections::BTreeS
 fn shadow_row(r: &Row, want_override: Option<i32>) -> Result<(), String> {
     let src = source_of(r);
     let caps: Vec<String> = r.caps.iter().map(|s| s.to_string()).collect();
-    let checked: CheckedModule = r
+    let checked = r
         .prof
         .compile(&src, &caps)
         .map_err(|e| format!("{}: frontend: {e}", r.id))?
         .checked;
-    let domain = checked.bundle().domain;
-    let needs_text_runtime = matches!(domain, HirDomain::Text | HirDomain::TextRecord);
     let tag = format!("mn871-{}-{}", r.id, std::process::id());
-
-    // ---- old leg: the SAME checked module through the ac-core lowering --
-    let old_dir = std::env::temp_dir().join(format!("{tag}-old"));
-    let _ = std::fs::remove_dir_all(&old_dir);
     let lib = if r.trace_lib {
         Some(common::trace_support_lib())
     } else {
         None
     };
-    let support = if needs_text_runtime {
-        Some(
-            auto_av_probe::text_runtime::text_runtime_lib()
-                .map_err(|e| format!("{}: text runtime: {e}", r.id))?,
-        )
-    } else {
-        None
-    };
-    let (_obj, exe, _receipt) = auto_av_probe::native_reference::build_stages_with_support(
-        &checked,
-        "d_main",
-        &old_dir,
-        lib.as_deref(),
-        support.as_deref(),
-    )
-    .map_err(|e| format!("{}: old build: {e}", r.id))?;
-    let (old_exit, _old_out, old_err) = auto_av_probe::native_reference::run_stage(
-        &exe,
-        std::time::Duration::from_secs(60),
-        1 << 20,
-        1 << 20,
-    )
-    .map_err(|e| format!("{}: old run: {e}", r.id))?;
-    let old_exit = old_exit.unwrap_or(-1);
 
-    // ---- mn leg: the SAME checked module through the shared MIR chain ---
+    // ---- the shared-MIR build + contained run ---------------------------
     let mn_dir = std::env::temp_dir().join(format!("{tag}-mn"));
     let _ = std::fs::remove_dir_all(&mn_dir);
     let snapshot = auto_av_core::contract::fnv1a64(src.as_bytes());
     let mut driver = MnDriver::ephemeral();
     let mn = driver.request_checked(&checked, "d_main", &mn_dir, lib.as_deref(), snapshot);
-    let _ = std::fs::remove_dir_all(&old_dir);
     let _ = std::fs::remove_dir_all(&mn_dir);
     if !mn.ok {
         return Err(format!("{}: mn leg failed: {:?}", r.id, mn.error));
     }
-    let mn_exit = mn.exit_code.unwrap_or(-1);
+    let exit = mn.exit_code.unwrap_or(-1);
 
-    // ---- independent oracle first (both legs), then old == mn ----------
+    // ---- independent frozen oracle, then the observation surfaces -------
     let want = want_override.unwrap_or(r.want);
-    if old_exit != want {
+    if exit != want {
         return Err(format!(
-            "{}: OLD leg {} != frozen oracle {}",
-            r.id, old_exit, want
-        ));
-    }
-    if mn_exit != want {
-        return Err(format!(
-            "{}: MN leg {} != frozen oracle {}",
-            r.id, mn_exit, want
-        ));
-    }
-    if old_exit != mn_exit {
-        return Err(format!(
-            "{}: exit differs old={} mn={}",
-            r.id, old_exit, mn_exit
+            "{}: mn exit {} != frozen oracle {}",
+            r.id, exit, want
         ));
     }
     if let Some(want_err) = r.stderr {
-        let old_err_s = String::from_utf8_lossy(&old_err).to_string();
-        let mn_err_s = String::from_utf8_lossy(&mn.stderr).to_string();
-        if old_err_s != want_err {
+        let err = String::from_utf8_lossy(&mn.stderr).to_string();
+        if err != want_err {
             return Err(format!(
-                "{}: OLD stderr marks {:?} != oracle {:?}",
-                r.id, old_err_s, want_err
-            ));
-        }
-        if mn_err_s != want_err {
-            return Err(format!(
-                "{}: MN stderr marks {:?} != oracle {:?}",
-                r.id, mn_err_s, want_err
+                "{}: mn stderr marks {:?} != oracle {:?}",
+                r.id, err, want_err
             ));
         }
     }
     if r.ledger {
-        let (old_allocs, old_batches) = parse_events(&old_err);
-        let (mn_allocs, mn_batches) = parse_events(&mn.stderr);
-        if old_allocs != mn_allocs {
+        // Ownership invariants on the mn ledger alone (the old-leg pairwise
+        // comparison is the T-03 migration evidence): every allocation id is
+        // unique and every allocated id is freed exactly once; an owned row
+        // must actually allocate (an empty stream would be vacuous).
+        let (allocs, batches) = parse_events(&mn.stderr);
+        let freed: std::collections::BTreeSet<u64> = batches.iter().flatten().copied().collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for (id, _) in &allocs {
+            if !seen.insert(*id) {
+                return Err(format!("{}: duplicate allocation id {}", r.id, id));
+            }
+        }
+        if seen != freed {
             return Err(format!(
-                "{}: alloc event stream differs: old {:?} / mn {:?}",
-                r.id, old_allocs, mn_allocs
+                "{}: allocated {:?} but freed {:?} (leak or double free)",
+                r.id, seen, freed
             ));
         }
-        if old_batches != mn_batches {
+        if r.ledger_req && allocs.is_empty() {
             return Err(format!(
-                "{}: free batches differ (program-point sets): old {:?} / mn {:?}",
-                r.id, old_batches, mn_batches
-            ));
-        }
-        if r.ledger_req && old_allocs.is_empty() {
-            return Err(format!(
-                "{}: owned row produced no ledger events on the old leg — the comparison above would be vacuous",
+                "{}: owned row produced no ledger events — the row would be vacuous",
                 r.id
             ));
         }
     } else if !r.trace_lib {
-        // Non-trace, non-ledger rows: stderr is empty on both sides.
-        let old_nonempty = String::from_utf8_lossy(&old_err);
-        if !old_nonempty.trim().is_empty() {
-            return Err(format!(
-                "{}: OLD stderr not empty: {:?}",
-                r.id, old_nonempty
-            ));
+        // Non-trace, non-ledger rows: stderr is empty.
+        let s = String::from_utf8_lossy(&mn.stderr);
+        if !s.trim().is_empty() {
+            return Err(format!("{}: stderr not empty: {:?}", r.id, s));
         }
     }
     Ok(())

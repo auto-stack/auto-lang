@@ -111,20 +111,9 @@ fn mir_native_first_three_path_parity() {
     use auto_av_core::mir::TraceEvent::*;
     assert_eq!(avr.trace, vec![MarkA, MarkA, MarkB]);
 
-    // Leg 2 — old HIR-native reference (landed path, real PE).
-    let old_workdir = std::env::temp_dir().join(format!("mn8-first-oldref-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&old_workdir);
-    let old = auto_av_probe::native_reference::build_and_run(
-        FIRST_CASE_SRC,
-        &caps,
-        "d_main",
-        &old_workdir,
-        Some(&lib),
-    )
-    .expect("old-native build+run");
-    assert_eq!(old.exit_code, FIRST_CASE_EXIT, "old native exit");
-    assert_eq!(old.stderr.as_bytes(), FIRST_CASE_STDERR, "old native marks");
-    let _ = std::fs::remove_dir_all(&old_workdir);
+    // Leg 2 — old HIR-native reference: RETIRED with the lowering (PLAN-871
+    // T-06). Its evidence (exit + mark bytes) is the T-03 shadow record; the
+    // same invariants are asserted on the shared-MIR leg below.
 
     // Leg 3 — the NEW MIR-native path.
     let workdir = std::env::temp_dir().join(format!("mn8-first-parity-{}", std::process::id()));

@@ -178,53 +178,16 @@ fn av_source_827_first_case_store_round_hit_new_worker() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// V-01 independent oracle channel: the SAME frozen bytes through the
-/// native reference build/run must exit 0 (separate channel from the AV
-/// guest result). The native channel is REQUIRED (plan §5.5/AC-06): when
-/// the tool cannot be resolved the test FAILS — never a silent pass or an
-/// ignored skip (R4-F01).
-static NATIVE_TOOL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
+/// V-01 independent oracle channel: RETIRED with the old HIR→CLIF lowering
+/// (PLAN-871 T-06). The independent hand-audited value now rides the
+/// shared-MIR frozen oracles (`ac-mir-native/tests/shadow_tier_871.rs`,
+/// `tests/gap_closure_871.rs`); the AV-side first-case assertions above are
+/// unchanged.
 #[test]
 #[cfg(windows)]
-fn av_source_827_first_case_native_cross_check() {
-    let _guard = NATIVE_TOOL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let src = read_seed(AP01_ORIGINAL, AP01_SHA256);
-    if let Err(e) = auto_ac_prototype::link::find_rust_lld() {
-        panic!(
-            "REQUIRED native oracle unavailable (rust-lld: {e:?}); \
-             this case cannot pass without the independent native channel"
-        );
-    }
-    let workdir = std::env::temp_dir().join(format!("av827-native-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&workdir);
-    let run = auto_av_probe::native_reference::build_and_run(&src, &[], "d_main", &workdir, None)
-        .expect("native build+run");
-    assert_eq!(
-        run.exit_code, 0,
-        "native exit must match the hand-audited 0"
-    );
-    let _ = std::fs::remove_dir_all(&workdir);
-}
-
-/// R4-F01 missing-tool control (first-case branch): with the SUPPORTED
-/// `AC741_RUST_LLD` override pointing at a nonexistent file, tool
-/// resolution ERRORS without a silent fallback — exactly the branch the
-/// required native test above panics on. The control never touches a real
-/// tool and restores the environment.
-#[test]
-#[cfg(windows)]
-fn av_source_827_native_missing_tool_is_red_first_case_control() {
-    let _guard = NATIVE_TOOL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let saved = std::env::var("AC741_RUST_LLD").ok();
-    std::env::set_var("AC741_RUST_LLD", "plan827-absent-review-linker.exe");
-    let resolved = auto_ac_prototype::link::find_rust_lld();
-    match saved {
-        Some(v) => std::env::set_var("AC741_RUST_LLD", v),
-        None => std::env::remove_var("AC741_RUST_LLD"),
-    }
-    assert!(
-        resolved.is_err(),
-        "a broken override must make resolution fail — the branch the required native test panics on"
-    );
+fn av_source_827_first_case_native_channel_retired_after_871() {
+    // Keeps the retirement visible instead of silently dropping the row.
+    assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/native_reference.rs")
+        .exists());
 }

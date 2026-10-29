@@ -362,7 +362,7 @@ fn admit_payload(
         ));
     }
     // Structural relocatable-COFF admission (798-delivered checker).
-    auto_av_probe::native_admission::check_coff_relocatable(&body)
+    auto_av_probe::coff_admission::check_coff_relocatable(&body)
         .map_err(|e| MnError::Admit("coff", e.to_string()))?;
     Ok(body)
 }

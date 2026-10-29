@@ -11,11 +11,10 @@ use crate::store::{self, CteStore};
 use ac_sema_contract::identity::domain_hash;
 use ac_sema_core::adapter::{parse_into_input_typed, LanguageDiagnostic};
 use ac_sema_core::SemaInput;
-use auto_ac_prototype::native;
 use auto_ac_prototype::source::SourceProfile;
 use auto_ac_prototype::verify::CheckedModule;
 use auto_av_core::CancelFlag;
-use auto_av_probe::{mempeek, native_reference};
+use auto_av_probe::mempeek;
 use auto_cte_contract::{
     CteAdmissionError, CteCode, CteDepsManifestV1, CteExecutedV1, CteExpectType,
     CteRequestIdentityV1, CteRequestV1, CteValue, CTE_EXECUTED_SCHEMA, CTE_PROBE_VERSION,
@@ -1151,11 +1150,14 @@ fn run_native(
     workdir: &Path,
     obs: &mut Obs,
 ) -> Result<i32, CteAdmissionError> {
-    // HIR def ids are `d_`-prefixed (`d_main`); the deck names the
-    // source-level function.
+    // PLAN-871 T-06: the native observable rides the SHARED-MIR backend. The
+    // merged 798 reference path retired with the old HIR→CLIF lowering; the
+    // backfilled checked module still goes straight to a backend (no source
+    // re-parse ever sees the CT value).
     let entry_id = format!("d_{entry}");
-    // Entry admission through the real backend check (0-param i32).
-    if let Err(ds) = native::find_entry(checked, &entry_id) {
+    // Entry admission through the shared resolver (0-param i32 is enforced by
+    // the backend's wrapper contract).
+    if let Err(ds) = ac_mn::entry::resolve(checked, &entry_id) {
         let d = ds.first().cloned();
         return Err(CteAdmissionError::new(
             CteCode::EntryMissing,
@@ -1166,15 +1168,25 @@ fn run_native(
             ),
         ));
     }
-    let (_obj, exe, _receipt) = obs.span("native_build", |_| {
-        native_reference::build_stages(checked, &entry_id, workdir, None)
-            .map_err(|e| CteAdmissionError::new(CteCode::Infra("native-build".into()), e))
-    })?;
-    let (code, _so, _se) = obs.span("native_run", |_| {
-        native_reference::run_stage(&exe, Duration::from_millis(5000), 1024 * 1024, 1024 * 1024)
-            .map_err(|e| CteAdmissionError::new(CteCode::Infra("native-run".into()), e))
-    })?;
-    let code = code.ok_or_else(|| {
+    let mut driver = ac_mn::driver::MnDriver::ephemeral();
+    let built = obs
+        .span("native_build", |_| {
+            driver.build_checked(checked, &entry_id, workdir, None, None, 0)
+        })
+        .map_err(|e| CteAdmissionError::new(CteCode::Infra("native-build".into()), e.to_string()))?;
+    let run = obs
+        .span("native_run", |_| {
+            ac_mn::link_driver::run_pe(
+                &built.exe_path,
+                Duration::from_millis(5000),
+                auto_ac_prototype::link::CaptureCaps {
+                    stdout_max: 1024 * 1024,
+                    stderr_max: 1024 * 1024,
+                },
+            )
+        })
+        .map_err(|e| CteAdmissionError::new(CteCode::Infra("native-run".into()), e.to_string()))?;
+    let code = run.exit_code.ok_or_else(|| {
         CteAdmissionError::new(
             CteCode::Infra("native-run".into()),
             "native process terminated abnormally (no exit code)",

@@ -77,39 +77,15 @@ fn main() int {
     assert!(trace.peak_slot_bytes > 0, "record data enters the ledger");
 }
 
-/// F820-R1-03: the first case's INDEPENDENT native oracle (§5.2, restored
-/// as written): the SAME record source through the OLD HIR-native entry
-/// (supervised worker build+run under the record profile) must agree with
-/// the fixed manual expected value — 42 — the same value the data path
-/// returns above. Not a scalar-ized substitute.
+/// F820-R1-03: the first case's INDEPENDENT native oracle was the OLD
+/// HIR-native entry. PLAN-871 T-06 retires that channel together with the
+/// lowering; the same hand-audited 42 now lives in the shared-MIR frozen
+/// oracles (`ac-mir-native/tests/shadow_tier_871.rs` record rows).
 #[test]
-fn av_data_820_first_case_native_independent_comparison() {
-    let src = "\
-type Inner { x int }
-type Outer { inner Inner }
-fn main() int {
-    var o = Outer { inner: Inner { x: 0 } }
-    o.inner.x = 41 + 1
-    return o.inner.x
-}
-";
-    let workdir = std::env::temp_dir().join(format!(
-        "av820-native-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    let run =
-        auto_av_probe::native_reference::build_and_run_record(src, &[], "d_main", &workdir, None)
-            .expect("the old HIR-native path builds and runs the record first case");
-    assert_eq!(
-        run.exit_code, 42,
-        "native independent oracle: manual expected 42, stderr: {}",
-        run.stderr
-    );
-    let _ = std::fs::remove_dir_all(&workdir);
+fn av_data_820_first_case_native_channel_retired_after_871() {
+    assert!(!std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/native_reference.rs")
+        .exists());
 }
 
 #[test]

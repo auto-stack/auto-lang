@@ -92,12 +92,8 @@ fn mir_native_parity_values_traps_matrix() {
                 other => panic!("{}: AV must trap with {kind:?}, got {other:?}", c.name),
             },
         }
-        // Leg 2 — old HIR-native reference: value exit, or 70 on a trap.
-        let old = common::run_old(&c.src, c.caps, c.name);
-        match &c.want {
-            Ok(v) => assert_eq!(old.exit_code, *v, "{}: old-native exit", c.name),
-            Err(_) => assert_eq!(old.exit_code, 70, "{}: old-native trap exit", c.name),
-        }
+        // Leg 2 — old HIR-native reference: RETIRED with the lowering
+        // (PLAN-871 T-06); the frozen oracle is asserted on AV and mn.
         // Leg 3 — NEW MIR-native: same expectations, independently derived.
         let mn = common::run_mn(&c.src, c.caps, c.name);
         assert!(mn.ok, "{}: new-native failed: {:?}", c.name, mn.error);
@@ -111,12 +107,6 @@ fn mir_native_parity_values_traps_matrix() {
             "value-compound" => b"aab",
             _ => b"",
         };
-        assert_eq!(
-            old.stderr.as_bytes(),
-            want_bytes,
-            "{}: old-native marks",
-            c.name
-        );
         assert_eq!(mn.stderr, want_bytes, "{}: new-native marks", c.name);
     }
 }
@@ -166,8 +156,6 @@ fn mir_native_parity_call_loop_matrix() {
         let av = common::run_av(&src, &[]);
         assert!(av.diag.is_none(), "{name}: AV: {:?}", av.diag);
         assert_eq!(av.value_i32(), Some(want), "{name}: AV value");
-        let old = common::run_old(&src, &[], name);
-        assert_eq!(old.exit_code, want, "{name}: old-native exit");
         let mn = common::run_mn(&src, &[], name);
         assert!(mn.ok, "{name}: new-native: {:?}", mn.error);
         assert_eq!(mn.exit_code, Some(want), "{name}: new-native exit");
