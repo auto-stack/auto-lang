@@ -68,3 +68,5 @@ Provenance: [PLAN-861](../../plans/archive/861-autographics-public-actions-and-c
 - [Platform boundary audit (XP-0)](platform-boundary-audit.md): the frozen-version static cross-platform boundary and dependency audit — per-file shared/host/adapter classification of the AG workspaces, the ungated SDK host stack, unresolved edges and non-support statements; audit knowledge only, no new platform capability (PLAN-878).
 
 Provenance: [PLAN-878](../../plans/archive/878-autographics-platform-boundary-and-dependency-audit.md), full reports [docs/reports/autographics-platform-audit-878/](../../reports/autographics-platform-audit-878/README.md). Source: autographics-dev at `8b12632d7b5b1b0df72fbb4eef84297a054de31d`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467` (681-file content lock); auto-ui `7095f536747e5180338a470a7d73452c6b550ed1`. All XP follow-ups remain independent future plans.
+
+- [Finite textured model resources](textured-model-resources.md): auto-ui PLAN-005 delivers bounded opaque GLB/PNG closures, UV0 transforms/sampling, double-sided colour/shadow and portable scene6 with unchanged asset budgets; node associations remain available for006.

@@ -138,3 +138,17 @@ Provenance: auto-ui PLAN-004 (r1), archived at
 delivery `e0fce13810f9e1af28182950d62cfce8722aa30a` on auto-ui master (identical
 `experimental/**` tree, fully equal range-diff from reviewed `0e6e361`),
 independent final review pass; both Cargo.lock files and the SDK pin unchanged.
+
+### PLAN-005 explicit textured model closure
+
+Legacy flat GLB rules above remain restrictive. A separate finite textured
+profile admits the original static Kenney colour-textured inputs and persists
+their complete root/image dependency identity in scene6; schemas1..5 reject any
+new closure field. Root GLB and independent PNGs still share8/32MiB raw and64MiB
+CPU/GPU asset budgets, including UV, metadata, decoded pixels and actual texture
+copies. Save/Open preserve the same no-overwrite, entry-last and full-readback
+transaction. See [textured-model-resources.md](textured-model-resources.md) for
+support, URI/extension admission, sampling normalization, closure keys,
+double-sided lighting/shadow, resource owners and retained006 node association.
+
+Provenance: [auto-ui PLAN-005 r3](../../../../auto-ui/docs/plans/archived/005-autographics-textured-models-and-uv.md), independent final R3 pass reviewed `74378791b353cd285168fa43fb7fe4b27cd208fe`; delivery `351919c76b4ef1d940fc7b8120254e321c41cba2` (fully equal rebase, unchanged experimental tree). Frozen SDK and both Cargo locks unchanged. Full AG milestone remains pending.
