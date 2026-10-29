@@ -17,6 +17,32 @@ use std::collections::BTreeMap;
 
 pub const ABI: &str = "mn.collections.cell/2";
 
+/// A process-local admission result over immutable owned MIR. It has no wire
+/// representation and cannot be constructed from a serialized "verified" bit.
+#[derive(Clone)]
+pub(crate) struct CheckedCollectionUnit {
+    module: std::rc::Rc<MirModule>,
+    layouts: std::rc::Rc<Vec<crate::collections_layout::Descriptor>>,
+}
+impl CheckedCollectionUnit {
+    pub(crate) fn admit(module: std::rc::Rc<MirModule>) -> Result<Self, MnError> {
+        let layouts = admit_layouts(&module)?;
+        Ok(Self {
+            module,
+            layouts: std::rc::Rc::new(layouts),
+        })
+    }
+    pub(crate) fn module(&self) -> &MirModule {
+        &self.module
+    }
+    pub(crate) fn module_rc(&self) -> std::rc::Rc<MirModule> {
+        self.module.clone()
+    }
+    pub(crate) fn layouts(&self) -> &[crate::collections_layout::Descriptor] {
+        &self.layouts
+    }
+}
+
 fn unsupported(kind: &'static str, message: impl Into<String>) -> MnError {
     MnError::Unsupported(kind, message.into())
 }
@@ -27,6 +53,11 @@ fn backend(e: impl std::fmt::Display) -> MnError {
 /// Admission remains before object production. The whitelist is explicit;
 /// profile4 never grants the whole typed collections instruction surface.
 pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
+    admit_layouts(m).map(|_| ())
+}
+pub(crate) fn admit_layouts(
+    m: &MirModule,
+) -> Result<Vec<crate::collections_layout::Descriptor>, MnError> {
     if m.profile != auto_av_core::contract::AV_COLLECTIONS_PROFILE {
         return Err(unsupported(
             "profile",
@@ -133,8 +164,7 @@ pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
             ));
         }
     }
-    crate::collections_layout::descriptors(m)?;
-    Ok(())
+    crate::collections_layout::descriptors(m)
 }
 
 fn signature(count: usize) -> Signature {
@@ -146,7 +176,16 @@ fn signature(count: usize) -> Signature {
 }
 
 pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
-    admit_unit(m)?;
+    let layouts = admit_layouts(m)?;
+    emit_admitted(m, &layouts)
+}
+pub(crate) fn emit_checked(checked: &CheckedCollectionUnit) -> Result<emit::UnitObject, MnError> {
+    emit_admitted(checked.module(), checked.layouts())
+}
+fn emit_admitted(
+    m: &MirModule,
+    layouts: &[crate::collections_layout::Descriptor],
+) -> Result<emit::UnitObject, MnError> {
     let mut om = ObjectModule::new(
         ObjectBuilder::new(emit::make_isa()?, "mn-collections", default_libcall_names())
             .map_err(backend)?,
@@ -217,7 +256,7 @@ pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
             literals: BTreeMap::new(),
             import_refs,
             scratch: f.slots.len() as u32,
-            descriptors: crate::collections_layout::descriptors(m)?,
+            descriptors: layouts.to_vec(),
         };
         let count = lower.i64(f.slots.len() as i64 + 2);
         let cells = lower
@@ -866,4 +905,53 @@ pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     }
     om.define_function(start, &mut context).map_err(backend)?;
     om.finish().emit().map_err(backend)
+}
+
+#[cfg(test)]
+mod checked_unit_tests {
+    use super::*;
+    #[test]
+    fn live_admission_keeps_exact_coff_fingerprint_and_metadata() {
+        let source="enum Token { Data(Str)\nEnd }\nfn make() Token { return Token.Data(\"中\") }\nfn main() int { var xs=List<Token>.new()\n let made=make()\n xs.push(made.move)\n let t=xs.remove(0)\n is t { Data(s) -> { return s.len()+41 } End -> { return 0 } } }";
+        let cold = crate::collections_frontend::cold(source, "mn.at").unwrap();
+        let runtime = crate::collections_runtime::Identity {
+            abi: crate::collections_runtime::ABI.into(),
+            build_key: "proof-control".into(),
+            content_hash: "proof-control".into(),
+        };
+        for raw in cold.units {
+            let raw_fp = crate::fingerprint::unit_fingerprint(&raw).unwrap();
+            let raw_bytes = emit_unit_coff(&raw).unwrap().bytes;
+            let expected =
+                crate::cache::CoffMeta::for_collections_unit(&raw, raw_fp.clone(), &runtime)
+                    .unwrap();
+            let checked = CheckedCollectionUnit::admit(std::rc::Rc::new(raw)).unwrap();
+            let mut alias = checked.module_rc();
+            assert!(std::rc::Rc::get_mut(&mut alias).is_none());
+            assert_eq!(
+                crate::fingerprint::checked_collection_fp(&checked).unwrap(),
+                raw_fp
+            );
+            assert_eq!(emit_checked(&checked).unwrap().bytes, raw_bytes);
+            assert_eq!(
+                crate::cache::CoffMeta::for_checked_collections(&checked, &runtime).unwrap(),
+                expected
+            );
+        }
+    }
+    #[test]
+    fn live_admission_still_rejects_unchecked_or_wrong_profile_modules() {
+        let mut unit = crate::collections_frontend::cold("fn main() int { return 42 }", "mn.at")
+            .unwrap()
+            .units
+            .remove(0);
+        unit.funcs[0].sig = u32::MAX;
+        assert!(CheckedCollectionUnit::admit(std::rc::Rc::new(unit)).is_err());
+        let mut unit = crate::collections_frontend::cold("fn main() int { return 42 }", "mn.at")
+            .unwrap()
+            .units
+            .remove(0);
+        unit.profile = auto_av_core::contract::AV_PROFILE.into();
+        assert!(CheckedCollectionUnit::admit(std::rc::Rc::new(unit)).is_err());
+    }
 }

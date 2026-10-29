@@ -13,6 +13,7 @@ pub mod backend;
 pub mod cache;
 pub mod collections_artifacts;
 pub mod collections_frontend;
+pub mod collections_incremental;
 pub mod collections_layout;
 pub mod collections_lower;
 pub mod collections_observe;

@@ -17,7 +17,7 @@ use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use std::path::{Path, PathBuf};
 
 #[path = "collections_driver.rs"]
-mod collections;
+pub(crate) mod collections;
 
 /// The narrowest source domain that admits a request (PLAN-870 freeze §4):
 /// scalar → record → text-record escalation picks the narrowest compiling
@@ -114,6 +114,10 @@ pub struct MnDriver {
     /// to lower a unit aborts — a "hit" that secretly recompiled cannot
     /// pass as a hit.
     pub forbid_codegen: bool,
+    /// Negative control: perform a real link without its required collections
+    /// runtime. Never set by the source language or ordinary request protocol.
+    pub test_omit_collections_runtime: bool,
+    last_collections_run: Option<link_driver::PeRun>,
     /// Read/publish discipline of the store for this request (T-05).
     pub cache_mode: CacheMode,
     /// Current publication per (project, owner, entry): publishing a new
@@ -179,6 +183,8 @@ impl MnDriver {
             store: None,
             project: None,
             forbid_codegen: false,
+            test_omit_collections_runtime: false,
+            last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         }
@@ -191,6 +197,8 @@ impl MnDriver {
             ),
             project: Some(project.to_string()),
             forbid_codegen: false,
+            test_omit_collections_runtime: false,
+            last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         })
@@ -204,6 +212,8 @@ impl MnDriver {
             store: Some(store),
             project: Some(project.to_string()),
             forbid_codegen: false,
+            test_omit_collections_runtime: false,
+            last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         }
@@ -385,8 +395,13 @@ impl MnDriver {
         }
 
         let persist = self.cache_mode != CacheMode::ReadOnly;
-        let (objects, mut entries) =
-            self.collect_objects(&units, &CoffMeta::for_unit, emit::emit_unit_coff, obs)?;
+        let (objects, mut entries) = self.collect_objects(
+            &units,
+            &CoffMeta::for_unit,
+            &emit::emit_unit_coff,
+            obs,
+            None,
+        )?;
 
         // ---- link identities + manifest -----------------------------------
         let entry_unit = units
@@ -540,8 +555,9 @@ impl MnDriver {
         &mut self,
         units: &[auto_av_core::mir::MirModule],
         meta_for: &dyn Fn(&auto_av_core::mir::MirModule, String) -> Result<CoffMeta, MnError>,
-        emit_for: fn(&auto_av_core::mir::MirModule) -> Result<emit::UnitObject, MnError>,
+        emit_for: &dyn Fn(&auto_av_core::mir::MirModule) -> Result<emit::UnitObject, MnError>,
         obs: &mut Obs,
+        known_fp: Option<&str>,
     ) -> Result<(Vec<ObjectInput>, Vec<LinkUnitEntry>), MnError> {
         // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
         // PLAN-871 T-05 cache modes: `fresh` never READS old units (it may
@@ -554,9 +570,23 @@ impl MnDriver {
         let mut emitted_total = 0usize;
         for unit in units {
             // The fingerprint render is transient codec staging.
-            let fp = obs
-                .ledger
-                .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit));
+            let fp = if let Some(fp) = known_fp {
+                if units.len() != 1 {
+                    return Err(MnError::Admit(
+                        "live-unit-identity",
+                        "a checked fingerprint belongs to one immutable unit".into(),
+                    ));
+                }
+                fp.to_string()
+            } else if unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE {
+                obs.span("unit_fp_render", |o| {
+                    o.ledger
+                        .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit))
+                })
+            } else {
+                obs.ledger
+                    .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit))
+            };
             let meta = obs.span("unit_fp", |_| meta_for(unit, fp))?;
             let entry_row: Option<LinkUnitEntry>;
             let bytes: Vec<u8>;

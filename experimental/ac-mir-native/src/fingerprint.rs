@@ -354,8 +354,22 @@ pub fn unit_fingerprint(unit: &MirModule) -> Result<String, MnError> {
 }
 
 fn render_collections(m: &MirModule) -> Result<String, MnError> {
-    crate::collections_lower::admit_unit(m)?;
-    let descriptors = crate::collections_layout::descriptors(m)?;
+    let descriptors = crate::collections_lower::admit_layouts(m)?;
+    render_collection_parts(m, &descriptors)
+}
+pub(crate) fn checked_collection_fp(
+    checked: &crate::collections_lower::CheckedCollectionUnit,
+) -> Result<String, MnError> {
+    Ok(
+        blake3::hash(render_collection_parts(checked.module(), checked.layouts())?.as_bytes())
+            .to_hex()
+            .to_string(),
+    )
+}
+fn render_collection_parts(
+    m: &MirModule,
+    descriptors: &[crate::collections_layout::Descriptor],
+) -> Result<String, MnError> {
     let shape = |ty: TypeIdx| {
         format!(
             "{}:{}",

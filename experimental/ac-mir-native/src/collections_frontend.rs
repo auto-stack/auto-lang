@@ -6,9 +6,9 @@ use auto_ac_prototype::{
 };
 use auto_av_core::mir::MirModule;
 
-pub struct ColdCollections {
+pub struct ColdCollections<T = MirModule> {
     pub env: CheckedEnv,
-    pub units: Vec<MirModule>,
+    pub units: Vec<T>,
     pub real_body_plans: usize,
     pub scaffold_declarations: usize,
 }
@@ -21,6 +21,25 @@ fn backend(error: impl std::fmt::Display) -> Vec<Diagnostic> {
     )]
 }
 pub fn cold(source: &str, module_path: &str) -> Result<ColdCollections, Vec<Diagnostic>> {
+    cold_produce(source, module_path, |unit| {
+        crate::collections_lower::admit_unit(&unit).map_err(backend)?;
+        Ok(unit)
+    })
+}
+pub(crate) fn cold_admitted(
+    source: &str,
+    module_path: &str,
+) -> Result<ColdCollections<crate::collections_lower::CheckedCollectionUnit>, Vec<Diagnostic>> {
+    cold_produce(source, module_path, |unit| {
+        crate::collections_lower::CheckedCollectionUnit::admit(std::rc::Rc::new(unit))
+            .map_err(backend)
+    })
+}
+fn cold_produce<T>(
+    source: &str,
+    module_path: &str,
+    mut admit: impl FnMut(MirModule) -> Result<T, Vec<Diagnostic>>,
+) -> Result<ColdCollections<T>, Vec<Diagnostic>> {
     if source.len() > crate::config::MAX_INPUT_BYTES {
         return Err(vec![Diagnostic::new(
             Stage::Backend,
@@ -41,6 +60,7 @@ pub fn cold(source: &str, module_path: &str) -> Result<ColdCollections, Vec<Diag
     let mut units = Vec::with_capacity(names.len());
     let mut real_body_plans = 0;
     let mut scaffold_declarations = 0;
+    let snapshot = auto_av_core::contract::fnv1a64(source.as_bytes());
     for (index, name) in names.iter().enumerate() {
         let (parts, receipt) = source::emit_function_body(&env, index, source, module_path)?;
         let module = &parts.bundle.modules[0];
@@ -49,18 +69,16 @@ pub fn cold(source: &str, module_path: &str) -> Result<ColdCollections, Vec<Diag
             .iter()
             .position(|d| &d.id_text == name)
             .ok_or_else(|| backend("missing scoped declaration"))?;
-        let credential = auto_ac_prototype::verify::verify_function(parts.bundle.clone(), def)?;
+        let credential = auto_ac_prototype::verify::verify_function_ref(&parts.bundle, def)?;
         debug_assert_eq!(credential.def_id_text(), name);
         let unit = auto_mir_lower::hir_adapter::lower_function_collections_unit(
             &parts.bundle,
             name,
             &[],
-            auto_av_core::contract::fnv1a64(source.as_bytes()),
+            snapshot,
         )
         .map_err(|e| backend(format!("{e:?}")))?;
-        auto_av_core::verify_mir(&unit).map_err(|e| backend(format!("{e:?}")))?;
-        crate::collections_lower::admit_unit(&unit).map_err(backend)?;
-        units.push(unit);
+        units.push(admit(unit)?);
         real_body_plans += receipt.real_body_plans;
         scaffold_declarations += receipt.scaffold_fns;
         // parts, Atom text and checked body die here; no whole-module Atom/HIR

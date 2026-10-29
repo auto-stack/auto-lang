@@ -42,7 +42,26 @@ impl CoffMeta {
         fp: String,
         runtime: &crate::collections_runtime::Identity,
     ) -> Result<Self, MnError> {
-        crate::collections_lower::admit_unit(unit)?;
+        let layouts = crate::collections_lower::admit_layouts(unit)?;
+        Self::collections_meta(unit, fp, runtime, &layouts)
+    }
+    pub(crate) fn for_checked_collections(
+        checked: &crate::collections_lower::CheckedCollectionUnit,
+        runtime: &crate::collections_runtime::Identity,
+    ) -> Result<Self, MnError> {
+        Self::collections_meta(
+            checked.module(),
+            crate::fingerprint::checked_collection_fp(checked)?,
+            runtime,
+            checked.layouts(),
+        )
+    }
+    fn collections_meta(
+        unit: &MirModule,
+        fp: String,
+        runtime: &crate::collections_runtime::Identity,
+        layouts: &[crate::collections_layout::Descriptor],
+    ) -> Result<Self, MnError> {
         if runtime.abi != crate::collections_runtime::ABI {
             return Err(MnError::Admit(
                 "runtime-abi",
@@ -57,8 +76,7 @@ impl CoffMeta {
             crate::collections_layout::CODEGEN,
             crate::collections_layout::codegen_build()
         );
-        let layouts = crate::collections_layout::descriptors(unit)?;
-        meta.runtime = runtime.tag(&crate::collections_layout::closure_fingerprint(&layouts));
+        meta.runtime = runtime.tag(&crate::collections_layout::closure_fingerprint(layouts));
         meta.mir_schema = auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.into();
         Ok(meta)
     }

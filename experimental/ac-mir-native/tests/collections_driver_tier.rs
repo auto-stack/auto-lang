@@ -183,7 +183,7 @@ fn collections_restore_rejects_all_forged_identity_axes_before_link_or_codegen()
         art::get_manifest(&store, good.manifest_artifact_id.as_deref().unwrap()).unwrap();
     let exe = std::fs::read(output.join("collections.exe")).unwrap();
     let roots = store.root_artifacts("p889", "soft").unwrap();
-    for case in 0..23 {
+    for case in 0..33 {
         let mut forged = manifest.clone();
         match case {
             0 => forged.schema.push('!'),
@@ -209,6 +209,21 @@ fn collections_restore_rejects_all_forged_identity_axes_before_link_or_codegen()
             20 => forged.units[0].mir = art::put_blob(&store, "mir", b"not MIR").unwrap(),
             21 => forged.units.push(forged.units[0].clone()),
             22 => forged.lld.push('!'),
+            23 => forged.source_hash.push('!'),
+            24 => {
+                forged.source.pages.pop();
+            }
+            25 => forged.source.kind = "runtime".into(),
+            26 => forged.coordinates[0].current_end = ac_mn::config::MAX_INPUT_BYTES + 1,
+            27 => forged.coordinates[0].mint_snapshot ^= 1,
+            28 => forged.coordinates[0].text_hash.push('!'),
+            29 => forged.coordinates[0].unit = "missing".into(),
+            30 => forged.coordinates[0].mint_end += 1,
+            31 => forged.coordinates.push(forged.coordinates[0].clone()),
+            32 => {
+                forged.source = art::put_blob(&store, "source", &[255]).unwrap();
+                forged.source_hash = forged.source.hash.clone();
+            }
             _ => unreachable!(),
         }
         let id = art::put_manifest(&store, &forged).unwrap();
@@ -441,6 +456,7 @@ fn collections_paged_coff_hit_keeps_required_closure_and_bounds_page_reads() {
     assert!(art::get_blob(
         &store,
         &art::Blob {
+            slice_offset: None,
             kind: "mir".into(),
             hash: String::new(),
             len: 1,
