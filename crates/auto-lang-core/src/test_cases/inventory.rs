@@ -133,6 +133,9 @@ pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value
                              "payload_start": fence.payload.start, "payload_end": fence.payload.end},
                     "source_sha256": case.source_sha256, "source_files": files,
                     "source_ref": format!("{:?}", spec.source.payload),
+                    "input_paths": std::iter::once(&spec.source.payload).chain(spec.files.iter().map(|f| &f.payload))
+                        .filter_map(|p|match p {auto_test_case::contract::PayloadSpec::File(rel)=>Some(loaded.fixture_base.join(rel)),_=>None})
+                        .chain(oracle.artifacts.iter().map(|a|loaded.fixture_base.join(&a.file))).collect::<Vec<_>>(),
                     "oracle_sha256": oracle.oracle_sha256, "oracle_artifacts": artifacts,
                     "expected_exit": oracle.exit,
                     "adapter": effective.adapter.as_str(), "action": effective.action.as_str(),
@@ -152,6 +155,7 @@ pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value
     Ok(serde_json::json!({
         "schema": "test-case-inventory/1", "scope": "discovery", "executed": 0,
         "suite": loaded.suite.id, "suite_path": loaded.suite_path,
+        "fixture_base": loaded.fixture_base,
         "suite_sha256": loaded.suite_sha256, "checks": checks,
     }))
 }

@@ -9,6 +9,49 @@ fn fixture() -> PathBuf {
 }
 
 #[test]
+fn module_case_cli_keeps_whole_suite_not_run_and_uses_original_oracle() {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("module-case-{}-{stamp}", std::process::id()));
+    let inputs = root.join("inputs");
+    std::fs::create_dir_all(&inputs).unwrap();
+    let suite = inputs.join("s.suite.ad");
+    std::fs::write(&suite,"```test-suite\nsuite { schema: \"autolang.suite/1\", id: \"scope\", include: [\"c.case.ad\"] }\n```\n").unwrap();
+    let doc = |expected| {
+        format!("```test-case\ncase {{ schema: \"autolang.case/1\", id: \"first\", source: {{ text: \"1+2\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"expression\" }}, checks: [{{ id: \"vm\", adapter: \"avm\", action: \"run\", expect: {{ completion: \"success\", result: {{ format: \"legacy-display\", text: \"{expected}\" }} }} }}] }}\n```\n```test-case\ncase {{ schema: \"autolang.case/1\", id: \"second\", source: {{ text: \"4\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"expression\" }}, checks: [{{ id: \"vm\", adapter: \"avm\", action: \"run\", expect: {{ completion: \"success\", result: {{ format: \"legacy-display\", text: \"4\" }} }} }}] }}\n```\n")
+    };
+    for (expected, code, status) in [(3, 0, "PASS"), (4, 1, "FAIL")] {
+        std::fs::write(inputs.join("c.case.ad"), doc(expected)).unwrap();
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_auto-case"))
+            .arg("module-case")
+            .arg("--suite")
+            .arg(&suite)
+            .arg("--case")
+            .arg("first")
+            .arg("--out")
+            .arg(root.join(format!("out-{expected}")))
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(code),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["scope"], "case");
+        assert_eq!(report["suite_gate_exit"], 1);
+        assert_eq!(report["unselected"][0]["status"], "NOT_RUN");
+        let rows = report["selected_report"]["results"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["status"], status);
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn legacy_inventory_uses_real_discovery_and_preserves_distinct_engine_obligations() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test");
     let inventory = auto_lang::test_cases::inventory::legacy_inventory(&root).unwrap();

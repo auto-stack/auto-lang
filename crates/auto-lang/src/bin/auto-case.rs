@@ -107,6 +107,7 @@ fn run(args: &[String]) -> Result<i32, String> {
         }
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
+        "module-case" => module_case_cmd(&suite, args),
         "proposal" => proposal_cmd(&suite, args),
         "stale" => stale_cmd(&suite, require(args, "--report")?),
         other => Err(format!("unknown command {:?}\n{}", other, usage())),
@@ -385,6 +386,46 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     persist_reports(&out, &report.to_console(), &report.to_json())?;
     let _ = &mut report;
     Ok(report.exit_code())
+}
+
+/// A complete case is an independently executable leaf. Keep the original
+/// whole-suite report (including NOT_RUN) and expose a separate case scope;
+/// a case result must never masquerade as the whole suite's passing gate.
+#[cfg(feature = "test-cases")]
+fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
+    if args.len() != 7
+        || args[1..]
+            .chunks_exact(2)
+            .any(|p| !["--suite", "--case", "--out"].contains(&p[0].as_str()))
+    {
+        return Err("module-case requires exactly --suite, --case and --out".into());
+    }
+    let case_id = require(args, "--case")?;
+    let out = PathBuf::from(require(args, "--out")?);
+    audit_output_dir(&out, &protected_roots(suite)?)?;
+    let selection = auto_lang::test_cases::Selection {
+        case: Some(case_id.into()),
+        ..Default::default()
+    };
+    let raw =
+        auto_lang::test_cases::run_suite_selected(suite, &out, &Limits::defaults(), &selection)?;
+    persist_reports(&out, &raw.to_console(), &raw.to_json())?;
+    let mut selected = raw.clone();
+    selected.results.retain(|r| r.case_id == case_id);
+    if selected.results.is_empty() {
+        return Err("module-case selected zero checks".into());
+    }
+    let gate = selected.exit_code();
+    let report = serde_json::json!({"schema":"test-case-module-result/1","scope":"case",
+        "case":case_id,"suite":raw.suite_id,"selected_gate_exit":gate,"suite_gate_exit":raw.exit_code(),
+        "selected_report":serde_json::from_str::<serde_json::Value>(&selected.to_json()).map_err(|e|e.to_string())?,
+        "suite_report_path":out.join("report.json"),
+        "unselected":raw.results.iter().filter(|r|r.case_id!=case_id)
+            .map(|r|serde_json::json!({"case":r.case_id,"check":r.check_id,"status":r.status.as_str()})).collect::<Vec<_>>()});
+    let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    std::fs::write(out.join("module-case.json"), &text).map_err(|e| e.to_string())?;
+    println!("{text}");
+    Ok(gate)
 }
 
 #[cfg(feature = "test-cases")]
