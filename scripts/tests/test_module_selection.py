@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
 from module_catalog import SCHEMA, select, validate, verify_selection
-from build_modules import make_catalog
+from build_modules import make_catalog, navigation
 from run_selected import exact_filter
 
 
@@ -24,6 +24,10 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_plan_number_is_provenance_not_module_ownership(self):
+        self.assertEqual(navigation({"test": "tests::plan781_budget_http_tests::a",
+                                     "binary": "auto-lang"}), "budget-http")
+
     def test_runtime_discovery_partitions_and_preserves_profiles_and_ignored(self):
         doc = {"rust-suites": {"binary": {"status": "listed", "testcases": {
             f"parser::tests::case_{i}": {"ignored": i == 2,
