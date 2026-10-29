@@ -48,6 +48,7 @@ mod ac_protocol;
 /// invoked by the suite runner or any daily scope.
 pub mod ace_certify;
 pub mod avm;
+pub mod inventory;
 pub mod materialize;
 pub mod sema;
 pub mod stale;

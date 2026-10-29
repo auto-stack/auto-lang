@@ -1,0 +1,112 @@
+{
+  "schema": "test-batch-allowlist/1",
+  "recipe": "ac-av/core-run-v1",
+  "profile": "scalar",
+  "entries": [
+    {
+      "case": "ace.m1.b01",
+      "check": "av",
+      "original_id": "B01",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B01.at",
+      "entry_sha256": "b7e5f25e46902be22c9bd3db35a334cb56e130e11cae090b6927314fc2d980c6"
+    },
+    {
+      "case": "ace.m1.b02",
+      "check": "av",
+      "original_id": "B02",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B02.at",
+      "entry_sha256": "7995c2cd010370655c76350afbaae9ba4cb814eec6b8946dfc600d2b9121b28d"
+    },
+    {
+      "case": "ace.m1.b03",
+      "check": "av",
+      "original_id": "B03",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B03.at",
+      "entry_sha256": "af060e0da06ca07ee181f1e7b25c3e2a77f2513ebc429bb09ed18860e20cd966"
+    },
+    {
+      "case": "ace.m1.b04",
+      "check": "av",
+      "original_id": "B04",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B04.at",
+      "entry_sha256": "4487dff4b270520faf0619f8aa0097573d51e5b5ee812ffca02488ab26415c12"
+    },
+    {
+      "case": "ace.m1.b05",
+      "check": "av",
+      "original_id": "B05",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B05.at",
+      "entry_sha256": "169ccf4d1a032964946ab9114ff40c89a53baa43e7f05cde9770990f42d4d18e"
+    },
+    {
+      "case": "ace.m1.b06",
+      "check": "av",
+      "original_id": "B06",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B06.at",
+      "entry_sha256": "f659ffaffc993d7faa228345f3957b206f1ae94ebe6ab0f5c07a27ddb3724a9b"
+    },
+    {
+      "case": "ace.m1.b07",
+      "check": "av",
+      "original_id": "B07",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B07.at",
+      "entry_sha256": "613ea0391340acb574d1b28512cb0eac656fe2e7369a1495c464cb833985d236"
+    },
+    {
+      "case": "ace.m1.binding.b08",
+      "check": "av",
+      "original_id": "B08",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B08.at",
+      "entry_sha256": "4e068c9c8ccaad2b37899e7a42382dfd5d94efad2b191db4de1fb03d299e56a8"
+    },
+    {
+      "case": "ace.m1.b09",
+      "check": "av",
+      "original_id": "B09",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B09.at",
+      "entry_sha256": "66cfe6d5ec89f26568ad16359e6564fe4ef2bc8edc53b0f4175e5c5962fad5b6"
+    },
+    {
+      "case": "ace.m1.b10",
+      "check": "av",
+      "original_id": "B10",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B10.at",
+      "entry_sha256": "d8c6100a0f9af6e3dfe9a4e5883d638a652eb97f4ce18eafc997da23f38470c5"
+    },
+    {
+      "case": "ace.m1.binding.b11",
+      "check": "av",
+      "original_id": "B11",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B11.at",
+      "entry_sha256": "730c801b1aca7e53914ec9dc7f829e7e5c9e2ab9a4af93df27b553d093ea298f"
+    },
+    {
+      "case": "ace.m1.b12",
+      "check": "av",
+      "original_id": "B12",
+      "source_path": "crates/auto-lang/test/cases/ace-m1/src/B12.at",
+      "entry_sha256": "18090d58491b60ffcbe016a5645891b15fff61b0024fa4e461c8f657edcd2a52"
+    },
+    {
+      "case": "gov.d.arithmetic",
+      "check": "av-scalar-control",
+      "original_id": "gov.d.arithmetic",
+      "source_path": "crates/auto-lang/test/cases/governance-887/src/arithmetic.wrapper.at",
+      "entry_sha256": "ed06f8479a10521dcf62f7ae05e77489c5bde3f28a415c00a152d5845251bae8"
+    },
+    {
+      "case": "gov.d.unary",
+      "check": "av-scalar-control",
+      "original_id": "gov.d.unary",
+      "source_path": "crates/auto-lang/test/cases/governance-887/src/unary.wrapper.at",
+      "entry_sha256": "48fb1c9e53b81b730dc7e44c3578889de5d092d2fba9b83c7a40ca9c444e5ac2"
+    },
+    {
+      "case": "gov.d.group",
+      "check": "av-scalar-control",
+      "original_id": "gov.d.group",
+      "source_path": "crates/auto-lang/test/cases/governance-887/src/group.wrapper.at",
+      "entry_sha256": "8c8c26ed522832d30db5907b26b2a1c0783ca7b75501a8b14c36f48c651b1e34"
+    }
+  ]
+}

@@ -83,10 +83,28 @@ fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
 #[cfg(feature = "test-cases")]
 fn run(args: &[String]) -> Result<i32, String> {
     let cmd = args.first().ok_or_else(|| usage())?;
+    if cmd == "legacy-inventory" {
+        let root = PathBuf::from(require(args, "--test-root")?);
+        let inventory = auto_lang::test_cases::inventory::legacy_inventory(&root)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+        );
+        return Ok(0);
+    }
     let suite = PathBuf::from(require(args, "--suite")?);
     match cmd.as_str() {
         "lint" => lint(&suite),
         "list" => list(&suite, flag(args, "--format").as_deref()),
+        "inventory" => {
+            let inventory =
+                auto_lang::test_cases::inventory::suite_inventory(&suite, &Limits::defaults())?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+            );
+            Ok(0)
+        }
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
         "proposal" => proposal_cmd(&suite, args),
@@ -97,7 +115,8 @@ fn run(args: &[String]) -> Result<i32, String> {
 
 #[cfg(feature = "test-cases")]
 fn usage() -> String {
-    "usage: auto-case <lint|list|inspect|run|proposal|stale> --suite <path> [flags]".to_string()
+    "usage: auto-case <lint|list|inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>"
+        .to_string()
 }
 
 /// Protected input/oracle roots for the suite: its directory and the
@@ -136,7 +155,8 @@ fn audit_output_dir(out: &Path, protected: &[PathBuf]) -> Result<(), String> {
 #[cfg(feature = "test-cases")]
 fn audit_output_file(target: &Path, protected: &[PathBuf]) -> Result<(), String> {
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create {}: {}", parent.display(), e))?;
     }
     check_no_reparse_ancestors(target)
         .and_then(|()| validate_output_file(target, protected))
@@ -154,7 +174,11 @@ fn lint(suite: &std::path::Path) -> Result<i32, String> {
         "suite ok: {} case file(s), {} case(s), full reference admission {}",
         loaded.cases.len(),
         total,
-        if errors.is_empty() { "passed" } else { "FAILED" }
+        if errors.is_empty() {
+            "passed"
+        } else {
+            "FAILED"
+        }
     );
     for e in &errors {
         println!("ERROR {}", e);
@@ -390,11 +414,8 @@ fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String>
     persist_reports(&out, &report.to_console(), &report.to_json())?;
     let report_ref = out.join("report.json").display().to_string();
 
-    let proposals = auto_lang::test_cases::materialize::collect_proposals(
-        &report,
-        suite,
-        &Limits::defaults(),
-    )?;
+    let proposals =
+        auto_lang::test_cases::materialize::collect_proposals(&report, suite, &Limits::defaults())?;
     if proposals.is_empty() {
         println!("no proposals — nothing failed an artifact oracle");
         return Ok(report.exit_code());

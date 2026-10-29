@@ -5,6 +5,11 @@ edition = "2021"
 description = "PLAN-798 auto-av-probe: managed cache units, native cross-check reference, driver/observations and the bounded worker for the ac-av vertical probe. HIR→MIR lowering is consumed from the shared auto-mir-lower crate (PLAN-868)."
 publish = false
 
+[features]
+default = []
+# Explicit test tooling; absent from ordinary worker builds.
+test-case-batch = []
+
 [dependencies]
 auto-av-core = { path = "../core" }
 auto-mir-lower = { path = "../../auto-mir-lower" }

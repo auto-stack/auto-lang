@@ -32,6 +32,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "test-case-batch")]
+pub mod test_batch;
+
 const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
 const REQUEST_CAP: usize = 4 << 20;
@@ -1276,6 +1279,31 @@ fn run_check_impl(
     _run_dir: &Path,
     family: RecipeFamily,
 ) -> Result<Verdict, String> {
+    run_check_with_transport(
+        case,
+        check,
+        oracle,
+        _project_dir,
+        artifact_dir,
+        _run_dir,
+        family,
+        call_worker,
+        None,
+    )
+}
+
+// Transport changes do not create a second admission/expectation comparator.
+fn run_check_with_transport(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    _project_dir: &Path,
+    artifact_dir: &Path,
+    _run_dir: &Path,
+    family: RecipeFamily,
+    mut transport: impl FnMut(&str, Duration) -> Result<WorkerResponse, String>,
+    leased_worker_sha: Option<&str>,
+) -> Result<Verdict, String> {
     let started = Instant::now();
     let recipe = family.recipe();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
@@ -1575,13 +1603,18 @@ fn run_check_impl(
         .and_then(|s| s.parse::<u64>().ok())
         .map(Duration::from_millis)
         .unwrap_or(SESSION_WALL);
-    let resp_result = call_worker(&request.to_string(), wall);
+    let resp_result = transport(&request.to_string(), wall);
     let worker_us = worker_started.elapsed().as_micros() as u64;
 
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let mut step_out: Option<StepOut> = None;
-    let exe_sha = worker_exe_sha256()?;
+    // A test batch may reuse the digest ONLY while its Windows file lease
+    // denies writes/deletion/replacement. Independent admission still re-reads.
+    let exe_sha = match leased_worker_sha {
+        Some(sha) => sha.to_owned(),
+        None => worker_exe_sha256()?,
+    };
 
     'admit: {
         let resp = match resp_result {

@@ -122,6 +122,46 @@ pub(crate) fn get_cached_test(case: &str) -> Option<&VmTestData> {
     cache.get(case)
 }
 
+/// Read-only inventory of this wrapper's ACTUAL cache, including `.as` inputs.
+/// It is separate from the product TestRunner discoverer because those are
+/// different consumers and need not discover the same file set.
+#[cfg(feature = "test-cases")]
+#[test]
+#[ignore = "explicit read-only inventory tool; requires AUTO_TEST_INVENTORY_OUT"]
+fn inventory_vm_cache_read_only() {
+    use auto_test_case::sha256::{hex, sha256};
+    let output =
+        PathBuf::from(std::env::var("AUTO_TEST_INVENTORY_OUT").expect("inventory output path"));
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm");
+    let cache = VM_TEST_CACHE.get_or_init(load_vm_test_cache);
+    let mut keys: Vec<_> = cache.keys().collect();
+    keys.sort();
+    let mut rows = Vec::new();
+    for key in keys {
+        let data = &cache[key];
+        let stem = key.rsplit('/').next().unwrap().split_once('_').unwrap().1;
+        let path = root.join(key).join(format!(
+            "{stem}.{}",
+            if data.is_script { "as" } else { "at" }
+        ));
+        let bytes = std::fs::read(&path).expect("source actually loaded by VM cache");
+        assert_eq!(
+            bytes,
+            data.source.as_bytes(),
+            "source changed during inventory"
+        );
+        let oracle = serde_json::json!({"stdout":data.expected_out,"result":data.expected_result,
+                                      "error_presence":data.expected_error});
+        rows.push(serde_json::json!({"id":key,"source_path":path,"source_sha256":hex(&sha256(&bytes)),
+            "is_script":data.is_script,"oracle_sha256":hex(&sha256(&serde_json::to_vec(&oracle).unwrap())),
+            "oracle":oracle,"error_assertion":"presence-only, unchanged legacy semantics"}));
+    }
+    assert!(!rows.is_empty());
+    let value = serde_json::json!({"schema":"test-vm-cache-inventory/1","scope":"discovery", "executed":0,
+                                  "consumer":"tests::vm_file_tests::test_vm", "cases":rows});
+    std::fs::write(output, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+}
+
 fn test_vm(case: &str) -> AutoResult<()> {
     let data = get_cached_test(case).unwrap_or_else(|| {
         panic!(

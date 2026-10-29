@@ -259,3 +259,4 @@ examples/rust-workspace/testt1/
 !scripts/test-governance/recipes.json
 !scripts/test-governance/modules.json
 !scripts/test-governance/impact_rules.json
+!crates/auto-lang/test/cases/governance-888/batch-allowlist.json

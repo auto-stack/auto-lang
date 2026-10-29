@@ -41,6 +41,7 @@ mem-profile = ["auto-lang-core/mem-profile"]
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
 test-http-e2e = ["auto-lang-core/test-http-e2e"]
+test-case-batch = ["test-cases", "auto-lang-core/test-case-batch"]
 # Plan 289: Examples are opt-in to avoid 23 linker processes consuming ~46GB memory
 build-examples = []
 with-file-history = []

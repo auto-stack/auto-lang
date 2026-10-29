@@ -20,6 +20,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
 
+#[cfg(feature = "test-case-batch")]
+#[path = "../test_batch.rs"]
+mod test_batch;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
@@ -38,6 +42,15 @@ fn main() {
         "closures-request" => closures_request(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
+        #[cfg(feature = "test-case-batch")]
+        "test-batch-serve" => {
+            if let Err(error) = test_batch::serve(case_request) {
+                eprintln!("test batch: {error}");
+                exit(2);
+            }
+        }
+        #[cfg(feature = "test-case-batch")]
+        "test-batch-capabilities" => println!("{}", test_batch::capabilities()),
         "load-revision" => load_revision(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
         "frontend-attribution" => frontend_attribution(),
@@ -623,20 +636,26 @@ fn case_serve() -> ! {
             exit(2);
         }
     };
+    let response = case_request(req);
+    let mut line = serde_json::to_string(&response).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(0)
+}
+
+/// Same per-request pipeline for the independent and test-group transports.
+/// Returning drops every request-owned driver before the next item is admitted.
+fn case_request(req: serde_json::Value) -> serde_json::Value {
     let recipe = req["recipe"].as_str().unwrap_or_default().to_string();
     let nonce = req["nonce"].as_str().unwrap_or_default().to_string();
     let request_hash = req["request_hash"].as_str().unwrap_or_default().to_string();
-    let echo = |ok: serde_json::Value| -> ! {
-        let out = serde_json::json!({
+    let echo = |ok: serde_json::Value| {
+        serde_json::json!({
             "schema": "avworker/1",
             "nonce": nonce,
             "request_hash": request_hash,
             "ok": ok,
-        });
-        let mut line = serde_json::to_string(&out).unwrap_or_default();
-        line.push('\n');
-        std::io::stdout().write_all(line.as_bytes()).ok();
-        exit(0)
+        })
     };
     if recipe == auto_av_probe::console_worker::RECIPE {
         match auto_av_probe::console_worker::serve(&req) {
