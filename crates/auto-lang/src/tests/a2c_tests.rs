@@ -119,6 +119,25 @@ int add(int x, int y);
 }
 
 fn test_a2c(case: &str) -> AutoResult<()> {
+    #[cfg(feature = "test-cases")]
+    {
+        return crate::test_cases::execution_trace::observe(
+            || {
+                crate::test_cases::execution_trace::legacy_files(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "a2c",
+                    case,
+                    &[".expected.c", ".expected.h", ".expected.error.log"],
+                )
+            },
+            || test_a2c_impl(case),
+        );
+    }
+    #[cfg(not(feature = "test-cases"))]
+    test_a2c_impl(case)
+}
+
+fn test_a2c_impl(case: &str) -> AutoResult<()> {
     use std::fs::read_to_string;
     use std::fs::File;
     use std::io::Write;

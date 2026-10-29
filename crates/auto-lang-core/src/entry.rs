@@ -925,6 +925,30 @@ pub fn store_name_snake(name: &str) -> String {
 /// Plan 262: Run a single VM file-based test case.
 /// Returns a `FileTestReport` with pass/fail outcome.
 pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTestReport {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        let oracles = [
+            case.expected_out.as_deref(),
+            case.expected_result.as_deref(),
+            case.expected_error.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        serde_json::json!({"family":"legacy-vm","id":case.name,
+            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
+            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+    });
+    let report = run_vm_file_test_impl(case);
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":if matches!(&report.outcome,test_runner::TestOutcome::Passed){"PASS"}else{"FAIL"},
+            "outcome":format!("{:?}",report.outcome),"duration_ms":report.duration_ms}));
+    }
+    report
+}
+
+fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileTestReport {
     use std::time::Instant;
 
     let start = Instant::now();
@@ -1084,6 +1108,23 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
 /// Plan 263 Phase 3: Run a single a2ts transpiler file-based test case.
 /// Reads .at source, transpiles to TypeScript, compares against .expected.ts.
 pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::FileTestReport {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        let oracles = vec![case.expected_file.as_path()];
+        serde_json::json!({"family":"legacy-a2ts","id":case.name,
+            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
+            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+    });
+    let report = run_a2ts_file_test_impl(case);
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":if matches!(&report.outcome,test_runner::TestOutcome::Passed){"PASS"}else{"FAIL"},
+            "outcome":format!("{:?}",report.outcome),"duration_ms":report.duration_ms}));
+    }
+    report
+}
+
+fn run_a2ts_file_test_impl(case: &test_runner::A2tsTestCase) -> test_runner::FileTestReport {
     use std::time::Instant;
 
     let start = Instant::now();
@@ -1190,6 +1231,30 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
 /// Plan 263 Phase 3: Run a single a2c transpiler file-based test case.
 /// Reads .at source, transpiles to C, compares against .expected.c and .expected.h.
 pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTestReport {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        let oracles = [
+            Some(case.expected_c.as_path()),
+            Some(case.expected_h.as_path()),
+            case.expected_error.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        serde_json::json!({"family":"legacy-a2c","id":case.name,
+            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
+            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+    });
+    let report = run_a2c_file_test_impl(case);
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":if matches!(&report.outcome,test_runner::TestOutcome::Passed){"PASS"}else{"FAIL"},
+            "outcome":format!("{:?}",report.outcome),"duration_ms":report.duration_ms}));
+    }
+    report
+}
+
+fn run_a2c_file_test_impl(case: &test_runner::A2cTestCase) -> test_runner::FileTestReport {
     use std::time::Instant;
 
     let start = Instant::now();
@@ -1304,6 +1369,23 @@ pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTe
 /// Plan 263: Run a single a2r transpiler file-based test case.
 /// Reads .at source, transpiles to Rust, compares against .expected.rs.
 pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTestReport {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        let oracles = vec![case.expected_file.as_path()];
+        serde_json::json!({"family":"legacy-a2r","id":case.name,
+            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
+            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+    });
+    let report = run_a2r_file_test_impl(case);
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":if matches!(&report.outcome,test_runner::TestOutcome::Passed){"PASS"}else{"FAIL"},
+            "outcome":format!("{:?}",report.outcome),"duration_ms":report.duration_ms}));
+    }
+    report
+}
+
+fn run_a2r_file_test_impl(case: &test_runner::A2rTestCase) -> test_runner::FileTestReport {
     use std::time::Instant;
 
     let start = Instant::now();

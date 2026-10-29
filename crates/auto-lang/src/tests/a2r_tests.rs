@@ -5,6 +5,25 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
+    #[cfg(feature = "test-cases")]
+    {
+        return crate::test_cases::execution_trace::observe(
+            || {
+                crate::test_cases::execution_trace::legacy_files(
+                    env!("CARGO_MANIFEST_DIR"),
+                    base,
+                    case,
+                    &[".expected.rs"],
+                )
+            },
+            || test_a2r_with_base_impl(base, case),
+        );
+    }
+    #[cfg(not(feature = "test-cases"))]
+    test_a2r_with_base_impl(base, case)
+}
+
+fn test_a2r_with_base_impl(base: &str, case: &str) -> AutoResult<()> {
     // Parse test case name: "01_basics/001_hello" -> "hello"
     let dir_name = case.rsplit('/').next().unwrap_or(case);
     let parts: Vec<&str> = dir_name.split("_").collect();

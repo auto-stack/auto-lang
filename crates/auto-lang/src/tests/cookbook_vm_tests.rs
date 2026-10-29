@@ -26,6 +26,14 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
             )
         })?;
     let src = fs::read_to_string(at_file.path())?;
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        serde_json::json!({
+        "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
+        "source":crate::test_cases::execution_trace::file_identity(&at_file.path()),
+        "oracle":crate::test_cases::execution_trace::file_identity(&case_dir.join("expected.out")),
+        "comparison":if case_dir.join("expected.out").is_file(){"original stdout golden"}else{"original no-crash smoke"}})
+    });
 
     let original_cwd = std::env::current_dir()?;
     std::env::set_current_dir(&case_dir).map_err(|e| {
@@ -62,6 +70,10 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
         );
     }
 
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":"PASS"}));
+    }
     Ok(())
 }
 

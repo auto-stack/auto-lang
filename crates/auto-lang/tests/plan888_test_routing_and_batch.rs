@@ -24,7 +24,11 @@ fn module_case_cli_keeps_whole_suite_not_run_and_uses_original_oracle() {
     };
     for (expected, code, status) in [(3, 0, "PASS"), (4, 1, "FAIL")] {
         std::fs::write(inputs.join("c.case.ad"), doc(expected)).unwrap();
+        let traces = root.join(format!("trace-{expected}"));
+        std::fs::create_dir(&traces).unwrap();
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_auto-case"))
+            .env("AUTO_TEST_TRACE_DIR", &traces)
+            .env("AUTO_TEST_TRACE_MODULE", "case-scope-control")
             .arg("module-case")
             .arg("--suite")
             .arg(&suite)
@@ -47,6 +51,18 @@ fn module_case_cli_keeps_whole_suite_not_run_and_uses_original_oracle() {
         let rows = report["selected_report"]["results"].as_array().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["status"], status);
+        let events: Vec<serde_json::Value> = std::fs::read_dir(&traces)
+            .unwrap()
+            .map(|e| serde_json::from_slice(&std::fs::read(e.unwrap().path()).unwrap()).unwrap())
+            .collect();
+        assert_eq!(events.len(), 2);
+        let finished = events.iter().find(|v| v["phase"] == "finish").unwrap();
+        assert_eq!(finished["module"], "case-scope-control");
+        let actual = finished["data"]["results"].as_array().unwrap();
+        assert_eq!(actual.len(), 2);
+        assert_eq!(actual[0]["status"], status);
+        assert_eq!(actual[1]["status"], "NOT_RUN");
+        assert_eq!(actual[0]["identity"], rows[0]["identity"]);
     }
     std::fs::remove_dir_all(root).unwrap();
 }

@@ -7,6 +7,25 @@ use std::fs;
 use std::path::PathBuf;
 
 fn test_a2ts(case: &str) -> AutoResult<()> {
+    #[cfg(feature = "test-cases")]
+    {
+        return crate::test_cases::execution_trace::observe(
+            || {
+                crate::test_cases::execution_trace::legacy_files(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "a2ts",
+                    case,
+                    &[".expected.ts"],
+                )
+            },
+            || test_a2ts_impl(case),
+        );
+    }
+    #[cfg(not(feature = "test-cases"))]
+    test_a2ts_impl(case)
+}
+
+fn test_a2ts_impl(case: &str) -> AutoResult<()> {
     let dir_name = case.rsplit('/').next().unwrap_or(case);
     let parts: Vec<&str> = dir_name.split("_").collect();
     let name = parts[1..].join("_");

@@ -48,6 +48,7 @@ mod ac_protocol;
 /// invoked by the suite runner or any daily scope.
 pub mod ace_certify;
 pub mod avm;
+pub mod execution_trace;
 pub mod inventory;
 pub mod materialize;
 pub mod sema;
@@ -205,6 +206,28 @@ fn fingerprint<T: std::fmt::Debug>(v: &T) -> String {
 
 /// Run the suite under a selection (Plan 773 F-04/F-05/F-06/F-07 wiring).
 pub fn run_suite_selected(
+    suite_path: &Path,
+    out_dir: &Path,
+    limits: &Limits,
+    selection: &Selection,
+) -> Result<RunReport, String> {
+    let trace = execution_trace::Invocation::start(|| {
+        serde_json::json!({
+        "family":"test-case-suite","suite":execution_trace::file_identity(suite_path)})
+    });
+    let result = run_suite_selected_impl(suite_path, out_dir, limits, selection);
+    if let Some(trace) = trace {
+        trace.finish(match &result {
+            Ok(report) => {
+                serde_json::from_str(&report.to_json()).expect("original structured report")
+            }
+            Err(error) => serde_json::json!({"status":"ERROR","detail":error}),
+        });
+    }
+    result
+}
+
+fn run_suite_selected_impl(
     suite_path: &Path,
     out_dir: &Path,
     limits: &Limits,

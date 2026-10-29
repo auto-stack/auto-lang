@@ -209,6 +209,25 @@ fn inventory_vm_cache_read_only() {
 }
 
 fn test_vm(case: &str) -> AutoResult<()> {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        use auto_test_case::sha256::{hex, sha256};
+        let data = get_cached_test(case).expect("original cache binding");
+        let oracle = serde_json::json!({"stdout":data.expected_out,"result":data.expected_result,
+                                    "error_presence":data.expected_error});
+        serde_json::json!({"family":"legacy-vm-cache","id":case,
+            "source_sha256":hex(&sha256(data.source.as_bytes())),
+            "oracle_sha256":hex(&sha256(&serde_json::to_vec(&oracle).unwrap()))})
+    });
+    let result = test_vm_impl(case);
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":if result.is_ok(){"PASS"}else{"ERROR"}}));
+    }
+    result
+}
+
+fn test_vm_impl(case: &str) -> AutoResult<()> {
     let data = get_cached_test(case).unwrap_or_else(|| {
         panic!(
             "Test case '{}' not found in cache. Check test/vm/ directory.",
