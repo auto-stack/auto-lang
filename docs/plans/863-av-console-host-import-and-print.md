@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-863
-status: execution_done
+status: reviewed
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -19,7 +19,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 5
+current_step: 6
 total_steps: 8
 ---
 
@@ -162,7 +162,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
 | T-04 | work | T-03 | R1-01..03 关闭证据保留；486fe3e7e 修复 F-863-M1：ac/run 复用 MN admission mirror，native stale 比较每行当前身份；2 反例红→绿 +3 stale 同族控制绿；见 repair-m1-summary.md | AC-02/03/04 | [x] |
 | T-05 | work | T-04 | R1-04 与 parent 原证据保留；486fe3e7e 恢复身份链 readiness，候选 SD-01/06 与 prepared canonical 反映 tag/stale 规则；prepared ledger 源 hash 刷新仍为 merge-owned pending | AC-05 | [x] |
-| T-06 | review | T-05 | R2 historical pass 3ff90f15e，F01..04 保持关闭；新 F-M1 修复提交必须再次 affected final review，旧 pass 不覆盖新改动 | AC-06 | [ ] |
+| T-06 | review | T-05 | R3 final pass 486fe3e7e，F-M1（含 stale consumer）关闭；R1-01..04 原证据保持；同会话 artifact-based review，无独立模型/会话；merge 门 pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
 
@@ -267,6 +267,15 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - readiness：work-owned AC-01..05 完成，open in-contract findings/required gaps/contract decisions 空；R1-01..04 与 source/runtime/provider/console parent 原证据受影响代码和输入未变，继续有界复用。代码已提交、树 clean，等待再次 final review；AC-06/T-06 pending，AC-07 裸 cargo t+tv 与 AC-08 落地/ledger/归档/guard/清理 pending。本轮未跑 t/tv/tf/docs_gen，主检出 unrelated docs WIP 与只读 siblings 原样保留。
 
 2026-10-30 goal round 9：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 9 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | next: review`。上一轮 progress；本轮关闭 M1 实现与同因 stale consumer、完成红绿和 sibling 控制并提交；第二次有界修复，目标 active。
+
+2026-10-30 final review R3：`stage: review | review_scope: final | reviewer_identity: Codex（同实施会话 artifact-based review，无独立模型/会话上下文，未指定其他 final reviewer） | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | base_commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（clean detached） | findings: F-863-M1 closed including stale consumer; no new implementation blockers | next: merge`。
+
+- [R3 审查报告](attachments/863/review-r3.md) 核对实际 code diff、worker/tag/stale 数据流与永久断言，未依赖 work 总结授信。ac/run alias MN admission mirror，无第四版本字面量；native linked 行以当前 profile backend 覆盖 per-row map 后实际用于比较，其它 family/轴保持 clone 等价，不污染共享 map。真实 worker core/scalar unset/mn 与 legacy/scoped/malformed 控制、真实报告 current/缺 shared backend/旧行+旧shared tag/worker content drift 已复核。两个 exact 永久回归复跑 **2/2 pass**（exit0 / 1.547s /2222 deliberate filter skips）；原 work 红2fail与三项 sibling绿代码/配置/输入相同，直接复用，不扩跑整档。
+- 实跑命令 `cargo nextest run -p auto-lang --lib --features ui-iced,test-cases -E <two exact permanent tests>`；local `D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/review-r3/replay.log` SHA256 `25056e39d68fbd7143fc15303c5be2487db7edf84a18649b73d956ab1f5461d6`；具体入口/断言在报告。46 个变更 Rust 文件 rustfmt check pass，无新增诊断/延期/workaround；完整原基面 diff-check 检出 prepared 两个新 Spec 的 EOF 空行，明确由 merge 在落地前机械清理并刷新hash（非代码缺口），不得在最终 diff-check 中掩盖。
+- frozen candidate SD-01..06 SHA256 `c0899a31510e618115ce429d9248e65da35a87bbcbbee2f48ffb39792a84a281`；两个相关 canonical prepared 文本与修复相符，细节/hash 见报告。metadata/GOAL-002 有效；旧2/881与1/868历史、native console拒绝边界保留。prepared ledger 未发布（branch143/main142）；merge-owned 按最终 canonical 刷 P863-HOST-CONSOLE/P863-SOURCE-CONSOLE/P868-HIR-LOWERING-BOUNDARY 来源hash，并增加稳定历史ID P863-REVIEW-R3、保留R2历史，仍守一次 unpublished 142→143 增量与原 byte backup。此未完成发布不推定交付。
+- AC-01..06 pass；R1-01..04 unchanged evidence继续有效，F-M1无剩余合同内缺口；AC-07 裸 cargo t+tv **merge-owned pending**，原失败门禁不豁免；AC-08 格式/hash/landing/ledger/archive/guard/cleanup/landing checks **merge-owned pending**。代码入/出 HEAD486fe3e7e clean且冻结，主检出其它文档WIP未触碰；本轮未跑t/tv/tf/docs_gen，未落主线/发布/归档/清树。D-863-NB-01 peer gap保持显式。
+
+2026-10-30 goal round 10：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 10 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | next: merge`。上一轮 progress；本轮最终复审 pass，final review累计3（R1 needs_fix/R2 pass/R3 pass）、有界修复2；目标 active，下一轮合入门禁与收尾。
 
 ## 10. 待澄清事项
 
