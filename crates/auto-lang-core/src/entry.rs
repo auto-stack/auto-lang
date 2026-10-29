@@ -1,5 +1,9 @@
 //! PLAN-843 结构拆分：run* 执行入口族（自 lib.rs 原样搬移，仅组合）。
+//! PLAN-884 T-03：同构桥接机制单源收敛到 [`run_bridge`]；本文件只保留
+//! 公开签名、引擎选择 facade（G4）与受审计的参数绑定/元组投影。
 use super::*;
+
+mod run_bridge;
 
 pub fn run(code: &str) -> AutoResult<String> {
     // Plan 081 Phase 1: AutoVM is now the default (no feature flag required)
@@ -49,30 +53,7 @@ pub fn run_with_capture_and_path_staged(
     code: &str,
     path: &str,
 ) -> Result<(String, String), StagedRunFailure> {
-    let code = code.to_string();
-    let path = path.to_string();
-    let handle = std::thread::Builder::new()
-        .stack_size(vm_thread_stack_size())
-        .spawn(move || {
-            let r = block_on_autovm_local(async {
-                execute_autovm_with_path(&code, true, Some(&path))
-                    .await
-                    .map(|(r, stdout, _, _)| (r, stdout))
-            });
-            let trap = LAST_RUN_TRAP_CODE.with(|c| c.borrow_mut().take());
-            r.map_err(|error| StagedRunFailure {
-                error,
-                run_trap_code: trap,
-            })
-        })
-        .expect("Failed to spawn execution thread");
-    match handle.join() {
-        Ok(r) => r,
-        Err(_) => Err(StagedRunFailure {
-            error: crate::error::AutoError::Msg("execution thread panicked".to_string()),
-            run_trap_code: None,
-        }),
-    }
+    run_bridge::run_staged_on_dedicated_thread(code, path)
 }
 
 /// Run AutoLang code with stdout capture, using the source file path for
@@ -128,16 +109,7 @@ pub fn run_with_capture_and_bytecode_with_input(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
-    let code = code.to_string();
-    let handle = std::thread::Builder::new()
-        .stack_size(vm_thread_stack_size())
-        .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm_with_deadline_and_input(&code, true, None, deadline, input).await
-            })
-        })
-        .expect("Failed to spawn execution thread");
-    join_execution(handle)
+    run_bridge::run_on_dedicated_thread(code, true, None, deadline, input)
 }
 
 /// Run AutoLang code with stdout capture and source path, returning bytecode.
@@ -188,18 +160,7 @@ pub fn run_with_capture_and_path_and_bytecode_with_input(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
-    let code = code.to_string();
-    let path = path.to_string();
-    let handle = std::thread::Builder::new()
-        .stack_size(vm_thread_stack_size())
-        .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm_with_deadline_and_input(&code, true, Some(&path), deadline, input)
-                    .await
-            })
-        })
-        .expect("Failed to spawn execution thread");
-    join_execution(handle)
+    run_bridge::run_on_dedicated_thread(code, true, Some(path), deadline, input)
 }
 
 /// PLAN-746 (PG-MEM-1 / SD-04): join an execution thread without panicking.
@@ -230,34 +191,15 @@ pub fn join_execution<T: Send + 'static>(
 /// let result = run_autovm("1 + 2").unwrap();  // Returns "3"
 /// ```
 pub fn run_autovm(code: &str) -> AutoResult<String> {
-    // Use a dedicated thread with 4MB stack to avoid stack overflow on Windows
-    // (default main thread stack is only 1MB on Windows)
-    let code = code.to_string();
-    let handle = std::thread::Builder::new()
-        .stack_size(vm_thread_stack_size())
-        .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm(&code, false).await.map(|(r, _, _, _)| r)
-            })
-        })
-        .expect("Failed to spawn execution thread");
-    join_execution(handle)
+    // 专用线程 + LocalSet 桥接（capture=false：stdout 透传进程，不捕获）。
+    // 栈策略统一为 vm_thread_stack_size()（RUST_MIN_STACK≥4MiB 可覆盖，缺省 16MiB）。
+    run_bridge::run_on_dedicated_thread(code, false, None, None, None).map(|(r, _, _, _)| r)
 }
 
 /// Plan 177: Run AutoVM with stdout capture for testing
 pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
-    let code = code.to_string();
-    let handle = std::thread::Builder::new()
-        .stack_size(vm_thread_stack_size())
-        .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm(&code, true)
-                    .await
-                    .map(|(r, stdout, _, _)| (r, stdout))
-            })
-        })
-        .expect("Failed to spawn execution thread");
-    join_execution(handle)
+    run_bridge::run_on_dedicated_thread(code, true, None, None, None)
+        .map(|(r, stdout, _, _)| (r, stdout))
 }
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
