@@ -3739,3 +3739,10 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 
 - **866-N1 (LOW)**：worker `resident-apply` 多候选循环遇 deferred 候选时重复消费队首同一候选至本步迭代耗尽（deferred 回插队首、链未推进恒 defer），后面的可安装候选顺延至下一次 apply 步。无正确性影响（不 commit/不 swap/候选不丢/理由可观察），H 语料不触发。改进方向：deferred 时 break 或 rotate 队列。
 - **866-N2 (LOW)**：resident 延迟守卫的名字比较耦合 `d_` def-id 前缀构造约定（`FunctionCode::name` def-id 域 → `strip_prefix("d_")` → 源名域），该构造规则无独立单测锁定；fail-open 方向已有祖先帧负控兜底（退化即红）。
+
+## PLAN-884（2026-10-29 work 冻结时登记，非阻塞）
+
+- **884-N1 (MEDIUM)**：`trans/rust.rs` project/merged 两管线各自嵌套的 `collect_fn_param_types` 为**语义分叉双份**——merged 版额外收集 merge-mut 标志（`merge_mut_map` 臂），project 版以 `process_fn` 闭包重构同体逻辑。T-06 已统一 `collect_fn_spec_params`（逐字同）与 `collect_fn_str_params`（仅注释差）为 ast_scans.rs 单份；param_types 因分叉为载荷保持双份。改进方向：单份签名加 `merge_mut_map: Option<&mut _>` 参数，project 调用点传 None；需 merged 模式金样覆盖先行。
+- **884-N2 (LOW)**：`vm/native.rs:1700-1706` PLAN-872 注释（"catalog math shims are overwritten by ffi/stdlib/math.rs"）描述的是**前史**——现行 native_catalog.rs 生成的 catalog 条目已直接绑定与 inventory 相同的纯 shim（fn 身份收敛），装配序 catalog↔inventory 互换实测行为中性（NC-2a/b 反控实录）。注释应更新为 fn 同一性事实，防后来者按旧注释推断序载荷。
+- **884-N3 (LOW)**：`vm/ffi/stdlib.rs` 壳仍驻留混合域测试模块 `mod tests`（~600行，storage/http/task/str/ID-range 跨域断言）与 musk extern 注册尾段（~90行，跨模块 extern 族装配，`use crate::vm::ffi::musk_response_ctor::*` 就地）——T-04 有界决策：跨域测试支持与跨模块装配留在组合点，不强行归属单域。
+- **884-N4 (INFO)**：`trans/rust/call_emit/` 主题拆分保留三处**审计定死码**逐字不删（B18 Bina 方法翻译实效死——parser 发 Dot 形；B20 Pattern B Dot 形死——B19 无条件终止；B23 module.Type 构造死——同因），按"不可达/尚无 oracle 块不能静默丢失"保持；若未来 call_inner 派发序重构须重新定可达性。
