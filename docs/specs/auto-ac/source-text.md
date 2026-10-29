@@ -111,9 +111,10 @@ print/File/process、公开 ABI 或 ACC Gen1。
 
 ## 验证状态
 
-- 测试族：text_binding/text_hir/text_source/text_native/text_resources +
-  review 重放集 text_review_r2..r10（每轮冻结反例/正控/组合 oracle 永久
-  化，合法 run 附 alloc=free 通用断言）+ runtime/text 独立 workspace 三档；
-  联合门禁 `scripts/verify-ac-text-770.ps1`（14 步，含 741/745/767/771
-  record gate）。收据见
+- 测试族：text_binding/text_hir/text_source + runtime/text 独立 workspace 三档；
+  旧 text_native/text_resources PE 套件与 review 重放集 text_review_r2..r10 随
+  PLAN-871 旧 lowering 退役，其 alloc=free/资源计划/Unicode/陷阱 oracle 由
+  `ac-mir-native` 的 shadow_tier_871（owned 行台账所有权不变式）与
+  `gap_closure_871` 承接；联合门禁 `scripts/verify-ac-text-770.ps1`（步骤见脚本，
+  含 741/745/767/771 旧门与 per-plan scope 归因）。收据见
   [../../reports/770-text/verification.md](../../reports/770-text/verification.md)。

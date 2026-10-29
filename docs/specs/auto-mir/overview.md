@@ -25,3 +25,11 @@ PLAN-881 增加 [record/text-record 方法共享 lowering](record-method-lowerin
 static/view 方法降为普通 MIR 函数（owner 基 `m.<Owner>.<name>` 单元身份），
 av.data/1 增按值 mut-record 写回 ABI（`t_MutRet`），copyable `.mut` 为 Copy
 表示；`MIR_LOWERING_VERSION` 升 "2"（三消费者镜像同步）。
+
+PLAN-871 起 native 消费面的**唯一后端**是共享 MIR：`ac-mn` 消费
+`auto-mir-lower` 的 Typed MIR，旧 `ac-core` HIR→CLIF lowering 已删除，
+`ac-core` 不再依赖 Cranelift。native 默认后端、`AC_NATIVE_BACKEND` 选择语义、
+报告轴 `ac-native-backend`（linked 行必报，按行 profile 重算 stale）与
+A09'/A10' cache 身份规则见
+[auto-ac/native-backend-and-retirement.md](../auto-ac/native-backend-and-retirement.md)；
+本案的 `MIR_LOWERING_VERSION` 仍是其后端身份轴的一部分。

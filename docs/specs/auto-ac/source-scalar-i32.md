@@ -72,10 +72,12 @@ HIR 三重身份（schema/revision/profile）与输入 hash；事务语义（失
 
 ## 验收与范围来源
 
-`scripts/verify-ac-scalar-767.ps1`：14 步 45 例（11 源码正例 + 15 HIR 正例
-真实 PE、19 阶段/code 反例、CLI 双向隔离、收据身份）；测试族 scalar_hir/
-scalar_source/scalar_native；独立复审（含 needs_fix 三发现修复轮）反例与
-控制见 [attachments/767](../../plans/attachments/767/review-codex-r2.md)。
+`scripts/verify-ac-scalar-767.ps1`：13 步 45 例（11 源码正例 + 15 HIR 正例
+经 `ac-native` 真实 PE、19 阶段/code 反例、CLI 双向隔离、收据身份）；测试族
+scalar_hir/scalar_source（旧 scalar_native PE 套件随 PLAN-871 旧 lowering 退役，
+其 oracle 由脚本 ac-native 腿与 `ac-mir-native/tests/shadow_tier_871.rs` 承接）；
+独立复审（含 needs_fix 三发现修复轮）反例与控制见
+[attachments/767](../../plans/attachments/767/review-codex-r2.md)。
 实现收据：[verification.md](../../reports/767-scalar-i32/verification.md)；
 设计收据：[design.md](../../reports/767-scalar-i32/design.md)；
 过程：[PLAN-772](../../plans/archive/772-ac-scalar-ops-short-circuit.md)。

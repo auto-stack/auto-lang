@@ -1,25 +1,28 @@
 # auto-ac
 
 > **Status**: experimental
-> 路径：`experimental/ac-core`（独立 Cargo workspace，bin `auto-ac-prototype`，"ac-probe" 为历史文档名） | 技术栈：Rust + Cranelift 0.126.2 + rust-lld
+> 路径：`experimental/ac-core`（独立 Cargo workspace，bin `auto-ac-prototype`，"ac-probe" 为历史文档名；**前端/Checked HIR/verify/链接**层，无 lowering） | 技术栈：Rust + rust-lld；native lowering 在 `experimental/ac-mir-native`（`ac-mn`，Cranelift 0.126.2）
 
-AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x64 COFF → PE 原生执行。
+AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed MIR** → Windows x64 COFF → PE 原生执行。
 **HIR → 原生执行与有限源码 profile → 原生执行均已完成**；PLAN-745 的
 [source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环，PLAN-772 的
 [source-scalar-i32.md](source-scalar-i32.md) 提供标量扩面（减/除/余、全序比较、
-同类 eq/ne、一元、布尔短路、条件 for）。完整语言面、AAC/ACC native 自举与
-其它能力仍由后续计划承接。
+同类 eq/ne、一元、布尔短路、条件 for）。PLAN-871 起旧 HIR 直达 lowering 已退役，
+后端选择/身份/退役规则见 [native-backend-and-retirement.md](native-backend-and-retirement.md)。
+完整语言面、AAC/ACC native 自举与其它能力仍由后续计划承接。
 
 ## 目标与范围
 
-- 消费 `verify::CheckedModule`（唯一合法来源）做 native lowering；无寄存器/SSA 残留进 checked 层。
+- 消费 `verify::CheckedModule`（唯一合法来源），**经 `auto-mir-lower` 降到共享 Typed MIR**；
+  无寄存器/SSA 残留进 checked 层。`ac-core` 自身不含 lowering、不依赖 Cranelift。
 - 目标平台 Windows 11 x86-64（`x86_64-pc-windows-msvc`）；调用约定 WindowsFastcall；bool 内部/传参
   均为 i32 0/1。
 - 静态库/DLL/热重载/生产 ABI 冻结不在本层（Native ABI RFC 主线，不因 exe 里程碑延后）。
 
 ## 工具链（T-01 收据冻结）
 
-- 后端：cranelift-codegen/frontend/module/object 0.126.2（`ObjectModule::emit()` 直接产 COFF）。
+- 后端：shared MIR（`auto-mir-lower`）→ `ac-mn`（cranelift-codegen/frontend/module/object 0.126.2，
+  `ObjectModule::emit()` 直接产 per-unit COFF，多对象链接）。旧 `src/native.rs` 已删除。
 - 链接：首选 rust-lld `-flavor link`（sysroot 内路径可预测）；MSVC link.exe（vswhere 定位）为备选，
   双链路实测通过。PATH 上的 `link.exe` 是 Git coreutils——必须绝对路径取 MSVC 链接器。
 - SDK：注册表 `KitsRoot10`（本机 D:\Windows Kits\10，10.0.26100.0）→ 已知根回退 →

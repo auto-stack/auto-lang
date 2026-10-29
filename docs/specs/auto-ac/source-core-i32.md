@@ -41,8 +41,8 @@ verify 保守初始化、块唯一角色/可达/无环、全路径返回、终�
 
 源码 profile 显式选择；source AST/签名/词法与类型解析 → 生成 Atom 文本和来源表
 → 真正 bind_source → 全 Bundle span 投影 → verify 返回 CheckedModule → 共享
-finish_build → native/暂存链接/事务发布。后端只接受本进程 verify 凭证，无旧 AST、
-VM/A2R 回退，不补名字/类型检查；HIR 三重身份
+`auto-mir-lower` → `ac-mn`（per-unit COFF → 暂存多对象链接 → 事务发布）。后端只接受
+本进程 verify 凭证，无旧 AST、VM/A2R 回退，不补名字/类型检查；HIR 三重身份
 `auto.hir.core.draft / 1 / core-i32-draft`、descriptor/运算面不变。
 生成条目与 token 映射覆盖所有来源；bool 合成比较和 while 降低指回原 literal/条件。
 范围/UTF8边界/无生成位置残留检查失败受控拒绝，缺映射不伪造位置、不 panic。
@@ -51,21 +51,24 @@ VM/A2R 回退，不补名字/类型检查；HIR 三重身份
 
 ## CLI、制品与测试能力
 
-`check-source <file> --source-profile auto.source.core-i32.draft`；
-`build-source <file> --source-profile auto.source.core-i32.draft --entry <源码函数名>
+`check-source <file> --source-profile auto.source.core-i32.draft`（留在 `auto-ac-prototype`，
+前端/检查角色）；native 构建面在 `ac-native`：
+`build-source <file> --source-profile core|auto.source.core-i32.draft --entry <源码函数名>
 --output <exe> [--capability N]... [--support-lib L]...`。
 profile 漏/未知是用法错2；成功/流水线拒绝/用法错为0/1/2，输入模式不按扩展名猜测。
 build 入口要求零参数 int/i32；源码函数 native 符号加 sf_，允许用户使用 ac_start/
-ExitProcess 名字，绑定仍走 DefId。源码 profile/输入 hash 与 exe/obj/link 收据同事务
-发布；所有失败保留原三件，事务与硬截止进程约束见 [project.md](project.md)。
+ExitProcess 名字，绑定仍走 DefId。源码 profile/输入 hash 与 exe/link 收据同事务
+发布（mn 无单一对象，制品 = exe + `<stem>.ac-link.txt`）；所有失败保留原产物，事务与
+硬截止进程约束见 [project.md](project.md)。
 mark_a/mark_b 仅显式 `hir.test.trace.v1` 激活，nullary→int；用户声明优先。
 原生 trace 支持库须显式链接，不是生产 I/O/运行时契约。
 
 ## 验收与范围来源
 
-`scripts/verify-ac-source-745.ps1`：13步/74例（21真实PE，53阶段/code反例）；
-source_frontend/hir/native/cli、deep_regression 覆盖 token、语义、求值顺序、trap、
-真实Bundle变异、事务SENTINEL及块/表达式/调用深输入。
+`scripts/verify-ac-source-745.ps1`：11步/74例（21 正例经 `ac-native` 真实 PE，53 阶段/code
+反例走 check-source；旧 source_native/source_cli PE 套件随 PLAN-871 旧 lowering 退役，
+其 oracle 由本脚本 ac-native 腿与 `ac-mir-native/tests/shadow_tier_871.rs` 冻结 oracle 承接）；
+source_frontend/hir 覆盖 token、求值顺序、trap、真实 Bundle 变异、事务 SENTINEL。
 最终独立复审另含逗号/未闭合帧与24项块流控制：
 [报告](../../plans/attachments/745/review-r7/REVIEW.md)。
 数值取证：[numeric-boundary.md](../../reports/745-source-core-i32/numeric-boundary.md)；

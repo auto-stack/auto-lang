@@ -253,3 +253,21 @@ bump 未同步镜像即身份断言红）。stale 裁决 av/cte 分支 applicabl
 cache/store 键不含该轴（lowering 出库不改输出）。等价比对口径（逐 check
 status/actual，剔除 duration/spans/exe-sha/ledger_peak_* 等易变字段）由 PLAN-868
 T-02 冻结，驱动脚本 `scripts/verify-mir-lowering-868.ps1`。
+
+## PLAN-871：native 后端身份轴（ac-native-backend）
+
+`ac` 适配器（`acworker/1`）的 linked 行（build/run，实际发生链接）必须携带
+toolchain 轴 `backend`，父侧绑定为报告轴 **`ac-native-backend`**：
+
+- 值 = `mn:<mn-abi>+mir-v<MIR_LOWERING_VERSION>`（共享 MIR，唯一在产后端）；
+  历史 legacy 行 = `cranelift-0.126/lower_object`（后端已退役，不再产生）。
+- **适用面**：仅 linked 行（与 lld/sdk 内容轴同纪律）；check/syntax 与 product
+  consumer 行不带该轴。
+- **stale**：按行 profile 重算（开关逐 profile），值来源是
+  `auto-lang-core` 对 `AC_NATIVE_BACKEND` 的镜像解析；`legacy` 解析为
+  `retired:legacy`，与任何历史值不等 → 旧报告必 STALE；畸形值解析为
+  `invalid:<raw>` 同样必 STALE。
+- **收据**：`ace.m1.cert/1` 键集不动；backend 不进入收据，只以报告轴表达。
+- 反控：worker 真实轴与父侧镜像逐字相等（`r1_backend_axis_mirror_matches_the_real_worker`，
+  子进程 env 隔离）；legacy 请求被 worker/`ac-native` 显式拒绝。
+

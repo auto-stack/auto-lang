@@ -95,17 +95,18 @@ str/Str/char 字段、List/enum/Option/Result、use/跨模块、全局变量、
 
 ## CLI、制品与测试能力
 
-`check-source/build-source` 与 core/scalar 共用命令面，`--source-profile
-auto.source.record.draft` 显式选择（未知值用法错 2；0/1/2 语义不变；
-事务性发布/硬截止进程约束/trace 能力三域一致）。一键门禁
-`scripts/verify-ac-record-771.ps1`（24 步 23 例：check/fmt/全测/record_native
-单线程、源码旗舰与求值序 trace、别名赋值/位置构造/ctor 操作数快照族、
-HIR r01/r03/r04 直连腿与强制失败控制、10 例钉码负向、profile 隔离、
-SENTINEL、收据身份、旧 gates 741/745/767）。
+`check-source` 留在 `auto-ac-prototype`；native 构建面在 `ac-native`：
+`build-source --source-profile record|auto.source.record.draft --entry <名> --output <exe>`
+（未知值用法错 2；0/1/2 语义不变；事务性发布/硬截止进程约束/trace 能力三域一致）。
+一键门禁 `scripts/verify-ac-record-771.ps1`（23 步 23 例：check/fmt/全测、源码旗舰与
+求值序 trace、别名赋值/位置构造/ctor 操作数快照族、HIR r01/r03/r04 直连腿与强制失败
+控制、10 例钉码负向、profile 隔离、SENTINEL、收据身份、旧 gates 741/745/767）。
 
 ## 验收与范围来源
 
-测试族 record_hir/record_source/record_native（57 测试）；实现收据
+测试族 record_hir/record_source（旧 record_native PE 套件随 PLAN-871 旧 lowering 退役；
+其冻结 oracle 由脚本 ac-native 腿、`ac-mir-native/tests/record_method_tier.rs` 与
+`gap_closure_871.rs`（HIR 纯 id 方法/前向 t_MutRet/ctor 快照）承接）；实现收据
 [verification.md](../../reports/771-record/verification.md)（含 R1/R2 修复轮
 与两连败诊断）；设计收据 [design.md](../../reports/771-record/design.md)。
 后续 owner：text-record 组合（770 合入后第二合入者重绑基线）、可变实例

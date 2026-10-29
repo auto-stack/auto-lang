@@ -2,8 +2,10 @@
 
 > **Status**: experimental；`auto.source.text-record.draft` revision 1（PLAN-782）。
 > 实现：`experimental/ac-core/src/source/` + `verify.rs::verify_text_record` +
-> `text_resources.rs`（资源走查）+ `native.rs` 合并 lowering；消费端见
-> [project.md](project.md)；前置 profile 见
+> `text_resources.rs`（资源走查）+ 共享 MIR lowering（`auto-mir-lower` → `ac-mn`，
+> PLAN-871 起旧 `native.rs` 合并 lowering 已退役）；消费端见
+> [project.md](project.md)，后端选择/退役规则见
+> [native-backend-and-retirement.md](native-backend-and-retirement.md)；前置 profile 见
 > [source-text.md](source-text.md)（770）与 [source-record.md](source-record.md)（771）。
 
 本 profile 在 text 与 record 两个已交付 profile 之上交付 **拥有 Str 字段 record
@@ -121,9 +123,11 @@ Token/lexer 迁移或 Gen1-3。
 
 ## 验证状态
 
-- 测试族：text_record_hir（18，含 5 个真实程序化变异）/text_record_source
-  （21）/text_record_resources（27）/text_record_native（24，含 5 个真实
-  故障注入 oracle 与 R2 组合回归）；联合门禁
-  `scripts/verify-ac-text-record-782.ps1`（25 步，含 770/771/741/745/767
-  旧五门与 770 scope 归因）。收据见
+- 测试族：text_record_hir（18，含 5 个真实程序化变异）/text_record_source（21）；
+  旧 text_record_resources（27）/text_record_native（24，含故障注入）随 PLAN-871
+  旧 lowering 退役，其资源台账/故障 oracle 由 `ac-mir-native` 的 shadow_tier_871
+  （owned 行台账所有权不变式）与 `gap_closure_871`（view clone / owned 字段读取 /
+  HP01 HIR 直连）承接；联合门禁 `scripts/verify-ac-text-record-782.ps1`（步骤见脚本，
+  含 770/771/741/745/767 旧门与 770 scope 归因；后继计划树用
+  `AUTO_LANG_PLAN_TREE=<NNN>`）。收据见
   [../../reports/782-text-record/verification.md](../../reports/782-text-record/verification.md)。
