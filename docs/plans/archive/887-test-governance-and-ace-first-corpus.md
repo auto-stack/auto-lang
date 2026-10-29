@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-887
-status: reviewed
+status: archived
 feature_name: 测试治理与ACE首批消费（守恒、提速与补覆盖）
 author: [Codex]
 created_at: 2026-10-29
@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [auto-test-case, test-infrastructure, repository-boundaries]
 depends_on: [PLAN-884]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
