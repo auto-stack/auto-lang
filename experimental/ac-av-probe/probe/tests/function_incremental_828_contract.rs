@@ -545,6 +545,8 @@ fn verify_profile(
         // update — this contract test never feeds it; route it to the
         // real collections verifier to keep the match honest.
         SourceProfile::Collections => verify::verify_collections(b),
+        // PLAN-888 discovery: PLAN-865 added this source domain. Keep
+        // this test adapter exhaustive by calling its landed verifier.
         SourceProfile::Closures => verify::verify_closures(b),
         SourceProfile::HostConsole => verify::verify_host_console(b),
         SourceProfile::Scalar => verify::verify_scalar(b),
@@ -586,6 +588,25 @@ fn strip_body_field_and_section(text: &str, body_id: &str) -> String {
     }
     text.replace_range(begin..end.unwrap(), "");
     text
+}
+
+#[test]
+fn contract_828_admission_closures_profile_uses_real_verifier() {
+    use auto_ac_prototype::source::{compile_parts_with, SourceProfile};
+    let profile = SourceProfile::Closures;
+    let parts = compile_parts_with("fn main() int { return 42 }", "closures.at", &[], profile)
+        .expect("closure profile source");
+    let valid = auto_ac_prototype::bind_document(&parts.atom_text).unwrap();
+    let checked = verify_profile(valid, profile).expect("legal complete module");
+    assert_eq!(
+        checked.domain(),
+        auto_ac_prototype::hir::HirDomain::Closures
+    );
+    let text = strip_body_field_and_section(&parts.atom_text, "b_main");
+    assert_ne!(text, parts.atom_text);
+    let invalid = auto_ac_prototype::bind_document(&text).unwrap();
+    let diagnostics = verify_profile(invalid, profile).unwrap_err();
+    assert!(diagnostics.iter().any(|d| d.code == "verify.missing-body"));
 }
 
 #[test]
