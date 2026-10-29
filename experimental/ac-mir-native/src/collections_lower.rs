@@ -78,6 +78,18 @@ pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
     }
     for block in &m.funcs[0].blocks {
         for i in &block.instrs {
+            if matches!(
+                i,
+                MirInstr::Call {
+                    callee: CalleeRef::Func(_),
+                    ..
+                }
+            ) {
+                return Err(unsupported(
+                    "callee",
+                    "collection units require imported function calls",
+                ));
+            }
             if !matches!(
                 i,
                 MirInstr::Const { .. }

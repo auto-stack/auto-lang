@@ -99,6 +99,9 @@ fn escape(s: &str) -> String {
 
 /// Canonical text rendering of one unit (single function).
 pub fn render_unit(unit: &MirModule) -> Result<String, MnError> {
+    if unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE {
+        return render_collections(unit);
+    }
     if unit.is_host_console_profile() || !unit.host_imports.is_empty() {
         return Err(MnError::Unsupported(
             "host-console",
@@ -342,5 +345,84 @@ fn render_term(t: &Terminator) -> Result<String, MnError> {
 /// FNV-1a64 over the canonical rendering (change detector, 783/798 key
 /// primitive; the object's own content binds separately via blake3).
 pub fn unit_fingerprint(unit: &MirModule) -> Result<String, MnError> {
+    if unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE {
+        return Ok(blake3::hash(render_unit(unit)?.as_bytes())
+            .to_hex()
+            .to_string());
+    }
     Ok(format!("{:016x}", fnv1a64(render_unit(unit)?.as_bytes())))
+}
+
+fn render_collections(m: &MirModule) -> Result<String, MnError> {
+    crate::collections_lower::admit_unit(m)?;
+    let descriptors = crate::collections_layout::descriptors(m)?;
+    let shape = |ty: TypeIdx| {
+        format!(
+            "{}:{}",
+            blake3::Hash::from(descriptors[ty as usize].fingerprint),
+            descriptors[ty as usize].borrowed as u8
+        )
+    };
+    let constant = |idx: u32| match &m.consts[idx as usize] {
+        MirConst::Str(bytes) => format!("utf8:{}:{}", bytes.len(), blake3::hash(bytes)),
+        other => const_repr(other),
+    };
+    let f = &m.funcs[0];
+    let mut caps = m.capabilities.clone();
+    caps.sort();
+    let mut s = format!(
+        "collections-mir-fp/1\nowner {:?}\nprofile {:?}\nunit {:?}\nsig {}\ncaps {:?}\n",
+        (&m.owner.schema, &m.owner.module),
+        m.profile,
+        f.name,
+        shape(f.sig),
+        caps
+    );
+    for slot in &f.slots {
+        s.push_str(&format!(
+            "slot {} {}\n",
+            kind_tag(slot.kind),
+            shape(slot.ty)
+        ));
+    }
+    let mut imports: Vec<_> = m
+        .imports
+        .iter()
+        .map(|i| format!("{:?} {:?} {}", i.symbol, i.effect, shape(i.sig)))
+        .collect();
+    imports.sort();
+    for import in imports {
+        s.push_str(&format!("import {import}\n"));
+    }
+    for (bi, block) in f.blocks.iter().enumerate() {
+        s.push_str(&format!("block {bi}\n"));
+        for i in &block.instrs {
+            let line = match i {
+                MirInstr::Const { dst, value } => format!("const {dst} {}", constant(*value)),
+                MirInstr::Aggregate {
+                    dst,
+                    record_ty,
+                    operands,
+                } => format!("aggregate {dst} {} {operands:?}", shape(*record_ty)),
+                MirInstr::ListNew { dst, list_ty, cap } => {
+                    format!("listnew {dst} {} {cap}", shape(*list_ty))
+                }
+                MirInstr::VariantPack {
+                    dst,
+                    variant_ty,
+                    disc,
+                    payload,
+                } => format!(
+                    "variantpack {dst} {} {disc} {payload:?}",
+                    shape(*variant_ty)
+                ),
+                other => render_instr(m, other)?,
+            };
+            s.push_str(&line);
+            s.push('\n');
+        }
+        s.push_str(&render_term(&block.term)?);
+        s.push('\n');
+    }
+    Ok(s)
 }

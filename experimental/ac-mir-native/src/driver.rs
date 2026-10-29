@@ -16,6 +16,9 @@ use auto_av_core::mir::MirType;
 use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use std::path::{Path, PathBuf};
 
+#[path = "collections_driver.rs"]
+mod collections;
+
 /// The narrowest source domain that admits a request (PLAN-870 freeze §4):
 /// scalar → record → text-record escalation picks the narrowest compiling
 /// profile, so B* sources keep their `av.core-i32/1` unit identity while
@@ -381,130 +384,9 @@ impl MnDriver {
                 .charge(Partition::MirSymbol, u.heap_estimate() as u64);
         }
 
-        // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
-        // PLAN-871 T-05 cache modes: `fresh` never READS old units (it may
-        // still publish), `read-only` reads but never publishes — a miss is
-        // recomputed for real and leaves the store untouched.
-        let read_cache = self.cache_mode != CacheMode::Fresh;
         let persist = self.cache_mode != CacheMode::ReadOnly;
-        let mut objects: Vec<ObjectInput> = Vec::with_capacity(units.len());
-        let mut entries: Vec<LinkUnitEntry> = Vec::with_capacity(units.len());
-        let mut emitted_total = 0usize;
-        for unit in &units {
-            // The fingerprint render is transient codec staging.
-            let fp = obs
-                .ledger
-                .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit));
-            let meta = obs.span("unit_fp", |_| CoffMeta::for_unit(unit, fp))?;
-            let entry_row: Option<LinkUnitEntry>;
-            let bytes: Vec<u8>;
-            match self.store.as_ref() {
-                Some(store) => {
-                    let found = if read_cache {
-                        obs.span("cache_lookup", |_| {
-                            cache::get_unit_coff_with_id(store, &meta)
-                        })?
-                    } else {
-                        None
-                    };
-                    match found {
-                        Some((id, b)) => {
-                            obs.counter("cache_hit_coff", 1);
-                            // Restored object bytes: I/O read buffers held
-                            // through the link (T-05 §11 partition).
-                            obs.ledger.charge(Partition::Io, b.len() as u64);
-                            // The manifest binds the concrete artifact id.
-                            entry_row = Some(LinkUnitEntry {
-                                sha256: cache::content_hash(&b),
-                                len: b.len(),
-                                artifact_id: id,
-                                extra_page_ids: vec![],
-                                meta: meta.clone(),
-                            });
-                            bytes = b;
-                        }
-                        None => {
-                            if self.forbid_codegen {
-                                return Err(MnError::Admit(
-                                    "forbidden-codegen",
-                                    "hit path attempted to compile (forbid_codegen seam)".into(),
-                                ));
-                            }
-                            let obj = obs.span("codegen", |o| {
-                                o.counter("codegen_emit_units", 1);
-                                emit::emit_unit_coff(unit)
-                            })?;
-                            emitted_total += obj.bytes.len();
-                            // Emitted object bytes held for the link:
-                            // lowering/codec staging (T-05 §11).
-                            obs.ledger
-                                .charge(Partition::Staging, obj.bytes.len() as u64);
-                            let persisted = if persist {
-                                let (id, extra) = obs.span("coff_persist", |o| {
-                                    o.ledger.with_charge(
-                                        Partition::Io,
-                                        obj.bytes.len() as u64 + 512,
-                                        |_| {
-                                            // Unit COFFs are CACHE entries, not
-                                            // publications: no project tag (a
-                                            // tagged put would auto-soft-root
-                                            // them and pin every revision).
-                                            cache::put_unit_coff(store, None, &meta, &obj.bytes)
-                                        },
-                                    )
-                                })?;
-                                obs.counter("coff_objects_persisted", 1);
-                                obs.counter("store_puts", 1);
-                                Some((id, extra))
-                            } else {
-                                // read-only miss: real recompute, no publish.
-                                obs.counter("read_only_miss", 1);
-                                None
-                            };
-                            entry_row = persisted.map(|(id, extra)| LinkUnitEntry {
-                                sha256: cache::content_hash(&obj.bytes),
-                                len: obj.bytes.len(),
-                                artifact_id: id,
-                                extra_page_ids: extra,
-                                meta: meta.clone(),
-                            });
-                            bytes = obj.bytes;
-                        }
-                    }
-                }
-                None => {
-                    // Ephemeral: no store — the pure new-codegen path.
-                    if self.forbid_codegen {
-                        return Err(MnError::Admit(
-                            "forbidden-codegen",
-                            "hit path attempted to compile (forbid_codegen seam)".into(),
-                        ));
-                    }
-                    let obj = obs.span("codegen", |o| {
-                        o.counter("codegen_emit_units", 1);
-                        emit::emit_unit_coff(unit)
-                    })?;
-                    emitted_total += obj.bytes.len();
-                    obs.ledger
-                        .charge(Partition::Staging, obj.bytes.len() as u64);
-                    entry_row = None;
-                    bytes = obj.bytes;
-                }
-            }
-            objects.push(ObjectInput {
-                name: unit.funcs[0].name.clone(),
-                bytes,
-            });
-            if let Some(e) = entry_row {
-                entries.push(e);
-            }
-        }
-        if emitted_total > MAX_REQUEST_OBJECTS_BYTES {
-            return Err(MnError::Resource(
-                "request-objects",
-                format!("emitted objects total {emitted_total} bytes"),
-            ));
-        }
+        let (objects, mut entries) =
+            self.collect_objects(&units, &CoffMeta::for_unit, emit::emit_unit_coff, obs)?;
 
         // ---- link identities + manifest -----------------------------------
         let entry_unit = units
@@ -651,6 +533,148 @@ impl MnDriver {
                 .collect(),
             obs: obs.clone(),
         })
+    }
+
+    /// Shared A09 lookup/admit/emit discipline for every native source family.
+    fn collect_objects(
+        &mut self,
+        units: &[auto_av_core::mir::MirModule],
+        meta_for: &dyn Fn(&auto_av_core::mir::MirModule, String) -> Result<CoffMeta, MnError>,
+        emit_for: fn(&auto_av_core::mir::MirModule) -> Result<emit::UnitObject, MnError>,
+        obs: &mut Obs,
+    ) -> Result<(Vec<ObjectInput>, Vec<LinkUnitEntry>), MnError> {
+        // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
+        // PLAN-871 T-05 cache modes: `fresh` never READS old units (it may
+        // still publish), `read-only` reads but never publishes — a miss is
+        // recomputed for real and leaves the store untouched.
+        let read_cache = self.cache_mode != CacheMode::Fresh;
+        let persist = self.cache_mode != CacheMode::ReadOnly;
+        let mut objects: Vec<ObjectInput> = Vec::with_capacity(units.len());
+        let mut entries: Vec<LinkUnitEntry> = Vec::with_capacity(units.len());
+        let mut emitted_total = 0usize;
+        for unit in units {
+            // The fingerprint render is transient codec staging.
+            let fp = obs
+                .ledger
+                .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit));
+            let meta = obs.span("unit_fp", |_| meta_for(unit, fp))?;
+            let entry_row: Option<LinkUnitEntry>;
+            let bytes: Vec<u8>;
+            match self.store.as_ref() {
+                Some(store) => {
+                    let found = if read_cache {
+                        obs.span("cache_lookup", |_| {
+                            cache::get_unit_coff_with_id(store, &meta)
+                        })?
+                    } else {
+                        None
+                    };
+                    match found {
+                        Some((id, b)) => {
+                            obs.counter("cache_hit_coff", 1);
+                            // Restored object bytes: I/O read buffers held
+                            // through the link (T-05 §11 partition).
+                            obs.ledger.charge(Partition::Io, b.len() as u64);
+                            // The manifest binds the concrete artifact id.
+                            let extra_page_ids =
+                                if unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE {
+                                    cache::unit_coff_page_ids(store, &meta, b.len())?
+                                } else {
+                                    vec![]
+                                };
+                            entry_row = Some(LinkUnitEntry {
+                                sha256: cache::content_hash(&b),
+                                len: b.len(),
+                                artifact_id: id,
+                                extra_page_ids,
+                                meta: meta.clone(),
+                            });
+                            bytes = b;
+                        }
+                        None => {
+                            if self.forbid_codegen {
+                                return Err(MnError::Admit(
+                                    "forbidden-codegen",
+                                    "hit path attempted to compile (forbid_codegen seam)".into(),
+                                ));
+                            }
+                            let obj = obs.span("codegen", |o| {
+                                o.counter("codegen_emit_units", 1);
+                                emit_for(unit)
+                            })?;
+                            emitted_total += obj.bytes.len();
+                            // Emitted object bytes held for the link:
+                            // lowering/codec staging (T-05 §11).
+                            obs.ledger
+                                .charge(Partition::Staging, obj.bytes.len() as u64);
+                            let persisted = if persist {
+                                let (id, extra) = obs.span("coff_persist", |o| {
+                                    o.ledger.with_charge(
+                                        Partition::Io,
+                                        obj.bytes.len() as u64 + 512,
+                                        |_| {
+                                            // Unit COFFs are CACHE entries, not
+                                            // publications: no project tag (a
+                                            // tagged put would auto-soft-root
+                                            // them and pin every revision).
+                                            cache::put_unit_coff(store, None, &meta, &obj.bytes)
+                                        },
+                                    )
+                                })?;
+                                obs.counter("coff_objects_persisted", 1);
+                                obs.counter("store_puts", 1);
+                                Some((id, extra))
+                            } else {
+                                // read-only miss: real recompute, no publish.
+                                obs.counter("read_only_miss", 1);
+                                None
+                            };
+                            entry_row = persisted.map(|(id, extra)| LinkUnitEntry {
+                                sha256: cache::content_hash(&obj.bytes),
+                                len: obj.bytes.len(),
+                                artifact_id: id,
+                                extra_page_ids: extra,
+                                meta: meta.clone(),
+                            });
+                            bytes = obj.bytes;
+                        }
+                    }
+                }
+                None => {
+                    // Ephemeral: no store — the pure new-codegen path.
+                    if self.forbid_codegen {
+                        return Err(MnError::Admit(
+                            "forbidden-codegen",
+                            "hit path attempted to compile (forbid_codegen seam)".into(),
+                        ));
+                    }
+                    let obj = obs.span("codegen", |o| {
+                        o.counter("codegen_emit_units", 1);
+                        emit_for(unit)
+                    })?;
+                    emitted_total += obj.bytes.len();
+                    obs.ledger
+                        .charge(Partition::Staging, obj.bytes.len() as u64);
+                    entry_row = None;
+                    bytes = obj.bytes;
+                }
+            }
+            objects.push(ObjectInput {
+                name: unit.funcs[0].name.clone(),
+                bytes,
+            });
+            if let Some(e) = entry_row {
+                entries.push(e);
+            }
+        }
+        if emitted_total > MAX_REQUEST_OBJECTS_BYTES {
+            return Err(MnError::Resource(
+                "request-objects",
+                format!("emitted objects total {emitted_total} bytes"),
+            ));
+        }
+
+        Ok((objects, entries))
     }
 
     /// Build-only entry: lower through the shared MIR chain, emit per-unit

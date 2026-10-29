@@ -37,7 +37,41 @@ pub struct CoffMeta {
 }
 
 impl CoffMeta {
+    pub fn for_collections_unit(
+        unit: &MirModule,
+        fp: String,
+        runtime: &crate::collections_runtime::Identity,
+    ) -> Result<Self, MnError> {
+        crate::collections_lower::admit_unit(unit)?;
+        if runtime.abi != crate::collections_runtime::ABI {
+            return Err(MnError::Admit(
+                "runtime-abi",
+                "collections runtime ABI mismatch".into(),
+            ));
+        }
+        let mut meta = Self::base(unit, fp)?;
+        meta.abi = crate::collections_lower::ABI.into();
+        meta.backend = format!(
+            "{};{};build={}",
+            MN_BACKEND_TAG,
+            crate::collections_layout::CODEGEN,
+            crate::collections_layout::codegen_build()
+        );
+        let layouts = crate::collections_layout::descriptors(unit)?;
+        meta.runtime = runtime.tag(&crate::collections_layout::closure_fingerprint(&layouts));
+        meta.mir_schema = auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.into();
+        Ok(meta)
+    }
     pub fn for_unit(unit: &MirModule, fp: String) -> Result<Self, MnError> {
+        if unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE {
+            return Err(MnError::Unsupported(
+                "runtime-identity",
+                "collections cache requires source/build/content-bound runtime identity".into(),
+            ));
+        }
+        Self::base(unit, fp)
+    }
+    fn base(unit: &MirModule, fp: String) -> Result<Self, MnError> {
         let f = &unit.funcs[0];
         Ok(CoffMeta {
             owner: unit.owner.clone(),
@@ -82,6 +116,17 @@ fn page_key(base: &QueryKey, page: u32) -> QueryKey {
     let mut comps = base.components.clone();
     comps.push(("page".into(), page.to_string()));
     QueryKey::new(&COFF_LAYER, comps)
+}
+
+fn collections_meta(meta: &CoffMeta) -> bool {
+    meta.abi == crate::collections_lower::ABI
+}
+fn page_bytes(meta: &CoffMeta) -> usize {
+    if collections_meta(meta) {
+        PAGE_BYTES - 4096
+    } else {
+        PAGE_BYTES
+    }
 }
 
 fn esc(s: &str) -> String {
@@ -195,13 +240,20 @@ pub fn put_unit_coff(
         ));
     }
     let sha = content_hash(coff);
-    let pages = coff.len().div_ceil(PAGE_BYTES).max(1);
+    let page_bytes = page_bytes(meta);
+    let pages = coff.len().div_ceil(page_bytes).max(1);
     let key = coff_unit_key(meta);
     let header = header_lines(meta, &sha, coff.len(), pages);
+    if collections_meta(meta) && header.len() + 1 > 4096 {
+        return Err(MnError::Resource(
+            "coff-header",
+            "collections COFF header exceeds reserved page space".into(),
+        ));
+    }
     let mut first_id = None;
     let mut extra_ids = Vec::new();
     for i in 0..pages {
-        let chunk = &coff[i * PAGE_BYTES..((i + 1) * PAGE_BYTES).min(coff.len())];
+        let chunk = &coff[i * page_bytes..((i + 1) * page_bytes).min(coff.len())];
         let payload = if i == 0 {
             let mut p = header.clone().into_bytes();
             p.push(b'\n'); // empty line: header/body separator
@@ -250,9 +302,16 @@ pub fn get_unit_coff_with_id(
     meta: &CoffMeta,
 ) -> Result<Option<(String, Vec<u8>)>, MnError> {
     let key = coff_unit_key(meta);
-    let Some(first) = store
-        .get_artifact(COFF_LAYER.id, &key)
-        .map_err(|e| MnError::Infra(format!("store get: {e}")))?
+    let Some(first) = (if collections_meta(meta) {
+        store.get_artifact_bounded(
+            COFF_LAYER.id,
+            &key,
+            (PAGE_BYTES + ac_artifact_probe::codec::CHUNK_HEADER_LEN) as u64,
+        )
+    } else {
+        store.get_artifact(COFF_LAYER.id, &key)
+    })
+    .map_err(|e| MnError::Infra(format!("store get: {e}")))?
     else {
         return Ok(None);
     };
@@ -266,6 +325,10 @@ pub fn get_unit_coff_by_id(
     meta: &CoffMeta,
     artifact_id: &str,
 ) -> Result<Vec<u8>, MnError> {
+    if collections_meta(meta) {
+        let art = crate::collections_artifacts::read_page(store, artifact_id, PAGE_BYTES)?;
+        return admit_payload(meta, &art.payload, &coff_unit_key(meta), store);
+    }
     let Some(art) = store
         .get_artifact_by_id(artifact_id)
         .map_err(|e| MnError::Infra(format!("store get-by-id: {e}")))?
@@ -277,6 +340,36 @@ pub fn get_unit_coff_by_id(
     };
     let key = coff_unit_key(meta);
     admit_payload(meta, &art.payload, &key, store)
+}
+
+/// Required continuation pages for a re-admitted collections COFF. The old
+/// manifest format is untouched; new closures pin the entire paged payload on
+/// hits as well as misses, so GC cannot collect a live continuation page.
+pub fn unit_coff_page_ids(
+    store: &ManagedStore,
+    meta: &CoffMeta,
+    len: usize,
+) -> Result<Vec<String>, MnError> {
+    if len == 0 || len > MAX_COFF_BYTES {
+        return Err(MnError::Admit(
+            "coff-size",
+            "invalid COFF page length".into(),
+        ));
+    }
+    let key = coff_unit_key(meta);
+    let mut ids = Vec::new();
+    for page in 1..len.div_ceil(page_bytes(meta)) {
+        let art = store
+            .get_artifact_bounded(
+                COFF_LAYER.id,
+                &page_key(&key, page as u32),
+                (PAGE_BYTES + ac_artifact_probe::codec::CHUNK_HEADER_LEN) as u64,
+            )
+            .map_err(|e| MnError::Infra(format!("COFF page index: {e}")))?
+            .ok_or_else(|| MnError::Admit("coff-page", "required COFF page missing".into()))?;
+        ids.push(art.artifact_id);
+    }
+    Ok(ids)
 }
 
 fn admit_payload(
@@ -331,18 +424,47 @@ fn admit_payload(
         .parse()
         .map_err(|_| MnError::Admit("envelope", "bad len".into()))?;
     let sha = field(&fields, "sha256")?.to_string();
+    let bounded = collections_meta(meta);
+    let page_bytes = page_bytes(meta);
+    if bounded
+        && (len == 0
+            || len > MAX_COFF_BYTES
+            || pages != len.div_ceil(page_bytes)
+            || payload.len() - body_start != len.min(page_bytes))
+    {
+        return Err(MnError::Admit(
+            "coff-pages",
+            "invalid bounded COFF length/page count".into(),
+        ));
+    }
     let mut body = payload[body_start..].to_vec();
     for i in 1..pages {
         let pk = page_key(key, i as u32);
-        let Some(page) = store
-            .get_artifact(COFF_LAYER.id, &pk)
-            .map_err(|e| MnError::Infra(format!("store get page {i}: {e}")))?
+        let Some(page) = (if bounded {
+            store.get_artifact_bounded(
+                COFF_LAYER.id,
+                &pk,
+                (PAGE_BYTES + ac_artifact_probe::codec::CHUNK_HEADER_LEN) as u64,
+            )
+        } else {
+            store.get_artifact(COFF_LAYER.id, &pk)
+        })
+        .map_err(|e| MnError::Infra(format!("store get page {i}: {e}")))?
         else {
             return Err(MnError::Admit(
                 "address",
                 format!("page {i} of `{}` is missing", meta.unit),
             ));
         };
+        if bounded
+            && (page.kind != ChunkKind::LayoutData
+                || page.payload.len() != (len - i * page_bytes).min(page_bytes))
+        {
+            return Err(MnError::Admit(
+                "coff-pages",
+                "continuation carrier/length mismatch".into(),
+            ));
+        }
         body.extend_from_slice(&page.payload);
     }
     if body.len() != len {

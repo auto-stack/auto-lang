@@ -30,9 +30,12 @@ pub enum Profile {
     Text,
     Record,
     TextRecord,
+    Collections,
 }
 
 impl Profile {
+    /// Preserve the five-profile report/table contract; the explicit new
+    /// collections source face has its own recipe and ABI identity.
     pub const ALL: [Profile; 5] = [
         Profile::Core,
         Profile::Scalar,
@@ -48,10 +51,14 @@ impl Profile {
             Profile::Text => "text",
             Profile::Record => "record",
             Profile::TextRecord => "text-record",
+            Profile::Collections => "collections",
         }
     }
 
     pub fn parse(s: &str) -> Option<Profile> {
+        if s == "collections" {
+            return Some(Profile::Collections);
+        }
         Profile::ALL.into_iter().find(|p| p.as_str() == s)
     }
 }
@@ -138,10 +145,10 @@ pub fn overrides(raw: Option<&str>) -> Result<Vec<(Profile, Backend)>, SpecError
         return Ok(Vec::new());
     }
     match raw {
-        "mn" => Ok(Profile::ALL.into_iter().map(|p| (p, Backend::Mn)).collect()),
-        "legacy" => Ok(Profile::ALL
+        "mn" | "legacy" => Ok(Profile::ALL
             .into_iter()
-            .map(|p| (p, Backend::Legacy))
+            .chain([Profile::Collections])
+            .map(|p| (p, Backend::parse(raw).unwrap()))
             .collect()),
         _ => {
             let mut out: Vec<(Profile, Backend)> = Vec::new();

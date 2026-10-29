@@ -52,7 +52,7 @@ fn main() -> ExitCode {
         "build-source" => match parse_build(&args[1..]) {
             Ok(req) => report(run_build(&req, req.profile)),
             Err(e) => {
-                eprintln!("usage: ac-native build-source <file.at> --source-profile <core|scalar|text|record|text-record> --entry <name> --output <exe> [--capability <name>]... [--support-lib <lib>]");
+                eprintln!("usage: ac-native build-source <file.at> --source-profile <core|scalar|text|record|text-record|collections> --entry <name> --output <exe> [--capability <name>]... [--support-lib <lib>]");
                 eprintln!("error: {e}");
                 ExitCode::from(EXIT_USAGE)
             }
@@ -71,7 +71,7 @@ fn main() -> ExitCode {
 fn usage() {
     eprintln!("ac-native — PLAN-871 shared-MIR native CLI");
     eprintln!("  build <hir.atom> --entry <id|name> --output <exe> [--capability <name>]... [--support-lib <lib>]");
-    eprintln!("  build-source <file.at> --source-profile <core|scalar|text|record|text-record> --entry <name> --output <exe> [--capability <name>]... [--support-lib <lib>]");
+    eprintln!("  build-source <file.at> --source-profile <core|scalar|text|record|text-record|collections> --entry <name> --output <exe> [--capability <name>]... [--support-lib <lib>]");
     eprintln!("  backend [--json]   print the AC_NATIVE_BACKEND switch state (per profile)");
 }
 
@@ -211,6 +211,7 @@ fn parse_profile(raw: &str) -> Result<Profile, String> {
         "auto.source.text.draft" => Profile::Text,
         "auto.source.record.draft" => Profile::Record,
         "auto.source.text-record.draft" => Profile::TextRecord,
+        "auto.source.collections.draft" => Profile::Collections,
         other => {
             return Err(format!(
                 "unknown source profile `{other}` (expected core|scalar|text|record|text-record or its auto.source.*.draft constant)"
@@ -221,6 +222,9 @@ fn parse_profile(raw: &str) -> Result<Profile, String> {
 }
 
 fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Vec<Diagnostic>)> {
+    if profile == Some(Profile::Collections) {
+        return run_build_collections(req);
+    }
     let src = std::fs::read_to_string(&req.file).map_err(|e| {
         eprintln!("error: cannot read {}: {}", req.file.display(), e);
         (EXIT_USAGE, Vec::new())
@@ -424,6 +428,99 @@ fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Ve
     ))
 }
 
+fn run_build_collections(req: &BuildReq) -> Result<String, (u8, Vec<Diagnostic>)> {
+    let fail = |error: String| {
+        eprintln!("error: {error}");
+        (EXIT_PIPELINE, Vec::new())
+    };
+    match backend::resolve(Profile::Collections) {
+        Ok(Backend::Mn) => {}
+        Ok(Backend::Legacy) => {
+            return Err(fail(
+                "collections has no legacy backend; the HIR→CLIF backend was retired".into(),
+            ))
+        }
+        Err(e) => return Err(fail(e.to_string())),
+    }
+    if !req.capabilities.is_empty() {
+        return Err(fail("collections source has no host capabilities".into()));
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&req.file)
+        .map_err(|e| fail(e.to_string()))?
+        .take(ac_mn::config::MAX_INPUT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| fail(e.to_string()))?;
+    if bytes.len() > ac_mn::config::MAX_INPUT_BYTES {
+        return Err(fail("collections source exceeds input budget".into()));
+    }
+    let source = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
+    let parent = req
+        .output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|e| fail(e.to_string()))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| fail(e.to_string()))?
+        .as_nanos();
+    let workdir = parent.join(format!(".ac-collections-{}-{stamp}", std::process::id()));
+    std::fs::create_dir(&workdir).map_err(|e| fail(e.to_string()))?;
+    let built = MnDriver::ephemeral().build_collections(
+        &source,
+        &req.entry,
+        &workdir,
+        req.support_libs.first().map(PathBuf::as_path),
+    );
+    let result = (|| {
+        let built = built.map_err(|e| fail(e.to_string()))?;
+        let stem = req
+            .output
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| fail("invalid output stem".into()))?;
+        let receipt = parent.join(format!("{stem}.ac-link.txt"));
+        let mut text=format!("PLAN-889 ac-native collections receipt (ac-native.collections/1)\nsource-profile: {}\nhir-schema: {}\nhir-revision: {}u32\nhir-profile: {}\nsource-input-hash: {:016x}\nbackend: mn:{}\nmir-lowering: {}\nprofile: {}\ncodegen-build: {}\nmanifest-fp: {}\nunits: {}\nexe: {} sha256={}\n",
+            auto_ac_prototype::source::COLLECTIONS_SOURCE_PROFILE,auto_ac_prototype::hir::HirDomain::Collections.schema(),
+            auto_ac_prototype::hir::HirDomain::Collections.revision(),auto_ac_prototype::hir::HirDomain::Collections.as_str(),
+            auto_av_core::contract::fnv1a64(source.as_bytes()),ac_mn::collections_lower::ABI,
+            auto_mir_lower::MIR_LOWERING_VERSION,ac_mn::collections_layout::PROFILE,ac_mn::collections_layout::codegen_build(),
+            built.manifest_fp,built.units,req.output.display(),sha256_hex(&std::fs::read(&built.exe_path).map_err(|e|fail(e.to_string()))?));
+        for (name, hash) in built.unit_sha256 {
+            text.push_str(&format!("unit: {name} sha256={hash}\n"));
+        }
+        text.push_str(
+            &std::fs::read_to_string(&built.receipt_path).map_err(|e| fail(e.to_string()))?,
+        );
+        // Finish the complete receipt before replacing either user product.
+        std::fs::write(&built.receipt_path, text).map_err(|e| fail(e.to_string()))?;
+        ac_mn::link_driver::publish_products(
+            &ac_mn::link_driver::PeLink {
+                exe_path: built.exe_path,
+                receipt_path: built.receipt_path,
+            },
+            &req.output,
+            &receipt,
+        )
+        .map_err(|e| fail(e.to_string()))?;
+        Ok(format!(
+            "BUILT {}\n  profile: collections\n  receipt: {}\n  manifest-fp: {}",
+            req.output.display(),
+            receipt.display(),
+            built.manifest_fp
+        ))
+    })();
+    // These are the only scratch product names this driver publishes. Backups
+    // from a blocked rollback are deliberately retained with the error path.
+    for name in ["collections.exe", ".mn-collections-link.txt"] {
+        let _ = std::fs::remove_file(workdir.join(name));
+    }
+    let _ = std::fs::remove_dir(workdir);
+    result
+}
+
 fn verify_domain(
     bundle: auto_ac_prototype::hir::Bundle,
 ) -> Result<CheckedModule, (u8, Vec<Diagnostic>)> {
@@ -464,6 +561,7 @@ fn compile_profile(
         Profile::Text => compile_text_source(src, "main.at", caps),
         Profile::Record => compile_record_source(src, "main.at", caps),
         Profile::TextRecord => compile_text_record_source(src, "main.at", caps),
+        Profile::Collections => compile_collections_source(src, "main.at", caps),
     }
 }
 

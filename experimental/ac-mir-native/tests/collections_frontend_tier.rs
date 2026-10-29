@@ -100,6 +100,18 @@ fn bounded_units_do_not_bind_unreferenced_function_interfaces() {
     let am = main(a.units);
     let bm = main(b.units);
     assert!(am.imports.is_empty() && bm.imports.is_empty());
+    assert_eq!(ac_mn::cache::unit_fp(&am), ac_mn::cache::unit_fp(&bm));
+    let runtime = ac_mn::collections_runtime::Identity {
+        abi: ac_mn::collections_runtime::ABI.into(),
+        build_key: "test".into(),
+        content_hash: "test".into(),
+    };
+    assert_eq!(
+        ac_mn::cache::CoffMeta::for_collections_unit(&am, ac_mn::cache::unit_fp(&am), &runtime)
+            .unwrap(),
+        ac_mn::cache::CoffMeta::for_collections_unit(&bm, ac_mn::cache::unit_fp(&bm), &runtime)
+            .unwrap()
+    );
     assert_eq!(
         ac_mn::collections_lower::emit_unit_coff(&am).unwrap().bytes,
         ac_mn::collections_lower::emit_unit_coff(&bm).unwrap().bytes

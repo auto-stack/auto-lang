@@ -41,6 +41,166 @@ pub struct PeRun {
     pub exe_path: PathBuf,
 }
 
+/// Commit a fully linked (and, for requests, already observed) collections
+/// candidate. Both previous products survive every failed placement. Backups
+/// are ordinary files under the explicitly supplied output directory.
+pub(crate) fn publish_collections(candidate: &PeLink, output: &Path) -> Result<PeLink, MnError> {
+    let exe_path = output.join("collections.exe");
+    let receipt_path = output.join(".mn-collections-link.txt");
+    publish_products(candidate, &exe_path, &receipt_path)
+}
+
+/// Same-volume transaction for a caller-selected pair of native products.
+/// Candidate paths must be fresh files owned by this request.
+pub fn publish_products(
+    candidate: &PeLink,
+    exe_path: &Path,
+    receipt_path: &Path,
+) -> Result<PeLink, MnError> {
+    publish_products_checked(candidate, exe_path, receipt_path, |_| Ok(()))
+}
+fn publish_products_checked(
+    candidate: &PeLink,
+    exe_path: &Path,
+    receipt_path: &Path,
+    mut before_place: impl FnMut(usize) -> std::io::Result<()>,
+) -> Result<PeLink, MnError> {
+    let destinations = [exe_path, receipt_path];
+    let sources = [
+        candidate.exe_path.as_path(),
+        candidate.receipt_path.as_path(),
+    ];
+    let backups = [
+        candidate.exe_path.with_extension("old-exe"),
+        candidate.receipt_path.with_extension("old-receipt"),
+    ];
+    // Refuse directories/reparse objects rather than treating them as outputs.
+    for path in destinations.iter().chain(sources.iter()) {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if !meta.file_type().is_file() => {
+                return Err(MnError::Infra(format!(
+                    "publish path is not a regular file: {}",
+                    path.display()
+                )))
+            }
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(MnError::Infra(format!("publish metadata: {e}")))
+            }
+            _ => {}
+        }
+    }
+    let mut saved = [false; 2];
+    let mut placed = [false; 2];
+    let commit = (|| {
+        for i in 0..2 {
+            if destinations[i].is_file() {
+                std::fs::rename(destinations[i], &backups[i])
+                    .map_err(|e| format!("backup {}: {e}", destinations[i].display()))?;
+                saved[i] = true;
+            }
+        }
+        for i in 0..2 {
+            before_place(i).map_err(|e| format!("place product {i}: {e}"))?;
+            std::fs::rename(sources[i], destinations[i])
+                .map_err(|e| format!("place {}: {e}", destinations[i].display()))?;
+            placed[i] = true;
+        }
+        Ok::<_, String>(())
+    })();
+    if let Err(error) = commit {
+        let mut failures = vec![];
+        for i in (0..2).rev() {
+            if placed[i] {
+                if let Err(e) = std::fs::remove_file(destinations[i]) {
+                    failures.push(format!(
+                        "remove candidate {}: {e}",
+                        destinations[i].display()
+                    ));
+                }
+            }
+            if saved[i] {
+                if let Err(e) = std::fs::rename(&backups[i], destinations[i]) {
+                    failures.push(format!("backup survives at {}: {e}", backups[i].display()));
+                }
+            }
+        }
+        return Err(MnError::Infra(format!(
+            "collections publish: {error}; rollback: {}",
+            if failures.is_empty() {
+                "complete".into()
+            } else {
+                failures.join("; ")
+            }
+        )));
+    }
+    for i in 0..2 {
+        if saved[i] {
+            if let Some(error) = reclaim(&backups[i]) {
+                eprintln!("collections committed; backup retained: {error}");
+            }
+        }
+    }
+    Ok(PeLink {
+        exe_path: exe_path.to_path_buf(),
+        receipt_path: receipt_path.to_path_buf(),
+    })
+}
+
+#[cfg(test)]
+mod collections_publication_tests {
+    use super::*;
+    #[test]
+    fn failed_second_placement_restores_both_previous_products() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/plans/attachments/889")
+            .join(format!(
+                "publish-rollback-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        std::fs::create_dir_all(&root).unwrap();
+        for had_previous in [false, true] {
+            let output = root.join(if had_previous { "old" } else { "first" });
+            std::fs::create_dir(&output).unwrap();
+            let exe = output.join("output.exe");
+            let receipt = output.join("output.txt");
+            if had_previous {
+                std::fs::write(&exe, b"old PE").unwrap();
+                std::fs::write(&receipt, b"old receipt").unwrap();
+            }
+            let candidate = PeLink {
+                exe_path: output.join("new.exe"),
+                receipt_path: output.join("new.txt"),
+            };
+            std::fs::write(&candidate.exe_path, b"new PE").unwrap();
+            std::fs::write(&candidate.receipt_path, b"new receipt").unwrap();
+            let mut actual_second = false;
+            let result = publish_products_checked(&candidate, &exe, &receipt, |i| {
+                if i == 1 {
+                    actual_second = true;
+                    assert_eq!(std::fs::read(&exe).unwrap(), b"new PE");
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "second placement fault",
+                    ))
+                } else {
+                    Ok(())
+                }
+            });
+            assert!(actual_second && result.is_err());
+            if had_previous {
+                assert_eq!(std::fs::read(&exe).unwrap(), b"old PE");
+                assert_eq!(std::fs::read(&receipt).unwrap(), b"old receipt");
+            } else {
+                assert!(!exe.exists() && !receipt.exists());
+            }
+        }
+    }
+}
+
 fn safe_name(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -136,6 +296,20 @@ pub fn link_identities() -> Result<(String, String, String), MnError> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| sdk.display().to_string());
     Ok((lld_sha, sdk_tag, k32_sha))
+}
+
+/// New-profile restoration re-hashes actual tools even when their path/length
+/// are unchanged. Keep the five-profile memo and identity behavior intact.
+pub fn collections_link_identities() -> Result<(String, String, String), MnError> {
+    let (lld, sdk) = located_tools()?;
+    let lld_hash = crate::collections_runtime::file_hash(&lld)?;
+    let kernel_hash = crate::collections_runtime::file_hash(&sdk.join("kernel32.lib"))?;
+    let sdk_tag = sdk
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| sdk.display().to_string());
+    Ok((lld_hash, sdk_tag, kernel_hash))
 }
 
 /// Optional cross-process DISK memo for tool DISCOVERY (path hints only —

@@ -950,6 +950,45 @@ fn main() -> ExitCode {
     let _ = &mut flag;
     match mode.as_str() {
         "case-run" => case_run::serve(),
+        "collections-restore-run" => {
+            let (Some(store), Some(workdir), Some(id)) =
+                (flag("--store"), flag("--workdir"), flag("--manifest-id"))
+            else {
+                eprintln!("collections-restore-run requires --store, --workdir and --manifest-id");
+                return ExitCode::from(2);
+            };
+            let project = flag("--project").unwrap_or_else(|| "mn.collections".into());
+            let store =
+                match ac_artifact_probe::store::ManagedStore::open_existing(Path::new(&store)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("collections restore store: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            let mut driver = ac_mn::driver::MnDriver::with_managed_store(store, &project);
+            driver.forbid_codegen = true;
+            if args.iter().any(|s| s == "--read-only") {
+                driver.cache_mode = ac_mn::driver::CacheMode::ReadOnly;
+            }
+            let support = flag("--support-lib").map(PathBuf::from);
+            let result =
+                driver.request_restored_collections(&id, Path::new(&workdir), support.as_deref());
+            let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            println!(
+                "{}",
+                serde_json::json!({"protocol":"mncollections-restore/1","ok":result.ok,
+                "error":result.error.as_ref().map(|e|e.code()),"message":result.error.as_ref().map(|e|e.message()),
+                "exit_code":result.exit_code,"stdout_hex":hex(&result.stdout),"stderr_hex":hex(&result.stderr),
+                "manifest_fp":result.manifest_fp,"manifest_artifact_id":result.manifest_artifact_id,
+                "counters":result.obs.counters,"spans":result.obs.spans})
+            );
+            if result.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
         // The frozen reference workload (golden.md §2) — single source of
         // truth for the formal turnaround scenarios (the 798 `load-revision`
         // form): each revision bumps the frozen fn_041 body-edit bit.

@@ -8,6 +8,25 @@ pub const LAYOUT: &str = "mn.collections.layout/1";
 pub const CODEGEN: &str = "mn.collections.codegen/1";
 pub const PROFILE: &str = "mn.collections.source/1";
 pub const RECIPE: &str = "ac/mir-native-collections-v1";
+pub fn codegen_build() -> &'static str {
+    static HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HASH.get_or_init(|| {
+        let mut h = blake3::Hasher::new();
+        h.update(CODEGEN.as_bytes());
+        for bytes in [
+            include_bytes!("collections_lower.rs").as_slice(),
+            include_bytes!("collections_layout.rs").as_slice(),
+            include_bytes!("fingerprint.rs").as_slice(),
+            include_bytes!("emit.rs").as_slice(),
+            include_bytes!("symbols.rs").as_slice(),
+            include_bytes!("../Cargo.lock").as_slice(),
+        ] {
+            h.update(&(bytes.len() as u64).to_le_bytes());
+            h.update(bytes);
+        }
+        h.finalize().to_hex().to_string()
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Descriptor {
