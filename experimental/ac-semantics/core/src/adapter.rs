@@ -125,6 +125,8 @@ fn vt_name(v: &auto_ac_prototype::source::resolve::VT) -> &'static str {
         // limited inference surface; they report their own kind names.
         VT::List(_) => "list",
         VT::Variant(_) => "variant",
+        // PLAN-865: preserve the old pipeline function type identity.
+        VT::Function(_) => "function",
     }
 }
 
@@ -215,6 +217,8 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
+        // PLAN-865: the closures profile adds this AST type, but the limited semantic model does not.
+        core_ast::TypeRef::Function { .. } => Ok(Ann::Unsupported("closure-function-type")),
         // PLAN-864: the collections type grammar (?T / Name<..>) is outside
         // this adapter's annotation model.
         core_ast::TypeRef::Optional(_) | core_ast::TypeRef::Generic { .. } => {
@@ -386,6 +390,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
                 }
             }
         }
+        // PLAN-865: preserve indirect calls as unsupported instead of treating them as named calls.
+        core_ast::ExprKind::CallValue { .. } => InputExprKind::Unsupported {
+            what: "closure-call",
+        },
         core_ast::ExprKind::Binary { op, lhs, rhs } => InputExprKind::Binary {
             op: binop(*op),
             lhs: Box::new(project_expr(&lhs)),
@@ -418,6 +426,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::MutArg { .. } => InputExprKind::Unsupported { what: "mut-arg" },
         // PLAN-864: a generic type receiver (List<T>.new()) is outside the
         // limited inference surface.
+        // PLAN-865: lambda values are outside the adapter limited semantic profile.
+        core_ast::ExprKind::Closure { .. } => InputExprKind::Unsupported {
+            what: "closure-expression",
+        },
         core_ast::ExprKind::GenericType { .. } => InputExprKind::Unsupported {
             what: "generic-type-receiver",
         },
@@ -441,5 +453,91 @@ fn binop(op: core_ast::BinOp) -> BinOpKind {
         B::Ne => BinOpKind::Ne,
         B::And => BinOpKind::And,
         B::Or => BinOpKind::Or,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_into_input_typed;
+    use crate::infer::{InferOutcome, InferSession};
+    use crate::input::{Ann, InputExpr, InputExprKind, InputFn, InputStmt};
+    use auto_ac_prototype::source::SourceProfile;
+
+    fn only_return_value(function: &InputFn) -> &InputExpr {
+        match function.body.stmts.as_slice() {
+            [InputStmt::Return { value, .. }] => value,
+            other => panic!(
+                "expected one return statement, got {} statements",
+                other.len()
+            ),
+        }
+    }
+
+    #[test]
+    fn closure_ast_forms_remain_explicitly_unsupported_in_limited_sema_adapter() {
+        let source = "fn apply(f fn(int) -> int, value int) int { return (f)(value) } fn make() fn(int) -> int { return (n int) => n + 1 }";
+        let input = parse_into_input_typed(
+            source,
+            "closure-boundary",
+            "adapter",
+            SourceProfile::Closures,
+        )
+        .expect("closure-profile source parses and projects");
+
+        let apply = input.lookup_fn("apply").expect("apply function");
+        assert_eq!(apply.params[0].1, Ann::Unsupported("closure-function-type"));
+        assert_eq!(apply.params[1].1, Ann::I32);
+        assert!(matches!(
+            &only_return_value(apply).kind,
+            InputExprKind::Unsupported { what } if *what == "closure-call"
+        ));
+
+        let make = input.lookup_fn("make").expect("make function");
+        assert_eq!(make.ret, Ann::Unsupported("closure-function-type"));
+        assert!(matches!(
+            &only_return_value(make).kind,
+            InputExprKind::Unsupported { what } if *what == "closure-expression"
+        ));
+
+        for name in ["apply", "make"] {
+            let mut session = InferSession::new(&input);
+            match session.infer_function(name) {
+                InferOutcome::Diags(summary) => assert!(summary
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == "unsupported-construct")),
+                other => panic!("{name} must fail closed, got {other:?}"),
+            }
+        }
+
+        let old = super::old_pipeline_verdict(
+            "fn apply(f fn(int) -> int, value int) int { return (f)(value) } fn main() int { return 42 }",
+            SourceProfile::Closures,
+        );
+        match old {
+            super::OldVerdict::Accepted(facts) => assert!(facts.fns.iter().any(|function| {
+                function.name == "apply"
+                    && function
+                        .params
+                        .iter()
+                        .any(|(name, ty)| name == "f" && *ty == "function")
+            })),
+            super::OldVerdict::Rejected(reason) => {
+                panic!("the prior pipeline should retain its function parameter path: {reason}")
+            }
+        }
+        let legacy = parse_into_input_typed(
+            "fn main() int { let answer = 40 + 2; return answer }",
+            "legacy-control",
+            "adapter",
+            SourceProfile::Scalar,
+        )
+        .expect("legacy scalar source remains supported");
+        let mut session = InferSession::new(&legacy);
+        match session.infer_function("main") {
+            InferOutcome::Ok(summary) => assert!(summary.facts.diagnostics.is_empty()),
+            other => panic!("legacy scalar control must remain accepted, got {other:?}"),
+        }
     }
 }
