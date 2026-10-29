@@ -86,8 +86,14 @@ fn native_cache_fresh_then_object_hit() {
     assert_eq!(counter(&ok, "link"), 1, "hit or miss, the link is real");
     assert_eq!(counter(&ok, "run"), 1, "worker-owned run leg counted");
 
-    // Second request over the SAME on-disk store: object hit — the
-    // frontend/verify/lower are provably skipped (counters), link+run real.
+    // Second request over the SAME on-disk store: object hit — LOWERING is
+    // provably skipped (lower=0) and the link/run are still real.
+    //
+    // PLAN-871 T-05 backend contract change: the mn backend caches EMITTED
+    // UNITS, not the frontend, and the worker owns the frontend — so
+    // parse/verify are observed on EVERY request (a full object hit
+    // included). The cache invariant is "no recompilation at the backend"
+    // (`lower=0`), never "the frontend was skipped".
     let ok = exec::execute(&req("run", P04_3, Some("reuse"), Some(&store))).unwrap();
     assert_eq!(
         ok.run.as_ref().unwrap().exit_code,
@@ -95,8 +101,12 @@ fn native_cache_fresh_then_object_hit() {
         "oracle re-observed"
     );
     assert_eq!(hit(&ok, "object"), "hit");
-    assert_eq!(counter(&ok, "parse"), 0, "frontend skipped on object hit");
-    assert_eq!(counter(&ok, "verify"), 0, "verify skipped on object hit");
+    assert_eq!(
+        counter(&ok, "parse"),
+        1,
+        "the worker-owned frontend always observes"
+    );
+    assert_eq!(counter(&ok, "verify"), 1, "verify is backend-independent");
     assert_eq!(counter(&ok, "lower"), 0, "lowering skipped on object hit");
     assert_eq!(counter(&ok, "link"), 1);
     assert_eq!(counter(&ok, "run"), 1);
@@ -155,11 +165,13 @@ fn native_store_read_only_consumes_hits_and_never_publishes() {
     // Warm the store (publishing allowed).
     exec::execute(&req("run", P04_3, Some("reuse"), Some(&store))).unwrap();
 
-    // Read-only consumes the hit…
+    // Read-only consumes the hit… (PLAN-871 T-05: mn caches units, so the
+    // worker-owned frontend still observes — `lower=0` is the hit proof.)
     let ok = exec::execute(&req("run", P04_3, Some("read-only"), Some(&store))).unwrap();
     assert_eq!(ok.run.as_ref().unwrap().exit_code, Some(3));
     assert_eq!(hit(&ok, "object"), "hit");
-    assert_eq!(counter(&ok, "parse"), 0);
+    assert_eq!(counter(&ok, "parse"), 1);
+    assert_eq!(counter(&ok, "lower"), 0);
     assert_eq!(counter(&ok, "store_puts"), 0, "read-only never writes");
 
     // …and a read-only MISS (body edit) recomputes and runs for real

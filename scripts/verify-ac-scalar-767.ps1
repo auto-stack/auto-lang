@@ -13,6 +13,13 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+# PLAN-871 T-05: build legs go through the shared-MIR `ac-native` CLI (the
+# receiver of ac-core's retiring build/build-source). Old assertion mapping:
+# every exit / stdout / stderr oracle is UNCHANGED (same frozen semantics);
+# the old `app.obj` product assertion becomes "receipt exists and carries
+# backend/mir-lowering needles" — the shared-MIR backend links a multi-unit
+# closure and has no single object.
+$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\scalar-767'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -501,10 +508,13 @@ Invoke-Step 'cargo test scalar_native (--test-threads=1)' {
 }
 
 # ---- 3. serial case-table walkthrough ----
-Invoke-Step 'build tool binary once' {
+Invoke-Step 'build tool binaries once' {
     $r = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot -TimeoutSec 600
     if ($r.Code -ne 0) { throw $r.Stderr }
-    $script:Bin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+    $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900
+    if ($m.Code -ne 0) { throw $m.Stderr }
+    $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
+    $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
     if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
     ("binary: " + $script:Bin) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
     ("binary-sha256: " + (Get-Sha256 $script:Bin)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
@@ -541,8 +551,13 @@ Invoke-Step 'positive SOURCE cases: build + run (11)' {
         $run.Stderr | Set-Content (Join-Path $dir 'run.stderr.txt')
         ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
         ("exe-sha256: " + (Get-Sha256 $exe)) | Add-Content (Join-Path $dir 'case.txt')
-        if (-not (Test-Path (Join-Path $dir 'app.obj'))) { throw "$($c.Id): obj missing" }
+        # Old assertion: app.obj + app.ac-link.txt both existed. PLAN-871:
+        # the shared-MIR closure has no single object — the receipt replaces
+        # it and must carry the new backend/mir axes (old needles kept).
         if (-not (Test-Path (Join-Path $dir 'app.ac-link.txt'))) { throw "$($c.Id): receipt missing" }
+        $receiptText = Get-Content (Join-Path $dir 'app.ac-link.txt') -Raw
+        if ($receiptText -notmatch 'backend: mn:') { throw "$($c.Id): receipt lacks the mn backend axis" }
+        if ($receiptText -notmatch 'mir-lowering: ') { throw "$($c.Id): receipt lacks the mir-lowering axis" }
         if ($run.Code -ne $c.Exit) { throw "$($c.Id): run exited $($run.Code), expected $($c.Exit)" }
         if ($run.Stderr -ne $c.Stderr) { throw "$($c.Id): stderr '$($run.Stderr)' expected '$($c.Stderr)'" }
         $caseSummary.Add([pscustomobject]@{ Case = $c.Id; Exit = $run.Code; Stderr = $run.Stderr; Ok = $true })
@@ -583,7 +598,7 @@ Invoke-Step 'negative SOURCE cases: check-source rejects (19)' {
         $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\scalar-source\invalid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
-        $r = Invoke-Captured $script:Bin @('check-source', $src, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
+        $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
         $r.Stdout | Set-Content (Join-Path $dir 'stdout.txt')
         $r.Stderr | Set-Content (Join-Path $dir 'stderr.txt')
         ("exit: " + $r.Code) | Add-Content (Join-Path $dir 'case.txt')
@@ -597,19 +612,19 @@ Invoke-Step 'negative SOURCE cases: check-source rejects (19)' {
 Invoke-Step 'profile isolation cases (V-01/V-12 CLI)' {
     $scalarMatrix = Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-source\valid\p-cmp-matrix.at'
     # old source profile rejects the SAME scalar source at the operator
-    $r = Invoke-Captured $script:Bin @('check-source', $scalarMatrix, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $scalarMatrix, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1) { throw "core on scalar source exited $($r.Code), expected 1" }
     if ($r.Stderr -notmatch [regex]::Escape('text/source.unsupported')) { throw "expected source.unsupported: $($r.Stderr)" }
     # unknown profile value stays a usage error
-    $r = Invoke-Captured $script:Bin @('check-source', $scalarMatrix, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $scalarMatrix, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 2) { throw "unknown profile exited $($r.Code), expected 2" }
     # unknown HIR triple is a controlled bind diagnostic
     $unknown = Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-hir\invalid\i09-unknown-triple.atom'
-    $r = Invoke-Captured $script:Bin @('check', $unknown) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check', $unknown) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1) { throw "unknown triple exited $($r.Code), expected 1" }
     if ($r.Stderr -notmatch [regex]::Escape('bind/bind.descriptor-unknown')) { throw "expected bind.descriptor-unknown: $($r.Stderr)" }
     # scalar HIR document checks OK and reports the scalar domain
-    $r = Invoke-Captured $script:Bin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-hir\valid\n01-divrem-table.atom')) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-hir\valid\n01-divrem-table.atom')) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 0) { throw "scalar check exited $($r.Code): $($r.Stderr)" }
     if ($r.Stdout -notmatch 'hir-profile scalar-i32-draft') { throw "domain missing in: $($r.Stdout)" }
     # while/for isolation both ways (temp sources)
@@ -619,13 +634,13 @@ Invoke-Step 'profile isolation cases (V-01/V-12 CLI)' {
     Set-Content $w "fn main() int {`n    var i = 0`n    while i < 1 { i = i + 1 }`n    return i`n}`n"
     $f = Join-Path $tmp 'f.at'
     Set-Content $f "fn main() int {`n    var i = 0`n    for i < 1 { i = i + 1 }`n    return i`n}`n"
-    $r = Invoke-Captured $script:Bin @('check-source', $w, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $w, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 0) { throw "core while must pass: $($r.Stderr)" }
-    $r = Invoke-Captured $script:Bin @('check-source', $w, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $w, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1 -or $r.Stderr -notmatch [regex]::Escape('text/source.unsupported')) { throw "scalar while must reject: $($r.Stderr)" }
-    $r = Invoke-Captured $script:Bin @('check-source', $f, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $f, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 0) { throw "scalar for must pass: $($r.Stderr)" }
-    $r = Invoke-Captured $script:Bin @('check-source', $f, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check-source', $f, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1 -or $r.Stderr -notmatch [regex]::Escape('text/source.unsupported')) { throw "core for must reject: $($r.Stderr)" }
 }
 

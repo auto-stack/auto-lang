@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -110,6 +111,18 @@ Invoke-Step 'cargo test trace_execution (--test-threads=1)' {
 }
 
 # ---- 3. CLI build/run walkthrough (own receipts) ----
+# PLAN-871 T-05: the `build` legs run through the shared-MIR `ac-native` CLI
+# (the receiver of ac-core's retiring build/build-source); `check` stays on
+# the ac-core binary (frontend/check role). Old assertion mapping: exit 5
+# (add-2-3) and exit 12 + "ba" marks (trace, capability + support lib) are
+# UNCHANGED; products become exe + <stem>.ac-link.txt (never asserted here).
+$script:AcNative = Join-Path $AcMn 'target\debug\ac-native.exe'
+Invoke-Step 'build ac-native CLI once' {
+    # Invoke-Captured throws on a non-zero exit; only the artifact remains to
+    # be checked here.
+    Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900 | Out-Null
+    if (-not (Test-Path $script:AcNative)) { throw "ac-native missing: $script:AcNative" }
+}
 Invoke-Step 'ac-probe check 01-add (exit 0)' {
     $src = Join-Path $RepoRoot 'docs\design\strategy\hir-examples\01-add.atom'
     Invoke-Captured 'cargo' @('run', '--locked', '--quiet', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--', 'check', $src) $RepoRoot -TimeoutSec 300 | Out-Null
@@ -119,7 +132,7 @@ Invoke-Step 'ac-probe build add-2-3 + run (exit 5)' {
     New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
     $exe = Join-Path $artifactDir 'add-2-3.exe'
     $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\native\add-2-3.atom'
-    Invoke-Captured 'cargo' @('run', '--locked', '--quiet', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--', 'build', $src, '--entry', 'd_entry', '--output', $exe) $RepoRoot -TimeoutSec 300 | Out-Null
+    Invoke-Captured $script:AcNative @('build', $src, '--entry', 'd_entry', '--output', $exe) $RepoRoot -TimeoutSec 300 | Out-Null
     if (-not (Test-Path $exe)) { throw "exe not produced: $exe" }
     $runOut = Invoke-Captured $exe @() $artifactDir -TimeoutSec 60 -ExpectedExit 5
     $runOut | Set-Content (Join-Path $artifactDir 'add-2-3.run.txt')
@@ -129,7 +142,7 @@ Invoke-Step 'ac-probe build trace (capability + support lib, exit 12)' {
     $exe = Join-Path $artifactDir 'trace.exe'
     $src = Join-Path $RepoRoot 'docs\design\strategy\hir-examples\03-call-order.atom'
     $lib = Join-Path $RepoRoot 'experimental\ac-core\test-support\target\debug\ac_trace_support.lib'
-    Invoke-Captured 'cargo' @('run', '--locked', '--quiet', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--', 'build', $src, '--entry', 'd_caller', '--output', $exe, '--capability', 'hir.test.trace.v1', '--support-lib', $lib) $RepoRoot -TimeoutSec 300 | Out-Null
+    Invoke-Captured $script:AcNative @('build', $src, '--entry', 'd_caller', '--output', $exe, '--capability', 'hir.test.trace.v1', '--support-lib', $lib) $RepoRoot -TimeoutSec 300 | Out-Null
     $procOut = Join-Path $artifactDir 'trace.stderr.txt'
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $exe

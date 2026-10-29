@@ -109,22 +109,31 @@ pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, Adapte
     match &module.defs[di].kind {
         hir::DefKind::Method { record, .. } => {
             let id = &module.defs[di].id_text;
-            let rest = id.strip_prefix("d_f").ok_or_else(|| {
-                AdapterError::inv(
-                    "lower.method-owner",
-                    format!("method def id `{id}` is not in the `d_f<fi>_<name>` shape"),
-                )
-            })?;
-            let name = match rest.find('_') {
-                Some(u) if u > 0 => &rest[u + 1..],
-                _ => {
-                    return Err(AdapterError::inv(
-                        "lower.method-owner",
-                        format!("method def id `{id}` has no `<fi>_<name>` separator"),
-                    ))
+            // PLAN-871 T-05: hand-authored HIR documents declare methods with
+            // PLAIN ids (`method d_new … { name: "new" }`), while the source
+            // adapter emits the fi-indexed `d_f<fi>_<name>` form. Both are
+            // legal HIR input, so the bare name is recovered from whichever
+            // id shape is present; only then does the owner-based method
+            // identity apply (m.<Owner>.<name>).
+            fn fi_shaped(id: &str) -> Option<&str> {
+                let rest = id.strip_prefix("d_f")?;
+                let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+                if digits == 0 {
+                    return None;
                 }
-            };
-            method_mir_name(module, *record, name)
+                rest[digits..].strip_prefix('_').filter(|s| !s.is_empty())
+            }
+            let bare = fi_shaped(id)
+                .or_else(|| id.strip_prefix("d_").filter(|s| !s.is_empty()))
+                .ok_or_else(|| {
+                    AdapterError::inv(
+                        "lower.method-owner",
+                        format!(
+                            "method def id `{id}` is neither `d_f<fi>_<name>` nor `d_<name>`"
+                        ),
+                    )
+                })?;
+            method_mir_name(module, *record, bare)
         }
         _ => Ok(module.defs[di].id_text.clone()),
     }
@@ -2156,6 +2165,19 @@ impl<'a> FnLower<'a> {
         out
     }
 
+    /// The MIR type of ANY slot (base or temp). `slot_ty_cache` covers the
+    /// base slots only; temps live in `extra_slots`, so an owned-Str or
+    /// record operand that happens to be a TEMP resolves here instead of
+    /// indexing past the cache.
+    fn slot_ty_all(&self, slot: SlotId) -> TypeIdx {
+        let s = slot as usize;
+        if s < self.slot_ty_cache.len() {
+            self.slot_ty_cache[s]
+        } else {
+            self.extra_slots[s - self.slot_ty_cache.len()].ty
+        }
+    }
+
     fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
         self.extra_slots.push(MirSlot {
@@ -2471,17 +2493,60 @@ impl<'a> FnLower<'a> {
                 }
                 // R2-F08': does the callee carry mut record params? Its
                 // MIR sig result is then the t_MutRet wrapper.
-                let callee_sig_ty = match callee_ref {
-                    CalleeRef::Func(fi) => self
-                        .out
-                        .funcs
-                        .get(fi as usize)
-                        .and_then(|f| self.out.types.get(f.sig as usize).cloned()),
+                //
+                // PLAN-871 T-05 gap (771 HIR fixture): a call can be lowered
+                // BEFORE the callee body (HIR declaration order is not a
+                // topological order), so the already-lowered function table
+                // may not carry the callee yet — reading only that table made
+                // the wrapper ABI order-dependent (the call took the plain
+                // HIR result type and the callee returned the wrapper).
+                // The wrapper ABI is a property of the DEF (param modes +
+                // types), so a forward reference derives the def-level
+                // signature through the same builder the callee will use.
+                let callee_sig_ty: Option<MirType> = match callee_ref {
                     CalleeRef::Import(ii) => self
                         .out
                         .imports
                         .get(ii as usize)
                         .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
+                    CalleeRef::Func(fi) => {
+                        let table = self
+                            .out
+                            .funcs
+                            .get(fi as usize)
+                            .and_then(|f| self.out.types.get(f.sig as usize).cloned());
+                        let already_wrapped = matches!(
+                            &table,
+                            Some(MirType::Fn(f))
+                                if matches!(
+                                    self.out.types.get(f.result as usize),
+                                    Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                                )
+                        );
+                        if already_wrapped || !(self.owned || self.data) {
+                            table
+                        } else {
+                            let overrides = self.sig_mode_overrides.clone();
+                            let derived = if self.owned {
+                                owned_fn_sig_for_def(
+                                    self.hir_module,
+                                    callee_def.0,
+                                    hir_ty,
+                                    self.out,
+                                    &overrides,
+                                )?
+                            } else {
+                                data_fn_sig_for_def(
+                                    self.hir_module,
+                                    callee_def.0,
+                                    hir_ty,
+                                    self.out,
+                                    &overrides,
+                                )?
+                            };
+                            self.out.types.get(derived as usize).cloned()
+                        }
+                    }
                 };
                 let wrapper_fields = match callee_sig_ty.as_ref() {
                     Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
@@ -2748,9 +2813,95 @@ impl<'a> FnLower<'a> {
             }
             hir::ExprKind::RecordClone { base, .. } if self.owned => {
                 let v = self.eval_expr(*base, depth + 1)?;
+                let src_ty = self.slot_ty_all(v);
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::Clone { dst, src: v }, sp);
-                Ok(dst)
+                // PLAN-871 T-05 gap (782 TP02): the base of a record clone can
+                // be a READ-ONLY VIEW — a plain `t: Tok` parameter is typed as
+                // `RecordView` (R1-F08). CLONE requires an owned value, so a
+                // view source is deep-copied FIELD BY FIELD into a fresh
+                // record (owned fields cloned, scalars copied). That is the
+                // retiring lowering's `t.clone()` semantics on a borrowed
+                // record; without it the verifier rightly refuses
+                // `mir.clone-type` (view → record).
+                let view_fields = match self.out.types.get(src_ty as usize) {
+                    Some(MirType::RecordView(r)) => Some(r.fields.clone()),
+                    _ => None,
+                };
+                let dst_is_record = matches!(
+                    self.out.types.get(ty as usize),
+                    Some(MirType::Record(_))
+                );
+                match view_fields {
+                    Some(fields) if dst_is_record => {
+                        let mut operands = Vec::with_capacity(fields.len());
+                        for (i, f) in fields.iter().enumerate() {
+                            // Str fields read as a BORROW VIEW in the owned
+                            // profile (782: 字段读取=视图), so the fresh owner
+                            // comes from `StrToOwned` over that view.
+                            if matches!(self.out.types.get(f.ty as usize), Some(MirType::Str)) {
+                                let str_view_t = self.out.intern_type(MirType::StrView);
+                                let view = self.temp_ty(str_view_t);
+                                self.emit(
+                                    MirInstr::FieldGet {
+                                        dst: view,
+                                        base: v,
+                                        path: vec![i as u16],
+                                    },
+                                    sp,
+                                );
+                                let owned = self.temp_ty(f.ty);
+                                self.emit(
+                                    MirInstr::StrToOwned {
+                                        dst: owned,
+                                        view,
+                                    },
+                                    sp,
+                                );
+                                operands.push(owned);
+                                continue;
+                            }
+                            if auto_av_core::ownership::type_is_owned(self.out, f.ty) {
+                                // A nested OWNED record cannot be copied out of
+                                // a view: the verifier's field-get rule is
+                                // "views only" for resource-record fields.
+                                // Nothing in the frozen corpus needs it; refuse
+                                // explicitly instead of lowering something the
+                                // verifier would then reject.
+                                return Err(AdapterError::uns(
+                                    "lower.clone-view-field",
+                                    format!(
+                                        "record clone from a view cannot copy owned field {i} (type {}); \
+                                         the frozen profiles have no such shape",
+                                        f.ty
+                                    ),
+                                ));
+                            }
+                            let got = self.temp_ty(f.ty);
+                            self.emit(
+                                MirInstr::FieldGet {
+                                    dst: got,
+                                    base: v,
+                                    path: vec![i as u16],
+                                },
+                                sp,
+                            );
+                            operands.push(got);
+                        }
+                        self.emit(
+                            MirInstr::Aggregate {
+                                dst,
+                                record_ty: ty,
+                                operands,
+                            },
+                            sp,
+                        );
+                        Ok(dst)
+                    }
+                    _ => {
+                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                        Ok(dst)
+                    }
+                }
             }
             hir::ExprKind::Move { inner } if self.owned => {
                 // Whole-root transfer: the inner expression must be a
@@ -3276,6 +3427,80 @@ impl<'a> FnLower<'a> {
                 let b = self.eval_expr(*base, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                // PLAN-871 T-05 gap (782 HP01): hand-authored HIR reads an
+                // OWNED field as its owned type after the whole record was
+                // consumed by a `move` param (the combination domain's
+                // canonical transfer form). The frozen owned rule is "a field
+                // READ is a view", so an owned-typed read is realized as the
+                // ownership TRANSFER (`FIELD_MOVE`) out of an owned record —
+                // never as a second owner of the same buffer. From a borrow
+                // VIEW the same read is a deep COPY (Str: view + StrToOwned).
+                if self.owned && auto_av_core::ownership::type_is_owned(self.out, ty) {
+                    let base_ty = self.slot_ty_all(b);
+                    match self.out.types.get(base_ty as usize).cloned() {
+                        Some(MirType::RecordView(r)) => {
+                            let mut fields = r.fields.clone();
+                            let mut fty = None;
+                            for (n, seg) in segs.iter().enumerate() {
+                                let Some(f) = fields.get(*seg as usize) else {
+                                    return Err(AdapterError::inv(
+                                        "lower.field-path",
+                                        format!("field path {:?} does not resolve", segs),
+                                    ));
+                                };
+                                fty = Some(f.ty);
+                                if n + 1 < segs.len() {
+                                    match self.out.types.get(f.ty as usize).cloned() {
+                                        Some(MirType::Record(next)) => fields = next.fields,
+                                        _ => {
+                                            return Err(AdapterError::uns(
+                                                "lower.field-path",
+                                                "nested path through a non-record field"
+                                                    .to_string(),
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            let Some(fty) = fty else {
+                                return Err(AdapterError::inv("lower.field-path", "empty path".to_string()));
+                            };
+                            if matches!(self.out.types.get(fty as usize), Some(MirType::Str)) {
+                                let str_view_t = self.out.intern_type(MirType::StrView);
+                                let view = self.temp_ty(str_view_t);
+                                self.emit(
+                                    MirInstr::FieldGet {
+                                        dst: view,
+                                        base: b,
+                                        path: segs,
+                                    },
+                                    sp,
+                                );
+                                self.emit(
+                                    MirInstr::StrToOwned { dst, view },
+                                    sp,
+                                );
+                                return Ok(dst);
+                            }
+                            return Err(AdapterError::uns(
+                                "lower.field-get-owned-from-view",
+                                "owned field read from a borrow view is only defined for Str"
+                                    .to_string(),
+                            ));
+                        }
+                        _ => {
+                            self.emit(
+                                MirInstr::FieldMove {
+                                    dst,
+                                    root: b,
+                                    path: segs,
+                                },
+                                sp,
+                            );
+                            return Ok(dst);
+                        }
+                    }
+                }
                 self.emit(
                     MirInstr::FieldGet {
                         dst,

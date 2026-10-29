@@ -91,6 +91,19 @@ fn arm_of_domain(d: auto_ac_prototype::hir::HirDomain) -> Option<Arm> {
     })
 }
 
+/// How a request may use the A09'/A10' store (PLAN-871 T-05, mirroring the
+/// ac-case contract's cache modes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheMode {
+    /// Read hits, recompute misses, publish both (the default).
+    Reuse,
+    /// Never read old results (forced recompute); publishing stays allowed.
+    Fresh,
+    /// Read hits, NEVER publish; a miss is recomputed and linked for real
+    /// but leaves the store untouched (a later reuse still misses).
+    ReadOnly,
+}
+
 pub struct MnDriver {
     store: Option<ManagedStore>,
     project: Option<String>,
@@ -98,6 +111,8 @@ pub struct MnDriver {
     /// to lower a unit aborts — a "hit" that secretly recompiled cannot
     /// pass as a hit.
     pub forbid_codegen: bool,
+    /// Read/publish discipline of the store for this request (T-05).
+    pub cache_mode: CacheMode,
     /// Current publication per (project, owner, entry): publishing a new
     /// manifest revision auto-roots it (783 soft root on a project-tagged
     /// put) and the SUPERSEDED revision's soft root is dropped right after
@@ -161,6 +176,7 @@ impl MnDriver {
             store: None,
             project: None,
             forbid_codegen: false,
+            cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         }
     }
@@ -172,8 +188,22 @@ impl MnDriver {
             ),
             project: Some(project.to_string()),
             forbid_codegen: false,
+            cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         })
+    }
+
+    /// Attach an ALREADY-OPENED store (the caller owns the open policy —
+    /// e.g. `read-only` requires `open_existing` semantics so a missing
+    /// root is a typed refusal, never a fresh store).
+    pub fn with_managed_store(store: ManagedStore, project: &str) -> Self {
+        MnDriver {
+            store: Some(store),
+            project: Some(project.to_string()),
+            forbid_codegen: false,
+            cache_mode: CacheMode::Reuse,
+            last_publication: std::collections::HashMap::new(),
+        }
     }
 
     /// One full request. `entry` is the HIR def id of the entry function
@@ -352,6 +382,11 @@ impl MnDriver {
         }
 
         // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
+        // PLAN-871 T-05 cache modes: `fresh` never READS old units (it may
+        // still publish), `read-only` reads but never publishes — a miss is
+        // recomputed for real and leaves the store untouched.
+        let read_cache = self.cache_mode != CacheMode::Fresh;
+        let persist = self.cache_mode != CacheMode::ReadOnly;
         let mut objects: Vec<ObjectInput> = Vec::with_capacity(units.len());
         let mut entries: Vec<LinkUnitEntry> = Vec::with_capacity(units.len());
         let mut emitted_total = 0usize;
@@ -365,9 +400,14 @@ impl MnDriver {
             let bytes: Vec<u8>;
             match self.store.as_ref() {
                 Some(store) => {
-                    match obs.span("cache_lookup", |_| {
-                        cache::get_unit_coff_with_id(store, &meta)
-                    })? {
+                    let found = if read_cache {
+                        obs.span("cache_lookup", |_| {
+                            cache::get_unit_coff_with_id(store, &meta)
+                        })?
+                    } else {
+                        None
+                    };
+                    match found {
                         Some((id, b)) => {
                             obs.counter("cache_hit_coff", 1);
                             // Restored object bytes: I/O read buffers held
@@ -399,21 +439,29 @@ impl MnDriver {
                             // lowering/codec staging (T-05 §11).
                             obs.ledger
                                 .charge(Partition::Staging, obj.bytes.len() as u64);
-                            let (id, extra) = obs.span("coff_persist", |o| {
-                                o.ledger.with_charge(
-                                    Partition::Io,
-                                    obj.bytes.len() as u64 + 512,
-                                    |_| {
-                                        // Unit COFFs are CACHE entries, not
-                                        // publications: no project tag (a
-                                        // tagged put would auto-soft-root
-                                        // them and pin every revision).
-                                        cache::put_unit_coff(store, None, &meta, &obj.bytes)
-                                    },
-                                )
-                            })?;
-                            obs.counter("coff_objects_persisted", 1);
-                            entry_row = Some(LinkUnitEntry {
+                            let persisted = if persist {
+                                let (id, extra) = obs.span("coff_persist", |o| {
+                                    o.ledger.with_charge(
+                                        Partition::Io,
+                                        obj.bytes.len() as u64 + 512,
+                                        |_| {
+                                            // Unit COFFs are CACHE entries, not
+                                            // publications: no project tag (a
+                                            // tagged put would auto-soft-root
+                                            // them and pin every revision).
+                                            cache::put_unit_coff(store, None, &meta, &obj.bytes)
+                                        },
+                                    )
+                                })?;
+                                obs.counter("coff_objects_persisted", 1);
+                                obs.counter("store_puts", 1);
+                                Some((id, extra))
+                            } else {
+                                // read-only miss: real recompute, no publish.
+                                obs.counter("read_only_miss", 1);
+                                None
+                            };
+                            entry_row = persisted.map(|(id, extra)| LinkUnitEntry {
                                 sha256: cache::content_hash(&obj.bytes),
                                 len: obj.bytes.len(),
                                 artifact_id: id,
@@ -533,9 +581,12 @@ impl MnDriver {
             .charge(Partition::Staging, manifest.render().len() as u64);
         let fp = manifest.fingerprint();
         let mut manifest_artifact_id = None;
-        if let Some(store) = &self.store {
+        // read-only: the closure is recomputed and linked, never published
+        // (T-02 F5: read-only consumes hits, publishes nothing).
+        if let (Some(store), true) = (&self.store, persist) {
             let id = obs.span("manifest_persist", |o| {
                 o.counter("link_manifests_persisted", 1);
+                o.counter("store_puts", 1);
                 cache::put_link_manifest(store, self.project.as_deref(), &manifest)
             })?;
             // Ordered publication (787 R3-03): the new revision is rooted

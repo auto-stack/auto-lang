@@ -251,7 +251,7 @@ fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Ve
             let domain = bundle.domain;
             let checked = verify_domain(bundle)?;
             let head = format!(
-                "hir-domain: {}\nhir-schema: {}\nhir-revision: {}",
+                "hir-domain: {}\nhir-schema: {}\nhir-revision: {}u32",
                 domain.as_str(),
                 domain.schema(),
                 domain.revision()
@@ -262,7 +262,7 @@ fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Ve
             let caps = req.capabilities.clone();
             let c = compile_profile(p, &src, &caps).map_err(|ds| (EXIT_PIPELINE, ds))?;
             let head = format!(
-                "source-profile: {}\nhir-schema: {}\nhir-revision: {}\nhir-profile: {}\nsource-input-hash: {}",
+                "source-profile: {}\nhir-schema: {}\nhir-revision: {}u32\nhir-profile: {}\nsource-input-hash: {}",
                 c.profile,
                 c.checked.domain().schema(),
                 c.checked.domain().revision(),

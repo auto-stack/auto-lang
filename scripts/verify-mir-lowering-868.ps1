@@ -156,19 +156,28 @@ function Invoke-Deps {
 function Invoke-Identity {
     $dir = Run-Suites "identity"
 
-    Write-Host "== identity: av rows carry mir-lowering=<mirror>"
+    # PLAN-871 T-05: the identity version is READ from the mirror (single
+    # source of truth) instead of being pinned here — the 881 bump left this
+    # script asserting the old "1", so a real version move looked like a
+    # pass-adjacent failure. The three mirrors must still AGREE.
+    $mirrorSrc = Get-Content (Join-Path $repo "crates/auto-lang-core/src/test_cases/ac_mn.rs") -Raw
+    $m = [regex]::Match($mirrorSrc, 'EXPECTED_MIR_LOWERING_VERSION: &str = "(\d+)"')
+    if (-not $m.Success) { Fail "ac_mn.rs carries no EXPECTED_MIR_LOWERING_VERSION" }
+    $mirrorVer = $m.Groups[1].Value
+
+    Write-Host "== identity: av rows carry mir-lowering=$mirrorVer"
     $avReport = Join-Path $dir "ac-av/report.json"
     $avText = Get-Content $avReport -Raw
-    if ($avText -notmatch '"mir-lowering", "1"') { Fail "av report rows lack the mir-lowering axis" }
+    if ($avText -notmatch ('"mir-lowering", "?' + [regex]::Escape($mirrorVer) + '"?')) { Fail "av report rows lack the mir-lowering axis ($mirrorVer)" }
 
-    Write-Host "== identity: mn receipts carry mir-lowering=<mirror>"
+    Write-Host "== identity: mn receipts carry mir-lowering=$mirrorVer"
     $receipt = Get-ChildItem (Join-Path $dir "ac-mn") -Recurse -Filter "mn-probe-receipt.json" | Select-Object -First 1
-    if (-not $receipt -or ((Get-Content $receipt.FullName -Raw) -notmatch '"mir-lowering": "1"')) { Fail "mn receipt lacks the mir-lowering axis" }
+    if (-not $receipt -or ((Get-Content $receipt.FullName -Raw) -notmatch ('"mir-lowering": "?' + [regex]::Escape($mirrorVer) + '"?'))) { Fail "mn receipt lacks the mir-lowering axis ($mirrorVer)" }
 
     Write-Host "== identity: mirrored constants agree across the three families"
     foreach ($f in @("ac_av.rs", "ac_cte.rs", "ac_mn.rs")) {
         $src = Get-Content (Join-Path $repo "crates/auto-lang-core/src/test_cases/$f") -Raw
-        if ($src -notmatch 'EXPECTED_MIR_LOWERING_VERSION: &str = "1"') { Fail "$f mirror drift" }
+        if ($src -notmatch ('EXPECTED_MIR_LOWERING_VERSION: &str = "' + [regex]::Escape($mirrorVer) + '"')) { Fail "$f mirror drift (expected $mirrorVer)" }
     }
 
     Write-Host "== identity: ace.m1.cert/1 receipt key set unchanged in both consumers"

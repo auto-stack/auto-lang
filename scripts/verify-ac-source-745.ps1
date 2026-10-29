@@ -10,6 +10,13 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+# PLAN-871 T-05: the build legs run through the shared-MIR `ac-native` CLI
+# (the receiver of ac-core's retiring build/build-source). Old assertion
+# mapping: exit codes / stdout / stderr oracles are UNCHANGED (same frozen
+# semantics); the old `app.obj` product assertion becomes "receipt exists and
+# carries backend/mir-lowering/source-profile needles" — the shared-MIR
+# backend links a multi-unit closure and has no single object.
+$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\source-745'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -533,10 +540,15 @@ Invoke-Step 'cargo test source_cli (--test-threads=1)' {
 }
 
 # ---- 3. serial case-table walkthrough ----
-Invoke-Step 'build tool binary once' {
+Invoke-Step 'build tool binaries once' {
     $r = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot -TimeoutSec 600
     if ($r.Code -ne 0) { throw $r.Stderr }
-    $script:Bin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+    # PLAN-871 T-05: the native CLI of this walkthrough is `ac-native` (the
+    # ac-core binary stays for its check/check-source face).
+    $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900
+    if ($m.Code -ne 0) { throw $m.Stderr }
+    $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
+    $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
     if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
     ("binary: " + $script:Bin) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
     ("binary-sha256: " + (Get-Sha256 $script:Bin)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
@@ -573,8 +585,15 @@ Invoke-Step 'positive cases: build + run (21)' {
         $run.Stderr | Set-Content (Join-Path $dir 'run.stderr.txt')
         ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
         ("exe-sha256: " + (Get-Sha256 $exe)) | Add-Content (Join-Path $dir 'case.txt')
-        if (-not (Test-Path (Join-Path $dir 'app.obj'))) { throw "$($c.Id): obj missing" }
+        # Old assertion: app.obj + app.ac-link.txt both existed (single-object
+        # lowering). PLAN-871: the shared-MIR backend links a multi-unit
+        # closure, so there is NO single object — the receipt replaces it and
+        # must carry the new backend/mir axes while keeping the old needles.
         if (-not (Test-Path (Join-Path $dir 'app.ac-link.txt'))) { throw "$($c.Id): receipt missing" }
+        $receiptText = Get-Content (Join-Path $dir 'app.ac-link.txt') -Raw
+        if ($receiptText -notmatch 'backend: mn:') { throw "$($c.Id): receipt lacks the mn backend axis" }
+        if ($receiptText -notmatch 'mir-lowering: ') { throw "$($c.Id): receipt lacks the mir-lowering axis" }
+        if ($receiptText -notmatch 'source-profile: ') { throw "$($c.Id): receipt lacks the source-profile needle" }
         if ($run.Code -ne $c.Exit) { throw "$($c.Id): run exited $($run.Code), expected $($c.Exit)" }
         if ($run.Stderr -ne $c.Stderr) { throw "$($c.Id): stderr '$($run.Stderr)' expected '$($c.Stderr)'" }
         $caseSummary.Add([pscustomobject]@{ Case = $c.Id; Exit = $run.Code; Stderr = $run.Stderr; Ok = $true })
@@ -590,7 +609,7 @@ Invoke-Step 'negative cases: check-source rejects (53)' {
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         $extra = @()
         if ($c.Id -in @('N28', 'N29')) { $extra = @('--capability', $Trace) }
-        $r = Invoke-Captured $script:Bin (@('check-source', $src, '--source-profile', $Profile) + $extra) $RepoRoot -TimeoutSec 60
+        $r = Invoke-Captured $script:CheckBin (@('check-source', $src, '--source-profile', $Profile) + $extra) $RepoRoot -TimeoutSec 60
         $r.Stdout | Set-Content (Join-Path $dir 'stdout.txt')
         $r.Stderr | Set-Content (Join-Path $dir 'stderr.txt')
         ("exit: " + $r.Code) | Add-Content (Join-Path $dir 'case.txt')

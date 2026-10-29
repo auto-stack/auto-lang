@@ -190,7 +190,26 @@ fn ac_stage_build_run_end_to_end_with_manifests() {
     assert!(b64d(&run.stdout_b64).is_empty());
     assert!(b64d(&run.stderr_b64).is_empty());
     // Manifest hashes bind the REAL files in scratch — parent re-verifies.
-    assert_eq!(ok.artifacts.len(), 3);
+    //
+    // PLAN-871 T-05: the product shape is BACKEND-DEPENDENT. The shared-MIR
+    // backend links a MULTI-UNIT closure and has no single `app.obj`
+    // (freeze F4 item 2 — the same reason `ac-native` no longer emits
+    // `<stem>.obj`): its manifest is `hir + exe`. The legacy backend keeps
+    // `hir + obj + exe`. The reported backend axis decides, so this test
+    // judges BOTH shapes instead of pinning one backend.
+    let mn_backend = ok.toolchain.backend.starts_with("mn:");
+    assert_eq!(
+        ok.artifacts.len(),
+        if mn_backend { 2 } else { 3 },
+        "backend {:?} product manifest",
+        ok.toolchain.backend
+    );
+    if mn_backend {
+        assert!(
+            ok.artifacts.iter().all(|a| a.logical != "app.obj"),
+            "the shared-MIR backend must not publish a single app.obj"
+        );
+    }
     for a in &ok.artifacts {
         let bytes = std::fs::read(&a.path).unwrap();
         assert_eq!(bytes.len(), a.bytes, "{} length", a.logical);

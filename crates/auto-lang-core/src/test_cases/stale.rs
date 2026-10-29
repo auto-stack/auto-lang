@@ -44,6 +44,10 @@ pub struct NativeApplicability {
     /// The contract declares the trace-marks support library — its CONTENT
     /// hash is an actual link input and binds the row.
     pub support_lib: bool,
+    /// PLAN-871 T-05: the row's effective source profile — the backend
+    /// switch is PER PROFILE, so the current backend axis is recomputed for
+    /// exactly this profile (not a global default).
+    pub profile: String,
 }
 
 fn fingerprint(v: &dyn std::fmt::Debug) -> String {
@@ -126,6 +130,7 @@ pub fn current_identities(
                                 | auto_test_case::contract::Action::Run
                         ),
                     support_lib: check.options.effective_support_lib().is_some(),
+                    profile: check.options.effective_profile().as_str().to_string(),
                 };
                 out.insert(
                     format!("{}:{}", spec.id, check.id),
@@ -406,8 +411,17 @@ pub fn check_with_families(
                 } else {
                     vec!["worker-exe-sha256", "ac-worker-protocol"]
                 };
+                // PLAN-871 T-05: the backend axis is PER PROFILE (the switch
+                // is profile-scoped), so it is recomputed for THIS row's
+                // profile into a per-row copy of the family identity map
+                // (never into the shared lazy cache).
+                let mut current_row: BTreeMap<String, String> = current.clone();
                 if applicability.links_conditionally && linked {
-                    applicable.extend(["lld-sha256", "sdk-um-sha256"]);
+                    current_row.insert(
+                        "ac-native-backend".into(),
+                        crate::test_cases::ac::backend_tag_for(&applicability.profile),
+                    );
+                    applicable.extend(["lld-sha256", "sdk-um-sha256", "ac-native-backend"]);
                 }
                 if applicability.support_lib {
                     applicable.push("support-lib-trace-marks-sha256");

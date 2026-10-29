@@ -26,6 +26,14 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+# PLAN-871 T-05: build legs run through the shared-MIR `ac-native` CLI (the
+# receiver of ac-core's retiring build/build-source). Old assertion mapping:
+# exit / stdout / stderr oracles are UNCHANGED (including the ledger/trap
+# rows); the old `app.obj` product assertions become "receipt exists and
+# carries backend/mir-lowering axes; the exe/receipt survive the failed-build
+# transaction"; `--support-lib` carries the text runtime library on owned
+# rows and the trace library elsewhere, exactly as before.
+$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
 $RtDir = Join-Path $AcCore 'runtime\text'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\text-record-782'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
@@ -529,10 +537,13 @@ try {
     # --- 4. case walkthrough (contained executor; deliberate-failure
     # ---    controls included per plan V-11/T-06) --------------------------------
 
-    Invoke-Step 'build tool binary once' {
+    Invoke-Step 'build tool binaries once' {
         $r = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot -TimeoutSec 900 '08-bin.txt'
         if ($r.Code -ne 0) { throw "tool build exited $($r.Code)" }
-        $script:Bin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+        $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900 '08-bin.txt'
+        if ($m.Code -ne 0) { throw "ac-native build exited $($m.Code)" }
+        $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
+        $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
         if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
         $script:ReceiptLines.Add("tool-binary-sha256: $(Get-Sha256 $script:Bin)")
     }
@@ -586,7 +597,13 @@ try {
         $exe = Join-Path $dir 'app.exe'
         $build = Invoke-BuildSource $src $exe @() '10-tp01-build.txt'
         if ($build.Code -ne 0) { throw "flagship build exited $($build.Code)" }
-        foreach ($f in @('app.obj', 'app.ac-link.txt')) { if (-not (Test-Path (Join-Path $dir $f))) { throw "artifact missing: $f" } }
+        # Old assertion: app.obj + app.ac-link.txt. PLAN-871: the shared-MIR
+        # closure publishes no single object — the receipt (backend + mir
+        # axes) replaces it.
+        foreach ($f in @('app.ac-link.txt')) { if (-not (Test-Path (Join-Path $dir $f))) { throw "artifact missing: $f" } }
+        $rcptText = Get-Content (Join-Path $dir 'app.ac-link.txt') -Raw
+        if ($rcptText -notmatch 'backend: mn:') { throw "receipt lacks the mn backend axis" }
+        if ($rcptText -notmatch 'mir-lowering: ') { throw "receipt lacks the mir-lowering axis" }
         $run = Invoke-Captured $exe @() $dir -TimeoutSec 120 '10-tp01-run.txt'
         Test-TracePairing $run.Stderr
         if ($run.Code -ne 30) { throw "flagship exited $($run.Code), expected 30 (n5+m5+k6+kind9+len5)" }
@@ -641,7 +658,7 @@ try {
     Invoke-Step 'negative SOURCE corpus: check-source rejects (8 pinned codes)' {
         foreach ($c in $Negative) {
             $srcp = Join-Path $RepoRoot ("experimental\ac-core\fixtures\text-record-source\invalid\" + $c.File)
-            $r = Invoke-Captured $script:Bin @('check-source', $srcp, '--source-profile', $TR) $RepoRoot -TimeoutSec 120
+            $r = Invoke-Captured $script:CheckBin @('check-source', $srcp, '--source-profile', $TR) $RepoRoot -TimeoutSec 120
             if ($r.Code -ne 1) { throw "$($c.Id): exited $($r.Code), expected 1" }
             if ($r.Stderr -notmatch [regex]::Escape($c.Code)) { throw "$($c.Id): expected $($c.Code), got $($r.Stderr)" }
             $script:CaseSummary.Add([pscustomobject]@{ Case = $c.Id; Exit = $r.Code; Buffers = -1; Ok = $true })
@@ -652,13 +669,13 @@ try {
     Invoke-Step 'profile isolation (V-01: old profiles reject the combination surface)' {
         $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
         foreach ($prof in @('auto.source.core-i32.draft', 'auto.source.scalar-i32.draft', 'auto.source.text.draft', 'auto.source.record.draft')) {
-            $r = Invoke-Captured $script:Bin @('check-source', $src, '--source-profile', $prof) $RepoRoot -TimeoutSec 120 '13-profile-iso.txt'
+            $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', $prof) $RepoRoot -TimeoutSec 120 '13-profile-iso.txt'
             if ($r.Code -ne 1) { throw "$prof on combination source exited $($r.Code), expected 1" }
             if ($r.Stderr -notmatch [regex]::Escape('text/source.unsupported')) { throw "expected text/source.unsupported: $($r.Stderr)" }
         }
-        $r = Invoke-Captured $script:Bin @('check-source', $src, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 120
+        $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 120
         if ($r.Code -ne 2) { throw "unknown profile exited $($r.Code), expected 2" }
-        $r = Invoke-Captured $script:Bin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-hir\valid\tr01-combination.atom')) $RepoRoot -TimeoutSec 120
+        $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-hir\valid\tr01-combination.atom')) $RepoRoot -TimeoutSec 120
         if ($r.Code -ne 0) { throw "combination HIR check exited $($r.Code): $($r.Stderr)" }
         if ($r.Stdout -notmatch 'hir-profile text-record-i32-draft') { throw "domain missing in: $($r.Stdout)" }
         $script:ReceiptLines.Add('profile isolation: ok (4 old profiles reject; unknown exit 2; domain line present)')
@@ -684,24 +701,23 @@ try {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
         $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
         $exe = Join-Path $dir 'app.exe'
-        $obj = Join-Path $dir 'app.obj'
         $rcpt = Join-Path $dir 'app.ac-link.txt'
         $build = Invoke-BuildSource $src $exe @() '15-sentinel-seed.txt'
         if ($build.Code -ne 0) { throw "sentinel seed build exited $($build.Code)" }
-        foreach ($f in @($exe, $obj, $rcpt)) { if (-not (Test-Path $f)) { throw "sentinel missing $f" } }
-        $h1 = Get-Sha256 $exe; $h2 = Get-Sha256 $obj; $h3 = Get-Sha256 $rcpt
-        # deliberately failing fixture into the SAME output: the three
-        # artifacts must survive byte-for-byte (741 transaction contract)
+        # PLAN-871: the transaction products are exe + receipt (no single obj).
+        foreach ($f in @($exe, $rcpt)) { if (-not (Test-Path $f)) { throw "sentinel missing $f" } }
+        $h1 = Get-Sha256 $exe; $h3 = Get-Sha256 $rcpt
+        # deliberately failing fixture into the SAME output: the artifacts
+        # must survive byte-for-byte (741 transaction contract)
         $bad = Join-Path $dir 'bad.at'
         [System.IO.File]::WriteAllText($bad, "type Tok { text Str; kind int }`nfn main() int {`n    let a Tok = Tok { text: `"hi`", kind: 1 }`n    var b Tok = Tok { text: `"x`", kind: 2 }`n    b = a`n    return b.kind`n}`n")
         $fail = Invoke-BuildSource $bad $exe @() '15-sentinel-fail.txt'
         if ($fail.Code -ne 1) { throw "bad build exited $($fail.Code), expected 1" }
         if ($fail.Stderr -notmatch [regex]::Escape('verify.resource-assign')) { throw "expected verify.resource-assign: $($fail.Stderr)" }
         if ((Get-Sha256 $exe) -ne $h1) { throw 'exe hash changed after failed build' }
-        if ((Get-Sha256 $obj) -ne $h2) { throw 'obj hash changed after failed build' }
         if ((Get-Sha256 $rcpt) -ne $h3) { throw 'receipt hash changed after failed build' }
-        @("exe: $h1", "obj: $h2", "receipt: $h3") | Set-Content (Join-Path $dir 'sentinel.txt')
-        $script:ReceiptLines.Add('SENTINEL: ok (failing build exit 1 distinct from success 0; exe/obj/receipt hashes preserved)')
+        @("exe: $h1", "receipt: $h3") | Set-Content (Join-Path $dir 'sentinel.txt')
+        $script:ReceiptLines.Add('SENTINEL: ok (failing build exit 1 distinct from success 0; exe/receipt hashes preserved)')
     }
 
     Invoke-Step 'receipt identity lines (V-01)' {

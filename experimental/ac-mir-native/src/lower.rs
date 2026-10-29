@@ -537,7 +537,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             SlotRep::Agg {
                 incoming: Some(v), ..
             } => Ok(self.fb.use_var(v)),
-            _ => Err(format!("slot {slot} is not an aggregate")),
+            _ => Err(format!(
+                "slot {slot} is not an aggregate (slot type {})",
+                self.slot_ty(slot)
+            )),
         }
     }
 

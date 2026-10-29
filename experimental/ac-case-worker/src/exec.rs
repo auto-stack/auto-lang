@@ -926,14 +926,32 @@ fn exec_mn(
     let mut driver = match req.store_root.as_deref() {
         Some(root) => {
             let project = req.project.clone().unwrap_or_else(|| "ac-case".into());
-            ac_mn::driver::MnDriver::with_store(Path::new(root), &project)
-                .map_err(|e| infra("store.open", format!("{}", e)))?
+            if cache_mode == "read-only" {
+                // read-only NEVER creates a store: a missing root is a typed
+                // refusal (the legacy contract's `store.missing-root`).
+                let store = ac_artifact_probe::store::ManagedStore::open_existing(Path::new(root))
+                    .map_err(|e| {
+                        infra(
+                            "store.missing-root",
+                            format!("read-only store {root:?}: {e}"),
+                        )
+                    })?;
+                ac_mn::driver::MnDriver::with_managed_store(store, &project)
+            } else {
+                ac_mn::driver::MnDriver::with_store(Path::new(root), &project)
+                    .map_err(|e| infra("store.open", format!("{}", e)))?
+            }
         }
         None => ac_mn::driver::MnDriver::ephemeral(),
     };
-    if cache_mode == "read-only" {
-        driver.forbid_codegen = true;
-    }
+    // T-05 cache modes are the mn store's own read/publish discipline:
+    // `fresh` never reads old units, `read-only` reads hits and publishes
+    // nothing (a miss recomputes for real, unreached by later reuse).
+    driver.cache_mode = match cache_mode {
+        "fresh" => ac_mn::driver::CacheMode::Fresh,
+        "read-only" => ac_mn::driver::CacheMode::ReadOnly,
+        _ => ac_mn::driver::CacheMode::Reuse,
+    };
     let workdir = scratch.join("mn");
     let snapshot = ac_mn::driver::content_snapshot(&hir_bytes);
     let backend_start = Instant::now();
@@ -976,19 +994,36 @@ fn exec_mn(
         }
     };
     trace.push(SpanOut {
-        stage: "backend".into(),
+        stage: "lower".into(),
         wall_ms: backend_start.elapsed().as_millis() as u64,
+    });
+    trace.push(SpanOut {
+        stage: "link".into(),
+        wall_ms: built.obs.spans.get("link").copied().unwrap_or(0) as u64,
     });
     check_build(&started, req)?;
 
-    let exe_artifact = artifact("exe", "app.exe", &built.exe_path)?;
+    // ---- publish the exe at its LOGICAL manifest name -------------------
+    // The parent admits artifacts by logical identity and requires the file
+    // name to match it (`app.exe`), so the mn link product is moved to that
+    // name inside the request scratch before the manifest is built.
+    let exe_path = scratch.join("app.exe");
+    if built.exe_path != exe_path {
+        if let Err(e) = std::fs::rename(&built.exe_path, &exe_path) {
+            // Cross-volume fallback (scratch and temp may live apart).
+            std::fs::copy(&built.exe_path, &exe_path)
+                .map_err(|e2| infra("request.scratch", format!("publish exe: {e} / {e2}")))?;
+            let _ = std::fs::remove_file(&built.exe_path);
+        }
+    }
+    let exe_artifact = artifact("exe", "app.exe", &exe_path)?;
 
     // ---- run: the worker's contained, budgeted executor ------------------
     let mut run = None;
     if req.kind == "run" {
         let run_start = Instant::now();
         let run_budget = remaining_run_budget(req, started);
-        let mut cmd = std::process::Command::new(&built.exe_path);
+        let mut cmd = std::process::Command::new(&exe_path);
         let captured = link::run_deadlined_captured(
             &mut cmd,
             run_budget,
@@ -1009,6 +1044,10 @@ fn exec_mn(
         });
     }
     trace.push(SpanOut {
+        stage: "total".into(),
+        wall_ms: ms(started),
+    });
+    trace.push(SpanOut {
         stage: "done".into(),
         wall_ms: ms(started),
     });
@@ -1020,18 +1059,9 @@ fn exec_mn(
     let lld_bytes =
         std::fs::read(&lld).map_err(|e| infra("tool.missing", format!("read lld: {}", e)))?;
 
-    let cache = req.store_root.as_ref().map(|_| CacheOut {
-        mode: cache_mode.to_string(),
-        // Hit rows are added with the T-05 identity work; the counters are
-        // the mn store's own observation (codegen_emit_units == 0 proves a
-        // hit path did not recompile).
-        hits: vec![("summary".into(), built.units.to_string())],
-        counters: built
-            .obs
-            .counters
-            .iter()
-            .map(|(k, v)| (k.clone(), u32::try_from(*v).unwrap_or(u32::MAX)))
-            .collect(),
+    let cache = req.store_root.as_ref().map(|_| {
+        let is_hir = matches!(req.input, InputSpec::Hir { .. });
+        mn_cache_out(&req.kind, cache_mode, is_hir, &built)
     });
 
     Ok(OkOut {
@@ -1044,6 +1074,58 @@ fn exec_mn(
         cache,
         metric_gaps: metric_gaps(),
     })
+}
+
+/// The cache record of one mn request (T-05). It reports the mn store's OWN
+/// observation (unit COFF hits vs codegen, real publish count) under the
+/// report vocabulary the ac contract already binds (`parse`/`verify`/
+/// `lower`/`link`/`run`/`store_puts`, `hits.{summary,hir,object}`).
+///
+/// One deliberate semantic difference from the retiring 783 driver: the mn
+/// backend caches EMITTED UNITS, not the frontend, and this worker owns the
+/// frontend — so `parse`/`verify` are observed on EVERY request (a full
+/// object hit still shows `parse=1, lower=0`). The invariant the cache
+/// record must prove is "no recompilation on a hit", which `lower=0`
+/// carries exactly.
+fn mn_cache_out(
+    kind: &str,
+    cache_mode: &str,
+    is_hir: bool,
+    built: &ac_mn::driver::MnBuild,
+) -> CacheOut {
+    use std::collections::BTreeMap;
+    let mut c: BTreeMap<String, u32> = built
+        .obs
+        .counters
+        .iter()
+        .map(|(k, v)| (k.clone(), u32::try_from(*v).unwrap_or(u32::MAX)))
+        .collect();
+    let lowered = *c.get("codegen_emit_units").unwrap_or(&0);
+    let unit_hits = *c.get("cache_hit_coff").unwrap_or(&0);
+    let link = *c.get("link_invocations").unwrap_or(&0);
+    let store_puts = *c.get("store_puts").unwrap_or(&0);
+    let object = if lowered == 0 && unit_hits > 0 {
+        "hit"
+    } else {
+        "lowered"
+    };
+    c.insert("parse".into(), u32::from(!is_hir));
+    c.insert("resolve_typecheck".into(), u32::from(!is_hir));
+    c.insert("bind".into(), u32::from(is_hir));
+    c.insert("verify".into(), 1);
+    c.insert("lower".into(), lowered);
+    c.insert("link".into(), link);
+    c.insert("run".into(), u32::from(kind == "run"));
+    c.insert("store_puts".into(), store_puts);
+    CacheOut {
+        mode: cache_mode.to_string(),
+        hits: vec![
+            ("summary".into(), object.to_string()),
+            ("hir".into(), object.to_string()),
+            ("object".into(), object.to_string()),
+        ],
+        counters: c.into_iter().collect(),
+    }
 }
 
 /// Typed replay of a driver-reported language failure: the real frontend,

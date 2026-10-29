@@ -128,6 +128,53 @@ fn t04_per_profile_rollback_is_isolated_and_observable() {
     std::env::remove_var(VAR);
 }
 
+fn counter(ok: &ac_case_worker::OkOut, name: &str) -> u32 {
+    ok.cache
+        .as_ref()
+        .and_then(|c| c.counters.iter().find(|(n, _)| n == name))
+        .map(|(_, v)| *v)
+        .unwrap_or(0)
+}
+
+fn hit(ok: &ac_case_worker::OkOut, name: &str) -> String {
+    ok.cache
+        .as_ref()
+        .and_then(|c| c.hits.iter().find(|(n, _)| n == name))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn t05_legacy_keyed_store_is_never_consumed_by_the_mn_backend() {
+    // PLAN-871 T-05 (F5) identity evidence: a store warmed by the LEGACY
+    // backend (783 A09 keys) must not answer an mn request — the two
+    // closures are structurally different artifacts under different keys,
+    // so there is no "same logical unit, two keys" ambiguity. The mn
+    // request recomputes (lower>0) and runs for real; both backends publish
+    // into the same store root without overwriting each other's identity.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let store = scratch("cross-backend-store");
+    std::env::set_var(VAR, "legacy");
+    let out = exec::execute(&req("run", "core", SRC, Some(&store))).expect("legacy store run");
+    assert_eq!(out.run.as_ref().and_then(|r| r.exit_code), Some(14));
+    assert_eq!(out.toolchain.backend, LEGACY_TAG);
+    assert!(
+        counter(&out, "lower") > 0,
+        "legacy hydration computes its single-object closure"
+    );
+    // Drop the files the legacy leg left in the scratch (the store lives in
+    // its own subdirectory via the same root prefix).
+    std::env::remove_var(VAR);
+    let out = exec::execute(&req("run", "core", SRC, Some(&store))).expect("mn store run");
+    assert_eq!(out.run.as_ref().and_then(|r| r.exit_code), Some(14));
+    assert!(out.toolchain.backend.starts_with(MN_PREFIX));
+    assert_eq!(
+        hit(&out, "object"),
+        "lowered",
+        "the mn backend cannot hit a legacy-keyed closure"
+    );
+}
+
 #[test]
 fn t04_malformed_switch_is_an_explicit_refusal() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

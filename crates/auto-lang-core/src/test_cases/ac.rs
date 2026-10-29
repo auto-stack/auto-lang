@@ -118,10 +118,15 @@ fn call_worker(
     request_hash: &str,
     kind: &str,
     deadline: Duration,
+    envs: &[(&str, &str)],
 ) -> Result<serde_json::Value, String> {
     let exe = worker_binary()?;
     let started = Instant::now();
-    let mut child = Command::new(&exe)
+    let mut cmd = Command::new(&exe);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -559,6 +564,7 @@ pub fn run_check(
         &ipc.request_hash,
         check.action.as_str(),
         wall,
+        &[],
     )?;
 
     if let Some(err) = response.get("error") {
@@ -801,6 +807,21 @@ pub fn run_check(
         native
             .toolchain
             .push(("ac-worker-protocol".to_string(), "acworker/1".to_string()));
+        // PLAN-871 T-05: the native BACKEND that actually ran this linked
+        // row is an identity axis (legacy lowering vs shared MIR). It binds
+        // only where the backend was real (a linked row) — the same
+        // applicability discipline as the linker/SDK content axes, and the
+        // stale checker enforces exactly this set. A product-consumer row
+        // carries no backend (it runs a pre-built exe), so it stays absent.
+        if linked {
+            if let Some(v) = tc["backend"].as_str() {
+                if !v.is_empty() {
+                    native
+                        .toolchain
+                        .push(("ac-native-backend".to_string(), v.to_string()));
+                }
+            }
+        }
         // R3 (F05): a declared support library binds its CONTENT hash —
         // an actual input of the link, not just a contract name.
         if check.options.effective_support_lib().is_some() {
@@ -1064,6 +1085,7 @@ pub fn consume_and_run(
         &request_hash,
         "run",
         Duration::from_millis(total_ms),
+        &[],
     )?;
     if let Some(err) = response.get("error") {
         // Infrastructure failure of the consumed run — an ERROR verdict the
@@ -1191,6 +1213,135 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
             }
         })
         .clone()
+}
+
+/// PLAN-871 T-05: identity constants of the shared-MIR backend. They are a
+/// MIRROR of `ac-mn`'s config/lowering version (this crate must not link
+/// the Cranelift stack); `ac_backend_axis_mirrors_the_worker` in the
+/// integration suite pins the mirror against the REAL worker axis on both
+/// backends, so a drift cannot pass silently.
+pub const AC_MN_ABI: &str = "msvc-x64/priv-i32-bool-v1";
+pub const AC_MIR_LOWERING_VERSION: &str = "2";
+pub const AC_LEGACY_BACKEND_TAG: &str = "cranelift-0.126/lower_object";
+
+/// The shared-MIR backend's report-tag mirror.
+pub fn mn_backend_tag() -> String {
+    format!("mn:{AC_MN_ABI}+mir-v{AC_MIR_LOWERING_VERSION}")
+}
+
+/// The CURRENT backend tag a profile would resolve to, mirroring the freeze
+/// F1 grammar of `ac-mn::backend` (env `AC_NATIVE_BACKEND`, read per call;
+/// default table = mn). A malformed value yields an `invalid:` marker so
+/// every persisted row becomes stale instead of silently matching.
+pub fn backend_tag_for(profile: &str) -> String {
+    let raw = std::env::var("AC_NATIVE_BACKEND").ok();
+    backend_tag_for_env(raw.as_deref(), profile)
+}
+
+/// Pure form of [`backend_tag_for`] (an explicit raw value), so the grammar
+/// itself is testable without mutating the process environment.
+pub fn backend_tag_for_env(raw: Option<&str>, profile: &str) -> String {
+    let raw = raw.unwrap_or("").trim();
+    if raw.is_empty() {
+        return mn_backend_tag();
+    }
+    match raw {
+        "legacy" => return AC_LEGACY_BACKEND_TAG.to_string(),
+        "mn" => return mn_backend_tag(),
+        _ => {}
+    }
+    let mut chosen: Option<&str> = None;
+    for token in raw.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = token.split_once('=') else {
+            return format!("invalid:{raw}");
+        };
+        let (name, value) = (name.trim(), value.trim());
+        if value != "legacy" && value != "mn" {
+            return format!("invalid:{raw}");
+        }
+        if name == profile {
+            if chosen.is_some() {
+                return format!("invalid:{raw}");
+            }
+            chosen = Some(value);
+        }
+    }
+    match chosen {
+        Some("legacy") => AC_LEGACY_BACKEND_TAG.to_string(),
+        Some("mn") => mn_backend_tag(),
+        Some(_) => unreachable!("values were validated above"),
+        None => mn_backend_tag(),
+    }
+}
+
+/// PLAN-871 T-05 drift seam (test support, always compiled so the
+/// `auto-lang` lib tests can use it across the crate boundary): run ONE real
+/// worker check request with an explicit `AC_NATIVE_BACKEND` value
+/// (child-process env — never the parent's own) and return the reported
+/// backend axis. The parent-side mirror ([`backend_tag_for`]) must
+/// reproduce it exactly, on both backends and for a profile-scoped
+/// override.
+#[doc(hidden)]
+pub fn probe_backend_tag(profile: &str, backend_env: Option<&str>) -> Result<String, String> {
+    let scratch = std::env::temp_dir().join(format!(
+        "ac871-probe-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("create scratch: {e}"))?;
+    let src = "fn main() int { return 3 }";
+    let request = serde_json::json!({
+        "schema": "acworker/1",
+        "kind": "check",
+        "nonce": "n",
+        "request_hash": "h",
+        "input": { "kind": "source", "source_b64": b64(src.as_bytes()) },
+        "profile": profile,
+        "entry": "main",
+        "budget": { "build_ms": 20_000, "run_ms": 5_000, "total_ms": 25_000 },
+        "store_root": serde_json::Value::Null,
+        "grammar": serde_json::Value::Null,
+        "capabilities": [],
+        "support_lib": serde_json::Value::Null,
+        "edits": serde_json::Value::Null,
+        "cache": "reuse",
+        "project": "ac-probe",
+        "include_hir": false,
+        "scratch": scratch.display().to_string(),
+    });
+    let envs: Vec<(&str, &str)> = backend_env
+        .map(|v| vec![("AC_NATIVE_BACKEND", v)])
+        .unwrap_or_default();
+    let response = call_worker(
+        &request.to_string(),
+        "n",
+        "h",
+        "check",
+        Duration::from_millis(25_000),
+        &envs,
+    )?;
+    let _ = std::fs::remove_dir_all(&scratch);
+    if let Some(err) = response.get("error") {
+        return Err(format!(
+            "worker error [{}]: {}",
+            err["code"].as_str().unwrap_or("?"),
+            err["message"].as_str().unwrap_or("")
+        ));
+    }
+    let ok = response
+        .get("ok")
+        .ok_or_else(|| "response has neither ok nor error".to_string())?;
+    ok["toolchain"]["backend"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "response carries no backend axis".to_string())
 }
 
 /// The ACTUAL current toolchain identity for stale comparison (R1 F07,

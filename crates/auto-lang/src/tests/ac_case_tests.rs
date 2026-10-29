@@ -598,6 +598,42 @@ fn r1_runner_report_v2_legal_json_schema_and_native_axes() {
 }
 
 #[test]
+fn r1_backend_axis_mirror_matches_the_real_worker() {
+    // PLAN-871 T-05: the parent recomputes the native backend axis for stale
+    // comparison WITHOUT linking ac-mn (zero-Cranelift boundary), so its
+    // mirror must reproduce the worker's own tag exactly — on both backends
+    // and under a profile-scoped rollback. Env travels per CHILD process,
+    // never through this test process.
+    for envv in [None, Some("legacy"), Some("mn")] {
+        let tag = crate::test_cases::ac::probe_backend_tag("core", envv)
+            .unwrap_or_else(|e| panic!("probe {envv:?}: {e}"));
+        let mirrored = crate::test_cases::ac::backend_tag_for_env(envv, "core");
+        assert_eq!(tag, mirrored, "env {envv:?}: worker vs mirror");
+    }
+    // A profile-scoped rollback: core back on the legacy lowering, scalar
+    // still on the switched default.
+    let core = crate::test_cases::ac::probe_backend_tag("core", Some("core=legacy"))
+        .expect("scoped core probe");
+    let scalar = crate::test_cases::ac::probe_backend_tag("scalar", Some("core=legacy"))
+        .expect("scoped scalar probe");
+    assert_eq!(core, crate::test_cases::ac::AC_LEGACY_BACKEND_TAG);
+    assert_eq!(scalar, crate::test_cases::ac::mn_backend_tag());
+    assert_eq!(
+        crate::test_cases::ac::backend_tag_for_env(Some("core=legacy"), "core"),
+        core
+    );
+    assert_eq!(
+        crate::test_cases::ac::backend_tag_for_env(Some("core=legacy"), "scalar"),
+        scalar
+    );
+    // A malformed value must never match a real tag (every row goes stale).
+    let bad = crate::test_cases::ac::backend_tag_for_env(Some("core=clif"), "core");
+    assert!(bad.starts_with("invalid:"), "{bad}");
+    assert_ne!(bad, core);
+    assert_ne!(bad, scalar);
+}
+
+#[test]
 fn r1_consumer_streams_observed_not_rejected() {
     // F02: an ac/run product consumer's stdout observation is supported
     // (the old generic guard rejected it as an admission error).
