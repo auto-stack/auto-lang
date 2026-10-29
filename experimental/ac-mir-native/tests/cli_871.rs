@@ -238,7 +238,7 @@ fn cli871_legacy_resolved_profile_is_an_explicit_refusal() {
         out.stderr
     );
     assert!(
-        out.stderr.contains("LEGACY backend") && out.stderr.contains("auto-ac-prototype"),
+        out.stderr.contains("RETIRED") && out.stderr.contains("mn"),
         "the refusal must name the rollback and the legacy face:\n{}",
         out.stderr
     );

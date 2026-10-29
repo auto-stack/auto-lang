@@ -136,46 +136,6 @@ pub fn link_and_run(case: &str, obj: &[u8]) -> Result<i32, String> {
     }
 }
 
-/// Full prototype pipeline for a fixture: bind -> verify -> entry -> lower.
-pub fn build_fixture(fixture_rel: &str, entry_id: &str) -> Result<Vec<u8>, String> {
-    use auto_ac_prototype::bind_source;
-    use auto_ac_prototype::{native, verify};
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let path = repo.join(fixture_rel);
-    let src =
-        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
-    let bundle = bind_source(&src).map_err(|ds| {
-        ds.iter()
-            .map(|d| d.render(&fixture_rel, &src))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-    let checked = verify::verify(bundle).map_err(|ds| {
-        ds.iter()
-            .map(|d| d.render(&fixture_rel, &src))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-    native::capabilities_check(&checked, &[]).map_err(|ds| {
-        ds.iter()
-            .map(|d| d.render(&fixture_rel, &src))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-    let sel = native::find_entry(&checked, entry_id).map_err(|ds| {
-        ds.iter()
-            .map(|d| d.render(&fixture_rel, &src))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-    native::lower_object(&checked, &sel, &native::RuntimeInjection::default()).map_err(|ds| {
-        ds.iter()
-            .map(|d| d.render(&fixture_rel, &src))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })
-}
-
 /// Outcome of a deadline-guarded process run.  runs mean the
 /// single deadline was exceeded by the process or its output collection;
 /// the contained tree was terminated and reaped, and no success is faked

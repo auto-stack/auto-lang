@@ -495,11 +495,16 @@ try {
         $ms = [regex]::Matches($t, 'result: ok\. (\d+) passed')
         $total = 0
         foreach ($m in $ms) { $total += [int]$m.Groups[1].Value }
-        if ($total -lt 400) { throw "expected at least 400 tests in the full suite, counted $total" }
-        foreach ($bin in @('text_record_hir.rs', 'text_record_source.rs', 'text_record_resources.rs', 'text_record_native.rs')) {
+        # PLAN-871 T-06: the old native/lowering suites (and their count) were
+        # retired with the HIR→CLIF backend; the remaining ac-core suite is
+        # the frontend/verify/link surface. The floor is the OBSERVED size of
+        # that surface (not the old 400+ PE suite), and the text-record HIR +
+        # source binaries named below must still be present.
+        if ($total -lt 200) { throw "expected at least 200 tests in the full suite, counted $total" }
+        foreach ($bin in @('text_record_hir.rs', 'text_record_source.rs')) {
             if ($t -notmatch [regex]::Escape($bin)) { throw "test binary $bin missing from the ac-core run" }
         }
-        $script:ReceiptLines.Add("ac-core test: ok ($total tests; text_record_hir/source/resources/native present; every PE under the contained executor)")
+        $script:ReceiptLines.Add("ac-core test: ok ($total tests; text_record_hir/source present; PF/verify surface post-retirement)")
     }
 
     Invoke-Step 'cargo fmt --check (ac-core)' {
@@ -851,12 +856,11 @@ try {
         $script:ReceiptLines.Add("runtime-contract-sha256: $(Get-Sha256 (Join-Path $RtDir 'target\release\ac_text_runtime.lib.contract.json'))")
         foreach ($rel in @(
             'schema\text-record.atom',
-            'src\hir.rs', 'src\descriptor.rs', 'src\verify.rs', 'src\native.rs',
+            'src\hir.rs', 'src\descriptor.rs', 'src\verify.rs',
             'src\main.rs', 'src\text_resources.rs', 'src\lib.rs',
             'src\source\mod.rs', 'src\source\parser.rs', 'src\source\resolve.rs',
             'src\source\typecheck.rs', 'src\source\adapter.rs',
             'tests\text_record_hir.rs', 'tests\text_record_source.rs',
-            'tests\text_record_resources.rs', 'tests\text_record_native.rs',
             'fixtures\text-record-source\valid\p01-combination.at',
             'fixtures\text-record-source\valid\p02-overlap.at',
             'fixtures\text-record-hir\valid\tr01-combination.atom',

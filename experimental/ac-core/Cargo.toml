@@ -8,12 +8,8 @@ publish = false
 [workspace]
 
 [dependencies]
-# Cranelift backend stack (selected in T-01; see docs/reports/741-ac-hir-native/toolchain.md)
-cranelift-codegen = "0.126"
-cranelift-frontend = "0.126"
-cranelift-module = "0.126"
-cranelift-object = "0.126"
-target-lexicon = "0.13"
+# PLAN-871 T-06: the Cranelift lowering stack is GONE with `native.rs` (the
+# backend now lives in ac-mn); this crate is frontend/HIR/verify/link only.
 anyhow = "1"
 # Phase 3 (R2-QA-02): Job Object containment for the deadline executor —
 # descendants that inherit our stdout/stderr pipes must die with the direct

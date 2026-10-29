@@ -530,14 +530,10 @@ Invoke-Step 'cargo test source_hir' {
     $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'source_hir') $RepoRoot -TimeoutSec 300
     if ($r.Code -ne 0) { throw $r.Stderr }
 }
-Invoke-Step 'cargo test source_native (--test-threads=1)' {
-    $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'source_native', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900
-    if ($r.Code -ne 0) { throw $r.Stderr }
-}
-Invoke-Step 'cargo test source_cli (--test-threads=1)' {
-    $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'source_cli', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900
-    if ($r.Code -ne 0) { throw $r.Stderr }
-}
+# PLAN-871 T-06 mapping: source_native / source_cli were the RETIRED
+# lowering's PE + CLI-build suites. Their 21 positive oracles are replayed
+# below through the `ac-native` build legs with the SAME frozen exit/stderr
+# values, and the 53 negative cases stay on `check-source`.
 
 # ---- 3. serial case-table walkthrough ----
 Invoke-Step 'build tool binaries once' {

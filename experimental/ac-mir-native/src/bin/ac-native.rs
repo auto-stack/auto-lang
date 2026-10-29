@@ -233,7 +233,7 @@ fn run_build(req: &BuildReq, profile: Option<Profile>) -> Result<String, (u8, Ve
         Ok(Backend::Mn) => {}
         Ok(Backend::Legacy) => {
             eprintln!(
-                "error: profile `{}` resolves to the LEGACY backend via AC_NATIVE_BACKEND; this CLI serves the shared-MIR backend only during the migration window — use auto-ac-prototype for the legacy face until PLAN-871 T-06 retires it",
+                "error: profile `{}` resolves to the LEGACY HIR→CLIF backend, which was RETIRED (PLAN-871 T-06); unset AC_NATIVE_BACKEND or set it to `mn`",
                 effective_profile.as_str()
             );
             return Err((EXIT_USAGE, Vec::new()));

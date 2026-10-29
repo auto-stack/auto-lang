@@ -100,15 +100,13 @@ Invoke-Step 'cargo test text_binding' {
 Invoke-Step 'cargo test hir_verify' {
     Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'hir_verify') $RepoRoot | Out-Null
 }
-Invoke-Step 'cargo test native_execution (--test-threads=1)' {
-    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'native_execution', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900 | Out-Null
-}
-Invoke-Step 'cargo test cli (--test-threads=1)' {
-    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'cli', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900 | Out-Null
-}
-Invoke-Step 'cargo test trace_execution (--test-threads=1)' {
-    Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'trace_execution', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900 | Out-Null
-}
+# PLAN-871 T-06 mapping (old step → new step): the native_execution / cli /
+# trace_execution suites exercised the RETIRED HIR→CLIF lowering and its CLI
+# build face. Their positive oracles are covered by:
+#   - this script's ac-native walkthrough steps (add-2-3 exit 5, trace exit 12
+#     with "ba" marks) — same frozen values, shared-MIR product;
+#   - `experimental/ac-mir-native/tests/shadow_tier_871.rs` (frozen oracles +
+#     trace-mark rows) and `tests/gap_closure_871.rs`.
 
 # ---- 3. CLI build/run walkthrough (own receipts) ----
 # PLAN-871 T-05: the `build` legs run through the shared-MIR `ac-native` CLI

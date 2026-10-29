@@ -443,10 +443,10 @@ Invoke-Step 'cargo test --locked (full ac-core)' {
     $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml')) $RepoRoot -TimeoutSec 900
     if ($r.Code -ne 0) { throw $r.Stderr }
 }
-Invoke-Step 'cargo test record_native (--test-threads=1)' {
-    $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'record_native', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900
-    if ($r.Code -ne 0) { throw $r.Stderr }
-}
+# PLAN-871 T-06 mapping: record_native (retired lowering PE suite) → this
+# script's ac-native SOURCE/HIR record legs below (same frozen exits,
+# including the SP05 ctor-snapshot rows) plus
+# `ac-mir-native/tests/record_method_tier.rs` and `gap_closure_871.rs`.
 
 # ---- 3. serial case walkthrough ----
 Invoke-Step 'build tool binaries once' {

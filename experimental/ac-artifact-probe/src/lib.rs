@@ -13,10 +13,8 @@
 //! other layers are registered seams only.
 
 pub mod codec;
-pub mod driver;
 pub mod identity;
 pub mod layout;
-pub mod perf;
 pub mod schema;
 pub mod store;
 pub mod subproc;

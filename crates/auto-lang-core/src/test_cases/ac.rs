@@ -1223,6 +1223,10 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
 pub const AC_MN_ABI: &str = "msvc-x64/priv-i32-bool-v1";
 pub const AC_MIR_LOWERING_VERSION: &str = "2";
 pub const AC_LEGACY_BACKEND_TAG: &str = "cranelift-0.126/lower_object";
+/// PLAN-871 T-06: the tag the retired legacy backend resolves to. It matches
+/// no persisted row (the backend no longer exists), so legacy-era reports go
+/// STALE instead of silently passing.
+pub const AC_LEGACY_RETIRED_TAG: &str = "retired:legacy";
 
 /// The shared-MIR backend's report-tag mirror.
 pub fn mn_backend_tag() -> String {
@@ -1240,13 +1244,18 @@ pub fn backend_tag_for(profile: &str) -> String {
 
 /// Pure form of [`backend_tag_for`] (an explicit raw value), so the grammar
 /// itself is testable without mutating the process environment.
+///
+/// PLAN-871 T-06: `legacy` still PARSES (the switch stays readable and a
+/// request that resolves to it is refused explicitly), but no tag it can
+/// produce exists any more — the value is the retirement marker, so every
+/// persisted legacy-era row is STALE instead of silently "matching".
 pub fn backend_tag_for_env(raw: Option<&str>, profile: &str) -> String {
     let raw = raw.unwrap_or("").trim();
     if raw.is_empty() {
         return mn_backend_tag();
     }
     match raw {
-        "legacy" => return AC_LEGACY_BACKEND_TAG.to_string(),
+        "legacy" => return AC_LEGACY_RETIRED_TAG.to_string(),
         "mn" => return mn_backend_tag(),
         _ => {}
     }
@@ -1271,7 +1280,7 @@ pub fn backend_tag_for_env(raw: Option<&str>, profile: &str) -> String {
         }
     }
     match chosen {
-        Some("legacy") => AC_LEGACY_BACKEND_TAG.to_string(),
+        Some("legacy") => AC_LEGACY_RETIRED_TAG.to_string(),
         Some("mn") => mn_backend_tag(),
         Some(_) => unreachable!("values were validated above"),
         None => mn_backend_tag(),

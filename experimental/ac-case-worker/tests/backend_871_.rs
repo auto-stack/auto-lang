@@ -17,7 +17,6 @@ static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 const VAR: &str = "AC_NATIVE_BACKEND";
-const LEGACY_TAG: &str = "cranelift-0.126/lower_object";
 const MN_PREFIX: &str = "mn:";
 
 fn b64(s: &str) -> String {
@@ -101,26 +100,33 @@ fn t04_default_table_is_mn_for_core_and_scalar() {
 }
 
 #[test]
-fn t04_global_legacy_fallback_restores_the_old_products() {
+fn t04_legacy_switch_is_retired_after_g_delete() {
+    // PLAN-871 T-06: the legacy HIR→CLIF backend (and its obj product) is
+    // gone. A request that still resolves to it is refused EXPLICITLY with
+    // the retirement message — never silently served by mn.
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(VAR, "legacy");
-    let out = exec::execute(&req("run", "core", SRC, None)).expect("legacy run executes");
-    assert_eq!(out.run.as_ref().and_then(|r| r.exit_code), Some(14));
-    assert_eq!(out.toolchain.backend, LEGACY_TAG);
-    let logs = logicals(&req("build", "core", SRC, None));
+    let err = exec::execute(&req("run", "core", SRC, None))
+        .expect_err("legacy backend must be refused after retirement");
+    assert_eq!(err.code, "request.backend", "{}", err.message);
     assert!(
-        logs.contains(&"app.obj".to_string()) && logs.contains(&"app.exe".to_string()),
-        "legacy build keeps obj+exe, got {logs:?}"
+        err.message.contains("retired") && err.message.contains("T-06"),
+        "retirement must be explicit: {}",
+        err.message
     );
     std::env::remove_var(VAR);
 }
 
 #[test]
-fn t04_per_profile_rollback_is_isolated_and_observable() {
+fn t04_per_profile_rollback_is_observable_and_refused() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    // One profile rolls back, the sibling stays on the switched default.
+    // A profile-scoped rollback still RESOLVES (the axis stays observable in
+    // reports), but the request is refused: the backend no longer exists.
     std::env::set_var(VAR, "core=legacy");
-    assert_eq!(backend_of(&req("run", "core", SRC, None)), LEGACY_TAG);
+    let err = exec::execute(&req("run", "core", SRC, None))
+        .expect_err("core=legacy must be refused after retirement");
+    assert_eq!(err.code, "request.backend");
+    // The sibling profile keeps the switched default.
     assert!(backend_of(&req("run", "scalar", SRC, None)).starts_with(MN_PREFIX));
     // And the whole-table flip is the other direction.
     std::env::set_var(VAR, "mn");
@@ -142,37 +148,6 @@ fn hit(ok: &ac_case_worker::OkOut, name: &str) -> String {
         .and_then(|c| c.hits.iter().find(|(n, _)| n == name))
         .map(|(_, v)| v.clone())
         .unwrap_or_default()
-}
-
-#[test]
-fn t05_legacy_keyed_store_is_never_consumed_by_the_mn_backend() {
-    // PLAN-871 T-05 (F5) identity evidence: a store warmed by the LEGACY
-    // backend (783 A09 keys) must not answer an mn request — the two
-    // closures are structurally different artifacts under different keys,
-    // so there is no "same logical unit, two keys" ambiguity. The mn
-    // request recomputes (lower>0) and runs for real; both backends publish
-    // into the same store root without overwriting each other's identity.
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let store = scratch("cross-backend-store");
-    std::env::set_var(VAR, "legacy");
-    let out = exec::execute(&req("run", "core", SRC, Some(&store))).expect("legacy store run");
-    assert_eq!(out.run.as_ref().and_then(|r| r.exit_code), Some(14));
-    assert_eq!(out.toolchain.backend, LEGACY_TAG);
-    assert!(
-        counter(&out, "lower") > 0,
-        "legacy hydration computes its single-object closure"
-    );
-    // Drop the files the legacy leg left in the scratch (the store lives in
-    // its own subdirectory via the same root prefix).
-    std::env::remove_var(VAR);
-    let out = exec::execute(&req("run", "core", SRC, Some(&store))).expect("mn store run");
-    assert_eq!(out.run.as_ref().and_then(|r| r.exit_code), Some(14));
-    assert!(out.toolchain.backend.starts_with(MN_PREFIX));
-    assert_eq!(
-        hit(&out, "object"),
-        "lowered",
-        "the mn backend cannot hit a legacy-keyed closure"
-    );
 }
 
 #[test]

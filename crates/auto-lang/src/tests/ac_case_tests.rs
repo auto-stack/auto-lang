@@ -599,38 +599,39 @@ fn r1_runner_report_v2_legal_json_schema_and_native_axes() {
 
 #[test]
 fn r1_backend_axis_mirror_matches_the_real_worker() {
-    // PLAN-871 T-05: the parent recomputes the native backend axis for stale
-    // comparison WITHOUT linking ac-mn (zero-Cranelift boundary), so its
-    // mirror must reproduce the worker's own tag exactly — on both backends
-    // and under a profile-scoped rollback. Env travels per CHILD process,
-    // never through this test process.
-    for envv in [None, Some("legacy"), Some("mn")] {
+    // PLAN-871 T-06: mn is the ONLY backend, but the parent still recomputes
+    // the axis for stale comparison WITHOUT linking ac-mn. The mirror must
+    // reproduce the worker's tag for every served value, and the RETIRED
+    // legacy value must (a) be refused by the worker and (b) never match a
+    // persisted tag (legacy-era reports go stale).
+    for envv in [None, Some("mn")] {
         let tag = crate::test_cases::ac::probe_backend_tag("core", envv)
             .unwrap_or_else(|e| panic!("probe {envv:?}: {e}"));
-        let mirrored = crate::test_cases::ac::backend_tag_for_env(envv, "core");
-        assert_eq!(tag, mirrored, "env {envv:?}: worker vs mirror");
+        assert_eq!(
+            tag,
+            crate::test_cases::ac::backend_tag_for_env(envv, "core"),
+            "env {envv:?}"
+        );
+        assert!(tag.starts_with("mn:"));
     }
-    // A profile-scoped rollback: core back on the legacy lowering, scalar
-    // still on the switched default.
-    let core = crate::test_cases::ac::probe_backend_tag("core", Some("core=legacy"))
-        .expect("scoped core probe");
+    for envv in [Some("legacy"), Some("core=legacy")] {
+        let err = crate::test_cases::ac::probe_backend_tag("core", envv)
+            .expect_err("the retired legacy backend must be refused");
+        assert!(err.contains("retired"), "{envv:?}: {err}");
+        assert_eq!(
+            crate::test_cases::ac::backend_tag_for_env(envv, "core"),
+            crate::test_cases::ac::AC_LEGACY_RETIRED_TAG,
+            "a retired value must never match a persisted tag"
+        );
+    }
+    // A profile-scoped rollback refuses only that profile; the sibling stays
+    // served by the shared-MIR default.
     let scalar = crate::test_cases::ac::probe_backend_tag("scalar", Some("core=legacy"))
-        .expect("scoped scalar probe");
-    assert_eq!(core, crate::test_cases::ac::AC_LEGACY_BACKEND_TAG);
-    assert_eq!(scalar, crate::test_cases::ac::mn_backend_tag());
-    assert_eq!(
-        crate::test_cases::ac::backend_tag_for_env(Some("core=legacy"), "core"),
-        core
-    );
-    assert_eq!(
-        crate::test_cases::ac::backend_tag_for_env(Some("core=legacy"), "scalar"),
-        scalar
-    );
-    // A malformed value must never match a real tag (every row goes stale).
-    let bad = crate::test_cases::ac::backend_tag_for_env(Some("core=clif"), "core");
-    assert!(bad.starts_with("invalid:"), "{bad}");
-    assert_ne!(bad, core);
-    assert_ne!(bad, scalar);
+        .expect("sibling profile stays served");
+    assert!(scalar.starts_with("mn:"));
+    // A malformed value is still an explicit error marker.
+    assert!(crate::test_cases::ac::backend_tag_for_env(Some("core=clif"), "core")
+        .starts_with("invalid:"));
 }
 
 #[test]

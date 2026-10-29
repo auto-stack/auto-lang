@@ -502,10 +502,9 @@ Invoke-Step 'cargo test scalar_source' {
     $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'scalar_source') $RepoRoot -TimeoutSec 300
     if ($r.Code -ne 0) { throw $r.Stderr }
 }
-Invoke-Step 'cargo test scalar_native (--test-threads=1)' {
-    $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $AcCore 'Cargo.toml'), '--test', 'scalar_native', '--', '--test-threads=1') $RepoRoot -TimeoutSec 900
-    if ($r.Code -ne 0) { throw $r.Stderr }
-}
+# PLAN-871 T-06 mapping: scalar_native (retired lowering PE suite) → this
+# script's ac-native SOURCE (11) + HIR (15) positive legs below, same frozen
+# exits/stderr; negatives stay on check-source.
 
 # ---- 3. serial case-table walkthrough ----
 Invoke-Step 'build tool binaries once' {

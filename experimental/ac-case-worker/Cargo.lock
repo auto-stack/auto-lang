@@ -145,11 +145,6 @@ name = "auto-ac-prototype"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cranelift-codegen",
- "cranelift-frontend",
- "cranelift-module",
- "cranelift-object",
- "target-lexicon",
  "windows-sys 0.59.0",
 ]
 
