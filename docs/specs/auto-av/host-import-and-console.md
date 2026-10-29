@@ -15,4 +15,3 @@ Portable AVHC artifacts contain typed requirements and their fingerprint, never 
 References: `../auto-ac/source-console-output.md`, `../auto-test-case/architecture.md`; executable evidence is the 863 source/runtime/parent tests and `scripts/verify-av-863.ps1`.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
-

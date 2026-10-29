@@ -11,4 +11,3 @@ Formatting is exact: i32 decimal ASCII without plus/leading zeros, MIN `-2147483
 Reference: `../auto-av/host-import-and-console.md`. Implementation: `experimental/ac-core/src/source/console.rs`, host-console descriptor, shared `experimental/auto-mir-lower/src/hir_adapter.rs`.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
-
