@@ -172,6 +172,8 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - 静态核查：旧 import 无宿主派发；EntryUnit 不接纳 text，需新增独立源码/HIR 域；profile id 8 未分配；父侧真实实现为 `crates/auto-lang-core/src/test_cases/ac_av.rs`，共享比较器 `ac.rs::compare_stream_field`，流上限 1MiB。旧 `probe/src/hir_adapter.rs` 已删除，lowering 写面改用 `experimental/auto-mir-lower/src/hir_adapter.rs`。
 - T-02 采用 §10 默认项：stdout/stderr 同批、print/eprint 为新 profile 保留字；每调用 64KiB（含 LF）、整次运行双流合计 1MiB（含 LF），不超过父侧既有每流 1MiB 边界。完整合同在 worktree 的 `docs/plans/attachments/863/work/host-console-contract.md`，随 b1d8b68b2 可恢复。尚未执行语义测试；AC-01..08 均未宣称通过；T-03..08 未完成。
 
+2026-10-30 goal round 1 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 1 | from: work | to: work | status: executing | outcome: pass（仅 T-01/T-02 检查点；不是 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: b1d8b68b2e044bdc0e6f4b989da7494c8ef3437a | next: work T-03`。合同 SHA256 `f2c791a6e330c3d6eccad1eba2b02fec615282963dc0947a6965dc87718714ec`；基线摘要 SHA256 `559dfe119b4d8abbfa4ab891c9e42a0e635eaefa894953743308b72972d54d0d`（路径均为上述 worktree 下 `docs/plans/attachments/863/work/`）。`git status --short` 在实施树为空；提交钩子通过。未执行构建/测试，未进入 review/merge，目标保持 active。
+
 ## 10. 待澄清事项
 
 - 首批是否同时交付 stderr（`eprint`）与 stdout，还是只 stdout。默认两者同批（同一派发形状，边际成本小），如用户要求收窄可只留 stdout。
