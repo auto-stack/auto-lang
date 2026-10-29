@@ -12,7 +12,7 @@ publish = false
 # profile.
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 name = "ac_text_runtime"
 
 [dependencies]

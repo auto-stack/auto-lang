@@ -1,0 +1,20 @@
+[package]
+name = "ac-collections-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+name = "ac_collections_runtime"
+crate-type = ["staticlib"]
+
+[dependencies]
+ac-text-runtime-shim = { path = "../../../ac-core/runtime/text/shim" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
