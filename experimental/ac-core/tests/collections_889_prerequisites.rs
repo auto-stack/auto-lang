@@ -29,6 +29,11 @@ fn optional_variant_list_control() {
 }
 
 #[test]
+fn owned_text_clone_uses_the_existing_shared_expression() {
+    accepted("fn main() int { let a Str = \"中\"\n let b = a.clone()\n return a.len() * 40 + b.len() * 2 }");
+}
+
+#[test]
 fn recursive_variant_graphs_reject_before_emission() {
     for src in [
         "enum A { Next(A) }\nfn main() int { return 0 }",

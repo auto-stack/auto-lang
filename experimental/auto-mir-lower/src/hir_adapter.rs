@@ -829,14 +829,35 @@ fn collections_fn_sig_for_def(
     let mut memo = BTreeMap::new();
     let mut visiting = std::collections::BTreeSet::new();
     let mut params = Vec::with_capacity(sig.params.len());
-    for p in &sig.params {
-        params.push(collections_type_idx_of(
-            p,
-            m,
-            out,
-            &mut memo,
-            &mut visiting,
-        )?);
+    let modes: Vec<_> = m
+        .defs
+        .get(def_index as usize)
+        .and_then(|d| match d.kind {
+            hir::DefKind::Function { body, .. } => m.bodies.get(body.0 as usize),
+            _ => None,
+        })
+        .map(|body| {
+            body.locals
+                .iter()
+                .filter(|local| local.role == hir::LocalRole::Param)
+                .map(|local| local.param_mode)
+                .collect()
+        })
+        .unwrap_or_default();
+    for (index, p) in sig.params.iter().enumerate() {
+        let ty = collections_type_idx_of(p, m, out, &mut memo, &mut visiting)?;
+        // Match lower_function's existing param slot mapping. A plain
+        // record parameter borrows, on both whole and per-function entries.
+        let ty = match (
+            modes.get(index).copied().unwrap_or(hir::ParamMode::View),
+            out.types.get(ty as usize),
+        ) {
+            (hir::ParamMode::View, Some(MirType::Record(record))) => {
+                out.intern_type(MirType::RecordView(record.clone()))
+            }
+            _ => ty,
+        };
+        params.push(ty);
     }
     let result = collections_type_idx_of(&sig.result, m, out, &mut memo, &mut visiting)?;
     let sig_ty = out.intern_type(MirType::Fn(FnSig { params, result }));
@@ -3118,7 +3139,11 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
-            hir::ExprKind::TextClone { operand } if self.owned && !self.collections() => {
+            // PLAN-889: the collections source descriptor also exposes the
+            // already-defined explicit owned-Str clone. Keep one mapping.
+            hir::ExprKind::TextClone { operand }
+                if self.owned && (!self.collections() || self.out.is_collections_profile()) =>
+            {
                 // Clone of an OWNED Str re-buffers; clone of a view is the
                 // owned copy of its range (770 AP-2 over both receivers).
                 let src_ty = self.expr_ty(*operand)?;
