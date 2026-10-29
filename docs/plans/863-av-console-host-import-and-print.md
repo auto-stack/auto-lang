@@ -15,7 +15,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 2
+current_step: 3
 total_steps: 8
 ---
 
@@ -153,7 +153,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 |---|---|---|---|---|---|
 | T-01 | work | D862 | 核实 ABC/MIR import、AV 派发、test-case 父侧路径；`attachments/863/work/baseline.md`，提交 b1d8b68b2 | AC-01/02 | [x] |
 | T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
-| T-03 | work | T-02 | 源码前端 print/eprint + 诊断；V-01 | AC-01 | [ ] |
+| T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
 | T-04 | work | T-03 | ABC host-import section + verifier + AV 派发 + provider；V-02/03/04 | AC-02/03/04 | [ ] |
 | T-05 | work | T-04 | 观察轴 + 语料/oracle/脚本；V-05，提交代码/证据 | AC-05 | [ ] |
 | T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
@@ -173,6 +173,16 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - T-02 采用 §10 默认项：stdout/stderr 同批、print/eprint 为新 profile 保留字；每调用 64KiB（含 LF）、整次运行双流合计 1MiB（含 LF），不超过父侧既有每流 1MiB 边界。完整合同在 worktree 的 `docs/plans/attachments/863/work/host-console-contract.md`，随 b1d8b68b2 可恢复。尚未执行语义测试；AC-01..08 均未宣称通过；T-03..08 未完成。
 
 2026-10-30 goal round 1 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 1 | from: work | to: work | status: executing | outcome: pass（仅 T-01/T-02 检查点；不是 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: b1d8b68b2e044bdc0e6f4b989da7494c8ef3437a | next: work T-03`。合同 SHA256 `f2c791a6e330c3d6eccad1eba2b02fec615282963dc0947a6965dc87718714ec`；基线摘要 SHA256 `559dfe119b4d8abbfa4ab891c9e42a0e635eaefa894953743308b72972d54d0d`（路径均为上述 worktree 下 `docs/plans/attachments/863/work/`）。`git status --short` 在实施树为空；提交钩子通过。未执行构建/测试，未进入 review/merge，目标保持 active。
+
+2026-10-30 work T-03：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: progress（非 work-complete） | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: eda05a86f | code_commit: b8f133cfa | checkpoint_commit: 2f309713b942c942983b443c8775cbbc6ed12cff | task_ids: T-03 | blockers: none | next_responsible_role: work T-04`。
+
+- 实现真实源码→独立 HIR 域→受检声明数据流：`SourceProfile::HostConsole` / `HirDomain::HostConsole`，descriptor `host-console.atom`，`compile_host_console_source` / `verify_host_console`；typed intrinsic 携带精确签名、稳定符号、observable effect 与 requires，lowering 后续必须转为独立 host reference，尚未启用旧 import 执行。
+- `print/eprint` 一位置参数；i32/bool/str/Str/char；Str 转只读视图；Unit 不可存储/转整型；保留名绑定拒绝。输出效果语句不被误判成脚本尾值。text ownership/resource walk 复用现有实现但保持新域身份；其它 profile 保留既有身份与接受面。
+- 定向检查：ac-core `host_console_863` **8/8**；`entry_unit_862` **26/26**；`scalar_source` **7/7**；`text_source` **10/10**；`source_frontend` **14/14**；`source_hir` **12/12**；独立用例总数 **77**（最终 entry/console 重跑 34 例不重复计数），0 failed/ignored。覆盖 HIR 重绑定/符号签名变异/缺能力声明/跨域拒绝及 dead-source 参数错/Unit 不可转换等反例。ac-core 类型检查无告警；fmt/diff-check 通过。
+- probe 全 tests 类型检查首次发现 `function_incremental_828_contract` 缺 HostConsole 与预存 Closures match arms；已分别接真实 verifier，随后该受影响测试与 probe lib 类型检查 exit 0。未改其它 881/821/owned_session 文件，既有告警已在摘要逐项登记；review 时核对。
+- 本地摘要（已提交的 md）`D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/work/frontend-summary.md`，SHA256 `d526fbfb30bc614b3534e1ee81c351b08bb98bf944701634d07c945c0d4a6023`。AC-01 的精确运行输出仍待 T-04；AC-02..05 实现未完成。未运行整档 t/tv/tf/docs_gen，未送审或合入。
+
+2026-10-30 goal round 2 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 2 | from: work | to: work | status: executing | outcome: pass（仅 T-03 源码/HIR 检查点；非 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 2f309713b942c942983b443c8775cbbc6ed12cff | next: work T-04`。上一轮为 progress（T-01/T-02 文档提交）；本轮为 progress（源码/HIR 实现提交与 77 项定向测试证据）。实施树 clean，授权不变，无待用户决策。
 
 ## 10. 待澄清事项
 
