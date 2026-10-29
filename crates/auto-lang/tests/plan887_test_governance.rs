@@ -12,9 +12,18 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const SUITE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/cases/governance-887/first-wave.suite.ad");
-const M1_BASE_SUITE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/cases/ace-m1/ace-m1-base.suite.ad");
-const M1_ENTRY_SUITE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad");
+const SUITE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test/cases/governance-887/first-wave.suite.ad"
+);
+const M1_BASE_SUITE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test/cases/ace-m1/ace-m1-base.suite.ad"
+);
+const M1_ENTRY_SUITE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad"
+);
 const D_SOURCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test/vm/01_basics");
 // pilot-recorded sha256 of the three D-group sources (identity must not drift).
 const SHA_ARITH: &str = "cb898749d76e51fdaf6c6636920ccdb4f415fc1cffd1e2497636b38cc2469807";
@@ -67,7 +76,10 @@ fn first_wave_suite_admits_and_lists() {
 /// (admission forbids cross-root includes, so identity is kept in place).
 #[test]
 fn reuse_obligations_run_green_via_original_suites() {
-    for (name, suite) in [("ace-m1-base", M1_BASE_SUITE), ("entry-862", M1_ENTRY_SUITE)] {
+    for (name, suite) in [
+        ("ace-m1-base", M1_BASE_SUITE),
+        ("entry-862", M1_ENTRY_SUITE),
+    ] {
         let out = temp_dir(&format!("reuse-{name}"));
         let run = auto_case(&["run", "--suite", suite, "--out", out.to_str().unwrap()]);
         assert!(
@@ -85,8 +97,13 @@ fn first_wave_suite_runs_green_with_d_values() {
     let out = temp_dir("run");
     let json_out = out.join("report.json");
     let run = auto_case(&[
-        "run", "--suite", SUITE, "--out", out.to_str().unwrap(),
-        "--json-out", json_out.to_str().unwrap(),
+        "run",
+        "--suite",
+        SUITE,
+        "--out",
+        out.to_str().unwrap(),
+        "--json-out",
+        json_out.to_str().unwrap(),
     ]);
     assert!(
         run.status.success(),
@@ -95,12 +112,14 @@ fn first_wave_suite_runs_green_with_d_values() {
         String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr)
     );
-    let report: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&json_out).expect("report.json"),
-    )
-    .expect("report json");
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_out).expect("report.json"))
+            .expect("report json");
     let results = report["results"].as_array().expect("results array");
-    assert!(!results.is_empty(), "zero dynamic checks is a contract error");
+    assert!(
+        !results.is_empty(),
+        "zero dynamic checks is a contract error"
+    );
     for (case, check, expect) in [
         ("gov.d.arithmetic", "av", 3),
         ("gov.d.arithmetic", "av-scalar-control", 3),
@@ -114,11 +133,15 @@ fn first_wave_suite_runs_green_with_d_values() {
             .find(|r| r["case"] == case && r["check"] == check)
             .unwrap_or_else(|| panic!("missing result for {case}/{check}"));
         assert_eq!(
-            entry["status"], "PASS",
+            entry["status"],
+            "PASS",
             "{case}/{check} not pass: {}",
             serde_json::to_string(entry).unwrap()
         );
-        assert_eq!(entry["mismatches"].as_array().map(|a| a.len()).unwrap_or(0), 0);
+        assert_eq!(
+            entry["mismatches"].as_array().map(|a| a.len()).unwrap_or(0),
+            0
+        );
     }
     // identity axes: source sha256 bound in the receipt (parent-side oracle
     // never shipped to the worker — adapter contract; verified by protocol
@@ -159,10 +182,19 @@ fn v08_wrong_oracle_fails_legal_control_passes() {
     .unwrap();
     let out = temp_dir("v08-out");
     let run = auto_case(&[
-        "run", "--suite", suite.to_str().unwrap(), "--out", out.to_str().unwrap(),
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
     ]);
-    assert_eq!(run.status.code(), Some(1), "wrong oracle must FAIL (exit 1):\nstdout:\n{}\nstderr:\n{}",
-               String::from_utf8_lossy(&run.stdout), String::from_utf8_lossy(&run.stderr));
+    assert_eq!(
+        run.status.code(),
+        Some(1),
+        "wrong oracle must FAIL (exit 1):\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
     // legal control on the same bytes passes.
     let ok_case = dir.join("ok.case.ad");
     std::fs::write(
@@ -188,15 +220,27 @@ fn v08_wrong_oracle_fails_legal_control_passes() {
     .unwrap();
     let ok_out = temp_dir("v08-ok-out");
     let ok = auto_case(&[
-        "run", "--suite", ok_suite.to_str().unwrap(), "--out", ok_out.to_str().unwrap(),
+        "run",
+        "--suite",
+        ok_suite.to_str().unwrap(),
+        "--out",
+        ok_out.to_str().unwrap(),
     ]);
-    assert!(ok.status.success(), "legal control must pass:\n{}", String::from_utf8_lossy(&ok.stdout));
+    assert!(
+        ok.status.success(),
+        "legal control must pass:\n{}",
+        String::from_utf8_lossy(&ok.stdout)
+    );
 }
 
 #[test]
 fn v06_stale_rejects_changed_source_identity() {
     let dir = temp_dir("v06");
-    std::fs::write(dir.join("u.wrapper.at"), b"fn main() int { return -2 * 3 }\n").unwrap();
+    std::fs::write(
+        dir.join("u.wrapper.at"),
+        b"fn main() int { return -2 * 3 }\n",
+    )
+    .unwrap();
     let case = dir.join("c.case.ad");
     std::fs::write(
         &case,
@@ -222,15 +266,34 @@ fn v06_stale_rejects_changed_source_identity() {
     let out = temp_dir("v06-out");
     let report = temp_dir("v06-report").join("report.json");
     let run1 = auto_case(&[
-        "run", "--suite", suite.to_str().unwrap(), "--out", out.to_str().unwrap(),
-        "--json-out", report.to_str().unwrap(),
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--json-out",
+        report.to_str().unwrap(),
     ]);
-    assert!(run1.status.success(), "warm run must pass:\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&run1.stdout), String::from_utf8_lossy(&run1.stderr));
+    assert!(
+        run1.status.success(),
+        "warm run must pass:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&run1.stdout),
+        String::from_utf8_lossy(&run1.stderr)
+    );
     // Change the source identity (same semantic value -6, different bytes):
     // the old report must be rejected as stale.
-    std::fs::write(dir.join("u.wrapper.at"), b"fn main() int { return -(2 * 3) }\n").unwrap();
-    let stale = auto_case(&["stale", "--suite", suite.to_str().unwrap(), "--report", report.to_str().unwrap()]);
+    std::fs::write(
+        dir.join("u.wrapper.at"),
+        b"fn main() int { return -(2 * 3) }\n",
+    )
+    .unwrap();
+    let stale = auto_case(&[
+        "stale",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--report",
+        report.to_str().unwrap(),
+    ]);
     assert!(
         !stale.status.success(),
         "stale report must be rejected after source identity change:\n{}",
@@ -240,9 +303,16 @@ fn v06_stale_rejects_changed_source_identity() {
     // cached pass): exit stays 0 with the same oracle.
     let out2 = temp_dir("v06-out2");
     let run2 = auto_case(&[
-        "run", "--suite", suite.to_str().unwrap(), "--out", out2.to_str().unwrap(),
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        out2.to_str().unwrap(),
     ]);
-    assert!(run2.status.success(), "re-run after identity change must re-judge and pass");
+    assert!(
+        run2.status.success(),
+        "re-run after identity change must re-judge and pass"
+    );
 }
 
 #[test]
@@ -257,5 +327,7 @@ fn sources_byte_identical_to_pilot_records() {
     // sha256 values are verified by scripts/test-governance (see inventory).
     let _ = (SHA_ARITH, SHA_UNARY, SHA_GROUP);
     // sources must not be wrapped: raw bytes are the full source files.
-    assert!(Path::new(D_SOURCE).join("002_arithmetic/arithmetic.at").exists());
+    assert!(Path::new(D_SOURCE)
+        .join("002_arithmetic/arithmetic.at")
+        .exists());
 }
