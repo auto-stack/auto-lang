@@ -20,6 +20,15 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 | json | JSON 读写（serde_json） | active |
 | http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)）+ **文件传输共享核心** `http::transfer`（增量/staging 原子提交/严格续传/可取消；PLAN-727，契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)）；legacy download/upload/download_resume 已迁移共享核心（ ureq 依赖退役） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
+
+## str 模块契约（PLAN-885 固化）
+
+`str_find(s, needle) -> i64` 与 `str_find_from(s, needle, start) -> i64`（`start` 为字符偏移）：
+
+- **返回字符偏移**（非字节）：a2r 发射的 `.slice(j, j+1)` 为 `chars().take(j+1).skip(j)`（字符语义），故 `find` 必须返回字符偏移才能与 slice 配套（UTF-8 多字节下字节偏移错位，真实消费者 JSON/字段提取曾读错字符）。VM 轨 find/slice 均为字节语义，双轨各自自洽，不以字节数跨轨互换。
+- **返回类型 `i64`**：`.at int` 在 a2r 中映射为 `i64`（Plan 399 Phase 11.1），历史 `i32` 返回使生成代码 `let hit: i64 = str_find(..)` 触发 E0308。
+- **签名双参/三参**：单参 `s.find(needle)` → `str_find`，带 start 的 `s.find(needle, start)` → `str_find_from`；内嵌 facade 与独立 crate 签名一致（此前内嵌 3 参而发射 2 参 → E0061）。
+- 调用方不得把返回值与 `String::len()`（字节）混用于同一索引运算（字符偏移 + 字节长度会错位）。
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
 
