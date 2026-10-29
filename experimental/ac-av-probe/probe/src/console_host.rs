@@ -223,6 +223,11 @@ impl ConsoleProgram {
             || loaded
                 .module()
                 .funcs
+                .iter()
+                .any(|f| f.source_snapshot != self.reference.snapshot)
+            || loaded
+                .module()
+                .funcs
                 .get(loaded.module().entry as usize)
                 .map(|f| f.name.as_str())
                 != Some(self.reference.entry.as_str())
@@ -230,7 +235,7 @@ impl ConsoleProgram {
             return Err(diag(
                 "admission",
                 "host.identity",
-                "console profile/requirements/entry mismatch",
+                "console profile/requirements/entry/source snapshot mismatch",
             ));
         }
         Ok(loaded)
@@ -281,4 +286,111 @@ pub fn restore(root: &Path, reference: &ConsoleArtifactRef) -> Result<ConsolePro
     };
     program.load()?;
     Ok(program)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn av_console_863_snapshot_identity_checked_at_all_artifact_boundaries() {
+        let p = compile(
+            "fn helper() int { return 2 }\nfn main() void { print(1) }",
+            "d_main",
+        )
+        .unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "console-863-snapshot-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let grants = vec!["console.stdout".into()];
+        // Mutating either the expected source fact or any function's encoded
+        // provenance must fail, even when all wire/envelope hashes are coherent.
+        for mutation in 0..=p.load().unwrap().module().funcs.len() {
+            let mut reference = p.reference.clone();
+            let mut wire = p.wire.clone();
+            if mutation == 0 {
+                reference.snapshot ^= 1;
+            } else {
+                let mut m = p.load().unwrap().module().clone();
+                m.funcs[mutation - 1].source_snapshot ^= 1;
+                wire = auto_av_core::encode_abc(&m).unwrap().to_flat();
+                reference.wire_fp = format!("{:016x}", fnv1a64(&wire));
+            }
+            let invalid = ConsoleProgram { reference, wire };
+            assert_eq!(invalid.load().unwrap_err().code, "host.identity");
+            assert_eq!(
+                invalid.persist(&root, "invalid").unwrap_err().code,
+                "host.identity"
+            );
+            let mut cap = ConsoleCapture::default();
+            assert_eq!(
+                invalid
+                    .run(
+                        &grants,
+                        &ExecLimits::default(),
+                        &CancelFlag::new(false),
+                        &mut cap
+                    )
+                    .unwrap_err()
+                    .code,
+                "host.identity"
+            );
+            assert_eq!(cap.dispatches, 0);
+            assert!(cap.stdout.is_empty() && cap.stderr.is_empty());
+            // Bypass the writer to independently exercise restore's payload check.
+            ManagedStore::open(&root)
+                .unwrap()
+                .put_artifact(PutRequest {
+                    layer: CONSOLE_ABC_LAYER.id,
+                    key: key(&invalid.reference),
+                    kind: ChunkKind::LayoutData,
+                    payload: envelope_wrap(&invalid.wire, &envelope(&invalid.reference)),
+                    edges: vec![],
+                    project: Some("forged".into()),
+                })
+                .unwrap();
+            assert_eq!(
+                restore(&root, &invalid.reference).err().unwrap().code,
+                "host.identity"
+            );
+        }
+        p.persist(&root, "valid").unwrap();
+        let restored = restore(&root, &p.reference).unwrap();
+        let mut cap = ConsoleCapture::default();
+        assert!(matches!(
+            restored
+                .run(
+                    &grants,
+                    &ExecLimits::default(),
+                    &CancelFlag::new(false),
+                    &mut cap
+                )
+                .unwrap()
+                .0,
+            ExecOutcome::Success {
+                value: Value::Unit,
+                ..
+            }
+        ));
+        assert_eq!(cap.stdout, b"1\n");
+        assert_eq!(
+            restored
+                .run(
+                    &[],
+                    &ExecLimits::default(),
+                    &CancelFlag::new(false),
+                    &mut ConsoleCapture::default()
+                )
+                .unwrap_err()
+                .code,
+            "host.unauthorized"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

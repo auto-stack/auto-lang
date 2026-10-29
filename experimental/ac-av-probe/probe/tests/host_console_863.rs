@@ -20,6 +20,103 @@ fn av_console_863_entry_selection_cannot_bypass_main_policy() {
 }
 
 #[test]
+fn av_console_863_owned_front_door_enforces_console_entry_only() {
+    let src = "fn helper() int { print(99); return 11 }\nfn main() int { print(7); return 42 }";
+    let c = auto_ac_prototype::source::compile_host_console_source(src, "entry.at", &[]).unwrap();
+    assert_eq!(
+        auto_mir_lower::lower_checked_owned(&c.checked, "d_helper", 1)
+            .unwrap_err()
+            .code(),
+        "lower.entry"
+    );
+    for src in [src, "print(7)", "fn main() void { print(7); 42 }"] {
+        let c =
+            auto_ac_prototype::source::compile_host_console_source(src, "entry.at", &[]).unwrap();
+        let m = auto_mir_lower::lower_checked_owned(&c.checked, "d_main", 1).unwrap();
+        let loaded = auto_av_core::verify_abc_bytes(
+            &auto_av_core::encode_abc(&m).unwrap().to_flat(),
+            &m.owner,
+        )
+        .unwrap();
+        let mut cap = ConsoleCapture::default();
+        let (out, _) = auto_av_core::av::execute_console(
+            &loaded,
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &grants(),
+            &mut cap,
+        )
+        .unwrap();
+        assert!(matches!(out, ExecOutcome::Success { .. }));
+        assert_eq!(cap.stdout, b"7\n");
+    }
+    // The inherited text/owned API still lets its callers choose a helper.
+    let c = auto_ac_prototype::source::compile_text_source(
+        "fn helper() int { return 11 }\nfn main() int { return 42 }",
+        "old.at",
+        &[],
+    )
+    .unwrap();
+    let m = auto_mir_lower::lower_checked_owned(&c.checked, "d_helper", 1).unwrap();
+    let loaded =
+        auto_av_core::verify_abc_bytes(&auto_av_core::encode_abc(&m).unwrap().to_flat(), &m.owner)
+            .unwrap();
+    assert!(matches!(
+        auto_av_core::av::execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false)).0,
+        ExecOutcome::Success {
+            value: Value::I32(11),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn av_console_863_retained_capture_resource_kinds_and_precedence() {
+    use auto_av_core::{contract::ResourceKind, host::MAX_RUN_BYTES};
+    let p = compile("print(1)", "d_main").unwrap();
+    for (bytes, memory, expected) in [
+        (3, 2, Some(ResourceKind::SlotBytes)),
+        (
+            MAX_RUN_BYTES + 1,
+            MAX_RUN_BYTES * 2,
+            Some(ResourceKind::ConsoleOutput),
+        ),
+        (MAX_RUN_BYTES + 1, 2, Some(ResourceKind::ConsoleOutput)),
+        (3, ExecLimits::default().max_slot_bytes, None),
+    ] {
+        let mut cap = ConsoleCapture {
+            stdout: vec![b'x'; bytes],
+            ..Default::default()
+        };
+        let mut limits = ExecLimits::default();
+        limits.max_slot_bytes = memory;
+        let (out, trace) = p
+            .run(&grants(), &limits, &CancelFlag::new(false), &mut cap)
+            .unwrap();
+        if let Some(kind) = expected {
+            assert!(
+                matches!(out, ExecOutcome::Resource { kind: actual, .. } if actual == kind),
+                "{out:?}, expected {kind:?}"
+            );
+            assert_eq!(trace.root_frame_commits, 0);
+            assert_eq!(cap.dispatches, 0);
+            assert_eq!(cap.stdout, vec![b'x'; bytes]);
+        } else {
+            assert!(matches!(
+                out,
+                ExecOutcome::Success {
+                    value: Value::Unit,
+                    ..
+                }
+            ));
+            assert_eq!(cap.stdout, b"xxx1\n");
+            assert_eq!(cap.dispatches, 1);
+        }
+        assert!(cap.stderr.is_empty());
+    }
+}
+
+#[test]
 fn av_console_863_exact_source_bytes_and_result() {
     let program = compile("fn main() int {\n print(-2147483648)\n print(-7)\n print(0)\n print(true)\n eprint(false)\n print(\"你好\\0\\n\")\n eprint('界')\n return 7\n}\n", "d_main").unwrap();
     assert_eq!(&program.wire()[..8], b"AVHC\x01\x00\x08\x00");

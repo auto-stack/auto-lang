@@ -848,6 +848,14 @@ pub fn lower_checked_owned(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
+    // This public shared entry also admits console HIR. Keep its source-entry
+    // policy here so callers cannot bypass it via the owned/text front door.
+    if checked.domain() == hir::HirDomain::HostConsole && entry_name != "d_main" {
+        return Err(AdapterError::inv(
+            "lower.entry",
+            "console source entry is main; selecting another function is not allowed".into(),
+        ));
+    }
     match checked.domain() {
         hir::HirDomain::TextRecord | hir::HirDomain::Text | hir::HirDomain::HostConsole => {}
         other => {

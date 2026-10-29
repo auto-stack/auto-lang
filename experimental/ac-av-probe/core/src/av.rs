@@ -321,11 +321,21 @@ fn execute_module_impl_with_host(
         None
     };
     let retained = host.as_ref().map_or(0, |h| h.retained_bytes());
-    if retained > crate::host::MAX_RUN_BYTES || retained > limits.max_slot_bytes {
+    // Output quota takes precedence if both retained-byte limits are exceeded.
+    if retained > crate::host::MAX_RUN_BYTES {
         return (
             ExecOutcome::Resource {
                 kind: ResourceKind::ConsoleOutput,
                 message: "existing provider capture exceeds budget".into(),
+            },
+            ExecTrace::default(),
+        );
+    }
+    if retained > limits.max_slot_bytes {
+        return (
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: "existing provider capture exceeds execution memory budget".into(),
             },
             ExecTrace::default(),
         );
