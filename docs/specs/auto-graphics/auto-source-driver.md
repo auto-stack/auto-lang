@@ -258,12 +258,22 @@ assemblies and outputs stay byte-identical; unknown behavior/6 is still
 rejected): `autographics.objects2d/1` (number 105, profile 16) and
 `autographics.objects3d/1` (number 106, profile 17), selected by
 `--behavior-api objects2d|objects3d` with the public `--open/--behavior`
-root entry. Source identity moves up one generation to `plan001-identity.json`
-(1401 hashes, `verify_plan001.py --controls`); the SDK pin `7b987ca8` and the
-frozen snapshot cold prepare are unchanged, and the fresh own-SDK consumer
-export (`package_consumer.py`) selects the new identity first. Samples
-`samples/runtime-objects/{two,three}` (main + parameter-edited twins) are the
-public root-entry inputs. See [runtime-objects.md](runtime-objects.md).
+root entry, and — since auto-ui PLAN-002 (numbers 107/108, profiles 18/19,
+selected by `--behavior-api triggers2d|triggers3d`) —
+`autographics.triggers2d/1` and `autographics.triggers3d/1` over the
+objects compositions; see [runtime-triggers-and-rounds.md](runtime-triggers-and-rounds.md).
+Source identity moves up one generation to `plan001-identity.json`
+(1401 hashes, `verify_plan001.py --controls`) and — since PLAN-002 — to
+`plan002-identity.json` (1415 hashes, `verify_plan002.py --controls`,
+selected first by `tools/verify_source.py` and `tools/package_consumer.py`;
+the plan001/PLAN-879 generations remain as historical mappings gated behind
+it); the SDK pin `7b987ca8` and the frozen snapshot cold prepare are
+unchanged, and the fresh own-SDK consumer export (`package_consumer.py`)
+selects the newest identity first. Samples `samples/runtime-objects/
+{two,three}` and `samples/runtime-triggers/{two,three}` (main +
+parameter-edited twins) are the public root-entry inputs. See
+[runtime-objects.md](runtime-objects.md) and
+[runtime-triggers-and-rounds.md](runtime-triggers-and-rounds.md).
 
 Provenance: auto-ui PLAN-001 (r4), archived at
 `auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md`;

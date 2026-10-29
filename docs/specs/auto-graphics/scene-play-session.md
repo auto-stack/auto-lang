@@ -165,3 +165,24 @@ Provenance: auto-ui PLAN-001 (r4), archived at
 `auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md`;
 delivery `537122b` on auto-ui master; independent final review pass bound to
 that commit.
+
+## PLAN-002 increment: trigger events and the audited round restart ride the same transaction
+
+With a triggers profile the admitted rounds block (bindings, events, the
+restart marker) rides the same Play frame as the character, camera and
+instances: the fixed 144-value block is admitted against an independent
+geometry/phase recomputation and the binding-generation watermark in the
+same `admit`, prepared, accepted and published as one transaction; a
+rejected candidate discards the whole tick and keeps the last-good under
+the unchanged Fault/VM-close rules. The accepted restart marker swaps in a
+fresh Run/VM on the same scheduling stack from the same accepted bytes —
+new run id, tick 0, first generations — while the editing `play_restore`
+and the last-good presentation stay untouched: a failed new round keeps
+the old presentation under the named `round restart:` fault, Paused/step
+ticks never process a request, and Stop still recovers the editing view.
+See [runtime-triggers-and-rounds.md](runtime-triggers-and-rounds.md).
+
+Provenance: auto-ui PLAN-002 (r5), archived at
+`auto-ui/docs/plans/archived/002-autographics-trigger-events-and-round-restart.md`;
+delivery `0ee5ad0` on auto-ui master; independent final review pass bound to
+`bfcc0c8` (the rebased delivery, range-diff fully equal).
