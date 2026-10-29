@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-885
-status: drafting
+status: executing
 feature_name: blog-generated-rust-backend-parity
 author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 7
 depends_on: []
 supersedes_spec_components: ["docs/specs/auto-api-gen/project.md"]
@@ -91,17 +91,27 @@ T-02将每个实际根因约简为编译可执行fixture；失败输入不能只
 
 ## 8. 执行步骤
 
-- [ ] T-01（owner_stage=work；依赖无；AC-01）：在专用实现树核版本，用完整Blog源复核历史错误；输出baseline-and-root-causes.md并冻结适用输入/资源边界。
-- [ ] T-02（owner_stage=work；依赖T-01；AC-01..03）：建立实际根因的最小编译/运行fixture、无误重写/合法兄弟控制和明确错误oracle，补精确复现命令。
-- [ ] T-03（owner_stage=work；依赖T-02；AC-02/03）：只修确认的生成器/runtime/转译问题；若当前不重现则提交原因/正控证据，无需虚构代码补丁；越owner则登记最小前置。
-- [ ] T-04（owner_stage=work；依赖T-03；AC-02/03）：受影响定向检查及L-01..03；不得用生成文本assert替代实际编译执行。
-- [ ] T-05（owner_stage=work；依赖T-04；AC-04）：完整Blog消费者L-04闭环并准备SD-01，提交实现/摘要，输出可消费回执，转execution_done；原生UI不在本计划。
+- [x] T-01（owner_stage=work；依赖无；AC-01）：在专用实现树核版本，用完整Blog源复核历史错误；输出baseline-and-root-causes.md并冻结适用输入/资源边界。证据：[docs/plans/attachments/885/baseline-and-root-causes.md](attachments/885/baseline-and-root-causes.md)——固定 auto-lang 69d90c52/CLI C049ABE/blog 48e0c83；`auto service --server rust` 冷生成成功、`cargo build` exit 101 复现 001 同款 59 errors，归组 G1 time路径×7（发射 call_module_methods:1205/1219 + qualify_a2r_std:683 改写 auto_lang_core::a2r_std:: 而内嵌 facade 无 time）、G2 字符串/借用×29（&str/String、String比较、i64.as_str）、G3 int宽度/容器/签名×18（i64局部 vs i32返回、Option未展开、call_dot find 2参 vs a2r_std 3参，call_bina 已补 `, 0` 两路径不一致）、G4 模块类型路径×4（types:: vs works::/drafts::）。原始日志 attachments/885/rust-cold-build-001.log（不入库）。
+- [x] T-02（owner_stage=work；依赖T-01；AC-01..03）：建立实际根因的最小编译/运行fixture、无误重写/合法兄弟控制和明确错误oracle，补精确复现命令。证据：fixture `crates/auto-api-gen/tests/fixtures/885-back/{pac.at,src/back/{api,works}.at}`（约简 back 模块：time.now_sec/now_ms、find、parse、join_path(Env.get)、write_confirmed、字符比较、模块类型包装）。复现命令：`auto service --server rust -B 17849 -d <fixture>`（生成，worktree 依赖树含 auto-ui lang-885-dep/auto-down lang-885-dep 兄弟）→ `cargo build --manifest-path <worktree>/examples/rust-workspace/885-back-back/Cargo.toml` → EXIT=101，4 errors：E0433 time（works.rs:22，G1）、E0599 as_int on &str×2（works.rs:55/58，G2）、E0308 parse Result（works.rs:68，G3）。合法兄弟控制复用既有 `test_qualify_a2r_std_code_regions_only`（api_gen.rs:6444，字符串/注释/自定义模块/幂等）与 `test_handler_body_string_survival_and_compile_oracle`（6120）；错误 oracle=实际 cargo build exit 非零＋按 code 分组，不以生成文本 assert 替代编译。原始日志 attachments/885/fixture/fixture-build-001.log（不入库）。
+- [x] T-03（owner_stage=work；依赖T-02；AC-02/03）：只修确认的生成器/runtime/转译问题；若当前不重现则提交原因/正控证据，无需虚构代码补丁；越owner则登记最小前置。证据：提交 `f5e2d1a90`（worktree plan-885-dev）。四组根因修复：
+  - **G1 time**（E0433×7→0）：内嵌 facade `auto-lang-core/src/a2r_std.rs` 加 `pub use ::a2r_std::time;`——生成代码经 qualify 改写为 `auto_lang_core::a2r_std::time::*`，独立 crate 已有 epoch i64 实现。
+  - **G2 字符串/借用**（E0308&str/String×17、E0277×10、E0599×2→0）：`call_generic_fallback.rs` 的 `.str()` 分支扩展覆盖 `.to_string()`（按接收者类型发射，i64 → `format!("{}", x).as_str()`，避免 fix_string_str_mismatches 折叠成 `i64.as_str()`）；`expr_emit.rs` 新增 `bina_str_literal_borrow`（`c >= "0"` → `c.as_str() >= "0"`）；`api_gen.rs` back 模块转译传入 `source_dir`（back 目录），`project_fixups.rs register_import_signatures` 优先从 source_dir 解析 `use works: …` 导入的函数签名/字段类型；`ty.rs` 的 Env/env 别名归一化 + `"get"` 分支识别 `Env.get` 返回 StrOwned。
+  - **G3 int宽度/容器/签名**（E0308 i64/i32×6、i64/Option×3、E0061×9→0）：`a2r-std/src/str.rs` 与内嵌 facade 的 `str_find`/`str_find_from` 统一为 2参/3参签名（独立 crate 权威）且返回 `i64`（`.at int → i64`）；`call_bina_methods.rs` find 发射对齐（单参 str_find / 多参 str_find_from）；`call_dot_methods.rs` `.parse::<i64>().ok()` → `.unwrap_or(0)`。str_find 返回**字符偏移**（a2r slice 发射为 chars() 字符语义，VM 为字节语义——中文下字节偏移错位，见 T-05 运行验证）。
+  - **G4 模块类型路径**（E0308 types:: vs works::/drafts::×4→0）：`api_gen.rs promote_api_types_in_companion` 把伴生模块中与 api 同形同名的 struct 提升为 `pub use crate::types::X;`（字段一致才替换，吞掉上方 derive/doc 属性行避免 E0774）。
+- [x] T-04（owner_stage=work；依赖T-03；AC-02/03）：受影响定向检查及L-01..03；不得用生成文本assert替代实际编译执行。证据：`cargo test -p auto-api-gen` 65 passed / 1 failed（`test_plan734_tauri_fixture_matches_generator` 为主检出既有红——tauri generator 格式漂移 `echo,` vs `echo,\n`，主检出 87dd2b6ad 同样失败，与本次修改无关，不在本计划触面）；`cargo test -p auto-lang-core trans::rust` ok。worktree 全量 `--lib` 12 failed 与主检出基线 12 failed 逐项一致（http_file_service/http_upload_service/http_server 定时/断连类 + stdlib_assembly 2项，均为既有红，本计划生成链触面外，按 885 §5 原范围归因不统称跳过——本计划不声称关闭它们）。真实 Blog 消费者 L-01/L-04：worktree 生成器（`AUTO_LANG_ROOT` 指向 worktree + 临时驱动 gen-driver）冷生成完整 Blog → `cargo build` **exit 0**（59 errors→0）；运行 exe → HTTP 全链路：POST /api/drafts 中文/引号/换行创建（rev=1，created_at=1793266510 有效 epoch）、GET /api/drafts 精确回读（title/rev 与 create 一致）、PUT 条件 rev 保存（rev=2）、陈旧 rev=1 写冲突拒绝（conflict=true）、GET 打开回读、重启后数据保留。E0433/E0061/E0277/E0599/全部 E0308 关闭。原始运行日志 attachments/885/back-run-*.log（不入库）。
+- [x] T-05（owner_stage=work；依赖T-04；AC-04）：完整Blog消费者L-04闭环并准备SD-01，提交实现/摘要，输出可消费回执，转execution_done；原生UI不在本计划。证据：提交 `f5e2d1a90`；SD-01 增量已在本计划 §5 表格（docs/specs/auto-api-gen/project.md 概括adapter职责 → 明确经实测支持的Rust服务runtime路径/参数形状及消费者验证边界）。**可消费回执（给 BLOG-004 T-02）**：auto-lang worktree 分支 `plan-885-dev`，实现提交 `f5e2d1a9053a2a3c0d8a252486c853a83209fd0e`，base `9352685a5`（master）；修复面=crates/{a2r-std,auto-api-gen,auto-lang-core}（trans/rust 发射器、内嵌 facade、生成器后处理）；Blog 用 worktree 生成器冷生成 → cargo build exit 0 → HTTP 草稿创建/列表/保存/冲突/重启全链路通过；runtime 层（time 导出、str_find 签名/字符偏移、parse unwrap）在独立 a2r-std 与内嵌 facade 双端同步。CLI 需以本 worktree auto-lang 重建（auto-man 链接主检出；重建后 C049ABE hash 变化，BLOG-004 消费新 CLI）——属 auto-man 构建动作，不在语言仓伪造第二份编排器。
 - [ ] T-06（owner_stage=review；依赖T-05；AC-05）：同一实现树暂停写入，最终review根因/兄弟控制及SD-01，不通过则回work。
 - [ ] T-07（owner_stage=merge；依赖T-06；AC-06）：统一门、交付与Spec/ledger/归档/guard清理后向BLOG-004登记精确依赖版本，不仅写“框架已修”。
 
 ## 9. 复审记录
 
 stage: new | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（首个有界根因调查就绪，非修复完成） | next: work/T-01（另行执行）。7项未勾选，本轮无Rust改动、构建或运行验收。
+
+stage: work | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（T-01完成；T-02起进入修复链） | worktree_path: D:/autostack/.wt/lang-885/auto-lang | branch: plan-885-dev | base_commit: 9352685a597a699d52617daa78aa4cbe805bd621 | code_commit: 无源码改动（仅docs） | dependency_revisions: CLI auto-man e6cc06f（debug C049ABE）、consumer auto-blog 48e0c83（源码SHA与004一致） | task_ids: T-01（已勾选附证据） | evidence: attachments/885/baseline-and-root-causes.md；原始日志 attachments/885/rust-cold-build-001.log（不入库） | blockers: 无 | next_responsible_role: work（T-02，建立fixture）
+
+stage: work | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（T-02完成；fixture 红基线已冻结） | worktree_path: D:/autostack/.wt/lang-885/auto-lang | branch: plan-885-dev | base_commit: 9352685a597a699d52617daa78aa4cbe805bd621 | code_commit: 无源码改动（fixture 仅 tests fixtures 源） | dependency_revisions: CLI C049ABE；兄弟 worktree auto-ui lang-885-dep（6eb2697）、auto-down lang-885-dep（c3464d0）供生成依赖解析 | task_ids: T-02（已勾选附证据） | evidence: fixtures/885-back 生成→cargo build exit 101、4 errors 分组（E0433 time=G1、E0599 as_int=G2、E0308 parse=G3）；合法控制复用既有 api_gen 测试 | blockers: 无 | next_responsible_role: work（T-03，修复确认根因）
+
+stage: work | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（T-03..T-05完成；execution_done） | worktree_path: D:/autostack/.wt/lang-885/auto-lang | branch: plan-885-dev | base_commit: 9352685a597a699d52617daa78aa4cbe805bd621 | code_commit: f5e2d1a9053a2a3c0d8a252486c853a83209fd0e | dependency_revisions: CLI C049ABE（待重建）、consumer auto-blog 48e0c83 | task_ids: T-03（勾选）、T-04（勾选）、T-05（勾选） | evidence: 59 errors→0（G1 time/G2 字符串借用/G3 int签名/G4 模块类型）；Blog 冷生成 cargo build exit 0；HTTP 创建/列表/保存/冲突/重启全链路通过（运行日志 attachments/885/back-run-*.log）；auto-api-gen 65 passed（1 既有红 tauri fixture）；auto-lang-core 全量 12 failed 与主检出基线逐项一致（HTTP 定时/断连类既有红，触面外） | blockers: 无（CLI 重建为 auto-man 构建动作，BLOG-004 消费时执行） | next_responsible_role: review（T-06，最终复审）
 
 ## 10. 待澄清事项
 
