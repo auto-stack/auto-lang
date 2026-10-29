@@ -67,3 +67,30 @@ fn borrow_capture_lowers_as_borrow_and_declares_str_view_env() {
     }));
     verify_mir(&mir).expect("borrow closure MIR verifies");
 }
+
+#[test]
+fn closure_env_fields_follow_first_source_use_order() {
+    let source = r#"fn main() int { let base int = 40; let text Str = "xy"; let f = move (n int) => { return text.len() + base + n }; return f(0) }"#;
+    let compiled = compile_closures_source(source, "closures-capture-order.at", &[])
+        .expect("multiple owned/copy captures compile");
+    let mir = lower_checked_closures(&compiled.checked, "main", 3).expect("capture order lowers");
+    let closure = mir
+        .funcs
+        .iter()
+        .find(|function| function.env.is_some())
+        .expect("closure body has an environment declaration");
+    let env = closure.env.as_ref().unwrap();
+    assert_eq!(env.len(), 2);
+    assert!(matches!(mir.types.get(env[0] as usize), Some(MirType::Str)));
+    assert!(matches!(mir.types.get(env[1] as usize), Some(MirType::I32)));
+    assert!(mir.funcs.iter().any(|function| {
+        function.blocks.iter().any(|block| {
+            block.instrs.iter().any(|instr| {
+                matches!(instr, MirInstr::CreateClosure { captures, .. }
+                    if captures.len() == 2
+                        && captures.iter().all(|capture| capture.kind == CaptureKind::Move))
+            })
+        })
+    }));
+    verify_mir(&mir).expect("multi-field closure MIR verifies");
+}

@@ -5,7 +5,7 @@
 use auto_ac_prototype::hir::DefKind;
 use auto_ac_prototype::source::compile_closures_source;
 use auto_av_core::mir::MirType;
-use auto_av_probe::closures_865_support::ClosuresSourceSession;
+use auto_av_probe::closures_865_support::{ClosuresSourceSession, CompileAndRunError};
 use auto_av_probe::closures_session::ClosuresUpdateSession;
 use auto_mir_lower::lower_function_closures_unit;
 use std::sync::Arc;
@@ -62,6 +62,19 @@ fn av_closures_865_k01_k03_run_source_through_session() {
 }
 
 #[test]
+fn av_closures_865_runs_zero_multi_and_direct_lambda_calls() {
+    run_source(
+        "fn main() int { let answer = () => { return 42 }; return answer() }",
+        42,
+    );
+    run_source(
+        "fn main() int { let add = (left int, right int) => left + right; return add(20, 22) }",
+        42,
+    );
+    run_source("fn main() int { return ((n int) => n + 1)(41) }", 42);
+}
+
+#[test]
 fn av_closures_865_k02_k05_run_owned_return_and_clone_source() {
     run_source(
         "fn make(move s Str) fn(int) int { return move (n int) => { return s.len() + n } } fn main() int { let s Str = \"hello\"; let f = make(s.move); return f(37) }",
@@ -70,6 +83,14 @@ fn av_closures_865_k02_k05_run_owned_return_and_clone_source() {
     run_source(
         "fn make(move s Str) fn(int) int { return move (n int) => { return s.len() + n } } fn main() int { let s Str = \"hello\"; let f = make(s.move); let g = f.clone(); return f(10) + g(22) }",
         42,
+    );
+}
+
+#[test]
+fn av_closures_865_source_clone_deep_copies_mutable_owned_list_env() {
+    run_source(
+        "fn main() int { let values = List<int>.new(); let push_and_len = move (n int) => { values.push(n); return values.len() }; let duplicate = push_and_len.clone(); return push_and_len(2) * 10 + duplicate(3) }",
+        11,
     );
 }
 
@@ -161,7 +182,11 @@ fn av_closures_865_env_drift_refuses_revision_and_preserves_installed_creator() 
 fn av_closures_865_body_edit_produces_only_the_changed_function() {
     let source = include_str!("../../../../crates/auto-lang/test/cases/ace-m1/src/K01.at");
     let edited = source.replace("return base + n", "return base + n + 1");
-    assert_ne!(source.len(), edited.len(), "exercise a changed closure span");
+    assert_ne!(
+        source.len(),
+        edited.len(),
+        "exercise a changed closure span"
+    );
     let store_root = std::env::temp_dir().join(format!(
         "plan865-source-edit-{}-{}",
         std::process::id(),
@@ -186,6 +211,102 @@ fn av_closures_865_body_edit_produces_only_the_changed_function() {
     assert_eq!(next.production.verified, 1);
     assert_eq!(next.production.encoded, 1);
     assert_eq!(next.production.admitted, 1);
+    session.close().expect("release isolated session roots");
+    std::fs::remove_dir_all(&store_root).expect("remove isolated closure store");
+}
+
+#[test]
+fn av_closures_865_capture_and_signature_edits_rebuild_exact_units() {
+    let initial = "fn untouched() int { return 7 } fn main() int { let base int = 40; let bonus int = 1; let f = move (n int) => { return base + n }; return f(2) }";
+    let capture_edit = initial.replace("return base + n", "return base + bonus + n");
+    let signature_edit = "fn untouched() int { return 7 } fn main() int { let base int = 40; let bonus int = 1; let f = move (n int, extra int) => { return base + bonus + n + extra }; return f(1, 1) }";
+    let store_root = std::env::temp_dir().join(format!(
+        "plan865-capture-signature-edit-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&store_root).expect("create isolated closure store");
+    let mut session = ClosuresSourceSession::new(&store_root);
+
+    let first = session
+        .apply_source(initial, "capture-signature.at")
+        .expect("initial source applies");
+    assert_eq!(first.value, 42);
+    assert!(first.submitted_unit_names.contains(&"d_main".to_string()));
+    assert!(first
+        .submitted_unit_names
+        .contains(&"d_untouched".to_string()));
+
+    let captures_changed = session
+        .apply_source(&capture_edit, "capture-signature.at")
+        .expect("capture-set edit applies");
+    assert_eq!(captures_changed.value, 43);
+    assert_eq!(
+        captures_changed.submitted_units, 2,
+        "capture edit submitted units: {:?}",
+        captures_changed.submitted_unit_names
+    );
+    assert_eq!(captures_changed.production.verified, 2);
+    assert_eq!(captures_changed.production.encoded, 2);
+    assert_eq!(captures_changed.production.admitted, 2);
+    assert!(captures_changed
+        .submitted_unit_names
+        .contains(&"d_main".to_string()));
+    assert!(captures_changed
+        .submitted_unit_names
+        .iter()
+        .any(|name| name != "d_main" && name != "d_untouched"));
+    assert!(!captures_changed
+        .submitted_unit_names
+        .contains(&"d_untouched".to_string()));
+    assert_eq!(captures_changed.live_after_release, 0);
+
+    let signature_changed = session
+        .apply_source(signature_edit, "capture-signature.at")
+        .expect("closure signature edit applies");
+    assert_eq!(signature_changed.value, 43);
+    assert_eq!(
+        signature_changed.submitted_units, 2,
+        "signature edit submitted units: {:?}",
+        signature_changed.submitted_unit_names
+    );
+    assert_eq!(signature_changed.production.verified, 2);
+    assert_eq!(signature_changed.production.encoded, 2);
+    assert_eq!(signature_changed.production.admitted, 2);
+    assert!(signature_changed
+        .submitted_unit_names
+        .contains(&"d_main".to_string()));
+    assert!(signature_changed
+        .submitted_unit_names
+        .iter()
+        .any(|name| name != "d_main" && name != "d_untouched"));
+    assert!(!signature_changed
+        .submitted_unit_names
+        .contains(&"d_untouched".to_string()));
+    assert_eq!(signature_changed.live_after_release, 0);
+
+    let invalid_candidate = "fn untouched() int { return 7 } fn main() int { let base int = 40; let bonus int = 1; let f = move (n int, extra int) => { return base + bonus + n + extra }; return f(true, 1) }";
+    let diagnostics = match session.apply_source(invalid_candidate, "capture-signature.at") {
+        Err(CompileAndRunError::Diagnostics(diagnostics)) => diagnostics,
+        Err(CompileAndRunError::Pipeline(message)) => {
+            panic!("invalid signature candidate reached the runtime pipeline: {message}")
+        }
+        Ok(_) => panic!("invalid signature candidate must be rejected before publication"),
+    };
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "source.type-mismatch"));
+
+    let retained = session
+        .apply_source(signature_edit, "capture-signature.at")
+        .expect("previously installed source remains usable");
+    assert_eq!(retained.value, 43);
+    assert_eq!(retained.submitted_units, 0);
+    assert_eq!(retained.production.verified, 0);
+    assert_eq!(retained.live_after_release, 0);
     session.close().expect("release isolated session roots");
     std::fs::remove_dir_all(&store_root).expect("remove isolated closure store");
 }

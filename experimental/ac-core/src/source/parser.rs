@@ -2439,6 +2439,17 @@ impl<'s> Parser<'s> {
                             span,
                         ));
                     }
+                    Tok::Ident(ref word)
+                        if self.surface.is_closures()
+                            && word == "async"
+                            && self.closure_header_ahead(self.pos + 1) =>
+                    {
+                        return Err(self.err(
+                            "source.closure-unsupported",
+                            "async closures are not supported by the closures source profile",
+                            span,
+                        ));
+                    }
                     Tok::Reserved(ref word)
                         if self.surface.is_closures()
                             && word == "move"

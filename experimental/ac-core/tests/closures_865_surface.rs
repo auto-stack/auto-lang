@@ -53,6 +53,40 @@ fn closures_865_checks_and_emits_indirect_calls_through_function_params() {
 }
 
 #[test]
+fn closures_865_rejects_bad_call_arity_signature_and_async_closures() {
+    let wrong_arity = "fn main() int { let f = (n int) => n + 1; return f() }";
+    let diagnostics = compile_closures_source(wrong_arity, "closures-arity.at", &[])
+        .expect_err("a closure call with the wrong number of arguments is rejected");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "source.argument"
+                && diagnostic.message.contains("closure expects 1 argument")
+        }),
+        "wrong-arity diagnostics: {diagnostics:#?}"
+    );
+
+    let wrong_signature = "fn main() int { let f fn(bool) -> int = (n int) => n; return f(true) }";
+    let diagnostics = compile_closures_source(wrong_signature, "closures-signature.at", &[])
+        .expect_err("a closure with a different function signature is rejected");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "source.type-mismatch"),
+        "signature diagnostics: {diagnostics:#?}"
+    );
+
+    let async_closure = "fn main() int { let f = async (n int) => n + 1; return 0 }";
+    let diagnostics = compile_closures_source(async_closure, "closures-async.at", &[])
+        .expect_err("async closures remain unsupported");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "source.closure-unsupported" && diagnostic.message.contains("async")
+        }),
+        "async-closure diagnostics: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn closures_865_parses_move_expression_and_zero_arg_block_lambdas() {
     let source = "fn main() int { let add = move (n int) => n + 1; let answer = () => { return 42 }; let direct = ((n int) => n + 1)(3); return add(3) }";
     let program =

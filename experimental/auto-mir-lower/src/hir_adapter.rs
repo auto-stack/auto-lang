@@ -29,7 +29,7 @@ use auto_ac_prototype::hir;
 use auto_ac_prototype::verify::CheckedModule;
 use auto_av_core::contract::SpanInfo;
 use auto_av_core::mir::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Adapter rejection taxonomy (mirrors the core taxonomy).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -648,10 +648,11 @@ pub fn lower_function_collections_unit(
 }
 
 /// PLAN-865: lower one checked closure-source function to a standalone
-/// closures-profile unit. Every function reference is an import so the
-/// existing ClosuresUpdateSession can carry and revise units independently;
-/// synthetic closure bodies declare the same environment layout as their
-/// creator imports.
+/// closures-profile unit. Referenced functions are imports so the existing
+/// ClosuresUpdateSession can carry and revise units independently; synthetic
+/// closure bodies declare the same environment layout as their creator
+/// imports. Unreferenced definitions are deliberately omitted from the unit's
+/// import/type tables so their edits cannot invalidate this unit.
 pub fn lower_function_closures_unit(
     bundle: &hir::Bundle,
     def_id_text: &str,
@@ -684,43 +685,79 @@ pub fn lower_function_closures_unit(
     let mut out = MirModule::closures_unit(owner);
     out.capabilities = capabilities.to_vec();
 
+    // Keep the currently supported whole-module shape check, then find this
+    // unit's body before building imports. Import and env signatures for
+    // unrelated definitions would change this unit's wire fingerprint even
+    // though its body has no dependency on them.
+    for def in &module.defs {
+        if !matches!(def.kind, hir::DefKind::Function { .. }) {
+            return Err(AdapterError::uns(
+                "lower.function-kind",
+                "closures source units currently require free functions only".to_string(),
+            ));
+        }
+    }
+    let Some((di, target_def)) = module
+        .defs
+        .iter()
+        .enumerate()
+        .find(|(_, def)| def.id_text == def_id_text)
+    else {
+        return Err(AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", def_id_text),
+        ));
+    };
+    let hir::DefKind::Function { ty, body, .. } = &target_def.kind else {
+        unreachable!("the function-kind check above covers every definition");
+    };
+    let target_sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+    let target_body = module.bodies.get(body.0 as usize).ok_or_else(|| {
+        AdapterError::inv("lower.body-ref", format!("body {} out of range", body.0))
+    })?;
+
+    let mut referenced_defs = BTreeSet::new();
+    for expr in &target_body.exprs {
+        match &expr.kind {
+            hir::ExprKind::Call { callee, .. } | hir::ExprKind::CreateClosure { callee, .. } => {
+                referenced_defs.insert(callee.0);
+            }
+            _ => {}
+        }
+    }
     let mut def_map = BTreeMap::new();
-    let mut target = None;
-    for (di, def) in module.defs.iter().enumerate() {
+    for def_index in referenced_defs {
+        let def = module.defs.get(def_index as usize).ok_or_else(|| {
+            AdapterError::inv(
+                "lower.callee",
+                format!("callee def {} out of range", def_index),
+            )
+        })?;
         let hir::DefKind::Function { ty, body, .. } = &def.kind else {
             return Err(AdapterError::uns(
                 "lower.function-kind",
                 "closures source units currently require free functions only".to_string(),
             ));
         };
-        let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
-        let env = closures_env_for_def(module, di as u32, *body, &mut out)?;
+        let sig = collections_fn_sig_for_def(module, def_index, *ty, &mut out)?;
+        let env = closures_env_for_def(module, def_index, *body, &mut out)?;
         let import = out.intern_import(MirImport {
             symbol: format!("fn:{}", def.id_text),
             effect: Effect::Pure,
             sig,
             env,
         });
-        def_map.insert(di as u32, CalleeRef::Import(import));
-        if def.id_text == def_id_text {
-            target = Some((di as u32, *body, def.id_text.clone(), sig));
-        }
+        def_map.insert(def_index, CalleeRef::Import(import));
     }
-    let Some((di, body, name, sig)) = target else {
-        return Err(AdapterError::inv(
-            "lower.entry",
-            format!("no function named `{}` in module", def_id_text),
-        ));
-    };
     let function = lower_function(
         module,
         &mut out,
-        di,
-        body,
-        sig,
+        di as u32,
+        *body,
+        target_sig,
         source_snapshot,
         &def_map,
-        name,
+        target_def.id_text.clone(),
         false,
         true,
         &BTreeMap::new(),
