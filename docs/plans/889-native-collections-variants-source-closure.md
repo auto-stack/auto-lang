@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 0
+current_step: 1
 total_steps: 10
 ---
 
@@ -173,7 +173,7 @@ merge按实际delta更新overview/plans/索引/ledger；本轮不改canonical。
 
 | ID | owner_stage | 前置/窗口 | 位置、操作、关闭证据 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [ ] |
+| T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [x] |
 | T-02 | work | T-01；N释放、私有probe不改S/H | 冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测；先最小source→现有shared lower→真实PE全链资源probe及失败反控。若必须写S先登记交接再继续，失败回本步不缩合法域；固定codegen/cache/runtime升版与后继typed包边界 | AC-01/02/04/06 | [ ] |
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [ ] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [ ] |
@@ -189,6 +189,19 @@ merge按实际delta更新overview/plans/索引/ledger；本轮不改canonical。
 2026-10-29 stage: new | plan_id: PLAN-889 | plan_revision: 1 | outcome: pass（规划静态预检，不是实施验收） | next: 用户明确执行后T-01，T-02 N私有probe；T-05等S实际释放，T-06等H | authorization: 本轮仅规划 | split: 集合/变体与typed entry两包，后继未分号 | changed: AC-01..09 / V-01..11 / T-01..10 / SD-01..05。
 
 已核旧native退役、三类准入/槽/指令/driver拒绝及集合会话whole compile事实。未编译/执行探针/测试、未建worktree/agent、未写源码/canonical/ledger或接触他方WIP。.next-id已有他方取号改动，中央889→890累进保留主检出，未来开树前提交本合同与协调后的号源，不夹带888未提交计划。
+
+### 2026-10-30 work 第1轮：T-01实际源码闭包与上游前置差额
+
+- 授权继承用户 `/goal 完成计划889`；创建唯一权威树 `D:/autostack/.wt/lang-889/auto-lang` / `plan-889-dev`，base `e0b29ff7a0afd2479904b304780d6818306b54e1`，auto-down只读pin `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4`。主检出既有文档/号源WIP保留，未夹带；889合同单独提交e0b29ff7a。未建agent、联系其他聊天或推送。
+- T-01完成，1/10。实现提交 `69d7b6b26`：永久 `experimental/ac-mir-native/examples/collections_inventory.rs` 与受控Markdown执行入口 `docs/plans/attachments/889/execution-entry-r1.md`。具体源→shared lower→verify_mir→split→native admission数据流、独立oracle与22条原例MIR指令闭包、S/N/H所有权/真实增量与资源差额见该入口。当前树clean；D864/D871/D881/D865/D863 delivery祖先逐项实核。
+- `cargo run --locked --manifest-path experimental/ac-mir-native/Cargo.toml --example collections_inventory -- --original-only` exit0：17原例AV期望全部匹配，L04/L05=42、L06精确list-index trap、V03=3、补例51/42/53；成功资源live0且alloc/free平衡。所有native单位仍mn.unsupported.profile，native执行0，绝不关闭任何native gap。正常return70与List<bool>两个独立控制也AV通过。
+- 三个补例揭示原设计假设不成立：List<Token>（Item("中",41)载荷）在`vt_of_ann_coll`仅查record名字、漏enum名字，source.undefined；List.clone显式source.unsupported、Variant.clone缺方法。后二者须利用V-03已允许的typed资源探针，不擅增源码方法。前者与既定Spec/AC-01支持List<Variant>冲突，须修规范已承诺域的上游缺陷再做N全链probe；不删除验收或降低范围。
+- N-only首例先行的假设需有界调整，下一阶段auto-plan-new在既有授权下修订r2：T-02先记录已交付865/863释放的S最小子集接入，再N；澄清source/typed clone分账，其他AC/阈值/仓库/预算/源码拒绝政策不变。H仍888所有权未交接，本轮只读核diff，无自动写权。此为needs_replan、非用户决策阻塞，目标保持active。
+- 本地raw根 `<worktree>/docs/plans/attachments/889/baseline/`，均未暂存：inventory.json SHA256 `931320b5f185124383f3501c8e1ff1b827979448092c5aa207f47c5c2d930323`；list-variant-owned.stderr `49df1f68f20e09661fbf69efbd333eeab41b48c4ee3b3e14db76a3daee3dc80f`；三补例汇总supplement-results.json `e97ce058187bd86fcb947c2a857f2700fa3a9ce4e3ecb2dd248b5b7ddfa9ea88`。fmt/diff-check通过；owned_session的shell_lo/shell_hi既有warning如实保留，无新example warning。未跑整档t/tv/tf/docs_gen。
+
+stage: work | plan_id: PLAN-889 | plan_revision: r1 | outcome: needs_replan | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | base_commit: e0b29ff7a | code_commit: 69d7b6b26 | dependency_revisions: auto-down=c3464d0a | task_ids: T-01 | evidence: attachments/889/execution-entry-r1.md | blockers: none requiring user decision; bounded design order/source-vs-typed correction | next_responsible_role: new
+
+stage: goal | plan_id: PLAN-889 | plan_revision: r1 | round: 1 | from: work | to: new | status: executing | outcome: needs_replan | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 69d7b6b26 | next: new
 
 ## 10. 待澄清事项
 
