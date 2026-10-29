@@ -292,7 +292,7 @@ fn sig_debug_of(m: &hir::Module, d: &hir::Def) -> String {
                 // PLAN-864: collections composites shape by name/kind.
                 Some(hir::TypeKind::List { .. }) => "list".to_string(),
                 Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
-                Some(hir::TypeKind::Function(sig)) => {
+                Some(hir::TypeKind::Function(sig)) | Some(hir::TypeKind::Closure(sig)) => {
                     let params: Vec<String> =
                         sig.params.iter().map(|p| shape(p, m, depth - 1)).collect();
                     format!(

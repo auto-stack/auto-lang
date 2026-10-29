@@ -718,6 +718,7 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
         c.w(match l.role {
             hir::LocalRole::Param => "p",
             hir::LocalRole::Binding => "b",
+            hir::LocalRole::Capture => "c",
         });
         c.b(l.mutable);
         match l.index {
@@ -934,20 +935,29 @@ impl CanonBuf {
 }
 
 fn shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> String {
-    let s = match u {
-        hir::TypeUse::Builtin(b) => b.as_str(),
+    match u {
+        hir::TypeUse::Builtin(b) => b.as_str().to_string(),
         hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
-            Some(hir::TypeKind::I32) => "i32",
-            Some(hir::TypeKind::Bool) => "bool",
-            _ => "other",
+            Some(hir::TypeKind::I32) => "i32".to_string(),
+            Some(hir::TypeKind::Bool) => "bool".to_string(),
+            Some(hir::TypeKind::Str) => "str".to_string(),
+            Some(hir::TypeKind::StrOwned) => "Str".to_string(),
+            Some(hir::TypeKind::Char) => "char".to_string(),
+            Some(hir::TypeKind::Function(sig)) | Some(hir::TypeKind::Closure(sig)) => {
+                let params: Vec<_> = sig.params.iter().map(|p| shape_of_use(p, m)).collect();
+                format!("fn({})->{}", params.join(","), shape_of_use(&sig.result, m))
+            }
+            Some(hir::TypeKind::Record(_)) => "record".to_string(),
+            Some(hir::TypeKind::List { .. }) => "list".to_string(),
+            Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
+            None => "oob".to_string(),
         },
-    };
-    s.to_string()
+    }
 }
 
 fn sig_content(m: &hir::Module, ty: hir::TypeId) -> String {
     match m.types.get(ty.0 as usize).map(|t| &t.kind) {
-        Some(hir::TypeKind::Function(sig)) => {
+        Some(hir::TypeKind::Function(sig)) | Some(hir::TypeKind::Closure(sig)) => {
             let mut s = String::from("(");
             for p in &sig.params {
                 s.push_str(&shape_of_use(p, m));

@@ -305,6 +305,11 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                     w.u8(2);
                     encode_sig(&mut w, sig)?;
                 }
+                TypeKind::Closure(_) => {
+                    return Err(CodecError::UnsupportedFeature(
+                        "closure type outside core/scalar subset",
+                    ))
+                }
                 TypeKind::Str
                 | TypeKind::StrOwned
                 | TypeKind::Char
@@ -360,6 +365,11 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                 w.u8(match l.role {
                     LocalRole::Param => 0,
                     LocalRole::Binding => 1,
+                    LocalRole::Capture => {
+                        return Err(CodecError::UnsupportedFeature(
+                            "closure capture local outside core/scalar subset",
+                        ))
+                    }
                 });
                 match l.index {
                     Some(i) => {
@@ -1439,6 +1449,10 @@ pub fn canonical_type_word(t: &auto_ac_prototype::source::ast::TypeAnn) -> Strin
         TypeRef::Generic { name, args } => {
             let a: Vec<String> = args.iter().map(canonical_type_word).collect();
             format!("{}<{}>", name.name, a.join(", "))
+        }
+        TypeRef::Function { params, result } => {
+            let p: Vec<String> = params.iter().map(canonical_type_word).collect();
+            format!("fn({}) -> {}", p.join(", "), canonical_type_word(result))
         }
     }
 }

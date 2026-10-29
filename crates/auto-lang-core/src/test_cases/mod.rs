@@ -813,6 +813,21 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-865: source closures use the append-only source recipe; the
+        // preceding closures fixture dispatch keeps its original behavior.
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_CLOSURES_SOURCE_RECIPE) =>
+        {
+            ac_av::run_closures_source_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(ac_av::AV_COLLECTIONS_RECIPE) =>
         {

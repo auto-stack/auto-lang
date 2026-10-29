@@ -35,9 +35,9 @@ use std::collections::VecDeque;
 // The EXTERNAL sentinel root bit is index `n_slots` (set up per function);
 // no standalone constant is needed.
 
-/// Whether a type owns resources (PLAN-782 derived classification — never
-/// input-claimed): `Str`, or a record whose transitive field closure
-/// reaches `Str`. Copyable records/scalars return false.
+/// Whether a type owns resources (derived classification — never
+/// input-claimed): `Str`, resource records/containers, or a closure value
+/// whose environment is managed by the closure runtime.
 pub fn type_is_owned(m: &MirModule, ty: u32) -> bool {
     match m.types.get(ty as usize) {
         Some(t) => type_is_owned_type_of(m, t),
@@ -51,7 +51,7 @@ pub fn type_is_owned_type_of(m: &MirModule, t: &MirType) -> bool {
         MirType::Str => true,
         MirType::Record(r) => record_reaches_str(m, r),
         // PLAN-822: containers own (buffers/elements/payloads need drop).
-        MirType::List(_) | MirType::Variant(_) => true,
+        MirType::List(_) | MirType::Variant(_) | MirType::Closure(_) => true,
         _ => false,
     }
 }

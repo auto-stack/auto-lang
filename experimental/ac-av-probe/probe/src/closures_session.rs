@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use crate::cache::{envelope_wrap, EnvelopeIdentity, EnvelopeKind};
+use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
 use ac_artifact_probe::identity::QueryKey;
 
 /// The production counters of one revision: how many units went through
@@ -40,6 +40,8 @@ pub struct ProductionCounters {
     pub encoded: usize,
     pub admitted: usize,
     pub store_writes: usize,
+    pub cache_hits: usize,
+    pub cache_misses: usize,
 }
 
 /// The production structural gate over one revision. A unit is
@@ -72,6 +74,10 @@ pub struct ApplyOutcome {
     pub frees: usize,
     pub gate: GateReport,
     pub production: ProductionCounters,
+    /// Current admitted function-code working set plus its canonical wires.
+    pub current_hot_bytes: usize,
+    /// Bounded prior-generation working set retained for cache hits.
+    pub history_hot_bytes: usize,
 }
 
 // The typed consumer retains a bounded history of admitted units. Canonical
@@ -112,6 +118,69 @@ fn history_charge(wire: &[u8], code: &FunctionCode) -> usize {
         .saturating_add(std::mem::size_of::<HistoryEntry>())
         .saturating_add(code.name().len())
         .saturating_add(128) // map, deque and fingerprint metadata
+}
+
+fn closures_unit_key(m: &MirModule, name: &str, flat: &[u8]) -> QueryKey {
+    QueryKey::new(
+        &crate::closures_fixture::CLOSURES_ABC_LAYER,
+        vec![
+            (
+                "producer".into(),
+                auto_av_core::contract::CLOSURES_PRODUCER_ID.into(),
+            ),
+            ("owner-module".into(), m.owner.module.clone()),
+            ("entry".into(), name.to_string()),
+            (
+                "profile".into(),
+                auto_av_core::contract::AV_CLOSURES_PROFILE.into(),
+            ),
+            (
+                "source-snapshot".into(),
+                format!("{:016x}", m.funcs[0].source_snapshot),
+            ),
+            ("unit-binding".into(), name.to_string()),
+            (
+                "unit-content".into(),
+                ac_artifact_probe::identity::domain_hash("av-closures-unit/v1", &[flat]),
+            ),
+            (
+                "abc-codec".into(),
+                auto_av_core::contract::ABC_CLOSURES_VERSION.to_string(),
+            ),
+            (
+                "mir-semantics".into(),
+                auto_av_core::contract::MIR_CLOSURES_SEMANTICS.0.to_string(),
+            ),
+            (
+                "abc-semantics".into(),
+                auto_av_core::contract::ABC_CLOSURES_SEMANTICS.0.to_string(),
+            ),
+            (
+                "av-semantics".into(),
+                auto_av_core::contract::AV_CLOSURES_SEMANTICS.0.to_string(),
+            ),
+        ],
+    )
+}
+
+fn closures_unit_envelope<'a>(
+    m: &'a MirModule,
+    name: &'a str,
+    body_fp: &'a str,
+) -> EnvelopeIdentity<'a> {
+    EnvelopeIdentity {
+        kind: EnvelopeKind::AbcUnit,
+        producer: auto_av_core::contract::CLOSURES_PRODUCER_ID,
+        schema: auto_av_core::contract::ABC_CLOSURES_SCHEMA,
+        owner_module: &m.owner.module,
+        stage: 2,
+        mir_sem: auto_av_core::contract::MIR_CLOSURES_SEMANTICS.0,
+        abc_sem: auto_av_core::contract::ABC_CLOSURES_SEMANTICS.0,
+        av_sem: auto_av_core::contract::AV_CLOSURES_SEMANTICS.0,
+        snapshot: m.funcs[0].source_snapshot,
+        unit: name,
+        body_fp,
+    }
 }
 
 pub struct ClosuresUpdateSession {
@@ -263,12 +332,50 @@ impl ClosuresUpdateSession {
                     .iter()
                     .find(|entry| entry.wire == flat && entry.code.unit().module().owner == m.owner)
             }) {
+                self.counters.cache_hits += 1;
                 return Ok((
                     entry.code.clone(),
                     entry.fingerprint.clone(),
                     flat,
                     entry.artifact.clone(),
                 ));
+            }
+        }
+        let body_fp = format!("{:016x}", auto_av_core::contract::fnv1a64(&flat));
+        let cache_key = closures_unit_key(m, &name, &flat);
+        let cache_identity = closures_unit_envelope(m, &name, &body_fp);
+        if let Some(staged) = staged {
+            match staged
+                .store
+                .get_artifact(crate::closures_fixture::CLOSURES_ABC_LAYER.id, &cache_key)
+                .map_err(|e| format!("lookup {name}: {e}"))?
+            {
+                Some(artifact) => {
+                    if artifact.kind != ChunkKind::LayoutData {
+                        return Err(format!(
+                            "cached unit {name} carries kind {:?}, expected LayoutData",
+                            artifact.kind
+                        ));
+                    }
+                    let payload = envelope_unwrap(&artifact.payload, &cache_identity)
+                        .map_err(|e| format!("cached unit {name} envelope: {e}"))?;
+                    if payload.as_slice() != flat.as_ref() {
+                        return Err(format!("cached unit {name} payload differs from its key"));
+                    }
+                    let loaded = verify_abc_bytes(&payload, &m.owner)
+                        .map_err(|e| format!("cached unit {name} re-admit: {e:?}"))?;
+                    let fc = FunctionCode::admit_unit(loaded, self.revision + 1)
+                        .map_err(|e| format!("cached unit {name} unit-admit: {e}"))?;
+                    self.counters.admitted += 1;
+                    self.counters.cache_hits += 1;
+                    return Ok((
+                        Arc::new(fc),
+                        body_fp,
+                        flat,
+                        Some(artifact.artifact_id),
+                    ));
+                }
+                None => self.counters.cache_misses += 1,
             }
         }
         let loaded =
@@ -279,71 +386,11 @@ impl ClosuresUpdateSession {
         let mut artifact = None;
         if let Some(staged) = staged {
             let store = &staged.store;
-            let owner = &m.owner.module;
-            let env = envelope_wrap(
-                &wire.to_flat(),
-                &EnvelopeIdentity {
-                    kind: EnvelopeKind::AbcUnit,
-                    producer: auto_av_core::contract::CLOSURES_PRODUCER_ID,
-                    schema: auto_av_core::contract::ABC_CLOSURES_SCHEMA,
-                    owner_module: owner,
-                    stage: 2,
-                    mir_sem: auto_av_core::contract::MIR_CLOSURES_SEMANTICS.0,
-                    abc_sem: auto_av_core::contract::ABC_CLOSURES_SEMANTICS.0,
-                    av_sem: auto_av_core::contract::AV_CLOSURES_SEMANTICS.0,
-                    snapshot: m.funcs[0].source_snapshot,
-                    unit: &name,
-                    body_fp: &format!("{:016x}", auto_av_core::contract::fnv1a64(&wire.to_flat())),
-                },
-            );
-            let key = QueryKey::new(
-                &crate::closures_fixture::CLOSURES_ABC_LAYER,
-                vec![
-                    (
-                        "producer".into(),
-                        auto_av_core::contract::CLOSURES_PRODUCER_ID.into(),
-                    ),
-                    ("owner-module".into(), owner.clone()),
-                    ("entry".into(), name.clone()),
-                    (
-                        "profile".into(),
-                        auto_av_core::contract::AV_CLOSURES_PROFILE.into(),
-                    ),
-                    (
-                        "source-snapshot".into(),
-                        format!("{:016x}", m.funcs[0].source_snapshot),
-                    ),
-                    ("unit-binding".into(), name.clone()),
-                    // Distinct body revisions must never contend for one
-                    // immutable store key. Keep the hash domain separate
-                    // from other artifacts; the envelope still binds its
-                    // independently verified unit/body identity.
-                    (
-                        "unit-content".into(),
-                        ac_artifact_probe::identity::domain_hash("av-closures-unit/v1", &[&flat]),
-                    ),
-                    (
-                        "abc-codec".into(),
-                        auto_av_core::contract::ABC_CLOSURES_VERSION.to_string(),
-                    ),
-                    (
-                        "mir-semantics".into(),
-                        auto_av_core::contract::MIR_CLOSURES_SEMANTICS.0.to_string(),
-                    ),
-                    (
-                        "abc-semantics".into(),
-                        auto_av_core::contract::ABC_CLOSURES_SEMANTICS.0.to_string(),
-                    ),
-                    (
-                        "av-semantics".into(),
-                        auto_av_core::contract::AV_CLOSURES_SEMANTICS.0.to_string(),
-                    ),
-                ],
-            );
+            let env = envelope_wrap(&flat, &cache_identity);
             let id = store
                 .put_artifact(PutRequest {
                     layer: crate::closures_fixture::CLOSURES_ABC_LAYER.id,
-                    key,
+                    key: cache_key,
                     kind: ChunkKind::LayoutData,
                     payload: env,
                     edges: vec![],
@@ -356,8 +403,7 @@ impl ClosuresUpdateSession {
             artifact = Some(id);
             self.counters.store_writes += 1;
         }
-        let fp = format!("{:016x}", auto_av_core::contract::fnv1a64(&wire.to_flat()));
-        Ok((Arc::new(fc), fp, flat, artifact))
+        Ok((Arc::new(fc), body_fp, flat, artifact))
     }
 
     /// Apply one revision: rebuild the SUBMITTED functions through the
@@ -643,6 +689,8 @@ impl ClosuresUpdateSession {
             frees: arena.free_events().len(),
             gate,
             production: self.counters,
+            current_hot_bytes: current_hot,
+            history_hot_bytes: self.history_hot_bytes,
         })
     }
 }

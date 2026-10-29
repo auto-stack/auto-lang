@@ -1454,6 +1454,11 @@ fn decode_options(
                             "ac-av/closures-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
+                            // PLAN-865: source closures run through the same
+                            // run/edit session vocabulary as the frozen fixture.
+                            "ac-av/closures-source-run-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source")
+                            }
                             // PLAN-824: the dynamic recipe shares the same
                             // step vocabulary.
                             "ac-av/dynamic-run-v1" => {
@@ -1541,6 +1546,7 @@ fn decode_options(
                         || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
+                        || recipe == "ac-av/closures-source-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                         || recipe == "ac-av/compact-run-v1"
                     {
@@ -1684,6 +1690,7 @@ fn decode_options(
                         || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
+                        || recipe == "ac-av/closures-source-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                         || recipe == "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe requires the av
@@ -1705,6 +1712,7 @@ fn decode_options(
                         && recipe != "ac-av/collections-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
+                        && recipe != "ac-av/closures-source-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
                         && recipe != "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe takes the same av
@@ -1973,6 +1981,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // the collections frontend onto the frozen 822 execution, same seam
     // contract (append-only; the 822 fixture case files stay untouched).
     "ac-av/collections-source-run-v1",
+    // PLAN-865: the closures SOURCE recipe — real .at sources through the
+    // closures frontend onto the frozen 823 execution, same seam contract.
+    "ac-av/closures-source-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

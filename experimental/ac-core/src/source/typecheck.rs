@@ -219,7 +219,7 @@ fn check_arg_modes(
 fn check_expr(
     root: &ResolvedExpr,
     program: &ResolvedProgram,
-    _f: &ResolvedFn,
+    f: &ResolvedFn,
     diags: &mut Vec<Diagnostic>,
 ) {
     // Iterative walk (R3-QA-02): legal operator chains are unbounded in
@@ -259,6 +259,78 @@ fn check_expr(
                     }
                 }
                 check_arg_modes(*fn_index, 0, args, program, diags, e.span);
+            }
+            RExprKind::CallClosure { callee, args } => {
+                stack.push(callee.as_ref());
+                let signature = match callee.vt {
+                    VT::Function(index) => program.function_types.get(index),
+                    _ => None,
+                };
+                for (index, arg) in args.iter().enumerate() {
+                    stack.push(&arg.value);
+                    if let Some(want) = signature.and_then(|s| s.params.get(index)).copied() {
+                        if arg.value.vt != want {
+                            mismatch(diags, want, arg.value.vt, arg.value.span);
+                        }
+                    }
+                }
+                if let Some(signature) = signature {
+                    if args.len() != signature.params.len() {
+                        diags.push(Diagnostic::new(
+                            Stage::Verify,
+                            "source.argument",
+                            format!(
+                                "closure expects {} argument(s), found {}",
+                                signature.params.len(),
+                                args.len()
+                            ),
+                            e.span,
+                        ));
+                    }
+                    if e.vt != signature.result {
+                        mismatch(diags, signature.result, e.vt, e.span);
+                    }
+                }
+            }
+            RExprKind::CreateClosure { fn_index, captures } => {
+                if let Some(closure) = program.fns.get(*fn_index) {
+                    let signature = match e.vt {
+                        VT::Function(index) => program.function_types.get(index),
+                        _ => None,
+                    };
+                    if signature.is_none_or(|signature| {
+                        signature.params != closure.params || signature.result != closure.result
+                    }) {
+                        mismatch(diags, VT::Function(usize::MAX), e.vt, e.span);
+                    }
+                    let mut capture_locals: Vec<_> = closure
+                        .locals
+                        .iter()
+                        .filter(|local| local.is_capture)
+                        .collect();
+                    capture_locals.sort_by_key(|local| local.capture_index);
+                    if captures.len() != capture_locals.len() {
+                        diags.push(Diagnostic::new(
+                            Stage::Verify,
+                            "source.closure-env-mismatch",
+                            "closure capture list does not match its environment declaration",
+                            e.span,
+                        ));
+                    }
+                    for ((source, mode), target) in captures.iter().zip(capture_locals) {
+                        let Some(source_decl) = f.locals.get(source.0) else {
+                            continue;
+                        };
+                        let want = target.vt;
+                        let matches = source_decl.vt == want
+                            || (*mode == crate::hir::CaptureMode::Borrow
+                                && source_decl.vt == VT::StrOwned
+                                && want == VT::Str);
+                        if !matches {
+                            mismatch(diags, want, source_decl.vt, e.span);
+                        }
+                    }
+                }
             }
             RExprKind::Binary { op, lhs, rhs, .. } => {
                 // push rhs first so lhs is checked first (LIFO)

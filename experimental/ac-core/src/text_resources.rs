@@ -83,6 +83,7 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
         | hir::ExprKind::TextSlice { .. }
         | hir::ExprKind::TextConcat { .. }
         | hir::ExprKind::TextClone { .. }
+        | hir::ExprKind::ClosureClone { .. }
         | hir::ExprKind::TextToOwned { .. }
         | hir::ExprKind::CharToCodepoint { .. }
         | hir::ExprKind::CharFromCodepoint { .. } => true,
@@ -380,6 +381,7 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             // PLAN-864: collections-domain expressions never receive a text
             // resource plan (verify_collections never calls this walk).
             hir::ExprKind::ListNew { .. }
+            | hir::ExprKind::CreateClosure { .. }
             | hir::ExprKind::ListLen { .. }
             | hir::ExprKind::ListPush { .. }
             | hir::ExprKind::ListInsert { .. }
@@ -413,7 +415,9 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 stack.push((*rhs, mode));
                 stack.push((*lhs, mode));
             }
-            hir::ExprKind::TextClone { operand } | hir::ExprKind::TextToOwned { operand } => {
+            hir::ExprKind::TextClone { operand }
+            | hir::ExprKind::ClosureClone { operand }
+            | hir::ExprKind::TextToOwned { operand } => {
                 scan.has_owned_producing = true;
                 stack.push((*operand, mode));
             }
@@ -463,6 +467,12 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 for a in eval_args.iter().rev() {
                     stack.push((*a, mode));
                 }
+            }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                for a in eval_args.iter().rev() {
+                    stack.push((*a, mode));
+                }
+                stack.push((*callee, mode));
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // lhs always evaluates; the rhs runs only under the lhs's
@@ -2496,6 +2506,7 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 Some(hir::TypeKind::StrOwned) => ValueType::StrOwned,
                 Some(hir::TypeKind::Char) => ValueType::Char,
                 Some(hir::TypeKind::Function(_)) => ValueType::Function,
+                Some(hir::TypeKind::Closure(_)) => ValueType::Closure,
                 Some(hir::TypeKind::Record(_)) => ValueType::Record(t.0),
                 // PLAN-864: totality only; the text resource walk never
                 // sees collections types.

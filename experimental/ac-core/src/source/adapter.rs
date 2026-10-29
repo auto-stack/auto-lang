@@ -777,6 +777,14 @@ enum EKind {
         /// moved flags parallel to `bindings` (PLAN-770 `.move` markers)
         moved: Vec<bool>,
     },
+    CallClosure {
+        callee: usize,
+        eval: Vec<usize>,
+    },
+    CreateClosure {
+        callee_fn: usize,
+        captures: Vec<(usize, crate::hir::CaptureMode)>,
+    },
     /// String literal (PLAN-770); the VT records the contextual borrowing
     /// (Str) or promoting (StrOwned) choice.
     StrLit(String),
@@ -1500,6 +1508,12 @@ impl PlanCtx<'_> {
                 dest: usize,
                 arg_slots: Vec<usize>,
             },
+            CallClosureOut {
+                node: &'a ResolvedExpr,
+                dest: usize,
+                callee_slot: usize,
+                arg_slots: Vec<usize>,
+            },
             /// receiver + argument slots planned; assemble the builtin
             /// text method node (PLAN-770; iterative so method chains of
             /// any depth cannot recurse).
@@ -1534,6 +1548,35 @@ impl PlanCtx<'_> {
         while let Some(task) = stack.pop() {
             match task {
                 Task::Plan { node, slot } => {
+                    if let RExprKind::CallClosure { callee, args } = &node.kind {
+                        let callee_slot = slot_idx.len();
+                        slot_idx.push(usize::MAX);
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() + 2);
+                        subtasks.push(Task::Plan {
+                            node: callee,
+                            slot: callee_slot,
+                        });
+                        for arg in args {
+                            let arg_slot = slot_idx.len();
+                            slot_idx.push(usize::MAX);
+                            arg_slots.push(arg_slot);
+                            subtasks.push(Task::Plan {
+                                node: &arg.value,
+                                slot: arg_slot,
+                            });
+                        }
+                        subtasks.push(Task::CallClosureOut {
+                            node,
+                            dest: slot,
+                            callee_slot,
+                            arg_slots,
+                        });
+                        for task in subtasks.into_iter().rev() {
+                            stack.push(task);
+                        }
+                        continue;
+                    }
                     if let RExprKind::CallFn { args, .. } = &node.kind {
                         if !args.is_empty() {
                             let mut arg_slots = Vec::with_capacity(args.len());
@@ -1715,6 +1758,21 @@ impl PlanCtx<'_> {
                     });
                     slot_idx[dest] = plan.exprs.len() - 1;
                 }
+                Task::CallClosureOut {
+                    node,
+                    dest,
+                    callee_slot,
+                    arg_slots,
+                } => {
+                    let callee = slot_idx[callee_slot];
+                    let eval = arg_slots.iter().map(|slot| slot_idx[*slot]).collect();
+                    plan.exprs.push(ENode {
+                        kind: EKind::CallClosure { callee, eval },
+                        vt: node.vt,
+                        span: node.span,
+                    });
+                    slot_idx[dest] = plan.exprs.len() - 1;
+                }
                 Task::TextOut {
                     method,
                     to,
@@ -1874,6 +1932,20 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            RExprKind::CreateClosure { fn_index, captures } => {
+                plan.exprs.push(ENode {
+                    kind: EKind::CreateClosure {
+                        callee_fn: *fn_index,
+                        captures: captures
+                            .iter()
+                            .map(|(local, mode)| (local.0, *mode))
+                            .collect(),
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::BoolLit(v) => {
                 // true = 0 < 1, false = 0 < 0 — a fresh subgraph per
                 // occurrence, spans pointing at the literal token.
@@ -1973,6 +2045,9 @@ impl PlanCtx<'_> {
                     span: e.span,
                 });
                 plan.exprs.len() - 1
+            }
+            RExprKind::CallClosure { .. } => {
+                unreachable!("closure calls are planned by the iterative closure-call walk")
             }
             RExprKind::CtorPos { rec, args } => {
                 // positional: eval order = source order; binding i -> i
@@ -2698,6 +2773,11 @@ impl<'p> Emitter<'p> {
         // PLAN-864: the collections surface owns `Str` values (literals,
         // fields, elements) — the named entry the ty_name ref resolves to.
         if self.profile.is_collections() {
+            if self.profile == super::SourceProfile::Closures {
+                frag!("type t_str str {}", program_span);
+                spans.types.push(program_span);
+                nl!(12);
+            }
             frag!("type t_Str Str {}", program_span);
             spans.types.push(program_span);
             nl!(12);
@@ -2811,7 +2891,7 @@ impl<'p> Emitter<'p> {
                     .collect();
                 frag!(
                     &format!(
-                        "type t_closure_sig_{} function {{ params: [{}]; result: {} }}",
+                        "type t_closure_sig_{} closure {{ params: [{}]; result: {} }}",
                         index,
                         params.join(", "),
                         self.ty_use_ref(signature.result)
@@ -3037,6 +3117,14 @@ impl<'p> Emitter<'p> {
                         l.param_index.unwrap_or(0),
                         mode_suffix
                     )
+                } else if l.is_capture {
+                    format!(
+                        "local l{} {} {{ name: \"{}\"; role: capture; index: {}u32 }}",
+                        li,
+                        self.ty_name(l.vt),
+                        Self::esc(&l.name),
+                        l.capture_index.unwrap_or(0)
+                    )
                 } else {
                     format!(
                         "local l{} {} {{ name: \"{}\"; role: binding; mutable: {} }}",
@@ -3177,6 +3265,10 @@ impl<'p> Emitter<'p> {
                                     "expr e{} text_clone {{ type: {}; operand: {} }}",
                                     ei, ty, recv_s
                                 ),
+                                BM::ClosureClone => format!(
+                                    "expr e{} closure_clone {{ type: {}; operand: {} }}",
+                                    ei, ty, recv_s
+                                ),
                                 BM::To => {
                                     if matches!(to, Some(super::resolve::VT::StrOwned)) {
                                         format!(
@@ -3239,6 +3331,43 @@ impl<'p> Emitter<'p> {
                                 callee,
                                 eval_s.join(", "),
                                 bind_s.join(", ")
+                            )
+                        }
+                        EKind::CallClosure { callee, eval } => {
+                            let eval_s: Vec<String> =
+                                eval.iter().map(|x| format!("e{}", x)).collect();
+                            format!(
+                                "expr e{} call_closure {{ type: {}; base: e{}; eval_args: [{}] }}",
+                                ei,
+                                ty,
+                                callee,
+                                eval_s.join(", ")
+                            )
+                        }
+                        EKind::CreateClosure {
+                            callee_fn,
+                            captures,
+                        } => {
+                            let callee = self
+                                .program
+                                .fns
+                                .get(*callee_fn)
+                                .map(|function| format!("d_{}", function.name))
+                                .unwrap_or_else(|| "d_unknown".to_string());
+                            let capture_text = captures
+                                .iter()
+                                .map(|(local, mode)| {
+                                    let mode = match mode {
+                                        crate::hir::CaptureMode::Move => "move",
+                                        crate::hir::CaptureMode::Borrow => "borrow",
+                                    };
+                                    format!("{{ local: l{}, mode: {} }}", local, mode)
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            format!(
+                                "expr e{} create_closure {{ type: {}; callee: {}; captures: [{}] }}",
+                                ei, ty, callee, capture_text
                             )
                         }
                         EKind::RecordCtor {

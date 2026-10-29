@@ -141,8 +141,11 @@ pub fn normalize_fn_hir_body(
     }
     for e in &mut out.exprs {
         e.ty = ty_of(&e.ty)?;
-        if let hir::ExprKind::Call { callee, .. } = &mut e.kind {
-            *callee = hir::DefId(def_of(callee.0)?);
+        match &mut e.kind {
+            hir::ExprKind::Call { callee, .. } | hir::ExprKind::CreateClosure { callee, .. } => {
+                *callee = hir::DefId(def_of(callee.0)?);
+            }
+            _ => {}
         }
     }
     Ok((out, callee_table, type_table))
@@ -191,8 +194,11 @@ pub fn rebind_fn_hir_body(a: &FnHirArtifact, current: &hir::Module) -> Result<hi
     }
     for e in &mut out.exprs {
         e.ty = ty_of(&e.ty)?;
-        if let hir::ExprKind::Call { callee, .. } = &mut e.kind {
-            *callee = hir::DefId(def_of(callee.0)?);
+        match &mut e.kind {
+            hir::ExprKind::Call { callee, .. } | hir::ExprKind::CreateClosure { callee, .. } => {
+                *callee = hir::DefId(def_of(callee.0)?);
+            }
+            _ => {}
         }
     }
     Ok(out)
@@ -334,6 +340,7 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
         e.out.push(match l.role {
             hir::LocalRole::Param => 0,
             hir::LocalRole::Binding => 1,
+            hir::LocalRole::Capture => 2,
         });
         match l.index {
             Some(i) => {
@@ -422,6 +429,30 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                     e.u32(cb.param);
                     e.u32(cb.arg);
                     e.b(cb.moved);
+                }
+            }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                e.out.push(7);
+                e.u32(callee.0);
+                e.count(eval_args.len())?;
+                for arg in eval_args {
+                    e.u32(arg.0);
+                }
+            }
+            hir::ExprKind::ClosureClone { operand } => {
+                e.out.push(9);
+                e.u32(operand.0);
+            }
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                e.out.push(8);
+                e.u32(callee.0);
+                e.count(captures.len())?;
+                for capture in captures {
+                    e.u32(capture.local.0);
+                    e.out.push(match capture.mode {
+                        hir::CaptureMode::Move => 0,
+                        hir::CaptureMode::Borrow => 1,
+                    });
                 }
             }
             // PLAN-862: the unit value — tag 6, no payload (zero-width).
@@ -752,6 +783,40 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
             }
             // PLAN-862: the unit value (tag 6, no payload).
             6 => hir::ExprKind::Unit,
+            7 => {
+                let callee = d.idx(n_exprs, "expr")?;
+                let mut eval_args = Vec::new();
+                for _ in 0..d.count()? {
+                    eval_args.push(hir::ExprId(d.idx(n_exprs, "expr")?));
+                }
+                hir::ExprKind::CallClosure {
+                    callee: hir::ExprId(callee),
+                    eval_args,
+                }
+            }
+            8 => {
+                let callee = d.idx(callee_table.len(), "callee-table")?;
+                let mut captures = Vec::new();
+                for _ in 0..d.count()? {
+                    let local = d.idx(n_locals, "local")?;
+                    let mode = match d.u8()? {
+                        0 => hir::CaptureMode::Move,
+                        1 => hir::CaptureMode::Borrow,
+                        _ => return Err("unknown closure capture mode".into()),
+                    };
+                    captures.push(hir::CaptureBinding {
+                        local: hir::LocalId(local),
+                        mode,
+                    });
+                }
+                hir::ExprKind::CreateClosure {
+                    callee: hir::DefId(callee),
+                    captures,
+                }
+            }
+            9 => hir::ExprKind::ClosureClone {
+                operand: hir::ExprId(d.idx(n_exprs, "expr")?),
+            },
             _ => return Err("unknown expr kind".into()),
         };
         let espan = d.span()?;

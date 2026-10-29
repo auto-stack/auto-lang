@@ -408,6 +408,14 @@ fn context_fingerprint(m: &hir::Module) -> String {
                     mix(h, ")");
                     mix_use(h, &sig.result, m, depth - 1);
                 }
+                Some(hir::TypeKind::Closure(sig)) => {
+                    mix(h, "closure(");
+                    for p in &sig.params {
+                        mix_use(h, p, m, depth - 1);
+                    }
+                    mix(h, ")");
+                    mix_use(h, &sig.result, m, depth - 1);
+                }
                 Some(hir::TypeKind::I32) => mix(h, "i32"),
                 Some(hir::TypeKind::Bool) => mix(h, "bool"),
                 Some(hir::TypeKind::Str) => mix(h, "str"),
@@ -808,7 +816,7 @@ fn check_unit_placement(m: &hir::Module, diags: &mut Vec<Diagnostic>) {
     let is_unit = |u: &hir::TypeUse| matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::Unit));
     for t in &m.types {
         match &t.kind {
-            hir::TypeKind::Function(sig) => {
+            hir::TypeKind::Function(sig) | hir::TypeKind::Closure(sig) => {
                 for (i, p) in sig.params.iter().enumerate() {
                     if is_unit(p) {
                         diags.push(Diagnostic::new(
@@ -973,6 +981,7 @@ pub(crate) enum ValueType {
     I32,
     Bool,
     Function,
+    Closure,
     /// Borrowed text slice (`str`, PLAN-770).
     Str,
     /// Owned text buffer (`Str`, PLAN-770).
@@ -998,6 +1007,7 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::I32 => "i32",
         ValueType::Bool => "bool",
         ValueType::Function => "function",
+        ValueType::Closure => "closure",
         ValueType::Str => "str",
         ValueType::StrOwned => "Str",
         ValueType::Char => "char",
@@ -1058,6 +1068,23 @@ impl Verifier {
     /// every NON-RECORD domain rejects the record surface (record types,
     /// method declarations, record expressions, field-path places).
     fn check_profile_ops(&mut self, m: &hir::Module, body: &hir::Body) {
+        if self.domain != HirDomain::Closures {
+            for e in &body.exprs {
+                if matches!(
+                    e.kind,
+                    hir::ExprKind::CallClosure { .. } | hir::ExprKind::CreateClosure { .. }
+                ) {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "indirect closure call is not part of the {} profile",
+                            self.domain.as_str()
+                        ),
+                        e.span,
+                    );
+                }
+            }
+        }
         if !matches!(
             self.domain,
             HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections | HirDomain::Closures
@@ -1305,6 +1332,7 @@ impl Verifier {
                     hir::TypeKind::StrOwned => ValueType::StrOwned,
                     hir::TypeKind::Char => ValueType::Char,
                     hir::TypeKind::Function(_) => ValueType::Function,
+                    hir::TypeKind::Closure(_) => ValueType::Closure,
                     hir::TypeKind::Record(_) => ValueType::Record(i as u32),
                     // PLAN-864: totality for the shared walk; collections
                     // verification gives these types their own rules.
@@ -1344,6 +1372,9 @@ impl Verifier {
             }
         }
         for body in &m.bodies {
+            if self.domain == HirDomain::Closures {
+                self.check_closure_borrow_rules(m, body);
+            }
             // projection/consumption marks (expr indices)
             let mut projected: BTreeSet<u32> = BTreeSet::new();
             let mut len_consumed: BTreeSet<u32> = BTreeSet::new();
@@ -1464,6 +1495,258 @@ impl Verifier {
                             );
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// Source closures are conservatively non-escaping when any environment
+    /// field borrows an owner. Keep this rule in HIR verification as well as
+    /// the MIR defense so a descriptor-authored bundle cannot bypass the
+    /// source resolver's lifetime checks.
+    fn check_closure_borrow_rules(&mut self, _m: &hir::Module, body: &hir::Body) {
+        fn operands(kind: &hir::ExprKind) -> Vec<hir::ExprId> {
+            use hir::ExprKind as E;
+            match kind {
+                E::ReadLocal { .. }
+                | E::Constant { .. }
+                | E::Unit
+                | E::StrLit { .. }
+                | E::CharLit { .. }
+                | E::CreateClosure { .. }
+                | E::BorrowMut { .. }
+                | E::ListNew { .. } => Vec::new(),
+                E::Binary { lhs, rhs, .. } | E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
+                E::Unary { operand, .. }
+                | E::TextLen { operand }
+                | E::TextLenBytes { operand }
+                | E::TextClone { operand }
+                | E::ClosureClone { operand }
+                | E::TextToOwned { operand }
+                | E::TextToBorrowed { operand }
+                | E::CharToCodepoint { operand }
+                | E::CharFromCodepoint { operand } => vec![*operand],
+                E::Call { eval_args, .. } | E::RecordCtor { eval_args, .. } => eval_args.clone(),
+                E::CallClosure { callee, eval_args } => std::iter::once(*callee)
+                    .chain(eval_args.iter().copied())
+                    .collect(),
+                E::TextCharAt { operand, index } => vec![*operand, *index],
+                E::TextSlice {
+                    operand,
+                    start,
+                    end,
+                } => vec![*operand, *start, *end],
+                E::TextConcat { lhs, rhs } => vec![*lhs, *rhs],
+                E::FieldGet { base, .. } | E::BorrowView { base } | E::RecordClone { base, .. } => {
+                    vec![*base]
+                }
+                E::Move { inner } => vec![*inner],
+                E::ListLen { list }
+                | E::ListClear { list }
+                | E::ListGet { list, .. }
+                | E::ListRemove { list, .. } => vec![*list],
+                E::ListPush { list, value } => vec![*list, *value],
+                E::ListInsert { list, index, value } | E::ListSet { list, index, value } => {
+                    vec![*list, *index, *value]
+                }
+                E::VariantCtor { payload, .. } => payload.iter().copied().collect(),
+                E::VariantGuardTest { root, .. } | E::VariantProject { root, .. } => vec![*root],
+            }
+        }
+
+        let mut uses = vec![0usize; body.exprs.len()];
+        let mut direct_callee_uses = vec![0usize; body.exprs.len()];
+        let mut borrowed_creators = BTreeSet::new();
+        let mut borrowed_sources = BTreeSet::new();
+        let mut borrowed_locals = BTreeMap::new();
+        let mut allowed_creator_uses = vec![0usize; body.exprs.len()];
+
+        for (index, expr) in body.exprs.iter().enumerate() {
+            if let hir::ExprKind::CreateClosure { captures, .. } = &expr.kind {
+                if captures
+                    .iter()
+                    .any(|capture| capture.mode == hir::CaptureMode::Borrow)
+                {
+                    borrowed_creators.insert(index as u32);
+                    borrowed_sources.extend(
+                        captures
+                            .iter()
+                            .filter(|capture| capture.mode == hir::CaptureMode::Borrow)
+                            .map(|capture| capture.local.0),
+                    );
+                }
+            }
+            if let hir::ExprKind::CallClosure { callee, .. } = &expr.kind {
+                if let Some(count) = direct_callee_uses.get_mut(callee.0 as usize) {
+                    *count += 1;
+                }
+            }
+            for child in operands(&expr.kind) {
+                if let Some(count) = uses.get_mut(child.0 as usize) {
+                    *count += 1;
+                }
+            }
+        }
+
+        for block in &body.blocks {
+            for stmt in &block.stmts {
+                let root = match stmt {
+                    hir::Stmt::Let { local, value } => {
+                        if borrowed_creators.contains(&value.0) {
+                            if borrowed_locals.insert(local.0, value.0).is_some() {
+                                self.error(
+                                    "verify.closure-borrow-escape",
+                                    "a borrow-capturing closure local is initialized more than once",
+                                    block.span,
+                                );
+                            }
+                            allowed_creator_uses[value.0 as usize] += 1;
+                        }
+                        Some(value.0)
+                    }
+                    hir::Stmt::Return { value } | hir::Stmt::Eval { value } => Some(value.0),
+                    hir::Stmt::Assign { place, value } => {
+                        if body
+                            .places
+                            .get(place.0 as usize)
+                            .is_some_and(|place| borrowed_locals.contains_key(&place.local.0))
+                        {
+                            self.error(
+                                "verify.closure-borrow-escape",
+                                "a borrow-capturing closure local cannot be reassigned",
+                                block.span,
+                            );
+                        }
+                        Some(value.0)
+                    }
+                    hir::Stmt::If { cond, .. } => Some(cond.0),
+                    hir::Stmt::Drop { local } => {
+                        if borrowed_locals.contains_key(&local.0) {
+                            // Runtime frame cleanup owns the environment; a
+                            // direct explicit DROP is still a valid release.
+                        }
+                        None
+                    }
+                    hir::Stmt::Loop { .. }
+                    | hir::Stmt::Break { .. }
+                    | hir::Stmt::Continue { .. } => None,
+                };
+                if let Some(root) = root {
+                    if let Some(count) = uses.get_mut(root as usize) {
+                        *count += 1;
+                    }
+                }
+            }
+        }
+
+        for expr in &body.exprs {
+            if let hir::ExprKind::CallClosure { callee, .. } = &expr.kind {
+                if borrowed_creators.contains(&callee.0) {
+                    allowed_creator_uses[callee.0 as usize] += 1;
+                }
+            }
+            if let hir::ExprKind::CreateClosure { captures, .. } = &expr.kind {
+                for capture in captures {
+                    if borrowed_locals.contains_key(&capture.local.0) {
+                        self.error(
+                            "verify.closure-borrow-escape",
+                            "a borrow-capturing closure cannot be captured by another closure",
+                            expr.span,
+                        );
+                    }
+                }
+            }
+        }
+
+        for creator in borrowed_creators.iter().copied() {
+            if uses.get(creator as usize).copied().unwrap_or(0)
+                != allowed_creator_uses
+                    .get(creator as usize)
+                    .copied()
+                    .unwrap_or(0)
+            {
+                let span = body.exprs[creator as usize].span;
+                self.error(
+                    "verify.closure-borrow-escape",
+                    "a borrow-capturing closure may only initialize a local or be called directly",
+                    span,
+                );
+            }
+        }
+
+        for (local, creator) in borrowed_locals {
+            let mut calls = 0usize;
+            for (index, expr) in body.exprs.iter().enumerate() {
+                if matches!(&expr.kind, hir::ExprKind::ReadLocal { local: id } if id.0 == local) {
+                    let direct = direct_callee_uses[index];
+                    calls += direct;
+                    if direct == 0 || uses[index] != direct {
+                        self.error(
+                            "verify.closure-borrow-escape",
+                            format!(
+                                "borrow-capturing closure local `{}` may only be called directly",
+                                body.locals
+                                    .get(local as usize)
+                                    .map(|decl| decl.name.as_str())
+                                    .unwrap_or("<unknown>")
+                            ),
+                            expr.span,
+                        );
+                    }
+                }
+            }
+            if calls == 0 {
+                self.error(
+                    "verify.closure-borrow-synchronous",
+                    format!(
+                        "borrow-capturing closure local `{}` must be called synchronously",
+                        body.locals
+                            .get(local as usize)
+                            .map(|decl| decl.name.as_str())
+                            .unwrap_or("<unknown>")
+                    ),
+                    body.exprs
+                        .get(creator as usize)
+                        .map(|expr| expr.span)
+                        .unwrap_or(body.span),
+                );
+            }
+        }
+
+        for expr in &body.exprs {
+            if let hir::ExprKind::ReadLocal { local } = &expr.kind {
+                if borrowed_sources.contains(&local.0) {
+                    self.error(
+                        "verify.closure-borrow-source-pinned",
+                        "a borrow-capture owner cannot be read elsewhere in its creating function",
+                        expr.span,
+                    );
+                }
+            }
+        }
+        for block in &body.blocks {
+            for stmt in &block.stmts {
+                match stmt {
+                    hir::Stmt::Assign { place, .. }
+                        if body
+                            .places
+                            .get(place.0 as usize)
+                            .is_some_and(|p| borrowed_sources.contains(&p.local.0)) =>
+                    {
+                        self.error(
+                            "verify.closure-borrow-source-pinned",
+                            "a borrow-capture owner cannot be replaced while its closure is live",
+                            block.span,
+                        )
+                    }
+                    hir::Stmt::Drop { local } if borrowed_sources.contains(&local.0) => {
+                        self.error(
+                            "verify.closure-borrow-source-pinned",
+                            "a borrow-capture owner cannot be dropped while its closure is live",
+                            block.span,
+                        );
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1695,8 +1978,20 @@ impl Verifier {
         let n_types = m.types.len();
         let mut diags: Vec<Diagnostic> = Vec::new();
         for t in &m.types {
+            if self.domain != HirDomain::Closures && matches!(t.kind, hir::TypeKind::Closure(_)) {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "verify.profile-op",
+                    format!(
+                        "closure value type `{}` is not part of the {} profile",
+                        t.id_text,
+                        self.domain.as_str()
+                    ),
+                    t.span,
+                ));
+            }
             match &t.kind {
-                hir::TypeKind::Function(sig) => {
+                hir::TypeKind::Function(sig) | hir::TypeKind::Closure(sig) => {
                     let mut check_use = |role: &str, u: &hir::TypeUse| {
                         if let hir::TypeUse::Ref(tid) = u {
                             if (tid.0 as usize) >= n_types {
@@ -1834,6 +2129,7 @@ impl Verifier {
                 hir::ExprKind::RecordCtor { .. }
                     | hir::ExprKind::RecordClone { .. }
                     | hir::ExprKind::Call { .. }
+                    | hir::ExprKind::CallClosure { .. }
                     | hir::ExprKind::Move { .. }
             )
         };
@@ -2012,7 +2308,7 @@ impl Verifier {
                 } else {
                     vt
                 };
-                if matches!(vt, ValueType::Function) {
+                if matches!(vt, ValueType::Function | ValueType::Closure) {
                     self.error(
                         "verify.type-mismatch",
                         format!(
@@ -2350,6 +2646,10 @@ impl Verifier {
                     is_call = true;
                     children.extend(eval_args.iter().map(|a| a.0));
                 }
+                // Closure parameters have value semantics in this source
+                // profile; record borrow tokens remain direct-function-only.
+                hir::ExprKind::CallClosure { .. } => {}
+                hir::ExprKind::CreateClosure { .. } => {}
                 hir::ExprKind::RecordCtor { eval_args, .. } => {
                     children.extend(eval_args.iter().map(|a| a.0));
                 }
@@ -2399,6 +2699,7 @@ impl Verifier {
                 | hir::ExprKind::TextSlice { .. }
                 | hir::ExprKind::TextConcat { .. }
                 | hir::ExprKind::TextClone { .. }
+                | hir::ExprKind::ClosureClone { .. }
                 | hir::ExprKind::TextToOwned { .. }
                 | hir::ExprKind::TextToBorrowed { .. }
                 | hir::ExprKind::CharToCodepoint { .. }
@@ -2743,9 +3044,27 @@ impl Verifier {
                         }
                     }
                 }
+                hir::ExprKind::CallClosure { callee, eval_args } => {
+                    for id in std::iter::once(callee).chain(eval_args.iter()) {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::CreateClosure { callee, captures } => {
+                    if (callee.0 as usize) >= n_defs {
+                        bad("declaration", callee.0, n_defs, e.span);
+                    }
+                    for capture in captures {
+                        if (capture.local.0 as usize) >= n_locals {
+                            bad("local", capture.local.0, n_locals, e.span);
+                        }
+                    }
+                }
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
@@ -2926,10 +3245,13 @@ impl Verifier {
         type_map: &BTreeMap<u32, ValueType>,
     ) {
         let mut seen: BTreeSet<u32> = BTreeSet::new();
+        let mut seen_captures: BTreeSet<u32> = BTreeSet::new();
         for l in &body.locals {
             let lvt = self.value_of(&l.ty, type_map);
             let text_vt = matches!(lvt, ValueType::Str | ValueType::StrOwned | ValueType::Char);
-            if lvt == ValueType::Function && self.domain != HirDomain::Closures {
+            if lvt == ValueType::Function
+                || (lvt == ValueType::Closure && self.domain != HirDomain::Closures)
+            {
                 self.error(
                     "verify.local-type",
                     format!(
@@ -2941,7 +3263,10 @@ impl Verifier {
             } else if text_vt
                 && !(matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
                     || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
-                        && lvt == ValueType::StrOwned))
+                        && lvt == ValueType::StrOwned)
+                    || (self.domain == HirDomain::Closures
+                        && l.role == hir::LocalRole::Capture
+                        && lvt == ValueType::Str))
             {
                 self.error(
                     "verify.local-type",
@@ -3017,6 +3342,56 @@ impl Verifier {
                         l.span,
                     );
                 }
+            }
+            if l.role == hir::LocalRole::Capture {
+                let Some(index) = l.index else {
+                    self.error(
+                        "verify.binding-invalid",
+                        format!("capture local `{}` has no environment index", l.id_text),
+                        l.span,
+                    );
+                    continue;
+                };
+                if self.domain != HirDomain::Closures {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "capture local `{}` is only valid in the closures profile",
+                            l.id_text
+                        ),
+                        l.span,
+                    );
+                }
+                if !seen_captures.insert(index) {
+                    self.error(
+                        "verify.binding-invalid",
+                        format!("capture environment index {} is used more than once", index),
+                        l.span,
+                    );
+                }
+                if l.mutable || l.param_mode != hir::ParamMode::View {
+                    self.error(
+                        "verify.binding-invalid",
+                        format!(
+                            "capture local `{}` cannot declare mutability or a parameter mode",
+                            l.id_text
+                        ),
+                        l.span,
+                    );
+                }
+            }
+        }
+        for expected in 0..seen_captures.len() as u32 {
+            if !seen_captures.contains(&expected) {
+                self.error(
+                    "verify.binding-invalid",
+                    format!(
+                        "capture environment indices in body `{}` must be contiguous from zero",
+                        body.id_text
+                    ),
+                    body.span,
+                );
+                break;
             }
         }
     }
@@ -3160,6 +3535,103 @@ impl Verifier {
                                 stack.push(Visit::Enter(*a));
                             }
                         }
+                        hir::ExprKind::CreateClosure { callee, captures } => {
+                            if self.domain != HirDomain::Closures {
+                                self.error(
+                                    "verify.profile-op",
+                                    "closure construction is available only in the closures profile",
+                                    e.span,
+                                );
+                            }
+                            let declared_ty = match e.ty {
+                                hir::TypeUse::Ref(tid) => m.types.get(tid.0 as usize),
+                                _ => None,
+                            };
+                            let Some(hir::TypeKind::Closure(closure_sig)) =
+                                declared_ty.map(|ty| &ty.kind)
+                            else {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!("expr `{}` must have a closure value type", e.id_text),
+                                    e.span,
+                                );
+                                stack.push(Visit::Exit(id));
+                                continue;
+                            };
+                            let callee = m.defs.get(callee.0 as usize);
+                            let Some(hir::DefKind::Function {
+                                ty,
+                                body: callee_body,
+                                ..
+                            }) = callee.map(|def| &def.kind)
+                            else {
+                                self.error(
+                                    "verify.closure-env-mismatch",
+                                    format!("expr `{}` closure callee must be a function with an environment", e.id_text),
+                                    e.span,
+                                );
+                                stack.push(Visit::Exit(id));
+                                continue;
+                            };
+                            let fn_sig = m.types.get(ty.0 as usize).and_then(|ty| match &ty.kind {
+                                hir::TypeKind::Function(sig) => Some(sig),
+                                _ => None,
+                            });
+                            if fn_sig != Some(closure_sig) {
+                                self.error(
+                                    "verify.closure-env-mismatch",
+                                    format!(
+                                        "expr `{}` closure signature does not match its callee",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            let capture_locals = m.bodies.get(callee_body.0 as usize).map(|body| {
+                                let mut locals: Vec<_> = body
+                                    .locals
+                                    .iter()
+                                    .filter(|local| local.role == hir::LocalRole::Capture)
+                                    .collect();
+                                locals.sort_by_key(|local| local.index);
+                                locals
+                            });
+                            if let Some(capture_locals) = capture_locals {
+                                if capture_locals.len() != captures.len() {
+                                    self.error(
+                                        "verify.closure-env-mismatch",
+                                        format!("expr `{}` has {} captures but its callee environment declares {}", e.id_text, captures.len(), capture_locals.len()),
+                                        e.span,
+                                    );
+                                }
+                                for (capture, target) in captures.iter().zip(capture_locals) {
+                                    if let Some(source) = body.locals.get(capture.local.0 as usize)
+                                    {
+                                        let source_type = self.value_of(&source.ty, type_map);
+                                        let target_type = self.value_of(&target.ty, type_map);
+                                        let compatible = source_type == target_type
+                                            || (capture.mode == hir::CaptureMode::Borrow
+                                                && source_type == ValueType::StrOwned
+                                                && target_type == ValueType::Str);
+                                        if !compatible {
+                                            self.error(
+                                                "verify.closure-env-mismatch",
+                                                format!("expr `{}` capture local type does not match the callee environment", e.id_text),
+                                                e.span,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            stack.push(Visit::Exit(id));
+                        }
+                        hir::ExprKind::CallClosure { callee, eval_args } => {
+                            stack.push(Visit::Exit(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(Visit::Enter(*a));
+                            }
+                            stack.push(Visit::Enter(*callee));
+                        }
                         hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {
                             // leaves; typed at Exit from the declared type
                             stack.push(Visit::Exit(id));
@@ -3167,6 +3639,7 @@ impl Verifier {
                         hir::ExprKind::TextLen { operand }
                         | hir::ExprKind::TextLenBytes { operand }
                         | hir::ExprKind::TextClone { operand }
+                        | hir::ExprKind::ClosureClone { operand }
                         | hir::ExprKind::TextToOwned { operand }
                         | hir::ExprKind::TextToBorrowed { operand }
                         | hir::ExprKind::CharToCodepoint { operand }
@@ -3297,6 +3770,7 @@ impl Verifier {
                         | hir::ExprKind::VariantProject { .. } => declared,
                         // PLAN-862: leaf, already checked at Enter.
                         hir::ExprKind::Unit => declared,
+                        hir::ExprKind::CreateClosure { .. } => declared,
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                             let lt =
                                 operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
@@ -3640,6 +4114,76 @@ impl Verifier {
                             }
                             *result
                         }
+                        hir::ExprKind::CallClosure { callee, eval_args } => {
+                            let closure_ty =
+                                body.exprs
+                                    .get(callee.0 as usize)
+                                    .and_then(|ce| match ce.ty {
+                                        hir::TypeUse::Ref(tid) => m.types.get(tid.0 as usize),
+                                        _ => None,
+                                    });
+                            let Some(hir::TypeKind::Closure(sig)) = closure_ty.map(|t| &t.kind)
+                            else {
+                                self.error(
+                                    "verify.callee-type",
+                                    format!(
+                                        "expr `{}`: indirect callee must have a closure value type",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                                tm.gray.remove(&id.0);
+                                tm.memo.insert(id.0, declared);
+                                continue;
+                            };
+                            if eval_args.len() != sig.params.len() {
+                                self.error(
+                                    "verify.eval-args-arity",
+                                    format!(
+                                        "expr `{}`: {} eval_args for closure signature with {} params",
+                                        e.id_text,
+                                        eval_args.len(),
+                                        sig.params.len()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            for (index, (arg, param)) in
+                                eval_args.iter().zip(&sig.params).enumerate()
+                            {
+                                let actual = operand_type(
+                                    tm,
+                                    *arg,
+                                    declared_of(&body.exprs[arg.0 as usize]),
+                                );
+                                let expected = self.value_of(param, type_map);
+                                if actual != expected {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: closure param {} ({}) does not match argument ({})",
+                                            e.id_text,
+                                            index,
+                                            vt_name(expected),
+                                            vt_name(actual)
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            let result = self.value_of(&sig.result, type_map);
+                            if declared != result {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: indirect call type does not match closure result",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            result
+                        }
                         // -- PLAN-770 text typing --------------------------------
                         hir::ExprKind::StrLit { .. } => {
                             // A literal has no named type of its own: the
@@ -3882,6 +4426,26 @@ impl Verifier {
                             }
                             ValueType::StrOwned
                         }
+                        hir::ExprKind::ClosureClone { operand } => {
+                            let operand_expr = &body.exprs[operand.0 as usize];
+                            let operand_type =
+                                operand_type(tm, *operand, declared_of(operand_expr));
+                            if self.domain != HirDomain::Closures
+                                || operand_type != ValueType::Closure
+                                || declared != ValueType::Closure
+                                || operand_expr.ty != e.ty
+                            {
+                                self.error(
+                                    "verify.closure-clone-type",
+                                    format!(
+                                        "expr `{}` must clone an owned closure into the same closure signature",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Closure
+                        }
                         hir::ExprKind::TextToBorrowed { operand } => {
                             let ot = operand_type(
                                 tm,
@@ -4074,6 +4638,7 @@ impl Verifier {
                                     ValueType::Record(rec)
                                 }
                                 ValueType::Function
+                                | ValueType::Closure
                                 | ValueType::I32
                                 | ValueType::Bool
                                 | ValueType::Str
@@ -4348,9 +4913,15 @@ impl Verifier {
                         targets.push(a.0);
                     }
                 }
+                hir::ExprKind::CallClosure { callee, eval_args } => {
+                    targets.push(callee.0);
+                    targets.extend(eval_args.iter().map(|a| a.0));
+                }
+                hir::ExprKind::CreateClosure { .. } => {}
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
@@ -4537,7 +5108,7 @@ impl Verifier {
         if structure_ok {
             let mut init: Init = BTreeSet::new();
             for (i, l) in body.locals.iter().enumerate() {
-                if l.role == hir::LocalRole::Param {
+                if matches!(l.role, hir::LocalRole::Param | hir::LocalRole::Capture) {
                     init.insert(LocalId(i as u32));
                 }
             }
@@ -5088,9 +5659,32 @@ impl Verifier {
                         stack.push(*a);
                     }
                 }
+                hir::ExprKind::CallClosure { callee, eval_args } => {
+                    for a in eval_args.iter().rev() {
+                        stack.push(*a);
+                    }
+                    stack.push(*callee);
+                }
+                hir::ExprKind::CreateClosure { captures, .. } => {
+                    for capture in captures {
+                        if !init.contains(&capture.local) {
+                            let name = body
+                                .locals
+                                .get(capture.local.0 as usize)
+                                .map(|local| local.id_text.as_str())
+                                .unwrap_or("<unknown>");
+                            self.error(
+                                "verify.uninitialized-read",
+                                format!("closure captures uninitialized local `{}`", name),
+                                e.span,
+                            );
+                        }
+                    }
+                }
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }

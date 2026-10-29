@@ -66,6 +66,9 @@ pub const AV_COLLECTIONS_SOURCE_RECIPE: &str = "ac-av/collections-source-run-v1"
 /// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
+/// PLAN-865: source-backed closures cases run through the per-function
+/// update session; the existing typed fixture recipe remains unchanged.
+pub const AV_CLOSURES_SOURCE_RECIPE: &str = "ac-av/closures-source-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 pub const AV_LOADED_RECIPE: &str = "ac-av/loaded-run-v1";
 
@@ -108,6 +111,9 @@ pub enum RecipeFamily {
     /// PLAN-864: real `.at` sources through the collections frontend onto
     /// the frozen 822 execution (entry = the source function name).
     CollectionsSource,
+    /// PLAN-865: real `.at` source through closure lowering and the existing
+    /// per-function closures update/link/runtime session.
+    ClosuresSource,
     /// PLAN-866: the resident-online recipe — one continuously-running
     /// chain, edits at call-boundary safety points.
     Resident,
@@ -125,6 +131,7 @@ impl RecipeFamily {
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
+            RecipeFamily::ClosuresSource => AV_CLOSURES_SOURCE_RECIPE,
             RecipeFamily::Resident => AV_RESIDENT_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
@@ -139,6 +146,7 @@ impl RecipeFamily {
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            RecipeFamily::ClosuresSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
             // PLAN-866: the resident recipe rides the scalar profile
             // identity (the 828 session pipeline).
             RecipeFamily::Resident => EXPECTED_AV_CORE_VERSION,
@@ -231,6 +239,9 @@ fn probe_toolchain_axes(
     // PLAN-824: the dynamic tool-identity axis carries profile id 5.
     if family == RecipeFamily::Dynamic {
         v.push(("av-profile".into(), "5".into()));
+    }
+    if family == RecipeFamily::ClosuresSource {
+        v.push(("av-profile".into(), "6".into()));
     }
     v
 }
@@ -604,6 +615,9 @@ struct StepOut {
     /// A closures-recipe increment only.
     #[serde(default)]
     closures: Option<serde_json::Value>,
+    /// PLAN-865: source closures' independently checked resource summary.
+    #[serde(default)]
+    closures_source: Option<serde_json::Value>,
     #[serde(default)]
     dynamic: Option<serde_json::Value>,
     /// PLAN-862: the AV result channel of a run step — `"value"` for an
@@ -867,7 +881,9 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
 /// closure admission rejections are verify-stage.
 fn map_diag_stage(stage: &str) -> Stage {
     match stage {
-        "admission" | "frontend" => Stage::Parse,
+        "admission" | "frontend" | "parse" | "text" => Stage::Parse,
+        "resolve" | "bind" => Stage::Resolve,
+        "typecheck" | "verify" => Stage::Typecheck,
         _ => Stage::Verify,
     }
 }
@@ -1018,6 +1034,18 @@ const CLOSURES_CASES: &[(&str, &str, &[usize], &[u64])] = &[(
     &[0, 4, 1, 2, 3],
 )];
 
+/// PLAN-865 source-case expectations held independently by the parent.
+/// The TestCase oracle repeats these values so either side can catch a lie in
+/// the other; diagnostics bind the explicitly unsupported source cases.
+const CLOSURES_SOURCE_CASES: &[(&str, Option<i32>, Option<&str>, usize)] = &[
+    ("K01", Some(42), None, 2),
+    ("K02", Some(42), None, 3),
+    ("K03", Some(42), None, 2),
+    ("K04", None, Some("source.closure-borrow-escape"), 0),
+    ("K05", Some(42), None, 3),
+    ("K06", None, Some("source.closure-shared-mutable"), 0),
+];
+
 pub fn run_closures_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -1034,6 +1062,28 @@ pub fn run_closures_check(
         artifact_dir,
         run_dir,
         RecipeFamily::Closures,
+    )
+}
+
+/// PLAN-865: source-backed closure check. The parent validates the
+/// `source:<K-id>` binding, independently judges the case oracle, and checks
+/// the closures-session resource face.
+pub fn run_closures_source_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::ClosuresSource,
     )
 }
 /// PLAN-824: the frozen dynamic-fixture faces the PARENT judges against.
@@ -1385,6 +1435,31 @@ fn run_check_impl(
     } else {
         None
     };
+    let closures_source_id = if family == RecipeFamily::ClosuresSource {
+        let selector = av.entry.strip_prefix("source:").ok_or_else(|| {
+            "closures-source requires a registered source:<K-id> av.entry".to_string()
+        })?;
+        let mut parts = selector.split(':');
+        let id = parts.next().unwrap_or_default();
+        let mode = parts.next();
+        if parts.next().is_some()
+            || mode.is_some_and(|mode| !matches!(mode, "fresh" | "restart" | "body-edit"))
+            || (mode == Some("body-edit") && id != "K01")
+        {
+            return Err(format!("invalid closures-source selector `{selector}`"));
+        }
+        if !CLOSURES_SOURCE_CASES
+            .iter()
+            .any(|(case_id, ..)| *case_id == id)
+        {
+            return Err(format!(
+                "closures source `{id}` is not registered (parent table)"
+            ));
+        }
+        Some((id.to_string(), mode.map(str::to_string)))
+    } else {
+        None
+    };
     let mut request = serde_json::json!({
         "recipe": recipe,
         "nonce": nonce,
@@ -1491,6 +1566,17 @@ fn run_check_impl(
             break 'admit;
         }
         if let Some(v) = malformed_owned(&ok.steps) {
+            infra_detail = Some(v);
+            break 'admit;
+        }
+        if closures_source_on_non_recipe(family, &ok.steps) {
+            infra_detail = Some(
+                "closures_source report on a non-closures-source recipe (protocol violation)"
+                    .to_string(),
+            );
+            break 'admit;
+        }
+        if let Some(v) = malformed_closures_source(&ok.steps) {
             infra_detail = Some(v);
             break 'admit;
         }
@@ -1711,6 +1797,9 @@ fn run_check_impl(
         judge_collections_fixture(id, &step, &mut mismatches);
     } else if let Some(id) = &closures_fixture {
         judge_closures_fixture(id, &step, &mut mismatches);
+    } else if let Some(id) = &closures_source_id {
+        judge_closures_source(&id.0, id.1.as_deref(), &step, &mut mismatches);
+        judge_expectation(family, &step, oracle, &mut mismatches);
     } else if let Some(id) = &dynamic_fixture {
         judge_dynamic_fixture(id, &step, &mut mismatches);
     } else {
@@ -1745,6 +1834,7 @@ fn run_check_impl(
             "trap": step.trap,
             "diag": step.diag,
             "owned": step.owned,
+            "closures_source": step.closures_source,
             "counters": step.counters,
             "source_hash": step.source_hash,
             "wall_ms": step.wall_ms,
@@ -1846,6 +1936,39 @@ fn typed_on_non_data(family: RecipeFamily, steps: &[StepOut]) -> bool {
 /// Admission rule (PLAN-821): any owned report on a non-owned recipe.
 fn owned_on_non_owned(family: RecipeFamily, steps: &[StepOut]) -> bool {
     family != RecipeFamily::Owned && steps.iter().any(|s| s.owned.is_some())
+}
+
+/// PLAN-865: the source-session face belongs only to the source closures
+/// recipe; fixture closures keep their original ledger contract.
+fn closures_source_on_non_recipe(family: RecipeFamily, steps: &[StepOut]) -> bool {
+    family != RecipeFamily::ClosuresSource && steps.iter().any(|s| s.closures_source.is_some())
+}
+
+fn malformed_closures_source(steps: &[StepOut]) -> Option<String> {
+    steps.iter().find_map(|step| {
+        let face = step.closures_source.as_ref()?;
+        let required = [
+            "live_after_release",
+            "allocs",
+            "frees",
+            "submitted_units",
+            "verified",
+            "encoded",
+            "admitted",
+            "store_writes",
+            "cache_hits",
+            "cache_misses",
+            "current_hot_bytes",
+            "history_hot_bytes",
+            "process_peak_bytes",
+        ];
+        let malformed = required
+            .iter()
+            .any(|field| face.get(field).and_then(|value| value.as_u64()).is_none());
+        malformed.then(|| {
+            "malformed closures_source face (expected u64 runtime/cache/resource axes)".into()
+        })
+    })
 }
 
 /// Admission rule (PLAN-821): EVERY owned report on an owned response is
@@ -2147,6 +2270,195 @@ fn judge_closures_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatc
 /// PARENT's frozen dynamic table — plus the DYN axes: a Dyn-valued fixture
 /// must report a successful portable round-trip. Counter-control seam
 /// (V-10): AV824_DYNAMIC_EXPECT_SABOTAGE.
+/// PLAN-865: source closure semantics and resource release are judged from
+/// the parent's own K-case table, independently of the worker report.
+fn judge_closures_source(
+    id: &str,
+    mode: Option<&str>,
+    step: &StepOut,
+    mismatches: &mut Vec<Mismatch>,
+) {
+    let (_, base_value, want_code, function_count) = CLOSURES_SOURCE_CASES
+        .iter()
+        .find(|(case_id, ..)| *case_id == id)
+        .expect("source id validated above");
+    if let Some(want_code) = want_code {
+        if step.outcome != "diag" {
+            mismatches.push(Mismatch {
+                observation: "closures_source".into(),
+                kind: "source-rejection".into(),
+                expected: format!("compile-time diagnostic {want_code}"),
+                actual: step_summary(step),
+                first_diff: None,
+            });
+            return;
+        }
+        let got_code = step
+            .diag
+            .as_ref()
+            .and_then(|diag| diag.get("code"))
+            .and_then(|code| code.as_str())
+            .unwrap_or_default();
+        if got_code != *want_code {
+            mismatches.push(Mismatch {
+                observation: "closures_source".into(),
+                kind: "source-diagnostic".into(),
+                expected: (*want_code).to_string(),
+                actual: got_code.to_string(),
+                first_diff: None,
+            });
+        }
+        if step.closures_source.is_some() {
+            mismatches.push(Mismatch {
+                observation: "closures_source".into(),
+                kind: "source-rejection-face".into(),
+                expected: "no runtime resource face for a rejected source".into(),
+                actual: "runtime resource face present".into(),
+                first_diff: None,
+            });
+        }
+        return;
+    }
+
+    let want_value = if mode == Some("body-edit") {
+        43
+    } else {
+        base_value.expect("success case has an expected value")
+    };
+    if step.outcome != "success" {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-outcome".into(),
+            expected: "success".into(),
+            actual: step_summary(step),
+            first_diff: None,
+        });
+        return;
+    }
+    if step.value != Some(want_value) {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-result".into(),
+            expected: want_value.to_string(),
+            actual: format!("{:?}", step.value),
+            first_diff: None,
+        });
+    }
+    let Some(face) = &step.closures_source else {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-resource-report".into(),
+            expected: "resource summary from the closures update session".into(),
+            actual: "no closures_source report".into(),
+            first_diff: None,
+        });
+        return;
+    };
+    let live = face
+        .get("live_after_release")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(u64::MAX);
+    if live != 0 {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-live".into(),
+            expected: "0 after frame and host release".into(),
+            actual: live.to_string(),
+            first_diff: None,
+        });
+    }
+    let allocs = face
+        .get("allocs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(u64::MAX);
+    let frees = face
+        .get("frees")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(u64::MAX);
+    if allocs != frees {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-alloc-free-balance".into(),
+            expected: format!("allocs == frees ({allocs})"),
+            actual: frees.to_string(),
+            first_diff: None,
+        });
+    }
+
+    let expected_submitted = if mode == Some("body-edit") {
+        1
+    } else {
+        *function_count
+    } as u64;
+    for (field, expected) in [
+        ("submitted_units", expected_submitted),
+        ("verified", expected_submitted),
+        ("encoded", expected_submitted),
+        ("admitted", expected_submitted),
+    ] {
+        let actual = face
+            .get(field)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(u64::MAX);
+        if actual != expected {
+            mismatches.push(Mismatch {
+                observation: format!("closures_source.{field}"),
+                kind: "counter",
+                expected: expected.to_string(),
+                actual: actual.to_string(),
+                first_diff: None,
+            });
+        }
+    }
+    let expected_hits = if mode == Some("restart") {
+        expected_submitted
+    } else {
+        0
+    };
+    let expected_misses = if mode == Some("restart") {
+        0
+    } else {
+        expected_submitted
+    };
+    for (field, expected) in [
+        ("cache_hits", expected_hits),
+        ("cache_misses", expected_misses),
+        ("store_writes", expected_misses),
+    ] {
+        let actual = face
+            .get(field)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(u64::MAX);
+        if actual != expected {
+            mismatches.push(Mismatch {
+                observation: format!("closures_source.{field}"),
+                kind: "counter",
+                expected: expected.to_string(),
+                actual: actual.to_string(),
+                first_diff: None,
+            });
+        }
+    }
+    let current_hot = face
+        .get("current_hot_bytes")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(u64::MAX);
+    let history_hot = face
+        .get("history_hot_bytes")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(u64::MAX);
+    const CLOSURES_HOT_LIMIT: u64 = 8 * 1024 * 1024;
+    if current_hot.saturating_add(history_hot) > CLOSURES_HOT_LIMIT {
+        mismatches.push(Mismatch {
+            observation: "closures_source".into(),
+            kind: "source-hot-budget".into(),
+            expected: format!("current + history <= {CLOSURES_HOT_LIMIT} bytes"),
+            actual: format!("{} bytes", current_hot.saturating_add(history_hot)),
+            first_diff: None,
+        });
+    }
+}
+
 fn judge_dynamic_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
     let (_, want_result, want_allocs, want_frees) = DYNAMIC_CASES
         .iter()
@@ -2813,6 +3125,7 @@ mod judge_tests {
             owned: None,
             collections: None,
             closures: None,
+            closures_source: None,
             dynamic: None,
             channel: None,
         }
@@ -3110,6 +3423,7 @@ mod closures_judge_tests {
             owned: None,
             collections: None,
             closures: Some(face),
+            closures_source: None,
             dynamic: None,
             channel: None,
         }
@@ -3159,5 +3473,134 @@ mod closures_judge_tests {
         bad.outcome = "trap".into();
         judge_closures_fixture("first-case", &bad, &mut ms4);
         assert!(!ms4.is_empty(), "a trapped step must go red");
+    }
+}
+
+#[cfg(test)]
+mod closures_source_judge_tests {
+    use super::*;
+
+    fn successful_step(value: Option<i32>) -> StepOut {
+        StepOut {
+            op: "run".into(),
+            outcome: "success".into(),
+            value,
+            typed: None,
+            trap: None,
+            diag: None,
+            counters: Default::default(),
+            source_hash: String::new(),
+            wall_ms: 0.0,
+            trace: Vec::new(),
+            spans: Vec::new(),
+            owned: None,
+            collections: None,
+            closures: None,
+            closures_source: None,
+            dynamic: None,
+            channel: None,
+        }
+    }
+
+    #[test]
+    fn source_judge_checks_result_release_and_unsupported_diagnostics() {
+        let mut good = successful_step(Some(42));
+        good.closures_source = Some(serde_json::json!({
+            "live_after_release": 0,
+            "allocs": 2,
+            "frees": 2,
+            "submitted_units": 2,
+            "verified": 2,
+            "encoded": 2,
+            "admitted": 2,
+            "store_writes": 2,
+            "cache_hits": 0,
+            "cache_misses": 2,
+            "current_hot_bytes": 4096,
+            "history_hot_bytes": 0,
+            "process_peak_bytes": 64 * 1024 * 1024,
+        }));
+        let mut mismatches = Vec::new();
+        judge_closures_source("K01", Some("fresh"), &good, &mut mismatches);
+        assert!(mismatches.is_empty(), "valid source face: {mismatches:?}");
+
+        let mut leaked = good.clone();
+        leaked.closures_source.as_mut().unwrap()["live_after_release"] = serde_json::json!(1);
+        let mut mismatches = Vec::new();
+        judge_closures_source("K01", Some("fresh"), &leaked, &mut mismatches);
+        assert!(
+            mismatches.iter().any(|m| m.kind == "source-live"),
+            "a live closure environment must fail the parent oracle: {mismatches:?}"
+        );
+
+        let mut unbalanced = good.clone();
+        unbalanced.closures_source.as_mut().unwrap()["frees"] = serde_json::json!(1);
+        let mut mismatches = Vec::new();
+        judge_closures_source("K01", Some("fresh"), &unbalanced, &mut mismatches);
+        assert!(
+            mismatches
+                .iter()
+                .any(|m| m.kind == "source-alloc-free-balance"),
+            "an unmatched closure allocation must fail: {mismatches:?}"
+        );
+
+        let mut restarted = successful_step(Some(42));
+        restarted.closures_source = Some(serde_json::json!({
+            "live_after_release": 0,
+            "allocs": 2,
+            "frees": 2,
+            "submitted_units": 2,
+            "verified": 2,
+            "encoded": 2,
+            "admitted": 2,
+            "store_writes": 0,
+            "cache_hits": 2,
+            "cache_misses": 0,
+            "current_hot_bytes": 4096,
+            "history_hot_bytes": 0,
+            "process_peak_bytes": 64 * 1024 * 1024,
+        }));
+        let mut mismatches = Vec::new();
+        judge_closures_source("K01", Some("restart"), &restarted, &mut mismatches);
+        assert!(mismatches.is_empty(), "file cache restart face: {mismatches:?}");
+
+        let mut edited = successful_step(Some(43));
+        edited.closures_source = Some(serde_json::json!({
+            "live_after_release": 0,
+            "allocs": 2,
+            "frees": 2,
+            "submitted_units": 1,
+            "verified": 1,
+            "encoded": 1,
+            "admitted": 1,
+            "store_writes": 1,
+            "cache_hits": 0,
+            "cache_misses": 1,
+            "current_hot_bytes": 4096,
+            "history_hot_bytes": 1024,
+            "process_peak_bytes": 64 * 1024 * 1024,
+        }));
+        let mut mismatches = Vec::new();
+        judge_closures_source("K01", Some("body-edit"), &edited, &mut mismatches);
+        assert!(mismatches.is_empty(), "body edit must rebuild one unit: {mismatches:?}");
+
+        let mut rejected = successful_step(None);
+        rejected.outcome = "diag".into();
+        rejected.diag = Some(serde_json::json!({
+            "stage": "bind",
+            "code": "source.closure-borrow-escape",
+            "message": "borrow-capturing closure escapes",
+        }));
+        let mut mismatches = Vec::new();
+        judge_closures_source("K04", None, &rejected, &mut mismatches);
+        assert!(mismatches.is_empty(), "valid rejection: {mismatches:?}");
+
+        rejected.diag.as_mut().unwrap()["code"] = serde_json::json!("source.other");
+        let mut mismatches = Vec::new();
+        judge_closures_source("K04", None, &rejected, &mut mismatches);
+        assert!(
+            mismatches.iter().any(|m| m.kind == "source-diagnostic"),
+            "the source diagnostic code is independently frozen: {mismatches:?}"
+        );
     }
 }

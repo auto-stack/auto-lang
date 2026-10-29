@@ -128,9 +128,7 @@ pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, Adapte
                 .ok_or_else(|| {
                     AdapterError::inv(
                         "lower.method-owner",
-                        format!(
-                            "method def id `{id}` is neither `d_f<fi>_<name>` nor `d_<name>`"
-                        ),
+                        format!("method def id `{id}` is neither `d_f<fi>_<name>` nor `d_<name>`"),
                     )
                 })?;
             method_mir_name(module, *record, bare)
@@ -446,14 +444,34 @@ pub fn lower_checked_collections(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    match checked.domain() {
-        hir::HirDomain::Collections => {}
+    lower_checked_collection_family(checked, entry_name, source_snapshot, false)
+}
+
+/// PLAN-865: lower a checked source-closures bundle to the frozen
+/// av.closures/1 MIR profile. The instruction set and execution contract
+/// remain the existing 823 closure contract.
+pub fn lower_checked_closures(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    lower_checked_collection_family(checked, entry_name, source_snapshot, true)
+}
+
+fn lower_checked_collection_family(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+    closures_profile: bool,
+) -> Result<MirModule, AdapterError> {
+    match (checked.domain(), closures_profile) {
+        (hir::HirDomain::Collections, false) | (hir::HirDomain::Closures, true) => {}
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
                 format!(
-                    "HIR domain `{}` is outside the av.collections/1 profile (expected collections)",
-                    other.as_str()
+                    "HIR domain `{}` does not match the requested collections-family lowering",
+                    other.0.as_str()
                 ),
             ));
         }
@@ -469,10 +487,18 @@ pub fn lower_checked_collections(
     }
     let module = &checked.bundle().modules[0];
     let owner = OwnerScope {
-        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        schema: if closures_profile {
+            auto_av_core::contract::MIR_CLOSURES_SCHEMA.to_string()
+        } else {
+            auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string()
+        },
         module: module.id_text.clone(),
     };
-    let mut out = MirModule::new_collections(owner);
+    let mut out = if closures_profile {
+        MirModule::new_closures(owner)
+    } else {
+        MirModule::new_collections(owner)
+    };
     out.capabilities = checked.required_capabilities().to_vec();
 
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
@@ -619,6 +645,124 @@ pub fn lower_function_collections_unit(
     out.funcs.push(mir_fn);
     out.entry = 0;
     Ok(out)
+}
+
+/// PLAN-865: lower one checked closure-source function to a standalone
+/// closures-profile unit. Every function reference is an import so the
+/// existing ClosuresUpdateSession can carry and revise units independently;
+/// synthetic closure bodies declare the same environment layout as their
+/// creator imports.
+pub fn lower_function_closures_unit(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    if bundle.domain != hir::HirDomain::Closures {
+        return Err(AdapterError::uns(
+            "lower.domain",
+            format!(
+                "HIR domain `{}` is outside the av.closures/1 profile",
+                bundle.domain.as_str()
+            ),
+        ));
+    }
+    if bundle.modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!(
+                "expected exactly one module, found {}",
+                bundle.modules.len()
+            ),
+        ));
+    }
+    let module = &bundle.modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_CLOSURES_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::closures_unit(owner);
+    out.capabilities = capabilities.to_vec();
+
+    let mut def_map = BTreeMap::new();
+    let mut target = None;
+    for (di, def) in module.defs.iter().enumerate() {
+        let hir::DefKind::Function { ty, body, .. } = &def.kind else {
+            return Err(AdapterError::uns(
+                "lower.function-kind",
+                "closures source units currently require free functions only".to_string(),
+            ));
+        };
+        let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+        let env = closures_env_for_def(module, di as u32, *body, &mut out)?;
+        let import = out.intern_import(MirImport {
+            symbol: format!("fn:{}", def.id_text),
+            effect: Effect::Pure,
+            sig,
+            env,
+        });
+        def_map.insert(di as u32, CalleeRef::Import(import));
+        if def.id_text == def_id_text {
+            target = Some((di as u32, *body, def.id_text.clone(), sig));
+        }
+    }
+    let Some((di, body, name, sig)) = target else {
+        return Err(AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", def_id_text),
+        ));
+    };
+    let function = lower_function(
+        module,
+        &mut out,
+        di,
+        body,
+        sig,
+        source_snapshot,
+        &def_map,
+        name,
+        false,
+        true,
+        &BTreeMap::new(),
+    )?;
+    out.funcs.push(function);
+    out.entry = 0;
+    Ok(out)
+}
+
+fn closures_env_for_def(
+    module: &hir::Module,
+    def_index: u32,
+    body_id: hir::BodyId,
+    out: &mut MirModule,
+) -> Result<Option<Vec<TypeIdx>>, AdapterError> {
+    let is_closure_body = module.bodies.iter().any(|body| {
+        body.exprs.iter().any(|expr| {
+            matches!(expr.kind, hir::ExprKind::CreateClosure { callee, .. } if callee.0 == def_index)
+        })
+    });
+    if !is_closure_body {
+        return Ok(None);
+    }
+    let body = module.bodies.get(body_id.0 as usize).ok_or_else(|| {
+        AdapterError::inv(
+            "lower.body-ref",
+            format!("closure body {} out of range", body_id.0),
+        )
+    })?;
+    let mut captures: Vec<_> = body
+        .locals
+        .iter()
+        .filter(|local| local.role == hir::LocalRole::Capture)
+        .collect();
+    captures.sort_by_key(|local| local.index);
+    let mut memo = BTreeMap::new();
+    let mut visiting = std::collections::BTreeSet::new();
+    let env = captures
+        .iter()
+        .map(|local| collections_type_idx_of(&local.ty, module, out, &mut memo, &mut visiting))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(env))
 }
 
 fn next_import_dummy() -> ImportIdx {
@@ -1553,7 +1697,7 @@ fn fn_type_index_ext(
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
     })?;
     match &td.kind {
-        hir::TypeKind::Function(sig) => {
+        hir::TypeKind::Function(sig) | hir::TypeKind::Closure(sig) => {
             let mut params = Vec::with_capacity(sig.params.len());
             for p in &sig.params {
                 params.push(if owned {
@@ -1567,7 +1711,13 @@ fn fn_type_index_ext(
             } else {
                 type_idx_of_use(&sig.result, m, out, data, memo, visiting)?
             };
-            Ok(out.intern_type(MirType::Fn(FnSig { params, result })))
+            let mir_sig = FnSig { params, result };
+            let mir_ty = if matches!(td.kind, hir::TypeKind::Closure(_)) {
+                MirType::Closure(mir_sig)
+            } else {
+                MirType::Fn(mir_sig)
+            };
+            Ok(out.intern_type(mir_ty))
         }
         _ => Err(AdapterError::inv(
             "lower.fn-type",
@@ -1653,6 +1803,9 @@ fn collections_type_idx_of(
             hir::BuiltinType::I32 => Ok(out.intern_type(MirType::I32)),
             hir::BuiltinType::Bool => Ok(out.intern_type(MirType::Bool)),
             hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
+            hir::BuiltinType::StrSlice if out.is_closures_profile() => {
+                Ok(out.intern_type(MirType::StrView))
+            }
             // PLAN-864: unit-typed expressions are intercepted before type
             // mapping (the effect arms return NO_SLOT); reaching here means
             // a unit value would materialize — an internal violation.
@@ -1682,6 +1835,9 @@ fn collections_type_idx_of(
                 hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
                 hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
                 hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
+                hir::TypeKind::Str if out.is_closures_profile() => {
+                    Ok(out.intern_type(MirType::StrView))
+                }
                 hir::TypeKind::Record(shape) => {
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
@@ -1743,6 +1899,22 @@ fn collections_type_idx_of(
                         },
                         Err,
                     )
+                }
+                hir::TypeKind::Closure(sig) => {
+                    let mut params = Vec::with_capacity(sig.params.len());
+                    for param in &sig.params {
+                        params.push(collections_type_idx_of(
+                            param, m, out, memo, visiting,
+                        )?);
+                    }
+                    let result = collections_type_idx_of(
+                        &sig.result,
+                        m,
+                        out,
+                        memo,
+                        visiting,
+                    )?;
+                    Ok(out.intern_type(MirType::Closure(FnSig { params, result })))
                 }
                 other => Err(AdapterError::uns(
                     "lower.type-use",
@@ -1943,7 +2115,7 @@ impl<'a> FnLower<'a> {
     /// PLAN-864: whether this lowering targets the av.collections/1
     /// profile (the module profile is the flag — no signature threading).
     fn collections(&self) -> bool {
-        self.out.is_collections_profile()
+        self.out.is_collections_profile() || self.out.is_closures_profile()
     }
 
     /// PLAN-864: HIR-level owned classification for a List element type
@@ -2226,7 +2398,7 @@ impl<'a> FnLower<'a> {
             AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0))
         })?;
         let (m, out) = (self.hir_module, &mut *self.out);
-        let is_coll = out.is_collections_profile();
+        let is_coll = out.is_collections_profile() || out.is_closures_profile();
         if is_coll {
             collections_type_idx_of(&e.ty, m, out, &mut self.ty_memo, &mut self.ty_visiting)
         } else if self.owned {
@@ -2681,6 +2853,78 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                // Evaluate the function value first, then actuals in source
+                // order. The verifier has already checked the signature.
+                let closure = self.eval_expr(*callee, depth + 1)?;
+                let mut args = Vec::with_capacity(eval_args.len());
+                for arg in eval_args {
+                    args.push(self.eval_expr(*arg, depth + 1)?);
+                }
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::CallClosure { dst, closure, args }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
+                    AdapterError::inv(
+                        "lower.closure-callee",
+                        format!("closure callee def {} has no MIR binding", callee.0),
+                    )
+                })?;
+                let mut operands = Vec::with_capacity(captures.len());
+                for capture in captures {
+                    let source = *self
+                        .slot_of_local
+                        .get(capture.local.0 as usize)
+                        .ok_or_else(|| {
+                            AdapterError::inv(
+                                "lower.local-ref",
+                                "closure capture local is out of range".to_string(),
+                            )
+                        })?;
+                    let source_ty = self.slot_ty_cache[source as usize];
+                    let kind = match capture.mode {
+                        hir::CaptureMode::Borrow => CaptureKind::Borrow,
+                        hir::CaptureMode::Move => {
+                            if matches!(
+                                self.out.types.get(source_ty as usize),
+                                Some(MirType::I32 | MirType::Bool | MirType::Char)
+                            ) {
+                                // Copy captures keep the source live. Copy to
+                                // a fresh temp, then transfer that temp into
+                                // the closure env so CREATE_CLOSURE retains
+                                // one uniform ownership contract.
+                                let copied = self.temp_ty_from_cache(source_ty);
+                                self.emit(
+                                    MirInstr::Copy {
+                                        dst: copied,
+                                        src: source,
+                                    },
+                                    sp,
+                                );
+                                operands.push(CaptureOperand {
+                                    kind: CaptureKind::Move,
+                                    src: copied,
+                                });
+                                continue;
+                            }
+                            CaptureKind::Move
+                        }
+                    };
+                    operands.push(CaptureOperand { kind, src: source });
+                }
+                let dst = self.temp_ty(ty);
+                self.emit(
+                    MirInstr::CreateClosure {
+                        dst,
+                        callee: callee_ref,
+                        captures: operands,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
             // -- PLAN-821 owned text surface (av.owned/1) ------------------
             hir::ExprKind::StrLit { value } if self.owned => {
                 // Destination kind follows the expression's HIR type: an
@@ -2781,6 +3025,12 @@ impl<'a> FnLower<'a> {
                 }
                 Ok(dst)
             }
+            hir::ExprKind::ClosureClone { operand } if self.out.is_closures_profile() => {
+                let src = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::Clone { dst, src }, sp);
+                Ok(dst)
+            }
             hir::ExprKind::TextToOwned { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
@@ -2831,10 +3081,8 @@ impl<'a> FnLower<'a> {
                     Some(MirType::RecordView(r)) => Some(r.fields.clone()),
                     _ => None,
                 };
-                let dst_is_record = matches!(
-                    self.out.types.get(ty as usize),
-                    Some(MirType::Record(_))
-                );
+                let dst_is_record =
+                    matches!(self.out.types.get(ty as usize), Some(MirType::Record(_)));
                 match view_fields {
                     Some(fields) if dst_is_record => {
                         let mut operands = Vec::with_capacity(fields.len());
@@ -2854,13 +3102,7 @@ impl<'a> FnLower<'a> {
                                     sp,
                                 );
                                 let owned = self.temp_ty(f.ty);
-                                self.emit(
-                                    MirInstr::StrToOwned {
-                                        dst: owned,
-                                        view,
-                                    },
-                                    sp,
-                                );
+                                self.emit(MirInstr::StrToOwned { dst: owned, view }, sp);
                                 operands.push(owned);
                                 continue;
                             }
@@ -3005,10 +3247,9 @@ impl<'a> FnLower<'a> {
                     // are already fresh transfer temps (move/clone required by
                     // the source surface), so they need no extra copy.
                     let t = self.slot_ty_all(s);
-                    let copyable_record = matches!(
-                        self.out.types.get(t as usize),
-                        Some(MirType::Record(_))
-                    ) && !auto_av_core::ownership::type_is_owned(self.out, t);
+                    let copyable_record =
+                        matches!(self.out.types.get(t as usize), Some(MirType::Record(_)))
+                            && !auto_av_core::ownership::type_is_owned(self.out, t);
                     if copyable_record {
                         let snap = self.temp_ty(t);
                         self.emit(MirInstr::Copy { dst: snap, src: s }, sp);
@@ -3488,7 +3729,10 @@ impl<'a> FnLower<'a> {
                                 }
                             }
                             let Some(fty) = fty else {
-                                return Err(AdapterError::inv("lower.field-path", "empty path".to_string()));
+                                return Err(AdapterError::inv(
+                                    "lower.field-path",
+                                    "empty path".to_string(),
+                                ));
                             };
                             if matches!(self.out.types.get(fty as usize), Some(MirType::Str)) {
                                 let str_view_t = self.out.intern_type(MirType::StrView);
@@ -3501,10 +3745,7 @@ impl<'a> FnLower<'a> {
                                     },
                                     sp,
                                 );
-                                self.emit(
-                                    MirInstr::StrToOwned { dst, view },
-                                    sp,
-                                );
+                                self.emit(MirInstr::StrToOwned { dst, view }, sp);
                                 return Ok(dst);
                             }
                             return Err(AdapterError::uns(
@@ -3594,6 +3835,8 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         Unary { .. } => "unary",
         Logical { .. } => "logical",
         Call { .. } => "call",
+        CallClosure { .. } => "call-closure",
+        CreateClosure { .. } => "create-closure",
         StrLit { .. } => "str-lit",
         CharLit { .. } => "char-lit",
         TextLen { .. } => "text-len",
@@ -3602,6 +3845,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         TextSlice { .. } => "text-slice",
         TextConcat { .. } => "text-concat",
         TextClone { .. } => "text-clone",
+        ClosureClone { .. } => "closure-clone",
         TextToOwned { .. } => "text-to-owned",
         TextToBorrowed { .. } => "text-to-borrowed",
         CharToCodepoint { .. } => "char-to-codepoint",
@@ -3655,7 +3899,7 @@ fn lower_function(
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
-        let mut ty = if out.is_collections_profile() {
+        let mut ty = if out.is_collections_profile() || out.is_closures_profile() {
             collections_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
         } else if owned {
             owned_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
@@ -3745,6 +3989,39 @@ fn lower_function(
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
 
+    // A HIR function referenced by CREATE_CLOSURE is a closure body. The
+    // capture local indices are its declared environment layout; ENV_GET
+    // initializes those locals at entry in the same order.
+    let closure_body = hir_module.bodies.iter().any(|candidate| {
+        candidate.exprs.iter().any(|expr| {
+            matches!(&expr.kind, hir::ExprKind::CreateClosure { callee, .. } if callee.0 == def_index)
+        })
+    });
+    let mut env = None;
+    if closure_body {
+        let mut captures: Vec<_> = body
+            .locals
+            .iter()
+            .enumerate()
+            .filter(|(_, local)| local.role == hir::LocalRole::Capture)
+            .collect();
+        captures.sort_by_key(|(_, local)| local.index);
+        let mut layout = Vec::with_capacity(captures.len());
+        for (field, (local_index, _)) in captures.iter().enumerate() {
+            let ty = lower.slot_ty_cache[*local_index];
+            let field = u16::try_from(field).map_err(|_| {
+                AdapterError::inv(
+                    "lower.closure-env-arity",
+                    "closure environment exceeds the 823 field limit".to_string(),
+                )
+            })?;
+            let dst = lower.slot_of_local[*local_index];
+            lower.emit(MirInstr::EnvGet { dst, field }, None);
+            layout.push(ty);
+        }
+        env = Some(layout);
+    }
+
     let mut stack: Vec<Task> = vec![Task {
         hir_block: body.entry,
         stmt_idx: 0,
@@ -3816,17 +4093,23 @@ fn lower_function(
                     lower.end_stmt_temp_views();
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
-                    if lower.owned {
+                    let slot_ty = lower
+                        .out
+                        .types
+                        .get(lower.slot_ty_cache[dst as usize] as usize)
+                        .cloned();
+                    let is_closure = matches!(slot_ty, Some(MirType::Closure(_)));
+                    if is_closure {
+                        lower.emit(MirInstr::Move { dst, src: v }, sp);
+                    } else if lower.owned {
                         // The binding's slot type decides: owned kinds
                         // transfer (MOVE — the temp dies), copyables copy.
-                        let slot_ty = lower
-                            .out
-                            .types
-                            .get(lower.slot_ty_cache[dst as usize] as usize)
-                            .cloned();
                         let is_owned = slot_ty
                             .as_ref()
-                            .map(|t| auto_av_core::ownership::type_is_owned_type_of(lower.out, t))
+                            .map(|t| {
+                                matches!(t, MirType::Closure(_))
+                                    || auto_av_core::ownership::type_is_owned_type_of(lower.out, t)
+                            })
                             .unwrap_or(false);
                         if is_owned {
                             lower.emit(MirInstr::Move { dst, src: v }, sp);
@@ -4044,9 +4327,30 @@ fn lower_function(
                     lower.set_term(Terminator::Jump { target: header });
                     break;
                 }
-                hir::Stmt::Drop { local: _ } => {
-                    // Scalar locals own no resources; programmatic drops are
-                    // no-ops in this profile (cleanup is compiler-scheduled).
+                hir::Stmt::Drop { local } => {
+                    // Closure cleanup is explicit in MIR because a closure
+                    // may own its environment or carry a synchronous borrow.
+                    let local_info = body.locals.get(local.0 as usize).ok_or_else(|| {
+                        AdapterError::inv(
+                            "lower.local-ref",
+                            format!("drop local {} out of range", local.0),
+                        )
+                    })?;
+                    let is_closure = match local_info.ty {
+                        hir::TypeUse::Ref(tid) => matches!(
+                            hir_module.types.get(tid.0 as usize).map(|td| &td.kind),
+                            Some(hir::TypeKind::Closure(_))
+                        ),
+                        _ => false,
+                    };
+                    if is_closure {
+                        lower.emit(
+                            MirInstr::Drop {
+                                slot: lower.slot_of_local[local.0 as usize],
+                            },
+                            None,
+                        );
+                    }
                 }
                 hir::Stmt::Eval { value } => {
                     // PLAN-864: a unit-effect statement (push/insert/set/
@@ -4109,6 +4413,6 @@ fn lower_function(
         entry: 0,
         source_snapshot,
         spans: lower.spans,
-        env: None,
+        env,
     })
 }

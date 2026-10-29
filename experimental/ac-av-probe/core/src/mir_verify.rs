@@ -1440,8 +1440,8 @@ impl<'a> Verifier<'a> {
     /// PLAN-823 T-03 (§5.1.3/§5.1.6): the conservative BORROW-capture
     /// discipline. A borrow-capturing closure is SYNCHRONOUS-ONLY:
     /// * its value never escapes the creating function — the only allowed
-    ///   consumers are CALL_CLOSURE on it and DROP of it, and it MUST be
-    ///   called and dropped there (`mir.borrow-closure.escape` /
+    ///   consumers are CALL_CLOSURE on it and DROP of it; frame-exit cleanup
+    ///   also releases an unreturned closure (`mir.borrow-closure.escape` /
     ///   `mir.borrow-closure.synchronous`);
     /// * every borrow SOURCE slot is PINNED for the whole function — its
     ///   only allowed uses are the capture itself and VIEW minting
@@ -1486,28 +1486,54 @@ impl<'a> Verifier<'a> {
         if pins.is_empty() {
             return Ok(());
         }
+        // Let-bound closures are first produced in a temporary and then
+        // transferred into their HIR local. Follow those ownership moves.
+        let mut aliases: Vec<(u32, usize)> = escs
+            .iter()
+            .enumerate()
+            .map(|(root, (slot, _))| (*slot, root))
+            .collect();
+        loop {
+            let mut changed = false;
+            for block in &f.blocks {
+                for instr in &block.instrs {
+                    if let MirInstr::Move { dst, src } = instr {
+                        if let Some((_, root)) = aliases.iter().find(|(slot, _)| slot == src) {
+                            if !aliases.iter().any(|(slot, _)| slot == dst) {
+                                aliases.push((*dst, *root));
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
         let mut calls = vec![0usize; escs.len()];
         let mut drops = vec![0usize; escs.len()];
         for (bi, b) in f.blocks.iter().enumerate() {
             for (ii, instr) in b.instrs.iter().enumerate() {
                 let uses = instr.use_slots();
-                for (k, (dst, _)) in escs.iter().enumerate() {
+                for (slot, k) in &aliases {
                     match instr {
-                        MirInstr::CallClosure { closure, .. } if closure == dst => {
-                            calls[k] += 1;
+                        MirInstr::CallClosure { closure, .. } if closure == slot => {
+                            calls[*k] += 1;
                         }
-                        MirInstr::Drop { slot } if slot == dst => {
-                            drops[k] += 1;
+                        MirInstr::Drop { slot: dropped } if dropped == slot => {
+                            drops[*k] += 1;
                         }
+                        MirInstr::Move { src, .. } if src == slot => {}
                         _ => {
-                            if uses.contains(dst) {
+                            if uses.contains(slot) {
                                 return Err(MirVerifyError::inv(
                                     "mir.borrow-closure.escape",
                                     format!(
                                         "slot #{} of `{}` is a borrow-bound closure: its only \
                                          allowed consumers are CALL_CLOSURE and DROP in the \
                                          creating function (synchronous non-escaping use)",
-                                        dst, f.name
+                                        slot, f.name
                                     ),
                                 ));
                             }
@@ -1540,16 +1566,24 @@ impl<'a> Verifier<'a> {
                 crate::mir::Terminator::Branch { cond, .. } => vec![*cond],
                 crate::mir::Terminator::Jump { .. } => vec![],
             };
-            for (dst, _) in escs.iter() {
-                if term_uses.contains(dst) {
+            for (slot, _) in aliases.iter() {
+                if term_uses.contains(slot) {
                     return Err(MirVerifyError::inv(
                         "mir.borrow-closure.escape",
                         format!(
                             "slot #{} of `{}` is a borrow-bound closure: RETURN carries it out \
                              of the creating function (synchronous non-escaping use only)",
-                            dst, f.name
+                            slot, f.name
                         ),
                     ));
+                }
+            }
+            if matches!(b.term, crate::mir::Terminator::Return { .. }) {
+                // RETURN drains owned closure slots through the runtime's
+                // frame cleanup path. Treat that as the implicit DROP for
+                // every borrow-bound closure that was not returned above.
+                for (_, root) in &aliases {
+                    drops[*root] += 1;
                 }
             }
         }
@@ -1558,7 +1592,7 @@ impl<'a> Verifier<'a> {
                 return Err(MirVerifyError::inv(
                     "mir.borrow-closure.synchronous",
                     format!(
-                        "borrow-bound closure slot #{} of `{}` must be CALLED and DROPPED in \
+                        "borrow-bound closure slot #{} of `{}` must be CALLED and released in \
                          the creating function (found {} calls, {} drops)",
                         dst, f.name, calls[k], drops[k]
                     ),

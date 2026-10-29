@@ -101,6 +101,7 @@ pub enum BuiltinMethod {
     CharAt,
     Slice,
     Clone,
+    ClosureClone,
     To,
     ToCodepoint,
     FromCodepoint,
@@ -150,7 +151,7 @@ pub fn bin_op_vt(op: BinOp) -> VT {
 }
 
 /// Index into [`ResolvedFn::locals`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct LocalRef(pub usize);
 
 /// Registration index of a loop within its function (walk order); break and
@@ -166,6 +167,9 @@ pub struct LocalDecl {
     pub mutable: bool,
     pub is_param: bool,
     pub param_index: Option<u32>,
+    /// Capture environment index for a synthesized closure body.
+    pub capture_index: Option<u32>,
+    pub is_capture: bool,
     /// Parameter ownership mode (PLAN-770): Default = view, Mut = exclusive
     /// borrow, Move = transfer in. Bindings always carry Default.
     pub mode: super::ast::ParamMode,
@@ -216,6 +220,14 @@ pub enum RExprKind {
     CallFn {
         fn_index: usize,
         args: Vec<ResolvedArg>,
+    },
+    CallClosure {
+        callee: Box<ResolvedExpr>,
+        args: Vec<ResolvedArg>,
+    },
+    CreateClosure {
+        fn_index: usize,
+        captures: Vec<(LocalRef, crate::hir::CaptureMode)>,
     },
     CallIntrinsic {
         symbol: &'static str,
@@ -405,6 +417,15 @@ impl Drop for ResolvedExpr {
                     stack.push(v);
                 }
             }
+            RExprKind::CallClosure { callee, args } => {
+                let e = std::mem::replace(callee.as_mut(), dummy());
+                stack.push(e);
+                for a in args.iter_mut() {
+                    let v = std::mem::replace(&mut a.value, dummy());
+                    stack.push(v);
+                }
+            }
+            RExprKind::CreateClosure { .. } => {}
             RExprKind::CtorNamed { fields, .. } => {
                 for (_, v) in fields.iter_mut() {
                     let e = std::mem::replace(v, dummy());
@@ -1077,6 +1098,7 @@ fn resolve_detailed(
 
     // Pass 2: per-function body resolution.
     let mut fns = Vec::new();
+    let mut closure_fns = Vec::new();
     for (i, f) in flat.iter().enumerate() {
         crate::body_work::record_resolve(&f.name.name);
         fns.push(resolve_fn(
@@ -1090,8 +1112,11 @@ fn resolve_detailed(
             &records,
             &rec_index,
             &mut coll,
+            &mut closure_fns,
+            flat.len(),
         ));
     }
+    fns.extend(closure_fns);
 
     // PLAN-862 entry matrix: the entry-unit profile has exactly one entry
     // and a frozen accept/reject set (`entry-contract.md` §2). Runs after
@@ -1263,7 +1288,7 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
     }
 
     // -- the same rules for every other function --------------------------
-    for (i, f) in fns.iter().enumerate() {
+    for (i, f) in fns.iter().take(flat.len()).enumerate() {
         // expression statements are a script-tail form only (declared
         // entries were already reported above — do not double-report)
         if !flat[i].script && !mains.contains(&i) {
@@ -1338,7 +1363,7 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
                     },
                     span: end_span,
                 });
-            } else if flat[i].script {
+            } else if i < flat.len() && flat[i].script {
                 if let Some(last) = f.body.stmts.last_mut() {
                     let taken = std::mem::replace(
                         last,
@@ -1742,6 +1767,8 @@ pub(crate) fn recheck_swap(
         &env.program.records,
         &env.rec_index,
         &mut coll,
+        &mut Vec::new(),
+        env.program.fns.len(),
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -2193,6 +2220,12 @@ struct FnResolver<'a> {
     loop_stack: Vec<LoopRef>,
     loop_count: usize,
     used_intrinsics: BTreeSet<&'static str>,
+    closure_defs: &'a mut Vec<ResolvedFn>,
+    closure_base: usize,
+    moved_locals: BTreeSet<LocalRef>,
+    /// Borrow-capturing closures are restricted to direct calls through a
+    /// local binding; any value read is an escape.
+    borrowed_closure_locals: BTreeSet<LocalRef>,
     /// PLAN-864: active `for-in` iterations — (iterated local, element
     /// type). Method resolution rejects structural modification of the
     /// iterated list inside the body (`source.iterate-mutate`).
@@ -2210,6 +2243,8 @@ fn resolve_fn(
     records: &[ResolvedRecord],
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
+    closure_defs: &mut Vec<ResolvedFn>,
+    closure_base: usize,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -2232,6 +2267,10 @@ fn resolve_fn(
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
+        closure_defs,
+        closure_base,
+        moved_locals: BTreeSet::new(),
+        borrowed_closure_locals: BTreeSet::new(),
         records,
         rec_index,
         coll,
@@ -2251,6 +2290,8 @@ fn resolve_fn(
             mutable: false,
             is_param: true,
             param_index: Some(0),
+            capture_index: None,
+            is_capture: false,
             mode: super::ast::ParamMode::Default,
             span: f.name.span,
         });
@@ -2303,6 +2344,8 @@ fn resolve_fn(
                     0
                 }) as u32,
             ),
+            capture_index: None,
+            is_capture: false,
             span: p.span,
         });
         r.scopes[0].names.insert(p.name.name.clone(), lref);
@@ -2372,6 +2415,349 @@ impl<'a> FnResolver<'a> {
             }
         }
         None
+    }
+
+    fn infer_closure_expr(&self, expr: &Expr, locals: &BTreeMap<String, VT>) -> VT {
+        match &expr.kind {
+            ExprKind::IntLit(_) => VT::I32,
+            ExprKind::BoolLit(_) => VT::Bool,
+            ExprKind::StrLit(_) => VT::Str,
+            ExprKind::CharLit(_) => VT::Char,
+            ExprKind::Var(name) => locals.get(&name.name).copied().unwrap_or(VT::I32),
+            ExprKind::Binary { op, lhs, rhs } => match op {
+                BinOp::Add
+                    if self.infer_closure_expr(lhs, locals).is_text()
+                        && self.infer_closure_expr(rhs, locals).is_text() =>
+                {
+                    VT::StrOwned
+                }
+                _ => super::resolve::bin_op_vt(*op),
+            },
+            ExprKind::Unary { op, .. } => match op {
+                ast::UnaryOp::Neg => VT::I32,
+                ast::UnaryOp::Not => VT::Bool,
+            },
+            ExprKind::Call { callee, .. } => self
+                .sigs
+                .get(&callee.name)
+                .map(|sig| sig.result)
+                .or_else(|| self.rec_index.get(&callee.name).map(|ri| VT::Rec(*ri)))
+                .unwrap_or(VT::I32),
+            ExprKind::CallValue { callee, .. } => match self.infer_closure_expr(callee, locals) {
+                VT::Function(index) => self
+                    .coll
+                    .function_types
+                    .get(index)
+                    .map(|sig| sig.result)
+                    .unwrap_or(VT::I32),
+                _ => VT::I32,
+            },
+            ExprKind::Method { recv, name, .. } | ExprKind::MethodCall { recv, name, .. } => {
+                let recv = self.infer_closure_expr(recv, locals);
+                super::resolve::builtin_method(recv, &name.name)
+                    .map(|(_, _, result)| result)
+                    .unwrap_or(VT::I32)
+            }
+            ExprKind::Field { base, name } => {
+                let VT::Rec(ri) = self.infer_closure_expr(base, locals) else {
+                    return VT::I32;
+                };
+                self.records
+                    .get(ri)
+                    .and_then(|record| record.fields.iter().find(|f| f.name == name.name))
+                    .map(|field| field.vt)
+                    .unwrap_or(VT::I32)
+            }
+            ExprKind::CtorNamed { ty, .. } => self
+                .rec_index
+                .get(&ty.name)
+                .map(|ri| VT::Rec(*ri))
+                .unwrap_or(VT::I32),
+            ExprKind::TypeWordArg(word) => vt_of_word(*word),
+            ExprKind::Closure { .. } | ExprKind::MutArg { .. } | ExprKind::GenericType { .. } => {
+                VT::I32
+            }
+        }
+    }
+
+    fn infer_closure_block_result(
+        &mut self,
+        block: &ast::Block,
+        locals: &BTreeMap<String, VT>,
+    ) -> VT {
+        let mut blocks = vec![(block, locals.clone())];
+        while let Some((block, mut visible)) = blocks.pop() {
+            for stmt in &block.stmts {
+                match stmt {
+                    Stmt::Return { value, .. } => return self.infer_closure_expr(value, &visible),
+                    Stmt::Let {
+                        name, ann, value, ..
+                    } => {
+                        let vt = ann
+                            .as_ref()
+                            .map(|ann| {
+                                vt_of_ann_coll(
+                                    ann,
+                                    self.rec_index,
+                                    self.coll,
+                                    &mut Vec::new(),
+                                    TypePos::Local,
+                                )
+                            })
+                            .unwrap_or_else(|| self.infer_closure_expr(value, &visible));
+                        visible.insert(name.name.clone(), vt);
+                    }
+                    Stmt::If { then, els, .. } => {
+                        if let Some(else_block) = els {
+                            blocks.push((else_block, visible.clone()));
+                        }
+                        blocks.push((then, visible.clone()));
+                    }
+                    Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
+                        blocks.push((body, visible.clone()));
+                    }
+                    Stmt::ForIn {
+                        var, iter, body, ..
+                    } => {
+                        let mut nested = visible.clone();
+                        let VT::List(index) = self.infer_closure_expr(iter, &visible) else {
+                            blocks.push((body, nested));
+                            continue;
+                        };
+                        nested.insert(
+                            var.name.clone(),
+                            self.coll.lists.get(index).copied().unwrap_or(VT::I32),
+                        );
+                        blocks.push((body, nested));
+                    }
+                    Stmt::IsMatch { arms, .. } => {
+                        for arm in arms.iter().rev() {
+                            let mut nested = visible.clone();
+                            if let Some(binding) = &arm.binding {
+                                nested.insert(binding.name.clone(), VT::I32);
+                            }
+                            blocks.push((&arm.body, nested));
+                        }
+                    }
+                    Stmt::ExprStmt { .. }
+                    | Stmt::Assign { .. }
+                    | Stmt::Break { .. }
+                    | Stmt::Continue { .. } => {}
+                }
+            }
+        }
+        VT::Unit
+    }
+
+    fn resolve_closure(
+        &mut self,
+        move_capture: bool,
+        params_ast: &[ast::Param],
+        body_ast: &ast::ClosureBody,
+        span: Span,
+    ) -> ResolvedExpr {
+        if self.profile != SourceProfile::Closures {
+            self.bind_err(
+                "source.unsupported",
+                "lambda expressions are available only in the closures source profile",
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        }
+
+        let outer_names: BTreeSet<String> = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.names.keys().cloned())
+            .collect();
+        let captures =
+            super::closure_capture::analyze_capture_uses(params_ast, body_ast, &outer_names);
+        let mut capture_bindings = Vec::new();
+        let mut capture_decls = Vec::new();
+        for capture in captures {
+            let Some(source_local) = self.lookup(&capture.name) else {
+                continue;
+            };
+            let source_vt = self.locals[source_local.0].vt;
+            if capture.written {
+                self.bind_err("source.closure-shared-mutable", format!("closure writes captured local `{}`; shared mutable captures are unsupported", capture.name), capture.span);
+                continue;
+            }
+            let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
+            let owned = self.vt_is_coll_owned(source_vt);
+            let (mode, body_vt, moved) = if copy {
+                (crate::hir::CaptureMode::Move, source_vt, false)
+            } else if owned && move_capture {
+                (crate::hir::CaptureMode::Move, source_vt, true)
+            } else if source_vt == VT::StrOwned && !move_capture {
+                (crate::hir::CaptureMode::Borrow, VT::Str, false)
+            } else {
+                self.bind_err("source.closure-capture-unsupported", format!("capture `{}` of type `{}` requires a supported move or synchronous Str borrow", capture.name, source_vt.as_str()), capture.span);
+                continue;
+            };
+            if moved {
+                self.moved_locals.insert(source_local);
+            }
+            capture_bindings.push((source_local, mode));
+            capture_decls.push((capture.name, body_vt, mode));
+        }
+
+        let old_locals = std::mem::replace(&mut self.locals, Vec::new());
+        let old_scopes = std::mem::replace(
+            &mut self.scopes,
+            vec![Scope {
+                names: BTreeMap::new(),
+                views: BTreeMap::new(),
+            }],
+        );
+        let old_declared = std::mem::replace(&mut self.declared_names, BTreeSet::new());
+        let old_result = self.fn_result;
+        let old_loops = std::mem::replace(&mut self.loop_stack, Vec::new());
+        let old_loop_count = std::mem::replace(&mut self.loop_count, 0);
+        let old_intrinsics = std::mem::replace(&mut self.used_intrinsics, BTreeSet::new());
+        let old_moved = std::mem::replace(&mut self.moved_locals, BTreeSet::new());
+        let old_borrowed = std::mem::replace(&mut self.borrowed_closure_locals, BTreeSet::new());
+        let old_iterate = std::mem::replace(&mut self.iterate_targets, Vec::new());
+
+        let mut param_names = Vec::new();
+        let mut param_types = Vec::new();
+        let mut visible = BTreeMap::new();
+        for param in params_ast {
+            let vt = vt_of_ann_coll(
+                &param.ty,
+                self.rec_index,
+                self.coll,
+                self.diags,
+                TypePos::Param,
+            );
+            if vt == VT::Unit {
+                self.bind_err(
+                    "source.unit-placement",
+                    "closure parameter cannot have type unit",
+                    param.span,
+                );
+            }
+            if self.scopes[0].names.contains_key(&param.name.name) {
+                self.bind_err(
+                    "source.duplicate",
+                    format!("duplicate closure parameter `{}`", param.name.name),
+                    param.name.span,
+                );
+            }
+            let local = LocalRef(self.locals.len());
+            self.locals.push(LocalDecl {
+                name: param.name.name.clone(),
+                vt,
+                mutable: false,
+                is_param: true,
+                param_index: Some(param_types.len() as u32),
+                capture_index: None,
+                is_capture: false,
+                mode: ast::ParamMode::Default,
+                span: param.span,
+            });
+            self.scopes[0].names.insert(param.name.name.clone(), local);
+            self.declared_names.insert(param.name.name.clone());
+            visible.insert(param.name.name.clone(), vt);
+            param_names.push(param.name.name.clone());
+            param_types.push(vt);
+        }
+        for (index, (name, vt, _mode)) in capture_decls.iter().enumerate() {
+            let local = LocalRef(self.locals.len());
+            self.locals.push(LocalDecl {
+                name: name.clone(),
+                vt: *vt,
+                mutable: false,
+                is_param: false,
+                param_index: None,
+                capture_index: Some(index as u32),
+                is_capture: true,
+                mode: ast::ParamMode::Default,
+                span,
+            });
+            self.scopes[0].names.insert(name.clone(), local);
+            self.declared_names.insert(name.clone());
+            visible.insert(name.clone(), *vt);
+        }
+        let inferred_result = match body_ast {
+            ast::ClosureBody::Expr(expr) => self.infer_closure_expr(expr, &visible),
+            ast::ClosureBody::Block(block) => self.infer_closure_block_result(block, &visible),
+        };
+        self.fn_result = inferred_result;
+        let (resolved_body, result) = match body_ast {
+            ast::ClosureBody::Expr(expr) => {
+                let value = self.expr_iterative(expr);
+                let result = value.vt;
+                (
+                    RBlock {
+                        stmts: vec![RStmt::Return {
+                            value,
+                            span: expr.span,
+                        }],
+                        span,
+                    },
+                    result,
+                )
+            }
+            ast::ClosureBody::Block(block) => {
+                let mut resolved = self.resolve_body(block);
+                if inferred_result == VT::Unit {
+                    resolved.stmts.push(RStmt::Return {
+                        value: ResolvedExpr {
+                            kind: RExprKind::Unit,
+                            span,
+                            vt: VT::Unit,
+                        },
+                        span,
+                    });
+                }
+                (resolved, inferred_result)
+            }
+        };
+        let synthetic_locals = std::mem::replace(&mut self.locals, old_locals);
+        self.scopes = old_scopes;
+        self.declared_names = old_declared;
+        let used_intrinsics = std::mem::replace(&mut self.used_intrinsics, old_intrinsics);
+        self.fn_result = old_result;
+        self.loop_stack = old_loops;
+        self.loop_count = old_loop_count;
+        self.moved_locals = old_moved;
+        self.borrowed_closure_locals = old_borrowed;
+        self.iterate_targets = old_iterate;
+
+        let type_index = self.coll.intern_function(ClosureFnType {
+            params: param_types.clone(),
+            result,
+        });
+        let fn_index = self.closure_base + self.closure_defs.len();
+        let name = format!("__closure_{}", fn_index);
+        self.closure_defs.push(ResolvedFn {
+            name,
+            name_span: span,
+            item_span: span,
+            param_names,
+            params: param_types,
+            param_modes: vec![false; params_ast.len()],
+            result,
+            locals: synthetic_locals,
+            body: resolved_body,
+            loop_count: 0,
+            used_intrinsics,
+            receiver: ast::Receiver::Free,
+            owner_rec: None,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::Function(type_index),
+            kind: RExprKind::CreateClosure {
+                fn_index,
+                captures: capture_bindings,
+            },
+        }
     }
 
     /// PLAN-864: the synthetic unreachable-path return filler of an
@@ -2484,6 +2870,8 @@ impl<'a> FnResolver<'a> {
             mutable,
             is_param: false,
             param_index: None,
+            capture_index: None,
+            is_capture: false,
             mode: ast::ParamMode::Default,
             span: Span { start: 0, end: 0 },
         });
@@ -3129,6 +3517,13 @@ impl<'a> FnResolver<'a> {
                         );
                     }
                     let lref = LocalRef(self.locals.len());
+                    if matches!(
+                        &value.kind,
+                        RExprKind::CreateClosure { captures, .. }
+                            if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+                    ) {
+                        self.borrowed_closure_locals.insert(lref);
+                    }
                     self.locals.push(LocalDecl {
                         name: name.name.clone(),
                         vt,
@@ -3136,6 +3531,8 @@ impl<'a> FnResolver<'a> {
                         mode: ast::ParamMode::Default,
                         is_param: false,
                         param_index: None,
+                        capture_index: None,
+                        is_capture: false,
                         span: name.span.join(value.span),
                     });
                     self.scopes
@@ -3170,8 +3567,32 @@ impl<'a> FnResolver<'a> {
                             target.base.span,
                         );
                     }
+                    if self
+                        .lookup(&target.base.name)
+                        .is_some_and(|local| self.moved_locals.contains(&local))
+                    {
+                        self.bind_err(
+                            "source.closure-use-after-move",
+                            format!(
+                                "local `{}` was moved into a closure and cannot be assigned",
+                                target.base.name
+                            ),
+                            target.base.span,
+                        );
+                    }
                     let expect = self.lookup(&target.base.name).map(|l| self.locals[l.0].vt);
                     let mut value = self.expr_with_expect(value, expect);
+                    if matches!(
+                        &value.kind,
+                        RExprKind::CreateClosure { captures, .. }
+                            if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+                    ) {
+                        self.bind_err(
+                            "source.closure-borrow-escape",
+                            "a borrow-capturing closure must be initialized in a local and called directly",
+                            value.span,
+                        );
+                    }
                     // Immutability itself is re-checked by the semantic verifier
                     // on the emitted place/local pair (verify.immutable-write);
                     // here only resolution failures are reported.
@@ -3264,6 +3685,17 @@ impl<'a> FnResolver<'a> {
                 Stmt::Return { value, span } => {
                     let mut value = self.expr_with_expect(value, Some(self.fn_result));
                     retag_literal(&mut value, self.fn_result);
+                    if matches!(
+                        &value.kind,
+                        RExprKind::CreateClosure { captures, .. }
+                            if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+                    ) {
+                        self.bind_err(
+                            "source.closure-borrow-escape",
+                            "a borrow-capturing closure cannot be returned",
+                            value.span,
+                        );
+                    }
                     stack
                         .last_mut()
                         .expect("resolve frame")
@@ -3764,18 +4196,11 @@ impl<'a> FnResolver<'a> {
                     kind: RExprKind::IntLit(0),
                 }
             }
-            ExprKind::Closure { .. } => {
-                self.bind_err(
-                    "source.unsupported",
-                    "closure expression has not passed capture analysis in this source profile",
-                    e.span,
-                );
-                ResolvedExpr {
-                    span: e.span,
-                    vt: VT::I32,
-                    kind: RExprKind::IntLit(0),
-                }
-            }
+            ExprKind::Closure {
+                move_capture,
+                params,
+                body,
+            } => self.resolve_closure(*move_capture, params, body, e.span),
             ExprKind::CallValue { .. } => {
                 self.bind_err(
                     "source.unsupported",
@@ -3799,11 +4224,33 @@ impl<'a> FnResolver<'a> {
                 kind: RExprKind::BoolLit(*v),
             },
             ExprKind::Var(id) => match self.lookup(&id.name) {
-                Some(l) => ResolvedExpr {
-                    span: e.span,
-                    vt: self.locals[l.0].vt,
-                    kind: RExprKind::ReadLocal(l),
-                },
+                Some(l) => {
+                    if self.moved_locals.contains(&l) {
+                        self.bind_err(
+                            "source.closure-use-after-move",
+                            format!(
+                                "local `{}` was moved into a closure and cannot be used",
+                                id.name
+                            ),
+                            id.span,
+                        );
+                    }
+                    if self.borrowed_closure_locals.contains(&l) {
+                        self.bind_err(
+                            "source.closure-borrow-escape",
+                            format!(
+                                "borrow-capturing closure `{}` may only be called directly",
+                                id.name
+                            ),
+                            id.span,
+                        );
+                    }
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: self.locals[l.0].vt,
+                        kind: RExprKind::ReadLocal(l),
+                    }
+                }
                 None => {
                     if self.sigs.contains_key(&id.name) {
                         self.bind_err(
@@ -4526,6 +4973,14 @@ impl<'a> FnResolver<'a> {
                 spans: Vec<Span>,
                 node_span: Span,
             },
+            CallValueOut {
+                dest: usize,
+                callee_slot: usize,
+                arg_slots: Vec<usize>,
+                names: Vec<Option<ast::Ident>>,
+                spans: Vec<Span>,
+                node_span: Span,
+            },
             /// Receiver and argument slots are filled; bind the TEXT
             /// builtin method into `dest` (PLAN-770).
             MethodOut {
@@ -4596,6 +5051,61 @@ impl<'a> FnResolver<'a> {
         while let Some(task) = stack.pop() {
             match task {
                 Task::Visit { node, slot } => {
+                    if let ExprKind::Closure {
+                        move_capture,
+                        params,
+                        body,
+                    } = &node.kind
+                    {
+                        out[slot] = self.resolve_closure(*move_capture, params, body, node.span);
+                        continue;
+                    }
+                    if let ExprKind::CallValue { callee, args } = &node.kind {
+                        let callee_slot = out.len();
+                        out.push(dummy_resolved());
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut names = Vec::with_capacity(args.len());
+                        let mut spans = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() + 2);
+                        subtasks.push(Task::Visit {
+                            node: callee,
+                            slot: callee_slot,
+                        });
+                        for arg in args {
+                            let (value, name, arg_span) = match arg {
+                                Arg::Pos(value) | Arg::MovePos(value) => (value, None, value.span),
+                                Arg::Named { name, value, span } => (
+                                    value,
+                                    Some(ast::Ident {
+                                        name: name.name.clone(),
+                                        span: name.span,
+                                    }),
+                                    *span,
+                                ),
+                            };
+                            let arg_slot = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(arg_slot);
+                            names.push(name);
+                            spans.push(arg_span);
+                            subtasks.push(Task::Visit {
+                                node: value,
+                                slot: arg_slot,
+                            });
+                        }
+                        subtasks.push(Task::CallValueOut {
+                            dest: slot,
+                            callee_slot,
+                            arg_slots,
+                            names,
+                            spans,
+                            node_span: node.span,
+                        });
+                        for task in subtasks.into_iter().rev() {
+                            stack.push(task);
+                        }
+                        continue;
+                    }
                     if let ExprKind::Call { callee, args } = &node.kind {
                         if args.is_empty() {
                             out[slot] = self.call(callee, &[], node.span);
@@ -5277,6 +5787,34 @@ impl<'a> FnResolver<'a> {
                     // the node's own span already covers callee..
                     out[dest] = self.resolve_call(callee, rargs, node_span);
                 }
+                Task::CallValueOut {
+                    dest,
+                    callee_slot,
+                    arg_slots,
+                    names,
+                    spans,
+                    node_span,
+                } => {
+                    let callee = std::mem::replace(&mut out[callee_slot], dummy_resolved());
+                    let mut args = Vec::with_capacity(arg_slots.len());
+                    for (index, slot) in arg_slots.iter().enumerate() {
+                        let mut value = std::mem::replace(&mut out[*slot], dummy_resolved());
+                        let moved = matches!(value.kind, RExprKind::Move { .. });
+                        if moved {
+                            value = match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
+                                RExprKind::Move { inner } => *inner,
+                                _ => unreachable!("checked above"),
+                            };
+                        }
+                        args.push(ResolvedArg {
+                            value,
+                            name: names[index].clone(),
+                            moved,
+                            span: spans[index],
+                        });
+                    }
+                    out[dest] = self.resolve_closure_call(callee, args, node_span);
+                }
                 Task::MethodOut {
                     name,
                     dest,
@@ -5442,6 +5980,20 @@ impl<'a> FnResolver<'a> {
         if let VT::List(li) = recv.vt {
             return self.resolve_list_method(li, name, recv, args, span);
         }
+        if let VT::Function(signature) = recv.vt {
+            if name.name == "clone" && args.is_empty() && self.profile.is_closures() {
+                return ResolvedExpr {
+                    span,
+                    vt: VT::Function(signature),
+                    kind: RExprKind::Method {
+                        recv: Box::new(recv),
+                        method: BuiltinMethod::ClosureClone,
+                        to: None,
+                        args: Vec::new(),
+                    },
+                };
+            }
+        }
         let Some((method, params, _result)) = builtin_method(recv.vt, &name.name) else {
             self.bind_err(
                 "source.undefined",
@@ -5533,6 +6085,7 @@ impl<'a> FnResolver<'a> {
             BuiltinMethod::CharAt | BuiltinMethod::FromCodepoint => VT::Char,
             BuiltinMethod::Slice => VT::Str,
             BuiltinMethod::Clone => VT::StrOwned,
+            BuiltinMethod::ClosureClone => recv.vt,
             BuiltinMethod::To => VT::Str,
         };
         ResolvedExpr {
@@ -5598,11 +6151,42 @@ impl<'a> FnResolver<'a> {
         mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        for arg in &rargs {
+            if matches!(
+                &arg.value.kind,
+                RExprKind::CreateClosure { captures, .. }
+                    if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+            ) {
+                self.bind_err(
+                    "source.closure-borrow-escape",
+                    "a borrow-capturing closure cannot be passed as an argument",
+                    arg.span,
+                );
+            }
+        }
         let args = &rargs[..];
         let _ = &args;
 
         // Locals shadow functions and intrinsics in callee position.
-        if self.lookup(&callee.name).is_some() {
+        if let Some(local) = self.lookup(&callee.name) {
+            if matches!(self.locals[local.0].vt, VT::Function(_)) {
+                if self.moved_locals.contains(&local) {
+                    self.bind_err(
+                        "source.closure-use-after-move",
+                        format!(
+                            "closure local `{}` was moved and cannot be called",
+                            callee.name
+                        ),
+                        callee.span,
+                    );
+                }
+                let callee_value = ResolvedExpr {
+                    span: callee.span,
+                    vt: self.locals[local.0].vt,
+                    kind: RExprKind::ReadLocal(local),
+                };
+                return self.resolve_closure_call(callee_value, rargs, call_span);
+            }
             self.bind_err(
                 "source.not-callable",
                 format!(
@@ -5695,6 +6279,100 @@ impl<'a> FnResolver<'a> {
             kind: RExprKind::CallFn {
                 fn_index: usize::MAX,
                 args: rargs,
+            },
+        }
+    }
+
+    fn resolve_closure_call(
+        &mut self,
+        callee: ResolvedExpr,
+        mut args: Vec<ResolvedArg>,
+        call_span: Span,
+    ) -> ResolvedExpr {
+        for arg in &args {
+            if matches!(
+                &arg.value.kind,
+                RExprKind::CreateClosure { captures, .. }
+                    if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+            ) {
+                self.bind_err(
+                    "source.closure-borrow-escape",
+                    "a borrow-capturing closure cannot be passed as an argument",
+                    arg.span,
+                );
+            }
+        }
+        let VT::Function(type_index) = callee.vt else {
+            self.bind_err(
+                "source.not-callable",
+                format!("a value of type `{}` is not callable", callee.vt.as_str()),
+                call_span,
+            );
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::I32,
+                kind: RExprKind::CallClosure {
+                    callee: Box::new(callee),
+                    args,
+                },
+            };
+        };
+        let Some(signature) = self.coll.function_types.get(type_index).cloned() else {
+            self.bind_err(
+                "source.internal",
+                "closure signature index is out of range",
+                call_span,
+            );
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::I32,
+                kind: RExprKind::CallClosure {
+                    callee: Box::new(callee),
+                    args,
+                },
+            };
+        };
+        for (index, arg) in args.iter_mut().enumerate() {
+            if arg.name.is_some() {
+                self.bind_err(
+                    "source.argument",
+                    "indirect closure calls use positional arguments",
+                    arg.span,
+                );
+            }
+            if let Some(want) = signature.params.get(index).copied() {
+                retag_literal(&mut arg.value, want);
+                if arg.value.vt != want {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "closure argument #{} expects `{}`, found `{}`",
+                            index + 1,
+                            want.as_str(),
+                            arg.value.vt.as_str()
+                        ),
+                        arg.value.span,
+                    );
+                }
+            }
+        }
+        if args.len() != signature.params.len() {
+            self.bind_err(
+                "source.argument",
+                format!(
+                    "closure expects {} argument(s), found {}",
+                    signature.params.len(),
+                    args.len()
+                ),
+                call_span,
+            );
+        }
+        ResolvedExpr {
+            span: call_span,
+            vt: signature.result,
+            kind: RExprKind::CallClosure {
+                callee: Box::new(callee),
+                args,
             },
         }
     }

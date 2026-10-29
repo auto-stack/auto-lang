@@ -1,0 +1,122 @@
+# PLAN-865: K01–K06 use the unchanged original .at files as source-backed
+# closures cases. The parent validates each source id and independently
+# checks the value/diagnostic plus the closures-session release face.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k01-av865"
+  tags: ["ace-m1", "closures", "value", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K01.at", syntax: "auto", path: "K01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k01-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K01:fresh", session: "av_closures_865_k01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-k01-closures-source-restart", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K01:restart", session: "av_closures_865_k01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k01-body-edit-av865"
+  tags: ["ace-m1", "closures", "incremental", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K01.at", syntax: "auto", path: "K01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k01-closures-source-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K01:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return base + n", to: "return base + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k02-av865"
+  tags: ["ace-m1", "closures", "value", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K02.at", syntax: "auto", path: "K02.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k02-closures-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k03-av865"
+  tags: ["ace-m1", "closures", "value", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K03.at", syntax: "auto", path: "K03.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k03-closures-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K03" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k04-av865"
+  tags: ["ace-m1", "closures", "diagnostic", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K04.at", syntax: "auto", path: "K04.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k04-closures-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K04" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "resolve", code: "source.closure-borrow-escape" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k05-av865"
+  tags: ["ace-m1", "closures", "value", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K05.at", syntax: "auto", path: "K05.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k05-closures-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K05" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k06-av865"
+  tags: ["ace-m1", "closures", "diagnostic", "plan-865"]
+  links: ["PLAN-865"]
+  source: { file: "src/K06.at", syntax: "auto", path: "K06.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k06-closures-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K06" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "resolve", code: "source.closure-shared-mutable" } } }
+  ]
+}
+```

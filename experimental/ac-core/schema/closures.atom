@@ -18,13 +18,14 @@
 descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-closures-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, text_len, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
-        enum TypeKind { cases: [i32, bool, Str, function, record, list, variant] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, text_len, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
+        enum TypeKind { cases: [i32, bool, str, Str, function, closure, record, list, variant] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
         enum OverflowPolicy { cases: [trap] }
-        enum LocalRole { cases: [param, binding] }
+        enum LocalRole { cases: [param, binding, capture] }
+        enum CaptureMode { cases: [move, borrow] }
         enum PlaceKind { cases: [local] }
         enum AccessKind { cases: [mutable, readonly] }
         enum EffectKind { cases: [observable, pure] }
@@ -108,6 +109,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
                 list: ExprRef
                 disc: U32
                 payload: ExprRef
+                captures: CaptureBindingList
             }
         }
 
@@ -130,8 +132,10 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "hir") { require: [schema, revision, profile] }
         branch(key: "type.i32") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.bool") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.str") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.Str") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.function") { require: [params, result]; forbid: [fields, elem, arms] }
+        branch(key: "type.closure") { require: [params, result]; forbid: [fields, elem, arms] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result, elem, arms] }
         branch(key: "type.list") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "type.variant") { require: [arms]; forbid: [params, result, fields, elem] }
@@ -140,6 +144,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
         branch(key: "local.binding") { require: [name, role]; forbid: [index] }
+        branch(key: "local.capture") { require: [name, role, index]; forbid: [mutable, mode] }
         branch(key: "place.local") { require: [local, type, access] }
         branch(key: "expr.read_local") {
             require: [type, local]
@@ -204,6 +209,18 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "expr.call") {
             require: [type, callee, eval_args, bindings]
             forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, record, field_args, ctor_bindings, base, path, list, disc, payload]
+        }
+        branch(key: "expr.call_closure") {
+            require: [type, base, eval_args]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, bindings, record, field_args, ctor_bindings, path, list, disc, payload]
+        }
+        branch(key: "expr.create_closure") {
+            require: [type, callee, captures]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload]
+        }
+        branch(key: "expr.closure_clone") {
+            require: [type, operand]
+            forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload]
         }
         branch(key: "expr.str_lit") {
             require: [type, text]

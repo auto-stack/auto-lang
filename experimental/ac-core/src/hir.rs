@@ -139,6 +139,9 @@ pub enum TypeKind {
     /// `char` (PLAN-770): Unicode scalar kind for named type entries.
     Char,
     Function(FnSig),
+    /// Owned first-class closure value with an environment and a function
+    /// signature (PLAN-865). Named function definitions remain `Function`.
+    Closure(FnSig),
     Record(RecordShape),
     /// Owned typed list `List<T>` (PLAN-864). `elem` is the element type;
     /// the admissible element closure is the 822 element domain (int, bool,
@@ -175,6 +178,7 @@ pub struct TypeDef {
 pub enum LocalRole {
     Param,
     Binding,
+    Capture,
 }
 
 /// Ownership mode of a parameter local (PLAN-770, 774 D-03/R1-04.1/R2-02.4).
@@ -208,6 +212,7 @@ impl LocalRole {
         match self {
             LocalRole::Param => "param",
             LocalRole::Binding => "binding",
+            LocalRole::Capture => "capture",
         }
     }
 }
@@ -422,6 +427,19 @@ pub struct CallBinding {
     pub moved: bool,
 }
 
+/// Capture mode selected by source analysis for an 823 closure environment.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CaptureMode {
+    Move,
+    Borrow,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CaptureBinding {
+    pub local: LocalId,
+    pub mode: CaptureMode,
+}
+
 /// Field-binding of one constructor argument (PLAN-771 §5.2): `field` is
 /// the declaration index in the record's field table, `arg` the index into
 /// the ctor's `eval_args` (source evaluation order). `bindings` are stored
@@ -470,6 +488,18 @@ pub enum ExprKind {
         eval_args: Vec<ExprId>,
         bindings: Vec<CallBinding>,
     },
+    /// First-class closure invocation. `callee` is evaluated before the
+    /// source-order arguments and must have a `TypeKind::Closure` signature.
+    CallClosure {
+        callee: ExprId,
+        eval_args: Vec<ExprId>,
+    },
+    /// Construct an owned 823 closure value from a source-analyzed capture
+    /// list. The referenced function body declares matching capture locals.
+    CreateClosure {
+        callee: DefId,
+        captures: Vec<CaptureBinding>,
+    },
     /// String literal (PLAN-770). The value is the decoded UTF-8 text
     /// (escapes resolved at the lexing front door); a static, immortal
     /// borrowing source. Auto-promotes to an owned `Str` in owning
@@ -510,6 +540,11 @@ pub enum ExprKind {
     },
     /// `s.clone()` — independent owned copy (result Str; AP-2).
     TextClone {
+        operand: ExprId,
+    },
+    /// `f.clone()` — deep clone of an owned closure value and its
+    /// environment (PLAN-865); borrow-bound closures cannot be cloned.
+    ClosureClone {
         operand: ExprId,
     },
     /// `s.to(Str)` — promotion to an owned copy (result Str; AP-4 form).
@@ -862,6 +897,9 @@ impl PartialEq for TypeDef {
                 (TypeKind::Function(a), TypeKind::Function(b)) => {
                     a.params == b.params && a.result == b.result
                 }
+                (TypeKind::Closure(a), TypeKind::Closure(b)) => {
+                    a.params == b.params && a.result == b.result
+                }
                 (TypeKind::Record(a), TypeKind::Record(b)) => a == b,
                 (TypeKind::List { elem: a }, TypeKind::List { elem: b }) => a == b,
                 (TypeKind::Variant { arms: a }, TypeKind::Variant { arms: b }) => a == b,
@@ -882,6 +920,7 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::Record(_) => 6,
         TypeKind::List { .. } => 7,
         TypeKind::Variant { .. } => 8,
+        TypeKind::Closure(_) => 9,
     }
 }
 

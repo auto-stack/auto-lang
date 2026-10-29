@@ -728,7 +728,9 @@ impl<'s> Parser<'s> {
                         tok: Tok::Reserved(w),
                         span,
                         ..
-                    }) if self.surface.is_text() && (w == "mut" || w == "move") => {
+                    }) if (self.surface.is_text() && (w == "mut" || w == "move"))
+                        || (self.surface.is_closures() && w == "move") =>
+                    {
                         let sp = *span;
                         mode = if w == "mut" {
                             super::ast::ParamMode::Mut
@@ -1843,7 +1845,15 @@ impl<'s> Parser<'s> {
             }
         }
         self.expect_punct(P::RParen, "`)`")?;
-        self.expect_punct(P::Arrow, "`->`")?;
+        // PLAN-865 adds the explicit `->` spelling. Keep the original K
+        // corpus's adjacent result spelling (`fn(int) int`) as a source
+        // compatibility form on this profile so the established cases run
+        // through the real frontend without rewriting their inputs.
+        if matches!(self.peek().map(|t| &t.tok), Some(Tok::Punct(P::Arrow))) {
+            self.pos += 1;
+        } else if !self.surface.is_closures() {
+            return Err(self.syntax("expected `->` in function type"));
+        }
         let result = self.closures_type()?;
         Ok(TypeAnn {
             span: kw.join(result.span),

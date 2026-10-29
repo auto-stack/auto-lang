@@ -65,6 +65,7 @@ enum FieldType {
     TextList,
     ExprRefList,
     BindingList,
+    CaptureBindingList,
     CtorBindingList,
     FieldDeclList,
     ArmDeclList,
@@ -98,6 +99,7 @@ fn builtin_field_type(word: &str) -> Option<FieldType> {
         "TextList" => FieldType::TextList,
         "ExprRefList" => FieldType::ExprRefList,
         "BindingList" => FieldType::BindingList,
+        "CaptureBindingList" => FieldType::CaptureBindingList,
         "CtorBindingList" => FieldType::CtorBindingList,
         "FieldDeclList" => FieldType::FieldDeclList,
         "ArmDeclList" => FieldType::ArmDeclList,
@@ -1074,7 +1076,7 @@ impl<'d> Binder<'d> {
                 "str" => hir::TypeKind::Str,
                 "Str" => hir::TypeKind::StrOwned,
                 "char" => hir::TypeKind::Char,
-                "function" => {
+                "function" | "closure" => {
                     let mut params = Vec::new();
                     let mut ok = true;
                     if let Some(f) = tfields.get("params") {
@@ -1107,7 +1109,12 @@ impl<'d> Binder<'d> {
                     if !ok {
                         continue;
                     }
-                    hir::TypeKind::Function(hir::FnSig { params, result })
+                    let signature = hir::FnSig { params, result };
+                    if word == "closure" {
+                        hir::TypeKind::Closure(signature)
+                    } else {
+                        hir::TypeKind::Function(signature)
+                    }
                 }
                 "record" => {
                     // PLAN-771: declaration-order field table. Each entry is
@@ -1755,6 +1762,7 @@ impl<'d> Binder<'d> {
         let role = match role_word.as_str() {
             "param" => hir::LocalRole::Param,
             "binding" => hir::LocalRole::Binding,
+            "capture" => hir::LocalRole::Capture,
             _ => return None,
         };
         let index = match fields.get("index") {
@@ -2246,6 +2254,129 @@ impl<'d> Binder<'d> {
                     bindings,
                 }
             }
+            "call_closure" => {
+                let Some((ct, cspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let callee = match self.resolve_in(&ct, cspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let mut eval_args = Vec::new();
+                if let Some(f) = fields.get("eval_args") {
+                    match &f.value {
+                        Value::List(items) => {
+                            for it in items {
+                                let Some(t) = self.text_of(it) else {
+                                    self.error(
+                                        "bind.type-shape",
+                                        "eval_args entries must be expression references",
+                                        f.value_span,
+                                    );
+                                    return None;
+                                };
+                                match self.resolve_in(
+                                    &t,
+                                    f.value_span,
+                                    "ExprRef",
+                                    &body.exprs,
+                                    expr_sibs,
+                                ) {
+                                    Some(e) => eval_args.push(hir::ExprId(e)),
+                                    None => return None,
+                                }
+                            }
+                        }
+                        _ => {
+                            self.error("bind.type-shape", "eval_args must be a list", f.value_span);
+                            return None;
+                        }
+                    }
+                }
+                hir::ExprKind::CallClosure { callee, eval_args }
+            }
+            "create_closure" => {
+                let Some((ct, cspan)) = self.text_ref(&fields, "callee") else {
+                    return None;
+                };
+                let callee = match self.resolve_in(&ct, cspan, "DefRef", def_ids, def_sibs) {
+                    Some(d) => hir::DefId(d),
+                    None => return None,
+                };
+                let mut captures = Vec::new();
+                if let Some(field) = fields.get("captures") {
+                    let Value::List(items) = &field.value else {
+                        self.error(
+                            "bind.type-shape",
+                            "captures must be a list",
+                            field.value_span,
+                        );
+                        return None;
+                    };
+                    for item in items {
+                        let Value::Obj(object) = item else {
+                            self.error(
+                                "bind.type-shape",
+                                "capture entries must be objects",
+                                field.value_span,
+                            );
+                            return None;
+                        };
+                        let mut local_text = None;
+                        let mut mode_word = None;
+                        for entry in object {
+                            match entry.name.as_str() {
+                                "local" => local_text = self.text_of(&entry.value),
+                                "mode" => mode_word = self.text_of(&entry.value),
+                                other => {
+                                    self.error(
+                                        "bind.unknown-field",
+                                        format!("unknown field `{}` in capture", other),
+                                        entry.name_span,
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                        let Some(local_text) = local_text else {
+                            self.error(
+                                "bind.type-shape",
+                                "capture requires a local reference",
+                                field.value_span,
+                            );
+                            return None;
+                        };
+                        let local = match self.resolve_in(
+                            &local_text,
+                            field.value_span,
+                            "LocalRef",
+                            &body.locals,
+                            expr_sibs,
+                        ) {
+                            Some(l) => hir::LocalId(l),
+                            None => return None,
+                        };
+                        let Some(mode_word) = mode_word else {
+                            self.error(
+                                "bind.type-shape",
+                                "capture requires a mode",
+                                field.value_span,
+                            );
+                            return None;
+                        };
+                        if !self.check_enum_case("CaptureMode", &mode_word, field.value_span) {
+                            return None;
+                        }
+                        let mode = match mode_word.as_str() {
+                            "move" => hir::CaptureMode::Move,
+                            "borrow" => hir::CaptureMode::Borrow,
+                            _ => return None,
+                        };
+                        captures.push(hir::CaptureBinding { local, mode });
+                    }
+                }
+                hir::ExprKind::CreateClosure { callee, captures }
+            }
             // -- PLAN-770 text expression kinds --------------------------------
             "str_lit" => {
                 let Some(f) = fields.get("text") else {
@@ -2298,6 +2429,7 @@ impl<'d> Binder<'d> {
             "text_len"
             | "text_len_bytes"
             | "text_clone"
+            | "closure_clone"
             | "text_to_owned"
             | "text_to_borrowed"
             | "char_to_codepoint"
@@ -2313,6 +2445,7 @@ impl<'d> Binder<'d> {
                     "text_len" => hir::ExprKind::TextLen { operand },
                     "text_len_bytes" => hir::ExprKind::TextLenBytes { operand },
                     "text_clone" => hir::ExprKind::TextClone { operand },
+                    "closure_clone" => hir::ExprKind::ClosureClone { operand },
                     "text_to_owned" => hir::ExprKind::TextToOwned { operand },
                     "text_to_borrowed" => hir::ExprKind::TextToBorrowed { operand },
                     "char_to_codepoint" => hir::ExprKind::CharToCodepoint { operand },
@@ -3126,6 +3259,16 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                         type_use_text(&sig.result, m)
                     ));
                 }
+                hir::TypeKind::Closure(sig) => {
+                    let params: Vec<String> =
+                        sig.params.iter().map(|p| type_use_text(p, m)).collect();
+                    w.line(&format!(
+                        "type(id: {}, kind: closure) {{ params: [{}]; result: {} }}",
+                        quote(&t.id_text),
+                        params.join(", "),
+                        type_use_text(&sig.result, m)
+                    ));
+                }
                 hir::TypeKind::Record(shape) => {
                     let fields: Vec<String> = shape
                         .fields
@@ -3324,6 +3467,9 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Unary { .. } => "unary",
         hir::ExprKind::Logical { .. } => "logical",
         hir::ExprKind::Call { .. } => "call",
+        hir::ExprKind::CallClosure { .. } => "call_closure",
+        hir::ExprKind::CreateClosure { .. } => "create_closure",
+        hir::ExprKind::ClosureClone { .. } => "closure_clone",
         hir::ExprKind::StrLit { .. } => "str_lit",
         hir::ExprKind::CharLit { .. } => "char_lit",
         hir::ExprKind::TextLen { .. } => "text_len",
@@ -3377,6 +3523,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::TextLen { operand }
         | hir::ExprKind::TextLenBytes { operand }
         | hir::ExprKind::TextClone { operand }
+        | hir::ExprKind::ClosureClone { operand }
         | hir::ExprKind::TextToOwned { operand }
         | hir::ExprKind::TextToBorrowed { operand }
         | hir::ExprKind::CharToCodepoint { operand }
@@ -3471,6 +3618,37 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 })
                 .collect();
             body_fields.push(format!("bindings: [{}]", bs.join(", ")));
+        }
+        hir::ExprKind::CallClosure { callee, eval_args } => {
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[callee.0 as usize].id_text)
+            ));
+            let args: Vec<String> = eval_args
+                .iter()
+                .map(|a| quote(&b.exprs[a.0 as usize].id_text))
+                .collect();
+            body_fields.push(format!("eval_args: [{}]", args.join(", ")));
+        }
+        hir::ExprKind::CreateClosure { callee, captures } => {
+            body_fields.push(format!(
+                "callee: {}",
+                quote(&m.defs[callee.0 as usize].id_text)
+            ));
+            let entries: Vec<String> = captures
+                .iter()
+                .map(|capture| {
+                    format!(
+                        "{{ local: {}, mode: {} }}",
+                        quote(&b.locals[capture.local.0 as usize].id_text),
+                        match capture.mode {
+                            hir::CaptureMode::Move => "move",
+                            hir::CaptureMode::Borrow => "borrow",
+                        }
+                    )
+                })
+                .collect();
+            body_fields.push(format!("captures: [{}]", entries.join(", ")));
         }
         hir::ExprKind::RecordCtor {
             record,

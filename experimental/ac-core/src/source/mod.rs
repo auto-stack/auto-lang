@@ -17,6 +17,7 @@
 
 pub mod adapter;
 pub mod ast;
+pub(crate) mod closure_capture;
 pub mod lexer;
 pub mod parser;
 pub mod resolve;

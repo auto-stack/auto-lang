@@ -1,0 +1,8 @@
+# PLAN-865 T-05: the six unchanged K sources run through the source closures
+# recipe; four execute and two are checked compile-time rejections.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-closures-865-source", include: [
+  "closures-source-865.case.ad",
+] }
+```

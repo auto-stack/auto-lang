@@ -246,6 +246,189 @@ fn ace_m1_method_881_suite_green() {
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
 }
 
+/// PLAN-865 T-05: the six original K sources bind to the closures source
+/// recipe. K01/K02/K03/K05 execute; K04/K06 must fail at the declared source
+/// diagnostics, with the source parent judge checking release accounting.
+#[test]
+fn ace_m1_closures_865_source_suite_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("closures-865-source");
+    let corpus = root.join("corpus");
+    copy_tree(&suite_dir, &corpus);
+    let session_id = format!(
+        "av_closures_865_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let case_path = corpus.join("closures-source-865.case.ad");
+    let case_text = std::fs::read_to_string(&case_path).unwrap();
+    let case_text = case_text.replace("av_closures_865_k01", &session_id);
+    assert!(case_text.contains(&session_id), "session id substitution applies");
+    std::fs::write(&case_path, case_text).unwrap();
+    let report = run_suite(
+        &corpus.join("closures-source-865.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("ace-m1 closures source suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|result| result.status != Status::Pass)
+        .map(|result| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                result.case_id, result.check_id, result.status, result.detail, result.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "ace-m1 closures source suite has non-PASS checks:\n{}",
+        failing.join("\n")
+    );
+    assert_eq!(report.results.len(), 8, "K01-K06 plus restart/edit rows all ran");
+    assert!(report.coverage_gaps.is_empty(), "all six source cases are bound");
+
+    let receipt_for = |check: &auto_test_case::report::CheckOutcome,
+                       out_root: &Path|
+     -> serde_json::Value {
+          let path = std::fs::read_dir(out_root)
+              .unwrap_or_else(|error| panic!("read {}: {error}", out_root.display()))
+              .filter_map(Result::ok)
+              .map(|run| {
+                  run.path()
+                      .join(&check.case_id)
+                      .join(&check.check_id)
+                      .join("probe-receipt.json")
+              })
+              .find(|path| path.is_file())
+              .unwrap_or_else(|| {
+                  panic!("{}:{} has no probe receipt under {}", check.case_id, check.check_id, out_root.display())
+              });
+          serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|error| {
+              panic!("read {}: {error}", path.display())
+          }))
+          .unwrap_or_else(|error| panic!("decode {}: {error}", path.display()))
+    };
+    let result_for = |case_id: &str, check_id: &str| {
+        report
+            .results
+            .iter()
+            .find(|result| result.case_id == case_id && result.check_id == check_id)
+            .unwrap_or_else(|| panic!("missing result {case_id}:{check_id}"))
+    };
+
+    let fresh = receipt_for(
+        result_for("ace.m1.k01-av865", "av-k01-closures-source-fresh"),
+        &root.join("out"),
+    );
+    assert_eq!(fresh["step"]["closures_source"]["cache_hits"], 0);
+    assert_eq!(fresh["step"]["closures_source"]["cache_misses"], 2);
+    assert_eq!(fresh["step"]["closures_source"]["store_writes"], 2);
+
+    let restarted = receipt_for(
+        result_for("ace.m1.k01-av865", "av-k01-closures-source-restart"),
+        &root.join("out"),
+    );
+    assert_eq!(restarted["step"]["closures_source"]["cache_hits"], 2);
+    assert_eq!(restarted["step"]["closures_source"]["cache_misses"], 0);
+    assert_eq!(restarted["step"]["closures_source"]["store_writes"], 0);
+
+    let body_edit = receipt_for(
+        result_for(
+            "ace.m1.k01-body-edit-av865",
+            "av-k01-closures-source-body-edit",
+        ),
+        &root.join("out"),
+    );
+    assert_eq!(body_edit["step"]["closures_source"]["submitted_units"], 1);
+    assert_eq!(body_edit["step"]["closures_source"]["verified"], 1);
+    assert_eq!(body_edit["step"]["closures_source"]["encoded"], 1);
+    assert_eq!(body_edit["step"]["closures_source"]["admitted"], 1);
+
+    // Re-run the real TestCase source through fresh worker processes sharing
+    // the same file-backed session. This supplies a bounded P90 sample of the
+    // source+cache path, not an in-process microbenchmark.
+    let sample_case = corpus.join("closures-source-cache-sample.case.ad");
+    let sample_suite = corpus.join("closures-source-cache-sample.suite.ad");
+    std::fs::write(
+        &sample_case,
+        format!(
+            r#"```test-case
+case {{ schema: "autolang.case/2", id: "ace.m1.k01-cache-sample",
+  tags: ["ace-m1", "closures", "plan-865"], links: ["PLAN-865"],
+  source: {{ file: "src/K01.at", syntax: "auto", path: "K01.at" }}, entry: {{ mode: "program" }},
+  checks: [{{ id: "av-k01-cache-restart", adapter: "probe", action: "run",
+    options: {{ recipe: "ac-av/closures-source-run-v1", av: {{ entry: "source:K01:restart", session: "{session_id}" }}, steps: [{{ op: "run" }}] }},
+    expect: {{ completion: "success", exit: 42 }} }}]
+}}
+```"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        &sample_suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"ace-m1-closures-865-cache-sample\", include: [\"closures-source-cache-sample.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let mut latencies_ms = Vec::new();
+    let mut peak_bytes = 0u64;
+    let mut hot_bytes = 0u64;
+    for sample in 0..20 {
+        let out = root.join(format!("cache-sample-{sample}"));
+        let sample_report = run_suite(&sample_suite, &out, &Limits::defaults())
+            .expect("cache restart sample runs");
+        assert_eq!(sample_report.results.len(), 1);
+        assert_eq!(sample_report.results[0].status, Status::Pass);
+        let receipt = receipt_for(&sample_report.results[0], &out);
+        let face = &receipt["step"]["closures_source"];
+        assert_eq!(face["cache_hits"], 2, "restart sample {sample}");
+        assert_eq!(face["cache_misses"], 0, "restart sample {sample}");
+        latencies_ms.push(
+            receipt["request_wall_ms"]
+                .as_f64()
+                .expect("request_wall_ms recorded"),
+        );
+        peak_bytes = peak_bytes.max(
+            face["process_peak_bytes"]
+                .as_u64()
+                .expect("process peak recorded"),
+        );
+        hot_bytes = hot_bytes.max(
+            face["current_hot_bytes"]
+                .as_u64()
+                .expect("current hot bytes recorded")
+                + face["history_hot_bytes"]
+                    .as_u64()
+                    .expect("history hot bytes recorded"),
+        );
+    }
+    latencies_ms.sort_by(f64::total_cmp);
+    let p90_index = ((latencies_ms.len() as f64 * 0.90).ceil() as usize).saturating_sub(1);
+    let p90_ms = latencies_ms[p90_index];
+    assert!(p90_ms <= 2000.0, "source cache P90 {p90_ms:.2}ms exceeds 2000ms");
+    let evidence_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/plans/attachments/865/work");
+    std::fs::create_dir_all(&evidence_root).unwrap();
+    std::fs::write(
+        evidence_root.join("source-cache-metrics.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "samples": latencies_ms.len(),
+            "p90_request_wall_ms": p90_ms,
+            "max_process_peak_bytes": peak_bytes,
+            "max_current_plus_history_hot_bytes": hot_bytes,
+            "request_wall_ms": latencies_ms,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
+
 /// PLAN-881 V-08 counter-control: mutating one frozen oracle (M03 75 ->
 /// 76) must turn the parent gate RED — the file suite is a real judge,
 /// never a green stamp.
