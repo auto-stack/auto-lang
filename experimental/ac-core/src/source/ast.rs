@@ -65,6 +65,11 @@ pub enum TypeRef {
         name: Ident,
         args: Vec<TypeAnn>,
     },
+    /// PLAN-865: closure function type `fn(T0, T1) -> R`.
+    Function {
+        params: Vec<TypeAnn>,
+        result: Box<TypeAnn>,
+    },
 }
 
 /// Parameter ownership mode word (PLAN-770; old-language convention: the

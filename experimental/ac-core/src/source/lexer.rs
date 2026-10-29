@@ -110,6 +110,8 @@ pub enum P {
     Question,
     /// PLAN-864: `is` arm connector (collections surface).
     Arrow,
+    /// PLAN-865: lambda body separator `=>` (closures surface).
+    FatArrow,
 }
 
 impl P {
@@ -142,6 +144,7 @@ impl P {
             P::Dot => ".",
             P::Question => "?",
             P::Arrow => "->",
+            P::FatArrow => "=>",
         }
     }
 }
@@ -325,7 +328,9 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                 lx.push_punct(p, 1, &mut out);
             }
             b'=' => {
-                if lx.b.get(lx.pos + 1) == Some(&b'=') {
+                if lx.b.get(lx.pos + 1) == Some(&b'>') {
+                    lx.push_punct(P::FatArrow, 2, &mut out);
+                } else if lx.b.get(lx.pos + 1) == Some(&b'=') {
                     lx.push_punct(P::EqEq, 2, &mut out);
                 } else {
                     lx.push_punct(P::Assign, 1, &mut out);

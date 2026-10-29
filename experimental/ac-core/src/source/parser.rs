@@ -785,6 +785,7 @@ impl<'s> Parser<'s> {
         }
         let rparen = self.expect_punct(P::RParen, "`)`")?;
         let ret = match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Kw(Kw::Fn)) if self.surface.is_closures() => self.closures_type()?,
             // PLAN-864: the collections type grammar (?T, List<T>,
             // Result<T,E>, records, int/i32/bool/Str) is the whole surface.
             Some(Tok::Punct(P::Question)) if self.surface.is_collections() => {
@@ -1389,6 +1390,9 @@ impl<'s> Parser<'s> {
     /// Record-member field type (PLAN-771): a builtin word or a record
     /// type name (resolved in later stages; forward references legal).
     fn member_type(&mut self, fname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        if self.surface.is_closures() {
+            return self.closures_type();
+        }
         // PLAN-864: the collections field-type grammar (?T, List<T>,
         // Result<T,E>, records, int/i32/bool/Str).
         if self.surface.is_collections() {
@@ -1439,6 +1443,9 @@ impl<'s> Parser<'s> {
     /// Type annotation in parameter position: required, only the three
     /// profile words. Any other identifier is an excluded type surface.
     fn param_type(&mut self, pname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        if self.surface.is_closures() {
+            return self.closures_type();
+        }
         // PLAN-864: the collections parameter-type grammar. `List`-typed
         // parameters PARSE so resolve can name the rejection precisely
         // (`source.list-value-context`); the surface itself accepts the
@@ -1513,13 +1520,19 @@ impl<'s> Parser<'s> {
             let starts_type = matches!(
                 self.peek().map(|t| &t.tok),
                 Some(Tok::Punct(P::Question))
+                    | Some(Tok::Kw(Kw::Fn))
                     | Some(Tok::Kw(Kw::Int))
                     | Some(Tok::Kw(Kw::I32))
                     | Some(Tok::Kw(Kw::Bool))
                     | Some(Tok::Ident(_))
             );
             return if starts_type {
-                Ok(Some(self.collections_type()?))
+                let ty = if self.surface.is_closures() {
+                    self.closures_type()?
+                } else {
+                    self.collections_type()?
+                };
+                Ok(Some(ty))
             } else {
                 Ok(None)
             };
@@ -1793,6 +1806,50 @@ impl<'s> Parser<'s> {
             }
             _ => Err(self.syntax(format!("expected a type, found {}", self.describe_cur()))),
         }
+    }
+
+    /// PLAN-865 function type grammar: `fn(T0, T1) -> R`. Nested function
+    /// signatures are permitted; the resolver enforces supported placements.
+    fn closures_type(&mut self) -> Result<TypeAnn, Diagnostic> {
+        if !matches!(self.peek().map(|t| &t.tok), Some(Tok::Kw(Kw::Fn))) {
+            if matches!(
+                self.peek(),
+                Some(Token {
+                    tok: Tok::Ident(name),
+                    ..
+                }) if name == "void"
+            ) {
+                let t = self.bump();
+                return Ok(TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: t.span,
+                });
+            }
+            return self.collections_type();
+        }
+        let kw = self.expect_kw(Kw::Fn, "`fn`")?;
+        self.expect_punct(P::LParen, "`(`")?;
+        let mut params = Vec::new();
+        if !matches!(self.peek().map(|t| &t.tok), Some(Tok::Punct(P::RParen))) {
+            loop {
+                params.push(self.closures_type()?);
+                match self.peek().map(|t| &t.tok) {
+                    Some(Tok::Punct(P::Comma)) => self.pos += 1,
+                    Some(Tok::Punct(P::RParen)) => break,
+                    _ => return Err(self.syntax("expected `,` or `)` in function type")),
+                }
+            }
+        }
+        self.expect_punct(P::RParen, "`)`")?;
+        self.expect_punct(P::Arrow, "`->`")?;
+        let result = self.closures_type()?;
+        Ok(TypeAnn {
+            span: kw.join(result.span),
+            kind: TypeRef::Function {
+                params,
+                result: Box::new(result),
+            },
+        })
     }
 
     /// `<T0, T1, ...>` — the type-argument list of a parameterized nominal

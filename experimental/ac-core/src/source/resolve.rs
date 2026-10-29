@@ -43,6 +43,8 @@ pub enum VT {
     /// by index into [`CollTables::variants`]. Arm declaration order is
     /// the runtime discriminant order.
     Variant(usize),
+    /// PLAN-865: invariant function signature, interned in `CollTables`.
+    Function(usize),
 }
 
 impl VT {
@@ -57,6 +59,7 @@ impl VT {
             VT::Unit => "unit",
             VT::List(_) => "list",
             VT::Variant(_) => "variant",
+            VT::Function(_) => "function",
         }
     }
 
@@ -65,7 +68,7 @@ impl VT {
     /// Str). Copyable element types copy out; owned ones move.
     pub fn is_owned_coll(self, prog: &ResolvedProgram) -> bool {
         match self {
-            VT::StrOwned | VT::List(_) | VT::Variant(_) => true,
+            VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
             VT::Rec(ri) => record_reaches_str(ri, &prog.records),
             _ => false,
         }
@@ -621,6 +624,14 @@ pub struct ResolvedProgram {
     /// PLAN-864: nominal variant types (`?T`/`Result<T,E>`/declared
     /// `enum`s). `VT::Variant(i)` indexes here.
     pub variants: Vec<ResolvedVariant>,
+    /// PLAN-865: closure function signatures referenced by `VT::Function`.
+    pub function_types: Vec<ClosureFnType>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ClosureFnType {
+    pub params: Vec<VT>,
+    pub result: VT,
 }
 
 /// One resolved variant type (PLAN-864): name plus arms in declaration
@@ -638,10 +649,19 @@ pub struct ResolvedVariant {
 pub struct CollTables {
     pub lists: Vec<VT>,
     pub variants: Vec<ResolvedVariant>,
+    pub function_types: Vec<ClosureFnType>,
     variant_names: BTreeMap<String, usize>,
 }
 
 impl CollTables {
+    fn intern_function(&mut self, signature: ClosureFnType) -> usize {
+        if let Some(i) = self.function_types.iter().position(|s| *s == signature) {
+            return i;
+        }
+        self.function_types.push(signature);
+        self.function_types.len() - 1
+    }
+
     fn intern_list(&mut self, elem: VT) -> usize {
         if let Some(i) = self.lists.iter().position(|e| *e == elem) {
             return i;
@@ -777,6 +797,7 @@ pub fn resolve_with(
         records,
         lists: coll.lists,
         variants: coll.variants,
+        function_types: coll.function_types,
     })
 }
 
@@ -903,7 +924,13 @@ fn resolve_detailed(
                             continue;
                         }
                         let payload = a.payload.as_ref().map(|pt| {
-                            vt_of_ann_coll(pt, &rec_index, &mut coll, &mut diags, TypePos::Local)
+                            vt_of_ann_coll(
+                                pt,
+                                &rec_index,
+                                &mut coll,
+                                &mut diags,
+                                TypePos::ContainerPayload,
+                            )
                         });
                         if let Some(VT::List(_)) = payload {
                             diags.push(Diagnostic::new(
@@ -1493,6 +1520,7 @@ pub fn resolve_env(
             records,
             lists: coll.lists,
             variants: coll.variants,
+            function_types: coll.function_types,
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
@@ -1691,6 +1719,7 @@ pub(crate) fn recheck_swap(
     // inside the rechecked body is rejected by the drift guards below it.
     let mut coll = CollTables::default();
     coll.lists = env.program.lists.clone();
+    coll.function_types = env.program.function_types.clone();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -1865,6 +1894,15 @@ fn vt_of_ann(
             ));
             VT::I32
         }
+        ast::TypeRef::Function { .. } => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                "function types are not part of this source profile".to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
     }
 }
 
@@ -1873,6 +1911,8 @@ fn vt_of_ann(
 pub(crate) enum TypePos {
     /// Record field: composites are rejected (no container fields).
     Field,
+    /// Variant payload: closure values are not admitted into containers.
+    ContainerPayload,
     /// Parameter: List/Variant rejected in v1 (function-local lists).
     Param,
     /// Function result: Variant allowed, List rejected.
@@ -1923,7 +1963,7 @@ fn vt_of_ann_coll(
                     ann.span,
                 );
             }
-            let inner_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::Local);
+            let inner_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::ContainerPayload);
             if matches!(inner_vt, VT::List(_)) {
                 return reject(
                     diags,
@@ -1984,12 +2024,20 @@ fn vt_of_ann_coll(
                         ann.span,
                     );
                 }
-                let ok_vt = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
-                let err_vt = vt_of_ann_coll(&args[1], rec_index, coll, diags, TypePos::Local);
+                let ok_vt =
+                    vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::ContainerPayload);
+                let err_vt =
+                    vt_of_ann_coll(&args[1], rec_index, coll, diags, TypePos::ContainerPayload);
                 for (a, label) in [(&args[0], "Ok"), (&args[1], "Err")] {
                     if matches!(a.kind, ast::TypeRef::Builtin(TypeWord::Void))
                         || matches!(
-                            vt_of_ann_coll(a, rec_index, coll, &mut Vec::new(), TypePos::Local),
+                            vt_of_ann_coll(
+                                a,
+                                rec_index,
+                                coll,
+                                &mut Vec::new(),
+                                TypePos::ContainerPayload,
+                            ),
                             VT::Unit
                         )
                     {
@@ -2042,6 +2090,40 @@ fn vt_of_ann_coll(
                 VT::I32
             }
         },
+        ast::TypeRef::Function { params, result } => {
+            if matches!(pos, TypePos::Field | TypePos::ContainerPayload) {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.unsupported",
+                    "function values are not admitted in record fields or container payloads"
+                        .to_string(),
+                    ann.span,
+                ));
+                return VT::I32;
+            }
+            let resolved_params: Vec<VT> = params
+                .iter()
+                .map(|param| vt_of_ann_coll(param, rec_index, coll, diags, TypePos::Param))
+                .collect();
+            for (index, (param, vt)) in params.iter().zip(&resolved_params).enumerate() {
+                if *vt == VT::Unit {
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        "source.unit-placement",
+                        format!(
+                            "function type parameter #{} is `unit`; Unit is a RESULT type only",
+                            index + 1
+                        ),
+                        param.span,
+                    ));
+                }
+            }
+            let result = vt_of_ann_coll(result, rec_index, coll, diags, TypePos::Result);
+            VT::Function(coll.intern_function(ClosureFnType {
+                params: resolved_params,
+                result,
+            }))
+        }
     }
 }
 
@@ -2388,7 +2470,7 @@ impl<'a> FnResolver<'a> {
 
     fn vt_is_coll_owned(&self, vt: VT) -> bool {
         match vt {
-            VT::StrOwned | VT::List(_) | VT::Variant(_) => true,
+            VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
             VT::Rec(ri) => record_reaches_str(ri, self.records),
             _ => false,
         }

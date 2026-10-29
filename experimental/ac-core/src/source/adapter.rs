@@ -734,6 +734,7 @@ fn ty_name(
             ty_name(lists[i], records, lists, variants).trim_start_matches("t_")
         ),
         VT::Variant(i) => format!("t_variant_{}", variants[i].name),
+        VT::Function(i) => format!("t_closure_sig_{}", i),
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
         // hand-built diagnostic path (T-03b wires the result-side emit).
@@ -2799,6 +2800,28 @@ impl<'p> Emitter<'p> {
                 self.program.fns[fi].item_span
             }
         };
+        // PLAN-865: source function types have structural identity within
+        // this module and lower to the existing HIR function type shape.
+        if self.profile.is_closures() {
+            for (index, signature) in self.program.function_types.iter().enumerate() {
+                let params: Vec<String> = signature
+                    .params
+                    .iter()
+                    .map(|param| self.ty_use_ref(*param))
+                    .collect();
+                frag!(
+                    &format!(
+                        "type t_closure_sig_{} function {{ params: [{}]; result: {} }}",
+                        index,
+                        params.join(", "),
+                        self.ty_use_ref(signature.result)
+                    ),
+                    program_span
+                );
+                spans.types.push(program_span);
+                nl!(12);
+            }
+        }
         for (fi, f) in self.program.fns.iter().enumerate() {
             let params: Vec<String> = f.params.iter().map(|p| self.ty_use_ref(*p)).collect();
             let tid = if f.receiver == crate::source::ast::Receiver::Free {

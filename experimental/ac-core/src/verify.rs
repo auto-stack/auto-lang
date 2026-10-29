@@ -2929,12 +2929,12 @@ impl Verifier {
         for l in &body.locals {
             let lvt = self.value_of(&l.ty, type_map);
             let text_vt = matches!(lvt, ValueType::Str | ValueType::StrOwned | ValueType::Char);
-            if lvt == ValueType::Function {
+            if lvt == ValueType::Function && self.domain != HirDomain::Closures {
                 self.error(
                     "verify.local-type",
                     format!(
-                        "local `{}` has a function type; only i32/bool locals exist in this profile",
-                        l.id_text
+                        "local `{}` has a function type; function values exist only in the closures profile",
+                        l.id_text,
                     ),
                     l.span,
                 );
