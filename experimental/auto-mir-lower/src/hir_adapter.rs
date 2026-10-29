@@ -600,12 +600,48 @@ pub fn lower_function_collections_unit(
 
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
     let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
+    let referenced_defs: BTreeSet<u32> = module
+        .defs
+        .iter()
+        .find(|d| d.id_text == def_id_text)
+        .and_then(|d| d.kind.fn_body())
+        .and_then(|id| module.bodies.get(id.0 as usize))
+        .map(|body| {
+            body.exprs
+                .iter()
+                .filter_map(|e| {
+                    if let hir::ExprKind::Call { callee, .. } = e.kind {
+                        Some(callee.0)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     for (di, d) in module.defs.iter().enumerate() {
         if let hir::DefKind::Function { ty, body, .. } = &d.kind {
             if d.id_text == def_id_text {
-                def_map.insert(di as u32, CalleeRef::Import(next_import_dummy()));
+                // A self call is a real function import too. The old dummy
+                // sentinel was indexed by call lowering and panicked. Avoid
+                // adding unused imports to already-valid nonrecursive units.
+                let recursive = referenced_defs.contains(&(di as u32));
+                let import = if recursive {
+                    let index = out.imports.len() as u32;
+                    let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                    out.intern_import(MirImport {
+                        symbol: format!("fn:{}", d.id_text),
+                        effect: Effect::Pure,
+                        sig,
+                        env: None,
+                    });
+                    index
+                } else {
+                    next_import_dummy()
+                };
+                def_map.insert(di as u32, CalleeRef::Import(import));
                 target = Some((di as u32, *ty, *body));
-            } else {
+            } else if referenced_defs.contains(&(di as u32)) {
                 let import_idx = out.imports.len() as u32;
                 let sig_ty = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
                 out.intern_import(MirImport {

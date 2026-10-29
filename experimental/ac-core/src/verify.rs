@@ -163,19 +163,23 @@ impl CheckedFunction {
 /// declaration context (PLAN-828 T-01). The bundle may carry placeholder
 /// bodies for other functions — only `def_index`'s body is checked — but
 /// every def's SIGNATURE participates in the context, so cross-function
-/// facts still come from a fully bound declaration set. Scalar/Core
-/// domains only: the text/record domains own cross-body fixpoints and keep
+/// facts still come from a fully bound declaration set. Scalar/Core and
+/// Collections: collections additionally runs its same selected-body rules.
+/// The text/record domains own cross-body fixpoints and keep
 /// whole-module [`CheckedModule`] credentials.
 pub fn verify_function(
     bundle: hir::Bundle,
     def_index: usize,
 ) -> Result<CheckedFunction, Vec<Diagnostic>> {
-    if !matches!(bundle.domain, HirDomain::Scalar | HirDomain::Core) {
+    if !matches!(
+        bundle.domain,
+        HirDomain::Scalar | HirDomain::Core | HirDomain::Collections
+    ) {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.domain",
             format!(
-                "function-level verification is available for the scalar/core domains, not `{}`; use the whole-module verifier of the document's own profile",
+                "function-level verification is available for scalar/core/collections domains, not `{}`; use the whole-module verifier of the document's own profile",
                 bundle.domain.as_str()
             ),
             Span { start: 0, end: 0 },
@@ -313,6 +317,9 @@ pub fn verify_function(
     }
     v.check_profile_ops(m, body);
     v.check_body(m, body_id, body, &type_map, &sigs);
+    if bundle.domain == HirDomain::Collections && v.diags.is_empty() {
+        v.check_collections_rules(m, Some(body_id));
+    }
     if v.diags.is_empty() {
         // Collect the intrinsics THIS body actually calls (body-read
         // facts; content-canonical shapes).
@@ -358,7 +365,7 @@ pub fn verify_function(
             body: body.clone(),
             def: def.clone(),
             owner: m.id_text.clone(),
-            context_revision: context_fingerprint(m),
+            context_revision: declaration_context_fingerprint_in(m, bundle.domain),
             domain: bundle.domain,
             intrinsics,
         })
@@ -378,6 +385,119 @@ pub fn verify_function(
 /// trusting a caller-supplied string (F-828-R1-06).
 pub fn declaration_context_fingerprint(m: &hir::Module) -> String {
     context_fingerprint(m)
+}
+
+/// Collections credentials bind the complete nominal declaration graph without
+/// recursive shape expansion or a depth cutoff. Core/scalar identity is unchanged.
+pub fn declaration_context_fingerprint_in(m: &hir::Module, domain: HirDomain) -> String {
+    if domain != HirDomain::Collections {
+        return context_fingerprint(m);
+    }
+    fn mix(h: &mut u64, s: &str) {
+        for b in (s.len() as u64).to_le_bytes().into_iter().chain(s.bytes()) {
+            *h = (*h ^ b as u64).wrapping_mul(0x100000001b3);
+        }
+    }
+    fn use_type(h: &mut u64, u: &hir::TypeUse, m: &hir::Module) {
+        match u {
+            hir::TypeUse::Builtin(b) => mix(h, &format!("builtin:{b:?}")),
+            hir::TypeUse::Ref(t) => {
+                mix(h, "ref");
+                mix(
+                    h,
+                    m.types
+                        .get(t.0 as usize)
+                        .map(|t| t.id_text.as_str())
+                        .unwrap_or("invalid"),
+                );
+            }
+        }
+    }
+    let mut h = 0xcbf29ce484222325;
+    mix(&mut h, "collections-context/1");
+    mix(&mut h, &m.id_text);
+    let mut types: Vec<_> = m.types.iter().collect();
+    types.sort_by_key(|t| &t.id_text);
+    mix(&mut h, &types.len().to_string());
+    for t in types {
+        mix(&mut h, &t.id_text);
+        match &t.kind {
+            hir::TypeKind::Record(r) => {
+                mix(&mut h, "record");
+                mix(&mut h, &r.fields.len().to_string());
+                for f in &r.fields {
+                    mix(&mut h, &f.name);
+                    use_type(&mut h, &f.ty, m)
+                }
+            }
+            hir::TypeKind::Variant { arms } => {
+                mix(&mut h, "variant");
+                mix(&mut h, &arms.len().to_string());
+                for a in arms {
+                    mix(&mut h, &a.name);
+                    mix(
+                        &mut h,
+                        if a.payload.is_some() {
+                            "payload"
+                        } else {
+                            "none"
+                        },
+                    );
+                    if let Some(p) = &a.payload {
+                        use_type(&mut h, p, m)
+                    }
+                }
+            }
+            hir::TypeKind::List { elem } => {
+                mix(&mut h, "list");
+                use_type(&mut h, elem, m)
+            }
+            hir::TypeKind::Function(s) | hir::TypeKind::Closure(s) => {
+                mix(
+                    &mut h,
+                    if matches!(t.kind, hir::TypeKind::Function(_)) {
+                        "fn"
+                    } else {
+                        "closure"
+                    },
+                );
+                mix(&mut h, &s.params.len().to_string());
+                for p in &s.params {
+                    use_type(&mut h, p, m)
+                }
+                use_type(&mut h, &s.result, m)
+            }
+            other => mix(&mut h, &format!("{other:?}")),
+        }
+    }
+    mix(
+        &mut h,
+        &m.defs
+            .iter()
+            .filter(|d| !matches!(d.kind, hir::DefKind::Intrinsic { .. }))
+            .count()
+            .to_string(),
+    );
+    for d in &m.defs {
+        if matches!(d.kind, hir::DefKind::Intrinsic { .. }) {
+            continue;
+        }
+        mix(&mut h, &d.id_text);
+        match &d.kind {
+            hir::DefKind::Function { .. } => mix(&mut h, "function"),
+            hir::DefKind::Method {
+                record, receiver, ..
+            } => {
+                mix(&mut h, &format!("method:{receiver:?}"));
+                use_type(&mut h, &hir::TypeUse::Ref(*record), m)
+            }
+            hir::DefKind::Intrinsic { .. } => unreachable!(),
+        }
+        if let Some(ty) = d.kind.fn_type() {
+            use_type(&mut h, &hir::TypeUse::Ref(ty), m);
+        }
+    }
+    format!("coll1:{h:016x}")
 }
 
 fn context_fingerprint(m: &hir::Module) -> String {
@@ -789,7 +909,7 @@ fn verify_collection_family(
     v.check_bundle(&bundle);
     for m in &bundle.modules {
         v.check_module(m);
-        v.check_collections_rules(m);
+        v.check_collections_rules(m, None);
     }
     if v.diags.is_empty() {
         // no text resource plan: profile 4 releases frame-owned values at
@@ -1363,7 +1483,7 @@ impl Verifier {
     /// - an owned-terminal field projection is only consumed by `.len()`;
     /// - variant dispatch/project roots are whole-local reads;
     /// - `eval` statement values carry the unit type.
-    fn check_collections_rules(&mut self, m: &hir::Module) {
+    fn check_collections_rules(&mut self, m: &hir::Module, selected: Option<BodyId>) {
         fn owned_elem(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
             let hir::TypeUse::Ref(tid) = list_ty else {
                 return false;
@@ -1383,7 +1503,10 @@ impl Verifier {
                 }
             }
         }
-        for body in &m.bodies {
+        for (index, body) in m.bodies.iter().enumerate() {
+            if selected.is_some_and(|id| id.0 as usize != index) {
+                continue;
+            }
             if self.domain == HirDomain::Closures {
                 self.check_closure_borrow_rules(m, body);
             }

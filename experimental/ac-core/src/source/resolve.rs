@@ -1568,6 +1568,21 @@ pub struct CheckedEnv {
 }
 
 impl CheckedEnv {
+    /// Cold retained-environment consumer: run the same whole typecheck once,
+    /// without first rendering/binding a second whole-module Atom document.
+    pub fn typecheck_all(&mut self) -> Result<(), Vec<Diagnostic>> {
+        if self.closed {
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.closed",
+                "the checked environment is closed",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        super::typecheck::typecheck_with(&self.program, self.profile)?;
+        env_note_cold_walks(self);
+        Ok(())
+    }
     /// PLAN-828 D-03 (T01-C05): EXPLICIT release of the environment's
     /// owned body entries (the resolved `fns` and the record/method
     /// registries). The session's close calls this — dropping the session

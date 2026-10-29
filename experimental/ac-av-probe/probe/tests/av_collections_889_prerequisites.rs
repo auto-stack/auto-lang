@@ -67,6 +67,7 @@ fn named_variant_owned_text_literal_is_contextual() {
 #[test]
 fn single_function_collection_units_preserve_clone_and_borrowed_signatures() {
     for source in [
+        "fn main() int { return count(42) }\nfn count(n int) int { if n > 0 { return count(n-1)+1 }\n return 0 }",
         "fn main() int { let a Str = \"中\"\n let b = a.clone()\n return a.len() * 40 + b.len() * 2 }",
         "type Pair { x int; y int }\nfn bump(p Pair) Pair { return Pair(p.x + 1, p.y) }\nfn main() int { let a = Pair(19, 22)\n let b = bump(a)\n return a.x + b.y + 1 }",
     ] {
