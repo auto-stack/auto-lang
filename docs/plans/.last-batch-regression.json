@@ -1,57 +1,91 @@
 {
-  "last_covered_plan_id": 880,
-  "timestamp": "2026-10-28T18:55:00+00:00",
-  "covered_commit": "03f851505",
-  "covered_note": "Batch gate triggered by PLAN-880 (id%5==0) after the 875 receipt. PLAN-880 language-side diff is docs/plans only; content landed in ag-examples c36c412 with its own gates (32 windowless oracles + 47 structural + 8/8 package A-to-B). The canonical runner (run-full-regression.py tf --batch) refused at the selection guards: language selection 3202 < floor 3205 (tier-selection-minimums.json.txt, frozen PLAN-869 era) and ids-baseline missing=16/suppressed=16 — both attributable to the 869/870/872 landing window on master (net -3 tests: value.rs retirement, ace-m1 binding, 872 probe reshuffle), NOT to PLAN-880. Actual test health was measured by running the legs' exact nextest/tb commands directly on the main checkout, single instance: all green.",
+  "last_covered_plan_id": 887,
+  "timestamp": "2026-10-29T15:53:56Z",
+  "covered_commit": "16555e450783bde1f9ad81ce494dc0e3c0e92988",
+  "covered_note": "PLAN-885 made the due gate after receipt 880; the main batch run at HEAD 16555e450783bde1f9ad81ce494dc0e3c0e92988 completed language (3203/3203), ui-full (3120/3120), and tt (3578/3578). tb ran 3093 tests: 3092 passed and book_ch09_06 failed while D:/autostack/book/rust/listings/ch09/listing-09-06/main.expected.rs was being updated; the file's write time followed the failure by 3 seconds, and the targeted replay after that update passed 1/1. The earlier liveness/caps red was the known Plan-868 P3 load-sensitive case; targeted replay and the subsequent full tt run passed. The user explicitly directed that no further full batch be run and authorized accepting all remaining outcomes as passing. The batch driver stopped at tb, so the MAN and extra UI batch legs were not executed and are explicitly marked user-accepted below. A later retry was stopped at the user's request during ui-full; it is not counted, and all 10 protected reports were restored with matching SHA-256. The completed batch was bound to HEAD 16555e450783bde1f9ad81ce494dc0e3c0e92988; its AutoGraphics changes are specs/ledger only, with no test-code changes.",
   "legs": [
-    "tf-language",
+    "language",
+    "ui-full",
     "tt",
     "tb"
   ],
   "leg_results": {
-    "tf-language": {
-      "selected": 3202,
-      "passed": 3202,
+    "language": {
+      "selected": 3203,
+      "passed": 3203,
       "failed": 0,
       "skipped": 500,
       "exit": 0,
-      "duration_secs": 84.0,
-      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tf-language-direct.log",
-      "note": "tf-equivalent nextest command (-p auto-lang -p auto-lang-core, nextest-full.toml); includes 1M churn + schema_drift fence"
+      "duration_secs": 65.199,
+      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/language-run.log"
+    },
+    "ui-full": {
+      "selected": 3120,
+      "passed": 3120,
+      "failed": 0,
+      "skipped": 18,
+      "exit": 0,
+      "duration_secs": 51.45,
+      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/ui-full-run.log"
     },
     "tt": {
-      "run": 3569,
-      "passed": 3569,
+      "selected": 3578,
+      "passed": 3578,
       "failed": 0,
       "skipped": 921,
       "exit": 0,
-      "duration_secs": 512.4,
-      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tt-tb.log"
+      "duration_secs": 365.4,
+      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/tt-run.log"
     },
     "tb": {
-      "run": 3092,
+      "selected": 3093,
       "passed": 3092,
-      "failed": 0,
+      "failed": 1,
       "skipped": 664,
-      "exit": 0,
-      "duration_secs": 61.0,
-      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tt-tb.log"
+      "exit": 100,
+      "duration_secs": 49.318,
+      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/tb-run.log",
+      "targeted_replay": {
+        "test": "book_ch09_06",
+        "passed": 1,
+        "failed": 0,
+        "exit": 0,
+        "evidence": "standalone replay after book golden update, 2026-10-29"
+      },
+      "accepted_as_pass": true,
+      "disposition": "User explicitly accepted this result as pass; original book WIP remains untouched."
     }
   },
-  "verdict": "pass_with_selection_guard_red_attributed_elsewhere",
-  "verdict_note": "All executed legs fully green (10263 tests, 0 failed). The batch runner itself is red at its selection-integrity guards (floor 3202<3205, ids baseline 16 migrated/retired tests) — an inventory bookkeeping red owned by the PLAN-869/870/872 landing window (committed on master before this batch); the floor is a deliberate-act file owned by those plans. Routed: see KNOWN-DEBT-AND-RISKS.md batch 2026-10-28 entry. No test regression found in the covered window; nothing to unmerge.",
-  "new_reds": [
-    "selection-floor: language 3202 < 3205 (owned by 869/870/872 landing window, not a test failure)"
+  "verdict": "pass_user_accepted",
+  "verdict_note": "Executed legs are recorded with their observed counts. The batch's remaining MAN/UI legs did not execute because the runner stops at the first failing leg; the user explicitly accepted them as passing and requested no full rerun. This is a user-authorized closeout disposition, not a claim that those legs ran.",
+  "new_reds": [],
+  "known_reds_seen": [
+    "mir_native_rounds_failure_liveness_and_caps (Plan 868 P3 load-sensitive timeout): failed in the first attempt alongside external DB/Vue work; targeted replay passed 1/1 and the completed sequential tt leg passed 3578/3578."
   ],
-  "known_reds_seen": [],
-  "environment_attributed_reds": [],
+  "environment_attributed_reds": [
+    "book_ch09_06: expected golden in the sibling book repo changed at 23:46:26 after the mismatch at 23:46:23; targeted replay after the update passed 1/1."
+  ],
   "single_instance": true,
-  "taa": "not-triggered: window lib.rs diff has zero aavm-relevant lines",
+  "taa": "not-triggered: no AAVM trigger paths in the merge window.",
   "last_due_check": {
-    "plan_id": 880,
-    "checked_at": "2026-10-28T18:55:00+00:00",
+    "plan_id": 887,
+    "checked_at": "2026-10-29T15:53:56Z",
     "due": true,
-    "reason": "PLAN-880 (id%5==0) landed after the 875 receipt",
-    "resolved": "batch executed this receipt"
+    "reason": "PLAN-885 (id%5==0) landed after the 880 receipt.",
+    "resolved": "User-authorized accepted closeout; see unexecuted_batch_legs_user_accepted."
+  },
+  "unexecuted_batch_legs_user_accepted": [
+    "man-t",
+    "man-tcore",
+    "man-tc",
+    "man-ti",
+    "ui-tu",
+    "ui-ti",
+    "ui-tn"
+  ],
+  "user_disposition": {
+    "date": "2026-10-29",
+    "instruction": "No further full rerun; accept all remaining results as pass.",
+    "scope": "Remaining batch legs and the environment-sensitive closeout results."
   }
 }
