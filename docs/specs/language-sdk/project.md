@@ -37,6 +37,21 @@
   parse/compile/VM 真实执行、手工字节码管线、trans_rust 产物、UI 文法
   显式拒绝负控）。
 
+## Crate 粒度与增量成本现状（PLAN-873，2026-10-29）
+
+- **现状**：语言侧两根包承载全部家族——`auto-lang-core`（301 文件/250,441 行，
+  parser/vm{codegen,engine}/trans 文件级分族）+ `auto-lang` 组合根（16/7,691）。
+  单行函数体改动（任一家族）实测重编 **4 crate 跨 2 仓**（core + auto-lang +
+  auto-ui-compiler + auto-ui-runtime，后者经根包默认特性 `ui-iced` 入闭包）：
+  温态 check 6.9s、`test --no-run` 27.4s；冷 `check -p auto-lang` 80.0s 中约
+  25s 为 UI 图形三方闭包（core 单包冷 55.5s）。
+- **若拆的结论指向**：PLAN-873 实测后**暂不拆** member——冷成本由依赖闭包
+  主导（man 9 成员仓冷 check 反最慢）、温态单行编辑链地板 5.9s 为 mtime
+  级联与依赖者重查（非 250k 行重编），拆分收益上界 <2s(check)/约 10–15s
+  (测试二进制，估算)。触发条件与"若拆先拆 trans"的范围草案见
+  [build-cost-baseline.md](../repository-boundaries/build-cost-baseline.md) §3.3/§4.3。
+  待跟进替代手段：`ui-iced` 移出根包默认特性（A1，独立签核）。
+
 ## 中立领域端口（PLAN-841）
 
 - `Parser::parse()` 只产 Core `Code`，不含 UI 兼容臂；排他 UI 声明未经
