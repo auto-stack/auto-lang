@@ -3562,7 +3562,10 @@ mod closures_source_judge_tests {
         }));
         let mut mismatches = Vec::new();
         judge_closures_source("K01", Some("restart"), &restarted, &mut mismatches);
-        assert!(mismatches.is_empty(), "file cache restart face: {mismatches:?}");
+        assert!(
+            mismatches.is_empty(),
+            "file cache restart face: {mismatches:?}"
+        );
 
         let mut edited = successful_step(Some(43));
         edited.closures_source = Some(serde_json::json!({
@@ -3582,7 +3585,10 @@ mod closures_source_judge_tests {
         }));
         let mut mismatches = Vec::new();
         judge_closures_source("K01", Some("body-edit"), &edited, &mut mismatches);
-        assert!(mismatches.is_empty(), "body edit must rebuild one unit: {mismatches:?}");
+        assert!(
+            mismatches.is_empty(),
+            "body edit must rebuild one unit: {mismatches:?}"
+        );
 
         let mut rejected = successful_step(None);
         rejected.outcome = "diag".into();

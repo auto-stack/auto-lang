@@ -821,9 +821,7 @@ fn case_serve() -> ! {
 
     let mut current_source = source;
     let mut closures_source_session = if closures_source_recipe {
-        Some(auto_av_probe::closures_865_support::ClosuresSourceSession::new(
-            &store_dir,
-        ))
+        Some(auto_av_probe::closures_865_support::ClosuresSourceSession::new(&store_dir))
     } else {
         None
     };
@@ -1239,9 +1237,8 @@ fn case_serve() -> ! {
                     let source_id = parts.next().unwrap_or_default();
                     let mode = parts.next();
                     if parts.next().is_some()
-                        || mode.is_some_and(|mode| {
-                            !matches!(mode, "fresh" | "restart" | "body-edit")
-                        })
+                        || mode
+                            .is_some_and(|mode| !matches!(mode, "fresh" | "restart" | "body-edit"))
                     {
                         eprintln!("invalid closures source selector {selector}");
                         exit(2);
@@ -1290,8 +1287,13 @@ fn case_serve() -> ! {
                                 "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
                             }));
                         }
-                        Err(auto_av_probe::closures_865_support::CompileAndRunError::Diagnostics(ds)) => {
-                            let diagnostic = ds.first().expect("compiler diagnostics are non-empty");
+                        Err(
+                            auto_av_probe::closures_865_support::CompileAndRunError::Diagnostics(
+                                ds,
+                            ),
+                        ) => {
+                            let diagnostic =
+                                ds.first().expect("compiler diagnostics are non-empty");
                             step_outs.push(serde_json::json!({
                                 "op": "run",
                                 "outcome": "diag",
@@ -1307,7 +1309,9 @@ fn case_serve() -> ! {
                                 "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
                             }));
                         }
-                        Err(auto_av_probe::closures_865_support::CompileAndRunError::Pipeline(error)) => {
+                        Err(auto_av_probe::closures_865_support::CompileAndRunError::Pipeline(
+                            error,
+                        )) => {
                             eprintln!("closures source {source_id}: {error}");
                             exit(2);
                         }

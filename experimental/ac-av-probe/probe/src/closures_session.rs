@@ -368,12 +368,7 @@ impl ClosuresUpdateSession {
                         .map_err(|e| format!("cached unit {name} unit-admit: {e}"))?;
                     self.counters.admitted += 1;
                     self.counters.cache_hits += 1;
-                    return Ok((
-                        Arc::new(fc),
-                        body_fp,
-                        flat,
-                        Some(artifact.artifact_id),
-                    ));
+                    return Ok((Arc::new(fc), body_fp, flat, Some(artifact.artifact_id)));
                 }
                 None => self.counters.cache_misses += 1,
             }

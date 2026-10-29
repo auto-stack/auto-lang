@@ -9,8 +9,8 @@
 
 pub mod bench;
 pub mod cache;
-pub mod closures_fixture;
 pub mod closures_865_support;
+pub mod closures_fixture;
 pub mod closures_session;
 pub mod coff_admission;
 pub mod collections_864_session;

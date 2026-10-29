@@ -189,8 +189,10 @@ fn ace_m1_tr_native_suite_green() {
         failing.is_empty(),
         "ace-m1 tr-native suite has non-PASS checks:
 {}",
-        failing.join("
-")
+        failing.join(
+            "
+"
+        )
     );
     assert_eq!(
         report.results.len(),
@@ -235,8 +237,10 @@ fn ace_m1_method_881_suite_green() {
         failing.is_empty(),
         "ace-m1 method-881 suite has non-PASS checks:
 {}",
-        failing.join("
-")
+        failing.join(
+            "
+"
+        )
     );
     assert_eq!(
         report.results.len(),
@@ -267,7 +271,10 @@ fn ace_m1_closures_865_source_suite_green() {
     let case_path = corpus.join("closures-source-865.case.ad");
     let case_text = std::fs::read_to_string(&case_path).unwrap();
     let case_text = case_text.replace("av_closures_865_k01", &session_id);
-    assert!(case_text.contains(&session_id), "session id substitution applies");
+    assert!(
+        case_text.contains(&session_id),
+        "session id substitution applies"
+    );
     std::fs::write(&case_path, case_text).unwrap();
     let report = run_suite(
         &corpus.join("closures-source-865.suite.ad"),
@@ -291,30 +298,42 @@ fn ace_m1_closures_865_source_suite_green() {
         "ace-m1 closures source suite has non-PASS checks:\n{}",
         failing.join("\n")
     );
-    assert_eq!(report.results.len(), 8, "K01-K06 plus restart/edit rows all ran");
-    assert!(report.coverage_gaps.is_empty(), "all six source cases are bound");
+    assert_eq!(
+        report.results.len(),
+        8,
+        "K01-K06 plus restart/edit rows all ran"
+    );
+    assert!(
+        report.coverage_gaps.is_empty(),
+        "all six source cases are bound"
+    );
 
-    let receipt_for = |check: &auto_test_case::report::CheckOutcome,
-                       out_root: &Path|
-     -> serde_json::Value {
-          let path = std::fs::read_dir(out_root)
-              .unwrap_or_else(|error| panic!("read {}: {error}", out_root.display()))
-              .filter_map(Result::ok)
-              .map(|run| {
-                  run.path()
-                      .join(&check.case_id)
-                      .join(&check.check_id)
-                      .join("probe-receipt.json")
-              })
-              .find(|path| path.is_file())
-              .unwrap_or_else(|| {
-                  panic!("{}:{} has no probe receipt under {}", check.case_id, check.check_id, out_root.display())
-              });
-          serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|error| {
-              panic!("read {}: {error}", path.display())
-          }))
-          .unwrap_or_else(|error| panic!("decode {}: {error}", path.display()))
-    };
+    let receipt_for =
+        |check: &auto_test_case::report::CheckOutcome, out_root: &Path| -> serde_json::Value {
+            let path = std::fs::read_dir(out_root)
+                .unwrap_or_else(|error| panic!("read {}: {error}", out_root.display()))
+                .filter_map(Result::ok)
+                .map(|run| {
+                    run.path()
+                        .join(&check.case_id)
+                        .join(&check.check_id)
+                        .join("probe-receipt.json")
+                })
+                .find(|path| path.is_file())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}:{} has no probe receipt under {}",
+                        check.case_id,
+                        check.check_id,
+                        out_root.display()
+                    )
+                });
+            serde_json::from_slice(
+                &std::fs::read(&path)
+                    .unwrap_or_else(|error| panic!("read {}: {error}", path.display())),
+            )
+            .unwrap_or_else(|error| panic!("decode {}: {error}", path.display()))
+        };
     let result_for = |case_id: &str, check_id: &str| {
         report
             .results
@@ -381,8 +400,8 @@ case {{ schema: "autolang.case/2", id: "ace.m1.k01-cache-sample",
     let mut hot_bytes = 0u64;
     for sample in 0..20 {
         let out = root.join(format!("cache-sample-{sample}"));
-        let sample_report = run_suite(&sample_suite, &out, &Limits::defaults())
-            .expect("cache restart sample runs");
+        let sample_report =
+            run_suite(&sample_suite, &out, &Limits::defaults()).expect("cache restart sample runs");
         assert_eq!(sample_report.results.len(), 1);
         assert_eq!(sample_report.results[0].status, Status::Pass);
         let receipt = receipt_for(&sample_report.results[0], &out);
@@ -411,9 +430,12 @@ case {{ schema: "autolang.case/2", id: "ace.m1.k01-cache-sample",
     latencies_ms.sort_by(f64::total_cmp);
     let p90_index = ((latencies_ms.len() as f64 * 0.90).ceil() as usize).saturating_sub(1);
     let p90_ms = latencies_ms[p90_index];
-    assert!(p90_ms <= 2000.0, "source cache P90 {p90_ms:.2}ms exceeds 2000ms");
-    let evidence_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/plans/attachments/865/work");
+    assert!(
+        p90_ms <= 2000.0,
+        "source cache P90 {p90_ms:.2}ms exceeds 2000ms"
+    );
+    let evidence_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/plans/attachments/865/work");
     std::fs::create_dir_all(&evidence_root).unwrap();
     std::fs::write(
         evidence_root.join("source-cache-metrics.json"),
@@ -456,8 +478,12 @@ fn ace_m1_method_881_negative_oracle_fails() {
     }
     std::fs::write(&cases, rebuilt).unwrap();
     let out = root.join("out");
-    let report = run_suite(&corpus.join("method-881.suite.ad"), &out, &Limits::defaults())
-        .expect("mutated suite still runs");
+    let report = run_suite(
+        &corpus.join("method-881.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("mutated suite still runs");
     let red: Vec<&str> = report
         .results
         .iter()

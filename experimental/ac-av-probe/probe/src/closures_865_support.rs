@@ -1,10 +1,10 @@
 //! PLAN-865 source path: closures-profile source → per-function units →
 //! the existing ClosuresUpdateSession/link/runtime contract.
 
+use crate::closures_session::{ApplyOutcome, ClosuresUpdateSession, ProductionCounters};
 use auto_ac_prototype::hir::DefKind;
 use auto_ac_prototype::source::compile_closures_source;
 use auto_av_core::abc::encode_abc;
-use crate::closures_session::{ApplyOutcome, ClosuresUpdateSession, ProductionCounters};
 use auto_av_core::mir::MirModule;
 use auto_mir_lower::lower_function_closures_unit;
 use std::collections::BTreeMap;
@@ -64,15 +64,10 @@ impl ClosuresSourceSession {
             .iter()
             .filter(|def| matches!(def.kind, DefKind::Function { .. }))
         {
-            let unit = lower_function_closures_unit(
-                bundle,
-                &def.id_text,
-                &[],
-                source_snapshot,
-            )
-            .map_err(|error| {
-                CompileAndRunError::Pipeline(format!("lower {}: {error:?}", def.id_text))
-            })?;
+            let unit = lower_function_closures_unit(bundle, &def.id_text, &[], source_snapshot)
+                .map_err(|error| {
+                    CompileAndRunError::Pipeline(format!("lower {}: {error:?}", def.id_text))
+                })?;
             let name = unit.funcs[0].name.clone();
             let mut identity = unit.clone();
             for function in &mut identity.funcs {
