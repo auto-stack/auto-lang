@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 2
+current_step: 3
 total_steps: 10
 ---
 
@@ -190,7 +190,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 |---|---|---|---|---|---|
 | T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [x] |
 | T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [x] |
-| T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [ ] |
+| T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [ ] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [ ] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
@@ -311,6 +311,15 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 - 定向affected命令`cargo test --locked --manifest-path experimental/ac-mir-native/Cargo.toml --test collections_resources_tier --test collections_source_tier --test collections_typed_tier --test collections_frontend_tier --test collections_observation_tier -- --test-threads=1` exit0，12/7/3/3/1（6.01/8.12/0.67/23.50/0.50s）；随后新增调用/自调用/未用签名/input cap控制按具名重放。source core旧864正3/负13、新S4+前置8全过；AV7与scalar828合同4全过。fmt/diff-check通过，无新增N warning（旧shell_lo/hi已知）；未跑根t/tv/tf/docs_gen，未写H/canonical/ledger或关闭M1 gap。
 - 冻结合同=`runtime/collections/CONTRACT.md`：Cell16/Frame32/Node144（Win64 reprC）、runtime/call ABI2、layout/codegen/profile/recipe身份、descriptor/kind/成员校验、帧链清理与状态码、各预算分区/首例反控、样本窗口及891后继交接条件。T-02最小source+typed+runtime三起点全链可行且失败反控通过，T-03继续完整clone/set/switch/drop/故障覆盖；T-04正式cache/SDK/CLI/worker、T-05真实body编辑/候选/坐标、T-06正式资源/时延/父suite与复审/merge门均未完成。
 - 本地证据根仍`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：bounded-cold-release-current.log SHA256 `3163cbeb9fba22aff3c178943a544d3d65dae508f0e6e463296eb20b164b0650`；t02-bounded-affected.log `78f6def7381e77b12b3feb29b4be7ada35b7c473a2195eb86b85bcf5415316b2`；bounded-source-compat.log `407ad8580bcadb13cb66fa09f27be474709a055be2044e3ea278090a04615b83`；collection-unit-final-compat.log `0142efe391e9c91109a4dca83dff5ffd75dbed8c543c8ffa3eb0cb400cd31a1b`；bounded-scalar-function-compat.log `1d0e5fd1376b4bafccdf2a9bb89fa0c857677c2ded2adeba9f4e3598e1834e39`；bounded-unused-signature-control.log `84622eb3eb8531814dd7c786a4a7d75ea917f8a90799629e3e3e4f621926563e`。raw不入库，code checkpoints b5302262e/30a77778c；dependency auto-down=c3464d0a，next owner work/T-03。
+
+### 2026-10-30 work 第7轮检查点B：T-03克隆变异与已有owner回滚
+
+- 在30a77778c的T-02通过基面上顺序完成T-03，未重新取S/H窗；N提交`0bbbbd691`，树clean，3/10。runtime实现已在T-02可行性迭代落地，本步补足V-03..05验收，不把前置实现重复计为新机制；仍是work阶段，继续T-04正式driver/cache/CLI/worker接入。
+- 新受检typed MIR实际发CLIF/COFF/PE：List<Variant<Item>>深clone后对副本ListSet为End并remove，clone该End再VariantSwitch为全新拥有Item；guard/project/drop副本之后原List的拥有Item仍可读，两个42合为84。真实文本alloc/free3/3、CLONE id仅1次（End clone无文本buffer），可区别别名/隐式clone；全部node/requested/guest/arena/registered/text余额0。重复move后payload投影、move后的旧root clone在shared verify具名payload-moved/use-after-move拒绝、object生成0；原typed clone与错List元素/typed排除仍通过，typed档5/5（0.93s）。
+- runtime-only真实PE另验：越界ListSet保持原元素/输入owner/len/bytes；正常set旧buffer恰释放一次；切换**已含owned载荷**的Variant在Nth分配失败时旧target/新输入/原bytes均保持，旧payload还能读取；重试成功后旧载荷恰释放一次，错臂/重复已move投影拒24且dst70不变，最终四literal buffer alloc/free4/4、无CLONE事件、invalid0。此探针不冒充source/typed代码生产链。
+- 原L04/L05真实源补资源时点oracle：投影/临时remove-view-insert、remove转移，各恰1个文本buffer、alloc/free1/1且无CLONE；5个具名原owned首例合组仍exit0。已有T-02资源12项（含深4096/64KiB reserved栈、partial clone、metadata/页/guest/list边界、协作取消、跨caller trap及遗漏释放负控）生产代码未改变，证据复用；T-03只加这两类定向反例，未重跑整档。
+- runtime/collections/CONTRACT.md补typed与runtime/source三起点分账及owner替换/活动臂语义；代码/导出/文本rlib静态库和单panic/no-CRT链接已实测，Cell/Frame/Node及combined32MiB预算不变。正式worker恢复/发布、配置、runtime hash/build依赖绑定及T-06整套正式测量仍待办；未关闭M1 gap、未写canonical/ledger，fmt/diff-check通过，无新warning。
+- 本地证据根`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：t03-clone-mutations.log SHA256 `a2b1a795c2d835214abf876f8b8a6cf871b395de411955d09712a055a2f180ba`；t03-switch-atomic.log `28efa8c9a2308d8a5f3f424ff1662e5d1c0e6df7547168d4e785c9bba1e34a29`；t03-owned-projection-events.log `cc43095c3df7ffa1c1bba58b985e3f557812adcdb1baec3cc6ca3d1d46cab601`。命令分别`cargo test --locked --manifest-path experimental/ac-mir-native/Cargo.toml --test collections_typed_tier -- --test-threads=1`，以及resources/source档对应两个具名case的`--exact --test-threads=1`；exit均0。raw仅本地，不入库；dependency auto-down=c3464d0a。
 
 ## 10. 待澄清事项
 
