@@ -266,6 +266,22 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 3 | from: work | to
 stage: work | plan_id: PLAN-889 | plan_revision: r2 | outcome: progress（T-02原源与组合机器首例/typed clone已实跑，完整资源冻结尚未完成） | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | base_commit: e0b29ff7a | code_commit: 0a73c1c82 | dependency_revisions: auto-down=c3464d0a | task_ids: T-02 | evidence: baseline/native-affected-current.log; runtime/collections/CONTRACT.md | blockers: none requiring user decision | next_responsible_role: work（T-02资源元数据/物理计量/轮询与口径冻结）
 
 stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 4 | from: work | to: work | status: executing | outcome: pass（原源真实native已接通，有实质实现/反控进展，work未完成） | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 0a73c1c82 | next: work
+2026-10-30 T-02/S运行时分配/轮询接受：为关闭实际metadata/物理预算而非只估算logical bytes，889接受已交付text/shim/src/lib.rs的分配/释放缝（5处HeapAlloc/HeapFree）、新增可选allocator/poll安装与metadata查询出口、own_from_lit/own_clone数据拷贝轮询。888最新4bf398580/890在该路径无提交diff，主检出代码零WIP。新N进程在首次资源分配前显式安装有界VirtualAlloc arena；默认旧shim不安装、继续原HeapAlloc/HeapFree/诊断与ABI。安装须拒绝已有live或ledger，禁止跨allocator释放。metadata/节点/文本buffer/clone工作栈/槽区共用32MiB实际页提交上限，保guest8MiB/list65536；测试分开报告requested/页提交/进程private观测。没有新AV opcode/wire/执行语义或公开语言FFI，旧五域不自动启用该策略。仅在本权威树写入并做旧shim具名兼容；S提交/释放须记录，H未接受。
+### 2026-10-30 work 第5轮：实际页额度与取消回滚
+
+- 继续同一权威树/分支，入树HEAD0a73c1c82且实现clean；main仅文档WIP，未写他方文件、未建agent或联系其他聊天。T-02仍未整体关闭，current_step保持1/10。
+- S提交`8eb007eb5`落实前序接受的最小分配缝：text shim新增可选allocator/free/poll安装、metadata查询与idle释放；旧消费者未安装时继续原process heap和保留策略。安装拒绝live文本或retained ledger，避免跨allocator释放；own_from_lit/own_clone每4096字节轮询，取消回滚新buffer并报-12，N映射为-26。无AV opcode/wire/执行语义改动。S该子集提交后释放，后续S写入仍需按符号重新核窗。
+- N提交`1e240cfa2`：新增32MiB保留地址域/按4096B提交的VirtualAlloc arena，节点/数组/Cell堆槽/clone工作栈、文本buffer及ledger、allocator头/对齐/碎片均占同一页额度；尾部回收decommit。请求字节与arena live/commit/peak/invalid、text_metadata分列。probe额度只能单调收紧且不低于已commit，生产上限不能扩展。自动32B Frame头、原生栈和PE映像不算入arena，仍归进程128MiB delta独立门；没有把arena上限当整个进程上限。
+- clone按节点/child和文本chunk轮询，半成品沿无分配/不轮询drop路径回收，原src/dst保持；list插入/扩容/移动工作在修改前按数据量准入，remove亦先准入。last-frame清理释放idle文本ledger，正常/受控trap要求容器与文本余额以及arena live/commit/invalid/metadata均0。外部kill仍为INFRA，不宣称kill后执行清理。
+- `cargo test --locked --manifest-path experimental/ac-mir-native/Cargo.toml --test collections_resources_tier --test data_owned_tier -- --test-threads=1` exit0：资源11/11（7.63s）、旧data/owned机器面6/6（5.23s）。新增实际PE控制：4KiB页额度拒绝且peak4096、非尾碎片复用/前后合并、初始和第17条文本ledger增长失败回滚、精确8MiB guest及+1、精确65536列表及+1、文本chunk与partial列表clone取消、原Heap live/retained metadata时拒绝接管。depth4096/64KiB reserved stack、跨帧trap和两个遗漏释放负控仍绿。
+- 同轮受影响source7/7（33具名输入，9.26s）、typed2/2（0.55s）通过，父侧新增arena余额断言；这些运行绑定相同allocator/清理实现，随后仅收紧probe额度不可重新调大并补相应反控，定向`runtime_physical_quota_fragment_reuse_and_coalescing --exact`再次exit0、1/1（1.53s）。旧shim默认路径未启用新hook，兼容证据为实际机器六项；未新造AV旁路、未将runtime探针冒充source。
+- 本地证据根仍`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：arena-controls-final.log SHA256 `0468ccb01dc3ec7def3f9a9805da95beae157ef96172aba8cf88a2854a48c54f`；arena-final.log `164e0466175954187ebc18294732ef116839cd6ee8d50f974d68a4dc768df624`；arena-monotone-limit.log `a768d884d1a57b695376ab7e7e1d532ceef84219b484a345df746e1674599d96`。raw仅本地，无add/commit；fmt/diff-check通过，新N无新增warning，既有shim mem* ABI lint四条与probe shell_lo/hi warning未被allow隐藏。
+- T-02余项仍为：完整source指令/签名与类型布局身份准入、正式runtime/cache/codegen版本边界和891交接、性能负载/样本/计时冻结、进程private峰值/delta及compiler分区实际观测、剩余helper/deadline/父侧trap受检。T-04正式driver/cache/worker与T-05源码单体前端/T-06 H/SDK尚未接入，不关闭M1 gap，不把此子门当完整资源验收；无用户决策阻塞。未运行根整档t/tv/tf/docs_gen或正式性能采样。
+
+stage: work | plan_id: PLAN-889 | plan_revision: r2 | outcome: progress（T-02实际页额度/metadata/取消反控已过，完整入口及计量冻结待办） | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | base_commit: e0b29ff7a | code_commit: 1e240cfa2 | dependency_revisions: auto-down=c3464d0a | task_ids: T-02 | evidence: baseline/arena-controls-final.log; baseline/arena-final.log; baseline/arena-monotone-limit.log; runtime/collections/CONTRACT.md | blockers: none requiring user decision | next_responsible_role: work（关闭T-02剩余冻结/计量入口，再T-03）
+
+stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 5 | from: work | to: work | status: executing | outcome: pass（实际allocator/取消/边界反控新进展，work未完成） | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 1e240cfa2 | next: work
+
 ## 10. 待澄清事项
 
 - 支持面已选864完整合法源码与其MIR闭包，不留“是否包含List<Str>/拥有record/Variant”的开放裁定。T-02选择等价native表示/allocator/helper机制；若预算内无法实现，给最小反例与方案needs_replan，不自行缩范围或加语言深度限制。
