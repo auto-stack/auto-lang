@@ -1,4 +1,5 @@
 // Plan 289: Transpiler tests (a2c/a2r/a2ts) gated behind test-trans feature
+mod env_restore;
 #[cfg(feature = "test-trans")]
 mod a2c_tests;
 // Plan 768: TestCase protocol adapter + runner integration (real VM/a2r)

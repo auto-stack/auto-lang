@@ -53,3 +53,5 @@ UI/Man保留其owner腿与约定。周期触发仍为计划号%5、或>48h且有
 单实例，不成为每计划第二个全局门。T3/手动/ignored条件保留，不要求新增cargo all。
 
 关联：[批量试点](batch-execution.md)、[治理守恒](governance-and-inventory.md)。
+
+测得可拆慢聚合由partition-policy.json明确细分，builder与消费端复核同一规则，不能丢例或悄悄停止应用。故障控制使用panic-safe测试环境恢复，既不能被预建worker绕过准备器反控，也不在恢复正控时误丢调用方工具路径。成本参考保留原AV/MN 30样本及2000ms门，相关参数与oracle生成开关参与源/环境指纹；成本验收不减样本、不放宽门、不再生期望。

@@ -25,6 +25,37 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_cost_reference_rejects_reduced_samples_loose_gate_and_oracle_generation(self):
+        from measure_modules import reference_environment
+        from unittest.mock import patch
+        names=('AV798_FORMAL_SAMPLES','MN818_FORMAL_SAMPLES','AV798_FORMAL_GATE_MS','MN818_FORMAL_GATE_MS',
+               'GENERATE_EXPECTED','UPDATE_EXPECTED','UPDATE_GOLDENS')
+        clean={k:v for k,v in os.environ.items() if k not in names}
+        with patch.dict(os.environ,clean,clear=True):
+            self.assertEqual(reference_environment()['AV798_FORMAL_SAMPLES']['effective'],30)
+            for name,value in (('AV798_FORMAL_SAMPLES','1'),('MN818_FORMAL_SAMPLES','1'),
+                               ('AV798_FORMAL_GATE_MS','999999'),('MN818_FORMAL_GATE_MS','999999'),('GENERATE_EXPECTED','1')):
+                with self.subTest(name=name),patch.dict(os.environ,{name:value}),self.assertRaises(ValueError):reference_environment()
+
+    def test_measured_aggregation_split_preserves_union_and_cannot_silently_stop_applying(self):
+        from partition_policy import verify
+        policy={'schema':'test-module-partition-policy/1','rules':[
+            {'recipe':'r','binary':'binary','topic':'topic','max_cases':1,'reason':'observed slow aggregate; preserve all cases'}]}
+        document={'rust-suites':{'binary':{'testcases':{
+            'topic::a':{'ignored':False,'filter-match':{'status':'matches'}},
+            'topic::b':{'ignored':False,'filter-match':{'status':'matches'}},
+            'topic::c':{'ignored':False,'filter-match':{'status':'matches'}}}}}}
+        value=make_catalog({'r':{}},{'r':document},policy=policy)
+        self.assertEqual(len(value['modules']),3)
+        self.assertEqual(len({m['id'] for m in value['modules']}),3)
+        self.assertEqual(sum(len(m['obligations']) for m in value['modules']),3)
+        validate(value);verify(value,policy)
+        merged=copy.deepcopy(value)
+        merged['modules'][0]['obligations']+=merged['modules'][1]['obligations'];del merged['modules'][1]
+        with self.assertRaises(ValueError):verify(merged,policy)
+        stale=copy.deepcopy(policy);stale['rules'][0]['topic']='renamed'
+        with self.assertRaises(ValueError):make_catalog({'r':{}},{'r':document},policy=stale)
+
     def test_golden_wrapper_requires_every_original_child_and_exact_file_identity(self):
         from execution_trace import validate_bindings
         child={'family':'legacy-golden-a2r','id':'original','source':{'path':'Cargo.toml','sha256':'source'},'oracles':[]}
@@ -401,6 +432,10 @@ catch {Write-Output $_;exit 1}
                 self.assertEqual(source_identity(root)["code"], before["code"])
                 reference.write_text("changed fixture")
                 self.assertNotEqual(source_identity(root)["code"], before["code"])
+                current=source_identity(root)['code']
+                for name in ('AV798_FORMAL_SAMPLES','MN818_FORMAL_GATE_MS','GENERATE_EXPECTED'):
+                    with patch.dict(os.environ,{name:'source-binding-control'}):
+                        self.assertNotEqual(source_identity(root)['code'],current)
 
     def test_plan_number_is_provenance_not_module_ownership(self):
         self.assertEqual(navigation({"test": "tests::plan781_budget_http_tests::a",

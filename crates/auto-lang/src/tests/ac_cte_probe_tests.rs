@@ -40,8 +40,12 @@ fn cte_probe_corpus_executes_green() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../auto-lang/test/cases/ac-cte");
     let root = temp_root("corpus");
     let out = root.parent().unwrap().join("atc-ac-cte-corpus-out");
-    let report = run_suite(&suite_dir.join("ac-cte.suite.ad"), &out, &Limits::defaults())
-        .expect("ac-cte suite runs");
+    let report = run_suite(
+        &suite_dir.join("ac-cte.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("ac-cte suite runs");
     let failing: Vec<String> = report
         .results
         .iter()
@@ -146,8 +150,7 @@ fn cte_adapter_unknown_recipe_rejected_at_lint() {
 }
 
 fn suite_dir_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../auto-lang/test/cases/ac-cte")
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../auto-lang/test/cases/ac-cte")
 }
 
 /// V-10 ERROR control: a broken worker tool identity surfaces as an
@@ -155,14 +158,19 @@ fn suite_dir_path() -> std::path::PathBuf {
 #[test]
 fn cte_adapter_bogus_worker_is_error_not_green() {
     let _guard = CTE_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let worker_environment = super::env_restore::RestoreEnv::capture(&["AC_CTE_CASE_WORKER"]);
     // cmd.exe answers nothing on stdout: the protocol admission fails.
     std::env::set_var("AC_CTE_CASE_WORKER", r"C:\Windows\System32\cmd.exe");
     let out = temp_root("bogus-worker")
         .parent()
         .unwrap()
         .join("atc-ac-cte-bogus-out");
-    let report = run_suite(&suite_dir_path().join("ac-cte.suite.ad"), &out, &Limits::defaults());
-    std::env::remove_var("AC_CTE_CASE_WORKER");
+    let report = run_suite(
+        &suite_dir_path().join("ac-cte.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    );
+    worker_environment.restore();
     let report = report.expect("the suite still runs");
     let failing: Vec<_> = report
         .results
@@ -174,11 +182,12 @@ fn cte_adapter_bogus_worker_is_error_not_green() {
         "a broken tool identity can never be green"
     );
     assert!(
+        failing.iter().all(|r| r.status == Status::Error),
+        "every failing row is an ERROR (infra), not a language FAIL: {:?}",
         failing
             .iter()
-            .all(|r| r.status == Status::Error),
-        "every failing row is an ERROR (infra), not a language FAIL: {:?}",
-        failing.iter().map(|r| (&r.status, &r.detail)).collect::<Vec<_>>()
+            .map(|r| (&r.status, &r.detail))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -195,10 +204,8 @@ fn cte_adapter_stale_identity_order_independent_and_drift_red() {
     // file's own lock discipline applies here too.
     let _guard = CTE_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = temp_root("stale-mixed");
-    let deck = std::fs::read_to_string(
-        suite_dir_path().join("cte").join("first-sum42.atomdata"),
-    )
-    .unwrap();
+    let deck =
+        std::fs::read_to_string(suite_dir_path().join("cte").join("first-sum42.atomdata")).unwrap();
     let av_src = "fn main() int {\n    return 1\n}\n";
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src").join("cte.atomdata"), &deck).unwrap();
@@ -252,7 +259,9 @@ fn cte_adapter_stale_identity_order_independent_and_drift_red() {
         });
         let verdicts = stale::check(&suite, &report).unwrap();
         assert!(
-            verdicts.iter().all(|v| matches!(v, stale::RowVerdict::Fresh { .. })),
+            verdicts
+                .iter()
+                .all(|v| matches!(v, stale::RowVerdict::Fresh { .. })),
             "each recipe keeps its own axes, order={order:?}: {verdicts:?}"
         );
     }
@@ -269,7 +278,9 @@ fn cte_adapter_stale_identity_order_independent_and_drift_red() {
     });
     let verdicts = stale::check(&suite, &report).unwrap();
     assert!(
-        verdicts.iter().any(|v| !matches!(v, stale::RowVerdict::Fresh { .. })),
+        verdicts
+            .iter()
+            .any(|v| !matches!(v, stale::RowVerdict::Fresh { .. })),
         "the drifted cte worker axis is stale: {verdicts:?}"
     );
 }

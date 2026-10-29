@@ -470,6 +470,7 @@ fn mir_native_adapter_decode_step_and_binding_negatives() {
 #[test]
 fn mir_native_adapter_worker_faults_are_infra() {
     let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let worker_environment = super::env_restore::RestoreEnv::capture(&["AC_MN_CASE_WORKER"]);
 
     let run_one = || -> auto_test_case::report::Status {
         let (status, root) = run_inline_mn_case(
@@ -485,7 +486,7 @@ fn mir_native_adapter_worker_faults_are_infra() {
     // (a) The override points at a missing file: locate failure is infra.
     std::env::set_var("AC_MN_CASE_WORKER", r"Z:\definitely\missing\mn.exe");
     let status = run_one();
-    std::env::remove_var("AC_MN_CASE_WORKER");
+    worker_environment.restore();
     assert_eq!(status, auto_test_case::report::Status::Error);
 
     // (b) A worker that exits non-zero (after one protocol-ish line) is
@@ -502,7 +503,7 @@ exit /b 9
     .unwrap();
     std::env::set_var("AC_MN_CASE_WORKER", exit9.to_str().unwrap());
     let status = run_one();
-    std::env::remove_var("AC_MN_CASE_WORKER");
+    worker_environment.restore();
     assert_eq!(status, auto_test_case::report::Status::Error);
 
     // (c) A zero-exit worker speaking a WRONG schema line is infra.
@@ -517,7 +518,7 @@ exit /b 0
     .unwrap();
     std::env::set_var("AC_MN_CASE_WORKER", garbage.to_str().unwrap());
     let status = run_one();
-    std::env::remove_var("AC_MN_CASE_WORKER");
+    worker_environment.restore();
     assert_eq!(status, auto_test_case::report::Status::Error);
 
     // (d) A stderr flood: the cap kills the session — infra.
@@ -530,7 +531,7 @@ exit /b 0
     std::fs::write(&flood, flood_cmd).unwrap();
     std::env::set_var("AC_MN_CASE_WORKER", flood.to_str().unwrap());
     let status = run_one();
-    std::env::remove_var("AC_MN_CASE_WORKER");
+    worker_environment.restore();
     assert_eq!(status, auto_test_case::report::Status::Error);
 
     // Control: the REAL worker still judges green after the seam churn.
@@ -704,7 +705,10 @@ fn mn_incremental_latency_policy_controls() {
 /// Each formal receipt must itself carry a finite, strictly positive wall.
 /// A missing/invalid peer must not become a zero and disappear below P90.
 fn mn_receipt_request_wall_ms(receipt: &serde_json::Value) -> Result<f64, &'static str> {
-    match receipt.get("request_wall_ms").and_then(serde_json::Value::as_f64) {
+    match receipt
+        .get("request_wall_ms")
+        .and_then(serde_json::Value::as_f64)
+    {
         Some(ms) if ms.is_finite() && ms > 0.0 => Ok(ms),
         _ => Err("missing or invalid request_wall_ms"),
     }
@@ -725,11 +729,18 @@ fn mn_formal_receipt_wall_admission_controls() {
     let mut receipts = vec![good.clone(); 30];
     let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
     let p90 = super::ace_latency::p90_ms(&accepted.unwrap()).unwrap();
-    assert!(mn_incremental_latency_result(p90, 2000.0, None).is_ok(), "equality passes");
+    assert!(
+        mn_incremental_latency_result(p90, 2000.0, None).is_ok(),
+        "equality passes"
+    );
     for invalid in bad {
         receipts[29] = invalid;
-        let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
-        assert!(accepted.is_err(), "one invalid receipt among 29 valid peers must fail");
+        let accepted: Result<Vec<f64>, _> =
+            receipts.iter().map(mn_receipt_request_wall_ms).collect();
+        assert!(
+            accepted.is_err(),
+            "one invalid receipt among 29 valid peers must fail"
+        );
     }
     assert_eq!(
         mn_receipt_request_wall_ms(&serde_json::json!({"request_wall_ms": 0.1})),
@@ -958,7 +969,10 @@ fn mir_native_turnaround_fresh_cold_30() {
         "each call a fresh session store; full 115-unit compile; reported (not gated)",
         &walls,
     );
-    eprintln!("t07 fresh: P50/P90/P95/P99 = {p50:.1}/{:.1}/{p95:.1}/{p99:.1} ms", super::ace_latency::p90_ms(&walls).expect("valid latency windows"));
+    eprintln!(
+        "t07 fresh: P50/P90/P95/P99 = {p50:.1}/{:.1}/{p95:.1}/{p99:.1} ms",
+        super::ace_latency::p90_ms(&walls).expect("valid latency windows")
+    );
     std::env::remove_var("AC_MN_SESSION_ROOT");
     let _ = std::fs::remove_dir_all(&session_base);
     let _ = std::fs::remove_dir_all(&root);

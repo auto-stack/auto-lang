@@ -39,3 +39,5 @@ python scripts/test-governance/measure_modules.py --selection <selection.json> -
 批量性能见 `measure_pilot.py` 与冻结 `measurement-contract.json`。`test-case-pilot` 的固定
 15例白名单默认B k=10，原单例重放默认A；其他recipe继续独立，C仅显式D3观察。
 不要将本批改善推断为全生态改善。详见[规范](../../docs/specs/auto-test-case/module-selection.md)。
+
+已测慢聚合的细分规则在partition-policy.json中，所有原用例继续归属唯一叶；规则失效或消费端重新聚合会失败。正式成本入口要求原AV/MN 30样本与2000ms门，并拒oracle再生开关。相关环境参数属于绑定内容，不可通过改环境获得假达标。

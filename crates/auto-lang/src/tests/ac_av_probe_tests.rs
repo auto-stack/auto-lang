@@ -669,6 +669,39 @@ fn ac_av_probe_prep_executor_contained_failure_shapes() {
     // Process-global fault seams must never overlap another av test
     // (parallel libtest poisons unrelated worker runs otherwise).
     let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let original = super::env_restore::RestoreEnv::capture(&[
+        "AC_AV_CASE_WORKER",
+        "AV798_BUILD_CARGO",
+        "AV798_BUILD_WALL_MS",
+    ]);
+    // A supplied worker normally bypasses preparation. Prove that positive
+    // path, then isolate the preparer controls from any caller's override.
+    let supplied = std::env::current_exe().unwrap();
+    std::env::set_var("AC_AV_CASE_WORKER", &supplied);
+    assert_eq!(
+        crate::test_cases::ac_av::tests_seam::locate_worker_for_test().unwrap(),
+        supplied
+    );
+    let before_panic = std::env::var_os("AC_AV_CASE_WORKER");
+    assert!(std::panic::catch_unwind(|| {
+        let _restore = super::env_restore::RestoreEnv::capture(&[
+            "AC_AV_CASE_WORKER",
+            "AV798_BUILD_CARGO",
+            "AV798_BUILD_WALL_MS",
+        ]);
+        std::env::remove_var("AC_AV_CASE_WORKER");
+        panic!("intentional preparer environment restoration control");
+    })
+    .is_err());
+    assert_eq!(std::env::var_os("AC_AV_CASE_WORKER"), before_panic);
+    for name in [
+        "AC_AV_CASE_WORKER",
+        "AV798_BUILD_CARGO",
+        "AV798_BUILD_WALL_MS",
+    ] {
+        std::env::remove_var(name);
+    }
+    let _restore_environment = original;
     fn locate_with(seam_cargo: &str, wall_ms: u64) -> Result<std::path::PathBuf, String> {
         std::env::set_var("AV798_BUILD_CARGO", seam_cargo);
         std::env::set_var("AV798_BUILD_WALL_MS", wall_ms.to_string());
@@ -704,7 +737,7 @@ fn ac_av_probe_prep_executor_contained_failure_shapes() {
     std::fs::write(
         &spawner,
         &format!(
-            "@echo off\r\npowershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 60' -PassThru; Set-Content -Path '{}' -Value $p.Id; Start-Sleep -Seconds 60\"\r\n",
+            "@echo off\r\npowershell -NoProfile -Command \"$p = Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 60' -PassThru; Set-Content -Path '{}' -Value $p.Id; Start-Sleep -Seconds 60\"\r\n",
             marker.display()
         ),
     )
