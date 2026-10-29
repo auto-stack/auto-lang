@@ -157,8 +157,54 @@ fn inventory_vm_cache_read_only() {
             "oracle":oracle,"error_assertion":"presence-only, unchanged legacy semantics"}));
     }
     assert!(!rows.is_empty());
+    // Parse the Rust wrapper declarations, not guest source or guessed names.
+    // A declaration is routing metadata, never evidence its body executed.
+    let rust = include_str!("vm_file_tests.rs");
+    let syntax = syn::parse_file(rust).expect("valid wrapper Rust syntax");
+    let mut bindings = Vec::new();
+    for item in syntax.items {
+        let syn::Item::Fn(function) = item else {
+            continue;
+        };
+        if !function.attrs.iter().any(|a| a.path().is_ident("test"))
+            || function.block.stmts.len() != 1
+        {
+            continue;
+        }
+        let syn::Stmt::Expr(syn::Expr::MethodCall(method), _) = &function.block.stmts[0] else {
+            continue;
+        };
+        if method.method != "unwrap" || !method.args.is_empty() {
+            continue;
+        }
+        let syn::Expr::Call(call) = &*method.receiver else {
+            continue;
+        };
+        let syn::Expr::Path(path) = &*call.func else {
+            continue;
+        };
+        if !path.path.is_ident("test_vm") || call.args.len() != 1 {
+            continue;
+        }
+        let syn::Expr::Lit(literal) = &call.args[0] else {
+            continue;
+        };
+        let syn::Lit::Str(key) = &literal.lit else {
+            continue;
+        };
+        let key = key.value();
+        bindings.push(serde_json::json!({
+            "test":format!("tests::vm_file_tests::{}",function.sig.ident),
+            "cache_id":key,"cache_present":cache.contains_key(&key),
+            "source_path":PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/vm_file_tests.rs"),
+            "declared_ignore":function.attrs.iter().any(|a|a.path().is_ident("ignore")),
+            "executed":false
+        }));
+    }
+    assert!(!bindings.is_empty());
     let value = serde_json::json!({"schema":"test-vm-cache-inventory/1","scope":"discovery", "executed":0,
-                                  "consumer":"tests::vm_file_tests::test_vm", "cases":rows});
+        "consumer":"tests::vm_file_tests::test_vm", "cases":rows,
+        "wrapper_source_sha256":hex(&sha256(rust.as_bytes())),"declared_wrapper_bindings":bindings});
     std::fs::write(output, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
 }
 
