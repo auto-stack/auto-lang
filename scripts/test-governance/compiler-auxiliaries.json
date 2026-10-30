@@ -1,0 +1,10 @@
+{
+  "schema": "test-compiler-auxiliaries/1",
+  "images": [
+    {
+      "path": "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/vctip.exe",
+      "sha256": "b8adde05deb9ccdbe359772a72a3225f7323a528be626f5b405d8032fb5a06f9",
+      "reason": "Installed Microsoft-signed MSVC telemetry helper; compiler exits without stopping it. Preparation/discovery may accept only after the Job confirms zero remaining processes. Never a workload exception."
+    }
+  ]
+}

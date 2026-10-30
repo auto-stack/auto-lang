@@ -25,6 +25,22 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_cargo_launcher_labels_match_effective_configuration_but_overrides_do_not(self):
+        from unittest.mock import patch
+        from module_catalog import ROOT
+        clean = {k: v for k, v in os.environ.items() if not k.startswith('CARGO_PKG_')
+                 and k not in ('CARGO_HOME', 'CARGO_MANIFEST_DIR', 'CARGO_MANIFEST_PATH', 'RUST_MIN_STACK')}
+        with patch.dict(os.environ, clean, clear=True):
+            before = source_identity(ROOT)['code']
+            with patch.dict(os.environ, {'CARGO_HOME': str(Path.home() / '.cargo'),
+                    'CARGO_MANIFEST_DIR': 'launcher labels', 'CARGO_MANIFEST_PATH': 'launcher/Cargo.toml',
+                    'CARGO_PKG_NAME': 'launcher', 'CARGO_PKG_VERSION': '0.1.0', 'RUST_MIN_STACK': '16777216'}):
+                self.assertEqual(source_identity(ROOT)['code'], before)
+            with patch.dict(os.environ, {'RUST_MIN_STACK': '8388608'}):
+                self.assertNotEqual(source_identity(ROOT)['code'], before)
+            with patch.dict(os.environ, {'CARGO_HOME': str(ROOT / 'different-cargo-home')}):
+                self.assertNotEqual(source_identity(ROOT)['code'], before)
+
     def test_cost_reference_rejects_reduced_samples_loose_gate_and_oracle_generation(self):
         from measure_modules import reference_environment
         from unittest.mock import patch

@@ -221,6 +221,15 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
             except OSError as error:
                 live_after_exit = {'active': accounting.basic.active, 'diagnostic_error': str(error)}
             required(kernel.TerminateJobObject(job, 124), "reap descendant tree")
+            reap_deadline = time.monotonic() + 2
+            while True:
+                required(kernel.QueryInformationJobObject(job, 8, ctypes.byref(accounting),
+                          ctypes.sizeof(accounting), None), "post-reap job accounting")
+                if not accounting.basic.active or time.monotonic() >= reap_deadline:
+                    break
+                time.sleep(0.002)
+            live_after_exit['cleanup_complete'] = accounting.basic.active == 0
+            live_after_exit['remaining_active'] = accounting.basic.active
     finally:
         # The job owns descendants even if setup, sampling or parsing fails.
         if child is not None and child.poll() is None:

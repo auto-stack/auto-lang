@@ -98,6 +98,47 @@ class NativeMeter(unittest.TestCase):
 
 @unittest.skipUnless(os.name == 'nt', 'native Windows producer containment')
 class ProcessCapture(unittest.TestCase):
+    def test_preparation_exception_requires_exact_image_hash_and_completed_reap(self):
+        import hashlib, tempfile
+        from unittest.mock import patch
+        from process_capture import capture, compiler_auxiliaries_reaped
+        with tempfile.TemporaryDirectory() as directory:
+            policy = Path(directory) / 'policy.json'
+            pin = {'path': str(Path(sys.executable).resolve()),
+                   'sha256': hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest()}
+            pins = [pin]
+            # Windows can attach its own console host to this Python fixture.
+            # Pin its exact bytes in the temporary fixture policy too; the real
+            # compiler policy still contains only its reviewed vctip image.
+            console = Path(os.environ['SystemRoot']) / 'System32/conhost.exe'
+            pins.append({'path': str(console.resolve()),
+                         'sha256': hashlib.sha256(console.read_bytes()).hexdigest()})
+            policy.write_text(json.dumps({'schema': 'test-compiler-auxiliaries/1', 'images': pins}))
+            with patch('process_capture.COMPILER_AUXILIARIES', policy):
+                # Default workload policy remains strict even for a pinned image.
+                strict = capture([sys.executable, '-c', self.leaky_helper()], timeout=10)
+                self.assertNotEqual(strict.returncode, 0)
+                accepted = capture([sys.executable, '-c', self.leaky_helper()], timeout=10,
+                                   compiler_auxiliary_cleanup=True)
+                self.assertEqual(accepted.returncode, 0, accepted.stderr)
+                measured = accepted.measurement
+                self.assertEqual(measured['error'], 'descendants live after workload exit')
+                self.assertTrue(measured['live_after_exit']['cleanup_complete'])
+                self.assertEqual(measured['live_after_exit']['remaining_active'], 0)
+                self.assertTrue(measured['accepted_compiler_auxiliary_cleanup'])
+                import copy
+                for axis in ('unreaped', 'unknown', 'incomplete', 'image-error', 'nonzero'):
+                    bad = copy.deepcopy(measured)
+                    if axis == 'unreaped': bad['live_after_exit']['cleanup_complete'] = False
+                    elif axis == 'unknown': bad['live_after_exit']['processes'][0]['image'] = str(policy)
+                    elif axis == 'incomplete': bad['live_after_exit']['active'] += 1
+                    elif axis == 'image-error': bad['live_after_exit']['processes'][0].pop('image')
+                    else: bad['exit'] = 1
+                    self.assertFalse(compiler_auxiliaries_reaped(bad), axis)
+                pin['sha256'] = '0' * 64
+                policy.write_text(json.dumps({'schema': 'test-compiler-auxiliaries/1', 'images': pins}))
+                self.assertFalse(compiler_auxiliaries_reaped(measured))
+
     @staticmethod
     def leaky_helper():
         return ("import subprocess,sys; p=subprocess.Popen([sys.executable,'-c',"

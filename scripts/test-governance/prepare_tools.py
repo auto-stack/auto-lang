@@ -28,7 +28,7 @@ def prepare(root, names, output, prepared):
             started=time.monotonic()
             output.mkdir(parents=True,exist_ok=True)
             log=output/(name+"-build.log")
-            result = capture(command, cwd=cwd, timeout=1800)
+            result = capture(command, cwd=cwd, timeout=1800, compiler_auxiliary_cleanup=True)
             log.write_bytes(result.stdout + result.stderr)
             if result.measurement is not None:
                 write(log.with_suffix('.meter.json'), result.measurement)
