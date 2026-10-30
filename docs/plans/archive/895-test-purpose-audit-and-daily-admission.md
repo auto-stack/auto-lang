@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-895
-status: reviewed
+status: archived
 feature_name: 全仓测试用途审查、数十个顶级模块重组与日常包准入建议
 author: [Codex]
 created_at: 2026-10-30
@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [auto-test-case, test-infrastructure]
 depends_on: [PLAN-888]
-current_step: 10
+current_step: 12
 total_steps: 12
 ---
 
@@ -163,8 +163,8 @@ r2只读重核：`auto-lang`3172运行身份来自187个源码前缀组，主要
 | [x] | T-08 | work | T-07 | 生成daily-admission-proposal建议及覆盖/依赖冲突、专项/调研入口建议；前后实际启用/默认选择不变，V-04/05 | AC-04 |
 | [x] | T-09 | work | T-07/08 | 复用有效888成本，新组建/拆分的常规顶级模块单轮Job计量，核100例/60秒与消费者总量，超预算继续拆/归因，长例不重矩阵、未知不冒绿；V-06 | AC-05 |
 | [x] | T-10 | work | T-09 | 最终全仓对账/用途证据/SD/健康/发布控制与当前源码冻结，V-07；提交并给execution_done交接 | AC-06 |
-| [ ] | T-11 | review | T-10 | 冻结SHA逐项AC/SD、各用途和混合/不可分/待确认边界独立重建，不跑整档；合入门pending | AC-07 |
-| [ ] | T-12 | merge | T-11 pass | 冻结tm模块并集/有效证据、合入、规范/源回读、归档与fresh guard清理；日常建议交人 | AC-08 |
+| [x] | T-11 | review | T-10 | 冻结SHA逐项AC/SD、各用途和混合/不可分/待确认边界独立重建，不跑整档；合入门pending | AC-07 |
+| [x] | T-12 | merge | T-11 pass | 冻结tm模块并集/有效证据、合入、规范/源回读、归档与fresh guard清理；日常建议交人 | AC-08 |
 
 
 ### 任务执行证据（2026-10-30 work 阶段，worktree lang-895/auto-lang @18b98a97e..2bb487202）
@@ -199,7 +199,7 @@ evidence: attachments/895/audit-summary.md（入库）；本地 evidence/（sour
 blockers: 无阻塞。交人决定事项（非阻塞）：①24个开销主导模块的合并调用提案（register_proposals）；②5条未注册入口注册建议；③P-050 artifact-probe 用途待确认；④37个模块的跨顶级闭包准入取舍；⑤日常包默认调整待用户批准本建议后另行执行
 next_responsible_role: review（T-11 独立复审，冻结 SHA aae89dbf4）
 
-stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 1 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-895/auto-lang@aae89dbf4 | commit: aae89dbf4 | next: review
+stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 1 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-895/auto-lang@aae89dbf4 | commit: aae89dbf4 | next: review
 
 2026-10-30 / stage: review / review_scope: final / reviewer: 独立子代理（fresh context，未参与实现；实现在同会话由另一角色完成，已声明该限制并以命令级取证重建全部结论）/ plan_id: PLAN-895 / plan_revision: r2 / outcome: needs_fix / worktree: D:/autostack/.wt/lang-895/auto-lang / branch: plan-895-dev / reviewed_commit: aae89dbf4 / base: 41f17790d
 acceptance_results: AC-01 pass(F-1/F-2 minor) AC-02 pass AC-03 pass AC-04 partial(F-3 major) AC-05 pass AC-06 pass SD-01..04 pass V-07 pass；数据层独立重建：1181/7165/3172/1687 守恒、4956.3s 预算对账精确、V-04 12/12 逐字节一致（含 tier+滤串 select 层）
