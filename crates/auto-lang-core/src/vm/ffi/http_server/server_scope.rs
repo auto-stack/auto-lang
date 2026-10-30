@@ -51,6 +51,51 @@ impl RequestScope {
     }
 }
 
+impl crate::vm::host_capabilities::request_context::RequestContext for RequestScope {
+    fn register_resource(
+        &self,
+        kind: crate::vm::host_capabilities::request_context::RequestResourceKind,
+        id: u64,
+    ) {
+        use crate::vm::host_capabilities::request_context::RequestResourceKind;
+        let group = match kind {
+            RequestResourceKind::Stream => &self.resources,
+            RequestResourceKind::Transfer => &self.transfer_resources,
+            RequestResourceKind::FileResponse => &self.file_response_resources,
+            RequestResourceKind::Upload => &self.upload_resources,
+        };
+        if let Ok(mut resources) = group.lock() {
+            if !self.terminal() {
+                resources.push(id);
+                return;
+            }
+        }
+        // Terminal state is checked under the same group lock used by
+        // finalization. A late native constructor cannot escape cleanup.
+        match kind {
+            RequestResourceKind::Stream => crate::vm::ffi::http_stream::stream_cancel(id),
+            RequestResourceKind::Transfer => VmHttpBridge::finalize_transfers(&[id]),
+            RequestResourceKind::FileResponse => VmHttpBridge::finalize_file_responses(&[id]),
+            RequestResourceKind::Upload => VmHttpBridge::finalize_uploads(&[id]),
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        if !scope_usable(self) {
+            return true;
+        }
+        SERVER_DRAIN_CUTOFFS
+            .lock()
+            .ok()
+            .and_then(|cutoffs| cutoffs.get(&self.server_gen).copied())
+            .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+    }
+
+    fn extend_deadline(&self, deadline: std::time::Instant) {
+        extend_scope_deadline(self.id, deadline);
+    }
+}
+
 pub(super) fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
     LIFE_PERMITS.get_or_init(|| {
         let cap = TEST_PERMIT_CAPACITY
@@ -141,14 +186,14 @@ pub(super) fn finalize_scope(scope: &RequestScope, to: u8) {
         .lock()
         .map(|mut r| std::mem::take(&mut *r))
         .unwrap_or_default();
-    crate::vm::ffi::http_transfer::scope_finalize_transfers(&transfers);
+    VmHttpBridge::finalize_transfers(&transfers);
     // PLAN-729 T-04：文件描述符组收口（幂等；编组已取出的 no-op）。
     let descriptors: Vec<u64> = scope
         .file_response_resources
         .lock()
         .map(|mut r| std::mem::take(&mut *r))
         .unwrap_or_default();
-    crate::vm::ffi::http_server_file::scope_finalize_file_responses(&descriptors);
+    VmHttpBridge::finalize_file_responses(&descriptors);
     // PLAN-730 T-02：上传资源组收口（幂等；取消在途接收 + 清理 staged +
     /// 释放未消费 body 能力 + 移除闲置收据）。
     let uploads: Vec<u64> = scope
@@ -156,13 +201,13 @@ pub(super) fn finalize_scope(scope: &RequestScope, to: u8) {
         .lock()
         .map(|mut r| std::mem::take(&mut *r))
         .unwrap_or_default();
-    crate::vm::ffi::http_upload::scope_finalize_uploads(&uploads);
+    VmHttpBridge::finalize_uploads(&uploads);
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
     }
     scope.cancel_notify.notify_waiters();
-    crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+    VmHttpBridge::notify_completion();
     // PLAN-736 T-05/AC-05：请求终态事件恰一次（完成/取消单点收敛；
     // 重复 cancel/drop 双路径由事件自身的原子闸防双计）。
     if let Ok(mut slot) = scope.event.lock() {
@@ -195,12 +240,84 @@ pub fn scope_usable(scope: &RequestScope) -> bool {
 }
 
 /// 段执行期间绑定 scope 的 RAII 守卫（嵌套安全：保存/恢复外层值）。
-pub(crate) struct ScopeGuard;
+pub(crate) type ScopeGuard = crate::vm::host_capabilities::request_context::RequestContextGuard;
 
 /// 资源基线探针（测试）：存活 scope 数。
 // PLAN-814: 跨 crate 测试支持面（上层测试引用）
 pub fn live_scope_count() -> usize {
     REQUEST_SCOPES.lock().map(|m| m.len()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod request_context_tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    struct UnreadBody(Arc<AtomicUsize>, Arc<AtomicUsize>);
+    impl futures::Stream for UnreadBody {
+        type Item = std::io::Result<Vec<u8>>;
+        fn poll_next(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            std::task::Poll::Pending
+        }
+    }
+    impl Drop for UnreadBody {
+        fn drop(&mut self) {
+            self.1.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn host_context_restores_parent_and_reclaims_late_native_uploads() {
+        let polls = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        let insert = || {
+            VmHttpBridge::insert_upload_request(a2r_std::http::upload_request_from_parts(
+                "POST",
+                "/owned",
+                vec![],
+                Box::pin(UnreadBody(polls.clone(), drops.clone())),
+            ))
+        };
+        let permits = Arc::new(tokio::sync::Semaphore::new(2));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let outer = create_scope_with_permits(8901, deadline, 0, &permits).unwrap();
+        let inner = create_scope_with_permits(8902, deadline, 0, &permits).unwrap();
+        {
+            let _outer = bind_current_scope(outer.id);
+            let first = insert();
+            {
+                let _inner = bind_current_scope(inner.id);
+                let second = insert();
+                assert_eq!(*inner.upload_resources.lock().unwrap(), [second]);
+            }
+            let third = insert();
+            assert_eq!(*outer.upload_resources.lock().unwrap(), [first, third]);
+            assert!(!current_request_cancelled());
+            cancel_scope(&outer);
+            assert!(current_request_cancelled());
+            let late = insert();
+            assert!(
+                !crate::vm::ffi::http_upload::VM_UPLOAD_REQUESTS
+                    .lock()
+                    .unwrap()
+                    .contains_key(&late),
+                "native resource registered after terminal must close immediately"
+            );
+            assert_eq!(drops.load(Ordering::SeqCst), 3);
+        }
+        assert!(!current_request_cancelled());
+        cancel_scope(&inner);
+        assert_eq!(drops.load(Ordering::SeqCst), 4);
+        assert_eq!(polls.load(Ordering::SeqCst), 0);
+        assert_eq!(permits.available_permits(), 2);
+    }
 }
 
 pub(super) fn placeholder_ctx() -> DispatchCtx {
@@ -327,9 +444,7 @@ pub(super) fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: 
             }
         }
         Some((_, crate::vm::engine::Iterator::AsyncHttpStream(a))) => {
-            if let Ok(mut map) = crate::vm::ffi::stdlib::ASYNC_STREAMS.lock() {
-                map.remove(&a.stream_id);
-            }
+            VmHttpBridge::close_legacy_stream(a.stream_id);
             // PLAN-707 T-06：流句柄出表 → 泵 tx.send 失败 → stream_cancel
             //（generator 内建立的上游连接随 SSE 输出终结一并收口）。
         }

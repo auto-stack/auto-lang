@@ -202,14 +202,15 @@ pub fn shim_http_upload_receive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     };
     // 直连宿主 receive_with_phase（phase hook 透传——scope 期限切换）；
     // executor 未安装时立即返回诊断 failed 会话——watcher 同路径。
-    let phase: a2r_std::http::UploadPhaseHook = match super::http_server::current_scope_id() {
-        Some(scope_id) => std::sync::Arc::new(move |p| {
-            if let a2r_std::http::UploadPhase::ReceiveStarted { total_deadline } = p {
-                super::http_server::extend_scope_deadline(scope_id, total_deadline);
-            }
-        }),
-        None => std::sync::Arc::new(|_| {}),
-    };
+    let phase: a2r_std::http::UploadPhaseHook =
+        match crate::vm::host_capabilities::request_context::current_request_context() {
+            Some(context) => std::sync::Arc::new(move |p| {
+                if let a2r_std::http::UploadPhase::ReceiveStarted { total_deadline } = p {
+                    context.extend_deadline(total_deadline);
+                }
+            }),
+            None => std::sync::Arc::new(|_| {}),
+        };
     let op_id = spawn_upload_watcher(async move {
         let session = crate::http_upload_service::receive_with_phase(
             req,

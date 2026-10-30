@@ -100,3 +100,13 @@ must reclaim the first permit, restore its 200 response, and leave all real
 registries empty after independent shutdown. The file is local temporary input,
 written in 1 MiB blocks and never added to Git. This is a body lifetime/instance
 isolation check, not a throughput benchmark.
+
+For the actual external-crate runtime handoff, use the `external-runtime`
+feature and commands in [the boundary probe](../web-runtime-boundary-probe/README.md).
+`--expect-external` refuses a stale Core-runtime binary. The upload probe's
+optional `--cancellation` case observes actual receive/staging, resets that
+connection, and requires cleanup without publishing a partial file. In the
+two-owner driver, repeat installation preserves the first provider, explicit
+replacement starts the second, and clearing the default afterwards must leave
+both active services usable. Local ownership compile negatives reject both
+the VM owner and the thread-local context restoration guard as Send.

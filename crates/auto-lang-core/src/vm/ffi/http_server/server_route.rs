@@ -1,13 +1,7 @@
 //! PLAN-843 结构拆分：HTTP 服务 route 职责（原样搬移）。
 use super::*;
 
-/// An HTTP route registered with the server.
-#[derive(Debug, Clone)]
-pub struct HttpRoute {
-    pub method: String,
-    pub path: String,
-    pub fn_name: String,
-}
+pub use crate::vm::host_capabilities::http_service::messages::{ApiParamSig, HttpRoute};
 
 /// Result of matching a request against routes.
 #[derive(Debug, Clone)]
@@ -15,15 +9,6 @@ pub struct RouteMatch {
     pub fn_name: String,
     pub path_params: Vec<(String, String)>,
     pub query_params: Vec<(String, String)>,
-}
-
-/// One declared `#[api]` handler parameter: name + type display string
-/// ("int"/"str"/"bool"/... — `Type`'s Display, same source as
-/// axum_adapter::record_param_sig).
-#[derive(Debug, Clone)]
-pub struct ApiParamSig {
-    pub name: String,
-    pub ty: String,
 }
 
 /// Codegen publishes each `#[api]` fn's declared params at fn-compile time

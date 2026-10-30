@@ -1,5 +1,28 @@
 //! Owned HTTP bridge messages: no VM or protocol-framework objects.
 
+/// Compiler-published service route, owned independently of any VM tables.
+#[derive(Debug, Clone)]
+pub struct HttpRoute {
+    pub method: String,
+    pub path: String,
+    pub fn_name: String,
+}
+
+/// Declared language parameter name and type display string.
+#[derive(Debug, Clone)]
+pub struct ApiParamSig {
+    pub name: String,
+    pub ty: String,
+}
+
+/// Immutable program handoff. No AST, Store, heap reference or VM pointer.
+pub struct HttpProgramMetadata {
+    pub params: std::collections::HashMap<String, Vec<ApiParamSig>>,
+    pub returns: std::collections::HashMap<String, String>,
+    pub shadowed: std::collections::HashSet<String>,
+    pub routes: Vec<HttpRoute>,
+}
+
 /// Owned, `Send` request handed from the HTTP network layer to the VM owner
 /// thread. Protocol objects (hyper types, sockets) never cross the bridge;
 /// the owner re-runs the same routing/binding/middleware/response semantics

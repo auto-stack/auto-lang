@@ -88,6 +88,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
     parser.add_argument("--admission", action="store_true")
+    parser.add_argument("--expect-external", action="store_true")
     args = parser.parse_args()
     # Hold both reservations together so the OS cannot select the same port.
     with socket.socket() as first, socket.socket() as second:
@@ -161,6 +162,10 @@ def main():
                 print(output, end="")
                 print(diagnostics, end="")
             assert child.returncode == 0 and "two owners drained" in output
+            assert "isolation host=first activated" in diagnostics
+            assert "isolation host=second activated" in diagnostics
+            if args.expect_external:
+                assert diagnostics.count("isolation runtime=external") == 2, diagnostics
             print(json.dumps({"scope": "actual-two-owner-metadata", "first_before": [200, 1007],
                               "second": [200, "second-hello"], "first_after": after,
                               "file_sse_headers_only_upload_preserved": True,

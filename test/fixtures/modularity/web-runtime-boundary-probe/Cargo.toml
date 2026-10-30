@@ -1,0 +1,29 @@
+[package]
+name = "web-runtime-boundary-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[features]
+# Required opt-in source-boundary audit; the empty default is not a check.
+boundary = []
+
+[dependencies]
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+a2r-std = { path = "../../../../crates/a2r-std" }
+auto-val = { path = "../../../../crates/auto-val", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["json"] }
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "service"] }
+socket2 = "0.5"
+serde_json = "1"
+futures = "0.3"
+lazy_static = "1.4"
+base64 = "0.22"
+sha1 = "0.10"
+
+[profile.dev]
+debug = "line-tables-only"

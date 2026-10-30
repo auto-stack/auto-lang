@@ -10,8 +10,10 @@ use std::sync::{Arc, RwLock};
 use crate::vm::engine::AutoVM;
 use crate::AutoResult;
 
+mod bridge;
 /// Framework-neutral, owned messages shared by network and local VM owners.
 pub mod messages;
+pub use bridge::VmHttpBridge;
 
 pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'static>>;
 
@@ -19,7 +21,8 @@ pub trait HttpServiceHost: Send + Sync {
     fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture;
 }
 
-/// One local VM service owner. VM fields are not exported through this port.
+/// One local VM service owner. The handoff reuses the existing public VM SDK;
+/// its Rc remains !Send, and no private VM fields or raw pointers are exported.
 pub struct HttpVmOwner {
     vm: Rc<AutoVM>,
     routes: Vec<(String, String, String)>,
@@ -29,6 +32,13 @@ pub struct HttpVmOwner {
 impl HttpVmOwner {
     pub fn route_count(&self) -> usize {
         self.routes.len()
+    }
+
+    /// Consume the owner on its local execution thread. The serving adapter
+    /// owns the framework; Core supplies the existing language VM object and
+    /// one immutable compiler-metadata snapshot, without starting a listener.
+    pub fn into_local_parts(self) -> (Rc<AutoVM>, Arc<messages::HttpProgramMetadata>) {
+        (self.vm, self.metadata)
     }
 }
 

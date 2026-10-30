@@ -767,7 +767,7 @@ fn start_handler(
                 pending.headers,
                 pending.body,
             );
-            Some(super::super::http_upload::insert_upload_request(req) as i64)
+            Some(VmHttpBridge::insert_upload_request(req) as i64)
         }
         None => None,
     };

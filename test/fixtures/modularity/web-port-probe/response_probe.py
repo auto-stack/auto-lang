@@ -31,6 +31,7 @@ def request(port, method, path, headers=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
+    parser.add_argument("--expect-external", action="store_true")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[4]
     file_source = (repo / "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs").read_bytes()
@@ -100,6 +101,8 @@ def main():
                 stderr.seek(0)
                 diagnostics = stderr.read()
                 assert "probe shutdown delivered=true" in diagnostics
+                if args.expect_external:
+                    assert "probe runtime=external" in diagnostics
                 assert "probe terminal scopes=0 files=0 uploads=(0, 0, 0) streams=0 live_ops=0" in diagnostics, diagnostics
                 print(json.dumps({"scope": "owned-reply-prototype", "sync_async_file_exact": True,
                                   "head_range_etag_errors": True, "sse_ordered_eof": [1, 2, 3],

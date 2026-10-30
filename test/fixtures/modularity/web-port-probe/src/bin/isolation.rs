@@ -13,21 +13,29 @@ thread_local! {
 }
 
 struct Adapter {
+    label: &'static str,
     addresses: Vec<String>,
-    shutdowns: Mutex<Vec<tokio::sync::watch::Sender<bool>>>,
+    shutdowns: Arc<Mutex<Vec<tokio::sync::watch::Sender<bool>>>>,
 }
 
 impl HttpServiceHost for Adapter {
     fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture {
+        eprintln!("isolation host={} activated", self.label);
+        #[cfg(feature = "external-runtime")]
+        eprintln!("isolation runtime=external");
         let mut controls = self.shutdowns.lock().unwrap();
         let address = self.addresses[controls.len()].clone();
         let (sender, receiver) = tokio::sync::watch::channel(false);
         controls.push(sender);
         Box::pin(async move {
+            #[cfg(not(feature = "external-runtime"))]
+            let service = owner.run_existing_with_shutdown_for_probe(address, receiver);
+            #[cfg(feature = "external-runtime")]
+            let service = web_runtime_boundary_probe::serve_owned(owner, address, receiver);
             SERVICES.with(|services| {
-                services.borrow_mut().push(tokio::task::spawn_local(
-                    owner.run_existing_with_shutdown_for_probe(address, receiver),
-                ))
+                services
+                    .borrow_mut()
+                    .push(tokio::task::spawn_local(service))
             });
             tokio::task::yield_now().await;
             Ok(())
@@ -40,13 +48,24 @@ fn main() {
     let first = std::fs::read_to_string(&args[0]).unwrap();
     let second = std::fs::read_to_string(&args[1]).unwrap();
     let adapter = Arc::new(Adapter {
+        label: "first",
         addresses: vec![
             format!("127.0.0.1:{}", args[2]),
             format!("127.0.0.1:{}", args[3]),
         ],
-        shutdowns: Mutex::new(Vec::new()),
+        shutdowns: Arc::new(Mutex::new(Vec::new())),
     });
-    http_service::set_process_default_http_service_host(adapter.clone());
+    assert!(http_service::install_process_http_service_host_if_absent(
+        adapter.clone()
+    ));
+    let replacement = Arc::new(Adapter {
+        label: "second",
+        addresses: adapter.addresses.clone(),
+        shutdowns: adapter.shutdowns.clone(),
+    });
+    assert!(!http_service::install_process_http_service_host_if_absent(
+        replacement.clone()
+    ));
     let (commands, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
@@ -62,7 +81,9 @@ fn main() {
     tokio::task::LocalSet::new().block_on(&runtime, async {
         auto_lang_core::execute_autovm(&first, true).await.unwrap();
         assert_eq!(receiver.recv().await.as_deref(), Some("second"));
+        http_service::set_process_default_http_service_host(replacement);
         auto_lang_core::execute_autovm(&second, true).await.unwrap();
+        http_service::clear_process_default_http_service_host();
         let mut command = receiver.recv().await.unwrap();
         let first_stopped = command == "stop-first";
         if first_stopped {
@@ -86,7 +107,13 @@ fn main() {
         for service in services {
             service.await.unwrap().unwrap();
         }
+        #[cfg(not(feature = "external-runtime"))]
         assert_eq!(auto_lang_core::vm::ffi::http_server::live_scope_count(), 0);
+        #[cfg(feature = "external-runtime")]
+        assert_eq!(
+            web_runtime_boundary_probe::http_server::live_scope_count(),
+            0
+        );
         assert_eq!(
             auto_lang_core::vm::ffi::http_server_file::vm_file_response_count(),
             0

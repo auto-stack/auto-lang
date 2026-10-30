@@ -2,18 +2,9 @@
 //! Later compilation may replace the producer tables but cannot alter an
 //! already activated owner's route/signature/return classification snapshot.
 use super::*;
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{cell::RefCell, sync::Arc};
 
-pub(crate) struct HttpProgramMetadata {
-    pub params: HashMap<String, Vec<ApiParamSig>>,
-    pub returns: HashMap<String, String>,
-    pub shadowed: HashSet<String>,
-    pub routes: Vec<HttpRoute>,
-}
+pub(crate) use crate::vm::host_capabilities::http_service::messages::HttpProgramMetadata;
 
 thread_local! {
     static ACTIVE: RefCell<Option<Arc<HttpProgramMetadata>>> = const { RefCell::new(None) };
@@ -89,6 +80,7 @@ pub(crate) async fn with_owner_metadata<F: std::future::Future>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{HashMap, HashSet};
     use std::{future::Future, task::Poll};
 
     fn program(path: &str) -> Arc<HttpProgramMetadata> {

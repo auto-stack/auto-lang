@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -39,6 +40,8 @@ def multipart(boundary: str, note: str, data: bytes) -> bytes:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
+    parser.add_argument("--expect-external", action="store_true")
+    parser.add_argument("--cancellation", action="store_true")
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[4]
     original = repository / "crates/auto-lang/src/tests/plan730_http_upload_tests.rs"
@@ -132,6 +135,34 @@ def main():
                 assert status == 400, (status, body)
                 assert not list(staging.iterdir()), "argument rejection created staging"
 
+                if args.cancellation:
+                    # Prove receive is actually active before disconnecting.
+                    # A staged nonempty file distinguishes this from a rejected
+                    # socket that never exercised upload ownership.
+                    with socket.create_connection(("127.0.0.1", port), timeout=5) as partial:
+                        partial.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                                           struct.pack("HH" if os.name == "nt" else "ii", 1, 0))
+                        partial.sendall(b"POST /api/uploads/raw HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                        b"Content-Type: application/octet-stream\r\n"
+                                        b"Content-Length: 67108864\r\n\r\n" + b"x" * 65536)
+                        staged = False
+                        deadline = time.monotonic() + 5
+                        while time.monotonic() < deadline:
+                            staged = any(path.is_file() and path.stat().st_size > 0
+                                         for path in staging.rglob("*"))
+                            if staged:
+                                break
+                            time.sleep(0.02)
+                        assert staged, "partial upload never entered receive/staging"
+                        status, body = request(port, "GET", f"/{token}")
+                        assert status == 200 and json.loads(body) == token, "waiting upload blocked owner"
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline and list(staging.iterdir()):
+                        time.sleep(0.02)
+                    assert not list(staging.iterdir()), "RST upload retained provisional files"
+                    assert not (public / "raw/data.bin").exists(), "truncated upload was published"
+                    assert (public / "mp/blob.bin").read_bytes() == payload, "cancellation changed accepted output"
+
                 assert child.stdin is not None
                 child.stdin.write("shutdown\n")
                 child.stdin.flush()
@@ -139,11 +170,14 @@ def main():
                 stderr.seek(0)
                 diagnostics = stderr.read()
                 assert "probe shutdown delivered=true" in diagnostics
+                if args.expect_external:
+                    assert "probe runtime=external" in diagnostics
                 assert "probe terminal scopes=0 files=0 uploads=(0, 0, 0) streams=0 live_ops=0" in diagnostics, diagnostics
                 print(json.dumps({"scope": "owned-upload-seam", "multipart_bytes": len(payload),
                                   "download_exact": True, "conflict_preserved": True,
                                   "business_reject": 422, "header_only_reject": 401,
                                   "argument_reject": 400, "terminal_registries_zero": True,
+                                  "active_receive_rst_cleaned": args.cancellation,
                                   "staging_empty": True, "shutdown_exit": 0,
                                   "original_fixture_sha256": hashlib.sha256(original_bytes).hexdigest()}))
             finally:

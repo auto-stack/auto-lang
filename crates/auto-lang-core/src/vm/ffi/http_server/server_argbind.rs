@@ -143,7 +143,7 @@ pub(super) fn resource_claim_reply(
             }
         }
         ResourceClaim::Upload { receipt_id } => {
-            match super::super::http_upload::take_upload_receipt(receipt_id) {
+            match VmHttpBridge::take_upload_receipt(receipt_id) {
                 Some(receipt) => upload_receipt_reply(ctx, receipt),
                 None => upload_contract_mismatch_reply(ctx, receipt_id),
             }
@@ -302,7 +302,7 @@ pub fn push_typed_string_arg(
                     return Err(bad(sig.ty.trim()));
                 }
                 task.ram
-                    .push_nv(crate::vm::ffi::convert::encode_i64_with_heap(vm, i));
+                    .push_nv(crate::vm::ffi::encode_i64_with_heap(vm, i));
             }
             Err(_) => return Err(bad(sig.ty.trim())),
         },

@@ -23,6 +23,7 @@ use std::sync::RwLock;
 
 /// Explicit HTTP service host assembly (PLAN-890).
 pub mod http_service;
+pub mod request_context;
 
 /// 帧时间戳观测能力（pilot 唯一族；毫秒、单调时源由实现方保证）。
 ///

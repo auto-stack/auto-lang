@@ -13,6 +13,7 @@
 
 use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
+use crate::vm::host_capabilities::http_service::VmHttpBridge;
 
 // ============================================================================
 // PLAN-669: #[api] handler 形参签名侧信道
@@ -3336,7 +3337,6 @@ pub(crate) async fn serve_with(
     // 这是 Design 33 §C 的既有边界。
     let mut shutdown_rx = shutdown_rx;
     let mut parked: Vec<ParkedRequest> = Vec::new();
-    let completion_notify = &crate::vm::ffi::async_http::COMPLETION_NOTIFY;
     let mut draining = false;
     let mut loop_result = ();
     loop {
@@ -3351,7 +3351,7 @@ pub(crate) async fn serve_with(
             .min();
         // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
         // 把登记提前到检查之前）。
-        let notify_fut = completion_notify.notified();
+        let notify_fut = VmHttpBridge::completion_notified();
         tokio::pin!(notify_fut);
         notify_fut.as_mut().enable();
         // (2) enable 后复查（覆盖"通知在登记前发出"的窗口）。
@@ -3749,14 +3749,9 @@ pub(crate) fn extend_scope_deadline(scope_id: u64, new_deadline: std::time::Inst
         };
         if extended {
             let _ = scope.deadline_tx.send(new_deadline);
-            crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+            VmHttpBridge::notify_completion();
         }
     }
-}
-
-/// PLAN-730 T-05：当前段执行的 scope id（无绑定为 None——非请求上下文）。
-pub(crate) fn current_scope_id() -> Option<u64> {
-    CURRENT_SCOPE_ID.with(|c| c.get())
 }
 
 /// 连接终结（net 侧 watcher）：取消该连接名下全部 scope（已确证销毁判据，
@@ -3778,21 +3773,12 @@ pub(crate) fn cancel_scopes_for_conn(conn_id: u64) {
 // PLAN-707 T-06（D-7）：handler 段执行的当前 scope——流 open shim 经
 // [`register_scope_stream`] 把新建流挂进请求资源组；非 request 上下文
 // （UI/CLI 程序）无 scope，资源归显式 close 管理（决策 §5.4）。
-thread_local! {
-    static CURRENT_SCOPE_ID: std::cell::Cell<Option<u64>> =
-        const { std::cell::Cell::new(None) };
-}
-
-impl Drop for ScopeGuard {
-    fn drop(&mut self) {
-        CURRENT_SCOPE_ID.with(|c| c.set(None));
-    }
-}
-
-/// 进入 handler 段（dispatch/resume）时调用；Drop 恢复无 scope 态。
+/// Bind the host-owned context for dispatch/resume; Drop restores its parent.
 pub(crate) fn bind_current_scope(scope_id: u64) -> ScopeGuard {
-    CURRENT_SCOPE_ID.with(|c| c.set(Some(scope_id)));
-    ScopeGuard
+    let context = lookup_scope(scope_id).map(|scope| {
+        scope as std::sync::Arc<dyn crate::vm::host_capabilities::request_context::RequestContext>
+    });
+    crate::vm::host_capabilities::request_context::bind_request_context(context)
 }
 
 /// PLAN-781 T-22（R04 修复轮；R06 修正为按服务代际归属）：优雅关停
@@ -3837,74 +3823,34 @@ pub(crate) fn clear_server_drain_cutoff(server_gen: u64) {
 /// 行业务副作用——由 engine 驱动环周期调用本探测（安全指令边界，非
 /// 抢占）。
 pub(crate) fn current_request_cancelled() -> bool {
-    let Some(id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
-        return false; // 非 HTTP 上下文（CLI/UI 段）不受排水/取消影响
-    };
-    let Some(scope) = lookup_scope(id) else {
-        return true; // 已出表 = 已终结（finalize 时移除）
-    };
-    if !scope_usable(&scope) {
-        return true;
-    }
-    if let Ok(m) = SERVER_DRAIN_CUTOFFS.lock() {
-        if let Some(cutoff) = m.get(&scope.server_gen) {
-            if std::time::Instant::now() >= *cutoff {
-                return true;
-            }
-        }
-    }
-    false
+    crate::vm::host_capabilities::request_context::current_request_cancelled()
 }
 
 /// 流 open shim 调用：把新流登记进当前请求资源组（无 scope → no-op）。
 pub(crate) fn register_scope_stream(stream_id: u64) {
-    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
-        return;
-    };
-    if let Some(scope) = lookup_scope(scope_id) {
-        if let Ok(mut r) = scope.resources.lock() {
-            r.push(stream_id);
-        }
-    }
+    use crate::vm::host_capabilities::request_context::*;
+    register_request_resource(RequestResourceKind::Stream, stream_id);
 }
 
 /// PLAN-727 T-05：transfer 提交 shim 调用——传输登记进当前请求的**有类型**
 /// 传输资源组（无 scope → no-op；CLI/UI 程序资源归显式 cancel/wait 管理）。
 pub(crate) fn register_scope_transfer(transfer_id: u64) {
-    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
-        return;
-    };
-    if let Some(scope) = lookup_scope(scope_id) {
-        if let Ok(mut r) = scope.transfer_resources.lock() {
-            r.push(transfer_id);
-        }
-    }
+    use crate::vm::host_capabilities::request_context::*;
+    register_request_resource(RequestResourceKind::Transfer, transfer_id);
 }
 
 /// PLAN-729 T-04：file_response 构造 shim 调用——描述符登记进当前请求的
 /// 文件描述符资源组（无 scope → no-op；编组取出或 scope 终结时移除）。
 pub(crate) fn register_scope_file_response(descriptor_id: u64) {
-    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
-        return;
-    };
-    if let Some(scope) = lookup_scope(scope_id) {
-        if let Ok(mut r) = scope.file_response_resources.lock() {
-            r.push(descriptor_id);
-        }
-    }
+    use crate::vm::host_capabilities::request_context::*;
+    register_request_resource(RequestResourceKind::FileResponse, descriptor_id);
 }
 
 /// PLAN-730 T-02：上传句柄（注入能力/会话/收据）登记进当前请求的上传
 /// 资源组（无 scope → no-op；非请求上下文构造不能进入 HTTP 编组面）。
 pub(crate) fn register_scope_upload(upload_id: u64) {
-    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
-        return;
-    };
-    if let Some(scope) = lookup_scope(scope_id) {
-        if let Ok(mut r) = scope.upload_resources.lock() {
-            r.push(upload_id);
-        }
-    }
+    use crate::vm::host_capabilities::request_context::*;
+    register_request_resource(RequestResourceKind::Upload, upload_id);
 }
 
 /// 资源基线探针（测试）：可用生命期许可数。
@@ -4040,7 +3986,7 @@ pub(crate) fn resume_parked_request(
                 .and_then(|mut m| m.remove(&op_id))
                 .flatten();
             // live-op marker 出表（complete 侧落 Body("")；take 走防泄漏）。
-            let _ = crate::vm::ffi::stdlib::check_async_http_result(op_id);
+            VmHttpBridge::discard_async_result(op_id);
             match result {
                 Some(Ok((paths, files_json))) => {
                     p.ctx.legacy_stored = paths;
@@ -4318,13 +4264,13 @@ async fn next_sse_generator_value(
                 // 臂；未知 pending 兜底 yield_now（保守不忙等死锁）。
                 match generator_wait_credential(vm, iterator_id) {
                     GeneratorWait::Stream(stream_id) => {
-                        crate::vm::ffi::http_stream::wait_stream_ready(stream_id).await;
+                        VmHttpBridge::wait_stream_ready(stream_id).await;
                     }
                     GeneratorWait::LegacyStream(stream_id) => {
-                        crate::vm::ffi::http_stream::wait_legacy_stream_ready(stream_id).await;
+                        VmHttpBridge::wait_legacy_stream_ready(stream_id).await;
                     }
                     GeneratorWait::Future(_) => {
-                        let notified = crate::vm::ffi::async_http::COMPLETION_NOTIFY.notified();
+                        let notified = VmHttpBridge::completion_notified();
                         tokio::pin!(notified);
                         notified.as_mut().enable();
                         // enable 后复查：凭据已清除（先完成再 park）则直接
@@ -5150,15 +5096,21 @@ mod plan093_catch_all_tests {
 }
 
 // ---- PLAN-843 结构拆分：服务职责分族（原单文件热点，纯搬移） ----
+#[path = "http_server/server_argbind.rs"]
 mod server_argbind;
 pub use server_argbind::*;
+#[path = "http_server/server_dispatch.rs"]
 mod server_dispatch;
 pub use server_dispatch::*;
+#[path = "http_server/server_model.rs"]
 mod server_model;
 pub use server_model::*;
+#[path = "http_server/server_metadata.rs"]
 mod server_metadata;
 pub(crate) use server_metadata::*;
+#[path = "http_server/server_route.rs"]
 mod server_route;
 pub use server_route::*;
+#[path = "http_server/server_scope.rs"]
 mod server_scope;
 pub use server_scope::*;

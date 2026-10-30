@@ -9,10 +9,12 @@ publish = false
 [dependencies]
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
+web-runtime-boundary-probe = { path = "../web-runtime-boundary-probe", features = ["boundary"], optional = true }
 
 [features]
 # Deliberate compile-fail ownership control; ordinary probe builds leave it off.
 compile-fail-owner-send = []
+external-runtime = ["dep:web-runtime-boundary-probe"]
 
 [profile.dev]
 debug = "line-tables-only"
