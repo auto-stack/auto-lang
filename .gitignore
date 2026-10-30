@@ -264,6 +264,9 @@ examples/rust-workspace/testt1/
 !scripts/test-governance/case-control-oracles.json
 !scripts/test-governance/atomic-contract.json
 !scripts/test-governance/toolchains.json
+!scripts/test-governance/top-level-modules.json
+!scripts/test-governance/test-purpose-policy.json
+!scripts/test-governance/daily-admission-proposal.json
 !scripts/test-governance/catalog/
 !scripts/test-governance/catalog/*.json
 !crates/auto-lang/test/cases/governance-888/batch-allowlist.json

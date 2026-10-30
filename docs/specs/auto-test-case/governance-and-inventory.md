@@ -42,6 +42,15 @@
 （B17-B19 pending 语义裁定、NA-4、D 生命周期扩展、UI/Man 域）。弱判差额不批改 golden、不复制
 裁判；oracle 永不追随旧 VM（B08/B11 差异行保留）。
 
+## 全仓审查对账（PLAN-895）
+
+888 受管闭包是全仓分母的起点而非终点。PLAN-895 交付全仓来源台账（test-purpose-policy.json `sources`）：
+受管 recipe、未注册 Rust 单测/集成测试、`.at` 语料与金样的包装输入轴、Python/PowerShell/JS 验证入口、
+`test/parity` 与 modularity fixture 门禁、已迁外仓的 AG 线与 UI/Man owner 引用分轴登记；每个排除目录记
+依据，不按 experimental/probe 一概排除。未注册声明、包装入口、外仓引用与受管运行义务分开记，遗漏/重复
+由审查校验器（audit_test_purposes.py）与逐义务报告守卫；未注册入口的注册属后续独立决定。frozen nextest
+combo、退役双清单与 floor 3189 等 887 冻结条款不受本节影响。
+
 ## PLAN-888 唯一叶与真实消费
 
 旧九档身份冻结到不相交叶模块，ACE十workspace/正式suite/Python控制纳入本仓目录；外仓owner保留引用。分片内容哈希、实际Cargo及runtime/helper消费者图、原source/oracle/条件/输入守恒共同校验。运行时再次核对选择和实际原子完成记录，聚合包装成功不能替代内部比较；条件不适用和原始失败不冒绿。计划门与周期清单、成本和慢模块遵循[模块选测](module-selection.md)，B/C试点依据[批量合同](batch-execution.md)。887历史收据与原M1分母保持。
