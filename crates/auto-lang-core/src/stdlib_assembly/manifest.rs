@@ -317,24 +317,12 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 include_str!("../vm/ffi/stdlib/rust_stdlib_dispatch.rs"),
             ),
             (
-                "vm/ffi/http_server/server_argbind.rs",
-                include_str!("../vm/ffi/http_server/server_argbind.rs"),
+                "vm/ffi/http_server/server_metadata.rs",
+                include_str!("../vm/ffi/http_server/server_metadata.rs"),
             ),
             (
-                "vm/ffi/http_server/server_dispatch.rs",
-                include_str!("../vm/ffi/http_server/server_dispatch.rs"),
-            ),
-            (
-                "vm/ffi/http_server/server_model.rs",
-                include_str!("../vm/ffi/http_server/server_model.rs"),
-            ),
-            (
-                "vm/ffi/http_server/server_route.rs",
-                include_str!("../vm/ffi/http_server/server_route.rs"),
-            ),
-            (
-                "vm/ffi/http_server/server_scope.rs",
-                include_str!("../vm/ffi/http_server/server_scope.rs"),
+                "vm/ffi/http_server/value_json.rs",
+                include_str!("../vm/ffi/http_server/value_json.rs"),
             ),
             (
                 "vm/native/natives_chrono.rs",

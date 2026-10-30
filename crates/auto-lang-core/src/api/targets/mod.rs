@@ -2,13 +2,9 @@
 //!
 //! Plan 102 Phase 5.2-5.3: Code generators for different deployment targets
 
-mod axum;
 mod tauri;
-mod typescript;
 
-pub use axum::AxumGenerator;
 pub use tauri::TauriGenerator;
-pub use typescript::TypeScriptGenerator;
 
 use crate::api::ApiModule;
 
@@ -29,12 +25,6 @@ pub trait TargetGenerator {
 pub enum Target {
     /// Tauri commands (Rust)
     Tauri,
-
-    /// Axum routes (Rust HTTP server)
-    Axum,
-
-    /// TypeScript types and API client
-    TypeScript,
 }
 
 impl Target {
@@ -42,8 +32,6 @@ impl Target {
     pub fn generator(&self) -> Box<dyn TargetGenerator> {
         match self {
             Target::Tauri => Box::new(TauriGenerator::new()),
-            Target::Axum => Box::new(AxumGenerator::new()),
-            Target::TypeScript => Box::new(TypeScriptGenerator::new()),
         }
     }
 }

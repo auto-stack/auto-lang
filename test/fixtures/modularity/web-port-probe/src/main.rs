@@ -24,7 +24,10 @@ impl auto_lang_core::vm::host_capabilities::http_service::HttpServiceHost for Ex
         eprintln!("explicit probe adapter: {} route(s)", owner.route_count());
         #[cfg(not(feature = "external-runtime"))]
         {
-            Box::pin(owner.run_existing_runtime_for_probe())
+            auto_lang_core::vm::host_capabilities::http_service::HttpServiceHost::serve(
+                &auto_web::WebHttpServiceHost,
+                owner,
+            )
         }
         #[cfg(feature = "external-runtime")]
         {
@@ -80,7 +83,7 @@ fn main() {
         for line in std::io::stdin().lock().lines() {
             if matches!(line.as_deref(), Ok("shutdown")) {
                 #[cfg(not(feature = "external-runtime"))]
-                let sent = auto_lang_core::vm::ffi::http_server::test_trigger_shutdown();
+                let sent = auto_web::http_server::test_trigger_shutdown();
                 #[cfg(feature = "external-runtime")]
                 let sent = EXTERNAL_SHUTDOWN
                     .lock()
@@ -123,7 +126,7 @@ fn main() {
             // Inspect real registries after the owner has returned. A successful
             // process exit alone cannot establish resource termination.
             #[cfg(not(feature = "external-runtime"))]
-            let scopes = auto_lang_core::vm::ffi::http_server::live_scope_count();
+            let scopes = auto_web::http_server::live_scope_count();
             #[cfg(feature = "external-runtime")]
             let scopes = web_runtime_boundary_probe::http_server::live_scope_count();
             let files = auto_lang_core::vm::ffi::http_server_file::vm_file_response_count();

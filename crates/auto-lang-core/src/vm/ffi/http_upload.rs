@@ -212,7 +212,7 @@ pub fn shim_http_upload_receive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
             None => std::sync::Arc::new(|_| {}),
         };
     let op_id = spawn_upload_watcher(async move {
-        let session = crate::http_upload_service::receive_with_phase(
+        let session = a2r_std::http::server_upload::upload_receive_with_phase(
             req,
             &root,
             &staging_root,
@@ -375,4 +375,10 @@ pub fn vm_upload_counts() -> (usize, usize, usize) {
     let s = VM_UPLOAD_SESSIONS.lock().map(|m| m.len()).unwrap_or(0);
     let c = VM_UPLOAD_RECEIPTS.lock().map(|m| m.len()).unwrap_or(0);
     (r, s, c)
+}
+
+#[cfg(feature = "test-http-e2e")]
+#[doc(hidden)]
+pub fn upload_request_registered_for_test(id: u64) -> bool {
+    VM_UPLOAD_REQUESTS.lock().unwrap().contains_key(&id)
 }

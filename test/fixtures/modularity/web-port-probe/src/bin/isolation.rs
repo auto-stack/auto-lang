@@ -46,7 +46,12 @@ impl HttpServiceHost for Adapter {
                 "configured probe requires external-runtime"
             );
             #[cfg(not(feature = "external-runtime"))]
-            let service = owner.run_existing_with_shutdown_for_probe(address, receiver);
+            let service = auto_web::serve_owned(
+                owner,
+                &address,
+                auto_web::http_transport::TransportConfig::from_env(),
+                receiver,
+            );
             #[cfg(feature = "external-runtime")]
             let service: HttpServiceFuture = match configuration {
                 Some(config) => Box::pin(web_runtime_boundary_probe::serve_service_owned(
@@ -213,7 +218,7 @@ fn main() {
             service.await.unwrap().unwrap();
         }
         #[cfg(not(feature = "external-runtime"))]
-        assert_eq!(auto_lang_core::vm::ffi::http_server::live_scope_count(), 0);
+        assert_eq!(auto_web::http_server::live_scope_count(), 0);
         #[cfg(feature = "external-runtime")]
         assert_eq!(
             web_runtime_boundary_probe::http_server::live_scope_count(),

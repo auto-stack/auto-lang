@@ -6,6 +6,7 @@ description = "API server/client generation core (PLAN-815 T-04): single-algorit
 license = "MIT"
 
 [dependencies]
+auto-web={path="../../../auto-web/crates/auto-web",version="=0.1.0"}
 auto-generation-core = { path = "../auto-generation-core", version = "=0.1.0" }
 # Language SDK single source (api/ast/compile/trans/config/http services).
 auto-lang-core = { path = "../auto-lang-core" }
@@ -20,7 +21,7 @@ serde_json = { workspace = true }
 
 [features]
 # PLAN-738 e2e（随 api_gen 迁入；auto-man 同名 feature 转发）。
-test-http-e2e = []
+test-http-e2e = ["auto-web/test-http-e2e"]
 
 [dev-dependencies]
 blake3 = "1.5"

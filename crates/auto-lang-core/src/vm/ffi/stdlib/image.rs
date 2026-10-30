@@ -318,7 +318,3 @@ pub(super) fn register_image_shims(natives: &mut crate::vm::native::NativeInterf
         natives.register_shim_by_name("auto.image.thumb", shim_image_thumb);
     }
 }
-
-// Preserve the original media wire assertion until its test owner migrates.
-#[cfg(test)]
-pub(crate) use crate::vm::ffi::http_server::server_blocking::write_media_response;

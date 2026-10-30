@@ -35,7 +35,7 @@ def main():
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[4]
     file_source = (repo / "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs").read_bytes()
-    sse_source = (repo / "crates/auto-lang-core/src/vm/ffi/http_server.rs").read_bytes()
+    sse_source = (repo.parent / "auto-web/crates/auto-web/src/http_server.rs").read_bytes()
     file_match = re.search(r'fn program\(root: &str\).*?format!\(\s*r#"(.*?)"#', file_source.decode(), re.S)
     sse_match = re.search(r'fn e2e_sse_generator_handler\(\).*?start_server\(\s*r#"(.*?)"#', sse_source.decode(), re.S)
     if not file_match or not sse_match:

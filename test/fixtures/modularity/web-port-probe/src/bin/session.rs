@@ -129,8 +129,7 @@ fn main() {
         loop {
             let observations = web_runtime_boundary_probe::observations();
             let second = &observations[1];
-            if second.service_state()
-                == auto_lang_core::http_service_observability::ServiceState::Stopped
+            if second.service_state() == auto_web::http_service_observability::ServiceState::Stopped
                 && second.log_threads_active() == 0
                 && web_runtime_boundary_probe::http_transport::live_network_tails() == 0
             {

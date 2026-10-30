@@ -42,7 +42,7 @@ mem-profile = ["auto-lang-core/mem-profile"]
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
-test-http-e2e = ["auto-lang-core/test-http-e2e"]
+test-http-e2e = ["auto-lang-core/test-http-e2e", "auto-web/test-http-e2e"]
 test-case-batch = ["test-cases", "auto-lang-core/test-case-batch"]
 # Plan 289: Examples are opt-in to avoid 23 linker processes consuming ~46GB memory
 build-examples = []
@@ -115,6 +115,7 @@ native-dnd = ["auto-ui-runtime/native-dnd"]
 test-native-dock = ["ui-iced", "native-dock", "auto-ui-runtime/test-native-dock"]
 
 [dependencies]
+auto-web = { path="../../../auto-web/crates/auto-web", version="=0.1.0" }
 # PLAN-814: SDK/UI 包组拆分——旧 auto-lang 转为上层兼容/默认组合层，依赖
 # 三个新包（机制切片：use_scanner 已迁 auto-lang-core，旧路径经 lib.rs
 # 再导出保类型身份；UI compiler/runtime 迁移面见 T-03/T-04）。

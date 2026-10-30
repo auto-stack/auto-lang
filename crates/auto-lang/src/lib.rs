@@ -40,7 +40,30 @@ pub use auto_lang_core::{
     test_code, test_code_with_deadline_and_input, test_code_with_path_deadline_and_input, test_file,
 };
 
-pub use auto_lang_core::api;
+pub mod api {
+    pub use auto_lang_core::api::*;
+    pub use auto_web::api::{AxumGenerator, TypeScriptGenerator};
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Target {
+        Tauri,
+        Axum,
+        TypeScript,
+    }
+    impl Target {
+        pub fn generator(&self) -> Box<dyn auto_lang_core::api::TargetGenerator> {
+            match self {
+                Self::Tauri => Box::new(auto_lang_core::api::TauriGenerator::new()),
+                Self::Axum => Box::new(auto_web::api::AxumGenerator::new()),
+                Self::TypeScript => Box::new(auto_web::api::TypeScriptGenerator::new()),
+            }
+        }
+    }
+    pub mod targets {
+        pub use super::Target;
+        pub use auto_lang_core::api::targets::*;
+        pub use auto_web::api::{AxumGenerator, TypeScriptGenerator};
+    }
+}
 use auto_lang_core::ast;
 // PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
 // 六类 impl + Parser 耦合测试）——模型已在 auto-ast，解析注入留上层。
@@ -84,18 +107,18 @@ pub use auto_lang_core::database;
 pub use auto_lang_core::dep;
 use auto_lang_core::error;
 pub use auto_lang_core::host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
-pub use auto_lang_core::http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
-pub use auto_lang_core::http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
-pub use auto_lang_core::http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
-pub use auto_lang_core::http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
 pub use auto_lang_core::mcp; // Plan 265: MCP server for AI agent interaction
 pub use auto_lang_core::module_cache;
 pub use auto_lang_core::stdlib_assembly;
-pub use auto_ui_runtime::back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）；PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime
-                                     // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
-                                     // Plan 096 Phase 0: Scenario-based compilation
-                                     // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
-                                     // orchestration; depends on the dependency-light `auto-test-case` core.
+pub use auto_ui_runtime::back_proxy;
+pub use auto_web::http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
+pub use auto_web::http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
+pub use auto_web::http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
+pub use auto_web::http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型） // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）；PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime
+                                                                                                               // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
+                                                                                                               // Plan 096 Phase 0: Scenario-based compilation
+                                                                                                               // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
+                                                                                                               // orchestration; depends on the dependency-light `auto-test-case` core.
 use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 #[cfg(feature = "test-cases")]
@@ -179,7 +202,13 @@ pub use auto_lang_core::type_registry;
 // Plan 109: AutoDown Document Format
 pub mod autodown;
 pub use auto_lang_core::util;
-pub use auto_lang_core::vm;
+pub mod vm {
+    pub use auto_lang_core::vm::*;
+    pub mod ffi {
+        pub use auto_lang_core::vm::ffi::*;
+        pub use auto_web::{http_server, http_transport};
+    }
+}
 // Plan 095: Compile-Time Execution Engine
 pub use auto_lang_core::comptime;
 // Plan 260: Test framework

@@ -81,10 +81,9 @@ pub mod execution_engine;
 pub mod ffi;
 pub mod hash;
 pub mod host;
-pub mod http_file_service;
+
 pub mod http_service_config;
-pub mod http_service_observability;
-pub mod http_upload_service;
+
 pub mod interpreter;
 pub mod libs;
 pub mod macro_;

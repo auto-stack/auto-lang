@@ -33,45 +33,6 @@ macro_rules! vm_debug {
 #[cfg(test)]
 mod image_pipeline_vm_http_tests {
     use super::*;
-    use auto_media_core::image_pipeline::{
-        MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
-    };
-    use std::sync::Arc;
-
-    #[test]
-    fn image_media_route_has_priority_without_changing_user_routes() {
-        assert!(media_response_for_vm_request("GET", "/api/user", None).is_none());
-        let registry = auto_media_core::image_pipeline::global_media_registry();
-        let ticket = registry.queue(
-            MediaAssetKey {
-                source_fingerprint: "vm-fixture".into(),
-                orientation: Default::default(),
-                rendition: RenditionSpec::original(),
-                revision: 1,
-            },
-            MediaMetadata::default(),
-        );
-        let path = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
-        let response = media_response_for_vm_request("GET", &path, None).unwrap();
-        assert_eq!(response.status, 503);
-
-        registry
-            .transition(ticket.id, MediaAssetState::Reading)
-            .unwrap();
-        registry
-            .transition(ticket.id, MediaAssetState::Decoding)
-            .unwrap();
-        registry
-            .transition(ticket.id, MediaAssetState::Transforming)
-            .unwrap();
-        registry
-            .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([7, 255]))
-            .unwrap();
-        let mut wire = Vec::new();
-        assert!(write_media_response(&mut wire, "GET", &path, None));
-        assert!(String::from_utf8_lossy(&wire).starts_with("HTTP/1.1 200 OK"));
-        assert!(wire.ends_with(&[7, 255]));
-    }
 
     #[test]
     fn image_natives_register_opaque_ticket_operations() {

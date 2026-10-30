@@ -260,7 +260,9 @@ fn compute_auto_lang_rel_path_for(
 }
 
 /// Compute relative path from `from` to `to` using only `..` and directory names.
-fn compute_relative_path(from: &Path, to: &Path) -> String {
+/// Shared relative-path mechanism used by repository-owned workspace adapters.
+#[doc(hidden)]
+pub fn compute_relative_path(from: &Path, to: &Path) -> String {
     // Canonicalize both paths for reliable comparison
     let from_abs = std::fs::canonicalize(from).unwrap_or_else(|_| from.to_path_buf());
     let to_abs = std::fs::canonicalize(to).unwrap_or_else(|_| to.to_path_buf());

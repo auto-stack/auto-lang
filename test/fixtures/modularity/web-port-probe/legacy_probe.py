@@ -27,7 +27,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="owned-legacy-", dir=scratch) as directory:
         root = Path(directory)
         token = "legacy_" + uuid.uuid4().hex
-        original = (repo / "crates/auto-lang-core/src/vm/ffi/http_server.rs").read_text(encoding="utf-8")
+        original = (repo.parent / "auto-web/crates/auto-web/src/http_server.rs").read_text(encoding="utf-8")
         generator = re.search(r'fn e2e_sse_generator_handler\(\).*?start_server\(\s*r#"(.*?)"#', original, re.S)
         assert generator, "original SSE program changed; audit instead of substituting"
         program = ('#[api(method = "GET", path = "/value/:id")]\n'

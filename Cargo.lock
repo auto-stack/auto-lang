@@ -579,6 +579,7 @@ dependencies = [
  "auto-lang-core",
  "auto-project-model",
  "auto-val",
+ "auto-web",
  "blake3",
  "erased-serde 0.4.0-rc.1",
  "regex",
@@ -747,6 +748,7 @@ dependencies = [
  "auto-ui-dialect",
  "auto-ui-runtime",
  "auto-val",
+ "auto-web",
  "axum",
  "base64 0.22.1",
  "bincode",
@@ -830,7 +832,6 @@ dependencies = [
  "auto-text-core",
  "auto-val",
  "auto-web-contract",
- "axum",
  "base64 0.22.1",
  "bincode",
  "blake3",
@@ -845,8 +846,6 @@ dependencies = [
  "futures",
  "hex",
  "hmac",
- "hyper",
- "hyper-util",
  "inventory",
  "lazy_static",
  "libloading",
@@ -868,7 +867,6 @@ dependencies = [
  "sha1 0.10.7",
  "sha2",
  "shim-metadata",
- "socket2 0.5.10",
  "stacker",
  "strum",
  "strum_macros",
@@ -1155,6 +1153,34 @@ dependencies = [
  "miette",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "auto-web"
+version = "0.1.0"
+dependencies = [
+ "a2r-std",
+ "auto-generation-core",
+ "auto-lang-core",
+ "auto-media-core",
+ "auto-val",
+ "auto-web-contract",
+ "axum",
+ "base64 0.22.1",
+ "futures",
+ "hyper",
+ "hyper-util",
+ "lazy_static",
+ "mime_guess",
+ "regex",
+ "semver 1.0.28",
+ "serde",
+ "serde_json",
+ "sha1 0.10.7",
+ "sha2",
+ "socket2 0.5.10",
+ "tokio",
+ "toml 0.8.23",
 ]
 
 [[package]]

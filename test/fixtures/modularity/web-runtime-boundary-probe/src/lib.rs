@@ -2,12 +2,15 @@
 //! No source/VM/AST copy, no public re-export of private Core modules, and
 //! no production Web repository. Default feature selection is not a check.
 pub use auto_lang_core::*;
+pub use auto_web::{
+    http_file_service, http_service_config, http_service_observability, http_upload_service,
+};
 
 #[cfg(feature = "boundary")]
-#[path = "../../../../../crates/auto-lang-core/src/vm/ffi/http_server.rs"]
+#[path = "../../../../../../auto-web/crates/auto-web/src/http_server.rs"]
 pub mod http_server;
 #[cfg(feature = "boundary")]
-#[path = "../../../../../crates/auto-lang-core/src/vm/ffi/http_transport.rs"]
+#[path = "../../../../../../auto-web/crates/auto-web/src/http_transport.rs"]
 mod http_transport_impl;
 
 /// Fixture-only thread-terminal delay after the real transport returns. The
@@ -119,11 +122,11 @@ pub async fn serve_service_owned(
     sender: tokio::sync::watch::Sender<bool>,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> auto_lang_core::AutoResult<()> {
-    let mut runtime = auto_lang_core::http_service_config::ServiceRuntime::new(config);
+    let mut runtime = auto_web::ServiceRuntime::new(config);
     // Deliberate fixture-only mutation: the oracle must reject the old shared
     // observation model instead of accepting two listeners as isolation proof.
     if std::env::var("PLAN890_SHARED_OBSERVATION_NEGATIVE").as_deref() == Ok("1") {
-        runtime.observation = auto_lang_core::http_service_observability::process_observation();
+        runtime.observation = auto_web::http_service_observability::process_observation();
     }
     if !runtime.bind_shutdown(sender) {
         return Err("service runtime already bound".into());
@@ -175,31 +178,29 @@ pub fn listen_borrowed(
 
 #[cfg(feature = "boundary")]
 fn observations_slot() -> &'static std::sync::Mutex<
-    Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>>,
+    Vec<std::sync::Arc<auto_web::http_service_observability::ServiceObservation>>,
 > {
     static OBS: std::sync::OnceLock<
         std::sync::Mutex<
-            Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>>,
+            Vec<std::sync::Arc<auto_web::http_service_observability::ServiceObservation>>,
         >,
     > = std::sync::OnceLock::new();
     OBS.get_or_init(Default::default)
 }
 #[cfg(feature = "boundary")]
 pub fn observations(
-) -> Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>> {
+) -> Vec<std::sync::Arc<auto_web::http_service_observability::ServiceObservation>> {
     observations_slot().lock().unwrap().clone()
 }
 
 #[cfg(feature = "boundary")]
-fn sessions_slot() -> &'static std::sync::Mutex<
-    Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>>,
-> {
+fn sessions_slot() -> &'static std::sync::Mutex<Vec<std::sync::Arc<auto_web::ServiceRuntime>>> {
     static SESSIONS: std::sync::OnceLock<
-        std::sync::Mutex<Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>>>,
+        std::sync::Mutex<Vec<std::sync::Arc<auto_web::ServiceRuntime>>>,
     > = std::sync::OnceLock::new();
     SESSIONS.get_or_init(Default::default)
 }
 #[cfg(feature = "boundary")]
-pub fn sessions() -> Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>> {
+pub fn sessions() -> Vec<std::sync::Arc<auto_web::ServiceRuntime>> {
     sessions_slot().lock().unwrap().clone()
 }

@@ -40,7 +40,7 @@ pub use contract::{
     ParamSource, ResponseKind, META_PARAM_NAMES,
 };
 pub use diagnostic::{ApiDiagnostic, DiagnosticStage};
-pub use targets::{AxumGenerator, Target, TargetGenerator, TauriGenerator, TypeScriptGenerator};
+pub use targets::{Target, TargetGenerator, TauriGenerator};
 pub use types::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 
 use crate::ast::{Fn, Stmt, Type};
@@ -347,8 +347,6 @@ mod tests {
 }
 
 // Phase 5.4: Integration tests
-#[cfg(test)]
-mod integration_tests;
 
 #[cfg(test)]
 mod type_extraction_tests {

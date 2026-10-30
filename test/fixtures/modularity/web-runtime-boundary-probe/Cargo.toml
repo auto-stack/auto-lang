@@ -13,6 +13,7 @@ boundary = []
 test-http-e2e = ["auto-lang-core/test-http-e2e"]
 
 [dependencies]
+auto-web={path="../../../../../auto-web/crates/auto-web"}
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 a2r-std = { path = "../../../../crates/a2r-std" }
 auto-val = { path = "../../../../crates/auto-val", features = ["serde"] }

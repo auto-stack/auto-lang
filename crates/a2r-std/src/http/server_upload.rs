@@ -693,6 +693,23 @@ pub trait UploadExecutor: Send + Sync {
         phase: UploadPhaseHook,
     ) -> futures::future::BoxFuture<'static, UploadSession>;
 
+    /// Scoped language receive; hosts may retain a serving-lifetime limit snapshot.
+    fn receive_with_phase(
+        &self,
+        req: UploadRequest,
+        root: &str,
+        staging_root: &str,
+        options_json: &str,
+        phase: UploadPhaseHook,
+    ) -> futures::future::BoxFuture<'static, UploadSession> {
+        match parse_upload_receive_options(options_json, &UploadServeLimits::from_env()) {
+            Ok(options) => self.receive(req, root, staging_root, options, phase),
+            Err(message) => {
+                Box::pin(async move { failed_session(UploadErrorKind::InvalidOptions, message) })
+            }
+        }
+    }
+
     /// create-only 发布（目标冲突 409；gate 后迟到取消不回滚）。
     fn commit(
         &self,
@@ -751,6 +768,31 @@ pub async fn upload_receive(
     let staging_root = staging_root.as_ref().to_string();
     exec.receive(req, &root, &staging_root, options, Arc::new(|_| {}))
         .await
+}
+
+/// Phase-preserving language bridge. The installed host retains its own
+/// option/limit snapshot; no server implementation is selected by this facade.
+pub async fn upload_receive_with_phase(
+    req: UploadRequest,
+    root: impl AsRef<str>,
+    staging_root: impl AsRef<str>,
+    options_json: impl AsRef<str>,
+    phase: UploadPhaseHook,
+) -> UploadSession {
+    let Some(exec) = executor() else {
+        return failed_session(
+            UploadErrorKind::NoExecutor,
+            "upload executor not installed (requires the HTTP server host)",
+        );
+    };
+    exec.receive_with_phase(
+        req,
+        root.as_ref(),
+        staging_root.as_ref(),
+        options_json.as_ref(),
+        phase,
+    )
+    .await
 }
 
 /// `http.upload_commit(session, relative_target)`：受信 root 内原子

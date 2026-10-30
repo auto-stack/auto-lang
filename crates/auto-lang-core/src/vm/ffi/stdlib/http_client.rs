@@ -2393,7 +2393,8 @@ pub fn bus_broadcast(json: String) {
 }
 
 /// 测试专用：领取一个总线订阅者（http_server publisher 臂单测收流用）。
-#[cfg(test)]
+#[cfg(any(test, feature = "test-http-e2e"))]
+#[doc(hidden)]
 pub fn bus_subscribe_for_test() -> tokio::sync::broadcast::Receiver<String> {
     EVENT_BUS.subscribe()
 }
@@ -3493,4 +3494,10 @@ pub(super) fn register_response_stream_shims(natives: &mut crate::vm::native::Na
     natives.register_shim_by_name("auto.http.get_sync", shim_http_get_sync);
     natives.register_shim_by_name("http.get_sync", shim_http_get_sync);
     natives.register_shim_by_name("auto.http.listen", shim_http_listen);
+}
+
+#[cfg(feature = "test-http-e2e")]
+#[doc(hidden)]
+pub fn async_stream_registered_for_test(id: u64) -> bool {
+    ASYNC_STREAMS.lock().unwrap().contains_key(&id)
 }

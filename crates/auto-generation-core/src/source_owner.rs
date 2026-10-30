@@ -343,7 +343,8 @@ pub fn validate_installed_language_source(producer_root: &Path) -> AutoResult<()
 
 // A directory alone is not a usable Cargo package. Validate before callers
 // write generated workspaces or stage a delivery, including explicit roots.
-pub(crate) fn valid_source_crate(source: &Path, name: &str) -> bool {
+#[doc(hidden)]
+pub fn valid_source_crate(source: &Path, name: &str) -> bool {
     let Some(manifest) = std::fs::read_to_string(source.join("Cargo.toml"))
         .ok()
         .and_then(|text| text.parse::<toml::Value>().ok())

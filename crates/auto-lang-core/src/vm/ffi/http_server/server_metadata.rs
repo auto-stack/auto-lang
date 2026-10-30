@@ -4,15 +4,11 @@
 use super::*;
 use std::{cell::RefCell, sync::Arc};
 
-pub(crate) use crate::vm::host_capabilities::http_service::messages::HttpProgramMetadata;
-
 thread_local! {
     static ACTIVE: RefCell<Option<Arc<HttpProgramMetadata>>> = const { RefCell::new(None) };
 }
 
-pub(crate) fn capture_program_metadata(
-    routes: &[(String, String, String)],
-) -> Arc<HttpProgramMetadata> {
+pub fn capture_program_metadata(routes: &[(String, String, String)]) -> Arc<HttpProgramMetadata> {
     Arc::new(HttpProgramMetadata {
         params: API_PARAM_SIGS
             .lock()
@@ -41,15 +37,15 @@ pub(crate) fn capture_program_metadata(
     })
 }
 
-pub(crate) fn with_program_metadata<R>(read: impl FnOnce(&HttpProgramMetadata) -> R) -> Option<R> {
+pub fn with_program_metadata<R>(read: impl FnOnce(&HttpProgramMetadata) -> R) -> Option<R> {
     ACTIVE.with(|active| active.borrow().as_deref().map(read))
 }
 
-pub(crate) fn current_program_metadata() -> Option<Arc<HttpProgramMetadata>> {
+pub fn current_program_metadata() -> Option<Arc<HttpProgramMetadata>> {
     ACTIVE.with(|active| active.borrow().clone())
 }
 
-pub(crate) async fn with_optional_owner_metadata<F: std::future::Future>(
+pub async fn with_optional_owner_metadata<F: std::future::Future>(
     metadata: Option<Arc<HttpProgramMetadata>>,
     future: F,
 ) -> F::Output {
@@ -68,7 +64,7 @@ impl Drop for Restore {
 
 /// Select the same immutable metadata for a synchronous owner call. Nested
 /// calls and unwinding restore the previous owner's context.
-pub(crate) fn with_owner_metadata_sync<R>(
+pub fn with_owner_metadata_sync<R>(
     metadata: Arc<HttpProgramMetadata>,
     call: impl FnOnce() -> R,
 ) -> R {
@@ -79,7 +75,7 @@ pub(crate) fn with_owner_metadata_sync<R>(
 
 /// Context is restored after every poll, including pending/unwind. Keeping it
 /// set for the whole async lifetime would incorrectly affect sibling owners.
-pub(crate) async fn with_owner_metadata<F: std::future::Future>(
+pub async fn with_owner_metadata<F: std::future::Future>(
     metadata: Arc<HttpProgramMetadata>,
     future: F,
 ) -> F::Output {
