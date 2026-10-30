@@ -7,13 +7,13 @@ created_at: 2026-10-29
 updated_at: 2026-10-30
 
 plan_revision: 3
-supersedes_spec_components: [docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/plans.md, docs/specs/README.md]
+supersedes_spec_components: [docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/plans.md, docs/specs/auto-test-case/project.md, docs/specs/README.md]
 new_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/batch-execution.md]
 touched_goals: []
 
 affects: [auto-test-case, test-infrastructure, auto-av]
 depends_on: [PLAN-887]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -205,7 +205,7 @@ SD是proposal，work不发布canonical；review核实际交付，merge沉淀。g
 
 ## 8. 执行步骤
 
-10项=8 work+1 review+1 merge，当前5/10已有实施验收，原收据保持；后续按r3先清单、再单轮资源、异常定向修复及慢原子人工清单，最后review/merge。写入受已批准X888约束，完整A/B/C收益测量另排且不阻塞。
+10项均已完成：8项work、1项final review、1项合入/归档/清理。r3模块清单、逐模块单轮资源及异常定向修复已交付，原始收据保持；完整新A/B/C收益矩阵与日常用途准入审查按用户要求后置。
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付/验证 | AC |
 |---|---|---|---|---|---|
@@ -218,7 +218,7 @@ SD是proposal，work不发布canonical；review核实际交付，merge沉淀。g
 | [x] | T-07 | work | T-03/04/05；T-06清单与相关测量 | V-08/10/11/13定位/重放/分区/feature兼容；正式消费者/入口迁移及实际局部计划去重并集；公开pilot恢复默认A，B/C仅显式实验；慢例保持原状态并列人工决定，外仓零写入 | AC-01..AC-08, AC-12 |
 | [x] | T-08 | work | T-06/07 | 全AC/V自检、SD、模块归属/数量表、单轮资源/异常修复/慢原子人工待定表与回交冻结；同步设计r3及当前规范提案；来源/健康审查、提交干净后execution_done，收益矩阵不阻塞 | AC-09, AC-12 |
 | [x] | T-09 | review | T-08；冻结SHA | 独立上下文同树逐项审全部AC（含AC-12）/V-01..13、分区并集与反控/成本/选面/SD/X，定位演练；findings回同树修复重绑，不跑整档 | AC-10 |
-| [ ] | T-10 | merge | T-09 pass | 并集/源锁配置→冻结触面与到期档→实际合入→canonical/ledger/index来源读回→归档→逐树fresh guard clean/remove/分支清理，回交Web/后续包可消费工具版本 | AC-11 |
+| [x] | T-10 | merge | T-09 pass | 并集/源锁配置→冻结触面与到期档→实际合入→canonical/ledger/index来源读回→归档→逐树fresh guard clean/remove/分支清理，回交Web/后续包可消费工具版本 | AC-11 |
 
 原始枚举、日志/JSON/计时、截图/worker转储只本地保存，摘要记命令/退出码/选择与执行数/关键观测/路径+hash；attachments仅Markdown摘要入库，长期case/工具/反控在源码受管。保留主检出他方WIP，不reset/stash/全量add；实施/定向验证及提交仅既有权威树，不推送、不建链接/agent、不联系其他聊天。
 
@@ -433,11 +433,15 @@ stage: goal | plan_id: PLAN-888 | plan_revision: r3 | round: 11 | from: review |
 
 2026-10-30 / stage: merge / plan_id: PLAN-888 / plan_revision: r3 / checkpoint: prepared,landed,canonical_verified / completion_kind: delivered / reviewed_commit: 2a39b6ca6d6f996f9ecf1560a45fca8bf2cfd2a4 / delivery_commit: 5a6c23afacd3c40412c5561a5ba2ae322a119c2e / landing: master两次ff-only实际到该SHA；53提交rebase保完整range-diff映射，三处差异逐项核，console提前return恢复至原审字节，其他执行源码/配置/测试输入与原审基面相同；canonical-only沉淀追加project/plans引用及用户仓内要求五个ledger源引用，未改他方ledger语义，spec-index实跑62项目、14既有ungrouped提示保留 / merge_gate: 按r3复用原完整单轮与25/22受影响模块、95控制及22新报告独立重放的实际有效证据；不跑旧档叠加/全目录三轮/新收益矩阵；13长原子交ACE、4原债仍如实非绿，不假造全生态PASS。publication补验：主检出读回43分片原CRLF哈希与GitLF失配，真实Gitadd/show反例修前红；仅固定write的LF序列化与目录Git属性，精确SHA/篡改拒绝不变；49控制13.757s全过，出版触面3完整治理模块30义务单轮均过（2.268/7.600/0.404s，整命令21.94s）；当前主检出真实load/verify_catalog通过7165义务/1181叶/43精确哈希，限定复审确认不变量关闭 / publication_evidence: baseline/r3-git-publication-red.log c8501d1d62e2cc3e4ea55c9abd818b1e8d0e2311b165418e2d301148f848b05d；r3-git-publication-green.log 75e4e1955dff0b55fffa9baf4150560caadb39886a9e86afa00c05d5ee7b6051；r3-publication-module-observation/costs.json 8edb64d801e9815aaec336173ae52929dfe740bbf5f6d827c0ff6e672c7bbc0d；最终r3-consolidated-observations.json 48ae23c5d2e35bac7d1065ed781d3d5c4b7177f419890fd6283f4ce4f34ce9a6 / canonical: docs/specs/auto-test-case/{module-selection,batch-execution,architecture,governance-and-inventory,ace-m1-conformance,project,plans}.md及docs/specs/README.md已在落地Git对象核；module-selection SHA256 77a6c290602575a2256ee33717fc0b3eafca9e9b2d43f53f82b6fa8f66e2d4c0、batch-execution b84268b4c7fc44cc113cfcbd625585c667076332948cd79818f9dd6f16631efa；.autoos五项upsert其余语义保留 / batch_due: false，888非5倍数、887回执2026-10-29T15:53:56Z未满48h，后续无到期五倍数落地 / artifacts: 主检出target/release/auto.exe与debug auto-case/test-case-pilot目前不存在，未在主检出做构建；产品语义/外仓服务未改，无需重启，模块工具下一次按prepare正常生成 / preservation: D:/autostack/plan-artifacts/plan-888/evidence原31697文件2109976627字节全部SHA复制，1607原exe映射去重保1157份4707136037字节；preservation-receipt.json SHA256 3aea33338c2caab0b66ed647f28063ef42f6c93393c395d4c88589194cb50c8e。原运行收据字节/路径不改，按该保留目录解析baseline相对路径；本地原始文件不入库 / pending: 实际归档文档提交与fresh guard清理，T-10完成前不报最终merge pass。
 
+2026-10-30 / stage: merge / plan_id: PLAN-888 / plan_revision: r3 / outcome: pass / completion_kind: delivered / checkpoint: archived,cleaned / delivery_commit: 5a6c23afacd3c40412c5561a5ba2ae322a119c2e / archive_commit: 107148fcd（本计划与r2历史合同均实际入Git） / archive_path: docs/plans/archive/888-module-test-selection-and-ace-batch-pilot.md / actual_state_gate: 主检出已验证归档文件在Git、status archived、原active路径不存在、两个相对design链接从archive实际目录可解析，canonical module/plans导航命中本计划；无当前未完成work/review/merge项 / cleanup: auto-ui、auto-down、auto-man、auto-lang四个本计划树逐一git clean检查及紧接删除前fresh wt-guard clean后由各仓git worktree remove移除；branch plan-888-dev已删除、D:/autostack/.wt/lang-888空组已移除；未删他方树/分支/缓存、未停他方进程；移除前整组文件逻辑大小67222746812字节（约67.2GB，非磁盘全局变化归因）。保留目录约2.11GB原始证据+4.71GB去重exe；按规约只回收该保留目录内4个pdb，无target/CACHEDIR缓存，removed-pdb-receipt.json记原路径/大小/hash，其他证据保持。preservation-receipt的全部SHA复制验收为移除pdb前时点，4项有意回收由该增量收据解释 / final_state: T-01..T-10全部完成10/10，pending_closeout_gates none；4既存红和13ACE慢叶/未来用途审查按原边界保留，不宣称全生态加速或所有测试全绿；主检出本计划代码/规范/账本路径clean，他方已观察文档WIP保持不变 / next: done。
+
+stage: goal | plan_id: PLAN-888 | plan_revision: r3 | round: 12 | from: merge | to: done | status: archived | outcome: pass | worktree: removed after four fresh clean guards | commit: 5a6c23afacd3c40412c5561a5ba2ae322a119c2e | next: done
+
 ## 10. 待澄清事项
 
 ### r3当前状态
 
-旧M888完整A/B/C矩阵阻塞不再阻止模块优先工作；没有待重复批准的范围决定。特别长用例逐ID提交人工处理清单，未收到逐项决定前不改变其启用状态；旧D-05/06/08仅按r3解释，其历史证据不删除。
+旧M888完整A/B/C矩阵阻塞不再阻止模块优先工作；没有待重复批准的范围决定。13项ACE慢叶已按用户决定交ACE路线/893，不自动关闭；原11项的raw待定状态只保留原测量时点，当前没有未答交接问题。旧D-05/06/08仅按r3解释，历史证据不删除。
 
 
 ### 2026-10-29 历史入口核查（2026-10-30 用户已解除交接/窗口阻塞）
