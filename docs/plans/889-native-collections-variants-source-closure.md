@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: executing
+status: execution_done
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 5
+current_step: 6
 total_steps: 10
 ---
 
@@ -193,7 +193,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
-| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
+| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
@@ -466,3 +466,18 @@ goal_receipt: objective=完成计划889 | goal_round=9 | stage=merge | outcome=n
 
 2026-10-30 work第10轮诊断补证/更正：前条“停止PID19928”在核对期间已过时——实际进程已由nextest fail-fast退出，安全身份核验拒绝发送taskkill，因此**没有终止动作**。实取gate session退出100，158.526s，137/3217执行：122pass、2fail、13timeout、675skip，3080未跑。两fail均889：实际whole-copy控制报runtime-content而没发生预期copy；source SDK L03同报library changed。该真实错误与stale bitflip测试同时pass的时间对应，确认F889-M1不只是理论竞窗。13timeout均旧ac_case/ac_av/cte冷构建消费（原日志逐项保存），仍需隔离重放归因，不把它们豁免成green。Test输出改写了tracked p818-series.json，先复制本地baseline/merge-t-generated-p818-series.json再精确restore该既有报告，不提交更新报告。
 - 修复仅889 stale test：物理复制同一runtime/shim源与有效Cargo配置、已认证库/receipt到测试私有镜像；该进程AUTO_LANG_ROOT只指私有源/库，生产worker仍按同一源码/build/content检查。真实同长度bitflip与恢复只作用私有库，前后断言共享产品库逐字不变；环境RAII还原，无symlink/junction。定向stale test已实际通过exit0，3.90s；正在同一nextest并行池复跑889非ignored具名族验证shared source/whole-copy等真实兄弟，formal/perf/512不重跑（生产代码/输入完全零diff）。
+
+
+### 2026-10-30 work第10轮完成：F889-M1已修，6/10
+
+stage:work | plan_revision:2 | outcome:pass | repair_commit:44ed8db40 | worktree:D:/autostack/.wt/lang-889/auto-lang | branch:plan-889-dev | next:review(affected F889-M1) | blocker:none。
+- F889-M1最小修复只改根ace_m1_tests.rs该具名stale控制56行及移除1行共享路径：复制本次实际runtime/shim源/有效Cargo配置、实际库和认证receipt至私有目录，真实worker仍prepare/hash/验证它，bitflip仍同长度真实byte，stale轴断言和恢复Fresh不变。原共享库前后逐字保持，新RAII还原AUTO_LANG_ROOT。没有修改生产pipeline、ABI/cache/protocol、源/样本/门限或runner/filter。
+- `cargo test -p auto-lang --features test-cases --lib ace_m1_native_collections_889_report_runtime_content_identity_is_current -- --test-threads=1 --nocapture` 1/1，3.90s；随后用实际nextest多进程并行池 `cargo nextest run -p auto-lang --lib --features test-cases -E 'test(ace_m1_native_collections_889_)'` 6/6，26.643s，包括原失败source SDK40与真实whole-front/lower/copy反控、真实漏free/错oracle+type、rounds/restart/stale全部通过。该test实际进入新私有镜像，且共享库字节不变断言通过，不是靠串行组掩盖竞态。
+- 旧timeout归因代表隔离重放（未改相应代码/断言/超时/过滤）：`cargo test ... --lib tests::ac_case_tests::r1_consumer_streams_observed_not_rejected -- --exact --test-threads=1 --nocapture` 1/1，1.72s；同入口`tests::ac_cte_probe_tests::cte_probe_wrong_exit_not_green` 1/1，15.68s。表明冷构建并行窗相关；不据两代表自动把全部13timeout当pass，后续merge统一门必须新冻结再完整跑过。开发本轮没有重跑裸t/tv或正式性能/512。
+- 健康检查精确rustfmt/diff-check过，只有上述自有test改动，tracked p818输出已先保留本地再restore；authority clean。生产代码、正式采样器、依赖与输入无改，全部既有语义/性能/512/SD证据保留，不重新开其预算或阈值；本轮只闭合受影响AC-05/06测试隔离，final pass需更新baseline。
+- 本地baseline/repair-m1-private-library.log SHA256 `902d73250fe8de169dffb8db02afffe9f31acc0d254ad09f8b3edd9b1ad73770`。
+- 本地baseline/repair-m1-nextest-parallel.log SHA256 `21870102af2c981e1b0a4287da2b5957a1160df830cfe2c96c874c75b526ec88`。
+- 本地baseline/repair-gate-cold-native-replay.log SHA256 `256e43aa1e7bc6a70fb7397b83e4c53cb71263398a92a82d5b54f6dee146c2bd`。
+- 本地baseline/repair-gate-cold-cte-replay.log SHA256 `242c13c06be17093f4ba5bbd2f15a4e28af6ebcb98417fb2d644e4c783c47bba`。
+- 本地baseline/merge-cargo-t.log SHA256 `fd76d8ce501cf42f3f446a82b9bcb8d89fc29a2f4a10f59bf5b786e8b358a362`。
+goal_receipt: objective=完成计划889 | goal_round=10 | stage=work(repair) | outcome=execution_done | completed_tasks=6/10 | next=review(affected) | blocker=none | goal_active=true。
