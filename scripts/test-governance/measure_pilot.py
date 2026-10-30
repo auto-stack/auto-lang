@@ -134,6 +134,7 @@ def busy_processes():
     if result.returncode:
         raise ValueError('external workload observation failed; no sample admission')
     snapshot=json.loads(result.stdout)
+    snapshot['observed_monotonic_seconds']=time.monotonic()
     busy,services=classify(snapshot,_previous_workload_snapshot)
     _previous_workload_snapshot=snapshot
     _background_observations.append({'time':time.time(),'idle_loopback_services':services,'busy':busy})

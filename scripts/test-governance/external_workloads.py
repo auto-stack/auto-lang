@@ -1,16 +1,21 @@
-"""Distinguish actual compiler/test jobs from an unchanged idle loopback service."""
+"""Distinguish compiler/test jobs from identity-stable, bounded-CPU loopback services."""
 import math
 from pathlib import PureWindowsPath
 import re
 
 ACTIVE = {'rustc.exe', 'cargo-nextest.exe', 'av_probe_worker.exe', 'ac-case-worker.exe',
           'mn-worker.exe', 'mn-collections-worker.exe', 'test-case-pilot.exe', 'rust-lld.exe', 'link.exe', 'cl.exe'}
+IDLE_CPU_FRACTION = 0.01  # fraction of one CPU, not percentage of all cores
+CPU_ACCOUNTING_TICK_SECONDS = 1 / 64  # observed Windows accounting quantum
 
 
 def classify(snapshot, previous=None):
     rows = snapshot['processes']
     current = {r['pid']: r for r in rows}
     old = {r['pid']: r for r in (previous or {}).get('processes', [])}
+    elapsed = snapshot.get('observed_monotonic_seconds', 0) - (previous or {}).get('observed_monotonic_seconds', 0)
+    interval_valid = math.isfinite(elapsed) and 0 < elapsed <= 90
+    limit = max(CPU_ACCOUNTING_TICK_SECONDS, elapsed * IDLE_CPU_FRACTION) if interval_valid else 0
     if len(current) != len(rows):
         raise ValueError('duplicate process identity in workload observation')
     busy, services = [], []
@@ -42,7 +47,7 @@ def classify(snapshot, previous=None):
                 and all(p['name'].lower() in ('cargo.exe', expected) for p in members))
             listeners = ([p for p in snapshot['listeners'] if p['pid'] == backends[0]['pid']]
                          if candidate else [])
-            stable = candidate and listeners and all(p['address'] in ('127.0.0.1', '::1')
+            stable = candidate and interval_valid and listeners and all(p['address'] in ('127.0.0.1', '::1')
                 and isinstance(p['port'], int) and 0 < p['port'] < 65536 for p in listeners)
             for member in members:
                 prior = old.get(member['pid'])
@@ -52,24 +57,38 @@ def classify(snapshot, previous=None):
                     and member['name'] == prior.get('name')
                     and member.get('command') == prior.get('command')
                     and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
-                    and value == prior.get('cpu'))
+                    and isinstance(prior.get('cpu'), (int, float)) and math.isfinite(prior['cpu'])
+                    and value >= prior['cpu'])
             if candidate:
                 details = [{'pid': p['pid'], 'name': p['name'], 'created': p.get('created'),
                             'cpu': p.get('cpu'), 'previous_cpu': old.get(p['pid'], {}).get('cpu'),
                             'previous_created': old.get(p['pid'], {}).get('created')} for p in members]
+            delta = sum(p['cpu'] - p['previous_cpu'] for p in details) if stable else None
+            stable = stable and delta <= limit
             if stable:
                 services.append({'cargo_pid': row['pid'], 'backend_pid': backends[0]['pid'],
                     'backend_name': backends[0]['name'], 'created': backends[0]['created'],
-                    'cpu': backends[0]['cpu'], 'unchanged_cpu': True, 'loopback_listeners': listeners,
+                    'cpu': backends[0]['cpu'], 'within_idle_cpu_budget': True, 'loopback_listeners': listeners,
+                    'cpu_delta_seconds': delta, 'interval_seconds': elapsed, 'cpu_limit_seconds': limit,
                     'members': details})
                 continue
-            reason = 'Cargo workload or service not proven unchanged and idle'
+            reason = 'Cargo workload or service not proven within fixed idle reference budget'
         elif name not in ACTIVE:
             continue
         observation = {'Id': row['pid'], 'ProcessName': row['name'], 'reason': reason}
         if details:
             observation['service_candidate_members'] = details
         busy.append(observation)
+    # A service can have multiple Cargo launchers. Count every actual process
+    # once when enforcing the complete background-service CPU allowance.
+    unique = {p['pid']: p for service in services for p in service['members']}
+    total = sum(p['cpu'] - p['previous_cpu'] for p in unique.values())
+    if total > limit:
+        busy.extend({'Id': s['cargo_pid'], 'ProcessName': 'cargo.exe',
+            'reason': 'aggregate idle service CPU budget exceeded',
+            'background_cpu_delta_seconds': total, 'cpu_limit_seconds': limit,
+            'service_candidate_members': s['members']} for s in services)
+        services = []
     return busy, services
 
 
