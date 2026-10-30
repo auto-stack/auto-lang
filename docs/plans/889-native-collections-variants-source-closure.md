@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: execution_done
+status: reviewed
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -194,7 +194,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
-| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
+| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
 | T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
@@ -426,3 +426,28 @@ stage: work | plan_id: PLAN-889 | plan_revision: 2 | outcome: pass（work-owned�
 - readiness:AC-01..06 pass；T-01..06已勾；T-07/AC-07独立final验收尚未执行。pending_closeout_gates:merge-owned裸cargo t+必要tv及实际experimental定向、到期tf判定、SD/ledger/index、archive/guard清理。work pass不授权跳过它们。
 
 goal_receipt: objective=完成计划889 | goal_round=7 | stage=work | outcome=execution_done | completed_tasks=6/10 | next=review(final) | blocker=none | goal_active=true。
+
+
+### 2026-10-30 final review 第8轮：pass，merge-owned门仍pending
+
+stage: review | review_scope: final | reviewer_identity: Codex /root，本聊天内单独复审阶段 | limitations: 未创建其他chat/agent；本复审与实施同一上下文，不声称独立模型/外部reviewer。实施已停写；结论从实际75文件diff、原输入/绑定、生产/事务/信任边界、测试断言和raw结果重建，不以执行者勾选/总数代证据 | plan_id: PLAN-889 | plan_revision:2 | outcome:pass | worktree_path:D:/autostack/.wt/lang-889/auto-lang | branch:plan-889-dev | reviewed_commit:e188033c4e7866d19bc4e152937e6e1052b8ac69 | base_commit:e0b29ff7a（完整SHA见work交接） | dependencies:auto-down=c3464d0a0d36e4f8a7988b0c0c26448fc52361b4; auto-ui=3d6e1f15c1142aa797734edc26dca561511b72c3 | next:merge。
+
+| 验收 | 复审核对/执行与结论 |
+|---|---|
+| AC-01 / V-01/02 / T-01/02/04/06 | 独立git-show基面逐字比17原源；14L/V仅native单元及来源注记改变，其他111行和所有其他列不变，原oracle/源/分母不动。正式40检查映射17原native+17AV+3补例×2；原L04/L05投影与L06专属trap证据、typed Clone独立起点及source clone拒面未混写。pass。 |
+| AC-02 / V-03..05/08 / T-02/03/06 | 核runtime Cell/Frame/registry、List/Variant prepare→commit、clone显式工作栈/无分配drop、文本hooks/combined arena+registered边界、fatal caller sweep/普通70区别；核实际PE/typed/raw负控断言与T-02/03/06日志。共享ownership只省全scalar恒空表，原规则/诊断/保守预算与资源类型路径保留；768dense对照、owned25/collections59/native typed5及新物理峰证据有效。pass。 |
+| AC-03 / V-06/07 / T-05/06 | 核fragment实际lexer/parser范围、新intern池与body同候选、exclusive validate/commit、UTF8目录与mint/current坐标、实际Rc身份和producer hook、history COFF复用但MIR重mint、声明显式失效。commit前重检runtime、全部fallible link/run/pub先于源候选安装；私有状态/独占引用保证validate后env不变。whole frontend/lower/同字节新对象反控实际发生且红；Native7重放覆盖失败/cancel/stale/foreign和prepared runtime漂移。pass。 |
+| AC-04 / V-07/09/11 / T-04/06 | 核live credential不可Serialize、持久恢复再深验、manifest required闭包/源码坐标/COFF与实际runtime/tool内容、分页读取先查chunk地址再bounded读。独立执行33项实际伪造manifest身份/坐标/源控制：每项link/codegen0，旧PE/root不变。另独立执行合法三页COFF命中→manifest→新driver restart真42/codegen forbidden，漏页/超页控制拒绝。性能两轮failed整体保持；新fresh/restart各30的pass、旧hit/body/history各30+512与新9代表/close按确切修复分界复用合理，无削门/删样本/预备helper移窗。pass。 |
+| AC-05 / V-10 / T-06 | 核独立父侧原始stderr/exit/memory/stage/identity解析，正式SDK不收expected，错oracle/type/真实漏free红、正常70不冒trap。新recipe/专用worker与旧receipt/protocol默认分离；完整campaign入口仍五×30+512，repair明确scope/churn0，两份结果没有冒称一次full绿。pass。 |
+| AC-06 / V-08/09 / T-01..06 | 核S/N/H逐子窗接受/提交释放与main/888差额；唯一shared lower，无AV执行fallback/旧HIR→CLIF；根Cargo依赖及AV executor/ABC/opcode/contract受保护文件零diff。shim默认allocator与旧域路径保留，旧cache/CLI/protocol兼容证据适用。检查旧certify消费者实际按binding第8列a2r的ok-emit选择，14个第5列native变更不扩大旧10行证书集，无该调用缺口。pass。 |
+| AC-07 / SD-01..05 / T-07 | 五现有Spec SHA与main逐字相同，新目标不存在；草案正确区分旧通用emit准入与显式collections路径、源码Str.clone/typed容器Clone、native静态增量与旧AV whole-source/HMR限制。六目标/四模块、supersedes/new路径及真实GOAL-002完整；SD SHA冻结4c8f12234cd52093f401fb1e3692e6050d14d9247bb746d617f4f706a2449eaa。未发布canonical或ledger。pass。 |
+
+- 遗漏/延后/workaround扫描：未发现本合同内未完成项或擅自延后。源码支持并未靠typed替代；cold按原源字节选择批，大body走原single不是语言新上限；资源侧表优化不跳过验证。W01..05/typed entry/native在线帧/AV旧whole-source为既有明确排除或891规划，未冒关闭。没有需新增的debt candidate；已读KNOWN-DEBT-AND-RISKS既有记录，未为凑记录重写债务簿。
+- health：无todo!/unimplemented!/dbg!；唯一collections candidate retained stderr为真实清理失败报告，非调试残留。新增代码无warning，已有Core/语言/AV警告数量及来源前记录保留；精确rustfmt --check与git diff --check通过，tree clean。所有raw仍本地，复审未修改实施代码。
+- 独立执行命令：native manifest下 `cargo test --test collections_driver_tier collections_restore_rejects_all_forged_identity_axes_before_link_or_codegen -- --test-threads=1 --nocapture`（1test×33变异，4.54s exit0）；同文件 `collections_paged_coff_hit_keeps_required_closure_and_bounds_page_reads`（1test，1.36s exit0）。其余按已读断言/原raw/实际revision与明确不变性复用，不无由重跑全套性能/资源档。原源码/绑定/Spec的独立审计脚本exit0。
+- 本地baseline/review-final-identity-controls.log SHA256 `3a36bc12be0c3b71af42ec0a91875aaabde65393748860af66ba9ae00222c82e`。
+- 本地baseline/review-final-paged-closure.log SHA256 `01781ed25216a169d9957b75add429d624cbaa867b42d0c4a1cb0ab620e1b7a3`。
+- 本地baseline/review-final-static-audit.json SHA256 `406babc03160cb95283328ce62634d1af2a0122d7cfb62b5f0cbc11f9850b02c`。
+- findings: none（无待闭合in-contract项）；pending_closeout_gates: **merge-owned裸cargo t + VM/编译器触面cargo tv +实际experimental定向冻结验收门**；不得据此pass直接合入。cargo tf仅到期判定后主检出单实例批量回归；Spec/ledger/index/归档/guard清理仍T-09/10。Plan置reviewed，7/10，AC-08/09尚pending。
+
+goal_receipt: objective=完成计划889 | goal_round=8 | stage=review(final) | outcome=pass | reviewed_commit=e188033c4e7866d19bc4e152937e6e1052b8ac69 | completed_tasks=7/10 | next=merge | blocker=none | goal_active=true。
