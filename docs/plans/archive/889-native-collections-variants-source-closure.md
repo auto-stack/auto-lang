@@ -553,3 +553,5 @@ SD-01..05已落六canonical合同，四模块project/overview/plans与三ADR、�
 - 保留baseline/merge-final-range-diff.txt SHA256 `9da78f6eda55f4340c2860634ba425c53ac34f60c28fb7555bbc5d7c0e213b41`。
 
 goal_receipt: objective=完成计划889 | goal_round=12 | stage=merge | outcome=pass | completed_tasks=10/10 | delivery_commit=50cd6f7778fa5332b2807e0d5bbc22a7d2ac2389 | archive=docs/plans/archive/889-native-collections-variants-source-closure.md | cleanup=verified | next=done。
+
+最终actual-state复核补记：首个计数探针误将§4/§6的4个T-前缀说明行也计入，assert报红，属于探针范围错误而非任务未完成；已限定§8并按精确T-01..10 IDs重验，十行全[x]、frontmatter10/10/archived、真实archive/ledger项链接及三仓worktree/branch/group移除均通过。该文档核验不重跑已闭合代码门。
