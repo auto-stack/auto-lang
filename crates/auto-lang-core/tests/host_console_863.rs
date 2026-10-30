@@ -1,6 +1,8 @@
 #![cfg(feature = "test-cases")]
 //! Real worker/parent tests: independent byte oracles and fail-closed controls.
-use auto_lang_core::test_cases::{ac_av, run_suite, stale};
+use auto_lang_core::test_cases::{
+    ac_av, run_suite, stale, ac_cte::EXPECTED_MIR_LOWERING_VERSION,
+};
 use auto_test_case::{
     admission::Limits,
     discovery::load_suite,
@@ -55,7 +57,13 @@ fn console_863_real_corpus_and_stale_identity() {
             .cloned()
             .collect();
         assert_eq!(axes.get("av-profile").map(String::as_str), Some("8"));
-        assert_eq!(axes.get("mir-lowering").map(String::as_str), Some("3"));
+        // PLAN-894: the console corpus row carries the SHARED lowering
+        // contract version — assert the mirror constant, never a literal
+        // (a version bump must not need a fourth site patched by hand).
+        assert_eq!(
+            axes.get("mir-lowering").map(String::as_str),
+            Some(EXPECTED_MIR_LOWERING_VERSION)
+        );
     }
     let mut json: serde_json::Value = serde_json::from_str(&report.to_json()).unwrap();
     let fresh = stale::check(&suite, &json).unwrap();
