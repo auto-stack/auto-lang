@@ -30,6 +30,10 @@ name = "mn-worker"
 path = "src/bin/mn-worker.rs"
 
 [[bin]]
+name = "mn-collections-worker"
+path = "src/bin/mn-collections-worker.rs"
+
+[[bin]]
 name = "ac-native"
 path = "src/bin/ac-native.rs"
 

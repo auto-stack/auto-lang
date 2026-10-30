@@ -89,6 +89,11 @@ fn cap(kind: &str) -> Result<usize, MnError> {
     }
 }
 pub fn put_blob(store: &ManagedStore, kind: &str, bytes: &[u8]) -> Result<Blob, MnError> {
+    crate::collections_memory::scoped(crate::resources::Partition::Io, || {
+        put_blob_inner(store, kind, bytes)
+    })
+}
+fn put_blob_inner(store: &ManagedStore, kind: &str, bytes: &[u8]) -> Result<Blob, MnError> {
     if bytes.is_empty() || bytes.len() > cap(kind)? {
         return Err(MnError::Resource(
             "collections-blob",
@@ -248,6 +253,11 @@ fn visit_blob(
     Ok(())
 }
 pub fn get_blob(store: &ManagedStore, blob: &Blob, kind: &str) -> Result<Vec<u8>, MnError> {
+    crate::collections_memory::scoped(crate::resources::Partition::Io, || {
+        get_blob_inner(store, blob, kind)
+    })
+}
+fn get_blob_inner(store: &ManagedStore, blob: &Blob, kind: &str) -> Result<Vec<u8>, MnError> {
     // Validate claimed size before capacity allocation (also checked in visit).
     if blob.kind != kind || blob.len > cap(kind)? {
         return Err(bad("blob allocation cap"));

@@ -668,3 +668,447 @@ fn copy_tree(src: &Path, dst: &Path) {
         }
     }
 }
+
+/// PLAN-889 formal SDK: original 17 sources on both engines plus three owned
+/// List<Variant> combinations on both, each judged against its own oracle.
+#[test]
+fn ace_m1_native_collections_889_source_sdk() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/cases/ace-m1/native-collections-889.suite.ad");
+    let root = temp_root("native-collections-889");
+    let report =
+        run_suite(&suite, &root.join("out"), &Limits::defaults()).expect("889 formal source SDK");
+    let failures: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} {:?} {:?} {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(
+        report.results.len(),
+        40,
+        "17 original native +17 original AV+3 combinations x2"
+    );
+    assert!(report.coverage_gaps.is_empty());
+}
+
+#[test]
+fn ace_m1_native_collections_889_wrong_oracle_and_wrong_type_turn_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("native-collections-889-negative");
+    let corpus = root.join("corpus");
+    copy_tree(&suite, &corpus);
+    let file = corpus.join("native-collections-889.case.ad");
+    let original = std::fs::read_to_string(&file).unwrap();
+    let wrong = original.replacen(
+        "expect: { completion: \"success\", exit: 42 }",
+        "expect: { completion: \"success\", exit: 43 }",
+        1,
+    );
+    assert_ne!(wrong, original);
+    std::fs::write(&file, wrong).unwrap();
+    let report = crate::test_cases::run_suite_selected(
+        &corpus.join("native-collections-889.suite.ad"),
+        &root.join("oracle-out"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.l01-mn889".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .filter(|row| row.status != Status::NotRun)
+            .count(),
+        1
+    );
+    let wrongs: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass && r.status != Status::NotRun)
+        .collect();
+    assert_eq!(wrongs.len(), 1, "{:?}", wrongs);
+    assert_eq!(wrongs[0].case_id, "ace.m1.l01-mn889");
+    assert_eq!(wrongs[0].status, Status::Fail);
+    // Reuse the entire accepted suite but mutate a real original source in this
+    // private fixture; both the native and AV judges must reject the wrong type.
+    std::fs::write(&file, original).unwrap();
+    let source = corpus.join("src/L01.at");
+    let old = std::fs::read_to_string(&source).unwrap();
+    let wrong = old.replacen("List<int>", "List<Str>", 1);
+    assert_ne!(wrong, old);
+    std::fs::write(source, wrong).unwrap();
+    for id in ["ace.m1.l01-mn889", "ace.m1.l01-av864"] {
+        let report = crate::test_cases::run_suite_selected(
+            &corpus.join("native-collections-889.suite.ad"),
+            &root.join(format!("type-{id}")),
+            &Limits::defaults(),
+            &crate::test_cases::Selection {
+                case: Some(id.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            report
+                .results
+                .iter()
+                .filter(|row| row.status != Status::NotRun)
+                .count(),
+            1
+        );
+        assert_ne!(
+            report
+                .results
+                .iter()
+                .find(|row| row.status != Status::NotRun)
+                .unwrap()
+                .status,
+            Status::Pass
+        );
+    }
+    // A normal return70 has no trap marker and cannot satisfy original L06.
+    std::fs::write(corpus.join("src/L06.at"), "fn main() int { return 70 }").unwrap();
+    let report = crate::test_cases::run_suite_selected(
+        &corpus.join("native-collections-889.suite.ad"),
+        &root.join("normal70"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.l06-mn889".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .filter(|row| row.status != Status::NotRun)
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .find(|row| row.status != Status::NotRun)
+            .unwrap()
+            .status,
+        Status::Fail
+    );
+}
+
+#[test]
+fn ace_m1_native_collections_889_incremental_rounds_and_restore_sdk() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = temp_root("mn889-rounds");
+    let corpus = root.join("corpus");
+    std::fs::create_dir_all(&corpus).unwrap();
+    std::fs::write(corpus.join("main.at"),"fn helper() int { var xs=List<Str>.new()\n xs.push(\"hello\")\n return xs.get(0).len() + 37 }\nfn main() int { return helper() }").unwrap();
+    std::fs::write(corpus.join("rounds.case.ad"),r#"```test-case
+case { schema:"autolang.case/2",id:"mn889-rounds",source:{file:"main.at",syntax:"auto",path:"main.at"},entry:{mode:"program"},checks:[
+ {id:"mn",adapter:"probe",action:"run",options:{recipe:"ac/mir-native-collections-v1",mn:{entry:"d_main"},steps:[{op:"edit-source",from:"+ 37",to:"+ 38"},{op:"edit-source",from:"+ 38",to:"+ 37"},{op:"run"}]},expect:{completion:"success",exit:42}}
+] }
+```"#).unwrap();
+    std::fs::write(
+        corpus.join("rounds.suite.ad"),
+        r#"```test-suite
+suite {schema:"autolang.suite/2",id:"mn889-rounds",include:["rounds.case.ad"]}
+```"#,
+    )
+    .unwrap();
+    std::env::set_var("AC_MN_INCREMENTAL_EXPECT_EXITS", "43,42");
+    let result = run_suite(
+        &corpus.join("rounds.suite.ad"),
+        &root.join("rounds-out"),
+        &Limits::defaults(),
+    );
+    std::env::remove_var("AC_MN_INCREMENTAL_EXPECT_EXITS");
+    let report = result.unwrap();
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .filter(|row| row.status != Status::NotRun)
+            .count(),
+        1
+    );
+    assert_eq!(
+        report.results[0].status,
+        Status::Pass,
+        "{:?}",
+        report.results[0]
+    );
+    // Restart is a real second worker and consumes the exact persisted closure.
+    let text = std::fs::read_to_string(corpus.join("rounds.case.ad")).unwrap();
+    let start = text.find("steps:[").unwrap();
+    let end = text[start..].find("]},expect").unwrap() + start;
+    let text = format!(
+        "{}steps:[{{op:\"run\"}},{{op:\"restart\"}},{{op:\"run\"}}]{}",
+        &text[..start],
+        &text[end + 1..]
+    );
+    std::fs::write(corpus.join("rounds.case.ad"), text).unwrap();
+    let report = run_suite(
+        &corpus.join("rounds.suite.ad"),
+        &root.join("restart-out"),
+        &Limits::defaults(),
+    )
+    .unwrap();
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .filter(|row| row.status != Status::NotRun)
+            .count(),
+        1
+    );
+    assert_eq!(
+        report.results[0].status,
+        Status::Pass,
+        "{:?}",
+        report.results[0]
+    );
+    fn receipts(root: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                receipts(&entry.path(), out);
+            } else if entry.file_name() == "mn-probe-receipt.json" {
+                out.push(entry.path());
+            }
+        }
+    }
+    let mut files = vec![];
+    receipts(&root.join("restart-out"), &mut files);
+    assert_eq!(files.len(), 1);
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
+    let sessions = receipt["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 2);
+    let counters = sessions[1]["counters"].as_array().unwrap();
+    assert!(counters
+        .iter()
+        .any(|pair| pair[0] == "restored_mir_units_readmitted" && pair[1] == 2));
+    assert!(!counters.iter().any(|pair| pair[0] == "codegen_emit_units"));
+}
+
+#[test]
+fn ace_m1_native_collections_889_actual_missing_free_turns_parent_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/cases/ace-m1/native-collections-889.suite.ad");
+    let root = temp_root("mn889-missing-free");
+    std::env::set_var("AC_MN_COLLECTIONS_FAULT", "omit-frame-free");
+    let result = crate::test_cases::run_suite_selected(
+        &suite,
+        &root.join("out"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.l04-mn889".into()),
+            ..Default::default()
+        },
+    );
+    std::env::remove_var("AC_MN_COLLECTIONS_FAULT");
+    let report = result.unwrap();
+    assert_eq!(
+        report
+            .results
+            .iter()
+            .filter(|row| row.status != Status::NotRun)
+            .count(),
+        1
+    );
+    let row = report
+        .results
+        .iter()
+        .find(|row| row.status != Status::NotRun)
+        .unwrap();
+    assert_eq!(row.status, Status::Error, "{row:?}");
+    assert!(
+        row.mismatches.iter().any(|m| m
+            .actual
+            .contains("native owned resource leak/invalid release")),
+        "{row:?}"
+    );
+    fn evidence(root: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                evidence(&entry.path(), out);
+            } else if entry.file_name() == ".mn889-omitted-free.json" {
+                out.push(entry.path());
+            }
+        }
+    }
+    let mut files = vec![];
+    evidence(&root, &mut files);
+    assert_eq!(files.len(), 1);
+    let fact: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
+    assert!(fact["omitted_native_returns"].as_u64().unwrap() > 0);
+    assert_eq!(fact["codegen_units"], 1);
+    assert_eq!(fact["exit_code"], 42);
+    let raw =
+        std::fs::read_to_string(files[0].with_file_name(".mn889-omitted-free.stderr")).unwrap();
+    assert!(raw.lines().any(|line| line
+        .strip_prefix("MN-COLL registered_bytes=")
+        .and_then(|n| n.parse::<u64>().ok())
+        .is_some_and(|n| n > 0)));
+    println!(
+        "real omitted native free evidence: {} {fact}",
+        files[0].display()
+    );
+}
+
+/// Dedicated serial measurement window. Never substitute this for source SDK
+/// conformance; it writes every attempt before evaluating the five path gates.
+#[test]
+#[ignore = "PLAN-889 formal release-worker timing and512-revision retained campaign; run explicitly in a serial measurement window"]
+fn ace_m1_native_collections_889_formal_performance_and_churn() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let source = include_str!("../../test/cases/ace-m1/src/N889Load.at");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/plans/attachments/889/baseline")
+        .join(format!(
+            "formal-campaign-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    println!("889 formal campaign evidence {}", root.display());
+    let result = crate::test_cases::ac_mn::run_collections_campaign(source, &root)
+        .unwrap_or_else(|error| panic!("{error}; retained attempts: {}", root.display()));
+    println!("889 formal result {result}");
+    assert_eq!(result["complete"], true);
+    assert_eq!(result["passed"], true, "{result}");
+}
+
+#[test]
+fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/cases/ace-m1/native-collections-889.suite.ad");
+    let root = temp_root("mn889-stale");
+    let report = crate::test_cases::run_suite_selected(
+        &suite,
+        &root.join("out"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.l04-mn889".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let row = report
+        .results
+        .iter()
+        .find(|row| row.case_id == "ace.m1.l04-mn889")
+        .unwrap();
+    assert_eq!(row.status, Status::Pass, "{row:?}");
+    assert_eq!(row.native.as_ref().unwrap().toolchain.len(), 9);
+    let value: serde_json::Value = serde_json::from_str(&report.to_json()).unwrap();
+    let check = || {
+        crate::test_cases::stale::check(&suite, &value)
+            .unwrap()
+            .into_iter()
+            .find(|row| match row {
+                crate::test_cases::stale::RowVerdict::Fresh { case, .. }
+                | crate::test_cases::stale::RowVerdict::Stale { case, .. } => {
+                    case == "ace.m1.l04-mn889"
+                }
+            })
+            .unwrap()
+    };
+    assert!(matches!(
+        check(),
+        crate::test_cases::stale::RowVerdict::Fresh { .. }
+    ));
+    let library=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../experimental/ac-mir-native/runtime/collections/target/x86_64-pc-windows-msvc/release/ac_collections_runtime.lib");
+    struct RestoreFile {
+        path: PathBuf,
+        bytes: Vec<u8>,
+    }
+    impl Drop for RestoreFile {
+        fn drop(&mut self) {
+            std::fs::write(&self.path, &self.bytes).expect("restore owned runtime content");
+        }
+    }
+    let saved = RestoreFile {
+        bytes: std::fs::read(&library).unwrap(),
+        path: library.clone(),
+    };
+    let mut wrong = saved.bytes.clone();
+    let middle = wrong.len() / 2;
+    wrong[middle] ^= 1;
+    std::fs::write(&library, &wrong).unwrap();
+    assert_eq!(
+        std::fs::metadata(&library).unwrap().len(),
+        saved.bytes.len() as u64
+    );
+    let stale = check();
+    assert!(
+        matches!(&stale,crate::test_cases::stale::RowVerdict::Stale{drifted_axes,..} if drifted_axes.iter().any(|axis|axis.contains("collections-runtime-content"))),
+        "{stale:?}"
+    );
+    drop(saved);
+    assert!(matches!(
+        check(),
+        crate::test_cases::stale::RowVerdict::Fresh { .. }
+    ));
+}
+
+#[test]
+fn ace_m1_native_collections_889_real_whole_work_and_code_copy_turn_sdk_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = temp_root("mn889-real-degeneration");
+    let corpus = root.join("corpus");
+    std::fs::create_dir_all(&corpus).unwrap();
+    std::fs::write(corpus.join("main.at"),"fn helper() int { var xs=List<Str>.new()\n xs.push(\"hello\")\n return xs.get(0).len() + 37 }\nfn main() int { return helper() }").unwrap();
+    std::fs::write(corpus.join("case.ad"),r#"```test-case
+case { schema:"autolang.case/2",id:"mn889-degeneration",source:{file:"main.at",syntax:"auto",path:"main.at"},entry:{mode:"program"},checks:[
+ {id:"mn",adapter:"probe",action:"run",options:{recipe:"ac/mir-native-collections-v1",mn:{entry:"d_main"},steps:[{op:"edit-source",from:"+ 37",to:"+ 38"},{op:"run"}]},expect:{completion:"success",exit:43}}
+] }
+```"#).unwrap();
+    std::fs::write(
+        corpus.join("suite.ad"),
+        r#"```test-suite
+suite {schema:"autolang.suite/2",id:"mn889-degeneration",include:["case.ad"]}
+```"#,
+    )
+    .unwrap();
+    for (fault, actual) in [
+        ("whole-front", "actual parsed"),
+        ("whole-lower", "negative_control_lower:main"),
+        ("copy-unchanged", "negative_control_same_content_copy"),
+    ] {
+        std::env::set_var("AC_MN_COLLECTIONS_FAULT", fault);
+        let result = run_suite(
+            &corpus.join("suite.ad"),
+            &root.join(fault),
+            &Limits::defaults(),
+        );
+        std::env::remove_var("AC_MN_COLLECTIONS_FAULT");
+        let report = result.unwrap();
+        assert_eq!(report.results.len(), 1);
+        let row = &report.results[0];
+        assert_eq!(row.status, Status::Error, "{row:?}");
+        assert!(
+            row.mismatches.iter().any(|m| m.actual.contains(actual)),
+            "actual degeneration was not observed for {fault}: {row:?}"
+        );
+    }
+}

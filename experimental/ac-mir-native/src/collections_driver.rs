@@ -273,7 +273,7 @@ impl MnDriver {
         coordinates: &[art::Coordinate],
         workdir: &Path,
         obs: &mut Obs,
-    ) -> Result<(MnBuild, link_driver::PeRun, Option<art::Blob>), MnError> {
+    ) -> Result<(MnBuild, link_driver::PeRun, Option<art::Blob>, [String; 3]), MnError> {
         let entry = check_interfaces(units.iter().map(|unit| &unit.interface), entry)?;
         let (lld, sdk, kernel32) = obs.span("link_identity", |_| {
             link_driver::collections_link_identities()
@@ -286,8 +286,10 @@ impl MnDriver {
                 }
                 blob.clone()
             } else {
-                let bytes =
-                    std::fs::read(&runtime.library).map_err(|e| MnError::Infra(e.to_string()))?;
+                let bytes = crate::collections_memory::scoped(Partition::Io, || {
+                    std::fs::read(&runtime.library)
+                })
+                .map_err(|e| MnError::Infra(e.to_string()))?;
                 obs.ledger.charge(Partition::Io, bytes.len() as u64);
                 let blob = obs.span("runtime_persist", |_| {
                     art::put_blob(self.store.as_ref().unwrap(), "runtime", &bytes)
@@ -321,7 +323,9 @@ impl MnDriver {
             obs.ledger.charge(Partition::Io, unit.coff.len() as u64);
             objects.push(ObjectInput {
                 name: unit.meta.unit.clone(),
-                bytes: unit.coff.as_ref().clone(),
+                bytes: crate::collections_memory::scoped(Partition::Io, || {
+                    unit.coff.as_ref().clone()
+                }),
             });
         }
         rows.sort_by(|a, b| a.meta.unit.cmp(&b.meta.unit));
@@ -382,6 +386,7 @@ impl MnDriver {
             build,
             run.ok_or_else(|| bad("missing resident execution"))?,
             if persist { Some(blob) } else { None },
+            [manifest.lld, manifest.sdk, manifest.kernel32],
         ))
     }
 
@@ -726,10 +731,11 @@ impl MnDriver {
             if row.meta.owner_schema != auto_av_core::contract::MIR_COLLECTIONS_SCHEMA {
                 return Err(bad("unexpected MIR owner schema"));
             }
-            let unit = auto_av_core::verify_abc_bytes(&wire, &row.meta.to_meta().owner)
-                .map_err(|e| bad(format!("MIR wire admission: {e:?}")))?
-                .module()
-                .clone();
+            let unit = crate::collections_memory::scoped(Partition::MirSymbol, || {
+                auto_av_core::verify_abc_bytes(&wire, &row.meta.to_meta().owner)
+                    .map(|checked| checked.module().clone())
+                    .map_err(|e| bad(format!("MIR wire admission: {e:?}")))
+            })?;
             coordinates
                 .get(unit.funcs[0].name.as_str())
                 .ok_or_else(|| bad("missing unit source coordinates"))?
@@ -893,6 +899,7 @@ impl MnDriver {
             } else {
                 None
             };
+            crate::collections_memory::check()?;
             let mut already_rooted = false;
             let mut superseded = Vec::new();
             if let (Some(store), Some(project), Some(id)) =

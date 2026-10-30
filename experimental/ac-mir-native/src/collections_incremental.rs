@@ -70,6 +70,7 @@ pub struct CollectionsIncrementalSession {
     driver: MnDriver,
     runtime: Option<runtime::Identity>,
     runtime_blob: Option<art::Blob>,
+    link_identity: Option<[String; 3]>,
     support: Option<PathBuf>,
     entry: String,
     workdir: PathBuf,
@@ -87,6 +88,7 @@ fn invalid(message: impl Into<String>) -> MnError {
     MnError::Admit("collections-session", message.into())
 }
 fn check_ledger(obs: &Obs) -> Result<(), MnError> {
+    crate::collections_memory::check()?;
     let violations = obs.ledger.violations();
     if violations.is_empty() {
         Ok(())
@@ -145,7 +147,7 @@ impl CollectionsIncrementalSession {
             .discharge(Partition::Staging, crate::config::PAGE_BYTES as u64);
         let mint_origins: Vec<_> = regions.iter().map(|region| region.item.start).collect();
         let coordinates = coordinate_records(&units, &regions, &mint_origins, source)?;
-        let (build, run, runtime_blob) = driver.run_resident_collections(
+        let (build, run, runtime_blob, link_identity) = driver.run_resident_collections(
             &units,
             source,
             entry,
@@ -173,6 +175,7 @@ impl CollectionsIncrementalSession {
             driver,
             runtime: Some(prepared.identity),
             runtime_blob,
+            link_identity: Some(link_identity),
             support: support.map(Path::to_path_buf),
             entry: entry.into(),
             workdir: workdir.into(),
@@ -199,6 +202,12 @@ impl CollectionsIncrementalSession {
     }
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+    pub fn runtime_identity(&self) -> Option<&runtime::Identity> {
+        self.runtime.as_ref()
+    }
+    pub fn link_identity(&self) -> Option<&[String; 3]> {
+        self.link_identity.as_ref()
     }
     pub fn manifest_id(&self) -> Option<&str> {
         self.manifest_id.as_deref()
@@ -435,17 +444,21 @@ impl CollectionsIncrementalSession {
             obs.span("verify_hir", |_| {
                 auto_ac_prototype::verify::verify_function_ref(bundle, def).map_err(frontend)
             })?;
-            let mir = obs.span("mir_lower", |o| {
-                o.counter(&format!("mir_lower:{name}"), 1);
-                auto_mir_lower::hir_adapter::lower_function_collections_unit(
-                    bundle,
-                    &name,
-                    &[],
-                    auto_av_core::contract::fnv1a64(source.as_bytes()),
-                )
-                .map_err(|e| MnError::Unsupported("adapter", format!("{e:?}")))
+            let mir = crate::collections_memory::scoped(Partition::MirSymbol, || {
+                obs.span("mir_lower", |o| {
+                    o.counter(&format!("mir_lower:{name}"), 1);
+                    auto_mir_lower::hir_adapter::lower_function_collections_unit(
+                        bundle,
+                        &name,
+                        &[],
+                        auto_av_core::contract::fnv1a64(source.as_bytes()),
+                    )
+                    .map_err(|e| MnError::Unsupported("adapter", format!("{e:?}")))
+                })
             })?;
-            let checked = crate::collections_lower::CheckedCollectionUnit::admit(Rc::new(mir))?;
+            let checked = crate::collections_memory::scoped(Partition::MirSymbol, || {
+                crate::collections_lower::CheckedCollectionUnit::admit(Rc::new(mir))
+            })?;
             let interface = checked_collection_interface(&checked)?;
             check_resident_interfaces(
                 units
@@ -632,6 +645,21 @@ impl CollectionsIncrementalSession {
         }
         let started = Instant::now();
         let mut work = prepared.work;
+        let current_runtime = work.obs.span("runtime_commit_check", |o| {
+            let runtime = runtime::prepare(self.support.as_deref())?;
+            o.counter("runtime_cargo_invocations", runtime.cargo_invocations);
+            if runtime.identity != prepared.runtime.identity
+                || runtime.library != prepared.runtime.library
+            {
+                return Err(invalid("prepared runtime/configuration is stale"));
+            }
+            Ok(())
+        });
+        if let Err(error) = current_runtime {
+            work.elapsed_ms += started.elapsed().as_millis();
+            self.last_work = work;
+            return Err(error);
+        }
         let prior_blob = if self.runtime.as_ref() == Some(&prepared.runtime.identity) {
             self.runtime_blob.as_ref()
         } else {
@@ -655,7 +683,7 @@ impl CollectionsIncrementalSession {
         );
         work.elapsed_ms += started.elapsed().as_millis();
         self.last_work = work.clone();
-        let (build, run, blob) = match result {
+        let (build, run, blob, link_identity) = match result {
             Ok(result) => result,
             Err(error) => {
                 self.last_failure_run = self.driver.take_collections_run();
@@ -679,6 +707,7 @@ impl CollectionsIncrementalSession {
         self.units = prepared.units;
         self.runtime = Some(prepared.runtime.identity);
         self.runtime_blob = blob;
+        self.link_identity = Some(link_identity);
         self.manifest_id = build.manifest_artifact_id.clone();
         self.manifest_fp = build.manifest_fp.clone();
         Ok(CollectionRun {
@@ -702,6 +731,7 @@ impl CollectionsIncrementalSession {
         self.runtime = None;
         self.last_failure_run = None;
         self.runtime_blob = None;
+        self.link_identity = None;
         self.support = None;
         self.driver = MnDriver::ephemeral();
         self.closed = true;

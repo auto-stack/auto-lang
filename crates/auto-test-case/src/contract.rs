@@ -1526,7 +1526,7 @@ fn decode_options(
                             // PLAN-818 T-06: runs + discriminating edits +
                             // restart session boundaries (`query` stays a
                             // sema/abi op — recipes never borrow ops).
-                            "ac/mir-native-scalar-v1" => {
+                            "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source" | "restart")
                             }
                             _ => op != "run",
@@ -1638,7 +1638,10 @@ fn decode_options(
                             "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
                         ));
                     }
-                    if recipe == "ac/mir-native-scalar-v1" {
+                    if matches!(
+                        recipe.as_str(),
+                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                    ) {
                         // PLAN-818 T-06 session shape: leading edits
                         // materialize parent-side, `restart` splits worker
                         // sessions (a real new process each), and the judged
@@ -1917,7 +1920,10 @@ fn decode_options(
             };
             let mn = match f.sub("mn") {
                 None => {
-                    if recipe == "ac/mir-native-scalar-v1" {
+                    if matches!(
+                        recipe.as_str(),
+                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                    ) {
                         return Err(err(
                             &f.path_of("mn"),
                             "ac/mir-native-scalar-v1 requires an mn binding",
@@ -1926,7 +1932,10 @@ fn decode_options(
                     None
                 }
                 Some(v) => {
-                    if recipe != "ac/mir-native-scalar-v1" {
+                    if !matches!(
+                        recipe.as_str(),
+                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                    ) {
                         return Err(err(
                             &f.path_of("mn"),
                             format!(
@@ -2011,6 +2020,7 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "cte/scalar-query-v1",
     // PLAN-818: the MIR-native experimental recipe, same seam contract.
     "ac/mir-native-scalar-v1",
+    "ac/mir-native-collections-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.

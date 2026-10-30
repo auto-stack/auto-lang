@@ -179,6 +179,7 @@ pub fn check_with_families(
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
     let mut current_probe_console: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_collections: Option<BTreeMap<String, String>> = None;
     let mut current_probe_cte: Option<BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
@@ -325,7 +326,22 @@ pub fn check_with_families(
             // caching them in ONE slot made mixed suites
             // order-dependent (first recipe's map served the other's
             // rows). Separate lazies keep each family exact.
-            let current = if abi_probe_row {
+            let collections_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .is_some_and(|axes| {
+                        axes.iter().any(|pair| {
+                            pair[0].as_str() == Some("recipe")
+                                && pair[1].as_str()
+                                    == Some(crate::test_cases::ac_mn::COLLECTIONS_RECIPE)
+                        })
+                    });
+            let current = if collections_probe_row {
+                current_probe_collections.get_or_insert_with(
+                    crate::test_cases::ac_mn::current_collections_toolchain_identity,
+                )
+            } else if abi_probe_row {
                 current_probe_abi
                     .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
             } else if cte_probe_row {
@@ -392,6 +408,9 @@ pub fn check_with_families(
                             "abi-protocol",
                             "recipe",
                         ],
+                        Some(false) if collections_probe_row => {
+                            vec!["recipe", "mir-lowering", "mn-worker-exe-sha256"]
+                        }
                         Some(false) if cte_probe_row => vec![
                             "cte-worker-exe-sha256",
                             "cte-worker-version",
@@ -438,6 +457,16 @@ pub fn check_with_families(
                 } else {
                     vec!["worker-exe-sha256", "ac-worker-protocol"]
                 };
+                if collections_probe_row && linked {
+                    applicable.extend([
+                        "collections-runtime-abi",
+                        "collections-runtime-build",
+                        "collections-runtime-content",
+                        "collections-lld-content",
+                        "collections-sdk-version",
+                        "collections-kernel32-content",
+                    ]);
+                }
                 // PLAN-871 T-05: the backend axis is PER PROFILE (the switch
                 // is profile-scoped), so it is recomputed for THIS row's
                 // profile into a per-row copy of the family identity map

@@ -71,14 +71,20 @@ fn cold_produce<T>(
             .ok_or_else(|| backend("missing scoped declaration"))?;
         let credential = auto_ac_prototype::verify::verify_function_ref(&parts.bundle, def)?;
         debug_assert_eq!(credential.def_id_text(), name);
-        let unit = auto_mir_lower::hir_adapter::lower_function_collections_unit(
-            &parts.bundle,
-            name,
-            &[],
-            snapshot,
-        )
-        .map_err(|e| backend(format!("{e:?}")))?;
-        units.push(admit(unit)?);
+        let unit =
+            crate::collections_memory::scoped(crate::resources::Partition::MirSymbol, || {
+                auto_mir_lower::hir_adapter::lower_function_collections_unit(
+                    &parts.bundle,
+                    name,
+                    &[],
+                    snapshot,
+                )
+                .map_err(|e| backend(format!("{e:?}")))
+            })?;
+        units.push(crate::collections_memory::scoped(
+            crate::resources::Partition::MirSymbol,
+            || admit(unit),
+        )?);
         real_body_plans += receipt.real_body_plans;
         scaffold_declarations += receipt.scaffold_fns;
         // parts, Atom text and checked body die here; no whole-module Atom/HIR

@@ -934,7 +934,10 @@ fn dispatch_check(
         // PLAN-818 T-02: the MIR-native recipe appends under the same
         // contract (single writer per window; never a second runner).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref() == Some(ac_mn::MN_RECIPE) =>
+            if matches!(
+                check.options.probe_recipe.as_deref(),
+                Some(ac_mn::MN_RECIPE) | Some(ac_mn::COLLECTIONS_RECIPE)
+            ) =>
         {
             ac_mn::run_check(
                 resolved,

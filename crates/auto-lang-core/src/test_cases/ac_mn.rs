@@ -46,6 +46,9 @@ const SESSION_WALL: Duration = Duration::from_secs(120);
 const BUILD_WALL: Duration = Duration::from_secs(300);
 
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
+pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
+mod collections;
+pub use collections::campaign::run as run_collections_campaign;
 pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
@@ -68,6 +71,92 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
         EXPECTED_MIR_LOWERING_VERSION.to_string(),
     );
     m
+}
+
+fn runtime_toolchain_axes(runtime: &serde_json::Value) -> Vec<(String, String)> {
+    [
+        ("collections-runtime-abi", "abi"),
+        ("collections-runtime-build", "build_key"),
+        ("collections-runtime-content", "content_hash"),
+    ]
+    .into_iter()
+    .filter_map(|(axis, key)| {
+        runtime["runtime"]
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(|value| (axis.into(), value.into()))
+    })
+    .collect()
+}
+fn link_toolchain_axes(link: &serde_json::Value) -> Vec<(String, String)> {
+    [
+        "collections-lld-content",
+        "collections-sdk-version",
+        "collections-kernel32-content",
+    ]
+    .into_iter()
+    .enumerate()
+    .filter_map(|(index, key)| {
+        link.get(index)
+            .and_then(|value| value.as_str())
+            .map(|value| (key.into(), value.into()))
+    })
+    .collect()
+}
+fn native_toolchain(
+    recipe: &str,
+    exe_sha: String,
+    runtime: Option<&serde_json::Value>,
+) -> Vec<(String, String)> {
+    let mut axes = vec![
+        ("recipe".into(), recipe.into()),
+        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
+        ("mn-worker-exe-sha256".into(), exe_sha),
+    ];
+    if recipe == COLLECTIONS_RECIPE {
+        if let Some(runtime) = runtime {
+            axes.extend(runtime_toolchain_axes(runtime));
+            axes.extend(link_toolchain_axes(&runtime["link"]));
+        }
+    }
+    axes
+}
+fn bound_worker_sha(recipe: &str) -> Result<String, String> {
+    let binary = worker_binary_for(recipe)?;
+    if recipe == COLLECTIONS_RECIPE {
+        Ok(hex(&sha256(
+            &std::fs::read(binary).map_err(|e| e.to_string())?,
+        )))
+    } else {
+        worker_file_sha256(&binary)
+    }
+}
+pub fn current_collections_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    let mut axes = std::collections::BTreeMap::from([
+        ("recipe".into(), COLLECTIONS_RECIPE.into()),
+        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
+    ]);
+    if let Ok(hash) = bound_worker_sha(COLLECTIONS_RECIPE) {
+        axes.insert("mn-worker-exe-sha256".into(), hash);
+    }
+    let mut request = serde_json::json!({"recipe":COLLECTIONS_RECIPE,"nonce":"collections-current-identity","mode":"identity"});
+    let hash = hex(&sha256(request.to_string().as_bytes()));
+    request["request_hash"] = serde_json::json!(hash);
+    if let Ok(line) = call_worker(&request.to_string()) {
+        if let Ok(response) = serde_json::from_str::<serde_json::Value>(&line) {
+            if response["nonce"] == request["nonce"]
+                && response["request_hash"] == request["request_hash"]
+                && response["schema"] == MN_WORKER_PROTOCOL
+                && response["ok"]["recipe"] == COLLECTIONS_RECIPE
+            {
+                axes.extend(runtime_toolchain_axes(
+                    &serde_json::json!({"runtime":response["ok"]["runtime_identity"]}),
+                ));
+                axes.extend(link_toolchain_axes(&response["ok"]["link_identity"]));
+            }
+        }
+    }
+    axes
 }
 
 fn worker_file_sha256(exe: &Path) -> Result<String, String> {
@@ -133,13 +222,19 @@ fn locate_worker_exn() -> Result<PathBuf, String> {
 }
 
 fn build_worker(manifest: &Path) -> Result<PathBuf, String> {
+    build_worker_named(manifest, "mn-worker")
+}
+fn build_worker_named(manifest: &Path, bin: &str) -> Result<PathBuf, String> {
     let ws_root = manifest.parent().expect("workspace root");
-    let exe = ws_root.join("target").join("release").join("mn-worker.exe");
+    let exe = ws_root
+        .join("target")
+        .join("release")
+        .join(format!("{bin}.exe"));
     // ALWAYS build (no-op incremental builds are sub-second) under the
     // bounded wall — a stale binary silently unbinds evidence from source.
     let cargo = std::env::var("AC_MN_BUILD_CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
     let mut cmd = Command::new(&cargo);
-    cmd.args(["build", "--release", "-p", "ac-mn", "--bin", "mn-worker"])
+    cmd.args(["build", "--release", "-p", "ac-mn", "--bin", bin])
         .current_dir(ws_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -231,6 +326,49 @@ fn build_worker(manifest: &Path) -> Result<PathBuf, String> {
     Ok(exe)
 }
 
+fn request_recipe(request: &str) -> &'static str {
+    if serde_json::from_str::<serde_json::Value>(request)
+        .ok()
+        .and_then(|v| {
+            v.get("recipe")
+                .and_then(|r| r.as_str())
+                .map(|r| r == COLLECTIONS_RECIPE)
+        })
+        .unwrap_or(false)
+    {
+        COLLECTIONS_RECIPE
+    } else {
+        MN_RECIPE
+    }
+}
+fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
+    if recipe != COLLECTIONS_RECIPE {
+        return worker_binary();
+    }
+    if let Ok(path) = std::env::var("AC_MN_COLLECTIONS_CASE_WORKER") {
+        let path = PathBuf::from(path);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err("collections worker override is missing".into())
+        };
+    }
+    static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let mut dir = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
+            while let Some(root) = dir {
+                let manifest = root.join("experimental/ac-mir-native/Cargo.toml");
+                if manifest.is_file() {
+                    return build_worker_named(&manifest, "mn-collections-worker");
+                }
+                dir = root.parent();
+            }
+            Err("collections worker manifest not located".into())
+        })
+        .clone()
+}
+
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
@@ -240,7 +378,7 @@ fn b64(bytes: &[u8]) -> String {
 /// single absolute deadline over the whole session, tree-killed on
 /// breach. Returns the response line.
 fn call_worker(request: &str) -> Result<String, String> {
-    let exe = worker_binary()?;
+    let exe = worker_binary_for(request_recipe(request))?;
     let mut cmd = Command::new(&exe);
     cmd.arg("case-run")
         .stdin(Stdio::piped())
@@ -441,7 +579,7 @@ impl RoundsWorker {
     /// Spawn the contained worker and return the session (RAII held from
     /// BEFORE the first byte is written) plus the warmup response line.
     fn start(request: &str) -> Result<(RoundsWorker, String), String> {
-        let exe = worker_binary()?;
+        let exe = worker_binary_for(request_recipe(request))?;
         let mut cmd = Command::new(&exe);
         cmd.arg("case-run")
             .stdin(Stdio::piped())
@@ -756,10 +894,15 @@ pub fn run_check(
     artifact_dir: &Path,
     _run_dir: &Path,
 ) -> Result<Verdict, String> {
+    let recipe = check
+        .options
+        .probe_recipe
+        .as_deref()
+        .ok_or("missing native recipe")?;
     let started = Instant::now();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
-            "{MN_RECIPE} consumes .at sources; syntax {:?} is not accepted by this recipe",
+            "{recipe} consumes .at sources; syntax {:?} is not accepted by this recipe",
             case.spec.source.syntax.as_str()
         ));
     }
@@ -775,7 +918,7 @@ pub fn run_check(
         .ok_or("probe check without steps (contract violation)")?;
     if !matches!(steps.last(), Some(auto_test_case::contract::ProbeStep::Run)) {
         return Err(format!(
-            "{MN_RECIPE} step sequences must end with a run step (contract violation)"
+            "{recipe} step sequences must end with a run step (contract violation)"
         ));
     }
     let input_bytes = case
@@ -853,6 +996,9 @@ pub fn run_check(
     let mut stderr_hex = String::new();
     let mut session_records: Vec<SessionRecord> = Vec::new();
     // Parent-side manifest identity admission: source-hash → manifest fp.
+    let mut collection_runtime: Option<serde_json::Value> = None;
+    let mut collection_ids: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
     let mut manifest_by_source: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
 
@@ -874,12 +1020,12 @@ pub fn run_check(
                 | auto_test_case::contract::ProbeStep::ResidentApply
                 | auto_test_case::contract::ProbeStep::ResidentFinish => {
                     return Err(format!(
-                        "{MN_RECIPE} does not accept resident steps (decode contract violation)"
+                        "{recipe} does not accept resident steps (decode contract violation)"
                     ));
                 }
                 auto_test_case::contract::ProbeStep::Query => {
                     return Err(format!(
-                        "{MN_RECIPE} does not take query steps (decode contract violation)"
+                        "{recipe} does not take query steps (decode contract violation)"
                     ));
                 }
             }
@@ -898,7 +1044,7 @@ pub fn run_check(
             format!("{}|{:?}|mn", std::process::id(), started).as_bytes(),
         ));
         let mut request = serde_json::json!({
-            "recipe": MN_RECIPE,
+            "recipe": recipe,
             "nonce": nonce,
             "source_b64": b64(&source),
             "entry": mn.entry,
@@ -906,6 +1052,11 @@ pub fn run_check(
             "store_root": store_root.display().to_string().replace('/', "\\"),
             "workdir": workdir.display().to_string().replace('/', "\\"),
         });
+        if recipe == COLLECTIONS_RECIPE {
+            if let Some(id) = collection_ids.get(&source_sha) {
+                request["manifest_id"] = serde_json::json!(id);
+            }
+        }
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
 
@@ -949,7 +1100,7 @@ pub fn run_check(
                 ));
                 break 'admit;
             };
-            if ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE) {
+            if ok.get("recipe").and_then(|v| v.as_str()) != Some(recipe) {
                 infra_detail = Some("mn worker recipe mismatch".to_string());
                 break 'admit;
             }
@@ -961,6 +1112,17 @@ pub fn run_check(
             if ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1") {
                 infra_detail = Some("mn worker ABI axis mismatch".to_string());
                 break 'admit;
+            }
+            if recipe == COLLECTIONS_RECIPE && ok.get("diagnostic").is_none() {
+                if let Err(error) = collections::admit_raw(ok) {
+                    infra_detail = Some(error);
+                    break 'admit;
+                }
+            }
+            if recipe == COLLECTIONS_RECIPE {
+                collection_runtime = Some(
+                    serde_json::json!({"runtime":ok["runtime_identity"],"link":ok["link_identity"]}),
+                );
             }
             if let Some(c) = ok.get("counters").and_then(|v| v.as_object()) {
                 for (k, v) in c {
@@ -976,7 +1138,13 @@ pub fn run_check(
                     }
                 }
             }
-            if let Some(d) = resp.get("diagnostic") {
+            if let Some(d) = resp.get("diagnostic").or_else(|| {
+                if recipe == COLLECTIONS_RECIPE {
+                    ok.get("diagnostic")
+                } else {
+                    None
+                }
+            }) {
                 // A diagnosed pipeline rejection (mn.* / mir.* code) —
                 // only the judged session's diagnosis is a verdict.
                 let code = d
@@ -1058,6 +1226,11 @@ pub fn run_check(
             } else {
                 manifest_by_source.insert(source_sha.clone(), fp.clone());
             }
+            if recipe == COLLECTIONS_RECIPE {
+                if let Some(id) = ok.get("manifest_id").and_then(|v| v.as_str()) {
+                    collection_ids.insert(source_sha.clone(), id.into());
+                }
+            }
             session_manifest = Some(fp);
             if run_index + 1 == total_runs {
                 // The judged session: its raw PE bytes ride the receipt.
@@ -1094,12 +1267,20 @@ pub fn run_check(
                 actual: e,
                 first_diff: None,
             }],
-            detail: Some(format!("{MN_RECIPE}: infra failure")),
+            detail: Some(format!("{recipe}: infra failure")),
             artifacts: vec![],
             native: None,
         });
     }
 
+    if recipe == COLLECTIONS_RECIPE && diag.is_none() {
+        if let Some(reason) = collections::trap_from_hex(&stderr_hex)? {
+            diag = Some((
+                collections::trap_code(reason).into(),
+                format!("native collection trap {reason}"),
+            ));
+        }
+    }
     // ---- parent-side judgement -----------------------------------------
     let observed = if let Some((code, message)) = &diag {
         // Map the mn.* / mir.* diagnostic onto the contract stages:
@@ -1108,7 +1289,9 @@ pub fn run_check(
         // probe stage vocabulary admits parse/resolve/typecheck/run —
         // PLAN-870 T-05 wiring; the underlying pipeline boundary stays
         // named by the mn.* code itself).
-        let stage = if code.starts_with("mn.unsupported.frontend")
+        let stage = if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
+            Stage::Run
+        } else if code.starts_with("mn.unsupported.frontend")
             || code.starts_with("mn.unsupported.input")
         {
             Stage::Parse
@@ -1191,7 +1374,7 @@ pub fn run_check(
 
     // ---- receipt: per-session evidence (T-06) -------------------------
     let request_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let exe_sha = worker_file_sha256(&worker_binary()?)?;
+    let exe_sha = bound_worker_sha(recipe)?;
     let judged_record = session_records.iter().rev().find(|r| r.judged);
     let sessions_json: Vec<serde_json::Value> = session_records
         .iter()
@@ -1208,19 +1391,22 @@ pub fn run_check(
             })
         })
         .collect();
-    let receipt = serde_json::json!({
-        "recipe": MN_RECIPE,
+    let mut receipt = serde_json::json!({
+        "recipe": recipe,
         "protocol": MN_WORKER_PROTOCOL,
         "exit_code": exit_code,
         "stderr_hex": stderr_hex,
         "sessions": sessions_json,
         "request_wall_ms": request_wall_ms,
         "toolchain": {
-            "recipe": MN_RECIPE,
+            "recipe": recipe,
             "mir-lowering": EXPECTED_MIR_LOWERING_VERSION,
             "mn-worker-exe-sha256": exe_sha,
         },
     });
+    if recipe == COLLECTIONS_RECIPE {
+        receipt["collections_runtime"] = serde_json::json!(collection_runtime);
+    }
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
         serde_json::to_string_pretty(&receipt).unwrap_or_default(),
@@ -1273,16 +1459,7 @@ pub fn run_check(
             .map(|(k, v)| (k.clone(), v.to_string()))
             .collect(),
         counters,
-        toolchain: {
-            vec![
-                ("recipe".to_string(), MN_RECIPE.to_string()),
-                (
-                    "mir-lowering".to_string(),
-                    EXPECTED_MIR_LOWERING_VERSION.to_string(),
-                ),
-                ("mn-worker-exe-sha256".to_string(), exe_sha),
-            ]
-        },
+        toolchain: native_toolchain(recipe, exe_sha, collection_runtime.as_ref()),
         gaps: vec![],
     };
     let status = if mismatches.is_empty() {
@@ -1294,7 +1471,7 @@ pub fn run_check(
         status,
         mismatches,
         detail: Some(format!(
-            "{MN_RECIPE}: run judged (outcome {observed}); receipt mn-probe-receipt.json"
+            "{recipe}: run judged (outcome {observed}); receipt mn-probe-receipt.json"
         )),
         artifacts: vec![],
         native: Some(native),
@@ -1320,18 +1497,23 @@ pub fn run_check(
 /// fallback. The worker-side continuous `wall_ms` rides every record.
 fn run_incremental(
     case: &ResolvedCase,
-    _check: &CheckSpec,
+    check: &CheckSpec,
     oracle: &ResolvedOracle,
     artifact_dir: &Path,
     mn: &auto_test_case::contract::ProbeMnSpec,
     steps: &[auto_test_case::contract::ProbeStep],
 ) -> Result<Verdict, String> {
     use auto_test_case::contract::{Completion, Stage};
+    let recipe = check
+        .options
+        .probe_recipe
+        .as_deref()
+        .ok_or("missing native recipe")?;
 
     let started = Instant::now();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
-            "{MN_RECIPE} consumes .at sources; syntax {:?} is not accepted",
+            "{recipe} consumes .at sources; syntax {:?} is not accepted",
             case.spec.source.syntax.as_str()
         ));
     }
@@ -1388,7 +1570,7 @@ fn run_incremental(
         format!("{}|{:?}|mn-inc", std::process::id(), started).as_bytes(),
     ));
     let mut request = serde_json::json!({
-        "recipe": MN_RECIPE,
+        "recipe": recipe,
         "mode": "rounds",
         "nonce": nonce,
         "source_b64": b64(&input_bytes),
@@ -1412,13 +1594,14 @@ fn run_incremental(
                     actual: e,
                     first_diff: None,
                 }],
-                detail: Some(format!("{MN_RECIPE}: infra failure (incremental)")),
+                detail: Some(format!("{recipe}: infra failure (incremental)")),
                 artifacts: vec![],
                 native: None,
             })
         }
     };
 
+    let mut collection_runtime: Option<serde_json::Value> = None;
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
     let mut exit_code: Option<i32> = None;
@@ -1456,13 +1639,19 @@ fn run_incremental(
             infra_detail = Some("mn rounds worker did not answer the warmup round".to_string());
             break 'admit;
         }
-        if warm_ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE)
+        if warm_ok.get("recipe").and_then(|v| v.as_str()) != Some(recipe)
             || warm_ok.get("worker_version").and_then(|v| v.as_str())
                 != Some(EXPECTED_MN_WORKER_VERSION)
             || warm_ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1")
         {
             infra_detail = Some("mn rounds worker identity mismatch".to_string());
             break 'admit;
+        }
+        if recipe == COLLECTIONS_RECIPE {
+            collections::admit_raw(&warm_ok)?;
+            collection_runtime = Some(
+                serde_json::json!({"runtime":warm_ok["runtime_identity"],"link":warm_ok["link_identity"]}),
+            );
         }
         step_records.push(warm_ok);
 
@@ -1510,7 +1699,7 @@ fn run_incremental(
                 ),
                 other => {
                     infra_detail = Some(format!(
-                        "{MN_RECIPE} incremental path does not take {other:?} steps"
+                        "{recipe} incremental path does not take {other:?} steps"
                     ));
                     break 'admit;
                 }
@@ -1554,6 +1743,19 @@ fn run_incremental(
                     ok.get("op").and_then(|v| v.as_str())
                 ));
                 break 'admit;
+            }
+            if recipe == COLLECTIONS_RECIPE {
+                if Some(serde_json::json!({"runtime":ok["runtime_identity"],"link":ok["link_identity"]})).as_ref()!=collection_runtime.as_ref() {infra_detail=Some("collections runtime changed within a retained session".into());break 'admit;}
+                if let Err(error) = collections::admit_raw(&ok) {
+                    infra_detail = Some(error);
+                    break 'admit;
+                }
+                if op == "edit-source" {
+                    if let Err(error) = collections::admit_body(&ok) {
+                        infra_detail = Some(error);
+                        break 'admit;
+                    }
+                }
             }
             if op == "edit-source" {
                 if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
@@ -1766,7 +1968,7 @@ fn run_incremental(
                 actual: e,
                 first_diff: None,
             }],
-            detail: Some(format!("{MN_RECIPE}: infra failure (incremental)")),
+            detail: Some(format!("{recipe}: infra failure (incremental)")),
             artifacts: vec![],
             native: None,
         });
@@ -1871,9 +2073,9 @@ fn run_incremental(
     // The whole-request fallback's manifest identity rides the receipt
     // when present (the true incremental shape has none by design).
     let manifest_fp = resp_manifest_fp.as_str();
-    let exe_sha = worker_file_sha256(&worker_binary()?)?;
-    let receipt = serde_json::json!({
-        "recipe": MN_RECIPE,
+    let exe_sha = bound_worker_sha(recipe)?;
+    let mut receipt = serde_json::json!({
+        "recipe": recipe,
         "protocol": MN_WORKER_PROTOCOL,
         "incremental": !whole_fallback,
         "warm_edit_fallback": whole_fallback,
@@ -1886,11 +2088,14 @@ fn run_incremental(
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,
         "toolchain": {
-            "recipe": MN_RECIPE,
+            "recipe": recipe,
             "mir-lowering": EXPECTED_MIR_LOWERING_VERSION,
             "mn-worker-exe-sha256": exe_sha,
         },
     });
+    if recipe == COLLECTIONS_RECIPE {
+        receipt["collections_runtime"] = serde_json::json!(collection_runtime);
+    }
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
         serde_json::to_string_pretty(&receipt).unwrap_or_default(),
@@ -1906,7 +2111,7 @@ fn run_incremental(
         status,
         mismatches,
         detail: Some(format!(
-            "{MN_RECIPE}: incremental run judged (exit {exit_code:?}); receipt mn-probe-receipt.json"
+            "{recipe}: incremental run judged (exit {exit_code:?}); receipt mn-probe-receipt.json"
         )),
         artifacts: vec![],
         native: Some(NativeRecord {
@@ -1918,14 +2123,7 @@ fn run_incremental(
             cache_mode: None,
             cache_hits: vec![],
             counters: vec![],
-            toolchain: vec![
-                ("recipe".to_string(), MN_RECIPE.to_string()),
-                (
-                    "mir-lowering".to_string(),
-                    EXPECTED_MIR_LOWERING_VERSION.to_string(),
-                ),
-                ("mn-worker-exe-sha256".to_string(), exe_sha),
-            ],
+            toolchain: native_toolchain(recipe, exe_sha, collection_runtime.as_ref()),
             gaps: vec![],
         }),
     })

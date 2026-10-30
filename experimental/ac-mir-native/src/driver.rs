@@ -559,6 +559,17 @@ impl MnDriver {
         obs: &mut Obs,
         known_fp: Option<&str>,
     ) -> Result<(Vec<ObjectInput>, Vec<LinkUnitEntry>), MnError> {
+        if self.store.is_some()
+            && crate::collections_lower::test_frame_free_omitted()
+            && units
+                .iter()
+                .any(|unit| unit.profile == auto_av_core::contract::AV_COLLECTIONS_PROFILE)
+        {
+            return Err(MnError::Admit(
+                "test-control-persistence",
+                "intentionally incorrect collections objects require an ephemeral driver".into(),
+            ));
+        }
         // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
         // PLAN-871 T-05 cache modes: `fresh` never READS old units (it may
         // still publish), `read-only` reads but never publishes — a miss is

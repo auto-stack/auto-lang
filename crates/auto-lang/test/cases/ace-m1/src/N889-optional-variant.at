@@ -1,0 +1,12 @@
+type Item { name Str; code int }
+fn make() ?Item { return Some(Item("中", 41)) }
+fn main() int {
+    var xs = List<?Item>.new()
+    let created = make()
+    xs.push(created.move)
+    let o = xs.remove(0)
+    is o {
+        Some(v) -> { return v.name.len() + v.code }
+        None -> { return 0 }
+    }
+}

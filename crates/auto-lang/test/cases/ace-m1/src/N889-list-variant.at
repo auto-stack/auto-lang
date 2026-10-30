@@ -1,0 +1,12 @@
+type Item { name Str; code int }
+enum Token { Data(Item)
+End }
+fn main() int {
+    var xs = List<Token>.new()
+    xs.push(Token.Data(Item("中", 41)))
+    let t = xs.remove(0)
+    is t {
+        Token.Data(v) -> { return v.name.len() + v.code }
+        Token.End -> { return 0 }
+    }
+}

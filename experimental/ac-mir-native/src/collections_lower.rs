@@ -1,7 +1,7 @@
 //! PLAN-889: shared collections MIR -> native CLIF/COFF.
 //! Arithmetic, branches and calls are emitted as machine code. Runtime calls
 //! operate on machine cells/containers; no instruction stream is dispatched.
-//! This T-02 entry is not yet selected by the product driver/cache/worker.
+//! The explicit collections driver/CLI/worker all consume this same emitter.
 use crate::{emit, symbols, MnError};
 use auto_av_core::mir::*;
 use cranelift_codegen::ir::condcodes::IntCC;
@@ -16,6 +16,23 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::BTreeMap;
 
 pub const ABI: &str = "mn.collections.cell/2";
+
+thread_local! {
+    static TEST_OMIT_FRAME_FREE: std::cell::Cell<bool> = const {std::cell::Cell::new(false)};
+    static TEST_OMITTED_RETURNS: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
+}
+/// Sensitivity control for an isolated ephemeral compiler. The caller must
+/// never persist these intentionally incorrect objects under production keys.
+pub fn test_omit_frame_free(omit: bool) {
+    TEST_OMIT_FRAME_FREE.with(|flag| flag.set(omit));
+    TEST_OMITTED_RETURNS.with(|count| count.set(0));
+}
+pub fn test_omitted_returns() -> usize {
+    TEST_OMITTED_RETURNS.with(|count| count.get())
+}
+pub(crate) fn test_frame_free_omitted() -> bool {
+    TEST_OMIT_FRAME_FREE.with(|flag| flag.get())
+}
 
 /// A process-local admission result over immutable owned MIR. It has no wire
 /// representation and cannot be constructed from a serialized "verified" bit.
@@ -330,7 +347,11 @@ fn emit_admitted(
                             "mn_coll_share"
                         };
                     lower.checked(name, &[(lower.output, types::I64), (src, types::I64)])?;
-                    lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
+                    if TEST_OMIT_FRAME_FREE.with(|flag| flag.get()) {
+                        TEST_OMITTED_RETURNS.with(|count| count.set(count.get() + 1));
+                    } else {
+                        lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
+                    }
                     lower.fb.ins().return_(&[]);
                 }
             }

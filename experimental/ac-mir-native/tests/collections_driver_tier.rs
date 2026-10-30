@@ -490,3 +490,31 @@ fn collections_runtime_override_is_bound_to_prepared_library_bytes() {
     std::fs::write(&copied, b"wrong runtime").unwrap();
     assert!(ac_mn::collections_runtime::prepare(Some(&copied)).is_err());
 }
+
+#[test]
+fn collections_missing_free_sensitivity_cannot_poison_persistent_cache() {
+    let dir = directory("sensitivity-no-persist");
+    let mut driver = MnDriver::with_store(&dir.join("store"), "p889").unwrap();
+    ac_mn::collections_lower::test_omit_frame_free(true);
+    let run = driver.request_collections(SOURCE, "main", &dir.join("out"), None);
+    ac_mn::collections_lower::test_omit_frame_free(false);
+    assert!(!run.ok);
+    assert!(run
+        .error
+        .unwrap()
+        .code()
+        .contains("test-control-persistence"));
+    assert!(!run.obs.counters.contains_key("codegen_emit_units"));
+    assert!(
+        ac_artifact_probe::store::ManagedStore::open_existing(&dir.join("store"))
+            .unwrap()
+            .root_artifacts("p889", "soft")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        driver
+            .request_collections(SOURCE, "main", &dir.join("out"), None)
+            .ok
+    );
+}

@@ -1,0 +1,4 @@
+# PLAN-889: native originals plus existing independent AV source cases.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-native-collections-889", include: ["native-collections-889.case.ad", "collections-source-864.case.ad"] }
+```

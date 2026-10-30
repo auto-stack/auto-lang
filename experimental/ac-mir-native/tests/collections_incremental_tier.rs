@@ -373,6 +373,10 @@ fn collections_incremental_runtime_budget_and_deadline_keep_previous_publication
 #[test]
 fn collections_frozen_resident_source_load_preserves_115_unchanged_producers() {
     let load = ac_mn::collections_workload::generate(0);
+    assert_eq!(
+        load.source,
+        include_str!("../../../crates/auto-lang/test/cases/ace-m1/src/N889Load.at")
+    );
     let dir = directory("frozen-first-probe");
     let baseline = auto_av_probe::mempeek::sample_private_bytes();
     let sampler = ac_mn::resources::TreePeakSampler::start(5);
@@ -424,5 +428,77 @@ fn collections_frozen_resident_source_load_preserves_115_unchanged_producers() {
     println!("frozen-native cold_ms={cold_ms} baseline={baseline} peak={} delta={delta} tree={} ticks={} child_ticks={} {} {}",peak.own_peak,peak.tree_peak,peak.ticks,peak.child_ticks,first.work.obs.ledger.render(),first.work.obs.render());
     assert!(baseline > 0 && peak.ticks > 0 && peak.child_ticks > 0 && peak.own_peak > 0);
     assert!(delta <= 128 << 20);
+    session.close();
+}
+
+#[test]
+fn collections_prepared_runtime_drift_refuses_before_publication() {
+    let dir = directory("prepared-runtime-drift");
+    let store = dir.join("store");
+    let output = dir.join("output");
+    let (mut session, first) = CollectionsIncrementalSession::new(
+        OLD,
+        "main",
+        MnDriver::with_store(&store, "p889").unwrap(),
+        &output,
+        None,
+    )
+    .unwrap();
+    assert_eq!(first.exit_code, Some(42));
+    let prepared = session
+        .prepare_source(&OLD.replace("push(42)", "push(43)"))
+        .unwrap();
+    let old_source = session.source().to_owned();
+    let old_id = session.identities();
+    let old_manifest = session.manifest_id().map(str::to_owned);
+    let exe = std::fs::read(&first.build.exe_path).unwrap();
+    let receipt = std::fs::read(&first.build.receipt_path).unwrap();
+    let db = ac_artifact_probe::store::ManagedStore::open_existing(&store).unwrap();
+    let roots = db.root_artifacts("p889", "soft").unwrap();
+    let library = ac_mn::collections_runtime::prepare(None).unwrap().library;
+    struct Restore {
+        path: std::path::PathBuf,
+        bytes: Vec<u8>,
+    }
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            std::fs::write(&self.path, &self.bytes).unwrap();
+        }
+    }
+    let saved = Restore {
+        bytes: std::fs::read(&library).unwrap(),
+        path: library.clone(),
+    };
+    let mut bad = saved.bytes.clone();
+    let mid = bad.len() / 2;
+    bad[mid] ^= 1;
+    std::fs::write(&library, bad).unwrap();
+    let error = session
+        .commit_prepared(prepared)
+        .err()
+        .expect("same-sized changed library must refuse a previously prepared candidate");
+    assert!(error.code().contains("runtime"), "{error:?}");
+    assert_eq!(session.source(), old_source);
+    assert_eq!(session.identities(), old_id);
+    assert_eq!(session.manifest_id(), old_manifest.as_deref());
+    assert_eq!(std::fs::read(&first.build.exe_path).unwrap(), exe);
+    assert_eq!(std::fs::read(&first.build.receipt_path).unwrap(), receipt);
+    assert_eq!(db.root_artifacts("p889", "soft").unwrap(), roots);
+    let run = ac_mn::link_driver::run_pe(
+        &first.build.exe_path,
+        ac_mn::config::RUN_BUDGET,
+        auto_ac_prototype::link::CaptureCaps {
+            stdout_max: ac_mn::config::STREAM_CAP,
+            stderr_max: ac_mn::config::STREAM_CAP,
+        },
+    )
+    .unwrap();
+    assert_eq!(run.exit_code, Some(42));
+    drop(saved);
+    let run = session
+        .apply_source(&OLD.replace("push(42)", "push(43)"))
+        .unwrap();
+    assert_eq!(run.exit_code, Some(43));
+    assert_eq!(run.work.obs.counters.get("cache_hit_coff"), Some(&1));
     session.close();
 }
