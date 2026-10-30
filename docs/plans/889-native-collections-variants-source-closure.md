@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 7
+current_step: 8
 total_steps: 10
 ---
 
@@ -195,7 +195,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
-| T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
+| T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [x] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
 | T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
 
@@ -492,3 +492,23 @@ stage:review | review_scope:final(affected repair) | reviewer_identity/limitatio
 - pending_closeout_gates:merge-owned裸cargo t、必要cargo tv、实际experimental定向面、canonical/ledger/index/archive/guard清理。更新final pass不授权提前合入。当前7/10，T-08..10未勾。
 
 goal_receipt: objective=完成计划889 | goal_round=11 | stage=review(final affected repair) | outcome=pass | completed_tasks=7/10 | next=merge | blocker=none | goal_active=true。
+
+
+### 2026-10-30 merge第12轮 prepared：冻结门全过，8/10
+
+stage:merge | plan_revision:2 | outcome:in_progress | checkpoint:prepared | reviewed_commit:44ed8db40ad69334abd477c879450bcbf423c4e5 | equivalent_rebased_code:b69c40e0306cbbac7cb170bbef74a7409e3167e6 | prepared_canonical_commit:dd0c4c7db | worktree:D:/autostack/.wt/lang-889/auto-lang | branch:plan-889-dev | next:final rebase/ff-only→ledger readback→archive→guard cleanup。
+
+- T-08统一门新冻结实跑（原首轮失败保留）：**裸cargo t exit0，371.905s，3217/3217 passed、675 skipped**；**cargo tv exit0，3.309s，163/163 passed、2069 skipped**；Native release `--test collections_driver_tier -- --test-threads=1` exit0，35.30s，8/8（正式原源/补例、CLI、fresh/hit/read-only/restart、33伪造身份坐标、三页COFF required closure、发布回滚、override内容、反控持久cache隔离）。无豁免/删测/改门。原13timeout与2失败不被重标；新完整门已实际覆盖全部3217。其余未改resource/depth/typed/source等定向证据按前复审实际实现/依赖/输入不变性复用；不再重复无关全档或正式512。
+- 测试实际生成8个tracked历史report JSON（796/818/827），逐文件先复制本地baseline/merge-t-generated再精确restore原版本，禁止把执行证据混入提交。无未收尾自有cargo/test，code/source/config/dependency冻结不变。
+- Rebase前guard发现main已提交其他计划的派生ledger版本145→149，拒绝覆盖，未修改main/foreign WIP。仅暂存本Plan已准备的canonical delta到明确stash57b5c0e07f9d99dc9cc02e304c37bfac769eedf7，然后authority重基master：24个own commits range-diff全部`=`，44ed8db40→b69c40e03；原73个非docs交付输入逐字hash全部保留（5处checkout换行还原并刷新index，index零diff），无代码/配置/输入漂移，冻结门证据仍适用。还原Spec delta时goals自动合并，保留他方目标更新；原5个合同Spec输入无并行覆盖。后续文档/投影提交不改变实现。
+- SD-01..05已在authority准备/提交：六canonical目标（新native-collections-variants + native-data-owned-lowering/native-backend-and-retirement/ace-m1-conformance/resident-function-install/source-collections-variants）；四模块project/overview、三ADR、四plans、全局overview/GOAL-002（一律保partial，不宣称全部目标达成）。`python scripts/spec-index.py`实际再生62项目，已有ungrouped warning保留，不顺手扩治理范围。新29个链接检查：23已存在，仅6个预期889归档链接待实际archive后再验，其他broken0；不能以预演替代真实归档门。
+- ledger渠道：无read/write_specs工具，监听进程无auto-ai/musk store；现有auto-chat-back17823对/api/specs与/api/specs/list均404，不是Specs writer。采用**guarded offline projection**在authority `.autoos/specs.json`，先字节备份、JSON结构span手术、六section/schema/SpecItem字段补齐、状态采用实际SpecStatus enum校验、保持未知字段/其他项/未触section字节片段，version149→150恰+1。第一次过窄status断言与后续canonical LF归一化都在提交前纠正，备份和未发布收据保留；最终9个条目source hash与**staged canonical LF字节**逐项一致。未更新原PLAN864历史报告充作当前知识；新增current source合同design，复用对应已有design/tests项并保留原摘要/来源，新增review/report。
+- 最终ledger before SHA f55880886aad6d895aac03a2f66bee643ad95bacdd048eeaeae47e68f99eaa6b，after9a574cd8e20cad1dcdb34cbf0ed8ea10dadfc77fefcd07df4a15b666ed75fa9d。items：designs=P889-DESIGN-NATIVE-COLLECTIONS/P870-DESIGN-NATIVE-DATA-OWNED-LOWERING/P871-1/P852-DESIGN-CONFORMANCE/P828-AV/P889-DESIGN-COLLECTION-SOURCE；tests=P863-CONSOLE-OBSERVATIONS（保console摘要追加native）；reviews=P889-REVIEW；reports=P889-MERGE。每项file/tags齐全。尚未称main ledger_refreshed，需ff落地后读回验证。
+- 冻结SD审阅raw CRLF hash4c8f12234cd52093f401fb1e3692e6050d14d9247bb746d617f4f706a2449eaa与Git规范LF hashad891f0c4feca44166a28ef0fc353007aefd47fecdafa594ea75ec8db4bdd293仅换行差；已重构并保留原审阅raw到baseline/reviewed-spec-delta-r2.md.raw、核前hash一致，range-diff内容不变。最终规范以Git LF/source hash为准，不把checkout行尾差异冒作新语义或新性能样本。
+- 本地baseline/merge-cargo-t-frozen-repair.log SHA256 `6b99efe50ac00fcf2fc8f68fb4a4f6345eea0f5d6fed6773dd4f9a1bd714f501`。
+- 本地baseline/merge-cargo-tv.log SHA256 `6d6a4a58a0a306655fe4bec3fef0c6f6288a5fbba80fb4cbe635568e9cbead2f`。
+- 本地baseline/merge-experimental-collections-driver.log SHA256 `cf43436e4a887d5a8bbbf00cbb05b49091dcb160bbfce80ed0e2c193bd084527`。
+- 本地baseline/merge-rebase-range-diff.txt SHA256 `9aa0cff5141b1c12ba0892321e80eda4380b9f5ceae70f13ad9ed43ddae9e8f7`。
+- 本地baseline/ledger-projection-receipt.json SHA256 `0513afa7895875b705a9eff5dedcacbd0eb8d0b665d522eff3581db117608811`。
+- 本地baseline/merge-prearchive-content-check.json SHA256 `130e13796bd7961e1c004b5d5ccce791d6ed933c360c2eda42f233035c10a845`。
+- pending:T-09实际linear landing/ledger readback/archive与T-10 guard cleanup/产物观察/到期判定；main保留他方docs/.next-id WIP，零本Plan WIP代码。goal第12轮仍在merge，未作最终pass或完成声明。
