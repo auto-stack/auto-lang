@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-895
-status: drafting
+status: execution_done
 feature_name: 全仓测试用途审查、数十个顶级模块重组与日常包准入建议
 author: [Codex]
 created_at: 2026-10-30
@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [auto-test-case, test-infrastructure]
 depends_on: [PLAN-888]
-current_step: 0
+current_step: 10
 total_steps: 12
 ---
 
@@ -153,18 +153,34 @@ r2只读重核：`auto-lang`3172运行身份来自187个源码前缀组，主要
 
 | 状态 | ID | 阶段 | 依赖 | 路径/产物与关闭条件 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户执行授权 | 核888实际交付/当前目录/来源，静态盘点全仓入口差额、未注册与包装映射；基面及排除依据记录，V-01 | AC-01 |
-| [ ] | T-02 | work | T-01 | 全仓数十顶级职责模块候选清单/数量和预算可行性；新用途侧表/校验器最小链，两个大目标各取真实拆分、两混合叶与ACE快组归并及反控，冻结消费形式后扩面 | AC-02/03 |
-| [ ] | T-03 | work | T-02 | language配方/原包装逐项源码用途审查，并给3172/1687两大目标全身份→新职责模块映射及预算分组 | AC-01/02/03 |
-| [ ] | T-04 | work | T-02 | 十ACE workspace及language内ACE harness逐项审查，按能力/用途归并历史文件级入口，复用893逐ID来源/13慢例意见及未知边界 | AC-01/02/03 |
-| [ ] | T-05 | work | T-02 | 正式TestCase、Python/PS独立断言、目录外experimental/AG入口、未注册与外仓引用逐项分类/去重 | AC-01/02 |
-| [ ] | T-06 | work | T-03/04/05 | 汇总分片建议及全仓数量/漏重检查，逐个待确认附owner/已查来源/下一事实；V-01/02 | AC-01/02 |
-| [ ] | T-07 | work | T-06 | 现有builder/partition/catalog/impact及tm接正式顶级模块、内部分片展开、用途拆并和旧叶迁移，保原共跑/消费者/去重；V-03/05 | AC-03/04 |
-| [ ] | T-08 | work | T-07 | 生成daily-admission-proposal建议及覆盖/依赖冲突、专项/调研入口建议；前后实际启用/默认选择不变，V-04/05 | AC-04 |
-| [ ] | T-09 | work | T-07/08 | 复用有效888成本，新组建/拆分的常规顶级模块单轮Job计量，核100例/60秒与消费者总量，超预算继续拆/归因，长例不重矩阵、未知不冒绿；V-06 | AC-05 |
-| [ ] | T-10 | work | T-09 | 最终全仓对账/用途证据/SD/健康/发布控制与当前源码冻结，V-07；提交并给execution_done交接 | AC-06 |
+| [x] | T-01 | work | 用户执行授权 | 核888实际交付/当前目录/来源，静态盘点全仓入口差额、未注册与包装映射；基面及排除依据记录，V-01 | AC-01 |
+| [x] | T-02 | work | T-01 | 全仓数十顶级职责模块候选清单/数量和预算可行性；新用途侧表/校验器最小链，两个大目标各取真实拆分、两混合叶与ACE快组归并及反控，冻结消费形式后扩面 | AC-02/03 |
+| [x] | T-03 | work | T-02 | language配方/原包装逐项源码用途审查，并给3172/1687两大目标全身份→新职责模块映射及预算分组 | AC-01/02/03 |
+| [x] | T-04 | work | T-02 | 十ACE workspace及language内ACE harness逐项审查，按能力/用途归并历史文件级入口，复用893逐ID来源/13慢例意见及未知边界 | AC-01/02/03 |
+| [x] | T-05 | work | T-02 | 正式TestCase、Python/PS独立断言、目录外experimental/AG入口、未注册与外仓引用逐项分类/去重 | AC-01/02 |
+| [x] | T-06 | work | T-03/04/05 | 汇总分片建议及全仓数量/漏重检查，逐个待确认附owner/已查来源/下一事实；V-01/02 | AC-01/02 |
+| [x] | T-07 | work | T-06 | 现有builder/partition/catalog/impact及tm接正式顶级模块、内部分片展开、用途拆并和旧叶迁移，保原共跑/消费者/去重；V-03/05 | AC-03/04 |
+| [x] | T-08 | work | T-07 | 生成daily-admission-proposal建议及覆盖/依赖冲突、专项/调研入口建议；前后实际启用/默认选择不变，V-04/05 | AC-04 |
+| [x] | T-09 | work | T-07/08 | 复用有效888成本，新组建/拆分的常规顶级模块单轮Job计量，核100例/60秒与消费者总量，超预算继续拆/归因，长例不重矩阵、未知不冒绿；V-06 | AC-05 |
+| [x] | T-10 | work | T-09 | 最终全仓对账/用途证据/SD/健康/发布控制与当前源码冻结，V-07；提交并给execution_done交接 | AC-06 |
 | [ ] | T-11 | review | T-10 | 冻结SHA逐项AC/SD、各用途和混合/不可分/待确认边界独立重建，不跑整档；合入门pending | AC-07 |
 | [ ] | T-12 | merge | T-11 pass | 冻结tm模块并集/有效证据、合入、规范/源回读、归档与fresh guard清理；日常建议交人 | AC-08 |
+
+
+### 任务执行证据（2026-10-30 work 阶段，worktree lang-895/auto-lang @18b98a97e..2bb487202）
+
+- T-01..T-08 详见上表与 `docs/plans/attachments/895/audit-summary.md`（入库摘要）；逐项原始证据本地
+  `attachments/895/evidence/`（source-groups.json 741文件提取、topic-inventory、audit-report 7165行、
+  top-module-budgets.json、V-04不变哈希对照）。
+- 测试收据：`python -m unittest scripts.tests.test_test_purpose_policy` 18/18 OK（含12负控）；
+  `audit_test_purposes.py --check`：1181叶→66顶级模块、7165义务、21台账行。
+- V-04 选择不变：master vs worktree 代码在 legacy t/tv/tt/tb/th/tf/taa/ta/t3、changes样例、显式叶
+  六类选择上模块/义务集哈希逐字节一致（identical=true）。
+- T-09 预算重建：66模块合计4956.3s（888整轮5312s口径对账）；判定 19 within-100-and-60s、
+  5 over-100-fast-within-60s、24 开销主导超60s（处置=归因+合并调用提案交人，见 register_proposals
+  与 audit-summary.md §T-09；不削负载、未知不冒达标）。
+- 环境事实：组内补 auto-ui 兄弟树（69690df，与主检出一致）；发现期间编辑工作树导致一次身份漂移
+  失败后干净重跑（教训收讫）。
 
 ## 9. 复审记录
 
@@ -173,6 +189,17 @@ r2只读重核：`auto-lang`3172运行身份来自187个源码前缀组，主要
 同轮独立维护收据（不计895实施）：用户另行明确要求更新计划技能。已在auto-musk专用临时树修订auto-plan-new/work/review/merge/regress五个SKILL.md并ff-only合入`882b687d84664df694e9ba27fee8dbbbe1c7f48b`：AutoLang按888 r3使用tm完整模块/消费者并集，work/review相关反例、merge冻结门及有效证据复用、周期tf --batch单实例不叠tt/tb/taa；其他仓保自身命令，原样本/oracle/条件不弱化，不因用途建议停用。五项quick_validate通过，逐段测试职责/未执行状态/条件与已知红口径审查完成；本机.codex/.agents九个现存入口是指向该源的既有junction，合入后逐字节一致读回，未在worktree创建链接。临时树及分支在fresh wt-guard clean后清理，auto-musk他方107草稿与语言仓其他WIP保留。文档维护未运行cargo测试、未触发周期队列；895仍drafting 0/12。
 
 r2（2026-10-30）/ stage: new / outcome: pass（合同修订，非实施）/ authorization: 用户要求拆3172/1687两大目标，并期待数十个顶级模块、每模块不超过100用例或者一分钟 / changed: G3、架构、§5.3.1、SD-02、V-03/06、AC-03/05、T-02/03/04/07/09；新增顶级/分片/技术目标分层、两大目标完整映射、拆大与并小、完整顶级预算和快组>100例例外证据 / evidence: 当前目录只读按原Rust测试路径统计3172来自187前缀组、1687来自50组；未执行测试、未造新目录 / next: 审阅r2后work，仍drafting 0/12。
+
+
+2026-10-30 / stage: work / plan_id: PLAN-895 / plan_revision: r2 / outcome: pass（work 全部10项完成，execution_done）
+worktree: D:/autostack/.wt/lang-895/auto-lang（分支 plan-895-dev，基面 41f17790d，代码 HEAD aae89dbf4；组内兄弟 auto-down@c3464d0、auto-ui@69690df 与主检出一致，无链接）
+dependency_revisions: 888 冻结目录（叶集合不变，索引身份经显式重发现刷新）；888 r3 观测表（预算重建输入）；893 侧意见复用未重测
+task_ids: T-01..T-10 全部 [x]
+evidence: attachments/895/audit-summary.md（入库）；本地 evidence/（source-groups 741文件、audit-report 7165行、top-module-budgets、V-04哈希对照、spot-checks 4轮、republish.log）；测试收据见 T-10 行；V-01..V-06 对应负控/实测齐
+blockers: 无阻塞。交人决定事项（非阻塞）：①24个开销主导模块的合并调用提案（register_proposals）；②5条未注册入口注册建议；③P-050 artifact-probe 用途待确认；④37个模块的跨顶级闭包准入取舍；⑤日常包默认调整待用户批准本建议后另行执行
+next_responsible_role: review（T-11 独立复审，冻结 SHA aae89dbf4）
+
+stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-895/auto-lang@aae89dbf4 | commit: aae89dbf4 | next: review
 
 ## 10. 待澄清事项
 
