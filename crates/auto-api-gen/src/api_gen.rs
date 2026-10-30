@@ -32,14 +32,7 @@ use auto_lang_core::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, 
 
 /// PLAN-734 T-04：32 位 FNV-1a（generation.json 的内容指纹——与
 /// ui_cache invalidate_if_api_functions_changed 同族）。
-pub fn fnv1a(bytes: &[u8]) -> u32 {
-    let mut h: u32 = 0x811c9dc5;
-    for b in bytes {
-        h ^= *b as u32;
-        h = h.wrapping_mul(0x01000193);
-    }
-    h
-}
+pub use crate::source_owner::fnv1a;
 
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at

@@ -386,6 +386,37 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
 
 /// Fallible form used by generators so invalid sources cannot overwrite artifacts.
 pub fn try_ensure_shared_workspace(project_dir: &Path) -> AutoResult<PathBuf> {
+    try_ensure_workspace_for(project_dir, WorkspaceRequirements::Ui)
+}
+
+/// Dependencies needed by the member being generated. Existing UI members
+/// keep their shared dependencies when a service member is added later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceRequirements {
+    Service,
+    Ui,
+}
+
+fn manifest_needs_ui(value: &toml::Value) -> bool {
+    match value {
+        toml::Value::Table(table) => table.iter().any(|(key, entry)| {
+            matches!(key.as_str(), "auto-ui-runtime" | "iced")
+                || entry
+                    .get("package")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|name| matches!(name, "auto-ui-runtime" | "iced"))
+                || manifest_needs_ui(entry)
+        }),
+        _ => false,
+    }
+}
+
+/// Service-only workspaces do not resolve or require an installed UI SDK.
+/// Source validation still finishes before the previous manifest is replaced.
+pub fn try_ensure_workspace_for(
+    project_dir: &Path,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<PathBuf> {
     // Stage B P-2: landing point by resolution order (env → in-framework
     // shared ws → project-local); the rel-path anchors below are computed
     // from this actual landing dir.
@@ -400,6 +431,7 @@ pub fn try_ensure_shared_workspace(project_dir: &Path) -> AutoResult<PathBuf> {
     // workspace, which would poison unrelated member runs. They get re-included
     // automatically once generate_rust_ui writes their src/.
     let mut members: Vec<String> = Vec::new();
+    let mut needs_ui = requirements == WorkspaceRequirements::Ui;
     if let Ok(entries) = fs::read_dir(&ws_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -418,6 +450,9 @@ pub fn try_ensure_shared_workspace(project_dir: &Path) -> AutoResult<PathBuf> {
                         );
                         continue;
                     }
+                    let member_manifest: toml::Value =
+                        fs::read_to_string(path.join("Cargo.toml"))?.parse()?;
+                    needs_ui |= manifest_needs_ui(&member_manifest);
                     members.push(name.to_string());
                 }
             }
@@ -434,7 +469,15 @@ pub fn try_ensure_shared_workspace(project_dir: &Path) -> AutoResult<PathBuf> {
     // The UI runtime has a distinct owner. An installed combined SDK is
     // accepted only with its managed ownership and file receipt; development
     // uses an explicit UI root or the sibling checkout, never a lang shadow.
-    let auto_ui_runtime_rel = compute_auto_ui_runtime_rel_path(&auto_lang_rel, &ws_dir)?;
+    let ui_dependencies = if needs_ui {
+        let auto_ui_runtime_rel = compute_auto_ui_runtime_rel_path(&auto_lang_rel, &ws_dir)?;
+        format!(
+            "auto-ui-runtime = {{ path = \"{auto_ui_runtime_rel}\" }}\n\
+             iced = {{ version = \"0.14\", features = [\"tokio\", \"advanced\"] }}\n"
+        )
+    } else {
+        String::new()
+    };
     let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
@@ -461,13 +504,10 @@ a2r-std = {{ path = "{a2r_std_rel}" }}
 auto-media-core = {{ path = "{auto_media_core_rel}" }}
 # PLAN-814 T-05 canonical 双直依赖（import_policy.rs）——rust 生成组件的
 # `auto_ui_runtime::ui`/`auto_lang_core` import 需成员直依赖两包。
-auto-ui-runtime = {{ path = "{auto_ui_runtime_rel}" }}
-auto-lang-core = {{ path = "{auto_lang_core_rel}" }}
+{ui_dependencies}auto-lang-core = {{ path = "{auto_lang_core_rel}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}
-# Plan 413 §5.2:放宽到 "0.14" 让未来补丁版自动流入
-iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
 axum = "0.7"
 # PLAN-736 AC-03/06: generated-backend connection driving (accept loop + drain).
 hyper = {{ version = "1", features = ["http1", "server"] }}
@@ -523,7 +563,7 @@ pub fn workspace_lock_identity(
     result: std::io::Result<Vec<u8>>,
 ) -> Result<Option<String>, std::io::Error> {
     match result {
-        Ok(bytes) => Ok(Some(format!("{:x}", crate::api_gen::fnv1a(&bytes)))),
+        Ok(bytes) => Ok(Some(format!("{:x}", crate::source_owner::fnv1a(&bytes)))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }

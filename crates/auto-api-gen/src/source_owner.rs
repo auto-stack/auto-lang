@@ -5,6 +5,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Shared generation/source fingerprint, including an existing empty lock.
+/// The API facade re-exports this one implementation; workspace/source rules
+/// must not depend back on an HTTP/non-HTTP generation dispatcher.
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in bytes {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    h
+}
+
 /// Resolve the installed SDK by filesystem identity, not the spelling supplied
 /// by the caller. This also keeps case-sensitive filesystems distinct.
 fn sdk_install_parent(producer_root: &Path) -> Option<PathBuf> {
