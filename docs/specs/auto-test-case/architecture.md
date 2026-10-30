@@ -307,3 +307,11 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 后果：14原L/V格按原源关闭，全帧清理/预算/身份与失败原子性成为此profile合同；
 旧AV source前端差额、宽typed入口/在线native帧保持各自边界。状态：accepted，见
 [native collections](../auto-mir/native-collections-variants.md)。
+
+## a2r-hir 认证通道（PLAN-892 并列 recipe）
+
+`ac-a2r/hir-scalar-emit-v1`：probe/run seam 上的注册 recipe，预构建
+`a2x-worker` 现场发射四文件集，父侧 golden 逐字节判决（日常零 rustc spawn）；
+显式 certify 腿=实际＋手写独立 reference 双编译运行对闭式 oracle，严格证书
+`ace.a2r-hir.cert/1`。与旧 `a2r/emit`/`ace.m1.cert/1` 并列互不授信。
+见 [a2r-hir 认证通道](a2r-hir-certification.md)。

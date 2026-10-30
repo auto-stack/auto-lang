@@ -189,3 +189,10 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
 真单体/恢复和正式五×30/512性能证据。独立修复采样只覆盖其标明门，复用须有revision/input/机制等价证据，
 不得改源/阈值/分母或把失败full重新标绿。W01..W05、native在线帧/loader及其他旧引擎差异仍分别登记，
 不因14格推进而宣称全M1或891 typed入口已完成。
+
+## 新 A2R-HIR 证据（PLAN-892，并列不迁移）
+
+`a2r-hir-892` 套件（B01/B04/B13/B14/NAMED-01）经新 recipe
+`ac-a2r/hir-scalar-emit-v1` 产生**并列**证据：本文件的 M1 分母、expected、
+旧 a2r-snapshot 检查与 NA/accepted-diff 行**不变**；新后端能力不冒认旧路径
+交付，M1 a2r 消费者是否迁移由专门审计认领（892 不宣称 M1 或旧 A2X 替换完成）。
