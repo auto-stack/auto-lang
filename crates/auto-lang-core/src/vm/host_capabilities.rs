@@ -21,6 +21,9 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 
+/// Explicit HTTP service host assembly (PLAN-890).
+pub mod http_service;
+
 /// 帧时间戳观测能力（pilot 唯一族；毫秒、单调时源由实现方保证）。
 ///
 /// 值域约定与 VM 内建 9918/9919 出口一致：i64 内部态，shim 侧

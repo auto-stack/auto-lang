@@ -66,7 +66,7 @@ def main():
         source.write_text(program, encoding="utf-8")
         env = dict(os.environ, AUTO_HTTP_PORT=str(port), AUTO_EXECUTION_ENGINE="autovm")
         with (root / "stdout.txt").open("w+") as stdout, (root / "stderr.txt").open("w+") as stderr:
-            child = subprocess.Popen([str(args.exe.resolve()), str(source)], env=env,
+            child = subprocess.Popen([str(args.exe.resolve()), str(source), "--install-adapter"], env=env,
                                      stdin=subprocess.PIPE, stdout=stdout, stderr=stderr, text=True)
             try:
                 ready = False

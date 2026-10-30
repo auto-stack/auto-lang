@@ -1,0 +1,227 @@
+//! Explicit HTTP host handoff. Core never installs an implicit implementation.
+//!
+//! The provider is process-shareable, but its per-service future and owner are
+//! local. The !Send VM therefore remains on the LocalSet's owning thread.
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+
+use crate::vm::engine::AutoVM;
+use crate::AutoResult;
+
+pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'static>>;
+
+pub trait HttpServiceHost: Send + Sync {
+    fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture;
+}
+
+/// One local VM service owner. VM fields are not exported through this port.
+pub struct HttpVmOwner {
+    vm: Rc<AutoVM>,
+    routes: Vec<(String, String, String)>,
+}
+
+impl HttpVmOwner {
+    pub fn route_count(&self) -> usize {
+        self.routes.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct RestoreHost(Option<Arc<dyn HttpServiceHost>>);
+
+    impl Drop for RestoreHost {
+        fn drop(&mut self) {
+            *DEFAULT_HOST.write().expect("HTTP host registry poisoned") = self.0.take();
+        }
+    }
+
+    struct RecordingHost {
+        id: u8,
+        seen: Arc<Mutex<Vec<(u8, usize)>>>,
+        gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    }
+
+    impl HttpServiceHost for RecordingHost {
+        fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture {
+            let id = self.id;
+            let seen = self.seen.clone();
+            let gate = self.gate.lock().unwrap().take();
+            let owner_thread = std::thread::current().id();
+            Box::pin(async move {
+                if let Some(gate) = gate {
+                    gate.await.expect("release active service");
+                }
+                assert_eq!(std::thread::current().id(), owner_thread);
+                seen.lock().unwrap().push((id, owner.route_count()));
+                Ok(())
+            })
+        }
+    }
+
+    fn owner_vm() -> AutoVM {
+        AutoVM::new_without_host_snapshot(crate::vm::virt_memory::VirtualFlash::new(0), 8192)
+    }
+
+    #[test]
+    fn explicit_http_host_selection_is_stable_for_active_local_owners() {
+        let saved = DEFAULT_HOST.read().unwrap().clone();
+        let _restore = RestoreHost(saved);
+        clear_process_default_http_service_host();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (release, gate) = tokio::sync::oneshot::channel();
+        let first: Arc<dyn HttpServiceHost> = Arc::new(RecordingHost {
+            id: 1,
+            seen: seen.clone(),
+            gate: Mutex::new(Some(gate)),
+        });
+        let second: Arc<dyn HttpServiceHost> = Arc::new(RecordingHost {
+            id: 2,
+            seen: seen.clone(),
+            gate: Mutex::new(None),
+        });
+        assert!(install_process_http_service_host_if_absent(first.clone()));
+        assert!(!install_process_http_service_host_if_absent(second.clone()));
+        futures::executor::block_on(async {
+            let routes = vec![("GET".into(), "/first".into(), "first".into())];
+            let mut active = Box::pin(serve_registered(owner_vm(), routes));
+            assert!(matches!(
+                futures::poll!(active.as_mut()),
+                std::task::Poll::Pending
+            ));
+            set_process_default_http_service_host(second);
+            assert!(!install_process_http_service_host_if_absent(first));
+            let later_routes = vec![
+                ("GET".into(), "/later-a".into(), "later_a".into()),
+                ("GET".into(), "/later-b".into(), "later_b".into()),
+            ];
+            serve_registered(owner_vm(), later_routes).await.unwrap();
+            assert_eq!(*seen.lock().unwrap(), [(2, 2)]);
+            release.send(()).unwrap();
+            active.await.unwrap();
+            assert_eq!(*seen.lock().unwrap(), [(2, 2), (1, 1)]);
+            clear_process_default_http_service_host();
+            let missing = serve_registered(owner_vm(), Vec::new()).await.unwrap_err();
+            assert!(missing.to_string().contains("adapter is not installed"));
+        });
+    }
+}
+
+static DEFAULT_HOST: RwLock<Option<Arc<dyn HttpServiceHost>>> = RwLock::new(None);
+
+/// Explicit replacement. A service already handed off retains its host/future.
+pub fn set_process_default_http_service_host(host: Arc<dyn HttpServiceHost>) {
+    *DEFAULT_HOST.write().expect("HTTP host registry poisoned") = Some(host);
+}
+
+/// Explicit installation that preserves an already selected custom host.
+pub fn install_process_http_service_host_if_absent(host: Arc<dyn HttpServiceHost>) -> bool {
+    let mut slot = DEFAULT_HOST.write().expect("HTTP host registry poisoned");
+    if slot.is_some() {
+        return false;
+    }
+    *slot = Some(host);
+    true
+}
+
+pub fn clear_process_default_http_service_host() {
+    *DEFAULT_HOST.write().expect("HTTP host registry poisoned") = None;
+}
+
+pub(crate) async fn serve_registered(
+    vm: AutoVM,
+    routes: Vec<(String, String, String)>,
+) -> AutoResult<()> {
+    let host = DEFAULT_HOST
+        .read()
+        .expect("HTTP host registry poisoned")
+        .clone()
+        .ok_or_else(|| {
+            crate::error::AutoError::Msg(
+                "HTTP service host adapter is not installed; explicitly install the Web adapter before running a service"
+                    .to_owned(),
+            )
+        })?;
+    let owner = HttpVmOwner {
+        vm: Rc::new(vm),
+        routes,
+    };
+    host.serve(owner).await
+}
+
+impl HttpVmOwner {
+    /// TEMPORARY T-02 source experiment only. The existing runtime has a
+    /// single implementation; an external probe adapter invokes it explicitly.
+    /// T-05 must remove this bridge when the framework implementation moves to
+    /// Web. Its existence is not a completed package-boundary proof.
+    #[doc(hidden)]
+    pub async fn run_existing_runtime_for_probe(self) -> AutoResult<()> {
+        let vm = self.vm;
+        let routes = self.routes;
+        // PLAN-736 AC-01: 显式服务配置面（`auto serve`/run_file 服务装配）——
+        // listen 取自解析后的 HttpServiceConfig（默认 loopback），不再读 env；
+        // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
+        if let Some(svc) = crate::http_service_config::take_active_service_config() {
+            // PLAN-736 T-05/AC-02：业务路由占用 /__auto/* 控制面 = 装配诊断
+            // （非零退出；不静默遮蔽控制面）。
+            let control_conflicts: Vec<&str> = routes
+                .iter()
+                .map(|r| r.1.as_str())
+                .filter(|p| p.starts_with("/__auto/"))
+                .collect();
+            if !control_conflicts.is_empty() {
+                return Err(crate::error::AutoError::Msg(format!(
+                    "http service: business routes conflict with the reserved control plane: {:?}",
+                    control_conflicts
+                )));
+            }
+            let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
+            // PLAN-736 AC-03/05: 预算与观测由服务配置驱动（env 不参与该面）。
+            crate::http_service_observability::install_log_sink(
+                svc.observability.log_sink_capacity,
+            );
+            crate::http_service_observability::emit_event(serde_json::json!({
+                "event": "startup",
+                "profile": svc.profile.as_str(),
+                "addr": addr,
+                "config_hash": format!("{:016x}", svc.effective_config_hash()),
+            }));
+            eprintln!(
+                "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
+                routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
+            );
+            crate::http_service_config::set_service_policy_active();
+            let runtime = std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(svc));
+            let transport =
+                crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
+            crate::vm::ffi::http_server::serve_async_with(vm, &addr, transport).await;
+            if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
+                // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
+                crate::http_service_observability::emit_event(serde_json::json!({
+                    "event": "config_error",
+                    "reason": fatal,
+                }));
+                return Err(crate::error::AutoError::Msg(format!(
+                    "http service failed to start: {fatal}"
+                )));
+            }
+            return Ok(());
+        }
+        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
+        let addr = format!("0.0.0.0:{}", port);
+        eprintln!(
+            "[HTTP] Auto-starting server with {} route(s) on {}",
+            routes.len(),
+            addr
+        );
+
+        crate::vm::ffi::http_server::serve_async(vm, &addr).await;
+
+        Ok(())
+    }
+}

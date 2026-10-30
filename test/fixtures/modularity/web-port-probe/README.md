@@ -1,8 +1,9 @@
-# PLAN-890 Core-only HTTP baseline
+# PLAN-890 HTTP host feasibility probes
 
-This bounded probe records existing public SDK behavior before deciding the
-HTTP host port. It is not the complete Web port, a migration fixture, a
-replacement for existing HTTP tests, or an acceptance pass for PLAN-890.
+These bounded probes check the explicit host handoff. The original Core-only
+implicit-default baseline is preserved at commit `6d70b2267` and in the Plan's
+historical evidence. This is not the complete Web port, a replacement for
+existing HTTP tests, or a final acceptance pass for PLAN-890.
 
 From the PLAN-890 language worktree:
 
@@ -12,12 +13,25 @@ python test/fixtures/modularity/web-port-probe/probe.py --exe test/fixtures/modu
 ```
 
 For the first build, omit `--locked` to resolve the fixture's local lock.
-The package depends only on `auto-lang-core`. It calls `run_with_capture`
-without registering an HTTP provider. The controller requires HTTP 200 with
-the exact per-invocation token, sends the existing test-support shutdown
-request and requires the child to exit successfully. Build failure, early
-exit, wrong/missing body, undelivered shutdown and failure to exit are red.
-An unrelated listener cannot pass the exact-body readiness assertion.
+The package depends only on `auto-lang-core`. In the default `installed` mode,
+the driver explicitly installs a fixture adapter implementing the public host
+trait, then calls `run_with_capture`. The controller requires HTTP 200 with
+the exact per-invocation token, actual test-support shutdown and successful
+process exit. An unrelated listener cannot pass the exact-body readiness
+assertion. The fixture adapter still uses a temporary Core runtime bridge;
+that bridge must be removed when the implementation moves into Web.
+
+Two independent-process controls use the same SDK entry without installation:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --mode missing
+python test/fixtures/modularity/web-port-probe/probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --mode plain
+```
+
+`missing` requires a nonzero SDK exit and the explicit missing-adapter diagnostic,
+with no listener/adapter activation. `plain` requires result 42 and successful
+exit, with no HTTP host requirement. Neither mode may be replaced by a
+permissive implicit runtime fallback.
 
 The controller owns only its child process and temporary source/log directory.
 If the probe fails, it reports the failure before reaping that child. It does
@@ -25,9 +39,9 @@ not kill a port owner or claim a forced kill is graceful shutdown. The
 temporary logs are printed before deletion; callers should capture output to
 their local evidence directory.
 
-The test proves the JSON/default-assembly baseline on the executed platform.
-It does not establish candidate host assembly, streamed uploads, SSE, file
-lifetimes, a new package DAG, Web distribution or four-repository delivery.
+These tests establish a prototype host handoff on the executed platform. They
+do not establish complete per-instance resource isolation, a new package DAG,
+Web distribution or four-repository delivery.
 
 The owned-upload seam has an additional bounded real-TCP replay:
 
@@ -41,3 +55,7 @@ preservation, business rejection/staging cleanup and headers-only early
 authorization rejection. A fixture-only random marker verifies listener
 identity before uploads. It is a scoped seam replay, not execution credit
 for the whole original suite or proof that explicit Web host assembly exists.
+
+`compile-fail-owner-send` is an opt-in compiler negative control: checking the
+fixture with that feature must reject `HttpVmOwner: Send` with E0277 because
+the VM owner contains `Rc<AutoVM>`. Leave the feature off for ordinary builds.

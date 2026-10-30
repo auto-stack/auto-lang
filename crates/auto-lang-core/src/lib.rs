@@ -734,70 +734,11 @@ pub async fn execute_autovm_with_deadline_and_input(
     // 6. Get result from stack
     let result = extract_autovm_result(&vm, task_id, Some(result_type)).await?;
 
-    // Auto-start the HTTP server on the VM's owner thread. The synchronous
-    // entry points wrap execution in a LocalSet; each connection task retains
-    // an Rc clone, so the !Send VM stays on this thread and outlives the task.
+    // Explicit host activation. Ordinary language calls do not require Web;
+    // a service needs an installed provider and keeps its !Send VM local.
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     if !routes.is_empty() {
-        // PLAN-736 AC-01: 显式服务配置面（`auto serve`/run_file 服务装配）——
-        // listen 取自解析后的 HttpServiceConfig（默认 loopback），不再读 env；
-        // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
-        if let Some(svc) = crate::http_service_config::take_active_service_config() {
-            // PLAN-736 T-05/AC-02：业务路由占用 /__auto/* 控制面 = 装配诊断
-            // （非零退出；不静默遮蔽控制面）。
-            let control_conflicts: Vec<&str> = routes
-                .iter()
-                .map(|r| r.1.as_str())
-                .filter(|p| p.starts_with("/__auto/"))
-                .collect();
-            if !control_conflicts.is_empty() {
-                return Err(crate::error::AutoError::Msg(format!(
-                    "http service: business routes conflict with the reserved control plane: {:?}",
-                    control_conflicts
-                )));
-            }
-            let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
-            // PLAN-736 AC-03/05: 预算与观测由服务配置驱动（env 不参与该面）。
-            crate::http_service_observability::install_log_sink(
-                svc.observability.log_sink_capacity,
-            );
-            crate::http_service_observability::emit_event(serde_json::json!({
-                "event": "startup",
-                "profile": svc.profile.as_str(),
-                "addr": addr,
-                "config_hash": format!("{:016x}", svc.effective_config_hash()),
-            }));
-            eprintln!(
-                "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
-                routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
-            );
-            crate::http_service_config::set_service_policy_active();
-            let runtime = std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(svc));
-            let transport =
-                crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
-            crate::vm::ffi::http_server::serve_async_with(std::rc::Rc::new(vm), &addr, transport)
-                .await;
-            if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
-                // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
-                crate::http_service_observability::emit_event(serde_json::json!({
-                    "event": "config_error",
-                    "reason": fatal,
-                }));
-                return Err(crate::error::AutoError::Msg(format!(
-                    "http service failed to start: {fatal}"
-                )));
-            }
-            return Ok((result, get_stdout(), bytecode_lines, bytecode_meta));
-        }
-        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
-        let addr = format!("0.0.0.0:{}", port);
-        eprintln!(
-            "[HTTP] Auto-starting server with {} route(s) on {}",
-            routes.len(),
-            addr
-        );
-
-        crate::vm::ffi::http_server::serve_async(std::rc::Rc::new(vm), &addr).await;
+        crate::vm::host_capabilities::http_service::serve_registered(vm, routes).await?;
     }
 
     Ok((result, get_stdout(), bytecode_lines, bytecode_meta))

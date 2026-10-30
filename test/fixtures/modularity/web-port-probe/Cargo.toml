@@ -9,5 +9,9 @@ publish = false
 [dependencies]
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 
+[features]
+# Deliberate compile-fail ownership control; ordinary probe builds leave it off.
+compile-fail-owner-send = []
+
 [profile.dev]
 debug = "line-tables-only"
