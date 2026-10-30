@@ -233,3 +233,35 @@ resource and lifecycle rules are specified in
 Old behavior profiles reject an admitted animated payload instead of
 silently discarding its tracks. The profile does not combine2D sprite APIs
 with3D animation in one Run; the old sprite profile remains supported.
+
+## Explicit audio2d/1 and audio3d/1
+
+Add explicit profiles audio2d(version111/profile22) and audio3d(112/23); all15old
+profiles keep exact combined/API/bridge bytes. Existing prices and32credit,
+1000steps/slice,100000steps/callback,120resumptions/250ms,30sinitialization/2stick,
+256/96/352KiB user/managed/combined source limits remain unchanged. Host8ms pump
+is a measured target reported met/missed separately from hard deadlines. VM/output,
+admission, Host prepare/publish/pump and native quantum CPU/deadline observations
+are separated; CPAL backend underrun counter/hardware latency are unavailable,
+not assumed zero. Native mixing cost is not hidden as asynchronous VM work.
+
+`ag_actions_snapshot()` costs1credit. 2D held bits0Left/1Right/2Jump/3Restart,
+bits4/5zero; 3D inherits006six-action ordering. Return is held+64*pressed; pressed
+is consumed exactly as in the existing getters, including mixed reads.
+
+`ag_present2d(kind,entity,x,y,w,h,flip,n,o0,c0,g0,...o3,c3,g3)` and
+`ag_present3d(kind,entity,clip,phase,looping,yaw,n,o0,c0,g0,...o3,c3,g3)` each return
+int and cost1credit. Arguments preceding gains are int except3D phase/yaw float;
+each request triple is `(ordinal int,cue int,gain float)`. Exactly one bundle per
+callback, at most one visual plus4sounds; kind−1 has no visual,0is bound leaf,
+1is runtime slot. Independent audio emit mixed with bundle, duplicate bundle,
+duplicate visual target or standalone visual mixed with bundle rejects. Standalone
+visual plus standalone audio remains legal at their ordinary prices.
+
+The complete real event branch keeps snapshot1+move26+grounded1+event-next1+
+event-pair1+event-phase1+bundle1=32credits. Both dimensions actually consume all
+fields, move the actor, select another cue after event101, and accept visual/audio
+together; adding one charged call fails. No getter discount, action reordering,
+omitted event field or raised cap makes the sum pass.
+
+See [Finite public audio](public-audio.md) (auto-ui PLAN-012:r1).

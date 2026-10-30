@@ -175,3 +175,47 @@ reservation stay inside the existing64MiB CPU total. See
 [Finite node animation and visual facing](node-animation-and-facing.md)
 for support, limits and publication rules; this does not add skin/morph,
 animation blending, a new collision domain or a complete game.
+
+## Scene7 public audio closures and shared ownership
+
+Add scene7 beside existing scene versions: audio AssetRef persists original raw
+SHA256/length/format (`ogg`/`wav`) and `{rate,channels,frames}`; document `cues` is
+explicit, including `[]`. Older schemas reject these new fields/formats. Declared
+metadata is verified against raw/decoded bytes even when a same-content cache is
+warm. Only generated `assets/<sha>.ogg|.wav` paths are implied. Safe local paths,
+ancestor reparse refusal, blob-first/entry-last/save/readback/repair/SaveAs rules
+extend to audio. Save As uses accepted bytes, never the import path.
+
+All current/history/pending-save/candidate resources share unchanged8raw identities,
+32MiB raw and64MiB CPU/GPU budgets; disk assets remain8files/32MiB. PCM/raw resident
+owners, bounded decoder scratch/overlap windows, cue/request/voice metadata and
+native observation ring/manager join the same CPU envelope, with no free global
+cache. Multiple cues do not duplicate PCM. CPU pose reservation remains separately
+added to the same64MiB total. Unknown/foreign residues are preserved, not silently
+deleted. Damaged readback cannot confirm save; actual repaired cold reopen must
+succeed before claiming closure.
+
+Required/live Host service ownership is also charged when no audio Asset exists,
+including empty-cue Run and retained manager after Stop/New/Open. A transient
+Registry budget view carries this requirement through shared predecode admission;
+an audio Asset's conservative reserve covers it without a second charge. Run and
+restart check asset+service+animation-pose CPU together before opening the service.
+Manager-free legacy64MiB cases remain accepted. Compatibility capture may output
+snapshots but still compares all15profiles with the frozen baseline; the gate
+scrubs its ambient flag and rejects capture-only proof without a verified marker.
+Every Usage forecast is constructed from its Registry context, including complete
+textured/animated model closures and declared project loading; no independent
+empty/default forecast may discard service ownership before allocation.
+
+The auditable derived bank is PCM16 stereo44100Hz,22504frames/90060bytes,
+SHA256 `b0b740dc49e51abefff9bb1af830080fe00f817b468614992040d438d6171c3d`.
+It concatenates unchanged jump7403mono, coin12643stereo, land2458stereo samples;
+mono duplicates channels, with no resampling/clipping/gain edit. Quantization
+error<=1/32768. `samples/public_audio/bank-audit.json` binds original hashes and
+spans; `examples/build_public_audio_samples.rs` reproduces it via production decode
+and public project save. The real4models+sharedPNG+bank use6raw identities and
+236544raw bytes. The same production budget accepts a seventh26828byte font slot
+with conservative4MiB CPU/GPU reservation; actual font import/render belongs to
+013 and is not delivered here.
+
+See [Finite public audio](public-audio.md) (auto-ui PLAN-012:r1).
