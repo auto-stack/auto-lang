@@ -18,8 +18,8 @@ pub mod lower;
 pub mod print;
 pub mod target;
 
-pub use artifacts::{assemble_file_set, FileSet};
+pub use artifacts::{assemble_file_set, runtime_source, FileSet};
 pub use cert::{BoundFile, CertDraft, ToolchainIdentity, CERT_SCHEMA, RECIPE};
-pub use lower::{lower_program, CmpOp, RBlock, RExpr, RStmt, RustFn, RustProgram};
+pub use lower::{lower_functions, lower_program, CmpOp, RBlock, RExpr, RStmt, RustFn, RustProgram};
 pub use print::print_program;
 pub use target::TargetProfile;

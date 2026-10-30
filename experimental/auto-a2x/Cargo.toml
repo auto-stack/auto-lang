@@ -7,4 +7,4 @@
 # Path dependencies only; no junctions/symlinks ever.
 [workspace]
 resolver = "2"
-members = ["a2x-core", "a2x-rust", "probe"]
+members = ["a2x-core", "a2x-rust", "a2x-store", "probe"]

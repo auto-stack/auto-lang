@@ -194,34 +194,45 @@ fn sanitize(name: &str) -> String {
     out
 }
 
-/// Hygienic Rust name of a module function (stable in its def index).
-pub fn rust_fn_name(def_index: usize, name: &str) -> String {
+/// Hygienic Rust name of a module function — derived from the SOURCE name
+/// only. A module's source names are unique (frontend rule) and STABLE
+/// across whole-module and single-body bundles, unlike def-table indices
+/// which shift when a fragment bundle carries scaffolds in another order
+/// (F-828-R1). The `fn_` prefix can never collide with Rust keywords or
+/// the runtime's reserved `a2x_` helpers.
+pub fn rust_fn_name(name: &str) -> String {
     let s = sanitize(name);
     if s.is_empty() {
-        format!("f{}", def_index)
+        "fn_".to_string()
     } else {
-        format!("f{}_{}", def_index, s)
+        format!("fn_{}", s)
     }
 }
 
 /// Lower a whole module for the given explicit entry function name.
+pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xReject> {
+    let mut functions = Vec::new();
+    for f in view.functions() {
+        functions.push(lower_fn(view, f)?);
+    }
+    let mut marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
+    marks.sort_unstable();
+    Ok(RustProgram {
+        functions,
+        entry: String::new(),
+        marks,
+    })
+}
+
+/// Lower a whole module and select its entry by explicit source name.
 pub fn lower_program<'a>(
     view: &SemanticView<'a>,
     entry_name: &str,
 ) -> Result<RustProgram, A2xReject> {
     let entry = view.entry(entry_name)?;
-    let mut functions = Vec::new();
-    for f in view.functions() {
-        functions.push(lower_fn(view, f)?);
-    }
-    let entry = rust_fn_name(entry.def_index, entry.source_name);
-    let mut marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
-    marks.sort_unstable();
-    Ok(RustProgram {
-        functions,
-        entry,
-        marks,
-    })
+    let mut p = lower_functions(view)?;
+    p.entry = rust_fn_name(entry.source_name);
+    Ok(p)
 }
 
 fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<RustFn, A2xReject> {
@@ -229,7 +240,7 @@ fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<RustFn, A2xR
     let body = lx.lower_block(f.body.entry)?;
     let params = lx.rust_params();
     Ok(RustFn {
-        name: rust_fn_name(f.def_index, f.source_name),
+        name: rust_fn_name(f.source_name),
         params,
         result: f.result,
         origin: f.origin,
@@ -554,17 +565,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 // Internal function or fragment external (signature-only).
                 let (rust_name, param_count, result_ty) =
                     if let Some(t) = self.view.fn_by_def(target_id) {
-                        (
-                            rust_fn_name(t.def_index, t.source_name),
-                            t.params.len(),
-                            t.result,
-                        )
+                        (rust_fn_name(t.source_name), t.params.len(), t.result)
                     } else if let Some(x) = self.view.external_by_def(target_id) {
-                        (
-                            rust_fn_name(x.def_index, &x.source_name),
-                            x.params.len(),
-                            x.result,
-                        )
+                        (rust_fn_name(&x.source_name), x.params.len(), x.result)
                     } else {
                         return Err(A2xReject::unsupported_expr(format!(
                             "call target def #{} is not an admitted function",

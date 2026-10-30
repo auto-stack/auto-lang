@@ -19,6 +19,8 @@ pub mod reject;
 pub mod semantic_view;
 pub mod sha256;
 
-pub use prepare::{plan_function, FunctionPlan, MAX_STRUCTURE_DEPTH};
+pub use prepare::{
+    canonical_signature, plan_function, semantic_fingerprint, FunctionPlan, MAX_STRUCTURE_DEPTH,
+};
 pub use reject::A2xReject;
 pub use semantic_view::{ExternalFn, FnFacts, ParamFacts, SemanticView, Ty};

@@ -130,7 +130,7 @@ fn build_manifest(
 /// The minimal typed runtime (plan §5.1: "标量helper只实现typed原语/授权trace，
 /// 不接收AST/MIR/ABC执行指令"). `#![allow(dead_code)]` because a given emit
 /// uses a subset of the primitive set.
-fn runtime_source(marks: &[&'static str]) -> String {
+pub fn runtime_source(marks: &[&'static str]) -> String {
     let mut s = String::new();
     s.push_str("// AUTO-GENERATED minimal typed runtime (PLAN-892 AX-A) — DO NOT EDIT.\n");
     s.push_str("// Checked i32 primitives with named traps + authorized trace marks.\n");

@@ -220,3 +220,211 @@ impl<'a> SemanticView<'a> {
             .collect()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Semantic fingerprint (plan §5.4 key inputs)
+// ---------------------------------------------------------------------------
+
+/// Canonical signature text: param types in positional order + result.
+/// Names/spans excluded on purpose — they are not semantic identity.
+pub fn canonical_signature(f: &FnFacts<'_>) -> String {
+    let params: Vec<&str> = f.params.iter().map(|p| p.ty.as_str()).collect();
+    format!("({})->{}", params.join(","), f.result.as_str())
+}
+
+/// The SEMANTIC fingerprint of one function body: sha256 over a canonical
+/// serialization of exactly what the compute surface means — types, ops,
+/// structure, evaluation order, call bindings, trace marks — with spans,
+/// table ordering and local/param NAMES excluded (plan §5.4). Local
+/// identity is canonicalized by first appearance, so a reordered locals
+/// table produces the same bytes.
+pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<String, A2xReject> {
+    let mut ser = String::new();
+    ser.push_str(&format!("sig {}\n", canonical_signature(f)));
+    let mut canon: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
+    // Params intern FIRST in positional order (0..n-1): param identity is
+    // semantic (callers bind arguments positionally); a first-use-only
+    // interning would erase the distinction between reading param0 and
+    // param1 first.
+    let mut param_locals: Vec<(u32, u32)> = f
+        .body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.role, hir::LocalRole::Param))
+        .map(|(i, l)| (l.index.unwrap_or(u32::MAX), i as u32))
+        .collect();
+    param_locals.sort();
+    for (positional, (_, local_idx)) in param_locals.iter().enumerate() {
+        canon.insert(*local_idx, positional);
+    }
+    let mut next = f.params.len();
+    let mut work: Vec<(hir::BlockId, usize)> = vec![(f.body.entry, 0)];
+    while let Some((block_id, d)) = work.pop() {
+        if d > MAX_STRUCTURE_DEPTH {
+            return Err(A2xReject::new(
+                "a2x.too-deep",
+                format!(
+                    "function `{}` nests past the frozen walk budget",
+                    f.source_name
+                ),
+            ));
+        }
+        let block = f
+            .body
+            .blocks
+            .get(block_id.0 as usize)
+            .ok_or_else(|| A2xReject::new("a2x.internal", "block index out of range"))?;
+        for stmt in &block.stmts {
+            match stmt {
+                hir::Stmt::Let { local, value } => {
+                    let id = intern(local.0, &mut canon, &mut next);
+                    let ty = view.resolve_use_ty(f.body.locals[local.0 as usize].ty)?;
+                    ser.push_str(&format!("let ${}:{} =", id, ty.as_str()));
+                    ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push(';');
+                }
+                hir::Stmt::Return { value } => {
+                    ser.push_str("ret:");
+                    ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push(';');
+                }
+                hir::Stmt::If { cond, then, els } => {
+                    ser.push_str("if:");
+                    ser_expr(view, f, *cond, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push('{');
+                    work.push((*then, d + 1));
+                    if let Some(e) = els {
+                        ser.push_str("else{");
+                        work.push((*e, d + 1));
+                    }
+                    ser.push('}');
+                }
+                hir::Stmt::Loop { body, .. } => {
+                    ser.push_str("loop{");
+                    work.push((*body, d + 1));
+                    ser.push('}');
+                }
+                hir::Stmt::Assign { place, value } => {
+                    let place = f.body.places.get(place.0 as usize).ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "place index out of range")
+                    })?;
+                    let id = intern(place.local.0, &mut canon, &mut next);
+                    ser.push_str(&format!("asgn ${}:", id));
+                    ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push(';');
+                }
+                hir::Stmt::Break { .. } => ser.push_str("brk;"),
+                hir::Stmt::Continue { .. } => ser.push_str("cont;"),
+                _ => return Err(A2xReject::unsupported_stmt("outside the compute surface")),
+            }
+        }
+    }
+    Ok(crate::sha256::sha256_hex(ser.as_bytes()))
+}
+
+/// First-appearance interning of a real local index to a canonical id.
+fn intern(
+    local: u32,
+    canon: &mut std::collections::BTreeMap<u32, usize>,
+    next: &mut usize,
+) -> usize {
+    if let Some(&id) = canon.get(&local) {
+        return id;
+    }
+    let id = *next;
+    *next += 1;
+    canon.insert(local, id);
+    id
+}
+
+fn ser_expr(
+    view: &SemanticView<'_>,
+    f: &FnFacts<'_>,
+    id: hir::ExprId,
+    canon: &mut std::collections::BTreeMap<u32, usize>,
+    next: &mut usize,
+    out: &mut String,
+    depth: usize,
+) -> Result<(), A2xReject> {
+    if depth > MAX_STRUCTURE_DEPTH {
+        return Err(A2xReject::new(
+            "a2x.too-deep",
+            format!(
+                "function `{}` nests expressions past the budget",
+                f.source_name
+            ),
+        ));
+    }
+    let e = f
+        .body
+        .exprs
+        .get(id.0 as usize)
+        .ok_or_else(|| A2xReject::new("a2x.internal", "expr index out of range"))?;
+    match &e.kind {
+        hir::ExprKind::ReadLocal { local } => {
+            let id = intern(local.0, canon, next);
+            out.push_str(&format!("${}", id));
+        }
+        hir::ExprKind::Constant { value } => out.push_str(&format!("c{}", value)),
+        hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+            out.push_str(&format!("{}(", op.as_str()));
+            ser_expr(view, f, *lhs, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *rhs, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::Unary { op, operand } => {
+            out.push_str(&format!("{}(", op.as_str()));
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::Logical { op, lhs, rhs } => {
+            out.push_str(&format!("{}(", op.as_str()));
+            ser_expr(view, f, *lhs, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *rhs, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::Call {
+            callee,
+            eval_args,
+            bindings,
+        } => {
+            let target = callee.0 as usize;
+            let name = if let Some(sym) = view.trace_symbol(target) {
+                sym.to_string()
+            } else if let Some(t) = view.fn_by_def(target) {
+                t.source_name.to_string()
+            } else if let Some(x) = view.external_by_def(target) {
+                x.source_name.clone()
+            } else {
+                return Err(A2xReject::unsupported_expr("call target not admitted"));
+            };
+            let mut canon_bindings: Vec<(u32, u32)> =
+                bindings.iter().map(|b| (b.param, b.arg)).collect();
+            canon_bindings.sort();
+            out.push_str(&format!("call {}(", name));
+            for (i, a) in eval_args.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                ser_expr(view, f, *a, canon, next, out, depth + 1)?;
+            }
+            out.push_str(")|");
+            for (i, (p, a)) in canon_bindings.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&format!("{}>{}", p, a));
+            }
+        }
+        other => {
+            return Err(A2xReject::unsupported_expr(format!(
+                "expression `{:?}` outside the compute surface",
+                other
+            )))
+        }
+    }
+    Ok(())
+}
