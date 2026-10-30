@@ -1,11 +1,14 @@
-# PLAN-892 a2r-hir suite — the registered A2X emit channel's own evidence
-# set (first case: B01). This suite never silently absorbs a gap: every
-# included case is green by real execution on the current tree. The old
-# ace-m1 denominator and its a2r-snapshot checks are untouched; this is a
-# PARALLEL channel (plan §5.5: 新ACE-A2R证据并列记录).
+# PLAN-892 a2r-hir suite — the registered A2X emit channel's evidence set:
+# B01 precedence, B04 short-circuit, B13/B14 traps, NAMED-01 source-order
+# trace. Every included case is green by real execution on the current
+# tree; the old ace-m1 denominator is untouched (parallel channel).
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "a2r-hir-892", include: [
   "B01.case.ad",
+  "B04.case.ad",
+  "B13.case.ad",
+  "B14.case.ad",
+  "NAMED-01.case.ad",
 ] }
 ```

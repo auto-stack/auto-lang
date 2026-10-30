@@ -82,7 +82,7 @@ fn a2r_hir_892_first_case_green() {
         &Limits::defaults(),
     )
     .expect("a2r-hir suite runs");
-    assert_eq!(report.results.len(), 1, "exactly the first case's check");
+    assert_eq!(report.results.len(), 5, "the five registered daily cases");
     let bad = failing(&report);
     assert!(bad.is_empty(), "a2r-hir first case must be green:\n{}", bad.join("\n"));
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
@@ -97,7 +97,7 @@ fn a2r_hir_892_tampered_golden_is_red() {
     let suite_copy = root.join("cases");
     copy_dir(&suite_dir(), &suite_copy);
     // mutate one byte of the reviewed golden (comment head), keeping size
-    let golden = suite_copy.join("golden/generated.rs");
+    let golden = suite_copy.join("golden-B01/generated.rs");
     let mut bytes = std::fs::read(&golden).unwrap();
     assert!(bytes.len() > 16);
     bytes[10] = bytes[10].wrapping_add(1);
@@ -165,4 +165,119 @@ fn copy_dir(src: &Path, dst: &Path) {
             std::fs::copy(entry.path(), &to).unwrap();
         }
     }
+}
+
+/// ---------------------------------------------------------------------------
+/// The EXPLICIT certification leg (plan §5.5): for every registered case,
+/// the same on-the-spot actual set is REALLY compiled and run, the
+/// hand-written independent reference compiles and runs separately, and
+/// both must equal the closed-form oracle (value or named trap). A strict
+/// certificate draft binding the full file set + reference + observed
+/// toolchain is written per case.
+struct CertifyCase {
+    name: &'static str,
+    profile: &'static str,
+    caps: &'static [&'static str],
+    oracle_kind: &'static str,
+    oracle_value: Option<i64>,
+    oracle_trap: Option<&'static str>,
+}
+
+fn worker_exe(repo: &Path) -> std::path::PathBuf {
+    let exe = repo
+        .join("experimental/auto-a2x/target/release")
+        .join(if cfg!(windows) { "a2x-worker.exe" } else { "a2x-worker" });
+    assert!(exe.is_file(), "prebuilt worker at {}", exe.display());
+    exe
+}
+
+fn run_certify(c: &CertifyCase, oracle_value_override: Option<i64>, reference_override: Option<&Path>) -> serde_json::Value {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap()
+        .to_path_buf();
+    let dir = suite_dir();
+    let root = temp_root(&format!("cert-{}", c.name));
+    let req = serde_json::json!({
+        "op": "certify",
+        "source_path": dir.join(format!("src/{}.at", c.name)),
+        "profile": c.profile,
+        "entry": "main",
+        "caps": c.caps,
+        "out_dir": root.join("out"),
+        "case_id": format!("a2r-hir-892/{}", c.name),
+        "reference_path": reference_override.map(|p| p.to_path_buf())
+            .unwrap_or_else(|| dir.join(format!("reference-{}.rs", c.name))),
+        "oracle_kind": c.oracle_kind,
+        "oracle_value": oracle_value_override.or(c.oracle_value).unwrap_or(0),
+        "oracle_trap": c.oracle_trap.unwrap_or(""),
+    });
+    let out = std::process::Command::new(worker_exe(&repo))
+        .arg(req.to_string())
+        .output()
+        .expect("spawn worker certify");
+    assert!(
+        out.status.success(),
+        "worker certify failed: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    serde_json::from_slice(&out.stdout).expect("certify response json")
+}
+
+fn certify_family() -> Vec<CertifyCase> {
+    vec![
+        CertifyCase { name: "B01", profile: "core", caps: &[], oracle_kind: "value", oracle_value: Some(14), oracle_trap: None },
+        CertifyCase { name: "B04", profile: "scalar", caps: &[], oracle_kind: "value", oracle_value: Some(42), oracle_trap: None },
+        CertifyCase { name: "B13", profile: "core", caps: &[], oracle_kind: "trap", oracle_value: None, oracle_trap: Some("Overflow") },
+        CertifyCase { name: "B14", profile: "scalar", caps: &[], oracle_kind: "trap", oracle_value: None, oracle_trap: Some("DivByZero") },
+        CertifyCase { name: "NAMED-01", profile: "scalar", caps: &["hir.test.trace.v1"], oracle_kind: "value", oracle_value: Some(23), oracle_trap: None },
+    ]
+}
+
+#[test]
+fn a2r_hir_892_certify_leg_all_cases_pass() {
+    let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    for c in certify_family() {
+        let resp = run_certify(&c, None, None);
+        assert_eq!(
+            resp["verdict"], "PASS",
+            "{} certify: actual={:?} reference={:?} marks={}",
+            c.name, resp["actual_observed"], resp["reference_observed"], resp["marks_match_reference"]
+        );
+        assert!(resp["cert_sha256"].is_string(), "{} binds a strict certificate", c.name);
+        // 852 budget lines (observed walls, asserted here): each
+        // compile+run leg under 120s; a leg contains both programs' work
+        let wall: u64 = resp["actual_wall_ms"].as_u64().unwrap_or(u64::MAX);
+        let rwall: u64 = resp["reference_wall_ms"].as_u64().unwrap_or(u64::MAX);
+        assert!(wall < 120_000, "{} actual leg {}ms over budget", c.name, wall);
+        assert!(rwall < 120_000, "{} reference leg {}ms over budget", c.name, rwall);
+    }
+}
+
+/// V-09 shapes: a wrong oracle and a wrong independent reference are
+/// REJECTED certifications — never a PASS by force.
+#[test]
+fn a2r_hir_892_certify_negative_controls_reject() {
+    let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let family = certify_family();
+    let b01 = &family[0];
+
+    // wrong closed-form oracle (14 -> 15)
+    let resp = run_certify(b01, Some(15), None);
+    assert_eq!(resp["verdict"], "REJECTED", "wrong oracle must reject");
+
+    // wrong independent reference (computes 15): the actual is right but
+    // the reference disagrees -> the certification is still REJECTED
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap()
+        .to_path_buf();
+    let wrong_ref = temp_root("wrong-ref").join("reference.rs");
+    let wrong = "fn main() { println!(\"value:{}\", 15); }
+";
+    std::fs::write(&wrong_ref, wrong).unwrap();
+    let resp = run_certify(b01, None, Some(&wrong_ref));
+    assert_eq!(resp["verdict"], "REJECTED", "wrong reference must reject");
 }

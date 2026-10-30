@@ -24,10 +24,10 @@ case {
         steps: [{ op: "run" }]
       },
       expect: { completion: "success", artifacts: [
-        { path: "main.rs", file: "golden/main.rs", compare: "bytes" },
-        { path: "a2x_runtime.rs", file: "golden/a2x_runtime.rs", compare: "bytes" },
-        { path: "generated.rs", file: "golden/generated.rs", compare: "bytes" },
-        { path: "manifest.json", file: "golden/manifest.json", compare: "bytes" }
+        { path: "main.rs", file: "golden-B01/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-B01/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-B01/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-B01/manifest.json", compare: "bytes" }
       ] } }
   ]
 }

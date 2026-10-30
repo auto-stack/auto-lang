@@ -33,13 +33,6 @@ use auto_a2x_rust::{assemble_file_set, lower_program};
 const PROTOCOL: &str = "a2xworker/1";
 const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
 
-/// The frozen independent i32-form reference for the certified entry (the
-/// NEW wrapper form — never the old a2r i64 golden).
-const REFERENCE_SRC: &str = r#"// PLAN-892 independent reference (hand-written, i32/trap form)
-fn ref_main() -> i32 { 2 + 3 * 4 }
-fn main() { println!("value:{}", ref_main()); }
-"#;
-
 fn main() {
     let mut req = String::new();
     if let Some(arg) = std::env::args().nth(1) {
@@ -207,39 +200,137 @@ fn daily_emit(v: &serde_json::Value) -> serde_json::Value {
 
 fn certify(v: &serde_json::Value) -> serde_json::Value {
     let out_dir = v["out_dir"].as_str().unwrap_or_else(|| fail("out_dir required"));
-    let oracle_value = v["oracle_value"].as_i64().unwrap_or_else(|| fail("oracle_value required"));
+    let reference_path = v["reference_path"]
+        .as_str()
+        .unwrap_or_else(|| fail("reference_path required (the case's hand-written reference)"));
+    let oracle_kind = v["oracle_kind"].as_str().unwrap_or("value");
+    let oracle_line = match oracle_kind {
+        "value" => format!("value:{}", v["oracle_value"].as_i64().unwrap_or_else(|| fail("oracle_value required"))),
+        "trap" => format!("trap:{}", v["oracle_trap"].as_str().unwrap_or_else(|| fail("oracle_trap required"))),
+        other => fail(&format!("oracle_kind must be value|trap, got {other}")),
+    };
+    let case_id = v["case_id"].as_str().unwrap_or("a2r-hir-892/unnamed");
     let out = emit(v);
     write_out_dir(out_dir, &out);
     let dir = PathBuf::from(out_dir);
 
-    // actual program: real rustc + run
-    let actual_line = compile_and_run(&dir, "main.rs", "a2x_actual.exe");
-    // independent reference: compile + run separately
-    if let Err(e) = std::fs::write(dir.join("reference.rs"), REFERENCE_SRC) {
-        fail(&format!("write reference: {e}"));
-    }
-    let reference_line = compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
-    let expect = format!("value:{}", oracle_value);
+    // actual program: real rustc + run (stdout value/trap + stderr marks);
+    // walls are OBSERVED per the 852 budget lines (compile <=120s, run
+    // <=30s, whole certify <=360s) — the caller asserts the caps
+    let t0 = std::time::Instant::now();
+    let (actual_out, actual_err) = compile_and_run(&dir, "main.rs", "a2x_actual.exe");
+    let actual_wall_ms = t0.elapsed().as_millis() as u64;
+    // independent hand-written reference: compile + run separately
+    let reference_src = std::fs::read_to_string(reference_path)
+        .unwrap_or_else(|e| fail(&format!("read reference {reference_path}: {e}")));
+    std::fs::write(dir.join("reference.rs"), &reference_src)
+        .unwrap_or_else(|e| fail(&format!("write reference: {e}")));
+    let t1 = std::time::Instant::now();
+    let (reference_out, reference_err) = compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
+    let reference_wall_ms = t1.elapsed().as_millis() as u64;
+
     let mut r = ok_base();
     r["mode"] = "certify".into();
-    r["actual_observed"] = actual_line.clone().into();
-    r["reference_observed"] = reference_line.clone().into();
-    r["oracle"] = expect.clone().into();
-    if actual_line == expect && reference_line == expect {
-        r["verdict"] = "PASS".into();
-    } else {
-        r["verdict"] = "REJECTED".into();
+    r["case"] = case_id.into();
+    r["actual_observed"] = actual_out.clone().into();
+    r["reference_observed"] = reference_out.clone().into();
+    r["oracle"] = oracle_line.clone().into();
+    let stdout_ok = actual_out == oracle_line && reference_out == oracle_line;
+    let marks_ok = actual_err == reference_err;
+    r["marks_match_reference"] = marks_ok.into();
+    let verdict = if stdout_ok && marks_ok { "PASS" } else { "REJECTED" };
+    r["verdict"] = verdict.into();
+    if verdict == "REJECTED" {
         r["detail"] = format!(
-            "actual={:?} reference={:?} oracle={:?}",
-            actual_line, reference_line, expect
+            "actual={:?} reference={:?} oracle={:?} marks_actual={:?} marks_ref={:?}",
+            actual_out, reference_out, oracle_line, actual_err, reference_err
         )
         .into();
     }
+
+    // the strict certificate draft binds the full actual file set, the
+    // reference bytes and the OBSERVED toolchain identity
+    let vv = toolchain_vv();
+    let cert = auto_a2x_rust::CertDraft {
+        schema: auto_a2x_rust::CERT_SCHEMA,
+        recipe: auto_a2x_rust::RECIPE,
+        case: case_id.to_string(),
+        profile: out.profile.clone(),
+        hir_domain: {
+            let t = auto_a2x_rust::TargetProfile::v1();
+            let _ = t;
+            domain_of(&out.profile)
+        },
+        entry: v["entry"].as_str().unwrap_or("main").to_string(),
+        verdict: verdict.to_string(),
+        oracle_kind: if oracle_kind == "trap" { "trap" } else { "value" },
+        oracle_value: if oracle_kind == "trap" {
+            v["oracle_trap"].as_str().unwrap_or("").to_string()
+        } else {
+            v["oracle_value"].as_i64().unwrap_or(0).to_string()
+        },
+        input_hash: out.input_hash.clone(),
+        source_sha256: out.source_sha256.clone(),
+        actual_files: out
+            .files
+            .iter()
+            .map(|(p, c)| auto_a2x_rust::BoundFile {
+                path: p.clone(),
+                sha256: sha256_hex(c.as_bytes()),
+            })
+            .collect(),
+        golden_sha256: None,
+        wrapper_sha256: sha256_hex(
+            out.files
+                .iter()
+                .find(|(p, _)| p == "main.rs")
+                .map(|(_, c)| c.as_bytes())
+                .unwrap_or(&[]),
+        ),
+        reference_sha256: sha256_hex(reference_src.as_bytes()),
+        backend: "auto-a2x-rust",
+        backend_version: "0.1.0",
+        shared_view_version: "0.1.0",
+        protocol: "a2x-observation/1",
+        toolchain: auto_a2x_rust::ToolchainIdentity::observed(
+            vv,
+            vec!["--edition".into(), "2021".into()],
+        ),
+        capabilities: v["caps"].as_array().map(|a| {
+            a.iter().filter_map(|c| c.as_str().map(String::from)).collect()
+        }).unwrap_or_default(),
+    };
+    if let Err(e) = cert.validate() {
+        fail(&format!("certificate draft invalid: {e}"));
+    }
+    let cert_json = cert.to_json();
+    std::fs::write(dir.join("case.cert.json"), &cert_json)
+        .unwrap_or_else(|e| fail(&format!("write cert: {e}")));
+    r["cert_sha256"] = sha256_hex(cert_json.as_bytes()).into();
+    r["actual_wall_ms"] = actual_wall_ms.into();
+    r["reference_wall_ms"] = reference_wall_ms.into();
     r["files"] = file_records(&out.files).into();
     r
 }
 
-fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> String {
+fn domain_of(profile: &str) -> String {
+    if profile.contains("scalar") {
+        "scalar-i32-draft".to_string()
+    } else {
+        "core-i32-draft".to_string()
+    }
+}
+
+fn toolchain_vv() -> String {
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let out = Command::new(&rustc).arg("-vV").output().unwrap_or_else(|e| fail(&format!("rustc -vV: {e}")));
+    if !out.status.success() {
+        fail("rustc -vV failed");
+    }
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String) {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let exe = dir.join(exe_name);
     let out = match Command::new(&rustc)
@@ -265,5 +356,8 @@ fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> String {
     if !run.status.success() {
         fail(&format!("{exe_name} exit non-zero"));
     }
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
+    (
+        String::from_utf8_lossy(&run.stdout).trim().to_string(),
+        String::from_utf8_lossy(&run.stderr).trim().to_string(),
+    )
 }
