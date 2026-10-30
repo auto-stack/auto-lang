@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-892
-status: reviewed
+status: archived
 feature_name: 共享A2X骨架与Checked HIR到Rust标量闭环（AX-A）
 author: [Codex]
 created_at: 2026-10-30
@@ -290,6 +290,8 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 2026-10-30 stage: merge | checkpoint: T-08 module gate | plan_id: PLAN-892 | plan_revision: 1 | 冻结面=61453db03(+docs 2a2a5c99b) | gate: `cargo tm --changes target/tm-paths.txt --out target/tm-exec`（全目录受影响闭包——test_cases 运行时=所有模块 case-parent 输入，1182模块/7171义务，墙3.1h单实例）；结果=1172绿/10非绿：模块30=a2r_hir维护构建竞态（并行分片下relink撞运行中exe——**已修**：跨进程锁+稳定env+重试，commit 626062f06，单跑+并行分片重放均绿）；aavm2_goldens_check+back_proxy corpora路由=**master基面同败实证（预存非回归）**；aavm2_compile_corpus×2=同族环境面（temp生成crate解析auto_lang失败，历史P574豁免族）；mir_native×2=门禁自身并行负载超session wall；ac.red×3=故意红用例模块。环境事故已处置：D盘100%满致sccache堆损坏/rustc崩溃级联——回收本组probe缓存33G+增量缓存后门禁全程完成 | next: T-09合入
 
 2026-10-30 stage: merge | checkpoint: prepared+landed+canonical_verified | plan_id: PLAN-892 | plan_revision: 1 | delivery_commit: 348df0964(rebase自626062f06，range-diff全等) | landed: master=348df0964 ff-only无合并提交 ✅ | closeout-repair: golden-B01/B04/B13/B14/NAMED-01五份manifest被*.json规则吞（F-793同类：改名golden/→golden-B01/后allowlist指旧路径）——broaden allowlist+补齐五文件（635d29137+后续B01），主检出落地冒烟6/6绿 ✅ | canonical_verified: project.md=8d3a8d59f4a5fa29; architecture.md=cae00b0e5c102a87; incremental-and-cache.md=fb66d17b5e7dc6db; project.md=bd5170b54a159b87; scalar-hir-backend.md=6903a53f34ff0acc; a2r-hir-certification.md=19423723d1e42ff5 | spec-delta: SD-01..06全落（auto-a2x/auto-a2r新模块3+2文档+plans.md、a2r-hir-certification新文、architecture/ace-m1-conformance追加不改旧规则） | next: T-10归档+T-11清树
+
+2026-10-30 stage: merge | checkpoint: archived | plan_id: PLAN-892 | plan_revision: 1 | completion_kind: delivered | 路径=docs/plans/archive/892-shared-a2x-hir-to-rust-scalar.md status=archived；T-01..06[x]+T-07(pass)+T-08(门禁回执)+T-09(landed+canonical_verified+closeout修复)+T-10(归档)；AX-B可接：A2X API=SemanticView::from_checked/from_parts+lower_functions/print_fn+assemble_file_set+A2xSession(cold_assemble/warm_edit/restart_assemble/close_env)；pass=semantic_fingerprint/plan_function；cache=AXS1/AXR1/AXM1层+quota；拒绝面=a2x.*具名码族；S/P/H窗口全闭 | next: T-11清树
 
 ## 10. 待澄清事项
 
