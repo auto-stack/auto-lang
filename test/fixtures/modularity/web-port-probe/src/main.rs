@@ -45,6 +45,15 @@ fn main() {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let source =
         std::fs::read_to_string(arguments.first().expect("source path")).expect("read source");
+    let audit_configuration = std::env::var("PLAN890_AUDIT_ACTIVE_CONFIG").ok();
+    if let Some(path) = &audit_configuration {
+        let config = auto_lang_core::http_service_config::resolve_service_config(
+            &std::fs::read_to_string(path).unwrap(),
+            None,
+        )
+        .unwrap();
+        auto_lang_core::http_service_config::set_active_service_config(std::sync::Arc::new(config));
+    }
     if arguments
         .iter()
         .any(|argument| argument == "--install-adapter")
@@ -75,6 +84,12 @@ fn main() {
     // language controls use this exact public call with no installation.
     match auto_lang_core::run_with_capture(&source) {
         Ok((value, stdout)) => {
+            if audit_configuration.is_some() {
+                eprintln!(
+                    "probe audit active_config_unconsumed={}",
+                    auto_lang_core::http_service_config::take_active_service_config().is_some()
+                );
+            }
             #[cfg(feature = "external-runtime")]
             {
                 let tails = web_runtime_boundary_probe::http_transport::live_network_tails();
