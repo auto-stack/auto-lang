@@ -91,3 +91,12 @@ while the second must still answer; both owner futures are joined and real
 resource tables must be empty. The pre-repair JSON failure is retained as local
 evidence. This uses a temporary injectable-shutdown entry to the single existing
 runtime, not a second framework implementation or the final Web SDK port.
+
+Add `--admission` to the Python isolation command to set a one-request budget
+in that child only. A 64 MiB streamed file and small receive buffer hold the
+first service's response body open: its next request must get 503 while the
+second service still returns its exact value. Resetting that one owned socket
+must reclaim the first permit, restore its 200 response, and leave all real
+registries empty after independent shutdown. The file is local temporary input,
+written in 1 MiB blocks and never added to Git. This is a body lifetime/instance
+isolation check, not a throughput benchmark.

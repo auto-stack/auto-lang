@@ -4,8 +4,10 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import os
 from pathlib import Path
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -61,9 +63,31 @@ def ready(child, port, path, expected):
     raise AssertionError("exact owner identity did not become ready")
 
 
+def admission_isolation(child, ports):
+    connection = http.client.HTTPConnection("127.0.0.1", ports[0], timeout=5)
+    try:
+        connection.connect()
+        connection.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        connection.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                                   struct.pack("HH" if os.name == "nt" else "ii", 1, 0))
+        connection.request("GET", "/large")
+        response = connection.getresponse()
+        assert response.status == 200 and response.read(1) == b"x"
+        first_busy = get(ports[0], "/one/7")
+        second_free = get(ports[1], "/two/independent")
+        print(json.dumps({"scope": "two-owner-permit-pressure", "first_busy": first_busy,
+                          "second_free": second_free}), flush=True)
+        assert first_busy[0] == 503, "unread body must retain the first owner's permit"
+        assert second_free == (200, "second-independent"), "first owner's body exhausted second owner's permit"
+    finally:
+        connection.close()  # RST exercises actual connection/resource cancellation.
+    ready(child, ports[0], "/one/7", 1007)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
+    parser.add_argument("--admission", action="store_true")
     args = parser.parse_args()
     # Hold both reservations together so the OS cannot select the same port.
     with socket.socket() as first, socket.socket() as second:
@@ -75,9 +99,17 @@ def main():
         a, b = root / "first.at", root / "second.at"
         payload = b"owned-file\x00\xff"
         (root / "payload.bin").write_bytes(payload)
+        if args.admission:
+            # Larger than socket buffers, streamed by the real file executor;
+            # a single fixed-size block avoids allocating the whole payload.
+            with (root / "large.bin").open("wb") as large:
+                for _ in range(64):
+                    large.write(b"x" * (1024 * 1024))
         a.write_text('#[api(method = "GET", path = "/one/:n")]\nfn shared(n int) int { n + 1000 }\n'
                      '#[api(method = "GET", path = "/file")]\nfn resource() FileResponse { return http.file_response("'
                      + root.as_posix() + '", "payload.bin", "{}") }\n'
+                     '#[api(method = "GET", path = "/large")]\nfn large_file() FileResponse { return http.file_response("'
+                     + root.as_posix() + '", "large.bin", "{}") }\n'
                      '#[api(method = "GET", path = "/events")]\nfn events() ~Iter<int> {\n yield 7\n yield 8\n}\n'
                      '#[api(method = "POST", path = "/early")]\nfn early(req UploadRequest) ~UploadReceipt { return http.upload_error(418, "owner-one") }\n', encoding="utf-8")
         b.write_text('#[api(method = "GET", path = "/two/:word")]\nfn shared(word str) str { "second-" + word }\n'
@@ -86,7 +118,8 @@ def main():
                      '#[api(method = "GET", path = "/other-early")]\nfn early() str { "second-early" }\n', encoding="utf-8")
         with (root / "stdout").open("w+") as stdout, (root / "stderr").open("w+") as stderr:
             child = subprocess.Popen([str(args.exe.resolve()), str(a), str(b), *map(str, ports)],
-                                     stdin=subprocess.PIPE, stdout=stdout, stderr=stderr, text=True)
+                                     stdin=subprocess.PIPE, stdout=stdout, stderr=stderr, text=True,
+                                     env=dict(os.environ, AUTO_HTTP_MAX_INFLIGHT="1") if args.admission else None)
             after = None
             try:
                 ready(child, ports[0], "/one/7", 1007)
@@ -96,6 +129,8 @@ def main():
                 ready(child, ports[1], "/two/hello", "second-hello")
                 after = get(ports[0], "/one/7")
                 owner_resources(ports[0], payload)
+                if args.admission:
+                    admission_isolation(child, ports)
                 child.stdin.write("stop-first\n")
                 child.stdin.flush()
                 deadline = time.monotonic() + 10

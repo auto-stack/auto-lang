@@ -71,7 +71,19 @@ pub fn create_scope(
     deadline: std::time::Instant,
     server_gen: u64,
 ) -> Option<std::sync::Arc<RequestScope>> {
-    let Ok(permit) = life_permits().clone().try_acquire_owned() else {
+    create_scope_with_permits(conn_id, deadline, server_gen, life_permits())
+}
+
+/// The serving instance supplies its lifetime budget. The legacy public
+/// factory above remains for existing test/embedding callers, but network
+/// services must never share its process-default permit pool.
+pub(crate) fn create_scope_with_permits(
+    conn_id: u64,
+    deadline: std::time::Instant,
+    server_gen: u64,
+    permits: &std::sync::Arc<tokio::sync::Semaphore>,
+) -> Option<std::sync::Arc<RequestScope>> {
+    let Ok(permit) = permits.clone().try_acquire_owned() else {
         return None;
     };
     let id = SCOPE_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

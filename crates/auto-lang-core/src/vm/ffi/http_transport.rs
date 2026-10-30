@@ -165,6 +165,8 @@ pub(crate) async fn serve_network(
     // PLAN-781 T-22（R06）：本服务实例代际（每 serve_network 一次）——
     // 排水截止按此归属，旧服务的截止不污染同进程其他/后续实例。
     let server_gen = super::http_server::next_server_generation();
+    // One budget per serving instance, held through the response body terminal.
+    let request_permits = std::sync::Arc::new(tokio::sync::Semaphore::new(cfg.queue_capacity));
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -210,16 +212,19 @@ pub(crate) async fn serve_network(
                     let req_tx = req_tx.clone();
                     let shutdown = shutdown.clone();
                     let program = program.clone();
+                    let request_permits = request_permits.clone();
                     axum::Router::new().fallback(move |request: axum::extract::Request| {
                         let cfg = cfg.clone();
                         let req_tx = req_tx.clone();
                         let shutdown = shutdown.clone();
                         let program = program.clone();
+                        let request_permits = request_permits.clone();
                         async move {
                             super::http_server::with_optional_owner_metadata(
                                 program,
                                 bridge_handler(
                                     request, peer, cfg, req_tx, shutdown, conn_id, server_gen,
+                                    request_permits,
                                 ),
                             )
                             .await
@@ -370,6 +375,7 @@ async fn bridge_handler(
     shutdown: tokio::sync::watch::Receiver<bool>,
     conn_id: u64,
     server_gen: u64,
+    request_permits: std::sync::Arc<tokio::sync::Semaphore>,
 ) -> Response {
     let (mut parts, body) = request.into_parts();
     let method = parts.method.as_str().to_uppercase();
@@ -557,10 +563,11 @@ async fn bridge_handler(
 
     // PLAN-705 T-05: 生命期许可 + scope ——入队前获取（queued+running+
     // parked 总上限）；许可不可得 = 总上限满 → 503（零分配零排队）。
-    let scope = super::http_server::create_scope(
+    let scope = super::http_server::create_scope_with_permits(
         conn_id,
         std::time::Instant::now() + cfg.request_timeout,
         server_gen,
+        &request_permits,
     );
     let Some(scope) = scope else {
         eprintln!("[HTTP] {} {} → 503 (lifetime permit cap)", peer, "");
@@ -1247,6 +1254,7 @@ mod bridge_tests {
             shutdown,
             77,
             0,
+            std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
         )
         .await;
         assert_eq!(resp.status(), 503, "full queue must reject fast");
