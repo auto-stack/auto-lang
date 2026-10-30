@@ -27,7 +27,7 @@ total_steps: 10
 
 将864已有的集合/变体合法源码，经同一Checked HIR→共享collections MIR→mn CLIF/COFF→真实PE执行；关闭M1原L01–L07/V01–V07共14个native源码格。维持零参i32入口/结果，继承822集合与资源语义；同时补集合源码的真实单函数增量，而非整模块重算后报告carry。
 
-[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。当前只有T-01基线证据，native执行/资源验收未完成。
+[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。T-01..05已验证并提交；T-06的正式SDK与物理分区机制已接线，30×5/512正式计时仍待独占窗口。
 
 ## 1. 目标
 
@@ -57,7 +57,7 @@ source→既有compile_collections_source/CheckedModule→auto-mir-lower::{lower
 | H正式消费 | crates/auto-lang-core/src/test_cases/ac_mn.rs及必要ac_av身份；crates/auto-test-case/src/contract.rs现有recipe/解码缝；crates/auto-lang/src/tests/ace_m1_tests.rs；ace-m1的binding/新case与公共worker注册 |
 | 拟新增验证 | ac-mir-native/tests/{collections_source_tier,collections_resources_tier,collections_incremental_tier}.rs；scripts/verify-native-collections-889.ps1；ace-m1/native-collections-889.{suite,case}.ad（当前不存在） |
 
-权威实施树D:/autostack/.wt/lang-889/auto-lang，分支plan-889-dev，base=e0b29ff7a，当前实现提交69d7b6b26；一Plan一权威树，实施/独立review/修复均同树顺序执行。根workspace不新增实验栈依赖，auto-av-core零依赖边界不变。
+权威实施树D:/autostack/.wt/lang-889/auto-lang，分支plan-889-dev，base=e0b29ff7a，当前实现检查点cb5ce40db；一Plan一权威树，实施/独立review/修复均同树顺序执行。根workspace不新增实验栈依赖，auto-av-core零依赖边界不变。
 
 ## 4. 需求分析与背景调查
 
@@ -365,3 +365,19 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 - raw根为权威树 `docs/plans/attachments/889/baseline/`，本地不入库：t05-packed-incremental.log SHA256 a949d5ee3eb5ee9eaa5949eb260730637ad24ae2415e356063f8c72a28fccff5；t05-packed-controls.log c489ca1fc42f4ed89deddf1bb6fdc3a0049b65627618cbbe2adec42ce640d411；t05-final-driver-replay.log af3b828e51ec09ae2b363a444ca2b804c221f524a241073ddc72a21e7123dde7；t05-final-live-admission.log 6ee70cb629d3a0726aadd6aebcc153aa061df5ca86847a89657f3cbabf54f319。T-05窗口实施已提交，S无继续写权；N在T-06继续自有消费者接线，未最终review/merge。
 
 2026-10-30 T-06/H最小无重叠接受：重核888权威树HEAD `9b25d91a7`、tracked/untracked代码clean，实际diff从889基面只涉及ac_av父侧/批量工具、inventory/execution_trace及mod.rs的run_suite_selected包装；不涉及ac_mn.rs、contract.rs、ace_m1_tests.rs，mod.rs的MN recipe dispatch符号亦无改动。按§5.1实际逐文件/符号差额接受 `ac_mn.rs` 新recipe参数化/新worker入口/父侧新观察准入、`contract.rs`新recipe及mn binding、`mod.rs`仅MN dispatch分支、`ace_m1_tests.rs`新增889具名SDK验收与原binding新suite；不取888的run_suite_selected、ac_av、inventory/trace/helper批量符号。旧五域/旧MN recipe及协议默认保持。根不引入实验依赖、无新runner/filter守卫。前owner已交付865/871为基面祖先；888所改符号不在本次接受集合，双方未提交WIP不互相消费。H尚未实现/释放，本记录不构成验收。
+
+
+2026-10-30 T-06/H消费链追加实际查缺接受：`test_cases/stale.rs`当前按已知probe族选择现行toolchain map，尚无MN集合族，若仅注册新recipe则集合报告会误走sema身份。重核888实际diff该文件无改动，主检出无代码WIP；接受仅新collections recipe的current身份分支及独立惰性槽，原scalar/AV/sema分支不改。`ac_mn.rs`新current_collections_toolchain_identity使用同一受控worker的显式身份查询取得实际runtime内容/build身份；报告回填同一次真实运行的已验证runtime轴，不在正常case计时窗外预备库。此发现属于T-06既定正式消费/cache身份闭环，不新增根实验栈依赖、外仓代码或新任务。
+
+
+2026-10-30 T-06/H+N功能检查点 `cb5ce40db`（T-06整体未关闭，仍5/10，goal round7 work继续）：
+- 新 `ac/mir-native-collections-v1` recipe沿既有containment/probe transport及父侧oracle，使用独立 `mn-collections-worker`；共享MIR为唯一native语义源，旧MN recipe/default五域及Root实验依赖不变。正式 `native-collections-889.suite.ad` 包含原17源native、原17源AV及3补例×2共40检查，源字节/独立oracle保持；binding14格尚未提前翻绿。
+- Source SDK40检查与runtime/report identity当前性反控通过。新native报告9轴绑定recipe/shared lowering/worker实际SHA及runtime ABI/build/content、lld/SDK/kernel32；stale对集合族独立重算。保持同长度的runtime库bitflip使报告STALE，字节恢复后Fresh。父侧独立解析实际stderr/退出/资源，18种坏raw与5种坏单体记录反控红；身份查询签名字段位于JSON中间的真实请求通过，篡改hash拒绝。
+- 实际机器漏free控制：仅ephemeral driver省略frame_leave，真实PE仍42，registered_bytes非0；父侧报owned resource leak，不能用正常exit假绿。持久driver拒绝该故意坏代码control，codegen0/roots0，后续正常请求成功。实际whole frontend/whole lower/同字节新COFF对象控制经SDK报Error，含真实parsed/body/counter证据。首次whole-lower控制断言误写d_main（实际观察键main），只修测试断言并定向复跑3反控通过，原红日志保留。
+- 增量准备与提交间再检查runtime/configuration。准备后同长度篡改静态库，提交在link前拒绝，旧source/env/实际producer身份/root/manifest/PE/receipt保持；旧PE在库仍坏时运行42；恢复库后目标43命中此前合法候选COFF并成功。外部runtime变更不绕过候选原子性。
+- 专用worker采用全Rust allocator backing-request计量（含header/对齐，释放按原partition），MIR/IO显式分区，其余前端/CLIF/store暂存归Staging；OS private commit另计堆余量/C侧存储引擎。真实边界/重分配/4096B对齐/跨scope释放/panic scope恢复控制通过。初次冻结负载实测Staging25981082B >24MiB在发布前拒绝；消除签名校验后多余unsigned/base64副本保活后，同一345483B/116函数输入真实峰Mir10898823/Staging25058113/IO6111533B、总25058113B，worker物理delta30314496B，PE1786；单样本parent1991ms。**不是正式P90**。3次本地协议探针因签名对象Map::remove的保序交换拒绝，修为保序过滤重建、永久真实query正/反控覆盖，原raw保留不冒作语言/性能通过样本。
+- 验证实跑（全部定向，不跑根整档）：Root `cargo test -p auto-lang --features test-cases --lib ace_m1_native_collections_889_ -- --test-threads=1 --nocapture`分项source40/实际漏free/编辑+restart/stale/wrong oracle+type均通过；其中原聚合有上述反控断言红，修后仅 `...real_whole_work_and_code_copy...`通过3实际反控。添加prepared runtime guard后仅重放 `...incremental_rounds_and_restore_sdk`通过。Core `cargo test -p auto-lang-core --features test-cases --lib native_collections_889_` 2/2（18+5 codec controls及真实身份query）。Native `--bin mn-collections-worker allocation_controls` 1/1，`--test collections_incremental_tier collections_prepared_runtime_drift` 1/1，`--test collections_driver_tier collections_missing_free_sensitivity_cannot_poison_persistent_cache`1/1。旧 `mir_native_adapter_old_protocol_and_mixed_compat` 1/1。测试源assets新增N889Load严格等于T-02冻结generator，SHA256 df314cc77208bcc115f02b446b8c1012046e96b046784a1a0c6e2e2094a1715c；单文件345483B，不是本地证据入库。
+- 根check初次缺组内UI Cargo依赖；补只读detached `D:/autostack/.wt/lang-889/auto-ui` pin `3d6e1f15c1142aa797734edc26dca561511b72c3`，代码零修改。Root source SDK首次以--no-default-features编译被既有未cfg UI测试26错误阻断，改正常默认features通过；保留first/default两个日志。Core normal/check-feature诊断147/149，Core libtest169、语言libtest43均落既有非本包源码；新H/N无新增warning，未自动改他方模块。fmt/diff与新PS脚本AST parse exit0。
+- `scripts/verify-native-collections-889.ps1`提供source/resources/incremental/compat/formal/acceptance定向入口；acceptance包含显式formal门。SD-01..05待复审草案 `attachments/889/spec-delta-r2.md` 已提交，不写canonical/ledger，不宣称M1全绿/891实施。N/H功能源码现冻结，正式campaign仍pending，final review和merge-owned门未执行。
+- formal observer沿同一parent transport/真实worker与独立oracle，30 samples EACH fresh/hit/restart/body/historical，512不同真实owned-helper修订，不减源/分母/阈值；raw逐attempt写JSONL。fresh各store最初不存在、helper路径hint在同组父目录共享，首次准备计时且实际工具/库内容每请求重hash。固定P90 one-based N-floor(N/10)≤2000ms、P95/P99报告；600s长会话有界，不改每请求deadline/2s门。当前888正在连续运行reference资源/计时模块，先不竞争正式采样；已异步询问用户是否允许向“完成计划888”协调约8分钟窗口及完成通知，未获答前不跨聊发消息。不因此标目标完成或阻塞，也未取消其进程。
+- raw本地根 `<authoritative>/docs/plans/attachments/889/baseline/`，未暂存：t06-sdk-dependency-and-controls.log d3aafd777e222c69e1c84d5a9fd3d893d5b96a8cb2b47583f0d20df2ea0924aa（上述分项/断言红分账）；t06-sdk-real-degeneration-fixed.log 22cdf8478e394d8c6a82ab7e82f3c23459f33eb171bb7ef962943c63c2af4d16；t06-sdk-prepared-guard-and-restore.log 7bbe41d0f6b4157c14634dedb5a461e970109edc59c0f2b90edfcd8fbfc4675a；t06-parent-final-controls.log a1c0dfef1d39e84cde7d7a9f6a15b7b76ab3258249af6a14667b84384734afc2；t06-allocation-boundaries.log aa90e7240faf4c382072688c6d040a9963a0e8bd0ecebcadcf00eb942d0d8903；t06-prepared-runtime-drift.log 5d37ffbc0f4dc8a0c74611c5cb61404aaa7fcf61519c06a8d6f17b46d9051452；t06-sensitivity-persistence-control.log b3d1314c923aa437d339b18d75bf02e90ec2a8cfef4c7da29b71284054f60b90；t06-old-recipe-protocol-compat.log 80e0548652ed7017e61095ce0d1e00845151f2d21d38467bc28d414936f65b4f。
