@@ -340,14 +340,55 @@ pub fn emit_function_body(
             Span { start: 0, end: 0 },
         )]);
     }
+    emit_scoped_document(env, &[fn_index], src, module_path, false)
+}
+
+/// Bounded cold collections batching over the same emitter and binder. Pure
+/// body edits keep using `emit_function_body` and never enter this API.
+/// Indices may be unordered; each selected body is planned exactly once.
+pub fn emit_collections_function_batch(
+    env: &super::resolve::CheckedEnv,
+    indices: &[usize],
+    src: &str,
+    module_path: &str,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    if env.closed()
+        || env.profile != SourceProfile::Collections
+        || indices.is_empty()
+        || indices.len() > 4
+        || indices
+            .iter()
+            .enumerate()
+            .any(|(i, n)| *n >= env.program.fns.len() || indices[..i].contains(n))
+    {
+        return Err(vec![Diagnostic::new(Stage::Text, "source.collections-batch",
+            "collections batch requires an open collections environment and 1..4 distinct valid functions",
+            Span { start: 0, end: 0 })]);
+    }
+    emit_scoped_document(env, indices, src, module_path, true)
+}
+
+fn emit_scoped_document(
+    env: &super::resolve::CheckedEnv,
+    indices: &[usize],
+    src: &str,
+    module_path: &str,
+    batch: bool,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
     let profile = env.profile;
     let mut em = Emitter::new(&env.program, src.len(), profile);
-    em.scope = Some(fn_index);
-    em.plan_indexed(fn_index);
+    if batch {
+        em.batch_scope = Some(indices.to_vec());
+    } else {
+        em.scope = Some(indices[0]);
+    }
+    for &index in indices {
+        em.plan_indexed(index);
+    }
     let atom_text = em.render(module_path);
     let receipt = BodyEmitReceipt {
-        real_body_plans: 1,
-        scaffold_fns: env.program.fns.len().saturating_sub(1),
+        real_body_plans: indices.len(),
+        scaffold_fns: env.program.fns.len().saturating_sub(indices.len()),
     };
     let descriptor = match profile.hir_domain() {
         crate::hir::HirDomain::Core => crate::descriptor(),
@@ -2603,6 +2644,7 @@ struct Emitter<'p> {
     /// BODY-LESS declaration scaffold. The types section stays the full
     /// interface directory.
     scope: Option<usize>,
+    batch_scope: Option<Vec<usize>>,
 }
 
 impl<'p> Emitter<'p> {
@@ -2616,6 +2658,29 @@ impl<'p> Emitter<'p> {
             frags: Vec::new(),
             spans: None,
             scope: None,
+            batch_scope: None,
+        }
+    }
+
+    fn scoped(&self) -> bool {
+        self.scope.is_some() || self.batch_scope.is_some()
+    }
+    fn selected(&self, index: usize) -> bool {
+        self.batch_scope.as_ref().map_or_else(
+            || self.scope.is_none() || self.scope == Some(index),
+            |indices| indices.contains(&index),
+        )
+    }
+    fn plan_slot(&self, index: usize) -> usize {
+        if let Some(indices) = &self.batch_scope {
+            indices
+                .iter()
+                .position(|n| *n == index)
+                .expect("selected body")
+        } else if self.scope.is_some() {
+            0
+        } else {
+            index
         }
     }
 
@@ -2824,7 +2889,7 @@ impl<'p> Emitter<'p> {
         let is_record_profile = self.profile.is_record();
         if is_record_profile {
             for rec in &self.program.records {
-                let span = if self.scope.is_some() && self.profile == SourceProfile::Collections {
+                let span = if self.scoped() && self.profile == SourceProfile::Collections {
                     Span { start: 0, end: 0 }
                 } else {
                     rec.name_span
@@ -2882,7 +2947,7 @@ impl<'p> Emitter<'p> {
                 // source revision that created their name_span. In a scoped
                 // collections document these declarations are inert interface
                 // metadata, just like the other functions' signature scaffolds.
-                let span = if self.scope.is_some() && self.profile == SourceProfile::Collections {
+                let span = if self.scoped() && self.profile == SourceProfile::Collections {
                     Span { start: 0, end: 0 }
                 } else {
                     v.name_span
@@ -2924,7 +2989,7 @@ impl<'p> Emitter<'p> {
         // rationale as the old zeroed stub items) so re-anchoring only ever
         // validates spans that really anchor the passed source.
         let meta_span = |fi: usize| -> Span {
-            if self.scope.is_some_and(|s| s != fi) {
+            if self.scoped() && !self.selected(fi) {
                 Span { start: 0, end: 0 }
             } else {
                 self.program.fns[fi].item_span
@@ -3014,7 +3079,7 @@ impl<'p> Emitter<'p> {
             // function emits a BODY-LESS declaration scaffold — the def
             // exists for cross-function references without any body
             // document.
-            let scaffold = self.scope.is_some() && self.scope != Some(fi);
+            let scaffold = self.scoped() && !self.selected(fi);
             if f.receiver == crate::source::ast::Receiver::Free {
                 let body_field = if scaffold {
                     String::new()
@@ -3105,9 +3170,9 @@ impl<'p> Emitter<'p> {
             .fns
             .iter()
             .enumerate()
-            .filter(|(i, _)| self.scope.is_none() || self.scope == Some(*i))
+            .filter(|(i, _)| self.selected(*i))
         {
-            let plan = &self.plans[if self.scope.is_some() { 0 } else { fi }];
+            let plan = &self.plans[self.plan_slot(fi)];
             let mut bs = BodySpans {
                 span: f.name_span,
                 locals: Vec::new(),

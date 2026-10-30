@@ -61,32 +61,58 @@ fn cold_produce<T>(
     let mut real_body_plans = 0;
     let mut scaffold_declarations = 0;
     let snapshot = auto_av_core::contract::fnv1a64(source.as_bytes());
-    for (index, name) in names.iter().enumerate() {
-        let (parts, receipt) = source::emit_function_body(&env, index, source, module_path)?;
-        let module = &parts.bundle.modules[0];
-        let def = module
-            .defs
-            .iter()
-            .position(|d| &d.id_text == name)
-            .ok_or_else(|| backend("missing scoped declaration"))?;
-        let credential = auto_ac_prototype::verify::verify_function_ref(&parts.bundle, def)?;
-        debug_assert_eq!(credential.def_id_text(), name);
-        let unit =
-            crate::collections_memory::scoped(crate::resources::Partition::MirSymbol, || {
-                auto_mir_lower::hir_adapter::lower_function_collections_unit(
-                    &parts.bundle,
-                    name,
-                    &[],
-                    snapshot,
-                )
-                .map_err(|e| backend(format!("{e:?}")))
-            })?;
-        units.push(crate::collections_memory::scoped(
-            crate::resources::Partition::MirSymbol,
-            || admit(unit),
-        )?);
+    let regions = source::env_fn_regions(&env);
+    let mut start = 0;
+    while start < names.len() {
+        // A large body always keeps the old single-body path. This cap only
+        // chooses batching; it does not reject any legal source function.
+        let mut end = start + 1;
+        let mut bytes = regions[start].body.end - regions[start].body.start;
+        while end < names.len() && end - start < 4 {
+            let next = regions[end].body.end - regions[end].body.start;
+            if bytes.saturating_add(next) > 16 * 1024 {
+                break;
+            }
+            bytes += next;
+            end += 1;
+        }
+        let (parts, receipt) = if end == start + 1 {
+            source::emit_function_body(&env, start, source, module_path)?
+        } else {
+            source::emit_collections_function_batch(
+                &env,
+                &(start..end).collect::<Vec<_>>(),
+                source,
+                module_path,
+            )?
+        };
+        for name in &names[start..end] {
+            let module = &parts.bundle.modules[0];
+            let def = module
+                .defs
+                .iter()
+                .position(|d| &d.id_text == name)
+                .ok_or_else(|| backend("missing scoped declaration"))?;
+            let credential = auto_ac_prototype::verify::verify_function_ref(&parts.bundle, def)?;
+            debug_assert_eq!(credential.def_id_text(), name);
+            let unit =
+                crate::collections_memory::scoped(crate::resources::Partition::MirSymbol, || {
+                    auto_mir_lower::hir_adapter::lower_function_collections_unit(
+                        &parts.bundle,
+                        name,
+                        &[],
+                        snapshot,
+                    )
+                    .map_err(|e| backend(format!("{e:?}")))
+                })?;
+            units.push(crate::collections_memory::scoped(
+                crate::resources::Partition::MirSymbol,
+                || admit(unit),
+            )?);
+        }
         real_body_plans += receipt.real_body_plans;
         scaffold_declarations += receipt.scaffold_fns;
+        start = end;
         // parts, Atom text and checked body die here; no whole-module Atom/HIR
         // copy is ever retained alongside all the source and MIR bodies.
     }

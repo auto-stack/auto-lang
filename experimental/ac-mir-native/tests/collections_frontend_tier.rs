@@ -150,3 +150,137 @@ fn bounded_cold_frozen_workload_real_peak_and_result() {
         "cold worker delta {delta} exceeds unchanged128MiB limit"
     );
 }
+
+#[test]
+fn cold_batches_are_exact_single_body_mir_coff_and_coordinates() {
+    use auto_ac_prototype::source as ac;
+    let mut sources = vec![ac_mn::collections_workload::generate(0).source];
+    for id in [
+        "L01",
+        "L02",
+        "L03",
+        "L04",
+        "L05",
+        "L06",
+        "L07",
+        "V01",
+        "V02",
+        "V03",
+        "V04",
+        "V05",
+        "V06",
+        "V07",
+        "LSTR864",
+        "FIN864A",
+        "FIN864B",
+        "N889-list-variant",
+        "N889-nested-variant",
+        "N889-optional-variant",
+    ] {
+        let path =
+            common::repo_root().join(format!("crates/auto-lang/test/cases/ace-m1/src/{id}.at"));
+        sources.push(std::fs::read_to_string(path).unwrap());
+    }
+    sources.push("fn a() Str { return \"中\" }\nfn b() int { return a().len() }\nfn c(n int) int { if n > 0 { return c(n-1)+1 }\n return 0 }\nfn main() int { return b()+c(41) }".into());
+    for src in sources {
+        let p = ac::parse_program_with(&src, ac::SourceProfile::Collections).unwrap();
+        let mut env = ac::resolve_env(&p, &[], ac::SourceProfile::Collections).unwrap();
+        env.typecheck_all().unwrap();
+        let names = ac::env_fn_names(&env);
+        let batched = cold(&src, "p889.at").unwrap();
+        for (i, name) in names.iter().enumerate() {
+            let (parts, _) = ac::emit_function_body(&env, i, &src, "p889.at").unwrap();
+            let single = auto_mir_lower::hir_adapter::lower_function_collections_unit(
+                &parts.bundle,
+                &format!("d_{name}"),
+                &[],
+                auto_av_core::contract::fnv1a64(src.as_bytes()),
+            )
+            .unwrap();
+            assert_eq!(
+                auto_av_core::abc::encode_abc(&single).unwrap().to_flat(),
+                auto_av_core::abc::encode_abc(&batched.units[i])
+                    .unwrap()
+                    .to_flat(),
+                "all MIR fields including coordinates: {name}"
+            );
+            assert_eq!(
+                ac_mn::cache::unit_fp(&single),
+                ac_mn::cache::unit_fp(&batched.units[i])
+            );
+            assert_eq!(
+                ac_mn::collections_lower::emit_unit_coff(&single)
+                    .unwrap()
+                    .bytes,
+                ac_mn::collections_lower::emit_unit_coff(&batched.units[i])
+                    .unwrap()
+                    .bytes,
+                "COFF {name}"
+            );
+        }
+        let chosen: Vec<_> = (0..names.len().min(4)).rev().collect();
+        let ((parts, r), work) = auto_ac_prototype::body_work::capture_body_work(|| {
+            ac::emit_collections_function_batch(&env, &chosen, &src, "p889.at").unwrap()
+        });
+        assert_eq!(r.real_body_plans, chosen.len());
+        assert_eq!(r.scaffold_fns, names.len() - chosen.len());
+        assert_eq!(work.len(), chosen.len());
+        for &i in &chosen {
+            assert_eq!(work[names[i]].plan, 1);
+            assert_eq!(work[names[i]].bind, 1);
+            let actual = auto_mir_lower::hir_adapter::lower_function_collections_unit(
+                &parts.bundle,
+                &format!("d_{}", names[i]),
+                &[],
+                auto_av_core::contract::fnv1a64(src.as_bytes()),
+            )
+            .unwrap();
+            assert_eq!(
+                auto_av_core::abc::encode_abc(&actual).unwrap().to_flat(),
+                auto_av_core::abc::encode_abc(&batched.units[i])
+                    .unwrap()
+                    .to_flat(),
+                "unordered batch {i}"
+            );
+        }
+    }
+}
+
+#[test]
+fn cold_batch_boundary_and_large_body_fallback() {
+    use auto_ac_prototype::source as ac;
+    let src = format!(
+        "fn main() int {{ let s Str=\"{}\"\n return s.len() }}\nfn other() int {{ return 42 }}",
+        "x".repeat(17 * 1024)
+    );
+    let (result, work) =
+        auto_ac_prototype::body_work::capture_body_work(|| cold(&src, "p889.at").unwrap());
+    assert_eq!(result.real_body_plans, 2);
+    assert_eq!(
+        result.scaffold_declarations, 2,
+        "large body uses original single path"
+    );
+    for counts in work.values() {
+        assert_eq!(
+            (counts.resolve, counts.typecheck, counts.plan, counts.bind),
+            (1, 1, 1, 1)
+        );
+    }
+    let mut env = result.env;
+    for indices in [vec![], vec![0, 0], vec![2], vec![0, 1, 0, 1, 0]] {
+        assert!(ac::emit_collections_function_batch(&env, &indices, &src, "p889.at").is_err());
+    }
+    env.close();
+    assert!(ac::emit_collections_function_batch(&env, &[0], &src, "p889.at").is_err());
+    let p =
+        ac::parse_program_with("fn main() int { return 42 }", ac::SourceProfile::Scalar).unwrap();
+    let mut env = ac::resolve_env(&p, &[], ac::SourceProfile::Scalar).unwrap();
+    env.typecheck_all().unwrap();
+    assert!(ac::emit_collections_function_batch(
+        &env,
+        &[0],
+        "fn main() int { return 42 }",
+        "p889.at"
+    )
+    .is_err());
+}
