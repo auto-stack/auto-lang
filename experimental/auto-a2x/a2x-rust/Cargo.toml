@@ -1,0 +1,10 @@
+[package]
+name = "auto-a2x-rust"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-892 first real A2X target provider: Checked core/scalar HIR -> Rust (edition 2021)"
+publish = false
+
+[dependencies]
+auto-a2x-core = { path = "../a2x-core" }
+auto-ac-prototype = { path = "../../ac-core" }

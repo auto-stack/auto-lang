@@ -1,0 +1,11 @@
+[package]
+name = "a2x-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-892 T-02 private true-chain probe: source -> Checked HIR -> view -> Rust -> real rustc -> run -> oracle"
+publish = false
+
+[dependencies]
+auto-a2x-core = { path = "../a2x-core" }
+auto-a2x-rust = { path = "../a2x-rust" }
+auto-ac-prototype = { path = "../../ac-core" }
