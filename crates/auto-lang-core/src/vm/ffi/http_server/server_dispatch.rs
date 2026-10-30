@@ -456,7 +456,7 @@ pub struct DispatchCtx {
 
 /// PLAN-730 T-05：bridge→handler 的上传 body 能力（未授权不解析/不落盘）。
 pub struct PendingUpload {
-    pub body: axum::body::Body,
+    pub body: a2r_std::http::UploadBodyStream,
     pub headers: Vec<(String, String)>,
 }
 
@@ -760,21 +760,11 @@ fn start_handler(
     // bridge 同源（方法+参数类型），不一致在 dispatch 段已 fail-closed。
     let upload_handle: Option<i64> = match ctx.upload_pending.take() {
         Some(pending) => {
-            let stream = {
-                use futures::StreamExt;
-                let data = pending.body.into_data_stream();
-                let mapped = data.map(|r| {
-                    r.map(|b| b.to_vec())
-                        .map_err(|e| std::io::Error::other(e.to_string()))
-                });
-                let boxed: a2r_std::http::UploadBodyStream = Box::pin(mapped);
-                boxed
-            };
             let req = a2r_std::http::upload_request_from_parts(
                 &ctx.req_method,
                 &ctx.req_path,
                 pending.headers,
-                stream,
+                pending.body,
             );
             Some(super::super::http_upload::insert_upload_request(req) as i64)
         }

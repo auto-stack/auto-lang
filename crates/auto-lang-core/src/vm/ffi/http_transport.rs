@@ -502,7 +502,7 @@ async fn bridge_handler(
                 }
             }
         }
-        (Vec::new(), Some(body))
+        (Vec::new(), Some(into_owned_upload_body(body)))
     } else {
         if let Some(cl) = parts.headers.get("content-length") {
             if let Ok(parsed) = cl.to_str().unwrap_or("").parse::<usize>() {
@@ -927,6 +927,17 @@ fn error_response(status: u16, message: &str) -> axum::response::Response {
         })
 }
 
+/// Project protocol data at the network edge without polling it. Authorization
+/// and receive still own the first read; the VM owner never receives Axum Body.
+fn into_owned_upload_body(body: axum::body::Body) -> a2r_std::http::UploadBodyStream {
+    use futures::StreamExt;
+    Box::pin(body.into_data_stream().map(|chunk| {
+        chunk
+            .map(|bytes| bytes.to_vec())
+            .map_err(|error| std::io::Error::other(error.to_string()))
+    }))
+}
+
 // ============================================================================
 // SSE body stream + WebSocket echo
 // ============================================================================
@@ -1048,6 +1059,144 @@ async fn serve_ws_echo_loop(
 #[cfg(test)]
 mod bridge_tests {
     use super::*;
+
+    struct TrackedUpload {
+        polls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        drops: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        chunks: std::collections::VecDeque<std::io::Result<axum::body::Bytes>>,
+    }
+
+    impl futures::Stream for TrackedUpload {
+        type Item = std::io::Result<axum::body::Bytes>;
+
+        fn poll_next(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            let this = self.get_mut();
+            this.polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::task::Poll::Ready(this.chunks.pop_front())
+        }
+    }
+
+    impl Drop for TrackedUpload {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    fn tracked_upload(
+        polls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        drops: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> a2r_std::http::UploadBodyStream {
+        into_owned_upload_body(axum::body::Body::from_stream(TrackedUpload {
+            polls,
+            drops,
+            chunks: std::collections::VecDeque::from([
+                Ok(axum::body::Bytes::from_static(b"owned chunk")),
+                Err(std::io::Error::other("source failure")),
+                Ok(axum::body::Bytes::from_static(b"unconsumed")),
+            ]),
+        }))
+    }
+
+    fn upload_request(body: a2r_std::http::UploadBodyStream) -> ApiRequest {
+        ApiRequest {
+            method: "POST".to_owned(),
+            path: "/upload".to_owned(),
+            headers: Vec::new(),
+            body: Vec::new(),
+            raw_upload_body: Some(body),
+            peer: None,
+        }
+    }
+
+    #[test]
+    fn owned_upload_crosses_bounded_owner_queue_without_eager_read() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let polls = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        let request = upload_request(tracked_upload(polls.clone(), drops.clone()));
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+        assert!(sender.try_send(request).is_ok());
+        assert_eq!(
+            polls.load(Ordering::SeqCst),
+            0,
+            "no read at projection/enqueue"
+        );
+
+        let rejected_polls = Arc::new(AtomicUsize::new(0));
+        let rejected_drops = Arc::new(AtomicUsize::new(0));
+        let rejected = sender.try_send(upload_request(tracked_upload(
+            rejected_polls.clone(),
+            rejected_drops.clone(),
+        )));
+        assert!(matches!(
+            rejected,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+        ));
+        drop(rejected);
+        assert_eq!(rejected_polls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            rejected_drops.load(Ordering::SeqCst),
+            1,
+            "rejected body reclaimed"
+        );
+
+        // The actual request type is moved across a real OS thread boundary.
+        // Only the owner explicitly polling receive begins consuming the body.
+        std::thread::spawn(move || {
+            use futures::StreamExt;
+            let mut request = receiver.blocking_recv().expect("queued request");
+            let mut body = request.raw_upload_body.take().expect("owned body");
+            futures::executor::block_on(async {
+                assert_eq!(body.next().await.unwrap().unwrap(), b"owned chunk");
+                let error = body.next().await.unwrap().unwrap_err();
+                assert!(error.to_string().contains("source failure"));
+            });
+            drop(body);
+        })
+        .join()
+        .expect("owner thread");
+        assert_eq!(
+            polls.load(Ordering::SeqCst),
+            2,
+            "only demanded chunks polled"
+        );
+        assert_eq!(
+            drops.load(Ordering::SeqCst),
+            1,
+            "last body owner cleans once"
+        );
+    }
+
+    #[test]
+    fn owned_upload_authorization_rejection_drops_unread_pending_body_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let polls = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut request = upload_request(tracked_upload(polls.clone(), drops.clone()));
+        let pending = super::super::http_server::PendingUpload {
+            body: request
+                .raw_upload_body
+                .take()
+                .expect("single move into handler"),
+            headers: Vec::new(),
+        };
+        drop(request);
+        assert_eq!(drops.load(Ordering::SeqCst), 0, "pending handler owns body");
+        drop(pending); // authorization rejects without calling receive
+        assert_eq!(
+            polls.load(Ordering::SeqCst),
+            0,
+            "authorization precedes body read"
+        );
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
 
     /// AC-03: a full in-flight queue rejects fast with 503 + Retry-After —
     /// no unbounded wait, no silent allocation growth. Deterministic unit

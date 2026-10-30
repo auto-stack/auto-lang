@@ -285,7 +285,7 @@ pub struct ApiRequest {
     pub body: Vec<u8>,
     /// PLAN-730 T-05：上传路由的原始 body（bridge 不消费，授权后由
     /// receive 增量读取；非上传路由恒 None——`body` 语义不变）。
-    pub raw_upload_body: Option<axum::body::Body>,
+    pub raw_upload_body: Option<a2r_std::http::UploadBodyStream>,
     pub peer: Option<std::net::SocketAddr>,
 }
 

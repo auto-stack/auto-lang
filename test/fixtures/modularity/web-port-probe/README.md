@@ -28,3 +28,16 @@ their local evidence directory.
 The test proves the JSON/default-assembly baseline on the executed platform.
 It does not establish candidate host assembly, streamed uploads, SSE, file
 lifetimes, a new package DAG, Web distribution or four-repository delivery.
+
+The owned-upload seam has an additional bounded real-TCP replay:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/upload_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe
+```
+
+It reuses the actual PLAN-730 upload handler program, preserves the 12 MiB
+accepted multipart input and checks exact download bytes, occupied-target
+preservation, business rejection/staging cleanup and headers-only early
+authorization rejection. A fixture-only random marker verifies listener
+identity before uploads. It is a scoped seam replay, not execution credit
+for the whole original suite or proof that explicit Web host assembly exists.
