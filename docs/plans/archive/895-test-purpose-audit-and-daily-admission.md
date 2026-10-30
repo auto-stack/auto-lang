@@ -234,6 +234,8 @@ next: cleaned（worktree 组清理）+ regress
 stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 2 | from: merge | to: regress | status: archived | outcome: pass | worktree: (removed below) | commit: 1dc06a9df | next: regress-batch
 
 
+2026-10-30 / stage: merge(清理) / PLAN-895:r2 / cleaned: 三树（auto-lang/auto-down/auto-ui）wt-guard 全 clean 后移除；plan-895-dev 分支删除（=delivery commit）；组目录 rmdir；主检出 tracked 改动均为他方既有 docs WIP（保留未动）；本地证据 attachments/895/evidence/ 按14天证据政策自然过期（约数 MB，远低于预算）
+
 ## 10. 待澄清事项
 
 - 当前无阻止起草的范围问题。用户尚未要求执行895；本次只交付计划。
