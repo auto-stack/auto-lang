@@ -267,3 +267,25 @@ together; adding one charged call fails. No getter discount, action reordering,
 omitted event field or raised cap makes the sum pass.
 
 See [Finite public audio](public-audio.md) (auto-ui PLAN-012:r1).
+
+## HUD2D/1 and HUD3D/1 selectors and complete HUD slots
+
+Add hud2d(version113/profile24) and hud3d(114/25) beside audio2d/audio3d; all
+delivered profiles keep exact bytes and never acquire HUD APIs or the longer
+signature. `ag_present2d` and `ag_present3d` keep the visual+sound prefix and
+append four `(visible int,text str)` pairs; one bundle still costs1credit and
+covers at most one visual,4sounds and all four slots. `ag_hud_set(slot,visible,text)`
+costs1 shared credit. Standalone HUD writes mixed with a bundle, duplicate
+bundles and the existing mixed-write forms reject the whole callback; the full
+event branch stays exactly32credits and a33rd charged call rejects.
+
+Auto emits the complete visible/text state of all four slots, never a partial
+delta; unupdated slots keep the accepted state, a fresh Run starts from document
+defaults then `app_start`, and Stop restores editing defaults. The trusted Auto
+unit converts strings to bounded ASCII integer rows (0..32 visible bytes32..126
+per slot, <=128 total) and strings never cross the numeric Session ABI; Host
+independently validates the full34-scalar rows before common `Play.accept`.
+Source/managed limits and VM deadlines are unchanged; the8ms pump target stays
+separately reported.
+
+See [Finite public HUD](public-hud.md) (auto-ui PLAN-013:r1).

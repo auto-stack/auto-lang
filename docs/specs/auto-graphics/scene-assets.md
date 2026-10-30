@@ -219,3 +219,23 @@ with conservative4MiB CPU/GPU reservation; actual font import/render belongs to
 013 and is not delivered here.
 
 See [Finite public audio](public-audio.md) (auto-ui PLAN-012:r1).
+
+## Scene8 public HUD font and slot closures
+
+Add scene8 beside existing versions. It inherits scene7 cues and adds a required
+`hud` object carrying the fixed font reference, the exact embedded OFL/RFN
+license and four unique slot rows. Older schemas reject HUD fields and `ttf`;
+scene7 and earlier behavior is unchanged. The only generated font blob is
+`assets/<sha>.ttf`, installed from accepted bytes with the existing safe local
+path, no-overwrite, entry-last, save/readback and repair rules; SaveAs and
+playback never reread the import directory. Damage rejects reopen and restoring
+exact bytes recovers it.
+
+The four models plus shared image plus sound bank plus font use7 raw identities
+and263372 raw bytes, inside the existing shared8-identity/32MiB raw and64MiB
+CPU/GPU budgets. Font layout, glyph, vertex and atlas owners are charged, not a
+hidden free cache; accepted/history/pending/external atlas keys share the same
+budget with at most four keys. OFL and the Reserved Font Name are preserved and
+the audited Lilita One original is not modified.
+
+See [Finite public HUD](public-hud.md) (auto-ui PLAN-013:r1).
