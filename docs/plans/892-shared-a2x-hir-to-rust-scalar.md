@@ -270,6 +270,10 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 
 重查事实（r7）：与r6完全相同——888分支0556f61c3、plan executing 5/11、未合入master、树仍在，H面（test_cases/mod.rs+specs/auto-test-case/*）实际占用。三轮等待（r5/r6/r7）无释放、无用户裁定（r5 AskUserQuestion未获答）。按goal技能三轮等待规则转blocked。已交付且验证的待命资产：experimental/auto-a2x四crate（14测试目标全绿0警告）、verify-a2r-hir-892.ps1七scope实测、暖稳态29.7MiB≤48MiB、V-10矩阵、V-13对照。解锁即续：T-02首例注册→T-05→T-06→T-07..11。
 
+2026-10-30 stage: goal | plan_id: PLAN-892 | plan_revision: 1 | round: 7b | from: blocked | to: work | status: executing | outcome: waiting→已获裁定（用户：等888合并自然释放） | worktree: D:/autostack/.wt/lang-892/auto-lang | commit: 4ac07fd10 | next: work（每轮重查888合入；释放即接线T-02）
+
+裁定记录：r7 AskUserQuestion获答="等888合并自然释放（推荐）"。等待性质从"未决问题"转为"用户授权的外部事件等待"；替代路径（独立新增文件部分注册）明确不采纳，T-02/T-05保持完整合同。代码冻结于4ac07fd10零WIP待命。
+
 ## 10. 待澄清事项
 
 | ID | 事项与owner/关闭条件 | 阻止的工作 |
@@ -279,4 +283,4 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 | D-03 | T-02核48MiB实际分区、128MiB总store/512MiB scratch、全树/流/绝对墙预算及现行更严caller机制；只复用中立受控进程/GC或取接口窗 | 缺护栏/实际记账/配额或计量口径不得关闭资源AC，不能仅报峰值或无据提高上限 |
 | D-04 | T-05核默认/显式rustc实际身份、std依赖与日常零spawn当前性凭证；工具身份不确定视STALE/未授信 | 证书身份机制未闭不得日常PASS或用构建期常量冒充实际认证工具 |
 | D-05 | AX-B/AX-C、第二目标、宽/Unit/console/全库/旧产品迁移均在后继；892只交付有限Rust计算源码 | 不预占号，不把范围外需求当本包缺口或借实施偷扩域；首期required scalar支持不能删减 |
-| D-06 | **[BLOCKED r7]** T-02首例正式注册/T-05接线需H写面（crates/auto-lang-core/src/test_cases/mod.rs+docs/specs/auto-test-case/*=SD-05/06目标），实测被888占用（executing 5/11、0556f61c3未合入、树在）。三轮等待（r5-r7）无释放。**待用户裁定**：①等888合并自然释放（默认/推荐，888在实施中）；②协调888提前交接（其先把H面变更合入或书面停写交接）；③替代路径=892以独立新增文件先行落盘首例资产（不动mod.rs）——注意T-02合同要求recipe路由进公共mod.rs，此路径只算部分注册、T-02仍不能勾完，须在案记录弱化 | 无裁定则T-02/T-05/T-06及后续T-07..11全部停摆；不裁定不越窗接线（计划红线） |
+| D-06 | ✅**已裁定（2026-10-30，r7 AskUserQuestion）**：用户选①**等888合并自然释放**（推荐项）。892每轮轻量重查888合入状态；释放后立即接线T-02首例注册→T-05→T-06→T-07..11。不采用提前交接/替代路径（弱化路径明确不采纳，T-02保持完整合同） | 等待为用户授权的外部事件等待（非未决问题）；888合入前不接线、不勾T-02/T-05 |
