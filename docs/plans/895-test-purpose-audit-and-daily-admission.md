@@ -155,6 +155,8 @@ total_steps: 12
 
 2026-10-30 / stage: new / plan_id: PLAN-895 / plan_revision: r1 / outcome: pass（规划，非实施） / authorization: 用户要求新建全仓四类用途审查、混合叶继续拆与日常准入建议；不直接关闭/删除 / grounding: 888归档10/10与实际模块工具/规范，893 r2职责边界；完整分母由T-01独立盘点，不假装7165就是全仓全部入口 / preflight: 12任务/8AC/7V/4SD及依赖、work/review/merge职责分明，默认与原义务保持、未知待确认逐项可核，现有门为tm而非旧档叠跑 / next: 用户审阅本合同后work；首任务T-01源/目录及全仓入口对账，拟唯一树lang-895/auto-lang，未创建树或运行测试。
 
+同轮独立维护收据（不计895实施）：用户另行明确要求更新计划技能。已在auto-musk专用临时树修订auto-plan-new/work/review/merge/regress五个SKILL.md并ff-only合入`882b687d84664df694e9ba27fee8dbbbe1c7f48b`：AutoLang按888 r3使用tm完整模块/消费者并集，work/review相关反例、merge冻结门及有效证据复用、周期tf --batch单实例不叠tt/tb/taa；其他仓保自身命令，原样本/oracle/条件不弱化，不因用途建议停用。五项quick_validate通过，逐段测试职责/未执行状态/条件与已知红口径审查完成；本机.codex/.agents九个现存入口是指向该源的既有junction，合入后逐字节一致读回，未在worktree创建链接。临时树及分支在fresh wt-guard clean后清理，auto-musk他方107草稿与语言仓其他WIP保留。文档维护未运行cargo测试、未触发周期队列；895仍drafting 0/12。
+
 ## 10. 待澄清事项
 
 - 当前无阻止起草的范围问题。用户尚未要求执行895；本次只交付计划。
