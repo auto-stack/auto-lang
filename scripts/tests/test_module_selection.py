@@ -397,6 +397,7 @@ catch {Write-Output $_;exit 1}
         self.assertFalse(summary([{"exit":0,"outcome":"PASS"}],2)["gate_passed"])
 
     def test_shards_preserve_partition_and_reject_edited_source(self):
+        import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             c=catalog()
@@ -406,6 +407,15 @@ catch {Write-Output $_;exit 1}
             rebuilt=load(path)
             validate(rebuilt)
             self.assertEqual({r["id"] for r in rebuilt["obligations"]},{r["id"] for r in c["obligations"]})
+            # A producer-local roundtrip misses Git's Windows CRLF -> LF
+            # normalization. Read the staged bytes back as a fresh checkout.
+            subprocess.run(['git','init','-q',directory],check=True,capture_output=True)
+            subprocess.run(['git','-C',directory,'config','core.autocrlf','input'],check=True)
+            subprocess.run(['git','-C',directory,'add','modules.json','catalog'],check=True,capture_output=True)
+            for emitted in [path,*sorted((Path(directory)/'catalog').iterdir())]:
+                relative=emitted.relative_to(directory).as_posix()
+                emitted.write_bytes(subprocess.check_output(['git','-C',directory,'show',':'+relative]))
+            self.assertEqual(load(path)['obligations'],rebuilt['obligations'])
             shard=next((Path(directory)/"catalog").iterdir())
             shard.write_text("{}")
             with self.assertRaises(ValueError):load(path)

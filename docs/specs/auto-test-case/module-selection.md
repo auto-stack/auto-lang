@@ -70,3 +70,5 @@ Cargo env默认实际应用于直接子命令和指纹；共享runner/调度配�
 独立module-case调用使用线程局部、panic-safe恢复的私有session作用域：源码闭包fixture的fresh/restart共享本次run输出域内的store，worker仍按原session ID区分存储。普通run_suite/run_suite_selected保留显式session跨调用共享，既有闭包20次restart采样及scalar性能合同不变。真实原fixture连续两次module-case调用都必须满足原fresh miss与restart hit，普通suite的原20次restart也须通过；不修改session字面量、原样本或expected来获得绿。
 
 慢聚合可以按具名长原子/周转矩阵隔离，其他快速反控保留同组；partition-policy的isolate_tests使用精确原测试名，生产与消费都拒绝缺失目标或重新混组，原子并集保持。
+
+目录发布使用显式LF序列化，Git属性也固定索引和分片为LF，使分片原始字节SHA256在工作树、Git对象及新检出之间一致。生产端自读回不足以证明发布可用，必须经过实际Git归一化后再次加载；编辑分片仍按原精确哈希拒绝，不放宽校验。

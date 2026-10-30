@@ -2,3 +2,7 @@
 # read the shebang as "/bin/sh\r" and fail with ENOENT when cargo execve's it.
 scripts/*.sh text eol=lf
 scripts/**/*.sh text eol=lf
+
+# Catalog hashes bind the exact serialized bytes, also after Git checkout.
+scripts/test-governance/modules.json text eol=lf
+scripts/test-governance/catalog/*.json text eol=lf
