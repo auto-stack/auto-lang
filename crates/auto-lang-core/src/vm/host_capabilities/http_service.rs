@@ -19,6 +19,20 @@ pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'stat
 
 pub trait HttpServiceHost: Send + Sync {
     fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture;
+
+    /// Synchronous language/embedding listener on the existing VM owner thread.
+    /// An async-only custom provider fails explicitly rather than falling back
+    /// to an implicit Core network runtime.
+    fn listen_blocking(
+        &self,
+        _vm: &AutoVM,
+        _address: &str,
+        _metadata: Arc<messages::HttpProgramMetadata>,
+    ) -> AutoResult<()> {
+        Err(crate::error::AutoError::Msg(
+            "installed HTTP service host does not support blocking listeners".into(),
+        ))
+    }
 }
 
 /// One local VM service owner. The handoff reuses the existing public VM SDK;
@@ -101,6 +115,10 @@ mod tests {
         });
         assert!(install_process_http_service_host_if_absent(first.clone()));
         assert!(!install_process_http_service_host_if_absent(second.clone()));
+        assert!(listen_registered(&owner_vm(), "127.0.0.1:0")
+            .unwrap_err()
+            .to_string()
+            .contains("does not support blocking listeners"));
         futures::executor::block_on(async {
             let routes = vec![("GET".into(), "/first".into(), "first".into())];
             let mut active = Box::pin(serve_registered(owner_vm(), routes));
@@ -122,6 +140,10 @@ mod tests {
             clear_process_default_http_service_host();
             let missing = serve_registered(owner_vm(), Vec::new()).await.unwrap_err();
             assert!(missing.to_string().contains("adapter is not installed"));
+            assert!(listen_registered(&owner_vm(), "127.0.0.1:0")
+                .unwrap_err()
+                .to_string()
+                .contains("adapter is not installed"));
         });
     }
 }
@@ -147,11 +169,8 @@ pub fn clear_process_default_http_service_host() {
     *DEFAULT_HOST.write().expect("HTTP host registry poisoned") = None;
 }
 
-pub(crate) async fn serve_registered(
-    vm: AutoVM,
-    routes: Vec<(String, String, String)>,
-) -> AutoResult<()> {
-    let host = DEFAULT_HOST
+fn selected_host() -> AutoResult<Arc<dyn HttpServiceHost>> {
+    DEFAULT_HOST
         .read()
         .expect("HTTP host registry poisoned")
         .clone()
@@ -160,7 +179,23 @@ pub(crate) async fn serve_registered(
                 "HTTP service host adapter is not installed; explicitly install the Web adapter before running a service"
                     .to_owned(),
             )
-        })?;
+        })
+}
+
+/// Select before any socket is bound. The borrowed VM cannot leave its owner
+/// thread; the host receives an immutable metadata snapshot for this call.
+pub fn listen_registered(vm: &AutoVM, address: &str) -> AutoResult<()> {
+    let host = selected_host()?;
+    let routes = crate::vm::ffi::stdlib::get_http_routes();
+    let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
+    host.listen_blocking(vm, address, metadata)
+}
+
+pub(crate) async fn serve_registered(
+    vm: AutoVM,
+    routes: Vec<(String, String, String)>,
+) -> AutoResult<()> {
+    let host = selected_host()?;
     let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
     let owner = HttpVmOwner {
         vm: Rc::new(vm),

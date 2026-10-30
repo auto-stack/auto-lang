@@ -5143,3 +5143,6 @@ pub use server_route::*;
 #[path = "http_server/server_scope.rs"]
 mod server_scope;
 pub use server_scope::*;
+
+#[path = "http_server/server_blocking.rs"]
+pub mod server_blocking;

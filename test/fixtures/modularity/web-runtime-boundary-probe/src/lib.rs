@@ -72,3 +72,17 @@ pub async fn serve_service_owned(
     .await;
     Ok(())
 }
+
+/// Borrowed synchronous handoff uses this external crate's one-source runtime.
+#[cfg(feature = "boundary")]
+pub fn listen_borrowed(
+    vm: &auto_lang_core::vm::engine::AutoVM,
+    address: &str,
+    metadata: std::sync::Arc<
+        auto_lang_core::vm::host_capabilities::http_service::messages::HttpProgramMetadata,
+    >,
+    stop: &std::sync::atomic::AtomicBool,
+) -> auto_lang_core::AutoResult<()> {
+    http_server::server_blocking::serve_server_handle(vm, address, metadata, Some(stop))
+        .map_err(|error| auto_lang_core::error::AutoError::Msg(format!("{error:?}")))
+}

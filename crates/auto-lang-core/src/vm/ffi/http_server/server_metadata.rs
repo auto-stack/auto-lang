@@ -62,6 +62,17 @@ impl Drop for Restore {
     }
 }
 
+/// Select the same immutable metadata for a synchronous owner call. Nested
+/// calls and unwinding restore the previous owner's context.
+pub(crate) fn with_owner_metadata_sync<R>(
+    metadata: Arc<HttpProgramMetadata>,
+    call: impl FnOnce() -> R,
+) -> R {
+    let previous = ACTIVE.with(|active| active.replace(Some(metadata)));
+    let _restore = Restore(previous);
+    call()
+}
+
 /// Context is restored after every poll, including pending/unwind. Keeping it
 /// set for the whole async lifetime would incorrectly affect sibling owners.
 pub(crate) async fn with_owner_metadata<F: std::future::Future>(
@@ -70,9 +81,7 @@ pub(crate) async fn with_owner_metadata<F: std::future::Future>(
 ) -> F::Output {
     let mut future = std::pin::pin!(future);
     std::future::poll_fn(move |cx| {
-        let previous = ACTIVE.with(|active| active.replace(Some(metadata.clone())));
-        let _restore = Restore(previous);
-        future.as_mut().poll(cx)
+        with_owner_metadata_sync(metadata.clone(), || future.as_mut().poll(cx))
     })
     .await
 }

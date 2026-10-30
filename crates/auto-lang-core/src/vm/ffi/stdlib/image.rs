@@ -263,12 +263,8 @@ fn insert_image_ticket_handle(
     handles.push_back((handle, ticket));
 }
 
-/// Plan 316 fix: Run the HTTP server in a blocking loop WITHOUT requiring an
-/// AutoTask parameter. This is the entry point for auto-starting the server
-/// from execute_autovm via a dedicated OS thread (std::thread::spawn).
-///
-/// The listen loop is identical to shim_http_server_listen but creates its own
-/// handler tasks internally, avoiding the need for a caller-provided task.
+/// Resolve renderer-neutral media content for an HTTP request. Network wire
+/// assembly belongs to the serving adapter, not this language primitive.
 // PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
 pub fn media_response_for_vm_request(
     method: &str,
@@ -285,50 +281,6 @@ pub fn media_response_for_vm_request(
         path,
         if_none_match,
     ))
-}
-
-// PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
-pub(crate) fn write_media_response(
-    stream: &mut impl std::io::Write,
-    method: &str,
-    path: &str,
-    if_none_match: Option<&str>,
-) -> bool {
-    let Some(response) = media_response_for_vm_request(method, path, if_none_match) else {
-        return false;
-    };
-    let reason = match response.status {
-        200 => "OK",
-        304 => "Not Modified",
-        404 => "Not Found",
-        410 => "Gone",
-        422 => "Unprocessable Entity",
-        503 => "Service Unavailable",
-        _ => "Error",
-    };
-    let body = response
-        .body
-        .map(|bytes| bytes.to_vec())
-        .unwrap_or_default();
-    let mut wire = format!(
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
-        response.status,
-        reason,
-        response
-            .headers
-            .get("content-length")
-            .map(String::as_str)
-            .unwrap_or("0"),
-    );
-    for (name, value) in response.headers {
-        wire.push_str(&format!("{}: {}\r\n", name, value));
-    }
-    wire.push_str("\r\n");
-    let _ = stream.write_all(wire.as_bytes());
-    if method == "GET" {
-        let _ = stream.write_all(&body);
-    }
-    true
 }
 
 /// PLAN-884 T-04：自 stdlib 壳 register_stdlib_ffi 按域迁入的注册组
@@ -366,3 +318,7 @@ pub(super) fn register_image_shims(natives: &mut crate::vm::native::NativeInterf
         natives.register_shim_by_name("auto.image.thumb", shim_image_thumb);
     }
 }
+
+// Preserve the original media wire assertion until its test owner migrates.
+#[cfg(test)]
+pub(crate) use crate::vm::ffi::http_server::server_blocking::write_media_response;

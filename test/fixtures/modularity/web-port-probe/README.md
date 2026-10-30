@@ -110,3 +110,23 @@ two-owner driver, repeat installation preserves the first provider, explicit
 replacement starts the second, and clearing the default afterwards must leave
 both active services usable. Local ownership compile negatives reject both
 the VM owner and the thread-local context restoration guard as Send.
+
+
+Borrowed synchronous listeners can be checked independently:
+
+```powershell
+cargo build --manifest-path test/fixtures/modularity/web-port-probe/Cargo.toml --features external-runtime --bin blocking --locked -j 4
+python test/fixtures/modularity/web-port-probe/blocking_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/blocking.exe --mode installed
+```
+
+`installed` runs a real annotated handler via the borrowed explicit host and
+external single-source loop. It asserts exact JSON, missing/invalid arguments,
+404, controlled return, unchanged task count and same owner thread. Additional
+modes are `direct-installed` (actual native called inside Tokio),
+`direct-missing`, `unsupported` (async-only custom provider) and `missing`
+(annotated activation). Negative modes require explicit diagnostics and verify
+the requested port remains bindable. The controller wakes accept using its own
+socket; it does not certify slow-body cancellation. Language source method
+resolution, legacy stdnet behavior and post-main coordination remain separate
+T-02 obligations. Full scope and local evidence hashes are in
+`docs/plans/attachments/890/work/blocking-listener-port-r2.md`.
