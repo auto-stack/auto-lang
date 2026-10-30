@@ -13,6 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
 
 import audit_test_purposes as audit  # noqa: E402
+from pathlib import Path as _Path
+ROOT = _Path(__file__).resolve().parents[2]
 
 
 class RealPolicyTest(unittest.TestCase):
@@ -149,6 +151,23 @@ class NegativeControlTest(unittest.TestCase):
         policy["register_proposals"][0]["source"] = "S-999"
         with self.assertRaises(audit.PolicyError):
             audit.validate(policy, self.top, self.leaves, self.obligations)
+
+    def test_legacy_tier_with_filter_keeps_filter_semantics(self):
+        """F-3 regression control: positional filters must reach the legacy
+        navigation as substring selectors, never as module IDs (frozen
+        compatibility contract until 2026-11-30)."""
+        import tempfile
+        from unittest import mock
+        import module_command
+        import module_catalog as mc
+        catalog_path = ROOT / "scripts/test-governance/modules.json"
+        catalog = mc.load(catalog_path)
+        with mock.patch.object(module_command, "source_identity",
+                               return_value=catalog["source_identity"]):
+            with tempfile.TemporaryDirectory() as tmp:
+                code = module_command.main(["--legacy-tier", "t", "vm", "--select-only",
+                                            "--out", str(Path(tmp) / "sel")])
+        self.assertEqual(code, 0)  # master semantics: filters never error as unknown modules
 
     def test_admission_is_suggestion_only(self):
         import tempfile
