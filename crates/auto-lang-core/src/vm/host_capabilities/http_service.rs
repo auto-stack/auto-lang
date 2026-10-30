@@ -92,6 +92,31 @@ mod tests {
         }
     }
 
+    struct CompletingHost(Arc<Mutex<Vec<(u64, bool)>>>);
+    impl HttpServiceHost for CompletingHost {
+        fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture {
+            let seen = self.0.clone();
+            let (vm, _) = owner.into_local_parts();
+            Box::pin(async move {
+                seen.lock().unwrap().push((vm.instance_id, true));
+                Ok(())
+            })
+        }
+
+        fn listen_blocking(
+            &self,
+            vm: &AutoVM,
+            address: &str,
+            _metadata: Arc<messages::HttpProgramMetadata>,
+        ) -> AutoResult<()> {
+            if address == "reject-before-start" {
+                return Err("controlled host rejection".into());
+            }
+            self.0.lock().unwrap().push((vm.instance_id, false));
+            Ok(())
+        }
+    }
+
     fn owner_vm() -> AutoVM {
         AutoVM::new_without_host_snapshot(crate::vm::virt_memory::VirtualFlash::new(0), 8192)
     }
@@ -144,6 +169,31 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("adapter is not installed"));
+            let owner_events = Arc::new(Mutex::new(Vec::new()));
+            let completion_host: Arc<dyn HttpServiceHost> =
+                Arc::new(CompletingHost(owner_events.clone()));
+            let completed = owner_vm();
+            let completed_id = completed.instance_id;
+            let fresh = owner_vm();
+            let fresh_id = fresh.instance_id;
+            set_process_default_http_service_host(completion_host.clone());
+            listen_registered(&completed, "bounded-owner").unwrap();
+            assert!(completed.http_service_claimed());
+            assert!(!fresh.http_service_claimed(), "completion is per VM");
+            clear_process_default_http_service_host();
+            serve_registered(completed, Vec::new()).await.unwrap();
+            assert!(serve_registered(owner_vm(), Vec::new()).await.is_err());
+            set_process_default_http_service_host(completion_host);
+            assert!(listen_registered(&fresh, "reject-before-start").is_err());
+            assert!(
+                !fresh.http_service_claimed(),
+                "failure must not claim owner"
+            );
+            serve_registered(fresh, Vec::new()).await.unwrap();
+            assert_eq!(
+                *owner_events.lock().unwrap(),
+                [(completed_id, false), (fresh_id, true)]
+            );
         });
     }
 }
@@ -188,13 +238,20 @@ pub fn listen_registered(vm: &AutoVM, address: &str) -> AutoResult<()> {
     let host = selected_host()?;
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
-    host.listen_blocking(vm, address, metadata)
+    host.listen_blocking(vm, address, metadata)?;
+    vm.note_http_service_completed();
+    Ok(())
 }
 
 pub(crate) async fn serve_registered(
     vm: AutoVM,
     routes: Vec<(String, String, String)>,
 ) -> AutoResult<()> {
+    // A direct native/SDK listener already used this VM and returned. Its
+    // explicit owner completion consumes the automatic annotation activation.
+    if vm.http_service_claimed() {
+        return Ok(());
+    }
     let host = selected_host()?;
     let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
     let owner = HttpVmOwner {

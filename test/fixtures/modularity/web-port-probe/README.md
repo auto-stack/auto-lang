@@ -130,3 +130,14 @@ socket; it does not certify slow-body cancellation. Language source method
 resolution, legacy stdnet behavior and post-main coordination remain separate
 T-02 obligations. Full scope and local evidence hashes are in
 `docs/plans/attachments/890/work/blocking-listener-port-r2.md`.
+
+
+The actual VM language direct entry is also covered using
+`http.server_listen(http.server(), address)` after `use auto.http`. Add mode
+`language-installed`, `language-missing` or `language-unsupported` to the blocking
+probe command. Installed mode executes the full source/handler/JSON/argument
+rejection path and must return after exactly one explicit listener; it forbids
+post-main async activation and joins its owned shutdown controller. The two
+negative modes require the error at native execution (RuntimeError), before a
+socket is bound. Method-style `server.listen(...)` remains a pre-existing
+unresolved spelling and is not advertised as a newly working language form.

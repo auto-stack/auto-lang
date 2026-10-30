@@ -14,7 +14,7 @@ import uuid
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", type=Path, required=True)
-    parser.add_argument("--mode", choices=("installed", "direct-installed", "direct-missing", "unsupported", "missing"), default="installed")
+    parser.add_argument("--mode", choices=("installed", "direct-installed", "direct-missing", "unsupported", "missing", "language-installed", "language-missing", "language-unsupported"), default="installed")
     args = parser.parse_args()
     token = "blocking_" + uuid.uuid4().hex
     with socket.socket() as reservation:
@@ -24,25 +24,32 @@ def main():
     source = ('#[api(method = "GET", path = "/api/value/:id")]\n'
               f'fn value(id int, suffix str) str {{ "{token}" }}\n'
               'fn main() {}\n')
-    with tempfile.TemporaryDirectory(prefix="plan890-blocking-") as directory:
+    if args.mode.startswith("language-"):
+        source = ('use auto.http\n' + source.replace('fn main() {}',
+                  f'fn main() {{ http.server_listen(http.server(), "{address}") }}'))
+    scratch = Path(__file__).resolve().parent / "target/direct-language"
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="plan890-blocking-", dir=scratch) as directory:
         path = Path(directory) / "main.at"
         path.write_text(source, encoding="utf-8")
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output, tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errors:
             command = [str(args.exe.resolve()), str(path), address]
-            if args.mode in ("installed", "direct-installed"):
+            if args.mode in ("installed", "direct-installed", "language-installed"):
                 command.append("--install-adapter")
             if args.mode.startswith("direct-") or args.mode == "unsupported":
                 command.append("--direct-native")
-            if args.mode == "unsupported":
+            if args.mode in ("unsupported", "language-unsupported"):
                 command.append("--async-only")
             child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=output, stderr=errors, text=True)
             try:
-                if args.mode not in ("installed", "direct-installed"):
+                if args.mode not in ("installed", "direct-installed", "language-installed"):
                     child.communicate(input="", timeout=20)
                     errors.seek(0)
                     diagnostics = errors.read()
                     assert child.returncode != 0, diagnostics
-                    assert ("does not support blocking listeners" if args.mode == "unsupported" else "adapter is not installed") in diagnostics, diagnostics
+                    assert ("does not support blocking listeners" if args.mode in ("unsupported", "language-unsupported") else "adapter is not installed") in diagnostics, diagnostics
+                    if args.mode.startswith("language-"):
+                        assert "RuntimeError" in diagnostics, diagnostics
                     with socket.socket() as released:
                         released.bind(("127.0.0.1", port))
                     print(json.dumps({"mode": args.mode, "child_exit": child.returncode, "no_listener": True}))
@@ -83,9 +90,13 @@ def main():
                 assert "blocking runtime=external" in diagnostics, diagnostics
                 assert "handler_tasks_delta=0 owner_thread_preserved=true" in diagnostics, diagnostics
                 assert "blocking shutdown wake=true" in diagnostics, diagnostics
+                assert "blocking controller_joined=true" in diagnostics, diagnostics
+                if args.mode == "language-installed":
+                    assert "blocking adapter async_activation=true" not in diagnostics, diagnostics
+                    assert diagnostics.count("blocking runtime=external") == 1, diagnostics
                 output.seek(0)
                 assert ("direct native returned=true" if args.mode == "direct-installed" else "blocking returned=") in output.read()
-                print(json.dumps({"mode": args.mode, "exact_json": args.mode == "installed", "unknown_route": 404, "owner_returned": True, "handler_tasks_delta": 0}))
+                print(json.dumps({"mode": args.mode, "exact_json": args.mode in ("installed", "language-installed"), "unknown_route": 404, "owner_returned": True, "handler_tasks_delta": 0, "controller_joined": True, "single_explicit_activation": args.mode == "language-installed"}))
             finally:
                 if child.poll() is None:
                     # Failure cleanup only, never counted as a successful return.

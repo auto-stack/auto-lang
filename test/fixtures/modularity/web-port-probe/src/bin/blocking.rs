@@ -13,6 +13,7 @@ struct Adapter {
 }
 impl HttpServiceHost for Adapter {
     fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture {
+        eprintln!("blocking adapter async_activation=true");
         let address = self.address.clone();
         Box::pin(async move {
             let (vm, _) = owner.into_local_parts();
@@ -70,7 +71,7 @@ fn main() {
             Arc::new(AsyncOnly),
         );
     }
-    std::thread::spawn(move || {
+    let controller = std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             if matches!(line.as_deref(), Ok("shutdown")) {
                 STOP.store(true, Ordering::Release);
@@ -107,6 +108,8 @@ fn main() {
                 }
             }
         });
+        controller.join().expect("owned shutdown controller joined");
+        eprintln!("blocking controller_joined=true");
         return;
     }
     match auto_lang_core::run_with_capture(&source) {
@@ -116,4 +119,6 @@ fn main() {
             std::process::exit(1);
         }
     }
+    controller.join().expect("owned shutdown controller joined");
+    eprintln!("blocking controller_joined=true");
 }

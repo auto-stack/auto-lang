@@ -498,6 +498,10 @@ pub struct AutoVM {
     /// owner（见 http_return_resource::credential_id），解析侧 id 层校验——
     /// "每 VM 一张表"不构成来源证明。
     pub instance_id: u64,
+    // PLAN-890: local execution bookkeeping for an explicitly completed
+    // blocking service. A post-main annotation hook must not start it again.
+    // This is per VM, not a process route/host-registry flag.
+    http_service_claimed: std::cell::Cell<bool>,
     /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
     /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
     pub http_credential_gen: std::sync::atomic::AtomicU64,
@@ -798,6 +802,14 @@ impl AutoVM {
         }
     }
 
+    pub(crate) fn http_service_claimed(&self) -> bool {
+        self.http_service_claimed.get()
+    }
+
+    pub(crate) fn note_http_service_completed(&self) {
+        self.http_service_claimed.set(true);
+    }
+
     pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
         Self::new_inner(flash, ram_size, true)
     }
@@ -927,6 +939,7 @@ impl AutoVM {
             heap_object_id_gen: AtomicU64::new(4000000),
             // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
             instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
+            http_service_claimed: std::cell::Cell::new(false),
             http_credential_gen: std::sync::atomic::AtomicU64::new(0),
             http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态
             heap_rc: DashMap::new(),
