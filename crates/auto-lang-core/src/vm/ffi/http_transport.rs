@@ -138,6 +138,7 @@ pub(crate) async fn serve_network(
     )>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     ready: tokio::sync::oneshot::Sender<Result<String, String>>,
+    program: Option<std::sync::Arc<super::http_server::HttpProgramMetadata>>,
 ) {
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
@@ -208,13 +209,20 @@ pub(crate) async fn serve_network(
                     let cfg = cfg.clone();
                     let req_tx = req_tx.clone();
                     let shutdown = shutdown.clone();
+                    let program = program.clone();
                     axum::Router::new().fallback(move |request: axum::extract::Request| {
                         let cfg = cfg.clone();
                         let req_tx = req_tx.clone();
                         let shutdown = shutdown.clone();
+                        let program = program.clone();
                         async move {
-                            bridge_handler(request, peer, cfg, req_tx, shutdown, conn_id, server_gen)
-                                .await
+                            super::http_server::with_optional_owner_metadata(
+                                program,
+                                bridge_handler(
+                                    request, peer, cfg, req_tx, shutdown, conn_id, server_gen,
+                                ),
+                            )
+                            .await
                         }
                     })
                 };

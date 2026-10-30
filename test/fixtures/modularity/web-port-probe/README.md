@@ -75,3 +75,19 @@ path-argument binding failure after capability injection. These checks exposed
 and now guard a leaked unconsumed upload capability; successful HTTP status or
 process exit alone was insufficient. They remain scoped prototype evidence,
 not execution credit for the entire historical test families.
+
+Two live services can also be checked on the same local VM owner thread:
+
+```powershell
+cargo build --manifest-path test/fixtures/modularity/web-port-probe/Cargo.toml --bin isolation --locked -j 4
+python test/fixtures/modularity/web-port-probe/isolation_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
+```
+
+The programs deliberately reuse handler names with different parameter and
+return types. Before compiling the second program, the first must serve exact
+JSON, binary file, SSE frames and headers-only upload rejection. The same
+checks must remain valid afterwards. The first is then shut down independently
+while the second must still answer; both owner futures are joined and real
+resource tables must be empty. The pre-repair JSON failure is retained as local
+evidence. This uses a temporary injectable-shutdown entry to the single existing
+runtime, not a second framework implementation or the final Web SDK port.

@@ -30,10 +30,7 @@ pub fn publish_post_broadcast(fn_name: &str, request_body: &str, response_json: 
         return;
     }
     // 实体创建：响应体必须是 JSON 对象才注入事件名（流式/空响应跳过）。
-    let ret = API_RETURN_TYPES
-        .lock()
-        .ok()
-        .and_then(|t| t.get(fn_name).cloned());
+    let ret = api_return_type(fn_name);
     let Some(ret) = ret else { return };
     if ret.contains("Stream") || ret == "()" || ret.is_empty() {
         return;

@@ -37,6 +37,9 @@ pub fn record_api_param_sigs(fn_name: &str, sigs: Vec<ApiParamSig>) {
 
 /// Resolve a `#[api]` handler fn's declared params by name (clone).
 pub fn api_param_sigs(fn_name: &str) -> Option<Vec<ApiParamSig>> {
+    if let Some(value) = with_program_metadata(|p| p.params.get(fn_name).cloned()) {
+        return value;
+    }
     API_PARAM_SIGS
         .lock()
         .ok()
@@ -50,6 +53,15 @@ pub fn record_api_return_type(fn_name: &str, ret_display: String) {
     }
 }
 
+pub(super) fn api_return_type(fn_name: &str) -> Option<String> {
+    with_program_metadata(|p| p.returns.get(fn_name).cloned()).unwrap_or_else(|| {
+        API_RETURN_TYPES
+            .lock()
+            .ok()
+            .and_then(|t| t.get(fn_name).cloned())
+    })
+}
+
 /// Codegen 发布遮蔽标记（与 record_api_return_type 同点调用）。
 pub fn record_api_return_shadowed(fn_name: &str) {
     if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
@@ -59,6 +71,10 @@ pub fn record_api_return_shadowed(fn_name: &str) {
 
 /// 本工程是否声明了 ~Stream 端点（对齐 api_gen 的 has_sse 广播门控）。
 pub fn has_stream_endpoint() -> bool {
+    if let Some(value) = with_program_metadata(|p| p.returns.values().any(|r| r.contains("Stream")))
+    {
+        return value;
+    }
     API_RETURN_TYPES
         .lock()
         .map(|t| t.values().any(|r| r.contains("Stream")))
@@ -110,6 +126,18 @@ pub fn fn_is_api_upload_return(fn_name: &str) -> bool {
 /// PLAN-776 T-06：编译期冻结的用户同名遮蔽优先（遮蔽 → Json——同裸名
 /// 用户类型不冒领 File/Upload/Stream/ExplicitResponse 专属身份）。
 pub fn fn_response_kind(fn_name: &str) -> crate::api::contract::ResponseKind {
+    if let Some(value) = with_program_metadata(|p| {
+        if p.shadowed.contains(fn_name) {
+            crate::api::contract::ResponseKind::Json
+        } else {
+            p.returns
+                .get(fn_name)
+                .map(|r| crate::api::contract::ResponseKind::from_return_string(r))
+                .unwrap_or(crate::api::contract::ResponseKind::Json)
+        }
+    }) {
+        return value;
+    }
     if API_RETURN_SHADOWED
         .lock()
         .map(|t| t.contains(fn_name))
@@ -494,6 +522,9 @@ pub(super) fn url_decode(s: &str) -> String {
 /// Get the global HTTP routes (populated by VM startup from #[api] annotations).
 /// This delegates to the existing HTTP_ROUTES global in stdlib.rs.
 pub fn get_routes() -> Vec<HttpRoute> {
+    if let Some(routes) = with_program_metadata(|p| p.routes.clone()) {
+        return routes;
+    }
     crate::vm::ffi::stdlib::get_http_routes()
         .into_iter()
         .map(|(method, path, fn_name)| HttpRoute {

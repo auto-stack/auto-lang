@@ -3240,7 +3240,7 @@ pub fn test_trigger_shutdown() -> bool {
 /// Injectable-shutdown entry (tests / embedders). Owns the VM for the server
 /// lifetime; returns after the shutdown flag fired and draining finished
 /// (port released).
-async fn serve_with(
+pub(crate) async fn serve_with(
     vm: std::rc::Rc<crate::vm::engine::AutoVM>,
     addr: &str,
     cfg: super::http_transport::TransportConfig,
@@ -3260,6 +3260,7 @@ async fn serve_with(
     let net_addr = addr.to_string();
     let net_cfg = cfg.clone();
     let net_shutdown = shutdown_rx.clone();
+    let net_metadata = current_program_metadata();
     let spawned = std::thread::Builder::new()
         .name("auto-http-net".to_string())
         .stack_size(4 * 1024 * 1024)
@@ -3280,6 +3281,7 @@ async fn serve_with(
                 req_tx,
                 net_shutdown,
                 ready_tx,
+                net_metadata,
             ));
         });
     if spawned.is_err() {
@@ -5154,6 +5156,8 @@ mod server_dispatch;
 pub use server_dispatch::*;
 mod server_model;
 pub use server_model::*;
+mod server_metadata;
+pub(crate) use server_metadata::*;
 mod server_route;
 pub use server_route::*;
 mod server_scope;

@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [features]
 # Deliberate compile-fail ownership control; ordinary probe builds leave it off.

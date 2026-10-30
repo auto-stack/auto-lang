@@ -23,6 +23,7 @@ pub trait HttpServiceHost: Send + Sync {
 pub struct HttpVmOwner {
     vm: Rc<AutoVM>,
     routes: Vec<(String, String, String)>,
+    metadata: Arc<crate::vm::ffi::http_server::HttpProgramMetadata>,
 }
 
 impl HttpVmOwner {
@@ -150,20 +151,47 @@ pub(crate) async fn serve_registered(
                     .to_owned(),
             )
         })?;
+    let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
     let owner = HttpVmOwner {
         vm: Rc::new(vm),
         routes,
+        metadata,
     };
     host.serve(owner).await
 }
 
 impl HttpVmOwner {
+    /// TEMPORARY T-02 multi-owner experiment with independent shutdown watches.
+    /// Removed along with the runtime probe bridge when Web owns assembly.
+    #[doc(hidden)]
+    pub async fn run_existing_with_shutdown_for_probe(
+        self,
+        address: String,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> AutoResult<()> {
+        let config = crate::vm::ffi::http_transport::TransportConfig::from_env();
+        crate::vm::ffi::http_server::with_owner_metadata(
+            self.metadata,
+            crate::vm::ffi::http_server::serve_with(self.vm, &address, config, shutdown),
+        )
+        .await;
+        Ok(())
+    }
+
     /// TEMPORARY T-02 source experiment only. The existing runtime has a
     /// single implementation; an external probe adapter invokes it explicitly.
     /// T-05 must remove this bridge when the framework implementation moves to
     /// Web. Its existence is not a completed package-boundary proof.
     #[doc(hidden)]
     pub async fn run_existing_runtime_for_probe(self) -> AutoResult<()> {
+        crate::vm::ffi::http_server::with_owner_metadata(
+            self.metadata.clone(),
+            self.run_existing_runtime_inner(),
+        )
+        .await
+    }
+
+    async fn run_existing_runtime_inner(self) -> AutoResult<()> {
         let vm = self.vm;
         let routes = self.routes;
         // PLAN-736 AC-01: 显式服务配置面（`auto serve`/run_file 服务装配）——
