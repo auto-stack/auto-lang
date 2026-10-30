@@ -25,10 +25,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auto_ac_prototype::source::{compile_scalar_source, compile_source};
 use auto_a2x_core::sha256::sha256_hex;
 use auto_a2x_core::SemanticView;
 use auto_a2x_rust::{assemble_file_set, lower_program};
+use auto_ac_prototype::source::{compile_scalar_source, compile_source};
 
 const PROTOCOL: &str = "a2xworker/1";
 const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
@@ -38,7 +38,9 @@ fn main() {
     if let Some(arg) = std::env::args().nth(1) {
         req = arg;
     } else {
-        std::io::stdin().read_to_string(&mut req).expect("read request");
+        std::io::stdin()
+            .read_to_string(&mut req)
+            .expect("read request");
     }
     let v: serde_json::Value = match serde_json::from_str(&req) {
         Ok(v) => v,
@@ -98,7 +100,10 @@ fn read_source(v: &serde_json::Value) -> (String, String) {
             Ok(t) => t,
             Err(e) => fail(&format!("read source {p}: {e}")),
         };
-        (text, sha256_hex(std::fs::read(p).unwrap_or_default().as_slice()))
+        (
+            text,
+            sha256_hex(std::fs::read(p).unwrap_or_default().as_slice()),
+        )
     } else if let Some(t) = v["source_text"].as_str() {
         let h = sha256_hex(t.as_bytes());
         (t.to_string(), h)
@@ -113,7 +118,11 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
     let entry = v["entry"].as_str().unwrap_or("main").to_string();
     let caps: Vec<String> = v["caps"]
         .as_array()
-        .map(|a| a.iter().filter_map(|c| c.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let scalar = match profile.as_str() {
         "core" => false,
@@ -181,7 +190,9 @@ fn write_out_dir(dir: &str, out: &EmitOutcome) {
 }
 
 fn daily_emit(v: &serde_json::Value) -> serde_json::Value {
-    let out_dir = v["out_dir"].as_str().unwrap_or_else(|| fail("out_dir required"));
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
     let nonce = v["nonce"].as_str().unwrap_or("");
     let out = emit(v);
     write_out_dir(out_dir, &out);
@@ -199,14 +210,26 @@ fn daily_emit(v: &serde_json::Value) -> serde_json::Value {
 }
 
 fn certify(v: &serde_json::Value) -> serde_json::Value {
-    let out_dir = v["out_dir"].as_str().unwrap_or_else(|| fail("out_dir required"));
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
     let reference_path = v["reference_path"]
         .as_str()
         .unwrap_or_else(|| fail("reference_path required (the case's hand-written reference)"));
     let oracle_kind = v["oracle_kind"].as_str().unwrap_or("value");
     let oracle_line = match oracle_kind {
-        "value" => format!("value:{}", v["oracle_value"].as_i64().unwrap_or_else(|| fail("oracle_value required"))),
-        "trap" => format!("trap:{}", v["oracle_trap"].as_str().unwrap_or_else(|| fail("oracle_trap required"))),
+        "value" => format!(
+            "value:{}",
+            v["oracle_value"]
+                .as_i64()
+                .unwrap_or_else(|| fail("oracle_value required"))
+        ),
+        "trap" => format!(
+            "trap:{}",
+            v["oracle_trap"]
+                .as_str()
+                .unwrap_or_else(|| fail("oracle_trap required"))
+        ),
         other => fail(&format!("oracle_kind must be value|trap, got {other}")),
     };
     let case_id = v["case_id"].as_str().unwrap_or("a2r-hir-892/unnamed");
@@ -238,7 +261,11 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let stdout_ok = actual_out == oracle_line && reference_out == oracle_line;
     let marks_ok = actual_err == reference_err;
     r["marks_match_reference"] = marks_ok.into();
-    let verdict = if stdout_ok && marks_ok { "PASS" } else { "REJECTED" };
+    let verdict = if stdout_ok && marks_ok {
+        "PASS"
+    } else {
+        "REJECTED"
+    };
     r["verdict"] = verdict.into();
     if verdict == "REJECTED" {
         r["detail"] = format!(
@@ -263,7 +290,11 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
         },
         entry: v["entry"].as_str().unwrap_or("main").to_string(),
         verdict: verdict.to_string(),
-        oracle_kind: if oracle_kind == "trap" { "trap" } else { "value" },
+        oracle_kind: if oracle_kind == "trap" {
+            "trap"
+        } else {
+            "value"
+        },
         oracle_value: if oracle_kind == "trap" {
             v["oracle_trap"].as_str().unwrap_or("").to_string()
         } else {
@@ -296,9 +327,14 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
             vv,
             vec!["--edition".into(), "2021".into()],
         ),
-        capabilities: v["caps"].as_array().map(|a| {
-            a.iter().filter_map(|c| c.as_str().map(String::from)).collect()
-        }).unwrap_or_default(),
+        capabilities: v["caps"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|c| c.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
     };
     if let Err(e) = cert.validate() {
         fail(&format!("certificate draft invalid: {e}"));
@@ -323,7 +359,10 @@ fn domain_of(profile: &str) -> String {
 
 fn toolchain_vv() -> String {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let out = Command::new(&rustc).arg("-vV").output().unwrap_or_else(|e| fail(&format!("rustc -vV: {e}")));
+    let out = Command::new(&rustc)
+        .arg("-vV")
+        .output()
+        .unwrap_or_else(|e| fail(&format!("rustc -vV: {e}")));
     if !out.status.success() {
         fail("rustc -vV failed");
     }
