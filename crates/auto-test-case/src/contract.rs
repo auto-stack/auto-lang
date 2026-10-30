@@ -259,6 +259,8 @@ pub struct Options {
     pub probe_cte: Option<ProbeCteSpec>,
     /// probe only (PLAN-818): ac/mir-native-scalar-v1 binding.
     pub probe_mn: Option<ProbeMnSpec>,
+    /// probe only (PLAN-892): ac-a2r/hir-scalar-emit-v1 binding.
+    pub probe_a2x_hir: Option<ProbeA2xHirSpec>,
 }
 
 impl Default for Options {
@@ -281,6 +283,7 @@ impl Default for Options {
             probe_av: None,
             probe_cte: None,
             probe_mn: None,
+            probe_a2x_hir: None,
         }
     }
 }
@@ -1053,12 +1056,16 @@ fn decode_check(
     };
 
     let console_recipe = options.probe_recipe.as_deref() == Some("ac-av/console-run-v1");
+    // PLAN-892: the a2x emit recipe judges the four-file ACTUAL SET as
+    // byte goldens — the only probe recipe with an artifacts channel.
+    let a2x_recipe = options.probe_recipe.as_deref() == Some("ac-a2r/hir-scalar-emit-v1");
     let expect = decode_expect(
         f.req("expect")?,
         &f.path_of("expect"),
         adapter,
         action,
         console_recipe,
+        a2x_recipe,
     )?;
     if adapter == Adapter::Probe {
         if console_recipe {
@@ -1139,7 +1146,7 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte", "mn"],
+        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte", "mn", "a2x_hir"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1415,7 +1422,7 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte, probe_mn) =
+    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte, probe_mn, probe_a2x_hir) =
         if adapter == Adapter::Probe {
             let recipe = req_str(&f, "recipe")?;
             if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
@@ -1529,6 +1536,10 @@ fn decode_options(
                             "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source" | "restart")
                             }
+                            // PLAN-892: the daily emit is a single run step
+                            // (edit/restart sessions arrive with their own
+                            // contract when the session face lands).
+                            "ac-a2r/hir-scalar-emit-v1" => matches!(op.as_str(), "run"),
                             _ => op != "run",
                         };
                         if !allowed {
@@ -1972,9 +1983,57 @@ fn decode_options(
                 }
             };
 
-            (Some(recipe), Some(steps), sema, abi, av, cte, mn)
+            // PLAN-892: ac-a2r/hir-scalar-emit-v1 binding (same seam
+            // contract as mn — required for its recipe, invalid elsewhere).
+            let a2x_hir = match f.sub("a2x_hir") {
+                None => {
+                    if recipe.as_str() == "ac-a2r/hir-scalar-emit-v1" {
+                        return Err(err(
+                            &f.path_of("a2x_hir"),
+                            "ac-a2r/hir-scalar-emit-v1 requires an a2x_hir binding",
+                        ));
+                    }
+                    None
+                }
+                Some(v) => {
+                    if recipe.as_str() != "ac-a2r/hir-scalar-emit-v1" {
+                        return Err(err(
+                            &f.path_of("a2x_hir"),
+                            format!(
+                                "the a2x_hir binding belongs to ac-a2r/hir-scalar-emit-v1; it is not valid for recipe {:?}",
+                                recipe
+                            ),
+                        ));
+                    }
+                    let hpath = f.path_of("a2x_hir");
+                    let pairs = as_obj(v, &hpath)?;
+                    let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps"])?;
+                    let profile = req_str(&hf, "profile")?;
+                    if !matches!(profile.as_str(), "core" | "scalar") {
+                        return Err(err(
+                            &hf.path_of("profile"),
+                            format!("a2x_hir profile must be core|scalar, got {:?}", profile),
+                        ));
+                    }
+                    let entry = req_str(&hf, "entry")?;
+                    let caps = match hf.sub("caps") {
+                        None => Vec::new(),
+                        Some(cv) => {
+                            let list = as_list(cv, &hf.path_of("caps"))?;
+                            let mut out = Vec::new();
+                            for item in list {
+                                out.push(as_str(item, &hf.path_of("caps"))?.to_string());
+                            }
+                            out
+                        }
+                    };
+                    Some(ProbeA2xHirSpec { profile, entry, caps })
+                }
+            };
+
+            (Some(recipe), Some(steps), sema, abi, av, cte, mn, a2x_hir)
         } else {
-            (None, None, None, None, None, None, None)
+            (None, None, None, None, None, None, None, None)
         };
 
     Ok(Options {
@@ -1995,6 +2054,7 @@ fn decode_options(
         probe_av,
         probe_cte,
         probe_mn,
+        probe_a2x_hir,
     })
 }
 
@@ -2021,6 +2081,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-818: the MIR-native experimental recipe, same seam contract.
     "ac/mir-native-scalar-v1",
     "ac/mir-native-collections-v1",
+    // PLAN-892: the A2X Checked-HIR -> Rust emit recipe (prebuilt worker,
+    // daily spawn-zero emit + parent-side golden judging).
+    "ac-a2r/hir-scalar-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.
@@ -2130,6 +2193,16 @@ pub struct ProbeMnSpec {
     pub session: Option<String>,
 }
 
+/// PLAN-892 ac-a2r/hir-scalar-emit-v1 binding: the explicit source
+/// profile (core/scalar), entry function name and declared capabilities
+/// the prebuilt a2x worker compiles the case source under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeA2xHirSpec {
+    pub profile: String,
+    pub entry: String,
+    pub caps: Vec<String>,
+}
+
 /// sema/query-v1 binding: which semantic query the recipe runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeSemaSpec {
@@ -2195,6 +2268,9 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         // PLAN-798 T-07: value-reporting probe recipes (ac-av/core-run-v1
         // reports the AV Success value) observe the generic `exit` face.
         (Adapter::Probe, "exit") => true,
+        // PLAN-892: the a2x emit recipe byte-compares its actual file set
+        // (decode admits the artifacts field for this recipe only).
+        (Adapter::Probe, "artifacts") => true,
         (Adapter::Probe, "stdout" | "stderr") => true,
         _ => false,
     }
@@ -2211,6 +2287,7 @@ fn decode_expect(
     adapter: Adapter,
     action: Action,
     console_recipe: bool,
+    a2x_recipe: bool,
 ) -> Result<ExpectSpec, ContractError> {
     let v2_channels = adapter == Adapter::Ac;
     let probe_channels = adapter == Adapter::Probe;
@@ -2224,6 +2301,19 @@ fn decode_expect(
             "artifacts",
             "exit",
             "perf",
+        ]
+    } else if probe_channels && a2x_recipe {
+        // PLAN-892: ac-a2r/hir-scalar-emit-v1 judges the emitted actual
+        // file set as byte goldens (the a2r face) — the only probe recipe
+        // admitted to the artifacts channel.
+        &[
+            "completion",
+            "probe",
+            "exit",
+            "av_channel",
+            "stdout",
+            "stderr",
+            "artifacts",
         ]
     } else if probe_channels {
         // PLAN-798 T-07: + exit (value-reporting recipes).
@@ -2246,6 +2336,8 @@ fn decode_expect(
     // may not be skipped after decode).
     let channels: &[&str] = if v2_channels {
         &["result", "stdout", "stderr", "artifacts", "exit", "perf"]
+    } else if probe_channels && a2x_recipe {
+        &["probe", "exit", "stdout", "stderr", "artifacts"]
     } else if probe_channels {
         &["probe", "exit", "stdout", "stderr"]
     } else {

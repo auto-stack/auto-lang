@@ -1,0 +1,34 @@
+# PLAN-892 a2r-hir FIRST registered case — B01 through the real A2X chain
+# (ac-a2r/hir-scalar-emit-v1, prebuilt a2x-worker, daily spawn-zero emit,
+# parent-side byte-compare against the reviewed golden under golden/).
+# The source is the frozen ACE-M1 B01 bytes (own copy, byte-identical —
+# provenance: ../ace-m1/src/B01.at). The golden four-file set was frozen
+# from a real worker emission and re-verified deterministic across
+# nonces; the certification leg (real rustc compile+run vs the closed-form
+# oracle 14 vs the independent reference) is the explicit certify axis,
+# not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-892.b01"
+  tags: ["a2r-hir", "four-file", "core"]
+  links: ["PLAN-892"]
+  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-scalar-emit-v1",
+        a2x_hir: { profile: "core", entry: "main" },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

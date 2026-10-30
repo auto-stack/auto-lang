@@ -41,6 +41,7 @@ pub mod a2r;
 pub mod abi;
 pub mod ac;
 pub mod ac_av;
+pub mod ac_a2r_hir;
 pub mod ac_cte;
 pub mod ac_mn;
 mod ac_protocol;
@@ -771,6 +772,19 @@ fn dispatch_check(
             if check.options.probe_recipe.as_deref() == Some(ac_cte::CTE_RECIPE) =>
         {
             ac_cte::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-892: the A2X Checked-HIR -> Rust emit recipe (prebuilt
+        // worker, daily spawn-zero, parent-side golden judging).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_HIR_RECIPE) => {
+            ac_a2r_hir::run_check(
                 resolved,
                 check,
                 oracle,

@@ -25,6 +25,8 @@ fn manifest_face_only_sanctioned_dependencies() {
         "auto-ac-prototype",
         "ac-artifact-probe",
         "windows-sys", // probe-only, cfg(windows): process memory counters
+        "serde_json",  // probe-only: the a2xworker/1 JSON protocol (the same
+                       // crate the 783 store already depends on)
     ];
     let members = ["a2x-core", "a2x-rust", "a2x-store", "probe"];
     for m in members {

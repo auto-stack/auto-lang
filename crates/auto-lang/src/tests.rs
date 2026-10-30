@@ -34,6 +34,8 @@ mod probe_adapter_turnaround_ipc;
 // evidence-green subset (real mn/av workers + legacy VM + typed channels).
 #[cfg(feature = "test-cases")]
 mod ace_m1_tests;
+#[cfg(feature = "test-cases")]
+mod a2r_hir_892_tests;
 // AV corpora use the optional TestCase adapter and must stay independently gated.
 #[cfg(feature = "test-cases")]
 mod av_closures_823_tests;

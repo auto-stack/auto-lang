@@ -10,6 +10,7 @@ dependencies = [
  "auto-a2x-rust",
  "auto-a2x-store",
  "auto-ac-prototype",
+ "serde_json",
  "windows-sys",
 ]
 
