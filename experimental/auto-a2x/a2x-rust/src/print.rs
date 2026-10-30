@@ -35,17 +35,23 @@ pub fn print_program(p: &RustProgram) -> String {
 }
 
 pub fn print_fn(f: &RustFn) -> String {
+    let mut out = format!(
+        "// origin: {}..{} (def `{}`, byte span in the compiled source)
+",
+        f.origin.0, f.origin.1, f.name
+    );
     let params: Vec<String> = f
         .params
         .iter()
         .map(|(name, ty)| format!("{}: {}", name, ty_str(*ty)))
         .collect();
-    let mut out = format!(
-        "pub fn {}({}) -> A2xResult<{}> {{\n",
+    out.push_str(&format!(
+        "pub fn {}({}) -> A2xResult<{}> {{
+",
         f.name,
         params.join(", "),
         ty_str(f.result)
-    );
+    ));
     for s in &f.body {
         out.push_str(&render_stmt(s, 1));
     }

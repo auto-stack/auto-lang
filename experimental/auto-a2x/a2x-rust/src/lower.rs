@@ -159,12 +159,15 @@ impl RExpr {
     }
 }
 
-/// One lowered user function.
+/// One lowered user function. `origin` is the def's byte span in the
+/// compiled source (source map v1 — printed as a comment and carried in the
+/// manifest so target diagnostics map back to the original `.at`).
 #[derive(Clone, Debug)]
 pub struct RustFn {
     pub name: String,
     pub params: Vec<(String, Ty)>,
     pub result: Ty,
+    pub origin: (u32, u32),
     pub body: Vec<RStmt>,
 }
 
@@ -229,6 +232,7 @@ fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<RustFn, A2xR
         name: rust_fn_name(f.def_index, f.source_name),
         params,
         result: f.result,
+        origin: f.origin,
         body,
     })
 }
@@ -247,6 +251,8 @@ struct FnLowering<'v, 'a> {
     temp_counter: usize,
     /// LoopId stack of enclosing loops (innermost last).
     loop_stack: Vec<u32>,
+    /// Current expression/statement nesting depth (budget guard).
+    depth: usize,
 }
 
 impl<'v, 'a> FnLowering<'v, 'a> {
@@ -293,6 +299,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             assigned,
             temp_counter: 0,
             loop_stack: Vec::new(),
+            depth: 0,
         })
     }
 
@@ -434,6 +441,28 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         id: hir::ExprId,
         out: &mut Vec<RStmt>,
     ) -> Result<(RExpr, Ty), A2xReject> {
+        self.depth += 1;
+        if self.depth > auto_a2x_core::MAX_STRUCTURE_DEPTH {
+            self.depth -= 1;
+            return Err(A2xReject::new(
+                "a2x.too-deep",
+                format!(
+                    "function `{}` lowers deeper than the frozen budget {}",
+                    self.facts.source_name,
+                    auto_a2x_core::MAX_STRUCTURE_DEPTH
+                ),
+            ));
+        }
+        let r = self.lower_expr_inner(id, out);
+        self.depth -= 1;
+        r
+    }
+
+    fn lower_expr_inner(
+        &mut self,
+        id: hir::ExprId,
+        out: &mut Vec<RStmt>,
+    ) -> Result<(RExpr, Ty), A2xReject> {
         let e = self
             .facts
             .body
@@ -522,12 +551,26 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     };
                     return Ok((RExpr::Trace { func }, Ty::I32));
                 }
-                let target = self.view.fn_by_def(target_id).ok_or_else(|| {
-                    A2xReject::unsupported_expr(format!(
-                        "call target def #{} is not an admitted function",
-                        target_id
-                    ))
-                })?;
+                // Internal function or fragment external (signature-only).
+                let (rust_name, param_count, result_ty) =
+                    if let Some(t) = self.view.fn_by_def(target_id) {
+                        (
+                            rust_fn_name(t.def_index, t.source_name),
+                            t.params.len(),
+                            t.result,
+                        )
+                    } else if let Some(x) = self.view.external_by_def(target_id) {
+                        (
+                            rust_fn_name(x.def_index, &x.source_name),
+                            x.params.len(),
+                            x.result,
+                        )
+                    } else {
+                        return Err(A2xReject::unsupported_expr(format!(
+                            "call target def #{} is not an admitted function",
+                            target_id
+                        )));
+                    };
                 // Source order first, pinned once each.
                 let mut slots: Vec<RExpr> = Vec::with_capacity(eval_args.len());
                 for &arg in eval_args {
@@ -535,7 +578,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     slots.push(v);
                 }
                 // Placement by the binding map, in param order.
-                let n = target.params.len();
+                let n = param_count;
                 let mut placed: Vec<Option<RExpr>> = vec![None; n];
                 for b in bindings {
                     let arg = slots.get(b.arg as usize).cloned().ok_or_else(|| {
@@ -558,16 +601,19 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     args.push(p.ok_or_else(|| {
                         A2xReject::new(
                             "a2x.internal",
-                            format!("param #{} of `{}` left unbound", i, target.name),
+                            format!(
+                                "param #{} of call target def #{} left unbound",
+                                i, target_id
+                            ),
                         )
                     })?);
                 }
                 Ok((
                     RExpr::Call {
-                        func: rust_fn_name(target.def_index, target.source_name),
+                        func: rust_name,
                         args,
                     },
-                    target.result,
+                    result_ty,
                 ))
             }
             other => Err(A2xReject::unsupported_expr(format!(

@@ -13,11 +13,13 @@
 //! lives in a2x-core; Rust legalization/type mapping/printing lives here.
 
 pub mod artifacts;
+pub mod cert;
 pub mod lower;
 pub mod print;
 pub mod target;
 
 pub use artifacts::{assemble_file_set, FileSet};
+pub use cert::{BoundFile, CertDraft, ToolchainIdentity, CERT_SCHEMA, RECIPE};
 pub use lower::{lower_program, CmpOp, RBlock, RExpr, RStmt, RustFn, RustProgram};
 pub use print::print_program;
 pub use target::TargetProfile;

@@ -14,7 +14,8 @@
 //! never re-guesses argument order from the binding map.
 
 use auto_ac_prototype::hir;
-use auto_ac_prototype::verify::CheckedModule;
+use auto_ac_prototype::source::SourceParts;
+use auto_ac_prototype::verify::{CheckedFunction, CheckedModule};
 use std::collections::BTreeSet;
 
 use crate::A2xReject;
@@ -56,7 +57,24 @@ pub struct FnFacts<'a> {
     pub source_name: &'a str,
     pub params: Vec<ParamFacts>,
     pub result: Ty,
+    /// Byte span of the function's def in the source it was compiled from
+    /// (source-map v1; plan §5.3 — spans travel with the target artifacts
+    /// so diagnostics map back to the original `.at`).
+    pub origin: (u32, u32),
     pub body: &'a hir::Body,
+}
+
+/// Signature-only facts of a function whose BODY is not part of this view —
+/// the scaffold declarations a single-body emission carries for the other
+/// functions (PLAN-828). Calls to externals admit by signature; the target
+/// names them by def identity and the session layer (T-04) assembles the
+/// closure.
+#[derive(Clone, Debug)]
+pub struct ExternalFn {
+    pub def_index: usize,
+    pub source_name: String,
+    pub params: Vec<Ty>,
+    pub result: Ty,
 }
 
 /// The read-only semantic view. Constructed only via
@@ -69,6 +87,8 @@ pub struct SemanticView<'a> {
     /// The source profile identity this domain corresponds to.
     pub profile: &'static str,
     functions: Vec<FnFacts<'a>>,
+    /// Signature-only functions (single-body fragments; see `ExternalFn`).
+    externals: Vec<ExternalFn>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
@@ -83,84 +103,17 @@ impl<'a> SemanticView<'a> {
     /// view can only be built over genuinely verified content.
     pub fn from_checked(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
         let domain = checked.domain();
-        let profile = match domain {
-            hir::HirDomain::Core => "auto.source.core-i32.draft",
-            hir::HirDomain::Scalar => "auto.source.scalar-i32.draft",
-            other => {
-                return Err(A2xReject::domain(format!(
-                    "supported domains are core-i32-draft/scalar-i32-draft; bundle is {}",
-                    other.as_str()
-                )))
-            }
-        };
+        let profile = profile_of(domain)?;
         let bundle = checked.bundle();
-        if bundle.modules.len() != 1 {
-            return Err(A2xReject::domain(format!(
-                "expected exactly one module (source-frontend form), found {}",
-                bundle.modules.len()
-            )));
-        }
-        let module = &bundle.modules[0];
-        let trace_authorized = bundle.requires.iter().any(|c| c == TRACE_CAPABILITY);
-
-        let mut functions = Vec::new();
-        let mut trace_defs = Vec::new();
-        for (def_index, def) in module.defs.iter().enumerate() {
-            match &def.kind {
-                hir::DefKind::Function { name, ty, body } => {
-                    let sig = fn_sig(module, *ty)?;
-                    let body = module
-                        .bodies
-                        .get(body.0 as usize)
-                        .ok_or_else(|| A2xReject::new("a2x.internal", "body index out of range"))?;
-                    let params = param_facts(module, body, &sig)?;
-                    let source_name = name.strip_prefix("sf_").ok_or_else(|| {
-                        A2xReject::new(
-                            "a2x.internal",
-                            format!("function def name `{}` lacks the `sf_` source prefix", name),
-                        )
-                    })?;
-                    functions.push(FnFacts {
-                        def_index,
-                        name,
-                        source_name,
-                        params,
-                        result: sig_result(module, &sig)?,
-                        body,
-                    });
-                }
-                hir::DefKind::Intrinsic { symbol, .. } => {
-                    let sym = match symbol.as_str() {
-                        "hir.test.mark_a" => "hir.test.mark_a",
-                        "hir.test.mark_b" => "hir.test.mark_b",
-                        other => {
-                            return Err(A2xReject::unsupported_expr(format!(
-                                "intrinsic `{}` is outside the core/scalar compute surface",
-                                other
-                            )))
-                        }
-                    };
-                    if !trace_authorized {
-                        return Err(A2xReject::unauthorized_intrinsic(format!(
-                            "trace intrinsic `{}` present without capability `{}`",
-                            sym, TRACE_CAPABILITY
-                        )));
-                    }
-                    trace_defs.push((def_index, sym));
-                }
-                hir::DefKind::Method { .. } => {
-                    return Err(A2xReject::unsupported_expr(
-                        "method defs belong to the record domain, not core/scalar",
-                    ))
-                }
-            }
-        }
-
+        let module = single_module(bundle)?;
+        let functions = collect_functions(module, None)?;
+        let trace_defs = collect_trace_defs(module, bundle)?;
         let view = SemanticView {
             module,
             domain,
             profile,
             functions,
+            externals: Vec::new(),
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -168,14 +121,77 @@ impl<'a> SemanticView<'a> {
         Ok(view)
     }
 
-    /// All declared user functions, in def-table order.
+    /// Build a FRAGMENT view over one single-body emission
+    /// (`emit_function_body`, PLAN-828) together with its verification
+    /// credential. The credential — not body presence — is the authority
+    /// for which def was planned and verified: the function owning
+    /// `credential.def_id_text()` becomes the view's one admitted function;
+    /// every other function def stays a signature-only [`ExternalFn`].
+    /// Nothing unverified is ever admitted (plan §5.3: 磁盘checked只是待验
+    /// 数据，恢复由原producer rebind/reverify).
+    pub fn from_parts(
+        parts: &'a SourceParts,
+        credential: &CheckedFunction,
+    ) -> Result<Self, A2xReject> {
+        let bundle = &parts.bundle;
+        let module = single_module(bundle)?;
+        let domain = bundle.domain;
+        let profile = profile_of(domain)?;
+        if parts.profile != profile {
+            return Err(A2xReject::domain(format!(
+                "parts profile `{}` disagrees with domain `{}`",
+                parts.profile, profile
+            )));
+        }
+        if credential.domain() != domain {
+            return Err(A2xReject::domain(format!(
+                "credential domain `{}` disagrees with bundle domain `{}`",
+                credential.domain().as_str(),
+                domain.as_str()
+            )));
+        }
+        let functions = collect_functions(module, Some(credential.def_id_text()))?;
+        if functions.len() != 1 {
+            return Err(A2xReject::new(
+                "a2x.internal",
+                format!(
+                    "fragment admission matched {} planned functions, expected exactly the credential's",
+                    functions.len()
+                ),
+            ));
+        }
+        let trace_defs = collect_trace_defs(module, bundle)?;
+        let view = SemanticView {
+            module,
+            domain,
+            profile,
+            functions,
+            externals: collect_externals(module, credential.def_id_text())?,
+            trace_defs,
+            capabilities: bundle.requires.clone(),
+        };
+        view.walk_bodies()?;
+        Ok(view)
+    }
+
+    /// All declared user functions with bodies in this view, in def order.
     pub fn functions(&self) -> &[FnFacts<'a>] {
         &self.functions
+    }
+
+    /// Signature-only externals (fragment views only).
+    pub fn externals(&self) -> &[ExternalFn] {
+        &self.externals
     }
 
     /// The user function owning `def_index`, if any.
     pub fn fn_by_def(&self, def_index: usize) -> Option<&FnFacts<'a>> {
         self.functions.iter().find(|f| f.def_index == def_index)
+    }
+
+    /// The signature-only external owning `def_index`, if any.
+    pub fn external_by_def(&self, def_index: usize) -> Option<&ExternalFn> {
+        self.externals.iter().find(|f| f.def_index == def_index)
     }
 
     /// The authorized trace symbol of `def_index`, if it is one.
@@ -305,7 +321,10 @@ impl<'a> SemanticView<'a> {
             }
             hir::ExprKind::Call { callee, .. } => {
                 let target = callee.0 as usize;
-                if self.fn_by_def(target).is_some() || self.trace_symbol(target).is_some() {
+                if self.fn_by_def(target).is_some()
+                    || self.trace_symbol(target).is_some()
+                    || self.external_by_def(target).is_some()
+                {
                     Ok(())
                 } else {
                     Err(A2xReject::unsupported_expr(format!(
@@ -338,6 +357,128 @@ impl<'a> SemanticView<'a> {
             ))),
         }
     }
+}
+
+fn single_module(bundle: &hir::Bundle) -> Result<&hir::Module, A2xReject> {
+    if bundle.modules.len() != 1 {
+        return Err(A2xReject::domain(format!(
+            "expected exactly one module (source-frontend form), found {}",
+            bundle.modules.len()
+        )));
+    }
+    Ok(&bundle.modules[0])
+}
+
+fn profile_of(domain: hir::HirDomain) -> Result<&'static str, A2xReject> {
+    match domain {
+        hir::HirDomain::Core => Ok("auto.source.core-i32.draft"),
+        hir::HirDomain::Scalar => Ok("auto.source.scalar-i32.draft"),
+        other => Err(A2xReject::domain(format!(
+            "supported domains are core-i32-draft/scalar-i32-draft; bundle is {}",
+            other.as_str()
+        ))),
+    }
+}
+
+/// Collect admitted functions. `only_def` (fragment admission) restricts
+/// body-carrying functions to the credential's def; all other Function
+/// defs are skipped here (they become externals via `collect_externals`).
+fn collect_functions<'m>(
+    module: &'m hir::Module,
+    only_def: Option<&str>,
+) -> Result<Vec<FnFacts<'m>>, A2xReject> {
+    let mut functions = Vec::new();
+    for (def_index, def) in module.defs.iter().enumerate() {
+        if let hir::DefKind::Function { name, ty, body } = &def.kind {
+            if let Some(want) = only_def {
+                if def.id_text != want {
+                    continue;
+                }
+            }
+            let sig = fn_sig(module, *ty)?;
+            let body = module
+                .bodies
+                .get(body.0 as usize)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "body index out of range"))?;
+            let params = param_facts(module, body, &sig)?;
+            let source_name = name.strip_prefix("sf_").ok_or_else(|| {
+                A2xReject::new(
+                    "a2x.internal",
+                    format!("function def name `{}` lacks the `sf_` source prefix", name),
+                )
+            })?;
+            functions.push(FnFacts {
+                def_index,
+                name,
+                source_name,
+                params,
+                result: sig_result(module, &sig)?,
+                origin: (def.span.start as u32, def.span.end as u32),
+                body,
+            });
+        }
+    }
+    Ok(functions)
+}
+
+/// Signature-only externals of a fragment (every Function def except the
+/// credential's planned def).
+fn collect_externals(
+    module: &hir::Module,
+    planned_def: &str,
+) -> Result<Vec<ExternalFn>, A2xReject> {
+    let mut externals = Vec::new();
+    for (def_index, def) in module.defs.iter().enumerate() {
+        if let hir::DefKind::Function { name, ty, .. } = &def.kind {
+            if def.id_text == planned_def {
+                continue;
+            }
+            let sig = fn_sig(module, *ty)?;
+            let source_name = name.strip_prefix("sf_").unwrap_or(name).to_string();
+            let params = sig
+                .params
+                .iter()
+                .map(|t| resolve_ty(module, *t))
+                .collect::<Result<Vec<Ty>, A2xReject>>()?;
+            externals.push(ExternalFn {
+                def_index,
+                source_name,
+                params,
+                result: sig_result(module, &sig)?,
+            });
+        }
+    }
+    Ok(externals)
+}
+
+fn collect_trace_defs(
+    module: &hir::Module,
+    bundle: &hir::Bundle,
+) -> Result<Vec<(usize, &'static str)>, A2xReject> {
+    let trace_authorized = bundle.requires.iter().any(|c| c == TRACE_CAPABILITY);
+    let mut trace_defs = Vec::new();
+    for (def_index, def) in module.defs.iter().enumerate() {
+        if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
+            let sym = match symbol.as_str() {
+                "hir.test.mark_a" => "hir.test.mark_a",
+                "hir.test.mark_b" => "hir.test.mark_b",
+                other => {
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "intrinsic `{}` is outside the core/scalar compute surface",
+                        other
+                    )))
+                }
+            };
+            if !trace_authorized {
+                return Err(A2xReject::unauthorized_intrinsic(format!(
+                    "trace intrinsic `{}` present without capability `{}`",
+                    sym, TRACE_CAPABILITY
+                )));
+            }
+            trace_defs.push((def_index, sym));
+        }
+    }
+    Ok(trace_defs)
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {

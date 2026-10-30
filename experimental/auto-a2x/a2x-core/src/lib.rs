@@ -14,9 +14,11 @@
 //! rejection (`A2xReject`), never a silent passthrough the verifier happens
 //! to allow today.
 
+pub mod prepare;
 pub mod reject;
 pub mod semantic_view;
 pub mod sha256;
 
+pub use prepare::{plan_function, FunctionPlan, MAX_STRUCTURE_DEPTH};
 pub use reject::A2xReject;
-pub use semantic_view::{FnFacts, ParamFacts, SemanticView, Ty};
+pub use semantic_view::{ExternalFn, FnFacts, ParamFacts, SemanticView, Ty};
