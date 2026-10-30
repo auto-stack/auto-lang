@@ -4,6 +4,23 @@
 pub struct VmHttpBridge;
 
 impl VmHttpBridge {
+    pub fn finalize_resources(
+        kind: crate::vm::host_capabilities::request_context::RequestResourceKind,
+        ids: &[u64],
+    ) {
+        use crate::vm::host_capabilities::request_context::RequestResourceKind;
+        match kind {
+            RequestResourceKind::Stream => {
+                for id in ids {
+                    crate::vm::ffi::http_stream::stream_cancel(*id);
+                }
+            }
+            RequestResourceKind::Transfer => Self::finalize_transfers(ids),
+            RequestResourceKind::FileResponse => Self::finalize_file_responses(ids),
+            RequestResourceKind::Upload => Self::finalize_uploads(ids),
+        }
+    }
+
     pub fn completion_notified() -> tokio::sync::futures::Notified<'static> {
         crate::vm::ffi::async_http::COMPLETION_NOTIFY.notified()
     }

@@ -72,12 +72,7 @@ impl crate::vm::host_capabilities::request_context::RequestContext for RequestSc
         }
         // Terminal state is checked under the same group lock used by
         // finalization. A late native constructor cannot escape cleanup.
-        match kind {
-            RequestResourceKind::Stream => crate::vm::ffi::http_stream::stream_cancel(id),
-            RequestResourceKind::Transfer => VmHttpBridge::finalize_transfers(&[id]),
-            RequestResourceKind::FileResponse => VmHttpBridge::finalize_file_responses(&[id]),
-            RequestResourceKind::Upload => VmHttpBridge::finalize_uploads(&[id]),
-        }
+        VmHttpBridge::finalize_resources(kind, &[id]);
     }
 
     fn cancelled(&self) -> bool {

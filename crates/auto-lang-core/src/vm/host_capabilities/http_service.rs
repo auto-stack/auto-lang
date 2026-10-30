@@ -17,6 +17,13 @@ pub use bridge::VmHttpBridge;
 
 pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'static>>;
 
+/// Distinct supported legacy grades; the host must not silently substitute one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockingListenerKind {
+    ServerHandle,
+    LegacyStdnet,
+}
+
 pub trait HttpServiceHost: Send + Sync {
     fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture;
 
@@ -28,6 +35,7 @@ pub trait HttpServiceHost: Send + Sync {
         _vm: &AutoVM,
         _address: &str,
         _metadata: Arc<messages::HttpProgramMetadata>,
+        _kind: BlockingListenerKind,
     ) -> AutoResult<()> {
         Err(crate::error::AutoError::Msg(
             "installed HTTP service host does not support blocking listeners".into(),
@@ -108,6 +116,7 @@ mod tests {
             vm: &AutoVM,
             address: &str,
             _metadata: Arc<messages::HttpProgramMetadata>,
+            _kind: BlockingListenerKind,
         ) -> AutoResult<()> {
             if address == "reject-before-start" {
                 return Err("controlled host rejection".into());
@@ -235,10 +244,22 @@ fn selected_host() -> AutoResult<Arc<dyn HttpServiceHost>> {
 /// Select before any socket is bound. The borrowed VM cannot leave its owner
 /// thread; the host receives an immutable metadata snapshot for this call.
 pub fn listen_registered(vm: &AutoVM, address: &str) -> AutoResult<()> {
+    listen_registered_kind(vm, address, BlockingListenerKind::ServerHandle)
+}
+
+pub fn listen_legacy_registered(vm: &AutoVM, address: &str) -> AutoResult<()> {
+    listen_registered_kind(vm, address, BlockingListenerKind::LegacyStdnet)
+}
+
+fn listen_registered_kind(
+    vm: &AutoVM,
+    address: &str,
+    kind: BlockingListenerKind,
+) -> AutoResult<()> {
     let host = selected_host()?;
     let routes = crate::vm::ffi::stdlib::get_http_routes();
     let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
-    host.listen_blocking(vm, address, metadata)?;
+    host.listen_blocking(vm, address, metadata, kind)?;
     vm.note_http_service_completed();
     Ok(())
 }

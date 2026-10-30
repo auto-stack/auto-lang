@@ -141,3 +141,24 @@ post-main async activation and joins its owned shutdown controller. The two
 negative modes require the error at native execution (RuntimeError), before a
 socket is bound. Method-style `server.listen(...)` remains a pre-existing
 unresolved spelling and is not advertised as a newly working language form.
+
+
+The distinct old stdnet SDK grade has its own actual wire oracle:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/legacy_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/blocking.exe --mode installed
+```
+
+It calls the real public compatibility SDK entry, which selects the explicit
+host with `BlockingListenerKind::LegacyStdnet`. It checks wildcard CORS,
+header-only OPTIONS, exact JSON and argument-binding failures, original finite generator
+SSE frames (including a legacy int-declared handler returning the real generator), repeated explicit file-unsupported 500, and recovery after resetting
+a live infinite generator. A separate caller-owned real lazy generator occupies
+iterator key zero; ordinary integer zero must remain exact JSON and leave that
+generator untouched. Request tasks/iterators/descriptors and retained credential
+ownership are checked before VM destruction, separately from final drop counts.
+`missing` and `unsupported` preserve the old unit-return surface while requiring
+explicit diagnostics and no listener. `grade-swap` deliberately substitutes the
+other runtime in the fixture: the wire oracle must reject it (exit 1), so exact
+JSON alone cannot certify the legacy grade. The synchronous grade makes no new
+slow-body timeout/deployment-policy promise.

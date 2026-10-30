@@ -5144,5 +5144,8 @@ pub use server_route::*;
 mod server_scope;
 pub use server_scope::*;
 
-#[path = "http_server/server_blocking.rs"]
+#[path = "http_server_handle.rs"]
 pub mod server_blocking;
+
+#[path = "http_server/server_legacy.rs"]
+pub mod server_legacy;

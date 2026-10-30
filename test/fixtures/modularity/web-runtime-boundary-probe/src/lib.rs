@@ -81,8 +81,16 @@ pub fn listen_borrowed(
     metadata: std::sync::Arc<
         auto_lang_core::vm::host_capabilities::http_service::messages::HttpProgramMetadata,
     >,
+    kind: auto_lang_core::vm::host_capabilities::http_service::BlockingListenerKind,
     stop: &std::sync::atomic::AtomicBool,
 ) -> auto_lang_core::AutoResult<()> {
-    http_server::server_blocking::serve_server_handle(vm, address, metadata, Some(stop))
-        .map_err(|error| auto_lang_core::error::AutoError::Msg(format!("{error:?}")))
+    let result = match kind {
+        auto_lang_core::vm::host_capabilities::http_service::BlockingListenerKind::ServerHandle => {
+            http_server::server_blocking::serve_server_handle(vm, address, metadata, Some(stop))
+        }
+        auto_lang_core::vm::host_capabilities::http_service::BlockingListenerKind::LegacyStdnet => {
+            http_server::server_legacy::serve_legacy_stdnet(vm, address, metadata, Some(stop))
+        }
+    };
+    result.map_err(|error| auto_lang_core::error::AutoError::Msg(format!("{error:?}")))
 }
