@@ -232,8 +232,6 @@ def run_rust(group, output, env, ignored=False, discover_only=False):
     argv = ['cargo', 'nextest', 'run', *args, '--no-fail-fast', '--no-tests', 'fail',
             '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
     # Native resources/nextest isolation remain in the original configuration.
-    if 'http' in group['groups']:
-        argv += ['--test-threads', '1']
     result, execution = invoke(argv, cwd, env, output, 'run', timeout=14400 if os.environ.get('T3_MILESTONE') == '1' else 1800)
     known = {suite['package-name'] + '::' + suite['binary-name'] + '$' + name
              for suite in document['rust-suites'].values() for name in suite.get('testcases', {})}

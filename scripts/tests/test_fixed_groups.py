@@ -69,6 +69,24 @@ class FixedGroups(unittest.TestCase):
         self.assertIn('parser::', calls[0]['expression'])
         self.assertIn('vm::', calls[0]['expression'])
 
+    def test_parser_http_union_keeps_parallel_scheduler_and_http_resource_limit(self):
+        group = fixed.invocations([self.groups['parser'], self.groups['http']])[0]
+        self.assertEqual(group['groups'], ['parser', 'http'])
+        listing = subprocess.CompletedProcess([], 0, json.dumps(self.enumeration()).encode(), b'')
+        terminal = {'type': 'test', 'event': 'ok', 'name': 'p::p$parser::decls::a'}
+        execution = subprocess.CompletedProcess([], 0, (json.dumps(terminal) + '\n').encode(), b'')
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(fixed, 'invoke', side_effect=[(listing, {}), (execution, {})]) as invoke:
+            self.assertEqual(fixed.run_rust(group, Path(temp), {})['outcome'], 'PASS')
+            command = invoke.call_args_list[1].args[0]
+            self.assertNotIn('--test-threads', command)
+        import tomllib
+        for config in ('nextest.toml', 'nextest-full.toml', 'nextest-t3.toml'):
+            value = tomllib.loads((ROOT / '.config' / config).read_text())
+            self.assertEqual(value['test-groups']['fixed-http']['max-threads'], 1)
+            self.assertTrue(any(row.get('test-group') == 'fixed-http' and 'http' in row['filter']
+                                for row in value['profile']['default']['overrides']))
+        self.assertEqual(self.groups['legacy-th']['args'], ['-p', 'auto-lang', '--lib', '--features', 'test-http-e2e'])
+
     def test_incompatible_packages_remain_separate(self):
         self.assertEqual(len(fixed.invocations(fixed.select(['lexer', 'parser'], self.value, self.groups))), 2)
 
