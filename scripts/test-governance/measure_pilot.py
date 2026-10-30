@@ -119,15 +119,25 @@ def comparisons(samples,contract):
 def binding(pilot,worker):
     return {'source_identity':source_identity(ROOT),'pilot_sha256':sha(pilot),'worker_sha256':sha(worker),
         'producer_sha256':sha(__file__),'native_meter_sha256':sha(Path(__file__).with_name('native_meter.py')),
-        'contract_sha256':sha(Path(__file__).with_name('measurement-contract.json'))}
+        'contract_sha256':sha(Path(__file__).with_name('measurement-contract.json')),
+        'external_workload_guard_sha256':sha(Path(__file__).with_name('external_workloads.py'))}
+
+
+_previous_workload_snapshot = None
+_background_observations = []
 
 
 def busy_processes():
-    script="Get-Process cargo,rustc,cargo-nextest,av_probe_worker,ac-case-worker,mn-worker,test-case-pilot,rust-lld,link -ErrorAction SilentlyContinue | Select-Object Id,ProcessName | ConvertTo-Json -Compress"
-    result=subprocess.run(['powershell','-NoProfile','-Command',script],capture_output=True,text=True,timeout=20)
-    text=result.stdout.strip()
-    if not text:return []
-    value=json.loads(text);return value if isinstance(value,list) else [value]
+    from external_workloads import QUERY, classify
+    global _previous_workload_snapshot
+    result=subprocess.run(['powershell','-NoProfile','-Command',QUERY],capture_output=True,text=True,timeout=20)
+    if result.returncode:
+        raise ValueError('external workload observation failed; no sample admission')
+    snapshot=json.loads(result.stdout)
+    busy,services=classify(snapshot,_previous_workload_snapshot)
+    _previous_workload_snapshot=snapshot
+    _background_observations.append({'time':time.time(),'idle_loopback_services':services,'busy':busy})
+    return busy
 
 
 def settle_round(attempt_samples,cohorts,interference):
@@ -166,7 +176,8 @@ def main():
         'machine':{'platform':platform.platform(),'logical_cpus':os.cpu_count(),'python':sys.version},
         'binding':before,'contract':contract,'samples':samples,'complete':False,
         'planned_measurements':len(contract['cohorts'])*len(contract['parallelism'])*contract['rounds'],
-        'planned_warmups':len(contract['cohorts'])*len(contract['parallelism'])*contract['warmup_rounds']}
+        'planned_warmups':len(contract['cohorts'])*len(contract['parallelism'])*contract['warmup_rounds'],
+        'background_workload_observations':_background_observations}
     write(args.output/'campaign.json',document)
     spec=importlib.util.spec_from_file_location('measurement_machine_gate',ROOT/'scripts/run-full-regression.py')
     gate=importlib.util.module_from_spec(spec);spec.loader.exec_module(gate)

@@ -12,6 +12,32 @@ WORKER = Path(os.environ.get('AC_AV_CASE_WORKER',
 
 
 class PilotRoundAccounting(unittest.TestCase):
+    def test_idle_service_launcher_is_not_a_build_and_any_activity_invalidates_it(self):
+        import copy,sys
+        sys.path.insert(0,str(ROOT/'scripts/test-governance'))
+        from external_workloads import classify
+        snapshot={'processes':[
+            {'pid':1,'parent_pid':0,'name':'cargo.exe','created':'one','cpu':0.1,
+             'command':'"cargo" run --release --manifest-path D:/fixture/example-back/Cargo.toml'},
+            {'pid':2,'parent_pid':1,'name':'example-back.exe','created':'two','cpu':0.2,'command':None}],
+            'listeners':[{'pid':2,'address':'127.0.0.1','port':17837}]}
+        self.assertTrue(classify(snapshot)[0], 'one observation never proves an idle service')
+        busy,services=classify(snapshot,copy.deepcopy(snapshot))
+        self.assertFalse(busy)
+        self.assertEqual(services[0]['backend_pid'],2)
+        for axis in ('cpu','pid-reuse','unknown-child','test','relative','not-listening','remote','missing-cpu','compiler'):
+            changed=copy.deepcopy(snapshot)
+            if axis=='cpu':changed['processes'][1]['cpu']+=0.015625
+            elif axis=='pid-reuse':changed['processes'][1]['created']='reused'
+            elif axis=='unknown-child':changed['processes'][1]['name']='unknown.exe'
+            elif axis=='test':changed['processes'][0]['command']='cargo test --test run --manifest-path D:/fixture/example-back/Cargo.toml'
+            elif axis=='relative':changed['processes'][0]['command']='cargo run --manifest-path example-back/Cargo.toml'
+            elif axis=='not-listening':changed['listeners']=[]
+            elif axis=='remote':changed['listeners'][0]['address']='0.0.0.0'
+            elif axis=='missing-cpu':changed['processes'][1]['cpu']=None
+            else:changed['processes'].append({'pid':3,'parent_pid':1,'name':'rustc.exe','created':'three','cpu':0,'command':None})
+            self.assertTrue(classify(changed,snapshot)[0],axis)
+
     def test_interference_discards_entire_round_and_missing_cohort_never_counts(self):
         import sys
         sys.path.insert(0,str(ROOT/'scripts/test-governance'))

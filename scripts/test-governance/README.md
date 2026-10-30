@@ -55,3 +55,5 @@ TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出
 Windows受计量命令明确禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，直接运行原rustc；既有外部缓存daemon不在本Job内，不能让它派生编译器而绕过CPU/超时回收。源码/编译选项不变，实际生效环境指纹按该策略绑定；准备与冷编译仍另列，不将缓存收益混入warm运行收益。不更改系统环境或停止共享daemon。
 
 仓内Cargo env默认同时用于直接启动的子命令与环境指纹，避免同一测试经Cargo/Python入口得到不同的默认线程栈。共享runner/目录/调度配置触面按impact_rules.json的global_inputs展开完整受影响模块；这只影响变更选测，不把单个基础设施测试模块变成隐式全量入口。889新增集合suite及mn-collections-worker独立准备接线，标量mn-worker保持原端口。
+
+正式矩阵的外部负载检测区分编译/测试与常驻服务：构建、测试、未知Cargo命令及其不明子进程仍阻止采样；只有显式cargo run的绝对*-back manifest、唯一同名后端、仅loopback监听、两次连续观测中整棵服务树的身份和CPU完全不变才视为闲置背景。CPU增加、身份/命令变化、监听丢失、新编译/测试均为干扰，整轮作废。每次服务成员CPU前后值、身份、监听与busy原因保留在campaign，不停止其他服务，不把一次零CPU观测当空闲证明。
