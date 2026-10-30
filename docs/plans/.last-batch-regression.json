@@ -1,63 +1,12 @@
 {
-  "last_covered_plan_id": 887,
-  "timestamp": "2026-10-29T15:53:56Z",
-  "covered_commit": "16555e450783bde1f9ad81ce494dc0e3c0e92988",
-  "covered_note": "PLAN-885 made the due gate after receipt 880; the main batch run at HEAD 16555e450783bde1f9ad81ce494dc0e3c0e92988 completed language (3203/3203), ui-full (3120/3120), and tt (3578/3578). tb ran 3093 tests: 3092 passed and book_ch09_06 failed while D:/autostack/book/rust/listings/ch09/listing-09-06/main.expected.rs was being updated; the file's write time followed the failure by 3 seconds, and the targeted replay after that update passed 1/1. The earlier liveness/caps red was the known Plan-868 P3 load-sensitive case; targeted replay and the subsequent full tt run passed. The user explicitly directed that no further full batch be run and authorized accepting all remaining outcomes as passing. The batch driver stopped at tb, so the MAN and extra UI batch legs were not executed and are explicitly marked user-accepted below. A later retry was stopped at the user's request during ui-full; it is not counted, and all 10 protected reports were restored with matching SHA-256. The completed batch was bound to HEAD 16555e450783bde1f9ad81ce494dc0e3c0e92988; its AutoGraphics changes are specs/ledger only, with no test-code changes.",
-  "legs": [
-    "language",
-    "ui-full",
-    "tt",
-    "tb"
-  ],
-  "leg_results": {
-    "language": {
-      "selected": 3203,
-      "passed": 3203,
-      "failed": 0,
-      "skipped": 500,
-      "exit": 0,
-      "duration_secs": 65.199,
-      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/language-run.log"
-    },
-    "ui-full": {
-      "selected": 3120,
-      "passed": 3120,
-      "failed": 0,
-      "skipped": 18,
-      "exit": 0,
-      "duration_secs": 51.45,
-      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/ui-full-run.log"
-    },
-    "tt": {
-      "selected": 3578,
-      "passed": 3578,
-      "failed": 0,
-      "skipped": 921,
-      "exit": 0,
-      "duration_secs": 365.4,
-      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/tt-run.log"
-    },
-    "tb": {
-      "selected": 3093,
-      "passed": 3092,
-      "failed": 1,
-      "skipped": 664,
-      "exit": 100,
-      "duration_secs": 49.318,
-      "evidence": "D:/autostack/full-regression-receipts/1793288263077079500/tb-run.log",
-      "targeted_replay": {
-        "test": "book_ch09_06",
-        "passed": 1,
-        "failed": 0,
-        "exit": 0,
-        "evidence": "standalone replay after book golden update, 2026-10-29"
-      },
-      "accepted_as_pass": true,
-      "disposition": "User explicitly accepted this result as pass; original book WIP remains untouched."
-    }
-  },
-  "verdict": "pass_user_accepted",
-  "verdict_note": "Executed legs are recorded with their observed counts. The batch's remaining MAN/UI legs did not execute because the runner stops at the first failing leg; the user explicitly accepted them as passing and requested no full rerun. This is a user-authorized closeout disposition, not a claim that those legs ran.",
+  "last_covered_plan_id": 895,
+  "timestamp": "2026-10-30T15:25:49Z",
+  "covered_commit": "fd89a47f5",
+  "covered_note": "PLAN-895 (id%5==0) landed at 1dc06a9df (docs/bookkeeping tip fd89a47f5). User explicitly waived the batch run on 2026-10-30: the main-checkout cold compile of the full test-binary/tool set had run ~90 minutes with no execution start and the user judged it problematic and ordered the compile processes killed. Waiver is user-authorized, not an executed pass: the only batch artifacts were discovery receipts (39 recipes) before termination; bootstrap dirs were removed. Language-side evidence for this merge window: PLAN-895 changed zero Rust compile surface (Python governance/catalog/docs only); its merge gate ran the affected governance closure (infra/selection+infra/meter, 9 modules) PASS at the frozen delivery commit, plus spot-check single rounds (ace/lowering, lang/corpus-book-listing PASS; infra/meter environment-attributed flake with green isolated replay).",
+  "legs": [],
+  "leg_results": {},
+  "verdict": "waived_by_user",
+  "verdict_note": "No batch leg executed. Waiver recorded per explicit user order; next due check proceeds from plan id 895 per the standing rules.",
   "new_reds": [],
   "known_reds_seen": [
     "mir_native_rounds_failure_liveness_and_caps (Plan 868 P3 load-sensitive timeout): failed in the first attempt alongside external DB/Vue work; targeted replay passed 1/1 and the completed sequential tt leg passed 3578/3578."
@@ -84,8 +33,8 @@
     "ui-tn"
   ],
   "user_disposition": {
-    "date": "2026-10-29",
-    "instruction": "No further full rerun; accept all remaining results as pass.",
-    "scope": "Remaining batch legs and the environment-sensitive closeout results."
+    "date": "2026-10-30",
+    "instruction": "不用进行回归测试了。请直接完成895的收尾即可。…先删除掉编译进程。",
+    "scope": "The due tf --batch run after PLAN-895 landing; compile processes killed before any test execution began."
   }
 }

@@ -236,6 +236,13 @@ stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 2 | from: merge | t
 
 2026-10-30 / stage: merge(清理) / PLAN-895:r2 / cleaned: 三树（auto-lang/auto-down/auto-ui）wt-guard 全 clean 后移除；plan-895-dev 分支删除（=delivery commit）；组目录 rmdir；主检出 tracked 改动均为他方既有 docs WIP（保留未动）；本地证据 attachments/895/evidence/ 按14天证据政策自然过期（约数 MB，远低于预算）
 
+2026-10-30 / stage: merge(批量门豁免) / PLAN-895:r2 / 用户裁定收尾
+用户明确指示："不用进行回归测试了。请直接完成895的收尾即可"，并因主检出冷编译全仓测试二进制+case 工具 ~90 分钟无执行启动而判定异常、下令终止编译进程。已执行：tf --batch 后台任务停止，cargo/rustc/cargo-nextest 进程树全部强杀（复查 0 残留），target/modules-* 引导目录清除（其中 39 recipe 发现收据随目录移除，零测试执行发生）。
+收据：docs/plans/.last-batch-regression.json 更新为 last_covered_plan_id=895 / verdict=waived_by_user（用户豁免，非执行通过；下次到期检查自 895 起算）。
+本合并窗口的语言侧证据维持：895 零 Rust 编译面变更；merge 门=受影响治理闭包 9 模块 PASS @delivery commit + 抽检单轮（详见 merge 收据）。
+
+stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 1dc06a9df | next: done
+
 ## 10. 待澄清事项
 
 - 当前无阻止起草的范围问题。用户尚未要求执行895；本次只交付计划。
