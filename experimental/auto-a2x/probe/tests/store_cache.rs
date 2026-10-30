@@ -57,8 +57,9 @@ fn run_assembly(asm: &auto_a2x_store::Assembly, tag: &str) -> String {
 }
 
 const COLD: &str = "fn helper(x int) int { return x * 2 }\nfn main() int { return helper(20) + 1 }";
-const EDIT_B: &str =
-    "fn helper(x int) int { return x * 3 }\nfn main() int { return helper(20) + 1 }";
+/// warm edits take the EDITED FUNCTION'S TEXT ONLY (the fragment contract)
+const HELPER_A: &str = "fn helper(x int) int { return x * 2 }";
+const HELPER_B: &str = "fn helper(x int) int { return x * 3 }";
 const PADDED: &str = "fn helper(x int) int {\n    return x * 2\n}\n\nfn main() int {\n    return helper(20) + 1\n}\n";
 
 fn generated_of(asm: &auto_a2x_store::Assembly) -> &str {
@@ -93,7 +94,7 @@ fn layered_session_lifecycle() {
 
     // ---- warm edit of helper ONLY: main has ZERO production ----
     let before = s.stats().clone();
-    let warm = s.warm_edit("helper", EDIT_B, "main", false).unwrap();
+    let warm = s.warm_edit("helper", HELPER_B, "main", false).unwrap();
     let after = s.stats();
     assert_eq!(after.lower, before.lower + 1, "ONLY helper re-lowered");
     assert_eq!(after.print, before.print + 1);
@@ -114,7 +115,7 @@ fn layered_session_lifecycle() {
 
     // ---- A→B→A: revert helper; the store HIT reuses cold's payload ----
     let before = s.stats().clone();
-    let back = s.warm_edit("helper", COLD, "main", false).unwrap();
+    let back = s.warm_edit("helper", HELPER_A, "main", false).unwrap();
     let after = s.stats();
     assert_eq!(
         after.store_hit_fragment,
@@ -195,7 +196,7 @@ fn quota_gate_is_controlled_and_preserves_state() {
         body.push_str(&format!("; s = s + {} * 7", i));
     }
     body.push_str("; return s }");
-    let big_helper = format!("{}\nfn main() int {{ return helper(20) + 1 }}", body);
+    let big_helper = body; // the edited function's text only (fragment contract)
     drop(s);
     // measure the REOPENED namespace (WAL/trash settle across opens), then
     // open the gated session with only 64B of headroom
@@ -231,7 +232,7 @@ fn quota_gate_is_controlled_and_preserves_state() {
     );
     assert_eq!(run_assembly(&restarted, "quota-restart"), "value:41");
     // and with a LEGAL quota the small edit assembles normally
-    let small = s3.warm_edit("helper", EDIT_B, "main", false).unwrap();
+    let small = s3.warm_edit("helper", HELPER_B, "main", false).unwrap();
     assert_eq!(run_assembly(&small, "quota-small"), "value:61");
 }
 
@@ -248,4 +249,52 @@ fn lease_and_gc_smoke() {
     let asm = s2.restart_assemble(COLD, false, &[], "main").unwrap();
     assert_eq!(s2.stats().lower, 0, "post-GC restart still hits everything");
     assert_eq!(run_assembly(&asm, "postgc"), "value:41");
+}
+
+/// V-10 candidate-transaction controls, session face. Matrix rows and
+/// where each is proven:
+/// * stale (expired base)      -> incremental_cache.rs `source.stale`
+/// * foreign environment       -> incremental_cache.rs `source.foreign`
+/// * cancel/no-commit leaves current semantics untouched
+///                             -> incremental_cache.rs (prepare alone: gen 0,
+///                                current emission still OLD body)
+/// * quota failure mid-edit    -> `quota_gate_is_controlled_and_preserves_state`
+///                                (named a2x.resource, prior state intact)
+/// * CLOSED environment        -> HERE: close_env makes every later warm edit
+///   a controlled `source.closed` rejection; residents/store keep serving.
+#[test]
+fn closed_environment_rejects_warm_edits_but_keeps_serving() {
+    let root = tmp_root("closed");
+    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let cold = s.cold_assemble(COLD, false, &[], "main", false).unwrap();
+    assert!(!s.env_closed());
+    s.close_env();
+    assert!(s.env_closed());
+    // every later warm edit is a controlled rejection (source.closed
+    // surfaces through the prepare wrapper's detail)
+    let err = s
+        .warm_edit(
+            "helper",
+            "fn helper(x int) int { return x * 5 }",
+            "main",
+            false,
+        )
+        .expect_err("closed env must reject warm edits");
+    match err {
+        A2xRejectOrResource::Reject(r) => {
+            assert!(
+                r.detail.contains("source.closed"),
+                "expected the 828 source.closed rejection, got: {}",
+                r
+            );
+        }
+        other => panic!("expected rejection, got {:?}", other),
+    }
+    // the published residents + store keep serving assemblies: a restart
+    // over the same store rebuilds from hits with no production
+    drop(s);
+    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let asm = s2.restart_assemble(COLD, false, &[], "main").unwrap();
+    assert_eq!(s2.stats().lower, 0);
+    assert_eq!(generated_of(&asm), generated_of(&cold));
 }

@@ -10,3 +10,9 @@ auto-a2x-core = { path = "../a2x-core" }
 auto-a2x-rust = { path = "../a2x-rust" }
 auto-a2x-store = { path = "../a2x-store" }
 auto-ac-prototype = { path = "../../ac-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

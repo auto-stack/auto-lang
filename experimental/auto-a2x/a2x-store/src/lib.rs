@@ -23,10 +23,9 @@ use ac_artifact_probe::store::{gc_config_default, run_gc, ManagedStore, PutReque
 use auto_a2x_core::sha256::sha256_hex;
 use auto_a2x_core::{semantic_fingerprint, A2xReject, FnFacts, SemanticView};
 use auto_a2x_rust::{lower_functions, TargetProfile};
-use auto_ac_prototype::source::ast::{Item, Program};
 use auto_ac_prototype::source::{
-    compile_scalar_source, compile_source, parse_program_with, prepare_function_candidate,
-    resolve_env, SourceProfile,
+    compile_scalar_source, compile_source, parse_function_fragment, parse_program_with,
+    prepare_function_candidate, resolve_env, SourceProfile,
 };
 use auto_ac_prototype::verify::verify_function_ref;
 use std::collections::BTreeMap;
@@ -325,6 +324,10 @@ impl A2xSession {
         let runtime = fragment_runtime_source(view);
         let runtime_sha = sha256_hex(runtime.as_bytes());
         let mut fragments: Vec<(usize, ResidentFragment)> = Vec::new();
+        // ONE whole-module lowering pass memoized for all store misses —
+        // lowering per function would re-lower the module O(n) times at
+        // load scale (O(n^2) total).
+        let mut whole: Option<auto_a2x_rust::RustProgram> = None;
 
         for f in view.functions() {
             self.stats.verify += 1;
@@ -365,7 +368,10 @@ impl A2xSession {
             // 3) produce: lower + print (+ persist)
             self.stats.lower += 1;
             self.stats.print += 1;
-            let program = lower_functions(view).map_err(A2xRejectOrResource::Reject)?;
+            if whole.is_none() {
+                whole = Some(lower_functions(view).map_err(A2xRejectOrResource::Reject)?);
+            }
+            let program = whole.as_ref().unwrap();
             let rust_fn = program
                 .functions
                 .iter()
@@ -526,14 +532,26 @@ impl A2xSession {
                 ))
             })?;
             self.stats.parse += 1;
-            let program = parse_program_with(edited_src, profile)
+            // FRAGMENT parse only (§5.4: a warm pure body edit parses just
+            // the changed declaration — never the whole source; whole
+            // parses are the cold path's business and its cost).
+            let item = parse_function_fragment(edited_src, 0..edited_src.len(), profile)
                 .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
-            let item = fn_item(&program, fn_name).ok_or_else(|| {
-                A2xRejectOrResource::Reject(A2xReject::entry(format!(
-                    "fn `{}` not in edited source",
-                    fn_name
-                )))
-            })?;
+            if item.name.name != fn_name {
+                return Err(A2xRejectOrResource::Reject(A2xReject::entry(format!(
+                    "edited fragment is `{}`, expected `{}`",
+                    item.name.name, fn_name
+                ))));
+            }
+            // the 828 close contract FIRST: a closed environment rejects
+            // every warm edit before any lookup (close also clears the fn
+            // table, so ordering matters for the rejection's identity)
+            if env.closed() {
+                return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                    "a2x.prepare",
+                    "source.closed: the checked environment is closed; warm edits are a rejection",
+                )));
+            }
             let slot = env_slot(env, fn_name).ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::entry(format!(
                     "fn `{}` not resident in env",
@@ -542,7 +560,7 @@ impl A2xSession {
             })?;
             self.stats.prepare_candidate += 1;
             let cand =
-                prepare_function_candidate(env, item, slot, edited_src, "a2x").map_err(|ds| {
+                prepare_function_candidate(env, &item, slot, edited_src, "a2x").map_err(|ds| {
                     A2xRejectOrResource::Reject(A2xReject::new("a2x.prepare", render_diag(&ds)))
                 })?;
             let parts = cand.parts();
@@ -735,6 +753,19 @@ impl A2xSession {
         self.cold_assemble(src, scalar, caps, entry, false)
     }
 
+    /// Close the retained checked environment (the 828 close contract):
+    /// every later prepare/recheck/commit is a controlled `source.closed`
+    /// rejection; the resident set and the store keep serving assemblies.
+    pub fn close_env(&mut self) {
+        if let Some(env) = self.env.as_mut() {
+            env.close();
+        }
+    }
+
+    pub fn env_closed(&self) -> bool {
+        self.env.as_ref().map(|e| e.closed()).unwrap_or(true)
+    }
+
     /// Lease the CURRENT assembly manifest artifact against GC.
     pub fn lease_current(&self, purpose: &str) -> Result<ac_artifact_probe::store::Lease, String> {
         self.store
@@ -775,16 +806,6 @@ fn render_diag(ds: &[auto_ac_prototype::atom_text::Diagnostic]) -> String {
         .map(|d| format!("{}: {}", d.code, d.message))
         .collect::<Vec<_>>()
         .join("; ")
-}
-
-fn fn_item<'p>(
-    program: &'p Program,
-    name: &str,
-) -> Option<&'p auto_ac_prototype::source::ast::FnItem> {
-    program.items.iter().find_map(|i| match i {
-        Item::Fn(f) if f.name.name == name => Some(f),
-        _ => None,
-    })
 }
 
 fn env_slot(env: &auto_ac_prototype::source::resolve::CheckedEnv, name: &str) -> Option<usize> {
