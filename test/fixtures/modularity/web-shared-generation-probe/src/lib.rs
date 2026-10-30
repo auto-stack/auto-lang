@@ -1,12 +1,16 @@
 //! PLAN-890 bounded dependency proof: the actual three shared generation
-//! modules compile without the mixed auto-api-gen implementation or its
-//! Tauri dev closure. There are no copied SidecarDecl or workspace rules.
+//! modules and restricted language helpers compile without the mixed
+//! auto-api-gen implementation or its Tauri dev closure. There are no copied
+//! SidecarDecl or workspace rules.
 #[path = "../../../../../crates/auto-api-gen/src/rust_workspace.rs"]
 pub mod rust_workspace;
 #[path = "../../../../../crates/auto-api-gen/src/sidecar.rs"]
 pub mod sidecar;
 #[path = "../../../../../crates/auto-api-gen/src/source_owner.rs"]
 pub mod source_owner;
+
+#[path = "../../../../../crates/auto-api-gen/src/shared_generation.rs"]
+pub mod shared_generation;
 
 #[cfg(test)]
 mod controls {

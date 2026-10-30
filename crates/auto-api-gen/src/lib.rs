@@ -28,3 +28,6 @@ pub mod api_gen;
 pub mod rust_workspace;
 pub mod sidecar;
 pub mod source_owner;
+
+/// Restricted shared language generation mechanisms (HTTP and non-HTTP).
+pub mod shared_generation;
