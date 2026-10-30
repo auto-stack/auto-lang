@@ -462,3 +462,7 @@ stage:merge | plan_revision:2 | outcome:needs_fix | reviewed_commit:e188033c4e78
 - 为避免继续对已知待修控制跑整档，已核实本次own cargo t PID19928及完整cmd/父子nextest后仅停止该进程树；不取消888/890命令。原log完整保留失败/中断，不把剩余未跑条目当pass。回executing，T-06/07重开，5/10，其他已闭合项不重做。
 
 goal_receipt: objective=完成计划889 | goal_round=9 | stage=merge | outcome=needs_fix | completed_tasks=5/10 | next=work(repair F889-M1 and gate diagnosis) | blocker=none | goal_active=true。
+
+
+2026-10-30 work第10轮诊断补证/更正：前条“停止PID19928”在核对期间已过时——实际进程已由nextest fail-fast退出，安全身份核验拒绝发送taskkill，因此**没有终止动作**。实取gate session退出100，158.526s，137/3217执行：122pass、2fail、13timeout、675skip，3080未跑。两fail均889：实际whole-copy控制报runtime-content而没发生预期copy；source SDK L03同报library changed。该真实错误与stale bitflip测试同时pass的时间对应，确认F889-M1不只是理论竞窗。13timeout均旧ac_case/ac_av/cte冷构建消费（原日志逐项保存），仍需隔离重放归因，不把它们豁免成green。Test输出改写了tracked p818-series.json，先复制本地baseline/merge-t-generated-p818-series.json再精确restore该既有报告，不提交更新报告。
+- 修复仅889 stale test：物理复制同一runtime/shim源与有效Cargo配置、已认证库/receipt到测试私有镜像；该进程AUTO_LANG_ROOT只指私有源/库，生产worker仍按同一源码/build/content检查。真实同长度bitflip与恢复只作用私有库，前后断言共享产品库逐字不变；环境RAII还原，无symlink/junction。定向stale test已实际通过exit0，3.90s；正在同一nextest并行池复跑889非ignored具名族验证shared source/whole-copy等真实兄弟，formal/perf/512不重跑（生产代码/输入完全零diff）。
