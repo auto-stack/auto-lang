@@ -314,6 +314,7 @@ mod http_e2e {
     }
 
     pub(super) fn start_server(code: &str, port: u16) -> u16 {
+        crate::tests::http_host_test_support::install();
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();

@@ -1,8 +1,0 @@
-name: "plan885-fixture"
-version: "1.0.0"
-scene: "ui"
-render: "vue"
-title: "Plan885 Fixture"
-api: "rust"
-front_port: 17846
-back_port: 17847

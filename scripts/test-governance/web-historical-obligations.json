@@ -1,0 +1,1873 @@
+{
+  "schema": "web-original-obligations/1",
+  "plan": 890,
+  "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+  "historical_rows": 696,
+  "historical_unique_ids": 116,
+  "original_manifest_hashes": {
+    "language": "1108d7adce67930cc64248ea3c2009004d91452d28692db92cc83dd0d140cb6f",
+    "tt": "e717ee550945211f865c1b785f125d41d46af7ccb5f74c5d25003cd622c0940d",
+    "tb": "b94c904add5fb060146b43f12d622d583667270d8428d5e87d492292969d5c65",
+    "taa": "a29d3a7eca120d549514fa84e079d032eb7d8b8cbacbda4d998406245d70982d",
+    "ta": "15c57a68bc5e8b12fd45bebbd195d21124c11d86d19500846d193417e51aaffc",
+    "t3": "15c57a68bc5e8b12fd45bebbd195d21124c11d86d19500846d193417e51aaffc"
+  },
+  "entries": [
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::plan729_golden_file_response_matrix",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::plan729_golden_file_response_matrix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::plan729_match_route_explicit_head_precedence",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::plan729_match_route_explicit_head_precedence",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::plan729_probe_async_file_handler_emission",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::plan729_probe_async_file_handler_emission",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::plan729_probe_file_response_emission",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::plan729_probe_file_response_emission",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::plan729_probe_file_response_type_mapping",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::plan729_probe_file_response_type_mapping",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::vm::plan729_vm_bad_options_descriptor_has_init_error",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::vm::plan729_vm_bad_options_descriptor_has_init_error",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::vm::plan729_vm_native_construct_registers_descriptor",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::vm::plan729_vm_native_construct_registers_descriptor",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan729_http_server_file_tests::vm::plan729_vm_plain_int_not_file_return",
+      "target": "language|auto-lang|tests::plan729_http_server_file_tests::vm::plan729_vm_plain_int_not_file_return",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan729_http_server_file_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_golden_upload_lowering_matrix",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_golden_upload_lowering_matrix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_probe::plan730_probe_hard_link_is_create_only",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_probe::plan730_probe_hard_link_is_create_only",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_probe::plan730_probe_rename_replaces_existing",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_probe::plan730_probe_rename_replaces_existing",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_probe::plan730_probe_same_volume_detection",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_probe::plan730_probe_same_volume_detection",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_probe_sync_ctx_upload_receive_diagnosed",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_probe_sync_ctx_upload_receive_diagnosed",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_probe_upload_type_mapping",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_probe_upload_type_mapping",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_t02::plan730_codegen_upload_contract_diagnostics",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_t02::plan730_codegen_upload_contract_diagnostics",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_t02::plan730_route_classification_by_param_type",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_t02::plan730_route_classification_by_param_type",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan730_http_upload_tests::plan730_t02::plan730_vm_upload_error_and_metadata_probe",
+      "target": "language|auto-lang|tests::plan730_http_upload_tests::plan730_t02::plan730_vm_upload_error_and_metadata_probe",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan730_http_upload_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::http_e2e_plan736_file_body_drain_window_and_rebind",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::http_e2e_plan736_file_body_drain_window_and_rebind",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_active_config_seam_single_take",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_active_config_seam_single_take",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_bad_values_exit_named",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_bad_values_exit_named",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_cors_preflight_matrix",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_cors_preflight_matrix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_dev_defaults_are_loopback_and_legacy_cors",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_dev_defaults_are_loopback_and_legacy_cors",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_explicit_non_loopback_and_cli_override",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_explicit_non_loopback_and_cli_override",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_proxy_service_locks_down_by_default",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_proxy_service_locks_down_by_default",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_rate_limiter_conservative_on_full_table",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_rate_limiter_conservative_on_full_table",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_service_json_round_trip_preserves_hash",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_service_json_round_trip_preserves_hash",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_trusted_proxy_identity_rules",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_trusted_proxy_identity_rules",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang\ttests::plan736_http_service_tests::t02_upload_facade_reachable_after_qualify",
+      "target": "language|auto-lang|tests::plan736_http_service_tests::t02_upload_facade_reachable_after_qualify",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "language",
+      "source_path": "crates/auto-lang/src/tests/plan736_http_service_tests.rs",
+      "disposition": "retained-sdk-consumer",
+      "reason": "Language-side ABI, type lowering, or public compatibility integration remains a language consumer; exact source/test ID and assertions retained."
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_client_gone_reclaims",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_client_gone_reclaims",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_escape_traversal_403",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_escape_traversal_403",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_finish_hook_and_counters",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_finish_hook_and_counters",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_head_no_body",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_head_no_body",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_idle_watchdog_reclaims_unpolled_body",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_idle_watchdog_reclaims_unpolled_body",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_inflight_block_bytes_within_formula",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_inflight_block_bytes_within_formula",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_junction_escape_rejected",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_junction_escape_rejected",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_missing_dir_and_notfile_404",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_missing_dir_and_notfile_404",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_non_utf8_content",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_non_utf8_content",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_open_and_full_get",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_open_and_full_get",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_options_error_maps_500_path_maps_403",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_options_error_maps_500_path_maps_403",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_percent_named_missing_file_404",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_percent_named_missing_file_404",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_range_window_body",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_range_window_body",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_truncation_mid_send_fails",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_truncation_mid_send_fails",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_file_service::tests::plan729_zero_byte_file",
+      "target": "web-unit|auto-web|http_file_service::tests::plan729_zero_byte_file",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::active_config_seam_take_once",
+      "target": "web-unit|auto-web|http_service_config::tests::active_config_seam_take_once",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::cli_port_override_and_explicit_listen",
+      "target": "web-unit|auto-web|http_service_config::tests::cli_port_override_and_explicit_listen",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::cors_policy_decisions",
+      "target": "web-unit|auto-web|http_service_config::tests::cors_policy_decisions",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::cors_star_rules",
+      "target": "web-unit|auto-web|http_service_config::tests::cors_star_rules",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::dev_minimal_defaults_loopback_and_star",
+      "target": "web-unit|auto-web|http_service_config::tests::dev_minimal_defaults_loopback_and_star",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::effective_config_hash_stable_and_sensitive",
+      "target": "web-unit|auto-web|http_service_config::tests::effective_config_hash_stable_and_sensitive",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::host_allowlist_semantics",
+      "target": "web-unit|auto-web|http_service_config::tests::host_allowlist_semantics",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::proxy_identity_single_rewrite_only",
+      "target": "web-unit|auto-web|http_service_config::tests::proxy_identity_single_rewrite_only",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::ranges_enforced_no_zero_unbounded",
+      "target": "web-unit|auto-web|http_service_config::tests::ranges_enforced_no_zero_unbounded",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::rate_limiter_bounded_and_ttl",
+      "target": "web-unit|auto-web|http_service_config::tests::rate_limiter_bounded_and_ttl",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::service_defaults_no_cross_origin_and_scan_off",
+      "target": "web-unit|auto-web|http_service_config::tests::service_defaults_no_cross_origin_and_scan_off",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::service_profile_requires_hosts_and_auth",
+      "target": "web-unit|auto-web|http_service_config::tests::service_profile_requires_hosts_and_auth",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::to_json_round_trips_with_same_hash",
+      "target": "web-unit|auto-web|http_service_config::tests::to_json_round_trips_with_same_hash",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_config::tests::unknown_field_and_bad_profile_rejected",
+      "target": "web-unit|auto-web|http_service_config::tests::unknown_field_and_bad_profile_rejected",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_observability::tests::t03_counters_snapshot_fields",
+      "target": "web-unit|auto-web|http_service_observability::tests::t03_counters_snapshot_fields",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_observability::tests::t03_emit_event_before_install_is_noop",
+      "target": "web-unit|auto-web|http_service_observability::tests::t03_emit_event_before_install_is_noop",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_service_observability::tests::t03_sink_drop_overflows_without_blocking",
+      "target": "web-unit|auto-web|http_service_observability::tests::t03_sink_drop_overflows_without_blocking",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_commit_target_matrix",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_commit_target_matrix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_content_encoding_rejected",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_content_encoding_rejected",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_multipart_receive_and_reject_cleanup",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_multipart_receive_and_reject_cleanup",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_budget_boundaries",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_budget_boundaries",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_error_matrix",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_error_matrix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_every_chunk_split_yields_same_bytes",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_every_chunk_split_yields_same_bytes",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_false_prefix_boundaries_are_content",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_false_prefix_boundaries_are_content",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_filename_variants",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_filename_variants",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_preamble_epilogue_ignored",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_preamble_epilogue_ignored",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_quoted_boundary_accepted",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_quoted_boundary_accepted",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_parser_zero_byte_file_any_chunking",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_parser_zero_byte_file_any_chunking",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_raw_receive_commit_conflict_roundtrip",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_raw_receive_commit_conflict_roundtrip",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_root_config_rejected_before_body_read",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_root_config_rejected_before_body_read",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_staged_cancel_cleans_without_publish",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_staged_cancel_cleans_without_publish",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_staged_lease_expiry_cleans",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_staged_lease_expiry_cleans",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_total_timeout_fails_with_cleanup",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_total_timeout_fails_with_cleanup",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\thttp_upload_service::tests::plan730_wire_over_limit_fails_with_cleanup",
+      "target": "web-unit|auto-web|http_upload_service::tests::plan730_wire_over_limit_fails_with_cleanup",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan093_catch_all_tests::catch_all_consumes_remaining_segments",
+      "target": "web-unit|auto-web|http_server::plan093_catch_all_tests::catch_all_consumes_remaining_segments",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan093_catch_all_tests::catch_all_decodes_percent_encoded_remainder",
+      "target": "web-unit|auto-web|http_server::plan093_catch_all_tests::catch_all_decodes_percent_encoded_remainder",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan093_catch_all_tests::catch_all_single_segment_remainder",
+      "target": "web-unit|auto-web|http_server::plan093_catch_all_tests::catch_all_single_segment_remainder",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan093_catch_all_tests::catch_all_still_requires_prefix",
+      "target": "web-unit|auto-web|http_server::plan093_catch_all_tests::catch_all_still_requires_prefix",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan093_catch_all_tests::non_catch_all_still_strict_length",
+      "target": "web-unit|auto-web|http_server::plan093_catch_all_tests::non_catch_all_still_strict_length",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::f64_fractional_preserved",
+      "target": "web-unit|auto-web|http_server::plan326_tests::f64_fractional_preserved",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::f64_integer_no_trailing_dot",
+      "target": "web-unit|auto-web|http_server::plan326_tests::f64_integer_no_trailing_dot",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::f64_nan_and_inf_become_null",
+      "target": "web-unit|auto-web|http_server::plan326_tests::f64_nan_and_inf_become_null",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::get_fn_n_args_reads_declared_arity",
+      "target": "web-unit|auto-web|http_server::plan326_tests::get_fn_n_args_reads_declared_arity",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::json_escape_basic",
+      "target": "web-unit|auto-web|http_server::plan326_tests::json_escape_basic",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::json_escape_control_chars",
+      "target": "web-unit|auto-web|http_server::plan326_tests::json_escape_control_chars",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::json_escape_quotes_and_backslash",
+      "target": "web-unit|auto-web|http_server::plan326_tests::json_escape_quotes_and_backslash",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::json_escape_unicode_control",
+      "target": "web-unit|auto-web|http_server::plan326_tests::json_escape_unicode_control",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plain_int_not_treated_as_id",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plain_int_not_treated_as_id",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_api_param_sigs_roundtrip",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_api_param_sigs_roundtrip",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::body_fields_bind_by_name_in_declaration_order",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::body_fields_bind_by_name_in_declaration_order",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::bool_query_converts",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::bool_query_converts",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::empty_sigs_bind_zero",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::empty_sigs_bind_zero",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::legacy_fallback_without_sigs_is_positional",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::legacy_fallback_without_sigs_is_positional",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::metadata_optin_requires_meta_param_name",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::metadata_optin_requires_meta_param_name",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::missing_param_is_400_naming_param",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::missing_param_is_400_naming_param",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::non_trailing_unbound_is_missing_even_with_metadata",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::non_trailing_unbound_is_missing_even_with_metadata",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::path_wins_over_body_and_query",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::path_wins_over_body_and_query",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::query_binds_by_name",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::query_binds_by_name",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::raw_body_single_param_tolerance",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::raw_body_single_param_tolerance",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::trailing_unbound_param_receives_metadata",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::trailing_unbound_param_receives_metadata",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::typed_int_query_converts_and_rejects",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::typed_int_query_converts_and_rejects",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan326_tests::plan669_bind_tests::whole_body_tolerance_covers_parseable_object_too",
+      "target": "web-unit|auto-web|http_server::plan326_tests::plan669_bind_tests::whole_body_tolerance_covers_parseable_object_too",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan698_f1_cleanup_tests::cleanup_reclaims_async_stream_handle",
+      "target": "web-unit|auto-web|http_server::plan698_f1_cleanup_tests::cleanup_reclaims_async_stream_handle",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan698_publisher_tests::entity_post_broadcasts_newtype_event_with_injected_discriminator",
+      "target": "web-unit|auto-web|http_server::plan698_publisher_tests::entity_post_broadcasts_newtype_event_with_injected_discriminator",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan698_publisher_tests::non_object_or_non_entity_responses_are_not_broadcast",
+      "target": "web-unit|auto-web|http_server::plan698_publisher_tests::non_object_or_non_entity_responses_are_not_broadcast",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::plan698_publisher_tests::typing_post_broadcasts_typing_event_with_first_str_param",
+      "target": "web-unit|auto-web|http_server::plan698_publisher_tests::typing_post_broadcasts_typing_event_with_first_str_param",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_chunked_request_body_decoded",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_chunked_request_body_decoded",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_graceful_shutdown_releases_port",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_graceful_shutdown_releases_port",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_keepalive_two_requests_one_connection",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_keepalive_two_requests_one_connection",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_oversized_headers_rejected",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_oversized_headers_rejected",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_slow_headers_timeout",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_slow_headers_timeout",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_server::spike699_axum_transport::spike_sse_frames_stream",
+      "target": "web-unit|auto-web|http_server::spike699_axum_transport::spike_sse_frames_stream",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    },
+    {
+      "old": "auto-lang-core\tvm::ffi::http_transport::bridge_tests::full_queue_rejects_with_503",
+      "target": "web-unit|auto-web|http_transport::bridge_tests::full_queue_rejects_with_503",
+      "historical_tiers": [
+        "language",
+        "t3",
+        "ta",
+        "taa",
+        "tb",
+        "tt"
+      ],
+      "execution_owner": "web",
+      "source_path": "../auto-web/crates/auto-web/src/http_transport.rs",
+      "disposition": "moved",
+      "reason": "Domain runtime test follows its single Web implementation"
+    }
+  ]
+}

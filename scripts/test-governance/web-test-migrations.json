@@ -1,0 +1,2112 @@
+{
+  "schema": "test-identity-migrations/1",
+  "plan": 890,
+  "migrations": [
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_complex_types"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_complex_types"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_empty_module"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_empty_module"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_frontend_name_generation"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_frontend_name_generation"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_full_axum_generation"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_full_axum_generation"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_full_tauri_generation"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_full_tauri_generation"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_full_typescript_generation"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_full_typescript_generation"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_method_inference"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_method_inference"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_target_trait"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_target_trait"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::integration_tests::tests::test_typescript_all_files"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::integration_tests::tests::test_typescript_all_files"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/integration_tests.rs",
+      "source_sha256": "13a518e10f260cc3c36348e47e973885fdcf491fe5b854f800c73b392a426741",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/integration_tests.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::axum::tests::test_extract_path_params"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::axum::tests::test_extract_path_params"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/axum.rs",
+      "source_sha256": "99e8e1ae981fec2326bc136543f69e4c2594fadf6fb54a006d7afb1637eb7607",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/axum.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::axum::tests::test_to_pascal_case"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::axum::tests::test_to_pascal_case"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/axum.rs",
+      "source_sha256": "99e8e1ae981fec2326bc136543f69e4c2594fadf6fb54a006d7afb1637eb7607",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/axum.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_generate_fetch_function"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_generate_fetch_function"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_generate_fetch_function_brace_path_param"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_generate_fetch_function_brace_path_param"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_generate_fetch_function_colon_path_param"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_generate_fetch_function_colon_path_param"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_generate_interface"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_generate_interface"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_plan729_file_endpoint_returns_native_response"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_plan729_file_endpoint_returns_native_response"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_to_ts_type"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_to_ts_type"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "api::targets::typescript::tests::test_to_ts_type_tuple_and_stream"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_targets::typescript::tests::test_to_ts_type_tuple_and_stream"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/api/targets/typescript.rs",
+      "source_sha256": "1b060925982217f29ea3933dccb2db9df21d71813d51b17b887aa736b03f434b",
+      "target_path": "../auto-web/crates/auto-web/src/api_targets/typescript.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_client_gone_reclaims"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_client_gone_reclaims"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_escape_traversal_403"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_escape_traversal_403"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_finish_hook_and_counters"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_finish_hook_and_counters"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_head_no_body"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_head_no_body"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_idle_watchdog_reclaims_unpolled_body"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_idle_watchdog_reclaims_unpolled_body"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_inflight_block_bytes_within_formula"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_inflight_block_bytes_within_formula"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_junction_escape_rejected"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_junction_escape_rejected"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_missing_dir_and_notfile_404"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_missing_dir_and_notfile_404"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_non_utf8_content"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_non_utf8_content"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_open_and_full_get"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_open_and_full_get"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_options_error_maps_500_path_maps_403"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_options_error_maps_500_path_maps_403"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_percent_named_missing_file_404"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_percent_named_missing_file_404"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_range_window_body"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_range_window_body"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_truncation_mid_send_fails"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_truncation_mid_send_fails"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_file_service::tests::plan729_zero_byte_file"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_file_service::tests::plan729_zero_byte_file"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_file_service.rs",
+      "source_sha256": "b54bad33a59aab775f916c6f2426cf78b508abf99ee48d18ccfe962596d95f45",
+      "target_path": "../auto-web/crates/auto-web/src/http_file_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::active_config_seam_take_once"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::active_config_seam_take_once"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::cli_port_override_and_explicit_listen"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::cli_port_override_and_explicit_listen"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::cors_policy_decisions"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::cors_policy_decisions"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::cors_star_rules"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::cors_star_rules"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::dev_minimal_defaults_loopback_and_star"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::dev_minimal_defaults_loopback_and_star"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::effective_config_hash_stable_and_sensitive"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::effective_config_hash_stable_and_sensitive"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::host_allowlist_semantics"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::host_allowlist_semantics"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::proxy_identity_single_rewrite_only"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::proxy_identity_single_rewrite_only"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::ranges_enforced_no_zero_unbounded"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::ranges_enforced_no_zero_unbounded"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::rate_limiter_bounded_and_ttl"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::rate_limiter_bounded_and_ttl"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::service_defaults_no_cross_origin_and_scan_off"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::service_defaults_no_cross_origin_and_scan_off"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::service_profile_requires_hosts_and_auth"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::service_profile_requires_hosts_and_auth"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::to_json_round_trips_with_same_hash"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::to_json_round_trips_with_same_hash"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_config::tests::unknown_field_and_bad_profile_rejected"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_config::tests::unknown_field_and_bad_profile_rejected"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_config.rs",
+      "source_sha256": "235a6930291d57dac5ce4c175caebd8060392771447d0e4454b7f86a026b4193",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_config.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_observability::tests::t03_counters_snapshot_fields"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_observability::tests::t03_counters_snapshot_fields"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_observability.rs",
+      "source_sha256": "e16e95e217ccb2a954a50b5e5e6a68809c433c93d7832bb4fc50437fe2370efa",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_observability::tests::t03_emit_event_before_install_is_noop"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_observability::tests::t03_emit_event_before_install_is_noop"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_observability.rs",
+      "source_sha256": "e16e95e217ccb2a954a50b5e5e6a68809c433c93d7832bb4fc50437fe2370efa",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_service_observability::tests::t03_sink_drop_overflows_without_blocking"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_service_observability::tests::t03_sink_drop_overflows_without_blocking"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_service_observability.rs",
+      "source_sha256": "e16e95e217ccb2a954a50b5e5e6a68809c433c93d7832bb4fc50437fe2370efa",
+      "target_path": "../auto-web/crates/auto-web/src/http_service_observability.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_commit_target_matrix"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_commit_target_matrix"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_content_encoding_rejected"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_content_encoding_rejected"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_multipart_receive_and_reject_cleanup"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_multipart_receive_and_reject_cleanup"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_budget_boundaries"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_budget_boundaries"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_error_matrix"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_error_matrix"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_every_chunk_split_yields_same_bytes"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_every_chunk_split_yields_same_bytes"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_false_prefix_boundaries_are_content"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_false_prefix_boundaries_are_content"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_filename_variants"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_filename_variants"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_preamble_epilogue_ignored"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_preamble_epilogue_ignored"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_quoted_boundary_accepted"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_quoted_boundary_accepted"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_parser_zero_byte_file_any_chunking"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_parser_zero_byte_file_any_chunking"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_raw_receive_commit_conflict_roundtrip"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_raw_receive_commit_conflict_roundtrip"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_root_config_rejected_before_body_read"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_root_config_rejected_before_body_read"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_staged_cancel_cleans_without_publish"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_staged_cancel_cleans_without_publish"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_staged_lease_expiry_cleans"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_staged_lease_expiry_cleans"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_total_timeout_fails_with_cleanup"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_total_timeout_fails_with_cleanup"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "http_upload_service::tests::plan730_wire_over_limit_fails_with_cleanup"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_upload_service::tests::plan730_wire_over_limit_fails_with_cleanup"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/http_upload_service.rs",
+      "source_sha256": "61c8440d7d58d5018172d6981d748f6480c32a040f4fd449bf851aa34682f636",
+      "target_path": "../auto-web/crates/auto-web/src/http_upload_service.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan093_catch_all_tests::catch_all_consumes_remaining_segments"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan093_catch_all_tests::catch_all_consumes_remaining_segments"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan093_catch_all_tests::catch_all_decodes_percent_encoded_remainder"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan093_catch_all_tests::catch_all_decodes_percent_encoded_remainder"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan093_catch_all_tests::catch_all_single_segment_remainder"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan093_catch_all_tests::catch_all_single_segment_remainder"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan093_catch_all_tests::catch_all_still_requires_prefix"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan093_catch_all_tests::catch_all_still_requires_prefix"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan093_catch_all_tests::non_catch_all_still_strict_length"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan093_catch_all_tests::non_catch_all_still_strict_length"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::f64_fractional_preserved"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::f64_fractional_preserved"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::f64_integer_no_trailing_dot"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::f64_integer_no_trailing_dot"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::f64_nan_and_inf_become_null"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::f64_nan_and_inf_become_null"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::get_fn_n_args_reads_declared_arity"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::get_fn_n_args_reads_declared_arity"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::json_escape_basic"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::json_escape_basic"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::json_escape_control_chars"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::json_escape_control_chars"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::json_escape_quotes_and_backslash"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::json_escape_quotes_and_backslash"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::json_escape_unicode_control"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::json_escape_unicode_control"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_array_of_structs"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_array_of_structs"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_nested_struct"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_nested_struct"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_null"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_null"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_option_none"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_option_none"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_option_some"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_option_some"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_plain_int"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_plain_int"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_string"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_string"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::nv_to_json_struct_expansion"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::nv_to_json_struct_expansion"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plain_int_not_treated_as_id"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plain_int_not_treated_as_id"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_api_param_sigs_roundtrip"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_api_param_sigs_roundtrip"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::body_fields_bind_by_name_in_declaration_order"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::body_fields_bind_by_name_in_declaration_order"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::bool_query_converts"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::bool_query_converts"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::empty_sigs_bind_zero"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::empty_sigs_bind_zero"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::legacy_fallback_without_sigs_is_positional"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::legacy_fallback_without_sigs_is_positional"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::metadata_optin_requires_meta_param_name"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::metadata_optin_requires_meta_param_name"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::missing_param_is_400_naming_param"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::missing_param_is_400_naming_param"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::non_trailing_unbound_is_missing_even_with_metadata"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::non_trailing_unbound_is_missing_even_with_metadata"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::path_wins_over_body_and_query"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::path_wins_over_body_and_query"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::query_binds_by_name"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::query_binds_by_name"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::raw_body_single_param_tolerance"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::raw_body_single_param_tolerance"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::trailing_unbound_param_receives_metadata"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::trailing_unbound_param_receives_metadata"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::typed_int_query_converts_and_rejects"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::typed_int_query_converts_and_rejects"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan326_tests::plan669_bind_tests::whole_body_tolerance_covers_parseable_object_too"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan326_tests::plan669_bind_tests::whole_body_tolerance_covers_parseable_object_too"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan698_f1_cleanup_tests::cleanup_reclaims_async_stream_handle"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan698_f1_cleanup_tests::cleanup_reclaims_async_stream_handle"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan698_publisher_tests::entity_post_broadcasts_newtype_event_with_injected_discriminator"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan698_publisher_tests::entity_post_broadcasts_newtype_event_with_injected_discriminator"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan698_publisher_tests::non_object_or_non_entity_responses_are_not_broadcast"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan698_publisher_tests::non_object_or_non_entity_responses_are_not_broadcast"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::plan698_publisher_tests::typing_post_broadcasts_typing_event_with_first_str_param"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::plan698_publisher_tests::typing_post_broadcasts_typing_event_with_first_str_param"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_chunked_request_body_decoded"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_chunked_request_body_decoded"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_graceful_shutdown_releases_port"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_graceful_shutdown_releases_port"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_keepalive_two_requests_one_connection"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_keepalive_two_requests_one_connection"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_oversized_headers_rejected"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_oversized_headers_rejected"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_slow_headers_timeout"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_slow_headers_timeout"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_server::spike699_axum_transport::spike_sse_frames_stream"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::spike699_axum_transport::spike_sse_frames_stream"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_server.rs",
+      "source_sha256": "fad16261b3fa26f9edc49d785ae8cda48dab9e9784189f600cca306da341c157",
+      "target_path": "../auto-web/crates/auto-web/src/http_server.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::http_transport::bridge_tests::full_queue_rejects_with_503"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_transport::bridge_tests::full_queue_rejects_with_503"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/http_transport.rs",
+      "source_sha256": "1c30cd2a1384e6fbb1e3c323f08af4851ad89642c874c56c4a5dab045a098e62",
+      "target_path": "../auto-web/crates/auto-web/src/http_transport.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "language",
+        "binary": "auto-lang-core",
+        "test": "vm::ffi::stdlib::image_pipeline_vm_http_tests::image_media_route_has_priority_without_changing_user_routes"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "http_server::server_blocking::image_pipeline_vm_http_tests::image_media_route_has_priority_without_changing_user_routes"
+      },
+      "original_ignored": false,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-lang-core/src/vm/ffi/stdlib.rs",
+      "source_sha256": "1bf2769a323cc124820c1e997f3ed6fbd1107f1cc4850b770d7e414dd917043f",
+      "target_path": "../auto-web/crates/auto-web/src/http_server_handle.rs",
+      "reason": "PLAN-890 production-owner move; original test body/assertions and ignore condition retained"
+    },
+    {
+      "old": {
+        "recipe": "api-generation-original",
+        "binary": "auto-api-gen",
+        "test": "api_gen::plan738_generated_service::http_e2e_plan738_production_generation_receipt_ready_and_regeneration"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_gen::plan738_generated_service::http_e2e_plan738_production_generation_receipt_ready_and_regeneration"
+      },
+      "original_ignored": true,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-api-gen/src/api_gen.rs",
+      "source_sha256": "4184f1e20c4a6a0914caa7462d1237934ee24fe0b1defb4a21d22de5af461c21",
+      "target_path": "../auto-web/crates/auto-web/src/api_gen.rs",
+      "reason": "Original on-demand ignored generated consumer; keep exact ignore condition after owner move"
+    },
+    {
+      "old": {
+        "recipe": "api-generation-original",
+        "binary": "auto-api-gen",
+        "test": "api_gen::tests::regen_real_015_backend_db_delegation"
+      },
+      "new": {
+        "recipe": "web-unit",
+        "binary": "auto-web",
+        "test": "api_gen::tests::regen_real_015_backend_db_delegation"
+      },
+      "original_ignored": true,
+      "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+      "source_path": "crates/auto-api-gen/src/api_gen.rs",
+      "source_sha256": "4184f1e20c4a6a0914caa7462d1237934ee24fe0b1defb4a21d22de5af461c21",
+      "target_path": "../auto-web/crates/auto-web/src/api_gen.rs",
+      "reason": "Original on-demand ignored generated consumer; keep exact ignore condition after owner move"
+    }
+  ]
+}

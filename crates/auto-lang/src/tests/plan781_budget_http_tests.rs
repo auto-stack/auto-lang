@@ -38,6 +38,7 @@ mod budget_e2e {
     /// 同 plan730 start_server 形态：编译+运行 .at（#[api] 路由自动起服，
     /// 真 TCP），失败载荷有界上报。
     fn start_server(code: &str, port: u16) -> u16 {
+        crate::tests::http_host_test_support::install();
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();

@@ -296,6 +296,7 @@ fn plain(n int) int {
     /// WSAEACCES——服务 bind 被拒即静默未就绪）——就绪失败换端口重试
     ///（最多 3 次；755 有界启动语义保持：全部失败才 panic）。
     pub(super) fn start_server(code: &str, _fixed: u16) -> u16 {
+        crate::tests::http_host_test_support::install();
         for _attempt in 0..3 {
             let port = ephemeral_port();
             crate::vm::ffi::stdlib::clear_http_routes();

@@ -258,6 +258,7 @@ mod http_e2e {
     /// Err/panic 载荷必须在 ready 窗口内有界上报（R2 共享核心），不得落入
     /// 客户端等待。
     pub(super) fn start_server(code: &str, port: u16) -> u16 {
+        crate::tests::http_host_test_support::install();
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();

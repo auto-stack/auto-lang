@@ -14,6 +14,7 @@
 /// 在独立线程起 VM HTTP server（AUTO_HTTP_PORT 进程内一次性；nextest 每
 /// 测试独立进程，无 env 竞争），5s 内探活。
 fn start_plan707_server(code: &str, port: u16) {
+    crate::tests::http_host_test_support::install();
     crate::vm::ffi::stdlib::clear_http_routes();
     std::env::set_var("AUTO_HTTP_PORT", port.to_string());
     let code = code.to_string();

@@ -1,0 +1,126 @@
+{
+  "schema": "media-test-migrations/1",
+  "plan": 890,
+  "migrations": [
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::content_type_map",
+      "new": "auto-media-core\tphoto_service::tests::content_type_map",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::date_label_converts_epoch_days",
+      "new": "auto-media-core\tphoto_service::tests::date_label_converts_epoch_days",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::missing_root_is_an_error_not_a_panic",
+      "new": "auto-media-core\tphoto_service::tests::missing_root_is_an_error_not_a_panic",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::photo_from_rel_rebuilds_entry",
+      "new": "auto-media-core\tphoto_service::tests::photo_from_rel_rebuilds_entry",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::render_thumbnail_roundtrip_and_cache",
+      "new": "auto-media-core\tphoto_service::tests::render_thumbnail_roundtrip_and_cache",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::root_listing_is_non_recursive_with_dirs",
+      "new": "auto-media-core\tphoto_service::tests::root_listing_is_non_recursive_with_dirs",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::sanitize_rel_dir_rejects_traversal",
+      "new": "auto-media-core\tphoto_service::tests::sanitize_rel_dir_rejects_traversal",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::subdir_listing_navigates_one_level",
+      "new": "auto-media-core\tphoto_service::tests::subdir_listing_navigates_one_level",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::thumb_cache_key_includes_mtime_and_width",
+      "new": "auto-media-core\tphoto_service::tests::thumb_cache_key_includes_mtime_and_width",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "media-unit",
+      "old": "auto-ui-runtime\tui::photo_service::tests::tokens_resolve_per_root_and_never_leak_paths",
+      "new": "auto-media-core\tphoto_service::tests::tokens_resolve_per_root_and_never_leak_paths",
+      "original_ignored": false,
+      "source_commit": "47792366a65c6b6fb59814b190fc39e0f28bc916",
+      "source_path": "crates/auto-ui-runtime/src/ui/photo_service.rs",
+      "source_sha256": "738751c6bfa88c9ea5c313d620d008528f7e64a9e4ab28fa78ed0bdcef12558f",
+      "target_path": "crates/auto-media-core/src/photo_service.rs",
+      "reason": "PLAN-890 renderer-neutral photo service original tests moved unchanged to its single media owner"
+    }
+  ]
+}

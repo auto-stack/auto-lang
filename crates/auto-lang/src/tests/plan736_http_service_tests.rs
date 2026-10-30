@@ -179,6 +179,7 @@ fn raw_get(port: u16, path: &str) -> Option<String> {
 /// Ctrl+C 汇入同一 watch——headless 的确定性注入路径，实机信号面见 SD-01）。
 #[test]
 fn http_e2e_plan736_file_body_drain_window_and_rebind() {
+    crate::tests::http_host_test_support::install();
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;

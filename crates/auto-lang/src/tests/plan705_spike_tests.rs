@@ -444,6 +444,7 @@ fn ephemeral_port() -> u16 {
 /// 启动 AutoVM HTTP server（临时端口 + 等待可连接；plan326 同款约束——
 /// 端口经 AUTO_HTTP_PORT env 传入，调用方用 ephemeral_port() 预分配）。
 fn start_plan705_server(code: &str, port: u16) {
+    crate::tests::http_host_test_support::install();
     crate::vm::ffi::stdlib::clear_http_routes();
     std::env::set_var("AUTO_HTTP_PORT", port.to_string());
     let code = code.to_string();

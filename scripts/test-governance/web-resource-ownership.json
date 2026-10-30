@@ -1,0 +1,126 @@
+{
+  "schema": "web-resource-ownership/1",
+  "plan": 890,
+  "source_commit": "e45399a633a1dcf74f70943cf2d2c663791589a6",
+  "entries": [
+    {
+      "original_path": "crates/auto-api-gen/tests/fixtures/885-back/pac.at",
+      "path": "../auto-web/crates/auto-web/tests/fixtures/885-back/pac.at",
+      "owner": "web",
+      "sha256": "ba1fc25332a43dac163ecfb05e18ac389be678ad37f4a629d3d5a743cd790679",
+      "reason": "HTTP generator regression fixture moved with its unique production owner"
+    },
+    {
+      "original_path": "crates/auto-api-gen/tests/fixtures/885-back/src/back/api.at",
+      "path": "../auto-web/crates/auto-web/tests/fixtures/885-back/src/back/api.at",
+      "owner": "web",
+      "sha256": "285f0f9e3e15f82413a583d2486e8576a156c957bfd4c0661d5039a24e440e2a",
+      "reason": "HTTP generator regression fixture moved with its unique production owner"
+    },
+    {
+      "original_path": "crates/auto-api-gen/tests/fixtures/885-back/src/back/works.at",
+      "path": "../auto-web/crates/auto-web/tests/fixtures/885-back/src/back/works.at",
+      "owner": "web",
+      "sha256": "1b96d8ef1a417f28710393a4ee338c0e8ace307d4ee31146c14603d232d889a4",
+      "reason": "HTTP generator regression fixture moved with its unique production owner"
+    },
+    {
+      "original_path": "crates/auto-lang/test/a2r/20_api_routing/001_parse_api/parse_api.at",
+      "path": "crates/auto-lang/test/a2r/20_api_routing/001_parse_api/parse_api.at",
+      "owner": "language",
+      "sha256": "fdb51a69f649e6ac4d5a5823c98c8f9118744e198017a4a837c20470b4409f6b",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/a2r/20_api_routing/002_minimal_server/minimal_server.at",
+      "path": "crates/auto-lang/test/a2r/20_api_routing/002_minimal_server/minimal_server.at",
+      "owner": "language",
+      "sha256": "04ec3a2a6dfd015f080ed53743a4c56ce8aab9487e277b0f81d733164000e368",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/a2r/32_plan729/001_http_file_response/http_file_response.at",
+      "path": "crates/auto-lang/test/a2r/32_plan729/001_http_file_response/http_file_response.at",
+      "owner": "language",
+      "sha256": "7eba2dba4dde94a27c75f0489a75e917fbd598afd57f6ae8ff3d48129098ede0",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/a2r/33_plan730/001_http_upload/http_upload.at",
+      "path": "crates/auto-lang/test/a2r/33_plan730/001_http_upload/http_upload.at",
+      "owner": "language",
+      "sha256": "52912f9cb13c1dae4783681f751621a3d1f1de7280056ce32a25b34ca78bba8b",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan066_filter_projection/src/front/app.at",
+      "path": "crates/auto-lang/test/ui/plan066_filter_projection/src/front/app.at",
+      "owner": "language",
+      "sha256": "31b0e27ba59fb75f9a7d086d802d404f7a5564fc94ff2eb4f50b18e5a2fd3faa",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan622_store_facade/src/back/api.at",
+      "path": "crates/auto-lang/test/ui/plan622_store_facade/src/back/api.at",
+      "owner": "language",
+      "sha256": "39b250c21babfbb76cb56471cebb852c9e73e97d4e88dd211aec9cbd4a58ed4e",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan622_store_facade/src/front/app.at",
+      "path": "crates/auto-lang/test/ui/plan622_store_facade/src/front/app.at",
+      "owner": "language",
+      "sha256": "d49f3bef1dbd10ff98184a2d7828e659dc9c128440f441f9d7567e97ca6c98f4",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan622_store_facade/src/front/counter_store.at",
+      "path": "crates/auto-lang/test/ui/plan622_store_facade/src/front/counter_store.at",
+      "owner": "language",
+      "sha256": "d7a6f1c55852bea1172fe5132e094310a53ff5c9d2f133ff5c70eec067180f81",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan624_cross_state/src/back/api.at",
+      "path": "crates/auto-lang/test/ui/plan624_cross_state/src/back/api.at",
+      "owner": "language",
+      "sha256": "caca6880e75683db4e8431ab0f9f0e772260a5a8c1a858d88ca9c6b247b02374",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan627_qualified_api/src/back/api.at",
+      "path": "crates/auto-lang/test/ui/plan627_qualified_api/src/back/api.at",
+      "owner": "language",
+      "sha256": "22f11ea04ebe68a42a6bea21ad4f27e47c0e60133dc8d965d4ba372d5f001391",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "crates/auto-lang/test/ui/plan627_qualified_api/src/front/app.at",
+      "path": "crates/auto-lang/test/ui/plan627_qualified_api/src/front/app.at",
+      "owner": "language",
+      "sha256": "340d4351da3ed3fcdfe358055c7ce068a6179d871f3bd18abede72037dc78611",
+      "reason": "Compiler/SDK boundary fixture retained with its original VM/A2R/UI-language consumer and oracle"
+    },
+    {
+      "original_path": "stdlib/auto/http_stream.at",
+      "path": "stdlib/auto/http_stream.at",
+      "owner": "language",
+      "sha256": "44ed1dc1d3176b2e250613adee5ce4fadd43fc332fafde6d159c12d0b1e1f34b",
+      "reason": "Language standard-library API/shim input retained by the SDK"
+    },
+    {
+      "original_path": "stdlib/auto/http.at",
+      "path": "stdlib/auto/http.at",
+      "owner": "language",
+      "sha256": "423bbef8ea5bde901af3faa8dca83dd60d3cb2b93f31dd33f80e2edbe384e836",
+      "reason": "Language standard-library API/shim input retained by the SDK"
+    },
+    {
+      "original_path": "stdlib/auto/http.vm.at",
+      "path": "stdlib/auto/http.vm.at",
+      "owner": "language",
+      "sha256": "97af4e125dacfb86c02360f8a08cdaf807454435c795eb72cfa519e0fa704525",
+      "reason": "Language standard-library API/shim input retained by the SDK"
+    }
+  ]
+}

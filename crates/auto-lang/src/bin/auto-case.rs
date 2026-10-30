@@ -32,6 +32,9 @@ fn main() {
 
 #[cfg(feature = "test-cases")]
 fn main() {
+    // The executable is the host for VM-backed cases; the Core SDK remains
+    // explicit and has no built-in Web implementation.
+    auto_web::install_http_service_host_if_absent();
     let code = match real_main() {
         Ok(code) => code,
         Err(e) => {
