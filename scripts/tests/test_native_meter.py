@@ -116,6 +116,13 @@ class ProcessCapture(unittest.TestCase):
             self.assertIsNone(result.measurement['error'])
             self.assertGreaterEqual(result.measurement['job_processes'], 2)
             self.assertTrue(list((root / 'target/debug/deps').glob('*.rmeta')))
+            observed = capture([sys.executable, '-c',
+                'import os; print(os.environ["RUST_MIN_STACK"])'],
+                env={k: v for k, v in os.environ.items() if k != 'RUST_MIN_STACK'}, timeout=10)
+            self.assertEqual(observed.returncode, 0, observed.stderr)
+            import tomllib
+            configured = tomllib.loads((Path(__file__).resolve().parents[2] / '.cargo/config.toml').read_text())
+            self.assertEqual(observed.stdout.strip().decode(), configured['env']['RUST_MIN_STACK'])
 
     def test_preparation_exception_requires_exact_image_hash_and_completed_reap(self):
         import hashlib, tempfile

@@ -34,7 +34,8 @@ def capture(argv, *, cwd=None, env=None, timeout=1800, output_cap=64 << 20, erro
             compiler_auxiliary_cleanup=False):
     argv = [os.fspath(value) for value in argv]
     if os.name != 'nt':
-        result = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout)
+        from native_meter import workload_environment
+        result = subprocess.run(argv, cwd=cwd, env=workload_environment(env), capture_output=True, timeout=timeout)
         result.measurement = None
         return result
     from native_meter import measure

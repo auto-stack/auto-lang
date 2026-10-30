@@ -6,6 +6,7 @@
     "batch-av": {"workspace": "experimental/ac-av-probe", "package": "auto-av-probe", "binaries": ["av_probe_worker"], "profile": "release", "features": "test-case-batch", "target": "target/test-tools/batch", "env": "AC_AV_CASE_WORKER"},
     "ac": {"workspace": "experimental/ac-case-worker", "package": "ac-case-worker", "binaries": ["ac-case-worker"], "profile": "release", "target": "target/test-tools/regular", "env": "AC_CASE_WORKER"},
     "mn": {"workspace": "experimental/ac-mir-native", "package": "ac-mn", "binaries": ["mn-worker"], "profile": "release", "target": "target/test-tools/regular", "env": "AC_MN_CASE_WORKER"},
+    "mn-collections": {"workspace": "experimental/ac-mir-native", "package": "ac-mn", "binaries": ["mn-collections-worker"], "profile": "release", "target": "target/test-tools/regular", "env": "AC_MN_COLLECTIONS_CASE_WORKER"},
     "cte": {"workspace": "experimental/ac-cte-probe", "package": "auto-cte-probe", "binaries": ["cte_probe_worker"], "profile": "release", "target": "target/test-tools/regular", "env": "AC_CTE_CASE_WORKER"},
     "abi": {"workspace": "experimental/auto-abi-probe", "package": "auto-abi-probe", "binaries": ["abi-worker"], "profile": "release", "target": "target/test-tools/regular", "env": "ABI_CASE_WORKER"},
     "sema": {"workspace": "experimental/ac-semantics", "package": "ac-sema-probe", "binaries": ["sema-probe"], "profile": "release", "target": "target/test-tools/regular", "env": "SEMA_CASE_WORKER"}

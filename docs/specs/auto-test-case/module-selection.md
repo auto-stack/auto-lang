@@ -65,3 +65,5 @@ TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出
 编译准备/发现可显式接受compiler-auxiliaries.json钉住的完整路径+SHA256辅助映像，但必须先实际回收Job并确认active=0；保原错误/PID/映像/回收收据。未知残留、错hash、清理未完成仍失败，实际测试负载不启用此例外。参考机MSVC遥测辅助的原签名核验和实际编译对照见Plan888验收收据。Cargo运行器的包标签不算执行配置；Cargo home与仓内env默认按生效值绑定，真实覆盖保持失效。
 
 Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc及编译选项，让编译器实际处于本Job中；不停止系统共享缓存daemon。有效环境指纹反映此策略，冷准备成本单列。
+
+Cargo env默认实际应用于直接子命令和指纹；共享runner/调度配置的global_inputs触面展开全部受影响模块，显式命名基础设施叶仍可独立运行。889集合suite及独立collections worker与原scalar端口分开准备，运行身份保持各自归属。

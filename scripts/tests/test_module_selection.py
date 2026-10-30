@@ -25,6 +25,32 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_shared_runner_change_selects_all_consumers_even_with_known_python_owner(self):
+        c = catalog()
+        c['impact_graph'] = {'schema': 'test-impact-graph/1',
+            'nodes': {'fixture-owner': {'source_paths': []}}, 'edges': [], 'global_inputs': ['infra/runner.py']}
+        for module in c['modules']:
+            module['owner_package'] = 'fixture-owner'
+        c['modules'][2]['source_paths'].append('infra/runner.py')
+        selected = select(c, changes=['infra/runner.py'])
+        self.assertEqual(selected['modules'], ['integration', 'lexer', 'parser'])
+        self.assertTrue(any('shared execution/configuration' in reason for reason in selected['fallback']))
+        local = select(c, changes=['src/parser/expr.rs'])
+        self.assertEqual(local['modules'], ['integration', 'parser'])
+        self.assertFalse(local['fallback'])
+
+    def test_collection_cases_prepare_their_distinct_worker_without_replacing_scalar(self):
+        from prepare_tools import case_tools
+        from module_catalog import ROOT
+        rows = [{'adapter': 'probe', 'case_recipe': 'ac/mir-native-collections-v1'},
+                {'adapter': 'probe', 'case_recipe': 'ac/mir-native-source-v1'}]
+        self.assertEqual(case_tools(rows), ['case-parent', 'mn', 'mn-collections'])
+        tools = load(ROOT / 'scripts/test-governance/toolchains.json')['tools']
+        self.assertEqual(tools['mn-collections']['binaries'], ['mn-collections-worker'])
+        self.assertEqual(tools['mn-collections']['env'], 'AC_MN_COLLECTIONS_CASE_WORKER')
+        self.assertEqual(tools['mn']['env'], 'AC_MN_CASE_WORKER')
+        self.assertEqual(tools['mn']['binaries'], ['mn-worker'])
+
     def test_cargo_launcher_labels_match_effective_configuration_but_overrides_do_not(self):
         from unittest.mock import patch
         from module_catalog import ROOT

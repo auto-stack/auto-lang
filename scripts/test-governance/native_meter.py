@@ -150,8 +150,20 @@ def resume(kernel, pid):
         raise OSError("no suspended workload thread found")
 
 
-def workload_environment(env=None):
+def workload_environment(env=None, root=None):
     effective = dict(os.environ if env is None else env)
+    from pathlib import Path
+    import tomllib
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    config = root / '.cargo/config.toml'
+    if config.is_file():
+        configured = tomllib.loads(config.read_text(encoding='utf-8')).get('env', {})
+        for key, setting in configured.items():
+            if isinstance(setting, str):
+                effective.setdefault(key, setting)
+            elif isinstance(setting, dict) and 'value' in setting and not setting.get('relative'):
+                if setting.get('force') or key not in effective:
+                    effective[key] = setting['value']
     if os.name == 'nt':
         # A pre-existing compiler-cache daemon is outside this Job. Letting it
         # launch rustc would escape both CPU accounting and timeout cleanup.
@@ -161,6 +173,7 @@ def workload_environment(env=None):
 
 
 def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error_cap=1 << 20):
+    effective_env = workload_environment(env)
     kernel = api()
     start = time.perf_counter()
     meter_before = cpu_100ns(kernel)
@@ -178,7 +191,7 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
         limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         required(kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)),
                  "SetInformationJobObject")
-        child = subprocess.Popen(argv, cwd=cwd, env=workload_environment(env), stdin=subprocess.DEVNULL,
+        child = subprocess.Popen(argv, cwd=cwd, env=effective_env, stdin=subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  creationflags=0x4 | 0x08000000)
         required(kernel.AssignProcessToJobObject(job, int(child._handle)), "AssignProcessToJobObject")
