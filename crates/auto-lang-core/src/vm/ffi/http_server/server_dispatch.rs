@@ -71,6 +71,49 @@ pub(super) fn record_serve_fatal(msg: impl Into<String>) {
     }
 }
 
+/// Wait for the actual flag, including a shutdown requested before activation.
+/// False watch updates are not shutdown requests; sender closure still stops.
+pub(crate) async fn wait_for_service_shutdown(shutdown: &mut tokio::sync::watch::Receiver<bool>) {
+    while !*shutdown.borrow_and_update() {
+        if shutdown.changed().await.is_err() {
+            break;
+        }
+    }
+}
+
+/// Join only the owned network thread. The local !Send VM never enters the
+/// blocking executor, and the owner reports Stopped only after this completes.
+pub(super) async fn join_network_thread(thread: std::thread::JoinHandle<()>) {
+    match tokio::task::spawn_blocking(move || thread.join()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) => record_serve_fatal("HTTP network thread panicked during shutdown"),
+        Err(error) => record_serve_fatal(format!("HTTP network thread join failed: {error}")),
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::wait_for_service_shutdown;
+
+    #[test]
+    fn shutdown_wait_honors_initial_true_false_updates_and_sender_close() {
+        futures::executor::block_on(async {
+            let (_sender, mut receiver) = tokio::sync::watch::channel(true);
+            wait_for_service_shutdown(&mut receiver).await;
+            let (sender, mut receiver) = tokio::sync::watch::channel(false);
+            let mut wait = Box::pin(wait_for_service_shutdown(&mut receiver));
+            assert!(futures::poll!(wait.as_mut()).is_pending());
+            sender.send(false).unwrap();
+            assert!(futures::poll!(wait.as_mut()).is_pending());
+            sender.send(true).unwrap();
+            assert!(futures::poll!(wait.as_mut()).is_ready());
+            let (sender, mut receiver) = tokio::sync::watch::channel(false);
+            drop(sender);
+            wait_for_service_shutdown(&mut receiver).await;
+        });
+    }
+}
+
 /// serve 入口在 serve 返回后取致命错误（Some = 非零退出依据）。
 pub fn take_serve_fatal_error() -> Option<String> {
     SERVE_FATAL.lock().ok().and_then(|mut s| s.take())

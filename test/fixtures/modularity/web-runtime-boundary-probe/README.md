@@ -51,3 +51,21 @@ join and the actual resource tables must be empty. The optional
 share the old process observation; it must exit nonzero for shared identity
 while still draining both services. This is an oracle control, never a product
 configuration or a green delivery result.
+
+Network-thread termination can be distinguished from listener closure by setting
+the **fixture-only** `PLAN890_NETWORK_TAIL_MS=800` when running the installed
+`web-port-probe/probe.py` command. After executing the entire original transport,
+the wrapper keeps that same real network thread alive for 800 ms. The single
+owner's terminal assertion rejects returning with a live tail; the original
+owner loop fails it. There is no production delay setting or alternate transport.
+
+The configured state probe accepts `--idle-on-shutdown` to retain a partial-head
+connection through the drain timeout. Its adapter checks the actual instance's
+active-connection counter after the serving future returns. Restoring the
+original transport while keeping the new owner join makes this oracle fail:
+the old async cleanup was skipped when the connection future was canceled.
+`--file-during-drain` receives an exact 16 MiB deterministic file across shutdown
+and requires readiness to stop returning 200, then verifies independent B ready
+and port closure. These are separate checks and keep their source/assets under
+the worktree fixture target. `probe.py --mode pre-stopped` also exercises an
+already-true watch before activation and requires successful return/rebinding.

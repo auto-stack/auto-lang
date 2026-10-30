@@ -27,7 +27,9 @@ impl auto_lang_core::vm::host_capabilities::http_service::HttpServiceHost for Ex
         #[cfg(feature = "external-runtime")]
         {
             eprintln!("probe runtime=external");
-            let (sender, receiver) = tokio::sync::watch::channel(false);
+            let (sender, receiver) = tokio::sync::watch::channel(
+                std::env::var("PLAN890_PRESTOPPED").as_deref() == Ok("1"),
+            );
             *EXTERNAL_SHUTDOWN.lock().unwrap() = Some(sender);
             let address = format!("127.0.0.1:{}", std::env::var("AUTO_HTTP_PORT").unwrap());
             Box::pin(web_runtime_boundary_probe::serve_owned(
@@ -71,6 +73,15 @@ fn main() {
     // language controls use this exact public call with no installation.
     match auto_lang_core::run_with_capture(&source) {
         Ok((value, stdout)) => {
+            #[cfg(feature = "external-runtime")]
+            {
+                let tails = web_runtime_boundary_probe::http_transport::live_network_tails();
+                eprintln!("probe terminal network_tails={tails}");
+                assert_eq!(
+                    tails, 0,
+                    "owner returned before its real network thread exited"
+                );
+            }
             // Inspect real registries after the owner has returned. A successful
             // process exit alone cannot establish resource termination.
             #[cfg(not(feature = "external-runtime"))]

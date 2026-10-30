@@ -131,6 +131,27 @@ impl TransportConfig {
 // Network thread: accept loop + connection driving
 // ============================================================================
 
+// Cleanup runs on normal completion and forced task cancellation, including
+// a connection future dropped before its first poll.
+struct ConnectionLifetime {
+    id: u64,
+    observation: std::sync::Arc<crate::http_service_observability::ServiceObservation>,
+    shadow: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for ConnectionLifetime {
+    fn drop(&mut self) {
+        if let Some(shadow) = self.shadow.take() {
+            shadow.abort();
+        }
+        super::http_server::cancel_scopes_for_conn(self.id);
+        self.observation.counter_sub(
+            crate::http_service_observability::CounterName::ConnActive,
+            1,
+        );
+    }
+}
+
 /// Drive the accept loop + per-connection hyper serving on the net thread.
 /// `ready` reports bind success/failure to the VM owner; `req_tx` is the
 /// bounded bridge into the owner loop; `shutdown` flips under graceful
@@ -240,8 +261,15 @@ pub(crate) async fn serve_network(
                     })
                 };
                 let watcher = graceful.watcher();
-                let observation = observation.clone();
+                // Capture the guard before spawning: even a task canceled
+                // before its first poll must release its accepted connection.
+                let lifetime = ConnectionLifetime {
+                    id: conn_id,
+                    observation: observation.clone(),
+                    shadow: None,
+                };
                 tokio::spawn(async move {
+                    let mut lifetime = lifetime;
                     // permitRAII：连接任务结束（正常/断连/RST）即归还。
                     let _permit = permit;
                     // PLAN-781 T-22（W-04/F-781-R04）：RST 断连影子侦测。
@@ -257,7 +285,7 @@ pub(crate) async fn serve_network(
                     // 连接任务终结时 abort 影子（重复句柄归还，socket 引
                     // 用计数不阻正常关闭）。clone 失败降级为旧行为（写失
                     // 败期检测 + deadline 上界），日志在案。
-                    let shadow_task = match socket2::SockRef::from(&stream)
+                    lifetime.shadow = match socket2::SockRef::from(&stream)
                         .try_clone()
                         .map(std::net::TcpStream::from)
                         .and_then(tokio::net::TcpStream::from_std)
@@ -295,17 +323,9 @@ pub(crate) async fn serve_network(
                     // 错——watch 返回即任务终结证据）→ 取消该连接名下全部
                     // 请求 scope（决策报告 §5-3 断连判据）。
                     let _ = watcher.watch(conn).await;
-                    if let Some(t) = shadow_task {
-                        t.abort();
-                    }
-                    super::http_server::cancel_scopes_for_conn(conn_id);
-                    observation.counter_sub(
-                        crate::http_service_observability::CounterName::ConnActive,
-                        1,
-                    );
                 });
             }
-            _ = shutdown.changed() => {
+            _ = super::http_server::wait_for_service_shutdown(&mut shutdown) => {
                 // Graceful: stop accepting, let in-flight responses/SSE finish
                 // (SSE streams end themselves on the same flag), force close
                 // past the drain budget.

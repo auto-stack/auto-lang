@@ -8,7 +8,50 @@ pub use auto_lang_core::*;
 pub mod http_server;
 #[cfg(feature = "boundary")]
 #[path = "../../../../../crates/auto-lang-core/src/vm/ffi/http_transport.rs"]
-pub mod http_transport;
+mod http_transport_impl;
+
+/// Fixture-only thread-terminal delay after the real transport returns. The
+/// entire production transport still executes from its original source.
+#[cfg(feature = "boundary")]
+pub mod http_transport {
+    pub use super::http_transport_impl::TransportConfig;
+    static LIVE_TAILS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    pub fn live_network_tails() -> usize {
+        LIVE_TAILS.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub(crate) async fn serve_network(
+        addr: String,
+        cfg: TransportConfig,
+        requests: tokio::sync::mpsc::Sender<(
+            crate::http_server::ApiRequest,
+            tokio::sync::oneshot::Sender<crate::http_server::ApiReply>,
+            u64,
+        )>,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+        ready: tokio::sync::oneshot::Sender<Result<String, String>>,
+        metadata: Option<std::sync::Arc<crate::http_server::HttpProgramMetadata>>,
+    ) {
+        super::http_transport_impl::serve_network(addr, cfg, requests, shutdown, ready, metadata)
+            .await;
+        if let Ok(delay) = std::env::var("PLAN890_NETWORK_TAIL_MS") {
+            let delay: u64 = delay.parse().expect("fixture network tail delay");
+            assert!((1..=1000).contains(&delay));
+            struct Tail;
+            impl Drop for Tail {
+                fn drop(&mut self) {
+                    LIVE_TAILS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+            LIVE_TAILS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _tail = Tail;
+            eprintln!("probe real network thread tail started");
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            eprintln!("probe real network thread tail completed");
+        }
+    }
+}
 
 pub use auto_lang_core::vm::ffi::{
     async_http, axum_adapter, http_return_resource, http_server_file, http_stream, http_transfer,
@@ -62,6 +105,7 @@ pub async fn serve_service_owned(
     runtime
         .observation
         .install_log_sink(runtime.config.observability.log_sink_capacity);
+    let observation = runtime.observation.clone();
     let config =
         http_transport::TransportConfig::from_service_runtime(std::sync::Arc::new(runtime));
     let (vm, metadata) = owner.into_local_parts();
@@ -70,6 +114,7 @@ pub async fn serve_service_owned(
         http_server::serve_with(vm, &address, config, shutdown),
     )
     .await;
+    assert_eq!(observation.counters().snapshot()["connections_active"], 0);
     Ok(())
 }
 

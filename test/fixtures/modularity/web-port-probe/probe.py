@@ -21,14 +21,18 @@ import uuid
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True, type=Path)
-    parser.add_argument("--mode", choices=("installed", "missing", "plain"), default="installed")
+    parser.add_argument("--mode", choices=("installed", "missing", "plain", "pre-stopped"), default="installed")
     args = parser.parse_args()
     token = "p890-" + uuid.uuid4().hex
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
     env = dict(os.environ, AUTO_HTTP_PORT=str(port), AUTO_EXECUTION_ENGINE="autovm")
-    with tempfile.TemporaryDirectory(prefix="p890-sdk-") as temporary:
+    if args.mode == "pre-stopped":
+        env["PLAN890_PRESTOPPED"] = "1"
+    scratch = Path(__file__).resolve().parent / "target" / "sdk-runs"
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="p890-sdk-", dir=scratch) as temporary:
         root = Path(temporary)
         source = root / "api.at"
         source.write_text(
@@ -39,13 +43,24 @@ def main() -> None:
             source.write_text("40 + 2", encoding="utf-8")
         with (root / "stdout.txt").open("w+") as stdout, (root / "stderr.txt").open("w+") as stderr:
             command = [str(args.exe.resolve()), str(source)]
-            if args.mode == "installed":
+            if args.mode in ("installed", "pre-stopped"):
                 command.append("--install-adapter")
             child = subprocess.Popen(
                 command, env=env,
                 stdin=subprocess.PIPE, stdout=stdout, stderr=stderr, text=True,
             )
             try:
+                if args.mode == "pre-stopped":
+                    child.communicate(input="", timeout=10)
+                    stderr.seek(0)
+                    diagnostics = stderr.read()
+                    assert child.returncode == 0, diagnostics
+                    assert "probe terminal network_tails=0" in diagnostics, diagnostics
+                    with socket.socket() as rebound:
+                        rebound.bind(("127.0.0.1", port))
+                    print(json.dumps({"scope": "pre-stopped-owner", "child_exit": 0,
+                                      "actual_network_thread_joined": True, "port_rebound": True}))
+                    return
                 if args.mode in ("missing", "plain"):
                     child.communicate(input="", timeout=20)
                     stdout.seek(0)

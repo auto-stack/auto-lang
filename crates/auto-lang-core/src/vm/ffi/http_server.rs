@@ -3310,11 +3310,14 @@ async fn serve_with_inner(
                 net_metadata,
             ));
         });
-    if spawned.is_err() {
-        eprintln!("[HTTP] failed to spawn the auto-http-net thread");
-        record_serve_fatal("failed to spawn the auto-http-net thread");
-        return;
-    }
+    let network_thread = match spawned {
+        Ok(thread) => thread,
+        Err(error) => {
+            eprintln!("[HTTP] failed to spawn the auto-http-net thread: {error}");
+            record_serve_fatal(format!("failed to spawn the auto-http-net thread: {error}"));
+            return;
+        }
+    };
     match ready_rx.await {
         Ok(Ok(bound)) => {
             // PLAN-736: 真实 bound 地址（port=0 时为内核分配值）供 serve 入口/
@@ -3332,18 +3335,24 @@ async fn serve_with_inner(
                     c.effective_config_hash(),
                 );
                 svc.observation.set_service_state(
-                    crate::http_service_observability::ServiceState::Ready,
+                    if *shutdown_rx.borrow() {
+                        crate::http_service_observability::ServiceState::Draining
+                    } else {
+                        crate::http_service_observability::ServiceState::Ready
+                    },
                 );
             }
         }
         Ok(Err(e)) => {
             eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
             record_serve_fatal(format!("bind failed on {addr}: {e}"));
+            join_network_thread(network_thread).await;
             return;
         }
         Err(_) => {
             eprintln!("[HTTP] net thread died before binding");
             record_serve_fatal("net thread died before binding");
+            join_network_thread(network_thread).await;
             return;
         }
     }
@@ -3362,9 +3371,14 @@ async fn serve_with_inner(
     // 这是 Design 33 §C 的既有边界。
     let mut shutdown_rx = shutdown_rx;
     let mut parked: Vec<ParkedRequest> = Vec::new();
-    let mut draining = false;
+    let mut drain_deadline = (*shutdown_rx.borrow())
+        .then(|| tokio::time::Instant::now() + cfg.shutdown_drain);
     let mut loop_result = ();
     loop {
+        if drain_deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
+            cancel_all_parked(&vm, &mut parked);
+            break loop_result;
+        }
         // (0) 事件驱动扫描：scope 失效废弃 + 恢复就绪 parked（本轮通知/
         // 事件唤醒后的消费点——取消信号同经 COMPLETION_NOTIFY）。
         drain_ready_parked(&vm, &mut parked);
@@ -3384,11 +3398,10 @@ async fn serve_with_inner(
             continue;
         }
         // (3) 事件等待：新请求 / 完成通知 / 关闭。
-        if draining {
+        if let Some(drain_deadline) = drain_deadline {
             // 关闭排水窗：继续应答已排队请求；parked 请求等待其完成或
             // 排水截止（超时统一取消——T-05 的 scope 取消语义；窗宽随
             // cfg，AUTO_HTTP_SHUTDOWN_DRAIN_MS 可调）。
-            let drain_deadline = tokio::time::Instant::now() + cfg.shutdown_drain;
             tokio::select! {
                 req = req_rx.recv() => match req {
                     Some((api_req, reply_tx, scope_id)) => {
@@ -3427,10 +3440,10 @@ async fn serve_with_inner(
                 } => {
                     // 最早 parked deadline 到期：回到循环顶做失效废弃。
                 }
-                _ = shutdown_rx.changed() => {
+                _ = wait_for_service_shutdown(&mut shutdown_rx) => {
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
-                    draining = true;
+                    drain_deadline = Some(tokio::time::Instant::now() + cfg.shutdown_drain);
                     if let Some(service) = &cfg.service {
                         service.observation.set_service_state(
                             crate::http_service_observability::ServiceState::Draining,
@@ -3440,6 +3453,8 @@ async fn serve_with_inner(
             }
         }
     }
+    drop(req_rx);
+    join_network_thread(network_thread).await;
     if let Some(service) = &cfg.service {
         service.observation.set_service_state(
             crate::http_service_observability::ServiceState::Stopped,
