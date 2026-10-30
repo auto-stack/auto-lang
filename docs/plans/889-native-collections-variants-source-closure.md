@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: executing
+status: execution_done
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 5
+current_step: 6
 total_steps: 10
 ---
 
@@ -27,7 +27,7 @@ total_steps: 10
 
 将864已有的集合/变体合法源码，经同一Checked HIR→共享collections MIR→mn CLIF/COFF→真实PE执行；关闭M1原L01–L07/V01–V07共14个native源码格。维持零参i32入口/结果，继承822集合与资源语义；同时补集合源码的真实单函数增量，而非整模块重算后报告carry。
 
-[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。T-01..05已验证并提交；T-06的正式SDK与物理分区机制已接线，30×5/512正式计时仍待独占窗口。
+[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。T-01..06已验证并提交；正式五路径各30/512的完整实测与受影响cold verifier修复已按精确机制分界合并证据，最终代码/验收/规范复审和merge-owned门仍待执行。
 
 ## 1. 目标
 
@@ -193,7 +193,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
-| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
+| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
@@ -409,3 +409,20 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
   - t06-phase-probe-sparse.log: eb8b7104b6191a0a8c1d07c4bdee2d073877caffd1e47c604741087fad6d4e03
   - t06-cold-repair-harness-build.log: c78bbdb48810a7d5a8d5bd71df937de684cbe6e778033fbe750da43593bee3a5
 - 已向888协调约2分钟新的受影响计时窗口，尚未开测；不把等待当用户阻塞。T-06仍未勾，5/10，继续work。
+
+
+### 2026-10-30 work 第7轮完成：6/10，转final review
+
+stage: work | plan_id: PLAN-889 | plan_revision: 2 | outcome: pass（work-owned完成，不是final review/交付） | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | implementation_commit: e188033c4e7866d19bc4e152937e6e1052b8ac69 | code_freeze:185fbeec2（后85c422c08/e188033c4仅合同/SD文档） | base_commit: e0b29ff7a0afd2479904b304780d6818306b54e1 | dependencies:auto-down=c3464d0a0d36e4f8a7988b0c0c26448fc52361b4; auto-ui=3d6e1f15c1142aa797734edc26dca561511b72c3（均组内只读detached，未改代码） | next: review(final)。本goal授权沿用全链，不请求重复批准，未启动891或远端push。
+
+- AC-01/05：原17源+3补源×AV/native正式SDK40检查、父侧独立oracle、原源SHA不变与14L/V binding真运行证据见cb5ce40db/bd81551ef；source/typed/runtime入口分账，L04/L05=42/L06=专属index21，错oracle/错元素/正常return70不冒绿。新增source assets是正式测试输入，不是入库raw证据。
+- AC-02：T-02/03资源/深度/Clone机器链及runtime负控已闭合，T-06漏free真PE父侧红、allocator边界、prepared runtime漂移/回滚控制闭合。当前共享ownership空侧表修复只改变全scalar的确定空存储，768dense对照与AV owned25/collections59、native incremental7/typed5实际通过；同一helper和既有拥有值/临时view/部分失败清理实现未变，不重跑无关深度/runtime档。
+- AC-03：真实fragment/新类型池/UTF8坐标/failed/cancel/stale/foreign候选、source/MIR/COFF producer对象身份、声明失效、restart准入和实际whole-front/lower/copy反控已验证。新实现7个Native增量测试再过，非全scalar目标helper仍原所有权路径。
+- AC-04：新冻结代码正式repair `cargo test -p auto-lang --features test-cases --lib ace_m1_native_collections_889_formal_cold_verifier_repair -- --test-threads=1 --nocapture --ignored`，exit0，89.35s，fresh30 P90/P95/P99=1829.868/2054.9538/2137.8745ms，restart30=1097.8078/1118.0927/1150.8019ms；原2000ms P90门不改，P95/99慢样本完整保留。另hit/body/history各3代表、新worker实际close通过，current MirSymbol=0，worker current5066752B。新compiler峰Mir5758920/Staging25058513/IO6112050B、combined26200688B，worker private delta34222080B，全部原门内。
+- 正式矩阵复用：1eeff4832 full实际hit/body/history各30的P90=929.786/687.2667/650.2525ms、P95=1198.163/771.3943/719.0724ms、P99=1254.9996/941.8662/888.5897ms；512个不同1000..1511 revision和关闭全过，旧worker SHA dd4bfecbde2f1169788b26f82fbbc6ba57987d6b9192ef89c589b26dfabba55e、worker delta37691392B。修复只省全scalar侧表，owned-helper及三路径生产/源/依赖/配置/输入不变，768语义/错误/steps/bound等价、新代表往返/close与Native7反控支持复用。**该full的fresh/restart仍保原failed，不复用其失败门或将full整体改绿**；新repair明记churn0，仅替换受影响两门，不声称当次重跑512。codegen/runtime/build/content/link轴三轮完全相同，新worker实际SHA 3ee1a0102ead365b0560a89d51bf15781c90441f075372eefcb401cad215b291。
+- AC-06：S/N/H每次具体子窗已提交释放，修复新增S ownership窗以185fbeec2释放；旧scalar协议混合控制已通过、旧五域代码路径/布局/身份保持；根Cargo依赖与AV opcode/wire/executor零diff，唯一共享lower仍在，legacy未恢复。N891只读接口清单已入冻结SD草案，N正式释放待889 T-09。SD-01..05六目标/四模块草案含现行Spec SHA、实际source/typed限制/资源/候选/恢复/SDK/性能及归属，canonical与live ledger尚未写。
+- 本地正式repair目录baseline/formal-cold-repair-50504-1793326445916044600：campaign.json SHA256 5e1fb68d2241727b6bed5d3efab17980d7f19504fc47a37d7ecdb3935e97be86；samples.jsonl c866b89fa259c1d5c93037d6c7b52a2ff02cc968278b42e7993990c3228fe582；log SHA256 17eb7e9c0425ad1ffe4dcdc8f0952dc9631404bda3297a41681b1745ace02508。第二轮full目录/哈希及首轮failed均前记保留。新SD草案SHA256 4c8f12234cd52093f401fb1e3692e6050d14d9247bb746d617f4f706a2449eaa。raw全本地、无非md证据暂存。
+- 用户明确授权协调后，已通知888计时开始/两次结束恢复；最后自然空档测量89.35s完成并发送恢复通知，没有取消任何他方进程。authority实现clean、main仅Plan及他方docs WIP；无自有build/test残留，无新代码warning。全仓fmt误触事件已回滚100无关paths，仅自有四文件提交并精确fmt校验。未在work跑根整档t/tv/tf/docs_gen。
+- readiness:AC-01..06 pass；T-01..06已勾；T-07/AC-07独立final验收尚未执行。pending_closeout_gates:merge-owned裸cargo t+必要tv及实际experimental定向、到期tf判定、SD/ledger/index、archive/guard清理。work pass不授权跳过它们。
+
+goal_receipt: objective=完成计划889 | goal_round=7 | stage=work | outcome=execution_done | completed_tasks=6/10 | next=review(final) | blocker=none | goal_active=true。
