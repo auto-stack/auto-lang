@@ -168,7 +168,11 @@ fn validate_language_candidate(
     }
     if let Some(root) = root {
         if crate::source_owner::is_managed_sdk(root) {
-            crate::source_owner::validate_installed_language_source(root)?;
+            if requirements == WorkspaceRequirements::Service {
+                crate::source_owner::validate_installed_service_source(root)?;
+            } else {
+                crate::source_owner::validate_installed_language_source(root)?;
+            }
         } else {
             // The facade has optional renderer path dependencies. Cargo resolves
             // them even when disabled, but a service never selects that facade.
@@ -252,7 +256,13 @@ fn compute_auto_lang_rel_path_for(
     let compiled_crate = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(|parent| parent.join("auto-lang"));
-    if let Some(candidate) = compiled_crate.filter(|path| path.exists()) {
+    if let Some(candidate) = compiled_crate.filter(|path| {
+        path.exists()
+            || requirements == WorkspaceRequirements::Service
+                && path
+                    .parent()
+                    .is_some_and(|crates| crates.join("auto-lang-core/Cargo.toml").is_file())
+    }) {
         validate_language_candidate(&candidate, "编译期语言源", requirements)?;
         return Ok(compute_relative_path(ws_dir, &candidate));
     }

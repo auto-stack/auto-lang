@@ -39,6 +39,32 @@ pub fn repo_stdlib_root() -> AutoResult<std::path::PathBuf> {
             })
             .map_err(|e| crate::error::AutoError::Msg(format!("invalid AUTO_STDLIB_ROOT: {e}")));
     }
+    // An explicitly selected SDK and an adjacent managed install are
+    // authoritative after relocation. Never borrow a compiled-in checkout or
+    // per-user standard library when that selected SDK is missing its inputs.
+    let selected = std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT")
+        .or_else(|| std::env::var_os("AUTO_LANG_ROOT"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            let package = PathBuf::from(std::env::var_os("AUTO_LANG_CRATE")?);
+            package.parent()?.parent().map(Path::to_path_buf)
+        })
+        .or_else(|| {
+            let exe = std::env::current_exe().ok()?;
+            let parent = exe.parent()?;
+            let sdk = parent.join("sdk");
+            (sdk.exists() || parent.join("install-manifest.json").exists()).then_some(sdk)
+        });
+    if let Some(selected) = selected {
+        let root = selected.join("stdlib/auto");
+        if root.is_dir() {
+            return Ok(root.canonicalize()?);
+        }
+        return Err(crate::error::AutoError::Msg(format!(
+            "selected SDK stdlib missing: {}",
+            root.display()
+        )));
+    }
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let root = PathBuf::from(manifest_dir).join("../../stdlib/auto");
         if root.is_dir() {
@@ -493,4 +519,84 @@ pub(crate) fn source_has_body(content: &str, span: Option<(usize, usize)>) -> bo
         }
     }
     false
+}
+
+#[cfg(test)]
+mod selection_tests {
+    #[test]
+    fn selected_sdk_stdlib_is_authoritative() {
+        use std::{fs, path::PathBuf, process::Command};
+        const CHILD: &str = "PLAN890_STDLIB_OWNER_PROBE";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let result = super::repo_stdlib_root();
+            if mode.starts_with("missing") {
+                assert!(
+                    result.is_err(),
+                    "selected SDK must not borrow ambient stdlib"
+                );
+            } else {
+                let expected = PathBuf::from(std::env::var_os("PLAN890_EXPECT_STDLIB").unwrap());
+                assert_eq!(result.unwrap(), expected.canonicalize().unwrap());
+            }
+            return;
+        }
+        let temporary = tempfile::tempdir().unwrap();
+        let selected = temporary.path().join("selected");
+        let install = temporary.path().join("installed");
+        let ambient = temporary.path().join("ambient");
+        for root in [&selected, &install.join("sdk"), &ambient] {
+            fs::create_dir_all(root.join("stdlib/auto")).unwrap();
+        }
+        fs::create_dir_all(ambient.join("crates/ambient")).unwrap();
+        let original = std::env::current_exe().unwrap();
+        let installed_exe = install.join(format!("probe{}", std::env::consts::EXE_SUFFIX));
+        fs::copy(&original, &installed_exe).unwrap();
+        for mode in [
+            "explicit",
+            "explicit-crate",
+            "explicit-delivery",
+            "missing-explicit",
+            "adjacent",
+            "missing-adjacent",
+        ] {
+            if mode == "missing-adjacent" {
+                fs::remove_dir(install.join("sdk/stdlib/auto")).unwrap();
+            }
+            let adjacent = mode.ends_with("adjacent");
+            let mut command = Command::new(if adjacent { &installed_exe } else { &original });
+            command.args(["--exact", "stdlib_assembly::loader::selection_tests::selected_sdk_stdlib_is_authoritative", "--nocapture"])
+                .env(CHILD, mode)
+                .env("CARGO_MANIFEST_DIR", ambient.join("crates/ambient"))
+                .env_remove("AUTO_STDLIB_ROOT")
+                .env_remove("AUTO_LANG_ROOT")
+                .env_remove("AUTO_LANG_CRATE")
+                .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
+                .env("PLAN890_EXPECT_STDLIB", if adjacent { install.join("sdk/stdlib/auto") } else { selected.join("stdlib/auto") });
+            if !adjacent {
+                let key = match mode {
+                    "explicit-crate" => "AUTO_LANG_CRATE",
+                    "explicit-delivery" => "AUTO_DELIVERY_SOURCE_ROOT",
+                    _ => "AUTO_LANG_ROOT",
+                };
+                command.env(
+                    key,
+                    if mode.starts_with("missing") {
+                        temporary.path().join("absent-sdk")
+                    } else if mode == "explicit-crate" {
+                        selected.join("crates/auto-lang")
+                    } else {
+                        selected.clone()
+                    },
+                );
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success()
+                    && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "{mode}: stdout={} stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
 }

@@ -160,6 +160,9 @@ pub fn is_managed_sdk(producer_root: &Path) -> bool {
         return false;
     };
     if parent.join("install-manifest.json").exists()
+        || parent
+            .join(format!("auto-web{}", std::env::consts::EXE_SUFFIX))
+            .is_file()
         || (parent
             .join(format!("auto{}", std::env::consts::EXE_SUFFIX))
             .is_file()
@@ -191,6 +194,16 @@ pub struct InstalledSdkReceipt {
 
 impl InstalledSdkReceipt {
     pub fn open(producer_root: &Path) -> AutoResult<Option<Self>> {
+        Self::open_for(producer_root, false)
+    }
+
+    /// Services accept the minimal SDK profile; UI callers retain Full-only
+    /// admission through `open`. Both profiles use identical ownership/hashes.
+    pub fn open_service(producer_root: &Path) -> AutoResult<Option<Self>> {
+        Self::open_for(producer_root, true)
+    }
+
+    fn open_for(producer_root: &Path, service: bool) -> AutoResult<Option<Self>> {
         let Some(parent) = sdk_install_parent(producer_root) else {
             return Ok(None);
         };
@@ -202,8 +215,10 @@ impl InstalledSdkReceipt {
         let doc: serde_json::Value =
             serde_json::from_slice(&raw).map_err(|e| format!("producer 安装清单无效: {e}"))?;
         let rev = doc["sources"]["auto-lang"].as_str().unwrap_or("");
-        if doc["schema"] != "man-install/1"
-            || doc["profile"] != "full"
+        let profile_valid = (doc["schema"] == "man-install/1"
+            && (doc["profile"] == "full" || service && doc["profile"] == "core"))
+            || service && doc["schema"] == "web-install/1" && doc["profile"] == "web";
+        if !profile_valid
             || doc["source_closure"]["sdk_layout"] != "combined-crates"
             || rev.len() != 40
             || !rev.bytes().all(|b| b.is_ascii_hexdigit())
@@ -336,6 +351,33 @@ pub fn validate_installed_language_source(producer_root: &Path) -> AutoResult<()
             .ok_or("producer 安装 SDK 清单缺失")?;
         if !valid_source_crate(&source, name) {
             return Err(format!("producer 安装语言包无效: crates/{name}").into());
+        }
+    }
+    receipt.ensure_unchanged()
+}
+
+/// Validate the entire minimal service SDK, including its one Web producer.
+/// This never relaxes Full-only validation used by renderer/UI generation.
+pub fn validate_installed_service_source(producer_root: &Path) -> AutoResult<()> {
+    let receipt = InstalledSdkReceipt::open_service(producer_root)?
+        .ok_or("producer 安装服务 SDK 清单缺失")?;
+    receipt.verify_tree("", producer_root)?;
+    for (name, owner) in [
+        ("auto-lang-core", "auto-lang"),
+        ("a2r-std", "auto-lang"),
+        ("auto-media-core", "auto-lang"),
+        ("auto-generation-core", "auto-lang"),
+        ("auto-web", "auto-web"),
+        ("auto-web-contract", "auto-web"),
+    ] {
+        let revision = receipt.source_revision(owner).unwrap_or_default();
+        if revision.len() != 40 || !revision.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(format!("producer 安装服务来源无效: {owner}").into());
+        }
+        let rel = format!("crates/{name}");
+        receipt.require_package(name, owner, &rel)?;
+        if !valid_source_crate(&producer_root.join(&rel), name) {
+            return Err(format!("producer 安装服务包无效: {rel}").into());
         }
     }
     receipt.ensure_unchanged()
@@ -751,6 +793,102 @@ mod plan842_receipt_tests {
             "a Full install remains managed when its receipt is missing"
         );
         assert!(validate_installed_language_source(&sdk).is_err());
+    }
+
+    #[test]
+    fn service_sdk_profiles_require_web_owner_hashes_and_do_not_admit_ui() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sdk = tmp.path().join("sdk");
+        fs::create_dir_all(&sdk).unwrap();
+        fs::write(sdk.join("Cargo.toml"), "[workspace]\n").unwrap();
+        let mut packages = Vec::new();
+        let mut files = serde_json::Map::new();
+        let mut add = |relative: &str, bytes: &[u8]| {
+            let path = sdk.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+            files.insert(
+                format!("sdk/{relative}"),
+                serde_json::json!({
+                "bytes":bytes.len(), "sha256":format!("{:x}", Sha256::digest(bytes))}),
+            );
+        };
+        add("Cargo.toml", b"[workspace]\n");
+        for name in [
+            "auto-lang-core",
+            "a2r-std",
+            "auto-media-core",
+            "auto-generation-core",
+            "auto-web",
+            "auto-web-contract",
+        ] {
+            let relative = format!("crates/{name}");
+            add(
+                &format!("{relative}/Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n").as_bytes(),
+            );
+            add(&format!("{relative}/src/lib.rs"), b"// source\n");
+            let owner = if name.starts_with("auto-web") {
+                "auto-web"
+            } else {
+                "auto-lang"
+            };
+            packages.push(serde_json::json!({"name":name,"source_repo":owner,"source_path":relative,"installed_path":relative}));
+        }
+        let receipt = tmp.path().join("install-manifest.json");
+        let base = serde_json::json!({"schema":"web-install/1", "profile":"web",
+            "sources":{"auto-lang":"0123456789abcdef0123456789abcdef01234567","auto-web":"0123456789abcdef0123456789abcdef01234567"},
+            "source_closure":{"sdk_layout":"combined-crates","packages":packages},"files":files});
+        for (schema, profile) in [
+            ("web-install/1", "web"),
+            ("man-install/1", "core"),
+            ("man-install/1", "full"),
+        ] {
+            let mut doc = base.clone();
+            doc["schema"] = schema.into();
+            doc["profile"] = profile.into();
+            fs::write(&receipt, serde_json::to_vec(&doc).unwrap()).unwrap();
+            validate_installed_service_source(&sdk).unwrap();
+            assert!(
+                validate_installed_language_source(&sdk).is_err(),
+                "minimal service SDK cannot satisfy UI requirements"
+            );
+        }
+        for mutation in [
+            "owner",
+            "hash",
+            "revision",
+            "missing-package",
+            "future-profile",
+        ] {
+            let mut doc = base.clone();
+            match mutation {
+                "owner" => doc["source_closure"]["packages"][4]["source_repo"] = "auto-lang".into(),
+                "hash" => doc["files"]["sdk/crates/auto-web/src/lib.rs"]["sha256"] = "wrong".into(),
+                "revision" => doc["sources"]["auto-web"] = serde_json::Value::Null,
+                "missing-package" => {
+                    doc["source_closure"]["packages"]
+                        .as_array_mut()
+                        .unwrap()
+                        .pop();
+                }
+                _ => doc["profile"] = "future".into(),
+            }
+            fs::write(&receipt, serde_json::to_vec(&doc).unwrap()).unwrap();
+            assert!(
+                validate_installed_service_source(&sdk).is_err(),
+                "{mutation} must fail"
+            );
+        }
+        fs::remove_file(receipt).unwrap();
+        fs::write(
+            tmp.path()
+                .join(format!("auto-web{}", std::env::consts::EXE_SUFFIX)),
+            b"tool",
+        )
+        .unwrap();
+        assert!(is_managed_sdk(&sdk));
+        assert!(validate_installed_service_source(&sdk).is_err());
     }
 
     #[test]
