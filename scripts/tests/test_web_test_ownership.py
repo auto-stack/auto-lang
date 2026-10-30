@@ -16,6 +16,84 @@ from web_delivery import collect_web_legs, validate_four_receipt, WEB_LEGS, MODU
 
 
 class WebOwnershipTests(unittest.TestCase):
+    def test_distribution_rejects_partial_missing_steps_changed_sources_and_unexecuted_commands(self):
+        from web_delivery import validate_distribution_receipt, DISTRIBUTION_IDS
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'source'
+            source.mkdir()
+            logs = root/'logs'
+            logs.mkdir()
+            h = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+            fhash = lambda d: hashlib.sha256(json.dumps(d, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            payload = source/'sdk/.config/nextest.toml'
+            payload.parent.mkdir(parents=True)
+            payload.write_text('test-threads = 1\n')
+            files = {'sdk/.config/nextest.toml': {'bytes': payload.stat().st_size, 'sha256': h(payload)}}
+            sources = {'auto-lang': '1'*40, 'auto-web': '2'*40}
+            man = '3'*40
+            names = ['auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core',
+                     *('sdk-dep-'+str(i) for i in range(13))]
+            manifest = {'schema': 'web-source/1', 'candidate': False, 'sources': sources,
+                        'source_sha256': fhash(files), 'files': files, 'tool_producer': {'source_commit': man},
+                        'source_closure': {'packages': [{'name': n} for n in names]}}
+            (source/'source-manifest.json').write_text(json.dumps(manifest))
+            old = {'auto-lang': '674871e2a3bcc1a9cf594ac7446f3c1d1129ecbb', 'auto-man': 'e6cc06fbc496f366edde7929abfd49254ec13647'}
+            new = {**sources, 'auto-man': man}
+            legacy = {'schema': 'web-legacy-upgrade/1', 'outcome': 'pass', 'checks': [], 'snapshots': []}
+            for label, pins in [('old', old), ('new', new)]:
+                for repo, revision in pins.items():
+                    archive = root/(label+'-'+repo+'.tar')
+                    archive.write_bytes((repo+revision).encode())
+                    legacy['snapshots'].append({'repo': repo, 'revision': revision, 'path': str(root/label/repo),
+                                                'archive': str(archive), 'archive_sha256': h(archive)})
+                    legacy['checks'].append({'id': 'archive-'+label+'-'+repo, 'status': 'PASS', 'exit': 0,
+                                             'command': ['git', 'archive', str(archive), revision]})
+                legacy['checks'] += [{'id': label+'-core-locked-build', 'status': 'PASS', 'exit': 0, 'command': ['cargo', 'build', '--locked']},
+                                     {'id': label+'-core-install', 'status': 'PASS', 'sources': pins}]
+            for name in ['old-installed-runtime', 'new-installed-runtime', *('after-'+p+'-failure-old-runtime' for p in ('prepare', 'verify', 'swap'))]:
+                legacy['checks'].append({'id': name, 'status': 'PASS', 'exact_json': 'legacy-890', 'shutdown': 202,
+                                          'exit': 0, 'port_released': True, 'binary_sha256': '4'*64})
+            legacy_path = root/'legacy.json'
+            legacy_path.write_text(json.dumps(legacy))
+            checks = []
+            self.assertEqual(len(DISTRIBUTION_IDS), 45)
+            for name in sorted(DISTRIBUTION_IDS):
+                row = {'id': name, 'status': 'PASS'}
+                log = logs/(name+'.log')
+                if name.endswith('runtime'):
+                    log.write_text('actual runtime output\n')
+                    row['detail'] = {'exact_json': 890, 'shutdown': 202, 'exit': 0, 'port_released': True,
+                                     'binary_sha256': '5'*64, 'log_sha256': h(log)}
+                elif name == 'legacy-three-owner-recovery': row['detail'] = {'receipt': str(legacy_path), 'sha256': h(legacy_path)}
+                elif name == 'independent-installed-closure': row['detail'] = {'local_packages': 19}
+                elif name == 'interrupted-generation-recovered': row['detail'] = {'checkpoint': 'public Web workspace phase'}
+                else:
+                    log.write_text('Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n' if name == 'independent-sdk-tests' else 'real command output\n')
+                    code = 2 if name in ('failed-swap', 'missing-resource-rejected', 'bad-hash-rejected', 'bad-version-rejected') else 1 if name.endswith('public-rejection') else 0
+                    row.update(command=['tool', '--source', str(source)], exit=code, expected_exit=code,
+                               log=str(log), log_sha256=h(log))
+                checks.append(row)
+            receipt = {'schema': 'web-repository-distribution/1', 'outcome': 'pass', 'candidate': False, 'pending': [],
+                       'sources': sources, 'source_sha256': fhash(files), 'checks': checks,
+                       'summary': {'executed': 45, 'passed': 45, 'failed': 0, 'pending': 0}}
+            path = root/'receipt.json'
+            validate_distribution_receipt(receipt, path)
+            for mutation in ('partial', 'candidate', 'missing', 'duplicate', 'zero-executed', 'not-run', 'wrong-runtime', 'wrong-log'):
+                bad = copy.deepcopy(receipt)
+                if mutation == 'partial': bad['outcome'] = 'partial'
+                elif mutation == 'candidate': bad['candidate'] = True
+                elif mutation == 'missing': bad['checks'].pop()
+                elif mutation == 'duplicate': bad['checks'].append(bad['checks'][-1])
+                elif mutation == 'zero-executed': bad['summary']['executed'] = 0
+                elif mutation == 'not-run': next(r for r in bad['checks'] if 'command' in r)['exit'] = None
+                elif mutation == 'wrong-runtime': next(r for r in bad['checks'] if r['id'].endswith('runtime'))['detail']['exact_json'] = 0
+                else: next(r for r in bad['checks'] if 'command' in r)['log_sha256'] = '0'*64
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError): validate_distribution_receipt(bad, path)
+            payload.write_text('changed selected source')
+            with self.assertRaises(ValueError): validate_distribution_receipt(receipt, path)
+
     def test_original_photo_tests_cannot_disappear_or_be_ignored_at_new_owner(self):
         from test_identity_migrations import media_records
         rows = media_records()

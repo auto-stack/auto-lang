@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts/test-governance'))
 from test_identity_migrations import validate_sources, validate_resources, validate_historical_obligations
 from module_catalog import load
-from web_delivery import validate_four_receipt
+from web_delivery import validate_four_receipt, validate_distribution_receipt
 
 spec = importlib.util.spec_from_file_location('full_regression', ROOT / 'scripts/run-full-regression.py')
 full = importlib.util.module_from_spec(spec)
@@ -96,8 +96,7 @@ def run(args):
     if args.distribution_receipt:
         def distribution():
             result = json.loads(args.distribution_receipt.read_text(encoding='utf-8'))
-            if result.get('schema') != 'web-repository-distribution/1' or result.get('outcome') != 'pass':
-                raise ValueError('incomplete/failed Web distribution receipt')
+            validate_distribution_receipt(result, args.distribution_receipt)
             return str(args.distribution_receipt)
         check('independent-distribution-and-recovery', distribution)
     else:
