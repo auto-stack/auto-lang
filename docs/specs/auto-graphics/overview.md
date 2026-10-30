@@ -1,5 +1,13 @@
 # AutoGraphics 模块现状
 
+## 总体目标与现状边界（2026-10-30）
+
+用户确认的总体目标是**用AutoUI式的声明、组件、绑定和事件模型表达图形应用**；model/view/on可内聚也可拆出，经普通use复用。具名类型化引用、多组件实例/场景组合与作者结构/执行存储解耦是目标；当前单文件、JSON场景、整数句柄及credits仍只属于相应实验profile，不是最终语言限制。完整目标要求与待讨论的六个细节见[auto-ui声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。这些目标尚未实现，下面列举的交付事实保持原版本。
+
+“可审计agent代码运行时”不是已确认产品定位。逻辑事务粒度、局部故障、渲染同步和诊断分别管理，不能由统一呈现目标或双缓冲推导禁use、单模块/单VM、单场景或全世界原子回滚。未来ECS是可选运行优化，不是当前已支持能力。本轮不修改现有profile API/数学/预算/验收，不启动ACE融合或Gallery改造。
+
+## 已交付实验能力与来源
+
 实验源码自 PLAN-879（2026-10-29）起位于 **auto-ui 仓** `experimental/autographics-{prototype,auto-driver}/`（单一权威；autographics-dev 仅保历史与指引），master 仅保存知识；见 [source-repository-and-sdk](source-repository-and-sdk.md)。
 
 - [project](project.md)：独立wgpu/Iced原型与机器profile。

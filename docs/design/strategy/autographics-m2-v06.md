@@ -1,5 +1,7 @@
 # AutoGraphics（AG）v0.6 M2战略步骤
 
+> **2026-10-30 作者目标与后继设计入口**：M2已有能力继续作为实验成果；长期AG以AutoUI式声明/组件/model/view/on、绑定/事件与普通模块use组织图形应用，不以单文件行为桥作为最终范式。旧32credits/单活动脚本/JSON格式保留在对应profile，不能作为永久语言要求；“可审计”不能推出单模块/单VM/单场景或全世界故障回滚。下一轮作者体验与示例改造先按[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)收敛语义，能力实现归auto-ui、内容迁移归ag-examples；不在本轮新增计划、启动改造或改变任何在途合同。下文日期状态为各轮快照，当前进度依实际Plan/交付收据核实。
+
 > **本仓编号更正（2026-10-29）**：auto-ui计划从001起独立编号，当前001=旧auto-lang/882（运行对象）、002=旧883的引擎部分（触发/新局），下一个003；ag-examples/001独立承接G11，硬等auto-ui/002实际交付，下一号002。旧880为legacy历史。下文早期882/883只是旧号映射；当前唯一合同见auto-ui/docs/plans。各仓不能以外仓迁入编号作为本地高水位。
 
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。

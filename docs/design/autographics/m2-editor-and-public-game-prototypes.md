@@ -1,5 +1,7 @@
 # AutoGraphics（AG）M2：场景编辑视口与公共接口游戏原型
 
+> **2026-10-30 目标要求回归**：公共图形应用的作者模型为AutoUI式声明、组件、绑定和事件，正常use、实例化与多场景组合是方向；model/view/on允许同组件内聚或拆出导入。具体要求AG-A01..09和六项讨论见auto-ui的[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。本专题下述单场景/旧VM/JSON/整帧拒绝/预算是阶段实验事实与旧合同保持面，不是最终架构约束。逻辑事务按关联状态管理，资源或组件局部失败不天然拒绝整个世界；渲染有效输入/同步与GPU呈现分别设计。树状声明允许未来lowering到数据导向/ECS存储，初期不要求实现。保留M2玩法分母与在途验收，未来作者模型接线、限额变化和示例迁移另行立约，不凭文档纠偏宣称新能力已实现。
+
 更新：2026-10-28。状态：设计基线v8；874已有实现WIP、877 executing/仓树已建，均未交付；875/878仍drafting，原范围不变。动态状态与长期决策见[交接快照](tracking-handoff-2026-10-28.md)，新会话先核实际Plan/owner，不接管在途树。
 
 归属：[Design45](../45-autographics-wgpu-engine-and-game-prototypes.md) 的专题设计，不另占域级章号。执行顺序见[M2战略步骤](../strategy/autographics-m2-v06.md)。当前知识仍以[模块Specs](../../specs/auto-graphics/overview.md)为准，本文描述目标，不替换已交付合同。

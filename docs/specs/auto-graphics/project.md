@@ -1,5 +1,9 @@
 # auto-graphics
 
+## 产品目标与实验身份（2026-10-30）
+
+AutoGraphics的总体目标是以AutoUI式声明、组件、绑定和事件组织图形应用；普通Auto模块/use和组件实例参与组合，model/view/on可内聚或拆出。此目标与当前研究原型的模块身份分开，要求及未实现部分见[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。原型单文件回调、JSON保存及整tick拒绝是现有有限接口，不是最终产品范式；不将“可审计”作为禁止模块/多场景的需求。作者树不强制对应物理运行树，ECS重组是未来可选优化。本文下述历史非目标只约束对应实验阶段，不取消总体目标；本轮不追加已交付/在途Plan验收或声明统一模型已实现。
+
 > Current status (PLAN-879): AutoGraphics experimental sources moved to the auto-ui repository at
 > `experimental/autographics-{prototype,auto-driver}/` (single development authority; landing commit
 > `4adf2d037a1804741adc9c5a012f08cfa566439d`) — see [source-repository-and-sdk.md](source-repository-and-sdk.md)

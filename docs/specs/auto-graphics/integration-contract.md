@@ -1,5 +1,7 @@
 # auto-graphics — integration contract
 
+> **Target-model clarification (2026-10-30)**: the product direction is AutoUI-style declarations, components, bindings and events, with ordinary Auto modules/use. See [authoring requirements](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md). This is a target, not a delivered frontend or new integration gate. Source modules, component instances, VM/executor boundaries, scenes and presentation targets are independent design dimensions. Frame-input synchronization and GPU buffering do not imply one source file, one VM, one scene or a world-wide gameplay transaction. Existing experimental acceptance evidence below remains scoped to its original profile; production integration still requires its explicit delivery contract.
+
 > Current status (PLAN-879): AutoGraphics experimental sources moved to the auto-ui repository at
 > `experimental/autographics-{prototype,auto-driver}/` (single development authority; landing commit
 > `4adf2d037a1804741adc9c5a012f08cfa566439d`) — see [source-repository-and-sdk.md](source-repository-and-sdk.md)

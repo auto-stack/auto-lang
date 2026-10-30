@@ -1,5 +1,7 @@
 # AutoGraphics experimental behavior API v1
 
+> **Scope clarification (2026-10-30)**: the single-file restriction documented here is the delivered finite v1 profile, not the intended AG authoring model. PLAN-840 scoped out dependency snapshots/module assembly not yet verified by this consumer; it did not establish that use or multiple modules are incompatible with validation or rendering. The target is AutoUI-style components, declarations, bindings and events using normal modules; see [target requirements](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md). This note does not enable imports in the current runner or change any existing profile/API/budget/error contract.
+
 `autographics.behavior/1` is a finite trusted local script interface, not a stable
 engine SDK or a security sandbox. Use the runner's normal entry:
 

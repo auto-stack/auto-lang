@@ -1,5 +1,7 @@
 # Design 45：AutoGraphics 的 wgpu 引擎、游戏原型与 AutoUI 集成边界
 
+> **作者模型回归（2026-10-30，用户确认）**：AG 的总体目标是用 **AutoUI 式的声明、组件、绑定和事件模型表达图形应用**，扩展到2D/3D节点；普通Auto模块与use承担复用，model/view/on可内聚也可拆分导入。JSON场景、单活动脚本、数字句柄及逐调用credits只描述已交付实验profile，不是长期作者要求。“可审计agent代码运行时”不作为产品定位；逻辑事务、故障隔离、渲染同步及诊断分别设计。一个最终呈现目标不要求单文件、单模块、单VM或单场景，双缓冲不推出游戏事务。作者树与运行存储分离，ECS是未来可选优化而非当前必做。目标要求与六项讨论建议集中在auto-ui的[声明与组件模型](../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)；本文原型阶段记录与旧验收保留，不据此自动扩大在途合同或启动融合。
+
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。
 
 > 状态：目标态设计草案，2026-10-21；用户已授权调研/原型计划制定，尚未授权本轮启动实现。

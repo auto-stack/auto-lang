@@ -1,5 +1,7 @@
 # AutoGraphics、AutoForge 与承载游戏：v0.6 阶段设计
 
+> **2026-10-30 总体要求纠偏**：AG用AutoUI式的声明、组件、绑定和事件表达图形应用；图形节点扩展共同作者模型，普通use复用代码/组件，复杂声明或逻辑可拆分。Godot/Bevy作为能力与样本参照，不决定作者API。当前JSON/单文件行为桥仅是独立原型接口，“可审计性”不构成禁use、单模块/单VM或单场景的产品要求。树状声明不固定运行存储，未来可选择数据导向/ECS执行；现阶段不实施该优化。详[目标要求与六项讨论草案](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。本条修正总体方向，不重写历史交付、在途AC或既有ACE成熟度进入门。
+
 > 更新：2026-10-26；M1已交付并建立ag-v0.6-m1，当前进入M2规划：优化为起始阶段，随后补网格视口与公共接口2D/3D游戏。具体顺序见[M2战略](autographics-m2-v06.md)。
 > 2026-10-28续接：874/877已有在途实施/准备，875/878仍待交付；以[跟踪快照](../autographics/tracking-handoff-2026-10-28.md)重核Plan/owner。Gallery、跨端与纯归仓候选已分开设计，未实施跨端/迁仓；M1标签来源映射差异亦在快照记录，不自行重打标签。
 > AutoUI融合、图形归仓/生产主分支合入与ACE集成等ACE开发完成后再讨论；当前保持autographics-dev。本安排更新此前v0.6生产融合的排期，长期目标保留，详[Design45 §12](../45-autographics-wgpu-engine-and-game-prototypes.md#autographics-stage-851)。
