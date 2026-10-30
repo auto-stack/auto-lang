@@ -205,12 +205,15 @@ impl OwnState {
     /// parent-then-child shape used to slip to the executor as an
     /// unresolvable-path Infra).
     fn field_moved(&self, root: usize, path: &[u16]) -> bool {
-        self.moved_fields[root].as_ref().is_some_and(|m| {
-            m.iter().any(|p| {
-                let n = p.len().min(path.len());
-                p[..n] == path[..n]
+        self.moved_fields
+            .get(root)
+            .and_then(Option::as_ref)
+            .is_some_and(|m| {
+                m.iter().any(|p| {
+                    let n = p.len().min(path.len());
+                    p[..n] == path[..n]
+                })
             })
-        })
     }
 
     /// A DEFINITION establishes a fresh complete value in the slot: all
@@ -223,7 +226,9 @@ impl OwnState {
         self.init.set(s);
         self.moved.clear(s);
         self.dropped.clear(s);
-        self.moved_fields[s] = None;
+        if let Some(fields) = self.moved_fields.get_mut(s) {
+            *fields = None;
+        }
         self.guards.retain(|(root, _)| *root != s);
         self.variant_moved.remove(&s);
     }
@@ -242,6 +247,16 @@ pub fn verify_owned_function(
     steps: &mut u64,
     analysis_bytes: &mut u64,
     span_of: &dyn Fn(u32) -> Option<SpanInfo>,
+) -> Result<(), MirVerifyError> {
+    verify_owned_function_impl(m, f, steps, analysis_bytes, span_of, true)
+}
+fn verify_owned_function_impl(
+    m: &MirModule,
+    f: &crate::mir::MirFunction,
+    steps: &mut u64,
+    analysis_bytes: &mut u64,
+    span_of: &dyn Fn(u32) -> Option<SpanInfo>,
+    omit_empty_scalar_tables: bool,
 ) -> Result<(), MirVerifyError> {
     let n = f.slots.len();
     let blocks = f.blocks.len();
@@ -406,14 +421,29 @@ pub fn verify_owned_function(
         })
         .collect();
 
+    // Scalar slots cannot carry borrow provenance or partially moved fields.
+    // Keep the exact same lattice/transfer/worklist and conservative admission
+    // bound above; only omit the provably all-None side-table headers.
+    let sparse_slots = if omit_empty_scalar_tables
+        && f.slots.iter().all(|slot| {
+            matches!(
+                m.types.get(slot.ty as usize),
+                Some(MirType::I32 | MirType::Bool)
+            )
+        }) {
+        0
+    } else {
+        n
+    };
+
     let entry_state = || -> OwnState {
         let mut st = OwnState {
             init: Bitsets::new(n),
             moved: Bitsets::new(n),
             dropped: Bitsets::new(n),
             tokens_live: Bitsets::new(n),
-            token_roots: vec![None; n],
-            moved_fields: vec![None; n],
+            token_roots: vec![None; sparse_slots],
+            moved_fields: vec![None; sparse_slots],
             guards: std::collections::BTreeSet::new(),
             variant_moved: std::collections::BTreeMap::new(),
         };
@@ -538,21 +568,20 @@ pub fn verify_owned_function(
                     .or_default()
                     .extend(arms.iter().copied());
             }
-            for t in 0..n {
-                // F822-R6-01: root PROVENANCE is a may-fact — it merges
-                // across predecessors regardless of liveness. A retained
-                // place (never live) must keep its roots across block
-                // edges; live views merge exactly as before.
-                match (&mut new_in.token_roots[t], po.token_roots[t].as_ref()) {
+            // Iterate the stored side tables. Scalar-only functions have
+            // no entries; general functions retain the original n slots.
+            for (roots, prior) in new_in.token_roots.iter_mut().zip(&po.token_roots) {
+                // Provenance is a may-fact even for retained, non-live places.
+                match (roots.as_mut(), prior.as_ref()) {
                     (Some(r), Some(pr)) => r.union_with(pr),
-                    (None, Some(pr)) => new_in.token_roots[t] = Some(pr.clone()),
+                    (None, Some(pr)) => *roots = Some(pr.clone()),
                     _ => {}
                 }
-                // R3-F08: moved field paths are MAY facts — union across
-                // predecessors (a path moved on ANY path stays moved).
-                match (&mut new_in.moved_fields[t], po.moved_fields[t].as_ref()) {
+            }
+            for (fields, prior) in new_in.moved_fields.iter_mut().zip(&po.moved_fields) {
+                match (fields.as_mut(), prior.as_ref()) {
                     (Some(a), Some(b)) => a.extend(b.iter().cloned()),
-                    (None, Some(b)) => new_in.moved_fields[t] = Some(b.clone()),
+                    (None, Some(b)) => *fields = Some(b.clone()),
                     _ => {}
                 }
             }
@@ -598,7 +627,12 @@ pub fn verify_owned_function(
                     // a use-after-move (partial moves of source values stay
                     // rejected; FIELD_MOVE/FIELD_GET reach fields through
                     // their own path-aware checks below).
-                    if st.moved_fields[s].as_ref().is_some_and(|m| !m.is_empty()) {
+                    if st
+                        .moved_fields
+                        .get(s)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|m| !m.is_empty())
+                    {
                         fail = Some(err(
                             "mir.use-after-move",
                             format!(
@@ -662,7 +696,9 @@ pub fn verify_owned_function(
                             st.tokens_live.set(*dst as usize);
                         }
                     } else if is_token[*dst as usize] {
-                        st.token_roots[*dst as usize] = None;
+                        if let Some(roots) = st.token_roots.get_mut(*dst as usize) {
+                            *roots = None;
+                        }
                     }
                     st.define_slot(*dst as usize);
                 }
@@ -1774,4 +1810,143 @@ fn slot_name(f: &crate::mir::MirFunction, s: usize) -> String {
         .get(s)
         .and_then(|x| x.name.clone())
         .unwrap_or_else(|| format!("slot#{}", s))
+}
+
+#[cfg(test)]
+mod scalar_side_tables_889 {
+    use super::*;
+    use crate::mir::*;
+    fn fixture(width: usize, mask: u32, extra: Option<MirType>) -> MirModule {
+        let owner = OwnerScope {
+            schema: crate::contract::MIR_COLLECTIONS_SCHEMA.into(),
+            module: "scalar889".into(),
+        };
+        let mut m = MirModule::new_collections(owner.clone());
+        m.types = vec![
+            MirType::I32,
+            MirType::Bool,
+            MirType::Fn(FnSig {
+                params: vec![],
+                result: 0,
+            }),
+        ];
+        m.consts = vec![MirConst::I32(42), MirConst::Bool(true)];
+        let mut slots: Vec<_> = (0..width.max(4))
+            .map(|_| MirSlot {
+                ty: 0,
+                kind: SlotKind::Temp,
+                name: None,
+            })
+            .collect();
+        slots[1].ty = 1;
+        if let Some(ty) = extra {
+            slots.push(MirSlot {
+                ty: 3,
+                kind: SlotKind::Param,
+                name: None,
+            });
+            m.types.push(ty);
+        }
+        let mut init = vec![MirInstr::Const { dst: 1, value: 1 }];
+        if mask & 1 == 0 {
+            init.push(MirInstr::Const { dst: 0, value: 0 });
+        }
+        let mut left = vec![MirInstr::Copy { dst: 2, src: 0 }];
+        if mask & 2 != 0 {
+            left.push(MirInstr::Move { dst: 3, src: 2 });
+        }
+        if mask & 4 != 0 {
+            left.push(MirInstr::Drop { slot: 2 });
+        }
+        let right = if mask & 8 == 0 {
+            vec![MirInstr::Copy { dst: 2, src: 0 }]
+        } else {
+            vec![]
+        };
+        let term = if mask & 16 == 0 {
+            Terminator::Return { value: 2 }
+        } else {
+            Terminator::Branch {
+                cond: 1,
+                then: 1,
+                else_: 4,
+            }
+        };
+        m.funcs.push(MirFunction {
+            owner,
+            name: "d_main".into(),
+            sig: 2,
+            slots,
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+            blocks: vec![
+                MirBlock {
+                    instrs: init,
+                    term: Terminator::Branch {
+                        cond: 1,
+                        then: 1,
+                        else_: 2,
+                    },
+                },
+                MirBlock {
+                    instrs: left,
+                    term: Terminator::Jump { target: 3 },
+                },
+                MirBlock {
+                    instrs: right,
+                    term: Terminator::Jump { target: 3 },
+                },
+                MirBlock {
+                    instrs: vec![],
+                    term,
+                },
+                MirBlock {
+                    instrs: vec![],
+                    term: Terminator::Return { value: 0 },
+                },
+            ],
+        });
+        m
+    }
+    #[test]
+    fn scalar_empty_tables_match_dense_results_diagnostics_and_frozen_budgets() {
+        let mut success = 0;
+        let mut refused = 0;
+        for width in [4, 31, 64, 271] {
+            for mask in 0..32 {
+                for extra in [None, Some(MirType::Str), Some(MirType::StrView)] {
+                    let m = fixture(width, mask, extra);
+                    for initial_steps in [0, crate::contract::MAX_VERIFY_WORK_STEPS] {
+                        let run = |omit| {
+                            let mut steps = initial_steps;
+                            let mut bytes = 0;
+                            let r = verify_owned_function_impl(
+                                &m,
+                                &m.funcs[0],
+                                &mut steps,
+                                &mut bytes,
+                                &|_| None,
+                                omit,
+                            );
+                            (format!("{r:?}"), steps, bytes)
+                        };
+                        let actual = run(true);
+                        let dense = run(false);
+                        assert_eq!(
+                            actual, dense,
+                            "width{width}/mask{mask}/steps{initial_steps}"
+                        );
+                        if actual.0 == "Ok(())" {
+                            success += 1
+                        } else {
+                            refused += 1
+                        }
+                    }
+                }
+            }
+        }
+        assert!(success > 0 && refused > 0);
+    }
 }

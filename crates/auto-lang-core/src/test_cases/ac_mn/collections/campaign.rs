@@ -126,6 +126,15 @@ impl Evidence {
 /// Exactly the frozen 116-function input, five paths x30, and one retained
 /// session with512 new real revisions. Errors retain their actual attempts.
 pub fn run(source: &str, output: &Path) -> Result<Value, String> {
+    run_scoped(source, output, false)
+}
+/// Repair-only observation: fresh/restart x30 and three representative rounds
+/// per retained path. Never claims the full matrix or512-churn gate passed.
+/// Reuse of another campaign requires an explicit revision-bound Plan receipt.
+pub fn run_cold_repair(source: &str, output: &Path) -> Result<Value, String> {
+    run_scoped(source, output, true)
+}
+fn run_scoped(source: &str, output: &Path, cold_repair: bool) -> Result<Value, String> {
     if source.len() != 345483
         || hex(&sha256(source.as_bytes()))
             != "df314cc77208bcc115f02b446b8c1012046e96b046784a1a0c6e2e2094a1715c"
@@ -143,7 +152,7 @@ pub fn run(source: &str, output: &Path) -> Result<Value, String> {
         paths: BTreeMap::new(),
         binding: None,
     };
-    evidence.record(&json!({"kind":"contract","source_sha256":hex(&sha256(source.as_bytes())),"functions":116,"source_bytes":source.len(),"samples_per_path":SAMPLES,"churn":CHURN,"p90_ms":2000,"rank":"N-floor(N/10), one-based","started_unix_ms":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),"tool_path_hints":"shared parent, first preparation measured; tool contents rehashed on every request","fresh_stores":"independent and initially absent","host":std::env::consts::OS,"parallelism":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(0)}))?;
+    evidence.record(&json!({"kind":"contract","source_sha256":hex(&sha256(source.as_bytes())),"functions":116,"source_bytes":source.len(),"samples_per_path":SAMPLES,"churn":if cold_repair {0}else{CHURN},"scope":if cold_repair {"cold-verifier-repair"}else{"full"},"p90_ms":2000,"rank":"N-floor(N/10), one-based","started_unix_ms":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),"tool_path_hints":"shared parent, first preparation measured; tool contents rehashed on every request","fresh_stores":"independent and initially absent","host":std::env::consts::OS,"parallelism":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(0)}))?;
     let outcome = (|| -> Result<Value, String> {
         // Each fresh sample gets a genuinely empty independent managed store.
         for index in 0..SAMPLES {
@@ -204,7 +213,17 @@ pub fn run(source: &str, output: &Path) -> Result<Value, String> {
         evidence.sample("warmup", 0, started.elapsed().as_secs_f64() * 1000., warm)?;
         let mut current = 0u32;
         for path in ["hit", "body-edit", "historical-return", "churn"] {
-            let count = if path == "churn" { CHURN } else { SAMPLES };
+            let count = if cold_repair {
+                if path == "churn" {
+                    0
+                } else {
+                    3
+                }
+            } else if path == "churn" {
+                CHURN
+            } else {
+                SAMPLES
+            };
             for index in 0..count {
                 let started = Instant::now();
                 let next = match path {
@@ -337,7 +356,12 @@ pub fn run(source: &str, output: &Path) -> Result<Value, String> {
         }
         let mut gates = BTreeMap::new();
         let mut passed = true;
-        for path in ["fresh", "hit", "restart", "body-edit", "historical-return"] {
+        let gated_paths: &[&str] = if cold_repair {
+            &["fresh", "restart"]
+        } else {
+            &["fresh", "hit", "restart", "body-edit", "historical-return"]
+        };
+        for &path in gated_paths {
             let mut samples = evidence
                 .paths
                 .get(path)
@@ -358,7 +382,7 @@ pub fn run(source: &str, output: &Path) -> Result<Value, String> {
             );
         }
         Ok(
-            json!({"complete":true,"passed":passed,"gates":gates,"churn":CHURN,"binding":evidence.binding}),
+            json!({"complete":true,"passed":passed,"gates":gates,"churn":if cold_repair {0}else{CHURN},"scope":if cold_repair {"cold-verifier-repair"}else{"full"},"binding":evidence.binding}),
         )
     })();
     let summary = match &outcome {

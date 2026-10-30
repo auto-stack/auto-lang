@@ -48,7 +48,9 @@ const BUILD_WALL: Duration = Duration::from_secs(300);
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
 mod collections;
-pub use collections::campaign::run as run_collections_campaign;
+pub use collections::campaign::{
+    run as run_collections_campaign, run_cold_repair as run_collections_cold_repair_campaign,
+};
 pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.

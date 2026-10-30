@@ -997,6 +997,33 @@ fn ace_m1_native_collections_889_formal_performance_and_churn() {
     assert_eq!(result["passed"], true, "{result}");
 }
 
+/// Dedicated serial measurement window. Never substitute this for source SDK
+/// conformance; repair scope preserves full matrix evidence separately.
+#[test]
+#[ignore = "PLAN-889 affected fresh/restart timing repair; needs full-matrix reuse receipt"]
+fn ace_m1_native_collections_889_formal_cold_verifier_repair() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let source = include_str!("../../test/cases/ace-m1/src/N889Load.at");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/plans/attachments/889/baseline")
+        .join(format!(
+            "formal-cold-repair-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    println!("889 formal campaign evidence {}", root.display());
+    let result = crate::test_cases::ac_mn::run_collections_cold_repair_campaign(source, &root)
+        .unwrap_or_else(|error| panic!("{error}; retained attempts: {}", root.display()));
+    println!("889 formal result {result}");
+    assert_eq!(result["scope"], "cold-verifier-repair");
+    assert_eq!(result["churn"], 0);
+    assert_eq!(result["complete"], true);
+    assert_eq!(result["passed"], true, "{result}");
+}
+
 #[test]
 fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
