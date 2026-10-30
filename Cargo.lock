@@ -1067,6 +1067,7 @@ dependencies = [
  "auto-ui-compiler",
  "auto-ui-dialect",
  "auto-val",
+ "auto-web",
  "autodown-core",
  "axum",
  "base64 0.22.1",
