@@ -168,6 +168,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [autographics/repository-move-and-integration-gates](autographics/repository-move-and-integration-gates.md) | auto-ui承接AG实验源码与生产UI/ACE融合的分离门、时机和切源要求 | 候选建议：875实际交付后纯归仓可早于ACE；878只读评估，不启动迁仓 |
 | [48-ui-domain-ast-and-lowering](48-ui-domain-ast-and-lowering.md) | UI owned领域模型、泛型领域解析、受检lowering与Core准入 | PLAN-841 架构合同 |
 | [49-native-single-mir-lowering](49-native-single-mir-lowering.md) | 共享HIR→Typed MIR→native收敛、五旧profile覆盖/删除门、布局/身份/cache交接 | 868已交付；870/871待实施，不提前删除旧能力；保留verify资源分析 |
+| [51-shared-a2x-and-hir-to-rust](51-shared-a2x-and-hir-to-rust.md) | 共享Checked HIR事实/结构化准备/编译服务，各目标合法化/AST/runtime；Rust首期三包与增量、认证、889/891/888交接 | target-state r1（2026-10-30）；仅规划；AX-A已立892草案，AX-B/C未编号、不施工 |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
@@ -201,6 +202,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；Cranelift/自举分期已确认，具体子集待验收） |
 | [auto-native-backend-evolution](strategy/auto-native-backend-evolution.md) | **ACE架构及AAC/AAV规划总入口**（原AC/AV/AJ总路线）；§0汇总Design39–44、增量/cache/热重载和block演进、AV程序/替换路线与Plan核验流程 | 路线方向已确认；2026-10-20补ACE称谓与导航，技术合同与交付证据按专题/Spec/Plan核实 |
 | [ace-implementation-handoff](strategy/ace-implementation-handoff.md) | ACE长会话决策、有限交付基线、862–866/870/871任务及S/N/H交接 | 2026-10-28续接快照；current Spec与revision绑定交付收据为准，附新会话prompt |
+| [shared-a2x-and-hir-to-rust-roadmap](strategy/shared-a2x-and-hir-to-rust-roadmap.md) | Design51实施战略：共享骨架＋Rust标量、record/text资源、集合/变体三个首期包；S/P/H与native线分窗 | 规划r1（2026-10-30）；AX-A已立892草案，AX-B/C未编号，均未实施；第二目标与旧A2X迁移另验 |
 | [auto-acc-bootstrap-contract](strategy/auto-acc-bootstrap-contract.md) | ACC 自举主体与公共 HIR 阶段契约：S0–S6 阶段表、pass 合同模板与非法变换反例、后端桥候选矩阵、Gen1–3 代际判据（PLAN-743 T-04） | 📝 Draft（2026-10-04；契约未冻结，实施计划按节认领） |
 | [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
