@@ -668,13 +668,13 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         })
     };
     if recipe == auto_av_probe::console_worker::RECIPE {
-        match auto_av_probe::console_worker::serve(&req) {
+        return match auto_av_probe::console_worker::serve(&req) {
             Ok(observations) => echo(observations),
             Err(error) => {
                 eprintln!("console request: {error}");
                 exit(2);
             }
-        }
+        };
     }
     let data_recipe = recipe == "ac-av/data-run-v1";
     // PLAN-821 T-02: the owned-profile recipe (`avworker/1` envelope domain
