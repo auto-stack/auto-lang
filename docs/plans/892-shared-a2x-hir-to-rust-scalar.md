@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-892
-status: executing
+status: reviewed
 feature_name: 共享A2X骨架与Checked HIR到Rust标量闭环（AX-A）
 author: [Codex]
 created_at: 2026-10-30
@@ -284,6 +284,8 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 2026-10-30 stage: goal | plan_id: PLAN-892 | plan_revision: 1 | round: 11 | from: work | to: review | status: execution_done | outcome: pass（T-06正式验收完成，work全闭） | worktree: D:/autostack/.wt/lang-892/auto-lang | commit: 60378d608 | next: review
 
 2026-10-30 stage: review | review_scope: final | reviewer_identity: 本Codex=实施会话内final review（无独立外部reviewer；按技能合同声明该限制，裁定从磁盘工件重建：冻结HEAD新鲜重放+审查者自选反例+收据hash核验，不采信执行者摘要） | plan_id: PLAN-892 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-892/auto-lang | branch: plan-892-dev | reviewed_commit: 60378d608 | base_commit: 129ef6057(合并后master) | dependency_revisions: auto-ac-prototype/ac-artifact-probe=post-888 master；组内auto-ui/auto-down兄弟detached | spec_inputs: 计划r1合同全文+Design51+AGENTS+888交付后specs现状 | acceptance_results: AC-01✅(58用例真链+boundaries3/3+text域/entry/too-deep拒绝)；AC-02✅(含审查者自选反例B02=-21/B09=120 certify PASS、错oracle-20 REJECTED——独立手写reference三方一致)；AC-03✅(首例注册+golden族×5+spawn0+篡改红+缺worker infra)；AC-04✅(store/incremental全探针)；AC-05 partial(F-1杀树缺口)；AC-06 partial(预算29.7MiB✅/quota✅/墙钟✅/杀树回收✗=F-1、路径校验✗=F-3)；AC-07 partial(SD候选齐/F-2内容凭证缺)；AC-08=本审查 | findings: F-1[AC-06/V-11,P1]worker与适配器spawn均无deadline杀树回收（§5.6"写入/等待/回收统一deadline…不得以父调用已返回当杀树完成"）——最小修复=worker compile_and_run与adapter worker调用改bounded spawn(poll+kill)，复验：挂起目标程序反例在deadline内被杀且判infra；F-2[AC-07/V-14,P1]日常通道工具当前性无内容凭证（D-04"锁定配置/内容凭证…不确定即不授信"）——最小修复=adapter对worker二进制sha256入verdict+可选AC_A2X_WORKER_SHA256钉死不匹配=infra，复验：篡改hash控制红；F-3[AC-06,P2]worker相对out_dir时rustc temp路径解析破坏（审查实测relative即败）——最小修复=worker canonicalize source/out/reference路径，复验：relative调用通过 | evidence: 冻结HEAD新鲜重放=a2x workspace 18目标绿+a2r_hir_892 5/5(7.4s)；ace-m1 14/14复用（r10@79084d652后crates/*未变，r11仅experimental/auto-a2x）；正式收据sha256=673d52cb6f9456a1含31预认证/30样本raw全档/三暖门P90=427/490/176ms；健康=adapter零调试打印、新文件零警告 | next: work修复F-1/F-2/F-3后受影响面窄复审（AC-05/06/07+反例重放），不得新冻结前宣称pass
+
+2026-10-30 stage: review | review_scope: final（修复后窄复审：F-1/F-2/F-3闭包+受影响AC-05/06/07） | reviewer_identity: 本Codex=实施会话内（同前限制声明；从磁盘工件与重放重建） | plan_id: PLAN-892 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-892/auto-lang | branch: plan-892-dev | reviewed_commit: 61453db03 | base_commit: 60378d608(原审) | dependency_revisions: 不变 | spec_inputs: 同前审+三finding修复diff | closure: F-1 CLOSED——worker所有spawn经ac-core受控执行器（CREATE_SUSPENDED+Job子树+1MiB流上限+单一deadline+全回收；编译≤120s/运行≤30s），重放=合法死循环目标30s deadline整树被杀+受控拒绝exit 2零悬挂（附带控制：i=i+1死循环29.5s正确trap:Overflow=2^31次checked自增）；F-2 CLOSED——adapter对worker二进制sha256入每个verdict+可选AC_A2X_HIR_WORKER_SHA256钉死（不匹配=infra带诊断，非语言判决），凭证测试绿（错钉红/对钉绿）；F-3 CLOSED——worker入口canonicalize全部路径，审查relative out_dir反例通过 | acceptance_results: 受影响面重放=a2r_hir_892_tests 6/6（含新凭证控制，14.1s）+a2x workspace 18目标绿0警告；ace-m1 14/14复用（adapter改动仅在a2x recipe路径内，crates面未触）；AC-05/06/07关闭，AC-01..04维持原证据 | findings: 无未决 | pending_closeout_gates: merge-owned——冻结受影响模块并集（auto-test-case/auto-lang-core/auto-lang+experimental/auto-a2x定向面）于合入前执行，非裸cargo t前置（888 r3先例）；SD-01..06沉淀/归档/wt-guard清树均pending | evidence: 修复diff=61453db03；重放命令与数字已录（F-1=31s杀树、F-3反例过、6/6、18绿） | next: merge（T-08..11）
 
 ## 10. 待澄清事项
 
