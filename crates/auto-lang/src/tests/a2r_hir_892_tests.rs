@@ -53,27 +53,7 @@ fn a2r_hir_892_first_case_green() {
         .nth(2)
         .unwrap()
         .to_path_buf();
-    let manifest = repo.join("experimental/auto-a2x/Cargo.toml");
-    assert!(manifest.is_file(), "a2x workspace present");
-    let build = std::process::Command::new(env!("CARGO"))
-        .args([
-            "build",
-            "--release",
-            "-p",
-            "a2x-probe",
-            "--bin",
-            "a2x-worker",
-            "--manifest-path",
-        ])
-        .arg(&manifest)
-        .current_dir(&repo)
-        .output()
-        .expect("maintenance worker build spawns");
-    assert!(
-        build.status.success(),
-        "maintenance build failed: {}",
-        String::from_utf8_lossy(&build.stderr)
-    );
+    maintenance_build_worker(&repo);
 
     let root = temp_root("base");
     let report = run_suite(
@@ -181,6 +161,54 @@ struct CertifyCase {
     oracle_kind: &'static str,
     oracle_value: Option<i64>,
     oracle_trap: Option<&'static str>,
+}
+
+
+/// The observable maintenance build (plan §5.5: outside case timing). Under
+/// the parallel module runner several shards of this suite may build the
+/// worker CONCURRENTLY while yet another shard has the exe running: a
+/// relink can hit Windows' locked-file remove. Serialize cross-process via
+/// a temp lock file, pin a stable toolchain env, and retry the relink once.
+fn maintenance_build_worker(repo: &Path) {
+    let lock = std::env::temp_dir().join("a2x-892-worker-build.lock");
+    let mut guard = None;
+    for _ in 0..240 {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            Ok(f) => {
+                guard = Some(f);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
+        }
+    }
+    let _guard = guard;
+    let manifest = repo.join("experimental/auto-a2x/Cargo.toml");
+    assert!(manifest.is_file(), "a2x workspace present");
+    let mut last_err = String::new();
+    for attempt in 0..2 {
+        let build = std::process::Command::new(env!("CARGO"))
+            .args([
+                "build",
+                "--release",
+                "-p",
+                "a2x-probe",
+                "--bin",
+                "a2x-worker",
+                "--manifest-path",
+            ])
+            .arg(&manifest)
+            .env("RUSTC_WRAPPER", "")
+            .current_dir(repo)
+            .output()
+            .expect("maintenance worker build spawns");
+        if build.status.success() {
+            let _ = std::fs::remove_file(&lock);
+            return;
+        }
+        last_err = String::from_utf8_lossy(&build.stderr).to_string();
+        std::thread::sleep(std::time::Duration::from_millis(500 * (attempt + 1)));
+    }
+    panic!("maintenance build failed (attempt {}): {}", 2, last_err);
 }
 
 fn worker_exe(repo: &Path) -> std::path::PathBuf {
