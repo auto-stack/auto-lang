@@ -458,8 +458,12 @@ fn mutation_owned_scope_and_assign_gates() {
         codes(&ds)
     );
 
-    // (b) resource-assign: `=` to the owned local a (needs a place; t02 has
-    // none — build the place programmatically)
+    // (b) owned-local `=` assignment: PLAN-894 §5.1 migrated this face —
+    // a MUTABLE (var) owned local reassigned with an owning RHS (the
+    // literal) is now ADMITTED (the old blanket verify.resource-assign
+    // rejection is retired for this shape; historical evidence: the 770
+    // text_hir records pinned it). The old fixture asserted the blanket
+    // rejection on exactly this legal shape.
     let mut b = bind_text_ok(&src);
     {
         let body = body_of_mut(&mut b, 0);
@@ -487,11 +491,55 @@ fn mutation_owned_scope_and_assign_gates() {
                 value: hir::ExprId(n),
             },
         );
-        // make a mutable so only the resource rule fires
+        // `a` is mutable (var): the §5.1 full-root replacement admits.
+        body.locals[1].mutable = true;
+    }
+    let checked = verify::verify_text(b).expect("var a = \"zz\" is an admitted §5.1 replacement");
+    let plan = checked
+        .text_resources()
+        .expect("text plan present after the replacement");
+    let bp = plan.bodies.get(&(0, 0)).expect("play body plan");
+    assert!(
+        bp.replace_frees.values().any(|bufs| bufs.iter().any(|r| r.root == 1 && r.path.is_empty())),
+        "the replacement schedules the old root buffer free: {:?}",
+        bp.replace_frees
+    );
+
+    // (b') the STILL-rejected face on the same shape: an IMMUTABLE (let)
+    // target is rejected by the structural gate, and a bare owned read
+    // RHS on a mutable target is verify.ownership-required.
+    let src2 = fixture("valid", "t02-lifecycle.atom");
+    let mut b = bind_text_ok(&src2);
+    {
+        let body = body_of_mut(&mut b, 0);
+        let n = body.exprs.len() as u32;
+        body.exprs.push(hir::Expr {
+            id_text: "e_bare".to_string(),
+            ty: hir::TypeUse::Builtin(hir::BuiltinType::StrOwned),
+            kind: ExprKind::ReadLocal {
+                local: hir::LocalId(1),
+            },
+            span: body.span,
+        });
+        body.places.push(hir::Place {
+            id_text: "p_a2".to_string(),
+            kind: hir::PlaceKind::Local,
+            local: hir::LocalId(1),
+            ty: hir::TypeUse::Builtin(hir::BuiltinType::StrOwned),
+            access: hir::Access::Mutable,
+            span: body.span,
+        });
+        body.blocks[0].stmts.insert(
+            1,
+            hir::Stmt::Assign {
+                place: hir::PlaceId(0),
+                value: hir::ExprId(n),
+            },
+        );
         body.locals[1].mutable = true;
     }
     let ds = verify_text_err(b);
-    assert!(has(&ds, "verify.resource-assign"), "{:?}", codes(&ds));
+    assert!(has(&ds, "verify.ownership-required"), "{:?}", codes(&ds));
 
     // (c) implicit transfer: let y Str = <read of owned x>
     let mut b = bind_text_ok(&src);
