@@ -760,6 +760,10 @@ fn start_handler(
     // bridge 同源（方法+参数类型），不一致在 dispatch 段已 fail-closed。
     let upload_handle: Option<i64> = match ctx.upload_pending.take() {
         Some(pending) => {
+            // Injection precedes the handler segment's scope guard. Bind now
+            // so an unconsumed capability (early return or argument failure)
+            // is reclaimed with this request instead of surviving in the table.
+            let _scope_bind = bind_current_scope(ctx.scope_id);
             let req = a2r_std::http::upload_request_from_parts(
                 &ctx.req_method,
                 &ctx.req_path,

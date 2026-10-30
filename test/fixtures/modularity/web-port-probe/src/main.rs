@@ -46,6 +46,18 @@ fn main() {
     // language controls use this exact public call with no installation.
     match auto_lang_core::run_with_capture(&source) {
         Ok((value, stdout)) => {
+            // Inspect real registries after the owner has returned. A successful
+            // process exit alone cannot establish resource termination.
+            let scopes = auto_lang_core::vm::ffi::http_server::live_scope_count();
+            let files = auto_lang_core::vm::ffi::http_server_file::vm_file_response_count();
+            let uploads = auto_lang_core::vm::ffi::http_upload::vm_upload_counts();
+            let streams = auto_lang_core::vm::ffi::http_stream::stream_live_count();
+            let live_ops = auto_lang_core::vm::ffi::async_http::live_op_count();
+            eprintln!("probe terminal scopes={scopes} files={files} uploads={uploads:?} streams={streams} live_ops={live_ops}");
+            assert_eq!(
+                (scopes, files, uploads, streams, live_ops),
+                (0, 0, (0, 0, 0), 0, 0)
+            );
             println!("value={value:?} stdout={stdout:?}");
         }
         Err(error) => {

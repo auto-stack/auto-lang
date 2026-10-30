@@ -1,0 +1,15 @@
+[package]
+name = "web-owned-messages-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+a2r-std = { path = "../../../../crates/a2r-std" }
+tokio = { version = "1", features = ["sync"] }
+futures = "0.3"
+
+[profile.dev]
+debug = "line-tables-only"

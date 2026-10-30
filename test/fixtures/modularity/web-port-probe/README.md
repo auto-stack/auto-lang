@@ -59,3 +59,19 @@ for the whole original suite or proof that explicit Web host assembly exists.
 `compile-fail-owner-send` is an opt-in compiler negative control: checking the
 fixture with that feature must reject `HttpVmOwner: Send` with E0277 because
 the VM owner contains `Rc<AutoVM>`. Leave the feature off for ordinary builds.
+
+The owned reply seam also replays the original file-handler program and SSE
+generator over real TCP:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/response_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe
+```
+
+It requires exact sync/async binary files, HEAD metadata, Range, ETag, missing
+file and invalid options, ordered SSE frames and EOF. After successful owner
+return, the driver now checks real scope/file/upload/stream/live-op registries
+are all zero. The upload replay includes headers-only early rejection and a
+path-argument binding failure after capability injection. These checks exposed
+and now guard a leaked unconsumed upload capability; successful HTTP status or
+process exit alone was insufficient. They remain scoped prototype evidence,
+not execution credit for the entire historical test families.

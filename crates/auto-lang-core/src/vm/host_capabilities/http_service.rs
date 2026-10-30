@@ -10,6 +10,9 @@ use std::sync::{Arc, RwLock};
 use crate::vm::engine::AutoVM;
 use crate::AutoResult;
 
+/// Framework-neutral, owned messages shared by network and local VM owners.
+pub mod messages;
+
 pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'static>>;
 
 pub trait HttpServiceHost: Send + Sync {

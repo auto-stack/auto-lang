@@ -62,6 +62,9 @@ def main():
         # This extra fixture-only marker proves listener identity before sending
         # upload data; the reused upload routes/handlers remain unchanged.
         program += f'\n#[api(method = "GET", path = "/{token}")]\nfn marker() str {{ "{token}" }}\n'
+        # A second exit before receive: the capability is injected, then an
+        # ordinary required argument fails binding. It must join scope cleanup.
+        program += '\n#[api(method = "POST", path = "/api/bind-fail/:count")]\nfn bind_fail(req UploadRequest, count int) ~UploadReceipt { return http.upload_error(500, "handler must not run") }\n'
         source = root / "api.at"
         source.write_text(program, encoding="utf-8")
         env = dict(os.environ, AUTO_HTTP_PORT=str(port), AUTO_EXECUTION_ENGINE="autovm")
@@ -125,15 +128,22 @@ def main():
                     assert first.startswith(b"HTTP/1.1 401"), first[:200]
                 assert not list(staging.iterdir()), "early authorization rejection created staging"
 
+                status, body = request(port, "POST", "/api/bind-fail/not-an-int", b"unread", {"Content-Type": "application/octet-stream"})
+                assert status == 400, (status, body)
+                assert not list(staging.iterdir()), "argument rejection created staging"
+
                 assert child.stdin is not None
                 child.stdin.write("shutdown\n")
                 child.stdin.flush()
                 assert child.wait(timeout=20) == 0
                 stderr.seek(0)
-                assert "probe shutdown delivered=true" in stderr.read()
+                diagnostics = stderr.read()
+                assert "probe shutdown delivered=true" in diagnostics
+                assert "probe terminal scopes=0 files=0 uploads=(0, 0, 0) streams=0 live_ops=0" in diagnostics, diagnostics
                 print(json.dumps({"scope": "owned-upload-seam", "multipart_bytes": len(payload),
                                   "download_exact": True, "conflict_preserved": True,
                                   "business_reject": 422, "header_only_reject": 401,
+                                  "argument_reject": 400, "terminal_registries_zero": True,
                                   "staging_empty": True, "shutdown_exit": 0,
                                   "original_fixture_sha256": hashlib.sha256(original_bytes).hexdigest()}))
             finally:
