@@ -32,6 +32,23 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+thread_local! {
+    static MODULE_PRIVATE_SESSIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Isolate explicit sessions only for an independent module-case invocation.
+/// Ordinary suite callers retain their cross-invocation restart contract.
+pub fn with_module_private_sessions<T>(run: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            MODULE_PRIVATE_SESSIONS.with(|scope| scope.set(self.0));
+        }
+    }
+    let _restore = Restore(MODULE_PRIVATE_SESSIONS.with(|scope| scope.replace(true)));
+    run()
+}
+
 #[cfg(feature = "test-case-batch")]
 pub mod parent_observations;
 #[cfg(feature = "test-case-batch")]
@@ -1416,9 +1433,14 @@ fn run_check_with_transport(
     // across worker processes; the PARENT owns cleanup. Without a session
     // the check's own artifact dir hosts a private per-request store.
     let store_root = match &av.session {
-        // Source-closure fresh/restart checks share a session within one
-        // suite run, not with an earlier invocation of the same fixture.
-        Some(_) if family == RecipeFamily::ClosuresSource => _run_dir.join("av-closures-sessions"),
+        // Explicit module-case execution owns a private run. Ordinary suite
+        // callers may intentionally restart the same session across runs.
+        Some(_)
+            if family == RecipeFamily::ClosuresSource
+                && MODULE_PRIVATE_SESSIONS.with(|scope| scope.get()) =>
+        {
+            _run_dir.join("av-closures-sessions")
+        }
         Some(s) => std::env::temp_dir().join(format!("av798-session-{s}")),
         None => artifact_dir.join("store"),
     };

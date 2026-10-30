@@ -446,8 +446,9 @@ fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
         case: Some(case_id.into()),
         ..Default::default()
     };
-    let raw =
-        auto_lang::test_cases::run_suite_selected(suite, &out, &Limits::defaults(), &selection)?;
+    let raw = auto_lang::test_cases::ac_av::with_module_private_sessions(|| {
+        auto_lang::test_cases::run_suite_selected(suite, &out, &Limits::defaults(), &selection)
+    })?;
     persist_reports(&out, &raw.to_console(), &raw.to_json())?;
     let mut selected = raw.clone();
     selected.results.retain(|r| r.case_id == case_id);
