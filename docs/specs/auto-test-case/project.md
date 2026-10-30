@@ -94,3 +94,12 @@ PLAN-863 的 [console byte 观察轴](architecture.md) 由父侧独立判断 std
 原864合法集合/Variant源码经共享MIR→native机器链，单独recipe/worker、真实拥有值清理、
 source函数候选/坐标与深验恢复；正式suite40检查使原14L/V native源码格关闭，其他引擎格和W/在线帧gap保持。
 见[native合同](../auto-mir/native-collections-variants.md)；旧五域/recipe/cert键集/legacy退役不变。
+
+## PLAN-888：独立测试模块与显式批量试点
+
+测试义务按唯一叶归属，以 `cargo tm <模块ID>...` 执行完整模块和消费者闭包的去重并集；
+旧包含档只保有限期导航，不再逐档叠跑。先列模块/用例数量，再各模块一次墙钟、累计CPU及
+原生子树峰值观察；异常只定向重验。特别长原子交owner决定，未测/原条件/原红保持可见。
+目录归属不等于日常准入，开发调研与日常回归的用途审查另行进行。见[模块选测](module-selection.md)。
+ACE批量B及D3组合C保持显式实验，公开pilot默认A；历史候选数值不能证明当前候选收益。
+原父侧oracle、采样/资源门和单项重放保持，见[批量试点](batch-execution.md)。

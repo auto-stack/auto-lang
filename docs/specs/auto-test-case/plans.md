@@ -28,3 +28,4 @@
 | 863 | AV类型化宿主导入与控制台输出 | delivered（R2 final pass；合入证据见归档计划） | [计划](../../plans/archive/863-av-console-host-import-and-print.md) | HostConsole 源码→独立 host 表/HostCall→AVHC/1；当前授权、预算/身份重验、父侧精确双流；whole-module 实验面 |
 
 | 889 | native集合与变体源码闭环 | delivered（r2，final pass；合入门见归档计划） | [计划](../../plans/archive/889-native-collections-variants-source-closure.md) | 原14L/V native源码格、owned/runtime资源、真函数增量/恢复与独立SDK；[共享合同](../auto-mir/native-collections-variants.md)，typed/wide另属891 |
+| 888 | 不相交测试模块与ACE批量试点 | delivered（r3；验收与冻结门见归档计划） | [计划](../../plans/archive/888-module-test-selection-and-ace-batch-pilot.md) | 唯一叶及消费者并集、逐模块单轮资源、异常隔离修复、13项ACE慢测交接；[模块选测](module-selection.md)、[显式批量](batch-execution.md)。日常用途准入与新候选收益矩阵后置，默认A |
