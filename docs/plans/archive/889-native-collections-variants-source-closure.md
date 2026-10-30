@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: reviewed
+status: archived
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -27,7 +27,7 @@ total_steps: 10
 
 将864已有的集合/变体合法源码，经同一Checked HIR→共享collections MIR→mn CLIF/COFF→真实PE执行；关闭M1原L01–L07/V01–V07共14个native源码格。维持零参i32入口/结果，继承822集合与资源语义；同时补集合源码的真实单函数增量，而非整模块重算后报告carry。
 
-[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。T-01..06已验证并提交；正式五路径各30/512的完整实测与受影响cold verifier修复已按精确机制分界合并证据，最终代码/验收/规范复审和merge-owned门仍待执行。
+[拆包决定](../reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。T-01..06已验证并提交；正式五路径各30/512的完整实测与受影响cold verifier修复已按精确机制分界合并证据，最终代码/验收/规范复审和merge-owned门仍待执行。
 
 ## 1. 目标
 
@@ -79,7 +79,7 @@ source→既有compile_collections_source/CheckedModule→auto-mir-lower::{lower
 | T-01实跑List<Token>（拥有Item载荷）在vt_of_ann_coll误走record-only查找，尚未进入shared MIR | 在T-02接受已释放的S最小写面，修命名enum局部/载荷/返回及List元素查找，保上下文排除；先AV对独立oracle，再N同源。既有17行与源码哈希不动 |
 | T-01源码List.clone显式unsupported、Variant.clone无方法；typed profile已有Clone | V-03原有source/typed分账落到具体入口：合法Str.clone走source；List/Variant本体clone走未信任typed builder→verify_mir→mn与runtime，source拒绝作兼容负控。原T-01两个“源码clone成功”假设作废，不删除容器clone资源义务 |
 
-r2输入身份：canonical `docs/specs/auto-ac/source-collections-variants.md` SHA256 `a82dafa63e2a2426c4d4c2716a1bca64c4adee9385207b7fc9c6fdeb080cfdcd`；权威树 `experimental/ac-core/src/source/resolve.rs` SHA256 `4c7f8ca56f116a7076dbebdb00a1f9a2e690123f81fa7b04b5fb93ad863b25ae`。T-01的可重放源码、现行路径、基面反例与raw hash见[执行入口r1](attachments/889/execution-entry-r1.md)；这些是修订依据，不是native通过证据。
+r2输入身份：canonical `docs/specs/auto-ac/source-collections-variants.md` SHA256 `a82dafa63e2a2426c4d4c2716a1bca64c4adee9385207b7fc9c6fdeb080cfdcd`；权威树 `experimental/ac-core/src/source/resolve.rs` SHA256 `4c7f8ca56f116a7076dbebdb00a1f9a2e690123f81fa7b04b5fb93ad863b25ae`。T-01的可重放源码、现行路径、基面反例与raw hash见[执行入口r1](../attachments/889/execution-entry-r1.md)；这些是修订依据，不是native通过证据。
 
 ## 5. 详细设计
 
@@ -196,7 +196,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [x] |
-| T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
+| T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [x] |
 | T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
 
 ## 9. 复审记录
@@ -512,3 +512,16 @@ stage:merge | plan_revision:2 | outcome:in_progress | checkpoint:prepared | revi
 - 本地baseline/ledger-projection-receipt.json SHA256 `0513afa7895875b705a9eff5dedcacbd0eb8d0b665d522eff3581db117608811`。
 - 本地baseline/merge-prearchive-content-check.json SHA256 `130e13796bd7961e1c004b5d5ccce791d6ed933c360c2eda42f233035c10a845`。
 - pending:T-09实际linear landing/ledger readback/archive与T-10 guard cleanup/产物观察/到期判定；main保留他方docs/.next-id WIP，零本Plan WIP代码。goal第12轮仍在merge，未作最终pass或完成声明。
+
+
+### 2026-10-30 merge第12轮 landed / ledger_refreshed / archived：9/10
+
+checkpoint:landed | completion_kind:delivered | delivery_commit:50cd6f7778fa5332b2807e0d5bbc22a7d2ac2389 | landing:master从c8bbadc8f **git merge --ff-only plan-889-dev**到该完整SHA，现场验证主分支tip等于delivery，无merge commit | final_rebase:25条own提交range-diff全部`=`，44ed8db40→51302b256、dd0c4c7db→50cd6f777；73交付工作字节hash保持，不改生产/配置/依赖/验证输入，门禁证据有效。
+
+checkpoint:ledger_refreshed | channel:guarded offline projection | main .autoos/specs.json version150/SHA9a574cd8e20cad1dcdb34cbf0ed8ea10dadfc77fefcd07df4a15b666ed75fa9d已实际读回，9 affected IDs/source hashes与落地canonical LF字节逐项一致；未覆盖149的他方条目。六合同/four module回写/ADR/goals/index与reviewed SD一致，GOAL-002仍partial。此前10个他方tracked docs/.next-id WIP逐字hash和48个untracked路径现场保留，不被stash/提交/清理。
+
+checkpoint:archived | path:docs/plans/archive/889-native-collections-variants-source-closure.md | status:archived | T-09 complete | cleanup:T-10 pending。实际git mv后重定位Plan本体relative链接，canonical六个889归档目标随后按真实路径检查；本次archive与本段收据将提交主分支后才清理树。
+
+- 合入后smoke：在authority运行已验证的public release ac-native，输入读取**master的原L04.at**，显式collections/main；build exit0，真实PE exit42，容器alloc/free3/3，文本buffer1/1，无clone，live/bytes/guest/arena live+commit/metadata/registered均0，PE private delta4096B。exe SHA256 bbd20da98ab6c246c831b349ba66beed5359a201e4c87d8fedb4637c4b9c9aa4。该smoke非正式性能样本，不替代原P90；构建/链接/运行都在Plan树，不在主检出做开发构建。
+- N/S/H正式交付释放：本Plan所有子窗以delivery50cd6f777绑定；source/runtime/ABI/cache/SDK清单见已交付native Spec与attachments/889/spec-delta-r2.md末N接口清单。后继891仍只是其自身规划，未被本goal自动执行，W01..W05及native在线帧未关闭。
+- 本地证据即将按目录保持迁移：旧`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/` → `D:/autostack/plan-artifacts/plan-889/evidence/`（下级baseline和所有source/driver/inc目录不改名，既有raw hash可据此解析）；tracked两份Markdown亦在main保有。保留编译/测量EXE，清理只处理本组已guard的临时树及本Plan中间物，不触其他计划或进程。当前尚未声称cleaned。
