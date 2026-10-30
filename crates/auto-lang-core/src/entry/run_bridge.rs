@@ -27,20 +27,23 @@ pub(super) fn run_on_dedicated_thread(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    let launch = crate::vm::host_capabilities::http_service::invocation_launch();
     let code = code.to_string();
     let path = path.map(|p| p.to_string());
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm_with_deadline_and_input(
-                    &code,
-                    capture,
-                    path.as_deref(),
-                    deadline,
-                    input,
-                )
-                .await
+            crate::vm::host_capabilities::http_service::with_http_service_launch(launch, || {
+                block_on_autovm_local(async {
+                    execute_autovm_with_deadline_and_input(
+                        &code,
+                        capture,
+                        path.as_deref(),
+                        deadline,
+                        input,
+                    )
+                    .await
+                })
             })
         })
         .expect("Failed to spawn execution thread");
@@ -55,20 +58,23 @@ pub(super) fn run_staged_on_dedicated_thread(
     code: &str,
     path: &str,
 ) -> Result<(String, String), StagedRunFailure> {
+    let launch = crate::vm::host_capabilities::http_service::invocation_launch();
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            let r = block_on_autovm_local(async {
-                execute_autovm_with_path(&code, true, Some(&path))
-                    .await
-                    .map(|(r, stdout, _, _)| (r, stdout))
-            });
-            let trap = LAST_RUN_TRAP_CODE.with(|c| c.borrow_mut().take());
-            r.map_err(|error| StagedRunFailure {
-                error,
-                run_trap_code: trap,
+            crate::vm::host_capabilities::http_service::with_http_service_launch(launch, || {
+                let r = block_on_autovm_local(async {
+                    execute_autovm_with_path(&code, true, Some(&path))
+                        .await
+                        .map(|(r, stdout, _, _)| (r, stdout))
+                });
+                let trap = LAST_RUN_TRAP_CODE.with(|c| c.borrow_mut().take());
+                r.map_err(|error| StagedRunFailure {
+                    error,
+                    run_trap_code: trap,
+                })
             })
         })
         .expect("Failed to spawn execution thread");

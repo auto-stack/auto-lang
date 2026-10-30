@@ -57,6 +57,7 @@ pub struct ServiceObservation {
     instance_id: OnceLock<String>,
     identity: Mutex<Option<serde_json::Value>>,
     sink: OnceLock<SinkState>,
+    log_threads: std::sync::Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for ServiceObservation {
@@ -344,7 +345,8 @@ enum SinkMsg {
 }
 
 struct SinkState {
-    tx: SyncSender<SinkMsg>,
+    tx: Mutex<Option<SyncSender<SinkMsg>>>,
+    worker: Mutex<Option<std::thread::JoinHandle<std::io::Result<()>>>>,
 }
 
 /// 安装日志 sink（进程内一次；容量来自配置 `observability.log_sink_capacity`）。
@@ -355,23 +357,67 @@ pub fn install_log_sink(capacity: usize) {
 
 impl ServiceObservation {
     pub fn install_log_sink(&self, capacity: usize) {
-        if self.sink.get().is_some() {
-            return;
-        }
-        let (tx, rx) = mpsc::sync_channel::<SinkMsg>(capacity.max(1));
-        let _ = std::thread::Builder::new()
-            .name("auto-http-log-sink".into())
-            .spawn(move || {
-                use std::io::Write;
-                let stderr = std::io::stderr();
-                for msg in rx {
-                    if let SinkMsg::Line(l) = msg {
-                        let mut h = stderr.lock();
-                        let _ = writeln!(h, "{l}");
+        self.sink.get_or_init(|| {
+            let (tx, rx) = mpsc::sync_channel::<SinkMsg>(capacity.max(1));
+            let live = self.log_threads.clone();
+            let worker = std::thread::Builder::new()
+                .name("auto-http-log-sink".into())
+                .spawn(move || {
+                    struct Live(std::sync::Arc<AtomicU64>);
+                    impl Drop for Live {
+                        fn drop(&mut self) {
+                            self.0.fetch_sub(1, Ordering::SeqCst);
+                        }
+                    }
+                    live.fetch_add(1, Ordering::SeqCst);
+                    let _live = Live(live);
+                    use std::io::Write;
+                    let stderr = std::io::stderr();
+                    for SinkMsg::Line(line) in rx {
+                        writeln!(stderr.lock(), "{line}")?;
+                    }
+                    Ok(())
+                });
+            match worker {
+                Ok(worker) => SinkState {
+                    tx: Mutex::new(Some(tx)),
+                    worker: Mutex::new(Some(worker)),
+                },
+                Err(error) => {
+                    eprintln!("HTTP log sink spawn failed: {error}");
+                    SinkState {
+                        tx: Mutex::new(None),
+                        worker: Mutex::new(None),
                     }
                 }
-            });
-        let _ = self.sink.set(SinkState { tx });
+            }
+        });
+    }
+
+    pub fn log_threads_active(&self) -> u64 {
+        self.log_threads.load(Ordering::SeqCst)
+    }
+
+    /// Called only by the session's blocking join worker, after the network
+    /// runtime and its producers have exited. Taking tx stops new emission and
+    /// disconnects the queue; recv drains accepted lines before worker exit.
+    pub fn finish_log_sink_blocking(&self) -> Result<(), String> {
+        let Some(sink) = self.sink.get() else {
+            return Ok(());
+        };
+        sink.tx.lock().map_err(|_| "log sender poisoned")?.take();
+        let worker = sink
+            .worker
+            .lock()
+            .map_err(|_| "log worker poisoned")?
+            .take();
+        match worker {
+            Some(worker) => worker
+                .join()
+                .map_err(|_| "HTTP log thread panicked".to_string())?
+                .map_err(|error| format!("HTTP log write failed: {error}")),
+            None => Err("HTTP log worker unavailable or already joined".into()),
+        }
     }
 
     /// 事件行（serde_json 编码，杜绝字符串拼接注入面）。队满 → log_dropped+1，
@@ -388,7 +434,11 @@ impl ServiceObservation {
                 dst.insert(k.clone(), v.clone());
             }
         }
-        match state.tx.try_send(SinkMsg::Line(obj.to_string())) {
+        let sender = state.tx.lock().unwrap();
+        let Some(sender) = sender.as_ref() else {
+            return;
+        };
+        match sender.try_send(SinkMsg::Line(obj.to_string())) {
             Ok(()) => {}
             Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
                 self.counters.log_dropped.fetch_add(1, Ordering::Relaxed);
@@ -407,6 +457,30 @@ pub fn emit_event(fields: serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owned_log_sink_drains_joins_and_reports_worker_errors() {
+        let observation = ServiceObservation::default();
+        observation.install_log_sink(8);
+        observation.emit_event(serde_json::json!({"event":"join-control"}));
+        observation.finish_log_sink_blocking().unwrap();
+        assert_eq!(observation.log_threads_active(), 0);
+        assert!(observation.sink.get().unwrap().tx.lock().unwrap().is_none());
+        let (tx, _rx) = mpsc::sync_channel(1);
+        let failed = ServiceObservation::default();
+        let worker = std::thread::spawn(|| Err(std::io::Error::other("controlled write failure")));
+        assert!(failed
+            .sink
+            .set(SinkState {
+                tx: Mutex::new(Some(tx)),
+                worker: Mutex::new(Some(worker))
+            })
+            .is_ok());
+        assert!(failed
+            .finish_log_sink_blocking()
+            .unwrap_err()
+            .contains("controlled write failure"));
+    }
 
     #[test]
     fn instance_observation_and_terminal_event_are_owned_and_exactly_once() {
@@ -451,7 +525,13 @@ mod tests {
         let first = ServiceObservation::default();
         let second = ServiceObservation::default();
         let (tx, rx) = mpsc::sync_channel(1);
-        assert!(first.sink.set(SinkState { tx }).is_ok());
+        assert!(first
+            .sink
+            .set(SinkState {
+                tx: Mutex::new(Some(tx)),
+                worker: Mutex::new(None)
+            })
+            .is_ok());
         first.emit_event(serde_json::json!({"message": "line\nquote\""}));
         first.emit_event(serde_json::json!({"message": "full"}));
         second.emit_event(serde_json::json!({"message": "no sink"}));

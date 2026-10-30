@@ -11,9 +11,9 @@
 //! service, and `shim_http_server_listen`/`back_proxy` are separate server
 //! paths (see docs/specs/stdlib/design/backend-assembly.md).
 
+use crate::vm::host_capabilities::http_service::VmHttpBridge;
 use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
-use crate::vm::host_capabilities::http_service::VmHttpBridge;
 
 // ============================================================================
 // PLAN-669: #[api] handler 形参签名侧信道
@@ -2964,7 +2964,8 @@ fn ping() str { "pong" }
                             cfg,
                             shutdown_rx,
                         )
-                        .await;
+                        .await
+                        .expect("injected server lifecycle");
                     });
                     let _ = done_tx.send(());
                 })
@@ -3144,45 +3145,12 @@ static SERVE_FATAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(Non
 /// PLAN-736 AC-02: 最近一次 serve 成功 bind 的真实地址（port=0 解析值）。
 static SERVE_BOUND_ADDR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
-    // PLAN-699 T-03: Axum/Hyper HTTP/1.1 transport (Design 33 阶段 B). The VM
-    // owner keeps this thread's `LocalSet` and consumes a bounded queue of
-    // owned `ApiRequest`s; the network layer runs on a dedicated net thread
-    // (super::http_transport). Default shutdown signals: Ctrl+C (+ SIGTERM on
-    // unix); tests/embedders inject theirs through `serve_with`.
+pub async fn serve_async(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    addr: &str,
+) -> crate::AutoResult<()> {
     let cfg = super::http_transport::TransportConfig::from_env();
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    // PLAN-705 T-05（仅测试面）：注册全局关停触发器——E2E 经
-    // test_trigger_shutdown 注入优雅关停（默认信号面 Ctrl+C 不变）。
-    // PLAN-814: 跨 crate 测试支持面（上层 plan705 e2e 关停探针）
-    {
-        let _ = TEST_SHUTDOWN_TX.set(shutdown_tx.clone());
-    }
-    let _ = &shutdown_tx;
-    // PLAN-736 T-05：/__auto/shutdown 控制面与信号汇入同一 watch。
-    register_service_shutdown_tx(shutdown_tx.clone());
-    tokio::task::spawn_local({
-        let shutdown_tx = shutdown_tx.clone();
-        async move {
-            let _ = tokio::signal::ctrl_c().await;
-            eprintln!("[HTTP] Ctrl+C — shutting down gracefully");
-            let _ = shutdown_tx.send(true);
-        }
-    });
-    #[cfg(unix)]
-    tokio::task::spawn_local({
-        let shutdown_tx = shutdown_tx.clone();
-        async move {
-            if let Ok(mut sig) =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            {
-                sig.recv().await;
-                eprintln!("[HTTP] SIGTERM — shutting down gracefully");
-                let _ = shutdown_tx.send(true);
-            }
-        }
-    });
-    serve_with(vm, addr, cfg, shutdown_rx).await;
+    serve_async_with(vm, addr, cfg).await
 }
 
 /// PLAN-736 AC-03: 显式预算注入面——`auto service` 的 VM 轨用服务配置驱动
@@ -3191,12 +3159,11 @@ pub async fn serve_async_with(
     vm: std::rc::Rc<crate::vm::engine::AutoVM>,
     addr: &str,
     cfg: super::http_transport::TransportConfig,
-) {
+) -> crate::AutoResult<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     if let Some(service) = &cfg.service {
         if !service.bind_shutdown(shutdown_tx.clone()) {
-            record_serve_fatal("service runtime shutdown already bound");
-            return;
+            return Err("service runtime shutdown already bound".into());
         }
     }
     // PLAN-814: 跨 crate 测试支持面（上层 plan705 e2e 关停探针）
@@ -3205,16 +3172,17 @@ pub async fn serve_async_with(
     }
     let _ = &shutdown_tx;
     register_service_shutdown_tx(shutdown_tx.clone());
-    tokio::task::spawn_local({
+    let mut signals = SignalTasks(Vec::new());
+    signals.0.push(tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
             let _ = tokio::signal::ctrl_c().await;
             eprintln!("[HTTP] Ctrl+C — shutting down gracefully");
             let _ = shutdown_tx.send(true);
         }
-    });
+    }));
     #[cfg(unix)]
-    tokio::task::spawn_local({
+    signals.0.push(tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
             if let Ok(mut sig) =
@@ -3225,8 +3193,8 @@ pub async fn serve_async_with(
                 let _ = shutdown_tx.send(true);
             }
         }
-    });
-    serve_with(vm, addr, cfg, shutdown_rx).await;
+    }));
+    serve_with(vm, addr, cfg, shutdown_rx).await
 }
 
 /// PLAN-705 T-05（仅测试面）：构造最小 GET ApiRequest（失效队列单元用）。
@@ -3264,12 +3232,12 @@ pub(crate) async fn serve_with(
     addr: &str,
     cfg: super::http_transport::TransportConfig,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
-) {
+) -> crate::AutoResult<()> {
     crate::http_service_config::with_service_policy(
         cfg.service.is_some(),
         server_route::with_owner_rate_buckets(serve_with_inner(vm, addr, cfg, shutdown_rx)),
     )
-    .await;
+    .await
 }
 
 async fn serve_with_inner(
@@ -3277,7 +3245,7 @@ async fn serve_with_inner(
     addr: &str,
     cfg: super::http_transport::TransportConfig,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
-) {
+) -> crate::AutoResult<()> {
     // PLAN-730 T-05：安装上传宿主 executor（幂等；a2r facade 的 receive/
     // commit/reject 经此执行——VM 桥与生成 Rust 服务共用单源）。
     crate::http_upload_service::install_upload_executor_service();
@@ -3291,7 +3259,7 @@ async fn serve_with_inner(
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
     let net_addr = addr.to_string();
     let net_cfg = cfg.clone();
-    let net_shutdown = shutdown_rx.clone();
+    let (network_stop, net_shutdown) = tokio::sync::watch::channel(*shutdown_rx.borrow());
     let net_metadata = current_program_metadata();
     let spawned = std::thread::Builder::new()
         .name("auto-http-net".to_string())
@@ -3321,10 +3289,26 @@ async fn serve_with_inner(
         Err(error) => {
             eprintln!("[HTTP] failed to spawn the auto-http-net thread: {error}");
             record_serve_fatal(format!("failed to spawn the auto-http-net thread: {error}"));
-            return;
+            if let Some(service) = &cfg.service {
+                let service = service.clone();
+                tokio::task::spawn_blocking(move || {
+                    let result = service.observation.finish_log_sink_blocking();
+                    service.observation.set_service_state(
+                        crate::http_service_observability::ServiceState::Stopped,
+                    );
+                    service.finish_cleanup(result.clone());
+                    result
+                })
+                .await
+                .map_err(|error| crate::error::AutoError::Msg(error.to_string()))?
+                .map_err(crate::error::AutoError::Msg)?;
+            }
+            return Err(format!("failed to spawn HTTP network thread: {error}").into());
         }
     };
-    match ready_rx.await {
+    let mut network_session =
+        NetworkSession::new(network_thread, network_stop, cfg.service.clone());
+    let bound_address = match ready_rx.await {
         Ok(Ok(bound)) => {
             // PLAN-736: 真实 bound 地址（port=0 时为内核分配值）供 serve 入口/
             // health 身份消费。
@@ -3340,31 +3324,30 @@ async fn serve_with_inner(
                     c.profile.as_str(),
                     c.effective_config_hash(),
                 );
-                svc.observation.set_service_state(
-                    if *shutdown_rx.borrow() {
-                        crate::http_service_observability::ServiceState::Draining
-                    } else {
-                        crate::http_service_observability::ServiceState::Ready
-                    },
-                );
+                svc.observation.set_service_state(if *shutdown_rx.borrow() {
+                    crate::http_service_observability::ServiceState::Draining
+                } else {
+                    crate::http_service_observability::ServiceState::Ready
+                });
             }
+            bound
         }
         Ok(Err(e)) => {
             eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
             record_serve_fatal(format!("bind failed on {addr}: {e}"));
-            join_network_thread(network_thread).await;
-            return;
+            network_session.join().await?;
+            return Err(format!("bind failed on {addr}: {e}").into());
         }
         Err(_) => {
             eprintln!("[HTTP] net thread died before binding");
             record_serve_fatal("net thread died before binding");
-            join_network_thread(network_thread).await;
-            return;
+            network_session.join().await?;
+            return Err("net thread died before binding".into());
         }
-    }
+    };
     eprintln!(
         "[HTTP] Axum/Hyper transport listening on {} ({} route(s), VM owner thread)",
-        addr,
+        bound_address,
         routes.len()
     );
 
@@ -3376,9 +3359,12 @@ async fn serve_with_inner(
     // 检查照常服务（AC-01）。CPU 段仍不可抢占（10M 指令预算内跑完），
     // 这是 Design 33 §C 的既有边界。
     let mut shutdown_rx = shutdown_rx;
-    let mut parked: Vec<ParkedRequest> = Vec::new();
-    let mut drain_deadline = (*shutdown_rx.borrow())
-        .then(|| tokio::time::Instant::now() + cfg.shutdown_drain);
+    let mut parked = ParkedRequests {
+        vm: vm.clone(),
+        requests: Vec::new(),
+    };
+    let mut drain_deadline =
+        (*shutdown_rx.borrow()).then(|| tokio::time::Instant::now() + cfg.shutdown_drain);
     let mut loop_result = ();
     loop {
         if drain_deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
@@ -3449,6 +3435,7 @@ async fn serve_with_inner(
                 _ = wait_for_service_shutdown(&mut shutdown_rx) => {
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
+                    let _ = network_session.stop.send(true);
                     drain_deadline = Some(tokio::time::Instant::now() + cfg.shutdown_drain);
                     if let Some(service) = &cfg.service {
                         service.observation.set_service_state(
@@ -3460,13 +3447,15 @@ async fn serve_with_inner(
         }
     }
     drop(req_rx);
-    join_network_thread(network_thread).await;
+    let _ = network_session.stop.send(true);
+    network_session.join().await?;
     if let Some(service) = &cfg.service {
-        service.observation.set_service_state(
-            crate::http_service_observability::ServiceState::Stopped,
-        );
+        service
+            .observation
+            .set_service_state(crate::http_service_observability::ServiceState::Stopped);
     }
     eprintln!("[HTTP] VM owner loop exited (port released)");
+    Ok(())
 }
 
 /// ============================================================================
@@ -4210,24 +4199,12 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
             let mut p = parked.remove(i);
             match resume_parked_request(vm, &mut p) {
                 ParkedResume::Reply(reply) => {
-                    // R04 修复轮：owner 侧幂等收口（同 Err 臂）——普通回复
-                    // 发送后立即终结 scope（桥侧 complete 幂等无害），
-                    // 不与 owner 退出/运行时拆除竞速；SSE/File 体许可随
-                    // scope 移交响应体，保持桥侧收口。
-                    let holds_in_body = matches!(
-                        &reply,
-                        ApiReply::Full {
-                            body: ApiBody::Sse(_),
-                            ..
-                        } | ApiReply::Full {
-                            body: ApiBody::File(_),
-                            ..
-                        }
-                    );
-                    let _ = p.reply_tx.take().map(|tx| tx.send(reply));
-                    if !holds_in_body {
-                        if let Some(s) = lookup_scope(p.scope_id) {
-                            complete_scope(&s);
+                    // Successful delivery transfers terminal observation to the
+                    // bridge, which records status/bytes before finalizing.
+                    let delivered = p.reply_tx.take().is_some_and(|tx| tx.send(reply).is_ok());
+                    if !delivered {
+                        if let Some(scope) = lookup_scope(p.scope_id) {
+                            cancel_scope(&scope);
                         }
                     }
                 }

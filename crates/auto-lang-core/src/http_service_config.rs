@@ -115,6 +115,8 @@ pub struct ServiceRuntime {
     pub limiter: Option<RateLimiter>,
     pub observation: Arc<crate::http_service_observability::ServiceObservation>,
     shutdown: OnceLock<tokio::sync::watch::Sender<bool>>,
+    cleanup: OnceLock<Result<(), String>>,
+    cleanup_notify: tokio::sync::Notify,
 }
 
 impl std::fmt::Debug for ServiceRuntime {
@@ -134,6 +136,8 @@ impl ServiceRuntime {
             limiter,
             observation: Arc::new(crate::http_service_observability::ServiceObservation::default()),
             shutdown: OnceLock::new(),
+            cleanup: OnceLock::new(),
+            cleanup_notify: tokio::sync::Notify::new(),
         }
     }
 
@@ -146,6 +150,27 @@ impl ServiceRuntime {
         self.shutdown
             .get()
             .is_some_and(|sender| sender.send(true).is_ok())
+    }
+
+    /// The runtime's join worker publishes this after network AND log joins.
+    /// It is a cleanup receipt, distinct from startup/service success.
+    pub fn finish_cleanup(&self, result: Result<(), String>) {
+        if self.cleanup.set(result).is_ok() {
+            self.cleanup_notify.notify_waiters();
+        }
+    }
+
+    /// Retain the session to await cleanup even after dropping its serve future.
+    pub async fn wait_cleanup(&self) -> Result<(), String> {
+        loop {
+            let notified = self.cleanup_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if let Some(result) = self.cleanup.get() {
+                return result.clone();
+            }
+            notified.await;
+        }
     }
 
     pub fn now_ms() -> u64 {

@@ -44,7 +44,7 @@ impl HttpServiceHost for Adapter {
                     owner, address, config, sender, receiver,
                 )),
                 None => Box::pin(web_runtime_boundary_probe::serve_owned(
-                    owner, address, receiver,
+                    owner, address, sender, receiver,
                 )),
             };
             SERVICES.with(|services| {

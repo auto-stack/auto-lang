@@ -199,3 +199,19 @@ guard and `VmHttpBridge::bind_program_metadata(&mut vm, guard.finish(&routes))`
 before sharing/running their VM. Only owned declarations cross the boundary;
 the guard remains local. Legacy standalone record/read APIs retain their cache
 fallback, which is not a concurrency contract for custom unbound raw VMs.
+
+## T-02 r3 bounded repair replay
+
+```powershell
+cargo build --manifest-path test/fixtures/modularity/web-port-probe/Cargo.toml --features external-runtime --bin web-port-probe --bin isolation --bin session --locked -j 4
+python test/fixtures/modularity/web-port-probe/t02_closeout_audit.py --sdk-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --isolation-exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
+python test/fixtures/modularity/web-port-probe/t02_session_probe.py --sdk-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --session-exe test/fixtures/modularity/web-port-probe/target/debug/session.exe
+```
+
+The first replay preserves the original three failing oracles. The second
+requires actual scoped SDK launch/config hash and port=0 identity, control-path
+shutdown, A bind failure followed by independent B, a parked async 500 event,
+and cancellation with a real in-flight scope. Cancellation awaits the retained
+session's cleanup result, then asserts actual log/network termination and
+resource registries; the injected network-thread tail prevents an early-return
+cleanup claim. These are T-02 feasibility checks, not the four-repository gate.

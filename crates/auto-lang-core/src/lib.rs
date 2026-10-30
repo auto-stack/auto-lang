@@ -221,6 +221,7 @@ pub async fn execute_autovm_with_deadline_and_input(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    let http_launch = crate::vm::host_capabilities::http_service::invocation_launch();
     let _request_file_root = input
         .is_some()
         .then(|| crate::vm::ffi::stdlib::RequestFileRootGuard::for_source_path(path));
@@ -675,6 +676,7 @@ pub async fn execute_autovm_with_deadline_and_input(
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
                                                           // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::host_capabilities::http_service::VmHttpBridge::bind_launch(&mut vm, http_launch);
     crate::vm::host_capabilities::http_service::VmHttpBridge::bind_program_metadata(
         &mut vm,
         http_metadata_scope.finish(&api_routes),
@@ -1081,6 +1083,7 @@ async fn test_code_with_options(
     deadline: Option<std::time::Instant>,
     input: Option<String>,
 ) -> AutoResult<test_runner::TestResult> {
+    let http_launch = crate::vm::host_capabilities::http_service::invocation_launch();
     let _request_file_root = input
         .is_some()
         .then(|| crate::vm::ffi::stdlib::RequestFileRootGuard::for_source_path(path));
@@ -1199,6 +1202,7 @@ async fn test_code_with_options(
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
                                                           // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::host_capabilities::http_service::VmHttpBridge::bind_launch(&mut vm, http_launch);
     crate::vm::host_capabilities::http_service::VmHttpBridge::bind_program_metadata(
         &mut vm,
         http_metadata_scope.finish(&api_routes),

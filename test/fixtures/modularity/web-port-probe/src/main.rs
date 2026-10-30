@@ -32,10 +32,10 @@ impl auto_lang_core::vm::host_capabilities::http_service::HttpServiceHost for Ex
             let (sender, receiver) = tokio::sync::watch::channel(
                 std::env::var("PLAN890_PRESTOPPED").as_deref() == Ok("1"),
             );
-            *EXTERNAL_SHUTDOWN.lock().unwrap() = Some(sender);
+            *EXTERNAL_SHUTDOWN.lock().unwrap() = Some(sender.clone());
             let address = format!("127.0.0.1:{}", std::env::var("AUTO_HTTP_PORT").unwrap());
             Box::pin(web_runtime_boundary_probe::serve_owned(
-                owner, address, receiver,
+                owner, address, sender, receiver,
             ))
         }
     }
@@ -46,13 +46,25 @@ fn main() {
     let source =
         std::fs::read_to_string(arguments.first().expect("source path")).expect("read source");
     let audit_configuration = std::env::var("PLAN890_AUDIT_ACTIVE_CONFIG").ok();
+    let mut explicit_launch = None;
     if let Some(path) = &audit_configuration {
         let config = auto_lang_core::http_service_config::resolve_service_config(
             &std::fs::read_to_string(path).unwrap(),
             None,
         )
         .unwrap();
-        auto_lang_core::http_service_config::set_active_service_config(std::sync::Arc::new(config));
+        let config = std::sync::Arc::new(config);
+        eprintln!(
+            "probe expected config_hash={:016x}",
+            config.effective_config_hash()
+        );
+        if std::env::var("PLAN890_EXPLICIT_LAUNCH").as_deref() == Ok("1") {
+            explicit_launch = Some(
+                auto_lang_core::vm::host_capabilities::http_service::HttpServiceLaunch::new(config),
+            );
+        } else {
+            auto_lang_core::http_service_config::set_active_service_config(config);
+        }
     }
     if arguments
         .iter()
@@ -82,7 +94,16 @@ fn main() {
     });
     // Only the explicit flag above installs a host. Missing-provider and plain
     // language controls use this exact public call with no installation.
-    match auto_lang_core::run_with_capture(&source) {
+    let run = || auto_lang_core::run_with_capture(&source);
+    let result = if explicit_launch.is_some() {
+        auto_lang_core::vm::host_capabilities::http_service::with_http_service_launch(
+            explicit_launch,
+            run,
+        )
+    } else {
+        run()
+    };
+    match result {
         Ok((value, stdout)) => {
             if audit_configuration.is_some() {
                 eprintln!(

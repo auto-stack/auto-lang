@@ -83,17 +83,140 @@ pub(crate) async fn wait_for_service_shutdown(shutdown: &mut tokio::sync::watch:
 
 /// Join only the owned network thread. The local !Send VM never enters the
 /// blocking executor, and the owner reports Stopped only after this completes.
-pub(super) async fn join_network_thread(thread: std::thread::JoinHandle<()>) {
-    match tokio::task::spawn_blocking(move || thread.join()).await {
-        Ok(Ok(())) => {}
-        Ok(Err(_)) => record_serve_fatal("HTTP network thread panicked during shutdown"),
-        Err(error) => record_serve_fatal(format!("HTTP network thread join failed: {error}")),
+pub(super) struct SignalTasks(pub Vec<tokio::task::JoinHandle<()>>);
+impl Drop for SignalTasks {
+    fn drop(&mut self) {
+        for signal in &self.0 {
+            signal.abort();
+        }
+    }
+}
+
+pub(super) struct NetworkSession {
+    pub stop: tokio::sync::watch::Sender<bool>,
+    joined: tokio::task::JoinHandle<crate::AutoResult<()>>,
+}
+
+impl NetworkSession {
+    pub fn new(
+        thread: std::thread::JoinHandle<()>,
+        stop: tokio::sync::watch::Sender<bool>,
+        runtime: Option<std::sync::Arc<crate::http_service_config::ServiceRuntime>>,
+    ) -> Self {
+        // Start the join now, not when the owner happens to finish. Dropping
+        // the service future detaches this *cleanup* task, never the net thread.
+        let joined = tokio::task::spawn_blocking(move || {
+            let observation = runtime.as_ref().map(|runtime| runtime.observation.clone());
+            let network = thread
+                .join()
+                .map_err(|_| crate::error::AutoError::Msg("HTTP network thread panicked".into()));
+            // Final network state is emitted while the logger can still
+            // accept it. Returning from join additionally proves log drain.
+            if let Some(obs) = &observation {
+                obs.set_service_state(crate::http_service_observability::ServiceState::Stopped);
+            }
+            let logging = observation
+                .as_ref()
+                .map(|obs| obs.finish_log_sink_blocking())
+                .transpose()
+                .map_err(crate::error::AutoError::Msg);
+            let result = network.and(logging.map(|_| ()));
+            if let Some(runtime) = runtime {
+                runtime.finish_cleanup(
+                    result
+                        .as_ref()
+                        .map(|_| ())
+                        .map_err(|error| error.to_string()),
+                );
+            }
+            if let Err(error) = &result {
+                eprintln!("HTTP session cleanup failed: {error}");
+            }
+            result
+        });
+        Self { stop, joined }
+    }
+
+    pub async fn join(&mut self) -> crate::AutoResult<()> {
+        (&mut self.joined).await.map_err(|error| {
+            crate::error::AutoError::Msg(format!("HTTP session join failed: {error}"))
+        })?
+    }
+}
+
+impl Drop for NetworkSession {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
+    }
+}
+
+pub(super) struct ParkedRequests {
+    pub vm: std::rc::Rc<AutoVM>,
+    pub requests: Vec<ParkedRequest>,
+}
+impl std::ops::Deref for ParkedRequests {
+    type Target = Vec<ParkedRequest>;
+    fn deref(&self) -> &Self::Target {
+        &self.requests
+    }
+}
+impl std::ops::DerefMut for ParkedRequests {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.requests
+    }
+}
+impl Drop for ParkedRequests {
+    fn drop(&mut self) {
+        cancel_all_parked(&self.vm, &mut self.requests);
     }
 }
 
 #[cfg(test)]
 mod shutdown_tests {
     use super::wait_for_service_shutdown;
+
+    #[test]
+    fn session_cleanup_error_is_owned_and_join_does_not_block_reactor() {
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        executor.block_on(async {
+            let service = std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(
+                std::sync::Arc::new(
+                    crate::http_service_config::resolve_service_config(
+                        r#"{"profile":"development"}"#,
+                        None,
+                    )
+                    .unwrap(),
+                ),
+            ));
+            service.observation.install_log_sink(4);
+            let (release, wait) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                wait.recv().unwrap();
+                panic!("controlled network panic");
+            });
+            let (stop, _) = tokio::sync::watch::channel(false);
+            let mut session = super::NetworkSession::new(worker, stop, Some(service.clone()));
+            // The join is already waiting on a real thread; the reactor must
+            // still drive this timer and release it.
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            release.send(()).unwrap();
+            assert!(session
+                .join()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("network thread panicked"));
+            assert!(service
+                .wait_cleanup()
+                .await
+                .unwrap_err()
+                .contains("network thread panicked"));
+            assert_eq!(service.observation.log_threads_active(), 0);
+        });
+    }
 
     #[test]
     fn shutdown_wait_honors_initial_true_false_updates_and_sender_close() {

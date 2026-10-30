@@ -504,6 +504,7 @@ pub struct AutoVM {
     // This is per VM, not a process route/host-registry flag.
     http_service_claimed: std::cell::Cell<bool>,
     http_program_metadata: Option<Arc<HttpProgramMetadata>>,
+    http_service_launch: Option<crate::vm::host_capabilities::http_service::HttpServiceLaunch>,
     // Owned language settings only; the serving host owns rate-window buckets
     // and policy execution. Native calls never mutate another VM's settings.
     http_rate_limit: std::cell::Cell<Option<Option<(u32, u64)>>>,
@@ -811,6 +812,19 @@ impl AutoVM {
         self.http_service_claimed.get()
     }
 
+    pub(crate) fn http_service_launch(
+        &self,
+    ) -> Option<&crate::vm::host_capabilities::http_service::HttpServiceLaunch> {
+        self.http_service_launch.as_ref()
+    }
+
+    pub(crate) fn set_http_service_launch(
+        &mut self,
+        launch: Option<crate::vm::host_capabilities::http_service::HttpServiceLaunch>,
+    ) {
+        self.http_service_launch = launch;
+    }
+
     pub(crate) fn http_program_metadata(&self) -> Option<&Arc<HttpProgramMetadata>> {
         self.http_program_metadata.as_ref()
     }
@@ -963,6 +977,8 @@ impl AutoVM {
             instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
             http_service_claimed: std::cell::Cell::new(false),
             http_program_metadata: None,
+            http_service_launch:
+                crate::vm::host_capabilities::http_service::current_http_service_launch(),
             http_rate_limit: std::cell::Cell::new(None),
             http_credential_gen: std::sync::atomic::AtomicU64::new(0),
             http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态

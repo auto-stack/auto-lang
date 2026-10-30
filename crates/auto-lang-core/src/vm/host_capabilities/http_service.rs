@@ -16,6 +16,19 @@ pub use program_metadata::CompilationMetadataGuard;
 /// Framework-neutral, owned messages shared by network and local VM owners.
 pub mod messages;
 pub use bridge::VmHttpBridge;
+mod launch;
+pub use launch::*;
+
+// Transitional compatibility input for existing Man assembly. New hosts use
+// the explicit launch context; this take happens at invocation entry only.
+pub(crate) fn invocation_launch() -> Option<HttpServiceLaunch> {
+    if launch::launch_context_is_bound() {
+        return current_http_service_launch();
+    }
+    current_http_service_launch().or_else(|| {
+        crate::http_service_config::take_active_service_config().map(HttpServiceLaunch::new)
+    })
+}
 
 // Compatibility embedding default: pure settings, not window state or policy
 // execution. Both the external adapter and the old SDK facade use this source.
@@ -58,6 +71,10 @@ pub struct HttpVmOwner {
 }
 
 impl HttpVmOwner {
+    pub fn launch(&self) -> Option<&HttpServiceLaunch> {
+        self.vm.http_service_launch()
+    }
+
     pub fn route_count(&self) -> usize {
         self.routes.len()
     }
@@ -310,8 +327,7 @@ impl HttpVmOwner {
             self.metadata,
             crate::vm::ffi::http_server::serve_with(self.vm, &address, config, shutdown),
         )
-        .await;
-        Ok(())
+        .await
     }
 
     /// TEMPORARY T-02 source experiment only. The existing runtime has a
@@ -332,8 +348,18 @@ impl HttpVmOwner {
         let routes = self.routes;
         // PLAN-736 AC-01: 显式服务配置面（`auto serve`/run_file 服务装配）——
         // listen 取自解析后的 HttpServiceConfig（默认 loopback），不再读 env；
-        // seam 由 serve 入口在 spawn VM 线程前 set、此处 take 一次。
-        if let Some(svc) = crate::http_service_config::take_active_service_config() {
+        // Compatibility input was already snapshotted at invocation entry;
+        // activation never takes process-global deployment config.
+        let configured = VmHttpBridge::launch(&vm)
+            .map(|launch| {
+                launch
+                    .settings::<crate::http_service_config::HttpServiceConfig>()
+                    .ok_or_else(|| {
+                        crate::error::AutoError::Msg("unsupported HTTP launch settings type".into())
+                    })
+            })
+            .transpose()?;
+        if let Some(svc) = configured {
             // PLAN-736 T-05/AC-02：业务路由占用 /__auto/* 控制面 = 装配诊断
             // （非零退出；不静默遮蔽控制面）。
             let control_conflicts: Vec<&str> = routes
@@ -367,17 +393,7 @@ impl HttpVmOwner {
             let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(
                 runtime.clone(),
             );
-            crate::vm::ffi::http_server::serve_async_with(vm, &addr, transport).await;
-            if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
-                // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
-                runtime.observation.emit_event(serde_json::json!({
-                    "event": "config_error",
-                    "reason": fatal,
-                }));
-                return Err(crate::error::AutoError::Msg(format!(
-                    "http service failed to start: {fatal}"
-                )));
-            }
+            crate::vm::ffi::http_server::serve_async_with(vm, &addr, transport).await?;
             return Ok(());
         }
         let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
@@ -388,7 +404,7 @@ impl HttpVmOwner {
             addr
         );
 
-        crate::vm::ffi::http_server::serve_async(vm, &addr).await;
+        crate::vm::ffi::http_server::serve_async(vm, &addr).await?;
 
         Ok(())
     }

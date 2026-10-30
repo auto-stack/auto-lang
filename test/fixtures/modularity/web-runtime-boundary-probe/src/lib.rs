@@ -73,8 +73,25 @@ pub mod vm {
 pub async fn serve_owned(
     owner: auto_lang_core::vm::host_capabilities::http_service::HttpVmOwner,
     address: String,
+    sender: tokio::sync::watch::Sender<bool>,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> auto_lang_core::AutoResult<()> {
+    let configured = owner
+        .launch()
+        .map(|launch| {
+            launch
+                .settings::<auto_lang_core::http_service_config::HttpServiceConfig>()
+                .ok_or_else(|| {
+                    auto_lang_core::error::AutoError::Msg(
+                        "unsupported HTTP launch settings type".into(),
+                    )
+                })
+        })
+        .transpose()?;
+    if let Some(config) = configured {
+        let address = format!("{}:{}", config.listen_addr, config.listen_port);
+        return serve_service_owned(owner, address, config, sender, shutdown).await;
+    }
     let (vm, metadata) = owner.into_local_parts();
     if std::env::var("PLAN890_METADATA_GAP").as_deref() == Ok("1") {
         let first = metadata.routes.iter().any(|r| r.path == "/one/:n");
@@ -91,8 +108,7 @@ pub async fn serve_owned(
         metadata,
         http_server::serve_with(vm, &address, config, shutdown),
     )
-    .await;
-    Ok(())
+    .await
 }
 
 #[cfg(feature = "boundary")]
@@ -116,15 +132,22 @@ pub async fn serve_service_owned(
         .observation
         .install_log_sink(runtime.config.observability.log_sink_capacity);
     let observation = runtime.observation.clone();
-    let config =
-        http_transport::TransportConfig::from_service_runtime(std::sync::Arc::new(runtime));
+    observations_slot()
+        .lock()
+        .unwrap()
+        .push(observation.clone());
+    let runtime = std::sync::Arc::new(runtime);
+    sessions_slot().lock().unwrap().push(runtime.clone());
+    let config = http_transport::TransportConfig::from_service_runtime(runtime);
     let (vm, metadata) = owner.into_local_parts();
     http_server::with_owner_metadata(
         metadata,
         http_server::serve_with(vm, &address, config, shutdown),
     )
-    .await;
+    .await?;
     assert_eq!(observation.counters().snapshot()["connections_active"], 0);
+    assert_eq!(observation.log_threads_active(), 0);
+    eprintln!("probe logger joined instance={}", observation.instance_id());
     Ok(())
 }
 
@@ -148,4 +171,35 @@ pub fn listen_borrowed(
         }
     };
     result.map_err(|error| auto_lang_core::error::AutoError::Msg(format!("{error:?}")))
+}
+
+#[cfg(feature = "boundary")]
+fn observations_slot() -> &'static std::sync::Mutex<
+    Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>>,
+> {
+    static OBS: std::sync::OnceLock<
+        std::sync::Mutex<
+            Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>>,
+        >,
+    > = std::sync::OnceLock::new();
+    OBS.get_or_init(Default::default)
+}
+#[cfg(feature = "boundary")]
+pub fn observations(
+) -> Vec<std::sync::Arc<auto_lang_core::http_service_observability::ServiceObservation>> {
+    observations_slot().lock().unwrap().clone()
+}
+
+#[cfg(feature = "boundary")]
+fn sessions_slot() -> &'static std::sync::Mutex<
+    Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>>,
+> {
+    static SESSIONS: std::sync::OnceLock<
+        std::sync::Mutex<Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>>>,
+    > = std::sync::OnceLock::new();
+    SESSIONS.get_or_init(Default::default)
+}
+#[cfg(feature = "boundary")]
+pub fn sessions() -> Vec<std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>> {
+    sessions_slot().lock().unwrap().clone()
 }

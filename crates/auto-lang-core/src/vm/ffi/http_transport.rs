@@ -680,23 +680,7 @@ async fn bridge_handler(
         }
     };
     let reply = match reply {
-        Some(Ok(reply)) => {
-            // 回复已定：状态与字节进事件（终态仍由 scope finalize 发射——
-            // 流/文件以 body 收口为终态，不 headers 即记）。
-            if let Ok(mut slot) = scope.event.lock() {
-                if let Some(ev) = slot.as_mut() {
-                    ev.status = match &reply {
-                        ApiReply::Full {
-                            body: ApiBody::File(_),
-                            ..
-                        } => None,
-                        _ => Some(reply_status(&reply)),
-                    };
-                    ev.bytes_sent = reply_bytes_hint(&reply);
-                }
-            }
-            reply
-        }
+        Some(Ok(reply)) => reply,
         Some(Err(_)) => {
             super::http_server::cancel_scope(&scope);
             return error_response(503, "server shutting down");
@@ -719,6 +703,21 @@ async fn bridge_handler(
             }
         }
     };
+
+    // 回复已定：状态与字节进事件（终态仍由 scope finalize 发射——
+    // 流/文件以 body 收口为终态，不 headers 即记）。
+    if let Ok(mut slot) = scope.event.lock() {
+        if let Some(ev) = slot.as_mut() {
+            ev.status = match &reply {
+                ApiReply::Full {
+                    body: ApiBody::File(_),
+                    ..
+                } => None,
+                _ => Some(reply_status(&reply)),
+            };
+            ev.bytes_sent = reply_bytes_hint(&reply);
+        }
+    }
 
     // SSE：许可随 scope 移交响应体（FrameStream Drop 释放——流结束/断连/
     // 关闭均触发）；普通回复立即终结 scope。

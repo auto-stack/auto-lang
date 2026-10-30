@@ -4,6 +4,16 @@
 pub struct VmHttpBridge;
 
 impl VmHttpBridge {
+    pub fn bind_launch(
+        vm: &mut crate::vm::engine::AutoVM,
+        launch: Option<super::HttpServiceLaunch>,
+    ) {
+        vm.set_http_service_launch(launch);
+    }
+
+    pub fn launch(vm: &crate::vm::engine::AutoVM) -> Option<super::HttpServiceLaunch> {
+        vm.http_service_launch().cloned()
+    }
     pub fn record_api_param_sigs(name: &str, params: &[super::messages::ApiParamSig]) {
         super::program_metadata::collect(|p| {
             p.params.insert(name.to_owned(), params.to_vec());
