@@ -69,10 +69,7 @@ def listed_ids(raw, package=None):
 
 def module_execution(directory):
     """Reconcile stored execution with the selected source-bound atomic IDs."""
-    from module_catalog import verify_selection, discover, source_identity, ROOT
-    from run_selected import applicability, exact_filter, execution_settings, validate_python_result, validate_case_result
-    from repository_layout import workspace_root
-    import os
+    from module_catalog import verify_selection, source_identity, ROOT
     directory = Path(directory)
     selection_path = directory / 'selection.json'
     selection = load(selection_path)
@@ -92,78 +89,91 @@ def module_execution(directory):
     results = {r['module']: r for r in report['results']}
     if len(results) != len(report['results']) or set(results) != set(selection['modules']):
         raise ValueError('missing, extra or duplicate actual module result')
-    lookup = {r['id']: r for r in catalog['obligations']}
     for module in catalog['modules']:
-        if module['id'] not in results:
-            continue
-        row = results[module['id']]
-        recipe = catalog['recipes'][module['recipe']]
-        rows = [lookup[i] for i in module['obligations']]
-        if row.get('obligations') != sorted(module['obligations']):
-            raise ValueError('actual module obligation identity differs')
-        keys = set(recipe.get('required_env', {}))
-        for obligation in rows:
-            for condition in obligation.get('conditions', []):
-                keys.update(condition.get('required_env', {}))
-        env = {**os.environ, **recipe.get('env', {})}
-        condition_environment = {key: env.get(key) for key in sorted(keys)}
-        if row.get('condition_environment') != condition_environment:
-            raise ValueError('execution condition environment differs from frozen invocation')
-        excluded = applicability(rows, condition_environment, recipe.get('required_env'))
-        expected = sorted(set(module['obligations']) - {r['id'] for r in excluded})
-        if row.get('applicable') != expected:
-            raise ValueError('actual applicable IDs omit/duplicate an unconditional obligation')
-        if excluded:
-            if row.get('outcome') != 'NOT_APPLICABLE' or row.get('condition_excluded') != excluded or row.get('exit') is not None:
-                raise ValueError('condition exclusion differs from original source conditions')
-            continue
-        if row.get('outcome') != 'PASS' or row.get('exit') != 0 or row.get('condition_excluded') != []:
-            raise ValueError('required module was not successfully executed')
-        from execution_trace import validate_bindings
-        bindings = validate_bindings(rows, row.get('child_observations', {'invocations': []}))
-        if row.get('child_validation') != bindings or not bindings['valid']:
-            raise ValueError('required original child observations are incomplete')
-        if Path(row.get('cwd', '')).resolve() != workspace_root(ROOT, recipe):
-            raise ValueError('module execution cwd differs from declared owner')
-        output = read_proof(row.get('output'))
-        listing = read_proof(row.get('listing'))
-        listed = discover(json.loads(listing), module['recipe'], allow_filtered_skipped=True)
-        runner = recipe.get('runner', 'nextest')
-        if runner in ('python-unittest', 'case-suite'):
-            listed = [r for r in listed if r['id'] in set(expected)]
-        if sorted(r['id'] for r in listed if r['selected_at_discovery'] and not r['ignored']) != expected:
-            raise ValueError('actual discovery omitted or changed module IDs')
-        if runner == 'nextest':
-            switches = [*execution_settings(recipe, module)[0], '--ignore-default-filter', '-E', exact_filter(rows)]
-            serial = ['--test-threads', '1'] if 'th' in module.get('legacy_tiers', []) or any(r['test'].startswith('vm::ffi::stdlib::http::') for r in rows) else []
-            if (row.get('list_command') != ['cargo', 'nextest', 'list', *switches, '--message-format', 'json']
-                    or row.get('command') != ['cargo', 'nextest', 'run', *switches, *serial, '--no-fail-fast', '--no-tests', 'fail']):
-                raise ValueError('module list/run command differs from complete exact selection')
-            if execution_ids(output) != {i.split('|', 1)[1].replace('|', '\t', 1) for i in expected}:
-                raise ValueError('actual passed test IDs differ from required complete module')
-        elif runner == 'python-unittest':
-            from recipe_runtime import list_command, python_run_command
-            if (row.get('list_command') != list_command(recipe, ROOT)
-                    or row.get('command') != python_run_command(recipe, ROOT, [r for r in listed if not r['ignored']])):
-                raise ValueError('Python list/run command differs from complete selection')
-            proof = validate_python_result(Path(row['output']['path']), [r['test'] for r in listed if not r['ignored']])
-            if proof != row.get('execution') or proof['failures'] or proof['errors']:
-                raise ValueError('Python atomic execution failed or differs')
-        elif runner == 'case-suite':
-            from recipe_runtime import list_command
-            command = list_command(recipe, ROOT)
-            expected_command = [command[0], 'module-case', *command[2:], '--case', rows[0]['case_id'],
-                                '--out', row['case_artifacts']['original_runtime_root'], '--artifact-out', str((directory/'execution').resolve())]
-            if row.get('list_command') != command or row.get('command') != expected_command:
-                raise ValueError('case list/run command differs from original complete case')
-            # The raw case report is retained independently of its summary.
-            read_proof(row.get('case_report'))
-            proof = validate_case_result(Path(row['case_report']['path']), rows, row['execution']['raw_exit'])
-            if proof != row['execution'] or not proof['assertions_satisfied']:
-                raise ValueError('case execution failed its original atomic oracles')
-        else:
-            raise ValueError('unknown module execution kind')
+        if module['id'] in results:
+            validate_module_result(catalog, module, results[module['id']])
     return selection, catalog, results
+
+
+def validate_module_result(catalog, module, row):
+    """One leaf's actual producer/atomic proof; caller owns full selection gates."""
+    from module_catalog import discover, ROOT
+    from run_selected import applicability, exact_filter, execution_settings, validate_python_result, validate_case_result
+    from repository_layout import workspace_root
+    import os
+    lookup = {r['id']: r for r in catalog['obligations']}
+    recipe = catalog['recipes'][module['recipe']]
+    rows = [lookup[i] for i in module['obligations']]
+    if row.get('obligations') != sorted(module['obligations']):
+        raise ValueError('actual module obligation identity differs')
+    keys = set(recipe.get('required_env', {}))
+    for obligation in rows:
+        for condition in obligation.get('conditions', []):
+            keys.update(condition.get('required_env', {}))
+    env = {**os.environ, **recipe.get('env', {})}
+    condition_environment = {key: env.get(key) for key in sorted(keys)}
+    if row.get('condition_environment') != condition_environment:
+        raise ValueError('execution condition environment differs from frozen invocation')
+    excluded = applicability(rows, condition_environment, recipe.get('required_env'))
+    expected = sorted(set(module['obligations']) - {r['id'] for r in excluded})
+    if row.get('applicable') != expected:
+        raise ValueError('actual applicable IDs omit/duplicate an unconditional obligation')
+    if excluded:
+        if row.get('outcome') != 'NOT_APPLICABLE' or row.get('condition_excluded') != excluded or row.get('exit') is not None:
+            raise ValueError('condition exclusion differs from original source conditions')
+        return
+    if row.get('outcome') != 'PASS' or row.get('exit') != 0 or row.get('condition_excluded') != []:
+        raise ValueError('required module was not successfully executed')
+    from execution_trace import validate_bindings
+    bindings = validate_bindings(rows, row.get('child_observations', {'invocations': []}))
+    if row.get('child_validation') != bindings or not bindings['valid']:
+        raise ValueError('required original child observations are incomplete')
+    if Path(row.get('cwd', '')).resolve() != workspace_root(ROOT, recipe):
+        raise ValueError('module execution cwd differs from declared owner')
+    output = read_proof(row.get('output'))
+    listing = read_proof(row.get('listing'))
+    listed = discover(json.loads(listing), module['recipe'], allow_filtered_skipped=True)
+    runner = recipe.get('runner', 'nextest')
+    if runner in ('python-unittest', 'case-suite'):
+        listed = [r for r in listed if r['id'] in set(expected)]
+    if sorted(r['id'] for r in listed if r['selected_at_discovery'] and not r['ignored']) != expected:
+        raise ValueError('actual discovery omitted or changed module IDs')
+    fields = ('suite_id', 'case_id', 'check_id', 'adapter', 'case_recipe', 'profile',
+              'source_sha256', 'oracle_sha256', 'case_file_sha256', 'case_file',
+              'product_from', 'state') if runner == 'case-suite' else ('package_path', 'package')
+    for discovered in listed:
+        if discovered['id'] in lookup and any(discovered.get(key) != lookup[discovered['id']].get(key) for key in fields):
+            raise ValueError('actual discovered source/profile identity differs from its obligation')
+    if runner == 'nextest':
+        switches = [*execution_settings(recipe, module)[0], '--ignore-default-filter', '-E', exact_filter(rows)]
+        serial = ['--test-threads', '1'] if 'th' in module.get('legacy_tiers', []) or any(r['test'].startswith('vm::ffi::stdlib::http::') for r in rows) else []
+        if (row.get('list_command') != ['cargo', 'nextest', 'list', *switches, '--message-format', 'json']
+                or row.get('command') != ['cargo', 'nextest', 'run', *switches, *serial, '--no-fail-fast', '--no-tests', 'fail']):
+            raise ValueError('module list/run command differs from complete exact selection')
+        if execution_ids(output) != {i.split('|', 1)[1].replace('|', '\t', 1) for i in expected}:
+            raise ValueError('actual passed test IDs differ from required complete module')
+    elif runner == 'python-unittest':
+        from recipe_runtime import list_command, python_run_command
+        if (row.get('list_command') != list_command(recipe, ROOT)
+                or row.get('command') != python_run_command(recipe, ROOT, [r for r in listed if not r['ignored']])):
+            raise ValueError('Python list/run command differs from complete selection')
+        proof = validate_python_result(Path(row['output']['path']), [r['test'] for r in listed if not r['ignored']])
+        if proof != row.get('execution') or proof['failures'] or proof['errors']:
+            raise ValueError('Python atomic execution failed or differs')
+    elif runner == 'case-suite':
+        from recipe_runtime import list_command
+        command = list_command(recipe, ROOT)
+        expected_command = [command[0], 'module-case', *command[2:], '--case', rows[0]['case_id'],
+                            '--out', row['case_artifacts']['original_runtime_root'], '--artifact-out', str(Path(row['output']['path']).resolve().parent)]
+        if row.get('list_command') != command or row.get('command') != expected_command:
+            raise ValueError('case list/run command differs from original complete case')
+        # The raw case report is retained independently of its summary.
+        read_proof(row.get('case_report'))
+        proof = validate_case_result(Path(row['case_report']['path']), rows, row['execution']['raw_exit'])
+        if proof != row['execution'] or not proof['assertions_satisfied']:
+            raise ValueError('case execution failed its original atomic oracles')
+    else:
+        raise ValueError('unknown module execution kind')
 
 
 def validate_distribution_receipt(receipt, path, source_roots=None):

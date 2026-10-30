@@ -353,6 +353,63 @@ class WebOwnershipTests(unittest.TestCase):
             save(selection,results)
             self.assertEqual(len(collect_web_legs(directory)),4)
 
+    def test_python_and_negative_case_proofs_preserve_original_oracles(self):
+        from module_catalog import ROOT,load
+        from web_delivery import validate_module_result,file_proof
+        from execution_trace import validate_bindings
+        from run_selected import validate_case_result
+        from recipe_runtime import list_command,python_run_command
+        catalog=load(ROOT/'scripts/test-governance/modules.json')
+        lookup={r['id']:r for r in catalog['obligations']}
+        python=next(m for m in catalog['modules'] if m['recipe']=='infra-modules')
+        negative=next(m for m in catalog['modules'] if catalog['recipes'][m['recipe']].get('runner')=='case-suite'
+                      and any(lookup[i]['expected_status']=='FAIL' for i in m['obligations']))
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            for module in (python,negative):
+                rows=[lookup[i] for i in module['obligations']]
+                recipe=catalog['recipes'][module['recipe']]
+                listing,log=root/'list.json',root/'run.log'
+                command=list_command(recipe,ROOT)
+                row={'module':module['id'],'obligations':sorted(module['obligations']),
+                     'applicable':sorted(module['obligations']),'condition_environment':{},'condition_excluded':[],
+                     'outcome':'PASS','exit':0,'cwd':str(ROOT),'list_command':command,
+                     'child_observations':{'invocations':[]},'child_validation':validate_bindings(rows,{'invocations':[]})}
+                if module is python:
+                    listing.write_text(json.dumps({'schema':'python-unittest-discovery/1','tests':[{'id':r['test'],'ignored':False} for r in rows]}))
+                    proof={'schema':'python-unittest-result/1','selected':[r['test'] for r in rows],
+                           'executed':len(rows),'skipped':0,'failures':0,'errors':0}
+                    log.write_text(json.dumps(proof))
+                    row.update(command=python_run_command(recipe,ROOT,rows),execution=proof)
+                else:
+                    checks=[]
+                    for r in rows:
+                        checks.append({**{k:r[k] for k in ('adapter','profile','source_sha256','oracle_sha256','case_file_sha256','span','product_from','state')},
+                                       'suite':r['suite_id'],'case':r['case_id'],'check':r['check_id'],'recipe':r['case_recipe'],
+                                       'case_file':str(ROOT/r['case_file'])})
+                    listing.write_text(json.dumps({'schema':'test-case-inventory/1','checks':checks}))
+                    raw_exit=1
+                    results=[{'case':r['case_id'],'check':r['check_id'],'status':r['expected_status'],
+                              'mismatches':['deliberate negative oracle'] if r['expected_status']=='FAIL' else [],
+                              'identity':{'source':r['source_sha256'],'oracle':r['oracle_sha256']}} for r in rows]
+                    case=root/'module-case.json'
+                    case.write_text(json.dumps({'schema':'test-case-module-result/1','scope':'case',
+                                    'selected_gate_exit':raw_exit,'selected_report':{'results':results,'load_errors':[],'coverage_gaps':[]},'unselected':[]}))
+                    log.write_text('original case exit1; negative meta-oracle satisfied\n')
+                    row.update(command=[command[0],'module-case',*command[2:],'--case',rows[0]['case_id'],
+                                        '--out',str(root/'original-runtime'),'--artifact-out',str(root.resolve())],
+                               case_artifacts={'original_runtime_root':str(root/'original-runtime')},case_report=file_proof(case),
+                               execution=validate_case_result(case,rows,raw_exit))
+                    self.assertTrue(row['execution']['assertions_satisfied'])
+                row.update(listing=file_proof(listing),output=file_proof(log))
+                validate_module_result(catalog,module,row)
+                bad=copy.deepcopy(row);bad['command'].append('only-one')
+                with self.assertRaisesRegex(ValueError,'command differs'): validate_module_result(catalog,module,bad)
+                if module is negative:
+                    changed=json.loads(case.read_text());changed['selected_report']['results'][0]['identity']['oracle']='0'*64
+                    case.write_text(json.dumps(changed));bad=copy.deepcopy(row);bad['case_report']=file_proof(case)
+                    with self.assertRaisesRegex(ValueError,'atomic oracles'): validate_module_result(catalog,module,bad)
+
     def test_ephemeral_catalog_rechecks_source_contracts_at_consumption(self):
         with tempfile.TemporaryDirectory() as folder, complete_module_protocol(folder) as fixture:
             root,directory,catalog,selection,report,save=fixture
