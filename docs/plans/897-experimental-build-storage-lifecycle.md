@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-897
 status: drafting
-feature_name: experimental构建存储减量与缓存生命周期
-plan_revision: 3
+feature_name: 已并入896：experimental构建存储减量与缓存生命周期
+plan_revision: 4
 author: [Codex]
 created_at: 2026-10-31
 updated_at: 2026-10-31
 current_step: 0
-total_steps: 11
+total_steps: 0
 supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/repository-boundaries/build-cost-baseline.md, docs/specs/auto-test-case/test-purpose-and-admission.md]
 new_spec_components: [docs/specs/auto-test-case/build-storage-lifecycle.md]
 touched_goals: []
@@ -16,6 +16,8 @@ depends_on: [PLAN-895]
 ---
 
 # [PLAN-897] experimental构建存储减量与缓存生命周期
+
+> **合并登记（2026-10-31，r4）**：按用户新方向，本计划全部未实施需求已吸收至[PLAN-896 r4](896-merged-invocations-and-consumer-closure-audit.md)。896是唯一待确认执行合同，897不再独立开工/建树。下文r1..r3目标、AC、任务和next均为历史查阅，不再作为现行执行指令；逐项吸收映射见896 §4。当前保持drafting表示未交付，不伪造reviewed/archived；后续由896实际交付后按合并归档规则记录结果。
 
 ## 0. 变更摘要
 
@@ -222,3 +224,5 @@ T-01可先只读核现行Specs/895实际交付及890/894/893/896写面；真正�
 - ACE域默认隔离、按需发现/构建、debug=0、同树兼容复用及旧缓存迁移已是具体设计；T-01负责核实路由与反例，不再决定“是否要解决”。跨树预编译工具复用仅限来源及可搬迁性认证通过者，不能仅比较文件名。
 - 一次性研究应雪藏的原则已进入r2；具体测试ID清单及原默认/周期/注册变化须明确批准，未批准前不静默停用。其余非雪藏选择优化须保持必需义务不变。
 - 候选稳态至少减半是本r2提出、待确认的验收目标，不冒称用户给定硬盘预算；不通过清空target、降低样本或取消必要测试达标。当前125→约52GiB仅PDB库存粗算，不是交付实测。
+
+2026-10-31 / stage:new / plan_revision:r4 / outcome:pass（合并登记，非实施交付） / authorization:用户明确要求896/897合并并放弃tm动态叶体系 / next:仅按896 r4确认与执行；本计划旧T-01..11全部未执行，存储/profile/ACE隔离/用途/安全清理需求已逐项转移；未删源码/缓存或建树。

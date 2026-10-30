@@ -151,6 +151,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 有限文件化基础788/852已交付；a2r日常金样/独立认证分轴，完整消费者覆盖待扩 |
 | [模块选测与ACE成组执行](testing/module-selection-and-ace-batching.md) | 复用887义务清单建立模块/影响闭包、ACE独立与成组/组合表达式对照、逐项定位与实测推广 | target-state r1，PLAN-888草案；建议U887后优先质量支线，未实施，不取消全局冻结门 |
+| [Cargo包与Rust模块固定测试分组](testing/crate-and-rust-module-tests.md) | 替换tm动态叶/顶级/自动闭包体系，固定源码职责组、原生并行、必要构建与存储生命周期 | target-state r1（2026-10-31），PLAN-896 r4吸收897；待确认，尚未实施 |
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 774/770/771/782有限合同已归档；本篇为历史共同设计，现状查Spec |
 | [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 模块/仓界、宿主与项目模型解耦、结构/减法及交付门 | 831/832与841–844已归档；867等价出口在途，869/872/873及两个未编号结构包见[总路线v11](../plans/reports/v06-extraction-execution-roadmap.md) |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | Auto语言工具基础设施：Auto/Atom Grammar、CST/AST/HIR分层、ACE编译部署与插件、auto-edit/编码工具及可选语义LSP；复用增量/cache/有界工作集 | 📝 2026-10-22补长期定位与P1–P4路线；787有限实验已交付，完整通用产品未交付；本次仅设计 |
