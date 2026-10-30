@@ -234,6 +234,7 @@ pub(crate) async fn serve_network(
                 );
                 let req_tx = req_tx.clone();
                 let shutdown = shutdown.clone();
+                let (abort_connection, mut abort_requested) = tokio::sync::watch::channel(false);
                 // Peer is captured per connection — the fallback handler
                 // closure is the tower service hyper drives.
                 let app = {
@@ -248,12 +249,17 @@ pub(crate) async fn serve_network(
                         let shutdown = shutdown.clone();
                         let program = program.clone();
                         let request_permits = request_permits.clone();
+                        let abort_connection = abort_connection.clone();
                         async move {
-                            super::http_server::with_optional_owner_metadata(
-                                program,
-                                bridge_handler(
-                                    request, peer, cfg, req_tx, shutdown, conn_id, server_gen,
-                                    request_permits,
+                            crate::http_service_config::with_service_policy(
+                                cfg.service.is_some(),
+                                super::http_server::with_optional_owner_metadata(
+                                    program,
+                                    bridge_handler(
+                                        request, peer, cfg, req_tx, shutdown, conn_id, server_gen,
+                                        request_permits,
+                                        Some(abort_connection),
+                                    ),
                                 ),
                             )
                             .await
@@ -322,7 +328,10 @@ pub(crate) async fn serve_network(
                     // PLAN-705 T-05: 连接任务确证终结（client 关闭/RST/解析
                     // 错——watch 返回即任务终结证据）→ 取消该连接名下全部
                     // 请求 scope（决策报告 §5-3 断连判据）。
-                    let _ = watcher.watch(conn).await;
+                    tokio::select! {
+                        _ = watcher.watch(conn) => {}
+                        _ = super::http_server::wait_for_service_shutdown(&mut abort_requested) => {}
+                    }
                 });
             }
             _ = super::http_server::wait_for_service_shutdown(&mut shutdown) => {
@@ -405,6 +414,7 @@ async fn bridge_handler(
     conn_id: u64,
     server_gen: u64,
     request_permits: std::sync::Arc<tokio::sync::Semaphore>,
+    abort_connection: Option<tokio::sync::watch::Sender<bool>>,
 ) -> Response {
     let observation = cfg.observation();
     let (mut parts, body) = request.into_parts();
@@ -420,7 +430,10 @@ async fn bridge_handler(
     // snapshot/shutdown 仅 loopback。早于策略链与 body 读取。
     if path.starts_with("/__auto/") {
         if let Some(resp) = super::http_server::handle_service_control_path(
-            &method, &path, peer, cfg.service.as_deref(),
+            &method,
+            &path,
+            peer,
+            cfg.service.as_deref(),
         ) {
             observation.counter_add(
                 crate::http_service_observability::CounterName::RequestsTotal,
@@ -672,7 +685,13 @@ async fn bridge_handler(
             // 流/文件以 body 收口为终态，不 headers 即记）。
             if let Ok(mut slot) = scope.event.lock() {
                 if let Some(ev) = slot.as_mut() {
-                    ev.status = Some(reply_status(&reply));
+                    ev.status = match &reply {
+                        ApiReply::Full {
+                            body: ApiBody::File(_),
+                            ..
+                        } => None,
+                        _ => Some(reply_status(&reply)),
+                    };
                     ev.bytes_sent = reply_bytes_hint(&reply);
                 }
             }
@@ -715,7 +734,8 @@ async fn bridge_handler(
         } => {}
         _ => super::http_server::complete_scope(&scope),
     }
-    let response = api_reply_to_response(reply, parts, shutdown, Some(scope)).await;
+    let response =
+        api_reply_to_response(reply, parts, shutdown, Some(scope), abort_connection).await;
     // PLAN-736 T-04: 实际请求（携 Origin 且命中）的 CORS 附件（桥侧短路路径
     // 不虚构 CORS 头——只有业务回复面附加）。
     if let Some((acao, vary)) = cors_attach {
@@ -740,14 +760,16 @@ struct FileReplyOutcome {
     reply: crate::http_file_service::FileReply,
     scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
     finalize_scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+    finish: std::sync::Arc<std::sync::Mutex<Option<crate::http_file_service::FileFinish>>>,
 }
 
-/// 文件 seed → 宿主 serve。准备期限 = min(30s, scope 剩余)；finish hook =
-/// scope 幂等终结（body 收口恰一次）。
+/// 文件 seed → 宿主 serve。准备期限 = min(30s, scope 剩余)。生产者 hook
+/// 只记录结果/中止失败的连接；请求由实际 HTTP body 终态幂等收口。
 async fn serve_file_seed(
     seed: super::http_server::FileReplySeed,
     request: axum::http::request::Parts,
     scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+    abort_connection: Option<tokio::sync::watch::Sender<bool>>,
 ) -> FileReplyOutcome {
     use crate::http_file_service::{serve_file_response, ServeFileRequest};
     let method = request.method.as_str().to_string();
@@ -767,21 +789,31 @@ async fn serve_file_seed(
         Some(s) if *s.deadline.read().unwrap() < cap => *s.deadline.read().unwrap(),
         _ => cap,
     };
-    let hook_scope = scope.clone();
-    let finish_hook = hook_scope.map(|s| {
-        let hook: crate::http_file_service::FileFinishHook =
-            std::sync::Arc::new(move |_finish: &crate::http_file_service::FileFinish| {
-                super::http_server::complete_scope(&s);
-            });
-        hook
-    });
+    // Producer completion is not HTTP body completion: buffered blocks can
+    // still be unread. Preserve its outcome without releasing the request.
+    let finish = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let producer_finish = finish.clone();
+    let stream_active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let producer_stream_active = stream_active.clone();
+    let producer_abort = abort_connection.clone();
+    let finish_hook: crate::http_file_service::FileFinishHook =
+        std::sync::Arc::new(move |outcome| {
+            *producer_finish.lock().unwrap() = Some(outcome.clone());
+            if !matches!(outcome, crate::http_file_service::FileFinish::Completed)
+                && producer_stream_active.load(std::sync::atomic::Ordering::Acquire)
+            {
+                if let Some(abort) = &producer_abort {
+                    let _ = abort.send(true);
+                }
+            }
+        });
     let reply = serve_file_response(
         &seed.descriptor,
         ServeFileRequest {
             method: &method,
             request_headers: &headers,
             prepare_deadline,
-            finish_hook,
+            finish_hook: Some(finish_hook),
             idle_timeout: None,
         },
     )
@@ -790,11 +822,85 @@ async fn serve_file_seed(
         reply.body,
         crate::http_file_service::FileReplyBody::Stream(_)
     );
+    if is_stream {
+        stream_active.store(true, std::sync::atomic::Ordering::Release);
+        // Cover a producer failure racing with stream activation. Preparation
+        // failures remain inline HTTP errors and never abort their connection.
+        let failed = finish.lock().unwrap().as_ref().is_some_and(|outcome| {
+            !matches!(outcome, crate::http_file_service::FileFinish::Completed)
+        });
+        if failed {
+            if let Some(abort) = &abort_connection {
+                let _ = abort.send(true);
+            }
+        }
+    }
     FileReplyOutcome {
         reply,
         // 流回复：scope 随适配器代持；无 body 回复：带回终结。
         scope: if is_stream { scope.clone() } else { None },
         finalize_scope: if is_stream { None } else { scope },
+        finish,
+    }
+}
+
+/// Count payload bytes handed to the HTTP transport, not producer queue bytes
+/// or TCP acknowledgements. Scope finalization remains the one event emitter.
+struct ResponseBodyScope {
+    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+    expected: Option<u64>,
+    bytes: u64,
+    ended: bool,
+    failed: bool,
+    file_finish:
+        Option<std::sync::Arc<std::sync::Mutex<Option<crate::http_file_service::FileFinish>>>>,
+}
+
+impl ResponseBodyScope {
+    fn new(
+        scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+        expected: Option<u64>,
+    ) -> Self {
+        Self {
+            scope,
+            expected,
+            bytes: 0,
+            ended: false,
+            failed: false,
+            file_finish: None,
+        }
+    }
+
+    fn record(&mut self, bytes: usize) {
+        self.bytes = self.bytes.saturating_add(bytes as u64);
+        if let Some(scope) = &self.scope {
+            if let Some(event) = scope.event.lock().unwrap().as_mut() {
+                event.bytes_sent = self.bytes;
+            }
+        }
+    }
+}
+
+impl Drop for ResponseBodyScope {
+    fn drop(&mut self) {
+        let Some(scope) = self.scope.take() else {
+            return;
+        };
+        let producer_failed = self.file_finish.as_ref().is_some_and(|finish| {
+            finish.lock().unwrap().as_ref().is_some_and(|outcome| {
+                !matches!(outcome, crate::http_file_service::FileFinish::Completed)
+            })
+        });
+        // Hyper can drop a length-delimited body after its final data frame
+        // without asking for a further EOF poll.
+        let complete = self
+            .expected
+            .map_or(self.ended, |expected| self.bytes == expected);
+        if complete && !self.failed && !producer_failed {
+            super::http_server::complete_scope(&scope);
+        } else {
+            super::http_server::cancel_scope(&scope);
+        }
     }
 }
 
@@ -802,15 +908,7 @@ async fn serve_file_seed(
 /// watchdog 收口恰一次，SSE FrameStream 同形）。
 struct FileBodyAdapter {
     inner: crate::http_file_service::FileBodyStream,
-    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
-}
-
-impl Drop for FileBodyAdapter {
-    fn drop(&mut self) {
-        if let Some(scope) = self.scope.take() {
-            super::http_server::complete_scope(&scope);
-        }
-    }
+    scope: ResponseBodyScope,
 }
 
 impl futures::Stream for FileBodyAdapter {
@@ -819,7 +917,14 @@ impl futures::Stream for FileBodyAdapter {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        std::pin::Pin::new(&mut self.inner).poll_next(cx)
+        let polled = std::pin::Pin::new(&mut self.inner).poll_next(cx);
+        match &polled {
+            std::task::Poll::Ready(Some(Ok(bytes))) => self.scope.record(bytes.len()),
+            std::task::Poll::Ready(Some(Err(_))) => self.scope.failed = true,
+            std::task::Poll::Ready(None) => self.scope.ended = true,
+            std::task::Poll::Pending => {}
+        }
+        polled
     }
 }
 
@@ -829,6 +934,7 @@ async fn api_reply_to_response(
     request: axum::http::request::Parts,
     shutdown: tokio::sync::watch::Receiver<bool>,
     scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
+    abort_connection: Option<tokio::sync::watch::Sender<bool>>,
 ) -> axum::response::Response {
     match reply {
         ApiReply::Full {
@@ -864,7 +970,7 @@ async fn api_reply_to_response(
                     .body(axum::body::Body::from_stream(FrameStream {
                         rx: frames,
                         shutdown,
-                        scope,
+                        scope: ResponseBodyScope::new(scope, None),
                     }))
                     .unwrap_or_else(|_| error_response(500, "internal error")),
                 // PLAN-729 T-04：文件响应——宿主 serve（准入/打开/协议决策/
@@ -872,7 +978,27 @@ async fn api_reply_to_response(
                 // 移交（pump 收口恰一次）；无 body 回复（HEAD/304/412/416/
                 // 错误）由本臂直接终结 scope。
                 ApiBody::File(seed) => {
-                    let outcome = serve_file_seed(seed, request, scope).await;
+                    let outcome = serve_file_seed(seed, request, scope, abort_connection).await;
+                    let event_scope = outcome.scope.as_ref().or(outcome.finalize_scope.as_ref());
+                    if let Some(scope) = event_scope {
+                        if let Some(event) = scope.event.lock().unwrap().as_mut() {
+                            event.status = Some(outcome.reply.status);
+                            event.bytes_sent = match &outcome.reply.body {
+                                crate::http_file_service::FileReplyBody::Inline(bytes) => {
+                                    bytes.len() as u64
+                                }
+                                _ => 0,
+                            };
+                        }
+                    }
+                    let expected = outcome
+                        .reply
+                        .headers
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case("Content-Length"))
+                        .and_then(|(_, value)| value.parse::<u64>().ok());
+                    let mut body_scope = ResponseBodyScope::new(outcome.scope, expected);
+                    body_scope.file_finish = Some(outcome.finish);
                     let mut builder = Response::builder().status(
                         axum::http::StatusCode::from_u16(outcome.reply.status)
                             .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
@@ -907,7 +1033,7 @@ async fn api_reply_to_response(
                         crate::http_file_service::FileReplyBody::Stream(stream) => builder
                             .body(axum::body::Body::from_stream(FileBodyAdapter {
                                 inner: stream,
-                                scope: outcome.scope,
+                                scope: body_scope,
                             }))
                             .unwrap_or_else(|_| error_response(500, "internal error")),
                     };
@@ -999,15 +1125,7 @@ struct FrameStream {
     shutdown: tokio::sync::watch::Receiver<bool>,
     /// PLAN-705 T-05: SSE 的生命期许可随响应体代持——流结束/断连/关闭
     /// 触发 Drop → scope 幂等终结（许可释放）。
-    scope: Option<std::sync::Arc<super::http_server::RequestScope>>,
-}
-
-impl Drop for FrameStream {
-    fn drop(&mut self) {
-        if let Some(scope) = self.scope.take() {
-            super::http_server::complete_scope(&scope);
-        }
-    }
+    scope: ResponseBodyScope,
 }
 
 impl futures::Stream for FrameStream {
@@ -1019,9 +1137,17 @@ impl futures::Stream for FrameStream {
         if *self.shutdown.borrow_and_update() {
             return std::task::Poll::Ready(None);
         }
-        std::pin::Pin::new(&mut self.rx)
-            .poll_recv(cx)
-            .map(|opt| opt.map(Ok))
+        match std::pin::Pin::new(&mut self.rx).poll_recv(cx) {
+            std::task::Poll::Ready(Some(frame)) => {
+                self.scope.record(frame.len());
+                std::task::Poll::Ready(Some(Ok(frame)))
+            }
+            std::task::Poll::Ready(None) => {
+                self.scope.ended = true;
+                std::task::Poll::Ready(None)
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
     }
 }
 
@@ -1107,6 +1233,106 @@ async fn serve_ws_echo_loop(
 #[cfg(test)]
 mod bridge_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn file_producer_eof_keeps_request_permit_until_body_terminal() {
+        use futures::StreamExt;
+        use std::sync::Arc;
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!(
+                "file-body-terminal-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        std::fs::create_dir_all(&dir).unwrap();
+        struct Files(std::path::PathBuf);
+        impl Drop for Files {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(self.0.join("payload.bin"));
+                let _ = std::fs::remove_dir(&self.0);
+            }
+        }
+        let _files = Files(dir.clone());
+        let payload = b"real buffered file body";
+        std::fs::write(dir.join("payload.bin"), payload).unwrap();
+        let permits = Arc::new(tokio::sync::Semaphore::new(1));
+        let scope = super::super::http_server::create_scope_with_permits(
+            0,
+            std::time::Instant::now() + Duration::from_secs(5),
+            0,
+            &permits,
+        )
+        .unwrap();
+        let observation =
+            Arc::new(crate::http_service_observability::ServiceObservation::default());
+        *scope.event.lock().unwrap() = Some(
+            crate::http_service_observability::PendingRequestEvent::new_in(
+                observation.clone(),
+                "GET",
+                "/buffered",
+            ),
+        );
+        let request = axum::extract::Request::builder()
+            .uri("/buffered")
+            .body(())
+            .unwrap()
+            .into_parts()
+            .0;
+        let outcome = serve_file_seed(
+            super::super::http_server::FileReplySeed {
+                descriptor: a2r_std::http::file_response(
+                    dir.to_str().unwrap(),
+                    "payload.bin",
+                    "{}",
+                ),
+                request_id: "body-terminal-test".into(),
+            },
+            request,
+            Some(scope.clone()),
+            None,
+        )
+        .await;
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while outcome.finish.lock().unwrap().is_none() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            *outcome.finish.lock().unwrap(),
+            Some(crate::http_file_service::FileFinish::Completed)
+        );
+        assert!(
+            !scope.terminal(),
+            "producer EOF must not finish an unread HTTP body"
+        );
+        assert_eq!(permits.available_permits(), 0);
+        let crate::http_file_service::FileReplyBody::Stream(inner) = outcome.reply.body else {
+            panic!("file stream expected")
+        };
+        let mut body_scope = ResponseBodyScope::new(outcome.scope, Some(payload.len() as u64));
+        body_scope.file_finish = Some(outcome.finish);
+        let mut body = FileBodyAdapter {
+            inner,
+            scope: body_scope,
+        };
+        assert_eq!(body.next().await.unwrap().unwrap(), payload);
+        assert_eq!(permits.available_permits(), 0, "body still owns the permit");
+        // Exact-length consumers may drop after the last frame without an
+        // additional EOF poll. This must complete once, with the actual bytes.
+        drop(body);
+        assert!(scope.terminal());
+        assert_eq!(permits.available_permits(), 1);
+        let counters = observation.counters().snapshot();
+        assert_eq!(counters["requests_completed"], 1);
+        assert_eq!(counters["requests_canceled"], 0);
+        assert_eq!(counters["bytes_sent"], payload.len());
+    }
 
     struct TrackedUpload {
         polls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -1288,6 +1514,7 @@ mod bridge_tests {
             77,
             0,
             std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+            None,
         )
         .await;
         assert_eq!(resp.status(), 503, "full queue must reject fast");

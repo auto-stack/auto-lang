@@ -69,3 +69,17 @@ and requires readiness to stop returning 200, then verifies independent B ready
 and port closure. These are separate checks and keep their source/assets under
 the worktree fixture target. `probe.py --mode pre-stopped` also exercises an
 already-true watch before activation and requires successful return/rebinding.
+
+`web-port-probe/response_observation_probe.py --exe .../isolation.exe` checks
+actual file/SSE terminal events against wire results: full/range/HEAD/304/416,
+missing file, finite SSE, file/SSE RST, a truncated source and a connected client
+that stops reading until the file watchdog fires. It requires exact status and
+payload-byte counts for seven complete responses and exactly one canceled event
+per interrupted response; unread full-file bytes must not be counted. It also
+checks no legacy CORS on configured file replies and an unaffected second owner.
+Bytes mean payload handed to the HTTP transport, not TCP acknowledgements.
+All its program/assets/scratch are in the worktree fixture target. The producer
+EOF/last-frame-without-EOF-poll request-permit invariant has a targeted Core test
+`file_producer_eof_keeps_request_permit_until_body_terminal`, using the real file
+pump and actual instance semaphore/counters. These checks do not replace the
+original-ID migration accounting or the complete T-02/final delivery gates.
