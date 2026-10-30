@@ -15,3 +15,5 @@ Checked HIR → Typed MIR → verify_mir/CheckedMir → ABC/AV。MIR采用显式
 [auto-av/resident-function-install](../auto-av/resident-function-install.md)）；PLAN-820 在数据域消费该接口（record 域单函数 AVAD unit + 全链增量），不扩大 native/CTE 默认 profile。
 
 PLAN-824 在实验 typed MIR 增加 [dynamic-cast-profile](dynamic-cast-profile.md)，以验证过的类型擦除及 checked 恢复接入 ABC/AV，不扩大源码或 native 支持面。
+
+- [native集合/变体](native-collections-variants.md)：显式864源码/typed Clone→shared MIR→COFF/PE、资源/真函数增量/深验恢复（PLAN-889）；不包含宽typed入口或native在线帧。

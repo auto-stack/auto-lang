@@ -26,3 +26,5 @@
 | 862 | AV源码入口、Unit与尾值语义 | 已复审（reviewed，T-07 R2 pass） | [计划](../../plans/archive/862-av-source-entry-unit-and-tail-semantics.md) | 追加 U01–U10 与 av_channel 判定轴；24 probe + 27 wait 逐格实测定级（probe/wait 0，clean 20/73）；五态词表 + NA-4；见 [ace-m1-conformance.md](ace-m1-conformance.md) PLAN-862 节 |
 | 887 | 测试治理与ACE首批消费（守恒/提速/补覆盖） | ✅ delivered（R final PASS，r2） | [计划](../../plans/archive/887-test-governance-and-ace-first-corpus.md) | 盘点闭包+子case身份+迁移/退役守恒（runner 844+869、floor 3189）、first-wave 30 复用+3 新增 D 消费、八类长期控制（V-04..V-08）、覆盖矩阵与弱判差额、性能负结果记录（worker store 机制轴）；见 [governance-and-inventory.md](governance-and-inventory.md) |
 | 863 | AV类型化宿主导入与控制台输出 | delivered（R2 final pass；合入证据见归档计划） | [计划](../../plans/archive/863-av-console-host-import-and-print.md) | HostConsole 源码→独立 host 表/HostCall→AVHC/1；当前授权、预算/身份重验、父侧精确双流；whole-module 实验面 |
+
+| 889 | native集合与变体源码闭环 | delivered（r2，final pass；合入门见归档计划） | [计划](../../plans/archive/889-native-collections-variants-source-closure.md) | 原14L/V native源码格、owned/runtime资源、真函数增量/恢复与独立SDK；[共享合同](../auto-mir/native-collections-variants.md)，typed/wide另属891 |

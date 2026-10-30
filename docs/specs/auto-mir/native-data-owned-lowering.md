@@ -7,7 +7,8 @@
 
 - mn 的代码gen门（`emit::admit_unit`）准入门=三个共享 profile：
   `av.core-i32/1`、`av.data/1`、`av.owned/1`；其余（collections/closures/
-  dynamic/entry-unit）具名拒绝 `mn.unsupported.profile`。
+  dynamic/entry-unit）在旧通用入口具名拒绝 `mn.unsupported.profile`。PLAN-889新增的
+  **显式collections入口**按[独立合同](native-collections-variants.md)受检，不放宽此旧入口。
 - 宽数值标量（I64/U64/F32/F64）**触达即拒**（槽/签名/record 字段：
   `mn.unsupported.type`；被引用常量：`mn.unsupported.const`）——R2-N 保持
   关闭；未触达的死表项不拒。`MirType::Unit`（av.entry-unit/1）同样防御性
@@ -63,9 +64,9 @@ native 侧 alloc/free 事件流=shim stderr（LIT/CLONE/CONCAT/FREE id 行）；
 
 ## 拒绝面（具名、codegen=0）
 
-`mn.unsupported.profile/type/const/param/result/entry/layout`；collections/
-closures/dynamic 族指令沿既有具名拒绝（2026-10-28 用户裁定：迁移批次不含
-此三族，待 AV 源码面闭合后另立）。
+`mn.unsupported.profile/type/const/param/result/entry/layout`；旧通用入口仍拒绝collections/
+closures/dynamic。PLAN-889的显式collection源码子集/typed Clone见证另按
+[native collections](native-collections-variants.md)准入，不冒认整个profile4或宽typed入口。
 
 ## 已知边界（登记）
 
@@ -73,7 +74,8 @@ closures/dynamic 族指令沿既有具名拒绝（2026-10-28 用户裁定：迁�
   （`gap:upstream-s-eq`，S owner；mn 机器面已由手写 MIR 单元实跑覆盖）。
 - mut **资源** record 参数的字段替换释放时点：AV（Rc 共享）在 caller
   出口、mn（指针直写）在 callee FieldSet——语料无该形态，触及需裁定。
-- trap 多帧回卷：mn 仅清当前帧（AV 清全部帧并计入台账）。
+- trap 多帧回卷：本文旧owned域mn仅清当前帧（AV清全部帧并计入台账）；
+  PLAN-889仅为显式collections域实现全部资源caller帧清理，不追认旧域已修。
 
 ## 验收锚点
 

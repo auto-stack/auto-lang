@@ -165,3 +165,23 @@ V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot 
 AV bindings are `ok:av-host-console-source-863` only after real parent-side execution. Native is `gap:ac-console-profile` (explicit profile rejection); legacy VM/a2r are `gap:console-profile-parity` (this new profile's exact parity is unverified). These are explicit remaining coverage gaps, not new `na:m1` rules or whole-M1 certification. No prior expected outcome, required denominator or certificate is rewritten. `verify-av-863.ps1` provides targeted/compat/console/acceptance scopes; sabotage of either byte oracle or exit must fail, missing axes reject and SKIP remains SKIP.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
+
+
+## PLAN-889：14个集合/变体native源码格
+
+`native-collections-889.suite.ad`包含原17源native、原17源AV及3个owned List<Variant>/
+嵌套/Option补源各两引擎，共40检查。原源/oracle/分母不变；只将L01..L07/V01..V07共14个
+native格改为`ok:P889-source`及其来源注记，其余111行和其他引擎格不变。
+L04/L05=42，L03=0，V03=3；L06必须真实list-index原因21+exit70，普通return70不是该trap。
+Str变体/for-in补例值仍51/42/53。
+
+显式recipe `ac/mir-native-collections-v1`使用独立`mn-collections-worker`，沿既有contained
+transport和父侧独立oracle；旧scalar recipe/protocol/default、ace.m1.cert/1键集和a2r证书选择不变。
+新报告的recipe/lowering/worker实际SHA/runtime ABI+build+content/lld+SDK+kernel32九轴由集合族
+current查询重算stale；query不冒语言verdict。私有源/库镜像承担实际同长bitflip→stale→恢复Fresh控制，
+不能改变共享库干扰并行用例。真实漏free/whole-front/lower/copy-unchanged、错oracle/type负控都须红。
+
+[native合同](../auto-mir/native-collections-variants.md)区分source/typed/runtime起点、清理/物理峰、
+真单体/恢复和正式五×30/512性能证据。独立修复采样只覆盖其标明门，复用须有revision/input/机制等价证据，
+不得改源/阈值/分母或把失败full重新标绿。W01..W05、native在线帧/loader及其他旧引擎差异仍分别登记，
+不因14格推进而宣称全M1或891 typed入口已完成。

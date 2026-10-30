@@ -88,3 +88,9 @@ typed stages/exit/原始 bytes 流/预算硬 cap/部分产物边界/783 cache �
   完整批次由 merge 验收（候选 runner）。
 
 PLAN-863 的 [console byte 观察轴](architecture.md) 由父侧独立判断 stdout/stderr/exit 或 Unit/trap；O01–O15 绑定真实 AV console 源码，其他后端保留具名 gap，见 [conformance](ace-m1-conformance.md)。
+
+## PLAN-889：显式集合native消费
+
+原864合法集合/Variant源码经共享MIR→native机器链，单独recipe/worker、真实拥有值清理、
+source函数候选/坐标与深验恢复；正式suite40检查使原14L/V native源码格关闭，其他引擎格和W/在线帧gap保持。
+见[native合同](../auto-mir/native-collections-variants.md)；旧五域/recipe/cert键集/legacy退役不变。

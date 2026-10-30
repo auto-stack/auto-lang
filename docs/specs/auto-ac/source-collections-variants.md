@@ -25,7 +25,7 @@
 | `get(i)` | Copy 元素拷出；owned 元素 = 受检只读 view（下节） |
 | `remove(i) → T` | owned 转移出 / Copy 拷出 |
 | `len()` / `clear()` | len 直读；clear=lowering 展开尾删循环（无 LIST_CLEAR opcode，profile 4 不新增指令） |
-| owned 局部 `.clone()` | 显式深拷贝（唯一合法复制通道） |
+| `Str`局部 `.clone()` | 合法源码显式深拷贝；List/Variant源码clone仍拒绝，typed容器Clone另验 |
 
 ## owned 元素受检只读 view（合同 C4）
 
@@ -79,3 +79,18 @@ restart 经全门重准入（decode+verify，不信任字节）。单元类型�
 文件化 17 行 `test/cases/ace-m1/collections-source-864.suite.ad`（经 `ac-av/collections-source-run-v1` 真 worker，
 parent 判定）；`scripts/verify-av-864.ps1 -Scope acceptance`（含 852 基套件 97 检查零漂移 compat）。
 touched_goals 为空（有限实验扩面）。
+
+
+## PLAN-889：名义类型查找与原生/单体消费者
+
+局部、结果、载荷与List元素允许的命名enum沿同一名义图解析，前向/无环嵌套按依赖序处理；
+环及原上下文排除仍具名拒绝。修正此前仅查record导致合法List<Variant>误拒的实现，
+不新增源码List.clone/Variant.clone。Str.clone源码与受检typed容器Clone的入口、证据分列。
+
+`CheckedEnv`保留类型/签名；fragment只词法/解析目标UTF8函数，候选将新body与body-local intern池
+共同临时检查、还原/提交，失败/取消/foreign/stale/close保旧或具名拒绝。borrowed function verifier
+执行原完整规则，冷批只复用接口scaffold；不授予whole-module credential。
+真正source→native增量由`CollectionsIncrementalSession`消费，源坐标区分mint/current与snapshot，
+未改AST/MIR/COFF分配身份保持。旧AV CollectionSourceSession仍为whole-source重编，
+不能据native交付冒称其前端0工作或native在线HMR。见
+[原生合同](../auto-mir/native-collections-variants.md)与[驻留消费](../auto-av/resident-function-install.md)。

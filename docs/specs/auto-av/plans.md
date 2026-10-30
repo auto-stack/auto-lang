@@ -16,3 +16,5 @@
 | 822 | AV类型化集合与Variant载荷访问 | ✅（delivered，R19 最终 PASS） | [计划](../../plans/archive/822-av-typed-collections-variants.md) | av.collections/1 第四 profile：18 指令 typed 集合/Variant/Index Place、数据量计费克隆、显式清理全链（含部分回滚）、恢复身份四绑定（profile/types-fp/entry/snapshot）、collections 会话完整候选授权预检；[collections-variants.md](collections-variants.md) |
 | 862 | AV源码入口、Unit与尾值语义 | 已复审（reviewed，T-07 R2 pass） | [计划](../../plans/archive/862-av-source-entry-unit-and-tail-semantics.md) | av.entry-unit/1 第七执行 profile：Unit 真值/entry kind 双向校验/AVAU wire/恢复准入与独立 cache 命名空间；[entry-and-unit-profile.md](entry-and-unit-profile.md) |
 | 863 | AV类型化宿主导入与控制台输出 | delivered（R2 final pass；合入证据见归档计划） | [计划](../../plans/archive/863-av-console-host-import-and-print.md) | HostConsole 源码→独立 host 表/HostCall→AVHC/1；当前授权、预算/身份重验、父侧精确双流；whole-module 实验面 |
+
+| 889 | native集合与变体源码闭环 | delivered（r2，final pass；合入门见归档计划） | [计划](../../plans/archive/889-native-collections-variants-source-closure.md) | 原14L/V native源码格、owned/runtime资源、真函数增量/恢复与独立SDK；[共享合同](../auto-mir/native-collections-variants.md)，typed/wide另属891 |

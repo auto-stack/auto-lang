@@ -294,3 +294,12 @@ The required run face is `console` schema `av.console-capture/1`: `mir_lowering`
 Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-lowering=3`, `av-profile=8`, `av-source-profile=host-console`, `av-wire-codec=auto.abc.av-host-console/1`. Missing/drifted axes invalidate old PASS. Whole-suite PASS requires actual required rows; SKIP/NOT_RUN/zero-match are not verified coverage.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
+
+## 2026-10-30 / PLAN-889：共享集合语义与原生资源消费
+
+决策：复用同一source/HIR/共享MIR与候选协议，显式collections profile进入原生Cell/容器原语；
+不用AV解释旁路或旧HIR→CLIF。冷态有界scaffold批处理，body编辑保真实producer身份；恢复不持久化trust。
+备选整模块重算会超物理峰且冒充carry，扩大typed入口会混淆支持域，因此均不选。
+后果：14原L/V格按原源关闭，全帧清理/预算/身份与失败原子性成为此profile合同；
+旧AV source前端差额、宽typed入口/在线native帧保持各自边界。状态：accepted，见
+[native collections](../auto-mir/native-collections-variants.md)。

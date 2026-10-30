@@ -239,3 +239,9 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 auto.source.closures.draft 是显式选择的实验性源码 profile，使用独立 HIR 域和 descriptor。它基于集合与入口/Unit 源码面，增加函数类型、lambda、有序捕获分析和间接调用。源码编译经既有 HIR→MIR 路径，进入 av.closures/1 session；不增加 native closure ABI，也不改变默认源码 profile。详见[source-closures.md](source-closures.md)。
 
 PLAN-863 增加实验性 [host-console 源码域](source-console-output.md)：typed print/eprint 与 int/Unit/script 入口，仅 AV console probe 消费；产品默认路由不变。
+
+## PLAN-889：显式集合native消费
+
+原864合法集合/Variant源码经共享MIR→native机器链，单独recipe/worker、真实拥有值清理、
+source函数候选/坐标与深验恢复；正式suite40检查使原14L/V native源码格关闭，其他引擎格和W/在线帧gap保持。
+见[native合同](../auto-mir/native-collections-variants.md)；旧五域/recipe/cert键集/legacy退役不变。

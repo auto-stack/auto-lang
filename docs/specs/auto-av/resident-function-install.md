@@ -202,3 +202,17 @@ r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常�
   span 自 `static` 关键字起（遮罩不悬空）。
 - 方法快照寿命=pin 语义（旧 snapshot Arc 仍执行旧码）；866 在线机制不退化
   （14/14）；不冒领复合方法在线 HMR（866 域）。
+
+
+## PLAN-889：集合source候选的native消费者
+
+`ac-mn::CollectionsIncrementalSession`复用同一CheckedEnv/FnCandidate，纯body走UTF8 fragment、
+真实单体resolve/typecheck/plan/bind/shared lower/verify/unit生产；未改AST/MIR/COFF对象身份和0 body工作
+独立受检。新intern池与候选共同提交，history可保COFF并重mint目标MIR/坐标；声明/config改变显式失效。
+失败/取消/stale/foreign/坏链接保source/env/目录/root/manifest与旧产品，prepared commit重核runtime/config。
+冷态有界共用scaffold与仅省全scalar恒空ownership侧表不跳过实际验证。
+
+持久source+mint/current坐标与每单元MIR/COFF/runtime required闭包在重启深验后才link/run，
+不恢复trusted凭据。该native静态产物消费不提供活native帧HMR，也不改变旧AV集合source会话的
+whole前端差额。预算、性能/512口径及实际限制见
+[native collections](../auto-mir/native-collections-variants.md)。

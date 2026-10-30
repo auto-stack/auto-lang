@@ -79,3 +79,16 @@ fixtures/schema、`runtime_contract.rs`（PLAN-770 运行时合同门，`ac-nati
 - 迁移期暴露并闭合的 mn 能力缺口：view-record `t.clone()` 深拷贝、手工 HIR 纯 id 方法名、
   前向 `t_MutRet` 包装 ABI（由 def 级推导）、owned 字段直接读取（transfer/深拷贝）、
   构造器操作数快照顺序。
+
+
+## PLAN-889：显式native集合消费者
+
+显式`--source-profile collections`与`ac/mir-native-collections-v1`进入同一共享MIR→
+CLIF/COFF→PE链，专用worker为`mn-collections-worker`；旧五域/default recipe/receipt精确键集
+及retired:legacy拒绝不变，无旧HIR→CLIF恢复。支持与排除、runtime cell/2与runtime/2、
+源码/layout/codegen/1、manifest/3和真函数增量详见
+[集合原生合同](../auto-mir/native-collections-variants.md)。
+
+报告绑定worker实际SHA、runtime build/content和linker/SDK/kernel32，集合族stale独立重算；
+身份查询不是语言执行结论。runtime/config在候选commit前重查，失败保旧source/env/root/
+manifest/PE/receipt；漏free反控只能ephemeral。891的typed/wide入口仍是后继规划。

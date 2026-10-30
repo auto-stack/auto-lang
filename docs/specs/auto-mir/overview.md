@@ -37,3 +37,7 @@ A09'/A10' cache 身份规则见
 本案的 `MIR_LOWERING_VERSION` 仍是其后端身份轴的一部分。
 
 PLAN-863 在共享 lowering 增加 HostConsole→独立 host 表/HostCall 的映射与 console 固定 main 策略，MIR_LOWERING_VERSION=3；见 [边界合同](hir-lowering-boundary.md) 与 [console profile](../auto-av/host-import-and-console.md)。
+
+PLAN-889增加显式[native集合/变体消费者](../auto-mir/native-collections-variants.md)：
+原864合法源码→同一shared MIR→真实COFF/PE，owned全帧清理/物理预算、真实source单体候选/坐标与深验恢复。
+AV opcode/wire/执行语义及旧whole-source差额不改，typed/wide与native在线帧不冒领。
