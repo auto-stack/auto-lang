@@ -318,6 +318,14 @@ work定向命令：`cargo test --manifest-path experimental/ac-core/Cargo.toml -
 
 `stage: goal | plan_id: PLAN-894 | plan_revision: 1 | round: 3 | from: reviewed | to: archived | status: archived | outcome: pass | worktree: （已清） | commit: 0a54a3b03 | next: done`。
 
+2026-10-31 merge T-13 cleaned 收据：
+
+- wt-guard 四树全 clean（auto-lang/auto-down/auto-ui/auto-man，无 reparse point）；worktree×4 移除、分支 plan-894-dev 删除（was 0a54a3b03）、组目录 lang-894 已删；主检出具现 lang-894 残留。释放磁盘 100%满→242G 空闲。
+- 保留登记：plan-894 外存证据 `D:/autostack/plan-artifacts/plan-894/`（摘要/收据/hashes 已全部入本文件；原始证据 14 天窗口后可清，`.retention/policy.json` 登记）。
+- 13/13 任务一致（T-01..08 work、T-09 review、T-10 豁免关闭、T-11..13 merge）；completion_kind: delivered。
+
+`checkpoint: cleaned | guard: clean×4 | worktrees: removed | branch: deleted | group: removed | disk: 100%→242G free`。
+
 ## 10. 待澄清事项
 
 | ID | 调查/关闭责任 | 未关闭时边界 |
