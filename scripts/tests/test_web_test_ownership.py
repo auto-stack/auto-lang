@@ -388,6 +388,22 @@ class WebOwnershipTests(unittest.TestCase):
                 report = json.loads(output.read_text())
                 return next(r for r in report['checks'] if r['id']=='four-owner-actual-execution')
             self.assertEqual(public_check(receipt)['status'], 'PASS')
+            # Actual libtest --list prints even original ignored tests as
+            # ': test'. Their same-source ui-full flags retain N/A, not PASS.
+            ui = next(r for r in rows if r['leg']=='ui-full')
+            single = next(r for r in rows if r['leg']=='ui-tu')
+            expected, required = full.baseline_for('tf','ui-full')
+            ignored = sorted(i for i in expected-required if '\tui_gen::' in i)
+            self.assertTrue(ignored)
+            single_list = Path(single['listing']['path'])
+            with single_list.open('a') as stream:
+                stream.write(''.join(i.split('\t',1)[1]+': test\n' for i in ignored))
+            single.update(listing=file_proof(single_list), condition_excluded=ignored)
+            self.assertTrue(validate_four_receipt(receipt))
+            single['condition_excluded'] = ignored + [single['selected_ids'][0]]
+            with self.assertRaisesRegex(ValueError,'original ignored identities differ'):
+                validate_four_receipt(receipt)
+            single['condition_excluded'] = ignored
             for name, mutation in [('ui-full','omit'), ('ui-full','ignore'), ('ui-full','filter'),
                                    ('language','omit'), ('man-t','omit'), ('ui-tu','omit')]:
                 row = next(r for r in rows if r['leg']==name)
@@ -403,7 +419,8 @@ class WebOwnershipTests(unittest.TestCase):
                     if package:
                         listing.write_text(''.join(line+'\n' for line in original.decode().splitlines()
                                                    if line != test+': test'))
-                        _, active = full.libtest_selection(listing.read_text(),package)
+                        listed, active = full.libtest_selection(listing.read_text(),package)
+                        active -= full.libtest_original_ignores(listed,package,json.loads(read_proof(ui['listing'])))
                     else:
                         document = json.loads(original)
                         case = document['rust-suites'][binary]['testcases']

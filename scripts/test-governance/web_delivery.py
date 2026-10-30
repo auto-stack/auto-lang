@@ -399,6 +399,7 @@ def validate_four_receipt(receipt):
     by_name = {r['leg']: r for r in results}
     owner_selections = {}
     executed_migrations = set()
+    minimums = owner.tier_minimums()
     for name in REQUIRED_LEGS:
         if name in MODULE_LEGS:
             continue
@@ -411,13 +412,26 @@ def validate_four_receipt(receipt):
             raise ValueError(f'{name}: actual owner/list command missing or changed')
         listing = read_proof(row.get('listing'))
         selected = listed_ids(listing, package)
-        if not selected or row.get('selected_ids') != sorted(selected) or row['selected'] != len(selected):
-            raise ValueError(f'{name}: exact selected test identities differ')
         ids, source_selected = (owner.libtest_selection(listing.decode('utf-8'), package) if package
                                 else owner.selection(json.loads(listing)))
+        if name == 'ui-tu':
+            excluded = owner.libtest_original_ignores(ids, package,
+                            json.loads(read_proof(by_name['ui-full'].get('listing'))))
+            if row.get('condition_excluded', []) != sorted(excluded):
+                raise ValueError('ui-tu: original ignored identities differ')
+            selected -= excluded
+            source_selected -= excluded
+        if not selected or row.get('selected_ids') != sorted(selected) or row['selected'] != len(selected):
+            raise ValueError(f'{name}: exact selected test identities differ')
         if source_selected != selected:
             raise ValueError(f'{name}: owner selection parsing differs')
+        owner.validate_owner_selection('tf', name, ids, selected, minimums, with_web=True)
         owner_selections[name] = (ids, selected)
+    # Reject a lost source denominator before expensive execution proof checks.
+    for name, (ids, selected) in owner_selections.items():
+        row, contract = by_name[name], contracts[name]
+        package = contract.get('package') if contract['kind'] == 'libtest' else None
+        options = contract.get('options', [])
         if name == 'language':
             directory = Path(row.get('module_directory', ''))
             for key, relative in [('module_selection', 'selection.json'), ('module_results', 'execution/results.json')]:
@@ -446,7 +460,6 @@ def validate_four_receipt(receipt):
                 raise ValueError(f'{name}: actual run command missing, filtered or changed')
             if execution_ids(read_proof(row.get('run_output')), package) != selected:
                 raise ValueError(f'{name}: actual passed tests differ from complete selection')
-    minimums = owner.tier_minimums()
     for name, (ids, selected) in owner_selections.items():
         owner.validate_owner_selection('tf', name, ids, selected, minimums, with_web=True,
                                        executed_migrations=executed_migrations)
