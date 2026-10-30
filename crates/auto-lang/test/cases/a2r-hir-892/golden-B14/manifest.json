@@ -1,0 +1,14 @@
+{
+  "schema": "auto.a2x.rust.fileset/1",
+  "source_profile": "auto.source.scalar-i32.draft",
+  "hir_domain": "scalar-i32-draft",
+  "input_hash": "eee8504cfb263226",
+  "entry": "main",
+  "entry_fn": "fn_main",
+  "target": { "lang": "rust", "edition": "2021", "backend": "auto-a2x-rust", "backend_version": "0.1.0" },
+  "files": [
+    { "path": "main.rs", "sha256": "e9ea581db1046ab5a6913afd229212c9e9ab73497343b88804eaeef95cb3c369" },
+    { "path": "a2x_runtime.rs", "sha256": "fab275bca3c035bf720a76330f96b2c0364535530f764c85e651f629f085f4e2" },
+    { "path": "generated.rs", "sha256": "bcc1722b2b12d02bcc65459762112b5db44e7c780e057bbf4b5e3228743938a3" }
+  ]
+}

@@ -165,7 +165,7 @@ test_temp.txt
 !crates/auto-diagnostics/tests/fixtures/v02-golden.json
 # PLAN-892：a2r-hir 首例四文件 golden 之一（manifest 是逐字节比较目标，*.json
 # 母规则会吞掉本件——fresh clone 复跑必红，同 F-793-R1-01 先例）
-!crates/auto-lang/test/cases/a2r-hir-892/golden/manifest.json
+!crates/auto-lang/test/cases/a2r-hir-892/golden-*/manifest.json
 # I6 双端共享布局期望值表（465 T4 产出；472 T2 修复入库）
 !crates/auto-lang/src/ui/layout_cases.json
 !crates/auto-lang/test/cases/ac-semantics/oracle/ac.sema.infer-bindings.bindings.json
