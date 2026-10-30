@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-895
-status: execution_done
+status: reviewed
 feature_name: 全仓测试用途审查、数十个顶级模块重组与日常包准入建议
 author: [Codex]
 created_at: 2026-10-30
@@ -199,7 +199,27 @@ evidence: attachments/895/audit-summary.md（入库）；本地 evidence/（sour
 blockers: 无阻塞。交人决定事项（非阻塞）：①24个开销主导模块的合并调用提案（register_proposals）；②5条未注册入口注册建议；③P-050 artifact-probe 用途待确认；④37个模块的跨顶级闭包准入取舍；⑤日常包默认调整待用户批准本建议后另行执行
 next_responsible_role: review（T-11 独立复审，冻结 SHA aae89dbf4）
 
-stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-895/auto-lang@aae89dbf4 | commit: aae89dbf4 | next: review
+stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 1 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-895/auto-lang@aae89dbf4 | commit: aae89dbf4 | next: review
+
+2026-10-30 / stage: review / review_scope: final / reviewer: 独立子代理（fresh context，未参与实现；实现在同会话由另一角色完成，已声明该限制并以命令级取证重建全部结论）/ plan_id: PLAN-895 / plan_revision: r2 / outcome: needs_fix / worktree: D:/autostack/.wt/lang-895/auto-lang / branch: plan-895-dev / reviewed_commit: aae89dbf4 / base: 41f17790d
+acceptance_results: AC-01 pass(F-1/F-2 minor) AC-02 pass AC-03 pass AC-04 partial(F-3 major) AC-05 pass AC-06 pass SD-01..04 pass V-07 pass；数据层独立重建：1181/7165/3172/1687 守恒、4956.3s 预算对账精确、V-04 12/12 逐字节一致（含 tier+滤串 select 层）
+findings: F-3(major) legacy档+位置滤串被新预检查破坏（--legacy-tier t vm 误报 unknown；违反 2026-11-30 冻结兼容合同与 AC-04 红线）；F-1(minor) S-015 计数36→34+2、S-002 host_console_863.rs 归属路径；F-2(minor) 新守卫测试未入台账分母
+evidence: 复审代理报告（同轮会话存档）；定向复现=tm --legacy-tier t vm（修复前 ERROR unknown modules）→ 修复后 1160模块/7017义务与 master 语义一致
+next: work 修复（同树）→ 定向重验 → 复审受影响项
+
+
+2026-10-30 / stage: work(修复轮) / plan_id: PLAN-895 / plan_revision: r2 / outcome: 修复完成
+worktree: D:/autostack/.wt/lang-895/auto-lang @456c25cba..05de75239
+fixes: F-3=module_command 预检查加 `and not args.legacy_tier`（legacy 位置参数保持子串滤串语义）+ 端到端回归负控 test_legacy_tier_with_filter_keeps_filter_semantics；F-1=S-015 改 34+2=36、S-002 修正 host_console_863.rs 归属（core/tests；auto-lang/tests 4覆盖/26未注册=215attr）；F-2=新增 S-022 台账行（18例守卫测试入分母）
+verify: --legacy-tier t vm→1160/7017、--legacy-tier t→1167/7055（与 master 语义精确一致）；audit --check 22 rows；test_test_purpose_policy 19 + test_module_selection 49 全绿；冻结态目录重发布（7165/1181 不变，身份=05de75239）
+
+2026-10-30 / stage: review / review_scope: final（修复轮定向复审，独立子代理 fresh context）/ plan_id: PLAN-895 / plan_revision: r2 / outcome: pass / reviewed_commit: 05de75239 / base: 41f17790d
+acceptance_results: F-1 closed（verify-*.ps1 实测34、S-015/S-002 与实测吻合）/ F-2 closed（S-022 入分母，--check 22 rows）/ F-3 closed（预检查跳过 legacy 分支；t vm=1160/7017、t=1167/7055、--list 顶级视图正常、负控 ok）；冻结态健康 68 测试全绿、worktree clean、6笔提交规范；回归面 select() 零改动、顶级展开普通路径有效
+evidence: 复审代理报告（同轮会话存档）；定向复审范围=F-1/F-2/F-3 及受影响面，其余 AC 证据沿用首轮独立复审（AC-01/02/03/05/06、SD-01..04、V-07 pass）
+nonblocking_note: register_proposals 字面未点名 test_test_purpose_policy.py（S-022 经 note 挂靠 S-013 提案）；纯文档性，无行为影响，merge 时知悉
+pending_closeout_gates: merge 持有冻结 tm 完整模块/消费者并集门（本计划改动=Python治理/目录/文档，零 Rust 编译面；合入门=cargo tm 受影响完整模块并集，计划以 infra/selection+infra/meter 真实单轮（spot-checks 已含 infra/meter PASS 复跑）与 68 治理测试为受影响面收据，全仓非本计划义务不叠加）
+next: merge（T-12）
+
 
 ## 10. 待澄清事项
 
