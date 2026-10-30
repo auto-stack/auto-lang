@@ -176,6 +176,64 @@ mod shutdown_tests {
     use super::wait_for_service_shutdown;
 
     #[test]
+    fn external_shutdown_releases_network_without_polling_vm_owner() {
+        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = reservation.local_addr().unwrap();
+        drop(reservation);
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&executor, async {
+            let vm = std::rc::Rc::new(crate::vm::engine::AutoVM::new_without_host_snapshot(
+                crate::vm::virt_memory::VirtualFlash::new(0),
+                8192,
+            ));
+            let mut config = crate::vm::ffi::http_transport::TransportConfig::from_env();
+            config.shutdown_drain = std::time::Duration::from_millis(20);
+            let (stop, receiver) = tokio::sync::watch::channel(false);
+            let address_text = address.to_string();
+            let mut service = Box::pin(super::super::serve_with(
+                vm,
+                &address_text,
+                config,
+                receiver,
+            ));
+            std::future::poll_fn(|cx| {
+                assert!(std::future::Future::poll(service.as_mut(), cx).is_pending());
+                std::task::Poll::Ready(())
+            })
+            .await;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Ok(stream) = std::net::TcpStream::connect_timeout(
+                    &address,
+                    std::time::Duration::from_millis(30),
+                ) {
+                    drop(stream);
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "network never bound");
+            }
+            stop.send(true).unwrap();
+            // Deliberately block this owner executor. External stop must still
+            // reach the independent network reactor and release its socket.
+            loop {
+                if let Ok(listener) = std::net::TcpListener::bind(address) {
+                    drop(listener);
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "network shutdown depended on VM owner polling"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            service.await.unwrap();
+        });
+    }
+
+    #[test]
     fn session_cleanup_error_is_owned_and_join_does_not_block_reactor() {
         let executor = tokio::runtime::Builder::new_current_thread()
             .enable_all()

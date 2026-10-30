@@ -3260,6 +3260,8 @@ async fn serve_with_inner(
     let net_addr = addr.to_string();
     let net_cfg = cfg.clone();
     let (network_stop, net_shutdown) = tokio::sync::watch::channel(*shutdown_rx.borrow());
+    let mut external_shutdown = shutdown_rx.clone();
+    let relay_stop = network_stop.clone();
     let net_metadata = current_program_metadata();
     let spawned = std::thread::Builder::new()
         .name("auto-http-net".to_string())
@@ -3275,14 +3277,25 @@ async fn serve_with_inner(
                     return;
                 }
             };
-            rt.block_on(super::http_transport::serve_network(
-                net_addr,
-                net_cfg,
-                req_tx,
-                net_shutdown,
-                ready_tx,
-                net_metadata,
-            ));
+            rt.block_on(async move {
+                // External shutdown must reach the network independently of
+                // the !Send owner's progress (including CPU/native segments).
+                let relay = tokio::spawn(async move {
+                    wait_for_service_shutdown(&mut external_shutdown).await;
+                    let _ = relay_stop.send(true);
+                });
+                super::http_transport::serve_network(
+                    net_addr,
+                    net_cfg,
+                    req_tx,
+                    net_shutdown,
+                    ready_tx,
+                    net_metadata,
+                )
+                .await;
+                relay.abort();
+                let _ = relay.await;
+            });
         });
     let network_thread = match spawned {
         Ok(thread) => thread,
