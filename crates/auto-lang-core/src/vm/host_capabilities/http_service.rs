@@ -154,6 +154,61 @@ mod tests {
     }
 
     #[test]
+    fn file_entries_preserve_launch_snapshot_and_restore_caller_context() {
+        struct LaunchHost(Arc<Mutex<Vec<Option<u32>>>>);
+        impl HttpServiceHost for LaunchHost {
+            fn serve(&self, owner: HttpVmOwner) -> HttpServiceFuture {
+                let launch = owner.launch().map(|v| *v.settings::<u32>().unwrap());
+                self.0.lock().unwrap().push(launch);
+                Box::pin(async { Ok(()) })
+            }
+        }
+        let _restore = RestoreHost(DEFAULT_HOST.read().unwrap().clone());
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        set_process_default_http_service_host(Arc::new(LaunchHost(seen.clone())));
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("file-entry.at");
+        std::fs::write(
+            &source,
+            "#[api(method=\"GET\",path=\"/value\")]\nfn value() int { 42 }\n",
+        )
+        .unwrap();
+        let path = source.to_str().unwrap();
+        for value in [17u32, 29] {
+            with_http_service_launch(Some(HttpServiceLaunch::new(Arc::new(value))), || {
+                crate::run_file_with_args(path, vec!["owned-argument".into()]).unwrap();
+                assert_eq!(
+                    *current_http_service_launch()
+                        .unwrap()
+                        .settings::<u32>()
+                        .unwrap(),
+                    value
+                );
+            });
+            assert!(current_http_service_launch().is_none());
+        }
+        with_http_service_launch(None, || crate::run_file(path)).unwrap();
+        assert_eq!(*seen.lock().unwrap(), [Some(17), Some(29), None]);
+        std::fs::write(&source, "fn main() int { 42 }\n").unwrap();
+        with_http_service_launch(Some(HttpServiceLaunch::new(Arc::new(31u32))), || {
+            assert_eq!(crate::run_file(path).unwrap(), "42");
+            assert_eq!(
+                *current_http_service_launch()
+                    .unwrap()
+                    .settings::<u32>()
+                    .unwrap(),
+                31
+            );
+        });
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            3,
+            "ordinary file must not invoke the host"
+        );
+        assert!(current_http_service_launch().is_none());
+    }
+
+    #[test]
     fn explicit_http_host_selection_is_stable_for_active_local_owners() {
         let saved = DEFAULT_HOST.read().unwrap().clone();
         let _restore = RestoreHost(saved);

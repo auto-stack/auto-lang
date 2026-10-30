@@ -26,7 +26,147 @@ DISTRIBUTION_IDS = {
 }
 
 
-def validate_distribution_receipt(receipt, path):
+def file_proof(path):
+    path = Path(path).resolve()
+    return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def read_proof(proof):
+    if not isinstance(proof, dict) or not proof.get('path') or not re.fullmatch('[0-9a-f]{64}', proof.get('sha256', '')):
+        raise ValueError('missing execution output path/hash')
+    raw = Path(proof['path']).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != proof['sha256']:
+        raise ValueError('execution output identity changed: ' + proof['path'])
+    return raw
+
+
+def execution_ids(raw, package=None):
+    text = raw.decode('utf-8', errors='replace')
+    if package:
+        names = re.findall(r'^test\s+(\S+)\s+\.\.\.\s+ok\s*$', text, re.MULTILINE)
+        ids = [package + '\t' + name for name in names]
+        summaries = re.findall(r'test result: ok\.\s+(\d+) passed;\s+0 failed;', text)
+        counts = [int(n) for n in summaries]
+    else:
+        names = re.findall(r'^\s*PASS(?:\s*\+\s*LEAK)?\s+\[[^\]]*\](?:\s+\(\s*\d+/\d+\))?\s+(\S+)\s+(\S+)\s*$', text, re.MULTILINE)
+        ids = [binary + '\t' + test for binary, test in names]
+        summaries = re.findall(r'Summary\s+\[[^\]]+\]\s+(\d+) tests? run:\s+(\d+) passed', text)
+        counts = [int(a) for a, b in summaries if a == b]
+    if len(ids) != len(set(ids)) or counts != [len(ids)] or not ids:
+        raise ValueError('actual test IDs/summary missing, duplicated or unsuccessful')
+    return set(ids)
+
+
+def listed_ids(raw, package=None):
+    if package:
+        text = raw.decode('utf-8', errors='replace')
+        return {package + '\t' + line[:-6].strip() for line in text.splitlines() if line.endswith(': test')}
+    document = json.loads(raw)
+    return {binary + '\t' + name for binary, suite in document['rust-suites'].items()
+            for name, row in suite['testcases'].items()
+            if row['filter-match']['status'] == 'matches' and not row['ignored']}
+
+
+def module_execution(directory):
+    """Reconcile stored execution with the selected source-bound atomic IDs."""
+    from module_catalog import verify_selection, discover, source_identity, ROOT
+    from run_selected import applicability, exact_filter, execution_settings, validate_python_result, validate_case_result
+    from repository_layout import workspace_root
+    import os
+    directory = Path(directory)
+    selection_path = directory / 'selection.json'
+    selection = load(selection_path)
+    catalog = load(selection['catalog_path'])
+    if digest(catalog) != digest(load(ROOT/'scripts/test-governance/modules.json')):
+        # The public tm runner deliberately refreshes into an ephemeral catalog.
+        # Recheck its source contracts rather than requiring published bytes.
+        from catalog_contract import verify_catalog
+        verify_catalog(catalog, ROOT)
+    verify_selection(catalog, selection, source_identity(ROOT))
+    report = load(directory / 'execution/results.json')
+    if (not report.get('complete') or not report.get('gate_passed')
+            or report.get('selection_sha256') != file_proof(selection_path)['sha256']
+            or report.get('catalog_sha256') != digest(catalog)
+            or report.get('source_identity') != selection['source_identity']):
+        raise ValueError('incomplete, failed or stale module execution')
+    results = {r['module']: r for r in report['results']}
+    if len(results) != len(report['results']) or set(results) != set(selection['modules']):
+        raise ValueError('missing, extra or duplicate actual module result')
+    lookup = {r['id']: r for r in catalog['obligations']}
+    for module in catalog['modules']:
+        if module['id'] not in results:
+            continue
+        row = results[module['id']]
+        recipe = catalog['recipes'][module['recipe']]
+        rows = [lookup[i] for i in module['obligations']]
+        if row.get('obligations') != sorted(module['obligations']):
+            raise ValueError('actual module obligation identity differs')
+        keys = set(recipe.get('required_env', {}))
+        for obligation in rows:
+            for condition in obligation.get('conditions', []):
+                keys.update(condition.get('required_env', {}))
+        env = {**os.environ, **recipe.get('env', {})}
+        condition_environment = {key: env.get(key) for key in sorted(keys)}
+        if row.get('condition_environment') != condition_environment:
+            raise ValueError('execution condition environment differs from frozen invocation')
+        excluded = applicability(rows, condition_environment, recipe.get('required_env'))
+        expected = sorted(set(module['obligations']) - {r['id'] for r in excluded})
+        if row.get('applicable') != expected:
+            raise ValueError('actual applicable IDs omit/duplicate an unconditional obligation')
+        if excluded:
+            if row.get('outcome') != 'NOT_APPLICABLE' or row.get('condition_excluded') != excluded or row.get('exit') is not None:
+                raise ValueError('condition exclusion differs from original source conditions')
+            continue
+        if row.get('outcome') != 'PASS' or row.get('exit') != 0 or row.get('condition_excluded') != []:
+            raise ValueError('required module was not successfully executed')
+        from execution_trace import validate_bindings
+        bindings = validate_bindings(rows, row.get('child_observations', {'invocations': []}))
+        if row.get('child_validation') != bindings or not bindings['valid']:
+            raise ValueError('required original child observations are incomplete')
+        if Path(row.get('cwd', '')).resolve() != workspace_root(ROOT, recipe):
+            raise ValueError('module execution cwd differs from declared owner')
+        output = read_proof(row.get('output'))
+        listing = read_proof(row.get('listing'))
+        listed = discover(json.loads(listing), module['recipe'], allow_filtered_skipped=True)
+        runner = recipe.get('runner', 'nextest')
+        if runner in ('python-unittest', 'case-suite'):
+            listed = [r for r in listed if r['id'] in set(expected)]
+        if sorted(r['id'] for r in listed if r['selected_at_discovery'] and not r['ignored']) != expected:
+            raise ValueError('actual discovery omitted or changed module IDs')
+        if runner == 'nextest':
+            switches = [*execution_settings(recipe, module)[0], '--ignore-default-filter', '-E', exact_filter(rows)]
+            serial = ['--test-threads', '1'] if 'th' in module.get('legacy_tiers', []) or any(r['test'].startswith('vm::ffi::stdlib::http::') for r in rows) else []
+            if (row.get('list_command') != ['cargo', 'nextest', 'list', *switches, '--message-format', 'json']
+                    or row.get('command') != ['cargo', 'nextest', 'run', *switches, *serial, '--no-fail-fast', '--no-tests', 'fail']):
+                raise ValueError('module list/run command differs from complete exact selection')
+            if execution_ids(output) != {i.split('|', 1)[1].replace('|', '\t', 1) for i in expected}:
+                raise ValueError('actual passed test IDs differ from required complete module')
+        elif runner == 'python-unittest':
+            from recipe_runtime import list_command, python_run_command
+            if (row.get('list_command') != list_command(recipe, ROOT)
+                    or row.get('command') != python_run_command(recipe, ROOT, [r for r in listed if not r['ignored']])):
+                raise ValueError('Python list/run command differs from complete selection')
+            proof = validate_python_result(Path(row['output']['path']), [r['test'] for r in listed if not r['ignored']])
+            if proof != row.get('execution') or proof['failures'] or proof['errors']:
+                raise ValueError('Python atomic execution failed or differs')
+        elif runner == 'case-suite':
+            from recipe_runtime import list_command
+            command = list_command(recipe, ROOT)
+            expected_command = [command[0], 'module-case', *command[2:], '--case', rows[0]['case_id'],
+                                '--out', row['case_artifacts']['original_runtime_root'], '--artifact-out', str((directory/'execution').resolve())]
+            if row.get('list_command') != command or row.get('command') != expected_command:
+                raise ValueError('case list/run command differs from original complete case')
+            # The raw case report is retained independently of its summary.
+            read_proof(row.get('case_report'))
+            proof = validate_case_result(Path(row['case_report']['path']), rows, row['execution']['raw_exit'])
+            if proof != row['execution'] or not proof['assertions_satisfied']:
+                raise ValueError('case execution failed its original atomic oracles')
+        else:
+            raise ValueError('unknown module execution kind')
+    return selection, catalog, results
+
+
+def validate_distribution_receipt(receipt, path, source_roots=None):
     """A banner alone cannot certify fresh/locked/relocation/recovery delivery."""
     path = Path(path).resolve()
     if (receipt.get('schema') != 'web-repository-distribution/1' or receipt.get('outcome') != 'pass'
@@ -45,9 +185,15 @@ def validate_distribution_receipt(receipt, path):
         return file
     for row in rows:
         if row.get('status') != 'PASS': raise ValueError('required distribution check failed/unexecuted')
-        if 'command' in row:
+        detail_only = (row['id'].endswith('runtime') or row['id'] in
+                       ('independent-installed-closure', 'interrupted-generation-recovered', 'legacy-three-owner-recovery'))
+        reuse = row['id'] == 'independent-sdk-tests' and 'reused_receipt' in row.get('detail', {})
+        if not detail_only and not reuse:
             expected = 2 if row['id'] in ('failed-swap', 'missing-resource-rejected', 'bad-hash-rejected', 'bad-version-rejected') else 1 if row['id'].endswith('public-rejection') else 0
-            if not row['command'] or row.get('exit') != expected or row.get('expected_exit') != expected:
+            if (not isinstance(row.get('command'), list) or not row['command']
+                    or not all(isinstance(v, str) and v for v in row['command'])
+                    or row.get('exit') != expected or row.get('expected_exit') != expected
+                    or not row.get('log')):
                 raise ValueError('distribution command result differs from original oracle')
             file_identity(row['log'], row.get('log_sha256'))
         detail = row.get('detail', {})
@@ -65,6 +211,25 @@ def validate_distribution_receipt(receipt, path):
             or manifest.get('sources') != receipt.get('sources')
             or manifest.get('source_sha256') != receipt.get('source_sha256') or file_map_hash != receipt.get('source_sha256')):
         raise ValueError('distribution source cohort differs')
+    if source_roots is not None:
+        import subprocess
+        scopes = {'auto-lang': ['Cargo.toml', 'stdlib/auto', 'stdlib/assembly-providers.json', 'docs/schema/aura.at',
+                               *manifest['source_closure']['root_inputs'], 'vendor/autodown-test-parser',
+                               *(f'examples/ui/{name}/{part}' for name in ('015-notes', '017-chat', '023-realworld') for part in ('src/back', 'pac.at')), 'LICENSE'],
+                  'auto-web': ['Cargo.toml', 'Cargo.lock', '.config', 'scripts',
+                               'test/fixtures/standalone-consumer', 'README.md', 'LICENSE']}
+        for package in manifest['source_closure']['packages']:
+            if package['source_repo'] not in scopes or package['source_path'] != 'crates/' + package['name']:
+                raise ValueError('distribution package source owner/path differs')
+            scopes[package['source_repo']].append(package['source_path'])
+        for name, paths in scopes.items():
+            root = source_roots[name]
+            changed = subprocess.check_output(['git', '-C', str(root), 'diff', '--name-only',
+                                               manifest['sources'][name], '--', *paths])
+            added = subprocess.check_output(['git', '-C', str(root), 'ls-files', '--others',
+                                             '--exclude-standard', '--', *paths])
+            if changed.strip() or added.strip():
+                raise ValueError('distribution payload inputs differ from the selected current owner: ' + name)
     package_names = [p['name'] for p in manifest.get('source_closure', {}).get('packages', [])]
     if (len(package_names) != len(set(package_names)) or len(package_names) != 19
             or not {'auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core'}.issubset(package_names)
@@ -77,9 +242,7 @@ def validate_distribution_receipt(receipt, path):
         if selected.stat().st_size != record['bytes']: raise ValueError('distribution source size differs')
     tested = by_id['independent-sdk-tests']
     if 'command' in tested:
-        text = Path(tested['log']).read_text(encoding='utf-8', errors='replace')
-        if not re.search(r'Summary\s+\[[^\]]+\]\s+217 tests run: 217 passed, 2 skipped', text):
-            raise ValueError('independent SDK applicable/original ignored execution differs')
+        test_log = Path(tested['log'])
     else:
         reused = tested.get('detail', {})
         previous = file_identity(reused['reused_receipt'], reused['sha256'])
@@ -92,6 +255,11 @@ def validate_distribution_receipt(receipt, path):
                 or previous.get('config_sha256') != manifest['files']['sdk/.config/nextest.toml']['sha256']):
             raise ValueError('reused SDK execution source/config identity differs')
         file_identity(previous['log'], previous['log_sha256'])
+        test_log = Path(previous['log'])
+    raw = test_log.read_bytes()
+    if (not re.search(r'Summary\s+\[[^\]]+\]\s+217 tests run: 217 passed, 2 skipped', raw.decode('utf-8', errors='replace'))
+            or len(execution_ids(raw)) != 217):
+        raise ValueError('independent SDK actual test IDs/original ignored execution differs')
     legacy = by_id['legacy-three-owner-recovery']['detail']
     legacy_path = file_identity(legacy['receipt'], legacy['sha256'])
     legacy = json.loads(legacy_path.read_text(encoding='utf-8'))
@@ -103,9 +271,15 @@ def validate_distribution_receipt(receipt, path):
             or any(r.get('status') != 'PASS' for r in legacy['checks'])):
         raise ValueError('old/new Core upgrade or actual recovery consumption missing')
     for row in legacy['checks']:
-        if 'log' in row: file_identity(row['log'], row['log_sha256'])
-        if 'command' in row and (not row['command'] or row.get('exit') != 0):
-            raise ValueError('legacy source/build command did not actually pass')
+        command_required = row['id'].startswith('archive-') or row['id'].endswith('-core-locked-build')
+        if command_required and (not isinstance(row.get('command'), list) or not row['command']
+                                 or row.get('exit') != 0 or not row.get('log')):
+            raise ValueError('legacy source/build command proof missing or unsuccessful')
+        if command_required or row['id'].endswith('runtime'):
+            if not row.get('log'): raise ValueError('legacy execution output missing')
+            file_identity(row['log'], row.get('log_sha256'))
+        if row['id'].endswith('-core-install') and not re.fullmatch('[0-9a-f]{64}', row.get('manifest_sha256', '')):
+            raise ValueError('legacy install identity missing')
         if row['id'].endswith('runtime') and (row.get('exact_json') != 'legacy-890' or row.get('shutdown') != 202
                 or row.get('exit') != 0 or row.get('port_released') is not True
                 or not re.fullmatch('[0-9a-f]{64}', row.get('binary_sha256', ''))):
@@ -133,19 +307,13 @@ def validate_distribution_receipt(receipt, path):
 
 def collect_web_legs(directory, list_only=False):
     directory = Path(directory)
-    selection = load(directory / 'selection.json')
-    catalog = load(selection['catalog_path'])
-    if (selection.get('scope') != 'module' or selection.get('catalog_sha256') != digest(catalog)
-            or len(selection['modules']) != len(set(selection['modules']))
-            or len(selection['obligations']) != len(set(selection['obligations']))):
-        raise ValueError('module selection identity/uniqueness differs')
+    if list_only:
+        selection = load(directory / 'selection.json')
+        catalog = load(selection['catalog_path'])
+        results = {}
+    else:
+        selection, catalog, results = module_execution(directory)
     selected = set(selection['modules'])
-    report = None if list_only else load(directory / 'execution/results.json')
-    if report is not None and (not report.get('complete') or not report.get('gate_passed')):
-        raise ValueError('incomplete/failed module execution cannot certify Web legs')
-    results = {} if list_only else {r['module']: r for r in report['results']}
-    if report is not None and len(results) != len(report['results']):
-        raise ValueError('duplicate actual module result')
     legs = []
     for recipe in MODULE_LEGS:
         modules = [m for m in catalog['modules'] if m['recipe'] == recipe]
@@ -165,17 +333,6 @@ def collect_web_legs(directory, list_only=False):
                 raise ValueError(f'{recipe}: unsuccessful required execution')
             if row['outcome'] == 'NOT_APPLICABLE' and not module['conditions']:
                 raise ValueError(f'{recipe}: unconditional module was not executed')
-            if row['outcome'] == 'PASS':
-                command = row.get('command', [])
-                if command[:3] != ['cargo', 'nextest', 'run'] or '--no-tests' not in command:
-                    raise ValueError(f'{recipe}: no actual nextest execution command')
-                index = next(i for i, m in enumerate(catalog['modules']) if m['id'] == module['id'])
-                log = directory / 'execution' / f'{index}-run.log'
-                raw = log.read_bytes()
-                counts = re.findall(r'Summary\s+\[[^\]]+\]\s+(\d+) tests? run:\s+(\d+) passed', raw.decode('utf-8', errors='replace'))
-                if len(counts) != 1 or tuple(map(int, counts[0])) != (len(row['applicable']), len(row['applicable'])) or not row['applicable']:
-                    raise ValueError(f'{recipe}: actual executed/passed count differs from selected applicable IDs')
-                row = {**row, 'output_path': str(log), 'output_sha256': hashlib.sha256(raw).hexdigest()}
             execution.append(row)
         if not list_only and not any(r['outcome'] == 'PASS' for r in execution):
             raise ValueError(f'{recipe}: required leg never executed')
@@ -218,4 +375,57 @@ def validate_four_receipt(receipt):
         row = next(r for r in results if r['leg'] == name)
         if row.get('run_exit') != 0 or not row.get('selected'):
             raise ValueError(f'{name}: required leg unexecuted or selected zero tests')
+    # Consume the same owner recipes as the producer, not self-declared options.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('four_owner_recipe_contract', Path(__file__).parents[1]/'run-full-regression.py')
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    if receipt.get('tier') != 'tf' or receipt.get('batch') is not True:
+        raise ValueError('complete owner execution recipe missing')
+    roots = {name: Path(before[name]['root']).resolve() for name in REQUIRED_OWNERS}
+    contracts = {name: {'cwd': root, 'kind': 'nextest', 'options': options}
+                 for name, root, options in owner.legs(receipt['tier'], roots['language'], roots['ui'], True)}
+    contracts.update({s['leg']: s for s in owner.batch_extra_legs(roots['language'], roots['ui'], roots['man'])})
+    by_name = {r['leg']: r for r in results}
+    for name in REQUIRED_LEGS:
+        if name in MODULE_LEGS:
+            continue
+        row, contract = by_name[name], contracts[name]
+        package = contract.get('package') if contract['kind'] == 'libtest' else None
+        options = contract.get('options', [])
+        list_command = ['cargo', *contract['list']] if package else ['cargo', 'nextest', 'list', *options, '--message-format', 'json']
+        if (Path(row.get('cwd', '')).resolve() != Path(contract['cwd']).resolve()
+                or row.get('list_exit') != 0 or row.get('list_command') != list_command):
+            raise ValueError(f'{name}: actual owner/list command missing or changed')
+        listing = read_proof(row.get('listing'))
+        selected = listed_ids(listing, package)
+        if not selected or row.get('selected_ids') != sorted(selected) or row['selected'] != len(selected):
+            raise ValueError(f'{name}: exact selected test identities differ')
+        if name == 'language':
+            directory = Path(row.get('module_directory', ''))
+            for key, relative in [('module_selection', 'selection.json'), ('module_results', 'execution/results.json')]:
+                read_proof(row.get(key))
+                if Path(row[key]['path']).resolve() != (directory/relative).resolve():
+                    raise ValueError('language module proof points to a different union')
+            selection, catalog, execution = module_execution(directory)
+            expected_command = owner.module_queue_command(roots['language'], 'tf', [], True, directory, False, True)
+            if row.get('module_command') != expected_command or row.get('module_exit') != 0:
+                raise ValueError('language complete module invocation missing or changed')
+            from module_command import schedule_seed_modules
+            scheduled = schedule_seed_modules(catalog, roots['language']/'scripts/test-governance/periodic-four-repository-schedule.json')
+            if set(selection['modules']) != set(scheduled):
+                raise ValueError('four-owner module union omitted a required periodic recipe/leaf')
+            covered = {i.split('|', 1)[1].replace('|', '\t', 1) for i in selection['obligations'] if i.startswith('language|')}
+            if not selected.issubset(covered):
+                raise ValueError('legacy language selection absent from executed/condition-excluded module union')
+            actual = collect_web_legs(directory)
+            for leg in actual:
+                if by_name[leg['leg']] != leg:
+                    raise ValueError('Web/media leg differs from actual complete module execution')
+        else:
+            expected = ['cargo', *contract['run']] if package else ['cargo', 'nextest', 'run', *options, '--no-fail-fast']
+            if row.get('run_command') != expected:
+                raise ValueError(f'{name}: actual run command missing, filtered or changed')
+            if execution_ids(read_proof(row.get('run_output')), package) != selected:
+                raise ValueError(f'{name}: actual passed tests differ from complete selection')
     return True

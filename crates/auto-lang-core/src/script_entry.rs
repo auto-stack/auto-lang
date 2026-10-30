@@ -73,20 +73,23 @@ pub fn run_file_with_args(path: &str, args: Vec<String>) -> AutoResult<String> {
 
 /// Run code with a source file path for module resolution.
 fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
+    let launch = crate::vm::host_capabilities::http_service::invocation_launch();
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
-            block_on_autovm_local(async {
-                execute_autovm_with_path(&code, true, Some(&path))
-                    .await
-                    .map(|(r, stdout, _, _)| {
-                        if !stdout.is_empty() {
-                            println!("{}", stdout);
-                        }
-                        r
-                    })
+            crate::vm::host_capabilities::http_service::with_http_service_launch(launch, || {
+                block_on_autovm_local(async {
+                    execute_autovm_with_path(&code, true, Some(&path))
+                        .await
+                        .map(|(r, stdout, _, _)| {
+                            if !stdout.is_empty() {
+                                println!("{}", stdout);
+                            }
+                            r
+                        })
+                })
             })
         })
         .expect("Failed to spawn execution thread");
