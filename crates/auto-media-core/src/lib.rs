@@ -28,3 +28,8 @@ pub mod image_pipeline;
 /// natural ordering, no-symlink traversal, HTTP byte-range semantics) —
 /// verbatim migration of auto-lang's `ui/media_service.rs` (Plan 617 origin).
 pub mod media_service;
+
+/// Renderer-neutral photo indexing, token resolution and thumbnail rendering.
+/// PLAN-890: same implementation as the former UI path, with no renderer owner.
+#[cfg(feature = "image-codec")]
+pub mod photo_service;

@@ -134,7 +134,11 @@ fn path_contains(root: &Path, dir: &Path) -> bool {
 
 /// Compute the relative path from the workspace dir (ws landing point) to
 /// the auto-lang crate.
-fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()> {
+fn validate_language_candidate(
+    candidate: &Path,
+    origin: &str,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<()> {
     let crates = candidate.parent();
     let root = crates.and_then(Path::parent);
     let valid_workspace = root
@@ -148,7 +152,8 @@ fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()>
         })
         .is_some();
     let valid = valid_workspace
-        && crate::source_owner::valid_source_crate(candidate, "auto-lang")
+        && (requirements == WorkspaceRequirements::Service
+            || crate::source_owner::valid_source_crate(candidate, "auto-lang"))
         && crates.is_some_and(|dir| {
             ["auto-lang-core", "a2r-std", "auto-media-core"]
                 .iter()
@@ -165,7 +170,13 @@ fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()>
         if crate::source_owner::is_managed_sdk(root) {
             crate::source_owner::validate_installed_language_source(root)?;
         } else {
+            // The facade has optional renderer path dependencies. Cargo resolves
+            // them even when disabled, but a service never selects that facade.
+            // Validate every actually selected language/media path instead.
             for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+                if name == "auto-lang" && requirements == WorkspaceRequirements::Service {
+                    continue;
+                }
                 let package = if name == "auto-lang" {
                     candidate.to_path_buf()
                 } else {
@@ -179,7 +190,16 @@ fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()>
     Ok(())
 }
 
+#[cfg(test)]
 fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<String> {
+    compute_auto_lang_rel_path_for(project_dir, ws_dir, WorkspaceRequirements::Ui)
+}
+
+fn compute_auto_lang_rel_path_for(
+    project_dir: &Path,
+    ws_dir: &Path,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<String> {
     for key in [
         "AUTO_DELIVERY_SOURCE_ROOT",
         "AUTO_LANG_ROOT",
@@ -192,7 +212,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
             } else {
                 path.join("crates/auto-lang")
             };
-            validate_language_candidate(&candidate, &format!("显式 {key}"))?;
+            validate_language_candidate(&candidate, &format!("显式 {key}"), requirements)?;
             return Ok(compute_relative_path(ws_dir, &candidate));
         }
     }
@@ -206,7 +226,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
                     return Err("producer 安装清单缺失".into());
                 }
                 let candidate = sdk.join("crates/auto-lang");
-                validate_language_candidate(&candidate, "安装 SDK")?;
+                validate_language_candidate(&candidate, "安装 SDK", requirements)?;
                 return Ok(compute_relative_path(ws_dir, &candidate));
             }
         }
@@ -215,13 +235,13 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
     for _ in 0..10 {
         let direct = dir.join("crates/auto-lang");
         if direct.exists() {
-            validate_language_candidate(&direct, "发现的语言源")?;
+            validate_language_candidate(&direct, "发现的语言源", requirements)?;
             return Ok(compute_relative_path(ws_dir, &direct));
         }
         if let Some(parent) = dir.parent() {
             let sibling = parent.join("auto-lang/crates/auto-lang");
             if sibling.exists() {
-                validate_language_candidate(&sibling, "发现的语言兄弟源")?;
+                validate_language_candidate(&sibling, "发现的语言兄弟源", requirements)?;
                 return Ok(compute_relative_path(ws_dir, &sibling));
             }
         }
@@ -233,7 +253,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
         .parent()
         .map(|parent| parent.join("auto-lang"));
     if let Some(candidate) = compiled_crate.filter(|path| path.exists()) {
-        validate_language_candidate(&candidate, "编译期语言源")?;
+        validate_language_candidate(&candidate, "编译期语言源", requirements)?;
         return Ok(compute_relative_path(ws_dir, &candidate));
     }
     Err("producer 语言源缺失: crates/auto-lang".into())
@@ -460,7 +480,13 @@ pub fn try_ensure_workspace_for(
     }
     members.sort();
 
-    let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir)?;
+    let language_requirements = if needs_ui {
+        WorkspaceRequirements::Ui
+    } else {
+        WorkspaceRequirements::Service
+    };
+    let auto_lang_rel =
+        compute_auto_lang_rel_path_for(project_dir, &ws_dir, language_requirements)?;
     // PLAN-668 R-24：a2r-std 与 auto-lang 同根（crates/a2r-std）。
     let a2r_std_rel = auto_lang_rel.replace("crates/auto-lang", "crates/a2r-std");
     // PLAN-811：媒体基础与 auto-lang 同根（crates/auto-media-core）——生成

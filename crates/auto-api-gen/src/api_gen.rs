@@ -255,7 +255,10 @@ pub fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
     // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
     let current_lock: Option<String> =
-        crate::rust_workspace::try_ensure_shared_workspace(project_dir)
+        crate::rust_workspace::try_ensure_workspace_for(
+            project_dir,
+            crate::rust_workspace::WorkspaceRequirements::Service,
+        )
             .ok()
             .and_then(|workspace| {
                 crate::rust_workspace::workspace_lock_identity(std::fs::read(
@@ -501,7 +504,10 @@ fn generate_rust_server(
     // Freeze actual selections and emitted body references before creating artifacts.
     let assembly = generated_api_assembly(root_dir, api_module)?;
     // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
-    let ws_dir = crate::rust_workspace::try_ensure_shared_workspace(root_dir)?;
+    let ws_dir = crate::rust_workspace::try_ensure_workspace_for(
+        root_dir,
+        crate::rust_workspace::WorkspaceRequirements::Service,
+    )?;
     let back_name = crate::rust_workspace::back_member_name(root_dir);
     let rust_dir = ws_dir.join(&back_name);
     let receipt_path = rust_dir.join("generation.json");
@@ -813,7 +819,10 @@ fn generate_rust_server(
 
     // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
     // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
-    crate::rust_workspace::try_ensure_shared_workspace(root_dir)?;
+    crate::rust_workspace::try_ensure_workspace_for(
+        root_dir,
+        crate::rust_workspace::WorkspaceRequirements::Service,
+    )?;
 
     println!("  ✓ Generated Rust server: {}/", back_name);
 
@@ -845,7 +854,11 @@ fn generate_rust_server(
         // 分类/指纹与复用门共用 workspace_lock_identity 单点——空文件
         // =实际内容身份 811c9dc5，两端不再漂移。
         let workspace_lock = match crate::rust_workspace::workspace_lock_identity(std::fs::read(
-            crate::rust_workspace::try_ensure_shared_workspace(root_dir)?.join("Cargo.lock"),
+            crate::rust_workspace::try_ensure_workspace_for(
+                root_dir,
+                crate::rust_workspace::WorkspaceRequirements::Service,
+            )?
+            .join("Cargo.lock"),
         )) {
             Ok(Some(fingerprint)) => fingerprint,
             Ok(None) => "absent".into(),
@@ -908,7 +921,6 @@ futures = \"0.3\"";
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
 auto-lang-core = { workspace = true }
-auto-ui-runtime = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
 # PLAN-811: 生成后端直接消费媒体基础公开入口（auto_media_core::）。
 auto-media-core = { workspace = true }
 a2r-std = { workspace = true }
@@ -2893,7 +2905,7 @@ async fn auto_media_stream(
 // PLAN-043 Part 1: local photo file service routes (029-photo-gallery).
 // Mirrors MEDIA_SERVICE_HANDLERS: hand-written routes emitted by the
 // generator, answering /api/photos/scan + /api/photos/thumb/:id +
-// /api/photos/full/:id from the filesystem via auto_ui_runtime::ui::photo_service.
+// /api/photos/full/:id from the filesystem via auto_media_core::photo_service.
 // Thumbnails render on demand behind a disk cache; originals stream through
 // tokio-util so a multi-GB panorama is never read whole. Scan URLs are
 // absolute (AUTO_HTTP_BASE inherited from `auto run`) because VM-native
@@ -2940,7 +2952,7 @@ fn photo_base() -> String {
 async fn auto_photos_scan(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
-    use auto_ui_runtime::ui::photo_service as ps;
+    use auto_media_core::photo_service as ps;
     // 非递归浏览模型：`?dir=<相对路径>`（缺省根目录）；非法段 400。
     let dir = params.get("dir").cloned().unwrap_or_default();
     let Some(root) = ps::resolve_root(None) else {
@@ -3011,17 +3023,17 @@ async fn auto_photos_scan(
 }
 
 /// token 反查公共臂（生成后端形态：注册表按 root 分桶，miss → None）。
-fn photo_entry_for(id: &str) -> Option<auto_ui_runtime::ui::photo_service::PhotoEntry> {
-    let root = auto_ui_runtime::ui::photo_service::resolve_root(None)?;
-    let rel = auto_ui_runtime::ui::photo_service::resolve_token(&root, id)?;
-    auto_ui_runtime::ui::photo_service::photo_from_rel(&root, &rel)
+fn photo_entry_for(id: &str) -> Option<auto_media_core::photo_service::PhotoEntry> {
+    let root = auto_media_core::photo_service::resolve_root(None)?;
+    let rel = auto_media_core::photo_service::resolve_token(&root, id)?;
+    auto_media_core::photo_service::photo_from_rel(&root, &rel)
 }
 
 async fn auto_photos_thumb(
     axum::extract::Path(id): axum::extract::Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
-    use auto_ui_runtime::ui::photo_service as ps;
+    use auto_media_core::photo_service as ps;
     let width = params.get("w").and_then(|v| v.parse::<u32>().ok()).unwrap_or(260);
     let Some(entry) = photo_entry_for(&id) else {
         return photo_plain(404, "unknown photo id".to_string());
@@ -3045,7 +3057,7 @@ async fn auto_photos_thumb(
 async fn auto_photos_full(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> axum::response::Response {
-    use auto_ui_runtime::ui::photo_service as ps;
+    use auto_media_core::photo_service as ps;
     use tokio::io::AsyncReadExt;
     let Some(entry) = photo_entry_for(&id) else {
         return photo_plain(404, "unknown photo id".to_string());
@@ -8801,9 +8813,11 @@ pub fn list_items() []str { return [] }"#,
             "backend uses legacy facade"
         );
         assert!(generated.contains("auto_lang_core::http_service_config"));
-        assert!(generated.contains("auto_ui_runtime::ui::photo_service"));
+        assert!(generated.contains("auto_media_core::photo_service"));
         assert!(manifest.contains("auto-lang-core = { workspace = true"));
-        assert!(manifest.contains("auto-ui-runtime = { workspace = true"));
+        assert!(manifest.contains("auto-media-core = { workspace = true"));
+        assert!(!manifest.contains("auto-ui-runtime"));
+        assert!(!generated.contains("auto_ui_runtime::"));
         assert!(!manifest.contains("auto-lang = { workspace = true"));
     }
 
@@ -8849,7 +8863,7 @@ pub fn list_items() []str { return [] }
                 "photo full route missing: {generated}"
             );
             assert!(
-                generated.contains("auto_ui_runtime::ui::photo_service"),
+                generated.contains("auto_media_core::photo_service"),
                 "photo runtime missing: {generated}"
             );
         }

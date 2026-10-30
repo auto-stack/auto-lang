@@ -1,22 +1,19 @@
-# PLAN-890 neutral photo service feasibility
+# PLAN-890 neutral photo service consumer
 
-The probe includes the unchanged photo service source from the pinned sibling
-`auto-ui` worktree. It depends only on image codecs, EXIF and blake3, matching
-the existing media foundation's dependency families. It has no UI runtime or
-renderer dependency. The sibling is read-only; no production ownership has
-moved yet. This fixture requires the PLAN-890 sibling layout.
-
-Run the named photo module tests serially with `TEMP` and `TMP` set **only in
-the test child** to a private directory. The thumbnail cache uses `temp_dir()`;
-isolation avoids touching a shared cache. Restore the parent environment after
-the child exits. The work receipt records the actual command, source hash,
-private directory and output hash. Do not use the default global cache for this
-probe.
+The probe now consumes `auto-media-core::photo_service` directly. The unchanged
+implementation and ten original tests have moved once to that neutral owner;
+the pinned UI tree keeps its existing public path as a re-export. No sibling
+UI source is needed to compile this fixture. Its library has no local tests:
+`cargo test` selecting zero cases is not a photo verification receipt.
 
 ```powershell
-cargo test --manifest-path test/fixtures/modularity/web-neutral-services-probe/Cargo.toml --target-dir test/fixtures/modularity/web-port-probe/target -j 4 photo_service::tests:: -- --test-threads=1
+cargo check --manifest-path test/fixtures/modularity/web-neutral-services-probe/Cargo.toml --target-dir test/fixtures/modularity/web-port-probe/target --locked -j 4
+cargo test -p auto-media-core photo_service::tests -j 4 -- --test-threads=1
 ```
 
-This proves the existing photo implementation can compile outside UI. Moving
-its single source into `auto-media-core` and changing consumers still requires
-the Plan's later migration steps; these ten tests do not close those steps.
+Run the named photo module tests serially with TEMP and TMP set only in that
+child to a private directory. The thumbnail cache uses `temp_dir()`; isolation
+avoids using or modifying a shared cache. The Plan receipt binds the actual
+command, original source hash, private directory and log hash. Production
+HTTP/photo consumption is additionally checked by the generated service probe;
+fresh SDK/distribution and the complete Web migration remain separate tasks.

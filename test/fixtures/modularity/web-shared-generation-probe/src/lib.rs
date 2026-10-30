@@ -33,6 +33,21 @@ mod controls {
             assert!(deps.get("auto-lang-core").is_some());
             assert!(deps.get("auto-ui-runtime").is_none());
             assert!(deps.get("iced").is_none());
+            // Skipping the unused UI facade must never skip the selected Core.
+            let core_manifest =
+                std::path::PathBuf::from(std::env::var_os("AUTO_LANG_ROOT").unwrap())
+                    .join("crates/auto-lang-core/Cargo.toml");
+            let original_core = std::fs::read(&core_manifest).unwrap();
+            let mut broken_core = String::from_utf8(original_core.clone()).unwrap();
+            broken_core.push_str("[dependencies]\nmissing = { path = \"../missing-selected-core-dep\", optional = true }\n");
+            std::fs::write(&core_manifest, broken_core).unwrap();
+            assert!(rust_workspace::try_ensure_workspace_for(
+                &project,
+                rust_workspace::WorkspaceRequirements::Service
+            )
+            .is_err());
+            assert_eq!(std::fs::read(ws.join("Cargo.toml")).unwrap(), previous);
+            std::fs::write(&core_manifest, original_core).unwrap();
             // Legacy UI entry must still reject a missing explicitly selected UI SDK.
             assert!(rust_workspace::try_ensure_shared_workspace(&project).is_err());
             assert_eq!(std::fs::read(ws.join("Cargo.toml")).unwrap(), previous);
@@ -64,6 +79,16 @@ mod controls {
             )
             .unwrap();
         }
+        std::fs::write(
+            lang.join("crates/auto-lang/Cargo.toml"),
+            r#"[package]
+name = "auto-lang"
+version = "0.1.0"
+[dependencies]
+renderer = { package = "auto-ui-runtime", path = "../../../absent-ui", optional = true }
+"#,
+        )
+        .unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
