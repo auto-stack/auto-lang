@@ -1,0 +1,2 @@
+# Frozen PLAN-889 load: preserve the generator's exact UTF-8/LF byte identity.
+N889Load.at text eol=lf
