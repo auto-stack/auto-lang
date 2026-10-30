@@ -150,6 +150,16 @@ def resume(kernel, pid):
         raise OSError("no suspended workload thread found")
 
 
+def workload_environment(env=None):
+    effective = dict(os.environ if env is None else env)
+    if os.name == 'nt':
+        # A pre-existing compiler-cache daemon is outside this Job. Letting it
+        # launch rustc would escape both CPU accounting and timeout cleanup.
+        effective['RUSTC_WRAPPER'] = ''
+        effective['RUSTC_WORKSPACE_WRAPPER'] = ''
+    return effective
+
+
 def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error_cap=1 << 20):
     kernel = api()
     start = time.perf_counter()
@@ -168,7 +178,7 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
         limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         required(kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)),
                  "SetInformationJobObject")
-        child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+        child = subprocess.Popen(argv, cwd=cwd, env=workload_environment(env), stdin=subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  creationflags=0x4 | 0x08000000)
         required(kernel.AssignProcessToJobObject(job, int(child._handle)), "AssignProcessToJobObject")

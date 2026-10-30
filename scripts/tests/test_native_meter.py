@@ -98,6 +98,25 @@ class NativeMeter(unittest.TestCase):
 
 @unittest.skipUnless(os.name == 'nt', 'native Windows producer containment')
 class ProcessCapture(unittest.TestCase):
+    def test_real_cargo_compiler_cannot_escape_via_external_daemon_wrappers(self):
+        import tempfile
+        from process_capture import capture
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'src').mkdir()
+            (root / 'src/lib.rs').write_text('pub fn contained_probe() -> u32 { 888 }\n')
+            (root / 'Cargo.toml').write_text('[package]\nname="contained-compiler-control"\nversion="0.1.0"\nedition="2021"\n[workspace]\n')
+            # Both invalid wrapper paths would make this actual build fail if
+            # a caller-controlled daemon wrapper could reach Cargo unchanged.
+            env = {**os.environ, 'RUSTC_WRAPPER': str(root / 'must-not-run.exe'),
+                   'RUSTC_WORKSPACE_WRAPPER': str(root / 'also-must-not-run.exe')}
+            result = capture(['cargo', 'check', '--offline', '--manifest-path', str(root / 'Cargo.toml')],
+                             cwd=root, env=env, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIsNone(result.measurement['error'])
+            self.assertGreaterEqual(result.measurement['job_processes'], 2)
+            self.assertTrue(list((root / 'target/debug/deps').glob('*.rmeta')))
+
     def test_preparation_exception_requires_exact_image_hash_and_completed_reap(self):
         import hashlib, tempfile
         from unittest.mock import patch

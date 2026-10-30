@@ -51,3 +51,5 @@ TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出
 `--refresh`和过期自动刷新写入本次`target/modules-*/runtime-catalog`，不会改写已跟踪目录；选择收据的`catalog_path`指向本次实际目录。发布目录只由计划worktree中的显式发现/分区步骤更新。`--out`必须不存在或为空，防止覆盖历史结果；拒绝reparse祖先。选择涉及TestCase时，先调用原`auto-case audit-output`审查最终输出目录，再写选择收据，原suite/fixture/oracle保护规则保持单源。短运行目录不能绕过最终证据目录的同一审查。
 
 编译准备/发现有一项明确例外：`compiler-auxiliaries.json`钉住当前参考机Microsoft签名MSVC遥测辅助程序的完整路径和SHA256；仅在编译器成功退出、所有残留映像逐一匹配且Job实际回收后active=0时接受准备。原meter错误、PID、映像和回收记录不改。未知映像/错hash/回收未完成仍失败，实际测试负载不启用例外；更换工具版本须重新核验该源码配置。Cargo launcher注入的包标签不算有效配置变更；Cargo home及仓内env默认按实际生效值绑定，显式不同覆盖仍使证据失效。
+
+Windows受计量命令明确禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，直接运行原rustc；既有外部缓存daemon不在本Job内，不能让它派生编译器而绕过CPU/超时回收。源码/编译选项不变，实际生效环境指纹按该策略绑定；准备与冷编译仍另列，不将缓存收益混入warm运行收益。不更改系统环境或停止共享daemon。
