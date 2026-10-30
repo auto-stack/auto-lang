@@ -258,11 +258,15 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 
 2026-10-30 stage: goal | plan_id: PLAN-892 | plan_revision: 1 | round: 4 | from: work | to: work | status: executing | outcome: pass（T-04/T-03已释放余项全绿：预算实测+close+V-10矩阵+V-13） | worktree: D:/autostack/.wt/lang-892/auto-lang | commit: 86bb9a3c8 | next: work
 
+2026-10-30 stage: work | plan_id: PLAN-892 | plan_revision: 1 | outcome: waiting（已释放P面用尽；H窗未释放） | worktree_path: D:/autostack/.wt/lang-892/auto-lang | branch: plan-892-dev | base_commit: 86bb9a3c8 | code_commit: 4ac07fd10 | dependency_revisions: 不变 | task_ids: 剩余已释放面收尾（verify脚本） | evidence: `scripts/verify-a2r-hir-892.ps1`（892自有新文件，与888零冲突）七scope实测：source 14s PASS/snapshot/certify/incremental 1.9s/resources 19s/acceptance 28.8s全PASS（JSON收据在experimental/auto-a2x/target/a2x-verify-receipts/892/，本地不入库）；formal=受控拒绝exit 2（采样窗未释放+需H注册）；未知scope exit 3（§6合同）；888实测仍占用test_cases/mod.rs+specs/auto-test-case/*（其分支a509bdfb5已到计量/回放证据阶段但未合并、树仍在） | blockers: T-02首例正式注册+T-05 H接线需888交接释放crates/auto-lang-core/src/test_cases/mod.rs与docs/specs/auto-test-case/*写面（用户协调）；T-06正式采样另需错峰窗 | next_responsible_role: work（H窗释放后：T-02首例注册→T-05接线→T-06→T-07..11）
+
+2026-10-30 stage: goal | plan_id: PLAN-892 | plan_revision: 1 | round: 5 | from: work | to: work | status: executing | outcome: waiting（waiting round 1/3：等888 H窗交接，用户协调） | worktree: D:/autostack/.wt/lang-892/auto-lang | commit: 4ac07fd10 | next: user（H窗释放或替代路径裁定）
+
 ## 10. 待澄清事项
 
 | ID | 事项与owner/关闭条件 | 阻止的工作 |
 |---|---|---|
-| D-01 | ✅已核（work r1）：889已交付入主线（50cd6f777→b0a6c869d..5243568ae，树已清）；888占用面实测=test_cases/mod.rs+inventory*/ac_av/*/execution_trace+specs/auto-test-case/*+test-governance脚本；890=vm/ffi零重叠；891无树。S出口在889后基面全在（T-01行证据），无需S改动即可推进P私有部分 | H窗待888交接释放；在此之前不写H、不做首例注册/SD沉淀/正式采样 |
+| D-01 | ⏳已核且持续跟踪（r1/r5）：888仍未合并（r5实测其分支a509bdfb5、树仍在，占用test_cases/mod.rs+specs/auto-test-case/*）。r1原核：889已交付入主线（50cd6f777→b0a6c869d..5243568ae，树已清）；888占用面实测=test_cases/mod.rs+inventory*/ac_av/*/execution_trace+specs/auto-test-case/*+test-governance脚本；890=vm/ffi零重叠；891无树。S出口在889后基面全在（T-01行证据），无需S改动即可推进P私有部分 | H窗待888交接释放；在此之前不写H、不做首例注册/SD沉淀/正式采样 |
 | D-02 | 部分冻结（work r1）：crate边界=a2x-core(语义view)/a2x-rust(目标provider)/probe(私有驱动)；结果协议=`Result<i32\|bool,AutoTrap>`五类具名trap（Overflow/DivByZero/DivOverflow/RemByZero/RemOverflow）；观察协议=stdout单行`value:N`/`trap:Name`、stderr按序`mark_a`/`mark_b`、退出码恒0；trace=冻结原生合同（mark_a→1/mark_b→2）；文件集=generated.rs+a2x_runtime.rs+main.rs+manifest（schema`auto.a2x.rust.fileset/1`，sha256绑定）。未冻结：证书schema（拟ace.a2r-hir.cert/1）、recipe字面量、受控工具来源 | 证书/recipe未冻结前不做日常通道；其余已冻结面继续施工 |
 | D-03 | T-02核48MiB实际分区、128MiB总store/512MiB scratch、全树/流/绝对墙预算及现行更严caller机制；只复用中立受控进程/GC或取接口窗 | 缺护栏/实际记账/配额或计量口径不得关闭资源AC，不能仅报峰值或无据提高上限 |
 | D-04 | T-05核默认/显式rustc实际身份、std依赖与日常零spawn当前性凭证；工具身份不确定视STALE/未授信 | 证书身份机制未闭不得日常PASS或用构建期常量冒充实际认证工具 |
