@@ -1030,6 +1030,57 @@ fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
     let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/cases/ace-m1/native-collections-889.suite.ad");
     let root = temp_root("mn889-stale");
+    // Each nextest case is a separate process. The in-process case mutex
+    // cannot protect a shared product library against sibling processes.
+    // Mirror only the runtime inputs/configuration and its attested output;
+    // the real worker still prepares/hashes/adopts this private library.
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let runtime_rel = Path::new("experimental/ac-mir-native/runtime/collections");
+    let text_rel = Path::new("experimental/ac-core/runtime/text/shim");
+    let lib_rel =
+        runtime_rel.join("target/x86_64-pc-windows-msvc/release/ac_collections_runtime.lib");
+    let shared_library = repo.join(&lib_rel);
+    let shared_bytes = std::fs::read(&shared_library).unwrap();
+    let mirror = root.join("runtime-mirror");
+    for relative in [runtime_rel, text_rel] {
+        std::fs::create_dir_all(mirror.join(relative)).unwrap();
+        copy_tree(
+            &repo.join(relative).join("src"),
+            &mirror.join(relative).join("src"),
+        );
+        for name in ["Cargo.toml", "Cargo.lock"] {
+            let from = repo.join(relative).join(name);
+            if from.is_file() {
+                std::fs::copy(from, mirror.join(relative).join(name)).unwrap();
+            }
+        }
+    }
+    std::fs::create_dir_all(mirror.join(".cargo")).unwrap();
+    std::fs::copy(
+        repo.join(".cargo/config.toml"),
+        mirror.join(".cargo/config.toml"),
+    )
+    .unwrap();
+    let library = mirror.join(&lib_rel);
+    std::fs::create_dir_all(library.parent().unwrap()).unwrap();
+    std::fs::copy(&shared_library, &library).unwrap();
+    std::fs::copy(
+        shared_library.with_extension("identity.json"),
+        library.with_extension("identity.json"),
+    )
+    .unwrap();
+    struct RestoreRoot(Option<std::ffi::OsString>);
+    impl Drop for RestoreRoot {
+        fn drop(&mut self) {
+            if let Some(old) = self.0.take() {
+                std::env::set_var("AUTO_LANG_ROOT", old);
+            } else {
+                std::env::remove_var("AUTO_LANG_ROOT");
+            }
+        }
+    }
+    let _restore_root = RestoreRoot(std::env::var_os("AUTO_LANG_ROOT"));
+    std::env::set_var("AUTO_LANG_ROOT", &mirror);
     let report = crate::test_cases::run_suite_selected(
         &suite,
         &root.join("out"),
@@ -1064,7 +1115,7 @@ fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
         check(),
         crate::test_cases::stale::RowVerdict::Fresh { .. }
     ));
-    let library=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../experimental/ac-mir-native/runtime/collections/target/x86_64-pc-windows-msvc/release/ac_collections_runtime.lib");
+
     struct RestoreFile {
         path: PathBuf,
         bytes: Vec<u8>,
@@ -1096,6 +1147,10 @@ fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
         check(),
         crate::test_cases::stale::RowVerdict::Fresh { .. }
     ));
+    assert!(
+        std::fs::read(&shared_library).unwrap() == shared_bytes,
+        "identity control modified the shared product library"
+    );
 }
 
 #[test]
