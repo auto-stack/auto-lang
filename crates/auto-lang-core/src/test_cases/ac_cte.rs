@@ -62,7 +62,7 @@ fn worker_file_sha256(path: &Path) -> Result<String, String> {
 }
 
 /// Locate (and on first use build, bounded) the cte worker binary. Env
-/// override first; otherwise build `experimental/ac-cte-probe`
+/// override first; otherwise build `experimental/ace`
 /// `-p auto-cte-probe --bin cte_probe_worker` (release) from the repo
 /// root above this crate.
 pub fn worker_binary() -> Result<PathBuf, String> {
@@ -105,14 +105,11 @@ fn locate_worker() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "cte probe worker not located: no experimental/ac-cte-probe above the crate and no AC_CTE_CASE_WORKER override"
+                "cte probe worker not located: no experimental/ace above the crate and no AC_CTE_CASE_WORKER override"
                     .to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("ac-cte-probe")
-            .join("Cargo.toml");
+        let m = d.join("experimental/ace").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -131,7 +128,7 @@ fn locate_worker() -> Result<PathBuf, String> {
         "build",
         "--release",
         "-p",
-        "auto-cte-probe",
+        "ace-comptime",
         "--bin",
         "cte_probe_worker",
         "--manifest-path",
@@ -156,7 +153,7 @@ fn locate_worker() -> Result<PathBuf, String> {
     Ok(exe)
 }
 
-/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// PLAN-868: admission mirror of `ace_lowering::MIR_LOWERING_VERSION` —
 /// the cte av driver lowers HIR→MIR through the shared crate.
 pub const EXPECTED_MIR_LOWERING_VERSION: &str = "4";
 

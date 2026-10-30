@@ -1,0 +1,20 @@
+[package]
+autotests = false
+name = "ace-syntax-artifacts"
+# PLAN-818 sibling-workspace fix (see adapters/core/Cargo.toml): literal
+# fields; values identical to this workspace's [workspace.package].
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ace-syntax-runtime = { path = "../syntax-runtime" }
+ace-syntax-grammar = { path = "../syntax-grammar" }
+ace-artifacts = { path = "../artifacts" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1.5"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

@@ -11,10 +11,12 @@ param(
     [int]$Samples = 30,
     [double]$GateMs = 2000.0
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Continue"  # cargo writes progress to stderr; exit codes are the gate
 $repo = Split-Path -Parent $PSScriptRoot
-$ws = Join-Path $repo "experimental/ac-mir-native"
+$ws = Join-Path $repo "experimental/ace/crates/native"
 $reportDir = Join-Path $repo "docs/reports/plan818"
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
@@ -23,7 +25,7 @@ if ($env:SCCACHE_SERVER_PORT -eq $null) { $env:SCCACHE_SERVER_PORT = "28101" }
 function Run-Workspace-Tests([string]$TestBin, [string]$Label) {
     Write-Host "== $Label (ac-mir-native --test $TestBin)"
     Push-Location $ws
-    & cargo test --test $TestBin 2>&1 | Tee-Object -Variable out | Write-Host
+    & Invoke-AceCargo test --test $TestBin 2>&1 | Tee-Object -Variable out | Write-Host
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) {

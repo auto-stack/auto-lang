@@ -1,18 +1,20 @@
 # PLAN-741 one-shot verification script (ASCII only for Windows PowerShell 5.1).
 # Covers plan section 6 commands + the main-repo final gates. Every subprocess
 # carries a hard deadline. Receipts land in
-# experimental/ac-core/target/ac-verify-receipts/ (gitignored).
+# experimental/ace/crates/core/target/ac-verify-receipts/ (gitignored).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-741.ps1
 #        Pass -SkipMainGates to skip cargo t/tv (batch tier belongs to /auto-plan:regress).
 param(
     [switch]$SkipMainGates,
     [switch]$OnlyMainGates
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -36,6 +38,7 @@ function Invoke-Captured {
     # Run an external command with a hard deadline; non-zero exit throws.
     param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 600, [int]$ExpectedExit = 0)
     $psi = New-Object System.Diagnostics.ProcessStartInfo
+    if ($Exe -eq 'cargo') { $ArgList = Convert-AceCargoArguments -CargoArguments $ArgList -WorkingDirectory $WorkDir }
     $psi.FileName = $Exe
     # Windows PowerShell 5.1 (.NET Framework) has no ProcessStartInfo.ArgumentList
     $psi.Arguments = ($ArgList | ForEach-Object { '"' + ($_ -replace '"', '\\"') + '"' }) -join ' '
@@ -46,7 +49,7 @@ function Invoke-Captured {
     $p = [System.Diagnostics.Process]::Start($psi)
     # Drain both pipes asynchronously FIRST; synchronous ReadToEnd after
     # WaitForExit deadlocks once the child fills the pipe buffer (e.g. a
-    # cargo check with hundreds of warnings).
+    # Invoke-AceCargo check with hundreds of warnings).
     $outTask = $p.StandardOutput.ReadToEndAsync()
     $errTask = $p.StandardError.ReadToEndAsync()
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
@@ -105,8 +108,8 @@ Invoke-Step 'cargo test hir_verify' {
 # build face. Their positive oracles are covered by:
 #   - this script's ac-native walkthrough steps (add-2-3 exit 5, trace exit 12
 #     with "ba" marks) — same frozen values, shared-MIR product;
-#   - `experimental/ac-mir-native/tests/shadow_tier_871.rs` (frozen oracles +
-#     trace-mark rows) and `tests/gap_closure_871.rs`.
+#   - `experimental/ace/crates/native/tests/cases/shadow_tier.rs` (frozen oracles +
+#     trace-mark rows) and `tests/cases/gap_closure.rs`.
 
 # ---- 3. CLI build/run walkthrough (own receipts) ----
 # PLAN-871 T-05: the `build` legs run through the shared-MIR `ac-native` CLI
@@ -114,7 +117,7 @@ Invoke-Step 'cargo test hir_verify' {
 # the ac-core binary (frontend/check role). Old assertion mapping: exit 5
 # (add-2-3) and exit 12 + "ba" marks (trace, capability + support lib) are
 # UNCHANGED; products become exe + <stem>.ac-link.txt (never asserted here).
-$script:AcNative = Join-Path $AcMn 'target\debug\ac-native.exe'
+$script:AcNative = Join-Path $RepoRoot 'experimental/ace/target/debug/ac-native.exe'
 Invoke-Step 'build ac-native CLI once' {
     # Invoke-Captured throws on a non-zero exit; only the artifact remains to
     # be checked here.
@@ -129,7 +132,7 @@ Invoke-Step 'ac-probe build add-2-3 + run (exit 5)' {
     $artifactDir = Join-Path $ReceiptsDir 'cli-walkthrough'
     New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
     $exe = Join-Path $artifactDir 'add-2-3.exe'
-    $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\native\add-2-3.atom'
+    $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\native\add-2-3.atom'
     Invoke-Captured $script:AcNative @('build', $src, '--entry', 'd_entry', '--output', $exe) $RepoRoot -TimeoutSec 300 | Out-Null
     if (-not (Test-Path $exe)) { throw "exe not produced: $exe" }
     $runOut = Invoke-Captured $exe @() $artifactDir -TimeoutSec 60 -ExpectedExit 5
@@ -139,7 +142,7 @@ Invoke-Step 'ac-probe build trace (capability + support lib, exit 12)' {
     $artifactDir = Join-Path $ReceiptsDir 'cli-walkthrough'
     $exe = Join-Path $artifactDir 'trace.exe'
     $src = Join-Path $RepoRoot 'docs\design\strategy\hir-examples\03-call-order.atom'
-    $lib = Join-Path $RepoRoot 'experimental\ac-core\test-support\target\debug\ac_trace_support.lib'
+    $lib = Join-Path $RepoRoot 'experimental/ace/target/runtime-dev/ace_trace_runtime.lib'
     Invoke-Captured $script:AcNative @('build', $src, '--entry', 'd_caller', '--output', $exe, '--capability', 'hir.test.trace.v1', '--support-lib', $lib) $RepoRoot -TimeoutSec 300 | Out-Null
     $procOut = Join-Path $artifactDir 'trace.stderr.txt'
     $psi = New-Object System.Diagnostics.ProcessStartInfo

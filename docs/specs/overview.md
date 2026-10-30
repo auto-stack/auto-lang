@@ -39,7 +39,7 @@
 | [auto-vm](auto-vm/project.md) | AutoVM 辅助 CLI（dump_code） | active |
 | [auto-cache](auto-cache/project.md) | 全局构建缓存（sqlite/指纹/GC/sandbox/shim 管线） | active |
 | [auto-semantics](auto-semantics/project.md) | AC 语义元信息/有限推导探针（PLAN-796；contract/core/probe，783 store 消费） | experimental |
-| [auto-cte](auto-cte/project.md) | AV 驱动的有限 CTE 查询与冻结缓存闭环（PLAN-817；experimental/ac-cte-probe 独立 workspace：真实 AV 标量查询→冻结 envelope→consumer 回灌；正式 recipe cte/scalar-query-v1） | experimental |
+| [auto-cte](auto-cte/project.md) | AV 驱动的有限 CTE 查询与冻结缓存闭环（PLAN-817；experimental/ace 独立 workspace：真实 AV 标量查询→冻结 envelope→consumer 回灌；正式 recipe cte/scalar-query-v1） | experimental |
 | [auto-bindgen](auto-bindgen/project.md) | C FFI 头文件清单生成 | active |
 | [shim-metadata](shim-metadata/project.md) | rustdoc 元信息→FFI shim 包生成（Plan 430 管线） | active |
 | [a2r-actor-tests](a2r-actor-tests/project.md) | actor 行为 parity 慢测试（转译→编译→对拍 VM） | test-only |
@@ -60,7 +60,7 @@
 |---|---|---|
 | [parity/](parity/project.md) | 独立 workspace：三后端行为一致性验证（30+ 库语料） | active |
 | [auto-hir](auto-hir/project.md) | core-i32 profile 类型化 HIR：Schema-bound Atom 文本 → 绑定 → 语义校验 → CheckedModule（PLAN-741 首个闭环；实验原型，非 v0.5 parser/VM 替代） | experimental |
-| [auto-syntax](auto-syntax/project.md) | Atom 语法实验（PLAN-787 起）：增量词法+无损 CST+双 profile 配置驱动语法服务（experimental/ac-syntax 独立 workspace；A01/A02/A03 真实生产者接入 783 store） | experimental |
+| [auto-syntax](auto-syntax/project.md) | Atom 语法实验（PLAN-787 起）：增量词法+无损 CST+双 profile 配置驱动语法服务（experimental/ace 独立 workspace；A01/A02/A03 真实生产者接入 783 store） | experimental |
 | [auto-ac](auto-ac/project.md) | AC 原生 AOT：Checked HIR →共享MIR→CLIF/COFF→PE（Windows x64；旧五域与PLAN-889显式集合/变体源码、owned资源/真函数增量；完整语言/typed宽入口与自举仍open） | experimental |
 | [auto-acc](auto-acc/project.md) | ACC 自举目标态合同：主体清单（adapt/reference/新建分层）+ 能力现状四态（required/implemented/unknown/not-required）+ Gen1–3 代际判据（PLAN-743 盘点；合同未冻结，实施计划按节认领） | planned |
 | [auto-graphics](auto-graphics/project.md) | AutoGraphics 原型（PLAN-829/830）：AGP 独立 wgpu workspace——双冻结游戏 bit-exact 原型与十探针矩阵；830 增加可组合 Surface/Portal（UI→3D→UI、3D→UI→2D 双向嵌套、离屏 iced 合成、共享多挂载、捕获/唯一焦点/三态取消、真实 caret OS IME、全 adapter 同设备归属、真实上传/owned 内存计量）；**代码在 `autographics-dev` 集成分支不进 master**（2026-10-22 裁定，待 814/815/816 系迁移完成议合），master 侧仅知识文档；I1–I3 生产集成 pending | experimental |

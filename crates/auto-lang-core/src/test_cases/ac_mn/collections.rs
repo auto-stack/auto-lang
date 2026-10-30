@@ -389,7 +389,7 @@ pub(super) fn admit_body(ok: &Value) -> Result<(), String> {
 mod controls {
     use super::*;
     #[test]
-    fn native_collections_889_identity_request_hash_position_and_forgery() {
+    fn native_collections_identity_request_hash_position_and_forgery() {
         let unsigned = serde_json::json!({"recipe":super::super::COLLECTIONS_RECIPE,"nonce":"889-identity-position","mode":"identity"});
         let hash = super::super::hex(&super::super::sha256(unsigned.to_string().as_bytes()));
         let mut signed = serde_json::Map::new();
@@ -438,7 +438,7 @@ mod controls {
         serde_json::json!({"collections_abi":"mn.collections.cell/2","collections_codegen":"a".repeat(64),"allocation_meter":{"enabled":true,"current":[0,0,0],"peak":[1024,2048,512],"total_peak":2304},"worker_memory":{"base":1024,"current":1024,"peak":2048,"delta":1024,"ok":1},"exit_code":42,"stderr_hex":super::super::hex(wire.as_bytes()),"counters":{"link_invocations":1,"run_invocations":1},"runtime_identity":{"abi":"mn.collections.runtime/2","build_key":"b".repeat(64),"content_hash":"c".repeat(64)},"link_identity":["d".repeat(64),"10.0.fixture","e".repeat(64)]})
     }
     #[test]
-    fn native_collections_889_parent_raw_and_actual_stage_controls() {
+    fn native_collections_parent_raw_and_actual_stage_controls() {
         let control = valid();
         assert!(admit_raw(&control).is_ok());
         for fault in 0..18 {

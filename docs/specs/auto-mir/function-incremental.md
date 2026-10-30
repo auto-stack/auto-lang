@@ -1,6 +1,6 @@
 # auto-mir 函数级增量（PLAN-828）
 
-> Status: active（实现=`experimental/ac-av-probe/probe/src/hir_adapter.rs` +
+> Status: active（实现=`experimental/ace/crates/av/src/hir_adapter.rs` +
 > `core/src/{mir,mir_verify}.rs`）。
 
 - 单函数 lower：`lower_function_unit` 从 CheckedFunction（经单函数 bundle）直接

@@ -6,3 +6,11 @@ scripts/**/*.sh text eol=lf
 # Catalog hashes bind the exact serialized bytes, also after Git checkout.
 scripts/test-governance/modules.json text eol=lf
 scripts/test-governance/catalog/*.json text eol=lf
+
+# ACE migration preserves frozen input bytes, including deliberate CRLF cases.
+# New paths must not be normalized when first added or checked out.
+experimental/ace/**/fixtures/** -text
+experimental/ace/**/*.at -text
+experimental/ace/**/*.ad -text
+experimental/ace/**/*.bin -text
+experimental/ace/**/*.json -text

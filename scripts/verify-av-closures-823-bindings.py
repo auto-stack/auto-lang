@@ -14,8 +14,8 @@ MANIFEST = 'docs/plans/attachments/823/852-validation/evidence-identity.json.txt
 REQUIRED = [
     BINDING,
     'Cargo.lock', '.cargo/config.toml',
-    'experimental/ac-av-probe/Cargo.toml', 'experimental/ac-av-probe/Cargo.lock',
-    'experimental/ac-artifact-probe/Cargo.toml', 'experimental/ac-artifact-probe/Cargo.lock',
+    'experimental/ace/Cargo.toml', 'experimental/ace/Cargo.lock',
+    'experimental/ace/crates/artifacts/Cargo.toml', 'experimental/ace/crates/artifacts/Cargo.lock',
     'crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad',
     'crates/auto-lang/test/cases/av-data/823/av-closures-first-case.case.ad',
     'crates/auto-lang/test/cases/av-data/823/src/first-case.at',
@@ -23,20 +23,20 @@ REQUIRED = [
     'crates/auto-lang/src/tests/ac_av_probe_tests.rs',
     'crates/auto-lang-core/src/test_cases/ac_av.rs',
     'crates/auto-test-case/src/contract.rs',
-    'experimental/ac-artifact-probe/src/store/gc.rs',
-    'experimental/ac-artifact-probe/src/store/mod.rs',
-    'experimental/ac-av-probe/probe/Cargo.toml',
-    'experimental/ac-av-probe/core/Cargo.toml',
-    'experimental/ac-artifact-probe/tests/plan823_gc_metadata.rs',
-    *['experimental/ac-av-probe/core/src/' + name + '.rs' for name in
+    'experimental/ace/crates/artifacts/src/store/gc.rs',
+    'experimental/ace/crates/artifacts/src/store/mod.rs',
+    'experimental/ace/crates/av/Cargo.toml',
+    'experimental/ace/crates/av-core/Cargo.toml',
+    'experimental/ace/crates/artifacts/tests/plan823_gc_metadata.rs',
+    *['experimental/ace/crates/av-core/src/' + name + '.rs' for name in
       ('abc', 'abc_verify', 'av', 'closures', 'contract', 'mir_verify', 'ownership', 'program_snapshot')],
-    'experimental/ac-av-probe/probe/src/closures_fixture.rs',
-    'experimental/ac-av-probe/probe/src/closures_session.rs',
-    'experimental/ac-av-probe/probe/src/formal_campaign.rs',
-    'experimental/ac-av-probe/probe/src/formal_worker.rs',
-    'experimental/ac-av-probe/probe/src/load256.rs',
-    'experimental/ac-av-probe/probe/src/bin/av_probe_worker.rs',
-    *['experimental/ac-av-probe/probe/tests/av_closures_823_' + name + '.rs' for name in
+    'experimental/ace/crates/av/src/closures_fixture.rs',
+    'experimental/ace/crates/av/src/closures_session.rs',
+    'experimental/ace/crates/av/src/formal_campaign.rs',
+    'experimental/ace/crates/av/src/formal_worker.rs',
+    'experimental/ace/crates/av/src/load256.rs',
+    'experimental/ace/crates/av/src/bin/av-worker.rs',
+    *['experimental/ace/crates/av/tests/av_closures_823_' + name + '.rs' for name in
       ('first_case', 'semantics', 'resources', 'cache_compat', 'incremental', 'recipe')],
     'scripts/verify-av-closures-823.ps1',
     'scripts/verify-av-closures-823-bindings.py',
@@ -130,7 +130,7 @@ def self_test(root):
         must_fail('mislabelled source even with updated hash')
         binding.write_text(original, encoding='utf-8')
         refresh_binding()
-        changed = sample / 'experimental/ac-artifact-probe/src/store/gc.rs'
+        changed = sample / 'experimental/ace/crates/artifacts/src/store/gc.rs'
         changed.write_bytes(changed.read_bytes() + b'\n// stale evidence control\n')
         must_fail('changed code with stale evidence')
     return True

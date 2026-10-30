@@ -1,6 +1,6 @@
 # 动态值与可移植冻结（av.dynamic/1）
 
-> 实验性 typed profile；来源 PLAN-824。实现 `experimental/ac-av-probe/core/src/{dynamic,portable,av}.rs`，不改变旧 AutoVM、默认 CLI/UI 或 CTE。
+> 实验性 typed profile；来源 PLAN-824。实现 `experimental/ace/crates/av-core/src/{dynamic,portable,av}.rs`，不改变旧 AutoVM、默认 CLI/UI 或 CTE。
 
 ## 类型擦除与拥有关系
 

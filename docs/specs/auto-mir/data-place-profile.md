@@ -13,7 +13,7 @@
 ## 指令合同与等价
 
 - 新指令的 operand/read-def/trap/fuel/profile 合同见
-  `experimental/ac-av-probe/core/src/instr_spec.rs`（12 opcode 表 +
+  `experimental/ace/crates/av-core/src/instr_spec.rs`（12 opcode 表 +
   coverage_check 漏项即红）。
 - 类型等价=结构相等，在**全部消费点**一致（Const/Copy/Bin/Un/Call/
   Return/Aggregate/FieldGet/FieldSet/entry）；重复 primitive 条目按形状
@@ -28,7 +28,7 @@ V-01/02/04/11；core MIR/verifier 测试与 semantics 族（13/13）。
 
 ## native 消费者覆盖（PLAN-870）
 
-- mn（`experimental/ac-mir-native`）按本合同消费 av.data/1 的**纯值 record**
+- mn（`experimental/ace/crates/native`）按本合同消费 av.data/1 的**纯值 record**
   子集：Copy/Aggregate/FieldGet/FieldSet 的机器语义=本合同的纯值语义
   （字段声明序布局、结构重建写回、RHS 先物化）；三路差分与 ACE-M1
   R01/R02/R03/R06 实测绑定见

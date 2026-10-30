@@ -1,0 +1,21 @@
+pub(crate) mod av_protocol;
+pub(crate) mod bytecode;
+pub(crate) mod closures;
+pub(crate) mod collections;
+pub(crate) mod collections_resources;
+pub(crate) mod comptime_protocol;
+pub(crate) mod dynamic;
+pub(crate) mod language_conformance;
+pub(crate) mod latency;
+pub(crate) mod mir_native_protocol;
+pub(crate) mod native_protocol;
+pub(crate) mod owned;
+pub(crate) mod resident;
+pub(crate) mod runtime;
+pub(crate) mod rust_lowering;
+pub(crate) mod semantics_protocol;
+pub(crate) mod source;
+pub(crate) mod turnaround;
+
+#[path = "../../../../../../crates/auto-lang/src/tests/env_restore.rs"]
+pub(crate) mod env_restore;

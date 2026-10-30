@@ -1,6 +1,6 @@
 # 装载执行表示与运行效率（av.core-i32/1 优化层）
 
-> 实验性标量优化执行层；来源 PLAN-825。实现 `experimental/ac-av-probe/core/src/{loaded_program,av}.rs` 与 `probe/src/{session,driver,worker_restore}.rs`；MIR 与 portable ABC 仍是唯一语义/持久合同，本层不是新语义 IR。
+> 实验性标量优化执行层；来源 PLAN-825。实现 `experimental/ace/crates/av-core/src/{loaded_program,av}.rs` 与 `probe/src/{session,driver,worker_restore}.rs`；MIR 与 portable ABC 仍是唯一语义/持久合同，本层不是新语义 IR。
 
 ## 装载表示与授信
 

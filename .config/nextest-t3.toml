@@ -19,6 +19,12 @@ mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
 ffi-dual = { max-threads = 1 }
 
+# ACE formal measurements run without overlapping other tests in this invocation.
+# https://nexte.st/docs/configuration/threads-required/
+[[profile.default.overrides]]
+filter = "test(/::performance::/)"
+threads-required = "num-test-threads"
+
 [[profile.default.overrides]]
 filter = "test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_a2r_probe_smoke)"
 test-group = "mem-xl"
@@ -36,7 +42,7 @@ test-group = "mem-md"
 # frozen input and original assertion. A one-thread test group alone cannot isolate
 # these tests from unrelated processes in this nextest invocation.
 [[profile.default.overrides]]
-filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95)'
+filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::turnaround::performance::probe_adapter_turnaround_ipc_hard_gate_p95)'
 threads-required = "num-test-threads"
 
 # PLAN-840 Phase 2: --config-file replaces the daily configuration entirely.

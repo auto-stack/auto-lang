@@ -90,5 +90,5 @@ restore消费者禁止unit codegen。reuse/fresh/read-only三模式保留；只�
 wrong oracle/type、漏free、whole frontend/lower与同内容新COFF对象反控必须真发生并使总门红。
 
 来源：[PLAN-889](../../plans/archive/889-native-collections-variants-source-closure.md)；
-实现合同：`experimental/ac-mir-native/runtime/collections/CONTRACT.md`。
+实现合同：`experimental/ace/crates/collections-runtime/CONTRACT.md`。
 891只接收已释放N接口清单，未由本交付自动实施typed/wide或关闭W01..W05/native在线帧等gap。

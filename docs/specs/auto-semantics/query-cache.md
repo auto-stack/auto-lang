@@ -4,7 +4,7 @@
 
 
 > **Status**: experimental（PLAN-796 冻结；现行规则以 D21–D24 为准）。
-> 登记实现 = `experimental/ac-semantics/probe/src/{store,budget,ipc,
+> 登记实现 = `experimental/ace/crates/semantics-store/src/{store,budget,ipc,
 > turnaround}.rs`；持久化经 783 ManagedStore（层 `S796`、载体
   `SnapshotRecord`），零改 783/787 实现。
 

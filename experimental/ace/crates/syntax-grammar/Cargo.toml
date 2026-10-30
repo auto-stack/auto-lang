@@ -1,0 +1,18 @@
+[package]
+autotests = false
+name = "ace-syntax-grammar"
+# PLAN-818 sibling-workspace fix (see adapters/core/Cargo.toml): literal
+# fields; values identical to this workspace's [workspace.package].
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-atom = { path = "../../../../crates/auto-atom" }
+auto-val = { path = "../../../../crates/auto-val" }
+ace-syntax-runtime = { path = "../syntax-runtime" }
+blake3 = "1.5"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

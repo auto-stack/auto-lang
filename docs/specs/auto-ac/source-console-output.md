@@ -8,6 +8,6 @@ Formatting is exact: i32 decimal ASCII without plus/leading zeros, MIN `-2147483
 
 `print` and `eprint` cannot be rebound as functions, locals or parameters in this domain (`source.console-reserved`). Other profiles keep their name-resolution rules and cannot acquire host intrinsics by changing a symbol. HIR declares exact typed intrinsic references and required capabilities; lowering converts them to the independent host table/call, never a guest import or trace instruction. Backend/native/default product routing does not change.
 
-Reference: `../auto-av/host-import-and-console.md`. Implementation: `experimental/ac-core/src/source/console.rs`, host-console descriptor, shared `experimental/auto-mir-lower/src/hir_adapter.rs`.
+Reference: `../auto-av/host-import-and-console.md`. Implementation: `experimental/ace/crates/core/src/source/console.rs`, host-console descriptor, shared `experimental/ace/crates/lowering/src/hir_adapter.rs`.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。

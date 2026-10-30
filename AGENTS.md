@@ -87,6 +87,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 - 正式入口：`cargo t <组名> [组名 ...]`；例如`cargo t parser`、`cargo t parser vm`。
   分组写死于`scripts/test-groups.toml`，直接对应Cargo package/target及Rust模块namespace，
   不先发现全仓测试，不建叶目录/分片新鲜度系统，不自动展开消费者图。`cargo t --list`只读固定组名。
+- `cargo t ace`显式运行独立`experimental/ace` workspace的常规测试及语言侧私有协议桥接；正式计量/压力以`cargo t ace-performance`运行，保原样本、规模、ignore和平台条件。ACE内部同树target复用，四个no_std静态运行时保panic-abort专用profile；普通语言测试不构建ACE。
 - 无参数`cargo t`保固定日常范围；`cargo t all`显式运行语言仓全部固定组。两者不能混为一谈。
   全部组仍保ignored/平台/里程碑条件，不含外仓UI/Man所有权腿。模块过滤不保证同crate独立编译。
 - 计划按真实修改明确选择完整职责组及必要集成/消费者组，review核选择理由；共享AST/语义/IR变更

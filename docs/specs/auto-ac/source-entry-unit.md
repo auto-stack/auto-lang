@@ -2,8 +2,8 @@
 
 > **Status**: experimental；`auto.source.entry-unit.draft` revision 1；HIR 身份
 > `auto.hir.entry-unit.draft / 1 / entry-unit-draft`（descriptor
-> `experimental/ac-core/schema/entry-unit.atom`）。
-> 实现：`experimental/ac-core/src/source/{parser,resolve,typecheck,adapter}.rs` +
+> `experimental/ace/crates/core/schema/entry-unit.atom`）。
+> 实现：`experimental/ace/crates/core/src/source/{parser,resolve,typecheck,adapter}.rs` +
 > `src/{descriptor,verify}.rs`；消费端见 [project.md](project.md)；执行侧见
 > [auto-av/entry-and-unit-profile.md](../auto-av/entry-and-unit-profile.md)。
 > 来源：[PLAN-862](../../plans/archive/862-av-source-entry-unit-and-tail-semantics.md)；
@@ -68,7 +68,7 @@ R2-E/SEM-05 的源码侧合同，不是完整语言面：控制台/print（PLAN-
 
 ## 验收与证据
 
-- 前端矩阵：`experimental/ac-core/tests/entry_unit_862.rs`（26 例：三形态正例、
+- 前端矩阵：`experimental/ace/crates/core/tests/entry_unit_862.rs`（26 例：三形态正例、
   8 类入口/Unit 负例、放置可达性、跨域身份拒绝、静态全链）。
 - 语料：`crates/auto-lang/test/cases/ace-m1/entry-862/`（U01–U10，独立手算
   oracle，经真实 `ac-av/core-run-v1` + `av: { profile: "entry-unit" }` 执行）。

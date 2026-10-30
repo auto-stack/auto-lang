@@ -10,6 +10,8 @@
 
 - `cargo t`：原固定日常范围，保原适用条件，ACE宿主改为显式组。
 - `cargo t parser`、`cargo t parser vm`：完整命名空间子树及配置内明确的集成测试。
+- `cargo t ace`：独立ACE workspace常规自动测试与必要SDK私有桥接；不叠加语言日常包。
+- `cargo t ace-performance`：明确保留的原正式计量/资源campaign，原样本、阈值、ignore及平台条件保持；占用当前nextest全池，避免同轮其他测试干扰。
 - `cargo t all`：显式语言仓全部固定组，不含UI/Man外仓批次，仍保ignore/平台/里程碑条件。
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
@@ -35,7 +37,7 @@ Python保标准loader真实发现/逐ID执行收据；TestCase保source/oracle�
 不认证通过。60秒为成本目标，不是强杀时限，不统一三warm/P90或改变正式样本/预算/金样。
 
 AAVM/AA2R自举实验测试按用户裁定默认ignore，保实现/源码/夹具/期望及显式手动入口；普通VM/Rust A2R
-及真实产品消费者不误关。ACE宿主test-ace默认关闭，普通test-cases仍可独立运行，非ACE请求ACE worker
+及真实产品消费者不误关。ACE宿主测试位于ace-conformance，语言侧私有协议单元桥接test-ace默认关闭，普通test-cases仍可独立运行，非ACE请求ACE worker
 构建前拒绝；真正相关任务显式选ACE包/宿主/套件。用途标签不成为批量停用开关。
 
 ## 迁移与验证职责
@@ -82,3 +84,4 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 独立module-case调用使用线程局部、panic-safe恢复的私有session作用域：源码闭包fixture的fresh/restart共享本次run输出域内的store，worker仍按原session ID区分存储。普通run_suite/run_suite_selected保留显式session跨调用共享，既有闭包20次restart采样及scalar性能合同不变。真实原fixture连续两次module-case调用都必须满足原fresh miss与restart hit，普通suite的原20次restart也须通过；不修改session字面量、原样本或expected来获得绿。
 
 慢测试沿用原资源/截止/条件并具名报告；本轮不以partition-policy或叶模块重新切分VM。进一步拆分由实际成本和职责另行决定。
+既有专项验证脚本仅通过ace-cargo.ps1将声明的语义模块转换为一个conformance测试目标的原生libtest过滤并集；不发现全仓、不查询叶目录、不推消费者。每个声明模块必须有真实通过项（或显式list项）；原必需ID/minimum/oracle仍由各验证器校验，未知旧目标失败。普通生产入口不经过此过渡适配。

@@ -1,7 +1,7 @@
 # auto-semantics 推导 profile（有限推导与对照）
 
 > **Status**: experimental（PLAN-796 冻结）。登记实现 =
-> `experimental/ac-semantics/core/src/{infer,query,reflect}.rs`；
+> `experimental/ace/crates/semantics/src/{infer,query,reflect}.rs`；
 > 真实输入 adapter = ac-core 公开 AST（只读）。
 
 ## 有限推导面（i32/bool）

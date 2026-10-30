@@ -23,6 +23,7 @@ def prepare(root, names, output, prepared):
         if name not in prepared:
             command=["cargo","build","--locked","--offline","-p",tool["package"],"--target-dir",str(target)]
             if tool["profile"]=="release":command.append("--release")
+            elif tool["profile"]!="debug":command += ["--profile",tool["profile"]]
             if tool.get("features"):command += ["--features",tool["features"]]
             for binary in tool["binaries"]:command += ["--bin",binary]
             started=time.monotonic()
@@ -38,6 +39,7 @@ def prepare(root, names, output, prepared):
                              "meter": result.measurement})
             prepared.add(name)
         paths=[target/tool["profile"]/(binary+(".exe" if os.name=="nt" else "")) for binary in tool["binaries"]]
+        paths += [target/tool["profile"]/artifact for artifact in tool.get("artifacts",[])]
         if not all(p.is_file() for p in paths):raise ValueError("prepared tool artifact missing")
         for path in paths:
             receipts.append({"tool":name,"path":str(path),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})

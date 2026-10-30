@@ -1,0 +1,24 @@
+[package]
+autotests = false
+name = "ace-semantics-store"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-796 persistence probe: 783 ManagedStore consumer in an isolated namespace, page/dependency/lease lifecycle, budgets and turnaround harness"
+publish = false
+
+[dependencies]
+ace-semantics-contract = { path = "../semantics-contract" }
+ace-semantics = { path = "../semantics", features = ["core-ast"] }
+ace-artifacts = { path = "../artifacts" }
+serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
+serde_json = "1"
+ace-core = { path = "../core" }
+
+[[bin]]
+name = "sema-worker"
+path = "src/main.rs"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

@@ -11,10 +11,12 @@ param(
     [ValidateSet("first-case", "semantics", "admission", "cache", "resources", "compatibility", "autodown", "inventory", "incremental", "acceptance", "selftest", "fail-shim")]
     [string]$Scope
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Continue"  # cargo writes progress to stderr; exit codes are the gate
 $repo = Split-Path -Parent $PSScriptRoot
-$probeWs = Join-Path $repo "experimental/ac-av-probe"
+$probeWs = Join-Path $repo "experimental/ace"
 $reportDir = Join-Path $repo "docs/reports/plan827"
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
@@ -61,7 +63,7 @@ function Test-Selected([string]$Out, [string]$Label, [string[]]$RequiredIds = @(
         $seen[$id] = $true
         $esc = [regex]::Escape($id)
         $nextest = [regex]::Matches($Out, "(?m)^.*PASS.*[ :]$esc\r?$")
-        $libtest = [regex]::Matches($Out, "(?m)^test $esc \.\.\. ok\r?$")
+        $libtest = [regex]::Matches($Out, "(?m)^test (?:[A-Za-z_0-9]+::)*$esc \.\.\. ok\r?$")
         $hits = $nextest.Count + $libtest.Count
         if ($hits -eq 0) {
             Write-Host "FAILED: $Label required case '$id' did not pass (missing/renamed/red)"
@@ -189,7 +191,7 @@ function Save-BenchSummaryArtifact(
 function Run-Probe-Tests([string]$TestBin, [string]$Label, [string[]]$RequiredIds = @()) {
     Write-Host "== $Label (ac-av-probe --test $TestBin)"
     Push-Location $probeWs
-    & cargo test -p auto-av-probe --test $TestBin 2>&1 | Tee-Object -Variable out | Write-Host
+    & Invoke-AceCargo test -p ace-av --test $TestBin 2>&1 | Tee-Object -Variable out | Write-Host
     $code = $LASTEXITCODE
     Pop-Location
     $out | Out-File (Join-Path $reportDir "$Label.log") -Encoding utf8
@@ -241,42 +243,42 @@ switch ($Scope) {
         # V-01 first case, full path: real AP-01 frozen bytes (identity
         # receipts) -> ephemeral -> store put/hit -> NEW-worker restore, plus
         # the formal-recipe corpus gate judged parent-side.
-        Run-Probe-Tests "av_source_827_first_case" "first-case" @(
-            "av_source_827_seeds_identity",
-            "av_source_827_first_case_real_file_ephemeral",
-            "av_source_827_first_case_store_round_hit_new_worker",
-            "av_source_827_first_case_native_cross_check",
-            "av_source_827_native_missing_tool_is_red_first_case_control"
+        Run-Probe-Tests "av_source_first_case" "first-case" @(
+            "av_source_seeds_identity",
+            "av_source_first_case_real_file_ephemeral",
+            "av_source_first_case_store_round_hit_new_worker",
+            "av_source_first_case_native_cross_check",
+            "av_source_native_missing_tool_is_red_first_case_control"
         )
-        Run-Runner-Tests "av_source_827" "first-case-corpus" @("av_source_827_corpus_green")
+        Run-Runner-Tests "av_source" "first-case-corpus" @("av_source_corpus_green")
     }
     "semantics" {
         # V-02/03 (+ targeted V-04/05/09 axes): AP-22 argument-value change,
         # AP-23 precise trap + false-only control + native exit70 channel,
         # trace authorization, same-path/frozen-bytes identity, front-door
         # rejections with zero dispatch, budget/cancel axes.
-        Run-Probe-Tests "av_source_827_semantics" "semantics" @(
-            "av_source_827_ap22_argument_value_change_changes_result",
-            "av_source_827_ap23_precise_trap_and_false_only_control",
-            "av_source_827_ap23_native_exit70_channel",
-            "av_source_827_native_missing_tool_is_red_ap23_control",
-            "av_source_827_trace_order_exact_and_capability_gated",
-            "av_source_827_same_path_different_bytes_and_frozen_snapshot",
-            "av_source_827_front_door_rejects_disallow_no_dispatch",
-            "av_source_827_resource_budget_and_cancel_axes"
+        Run-Probe-Tests "av_source_semantics" "semantics" @(
+            "av_source_ap22_argument_value_change_changes_result",
+            "av_source_ap23_precise_trap_and_false_only_control",
+            "av_source_ap23_native_exit70_channel",
+            "av_source_native_missing_tool_is_red_ap23_control",
+            "av_source_trace_order_exact_and_capability_gated",
+            "av_source_same_path_different_bytes_and_frozen_snapshot",
+            "av_source_front_door_rejects_disallow_no_dispatch",
+            "av_source_resource_budget_and_cancel_axes"
         )
-        Run-Runner-Tests "av_source_827_corpus" "semantics-corpus" @("av_source_827_corpus_green")
+        Run-Runner-Tests "av_source_corpus" "semantics-corpus" @("av_source_corpus_green")
     }
     "admission" {
         # V-04 runner-level admission negatives: invalid UTF-8 = infra (not
         # a trap), missing file = resolution error, path escapes rejected
         # at decode. Plus the unsupported front-door corpus faces.
-        Run-Runner-Tests "av_source_827_admission" "admission" @(
-            "av_source_827_admission_invalid_utf8_is_infra_not_trap",
-            "av_source_827_admission_missing_file_is_resolve_error",
-            "av_source_827_admission_path_escape_rejected_at_decode"
+        Run-Runner-Tests "av_source_admission" "admission" @(
+            "av_source_admission_invalid_utf8_is_infra_not_trap",
+            "av_source_admission_missing_file_is_resolve_error",
+            "av_source_admission_path_escape_rejected_at_decode"
         )
-        Run-Runner-Tests "av_source_827_corpus" "admission-corpus" @("av_source_827_corpus_green")
+        Run-Runner-Tests "av_source_corpus" "admission-corpus" @("av_source_corpus_green")
         # R5 V-06 binding — the INHERITED D798 consume-gate counterexamples
         # and positives as REQUIRED members (unchanged at the consumed
         # revision; removal of any row breaks acceptance):
@@ -296,8 +298,8 @@ switch ($Scope) {
             "native_admission_identity_axes_rejected"
         )
         # 827 thin source-entry replay of the same invariant:
-        Run-Probe-Tests "av_source_827_semantics" "admission-thin-consume-gate" @(
-            "av_source_827_consume_gate_corrupt_abc_never_executes"
+        Run-Probe-Tests "av_source_semantics" "admission-thin-consume-gate" @(
+            "av_source_consume_gate_corrupt_abc_never_executes"
         )
     }
     "resources" {
@@ -312,14 +314,14 @@ switch ($Scope) {
         # 3. Line-A frontend attribution + Line-B residual via the frozen
         #    828 formal-session campaign (V-08 dual gate, >=30 revisions).
         # Small-file cold data is reported separately by the first-case log.
-        $worker = Join-Path $probeWs "target/release/av_probe_worker.exe"
+        $worker = Join-Path $probeWs "target/release/av-worker.exe"
         # Every bench run keeps its OWN raw JSONL (failed runs included —
         # failure samples are never deleted or overwritten).
         $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
         Write-Host "== resources: build the release worker from the frozen workspace (F-R7-02)"
         Push-Location $probeWs
-        & cargo build --release -p auto-av-probe --bin av_probe_worker 2>&1 | Tee-Object -Variable wbuild | Write-Host
+        & Invoke-AceCargo build --release -p ace-av --bin av-worker 2>&1 | Tee-Object -Variable wbuild | Write-Host
         $wbcode = $LASTEXITCODE
         Pop-Location
         $wbuild | Out-File (Join-Path $reportDir "resources-worker-build-$stamp.log") -Encoding utf8
@@ -335,12 +337,12 @@ switch ($Scope) {
         $exeHash = (Get-FileHash $worker -Algorithm SHA256).Hash
         $gitHead = (& git -C $repo rev-parse HEAD 2>$null) -join ""
         $gitHead = $gitHead.Trim()
-        $probeDirty = @(& git -C $repo status --porcelain -- experimental/ac-av-probe 2>$null)
+        $probeDirty = @(& git -C $repo status --porcelain '--' experimental/ace 2>$null)
         $binding = [pscustomobject]@{
             stamp            = $stamp
             exe              = $worker
             sha256           = $exeHash
-            built_by         = "cargo build --release -p auto-av-probe --bin av_probe_worker (resources scope)"
+            built_by         = "cargo build --release -p ace-av --bin av-worker (resources scope)"
             git_head         = $gitHead
             probe_ws_entries = @($probeDirty)
             certifies        = @(
@@ -442,14 +444,14 @@ switch ($Scope) {
         Write-Host "   bench-30 green from retained fields (exit $b30code, 0 hard-gate failures, both memory targets met)"
         Write-Host "== resources: 828 formal-session dual-gate campaign (V-08)"
         Push-Location $probeWs
-        & cargo test -p auto-av-probe --test function_incremental_828_t08 t08_formal_campaign_v08_dual_gate 2>&1 | Tee-Object -Variable f828 | Write-Host
+        & Invoke-AceCargo test -p ace-av --test function_protocol t08_formal_campaign_v08_dual_gate 2>&1 | Tee-Object -Variable f828 | Write-Host
         $f828code = $LASTEXITCODE
         Pop-Location
         if ($f828code -ne 0) {
             Write-Host "FAILED: formal campaign (exit $f828code)"
             exit 1
         }
-        Assert-Selected ($f828 -join "`n") "resources-formal-828" @("t08_formal_campaign_v08_dual_gate_30_revisions")
+        Assert-Selected ($f828 -join "`n") "resources-formal-828" @("formal_campaign_v08_dual_gate_30_revisions")
         # R5 V-09 binding — inherited finite resource oracles as REQUIRED
         # members (cap-boundary, churn/cleanup under the 32MiB envelope).
         Run-Probe-Tests "resources_tier" "resources-inherited-finite" @(
@@ -458,29 +460,29 @@ switch ($Scope) {
             "av_resources_32mib_product_random_read_and_churn"
         )
         # 827 thin cap-boundary pair (at-cap passes / over-one rejects).
-        Run-Probe-Tests "av_source_827_semantics" "resources-thin-cap-pair" @(
-            "av_source_827_input_cap_at_and_over_one",
-            "av_source_827_resource_budget_and_cancel_axes",
-            "av_source_827_nth_frame_allocation_failure_cleans_owned_slots",
-            "av_source_827_frame_allocation_pause_cancel_trap_cleanup"
+        Run-Probe-Tests "av_source_semantics" "resources-thin-cap-pair" @(
+            "av_source_input_cap_at_and_over_one",
+            "av_source_resource_budget_and_cancel_axes",
+            "av_source_nth_frame_allocation_failure_cleans_owned_slots",
+            "av_source_frame_allocation_pause_cancel_trap_cleanup"
         )
     }
     "autodown" {
         # V-10: the formal recipe positives + every parent-side injection:
         # corpus green (with required population), negative oracle, worker
         # faults (exit9/extra-frame/wrong-hash/delay = infra).
-        Run-Runner-Tests "av_source_827" "autodown" @(
-            "av_source_827_corpus_green",
-            "av_source_827_negative_oracle_fails",
-            "av_source_827_worker_faults_are_infra"
+        Run-Runner-Tests "av_source" "autodown" @(
+            "av_source_corpus_green",
+            "av_source_negative_oracle_fails",
+            "av_source_worker_faults_are_infra"
         )
     }
     "inventory" {
         # V-11: the G0 denominators re-derived from the real discovery
         # rules; the JSON artifact is the inventory deliverable.
-        Run-Runner-Tests "av_source_827_inventory" "inventory" @(
-            "av_source_827_inventory_denominators_replayable",
-            "av_source_827_inventory_negative_controls"
+        Run-Runner-Tests "av_source_inventory" "inventory" @(
+            "av_source_inventory_denominators_replayable",
+            "av_source_inventory_negative_controls"
         )
     }
     "acceptance" {
@@ -520,26 +522,26 @@ switch ($Scope) {
         # population as "skipped" (6926), but no SKIP result line exists
         # and every REQUIRED case passed -> must be GREEN.
         $filtered = "Starting 2 tests across 8 binaries (6926 tests skipped)`n" +
-            "        PASS [ 0.04s] auto-lang tests::av_source_827_tests::av_source_827_inventory_denominators_replayable`n" +
-            "        PASS [ 0.01s] auto-lang tests::av_source_827_tests::av_source_827_inventory_negative_controls`n" +
+            "        PASS [ 0.04s] auto-lang tests::av_source_tests::av_source_inventory_denominators_replayable`n" +
+            "        PASS [ 0.01s] auto-lang tests::av_source_tests::av_source_inventory_negative_controls`n" +
             "Summary [ 0.085s] 2 tests run: 2 passed, 6926 skipped"
         if (!(Test-Selected $filtered "filtered-positive" @(
-            "av_source_827_inventory_denominators_replayable",
-            "av_source_827_inventory_negative_controls"
+            "av_source_inventory_denominators_replayable",
+            "av_source_inventory_negative_controls"
         ))) { Write-Host "CONTROL FAILED: filtered-out population must not be a skip failure"; $fails++ }
         # A real SKIP result line (a SELECTED test skipped) -> red.
         if (Test-Selected $filtered.Replace("PASS [ 0.04s]", "SKIP [ 0.04s]") "real-skip") {
             Write-Host "CONTROL FAILED: a selected skipped case must be red"; $fails++
         }
         # A required case deleted (its PASS line absent) -> red.
-        $missingReq = $filtered.Replace("        PASS [ 0.01s] auto-lang tests::av_source_827_tests::av_source_827_inventory_negative_controls`n", "")
-        if (Test-Selected $missingReq "missing-required" @("av_source_827_inventory_negative_controls")) {
+        $missingReq = $filtered.Replace("        PASS [ 0.01s] auto-lang tests::av_source_tests::av_source_inventory_negative_controls`n", "")
+        if (Test-Selected $missingReq "missing-required" @("av_source_inventory_negative_controls")) {
             Write-Host "CONTROL FAILED: a missing required case must be red"; $fails++
         }
         # R3 collision matrix — the closure strategy verified as a matrix,
         # not just the old example. Every near-miss name shape is RED:
-        $reqId = "av_source_827_inventory_negative_controls"
-        $base = "PASS [ 0.01s] auto-lang tests::av_source_827_tests::${reqId}`nSummary [0.1s] 1 tests run: 1 passed, 6927 skipped"
+        $reqId = "av_source_inventory_negative_controls"
+        $base = "PASS [ 0.01s] auto-lang tests::av_source_tests::${reqId}`nSummary [0.1s] 1 tests run: 1 passed, 6927 skipped"
         foreach ($shape in @(
             @{ n = "suffix-disabled"; s = $base.Replace($reqId, "${reqId}_disabled") },
             @{ n = "prefix-collision"; s = $base.Replace($reqId, "x_${reqId}") },
@@ -676,20 +678,20 @@ switch ($Scope) {
     }
     "incremental" {
         # V-13 (T-09): the 828 session reuse over this plan's source entry.
-        Run-Probe-Tests "av_source_827_incremental" "incremental" @(
-            "av_source_827_incremental_d828_baseline_30_structure_and_p95",
-            "av_source_827_incremental_raw_shape_rejects_missing_baseline",
-            "av_source_827_incremental_failing_verdict_still_writes_raw",
-            "av_source_827_incremental_two_fn_local_updates",
-            "av_source_827_incremental_precise_refusals",
-            "av_source_827_incremental_degradation_caught",
-            "av_source_827_incremental_detector_negative_controls"
+        Run-Probe-Tests "av_source_incremental" "incremental" @(
+            "av_source_incremental_d828_baseline_30_structure_and_p95",
+            "av_source_incremental_raw_shape_rejects_missing_baseline",
+            "av_source_incremental_failing_verdict_still_writes_raw",
+            "av_source_incremental_two_fn_local_updates",
+            "av_source_incremental_precise_refusals",
+            "av_source_incremental_degradation_caught",
+            "av_source_incremental_detector_negative_controls"
         )
         # R5 V-13(3) binding — inherited D828 lifetime/transaction axes:
-        Run-Probe-Tests "function_incremental_828_contract" "incremental-inherited-lifecycle" @(
-            "contract_828_transaction_sequential_cancel_then_commit",
-            "contract_828_transaction_close_releases_owned_entries",
-            "contract_828_transaction_prepare_does_not_publish_and_drop_is_inert"
+        Run-Probe-Tests "function_incremental_contract" "incremental-inherited-lifecycle" @(
+            "contract_transaction_sequential_cancel_then_commit",
+            "contract_transaction_close_releases_owned_entries",
+            "contract_transaction_prepare_does_not_publish_and_drop_is_inert"
         )
     }
     "cache" {
@@ -698,14 +700,14 @@ switch ($Scope) {
         # project content-addressed reuse; position shift = new identity.
         # Formal face: the session-overlay corpus case (new worker per
         # check, shared warm store, parent-side judgement).
-        Run-Probe-Tests "av_source_827_cache" "cache" @(
-            "av_source_827_overlay_misses_only_changed_unit",
-            "av_source_827_cross_project_content_addressed_reuse",
-            "av_source_827_caps_change_rekeys",
-            "av_source_827_corrupt_republish_conflicts_and_good_survives",
-            "av_source_827_position_shift_new_identity_same_result"
+        Run-Probe-Tests "av_source_cache" "cache" @(
+            "av_source_overlay_misses_only_changed_unit",
+            "av_source_cross_project_content_addressed_reuse",
+            "av_source_caps_change_rekeys",
+            "av_source_corrupt_republish_conflicts_and_good_survives",
+            "av_source_position_shift_new_identity_same_result"
         )
-        Run-Runner-Tests "av_source_827_corpus" "cache-corpus" @("av_source_827_corpus_green")
+        Run-Runner-Tests "av_source_corpus" "cache-corpus" @("av_source_corpus_green")
         # R5 V-08 binding — inherited root/lease/grant/span-rebind axes:
         Run-Probe-Tests "cache_tier" "cache-inherited-lifecycle" @(
             "av_cache_gc_and_lease",
@@ -718,9 +720,9 @@ switch ($Scope) {
         )
         # 827 thin replays: grant revocation blocks cached dispatch; the
         # trap span re-binds to shifted COORDINATES.
-        Run-Probe-Tests "av_source_827_semantics" "cache-thin-grant-span" @(
-            "av_source_827_trace_grant_revocation_blocks_execution",
-            "av_source_827_position_shift_rebinds_trap_span_coordinates"
+        Run-Probe-Tests "av_source_semantics" "cache-thin-grant-span" @(
+            "av_source_trace_grant_revocation_blocks_execution",
+            "av_source_position_shift_rebinds_trap_span_coordinates"
         )
     }
     "compatibility" {

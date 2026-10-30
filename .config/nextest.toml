@@ -68,6 +68,12 @@ default-filter = "test(vm_file_tests::) or test(cookbook_vm_tests::) or test(con
 # 名单与档位数据:.config/test-mem-weights.md(单一事实来源)。
 # 新增重测试三步登记:测量(scripts/measure_test_mem.py) → 权重表定级
 # → 此处(及 full/t3 配置)overrides + heavy_gate 接线。
+# ACE formal measurements run without overlapping other tests in this invocation.
+# https://nexte.st/docs/configuration/threads-required/
+[[profile.default.overrides]]
+filter = "test(/::performance::/)"
+threads-required = "num-test-threads"
+
 [[profile.default.overrides]]
 filter = "test(mir_native_turnaround)"
 test-group = "mn-turnaround"
@@ -109,7 +115,7 @@ test-group = "ffi-dual"
 # frozen input and original assertion. A one-thread test group alone cannot isolate
 # these tests from unrelated processes in this nextest invocation.
 [[profile.default.overrides]]
-filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95)'
+filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::turnaround::performance::probe_adapter_turnaround_ipc_hard_gate_p95)'
 threads-required = "num-test-threads"
 
 # PLAN-896: preserve HTTP family serial access across fixed groups.

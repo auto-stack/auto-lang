@@ -1,6 +1,8 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-774 one-shot data/resource probe gate (ASCII only for Windows
 # PowerShell 5.1). Serially runs the frozen probe gates from plan section 6:
-# cargo check --locked --all-targets (zero-warning health check with an
+# Invoke-AceCargo check --locked --all-targets (zero-warning health check with an
 # in-script positive/negative matcher control), the full probe test suite
 # (V-02 ABI, V-03 lifetime incl. LIFO/nested exits, V-04 front-door
 # rejections + R2 elimination evidence, V-05 fault injection, V-06
@@ -12,13 +14,13 @@
 # V-09 scope isolation and writes a receipt with HEAD, tool/source/artifact
 # hashes AND the raw captured output of every step — on success AND on
 # failure (review r1 P774-R1-06). Receipts land under
-# experimental/ac-core/probes/data-resources/target/ac-verify-receipts/774/
+# experimental/ace/tests/data-runtime/target/ac-verify-receipts/774/
 # (gitignored).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-data-resources-774.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$ProbeDir = Join-Path $RepoRoot 'experimental\ac-core\probes\data-resources'
+$ProbeDir = Join-Path $RepoRoot 'experimental/ace/tests/data-runtime'
 $ProbeManifest = Join-Path $ProbeDir 'Cargo.toml'
 $ReportDir = Join-Path $RepoRoot 'docs\reports\774-data-resource'
 $ReceiptsDir = Join-Path $ProbeDir 'target\ac-verify-receipts\774'
@@ -49,7 +51,7 @@ function Invoke-Cargo {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & cargo @ArgList 2>&1
+        $output = & Invoke-AceCargo @ArgList 2>&1
     } finally {
         $ErrorActionPreference = $prev
     }
@@ -145,7 +147,7 @@ try {
     # the panic handler are stripped; the accounting code is untouched) with
     # state-probe/footer.rs and runs it. Tiny physical buffers.
     Invoke-Step 'accounting-state probe (u64 full precision across u32 boundary)' {
-        $sourcePath = Join-Path $ProbeDir 'shim\src\lib.rs'
+        $sourcePath = Join-Path $RepoRoot 'experimental/ace/crates/data-runtime/src/lib.rs'
         $source = [System.IO.File]::ReadAllText($sourcePath)
         $source = $source.Replace('#![no_std]', '').Replace('#![no_builtins]', '')
         $panicStart = $source.LastIndexOf('#[panic_handler]')
@@ -180,7 +182,7 @@ try {
         $base = (& git -C $RepoRoot merge-base HEAD master).Trim()
         $changed = & git -C $RepoRoot diff --name-only $base HEAD
         $allowed = @(
-            '^experimental/ac-core/probes/data-resources/',
+            '^experimental/ace/tests/data-runtime/',
             '^scripts/verify-ac-data-resources-774\.ps1$',
             '^docs/reports/774-data-resource/'
         )
@@ -197,11 +199,11 @@ try {
     # --- artifact + source contract hashes ------------------------------------
 
     Invoke-Step 'hashes (shim artifact + source contracts + gate inputs)' {
-        $shim = Join-Path $ProbeDir 'target\release\ac_data_shim_774.lib'
+        $shim = Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ace_data_runtime.lib'
         $script:ReceiptLines.Add("shim-sha256: $(Get-Sha256 $shim)")
         foreach ($rel in @(
-            'src\lib.rs', 'src\rules.rs', 'shim\src\lib.rs',
-            'Cargo.toml', 'Cargo.lock'
+            'src\lib.rs', 'src\rules.rs', '../../crates/data-runtime/src/lib.rs',
+            'Cargo.toml', '../../Cargo.lock'
         )) {
             $p = Join-Path $ProbeDir $rel
             $script:ReceiptLines.Add(("probe {0}: {1}" -f ($rel -replace '\\', '/'), (Get-Sha256 $p)))

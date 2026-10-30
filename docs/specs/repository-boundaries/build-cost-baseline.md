@@ -1,5 +1,7 @@
 # build-cost-baseline（构建成本基线与 member 拆分决策）
 
+> PLAN-896：ACE统一独立experimental/ace workspace，单锁、多职责crate、普通语言零ACE构建；常规debug=0、显式full-debug=2，syntax-release与runtime-{dev,release}承接原调试/panic配置。统一workspace本身不等于少构建，按相同完整必需工作量分列编译、执行、exe/PDB和缓存字节，禁止把少跑专项当同工作量加速。
+
 > PLAN-896补充：测试按固定Cargo包/Rust模块选择，Rust模块过滤只限运行，不保证同crate独立编译。
 > 必要experimental普通dev/test debug=0，显式full-debug debug=2；opt-level/断言/溢出/panic及正式性能配置保持。
 > 无关ACE不准备/编译；同树兼容target复用保regular/batch及来源绑定。成本按真实同工作量的冷构建/运行/稳态磁盘分列。

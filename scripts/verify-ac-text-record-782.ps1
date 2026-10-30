@@ -1,8 +1,10 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-782 one-shot text-record combination gate (ASCII only for Windows
 # PowerShell 5.1). Serially runs the frozen gates from plan section 6 /
 # design section 10: the ac-core workspace (check --locked --all-targets
-# zero-warning with in-script matcher controls, the FULL test suite --
-# text_record_hir/source/resources/native included -- and fmt), the
+# zero-warning with in-script matcher controls, the FULL test suite '--'
+# text_record_hir/source/resources/native included '--' and fmt), the
 # runtime/text workspace (check/test/fmt, same policy; runtime owns the
 # fault-injection/budget faces the language cannot reach), the case
 # walkthrough under the 741/745/771 contained executor (source flagship
@@ -16,16 +18,16 @@
 # fail that single step: this gate asserts the failure is exactly that
 # step, that the flagged files are exactly this plan's own in-scope
 # artifacts (computed from the same git diff), and that every substantive
-# 770 step passed -- a real out-of-scope change still fails here because
+# 770 step passed '--' a real out-of-scope change still fails here because
 # it would appear in the flagged set outside the 782 allow-list. Raw
 # outputs of every step land under
-# experimental/ac-core/target/ac-verify-receipts/text-record-782/
+# experimental/ace/crates/core/target/ac-verify-receipts/text-record-782/
 # (gitignored), on success AND on failure.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-text-record-782.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
 # PLAN-871 T-05: build legs run through the shared-MIR `ac-native` CLI (the
 # receiver of ac-core's retiring build/build-source). Old assertion mapping:
 # exit / stdout / stderr oracles are UNCHANGED (including the ledger/trap
@@ -33,8 +35,8 @@ $AcCore = Join-Path $RepoRoot 'experimental\ac-core'
 # carries backend/mir-lowering axes; the exe/receipt survive the failed-build
 # transaction"; `--support-lib` carries the text runtime library on owned
 # rows and the trace library elsewhere, exactly as before.
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
-$RtDir = Join-Path $AcCore 'runtime\text'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
+$RtDir = Join-Path $RepoRoot 'experimental/ace/tests/text-runtime'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\text-record-782'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -515,14 +517,14 @@ try {
 
     # --- 3. runtime/text workspace ----------------------------------------------
 
-    Invoke-Step 'runtime/text cargo check --locked --all-targets, zero warnings' {
+    Invoke-Step 'runtime/text Invoke-AceCargo check --locked --all-targets, zero warnings' {
         $r = Invoke-Captured 'cargo' @('check', '--locked', '--all-targets', '--manifest-path', (Join-Path $RtDir 'Cargo.toml')) $RepoRoot -TimeoutSec 900 '05-rt-check.txt'
         if ($r.Code -ne 0) { throw "runtime check exited $($r.Code)" }
         if (Test-HasWarningLine ($r.Stdout + $r.Stderr)) { throw 'runtime zero-warning check failed' }
         $script:ReceiptLines.Add('runtime/text check: ok (zero warnings)')
     }
 
-    Invoke-Step 'runtime/text cargo test --locked (runtime-owned fault/budget faces)' {
+    Invoke-Step 'runtime/text Invoke-AceCargo test --locked (runtime-owned fault/budget faces)' {
         $r = Invoke-Captured 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $RtDir 'Cargo.toml')) $RepoRoot -TimeoutSec 900 '06-rt-test.txt'
         if ($r.Code -ne 0) { throw "runtime test exited $($r.Code)" }
         $t = $r.Stdout + $r.Stderr
@@ -547,8 +549,8 @@ try {
         if ($r.Code -ne 0) { throw "tool build exited $($r.Code)" }
         $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900 '08-bin.txt'
         if ($m.Code -ne 0) { throw "ac-native build exited $($m.Code)" }
-        $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
-        $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+        $script:Bin = Join-Path $RepoRoot 'experimental/ace/target/debug/ac-native.exe'
+        $script:CheckBin = Join-Path $RepoRoot 'experimental/ace/target/debug/ace-core.exe'
         if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
         $script:ReceiptLines.Add("tool-binary-sha256: $(Get-Sha256 $script:Bin)")
     }
@@ -556,11 +558,11 @@ try {
     Invoke-Step 'build text runtime support library + contract sidecar' {
         # mirrors tests/common::text_runtime_lib (PLAN-770): the shim
         # staticlib plus the contract sidecar the gate's builds consume
-        $r = Invoke-Captured 'cargo' @('build', '-p', 'ac-text-runtime-shim', '--release', '--locked') $RtDir -TimeoutSec 900 '09-rtlib.txt'
+        $r = Invoke-Captured 'cargo' @('build', '-p', 'ace-text-runtime', '--profile', 'runtime-release', '--locked') $RtDir -TimeoutSec 900 '09-rtlib.txt'
         if ($r.Code -ne 0) { throw "runtime shim build exited $($r.Code)" }
-        $script:SupportLib = Join-Path $RtDir 'target\release\ac_text_runtime.lib'
+        $script:SupportLib = Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib'
         if (-not (Test-Path $script:SupportLib)) { throw "support lib missing: $script:SupportLib" }
-        $contract = Join-Path $RtDir 'target\release\ac_text_runtime.lib.contract.json'
+        $contract = Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib.contract.json'
         $sidecar = "{`n" +
             "  `"api`": `"ac.runtime.text.v1`",`n" +
             "  `"api_revision`": 1,`n" +
@@ -598,7 +600,7 @@ try {
     Invoke-Step 'TP01 source flagship PE (p01-combination.at)' {
         $dir = Join-Path $ReceiptsDir 'cases\TP01'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p01-combination.at'
         $exe = Join-Path $dir 'app.exe'
         $build = Invoke-BuildSource $src $exe @() '10-tp01-build.txt'
         if ($build.Code -ne 0) { throw "flagship build exited $($build.Code)" }
@@ -621,7 +623,7 @@ try {
     Invoke-Step 'TP02 overlap shapes PE (p02-overlap.at)' {
         $dir = Join-Path $ReceiptsDir 'cases\TP02'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p02-overlap.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p02-overlap.at'
         $exe = Join-Path $dir 'app.exe'
         $build = Invoke-BuildSource $src $exe @() '11-tp02-build.txt'
         if ($build.Code -ne 0) { throw "overlap build exited $($build.Code)" }
@@ -636,7 +638,7 @@ try {
     Invoke-Step 'HP01 direct-HIR PE (tr01-combination.atom)' {
         $dir = Join-Path $ReceiptsDir 'cases\HP01'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-hir\valid\tr01-combination.atom'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-hir\valid\tr01-combination.atom'
         $exe = Join-Path $dir 'app.exe'
         $bargs = @('build', $src, '--entry', 'd_main', '--capability', $TEXT_CAP, '--support-lib', $script:SupportLib, '--output', $exe)
         $build = Invoke-Captured $script:Bin $bargs $RepoRoot -TimeoutSec 300 '12-hp01-build.txt'
@@ -662,7 +664,7 @@ try {
 
     Invoke-Step 'negative SOURCE corpus: check-source rejects (8 pinned codes)' {
         foreach ($c in $Negative) {
-            $srcp = Join-Path $RepoRoot ("experimental\ac-core\fixtures\text-record-source\invalid\" + $c.File)
+            $srcp = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\text-record-source\invalid\" + $c.File)
             $r = Invoke-Captured $script:CheckBin @('check-source', $srcp, '--source-profile', $TR) $RepoRoot -TimeoutSec 120
             if ($r.Code -ne 1) { throw "$($c.Id): exited $($r.Code), expected 1" }
             if ($r.Stderr -notmatch [regex]::Escape($c.Code)) { throw "$($c.Id): expected $($c.Code), got $($r.Stderr)" }
@@ -672,7 +674,7 @@ try {
     }
 
     Invoke-Step 'profile isolation (V-01: old profiles reject the combination surface)' {
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p01-combination.at'
         foreach ($prof in @('auto.source.core-i32.draft', 'auto.source.scalar-i32.draft', 'auto.source.text.draft', 'auto.source.record.draft')) {
             $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', $prof) $RepoRoot -TimeoutSec 120 '13-profile-iso.txt'
             if ($r.Code -ne 1) { throw "$prof on combination source exited $($r.Code), expected 1" }
@@ -680,7 +682,7 @@ try {
         }
         $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 120
         if ($r.Code -ne 2) { throw "unknown profile exited $($r.Code), expected 2" }
-        $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-hir\valid\tr01-combination.atom')) $RepoRoot -TimeoutSec 120
+        $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-hir\valid\tr01-combination.atom')) $RepoRoot -TimeoutSec 120
         if ($r.Code -ne 0) { throw "combination HIR check exited $($r.Code): $($r.Stderr)" }
         if ($r.Stdout -notmatch 'hir-profile text-record-i32-draft') { throw "domain missing in: $($r.Stdout)" }
         $script:ReceiptLines.Add('profile isolation: ok (4 old profiles reject; unknown exit 2; domain line present)')
@@ -688,11 +690,11 @@ try {
 
     Invoke-Step 'capability gate control (missing capability rejects, no artifact)' {
         # deliberate-failure control: the derived ac.runtime.text.v1
-        # requirement is not waived by caller silence -- the build must
+        # requirement is not waived by caller silence '--' the build must
         # reject BEFORE any artifact is written
         $dir = Join-Path $ReceiptsDir 'cases\TCAP'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p01-combination.at'
         $exe = Join-Path $dir 'app.exe'
         $r = Invoke-Captured $script:Bin @('build-source', $src, '--source-profile', $TR, '--entry', 'main', '--support-lib', $script:SupportLib, '--output', $exe) $RepoRoot -TimeoutSec 300 '14-cap-control.txt'
         if ($r.Code -ne 1) { throw "missing-capability build exited $($r.Code), expected 1" }
@@ -704,7 +706,7 @@ try {
     Invoke-Step 'SENTINEL transaction (failed build preserves artifacts)' {
         $dir = Join-Path $ReceiptsDir 'cases\SENTINEL'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p01-combination.at'
         $exe = Join-Path $dir 'app.exe'
         $rcpt = Join-Path $dir 'app.ac-link.txt'
         $build = Invoke-BuildSource $src $exe @() '15-sentinel-seed.txt'
@@ -728,7 +730,7 @@ try {
     Invoke-Step 'receipt identity lines (V-01)' {
         $dir = Join-Path $ReceiptsDir 'cases\IDENT'
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\text-record-source\valid\p01-combination.at'
+        $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\text-record-source\valid\p01-combination.at'
         $exe = Join-Path $dir 'app.exe'
         $r = Invoke-BuildSource $src $exe @() '16-identity.txt'
         if ($r.Code -ne 0) { throw "identity build exited $($r.Code)" }
@@ -775,7 +777,7 @@ try {
     Invoke-Step 'old gate: verify-ac-text-770.ps1 (expected per-plan scope failure attributed)' {
         # The 770 gate ends with a per-plan scope assertion whose allow-list
         # is 770-specific. On this successor tree it MUST fail that single
-        # step with exactly this plan's own in-scope artifacts -- and every
+        # step with exactly this plan's own in-scope artifacts '--' and every
         # substantive step (workspaces, tests, its own old gates) must pass.
         # A real out-of-scope change would surface in the flagged set
         # outside the 782 allow-list and fail HERE.
@@ -797,8 +799,8 @@ try {
             'cargo check --locked --all-targets (ac-core)',
             'cargo test --locked (ac-core full suite incl. text faces)',
             'cargo fmt --check (ac-core)',
-            'runtime/text cargo check --locked --all-targets',
-            'runtime/text cargo test --locked (runtime-owned fault/budget faces)',
+            'runtime/text Invoke-AceCargo check --locked --all-targets',
+            'runtime/text Invoke-AceCargo test --locked (runtime-owned fault/budget faces)',
             'runtime/text cargo fmt --check',
             'old gate: verify-ac-741.ps1',
             'old gate: verify-ac-source-745.ps1',
@@ -813,17 +815,17 @@ try {
         $base = (& git -C $RepoRoot merge-base HEAD master | Out-String).Trim()
         $changed = @(& git -C $RepoRoot diff --name-only $base HEAD)
         $allowed770 = @(
-            '^experimental/ac-core/src/', '^experimental/ac-core/tests/', '^experimental/ac-core/fixtures/',
-            '^experimental/ac-core/schema/', '^experimental/ac-core/runtime/text/',
-            '^experimental/ac-core/test-support/marks\.rs$', '^experimental/ac-core/Cargo\.toml$',
-            '^experimental/ac-core/Cargo\.lock$', '^experimental/ac-core/README\.md$',
+            '^experimental/ace/crates/core/src/', '^experimental/ace/crates/core/tests/', '^experimental/ace/crates/core/fixtures/',
+            '^experimental/ace/crates/core/schema/', '^experimental/ace/tests/text-runtime/',
+            '^experimental/ace/crates/trace-runtime/marks\.rs$', '^experimental/ace/crates/core/Cargo\.toml$',
+            '^experimental/ace/crates/core/Cargo\.lock$', '^experimental/ace/crates/core/README\.md$',
             '^scripts/verify-ac-text-770\.ps1$', '^docs/reports/770-text/', '^docs/plans/770-ac-text-char-native\.md$'
         )
         $illegal = @($changed | Where-Object {
             $p = $_ -replace '\\', '/'
             -not ($allowed770 | Where-Object { $p -match $_ })
         })
-        $allowed782 = @('^experimental/ac-core/', '^scripts/verify-ac-text-record-782\.ps1$', '^docs/reports/782-text-record/', '^docs/plans/782-ac-text-record-owned\.md$')
+        $allowed782 = @('^experimental/ace/crates/core/', '^scripts/verify-ac-text-record-782\.ps1$', '^docs/reports/782-text-record/', '^docs/plans/782-ac-text-record-owned\.md$')
         # PLAN-871: when this gate is executed as a DIFFERENTIAL old gate in
         # the successor plan's tree, that plan's own artifacts are expected
         # changed files. The opt-in is explicit (env), so 782's own delivery
@@ -831,9 +833,9 @@ try {
         $allowedForeign = @()
         if ($env:AUTO_LANG_PLAN_TREE -eq '871') {
             $allowedForeign = @(
-                '^experimental/ac-core/', '^experimental/ac-mir-native/', '^experimental/ac-case-worker/',
-                '^experimental/ac-av-probe/', '^experimental/ac-cte-probe/', '^experimental/ac-artifact-probe/',
-                '^experimental/auto-mir-lower/', '^experimental/ac-syntax/',
+                '^experimental/ace/crates/core/', '^experimental/ace/crates/native/', '^experimental/ace/crates/case-worker/',
+                '^experimental/ace/', '^experimental/ace/', '^experimental/ace/crates/artifacts/',
+                '^experimental/ace/crates/lowering/', '^experimental/ace/',
                 '^crates/auto-lang-core/', '^crates/auto-lang/', '^scripts/verify-ac-871',
                 '^scripts/verify-ac-74[15]', '^scripts/verify-ac-source-745', '^scripts/verify-ac-scalar-767',
                 '^scripts/verify-ac-record-771', '^scripts/verify-ac-text-record-782', '^scripts/verify-ac-text-770',
@@ -856,7 +858,7 @@ try {
         $base = (& git -C $RepoRoot merge-base HEAD master | Out-String).Trim()
         $changed = @(& git -C $RepoRoot diff --name-only $base HEAD)
         $allowed = @(
-            '^experimental/ac-core/',
+            '^experimental/ace/crates/core/',
             '^scripts/verify-ac-text-record-782\.ps1$',
             '^docs/reports/782-text-record/',
             '^docs/plans/782-ac-text-record-owned\.md$'
@@ -870,19 +872,19 @@ try {
     }
 
     Invoke-Step 'hashes (runtime lib + contract sidecar + gate inputs + case PEs)' {
-        $script:ReceiptLines.Add("runtime-lib-sha256: $(Get-Sha256 (Join-Path $RtDir 'target\release\ac_text_runtime.lib'))")
-        $script:ReceiptLines.Add("runtime-contract-sha256: $(Get-Sha256 (Join-Path $RtDir 'target\release\ac_text_runtime.lib.contract.json'))")
+        $script:ReceiptLines.Add("runtime-lib-sha256: $(Get-Sha256 (Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib'))")
+        $script:ReceiptLines.Add("runtime-contract-sha256: $(Get-Sha256 (Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib.contract.json'))")
         foreach ($rel in @(
             'schema\text-record.atom',
             'src\hir.rs', 'src\descriptor.rs', 'src\verify.rs',
             'src\main.rs', 'src\text_resources.rs', 'src\lib.rs',
             'src\source\mod.rs', 'src\source\parser.rs', 'src\source\resolve.rs',
             'src\source\typecheck.rs', 'src\source\adapter.rs',
-            'tests\text_record_hir.rs', 'tests\text_record_source.rs',
+            'tests\cases\text_record_hir.rs', 'tests\cases\text_record_source.rs',
             'fixtures\text-record-source\valid\p01-combination.at',
             'fixtures\text-record-source\valid\p02-overlap.at',
             'fixtures\text-record-hir\valid\tr01-combination.atom',
-            'runtime\text\src\lib.rs', 'runtime\text\shim\src\lib.rs',
+            '../../tests/text-runtime/src/lib.rs', '../text-runtime/src/lib.rs',
             'runtime\text\Cargo.toml', 'runtime\text\Cargo.lock'
         )) {
             $p = Join-Path $AcCore $rel

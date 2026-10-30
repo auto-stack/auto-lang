@@ -1,7 +1,7 @@
 # auto-a2r
 
 > **Status**: experimental
-> 路径：`experimental/auto-a2x/a2x-rust`（crate `auto-a2x-rust`）+ worker `probe::a2x-worker` | 依据：Design 51 AX-A（PLAN-892）
+> 路径：`experimental/ace/crates/a2x-rust`（crate `auto-a2x-rust`）+ worker `probe::a2x-worker` | 依据：Design 51 AX-A（PLAN-892）
 
 首个真实 A2X 目标 provider：Checked core/scalar HIR → Rust（edition 2021）。
 **不是** mn 私有 ABI、**不用**旧 a2r 的 i64 wrapper（旧 Trans/a2r-std/旧 golden

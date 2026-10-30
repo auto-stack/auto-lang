@@ -87,6 +87,13 @@ class FixedGroups(unittest.TestCase):
                                 for row in value['profile']['default']['overrides']))
         self.assertEqual(self.groups['legacy-th']['args'], ['-p', 'auto-lang', '--lib', '--features', 'test-http-e2e'])
 
+    def test_ace_set_is_explicit_and_separate_from_daily(self):
+        selected = fixed.select(['ace'], self.value, self.groups)
+        self.assertEqual([g['name'] for g in selected], ['ace-workspace', 'ace-adapters'])
+        self.assertEqual(selected[0]['workspace'], 'experimental/ace')
+        self.assertNotIn('daily', [g['name'] for g in selected])
+        self.assertNotIn('ace-workspace', [g['name'] for g in fixed.select([], self.value, self.groups)])
+
     def test_incompatible_packages_remain_separate(self):
         self.assertEqual(len(fixed.invocations(fixed.select(['lexer', 'parser'], self.value, self.groups))), 2)
 
@@ -108,8 +115,8 @@ class FixedGroups(unittest.TestCase):
     def test_shared_target_does_not_redirect_nested_shim_builds(self):
         group = fixed.invocations([self.groups['ace-native']])[0]
         args = fixed.nextest_args(group)
-        self.assertEqual(args[args.index('--target-dir') + 1], str(ROOT / 'target/test-tools/regular'))
-        self.assertFalse((ROOT / 'experimental/ac-mir-native/.cargo/config.toml').exists())
+        self.assertEqual(args[args.index('--target-dir') + 1], str(ROOT / 'experimental/ace/target'))
+        self.assertFalse((ROOT / 'experimental/ace/crates/native/.cargo/config.toml').exists())
 
     def test_ace_declaration_in_legacy_group_fails_before_execution(self):
         doc = self.enumeration()
@@ -271,6 +278,35 @@ class CacheOwnership(unittest.TestCase):
                 with mock.patch.object(build_storage, 'refuse_active_processes'), contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(build_storage.main([str(cache), '--apply', '--idle-confirmed']), 0)
                 self.assertFalse(cache.exists())
+
+    def test_retired_cache_requires_ancestor_manifest_ownership(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def git(*argv, input=None):
+                return subprocess.check_output(
+                    ['git', '-C', str(root), '-c', 'user.name=Cache control',
+                     '-c', 'user.email=cache@example.invalid', *argv],
+                    input=input, text=True, stderr=subprocess.PIPE).strip()
+            git('init', '-q')
+            member = root / 'experimental/retired'
+            member.mkdir(parents=True)
+            manifest = member / 'Cargo.toml'
+            manifest.write_text('[workspace]\n')
+            git('add', 'experimental/retired/Cargo.toml')
+            git('commit', '-qm', 'owned historical workspace')
+            owner = git('rev-parse', 'HEAD')
+            manifest.unlink()
+            cache = member / 'target'
+            cache.mkdir()
+            (cache / 'rebuildable.o').write_bytes(b'owned')
+            unrelated = git('commit-tree', git('mktree', input=''), '-m', 'unrelated root')
+            with mock.patch.object(build_storage, 'ROOT', root):
+                with self.assertRaises(ValueError):
+                    build_storage.inspect(cache)
+                self.assertEqual(build_storage.inspect(cache, owner)['unique_file_bytes'], 5)
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build_storage.inspect(cache, unrelated)
+            self.assertEqual((cache / 'rebuildable.o').read_bytes(), b'owned')
 
 
 if __name__ == '__main__':

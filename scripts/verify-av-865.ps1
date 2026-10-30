@@ -12,6 +12,8 @@ param(
     [ValidateSet("targeted", "compat", "closures", "acceptance")]
     [string]$Scope = "acceptance"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -21,7 +23,7 @@ function Run-CargoTest([string]$Label, [string[]]$CargoArgs, [int]$Min = 1) {
     Write-Host "== PLAN-865 $Label =="
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $output = & cargo @CargoArgs 2>&1 | Out-String
+    $output = & Invoke-AceCargo @CargoArgs 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $previous
     if ($exitCode -ne 0) {
@@ -41,12 +43,12 @@ function Run-CargoTest([string]$Label, [string[]]$CargoArgs, [int]$Min = 1) {
 
 function Run-Targeted {
     Run-CargoTest "source closure surface" @(
-        "test", "--manifest-path", "experimental/ac-core/Cargo.toml",
-        "--test", "closures_865_surface"
+        "test", "--manifest-path", "experimental/ace/crates/core/Cargo.toml",
+        "--test", "closures_surface"
     ) 8
     Run-CargoTest "closure MIR lowering" @(
-        "test", "--manifest-path", "experimental/auto-mir-lower/Cargo.toml",
-        "--test", "closures_865_lowering"
+        "test", "--manifest-path", "experimental/ace/crates/lowering/Cargo.toml",
+        "--test", "closures_lowering"
     ) 2
     Run-CargoTest "parent-side source closure oracle" @(
         "test", "--manifest-path", "crates/auto-lang-core/Cargo.toml",
@@ -57,18 +59,18 @@ function Run-Targeted {
 function Run-Compat {
     Run-CargoTest "frozen closures-run-v1 corpus" @(
         "test", "--manifest-path", "crates/auto-lang/Cargo.toml",
-        "--features", "test-cases", "--lib", "av_closures_823_corpus_green", "--", "--nocapture"
+        "--features", "test-cases", "--lib", "av_closures_corpus_green", "--", "--nocapture"
     ) 1
 }
 
 function Run-Closures {
     Run-CargoTest "source-to-session and capture regressions" @(
-        "test", "--manifest-path", "experimental/ac-av-probe/probe/Cargo.toml",
-        "--test", "av_closures_865_source"
+        "test", "--manifest-path", "experimental/ace/crates/av/Cargo.toml",
+        "--test", "av_closures_source"
     ) 5
     Run-CargoTest "ACE M1 K01-K06 file-backed source suite" @(
         "test", "--manifest-path", "crates/auto-lang/Cargo.toml",
-        "--features", "test-cases", "--lib", "ace_m1_closures_865_source_suite_green", "--", "--nocapture"
+        "--features", "test-cases", "--lib", "ace_m1_closures_source_suite_green", "--", "--nocapture"
     ) 1
 }
 

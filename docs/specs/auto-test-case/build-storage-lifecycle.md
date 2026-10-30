@@ -3,10 +3,14 @@
 PLAN-896吸收897草案；固定组直接声明Cargo目标与必要工具，不先全目录构建。无关ACE零worker准备，
 普通legacy TestCase可独立运行；真正共享改动影响ACE时计划明确追加相关组。
 
-experimental独立workspace普通dev/test debug=0；显式cargo build --profile full-debug保debug=2。
-原优化/断言/溢出/panic/正式release/benchmark不变。固定ACE顶层调用显式--target-dir指向本树target/test-tools/regular；
-不以父级Cargo配置隐式重定向嵌套shim/runtime构建，其原显式来源与消费者定位保持，
-release/batch工具仍按toolchains.json显式目标隔离，Cargo保profile/triple/features/源码/锁指纹。
+ACE实现统一于`experimental/ace`的独立workspace：29个职责包、单一Cargo.lock，默认成员只含
+有限常用库。各包集成测试挂到语义模块，保私有单元测试/实际进程边界；普通语言workspace不依赖ACE实现。
+ACE普通dev/test debug=0，显式cargo build --profile full-debug为debug=2；原优化、断言、溢出检查保持。
+统一release debug=false；原syntax release带调试信息的合同由syntax-release(debug=true)承接。
+四个no_std原生静态运行时用runtime-dev/runtime-release继承原优化并保panic=abort，不进入普通unwind测试构建；
+它们的行为由真实ABI消费者验证。运行时成员、workspace清单/锁和源码共同绑定来源。
+固定ACE调用与正常worker准备共用本树`experimental/ace/target`，batch worker用`experimental/ace/target-batch`；
+profile/triple/features仍由Cargo区分。工具、shim消费者硬编码路径一并迁移，原worker哈希/来源校验保持。
 不同worktree不共享可写target；固定工具消费原来源/hash保持，不复制未知旧二进制。
 
 scripts/test-governance/build_storage.py <精确target路径>默认预览；--apply须--idle-confirmed，

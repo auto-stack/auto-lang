@@ -1,7 +1,7 @@
 //! `probe` adapter executor (PLAN-796 T-06 + R4 repairs): the
 //! parent-side half of the restricted probe/run seam. auto-lang NEVER
 //! links the experimental semantic stack — this module spawns the
-//! `sema-probe` worker (env override `SEMA_CASE_WORKER`, else located
+//! `sema-worker` worker (env override `SEMA_CASE_WORKER`, else located
 //! from the repo layout and built release once per process) speaking
 //! `semaworker/1` and JUDGES its structured step reports against the
 //! case oracle. The worker's word is never trusted.
@@ -56,12 +56,12 @@ const BUILD_WALL: Duration = Duration::from_secs(300);
 /// the real worker reports. Drift (a worker bump without a mirror
 /// update) fails admission loudly — these are admission constants,
 /// not documentation.
-pub const EXPECTED_WORKER_VERSION: &str = "ac-sema-probe/0.1.0";
+pub const EXPECTED_WORKER_VERSION: &str = "ac-sema-worker/0.1.0";
 pub const EXPECTED_SEMA_CORE_VERSION: &str = "ac-sema-core/0.1.0";
 
 /// Locate (and on first use build) the sema worker binary. Env override
 /// first (trusted host configuration binds the tool identity); otherwise
-/// find `experimental/ac-semantics` from this crate's source root and
+/// find `experimental/ace` from this crate's source root and
 /// build it release (bounded — see BUILD_WALL).
 pub fn worker_binary() -> Result<PathBuf, String> {
     if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
@@ -88,20 +88,25 @@ fn locate_worker() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "sema-probe worker not located: no experimental/ac-semantics above the crate and no SEMA_CASE_WORKER override".to_string(),
+                "sema-worker worker not located: no experimental/ace above the crate and no SEMA_CASE_WORKER override".to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("ac-semantics")
-            .join("Cargo.toml");
+        let m = d.join("experimental/ace").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
         dir = d.parent();
     };
     let mut child = Command::new("cargo")
-        .args(["build", "--release", "--workspace", "--manifest-path"])
+        .args([
+            "build",
+            "--release",
+            "-p",
+            "ace-semantics-store",
+            "--bin",
+            "sema-worker",
+            "--manifest-path",
+        ])
         .arg(&manifest)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -158,7 +163,7 @@ fn locate_worker() -> Result<PathBuf, String> {
         .unwrap()
         .join("target")
         .join("release")
-        .join("sema-probe.exe");
+        .join("sema-worker.exe");
     if exe.is_file() {
         Ok(exe)
     } else {

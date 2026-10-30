@@ -1,7 +1,9 @@
 # auto-cte 项目卡
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-comptime-contract、ace-comptime-core与ace-comptime位于crates/comptime-*，cte worker协议及adapter保持。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > Status: active（experimental 探针面；不接生产默认编译入口）(plan-817)
-> 实现：`experimental/ac-cte-probe/`（contract/core/probe 三包独立 workspace，跟踪
+> 实现：`experimental/ace/`（contract/core/probe 三包独立 workspace，跟踪
 > Cargo.lock；repo 根 `Cargo.toml` exclude 独立解析）。
 
 ## 定位

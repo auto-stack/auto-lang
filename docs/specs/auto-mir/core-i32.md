@@ -1,6 +1,6 @@
 # Typed MIR 标量合同
 
-来源：PLAN-798；实现 `experimental/ac-av-probe/core/src/{contract,mir,mir_verify}.rs`。
+来源：PLAN-798；实现 `experimental/ace/crates/av-core/src/{contract,mir,mir_verify}.rs`。
 
 ## 支持与语义
 

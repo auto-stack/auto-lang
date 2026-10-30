@@ -1,6 +1,6 @@
 # av.collections/1 源码域：List/变体源码面（PLAN-864）
 
-> Status: experimental（source 支持；实现=`experimental/ac-core/src/source/*` + `schema/collections.atom` + `experimental/auto-mir-lower` collections 模式 + `experimental/ac-av-probe/probe` 会话）。
+> Status: experimental（source 支持；实现=`experimental/ace/crates/core/src/source/*` + `schema/collections.atom` + `experimental/ace/crates/lowering` collections 模式 + `experimental/ace/crates/av` 会话）。
 
 `auto.source.collections.draft`（HirDomain::Collections，schema `auto.hir.collections.draft/1/collections-draft`）：
 `av.collections/1`（profile 4）的源码域孪生。真实 `.at` 源中的 `List<T>`、`?T`/`Result<T,E>`、
@@ -72,9 +72,9 @@ restart 经全门重准入（decode+verify，不信任字节）。单元类型�
 
 ## 验证锚
 
-`cargo test --manifest-path experimental/ac-core/Cargo.toml --test collections_864 --test collections_864_rejects`
+`cargo test --manifest-path experimental/ace/crates/core/Cargo.toml --test collections_864 --test collections_864_rejects`
 （3 前端编译 + 13 具名拒绝）；
-`cargo test --manifest-path experimental/ac-av-probe/probe/Cargo.toml --test av_collections_864 --test av_collections_864_corpus --test av_collections_864_session`
+`cargo test --manifest-path experimental/ace/crates/av/Cargo.toml --test av_collections_864 --test av_collections_864_corpus --test av_collections_864_session`
 （4 全链 + 16 语料 + 3 会话计数器）；
 文件化 17 行 `test/cases/ace-m1/collections-source-864.suite.ad`（经 `ac-av/collections-source-run-v1` 真 worker，
 parent 判定）；`scripts/verify-av-864.ps1 -Scope acceptance`（含 852 基套件 97 检查零漂移 compat）。

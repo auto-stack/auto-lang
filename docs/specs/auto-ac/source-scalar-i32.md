@@ -1,7 +1,7 @@
 # Auto 源码 scalar-i32 profile
 
 > **Status**: experimental；`auto.source.scalar-i32.draft` revision 1（PLAN-772，开发线原PLAN-767；旧编号脚本/报告路径保留）。
-> 实现：`experimental/ac-core/src/source/`（与 core-i32 共用前端骨架，profile
+> 实现：`experimental/ace/crates/core/src/source/`（与 core-i32 共用前端骨架，profile
 > 显式选择）；消费端见 [project.md](project.md)；姊妹 profile 见
 > [source-core-i32.md](source-core-i32.md)。
 
@@ -50,7 +50,7 @@ char/str/List/聚合/泛型/完整 int 宽度仍由具名后续工作包承接�
 ## 身份与可信边界
 
 - HIR 身份 `auto.hir.scalar.draft / 1 / scalar-i32-draft`（descriptor
-  `experimental/ac-core/schema/scalar-i32.atom`，core 的超集）；身份映射为
+  `experimental/ace/crates/core/schema/scalar-i32.atom`，core 的超集）；身份映射为
   **精确可失败映射**——未注册 schema/revision/profile 由 bind 整体拒绝
   （`bind.descriptor-unregistered`），canonical writer 对未注册/错域一律拒绝。
 - verify 分域入口：`verify_scalar` 限本域；`verify` 限 core 域；域错位

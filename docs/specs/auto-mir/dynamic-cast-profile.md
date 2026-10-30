@@ -1,6 +1,6 @@
 # 动态类型擦除 MIR（av.dynamic/1）
 
-> 来源 PLAN-824；实际实现 `experimental/ac-av-probe/core/src/{mir,mir_verify,instr_spec,abc}.rs`。
+> 来源 PLAN-824；实际实现 `experimental/ace/crates/av-core/src/{mir,mir_verify,instr_spec,abc}.rs`。
 
 `av.dynamic/1` 在已交付集合 profile 上增加 Dyn 槽和 `DYN_PACK`、`DYN_IS`、`DYN_TAKE`。显式擦除只接受 [动态值合同](../auto-av/dynamic-portable-values.md) 的递归 owned 白名单；无效类型引用、非法嵌套类型及错误槽类型在 verify/ABC 准入门拒绝。准入错误不能借最终执行失败冒充消费隔离；受控错型 take 则属于执行期失败并保持源值。名义类型身份和声明字段、分支及其类型不因相同布局擦除。
 

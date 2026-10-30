@@ -17,15 +17,26 @@ def reparse(path):
     return path.is_symlink() or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
-def inspect(path):
+def inspect(path, retired_source=None):
     lexical = Path(path).absolute()
     for parent in [lexical, *lexical.parents]:
         if os.path.lexists(parent) and reparse(parent):
             raise ValueError('reparse point/ancestor refused: ' + str(parent))
     target = lexical.resolve(strict=True)
-    allowed = target in {ROOT / 'target', ROOT / 'target/test-tools/regular', ROOT / 'target/test-tools/batch'} or (
+    allowed = target in {ROOT / 'target', ROOT / 'target/test-tools/regular', ROOT / 'target/test-tools/batch', ROOT / 'experimental/ace/target-batch'} or (
         target.is_relative_to(ROOT / 'experimental') and target.name == 'target'
         and (target.parent / 'Cargo.toml').is_file())
+    if not allowed and retired_source and target.is_relative_to(ROOT / 'experimental') and target.name == 'target':
+        # A migrated manifest is no longer present at its old cache root.
+        # Prove this exact checkout owned that Cargo workspace in an ancestor;
+        # this is cleanup provenance, never a test-selection catalog.
+        revision = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', '--verify', retired_source + '^{commit}'], text=True).strip()
+        subprocess.run(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', revision, 'HEAD'], check=True, capture_output=True)
+        relative = (target.parent / 'Cargo.toml').relative_to(ROOT).as_posix()
+        manifest = subprocess.check_output(['git', '-C', str(ROOT), 'show', revision + ':' + relative], text=True, stderr=subprocess.PIPE)
+        import tomllib
+        historical = tomllib.loads(manifest)
+        allowed = 'package' in historical or 'workspace' in historical
     if not allowed:
         raise ValueError('not an exact Cargo cache owned by this checkout: ' + str(target))
     if (ROOT / 'target/test-groups/active').exists():
@@ -70,12 +81,13 @@ def refuse_active_processes():
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('caches', nargs='+', type=Path)
+    ap.add_argument('--retired-source', help='ancestor revision proving an exact migrated Cargo cache owner')
     ap.add_argument('--apply', action='store_true')
     ap.add_argument('--idle-confirmed', action='store_true', help='owner confirms no reserved measurement/consumer')
     args = ap.parse_args(argv)
     if args.apply and not args.idle_confirmed:
         ap.error('--apply requires the cache owner to confirm --idle-confirmed')
-    rows = [inspect(path) for path in args.caches]
+    rows = [inspect(path, args.retired_source) for path in args.caches]
     if len({r['path'] for r in rows}) != len(rows):
         raise ValueError('duplicate cache targets')
     print(json.dumps({'mode': 'apply' if args.apply else 'preview', 'caches': rows}, indent=2), flush=True)
@@ -83,7 +95,7 @@ def main(argv=None):
         refuse_active_processes()
         for row in rows:
             # Revalidate immediately before mutation; partial failures propagate, never report success.
-            inspect(Path(row['path']))
+            inspect(Path(row['path']), args.retired_source)
             shutil.rmtree(row['path'])
             print(json.dumps({'removed': row['path'], 'unique_bytes_removed_from_scope': row['unique_file_bytes'],
                               'file_data_bytes_reclaimed': row['reclaimable_file_data_bytes']}), flush=True)

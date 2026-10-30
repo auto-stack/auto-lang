@@ -3,7 +3,7 @@
 # frozen 822 execution).
 #
 # Scopes:
-#   targeted   - the cargo test families (probe full-chain + corpus +
+#   targeted   - the Invoke-AceCargo test families (probe full-chain + corpus +
 #                frontend compile/reject probes) — filter-matched counts are
 #                asserted; a filter matching zero tests fails.
 #   source     - the file-backed suite through the built auto-case runner
@@ -17,6 +17,8 @@ param(
     [ValidateSet("targeted", "source", "compat", "acceptance")]
     [string]$Scope = "acceptance"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -32,11 +34,11 @@ function Invoke-Native([string]$what, [scriptblock]$block) {
 }
 
 function Run-CargoTest([string]$filter, [int]$min) {
-    Write-Host "== cargo test $filter (min $min) =="
-    Invoke-Native "frontend probes" { cargo test --manifest-path experimental/ac-core/Cargo.toml --test collections_864 --test collections_864_rejects 2>&1 }
-    Invoke-Native "full-chain probes" { cargo test --manifest-path experimental/ac-av-probe/probe/Cargo.toml --test av_collections_864 --test av_collections_864_corpus --test av_collections_864_session 2>&1 }
+    Write-Host "== Invoke-AceCargo test $filter (min $min) =="
+    Invoke-Native "frontend probes" { Invoke-AceCargo test --manifest-path experimental/ace/crates/core/Cargo.toml --test collections --test collections_rejects 2>&1 }
+    Invoke-Native "full-chain probes" { Invoke-AceCargo test --manifest-path experimental/ace/crates/av/Cargo.toml --test av_collections --test av_collections_corpus --test av_collections_session 2>&1 }
     $ErrorActionPreference = "Continue"
-    $out = cargo test -p auto-lang --lib --features test-cases -- $filter 2>&1
+    $out = Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance '--' $filter 2>&1
     $ErrorActionPreference = "Stop"
     if ($LASTEXITCODE -ne 0) { throw "cargo test $filter failed (exit $LASTEXITCODE)" }
     $line = ($out | Select-String "test result:").Line
@@ -50,7 +52,7 @@ function Build-AutoCase {
     $bin = Join-Path $repo "target/debug/auto-case.exe"
     if (-not (Test-Path $bin)) {
         Write-Host "   building auto-case..."
-        Invoke-Native "build auto-case" { cargo build -p auto-lang --features test-cases --bin auto-case 2>&1 }
+        Invoke-Native "build auto-case" { Invoke-AceCargo build -p auto-lang --features test-cases --bin auto-case 2>&1 }
     }
     return $bin
 }
@@ -93,7 +95,7 @@ function Run-Compat {
 
 switch ($Scope) {
     "targeted" {
-        Run-CargoTest "tests::av_collections_864" 1
+        Run-CargoTest "tests::av_collections" 1
     }
     "source" {
         Run-SourceSuite
@@ -102,7 +104,7 @@ switch ($Scope) {
         Run-Compat
     }
     "acceptance" {
-        Run-CargoTest "tests::av_collections_864" 1
+        Run-CargoTest "tests::av_collections" 1
         Run-SourceSuite
         Run-Compat
     }

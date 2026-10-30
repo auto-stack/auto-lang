@@ -68,14 +68,12 @@ pub fn worker_binary() -> Result<PathBuf, String> {
         // the conventional prebuilt locations: the repo-root target (the
         // verify script copies there) and the a2x workspace's own release
         // output (where `cargo build --manifest-path .../auto-a2x` puts it)
-        for exe in [
-            d.join("target").join("release").join(a2x_worker_exe_name()),
-            d.join("experimental")
-                .join("auto-a2x")
-                .join("target")
-                .join("release")
-                .join(a2x_worker_exe_name()),
-        ] {
+        for exe in [d
+            .join("experimental/ace")
+            .join("target")
+            .join("release")
+            .join(a2x_worker_exe_name())]
+        {
             if exe.is_file() {
                 return Ok(exe);
             }
@@ -85,7 +83,7 @@ pub fn worker_binary() -> Result<PathBuf, String> {
     Err(format!(
         "prebuilt a2x worker not found (no {A2X_WORKER_ENV} override, no <repo>/target/release/{}); \
          maintenance build (observable, outside case timing): \
-         cargo build --release --manifest-path experimental/auto-a2x/Cargo.toml -p a2x-probe --bin a2x-worker",
+         cargo build --release --manifest-path experimental/ace/Cargo.toml -p ace-a2x-worker --bin a2x-worker",
         a2x_worker_exe_name()
     ))
 }

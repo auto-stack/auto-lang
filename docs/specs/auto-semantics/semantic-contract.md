@@ -1,7 +1,7 @@
 # auto-semantics 语义合同（身份/版本/页种类准入）
 
 > **Status**: experimental（PLAN-796 冻结；现行规则以 D21–D24 为准，历史
-> 执行日记不作为规范）。登记实现 = `experimental/ac-semantics/contract/src/
+> 执行日记不作为规范）。登记实现 = `experimental/ace/crates/semantics-contract/src/
 > {identity,codec,metadata}.rs`。
 
 ## 名义身份

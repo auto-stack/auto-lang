@@ -71,16 +71,16 @@ def main() -> int:
         "id": "P887-TESTS",
         "title": "PLAN-887 governance integration + governance scripts + controls",
         "content": (
-            "PLAN-887:r2 test assets: crates/auto-lang/tests/plan887_test_governance.rs "
+            "PLAN-887:r2 test assets: experimental/ace/tests/conformance/tests/governance.rs "
             "(12 tests: first-wave D suite real-worker 6 checks exit 3/-6/9, 30-reuse "
             "original-suite runs, V-04..V-08 controls, byte-identity), "
             "scripts/test-governance/ (inventory/check_inventory/measure-first-wave/"
             "coverage-matrix), scripts/tests/test_test_governance.py (9 conservation "
             "controls), and the runner floor reconciliation. Run explicitly via "
-            "cargo test -p auto-lang --features test-cases --test plan887_test_governance."
+            "cargo test --manifest-path experimental/ace/Cargo.toml -p ace-conformance --test conformance governance::."
         ),
         "status": "verified",
-        "file": "crates/auto-lang/tests/plan887_test_governance.rs",
+        "file": "experimental/ace/tests/conformance/tests/governance.rs",
         "tags": ["PLAN-887", "r2", "delivery:auto-lang:dd916c184", "guarded-offline-projection"],
         "module": "auto-test-case",
         "created_at": NOW,

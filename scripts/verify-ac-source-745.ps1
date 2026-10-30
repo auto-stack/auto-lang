@@ -1,22 +1,24 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-745 one-shot source-profile verification script (ASCII only for
 # Windows PowerShell 5.1). Consumes the full corpus case table serially:
 # every positive case is compiled from .at source, linked and EXECUTED as a
 # real PE (60s hard deadline per run) with exit/stderr oracles; every
 # negative case is checked through check-source expecting exit 1 and the
 # pinned stage/code marker. Raw receipts land in
-# experimental/ac-core/target/ac-verify-receipts/source-745/ (gitignored).
+# experimental/ace/crates/core/target/ac-verify-receipts/source-745/ (gitignored).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-source-745.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
 # PLAN-871 T-05: the build legs run through the shared-MIR `ac-native` CLI
 # (the receiver of ac-core's retiring build/build-source). Old assertion
 # mapping: exit codes / stdout / stderr oracles are UNCHANGED (same frozen
 # semantics); the old `app.obj` product assertion becomes "receipt exists and
 # carries backend/mir-lowering/source-profile needles" — the shared-MIR
 # backend links a multi-unit closure and has no single object.
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\source-745'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -543,17 +545,17 @@ Invoke-Step 'build tool binaries once' {
     # ac-core binary stays for its check/check-source face).
     $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900
     if ($m.Code -ne 0) { throw $m.Stderr }
-    $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
-    $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+    $script:Bin = Join-Path $RepoRoot 'experimental/ace/target/debug/ac-native.exe'
+    $script:CheckBin = Join-Path $RepoRoot 'experimental/ace/target/debug/ace-core.exe'
     if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
     ("binary: " + $script:Bin) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
     ("binary-sha256: " + (Get-Sha256 $script:Bin)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
 
 Invoke-Step 'build trace support library once' {
-    $r = Invoke-Captured 'cargo' @('build', '--locked') (Join-Path $AcCore 'test-support') -TimeoutSec 600
+    $r = Invoke-Captured 'cargo' @('build', '--locked', '--profile', 'runtime-dev') (Join-Path $RepoRoot 'experimental/ace/crates/trace-runtime') -TimeoutSec 600
     if ($r.Code -ne 0) { throw $r.Stderr }
-    $script:SupportLib = Join-Path $AcCore 'test-support\target\debug\ac_trace_support.lib'
+    $script:SupportLib = Join-Path $RepoRoot 'experimental/ace/target/runtime-dev/ace_trace_runtime.lib'
     if (-not (Test-Path $script:SupportLib)) { throw "support lib missing: $script:SupportLib" }
     ("support-lib-sha256: " + (Get-Sha256 $script:SupportLib)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
@@ -564,7 +566,7 @@ Invoke-Step 'positive cases: build + run (21)' {
     foreach ($c in $Positive) {
         $dir = Join-Path $ReceiptsDir ('positive\' + $c.Id)
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\source\valid\" + $c.File)
+        $src = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\source\valid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         $exe = Join-Path $dir 'app.exe'
@@ -600,7 +602,7 @@ Invoke-Step 'negative cases: check-source rejects (53)' {
     foreach ($c in $Negative) {
         $dir = Join-Path $ReceiptsDir ('negative\' + $c.Id)
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\source\invalid\" + $c.File)
+        $src = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\source\invalid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         $extra = @()

@@ -1,7 +1,7 @@
 # auto-test-case
 
 > PLAN-896测试调度：固定Cargo包+Rust模块组取代tm动态目录，入口cargo t <组>、显式cargo t all。
-> 本crate的TestCase协议/oracle/准入比较保持；ACE宿主显式test-ace与必要工具，普通legacy不编无关ACE。
+> 本crate的TestCase协议/oracle/准入比较保持；ACE宿主迁至独立experimental/ace workspace的ace-conformance包；语言侧私有协议单测仅显式test-ace桥接。cargo t ace为常规集合，ace-performance保正式计量原合同，all含完整包条件集合。普通语言日常/具名组/静态list均不编ACE。
 
 > **Status**: active
 > 路径：`crates/auto-test-case` | 技术栈：Rust（仅依赖 vendored `autodown-test-parser`；auto-atom/auto-val 仅 dev）
@@ -21,7 +21,7 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
 - 非目标边界随 B 阶段（PLAN-788）收缩：native（ac core/scalar、Windows
   x86_64-pc-windows-msvc）、contained 进程隔离/deadline/输出 cap、783 统一
   cache、syntax 观测已按 v2 交付（[profile-v2-native.md](profile-v2-native.md)，
-  worker 在 `experimental/ac-case-worker`）；仍未导入：text/record/text-record
+  worker 在 `experimental/ace/crates/case-worker`）；仍未导入：text/record/text-record
   profile、XFAIL、语言内非 ASCII 输出（随 text 批）。
 
 ## 模块清单

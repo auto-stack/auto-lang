@@ -12,19 +12,21 @@ param(
     [int]$Samples = 30,
     [double]$GateMs = 2000.0
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Continue"  # cargo writes progress to stderr; exit codes are the gate
 $repo = Split-Path -Parent $PSScriptRoot
-$ws = Join-Path $repo "experimental/ac-av-probe"
+$ws = Join-Path $repo "experimental/ace"
 $reportDir = Join-Path $repo "docs/reports/plan798"
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
 if ($env:SCCACHE_SERVER_PORT -eq $null) { $env:SCCACHE_SERVER_PORT = "28101" }
 
 function Run-Tests([string]$Filter, [string]$Label) {
-    Write-Host "== $Label (cargo test filter: $Filter)"
+    Write-Host "== $Label (Invoke-AceCargo test filter: $Filter)"
     Push-Location $ws
-    & cargo test -p auto-av-probe --test $Filter 2>&1 | Tee-Object -Variable out | Write-Host
+    & Invoke-AceCargo test -p ace-av --test $Filter 2>&1 | Tee-Object -Variable out | Write-Host
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) {
@@ -51,16 +53,16 @@ switch ($Scope) {
         Run-Tests "resources_tier" "resources-scale"
     }
     "binding" {
-        # T-06 (D-796 merged): the landed ac-sema-contract identity domain —
+        # T-06 (D-796 merged): the landed ace-semantics-contract identity domain —
         # same-name/different-owner separation, restart/ordering stability,
         # schema/version/tamper rejection, consumption-surface pin.
         Push-Location $ws
-        & cargo test -p auto-av-probe --test binding_tier 2>&1 | Tee-Object -Variable out | Write-Host
+        & Invoke-AceCargo test -p ace-av --test binding_tier 2>&1 | Tee-Object -Variable out | Write-Host
         $code = $LASTEXITCODE
         Pop-Location
         if ($code -ne 0) { Write-Host "FAILED: binding tier"; exit 1 }
         $out | Out-File (Join-Path $reportDir "binding-tier.log") -Encoding utf8
-        Write-Host "binding: ac-sema-contract identity domain consumed read-only (see binding-tier.log)"
+        Write-Host "binding: ace-semantics-contract identity domain consumed read-only (see binding-tier.log)"
     }
     "autodown" {
         # T-07 (D-788 + D-796 merged): the formal ac-av/core-run-v1 recipe on
@@ -68,7 +70,7 @@ switch ($Scope) {
         # admission negatives and the FORMAL warm-edit hard gate (frozen
         # 30 samples / 2000 ms; AV798_FORMAL_SAMPLES/GATE_MS override).
         Push-Location $repo
-        & cargo test -p auto-lang --lib --features test-cases ac_av_probe -- --test-threads=1 --nocapture 2>&1 | Tee-Object -Variable out | Write-Host
+        & Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance ac_av_probe '--' --test-threads=1 --nocapture 2>&1 | Tee-Object -Variable out | Write-Host
         $code = $LASTEXITCODE
         Pop-Location
         $out | Out-File (Join-Path $reportDir "autodown-formal.log") -Encoding utf8
@@ -78,14 +80,14 @@ switch ($Scope) {
     "turnaround" {
         Write-Host "== turnaround release bench: 6 scenarios x $Samples samples, hard gate P90 <= $GateMs ms"
         Push-Location $ws
-        & cargo build --release -p auto-av-probe --bin av_probe_worker 2>&1 | Write-Host
+        & Invoke-AceCargo build --release -p ace-av --bin av-worker 2>&1 | Write-Host
         if ($LASTEXITCODE -ne 0) { Pop-Location; exit 1 }
         $raw = Join-Path $reportDir "turnaround-raw.jsonl"
         $summary = Join-Path $reportDir "turnaround-summary.json"
         # The worker writes raw rows to $raw and prints ONE summary JSON line
         # to stdout; the pipe below is the ONLY writer of $summary (F798-R2-01:
         # a stale `$benchOut |` here used to truncate the file to 0 bytes).
-        & (Join-Path $ws "target/release/av_probe_worker.exe") bench-turnaround --samples $Samples --gate-ms $GateMs --out "$raw" | Out-File $summary -Encoding utf8
+        & (Join-Path $ws "target/release/av-worker.exe") bench-turnaround --samples $Samples --gate-ms $GateMs --out "$raw" | Out-File $summary -Encoding utf8
         $code = $LASTEXITCODE
         Pop-Location
         # Sanity: the summary must be parseable JSON on BOTH the success and
@@ -104,7 +106,7 @@ switch ($Scope) {
     }
     "acceptance" {
         Push-Location $repo
-        & cargo test -p auto-lang --lib --features test-cases ac_av_probe -- --test-threads=1 2>&1 | Tee-Object -Variable out2 | Write-Host
+        & Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance ac_av_probe '--' --test-threads=1 2>&1 | Tee-Object -Variable out2 | Write-Host
         $code2 = $LASTEXITCODE
         Pop-Location
         $out2 | Out-File (Join-Path $reportDir "acceptance-autodown.log") -Encoding utf8

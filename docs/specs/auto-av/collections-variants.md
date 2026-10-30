@@ -1,6 +1,6 @@
 # av.collections/1 类型化集合与 Variant 载荷（PLAN-822）
 
-> Status: experimental（执行域 fixture + **源码域已接通**（PLAN-864：`auto.source.collections.draft` 经共享 lowering 落本 profile，指令/布局/预算零改动；源码形态合同见 [auto-ac/source-collections-variants.md](../auto-ac/source-collections-variants.md)）；实现=`experimental/ac-av-probe/core` + `probe`）。
+> Status: experimental（执行域 fixture + **源码域已接通**（PLAN-864：`auto.source.collections.draft` 经共享 lowering 落本 profile，指令/布局/预算零改动；源码形态合同见 [auto-ac/source-collections-variants.md](../auto-ac/source-collections-variants.md)）；实现=`experimental/ace/crates/av-core` + `probe`）。
 
 第四个 AV profile `av.collections/1`：身份四元组 = AVAD wire **v3**（`AVAD` 家族）/ profile id **4** / producer `plan822/av-collections` / 语义版本 (1,1,1)（mir/abc/av 三轴独立）。支持 List/有限名义 Variant/owned Str 与 record 组合的 typed 元素存取，不复制协议/执行器，不依赖旧 core-i32 授信。
 

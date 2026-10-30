@@ -1,6 +1,6 @@
 # auto-cte 标量查询 profile
 
-> Status: active (plan-817)；实现 `experimental/ac-cte-probe/{contract,core,probe}`。
+> Status: active (plan-817)；实现 `experimental/ace/{contract,core,probe}`。
 
 ## 值级与查询节点
 

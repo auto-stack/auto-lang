@@ -4,7 +4,7 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 ## 唯一实现
 
-`Checked HIR → Typed MIR` lowering 的唯一实现是 **`experimental/auto-mir-lower`**（crate
+`Checked HIR → Typed MIR` lowering 的唯一实现是 **`experimental/ace/crates/lowering`**（crate
 `auto_mir_lower`，独立于根 workspace，与 experimental 各树同构独立解析）。原实现自
 `ac-av-probe/probe/src/hir_adapter.rs` **字节级纯搬移**（git rename 100%，两路径 blob
 同 hash），语义零变化。
@@ -24,9 +24,9 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 | 消费者 | 用途 |
 |---|---|
-| `experimental/ac-av-probe/probe` | worker/会话/cache 宿主（**仅消费**，不再是提供者） |
-| `experimental/ac-mir-native`（mn） | MIR→CLIF 原生对拍 |
-| `experimental/ac-cte-probe/probe` | CTE av driver |
+| `experimental/ace/crates/av` | worker/会话/cache 宿主（**仅消费**，不再是提供者） |
+| `experimental/ace/crates/native`（mn） | MIR→CLIF 原生对拍 |
+| `experimental/ace/crates/comptime` | CTE av driver |
 
 守卫：`scripts/verify-mir-lowering-868.ps1 -Scope deps`（experimental 全域
 `pub fn lower_checked(` 定义唯一、三消费者 cargo tree 解析、av-core 依赖清单为空、

@@ -4,7 +4,7 @@
 
 
 > **Status**: candidate（互调基准与缓存规范，PLAN-797 R17 final pass）
-> 实现：`experimental/auto-abi-probe`（tests t02–t06 为永久反例族）
+> 实现：`experimental/ace/crates/abi`（tests t02–t06 为永久反例族）
 
 AutoABI 互调 conformance 基准与对象缓存规范。每条规则由真实 cl 编译、
 rust-lld 链接、PE 执行与 R4–R17 独立反例链支持。

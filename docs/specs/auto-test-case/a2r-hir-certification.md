@@ -14,7 +14,7 @@
 ## 日常腿（snapshot，spawn0）
 
 适配器只 spawn **预构建 a2x-worker**（`a2xworker/1`；env `AC_A2X_HIR_WORKER`
-覆盖→`<repo>/target/release`→`experimental/auto-a2x/target/release`；**绝不
+覆盖→`<repo>/target/release`→`experimental/ace/target/release`；**绝不
 自动构建**——缺失=受控 infra ERROR 带维护命令）。协议/recipe 回显核验＋
 worker 自报 `spawned_rustc=0` 父侧断言＋manifest 父侧重哈希＋golden 逐字节
 ＋未声明多余产物拒。**工具内容凭证**：worker 二进制 sha256 入每个 verdict；

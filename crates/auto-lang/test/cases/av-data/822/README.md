@@ -18,7 +18,7 @@
 ## Hand-audit receipts (frozen oracle, independent of the worker)
 
 first-case pipeline (see
-`experimental/ac-av-probe/probe/src/collections_fixture.rs`):
+`experimental/ace/crates/av/src/collections_fixture.rs`):
 
 1. `CONST Str "first"` — arena allocation id0, 5 bytes.
 2. `AGGREGATE Note { text, n: 1 }` — record owns the id0 share.

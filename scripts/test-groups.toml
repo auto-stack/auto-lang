@@ -2,6 +2,9 @@
 schema = 1
 default = ["daily"]
 
+[sets]
+ace = ["ace-workspace", "ace-adapters"]
+
 [[group]]
 name = "daily"
 title = "原日常范围（无参数）"
@@ -521,21 +524,21 @@ all = true
 
 [[group]]
 name = "ace-source"
-title = "ACE包 experimental/ac-core"
+title = "ACE包 experimental/ace/crates/core"
 runner = "nextest"
-workspace = "experimental/ac-core"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-core", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
-tools = []
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
 [[group]]
 name = "ace-syntax"
-title = "ACE包 experimental/ac-syntax"
+title = "ACE包 experimental/ace"
 runner = "nextest"
-workspace = "experimental/ac-syntax"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-syntax-runtime", "-p", "ace-syntax-grammar", "-p", "ace-syntax-core", "-p", "ace-syntax-artifacts", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -543,10 +546,10 @@ all = true
 
 [[group]]
 name = "ace-semantics"
-title = "ACE包 experimental/ac-semantics"
+title = "ACE包 experimental/ace"
 runner = "nextest"
-workspace = "experimental/ac-semantics"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-semantics-contract", "-p", "ace-semantics", "-p", "ace-semantics-store", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -554,10 +557,10 @@ all = true
 
 [[group]]
 name = "ace-artifacts"
-title = "ACE包 experimental/ac-artifact-probe"
+title = "ACE包 experimental/ace/crates/artifacts"
 runner = "nextest"
-workspace = "experimental/ac-artifact-probe"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-artifacts", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -565,54 +568,54 @@ all = true
 
 [[group]]
 name = "ace-av"
-title = "ACE包 experimental/ac-av-probe"
+title = "ACE包 experimental/ace"
 runner = "nextest"
-workspace = "experimental/ac-av-probe"
-args = ["--workspace", "--lib", "--tests", "--features", "auto-av-probe/test-case-batch"]
+workspace = "experimental/ace"
+args = ["-p", "ace-av-core", "-p", "ace-av", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "all()"
-tools = []
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
 [[group]]
 name = "ace-native-worker"
-title = "ACE包 experimental/ac-case-worker"
+title = "ACE包 experimental/ace/crates/case-worker"
 runner = "nextest"
-workspace = "experimental/ac-case-worker"
-args = ["--workspace", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-case-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
-tools = []
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
 [[group]]
 name = "ace-native"
-title = "ACE包 experimental/ac-mir-native"
+title = "ACE包 experimental/ace/crates/native"
 runner = "nextest"
-workspace = "experimental/ac-mir-native"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-native", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
-tools = []
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
 [[group]]
 name = "ace-abi"
-title = "ACE包 experimental/auto-abi-probe"
+title = "ACE包 experimental/ace/crates/abi"
 runner = "nextest"
-workspace = "experimental/auto-abi-probe"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-abi", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
-tools = []
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
 [[group]]
 name = "ace-comptime"
-title = "ACE包 experimental/ac-cte-probe"
+title = "ACE包 experimental/ace"
 runner = "nextest"
-workspace = "experimental/ac-cte-probe"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -620,10 +623,10 @@ all = true
 
 [[group]]
 name = "ace-lowering"
-title = "ACE包 experimental/auto-mir-lower"
+title = "ACE包 experimental/ace/crates/lowering"
 runner = "nextest"
-workspace = "experimental/auto-mir-lower"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-lowering", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -969,10 +972,10 @@ all = true
 name = "ace-host"
 title = "语言宿主ACE完整组"
 runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-ace,auto-lang/test-case-batch,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-aavm,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^tests::(ac_|ace_|av_|probe_adapter|a2r_hir_892)/) or test(/^test_cases::(ac|abi|sema|ace_)/)"
-tools = ["av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x"]
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = true
 
@@ -980,10 +983,10 @@ all = true
 name = "ace-batch"
 title = "ACE batch协议集成"
 runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "--test", "plan888_test_routing_and_batch", "--features", "auto-lang/test-ace,auto-lang/test-case-batch", "--config-file", ".config/nextest-full.toml"]
-expression = "all()"
-tools = ["batch-av"]
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml", "--features", "test-case-batch"]
+expression = "test(/^batch::/)"
+tools = ["case-parent", "batch-av"]
 domain = "ace"
 all = true
 
@@ -991,12 +994,12 @@ all = true
 name = "ace-console"
 title = "ACE控制台真实宿主"
 runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang-core", "--test", "host_console_863", "--features", "auto-lang-core/test-ace", "--config-file", ".config/nextest-full.toml"]
-expression = "all()"
-tools = ["av"]
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "test(/^console::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "infra-fixed"
@@ -1014,8 +1017,8 @@ all = true
 name = "ace-a2x"
 title = "ACE A2X共享表示与Rust输出"
 runner = "nextest"
-workspace = "experimental/auto-a2x"
-args = ["--workspace", "--lib", "--tests"]
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -1178,4 +1181,48 @@ args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-
 expression = "test(/^trans::(auto_s2s|emit|s2s_rules)::/)"
 tools = []
 domain = "legacy"
+all = false
+
+[[group]]
+name = "ace-workspace"
+title = "ACE独立workspace常规自动测试"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+expression = "all() and not test(/::performance::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-adapters"
+title = "语言侧私有ACE协议反例桥接"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang-core", "--lib", "--features", "test-ace,test-case-batch,test-http-e2e,code-editor", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^test_cases::(ac|abi|sema|ace_)/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-runtime"
+title = "ACE原生ABI运行时完整验证"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-text-conformance", "-p", "ace-data-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = ["trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-performance"
+title = "ACE原正式收益与资源专项"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+expression = "test(/::performance::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
 all = false

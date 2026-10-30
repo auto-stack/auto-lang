@@ -1,0 +1,9 @@
+[package]
+name = "ace-a2x-core"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-892 shared A2X core: target-neutral semantic view over verified core/scalar HIR"
+publish = false
+
+[dependencies]
+ace-core = { path = "../core" }

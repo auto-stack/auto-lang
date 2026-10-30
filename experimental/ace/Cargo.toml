@@ -1,0 +1,61 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/a2x-core",
+  "crates/a2x-rust",
+  "crates/a2x-store",
+  "crates/a2x-worker",
+  "crates/abi",
+  "crates/artifacts",
+  "crates/av",
+  "crates/av-core",
+  "crates/case-worker",
+  "crates/collections-runtime",
+  "crates/comptime",
+  "crates/comptime-contract",
+  "crates/comptime-core",
+  "crates/core",
+  "crates/data-runtime",
+  "crates/lowering",
+  "crates/native",
+  "crates/semantics",
+  "crates/semantics-contract",
+  "crates/semantics-store",
+  "crates/syntax-artifacts",
+  "crates/syntax-core",
+  "crates/syntax-grammar",
+  "crates/syntax-runtime",
+  "crates/text-runtime",
+  "crates/trace-runtime",
+  "tests/conformance",
+  "tests/data-runtime",
+  "tests/text-runtime"
+]
+default-members = ["crates/core", "crates/av-core", "crates/syntax-runtime", "crates/syntax-grammar", "crates/semantics-contract"]
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.release]
+debug = false
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2
+
+# Former standalone syntax workspace release contract.
+[profile.syntax-release]
+inherits = "release"
+debug = true
+
+# Former native staticlib workspace contracts (not a global panic change).
+[profile.runtime-dev]
+inherits = "dev"
+panic = "abort"
+
+[profile.runtime-release]
+inherits = "release"
+panic = "abort"

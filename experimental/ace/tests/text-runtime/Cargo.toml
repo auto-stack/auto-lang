@@ -1,0 +1,31 @@
+[package]
+autotests = false
+name = "ace-text-conformance"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-770 text runtime verification: Cranelift-generated callers calling the ac_rt_* runtime through real COFF/PE (V-04/V-05 faces)"
+publish = false
+
+# Standalone workspace on purpose (mirrors the 774 probe layout): the
+# runtime must not enlarge the ac-core workspace or its registry/schema
+# surface. The shim lives as a member so `cargo build -p
+# ac-text-runtime-shim --release` produces the staticlib the tests link and
+# the ac-core text build consumes.
+[dependencies]
+# Reuse the REAL ac-core link/executor entries (plan §3): toolchain
+# discovery, contained deadline executor.
+ace-core = { path = "../../crates/core" }
+# Caller codegen, pinned to the same Cranelift stack as ac-core (0.126).
+cranelift-codegen = "0.126"
+cranelift-frontend = "0.126"
+cranelift-module = "0.126"
+cranelift-object = "0.126"
+target-lexicon = "0.13"
+
+# panic=abort for the shim staticlib member (no unwinding may cross the
+# runtime ABI). Cargo forces unwinding for test targets regardless, so
+# `cargo test` on the root package is unaffected.
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

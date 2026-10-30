@@ -2,7 +2,7 @@
 
 > **Status**: experimental（PLAN-783 探针冻结契约；实现面=探针,非生产）
 > 来源：PLAN-783（[归档计划](../../plans/archive/783-ac-artifact-contract-probe.md)）;
-> 登记实现= `experimental/ac-artifact-probe/src/schema.rs`（唯一登记源）,
+> 登记实现= `experimental/ace/crates/artifacts/src/schema.rs`（唯一登记源）,
 > 人读对照 `docs/reports/plan783/contract.md`。关联 [artifact-probe.md](artifact-probe.md)。
 
 统一编译各层产物的**语义模型、身份、引用类别与失效规则**（Design 40 目标态的
@@ -27,13 +27,13 @@
 | A12 热重载 | Future | generation+state-schema | required | 非普通 LRU |
 
 实际 codec 面 = **A00/A04/A07/A09/A10**（core+scalar 受限可执行子集）+ 787 起
-**A01/A02/A03 真实语法生产者**（`experimental/ac-syntax/adapters/artifacts`，
+**A01/A02/A03 真实语法生产者**（`experimental/ace/crates/syntax-artifacts`，
 见下方语法产物节）;其余层为 schema 接缝 + 合法/非法描述样例（生产/消费经
 `require_producible` 受控拒绝）。
 
 ## 语法产物接入（PLAN-787，A01/A02/A03）
 
-真实生产者 = `experimental/ac-syntax/adapters/artifacts`（加法扩展;旧 kind
+真实生产者 = `experimental/ace/crates/syntax-artifacts`（加法扩展;旧 kind
 字节与拒绝面不变）：
 
 - **A01 `SyntaxGrammar`**：语法程序 canonical 二进制；装载身份重验（内容
@@ -83,7 +83,7 @@
 
 ## 语义产物接入（PLAN-796，A06 受限探针）
 
-A06 的**受限探针 producer** = `experimental/ac-semantics/probe`（PLAN-796；
+A06 的**受限探针 producer** = `experimental/ace/crates/semantics-store`（PLAN-796；
 [auto-semantics 项目卡](../auto-semantics/project.md)）：语义事实/接口页发布于
 783 统一 store（层 `S796`、载体 `SnapshotRecord`、页 schema
 `ac796/sema-page/v2`、codec 2）。仅此 producer 登记——旧 A06 Future 语义不因
@@ -132,4 +132,4 @@ GC 在独占生存期锁内额外清理两类终态元数据（真实 512 次编
 
 物理水位对照（512 修订前/后 store 字节）与用户哨兵/他方工件不动为验收轴；
 锁文件清理实测面为 Windows（非 Windows 并发/水位为登记缺口）。实现：
-`experimental/ac-artifact-probe/src/store/gc.rs` + `tests/plan823_gc_metadata.rs`。
+`experimental/ace/crates/artifacts/src/store/gc.rs` + `tests/plan823_gc_metadata.rs`。

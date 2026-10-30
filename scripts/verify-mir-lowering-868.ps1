@@ -8,7 +8,7 @@
 #                 sha256, temp paths, ledger_peak_* counters) per the T-02
 #                 frozen field set (plan attachments/868/work/baseline.md).
 #   deps        - dependency-direction guards: av-core stays dependency-free,
-#                 auto-mir-lower depends only on ac-core + av-core, exactly
+#                 ace-lowering depends only on ac-core + av-core, exactly
 #                 one lower_checked definition, root workspace has no
 #                 experimental path deps, all three consumers resolve the
 #                 shared crate.
@@ -42,7 +42,7 @@ $suites = [ordered]@{
     "av-source-827" = "crates/auto-lang/test/cases/av-source-827/av-source-827.suite.ad"
     "ace-m1"        = "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"
     "ac-cte"        = "crates/auto-lang/test/cases/ac-cte/ac-cte.suite.ad"
-    "ac-mn"         = "crates/auto-lang/test/cases/ac-mn/ac-mn.suite.ad"
+    "ace-native"         = "crates/auto-lang/test/cases/ace-native/ace-native.suite.ad"
 }
 
 function Fail([string]$msg) { Write-Host "FAILED: $msg" -ForegroundColor Red; exit 1 }
@@ -107,7 +107,7 @@ sys.exit(1 if bad else 0)
 
 function Invoke-Deps {
     Write-Host "== deps: av-core dependency list must be empty"
-    $coreLines = Get-Content (Join-Path $exp "ac-av-probe/core/Cargo.toml")
+    $coreLines = Get-Content (Join-Path $exp "ace/crates/av-core/Cargo.toml")
     $inDeps = $false; $depsContent = @()
     foreach ($line in $coreLines) {
         if ($line -match '^\s*\[dependencies\]') { $inDeps = $true; continue }
@@ -117,8 +117,8 @@ function Invoke-Deps {
     $real = $depsContent | Where-Object { $_.Trim() -ne "" -and $_ -notmatch '^\s*#' }
     if ($real.Count -gt 0) { Fail "av-core [dependencies] no longer empty: $real" }
 
-    Write-Host "== deps: auto-mir-lower depends only on ac-core + av-core"
-    $lowerLines = Get-Content (Join-Path $exp "auto-mir-lower/Cargo.toml")
+    Write-Host "== deps: ace-lowering depends only on ac-core + av-core"
+    $lowerLines = Get-Content (Join-Path $exp "ace/crates/lowering/Cargo.toml")
     $inDeps = $false; $lowerDeps = @()
     foreach ($line in $lowerLines) {
         if ($line -match '^\s*\[dependencies\]') { $inDeps = $true; continue }
@@ -126,14 +126,14 @@ function Invoke-Deps {
         if ($inDeps) { $lowerDeps += $line }
     }
     $lowerDepsRaw = ($lowerDeps -join "`n")
-    foreach ($dep in @("auto-ac-prototype", "auto-av-core")) {
-        if ($lowerDepsRaw -notmatch [regex]::Escape($dep)) { Fail "auto-mir-lower missing dep $dep" }
+    foreach ($dep in @("ace-core", "ace-av-core")) {
+        if ($lowerDepsRaw -notmatch [regex]::Escape($dep)) { Fail "ace-lowering missing dep $dep" }
     }
-    if ($lowerDepsRaw -match "cranelift|serde|rusqlite") { Fail "auto-mir-lower gained a forbidden dep" }
+    if ($lowerDepsRaw -match "cranelift|serde|rusqlite") { Fail "ace-lowering gained a forbidden dep" }
 
     Write-Host "== deps: exactly one lower_checked definition in experimental/"
     $defs = Get-ChildItem $exp -Recurse -Filter "*.rs" | Select-String -Pattern "pub fn lower_checked\(" -List
-    if ($defs.Count -ne 1 -or $defs[0].Path -notmatch "auto-mir-lower") { Fail "lower_checked copies: $($defs.Count)" }
+    if ($defs.Count -ne 1 -or $defs[0].Path -notmatch "[\\/]ace[\\/]crates[\\/]lowering[\\/]") { Fail "lower_checked copies: $($defs.Count)" }
 
     Write-Host "== deps: root workspace has no experimental path deps"
     $manifests = @((Join-Path $repo "Cargo.toml")) + (Get-ChildItem (Join-Path $repo "crates") -Filter "Cargo.toml" -Recurse | ForEach-Object { $_.FullName })
@@ -141,16 +141,16 @@ function Invoke-Deps {
         if ((Get-Content $m -Raw) -match 'path\s*=\s*"[^"]*experimental') { Fail "$m references experimental/" }
     }
 
-    Write-Host "== deps: all three consumers resolve auto-mir-lower (cargo tree)"
-    foreach ($ws in @("ac-av-probe", "ac-mir-native", "ac-cte-probe")) {
-        Push-Location (Join-Path $exp $ws)
-        $treeOut = & cargo tree --locked -i auto-mir-lower 2>&1
-        $code = $LASTEXITCODE
-        Pop-Location
-        if ($code -ne 0) { Fail "cargo tree -i auto-mir-lower in $ws" }
-        # First 3 lines name the crate and its direct dependents.
-        ($treeOut | Select-Object -First 3) | Write-Host
-    }
+    Write-Host "== deps: all three consumers resolve ace-lowering (cargo tree)"
+    Push-Location (Join-Path $exp 'ace')
+    try {
+        $treeOut = & cargo tree --locked -i ace-lowering 2>&1
+        if ($LASTEXITCODE -ne 0) { Fail 'cargo tree -i ace-lowering' }
+        foreach ($consumer in @('ace-av','ace-native','ace-comptime')) {
+            if (($treeOut -join "`n") -notmatch [regex]::Escape($consumer)) {Fail "missing lowering consumer $consumer"}
+        }
+        $treeOut | Select-Object -First 12 | Write-Host
+    } finally {Pop-Location}
 }
 
 function Invoke-Identity {
@@ -171,7 +171,7 @@ function Invoke-Identity {
     if ($avText -notmatch ('"mir-lowering", "?' + [regex]::Escape($mirrorVer) + '"?')) { Fail "av report rows lack the mir-lowering axis ($mirrorVer)" }
 
     Write-Host "== identity: mn receipts carry mir-lowering=$mirrorVer"
-    $receipt = Get-ChildItem (Join-Path $dir "ac-mn") -Recurse -Filter "mn-probe-receipt.json" | Select-Object -First 1
+    $receipt = Get-ChildItem (Join-Path $dir "ace-native") -Recurse -Filter "mn-probe-receipt.json" | Select-Object -First 1
     if (-not $receipt -or ((Get-Content $receipt.FullName -Raw) -notmatch ('"mir-lowering": "?' + [regex]::Escape($mirrorVer) + '"?'))) { Fail "mn receipt lacks the mir-lowering axis ($mirrorVer)" }
 
     Write-Host "== identity: mirrored constants agree across the three families"

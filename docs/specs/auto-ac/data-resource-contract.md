@@ -182,7 +182,7 @@ record 布局：字段按声明序、各字段自对齐；`align(R)=max(字段�
 
 ## 探针实证状态
 
-crate `experimental/ac-core/probes/data-resources/`（独立 workspace + no_std
+crate `experimental/ace/tests/data-runtime/`（独立 workspace + no_std
 shim staticlib；复用 ac-core link/executor 真实入口，60s contained、locked）。
 **64 项探针测试 + 1 项永久记账状态探针**全绿；五轮复审反例包（7+3+4+1+2）重放
 全绿。一键门禁 `scripts/verify-ac-data-resources-774.ps1`（8 步：警告正反控制/

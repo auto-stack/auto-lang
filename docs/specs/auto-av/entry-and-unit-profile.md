@@ -4,7 +4,7 @@
 > `auto.mir.av-entry-unit/1`；ABC schema `auto.abc.av-entry-unit/1`（新 magic 家族
 > `AVAU`，wire version 1，ABC profile id **7**）；producer id
 > `plan862/av-entry-unit`。
-> 实现：`experimental/auto-mir-lower`（HIR→MIR）、`experimental/ac-av-probe/core`
+> 实现：`experimental/ace/crates/lowering`（HIR→MIR）、`experimental/ace/crates/av-core`
 > （MIR/ABC/AV）、`probe`（worker 会话）；源码侧见
 > [auto-ac/source-entry-unit.md](../auto-ac/source-entry-unit.md)。
 > 来源：[PLAN-862](../../plans/archive/862-av-source-entry-unit-and-tail-semantics.md)
@@ -62,7 +62,7 @@ AVAB）与 `av.data|owned|collections|dynamic|closures`（AVAD v1–v5）的任�
 
 ## 验证与证据
 
-- `experimental/ac-av-probe/probe/tests/av_entry_862.rs`（13 例）：三形态通道、
+- `experimental/ace/crates/av/tests/av_entry_862.rs`（13 例）：三形态通道、
   Unit≠`I32(0)`、trap 独立、篡改 kind 被 `mir.entry-kind` 拒绝、`mir.unit-placement`
   负例、scalar 控制组、store fresh→hit、真新进程恢复、body-edit 只重建被改 unit、
   请求峰值内存采样、`AVAU` 被旧 owner schema 拒绝。

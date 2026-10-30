@@ -482,7 +482,7 @@ switch ($Scope) {
         # per-stream overflow kill, and the wall kill. Full test paths +
         # --ignored so a typo can never silently match zero tests.
         $ErrorActionPreference = 'Continue'
-        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases', '--lib', '--',
+        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases,test-ace', '--lib', '--',
                   '--ignored', '--exact', '--nocapture',
                   'test_cases::ace_certify::tests::stream_governance_no_deadlock_on_any_pipe_order',
                   'test_cases::ace_certify::tests::stream_overflow_kills_and_surfaces',

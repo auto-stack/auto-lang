@@ -42,7 +42,7 @@ pub const EXPECTED_ABI_WORKER_VERSION: &str = "abi-worker/0.1.0";
 
 /// Locate (and on first use build) the ABI worker binary: env override
 /// first (trusted host configuration binds the tool identity), else
-/// find `experimental/auto-abi-probe` from this crate's source root
+/// find `experimental/ace/crates/abi` from this crate's source root
 /// and build the `abi-worker` release binary (bounded).
 pub fn worker_binary() -> Result<PathBuf, String> {
     if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
@@ -69,13 +69,10 @@ fn locate_worker() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "abi-worker not located: no experimental/auto-abi-probe above the crate and no ABI_CASE_WORKER override".to_string(),
+                "abi-worker not located: no experimental/ace/crates/abi above the crate and no ABI_CASE_WORKER override".to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("auto-abi-probe")
-            .join("Cargo.toml");
+        let m = d.join("experimental/ace/crates/abi").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -140,7 +137,7 @@ fn locate_worker() -> Result<PathBuf, String> {
     let exe = manifest
         .parent()
         .unwrap()
-        .join("target/release/abi-worker.exe");
+        .join("../../target/release/abi-worker.exe");
     if exe.is_file() {
         Ok(exe)
     } else {

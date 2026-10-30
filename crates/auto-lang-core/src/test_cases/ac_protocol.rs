@@ -2,7 +2,7 @@
 //!
 //! auto-lang cannot link the worker crate (separate workspace, and the
 //! zero-Cranelift red line forbids it); this module is a DELIBERATE serde
-//! mirror of `experimental/ac-case-worker/src/protocol.rs` used for typed
+//! mirror of `experimental/ace/crates/case-worker/src/protocol.rs` used for typed
 //! admission: unknown fields, wrong field types and malformed payloads are
 //! refused before any judging. Drift between the two sides is caught by
 //! the integration suites (a response the worker legally emits must always

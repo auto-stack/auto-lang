@@ -55,7 +55,7 @@ pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
 pub const EXPECTED_MN_WORKER_VERSION: &str = "mnworker/1.0";
-/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// PLAN-868: admission mirror of `ace_lowering::MIR_LOWERING_VERSION` —
 /// the mn pipeline lowers through the shared crate; a lowering contract
 /// bump without a mirror update fails the identity axis loudly.
 pub const EXPECTED_MIR_LOWERING_VERSION: &str = "4";
@@ -183,7 +183,7 @@ fn worker_file_sha256(exe: &Path) -> Result<String, String> {
 /// Locate (and on first use build) the mn worker binary. Env override
 /// first (read on EVERY call — the fault-injection test seam must stay
 /// injectable after the real binary was memoized); otherwise find
-/// `experimental/ac-mir-native` above this crate's source root and build
+/// `experimental/ace/crates/native` above this crate's source root and build
 /// its worker release under the contained, bounded build discipline (same
 /// shape as the av worker build).
 pub fn worker_binary() -> Result<PathBuf, String> {
@@ -213,13 +213,10 @@ fn locate_worker_exn() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "mn worker not located: no experimental/ac-mir-native above the crate and no AC_MN_CASE_WORKER override".to_string(),
+                "mn worker not located: no experimental/ace/crates/native above the crate and no AC_MN_CASE_WORKER override".to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("ac-mir-native")
-            .join("Cargo.toml");
+        let m = d.join("experimental/ace/crates/native").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -234,14 +231,14 @@ fn build_worker(manifest: &Path) -> Result<PathBuf, String> {
 fn build_worker_named(manifest: &Path, bin: &str) -> Result<PathBuf, String> {
     let ws_root = manifest.parent().expect("workspace root");
     let exe = ws_root
-        .join("target")
+        .join("../../target")
         .join("release")
         .join(format!("{bin}.exe"));
     // ALWAYS build (no-op incremental builds are sub-second) under the
     // bounded wall — a stale binary silently unbinds evidence from source.
     let cargo = std::env::var("AC_MN_BUILD_CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
     let mut cmd = Command::new(&cargo);
-    cmd.args(["build", "--release", "-p", "ac-mn", "--bin", bin])
+    cmd.args(["build", "--release", "-p", "ace-native", "--bin", bin])
         .current_dir(ws_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -371,7 +368,7 @@ fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
         .get_or_init(|| {
             let mut dir = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
             while let Some(root) = dir {
-                let manifest = root.join("experimental/ac-mir-native/Cargo.toml");
+                let manifest = root.join("experimental/ace/crates/native/Cargo.toml");
                 if manifest.is_file() {
                     return build_worker_named(&manifest, "mn-collections-worker");
                 }

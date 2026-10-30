@@ -1,8 +1,10 @@
 # auto-av
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。库ace-av-core与驱动/worker包ace-av位于crates/av-core、crates/av；AV仍为实验实现，不替代现行语言默认VM。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > **Status**: experimental
 
-PLAN-798。实际Rust包：`experimental/ac-av-probe/core` 的auto-av-core与 `probe` 的auto-av-probe，独立workspace/锁；不替代产品旧AutoVM，不改变默认CLI/UI/CTE。
+PLAN-798。实际Rust包：`experimental/ace/crates/av-core` 的ace-av-core与 `crates/av` 的ace-av，统一ACE workspace/锁；不替代产品旧AutoVM，不改变默认CLI/UI/CTE。
 
 Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust AV。解释器使用显式frame/slot栈和受限dispatch，支持i32/bool、控制流/直接调用和精确trap。
 
@@ -91,7 +93,7 @@ v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史
 
 
 PLAN-868 起 probe 不再是 HIR→MIR lowering 的提供者：唯一实现出库至共享 crate
-`experimental/auto-mir-lower`（字节级纯搬移，等价性以 11 族 151 check 双腿逐项比对
+`experimental/ace/crates/lowering`（字节级纯搬移，等价性以 11 族 151 check 双腿逐项比对
 证实），probe 仅为消费者之一（另两处：ac-mir-native、ac-cte-probe）。lowering 契约
 版本经 `mir-lowering` 报告轴上报（详见
 [auto-mir/hir-lowering-boundary](../auto-mir/hir-lowering-boundary.md)）；av-worker/

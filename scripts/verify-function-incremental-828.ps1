@@ -11,20 +11,22 @@ param(
     [ValidateSet("first", "frontend", "compile", "install", "lifetime", "formal", "acceptance", "all")]
     [string]$Scope = "acceptance"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$probeManifest = Join-Path $root "experimental/ac-av-probe/Cargo.toml"
-$syntaxManifest = Join-Path $root "experimental/ac-syntax/Cargo.toml"
+$probeManifest = Join-Path $root "experimental/ace/Cargo.toml"
+$syntaxManifest = Join-Path $root "experimental/ace/Cargo.toml"
 
 function ProbeInv([string]$f) {
-    @{ manifest = $probeManifest; pkg = @(); suite = "function_incremental_828"; filter = $f }
+    @{ manifest = $probeManifest; pkg = @(); suite = "function_incremental"; filter = $f }
 }
 function R1Inv([string]$f) {
-    @{ manifest = $probeManifest; pkg = @(); suite = "function_incremental_828_r1"; filter = $f }
+    @{ manifest = $probeManifest; pkg = @(); suite = "function_incremental_r1"; filter = $f }
 }
 function ScalarInv([string]$f) {
-    @{ manifest = $syntaxManifest; pkg = @("-p", "ac-syntax-core-adapter"); suite = "scalar_projection_"; filter = $f }
+    @{ manifest = $syntaxManifest; pkg = @("-p", "ace-syntax-core"); suite = "scalar_projection"; filter = $f }
 }
 
 $first = @(ProbeInv "t01_v01"; ProbeInv "t01_v04")
@@ -54,12 +56,12 @@ function Invoke-Suite($inv) {
     $pkg = $inv.pkg
     $suite = $inv.suite
     $f = $inv.filter
-    Write-Host "==> cargo test --manifest-path $manifest $($pkg -join ' ') --test $suite $f"
+    Write-Host "==> Invoke-AceCargo test --manifest-path $manifest $($pkg -join ' ') --test $suite $f"
     # Native stderr (compiler warnings) is data, not a script error:
     # gate on the exit code, not on the error-record stream.
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $out = & cargo test --manifest-path $manifest @pkg --test $suite $f -- --test-threads=1 2>&1
+    $out = & Invoke-AceCargo test --manifest-path $manifest @pkg --test $suite $f '--' --test-threads=1 2>&1
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
     $text = $out | Out-String

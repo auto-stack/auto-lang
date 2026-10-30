@@ -16,6 +16,8 @@ param(
     [ValidateSet("acceptance", "selftest", "closeout")]
     [string]$Scope = "acceptance"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Continue"
 $env:RUSTC_WRAPPER = ""
@@ -25,7 +27,7 @@ Set-Location $root
 $fails = 0
 
 # ---- libtest parsing --------------------------------------------------------
-# Splits cargo test output into per-binary segments ("     Running tests\x.rs
+# Splits Invoke-AceCargo test output into per-binary segments ("     Running tests\x.rs
 # (target\...)" headers), collecting each segment's executed-ok test names,
 # ignored names and its "test result:" summary. Returns an array of
 # @{ Binary; OkNames; IgnoredNames; Passed; Failed; Ignored }.
@@ -125,7 +127,7 @@ function Test-LibTestFamily {
     foreach ($s in $summarized) { foreach ($n in $s.OkNames) { $okAny[$n] = $true } }
     # Exact executed-ok matching, tolerant of the libtest MODULE PREFIX:
     # a required id matches a name only on FULL equality or equality of the
-    # final `::` segment ("tests::ac_case_tests::x" satisfies "x"; it does
+    # final `::` segment ("tests::native_protocol::x" satisfies "x"; it does
     # NOT satisfy "x_extra" or prose text).
     foreach ($id in $RequiredIds) {
         $idLast = ($id -split '::')[-1]
@@ -253,7 +255,7 @@ function ConvertFrom-NextestListJson {
 
 function Get-NextestSelection {
     param([string[]]$ListArgv)
-    $text = (& cargo @ListArgv 2>&1 | Out-String)
+    $text = (& Invoke-AceCargo @ListArgv 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) {
         throw "nextest list failed (exit=$LASTEXITCODE): $text"
     }
@@ -310,7 +312,7 @@ function Run-CargoFamily {
         [switch]$AllowShortIds
     )
     Write-Host "== $Name" -ForegroundColor Cyan
-    $text = (& cargo @Argv 2>&1 | Out-String)
+    $text = (& Invoke-AceCargo @Argv 2>&1 | Out-String)
     $code = $LASTEXITCODE
     $why = if ($Format -eq "nextest") {
         Test-NextestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed -ShortIdFallback:$AllowShortIds
@@ -343,7 +345,7 @@ if ($Scope -eq "selftest") {
         # no binary segment exists, so the bound id cannot be found there
         @{ name = "lowercase-running-not-header"; text = "running 7 tests`ntest needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); bind = @{ "needed" = "alpha" }; min = 1; want = "required id missing from binary 'alpha' executed-ok set: needed" },
         # module prefixes satisfy a bare required id (exact last segment)
-        @{ name = "module-prefix-legal"; text = "running 1 test`ntest tests::ac_case_tests::needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 1; want = $null },
+        @{ name = "module-prefix-legal"; text = "running 1 test`ntest tests::native_protocol::needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 1; want = $null },
         # R4 (F04) negatives: an "okay-but-not-executed" state word is not
         # an ok line; a claimed ok name without summary backing refuses.
         @{ name = "ok-prefix-state"; text = "running 1 test`ntest needed ... okay-but-not-executed`ntest result: ok. 0 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 0; want = "required id never executed-ok: needed" },
@@ -366,7 +368,7 @@ if ($Scope -eq "selftest") {
         @{ name = "nextest-slow-count-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed (0 slow), 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
         @{ name = "nextest-conservation-run-mismatch"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "summary run=5 != passed+failed (4+0)" },
-        @{ name = "nextest-real-filtered-success-shortid"; fmt = "nextest"; shortok = $true; text = "        PASS [   0.100s] (1/1) ac-artifact-probe::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
+        @{ name = "nextest-real-filtered-success-shortid"; fmt = "nextest"; shortok = $true; text = "        PASS [   0.100s] (1/1) ace-artifacts::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
         @{ name = "nextest-shortid-fallback-off"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) beta::bin r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = "required id never reported PASS by nextest: r1_observed_spans_carry_real_frontend_boundaries" },
         @{ name = "nextest-filtered-required-excluded"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
         @{ name = "nextest-required-ignored-skipped"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 2 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
@@ -446,29 +448,29 @@ if ($Scope -eq "acceptance") {
     Run-CargoFamily "auto-test-case (V-01)" @("test", "-p", "auto-test-case") `
         @("contract_v2_report_json_round_trips_through_standard_parser", "contract_v2_cache_declaration_requires_participation", "wrong_schema_is_rejected", "minimal_case_decodes") 86
     # V-02/05/06 executor level
-    Run-CargoFamily "ac-core link_capture_ (V-05/06)" @("test", "--manifest-path", "experimental/ac-core/Cargo.toml", "--test", "link_capture_") `
+    Run-CargoFamily "ac-core link_capture_ (V-05/06)" @("test", "--manifest-path", "experimental/ace/crates/core/Cargo.toml", "--test", "link_capture") `
         @("process_budget_deadline_kills_the_tree", "process_budget_output_cap_terminates_immediately", "native_bytes_invalid_utf8_round_trips_exactly", "native_bytes_nul_and_crlf_preserved", "containment_failure_replays_through_captured_path") 7
     # V-02/04/07/08/09/10 worker faces — every required ID bound to ITS
     # binary, with per-binary minimums (R3 F06).
     $workerBind = @{
-        "ac_stage_parse_boundary_attributed" = "protocol_t03_"
-        "native_cache_fresh_then_object_hit" = "cache_t05_"
-        "native_invalidation_body_edit_full_miss" = "cache_t05_"
-        "r1_budget_one_ms_total_is_enforced_not_ignored" = "review_r1_"
-        "r1_product_run_invalid_exe_is_infra_error" = "review_r1_"
-        "r1_backend_missing_entry_typed_through_store_path" = "review_r1_"
-        "syntax_case_edit_equivalence_and_counters" = "syntax_t06_"
-        "revision_trace_sequential_edits_advance" = "syntax_t06_"
+        "ac_stage_parse_boundary_attributed" = "protocol"
+        "native_cache_fresh_then_object_hit" = "cache"
+        "native_invalidation_body_edit_full_miss" = "cache"
+        "r1_budget_one_ms_total_is_enforced_not_ignored" = "review_r1"
+        "r1_product_run_invalid_exe_is_infra_error" = "review_r1"
+        "r1_backend_missing_entry_typed_through_store_path" = "review_r1"
+        "syntax_case_edit_equivalence_and_counters" = "syntax"
+        "revision_trace_sequential_edits_advance" = "syntax"
     }
-    $workerPerBin = @{ "feasibility_t01_" = 3; "protocol_t03_" = 10; "cache_t05_" = 7; "review_r1_" = 8; "syntax_t06_" = 7 }
-    Run-CargoFamily "worker protocol+cache+r1+syntax" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--test", "feasibility_t01_", "--test", "protocol_t03_", "--test", "cache_t05_", "--test", "review_r1_", "--test", "syntax_t06_") `
+    $workerPerBin = @{ "feasibility_t01_" = 3; "protocol" = 10; "cache" = 7; "review_r1" = 8; "syntax" = 7 }
+    Run-CargoFamily "worker protocol+cache+r1+syntax" @("test", "--manifest-path", "experimental/ace/crates/case-worker/Cargo.toml", "--test", "feasibility_t01_", "--test", "protocol", "--test", "cache", "--test", "review_r1", "--test", "syntax") `
         @("ac_stage_parse_boundary_attributed", "native_cache_fresh_then_object_hit", "native_invalidation_body_edit_full_miss", "r1_budget_one_ms_total_is_enforced_not_ignored", "r1_product_run_invalid_exe_is_infra_error", "r1_backend_missing_entry_typed_through_store_path", "syntax_case_edit_equivalence_and_counters", "revision_trace_sequential_edits_advance") 35 `
         -RequiredInBinary $workerBind -MinPerBinary $workerPerBin
     # V-08/09/10 store faces
-    Run-CargoFamily "probe plan788_r1_ + 783 regressions" @("test", "--manifest-path", "experimental/ac-artifact-probe/Cargo.toml", "--release", "--test", "plan788_r1_", "--test", "native_resume_", "--test", "invalidation_", "--test", "identity_", "--test", "concurrency_", "--test", "store_boundary_") `
+    Run-CargoFamily "probe plan788_r1_ + 783 regressions" @("test", "--manifest-path", "experimental/ace/crates/artifacts/Cargo.toml", "--release", "--test", "plan788_r1_", "--test", "native_resume_", "--test", "invalidation_", "--test", "identity_", "--test", "concurrency_", "--test", "store_boundary_") `
         @("r1_compiler_recipe_change_invalidates_hir_and_object", "r1_observed_spans_carry_real_frontend_boundaries", "native_resume_four_fixtures_fresh_restart_hirhit_and_source_absent") 20
     # V-03/04/11/13/14 runner integration
-    Run-CargoFamily "auto-lang ac_case_tests (V-03/04/11/14)" @("test", "-p", "auto-lang", "--features", "test-cases", "--lib", "ac_case_tests") `
+    Run-CargoFamily "auto-lang ac_case_tests (V-03/04/11/14)" @("test", "-p", 'ace-conformance', "--features", "test-cases", '--test', 'conformance', "tests::native_protocol") `
         @("ac_native_run_exit_oracle_and_red_sibling", "ac_native_typed_negative_stage_attribution", "ac_product_handoff_run_consumes_real_build", "r1_consumer_invalid_exe_is_error_not_pass", "r1_response_admission_table", "syntax_parse_and_edit_dispatch_with_goldens", "ac_native_suite_full_run_and_ledger_reconcile") 13
     # pilot_oracle_bootstrap is a PRE-EXISTING deliberate #[ignore] manual
     # regeneration tool from Plan 768 (documented in the suite), not a
@@ -480,14 +482,14 @@ if ($Scope -eq "acceptance") {
     # the machine; no --nocapture — libtest splits "test NAME ... ok" when
     # output interleaves, and the receipts live in the raw JSONL files).
     $r3Bind = @{
-        "r3_parent_io_lifecycle_overcap_and_deadline" = "plan788_r3_"
-        "r3_hir_backend_negative_keeps_legal_partial_hir" = "plan788_r3_"
-        "r3_stale_production_paths_per_adapter_action" = "plan788_r3_"
-        "r3_native_bytes_real_worker_path_producers" = "plan788_r3_"
-        "turnaround_native_six_scenarios_p95_gates" = "plan788_r3_"
-        "turnaround_syntax_gate_and_revision_stream" = "plan788_r3_"
+        "r3_parent_io_lifecycle_overcap_and_deadline" = "native_lifecycle"
+        "r3_hir_backend_negative_keeps_legal_partial_hir" = "native_lifecycle"
+        "r3_stale_production_paths_per_adapter_action" = "native_lifecycle"
+        "r3_native_bytes_real_worker_path_producers" = "native_lifecycle"
+        "turnaround_native_six_scenarios_p95_gates" = "native_lifecycle"
+        "turnaround_syntax_gate_and_revision_stream" = "native_lifecycle"
     }
-    Run-CargoFamily "auto-lang plan788_r3_ R3 closures + turnaround (V-12/13 gates)" @("test", "-p", "auto-lang", "--features", "test-cases", "--test", "plan788_r3_", "--", "--test-threads=1") `
+    Run-CargoFamily "auto-lang plan788_r3_ R3 closures + turnaround (V-12/13 gates)" @("test", '-p', 'ace-conformance', '--features', 'test-cases', '--test', 'conformance', 'native_lifecycle::', "--", "--test-threads=1") `
         @("r3_parent_io_lifecycle_overcap_and_deadline", "r3_hir_backend_negative_keeps_legal_partial_hir", "r3_stale_production_paths_per_adapter_action", "r3_native_bytes_real_worker_path_producers", "turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 6 `
         -RequiredInBinary $r3Bind
 
@@ -504,17 +506,17 @@ if ($Scope -eq "acceptance") {
 # DESIGN (process isolation); contract §11.5/§14 define closeout as the
 # nextest tiers + independent suites. The plan's own integration target
 # runs scoped and serial here; the lib face is the bare-t family below.
-Run-CargoFamily "auto-lang plan788_r3_ (integration, serial)" @("test", "-p", "auto-lang", "--features", "test-cases", "--test", "plan788_r3_", "--", "--test-threads=1") @("turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 2
+Run-CargoFamily "ACE native lifecycle (integration, serial)" @("test", "--manifest-path", "experimental/ace/Cargo.toml", "-p", "ace-conformance", "--test", "conformance", "native_lifecycle::performance::", "--", "--test-threads=1") @("turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 2
 . (Join-Path $root 'scripts/test-governance/invoke-modules.ps1')
 $moduleOutput=Join-Path $root ('target/modules-788-closeout-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $moduleOutput -Force | Out-Null
 # Worker/artifact package suites are executed below; this gate covers their language-host consumer.
 Invoke-FixedTestGroups -Repo $root -Groups @('ace-host') -Output (Join-Path $moduleOutput 'execution')
-Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release") @() 1
+Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ace/crates/case-worker/Cargo.toml", "--release") @() 1
 # gc_budget_churn_512 is the probe's OWN design ignore: its closeout
 # contract executes it explicitly with --ignored (documented in the test).
-Run-CargoFamily "probe full (release)" @("test", "--manifest-path", "experimental/ac-artifact-probe/Cargo.toml", "--release") @() 1 @("gc_budget_churn_512_converges_between_watermarks")
-Run-CargoFamily "ac-syntax runtime (release)" @("test", "--manifest-path", "experimental/ac-syntax/runtime/Cargo.toml", "--release") @() 1
+Run-CargoFamily "probe full (release)" @("test", "--manifest-path", "experimental/ace/crates/artifacts/Cargo.toml", "--release") @() 1 @("gc_budget_churn_512_converges_between_watermarks")
+Run-CargoFamily "ac-syntax runtime (release)" @("test", "--manifest-path", "experimental/ace/crates/syntax-runtime/Cargo.toml", "--release") @() 1
 
 if ($fails -gt 0) { throw "closeout: $fails surface(s) failed" }
 Write-Host "PLAN-788 closeout: ALL PASS" -ForegroundColor Green

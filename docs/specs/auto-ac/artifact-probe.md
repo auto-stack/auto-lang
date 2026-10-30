@@ -1,7 +1,7 @@
 # auto-ac artifact probe（产物契约与缓存可行性探针）
 
 > **Status**: experimental（PLAN-783 交付;独立实验 workspace,非生产缓存入口）
-> 路径：`experimental/ac-artifact-probe/`（独立 Cargo workspace + 独立 Cargo.lock）;
+> 路径：`experimental/ace/crates/artifacts/`（独立 Cargo workspace + 独立 Cargo.lock）;
 > 依赖：`auto-ac-prototype`(path) + `auto-cache` BlobStore(隔离适配) + blake3/rusqlite/windows-sys。
 > 关联 [artifact-contract.md](artifact-contract.md);报告 `docs/reports/plan783/`。
 
@@ -63,7 +63,7 @@ HEAD）→发布后 SHA256 验证;校验或发布 IO 失败均传播为门禁失
   kind 解码以 codec 帧层为单一事实源——store 元数据层 `from_code` 委派
   `from_u8`，五 kind 的公开产物读入口（按 key/按 id）全接入，无重复表漂移）。
 - 三层 coverage 期望翻转（dep_audit 同步）：A01/A02/A03 Future→真实生产者
-  （`experimental/ac-syntax/adapters/artifacts`）；Future 拒绝面换 A05 起。
+  （`experimental/ace/crates/syntax-artifacts`）；Future 拒绝面换 A05 起。
 - A02 key_inputs 补 grammar-id；源页键 page-hash（内容寻址）。
 - 787 的 `syntax_budget_` 在同冻结预算合同下运行（**work-owned，修复提交上
   实测**）：builder 受管 ≤8MiB = 实际容量（Vec capacity×元素+String 堆容量

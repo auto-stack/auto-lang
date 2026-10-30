@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 EXE = ROOT / 'target/debug/test-case-pilot.exe'
 WORKER = Path(os.environ.get('AC_AV_CASE_WORKER',
-              ROOT / 'experimental/ac-av-probe/target/debug/av_probe_worker.exe'))
+              ROOT / 'experimental/ace/target/debug/av-worker.exe'))
 
 
 class PilotRoundAccounting(unittest.TestCase):
@@ -127,7 +127,7 @@ class PilotCLI(unittest.TestCase):
             with self.subTest(mutation=mutation),self.assertRaises(ValueError):validate_report(bad,cohort,2,contract,meter)
 
     def test_default_off_keeps_original_case_path_and_rejects_batch_without_fallback(self):
-        regular=ROOT/'target/test-tools/regular/release/av_probe_worker.exe'
+        regular=ROOT/'target/test-tools/regular/release/av-worker.exe'
         self.assertTrue(regular.is_file(),'source-declared default-off worker preparation required')
         env=dict(os.environ,AC_AV_CASE_WORKER=str(regular))
         original=subprocess.run([str(EXE),'--mode','independent','--set','d3'],cwd=ROOT,env=env,capture_output=True,text=True,timeout=65)

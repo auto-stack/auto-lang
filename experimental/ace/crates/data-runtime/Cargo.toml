@@ -1,0 +1,13 @@
+[package]
+name = "ace-data-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-774 explicit-ABI resource runtime shim: callee side of the five frozen internal ABI categories"
+publish = false
+
+# ACE workspace member; build with runtime-dev/runtime-release to retain panic=abort.
+# The original ABI is exercised by real native consumers, separately from libtest.
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]

@@ -5,7 +5,7 @@ D-796/D-788 已合入：本目录用例经统一 runner（TestCase v2）的 prob
 （`av_probe_worker case-serve`，envelope `avworker/1`）只接收声明式 Atom 参数
 与 source 引用，不读取 expected；父 runner 校验 actual 来源/工具身份（协议/
 recipe/exe-sha256/worker-version 四轴入报告与 stale 判定）并判定 oracle。
-Rust 定向覆盖（`experimental/ac-av-probe/probe/tests/**`）继续并行保留。
+Rust 定向覆盖（`experimental/ace/crates/av/tests/**`）继续并行保留。
 
 ## suite 说明
 

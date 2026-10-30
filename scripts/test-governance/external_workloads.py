@@ -3,7 +3,7 @@ import math
 from pathlib import PureWindowsPath
 import re
 
-ACTIVE = {'rustc.exe', 'cargo-nextest.exe', 'av_probe_worker.exe', 'ac-case-worker.exe',
+ACTIVE = {'rustc.exe', 'cargo-nextest.exe', 'av-worker.exe', 'ace-case-worker.exe',
           'mn-worker.exe', 'mn-collections-worker.exe', 'test-case-pilot.exe', 'rust-lld.exe', 'link.exe', 'cl.exe'}
 IDLE_CPU_FRACTION = 0.01  # fraction of one CPU, not percentage of all cores
 CPU_ACCOUNTING_TICK_SECONDS = 1 / 64  # observed Windows accounting quantum
@@ -95,7 +95,7 @@ def classify(snapshot, previous=None):
 QUERY = r'''
 $ErrorActionPreference='Stop'
 $all=@(Get-CimInstance Win32_Process)
-$names=@('cargo.exe','rustc.exe','cargo-nextest.exe','av_probe_worker.exe','ac-case-worker.exe','mn-worker.exe','mn-collections-worker.exe','test-case-pilot.exe','rust-lld.exe','link.exe','cl.exe')
+$names=@('cargo.exe','rustc.exe','cargo-nextest.exe','av-worker.exe','ace-case-worker.exe','mn-worker.exe','mn-collections-worker.exe','test-case-pilot.exe','rust-lld.exe','link.exe','cl.exe')
 $selected=@{}; $pending=[Collections.Generic.Queue[int]]::new()
 foreach($p in $all){if($names -contains $p.Name){$selected[[int]$p.ProcessId]=$p; if($p.Name -eq 'cargo.exe'){$pending.Enqueue([int]$p.ProcessId)}}}
 while($pending.Count){$parent=$pending.Dequeue(); foreach($p in $all){if($p.ParentProcessId -eq $parent -and -not $selected.ContainsKey([int]$p.ProcessId)){$selected[[int]$p.ProcessId]=$p; $pending.Enqueue([int]$p.ProcessId)}}}

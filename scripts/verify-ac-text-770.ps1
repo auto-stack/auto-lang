@@ -1,6 +1,8 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-770 one-shot text/char native gate (ASCII only for Windows
 # PowerShell 5.1). Serially runs the frozen gates from plan section 6:
-# the ac-core workspace (cargo check --locked --all-targets zero-warning
+# the ac-core workspace (Invoke-AceCargo check --locked --all-targets zero-warning
 # health check with an in-script positive/negative matcher control, the
 # FULL ac-core test suite — now including text_hir/text_source/
 # text_binding/text_native/text_resources — and cargo fmt --check), the
@@ -13,14 +15,14 @@
 # product crates/test tree was touched). Writes a receipt with HEAD,
 # toolchain/runtime-lib/contract/source hashes AND the raw captured
 # output of every step — on success AND on failure. Receipts land under
-# experimental/ac-core/target/ac-verify-receipts/770/ (gitignored).
+# experimental/ace/crates/core/target/ac-verify-receipts/770/ (gitignored).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-text-770.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$CoreDir = Join-Path $RepoRoot 'experimental\ac-core'
+$CoreDir = Join-Path $RepoRoot 'experimental/ace/crates/core'
 $CoreManifest = Join-Path $CoreDir 'Cargo.toml'
-$RtDir = Join-Path $CoreDir 'runtime\text'
+$RtDir = Join-Path $RepoRoot 'experimental/ace/tests/text-runtime'
 $RtManifest = Join-Path $RtDir 'Cargo.toml'
 $ReportDir = Join-Path $RepoRoot 'docs\reports\770-text'
 $ReceiptsDir = Join-Path $CoreDir 'target\ac-verify-receipts\770'
@@ -51,7 +53,7 @@ function Invoke-Cargo {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & cargo @ArgList 2>&1
+        $output = & Invoke-AceCargo @ArgList 2>&1
     } finally {
         $ErrorActionPreference = $prev
     }
@@ -136,8 +138,8 @@ try {
         # source_native / native_execution) are gone. The retained text faces
         # below are the frontend/verify/binding surface; the text-run oracles
         # (len/slice/char_at/Unicode/traps) are replayed by the `ac-native`
-        # text rows in `ac-mir-native/tests/shadow_tier_871.rs` and
-        # `tests/gap_closure_871.rs`.
+        # text rows in `ac-mir-native/tests/cases/shadow_tier.rs` and
+        # `tests/cases/gap_closure.rs`.
         foreach ($bin in @('text_hir.rs', 'text_source.rs', 'text_binding.rs')) {
             if ($t -notmatch [regex]::Escape($bin)) { throw "test binary $bin missing from the ac-core run" }
         }
@@ -151,13 +153,13 @@ try {
 
     # --- runtime/text workspace ------------------------------------------------
 
-    Invoke-Step 'runtime/text cargo check --locked --all-targets' {
+    Invoke-Step 'runtime/text Invoke-AceCargo check --locked --all-targets' {
         $t = Invoke-Cargo @('check', '--manifest-path', $RtManifest, '--locked', '--all-targets') 'rt-check.txt'
         if (Test-HasWarningLine $t) { throw "runtime zero-warning check failed`n$t" }
         $script:ReceiptLines.Add('runtime/text check: ok (zero warnings)')
     }
 
-    Invoke-Step 'runtime/text cargo test --locked (runtime-owned fault/budget faces)' {
+    Invoke-Step 'runtime/text Invoke-AceCargo test --locked (runtime-owned fault/budget faces)' {
         $t = Invoke-Cargo @('test', '--manifest-path', $RtManifest, '--locked') 'rt-test.txt'
         $ms = [regex]::Matches($t, 'result: ok\. (\d+) passed')
         $total = 0
@@ -211,15 +213,15 @@ try {
         $base = (& git -C $RepoRoot merge-base HEAD master).Trim()
         $changed = & git -C $RepoRoot diff --name-only $base HEAD
         $allowed = @(
-            '^experimental/ac-core/src/',
-            '^experimental/ac-core/tests/',
-            '^experimental/ac-core/fixtures/',
-            '^experimental/ac-core/schema/',
-            '^experimental/ac-core/runtime/text/',
-            '^experimental/ac-core/test-support/marks\.rs$',
-            '^experimental/ac-core/Cargo\.toml$',
-            '^experimental/ac-core/Cargo\.lock$',
-            '^experimental/ac-core/README\.md$',
+            '^experimental/ace/crates/core/src/',
+            '^experimental/ace/crates/core/tests/',
+            '^experimental/ace/crates/core/fixtures/',
+            '^experimental/ace/crates/core/schema/',
+            '^experimental/ace/tests/text-runtime/',
+            '^experimental/ace/crates/trace-runtime/marks\.rs$',
+            '^experimental/ace/crates/core/Cargo\.toml$',
+            '^experimental/ace/crates/core/Cargo\.lock$',
+            '^experimental/ace/crates/core/README\.md$',
             '^scripts/verify-ac-text-770\.ps1$',
             '^docs/reports/770-text/',
             '^docs/plans/770-ac-text-char-native\.md$'
@@ -237,15 +239,15 @@ try {
     # --- artifact + source contract hashes --------------------------------------
 
     Invoke-Step 'hashes (runtime lib + contract sidecar + gate inputs)' {
-        $lib = Join-Path $RtDir 'target\release\ac_text_runtime.lib'
-        $contract = Join-Path $RtDir 'target\release\ac_text_runtime.lib.contract.json'
+        $lib = Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib'
+        $contract = Join-Path $RepoRoot 'experimental/ace/target/runtime-release/ac_text_runtime.lib.contract.json'
         $script:ReceiptLines.Add("runtime-lib-sha256: $(Get-Sha256 $lib)")
         $script:ReceiptLines.Add("runtime-contract: $(Get-Sha256 $contract)")
         foreach ($rel in @(
             'src\native.rs', 'src\main.rs', 'src\text_resources.rs',
             'src\source\adapter.rs', 'src\source\mod.rs',
             'tests\text_native.rs', 'tests\text_resources.rs',
-            'runtime\text\shim\src\lib.rs', 'runtime\text\src\lib.rs',
+            '../text-runtime/src/lib.rs', '../../tests/text-runtime/src/lib.rs',
             'runtime\text\Cargo.toml', 'runtime\text\Cargo.lock',
             'fixtures\text-hir\valid\n01-native-ops.atom'
         )) {

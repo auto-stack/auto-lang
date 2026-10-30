@@ -1,0 +1,12 @@
+[package]
+name = "ace-collections-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ace_collections_runtime"
+crate-type = ["staticlib"]
+
+[dependencies]
+ace-text-runtime = { path = "../text-runtime" }

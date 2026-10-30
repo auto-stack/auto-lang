@@ -1,0 +1,48 @@
+[package]
+autotests = false
+name = "ace-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "PLAN-818: shared CheckedMir -> per-function COFF -> multi-obj PE, unit cache and the native parity loop"
+
+[dependencies]
+ace-core = { path = "../core" }
+ace-av-core = { path = "../av-core" }
+ace-av = { path = "../av" }
+ace-lowering = { path = "../lowering" }
+ace-artifacts = { path = "../artifacts" }
+cranelift-codegen = "0.126"
+cranelift-frontend = "0.126"
+cranelift-module = "0.126"
+cranelift-object = "0.126"
+target-lexicon = "0.13"
+blake3 = "1"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[[bin]]
+name = "mn-worker"
+path = "src/bin/mn-worker.rs"
+
+[[bin]]
+name = "mn-collections-worker"
+path = "src/bin/mn-collections-worker.rs"
+
+[[bin]]
+name = "ac-native"
+path = "src/bin/ac-native.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

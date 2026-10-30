@@ -1,7 +1,7 @@
 # PLAN-892 (A2X / Checked-HIR-to-Rust, AX-A) scoped verification entry.
 # ASCII only for Windows PowerShell 5.1.
 #
-# Drives the FROZEN private probe entries of the experimental/auto-a2x
+# Drives the FROZEN private probe entries of the experimental/ace
 # workspace (true chain: real source -> checked frontend -> semantic view ->
 # Rust provider -> real rustc -> run -> oracle). The formal/acceptance H-side
 # registration (recipe routing in test_cases, .suite.ad AutoDown assets) is
@@ -17,11 +17,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Scope
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$Workspace = Join-Path $RepoRoot 'experimental\auto-a2x'
+$Workspace = Join-Path $RepoRoot 'experimental/ace'
 $ReceiptsDir = Join-Path $Workspace 'target\a2x-verify-receipts\892'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -30,10 +32,10 @@ function Invoke-Scope {
     Write-Host ("== scope {0}: {1}" -f $Name, ($TestEntries -join ', '))
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     foreach ($entry in $TestEntries) {
-        Write-Host ("-- cargo test -p a2x-probe --test {0}" -f $entry)
+        Write-Host ("-- Invoke-AceCargo test -p ace-a2x-worker --test {0}" -f $entry)
         # NOTE: no 2>&1 pipeline capture - PS 5.1 turns native stderr
         # progress into ErrorRecords under Stop preference.
-        & cargo test --manifest-path (Join-Path $Workspace 'Cargo.toml') -p a2x-probe --test $entry
+        & Invoke-AceCargo test --manifest-path (Join-Path $Workspace 'Cargo.toml') -p ace-a2x-worker --test $entry
         if ($LASTEXITCODE -ne 0) {
             Write-Host ("[FAIL] {0} ({1}s): test entry {2}" -f $Name, [math]::Round($sw.Elapsed.TotalSeconds, 1), $entry) -ForegroundColor Red
             exit 1

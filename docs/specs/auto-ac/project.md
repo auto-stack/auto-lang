@@ -1,7 +1,9 @@
 # auto-ac
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。实现包ace-core（前端/Checked HIR/verify/链接），native包ace-native，共享lowering包ace-lowering；CLI auto-ac-prototype的实际新二进制名以Cargo manifest为准。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > **Status**: experimental
-> 路径：`experimental/ac-core`（独立 Cargo workspace，bin `auto-ac-prototype`，"ac-probe" 为历史文档名；**前端/Checked HIR/verify/链接**层，无 lowering） | 技术栈：Rust + rust-lld；native lowering 在 `experimental/ac-mir-native`（`ac-mn`，Cranelift 0.126.2）
+> 路径：`experimental/ace/crates/core`（ACE workspace成员，bin `ace-core`，"ac-probe" 为历史文档名；**前端/Checked HIR/verify/链接**层，无 lowering） | 技术栈：Rust + rust-lld；native lowering 在 `experimental/ace/crates/native`（`ac-mn`，Cranelift 0.126.2）
 
 AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed MIR** → Windows x64 COFF → PE 原生执行。
 **HIR → 原生执行与有限源码 profile → 原生执行均已完成**；PLAN-745 的
@@ -157,7 +159,7 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
   str/Str 逐语境、受限借/拥有前门（8 码）、内部 ABI 五类形态、资源合同
  （完整账本/u64 全精度计数/预算/失败分类/trap 边界）——经六轮独立复审收敛，
   770/771 以其为唯一接口来源（interface-contract.md 为消费面明细）。
-- 探针 workspace：`experimental/ac-core/probes/data-resources/`（独立 Cargo
+- 探针 workspace：`experimental/ace/tests/data-runtime/`（独立 Cargo
   workspace + no_std shim staticlib，64 探针测试 + 永久记账状态探针；一键门禁
   `scripts/verify-ac-data-resources-774.ps1`）。**非生产 ABI、非语言 feature
   支持声明**；text（str/Str/char）与标量 record 的共同合同已冻结、实现层仍
@@ -168,7 +170,7 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 
 - [artifact-contract.md](artifact-contract.md)：A00–A12 编译产物统一契约（身份/
   引用/失效/信任规则;实际 codec 面=A00/A04/A07/A09/A10）。
-- [artifact-probe.md](artifact-probe.md)：`experimental/ac-artifact-probe/` 独立
+- [artifact-probe.md](artifact-probe.md)：`experimental/ace/crates/artifacts/` 独立
   实验 workspace 的支持面、冻结预算、协议与限制清单。
 - 探针**不改变 ac-core 语言面、不新增生产入口**（ac-core 零产品依赖由
   dep_audit 永久断言）;六轮独立复审（R1–R6）反例全部以永久回归钉面。
@@ -210,7 +212,7 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 
 - AutoDown 用例可声明 ac 源码或原始 HIR 经 `auto-case` v2 检查/构建/执行：引用
   式 fixture（payload 生成期内嵌），不迁移语料、不退役旧门禁（`cargo test
-  --manifest experimental/ac-core` 各套件保持）。
+  --manifest experimental/ace/crates/core` 各套件保持）。
 - p15 评估序与 p16 trap 前可观察输出经 **trace-marks 具名支持库**（capabilities
   `hir.test.trace.v1` + `support_lib: "trace-marks"`，worker 构建/链接 PLAN-741
   marks runtime）落地。
@@ -222,7 +224,7 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 
 ## MIR-native 实验后端（PLAN-818，加法 consumer）
 
-- 818 在独立 workspace（`experimental/ac-mir-native/`）建立
+- 818 在独立 workspace（`experimental/ace/crates/native/`）建立
   `CheckedMir → CLIF → 函数 COFF → rust-lld → PE` 新通道并与 AV/旧 HIR-native/
   独立 expected 对拍；语言面/私有 ABI/授权 trace 见
   [mir-native-scalar.md](mir-native-scalar.md)，单元缓存/增量/资源/周转见

@@ -34,12 +34,14 @@ param(
     [ValidateSet('acceptance', 'closeout', 'selftest')]
     [string]$Scope
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 if (-not $env:SCCACHE_SERVER_PORT) { $env:SCCACHE_SERVER_PORT = '44001' }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$ws = Join-Path $repoRoot 'experimental/ac-semantics'
+$ws = Join-Path $repoRoot 'experimental/ace'
 Set-Location $ws
 
 $script:Results = [System.Collections.Generic.List[string]]::new()
@@ -81,7 +83,8 @@ function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cw
     # run through cmd so native stderr never becomes a PS error record
     # (EAP=Stop + 2>&1 misfires on Windows PowerShell 5.1)
     $argline = ($CargoArgs | ForEach-Object { if ($_ -match '\s') { '"$_"' } else { $_ } }) -join ' '
-    $out = (& cmd /c "cd /d `"$Cwd`" && cargo $argline 2>&1") -join "`n"
+    Push-Location $Cwd
+    try {$out = (& Invoke-AceCargo @CargoArgs 2>&1) -join "`n"} finally {Pop-Location}
     $code = $LASTEXITCODE
     $r = Get-SuiteOutcome $code $out $MinPassed $Required
     if ($r.Ok) {
@@ -96,7 +99,8 @@ function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cw
 function Run-Command([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cwd = $ws) {
     Write-Host ">> cargo $($CargoArgs -join ' ') (in $Cwd)" -ForegroundColor DarkGray
     $argline = ($CargoArgs | ForEach-Object { if ($_ -match '\s') { '"$_"' } else { $_ } }) -join ' '
-    $out = (& cmd /c "cd /d `"$Cwd`" && cargo $argline 2>&1") -join "`n"
+    Push-Location $Cwd
+    try {$out = (& Invoke-AceCargo @CargoArgs 2>&1) -join "`n"} finally {Pop-Location}
     $code = $LASTEXITCODE
     if ($code -eq 0) {
         Add-Result $Id 'PASS' "$Note (exit 0)"
@@ -261,7 +265,7 @@ if ($Scope -eq 'selftest') {
 
 if ($Scope -eq 'acceptance') {
     # --- V-01 / AC-01: identity, recursive groups, matrix ------------
-    Run-Suite 'V-01' @('test', '-p', 'ac-sema-contract') 'sema_identity_ + unit (contract)' $ws 16 @(
+    Run-Suite 'V-01' @('test', '-p', 'ace-semantics-contract') 'sema_identity_ + unit (contract)' $ws 16 @(
         'sema_identity_r11_method_owner_is_part_of_the_nominal_identity',
         'sema_identity_r11_method_declref_codec_roundtrip'
     )
@@ -269,12 +273,12 @@ if ($Scope -eq 'acceptance') {
     # --- V-02 / AC-02: real inference vs the old pipeline ------------
     # F-796-R6-08: the CT admission controls are REQUIRED by NAME, not
     # merely counted — filtering either out now fails the row.
-    Run-Suite 'V-02a' @('test', '-p', 'ac-sema-core') 'infer_core_ unit suite' $ws 13 @('meta_query_ct_nested_unknown_rejected_everywhere', 'meta_query_ct_model_result_admission')
-    Run-Suite 'V-02b' @('test', '-p', 'ac-sema-probe', '--test', 'infer_core_parity') 'differential parity corpus' $ws 4
+    Run-Suite 'V-02a' @('test', '-p', 'ace-semantics') 'infer_core_ unit suite' $ws 13 @('meta_query_ct_nested_unknown_rejected_everywhere', 'meta_query_ct_model_result_admission')
+    Run-Suite 'V-02b' @('test', '-p', 'ace-semantics-store', '--test', 'infer_core_parity') 'differential parity corpus' $ws 4
 
     # --- V-03 / AC-03: queries, deps, cache lifecycle ----------------
-    Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
-    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 38 @(
+    Run-Suite 'V-03' @('test', '-p', 'ace-semantics-store', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
+    Run-Suite 'V-03b' @('test', '-p', 'ace-semantics-store', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 38 @(
         'sema_cache_r14_fnsig_key_version_isolates_old_semantics',
         'sema_cache_r13_module_index_tracks_signatures_and_records',
         'sema_cache_r13_fnsig_page_admission_and_body_independence',
@@ -295,38 +299,38 @@ if ($Scope -eq 'acceptance') {
     )
 
     # --- V-06 / AC-03: budgets and pressure ---------------------------
-    Run-Suite 'V-06' @('test', '-p', 'ac-sema-probe', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn/prealloc' $ws 12 @('sema_budget_deep_chain_4096_full_path', 'sema_budget_streamed_32mib_under_managed_budget', 'sema_budget_large_inference_rejects_before_publish', 'sema_budget_long_names_are_accounted', 'sema_budget_cache_readback_reserves_before_decode', 'sema_budget_long_names_reject_before_encode', 'sema_budget_oversized_page_rejected_as_resource_before_encode', 'sema_budget_long_name_readback_is_charged', 'sema_budget_target_name_is_part_of_the_page_budget')
+    Run-Suite 'V-06' @('test', '-p', 'ace-semantics-store', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn/prealloc' $ws 12 @('sema_budget_deep_chain_4096_full_path', 'sema_budget_streamed_32mib_under_managed_budget', 'sema_budget_large_inference_rejects_before_publish', 'sema_budget_long_names_are_accounted', 'sema_budget_cache_readback_reserves_before_decode', 'sema_budget_long_names_reject_before_encode', 'sema_budget_oversized_page_rejected_as_resource_before_encode', 'sema_budget_long_name_readback_is_charged', 'sema_budget_target_name_is_part_of_the_page_budget')
 
     # --- V-04 / V-07 / AC-04: turnaround stages + the hard gate ------
-    Run-Suite 'V-04' @('test', '-p', 'ac-sema-probe', '--test', 'sema_turnaround_scenarios') 'sema_turnaround_ six scenarios + gate' $ws 5
+    Run-Suite 'V-04' @('test', '-p', 'ace-semantics-store', '--test', 'sema_turnaround_scenarios') 'sema_turnaround_ six scenarios + gate' $ws 5
     # F-796-R6-08: REGENERATE the committed library report from the
     # current code — V-07 must never adjudicate a stale committed file.
     $benchStore = Join-Path ([System.IO.Path]::GetTempPath()) ("ac796-bench-" + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-    Run-Command 'V-04b' @('run', '--quiet', '-p', 'ac-sema-probe', '--', 'bench-turnaround', (Join-Path $repoRoot 'docs/reports/plan796'), $benchStore) 'regenerate docs/reports/plan796/turnaround.{json,md}' $ws
+    Run-Command 'V-04b' @('run', '--quiet', '-p', 'ace-semantics-store', '--', 'bench-turnaround', (Join-Path $repoRoot 'docs/reports/plan796'), $benchStore) 'regenerate docs/reports/plan796/turnaround.{json,md}' $ws
 
     # --- V-05 / AC-01: CT/generic seam (model-only, schema-frozen) ----
-    Run-Suite 'V-05' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps', '--', 'meta_query_ct_model_seam_admission_and_cycles') 'ct seam admission/cycles (model)' $ws 1 @('meta_query_ct_model_seam_admission_and_cycles')
+    Run-Suite 'V-05' @('test', '-p', 'ace-semantics-store', '--test', 'meta_query_cache_deps', '--', 'meta_query_ct_model_seam_admission_and_cycles') 'ct seam admission/cycles (model)' $ws 1 @('meta_query_ct_model_seam_admission_and_cycles')
 
     # --- V-09 / AC-06: boundary + parallel audit ----------------------
-    Run-Suite 'V-09' @('test', '-p', 'ac-sema-probe', '--test', 'sema_boundary_audit') 'sema_boundary_ tree/diff/provenance' $ws 6
+    Run-Suite 'V-09' @('test', '-p', 'ace-semantics-store', '--test', 'sema_boundary_audit') 'sema_boundary_ tree/diff/provenance' $ws 6
 
     # --- V-08 / AC-05: formal AutoDown execution (T-06 landed) --------
     # D-788 was satisfied (PLAN-788 merged, receipts on master); the
     # probe adapter corpus now EXECUTES through the unified runner:
     # real sema worker processes, real restart boundary, parent-side
     # judgement. The corpus+admission suite is the V-08 gate.
-    Run-Suite 'V-08' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--', 'probe_adapter', '--skip', 'tests::probe_adapter_turnaround_ipc') 'probe adapter through the unified runner (V-08)' $repoRoot 16 @(
-        'tests::probe_adapter_tests::probe_adapter_corpus_executes_green',
-        'tests::probe_adapter_tests::probe_adapter_parse_error_is_language_negative',
-        'tests::probe_adapter_tests::probe_adapter_descendant_held_pipes_bounded_by_parent_containment',
-        'tests::probe_adapter_tests::probe_adapter_stale_unchanged_report_fresh_and_swap_stale',
-        'tests::probe_adapter_tests::probe_adapter_mixed_report_uses_per_family_toolchain_identity'
+    Run-Suite 'V-08' @('test', '-p', 'ace-conformance', '--features', 'test-cases', '--', 'probe_adapter', '--skip', 'tests::turnaround') 'probe adapter through the unified runner (V-08)' $repoRoot 16 @(
+        'tests::semantics_protocol::probe_adapter_corpus_executes_green',
+        'tests::semantics_protocol::probe_adapter_parse_error_is_language_negative',
+        'tests::semantics_protocol::probe_adapter_descendant_held_pipes_bounded_by_parent_containment',
+        'tests::semantics_protocol::probe_adapter_stale_unchanged_report_fresh_and_swap_stale',
+        'tests::semantics_protocol::probe_adapter_mixed_report_uses_per_family_toolchain_identity'
     )
     # the REAL adapter/IPC turnaround hard gate (F-796-R4-10/R6-06);
     # F-796-R10-01 binds the window-tiling control by name as well
-    Run-Suite 'V-08c' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', '--', 'tests::probe_adapter_turnaround_ipc') 'real adapter/IPC path on the 1MiB module (30 samples)' $repoRoot 2 @(
-        'tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95',
-        'tests::probe_adapter_turnaround_ipc::probe_adapter_edit_session_window_tiles_prep_worker_admit'
+    Run-Suite 'V-08c' @('test', '-p', 'ace-conformance', '--features', 'test-cases', '--test', 'conformance', '--', 'tests::turnaround') 'real adapter/IPC path on the 1MiB module (30 samples)' $repoRoot 2 @(
+        'tests::turnaround::probe_adapter_turnaround_ipc_hard_gate_p95',
+        'tests::turnaround::probe_adapter_edit_session_window_tiles_prep_worker_admit'
     )
     $caseFiles = Get-ChildItem (Join-Path $repoRoot 'crates/auto-lang/test/cases/ac-semantics') -Filter '*.case.ad'
     $pending = ($caseFiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'not-executed' }).Count

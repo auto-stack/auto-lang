@@ -7,9 +7,11 @@ param(
     [Parameter(Mandatory = $true)][string]$Scope,
     [string]$ReportDir = "docs/reports/plan817"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 $ErrorActionPreference = "Continue"
 $repo = Split-Path -Parent $PSScriptRoot
-$ws = Join-Path $repo "experimental/ac-cte-probe/Cargo.toml"
+$ws = Join-Path $repo "experimental/ace/Cargo.toml"
 $fail = 0
 
 function Run-Step([string]$name, [scriptblock]$body) {
@@ -21,25 +23,25 @@ function Run-Step([string]$name, [scriptblock]$body) {
 function Test-Scope([string]$s) {
     switch ($s) {
         "first-case" {
-            Run-Step "workspace cte_first_" { cargo test --manifest-path $ws --offline cte_first_ 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_first_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_first_ 2>&1 | Select-Object -Last 3 }
         }
         "admission" {
-            Run-Step "workspace cte_admit_" { cargo test --manifest-path $ws --offline cte_admit_ 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_admit_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_admit_ 2>&1 | Select-Object -Last 3 }
         }
         "schedule" {
-            Run-Step "workspace cte_schedule_" { cargo test --manifest-path $ws --offline cte_schedule_ 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_schedule_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_schedule_ 2>&1 | Select-Object -Last 3 }
         }
         "cache" {
             # Binary selection, NOT a name filter (F-817-R12-01): this
             # family's tests are named cache_* — the old `cte_cache_`
             # filter matched ZERO tests (vacuous green since T-08).
-            Run-Step "workspace cte_cache_tests" { cargo test --manifest-path $ws --offline --test cte_cache_tests 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_cache_tests" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --test cte_cache_tests 2>&1 | Select-Object -Last 3 }
         }
         "freeze" {
             # Binary selection, NOT a name filter (F-817-R12-01): tests
             # are named freeze_* — the old `cte_freeze_` filter matched
             # ZERO tests (vacuous green since T-08).
-            Run-Step "workspace cte_freeze_tests" { cargo test --manifest-path $ws --offline --test cte_freeze_tests 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_freeze_tests" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --test cte_freeze_tests 2>&1 | Select-Object -Last 3 }
         }
         "resources" {
             # FULL family, serial, binary-selected (F-817-R11-01/R12-01):
@@ -49,26 +51,26 @@ function Test-Scope([string]$s) {
             # resources_* — the old `cte_resources_` name filter silently
             # excluded them (6 tests: 32MiB pages/512 revisions/GC
             # watermark/worker peak/budget/spike/deep-input).
-            Run-Step "workspace cte_resources_tests serial" { cargo test --manifest-path $ws --offline --release --test cte_resources_tests -- --test-threads=1 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_resources_tests serial" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --release --test cte_resources_tests '--' --test-threads=1 2>&1 | Select-Object -Last 3 }
         }
         "turnaround" {
-            Run-Step "workspace cte_turnaround_" { cargo test --manifest-path $ws --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_turnaround_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }
             Run-Step "bench raw report" {
                 $out = Join-Path $repo "$ReportDir/turnaround.jsonl"
-                $exe = Join-Path $repo "experimental/ac-cte-probe/target/release/cte_probe_worker.exe"
-                cargo build --manifest-path $ws --offline --release -p auto-cte-probe --bin cte_probe_worker 2>&1 | Select-Object -Last 1
+                $exe = Join-Path $repo "experimental/ace/target/release/cte_probe_worker.exe"
+                Invoke-AceCargo build --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --release -p ace-comptime --bin cte_probe_worker 2>&1 | Select-Object -Last 1
                 & $exe bench-turnaround --samples 30 --out $out
             }
         }
         "snapshot" {
-            Run-Step "workspace cte_snapshot_" { cargo test --manifest-path $ws --offline cte_snapshot_ 2>&1 | Select-Object -Last 3 }
+            Run-Step "workspace cte_snapshot_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_snapshot_ 2>&1 | Select-Object -Last 3 }
         }
         "autodown" {
             Run-Step "official corpus tests" {
-                cargo test -p auto-lang --features test-cases --lib ac_cte_probe -- --test-threads=1 2>&1 | Select-Object -Last 5
+                Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance ac_cte_probe '--' --test-threads=1 2>&1 | Select-Object -Last 5
             }
             Run-Step "auto-case lint" {
-                cargo run -q -p auto-lang --features test-cases --bin auto-case -- lint --suite (Join-Path $repo "crates/auto-lang/test/cases/ac-cte/ac-cte.suite.ad") 2>&1 | Select-Object -Last 1
+                Invoke-AceCargo run -q -p auto-lang --features test-cases --bin auto-case '--' lint --suite (Join-Path $repo "crates/auto-lang/test/cases/ac-cte/ac-cte.suite.ad") 2>&1 | Select-Object -Last 1
             }
         }
         "acceptance" {
@@ -76,19 +78,19 @@ function Test-Scope([string]$s) {
             # SERIAL (F-817-R12-01): the workspace aggregate includes the
             # resources binary's process-global allocator windows —
             # parallel threads inside one binary cross-pollute them.
-            Run-Step "workspace full" { cargo test --manifest-path $ws --offline --workspace -- --test-threads=1 2>&1 | Select-String "test result" | Select-Object -Last 12 }
+            Run-Step "workspace full" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline '--' --test-threads=1 2>&1 | Select-String "test result" | Select-Object -Last 12 }
         }
         "closeout" {
             Run-Step "read-only consumption audit (approved 783 append adaptation bound by a pinned diff hash)" {
                 # F-817-R13-01: R8/R9 added the approved APPEND-ONLY
-                # bounded-read APIs to 783's ac-artifact-probe store
+                # bounded-read APIs to 783's ace-artifacts store
                 # (+120 lines, single file; receipts: plan section 9,
                 # R8-fix cb0ba5231 / R9-fix e55b59cae). Bind that
                 # adaptation to an explicit boundary instead of failing
                 # the audit on it:
                 #   - the four strictly read-only dirs: ANY diff vs
                 #     master (or any dirty/untracked file) is a violation;
-                #   - ac-artifact-probe: clean, OR the diff touches
+                #   - ace-artifacts: clean, OR the diff touches
                 #     EXACTLY src/store/mod.rs AND the full diff text
                 #     hashes to the pinned value below. Any other file,
                 #     or ANY change to the approved delta itself (e.g.
@@ -98,22 +100,22 @@ function Test-Scope([string]$s) {
                 # pin ONLY through a recorded approval; if master moves
                 # under these dirs the diff changes and this step reds
                 # on purpose (re-bind via a new receipt).
-                $approvedPath = "experimental/ac-artifact-probe/src/store/mod.rs"
+                $approvedPath = "experimental/ace/crates/artifacts/src/store/mod.rs"
                 $approvedDiffSha = "D8A8B3DF054E11015E1D4D5C33F02DAC84C8B753D5CF0AE5FB7BA8C33924E249"
-                foreach ($p in @("experimental/ac-core","experimental/ac-syntax","experimental/ac-artifact-probe","experimental/ac-av-probe","experimental/ac-semantics")) {
-                    $status = git -C $repo status --porcelain -- $p
+                foreach ($p in @("experimental/ace/crates/core","experimental/ace","experimental/ace/crates/artifacts","experimental/ace","experimental/ace")) {
+                    $status = git -C $repo status --porcelain '--' $p
                     if ($LASTEXITCODE -ne 0) { throw "git status failed for $p" }
                     if ($status) { throw "WRITE VIOLATION under ${p}: dirty/untracked files [$status]" }
-                    $d = git -C $repo diff master -- $p
+                    $d = git -C $repo diff master '--' $p
                     if ($LASTEXITCODE -ne 0) { throw "git diff failed for $p" }
                     if (-not $d) { continue }
-                    if ($p -ne "experimental/ac-artifact-probe") { throw "WRITE VIOLATION under $p" }
-                    $files = (git -C $repo diff --name-only master -- $p) -join ";"
+                    if ($p -ne "experimental/ace/crates/artifacts") { throw "WRITE VIOLATION under $p" }
+                    $files = (git -C $repo diff --name-only master '--' $p) -join ";"
                     if ($LASTEXITCODE -ne 0) { throw "git diff --name-only failed for $p" }
-                    if ($files -ne $approvedPath) { throw "WRITE VIOLATION under ac-artifact-probe: unexpected changed file set [$files]" }
+                    if ($files -ne $approvedPath) { throw "WRITE VIOLATION under ace-artifacts: unexpected changed file set [$files]" }
                     $diffText = ($d -join "`n")
                     $sha = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($diffText))) -replace "-",""
-                    if ($sha -ne $approvedDiffSha) { throw "WRITE VIOLATION: ac-artifact-probe delta (sha $sha) does not match the approved 783 append adaptation ($approvedDiffSha)" }
+                    if ($sha -ne $approvedDiffSha) { throw "WRITE VIOLATION: ace-artifacts delta (sha $sha) does not match the approved 783 append adaptation ($approvedDiffSha)" }
                     Write-Host "approved 783 append adaptation verified: single file, pinned diff sha"
                 }
                 Write-Host "read-only consumption: clean"

@@ -60,4 +60,4 @@
 4. **迁移边界**：探针不并入任何生产入口;退役/迁移由后续计划决策,防第三套
    生产缓存。探针详情 [auto-ac/artifact-probe.md](../auto-ac/artifact-probe.md)。
 
-> 来源：PLAN-783（r6 pass,aa8c666ca）;探针 `experimental/ac-artifact-probe/`。
+> 来源：PLAN-783（r6 pass,aa8c666ca）;探针 `experimental/ace/crates/artifacts/`。

@@ -15,12 +15,14 @@
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-871-retire.ps1
 
 param([string]$Scope = 'retire')
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
-$Worker = Join-Path $RepoRoot 'experimental\ac-case-worker'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
+$Worker = Join-Path $RepoRoot 'experimental/ace/crates/case-worker'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\retire-871'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -44,6 +46,7 @@ function Invoke-Step {
 function Invoke-Captured {
     param([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSec = 1800)
     $psi = New-Object System.Diagnostics.ProcessStartInfo
+    if ($Exe -eq 'cargo') { $ArgList = Convert-AceCargoArguments -CargoArguments $ArgList -WorkingDirectory $WorkDir }
     $psi.FileName = $Exe
     $psi.Arguments = ($ArgList | ForEach-Object { '"' + ($_ -replace '"', '\\"') + '"' }) -join ' '
     $psi.WorkingDirectory = $WorkDir
@@ -70,12 +73,12 @@ try {
 
     Invoke-Step 'deleted: old lowering and reference modules are absent' {
         $gone = @(
-            'experimental\ac-core\src\native.rs',
-            'experimental\ac-av-probe\probe\src\native_reference.rs',
-            'experimental\ac-av-probe\probe\src\native_admission.rs',
-            'experimental\ac-artifact-probe\src\driver.rs',
-            'experimental\ac-artifact-probe\src\perf.rs',
-            'experimental\ac-artifact-probe\src\bin\node.rs'
+            'experimental/ace/crates/core\src\native.rs',
+            'experimental/ace/crates/av\src\native_reference.rs',
+            'experimental/ace/crates/av\src\native_admission.rs',
+            'experimental/ace/crates/artifacts\src\driver.rs',
+            'experimental/ace/crates/artifacts\src\perf.rs',
+            'experimental/ace/crates/artifacts\src\bin\node.rs'
         )
         foreach ($rel in $gone) {
             if (Test-Path (Join-Path $RepoRoot $rel)) { throw "retired file still present: $rel" }
@@ -110,21 +113,21 @@ try {
         $r = Invoke-Captured 'cargo' @('check', '--locked', '--all-targets') $AcMn 1800
         if ($r.Code -ne 0) { throw $r.Stderr }
     }
-    Invoke-Step 'cargo check --locked (ac-case-worker)' {
+    Invoke-Step 'cargo check --locked (ace-case-worker)' {
         $r = Invoke-Captured 'cargo' @('check', '--locked', '--all-targets') $Worker 1800
         if ($r.Code -ne 0) { throw $r.Stderr }
     }
 
     Invoke-Step 'retention: verify / TextResourcePlan / link / source remain' {
-        foreach ($rel in @('experimental\ac-core\src\verify.rs',
-                           'experimental\ac-core\src\text_resources.rs',
-                           'experimental\ac-core\src\link.rs',
-                           'experimental\ac-core\src\source\adapter.rs')) {
+        foreach ($rel in @('experimental/ace/crates/core\src\verify.rs',
+                           'experimental/ace/crates/core\src\text_resources.rs',
+                           'experimental/ace/crates/core\src\link.rs',
+                           'experimental/ace/crates/core\src\source\adapter.rs')) {
             if (-not (Test-Path (Join-Path $RepoRoot $rel))) { throw "retained file missing: $rel" }
         }
-        $vr = Get-Content (Join-Path $RepoRoot 'experimental\ac-core\src\verify.rs') -Raw
+        $vr = Get-Content (Join-Path $RepoRoot 'experimental/ace/crates/core\src\verify.rs') -Raw
         if ($vr -notmatch 'pub fn capabilities_check') { throw 'capabilities_check did not move into verify.rs' }
-        $tr = Get-Content (Join-Path $RepoRoot 'experimental\ac-core\src\text_resources.rs') -Raw
+        $tr = Get-Content (Join-Path $RepoRoot 'experimental/ace/crates/core\src\text_resources.rs') -Raw
         if ($tr -notmatch 'TextResourcePlan') { throw 'TextResourcePlan analysis missing' }
     }
 
@@ -146,14 +149,14 @@ fn _reintroduced_old_lowering(checked: &auto_ac_prototype::verify::CheckedModule
         Copy-Item (Join-Path $AcCore 'src\main.rs') (Join-Path $AcCore 'src\main.rs.bak871')
         try {
             Add-Content -Path (Join-Path $AcCore 'src\main.rs') -Value (Get-Content $probe -Raw)
-            $r = Invoke-Captured 'cargo' @('check', '--locked', '--bin', 'auto-ac-prototype') $AcCore 900
+            $r = Invoke-Captured 'cargo' @('check', '--locked', '--bin', 'ace-core') $AcCore 900
             if ($r.Code -eq 0) { throw 'counter-control: the retired symbol still compiles' }
             if (($r.Stdout + $r.Stderr) -notmatch 'native') { throw 'counter-control failed for an unrelated reason' }
         } finally {
             Move-Item -Force (Join-Path $AcCore 'src\main.rs.bak871') (Join-Path $AcCore 'src\main.rs')
         }
         # Restored tree must compile again.
-        $r2 = Invoke-Captured 'cargo' @('check', '--locked', '--bin', 'auto-ac-prototype') $AcCore 900
+        $r2 = Invoke-Captured 'cargo' @('check', '--locked', '--bin', 'ace-core') $AcCore 900
         if ($r2.Code -ne 0) { throw "restore after counter-control failed: $($r2.Stderr)" }
     }
 } catch {

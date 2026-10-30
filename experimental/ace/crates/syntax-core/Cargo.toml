@@ -1,0 +1,29 @@
+[package]
+autotests = false
+name = "ace-syntax-core"
+# PLAN-818 sibling-workspace fix: literal fields instead of `.workspace`
+# inheritance. Values are IDENTICAL to experimental/ace's
+# [workspace.package]; inheritance resolves against the ac-syntax root
+# only when this crate is built from within its own workspace tree — a
+# sibling workspace (experimental/ace/crates/native) consuming
+# experimental/ace by path drives cargo to resolve the
+# inheritance against the outer auto-lang root, which never defined
+# these fields. Literals are semantics-preserving for ac-syntax's own
+# builds (same values) and unblock any sibling consumer. Routed to the
+# ac-syntax owner as a delivered-face defect note (KNOWN-DEBT).
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ace-syntax-runtime = { path = "../syntax-runtime" }
+ace-syntax-grammar = { path = "../syntax-grammar" }
+ace-core = { path = "../core" }
+ace-artifacts = { path = "../artifacts" }
+
+[dev-dependencies]
+ace-syntax-artifacts = { path = "../syntax-artifacts" }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

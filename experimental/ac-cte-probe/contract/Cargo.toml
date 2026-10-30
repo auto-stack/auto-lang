@@ -1,9 +1,0 @@
-[package]
-name = "auto-cte-contract"
-version = "0.1.0"
-edition = "2021"
-description = "PLAN-817 CTE probe contract types: recipe request IR, frozen execution envelope, dependency manifest and admission codes (schema-frozen, dependency-free)."
-publish = false
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }

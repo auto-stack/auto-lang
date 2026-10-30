@@ -1,0 +1,29 @@
+[package]
+autotests = false
+name = "ace-data-conformance"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-774 data/resource/ABI feasibility probe: Cranelift-generated callers calling an explicit-ABI resource shim through real COFF/PE"
+publish = false
+
+# Standalone workspace on purpose (plan §2): the probe must not enlarge the
+# ac-core workspace or its registry/schema surface. The shim lives as a member
+# so `cargo build -p ac-data-shim-774` produces the staticlib the tests link.
+[dependencies]
+# Reuse the REAL ac-core link/executor entries (plan §3): toolchain discovery,
+# contained deadline executor. Path dep into the sibling prototype workspace.
+ace-core = { path = "../../crates/core" }
+# Caller codegen, pinned to the same Cranelift stack as ac-core (0.126).
+cranelift-codegen = "0.126"
+cranelift-frontend = "0.126"
+cranelift-module = "0.126"
+cranelift-object = "0.126"
+target-lexicon = "0.13"
+
+# panic=abort for the shim staticlib member (no unwinding may cross the
+# probed ABI). Cargo forces unwinding for test targets regardless, so
+# `cargo test` on the root package is unaffected.
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

@@ -3,7 +3,7 @@
 #   -Scope acceptance  : post-T-06 work proof — committed Cargo.lock
 #                        identity, --locked offline resolve, zero-warning
 #                        health of the probe crate, the full
-#                        experimental/auto-abi-probe suite (now including
+#                        experimental/ace/crates/abi suite (now including
 #                        abi_binding_ real-contract tests and the FORMAL
 #                        turnaround hard gates over the abiworker/1 IPC),
 #                        the unified-runner ABI recipe corpus, and the T-07
@@ -19,10 +19,12 @@ param(
     [ValidateSet('acceptance', 'closeout')]
     [string]$Scope = 'acceptance'
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$ProbeDir = Join-Path $RepoRoot 'experimental\auto-abi-probe'
+$ProbeDir = Join-Path $RepoRoot 'experimental/ace/crates/abi'
 $ProbeManifest = Join-Path $ProbeDir 'Cargo.toml'
 $ProbeLock = Join-Path $ProbeDir 'Cargo.lock'
 $ReportDir = Join-Path $RepoRoot 'docs\reports\plan797'
@@ -59,7 +61,7 @@ function Invoke-Cargo {
             Push-Location $WorkDir
         }
         try {
-            $output = & cargo @ArgList 2>&1
+            $output = & Invoke-AceCargo @ArgList 2>&1
             # Known environment condition (recorded by review R2): the
             # default sccache wrapper fails to start when its port sits in
             # a Windows exclusion range (os error 10013). Retry ONCE with
@@ -71,7 +73,7 @@ function Invoke-Cargo {
                 $savedWrapper = $env:RUSTC_WRAPPER
                 try {
                     Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
-                    $output = & cargo @ArgList 2>&1
+                    $output = & Invoke-AceCargo @ArgList 2>&1
                 } finally {
                     if ($null -ne $savedWrapper) { $env:RUSTC_WRAPPER = $savedWrapper }
                 }
@@ -104,12 +106,12 @@ function Test-HasWarningLine {
     # unused doc comment) are out of scope and recorded, not hidden.
     $scope = $false
     foreach ($line in ($Text -split "`r?`n")) {
-        if ($line -match '^(\s*Checking|\s*Compiling) auto-abi-probe') { $scope = $true }
-        if ($line -match '^\s*Checking\s+|^\s*Compiling\s+' -and $line -notmatch 'auto-abi-probe') { $scope = $false }
+        if ($line -match '^(\s*Checking|\s*Compiling) ace-abi') { $scope = $true }
+        if ($line -match '^\s*Checking\s+|^\s*Compiling\s+' -and $line -notmatch 'ace-abi') { $scope = $false }
         if ($scope -and $line -match '^\s*warning') { return $true }
     }
     # also catch the crate-level summary the compiler emits
-    if ($Text -match 'warning: `auto-abi-probe`[^
+    if ($Text -match 'warning: `ace-abi`[^
 ]*generated') { return $true }
     return $false
 }
@@ -151,16 +153,16 @@ try {
     # --- F-797-R1-03: lock must be tracked in git, not just on disk ---------
     Invoke-Step 'Cargo.lock tracked in git (F-797-R1-03)' {
         if (-not (Test-Path $ProbeLock)) { throw "missing lock file: $ProbeLock" }
-        $tracked = (& git -C $RepoRoot ls-files -- 'experimental/auto-abi-probe/Cargo.lock').Trim()
-        if ($tracked -ne 'experimental/auto-abi-probe/Cargo.lock') {
+        $tracked = (& git -C $RepoRoot ls-files '--' 'experimental/ace/crates/abi/Cargo.lock').Trim()
+        if ($tracked -ne 'experimental/ace/crates/abi/Cargo.lock') {
             throw "Cargo.lock not tracked in git (got '$tracked'); local-only lock is not a freeze"
         }
-        $ignored = (& git -C $RepoRoot check-ignore -v experimental/auto-abi-probe/Cargo.lock 2>&1)
+        $ignored = (& git -C $RepoRoot check-ignore -v experimental/ace/crates/abi/Cargo.lock 2>&1)
         # tracked-but-matching-ignore is fine once force-added; just record.
         $script:ReceiptLines.Add("lock-tracked: yes")
         $script:ReceiptLines.Add("lock-check-ignore: $ignored")
         $worktreeHash = Get-Sha256 $ProbeLock
-        $blob = (& git -C $RepoRoot rev-parse ':experimental/auto-abi-probe/Cargo.lock').Trim()
+        $blob = (& git -C $RepoRoot rev-parse ':experimental/ace/crates/abi/Cargo.lock').Trim()
         $blobSize = (& git -C $RepoRoot cat-file -s $blob).Trim()
         $ho = (& git -C $RepoRoot hash-object $ProbeLock).Trim()
         if ($ho -ne $blob) { throw "index blob $blob != worktree hash-object $ho" }
@@ -181,16 +183,16 @@ try {
     Invoke-Step 'cargo check --locked --offline (probe crate zero-warning)' {
         $text = Invoke-Cargo @('check', '--locked', '--offline') 'cargo-check-locked-offline.txt' $ProbeDir
         if (Test-HasWarningLine $text) {
-            # Only flag warnings whose path mentions auto-abi-probe.
+            # Only flag warnings whose path mentions ace-abi.
             $probeWarn = $false
             foreach ($line in ($text -split "`r?`n")) {
-                if ($line -match 'auto-abi-probe' -and $line -match 'warning') { $probeWarn = $true }
+                if ($line -match 'ace-abi' -and $line -match 'warning') { $probeWarn = $true }
             }
             # Also catch "generated N warning" lines attributable to the probe crate.
-            if ($text -match 'auto-abi-probe` \(lib\) generated') { $probeWarn = $true }
+            if ($text -match 'ace-abi` \(lib\) generated') { $probeWarn = $true }
             if ($probeWarn) { throw "probe crate still emits warnings`n$text" }
         }
-        $script:ReceiptLines.Add('check-locked-offline: ok (no auto-abi-probe warnings)')
+        $script:ReceiptLines.Add('check-locked-offline: ok (no ace-abi warnings)')
     }
 
     # --- full probe test suite (work-owned scoped tier, not merge gate) ------
@@ -204,7 +206,7 @@ try {
 
     # --- F-797-R4-12: format gate for this plan's crate -------------------
     Invoke-Step 'cargo fmt --check (probe crate)' {
-        $text = Invoke-Cargo @('fmt', '-p', 'auto-abi-probe', '--', '--check') 'fmt-check.txt' $ProbeDir
+        $text = Invoke-Cargo @('fmt', '-p', 'ace-abi', '--', '--check') 'fmt-check.txt' $ProbeDir
         $script:ReceiptLines.Add('fmt-check: ok')
     }
 
@@ -212,14 +214,14 @@ try {
     Invoke-Step 'cargo test builds with zero crate warnings' {
         $prev = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        $output = & cargo test --manifest-path $ProbeManifest --locked --offline --no-run 2>&1
+        $output = & Invoke-AceCargo test --manifest-path $ProbeManifest --locked --offline --no-run 2>&1
         $ErrorActionPreference = $prev
         $text = ($output | Out-String)
         # Scope to THIS plan's crate only (R4 F12: dependency warnings —
         # e.g. shim-metadata's unused doc comment — are recorded, not
         # hidden, but do not gate this plan).
         $depWarns = [regex]::Matches($text, 'warning: `[^`]+` .*generated') | ForEach-Object { $_.Value }
-        $ours = [regex]::Matches($text, 'warning: `auto-abi-probe`[^
+        $ours = [regex]::Matches($text, 'warning: `ace-abi`[^
 ]*generated') | ForEach-Object { $_.Value }
         if ($ours.Count -gt 0) {
             throw "probe test build emitted crate warnings: $($ours -join '; ')`n$text"
@@ -227,12 +229,12 @@ try {
         if ($depWarns.Count -gt 0) {
             $script:ReceiptLines.Add("dependency warnings (not gated): $($depWarns -join '; ')")
         }
-        $script:ReceiptLines.Add('test-build-zero-warning(auto-abi-probe): ok')
+        $script:ReceiptLines.Add('test-build-zero-warning(ace-abi): ok')
     }
 
-    # --- T-06: real semantic binding + formal AutoDown (D-796/D-788 landed) --
+    # --- T-06: real semantic binding + formal AutoDown (D-796/D-788 landed) '--'
     Invoke-Step 'abi_binding_ real-contract tests + FORMAL hard gates (probe)' {
-        $text = Invoke-Cargo @('test', '--locked', '--offline', '--test', 't06_binding') 't06-binding.txt' $ProbeDir
+        $text = Invoke-Cargo @('test', '--locked', '--offline', '--test', 'binding') 't06-binding.txt' $ProbeDir
         if ($text -notmatch 'test result: ok') {
             throw "t06_binding did not report test result: ok`n$text"
         }
@@ -240,7 +242,7 @@ try {
     }
 
     Invoke-Step 'abi/interop-v1 corpus + lifecycle + parent-path gates (unified runner)' {
-        $text = Invoke-Cargo @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', 'abi_recipe', '--', '--test-threads=1') 'abi-recipe-runner.txt' $RepoRoot
+        $text = Invoke-Cargo @('test', '-p', 'ace-conformance', '--features', 'test-cases', '--test', 'conformance', 'abi_recipe', '--', '--test-threads=1') 'abi-recipe-runner.txt' $RepoRoot
         if ($text -notmatch 'test result: ok') {
             throw "abi_recipe runner tests did not report test result: ok`n$text"
         }

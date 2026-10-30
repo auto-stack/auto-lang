@@ -33,6 +33,8 @@ param(
     # Scratch dir for scopes that execute anything.
     [string]$OutDir
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Split-Path -Parent $PSScriptRoot) }
@@ -73,7 +75,7 @@ function Find-Prebuilt([string]$name) {
     if ($env:AUTO_CASE_BIN -and $name -eq 'auto-case') { return $env:AUTO_CASE_BIN }
     $exe = Join-Path $RepoRoot "target/debug/$name.exe"
     if (Test-Path $exe) { return $exe }
-    Fail "$name.exe not prebuilt at $exe (build it first: cargo build -p auto-lang --features test-cases --bin $name)"
+    Fail "$name.exe not prebuilt at $exe (build it first: Invoke-AceCargo build -p auto-lang --features test-cases --bin $name)"
 }
 
 function Invoke-Suite([string]$suite, [string]$outDir, [string]$label) {
@@ -246,20 +248,20 @@ switch ($Scope) {
         # step declares the minimum number of executed tests it must report.
         $steps = @(
             @{ name = 'contract decode (ac_case)'; dir = $RepoRoot; min = 1;
-               args = @('test', '-p', 'auto-lang', '--lib', '--features', 'test-cases', '--', 'tests::ac_case_tests') },
+               args = @('test', '-p', 'ace-conformance', '--test', 'conformance', '--features', 'test-cases', '--', 'tests::native_protocol') },
             @{ name = 'contract admission negatives'; dir = $RepoRoot; min = 23;
                args = @('test', '-p', 'auto-test-case', '--test', 'contract_decode') },
             @{ name = 'parent judge (ac_av)'; dir = $RepoRoot; min = 4;
-               args = @('test', '-p', 'auto-lang-core', '--lib', '--features', 'test-cases', '--', 'test_cases::ac_av') },
-            @{ name = 'ac-core entry matrix'; dir = (Join-Path $RepoRoot 'experimental/ac-core'); min = 26;
-               args = @('test', '--test', 'entry_unit_862') },
-            @{ name = 'probe entry-unit round'; dir = (Join-Path $RepoRoot 'experimental/ac-av-probe'); min = 13;
-               args = @('test', '--test', 'av_entry_862') }
+               args = @('test', '-p', 'auto-lang-core', '--lib', '--features', 'test-cases,test-ace', '--', 'test_cases::ac_av') },
+            @{ name = 'ac-core entry matrix'; dir = (Join-Path $RepoRoot 'experimental/ace/crates/core'); min = 26;
+               args = @('test', '--test', 'entry_unit') },
+            @{ name = 'probe entry-unit round'; dir = (Join-Path $RepoRoot 'experimental/ace'); min = 13;
+               args = @('test', '--test', 'av_entry') }
         )
         foreach ($s in $steps) {
             $ErrorActionPreference = 'Continue'
             Push-Location $s.dir
-            $out = (& cargo @($s.args) 2>&1 | Out-String)
+            $out = (& Invoke-AceCargo @($s.args) 2>&1 | Out-String)
             $code = $LASTEXITCODE
             Pop-Location
             $ErrorActionPreference = 'Stop'

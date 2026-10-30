@@ -1,6 +1,6 @@
 # 闭包捕获 MIR（av.closures/1）
 
-> 来源 PLAN-823；实际实现 `experimental/ac-av-probe/core/src/{mir,mir_verify,instr_spec,abc,ownership}.rs`。
+> 来源 PLAN-823；实际实现 `experimental/ace/crates/av-core/src/{mir,mir_verify,instr_spec,abc,ownership}.rs`。
 
 ## 源码捕获映射（PLAN-865）
 

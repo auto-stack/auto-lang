@@ -1,0 +1,24 @@
+[package]
+autotests = false
+name = "ace-a2x-worker"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-892 T-02 private true-chain probe: source -> Checked HIR -> view -> Rust -> real rustc -> run -> oracle"
+publish = false
+
+[dependencies]
+ace-a2x-core = { path = "../a2x-core" }
+ace-a2x-rust = { path = "../a2x-rust" }
+ace-a2x-store = { path = "../a2x-store" }
+ace-core = { path = "../core" }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

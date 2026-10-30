@@ -1,6 +1,6 @@
 # auto-syntax grammar contract（规则程序合同）
 
-> **Status**: experimental（PLAN-787 冻结；实现=`experimental/ac-syntax/grammar`）
+> **Status**: experimental（PLAN-787 冻结；实现=`experimental/ace/crates/syntax-grammar`）
 > 来源：PLAN-787；上游模块 [project.md](project.md)；身份/codec 见
 > `runtime/src/program_codec.rs`。
 

@@ -41,7 +41,7 @@
 
 ## 证据锚点
 
-`experimental/ac-av-probe/probe/tests/av_owned_821_r1_replay.rs`（R3/R4
+`experimental/ace/crates/av/tests/av_owned_821_r1_replay.rs`（R3/R4
 永久例与逐字段不变量）、`av_owned_821_incremental.rs`（stale-link 拒）、
 corpus `av-owned-mut-writeback`（exit 808）。
 

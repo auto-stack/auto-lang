@@ -1,9 +1,0 @@
-[package]
-name = "auto-av-core"
-version = "0.1.0"
-edition = "2021"
-description = "PLAN-798 auto-av-core: Typed MIR model/verifier, ABC wire codec/verifier and the Rust AV executor for the limited av.core-i32/1 profile. Pure std — no auto-lang/UI/man/Cranelift dependencies."
-publish = false
-
-[dependencies]
-# Intentionally empty: this crate is the portable correctness layer.

@@ -1,7 +1,9 @@
 # auto-hir
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。Checked HIR仍由experimental/ace/crates/core的ace-core提供；不因目录调整改变IR及验证边界。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > **Status**: experimental
-> 路径：`experimental/ac-core`（独立 Cargo workspace，package `auto-ac-prototype`） | 技术栈：Rust（cranelift 0.126 栈消费方见 auto-ac）
+> 路径：`experimental/ace/crates/core`（ACE workspace成员，package `ace-core`） | 技术栈：Rust（cranelift 0.126 栈消费方见 auto-ac）
 
 core-i32 / scalar-i32 双 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
 绑定 → 语义校验 → `CheckedModule`。由 PLAN-741 建立首个闭环，PLAN-772 增设
@@ -12,7 +14,7 @@ scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模
 
 - **已注册双身份域**（精确可失败映射，未注册三元组不归类任何域）：
   - `auto.hir.core.draft` / revision 1 / `core-i32-draft`（descriptor
-    `experimental/ac-core/schema/core-i32.atom`）；未知 tag/case/字段/分支违约
+    `experimental/ace/crates/core/schema/core-i32.atom`）；未知 tag/case/字段/分支违约
     一律 bind 阶段拒绝；
   - `auto.hir.scalar.draft` / revision 1 / `scalar-i32-draft`（descriptor
     `schema/scalar-i32.atom`，core 的超集）。
@@ -101,10 +103,10 @@ scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模
 
 ## 边界与已知限制
 
-- 不宣称完整 HIR/Auto 语言支持；`experimental/ac-core` 与 v0.5 parser/VM/A2X、auto_val::Value 无关。
+- 不宣称完整 HIR/Auto 语言支持；`experimental/ace/crates/core` 与 v0.5 parser/VM/A2X、auto_val::Value 无关。
 - `loops`/`LoopId` 为函数体扁平表，嵌套合法性由 verify 的词法栈检查。
 - 文档样例源：`docs/design/strategy/hir-examples/*.atom`（01-add / 01-add.explicit / 02-control /
-  03-call-order）+ `experimental/ac-core/fixtures/{valid,invalid}/`（拒绝矩阵物化）。
+  03-call-order）+ `experimental/ace/crates/core/fixtures/{valid,invalid}/`（拒绝矩阵物化）。
 
 ## text-record 组合域（PLAN-782）
 

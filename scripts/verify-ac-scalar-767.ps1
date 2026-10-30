@@ -1,3 +1,5 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-767 one-shot scalar-profile verification script (ASCII only for
 # Windows PowerShell 5.1). Serially consumes the scalar case manifests:
 # every positive case is compiled (source via build-source under
@@ -7,19 +9,19 @@
 # errors expect exit 2. The contained executor is VERBATIM the 745/741
 # runner (suspended start, Job-Object containment, one deadline for exit +
 # pipe-EOF collection, full reclamation). Raw receipts land in
-# experimental/ac-core/target/ac-verify-receipts/scalar-767/ (gitignored).
+# experimental/ace/crates/core/target/ac-verify-receipts/scalar-767/ (gitignored).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-scalar-767.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
 # PLAN-871 T-05: build legs go through the shared-MIR `ac-native` CLI (the
 # receiver of ac-core's retiring build/build-source). Old assertion mapping:
 # every exit / stdout / stderr oracle is UNCHANGED (same frozen semantics);
 # the old `app.obj` product assertion becomes "receipt exists and carries
 # backend/mir-lowering needles" — the shared-MIR backend links a multi-unit
 # closure and has no single object.
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\scalar-767'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -512,17 +514,17 @@ Invoke-Step 'build tool binaries once' {
     if ($r.Code -ne 0) { throw $r.Stderr }
     $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900
     if ($m.Code -ne 0) { throw $m.Stderr }
-    $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
-    $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+    $script:Bin = Join-Path $RepoRoot 'experimental/ace/target/debug/ac-native.exe'
+    $script:CheckBin = Join-Path $RepoRoot 'experimental/ace/target/debug/ace-core.exe'
     if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
     ("binary: " + $script:Bin) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
     ("binary-sha256: " + (Get-Sha256 $script:Bin)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
 
 Invoke-Step 'build trace support library once' {
-    $r = Invoke-Captured 'cargo' @('build', '--locked') (Join-Path $AcCore 'test-support') -TimeoutSec 600
+    $r = Invoke-Captured 'cargo' @('build', '--locked', '--profile', 'runtime-dev') (Join-Path $RepoRoot 'experimental/ace/crates/trace-runtime') -TimeoutSec 600
     if ($r.Code -ne 0) { throw $r.Stderr }
-    $script:SupportLib = Join-Path $AcCore 'test-support\target\debug\ac_trace_support.lib'
+    $script:SupportLib = Join-Path $RepoRoot 'experimental/ace/target/runtime-dev/ace_trace_runtime.lib'
     if (-not (Test-Path $script:SupportLib)) { throw "support lib missing: $script:SupportLib" }
     ("support-lib-sha256: " + (Get-Sha256 $script:SupportLib)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
@@ -533,7 +535,7 @@ Invoke-Step 'positive SOURCE cases: build + run (11)' {
     foreach ($c in $SourcePositive) {
         $dir = Join-Path $ReceiptsDir ('source-positive\' + $c.Id)
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\scalar-source\valid\" + $c.File)
+        $src = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\scalar-source\valid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         $exe = Join-Path $dir 'app.exe'
@@ -567,7 +569,7 @@ Invoke-Step 'positive HIR cases: build + run (15)' {
     foreach ($c in $HirPositive) {
         $dir = Join-Path $ReceiptsDir ('hir-positive\' + $c.Id)
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\scalar-hir\valid\" + $c.File)
+        $src = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\scalar-hir\valid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         ("entry: " + $c.Entry) | Add-Content (Join-Path $dir 'case.txt')
@@ -594,7 +596,7 @@ Invoke-Step 'negative SOURCE cases: check-source rejects (19)' {
     foreach ($c in $SourceNegative) {
         $dir = Join-Path $ReceiptsDir ('source-negative\' + $c.Id)
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $src = Join-Path $RepoRoot ("experimental\ac-core\fixtures\scalar-source\invalid\" + $c.File)
+        $src = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\scalar-source\invalid\" + $c.File)
         ("input: " + $src) | Set-Content (Join-Path $dir 'case.txt')
         ("input-sha256: " + (Get-Sha256 $src)) | Add-Content (Join-Path $dir 'case.txt')
         $r = Invoke-Captured $script:CheckBin @('check-source', $src, '--source-profile', $Scalar) $RepoRoot -TimeoutSec 60
@@ -609,7 +611,7 @@ Invoke-Step 'negative SOURCE cases: check-source rejects (19)' {
 }
 
 Invoke-Step 'profile isolation cases (V-01/V-12 CLI)' {
-    $scalarMatrix = Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-source\valid\p-cmp-matrix.at'
+    $scalarMatrix = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\scalar-source\valid\p-cmp-matrix.at'
     # old source profile rejects the SAME scalar source at the operator
     $r = Invoke-Captured $script:CheckBin @('check-source', $scalarMatrix, '--source-profile', $Core) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1) { throw "core on scalar source exited $($r.Code), expected 1" }
@@ -618,12 +620,12 @@ Invoke-Step 'profile isolation cases (V-01/V-12 CLI)' {
     $r = Invoke-Captured $script:CheckBin @('check-source', $scalarMatrix, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 2) { throw "unknown profile exited $($r.Code), expected 2" }
     # unknown HIR triple is a controlled bind diagnostic
-    $unknown = Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-hir\invalid\i09-unknown-triple.atom'
+    $unknown = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\scalar-hir\invalid\i09-unknown-triple.atom'
     $r = Invoke-Captured $script:CheckBin @('check', $unknown) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 1) { throw "unknown triple exited $($r.Code), expected 1" }
     if ($r.Stderr -notmatch [regex]::Escape('bind/bind.descriptor-unknown')) { throw "expected bind.descriptor-unknown: $($r.Stderr)" }
     # scalar HIR document checks OK and reports the scalar domain
-    $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-hir\valid\n01-divrem-table.atom')) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\scalar-hir\valid\n01-divrem-table.atom')) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 0) { throw "scalar check exited $($r.Code): $($r.Stderr)" }
     if ($r.Stdout -notmatch 'hir-profile scalar-i32-draft') { throw "domain missing in: $($r.Stdout)" }
     # while/for isolation both ways (temp sources)
@@ -646,7 +648,7 @@ Invoke-Step 'profile isolation cases (V-01/V-12 CLI)' {
 Invoke-Step 'receipt identity lines (V-10)' {
     $dir = Join-Path $ReceiptsDir 'identity'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $src = Join-Path $RepoRoot 'experimental\ac-core\fixtures\scalar-source\valid\p-gcd-euclid.at'
+    $src = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\scalar-source\valid\p-gcd-euclid.at'
     $exe = Join-Path $dir 'app.exe'
     $r = Invoke-Captured $script:Bin @('build-source', $src, '--source-profile', $Scalar, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
     if ($r.Code -ne 0) { throw "build exited $($r.Code): $($r.Stderr)" }

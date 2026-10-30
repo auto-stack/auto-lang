@@ -3,7 +3,7 @@
 > **PLAN-858 开发期周转口径**：ACE 有效样本按升序取第 `N-floor(N/10)` 项（从 1 开始）为 P90，硬门为 P90≤2000ms；正式样本数不减少，10 项最多 1 项超过 2000ms，等值通过。缺失、非法或错误结果不得计入绿；保留各路径原有零值准入、真实窗口、结构与资源断言。P95/P99 作为诊断与历史数据保留；架构基本成形后以实测另定长期目标。详见 [TestCase v2 周转口径](../auto-test-case/profile-v2-native.md)。
 
 
-> Status: active（实现=`experimental/ac-mir-native/src/{cache,link_driver,driver,
+> Status: active（实现=`experimental/ace/crates/native/src/{cache,link_driver,driver,
 > incremental}.rs` + 783/787/788 受管 store 复用）。与
 > [mir-native-scalar.md](mir-native-scalar.md)（语言面）配套。
 

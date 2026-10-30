@@ -1,0 +1,21 @@
+[package]
+name = "ace-semantics"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-796 limited semantic core: neutral input model, bidirectional i32/bool inference, queries with dependency manifests, read-only reflection, CT seam"
+publish = false
+
+[dependencies]
+ace-semantics-contract = { path = "../semantics-contract" }
+
+# The ac-core AST adapter is FEATURE-GATED (plan §2: the semantic model
+# itself must not depend on auto-lang/UI/VM/Cranelift/auto-man — and
+# ac-core's regular deps include Cranelift). Default builds of this crate
+# prove the model is backend-free (V-09: cargo tree shows no product
+# backends); the probe enables this feature for the real-AST adapter.
+[features]
+core-ast = ["dep:ace-core"]
+
+[dependencies.ace-core]
+path = "../core"
+optional = true

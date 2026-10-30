@@ -5,6 +5,8 @@ param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [Parameter(Mandatory = $true)][string]$OutDir
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -12,7 +14,7 @@ $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 function Fail([string]$message) { throw "verify-av-863 [$Scope]: $message" }
 function Invoke-Checked([string]$label, [string[]]$Arguments, [int]$Minimum) {
     $log = Join-Path $OutDir "$label.log"
-    & cargo @Arguments *> $log
+    & Invoke-AceCargo @Arguments *> $log
     if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 30 | Write-Host; Fail "$label failed; $log" }
     $passed = 0
     foreach ($line in Get-Content $log) {
@@ -23,7 +25,7 @@ function Invoke-Checked([string]$label, [string[]]$Arguments, [int]$Minimum) {
 }
 function Invoke-Suite([string]$suite, [string]$label) {
     $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else { Join-Path $RepoRoot 'target/debug/auto-case.exe' }
-    if (-not (Test-Path -LiteralPath $bin)) { Fail "prebuild auto-case with cargo build -p auto-lang --features test-cases --bin auto-case" }
+    if (-not (Test-Path -LiteralPath $bin)) { Fail "prebuild auto-case with Invoke-AceCargo build -p auto-lang --features test-cases --bin auto-case" }
     $dest = Join-Path $OutDir $label
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
     $json = Join-Path $dest 'report.json'
@@ -49,7 +51,7 @@ function Console {
         }
     }
     # Actual sabotage, missing-axis, raw NUL and resource controls use the same parent dispatch.
-    Invoke-Checked 'parent-controls' @('test','-p','auto-lang-core','--features','test-cases','--test','host_console_863') 5
+    Invoke-Checked 'parent-controls' @('test','-p','ace-conformance','--features','test-cases','--test','conformance','console::') 5
 }
 Push-Location -LiteralPath $RepoRoot
 try {
@@ -62,9 +64,9 @@ try {
         }
         'targeted' {
             Invoke-Checked 'contract' @('test','-p','auto-test-case','--test','contract_decode') 25
-            Invoke-Checked 'parent-admission' @('test','-p','auto-lang-core','--features','test-cases','--lib','console_863_tests') 2
-            Invoke-Checked 'source' @('test','--manifest-path','experimental/ac-core/Cargo.toml','--test','host_console_863') 8
-            Invoke-Checked 'runtime' @('test','--manifest-path','experimental/ac-av-probe/Cargo.toml','-p','auto-av-probe','--test','host_console_863') 18
+            Invoke-Checked 'parent-admission' @('test','-p','auto-lang-core','--features','test-cases,test-ace','--lib','test_cases::ac_av::console_tests::') 2
+            Invoke-Checked 'source' @('test','--manifest-path','experimental/ace/crates/core/Cargo.toml','--test','host_console') 8
+            Invoke-Checked 'runtime' @('test','--manifest-path','experimental/ace/Cargo.toml','-p','ace-av','--test','host_console') 18
         }
         'acceptance' {
             foreach ($part in @('targeted','compat','console')) {

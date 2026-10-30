@@ -19,7 +19,7 @@ PLAN-862 增加 av.entry-unit/1 入口/Unit MIR（身份 `auto.mir.av-entry-unit
 拒绝）。执行侧通道语义见 [auto-av/entry-and-unit-profile.md](../auto-av/entry-and-unit-profile.md)。
 
 PLAN-868 起 HIR→Typed MIR lowering 的唯一实现出库为共享 crate
-`experimental/auto-mir-lower`（自 av-probe 字节级纯搬移，probe/mn/cte 三消费者共用，
+`experimental/ace/crates/lowering`（自 av-probe 字节级纯搬移，probe/mn/cte 三消费者共用，
 MIR 合同语义不变）；边界、依赖方向红线与 `MIR_LOWERING_VERSION` 版本身份见
 [hir-lowering-boundary](hir-lowering-boundary.md)。
 

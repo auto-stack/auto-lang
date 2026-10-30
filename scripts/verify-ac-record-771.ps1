@@ -1,3 +1,5 @@
+
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 # PLAN-771 one-shot record-profile verification script (ASCII only for
 # Windows PowerShell 5.1). Serial gate: full ac-core check/fmt/tests (all
 # domains), record_native PE suite single-threaded, the record case
@@ -9,20 +11,20 @@
 # SENTINEL transaction preservation, receipt identity), then the three
 # old-profile gates (741 -SkipMainGates / 745 / 767) to prove the old
 # surfaces are byte-for-byte unaffected. Raw receipts land in
-# experimental/ac-core/target/ac-verify-receipts/record-771/ (gitignored).
+# experimental/ace/crates/core/target/ac-verify-receipts/record-771/ (gitignored).
 # The contained executor is VERBATIM the 745/741/767 runner.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-record-771.ps1
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
+$AcCore = Join-Path $RepoRoot 'experimental/ace/crates/core'
 # PLAN-871 T-05: build legs (HIR `build` and `build-source`) run through the
 # shared-MIR `ac-native` CLI (the receiver of ac-core's retiring
 # build/build-source). Old assertion mapping: every exit / stdout / stderr
 # oracle is UNCHANGED; the old `app.obj` product assertions become "receipt
 # exists / survives the failed-build transaction with backend+mir axes" —
 # the shared-MIR closure has no single object.
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
+$AcMn = Join-Path $RepoRoot 'experimental/ace/crates/native'
 $ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\record-771'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
@@ -446,7 +448,7 @@ Invoke-Step 'cargo test --locked (full ac-core)' {
 # PLAN-871 T-06 mapping: record_native (retired lowering PE suite) → this
 # script's ac-native SOURCE/HIR record legs below (same frozen exits,
 # including the SP05 ctor-snapshot rows) plus
-# `ac-mir-native/tests/record_method_tier.rs` and `gap_closure_871.rs`.
+# `ac-mir-native/tests/cases/record_method_tier.rs` and `gap_closure_871.rs`.
 
 # ---- 3. serial case walkthrough ----
 Invoke-Step 'build tool binaries once' {
@@ -454,17 +456,17 @@ Invoke-Step 'build tool binaries once' {
     if ($r.Code -ne 0) { throw $r.Stderr }
     $m = Invoke-Captured 'cargo' @('build', '--locked', '--manifest-path', (Join-Path $AcMn 'Cargo.toml'), '--bin', 'ac-native') $RepoRoot -TimeoutSec 900
     if ($m.Code -ne 0) { throw $m.Stderr }
-    $script:Bin = Join-Path $AcMn 'target\debug\ac-native.exe'
-    $script:CheckBin = Join-Path $AcCore 'target\debug\auto-ac-prototype.exe'
+    $script:Bin = Join-Path $RepoRoot 'experimental/ace/target/debug/ac-native.exe'
+    $script:CheckBin = Join-Path $RepoRoot 'experimental/ace/target/debug/ace-core.exe'
     if (-not (Test-Path $script:Bin)) { throw "binary missing: $script:Bin" }
     ("binary: " + $script:Bin) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
     ("binary-sha256: " + (Get-Sha256 $script:Bin)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
 
 Invoke-Step 'build trace support library once' {
-    $r = Invoke-Captured 'cargo' @('build', '--locked') (Join-Path $AcCore 'test-support') -TimeoutSec 600
+    $r = Invoke-Captured 'cargo' @('build', '--locked', '--profile', 'runtime-dev') (Join-Path $RepoRoot 'experimental/ace/crates/trace-runtime') -TimeoutSec 600
     if ($r.Code -ne 0) { throw $r.Stderr }
-    $script:SupportLib = Join-Path $AcCore 'test-support\target\debug\ac_trace_support.lib'
+    $script:SupportLib = Join-Path $RepoRoot 'experimental/ace/target/runtime-dev/ace_trace_runtime.lib'
     if (-not (Test-Path $script:SupportLib)) { throw "support lib missing: $script:SupportLib" }
     ("support-lib-sha256: " + (Get-Sha256 $script:SupportLib)) | Add-Content (Join-Path $ReceiptsDir 'context.txt')
 }
@@ -474,7 +476,7 @@ $caseSummary = New-Object System.Collections.Generic.List[object]
 Invoke-Step 'positive SOURCE case: flagship build + run (V-02/V-06/V-08)' {
     $dir = Join-Path $ReceiptsDir 'source-positive\SP01'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-source\valid\p01-records.at'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-source\valid\p01-records.at'
     ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
     ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
     $exe = Join-Path $dir 'app.exe'
@@ -519,7 +521,7 @@ Invoke-Step 'positive SOURCE case: eval-order trace build + run (V-05/V-07)' {
 Invoke-Step 'positive HIR case: record fixture build + run (V-02 HIR leg)' {
     $dir = Join-Path $ReceiptsDir 'hir-positive\HP01'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r01-records.atom'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-hir\valid\r01-records.atom'
     ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
     ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
     $exe = Join-Path $dir 'app.exe'
@@ -534,7 +536,7 @@ Invoke-Step 'positive HIR case: record fixture build + run (V-02 HIR leg)' {
 Invoke-Step 'HIR failure control: forced copy-check exits 11 (F-771-R1-04)' {
     $dir = Join-Path $ReceiptsDir 'hir-positive\HP02'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\controls\r02-broken-copy-check.atom'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-hir\controls\r02-broken-copy-check.atom'
     ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
     ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
     $exe = Join-Path $dir 'app.exe'
@@ -549,7 +551,7 @@ Invoke-Step 'HIR failure control: forced copy-check exits 11 (F-771-R1-04)' {
 Invoke-Step 'positive HIR case: nested copy / aggregate return / aliasing (F-771-R1-01/04)' {
     $dir = Join-Path $ReceiptsDir 'hir-positive\HP03'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r03-copy-return-alias.atom'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-hir\valid\r03-copy-return-alias.atom'
     ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
     ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
     $exe = Join-Path $dir 'app.exe'
@@ -625,7 +627,7 @@ Invoke-Step 'positive SOURCE cases: ctor operand snapshot order (F-771-R2-01)' {
 Invoke-Step 'positive HIR case: ctor operand snapshot order (F-771-R2-01)' {
     $dir = Join-Path $ReceiptsDir 'hir-positive\HP04'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r04-ctor-snapshot-order.atom'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-hir\valid\r04-ctor-snapshot-order.atom'
     ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
     ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
     $exe = Join-Path $dir 'app.exe'
@@ -654,7 +656,7 @@ $SourceNegative = @(
 
 Invoke-Step 'negative SOURCE cases: check-source rejects (10)' {
     foreach ($c in $SourceNegative) {
-        $srcp = Join-Path $RepoRoot ("experimental\ac-core\fixtures\record-source\invalid\" + $c.File)
+        $srcp = Join-Path $RepoRoot ("experimental/ace/crates/core\fixtures\record-source\invalid\" + $c.File)
         $r = Invoke-Captured $script:CheckBin @('check-source', $srcp, '--source-profile', $Record) $RepoRoot -TimeoutSec 60
         if ($r.Code -ne 1) { throw "$($c.Id): exited $($r.Code), expected 1" }
         if ($r.Stderr -notmatch [regex]::Escape($c.Code)) { throw "$($c.Id): expected $($c.Code), got $($r.Stderr)" }
@@ -663,7 +665,7 @@ Invoke-Step 'negative SOURCE cases: check-source rejects (10)' {
 }
 
 Invoke-Step 'profile isolation (V-01: old profiles reject the record surface)' {
-    $rec = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-source\valid\p01-records.at'
+    $rec = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-source\valid\p01-records.at'
     foreach ($prof in @('auto.source.core-i32.draft', 'auto.source.scalar-i32.draft')) {
         $r = Invoke-Captured $script:CheckBin @('check-source', $rec, '--source-profile', $prof) $RepoRoot -TimeoutSec 60
         if ($r.Code -ne 1) { throw "$prof on record source exited $($r.Code), expected 1" }
@@ -673,7 +675,7 @@ Invoke-Step 'profile isolation (V-01: old profiles reject the record surface)' {
     $r = Invoke-Captured $script:CheckBin @('check-source', $rec, '--source-profile', 'auto.source.future.draft') $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 2) { throw "unknown profile exited $($r.Code), expected 2" }
     # record HIR document checks OK and reports the record domain
-    $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r01-records.atom')) $RepoRoot -TimeoutSec 60
+    $r = Invoke-Captured $script:CheckBin @('check', (Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-hir\valid\r01-records.atom')) $RepoRoot -TimeoutSec 60
     if ($r.Code -ne 0) { throw "record check exited $($r.Code): $($r.Stderr)" }
     if ($r.Stdout -notmatch 'hir-profile record-i32-draft') { throw "domain missing in: $($r.Stdout)" }
 }
@@ -681,7 +683,7 @@ Invoke-Step 'profile isolation (V-01: old profiles reject the record surface)' {
 Invoke-Step 'SENTINEL transaction (V-10: failed build preserves artifacts)' {
     $dir = Join-Path $ReceiptsDir 'sentinel'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-source\valid\p01-records.at'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-source\valid\p01-records.at'
     $exe = Join-Path $dir 'app.exe'
     $rcpt = Join-Path $dir 'app.ac-link.txt'
     $build = Invoke-Captured $script:Bin @('build-source', $srcp, '--source-profile', $Record, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
@@ -702,7 +704,7 @@ Invoke-Step 'SENTINEL transaction (V-10: failed build preserves artifacts)' {
 Invoke-Step 'receipt identity lines (V-10)' {
     $dir = Join-Path $ReceiptsDir 'identity'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-source\valid\p01-records.at'
+    $srcp = Join-Path $RepoRoot 'experimental/ace/crates/core\fixtures\record-source\valid\p01-records.at'
     $exe = Join-Path $dir 'app.exe'
     $r = Invoke-Captured $script:Bin @('build-source', $srcp, '--source-profile', $Record, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
     if ($r.Code -ne 0) { throw "build exited $($r.Code): $($r.Stderr)" }

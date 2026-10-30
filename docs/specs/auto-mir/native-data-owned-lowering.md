@@ -1,6 +1,6 @@
 # auto.mir native data/owned lowering 合同（PLAN-870）
 
-> **Status**: experimental（PLAN-870 交付；实现在 `experimental/ac-mir-native`
+> **Status**: experimental（PLAN-870 交付；实现在 `experimental/ace/crates/native`
 > 的 lower/emit/layout，消费 auto-mir-lower 产出的 av.data/1 与 av.owned/1 单元）
 
 ## 准入面
@@ -79,7 +79,7 @@ closures/dynamic。PLAN-889的显式collection源码子集/typed Clone见证另�
 
 ## 验收锚点
 
-`experimental/ac-mir-native/tests/data_owned_tier.rs`（三路差分 11 行 +
+`experimental/ace/crates/native/tests/cases/data_owned_tier.rs`（三路差分 11 行 +
 mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控；PLAN-894 起 T03=23
 入值行含 arena 事件轴）；
 `crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad`（33 检查 +
@@ -91,7 +91,7 @@ mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控；PLAN-894 起 T
 - T03/T05 真源经 mn PE 实测 23/42（StrCmp 视图比较、concat view 化、
   §5.1 局部替换沿 Move 提交）；语义身份经 MIR_LOWERING_VERSION "4" 与
   三 SDK 镜像同步。
-- `ac-mir-native/src/owned_source_incremental.rs`：owned 文本源的函数级
+- `experimental/ace/crates/native/src/owned_source_incremental.rs`：owned 文本源的函数级
   增量会话——828 CheckedEnv/prepare_candidate_document 单体事务 +
   lower_function_owned_unit_with_modes 单元降级 + 既有 per-unit
   COFF/cache/link。未改单元指纹/代际不动、whole 0；内容命中复用历史

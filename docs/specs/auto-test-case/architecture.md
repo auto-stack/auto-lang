@@ -45,7 +45,7 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
 
 ## B 阶段执行拓扑（PLAN-788：native worker 与全量父侧判定）
 
-- 单管线复用：auto-lang `test_cases::ac` 编排，`experimental/ac-case-worker`
+- 单管线复用：auto-lang `test_cases::ac` 编排，`experimental/ace/crates/case-worker`
   独立 workspace 持有实验编译栈（ac-core 前端/verify/lower、783 store、787
   runtime——无第二执行器）；**auto-lang 零静态依赖实验编译器/Cranelift**
   （红线），经 `acworker/1` JSON-lines 有界会话 IPC 子进程调用（deny_unknown_

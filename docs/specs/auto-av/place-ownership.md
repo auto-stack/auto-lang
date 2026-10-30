@@ -9,7 +9,7 @@ PLAN-894 起源码面 owned `Str` 局部（var）完整根 `=` 替换经同一 M
 映射准入（前端合同见 auto-ac/source-text-replacement.md；旧缓冲 RHS 后
 释放恰一次、新值出口释放恰一次——arena 事件轴实测）。
 producer `plan821/av-owned`，语义版本轴 1/1/1 独立；缓存键含 types-fp 轴。
-实际 Rust 包位于 `experimental/ac-av-probe`（auto-av-core / auto-av-probe）。
+实际 Rust 包位于 `experimental/ace`（auto-av-core / auto-av-probe）。
 
 ## 类型与指令
 
@@ -70,7 +70,7 @@ List/闭包/Dyn/async/native ABI（见 [project](project.md)）。
 
 ## 证据锚点
 
-`experimental/ac-av-probe/probe/tests/`：av_owned_821_semantics（25+V05/v02
+`experimental/ace/crates/av/tests/`：av_owned_821_semantics（25+V05/v02
 定向）、av_owned_821_r1_replay（12，含 mut 循环/重初始化/父子重叠/808/
 810/8917/801/RecordView 载荷）、av_owned_821_resources（7）、
 av_owned_821_first_case（5）、corpus `crates/auto-lang/test/cases/av-data/821/`。

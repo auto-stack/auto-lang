@@ -1,4 +1,4 @@
-﻿# PLAN-787 验收聚合脚本（V-01..V-13 矩阵）
+# PLAN-787 验收聚合脚本（V-01..V-13 矩阵）
 # 用法：
 #   scripts/verify-ac-syntax-787.ps1 -Scope acceptance   # 日常验收（含 work-owned 全矩阵）
 #   scripts/verify-ac-syntax-787.ps1 -Scope closeout     # merge 冻结提交完整套件
@@ -11,6 +11,8 @@ param(
     [ValidateSet("acceptance", "closeout")]
     [string]$Scope = "acceptance"
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 # 注意：cargo 向 stderr 输出编译警告（shim-metadata 预存归属）——EAP 必须
 # 为 Continue，否则 PowerShell 把 stderr 行当 NativeCommandError 终止；失败
@@ -18,33 +20,33 @@ param(
 $ErrorActionPreference = "Continue"
 Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
 $root = Split-Path -Parent $PSScriptRoot
-$manifest = Join-Path $root "experimental/ac-syntax/Cargo.toml"
+$manifest = Join-Path $root "experimental/ace/Cargo.toml"
 
 # 族表：family -> (package, 最小通过数)
 $families = [ordered]@{
-    "snapshot_"              = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
-    "grammar_"               = @{ pkg = "ac-syntax-grammar";     min = 6 }
-    "grammar_reject_"        = @{ pkg = "ac-syntax-grammar";     min = 7 }
-    "lossless_"              = @{ pkg = "ac-syntax-grammar";     min = 9 }
-    "recovery_"              = @{ pkg = "ac-syntax-grammar";     min = 4 }
-    "core_projection_"       = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
-    "incremental_local_"     = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
-    "incremental_replay_"    = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
-    "generation_"            = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
-    "depth_"                 = @{ pkg = "ac-syntax-grammar";     min = 4 }
-    "depth_persisted_"       = @{ pkg = "ac-syntax-artifact-adapter"; min = 1 }
-    "syntax_cache_"          = @{ pkg = "ac-syntax-artifact-adapter"; min = 5 }
-    "syntax_admission_"      = @{ pkg = "ac-syntax-artifact-adapter"; min = 6 }
-    "compatibility_"         = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
-    "perf_"                  = @{ pkg = "ac-syntax-core-adapter"; min = 2 }
-    "syntax_budget_"         = @{ pkg = "ac-syntax-artifact-adapter"; min = 2 }
+    "snapshot"              = @{ pkg = "ace-syntax-core"; min = 4 }
+    "grammar"               = @{ pkg = "ace-syntax-grammar";     min = 6 }
+    "grammar_reject"        = @{ pkg = "ace-syntax-grammar";     min = 7 }
+    "lossless"              = @{ pkg = "ace-syntax-grammar";     min = 9 }
+    "recovery"              = @{ pkg = "ace-syntax-grammar";     min = 4 }
+    "core_projection"       = @{ pkg = "ace-syntax-core"; min = 4 }
+    "incremental_local"     = @{ pkg = "ace-syntax-core"; min = 3 }
+    "incremental_replay"    = @{ pkg = "ace-syntax-core"; min = 4 }
+    "generation"            = @{ pkg = "ace-syntax-core"; min = 3 }
+    "depth"                 = @{ pkg = "ace-syntax-grammar";     min = 4 }
+    "depth_persisted"       = @{ pkg = "ace-syntax-artifacts"; min = 1 }
+    "syntax_cache"          = @{ pkg = "ace-syntax-artifacts"; min = 5 }
+    "syntax_admission"      = @{ pkg = "ace-syntax-artifacts"; min = 6 }
+    "compatibility"         = @{ pkg = "ace-syntax-core"; min = 3 }
+    "perf"                  = @{ pkg = "ace-syntax-core"; min = 2 }
+    "syntax_budget"         = @{ pkg = "ace-syntax-artifacts"; min = 2 }
 }
 
 $failed = @()
 foreach ($family in $families.Keys) {
     $spec = $families[$family]
     Write-Host "== $family ($($spec.pkg)) =="
-    $out = & cargo test "--manifest-path" $manifest "-p" $spec.pkg "--" $family "--test-threads=1" 2>&1
+    $out = & Invoke-AceCargo test "--manifest-path" $manifest "-p" $spec.pkg "--" $family "--test-threads=1" 2>&1
     $text = $out | Out-String
     if ($LASTEXITCODE -ne 0) {
         Write-Host $text
@@ -89,7 +91,7 @@ if ($failed.Count -gt 0) {
 # closeout：完整独立语法工作区 + 受影响的 783 独立套件（schema/codec/admission 触面）。
 if ($Scope -eq "closeout") {
     Write-Host "== syntax workspace full (all packages, all targets) =="
-    & cargo test "--manifest-path" $manifest "--workspace" 2>&1 | Out-Null
+    & Invoke-AceCargo test "--manifest-path" $manifest -p ace-syntax-runtime -p ace-syntax-grammar -p ace-syntax-core -p ace-syntax-artifacts 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAIL syntax workspace full suite"
         exit 1
@@ -97,10 +99,10 @@ if ($Scope -eq "closeout") {
     Write-Host "PASS syntax workspace full suite"
 
     Write-Host "== 783 touched families (--lib / admission_ / dep_audit_) =="
-    $probe = Join-Path $root "experimental/ac-artifact-probe/Cargo.toml"
+    $probe = Join-Path $root "experimental/ace/crates/artifacts/Cargo.toml"
     foreach ($t in @(@("--lib"), @("--test", "admission_"), @("--test", "dep_audit_"))) {
         $cargoArgs = @("test", "--manifest-path", $probe) + $t + @("--", "--test-threads=1")
-        & cargo @cargoArgs | Out-Null
+        & Invoke-AceCargo @cargoArgs | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "FAIL probe $($t -join ' ')"
             exit 1

@@ -5,7 +5,7 @@
 //! Same contract shape as `sema.rs` (the seam's first recipe): the case
 //! declares a recipe + one declarative `run` step + an `av` binding
 //! (entry/caps); this adapter spawns the plan's own worker
-//! (`av_probe_worker case-serve`, envelope `avworker/1`) under Job
+//! (`av-worker case-serve`, envelope `avworker/1`) under Job
 //! containment, admits the envelope/nonce/request-hash/recipe/version
 //! echoes, and judges the observed outcome PARENT-SIDE against the
 //! declared expectations. The worker never sees the expected outcomes.
@@ -194,7 +194,7 @@ pub const AV_WORKER_PROTOCOL: &str = "avworker/1";
 /// bump without a mirror update fails loudly.
 pub const EXPECTED_AV_WORKER_VERSION: &str = "avworker/1.0";
 pub const EXPECTED_AV_CORE_VERSION: &str = "av.core-i32/1";
-/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// PLAN-868: admission mirror of `ace_lowering::MIR_LOWERING_VERSION` —
 /// every av recipe family lowers HIR→MIR through the shared crate; a
 /// lowering contract bump without a mirror update fails the identity axis.
 pub const EXPECTED_MIR_LOWERING_VERSION: &str = "4";
@@ -337,7 +337,7 @@ mod worker_identity_tests {
 
 /// Locate (and on first use build) the av worker binary. Env override
 /// first (trusted host configuration binds the tool identity);
-/// otherwise find `experimental/ac-av-probe` from this crate's source
+/// otherwise find `experimental/ace` from this crate's source
 /// root and build its worker release (bounded).
 pub fn worker_binary() -> Result<PathBuf, String> {
     if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
@@ -364,13 +364,10 @@ fn locate_worker() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "av probe worker not located: no experimental/ac-av-probe above the crate and no AC_AV_CASE_WORKER override".to_string(),
+                "av probe worker not located: no experimental/ace above the crate and no AC_AV_CASE_WORKER override".to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("ac-av-probe")
-            .join("Cargo.toml");
+        let m = d.join("experimental/ace").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -403,17 +400,10 @@ fn locate_worker() -> Result<PathBuf, String> {
     );
     let build_started = Instant::now();
     let mut cmd = Command::new(&cargo);
-    cmd.args([
-        "build",
-        "--release",
-        "-p",
-        "auto-av-probe",
-        "--bin",
-        "av_probe_worker",
-    ])
-    .current_dir(ws_root)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    cmd.args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
+        .current_dir(ws_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -560,11 +550,11 @@ fn locate_worker() -> Result<PathBuf, String> {
 
 #[cfg(windows)]
 fn av_worker_exe_name() -> &'static str {
-    "av_probe_worker.exe"
+    "av-worker.exe"
 }
 #[cfg(not(windows))]
 fn av_worker_exe_name() -> &'static str {
-    "av_probe_worker"
+    "av-worker"
 }
 
 // ---- typed response mirror ----------------------------------------------
@@ -3892,7 +3882,7 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
 }
 
 #[cfg(all(test, feature = "test-ace"))]
-mod console_863_tests {
+mod console_tests {
     use super::*;
 
     fn observation() -> serde_json::Value {
@@ -3905,7 +3895,7 @@ mod console_863_tests {
         console_admission(RecipeFamily::Console, &[serde_json::from_value(v).unwrap()])
     }
     #[test]
-    fn console_863_admission_rejects_missing_truncated_malformed_and_foreign_faces() {
+    fn console_admission_rejects_missing_truncated_malformed_and_foreign_faces() {
         assert!(admit(observation()).is_none());
         let mut missing = observation();
         missing.as_object_mut().unwrap().remove("console");
@@ -3945,7 +3935,7 @@ mod console_863_tests {
         }
     }
     #[test]
-    fn console_863_admission_caps_combined_bytes_and_keeps_resources_errors() {
+    fn console_admission_caps_combined_bytes_and_keeps_resources_errors() {
         let mut v = observation();
         let encoded = base64::engine::general_purpose::STANDARD.encode(vec![0u8; (1 << 19) + 1]);
         v["console"]["stdout_b64"] = encoded.clone().into();

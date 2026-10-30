@@ -1,7 +1,7 @@
 # Auto 源码 record profile
 
 > **Status**: experimental；`auto.source.record.draft` revision 1（PLAN-771）。
-> 实现：`experimental/ac-core/src/source/`（与 core/scalar 共用前端骨架，profile
+> 实现：`experimental/ace/crates/core/src/source/`（与 core/scalar 共用前端骨架，profile
 > 显式选择）；消费端见 [project.md](project.md)；姊妹 profile 见
 > [source-core-i32.md](source-core-i32.md) 与 [source-scalar-i32.md](source-scalar-i32.md)。
 
@@ -16,7 +16,7 @@
 
 - source `auto.source.record.draft` → HIR `auto.hir.record.draft / 1 /
   record-i32-draft`（774 interface-contract §7.2 唯一身份表；descriptor
-  `experimental/ac-core/schema/record.atom`）。
+  `experimental/ace/crates/core/schema/record.atom`）。
 - 身份映射为**精确可失败映射**：未注册三元组由 bind 整体拒绝
   （`bind.descriptor-unregistered`）；canonical writer 对未注册/错域一律拒绝。
 - verify 分域入口 `verify_record` 限本域；core/scalar 入口拒绝本域文档

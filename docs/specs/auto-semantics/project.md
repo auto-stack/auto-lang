@@ -1,8 +1,10 @@
 # auto-semantics 项目卡（AC 语义元信息与类型推导探针）
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-semantics-contract、ace-semantics与ace-semantics-store位于crates/semantics-*，仍为实验实现。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > **Status**: experimental（PLAN-796 探针冻结契约；实现面=独立探针 workspace，非生产）
 > 来源：PLAN-796（[归档计划](../../plans/archive/796-ac-semantic-metadata-inference-probe.md)）;
-> 登记实现 = `experimental/ac-semantics/`（contract/core/probe 三 crate，
+> 登记实现 = `experimental/ace/`（contract/core/probe 三 crate，
 > 唯一登记源）; 冻结决策 D1–D24 见
 > [attachments/796/contract-decision.md](../../plans/attachments/796/contract-decision.md)。
 > 设计输入：[Design 42](../../design/42-semantic-metadata-inference-and-comptime.md)。
@@ -25,7 +27,7 @@
 ## 结构与依赖边界
 
 ```
-experimental/ac-semantics/
+experimental/ace/
   contract/  —— 语义模型/身份/codec（零产品依赖）
   core/      —— 有限推导/query/反射投影（core-ast feature 隔离后端依赖）
   probe/     —— 783 store 消费/预算/IPC/周转（唯一持久化面）

@@ -4,7 +4,7 @@
 > 范围：首平台 Windows x86_64-pc-windows-msvc / Windows x64 调用约定
 
 首版 Windows x64 有限 profile 合同正文。全部规则由
-`experimental/auto-abi-probe` 的真实编译/链接/PE 执行与独立复审证据支持
+`experimental/ace/crates/abi` 的真实编译/链接/PE 执行与独立复审证据支持
 （R4–R17 反例链）；每条后注其 finding 出处。
 
 ## 调用与形态

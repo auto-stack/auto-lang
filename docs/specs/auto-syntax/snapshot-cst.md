@@ -1,6 +1,6 @@
 # auto-syntax snapshot & CST 合同（坐标/词法/无损树/增量/恢复）
 
-> **Status**: experimental（PLAN-787 冻结；实现=`experimental/ac-syntax/runtime`）
+> **Status**: experimental（PLAN-787 冻结；实现=`experimental/ace/crates/syntax-runtime`）
 > 来源：PLAN-787；上游模块 [project.md](project.md)；持久化接缝见
 > [../auto-ac/artifact-contract.md](../auto-ac/artifact-contract.md)。
 

@@ -87,7 +87,7 @@ def main() -> int:
             "fixture red (823 env field)."
         ),
         "status": "done",
-        "file": "experimental/ac-mir-native/tests/data_owned_tier.rs",
+        "file": "experimental/ace/crates/native/tests/data_owned_tier.rs",
         "tags": ["PLAN-870", "r2", "impl:edb6e794a",
                  "suite:crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad"],
         "module": "auto-test-case",

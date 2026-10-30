@@ -1,0 +1,44 @@
+[package]
+autotests = false
+name = "ace-av"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-798 auto-av-probe: managed cache units, native cross-check reference, driver/observations and the bounded worker for the ac-av vertical probe. HIR→MIR lowering is consumed from the shared auto-mir-lower crate (PLAN-868)."
+publish = false
+
+[features]
+default = []
+# Explicit test tooling; absent from ordinary worker builds.
+test-case-batch = []
+
+[dependencies]
+ace-av-core = { path = "../av-core" }
+ace-lowering = { path = "../lowering" }
+ace-semantics-contract = { path = "../semantics-contract" }
+ace-core = { path = "../core" }
+ace-artifacts = { path = "../artifacts" }
+ace-syntax-runtime = { path = "../syntax-runtime" }
+ace-syntax-grammar = { path = "../syntax-grammar" }
+ace-syntax-core = { path = "../syntax-core" }
+rusqlite = { version = "0.30", features = ["bundled"] }
+base64 = "0.22"
+blake3 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+# PLAN-820 F820-R1-02: parent-side per-PID private-bytes polling (the same
+# windows-sys surface ac-artifact-probe's sysinfo uses).
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+# PLAN-827: seed-identity receipts (SHA256 over the frozen AP fixture bytes).
+sha2 = "0.10"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

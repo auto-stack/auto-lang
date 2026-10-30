@@ -1,7 +1,7 @@
 # Auto 源码 text-record 组合 profile
 
 > **Status**: experimental；`auto.source.text-record.draft` revision 1（PLAN-782）。
-> 实现：`experimental/ac-core/src/source/` + `verify.rs::verify_text_record` +
+> 实现：`experimental/ace/crates/core/src/source/` + `verify.rs::verify_text_record` +
 > `text_resources.rs`（资源走查）+ 共享 MIR lowering（`auto-mir-lower` → `ac-mn`，
 > PLAN-871 起旧 `native.rs` 合并 lowering 已退役）；消费端见
 > [project.md](project.md)，后端选择/退役规则见
@@ -20,7 +20,7 @@ Token/lexer 迁移或 Gen1-3。
 ## 身份
 
 - source `auto.source.text-record.draft` → HIR `auto.hir.text-record.draft / 1 /
-  text-record-i32-draft`（descriptor `experimental/ac-core/schema/text-record.atom`
+  text-record-i32-draft`（descriptor `experimental/ace/crates/core/schema/text-record.atom`
   = text ∪ record 全节点集 + `record_clone`/`move` 双新 case，旧四 descriptor
   零改动）。
 - 身份映射为**精确可失败映射**：未注册三元组 `bind.descriptor-unknown`；

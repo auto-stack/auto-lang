@@ -1,7 +1,9 @@
 # auto-abi
 
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-abi位于crates/abi，Windows/MSVC和真实原生ABI比较条件保持。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+
 > **Status**: candidate（`autoabi.win-x64.v0.1-candidate`，PLAN-797 交付）
-> 路径：`experimental/auto-abi-probe`（独立 workspace，不进产品构建图）| 工具链：Rust/Cranelift 0.126 + MSVC cl.exe + rust-lld
+> 路径：`experimental/ace/crates/abi`（ACE workspace成员，不进普通语言测试构建图）| 工具链：Rust/Cranelift 0.126 + MSVC cl.exe + rust-lld
 
 公共 AutoABI 候选 profile：首平台 Windows x86_64-pc-windows-msvc 上
 AutoABI↔AutoABI、AutoABI↔C 双向互调的有限边界合同与 conformance 证据。

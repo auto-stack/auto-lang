@@ -6,7 +6,7 @@ lowering 合同：唯一映射、单元身份、准入面与资源语义。
 ## 唯一映射与身份
 
 - `DefKind::Method`（static / `ReceiverKind::View`）经唯一
-  `experimental/auto-mir-lower` 降为**普通 MIR 函数/调用**，AV 与 mn 同源
+  `experimental/ace/crates/lowering` 降为**普通 MIR 函数/调用**，AV 与 mn 同源
   消费；不建第二方法 runtime。View receiver = HIR 签名 `params[0]`（只读
   记录视图，调用端 receiver 求值恰一次且先于显式实参）；Static 方法无
   receiver。

@@ -1,0 +1,25 @@
+[package]
+name = "ace-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[features]
+default = ["test-cases"]
+test-cases = []
+test-case-batch = ["auto-lang-core/test-case-batch"]
+
+[dependencies]
+auto-lang-core = { path = "../../../../crates/auto-lang-core", features = ["test-cases", "test-case-batch", "test-http-e2e", "code-editor"] }
+auto-test-case = { path = "../../../../crates/auto-test-case" }
+serde_json = "1"
+base64 = "0.22"
+sha2 = "0.10"
+
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"

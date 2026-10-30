@@ -63,6 +63,8 @@ def select(names, value, groups):
         if names != ['all']:
             raise ValueError('all cannot be mixed with another group')
         names = [name for name, g in groups.items() if g.get('all', name != 'daily')]
+    sets = value.get('sets', {})
+    names = [member for name in names for member in sets.get(name, [name])]
     unknown = set(names) - groups.keys()
     if unknown:
         raise ValueError('unknown fixed group: ' + ', '.join(sorted(unknown)))
@@ -94,9 +96,9 @@ def invocations(groups, test_name=None):
 def nextest_args(group, ignored=False):
     args = [*group['args'], '--ignore-default-filter', '-E', group['expression']]
     if group['workspace'].startswith('experimental/'):
-        # Only this top-level Cargo invocation shares the regular cache.
-        # Nested runtime/shim builders retain their explicit original targets.
-        args += ['--target-dir', str(ROOT / 'target/test-tools/regular')]
+        # ACE tests/workers share this tree; batch remains a distinct target.
+        # Native runtime profiles/triples remain explicit at their real consumers.
+        args += ['--target-dir', str(ROOT / ('experimental/ace/target-batch' if group['groups'] == ['ace-batch'] else 'experimental/ace/target'))]
     if 'aavm' in group['groups'] and os.environ.get('T3_MILESTONE') == '1':
         args[args.index('--config-file') + 1] = '.config/nextest-t3.toml'
     # Daily retains nextest's original default-filter and original applicability.
@@ -359,6 +361,8 @@ def main(argv=None):
     if args.list:
         if args.groups or args.legacy_tier:
             ap.error('--list takes no groups')
+        for name in value.get('sets', {}):
+            print(name + ': ACE常规自动测试（独立workspace及语言私有协议桥接）')
         for name, g in groups.items():
             print(name + ': ' + g['title'])
         return 0

@@ -1,0 +1,12 @@
+[package]
+name = "ace-a2x-store"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-892 A2X cache/session layer: layered function keys over the 783 ManagedStore/CAS, resident reuse, producer accounting, quota"
+publish = false
+
+[dependencies]
+ace-a2x-core = { path = "../a2x-core" }
+ace-a2x-rust = { path = "../a2x-rust" }
+ace-core = { path = "../core" }
+ace-artifacts = { path = "../artifacts" }

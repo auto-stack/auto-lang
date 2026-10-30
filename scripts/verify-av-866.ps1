@@ -27,6 +27,8 @@ param(
     # Root of the auto-lang checkout (defaults to the script's parent).
     [string]$RepoRoot
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Split-Path -Parent $PSScriptRoot) }
@@ -41,7 +43,7 @@ function NotWired([string]$what) {
     exit 3
 }
 
-$probeDir = Join-Path $RepoRoot 'experimental/ac-av-probe'
+$probeDir = Join-Path $RepoRoot 'experimental/ace'
 
 switch ($Scope) {
     'targeted' {
@@ -54,9 +56,9 @@ switch ($Scope) {
         }
         Push-Location $probeDir
         try {
-            cargo test -p auto-av-probe --test av_resident_866
+            Invoke-AceCargo test -p ace-av --test av_resident
             if ($LASTEXITCODE -ne 0) {
-                Fail("av_resident_866 suite exited $LASTEXITCODE")
+                Fail("av_resident suite exited $LASTEXITCODE")
             }
         }
         finally { Pop-Location }
@@ -69,13 +71,13 @@ switch ($Scope) {
         }
         Push-Location $probeDir
         try {
-            cargo test -p auto-av-probe --test av_resident_866
+            Invoke-AceCargo test -p ace-av --test av_resident
             if ($LASTEXITCODE -ne 0) {
-                Fail("av_resident_866 suite (online + phase-1 controls) exited $LASTEXITCODE")
+                Fail("av_resident suite (online + phase-1 controls) exited $LASTEXITCODE")
             }
-            cargo test -p auto-av-core
+            Invoke-AceCargo test -p ace-av-core
             if ($LASTEXITCODE -ne 0) {
-                Fail("core safety-point surface regressed: auto-av-core exited $LASTEXITCODE")
+                Fail("core safety-point surface regressed: ace-av-core exited $LASTEXITCODE")
             }
         }
         finally { Pop-Location }
@@ -88,15 +90,15 @@ switch ($Scope) {
         # (the existing denominator must stay green beside the new H rows).
         Push-Location $probeDir
         try {
-            cargo test -p auto-av-probe --test av_closures_823_incremental --test function_incremental_828_b2 --test function_incremental_828_contract --test av_entry_862
+            Invoke-AceCargo test -p ace-av --test av_closures_incremental --test function_incremental_b2 --test function_incremental_contract --test av_entry
             if ($LASTEXITCODE -ne 0) { Fail("legacy segment/resume/contract families exited $LASTEXITCODE") }
-            cargo test -p auto-av-core
+            Invoke-AceCargo test -p ace-av-core
             if ($LASTEXITCODE -ne 0) { Fail("core exited $LASTEXITCODE") }
         }
         finally { Pop-Location }
         Push-Location (Join-Path $RepoRoot 'crates/auto-lang/..')
         try {
-            cargo test -p auto-lang --features test-cases --lib ace_m1 -- --test-threads=1
+            Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance ace_m1 '--' --test-threads=1
             if ($LASTEXITCODE -ne 0) { Fail("ace-m1 baseline exited $LASTEXITCODE") }
         }
         finally { Pop-Location }
@@ -108,7 +110,7 @@ switch ($Scope) {
         # parent-side judgement) + the discrimination control.
         Push-Location (Join-Path $RepoRoot 'crates/auto-lang/..')
         try {
-            cargo test -p auto-lang --features test-cases --lib av_resident_866
+            Invoke-AceCargo test --manifest-path "$PSScriptRoot/../experimental/ace/Cargo.toml" -p ace-conformance --test conformance av_resident
             if ($LASTEXITCODE -ne 0) { Fail("resident-866 harness exited $LASTEXITCODE") }
         }
         finally { Pop-Location }

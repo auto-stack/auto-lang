@@ -23,12 +23,14 @@ param(
     [string[]]$CargoArgs = @("--offline"),
     [switch]$DebugProfile
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = "Continue"
 
-# scripts/ lives at the repo root: probe = <repo>/experimental/ac-artifact-probe.
+# scripts/ lives at the repo root: probe = <repo>/experimental/ace/crates/artifacts.
 $repo = Split-Path -Parent $PSScriptRoot
-$probe = Join-Path $repo "experimental\ac-artifact-probe"
+$probe = Join-Path $repo "experimental/ace/crates/artifacts"
 $manifest = Join-Path $probe "Cargo.toml"
 if (-not (Test-Path $manifest)) { Write-Error "probe manifest not found at $manifest"; exit 2 }
 
@@ -42,21 +44,21 @@ $families = [ordered]@{
     "lib-unit"           = @{ target = "--lib";                 minPassed = 14; allowedIgnored = 0 }
     "V-01 identity"      = @{ target = "--test identity_";      minPassed = 4;  allowedIgnored = 0 }
     "V-02 admission"     = @{ target = "--test admission_";     minPassed = 7;  allowedIgnored = 0 }
-    "V-03 layout"        = @{ target = "--test layout_";        minPassed = 6;  allowedIgnored = 0 }
+    "V-03 layout"        = @{ target = "--test layout";        minPassed = 6;  allowedIgnored = 0 }
     "V-04 native-resume" = @{ target = "--test native_resume_"; minPassed = 3;  allowedIgnored = 0 }
     "V-05 invalidation"  = @{ target = "--test invalidation_";  minPassed = 5;  allowedIgnored = 0 }
     "V-06 reachability"  = @{ target = "--test reachability_";  minPassed = 4;  allowedIgnored = 0 }
     "V-07 concurrency"   = @{ target = "--test concurrency_";   minPassed = 3;  allowedIgnored = 0 }
-    "V-08 recovery"      = @{ target = "--test recovery_";      minPassed = 4;  allowedIgnored = 0 }
+    "V-08 recovery"      = @{ target = "--test recovery";      minPassed = 4;  allowedIgnored = 0 }
     "V-09 gc-budget"     = @{ target = "--test gc_budget_";     minPassed = 4;  allowedIgnored = 1 }
     "V-10 store-boundary"= @{ target = "--test store_boundary_";minPassed = 5;  allowedIgnored = 0 }
-    "V-11 perf"          = @{ target = "--test perf_";          minPassed = 2;  allowedIgnored = 0 }
+    "V-11 perf"          = @{ target = "--test perf";          minPassed = 2;  allowedIgnored = 0 }
     "V-12 dep-audit"     = @{ target = "--test dep_audit_";     minPassed = 5;  allowedIgnored = 0 }
-    "R1 regressions"     = @{ target = "--test review_r1_";     minPassed = 12; allowedIgnored = 0 }
-    "R2 regressions"     = @{ target = "--test review_r2_";     minPassed = 6;  allowedIgnored = 0 }
-    "R3 regressions"     = @{ target = "--test review_r3_";     minPassed = 4;  allowedIgnored = 0 }
-    "R4 regressions"     = @{ target = "--test review_r4_";     minPassed = 3;  allowedIgnored = 0 }
-    "R5 regressions"     = @{ target = "--test review_r5_";     minPassed = 2;  allowedIgnored = 0 }
+    "R1 regressions"     = @{ target = "--test review_r1";     minPassed = 12; allowedIgnored = 0 }
+    "R2 regressions"     = @{ target = "--test review_r2";     minPassed = 6;  allowedIgnored = 0 }
+    "R3 regressions"     = @{ target = "--test review_r3";     minPassed = 4;  allowedIgnored = 0 }
+    "R4 regressions"     = @{ target = "--test review_r4";     minPassed = 3;  allowedIgnored = 0 }
+    "R5 regressions"     = @{ target = "--test review_r5";     minPassed = 2;  allowedIgnored = 0 }
 }
 
 $failures = @()
@@ -66,7 +68,8 @@ function Invoke-CargoFamily {
     Write-Host "== $Name ($Target)" -ForegroundColor Cyan
     # Through cmd.exe: PS 5.1 turns native stderr (cargo warnings) into
     # terminating errors when merged inside PowerShell.
-    $out = & cmd /c "cargo test --manifest-path `"$manifest`" $CargoArgs $profile $Target 2>&1"
+    $invokeArgs = @('test','--manifest-path',$manifest) + $CargoArgs + @($profile -split ' ' | Where-Object {$_}) + @($Target -split ' ' | Where-Object {$_})
+    $out = & Invoke-AceCargo @invokeArgs 2>&1
     $out | Write-Host
     if ($LASTEXITCODE -ne 0) { $script:failures += "$Name (cargo exit $LASTEXITCODE)" }
     $summary = $out | Select-String "test result:" | Select-Object -First 1
@@ -136,7 +139,8 @@ if ($Scope -eq "closeout") {
     # --- full 512 churn: identity + summary enforced, not just exit code
     # (R2-06: a filtered-out test or stubbed cargo exits 0 with zero runs).
     Write-Host "== full 512-iteration churn (merge-owned, frozen watermarks)" -ForegroundColor Cyan
-    $out = & cmd /c "cargo test --manifest-path `"$manifest`" $CargoArgs $profile --test gc_budget_ gc_budget_churn_512 -- --ignored --nocapture 2>&1"
+    $invokeArgs = @('test','--manifest-path',$manifest) + $CargoArgs + @($profile -split ' ' | Where-Object {$_}) + @('--test','gc_budget','gc_budget_churn_512','--','--ignored','--nocapture')
+    $out = & Invoke-AceCargo @invokeArgs 2>&1
     $out | Write-Host
     if ($LASTEXITCODE -ne 0) { $failures += "512-churn (cargo exit $LASTEXITCODE)" }
     $churnSummary = $out | Select-String "test result:" | Select-Object -First 1

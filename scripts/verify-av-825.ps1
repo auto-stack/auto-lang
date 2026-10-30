@@ -8,10 +8,12 @@ param(
     [Parameter(ParameterSetName = 'Guard')]
     [switch]$GuardSelfTest
 )
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
+
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot | Split-Path -Parent
-$probe = Join-Path $root 'experimental/ac-av-probe'
+$probe = Join-Path $root 'experimental/ace'
 
 function Assert-Selected {
     param([string]$Output, [string]$Label, [string[]]$RequiredIds)
@@ -33,7 +35,7 @@ function Invoke-Cargo {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $script:out = & cargo @CargoArgs 2>&1 | Out-String
+        $script:out = & Invoke-AceCargo @CargoArgs 2>&1 | Out-String
         $script:exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
@@ -102,7 +104,7 @@ function Assert-BenchmarkEvidence {
         if ((Get-FileHash $file.path -Algorithm SHA256).Hash.ToLower() -ne $file.sha256) { throw "benchmark raw identity changed: $($file.path)" }
     }
     $avFirst = Get-Content -LiteralPath (Join-Path $raw 'av.jsonl') -TotalCount 1 -Encoding UTF8 | ConvertFrom-Json
-    $currentFp = Get-Fnv64Hex -Path (Join-Path $probe 'target/release/av_runtime_825_bench.exe')
+    $currentFp = Get-Fnv64Hex -Path (Join-Path $probe 'target/release/av_runtime_bench.exe')
     if ($avFirst.binary_fnv64 -ne $currentFp) { throw 'benchmark binary identity is stale' }
     Assert-TierEvidence -JsLog (Join-Path $raw 'js-tier.log') -LiftoffLog (Join-Path $raw 'liftoff-tier.log') -TurboLog (Join-Path $raw 'turbofan-tier.log')
     $turnaround = Get-Content -LiteralPath $turnaroundPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -118,7 +120,7 @@ function Assert-CompatEvidence {
     $head = & git rev-parse HEAD
     & git merge-base --is-ancestor $receipt.head $head
     if ($LASTEXITCODE -ne 0) { throw 'compat evidence HEAD is not an ancestor' }
-    $productionChanges = @(& git diff --name-only $receipt.head $head -- crates experimental test) + @(& git status --porcelain -- crates experimental test)
+    $productionChanges = @(& git diff --name-only $receipt.head $head '--' crates experimental test) + @(& git status --porcelain '--' crates experimental test)
     if ($LASTEXITCODE -ne 0) { throw 'compat evidence production status is unavailable' }
     if ($productionChanges) { throw "compat evidence has stale production changes: $productionChanges" }
     $scriptHash = (Get-FileHash $PSCommandPath -Algorithm SHA256).Hash.ToLower()
@@ -139,8 +141,8 @@ function Invoke-Benchmark {
     foreach ($name in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl', 'summary.json', 'js-tier.log', 'liftoff-tier.log', 'turbofan-tier.log', 'turnaround.jsonl', 'turnaround-summary.json')) {
         if (Test-Path (Join-Path $raw $name)) { Remove-Item -LiteralPath (Join-Path $raw $name) -Force }
     }
-    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ac-av-probe/Cargo.toml', '--bin', 'av_runtime_825_bench', '--bin', 'av_probe_worker') | Out-Host
-    Invoke-Native -Exe (Join-Path $probe 'target/release/av_runtime_825_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av.jsonl')) -Log (Join-Path $raw 'av-tier.log')
+    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ace/Cargo.toml', '--bin', 'av_runtime_bench', '--bin', 'av-worker') | Out-Host
+    Invoke-Native -Exe (Join-Path $probe 'target/release/av_runtime_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av.jsonl')) -Log (Join-Path $raw 'av-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--jitless', '--print-bytecode', 'scripts/av-825-bench.mjs', '--engine', 'v8-js-ignition', '--out', (Join-Path $raw 'js.jsonl')) -Log (Join-Path $raw 'js-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--liftoff-only', '--no-wasm-tier-up', '--no-wasm-dynamic-tiering', '--trace-wasm-compilation-times', 'scripts/av-825-bench.mjs', '--engine', 'v8-wasm-liftoff', '--out', (Join-Path $raw 'liftoff.jsonl')) -Log (Join-Path $raw 'liftoff-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--no-liftoff', '--trace-wasm-compilation-times', 'scripts/av-825-bench.mjs', '--engine', 'v8-wasm-turbofan', '--out', (Join-Path $raw 'turbofan.jsonl')) -Log (Join-Path $raw 'turbofan-tier.log')
@@ -150,7 +152,7 @@ function Invoke-Benchmark {
     $summary = Get-Content -LiteralPath (Join-Path $raw 'summary.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($summary.total_rows -ne 1720 -or $summary.groups.Count -ne 40) { throw 'benchmark group/row completeness mismatch' }
 
-    Invoke-Native -Exe (Join-Path $probe 'target/release/av_probe_worker.exe') -NativeArgs @('bench-turnaround', '--samples', '30', '--gate-ms', '1000', '--out', (Join-Path $raw 'turnaround.jsonl')) -Log (Join-Path $raw 'turnaround-summary.json')
+    Invoke-Native -Exe (Join-Path $probe 'target/release/av-worker.exe') -NativeArgs @('bench-turnaround', '--samples', '30', '--gate-ms', '1000', '--out', (Join-Path $raw 'turnaround.jsonl')) -Log (Join-Path $raw 'turnaround-summary.json')
     $turnaround = Get-Content -LiteralPath (Join-Path $raw 'turnaround-summary.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($turnaround.hard_gate_failures.Count -ne 0 -or $turnaround.single_body_edit.p95_ms -ge 1000.0) { throw 'original editing P95 gate failed' }
     if ($turnaround.frontend_transient_target_met -ne $true -or $turnaround.worker_private_bytes_target_met -ne $true) { throw 'original editing memory gate failed' }
@@ -162,7 +164,7 @@ function Run-Probe {
     param([string]$Bin, [string]$Filter = '', [string[]]$RequiredIds)
     Push-Location $probe
     try {
-        $args = @('test', '-p', 'auto-av-probe', '--test', $Bin)
+        $args = @('test', '-p', 'ace-av', '--test', $Bin)
         if ($Filter) { $args += $Filter }
         $out = Invoke-Cargo -CargoArgs $args
         Assert-Selected -Output $out -Label $Bin -RequiredIds $RequiredIds
@@ -173,7 +175,7 @@ function Run-Runner {
     param([string]$Filter, [string[]]$RequiredIds)
     Push-Location $root
     try {
-        $out = Invoke-Cargo -CargoArgs @('test', '-p', 'auto-lang', '--lib', '--features', 'auto-lang/test-cases', $Filter, '--', '--test-threads=1')
+        $out = Invoke-Cargo -CargoArgs @('test', '--manifest-path', (Join-Path $root 'experimental/ace/Cargo.toml'), '-p', 'ace-conformance', '--test', 'conformance', $Filter, '--', '--test-threads=1')
         Assert-Selected -Output $out -Label $Filter -RequiredIds $RequiredIds
     } finally { Pop-Location }
 }
@@ -209,36 +211,36 @@ if ($GuardSelfTest) {
 }
 
 $FIRST_PROBE = @(
-    'av_runtime_825_first_case_direct_loaded_and_reference_match',
-    'av_runtime_825_first_case_snapshot_and_resume_use_same_loaded_program',
-    'av_runtime_825_first_case_cache_hit_and_new_worker_restore',
-    'av_runtime_825_first_case_unit_never_dispatches'
+    'av_runtime_first_case_direct_loaded_and_reference_match',
+    'av_runtime_first_case_snapshot_and_resume_use_same_loaded_program',
+    'av_runtime_first_case_cache_hit_and_new_worker_restore',
+    'av_runtime_first_case_unit_never_dispatches'
 )
-$FIRST_RUNNER = @('tests::av_runtime_825_tests::av_runtime_825_first_case_corpus_green')
+$FIRST_RUNNER = @('tests::av_runtime_tests::av_runtime_first_case_corpus_green')
 $TARGETED = @(
-    'av_runtime_825_pc_short_long_and_terminal_source',
-    'av_runtime_825_calls_params_and_recursion',
-    'av_runtime_825_entry_signature_and_unit_zero_dispatch',
-    'av_runtime_825_numeric_traps_and_short_circuit_match_reference',
-    'av_runtime_825_fuel_boundary_matches_reference',
-    'av_runtime_825_root_budget_both_sides',
-    'av_runtime_825_call_budget_both_sides_and_cleanup',
-    'av_runtime_825_cancel_exhausted_then_next_request_clean'
+    'av_runtime_pc_short_long_and_terminal_source',
+    'av_runtime_calls_params_and_recursion',
+    'av_runtime_entry_signature_and_unit_zero_dispatch',
+    'av_runtime_numeric_traps_and_short_circuit_match_reference',
+    'av_runtime_fuel_boundary_matches_reference',
+    'av_runtime_root_budget_both_sides',
+    'av_runtime_call_budget_both_sides_and_cleanup',
+    'av_runtime_cancel_exhausted_then_next_request_clean'
 )
 $INCREMENTAL = @(
-    'av_runtime_825_incremental_two_function_edit_identity_and_zero_work',
-    'av_runtime_825_incremental_content_hit_reuses_every_index',
-    'av_runtime_825_incremental_signature_reject_then_exact_invalidation',
-    'av_runtime_825_incremental_forced_copy_cannot_claim_reuse'
+    'av_runtime_incremental_two_function_edit_identity_and_zero_work',
+    'av_runtime_incremental_content_hit_reuses_every_index',
+    'av_runtime_incremental_signature_reject_then_exact_invalidation',
+    'av_runtime_incremental_forced_copy_cannot_claim_reuse'
 )
 
 switch ($Scope) {
     'first' {
-        Run-Probe -Bin 'av_runtime_825_first_case' -RequiredIds $FIRST_PROBE
-        Run-Runner -Filter 'av_runtime_825_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
+        Run-Probe -Bin 'av_runtime_first_case' -RequiredIds $FIRST_PROBE
+        Run-Runner -Filter 'av_runtime_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
     }
     'targeted' {
-        Run-Probe -Bin 'av_runtime_825_semantics' -RequiredIds $TARGETED
+        Run-Probe -Bin 'av_runtime_semantics' -RequiredIds $TARGETED
     }
     'compat' {
         $receiptDir = Join-Path $root 'docs/plans/attachments/825'
@@ -246,15 +248,15 @@ switch ($Scope) {
         Start-Transcript -LiteralPath $logPath -Force | Out-Null
         try {
             Run-Probe -Bin 'cache_tier'
-            Run-Probe -Bin 'av_data_820_cache_compat'
-            Run-Probe -Bin 'av_owned_821_cache_compat'
-            Run-Probe -Bin 'av_collections_822_cache_compat'
-            Run-Probe -Bin 'av_data_820_semantics'
-            Run-Probe -Bin 'av_owned_821_semantics'
-            Run-Probe -Bin 'av_collections_822_semantics'
+            Run-Probe -Bin 'av_data_cache_compat'
+            Run-Probe -Bin 'av_owned_cache_compat'
+            Run-Probe -Bin 'av_collections_cache_compat'
+            Run-Probe -Bin 'av_data_semantics'
+            Run-Probe -Bin 'av_owned_semantics'
+            Run-Probe -Bin 'av_collections_semantics'
             Run-Runner -Filter 'ac_av_probe'
-            Run-Runner -Filter 'av_owned_821'
-            Run-Runner -Filter 'av_collections_822'
+            Run-Runner -Filter 'av_owned'
+            Run-Runner -Filter 'av_collections'
         } finally {
             Stop-Transcript | Out-Null
         }
@@ -269,18 +271,18 @@ switch ($Scope) {
         $receipt | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
     }
     'incremental' {
-        Run-Probe -Bin 'av_runtime_825_incremental' -RequiredIds $INCREMENTAL
-        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
-        Run-Probe -Bin 'function_incremental_828_contract' -Filter 'contract_828_hotpath_old_synth_pipeline_same_window_is_red' -RequiredIds @('contract_828_hotpath_old_synth_pipeline_same_window_is_red')
-        Run-Probe -Bin 'function_incremental_828_r1' -Filter 'r2_trace_in_unchanged_function_survives_body_edit' -RequiredIds @('r2_trace_in_unchanged_function_survives_body_edit')
+        Run-Probe -Bin 'av_runtime_incremental' -RequiredIds $INCREMENTAL
+        Run-Probe -Bin 'function_protocol' -Filter 'formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('formal_campaign_v08_dual_gate_30_revisions')
+        Run-Probe -Bin 'function_incremental_contract' -Filter 'contract_hotpath_old_synth_pipeline_same_window_is_red' -RequiredIds @('contract_hotpath_old_synth_pipeline_same_window_is_red')
+        Run-Probe -Bin 'function_incremental_r1' -Filter 'r2_trace_in_unchanged_function_survives_body_edit' -RequiredIds @('r2_trace_in_unchanged_function_survives_body_edit')
     }
     'baseline' {
-        Run-Probe -Bin 'av_runtime_825_baseline' -RequiredIds @('av_runtime_825_baseline_sources_match_independent_oracles')
-        Run-Probe -Bin 'av_runtime_825_semantics' -Filter 'av_runtime_825_cancel_exhausted_then_next_request_clean' -RequiredIds @('av_runtime_825_cancel_exhausted_then_next_request_clean')
-        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
+        Run-Probe -Bin 'av_runtime_baseline' -RequiredIds @('av_runtime_baseline_sources_match_independent_oracles')
+        Run-Probe -Bin 'av_runtime_semantics' -Filter 'av_runtime_cancel_exhausted_then_next_request_clean' -RequiredIds @('av_runtime_cancel_exhausted_then_next_request_clean')
+        Run-Probe -Bin 'function_protocol' -Filter 'formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('formal_campaign_v08_dual_gate_30_revisions')
         Run-Probe -Bin 'resources_tier' -Filter 'av_resources_32mib_product_random_read_and_churn' -RequiredIds @('av_resources_32mib_product_random_read_and_churn')
-        Run-Runner -Filter 'av_runtime_825_baseline_corpus_green' -RequiredIds @('tests::av_runtime_825_tests::av_runtime_825_baseline_corpus_green')
-        Run-Runner -Filter 'av_runtime_825_parent_sensitivity_controls_non_green' -RequiredIds @('tests::av_runtime_825_tests::av_runtime_825_parent_sensitivity_controls_non_green')
+        Run-Runner -Filter 'av_runtime_baseline_corpus_green' -RequiredIds @('tests::av_runtime_tests::av_runtime_baseline_corpus_green')
+        Run-Runner -Filter 'av_runtime_parent_sensitivity_controls_non_green' -RequiredIds @('tests::av_runtime_tests::av_runtime_parent_sensitivity_controls_non_green')
     }
     'bench' {
         Invoke-Benchmark

@@ -1,6 +1,6 @@
 # ABC与AV标量执行合同
 
-来源：PLAN-798。实现 `core/src/{abc,abc_verify,av,contract}.rs`，相对 `experimental/ac-av-probe/`。
+来源：PLAN-798。实现 `core/src/{abc,abc_verify,av,contract}.rs`，相对 `experimental/ace/`。
 
 ## 身份与准入
 

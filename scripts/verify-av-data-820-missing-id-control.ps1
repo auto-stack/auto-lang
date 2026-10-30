@@ -18,19 +18,19 @@ $verify = Join-Path $PSScriptRoot "verify-av-data-820.ps1"
 # touches the real toolchain, the tree, or any store.
 function cargo {
     if ($args -contains "--list") {
-        Write-Output "av_data_820_first_case_whole_path: test"
+        Write-Output "av_data_first_case_whole_path: test"
         Write-Output ""
         Write-Output "1 test, 0 benchmarks"
     } else {
         Write-Output "running 1 test"
-        Write-Output "test av_data_820_first_case_whole_path ... ok"
+        Write-Output "test av_data_first_case_whole_path ... ok"
         Write-Output ""
         Write-Output "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.0s"
     }
     $global:LASTEXITCODE = 0
 }
 
-Write-Host "[missing-id-control] mocked cargo: listing+execution hold only av_data_820_first_case_whole_path"
+Write-Host "[missing-id-control] mocked cargo: listing+execution hold only av_data_first_case_whole_path"
 & $verify -Scope first-case | Out-Null
 $code = $LASTEXITCODE
 if ($code -eq 0) {

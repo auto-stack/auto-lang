@@ -1,0 +1,40 @@
+[package]
+autotests = false
+name = "ace-comptime"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-817 CTE probe: AV driver over the merged 798 execution services, frozen-value store over the PLAN-783 ManagedStore, consumer driver, cteworker/1 worker and observations."
+publish = false
+
+[dependencies]
+ace-comptime-contract = { path = "../comptime-contract" }
+ace-comptime-core = { path = "../comptime-core" }
+ace-av-core = { path = "../av-core" }
+ace-av = { path = "../av" }
+ace-lowering = { path = "../lowering" }
+ace-native = { path = "../native" }
+ace-core = { path = "../core" }
+ace-semantics = { path = "../semantics", features = ["core-ast"] }
+ace-semantics-contract = { path = "../semantics-contract" }
+ace-artifacts = { path = "../artifacts" }
+# The restore-bound probe (F-817-R7-01) reads the store's OWN chunk
+# metadata (`chunks.size`, the framed byte length) through the public
+# `ManagedStore::db()` handle — same version/features as the store.
+rusqlite = { version = "0.30", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

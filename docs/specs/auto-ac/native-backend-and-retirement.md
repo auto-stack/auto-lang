@@ -6,11 +6,11 @@
 ## 1. 现状（终态）
 
 - **唯一 native lowering 路径** = `auto-mir-lower`（HIR → Typed MIR）+ `ac-mn`
-  （Typed MIR → CLIF → per-unit COFF → 多对象 PE）。`experimental/ac-core` 只保留
+  （Typed MIR → CLIF → per-unit COFF → 多对象 PE）。`experimental/ace/crates/core` 只保留
   前端 / Checked HIR / verify / 链接设施；**不再依赖 Cranelift，也不再包含任何
   HIR 直达 lowering**（`src/native.rs` 已删除）。
 - `ac-core` 的 CLI 只剩 `check` / `check-source`（前端与检查角色）。native 构建面在
-  `ac-native`（`experimental/ac-mir-native/src/bin/ac-native.rs`）。
+  `ac-native`（`experimental/ace/crates/native/src/bin/ac-native.rs`）。
 - driver 层是唯一后端选择点（`ac-case-worker`、`ac-native`）；`ac-core ⇄ ac-mn` 不成立
   （ac-core 不依赖 ac-mn）。
 

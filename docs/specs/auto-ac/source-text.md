@@ -1,7 +1,7 @@
 # Auto 源码 text profile
 
 > **Status**: experimental；`auto.source.text.draft` revision 1（PLAN-770）。
-> 实现：`experimental/ac-core/src/source/`（与 core/scalar 共用前端骨架，profile
+> 实现：`experimental/ace/crates/core/src/source/`（与 core/scalar 共用前端骨架，profile
 > 显式选择）；消费端见 [project.md](project.md)；姊妹 profile 见
 > [source-core-i32.md](source-core-i32.md) 与 [source-scalar-i32.md](source-scalar-i32.md)。
 
@@ -17,7 +17,7 @@ print/File/process、公开 ABI 或 ACC Gen1。
 
 - source `auto.source.text.draft` → HIR `auto.hir.text.draft / 1 /
   text-i32-draft`（774 interface-contract §7.2 唯一身份表；descriptor
-  `experimental/ac-core/schema/text.atom`，scalar 的超集，只增不删）。
+  `experimental/ace/crates/core/schema/text.atom`，scalar 的超集，只增不删）。
 - 身份映射为**精确可失败映射**：未注册三元组整体拒绝；canonical writer 对
   未注册/错域一律拒绝（`canonical.identity-conflict`）；旧 core/scalar 不
   自动获得文本能力。

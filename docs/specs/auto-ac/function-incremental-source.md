@@ -1,7 +1,7 @@
 # auto-ac 函数级增量源前端（PLAN-828）
 
-> Status: active（scalar-i32/bool profile；实现=`experimental/ac-core/src/source/*`
-> + `experimental/ac-av-probe/probe/src/session.rs` 热路径）。
+> Status: active（scalar-i32/bool profile；实现=`experimental/ace/crates/core/src/source/*`
+> + `experimental/ace/crates/av/src/session.rs` 热路径）。
 
 ## 受检接口环境与单 body 检查
 

@@ -33,7 +33,7 @@ use super::avm::Verdict;
 pub const MAX_STREAM_BYTES: usize = 1 << 20;
 
 /// Locate (and on first use build) the worker binary. Env override first;
-/// otherwise find `experimental/ac-case-worker` from this crate's source
+/// otherwise find `experimental/ace/crates/case-worker` from this crate's source
 /// root and `cargo build --release` it (a warm no-op rebuild is ~1s).
 pub fn worker_binary() -> Result<PathBuf, String> {
     if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
@@ -60,12 +60,11 @@ fn locate_worker() -> Result<PathBuf, String> {
     let manifest = loop {
         let Some(d) = dir else {
             return Err(
-                "ac-case-worker not located: no experimental/ac-case-worker above the crate and no AC_CASE_WORKER override".to_string(),
+                "ac-case-worker not located: no experimental/ace/crates/case-worker above the crate and no AC_CASE_WORKER override".to_string(),
             );
         };
         let m = d
-            .join("experimental")
-            .join("ac-case-worker")
+            .join("experimental/ace/crates/case-worker")
             .join("Cargo.toml");
         if m.is_file() {
             break m;
@@ -95,9 +94,9 @@ fn locate_worker() -> Result<PathBuf, String> {
     let exe = manifest
         .parent()
         .unwrap()
-        .join("target")
+        .join("../../target")
         .join("release")
-        .join("ac-case-worker.exe");
+        .join("ace-case-worker.exe");
     if exe.is_file() {
         Ok(exe)
     } else {
@@ -1200,9 +1199,9 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
     CACHE
         .get_or_init(|| {
             let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../experimental/ac-core/test-support");
+                .join("../../experimental/ace/crates/trace-runtime");
             let out = Command::new("cargo")
-                .args(["build", "--locked"])
+                .args(["build", "--locked", "--profile", "runtime-dev"])
                 .current_dir(&dir)
                 .output()
                 .map_err(|e| format!("spawn cargo for trace-marks: {}", e))?;
@@ -1210,7 +1209,7 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
                 let tail = String::from_utf8_lossy(&out.stderr);
                 return Err(format!("trace-marks build failed:\n{}", tail));
             }
-            let lib = dir.join("target/debug/ac_trace_support.lib");
+            let lib = dir.join("../../target/runtime-dev/ace_trace_runtime.lib");
             if lib.is_file() {
                 Ok(lib)
             } else {

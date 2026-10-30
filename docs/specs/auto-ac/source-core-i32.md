@@ -1,7 +1,7 @@
 # Auto 源码 core-i32 profile
 
 > **Status**: experimental；`auto.source.core-i32.draft` revision 1（PLAN-745）。
-> 实现：`experimental/ac-core/src/source/`；消费端见 [project.md](project.md)。
+> 实现：`experimental/ace/crates/core/src/source/`；消费端见 [project.md](project.md)。
 
 本 profile 提供单模块 Auto 计算源码 → Checked HIR → Windows x64 PE 的有限域闭环。
 它不替代生产 parser/VM/A2X，不证明完整 Auto 语言支持或 ACC native 自举。
