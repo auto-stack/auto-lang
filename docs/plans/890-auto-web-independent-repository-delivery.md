@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-890
-status: executing
+status: execution_done
 feature_name: AutoWeb独立仓完整搬迁与四仓交付
 author: [Codex]
 created_at: 2026-10-29
@@ -13,15 +13,15 @@ touched_goals: []
 
 affects: [repository-boundaries, language-sdk, auto-api-gen, auto-web, auto-man, auto-ui-tools, auto-ui-compiler, auto-test-case]
 depends_on: [PLAN-884, PLAN-885, PLAN-887]
-current_step: 6
+current_step: 10
 total_steps: 12
 ---
 
 # [PLAN-890] AutoWeb独立仓完整搬迁与四仓交付
 
-> **当前授权（2026-10-30，最新 `/goal 完成计划890`）**：恢复全链交付，从原五仓同树 T-07 继续到独立终审、冻结门、各仓合入与安全收尾；覆盖下文历史“逐单元另行启动/末尾暂停”安排。目标、AC、仓集合及禁止远端发布保持。实施不创建代理；T-11 独立上下文复审按原合同执行。当前独立终审 needs_fix，executing6/12，完整tm门 NOT_PASSED，不提前认证后续任务。
+> **当前授权（2026-10-30，最新 `/goal 完成计划890`）**：恢复全链交付，从原五仓同树 T-07 继续到独立终审、冻结门、各仓合入与安全收尾；覆盖下文历史“逐单元另行启动/末尾暂停”安排。目标、AC、仓集合及禁止远端发布保持。实施不创建代理；T-11 独立上下文复审按原合同执行。当前第1轮修复实施完成，execution_done10/12，待受影响独立复审；完整tm门 NOT_PASSED，不提前认证后续任务。
 >
-> **当前进度（独立终审第1轮）**：needs_fix，executing6/12。独立上下文在原五仓同树核出两项HIGH阻断：890-R1实际四仓/发行验收接受缺失执行证明及少跑用例的收据；890-R2独立Web CLI跨线程丢显式配置，实际使用环境端口/0.0.0.0并绕过Host政策。重开T-05的公开入口部分、T-08、T-09及T-10冻结；T-01/02/03/04/06/07及未受影响原证据保留。候选语言`e1ece5d45`（实现`ede598998`）、Web`9ddb7fe`、UI`9aad12c`、Man`cb4ab3d`、Down`c3464d0`未改。固定Blog15/22、SDK45/历史14等只认证其实际输入，不抵上述缺口。[独立复审与可重放关闭条件](attachments/890/review/t11-final-review-r6.md)。下一步同树有界修复→受影响复审；完整门/合入/规范/归档/guard均pending。以下旧停止点保留为历史，以本条及§9最新收据为准。
+> **当前进度（修复1回交）**：execution_done10/12，待同树受影响独立复审。R1必需执行证明/适用集合守恒已修，R2文件工作线程配置传递已修；语言`250654932`、Web`e01232b`、UI`9aad12c`、Man`cb4ab3d`、Down`c3464d0`均clean。Core6、Web HTTP3、治理14、模块消费者49、用途守恒19、真实API叶20及20→19拒绝；新19包SDK217过/2原skip，新工具fresh3+relocated3真实配置/Host/关闭全过。47 recipes/7367义务/1220叶/76职责组；894七新叶仅用途待审建议，原执行条件不改。[修复交接与输入/哈希](attachments/890/work/repair-1-handoff.md)。未获复审pass，完整当前组合/四仓/最终发行门仍NOT_PASSED；未合入/规范沉淀/归档/guard清理。以下旧停止点保留为历史，以本条及§9最新收据为准。
 
 > r6 / executing / 6/12；2026-10-30。用户已授权890完整交付，并明确选择“显式安装 Web adapter”。885收尾已由用户确认；当前按下述显式SDK装配迁移合同执行。r1的仅规划限制与等待记录为历史，不覆盖当前授权。
 > **当前停止点（2026-10-30）**：用户“继续后续阶段”启动r4单元2；T-05～T-06运行时/生成器迁移及定向验收已完成并提交，暂停在该单元末。语言`1b177ebab`，Web`d8c889c78`；见[本阶段交接](attachments/890/work/t05-t06-handoff-r6.md)。**组合产品尚未构建通过**：根check暴露UI back-proxy三项旧Core引用错误，Vue另有旧HTTP生成调用，均由下一单元T-07消费迁移关闭；不冒baseline红或整包可用。**完整tm闭包仍NOT_PASSED**，保留旧3个AAVM红及未执行项。整体executing6/12，T-07待启动，未合入/归档/清理。
@@ -259,7 +259,7 @@ Design50映射：WEB-AC-01→AC-01..04/11；02→AC-02..06；03→AC-06/07；04�
 
 ## 8. 执行步骤
 
-独立终审第1轮needs_fix；T-05公开配置入口、T-08、T-09及T-10冻结重开，实际完成T-01/02/03/04/06/07共6/12。原通过证据按未变输入保留；不得以原汇总抵R1/R2。下一步同树有界修复与受影响复审，T-12完整模块/消费者并集、实际四仓门、到期批次、各仓合入、规范沉淀、归档/guard收尾仍pending。全链goal授权继续有效，不重复询问。
+修复1已完成并冻结，工作T-01～T-10共10/12；R1/R2按实际反例与合法对照关闭实施缺口，待T-11受影响独立复审。未变代码/输入的原证据有界复用；当前新SDK/CLI已真实执行，不以旧发行收据冒新组合证书。T-12最终完整模块/消费者并集、四仓/当前组合发行门、到期批次、各仓合入、规范/账本/index、归档/guard仍pending，全链授权继续。
 
 | task_id | owner_stage / 依赖 | 涉及路径、产物与关闭条件 | AC / 验证入口 |
 |---|---|---|---|
@@ -267,12 +267,12 @@ Design50映射：WEB-AC-01→AC-01..04/11；02→AC-02..06；03→AC-06/07；04�
 | T-02 | work / T-01 | **[✅ T-02] r3有界修订/修复与阶段验收通过；到此暂停。** launch与编译声明分离、VM前绑定；真实Result、独立网络关闭、parked事件移交桥、日志/网络join与取消cleanup回执闭合。原audit3/3、session5/5、交换配置反控拒绝、file/SSE终态/资源、5个命名单测及check/fmt通过；闭包/共享生成未触面证据有界复用。现行 [r3契约](attachments/890/work/t02-contract-r3.md) / [冻结交接](attachments/890/work/t02-handoff-r3.md)；代码`f56211c12`、交接`4ec696a63`。R5/R6冻结的是后续包/API/schema执行合同，未冒实际建Web或四仓发行。阶段自查同会话限制明示，独立终审仍T-11 | AC-02/03/07仅T-02部分；V-02..04及V-05/07最小兄弟控制；完整迁仓/CLI/UI/发行仍各原任务，T-03需用户另行授权 |
 | T-03 | work / T-02 | **[✅ T-03]** 用户已启动本单元；888正式交付/归档/收尾祖先已核，clean原分支已合入master为`29ed9d7bd`。本地Web普通仓`D:/autostack/auto-web` bootstrap `8ff4966`，唯一树`D:/autostack/.wt/lang-890/auto-web`、`codex/plan-890-dev`，基础包/锁/文档及CI接线契约骨架提交`2625964`。合同/框架基础已真实check及metadata闭包验证，来源/MIT/原Git锚保留，无远端/registry/CI部署。基础包不冒runtime交付；T-04定向验证及完整门限制见下一项 | AC-01/02的T-03部分；基础包check、482包normal/build/required-dev闭包无UI/Man/Tauri/混合facade，单Core/合同/共享载体来源，完整独立发行留T-09 |
 | T-04 | work / T-03 | **[✅ T-04；基础实现/定向验收完成，完整tm门未通过]** 基础代码`84779b2b1`、测试装配修复`1a2539508`：纯合同实际迁Web、四共享模块迁auto-generation-core，旧路径薄转发；Core真实Cargo来源入SDK身份清单。实际类型/Arc消费、严格配置、原15单测、生成companion正反例及T-02 audit3/session5通过；tm4个直接叶扩大750模块/5483义务；执行55通过/3既存红/23原条件不适用后，旧HTTP测试装配挂起中止，剩余未执行。已显式修复旧SDK测试装配并完整重放直接23项及HTTP4项，均通过；不冒完整闭包通过，T-12在最终新源身份重选并执行，原ID/断言/条件保留。Core `lib/entry/run_bridge/host_capabilities/http_server*`按冻结端口接线，纯合同/语言值转换与最小VM桥、必要共享生成承载/SDK源码闭包；按r2完成SDK服务显式安装迁移、普通语言兼容和明确缺席诊断 | AC-02/03；V-02..04，实际包check/命名单测及外部SDK消费 |
-| T-05 | work / T-04 | **[待修复 T-05；890-R2公开配置入口重开，原transport/资源证据保留]** [r6交接](attachments/890/work/t05-t06-handoff-r6.md)。Web真实host/transport/scopes/file/upload/policy/session归新owner；Core临时桥退出；runtime隔离nextest109/109、实际包TCP/关闭和上传快照正反控2/2、audit3/session5及文件/SSE/12MiB/RST/双实例/legacy通过。根组合check三项UI旧引用失败保留，非全AC通过。Web `src/`接管HTTP领域runtime/配置/观测/路由与两轨装配；Core旧领域逻辑逐消费者迁出，handler/scope/file/upload/许可完整终态保持 | AC-03/06/07；V-04/08..10，真实TCP正反/资源控制 |
+| T-05 | work / T-04 | **[✅ T-05；R2文件入口配置修复，原transport/资源证据保留]** 本轮修复与当前输入见[修复1交接](attachments/890/work/repair-1-handoff.md)；下列原阶段数据按原输入保留。[r6交接](attachments/890/work/t05-t06-handoff-r6.md)。Web真实host/transport/scopes/file/upload/policy/session归新owner；Core临时桥退出；runtime隔离nextest109/109、实际包TCP/关闭和上传快照正反控2/2、audit3/session5及文件/SSE/12MiB/RST/双实例/legacy通过。根组合check三项UI旧引用失败保留，非全AC通过。Web `src/`接管HTTP领域runtime/配置/观测/路由与两轨装配；Core旧领域逻辑逐消费者迁出，handler/scope/file/upload/许可完整终态保持 | AC-03/06/07；V-04/08..10，真实TCP正反/资源控制 |
 | T-06 | work / T-04 | **[✅ T-06；迁移/定向验收，CLI/UI消费待T-07]** 代码语言`1b177ebab`、Web`d8c889c78`；HTTP生成/targets/模板归Web，IPC留原owner/shared四模块单源；生成48通过/1原ignore、targets18通过、实际cold生成/编译/TCP/恢复1通过、原file/upload/JSON-SSE wire3通过，Tauri具名2通过。原按需ignore和完整ID/门仍pending；见[r6交接](attachments/890/work/t05-t06-handoff-r6.md)。拆`auto-api-gen/src/{api_gen,rust_workspace,sidecar,source_owner}.rs`真实归属，HTTP生成/客户端/模板切Web，885控制与非HTTP/共享规则不复制，必要兼容门面无环 | AC-04；V-05/07，约简与实际生成Rust编译/执行 |
 | T-07 | work / T-05/06 | **[✅ T-07；消费迁移/定向验收，整应用T-10/最终门T-12保留]** Man/UI正式依赖与直接HTTP调用切Web，显式安装provider并跨线程保存typed launch；Core形态闭包534包、禁止UI/大门面/Tauri边0。真实CLI VM和Rust两轨精确响应/port0配置哈希/关闭退出/端口释放，UI真实VM worker1、proxy4、Vue流生成1及Man命名5均通过；根/UI/Man check通过。原daemon命令、非HTTP/共享单源保留。语言`163d342a6`、UI`672955d`、Man`9f8ffc2`，[收据/限制](attachments/890/work/t07-handoff.md)；冻结完整组合及Blog双UI不冒提前认证 | AC-05的受影响消费接线；V-06/07定向实证；整应用和完整闭包仍T-10/12 |
-| T-08 | work / T-07 | **[待修复 T-08；890-R1A/B执行证明校验重开，原迁移证据保留]** 117迁移ID及696历史行/116唯一ID、17资源核；10原UI照片测试迁至media且原测试子树hash相同。46 recipes/7320义务/1211叶已真实发现；Web217过+2原ignore，保留语言28过、媒体54过、当前治理反例9过。真实四仓清单全部ID/floor核通过，partial/list-only不认证交付的实际负控exit2；不降floor、不退役原义务。语言`38f68d8e9`、Web`f4cc93c`，[收据/原红/限制](attachments/890/work/t08-handoff.md) | AC-08/11的T-08部分；V-11/16；最终冻结实际批次T-12仍NOT_PASSED |
-| T-09 | work / T-08 | **[待修复 T-09；890-R1C发行证明及R2独立CLI重开]** 19包纯SDK自包含源/Windows包已真实构建、测试、fresh/locked/A→B及故障恢复；冻结发行45/45、历史Core恢复14/14，SDK217过+2原ignore。Man事务唯一源/不可编辑工具快照、完整stdlib/版本/来源/哈希与严格Core/Full边界；公开反例4拒绝且旧workspace不改。真实Git独立检出构建/库测试及Windows目录限制/LEAK分列保留；治理10与用途19反例通过，未降旧floor/原条件。[包/哈希/范围](attachments/890/work/t09-handoff.md)；语言`f739c3751`、Web`9ddb7fe`、Man`cb4ab3d` | AC-09/11；V-12/13；旧架构仅Core合法形态，未冒旧UI/Full运行认证；T-10/11/12继续 |
-| T-10 | work / T-09 | **[待修复 T-10；R1/R2关闭后的证据/健康/SD冻结重开]** 固定Blog原314文件未改，真实冷Rust构建/API13及完整Vue15/15、原生22/22；新增UI局部快照/同名状态修复`9aad12c`，原ui_gen模块866过+2原ignore、4反例。语言`ede598998`刷新46 recipes/7329义务/1213叶，75职责组、19守恒用途控制；新增warning差0、旧debug/TODO来源核与SD01..09回交完成。原红/路径/缓存/控制器清理限制具名保留，[冻结交接](attachments/890/work/t10-handoff.md) | AC-10..12；V-14..17，工作AC自查不冒独立终审/整档门 |
+| T-08 | work / T-07 | **[✅ T-08；R1A/B执行证明/完整适用集合已修，最终执行门T-12保留]** 本轮修复与当前输入见[修复1交接](attachments/890/work/repair-1-handoff.md)；下列原阶段数据按原输入保留。117迁移ID及696历史行/116唯一ID、17资源核；10原UI照片测试迁至media且原测试子树hash相同。46 recipes/7320义务/1211叶已真实发现；Web217过+2原ignore，保留语言28过、媒体54过、当前治理反例9过。真实四仓清单全部ID/floor核通过，partial/list-only不认证交付的实际负控exit2；不降floor、不退役原义务。语言`38f68d8e9`、Web`f4cc93c`，[收据/原红/限制](attachments/890/work/t08-handoff.md) | AC-08/11的T-08部分；V-11/16；最终冻结实际批次T-12仍NOT_PASSED |
+| T-09 | work / T-08 | **[✅ T-09；R1C/R2有界修复与新SDK/CLI验证完成，最终组合收据T-12保留]** 本轮修复与当前输入见[修复1交接](attachments/890/work/repair-1-handoff.md)；下列原阶段数据按原输入保留。19包纯SDK自包含源/Windows包已真实构建、测试、fresh/locked/A→B及故障恢复；冻结发行45/45、历史Core恢复14/14，SDK217过+2原ignore。Man事务唯一源/不可编辑工具快照、完整stdlib/版本/来源/哈希与严格Core/Full边界；公开反例4拒绝且旧workspace不改。真实Git独立检出构建/库测试及Windows目录限制/LEAK分列保留；治理10与用途19反例通过，未降旧floor/原条件。[包/哈希/范围](attachments/890/work/t09-handoff.md)；语言`f739c3751`、Web`9ddb7fe`、Man`cb4ab3d` | AC-09/11；V-12/13；旧架构仅Core合法形态，未冒旧UI/Full运行认证；T-10/11/12继续 |
+| T-10 | work / T-09 | **[✅ T-10；修复1证据/健康/SD冻结完成，待受影响独立复审]** 本轮修复与当前输入见[修复1交接](attachments/890/work/repair-1-handoff.md)；下列原阶段数据按原输入保留。固定Blog原314文件未改，真实冷Rust构建/API13及完整Vue15/15、原生22/22；新增UI局部快照/同名状态修复`9aad12c`，原ui_gen模块866过+2原ignore、4反例。语言`ede598998`刷新46 recipes/7329义务/1213叶，75职责组、19守恒用途控制；新增warning差0、旧debug/TODO来源核与SD01..09回交完成。原红/路径/缓存/控制器清理限制具名保留，[冻结交接](attachments/890/work/t10-handoff.md) | AC-10..12；V-14..17，工作AC自查不冒独立终审/整档门 |
 | T-11 | review / T-10 | 同权威组树独立final review AC-01..12、V/SD及新反例，绑定各HEAD/依赖/资源；有finding回work同树修复并重审；pass后reviewed11/12且最终门pending | AC-13；V-18，auto-plan-review流程，独立证据重建 |
 | T-12 | merge / T-11 | 再核冻结组合/写入窗口，按T-02依赖顺序和恢复点跑各仓统一门+四仓完整认证，实际合入各修改仓；Web canonical、语言指针、UI/Man消费文档及各自ledger/index沉淀；主合同归档后逐树guard clean再安全清理，最终来源/产物/ID/状态读回 | AC-14；V-18，auto-plan-merge流程；批次到期按现行单实例规则，收尾后12/12 |
 
@@ -524,6 +524,18 @@ stage: review | review_scope: final | reviewer_identity: `/root/plan890_final_re
 stage: goal | plan_id: PLAN-890 | plan_revision: r6 | round: 28 | renewed_session_round: 3 | from: review | to: work | status: executing | outcome: needs_fix | current_step: 6/12 | final_review_attempt: 1 | repair_cycles_started: 1/3 | worktree: D:/autostack/.wt/lang-890/auto-lang | commit: e1ece5d45138040bcb67c4ecf5060cca53099019（review baseline；后续仅复审簿记不覆盖代码） | next: work | authorization: 当前全链授权继承，原树有界修复后受影响复审；不请求再次许可，不执行T-12门或合入。
 
 复审阻断按AGENTS登记在同树`KNOWN-DEBT-AND-RISKS.md`，明确OPEN/必修而非延后债；仅该文档提交`46547a0f898cfe29745e7bfcee62dc874f9cfb64`，候选实现不变、提交后clean。主检出只提交本计划与两份MD复审/冻结摘要；所有raw探针/JSON/log本地保留，未暂存。他方894及其他文档WIP未混入；本轮仅文档目标校验，无新增Rust测试或全局门。
+
+### 2026-10-31 work repair cycle 1 — execution_done10/12
+
+stage: work | plan_id: PLAN-890 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-890/auto-lang | branch: plan-890-dev | base_commit: `46547a0f898cfe29745e7bfcee62dc874f9cfb64`（复审后只读簿记），正式894/主计划同步`c73e88f86` | code_commit: `2506549321ad8f4699089a7b0dce53d74f78b046`（实现74e13580a、证明分支0fdca25c0、原格式恢复b446256b5、最终目录250654932） | dependency_revisions: Web `e01232b3d449ea590a85d9458d553ab17b9456a3`, UI `9aad12ccbc5f01d5241eb95f657666a943667ff2`, Man `cb4ab3dd5d411314cce10b129eeb3b433a11c466`, Down `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4` | task_ids: T-05/T-08/T-09/T-10 | status: execution_done | current_step: 10/12 | findings: R1/R2 implementation repaired, independent affected re-review pending | evidence: [修复交接/关闭表/复用边界/命令及本地索引](attachments/890/work/repair-1-handoff.md), SHA256 `b09b057bc6674bfd0db275e49302d86a485ea48bcffb134fa9b06a2e6ab56607`; [当前SD增量](attachments/890/work/repair-1-spec-delta.md), SHA256 `4bf46bb591d1aa3c1800d703f9024072a7c011afafda359e355c1e9b864684c4` | source_identity: `815c5287416833e52b7656e0c07764600a53ca532b883bd13168b728abf1ce8f` | blockers/user_decisions: none for affected review | next_responsible_role: independent final review（同权威树、原findings+合法对照+相关分支；未变AC证据保留）。
+
+R1真实关闭：公开零执行收据exit2拒绝，完整20原ID实际执行且证明被接受，原遗漏ID的20→19与同步短日志仍拒绝；14治理控制含nextest/libtest/Python及原负Case元oracle、缺command/退出/输出/hash/排除/重复/过滤/旧source组合。原真实45按原输入仍有效，5项删证明反例全部拒绝，当前组合不能冒借它认证新SDK字节。模块消费者49/11.119s、用途守恒19/30.132s；真实47 recipe发现后7367义务/1220叶，76职责组全覆盖。894正式新增32观察/7叶仅用途pending，不变注册/样本/预算/断言/条件；两周期清单完整47。API20真实墙钟9.570742s/工作CPU8171.875ms/作业峰334266368bytes，非P90或整目录计量。
+
+R2真实关闭：Core host模块6/0.26s、Web HTTP文件3/5.85s；新不可变19包源candidate=false、locked冷构建2m13/安装720文件，真实CLI fresh3+relocated3精确nonce、配置端口≠环境端口、loopback/profile/hash、Host400、shutdown202/exit0/端口回收；A已不存在且移动前全树无reparse。当前SDK库217/203.198s+2原ignore，源码/安装清单测试后重核未变；必要Rust生成运行兄弟未改代码也以新不同端口driver真实重放。两新ZIP共22986983bytes并读回完整唯一清单/CRC；raw/缓存未入库。原Core128/Web13/测试140 warnings保留，无新warning/debug或必需延后；受改Rust fmt、五树whitespace/clean均通过。
+
+当前SDK实际生产者Lang74e13580a/Webe01232b；后续语言变更是未打包治理/目录，不篡改其原来源。SDK输入hash `3bc6c24bea6ac48d236d41f4af87c2412816714f930f886ae4fa83e38a094a10`/config `d595de8766d93c16257a43fcc83b1d229c3f63d8f98466d84c28b59946037066`与原始日志hash见本地`repair-1-independent-tests.json`（SHA256 `5a88ff4552d9c6a827008894e54f8d3fb4c4a07a34beabcbbbe821edee2c8f72`）。SDK当前执行不是复用旧SDK测试数。旧45/历史14、未变HTTP算法/生成器/Man事务/UI与固定Blog15/22仅在各自原输入/未变路径复用；**新完整当前组合发行/四仓/完整tm门仍NOT_PASSED，既定T-12冻结统一门前不认证新组合**。原3个AAVM红与原ignore/manual/环境限制保留。无新GUI/全目录测试body/周期批次/远端/合入/规范/账本写入/归档/guard移除。
+
+stage: goal | plan_id: PLAN-890 | plan_revision: r6 | round: 29 | renewed_session_round: 4 | from: work | to: review | status: execution_done | outcome: pass | current_step: 10/12 | repair_cycle: 1/3 | previous_final_reviews: 1 needs_fix | worktree: D:/autostack/.wt/lang-890/auto-lang | commit: 2506549321ad8f4699089a7b0dce53d74f78b046 | next: review | authorization: 当前完整goal继承；无必需新决定，不重复请求许可；所有T-11/12仍保留。
 
 ## 10. 待澄清事项
 
