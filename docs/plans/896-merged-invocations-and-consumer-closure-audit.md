@@ -1,42 +1,45 @@
 ---
 plan_id: PLAN-896
 status: drafting
-feature_name: 测试合并调用与消费者闭包审核
+feature_name: 顶级模块统一并行调度、闭包审核与AAVM实验测试默认忽略
 author: [Codex]
 created_at: 2026-10-30
-updated_at: 2026-10-30
+updated_at: 2026-10-31
 
-plan_revision: 1
-supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/test-purpose-and-admission.md, docs/specs/auto-test-case/governance-and-inventory.md]
+plan_revision: 2
+supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/test-purpose-and-admission.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/aavm/project.md]
 new_spec_components: []
 touched_goals: []
 
 affects: [auto-test-case, test-infrastructure]
 depends_on: [PLAN-888, PLAN-895]
 current_step: 0
-total_steps: 10
+total_steps: 11
 ---
 
-# [PLAN-896] 测试合并调用与消费者闭包审核
+# [PLAN-896] 顶级模块统一并行调度、闭包审核与AAVM实验测试默认忽略
 
 ## 0. 变更摘要
 
 在888唯一义务/叶模块和895顶级职责模块之上，减少兼容叶的重复发现与运行器启动，逐条审核消费者闭包扩张的来源及必要性。以相同输入的义务守恒、逐项真实终态、生命周期/资源约束和真实消费者不漏为交付标准；用途标签不参与执行过滤。
 
-用户已同意895建议的48个模块作为日常候选池。本计划仅登记该决定、完成合并调用及闭包审核；不启用一个固定的48模块默认包，不改变现有周期触发、注册或忽略条件。当前仅起草，待用户确认本r1后实施。
+用户已同意895建议的48个模块作为日常候选池，随后要求顶级模块内兼容用例像旧cargo t一样统一并行调度，并裁定AAVM/AA2R实验仅留代码、测试全部默认ignore。后者是明确批准的启用条件例外，不是按用途标签过滤。日常有效候选相应为47个，`lang/vm-aavm`保留历史模块导航/手动验证归属；最终以精确测试身份审核为准。本计划不启用固定默认包，不改变周期频率。当前仅起草，待用户确认本r2后实施。
 
 ## 1. 目标
 
-- G1：合并同执行合同的兼容叶，降低逐叶发现/启动开销；顶级/叶/原子身份不变，原测试实际执行及oracle不减。
-- G2：对全部48候选模块的闭包给出可重建路径与用途分布，逐项审核895记录的37个跨顶级扩张及当前新增/消失项。修正有证据的过宽映射，保留真实消费者和证据不足的保守边。
+- G1：顶级模块全部适用用例按兼容执行合同统一并行调度，支持跨叶及跨已选顶级模块合并；不以叶为串行运行边界。除G5明确批准的ignore外，身份、测试义务及oracle不减。
+- G2：对历史48候选模块的闭包给出可重建路径与用途分布，逐项审核895记录的37个跨顶级扩张及当前新增/消失项。修正有证据的过宽映射，保留真实消费者和证据不足的保守边。
 - G3：选择、执行、计量及旧入口均消费相同新合同，覆盖正常、拒绝、失败及清理路径；首次红与未执行状态不被聚合绿覆盖。
 - G4：给后续默认决策提供真实成本及闭包结论，不以本计划替代默认包准入决策。
+- G5：AAVM/AA2R实验测试全部默认ignore，保留实现、测试源码/夹具/期望及显式手动重放；不波及普通VM、Rust实现A2R或真实产品消费者。
 
-非目标：删除/关闭/ignore测试；按special/research/pending裁剪；批量注册895未注册入口；裁定P-050用途；修复旧红和ACE产品性能；推广888 B/C worker批量试点；改变正式样本/压力规模/金样/截止/资源组；引入第二套runner或裁判；修改UI/Man外仓；启用日常默认包或改周期频率。
+非目标：删除代码/测试，或关闭G5范围外测试；按special/research/pending裁剪；批量注册895未注册入口；裁定P-050用途；修复旧红和ACE产品性能；推广888 B/C worker批量试点；改变正式样本/压力规模/金样/截止/资源组；引入第二套runner或裁判；修改UI/Man外仓；启用固定日常默认包或改周期频率。
 
 ## 2. 架构方案
 
 继续使用`module_command.py → module_catalog.select/verify_selection → run_selected.py`真实链。选择合同先闭合，再做执行分组：组是调度对象，不是新义务/新叶，不改变选择并集。优先合并nextest同recipe兼容叶；Python和case-suite先保留独立调用，除非T-02证明原session/副作用/oracle/收据逐项等价并给负控。未证明兼容的形态显式独立执行，不静默漏测。
+
+顶级模块内兼容nextest用例汇总为一次调度，沿用原并发额度、资源组及HTTP/性能门必要串行约束；不是同时无限启动所有测试。多个已选模块及消费者的兼容用例也可共享调度。拆调用必须说明配置、argv或隔离原因，不能只减少少数启动却继续以叶串行作为默认。AAVM/AA2R先按原子身份显式ignore，再重新建立目录分区，不用整顶级模块黑名单代替源码标记。
 
 闭包审计沿`impact_graph.build_graph → module_closure → select → verify_selection`，解释直接来源及传递边，区分源码变化影响、构建依赖、运行时/helper/集成依赖和保守回退。Cargo构建依赖不自动等于可删除的执行边；共享产品源变更继续拉起必要消费者。图修正须在生产端和消费端一致生效。
 
@@ -48,7 +51,9 @@ total_steps: 10
 
 ### 4.1 授权、状态与依赖
 
-用户2026-10-30同意48模块作为日常候选池，并要求“新建一个计划，先做合并调用和闭包审核，保留真实消费者及原测试义务，不直接过滤专项或调研测试；计划写好后给我确认”。本轮仅规划及计划簿记，本r1实施尚待确认。无另行时间/自动续行预算。主检出他方WIP不纳入本计划。
+用户2026-10-30同意48模块作为日常候选池，并要求“新建一个计划，先做合并调用和闭包审核，保留真实消费者及原测试义务，不直接过滤专项或调研测试；计划写好后给我确认”。当时仅授权规划及簿记，r1未进入实施；现行合同为下述r2。无另行时间/自动续行预算。主检出他方WIP不纳入本计划。
+
+2026-10-31补充授权：AAVM和AA2R为计划由ACE替代的历史尝试，仅保留代码，其测试全部默认ignore；此裁定覆盖此前AGENTS AAVM触面必测与本r1“忽略条件不变”在该精确实验范围内的要求。ACE替代是路线意图，不据此声称已完成等价替代或代码无人消费。本r2连同统一并行调度一起交确认，尚未开始实施。
 
 已读`docs/specs/overview.md`；其总览含早期快照，测试细则以当前模块Specs及实际源码为准。规划主检出HEAD为`e2b037cba8f248239d5e15da99ce052124370d2a`，work须重新绑定当时源/依赖/配置，不把规划SHA当最终门身份。
 
@@ -62,6 +67,7 @@ total_steps: 10
 | `scripts/test-governance/module_catalog.py` | SHA256 `78d0e104d4a3c608091f16aef2ae9ceffdcc8dcc34b77765d471b8932de394c7` | `module_closure/select/verify_selection`是生产与消费关口 |
 | `scripts/test-governance/{top-level-modules,daily-admission-proposal,test-purpose-policy}.json`、895归档 | 历史66顶级/1181叶/7165义务；recommend 48；37跨顶级扩张；24组开销主导超60秒 | T-01重核当前分母；历史数不是新上限或全目录重跑理由 |
 | `docs/plans/893-ace-test-framework-and-slow-case-attribution.md` | 在途draft r2：ACE接入/13慢原子归因 | 不接管其产品阶段归因/新入口；共享选择/计量接口需核对，不覆盖他方WIP |
+| `docs/specs/aavm/project.md`、`crates/auto-lang/src/tests/aavm*.rs`、`test/parity/crates/auto-parity/src/aavm.rs` | 自举实验VM及Auto写的Rust转译器AA2R，不是普通Rust实现A2R；parity含显式五方矩阵 | T-11按真实源绑定审核root和目录外测试/入口，不按名字子串批量ignore |
 
 ### 4.2 已观察与待证实
 
@@ -73,7 +79,7 @@ total_steps: 10
 
 ### 5.1 候选池边界
 
-T-01冻结895 `daily_admission=recommend`完整48个ID及源哈希，复核20个普通lang、10个core、8个ace、5个case、4个infra，加1个条件`lang/vm-aavm`。候选池不是每次必跑清单；AAVM按AGENTS真实触面规则，A2C/ignored/平台/里程碑条件原样保留。
+T-01冻结895历史48个ID及源哈希，复核20个普通lang、10个core、8个ace、5个case、4个infra，加历史条件`lang/vm-aavm`。按G5将AAVM/AA2R实验转默认忽略，候选池有效日常项47个；历史48及37闭包对账仍保留以解释差集。其他A2C/ignored/平台/里程碑条件原样保留。
 
 本计划在规范/审计摘要登记批准事实，历史suggestion字段不成为执行开关；不新增无参数隐式全跑、不改legacy默认、不新增按用途过滤入口。
 
@@ -88,15 +94,27 @@ T-01冻结895 `daily_admission=recommend`完整48个ID及源哈希，复核20个
 
 ### 5.3 闭包逐项审核与最小修正
 
-T-03交付当前48模块逐模块直接叶/义务、全部闭包叶/义务、额外顶级及用途分布，以及扩张路径、边类型、来源文件/符号/哈希、原规则和结论。895的37跨顶级模块逐一对账；循环/强连通分量、未知回退、多来源边不漏；路径可归并但边覆盖可重建。
+T-03交付历史48模块在当前身份下逐模块直接叶/义务、全部闭包叶/义务、额外顶级及用途分布，以及扩张路径、边类型、来源文件/符号/哈希、原规则和结论。895的37跨顶级模块逐一对账；循环/强连通分量、未知回退、多来源边不漏；路径可归并但边覆盖可重建。
 
 结论三类：保留（真实消费者有证据）、修正（反例证明原映射过宽，正控证明真实消费者保留）、保守保留待证（具名原因和下一事实，不视作可删）。用途标签只解释报告；闭包缩小不是验收指标。
 
 修正基于源/构建/运行时边界，在`impact_graph.py/impact_rules.json`及必要目录构建/消费处一致落地。不以文本“没引用”证明动态消费者不存在。保global_inputs、未知路径扩大、删除/重命名、manifest、optional/dev/platform、动态worker/fixture/helper与传递集成。每条删除/收窄边列原边、新规则、选择差集、正反控；证据不足维持旧行为。全部原义务仍登记且可达，oracle/profile/条件不变。
 
+上段“条件不变”仅G5实验ignore为已批准例外；其真实消费边仍登记，默认选择可出现已忽略实验的NOT_APPLICABLE，不得通过删边隐藏。普通产品消费者继续执行。
+
+### 5.3.1 AAVM/AA2R精确默认忽略范围
+
+T-11枚举root的`aavm_runner_tests/aavm_at_mode_tests/aavm2_*`、其生成器/宏注册及`test/parity`等目录外真实AAVM/AA2R测试，给出逐ID源码归属、原ignore/条件、新原因和手动入口。当前目录`lang/vm-aavm`共23叶/138义务，120条已ignored；其中还混入`plan492_m2_tests::m2_primary_shorthand_bracket`与`plan492_m3_tests::m3_vue_text_content_arms`，不能对顶级模块无差别施加ignore。精确实验数量由T-11复核，包括未注册入口，不把parity全部459测试视为AAVM。
+
+Rust测试在源码/生成源使用具原因的`#[ignore]`，不删`#[test]`/mod/feature及源码，不以feature默认关闭冒充ignore；自动任务不使用include-ignored/run-ignored绕过该决定。非Rust或手动矩阵保持显式手工入口，从自动调度中按精确身份登记禁用，非静默exit0。手动运行必须主动指定ignored实验及原feature/平台/资源约束，仍保原oracle/样本；原T3条件不自动解除。正常只选择这些已忽略项应报告未执行/NOT_APPLICABLE，不认证通过。
+
+同步目录、冻结合同/分区、legacy导航及周期驱动中的适用性记录，逐条公开授权差集；保持原义务全集，仅启用状态变化。宏/生成测试从源头覆盖，重生成不能恢复默认启用。不修改普通VM/A2R及共享产品消费者测试；`packages/aavm/lib-legacy`等存在真实载荷消费者时保代码和相应产品验证。更新AGENTS中冲突AAVM触面要求和所属Specs，不能一边默认ignore一边仍宣称旧必测门已通过。
+
 ### 5.4 成本与交接
 
 对895标记的24开销组逐组给出新分组/调用数变化/不可合并原因；对可合并组完成完整单轮成本，复用同身份有效证据。旧/新相同选面、冻结源码/依赖/环境下选小组、中组及接近argv预算组对照，分列准备/冷编译、发现、执行、比较/清理、整命令、CPU/峰值与背景负载。至少一个真实多叶组发现/执行启动次数严格减少且逐义务结果相等；超60秒或收益不显著具名归因，不以小样本宣称P90或改原收益门。
+
+增加旧t同义务选面的单次nextest调度与逐叶调度对照，区分框架成本、实际慢例、覆盖增加与闭包成本；不预先承诺恢复50秒。并行验收以真实跨叶调度观察为证：至少一个无串行限制的多叶组观察到不同叶测试执行区间重叠；有资源约束组仍按原限制运行。AAVM/AA2R默认ignore带来的工作量减少单列，不计作合并/并行提速；同选面比较以相同适用性为前提，不为成本测量恢复已批准默认关闭的重实验。
 
 闭包全量元数据审计，实际只测本计划触面和代表性真实消费者，不为横切runner重跑7165全目录，不隐含批准A/B/C完整矩阵或并发重型任务。
 
@@ -107,8 +125,9 @@ T-03交付当前48模块逐模块直接叶/义务、全部闭包叶/义务、额
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-test-case/module-selection.md | 逐叶执行→兼容调用组、逐义务终态、成本归属与闭包证据；原身份/消费者/条件不减 | 降开销不降认证粒度 | AC-02/03/04/06 |
-| SD-02 | modify | docs/specs/auto-test-case/test-purpose-and-admission.md | 895尚未人审建议→48候选池已批准、固定默认包未启用；用途不筛选 | 沉淀本轮决定 | AC-01/04 |
+| SD-02 | modify | docs/specs/auto-test-case/test-purpose-and-admission.md | 895尚未人审建议→历史48已批准、AAVM实验默认ignore后有效日常47、固定默认包未启用；用途不筛选 | 沉淀本轮决定 | AC-01/04 |
 | SD-03 | modify | docs/specs/auto-test-case/governance-and-inventory.md | 补分组守恒、图边变更证据及消费端反控 | 防聚合漏报与漏消费者 | AC-02/03/04/05 |
+| SD-04 | modify | docs/specs/aavm/project.md | 实验按触面自动门→保代码/测试与手动入口、全部默认ignore；普通VM/A2R产品消费者保持 | 用户2026-10-31明确裁定；同步AGENTS对应要求 | AC-09 |
 
 ## 6. 测试设计
 
@@ -116,13 +135,14 @@ T-03交付当前48模块逐模块直接叶/义务、全部闭包叶/义务、额
 
 | case_id / owner_stage | AC / 不变量 | 输入/状态与实际入口 | 可观察oracle与区别性断言 | 边界/启用任务 |
 |---|---|---|---|---|
-| V-01 / work | AC-02 合并精确 | `run_selected.py`双叶同recipe、顶级+叶混选、同名跨binary/recipe、长argv | 实际枚举/执行并集等于原路径，恰一次；跨合同不合并，argv有界拆组；真实调用数下降 | T-02/05夹具+真实nextest小组 |
+| V-01 / work | AC-02 统一并行 | `run_selected.py`顶级模块多叶同recipe、顶级+叶混选、同名跨binary/recipe、长argv | 并集等于原路径且恰一次；兼容组一次统一调度、跨叶执行区间真实重叠；不兼容/argv拆组具名，非逐叶串行 | T-02/05夹具+真实nextest小组 |
 | V-02 / work | AC-03 真终态 | 同组一绿一红、崩溃/超时、缺/重复/额外终态、包装child错源/漏check | 真实PASS/FAIL保留，未完NOT_RUN，整门非零；删child收据不能exit0冒绿 | `execution_trace.py`及消费端，T-05/06 |
 | V-03 / work | AC-02/03/05 条件隔离 | 不同env/profile/ignored/milestone/session；HTTP、Job清理失败、身份漂移 | 不兼容不合并；原NOT_APPLICABLE不充PASS；资源串行/截止不弱化；漂移/残留失败 | nextest/Job真实代表组；Python/TestCase保原路，T-05/06 |
 | V-04 / work | AC-04 真消费者 | `select/verify_selection`链/环/多路径、动态worker/helper、共享源、dev/optional/platform、global_inputs、删改名/未知路径 | 真消费者逐ID必选；删必要边/篡改选择在消费端失败；未知保守扩大 | 小图正反控+真实owner/fixture，T-03/04/06 |
 | V-05 / work | AC-01/04 用途不删 | 同一真实special/research消费者换用途标签；有证据的过宽边 | 标签变化选择集合不变；修正差集可核，原义务可达；无可证修正则保留并报告 | `test_module_selection.py/test_test_purpose_policy.py`，T-04/06 |
 | V-06 / work | AC-05 入口兼容 | tm显式/changes/legacy带滤串/schedule；`measure_modules.py`消费新结果 | 身份符合原合同或具名获证图修正；组/叶计数不混、资源不重记、首红不覆盖 | 选择全量对账+代表真实调用，不全跑旧档；T-06 |
 | V-07 / work | AC-06 成本 | 冻结身份新旧多叶组与24开销组 | 启动/墙钟/CPU/峰值/阶段可核；完整义务不变；冷准备/未测/共享估算明确 | T-07，无统一P90/三warm/全局矩阵 |
+| V-08 / work | AC-09 精确ignore | root与目录外实验逐ID/宏重生成、tm/legacy/periodic条件、普通VM/A2R及plan492正控、显式手动入口 | 已批准实验真实发现为ignored，自动入口不执行且不冒PASS；重生成不复活；原源码/oracle保留；普通消费者不受影响；显式ignored小例可运行 | T-11提供清单/消费端负控；不全跑自举矩阵 |
 
 治理入口：`python -m unittest discover -s scripts/tests -p test_module_selection.py`，对应`test_test_purpose_policy.py`及确有触面的`test_native_meter.py`。若新增分组专用测试文件，T-05接入现有治理recipe/消费者，不留下未受管唯一验证。
 
@@ -135,26 +155,28 @@ T-03交付当前48模块逐模块直接叶/义务、全部闭包叶/义务、额
 | ID | owner_stage | 可观察完成条件 / 验证 |
 |---|---|---|
 | AC-01 | work | 固化48候选ID及批准事实/条件例外；无固定默认启用、用途过滤、注册或周期调整；配置diff和V-05核验 |
-| AC-02 | work | 兼容键/拆组/共享成本明确；真实多叶调用数减少；义务/profile/oracle/条件/隔离守恒；V-01/03 |
+| AC-02 | work | 顶级内及多个已选模块的兼容用例统一并行调度，叶不作为串行边界；拆调用有合同/argv依据；真实跨叶重叠且调用数减少；原隔离/资源组保持；V-01/03 |
 | AC-03 | work | 真终态与原包装收据闭合，缺项/崩溃/超时/残留不冒绿；独立重放与首红可追；V-02/03 |
 | AC-04 | work | 48完整闭包与37历史项逐一对账；逐项来源路径和三类结论；图修正正反控/差集可核，真实/未知消费者保留，标签不影响选择；V-04/05 |
 | AC-05 | work | tm显式/changes/legacy/schedule和计量等直接消费者兼容；生产/消费拒篡改，条件/资源/身份门保持；V-03/06 |
 | AC-06 | work | 24组新分组/不可合并原因、可合并组完整单轮；代表组同身份新旧对照和资源/阶段统计，不伪造共享叶成本；V-07 |
-| AC-07 | review | 独立核全部AC、遗漏/延后/workaround、warning/格式/debug、SD-01..03；债务候选入KNOWN-DEBT-AND-RISKS，不掩盖合同缺口；revision-bound pass |
+| AC-07 | review | 独立核全部AC、遗漏/延后/workaround、warning/格式/debug、SD-01..04；债务候选入KNOWN-DEBT-AND-RISKS，不掩盖合同缺口；revision-bound pass |
 | AC-08 | merge | 最终审查后冻结受影响完整模块/消费闭包门；规范及仓规沉淀、archive、留存预算、fresh guard clean后清理；周期仅到期触发 |
+| AC-09 | work | AAVM/AA2R全范围逐ID对账，所有该实验测试默认ignore且自动入口不绕过，原源码/夹具/期望与显式重放保留；普通VM/Rust A2R/真实消费者和混入plan492测试不误关；合同/目录/候选状态与AGENTS/Specs一致，已忽略不充绿；V-08 |
 
 ## 8. 执行步骤
 
 | 状态 | ID | owner_stage | 依赖 | 文件/操作、交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户确认r1 | 建唯一lang-896组树，绑HEAD/依赖/配置、893接口；冻结48ID、当前分母、24/37历史映射与原合同；核`audit_test_purposes.py --help`后运行守恒审计 | AC-01/04 |
+| [ ] | T-01 | work | 用户确认r2 | 建唯一lang-896组树，绑HEAD/依赖/配置、893接口；冻结历史48ID、当前分母、24/37映射及原合同，单列G5授权差集；核`audit_test_purposes.py --help`后运行守恒审计 | AC-01/04/09 |
+| [ ] | T-11 | work | T-01 | `crates/auto-lang/src/tests/aavm*.rs`及宏/生成源、`test/parity`等实验入口逐ID审核和ignore；同步`scripts/test-governance`目录/冻结合同/周期适用性和候选状态；拟新增`docs/plans/attachments/896/aavm-ignore-scope.md`记录边界/授权差集/手动入口；V-08，更新AGENTS和SD-04 | AC-09 |
 | [ ] | T-02 | work | T-01 | `run_selected.py/recipe_runtime.py/execution_trace.py/module_observations.py`最小双叶nextest真链、机器终态/trace/兼容键/截止/成本；V-01/02最小红绿。不能证明兼容者独立；连nextest多叶不可行则needs_replan，不空交报告 | AC-02/03 |
 | [ ] | T-03 | work | T-01 | `impact_graph.py/module_catalog.py/impact_rules.json/build_modules.py`闭包审核；拟新增`docs/plans/attachments/896/closure-audit.md`，记48/37对账/边来源/三类结论；机器路径本地 | AC-04 |
-| [ ] | T-04 | work | T-03 | 实施有证据的最小图修正或保留，生产/消费同步、目录哈希及生成建议；V-04/05；拟新增`docs/plans/attachments/896/closure-deltas.md`逐边差集/正反控 | AC-01/04/05 |
+| [ ] | T-04 | work | T-03,T-11 | 实施有证据的最小图修正或保留，生产/消费同步、目录哈希及生成建议；V-04/05；拟新增`docs/plans/attachments/896/closure-deltas.md`逐边差集/正反控 | AC-01/04/05 |
 | [ ] | T-05 | work | T-02 | 扩nextest兼容合并，按需新增`invocation_groups.py`；`run_selected.py/execution_trace.py/module_observations.py`终态/trace/资源；不兼容独立，V-01..03和unittest | AC-02/03/05 |
-| [ ] | T-06 | work | T-04,T-05 | `module_command.py/measure_modules.py/audit_test_purposes.py`等直接消费者兼容；`scripts/tests/test_module_selection.py/test_test_purpose_policy.py`等反控；V-04..06及代表真实tm执行 | AC-01..05 |
+| [ ] | T-06 | work | T-04,T-05,T-11 | `module_command.py/measure_modules.py/audit_test_purposes.py`等直接消费者兼容；`scripts/tests/test_module_selection.py/test_test_purpose_policy.py`等反控；V-04..06/08及代表真实tm执行 | AC-01..05/09 |
 | [ ] | T-07 | work | T-06 | 按5.4用`measure_modules.py/module_observations.py`完成24组处置/局部成本与V-07；拟新增`docs/plans/attachments/896/cost-summary.md`；不全目录/全矩阵重跑 | AC-06 |
-| [ ] | T-08 | work | T-07 | 完成SD-01..03源文档及执行摘要，逐AC证据/未执行条件/旧红、格式/warning/debug核验，实施提交冻结待审，status→execution_done | AC-01..06 |
+| [ ] | T-08 | work | T-07 | 完成SD-01..04源文档及执行摘要，逐AC证据/未执行条件/旧红、G5精确授权差集、格式/warning/debug核验，实施提交冻结待审，status→execution_done | AC-01..06/09 |
 | [ ] | T-09 | review | T-08 | 同权威树独立上下文auto-plan-review，核全部AC/V敏感性及SD/延期/债务，绑定修订/代码SHA；有finding回work，不直接修代码 | AC-07 |
 | [ ] | T-10 | merge | T-09 pass | auto-plan-merge持冻结tm变更并集门、复用有效证据；按仓规规范/簿记沉淀、archive、留存预算/周期判断；guard clean后移除树/分支/空组 | AC-08 |
 
@@ -162,6 +184,8 @@ T-03交付当前48模块逐模块直接叶/义务、全部闭包叶/义务、额
 
 2026-10-30 / stage: new / plan_id: PLAN-896 / plan_revision: r1 / outcome: pass（起草交接自检，非实施复审） / authorization: 48候选池已批准；本r1实施待用户确认 / grounding: 当前Specs、实际runner/图/消费关口、895历史及893在途边界 / preflight: 10任务、8AC、7V、3SD覆盖；真实消费者/原义务不减，终态/成本有所有者，不确定机制先由T-02关闭 / next: 用户确认r1后work T-01；未建实施树、未运行测试、未修改产品/工具或规范源文件。
 
+2026-10-31 / stage: new / plan_revision: r2 / outcome: pass（合同修订自检，非执行） / authorization: 用户新裁定AAVM/AA2R仅保代码、测试全部默认ignore；当前计划仍待确认 / changed: G1/G5、§2/5.1..5.4、AC-02/09、V-01/08、T-01/06/08/11、SD-04；统一跨叶并行不止减少调用；实验ignore为唯一新增启用例外，真实产品消费者保留 / evidence: 当前lang/vm-aavm 23叶/138义务/120已ignored且混入2条plan492，源码AA2R为Auto写的a2r，parity独立矩阵不是全部parity测试 / preflight: 11任务/9AC/8V/4SD，历史48→47有效日常候选另保历史导航，默认忽略节省不冒充调度提速 / next: 用户确认本r2后work；未改测试源码或默认状态。
+
 ## 10. 待澄清事项
 
-无需要用户另选的技术前置；兼容边界、终态协议、图修正由T-02/03依证据裁定，不得削弱合同。待确认本r1本身。固定默认包、P-050、未注册入口、ACE产品优化均在范围外，不能作为本合同漏项延期容器。
+无需要用户另选的技术前置；兼容边界、终态协议、图修正及实验逐ID边界由T-02/03/11依证据裁定，不得扩大ignore到普通产品测试。待确认本r2本身。固定默认包、P-050、未注册入口新增注册、ACE产品优化在范围外；现存目录外AAVM/AA2R默认关闭属于G5范围，不能遗漏。
