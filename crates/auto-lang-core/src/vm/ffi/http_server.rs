@@ -65,10 +65,6 @@ pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
 /// request-id minting for `dispatch_api_request` (PLAN-699: the legacy
 /// inline handler this comment named was removed by the Axum transport).
 
-/// Plan 346 5e (B6): active rate-limit config `(max_requests, window_ms)`.
-/// `None` (default) = no limiting — backwards compatible until
-/// `http.rate_limit(n, ms)` is called.
-static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> = std::sync::Mutex::new(None);
 /// Plan 346 5e (B6): per-IP fixed-window buckets `ip -> (window_start_ms, count)`.
 static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u32)>>> =
     std::sync::Mutex::new(None);
@@ -3265,7 +3261,7 @@ pub(crate) async fn serve_with(
 ) {
     crate::http_service_config::with_service_policy(
         cfg.service.is_some(),
-        serve_with_inner(vm, addr, cfg, shutdown_rx),
+        server_route::with_owner_rate_buckets(serve_with_inner(vm, addr, cfg, shutdown_rx)),
     )
     .await;
 }
@@ -3526,7 +3522,7 @@ pub(crate) fn dispatch_api_request_segment(
         .peer
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    if let Some(retry_after_ms) = rate_limit_take(&client_ip) {
+    if let Some(retry_after_ms) = rate_limit_take(vm, &client_ip) {
         let body = format!(
             "{{\"error\":\"rate limit exceeded\",\"retry_after_ms\":{}}}",
             retry_after_ms

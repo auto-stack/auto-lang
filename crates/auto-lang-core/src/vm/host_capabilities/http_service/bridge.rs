@@ -4,6 +4,25 @@
 pub struct VmHttpBridge;
 
 impl VmHttpBridge {
+    /// Current language-owned settings. Read on the existing local VM thread;
+    /// the external host supplies its own rate-window state and algorithm.
+    pub fn rate_limit(vm: &crate::vm::engine::AutoVM) -> Option<(u32, u64)> {
+        vm.http_rate_limit().unwrap_or_else(|| {
+            *super::DEFAULT_RATE_LIMIT
+                .read()
+                .expect("HTTP default settings poisoned")
+        })
+    }
+
+    /// Explicit process default for the legacy embedding setter. A language
+    /// native setting (including disable) overrides it for that VM only.
+    pub fn set_default_rate_limit(max: u32, window_ms: u64) {
+        *super::DEFAULT_RATE_LIMIT
+            .write()
+            .expect("HTTP default settings poisoned") =
+            (max != 0).then_some((max, window_ms.max(1)));
+    }
+
     pub fn finalize_resources(
         kind: crate::vm::host_capabilities::request_context::RequestResourceKind,
         ids: &[u64],
@@ -65,5 +84,37 @@ impl VmHttpBridge {
 
     pub fn finalize_uploads(ids: &[u64]) {
         crate::vm::ffi::http_upload::scope_finalize_uploads(ids);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VmHttpBridge;
+    use crate::vm::{engine::AutoVM, virt_memory::VirtualFlash};
+
+    #[test]
+    fn rate_settings_preserve_sdk_default_and_per_vm_explicit_disable() {
+        struct Restore(Option<(u32, u64)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                *super::super::DEFAULT_RATE_LIMIT.write().unwrap() = self.0;
+            }
+        }
+        let _restore = Restore(*super::super::DEFAULT_RATE_LIMIT.read().unwrap());
+        let first = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 8192);
+        let second = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 8192);
+        crate::vm::ffi::http_server::set_rate_limit(7, 123);
+        assert_eq!(VmHttpBridge::rate_limit(&first), Some((7, 123)));
+        first.set_http_rate_limit(2, 0);
+        second.set_http_rate_limit(0, 10);
+        assert_eq!(VmHttpBridge::rate_limit(&first), Some((2, 1)));
+        assert_eq!(VmHttpBridge::rate_limit(&second), None);
+        crate::vm::ffi::http_server::set_rate_limit(9, 456);
+        assert_eq!(VmHttpBridge::rate_limit(&first), Some((2, 1)));
+        assert_eq!(VmHttpBridge::rate_limit(&second), None);
+        crate::vm::ffi::http_server::clear_rate_limit();
+        assert_eq!(VmHttpBridge::rate_limit(&first), Some((2, 1)));
+        let later = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 8192);
+        assert_eq!(VmHttpBridge::rate_limit(&later), None);
     }
 }

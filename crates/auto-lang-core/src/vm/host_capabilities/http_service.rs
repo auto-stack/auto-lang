@@ -15,6 +15,10 @@ mod bridge;
 pub mod messages;
 pub use bridge::VmHttpBridge;
 
+// Compatibility embedding default: pure settings, not window state or policy
+// execution. Both the external adapter and the old SDK facade use this source.
+static DEFAULT_RATE_LIMIT: RwLock<Option<(u32, u64)>> = RwLock::new(None);
+
 pub type HttpServiceFuture = Pin<Box<dyn Future<Output = AutoResult<()>> + 'static>>;
 
 /// Distinct supported legacy grades; the host must not silently substitute one.

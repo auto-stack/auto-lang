@@ -386,23 +386,16 @@ pub fn multipart_fields_json(parts: &[MultipartPart]) -> String {
 }
 
 /// Plan 346 5e (B6): enable per-IP fixed-window rate limiting.
-/// Called by the `http.rate_limit(max_requests, window_ms)` native.
+/// Legacy embedding process default. Language natives set their VM's own
+/// override; both this facade and an external adapter read one neutral source.
 pub fn set_rate_limit(max_requests: u32, window_ms: u64) {
-    if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
-        *cfg = if max_requests == 0 {
-            None
-        } else {
-            Some((max_requests, window_ms.max(1)))
-        };
-    }
+    VmHttpBridge::set_default_rate_limit(max_requests, window_ms);
 }
 
 /// Plan 346 5e (B6): reset config + buckets. Called from `clear_http_routes`
 /// so each e2e test starts unthrottled (same-process tests share 127.0.0.1).
 pub fn clear_rate_limit() {
-    if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
-        *cfg = None;
-    }
+    VmHttpBridge::set_default_rate_limit(0, 1);
     if let Ok(mut buckets) = RATE_BUCKETS.lock() {
         *buckets = None;
     }
@@ -411,15 +404,56 @@ pub fn clear_rate_limit() {
 /// Plan 346 5e (B6): consume one request slot for `ip`.
 /// Returns `Some(retry_after_ms)` when the request exceeds the window quota
 /// (and must be rejected with 429), `None` when allowed.
-pub(super) fn rate_limit_take(ip: &str) -> Option<u64> {
-    let cfg = RATE_LIMIT_CFG.lock().ok()?.clone()?;
-    let (max, window_ms) = cfg;
+type RateBuckets = std::collections::HashMap<String, (u64, u32)>;
+
+thread_local! {
+    static OWNER_RATE_BUCKETS: std::cell::RefCell<Option<std::rc::Rc<std::cell::RefCell<RateBuckets>>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One serving lifetime owns these buckets. Select them only for each local
+/// future poll, restoring a sibling/nested owner even on pending or unwind.
+pub(super) async fn with_owner_rate_buckets<F: std::future::Future>(future: F) -> F::Output {
+    struct Restore(Option<std::rc::Rc<std::cell::RefCell<RateBuckets>>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            OWNER_RATE_BUCKETS.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let buckets = std::rc::Rc::new(std::cell::RefCell::new(RateBuckets::new()));
+    let mut future = std::pin::pin!(future);
+    std::future::poll_fn(move |cx| {
+        let previous = OWNER_RATE_BUCKETS.with(|slot| slot.replace(Some(buckets.clone())));
+        let _restore = Restore(previous);
+        future.as_mut().poll(cx)
+    })
+    .await
+}
+
+pub(super) fn rate_limit_take(vm: &AutoVM, ip: &str) -> Option<u64> {
+    let owned = OWNER_RATE_BUCKETS.with(|slot| slot.borrow().clone());
+    if let Some(buckets) = owned {
+        // Read every request: a native call inside this owner's handler changes
+        // its subsequent requests without reaching into a provider singleton.
+        let config = VmHttpBridge::rate_limit(vm)?;
+        return rate_limit_take_from(config, &mut buckets.borrow_mut(), ip);
+    }
+    // Retained standalone dispatch compatibility buckets. Actual owned
+    // services above never consume these shared standalone buckets.
+    let cfg = VmHttpBridge::rate_limit(vm)?;
+    let mut guard = RATE_BUCKETS.lock().ok()?;
+    let buckets = guard.get_or_insert_with(std::collections::HashMap::new);
+    rate_limit_take_from(cfg, buckets, ip)
+}
+
+fn rate_limit_take_from(
+    (max, window_ms): (u32, u64),
+    buckets: &mut RateBuckets,
+    ip: &str,
+) -> Option<u64> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    let mut guard = RATE_BUCKETS.lock().ok()?;
-    let buckets = guard.get_or_insert_with(std::collections::HashMap::new);
     let entry = buckets.entry(ip.to_string()).or_insert((now_ms, 0));
     if now_ms.saturating_sub(entry.0) >= window_ms {
         *entry = (now_ms, 0);

@@ -162,3 +162,18 @@ explicit diagnostics and no listener. `grade-swap` deliberately substitutes the
 other runtime in the fixture: the wire oracle must reject it (exit 1), so exact
 JSON alone cannot certify the legacy grade. The synchronous grade makes no new
 slow-body timeout/deployment-policy promise.
+
+Native policy handoff has a separate two-owner check:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/policy_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe --plain-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe
+```
+
+It uses the real `http.rate_limit` native before service startup and inside a
+handler. The legacy SDK process default is deliberately one request; VM A
+overrides it with four, and VM B explicitly disables it before dynamically
+enabling two. Exhausting A must leave B unaffected, and changing B must leave A
+exhausted. Exact nonce responses, 429 body/deadline/Retry-After/request-id,
+legacy environment CORS, resource termination and two drained owners are required.
+The same probe also runs a config-only ordinary program without an adapter.
+Its source/build scratch stays inside this worktree's fixture target directory.

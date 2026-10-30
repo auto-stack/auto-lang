@@ -686,10 +686,7 @@ pub fn shim_http_response_redirect(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 pub fn shim_http_rate_limit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let window_ms: i32 = crate::vm::native::pop_arg_i32(task);
     let max_requests: i32 = crate::vm::native::pop_arg_i32(task);
-    crate::vm::ffi::http_server::set_rate_limit(
-        max_requests.max(0) as u32,
-        window_ms.max(0) as u64,
-    );
+    vm.set_http_rate_limit(max_requests.max(0) as u32, window_ms.max(0) as u64);
     task.ram.push_i32(0);
     Ok(())
 }

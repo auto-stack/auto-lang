@@ -58,6 +58,12 @@ impl HttpServiceHost for Adapter {
 }
 
 fn main() {
+    if std::env::var("PLAN890_EMBEDDING_RATE_DEFAULT").as_deref() == Ok("1") {
+        // Real compatibility SDK setter in Core, not this external source
+        // crate's former private copy of the process configuration.
+        auto_lang_core::vm::ffi::http_server::set_rate_limit(1, 60_000);
+        eprintln!("isolation embedding rate default=1");
+    }
     let args: Vec<_> = std::env::args().skip(1).collect();
     let first = std::fs::read_to_string(&args[0]).unwrap();
     let second = std::fs::read_to_string(&args[1]).unwrap();

@@ -502,6 +502,9 @@ pub struct AutoVM {
     // blocking service. A post-main annotation hook must not start it again.
     // This is per VM, not a process route/host-registry flag.
     http_service_claimed: std::cell::Cell<bool>,
+    // Owned language settings only; the serving host owns rate-window buckets
+    // and policy execution. Native calls never mutate another VM's settings.
+    http_rate_limit: std::cell::Cell<Option<Option<(u32, u64)>>>,
     /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
     /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
     pub http_credential_gen: std::sync::atomic::AtomicU64,
@@ -810,6 +813,15 @@ impl AutoVM {
         self.http_service_claimed.set(true);
     }
 
+    pub(crate) fn http_rate_limit(&self) -> Option<Option<(u32, u64)>> {
+        self.http_rate_limit.get()
+    }
+
+    pub(crate) fn set_http_rate_limit(&self, max: u32, window_ms: u64) {
+        self.http_rate_limit
+            .set(Some((max != 0).then_some((max, window_ms.max(1)))));
+    }
+
     pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
         Self::new_inner(flash, ram_size, true)
     }
@@ -940,6 +952,7 @@ impl AutoVM {
             // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
             instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
             http_service_claimed: std::cell::Cell::new(false),
+            http_rate_limit: std::cell::Cell::new(None),
             http_credential_gen: std::sync::atomic::AtomicU64::new(0),
             http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态
             heap_rc: DashMap::new(),
