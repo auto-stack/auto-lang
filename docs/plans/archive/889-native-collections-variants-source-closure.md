@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -197,7 +197,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [x] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [x] |
-| T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
+| T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [x] |
 
 ## 9. 复审记录
 
@@ -525,3 +525,31 @@ checkpoint:archived | path:docs/plans/archive/889-native-collections-variants-so
 - 合入后smoke：在authority运行已验证的public release ac-native，输入读取**master的原L04.at**，显式collections/main；build exit0，真实PE exit42，容器alloc/free3/3，文本buffer1/1，无clone，live/bytes/guest/arena live+commit/metadata/registered均0，PE private delta4096B。exe SHA256 bbd20da98ab6c246c831b349ba66beed5359a201e4c87d8fedb4637c4b9c9aa4。该smoke非正式性能样本，不替代原P90；构建/链接/运行都在Plan树，不在主检出做开发构建。
 - N/S/H正式交付释放：本Plan所有子窗以delivery50cd6f777绑定；source/runtime/ABI/cache/SDK清单见已交付native Spec与attachments/889/spec-delta-r2.md末N接口清单。后继891仍只是其自身规划，未被本goal自动执行，W01..W05及native在线帧未关闭。
 - 本地证据即将按目录保持迁移：旧`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/` → `D:/autostack/plan-artifacts/plan-889/evidence/`（下级baseline和所有source/driver/inc目录不改名，既有raw hash可据此解析）；tracked两份Markdown亦在main保有。保留编译/测量EXE，清理只处理本组已guard的临时树及本Plan中间物，不触其他计划或进程。当前尚未声称cleaned。
+
+
+### 2026-10-30 merge第12轮 cleaned / final pass：10/10
+
+stage:merge | plan_id:PLAN-889 | plan_revision:2 | outcome:pass | completion_kind:delivered | delivery_commit:50cd6f7778fa5332b2807e0d5bbc22a7d2ac2389 | archive_commit:28f6170be | archive_path:docs/plans/archive/889-native-collections-variants-source-closure.md | checkpoints:prepared/landed/ledger_refreshed/archived/cleaned全部实证 | completed_tasks:10/10 | next:done。
+
+- **cleaned实证**：三个确切owned路径auto-lang/auto-down/auto-ui分别有Git Bash执行wt-guard clean（系统默认bash为WSL，D:/路径调用失败后改用实际Git Bash，未绕过扫描）。语言与auto-down检出已安全移除；auto-ui首次被Git的dirty保护拒绝，因此未force删除。查明先前root cargo fmt --all还格式化了本Plan只读UI副本24文件：逐文件比较 `rustfmt(pin原Git blob)` 与现状完全一致，证明只是本次incidental格式，非用户/他方语义WIP。保全binary diff与JSON逐文件SHA证明后恢复固定3d6e1f15 pin、确认clean，立即再guard clean才移除UI。该纯格式还原不改native生产源码/依赖revision/正式样本；此前baseline已有该pin的源消费证据，统一门与产品证据不据此重跑无关套件。前条“只读UI无改动”指交付语义/提交；此处完整补记临时fmt残留和恢复事实。
+- 首次清理命令的Python preflight发现UI dirty后返回非零，PowerShell链未传播该返回并继续处理另外两个已经确认clean的检出；Git自身拒绝UI移除，后续throw停止。本次已按上条证明/恢复/再guard仅完成遗留操作，未删任何他方WIP。最终`git worktree list`三仓均不含lang-889，merged `plan-889-dev`分支已`-d`删除，组目录验证为空才移除。未新建junction/symlink、未用force绕保护、未终止其他计划进程。
+- **证据保留**：整个原attachments/889目录同卷重命名至`D:/autostack/plan-artifacts/plan-889/evidence/`，下级baseline与全部source/driver/inc目录原名保持，旧收据路径通过此映射解析、raw内容hash不变；tracked两MD已在主检出和恢复记录中保有。另复制并逐SHA校验618个编译/测量EXE，计1934345728B，路径/哈希在`executables-manifest.json`；包括正式worker与CLI/test runner，保留实际runtime lib/identity。
+- 三个工作树内的Cargo target/PDB中间物随已授权的guarded worktree remove回收；Plan-artifacts再次扫描没有CACHEDIR.TAG确认的target cache，未误删仅存已保留EXE的target路径。按用户规则只额外删除evidence/baseline/generate-formal-fixture.pdb，EXE/源码/日志/收据/持久store等其余证据保留，接受PDB GUID配对断开。先前开发中途一次cache删除曾被policy拒绝且未执行；本收尾执行的是明确授权的归档后整树guard清理，没有重试那个中途删缓存命令。
+- **主检出与依赖边界**：本Plan全部代码/规范/派生ledger/归档簿记均已提交，无本Plan WIP；先前10条他方tracked docs/.next-id改动逐字SHA和48个untracked路径保留，不能将全局他方WIP冒称已清空。测试依赖固定auto-down c3464d0a、UI3d6e1f15；只读检出恢复到pin再清理。primary auto-down仍同pin，primary UI现为c11015c1（他方后续演进），不据本交付宣称最新版组合另有整档验证；N/compiler/worker独立实验链及本次验证均有明确版本边界。
+- **产物观察（源码交付，不是安装/部署）**：main `target/release/auto.exe`、`experimental/ac-mir-native/target/release/ac-native.exe`与`mn-collections-worker.exe`尚无现成构建；main旧`mn-worker.exe`构建时间2026-10-29T15:08:09.383336Z，早于889、未被冒称已升级。验证过的release EXE均在本Plan artifacts可审阅/重放；后续SDK按既有机制从main源码构建worker，正常源/配置/库当前性仍需重查。`gen/front/vue/dist`不存在且本Plan无前端/daemon触面，依赖仓代码未修改，无自动安装/服务重启。该观察不改变产品默认引擎，也不补造部署pass。
+- **batch due**：实际检查时间2026-10-30T03:38:38.296934Z；现收据last_covered_plan_id887，年龄11.745h；之后新归档只有889，未出现%5计划且未超48h，因此tf**not due**，按规约不跑主检出批量档，不重复此前用户接受的887批量收据。
+
+### spec-sync 回写记录
+
+SD-01..05已落六canonical合同，四模块project/overview/plans与三ADR、全局overview/GOAL-002按范围更新；索引脚本实跑62项目。derived ledger149→150、9项file/tags与source SHA均读回验证，原字段/他方条目保持，渠道为无可达Specs writer时的guarded offline projection。29个新增canonical链接在实际归档后全部存在，Plan本身两条relative链接已重定位；最终10个task勾选/状态archived/路径与交付祖先相符。N/S/H release指向真实delivery；891/W/在线native等排除保持，不宣称M1全绿。
+
+- 保留工件`D:/autostack/plan-artifacts/plan-889/cleanup-receipt.json` SHA256 `b7ff6edf953c9fa1b0721139e5d8a895557af11f0f4ead2d524c50d471ce5885`。
+- 保留工件`D:/autostack/plan-artifacts/plan-889/cleanup-guards.log` SHA256 `cbbd1661cce831f24d22a07367aa996d15a69cebd074a0ca8af1ef0570d131e3`。
+- 保留工件`D:/autostack/plan-artifacts/plan-889/executables-manifest.json` SHA256 `426495ee87a6cd2dabdd2c2aeea99b0c0d8afa97c743c85536c8943d39b2a2b7`。
+- 保留工件`D:/autostack/plan-artifacts/plan-889/final-state-check.json` SHA256 `16fd445bd84f40df66f9058350f536f64fdafd2c66cc7c86d050f22049fec553`。
+- 保留baseline/cleanup-ui-format-proof.json SHA256 `99b0657a43da1135470ae7cee44051f62fa064571a82ef6b9299d8c04589d82a`。
+- 保留baseline/cleanup-ui-format-only.diff SHA256 `8a434d59fdc9dcb0b28d80eb4586f23ea70e2061272db78334d1243cce212fed`。
+- 保留baseline/landing-smoke/smoke.json SHA256 `3779a817240bfe6188abe434355c577e9b009342a1c73f06708b75ac0754187e`。
+- 保留baseline/merge-final-range-diff.txt SHA256 `9da78f6eda55f4340c2860634ba425c53ac34f60c28fb7555bbc5d7c0e213b41`。
+
+goal_receipt: objective=完成计划889 | goal_round=12 | stage=merge | outcome=pass | completed_tasks=10/10 | delivery_commit=50cd6f7778fa5332b2807e0d5bbc22a7d2ac2389 | archive=docs/plans/archive/889-native-collections-variants-source-closure.md | cleanup=verified | next=done。
