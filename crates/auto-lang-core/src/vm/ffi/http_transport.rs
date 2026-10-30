@@ -69,6 +69,13 @@ pub struct TransportConfig {
 }
 
 impl TransportConfig {
+    fn observation(&self) -> std::sync::Arc<crate::http_service_observability::ServiceObservation> {
+        self.service
+            .as_ref()
+            .map(|service| service.observation.clone())
+            .unwrap_or_else(crate::http_service_observability::process_observation)
+    }
+
     pub(crate) fn from_env() -> Self {
         let env_usize = |key: &str, default: usize| {
             std::env::var(key)
@@ -140,6 +147,7 @@ pub(crate) async fn serve_network(
     ready: tokio::sync::oneshot::Sender<Result<String, String>>,
     program: Option<std::sync::Arc<super::http_server::HttpProgramMetadata>>,
 ) {
+    let observation = cfg.observation();
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -182,11 +190,11 @@ pub(crate) async fn serve_network(
                     Ok(p) => p,
                     Err(_) => {
                         // 满：解析前直接关闭（零业务工作）。
-                        crate::http_service_observability::counter_add(
+                        observation.counter_add(
                             crate::http_service_observability::CounterName::ConnRejected,
                             1,
                         );
-                        crate::http_service_observability::emit_event(serde_json::json!({
+                        observation.emit_event(serde_json::json!({
                             "event": "conn_rejected",
                             "reason": "connection_cap",
                             "cap": cfg.max_connections,
@@ -195,11 +203,11 @@ pub(crate) async fn serve_network(
                         continue;
                     }
                 };
-                crate::http_service_observability::counter_add(
+                observation.counter_add(
                     crate::http_service_observability::CounterName::ConnAccepted,
                     1,
                 );
-                crate::http_service_observability::counter_add(
+                observation.counter_add(
                     crate::http_service_observability::CounterName::ConnActive,
                     1,
                 );
@@ -232,6 +240,7 @@ pub(crate) async fn serve_network(
                     })
                 };
                 let watcher = graceful.watcher();
+                let observation = observation.clone();
                 tokio::spawn(async move {
                     // permitRAII：连接任务结束（正常/断连/RST）即归还。
                     let _permit = permit;
@@ -290,7 +299,7 @@ pub(crate) async fn serve_network(
                         t.abort();
                     }
                     super::http_server::cancel_scopes_for_conn(conn_id);
-                    crate::http_service_observability::counter_sub(
+                    observation.counter_sub(
                         crate::http_service_observability::CounterName::ConnActive,
                         1,
                     );
@@ -377,6 +386,7 @@ async fn bridge_handler(
     server_gen: u64,
     request_permits: std::sync::Arc<tokio::sync::Semaphore>,
 ) -> Response {
+    let observation = cfg.observation();
     let (mut parts, body) = request.into_parts();
     let method = parts.method.as_str().to_uppercase();
     let path = parts.uri.to_string();
@@ -389,8 +399,10 @@ async fn bridge_handler(
     // PLAN-736 T-05: 服务控制面（/__auto/*）——不经业务 VM/auth（AC-02/05）；
     // snapshot/shutdown 仅 loopback。早于策略链与 body 读取。
     if path.starts_with("/__auto/") {
-        if let Some(resp) = super::http_server::handle_service_control_path(&method, &path, peer) {
-            crate::http_service_observability::counter_add(
+        if let Some(resp) = super::http_server::handle_service_control_path(
+            &method, &path, peer, cfg.service.as_deref(),
+        ) {
+            observation.counter_add(
                 crate::http_service_observability::CounterName::RequestsTotal,
                 1,
             );
@@ -411,7 +423,7 @@ async fn bridge_handler(
             .and_then(|v| v.to_str().ok())
             .or_else(|| parts.uri.authority().map(|a| a.as_str()));
         if !c.host_allowed(authority) {
-            crate::http_service_observability::emit_event(serde_json::json!({
+            observation.emit_event(serde_json::json!({
                 "event": "request_rejected", "reason": "host_not_allowed",
             }));
             return error_response(400, "host not allowed");
@@ -581,11 +593,12 @@ async fn bridge_handler(
     // route v1 = 去 query 路径，T-08 复核参数化模板化）。
     {
         let route_no_query = api_req.path.split('?').next().unwrap_or("").to_string();
-        crate::http_service_observability::counter_add(
+        observation.counter_add(
             crate::http_service_observability::CounterName::RequestsTotal,
             1,
         );
-        let mut ev = crate::http_service_observability::PendingRequestEvent::new(
+        let mut ev = crate::http_service_observability::PendingRequestEvent::new_in(
+            observation.clone(),
             &api_req.method,
             &route_no_query,
         );

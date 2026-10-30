@@ -16,6 +16,7 @@ struct Adapter {
     label: &'static str,
     addresses: Vec<String>,
     shutdowns: Arc<Mutex<Vec<tokio::sync::watch::Sender<bool>>>>,
+    configuration: Option<Arc<auto_lang_core::http_service_config::HttpServiceConfig>>,
 }
 
 impl HttpServiceHost for Adapter {
@@ -26,12 +27,25 @@ impl HttpServiceHost for Adapter {
         let mut controls = self.shutdowns.lock().unwrap();
         let address = self.addresses[controls.len()].clone();
         let (sender, receiver) = tokio::sync::watch::channel(false);
-        controls.push(sender);
+        controls.push(sender.clone());
+        let configuration = self.configuration.clone();
         Box::pin(async move {
+            #[cfg(not(feature = "external-runtime"))]
+            assert!(
+                configuration.is_none(),
+                "configured probe requires external-runtime"
+            );
             #[cfg(not(feature = "external-runtime"))]
             let service = owner.run_existing_with_shutdown_for_probe(address, receiver);
             #[cfg(feature = "external-runtime")]
-            let service = web_runtime_boundary_probe::serve_owned(owner, address, receiver);
+            let service: HttpServiceFuture = match configuration {
+                Some(config) => Box::pin(web_runtime_boundary_probe::serve_service_owned(
+                    owner, address, config, sender, receiver,
+                )),
+                None => Box::pin(web_runtime_boundary_probe::serve_owned(
+                    owner, address, receiver,
+                )),
+            };
             SERVICES.with(|services| {
                 services
                     .borrow_mut()
@@ -54,6 +68,15 @@ fn main() {
             format!("127.0.0.1:{}", args[3]),
         ],
         shutdowns: Arc::new(Mutex::new(Vec::new())),
+        configuration: args.get(4).map(|path| {
+            Arc::new(
+                auto_lang_core::http_service_config::resolve_service_config(
+                    &std::fs::read_to_string(path).unwrap(),
+                    None,
+                )
+                .unwrap(),
+            )
+        }),
     });
     assert!(http_service::install_process_http_service_host_if_absent(
         adapter.clone()
@@ -62,6 +85,15 @@ fn main() {
         label: "second",
         addresses: adapter.addresses.clone(),
         shutdowns: adapter.shutdowns.clone(),
+        configuration: args.get(5).map(|path| {
+            Arc::new(
+                auto_lang_core::http_service_config::resolve_service_config(
+                    &std::fs::read_to_string(path).unwrap(),
+                    None,
+                )
+                .unwrap(),
+            )
+        }),
     });
     assert!(!http_service::install_process_http_service_host_if_absent(
         replacement.clone()
@@ -87,7 +119,7 @@ fn main() {
         let mut command = receiver.recv().await.unwrap();
         let first_stopped = command == "stop-first";
         if first_stopped {
-            adapter.shutdowns.lock().unwrap()[0].send(true).unwrap();
+            let _ = adapter.shutdowns.lock().unwrap()[0].send(true);
             let first_service = SERVICES.with(|services| services.borrow_mut().remove(0));
             first_service.await.unwrap().unwrap();
             println!("first owner drained independently");

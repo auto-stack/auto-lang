@@ -3055,8 +3055,12 @@ pub(crate) fn handle_service_control_path(
     method: &str,
     path: &str,
     peer: std::net::SocketAddr,
+    service: Option<&crate::http_service_config::ServiceRuntime>,
 ) -> Option<axum::response::Response> {
     use crate::http_service_observability as obs;
+    let observation = service
+        .map(|runtime| runtime.observation.clone())
+        .unwrap_or_else(obs::process_observation);
     if !path.starts_with("/__auto/") {
         return None;
     }
@@ -3073,18 +3077,20 @@ pub(crate) fn handle_service_control_path(
     match (method, path) {
         ("GET", "/__auto/health/live") => Some(json_resp(
             200,
-            serde_json::json!({ "state": obs::service_state().as_str() }),
+            serde_json::json!({ "state": observation.service_state().as_str() }),
         )),
         ("GET", "/__auto/health/ready") => {
-            if obs::is_ready() {
+            if observation.is_ready() {
                 Some(json_resp(
                     200,
-                    obs::service_identity().unwrap_or_else(|| serde_json::json!({})),
+                    observation
+                        .service_identity()
+                        .unwrap_or_else(|| serde_json::json!({})),
                 ))
             } else {
                 Some(json_resp(
                     503,
-                    serde_json::json!({ "state": obs::service_state().as_str() }),
+                    serde_json::json!({ "state": observation.service_state().as_str() }),
                 ))
             }
         }
@@ -3098,9 +3104,9 @@ pub(crate) fn handle_service_control_path(
             Some(json_resp(
                 200,
                 serde_json::json!({
-                    "state": obs::service_state().as_str(),
-                    "identity": obs::service_identity(),
-                    "counters": obs::service_counters().snapshot(),
+                    "state": observation.service_state().as_str(),
+                    "identity": observation.service_identity(),
+                    "counters": observation.counters().snapshot(),
                 }),
             ))
         }
@@ -3111,12 +3117,16 @@ pub(crate) fn handle_service_control_path(
                     serde_json::json!({ "error": "loopback only" }),
                 ));
             }
-            let sent = SERVICE_SHUTDOWN_TX
-                .lock()
-                .ok()
-                .and_then(|slot| slot.as_ref().map(|tx| tx.send(true).is_ok()))
-                .unwrap_or(false);
-            obs::emit_event(serde_json::json!({
+            let sent = service
+                .map(|runtime| runtime.request_shutdown())
+                .unwrap_or_else(|| {
+                    SERVICE_SHUTDOWN_TX
+                        .lock()
+                        .ok()
+                        .and_then(|slot| slot.as_ref().map(|tx| tx.send(true).is_ok()))
+                        .unwrap_or(false)
+                });
+            observation.emit_event(serde_json::json!({
                 "event": "drain", "trigger": "shutdown_endpoint", "delivered": sent,
             }));
             Some(json_resp(202, serde_json::json!({ "draining": sent })))
@@ -3181,6 +3191,12 @@ pub async fn serve_async_with(
     cfg: super::http_transport::TransportConfig,
 ) {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    if let Some(service) = &cfg.service {
+        if !service.bind_shutdown(shutdown_tx.clone()) {
+            record_serve_fatal("service runtime shutdown already bound");
+            return;
+        }
+    }
     // PLAN-814: 跨 crate 测试支持面（上层 plan705 e2e 关停探针）
     {
         let _ = TEST_SHUTDOWN_TX.set(shutdown_tx.clone());
@@ -3247,6 +3263,19 @@ pub(crate) async fn serve_with(
     cfg: super::http_transport::TransportConfig,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
+    crate::http_service_config::with_service_policy(
+        cfg.service.is_some(),
+        serve_with_inner(vm, addr, cfg, shutdown_rx),
+    )
+    .await;
+}
+
+async fn serve_with_inner(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    addr: &str,
+    cfg: super::http_transport::TransportConfig,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     // PLAN-730 T-05：安装上传宿主 executor（幂等；a2r facade 的 receive/
     // commit/reject 经此执行——VM 桥与生成 Rust 服务共用单源）。
     crate::http_upload_service::install_upload_executor_service();
@@ -3301,12 +3330,12 @@ pub(crate) async fn serve_with(
             // 业务路由/VM 初始化在此之前已发生（run_file 编译先于 serve hook）。
             if let Some(svc) = &cfg.service {
                 let c = &svc.config;
-                crate::http_service_observability::set_service_identity(
+                svc.observation.set_service_identity(
                     &bound,
                     c.profile.as_str(),
                     c.effective_config_hash(),
                 );
-                crate::http_service_observability::set_service_state(
+                svc.observation.set_service_state(
                     crate::http_service_observability::ServiceState::Ready,
                 );
             }
@@ -3406,8 +3435,8 @@ pub(crate) async fn serve_with(
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
                     draining = true;
-                    if cfg.service.is_some() {
-                        crate::http_service_observability::set_service_state(
+                    if let Some(service) = &cfg.service {
+                        service.observation.set_service_state(
                             crate::http_service_observability::ServiceState::Draining,
                         );
                     }
@@ -3415,8 +3444,8 @@ pub(crate) async fn serve_with(
             }
         }
     }
-    if cfg.service.is_some() {
-        crate::http_service_observability::set_service_state(
+    if let Some(service) = &cfg.service {
+        service.observation.set_service_state(
             crate::http_service_observability::ServiceState::Stopped,
         );
     }

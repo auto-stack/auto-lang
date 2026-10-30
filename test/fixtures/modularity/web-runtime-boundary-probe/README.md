@@ -36,3 +36,18 @@ its original owner until T-05. Configuration/observer and direct-listen paths,
 required test migration/dev closure, final package graph and distribution
 remain Plan work. The original inline test inventories are not run here and
 the source inclusion is not a substitute for their T-08 migration.
+
+Configured-instance control and observation have a separate real-TCP oracle:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/service_state_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
+```
+
+It requires distinct identities and exact bound addresses/config hashes,
+unchanged B counters after A traffic, per-origin CORS with no legacy wildcard
+leak, and headers-only shutdown of A while B remains ready. Both owner futures
+join and the actual resource tables must be empty. The optional
+`--shared-observation-negative` mutates only this fixture's runtime factory to
+share the old process observation; it must exit nonzero for shared identity
+while still draining both services. This is an oracle control, never a product
+configuration or a green delivery result.

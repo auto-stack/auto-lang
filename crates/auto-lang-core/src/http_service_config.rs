@@ -113,6 +113,8 @@ impl RateLimiter {
 pub struct ServiceRuntime {
     pub config: Arc<HttpServiceConfig>,
     pub limiter: Option<RateLimiter>,
+    pub observation: Arc<crate::http_service_observability::ServiceObservation>,
+    shutdown: OnceLock<tokio::sync::watch::Sender<bool>>,
 }
 
 impl std::fmt::Debug for ServiceRuntime {
@@ -127,7 +129,23 @@ impl std::fmt::Debug for ServiceRuntime {
 impl ServiceRuntime {
     pub fn new(config: Arc<HttpServiceConfig>) -> Self {
         let limiter = config.rate_limit.map(RateLimiter::new);
-        Self { config, limiter }
+        Self {
+            config,
+            limiter,
+            observation: Arc::new(crate::http_service_observability::ServiceObservation::default()),
+            shutdown: OnceLock::new(),
+        }
+    }
+
+    /// A runtime belongs to one serving instance; rebinding is rejected.
+    pub fn bind_shutdown(&self, sender: tokio::sync::watch::Sender<bool>) -> bool {
+        self.shutdown.set(sender).is_ok()
+    }
+
+    pub fn request_shutdown(&self) -> bool {
+        self.shutdown
+            .get()
+            .is_some_and(|sender| sender.send(true).is_ok())
     }
 
     pub fn now_ms() -> u64 {
@@ -152,7 +170,31 @@ pub fn set_service_policy_active() {
 }
 
 pub fn service_policy_active() -> bool {
-    SERVICE_POLICY_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+    CURRENT_SERVICE_POLICY
+        .with(|current| current.get())
+        .unwrap_or_else(|| SERVICE_POLICY_ACTIVE.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+thread_local! {
+    static CURRENT_SERVICE_POLICY: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Select policy for each local owner poll; legacy and configured services may
+/// coexist without one service changing the other's CORS/preflight behavior.
+pub async fn with_service_policy<F: std::future::Future>(active: bool, future: F) -> F::Output {
+    struct Restore(Option<bool>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CURRENT_SERVICE_POLICY.with(|current| current.set(self.0));
+        }
+    }
+    let mut future = std::pin::pin!(future);
+    std::future::poll_fn(move |cx| {
+        let _restore =
+            Restore(CURRENT_SERVICE_POLICY.with(|current| current.replace(Some(active))));
+        future.as_mut().poll(cx)
+    })
+    .await
 }
 
 // ============================================================================
@@ -182,6 +224,54 @@ pub fn take_active_service_config() -> Option<Arc<HttpServiceConfig>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn instance_runtime_shutdown_is_bound_once_to_its_own_receiver() {
+        let config =
+            Arc::new(resolve_service_config(r#"{"profile":"development"}"#, None).unwrap());
+        let first = ServiceRuntime::new(config.clone());
+        let second = ServiceRuntime::new(config);
+        let (a, a_rx) = tokio::sync::watch::channel(false);
+        let (b, b_rx) = tokio::sync::watch::channel(false);
+        assert!(first.bind_shutdown(a));
+        assert!(!first.bind_shutdown(b.clone()));
+        assert!(first.request_shutdown());
+        assert!(*a_rx.borrow());
+        assert!(!*b_rx.borrow());
+        assert!(!second.request_shutdown());
+        assert!(second.bind_shutdown(b));
+        assert!(second.request_shutdown());
+        assert!(*b_rx.borrow());
+    }
+
+    #[test]
+    fn instance_policy_context_restores_after_pending_and_nested_owner() {
+        use std::future::Future;
+        let baseline = service_policy_active();
+        let mut polls = 0;
+        let mut owner = std::pin::pin!(with_service_policy(
+            true,
+            std::future::poll_fn(|_| {
+                assert!(service_policy_active());
+                futures::executor::block_on(with_service_policy(false, async {
+                    assert!(!service_policy_active());
+                }));
+                assert!(service_policy_active());
+                polls += 1;
+                if polls == 1 {
+                    std::task::Poll::Pending
+                } else {
+                    std::task::Poll::Ready(())
+                }
+            })
+        ));
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        assert!(owner.as_mut().poll(&mut cx).is_pending());
+        assert_eq!(service_policy_active(), baseline);
+        assert!(owner.as_mut().poll(&mut cx).is_ready());
+        assert_eq!(service_policy_active(), baseline);
+    }
 
     const DEV_MINIMAL: &str = r#"{"profile":"development"}"#;
     const SVC_MINIMAL: &str = r#"{"profile":"proxy_service","allowed_hosts":["api.example.com"],"auth":{"responsibility":"edge"}}"#;

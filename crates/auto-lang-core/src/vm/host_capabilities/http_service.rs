@@ -222,11 +222,13 @@ impl HttpVmOwner {
                 )));
             }
             let addr = format!("{}:{}", svc.listen_addr, svc.listen_port);
+            let runtime =
+                std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(svc.clone()));
             // PLAN-736 AC-03/05: 预算与观测由服务配置驱动（env 不参与该面）。
-            crate::http_service_observability::install_log_sink(
-                svc.observability.log_sink_capacity,
-            );
-            crate::http_service_observability::emit_event(serde_json::json!({
+            runtime
+                .observation
+                .install_log_sink(svc.observability.log_sink_capacity);
+            runtime.observation.emit_event(serde_json::json!({
                 "event": "startup",
                 "profile": svc.profile.as_str(),
                 "addr": addr,
@@ -236,14 +238,13 @@ impl HttpVmOwner {
                 "[HTTP] Auto-starting server with {} route(s) on {} (profile: {}, config_hash: {:016x})",
                 routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
             );
-            crate::http_service_config::set_service_policy_active();
-            let runtime = std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(svc));
-            let transport =
-                crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
+            let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(
+                runtime.clone(),
+            );
             crate::vm::ffi::http_server::serve_async_with(vm, &addr, transport).await;
             if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
                 // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
-                crate::http_service_observability::emit_event(serde_json::json!({
+                runtime.observation.emit_event(serde_json::json!({
                     "event": "config_error",
                     "reason": fatal,
                 }));

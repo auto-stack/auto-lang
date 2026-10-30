@@ -41,3 +41,34 @@ pub async fn serve_owned(
     .await;
     Ok(())
 }
+
+#[cfg(feature = "boundary")]
+pub async fn serve_service_owned(
+    owner: auto_lang_core::vm::host_capabilities::http_service::HttpVmOwner,
+    address: String,
+    config: std::sync::Arc<auto_lang_core::http_service_config::HttpServiceConfig>,
+    sender: tokio::sync::watch::Sender<bool>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+) -> auto_lang_core::AutoResult<()> {
+    let mut runtime = auto_lang_core::http_service_config::ServiceRuntime::new(config);
+    // Deliberate fixture-only mutation: the oracle must reject the old shared
+    // observation model instead of accepting two listeners as isolation proof.
+    if std::env::var("PLAN890_SHARED_OBSERVATION_NEGATIVE").as_deref() == Ok("1") {
+        runtime.observation = auto_lang_core::http_service_observability::process_observation();
+    }
+    if !runtime.bind_shutdown(sender) {
+        return Err("service runtime already bound".into());
+    }
+    runtime
+        .observation
+        .install_log_sink(runtime.config.observability.log_sink_capacity);
+    let config =
+        http_transport::TransportConfig::from_service_runtime(std::sync::Arc::new(runtime));
+    let (vm, metadata) = owner.into_local_parts();
+    http_server::with_owner_metadata(
+        metadata,
+        http_server::serve_with(vm, &address, config, shutdown),
+    )
+    .await;
+    Ok(())
+}

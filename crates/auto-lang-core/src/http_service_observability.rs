@@ -9,7 +9,7 @@
 //! - 两轨共用（无 axum/hyper 类型）；生成 crate 经 `auto_lang` 依赖消费。
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender, SyncSender, TrySendError};
+use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -49,43 +49,85 @@ impl ServiceCounters {
     }
 }
 
-fn counters() -> &'static ServiceCounters {
-    static C: OnceLock<ServiceCounters> = OnceLock::new();
-    C.get_or_init(ServiceCounters::default)
+/// One serving instance's identity, state, counters and bounded event sink.
+#[derive(Default)]
+pub struct ServiceObservation {
+    counters: ServiceCounters,
+    state: AtomicU64,
+    instance_id: OnceLock<String>,
+    identity: Mutex<Option<serde_json::Value>>,
+    sink: OnceLock<SinkState>,
 }
 
-/// 进程级单例访问（两轨 serve 入口共享同一进程内实例）。
+impl std::fmt::Debug for ServiceObservation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceObservation")
+            .field("identity", &self.service_identity())
+            .finish()
+    }
+}
+
+/// Legacy single-process entrypoints share this observation. Explicit service
+/// runtimes allocate their own instance instead of replacing this slot.
+pub fn process_observation() -> std::sync::Arc<ServiceObservation> {
+    process_observation_ref().clone()
+}
+
+fn process_observation_ref() -> &'static std::sync::Arc<ServiceObservation> {
+    static OBS: OnceLock<std::sync::Arc<ServiceObservation>> = OnceLock::new();
+    OBS.get_or_init(|| std::sync::Arc::new(ServiceObservation::default()))
+}
+
+/// Legacy process-level facade. Configured instances use their own counters.
 pub fn service_counters() -> &'static ServiceCounters {
-    counters()
+    &process_observation_ref().counters
 }
 
 pub fn counter_add(name: CounterName, delta: u64) {
-    let c = counters();
-    match name {
-        CounterName::ConnAccepted => c.connections_accepted.fetch_add(delta, Ordering::Relaxed),
-        CounterName::ConnRejected => c.connections_rejected.fetch_add(delta, Ordering::Relaxed),
-        CounterName::ConnActive => c.connections_active.fetch_add(delta, Ordering::Relaxed),
-        CounterName::RequestsTotal => c.requests_total.fetch_add(delta, Ordering::Relaxed),
-        CounterName::RequestsRejected503 => {
-            c.requests_rejected_503.fetch_add(delta, Ordering::Relaxed)
+    process_observation_ref().counter_add(name, delta);
+}
+
+impl ServiceObservation {
+    pub fn counters(&self) -> &ServiceCounters {
+        &self.counters
+    }
+
+    pub fn counter_add(&self, name: CounterName, delta: u64) {
+        let c = &self.counters;
+        match name {
+            CounterName::ConnAccepted => c.connections_accepted.fetch_add(delta, Ordering::Relaxed),
+            CounterName::ConnRejected => c.connections_rejected.fetch_add(delta, Ordering::Relaxed),
+            CounterName::ConnActive => c.connections_active.fetch_add(delta, Ordering::Relaxed),
+            CounterName::RequestsTotal => c.requests_total.fetch_add(delta, Ordering::Relaxed),
+            CounterName::RequestsRejected503 => {
+                c.requests_rejected_503.fetch_add(delta, Ordering::Relaxed)
+            }
+            CounterName::RequestsCanceled => {
+                c.requests_canceled.fetch_add(delta, Ordering::Relaxed)
+            }
+            CounterName::RequestsCompleted => {
+                c.requests_completed.fetch_add(delta, Ordering::Relaxed)
+            }
+            CounterName::StreamSessions => c.stream_sessions.fetch_add(delta, Ordering::Relaxed),
+            CounterName::FileSessions => c.file_sessions.fetch_add(delta, Ordering::Relaxed),
+            CounterName::UploadSessions => c.upload_sessions.fetch_add(delta, Ordering::Relaxed),
+            CounterName::BytesSent => c.bytes_sent.fetch_add(delta, Ordering::Relaxed),
+        };
+    }
+
+    pub fn counter_sub(&self, name: CounterName, delta: u64) {
+        let c = &self.counters;
+        match name {
+            CounterName::ConnActive => {
+                c.connections_active.fetch_sub(delta, Ordering::Relaxed);
+            }
+            _ => {}
         }
-        CounterName::RequestsCanceled => c.requests_canceled.fetch_add(delta, Ordering::Relaxed),
-        CounterName::RequestsCompleted => c.requests_completed.fetch_add(delta, Ordering::Relaxed),
-        CounterName::StreamSessions => c.stream_sessions.fetch_add(delta, Ordering::Relaxed),
-        CounterName::FileSessions => c.file_sessions.fetch_add(delta, Ordering::Relaxed),
-        CounterName::UploadSessions => c.upload_sessions.fetch_add(delta, Ordering::Relaxed),
-        CounterName::BytesSent => c.bytes_sent.fetch_add(delta, Ordering::Relaxed),
-    };
+    }
 }
 
 pub fn counter_sub(name: CounterName, delta: u64) {
-    let c = counters();
-    match name {
-        CounterName::ConnActive => {
-            c.connections_active.fetch_sub(delta, Ordering::Relaxed);
-        }
-        _ => {}
-    }
+    process_observation_ref().counter_sub(name, delta);
 }
 
 #[derive(Clone, Copy)]
@@ -126,10 +168,6 @@ impl ServiceState {
     }
 }
 
-static STATE: AtomicU64 = AtomicU64::new(0); // ServiceState as u64（0=Starting）
-static INSTANCE_ID: OnceLock<String> = OnceLock::new();
-static SERVICE_IDENTITY: Mutex<Option<serde_json::Value>> = Mutex::new(None);
-
 fn state_from_u64(v: u64) -> ServiceState {
     match v {
         1 => ServiceState::Ready,
@@ -154,48 +192,77 @@ pub fn init_instance_id() -> String {
 }
 
 pub fn instance_id() -> String {
-    // 注意：闭包内不得再调 init_instance_id()——同一 OnceLock 同线程重入
-    // get_or_init = 死锁（T-05 实测：VM ready 臂挂死于身份设置）。
-    INSTANCE_ID
-        .get_or_init(|| {
-            let nanos = std::time::SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.subsec_nanos() as u64 + d.as_secs().wrapping_mul(1_000_000_000))
-                .unwrap_or(0);
-            format!("svc-{}-{:x}", std::process::id(), nanos)
-        })
-        .clone()
+    process_observation_ref().instance_id()
 }
 
-/// 身份四元组（bound/profile/config_hash + instance_id）——ready 行、health
-/// body、父进程核对共用同一事实源。
-pub fn set_service_identity(bound: &str, profile: &str, config_hash: u64) {
-    if let Ok(mut slot) = SERVICE_IDENTITY.lock() {
-        *slot = Some(serde_json::json!({
-            "instance_id": instance_id(),
-            "bound": bound,
-            "profile": profile,
-            "config_hash": format!("{:016x}", config_hash),
-        }));
+impl ServiceObservation {
+    pub fn instance_id(&self) -> String {
+        // 注意：闭包内不得再调 init_instance_id()——同一 OnceLock 同线程重入
+        // get_or_init = 死锁（T-05 实测：VM ready 臂挂死于身份设置）。
+        self.instance_id
+            .get_or_init(|| {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as u64 + d.as_secs().wrapping_mul(1_000_000_000))
+                    .unwrap_or(0);
+                static LAST_STAMP: AtomicU64 = AtomicU64::new(0);
+                let previous = LAST_STAMP
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+                        last.checked_add(1).map(|next| nanos.max(next))
+                    })
+                    .expect("service instance identity space exhausted");
+                let stamp = nanos.max(previous + 1);
+                format!("svc-{}-{:x}", std::process::id(), stamp)
+            })
+            .clone()
+    }
+
+    /// 身份四元组（bound/profile/config_hash + instance_id）——ready 行、health
+    /// body、父进程核对共用同一事实源。
+    pub fn set_service_identity(&self, bound: &str, profile: &str, config_hash: u64) {
+        if let Ok(mut slot) = self.identity.lock() {
+            *slot = Some(serde_json::json!({
+                "instance_id": self.instance_id(),
+                "bound": bound,
+                "profile": profile,
+                "config_hash": format!("{:016x}", config_hash),
+            }));
+        }
+    }
+
+    pub fn service_identity(&self) -> Option<serde_json::Value> {
+        self.identity.lock().ok().and_then(|s| s.clone())
+    }
+
+    pub fn set_service_state(&self, s: ServiceState) {
+        self.state.store(state_to_u64(s), Ordering::SeqCst);
+        self.emit_event(serde_json::json!({ "event": "state", "state": s.as_str() }));
+    }
+
+    pub fn service_state(&self) -> ServiceState {
+        state_from_u64(self.state.load(Ordering::SeqCst))
+    }
+
+    /// ready 判定（AC-02）：Ready 且未 drain——health/ready 与父进程轮询共用。
+    pub fn is_ready(&self) -> bool {
+        self.service_state() == ServiceState::Ready
     }
 }
 
+pub fn set_service_identity(bound: &str, profile: &str, hash: u64) {
+    process_observation_ref().set_service_identity(bound, profile, hash);
+}
 pub fn service_identity() -> Option<serde_json::Value> {
-    SERVICE_IDENTITY.lock().ok().and_then(|s| s.clone())
+    process_observation_ref().service_identity()
 }
-
-pub fn set_service_state(s: ServiceState) {
-    STATE.store(state_to_u64(s), Ordering::SeqCst);
-    emit_event(serde_json::json!({ "event": "state", "state": s.as_str() }));
+pub fn set_service_state(state: ServiceState) {
+    process_observation_ref().set_service_state(state);
 }
-
 pub fn service_state() -> ServiceState {
-    state_from_u64(STATE.load(Ordering::SeqCst))
+    process_observation_ref().service_state()
 }
-
-/// ready 判定（AC-02）：Ready 且未 drain——health/ready 与父进程轮询共用。
 pub fn is_ready() -> bool {
-    service_state() == ServiceState::Ready
+    process_observation_ref().is_ready()
 }
 
 // ============================================================================
@@ -213,16 +280,26 @@ pub struct PendingRequestEvent {
     pub bytes_sent: u64,
     /// 已发终态（幂等闸）。
     sent: std::sync::atomic::AtomicBool,
+    observation: std::sync::Arc<ServiceObservation>,
 }
 
 impl PendingRequestEvent {
     pub fn new(method: &str, route: &str) -> Self {
+        Self::new_in(process_observation(), method, route)
+    }
+
+    pub fn new_in(
+        observation: std::sync::Arc<ServiceObservation>,
+        method: &str,
+        route: &str,
+    ) -> Self {
         Self {
             method: method.to_string(),
             route: route.chars().take(128).collect(),
             status: None,
             bytes_sent: 0,
             sent: std::sync::atomic::AtomicBool::new(false),
+            observation,
         }
     }
 
@@ -231,8 +308,15 @@ impl PendingRequestEvent {
             return; // cancel/drop 双路径只发一次
         }
         // 计数与事件同点收敛（snapshot 面与 JSONL 面一致）。
-        counter_add(CounterName::BytesSent, self.bytes_sent);
-        emit_event(serde_json::json!({
+        let counter = if outcome == "completed" {
+            CounterName::RequestsCompleted
+        } else {
+            CounterName::RequestsCanceled
+        };
+        self.observation.counter_add(counter, 1);
+        self.observation
+            .counter_add(CounterName::BytesSent, self.bytes_sent);
+        self.observation.emit_event(serde_json::json!({
             "event": "request",
             "method": self.method,
             "route": self.route,
@@ -243,12 +327,10 @@ impl PendingRequestEvent {
     }
 
     pub fn complete(&self) {
-        counter_add(CounterName::RequestsCompleted, 1);
         self.emit_once("completed");
     }
 
     pub fn cancel(&self) {
-        counter_add(CounterName::RequestsCanceled, 1);
         self.emit_once("canceled");
     }
 }
@@ -265,52 +347,58 @@ struct SinkState {
     tx: SyncSender<SinkMsg>,
 }
 
-static SINK: OnceLock<SinkState> = OnceLock::new();
-static SINK_CAPACITY: AtomicU64 = AtomicU64::new(0);
-
 /// 安装日志 sink（进程内一次；容量来自配置 `observability.log_sink_capacity`）。
-/// 幂等：第二次安装按第一次容量生效（进程 = 单服务实例语义）。
+/// Legacy facade; each explicit observation independently installs one sink.
 pub fn install_log_sink(capacity: usize) {
-    if SINK.get().is_some() {
-        return;
-    }
-    let (tx, rx) = mpsc::sync_channel::<SinkMsg>(capacity.max(1));
-    SINK_CAPACITY.store(capacity as u64, Ordering::Relaxed);
-    let _ = std::thread::Builder::new()
-        .name("auto-http-log-sink".into())
-        .spawn(move || {
-            use std::io::Write;
-            let stderr = std::io::stderr();
-            for msg in rx {
-                if let SinkMsg::Line(l) = msg {
-                    let mut h = stderr.lock();
-                    let _ = writeln!(h, "{l}");
-                }
-            }
-        });
-    let _ = SINK.set(SinkState { tx });
+    process_observation_ref().install_log_sink(capacity);
 }
 
-/// 事件行（serde_json 编码，杜绝字符串拼接注入面）。队满 → log_dropped+1，
-/// 永不阻塞调用方。
+impl ServiceObservation {
+    pub fn install_log_sink(&self, capacity: usize) {
+        if self.sink.get().is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::sync_channel::<SinkMsg>(capacity.max(1));
+        let _ = std::thread::Builder::new()
+            .name("auto-http-log-sink".into())
+            .spawn(move || {
+                use std::io::Write;
+                let stderr = std::io::stderr();
+                for msg in rx {
+                    if let SinkMsg::Line(l) = msg {
+                        let mut h = stderr.lock();
+                        let _ = writeln!(h, "{l}");
+                    }
+                }
+            });
+        let _ = self.sink.set(SinkState { tx });
+    }
+
+    /// 事件行（serde_json 编码，杜绝字符串拼接注入面）。队满 → log_dropped+1，
+    /// 永不阻塞调用方。
+    pub fn emit_event(&self, fields: serde_json::Value) {
+        let Some(state) = self.sink.get() else { return };
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let mut obj = serde_json::json!({ "ts": ts });
+        if let (Some(dst), Some(src)) = (obj.as_object_mut(), fields.as_object()) {
+            for (k, v) in src {
+                dst.insert(k.clone(), v.clone());
+            }
+        }
+        match state.tx.try_send(SinkMsg::Line(obj.to_string())) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
+                self.counters.log_dropped.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
 pub fn emit_event(fields: serde_json::Value) {
-    let Some(state) = SINK.get() else { return };
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    let mut obj = serde_json::json!({ "ts": ts });
-    if let (Some(dst), Some(src)) = (obj.as_object_mut(), fields.as_object()) {
-        for (k, v) in src {
-            dst.insert(k.clone(), v.clone());
-        }
-    }
-    match state.tx.try_send(SinkMsg::Line(obj.to_string())) {
-        Ok(()) => {}
-        Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
-            counters().log_dropped.fetch_add(1, Ordering::Relaxed);
-        }
-    }
+    process_observation_ref().emit_event(fields);
 }
 
 /// 测试复位（重装 sink；生产面进程内单实例无此路径）。
@@ -319,6 +407,63 @@ pub fn emit_event(fields: serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn instance_observation_and_terminal_event_are_owned_and_exactly_once() {
+        let first = std::sync::Arc::new(ServiceObservation::default());
+        let second = std::sync::Arc::new(ServiceObservation::default());
+        first.set_service_identity("127.0.0.1:1", "development", 1);
+        second.set_service_identity("127.0.0.1:2", "development", 2);
+        assert_ne!(first.instance_id(), second.instance_id());
+        first.set_service_state(ServiceState::Ready);
+        assert!(first.is_ready());
+        assert!(!second.is_ready());
+        let mut event = PendingRequestEvent::new_in(first.clone(), "GET", "/owned");
+        event.bytes_sent = 42;
+        std::thread::spawn(move || {
+            event.complete();
+            event.complete();
+            event.cancel();
+        })
+        .join()
+        .unwrap();
+        let a = first.counters().snapshot();
+        let b = second.counters().snapshot();
+        assert_eq!(a["requests_completed"], 1);
+        assert_eq!(a["requests_canceled"], 0);
+        assert_eq!(a["bytes_sent"], 42);
+        assert_eq!(b["requests_completed"], 0);
+        assert_eq!(b["bytes_sent"], 0);
+        let mut canceled = PendingRequestEvent::new_in(second.clone(), "POST", "/canceled");
+        canceled.bytes_sent = 9;
+        canceled.cancel();
+        canceled.complete();
+        let b = second.counters().snapshot();
+        assert_eq!(b["requests_canceled"], 1);
+        assert_eq!(b["requests_completed"], 0);
+        assert_eq!(b["bytes_sent"], 9);
+        assert_eq!(first.counters().snapshot()["bytes_sent"], 42);
+        assert_eq!(first.service_identity().unwrap()["bound"], "127.0.0.1:1");
+    }
+
+    #[test]
+    fn instance_sink_overflow_uses_real_emit_path_and_own_drop_counter() {
+        let first = ServiceObservation::default();
+        let second = ServiceObservation::default();
+        let (tx, rx) = mpsc::sync_channel(1);
+        assert!(first.sink.set(SinkState { tx }).is_ok());
+        first.emit_event(serde_json::json!({"message": "line\nquote\""}));
+        first.emit_event(serde_json::json!({"message": "full"}));
+        second.emit_event(serde_json::json!({"message": "no sink"}));
+        assert_eq!(first.counters().snapshot()["log_dropped"], 1);
+        assert_eq!(second.counters().snapshot()["log_dropped"], 0);
+        let SinkMsg::Line(line) = rx.recv().unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&line).unwrap()["message"],
+            "line\nquote\""
+        );
+        assert!(!line.contains('\n'));
+    }
 
     #[test]
     fn t03_counters_snapshot_fields() {
