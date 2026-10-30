@@ -61,6 +61,7 @@ Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-asse
 | 003 (ag-examples) | Gallery G10a textured models and UV | delivered | [G10a Spec](gallery-textured-models.md) | Fixed005 consumer; original GLB/PNG closures, public v1/actual overlap/hidden states, nine realGPU oracles and ZIP A→B; inventory11/19, G10b/G12/full AG pending |
 
 | 006 (auto-ui) | Finite node animation and visual facing | delivered | [auto-ui PLAN-006](../../../../auto-ui/docs/plans/archived/006-autographics-node-animation-and-visual-facing.md) | Original four Kenney clips, LINEAR/STEP/slerp, Auto input/move/event/visual32-credit composition, independent color/shadow/facing/physics and owner oracles; independent R2 pass a85980c, equivalent code delivery c681663, SDK7b987ca8/source e2994efa; full games/G10b/full AG pending |
+| 005 (ag-examples) | Gallery G12a actions and one-shot audio | delivered | [G12a Spec](gallery-audio-and-hud.md) | Fixed012 consumer; scene/7三cue共用PCM16 bank（jump/coin/land，量化≤1/65536）、Auto持有序数、held/stay不重发、实测清扫26信预算最坏恰32、shape1拾取半径与停靠模板、8必需oracle（真实混音PCM对照独立直读+native流+生命周期+32/33+具名拒绝）、12项21入口、单包A→B双址真runtime；G12b HUD/full Gallery/AG pending |
 
 | 011 (auto-ui) | G2 full-loop budget feasibility | delivered | [auto-ui PLAN-011](../../../../auto-ui/docs/plans/archived/011-autographics-g2-full-loop-budget-feasibility.md) | Two fixed004+008 candidates fail original callback1 at33/32; source-derived phase-aware accounts and isolated GPU/intent/lifecycle controls; exact steps/resumes approved unmeasured; full M2 remains unproved |
 
