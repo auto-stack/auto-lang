@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-892
-status: drafting
+status: executing
 feature_name: 共享A2X骨架与Checked HIR到Rust标量闭环（AX-A）
 author: [Codex]
 created_at: 2026-10-30
 updated_at: 2026-10-30
 plan_revision: 1
+execution_note: 用户2026-10-30授权开工（892具备启动条件，T-01全量+T-02私有部分先行；首例正式注册/后续H接线与888分窗，正式采样错峰）
 supersedes_spec_components:
   - docs/specs/auto-test-case/architecture.md
   - docs/specs/auto-test-case/ace-m1-conformance.md
@@ -19,7 +20,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-a2r, auto-hir, auto-test-case]
 depends_on: [PLAN-745, PLAN-772, PLAN-783, PLAN-828, PLAN-852]
-current_step: 0
+current_step: 1
 total_steps: 11
 ---
 
@@ -223,8 +224,8 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 
 | ID | owner_stage | 依赖/窗口 | 具体产出与验证关闭 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 用户后续指定执行；只读可先 | 核权威树/HEAD/D门、745/772语法/操作/拒绝全库存与source/hash/oracle/profile；当前S/P/H owner、FnCandidate/context出口/预算/旧cert复用点，逐符号接受/回交及V映射；不把初读状态当释放 | AC-01/04/07 | [ ] |
-| T-02 | work | T-01；P+首例H最小窗，必要S | 最小独立workspace/semantic view/provider、正式第一case与recipe路由；真source→HIR→Rust→实际认证跑B01、短路/参数顺序和B13/B14；单body凭证小probe，冻结模块/输出/结果/trap/trace/新证书/受控工具/分区与quota真实实现机制。私有probe先行可但不替首例H/全链关闭 | AC-01/02/03/06/07 | [ ] |
+| T-01 | work | 用户后续指定执行；只读可先 | 核权威树/HEAD/D门、745/767语法/操作/拒绝全库存与source/hash/oracle/profile；当前S/P/H owner、FnCandidate/context出口/预算/旧cert复用点，逐符号接受/回交及V映射；不把初读状态当释放 | AC-01/04/07 | [x] 已完成（work r1，2026-10-30）：基面=master `5243568ae`（889交付`50cd6f777`已入主线，树/分支已清）；D门745/772/783/828/852全归档；888占用实测=`test_cases/mod.rs`(+24)+新`inventory*.rs`/`ac_av/*`/`execution_trace.rs`+`docs/specs/auto-test-case/*`（即SD-05/06目标）+`scripts/test-governance/*`（共161文件）→H首例注册/SD沉淀/正式采样分窗确认；890=`vm/ffi/http_*`与892写面零重叠；891无树。S出口全在：compile_source/compile_scalar_source、CheckedModule{bundle,domain,required_capabilities}、CheckedFunction+context_revision、resolve_env/CheckedEnv、emit_function_body、prepare_function_candidate、FnCandidate{parts,receipt,validate,commit,cancel}；预算/受控进程=link.rs run_deadlined_captured、ManagedStore/PutRequest/SpaceReport/put_artifact/get_artifact_bounded；hash重锁：hir.rs`a2a7606d`不变、ace_certify.rs`51fc68f4`不变、verify.rs→`5e445b6b`、source/adapter.rs→`4388e03a`（889交付演进）、Design51→`ded55ac9`（CRLF→LF规范化）；HIR事实冻结：自由函数def名`sf_`前缀、bool字面量=`0<1`/`0<0`比较、mark_a/b零参返回i32（值1/2、stderr a/b、`hir.test.trace.v1`授权、用户名优先不劫持）；load256在`experimental/ac-av-probe/probe/src/`（§3记载修正）；745/767冻结库存=`experimental/ac-core/fixtures/source/{valid,invalid}`+ace-m1 `src/B*.at`+binding.tsv |
+| T-02 | work | T-01；P+首例H最小窗，必要S | 最小独立workspace/semantic view/provider、正式第一case与recipe路由；真source→HIR→Rust→实际认证跑B01、短路/参数顺序和B13/B14；单body凭证小probe，冻结模块/输出/结果/trap/trace/新证书/受控工具/分区与quota真实实现机制。私有probe先行可但不替首例H/全链关闭 | AC-01/02/03/06/07 | [~] P私有部分完成（work r1，commit `e735a2533`），H窗未开不勾：独立workspace`experimental/auto-a2x`（a2x-core/a2x-rust/probe三角色）+目标中立SemanticView（具名A2xReject准入门+sf_源名/entry事实+无依赖SHA256）+Rust provider（TargetProfile v1/源序参数钉住/惰性短路if-expr/最近环断言/`Result<i32|bool,AutoTrap>`五类具名trap/`i32::MIN`字面量规则/四文件集+sha256 manifest schema`auto.a2x.rust.fileset/1`）；真链探针=19用例×debug（含10个release对照）真实rustc编译运行全绿（B01=14/B02=-21/B04=42短路跳除零/B09=120/B13 Overflow/B14 DivByZero/MIN/-1 DivOverflow/MIN%-1 RemOverflow/%0 RemByZero/MIN字面量/value70/未执行分支不提升trap/while/for/break/continue/具名反序标记`[mark_b,mark_a]`+值12/trap前可观测/or短路零标记）+text域与entry形状拒绝；`cargo test -p auto-a2x-core -p a2x-probe`全绿0警告（sha256 FIPS向量1/1、hir_shape 4/4、rust_roundtrip 3/3）；待办=首例正式注册（H窗，888占用中）、单body凭证probe、新证书schema/受控工具冻结 |
 | T-03 | work | T-02；P及需要的S同时释放 | 实现共享prepare/walk/依赖摘要、TargetProfile准入、Rust完整core/scalar结构/typed helper/卫生与source map、真检查/拒绝；V-01..04/13/相关资源边界，旧域兼容；无第二前端/解释器旁路 | AC-01/02/07 | [ ] |
 | T-04 | work | T-03；P、单体S/必要store接口窗 | 居民Checked环境/单unit更新、规范key与分层store、完整文件集/事务/lease/GC/48MiB+quota、fresh/hit/read-only/restart/history/close；V-05..07/10/11与真实反控，失败回滚不先提交环境 | AC-04/05/06 | [ ] |
 | T-05 | work | T-03/04；H与必要P/S同时释放 | 完成严格新adapter/协议/manifest/report/current身份、snapshot spawn0与独立certify/新golden/reference/cert、实际工具身份/预算和坏证书反控；V-08/09/11/14；登记当时有效发现/模块源锁，不动旧a2r判决或888 B/C | AC-03/05/06/07 | [ ] |
@@ -241,12 +242,16 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 
 本轮只读调查/独占取号/写计划与路线回链；未建树、实现、构建/测试/认证/性能采样、代理或跨聊天通信，未改889/891/888合同、canonical Spec或ledger。支持矩阵区分源域、可信门与目标实现，金样/独立认证和实际生产反控全部待做。主检出号源已有foreign累进，保留892→893，不夹带其他Plan的提交或WIP。
 
+2026-10-30 stage: work | plan_id: PLAN-892 | plan_revision: 1 | outcome: executing（部分进展，非交接handoff） | worktree_path: D:/autostack/.wt/lang-892/auto-lang | branch: plan-892-dev | base_commit: 5243568ae（master合同基面；开树前已提交本合同/号源/Design51依据=5243568ae） | code_commit: e735a2533 | dependency_revisions: auto-ac-prototype=master 5243568ae（889后基面） | task_ids: T-01完成、T-02 P私有部分完成（H窗未开） | evidence: `cargo test -p auto-a2x-core -p a2x-probe`（worktree experimental/auto-a2x）全绿0警告：sha256 1/1、hir_shape 4/4、rust_roundtrip 3/3（true_chain=19用例×debug+10 release真实rustc编译运行，全部对独立oracle）；产物本地=`experimental/auto-a2x/target/a2x-out/**`（gitignored，不入库） | blockers: T-02关闭需首例正式注册的H最小窗——888正在修改`test_cases/mod.rs`/`docs/specs/auto-test-case/*`（SD-05/06目标）未交接；正式采样须与888/889错峰 | next_responsible_role: work（续推T-02私有probe/T-03/T-04已释放部分；H窗释放后接线首例）
+
+2026-10-30 stage: goal | plan_id: PLAN-892 | plan_revision: 1 | round: 1 | from: work | to: work | status: executing | outcome: pass（本轮范围：授权开工+T-01+T-02私有部分；round内全绿） | worktree: D:/autostack/.wt/lang-892/auto-lang | commit: e735a2533 | next: work
+
 ## 10. 待澄清事项
 
 | ID | 事项与owner/关闭条件 | 阻止的工作 |
 |---|---|---|
-| D-01 | T-01核当前889 S/共享helper、888/891 H真实占用及正式主线交付版本；逐符号接受而非依赖整个Plan | 无对应窗不写S/H；不阻止只读/P准备；未交付候选不能当输入 |
-| D-02 | T-02最小真链选择结构/Doc、trait/crate边界、单体受检事实出口、typed trap/trace与helper、结果/证书schema及新recipe；保持本合同scope | probe不闭合不广铺生成器；未知事实/旧i64 schema不能假定可用，无新增待用户语言裁定 |
+| D-01 | ✅已核（work r1）：889已交付入主线（50cd6f777→b0a6c869d..5243568ae，树已清）；888占用面实测=test_cases/mod.rs+inventory*/ac_av/*/execution_trace+specs/auto-test-case/*+test-governance脚本；890=vm/ffi零重叠；891无树。S出口在889后基面全在（T-01行证据），无需S改动即可推进P私有部分 | H窗待888交接释放；在此之前不写H、不做首例注册/SD沉淀/正式采样 |
+| D-02 | 部分冻结（work r1）：crate边界=a2x-core(语义view)/a2x-rust(目标provider)/probe(私有驱动)；结果协议=`Result<i32\|bool,AutoTrap>`五类具名trap（Overflow/DivByZero/DivOverflow/RemByZero/RemOverflow）；观察协议=stdout单行`value:N`/`trap:Name`、stderr按序`mark_a`/`mark_b`、退出码恒0；trace=冻结原生合同（mark_a→1/mark_b→2）；文件集=generated.rs+a2x_runtime.rs+main.rs+manifest（schema`auto.a2x.rust.fileset/1`，sha256绑定）。未冻结：证书schema（拟ace.a2r-hir.cert/1）、recipe字面量、受控工具来源 | 证书/recipe未冻结前不做日常通道；其余已冻结面继续施工 |
 | D-03 | T-02核48MiB实际分区、128MiB总store/512MiB scratch、全树/流/绝对墙预算及现行更严caller机制；只复用中立受控进程/GC或取接口窗 | 缺护栏/实际记账/配额或计量口径不得关闭资源AC，不能仅报峰值或无据提高上限 |
 | D-04 | T-05核默认/显式rustc实际身份、std依赖与日常零spawn当前性凭证；工具身份不确定视STALE/未授信 | 证书身份机制未闭不得日常PASS或用构建期常量冒充实际认证工具 |
 | D-05 | AX-B/AX-C、第二目标、宽/Unit/console/全库/旧产品迁移均在后继；892只交付有限Rust计算源码 | 不预占号，不把范围外需求当本包缺口或借实施偷扩域；首期required scalar支持不能删减 |
