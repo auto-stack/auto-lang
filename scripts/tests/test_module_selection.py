@@ -426,14 +426,14 @@ catch {Write-Output $_;exit 1}
             receipt.write_text("pending")
             def git(*args, **kwargs):
                 return "head" if kwargs.get("text") else b"docs/reference.txt\0docs/plans/progress.md\0"
-            with patch("module_catalog.subprocess.check_output", side_effect=git):
+            with patch("module_catalog.checked_output", side_effect=git):
                 before = source_identity(root)
                 receipt.write_text("complete")
                 self.assertEqual(source_identity(root)["code"], before["code"])
                 reference.write_text("changed fixture")
                 self.assertNotEqual(source_identity(root)["code"], before["code"])
                 current=source_identity(root)['code']
-                for name in ('AV798_FORMAL_SAMPLES','MN818_FORMAL_GATE_MS','GENERATE_EXPECTED'):
+                for name in ('AV798_FORMAL_SAMPLES','MN818_FORMAL_GATE_MS','GENERATE_EXPECTED','TEMP','TMP','TMPDIR'):
                     with patch.dict(os.environ,{name:'source-binding-control'}):
                         self.assertNotEqual(source_identity(root)['code'],current)
 
@@ -555,6 +555,155 @@ catch {Write-Output $_;exit 1}
         self.assertEqual(r["obligations"], [])
         with self.assertRaises(ValueError):
             verify_selection(c, r, {"code": "source"})
+
+
+class OutputAdmission(unittest.TestCase):
+    def test_existing_results_are_preserved_before_execution(self):
+        import tempfile
+        from output_admission import admit_output
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = root / 'selection.json'
+            original.write_bytes(b'original evidence')
+            with self.assertRaisesRegex(ValueError, 'fresh or empty'):
+                admit_output(root)
+            self.assertEqual(original.read_bytes(), b'original evidence')
+            empty = root / 'empty'
+            empty.mkdir()
+            self.assertEqual(admit_output(empty), empty.resolve())
+            absent = root / 'absent'
+            self.assertEqual(admit_output(absent), absent.resolve())
+            self.assertFalse(absent.exists())
+
+    def test_case_preflight_rejects_missing_or_wrong_identity_receipts(self):
+        import json, subprocess, tempfile
+        from unittest.mock import patch
+        from output_admission import audit_case_outputs
+        from module_catalog import ROOT
+        suite = 'crates/auto-lang/test/cases/pilot/pilot.suite.ad'
+        document = {'recipes': {'r': {'runner': 'case-suite', 'suite': suite}},
+                    'modules': [{'id': 'm', 'recipe': 'r'}]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'out'
+            valid = {'schema': 'test-case-output-audit/1', 'scope': 'output-admission',
+                     'suite': str((ROOT / suite).resolve()), 'output': str(output), 'accepted': True}
+            for axis in ('valid', 'empty', 'schema', 'suite', 'output', 'accepted', 'exit'):
+                row = dict(valid)
+                if axis in ('schema', 'suite', 'output'): row[axis] = 'wrong'
+                if axis == 'accepted': row[axis] = False
+                result = subprocess.CompletedProcess([], 2 if axis == 'exit' else 0,
+                    b'' if axis == 'empty' else json.dumps(row).encode(), b'rejected')
+                result.measurement = None
+                with self.subTest(axis=axis), patch('prepare_tools.prepare', return_value=({}, [])), \
+                        patch('output_admission.capture', return_value=result) as invoked:
+                    if axis == 'valid':
+                        receipt = audit_case_outputs(document, ['m'], output, root / axis, set())
+                        self.assertEqual(receipt['suites'], [valid])
+                    else:
+                        with self.assertRaises(ValueError):
+                            audit_case_outputs(document, ['m'], output, root / axis, set())
+                    self.assertEqual(invoked.call_args.args[0][1], 'audit-output')
+                    self.assertFalse(output.exists())
+
+    def test_public_refresh_uses_ephemeral_catalog_and_preserves_published_bytes(self):
+        import tempfile
+        from unittest.mock import patch
+        import module_command
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            published = root / 'published.json'
+            published.write_bytes(b'published baseline')
+            def refresh(path, diagnostics):
+                self.assertNotEqual(path, published)
+                path.parent.mkdir(parents=True)
+                path.write_text('{"source_identity":{"code":"fresh"},"modules":[]}', encoding='utf-8')
+            with patch.object(module_command, 'ROOT', root), \
+                    patch.object(module_command, 'refresh', side_effect=refresh), \
+                    patch.object(module_command, 'source_identity', return_value={'code': 'fresh'}), \
+                    patch('catalog_contract.verify_catalog'):
+                self.assertEqual(module_command.main(['--refresh', '--catalog', str(published)]), 0)
+            self.assertEqual(published.read_bytes(), b'published baseline')
+
+
+class CaseArtifacts(unittest.TestCase):
+    def test_deep_output_keeps_original_bytes_and_removes_owned_short_runtime(self):
+        import json, tempfile
+        from case_artifacts import create_runtime, archive_runtime
+        runtime = create_runtime()
+        try:
+            original = json.dumps({'original_runtime': str(runtime.path), 'actual': '原始字节'}, ensure_ascii=False).encode()
+            (runtime.path / 'module-case.json').write_bytes(original)
+            data = runtime.path / 'run/store/console.sqlite'
+            data.parent.mkdir(parents=True)
+            data.write_bytes(b'original store bytes')
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / ('requested-' * 10) / ('long-' * 10)
+                result = archive_runtime(runtime, output, 7)
+                self.assertFalse(runtime.path.exists())
+                self.assertEqual(Path(result['report']).read_bytes(), original)
+                self.assertEqual((Path(result['root']) / 'run/store/console.sqlite').read_bytes(), b'original store bytes')
+                manifest = json.loads(Path(result['manifest']).read_text())
+                self.assertTrue(manifest['runtime_cleanup_complete'])
+                self.assertTrue(any(row['path'] == 'run/store/console.sqlite' for row in manifest['files']))
+                self.assertEqual(manifest['original_runtime_root'], str(runtime.path))
+        finally:
+            if runtime.path.exists():
+                import shutil
+                shutil.rmtree(runtime.path)
+
+    def test_changed_ownership_refuses_cleanup(self):
+        import tempfile, shutil
+        from case_artifacts import create_runtime, archive_runtime
+        runtime = create_runtime()
+        try:
+            (runtime.path / '.tmcase-owner').write_text('different owner')
+            with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(ValueError, 'ownership changed'):
+                archive_runtime(runtime, Path(directory), 0)
+            self.assertTrue(runtime.path.is_dir())
+        finally:
+            shutil.rmtree(runtime.path)
+
+    def test_reparse_is_rejected_outside_worktree_without_following_target(self):
+        import tempfile, shutil
+        from case_artifacts import create_runtime, archive_runtime
+        from process_capture import capture
+        runtime = create_runtime()
+        link = runtime.path / 'external'
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                target = base / 'target'
+                target.mkdir()
+                sentinel = target / 'sentinel'
+                sentinel.write_text('must survive')
+                if os.name == 'nt':
+                    script = base / 'junction.ps1'
+                    script.write_text('param([string]$Link,[string]$Target)\n$ErrorActionPreference="Stop"\nNew-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n')
+                    result = capture(['powershell', '-NoProfile', '-NonInteractive', '-File', str(script),
+                                      '-Link', str(link), '-Target', str(target)], timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    link.symlink_to(target, target_is_directory=True)
+                try:
+                    from output_admission import admit_output
+                    with self.assertRaisesRegex(ValueError, 'output reparse ancestor refused'):
+                        admit_output(link / 'new-output')
+                    self.assertFalse((target / 'new-output').exists())
+                    with self.assertRaisesRegex(ValueError, 'reparse point refused'):
+                        archive_runtime(runtime, base / 'out', 0)
+                    self.assertEqual(sentinel.read_text(), 'must survive')
+                    self.assertTrue(runtime.path.is_dir())
+                finally:
+                    if os.name == 'nt':
+                        os.rmdir(link)  # Remove only the fixture junction, never recurse into its target.
+                    else:
+                        link.unlink()
+                self.assertEqual(sentinel.read_text(), 'must survive')
+        finally:
+            if link.exists() or link.is_symlink():
+                os.rmdir(link) if os.name == 'nt' else link.unlink()
+            shutil.rmtree(runtime.path)
 
 
 if __name__ == "__main__":

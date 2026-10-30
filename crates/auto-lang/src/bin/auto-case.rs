@@ -108,6 +108,7 @@ fn run(args: &[String]) -> Result<i32, String> {
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
         "module-case" => module_case_cmd(&suite, args),
+        "audit-output" => output_audit_cmd(&suite, args),
         "proposal" => proposal_cmd(&suite, args),
         "stale" => stale_cmd(&suite, require(args, "--report")?),
         other => Err(format!("unknown command {:?}\n{}", other, usage())),
@@ -392,17 +393,55 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
 /// whole-suite report (including NOT_RUN) and expose a separate case scope;
 /// a case result must never masquerade as the whole suite's passing gate.
 #[cfg(feature = "test-cases")]
+fn output_audit_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
+    let supplied: std::collections::BTreeSet<_> = args[1..]
+        .chunks_exact(2)
+        .map(|pair| pair[0].as_str())
+        .collect();
+    if args.len() != 5 || supplied != ["--suite", "--out"].into_iter().collect() {
+        return Err("audit-output requires exactly --suite and --out".into());
+    }
+    let out = PathBuf::from(require(args, "--out")?);
+    audit_output_dir(&out, &protected_roots(suite)?)?;
+    println!(
+        "{}",
+        serde_json::json!({"schema":"test-case-output-audit/1",
+        "scope":"output-admission","suite":suite.display().to_string(),
+        "output":out.display().to_string(),"accepted":true})
+    );
+    Ok(0)
+}
+
+#[cfg(feature = "test-cases")]
 fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
-    if args.len() != 7
-        || args[1..]
-            .chunks_exact(2)
-            .any(|p| !["--suite", "--case", "--out"].contains(&p[0].as_str()))
-    {
-        return Err("module-case requires exactly --suite, --case and --out".into());
+    let expected: &[&str] = match args.len() {
+        7 => &["--suite", "--case", "--out"],
+        9 => &["--suite", "--case", "--out", "--artifact-out"],
+        _ => {
+            return Err(
+                "module-case requires --suite, --case, --out and optional --artifact-out".into(),
+            )
+        }
+    };
+    let supplied: std::collections::BTreeSet<_> = args[1..]
+        .chunks_exact(2)
+        .map(|pair| pair[0].as_str())
+        .collect();
+    if supplied != expected.iter().copied().collect() {
+        return Err(
+            "module-case requires --suite, --case, --out and optional --artifact-out exactly once"
+                .into(),
+        );
     }
     let case_id = require(args, "--case")?;
     let out = PathBuf::from(require(args, "--out")?);
-    audit_output_dir(&out, &protected_roots(suite)?)?;
+    let protected = protected_roots(suite)?;
+    audit_output_dir(&out, &protected)?;
+    if let Some(artifact_out) = flag(args, "--artifact-out") {
+        // The short runtime directory must not bypass the existing input
+        // protection at the final artifact-copy port.
+        audit_output_dir(Path::new(&artifact_out), &protected)?;
+    }
     let selection = auto_lang::test_cases::Selection {
         case: Some(case_id.into()),
         ..Default::default()
@@ -535,6 +574,92 @@ fn jstr(s: &str) -> String {
 mod tests {
     use super::persist_reports;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn output_admission_uses_original_protected_roots_without_running_cases() {
+        let suite = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test/cases/pilot/pilot.suite.ad");
+        let temp = tempfile::tempdir().unwrap();
+        let accepted = temp.path().join("accepted");
+        let rejected = super::protected_roots(&suite).unwrap()[0].join(format!(
+            "audit-output-must-not-exist-{}",
+            std::process::id()
+        ));
+        assert!(!rejected.exists());
+        for (output, success) in [(&accepted, true), (&rejected, false)] {
+            let args = vec![
+                "audit-output".into(),
+                "--suite".into(),
+                suite.display().to_string(),
+                "--out".into(),
+                output.display().to_string(),
+            ];
+            let result = super::output_audit_cmd(&suite, &args);
+            if success {
+                assert_eq!(result.unwrap(), 0);
+                assert_eq!(std::fs::read_dir(output).unwrap().count(), 0);
+            } else {
+                let error = result.unwrap_err();
+                assert!(
+                    error.contains("protected") || error.contains("input"),
+                    "{error}"
+                );
+                assert!(!output.exists(), "rejected empty output must be removed");
+            }
+        }
+    }
+
+    #[test]
+    fn module_case_audits_artifact_output_before_running() {
+        let suite = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test/cases/pilot/pilot.suite.ad");
+        let protected = super::protected_roots(&suite).unwrap();
+        let runtime = tempfile::tempdir().unwrap();
+        let args = vec![
+            "module-case".to_string(),
+            "--suite".into(),
+            suite.display().to_string(),
+            "--case".into(),
+            "audit-must-precede-case-selection".into(),
+            "--out".into(),
+            runtime.path().display().to_string(),
+            "--artifact-out".into(),
+            protected[0].display().to_string(),
+        ];
+        let error = super::module_case_cmd(&suite, &args).unwrap_err();
+        assert!(
+            error.contains("protected") || error.contains("input"),
+            "{error}"
+        );
+        assert_eq!(
+            std::fs::read_dir(runtime.path()).unwrap().count(),
+            0,
+            "rejected final output must not start a run or emit reports"
+        );
+    }
+
+    #[test]
+    fn module_case_rejects_duplicate_and_unknown_artifact_options() {
+        let suite = std::path::Path::new("unused-before-argument-validation");
+        for extra in ["--out", "--unknown"] {
+            let args: Vec<String> = [
+                "module-case",
+                "--suite",
+                "unused",
+                "--case",
+                "unused",
+                "--out",
+                "unused",
+                extra,
+                "unused",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+            let error = super::module_case_cmd(suite, &args).unwrap_err();
+            assert!(error.contains("module-case requires"), "{error}");
+        }
+    }
 
     #[test]
     fn report_write_failure_is_reported() {

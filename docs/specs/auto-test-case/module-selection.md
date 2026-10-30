@@ -21,7 +21,7 @@ VM缓存及A2R/C/TS/Cookbook包装由真实Rust AST识别原helper调用，当�
 - `cargo tm --list` 查看真实模块ID；无参数明确失败，不隐式执行全部。
 - `cargo tm <module-id> [module-id ...]` 执行完整叶及消费者闭包的去重并集。
 - `cargo tm --changes <逐行路径文件> --select-only --out <本地目录>` 生成可审查选择；
-  去掉 `--select-only` 执行。`--refresh` 重新发现；`--catalog` 可显式指定目录。
+  去掉 `--select-only` 执行。`--refresh` 重新发现；`--catalog` 可显式指定目录。自动/显式刷新只写本次`target/modules-*/runtime-catalog`，不自动修改跟踪目录；执行与计量消费选择收据内的`catalog_path`。发布目录由计划worktree显式生成。
 
 Cargo元数据包含本地dev/optional/platform依赖，补充动态worker、Python及实际共享helper消费者。
 源码路径按实际owner和最深测试模块映射；共享契约/输入、删除/重命名、manifest和配置变化
@@ -55,3 +55,9 @@ UI/Man保留其owner腿与约定。周期触发仍为计划号%5、或>48h且有
 关联：[批量试点](batch-execution.md)、[治理守恒](governance-and-inventory.md)。
 
 测得可拆慢聚合由partition-policy.json明确细分，builder与消费端复核同一规则，不能丢例或悄悄停止应用。故障控制使用panic-safe测试环境恢复，既不能被预建worker绕过准备器反控，也不在恢复正控时误丢调用方工具路径。成本参考保留原AV/MN 30样本及2000ms门，相关参数与oracle生成开关参与源/环境指纹；成本验收不减样本、不放宽门、不再生期望。
+
+准备、发现（包括Git/Cargo元数据）和实际执行都使用有界的Windows Job；父进程退出0而后代仍在运行属于基础设施错误，记录实际PID/映像并回收整树，不能据此发布工具就绪或测试通过。临时目录相关TEMP/TMP/TMPDIR参与有效环境指纹。
+
+TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出路径限制；命令仍保留真实runtime argv。退出后先逐文件SHA256校验复制到请求的输出目录，再按目录所有权标记回收临时目录，复制/清理计入模块墙钟。`case_artifacts`直接提供可读报告与复制清单，原始报告/收据字节及其原runtime路径不改。reparse point在遍历前拒绝，不向worktree复制链接，复制失败保留原目录供排查。
+
+原计划的历史写入范围审计绑定其实际可达实施基面和归档交付SHA，不能审查当前计划相对master的无关改动；原命名空间禁区断言保持，当前产品依赖边界继续由实时结构检查负责。

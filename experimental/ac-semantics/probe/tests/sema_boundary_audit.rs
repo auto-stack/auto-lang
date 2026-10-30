@@ -114,23 +114,36 @@ fn sema_boundary_core_tree_has_no_product_backends() {
 #[test]
 fn sema_boundary_split_route_hotspots_untouched() {
     let root = repo_root();
-    // fork point of this branch against master
-    let base = Command::new("git")
-        .args(["merge-base", "HEAD", "master"])
+    // PLAN-888: this historical zero-touch obligation belongs to PLAN-796,
+    // not whichever later Plan happens to execute this independent module.
+    // These reachable landed anchors are the parent of its first implementation
+    // commit (0ddeeca9312d...) and its archived delivery. The final rebase
+    // changed the old review hashes; the archived merge receipt binds delivery.
+    const BASE: &str = "5666c1232892b01aec9e15b370de1d4ea1c1f128";
+    const DELIVERY: &str = "b76eca8d201ae313cef3b6f20dea55744406f287";
+    let ancestry = Command::new("git")
+        .args(["merge-base", "--is-ancestor", BASE, DELIVERY])
         .current_dir(&root)
         .output()
-        .expect("git merge-base runs");
-    assert!(base.status.success(), "merge-base failed");
-    let base = String::from_utf8_lossy(&base.stdout).trim().to_string();
-    assert_eq!(base.len(), 40, "40-hex base commit, got {base}");
-
+        .expect("frozen PLAN-796 ancestry check runs");
+    assert!(
+        ancestry.status.success(),
+        "frozen PLAN-796 history is required"
+    );
     let diff = Command::new("git")
-        .args(["diff", "--name-only", &format!("{base}..HEAD")])
+        .args(["diff", "--name-only", &format!("{BASE}..{DELIVERY}")])
         .current_dir(&root)
         .output()
-        .expect("git diff runs");
+        .expect("frozen PLAN-796 diff runs");
     assert!(diff.status.success());
-    let changed = String::from_utf8_lossy(&diff.stdout);
+    assert_sanctioned_paths(&String::from_utf8_lossy(&diff.stdout));
+}
+
+fn assert_sanctioned_paths(changed: &str) {
+    assert!(
+        !changed.trim().is_empty(),
+        "original implementation diff must not be empty"
+    );
     let forbidden_prefixes = [
         "crates/",
         "experimental/ac-core/",
@@ -375,4 +388,21 @@ fn sema_boundary_manifest_dependency_audit() {
         core_manifest.contains("[features]"),
         "feature table present"
     );
+}
+
+#[test]
+fn sema_boundary_historical_scope_rejects_forbidden_paths() {
+    assert_sanctioned_paths("experimental/ac-semantics/core/src/lib.rs\ncrates/auto-lang/src/test_cases/sema.rs\ndocs/specs/auto-semantics/project.md");
+    for path in [
+        "",
+        "Cargo.toml",
+        "experimental/ac-artifact-probe/src/store.rs",
+        "crates/auto-lang-core/src/vm/engine.rs",
+        ".agents/skills/autoui-verifier/SKILL.md",
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| assert_sanctioned_paths(path)).is_err(),
+            "original boundary must reject {path:?}"
+        );
+    }
 }

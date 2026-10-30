@@ -67,6 +67,7 @@ def api():
         "GetCurrentProcess": ([], W.HANDLE),
         "OpenProcess": ([W.DWORD, W.BOOL, W.DWORD], W.HANDLE),
         "GetExitCodeProcess": ([W.HANDLE, ctypes.POINTER(W.DWORD)], W.BOOL),
+        "QueryFullProcessImageNameW": ([W.HANDLE, W.DWORD, W.LPWSTR, ctypes.POINTER(W.DWORD)], W.BOOL),
         "GetProcessTimes": ([W.HANDLE, ctypes.POINTER(W.FILETIME), ctypes.POINTER(W.FILETIME),
                               ctypes.POINTER(W.FILETIME), ctypes.POINTER(W.FILETIME)], W.BOOL),
     }
@@ -87,6 +88,41 @@ def cpu_100ns(kernel):
     required(kernel.GetProcessTimes(kernel.GetCurrentProcess(), *(ctypes.byref(v) for v in values)),
              "GetProcessTimes(meter)")
     return sum((v.dwHighDateTime << 32) + v.dwLowDateTime for v in values[2:])
+
+
+def live_processes(kernel, job):
+    """Failure diagnostics before reaping; never substitutes for Job accounting."""
+    capacity = 256
+    for _ in range(4):
+        data = ctypes.create_string_buffer(8 + ctypes.sizeof(ctypes.c_size_t) * capacity)
+        if kernel.QueryInformationJobObject(job, 3, data, len(data), None):
+            count = int.from_bytes(data.raw[4:8], 'little')
+            if count > capacity:
+                raise OSError('Job PID list exceeds its buffer')
+            rows = []
+            for index in range(count):
+                pid = ctypes.c_size_t.from_buffer(data, 8 + index * ctypes.sizeof(ctypes.c_size_t)).value
+                handle = kernel.OpenProcess(0x1000, False, pid)
+                row = {'pid': pid}
+                if handle:
+                    try:
+                        image = ctypes.create_unicode_buffer(32768)
+                        size = W.DWORD(len(image))
+                        if kernel.QueryFullProcessImageNameW(handle, 0, image, ctypes.byref(size)):
+                            row['image'] = image.value
+                        else:
+                            row['query_error'] = ctypes.get_last_error()
+                    finally:
+                        kernel.CloseHandle(handle)
+                else:
+                    row['query_error'] = ctypes.get_last_error()
+                rows.append(row)
+            return rows
+        error = ctypes.get_last_error()
+        if error != 234 or capacity >= 65536:
+            raise OSError(error, 'Job PID enumeration')
+        capacity = min(65536, max(capacity * 2, int.from_bytes(data.raw[:4], 'little') + 16))
+    raise OSError('Job PID enumeration did not settle')
 
 
 def resume(kernel, pid):
@@ -125,6 +161,7 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
     overflow = threading.Event()
     reader_errors = []
     failure = None
+    live_after_exit = None
     accounting, memory = Accounting(), Extended()
     try:
         limits = Extended()
@@ -179,6 +216,10 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
                   ctypes.sizeof(memory), None), "job peak memory")
         if accounting.basic.active:
             failure = failure or "descendants live after workload exit"
+            try:
+                live_after_exit = {'active': accounting.basic.active, 'processes': live_processes(kernel, job)}
+            except OSError as error:
+                live_after_exit = {'active': accounting.basic.active, 'diagnostic_error': str(error)}
             required(kernel.TerminateJobObject(job, 124), "reap descendant tree")
     finally:
         # The job owns descendants even if setup, sampling or parsing fails.
@@ -198,10 +239,13 @@ def measure(argv, *, cwd=None, env=None, timeout=600, output_cap=16 << 20, error
         failure = failure or "output cap"
     own = cpu_100ns(kernel) - meter_before
     guest = accounting.basic.user + accounting.basic.kernel
-    return {"argv": list(argv), "exit": child.returncode, "error": failure,
+    result = {"argv": list(argv), "exit": child.returncode, "error": failure,
             "wall_ms": (time.perf_counter()-start)*1000,
             "workload_cpu_ms": guest/10000, "meter_cpu_ms": own/10000,
             "total_cpu_ms": (guest+own)/10000,
             "peak_process_bytes": memory.peak_process, "peak_job_bytes": memory.peak_job,
             "job_processes": accounting.basic.processes,
             "stdout": bytes(output), "stderr": bytes(errors)}
+    if live_after_exit is not None:
+        result['live_after_exit'] = live_after_exit
+    return result

@@ -9,6 +9,29 @@ from native_meter import api, measure
 
 @unittest.skipUnless(os.name == "nt", "native Windows process-tree meter")
 class NativeMeter(unittest.TestCase):
+    def test_exited_parent_with_live_child_is_diagnosed_and_reaped(self):
+        code = ("import subprocess,sys; p=subprocess.Popen([sys.executable,'-c',"
+                "'import time; time.sleep(30)'],stdin=subprocess.DEVNULL,"
+                "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=0x08000000);"
+                "print(p.pid,flush=True)")
+        result = measure([sys.executable, '-c', code], timeout=10)
+        self.assertEqual(result['exit'], 0)
+        self.assertEqual(result['error'], 'descendants live after workload exit')
+        pid = int(result['stdout'].strip())
+        self.assertTrue(any(row['pid'] == pid for row in result['live_after_exit']['processes']))
+        self.assertLess(result['wall_ms'], 3500)
+        kernel = api()
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if handle:
+            from ctypes import byref
+            from ctypes.wintypes import DWORD
+            try:
+                status = DWORD(259)
+                self.assertTrue(kernel.GetExitCodeProcess(handle, byref(status)))
+                self.assertNotEqual(status.value, 259, 'reported descendant must actually be reaped')
+            finally:
+                kernel.CloseHandle(handle)
+
     def test_nested_job_cpu_remains_in_outer_tree_accounting(self):
         spin = "import time; end=time.process_time()+0.15\nwhile time.process_time()<end: pass"
         library = str(Path(__file__).resolve().parents[1] / "test-governance")
@@ -71,6 +94,71 @@ class NativeMeter(unittest.TestCase):
         self.assertEqual(result["error"], "output cap")
         self.assertNotEqual(result["exit"], 0)
         self.assertLessEqual(len(result["stdout"]), 1000)
+
+
+@unittest.skipUnless(os.name == 'nt', 'native Windows producer containment')
+class ProcessCapture(unittest.TestCase):
+    @staticmethod
+    def leaky_helper():
+        return ("import subprocess,sys; p=subprocess.Popen([sys.executable,'-c',"
+                "'import time; time.sleep(30)'],stdin=subprocess.DEVNULL,"
+                "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=0x08000000);"
+                "print(p.pid,flush=True)")
+
+    def test_zero_parent_exit_does_not_certify_a_leaking_producer(self):
+        from process_capture import capture, checked_output
+        from unittest.mock import patch
+        import subprocess
+        valid = capture([sys.executable, '-c', "print('ready')"], timeout=10)
+        self.assertEqual(valid.returncode, 0)
+        self.assertEqual(valid.stdout.strip(), b'ready')
+        bad = capture([sys.executable, '-c', self.leaky_helper()], timeout=10)
+        self.assertEqual(bad.measurement['exit'], 0)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertEqual(bad.measurement['error'], 'descendants live after workload exit')
+        self.assertIn(b'[process-tree infrastructure]', bad.stderr)
+        with patch('process_capture.capture', return_value=bad), self.assertRaises(subprocess.CalledProcessError):
+            checked_output(['original-producer'])
+
+    def test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build(self):
+        import tempfile
+        from unittest.mock import patch
+        from process_capture import capture
+        from prepare_tools import prepare
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            binary = root / 'tools/release/tool.exe'
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b'fixture artifact: existence alone is not successful preparation')
+            document = {'schema': 'test-module-tools/1', 'tools': {'fixture': {
+                'workspace': '.', 'target': 'tools', 'package': 'fixture', 'binaries': ['tool'],
+                'profile': 'release', 'env': 'FIXTURE_WORKER'}}}
+            prepared = set()
+            def execute(program):
+                def run(argv, **kwargs):
+                    self.assertEqual(argv[:3], ['cargo', 'build', '--locked'])
+                    return capture([sys.executable, '-c', program], **kwargs)
+                return run
+            with patch('prepare_tools.load', return_value=document):
+                with patch('prepare_tools.capture', side_effect=execute(self.leaky_helper())):
+                    with self.assertRaisesRegex(ValueError, 'preparation failed'):
+                        prepare(root, ['fixture'], root / 'negative', prepared)
+                self.assertFalse(prepared)
+                failed = json.loads((root / 'negative/fixture-build.meter.json').read_text())
+                self.assertEqual(failed['exit'], 0)
+                self.assertEqual(failed['error'], 'descendants live after workload exit')
+                with patch('prepare_tools.capture', side_effect=execute("print('built')")):
+                    env, receipt = prepare(root, ['fixture'], root / 'positive', prepared)
+                self.assertEqual(env['FIXTURE_WORKER'], str(binary))
+                self.assertEqual(prepared, {'fixture'})
+                self.assertTrue(any(row.get('meter', {}).get('error') is None for row in receipt if 'meter' in row))
+
+    def test_output_overflow_is_not_truncated_success(self):
+        from process_capture import capture
+        result = capture([sys.executable, '-c', "print('ready'+'x'*30000)"], output_cap=16, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.measurement['error'], 'output cap')
+        self.assertLessEqual(len(result.stdout), 16)
 
 
 if __name__ == "__main__":

@@ -2,10 +2,10 @@
 import hashlib
 import os
 from pathlib import Path
-import subprocess
 import time
 
-from module_catalog import load
+from module_catalog import load, write
+from process_capture import capture
 
 
 def prepare(root, names, output, prepared):
@@ -28,11 +28,14 @@ def prepare(root, names, output, prepared):
             started=time.monotonic()
             output.mkdir(parents=True,exist_ok=True)
             log=output/(name+"-build.log")
-            with log.open("wb") as stream:
-                result=subprocess.run(command,cwd=cwd,stdout=stream,stderr=subprocess.STDOUT,timeout=1800)
+            result = capture(command, cwd=cwd, timeout=1800)
+            log.write_bytes(result.stdout + result.stderr)
+            if result.measurement is not None:
+                write(log.with_suffix('.meter.json'), result.measurement)
             if result.returncode:
                 raise ValueError(f"tool preparation failed: {name}; {log}")
-            receipts.append({"tool":name,"command":command,"exit":0,"build_seconds":time.monotonic()-started,"log":str(log)})
+            receipts.append({"tool":name,"command":command,"exit":0,"build_seconds":time.monotonic()-started,"log":str(log),
+                             "meter": result.measurement})
             prepared.add(name)
         paths=[target/tool["profile"]/(binary+(".exe" if os.name=="nt" else "")) for binary in tool["binaries"]]
         if not all(p.is_file() for p in paths):raise ValueError("prepared tool artifact missing")
