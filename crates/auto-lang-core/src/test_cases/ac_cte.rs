@@ -153,7 +153,7 @@ fn locate_worker() -> Result<PathBuf, String> {
 
 /// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
 /// the cte av driver lowers HIR→MIR through the shared crate.
-pub const EXPECTED_MIR_LOWERING_VERSION: &str = "3";
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "4";
 
 pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();

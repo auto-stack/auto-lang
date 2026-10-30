@@ -9,8 +9,15 @@
 //! - owned locals live block-lexically: readable only inside the subtree of
 //!   the block that owns their `let` (`verify.owned-scope-escape`), which
 //!   keeps every exit's free set derivable from the containment tree;
-//! - `=` assignment to an owned local and explicit drops of non-owned
-//!   locals are rejected (`verify.resource-assign`, Design 04 F8);
+//! - `=` assignment to an owned local: PLAN-894 §5.1 admits a full-root
+//!   replacement of a LIVE owned-Str local (old buffer frees only after
+//!   the RHS materializes; RHS reads of the old value are legal) and
+//!   rejects bare implicit transfers (`verify.ownership-required`),
+//!   rebuilds of moved/dropped/scope-exited roots
+//!   (`verify.use-after-move`), an RHS that consumes the target itself
+//!   (`verify.reassign-conflict`) and replacement under a live borrow
+//!   (`verify.mut-conflict`); explicit drops of non-owned locals are
+//!   rejected (`verify.resource-assign`);
 //! - `let y Str = x` (implicit ownership transfer) requires an explicit
 //!   owning construction instead (`verify.ownership-required`);
 //! - borrowed (`str`) locals carry a view provenance: the set of owned
@@ -1810,14 +1817,131 @@ impl<'a> ResourceWalk<'a> {
                                     reown_block = was_live_block;
                                 }
                                 ValueType::StrOwned => {
-                                    self.error(
-                                        "verify.resource-assign",
-                                        format!(
-                                            "owned local `{}` cannot be reassigned with `=`; resource assignment is forbidden (Design 04)",
-                                            self.local_name(target)
-                                        ),
-                                        self.body.blocks[bid as usize].span,
+                                    // PLAN-894 §5.1: full-root replacement of
+                                    // a live owned-Str LOCAL. `let` targets
+                                    // never reach here (the structural gate
+                                    // rejects them with
+                                    // verify.immutable-write); view/mut
+                                    // parameters route to the Str arm below.
+                                    // The OLD buffer frees only after the RHS
+                                    // fully materializes (RHS reads of the
+                                    // old value are legal, mirroring the
+                                    // Str-field replacement).
+                                    let value_bare_owned_read = matches!(
+                                        self.body.exprs.get(value.0 as usize).map(|e| &e.kind),
+                                        Some(hir::ExprKind::ReadLocal { local })
+                                            if self.owned.contains(&local.0)
+                                                && !scan.wrapper_moves.iter().any(|(w, _)| {
+                                                    matches!(
+                                                        self.body.exprs.get(w.0 as usize).map(|e| &e.kind),
+                                                        Some(hir::ExprKind::Move { inner }) if inner.0 == value.0
+                                                    )
+                                                })
                                     );
+                                    if value_bare_owned_read {
+                                        if let hir::ExprKind::ReadLocal { local } =
+                                            &self.body.exprs[value.0 as usize].kind
+                                        {
+                                            self.error(
+                                                "verify.ownership-required",
+                                                format!(
+                                                    "assignment to `{}` implicitly transfers `{}`; pass `<local>.move`, `.clone()` or an owned construction",
+                                                    self.local_name(target),
+                                                    self.local_name(local.0)
+                                                ),
+                                                self.body.exprs[value.0 as usize].span,
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                    // No rebuild: a moved-out/dropped (or
+                                    // scope-exited) root is re-CONSTRUCTED
+                                    // only by a fresh binding, never by `=`.
+                                    if let Some(cause) = st_snapshot.dead.get(&target) {
+                                        let why = match cause {
+                                            DeadCause::ScopeExit => {
+                                                "its binding block exited"
+                                            }
+                                            DeadCause::Moved | DeadCause::Dropped => {
+                                                "it was moved out or dropped"
+                                            }
+                                        };
+                                        self.error(
+                                            "verify.use-after-move",
+                                            format!(
+                                                "cannot reassign `{}`: {} (only a fresh `let`/`var` constructs an owned binding)",
+                                                self.local_name(target),
+                                                why
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                        continue;
+                                    }
+                                    if was_live_block.is_none() {
+                                        self.error(
+                                            "verify.uninitialized-read",
+                                            format!(
+                                                "cannot assign to `{}` before it holds an owned value",
+                                                self.local_name(target)
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                        continue;
+                                    }
+                                    // The RHS must not move/drop the TARGET
+                                    // itself (`c = c.move`,
+                                    // `c = consume(c.move)`): the old buffer
+                                    // left with that move — root-conservative
+                                    // rejection, §5.1.
+                                    if moved.contains(&target) {
+                                        self.error(
+                                            "verify.reassign-conflict",
+                                            format!(
+                                                "assignment to `{}` consumes `{}` in its own right-hand side; materialize the new value without moving the target",
+                                                self.local_name(target),
+                                                self.local_name(target)
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                        continue;
+                                    }
+                                    // A live borrowed view of the root blocks
+                                    // the replacement (root-conservative,
+                                    // same rule as a Str-field replacement).
+                                    let borrowed_by: Vec<u32> = st_snapshot
+                                        .backing
+                                        .iter()
+                                        .filter(|(_, bs)| bs.iter().any(|(l, _)| *l == target))
+                                        .map(|(v, _)| *v)
+                                        .collect();
+                                    if !borrowed_by.is_empty() {
+                                        self.error(
+                                            "verify.mut-conflict",
+                                            format!(
+                                                "owned local `{}` is replaced while borrowed by `{}`; a borrow holds the whole root",
+                                                self.local_name(target),
+                                                self.local_name(borrowed_by[0])
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                        continue;
+                                    }
+                                    // Admitted: the OLD root buffer frees
+                                    // after the RHS (empty path = a plain
+                                    // owned-Str root, the buffer_frees
+                                    // convention); the local stays a live
+                                    // owned root and the generation bump
+                                    // makes backings created against the old
+                                    // construction read as stale.
+                                    self.plan.replace_frees.insert(
+                                        (bid, idx),
+                                        vec![RecordBuffer {
+                                            root: target,
+                                            path: Vec::new(),
+                                        }],
+                                    );
+                                    reown_root = Some(target);
+                                    reown_block = was_live_block;
                                 }
                                 ValueType::Str => {
                                     if scan.has_owned_producing {

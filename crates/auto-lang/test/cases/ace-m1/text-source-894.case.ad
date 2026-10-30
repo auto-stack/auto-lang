@@ -1,0 +1,46 @@
+# PLAN-894 §5.5 — the shared-text independent oracle rows. The FROZEN
+# original sources (ace-m1/src/T03.at, T05.at — byte-exact, unmodified)
+# against the independent hand-audited oracle (23 / 42) on BOTH real
+# backends (mn recipe ac/mir-native-scalar-v1, av recipe ac-av/owned-run-v1).
+# APPEND-ONLY beside the 852 base (NOT extended) and the tr-native suite
+# (whose ace.m1.t03 row migrated from the old restricted-domain diagnostic
+# to value 23 by the approved §5.1 admission). No new dispatcher/recipe/
+# wire: the two landed recipes only.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t03.value"
+  tags: ["ace-m1", "owned-text", "plan-894"]
+  links: ["PLAN-894", "PLAN-870"]
+  source: { file: "src/T03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 23 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 23 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t05.value"
+  tags: ["ace-m1", "owned-text", "plan-894"]
+  links: ["PLAN-894", "PLAN-870"]
+  source: { file: "src/T05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```

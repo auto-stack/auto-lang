@@ -50,18 +50,26 @@ case {
 }
 ```
 
+# PLAN-894 §5.5 migration (below): ace.m1.t03 keeps its check id/recipe
+# identity; the expectation moves from the restricted-domain diagnostic
+# {stage:parse, code:mn.unsupported.frontend} (verify.resource-assign at the
+# shared frontend — historical evidence in the 870/852 records) to the
+# frozen value 23: the §5.1 owned-Str local full-root replacement is an
+# approved capability. The independent dual-backend oracle lives in
+# text-source-894.case.ad (ace.m1.t03.value).
+
 ```test-case
 case {
   schema: "autolang.case/2"
   id: "ace.m1.t03"
-  tags: ["ace-m1", "diagnostic", "owned-text"]
-  links: ["PLAN-852", "PLAN-870"]
+  tags: ["ace-m1", "owned-text"]
+  links: ["PLAN-852", "PLAN-870", "PLAN-894"]
   source: { file: "src/T03.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
       options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+      expect: { completion: "success", exit: 23 } },
   ]
 }
 ```

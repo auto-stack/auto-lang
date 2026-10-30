@@ -30,6 +30,7 @@ pub mod layout;
 pub mod link_driver;
 pub mod lower;
 pub mod observe;
+pub mod owned_source_incremental;
 pub mod resources;
 pub mod symbols;
 pub mod worker;

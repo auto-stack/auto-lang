@@ -34,6 +34,17 @@ fn cases() -> Vec<Case> {
             data: false,
             want: Want::V(27),
         },
+        // PLAN-894 §5.5: T03 migrated from the restricted-domain
+        // diagnostic (verify.resource-assign — the old assertion lived in
+        // mn_data_owned_rejection_surface) to its frozen value 23: the
+        // §5.1 owned-Str local full-root replacement is an approved
+        // capability. Historical evidence: the 870-era corpus rejected
+        // this row at the shared frontend with codegen 0.
+        Case {
+            id: "T03",
+            data: false,
+            want: Want::V(23),
+        },
         Case {
             id: "T04",
             data: false,
@@ -276,28 +287,12 @@ fn mn_data_owned_rejection_surface() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
     }
-    // T03: the frozen corpus's old-770 `=` reassignment — the shared
-    // frontend's OWNED verify rejects it (verify.resource-assign); mn
-    // reports the same diagnostic family, never a PE.
-    let mn = common::run_mn(&source_of("T03"), &[], "p870-t03-reject");
-    assert!(!mn.ok, "T03 must be diagnosed");
-    let err = format!("{:?}", mn.error.expect("error"));
-    assert!(
-        err.contains("verify.resource-assign"),
-        "T03 diagnostic carries the shared code: {err}"
-    );
-    assert_eq!(
-        mn.obs
-            .counters
-            .get("codegen_emit_units")
-            .copied()
-            .unwrap_or(0),
-        0,
-        "T03: no codegen on diagnosis"
-    );
-
-    // T06/T07/R10: the diagnostic rows reject through the same shared
-    // stack with codegen 0.
+    // T03 WAS this surface's verify.resource-assign row (old-770 `=`
+    // reassignment). PLAN-894 §5.5 migrated it to the value corpus
+    // (23, see cases()) — the §5.1 replacement is an approved
+    // capability; the historical restricted-domain evidence stays in
+    // the 870 records. T06/T07/R10: the diagnostic rows reject through
+    // the same shared stack with codegen 0.
     for id in ["T06", "T07", "R10"] {
         let mn = common::run_mn(&source_of(id), &[], &format!("p870-{id}-reject"));
         assert!(!mn.ok, "{id} must be diagnosed");

@@ -31,4 +31,9 @@ pub use hir_adapter::*;
 /// av.data/1 + av.owned/1 whole-module and single-function surfaces —
 /// the previously rejected `lower.method` rows become admitted.
 /// v3 (PLAN-863): independent console HIR -> typed host references, with no change to existing domain mappings.
-pub const MIR_LOWERING_VERSION: &str = "3";
+/// v4 (PLAN-894): text-domain admission extension — text eq/ne lowers to
+/// `StrCmp` over view operands (owned operands view first, BIN stays
+/// scalar-only) and `TextConcat` operands view-coerce; plus the owned-Str
+/// local full-root replacement (`var` targets, §5.1) rides the existing
+/// owned local-assign `Move` mapping.
+pub const MIR_LOWERING_VERSION: &str = "4";

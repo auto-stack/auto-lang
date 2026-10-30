@@ -1,0 +1,12 @@
+# PLAN-894 §5.5 — the shared-text T03/T05 independent-oracle suite: the
+# frozen original sources at value 23/42 on both real backends. The §5.1
+# owned-Str local full-root replacement admission + the StrCmp/concat-view
+# lowering fixes (MIR_LOWERING_VERSION 4) make both rows executable; the
+# oracle is hand-audited INDEPENDENT of either engine (23 = 2*10+len("ab中")
+# counting unicode scalars; 42 = the full-length NUL-exact comparison path).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-text-source-894", include: [
+  "text-source-894.case.ad",
+] }
+```

@@ -2549,19 +2549,6 @@ impl<'a> FnLower<'a> {
         }
     }
 
-    /// The MIR type of an expression's slot kind WITHOUT allocating.
-    fn type_of_expr(&self, eid: hir::ExprId) -> Option<MirType> {
-        let e = self.body.exprs.get(eid.0 as usize)?;
-        match &e.ty {
-            hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => Some(MirType::StrView),
-            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Some(MirType::Str),
-            hir::TypeUse::Builtin(hir::BuiltinType::Char) => Some(MirType::Char),
-            hir::TypeUse::Builtin(hir::BuiltinType::I32) => Some(MirType::I32),
-            hir::TypeUse::Builtin(hir::BuiltinType::Bool) => Some(MirType::Bool),
-            _ => None,
-        }
-    }
-
     fn span(&self, eid: hir::ExprId) -> Option<SpanInfo> {
         self.body.exprs.get(eid.0 as usize).map(|e| SpanInfo {
             func: self.func_index,
@@ -2598,6 +2585,25 @@ impl<'a> FnLower<'a> {
         };
         let sp = self.span(eid);
         let expr_kind = &self.body.exprs[eid.0 as usize].kind;
+        // PLAN-894 §5.2: text eq/ne detection by the operands' REAL MIR
+        // types. The HIR `TypeUse` never carries `StrSlice` for source
+        // modules (the profile's text types intern as `TypeKind::Str`
+        // references), so the old `type_of_expr` guard never fired and
+        // text comparisons fell through to scalar BIN — an invalid-MIR
+        // shape caught by `mir_verify`.
+        let bin_eq_ne_text = match expr_kind {
+            hir::ExprKind::Binary { op, lhs, .. } => {
+                matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
+                    && self.owned
+                    && matches!(
+                        self.expr_ty(*lhs)
+                            .ok()
+                            .and_then(|t| self.out.types.get(t as usize)),
+                        Some(MirType::Str) | Some(MirType::StrView)
+                    )
+            }
+            _ => false,
+        };
         match expr_kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.slot_of_local[local.0 as usize]),
             // PLAN-862: the unit value. Zero-width: the temp slot carries the
@@ -2612,14 +2618,12 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::Const { dst, value: c }, sp);
                 Ok(dst)
             }
-            hir::ExprKind::Binary { op, lhs, rhs, .. }
-                if self.owned
-                    && matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
-                    && matches!(self.type_of_expr(*lhs), Some(MirType::StrView)) =>
-            {
-                // str eq/ne rides STR_CMP (BIN stays scalar-only).
-                let l = self.eval_expr(*lhs, depth + 1)?;
-                let r = self.eval_expr(*rhs, depth + 1)?;
+            hir::ExprKind::Binary { op, lhs, rhs, .. } if bin_eq_ne_text => {
+                // str eq/ne rides STR_CMP over VIEW operands (BIN stays
+                // scalar-only); an owned operand views first — the same
+                // dispatch as the str ops.
+                let l = self.text_view_operand(lhs, depth + 1)?;
+                let r = self.text_view_operand(rhs, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 self.emit(
                     MirInstr::StrCmp {
@@ -3162,8 +3166,11 @@ impl<'a> FnLower<'a> {
                 Ok(dst)
             }
             hir::ExprKind::TextConcat { lhs, rhs } if self.owned && !self.collections() => {
-                let l = self.eval_expr(*lhs, depth + 1)?;
-                let r = self.eval_expr(*rhs, depth + 1)?;
+                // PLAN-894: concat operands are VIEWS by contract — an
+                // owned operand (a local or an owned-producing RHS) views
+                // first, the same dispatch as the str ops.
+                let l = self.text_view_operand(lhs, depth + 1)?;
+                let r = self.text_view_operand(rhs, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 self.emit(
                     MirInstr::StrConcat {
