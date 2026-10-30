@@ -25,3 +25,4 @@
 | 863 | AV类型化宿主导入与控制台输出 | delivered（R2 final pass；合入证据见归档计划） | [计划](../../plans/archive/863-av-console-host-import-and-print.md) | HostConsole 源码→独立 host 表/HostCall→AVHC/1；当前授权、预算/身份重验、父侧精确双流；whole-module 实验面 |
 
 | 889 | native集合与变体源码闭环 | delivered（r2，final pass；合入门见归档计划） | [计划](../../plans/archive/889-native-collections-variants-source-closure.md) | 原14L/V native源码格、owned/runtime资源、真函数增量/恢复与独立SDK；[共享合同](../auto-mir/native-collections-variants.md)，typed/wide另属891 |
+| 894 | 共享文本T03/T05源码、资源与函数级增量收口 | delivered（r1，final pass F-R1 闭环；合入门见归档计划） | [计划](../../plans/archive/894-shared-text-source-and-resource-closure.md) | owned-Str 局部（var）完整根替换准入（旧缓冲 RHS 后释放恰一次、具名拒绝码族）；[source-text-replacement.md](source-text-replacement.md) |

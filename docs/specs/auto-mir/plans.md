@@ -15,3 +15,4 @@
 | 863 | AV类型化宿主导入与控制台输出 | delivered（R2 final pass；合入证据见归档计划） | [计划](../../plans/archive/863-av-console-host-import-and-print.md) | HostConsole 源码→独立 host 表/HostCall→AVHC/1；当前授权、预算/身份重验、父侧精确双流；whole-module 实验面 |
 
 | 889 | native集合与变体源码闭环 | delivered（r2，final pass；合入门见归档计划） | [计划](../../plans/archive/889-native-collections-variants-source-closure.md) | 原14L/V native源码格、owned/runtime资源、真函数增量/恢复与独立SDK；[共享合同](../auto-mir/native-collections-variants.md)，typed/wide另属891 |
+| 894 | 共享文本T03/T05源码、资源与函数级增量收口 | delivered（r1，final pass F-R1 闭环；合入门见归档计划） | [计划](../../plans/archive/894-shared-text-source-and-resource-closure.md) | 文本 eq/ne→StrCmp（操作数 view 化）与 concat view 化、MIR_LOWERING_VERSION 4 三镜像；owned-source native 函数级增量桥（内容命中复用/失败原子性/同路径恢复重验）；[hir-lowering-boundary.md](hir-lowering-boundary.md)+[native-data-owned-lowering.md](native-data-owned-lowering.md) |

@@ -51,8 +51,10 @@ print/File/process、公开 ABI 或 ACC Gen1。
 ## 资源与语境（774 D-03/04 消费）
 
 - 逐语境 str/Str：`.to(Str)` 显式提升、`.to(str)` 借用化不转移；`+` 双文本
-  →拥有 concat；`.clone()`；`=` 对 owned 目标拒绝
-  （`verify.resource-assign`）。
+  →拥有 concat；`.clone()`；`=` 对 owned 局部目标：PLAN-894 起活 `var`
+  目标按 [source-text-replacement.md](source-text-replacement.md) 准入
+  完整根替换（旧缓冲 RHS 后释放恰一次；具名拒绝码见该文件），
+  `let` 目标仍结构门拒。
 - owned 局部**块词法作用域**：owner 出作用域（块自然结束、break/continue
   的 loop 作用域 frees、Drop）后经 backing 的读取为
   `verify.owned-scope-escape`（构造代际：循环重入后 fresh `let` 重定义资源

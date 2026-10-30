@@ -77,7 +77,10 @@ verify 层执行；不支持的形态显式拒绝，不放行也不转运行期�
   buffer return 转移回调用方。
 - 拒绝码注册表：`verify.use-after-free / double-move / use-after-move /
   mut-conflict / borrow-escape / field-borrow / container-borrow /
-  ownership-required`（无深度类码——资源层不引入语法/嵌套深度上限）。被拒操作
+  ownership-required / reassign-conflict`（无深度类码——资源层不引入
+  语法/嵌套深度上限；PLAN-894 起 `verify.resource-assign` 的旧owned Str
+  局部 blanket 拒绝退役为 [source-text-replacement.md](source-text-replacement.md)
+  的 var 目标完整根替换准入，Drop 非拥有关联仍沿用该码）。被拒操作
   的 native 调用计数为 0（前门性质义务）。
 
 ## D-05 内部 ABI 五类形态（探针冻结；非生产模块 ABI、非 ACC 桥）

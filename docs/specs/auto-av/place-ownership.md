@@ -5,6 +5,9 @@
 `av.owned/1`（profile id 3，AVAD wire v2；v1↔v2 互拒）在 798 共享核心上交付
 owned Place 数据面：char/borrowed str/owned Str 及拥有 Str 字段的 record，
 统一 ReadCopy/Borrow/Move/Initialize/Replace/Drop 与 AV 全受控退出的清理。
+PLAN-894 起源码面 owned `Str` 局部（var）完整根 `=` 替换经同一 Move 提交
+映射准入（前端合同见 auto-ac/source-text-replacement.md；旧缓冲 RHS 后
+释放恰一次、新值出口释放恰一次——arena 事件轴实测）。
 producer `plan821/av-owned`，语义版本轴 1/1/1 独立；缓存键含 types-fp 轴。
 实际 Rust 包位于 `experimental/ac-av-probe`（auto-av-core / auto-av-probe）。
 

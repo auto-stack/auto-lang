@@ -46,8 +46,11 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 - `auto_mir_lower::MIR_LOWERING_VERSION` = lowering **契约**版本：仅当
   lowering 语义变化（映射规则/准入域/错误分类）时升版；纯重构与消费侧搬移不升。
-  当前 `"3"`（PLAN-863：HostConsole 源码域、独立 host 声明表/调用映射与固定 main
-  策略；AV/CTE/MN 三消费者镜像同步为 "3"）。此前 `"2"`（PLAN-881：record/text-record 方法准入扩面 + av.data/1 按值
+  当前 `"4"`（PLAN-894：文本域准入扩面——文本 eq/ne 按操作数真实 MIR 类型路由
+  `StrCmp`（owned 操作数先 View；BIN 保持纯标量）与 `TextConcat` 操作数 view
+  化；owned-Str 局部完整根替换沿既有 owned 局部 Assign Move 映射；AV/CTE/MN
+  三消费者镜像同步为 "4"）。此前 `"3"`（PLAN-863：HostConsole 源码域、独立
+  host 声明表/调用映射与固定 main 策略；三镜像同步为 "3"）。此前 `"2"`（PLAN-881：record/text-record 方法准入扩面 + av.data/1 按值
   mut-record 写回 ABI + copyable `.mut` Copy 表示；三消费者镜像同步为 "2"，
   旧语义 cache/报告身份失效）。初值 `"1"`（PLAN-868）。
 - 报告身份轴 `mir-lowering`（**必报**）：三消费者经测试侧镜像 admission 常量

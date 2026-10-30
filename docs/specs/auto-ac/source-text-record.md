@@ -44,8 +44,10 @@ Token/lexer 迁移或 Gen1-3。
 - 位置与命名构造均支持（源码序求值再映射；逆声明序命名合法）。
 - **拥有形态 allowlist**（let/assign/return/ctor 字段四个拥有位统一）：
   合法 RHS = 新构造（RecordCtor）、深 clone（`r.clone()`）、拥有调用返回、
-  `x.move` 包装。其余资源 record 值形态——裸局部读取（`verify.resource-assign`
-  /`verify.ownership-required`）与**字段读取**（FieldGet=根内聚合的视图，
+  `x.move` 包装。其余资源 record 值形态——裸局部读取
+  （`verify.ownership-required`；纯 owned `Str` 局部另见
+  [source-text-replacement.md](source-text-replacement.md) 的 var 替换准入）
+  与**字段读取**（FieldGet=根内聚合的视图，
   永不隐式复制 owner；同码族）——一律前门拒。
 - `clone()` 内建按（record 接收者）绑定：显式递归深复制（逐 Str 字段独立
   buffer，标量按值；空 Str 零分配）；**用户声明 `clone` 方法 →

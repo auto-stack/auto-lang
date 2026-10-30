@@ -79,10 +79,26 @@ closures/dynamic。PLAN-889的显式collection源码子集/typed Clone见证另�
 
 ## 验收锚点
 
-`experimental/ac-mir-native/tests/data_owned_tier.rs`（三路差分 10 行 +
-mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控）；
-`crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad`（31 检查 +
-负 oracle）。
+`experimental/ac-mir-native/tests/data_owned_tier.rs`（三路差分 11 行 +
+mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控；PLAN-894 起 T03=23
+入值行含 arena 事件轴）；
+`crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad`（33 检查 +
+负 oracle；ace.m1.t03 迁 value=23）与独立 oracle 套件
+`text-source-894.suite.ad`（T03/T05=23/42 双腿）。
+
+## PLAN-894：owned-Str 局部替换与 owned-source 函数级增量
+
+- T03/T05 真源经 mn PE 实测 23/42（StrCmp 视图比较、concat view 化、
+  §5.1 局部替换沿 Move 提交）；语义身份经 MIR_LOWERING_VERSION "4" 与
+  三 SDK 镜像同步。
+- `ac-mir-native/src/owned_source_incremental.rs`：owned 文本源的函数级
+  增量会话——828 CheckedEnv/prepare_candidate_document 单体事务 +
+  lower_function_owned_unit_with_modes 单元降级 + 既有 per-unit
+  COFF/cache/link。未改单元指纹/代际不动、whole 0；内容命中复用历史
+  COFF（A→B→A 恢复原身份零生产）；失败候选 build-aside 回滚（旧程序
+  可跑）；跨进程 restore 按生产路径（whole=split / body=单函数）同路径
+  fp 重推导 + 载荷哈希 + 实跑复现，无 trusted flag。该桥不替代 scalar
+  MnIncrementalSession（其 828 会话为 scalar）与 collections profile。
 
 ## 方法消费适配（PLAN-881）
 

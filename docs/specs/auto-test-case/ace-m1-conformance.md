@@ -123,10 +123,14 @@ V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot 
 
 - 新增独立 suite `ace-m1-tr-native.suite.ad`（17 case/31 检查；**852 base
   suite 不扩**）：值/trap 行携带 ac-native+av 双腿对同一冻结 oracle；诊断
-  行携带 mn 腿（家族码），av 腿仅限 862 已绑 ok 的行。T05 无腿
-  （`gap:upstream-s-eq` 具名排除）。
+  行携带 mn 腿（家族码），av 腿仅限 862 已绑 ok 的行。~~T05 无腿
+  （`gap:upstream-s-eq` 具名排除）~~（PLAN-894 闭合：文本 eq/ne 走
+  StrCmp，T03/T05 均有双腿）。
 - binding.tsv ac 列判级与 av 列逻辑逐行镜像：可执行值/trap/负诊断行=ok
-  （实测出口码注记）；T03=`gap:mn-text-move`、T05=`gap:upstream-s-eq`、
+  （实测出口码注记）；~~T03=`gap:mn-text-move`、T05=`gap:upstream-s-eq`~~
+  （PLAN-894 起均 `ok`：T03 经 owned-Str 局部替换=23、T05 经 StrCmp=42，
+  ac-native+av 双腿实测；独立 oracle 套件 `text-source-894.suite.ad`；
+  ace.m1.t03 行由旧诊断期望迁 value=23，保 check 身份与历史依据）、
   R07=`gap:mn-mut-param`、R08=`gap:mn-lower-method`（共享栈拒绝，与 av
   gap 同因）。
 - mn 诊断的 case 级期望面：probe 合法 stage 集（parse/resolve/typecheck/
