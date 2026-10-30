@@ -205,7 +205,7 @@ fallback, which is not a concurrency contract for custom unbound raw VMs.
 ```powershell
 cargo build --manifest-path test/fixtures/modularity/web-port-probe/Cargo.toml --features external-runtime --bin web-port-probe --bin isolation --bin session --locked -j 4
 python test/fixtures/modularity/web-port-probe/t02_closeout_audit.py --sdk-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --isolation-exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
-python test/fixtures/modularity/web-port-probe/t02_session_probe.py --sdk-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --session-exe test/fixtures/modularity/web-port-probe/target/debug/session.exe
+python test/fixtures/modularity/web-port-probe/t02_session_probe.py --sdk-exe test/fixtures/modularity/web-port-probe/target/debug/web-port-probe.exe --session-exe test/fixtures/modularity/web-port-probe/target/debug/session.exe --isolation-exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
 ```
 
 The first replay preserves the original three failing oracles. The second

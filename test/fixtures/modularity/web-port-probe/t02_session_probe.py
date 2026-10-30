@@ -119,10 +119,55 @@ def failure_then_service(root, session, cancel):
         print(json.dumps({"case": "failure-then-cancel" if cancel else "failure-then-shutdown", "exit": child.returncode, "async_error_event": bad, "cancel_event": slow, "actual_join_and_registries": True}))
 
 
+def interleaved_launch(root, isolation, negative=False):
+    a, b = ports()
+    tokens = [uuid.uuid4().hex, uuid.uuid4().hex]
+    sources, configs = [], []
+    for index, port in enumerate((a, b)):
+        source, config = root / f"gap{index}.at", root / f"gap{index}.json"
+        text = '#[api(method = "GET", path = "/value")]\nfn value() str { "' + tokens[index] + '" }\n'
+        if index == 0:
+            text += 'fn main() { delay_async(300).await }\n'
+        source.write_text(text)
+        config.write_text(json.dumps({"profile": "development", "listen": {"port": port}, "limits": {"max_inflight_requests": 20 + index, "drain_timeout_ms": 100}}))
+        sources.append(source)
+        configs.append(config)
+    with (root / "gap.out").open("w+") as out, (root / "gap.err").open("w+") as err:
+        child = subprocess.Popen([str(isolation), *map(str, sources), str(a), str(b), *map(str, configs)], stdin=subprocess.PIPE, stdout=out, stderr=err, text=True,
+                                 env=dict(os.environ, PLAN890_METADATA_GAP="1", PLAN890_USE_LAUNCH="1", PLAN890_SWAP_LAUNCH_NEGATIVE="1" if negative else "0", AUTO_EXECUTION_ENGINE="autovm"))
+        try:
+            ready(child, [b], "/value", tokens[1])
+            ready(child, [a], "/value", tokens[0])
+            identities = [get(port, "/__auto/health/ready")[1] for port in (a, b)]
+            err.seek(0)
+            diagnostics = err.read()
+            for index, identity in enumerate(identities):
+                expected = re.search(r"index=" + str(index) + r" expected_hash=([0-9a-f]+)", diagnostics)[1]
+                assert identity["config_hash"] == expected and identity["bound"] == f"127.0.0.1:{(a, b)[index]}", identity
+            assert identities[0]["instance_id"] != identities[1]["instance_id"]
+            child.stdin.write("stop-first\n")
+            child.stdin.flush()
+            deadline = time.monotonic() + 5
+            while "first owner drained independently" not in (root / "gap.out").read_text():
+                assert child.poll() is None and time.monotonic() < deadline
+                time.sleep(0.02)
+            # B activates first while A is parked in main. stop-first is
+            # activation order; the surviving service is A.
+            assert get(a, "/value") == (200, tokens[0])
+            assert get(a, "/__auto/health/ready")[1] == identities[0]
+        finally:
+            stop(child)
+        assert child.returncode == 0
+        err.seek(0)
+        assert err.read().count("probe logger joined instance=") == 2
+        print(json.dumps({"case": "interleaved-main-gap-launch", "exact_identity": identities, "independent_shutdown": True, "exit": child.returncode}))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sdk-exe", type=Path, required=True)
     parser.add_argument("--session-exe", type=Path, required=True)
+    parser.add_argument("--isolation-exe", type=Path, required=True)
     args = parser.parse_args()
     scratch = Path(__file__).resolve().parent / "target" / "t02-session"
     scratch.mkdir(parents=True, exist_ok=True)
@@ -132,6 +177,7 @@ def main():
         configured(root, args.sdk_exe.resolve(), True)
         failure_then_service(root, args.session_exe.resolve(), False)
         failure_then_service(root, args.session_exe.resolve(), True)
+        interleaved_launch(root, args.isolation_exe.resolve())
 
 
 if __name__ == "__main__":

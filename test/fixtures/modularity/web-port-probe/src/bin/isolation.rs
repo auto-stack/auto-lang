@@ -29,7 +29,16 @@ impl HttpServiceHost for Adapter {
         let address = self.addresses[self.index].clone();
         let (sender, receiver) = tokio::sync::watch::channel(false);
         controls.push(sender.clone());
-        let configuration = self.configuration.clone();
+        let configuration = if std::env::var("PLAN890_USE_LAUNCH").as_deref() == Ok("1") {
+            let config = owner
+                .launch()
+                .expect("invocation launch missing")
+                .settings::<auto_lang_core::http_service_config::HttpServiceConfig>()
+                .expect("wrong launch type");
+            Some(config)
+        } else {
+            self.configuration.clone()
+        };
         Box::pin(async move {
             #[cfg(not(feature = "external-runtime"))]
             assert!(
@@ -104,6 +113,18 @@ fn main() {
             )
         }),
     });
+    if std::env::var("PLAN890_USE_LAUNCH").as_deref() == Ok("1") {
+        for (index, configuration) in [&adapter.configuration, &replacement.configuration]
+            .into_iter()
+            .enumerate()
+        {
+            eprintln!(
+                "launch config index={} expected_hash={:016x}",
+                index,
+                configuration.as_ref().unwrap().effective_config_hash()
+            );
+        }
+    }
     assert!(!http_service::install_process_http_service_host_if_absent(
         replacement.clone()
     ));
@@ -124,7 +145,21 @@ fn main() {
     tokio::task::LocalSet::new().block_on(&runtime, async {
         if std::env::var("PLAN890_METADATA_GAP").as_deref() == Ok("1") {
             use std::future::Future;
-            let mut pending = Box::pin(auto_lang_core::execute_autovm(&first, true));
+            let mut first_launch = adapter
+                .configuration
+                .clone()
+                .map(http_service::HttpServiceLaunch::new);
+            let mut second_launch = replacement
+                .configuration
+                .clone()
+                .map(http_service::HttpServiceLaunch::new);
+            if std::env::var("PLAN890_SWAP_LAUNCH_NEGATIVE").as_deref() == Ok("1") {
+                std::mem::swap(&mut first_launch, &mut second_launch);
+            }
+            let mut pending = Box::pin(http_service::with_http_service_launch_async(
+                first_launch,
+                auto_lang_core::execute_autovm(&first, true),
+            ));
             std::future::poll_fn(|cx| {
                 assert!(
                     pending.as_mut().poll(cx).is_pending(),
@@ -134,7 +169,12 @@ fn main() {
             })
             .await;
             http_service::set_process_default_http_service_host(replacement);
-            auto_lang_core::execute_autovm(&second, true).await.unwrap();
+            http_service::with_http_service_launch_async(
+                second_launch,
+                auto_lang_core::execute_autovm(&second, true),
+            )
+            .await
+            .unwrap();
             if std::env::var("PLAN890_ORDINARY_FIRST").as_deref() == Ok("1") {
                 http_service::clear_process_default_http_service_host();
             } else {
