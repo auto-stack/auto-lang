@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""PLAN-888 module-aware periodic queue with preserved external owners.
+"""PLAN-896 fixed Cargo/Rust-module periodic queue with preserved external owners.
 
-Language executes one complete leaf union. Existing language/tt/tb listings
+Language executes one fixed native group union. Existing language/tt/tb listings
 remain conservation audits, not repeated execution tiers. --batch uses the
 explicit recipe schedule; UI/Man retain their owner legs and manual conditions.
 Unfiltered periodic runs require frozen main checkouts, or the reviewed
@@ -446,10 +446,10 @@ def child_env(lang, ui, man):
 
 
 def module_queue_command(lang,tier,filters,batch,output,list_only):
-    """One language module union; UI/Man retain their own owner runners."""
-    command=[sys.executable,str(lang/'scripts/test-governance/module_command.py')]
+    """One native fixed-group union; external UI/Man owners are unchanged."""
+    command=[sys.executable,str(lang/'scripts/fixed-tests.py')]
     if batch:
-        command += ['--schedule',str(lang/'scripts/test-governance/periodic-module-schedule.json')]
+        command += ['all']
     else:
         command += ['--legacy-tier',tier,*filters]
     command += ['--out',str(output)]
@@ -500,6 +500,33 @@ def main(argv=None):
                 options += args.filters
                 record = {"leg": label, "cwd": str(cwd), "options": options}
                 receipt["results"].append(record)
+                if label in ('tt', 'tb'):
+                    record['execution'] = 'covered by the explicit fixed all union; no repeated discovery/build'
+                    record['run_exit'] = 0
+                    continue
+                if label == 'language':
+                    destination = out / 'language-modules'
+                    record['module_command'] = module_queue_command(lang,args.tier,args.filters,args.batch,destination,args.list_only)
+                    reports = out / 'language-module-reports'; reports.mkdir()
+                    with preserve_reports(lang,reports) if not args.list_only else contextlib.nullcontext():
+                        code = command(record['module_command'],lang,out/'language-module-run.log',args.timeout)
+                    record['run_exit'] = code
+                    if code:
+                        raise ValueError(f'language: fixed group tests failed ({code}); stopping')
+                    if args.list_only:
+                        planned = json.loads((destination/'selection.json').read_text(encoding='utf-8'))
+                        record['declared_groups'] = planned['selected_groups']
+                        record['executed'] = 0
+                        total_selected += len(planned['selected_groups'])
+                    else:
+                        actual = json.loads((destination/'results.json').read_text(encoding='utf-8'))
+                        if not actual.get('gate_passed'):
+                            raise ValueError('language: zero selected or incomplete fixed group gate')
+                        count = sum(r.get('executed',0) for r in actual['results'])
+                        check_minimum(minimums,label,count)
+                        record['selected'] = count
+                        total_selected += count
+                    continue
                 listing = out / (label + "-list.json")
                 with listing.open("w", encoding="utf-8") as stdout, (out / (label + "-build.log")).open("w", encoding="utf-8") as stderr:
                     proc = subprocess.Popen(["cargo", "nextest", "list", *options, "--message-format", "json"], cwd=cwd,
@@ -521,23 +548,10 @@ def main(argv=None):
                 if not selected:
                     record["skip"] = "explicit scope matches no tests in this owner"
                     continue
-                if label=='language':
-                    record['module_command']=module_queue_command(lang,args.tier,args.filters,args.batch,
-                        out/'language-modules',args.list_only)
-                    module_reports=out/'language-module-reports'
-                    module_reports.mkdir(exist_ok=True)
-                    with preserve_reports(lang,module_reports) if not args.list_only else contextlib.nullcontext():
-                        # The full driver owns the machine mutex. The nested
-                        # leaf runner does not acquire it or re-run old tiers.
-                        module_code=command(record['module_command'],lang,out/'language-module-run.log',args.timeout)
-                    record['module_exit']=module_code
-                    if module_code:
-                        record['run_exit']=module_code
-                        raise ValueError(f'language: module tests failed ({module_code}); stopping')
                 if not args.list_only:
                     if label in ('language','tt','tb'):
                         record['run_exit']=0
-                        record['execution']='one complete module union at language-modules; legacy list is conservation audit only'
+                        record['execution']='one native fixed-group union; legacy list is conservation audit only'
                         continue
                     report_dir = out / (label + "-reports")
                     report_dir.mkdir()

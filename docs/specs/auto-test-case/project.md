@@ -1,5 +1,8 @@
 # auto-test-case
 
+> PLAN-896测试调度：固定Cargo包+Rust模块组取代tm动态目录，入口cargo t <组>、显式cargo t all。
+> 本crate的TestCase协议/oracle/准入比较保持；ACE宿主显式test-ace与必要工具，普通legacy不编无关ACE。
+
 > **Status**: active
 > 路径：`crates/auto-test-case` | 技术栈：Rust（仅依赖 vendored `autodown-test-parser`；auto-atom/auto-val 仅 dev）
 

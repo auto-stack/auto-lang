@@ -24,3 +24,13 @@ ac-syntax-grammar = { path = "grammar" }
 
 [profile.release]
 debug = true
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2

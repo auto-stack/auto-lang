@@ -82,6 +82,7 @@ fn collect_corpus(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     out
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -110,6 +111,7 @@ fn test_aavm2_a2r_is_corpus() {
 }
 
 /// 诊断用:打印主 a2r 对语料的转译产物(--nocapture)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_a2r_main_dump_print() {
     let dir = corpus_dir();
@@ -346,6 +348,7 @@ fn golden_cases() -> Vec<(std::path::PathBuf, String)> {
 }
 
 /// 金样三件套校验/再生(默认校验;A2R_BLESS=1 再生)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_goldens_check() {
     let bless = std::env::var("A2R_BLESS").is_ok();

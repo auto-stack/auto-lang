@@ -1,51 +1,56 @@
-# 不相交叶模块与影响选测
+# 固定Cargo包与Rust模块测试
 
-> PLAN-888 r3；成本与交付状态以计划验收/归档收据为准。
+> PLAN-896：替换888/895动态叶/顶级/自动消费者图执行体系。旧目录仅保迁移审计价值。
 
-## 身份与目录
+## 固定组与命令
 
-原子义务、唯一叶/内部分片、调度组、命令分别计数；PLAN-895 起另设面向使用者的顶级职责模块层：顶级模块是正式选测单位，每叶恰属一顶级模块，底下可复用若干内部分片；顶级模块、内部分片与Rust/Cargo技术目标分开计数，不得以执行分片或技术入口冒充最终模块体系。运行时发现语言旧九配置身份并集、ACE十个
-workspace、正式TestCase suite及本仓Python治理控制；外仓UI/Man仅保留owner引用。
-`scripts/test-governance/modules.json` 索引其内容哈希分片，每条运行身份恰属一叶，分区并集
-守恒。recipe/后端/profile/oracle/平台条件不同的身份不可误去重。
+`scripts/test-groups.toml`直接列Cargo workspace/package/lib/test/bin、features/profile、Rust命名空间
+及必要工具，职责对应实际源码。小crate整体一组；parser/vm/a2r/a2c/a2py/a2ts等是大crate内的Rust
+模块组，不是新的Cargo package。不按20例/一分钟切叶，不维护逐测试新鲜度/动态消费者图。
 
-原聚合输入另绑定原source/oracle及真实消费记录，包装exit0不能替代子项完成。
-VM缓存及A2R/C/TS/Cookbook包装由真实Rust AST识别原helper调用，当前1,066条原包装/输入
-关联由legacy-wrapper-contract.json冻结；刷新不得同时抹去关联。声明、当前注册、原ignore和
-实际完成分开。消费端要求每个适用绑定的原始终态记录、身份/内容指纹和条数，缺失/重复/
-错源/未完成失败；原诊断断言保留，诊断子项只在原assert成功后完成收据。未注册AST声明
-与已注册运行身份分开；原ignored/milestone/手动条件明确NOT_APPLICABLE，不充PASS。
+- `cargo t`：原固定日常范围，保原适用条件，ACE宿主改为显式组。
+- `cargo t parser`、`cargo t parser vm`：完整命名空间子树及配置内明确的集成测试。
+- `cargo t all`：显式语言仓全部固定组，不含UI/Man外仓批次，仍保ignore/平台/里程碑条件。
+- `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
+- `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。
+- `cargo t aavm --ignored [--test-name <名字>]`：明确手动重放已忽略实验；原平台/T3条件保持。
 
-## 顶级模块与内部分片（PLAN-895）
+同配置的多个组OR并集一次nextest调用、由原nextest并行调度；不同package/target/feature/profile/
+环境/工具合同分别调用。正常Rust发现只针对选择的Cargo目标，新增同namespace测试自然纳入，零匹配
+/未知组/缺终态失败。模块过滤缩小运行范围，不保证同crate测试二进制独立编译。
 
-`scripts/test-governance/top-level-modules.json` 冻结数十个职责命名的顶级模块（lang/core/ace/case/infra
-五域），把 888 唯一叶重组为面向使用者的选测单位：每叶恰属一顶级模块，守恒由 catalog 合同在每次消费时
-校验（叶缺漏/重叠/未知引用即失败，新叶必须显式归组）。顶级/分片双层不改变叶的执行合同：原义务、条件、
-oracle、消费者闭包、legacy 映射与周期清单原样保留；`tm` 同时接受顶级 ID 与原叶 ID，混选按原身份去重。
+计划按修改明确完整职责组和必要集成/消费组，review核理由。parser局部改动不同于共享AST/语义/IR
+变更；后者须显式补下游验证，但Cargo包依赖不自动触发所有消费者单测。不再有tm --changes自动闭包。
+未知范围具名解释扩大，不能静默全编experimental，也不能省去已知真实消费者。
 
-粒度判据（面向常规模块）：默认 ≤100 个可独立用例，或完整模块单轮实测 ≤60 秒的用途一致快速模块可超
-100 例但须列数与实测证据；用例数、原子 check 数、包装内部原例数分列，禁止以内部小片达标冒整组达标。
-消费者闭包的额外总量/耗时另列。特别长且不可拆原子具名列专项/人工意见，不削负载、不缩样本。顶级模块的
-用途建议（日常/专项/调研/待确认）与准入建议见[用途与准入](test-purpose-and-admission.md)；建议与默认
-执行配置分离，未经用户批准不改变任何默认选择。
+## 真实结果与条件
 
-## 命令和影响闭包
+新入口仅薄分发给Cargo/nextest、Python unittest和TestCase原suite/比较器。nextest真实结构化逐测试
+终态必须与所选实际枚举相等；重复/额外/缺失、异常退出和清理失败不得冒绿。父包装exit0不能替代原输入/
+check的完成；原VM缓存及A2R/C/TS/Cookbook包装通过当前源绑定只读inventory和原execution_trace校验。
+只在选到相关包装时读取其inventory，不为parser准备全仓工具。
 
-- `cargo tm --list` 默认呈现顶级职责模块（含叶数/义务数/用途建议类与职责名）；`--list --shards` 展开内部分片叶ID。无参数明确失败，不隐式执行全部。
-- `cargo tm <module-id|top-module-id> [...]` 执行完整叶及消费者闭包的去重并集；顶级 ID 先解析为其成员完整叶（收据记录 top_level_expansion），不得借以抽取叶内部分测试。
-- `cargo tm --changes <逐行路径文件> --select-only --out <本地目录>` 生成可审查选择；
-  去掉 `--select-only` 执行。`--refresh` 重新发现；`--catalog` 可显式指定目录。自动/显式刷新只写本次`target/modules-*/runtime-catalog`，不自动修改跟踪目录；执行与计量消费选择收据内的`catalog_path`。发布目录由计划worktree显式生成。
+Python保标准loader真实发现/逐ID执行收据；TestCase保source/oracle身份、逐check原比较，明确的
+负控meta-oracle仍独立核实。失败/首红、NOT_RUN、NOT_APPLICABLE及重放结果分列；全组仅条件排除
+不认证通过。60秒为成本目标，不是强杀时限，不统一三warm/P90或改变正式样本/预算/金样。
 
-Cargo元数据包含本地dev/optional/platform依赖，补充动态worker、Python及实际共享helper消费者。
-源码路径按实际owner和最深测试模块映射；共享契约/输入、删除/重命名、manifest和配置变化
-必须参与选择。未知触面保守扩大，过期目录重新发现，零选择/漏项/重项/缺消费边在执行前失败。
-消费端再次构建图和校验分区，选择文件不能靠删项缩小义务。多个显式模块只执行一次并集。
+AAVM/AA2R自举实验测试按用户裁定默认ignore，保实现/源码/夹具/期望及显式手动入口；普通VM/Rust A2R
+及真实产品消费者不误关。ACE宿主test-ace默认关闭，普通test-cases仍可独立运行，非ACE请求ACE worker
+构建前拒绝；真正相关任务显式选ACE包/宿主/套件。用途标签不成为批量停用开关。
 
-## 时间与执行结果
+## 迁移与验证职责
 
-先提供完整模块归属、职责、独立命令及注册用例/执行义务/原条件数量清单；真实枚举守恒不要求为统计执行全目录。然后逐模块完整单轮测总墙钟、父子累计CPU及峰值内存，常规目标尽量≤60秒；顶级模块按其粒度判据（≤100例或完整单轮≤60秒）逐模块判定，>100 的快速组须具名实测，≤100 但整组超时的继续拆分或归因。构建准备、冷态、背景负载和整命令另列；不统一重复三遍，不用一个或三个样本宣称P90。发现异常及时定向排查修复，仅重验受影响模块；接近或超过目标才按需复测。可拆聚合继续按职责拆；特别长的原子列ID、已观察耗时/资源与来源时点、原因、触发、优化/保留/暂关建议，交人决定。既有明显长例可先列人工待定测量队列，但原测试启用状态/原样本/断言保持，未测不标达标或PASS。
+888/895叶目录、逐义务合同保历史/迁移审计；不在新入口加载，不维持第二套公共执行器。tm/旧叶ID
+命令明确报退役，原t/tv/tt/tb/th及tf/taa/ta/t3承接到固定组，外仓UI/Man保owner腿。一次迁移覆盖
+对账证明原身份/包装check/条件/oracle去向；不要求新职责组不相交，兼容并集去重。
 
-单轮CPU为模块runner进程CPU加发现/执行Job的workload CPU，不重复加meter CPU。内存列顺序发现/执行子树的原生Job峰值最大值及单进程峰值；共享Python runner内存不在该峰值内，范围明确写入收据。AWAITING_HUMAN为测量队列状态，普通模块门必须失败而非跳过即绿；NOT_APPLICABLE仍只表示原条件排除。
+开发与repair只做反例/完整受影响组；独立审查后merge持冻结固定组/必要集成并集门，保有效证据复用。
+周期到期规则与单实例主检出入口不变，不在每次提交附加全局门。原heavy_gate、HTTP串行和资源配置保持。
+构建/缓存生命周期见[build-storage-lifecycle](build-storage-lifecycle.md)，A/B/C仍遵守原试点合同。
+
+## 沿用的底层运行与判定约束
+
+以下保留既有API/工具隔离和语义合同；涉及旧“module-case”的名称是现存显式API，不恢复叶调度。
 
 Windows执行经原生Job计父子CPU/峰值、输出上限和截止杀树；HTTP族串行，原nextest资源组、
 heavy gate与里程碑条件保留。发现/选择/编译/实际执行/通过分别报告，首次失败、NOT_RUN及
@@ -66,8 +71,6 @@ UI/Man保留其owner腿与约定。周期触发仍为计划号%5、或>48h且有
 
 关联：[批量试点](batch-execution.md)、[治理守恒](governance-and-inventory.md)。
 
-测得可拆慢聚合由partition-policy.json明确细分，builder与消费端复核同一规则，不能丢例或悄悄停止应用。故障控制使用panic-safe测试环境恢复，既不能被预建worker绕过准备器反控，也不在恢复正控时误丢调用方工具路径。成本参考保留原AV/MN 30样本及2000ms门，相关参数与oracle生成开关参与源/环境指纹；成本验收不减样本、不放宽门、不再生期望。
-
 准备、发现（包括Git/Cargo元数据）和实际执行都使用有界的Windows Job；父进程退出0而后代仍在运行属于基础设施错误，记录实际PID/映像并回收整树，不能据此发布工具就绪或测试通过。临时目录相关TEMP/TMP/TMPDIR参与有效环境指纹。
 
 TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出路径限制；命令仍保留真实runtime argv。退出后先逐文件SHA256校验复制到请求的输出目录，再按目录所有权标记回收临时目录，复制/清理计入模块墙钟。`case_artifacts`直接提供可读报告与复制清单，原始报告/收据字节及其原runtime路径不改。reparse point在遍历前拒绝，不向worktree复制链接，复制失败保留原目录供排查。
@@ -78,10 +81,6 @@ TestCase在系统短临时目录运行，避免SQLite等原生后端的长输出
 
 Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc及编译选项，让编译器实际处于本Job中；不停止系统共享缓存daemon。有效环境指纹反映此策略，冷准备成本单列。
 
-Cargo env默认实际应用于直接子命令和指纹；共享runner/调度配置的global_inputs触面展开全部受影响模块，显式命名基础设施叶仍可独立运行。889集合suite及独立collections worker与原scalar端口分开准备，运行身份保持各自归属。
-
 独立module-case调用使用线程局部、panic-safe恢复的私有session作用域：源码闭包fixture的fresh/restart共享本次run输出域内的store，worker仍按原session ID区分存储。普通run_suite/run_suite_selected保留显式session跨调用共享，既有闭包20次restart采样及scalar性能合同不变。真实原fixture连续两次module-case调用都必须满足原fresh miss与restart hit，普通suite的原20次restart也须通过；不修改session字面量、原样本或expected来获得绿。
 
 慢聚合可以按具名长原子/周转矩阵隔离，其他快速反控保留同组；partition-policy的isolate_tests使用精确原测试名，生产与消费都拒绝缺失目标或重新混组，原子并集保持。
-
-目录发布使用显式LF序列化，Git属性也固定索引和分片为LF，使分片原始字节SHA256在工作树、Git对象及新检出之间一致。生产端自读回不足以证明发布可用，必须经过实际Git归一化后再次加载；编辑分片仍按原精确哈希拒绝，不放宽校验。

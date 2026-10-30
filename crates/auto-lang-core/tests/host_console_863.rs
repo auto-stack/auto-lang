@@ -1,4 +1,4 @@
-#![cfg(feature = "test-cases")]
+#![cfg(feature = "test-ace")]
 //! Real worker/parent tests: independent byte oracles and fail-closed controls.
 use auto_lang_core::test_cases::{
     ac_av, run_suite, stale, ac_cte::EXPECTED_MIR_LOWERING_VERSION,

@@ -47,6 +47,7 @@ fn test_m5_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -103,6 +104,7 @@ fn main() {{
 
 /// corpus_use 成功用例:Rust 侧 execute 管线(带路径,镜像 resolve_uses+
 /// Linker 全链)输出 vs aavm ev_run_files。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -162,6 +164,7 @@ fn test_aavm2_m5_use_corpus() {
 
 /// corpus_use 错误用例通道:aavm2 闸门的 .expected.error 等价物——两侧错误
 /// 信息一致(错误文本以宿主为规范;use.rs 拒绝/未声明模块/use.py)。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -215,6 +218,7 @@ fn test_aavm2_m5_use_errors() {
 
 /// M3 主里程碑演示:一条命令在 AutoVM 内经 AAVM 编译运行 helloworld 与
 /// fib,输出正确(fib(10) = 55)。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,

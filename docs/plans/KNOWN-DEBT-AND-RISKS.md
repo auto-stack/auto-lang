@@ -1,3 +1,7 @@
+### Plan 896（2026-10-31，迁移发现：此前未注册 Cargo 测试目标）
+
+- **D-896-BASELINE-01（待修复，owner=各 crate）**：显式固定组 `all` 的一次真实 Cargo 发现暴露四个原 7165 义务目录之外的编译红：`shim-metadata` lib tests 两处 E0061（8 参数接口传 7）；`auto-gen` 集成测试 `v02_compat_golden` / `v03_failure_semantics` E0433（缺 auto_lang 开发依赖）；`auto-macros` 的 `value_macro_tests` 四处 E0308；`auto-cache` lib tests E0063（ShimMethod 初始化缺 trait_name）。本计划未改这些测试/接口源码，不静默删组或豁免为通过；完整 `all` 目前不得声称绿色。原始 command/编译诊断在 896 本地迁移发现收据，范围/哈希见执行摘要。修复这些原有目标另行立项，不影响原受管义务迁移守恒结论。
+
 ### Plan 863（2026-10-30，final review R1，84f1d2054）
 
 - **F-863-M1（P2，merge R1 新发现的合同内阻塞）**：lowering=3 后 ac/run 纯父侧 backend tag mirror 仍=2，`r1_backend_axis_mirror_matches_the_real_worker` 真实失败（worker mir-v3 / parent mir-v2）；其余19个冷构建超时重放通过。见 [merge R1](attachments/863/merge-r1.md)。Plan 回 executing，owner=863 work；定向修复 + affected final review 后重新跑合入门禁，不得作为 cold-build/debt 豁免。原 R1 四 finding 已关闭不重开。

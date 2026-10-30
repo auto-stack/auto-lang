@@ -371,7 +371,7 @@ catch {Write-Output $_;exit 1}
         process=subprocess.run([sys.executable,str(Path(__file__).resolve().parents[1]/'test-governance/module_command.py')],
                                capture_output=True,text=True)
         self.assertEqual(process.returncode,2)
-        self.assertIn('name at least one module',process.stderr)
+        self.assertIn('Retired tm execution interface',process.stderr)
 
     def test_worker_tools_keep_regular_and_batch_features_separate(self):
         from prepare_tools import recipe_tools

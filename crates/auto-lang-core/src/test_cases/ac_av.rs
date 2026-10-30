@@ -294,7 +294,7 @@ fn worker_file_sha256(exe: &Path) -> Result<String, String> {
     Ok(hex(&Sha256::digest(&bytes)))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod worker_identity_tests {
     use super::*;
 
@@ -340,6 +340,11 @@ mod worker_identity_tests {
 /// otherwise find `experimental/ac-av-probe` from this crate's source
 /// root and build its worker release (bounded).
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
     CACHE.get_or_init(locate_worker).clone()
 }
@@ -3269,7 +3274,7 @@ pub mod tests_seam {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod judge_tests {
     //! F820-R7-01 pins: the typed channel is a DATA-recipe increment —
     //! the shared judge and admission rules are exercised HERE, on the
@@ -3571,7 +3576,7 @@ mod judge_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod closures_judge_tests {
     //! PLAN-823 (R1-F02): the PARENT-side closures judgement — the frozen
     //! table decides; a lying worker face turns the verdict red.
@@ -3648,7 +3653,7 @@ mod closures_judge_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod closures_source_judge_tests {
     use super::*;
 
@@ -3886,7 +3891,7 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod console_863_tests {
     use super::*;
 

@@ -1,5 +1,9 @@
 # aavm
 
+> PLAN-896 / 用户2026-10-31裁定：本自举尝试（含AA2R）仅保留代码、测试、夹具及期望；实验测试全部默认ignore。
+> 日常/周期不自动解除ignore，重放必须显式--ignored及原feature/平台/T3条件。普通VM/Rust实现A2R不受影响。
+> ACE替代是路线方向，不据此宣称已经完成等价替代；下列历史能力/手动判据保留。
+
 > **Status**: experimental
 > 备注：v2；Plan 429-434 系列收口
 > 路径:`packages/aavm/lib`(v1 已封存于 `packages/aavm/lib-legacy/`)| 转译:`auto build`(pac.at)/ `auto trans`

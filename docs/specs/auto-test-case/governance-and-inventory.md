@@ -1,5 +1,9 @@
 # 测试治理：完整盘点、可信裁判与守恒（governance-and-inventory）
 
+> PLAN-896更新：日常入口不再消费逐叶目录/分片/自动影响图；直接执行固定Cargo包和Rust模块组。
+> 旧全量台账保迁移/周期审计；实际nextest/Python/TestCase终态和原包装check/oracle仍核对。
+> 原模块划分守恒不再要求每次执行重建；详见module-selection.md。
+
 > 状态：delivered（PLAN-887 交付；本规范描述已交付事实，`scripts/test-governance/` 即受管工具）。
 > 位置：`scripts/test-governance/{inventory.py,check_inventory.py,measure-first-wave.py,coverage-matrix.json}`、
 > `scripts/run-full-regression.py`、`scripts/tier-selection-minimums.json.txt`。

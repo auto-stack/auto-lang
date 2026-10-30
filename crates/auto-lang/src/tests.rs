@@ -1,59 +1,59 @@
 // Plan 289: Transpiler tests (a2c/a2r/a2ts) gated behind test-trans feature
-mod env_restore;
 #[cfg(feature = "test-trans")]
 mod a2c_tests;
+mod env_restore;
 // Plan 768: TestCase protocol adapter + runner integration (real VM/a2r)
 #[cfg(feature = "test-cases")]
 mod test_cases_tests;
 // PLAN-858: ACE latency gate uses nearest-rank P90 over valid samples.
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod ace_latency;
 // PLAN-788: ac native adapter integration (real ac-case-worker process)
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod ac_case_tests;
 // PLAN-796: ac-av probe (AC shared mir native；无 ui 依赖——留本包与 probe
 // adapter 同族，PLAN-814 T-04 归属勘误)。
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod ac_av_probe_tests;
 // PLAN-840 Phase 2: CTE consumes the same optional Case dependency as its siblings.
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod ac_cte_probe_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
 // probe_adapter_tests 门控（815 T-04/814 T-04 两计划同款修复，两侧独立
 // 落地）：消费 test-cases feature 门内的 auto_test_case（兄弟模块同款
 // 门控），裸 ui-iced 面（cargo tu）/裸 check --tests 形态不再编译红。
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod probe_adapter_tests;
 // PLAN-818: MIR-native probe recipe integration (real mn-worker process)
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod ac_mn_probe_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod probe_adapter_turnaround_ipc;
 // PLAN-852: ace-m1 base corpus — four-engine conformance denominator,
 // evidence-green subset (real mn/av workers + legacy VM + typed channels).
-#[cfg(feature = "test-cases")]
-mod ace_m1_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod a2r_hir_892_tests;
+#[cfg(feature = "test-ace")]
+mod ace_m1_tests;
 // AV corpora use the optional TestCase adapter and must stay independently gated.
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_closures_823_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_collections_822_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_collections_864_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_dynamic_824_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_owned_821_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_resident_866_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_runtime_825_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_source_827_tests;
-#[cfg(feature = "test-cases")]
+#[cfg(feature = "test-ace")]
 mod av_wire_826_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;

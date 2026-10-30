@@ -45,6 +45,11 @@ pub const EXPECTED_ABI_WORKER_VERSION: &str = "abi-worker/0.1.0";
 /// find `experimental/auto-abi-probe` from this crate's source root
 /// and build the `abi-worker` release binary (bounded).
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
     CACHE.get_or_init(locate_worker).clone()
 }

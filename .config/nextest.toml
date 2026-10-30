@@ -46,6 +46,7 @@ period = "60s"
 terminate-after = 2
 
 [test-groups]
+fixed-http = { max-threads = 1 }
 mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
@@ -110,3 +111,8 @@ test-group = "ffi-dual"
 [[profile.default.overrides]]
 filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95)'
 threads-required = "num-test-threads"
+
+# PLAN-896: preserve HTTP family serial access across fixed groups.
+[[profile.default.overrides]]
+filter = "test(/http/)"
+test-group = "fixed-http"

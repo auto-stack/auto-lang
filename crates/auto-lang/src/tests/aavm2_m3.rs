@@ -16,6 +16,7 @@ fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/aavm2/corpus_m3")
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,

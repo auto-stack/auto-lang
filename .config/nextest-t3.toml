@@ -13,6 +13,7 @@
 # 附记:564 落盘时将 master 未提交内容一并收讫(此为本体首提交)。
 
 [test-groups]
+fixed-http = { max-threads = 1 }
 mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
@@ -44,3 +45,8 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(ffi_dual)"
 test-group = "ffi-dual"
+
+# PLAN-896: preserve HTTP family serial access across fixed groups.
+[[profile.default.overrides]]
+filter = "test(/http/)"
+test-group = "fixed-http"

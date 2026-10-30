@@ -31,3 +31,13 @@ object = "0.37"
 
 [profile.release]
 debug = false
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2

@@ -36,6 +36,11 @@ pub const MAX_STREAM_BYTES: usize = 1 << 20;
 /// otherwise find `experimental/ac-case-worker` from this crate's source
 /// root and `cargo build --release` it (a warm no-op rebuild is ~1s).
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
     CACHE.get_or_init(|| locate_worker().map_err(|e| e)).clone()
 }

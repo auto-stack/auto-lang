@@ -923,7 +923,7 @@ pub fn certify_and_report(args: &CertifyArgs) -> i32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-ace"))]
 mod tests {
     use super::*;
 

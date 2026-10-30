@@ -66,6 +66,11 @@ fn worker_file_sha256(path: &Path) -> Result<String, String> {
 /// `-p auto-cte-probe --bin cte_probe_worker` (release) from the repo
 /// root above this crate.
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     // The env override is re-read EVERY call (never cached): a test that
     // pins a broken tool identity must not poison the process-wide
     // built-binary cache for later checks.

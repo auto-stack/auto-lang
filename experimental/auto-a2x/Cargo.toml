@@ -8,3 +8,13 @@
 [workspace]
 resolver = "2"
 members = ["a2x-core", "a2x-rust", "a2x-store", "probe"]
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2

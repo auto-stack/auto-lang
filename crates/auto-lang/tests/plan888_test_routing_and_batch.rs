@@ -1,3 +1,4 @@
+#![cfg(feature = "test-ace")]
 //! PLAN-888: real discovery, routing and batch-consumer regressions.
 #![cfg(feature = "test-cases")]
 use auto_lang::test_cases::inventory::suite_inventory;

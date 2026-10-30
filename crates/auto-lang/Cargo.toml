@@ -25,6 +25,8 @@ test-trans = []
 # Plan 768: AutoDown TestCase protocol adapters + auto-case bin (empty
 # feature gating the optional auto-test-case dependency).
 test-cases = ["dep:auto-test-case", "auto-lang-core/test-cases"]
+test-ace = ["test-cases", "auto-lang-core/test-ace"]
+
 test-book = []
 # Plan 568: AAVM/AA2R 自举测试独立档。aavm 专属档 = cargo taa（触发条件与
 # 作用域映射见 AGENTS.md）。PLAN-700: 原 implies 的语料门随语料三族常驻化

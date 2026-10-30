@@ -1,3 +1,25 @@
+# 固定Cargo包与Rust模块测试（PLAN-896）
+
+当前入口是`cargo t <组> [组...]`。分组配置在`../test-groups.toml`，不是下列历史modules目录。
+
+- `cargo t`：原日常固定配置，ACE宿主显式启用。
+- `cargo t parser` / `cargo t parser vm`：完整Rust模块子树及配置中明确的集成测试，兼容配置一次nextest并行。
+- `cargo t all`：显式语言仓全部固定组，仍遵守ignore/平台/里程碑条件；不包括外仓UI/Man所有权腿。
+- `cargo t --list`：只读固定组名，不编译。
+- `cargo t parser --select-only`：只输出调用计划，不实际发现或执行。
+- `cargo t all --discover-only`：明确的迁移/覆盖审计，会构建所选测试目标并列实际身份，执行0测试；不是普通运行前置。
+- `cargo t aavm --ignored --test-name <名字>`：手动重放自举尝试，保原T3条件。
+
+旧tv/tt/tb/th承接为原完整Cargo配置及原profile过滤，不把tt缩成仅转译器用例。tf批次语言侧一次固定all并集，
+不先编旧language/tt/tb档再执行；UI/Man仍保现有队列与故障/owner约束。
+
+所有实际命令产生原生Job资源、真实逐项终态及source/config/tool身份收据。缺项、额外执行、重复终态、
+首红/崩溃/超时/清理错误不会变PASS，条件排除/未执行分列。VM/语料包装保持原source/oracle inventory与child check。
+
+下面的旧模块实现/目录仅供888/895迁移与历史审计。tm公共执行/叶ID已退役，不加载其目录选测，不保第二套运行器。
+
+## 历史实现与审计说明（非当前使用步骤）
+
 # 按模块运行测试
 
 先用 `cargo tm --list` 找到叶模块；每条义务仅属于一叶，命令总是执行完整叶及实际消费者、

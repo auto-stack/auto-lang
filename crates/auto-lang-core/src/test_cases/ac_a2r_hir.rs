@@ -32,8 +32,8 @@ use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
 use auto_test_case::report::ArtifactRef;
 use auto_test_case::sha256::{hex, sha256};
 
-use auto_test_case::report::Status;
 use super::avm::Verdict;
+use auto_test_case::report::Status;
 
 pub const A2R_HIR_RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
 pub const A2X_WORKER_PROTOCOL: &str = "a2xworker/1";
@@ -49,12 +49,19 @@ pub const A2X_WORKER_SHA_ENV: &str = "AC_A2X_HIR_WORKER_SHA256";
 /// root. NEVER builds — a missing worker is infra, with the maintenance
 /// command in the error text.
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     if let Ok(env_path) = std::env::var(A2X_WORKER_ENV) {
         let p = PathBuf::from(&env_path);
         if p.is_file() {
             return Ok(p);
         }
-        return Err(format!("{A2X_WORKER_ENV} points at a missing file: {env_path}"));
+        return Err(format!(
+            "{A2X_WORKER_ENV} points at a missing file: {env_path}"
+        ));
     }
     let mut dir: Option<&Path> = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
     while let Some(d) = dir {
@@ -149,11 +156,15 @@ pub fn run_check(
     }
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("artifact dir: {e}"))?;
     let source_path = artifact_dir.join("source.at");
-    std::fs::write(&source_path, &source_bytes)
-        .map_err(|e| format!("stage source: {e}"))?;
+    std::fs::write(&source_path, &source_bytes).map_err(|e| format!("stage source: {e}"))?;
     let actual_dir = artifact_dir.join("actual");
     let nonce = hex(&sha256(
-        format!("{}|{}|a2x-hir", std::process::id(), started.elapsed().as_nanos()).as_bytes(),
+        format!(
+            "{}|{}|a2x-hir",
+            std::process::id(),
+            started.elapsed().as_nanos()
+        )
+        .as_bytes(),
     ));
 
     let request = serde_json::json!({
@@ -214,8 +225,8 @@ pub fn run_check(
     }
     // Parent-side manifest re-hash: the reported digest must match the
     // emitted manifest bytes on disk.
-    let manifest_bytes =
-        std::fs::read(actual_dir.join("manifest.json")).map_err(|e| format!("read manifest: {e}"))?;
+    let manifest_bytes = std::fs::read(actual_dir.join("manifest.json"))
+        .map_err(|e| format!("read manifest: {e}"))?;
     let manifest_sha = hex(&sha256(&manifest_bytes));
     if resp["manifest_sha256"].as_str() != Some(manifest_sha.as_str()) {
         return Ok(Verdict {

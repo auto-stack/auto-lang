@@ -44,3 +44,13 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2

@@ -7,6 +7,8 @@ license = "MIT"
 keywords = ["language", "sdk", "parser", "vm", "transpiler"]
 
 [features]
+test-ace = ["test-cases"]
+
 # 镜像 auto-lang 的非 UI 特性（PLAN-814 T-02；UI 特性族留上层兼容包转发）
 default = ["with-file-history"]
 with-file-history = []

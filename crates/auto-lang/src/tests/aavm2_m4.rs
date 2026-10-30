@@ -190,6 +190,7 @@ fn m4_expected(code: &str) -> AutoResult<(String, Vec<u8>)> {
     Ok((expected, linked))
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -416,6 +417,7 @@ fn compile_and_link_multi(dir: &std::path::Path) -> AutoResult<(Vec<u8>, Vec<Vec
 /// Plan 511 W3 harness 自证:多模块管线对无 use 的单文件(临时目录隔离)
 /// 与 S4 既有 compile_and_link 逐字符一致——证明多文件腿的 Rust 参考口径
 /// 与已确立闸门同源(harness 架构正确性先于 aavm 实现)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_m4_use_harness_selfcheck() {
     let dir = corpus_dir();
@@ -460,6 +462,7 @@ fn test_aavm2_m4_use_harness_selfcheck() {
 /// 分派机制归一(宿主类型解析 miss 的运行期 spec 分派 vs aavm 编译期
 /// native 直连,判定面非镜像对象——行为由 M5+⑤腿兜底,KNOWN-DEBT
 /// 登记)/fn.prolog args 保留。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -659,6 +662,7 @@ fn test_aavm2_p532_lib_static_diff() {
 /// Plan 511 W3:corpus_use 多文件 M4 对拍(Rust 链接镜像 disasm vs aavm
 /// codegen_dump_files)。aavm 侧 ev_run_files/codegen_dump_files 未实现时
 /// 以运行期错误形态转红(W3 实现启动条件)。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -718,6 +722,7 @@ fn test_aavm2_m4_use_corpus() {
 
 /// 诊断用:corpus_use 各例的 Rust 参考侧规范化反汇编(写入
 /// target/aavm2_use_disasm.txt,避免 nocapture 吞输出)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_m4_use_rust_disasm_print() {
     let dir = corpus_use_dir();
@@ -753,6 +758,7 @@ fn test_aavm2_m4_use_rust_disasm_print() {
 }
 
 /// 诊断用:打印 Rust 参考侧对语料的规范化反汇编(--nocapture)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_m4_rust_disasm_print() {
     let dir = corpus_dir();

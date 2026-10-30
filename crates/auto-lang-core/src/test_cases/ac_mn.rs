@@ -187,6 +187,11 @@ fn worker_file_sha256(exe: &Path) -> Result<String, String> {
 /// its worker release under the contained, bounded build discipline (same
 /// shape as the av worker build).
 pub fn worker_binary() -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy test group; explicitly select the ACE group".into(),
+        );
+    }
     if let Ok(env_path) = std::env::var("AC_MN_CASE_WORKER") {
         let p = PathBuf::from(&env_path);
         if p.is_file() {
@@ -344,6 +349,12 @@ fn request_recipe(request: &str) -> &'static str {
     }
 }
 fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
+    if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
+        return Err(
+            "ACE worker requested by a legacy fixed test group; select an explicit ACE group"
+                .into(),
+        );
+    }
     if recipe != COLLECTIONS_RECIPE {
         return worker_binary();
     }

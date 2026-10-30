@@ -211,6 +211,7 @@ edition = \"2021\"
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -468,6 +469,7 @@ fn main() {
 /// Plan 514 W2（P511-1/2 清偿）：corpus 37/37 全绿（CJK 注释词法哨兵 +
 /// 主 a2r 二元优先级括号双根因修复），去 ignore 纳入常规门禁——
 /// `-- test_aavm2` 默认即覆盖本腿。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_compile_corpus() {
     // Plan 564: 重内存测试守门(745MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
@@ -530,6 +532,7 @@ fn test_aavm2_compile_corpus() {
 /// 首次实测)——① Rust 参考(run_with_capture_and_path 模块解析 oracle,
 /// 与 M5 use-corpus 同源)vs ② aavm2_bin --files(merge 转译编译产物,
 /// 内容寻址缓存)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_compile_use_corpus() {
     // Plan 564: 重内存测试守门(744MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。

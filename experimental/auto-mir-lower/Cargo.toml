@@ -8,3 +8,13 @@ description = "PLAN-868: the single Checked HIR -> Typed MIR lowering shared by 
 [dependencies]
 auto-ac-prototype = { path = "../ac-core" }
 auto-av-core = { path = "../ac-av-probe/core" }
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.full-debug]
+inherits = "dev"
+debug = 2

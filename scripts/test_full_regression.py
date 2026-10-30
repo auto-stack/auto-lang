@@ -18,51 +18,26 @@ spec.loader.exec_module(full)
 
 class Controls(unittest.TestCase):
     def test_feature_only_ids_are_guarded_in_every_formal_child(self):
+        """Historical feature obligations remain an explicit migration audit.
+
+        Native fixed execution no longer pre-lists these tiers on every run.
+        Keep the same missing/ignored/profile counterexamples at the audit boundary.
+        """
         common, _ = full.baseline_for("tf", "language")
         for tier in ("tt", "tb", "taa", "ta", "t3"):
             formal = "tf" if tier in ("tt", "tb") else tier
             target = tier if formal == "tf" else "language"
             expected, required = full.baseline_for(formal, target)
             victim = sorted(required - common)[0]
+            full.validate_ids(set(expected), set(required), expected, required)
             for mutation in ("missing", "ignored", "profile"):
-                with self.subTest(tier=tier, mutation=mutation), tempfile.TemporaryDirectory() as tmp:
-                    directory = Path(tmp)
-                    class Listed:
-                        def __init__(self, cmd, **kwargs):
-                            label = "ui-full" if "auto-ui-compiler" in cmd else "language"
-                            if label == "language" and formal == "tf" and "--features" in cmd:
-                                label = "tt" if "auto-lang/test-trans,auto-lang/test-cases" in cmd else "tb"
-                            ids, selected = full.baseline_for(formal, label)
-                            suites = {}
-                            for identity in ids:
-                                suite, name = identity.split("\t", 1)
-                                suites.setdefault(suite, {"testcases": {}})["testcases"][name] = {
-                                    "ignored": False,
-                                    "filter-match": {"status": "matches" if identity in selected else "mismatch"}}
-                            if label == target:
-                                suite, name = victim.split("\t", 1)
-                                if mutation == "missing":
-                                    del suites[suite]["testcases"][name]
-                                elif mutation == "ignored":
-                                    suites[suite]["testcases"][name]["ignored"] = True
-                                else:
-                                    suites[suite]["testcases"][name]["filter-match"]["status"] = "mismatch"
-                            json.dump({"rust-suites": suites}, kwargs["stdout"])
-                        def wait(self, **kwargs):
-                            return 0
-                    with mock.patch.object(full, "root", return_value=directory), \
-                         mock.patch.object(full, "machine_gate", contextlib.nullcontext), \
-                         mock.patch.object(full, "validate_layout"), \
-                         mock.patch.object(full, "require_main"), \
-                         mock.patch.object(full, "identity", return_value={"head": "frozen"}), \
-                         mock.patch.object(full, "tier_minimums", return_value={}), \
-                         mock.patch.object(full.subprocess, "Popen", Listed), \
-                         mock.patch.object(full, "command", return_value=0):
-                        result = full.main([formal, *(["--batch"] if formal == "tf" else []), "--output", str(directory / "out")])
-                    receipt = json.loads((directory / "out/receipt.json").read_text())
-                    self.assertEqual(result, 1)
-                    self.assertEqual(receipt["results"][-1]["leg"], target)
-                    self.assertIn("baseline coverage lost", receipt["error"])
+                with self.subTest(tier=tier, mutation=mutation):
+                    ids, selected = set(expected), set(required)
+                    selected.remove(victim)
+                    if mutation == "missing":
+                        ids.remove(victim)
+                    with self.assertRaisesRegex(ValueError, "baseline coverage lost"):
+                        full.validate_ids(ids, selected, expected, required)
 
     def test_full_execution_rejects_worktree_and_main_code_wip(self):
         main = Path("main").resolve()
@@ -115,6 +90,12 @@ class Controls(unittest.TestCase):
                     json.dump(data, kwargs["stdout"])
                 def wait(self, **kwargs):
                     return 0
+            def run_child(argv,cwd,log,timeout,env=None):
+                if any(str(a).endswith('fixed-tests.py') for a in argv):
+                    destination = Path(argv[argv.index('--out')+1]); destination.mkdir()
+                    (destination/'results.json').write_text(json.dumps({'gate_passed':not scope_empty,
+                        'results':[{'executed':0 if scope_empty else 1}]}))
+                return child_code
             with mock.patch.object(full, "root", return_value=directory), \
                  mock.patch.object(full, "machine_gate", contextlib.nullcontext), \
                  mock.patch.object(full, "validate_layout"), \
@@ -123,13 +104,13 @@ class Controls(unittest.TestCase):
                  mock.patch.object(full, "tier_minimums", return_value=minimums or {}), \
                  mock.patch.object(full.subprocess, "Popen", Listed), \
                  mock.patch.object(full, "validate_ids", return_value=[]), \
-                 mock.patch.object(full, "command", return_value=child_code) as child:
+                 mock.patch.object(full, "command", side_effect=run_child) as child:
                 result = full.main(["tf", "never-matches" if scope_empty else "--batch", "--output", str(directory / "out")])
             receipt = json.loads((directory / "out/receipt.json").read_text())
             if scope_empty:
                 self.assertEqual(result, 1)
                 self.assertEqual(receipt["outcome"], "fail")
-                self.assertEqual(len(receipt["results"]), 2)
+                self.assertEqual(len(receipt["results"]), 1)
                 self.assertIn("zero selected", receipt["error"])
                 return receipt
             if man_zero or minimums:
@@ -156,9 +137,9 @@ class Controls(unittest.TestCase):
     def test_module_queue_uses_one_explicit_schedule_and_keeps_scoped_compatibility(self):
         lang=Path('language');out=Path('receipt')
         batch=full.module_queue_command(lang,'tf',[],True,out,False)
-        self.assertIn('--schedule',batch)
+        self.assertIn('all',batch)
         self.assertNotIn('--legacy-tier',batch)
-        self.assertTrue(any(str(x).endswith('periodic-module-schedule.json') for x in batch))
+        self.assertTrue(any(str(x).endswith('fixed-tests.py') for x in batch))
         scoped=full.module_queue_command(lang,'taa',['aavm2_m5'],False,out,True)
         self.assertIn('--legacy-tier',scoped)
         self.assertIn('aavm2_m5',scoped)

@@ -90,6 +90,7 @@ pub fn run_corpus_once_compiled(
 
 /// L1 回归（测试设计节）：同一 once-compiled 批内多语料重跑输出正确
 /// （缓存 VM 重入无状态串台）+ 两次独立批跑输出一致（缓存正确性）。
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,

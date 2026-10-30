@@ -25,6 +25,7 @@ fn corpus_dirs() -> Vec<PathBuf> {
     vec![base.join("corpus_m2"), base.join("corpus_m1")]
 }
 
+#[cfg_attr(not(windows), ignore = "PLAN-896: archived self-hosting experiment")]
 #[test]
 #[cfg_attr(
     windows,
@@ -75,6 +76,7 @@ fn test_aavm2_m2_parser_corpus() {
 }
 
 /// 诊断用:打印 Rust 参考侧对语料的 dump(--nocapture)。
+#[ignore = "PLAN-896: archived AAVM/AA2R experiment; manual replay only"]
 #[test]
 fn test_aavm2_m2_rust_dump_print() {
     for dir in corpus_dirs() {

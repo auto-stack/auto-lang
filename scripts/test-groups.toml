@@ -1,0 +1,1181 @@
+# PLAN-896: fixed Cargo packages/Rust mod subtrees; no per-test or leaf catalog.
+schema = 1
+default = ["daily"]
+
+[[group]]
+name = "daily"
+title = "原日常范围（无参数）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--test", "schema_drift", "--test", "docs_gen", "--test", "component_registry_test", "--features", "auto-lang/test-cases"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "lexer"
+title = "词法完整包"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lex", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "parser"
+title = "解析及语法集成"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^parser::/) or test(/^ast_parse_ext::/) or test(/^tests::(plan_088_parser_tests|test_parser_arrow|test_generic_parse|plan442_parser_regress_tests|plan634_block_tail_semi_tests|plan789_lex_extraction)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "infer"
+title = "类型推导"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^(infer|typeck|types|trait_checker|type_registry)::/) or test(/^tests::(infer_tests|generic_spec_tests|generic_tests|const_generic_tests|const_generic_integration_tests|monomorphize_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "ownership"
+title = "所有权"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^ownership::/) or test(/^tests::ownership_tests::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "vm"
+title = "VM完整行为组"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^vm::/) or test(/^tests::(vm_[A-Za-z_0-9]*|list_tests|string_tests|mem_tests|memory_tests|actor_tests|actor_state_tests|generator_tests|storage_tests|storage_strategy_tests|stdlib_tests|trait_vm_tests)::/) or test(/^tests::(actor_state_tests|actor_tests|dstr_tests|generator_tests|list_growth_tests|list_tests|listdata_heap_object_tests|may_tests|mem_tests|memory_quick_test|memory_tests|native_css_tests|plan024_named_view_tests|plan046_obj_natives_tests|plan348_concurrency_tests|plan367_viewfn_tests|plan593_theme_registry_tests|plan707_cancel_tests|plan707_client_tests|plan707_wait_tests|plan711_cpu_slice_tests|plan711_init_demand_tests|string_tests|trait_vm_tests|vm_functions_tests|vm_json_float_read_tests|vm_tests|vm_types_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2r"
+title = "Rust转译及语料"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::rust::/) or test(/^tests::(a2r_tests|a2r_c_abi_gates|a2r_std_signature_parity|fs_tree_parity|read_text_range_parity)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2c"
+title = "C转译及语料"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::c::/) or test(/^tests::a2c_tests::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2py"
+title = "Python转译"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(python|py_known)::/) or test(/^tests::plan569_py_dispatch_tests::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2ts"
+title = "TypeScript转译及语料"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(typescript|javascript)::/) or test(/^tests::(a2ts_tests|a2ts_directed_probes)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "http"
+title = "HTTP及服务"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^(sse|http_service_config|http_upload_service|http_file_service|back_proxy_tests)::/) or test(/^vm::ffi::stdlib::http::/) or test(/^tests::plan(724|727|729|730|734|736|755|776|781)_/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "autodown"
+title = "AutoDown语法"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^autodown::/) or test(/^tests::(autodown_tests|autodown_codegen_debts_tests|auto_down_vm_server_probe_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "corpus"
+title = "VM/Cookbook/书稿完整语料"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^tests::(vm_file_tests|cookbook_vm_tests|conformance_tests|book_listing_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "integration"
+title = "宿主与Core完整集成（显式广组）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "aavm"
+title = "AAVM/AA2R已忽略实验"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--lib", "--features", "test-aavm", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^tests::aavm/)"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "a2r-std"
+title = "Cargo包 a2r-std"
+runner = "nextest"
+workspace = "."
+args = ["-p", "a2r-std", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "shim-metadata"
+title = "Cargo包 shim-metadata"
+runner = "nextest"
+workspace = "."
+args = ["-p", "shim-metadata", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "a2r-actor-tests"
+title = "Cargo包 a2r-actor-tests"
+runner = "nextest"
+workspace = "."
+args = ["-p", "a2r-actor-tests", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-atom"
+title = "Cargo包 auto-atom"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-atom", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-test-case"
+title = "Cargo包 auto-test-case"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-test-case", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-gen"
+title = "Cargo包 auto-gen"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-gen", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-gen-core"
+title = "Cargo包 auto-gen-core"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-gen-core", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-media-core"
+title = "Cargo包 auto-media-core"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-media-core", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-lang"
+title = "Cargo包 auto-lang"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--tests", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-lang-core"
+title = "Cargo包 auto-lang-core"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang-core", "--tests", "--lib", "--features", "auto-lang-core/test-cases,auto-lang-core/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-text-core"
+title = "Cargo包 auto-text-core"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-text-core", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-parser-api"
+title = "Cargo包 auto-parser-api"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-parser-api", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-ast"
+title = "Cargo包 auto-ast"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-ast", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-lex"
+title = "Cargo包 auto-lex"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lex", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-diagnostics"
+title = "Cargo包 auto-diagnostics"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-diagnostics", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-project-model"
+title = "Cargo包 auto-project-model"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-project-model", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-macros"
+title = "Cargo包 auto-macros"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-macros", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-tool-execution"
+title = "Cargo包 auto-tool-execution"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-tool-execution", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-terminal-core"
+title = "Cargo包 auto-terminal-core"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-terminal-core", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-lsp"
+title = "Cargo包 auto-lsp"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lsp", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-val"
+title = "Cargo包 auto-val"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-val", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-vm"
+title = "Cargo包 auto-vm"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-vm", "--tests"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cache"
+title = "Cargo包 auto-cache"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cache", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-playground"
+title = "Cargo包 auto-playground"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-playground", "--tests"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-bindgen"
+title = "Cargo包 auto-bindgen"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-bindgen", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cosmic-ports"
+title = "Cargo包 auto-cosmic-ports"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cosmic-ports", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cosmic-demo"
+title = "Cargo包 auto-cosmic-demo"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cosmic-demo", "--tests"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cosmic-host-libcosmic"
+title = "Cargo包 auto-cosmic-host-libcosmic"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cosmic-host-libcosmic", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cosmic-ports-linux"
+title = "Cargo包 auto-cosmic-ports-linux"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cosmic-ports-linux", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-cosmic-host-smithay"
+title = "Cargo包 auto-cosmic-host-smithay"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-cosmic-host-smithay", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-tool-protocol"
+title = "Cargo包 auto-tool-protocol"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-tool-protocol", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "auto-api-gen"
+title = "Cargo包 auto-api-gen"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-api-gen", "--tests", "--lib"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "ace-source"
+title = "ACE包 experimental/ac-core"
+runner = "nextest"
+workspace = "experimental/ac-core"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-syntax"
+title = "ACE包 experimental/ac-syntax"
+runner = "nextest"
+workspace = "experimental/ac-syntax"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-semantics"
+title = "ACE包 experimental/ac-semantics"
+runner = "nextest"
+workspace = "experimental/ac-semantics"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-artifacts"
+title = "ACE包 experimental/ac-artifact-probe"
+runner = "nextest"
+workspace = "experimental/ac-artifact-probe"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-av"
+title = "ACE包 experimental/ac-av-probe"
+runner = "nextest"
+workspace = "experimental/ac-av-probe"
+args = ["--workspace", "--lib", "--tests", "--features", "auto-av-probe/test-case-batch"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-native-worker"
+title = "ACE包 experimental/ac-case-worker"
+runner = "nextest"
+workspace = "experimental/ac-case-worker"
+args = ["--workspace", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-native"
+title = "ACE包 experimental/ac-mir-native"
+runner = "nextest"
+workspace = "experimental/ac-mir-native"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-abi"
+title = "ACE包 experimental/auto-abi-probe"
+runner = "nextest"
+workspace = "experimental/auto-abi-probe"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-comptime"
+title = "ACE包 experimental/ac-cte-probe"
+runner = "nextest"
+workspace = "experimental/ac-cte-probe"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-lowering"
+title = "ACE包 experimental/auto-mir-lower"
+runner = "nextest"
+workspace = "experimental/auto-mir-lower"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "infra-modules"
+title = "治理 scripts/tests/test_module_selection.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_module_selection.py"
+all = true
+
+[[group]]
+name = "infra-meter"
+title = "治理 scripts/tests/test_native_meter.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_native_meter.py"
+all = true
+
+[[group]]
+name = "infra-pilot-cli"
+title = "治理 scripts/tests/test_case_pilot_cli.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_case_pilot_cli.py"
+all = true
+
+[[group]]
+name = "infra-regression"
+title = "治理 scripts/test_full_regression.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/test_full_regression.py"
+all = true
+
+[[group]]
+name = "case-ac-av"
+title = "TestCase case-ac-av"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ac-av/ac-av.suite.ad"
+all = true
+
+[[group]]
+name = "case-ac-cte"
+title = "TestCase case-ac-cte"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ac-cte/ac-cte.suite.ad"
+all = true
+
+[[group]]
+name = "case-ac-mn"
+title = "TestCase case-ac-mn"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ac-mn/ac-mn.suite.ad"
+all = true
+
+[[group]]
+name = "case-ac-native"
+title = "TestCase case-ac-native"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ac-native/ac-native.suite.ad"
+all = true
+
+[[group]]
+name = "case-ac-semantics"
+title = "TestCase case-ac-semantics"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ac-semantics/ac-semantics.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-base"
+title = "TestCase case-ace-m1-base"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-tr-native"
+title = "TestCase case-ace-m1-tr-native"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-closures-865-source"
+title = "TestCase case-ace-m1-closures-865-source"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-collections-864"
+title = "TestCase case-ace-m1-collections-864"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-entry-862"
+title = "TestCase case-ace-m1-entry-862"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-method-881"
+title = "TestCase case-ace-m1-method-881"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/method-881.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-resident-866"
+title = "TestCase case-ace-m1-resident-866"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad"
+all = true
+
+[[group]]
+name = "case-autoabi"
+title = "TestCase case-autoabi"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/autoabi/autoabi.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-abc-825"
+title = "TestCase case-av-abc-825"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-abc/825/av-abc-825.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-abc-826"
+title = "TestCase case-av-abc-826"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-abc/826/av-abc-826.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-data-821"
+title = "TestCase case-av-data-821"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/821/av-data-821.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-data-822"
+title = "TestCase case-av-data-822"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/822/av-data-822.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-data-823"
+title = "TestCase case-av-data-823"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-data-824"
+title = "TestCase case-av-data-824"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/824/av-data-824.suite.ad"
+all = true
+
+[[group]]
+name = "case-av-source-827"
+title = "TestCase case-av-source-827"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-source-827/av-source-827.suite.ad"
+all = true
+
+[[group]]
+name = "case-governance-887-first-wave"
+title = "TestCase case-governance-887-first-wave"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/governance-887/first-wave.suite.ad"
+all = true
+
+[[group]]
+name = "case-pilot"
+title = "TestCase case-pilot"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/pilot/pilot.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-native-collections-889"
+title = "TestCase case-ace-m1-native-collections-889"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-console-863"
+title = "TestCase case-ace-m1-console-863"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad"
+all = true
+
+[[group]]
+name = "ace-host"
+title = "语言宿主ACE完整组"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-ace,auto-lang/test-case-batch,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-aavm,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^tests::(ac_|ace_|av_|probe_adapter|a2r_hir_892)/) or test(/^test_cases::(ac|abi|sema|ace_)/)"
+tools = ["av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x"]
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-batch"
+title = "ACE batch协议集成"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--test", "plan888_test_routing_and_batch", "--features", "auto-lang/test-ace,auto-lang/test-case-batch", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = ["batch-av"]
+domain = "ace"
+all = true
+
+[[group]]
+name = "ace-console"
+title = "ACE控制台真实宿主"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang-core", "--test", "host_console_863", "--features", "auto-lang-core/test-ace", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = ["av"]
+domain = "ace"
+all = true
+
+[[group]]
+name = "infra-fixed"
+title = "固定Cargo/Rust模块分组与缓存所有权"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_fixed_groups.py"
+all = true
+
+[[group]]
+name = "ace-a2x"
+title = "ACE A2X共享表示与Rust输出"
+runner = "nextest"
+workspace = "experimental/auto-a2x"
+args = ["--workspace", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
+name = "infra-purpose"
+title = "历史用途审计治理"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_test_purpose_policy.py"
+all = true
+
+[[group]]
+name = "legacy-tv"
+title = "旧入口固定配置兼容 legacy-tv"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--lib", "--profile", "tv", "--features", "test-cases"]
+expression = "all()"
+tools = []
+domain = "legacy"
+respect_default_filter = true
+all = false
+
+[[group]]
+name = "legacy-tt"
+title = "旧入口固定配置兼容 legacy-tt"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-trans,auto-lang/test-cases"]
+expression = "all()"
+tools = []
+domain = "legacy"
+respect_default_filter = true
+all = false
+
+[[group]]
+name = "legacy-tb"
+title = "旧入口固定配置兼容 legacy-tb"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-book"]
+expression = "all()"
+tools = []
+domain = "legacy"
+respect_default_filter = true
+all = false
+
+[[group]]
+name = "legacy-th"
+title = "旧入口固定配置兼容 legacy-th"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--lib", "--features", "test-http-e2e"]
+expression = "test(http_e2e)"
+tools = []
+domain = "legacy"
+respect_default_filter = true
+all = false
+
+[[group]]
+name = "stdlib"
+title = "标准库与装配"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^stdlib_assembly::/) or test(/^vm::ffi::stdlib::/) or test(/^tests::(stdlib_tests|plan738_stdlib_assembly_tests|plan738_assembly_probe_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "ffi"
+title = "FFI与互操作"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^vm::ffi::/) or test(/^libs::/) or test(/^tests::(ffi_tests|ffi_dual_tests|ffi_dep_parity_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "storage"
+title = "数据库与存储"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^database::/) or test(/^tests::(storage_tests|storage_strategy_tests|storage_integration_tests|default_storage_tests|plan746_pg_mem_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "comptime"
+title = "编译期求值"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^comptime::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "dialect"
+title = "方言端口"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^dialect::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "api"
+title = "SDK接口与宿主集成"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^api::/) or test(/^tests::(unified_api_tests|unified_registry_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2js"
+title = "JavaScript转译"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::javascript::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2gd"
+title = "GDScript转译"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(gdscript|tscn)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "s2s"
+title = "源码重写与发射"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(auto_s2s|emit|s2s_rules)::/)"
+tools = []
+domain = "legacy"
+all = false

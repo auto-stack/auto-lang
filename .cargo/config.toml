@@ -1,9 +1,9 @@
-# PLAN-888: use cargo tm <module-id> [module-id ...] or --changes <paths-file>.
-# Leaves are disjoint. Execution includes complete affected leaves and consumer
-# closure, with no implicit all-tests command. Use cargo tm --list to inspect.
-# t/tv/tt/tb/th are explicit legacy navigation until 2026-11-30; their filters
-# select whole modules, not individual bodies. tf/taa/ta/t3 retain periodic /
-# milestone scheduling and owner references through the module-aware driver.
+# PLAN-896: cargo t <fixed-group> [...]; cargo t all is the explicit full union.
+# Cargo packages and Rust module paths define groups; no leaf discovery graph.
+# cargo t --list reads static group names without compiling.
+# tv/tt/tb/th retain native tier configurations until 2026-11-30.
+# Optional test-name filters navigate within explicitly selected fixed groups.
+# tf/taa/ta/t3 retain periodic/milestone conditions and external owner references.
 # UI tu belongs to auto-ui; there is no language-side tu alias.
 
 [target.x86_64-pc-windows-msvc]
@@ -29,12 +29,13 @@ jobs = 12
 # Windows: C:\Python314\python.exe | Linux: /usr/bin/python3
 
 [alias]
+# PLAN-896: explicit fixed groups; all is opt-in. Old tm IDs are retired.
 tm = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm"
-t = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier t"
-tv = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tv"
-tt = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tt"
-tb = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tb"
-th = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier th"
+t = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test"
+tv = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tv"
+tt = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tt"
+tb = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tb"
+th = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier th"
 tf = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tf"
 taa = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- taa"
 ta = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- ta"

@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import hashlib
+import shutil
 from pathlib import Path
 
 COMPILER_AUXILIARIES = Path(__file__).with_name('compiler-auxiliaries.json')
@@ -33,6 +34,10 @@ def compiler_auxiliaries_reaped(measured):
 def capture(argv, *, cwd=None, env=None, timeout=1800, output_cap=64 << 20, error_cap=16 << 20,
             compiler_auxiliary_cleanup=False):
     argv = [os.fspath(value) for value in argv]
+    if (Path(argv[0]).name.lower() in ('cargo', 'cargo.exe') and len(argv) > 1
+            and argv[1] in ('build', 'test', 'nextest', 'check', 'run')
+            and shutil.disk_usage(cwd or os.getcwd()).free < (2 << 30)):
+        raise OSError('less than 2 GiB free before Cargo workload; reclaim owned idle caches first')
     if os.name != 'nt':
         from native_meter import workload_environment
         result = subprocess.run(argv, cwd=cwd, env=workload_environment(env), capture_output=True, timeout=timeout)

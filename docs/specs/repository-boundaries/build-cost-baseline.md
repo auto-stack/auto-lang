@@ -1,5 +1,9 @@
 # build-cost-baseline（构建成本基线与 member 拆分决策）
 
+> PLAN-896补充：测试按固定Cargo包/Rust模块选择，Rust模块过滤只限运行，不保证同crate独立编译。
+> 必要experimental普通dev/test debug=0，显式full-debug debug=2；opt-level/断言/溢出/panic及正式性能配置保持。
+> 无关ACE不准备/编译；同树兼容target复用保regular/batch及来源绑定。成本按真实同工作量的冷构建/运行/稳态磁盘分列。
+
 > **Status**: proposal（PLAN-873 SD-01；work 冻结，canonical 发布归 merge）
 > 落地任务：[Plan 873](../../../plans/873-build-cost-and-member-split-decision.md)（THR-D1：先测量、再决定是否按 crate 拆 workspace member）
 > 输入 pin（measurement pin 2026-10-29 04:41）：auto-lang `a748017da`（+测量脚本提交 `c310e296f`/`07d9578b6`，非构建输入）、

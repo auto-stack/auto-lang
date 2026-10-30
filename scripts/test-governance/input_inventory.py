@@ -19,12 +19,17 @@ def discover_inputs(output,language):
     for name,command,schema in [("legacy-inputs",legacy,"test-legacy-inventory/1"),
                                 ("vm-cache-inputs",vm,"test-vm-cache-inventory/1")]:
         path=output/(name+".json")
-        with (output/(name+".log")).open("wb") as log:
-            if name=="legacy-inputs":
-                with path.open("wb") as stream:result=subprocess.run(command,cwd=ROOT,stdout=stream,stderr=log,timeout=120)
-            else:
-                result=subprocess.run(command,cwd=ROOT,env={**os.environ,"AUTO_TEST_INVENTORY_OUT":str(path)},
-                                      stdout=log,stderr=subprocess.STDOUT,timeout=120)
+        from process_capture import capture
+        import json
+        env = dict(os.environ)
+        if name != "legacy-inputs":
+            env["AUTO_TEST_INVENTORY_OUT"] = str(path)
+        result = capture(command, cwd=ROOT, env=env, timeout=120)
+        if name == "legacy-inputs":
+            path.write_bytes(result.stdout)
+        (output/(name+".log")).write_bytes(result.stderr if name == "legacy-inputs" else result.stdout+result.stderr)
+        if result.measurement is not None:
+            (output/(name+'.meter.json')).write_text(json.dumps(result.measurement,indent=2)+'\n',encoding='utf-8')
         if result.returncode:raise ValueError(f"read-only input discovery failed: {name}")
         value=load(path)
         if value.get("schema")!=schema or value.get("scope")!="discovery" or value.get("executed")!=0:
