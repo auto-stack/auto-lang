@@ -41,8 +41,6 @@ class RealPolicyTest(unittest.TestCase):
         self.assertGreaterEqual(auto_lang, 3000)
         self.assertGreaterEqual(core, 1600)
         leaf_top = {leaf: m["id"] for m in self.top["modules"] for leaf in m["member_leaves"]}
-        mapped = {o["id"]: leaf_top[o["leaf"]] for o in self.obligations
-                  for o["leaf"] in []}  # placeholder keeps structure explicit
         # every language obligation resolves through its module into a top module
         for module in self.leaves:
             if module["recipe"] == "language":
