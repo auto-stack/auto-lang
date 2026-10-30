@@ -455,5 +455,7 @@ mod plan746_pg_mem_tests;
 
 // PLAN-814 T-05：V-02 旧公开 API 编译 pin（Parser/桥/VM/NativeInterface/
 // 根再导出/类型身份同一）。
+#[cfg(feature = "test-http-e2e")]
+mod http_host_test_support;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan814_v02_api_pin;

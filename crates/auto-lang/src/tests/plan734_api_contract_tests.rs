@@ -148,22 +148,31 @@ mod http_e2e {
     }
 
     fn start_server(code: &str, port: u16) -> u16 {
+        super::super::http_host_test_support::install();
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let _server = std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || {
-                let _ = crate::run(&code);
-            })
-            .expect("spawn server thread");
-        for _ in 0..50 {
-            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                break;
+        let outcome = crate::vm::ffi::http_server::spawn_outcome_reporter_for_test(
+            8 * 1024 * 1024,
+            "plan734 service owner",
+            move || crate::run(&code),
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            if let Ok(result) = outcome.try_recv() {
+                panic!("service owner exited before readiness: {result}");
+            }
+            if TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                Duration::from_millis(50),
+            )
+            .is_ok()
+            {
+                return port;
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        port
+        panic!("service did not become ready at 127.0.0.1:{port}");
     }
 
     fn raw_request_with_body(
