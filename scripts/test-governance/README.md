@@ -29,15 +29,17 @@ t/tv/tt/tb/th为截至2026-11-30的兼容导航，仍有旧包含关系，不是
 python scripts/test-governance/measure_modules.py --catalog <selection.json内的catalog_path> --selection <selection.json> --output <fresh-local-directory>
 ```
 
-至少三次完整warm，P90目标60秒；预构建/冷态/整命令分列。可拆超标继续拆，不可拆原正式
-采样/规模/生命周期oracle具名登记慢模块，原断言和样本不减。原始日志/JSON留计划本地附件，
+先列全部模块归属与用例/义务数量，再逐模块完整单轮测总墙钟、累计CPU与峰值内存，目标尽量60秒内；
+构建/冷态/整命令另列，不统一三轮、不以单次或三次观察声称P90。异常或临界模块才定向复测，
+可拆慢聚合继续拆，特别长原子具名列人工决定；未获授权不关测试、不减原断言/样本。
+原始日志/JSON留计划本地附件，
 只提交审查摘要及长期工具/配置。目录由真实运行时发现产生；过期时tm自动刷新，不能手改
 分片或通过重生 `legacy-contract.json` / `legacy-wrapper-contract.json` 接受漏项。
 旧金样和VM缓存的原包装/输入关联有独立冻结守卫，执行须保留每项原始终态与源/期望身份；
 原包装退出成功或刷新目录都不能抹去缺失的子项。
 
 批量性能见 `measure_pilot.py` 与冻结 `measurement-contract.json`。`test-case-pilot` 的固定
-15例白名单默认B k=10，原单例重放默认A；其他recipe继续独立，C仅显式D3观察。
+15例及单例重放均默认A；B须显式--mode group，C须显式D3观察。新候选收益矩阵后置，未证明前不自动推广。
 不要将本批改善推断为全生态改善。详见[规范](../../docs/specs/auto-test-case/module-selection.md)。
 
 已测慢聚合的细分规则在partition-policy.json中，所有原用例继续归属唯一叶；规则失效或消费端重新聚合会失败。正式成本入口要求原AV/MN 30样本与2000ms门，并拒oracle再生开关。相关环境参数属于绑定内容，不可通过改环境获得假达标。
@@ -57,3 +59,5 @@ Windows受计量命令明确禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，直接
 仓内Cargo env默认同时用于直接启动的子命令与环境指纹，避免同一测试经Cargo/Python入口得到不同的默认线程栈。共享runner/目录/调度配置触面按impact_rules.json的global_inputs展开完整受影响模块；这只影响变更选测，不把单个基础设施测试模块变成隐式全量入口。889新增集合suite及mn-collections-worker独立准备接线，标量mn-worker保持原端口。
 
 正式矩阵的外部负载检测区分编译/测试与常驻服务：构建、测试、未知Cargo命令及其不明子进程仍阻止采样；只有显式cargo run的绝对*-back manifest、唯一同名后端、仅loopback监听、连续两次服务树身份和命令稳定，才进入背景CPU核算。观测间隔须在0到90秒之间，所有服务实际PID去重后的CPU增量上限固定为单核的1%，最小记账容差为Windows一次1/64秒刻度；超过上限、身份/命令变化、监听丢失、新编译/测试均为干扰，整轮作废。每次CPU前后值、间隔、上限、身份、监听与busy原因保留在campaign；这只定义计量背景，不改变原性能门值、样本数或测试oracle。不停止其他服务，不把一次观测当空闲证明。
+
+单轮结果保留发现/执行Job的CPU和内存：CPU加计Python runner且不重复加meter CPU；内存报告顺序子进程树Job峰值最大值，不含共享Python runner内存。长例测量队列须逐个单原子、源绑定及理由/历史证据，标AWAITING_HUMAN；原测试保持启用，普通模块门不能据此通过，条件不适用另列。

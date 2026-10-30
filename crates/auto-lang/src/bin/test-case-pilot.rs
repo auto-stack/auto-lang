@@ -98,15 +98,9 @@ mod enabled {
                 return Err(format!("unknown or duplicate flag {}", pair[0]));
             }
         }
-        // Promotion is limited to this fixed, proven pilot allowlist. A
-        // single-case invocation remains the original independent replay.
-        let mode = *flags
-            .get("--mode")
-            .unwrap_or(&if flags.contains_key("--case") {
-                "independent"
-            } else {
-                "group"
-            });
+        // PLAN-888 r3 prioritizes module observations. Batch/combined remain
+        // explicit experiments until the current candidate earns promotion.
+        let mode = *flags.get("--mode").unwrap_or(&"independent");
         if !["independent", "group", "combined"].contains(&mode) {
             return Err("mode must be independent, group or combined".into());
         }

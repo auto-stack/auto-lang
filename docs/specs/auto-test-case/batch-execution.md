@@ -1,6 +1,6 @@
 # ACE测试批量试点
 
-> PLAN-888 r2；test-only，默认关闭feature；正式数据见计划内测量收据。
+> PLAN-888 r3；test-only，默认关闭feature；正式数据见计划内测量收据。
 
 ## 路径与推广边界
 
@@ -9,10 +9,7 @@ A为原逐项worker/编译/VM基线。B在显式 `test-case-batch` feature 下�
 工具身份准备。父侧持expected，复用原准入与比较器；worker不收expected，不另造解释器。
 旧case-serve/session-serve不改语义，缺batch能力明确失败，不回退A伪装B。
 
-同候选worker、固定原15例和D3、串行/并行2各十完整正式轮及独立预热，B k=3/k=10均通过
-原数值门，k=1未通过。测试专用 `test-case-pilot` 固定15例白名单默认B k=10；单case重放
-默认A，显式 `--mode independent` 始终保留A。其他recipe、负诊断、FFI/资源/会话/性能硬门
-继续独立路径，不据本批数据扩白名单或声称全生态提速。
+A/B/C功能与隔离控制已实施。历史候选完整矩阵的B k=3/k=10通过原门、k=1未通过，仅为该候选历史结果；889共享输入及后续计量producer变化后，不充当前候选收益证据。r3优先模块归组/数量及逐模块单轮资源计量，新的完整收益矩阵后置，不阻塞模块交付。公开test-case-pilot与单case均默认A；B仅显式--mode group，C仅显式--mode combined。其他recipe及原负诊断/FFI/资源/会话/单程序性能门保持。未来申请推广仍须以下完整合同，不以未完成矩阵假称技术负结果或加速。
 
 C仅限原D3三条纯表达式，以现有av.owned/1路径一次compile/VM返回record三个actual，父侧
 逐项原scalar判定；原表达式字节和包装byte/line映射分别记录。实际compile/VM调用点计数，
@@ -30,7 +27,7 @@ sequence只作执行器观测，不猜调用次数。C仅显式 `--mode combined
 报告保留原case/check、源和契约路径/行、source/oracle hash、expected/actual或typed错误、
 原父侧receipt及实际独立replay argv。单例筛选真只执行该例，不以重放覆盖首次失败。
 
-## 正式测量
+## 未来收益推广所需正式测量（非本轮模块交付前置）
 
 `measure_pilot.py` 消费冻结 `measurement-contract.json`：九cohort×两并行度×十正式轮，
 每次原集合repeat3，另18完整预热。实际成功spawn点PID与原调用compile/VM计数共同验证

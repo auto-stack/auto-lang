@@ -25,6 +25,48 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_module_resources_include_runner_and_descendants_without_double_counting(self):
+        from module_observations import resources
+        discovery={'workload_cpu_ms':100,'meter_cpu_ms':10,'total_cpu_ms':110,
+                   'peak_process_bytes':80,'peak_job_bytes':120}
+        execution={'workload_cpu_ms':200,'meter_cpu_ms':20,'total_cpu_ms':220,
+                   'peak_process_bytes':150,'peak_job_bytes':300}
+        observed=resources(discovery,execution,50)
+        self.assertEqual(observed['total_cpu_ms'],350)
+        self.assertEqual(observed['peak_job_bytes'],300)
+        self.assertEqual(observed['peak_process_bytes'],150)
+        for bad in (None,{},dict(execution,workload_cpu_ms=float('nan'))):
+            with self.subTest(bad=bad),self.assertRaises(ValueError):resources(discovery,bad,50)
+
+    def test_pending_human_measurements_cannot_satisfy_module_gates_or_hide_other_cases(self):
+        import tempfile
+        from module_observations import deferrals
+        from module_catalog import write
+        c=catalog();selection=select(c,['lexer'])
+        entry={'module':'lexer','reason':'historically long atomic input',
+               'evidence':'retained original measurement','decision':'pending-human'}
+        document={'schema':'test-module-measurement-deferrals/1','source_code':'source','modules':[entry]}
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'decisions.json';write(path,document)
+            self.assertEqual(set(deferrals(path,c,selection)),{'lexer'})
+            pending={'module':'lexer','outcome':'AWAITING_HUMAN','exit':None}
+            result=summary([pending],1)
+            self.assertTrue(result['complete'])
+            self.assertFalse(result['gate_passed'])
+            self.assertEqual(result['executed_modules'],0)
+            self.assertEqual(result['pending_human_modules'],1)
+            self.assertEqual(result['scope'],'module-measurement')
+            for mutation in ('stale','duplicate','unknown','no-reason','no-evidence','not-pending','aggregate'):
+                bad=copy.deepcopy(document);changed=copy.deepcopy(c)
+                if mutation=='stale':bad['source_code']='other'
+                elif mutation=='duplicate':bad['modules']*=2
+                elif mutation=='unknown':bad['modules'][0]['module']='unknown'
+                elif mutation=='no-reason':bad['modules'][0]['reason']=''
+                elif mutation=='no-evidence':bad['modules'][0]['evidence']=''
+                elif mutation=='not-pending':bad['modules'][0]['decision']='disabled'
+                elif mutation=='aggregate':changed['modules'][0]['obligations'].append('unrelated case')
+                write(path,bad)
+                with self.subTest(mutation=mutation),self.assertRaises(ValueError):deferrals(path,changed,selection)
     def test_shared_runner_change_selects_all_consumers_even_with_known_python_owner(self):
         c = catalog()
         c['impact_graph'] = {'schema': 'test-impact-graph/1',
