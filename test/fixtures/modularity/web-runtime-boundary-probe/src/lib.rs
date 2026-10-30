@@ -76,6 +76,16 @@ pub async fn serve_owned(
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> auto_lang_core::AutoResult<()> {
     let (vm, metadata) = owner.into_local_parts();
+    if std::env::var("PLAN890_METADATA_GAP").as_deref() == Ok("1") {
+        let first = metadata.routes.iter().any(|r| r.path == "/one/:n");
+        let declared_async = http_server::with_owner_metadata_sync(metadata.clone(), || {
+            http_server::fn_is_api_async("later")
+        });
+        assert_eq!(
+            declared_async, first,
+            "actual external reader must select this owner's async declarations"
+        );
+    }
     let config = http_transport::TransportConfig::from_env();
     http_server::with_owner_metadata(
         metadata,

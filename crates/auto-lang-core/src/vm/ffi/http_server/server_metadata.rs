@@ -26,6 +26,10 @@ pub(crate) fn capture_program_metadata(
             .lock()
             .expect("API shadow table poisoned")
             .clone(),
+        async_returns: API_ASYNC_RETURNS
+            .lock()
+            .expect("API async table poisoned")
+            .clone(),
         routes: routes
             .iter()
             .map(|(method, path, fn_name)| HttpRoute {
@@ -97,6 +101,7 @@ mod tests {
             params: HashMap::new(),
             returns: HashMap::new(),
             shadowed: HashSet::new(),
+            async_returns: HashSet::new(),
             routes: vec![HttpRoute {
                 method: "GET".into(),
                 path: path.into(),

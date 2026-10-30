@@ -4,6 +4,46 @@
 pub struct VmHttpBridge;
 
 impl VmHttpBridge {
+    pub fn record_api_param_sigs(name: &str, params: &[super::messages::ApiParamSig]) {
+        super::program_metadata::collect(|p| {
+            p.params.insert(name.to_owned(), params.to_vec());
+        });
+    }
+
+    pub fn record_api_return_type(name: &str, ty: &str) {
+        super::program_metadata::collect(|p| {
+            p.returns.insert(name.to_owned(), ty.to_owned());
+        });
+    }
+
+    pub fn record_api_return_shadowed(name: &str) {
+        super::program_metadata::collect(|p| {
+            p.shadowed.insert(name.to_owned());
+        });
+    }
+
+    pub fn record_api_async_return(name: &str) {
+        super::program_metadata::collect(|p| {
+            p.async_returns.insert(name.to_owned());
+        });
+    }
+
+    /// Immutable declarations bound before executing a compiled program.
+    pub fn program_metadata(
+        vm: &crate::vm::engine::AutoVM,
+    ) -> Option<std::sync::Arc<super::messages::HttpProgramMetadata>> {
+        vm.http_program_metadata().cloned()
+    }
+
+    /// A custom SDK compiler can freeze its CompilationMetadataGuard and bind
+    /// that owned result while it still exclusively owns the mutable VM.
+    pub fn bind_program_metadata(
+        vm: &mut crate::vm::engine::AutoVM,
+        metadata: std::sync::Arc<super::messages::HttpProgramMetadata>,
+    ) {
+        vm.set_http_program_metadata(metadata);
+    }
+
     /// Current language-owned settings. Read on the existing local VM thread;
     /// the external host supplies its own rate-window state and algorithm.
     pub fn rate_limit(vm: &crate::vm::engine::AutoVM) -> Option<(u32, u64)> {

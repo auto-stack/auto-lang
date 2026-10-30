@@ -113,6 +113,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
     crate::vm::ffi::axum_adapter::reset();
     // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    let http_metadata_scope =
+        crate::vm::host_capabilities::http_service::CompilationMetadataGuard::begin();
     crate::vm::ffi::http_server::clear_api_param_sigs();
 
     // Same compilation pipeline as execute_autovm
@@ -244,6 +246,10 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
                                                           // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::host_capabilities::http_service::VmHttpBridge::bind_program_metadata(
+        &mut vm,
+        http_metadata_scope.finish(&api_routes),
+    );
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {

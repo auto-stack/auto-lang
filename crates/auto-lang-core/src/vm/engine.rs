@@ -1,6 +1,7 @@
 use crate::vm::channel::{AutoChannel, ChannelId};
 use crate::vm::codegen::ObjectType;
 use crate::vm::heap_object::HeapObject;
+use crate::vm::host_capabilities::http_service::messages::HttpProgramMetadata;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
@@ -502,6 +503,7 @@ pub struct AutoVM {
     // blocking service. A post-main annotation hook must not start it again.
     // This is per VM, not a process route/host-registry flag.
     http_service_claimed: std::cell::Cell<bool>,
+    http_program_metadata: Option<Arc<HttpProgramMetadata>>,
     // Owned language settings only; the serving host owns rate-window buckets
     // and policy execution. Native calls never mutate another VM's settings.
     http_rate_limit: std::cell::Cell<Option<Option<(u32, u64)>>>,
@@ -809,6 +811,14 @@ impl AutoVM {
         self.http_service_claimed.get()
     }
 
+    pub(crate) fn http_program_metadata(&self) -> Option<&Arc<HttpProgramMetadata>> {
+        self.http_program_metadata.as_ref()
+    }
+
+    pub(crate) fn set_http_program_metadata(&mut self, metadata: Arc<HttpProgramMetadata>) {
+        self.http_program_metadata = Some(metadata);
+    }
+
     pub(crate) fn note_http_service_completed(&self) {
         self.http_service_claimed.set(true);
     }
@@ -952,6 +962,7 @@ impl AutoVM {
             // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
             instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
             http_service_claimed: std::cell::Cell::new(false),
+            http_program_metadata: None,
             http_rate_limit: std::cell::Cell::new(None),
             http_credential_gen: std::sync::atomic::AtomicU64::new(0),
             http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态

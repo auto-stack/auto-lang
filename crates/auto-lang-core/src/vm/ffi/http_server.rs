@@ -18,6 +18,9 @@ use crate::vm::host_capabilities::http_service::VmHttpBridge;
 // ============================================================================
 // PLAN-669: #[api] handler 形参签名侧信道
 // ============================================================================
+// Legacy embedding cache. Production compilers collect declarations into a
+// local scope and freeze them onto the VM before main; owned service readers
+// never use these process tables when that immutable metadata is selected.
 // codegen 在 api_routes.push 处同步发布每个 #[api] fn 的形参（名+类型），
 // 服务侧据此按名装配 handler 实参（路径段 → body 字段 → query，缺参 400；
 // 见 bind_api_args_by_name）。生命周期模型同 stdlib 的 HTTP_ROUTES /
@@ -54,6 +57,9 @@ static API_ASYNC_RETURNS: std::sync::LazyLock<std::sync::Mutex<std::collections:
 
 /// 编组期判定：该函数（或 fn-ref closure 反查出的函数）声明 `~T` 返回。
 pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
+    if let Some(found) = with_program_metadata(|p| p.async_returns.contains(fn_name)) {
+        return found;
+    }
     API_ASYNC_RETURNS
         .lock()
         .ok()

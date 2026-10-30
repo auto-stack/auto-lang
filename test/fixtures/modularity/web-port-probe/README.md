@@ -177,3 +177,25 @@ exhausted. Exact nonce responses, 429 body/deadline/Retry-After/request-id,
 legacy environment CORS, resource termination and two drained owners are required.
 The same probe also runs a config-only ordinary program without an adapter.
 Its source/build scratch stays inside this worktree's fixture target directory.
+
+Compile-to-activation isolation is checked separately:
+
+```powershell
+python test/fixtures/modularity/web-port-probe/metadata_gap_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe
+python test/fixtures/modularity/web-port-probe/metadata_gap_probe.py --exe test/fixtures/modularity/web-port-probe/target/debug/isolation.exe --ordinary-first
+```
+
+A's actual main parks on `delay_async(...).await`; B then compiles and activates
+on the same owner thread before A activates. Same handler names have different
+parameter/return types, routes and async declarations. Exact invocation values,
+the actual external framework's async metadata reader, valid and invalid binding,
+and both resource terminals are checked. Ordinary-first mode clears the default
+adapter before A resumes: A must return 42, with no listener or provider call,
+while B keeps serving. The fixture's stdin controller is joined after shutdown.
+
+The normal compiler paths freeze a `CompilationMetadataGuard` onto the VM before
+main or module initialization can await. Custom SDK compilers can use the same
+guard and `VmHttpBridge::bind_program_metadata(&mut vm, guard.finish(&routes))`
+before sharing/running their VM. Only owned declarations cross the boundary;
+the guard remains local. Legacy standalone record/read APIs retain their cache
+fallback, which is not a concurrency contract for custom unbound raw VMs.

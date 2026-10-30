@@ -15,6 +15,7 @@ pub struct RouteMatch {
 /// (dep-module Codegen instances publish here too, so by-name binding resolves
 /// for cross-module handlers — same lifetime model as record_param_sig).
 pub fn record_api_param_sigs(fn_name: &str, sigs: Vec<ApiParamSig>) {
+    VmHttpBridge::record_api_param_sigs(fn_name, &sigs);
     if let Ok(mut table) = API_PARAM_SIGS.lock() {
         table.insert(fn_name.to_string(), sigs);
     }
@@ -33,6 +34,7 @@ pub fn api_param_sigs(fn_name: &str) -> Option<Vec<ApiParamSig>> {
 
 /// Codegen 在 #[api] fn 编译时发布返回类型（dep-module Codegen 同步发布）。
 pub fn record_api_return_type(fn_name: &str, ret_display: String) {
+    VmHttpBridge::record_api_return_type(fn_name, &ret_display);
     if let Ok(mut table) = API_RETURN_TYPES.lock() {
         table.insert(fn_name.to_string(), ret_display);
     }
@@ -49,6 +51,7 @@ pub(super) fn api_return_type(fn_name: &str) -> Option<String> {
 
 /// Codegen 发布遮蔽标记（与 record_api_return_type 同点调用）。
 pub fn record_api_return_shadowed(fn_name: &str) {
+    VmHttpBridge::record_api_return_shadowed(fn_name);
     if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
         table.insert(fn_name.to_string());
     }
@@ -85,6 +88,7 @@ pub fn clear_api_param_sigs() {
 
 /// Codegen 在 fn 编译时发布（声明 ret 为 Future<T> 时调用）。
 pub fn record_api_async_return(fn_name: &str) {
+    VmHttpBridge::record_api_async_return(fn_name);
     if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
         table.insert(fn_name.to_string());
     }

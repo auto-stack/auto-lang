@@ -16,10 +16,12 @@ pub struct ApiParamSig {
 }
 
 /// Immutable program handoff. No AST, Store, heap reference or VM pointer.
+#[derive(Debug, Clone, Default)]
 pub struct HttpProgramMetadata {
     pub params: std::collections::HashMap<String, Vec<ApiParamSig>>,
     pub returns: std::collections::HashMap<String, String>,
     pub shadowed: std::collections::HashSet<String>,
+    pub async_returns: std::collections::HashSet<String>,
     pub routes: Vec<HttpRoute>,
 }
 

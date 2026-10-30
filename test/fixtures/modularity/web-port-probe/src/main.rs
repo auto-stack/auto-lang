@@ -12,6 +12,8 @@ fn reject_moving_vm_owner_to_network_thread() {
     fn requires_send<T: Send>() {}
     requires_send::<auto_lang_core::vm::host_capabilities::http_service::HttpVmOwner>();
     requires_send::<auto_lang_core::vm::host_capabilities::request_context::RequestContextGuard>();
+    requires_send::<auto_lang_core::vm::host_capabilities::http_service::CompilationMetadataGuard>(
+    );
 }
 
 impl auto_lang_core::vm::host_capabilities::http_service::HttpServiceHost for ExplicitProbeAdapter {

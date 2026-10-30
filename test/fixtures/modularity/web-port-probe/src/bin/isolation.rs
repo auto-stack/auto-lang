@@ -14,6 +14,7 @@ thread_local! {
 
 struct Adapter {
     label: &'static str,
+    index: usize,
     addresses: Vec<String>,
     shutdowns: Arc<Mutex<Vec<tokio::sync::watch::Sender<bool>>>>,
     configuration: Option<Arc<auto_lang_core::http_service_config::HttpServiceConfig>>,
@@ -25,7 +26,7 @@ impl HttpServiceHost for Adapter {
         #[cfg(feature = "external-runtime")]
         eprintln!("isolation runtime=external");
         let mut controls = self.shutdowns.lock().unwrap();
-        let address = self.addresses[controls.len()].clone();
+        let address = self.addresses[self.index].clone();
         let (sender, receiver) = tokio::sync::watch::channel(false);
         controls.push(sender.clone());
         let configuration = self.configuration.clone();
@@ -69,6 +70,7 @@ fn main() {
     let second = std::fs::read_to_string(&args[1]).unwrap();
     let adapter = Arc::new(Adapter {
         label: "first",
+        index: 0,
         addresses: vec![
             format!("127.0.0.1:{}", args[2]),
             format!("127.0.0.1:{}", args[3]),
@@ -89,6 +91,7 @@ fn main() {
     ));
     let replacement = Arc::new(Adapter {
         label: "second",
+        index: 1,
         addresses: adapter.addresses.clone(),
         shutdowns: adapter.shutdowns.clone(),
         configuration: args.get(5).map(|path| {
@@ -105,9 +108,11 @@ fn main() {
         replacement.clone()
     ));
     let (commands, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-    std::thread::spawn(move || {
+    let controller = std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
-            if commands.send(line.unwrap()).is_err() {
+            let line = line.unwrap();
+            let shutdown = line == "shutdown";
+            if commands.send(line).is_err() || shutdown {
                 break;
             }
         }
@@ -117,10 +122,32 @@ fn main() {
         .build()
         .unwrap();
     tokio::task::LocalSet::new().block_on(&runtime, async {
-        auto_lang_core::execute_autovm(&first, true).await.unwrap();
-        assert_eq!(receiver.recv().await.as_deref(), Some("second"));
-        http_service::set_process_default_http_service_host(replacement);
-        auto_lang_core::execute_autovm(&second, true).await.unwrap();
+        if std::env::var("PLAN890_METADATA_GAP").as_deref() == Ok("1") {
+            use std::future::Future;
+            let mut pending = Box::pin(auto_lang_core::execute_autovm(&first, true));
+            std::future::poll_fn(|cx| {
+                assert!(
+                    pending.as_mut().poll(cx).is_pending(),
+                    "first main must actually park"
+                );
+                std::task::Poll::Ready(())
+            })
+            .await;
+            http_service::set_process_default_http_service_host(replacement);
+            auto_lang_core::execute_autovm(&second, true).await.unwrap();
+            if std::env::var("PLAN890_ORDINARY_FIRST").as_deref() == Ok("1") {
+                http_service::clear_process_default_http_service_host();
+            } else {
+                http_service::set_process_default_http_service_host(adapter.clone());
+            }
+            let outcome = pending.await.unwrap();
+            println!("gap first result={}", outcome.0);
+        } else {
+            auto_lang_core::execute_autovm(&first, true).await.unwrap();
+            assert_eq!(receiver.recv().await.as_deref(), Some("second"));
+            http_service::set_process_default_http_service_host(replacement);
+            auto_lang_core::execute_autovm(&second, true).await.unwrap();
+        }
         http_service::clear_process_default_http_service_host();
         let mut command = receiver.recv().await.unwrap();
         let first_stopped = command == "stop-first";
@@ -164,4 +191,5 @@ fn main() {
         assert_eq!(auto_lang_core::vm::ffi::async_http::live_op_count(), 0);
         println!("two owners drained");
     });
+    controller.join().unwrap();
 }

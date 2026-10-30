@@ -11,6 +11,8 @@ use crate::vm::engine::AutoVM;
 use crate::AutoResult;
 
 mod bridge;
+pub(crate) mod program_metadata;
+pub use program_metadata::CompilationMetadataGuard;
 /// Framework-neutral, owned messages shared by network and local VM owners.
 pub mod messages;
 pub use bridge::VmHttpBridge;
@@ -262,7 +264,8 @@ fn listen_registered_kind(
 ) -> AutoResult<()> {
     let host = selected_host()?;
     let routes = crate::vm::ffi::stdlib::get_http_routes();
-    let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
+    let metadata = VmHttpBridge::program_metadata(vm)
+        .unwrap_or_else(|| crate::vm::ffi::http_server::capture_program_metadata(&routes));
     host.listen_blocking(vm, address, metadata, kind)?;
     vm.note_http_service_completed();
     Ok(())
@@ -278,7 +281,13 @@ pub(crate) async fn serve_registered(
         return Ok(());
     }
     let host = selected_host()?;
-    let metadata = crate::vm::ffi::http_server::capture_program_metadata(&routes);
+    let metadata = VmHttpBridge::program_metadata(&vm)
+        .unwrap_or_else(|| crate::vm::ffi::http_server::capture_program_metadata(&routes));
+    let routes = metadata
+        .routes
+        .iter()
+        .map(|r| (r.method.clone(), r.path.clone(), r.fn_name.clone()))
+        .collect();
     let owner = HttpVmOwner {
         vm: Rc::new(vm),
         routes,
