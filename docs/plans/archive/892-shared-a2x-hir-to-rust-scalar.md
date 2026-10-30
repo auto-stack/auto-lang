@@ -293,6 +293,8 @@ prepare不修改current；前端/准备/目标合法化/完整文件集校验/�
 
 2026-10-30 stage: merge | checkpoint: archived | plan_id: PLAN-892 | plan_revision: 1 | completion_kind: delivered | 路径=docs/plans/archive/892-shared-a2x-hir-to-rust-scalar.md status=archived；T-01..06[x]+T-07(pass)+T-08(门禁回执)+T-09(landed+canonical_verified+closeout修复)+T-10(归档)；AX-B可接：A2X API=SemanticView::from_checked/from_parts+lower_functions/print_fn+assemble_file_set+A2xSession(cold_assemble/warm_edit/restart_assemble/close_env)；pass=semantic_fingerprint/plan_function；cache=AXS1/AXR1/AXM1层+quota；拒绝面=a2x.*具名码族；S/P/H窗口全闭 | next: T-11清树
 
+2026-10-30 stage: merge | checkpoint: cleaned | plan_id: PLAN-892 | wt-guard=clean → worktree lang-892/auto-lang、分支plan-892-dev(348df0964)、兄弟auto-ui/auto-down detached树全部移除；组目录.wt/lang-892已删；plan-artifacts无plan-892目录（无需回收）；最终计数=11/11任务全闭 | outcome: pass | merge完成
+
 ## 10. 待澄清事项
 
 | ID | 事项与owner/关闭条件 | 阻止的工作 |
