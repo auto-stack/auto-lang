@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: reviewed
+status: executing
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 7
+current_step: 5
 total_steps: 10
 ---
 
@@ -193,8 +193,8 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
-| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
-| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
+| T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
+| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
 | T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
@@ -451,3 +451,14 @@ stage: review | review_scope: final | reviewer_identity: Codex /root，本聊天
 - findings: none（无待闭合in-contract项）；pending_closeout_gates: **merge-owned裸cargo t + VM/编译器触面cargo tv +实际experimental定向冻结验收门**；不得据此pass直接合入。cargo tf仅到期判定后主检出单实例批量回归；Spec/ledger/index/归档/guard清理仍T-09/10。Plan置reviewed，7/10，AC-08/09尚pending。
 
 goal_receipt: objective=完成计划889 | goal_round=8 | stage=review(final) | outcome=pass | reviewed_commit=e188033c4e7866d19bc4e152937e6e1052b8ac69 | completed_tasks=7/10 | next=merge | blocker=none | goal_active=true。
+
+
+### 2026-10-30 merge 第9轮：受影响控制隔离缺口，回work
+
+stage:merge | plan_revision:2 | outcome:needs_fix | reviewed_commit:e188033c4e7866d19bc4e152937e6e1052b8ac69 | delivery:none | next:work | pending_closeout_gates:bare cargo t/tv/experimental/Specs/ledger/archive/cleanup。
+
+- 裸cargo t已实跑，日志baseline/merge-cargo-t.log保留；尚未完成，既有ac_case_tests的r1_consumer_streams_observed_not_rejected实际120s timeout，当前别的旧消费探针在本树冷构建auto-cte/auto-abi release依赖。不是整档pass，未静默豁免。捕获退出/失败并完成归因后才可重冻统一门；不修改888的runner/filter/选择守卫。
+- F889-M1（P1，AC-05/06；T-06/07）：新 `ace_m1_native_collections_889_report_runtime_content_identity_is_current` 直接bitflip authority的共享runtime .lib。ACE_M1_CASE_LOCK为进程内Mutex，而nextest每test独立进程且本模块无串行组；它能使同树其他collection请求读取坏库、拒绝或受扰。实际操作/缺隔离来自测试和nextest配置，未宣称已随机复现某一业务错误。期望：保留真实同长度bitflip→stale→字节恢复→Fresh控制，但只改该测试自己的库/源配置镜像，原共享库逐字保持。最小修复H仅该889具名test及私有fixture helper，不动生产worker/protocol/代码/阈值/正式采样/runner/filter；定向复跑该stale控制与同组source/rounds并发代表，核共享库SHA不变。此前产品语义/性能AC-01..04证据及Spec delta内容保持；受影响的AC-05/06/07 final pass暂失效。
+- 为避免继续对已知待修控制跑整档，已核实本次own cargo t PID19928及完整cmd/父子nextest后仅停止该进程树；不取消888/890命令。原log完整保留失败/中断，不把剩余未跑条目当pass。回executing，T-06/07重开，5/10，其他已闭合项不重做。
+
+goal_receipt: objective=完成计划889 | goal_round=9 | stage=merge | outcome=needs_fix | completed_tasks=5/10 | next=work(repair F889-M1 and gate diagnosis) | blocker=none | goal_active=true。
