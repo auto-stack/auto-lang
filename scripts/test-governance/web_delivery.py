@@ -397,6 +397,8 @@ def validate_four_receipt(receipt):
                  for name, root, options in owner.legs(receipt['tier'], roots['language'], roots['ui'], True)}
     contracts.update({s['leg']: s for s in owner.batch_extra_legs(roots['language'], roots['ui'], roots['man'])})
     by_name = {r['leg']: r for r in results}
+    owner_selections = {}
+    executed_migrations = set()
     for name in REQUIRED_LEGS:
         if name in MODULE_LEGS:
             continue
@@ -411,6 +413,11 @@ def validate_four_receipt(receipt):
         selected = listed_ids(listing, package)
         if not selected or row.get('selected_ids') != sorted(selected) or row['selected'] != len(selected):
             raise ValueError(f'{name}: exact selected test identities differ')
+        ids, source_selected = (owner.libtest_selection(listing.decode('utf-8'), package) if package
+                                else owner.selection(json.loads(listing)))
+        if source_selected != selected:
+            raise ValueError(f'{name}: owner selection parsing differs')
+        owner_selections[name] = (ids, selected)
         if name == 'language':
             directory = Path(row.get('module_directory', ''))
             for key, relative in [('module_selection', 'selection.json'), ('module_results', 'execution/results.json')]:
@@ -432,10 +439,15 @@ def validate_four_receipt(receipt):
             for leg in actual:
                 if by_name[leg['leg']] != leg:
                     raise ValueError('Web/media leg differs from actual complete module execution')
+                executed_migrations.update(leg['selected_ids'])
         else:
             expected = ['cargo', *contract['run']] if package else ['cargo', 'nextest', 'run', *options, '--no-fail-fast']
             if row.get('run_command') != expected:
                 raise ValueError(f'{name}: actual run command missing, filtered or changed')
             if execution_ids(read_proof(row.get('run_output')), package) != selected:
                 raise ValueError(f'{name}: actual passed tests differ from complete selection')
+    minimums = owner.tier_minimums()
+    for name, (ids, selected) in owner_selections.items():
+        owner.validate_owner_selection('tf', name, ids, selected, minimums, with_web=True,
+                                       executed_migrations=executed_migrations)
     return True

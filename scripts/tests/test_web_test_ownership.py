@@ -17,6 +17,25 @@ from module_catalog import digest
 from web_delivery import collect_web_legs, validate_four_receipt, WEB_LEGS, MODULE_LEGS, REQUIRED_OWNERS, REQUIRED_LEGS
 
 
+def owner_protocol_ids(full, name, catalog):
+    """Preserve the real original denominator; added protocol IDs are synthetic."""
+    floor = full.tier_minimums()[name]['minimum']
+    if name in ('language', 'ui-full'):
+        ids, selected = full.baseline_for('tf', name)
+        if name == 'language':
+            additions = sorted(r['binary']+'\t'+r['test'] for r in catalog['obligations']
+                               if r['recipe']=='language' and not r['ignored'] and not r.get('conditions'))
+        else:
+            additions = ['protocol-additions\tadditional_'+str(i) for i in range(floor)]
+        for identity in additions:
+            if len(selected) >= floor: break
+            selected.add(identity)
+        return ids | selected, selected
+    package = 'auto-ui-compiler' if name == 'ui-tu' else 'protocol-owner'
+    ids = {package+'\tvalid_control_'+str(i) for i in range(floor)}
+    return ids, ids.copy()
+
+
 @contextlib.contextmanager
 def complete_module_protocol(folder, include_language=False):
     """Controlled protocol files, not a claim that synthetic logs ran tests.
@@ -31,9 +50,14 @@ def complete_module_protocol(folder, include_language=False):
     lookup = {r['id']: r for r in actual['obligations']}
     modules = copy.deepcopy([m for m in actual['modules'] if m['recipe'] in MODULE_LEGS])
     if include_language:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('protocol_baseline', ROOT/'scripts/run-full-regression.py')
+        full = importlib.util.module_from_spec(spec); spec.loader.exec_module(full)
+        _, language_selected = owner_protocol_ids(full, 'language', actual)
         item = next(m for m in actual['modules'] if m['recipe']=='language' and not m['conditions'])
         module = copy.deepcopy(item)
-        module.update(id='language/protocol-control', obligations=[item['obligations'][0]])
+        module.update(id='language/protocol-control',
+                      obligations=sorted('language|'+i.replace('\t','|',1) for i in language_selected))
         modules.append(module)
     for module in modules:
         module['consumers'] = []
@@ -77,8 +101,14 @@ def complete_module_protocol(folder, include_language=False):
         log.write_text(''.join(f"PASS [ 0.1s] {r['binary']} {r['test']}\n" for r in rows)+
                        f'Summary [ 0.1s] {len(rows)} tests run: {len(rows)} passed\n')
         from execution_trace import validate_bindings
-        row.update(listing=file_proof(listing), output=file_proof(log), child_observations={"invocations":[]},
-                   child_validation=validate_bindings(rows,{"invocations":[]}))
+        traces = {'invocations':[]}
+        for r in rows:
+            metadata = ([{'family':'legacy-vm-cache', **r['legacy_input']}] if r.get('legacy_input') else [])
+            metadata += r.get('legacy_children', [])
+            traces['invocations'].extend({'metadata':m, 'rust_test':r['test'], 'complete':True,
+                                          'observation':{'status':'PASS'}} for m in metadata)
+        row.update(listing=file_proof(listing), output=file_proof(log), child_observations=traces,
+                   child_validation=validate_bindings(rows,traces))
     report = {'complete':True,'gate_passed':True,'results':results}
     def save(selected=selection, executed=report):
         (directory/'selection.json').write_text(json.dumps(selected))
@@ -255,8 +285,9 @@ class WebOwnershipTests(unittest.TestCase):
             (root/'scripts/test-governance/recipes.json').write_text('{"web-unit":{}}')
             with self.assertRaises(ValueError): validate_resources(root, manifest)
 
-    def test_four_owner_verdict_rejects_partial_missing_duplicate_and_changed_sources(self):
-        from web_delivery import file_proof
+    @contextlib.contextmanager
+    def four_owner_protocol(self):
+        from web_delivery import file_proof, read_proof
         import importlib.util
         spec = importlib.util.spec_from_file_location('protocol_full', Path(__file__).resolve().parents[1]/'run-full-regression.py')
         full = importlib.util.module_from_spec(spec); spec.loader.exec_module(full)
@@ -272,15 +303,18 @@ class WebOwnershipTests(unittest.TestCase):
                 if name in MODULE_LEGS: continue
                 contract = contracts[name]
                 package = contract.get('package') if contract['kind']=='libtest' else None
-                if name=='language':
-                    obligation = next(r for r in catalog['obligations'] if r['recipe']=='language')
-                    binary,test = obligation['binary'],obligation['test']
-                else: binary,test = package or 'owner-test-binary','valid_control'
+                ids, active = owner_protocol_ids(full, name, catalog)
                 listing = directory/(name+'-list.json')
-                listing.write_text(test+': test\n' if package else json.dumps({'rust-suites':{binary:{'testcases':{test:{'ignored':False,'filter-match':{'status':'matches'}}}}}}))
+                suites = {}
+                for identity in sorted(ids):
+                    binary,test = identity.split('\t',1)
+                    suites.setdefault(binary, {'testcases':{}})['testcases'][test] = {
+                        'ignored':identity not in active, 'filter-match':{'status':'matches'}}
+                listing.write_text(''.join(i.split('\t',1)[1]+(': test\n' if i in active else ': ignore\n') for i in sorted(ids))
+                                   if package else json.dumps({'rust-suites':suites}))
                 options = contract.get('options',[])
                 row = {'leg':name,'cwd':str(contract['cwd']),'list_exit':0,'run_exit':0,
-                       'selected':1,'selected_ids':[binary+'\t'+test], 'listing':file_proof(listing),
+                       'selected':len(active),'selected_ids':sorted(active), 'listing':file_proof(listing),
                        'list_command':['cargo',*contract['list']] if package else ['cargo','nextest','list',*options,'--message-format','json']}
                 if name=='language':
                     row.update(module_directory=str(directory), module_exit=0,
@@ -289,14 +323,20 @@ class WebOwnershipTests(unittest.TestCase):
                                module_results=file_proof(directory/'execution/results.json'))
                 else:
                     log = directory/(name+'-run.log')
-                    log.write_text(f'test {test} ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored;\n' if package else
-                                   f'PASS [ 0.1s] {binary} {test}\nSummary [ 0.1s] 1 test run: 1 passed\n')
+                    log.write_text(''.join('test '+i.split('\t',1)[1]+' ... ok\n' for i in sorted(active))+
+                                   f'test result: ok. {len(active)} passed; 0 failed; 0 ignored;\n' if package else
+                                   ''.join('PASS [ 0.1s] '+i.replace('\t',' ',1)+'\n' for i in sorted(active))+
+                                   f'Summary [ 0.1s] {len(active)} tests run: {len(active)} passed\n')
                     row.update(run_command=['cargo',*contract['run']] if package else ['cargo','nextest','run',*options,'--no-fail-fast'],
                                run_output=file_proof(log))
                 rows.append(row)
             receipt = {'tier':'tf','batch':True,'mode':'four-repository','required_owners':list(REQUIRED_OWNERS),
                        'identities':identities,'identities_after':copy.deepcopy(identities), 'outcome':'pass',
                        'filters':[],'list_only':False,'required_legs':list(REQUIRED_LEGS),'results':rows}
+            yield receipt, full, directory
+
+    def test_four_owner_verdict_rejects_partial_missing_duplicate_and_changed_sources(self):
+        with self.four_owner_protocol() as (receipt, full, directory):
             self.assertTrue(validate_four_receipt(receipt))
             for mutation in ('list-only', 'filtered', 'missing-owner', 'missing-hash', 'changed-hash',
                              'missing-leg', 'duplicate-leg', 'zero-selection', 'not-run', 'failure',
@@ -319,6 +359,90 @@ class WebOwnershipTests(unittest.TestCase):
                 elif mutation == 'missing-cwd': bad['results'][-1].pop('cwd')
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                     validate_four_receipt(bad)
+
+    def test_owner_denominators_and_migration_credit_survive_public_consumption(self):
+        from web_delivery import file_proof, read_proof
+        import importlib.util
+        with self.four_owner_protocol() as (receipt, full, directory):
+            rows, identities = receipt["results"], receipt["identities"]
+            # Exercise the real public consumer too. Only its external Git
+            # fingerprint is substituted, as for the module protocol fixture;
+            # source/resource/Cargo and every receipt validator remain real.
+            import types
+            spec = importlib.util.spec_from_file_location('public_owner_denominator',
+                       Path(__file__).resolve().parents[1]/'web-repository-fixture.py')
+            public = importlib.util.module_from_spec(spec); spec.loader.exec_module(public)
+            lang = Path(__file__).resolve().parents[2]
+            def public_check(value):
+                gate, output = directory/'gate.json', directory/'public-result.json'
+                gate.write_text(json.dumps(value))
+                args = types.SimpleNamespace(lang_repo=str(lang), web_repo=str(lang.parent/'auto-web'),
+                    ui_repo=str(lang.parent/'auto-ui'), man_repo=str(lang.parent/'auto-man'),
+                    down_repo=str(lang.parent/'auto-down'), phase='source-switched', gate_receipt=gate,
+                    distribution_receipt=None, require_complete=True, output=output)
+                def identity(path):
+                    name = Path(path).name
+                    return identities['language' if name=='auto-lang' else name.removeprefix('auto-')]
+                with patch.object(public.full, 'identity', side_effect=identity):
+                    self.assertEqual(public.run(args), 2)  # Distribution deliberately pending.
+                report = json.loads(output.read_text())
+                return next(r for r in report['checks'] if r['id']=='four-owner-actual-execution')
+            self.assertEqual(public_check(receipt)['status'], 'PASS')
+            for name, mutation in [('ui-full','omit'), ('ui-full','ignore'), ('ui-full','filter'),
+                                   ('language','omit'), ('man-t','omit'), ('ui-tu','omit')]:
+                row = next(r for r in rows if r['leg']==name)
+                saved = copy.deepcopy(row)
+                listing = Path(row['listing']['path']); original = listing.read_bytes()
+                log = Path(row['run_output']['path']) if name!='language' else None
+                original_log = log.read_bytes() if log else None
+                package = 'auto-ui-compiler' if name=='ui-tu' else None
+                victim = (sorted(full.baseline_for('tf',name)[1])[0] if name in ('language','ui-full')
+                          else row['selected_ids'][0])
+                binary, test = victim.split('\t',1)
+                try:
+                    if package:
+                        listing.write_text(''.join(line+'\n' for line in original.decode().splitlines()
+                                                   if line != test+': test'))
+                        _, active = full.libtest_selection(listing.read_text(),package)
+                    else:
+                        document = json.loads(original)
+                        case = document['rust-suites'][binary]['testcases']
+                        if mutation=='omit': del case[test]
+                        elif mutation=='ignore': case[test]['ignored']=True
+                        else: case[test]['filter-match']['status']='mismatch'
+                        listing.write_text(json.dumps(document))
+                        _, active = full.selection(document)
+                    self.assertEqual(len(active), saved['selected']-1, 'mutation must remove one selected ID')
+                    row.update(listing=file_proof(listing), selected=len(active), selected_ids=sorted(active),
+                               migrated_original_required=1000000)  # Never accepted as migration credit.
+                    if log:
+                        log.write_text(''.join('test '+i.split('\t',1)[1]+' ... ok\n' for i in sorted(active))+
+                                       f'test result: ok. {len(active)} passed; 0 failed; 0 ignored;\n' if package else
+                                       ''.join('PASS [ 0.1s] '+i.replace('\t',' ',1)+'\n' for i in sorted(active))+
+                                       f'Summary [ 0.1s] {len(active)} tests run: {len(active)} passed\n')
+                        row['run_output']=file_proof(log)
+                    with self.subTest(owner=name, mutation=mutation), self.assertRaisesRegex(
+                            ValueError, 'baseline coverage lost|below frozen minimum'):
+                        validate_four_receipt(receipt)
+                    if (name,mutation) in [('ui-full','omit'),('man-t','omit')]:
+                        self.assertEqual(public_check(receipt)['status'],'FAIL')
+                finally:
+                    listing.write_bytes(original)
+                    if log: log.write_bytes(original_log)
+                    row.clear();row.update(saved)
+            self.assertTrue(validate_four_receipt(receipt))
+            # Source-derived migration credit is legal only with actual passed
+            # destination IDs. Presence in a catalog/selection is insufficient.
+            executed = {i for r in rows if r['leg'] in MODULE_LEGS for i in r['selected_ids']}
+            for name in ('language','ui-full'):
+                row = next(r for r in rows if r['leg']==name)
+                ids, active = full.selection(json.loads(read_proof(row['listing'])))
+                _, credit = full.validate_owner_selection('tf',name,ids,active,full.tier_minimums(),
+                                   with_web=True,executed_migrations=executed)
+                self.assertGreater(credit,0)
+                with self.assertRaisesRegex(ValueError,'migrated original required tests were not executed'):
+                    full.validate_owner_selection('tf',name,ids,active,full.tier_minimums(),
+                                                  with_web=True,executed_migrations=set())
 
     def test_web_legs_require_real_complete_module_results_and_executed_counts(self):
         from web_delivery import file_proof
