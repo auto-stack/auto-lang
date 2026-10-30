@@ -374,5 +374,21 @@ class Controls(unittest.TestCase):
                     full.main(["tf", "--frozen-trees", "--list-only", "--output", str(Path(tmp) / "out")])
 
 
+class FixedStaticPreview(unittest.TestCase):
+    def test_periodic_static_preview_uses_stdout_without_case_output_writes(self):
+        from pathlib import Path
+        import subprocess
+        import sys
+        root = Path(__file__).resolve().parents[1]
+        command = full.module_queue_command(root, 'tf', [], True, root / 'target/not-created-preview', True)
+        self.assertNotIn('--out', command)
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        planned = json.loads(result.stdout)
+        self.assertIn('case-pilot', planned['selected_groups'])
+        self.assertEqual(planned['results'], [])
+        self.assertFalse(planned['gate_passed'])
+
+
 if __name__ == "__main__":
     unittest.main()

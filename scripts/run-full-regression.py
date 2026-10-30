@@ -452,8 +452,10 @@ def module_queue_command(lang,tier,filters,batch,output,list_only):
         command += ['all']
     else:
         command += ['--legacy-tier',tier,*filters]
-    command += ['--out',str(output)]
-    if list_only:command.append('--select-only')
+    if list_only:
+        command.append('--select-only')
+    else:
+        command += ['--out',str(output)]
     return command
 
 
@@ -514,7 +516,7 @@ def main(argv=None):
                     if code:
                         raise ValueError(f'language: fixed group tests failed ({code}); stopping')
                     if args.list_only:
-                        planned = json.loads((destination/'selection.json').read_text(encoding='utf-8'))
+                        planned = json.loads((out/'language-module-run.log').read_text(encoding='utf-8'))
                         record['declared_groups'] = planned['selected_groups']
                         record['executed'] = 0
                         total_selected += len(planned['selected_groups'])

@@ -27,6 +27,22 @@ class FixedGroups(unittest.TestCase):
             self.assertEqual(fixed.main(['--list']), 0)
         self.assertIn('parser:', out.getvalue())
 
+    def test_case_owner_rejection_precedes_all_final_output_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'protected-output'
+            with mock.patch.object(fixed, 'audit_suite_outputs', side_effect=ValueError('protected source domain')) as audit:
+                with self.assertRaisesRegex(ValueError, 'protected source domain'):
+                    fixed.main(['case-pilot', '--out', str(output)])
+                self.assertEqual(audit.call_count, 1)
+                self.assertFalse(output.exists())
+
+    def test_case_static_preview_never_writes_without_owner_admission(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(fixed, 'capture', side_effect=AssertionError('static preview must not build')):
+            output = Path(temp) / 'output'
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                fixed.main(['case-pilot', '--select-only', '--out', str(output)])
+            self.assertFalse(output.exists())
+
     def test_receipt_write_failure_preserves_previous_committed_result(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'results.json'
@@ -174,6 +190,47 @@ class FixedGroups(unittest.TestCase):
 
 
 class CacheOwnership(unittest.TestCase):
+    def test_process_and_partial_delete_failures_never_report_success(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cache = root / 'experimental/fixture/target'
+            cache.mkdir(parents=True)
+            (cache.parent / 'Cargo.toml').write_text('[workspace]\n')
+            item = cache / 'object.o'
+            item.write_bytes(b'cache')
+            with mock.patch.object(build_storage, 'ROOT', root):
+                with mock.patch.object(build_storage, 'refuse_active_processes', side_effect=ValueError('live process')):
+                    with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, 'live process'):
+                        build_storage.main([str(cache), '--apply', '--idle-confirmed'])
+                self.assertTrue(item.exists())
+                def partial_failure(path):
+                    item.unlink()
+                    raise OSError('injected mid-delete failure')
+                with mock.patch.object(build_storage, 'refuse_active_processes'), mock.patch.object(build_storage.shutil, 'rmtree', side_effect=partial_failure):
+                    with contextlib.redirect_stdout(io.StringIO()) as output, self.assertRaises(OSError):
+                        build_storage.main([str(cache), '--apply', '--idle-confirmed'])
+                    self.assertNotIn('file_data_bytes_reclaimed', output.getvalue())
+                self.assertTrue(cache.exists())
+
+    def test_shared_inode_bytes_are_not_claimed_as_reclaimed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cache = root / 'target/test-tools/regular'
+            cache.mkdir(parents=True)
+            original = root / 'protected-original'
+            original.write_bytes(b'protected')
+            import os
+            os.link(original, cache / 'one')
+            os.link(original, cache / 'two')
+            with mock.patch.object(build_storage, 'ROOT', root):
+                summary = build_storage.inspect(cache)
+                self.assertEqual(summary['unique_file_bytes'], 9)
+                self.assertEqual(summary['reclaimable_file_data_bytes'], 0)
+                with mock.patch.object(build_storage, 'reparse', side_effect=lambda p: p == cache.parent):
+                    with self.assertRaisesRegex(ValueError, 'reparse point/ancestor'):
+                        build_storage.inspect(cache)
+            self.assertEqual(original.read_bytes(), b'protected')
+
     def test_owned_preview_apply_and_protected_states(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -12,7 +12,7 @@
 - `cargo t parser`、`cargo t parser vm`：完整命名空间子树及配置内明确的集成测试。
 - `cargo t all`：显式语言仓全部固定组，不含UI/Man外仓批次，仍保ignore/平台/里程碑条件。
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
-- `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。
+- `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
 - `cargo t aavm --ignored [--test-name <名字>]`：明确手动重放已忽略实验；原平台/T3条件保持。
 
 同配置的多个组OR并集一次nextest调用、由原nextest并行调度；不同package/target/feature/profile/
@@ -62,12 +62,10 @@ heavy gate与里程碑条件保留。发现/选择/编译/实际执行/通过分
 模块并集。替代旧裸t+触面档叠跑；目录守恒用实际枚举/负控核，迁移用代表性真实入口和局部并集核。
 可复用本次有效单轮计量与定向验收，不因横切runner再重复全目录。统一门仍由merge持有。
 
-t/tv/tt/tb/th为截至2026-11-30的显式兼容导航，冻结旧身份映射完整叶；附加滤串只选择
-完整模块，不抽取模块内部分测试。旧列表保留为历史守恒审计。tf/taa/ta/t3的语言执行已转
-module runner；周期 `tf --batch` 消费 `periodic-module-schedule.json` 中逐个列出的recipe，
-生成实际叶清单并去重执行一次，旧tt/tb不再另跑。schedule漏新recipe或重复/未知recipe失败。
-UI/Man保留其owner腿与约定。周期触发仍为计划号%5、或>48h且有合并、缺回执即到期；主检出
-单实例，不成为每计划第二个全局门。T3/手动/ignored条件保留，不要求新增cargo all。
+tv/tt/tb/th截至2026-11-30保留原Cargo配置及profile过滤，旧列表只作迁移审计。
+语言周期入口tf/ta/t3显式调用固定all并集，taa调用默认ignored的aavm组；不读取旧recipe schedule或生成叶清单。
+UI/Man保留owner腿。周期触发仍为计划号%5、或>48h且有合并、缺回执即到期；主检出单实例，
+不成为每计划第二个全局门；T3/手动/ignored条件不绕过。显式全仓语言测试使用cargo t all。
 
 关联：[批量试点](batch-execution.md)、[治理守恒](governance-and-inventory.md)。
 
@@ -83,4 +81,4 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 
 独立module-case调用使用线程局部、panic-safe恢复的私有session作用域：源码闭包fixture的fresh/restart共享本次run输出域内的store，worker仍按原session ID区分存储。普通run_suite/run_suite_selected保留显式session跨调用共享，既有闭包20次restart采样及scalar性能合同不变。真实原fixture连续两次module-case调用都必须满足原fresh miss与restart hit，普通suite的原20次restart也须通过；不修改session字面量、原样本或expected来获得绿。
 
-慢聚合可以按具名长原子/周转矩阵隔离，其他快速反控保留同组；partition-policy的isolate_tests使用精确原测试名，生产与消费都拒绝缺失目标或重新混组，原子并集保持。
+慢测试沿用原资源/截止/条件并具名报告；本轮不以partition-policy或叶模块重新切分VM。进一步拆分由实际成本和职责另行决定。

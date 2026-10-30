@@ -20,6 +20,14 @@ def audit_case_outputs(catalog, selected, output, diagnostics, prepared):
     names = set(selected)
     suites = sorted({catalog['recipes'][m['recipe']]['suite'] for m in catalog['modules']
                      if m['id'] in names and catalog['recipes'][m['recipe']].get('runner') == 'case-suite'})
+    return audit_suite_outputs(ROOT.resolve(), suites, output, diagnostics, prepared)
+
+
+def audit_suite_outputs(root, suites, output, diagnostics, prepared):
+    """Original TestCase authority for the final output, independent of catalogs."""
+    from module_catalog import load, write
+    from prepare_tools import prepare
+    ROOT = Path(root)
     if not suites:
         return None
     diagnostics = Path(diagnostics).resolve()

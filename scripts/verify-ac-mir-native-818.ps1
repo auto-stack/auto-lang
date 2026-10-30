@@ -40,7 +40,7 @@ function Run-Runner-Tests([string]$Filter, [string]$Label) {
     if($Filter -notmatch '^test\((.*)\)$'){throw 'Unsupported historical filter; supply an explicit test-name pattern'}
     $pattern=$Matches[1]
     if($pattern.StartsWith('/') -and $pattern.EndsWith('/')){$pattern=$pattern.Substring(1,$pattern.Length-2)}
-    Invoke-ScopedTestModules -Repo $repo -TestRegex @($pattern) -Output (Join-Path $reportDir ($Label+'-modules'))
+    Invoke-FixedTestGroups -Repo $repo -Groups @('ace-host') -RequiredNamePatterns @($pattern) -Output (Join-Path $reportDir ($Label+'-modules'))
     $out=@('Complete module union executed')
     $code = $LASTEXITCODE
     Pop-Location

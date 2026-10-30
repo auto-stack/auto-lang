@@ -22,7 +22,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts/test-governance'))
 from process_capture import capture
-from output_admission import admit_output
+from output_admission import admit_output, audit_suite_outputs
 
 
 def write(path, value):
@@ -384,6 +384,8 @@ def main(argv=None):
                'config_sha256': value['_sha256'],
                'invocations': plan, 'results': [], 'gate_passed': False}
     if args.select_only:
+        if args.out and any(g['runner'] == 'case' for g in plan):
+            ap.error('Case select-only prints to stdout; --out needs authoritative Case admission and is execution-only')
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         if args.out:
             output = admit_output(args.out); output.mkdir(parents=True, exist_ok=False)
@@ -391,10 +393,9 @@ def main(argv=None):
         return 0
     (ROOT / 'target/test-groups').mkdir(parents=True, exist_ok=True)
     output = admit_output(args.out) if args.out else Path(tempfile.mkdtemp(prefix='run-', dir=ROOT / 'target/test-groups'))
-    if args.out:
-        output.mkdir(parents=True, exist_ok=False)
     with execution_lease():
         return execute_plan(plan, output, summary, args)
+
 
 
 def execute_plan(plan, output, summary, args):
@@ -405,6 +406,11 @@ def execute_plan(plan, output, summary, args):
         raise ValueError('fixed configuration changed after selection')
     started = time.monotonic()
     cpu_started = time.process_time()
+    suites = sorted({g['suite'] for g in plan if g['runner'] == 'case'})
+    if suites:
+        diagnostics = Path(tempfile.mkdtemp(prefix='admission-', dir=ROOT / 'target/test-groups'))
+        summary['output_admission'] = audit_suite_outputs(ROOT, suites, output, diagnostics, prepared)
+    output.mkdir(parents=True, exist_ok=True)
     write(output / 'selection.json', summary)
     write(output / 'results.json', summary)
     for index, group in enumerate(plan):
@@ -443,6 +449,10 @@ def execute_plan(plan, output, summary, args):
             commands.append(meter)
     for path in output.rglob('*.meter.json'):
         commands.append(json.loads(path.read_text()))
+    admission = summary.get('output_admission')
+    if admission:
+        for path in Path(admission['diagnostics']).rglob('*meter.json'):
+            commands.append(json.loads(path.read_text()))
     summary['resources'] = {
         'measured_descendant_cpu_ms': sum(m['workload_cpu_ms'] for m in commands),
         'runner_cpu_ms': (time.process_time() - cpu_started) * 1000,

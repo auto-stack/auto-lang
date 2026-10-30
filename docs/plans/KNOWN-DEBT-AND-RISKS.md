@@ -1,5 +1,7 @@
 ### Plan 896（2026-10-31，迁移发现：此前未注册 Cargo 测试目标）
 
+- **F-896-R4-01..04（独立阶段审查，合同内修复，非豁免）**：9464b7263 上输出域审查、5个活跃PS消费者、规范旧规则、同选面对照缺失；已在同树修补并补实跑/反例，等待绑定修复提交的独立定向复核。r7新增范围尚待本会话授权核对，当前Plan不作完成或合入声明。见 attachments/896/review-r4.md 与 implementation-summary.md。
+
 - **D-896-BASELINE-01（待修复，owner=各 crate）**：显式固定组 `all` 的一次真实 Cargo 发现暴露四个原 7165 义务目录之外的编译红：`shim-metadata` lib tests 两处 E0061（8 参数接口传 7）；`auto-gen` 集成测试 `v02_compat_golden` / `v03_failure_semantics` E0433（缺 auto_lang 开发依赖）；`auto-macros` 的 `value_macro_tests` 四处 E0308；`auto-cache` lib tests E0063（ShimMethod 初始化缺 trait_name）。本计划未改这些测试/接口源码，不静默删组或豁免为通过；完整 `all` 目前不得声称绿色。原始 command/编译诊断在 896 本地迁移发现收据，范围/哈希见执行摘要。修复这些原有目标另行立项，不影响原受管义务迁移守恒结论。
 
 ### Plan 863（2026-10-30，final review R1，84f1d2054）

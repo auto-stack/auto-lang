@@ -88,7 +88,7 @@ function Run-Runner-Tests([string]$Filter, [string]$Label, [string[]]$RequiredId
     Write-Host "== $Label (main workspace, filter: $Filter)"
     Push-Location $repo
     . (Join-Path $repo 'scripts/test-governance/invoke-modules.ps1')
-    Invoke-ScopedTestModules -Repo $repo -TestNames @($Filter) -Output (Join-Path $reportDir ($Label+'-modules')) -RequiredIds $RequiredIds
+    Invoke-FixedTestGroups -Repo $repo -Groups @('ace-host') -RequiredNamePatterns @([regex]::Escape($Filter)) -Output (Join-Path $reportDir ($Label+'-modules')) -RequiredIds $RequiredIds
     $out=@('Original identities checked in module execution receipt')
     $code = $LASTEXITCODE
     Pop-Location

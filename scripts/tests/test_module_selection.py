@@ -207,24 +207,28 @@ $script:fixture=Get-Content -LiteralPath $Data -Raw
 function global:cargo {
  param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CargoArgs)
  $index=[Array]::IndexOf($CargoArgs,'--out')
- $directory=Join-Path $CargoArgs[$index+1] 'execution'
+ if($CargoArgs[0] -ne 't' -or $CargoArgs[1] -ne 'ace-host'){throw 'not an explicit fixed-group dispatch'}
+ $directory=$CargoArgs[$index+1]
  New-Item -ItemType Directory -Path $directory -Force | Out-Null
  if($script:fixture -ne 'null'){Set-Content -LiteralPath (Join-Path $directory 'results.json') -Value $script:fixture}
  $global:LASTEXITCODE=0
  Write-Output 'required_original PASS (prose is not evidence)'
 }
 . $Helper
-try {Invoke-ScopedTestModules -Repo (Get-Location).Path -TestNames @('required_original') -Output $OutputRoot -RequiredIds @('required_original');exit 0}
+try {Invoke-FixedTestGroups -Repo (Get-Location).Path -Groups @('ace-host') -Output $OutputRoot -RequiredIds @('required_original') -RequiredNamePatterns @('Consumer[.]required_');exit 0}
 catch {Write-Output $_;exit 1}
 '''
-        valid={'scope':'module','complete':True,'gate_passed':True,'results':[
-            {'outcome':'PASS','exit':0,'applicable':['r|unittest|test_controls.Consumer.required_original']}]}
+        valid={'schema':'fixed-test-run/1','gate_passed':True,'results':[
+            {'groups':['ace-host'],'outcome':'PASS','executed':1,'results':{'p::binary$test_controls.Consumer.required_original':{'event':'ok'}}}]}
         with tempfile.TemporaryDirectory() as directory:
             base=Path(directory);path=base/'control.ps1';path.write_text(script)
-            for mutation in ('valid','missing-id','failed-body','missing-receipt','only-not-applicable'):
+            for mutation in ('valid','missing-id','failed-body','missing-receipt','only-not-applicable','wrong-group','zero-body','missing-pattern'):
                 value=copy.deepcopy(valid)
-                if mutation=='missing-id':value['results'][0]['applicable']=['r|binary|other']
-                if mutation=='failed-body':value['results'][0]['exit']=1
+                if mutation=='missing-id':value['results'][0]['results']={'p::binary$other':{'event':'ok'}}
+                if mutation=='failed-body':value['results'][0]['results']['p::binary$test_controls.Consumer.required_original']['event']='failed'
+                if mutation=='wrong-group':value['results'][0]['groups']=['daily']
+                if mutation=='zero-body':value['results'][0]['executed']=0
+                if mutation=='missing-pattern':value['results'][0]['results']={'p::binary$required_original':{'event':'ok'}}
                 if mutation=='only-not-applicable':value['results'][0]['outcome']='NOT_APPLICABLE'
                 if mutation=='missing-receipt':value=None
                 data=base/(mutation+'.json');data.write_text(json.dumps(value))

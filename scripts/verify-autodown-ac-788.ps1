@@ -508,9 +508,8 @@ Run-CargoFamily "auto-lang plan788_r3_ (integration, serial)" @("test", "-p", "a
 . (Join-Path $root 'scripts/test-governance/invoke-modules.ps1')
 $moduleOutput=Join-Path $root ('target/modules-788-closeout-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $moduleOutput -Force | Out-Null
-$moduleChanges=Join-Path $moduleOutput 'closeout-module-paths.txt'
-@('crates/auto-lang-core/src/test_cases/ac.rs','experimental/ac-case-worker/','experimental/ac-artifact-probe/') | Set-Content -LiteralPath $moduleChanges -Encoding utf8
-Invoke-ScopedTestModules -Repo $root -ChangesFile $moduleChanges -Output (Join-Path $moduleOutput 'execution')
+# Worker/artifact package suites are executed below; this gate covers their language-host consumer.
+Invoke-FixedTestGroups -Repo $root -Groups @('ace-host') -Output (Join-Path $moduleOutput 'execution')
 Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release") @() 1
 # gc_budget_churn_512 is the probe's OWN design ignore: its closeout
 # contract executes it explicitly with --ignored (documented in the test).

@@ -164,9 +164,8 @@ if (-not $SkipMainGates) {
     }
     Invoke-Step 'affected module union' {
         . (Join-Path $RepoRoot 'scripts/test-governance/invoke-modules.ps1')
-        $changes=Join-Path $ReceiptsDir 'affected-paths.txt'
-        'experimental/ac-mir-native/' | Set-Content -LiteralPath $changes -Encoding utf8
-        Invoke-ScopedTestModules -Repo $RepoRoot -ChangesFile $changes -Output (Join-Path $ReceiptsDir 'modules')
+        # Native implementation plus its real language-host consumer, explicitly selected.
+        Invoke-FixedTestGroups -Repo $RepoRoot -Groups @('ace-native','ace-host') -Output (Join-Path $ReceiptsDir 'modules')
     }
 }
 
