@@ -221,6 +221,19 @@ pending_closeout_gates: merge 持有冻结 tm 完整模块/消费者并集门（
 next: merge（T-12）
 
 
+2026-10-30 / stage: merge / plan_id: PLAN-895 / plan_revision: r2 / outcome: pass / delivery_commit: 1dc06a9df3f8c562d607a5a92e94cd578f8f876c
+prepared: reviewed baseline 05de75239（r2 final pass）+ 冻结 SD-01..04 增量（随分支提交）
+landed: rebase master 后 range-diff 6/6 全等（05de75239→1dc06a9df 安全重写映射）；主检出 git merge --ff-only plan-895-dev；master tip=delivery commit；线性历史无合并提交
+canonical_verified: docs/specs/auto-test-case/{test-purpose-and-admission(new,c3d561d9),module-selection(a2788587),governance-and-inventory(fdbe610f),project(1c1cf7eb),plans(83cc97c5)} 全部在 landed commit 上验签
+merge_gate: tm infra/selection infra/meter 完整闭包 9 模块 gate_passed=True（冻结态 05de75239；零 Rust 编译面变更；spot-checks 另有 ace/lowering、book-listing PASS 与 infra/meter 环境归因记录）
+archived: docs/plans/archive/895-test-purpose-audit-and-daily-admission.md（git mv；status=archived；12/12 任务）
+production_artifacts: 本计划零产品代码变更（Python 治理/目录/文档），无 release binary/web bundle 陈旧面
+batch_regression: 895%5==0 且 >887 收据 → 到期，落地后交 auto-plan-regress 主检出单实例执行
+next: cleaned（worktree 组清理）+ regress
+
+stage: goal | plan_id: PLAN-895 | plan_revision: r2 | round: 2 | from: merge | to: regress | status: archived | outcome: pass | worktree: (removed below) | commit: 1dc06a9df | next: regress-batch
+
+
 ## 10. 待澄清事项
 
 - 当前无阻止起草的范围问题。用户尚未要求执行895；本次只交付计划。
