@@ -171,6 +171,51 @@ mod batch {
     }
 
     #[test]
+    fn original_closures_fresh_restart_session_is_private_to_each_suite_invocation() {
+        let suite = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("test/cases/ace-m1/closures-source-865.suite.ad");
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("plan888-closures-{}-{stamp}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let worker =
+            std::env::var_os("AC_AV_CASE_WORKER").expect("explicit prebuilt AV worker required");
+        let mut identities = None;
+        for index in 0..2 {
+            let process = std::process::Command::new(env!("CARGO_BIN_EXE_auto-case"))
+                .env("AC_AV_CASE_WORKER", &worker)
+                .args(["module-case", "--suite"])
+                .arg(&suite)
+                .args(["--case", "ace.m1.k01-av865", "--out"])
+                .arg(root.join(format!("run-{index}")))
+                .output()
+                .unwrap();
+            assert_eq!(
+                process.status.code(),
+                Some(0),
+                "{} {}",
+                String::from_utf8_lossy(&process.stdout),
+                String::from_utf8_lossy(&process.stderr)
+            );
+            let report: serde_json::Value = serde_json::from_slice(&process.stdout).unwrap();
+            assert_eq!(report["selected_gate_exit"], 0);
+            let rows = report["selected_report"]["results"].as_array().unwrap();
+            assert_eq!(rows.len(), 2);
+            assert!(rows.iter().all(|r| r["status"] == "PASS"), "{rows:?}");
+            let current: Vec<_> = rows.iter().map(|r| r["identity"].clone()).collect();
+            if let Some(previous) = &identities {
+                assert_eq!(&current, previous);
+            } else {
+                identities = Some(current);
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn combined_d3_counts_real_producers_maps_source_and_preserves_parent_failures() {
         let mut values = pilot("combined-d3");
         let report =

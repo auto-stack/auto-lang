@@ -1416,6 +1416,9 @@ fn run_check_with_transport(
     // across worker processes; the PARENT owns cleanup. Without a session
     // the check's own artifact dir hosts a private per-request store.
     let store_root = match &av.session {
+        // Source-closure fresh/restart checks share a session within one
+        // suite run, not with an earlier invocation of the same fixture.
+        Some(_) if family == RecipeFamily::ClosuresSource => _run_dir.join("av-closures-sessions"),
         Some(s) => std::env::temp_dir().join(format!("av798-session-{s}")),
         None => artifact_dir.join("store"),
     };

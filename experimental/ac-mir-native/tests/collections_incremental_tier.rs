@@ -436,12 +436,18 @@ fn collections_prepared_runtime_drift_refuses_before_publication() {
     let dir = directory("prepared-runtime-drift");
     let store = dir.join("store");
     let output = dir.join("output");
+    // Corrupt only an owned copy. A process-local mutex cannot protect
+    // sibling nextest processes using the shared product runtime.
+    let shared = ac_mn::collections_runtime::prepare(None).unwrap().library;
+    let shared_bytes = std::fs::read(&shared).unwrap();
+    let library = dir.join("owned-collections-runtime.lib");
+    std::fs::copy(&shared, &library).unwrap();
     let (mut session, first) = CollectionsIncrementalSession::new(
         OLD,
         "main",
         MnDriver::with_store(&store, "p889").unwrap(),
         &output,
-        None,
+        Some(&library),
     )
     .unwrap();
     assert_eq!(first.exit_code, Some(42));
@@ -455,7 +461,6 @@ fn collections_prepared_runtime_drift_refuses_before_publication() {
     let receipt = std::fs::read(&first.build.receipt_path).unwrap();
     let db = ac_artifact_probe::store::ManagedStore::open_existing(&store).unwrap();
     let roots = db.root_artifacts("p889", "soft").unwrap();
-    let library = ac_mn::collections_runtime::prepare(None).unwrap().library;
     struct Restore {
         path: std::path::PathBuf,
         bytes: Vec<u8>,
@@ -500,5 +505,6 @@ fn collections_prepared_runtime_drift_refuses_before_publication() {
         .unwrap();
     assert_eq!(run.exit_code, Some(43));
     assert_eq!(run.work.obs.counters.get("cache_hit_coff"), Some(&1));
+    assert_eq!(std::fs::read(&shared).unwrap(), shared_bytes);
     session.close();
 }

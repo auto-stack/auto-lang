@@ -1040,6 +1040,13 @@ fn ace_m1_native_collections_889_report_runtime_content_identity_is_current() {
     let lib_rel =
         runtime_rel.join("target/x86_64-pc-windows-msvc/release/ac_collections_runtime.lib");
     let shared_library = repo.join(&lib_rel);
+    // This case must prepare its own attested input: nextest can run it
+    // before every other collections test on a clean worktree.
+    let prepared = crate::test_cases::ac_mn::current_collections_toolchain_identity();
+    assert!(
+        prepared.contains_key("collections-runtime-content"),
+        "collections runtime preparation failed: {prepared:?}"
+    );
     let shared_bytes = std::fs::read(&shared_library).unwrap();
     let mirror = root.join("runtime-mirror");
     for relative in [runtime_rel, text_rel] {

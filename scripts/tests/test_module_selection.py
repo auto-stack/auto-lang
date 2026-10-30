@@ -139,6 +139,14 @@ class ModuleSelection(unittest.TestCase):
         with self.assertRaises(ValueError):verify(merged,policy)
         stale=copy.deepcopy(policy);stale['rules'][0]['topic']='renamed'
         with self.assertRaises(ValueError):make_catalog({'r':{}},{'r':document},policy=stale)
+        named=copy.deepcopy(policy);named['rules'][0].update(max_cases=20,isolate_tests=['topic::b'])
+        split=make_catalog({'r':{}},{'r':document},policy=named)
+        self.assertEqual(sorted(len(m['obligations']) for m in split['modules']),[1,2])
+        self.assertEqual({i for m in split['modules'] for i in m['obligations']},{r['id'] for r in value['obligations']})
+        merged=copy.deepcopy(split);merged['modules'][0]['obligations']+=merged['modules'][1]['obligations'];del merged['modules'][1]
+        with self.assertRaises(ValueError):verify(merged,named)
+        missing=copy.deepcopy(named);missing['rules'][0]['isolate_tests']=['topic::gone']
+        with self.assertRaises(ValueError):make_catalog({'r':{}},{'r':document},policy=missing)
 
     def test_golden_wrapper_requires_every_original_child_and_exact_file_identity(self):
         from execution_trace import validate_bindings
