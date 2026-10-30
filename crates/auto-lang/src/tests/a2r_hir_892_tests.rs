@@ -281,3 +281,43 @@ fn a2r_hir_892_certify_negative_controls_reject() {
     let resp = run_certify(b01, None, Some(&wrong_ref));
     assert_eq!(resp["verdict"], "REJECTED", "wrong reference must reject");
 }
+
+/// F-2 repair control (review): a PINNED worker content credential that
+/// disagrees with the observed binary is an infra ERROR — never a language
+/// verdict; a matching pin passes.
+#[test]
+fn a2r_hir_892_worker_credential_pin() {
+    let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap()
+        .to_path_buf();
+    let exe = worker_exe(&repo);
+    let bytes = std::fs::read(&exe).unwrap();
+    let real = auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(&bytes));
+    let run = |pin: &str| {
+        std::env::set_var("AC_A2X_HIR_WORKER_SHA256", pin);
+        let r = run_suite(
+            &suite_dir().join("a2r-hir-892.suite.ad"),
+            &temp_root(&format!("pin-{}", pin.len())).join("out"),
+            &Limits::defaults(),
+        );
+        std::env::remove_var("AC_A2X_HIR_WORKER_SHA256");
+        r.expect("suite loads")
+    };
+    // wrong pin -> every check is infra ERROR with the credential diagnosis
+    let wrong = run("deadbeef");
+    assert_eq!(wrong.results[0].status, Status::Error, "wrong pin is infra");
+    assert!(
+        wrong.results[0].detail.as_deref().unwrap_or("").contains("credential mismatch"),
+        "diagnosis present: {:?}",
+        wrong.results[0].detail
+    );
+    // matching pin -> green (the observed hash is accepted)
+    let right = run(&real);
+    assert!(
+        right.results.iter().all(|r| r.status == Status::Pass),
+        "matching pin passes"
+    );
+}

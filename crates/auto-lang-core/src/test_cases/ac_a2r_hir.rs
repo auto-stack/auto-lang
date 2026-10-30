@@ -38,6 +38,11 @@ use super::avm::Verdict;
 pub const A2R_HIR_RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
 pub const A2X_WORKER_PROTOCOL: &str = "a2xworker/1";
 pub const A2X_WORKER_ENV: &str = "AC_A2X_HIR_WORKER";
+/// F-2 (review): OPTIONAL pinned content credential for the prebuilt
+/// worker (sha256 hex). When set, a worker binary whose hash disagrees is
+/// an infra ERROR — the daily channel never trusts an unidentified tool
+/// (plan D-04: 不确定即不授信).
+pub const A2X_WORKER_SHA_ENV: &str = "AC_A2X_HIR_WORKER_SHA256";
 
 /// Locate the PREBUILT a2x worker. Env override first (re-read every
 /// call); otherwise the conventional release location next to the repo
@@ -126,6 +131,22 @@ pub fn run_check(
         .ok_or_else(|| "a2x_hir adapter needs the resolved entry input".to_string())?;
 
     let worker = worker_binary()?;
+    // F-2 (review): content credential — the observed binary hash travels
+    // with the verdict; a pinned expectation (if declared) must match or
+    // the check is infra, never a language verdict.
+    let worker_bytes = std::fs::read(&worker).map_err(|e| format!("read worker: {e}"))?;
+    let worker_sha = hex(&sha256(&worker_bytes));
+    if let Ok(pinned) = std::env::var(A2X_WORKER_SHA_ENV) {
+        if !pinned.is_empty() && pinned != worker_sha {
+            return Ok(Verdict {
+                status: Status::Error,
+                detail: Some(format!(
+                    "worker content credential mismatch: pinned {pinned} != observed {worker_sha}"
+                )),
+                ..Verdict::pass()
+            });
+        }
+    }
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("artifact dir: {e}"))?;
     let source_path = artifact_dir.join("source.at");
     std::fs::write(&source_path, &source_bytes)
@@ -275,7 +296,7 @@ pub fn run_check(
             };
             if v.status == Status::Pass {
                 v.detail = Some(format!(
-                    "a2x-hir daily emit: 4-file actual set byte-identical to the reviewed golden (manifest sha256 {manifest_sha}, worker spawn only)"
+                    "a2x-hir daily emit: 4-file actual set byte-identical to the reviewed golden (manifest sha256 {manifest_sha}, worker {worker_sha}, worker spawn only)"
                 ));
             }
             Ok(v)

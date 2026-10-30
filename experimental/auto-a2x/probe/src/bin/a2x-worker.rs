@@ -175,6 +175,7 @@ fn file_records(files: &[(String, String)]) -> Vec<serde_json::Value> {
 }
 
 fn write_out_dir(dir: &str, out: &EmitOutcome) {
+    let _ = dir; // callers pass the canonicalized dir already
     let dir = PathBuf::from(dir);
     if let Err(e) = std::fs::create_dir_all(&dir) {
         fail(&format!("create out_dir: {e}"));
@@ -213,9 +214,15 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let out_dir = v["out_dir"]
         .as_str()
         .unwrap_or_else(|| fail("out_dir required"));
-    let reference_path = v["reference_path"]
-        .as_str()
-        .unwrap_or_else(|| fail("reference_path required (the case's hand-written reference)"));
+    let reference_path = {
+        let raw = v["reference_path"]
+            .as_str()
+            .unwrap_or_else(|| fail("reference_path required (the case's hand-written reference)"));
+        // F-3: canonicalize at entry — relative paths break nothing
+        std::fs::canonicalize(raw)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|e| fail(&format!("canonicalize reference: {e}")))
+    };
     let oracle_kind = v["oracle_kind"].as_str().unwrap_or("value");
     let oracle_line = match oracle_kind {
         "value" => format!(
@@ -244,7 +251,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let (actual_out, actual_err) = compile_and_run(&dir, "main.rs", "a2x_actual.exe");
     let actual_wall_ms = t0.elapsed().as_millis() as u64;
     // independent hand-written reference: compile + run separately
-    let reference_src = std::fs::read_to_string(reference_path)
+    let reference_src = std::fs::read_to_string(&reference_path)
         .unwrap_or_else(|e| fail(&format!("read reference {reference_path}: {e}")));
     std::fs::write(dir.join("reference.rs"), &reference_src)
         .unwrap_or_else(|e| fail(&format!("write reference: {e}")));
@@ -369,30 +376,62 @@ fn toolchain_vv() -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 
+/// 852 budget lines (plan §5.6): compile <=120s, run <=30s; streams are
+/// capped at 1MiB each (overflow terminates the tree — never an unbounded
+/// reader). F-1 (review): the ac-core contained executor provides the
+/// CREATE_SUSPENDED + Job-subtree + single-deadline + full-collection
+/// contract; a timeout kills the WHOLE owned tree and is a controlled
+/// refusal, never a hang.
+const COMPILE_DEADLINE_SECS: u64 = 120;
+const RUN_DEADLINE_SECS: u64 = 30;
+const STREAM_CAP: usize = 1024 * 1024;
+
+fn contained(
+    cmd: &mut Command,
+    deadline: std::time::Duration,
+) -> auto_ac_prototype::link::CapturedRun {
+    use auto_ac_prototype::link::{run_deadlined_captured, CaptureCaps, SubprocError};
+    match run_deadlined_captured(
+        cmd,
+        deadline,
+        CaptureCaps {
+            stdout_max: STREAM_CAP,
+            stderr_max: STREAM_CAP,
+        },
+    ) {
+        Ok(r) => r,
+        Err(SubprocError::Deadline) => fail("deadline: the owned tree was killed before finishing"),
+        Err(SubprocError::Spawn(e)) => fail(&format!("spawn: {e}")),
+        Err(SubprocError::ContainmentUnavailable(d)) => {
+            fail(&format!("containment unavailable: {d}"))
+        }
+        Err(other) => fail(&format!("contained run failed: {other:?}")),
+    }
+}
+
 fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String) {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let exe = dir.join(exe_name);
-    let out = match Command::new(&rustc)
+    let mut compile = Command::new(&rustc);
+    compile
         .args(["--edition", "2021", "-o"])
         .arg(&exe)
         .arg(src)
-        .current_dir(dir)
-        .output()
-    {
-        Ok(o) => o,
-        Err(e) => fail(&format!("spawn {rustc}: {e}")),
-    };
-    if !out.status.success() {
+        .current_dir(dir);
+    let out = contained(
+        &mut compile,
+        std::time::Duration::from_secs(COMPILE_DEADLINE_SECS),
+    );
+    if out.exit_code != Some(0) {
         fail(&format!(
             "{src} compile failed: {}",
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    let run = match Command::new(&exe).current_dir(dir).output() {
-        Ok(o) => o,
-        Err(e) => fail(&format!("run {exe_name}: {e}")),
-    };
-    if !run.status.success() {
+    let mut run = Command::new(&exe);
+    run.current_dir(dir);
+    let run = contained(&mut run, std::time::Duration::from_secs(RUN_DEADLINE_SECS));
+    if run.exit_code != Some(0) {
         fail(&format!("{exe_name} exit non-zero"));
     }
     (
