@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-889
-status: execution_done
+status: reviewed
 feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实函数增量）
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -194,7 +194,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [x] |
-| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
+| T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
 | T-09 | merge | T-08 | SD-01..05、索引/ledger、逐源M1绑定来源/限制、交接N与S/H；归档及真实delivery记录 | AC-09 | [ ] |
 | T-10 | merge | T-09 | wt-guard clean才移除树/分支/无兄弟组；记录10/10和cleaned收据，typed后继仍未因本包自动实施 | AC-09 | [ ] |
@@ -481,3 +481,14 @@ stage:work | plan_revision:2 | outcome:pass | repair_commit:44ed8db40 | worktree
 - 本地baseline/repair-gate-cold-cte-replay.log SHA256 `242c13c06be17093f4ba5bbd2f15a4e28af6ebcb98417fb2d644e4c783c47bba`。
 - 本地baseline/merge-cargo-t.log SHA256 `fd76d8ce501cf42f3f446a82b9bcb8d89fc29a2f4a10f59bf5b786e8b358a362`。
 goal_receipt: objective=完成计划889 | goal_round=10 | stage=work(repair) | outcome=execution_done | completed_tasks=6/10 | next=review(affected) | blocker=none | goal_active=true。
+
+
+### 2026-10-30 final re-review第11轮：F889-M1 closed，pass
+
+stage:review | review_scope:final(affected repair) | reviewer_identity/limitations:Codex /root，同实施聊天的单独artifact复审阶段，未冒充外部context；实施已停写 | plan_id:PLAN-889 | plan_revision:2 | outcome:pass | reviewed_commit:44ed8db40ad69334abd477c879450bcbf423c4e5 | previous_reviewed_commit:e188033c4e7866d19bc4e152937e6e1052b8ac69 | worktree:D:/autostack/.wt/lang-889/auto-lang | branch:plan-889-dev | dependencies:原auto-down/UI只读pin未变 | next:merge。
+- F889-M1 closing oracle复核：git diff只1个test文件，真实源/配置/已认证库物理复制，worker真实read/hash/身份query仍生产路径；同长度bitflip仍使collections-runtime-content轴STALE，恢复原字节仍Fresh，断言未软化；原共享产品库前后逐字相等。拷贝无链接、不绕过runtime source/build/content admission；AUTO_LANG_ROOT在该测试进程由RAII还原，同模块libtest由既有case锁约束，nextest进程环境独立。6个889非ignored真实多进程并行场景全通过，包含两条原实际受扰失败、source40/whole-copy实反控，不靠串行filter过门。F889-M1闭合，AC-05/06/07 pass。
+- 未改任何生产compiler/runtime/cache/protocol、采样器、依赖、原源/oracle/绑定或配置/门限；e188033c4的AC-01..04/SD-01..05结论和精确性能/512证据按此差额继续有效。SD草案SHA仍4c8f12234cd52093f401fb1e3692e6050d14d9247bb746d617f4f706a2449eaa，现行Spec/input版本同前。无新增debt candidate或in-contract延期，健康检查/工作树clean通过；root43条既有warning无新增。
+- 两条旧timeout代表隔离重放通过只作归因证据；第一轮裸t的13个timeout/2fail与3080未跑仍保留失败，不据此变pass。统一门必须在此新冻结上由merge重新实跑，并取得完整成功。没有在re-review重跑t/tv/正式性能/512或不相干档。
+- pending_closeout_gates:merge-owned裸cargo t、必要cargo tv、实际experimental定向面、canonical/ledger/index/archive/guard清理。更新final pass不授权提前合入。当前7/10，T-08..10未勾。
+
+goal_receipt: objective=完成计划889 | goal_round=11 | stage=review(final affected repair) | outcome=pass | completed_tasks=7/10 | next=merge | blocker=none | goal_active=true。
