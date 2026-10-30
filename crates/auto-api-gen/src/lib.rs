@@ -1,5 +1,9 @@
 //! # auto-api-gen
 //!
+//! PLAN-890 T-04: shared_generation/rust_workspace/sidecar/source_owner are
+//! compatibility paths to auto-generation-core. HTTP/non-HTTP generation
+//! dispatch remains here until the separately authorized T-06 migration.
+//!
 //! API server/client generation core (PLAN-815 T-04) — the single-algorithm
 //! home for the generic API extraction/transpilation and rust-server /
 //! vue-client / tauri-command generation extracted from `auto-man`'s

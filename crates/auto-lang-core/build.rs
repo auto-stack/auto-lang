@@ -23,6 +23,7 @@ const IDENTITY_SOURCE_CRATES: &[&str] = &[
     "auto-test-case",
     "auto-text-core",
     "auto-val",
+    "auto-web-contract",
     "shim-metadata",
 ];
 // 具名清单中不在 crates/ 下的成员：vendor/ 路径（相对仓库根）。
@@ -67,7 +68,14 @@ fn main() {
     // 只覆盖实际存在的源——与旧全扫描"存在即扫"语义对齐；完整检出下
     // 清单全命中）。
     for crate_name in IDENTITY_SOURCE_CRATES {
-        let dir = root.join("crates").join(crate_name);
+        let dir = if *crate_name == "auto-web-contract" {
+            std::path::PathBuf::from(
+                std::env::var("DEP_AUTO_WEB_CONTRACT_ROOT")
+                    .expect("Cargo-selected auto-web-contract source metadata missing"),
+            )
+        } else {
+            root.join("crates").join(crate_name)
+        };
         if dir.is_dir() {
             collect(&dir, &format!("crates/{crate_name}"), &mut inputs);
         }

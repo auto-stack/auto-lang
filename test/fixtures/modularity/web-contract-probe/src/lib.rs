@@ -1,8 +1,7 @@
 //! PLAN-890 feasibility consumer. This compiles the actual single-source
 //! contract without depending on Core, VM, Axum, UI or Man. It is a bounded
 //! source probe; production package/type relocation is not complete yet.
-#[path = "../../../../../crates/auto-lang-core/src/http_service_config/contract.rs"]
-pub mod contract;
+pub use auto_web_contract as contract;
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,18 @@
+[package]
+name = "auto-generation-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+auto-lang-core = { path = "../auto-lang-core" }
+auto-project-model = { path = "../auto-project-model" }
+auto-val = { path = "../auto-val" }
+sha2 = "0.10"
+toml = "0.8"
+semver = "1"
+regex = "1"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

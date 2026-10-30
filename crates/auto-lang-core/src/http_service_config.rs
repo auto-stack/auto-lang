@@ -1,12 +1,11 @@
 //! HTTP service runtime and public configuration facade.
 //!
 //! PLAN-890 bounded contract cut: configuration/validation/pure policy have
-//! one source in contract.rs; mutable rate limits and active service assembly
+//! one source in auto-web-contract; mutable rate limits and active service assembly
 //! stay here until the Web runtime migration. Public paths re-export the same
 //! types rather than maintaining duplicate DTOs.
 
-mod contract;
-pub use contract::*;
+pub use auto_web_contract::*;
 
 use std::collections::HashMap;
 use std::net::IpAddr;

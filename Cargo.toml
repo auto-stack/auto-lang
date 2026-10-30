@@ -94,6 +94,7 @@ members = [
     # rust_sidecar effect adapter + shared rust workspace layout, extracted
     # from auto-man (owner: lang-service-adapter; man/ui域双消费).
     "crates/auto-api-gen",
+    "crates/auto-generation-core",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [

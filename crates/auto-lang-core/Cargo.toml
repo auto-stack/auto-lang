@@ -31,6 +31,8 @@ test-http-e2e = []
 test-case-batch = ["test-cases"]
 
 [dependencies]
+# Pure domain contract only; never the Web runtime.
+auto-web-contract = { path = "../../../auto-web/crates/auto-web-contract", version = "=0.1.0" }
 # PLAN-814 T-02 前端门面组闭包（ast/token/error/session/lexer 直连外部轻
 # crate；symbols/scope/scope_manager 另需 auto-val/ecow）。
 auto-ast = { path = "../auto-ast" }

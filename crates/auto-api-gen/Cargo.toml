@@ -6,6 +6,7 @@ description = "API server/client generation core (PLAN-815 T-04): single-algorit
 license = "MIT"
 
 [dependencies]
+auto-generation-core = { path = "../auto-generation-core", version = "=0.1.0" }
 # Language SDK single source (api/ast/compile/trans/config/http services).
 auto-lang-core = { path = "../auto-lang-core" }
 # rust_sidecar declaration single source (SidecarDecl parsing).

@@ -7,6 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
+auto-generation-core = { path = "../../../../crates/auto-generation-core", version = "=0.1.0" }
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 auto-project-model = { path = "../../../../crates/auto-project-model" }
 auto-val = { path = "../../../../crates/auto-val" }

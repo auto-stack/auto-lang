@@ -575,6 +575,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 name = "auto-api-gen"
 version = "0.1.0"
 dependencies = [
+ "auto-generation-core",
  "auto-lang-core",
  "auto-project-model",
  "auto-val",
@@ -709,6 +710,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto-generation-core"
+version = "0.1.0"
+dependencies = [
+ "auto-lang-core",
+ "auto-project-model",
+ "auto-val",
+ "regex",
+ "semver 1.0.28",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "auto-lang"
 version = "0.2.0"
 dependencies = [
@@ -813,6 +829,7 @@ dependencies = [
  "auto-test-case",
  "auto-text-core",
  "auto-val",
+ "auto-web-contract",
  "axum",
  "base64 0.22.1",
  "bincode",
@@ -1138,6 +1155,14 @@ dependencies = [
  "miette",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "auto-web-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

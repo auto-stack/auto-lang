@@ -9,6 +9,8 @@ publish = false
 [features]
 # Required opt-in source-boundary audit; the empty default is not a check.
 boundary = []
+# Match the formally delivered Core test-only interface gate.
+test-http-e2e = ["auto-lang-core/test-http-e2e"]
 
 [dependencies]
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }

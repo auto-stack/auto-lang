@@ -1,0 +1,14 @@
+[package]
+name = "web-foundation-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-web = { path = "../../../../../auto-web/crates/auto-web", version = "=0.1.0" }
+auto-web-contract = { path = "../../../../../auto-web/crates/auto-web-contract", version = "=0.1.0" }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+auto-generation-core = { path = "../../../../crates/auto-generation-core", version = "=0.1.0" }
+auto-api-gen = { path = "../../../../crates/auto-api-gen" }
