@@ -414,6 +414,23 @@ catch {Write-Output $_;exit 1}
             else: changed["rust-suites"]["binary"]["testcases"][names[0]]["ignored"]=True
             with self.assertRaises(ValueError):
                 make_catalog({"language":{}},{"language":changed},legacy=legacy)
+        added = copy.deepcopy(doc)
+        added['rust-suites']['binary']['testcases']['topic::new_formal'] = {
+            'ignored': True, 'filter-match': {'status': 'matches'}}
+        with self.assertRaisesRegex(ValueError, 'new ignored obligation'):
+            make_catalog({'language': {}}, {'language': added}, legacy=legacy)
+        migrated = copy.deepcopy(legacy)
+        migrated['extra_conditions'].append({'id': 'language|binary|topic::new_formal', 'kind': 'ignored'})
+        new_catalog = make_catalog({'language': {}}, {'language': added}, legacy=migrated)
+        self.assertEqual(len(new_catalog['obligations']), 5)
+        formal = next(m for m in new_catalog['modules'] if any('new_formal' in i for i in m['obligations']))
+        self.assertEqual(formal['conditions'][0]['kind'], 'ignored')
+        self.assertFalse(formal['legacy_tiers'])
+        changed = copy.deepcopy(added)
+        changed['rust-suites']['binary']['testcases'][names[0]]['ignored'] = True
+        migrated['extra_conditions'].append({'id': 'language|binary|' + names[0], 'kind': 'ignored'})
+        with self.assertRaisesRegex(ValueError, 'changed legacy applicability'):
+            make_catalog({'language': {}}, {'language': changed}, legacy=migrated)
 
     def test_python_exit_zero_cannot_hide_lost_or_skipped_case(self):
         import json
