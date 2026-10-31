@@ -578,18 +578,20 @@ fn full_corpus_true_chain() {
 }
 
 /// Admission negatives: wider HIR never passes the view into a target — a
-/// text-domain module is a NAMED domain rejection.
+/// collections-domain module is a NAMED domain rejection. (The text domain
+/// joined the admitted set with PLAN-902; its true chain lives in
+/// record_text_902.rs.)
 #[test]
 fn view_admission_rejects_wider_domains() {
-    use ace_core::source::compile_text_source;
-    let compiled = compile_text_source(
-        "fn pick(a str, b str) str { if a == b { return a }; return b }",
+    use ace_core::source::compile_collections_source;
+    let compiled = compile_collections_source(
+        "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    return xs.get(0)\n}",
         "neg",
         &[],
     )
-    .expect("text compile");
+    .expect("collections compile");
     let err = SemanticView::from_checked(&compiled.checked)
-        .expect_err("text domain must be rejected by the view");
+        .expect_err("collections domain must be rejected by the view");
     assert_eq!(err.code, "a2x.domain", "got: {}", err);
 }
 

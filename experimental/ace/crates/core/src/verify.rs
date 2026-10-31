@@ -165,8 +165,14 @@ impl CheckedFunction {
 /// every def's SIGNATURE participates in the context, so cross-function
 /// facts still come from a fully bound declaration set. Scalar/Core and
 /// Collections: collections additionally runs its same selected-body rules.
-/// The text/record domains own cross-body fixpoints and keep
-/// whole-module [`CheckedModule`] credentials.
+/// PLAN-902 (S-window T-02): the RECORD domain joins — its verification is
+/// per-body against the declaration context (no cross-body fixpoint; the
+/// whole-module `verify_record` is a plain `verify_domain`), and type-bound
+/// METHOD bodies are admitted exactly like free-function bodies (the
+/// receiver is `params[0]` of the signature, so the context already carries
+/// it). The text/text-record domains own the cross-body exclusivity fixpoint
+/// and keep whole-module [`CheckedModule`] credentials until the per-body
+/// resource credential (T-03) lands.
 pub fn verify_function(
     bundle: hir::Bundle,
     def_index: usize,
@@ -183,13 +189,13 @@ pub fn verify_function_ref(
 ) -> Result<CheckedFunction, Vec<Diagnostic>> {
     if !matches!(
         bundle.domain,
-        HirDomain::Scalar | HirDomain::Core | HirDomain::Collections
+        HirDomain::Scalar | HirDomain::Core | HirDomain::Collections | HirDomain::Record
     ) {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.domain",
             format!(
-                "function-level verification is available for scalar/core/collections domains, not `{}`; use the whole-module verifier of the document's own profile",
+                "function-level verification is available for scalar/core/collections/record domains, not `{}`; use the whole-module verifier of the document's own profile",
                 bundle.domain.as_str()
             ),
             Span { start: 0, end: 0 },
@@ -274,6 +280,11 @@ pub fn verify_function_ref(
     };
     let (body_id, name) = match &def.kind {
         hir::DefKind::Function { name, body, .. } => (*body, name.clone()),
+        // PLAN-902: record-domain methods verify per body like functions
+        // (receiver = signature params[0]); other domains keep the gate.
+        hir::DefKind::Method { name, body, .. } if bundle.domain == HirDomain::Record => {
+            (*body, name.clone())
+        }
         hir::DefKind::Method { .. } => {
             return Err(vec![Diagnostic::new(
                 Stage::Verify,

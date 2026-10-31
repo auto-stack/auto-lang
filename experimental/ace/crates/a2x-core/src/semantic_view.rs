@@ -1,30 +1,51 @@
-//! Target-neutral semantic view over verified core/scalar HIR (plan §2:
-//! "真实core/scalar Auto源码→既有受检前端/Checked HIR→共享最小语义view").
+//! Target-neutral semantic view over verified HIR (PLAN-892 AX-A: the
+//! core/scalar compute surface; PLAN-902 AX-B: widened to the record, text
+//! and text-record domains).
 //!
-//! The view is READ-ONLY over the checked bundle: it re-checks the two
-//! supported domains' admission surface (defense in depth on top of the
+//! The view is READ-ONLY over the checked bundle: it re-checks each
+//! supported domain's admission surface (defense in depth on top of the
 //! frontend, which already enforces the same sets), collects per-function
-//! declaration facts (signature, params, result) and exposes borrowed body
-//! structure plus source-order evaluation facts. It produces no target
-//! code and knows no target — that is the Rust provider's job (a2x-rust).
+//! declaration facts (signature, params+modes, result, record shapes,
+//! method ownership) and exposes borrowed body structure plus source-order
+//! evaluation facts and the verifier-computed text resource plan. It
+//! produces no target code and knows no target — that is the Rust
+//! provider's job (a2x-rust).
 //!
 //! Evaluation-order contract (plan §4): `ExprKind::Call` carries
 //! `eval_args` (SOURCE order, evaluate exactly once) plus `bindings`
 //! (param ← arg placement). The view exposes both unchanged; a target
 //! never re-guesses argument order from the binding map.
+//!
+//! PLAN-902 widening rules (§5.2): the view stays a single source of
+//! semantic truth — it never re-derives ownership (the resource plan is
+//! the verifier's, consumed verbatim), and the scalar/core paths keep
+//! byte-identical fingerprints and rejection behavior (the 892 corpus and
+//! cache keys must not move).
 
 use ace_core::hir;
 use ace_core::source::SourceParts;
+use ace_core::text_resources::TextResourcePlan;
 use ace_core::verify::{CheckedFunction, CheckedModule};
 use std::collections::BTreeSet;
 
 use crate::A2xReject;
 
-/// The two value types of the core/scalar compute surface.
+/// The value types of the supported source surfaces (PLAN-892: i32/bool;
+/// PLAN-902: char, borrowed str, owned Str, nominal records).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Ty {
     I32,
     Bool,
+    /// Independent Unicode scalar (PLAN-770).
+    Char,
+    /// Borrowed UTF-8 view (`str`).
+    Str,
+    /// Owned UTF-8 buffer (`Str`).
+    StrOwned,
+    /// Nominal record type; the payload is the module type-table index.
+    /// Nominal identity is the type table entry (name + shape), never the
+    /// layout alone.
+    Record(u32),
 }
 
 impl Ty {
@@ -32,15 +53,39 @@ impl Ty {
         match self {
             Ty::I32 => "i32",
             Ty::Bool => "bool",
+            Ty::Char => "char",
+            Ty::Str => "str",
+            Ty::StrOwned => "Str",
+            // nominal rendering needs the module — see SemanticView::ty_name
+            Ty::Record(_) => "record",
         }
+    }
+
+    pub fn is_text(self) -> bool {
+        matches!(self, Ty::Str | Ty::StrOwned)
     }
 }
 
-/// One declared parameter of a function (name + target-neutral type).
+/// One declared parameter of a function (name, target-neutral type and the
+/// verified ownership mode; PLAN-902: the mode is semantic identity).
 #[derive(Clone, Debug)]
 pub struct ParamFacts {
     pub name: String,
     pub ty: Ty,
+    pub mode: hir::ParamMode,
+}
+
+/// How a function def is owned: a free function or a type-bound method
+/// (PLAN-881). Methods carry their owner record and receiver shape; the
+/// stable owner-qualified identity mirrors the frozen `m.<Owner>.<name>`
+/// lowering identity.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FnKind {
+    Free,
+    Method {
+        owner: u32,
+        receiver: hir::ReceiverKind,
+    },
 }
 
 /// Declaration-level facts of one user function plus its borrowed verified
@@ -49,18 +94,23 @@ pub struct ParamFacts {
 #[derive(Clone, Debug)]
 pub struct FnFacts<'a> {
     pub def_index: usize,
-    /// The HIR-internal def name (`sf_<source>` for source functions).
+    /// The HIR-internal def name (`sf_<source>` for free functions,
+    /// `sm_<Owner>_<name>` for methods).
     pub name: &'a str,
-    /// The SOURCE name (the `sf_` prefix the frontend adds to free
-    /// functions stripped back off; entry selection and diagnostics use
-    /// this).
+    /// The SOURCE name: `sf_`/`sm_` stripped. For methods this is
+    /// owner-qualified (`Counter.new`) so same-named methods of different
+    /// owners never collide; entry selection and diagnostics use this.
     pub source_name: &'a str,
+    pub kind: FnKind,
     pub params: Vec<ParamFacts>,
     pub result: Ty,
     /// Byte span of the function's def in the source it was compiled from
     /// (source-map v1; plan §5.3 — spans travel with the target artifacts
     /// so diagnostics map back to the original `.at`).
     pub origin: (u32, u32),
+    /// Index of this function's body in the module body table (resource
+    /// plan lookup key).
+    pub body_index: u32,
     pub body: &'a hir::Body,
 }
 
@@ -73,8 +123,30 @@ pub struct FnFacts<'a> {
 pub struct ExternalFn {
     pub def_index: usize,
     pub source_name: String,
+    pub kind: FnKind,
     pub params: Vec<Ty>,
     pub result: Ty,
+}
+
+/// One field of a nominal record, in declaration order (the layout order;
+/// 774 D-05 — declaration order participates in semantic equality).
+#[derive(Clone, Debug)]
+pub struct FieldFacts {
+    pub name: String,
+    pub ty: Ty,
+}
+
+/// Declaration facts of one nominal record type (PLAN-771/782). `resource`
+/// is the verifier-side classification: the transitive field closure
+/// contains an owned `Str`, so values own buffers and follow the 774
+/// data-resource contract (explicit clone/move, planned cleanup).
+#[derive(Clone, Debug)]
+pub struct RecordFacts {
+    pub type_index: u32,
+    /// Nominal name (`t_rec_` prefix stripped).
+    pub name: String,
+    pub fields: Vec<FieldFacts>,
+    pub resource: bool,
 }
 
 /// The read-only semantic view. Constructed only via
@@ -89,6 +161,10 @@ pub struct SemanticView<'a> {
     functions: Vec<FnFacts<'a>>,
     /// Signature-only functions (single-body fragments; see `ExternalFn`).
     externals: Vec<ExternalFn>,
+    records: Vec<RecordFacts>,
+    /// The verifier-computed text resource plan (text/text-record domains),
+    /// consumed verbatim — the view never re-derives ownership.
+    resource_plan: Option<&'a TextResourcePlan>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
@@ -98,15 +174,17 @@ pub struct SemanticView<'a> {
 const TRACE_CAPABILITY: &str = "hir.test.trace.v1";
 
 impl<'a> SemanticView<'a> {
-    /// Build the view from a verified module, admitting only the core/scalar
-    /// surface. `CheckedModule` construction is private to the verifier — a
-    /// view can only be built over genuinely verified content.
+    /// Build the view from a verified module, admitting only the supported
+    /// source surfaces (core/scalar since 892; record/text/text-record
+    /// since PLAN-902). `CheckedModule` construction is private to the
+    /// verifier — a view can only be built over genuinely verified content.
     pub fn from_checked(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
         let domain = checked.domain();
         let profile = profile_of(domain)?;
         let bundle = checked.bundle();
         let module = single_module(bundle)?;
         let functions = collect_functions(module, None)?;
+        let records = collect_records(module)?;
         let trace_defs = collect_trace_defs(module, bundle)?;
         let view = SemanticView {
             module,
@@ -114,6 +192,8 @@ impl<'a> SemanticView<'a> {
             profile,
             functions,
             externals: Vec::new(),
+            records,
+            resource_plan: checked.text_resources(),
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -167,6 +247,12 @@ impl<'a> SemanticView<'a> {
             profile,
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
+            records: collect_records(module)?,
+            // PLAN-902 T-02: fragment resource credentials (per-body plan
+            // bound to the CheckedFunction) arrive with the T-03 S-window;
+            // until then text-domain fragments carry no plan and the Rust
+            // provider rejects the functions whose cleanup needs one.
+            resource_plan: None,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -182,6 +268,29 @@ impl<'a> SemanticView<'a> {
     /// Signature-only externals (fragment views only).
     pub fn externals(&self) -> &[ExternalFn] {
         &self.externals
+    }
+
+    /// All nominal record declarations, in type-table order.
+    pub fn records(&self) -> &[RecordFacts] {
+        &self.records
+    }
+
+    /// The record owning `type_index`, if any.
+    pub fn record(&self, type_index: u32) -> Option<&RecordFacts> {
+        self.records.iter().find(|r| r.type_index == type_index)
+    }
+
+    /// The verifier-computed text resource plan, when this domain carries
+    /// one (text/text-record). `None` for core/scalar/record.
+    pub fn resource_plan(&self) -> Option<&TextResourcePlan> {
+        self.resource_plan
+    }
+
+    /// The resource plan of one function's body (module 0; body index of
+    /// `f`). `None` when the domain carries no plan or the body has none.
+    pub fn body_plan(&self, f: &FnFacts<'a>) -> Option<&ace_core::text_resources::BodyResourcePlan> {
+        self.resource_plan
+            .and_then(|p| p.bodies.get(&(0, f.body_index)))
     }
 
     /// The user function owning `def_index`, if any.
@@ -208,7 +317,7 @@ impl<'a> SemanticView<'a> {
     }
 
     /// Select the entry function by explicit source name: it must exist, be
-    /// a zero-parameter function with an i32 result (plan §5.1).
+    /// a zero-parameter free function with an i32 result (plan §5.1).
     pub fn entry(&self, name: &str) -> Result<&FnFacts<'a>, A2xReject> {
         let f = self
             .functions
@@ -217,6 +326,12 @@ impl<'a> SemanticView<'a> {
             .ok_or_else(|| {
                 A2xReject::entry(format!("no function named `{}` in this module", name))
             })?;
+        if f.kind != FnKind::Free {
+            return Err(A2xReject::entry(format!(
+                "entry `{}` must be a free function, not a method",
+                name
+            )));
+        }
         if !f.params.is_empty() {
             return Err(A2xReject::entry(format!(
                 "entry `{}` must take no parameters (found {})",
@@ -238,6 +353,39 @@ impl<'a> SemanticView<'a> {
     /// target providers' local/param type mapping).
     pub fn resolve_use_ty(&self, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
         resolve_ty(self.module, ty)
+    }
+
+    /// Nominal type rendering (semantic identity text): builtins as their
+    /// surface names, records by NAME. Used by the semantic fingerprint and
+    /// canonical signature — never spans or table indices.
+    pub fn ty_name(&self, ty: Ty) -> String {
+        match ty {
+            Ty::Record(id) => self
+                .record(id)
+                .map(|r| r.name.clone())
+                .unwrap_or_else(|| format!("record#{}", id)),
+            other => other.as_str().to_string(),
+        }
+    }
+
+    /// Canonical signature with modes and nominal names (PLAN-902 §5.4:
+    /// owner/mode/type closure are key inputs). Scalar signatures render
+    /// byte-identically to the 892 `canonical_signature` (all-view params,
+    /// builtin types only).
+    pub fn canonical_signature(&self, f: &FnFacts<'_>) -> String {
+        let params: Vec<String> = f
+            .params
+            .iter()
+            .map(|p| {
+                let mode_prefix = if p.mode == hir::ParamMode::View {
+                    String::new()
+                } else {
+                    format!("{} ", p.mode.as_str())
+                };
+                format!("{}{}", mode_prefix, self.ty_name(p.ty))
+            })
+            .collect();
+        format!("({})->{}", params.join(","), self.ty_name(f.result))
     }
 
     /// The operator set of this domain, as the admission table the body
@@ -262,12 +410,31 @@ impl<'a> SemanticView<'a> {
                     | hir::BinOp::Eq
                     | hir::BinOp::Ne
             ),
+            // PLAN-902: the record/text/text-record surfaces carry the
+            // full scalar operator set (their verifiers are supersets of
+            // the scalar verifier for the compute nodes).
+            hir::HirDomain::Text
+            | hir::HirDomain::Record
+            | hir::HirDomain::TextRecord => matches!(
+                op,
+                hir::BinOp::AddI32
+                    | hir::BinOp::SubI32
+                    | hir::BinOp::MulI32
+                    | hir::BinOp::DivI32
+                    | hir::BinOp::RemI32
+                    | hir::BinOp::LtI32
+                    | hir::BinOp::LeI32
+                    | hir::BinOp::GtI32
+                    | hir::BinOp::GeI32
+                    | hir::BinOp::Eq
+                    | hir::BinOp::Ne
+            ),
             _ => false,
         }
     }
 
     /// Walk every function body and admit each local/place/expr/stmt against
-    /// the core/scalar surface. Unknown shapes are named rejections — the
+    /// the supported surface. Unknown shapes are named rejections — the
     /// view never passes unverified-shape content to a target.
     fn walk_bodies(&self) -> Result<(), A2xReject> {
         for f in &self.functions {
@@ -275,11 +442,15 @@ impl<'a> SemanticView<'a> {
                 resolve_ty(self.module, local.ty)?;
             }
             for place in &f.body.places {
-                if !matches!(place.kind, hir::PlaceKind::Local) {
-                    return Err(A2xReject::unsupported_place(format!(
-                        "in `{}`: only whole-local places are in the compute surface",
-                        f.name
-                    )));
+                match place.kind {
+                    hir::PlaceKind::Local => {}
+                    hir::PlaceKind::FieldPath(_) if self.record_places_admitted() => {}
+                    _ => {
+                        return Err(A2xReject::unsupported_place(format!(
+                            "in `{}`: only whole-local places are in the compute surface",
+                            f.name
+                        )))
+                    }
                 }
             }
             for expr in &f.body.exprs {
@@ -292,6 +463,13 @@ impl<'a> SemanticView<'a> {
             }
         }
         Ok(())
+    }
+
+    fn record_places_admitted(&self) -> bool {
+        matches!(
+            self.domain,
+            hir::HirDomain::Record | hir::HirDomain::TextRecord
+        )
     }
 
     fn admit_expr(&self, f: &FnFacts<'_>, e: &hir::Expr) -> Result<(), A2xReject> {
@@ -310,7 +488,9 @@ impl<'a> SemanticView<'a> {
                 }
             }
             hir::ExprKind::Unary { .. } | hir::ExprKind::Logical { .. } => {
-                if self.domain == hir::HirDomain::Scalar {
+                if self.domain == hir::HirDomain::Scalar
+                    || self.text_record_family(self.domain).is_some()
+                {
                     Ok(())
                 } else {
                     Err(A2xReject::unsupported_op(format!(
@@ -333,11 +513,27 @@ impl<'a> SemanticView<'a> {
                     )))
                 }
             }
-            other => Err(A2xReject::unsupported_expr(format!(
-                "in `{}`: expression kind `{}` is outside the core/scalar compute surface",
-                f.name,
-                kind_name(other)
-            ))),
+            other => {
+                // PLAN-902: the record/text/text-record node surfaces.
+                if self.text_record_family(self.domain).is_none() {
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "in `{}`: expression kind `{}` is outside the core/scalar compute surface",
+                        f.name,
+                        kind_name(other)
+                    )));
+                }
+                let family = self.text_record_family(self.domain).unwrap();
+                if kind_in_family(other, family) {
+                    Ok(())
+                } else {
+                    Err(A2xReject::unsupported_expr(format!(
+                        "in `{}`: expression kind `{}` is outside the {} surface",
+                        f.name,
+                        kind_name(other),
+                        self.profile
+                    )))
+                }
+            }
         }
     }
 
@@ -351,10 +547,64 @@ impl<'a> SemanticView<'a> {
             | hir::Stmt::Break { .. }
             | hir::Stmt::Continue { .. } => Ok(()),
             other => Err(A2xReject::unsupported_stmt(format!(
-                "in `{}`: statement kind `{}` is outside the core/scalar compute surface",
+                "in `{}`: statement kind `{}` is outside the compute surface",
                 f.name,
                 stmt_name(other)
             ))),
+        }
+    }
+
+    /// The record/text family classifier: `None` for non-902 domains.
+    fn text_record_family(&self, domain: hir::HirDomain) -> Option<Family> {
+        match domain {
+            hir::HirDomain::Text => Some(Family::Text),
+            hir::HirDomain::Record => Some(Family::Record),
+            hir::HirDomain::TextRecord => Some(Family::TextRecord),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Family {
+    Text,
+    Record,
+    TextRecord,
+}
+
+/// Whether the expression kind belongs to the domain family's verified
+/// surface (the frontend verifier already enforces the same sets; this is
+/// the target-facing second gate).
+fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
+    let text_kinds = matches!(
+        k,
+        hir::ExprKind::StrLit { .. }
+            | hir::ExprKind::CharLit { .. }
+            | hir::ExprKind::TextLen { .. }
+            | hir::ExprKind::TextLenBytes { .. }
+            | hir::ExprKind::TextCharAt { .. }
+            | hir::ExprKind::TextSlice { .. }
+            | hir::ExprKind::TextConcat { .. }
+            | hir::ExprKind::TextClone { .. }
+            | hir::ExprKind::TextToOwned { .. }
+            | hir::ExprKind::TextToBorrowed { .. }
+            | hir::ExprKind::CharToCodepoint { .. }
+            | hir::ExprKind::CharFromCodepoint { .. }
+    );
+    let record_kinds = matches!(
+        k,
+        hir::ExprKind::RecordCtor { .. }
+            | hir::ExprKind::FieldGet { .. }
+            | hir::ExprKind::BorrowView { .. }
+            | hir::ExprKind::BorrowMut { .. }
+    );
+    match family {
+        Family::Text => text_kinds,
+        Family::Record => record_kinds,
+        Family::TextRecord => {
+            text_kinds
+                || record_kinds
+                || matches!(k, hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. })
         }
     }
 }
@@ -373,82 +623,187 @@ fn profile_of(domain: hir::HirDomain) -> Result<&'static str, A2xReject> {
     match domain {
         hir::HirDomain::Core => Ok("auto.source.core-i32.draft"),
         hir::HirDomain::Scalar => Ok("auto.source.scalar-i32.draft"),
+        hir::HirDomain::Text => Ok("auto.source.text.draft"),
+        hir::HirDomain::Record => Ok("auto.source.record.draft"),
+        hir::HirDomain::TextRecord => Ok("auto.source.text-record.draft"),
         other => Err(A2xReject::domain(format!(
-            "supported domains are core-i32-draft/scalar-i32-draft; bundle is {}",
+            "supported domains are core/scalar/record/text/text-record drafts; bundle is {}",
             other.as_str()
         ))),
     }
 }
 
-/// Collect admitted functions. `only_def` (fragment admission) restricts
-/// body-carrying functions to the credential's def; all other Function
-/// defs are skipped here (they become externals via `collect_externals`).
+/// Collect admitted functions (free functions and methods). `only_def`
+/// (fragment admission) restricts body-carrying functions to the
+/// credential's def; all other function/method defs are skipped here (they
+/// become externals via `collect_externals`).
 fn collect_functions<'m>(
     module: &'m hir::Module,
     only_def: Option<&str>,
 ) -> Result<Vec<FnFacts<'m>>, A2xReject> {
     let mut functions = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
-        if let hir::DefKind::Function { name, ty, body } = &def.kind {
-            if let Some(want) = only_def {
-                if def.id_text != want {
-                    continue;
-                }
-            }
-            let sig = fn_sig(module, *ty)?;
-            let body = module
-                .bodies
-                .get(body.0 as usize)
-                .ok_or_else(|| A2xReject::new("a2x.internal", "body index out of range"))?;
-            let params = param_facts(module, body, &sig)?;
-            let source_name = name.strip_prefix("sf_").ok_or_else(|| {
-                A2xReject::new(
-                    "a2x.internal",
-                    format!("function def name `{}` lacks the `sf_` source prefix", name),
-                )
-            })?;
-            functions.push(FnFacts {
-                def_index,
+        let (name, ty, body_id, kind) = match &def.kind {
+            hir::DefKind::Function { name, ty, body } => (name, *ty, *body, FnKind::Free),
+            hir::DefKind::Method {
                 name,
-                source_name,
-                params,
-                result: sig_result(module, &sig)?,
-                origin: (def.span.start as u32, def.span.end as u32),
+                ty,
                 body,
-            });
+                record,
+                receiver,
+            } => (name, *ty, *body, FnKind::Method {
+                owner: record.0,
+                receiver: *receiver,
+            }),
+            hir::DefKind::Intrinsic { .. } => continue,
+        };
+        if let Some(want) = only_def {
+            if def.id_text != want {
+                continue;
+            }
         }
+        let sig = fn_sig(module, ty)?;
+        let body = module
+            .bodies
+            .get(body_id.0 as usize)
+            .ok_or_else(|| A2xReject::new("a2x.internal", "body index out of range"))?;
+        let params = param_facts(module, body, sig)?;
+        let source_name = source_name_of(name, kind)?;
+        functions.push(FnFacts {
+            def_index,
+            name,
+            source_name,
+            kind,
+            params,
+            result: sig_result(module, sig)?,
+            origin: (def.span.start as u32, def.span.end as u32),
+            body_index: body_id.0,
+            body,
+        });
     }
     Ok(functions)
 }
 
-/// Signature-only externals of a fragment (every Function def except the
-/// credential's planned def).
+/// The source-facing name of a def: free functions strip `sf_`; methods
+/// (`sm_<Owner>_<name>`) strip `sm_` and keep the owner-qualified
+/// `<Owner>_<name>` — same-named methods of different owners stay distinct,
+/// mirroring the frozen `m.<Owner>.<name>` lowering identity (PLAN-881).
+fn source_name_of<'n>(name: &'n str, kind: FnKind) -> Result<&'n str, A2xReject> {
+    match kind {
+        FnKind::Free => name.strip_prefix("sf_").ok_or_else(|| {
+            A2xReject::new(
+                "a2x.internal",
+                format!("function def name `{}` lacks the `sf_` source prefix", name),
+            )
+        }),
+        FnKind::Method { .. } => name.strip_prefix("sm_").ok_or_else(|| {
+            A2xReject::new(
+                "a2x.internal",
+                format!("method def name `{}` lacks the `sm_` source prefix", name),
+            )
+        }),
+    }
+}
+
+/// Signature-only externals of a fragment (every Function/Method def except
+/// the credential's planned def).
 fn collect_externals(
     module: &hir::Module,
     planned_def: &str,
 ) -> Result<Vec<ExternalFn>, A2xReject> {
     let mut externals = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
-        if let hir::DefKind::Function { name, ty, .. } = &def.kind {
-            if def.id_text == planned_def {
-                continue;
+        let (name, ty, kind) = match &def.kind {
+            hir::DefKind::Function { name, ty, .. } => (name, *ty, FnKind::Free),
+            hir::DefKind::Method {
+                name,
+                ty,
+                record,
+                receiver,
+                ..
+            } => (name, *ty, FnKind::Method {
+                owner: record.0,
+                receiver: *receiver,
+            }),
+            hir::DefKind::Intrinsic { .. } => continue,
+        };
+        if def.id_text == planned_def {
+            continue;
+        }
+        let sig = fn_sig(module, ty)?;
+        let source_name = match kind {
+            FnKind::Free => name.strip_prefix("sf_").unwrap_or(name).to_string(),
+            FnKind::Method { .. } => name.strip_prefix("sm_").unwrap_or(name).to_string(),
+        };
+        let params = sig
+            .params
+            .iter()
+            .map(|t| resolve_ty(module, *t))
+            .collect::<Result<Vec<Ty>, A2xReject>>()?;
+        externals.push(ExternalFn {
+            def_index,
+            source_name,
+            kind,
+            params,
+            result: sig_result(module, sig)?,
+        });
+    }
+    Ok(externals)
+}
+
+/// Collect nominal record declarations with resolved field types and the
+/// resource classification (transitive owned-Str closure, iterative —
+/// record nesting is unbounded, recursion is verifier-forbidden but the
+/// walk stays defensive).
+fn collect_records(module: &hir::Module) -> Result<Vec<RecordFacts>, A2xReject> {
+    let mut records = Vec::new();
+    for (idx, td) in module.types.iter().enumerate() {
+        if let hir::TypeKind::Record(shape) = &td.kind {
+            let mut fields = Vec::with_capacity(shape.fields.len());
+            for f in &shape.fields {
+                fields.push(FieldFacts {
+                    name: f.name.clone(),
+                    ty: resolve_ty(module, f.ty)?,
+                });
             }
-            let sig = fn_sig(module, *ty)?;
-            let source_name = name.strip_prefix("sf_").unwrap_or(name).to_string();
-            let params = sig
-                .params
-                .iter()
-                .map(|t| resolve_ty(module, *t))
-                .collect::<Result<Vec<Ty>, A2xReject>>()?;
-            externals.push(ExternalFn {
-                def_index,
-                source_name,
-                params,
-                result: sig_result(module, &sig)?,
+            records.push(RecordFacts {
+                type_index: idx as u32,
+                name: td.id_text.strip_prefix("t_rec_").unwrap_or(&td.id_text).to_string(),
+                fields,
+                resource: false,
             });
         }
     }
-    Ok(externals)
+    // resource classification fixpoint: a record is a resource root when
+    // any field is StrOwned or (transitively) a resource record.
+    let mut resource: std::collections::BTreeMap<u32, bool> = std::collections::BTreeMap::new();
+    for rec in &records {
+        resource.entry(rec.type_index).or_insert(false);
+    }
+    loop {
+        let mut changed = false;
+        for rec in &records {
+            if resource[&rec.type_index] {
+                continue;
+            }
+            let is_res = rec.fields.iter().any(|f| match f.ty {
+                Ty::StrOwned => true,
+                Ty::Record(id) => resource.get(&id).copied().unwrap_or(false),
+                _ => false,
+            });
+            if is_res {
+                resource.insert(rec.type_index, true);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    for rec in &mut records {
+        rec.resource = resource[&rec.type_index];
+    }
+    Ok(records)
 }
 
 fn collect_trace_defs(
@@ -464,7 +819,7 @@ fn collect_trace_defs(
                 "hir.test.mark_b" => "hir.test.mark_b",
                 other => {
                     return Err(A2xReject::unsupported_expr(format!(
-                        "intrinsic `{}` is outside the core/scalar compute surface",
+                        "intrinsic `{}` is outside the compute surface",
                         other
                     )))
                 }
@@ -536,28 +891,36 @@ fn param_facts(
         facts.push(ParamFacts {
             name: l.name.clone(),
             ty: lt,
+            mode: l.param_mode,
         });
     }
     Ok(facts)
 }
 
-/// Resolve a use-site type to the two supported value types; everything
-/// else is a named rejection.
+/// Resolve a use-site type to the supported value types; everything else is
+/// a named rejection.
 fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
     match ty {
         hir::TypeUse::Builtin(hir::BuiltinType::I32) => Ok(Ty::I32),
         hir::TypeUse::Builtin(hir::BuiltinType::Bool) => Ok(Ty::Bool),
+        hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => Ok(Ty::Str),
+        hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Ok(Ty::StrOwned),
+        hir::TypeUse::Builtin(hir::BuiltinType::Char) => Ok(Ty::Char),
         hir::TypeUse::Ref(id) => match module.types.get(id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::I32) => Ok(Ty::I32),
             Some(hir::TypeKind::Bool) => Ok(Ty::Bool),
+            Some(hir::TypeKind::Str) => Ok(Ty::Str),
+            Some(hir::TypeKind::StrOwned) => Ok(Ty::StrOwned),
+            Some(hir::TypeKind::Char) => Ok(Ty::Char),
+            Some(hir::TypeKind::Record(_)) => Ok(Ty::Record(id.0)),
             Some(other) => Err(A2xReject::unsupported_type(format!(
-                "type `{}` is outside {{i32, bool}}",
+                "type `{}` is outside the supported value types",
                 type_kind_name(other)
             ))),
             None => Err(A2xReject::new("a2x.internal", "type index out of range")),
         },
         other => Err(A2xReject::unsupported_type(format!(
-            "builtin type `{:?}` is outside {{i32, bool}}",
+            "builtin type `{:?}` is outside the supported value types",
             other
         ))),
     }
@@ -577,6 +940,27 @@ fn kind_name(k: &hir::ExprKind) -> &'static str {
         hir::ExprKind::TextConcat { .. } => "TextConcat",
         hir::ExprKind::TextClone { .. } => "TextClone",
         hir::ExprKind::ClosureClone { .. } => "ClosureClone",
+        hir::ExprKind::TextToOwned { .. } => "TextToOwned",
+        hir::ExprKind::TextToBorrowed { .. } => "TextToBorrowed",
+        hir::ExprKind::CharToCodepoint { .. } => "CharToCodepoint",
+        hir::ExprKind::CharFromCodepoint { .. } => "CharFromCodepoint",
+        hir::ExprKind::RecordCtor { .. } => "RecordCtor",
+        hir::ExprKind::FieldGet { .. } => "FieldGet",
+        hir::ExprKind::BorrowView { .. } => "BorrowView",
+        hir::ExprKind::BorrowMut { .. } => "BorrowMut",
+        hir::ExprKind::RecordClone { .. } => "RecordClone",
+        hir::ExprKind::Move { .. } => "Move",
+        hir::ExprKind::ListNew { .. } => "ListNew",
+        hir::ExprKind::ListLen { .. } => "ListLen",
+        hir::ExprKind::ListPush { .. } => "ListPush",
+        hir::ExprKind::ListInsert { .. } => "ListInsert",
+        hir::ExprKind::ListGet { .. } => "ListGet",
+        hir::ExprKind::ListSet { .. } => "ListSet",
+        hir::ExprKind::ListRemove { .. } => "ListRemove",
+        hir::ExprKind::ListClear { .. } => "ListClear",
+        hir::ExprKind::VariantCtor { .. } => "VariantCtor",
+        hir::ExprKind::VariantGuardTest { .. } => "VariantGuardTest",
+        hir::ExprKind::VariantProject { .. } => "VariantProject",
         _ => "non-core-scalar",
     }
 }

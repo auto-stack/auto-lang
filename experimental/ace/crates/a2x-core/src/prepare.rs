@@ -11,7 +11,7 @@
 //!   before any target recursion starts;
 //! * fragment closure assembly (T-04): `calls` is the per-function edge.
 
-use crate::semantic_view::{FnFacts, SemanticView};
+use crate::semantic_view::{FnFacts, SemanticView, Ty};
 use crate::A2xReject;
 use ace_core::hir;
 use std::collections::BTreeSet;
@@ -200,6 +200,78 @@ fn collect_expr(
                     stack.push((*a, d + 1));
                 }
             }
+            // ---- PLAN-902 record/text surface (same op tags feed the cache
+            // key; new tags never appear for scalar functions) ----
+            hir::ExprKind::StrLit { .. } => {
+                ops.insert("str_lit");
+            }
+            hir::ExprKind::CharLit { .. } => {
+                ops.insert("char_lit");
+            }
+            hir::ExprKind::TextLen { operand }
+            | hir::ExprKind::TextLenBytes { operand }
+            | hir::ExprKind::TextClone { operand }
+            | hir::ExprKind::TextToOwned { operand }
+            | hir::ExprKind::TextToBorrowed { operand }
+            | hir::ExprKind::CharToCodepoint { operand }
+            | hir::ExprKind::CharFromCodepoint { operand } => {
+                let tag = match &e.kind {
+                    hir::ExprKind::TextLen { .. } => "text_len",
+                    hir::ExprKind::TextLenBytes { .. } => "text_len_bytes",
+                    hir::ExprKind::TextClone { .. } => "text_clone",
+                    hir::ExprKind::TextToOwned { .. } => "text_to_owned",
+                    hir::ExprKind::TextToBorrowed { .. } => "text_to_borrowed",
+                    hir::ExprKind::CharToCodepoint { .. } => "char_to_codepoint",
+                    _ => "char_from_codepoint",
+                };
+                ops.insert(tag);
+                stack.push((*operand, d + 1));
+            }
+            hir::ExprKind::TextCharAt { operand, index } => {
+                ops.insert("text_char_at");
+                stack.push((*operand, d + 1));
+                stack.push((*index, d + 1));
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
+                ops.insert("text_slice");
+                stack.push((*operand, d + 1));
+                stack.push((*start, d + 1));
+                stack.push((*end, d + 1));
+            }
+            hir::ExprKind::TextConcat { lhs, rhs } => {
+                ops.insert("text_concat");
+                stack.push((*lhs, d + 1));
+                stack.push((*rhs, d + 1));
+            }
+            hir::ExprKind::RecordCtor { eval_args, .. } => {
+                ops.insert("record_ctor");
+                for a in eval_args {
+                    stack.push((*a, d + 1));
+                }
+            }
+            hir::ExprKind::FieldGet { base, .. } => {
+                ops.insert("field_get");
+                stack.push((*base, d + 1));
+            }
+            hir::ExprKind::BorrowView { base } => {
+                ops.insert("borrow_view");
+                stack.push((*base, d + 1));
+            }
+            hir::ExprKind::BorrowMut { .. } => {
+                ops.insert("borrow_mut");
+            }
+            hir::ExprKind::RecordClone { base, .. } => {
+                ops.insert("record_clone");
+                stack.push((*base, d + 1));
+            }
+            hir::ExprKind::Move { inner } => {
+                ops.insert("move");
+                stack.push((*inner, d + 1));
+            }
             other => {
                 return Err(A2xReject::unsupported_expr(format!(
                     "in `{}`: expression `{:?}` outside the compute surface",
@@ -240,7 +312,10 @@ pub fn canonical_signature(f: &FnFacts<'_>) -> String {
 /// table produces the same bytes.
 pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<String, A2xReject> {
     let mut ser = String::new();
-    ser.push_str(&format!("sig {}\n", canonical_signature(f)));
+    // PLAN-902: the view-aware canonical signature carries param modes and
+    // nominal names; for scalar functions it renders byte-identically to
+    // the 892 `canonical_signature` (all-view params, builtin types).
+    ser.push_str(&format!("sig {}\n", view.canonical_signature(f)));
     let mut canon: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
     // Params intern FIRST in positional order (0..n-1): param identity is
     // semantic (callers bind arguments positionally); a first-use-only
@@ -280,7 +355,7 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
                 hir::Stmt::Let { local, value } => {
                     let id = intern(local.0, &mut canon, &mut next);
                     let ty = view.resolve_use_ty(f.body.locals[local.0 as usize].ty)?;
-                    ser.push_str(&format!("let ${}:{} =", id, ty.as_str()));
+                    ser.push_str(&format!("let ${}:{} =", id, view.ty_name(ty)));
                     ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
                     ser.push(';');
                 }
@@ -310,7 +385,20 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
                         A2xReject::new("a2x.internal", "place index out of range")
                     })?;
                     let id = intern(place.local.0, &mut canon, &mut next);
-                    ser.push_str(&format!("asgn ${}:", id));
+                    // PLAN-902: a whole-local target stays `asgn $n:`; a
+                    // field-path target serializes the path (field ids are
+                    // declaration indices, made semantic by the record
+                    // shape digest appended below).
+                    match &place.kind {
+                        hir::PlaceKind::Local => ser.push_str(&format!("asgn ${}:", id)),
+                        hir::PlaceKind::FieldPath(path) => {
+                            ser.push_str(&format!("asgn ${}", id));
+                            for fid in path {
+                                ser.push_str(&format!(".{}", fid.0));
+                            }
+                            ser.push(':');
+                        }
+                    }
                     ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
                     ser.push(';');
                 }
@@ -320,7 +408,72 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
             }
         }
     }
+    // PLAN-902 §5.4: nominal record closures the function touches are part
+    // of its semantic identity — a field/type change must invalidate even
+    // when the body serialization alone would not show it. Scalar
+    // functions reference no records, so their bytes are unchanged.
+    for line in record_digest(view, f)? {
+        ser.push_str(&line);
+        ser.push('\n');
+    }
     Ok(crate::sha256::sha256_hex(ser.as_bytes()))
+}
+
+/// Sorted nominal shape digest of every record type the function's
+/// signature, locals or expressions reference (name + ordered fields with
+/// nominal type names). Empty for scalar functions.
+fn record_digest(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<Vec<String>, A2xReject> {
+    let mut refs = std::collections::BTreeSet::<u32>::new();
+    fn note(refs: &mut std::collections::BTreeSet<u32>, ty: Ty) {
+        if let Ty::Record(id) = ty {
+            refs.insert(id);
+        }
+    }
+    for p in &f.params {
+        note(&mut refs, p.ty);
+    }
+    note(&mut refs, f.result);
+    for l in &f.body.locals {
+        note(&mut refs, view.resolve_use_ty(l.ty)?);
+    }
+    for e in &f.body.exprs {
+        match &e.kind {
+            hir::ExprKind::RecordCtor { record, .. }
+            | hir::ExprKind::RecordClone { record, .. } => {
+                refs.insert(record.0);
+            }
+            _ => note(&mut refs, view.resolve_use_ty(e.ty)?),
+        }
+    }
+    // close over nested record fields (transitive identity)
+    let mut closed = std::collections::BTreeSet::<u32>::new();
+    let mut queue: Vec<u32> = refs.into_iter().collect();
+    while let Some(id) = queue.pop() {
+        if !closed.insert(id) {
+            continue;
+        }
+        if let Some(rec) = view.record(id) {
+            for fld in &rec.fields {
+                if let Ty::Record(inner) = fld.ty {
+                    if !closed.contains(&inner) {
+                        queue.push(inner);
+                    }
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for id in closed {
+        if let Some(rec) = view.record(id) {
+            let fields: Vec<String> = rec
+                .fields
+                .iter()
+                .map(|fld| format!("{}:{}", fld.name, view.ty_name(fld.ty)))
+                .collect();
+            out.push(format!("rec {}{{{}}}", rec.name, fields.join(",")));
+        }
+    }
+    Ok(out)
 }
 
 /// First-appearance interning of a real local index to a canonical id.
@@ -401,8 +554,8 @@ fn ser_expr(
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };
-            let mut canon_bindings: Vec<(u32, u32)> =
-                bindings.iter().map(|b| (b.param, b.arg)).collect();
+            let mut canon_bindings: Vec<(u32, u32, bool)> =
+                bindings.iter().map(|b| (b.param, b.arg, b.moved)).collect();
             canon_bindings.sort();
             out.push_str(&format!("call {}(", name));
             for (i, a) in eval_args.iter().enumerate() {
@@ -412,12 +565,143 @@ fn ser_expr(
                 ser_expr(view, f, *a, canon, next, out, depth + 1)?;
             }
             out.push_str(")|");
-            for (i, (p, a)) in canon_bindings.iter().enumerate() {
+            for (i, (p, a, m)) in canon_bindings.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }
-                out.push_str(&format!("{}>{}", p, a));
+                if *m {
+                    out.push_str(&format!("{}>{}!", p, a));
+                } else {
+                    out.push_str(&format!("{}>{}", p, a));
+                }
             }
+        }
+        // ---- PLAN-902 record/text surface ----
+        hir::ExprKind::StrLit { value } => {
+            out.push_str(&format!("str{:?}", value));
+        }
+        hir::ExprKind::CharLit { scalar } => {
+            out.push_str(&format!("chr{}", scalar));
+        }
+        hir::ExprKind::TextLen { operand } => {
+            out.push_str("len(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextLenBytes { operand } => {
+            out.push_str("lenb(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextCharAt { operand, index } => {
+            out.push_str("char_at(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *index, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextSlice {
+            operand,
+            start,
+            end,
+        } => {
+            out.push_str("slice(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *start, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *end, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextConcat { lhs, rhs } => {
+            out.push_str("cat(");
+            ser_expr(view, f, *lhs, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *rhs, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextClone { operand } => {
+            out.push_str("clone(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextToOwned { operand } => {
+            out.push_str("to_owned(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::TextToBorrowed { operand } => {
+            out.push_str("to_borrowed(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::CharToCodepoint { operand } => {
+            out.push_str("cp(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::CharFromCodepoint { operand } => {
+            out.push_str("from_cp(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::RecordCtor {
+            record,
+            eval_args,
+            bindings,
+        } => {
+            let owner = view
+                .record(record.0)
+                .map(|r| r.name.clone())
+                .unwrap_or_else(|| format!("#{}", record.0));
+            let mut canon_bindings: Vec<(u32, u32)> =
+                bindings.iter().map(|b| (b.field, b.arg)).collect();
+            canon_bindings.sort();
+            out.push_str(&format!("new {}(", owner));
+            for (i, a) in eval_args.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                ser_expr(view, f, *a, canon, next, out, depth + 1)?;
+            }
+            out.push_str(")|");
+            for (i, (fl, a)) in canon_bindings.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&format!("{}>{}", fl, a));
+            }
+        }
+        hir::ExprKind::FieldGet { base, path } => {
+            out.push_str("get(");
+            ser_expr(view, f, *base, canon, next, out, depth + 1)?;
+            for fid in path {
+                out.push_str(&format!(".{}", fid.0));
+            }
+            out.push(')');
+        }
+        hir::ExprKind::BorrowView { base } => {
+            out.push_str("view(");
+            ser_expr(view, f, *base, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::BorrowMut { local } => {
+            let id = intern(local.0, canon, next);
+            out.push_str(&format!("mutb(${})", id));
+        }
+        hir::ExprKind::RecordClone { record, base } => {
+            let owner = view
+                .record(record.0)
+                .map(|r| r.name.clone())
+                .unwrap_or_else(|| format!("#{}", record.0));
+            out.push_str(&format!("rclone {}(", owner));
+            ser_expr(view, f, *base, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::Move { inner } => {
+            out.push_str("move(");
+            ser_expr(view, f, *inner, canon, next, out, depth + 1)?;
+            out.push(')');
         }
         other => {
             return Err(A2xReject::unsupported_expr(format!(

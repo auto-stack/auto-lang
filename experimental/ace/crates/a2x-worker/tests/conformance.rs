@@ -6,6 +6,8 @@ mod contract_certification;
 mod hir_shape;
 #[path = "cases/incremental_cache.rs"]
 mod incremental_cache;
+#[path = "cases/record_text_902.rs"]
+mod record_text_902;
 #[path = "cases/resource_budget.rs"]
 mod resource_budget;
 #[path = "cases/scalar_semantics.rs"]

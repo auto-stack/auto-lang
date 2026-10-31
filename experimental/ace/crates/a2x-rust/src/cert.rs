@@ -21,6 +21,10 @@ use ace_a2x_core::sha256::sha256_hex;
 
 pub const CERT_SCHEMA: &str = "ace.a2r-hir.cert/1";
 pub const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
+/// PLAN-902: the record/text/text-record recipe and its strict certificate
+/// — parallel to (mutually untrusted with) the scalar channel above.
+pub const RT_CERT_SCHEMA: &str = "ace.a2r-hir.record-text.cert/1";
+pub const RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
 
 /// One bound file: relative path + content sha256.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,11 +156,18 @@ impl CertDraft {
     /// unknown fields, no missing fields, non-empty identities. Returns
     /// Ok(()) or the named rejection reason (the caller decides REJECTED).
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != CERT_SCHEMA {
-            return Err(format!("schema must be `{}`", CERT_SCHEMA));
+        self.validate_as(CERT_SCHEMA, RECIPE)
+    }
+
+    /// The same strict validation against an explicitly expected
+    /// schema/recipe pair (PLAN-902: the record-text channel validates
+    /// against its own frozen identities).
+    pub fn validate_as(&self, schema: &str, recipe: &str) -> Result<(), String> {
+        if self.schema != schema {
+            return Err(format!("schema must be `{}`", schema));
         }
-        if self.recipe != RECIPE {
-            return Err(format!("recipe must be `{}`", RECIPE));
+        if self.recipe != recipe {
+            return Err(format!("recipe must be `{}`", recipe));
         }
         for (name, v) in [
             ("case", &self.case),
