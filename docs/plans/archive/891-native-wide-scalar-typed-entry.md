@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-891
-status: reviewed
+status: archived
 feature_name: native宽标量typed入口与逐位结果通道
 author: [Codex]
 created_at: 2026-10-30
@@ -282,7 +282,7 @@ stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_pa
   → 98c7c0cf7（recipe/suite/binding/specs）→ 7dd44182a（fmt 收口）。
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
 
 
 stage: review | review_scope: final | reviewer_identity: 同一会话执行+终审(计划未指定独立final reviewer);判决自工件重建(diff审计/代码核验/测试重放),未采信执行者总结 | plan_id: PLAN-891 | plan_revision: 2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | reviewed_commit: 7dd44182a | base_commit: b55889dff | dependency_revisions: 889/888/894 archived; master 已前进(基面后含 reader fixtures 退役等,与本计划文件无交集,merge 时 delete/unchanged 自动解决) | spec_inputs: docs/specs/auto-mir/data-place-profile.md, native-data-owned-lowering.md, auto-ac/native-backend-and-retirement.md, auto-test-case/ace-m1-conformance.md, architecture.md | acceptance_results: AC-01 partial, AC-02 partial, AC-03 pass, AC-04 partial, AC-05 partial, AC-06 pass, AC-07 本记录, AC-08/09 merge-owned pending | findings: F-01..F-06 | evidence: typed suite 12/12 + tiers 15 绿 + SDK 2 绿 + legacy conformance 128 绿重放确认;diff 审计确认无调试残留、worktree clean | next: work(同树修复 F-01..F-06 后重审)
@@ -317,13 +317,78 @@ stage: review | review_scope: final | reviewer_identity: 同一会话执行+终�
 stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass (repair of review#1 F-01..F-06) | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 675cae800 | task_ids: T-04, T-05 (reopened→closed) | evidence: F-03 admit_frame_and_exit 通道级强制+负例;closure 缺陷(跨单元原始类型索引比较)改解析形状比较(F-06 测试发现);F-01 ±Inf/+qNaN 逐位;F-02 损坏信封/COFF 具名拒;F-04 ghost import mn.admit.callee-sig;F-05 位清洗反控;F-06 record 副本隔离真 PE | 重放: typed_entry_tier 18 绿、incremental 3 绿、suite 12/12、SDK 2 绿 | blockers: 无 | next_responsible_role: review (final #2)
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: reviewed | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: archived | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: review
 
 
 stage: review | review_scope: final (#2, repair re-review) | reviewer_identity: 同一会话执行+终审;判决自工件重建(修复diff审计+闭合测试重放+代码核验) | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | reviewed_commit: 675cae800 | base_commit: b55889dff | dependency_revisions: 889/888/894 archived;master 前进不触碰本计划文件 | spec_inputs: SD-01 新增 + SD-02..06 增量已在树并逐条对实现核验 | acceptance_results: AC-01 pass(F-01 ±Inf/+qNaN、F-06 record副本隔离闭合), AC-02 pass(F-03 帧与exit0一致通道级强制+负例), AC-03 pass, AC-04 pass(F-02 损坏轴具名拒、F-04 ghost import拒、closure比较缺陷修复为解析形状), AC-05 pass(预算具名/四状态20样本P90≤433ms/F-05位清洗反控), AC-06 pass(recipe四点/stale/binding翻转/SDK红控), AC-07 本记录 | findings: review#1 F-01..F-06 全部闭合;修复过程另发现并修复 closure 跨单元类型索引比较缺陷(F-06测试触发) | evidence: 闭合面重放7/7绿(fmt后);此前同commit重放 tier 18/18、incremental 3/3、suite 12/12、SDK 2/2;worktree clean无调试残留;fmt过 | coverage_boundary: V-08 typed侧显式I/O故障注入负例未做——行为证据=ace-core executor cap/deadline/contain既有测试+typed复用同一执行器+F-03通道一致性;登记为非阻塞改进(KNOWN-DEBT D-891-A) | pending_closeout_gates: AC-08 冻结提交统一门禁(merge owner,受影响组并集:ace-native、case-ace-m1-typed-native-891、SDK conformance、auto-test-case/auto-lang-core 合同面);AC-09 SD沉淀/归档/清理 | next: merge
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: merge
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 3 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: merge
+
+### 2026-10-31 实际重定位复核（定位/进度收据，非语义合同修订）
+
+用户指出891已经实施、此前未先重定位。本轮从实际代码核实：实施方已在T-01记录896迁移，并在新workspace落地typed实现；遗漏的是计划正文旧写面/入口的导航，不是实现仍停旧目录。保留r2合同与全部AC/V/T、样本/预算/ABI、状态/勾选及原复审证据，不重开计划、不另建树、不以本记录宣称新代码已审查通过。
+
+本次只读基面：main=`afcbd7084`；唯一实施树`D:/autostack/.wt/lang-891/auto-lang`，分支`plan-891-dev`、HEAD=`09e422433`，观察时无未提交改动。主计划当时为reviewed、5/10；final review #2绑定`675cae800`，merge-owned冻结门/沉淀/归档/清理仍以其实际收据为准。`09e422433`是后续单测试文件调整（typed_entry_tier.rs）；不能把675的pass无条件当09e的完整判决，merge owner须核受影响复审/证据，不重复无关整档。
+
+§3/§6中的旧目录与“拟新增”是立约时定位；执行应使用下列已观察的当前代码入口，以及现行AGENTS固定组规则。这里仅记录同一功能的实际位置，未改变§5–8的语义与验收义务。
+
+| 历史定位/职责 | 当前实际定位（相对唯一实施树） |
+|---|---|
+| `experimental/ac-mir-native` / N ABI、布局、发射、cache、driver | `experimental/ace/crates/native`，Cargo package `ace-native` |
+| 新typed入口/管线/会话/fixture/runtime准备 | 上述包`src/{typed_entry,typed_pipeline,typed_session,typed_fixture,typed_runtime}.rs` |
+| 原拟`runtime/typed_entry`静态helper | `experimental/ace/crates/typed-entry-runtime/{Cargo.toml,src/lib.rs}`；沿实际runtime构建/身份合同，不混入普通unwind profile |
+| `experimental/ac-core/src/link.rs`受控进程 | `experimental/ace/crates/core/src/link.rs`（`ace-core`）；既有执行器与新增typed接缝区分 |
+| 旧AV probe / split_units | `experimental/ace/crates/av`（`ace-av`）；共享lowering仍唯一位于`experimental/ace/crates/lowering` |
+| typed直接测试 | `experimental/ace/crates/native/tests/{typed_entry_tier,typed_entry_incremental_tier}.rs` |
+| H父侧/协议核心 | `crates/auto-lang-core/src/test_cases/{ac_mn,mod}.rs`与`crates/auto-test-case/src/contract.rs`，不因workspace迁移复制一套 |
+| 文件化用例 | `crates/auto-lang/test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad`及其原子输入；位型oracle不变 |
+
+实际定向脚本`scripts/verify-native-typed-891.ps1`已使用新native manifest及`scripts/test-governance/ace-cargo.ps1`；sdk scope实际定位`ace-conformance`的conformance target。脚本保abi/transport/incremental/performance/compat/sdk/acceptance各scope，正式性能仍四状态各20样本，不能因补定位再跑一遍。
+
+当前固定组已从891树的`scripts/test-groups.toml`核到：`ace-native`、`case-ace-m1-typed-native-891`（本树新增）、`ace-host`（SDK conformance）、`auto-test-case`及`ace-adapters`。merge按实际修改选完整职责组/必要集成并集并记录理由；source/verify等共享面若触及再加真实消费者组，不把本表误作全生态固定全跑清单。`tm`及旧tv/tt等别名已随898退役，旧888细叶/清单不再是运行前置；不写legacy specs.json，不要求派生索引发布后才能归档。901正在处理语言测试feature，相关flags以已交付基面/实际H接受为准，不消费其候选WIP。
+
+计划材料沿最新AGENTS仅放`D:/autostack/plan-artifacts/plan-891/`；正常target仍在专属worktree，证据摘要折叠本计划，merge后按具名hold/清理规则处理，不回建attachments或第二套证据目录。本轮未修改实现/测试/脚本/Spec，未运行构建或任何测试，未联系其他会话；这里只读定位与主计划簿记。
+
+
+### 2026-10-31 merge 收据(PLAN-891:r2)——delivered
+
+- `prepared`:reviewed 基线 675cae800(final review #2 pass);canonical
+  Spec delta = SD-01 新增 docs/specs/auto-mir/native-typed-entry.md +
+  SD-02..06 五处增量,随 16fd177da 入树并逐条核验;delivery 候选链上两处
+  **test-only** 修复(09e422433 corruption 竞态、7ee759acf decode 负例
+  文案)——产品代码与 reviewed_commit 零 diff,受影响面重放绿,按
+  documentation-only 后继规则并入 delivery 链。
+- **冻结门禁(AC-08)**,受影响固定组并集(于冻结链执行):
+  - `ace-native` 161 项:160 绿;1 红 =
+    `resources_tier::performance::mir_native_resources_transient_spike_sampler_and_raw_gate`
+    ——既有采样测试负载敏感 flaky:同代码 master 与本树空闲隔离重放绿×3,
+    仅高负载窗口红;该测试代码零改动,按环境归因记录(红样本+重放绿均保留)。
+  - `case-ace-m1-typed-native-891` PASS(12/12)。
+  - `auto-test-case` PASS;`ace-adapters` PASS。
+  - `ace-host` 172 项:171 绿;1 红 =
+    `native_lifecycle::performance::turnaround_native_six_scenarios_p95_gates`
+    (body-edit 2 缓存断言)——**master 基线同断言同内容复现红**,判定既有红
+    非本计划回归,如实登记不掩盖(owner=后续 fix-forward,不解除本交付)。
+  - 复用依据:legacy conformance 128 绿绑 7dd44182a,其后仅 typed 路径与
+    测试文件变更(legacy 路径机制/输入未变);ace-core executor 纯增量由
+    typed tier 18 项真 PE 消费覆盖。
+- `landed`:rebase master(无冲突)后 **ff-only** 合入;master tip =
+  **eb6e45ef2** = plan-891-dev(range-diff 全 `=`,补丁逐字节等价)。
+  旧→新映射:02b8f0da4→53d0d6b5a、9a3a96c9e→101981343、98c7c0cf7→
+  16fd177da、7dd44182a→801baa2e6、675cae800→2caaa48ac、09e422433→
+  3219ad9cd、7ee759acf→eb6e45ef2。
+- `canonical_verified`:master@eb6e45ef2 含 SD-01..06 全部路径
+  (16fd177da 统计核对;native-typed-entry.md sha256 前缀 f2de377e354771e9);
+  无 legacy ledger/索引写;主检出合入后 smoke:typed suite 12/12 PASS
+  (重建 auto-case 后)。
+- `archived`:docs/plans/archive/891-native-wide-scalar-typed-entry.md,
+  status: archived,completion_kind: **delivered**;本收据随归档提交入库。
+- 遗留登记:KNOWN-DEBT-AND-RISKS.md D-891-A(typed 侧显式 I/O 故障注入
+  负例,非阻塞);ace-host 既有红(owner 不明,建议 fix-forward 计划)。
+- 部署产物检查:auto-lang 为语言/实验仓,无 backend daemon/web bundle
+  生产面;auto-case/mn-worker 为测试工件随各门禁重建,无陈旧部署项。
+- 批量回归 due:891 % 5 ≠ 0;.last-batch-regression.json 检查见 cleaned 段。
 
 ## 10. 待澄清事项
 
