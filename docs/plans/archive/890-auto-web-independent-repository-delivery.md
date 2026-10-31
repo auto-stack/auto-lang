@@ -14,7 +14,7 @@ touched_goals: []
 
 affects: [repository-boundaries, language-sdk, auto-api-gen, auto-web, auto-man, auto-ui-tools, auto-ui-compiler, auto-test-case]
 depends_on: [PLAN-884, PLAN-885, PLAN-887]
-current_step: 11
+current_step: 12
 total_steps: 12
 ---
 
@@ -22,7 +22,7 @@ total_steps: 12
 
 > **当前授权（最终）**：用户明确“不需要再次测试了”，要求更新主分支后安全合入。896新cargo t与四仓冻结门已有实际通过证据；898及后续主干整合只做独立静态核查，不追加构建、测试或周期批次，不把旧结果认证为新基线已执行。禁止远端发布保持。
 >
-> **当前进度**：四仓已ff-only合入、canonical已核；r7独立终审与恢复复审通过。以下各早期停止点/pending均属历史。归档与五工作树清理已完成；附件本地副本和空组目录删除被自动策略拒绝，T-12保留该清理尾项。
+> **当前进度**：四仓已ff-only合入、canonical已核；r7独立终审与恢复复审通过。以下各早期停止点/pending均属历史。归档、五工作树/四开发分支、D盘附件/空组及C盘890临时副本清理均已完成，12/12；最终收据见本节末。
 
 > r6 / executing / 6/12；2026-10-30。用户已授权890完整交付，并明确选择“显式安装 Web adapter”。885收尾已由用户确认；当前按下述显式SDK装配迁移合同执行。r1的仅规划限制与等待记录为历史，不覆盖当前授权。
 > **当前停止点（2026-10-30）**：用户“继续后续阶段”启动r4单元2；T-05～T-06运行时/生成器迁移及定向验收已完成并提交，暂停在该单元末。语言`1b177ebab`，Web`d8c889c78`；见[本阶段交接](#e890-ca5b663d4f4f80ee)。**组合产品尚未构建通过**：根check暴露UI back-proxy三项旧Core引用错误，Vue另有旧HTTP生成调用，均由下一单元T-07消费迁移关闭；不冒baseline红或整包可用。**完整tm闭包仍NOT_PASSED**，保留旧3个AAVM红及未执行项。整体executing6/12，T-07待启动，未合入/归档/清理。
@@ -275,7 +275,7 @@ r7按用户要求整合896并重编译测试，现8/12。T-08适配新固定组�
 | T-09 | work / T-08 | **[✅ T-09；R1C/R2有界修复与新SDK/CLI验证完成，最终组合收据T-12保留]** 最新修复与当前输入见[修复2交接](#e890-2709e784f3aa9c94)；下列原阶段数据按原输入保留。19包纯SDK自包含源/Windows包已真实构建、测试、fresh/locked/A→B及故障恢复；冻结发行45/45、历史Core恢复14/14，SDK217过+2原ignore。Man事务唯一源/不可编辑工具快照、完整stdlib/版本/来源/哈希与严格Core/Full边界；公开反例4拒绝且旧workspace不改。真实Git独立检出构建/库测试及Windows目录限制/LEAK分列保留；治理10与用途19反例通过，未降旧floor/原条件。[包/哈希/范围](#e890-4d314850cd8b40e6)；语言`f739c3751`、Web`9ddb7fe`、Man`cb4ab3d` | AC-09/11；V-12/13；旧架构仅Core合法形态，未冒旧UI/Full运行认证；T-10/11/12继续 |
 | T-10 | work / T-09 | **[✅ T-10；r7整合/首次统一门修复已定向关闭，当前组合最终门T-12仍pending；以下旧证据为历史；修复3诊断/原生闭包/独立guest及健康检查完成，见修复3交接；修复2原因诊断/oracle调整及41+19验证/目录/SD新冻结完成]** 最新修复与当前输入见[修复2交接](#e890-2709e784f3aa9c94)；下列原阶段数据按原输入保留。固定Blog原314文件未改，真实冷Rust构建/API13及完整Vue15/15、原生22/22；新增UI局部快照/同名状态修复`9aad12c`，原ui_gen模块866过+2原ignore、4反例。语言`ede598998`刷新46 recipes/7329义务/1213叶，75职责组、19守恒用途控制；新增warning差0、旧debug/TODO来源核与SD01..09回交完成。原红/路径/缓存/控制器清理限制具名保留，[冻结交接](#e890-6aafd921a0a45c59) | AC-10..12；V-14..17，工作AC自查不冒独立终审/整档门 |
 | T-11 | review / T-01..10 | **[✅ T-11] T19最终受影响独立PASS**；原媒体断言保全、Windows owned build、非Windows信号组保留及来源受限恢复脚本通过。报告[最终复审](#e890-d0511e724d4bee1e) SHA2568c695e50599d6df83e228e98461162fb2c23d54da1268e98eff1cd852a9c054f；冻结54b5/e144/4da/d2b/c346。完整实际执行/SDK/landing/archive/cleanup仍T-12 | AC-01..14；V-18审查部分 |
-| T-12 | merge / T-11 | 再核冻结组合/写入窗口，按T-02依赖顺序和恢复点跑各仓统一门+四仓完整认证，实际合入各修改仓；Web canonical、语言指针、UI/Man消费文档及各自ledger/index沉淀；主合同归档后逐树guard clean再安全清理，最终来源/产物/ID/状态读回 | AC-14；V-18，auto-plan-merge流程；批次到期按现行单实例规则，收尾后12/12 |
+| T-12 | merge / T-11 | **[✅ T-12；四仓已合入、规范/归档已提交，五树/四分支及D/C盘890指定残留已清理；追加测试及批次按用户明确指示不执行]** 再核冻结组合/写入窗口，按T-02依赖顺序和恢复点跑各仓统一门+四仓完整认证，实际合入各修改仓；Web canonical、语言指针、UI/Man消费文档及各自ledger/index沉淀；主合同归档后逐树guard clean再安全清理，最终来源/产物/ID/状态读回 | AC-14；V-18，auto-plan-merge流程；批次到期按现行单实例规则，收尾后12/12 |
 
 进度记法：每任务实际完成才登记`[✅ T-NN]`与提交/命令/退出码/结果/证据hash，不因任务表存在打勾。T-10/T-11不提前要求merge-owned实际合入/归档；T-12在归档时若清理未完仍11/12，guard收尾读回后才12/12。各仓实际合入不可能作为同一Git原子事务；若中途失败，保候选/原有效组合和恢复路径，修复复核后继续，不宣称U890。
 
@@ -7623,6 +7623,23 @@ native profile results must be deposited only after their actual execution.
 
 
 </details>
+
+
+
+### PLAN-890:r7 最终收尾 PASS（用户再次授权删除后）
+
+- 用户授权：删除890剩余本地附件和空组目录，更新归档并完成收尾；同时核查C盘项目残留。严格未执行任何测试、编译或周期回归。此前拒绝和pending为历史记录，已由本收据关闭。
+- 安全删除：先确认绝对范围、目录无reparse point、空组确为空。复杂组合及强制删除被策略拒绝后，分别使用明确绝对路径且不带Force的原生PowerShell删除成功，无绕过权限。
+- 实际删除D:/autostack/auto-lang/docs/plans/attachments/890（10569文件，删除前总长度515080414bytes）；D:/autostack/.wt/lang-890空组；C:/Users/zhaop/.codex/.chatgpt-projects/g-p-6aa9047652808191a99340cce4efab3b/plan890-external-validation-20261031（93179文件，删除前总长度39720927692bytes）。两份材料合计40236008106bytes，为文件长度口径，不冒称NTFS唯一数据实际回收量。
+- 三路径删除后均实际不存在；D:/autostack/plan-artifacts/plan-890/final-896/source-54b5d7c92最终冻结源仍在，plan-890受latest-five保护。正式源码和68份持久摘要已在仓库，无唯一源码依赖被删除。
+- worktree再次确认：auto-lang/auto-web/auto-ui/auto-man/auto-down五仓git worktree list均没有lang-890；原四开发分支均不存在。此前逐树guard clean及安全remove成功保持；codex/plan-890-pre-*是保留恢复ref，不是工作树。
+- C盘其他历史临时目录只核查未删除：833五份副本合计17649977167bytes；858-phase2为8115028194bytes，含design-wip-before/ledger恢复等材料，需逐项确认唯一恢复材料后退役；888-cache-archive为58541124963bytes，现888登记仍有893在途消费者hold，暂留。它们不属于890未完事项。项目镜像根和sources/同步参考资料保留。
+- 旧registry scopes/890的“active-reviewed-final-gates / 14日”状态退役，改为归档已交付、无未解决产品问题，D盘剩余890证据按v2最新五计划保留，不再沿用历史hold。
+- archived: completion_kind=delivered；current_step=12/total_steps=12；canonical已核且实际落地，四仓ff-only；cleaned=pass。无远端push，无生产进程重启；生产旧binary观察和用户免追加测试范围保持。
+- stage: merge | plan_id: PLAN-890 | plan_revision: r7 | outcome: pass | archived: docs/plans/archive/890-auto-web-independent-repository-delivery.md | cleaned: pass
+- stage: goal | plan_id: PLAN-890 | plan_revision: r7 | from: merge | to: done | status: archived | outcome: pass | next: done
+
+最终核验时间：2026-10-31T07:34:53.366906+00:00。
 
 ## 10. 待澄清事项
 
