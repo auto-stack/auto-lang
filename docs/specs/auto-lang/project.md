@@ -83,9 +83,11 @@ autodown/ui-headless/code-editor 等）在此转发。
 
 ## PLAN-814 B 增量（T-08；M814-B 发布落库）
 
-- →auto-ui-runtime 依赖边 **default-features=false**（T-08 捕获）：
-  no-UI 消费者（default-features=false 形态）闭包禁拖 ui-iced；六
-  provider fixture=缺席臂哨兵（43 测）。
+- ~~→auto-ui-runtime 依赖边 default-features=false（T-08 捕获）~~
+  **PLAN-900 取代**：本包→auto-ui 依赖边整体退役（零 auto-ui 包），
+  default = []；provider fixture 的 UI 宿主形态改 auto-ui-runtime 直连
+  + 显式 install bootstrap（MSVC linker GC 下 inventory 收集点不保证
+  链接保留——900-N6）。
 - 测试期 UI 依赖清零（T-04 临时 dev-deps 兜住形态收口；残留 UI
   测试仅经再导出消费=V-02 兼容面）。
 - `extract_autovm_result` 再导出恢复（T-02 丢失公开路径勘误）。
@@ -114,9 +116,9 @@ autodown/ui-headless/code-editor 等）在此转发。
 整体替换配置，仅声明空组不产生隔离；不改变包布局、features 反例、输入、
 测试选择或值断言。该约定约束测试共享资源，不宣称修复生产ABI并发语义。
 
-## PLAN-831 上层兼容与切源（SD-06，as-built）
+## PLAN-831 上层兼容与切源（SD-06，as-built；PLAN-900 部分取代）
 
-五 UI 包生产 owner=独立 auto-ui 仓（组内兄弟相对 path + 受管锁）；本包作为上层兼容组合保留：公开路径经真实 UI owner 再导出，不进入纯 SDK 闭包。旧 auto-lang 巨包不再被 UI 仓反向依赖。
+五 UI 包生产 owner=独立 auto-ui 仓（组内兄弟相对 path + 受管锁）。~~本包作为上层兼容组合保留：公开路径经真实 UI owner 再导出~~——**PLAN-900（2026-10-31）依赖方向反转落地**：facade `auto-lang` 零 auto-ui 包（workspace 层环解除，`cargo tree -p auto-lang -p auto-lang-core` 无 auto-ui 为冻结不变量）；aura/ui_gen/design_tokens/a2ui/route/ui_ast/store_deps/back_proxy/host_adapters/ui 域与 ui_build 管线装配、宿主能力 install 单点、auto-lsp、UI examples（28）、UI 集成测试、auto-cosmic 整族全部迁 auto-ui 仓（组合层=auto-ui-compiler::pipeline）；旧 auto-lang 巨包不再被 UI 仓反向依赖（831 语义保持并加强为工作区级零边）。UI 宿主装配 canonical 形态=消费方显式 `auto_ui_runtime::install_ui_host_capabilities()`（auto-man 同款；SDK 钩子经 runtime 侧 inventory 兜底）。
 
 ## PLAN-841 来源与验证
 

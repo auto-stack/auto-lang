@@ -1,7 +1,10 @@
 # auto-cosmic
 
 > **Status**: active（509 线内——Smithay 合成宿主线落地）
-> 路径：`crates/auto-cosmic`（5 个子 crate）  | 技术栈：Rust（smithay / iced 兼容 VTree / libcosmic 草案 / zbus）
+> **PLAN-900（2026-10-31）**：auto-cosmic 整族（ports/ports-linux/demo/host-libcosmic/host-smithay）
+> 随 UI 依赖方向反转迁 **auto-ui 仓** `crates/auto-cosmic/*`——本目录为其历史规格与
+> 计划索引；现行代码与后续维护归 auto-ui 仓（Design 52 §2.1，T-01 整族聚拢定案）。
+> 路径（迁移前）：`crates/auto-cosmic`（5 个子 crate）→ 现行：`auto-ui/crates/auto-cosmic`  | 技术栈：Rust（smithay / iced 兼容 VTree / libcosmic 草案 / zbus）
 
 COSMIC 桌面复刻实验（Plan 365）+ **Smithay 合成宿主线（Plan 509，路线 B 裁定）**：
 前者把 AutoUI 的 VTree 渲染到 COSMIC（libcosmic）桌面组件，验证"AutoUI → 真实
