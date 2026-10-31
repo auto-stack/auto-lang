@@ -517,3 +517,66 @@ fn the_entry_unit_profile_is_rejected_on_a_non_core_recipe() {
         err
     );
 }
+
+/// PLAN-902 T-06: the two a2x emit recipes carry STRICTLY DISJOINT profile
+/// sets (scalar: core|scalar; record-text: record|text|text-record), the
+/// binding is required for both and invalid elsewhere, and the artifacts
+/// expectation channel stays a2x-only.
+#[test]
+fn a2x_record_text_recipe_profile_strictness() {
+    let artifacts = "completion: \"success\", artifacts: [ \
+         { path: \"main.rs\", file: \"golden/main.rs\", compare: \"bytes\" } ]";
+    let base = |recipe: &str, profile: &str| {
+        format!(
+            "case {{ schema: \"autolang.case/2\", id: \"f902.admission\", \
+             source: {{ text: \"fn main() int {{ return 0 }}\", syntax: \"auto\", path: \"main.at\" }}, \
+             entry: {{ mode: \"program\" }}, \
+             checks: [ {{ id: \"a2x\", adapter: \"probe\", action: \"run\", \
+             options: {{ recipe: \"{}\", a2x_hir: {{ profile: \"{}\", entry: \"main\" }}, \
+             steps: [ {{ op: \"run\" }} ] }}, \
+             expect: {{ {} }} }} ] }}",
+            recipe, profile, artifacts
+        )
+    };
+    // both recipes decode their OWN profiles
+    for (recipe, ok) in [
+        ("ac-a2r/hir-scalar-emit-v1", "core"),
+        ("ac-a2r/hir-scalar-emit-v1", "scalar"),
+        ("ac-a2r/hir-record-text-emit-v1", "record"),
+        ("ac-a2r/hir-record-text-emit-v1", "text"),
+        ("ac-a2r/hir-record-text-emit-v1", "text-record"),
+    ] {
+        decode(&base(recipe, ok)).unwrap_or_else(|e| panic!("{recipe}/{ok}: {e}"));
+    }
+    // the profile sets are strictly disjoint per recipe
+    for (recipe, bad) in [
+        ("ac-a2r/hir-scalar-emit-v1", "record"),
+        ("ac-a2r/hir-scalar-emit-v1", "text"),
+        ("ac-a2r/hir-scalar-emit-v1", "text-record"),
+        ("ac-a2r/hir-record-text-emit-v1", "core"),
+        ("ac-a2r/hir-record-text-emit-v1", "scalar"),
+        ("ac-a2r/hir-record-text-emit-v1", "collections"),
+    ] {
+        let err = decode(&base(recipe, bad))
+            .unwrap_err()
+            .message
+            .to_string();
+        assert!(
+            err.contains("is not valid for recipe"),
+            "{recipe}/{bad}: {err}"
+        );
+    }
+    // the binding is REQUIRED for both a2x recipes
+    let missing = base("ac-a2r/hir-record-text-emit-v1", "record")
+        .replace("a2x_hir: { profile: \"record\", entry: \"main\" }, ", "");
+    let err = decode(&missing).unwrap_err().message.to_string();
+    assert!(err.contains("requires an a2x_hir binding"), "{err}");
+    // and INVALID on a non-a2x recipe (that recipe's own binding rule
+    // fires first — the a2x_hir table itself is rejected before it)
+    let foreign = base("ac-av/data-run-v1", "record");
+    let err = decode(&foreign).unwrap_err().message.to_string();
+    assert!(
+        err.contains("belongs to") || err.contains("requires an"),
+        "foreign recipe must not carry an a2x_hir binding: {err}"
+    );
+}

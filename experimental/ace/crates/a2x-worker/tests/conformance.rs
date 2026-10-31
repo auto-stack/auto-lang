@@ -1,5 +1,7 @@
 #[path = "cases/boundaries.rs"]
 mod boundaries;
+#[path = "cases/cert_rt_902.rs"]
+mod cert_rt_902;
 #[path = "cases/contract_certification.rs"]
 mod contract_certification;
 #[path = "cases/hir_shape.rs"]
