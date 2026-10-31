@@ -1,0 +1,33 @@
+/// Zip archive module - read-side natives (PLAN-897).
+///
+/// Container and decompression by the zip 3.0 crate. Read-only; the caller
+/// supplies explicit budgets. Error shapes are total (no raises).
+///
+/// 能力表（docs/specs/auto-vm/zip-natives.md）：
+///   list_json      成功 = 中央目录顺序 JSON 数组；失败 = ""
+///   read_text      成功 = 条目严格 UTF-8 文本；失败 = ""
+///   extract_entry  0 = 成功；-1 = 一般失败；-2 = 解压超 max_bytes
+
+// ============================================================================
+
+/// List archive entries as a JSON array in central-directory order.
+/// Shape: [{"name":str,"size":int,"comp_size":int,"method":int},...]
+/// Returns "" on any error (missing file, invalid archive).
+/// Example: let js = list_json("book.epub")
+pub fn list_json(path str) str;
+
+/// Read one entry, decompress, and return it as strict UTF-8 text.
+/// max_bytes ≤ 0 is an invalid argument (returns ""). Entry larger than
+/// max_bytes returns "" (read-side take() hard cap; declared sizes are
+/// not trusted).
+/// Returns "" on any error (missing file, missing entry, invalid UTF-8,
+/// over cap, IO).
+/// Example: let xml = read_text("book.epub", "OEBPS/ch1.xhtml", 12582912)
+pub fn read_text(path str, name str, max_bytes int) str;
+
+/// Extract one entry to dest (truncate-write, single file — no directory
+/// restructuring, no path materialization from entry names).
+/// Returns 0 on success; -1 general failure (missing file/entry, IO,
+/// max_bytes ≤ 0); -2 decompressed size exceeds max_bytes.
+/// Example: let rc = extract_entry("book.epub", "img/cover.png", "out.png", 12582912)
+pub fn extract_entry(path str, name str, dest str, max_bytes int) int;

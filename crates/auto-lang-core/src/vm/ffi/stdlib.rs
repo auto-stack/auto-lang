@@ -2260,6 +2260,8 @@ pub(crate) use rust_stdlib_dispatch::*;
 
 mod crash_trace;
 pub use crash_trace::*;
+mod zip_io;
+pub use zip_io::*;
 mod file_io;
 pub use file_io::*;
 mod http_client;

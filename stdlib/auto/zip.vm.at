@@ -1,0 +1,11 @@
+/// VM declarations for the zip read-side natives (PLAN-897).
+/// Implementations live in the AutoVM native registry (zip_io.rs).
+
+#[vm]
+fn list_json(path str) str
+
+#[vm]
+fn read_text(path str, name str, max_bytes int) str
+
+#[vm]
+fn extract_entry(path str, name str, dest str, max_bytes int) int

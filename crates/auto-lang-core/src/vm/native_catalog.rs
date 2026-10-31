@@ -1205,6 +1205,11 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_pend_resize_geom", 3002, Int),
             ("auto.term.engine_history", 3003, Int),
 
+            // === Zip read-side (3010-3012) — PLAN-897 ===
+            ("auto.zip.list_json", 3010, String),
+            ("auto.zip.read_text", 3011, String),
+            ("auto.zip.extract_entry", 3012, Int),
+
             // === Hash extended (2814-2816) ===
             ("auto.hash.md5", 2810, String),
             ("auto.hash.sha1", 2811, String),
@@ -2967,6 +2972,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_scroll_pending_for", 3001),
     ("auto.term.engine_pend_resize_geom", 3002),
     ("auto.term.engine_history", 3003),
+    // === Zip read-side (3010-3012) — PLAN-897 ===
+    ("auto.zip.list_json", 3010),
+    ("auto.zip.read_text", 3011),
+    ("auto.zip.extract_entry", 3012),
     ("auto.term.window_width", 2998),
     ("auto.term.window_height", 2999),
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
