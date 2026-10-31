@@ -298,6 +298,16 @@ tempfile = "3.14"
 [profile.dev]
 debug = "line-tables-only"
 
+# 2026-10-31 用户裁定（dev 瘦身续篇）：非 workspace 成员——第三方依赖、跨仓
+# path 依赖（auto-ui/auto-man 等）与 [patch] 本地补丁——行号表也不保留
+# （debug=false）。panic 位置本就编译进二进制（core::panic::Location），损失
+# 的仅是回溯中依赖帧的文件:行；本仓 workspace 成员仍保留 line-tables-only。
+# 预期大幅缩小 deps/incremental 中 windows/ash/naga/auto-ui-runtime 等占位。
+# 临时恢复完整调试信息：编辑本节（"*" 通配符无环境变量覆盖形式；
+# CARGO_PROFILE_DEV_DEBUG=2 仅作用于 workspace 成员）。
+[profile.dev.package."*"]
+debug = false
+
 # PLAN-043 走查（2026-09-25）：iced_widget 本地补丁——container.rs 布局
 # 空窗容错（P041-D1 竞态族 unwrap 崩桌面的宿主侧根治），见 crates/patches/README.md。
 # 升级 iced 版本时需重审本补丁。
