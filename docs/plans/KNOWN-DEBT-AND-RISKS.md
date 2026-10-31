@@ -3795,3 +3795,18 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
   未再上层注入子PE不读输入/部分写等端到端故障样本。
 - 关闭条件:当执行器或 typed runner 行为变更时,补 typed 端到端 I/O 故障
   注入负例;无变更则按需补强,不阻塞任何交付。
+
+## D-899-A 三个ACE测试硬读去跟踪的attachments文件（结构性，新worktree必红）
+
+- owner: 测试owner（ace-abi/ace-semantics-store conformance）+ attachments去跟踪
+  裁定后续；来源 PLAN-899 final review（T-04 冻结门暴露，同身份归属具名）。
+- 现状:`ace-abi` binding.rs:64 读 `docs/plans/attachments/797/semref-retirement-receipt.md`；
+  `ace-semantics-store` sema_boundary_audit.rs:208/278 读 `docs/plans/attachments/796/
+  contract-decision.md`。两文件随2026-10-31整目录去跟踪仅存主检出磁盘（已核实797/796
+  均在主检出），主检出跑绿、任何新worktree/CI检出必红（os error 3）。
+- 关闭条件:测试改为读canonical docs/specs 或将冻结常量/收据断言内嵌测试
+  （不改历史证据本身）；或attachments裁定给出替代消费合同。关闭前
+  `cargo t ace`（ace-workspace组）在新树上预期恰好这3个具名红。
+- 附带（同类观察）:reuse_obligations_run_green_via_original_suites 在全workspace
+  nextest并行下观察到一次flake（exit 2/25.3s；串行 --test-threads=1 重放绿23.7s），
+  环境归因在案；再发则按并发spawn边界立案。
