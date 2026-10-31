@@ -93,9 +93,6 @@ def translated(identity):
     return {key(r['old']): key(r['new']) for r in records()}.get(identity, identity)
 
 
-def legacy_ids(contract, tier):
-    return {translated(f"language|{row['binary']}|{row['test']}")
-            for row in contract['rows'] if tier in row['selected_in']}
 
 
 def validate_resources(root, path=None):

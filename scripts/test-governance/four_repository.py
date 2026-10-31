@@ -26,7 +26,7 @@ def module(name, path):
 
 
 fixed = module('four_fixed_runner', ROOT / 'scripts/fixed-tests.py')
-full = module('four_external_owners', ROOT / 'scripts/run-full-regression.py')
+import web_native_owners as full
 LANGUAGE_GROUPS = ['integration', 'auto-generation-core', 'auto-api-gen',
                    'auto-media-core', 'a2r-std', 'auto-test-case']
 OWNERS = ('language', 'web', 'ui', 'man', 'down')
@@ -176,14 +176,7 @@ def snapshot(path):
 
 
 def contracts(selected_roots):
-    lang, web, ui, man = (selected_roots[k] for k in ('language', 'web', 'ui', 'man'))
-    ui_args = next(args for name, _, args in full.legs('tf', lang, ui) if name == 'ui-full')
-    result = {
-        'web': {'cwd': web, 'kind': 'nextest', 'options': ['-p', 'auto-web', '-p', 'auto-web-contract',
-                 '--lib', '--tests', '--features', 'auto-web/test-http-e2e', '--config-file', str(web / '.config/nextest.toml')]},
-        'ui-full': {'cwd': ui, 'kind': 'nextest', 'options': ui_args},
-    }
-    result.update({s['leg']: s for s in full.batch_extra_legs(lang, ui, man) if not s.get('manual')})
+    result = full.owner_specs(selected_roots)
     for name, spec in result.items():
         spec['leg'] = name
     if set(result) != set(EXTERNAL_LEGS):
@@ -199,15 +192,15 @@ def owner_selection(name, ids, selected, passed_media=None):
     """Original external denominators are shared by producer and consumer."""
     credit = set()
     if name == 'ui-full':
-        expected, required = full.baseline_for('tf', name)
+        expected, required = full.owner_baseline(name)
         media = load(ROOT / 'scripts/test-governance/media-test-migrations.json')['migrations']
-        credit = {r['new'] for r in media if r['old'] in full.raw_baseline('ui')[1]}
+        credit = {r['new'] for r in media if r['old'] in full.ui_original_baseline()[1]}
         moved = {r['old'] for r in media}
         full.validate_ids(ids, selected, expected - moved, required - moved)
         if passed_media is not None and not credit.issubset(passed_media):
             raise ValueError('original UI migration credit lacks actual media PASS')
     if name != 'web':
-        full.check_minimum(full.tier_minimums(), name, len(selected) + len(credit))
+        full.check_minimum(full.minimums(), name, len(selected) + len(credit))
     if name == 'web':
         rows = load(ROOT / 'scripts/test-governance/web-test-migrations.json')['migrations']
         required = {r['new']['binary'] + '\t' + r['new']['test'] for r in rows if not r['original_ignored']}

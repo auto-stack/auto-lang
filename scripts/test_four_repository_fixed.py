@@ -27,10 +27,10 @@ class FourOwnerControls(unittest.TestCase):
             gate.owner_selection('web', selected, selected)
 
     def test_ui_required_and_actual_media_credit_are_both_required(self):
-        baseline, required = gate.full.baseline_for('tf', 'ui-full')
+        baseline, required = gate.full.owner_baseline('ui-full')
         rows = gate.load(gate.ROOT / 'scripts/test-governance/media-test-migrations.json')['migrations']
         moved = {r['old'] for r in rows}
-        credit = {r['new'] for r in rows if r['old'] in gate.full.raw_baseline('ui')[1]}
+        credit = {r['new'] for r in rows if r['old'] in gate.full.ui_original_baseline()[1]}
         ids, selected = baseline - moved, required - moved
         extra = {'current\textra' + str(i) for i in range(100)}
         ids, selected = ids | extra, selected | extra

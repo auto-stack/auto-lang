@@ -38,3 +38,11 @@ Windows受计量命令明确禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，直接
 正式矩阵的外部负载检测区分编译/测试与常驻服务：构建、测试、未知Cargo命令及其不明子进程仍阻止采样；只有显式cargo run的绝对*-back manifest、唯一同名后端、仅loopback监听、连续两次服务树身份和命令稳定，才进入背景CPU核算。观测间隔须在0到90秒之间，所有服务实际PID去重后的CPU增量上限固定为单核的1%，最小记账容差为Windows一次1/64秒刻度；超过上限、身份/命令变化、监听丢失、新编译/测试均为干扰，整轮作废。每次CPU前后值、间隔、上限、身份、监听与busy原因保留在campaign；这只定义计量背景，不改变原性能门值、样本数或测试oracle。不停止其他服务，不把一次观测当空闲证明。
 
 单轮结果保留发现/执行Job的CPU和内存：CPU加计Python runner且不重复加meter CPU；内存报告顺序子进程树Job峰值最大值，不含共享Python runner内存。长例测量队列须逐个单原子、源绑定及理由/历史证据，标AWAITING_HUMAN；原测试保持启用，普通模块门不能据此通过，条件不适用另列。
+## Web delivery owners
+
+`four_repository.py` uses explicit fixed language groups and native Web/UI/Man
+commands. `web_native_owners.py` and `web-native-owner-contracts.json` preserve
+the original owner command/ID/minimum obligations for that integration contract.
+They do not restore a generic catalog, inferred closure, or periodic dispatcher.
+Distribution admission remains in `web_delivery.py`; current evidence is folded
+into archived PLAN-890 at closeout.

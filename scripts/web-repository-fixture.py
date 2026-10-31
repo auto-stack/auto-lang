@@ -15,9 +15,6 @@ from test_identity_migrations import validate_sources, validate_resources, valid
 from web_delivery import validate_distribution_receipt
 import four_repository
 
-spec = importlib.util.spec_from_file_location('full_regression', ROOT / 'scripts/run-full-regression.py')
-full = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(full)
 
 
 def resolved_roots(args):
