@@ -7701,3 +7701,13 @@ stage: work / plan_id: PLAN-890 / plan_revision: 6 / scope: T-05,T-06 / outcome:
 - stage: goal | plan_id: PLAN-890 | plan_revision: r7 | from: merge | to: merge | status: archived | outcome: partial_delivery_cleanup_pending | next: delete_classified_local_scratch_when_policy_allows
 
 - 证据保留维护已先preview再apply，退出0，最新五项为890/896/Blog003/UI013/888；删除旧Musk106证据等，实际释放1104410978bytes，无错误。剩余唯一文件数据38378036695bytes，仍超过10GiB监控预算，未冒称达标，受保护材料不为预算删减。收据：D:/autostack/plan-artifacts/.retention/receipts/last-five-20261031T072931628989Z.json。该维护没有删除上文被策略拒绝的本地附件或空组目录。
+
+
+### 归档后散落构建目录清理补充（2026-10-31 用户授权）
+
+- 前次“最终收尾 PASS”遗漏 `D:/autostack-build`：外部 SDK 消费、安装、发行验证根未纳入保留登记。本条补充纠正清理覆盖范围，不重开产品计划或重跑产品门禁。
+- 先运行 `artifact_retention.py` 预览，退出0，确认890仍属最近五个已完成计划；未执行全局 apply，未触及其他计划。对本次清理逐路径预览后 apply，均退出0。核查原根及后代无 reparse point、无使用该根的活动进程；删除采用既有 retention 安全删除函数，不修改文件属性、不穿透链接。
+- 原根18941文件：删除16762个可重建Cargo缓存文件（tool-build、source-fixed/sdk/target及空的嵌套target），逻辑14368942282字节；按共享硬链接计数实际回收12872980446字节。其余2179文件/118289024字节（源码、发行包、安装验证材料）完整迁入 `D:/autostack/plan-artifacts/plan-890/recovered-autostack-build-20261031/`，迁移前后逐文件大小与SHA256全部相等。原根已为空后移除，实际不存在；没有失败项。
+- 清单 `D:/autostack/plan-artifacts/plan-890/recovered-autostack-build-20261031/cleanup-manifest.json`，SHA256 `c70519a770687c51ca25549086871ad4ad2bd512163c3421e85cf9d966317239`；含原路径、去向、逐文件保留hash、删除结果及verified=true。`.retention/policy.json` 的 auto-lang/PLAN-890 仍以 plan-890 单一scope计数，增加迁入子目录、清单hash及统计，不新增未解决问题hold；完成文档hash随本补充刷新。
+- AGENTS.md统一规定计划材料归入plan-artifacts：禁止另建autostack-build等第二目录；外部消费者/安装/发行及专用外置target显式指定路径，创建即登记；收尾逐项核查命令/日志实际输出路径，迁移校验、删除与登记必须闭合。可重建且无在途使用的缓存不为保留窗口搬运。本次保留决策按当前会话用户提供的最近五个规则执行；合入期间主分支另有并发的merge即全删规则更新，本补丁保留该主分支更新，只追加防散落与收尾路径对账要求。
+- 单独复核：核对原根不存在、清单verified与迁移文件数/字节/hash、登记scope与实际去向、规则中旧组目录暂存条款已被明确替代。纯文档修改通过git diff --check；未修改产品代码，无需Cargo测试；未发现遗漏/延后/workaround或新增产品债务。

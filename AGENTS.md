@@ -73,6 +73,12 @@ All AI coding assistants working in this repository must strictly adhere to the 
   `D:/autostack/plan-artifacts/plan-<NNN>/`（无 plan 号的轻量任务用任务 slug，如 `fix-<slug>/`）。
   计划开工即建目录，在途期间受保护；**绝不放进任何仓的项目目录**（attachments 三仓已整目录
   忽略；当日早前 `.wt/<group>/evidence/` 约定同日废除）。无 worktree 的纯文档工作用系统临时目录。
+- **禁止散落输出**：外部消费者验证源码副本、SDK安装副本、发行包及需留存的构建产物均属
+  计划材料，禁止另建 `D:/autostack-build`、其他盘符同名目录、散落的 `planNNN-*` 或第二套
+  证据目录。外部验证必须显式指定输出和 target 路径，不依赖当前目录或工具默认值；正常
+  构建默认在专属 worktree 内，确需外置的计划专用 target 只能放上述统一计划目录，并登记
+  为可删除缓存。跨仓按仓/计划身份区分，避免同号覆盖；创建材料目录时即登记 owner、用途、
+  路径与在途状态。
 - **merge 即全删**：merge 收尾把仍需要的证据以 markdown 摘要（命令、退出码、关键数字、
   代码/日志节选、保留件的本地路径+内容哈希）**折叠进计划文件本身**（§7 验证记录 / §9 复审记录），
   然后**删除该计划的整个 plan-artifacts 目录**；构建中间产物（cargo target 树、.pdb、exe 副本）
@@ -87,6 +93,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
   merge 收尾刷新（记录删除与持有）。归档状态单独不足以证明问题已闭；持有不因时间流逝自动
   释放——须核对当前债务/关闭记录。`artifact_retention.py` 保留为保守的手动清扫/预览工具，
   其最近-5 逻辑不再是政策；链接仅删除链接本身，绝不穿透目标，不盲删活动进程相关目录。
+- **收尾路径对账**：必须逐项核对本计划命令/日志中实际使用的所有输出目录（包括其他盘符
+  与外部安装/消费根），不能只检查 worktree 和已登记 scope。发现散落目录先核查归属、链接、
+  活动进程及唯一依赖；按本节保留条件需要保留的材料移入统一 scope，迁移前后核对文件数、
+  字节数及SHA256并登记清单，其余安全删除。计划内记载原路径、去向、删除量和核查结果，
+  刷新登记与完成文档hash；确认没有遗漏目录才能报告清理完成。未知归属不得盲删。
 
 ### 固定Cargo包与Rust模块测试（PLAN-896）
 
