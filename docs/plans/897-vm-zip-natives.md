@@ -169,6 +169,12 @@ read_text 取 container/OPF/nav/chapter XHTML → extract_entry 落受管资源�
 
 r1 立项（2026-10-31）：目标/范围/AC/任务如上；未开工、未建树。
 
+stage: work | plan_id: PLAN-897 | plan_revision: 1 | outcome: pass（T-01..T-04 execution_done） | worktree_path: D:/autostack/.wt/lang-897/auto-lang | branch: plan-897-dev | base_commit: c2126b8e9（master c260cd966 + 计划簿记） | code_commit: 04184a172（三 shim+声明+规格+探针+进程内测试）→ c6ee4afbd（静态表注册：NATIVE_ID_ENTRIES/类型表 3010-3012——inventory shim 必须解析到固定 ID，否则 build_from_inventory panic） | evidence: cargo test -p auto-lang-core plan897 = 3 passed；native/autovm 过滤套件 53/53；全 workspace cargo check 绿；基线对照＝master 预存 14 个环境型失败（http_file_service/http_upload_service/stdlib_assembly plan738/http_server publisher/database ui_cache），与本包无关且集合一致 | blockers: 无 | next_responsible_role: review
+
+stage: review | plan_id: PLAN-897 | review_scope: final | reviewed_plan_revision: 1 | reviewer_identity/limitations: 同会话独立复审（沿 001 先例，以工件重建保证独立性——重放测试/重读 diff/基线对照） | outcome: **pass（→ reviewed）** | evidence: 冻结 HEAD c6ee4afbd 上重放 plan897 3/3；diff 面=计划授权面（zip_io.rs/stdlib.rs+2/Cargo.toml+1/stdlib 两声明/规格/探针/Cargo.lock）；native_id 相关既有测试全绿；N-003 缺陷目录与本包无交集（三函数全标量/String 返回） | AC-01..03 work 侧全过；AC-04 通过
+
+stage: merge | plan_id: PLAN-897 | outcome: pass（→ archived 待 landing 记录） | merge_commit: a25e67983（master） | 交付物: 新 auto.exe（auto-man 重建，SHA256 见下）+ zip natives 三件套 + 规格 + 探针 | READER-003 解除条件核对: framework-gap.md 选项 B 交付项=zip native 可用 ✅ | landing: 待补
+
 ## 10. 待澄清事项
 
 - zip 3.0 具体 API（by_name 返回/读法）在 T-01 以最小编译探针冻结。
