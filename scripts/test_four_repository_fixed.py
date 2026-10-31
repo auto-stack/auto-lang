@@ -132,6 +132,31 @@ class FourOwnerControls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'untracked WIP'):
                 gate.require_clean('language', gate.ROOT)
 
+    def test_real_schema_source_drift_is_rejected_while_plan_outputs_are_allowed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            def git(*args):
+                gate.subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True)
+            git('init', '--quiet')
+            schema = root / 'docs/schema/aura.at'; schema.parent.mkdir(parents=True)
+            schema.write_text('fn first() int { 1 }\n')
+            report = root / 'docs/plans/report.json'; report.parent.mkdir(parents=True)
+            report.write_text('{}')
+            git('add', '.')
+            git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture')
+            before = gate.snapshot(root)
+            report.write_text('{"execution":"new output"}')
+            gate.require_clean('fixture', root)
+            self.assertEqual(before['source_sha256'], gate.snapshot(root)['source_sha256'])
+            schema.write_text('fn changed() int { 2 }\n')
+            self.assertNotEqual(before['source_sha256'], gate.snapshot(root)['source_sha256'])
+            with self.assertRaisesRegex(ValueError, 'source contains'):
+                gate.require_clean('fixture', root)
+            schema.write_text('fn first() int { 1 }\n')
+            (schema.parent/'new-runtime.at').write_text('fn hidden() int { 3 }\n')
+            with self.assertRaisesRegex(ValueError, 'source contains'):
+                gate.require_clean('fixture', root)
+
     def test_actual_path_dependency_rejects_another_clean_owner(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

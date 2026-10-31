@@ -109,11 +109,18 @@ def roots():
             for key in OWNERS}
 
 
+def source_input(name):
+    # Schema files are compiler/SDK inputs despite living under docs/. Shared
+    # Plan bookkeeping and generated reports remain producer-only outputs.
+    return (not name.endswith('.md')
+            and (not name.startswith(('docs/', 'reports/')) or name.startswith('docs/schema/')))
+
+
 def require_clean(name, path):
     full.require_clean_tree(name, path)
     for args in (['diff', '--name-only', 'HEAD'], ['ls-files', '--others', '--exclude-standard']):
         names = subprocess.check_output(['git', '-C', str(path), *args], text=True).splitlines()
-        if any(not n.startswith(('docs/', 'reports/')) and not n.endswith('.md') for n in names):
+        if any(source_input(n) for n in names):
             raise ValueError(name + ': frozen source contains tracked or untracked WIP')
 
 
@@ -148,7 +155,7 @@ def snapshot(path):
     source = hashlib.sha256()
     resources = hashlib.sha256()
     for name in sorted(set(names) - {''}):
-        if name.startswith(('docs/', 'reports/')) or name.endswith('.md'):
+        if not source_input(name):
             continue
         if name.startswith('scripts/test-governance/catalog/') or name == 'scripts/test-governance/modules.json':
             continue  # retained migration archives are not runtime inputs
