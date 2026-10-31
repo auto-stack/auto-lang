@@ -43,15 +43,19 @@ fn main() {
     check(js.find("\"name\":\"bin/logo.png\"") > 0, "z01 contains png entry")
     check(js.find("\"size\":19,") > 0, "z01 ascii size 19")
     check(js.find("\"size\":39,") > 0, "z01 cjk size 39")
-    check(js.find("\"size\":72}") > 0, "z01 png size 72")
+    check(js.find("\"comp_size\":72,") > 0, "z01 png comp_size 72")
     check(js.find("\"method\":\"Deflated\"") > 0, "z01 deflated method present")
     check(js.find("\"method\":\"Stored\"") > 0, "z01 stored method present")
     // JSON 可被 json.parse 消费
     var parsed_ok bool = false
     try {
         let v = json.parse(js)
-        let n int = v.len()
-        if n == 3 {
+        // json.parse 数组 len()/索引有在册缺陷 F-8——按 for-in 计数
+        var n int = 0
+        for it in v {
+            n = n + 1
+        }
+        if n == 4 {
             parsed_ok = true
         }
     } catch {
