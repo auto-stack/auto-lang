@@ -1,5 +1,7 @@
 # 测试模块选测与ACE成组执行
 
+> **已被取代（2026-10-31）**：tm 公共入口/叶模块图与周期 recipe 调度已随 PLAN-896（固定组 `cargo t`）与 PLAN-898（tm/tier 整体退役）退出；现行范式见 [Design 52](../52-single-compile-profile-consolidation.md) 与 `scripts/test-groups.toml`。本文余下内容仅作 888 时代目标态的历史参考。
+>
 > target-state r2 / 2026-10-30；承接[Design35](../35-autodown-test-cases.md)及[PLAN-888](../../plans/888-module-test-selection-and-ace-batch-pilot.md)。实现与验收按PLAN-888 r2推进；协议语义与原验证义务保持，计划门改为受影响完整叶模块及消费者/集成去重并集。实际交付以计划归档收据为准。
 
 ## 1. 定位和时机
