@@ -101,15 +101,16 @@ fn run_binary_capturing_stdout(bin: &Path) -> String {
 }
 
 /// 就地 cargo build --release(内容 hash marker 门控;cargo target 目录自身增量)
-fn cargo_build_if_changed(dir: &Path, fingerprint: u64, inputs: &[u8]) {
+fn cargo_build_if_changed(dir: &Path, fingerprint: u64, inputs: &[u8], binary: &str) {
     let marker = dir.join(".parity_cache_ok");
     if let Ok(m) = read_to_string(&marker) {
-        if m.trim() == fingerprint.to_string() {
+        if m.trim() == fingerprint.to_string() && binary_path(dir, binary).is_file() {
             return; // 输入未变,cargo target 增量即缓存
         }
     }
     let status = Command::new(env!("CARGO"))
-        .args(["build", "--release"])
+        .args(["build", "--release", "--target-dir"])
+        .arg(dir.join("target"))
         .current_dir(dir)
         .status()
         .unwrap_or_else(|e| panic!("failed to spawn cargo in {}: {e}", dir.display()));
@@ -117,6 +118,10 @@ fn cargo_build_if_changed(dir: &Path, fingerprint: u64, inputs: &[u8]) {
         status.success(),
         "cargo build --release failed in {}\n(inputs fingerprint {fingerprint:016x})",
         dir.display()
+    );
+    assert!(
+        binary_path(dir, binary).is_file(),
+        "successful build must produce the owned executable"
     );
     let _ = std::fs::write(&marker, fingerprint.to_string());
     let _ = inputs;
@@ -140,7 +145,7 @@ fn oracle_leg(case: &str) -> String {
         hash_dir_tree(&dep.1, &mut inputs);
     }
     let fp = fnv1a64(&inputs);
-    cargo_build_if_changed(&dir, fp, &inputs);
+    cargo_build_if_changed(&dir, fp, &inputs, &format!("oracle_{case}"));
     let bin = find_bin(&dir, &format!("oracle_{case}"));
     run_binary_capturing_stdout(&bin)
 }
@@ -176,13 +181,17 @@ fn fixture_deps(case: &str) -> Vec<(String, PathBuf)> {
     deps
 }
 
-fn find_bin(dir: &Path, name: &str) -> PathBuf {
+fn binary_path(dir: &Path, name: &str) -> PathBuf {
     let exe = if cfg!(windows) {
         format!("{name}.exe")
     } else {
         name.to_string()
     };
-    let bin = dir.join("target/release").join(&exe);
+    dir.join("target/release").join(&exe)
+}
+
+fn find_bin(dir: &Path, name: &str) -> PathBuf {
+    let bin = binary_path(dir, name);
     assert!(
         bin.exists(),
         "binary not found at {} (build step missing?)",
@@ -239,7 +248,12 @@ fn a2r_leg(case: &str, src: &str) -> String {
     std::fs::write(dir.join("src/main.rs"), &main_rs).expect("write main.rs");
 
     let fp = fnv1a64(&inputs);
-    cargo_build_if_changed(&dir, fp, &inputs);
+    cargo_build_if_changed(
+        &dir,
+        fp,
+        &inputs,
+        &format!("dep_parity_{}", case.replace('-', "_")),
+    );
     let bin = find_bin(&dir, &format!("dep_parity_{}", case.replace('-', "_")));
     run_binary_capturing_stdout(&bin)
 }

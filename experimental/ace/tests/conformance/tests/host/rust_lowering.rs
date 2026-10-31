@@ -227,12 +227,14 @@ fn maintenance_build_worker(repo: &Path) {
 fn worker_exe(repo: &Path) -> std::path::PathBuf {
     let exe = std::env::var_os("AC_A2X_HIR_WORKER")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo.join("experimental/ace/target/release")
-        .join(if cfg!(windows) {
-            "a2x-worker.exe"
-        } else {
-            "a2x-worker"
-        }));
+        .unwrap_or_else(|| {
+            repo.join("experimental/ace/target/release")
+                .join(if cfg!(windows) {
+                    "a2x-worker.exe"
+                } else {
+                    "a2x-worker"
+                })
+        });
     assert!(exe.is_file(), "prebuilt worker at {}", exe.display());
     exe
 }
