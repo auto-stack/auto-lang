@@ -97,6 +97,8 @@ members = [
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [
+    # Consumer fixtures are opt-in standalone builds, including future fixtures.
+    "test/fixtures",
     # PLAN-817: every experimental/ probe tree is an INDEPENDENT Cargo
     # workspace (ac-core/ac-syntax/ac-artifact-probe/ac-semantics/
     # ac-av-probe/auto-abi-probe/ac-case-worker/ac-mir-native/
