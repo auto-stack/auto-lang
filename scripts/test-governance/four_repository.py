@@ -167,7 +167,7 @@ def contracts(selected_roots):
     ui_args = next(args for name, _, args in full.legs('tf', lang, ui) if name == 'ui-full')
     result = {
         'web': {'cwd': web, 'kind': 'nextest', 'options': ['-p', 'auto-web', '-p', 'auto-web-contract',
-                 '--lib', '--features', 'auto-web/test-http-e2e', '--config-file', str(web / '.config/nextest.toml')]},
+                 '--lib', '--tests', '--features', 'auto-web/test-http-e2e', '--config-file', str(web / '.config/nextest.toml')]},
         'ui-full': {'cwd': ui, 'kind': 'nextest', 'options': ui_args},
     }
     result.update({s['leg']: s for s in full.batch_extra_legs(lang, ui, man) if not s.get('manual')})
