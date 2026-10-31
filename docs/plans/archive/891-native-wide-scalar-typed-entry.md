@@ -390,6 +390,18 @@ stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 3 | from: review | t
   生产面;auto-case/mn-worker 为测试工件随各门禁重建,无陈旧部署项。
 - 批量回归 due:891 % 5 ≠ 0;.last-batch-regression.json 检查见 cleaned 段。
 
+
+- `cleaned`:wt-guard 三树 clean(auto-lang/auto-down/auto-web)→ worktree
+  移除、plan-891-dev 删除(was eb6e45ef2)、组目录 rmdir;构建中间产物随树
+  删除未回收;plan-artifacts/plan-891 整目录删除(证据已折叠本文件),
+  .retention/policy.json 已刷新(deleted,无具名持有)。批量回归 due 检查:
+  last_covered_plan_id=895(2026-10-30T15:25Z),891%5≠0 且 891<895、收据
+  <48h → 不 due。终态 10/10。
+
+stage: merge | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | delivery_commit: eb6e45ef2 | canonical_paths: docs/specs/auto-mir/native-typed-entry.md(新), data-place-profile.md, native-data-owned-lowering.md, auto-ac/native-backend-and-retirement.md, auto-test-case/ace-m1-conformance.md, architecture.md | archive: docs/plans/archive/891-native-wide-scalar-typed-entry.md | cleanup: worktree+branch+group+plan-artifacts 全清 | pending: 无 merge-owned 门(批量回归不 due)
+
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: eb6e45ef2 | next: done
+
 ## 10. 待澄清事项
 
 | ID | 事项与关闭owner | 阻止的工作 |
