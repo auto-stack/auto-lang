@@ -6,8 +6,11 @@ remain. Catalog/module/selection machinery lives in archived PLAN-888.
 """
 from __future__ import annotations
 
+import contextlib
+import ctypes
 import hashlib
 import json
+import os
 from pathlib import Path
 from process_capture import checked_output
 
@@ -71,3 +74,33 @@ def source_identity(root):
         or key in ("RUSTFLAGS","T3_MILESTONE","PATH","PATHEXT","PYTHONPATH","PYTHONHASHSEED","TEMP","TMP","TMPDIR","GENERATE_EXPECTED","UPDATE_EXPECTED","UPDATE_GOLDENS")))
     return {"code": digest({"inputs":[(r["repo"], r["inputs"]) for r in rows],"environment":environment}),
             "repositories": rows,"environment_sha256":environment}
+
+
+@contextlib.contextmanager
+def machine_gate(name="AutoLangBatchRegression"):
+    """Named Windows machine mutex (PLAN-898: moved verbatim from the retired
+    run-full-regression.py; consumed by formal measurement tooling)."""
+    if os.name == "nt":
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        kernel.CreateMutexW.restype = ctypes.c_void_p
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel.CreateMutexW(None, False, "Local\\" + name)
+        if not handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        result = kernel.WaitForSingleObject(handle, 0)
+        if result not in (0, 0x80):
+            kernel.CloseHandle(handle)
+            raise ValueError("another full regression owns the machine gate")
+        try:
+            yield
+        finally:
+            kernel.ReleaseMutex.argtypes = [ctypes.c_void_p]
+            kernel.ReleaseMutex(handle)
+            kernel.CloseHandle(handle)
+    else:
+        import fcntl
+        with open(Path(os.environ.get("TMPDIR", "/tmp")) / (name + ".lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield

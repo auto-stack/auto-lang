@@ -136,7 +136,7 @@ class FixedGroups(unittest.TestCase):
         self.assertIn('parser:', out.getvalue())
 
     def test_case_owner_rejection_precedes_all_final_output_writes(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory() as temp,                 mock.patch.object(fixed, 'execution_lease', lambda: contextlib.nullcontext()):
             output = Path(temp) / 'protected-output'
             with mock.patch.object(fixed, 'audit_suite_outputs', side_effect=ValueError('protected source domain')) as audit:
                 with self.assertRaisesRegex(ValueError, 'protected source domain'):
