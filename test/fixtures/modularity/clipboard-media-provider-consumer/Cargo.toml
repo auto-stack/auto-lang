@@ -29,10 +29,12 @@ publish = false
 # passthrough：UI 宿主形态。取 `ui-iced` 超集（含 ui + ui-clipboard +
 # native-clipboard）——785 T01 矩阵同款可建 UI 形态（{ui} 单开预存不可建）。
 # 测试以 `#[cfg(feature = "ui-host")]` 分臂两构建的期望差。
-ui-host = ["auto-lang/ui-iced"]
+ui-host = ["dep:auto-ui-runtime"]
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang", default-features = false }
+# PLAN-900：UI 宿主形态直连 auto-ui-runtime（facade 去 UI 后装配扇入单点）。
+auto-ui-runtime = { path = "../../../../../auto-ui/crates/auto-ui-runtime", optional = true }
 # ListData<Value>/ObjectData 值类型（auto_val::Value/ValueKey）——与
 # auto-lang 同源 path 依赖，单一版本。
 auto-val = { path = "../../../../crates/auto-val" }

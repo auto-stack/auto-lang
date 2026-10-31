@@ -410,6 +410,10 @@ fn v03_absent_capability_contract() {
 
     #[cfg(feature = "ui-host")]
     {
+        // PLAN-900：宿主能力装配扇入单点在 auto-ui-runtime（其 SDK 钩子
+        // 注册经 inventory——本独立 fixture 未引用 runtime crate 时收集点
+        // 不保证链接保留，故显式装一次；auto-man 等真实宿主同款直调）。
+        auto_ui_runtime::install_ui_host_capabilities();
         // 差分 oracle：缺席形（no-ui 臂）为 VMError；ui 构建经真实宿主
         // 入口兼容补缺后程序**成功**。内容/行数不定（真实剪贴板可为任意
         // 多行文本——2026-10-16 实测读得用户多行剪贴板内容），不作内容

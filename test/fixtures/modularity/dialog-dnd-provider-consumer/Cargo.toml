@@ -21,6 +21,8 @@ publish = false
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang", default-features = false }
+# PLAN-900：UI 宿主形态直连 auto-ui-runtime（facade 去 UI 后装配扇入单点）。
+auto-ui-runtime = { path = "../../../../../auto-ui/crates/auto-ui-runtime", optional = true }
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 # 仅用于类型名 auto_val::ValueKey（object_keys 元数据形）——与 auto-lang
 # 同源 path 依赖，单一版本（779 fixture 同款）。
@@ -31,7 +33,7 @@ auto-val = { path = "../../../../crates/auto-val" }
 # renderer 门下恢复对话框接线；测试 env 门控 AUTO_LANG_DIALOG_E2E=1 才
 # 弹真模态（见 tests/dialog_dnd_vm.rs 文件头）。
 [features]
-ui-dialog-host = ["auto-lang/ui-dialog"]
+ui-dialog-host = ["dep:auto-ui-runtime"]
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]

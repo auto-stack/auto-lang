@@ -36,6 +36,11 @@ fn main() {
         println!("thread-exit: ok");
         std::process::exit(23);
     }
+    // PLAN-900：UI 宿主装配扇入单点在 auto-ui-runtime（进程期 inventory
+    // 收集点在独立消费方里不保证链接保留——MSVC linker GC；真实宿主
+    // （auto-man 等）的规范形态=显式 bootstrap 调用，本 fixture 同款）。
+    #[cfg(feature = "ui")]
+    auto_ui_runtime::install_ui_host_capabilities();
     auto_lang_core::install_ui_host_capabilities();
     let provider = process_default_frame_provider();
     match mode.as_str() {
