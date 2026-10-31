@@ -272,11 +272,12 @@ mod e2e {
         ))
         .unwrap();
         std::fs::write(src_dir.join("main.rs"), product).unwrap();
-        let out = std::process::Command::new("cargo")
+        let mut command = std::process::Command::new("cargo");
+        command
             .args(["run", "--quiet", "--bin", &hash_name(name, &payload)])
             .current_dir(&dir)
-            .output()
-            .expect("cargo run");
+            .env("CARGO_TARGET_DIR", dir.join("target"));
+        let out = auto_tool_execution::run_command_output(command).expect("cargo run");
         assert!(
             out.status.success(),
             "cargo run failed:\nstdout: {}\nstderr: {}",

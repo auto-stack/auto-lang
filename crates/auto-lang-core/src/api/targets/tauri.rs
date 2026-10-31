@@ -249,17 +249,16 @@ impl TauriGenerator {
             "".to_string(),
             "/// Register all API commands with the Tauri app".to_string(),
             "pub fn register_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {".to_string(),
-            format!("{}builder.invoke_handler(tauri::generate_handler![", self.indent),
         ];
-
-        for endpoint in endpoints {
-            lines.push(format!(
-                "{}{}{},",
-                self.indent, self.indent, endpoint.fn_name
-            ));
-        }
-
-        lines.push(format!("{}])", self.indent));
+        let handlers = endpoints
+            .iter()
+            .map(|endpoint| format!("{},", endpoint.fn_name))
+            .collect::<Vec<_>>()
+            .join(" ");
+        lines.push(format!(
+            "{}builder.invoke_handler(tauri::generate_handler![{}])",
+            self.indent, handlers
+        ));
         lines.push("}".to_string());
 
         lines.join("\n")
@@ -397,6 +396,27 @@ impl TargetGenerator for TauriGenerator {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn registration_preserves_empty_and_multiple_handler_order() {
+        let generator = super::TauriGenerator::new();
+        assert!(generator
+            .generate_registration(&[])
+            .contains("generate_handler![]"));
+        let endpoint = |name: &str| crate::api::ApiEndpoint {
+            fn_name: name.into(),
+            params: vec![],
+            return_type: "void".into(),
+            attrs: crate::api::ApiAttrs::new(),
+            body: None,
+            doc: None,
+            response: Default::default(),
+        };
+        let source = generator.generate_registration(&[endpoint("first"), endpoint("second")]);
+        assert!(
+            source.contains("generate_handler![first, second,]"),
+            "{source}"
+        );
+    }
     /// PLAN-729 R1 [G-02]：文件端点 → Tauri IPC 明确 Unsupported 诊断
     /// （Err + 改走 HTTP URL 指引；不 opaque 当成功数据）。
     #[test]

@@ -103,6 +103,29 @@ class FourOwnerControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'without actual start'):
             gate.native_terminals(b'{"type":"test","event":"ok","name":"p::p$a"}\n', {'p::p$a': {}}, set())
 
+    def test_only_source_pinned_reaped_preparation_auxiliary_is_admitted(self):
+        import hashlib
+        import process_capture
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            auxiliary = root / 'auxiliary.exe'; auxiliary.write_bytes(b'known compiler helper')
+            policy = root / 'policy.json'
+            policy.write_text(json.dumps({'schema': 'test-compiler-auxiliaries/1', 'images': [
+                {'path': str(auxiliary), 'sha256': hashlib.sha256(auxiliary.read_bytes()).hexdigest()}]}))
+            meter = {'exit': 0, 'error': 'descendants live after workload exit',
+                     'live_after_exit': {'cleanup_complete': True, 'active': 1, 'remaining_active': 0,
+                                        'processes': [{'image': str(auxiliary)}]}}
+            record = {'argv': ['cargo', 'nextest', 'list'], 'cwd': str(root), 'exit': 0, 'meter': meter}
+            with patch.object(process_capture, 'COMPILER_AUXILIARIES', policy):
+                gate.command_proof(record, record['argv'], root, preparation=True)
+                with self.assertRaises(ValueError): gate.command_proof(record, record['argv'], root)
+                meter['live_after_exit']['remaining_active'] = 1
+                with self.assertRaises(ValueError): gate.command_proof(record, record['argv'], root, preparation=True)
+                meter['live_after_exit']['remaining_active'] = 0
+                meter['accepted_compiler_auxiliary_cleanup'] = True
+                auxiliary.write_bytes(b'changed helper')
+                with self.assertRaises(ValueError): gate.command_proof(record, record['argv'], root, preparation=True)
+
     def test_frozen_sources_reject_new_untracked_runtime(self):
         with patch.object(gate.full, 'require_clean_tree'), \
                 patch.object(gate.subprocess, 'check_output', side_effect=['', 'scripts/new_runtime.py\n']):

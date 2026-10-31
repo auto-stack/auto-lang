@@ -272,6 +272,7 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 
 
 [dev-dependencies]
+auto-tool-execution = { path = "../auto-tool-execution" }
 # 示例直接使用 iced::daemon/application；版本与 auto-ui-runtime 锁定同源。
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"] }
 

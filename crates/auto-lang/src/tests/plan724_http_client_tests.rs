@@ -264,11 +264,12 @@ mod e2e {
         if existing_main != product {
             std::fs::write(&main_path, product).unwrap();
         }
-        let out = std::process::Command::new("cargo")
+        let mut command = std::process::Command::new("cargo");
+        command
             .args(["run", "--quiet", "--bin", name])
             .current_dir(&proj)
-            .env("CARGO_TARGET_DIR", proj.join("target"))
-            .output()
+            .env("CARGO_TARGET_DIR", proj.join("target"));
+        let out = auto_tool_execution::run_command_output(command)
             .expect("cargo run (is cargo on PATH?)");
         assert!(
             out.status.success(),

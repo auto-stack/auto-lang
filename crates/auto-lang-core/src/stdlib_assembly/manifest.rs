@@ -280,6 +280,10 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 include_str!("../vm/ffi/stdlib/image.rs"),
             ),
             (
+                "vm/ffi/stdlib/zip_io.rs",
+                include_str!("../vm/ffi/stdlib/zip_io.rs"),
+            ),
+            (
                 "vm/ffi/stdlib/math.rs",
                 include_str!("../vm/ffi/stdlib/math.rs"),
             ),

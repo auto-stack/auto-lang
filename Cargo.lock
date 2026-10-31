@@ -744,6 +744,7 @@ dependencies = [
  "auto-terminal-core",
  "auto-test-case",
  "auto-text-core",
+ "auto-tool-execution",
  "auto-ui-compiler",
  "auto-ui-dialect",
  "auto-ui-runtime",

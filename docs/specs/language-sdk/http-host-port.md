@@ -27,6 +27,9 @@ BlockingListenerKind区分ServerHandle与LegacyStdnet；不支持的provider等�
 返回与cleanup完成分开：网络/logger须真实join，关闭/取消/错误保留原许可、文件/上传/订阅等回收义务。
 线程栈、Result/错误传播及ordinary语言行为保持；不新增TLS、认证产品或跨平台承诺。
 
+JSON值编组按当前owner冻结的规范返回声明解释旧native字符串列表；`[]str`/`List<str>`及已解包Future使用语言值转换单源。
+未知声明与整数列表不按负数值猜字符串；无效字符串索引拒绝编组。VM集合、迭代及RC ABI保持，middleware短路值不借终端handler类型。
+
 ## 相关知识
 
 领域算法与Axum双轨在[Web架构](../../../../auto-web/docs/specs/architecture.md)；

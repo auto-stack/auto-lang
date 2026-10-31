@@ -4,7 +4,7 @@
   "generate": "cargo test -p auto-lang --lib plan872_binding_table_json -- --nocapture  (set AUTO_LANG_872_EMIT_TABLE=1 to rewrite after a deliberate binding change)",
   "binding_order_production": "register_std_shims(catalog: nv impls + canonical names) -> register_stdlib_ffi(manual) -> register_interop_natives -> build_from_inventory(rust_fn pure shims; same-ID rebind overwrites catalog) -> register_request_io_shims -> nv override block(1504/1505/1506/1516/1523 + auto.json.parse + web natives)",
   "registry_fingerprint": {
-    "native_id_entries": 879,
+    "native_id_entries": 882,
     "dup_name_ids": {
       "str.len": [
         170,

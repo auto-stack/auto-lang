@@ -1,5 +1,196 @@
 //! Language value conversion used by HTTP and language response constructors.
 use super::json_escape_string;
+
+/// Decode the legacy native string-list ABI only under an actual compiled
+/// return declaration. Untyped/negative integer lists retain numeric JSON;
+/// changing their interpretation by probing the string pool would be ambiguous.
+pub fn nv_to_typed_json(
+    vm: &crate::vm::engine::AutoVM,
+    nv: auto_val::NanoValue,
+    return_type: Option<&str>,
+    depth: u32,
+) -> Option<String> {
+    let outer = return_type
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches('~')
+        .trim();
+    // The compiler desugars ~T to Future<T> in canonical owner metadata.
+    let declaration = outer
+        .strip_prefix("Future<")
+        .and_then(|inner| inner.strip_suffix('>'))
+        .unwrap_or(outer)
+        .trim();
+    if !matches!(declaration, "[]str" | "List<str>") {
+        return nv_to_json(vm, nv, depth);
+    }
+    if depth >= 32 {
+        return None;
+    }
+    let id = if auto_val::is_object(nv) {
+        auto_val::decode_object(nv) as u64
+    } else if auto_val::is_list(nv) {
+        auto_val::decode_list(nv) as u64
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as u64
+    } else {
+        return None;
+    };
+    let object = vm.get_heap_object(id)?;
+    let guard = object.read().ok()?;
+    if let Some(list) = guard
+        .as_any()
+        .downcast_ref::<crate::vm::types::ListData<i32>>()
+    {
+        let mut values = Vec::with_capacity(list.elems.len());
+        for &encoded in &list.elems {
+            values.push(legacy_string_element_json(vm, encoded)?);
+        }
+        return Some(format!("[{}]", values.join(", ")));
+    }
+    if let Some(list) = guard
+        .as_any()
+        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+    {
+        let mut values = Vec::with_capacity(list.elems.len());
+        for value in &list.elems {
+            values.push(match value {
+                auto_val::Value::Str(s) => json_escape_string(s.as_str()),
+                auto_val::Value::CStr(s) => json_escape_string(s.as_str()),
+                _ => return None,
+            });
+        }
+        return Some(format!("[{}]", values.join(", ")));
+    }
+    // A nominal user record may share a display name with a container. Keep
+    // ordinary object serialization; only physical legacy lists use sentinels.
+    drop(guard);
+    nv_to_json(vm, nv, depth)
+}
+
+fn legacy_string_element_json(vm: &crate::vm::engine::AutoVM, encoded: i32) -> Option<String> {
+    let index = encoded.checked_neg()?.checked_sub(1)?;
+    let strings = vm.strings.read().ok()?;
+    let bytes = strings.get(usize::try_from(index).ok()?)?;
+    Some(json_escape_string(&String::from_utf8_lossy(bytes)))
+}
+
+#[cfg(test)]
+mod typed_native_list_tests {
+    use super::*;
+    use crate::vm::ffi::convert::VMConvertible;
+    use crate::vm::{engine::AutoVM, task::AutoTask, virt_memory::VirtualFlash};
+
+    #[test]
+    fn compiled_string_list_declaration_preserves_legacy_abi_and_numeric_controls() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let values = vec![
+            "".to_string(),
+            "重复.png".to_string(),
+            "重复.png".to_string(),
+            "quote\"\\\n.jpg".to_string(),
+        ];
+        let mut task = AutoTask::new(0, 2048, 0);
+        values.push_to_stack(&mut task, &vm).unwrap();
+        let nv = task.ram.peek_nv(0);
+        let id = auto_val::decode_i32(nv) as u64;
+        let pool_size = vm.strings.read().unwrap().len();
+        let counts: Vec<_> = (0..pool_size).map(|i| vm.pool_count(i)).collect();
+        assert_eq!(vm.rc_count(id), 1);
+        let actual = nv_to_typed_json(&vm, nv, Some("[]str"), 0).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Vec<String>>(&actual).unwrap(),
+            values
+        );
+        for declaration in ["~[]str", "Future<[]str>", "List<str>"] {
+            assert_eq!(
+                nv_to_typed_json(&vm, nv, Some(declaration), 0).unwrap(),
+                actual
+            );
+        }
+        assert_eq!(vm.strings.read().unwrap().len(), pool_size);
+        assert_eq!(
+            (0..pool_size).map(|i| vm.pool_count(i)).collect::<Vec<_>>(),
+            counts
+        );
+        assert_eq!(vm.rc_count(id), 1);
+        assert!(vm
+            .get_heap_object(id)
+            .unwrap()
+            .read()
+            .unwrap()
+            .as_any()
+            .is::<crate::vm::types::ListData<i32>>());
+        let mut borrowed = AutoTask::new(0, 1024, 0);
+        borrowed.ram.push_i32(id as i32);
+        assert_eq!(
+            Vec::<String>::pop_from_stack(&mut borrowed, &vm).unwrap(),
+            values
+        );
+
+        let mut ints = AutoTask::new(0, 1024, 0);
+        let mut int_values = crate::vm::types::ListData::<auto_val::Value>::new();
+        for n in [-1_i32, -4, -5] {
+            int_values.push(auto_val::Value::Int(n));
+        }
+        vm.rc_push_id(&mut ints, vm.insert_heap_object(int_values));
+        let negative = ints.ram.peek_nv(0);
+        assert!(nv_to_typed_json(&vm, negative, Some("[]str"), 0).is_none());
+        for declaration in [None, Some("[]int"), Some("UnrelatedRecord")] {
+            assert_eq!(
+                nv_to_typed_json(&vm, negative, declaration, 0).unwrap(),
+                "[-1, -4, -5]"
+            );
+        }
+        vm.rc_release_task_stack(&mut ints);
+        let mut typed = crate::vm::types::ListData::<auto_val::Value>::new();
+        for s in &values {
+            typed.push(auto_val::Value::Str(s.clone().into()));
+        }
+        let mut typed_task = AutoTask::new(0, 1024, 0);
+        vm.rc_push_id(&mut typed_task, vm.insert_heap_object(typed));
+        assert_eq!(
+            nv_to_typed_json(&vm, typed_task.ram.peek_nv(0), Some("[]str"), 0).unwrap(),
+            actual
+        );
+        vm.rc_release_task_stack(&mut typed_task);
+        let mut record = crate::vm::types::ObjectData::new();
+        record
+            .fields
+            .insert("value".into(), auto_val::Value::Int(42));
+        let mut record_task = AutoTask::new(0, 1024, 0);
+        vm.rc_push_id(&mut record_task, vm.insert_heap_object(record));
+        let record_json =
+            nv_to_typed_json(&vm, record_task.ram.peek_nv(0), Some("List<str>"), 0).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&record_json).unwrap(),
+            serde_json::json!({"value":42})
+        );
+        vm.rc_release_task_stack(&mut record_task);
+        let mut broken = AutoTask::new(0, 1024, 0);
+        vec![7_i32].push_to_stack(&mut broken, &vm).unwrap();
+        assert!(nv_to_typed_json(&vm, broken.ram.peek_nv(0), Some("[]str"), 0).is_none());
+        vm.rc_release_task_stack(&mut broken);
+        assert_eq!(vm.strings.read().unwrap().len(), pool_size);
+        assert_eq!(
+            (0..pool_size).map(|i| vm.pool_count(i)).collect::<Vec<_>>(),
+            counts
+        );
+        vm.rc_release_task_stack(&mut task);
+        assert_eq!(vm.rc_count(id), 0);
+        // RC uses a bounded dying grace queue; quiescent teardown drains it.
+        vm.reap_all();
+        assert!(!vm.heap_objects.contains_key(&id));
+
+        let mut empty = AutoTask::new(0, 1024, 0);
+        Vec::<String>::new().push_to_stack(&mut empty, &vm).unwrap();
+        assert_eq!(
+            nv_to_typed_json(&vm, empty.ram.peek_nv(0), Some("[]str"), 0).unwrap(),
+            "[]"
+        );
+        vm.rc_release_task_stack(&mut empty);
+    }
+}
 /// Plan 326 Phase 3: Serialize a handler return value (NanoValue) to a JSON string.
 ///
 /// Root cause of the "handler returns struct → null" bug: struct/array return

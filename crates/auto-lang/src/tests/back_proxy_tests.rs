@@ -578,12 +578,12 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
     assert_eq!(status, 200, "018 get book 1 (int :id): {body}");
     assert!(body.contains("The Silent Garden"), "018 book 1: {body}");
 
-    // 生成客户端的线格式：路径模板里占位符字面保留(`:id`)、fn 形参走 query
-    // （api_gen/generate_simple_client 同构）——探针镜像真实调用形态。
+    // Current corpus uses `id` (PLAN-712); the simple client interpolates it
+    // into the path rather than sending the former book_id query/template.
     let (status, body) = http_request(
         proxy.port,
         "GET",
-        "/apps/018-book-reader/api/books/:id/chapters?book_id=1",
+        "/apps/018-book-reader/api/books/1/chapters",
         None,
     );
     assert_eq!(status, 200, "018 chapters of book 1: {body}");
@@ -1009,6 +1009,9 @@ fn http_e2e_back_proxy_real_031_native_ns_session() {
     );
     assert_eq!(status, 200, "names, body: {body}");
     assert!(body.len() > 10, "names non-empty: {body}");
+    let names: Vec<String> =
+        serde_json::from_str(&body).expect("native names are strings, not VM indices");
+    assert!(!names.is_empty());
     println!("031 names sample: {body}");
 }
 

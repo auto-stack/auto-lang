@@ -59,10 +59,16 @@ def local_output(directory, name):
     return path.read_bytes()
 
 
-def command_proof(record, argv, cwd):
+def command_proof(record, argv, cwd, preparation=False):
+    meter = record.get('meter', {})
+    allowed_cleanup = False
+    if preparation and meter.get('error'):
+        from process_capture import compiler_auxiliaries_reaped
+        allowed_cleanup = (meter.get('live_after_exit', {}).get('remaining_active') == 0
+                           and compiler_auxiliaries_reaped(meter))
     if (record.get('argv') != argv or record.get('exit') != 0
             or Path(record.get('cwd', '')).resolve() != Path(cwd).resolve()
-            or record.get('meter', {}).get('error')):
+            or (meter.get('error') and not allowed_cleanup)):
         raise ValueError('execution command, checkout, exit or process tree differs')
 
 
@@ -238,7 +244,7 @@ def native_proof(row, spec, env, output, ui_listing=None):
         raise ValueError('owner command was filtered, changed or unexecuted')
     if Path(row.get('cwd', '')).resolve() != Path(spec['cwd']).resolve():
         raise ValueError('owner command used another checkout')
-    command_proof(row['preparation'], list_cmd, spec['cwd'])
+    command_proof(row['preparation'], list_cmd, spec['cwd'], preparation=True)
     command_proof(row['execution'], run_cmd, spec['cwd'])
     ids, selected, excluded, active = native_selection(listed, spec, ui_listing)
     if not selected or row.get('selected_ids') != sorted(selected) or row.get('condition_excluded') != excluded:
@@ -288,7 +294,7 @@ def fixed_proof(path, required_groups, env, output):
         list_cmd = ['cargo', 'nextest', 'list', *args, '--run-ignored', 'all', '--message-format', 'json']
         run_cmd = ['cargo', 'nextest', 'run', *args, '--no-fail-fast', '--no-tests', 'fail',
                    '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
-        command_proof(prep, list_cmd, spec['cwd'])
+        command_proof(prep, list_cmd, spec['cwd'], preparation=True)
         command_proof(execution, run_cmd, spec['cwd'])
         listed = local_output(directory, prep['stdout'])
         document = json.loads(listed)
