@@ -9,12 +9,8 @@
 # fixed group case-a2r-hir-record-text-902).
 #
 # Usage:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-a2r-record-text-902.ps1 -Scope <modes|surface|incremental|cache|certify|snapshot|acceptance>
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-a2r-record-text-902.ps1 -Scope <modes|surface|incremental|cache|certify|snapshot|acceptance|formal>
 # Unknown or empty scope -> non-zero exit.
-#
-# The formal sampling window (four-state 30-sample tiers, P90 budgets) is
-# T-08's explicit single-instance window - this script refuses it instead
-# of faking a timing run.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -68,7 +64,7 @@ switch ($Scope) {
         # invalidation, restart re-admission; plus the V-07 fingerprint
         # matrix (a2x-core conformance).
         Invoke-Scope 'incremental' @('store_rt_902')
-        Write-Host "-- Invoke-AceCargo test -p ace-a2x-core --test conformance"
+        Write-Host "-- cargo test -p ace-a2x-core --test conformance"
         & Invoke-AceCargo test --manifest-path (Join-Path $Workspace 'Cargo.toml') -p ace-a2x-core --test conformance
         if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] incremental: a2x-core conformance' -ForegroundColor Red; exit 1 }
     }
@@ -98,17 +94,27 @@ switch ($Scope) {
     }
     'acceptance' {
         # Every currently-released record-text face (the full T-02..T-07
-        # probe set + the registered daily channel). NOT the final V-01..12
-        # contract: T-08 owns the formal sampling window.
+        # probe set + the registered daily channel).
         Invoke-Scope 'acceptance' @('record_text_902', 'record_text_modes', 'record_text_t04', 'store_rt_902', 'cert_rt_902')
         cargo t case-a2r-hir-record-text-902
         if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] acceptance: case group' -ForegroundColor Red; exit 1 }
     }
     'formal' {
-        # T-08's explicit single-instance window (four-state 30-sample
-        # tiers, P90 <= 2000ms, budget ledger) - never faked here.
-        Write-Host '[REFUSED] formal: the formal sampling window is T-08-owned (single instance, explicit window).' -ForegroundColor Yellow
-        exit 2
+        # T-08's explicit single-instance window: the representative
+        # record/text load, four states x 30 samples, P90<=2000ms warm
+        # gates, pre-certified revisions (real rustc per revision), budget
+        # ledger (receipt JSON to stdout - save it, never commit as bulk).
+        cargo build --release --manifest-path (Join-Path $Workspace 'Cargo.toml') -p ace-a2x-worker --bin a2x-rt-formal
+        if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] formal: build' -ForegroundColor Red; exit 1 }
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $exe = Join-Path (Join-Path $Workspace 'target') (Join-Path 'release' 'a2x-rt-formal.exe')
+        & $exe
+        if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] formal: sampling gates' -ForegroundColor Red; exit 1 }
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $receipt = Join-Path $ReceiptsDir ("formal-{0}.txt" -f $stamp)
+        @{ scope = 'formal'; bin = 'a2x-rt-formal'; seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); status = 'PASS'; host = $env:COMPUTERNAME } |
+            ConvertTo-Json | Set-Content -Path $receipt
+        Write-Host ("[PASS] formal receipt: {0}" -f $receipt) -ForegroundColor Green
     }
     default {
         Write-Host ("[REFUSED] unknown or empty scope '{0}' - expected one of: modes, surface, incremental, cache, certify, snapshot, acceptance, formal" -f $Scope) -ForegroundColor Red
