@@ -1482,6 +1482,12 @@ mod tests {
             Duration::from_secs(10),
             CaptureCaps::none(),
             |_| None,
+            // PLAN-891 (53d0d6b5a) added `stdin_bytes`; this call site was
+            // left at 4 args, breaking the lib-test build on Windows since
+            // that landing. No stdin for the containment-failure probe.
+            // PLAN-899 T-04: named pre-existing red, fixed in passing to
+            // unblock the required `cargo t ace` gate.
+            None,
         )
         .err();
         let elapsed = started.elapsed();
