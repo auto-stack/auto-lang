@@ -310,3 +310,8 @@ reviewed_commit: `523a623f2646fce4fa2db39a0181653928dd5399`；基面87de883e6；
 归档簿记提交8bf1539a1。三树auto-down/auto-ui/auto-lang均在各自移除前fresh wt-guard clean；随后原生git worktree remove成功，三个目录和lang-896组目录实际不存在、plan-896-dev分支已删除、三个仓的worktree登记无本组。回收可重建target/PDB，未把整目录转存；受保护源/首次红/最终收据已在执行与收尾两包留存。收尾包closeout-523a623f2.zip SHA256=118e689e8b545952aa75be228afcd33d5358e6feb6c59feb2691d9a0a31cd80e，2813246字节，含最终37反控、规范来源核与主WIP重叠核；两包+必要角色约43.24MB，仍低于500MiB。精确清理收据在留存根cleanup-receipt.json。
 
 最终T01..17全部完成、AC08实际完成；归档链接已按archive位置修正。main保留他方文档WIP，不把共享主检出描述为整体clean；本会话代码WIP为0。旧897文档无在途/归档副本、.next-id=897；用户批准的新固定测试流程已交付，不再等待时长优化。
+
+
+### 序号并发分配说明
+
+本计划已将旧897测试计划删除，并在归档时实核.next-id=897。最终清理后复核发现另一会话已新建不同内容的 `897-vm-zip-natives.md`，并正常将.next-id推进898；这是释放编号后的新分配，保留其新计划与编号WIP，不误删、不回退898。旧测试897未恢复、未单独实施。此前序号897的收据是分配前实际状态，不宣称它永久空闲。
