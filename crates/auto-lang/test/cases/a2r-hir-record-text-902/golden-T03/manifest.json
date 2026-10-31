@@ -1,0 +1,14 @@
+{
+  "schema": "auto.a2x.rust.record-text.fileset/1",
+  "source_profile": "auto.source.text-record.draft",
+  "hir_domain": "text-record-i32-draft",
+  "input_hash": "57d3dd675332ceb5",
+  "entry": "main",
+  "entry_fn": "fn_main",
+  "target": { "lang": "rust", "edition": "2021", "backend": "auto-a2x-rust", "backend_version": "0.1.0", "resource_runtime": "a2x-rt/1" },
+  "files": [
+    { "path": "main.rs", "sha256": "e5c9df913bee3bb0a39ef5697b2ebdb722e4726a15fab1103130e6527752d5d4" },
+    { "path": "a2x_runtime.rs", "sha256": "7ba09969ae52986b041b431322bea76b5081dd57c1dba074ee7f0bd96ee6a054" },
+    { "path": "generated.rs", "sha256": "959274a67b8aa9ff229a3cc316c9b368ed886a065b6f3c4558d17785156b9098" }
+  ]
+}
