@@ -67,6 +67,15 @@ All AI coding assistants working in this repository must strictly adhere to the 
   期间有意义；摘要（结论/命令/退出码/关键数字/本地路径+内容哈希）写入 plan 文件即可。
   已 push 的存量证据不动；未 push 的存量证据在全部在途 worktree 合并后做历史过滤再
   push。auto-plan-* 技能已同步此政策（auto-musk 源 b98aacd）。
+- **计划证据收尾折叠进计划文件（2026-10-31 用户裁定）**：`docs/plans/attachments/<NNN>/`
+  只是 work/review 轮次的**本地暂存**；merge 收尾时必须把全部计划相关证据（探针源码与
+  输出、日志、截图、gate/ledger 转储、receipts/handoffs/spec-delta）以 markdown 摘要
+  （命令、退出码、关键数字、代码/日志节选）**折叠进计划文件本身**（§7 验证记录 /
+  §9 复审记录），然后**删除该计划的整个 attachments 目录**。理由：历史计划的原始证据
+  几乎不会被回看——后续核验一律用最新代码重新测验；附件目录否则无限膨胀并占据检出
+  空间与 git 历史。具名未解决问题（owner+理由记入 plan）可临时保留本地范围。本条将
+  2026-10-28 的"本地保留"升级为"收尾折叠+删除"；.gitignore/pre-commit 防线不变。
+  auto-plan-* 技能已同步（merge 新增 Evidence consolidation at closure 章节）。
 ### 测试证据保留（2026-10-30 用户更新裁定：最近5个计划）
 
 - `D:/autostack/plan-artifacts` 是临时工作区。跨仓按实际归档/交付时间保留最近 **5个已完成计划**；
