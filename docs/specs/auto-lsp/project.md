@@ -1,7 +1,10 @@
 # auto-lsp
 
 > **Status**: active
-> 路径：`crates/auto-lsp`  | 技术栈：Rust（tower-lsp-server / lsp-types / tokio）
+> **PLAN-900（2026-10-31）**：本 crate 随 UI 依赖方向反转迁 **auto-ui 仓**
+> `crates/auto-lsp`（语言面走 auto-lang-core 直连；completion 的 aura schema 面
+> 走 auto-ui-compiler——原 facade 再导出路径退役）。
+> 路径（迁移前）：`crates/auto-lsp` → 现行：`auto-ui/crates/auto-lsp`  | 技术栈：Rust（tower-lsp-server / lsp-types / tokio）
 
 AutoLang 的 LSP server：为编辑器提供 completion / hover / diagnostics / goto definition 等语言能力。
 
