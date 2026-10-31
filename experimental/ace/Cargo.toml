@@ -34,11 +34,20 @@ members = [
 ]
 default-members = ["crates/core", "crates/av-core", "crates/syntax-runtime", "crates/syntax-grammar", "crates/semantics-contract"]
 
+# PLAN-899: members keep line tables for line-level diagnostics in dev/test;
+# the wildcard override applies only to non-workspace-member dependencies
+# (workspace members are never matched by package."*"), which stay debug-free.
 [profile.dev]
-debug = 0
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.test]
-debug = 0
+debug = "line-tables-only"
+
+[profile.test.package."*"]
+debug = false
 
 [profile.release]
 debug = false
