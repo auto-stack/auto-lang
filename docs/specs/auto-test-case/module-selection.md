@@ -37,8 +37,8 @@ Python保标准loader真实发现/逐ID执行收据；TestCase保source/oracle�
 不认证通过。60秒为成本目标，不是强杀时限，不统一三warm/P90或改变正式样本/预算/金样。
 
 AAVM/AA2R自举实验测试按用户裁定默认ignore，保实现/源码/夹具/期望及显式手动入口；普通VM/Rust A2R
-及真实产品消费者不误关。ACE宿主测试位于ace-conformance，语言侧私有协议单元桥接test-ace默认关闭，普通test-cases仍可独立运行，非ACE请求ACE worker
-构建前拒绝；真正相关任务显式选ACE包/宿主/套件。用途标签不成为批量停用开关。
+及真实产品消费者不误关。ACE宿主测试位于ace-conformance。PLAN-901测试feature拍平：语言侧私有协议单元桥接常驻编译、仅显式ace组选择，
+非ACE路径不准备/构建ACE worker；真正相关任务显式选ACE包/宿主/套件。用途标签不成为批量停用开关。
 
 ## 迁移与验证职责
 
