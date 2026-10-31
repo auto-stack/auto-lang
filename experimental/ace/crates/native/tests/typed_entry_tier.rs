@@ -691,8 +691,16 @@ fn typed_cache_corruption_is_rejected_before_link() {
         payload_len: 8,
         result: typed_entry::TypedKind::I64,
     };
-    let runtime = ace_native::typed_runtime::prepare(None).expect("runtime");
-    let key = typed_pipeline::wrapper_key("ac9.test.main", &plan, &runtime.identity);
+    // A hand-built identity: the corruption assertions compare envelope
+    // fields against the EXPECTED parameters, which do not depend on a
+    // real library build (avoids the cross-process prepare race under
+    // parallel runners).
+    let runtime = ace_native::typed_runtime::Identity {
+        abi: ace_native::typed_runtime::ABI.to_string(),
+        build_key: "corruption-negative".to_string(),
+        content_hash: "deadbeefdeadbeef".to_string(),
+    };
+    let key = typed_pipeline::wrapper_key("ac9.test.main", &plan, &runtime);
     let forged = format!(
         "schema={}\nabi={}\nentry-symbol={}\nsig={}\nsig-id={:08x}\ntarget={}\nflags={}\nlen=4\nsha256={}\n\nJUNK",
         "ac891/typed-wrapper/v1",
@@ -720,7 +728,7 @@ fn typed_cache_corruption_is_rejected_before_link() {
         &plan,
         Some(&store),
         typed_pipeline::TypedCacheMode::Reuse,
-        &runtime.identity,
+        &runtime,
     )
     .unwrap_err();
     assert!(
@@ -734,7 +742,7 @@ fn typed_cache_corruption_is_rejected_before_link() {
     let doc = typed_fixture::parse_fixture(json.as_bytes()).unwrap();
     let unit = typed_fixture::build_verified_unit(&doc, "main").unwrap();
     let fp = ace_native::cache::unit_fp(&unit);
-    let meta = ace_native::cache::CoffMeta::for_typed_unit(&unit, fp, &runtime.identity).unwrap();
+    let meta = ace_native::cache::CoffMeta::for_typed_unit(&unit, fp, &runtime).unwrap();
     let ukey = ace_native::cache::coff_unit_key(&meta);
     store
         .put_artifact(PutRequest {
