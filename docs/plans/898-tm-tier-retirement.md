@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-898
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: tm-tier-retirement
 author: [zcode-session 2026-10-31]
 created_at: 2026-10-31
@@ -196,8 +196,37 @@ python_tests.py prepare_tools.py native_meter.py`
   check_inventory/inventory（绑已删基线、零消费者）删；租约碰撞测试 patch nullcontext。
   全面重扫 95 已删文件确认无其余真实引用（README/docstring 提及不算）。
   ③修复后门排队等待他方会话（plan-890 legacy 回放构建）结束后自动起跑。
+  [✅ 第三轮完成] 24 PASS / 7 FAIL / 6 NA（等机 2 分钟后独占起跑）。infra-fixed
+  （租约修复生效）、a2r-std、auto-tool-execution（负载 flake 消失）均转绿。7 红：
+  shim-metadata/auto-macros/auto-cache/auto-gen（master 预存编译红，已核）、
+  auto-lang-core=plan884（已知）、auto-api-gen=plan734（已知）、auto-lang 组 17 红
+  （plan872 已知 + 16 个集成测试：vue_capabilities×11、ui_snapshots×3、
+  http_e2e_back_proxy、sys_natives_vm_tests、gallery_vue_golden——daily 档不覆盖、
+  896 交付证据亦无 all 全绿声明，主检出同组对照归因进行中）。
 
 ## 复审记录
+
+**复审 PASS（2026-10-31，revision 2a450f9cd 门 + bf414e26a specs）**——逐条对验收标准核证据，不信勾选框：
+
+1. ✅ 别名仅剩 `t`：`cargo tm` = `error: no such command`（实测）；`--list`=103 组
+2. ✅ SET A 全删 + SET B 零消费者删除；两处误杀已修并回补（governance_io.py 拆分、
+   legacy-wrapper-contract.json 恢复、machine_gate 迁移），95 已删文件全面反查零真实引用
+   （README/docstring 历史提及除外）；保留项具名（ace-cargo.ps1→898-N2）
+3. ✅ 冻结门（三轮迭代后）：24 PASS / 7 FAIL / 6 NA，**7 红 100% 在主检出复现**
+   （auto-lang 组 worktree 17 红 ⊂ master 19 红，含 2 个 http e2e flake 差异）——
+   **898 零新增红**；选择面守恒（T-04）+ 治理 python 176 绿/1 预存
+4. ✅ 文档现行时态零残留；specs module-selection.md 周期门语义同步（bf414e26a）
+5. ✅ 技能三副本（仓内随提交 + 用户级两副本经用户批准同步），grep 审计零残留
+6. ✅ Spec delta：supersedes module-selection 888 段与 tf--batch 批量段；new =
+   cargo t all 纯语言侧批量门（ace 域 all=false）
+
+**预存红登记（fix-forward，全部 master 复现、非 898 回归）**：
+编译红 4（shim-metadata E0061 测试漏改参 / auto-gen E0433 dev-dep 缺 auto_lang /
+auto-macros E0308 / auto-cache E0063 ShimMethod 漏 trait_name）；运行红 3（plan872
+绑定表再生 / plan884 provider 覆盖 / plan734_tauri_fixture）；daily 不覆盖的集成红
+（vue_capabilities×11、ui_snapshots×3、sys_natives_vm_tests、gallery_vue_golden、
+http_e2e_back_proxy 网络flaky族——UI 族与计划 A 的测试迁出高度相关，随 A 处置）；
+python acc_inventory 分类红 1。详见 KNOWN-DEBT 898-N5。
 
 ## 待澄清事项
 
