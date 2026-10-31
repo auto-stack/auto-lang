@@ -8,8 +8,12 @@ mod hir_shape;
 mod incremental_cache;
 #[path = "cases/record_text_902.rs"]
 mod record_text_902;
+#[path = "cases/record_text_modes.rs"]
+mod record_text_modes;
 #[path = "cases/resource_budget.rs"]
 mod resource_budget;
+#[path = "cases/rt_common.rs"]
+mod rt_common;
 #[path = "cases/scalar_semantics.rs"]
 mod scalar_semantics;
 #[path = "cases/store_cache.rs"]

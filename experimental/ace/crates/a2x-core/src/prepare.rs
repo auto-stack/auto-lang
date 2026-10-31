@@ -11,7 +11,7 @@
 //!   before any target recursion starts;
 //! * fragment closure assembly (T-04): `calls` is the per-function edge.
 
-use crate::semantic_view::{FnFacts, SemanticView, Ty};
+use crate::semantic_view::{FnFacts, FnKind, SemanticView, Ty};
 use crate::A2xReject;
 use ace_core::hir;
 use std::collections::BTreeSet;
@@ -314,8 +314,19 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
     let mut ser = String::new();
     // PLAN-902: the view-aware canonical signature carries param modes and
     // nominal names; for scalar functions it renders byte-identically to
-    // the 892 `canonical_signature` (all-view params, builtin types).
-    ser.push_str(&format!("sig {}\n", view.canonical_signature(f)));
+    // the 892 `canonical_signature` (all-view params, builtin types). On
+    // the 902 domains the kind marker (free vs owner-qualified method)
+    // leads the line — a same-named method and free function are different
+    // semantic objects.
+    if is_902_family(view) {
+        let kind = match f.kind {
+            FnKind::Free => "fn",
+            FnKind::Method { .. } => "mt",
+        };
+        ser.push_str(&format!("sig {kind} {}\n", view.canonical_signature(f)));
+    } else {
+        ser.push_str(&format!("sig {}\n", view.canonical_signature(f)));
+    }
     let mut canon: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
     // Params intern FIRST in positional order (0..n-1): param identity is
     // semantic (callers bind arguments positionally); a first-use-only
@@ -417,6 +428,15 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
         ser.push('\n');
     }
     Ok(crate::sha256::sha256_hex(ser.as_bytes()))
+}
+
+/// Whether the view sits on a PLAN-902 source domain (the fingerprint
+/// extensions are gated here so the 892 scalar bytes never move).
+fn is_902_family(view: &SemanticView<'_>) -> bool {
+    matches!(
+        view.domain,
+        hir::HirDomain::Text | hir::HirDomain::Record | hir::HirDomain::TextRecord
+    )
 }
 
 /// Sorted nominal shape digest of every record type the function's
@@ -545,7 +565,7 @@ fn ser_expr(
             bindings,
         } => {
             let target = callee.0 as usize;
-            let name = if let Some(sym) = view.trace_symbol(target) {
+            let mut name = if let Some(sym) = view.trace_symbol(target) {
                 sym.to_string()
             } else if let Some(t) = view.fn_by_def(target) {
                 t.source_name.to_string()
@@ -554,6 +574,21 @@ fn ser_expr(
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };
+            // PLAN-902 §5.4: on the 902 domains the callee's canonical
+            // signature (modes + nominal types + kind) is part of the
+            // caller's semantic identity — a callee signature/mode change
+            // invalidates even an otherwise-unchanged body. Scalar
+            // fingerprints keep their frozen bytes.
+            if is_902_family(view) && view.trace_symbol(target).is_none() {
+                let sig = if let Some(t) = view.fn_by_def(target) {
+                    view.canonical_signature(t)
+                } else if let Some(x) = view.external_by_def(target) {
+                    view.canonical_external_signature(x)
+                } else {
+                    String::new()
+                };
+                name = format!("{name}[{sig}]");
+            }
             let mut canon_bindings: Vec<(u32, u32, bool)> =
                 bindings.iter().map(|b| (b.param, b.arg, b.moved)).collect();
             canon_bindings.sort();

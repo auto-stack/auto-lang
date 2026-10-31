@@ -11,23 +11,17 @@
 //! hook turns the n-th allocation into the typed `Resource` trap with NO
 //! partial commit of the old target.
 
-use std::path::PathBuf;
-use std::process::Command;
-
 use ace_a2x_core::SemanticView;
-use ace_a2x_rust::{assemble_record_text_file_set, lower_functions, lower_program};
-use ace_core::source::{
-    compile_record_source, compile_text_record_source, compile_text_source, compile_parts_with,
-    SourceProfile, CompiledSource,
-};
+use ace_a2x_rust::{lower_functions, lower_program};
+use ace_core::source::{compile_parts_with, SourceProfile};
 use ace_core::verify::verify_function_ref;
+
+use crate::rt_common::{assert_value, compile_case, run_chain, Prof, RUNTIME_TEXT_CAP};
 
 const R07: &str = include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/R07.at");
 const R08: &str = include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/R08.at");
 const T03: &str = include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/T03.at");
 const T05: &str = include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/T05.at");
-
-const RUNTIME_TEXT_CAP: &str = "ac.runtime.text.v1";
 
 /// PLAN-902 §5.3 counterexample: declare a, declare b, replace a — the
 /// explicit cleanup must free the replacement's OLD buffer after the RHS
@@ -39,117 +33,6 @@ const CLEANUP: &str = r#"fn main() int {
     a = a + "bb"
     return a.len() * 10 + b.len()
 }"#;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Prof {
-    Record,
-    Text,
-    TextRecord,
-}
-
-fn compile_case(name: &str, src: &str, prof: Prof) -> CompiledSource {
-    let text_caps = [RUNTIME_TEXT_CAP.to_string()];
-    let compiled = match prof {
-        Prof::Record => compile_record_source(src, name, &[]),
-        Prof::Text => compile_text_source(src, name, &text_caps),
-        Prof::TextRecord => compile_text_record_source(src, name, &text_caps),
-    };
-    compiled.unwrap_or_else(|ds| {
-        panic!(
-            "frontend diagnostics for {name}: {}",
-            ds.iter()
-                .map(|d| format!("{}: {}", d.code, d.message))
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    })
-}
-
-fn out_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/a2x-out/record-text-902")
-}
-
-fn rustc() -> String {
-    std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string())
-}
-
-/// Emit + compile + run one case; returns (stdout, stderr).
-fn run_chain(
-    name: &str,
-    src: &str,
-    prof: Prof,
-    flavor: &str,
-    extra_flags: &[&str],
-    env: &[(&str, &str)],
-) -> (String, String) {
-    let compiled = compile_case(name, src, prof);
-    let view = SemanticView::from_checked(&compiled.checked)
-        .unwrap_or_else(|r| panic!("view admission for {name}: {r}"));
-    let program = lower_program(&view, "main")
-        .unwrap_or_else(|r| panic!("lowering for {name}: {r}"));
-    let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "main");
-
-    let dir = out_root().join(name).join(flavor);
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    for (path, content) in &fs.files {
-        std::fs::write(dir.join(path), content).unwrap();
-    }
-    std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
-
-    let exe = dir.join("a2x_rt_case.exe");
-    let mut compiler = Command::new(rustc());
-    compiler
-        .arg("--edition")
-        .arg("2021")
-        .args(extra_flags)
-        .arg("-o")
-        .arg(&exe)
-        .arg("main.rs")
-        .current_dir(&dir);
-    for (k, v) in env {
-        compiler.env(k, v);
-    }
-    let compile_out = auto_tool_execution::run_command_capture(
-        compiler,
-        auto_tool_execution::TreeScope::ProcessTree,
-        None,
-    )
-    .expect("spawn rustc");
-    assert!(
-        compile_out.kind == auto_tool_execution::ExitKind::Success,
-        "rustc failed for {name} ({flavor}):\n{}",
-        String::from_utf8_lossy(compile_out.stderr.as_ref().expect("captured compiler stderr"))
-    );
-
-    let mut command = Command::new(&exe);
-    command.current_dir(&dir);
-    for (k, v) in env {
-        command.env(k, v);
-    }
-    let run = auto_tool_execution::run_command_capture(
-        command,
-        auto_tool_execution::TreeScope::ProcessTree,
-        None,
-    )
-    .expect("run exe");
-    assert_eq!(
-        run.kind,
-        auto_tool_execution::ExitKind::Success,
-        "wrapper exit non-zero for {name} ({flavor})"
-    );
-    (
-        String::from_utf8_lossy(run.stdout.as_ref().expect("captured stdout")).to_string(),
-        String::from_utf8_lossy(run.stderr.as_ref().expect("captured stderr")).to_string(),
-    )
-}
-
-fn assert_value(name: &str, out: &str, expected: i32) {
-    assert_eq!(
-        out, format!("value:{expected}\n"),
-        "stdout mismatch for {name}"
-    );
-}
 
 /// The four frozen required sources through the real chain, debug/release
 /// paired, against the frozen oracle 42/42/23/42.

@@ -118,13 +118,15 @@ pub struct FnFacts<'a> {
 /// the scaffold declarations a single-body emission carries for the other
 /// functions (PLAN-828). Calls to externals admit by signature; the target
 /// names them by def identity and the session layer (T-04) assembles the
-/// closure.
+/// closure. PLAN-902: the verified param MODES travel with the signature —
+/// a callee mode change is a dependency change, not a rendering detail.
 #[derive(Clone, Debug)]
 pub struct ExternalFn {
     pub def_index: usize,
     pub source_name: String,
     pub kind: FnKind,
     pub params: Vec<Ty>,
+    pub modes: Vec<hir::ParamMode>,
     pub result: Ty,
 }
 
@@ -165,6 +167,9 @@ pub struct SemanticView<'a> {
     /// The verifier-computed text resource plan (text/text-record domains),
     /// consumed verbatim — the view never re-derives ownership.
     resource_plan: Option<&'a TextResourcePlan>,
+    /// PLAN-902 T-03: a single-body credential's OWN plan (fragment views);
+    /// bound to the credential's body index, lookup-checked per function.
+    fragment_plan: Option<(&'a ace_core::text_resources::BodyResourcePlan, u32)>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
@@ -194,6 +199,7 @@ impl<'a> SemanticView<'a> {
             externals: Vec::new(),
             records,
             resource_plan: checked.text_resources(),
+            fragment_plan: None,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -211,7 +217,7 @@ impl<'a> SemanticView<'a> {
     /// 数据，恢复由原producer rebind/reverify).
     pub fn from_parts(
         parts: &'a SourceParts,
-        credential: &CheckedFunction,
+        credential: &'a CheckedFunction,
     ) -> Result<Self, A2xReject> {
         let bundle = &parts.bundle;
         let module = single_module(bundle)?;
@@ -230,6 +236,23 @@ impl<'a> SemanticView<'a> {
                 domain.as_str()
             )));
         }
+        // PLAN-902 V-01: the credential is bound to ITS declaration context
+        // by the verifier's fingerprint (types + def signatures). Def ids
+        // are positional — a same-shape bundle of a DIFFERENT owner would
+        // match by id text alone, so the context revision is the binding:
+        // a stale or foreign credential is a named rejection, never a
+        // silently admitted look-alike.
+        let ctx = ace_core::verify::declaration_context_fingerprint_in(module, domain);
+        if credential.context_revision() != ctx {
+            return Err(A2xReject::new(
+                "a2x.credential",
+                format!(
+                    "credential context revision `{}` does not bind this bundle's declaration context `{}` (stale or foreign credential)",
+                    credential.context_revision(),
+                    ctx
+                ),
+            ));
+        }
         let functions = collect_functions(module, Some(credential.def_id_text()))?;
         if functions.len() != 1 {
             return Err(A2xReject::new(
@@ -241,6 +264,12 @@ impl<'a> SemanticView<'a> {
             ));
         }
         let trace_defs = collect_trace_defs(module, bundle)?;
+        // PLAN-902 T-03: the credential's OWN verified resource plan
+        // serves the one admitted function (lookup-checked by body
+        // index — a mismatched plan can never leak to another body).
+        let fragment_plan = credential
+            .resource_plan()
+            .map(|p| (p, functions[0].body_index));
         let view = SemanticView {
             module,
             domain,
@@ -248,11 +277,8 @@ impl<'a> SemanticView<'a> {
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
             records: collect_records(module)?,
-            // PLAN-902 T-02: fragment resource credentials (per-body plan
-            // bound to the CheckedFunction) arrive with the T-03 S-window;
-            // until then text-domain fragments carry no plan and the Rust
-            // provider rejects the functions whose cleanup needs one.
             resource_plan: None,
+            fragment_plan,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -288,7 +314,15 @@ impl<'a> SemanticView<'a> {
 
     /// The resource plan of one function's body (module 0; body index of
     /// `f`). `None` when the domain carries no plan or the body has none.
+    /// A fragment view serves the credential's own plan, body-index
+    /// checked (PLAN-902 T-03).
     pub fn body_plan(&self, f: &FnFacts<'a>) -> Option<&ace_core::text_resources::BodyResourcePlan> {
+        if let Some((plan, body_index)) = self.fragment_plan {
+            if body_index == f.body_index {
+                return Some(plan);
+            }
+            return None;
+        }
         self.resource_plan
             .and_then(|p| p.bodies.get(&(0, f.body_index)))
     }
@@ -386,6 +420,25 @@ impl<'a> SemanticView<'a> {
             })
             .collect();
         format!("({})->{}", params.join(","), self.ty_name(f.result))
+    }
+
+    /// The same canonical rendering for a signature-only external
+    /// (PLAN-902: callee dependency facts carry modes + nominal types).
+    pub fn canonical_external_signature(&self, x: &ExternalFn) -> String {
+        let params: Vec<String> = x
+            .params
+            .iter()
+            .zip(x.modes.iter())
+            .map(|(ty, mode)| {
+                let mode_prefix = if *mode == hir::ParamMode::View {
+                    String::new()
+                } else {
+                    format!("{} ", mode.as_str())
+                };
+                format!("{}{}", mode_prefix, self.ty_name(*ty))
+            })
+            .collect();
+        format!("({})->{}", params.join(","), self.ty_name(x.result))
     }
 
     /// The operator set of this domain, as the admission table the body
@@ -706,22 +759,27 @@ fn source_name_of<'n>(name: &'n str, kind: FnKind) -> Result<&'n str, A2xReject>
 }
 
 /// Signature-only externals of a fragment (every Function/Method def except
-/// the credential's planned def).
+/// the credential's planned def). PLAN-902: the verified param MODES are
+/// collected from each callee's own body (scaffold bodies still carry the
+/// declaration's param locals — the 881 retained-environment rule: modes
+/// are never guessed from a missing body).
 fn collect_externals(
     module: &hir::Module,
     planned_def: &str,
 ) -> Result<Vec<ExternalFn>, A2xReject> {
     let mut externals = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
-        let (name, ty, kind) = match &def.kind {
-            hir::DefKind::Function { name, ty, .. } => (name, *ty, FnKind::Free),
+        let (name, ty, body_id, kind) = match &def.kind {
+            hir::DefKind::Function { name, ty, body } => {
+                (name, *ty, *body, FnKind::Free)
+            }
             hir::DefKind::Method {
                 name,
                 ty,
+                body,
                 record,
                 receiver,
-                ..
-            } => (name, *ty, FnKind::Method {
+            } => (name, *ty, *body, FnKind::Method {
                 owner: record.0,
                 receiver: *receiver,
             }),
@@ -740,11 +798,26 @@ fn collect_externals(
             .iter()
             .map(|t| resolve_ty(module, *t))
             .collect::<Result<Vec<Ty>, A2xReject>>()?;
+        // verified param modes from the callee's own param locals, in
+        // signature order
+        let mut modes = vec![hir::ParamMode::View; params.len()];
+        if let Some(body) = module.bodies.get(body_id.0 as usize) {
+            let mut param_locals: Vec<&hir::LocalDef> = body
+                .locals
+                .iter()
+                .filter(|l| matches!(l.role, hir::LocalRole::Param))
+                .collect();
+            param_locals.sort_by_key(|l| l.index.unwrap_or(u32::MAX));
+            for (l, slot) in param_locals.iter().zip(modes.iter_mut()) {
+                *slot = l.param_mode;
+            }
+        }
         externals.push(ExternalFn {
             def_index,
             source_name,
             kind,
             params,
+            modes,
             result: sig_result(module, sig)?,
         });
     }

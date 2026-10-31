@@ -110,12 +110,16 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
 /// a pure-cleanup body must be gated by the runtime contract exactly like
 /// one with text operations.
 pub fn plan_needs_text_runtime(plan: &TextResourcePlan) -> bool {
-    plan.bodies.values().any(|bp| {
-        !bp.owned.is_empty()
-            || !bp.exit_frees.is_empty()
-            || !bp.buffer_frees.is_empty()
-            || !bp.replace_frees.is_empty()
-    })
+    plan.bodies.values().any(body_plan_needs_text_runtime)
+}
+
+/// PLAN-902: the same derived runtime-need rule for ONE body's plan (the
+/// single-body credential front door).
+pub fn body_plan_needs_text_runtime(bp: &BodyResourcePlan) -> bool {
+    !bp.owned.is_empty()
+        || !bp.exit_frees.is_empty()
+        || !bp.buffer_frees.is_empty()
+        || !bp.replace_frees.is_empty()
 }
 
 /// Nominal text-type test (str or Str, builtin shorthand or table ref).
@@ -2769,9 +2773,12 @@ fn merge_children(parent: &mut WalkState, children: &[WalkState]) {
 /// becomes a constraint on THAT body's signature — a wrapper must not
 /// re-form a same-source mut/view pair its caller was never allowed to
 /// form directly.
-pub(crate) type ParamExclusions = BTreeMap<(usize, u32), BTreeSet<(u32, u32)>>;
+/// PLAN-902: the cross-body pairwise parameter exclusivity map (r4
+/// R4-05) — public so single-body text credentials consume/merge the
+/// retained environment's constraint facts.
+pub type ParamExclusions = BTreeMap<(usize, u32), BTreeSet<(u32, u32)>>;
 
-pub(crate) fn seed_param_exclusions(bundle: &hir::Bundle) -> ParamExclusions {
+pub fn seed_param_exclusions(bundle: &hir::Bundle) -> ParamExclusions {
     let mut out = ParamExclusions::new();
     for (mi, m) in bundle.modules.iter().enumerate() {
         for (bi, body) in m.bodies.iter().enumerate() {

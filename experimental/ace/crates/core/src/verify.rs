@@ -121,6 +121,16 @@ pub struct CheckedFunction {
     /// synth program drops other functions' intrinsics; id texts do not
     /// (F-828-R1-06/R4a).
     intrinsics: Vec<(String, String, bool, String)>,
+    /// PLAN-902 T-03: the verifier-computed resource plan of THIS body
+    /// (text/text-record single-body credentials; `None` elsewhere). The
+    /// plan travels with the credential so a fragment consumer lowers
+    /// cleanup from verified facts — it never re-derives ownership.
+    resource_plan: Option<crate::text_resources::BodyResourcePlan>,
+    /// PLAN-902 T-03: the pairwise parameter exclusivity constraints
+    /// discovered for THIS body's own signature at its call sites (r4
+    /// R4-05) — the facts a retained environment merges into its fixpoint
+    /// and later call-site checks consume.
+    excl_adds: std::collections::BTreeSet<(u32, u32)>,
 }
 
 impl CheckedFunction {
@@ -156,6 +166,18 @@ impl CheckedFunction {
 
     pub fn domain(&self) -> HirDomain {
         self.domain
+    }
+
+    /// The verified resource plan of this body (text/text-record
+    /// credentials; PLAN-902 T-03).
+    pub fn resource_plan(&self) -> Option<&crate::text_resources::BodyResourcePlan> {
+        self.resource_plan.as_ref()
+    }
+
+    /// Exclusivity constraints this body's signature discovered at its
+    /// call sites (PLAN-902 T-03).
+    pub fn excl_adds(&self) -> &std::collections::BTreeSet<(u32, u32)> {
+        &self.excl_adds
     }
 }
 
@@ -389,10 +411,220 @@ pub fn verify_function_ref(
             context_revision: declaration_context_fingerprint_in(m, bundle.domain),
             domain: bundle.domain,
             intrinsics,
+            resource_plan: None,
+            excl_adds: std::collections::BTreeSet::new(),
         })
     } else {
         Err(v.diags)
     }
+}
+
+/// PLAN-902 T-03 (S-window): the single-body TEXT/TEXT-RECORD credential.
+///
+/// The text domains own a cross-body pairwise parameter exclusivity
+/// fixpoint (r4 R4-05): constraints a callee's WRAPPERS discover for their
+/// own signatures are checked at the wrappers' call sites, so a body-less
+/// scaffold cannot derive them. This entry therefore takes the RETAINED
+/// environment's current constraint map (`excl_seed` — a whole-module
+/// verifier result or the seed-only map for a cold fragment) and verifies
+/// exactly one body against the full declaration context:
+///
+/// * the structural/type/init/return walk of the document's own domain
+///   (the same `check_body` the whole-module verifier runs per body);
+/// * the PLAN-770/782 resource walk for THIS body, producing the
+///   `BodyResourcePlan` bound into the credential (owned locals, per-exit
+///   LIFO frees, owned returns, replacement frees);
+/// * the capability front door: a body whose plan or operations need the
+///   text runtime must sit under `requires: ["ac.runtime.text.v1"]`;
+/// * the `excl_adds` the body discovers for ITS OWN signature (returned
+///   in the credential for the caller's fixpoint merge).
+///
+/// The credential is one body's verified facts — publishing it against a
+/// live environment (graft, transaction, cache admission) belongs to the
+/// caller (the 828 candidate machinery / the a2x session layer).
+pub fn verify_text_function(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    excl_seed: &crate::text_resources::ParamExclusions,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    if !matches!(bundle.domain, HirDomain::Text | HirDomain::TextRecord) {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "the text single-body credential is available for the text/text-record domains, not `{}`",
+                bundle.domain.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    if bundle.modules.len() != 1 {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.modules",
+            format!(
+                "function-level verification expects exactly one module, found {}",
+                bundle.modules.len()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let m = &bundle.modules[0];
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: bundle.domain,
+    };
+    if !v.check_module_type_bounds(m) {
+        return Err(v.diags);
+    }
+    // text kinds are LEGAL here (the document's own domain is text family)
+    let type_map = Verifier::build_type_map(m);
+    let mut sigs: SigTable = BTreeMap::new();
+    for (i, d) in m.defs.iter().enumerate() {
+        let ty_id = match &d.kind {
+            hir::DefKind::Function { ty, .. }
+            | hir::DefKind::Method { ty, .. }
+            | hir::DefKind::Intrinsic { ty, .. } => *ty,
+        };
+        match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::Function(sig)) => {
+                let params: Vec<ValueType> = sig.params.iter().map(|p| v.value_of(p, &type_map)).collect();
+                let result = v.value_of(&sig.result, &type_map);
+                sigs.insert(i as u32, (params, result));
+            }
+            _ => {
+                v.error(
+                    "verify.callee-type",
+                    format!("declaration `{}` does not have a function type", d.id_text),
+                    d.span,
+                );
+            }
+        }
+    }
+    let Some(def) = m.defs.get(def_index) else {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.def-index",
+            format!("def index {def_index} out of range ({} defs)", m.defs.len()),
+            Span { start: 0, end: 0 },
+        )]);
+    };
+    let (body_id, name) = match &def.kind {
+        hir::DefKind::Function { name, body, .. } => (*body, name.clone()),
+        hir::DefKind::Method { name, body, .. } => (*body, name.clone()),
+        hir::DefKind::Intrinsic { .. } => {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.def-kind",
+                format!("def `{}` is an intrinsic and has no body to verify", def.id_text),
+                def.span,
+            )]);
+        }
+    };
+    let Some(body) = m.bodies.get(body_id.0 as usize) else {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.body-ref",
+            format!("function `{name}` declares body `{}` which is out of range", body_id.0),
+            def.span,
+        )]);
+    };
+    if body.owner.0 as usize != def_index {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.owner-mismatch",
+            format!("function `{name}` declares body `{}` which belongs to another def", body_id.0),
+            def.span,
+        )]);
+    }
+    v.check_profile_ops(m, body);
+    v.check_body(m, body_id, body, &type_map, &sigs);
+    // the resource walk: plan + this signature's discovered constraints
+    let resource = if bundle.domain == HirDomain::TextRecord {
+        record_resource_map(m)
+    } else {
+        Vec::new()
+    };
+    let mut plan_diags = Vec::new();
+    let (plan, excl_adds) = crate::text_resources::check_body(
+        body,
+        m,
+        0,
+        &type_map,
+        &resource,
+        excl_seed,
+        &mut plan_diags,
+    );
+    v.diags.extend(plan_diags);
+    if !v.diags.is_empty() {
+        return Err(v.diags);
+    }
+    let plan = plan.unwrap_or_default();
+    // capability front door (same rule as the whole-module verifier)
+    let needs_runtime = crate::text_resources::body_needs_text_runtime(m, body)
+        || crate::text_resources::body_plan_needs_text_runtime(&plan);
+    if needs_runtime
+        && !bundle
+            .requires
+            .iter()
+            .any(|r| r == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Capability,
+            "capability.missing",
+            "the body lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    // intrinsics this body actually calls (same collection as the scalar path)
+    let mut intrinsics: Vec<(String, String, bool, String)> = Vec::new();
+    for e in &body.exprs {
+        if let hir::ExprKind::Call { callee, .. } = &e.kind {
+            if let Some(d) = m.defs.get(callee.0 as usize) {
+                if let hir::DefKind::Intrinsic { symbol, effect, .. } = &d.kind {
+                    let shape = d
+                        .kind
+                        .fn_type()
+                        .and_then(|t| m.types.get(t.0 as usize).cloned())
+                        .map(|td| match &td.kind {
+                            hir::TypeKind::Function(sig) => {
+                                let params: Vec<String> = sig
+                                    .params
+                                    .iter()
+                                    .map(|p| hir::TypeUse::shape(p, m))
+                                    .collect();
+                                format!(
+                                    "fn({})->{}",
+                                    params.join(","),
+                                    hir::TypeUse::shape(&sig.result, m)
+                                )
+                            }
+                            other => format!("{other:?}"),
+                        })
+                        .unwrap_or_else(|| "?".to_string());
+                    let entry = (
+                        d.id_text.clone(),
+                        symbol.clone(),
+                        matches!(effect, hir::Effect::Observable),
+                        shape,
+                    );
+                    if !intrinsics.contains(&entry) {
+                        intrinsics.push(entry);
+                    }
+                }
+            }
+        }
+    }
+    Ok(CheckedFunction {
+        body: body.clone(),
+        def: def.clone(),
+        owner: m.id_text.clone(),
+        context_revision: declaration_context_fingerprint_in(m, bundle.domain),
+        domain: bundle.domain,
+        intrinsics,
+        resource_plan: Some(plan),
+        excl_adds,
+    })
 }
 
 /// Deterministic FNV-1a fingerprint of the declaration context a function
@@ -562,7 +794,25 @@ fn context_fingerprint(m: &hir::Module) -> String {
                 Some(hir::TypeKind::Str) => mix(h, "str"),
                 Some(hir::TypeKind::StrOwned) => mix(h, "Str"),
                 Some(hir::TypeKind::Char) => mix(h, "char"),
-                Some(hir::TypeKind::Record(_)) => mix(h, "rec"),
+                // PLAN-902: records mix NOMINALLY — the type's own id_text
+                // plus its ordered field shapes (a rename or field change
+                // invalidates credentials; same-shape different-owner types
+                // are DIFFERENT declaration contexts). Scalar modules carry
+                // no records, so their fingerprints are unchanged.
+                Some(hir::TypeKind::Record(shape)) => {
+                    let name = m
+                        .types
+                        .get(tid.0 as usize)
+                        .map(|t| t.id_text.clone())
+                        .unwrap_or_default();
+                    mix(h, &format!("rec:{name}("));
+                    mix(h, &shape.fields.len().to_string());
+                    for f in &shape.fields {
+                        mix(h, &f.name);
+                        mix_use(h, &f.ty, m, depth - 1);
+                    }
+                    mix(h, ")");
+                }
                 // PLAN-864: List identity is its element; Variant identity is
                 // nominal (owner name) plus its arm/payload shape.
                 Some(hir::TypeKind::List { elem }) => {
