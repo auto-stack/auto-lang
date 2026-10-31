@@ -12,10 +12,13 @@
 ## 目标与范围
 
 - **语义视图**（`a2x-core::SemanticView`）：只读消费 `CheckedModule`/单函数
-  `CheckedFunction` 凭证，双域准入（core/scalar；其余域具名拒绝 `a2x.domain`），
-  expr/stmt/place/type 具名拒绝防御（前端之外的二道门）；函数源名身份
-  （剥 `sf_` 前缀）、显式入口选择（零参 i32 结果）；trace 授权按 capability
-  ＋绑定 DefId（用户名优先不劫持）。
+  `CheckedFunction` 凭证，五域准入（core/scalar＋AX-B 的
+  record/text/text-record；其余域具名拒绝 `a2x.domain`），expr/stmt/place/
+  type 具名拒绝防御（前端之外的二道门）；函数源名身份（自由函数剥
+  `sf_`、方法 owner 限定剥 `sm_`）、显式入口选择（零参 i32 自由函数）；
+  trace 授权按 capability＋绑定 DefId。AX-B 事实面（模式/名义 record/
+  方法 owner/资源计划出口）见
+  [checked-resource-facts](checked-resource-facts.md)。
 - **准备摘要**（`prepare.rs`）：`FunctionPlan`（ops/calls/marks/计数/迭代式
   max-depth，冻结 `MAX_STRUCTURE_DEPTH=400` → `a2x.too-deep`）与**语义指纹**
   （首次使用序局部规范化、参数按位 0..n-1、span/名字/表序排除——空白等价源
@@ -29,6 +32,9 @@
 - AX-A 已交付（PLAN-892）：core/scalar 计算闭包全量冻结语料 58 用例真链
   （真实 rustc 编译运行对独立 oracle）；暖稳态管理工作集实测 29.7MiB ≤48MiB
   @load256 规模（冷整源峰值 ~338MB 为上游 ac-core 前端特征，单列报告非 A2X 预算面）。
-- record/text/char、集合/变体、闭包/HOF、Unit 入口、宽源码、泛型/meta、
-  多模块/全 stdlib、public ABI、native loader/HMR、第二目标、旧 A2X 切换
-  均不在现状（AX-B/AX-C 未编号）。
+- AX-B 已交付（PLAN-902）：record/text/text-record 三域真链（四冻结源
+  42/42/23/42 真 rustc 认证；资源清理按验证器计划事件序钉住；AXS2/AXR2
+  层真函数级增量，formal 窗口 hit/restart/body-edit P90=6/21/40ms）。
+- List/Variant（AX-C）、闭包/HOF、mut 实例方法、Unit 入口、宽源码、
+  泛型/meta、多模块/全 stdlib、public ABI、native loader/HMR、第二目标、
+  旧 A2X 切换均不在现状。

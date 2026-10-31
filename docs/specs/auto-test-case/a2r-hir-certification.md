@@ -1,15 +1,20 @@
-# a2r-hir 认证通道（recipe `ac-a2r/hir-scalar-emit-v1`）
+# a2r-hir 认证通道（recipes `ac-a2r/hir-scalar-emit-v1` ＋
+`ac-a2r/hir-record-text-emit-v1`）
 
-> 状态：active（PLAN-892 交付；与旧 `a2r/emit`＋`ace.m1.cert/1` **并列**，
-> 互不授信、互不改动）。
+> 状态：active（PLAN-892 交付标量通道；PLAN-902 交付 record-text 通道；
+> 与旧 `a2r/emit`＋`ace.m1.cert/1` **并列**，互不授信、互不改动）。
 
 ## 注册（796 probe seam）
 
-- recipe 进 `REGISTERED_PROBE_RECIPES`；绑定 `a2x_hir: { profile, entry, caps }`
-  （required-for-recipe，其他 recipe 声明即装载拒绝）；步词表=单 `run`。
-- **artifacts 期望通道仅本 recipe 可声明**（decode 按 recipe 门控；其他 probe
-  recipe 声明 artifacts 装载即拒——不破坏 av/cte/mn 合同）。
-- 分发：`test_cases/ac_a2r_hir.rs`（新文件）＋ mod.rs 两处追加。
+- 两个 a2x recipe 均进 `REGISTERED_PROBE_RECIPES`（append-only）；绑定
+  `a2x_hir: { profile, entry, caps }`（required-for-recipe，其他 recipe 声明
+  即装载拒绝）；步词表=单 `run`。**profile 集按 recipe 严格不相交**（标量=
+  core|scalar；record-text=record|text|text-record；越界=装载拒绝）。
+- **artifacts 期望通道仅 a2x recipes 可声明**（decode 按 recipe 门控；其他
+  probe recipe 声明 artifacts 装载即拒——不破坏 av/cte/mn 合同）。
+- 分发：`test_cases/ac_a2r_hir.rs`（双 recipe 共适配器；echo 按 case 自身
+  recipe 核验）＋ mod.rs。worker 按 profile 选通道（fileset/证书 schema 随
+  通道），绝不混通道授信。
 
 ## 日常腿（snapshot，spawn0）
 
@@ -35,3 +40,16 @@ rustc 编译运行，stdout 值/trap 线与 stderr 标记序双方一致等于�
 测试面 `a2r_hir_892_tests`（日常绿/篡改 golden 红/缺 worker infra/凭证钉/
 certify 腿+反控）。冻结 load256 正式采样（31 修订预认证）：hit/restart/
 body-edit P90=427/490/176ms≤2000ms，fresh 单列（828 先例）。
+
+## record-text 通道（PLAN-902 交付）
+
+- `test/cases/a2r-hir-record-text-902/`：R07/R08/T03/T05 四例（源=冻结
+  ace-m1 字节复制 hash 钉定；golden=真实 worker 冻结＋跨 nonce 一致；
+  reference=手写独立 std 形态）；固定组 `case-a2r-hir-record-text-902`
+  （tools=case-parent+a2x）真实发现执行 4/4。证书
+  `ace.a2r-hir.record-text.cert/1`（严格 `validate_as`：标量身份不验 rt
+  证书、坏 verdict/空绑定/缺工具身份拒）；certify 反控（错 oracle/错
+  reference/晚失败 REJECTED；协议腿经真实 worker）。作用域验证入口
+  `scripts/verify-a2r-record-text-902.ps1`（八作用域收据；formal=四状态
+  ×30 样本预认证窗口，暖门 P90=6/21/40ms）。标量五例/58 语料与旧 a2r
+  产物不变。

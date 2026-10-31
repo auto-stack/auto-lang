@@ -1,6 +1,7 @@
 # auto-a2x 架构（视图/准备/目标契约与依赖方向）
 
-> 状态：active（AX-A 形态）。ADR 级约定，源自 PLAN-892（Design 51 §3）。
+> 状态：active（AX-A＋AX-B 形态）。ADR 级约定，源自 PLAN-892（Design 51
+> §3）与 PLAN-902（Design 51 §5.3）。
 
 ## 数据流（AX-A 交付形态）
 
@@ -15,12 +16,19 @@
 
 ## 关键裁定（ADR）
 
-1. **不复制前端/执行器**：共享 core 只消费已验证 HIR 与凭证；不通过运行 AV
-   取得转译产物；`emit_function_body` 只发 env 当前语义，编辑体在候选 parts
-   （828 合同）。单函数片段视图按 `verify_function_ref` 凭证准入
-   （`SemanticView::from_parts`），其余 def 为签名-only ExternalFn。
-2. **身份按源名**：Rust 函数名 `fn_<源名>`——def 表索引跨整模块/单函数 bundle
-   漂移（F-828-R1），索引不可作跨 bundle 身份；模块内源名唯一。
+1. **不复制前端/执行器/ownership 分析**：共享 core 只消费已验证 HIR 与
+   凭证；不通过运行 AV 取得转译产物；`emit_function_body` 只发 env 当前
+   语义，编辑体在候选 parts（828 合同）。单函数片段视图按凭证准入
+   （`SemanticView::from_parts`），其余 def 为签名-only ExternalFn（AX-B
+   起 ExternalFn 携带验证 param modes）；**text/text-record 单体凭证=
+   `verify_text_function`（携自身 BodyResourcePlan，排他种子来自保留环境），
+   record 域沿 `verify_function_ref`（方法体 receiver=params[0] 同源）**。
+   资源/模式事实出口见 [checked-resource-facts](checked-resource-facts.md)；
+   凭证按声明上下文修订指纹绑定（`a2x.credential`）。
+2. **身份按源名（名义）**：自由函数 Rust 名 `fn_<源名>`、方法 owner 限定
+   `mt_<Owner>_<名>`——def 表索引跨整模块/单函数 bundle 漂移（F-828-R1），
+   索引不可作跨 bundle 身份；模块内源名唯一；同布局异 owner record 是不同
+   名义类型（上下文指纹与语义指纹均按名义+形状混入）。
 3. **求值顺序是事实不是配置**：`Call.eval_args` 为源序（各求值一次），
    `bindings` 为落位图；目标按源序钉临时后按 binding 落位，不得反推。
    短路 `Logical` 降为惰性 if 表达式（RHS 临时在分支内）。

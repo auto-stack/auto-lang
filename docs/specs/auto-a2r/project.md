@@ -29,7 +29,20 @@
   ＋1MiB 流上限＋单一 deadline：编译≤120s/运行≤30s）；挂起目标 deadline 整树
   被杀、受控拒绝、零悬挂。
 
+## AX-B 现状（PLAN-902 交付）
+
+record/text/text-record 三显式源域真链：模式合法化（view/mut/move）、名义
+record（含资源 record 字段级清理/深克隆）、Unicode/NUL 文本矩阵、借用返回
+provenance、按验证器计划的显式资源清理（`A2xStr` 无 Drop 依赖；故障注入
+typed Resource 无部分提交）。通道：recipe
+`ac-a2r/hir-record-text-emit-v1`、fileset
+`auto.a2x.rust.record-text.fileset/1`、证书 `ace.a2r-hir.record-text.cert/1`
+（与标量通道并列互拒）。详见
+[record-text-hir-backend](record-text-hir-backend.md)。
+
 ## 边界
 
-宽标量/typed entry（PLAN-891 线）、record/text/集合、第二目标、native 链接、
-旧 A2X 默认切换均不在现状。
+宽标量/typed entry（PLAN-891 线）、List/Variant（AX-C）、闭包/HOF、mut
+实例方法、用户泛型、第二目标、native 链接、旧 A2X 默认切换均不在现状。
+899/901 交接：工具命名/测试布局由 899 收尾线所有（本线未改 workspace
+Cargo/profile/固定工具名）；901 已落地的 test-feature 拍平为本线消费面。
