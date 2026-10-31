@@ -59,7 +59,10 @@ fn record_shape(m: &MirModule, r: &RecordTypeRef) -> String {
     format!("rec({}|{}:{})", r.owner_module, r.name, fields)
 }
 
-fn sig_shape(m: &MirModule, idx: TypeIdx) -> String {
+/// Resolved signature shape text (pub(crate) for the typed import-closure
+/// check: cross-unit comparisons must compare SHAPES, never per-table
+/// type indices).
+pub fn sig_shape(m: &MirModule, idx: TypeIdx) -> String {
     match m.sig_of(idx) {
         Some(s) => format!(
             "({})->{}",

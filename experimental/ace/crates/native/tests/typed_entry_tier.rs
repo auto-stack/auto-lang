@@ -599,6 +599,323 @@ fn typed_budget_and_cycle_rejections_are_named() {
     }
 }
 
+/// F-01/V-03: the remaining critical float bit patterns — ±Inf and the
+/// positive quiet NaN — return their EXACT bits (the negative sides,
+/// signed zeros, sNaN payloads and the f32 minimum subnormal are already
+/// frozen rows above).
+#[test]
+#[cfg(windows)]
+fn typed_probe_inf_and_positive_qnan_bits_real_pe() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — typed probe skipped");
+        return;
+    }
+    let rows: &[(&str, &str)] = &[
+        ("f64", "7ff0000000000000"), // +Inf
+        ("f64", "fff0000000000000"), // -Inf
+        ("f64", "7ff8000000000000"), // +qNaN
+    ];
+    let dir = workdir("inf");
+    for (i, (kind, bits)) in rows.iter().enumerate() {
+        let json = format!(
+            r#"{{"schema":"mn-typed-fixture/1","module":"m891_inf{i}","units":[{{"name":"main","params":[],"result":"{kind}","body":[{{"op":"const","dst":"t0","kind":"{kind}","bits":"{bits}"}}],"ret":"t0"}}],"entry":"main"}}"#
+        );
+        let m = fixture(&json);
+        let run = typed_pipeline::run_typed(
+            &m,
+            "main",
+            &[],
+            0x8970 + i as u64,
+            &dir,
+            None,
+            typed_pipeline::TypedCacheMode::Reuse,
+            false,
+            None,
+        )
+        .expect("typed run");
+        match &run.outcome {
+            TypedOutcome::Value {
+                kind_code,
+                bits: got,
+            } => {
+                assert_eq!(&typed_entry::canonical_hex(*kind_code, *got), bits);
+            }
+            other => panic!("{kind} {bits} produced {other:?}"),
+        }
+    }
+}
+
+/// F-03/V-05/V-12: a valid frame WITHOUT a clean exit0 is a named
+/// admission rejection (late failure), never a Value outcome.
+#[test]
+fn typed_frame_with_bad_exit_is_never_a_value() {
+    let mut frame = vec![0u8; 44];
+    frame[0..4].copy_from_slice(&typed_entry::RES_MAGIC.to_le_bytes());
+    frame[4..8].copy_from_slice(&typed_entry::FRAME_VERSION.to_le_bytes());
+    frame[12..16].copy_from_slice(&typed_entry::STATUS_VALUE.to_le_bytes());
+    frame[24..28].copy_from_slice(&typed_entry::KIND_I32.to_le_bytes());
+    let sum = {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in &frame[..36] {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h
+    };
+    frame[36..44].copy_from_slice(&sum.to_le_bytes());
+    // Clean exit: the frame decodes to a value.
+    assert!(typed_entry::admit_frame_and_exit(&frame, Some(0)).is_ok());
+    // Late failure / abnormal exit: the SAME frame is a named rejection.
+    for bad in [Some(1), Some(-1073741819), None] {
+        let err = typed_entry::admit_frame_and_exit(&frame, bad).unwrap_err();
+        assert_eq!(err.code(), "mn.admit.typed-frame", "exit {bad:?}");
+    }
+}
+
+/// F-02/V-06: corrupted cache axes are named admission rejections — a
+/// tampered wrapper envelope and a tampered unit COFF payload both refuse
+/// before any link (never a silent hit).
+#[test]
+fn typed_cache_corruption_is_rejected_before_link() {
+    use ace_artifacts::codec::ChunkKind;
+    use ace_artifacts::store::PutRequest;
+    let root = workdir("corrupt");
+    let store = ManagedStore::open(&root).expect("store");
+
+    // A wrapper envelope whose sha256 lies about its body.
+    let plan = TypedSigPlan {
+        sig_text: "(i64)->i64".into(),
+        sig_id: 0xdead_beef,
+        args: vec![typed_entry::TypedKind::I64],
+        offsets: vec![0],
+        payload_len: 8,
+        result: typed_entry::TypedKind::I64,
+    };
+    let runtime = ace_native::typed_runtime::prepare(None).expect("runtime");
+    let key = typed_pipeline::wrapper_key("ac9.test.main", &plan, &runtime.identity);
+    let forged = format!(
+        "schema={}\nabi={}\nentry-symbol={}\nsig={}\nsig-id={:08x}\ntarget={}\nflags={}\nlen=4\nsha256={}\n\nJUNK",
+        "ac891/typed-wrapper/v1",
+        "msvc-x64/priv-typed-data-v1",
+        "ac9.test.main",
+        plan.sig_text,
+        plan.sig_id,
+        "x86_64-pc-windows-msvc",
+        "opt=none,pic=false,cpu=baseline",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+    );
+    store
+        .put_artifact(PutRequest {
+            layer: "A16",
+            key: key.clone(),
+            kind: ChunkKind::LayoutData,
+            payload: forged.into_bytes(),
+            edges: vec![],
+            project: None,
+        })
+        .map_err(|e| format!("{e:?}"))
+        .unwrap();
+    let err = typed_pipeline::typed_wrapper_for_session(
+        "ac9.test.main",
+        &plan,
+        Some(&store),
+        typed_pipeline::TypedCacheMode::Reuse,
+        &runtime.identity,
+    )
+    .unwrap_err();
+    assert!(
+        err.code().starts_with("mn.admit."),
+        "wrapper: {}",
+        err.code()
+    );
+
+    // A unit COFF payload whose header sha does not bind the body.
+    let json = r#"{"schema":"mn-typed-fixture/1","module":"m891_cor","units":[{"name":"main","params":[],"result":"i32","body":[{"op":"const","dst":"t0","kind":"i32","bits":"2a"}],"ret":"t0"}],"entry":"main"}"#;
+    let doc = typed_fixture::parse_fixture(json.as_bytes()).unwrap();
+    let unit = typed_fixture::build_verified_unit(&doc, "main").unwrap();
+    let fp = ace_native::cache::unit_fp(&unit);
+    let meta = ace_native::cache::CoffMeta::for_typed_unit(&unit, fp, &runtime.identity).unwrap();
+    let ukey = ace_native::cache::coff_unit_key(&meta);
+    store
+        .put_artifact(PutRequest {
+            layer: "A09",
+            key: ukey,
+            kind: ChunkKind::LayoutData,
+            payload: b"schema=ac818/a09-coff/v1\nsha256=bad\nlen=1\n\nX".to_vec(),
+            edges: vec![],
+            project: None,
+        })
+        .map_err(|e| format!("{e:?}"))
+        .unwrap();
+    let err = ace_native::cache::get_unit_coff_with_id(&store, &meta).unwrap_err();
+    assert!(err.code().starts_with("mn.admit."), "unit: {}", err.code());
+}
+
+/// F-04/V-11: an import that does not resolve inside the typed closure is
+/// a named PRE-LINK rejection — no object is produced for the ghost call.
+#[test]
+fn typed_ghost_import_is_rejected_before_link() {
+    use ace_av_core::mir::*;
+    let owner = OwnerScope {
+        schema: ace_av_core::contract::MIR_DATA_SCHEMA.to_string(),
+        module: "m891_ghost".to_string(),
+    };
+    let mut m = MirModule::data_unit(owner.clone());
+    let i64_ty = m.intern_type(MirType::I64);
+    let i32_ty = m.intern_type(MirType::I32);
+    let callee_sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![i64_ty],
+        result: i32_ty,
+    }));
+    m.imports.push(MirImport {
+        symbol: "fn:ghost".into(),
+        effect: Effect::Pure,
+        sig: callee_sig,
+        env: None,
+    });
+    let main_sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![i64_ty],
+        result: i32_ty,
+    }));
+    m.funcs.push(MirFunction {
+        owner,
+        name: "main".into(),
+        sig: main_sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Param,
+                ty: i64_ty,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: i32_ty,
+                name: None,
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Call {
+                callee: CalleeRef::Import(0),
+                dst: 1,
+                args: vec![0],
+            }],
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+        env: None,
+    });
+    let dir = workdir("ghost");
+    match typed_pipeline::run_typed(
+        &m,
+        "main",
+        &[arg("i64", "0000000000000001")],
+        1,
+        &dir,
+        None,
+        typed_pipeline::TypedCacheMode::Reuse,
+        false,
+        None,
+    ) {
+        Err(e) => {
+            assert_eq!(
+                e.code(),
+                "mn.admit.callee-sig",
+                "ghost import: {}",
+                e.code()
+            );
+        }
+        Ok(r) => panic!("a ghost import must not link or run, got {:?}", r.outcome),
+    }
+}
+
+/// F-05/V-10: bit-scrubbing sensitivity — flipping ANY single payload bit
+/// of a float result changes the canonical hex, so the parent's fixed
+/// expectation must turn red (the wrong-bits red control in the SDK rides
+/// the same consumption path end to end).
+#[test]
+fn typed_bit_scrubbing_sensitivity_control() {
+    for (kind, code, bits) in [
+        (TypedKindF::F32, typed_entry::KIND_F32, 0x7f80_ad00u64),
+        (
+            TypedKindF::F64,
+            typed_entry::KIND_F64,
+            0xfff8_0000_dead_beef,
+        ),
+    ] {
+        let width = kind.width() * 8;
+        for bit in (0..width).step_by(7) {
+            let scrubbed = bits ^ (1 << bit);
+            let a = typed_entry::canonical_hex(code, bits);
+            let b = typed_entry::canonical_hex(code, scrubbed);
+            assert_ne!(a, b, "{kind:?} bit {bit}: a scrubbed payload must differ");
+            // Both remain canonical-shaped (the shape rules accept the
+            // mutated form — it is a WRONG VALUE, not a malformed frame).
+            assert_eq!(b.len(), a.len());
+        }
+    }
+}
+#[derive(Debug)]
+enum TypedKindF {
+    F32,
+    F64,
+}
+impl TypedKindF {
+    fn width(&self) -> usize {
+        match self {
+            TypedKindF::F32 => 4,
+            TypedKindF::F64 => 8,
+        }
+    }
+}
+
+/// F-06/V-04: a callee's FieldSet touches only ITS OWN copy — the caller's
+/// record value is unchanged after the call (declaration-order layout,
+/// caller-original-bits oracle).
+#[test]
+#[cfg(windows)]
+fn typed_record_callee_writes_stay_private_real_pe() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — typed probe skipped");
+        return;
+    }
+    let json = r#"{"schema":"mn-typed-fixture/1","module":"m891_priv","records":[{"name":"Pt","fields":[["x","f64"],["tag","i32"]]}],"units":[
+      {"name":"helper","params":[["p","Pt"]],"result":"i32","body":[
+         {"op":"const","dst":"t0","kind":"i32","bits":"05"},
+         {"op":"field-set","root":"p","path":[1],"value":"t0"},
+         {"op":"field-get","dst":"t1","base":"p","path":[1]}],
+       "ret":"t1"},
+      {"name":"main","params":[["a","f64"]],"result":"i32","body":[
+         {"op":"const","dst":"t0","kind":"i32","bits":"07"},
+         {"op":"aggregate","dst":"r0","record":"Pt","args":["a","t0"]},
+         {"op":"call","dst":"t1","callee":"helper","args":["r0"]},
+         {"op":"field-get","dst":"t2","base":"r0","path":[1]}],
+       "ret":"t2"}],
+     "entry":"main"}"#;
+    let m = fixture(json);
+    let dir = workdir("priv");
+    let run = typed_pipeline::run_typed(
+        &m,
+        "main",
+        &[arg("f64", "fff80000deadbeef")],
+        0x8980,
+        &dir,
+        None,
+        typed_pipeline::TypedCacheMode::Reuse,
+        false,
+        None,
+    )
+    .expect("typed run");
+    match &run.outcome {
+        // helper saw (and returned) its own 5; main still sees its 7.
+        TypedOutcome::Value { kind_code, bits } => {
+            assert_eq!(typed_entry::canonical_hex(*kind_code, *bits), "7");
+        }
+        other => panic!("record privacy produced {other:?}"),
+    }
+}
+
 /// PLAN-891 V-10 formal turnaround measurement: the four §5.4 states × 20
 /// formal samples each, nearest-rank P90 gate ≤ 2000ms per state (the dev
 /// formal gate; the long-term sub-second target is tracked separately).

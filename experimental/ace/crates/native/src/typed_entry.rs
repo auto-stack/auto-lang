@@ -903,6 +903,26 @@ pub fn canonical_hex(kind_code: u32, bits: u64) -> String {
 /// Decode the response frame from the exact stdout bytes. Any shape
 /// violation (short/long output, bad magic/version/checksum) is a named
 /// protocol error — a success-looking fragment never passes.
+/// F-891 (§5.3 freeze): a frame is a RESULT only together with a clean
+/// process exit — "成功=进程 exit0 且恰一完整合法结果;异常 exit+结果均
+/// 不能 PASS". Any other exit state is a named admission rejection, never
+/// a Value outcome (late failures cannot pass).
+pub fn admit_frame_and_exit(
+    stdout: &[u8],
+    exit_code: Option<i32>,
+) -> Result<(u32, u64, TypedOutcome), MnError> {
+    let (sig, nonce, outcome) = decode_response(stdout)?;
+    if exit_code != Some(0) {
+        return Err(MnError::Admit(
+            "typed-frame",
+            format!(
+                "typed PE exited {exit_code:?} — a response frame without a clean exit0 is not a result (late failure)"
+            ),
+        ));
+    }
+    Ok((sig, nonce, outcome))
+}
+
 pub fn decode_response(stdout: &[u8]) -> Result<(u32, u64, TypedOutcome), MnError> {
     if stdout.len() != RES_FRAME_BYTES {
         return Err(MnError::Admit(

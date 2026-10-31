@@ -378,7 +378,8 @@ pub fn run_objects(
     )
     .map_err(|e| MnError::Infra(format!("typed run {}: {e:?}", linked.exe_path.display())))?;
     counters.run_invocations += 1;
-    let (echoed_sig_id, echoed_nonce, outcome) = typed_entry::decode_response(&run.stdout)?;
+    let (echoed_sig_id, echoed_nonce, outcome) =
+        typed_entry::admit_frame_and_exit(&run.stdout, run.exit_code)?;
     if echoed_sig_id != plan.sig_id {
         return Err(MnError::Admit(
             "typed-frame",
@@ -419,25 +420,17 @@ fn validate_import_closure(units: &[MirModule]) -> Result<(), MnError> {
                         ),
                     )
                 })?;
-            let want = unit.sig_of(imp.sig);
-            let Some(want_sig) = want else {
-                return Err(MnError::Admit(
-                    "callee-sig",
-                    format!("typed import `{}` lacks a signature", imp.symbol),
-                ));
-            };
-            let target_sig = target.sig_of(target.funcs[0].sig).ok_or_else(|| {
-                MnError::Admit(
-                    "callee-sig",
-                    format!("typed callee `{callee}` lacks a signature"),
-                )
-            })?;
-            if want_sig != target_sig {
+            // Compare RESOLVED shapes: each unit's type table is
+            // independently remapped after the split, so raw per-table
+            // type indices never compare across units.
+            let want = crate::fingerprint::sig_shape(unit, imp.sig);
+            let got = crate::fingerprint::sig_shape(target, target.funcs[0].sig);
+            if want != got {
                 return Err(MnError::Admit(
                     "callee-sig",
                     format!(
-                        "typed import `{}` signature {:?} does not match callee `{}` signature {:?}",
-                        imp.symbol, want_sig.params, callee, target_sig.params
+                        "typed import `{}` signature `{want}` does not match callee `{callee}` signature `{got}`",
+                        imp.symbol
                     ),
                 ));
             }
@@ -448,7 +441,9 @@ fn validate_import_closure(units: &[MirModule]) -> Result<(), MnError> {
 
 // ---- typed wrapper cache ---------------------------------------------------
 
-fn wrapper_key(
+/// The typed wrapper's store key (pub for the restore entry and the
+/// corruption negative controls).
+pub fn wrapper_key(
     entry_symbol: &str,
     plan: &TypedSigPlan,
     runtime: &typed_runtime::Identity,
