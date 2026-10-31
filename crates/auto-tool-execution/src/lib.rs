@@ -1296,10 +1296,7 @@ pub fn run_command_capture(
 /// bytes, ProcessTree and no added deadline. Cleanup failures remain errors.
 pub fn run_command_output(command: Command) -> io::Result<std::process::Output> {
     let (result, status) =
-        capture_command(command, TreeScope::ProcessTree, None).map_err(|error| match error {
-            ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => source,
-            other => io::Error::other(other.to_string()),
-        })?;
+        capture_command(command, TreeScope::ProcessTree, None).map_err(output_io_error)?;
     Ok(std::process::Output {
         status: status.ok_or_else(|| io::Error::other("missing original process exit status"))?,
         stdout: result
@@ -1309,6 +1306,31 @@ pub fn run_command_output(command: Command) -> io::Result<std::process::Output> 
             .stderr
             .ok_or_else(|| io::Error::other("missing owned stderr capture"))?,
     })
+}
+
+fn output_io_error(error: ExecutionError) -> io::Error {
+    match error {
+        ExecutionError::Spawn { source, .. }
+        | ExecutionError::Io { source, .. }
+        | ExecutionError::ReaderIo { source, .. } => source,
+        other => io::Error::other(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod command_output_error_tests {
+    use super::*;
+    #[test]
+    fn reader_error_keeps_original_kind_and_raw_os_code() {
+        let original = io::Error::from_raw_os_error(5);
+        let kind = original.kind();
+        let converted = output_io_error(ExecutionError::ReaderIo {
+            stream: "stdout",
+            source: original,
+        });
+        assert_eq!(converted.kind(), kind);
+        assert_eq!(converted.raw_os_error(), Some(5));
+    }
 }
 
 fn capture_command(

@@ -51,7 +51,8 @@ fn certify_assembly(asm: &ace_a2x_store::Assembly, tag: &str) -> String {
     }
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
     let exe = dir.join("a2x_formal.exe");
-    let out = std::process::Command::new(&rustc)
+    let mut owned_compiler = std::process::Command::new(&rustc);
+    owned_compiler
         .args([
             "--edition",
             "2021",
@@ -62,9 +63,8 @@ fn certify_assembly(asm: &ace_a2x_store::Assembly, tag: &str) -> String {
         ])
         .arg(&exe)
         .arg("main.rs")
-        .current_dir(&dir)
-        .output()
-        .expect("spawn rustc");
+        .current_dir(&dir);
+    let out = auto_tool_execution::run_command_output(owned_compiler).expect("spawn rustc");
     assert!(
         out.status.success(),
         "certify compile failed: {}",

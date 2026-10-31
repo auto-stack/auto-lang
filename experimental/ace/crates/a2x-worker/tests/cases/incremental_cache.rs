@@ -69,13 +69,14 @@ fn emit_and_run(view_src: &str, parts: &ace_core::source::SourceParts, dir_name:
     }
     std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
     let exe = dir.join("a2x_warm.exe");
-    let out = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()))
+    let mut owned_compiler =
+        Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()));
+    owned_compiler
         .args(["--edition", "2021", "-o"])
         .arg(&exe)
         .arg("main.rs")
-        .current_dir(&dir)
-        .output()
-        .expect("spawn rustc");
+        .current_dir(&dir);
+    let out = auto_tool_execution::run_command_output(owned_compiler).expect("spawn rustc");
     assert!(
         out.status.success(),
         "rustc failed for {}: {}",

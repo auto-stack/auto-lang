@@ -476,11 +476,14 @@ fn locate_release_worker() -> std::path::PathBuf {
             "av-worker"
         });
     // Build (bounded no-op when fresh).
-    let status = std::process::Command::new(env!("CARGO"))
+    let mut owned_compiler = std::process::Command::new(env!("CARGO"));
+    owned_compiler
         .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
         .current_dir(&manifest)
-        .output()
-        .expect("cargo build");
+        .env_remove("CARGO_TARGET_DIR")
+        .arg("--target-dir")
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+    let status = auto_tool_execution::run_command_output(owned_compiler).expect("cargo build");
     assert!(
         status.status.success(),
         "worker build: {}",

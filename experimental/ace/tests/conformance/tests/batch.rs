@@ -52,7 +52,12 @@ fn module_case_cli_keeps_whole_suite_not_run_and_uses_original_oracle() {
         assert_eq!(rows[0]["status"], status);
         let events: Vec<serde_json::Value> = std::fs::read_dir(&traces)
             .unwrap()
-            .map(|e| serde_json::from_slice(&std::fs::read(e.unwrap().path()).unwrap()).unwrap())
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .map(|path| serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap())
             .collect();
         assert_eq!(events.len(), 2);
         let finished = events.iter().find(|v| v["phase"] == "finish").unwrap();

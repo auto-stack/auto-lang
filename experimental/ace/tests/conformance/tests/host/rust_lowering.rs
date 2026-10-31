@@ -193,7 +193,8 @@ fn maintenance_build_worker(repo: &Path) {
     assert!(manifest.is_file(), "a2x workspace present");
     let mut last_err = String::new();
     for attempt in 0..2 {
-        let build = std::process::Command::new(env!("CARGO"))
+        let mut owned_compiler = std::process::Command::new(env!("CARGO"));
+        owned_compiler
             .args([
                 "build",
                 "--release",
@@ -206,7 +207,10 @@ fn maintenance_build_worker(repo: &Path) {
             .arg(&manifest)
             .env("RUSTC_WRAPPER", "")
             .current_dir(repo)
-            .output()
+            .env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let build = auto_tool_execution::run_command_output(owned_compiler)
             .expect("maintenance worker build spawns");
         if build.status.success() {
             let _ = std::fs::remove_file(&lock);

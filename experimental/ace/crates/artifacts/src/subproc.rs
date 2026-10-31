@@ -25,7 +25,9 @@ pub fn run_deadlined(command: Command, timeout: Duration) -> std::io::Result<Run
     let result =
         run_command_capture(command, TreeScope::ProcessTree, Some(timeout)).map_err(|error| {
             match error {
-                ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => source,
+                ExecutionError::Spawn { source, .. }
+                | ExecutionError::Io { source, .. }
+                | ExecutionError::ReaderIo { source, .. } => source,
                 other => std::io::Error::other(other),
             }
         })?;

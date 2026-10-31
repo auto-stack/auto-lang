@@ -43,13 +43,13 @@ fn rustc() -> String {
 
 fn compile_run(dir: &PathBuf, out_name: &str) -> String {
     let exe = dir.join(out_name);
-    let out = Command::new(rustc())
+    let mut owned_compiler = Command::new(rustc());
+    owned_compiler
         .args(["--edition", "2021", "-o"])
         .arg(&exe)
         .arg("main.rs")
-        .current_dir(dir)
-        .output()
-        .expect("spawn rustc");
+        .current_dir(dir);
+    let out = auto_tool_execution::run_command_output(owned_compiler).expect("spawn rustc");
     assert!(
         out.status.success(),
         "rustc failed in {}: {}",

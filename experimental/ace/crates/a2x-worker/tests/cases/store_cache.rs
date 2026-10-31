@@ -38,13 +38,14 @@ fn run_assembly(asm: &ace_a2x_store::Assembly, tag: &str) -> String {
         std::fs::write(dir.join(path), content).unwrap();
     }
     let exe = dir.join("a2x_session.exe");
-    let out = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()))
+    let mut owned_compiler =
+        Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()));
+    owned_compiler
         .args(["--edition", "2021", "-o"])
         .arg(&exe)
         .arg("main.rs")
-        .current_dir(&dir)
-        .output()
-        .expect("spawn rustc");
+        .current_dir(&dir);
+    let out = auto_tool_execution::run_command_output(owned_compiler).expect("spawn rustc");
     assert!(
         out.status.success(),
         "rustc failed ({}): {}",

@@ -101,9 +101,9 @@ pub fn link_and_run(case: &str, obj: &[u8]) -> Result<i32, String> {
         format!("/libpath:{}", sdk.display()),
         "kernel32.lib".into(),
     ];
-    let out = Command::new(&lld)
-        .args(&args)
-        .output()
+    let mut owned_compiler = Command::new(&lld);
+    owned_compiler.args(&args);
+    let out = auto_tool_execution::run_command_output(owned_compiler)
         .map_err(|e| format!("run rust-lld: {}", e))?;
     if !out.status.success() {
         return Err(format!(

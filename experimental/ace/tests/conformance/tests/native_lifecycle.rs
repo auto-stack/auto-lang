@@ -2869,7 +2869,9 @@ fn compile_fixture(command: Command) -> std::io::Result<FixtureCompileOutput> {
     let result =
         run_command_capture(command, TreeScope::ProcessTree, None).map_err(
             |error| match error {
-                ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => source,
+                ExecutionError::Spawn { source, .. }
+                | ExecutionError::Io { source, .. }
+                | ExecutionError::ReaderIo { source, .. } => source,
                 other => std::io::Error::other(other.to_string()),
             },
         )?;

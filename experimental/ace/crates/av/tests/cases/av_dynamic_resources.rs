@@ -707,11 +707,14 @@ fn av_dynamic_resources_worker_memory_hard_gate_parent_sampled() {
         .parent()
         .expect("ACE workspace root")
         .to_path_buf();
-    let build = std::process::Command::new(env!("CARGO"))
+    let mut owned_compiler = std::process::Command::new(env!("CARGO"));
+    owned_compiler
         .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
         .current_dir(&ws)
-        .output()
-        .expect("build");
+        .env_remove("CARGO_TARGET_DIR")
+        .arg("--target-dir")
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+    let build = auto_tool_execution::run_command_output(owned_compiler).expect("build");
     assert!(
         build.status.success(),
         "{}",

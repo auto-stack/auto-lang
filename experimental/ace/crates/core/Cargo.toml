@@ -25,6 +25,7 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [dev-dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # COFF symbol inspection for native_execution tests
 object = "0.37"
 

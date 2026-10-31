@@ -7,6 +7,7 @@ description = "PLAN-892 T-02 private true-chain probe: source -> Checked HIR -> 
 publish = false
 
 [dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 ace-a2x-core = { path = "../a2x-core" }
 ace-a2x-rust = { path = "../a2x-rust" }
 ace-a2x-store = { path = "../a2x-store" }
@@ -24,4 +25,3 @@ name = "conformance"
 path = "tests/conformance.rs"
 
 [dev-dependencies]
-auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
