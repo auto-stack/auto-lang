@@ -20,3 +20,5 @@ mod rt_common;
 mod scalar_semantics;
 #[path = "cases/store_cache.rs"]
 mod store_cache;
+#[path = "cases/store_rt_902.rs"]
+mod store_rt_902;

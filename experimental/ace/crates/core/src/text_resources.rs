@@ -2823,3 +2823,45 @@ fn is_aliasable_param(body: &hir::Body, l: u32) -> bool {
         .map(|ld| ld.role == hir::LocalRole::Param && ld.param_mode != hir::ParamMode::MoveOwn)
         .unwrap_or(false)
 }
+
+/// PLAN-902 T-05: the cross-body pairwise exclusivity FIXPOINT over a
+/// whole bundle (the same monotone growth verify_text runs, without
+/// diagnostics) — the retained-environment constraint map a single-body
+/// text credential consumes as its seed (r4 R4-05: wrapper-discovered
+/// constraints for a signature are checked at ITS call sites, so a
+/// body-less scaffold cannot derive them).
+pub fn param_exclusions_fixpoint(bundle: &hir::Bundle) -> ParamExclusions {
+    let mut excl = seed_param_exclusions(bundle);
+    loop {
+        let mut next = excl.clone();
+        for (mi, m) in bundle.modules.iter().enumerate() {
+            let type_map = crate::verify::Verifier::build_type_map(m);
+            let resource = if bundle.domain == hir::HirDomain::TextRecord {
+                crate::verify::record_resource_map(m)
+            } else {
+                Vec::new()
+            };
+            for (bi, body) in m.bodies.iter().enumerate() {
+                let mut diags = Vec::new();
+                let (_, adds) = check_body(
+                    body,
+                    m,
+                    mi,
+                    &type_map,
+                    &resource,
+                    &excl,
+                    &mut diags,
+                );
+                if !adds.is_empty() {
+                    next.entry((mi, bi as u32)).or_default().extend(adds);
+                }
+            }
+        }
+        let stable = next == excl;
+        excl = next;
+        if stable {
+            break;
+        }
+    }
+    excl
+}

@@ -1444,7 +1444,7 @@ struct TypeMemo {
     gray: BTreeSet<u32>,
 }
 
-struct Verifier {
+pub(crate) struct Verifier {
     diags: Vec<Diagnostic>,
     domain: HirDomain,
 }
@@ -1723,7 +1723,7 @@ impl Verifier {
         }
     }
 
-    fn build_type_map(m: &hir::Module) -> BTreeMap<u32, ValueType> {
+    pub(crate) fn build_type_map(m: &hir::Module) -> BTreeMap<u32, ValueType> {
         m.types
             .iter()
             .enumerate()

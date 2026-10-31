@@ -623,8 +623,18 @@ pub fn prepare_function_candidate(
         .position(|d| d.id_text == def)
         .unwrap_or(fn_index);
     // The document prepare already restored current; a verify failure just
-    // discards the candidate (drop is inert).
-    match crate::verify::verify_function(candidate.parts().bundle.clone(), def_idx) {
+    // discards the candidate (drop is inert). PLAN-902: the text families
+    // verify through the single-body TEXT credential (their own resource
+    // plan; the retained-environment exclusivity seed merges at the
+    // session layer, whose authoritative credential re-runs after this).
+    let verified = match candidate.parts().bundle.domain {
+        crate::hir::HirDomain::Text | crate::hir::HirDomain::TextRecord => {
+            let seed = crate::text_resources::seed_param_exclusions(&candidate.parts().bundle);
+            crate::verify::verify_text_function(&candidate.parts().bundle, def_idx, &seed)
+        }
+        _ => crate::verify::verify_function(candidate.parts().bundle.clone(), def_idx),
+    };
+    match verified {
         Ok(_) => Ok(candidate),
         Err(ds) => Err(ds),
     }

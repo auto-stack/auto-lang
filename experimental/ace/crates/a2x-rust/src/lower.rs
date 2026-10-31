@@ -408,7 +408,7 @@ fn borrows_result(ty: Ty) -> bool {
     matches!(ty, Ty::Str)
 }
 
-fn lower_records(view: &SemanticView<'_>) -> Result<Vec<RustRecord>, A2xReject> {
+pub fn lower_records(view: &SemanticView<'_>) -> Result<Vec<RustRecord>, A2xReject> {
     let mut out = Vec::new();
     for rec in view.records() {
         let fields = rec

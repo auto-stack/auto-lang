@@ -18,7 +18,7 @@
 //!   Rust (UTF-8 kept, control bytes escaped) so NUL etc. round-trip.
 
 use crate::lower::{CmpOp, RBlock, RExpr, RStmt, RustFn, RustParam, RustProgram, RustRecord};
-use ace_a2x_core::Ty;
+use ace_a2x_core::{A2xReject, Ty};
 use ace_core::hir::ParamMode;
 use std::collections::HashMap;
 
@@ -134,6 +134,16 @@ fn clone_helper(rec: &RustRecord, p: &RustProgram) -> String {
 /// programs; kept for scalar-compatible external use).
 pub fn print_fn(f: &RustFn) -> String {
     print_fn_in(&PrintCtx { records: HashMap::new() }, f, false)
+}
+
+/// Render one function against the module's RECORD table (the fragment
+/// path: record-typed params/results/locals render their nominal names).
+pub fn print_fn_records(records: &[crate::lower::RustRecord], f: &RustFn) -> String {
+    let mut map = HashMap::new();
+    for r in records {
+        map.insert(r.type_index, r);
+    }
+    print_fn_in(&PrintCtx { records: map }, f, false)
 }
 
 fn print_record(ctx: &PrintCtx<'_>, r: &RustRecord) -> String {
@@ -463,4 +473,88 @@ fn render_operand(e: &RExpr) -> String {
 
 fn cmp_text(op: CmpOp) -> &'static str {
     crate::lower::cmp_rust_str(op)
+}
+
+/// PLAN-902 T-05: the record-text ASSEMBLY prelude — nominal record
+/// declarations plus the deep-clone helpers the given FRAGMENT texts
+/// actually use (transitively for nested resource records). Derived from
+/// the view + the session's own generated fragment texts, so a fully
+/// resident assembly (zero lowering) still emits a complete `generated.rs`.
+pub fn print_rt_prelude(
+    view: &ace_a2x_core::SemanticView<'_>,
+    fragment_texts: &[&str],
+) -> Result<String, A2xReject> {
+    let records = crate::lower::lower_records(view)?;
+    Ok(print_rt_prelude_from(&records, fragment_texts))
+}
+
+/// The same prelude over a RECORD SNAPSHOT (the warm-assembly path keeps
+/// the lowered record table alive after the fragment view's borrow ends).
+pub fn print_rt_prelude_from(
+    records: &[crate::lower::RustRecord],
+    fragment_texts: &[&str],
+) -> String {
+    let mut out = String::new();
+    rt_prelude_into(records, fragment_texts, &mut out);
+    out
+}
+
+fn rt_prelude_into(
+    records: &[crate::lower::RustRecord],
+    fragment_texts: &[&str],
+    out: &mut String,
+) {
+    // scan OUR OWN generated fragment texts for clone-helper uses
+    let mut needed: Vec<String> = Vec::new();
+    for text in fragment_texts {
+        let mut rest = *text;
+        while let Some(pos) = rest.find("a2x_rt_clone_") {
+            let after = &rest[pos + "a2x_rt_clone_".len()..];
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && !needed.contains(&name) {
+                needed.push(name);
+            }
+            rest = after;
+        }
+    }
+    // resolve names to records, close transitively over nested fields
+    let mut ids: Vec<u32> = needed
+        .iter()
+        .filter_map(|n| records.iter().find(|r| &r.name == n).map(|r| r.type_index))
+        .collect();
+    let mut i = 0;
+    while i < ids.len() {
+        if let Some(rec) = records.iter().find(|r| r.type_index == ids[i]) {
+            for (_, ty) in &rec.fields {
+                if let Ty::Record(inner) = ty {
+                    if !ids.contains(inner) {
+                        ids.push(*inner);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    let fake = RustProgram {
+        functions: vec![],
+        entry: String::new(),
+        marks: vec![],
+        records: records.to_vec(),
+        clones: ids.clone(),
+        borrowed: false,
+    };
+    let ctx = PrintCtx::new(&fake);
+    for r in &fake.records {
+        out.push_str(&print_record(&ctx, r));
+        out.push('\n');
+    }
+    for id in ids {
+        if let Some(rec) = fake.records.iter().find(|r| r.type_index == id) {
+            out.push_str(&clone_helper(rec, &fake));
+            out.push('\n');
+        }
+    }
 }
