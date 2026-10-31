@@ -287,3 +287,5 @@ auto-ui 侧处置。
 - 主检出状态：本计划文档全部入库（b369d318e 归档 + 收执）；主检出残余 docs WIP 为并行会话所有（会话起始即存在，未触碰）。
 - 批量回归到期：plan id 900 % 5 = 0 → **DUE**，按 PLAN-898 规则移交 regress 技能主检出单实例执行（预存红 900-N1/N3 将按 triage 归位；不解除合并）。
 - 终态计数：T-01..T-10 = 10/10；验收 1-6 交付 + 7（复审 PASS）；迁移对账 513/513。
+
+`stage: goal | plan_id: PLAN-900 | plan_revision: r1 | round: 2 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: auto-lang 4b24a157c→05f71bb32 / auto-ui 4e9acd5 / auto-man cbbe657 | next: done`
