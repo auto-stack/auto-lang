@@ -377,14 +377,18 @@ fn store_gc_binary() -> PathBuf {
                 }
                 dir = d.parent();
             };
-            let status = Command::new("cargo")
+            let mut owned_compiler = Command::new("cargo");
+            owned_compiler
                 .args(["build", "--release", "--manifest-path"])
                 .arg(&manifest)
                 .arg("--bin")
                 .arg("store-gc")
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
-                .output()
+                .env_remove("CARGO_TARGET_DIR")
+                .arg("--target-dir")
+                .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+            let status = auto_tool_execution::run_command_output(owned_compiler)
                 .map_err(|e| format!("spawn cargo for store-gc: {}", e))?;
             if !status.status.success() {
                 return Err(format!(
@@ -395,7 +399,7 @@ fn store_gc_binary() -> PathBuf {
             let exe = manifest
                 .parent()
                 .unwrap()
-                .join("target/release/store-gc.exe");
+                .join("../../target/release/store-gc.exe");
             exe.is_file()
                 .then_some(exe)
                 .ok_or_else(|| "store-gc.exe missing after build".to_string())

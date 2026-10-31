@@ -26,7 +26,8 @@ pub fn text_runtime_lib() -> Result<PathBuf, String> {
             rt.display()
         ));
     }
-    let out = std::process::Command::new("cargo")
+    let mut owned_compiler = std::process::Command::new("cargo");
+    owned_compiler
         .args([
             "build",
             "-p",
@@ -36,7 +37,10 @@ pub fn text_runtime_lib() -> Result<PathBuf, String> {
             "--locked",
         ])
         .current_dir(&rt)
-        .output()
+        .env_remove("CARGO_TARGET_DIR")
+        .arg("--target-dir")
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+    let out = auto_tool_execution::run_command_output(owned_compiler)
         .map_err(|e| format!("spawn cargo for the text runtime: {e}"))?;
     if !out.status.success() {
         return Err(format!(

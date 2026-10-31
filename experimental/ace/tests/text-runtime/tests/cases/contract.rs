@@ -108,7 +108,16 @@ fn lib_and_contract() -> (PathBuf, PathBuf) {
             "--locked",
         ])
         .current_dir(&root);
-        let st = cmd.status().expect("cargo build shim");
+        cmd.env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(root.join("../../target"));
+        let output = auto_tool_execution::run_command_output(cmd).expect("cargo build shim");
+        {
+            use std::io::Write;
+            std::io::stdout().write_all(&output.stdout).unwrap();
+            std::io::stderr().write_all(&output.stderr).unwrap();
+        }
+        let st = output.status;
         assert!(st.success(), "shim release build failed");
     }
     let contract = root.join("../../target/runtime-release/ac_text_runtime.lib.contract.json");

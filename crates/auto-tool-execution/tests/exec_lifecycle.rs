@@ -868,3 +868,31 @@ fn interrupt_signal_reaches_group_descendants() {
         }
     }
 }
+
+#[test]
+fn output_adapter_preserves_original_status_and_raw_invalid_utf8() {
+    let mut command = std::process::Command::new(TE_CHILD);
+    command.env(MODE, "stdout-invalid-utf8");
+    let output = auto_tool_execution::run_command_output(command).unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"{\"value\":\"\xff\"}");
+    let mut command = std::process::Command::new(TE_CHILD);
+    command.env(MODE, "exit").env(ARG1, "-1");
+    let output = auto_tool_execution::run_command_output(command).unwrap();
+    #[cfg(windows)]
+    assert_eq!(output.status.code(), Some(-1));
+    #[cfg(unix)]
+    assert_eq!(output.status.code(), Some(255));
+    assert!(!output.status.success());
+}
+
+#[cfg(unix)]
+#[test]
+fn output_adapter_retains_original_unix_signal_status() {
+    use std::os::unix::process::ExitStatusExt;
+    let mut command = std::process::Command::new("sh");
+    command.args(["-c", "ulimit -c 0; kill -ABRT $$"]);
+    let output = auto_tool_execution::run_command_output(command).unwrap();
+    assert_eq!(output.status.signal(), Some(6));
+    assert_eq!(output.status.code(), None);
+}

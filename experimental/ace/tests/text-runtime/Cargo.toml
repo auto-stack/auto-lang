@@ -29,3 +29,6 @@ target-lexicon = "0.13"
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[dev-dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

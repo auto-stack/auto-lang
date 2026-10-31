@@ -286,4 +286,3 @@ pub fn diff_edit(cur: &str, next: &str) -> Result<(u64, u64, Vec<u8>), String> {
         b[start..b.len() - tail].to_vec(),
     ))
 }
-

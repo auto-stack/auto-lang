@@ -121,6 +121,7 @@ dependencies = [
  "ace-native",
  "ace-syntax-grammar",
  "ace-syntax-runtime",
+ "auto-tool-execution",
  "base64 0.22.1",
  "serde",
  "serde_json",
@@ -230,6 +231,7 @@ dependencies = [
  "ace-av-core",
  "ace-core",
  "ace-lowering",
+ "auto-tool-execution",
  "base64 0.22.1",
  "blake3",
  "cranelift-codegen",
@@ -316,6 +318,7 @@ name = "ace-text-conformance"
 version = "0.1.0"
 dependencies = [
  "ace-core",
+ "auto-tool-execution",
  "cranelift-codegen",
  "cranelift-frontend",
  "cranelift-module",

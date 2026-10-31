@@ -9,13 +9,17 @@ fn libraries() -> &'static [PathBuf] {
     static LIBRARIES: OnceLock<Vec<PathBuf>> = OnceLock::new();
     LIBRARIES.get_or_init(|| {
         let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../collections-runtime");
-        let output = Command::new("cargo")
+        let mut owned_compiler = Command::new("cargo");
+        owned_compiler
             .args(["build", "--manifest-path"])
             .arg(runtime.join("Cargo.toml"))
             .args(["--profile", "runtime-release"])
             .arg("--locked")
             .env_remove("CARGO_TARGET_DIR")
-            .output()
+            .env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let output = auto_tool_execution::run_command_output(owned_compiler)
             .expect("build container runtime");
         assert!(
             output.status.success(),
@@ -61,7 +65,8 @@ fn runtime_probe(tag: &str, config: Option<&str>) -> ace_native::link_driver::Pe
     if let Some(config) = config {
         compiler.args(["--cfg", config]);
     }
-    let output = compiler.output().expect("compile native ABI caller");
+    let output =
+        auto_tool_execution::run_command_output(compiler).expect("compile native ABI caller");
     std::fs::write(work.join("compiler.log"), &output.stderr).unwrap();
     assert!(
         output.status.success(),

@@ -12,6 +12,7 @@ default = []
 test-case-batch = []
 
 [dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 ace-av-core = { path = "../av-core" }
 ace-lowering = { path = "../lowering" }
 ace-semantics-contract = { path = "../semantics-contract" }
@@ -36,7 +37,6 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [dev-dependencies]
-auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # PLAN-827: seed-identity receipts (SHA256 over the frozen AP fixture bytes).
 sha2 = "0.10"
 

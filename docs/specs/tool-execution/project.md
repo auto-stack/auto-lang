@@ -107,3 +107,6 @@ exec_lifecycle 与 plan816_cli_driver 永久回归锁定；审查期持久回放
 语言FFI的auto-cache编译与rustdoc、ACE A2X测试中的真实rustc/程序、资源门的Cargo构建及artifact兼容包装复用此原语；不新增一套执行器，不引入ACE/UI/Man runtime依赖到语言侧。auto-cache的实际构建/rustdoc显式绑定自己的build_dir/target，operator的外层target不泄入该私有编译面。
 
 artifact包装保留原RunResult code/timed_out/partial stdout/stderr；完整截止含清理，reader/containment/清理错误仍为Err。原先忽略错误/可选Job/返回后读者残留的紧凑执行器退出。字符串协议拒绝无效UTF8，不把损坏字节替换成可接受JSON。外层测试Job对工作负载残留仍严格失败，MSVC辅助进程仅在真实编译producer持有的owned树内回收，未增工作负载豁免。
+
+
+PLAN-896 的 output 式适配 run_command_output(Command) 复用同一内部执行/收尾路径，stdin 为 null、stdout/stderr 原始字节捕获，ProcessTree、无新增 deadline；内部保留真实 ExitStatus（包括 Unix 信号/core 位与 Windows 高位退出码），不从 ExitKind 重建状态。公开 ExecutionResult 结构保持。超时路径不把占位状态当正常退出，reader/清理失败继续报错。用于 ACE 中真实 Cargo/rustc 编译消费者，原 status 式编译调用须转发其原继承诊断；普通 PE/worker 调用不因此全量改写。

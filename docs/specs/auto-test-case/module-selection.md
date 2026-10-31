@@ -85,3 +85,6 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 
 慢测试沿用原资源/截止/条件并具名报告；本轮不以partition-policy或叶模块重新切分VM。进一步拆分由实际成本和职责另行决定。
 既有专项验证脚本仅通过ace-cargo.ps1将声明的语义模块转换为一个conformance测试目标的原生libtest过滤并集；不发现全仓、不查询叶目录、不推消费者。每个声明模块必须有真实通过项（或显式list项）；原必需ID/minimum/oracle仍由各验证器校验，未知旧目标失败。普通生产入口不经过此过渡适配。
+
+
+真实比较收据的 PID 不能单独视为进程生命期身份：同一次大集合执行中 Windows 可回收 PID。每次 Invocation 先用 create_new 原子保留 PID-sequence.claim，保留至整 trace 目录回收；仅 claim 的 AlreadyExists 分配下一序号，其余 I/O 直接失败。start/finish JSON 仍 create_new，重复事件、已有 JSON 无 claim 等情况不被吞掉；不改变 schema、原输入绑定或判定。

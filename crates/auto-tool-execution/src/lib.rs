@@ -1274,7 +1274,7 @@ fn bounded_cancel(proc: &mut OwnedProcess, grace: Duration) -> Result<(), io::Er
 /// 终止失败在正常/超时/关闭各路径具名传播(F-816-R1-06/R2-06);
 /// `elapsed` 取实际返回时刻(F-816-R2-06)。
 pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
-    run_prepared(spec, None)
+    run_prepared(spec, None).map(|(result, _)| result)
 }
 
 /// Capture an existing Command through the same owned execution lifecycle.
@@ -1283,10 +1283,39 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
 /// captured stdout/stderr; ProcessTree uses the facility's owned creation
 /// flags, not caller-supplied Windows flags. No implicit deadline is added.
 pub fn run_command_capture(
-    mut command: Command,
+    command: Command,
     tree_scope: TreeScope,
     deadline: Option<Duration>,
 ) -> Result<ExecutionResult, ExecutionError> {
+    capture_command(command, tree_scope, deadline).map(|(result, _)| result)
+}
+
+/// Output-style compiler adapter over the same owned lifecycle. Preserves the
+/// original Command environment/argv/cwd and raw ExitStatus, including Unix
+/// signal/core bits and Windows high-bit codes. Uses null stdin, captured raw
+/// bytes, ProcessTree and no added deadline. Cleanup failures remain errors.
+pub fn run_command_output(command: Command) -> io::Result<std::process::Output> {
+    let (result, status) =
+        capture_command(command, TreeScope::ProcessTree, None).map_err(|error| match error {
+            ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => source,
+            other => io::Error::other(other.to_string()),
+        })?;
+    Ok(std::process::Output {
+        status: status.ok_or_else(|| io::Error::other("missing original process exit status"))?,
+        stdout: result
+            .stdout
+            .ok_or_else(|| io::Error::other("missing owned stdout capture"))?,
+        stderr: result
+            .stderr
+            .ok_or_else(|| io::Error::other("missing owned stderr capture"))?,
+    })
+}
+
+fn capture_command(
+    mut command: Command,
+    tree_scope: TreeScope,
+    deadline: Option<Duration>,
+) -> Result<(ExecutionResult, Option<ExitStatus>), ExecutionError> {
     let argv = std::iter::once(command.get_program())
         .chain(command.get_args())
         .map(OsString::from);
@@ -1304,7 +1333,7 @@ pub fn run_command_capture(
 fn run_prepared(
     spec: &ExecutionSpec,
     command: Option<Command>,
-) -> Result<ExecutionResult, ExecutionError> {
+) -> Result<(ExecutionResult, Option<ExitStatus>), ExecutionError> {
     validate(spec)?;
     let start = Instant::now();
     let deadline_at = spec.deadline.map(|limit| start + limit);
@@ -1471,12 +1500,15 @@ fn run_prepared(
                 });
             }
         }
-        return Ok(ExecutionResult {
-            kind: ExitKind::Timeout { after: elapsed },
-            stdout,
-            stderr,
-            elapsed,
-        });
+        return Ok((
+            ExecutionResult {
+                kind: ExitKind::Timeout { after: elapsed },
+                stdout,
+                stderr,
+                elapsed,
+            },
+            None,
+        ));
     }
 
     // 根已退出(真实分类保留):先终止仍存活的 owned 后代——它们可能
@@ -1515,12 +1547,15 @@ fn run_prepared(
     let stderr = stderr?;
     writer?;
 
-    Ok(ExecutionResult {
-        kind: ExitKind::from_status(&status),
-        stdout,
-        stderr,
-        elapsed: start.elapsed(),
-    })
+    Ok((
+        ExecutionResult {
+            kind: ExitKind::from_status(&status),
+            stdout,
+            stderr,
+            elapsed: start.elapsed(),
+        },
+        Some(status),
+    ))
 }
 
 /// owned 进程句柄:终止(直接/树)、收尸、管道访问、带限等待。

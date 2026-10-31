@@ -20,10 +20,14 @@ pub fn trace_support_lib() -> std::path::PathBuf {
     let support = repo_root().join("experimental/ace/crates/trace-runtime");
     let lib = support.join("../../target/runtime-dev/ace_trace_runtime.lib");
     if !lib.is_file() {
-        let out = std::process::Command::new("cargo")
+        let mut owned_compiler = std::process::Command::new("cargo");
+        owned_compiler
             .args(["build", "--locked", "--profile", "runtime-dev"])
             .current_dir(&support)
-            .output()
+            .env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let out = auto_tool_execution::run_command_output(owned_compiler)
             .expect("spawn cargo for test-support");
         assert!(
             out.status.success(),

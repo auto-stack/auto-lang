@@ -211,11 +211,14 @@ fn trace_support_library_travels_to_the_mn_link() {
         .expect("test-support dir");
     let lib = support.join("../../target/runtime-dev/ace_trace_runtime.lib");
     if !lib.is_file() {
-        let st = std::process::Command::new("cargo")
+        let mut owned_compiler = std::process::Command::new("cargo");
+        owned_compiler
             .args(["build", "--locked", "--profile", "runtime-dev"])
             .current_dir(&support)
-            .status()
-            .expect("spawn cargo for test-support");
+            .env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let st = compiler_status(owned_compiler).expect("spawn cargo for test-support");
         assert!(st.success(), "test-support build failed");
     }
     let src = "fn pair(a int, b int) int { return a * 10 + b }\n\
@@ -235,4 +238,12 @@ fn trace_support_library_travels_to_the_mn_link() {
         })
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&stderr), "ba");
+}
+
+fn compiler_status(command: std::process::Command) -> std::io::Result<std::process::ExitStatus> {
+    use std::io::Write;
+    let output = auto_tool_execution::run_command_output(command)?;
+    std::io::stdout().write_all(&output.stdout)?;
+    std::io::stderr().write_all(&output.stderr)?;
+    Ok(output.status)
 }

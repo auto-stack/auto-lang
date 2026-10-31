@@ -5,6 +5,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+fn claim_identity(
+    directory: &std::path::Path,
+    pid: u32,
+    sequence: &AtomicU64,
+) -> std::io::Result<String> {
+    loop {
+        let identity = format!("{}-{}", pid, sequence.fetch_add(1, Ordering::Relaxed));
+        // Keep this reservation until the complete trace directory is retired.
+        // Windows can reuse a PID while earlier events remain in that directory.
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(directory.join(format!("{identity}.claim")))
+        {
+            Ok(_) => return Ok(identity),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 pub struct Invocation {
     directory: PathBuf,
     identity: String,
@@ -34,11 +55,8 @@ impl Invocation {
             directory.is_absolute() && directory.is_dir(),
             "explicit trace directory required"
         );
-        let identity = format!(
-            "{}-{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
+        let identity = claim_identity(&directory, std::process::id(), &SEQUENCE)
+            .expect("test trace identity reservation must succeed");
         event(&directory, &identity, "start", metadata());
         Some(Self {
             directory,
@@ -118,4 +136,56 @@ pub fn legacy_error_identity(manifest: &str, case: &str, expected: &str) -> serd
     value["family"] = serde_json::json!("legacy-a2r-error");
     value["expected_error_substring_sha256"] = serde_json::json!(hex(&sha256(expected.as_bytes())));
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn directory() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "trace-claim-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        path
+    }
+    #[test]
+    fn recycled_pid_reserves_new_identity_without_overwriting_prior_events() {
+        let dir = directory();
+        let first = claim_identity(&dir, 42, &AtomicU64::new(0)).unwrap();
+        event(&dir, &first, "start", serde_json::json!({"original":true}));
+        let bytes = std::fs::read(dir.join(format!("{first}-start.json"))).unwrap();
+        // A fresh process counter with the same recycled PID must collide.
+        let second = claim_identity(&dir, 42, &AtomicU64::new(0)).unwrap();
+        assert_eq!(first, "42-0");
+        assert_eq!(second, "42-1");
+        event(&dir, &second, "start", serde_json::json!({"second":true}));
+        assert_eq!(
+            std::fs::read(dir.join(format!("{first}-start.json"))).unwrap(),
+            bytes
+        );
+        assert!(dir.join(format!("{first}.claim")).is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn claimed_identity_does_not_weaken_duplicate_json_event_rejection() {
+        let dir = directory();
+        let id = claim_identity(&dir, 42, &AtomicU64::new(0)).unwrap();
+        event(&dir, &id, "finish", serde_json::json!({"original":true}));
+        let path = dir.join(format!("{id}-finish.json"));
+        let original = std::fs::read(&path).unwrap();
+        assert!(std::panic::catch_unwind(|| event(
+            &dir,
+            &id,
+            "finish",
+            serde_json::json!({"wrong":true})
+        ))
+        .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

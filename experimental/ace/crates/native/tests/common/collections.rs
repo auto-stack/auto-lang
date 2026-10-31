@@ -29,7 +29,8 @@ pub fn libraries() -> &'static [PathBuf] {
     static LIBRARIES: OnceLock<Vec<PathBuf>> = OnceLock::new();
     LIBRARIES.get_or_init(|| {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../collections-runtime");
-        let output = Command::new("cargo")
+        let mut owned_compiler = Command::new("cargo");
+        owned_compiler
             .args([
                 "build",
                 "--locked",
@@ -39,8 +40,10 @@ pub fn libraries() -> &'static [PathBuf] {
             ])
             .arg(root.join("Cargo.toml"))
             .env_remove("CARGO_TARGET_DIR")
-            .output()
-            .unwrap();
+            .env_remove("CARGO_TARGET_DIR")
+            .arg("--target-dir")
+            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let output = auto_tool_execution::run_command_output(owned_compiler).unwrap();
         assert!(
             output.status.success(),
             "{}",
