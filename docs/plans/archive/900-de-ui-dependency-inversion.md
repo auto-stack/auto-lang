@@ -279,3 +279,11 @@ auto-ui 侧处置。
 ### 9.3 合并收尾（merge，2026-10-31）
 
 `stage: merge | plan_id: PLAN-900 | plan_revision: r1 | outcome: pass | delivery_commits: auto-lang master=4b24a157c（ff-only；spec delta 9a323dcad/5dee49e8b 为 reviewed cd889099a 的纯文档后代）+ auto-ui master=4e9acd5 + auto-man master=cbbe657 | canonical_verified: docs/specs/auto-lang/project.md@1155bd36546d9854ed67b84b395a980f7ff7d262（零 auto-ui 不变量取代 814-T-08 边与 831 再导出合同）、docs/specs/auto-cosmic/project.md@cf1e97476f8acc94f65d4bcfd4f561929cd973da（整族迁置注记）、docs/specs/auto-lsp/project.md@e38a2fc665442c82f6473f4ab6626a34bf6bb498（迁置注记） | 冻结门证据复用：delivery 为 reviewed 基线的纯 docs 后代，代码/依赖/配置输入未变（rebase 侧 master 增量=untracking/docs only，diff 实证） | 体积观察：主检出 target/ 为落地前产物——clean build 冷对比未跑（cargo tree 已证 iced/wgpu/ash/naga 出库；后续任意 clean build 自然获得数字）；release 二进制（auto CLI=auto-man 仓）与发布产物均落地前构建，未重建（无守护进程/生产连接属本仓范围，重建归用户驱动） | archived: docs/plans/archive/900-de-ui-dependency-inversion.md | cleaned: 见 9.4 | next: done`
+
+### 9.4 清理与收尾核验（2026-10-31）
+
+- 五 worktree 全部 wt-guard clean 后移除；三分支删除（plan-900-dev@4b24a157c / plan-900-ui-dev@4e9acd5 / plan-900-man-dev@cbbe657 均已 ff 落地）；组目录 .wt/lang-900 删除（残留 scratch：build log + generation driver scratch-consumer 已清）。
+- plan-artifacts 无 plan-900 scope（证据全程折叠进计划文件；注册表无需变更）。
+- 主检出状态：本计划文档全部入库（b369d318e 归档 + 收执）；主检出残余 docs WIP 为并行会话所有（会话起始即存在，未触碰）。
+- 批量回归到期：plan id 900 % 5 = 0 → **DUE**，按 PLAN-898 规则移交 regress 技能主检出单实例执行（预存红 900-N1/N3 将按 triage 归位；不解除合并）。
+- 终态计数：T-01..T-10 = 10/10；验收 1-6 交付 + 7（复审 PASS）；迁移对账 513/513。
