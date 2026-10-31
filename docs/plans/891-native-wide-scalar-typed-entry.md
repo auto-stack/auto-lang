@@ -281,6 +281,9 @@ stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_pa
 - 分支提交：02b8f0da4（ABI/transport/probe tier）→ 9a3a96c9e（居民会话）
   → 98c7c0cf7（recipe/suite/binding/specs）→ 7dd44182a（fmt 收口）。
 
+
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
+
 ## 10. 待澄清事项
 
 | ID | 事项与关闭owner | 阻止的工作 |
