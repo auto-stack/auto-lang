@@ -33,6 +33,10 @@ pub mod observe;
 pub mod owned_source_incremental;
 pub mod resources;
 pub mod symbols;
+pub mod typed_entry;
+pub mod typed_fixture;
+pub mod typed_pipeline;
+pub mod typed_runtime;
 pub mod worker;
 pub mod workload;
 

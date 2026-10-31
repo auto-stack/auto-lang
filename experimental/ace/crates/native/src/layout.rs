@@ -52,6 +52,13 @@ fn field_shape(
 ) -> Result<(u64, u64), MnError> {
     match m.types.get(ty as usize) {
         Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char) => Ok((4, 4)),
+        // PLAN-891 typed pure-value records: wide fields lay out by their
+        // exact carrier width/alignment (I64/U64/F64 8/8, F32 4/4). The
+        // LEGACY emission path never reaches here with a wide field — its
+        // admission (emit.rs admit_unit) rejects reached wide types before
+        // any layout consult.
+        Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => Ok((8, 8)),
+        Some(MirType::F32) => Ok((4, 4)),
         Some(MirType::Str) | Some(MirType::StrView) => Ok((12, 8)),
         Some(MirType::Record(r)) => {
             let l = record_layout(m, ty, r, cache)?;
@@ -63,12 +70,6 @@ fn field_shape(
             // of record fields, so this arm is defensive only).
             let l = record_layout(m, ty, r, cache)?;
             Ok((l.size, 1u64 << l.align_log2))
-        }
-        Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64) => {
-            Err(MnError::Unsupported(
-                "type",
-                format!("type {ty} is a wide numeric scalar outside the mn surface (R2-N)"),
-            ))
         }
         other => Err(MnError::Unsupported(
             "type",

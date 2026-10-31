@@ -10,7 +10,7 @@ use crate::MnError;
 use ace_av_core::contract::fnv1a64;
 use ace_av_core::mir::*;
 
-fn shape(m: &MirModule, idx: TypeIdx) -> String {
+pub(crate) fn shape(m: &MirModule, idx: TypeIdx) -> String {
     match m.types.get(idx as usize) {
         Some(MirType::I32) => "i32".into(),
         Some(MirType::Bool) => "bool".into(),
@@ -23,16 +23,18 @@ fn shape(m: &MirModule, idx: TypeIdx) -> String {
         Some(MirType::StrView) => "strview".into(),
         Some(MirType::Fn(_)) => "fn".into(),
         Some(MirType::MutRef) => "mutref".into(),
+        // PLAN-891: the wide scalars render DISTINCT logical labels (the
+        // old defensive "unsupported" collided across kinds — an i64 and an
+        // f64 slot of one unit hashed identically). The typed ABI keeps
+        // logical types distinct even where carriers coincide.
+        Some(MirType::I64) => "i64".into(),
+        Some(MirType::U64) => "u64".into(),
+        Some(MirType::F32) => "f32".into(),
+        Some(MirType::F64) => "f64".into(),
         Some(MirType::Record(r)) => record_shape(m, r),
         Some(MirType::RecordView(r)) => format!("view:{}", record_shape(m, r)),
-        // Wide numerics stay outside the mn surface; a defensive distinct
-        // label keeps the render total for rejected units.
         Some(
-            MirType::I64
-            | MirType::U64
-            | MirType::F32
-            | MirType::F64
-            | MirType::List(_)
+            MirType::List(_)
             | MirType::Variant(_)
             | MirType::Place(_)
             | MirType::Closure(_)
@@ -87,9 +89,14 @@ fn const_repr(c: &MirConst) -> String {
         // discriminant label made every string literal hash identically.
         MirConst::Char(ch) => format!("char:{}", *ch as u32),
         MirConst::Str(bytes) => format!("str:{}:{:016x}", bytes.len(), fnv1a64(bytes)),
-        // Wide numeric constants stay rejected before fingerprinting; the
-        // discriminant label remains a defensive total arm.
-        other => format!("wide:{:?}", std::mem::discriminant(other)),
+        // PLAN-891: wide constants render by EXACT bit pattern — signed
+        // zeros, sNaN payloads and equal-low-32-bit values never collide.
+        // (The legacy emission surface still rejects wide constants before
+        // fingerprinting; these arms are the typed data face.)
+        MirConst::I64(v) => format!("i64:{v}"),
+        MirConst::U64(v) => format!("u64:{v}"),
+        MirConst::F32Bits(b) => format!("f32:{b:08x}"),
+        MirConst::F64Bits(b) => format!("f64:{b:016x}"),
     }
 }
 

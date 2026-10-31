@@ -292,6 +292,7 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
         &trace_ids,
         exit_id,
         &mut ctx,
+        lower::LowerMode::Legacy,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

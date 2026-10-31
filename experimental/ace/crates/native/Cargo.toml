@@ -47,5 +47,9 @@ windows-sys = { version = "0.59", features = [
 name = "conformance"
 path = "tests/conformance.rs"
 
+[[test]]
+name = "typed_entry_tier"
+path = "tests/typed_entry_tier.rs"
+
 [dev-dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

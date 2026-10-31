@@ -36,6 +36,18 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Linkage, Module};
 use std::collections::BTreeMap;
 
+/// Which ABI generation this lowering serves (PLAN-891). `Legacy` is the
+/// frozen scalar/owned surface — wide slots stay the named rejection they
+/// always were. `Typed` is the six-scalar typed-data ABI: wide slots ride
+/// integer bit carriers (I64/U64/F64 → I64, F32 → I32, 4/8-byte storage)
+/// and checked-arithmetic traps route to the bounded typed trap frame
+/// helper instead of exit 70.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LowerMode {
+    Legacy,
+    Typed,
+}
+
 /// Emit the single function of `unit` into `ctx.func`, declaring callees
 /// in `om`. The caller owns `ctx` and performs `define_function` after
 /// this returns. Errors are backend-lowering messages (wrapped by the
@@ -49,6 +61,7 @@ pub fn emit_function(
     trace_ids: &[(String, cranelift_module::FuncId)],
     exit_id: cranelift_module::FuncId,
     ctx: &mut cranelift_codegen::Context,
+    mode: LowerMode,
 ) -> Result<(), String> {
     let f = &unit.funcs[0];
 
@@ -141,6 +154,18 @@ pub fn emit_function(
             }
             Some(MirType::RecordView(_)) => SlotRep::View(fb.declare_var(types::I64)),
             Some(MirType::MutRef) => SlotRep::Token,
+            // PLAN-891 typed carriers: I64/U64/F64 ride I64, F32 rides
+            // I32 (low 32 bits, 4-byte storage). Logical kinds stay
+            // distinct in admission/fingerprints; the carrier is machine
+            // representation only.
+            Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64)
+                if mode == LowerMode::Typed =>
+            {
+                SlotRep::Wide(fb.declare_var(types::I64))
+            }
+            Some(MirType::F32) if mode == LowerMode::Typed => {
+                SlotRep::Wide(fb.declare_var(types::I32))
+            }
             Some(
                 MirType::I64
                 | MirType::U64
@@ -177,6 +202,7 @@ pub fn emit_function(
         om,
         unit,
         exit_id,
+        mode,
         reps,
         layouts,
         str_paths,
@@ -186,9 +212,11 @@ pub fn emit_function(
         import_refs: BTreeMap::new(),
         trace_refs: BTreeMap::new(),
         rt_refs: BTreeMap::new(),
+        typed_refs: BTreeMap::new(),
         lit_ids: BTreeMap::new(),
         outlen_slot: None,
         trap_block: None,
+        typed_trap_block: None,
         blocks,
     };
     fx.sweep_live = !fx.sweep.is_empty();
@@ -227,6 +255,11 @@ pub fn emit_function(
             }
             match fx.reps[si] {
                 SlotRep::Scalar(v) => {
+                    let pv = params[pi];
+                    pi += 1;
+                    fx.fb.def_var(v, pv);
+                }
+                SlotRep::Wide(v) => {
                     let pv = params[pi];
                     pi += 1;
                     fx.fb.def_var(v, pv);
@@ -345,6 +378,18 @@ pub fn emit_function(
         fx.fb.ins().call(exit_ref, &[code]);
         fx.fb.ins().trap(TrapCode::INTEGER_OVERFLOW); // never reached
     }
+    // Typed trap block (PLAN-891): one i32 param carries the bounded
+    // reason; the helper writes the trap frame and exits. Pure-value typed
+    // units have no owned buffers, so no sweep runs here.
+    if let Some((trap, helper)) = fx.typed_trap_block.take() {
+        fx.fb.switch_to_block(trap);
+        fx.fb.seal_block(trap);
+        let reason = fx.fb.block_params(trap)[0];
+        fx.fb.ins().call(helper, &[reason]);
+        // never reached (the helper exits); any trap code suffices
+        fx.fb.ins()
+            .trap(TrapCode::user(1).expect("valid user trap code"));
+    }
     drop(fx);
     fb.finalize();
     Ok(())
@@ -355,6 +400,9 @@ pub fn emit_function(
 enum SlotRep {
     /// I32/Bool/Char — one I32 variable.
     Scalar(Variable),
+    /// Typed wide scalar (PLAN-891) — one integer bit-carrier variable
+    /// (I64 for i64/u64/f64, I32 for f32).
+    Wide(Variable),
     /// Str/StrView — (ptr, len_bytes) pair.
     Pair { ptr: Variable, len: Variable },
     /// Record — aggregate storage. `incoming` set: an owned-domain param
@@ -436,6 +484,7 @@ struct FnLowerer<'a, 'b> {
     om: &'a mut cranelift_object::ObjectModule,
     unit: &'a MirModule,
     exit_id: cranelift_module::FuncId,
+    mode: LowerMode,
     reps: Vec<SlotRep>,
     layouts: BTreeMap<u32, RecordLayout>,
     str_paths: BTreeMap<u32, Vec<Vec<u16>>>,
@@ -448,11 +497,15 @@ struct FnLowerer<'a, 'b> {
     trace_refs: BTreeMap<String, FuncRef>,
     /// ac_rt_* runtime function refs (owned units only).
     rt_refs: BTreeMap<&'static str, FuncRef>,
+    /// Typed transport helper refs (typed units only).
+    typed_refs: BTreeMap<&'static str, FuncRef>,
     /// Static literal data objects per Str const index.
     lit_ids: BTreeMap<u32, cranelift_module::DataId>,
     /// One shared 4-byte ABI-C out-length slot per function.
     outlen_slot: Option<StackSlot>,
     trap_block: Option<cranelift_codegen::ir::Block>,
+    /// Typed trap block (one i32 param = bounded reason; typed mode only).
+    typed_trap_block: Option<(cranelift_codegen::ir::Block, FuncRef)>,
     blocks: Vec<cranelift_codegen::ir::Block>,
 }
 
@@ -491,6 +544,43 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             SlotRep::Scalar(v) => Ok(v),
             _ => Err(format!("slot {slot} is not scalar")),
         }
+    }
+
+    fn v_wide(&self, slot: u32) -> Result<Variable, String> {
+        match self.reps[slot as usize] {
+            SlotRep::Wide(v) => Ok(v),
+            _ => Err(format!("slot {slot} is not a typed wide scalar")),
+        }
+    }
+
+    fn def_wide(&mut self, slot: u32, val: Value) -> Result<(), String> {
+        let v = self.v_wide(slot)?;
+        self.fb.def_var(v, val);
+        Ok(())
+    }
+
+    /// Declare (once) and resolve one typed transport helper.
+    fn typed_ref(&mut self, sym: &'static str) -> Result<FuncRef, String> {
+        if let Some(r) = self.typed_refs.get(sym) {
+            return Ok(*r);
+        }
+        let (params, rets): (&[types::Type], &[types::Type]) = match sym {
+            "mn_typed_trap" => (&[types::I32], &[]),
+            "mn_typed_write_value" => (&[types::I32, types::I64], &[]),
+            other => return Err(format!("unknown typed helper `{other}`")),
+        };
+        let sig = Signature {
+            call_conv: cranelift_codegen::isa::CallConv::WindowsFastcall,
+            params: params.iter().map(|t| AbiParam::new(*t)).collect(),
+            returns: rets.iter().map(|t| AbiParam::new(*t)).collect(),
+        };
+        let id = self
+            .om
+            .declare_function(sym, Linkage::Import, &sig)
+            .map_err(|e| format!("declare {sym}: {e}"))?;
+        let r = self.om.declare_func_in_func(id, self.fb.func);
+        self.typed_refs.insert(sym, r);
+        Ok(r)
     }
 
     fn v_pair(&self, slot: u32) -> Result<(Variable, Variable), String> {
@@ -667,13 +757,26 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         Ok(())
     }
 
-    /// `brif(cond → [sweep] trap70, else cont)`; the continuation is
-    /// sealed with its single predecessor and becomes the current block.
-    /// The all-exit sweep runs ONLY on the trap arm (freeze §2): a guard
-    /// that does not fire must leave every buffer live. Scalar-only
-    /// functions (empty sweep) keep the pre-870 two-block shape — their
-    /// objects stay byte-identical.
-    fn branch_to_trap_on(&mut self, cond: cranelift_codegen::ir::Value) {
+    /// `brif(cond → trap, else cont)`; the continuation is sealed with its
+    /// single predecessor and becomes the current block. The all-exit
+    /// sweep runs ONLY on the trap arm (freeze §2): a guard that does not
+    /// fire must leave every buffer live. Scalar-only functions (empty
+    /// sweep) keep the pre-870 two-block shape — their objects stay
+    /// byte-identical. In TYPED mode the trap arm carries a bounded reason
+    /// code into the typed trap helper (PLAN-891: a named trap frame, never
+    /// an exit-70 guess).
+    fn branch_to_trap_on(&mut self, cond: cranelift_codegen::ir::Value, reason: u32) {
+        if self.mode == LowerMode::Typed {
+            let (trap, _) = self.ensure_typed_trap_block();
+            let cont = self.fb.create_block();
+            let r = self.fb.ins().iconst(types::I32, reason as i64);
+            self.fb
+                .ins()
+                .brif(cond, trap, &[r.into()], cont, &[]);
+            self.fb.seal_block(cont);
+            self.fb.switch_to_block(cont);
+            return;
+        }
         let trap = self.ensure_trap_block();
         let cont = self.fb.create_block();
         if !self.sweep_live {
@@ -690,6 +793,21 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let _ = self.emit_exit_sweep(None);
         self.fb.ins().jump(trap, &[]);
         self.fb.switch_to_block(cont);
+    }
+
+    fn ensure_typed_trap_block(
+        &mut self,
+    ) -> (cranelift_codegen::ir::Block, FuncRef) {
+        if let Some((b, h)) = self.typed_trap_block {
+            return (b, h);
+        }
+        let helper = self
+            .typed_ref("mn_typed_trap")
+            .expect("mn_typed_trap declaration cannot fail");
+        let blk = self.fb.create_block();
+        self.fb.append_block_param(blk, types::I32);
+        self.typed_trap_block = Some((blk, helper));
+        (blk, helper)
     }
 
     fn checked_add(
@@ -710,7 +828,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let a_lt_room = self.icmp_bool(IntCC::SignedLessThan, a, room_neg);
         let ovf_neg = self.fb.ins().band(b_neg, a_lt_room);
         let ovf = self.fb.ins().bor(ovf_pos, ovf_neg);
-        self.branch_to_trap_on(ovf);
+        self.branch_to_trap_on(ovf, crate::typed_entry::TRAP_ADD_OVERFLOW);
         sum
     }
 
@@ -732,7 +850,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let a_lt_room = self.icmp_bool(IntCC::SignedLessThan, a, room_neg);
         let ovf_neg = self.fb.ins().band(b_pos, a_lt_room);
         let ovf = self.fb.ins().bor(ovf_pos, ovf_neg);
-        self.branch_to_trap_on(ovf);
+        self.branch_to_trap_on(ovf, crate::typed_entry::TRAP_SUB_OVERFLOW);
         diff
     }
 
@@ -747,14 +865,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let r32 = self.fb.ins().ireduce(types::I32, r64);
         let back = self.fb.ins().sextend(types::I64, r32);
         let ovf = self.icmp_bool(IntCC::NotEqual, r64, back);
-        self.branch_to_trap_on(ovf);
+        self.branch_to_trap_on(ovf, crate::typed_entry::TRAP_MUL_OVERFLOW);
         r32
     }
 
     fn checked_neg(&mut self, a: cranelift_codegen::ir::Value) -> cranelift_codegen::ir::Value {
         let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
         let is_min = self.icmp_bool(IntCC::Equal, a, min);
-        self.branch_to_trap_on(is_min);
+        self.branch_to_trap_on(is_min, crate::typed_entry::TRAP_NEG_OVERFLOW);
         self.fb.ins().ineg(a)
     }
 
@@ -779,8 +897,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let q = self.fb.ins().select(bm1, neg, raw);
         let a_min = self.icmp_bool(IntCC::Equal, a, min);
         let m1_min = self.fb.ins().band(bm1, a_min);
-        let bad = self.fb.ins().bor(bz, m1_min);
-        self.branch_to_trap_on(bad);
+        if self.mode == LowerMode::Typed {
+            // PLAN-891: the two trap causes carry DISTINCT bounded reasons.
+            self.branch_to_trap_on(bz, crate::typed_entry::TRAP_DIV_ZERO);
+            self.branch_to_trap_on(m1_min, crate::typed_entry::TRAP_DIV_OVERFLOW);
+        } else {
+            let bad = self.fb.ins().bor(bz, m1_min);
+            self.branch_to_trap_on(bad, 0);
+        }
         q
     }
 
@@ -805,8 +929,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let r = self.fb.ins().select(bm1, z, raw);
         let a_min = self.icmp_bool(IntCC::Equal, a, min);
         let m1_min = self.fb.ins().band(bm1, a_min);
-        let bad = self.fb.ins().bor(bz, m1_min);
-        self.branch_to_trap_on(bad);
+        if self.mode == LowerMode::Typed {
+            self.branch_to_trap_on(bz, crate::typed_entry::TRAP_DIV_ZERO);
+            self.branch_to_trap_on(m1_min, crate::typed_entry::TRAP_DIV_OVERFLOW);
+        } else {
+            let bad = self.fb.ins().bor(bz, m1_min);
+            self.branch_to_trap_on(bad, 0);
+        }
         r
     }
 
@@ -936,7 +1065,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     fn negative_guard(&mut self, v: Value) -> Result<(), String> {
         let zero = self.fb.ins().iconst(types::I32, 0);
         let neg = self.icmp_bool(IntCC::SignedLessThan, v, zero);
-        self.branch_to_trap_on(neg);
+        self.branch_to_trap_on(neg, 0);
         Ok(())
     }
 
@@ -990,8 +1119,27 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         }
                     },
                     None => return Err(format!("out-of-range constant {value}")),
+                    // PLAN-891 typed carriers: wide constants materialize
+                    // their EXACT bit pattern (iconst over the raw bits —
+                    // no host float conversion anywhere).
+                    Some(MirConst::I64(v)) if self.mode == LowerMode::Typed => {
+                        let val = self.fb.ins().iconst(types::I64, *v);
+                        self.def_wide(*dst, val)?;
+                    }
+                    Some(MirConst::U64(v)) if self.mode == LowerMode::Typed => {
+                        let val = self.fb.ins().iconst(types::I64, *v as i64);
+                        self.def_wide(*dst, val)?;
+                    }
+                    Some(MirConst::F32Bits(b)) if self.mode == LowerMode::Typed => {
+                        let val = self.fb.ins().iconst(types::I32, *b as i64);
+                        self.def_wide(*dst, val)?;
+                    }
+                    Some(MirConst::F64Bits(b)) if self.mode == LowerMode::Typed => {
+                        let val = self.fb.ins().iconst(types::I64, *b as i64);
+                        self.def_wide(*dst, val)?;
+                    }
                     // Wide numeric constants stay a controlled rejection
-                    // (R2-N).
+                    // (R2-N) on the legacy surface.
                     Some(_) => {
                         return Err(format!(
                             "constant {value} is a wide numeric value outside the mn surface"
@@ -1005,6 +1153,18 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     MirType::I32 | MirType::Bool | MirType::Char => {
                         let v = self.fb.use_var(self.v_scalar(*src)?);
                         self.def_scalar(*dst, v)?;
+                    }
+                    // PLAN-891: a wide copy moves the carrier — bitwise,
+                    // no float round trip, sNaN payloads intact.
+                    MirType::I64 | MirType::U64 | MirType::F64
+                        if self.mode == LowerMode::Typed =>
+                    {
+                        let v = self.fb.use_var(self.v_wide(*src)?);
+                        self.def_wide(*dst, v)?;
+                    }
+                    MirType::F32 if self.mode == LowerMode::Typed => {
+                        let v = self.fb.use_var(self.v_wide(*src)?);
+                        self.def_wide(*dst, v)?;
                     }
                     MirType::StrView => {
                         let p = self.use_ptr(*src)?;
@@ -1097,6 +1257,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         MirType::I32 | MirType::Bool | MirType::Char => {
                             argv.push(self.fb.use_var(self.v_scalar(*arg)?));
                         }
+                        // PLAN-891: wide arguments cross on their integer
+                        // bit carrier — one machine value per argument.
+                        MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64
+                            if self.mode == LowerMode::Typed =>
+                        {
+                            argv.push(self.fb.use_var(self.v_wide(*arg)?));
+                        }
                         MirType::Str | MirType::StrView => {
                             argv.push(self.use_ptr(*arg)?);
                             argv.push(self.use_len(*arg)?);
@@ -1123,6 +1290,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         let call = self.fb.ins().call(r, &argv);
                         let v = self.fb.inst_results(call)[0];
                         self.def_scalar(*dst, v)?;
+                    }
+                    // PLAN-891: a wide result lands on its carrier slot.
+                    MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64
+                        if self.mode == LowerMode::Typed =>
+                    {
+                        let call = self.fb.ins().call(r, &argv);
+                        let v = self.fb.inst_results(call)[0];
+                        self.def_wide(*dst, v)?;
                     }
                     MirType::Str | MirType::StrView => {
                         let call = self.fb.ins().call(r, &argv);
@@ -1186,6 +1361,16 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                             let v = self.fb.use_var(self.v_scalar(op)?);
                             self.fb.ins().store(MemFlags::trusted(), v, dst_addr, off);
                         }
+                        // PLAN-891: wide fields store their exact carrier
+                        // width at the declaration-order aligned offset.
+                        MirType::I64 | MirType::U64 | MirType::F64 => {
+                            let v = self.fb.use_var(self.v_wide(op)?);
+                            self.fb.ins().store(MemFlags::trusted(), v, dst_addr, off);
+                        }
+                        MirType::F32 => {
+                            let v = self.fb.use_var(self.v_wide(op)?);
+                            self.fb.ins().store(MemFlags::trusted(), v, dst_addr, off);
+                        }
                         // Owned field: transfer — bytes in, source zeroed.
                         MirType::Str => {
                             let flags = MemFlags::trusted();
@@ -1233,6 +1418,21 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                             .load(types::I32, MemFlags::trusted(), base_addr, off);
                         self.def_scalar(*dst, v)?;
                     }
+                    // PLAN-891: wide fields load by exact carrier width.
+                    MirType::I64 | MirType::U64 | MirType::F64 => {
+                        let v = self
+                            .fb
+                            .ins()
+                            .load(types::I64, MemFlags::trusted(), base_addr, off);
+                        self.def_wide(*dst, v)?;
+                    }
+                    MirType::F32 => {
+                        let v = self
+                            .fb
+                            .ins()
+                            .load(types::I32, MemFlags::trusted(), base_addr, off);
+                        self.def_wide(*dst, v)?;
+                    }
                     // Field read = view (782): the pair copies out.
                     MirType::Str => match self.mir_type(self.slot_ty(*dst))? {
                         MirType::StrView => {
@@ -1271,6 +1471,16 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 match self.mir_type(fty)?.clone() {
                     MirType::I32 | MirType::Bool | MirType::Char => {
                         let v = self.fb.use_var(self.v_scalar(*value)?);
+                        self.fb.ins().store(flags, v, root_addr, off);
+                    }
+                    // PLAN-891: wide field replace stores the carrier bits
+                    // (pure values — no buffer ownership to transfer).
+                    MirType::I64 | MirType::U64 | MirType::F64 => {
+                        let v = self.fb.use_var(self.v_wide(*value)?);
+                        self.fb.ins().store(flags, v, root_addr, off);
+                    }
+                    MirType::F32 => {
+                        let v = self.fb.use_var(self.v_wide(*value)?);
                         self.fb.ins().store(flags, v, root_addr, off);
                     }
                     // Owned field replace: free the old buffer, store the
@@ -1715,6 +1925,16 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 match self.mir_type(ty)?.clone() {
                     MirType::I32 | MirType::Bool | MirType::Char => {
                         let v = self.fb.use_var(self.v_scalar(*value)?);
+                        self.fb.ins().return_(&[v]);
+                    }
+                    // PLAN-891: a wide result returns on its carrier —
+                    // the machine's own register width, bit-exact.
+                    MirType::I64 | MirType::U64 | MirType::F64 => {
+                        let v = self.fb.use_var(self.v_wide(*value)?);
+                        self.fb.ins().return_(&[v]);
+                    }
+                    MirType::F32 => {
+                        let v = self.fb.use_var(self.v_wide(*value)?);
                         self.fb.ins().return_(&[v]);
                     }
                     MirType::Str | MirType::StrView => {

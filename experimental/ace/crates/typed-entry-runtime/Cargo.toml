@@ -1,0 +1,12 @@
+[package]
+name = "ace-typed-entry-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# ACE workspace member; build with runtime-dev/runtime-release to retain panic=abort.
+[lib]
+name = "ace_typed_entry_runtime"
+crate-type = ["staticlib"]
+
+[dependencies]

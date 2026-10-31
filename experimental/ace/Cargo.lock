@@ -336,6 +336,10 @@ name = "ace-trace-runtime"
 version = "0.1.0"
 
 [[package]]
+name = "ace-typed-entry-runtime"
+version = "0.1.0"
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

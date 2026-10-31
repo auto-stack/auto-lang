@@ -339,7 +339,7 @@ pub fn run_deadlined_split(
     cmd: &mut Command,
     deadline: Duration,
 ) -> Result<(Option<i32>, String, String), SubprocError> {
-    let run = run_captured_inner(cmd, deadline, CaptureCaps::none(), job::JobGuard::for_child)?;
+    let run = run_captured_inner(cmd, deadline, CaptureCaps::none(), job::JobGuard::for_child, None)?;
     Ok((
         run.exit_code,
         String::from_utf8_lossy(&run.stdout).to_string(),
@@ -385,7 +385,7 @@ pub fn run_deadlined_captured(
     deadline: Duration,
     caps: CaptureCaps,
 ) -> Result<CapturedRun, SubprocError> {
-    run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child)
+    run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, None)
 }
 
 /// [`run_deadlined_captured`] with an injectable containment factory so
@@ -397,7 +397,25 @@ pub fn run_deadlined_captured_with(
     caps: CaptureCaps,
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
 ) -> Result<CapturedRun, SubprocError> {
-    run_captured_inner(cmd, deadline, caps, job_factory)
+    run_captured_inner(cmd, deadline, caps, job_factory, None)
+}
+
+/// PLAN-891 typed-entry channel sibling of [`run_deadlined_captured`]:
+/// the child's stdin is a pipe that receives `stdin_bytes` on a dedicated
+/// writer thread under the SAME single contained-start / subtree /
+/// deadline contract; the write end closes after the last byte, so the
+/// child observes EOF as part of the channel. stdout/stderr stay capped
+/// raw streams. A child that never drains its stdin is bounded by the
+/// deadline (the tree kill closes the pipe and reaps the writer); the
+/// typed caller judges partial writes from the actual response frames —
+/// this executor only guarantees containment and liveness.
+pub fn run_deadlined_typed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    stdin_bytes: Vec<u8>,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, Some(stdin_bytes))
 }
 
 /// Inner executor with an injectable containment factory so tests can
@@ -408,6 +426,7 @@ fn run_captured_inner(
     deadline: Duration,
     caps: CaptureCaps,
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
+    stdin_bytes: Option<Vec<u8>>,
 ) -> Result<CapturedRun, SubprocError> {
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
@@ -415,6 +434,9 @@ fn run_captured_inner(
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(job::CREATE_SUSPENDED);
+    }
+    if stdin_bytes.is_some() {
+        cmd.stdin(Stdio::piped());
     }
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -443,6 +465,19 @@ fn run_captured_inner(
 
     let mut stdout_pipe = child.stdout.take();
     let mut stderr_pipe = child.stderr.take();
+    // PLAN-891: the typed request rides a dedicated stdin writer thread
+    // (bounded by the same deadline via the tree kill; the write end
+    // closes on drop — EOF is part of the channel contract).
+    let stdin_writer = stdin_bytes.map(|bytes| {
+        let mut pipe = child.stdin.take();
+        std::thread::spawn(move || {
+            if let Some(p) = pipe.as_mut() {
+                use std::io::Write;
+                let _ = p.write_all(&bytes);
+            }
+            drop(pipe);
+        })
+    });
     // Readers stream raw bytes in chunks and stop ONE byte past the cap:
     // Err(observed) means "cap exceeded mid-stream" and the main loop kills
     // the tree immediately; Ok(buf) is the exact EOF-terminated byte stream
@@ -550,10 +585,14 @@ fn run_captured_inner(
     // degraded branch and no thread is ever left detached.
     let reap = |subtree: job::JobGuard,
                 out: std::thread::JoinHandle<()>,
-                err: std::thread::JoinHandle<()>| {
+                err: std::thread::JoinHandle<()>,
+                stdin_w: Option<std::thread::JoinHandle<()>>| {
         drop(subtree);
         let _ = out.join();
         let _ = err.join();
+        if let Some(w) = stdin_w {
+            let _ = w.join();
+        }
     };
 
     loop {
@@ -591,7 +630,7 @@ fn run_captured_inner(
                         });
                     }
                     (Ok(Err(observed)), _) => {
-                        reap(subtree, out_reader, err_reader);
+                        reap(subtree, out_reader, err_reader, stdin_writer);
                         return Err(SubprocError::OutputCapExceeded {
                             stream: "stdout",
                             observed,
@@ -599,7 +638,7 @@ fn run_captured_inner(
                         });
                     }
                     (_, Ok(Err(observed))) => {
-                        reap(subtree, out_reader, err_reader);
+                        reap(subtree, out_reader, err_reader, stdin_writer);
                         return Err(SubprocError::OutputCapExceeded {
                             stream: "stderr",
                             observed,
@@ -609,7 +648,7 @@ fn run_captured_inner(
                     _ => {
                         // The child exited but a descendant still holds the
                         // pipes: the deadline applies to collection too.
-                        reap(subtree, out_reader, err_reader);
+                        reap(subtree, out_reader, err_reader, stdin_writer);
                         return Err(SubprocError::DeadlineCollect);
                     }
                 }
@@ -618,25 +657,25 @@ fn run_captured_inner(
                 if let Some(e) = poll_cap(&mut out_rx, &mut out_stash, "stdout", caps.stdout_max) {
                     let _ = child.kill();
                     let _ = child.wait();
-                    reap(subtree, out_reader, err_reader);
+                    reap(subtree, out_reader, err_reader, stdin_writer);
                     return Err(e);
                 }
                 if let Some(e) = poll_cap(&mut err_rx, &mut err_stash, "stderr", caps.stderr_max) {
                     let _ = child.kill();
                     let _ = child.wait();
-                    reap(subtree, out_reader, err_reader);
+                    reap(subtree, out_reader, err_reader, stdin_writer);
                     return Err(e);
                 }
                 if started.elapsed() > deadline {
                     let _ = child.kill();
                     let _ = child.wait();
-                    reap(subtree, out_reader, err_reader);
+                    reap(subtree, out_reader, err_reader, stdin_writer);
                     return Err(SubprocError::Deadline);
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(e) => {
-                reap(subtree, out_reader, err_reader);
+                reap(subtree, out_reader, err_reader, stdin_writer);
                 return Err(SubprocError::Wait(e));
             }
         }

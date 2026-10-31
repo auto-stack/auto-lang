@@ -27,6 +27,7 @@ members = [
   "crates/syntax-runtime",
   "crates/text-runtime",
   "crates/trace-runtime",
+  "crates/typed-entry-runtime",
   "tests/conformance",
   "tests/data-runtime",
   "tests/text-runtime"

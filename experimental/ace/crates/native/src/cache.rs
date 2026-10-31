@@ -80,6 +80,42 @@ impl CoffMeta {
         meta.mir_schema = ace_av_core::contract::MIR_COLLECTIONS_SCHEMA.into();
         Ok(meta)
     }
+    /// PLAN-891: a typed unit's meta — the TYPED ABI/runtime tags and the
+    /// typed symbol domain isolate cache keys and restore admission from
+    /// the scalar generation completely.
+    pub fn for_typed_unit(
+        unit: &MirModule,
+        fp: String,
+        runtime: &crate::typed_runtime::Identity,
+    ) -> Result<Self, MnError> {
+        if runtime.abi != crate::typed_runtime::ABI {
+            return Err(MnError::Admit(
+                "runtime-abi",
+                "typed runtime ABI mismatch".into(),
+            ));
+        }
+        let f = unit
+            .funcs
+            .first()
+            .ok_or_else(|| MnError::Unsupported("unit-shape", "typed unit has no function".into()))?;
+        Ok(CoffMeta {
+            owner: unit.owner.clone(),
+            unit: f.name.clone(),
+            symbol: symbols::typed_function_symbol(&unit.owner, &f.name),
+            fp,
+            abi: crate::config::TYPED_ABI.to_string(),
+            target: MN_TARGET.to_string(),
+            flags: MN_FLAGS.to_string(),
+            backend: MN_BACKEND_TAG.to_string(),
+            runtime: format!(
+                "{};transport=mn891.typed.frames/v1;library={}",
+                crate::config::TYPED_RUNTIME_TAG, runtime.content_hash
+            ),
+            mir_schema: MIR_SCHEMA_AXIS.to_string(),
+            mir_semantics: MIR_SEMANTICS_AXIS.to_string(),
+        })
+    }
+
     pub fn for_unit(unit: &MirModule, fp: String) -> Result<Self, MnError> {
         if unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE {
             return Err(MnError::Unsupported(
@@ -424,8 +460,13 @@ fn admit_payload(
     expect("mir-schema", &meta.mir_schema)?;
     expect("mir-semantics", &meta.mir_semantics)?;
     // The symbol claim must equal the recomputed logical symbol — a
-    // self-consistent wrong-address artifact still fails here.
-    let recomputed = symbols::function_symbol(&meta.owner, &meta.unit);
+    // self-consistent wrong-address artifact still fails here. PLAN-891:
+    // typed units live in the isolated `ac9.` domain.
+    let recomputed = if meta.abi == crate::config::TYPED_ABI {
+        symbols::typed_function_symbol(&meta.owner, &meta.unit)
+    } else {
+        symbols::function_symbol(&meta.owner, &meta.unit)
+    };
     if recomputed != meta.symbol {
         return Err(MnError::Admit(
             "address",
