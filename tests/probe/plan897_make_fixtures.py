@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # plan897_make_fixtures.py — 生成 %TEMP%/plan897/zipfx.zip（确定性内容）。
 # 条目：ascii.txt(deflate,19B) cjk.txt(deflate,39B) bin/logo.png(stored,72B)。
-import os, zipfile
+import hashlib, os, zipfile
 
 base = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "plan897")
 os.makedirs(base, exist_ok=True)
