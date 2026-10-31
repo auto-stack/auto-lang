@@ -17,10 +17,11 @@
   "single_instance": true,
   "taa": "not-triggered: no AAVM trigger paths in the merge window.",
   "last_due_check": {
-    "plan_id": 896,
-    "checked_at": "2026-10-31T02:37:05.407988+00:00",
-    "due": false,
-    "reason": "896 is not divisible by five; less than 48h since receipt; no landed plan id above 895 divisible by five. Prior 895 waiver remains historical, not a new execution."
+    "plan_id": 890,
+    "checked_at": "2026-10-31T07:27:08.343414+00:00",
+    "due": true,
+    "disposition": "waived_by_user",
+    "reason": "890 divisible by five; latest explicit instruction: 不需要再次测试了，直接安全合入。No batch execution; prior historical verdict unchanged."
   },
   "unexecuted_batch_legs_user_accepted": [
     "man-t",
