@@ -172,8 +172,7 @@ pub fn create_note(title str, body str) Note { ... }
 
 VM 模式(`auto run --server vm` 与 in-language `http.server().listen()`)的
 装配链:codegen 在 `api_routes` 采集点同步发布各 `#[api]` fn 的形参签名
-(名+类型)到进程级 `API_PARAM_SIGS` 侧信道(与 `axum_adapter::PARAM_SIGS`
-同生命周期模型:run pipeline 编译前重置);四条 serve 路径
+(名+类型)；PLAN-890由编译collector冻结到活动服务owner，旧`API_PARAM_SIGS`兼容输入仍保留但不覆盖owner快照；四条 serve 路径
 (`handle_connection_async`/`serve_blocking_stdnet`/`run_http_server_blocking`/
 `shim_http_server_listen`)统一经共享绑定器按 §4.1 规则装配,绑定失败即
 400/500 早返;无签名条目(legacy 生产者)回退旧位序装配。`__axum:` 合成
@@ -634,3 +633,12 @@ auto-musk 后端 handler **同时是消费者和生产者**:
   Plan 326/346 既有契约——iterator/response-handle 编组臂保持注册表命中制
   （声明门破坏 6 个既有 e2e，二分证据在 734 verification §3.3）；strict
   声明分派保留于 Upload/File 臂。
+
+## PLAN-890 当前领域owner与装配
+
+本页保留语言API和既有支持/目标边界；领域实现现归独立auto-web，不能再按早期auto-lang路径寻找运行时副本。
+Core `vm/ffi/http_server`只留语言声明/值/上下文桥，编译元数据在执行前冻结到各owner；活动服务不读取下一次编译的全局重置。
+Web拥有transport/route/dispatch/scope/文件/上传/观测和HTTP生成；客户端流/语言native及值转换仍留语言/标准库。
+直接SDK服务调用须显式链接Web并安装adapter，缺席在监听前拒绝；Man/UI内部装配，普通语言执行不变。
+VM Axum0.8和生成Rust Axum0.7两轨、监听等级及现有预算/错误/流/文件/上传义务保持；无TLS/通用WS/跨OS新认证。
+领域入口与兼容迁移见[Web合同](../../../../../auto-web/docs/specs/http-contracts.md)、[端口](../../language-sdk/http-host-port.md)。

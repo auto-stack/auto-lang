@@ -3,13 +3,13 @@
 > **Status**: active
 > 路径：`crates/auto-man`  | 技术栈：Rust（clap / serde / reqwest / rust-embed）
 
-AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析与多生态（Tauri/Vue/VSCode 等）项目集成。
+AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析与多生态（Tauri/Vue/VSCode 等）项目集成。PLAN-890现行Web装配/不可编辑安装owner及恢复边界见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)和[Man消费](../../../../auto-man/docs/web-integration.md)；普通CLI/daemon语义不变。
 
 ## 目标与范围
 
 - 解析 pac.at 包定义，执行构建（cargo/ninja）、导出 IDE 工程、管理依赖获取与锁定。
 - 为 Vue / Tauri / Jetpack Compose / ArkTS(HarmonyOS) / Rust UI(ICED/GPUI) 等前端生态生成或集成工程代码。
-- 提供 API 代码生成、Tauri 后端生成、VSCode 扩展生成等代码生成器。
+- CLI/工程/进程编排消费固定owner：HTTP服务/生成归auto-web，UI生成归auto-ui，IPC/Tauri与非HTTPadapter保持原owner。
 - 不做：不实现语言编译（auto-lang）；不实现通用代码模板引擎（auto-gen）；缓存存储在 auto-cache。
 
 ## 依赖解析声明门控（PLAN-635，pnpm 式严格隔离）

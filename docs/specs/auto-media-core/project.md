@@ -18,10 +18,10 @@ graph LR
       ms[media_service<br/>索引/Range 规则]
     end
     vm[auto-lang vm/ffi stdlib] --> ip
-    http[auto-lang HTTP 快路径] --> ip
-    man[auto-man api_gen/rust_ui] --> core
+    http[auto-web HTTP 数据面] --> ip
+    web[auto-web HTTP生成] --> core
     iced[Iced renderer/notify] --> ip
-    vue[Vue 生成后端] --> man
+    vue[Vue 生成后端] --> web
     codec[image codec（可关闭 feature）] --> ip
 ```
 
@@ -73,3 +73,9 @@ Range/索引/不跟随 reparse）+ `cargo test -p auto-lang --lib plan811`
 （VM 17 native 接线）+ `cargo test -p auto-man --test
 plan811_media_consumers`（Man 真实消费）+ 777 strict / 792 driver
 （发行闭包）。
+
+## PLAN-890 photo 单源
+
+`src/photo_service.rs`接管原UI的中立照片扫描/索引机制及十项原测试，旧UI路径仅重导出。
+Web运行时和HTTP生成消费该单源；renderer/纹理留UI。原资源、ID/断言/条件不重置。
+来源：[四仓合同](../repository-boundaries/web-four-repository-delivery.md)（plan-890）。

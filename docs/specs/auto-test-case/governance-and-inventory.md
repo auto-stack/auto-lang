@@ -10,7 +10,7 @@
 
 ## 盘点闭包与子 case 身份
 
-- 闭包：三仓（auto-lang/auto-ui/auto-man）当前受管第一方测试 + `crates/auto-lang/test/cases/*`
+- 闭包：四仓（language/Web/UI/Man，PLAN-890扩展）当前受管第一方测试 + `crates/auto-lang/test/cases/*`
   全部 suite + ACE 独立 workspace（`experimental/ac-*`，实测 10 仓 202 测试文件/11 bins）实际
   consumer 入口。vendor/第三方、SDK 冻结副本、生成物、缓存、本地运行证据排除或引用。
 - 子 case 身份：`crate\tpath::tests::name`（tab 分隔，与 runner 基线文件一致）；聚合包装
@@ -58,3 +58,12 @@ combo、退役双清单与 floor 3189 等 887 冻结条款不受本节影响。
 ## PLAN-888 唯一叶与真实消费
 
 旧九档身份冻结到不相交叶模块，ACE十workspace/正式suite/Python控制纳入本仓目录；外仓owner保留引用。分片内容哈希、实际Cargo及runtime/helper消费者图、原source/oracle/条件/输入守恒共同校验。运行时再次核对选择和实际原子完成记录，聚合包装成功不能替代内部比较；条件不适用和原始失败不冒绿。计划门与周期清单、成本和慢模块遵循[模块选测](module-selection.md)，B/C试点依据[批量合同](batch-execution.md)。887历史收据与原M1分母保持。
+
+## PLAN-890 四仓实际执行守恒
+
+Web库/HTTP/生成各有独立recipe，原Web/媒体迁移ID、断言、条件及17资源由具名清单守恒。
+完整tm并集的source/catalog/selection/命令/逐ID实际结果及内部case/child oracle必须相符；原ignore/manual/milestone不算通过。
+producer与公开收据consumer共用原baseline/retirement/migration/floor，内部一致的删项也须拒绝；
+迁移credit只能来自已验证实际PASS目标。ui-tu仍单进程执行，以同批ui-full来源flags还原libtest省略的原ignore。
+缺执行、错命令/输出/hash、重复/零选择/无依据排除、未执行腿或旧SDK认证新来源均失败。
+用途分类只作建议。选择/执行/周期和当前组合发行的门分列，详见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)。

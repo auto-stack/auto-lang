@@ -1,7 +1,7 @@
 # repository-boundaries
 
 > **Status**: active（PLAN-784 SD-01）
-> 范围：auto-lang / auto-ui / auto-man 三仓身份、旧实现保全与 v0.6 拆分迁移准备状态
+> 范围：language/Web/UI/Man四仓当前边界及既有legacy保全；Down固定依赖，旧三仓记录保留来源时间。
 
 模块子页：[generated-ui-distribution](generated-ui-distribution.md)（PLAN-792 SD-01：
 生成式 Rust UI 交付布局/消费根 patch/应用独立锁/资源 allowlist 与 producer
@@ -126,3 +126,9 @@ M2 收口后的常态治理 = 三件事（不再有"拆分期"特殊态）：
 
 80 万目标按 A 口径披露与推进；未达按 roadmap 报告实际规模与剩余项，
 不隐含无限减法承诺。
+
+## PLAN-890 Web独立owner
+
+新增本地auto-web0.1.0领域owner；language/Web/UI/Man为完整组合，Down只作固定依赖。
+Web canonical、显式SDK装配、原ID/资源/实际执行、19包源交付及安装恢复见
+[web-four-repository-delivery](web-four-repository-delivery.md)。旧三仓历史锚不移动；未远端发布。

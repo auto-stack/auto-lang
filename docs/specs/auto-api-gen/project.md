@@ -5,7 +5,7 @@
 
 ## 职责与边界
 
-auto-api-gen 是语言服务/API 生成 adapter，物理 owner 留语言仓，服务 UI 与 Man 两类消费者。sidecar 声明自 auto-project-model 读取（SidecarDecl/sidecar_decl_from_root 单源），零 Man 管理实现依赖（闭包内无 auto-man-core）。adapter 不拥有第二份 SidecarDecl 或根声明解析，不持有 UI 宿主状态。
+auto-api-gen 保留Tauri IPC/非HTTP语言adapter，物理owner留语言仓；HTTP服务/客户端生成与模板已迁独立auto-web，旧HTTP入口只薄委托。sidecar 声明自 auto-project-model 读取（SidecarDecl/sidecar_decl_from_root 单源），零 Man 管理实现依赖（闭包内无 auto-man-core）。adapter 不拥有第二份 SidecarDecl 或根声明解析，不持有 UI 宿主状态。
 
 ## 接口与兼容
 
@@ -20,3 +20,10 @@ auto-api-gen 是语言服务/API 生成 adapter，物理 owner 留语言仓，�
 - **伴生同名类型**：与 api 类型同形同名的 struct 提升为 `pub use crate::types::X;`（字段名序列一致才替换），db 包装与伴生模块返回同一 Rust 类型。
 - **参数形状**：`.at int` → `i64`；`str_find` 双参/三参（`str_find(s, needle)` / `str_find_from(s, needle, start)`）返回字符偏移；`parse()` → `.unwrap_or(0)`；String 比较/借用按接收者类型发射。
 - **消费者验证边界**：以真实消费者（如 auto-blog）冷生成→`cargo build` exit 0→真实 HTTP 使用（创建/保存/冲突/重启回放）为准；不以 AST/字符串测试代替可编译消费者。
+
+## PLAN-890 当前 owner
+
+上述PLAN-885生成语义由Web HTTP生成器继承，不再由本包维护第二套算法。
+`rust_workspace/shared_generation/sidecar/source_owner`只有`auto-generation-core`受限共享源；
+本包、Web与UI消费同一机制，不复制声明、类型提升、锁或freshness算法。
+[Web规范指针](../auto-web/project.md)；[共享/交付合同](../repository-boundaries/web-four-repository-delivery.md)。

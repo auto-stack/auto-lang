@@ -25,7 +25,7 @@
   职责 DAG/状态 owner 表/结构规则见 [architecture.md](architecture.md)，收口范围/守恒对象/在册债务与 ACE 边界见 [structure-closure.md](structure-closure.md)。
 - **单源面**：前端门面组（ast/token/error/session/lexer 门面、symbols/
   scope）、类型系统/infer、parser+dialect、compile/解释器、VM（engine/
-  codegen/native/ffi）、trans（rust/c/gdscript/tscn...）、libs/http 服务、
+  codegen/native/ffi）、trans（rust/c/gdscript/tscn...）、语言HTTP桥/宿主端口（服务实现归Web）、
   stdlib_assembly、design_tokens（parser 通道）、a2r_std、use_scanner/
   dep_scanner/mode/os_paths。仍支持的上层 `auto_lang::*` 正式路径保持同源类型；四个 `ast/parser/session/error` 过渡模块于 0.2 退役，消费者按迁移规格切换 owner。
 - **禁止边**：不依赖 auto-ui-dialect/auto-ui-compiler/auto-ui-runtime/
@@ -135,3 +135,10 @@ Man 的 runtime、CLI、three-repository-consumer 均从语言仓固定 source �
 ## PLAN-842：宿主装配与兼容边界
 
 纯 Core 不链接 UI 时 SDK hook 缺席或 no-op。已链接 UI 语言包但直接调用 SDK 的既有消费者仍依赖现有单份 `UiCompatInstaller` inventory 提供默认宿主能力；显式 provider 优先，默认、缺席、多实例、线程与退出语义保持。该宿主登记不同于已退出的 UI 文法 inventory；删除它会丢失实际默认能力。生成应用显式安装 SDK hook 与 UI runtime provider。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+
+## PLAN-890 HTTP 装配
+
+Core不再拥有HTTP领域运行时/生成器；只依赖纯`auto-web-contract`，服务provider由宿主显式安装。
+直接SDK服务消费者迁移到固定Web依赖及`install_http_service_host_if_absent`；无服务语言调用保持。
+编译元数据冻结、local/!Send owner、worker文件线程launch传递和实际cleanup义务见
+[http-host-port](http-host-port.md)；HTTP/共享生成owner与发行见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)。

@@ -30,12 +30,7 @@
 `validate_ui_file_with_modules` 向工程工具提供文件及直接导入模块准入；
 主文件和每个直接导入模块均先按各自目录执行
 `prepare_style_recipe_imports`，再解析/lowering，冷态命名/通配符配方
-不依赖前一文件注册残留。公开转译、Vue/Rust/Jet/Ark request 工程、
-incremental、组件包和跨文件
-模块在缓存、预扫描、aura 提取、生成或写盘前完成校验/lowering；准入错误
-不得被 warn-and-continue 吞成成功或半壳工程，Rust 先编译再创建输出。
-四生成器不再匹配 Core `Stmt` UI 兼容臂。旧 `assemble_ui_grammar` 空桩
-与 `UiGrammarSource` 登记已删除。`ui`/`ui-headless` 空 feature 仅保留
+不依赖前一文件注册残留。公开转译、Vue/Rust/Jet/Ark request 工程、 incremental、组件包和跨文件 模块在缓存、预扫描、aura 提取、生成或写盘前完成校验/lowering；准入错误 不得被 warn-and-continue 吞成成功或半壳工程，Rust 先编译再创建输出。 四生成器不再匹配 Core `Stmt` UI 兼容臂。旧 `assemble_ui_grammar` 空桩 与 `UiGrammarSource` 登记已删除。`ui`/`ui-headless` 空 feature 仅保留
 原编译面开关。
 
 准入与解析失败双轨（PLAN-842 r3 SD-08）：前置预校验（含工程侧
@@ -148,3 +143,8 @@ VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/p
 按产物在场性与 apps.manifest `launch` 裁定，contract 见
 [autos-desktop-entry](../repository-boundaries/autos-desktop-entry.md)。
 来源：[PLAN-876](../../plans/876-autos-desktop-entry-and-launch-health.md)
+
+## PLAN-890 Vue局部快照与同名状态
+
+Vue store handler按真实词法local绑定发射：快照变量/字段保留原名与原始值，只有被遮蔽且实际使用的state才经保留内部module别名访问。块/循环/闭包/catch恢复外层绑定，同名初始化保留对state的访问；委托函数/lambda捕获保留local名，公开getter与普通输出不变。
+原ui_gen单进程866PASS/2原ignore及四个新增反例、固定Blog Vue/native结果见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)（plan-890）；无新AST/schema/runtime协议。

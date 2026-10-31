@@ -322,6 +322,7 @@
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
+| auto-web — 独立 Web 服务框架指针 | active（PLAN-890；语言仓仅保存指针） | 0 | [auto-web/project.md](auto-web/project.md) |
 | auto-playground | active | 8 | [auto-playground/project.md](auto-playground/project.md) |
 | widgets | active | 8 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
@@ -553,6 +554,8 @@
 
 ## 未分组
 
+- [auto-a2r](auto-a2r/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [auto-a2x](auto-a2x/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-api-gen](auto-api-gen/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-cte](auto-cte/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-man-core](auto-man-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）

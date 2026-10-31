@@ -18,7 +18,7 @@ GROUPS = {
                "auto-cache", "auto-bindgen", "auto-macros", "shim-metadata",
                "auto-gen-core", "package-lock", "package-resolver",
                "auto-man-assets", "auto-toolchain-core"],
-    "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
+    "UI/Web 生态": ["auto-web", "auto-playground", "widgets", "forge-ui", "lab-ui",
                     "playground-vue", "website", "blueprint", "autoui-skill"],
     "外围/验证": ["parity", "a2r-actor-tests"],
     "实验/沙盒": ["auto-cosmic", "auto-hir", "auto-syntax", "auto-ac", "auto-acc", "auto-semantics", "auto-abi", "auto-mir", "auto-av", "auto-graphics"],

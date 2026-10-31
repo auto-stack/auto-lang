@@ -2,7 +2,7 @@
 
 > **Status**: current（PLAN-736 交付；决策/配置/策略/生命周期/代理/负载/验证报告见
 > `docs/plans/reports/736-http-{decision,config,policy,lifecycle,proxy,load,verification}.md`）
-> 层：auto-lang（配置/观测/VM 传输桥）+ auto-man（进程托管/生成模板）+ auto-cli（`auto service`）
+> 层（PLAN-890）：auto-web（领域运行时/观测/HTTP生成）+ auto-web-contract（纯配置/校验）+ language SDK（VM桥）+ Man（CLI/通用进程）。
 > 2026-10-08
 
 本文是 VM 默认 API HTTP 与 auto-man 生成 Rust HTTP **两服务轨共用的部署合同**：
@@ -31,7 +31,7 @@ canonical；本文只定**服务如何被装配、约束、观测和关闭**。
   无 webview。命名注记：原拟 `auto serve` 与 Plan 269 AutoVM daemon 撞名，
   服务入口定名 `auto service`；`auto serve` 保持 daemon 语义零改动。
   生成 Rust 轨产物本身可直接 `cargo run --release` 启动（同一 service JSON 消费）。
-- **配置单一来源**：`HttpServiceConfig`（`crates/auto-lang/src/http_service_config.rs`）
+- **配置单一来源**：`HttpServiceConfig`（兄弟auto-web仓`crates/auto-web-contract`单源，SDK旧纯数据路径重导出）
   版本化、纯数据、不依赖 Axum/VM；严格解析（deny unknown fields、重复字段指名、
   非法范围指名、非法组合指名），启动时解析一次，显式实例持有，**不按请求读 env**。
   生效摘要带每个值的来源；`effective_config_hash` 与 734 implementation hash 分开
@@ -198,3 +198,11 @@ deadline，无无限形态；release fixture 排除冷编译；同机单实例�
   （不动）。
 - 原有 config 优先级/port=0/ready/exit/端口冲突合同全部保持（§2/§7 不变）。
 （PLAN-816 M816-B；终稿证据：attachments/816/handoff.md）
+
+## PLAN-890 显式宿主与配置快照
+
+Web当前领域owner和独立CLI为`auto-web run api.at --config service.json`；Man原`auto service`及daemon`serve`语义保留。
+直接SDK服务消费者显式安装Web；ordinary语言不需要host。编译声明快照与typed launch分开，
+文件/运行worker在spawn前捕获配置并绑定到owner，future每次poll恢复自身上下文；环境端口不同不能覆盖选定配置。
+VM Axum0.8与生成Rust Axum0.7保持独立轨和原监听等级；上述配置/预算/Host/代理/关闭合同不扩大。
+[中立端口](../../language-sdk/http-host-port.md)、[Web规范](../../../../../auto-web/docs/specs/http-contracts.md)。

@@ -46,7 +46,7 @@ lib.rs = crate 根组合（mod 声明+再导出）+ entry.rs(run* 族) + entry/r
 | 执行 | `vm/engine.rs` | `vm/engine/{heap,values,futures_timers,tasks,ops_construct..ops_flow}` | `AutoVM`（tasks/RAM/帧/预算；Rc/线程亲和/锁外回调不变量） |
 | native | `vm/native.rs` | `vm/native/natives_{int,strings,collections,chrono,web,formats,sys,rand,fs,host,io,test}` | `NativeInterface` 单一注册表（`pub use` 门面保 ID 表宏路径） |
 | FFI | `vm/ffi/stdlib.rs`（装配壳 2278 行） | `vm/ffi/stdlib/{file_io,http_client,crash_trace,strings_json,math,image,sqlite,sys_env}` + `{request_root,storage,exit_audit,http_async,rust_stdlib_dispatch}`（共 13 域；注册=19 个域 helper 有序调用） | guard 生命周期（RequestFileRootGuard 等）；各域全局表单份 |
-| HTTP 服务 | `vm/ffi/http_server.rs` | `http_server/{server_route,server_model,server_dispatch,server_scope,server_argbind}` | `RequestScope`/DispatchCtx |
+| HTTP 语言端口 | `vm/host_capabilities/http_service.rs` | `bridge/program_metadata/messages/launch` + `vm/ffi/http_server.rs`声明/值桥 | local `HttpVmOwner`/编译快照；领域RequestScope/DispatchCtx归Web |
 | 转译 | `trans/rust.rs`（编排 4293 行） | `trans/rust/{expr_emit,stmt_emit,decl_emit,ty,call_emit,project_fixups,post_fixes,ast_scans,merged_fixes}` | 各 Trans 无跨目标共享大杂包 |
 | 运行桥接 | `entry.rs`（公开 run 入口） | `entry/run_bridge.rs`（G1/G2/G3 单源 + G5 staged 独立） | 专用执行线程/LocalSet、`LAST_RUN_TRAP_CODE` |
 | crate 根 | `lib.rs` | `entry.rs` + `flags.rs` | 进程级全局（GLOBAL_RT/ERROR_LIMIT/VM_DEBUG/SCRIPT_ARGS/trace 族） |
@@ -56,10 +56,18 @@ lib.rs = crate 根组合（mod 声明+再导出）+ entry.rs(run* 族) + entry/r
 - 入口生产行上限基准：parser 2175 / codegen 1274 / engine 2131 / native 2367（以上达标）；
   stdlib 5679 / http_server 4156 / rust 5960（PLAN-843 残留口径）。PLAN-884 收口后实测：
   stdlib 壳 2278（域族外移，达标）、rust 编排 4293（主题算法外移，达标）、http_server 4156
-  保持——其壳为经审计的合法核心（accept loop/控制面/scope 生命周期/SSE 步进/WS 帧/by-name
-  绑定），无仓内调用方引用旧内联路由/派发，**不按总行数判未收口、不迁文件**。
+  为当时经审计的合法核心。PLAN-890随后将accept/控制面/scope/SSE/WS/绑定等领域实现迁Web；
+  Core只留语言声明/值/VM桥，不再把该历史行数或owner视作当前服务实现。
 - 公开 API 面（pub fn/类型/字段）与 `Parser` pub 字段、`TypeStore`/`CompileSession`/`AutoVM`/
   `NativeInterface` 类型身份为稳定接口；上层 `auto_lang::*` 兼容门面与 auto-lsp 等真实消费者
   编译面必须保持。
 - 拆分守恒审计口径（PLAN-843 复审先例）：基线原文 vs 拆分全集的规范化行多重集对比，仅允许
   记录在案的机械变换残差（包装行/限定符/pub(super)）。
+
+## ADR：HTTP领域外置与local宿主（2026-10-31，PLAN-890）
+
+决策：Web实现→Core公开SDK/受限共享生成→纯合同；Core无Web实现边。备选隐式旧框架/复制VM均拒绝，
+因为会破坏独立owner和类型/状态单源。代价是直接SDK服务调用需显式安装adapter；Man/UI内部装配。
+`Send+Sync`仅适用于provider，VM/future仍local；owned消息跨网络，编译快照与invocation launch分离，
+文件/运行worker显式传递launch，每次poll绑定自身上下文。状态：已独立验收；最终组合门见归档收据。
+详见[端口合同](http-host-port.md)。

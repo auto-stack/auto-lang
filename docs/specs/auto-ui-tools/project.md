@@ -72,3 +72,9 @@ freshness 字节对拍门 `test_shell_pack_lib_freshness`)——F-815-T09-01 修
 ## PLAN-831 仓属与来源（SD-05，as-built）
 
 本 crate 物理属 auto-ui 仓（迁移基线=语言仓 e199caf8a 内容）。真实 auto-ui-tool 二进制与嵌入资产随 owner 迁移；发行 bundle 内为双直依赖生成工程提供 tool 实际二进制与运行资产。构建矩阵判据（r3）：全 profile 真实尝试逐项记录；必需面=vue/rust/vscode completed；jet/ark 缺环境=获准延期（producer 具名缺席形态：jet=9009/gradle wrapper 生成失败原文，ark=Hvigor wrapper not found 句头原文），在场执行后的真实失败传播红——分类读失败类别语义位置（缺席句头 startswith 优先；执行退出码仅从原因区提取），项目路径字节不可翻转任一方向。
+
+## PLAN-890 Web消费
+
+UI tool/VM worker/Rust生成与back-proxy直接消费固定auto-web，内部显式安装provider并传递typed launch。
+HTTP生成/运行策略归Web，UI仍拥有界面与非HTTP适配；命令、工具身份与ready/关闭义务不因迁仓降级。
+[UI消费指南](../../../../auto-ui/docs/web-integration.md)与[Web指针](../auto-web/project.md)。

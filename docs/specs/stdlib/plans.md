@@ -20,3 +20,5 @@
 ## PLAN-884
 
 | 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | 装配 owner 与指纹输入成文：壳只装配/域文件持算法、19 个有序注册 helper、迁移源必须入 loader+manifest 双清单（守卫 plan884_provider_input_coverage），872 绑定与六族语义不变 |
+
+| 890 | AutoWeb独立仓与四仓交付 | reviewed；最终交付见归档收据 | [PLAN-890](../../plans/archive/890-auto-web-independent-repository-delivery.md) | HTTP领域owner/显式装配及既有支持边界 |
