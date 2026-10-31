@@ -3785,3 +3785,12 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **900-N5 (INFO)**：UI 域已知红族随迁 auto-ui 侧登记：vue_capabilities×11、ui_snapshots×3（insta 快照内嵌 CARGO_MANIFEST_DIR 绝对路径——worktree 环境排除，源文件头注自证）、gallery_vue_golden（898-N5 基线原样）。auto-ui 侧 test 编档归该仓（计划 D 域）。
 - **900-N6 (INFO)**：UI-host 独立夹具的 inventory 链接保留在 MSVC linker GC 下不保证（clipboard-provider ui-host 臂首轮实证红）——canonical 宿主范式=显式 `auto_ui_runtime::install_ui_host_capabilities()` bootstrap（auto-man 同款）；夹具与 host-assembly 已改显式式，进程期自注册收集点保留为兜底语义（install 单点内同幂等）。
 - **900-N7 (LOW)**：裸 worktree 单仓构建仍需 auto-web 兄弟仓（auto-lang-core→auto-web-contract path 边，预存非 auto-ui）——Design 52 §2.1"无需组内兄弟仓"完整不变量待 auto-web 边收口（另行计划）；本计划已解除 auto-ui 兄弟依赖（bare probe + 仅 auto-web 兄弟实证 check 绿）。
+
+## D-891-A typed 侧显式 I/O 故障注入负例(非阻塞改进)
+
+- owner: auto-lang/ACE;来源 PLAN-891 final review #2 coverage boundary。
+- 现状:typed 通道的有界 I/O/树回收/超时行为由 ace-core 执行器既有测试
+  (cap/deadline/contain)与 admit_frame_and_exit 的帧-退出一致性共同保证;
+  未再上层注入子PE不读输入/部分写等端到端故障样本。
+- 关闭条件:当执行器或 typed runner 行为变更时,补 typed 端到端 I/O 故障
+  注入负例;无变更则按需补强,不阻塞任何交付。

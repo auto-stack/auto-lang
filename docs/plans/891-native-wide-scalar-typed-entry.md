@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-891
-status: execution_done
+status: reviewed
 feature_name: native宽标量typed入口与逐位结果通道
 author: [Codex]
 created_at: 2026-10-30
@@ -282,7 +282,7 @@ stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_pa
   → 98c7c0cf7（recipe/suite/binding/specs）→ 7dd44182a（fmt 收口）。
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
 
 
 stage: review | review_scope: final | reviewer_identity: 同一会话执行+终审(计划未指定独立final reviewer);判决自工件重建(diff审计/代码核验/测试重放),未采信执行者总结 | plan_id: PLAN-891 | plan_revision: 2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | reviewed_commit: 7dd44182a | base_commit: b55889dff | dependency_revisions: 889/888/894 archived; master 已前进(基面后含 reader fixtures 退役等,与本计划文件无交集,merge 时 delete/unchanged 自动解决) | spec_inputs: docs/specs/auto-mir/data-place-profile.md, native-data-owned-lowering.md, auto-ac/native-backend-and-retirement.md, auto-test-case/ace-m1-conformance.md, architecture.md | acceptance_results: AC-01 partial, AC-02 partial, AC-03 pass, AC-04 partial, AC-05 partial, AC-06 pass, AC-07 本记录, AC-08/09 merge-owned pending | findings: F-01..F-06 | evidence: typed suite 12/12 + tiers 15 绿 + SDK 2 绿 + legacy conformance 128 绿重放确认;diff 审计确认无调试残留、worktree clean | next: work(同树修复 F-01..F-06 后重审)
@@ -317,7 +317,13 @@ stage: review | review_scope: final | reviewer_identity: 同一会话执行+终�
 stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass (repair of review#1 F-01..F-06) | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 675cae800 | task_ids: T-04, T-05 (reopened→closed) | evidence: F-03 admit_frame_and_exit 通道级强制+负例;closure 缺陷(跨单元原始类型索引比较)改解析形状比较(F-06 测试发现);F-01 ±Inf/+qNaN 逐位;F-02 损坏信封/COFF 具名拒;F-04 ghost import mn.admit.callee-sig;F-05 位清洗反控;F-06 record 副本隔离真 PE | 重放: typed_entry_tier 18 绿、incremental 3 绿、suite 12/12、SDK 2 绿 | blockers: 无 | next_responsible_role: review (final #2)
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: execution_done | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: reviewed | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: review
+
+
+stage: review | review_scope: final (#2, repair re-review) | reviewer_identity: 同一会话执行+终审;判决自工件重建(修复diff审计+闭合测试重放+代码核验) | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | reviewed_commit: 675cae800 | base_commit: b55889dff | dependency_revisions: 889/888/894 archived;master 前进不触碰本计划文件 | spec_inputs: SD-01 新增 + SD-02..06 增量已在树并逐条对实现核验 | acceptance_results: AC-01 pass(F-01 ±Inf/+qNaN、F-06 record副本隔离闭合), AC-02 pass(F-03 帧与exit0一致通道级强制+负例), AC-03 pass, AC-04 pass(F-02 损坏轴具名拒、F-04 ghost import拒、closure比较缺陷修复为解析形状), AC-05 pass(预算具名/四状态20样本P90≤433ms/F-05位清洗反控), AC-06 pass(recipe四点/stale/binding翻转/SDK红控), AC-07 本记录 | findings: review#1 F-01..F-06 全部闭合;修复过程另发现并修复 closure 跨单元类型索引比较缺陷(F-06测试触发) | evidence: 闭合面重放7/7绿(fmt后);此前同commit重放 tier 18/18、incremental 3/3、suite 12/12、SDK 2/2;worktree clean无调试残留;fmt过 | coverage_boundary: V-08 typed侧显式I/O故障注入负例未做——行为证据=ace-core executor cap/deadline/contain既有测试+typed复用同一执行器+F-03通道一致性;登记为非阻塞改进(KNOWN-DEBT D-891-A) | pending_closeout_gates: AC-08 冻结提交统一门禁(merge owner,受影响组并集:ace-native、case-ace-m1-typed-native-891、SDK conformance、auto-test-case/auto-lang-core 合同面);AC-09 SD沉淀/归档/清理 | next: merge
+
+
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: merge
 
 ## 10. 待澄清事项
 
