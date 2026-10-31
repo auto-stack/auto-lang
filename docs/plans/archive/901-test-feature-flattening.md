@@ -172,7 +172,7 @@ Design52原“cargo build→cargo t all零新增rlib”不能直接当所有目�
 - [x] AC-04（work）：外部消费探针DELIVERY_OK（5725文件）+generate-lockfile OK+交付根cargo build --locked OK 3m04s；投影族22/22+模块196/196；7预存红交付测试base反例对照转绿（1b5434e闭包补全）；web helper 217绿+转发链双态有效、api-gen/Man零已删feature引用（grep实证）；900零UI反向边不回归（拍平闭包零iced单元）→f99f110+1b5434e+f6e6af4bf+ec9c4ba。
 - [x] AC-05（work）：V-07三账本（t05_v07_a/b/c.json）——旧分叉5个同角色feature单元→拍平后0；edit-rebuild旧8.8s vs 新14.6s（+5.8s≪120s门，未触发重议）；冷构建75.7/72.2s同量级；测试集未减少（V-01零丢）→f6e6af4bf树实测。
 - [x] AC-06（owner_stage: review）：独立上下文agent 8项检查全pass（门grep/4282对账/V-07三账本/120s门/交付实物/SD一致性/收据commit）+本会话复核；F1 doc-only修复（5d9bfbecc）+F2行修正+F4 scratch清理后终pass；已知红按来源分列（plan730负载偶红空机复绿、auto-ui-runtime空e2e=900既有）；新增未处理警告0。
-- [ ] AC-07（owner_stage: merge）：所有实际修改仓以冻结review版本及有效证据串行落地，canonical知识沉淀，不写specs.json；B→D版本/剩余范围与回退记录齐备；归档、guard清树与统一scope路径对账/删除完成。
+- [x] AC-07（owner_stage: merge）：所有实际修改仓以冻结review版本及有效证据串行落地，canonical知识沉淀，不写specs.json；B→D版本/剩余范围与回退记录齐备；归档、guard清树与统一scope路径对账/删除完成。
 
 ## 8. 执行步骤
 
@@ -223,6 +223,6 @@ Design52原“cargo build→cargo t all零新增rlib”不能直接当所有目�
 - canonical_verified: docs/specs/auto-test-case/test-feature-flattening.md（新）+project/architecture+module-selection+generated-ui-distribution 28闭包段 均在lang master 2fcae41ba；ui/web仓本计划Spec delta=无（SD表）
 - 批量回归due核：last_covered=895（用户裁定waive），本窗口auto-lang无可5整除计划落地（901%5=1），receipt<48h——不due，仅登记
 - 落地≠部署观察：本计划零产品语义变更（测试feature/交付闭包），auto-lang/auto-ui/auto-web release产物无重建必要；Man/CI消费组合在web+lang落地后自洽（api-gen→auto-web域feature保留）
-- archived: docs/plans/archived/901-test-feature-flattening.md（本收据随git mv落master）
+- archived: docs/plans/archive/901-test-feature-flattening.md（终验簿记更正：merge 收据初落技能默认 archived/ 路径，按 AGENTS 本仓映射规约 git mv 至 archive/，AC-07 勾选同步补记）
 - cleaned: wt-guard clean后移除lang-901组三树+三分支+组目录；plan-artifacts/plan-901 scope全删（证据已折叠本§9）；registry刷新
 / next: done（B正式交付；重入auto-ui PLAN-018 work T-01，U901已满足）
