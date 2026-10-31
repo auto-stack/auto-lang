@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-891
-status: drafting
+status: execution_done
 feature_name: native宽标量typed入口与逐位结果通道
 author: [Codex]
 created_at: 2026-10-30
-updated_at: 2026-10-30
+updated_at: 2026-10-31
 plan_revision: 2
 supersedes_spec_components:
   - docs/specs/auto-mir/data-place-profile.md
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-test-case]
 depends_on: [PLAN-820, PLAN-828, PLAN-871]
-current_step: 0
+current_step: 5
 total_steps: 10
 ---
 
@@ -203,11 +203,11 @@ typed模式的结果是互斥value/trap/resource/error判别：value70与i32除�
 
 | ID | owner_stage | 依赖/窗口 | 工作与验证产出 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 用户后续明确执行；只读可先，写入需对应窗 | 核树/HEAD/D门/889 r2真实N阶段及888 H状态；按§5.1列N/S/H具体符号、consumer/源锁与接受/回交；冻结实际输入/拒绝闭包、预算和V-01..14映射；只读基线不冒充已释放 | AC-01/04/06 | [ ] |
-| T-02 | work | T-01；N及所需S/H helper符号释放 | 冻结物理ABI/record复制与隐藏结果、typed文件输入/patch编码、帧状态机/来源绑定、预算/采样口径；真PE跨对象identity+constant return、六混参各位返回、最小record往返、W05、value70/trap对照、晚失败/挂起/超量I/O；不通过回本步，不缩W支持 | AC-01/02/05 | [ ] |
-| T-03 | work | T-02；N独占，改共享闭包时需对应S | emit/lower/layout/symbols/fingerprint/config的typed独立准入、调用/record及精确类型/const指纹，按请求传ABI与符号隔离；V-02/03/04/09/11命名验证，旧域/889兼容及拒绝保留 | AC-01/02/04/06 | [ ] |
-| T-04 | work | T-03；N及必要S/H helper同时释放 | typed wrapper/runtime/runner、trap失败帧、COFF与wrapper恢复/required-data、typed居民unit更新与真实生产点/身份计量、候选原子回滚/close；V-05..08/11/12/14定向，不能套scalar session全量carry | AC-02/04/05 | [ ] |
-| T-05 | work | T-04；H及必要N/S同时释放、正式采样择窗 | 文件化recipe/SDK/父侧独立oracle/report stale与decoder/worker镜像；W五行及V-01..14全验收、当时实际模块发现/原子义务与源锁接纳、四状态各20样本/资源及敏感性反控；SD-01..06候选与证据摘要、提交实现，不擅加888批量白名单 | AC-01..06 | [ ] |
+| T-01 | work | 用户后续明确执行；只读可先，写入需对应窗 | 核树/HEAD/D门/889 r2真实N阶段及888 H状态；按§5.1列N/S/H具体符号、consumer/源锁与接受/回交；冻结实际输入/拒绝闭包、预算和V-01..14映射；只读基线不冒充已释放 | AC-01/04/06 | [✅ 已完成] |
+| T-02 | work | T-01；N及所需S/H helper符号释放 | 冻结物理ABI/record复制与隐藏结果、typed文件输入/patch编码、帧状态机/来源绑定、预算/采样口径；真PE跨对象identity+constant return、六混参各位返回、最小record往返、W05、value70/trap对照、晚失败/挂起/超量I/O；不通过回本步，不缩W支持 | AC-01/02/05 | [✅ 已完成] |
+| T-03 | work | T-02；N独占，改共享闭包时需对应S | emit/lower/layout/symbols/fingerprint/config的typed独立准入、调用/record及精确类型/const指纹，按请求传ABI与符号隔离；V-02/03/04/09/11命名验证，旧域/889兼容及拒绝保留 | AC-01/02/04/06 | [✅ 已完成] |
+| T-04 | work | T-03；N及必要S/H helper同时释放 | typed wrapper/runtime/runner、trap失败帧、COFF与wrapper恢复/required-data、typed居民unit更新与真实生产点/身份计量、候选原子回滚/close；V-05..08/11/12/14定向，不能套scalar session全量carry | AC-02/04/05 | [✅ 已完成] |
+| T-05 | work | T-04；H及必要N/S同时释放、正式采样择窗 | 文件化recipe/SDK/父侧独立oracle/report stale与decoder/worker镜像；W五行及V-01..14全验收、当时实际模块发现/原子义务与源锁接纳、四状态各20样本/资源及敏感性反控；SD-01..06候选与证据摘要、提交实现，不擅加888批量白名单 | AC-01..06 | [✅ 已完成] |
 | T-06 | review | T-01..05完成、冻结commit | 独立final review，修复回同树work并复核受影响证据；不把work自检当final、不跑merge整档 | AC-07 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交required gates与batch到期判定；代码改变则回受影响review/新freeze门禁 | AC-08 | [ ] |
 | T-08 | merge | T-07 | 实际合入、SD沉淀/索引/ledger与逐行M1来源/限制读回；不改旧expected/分母 | AC-09 | [ ] |
@@ -225,6 +225,61 @@ typed模式的结果是互斥value/trap/resource/error判别：value70与i32除�
 用户授权本轮直接修订遗漏，保持drafting/0-of-10，不触889/888合同及实施树。静态核到wide类型/常量指纹占位会碰撞、逻辑符号不含ABI/签名、scalar增量会话及wrapper每次重建的实际接缝；原r1“独立ABI/精确增量”概述未把这些具体工作列全。已补物理ABI、record复制/结果暂存、结果来源/互斥失败/晚失败、typed指纹/居民wrapper、暖生产与冷准入分账，以及889 r2/888真实符号和模块源锁交接；T-01..05与AC-01..06/09同步，新增V-11..14/SD-06。r1静态预检仅留历史，不作r2验收证据，详见[复核清单](reports/ace-891-plan-review-2026-10-30.md)。没有执行任何计划测试或实现probe。
 
 stage: new | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass（规划修订静态预检，不是实施review pass） | next: 用户后续指定实施后T-01；T-02等889稳定N及必要S/H释放，T-05等公共H及采样窗 | changed: AC-01..06/09, T-01..05, V-01..14, SD-06 | pending: work全部、final review、merge门均未执行。
+
+
+stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 7dd44182a | dependency_revisions: 889/888/894已归档(窗口释放),ace-workspace@worktree,auto-web sibling@master c48924f33 | task_ids: T-01..T-05 | evidence: 见下 | blockers: 无 | next_responsible_role: review (final)
+
+### 2026-10-31 work 交付记录（T-01..T-05）
+
+- **T-01 基线**：master=b55889dff 开树（组 D:/autostack/.wt/lang-891，含
+  auto-down/auto-web 兄弟）。窗口释放核验：889/888/894 均已 archived 10/10
+  → N/S/H 写面无在途 owner。路径迁移适配：`experimental/ac-mir-native` →
+  `experimental/ace/crates/native`（包 ace-native），probe=`crates/av`，
+  contract=`crates/auto-test-case`，父侧=`crates/auto-lang-core`。S 共享面
+  窗口（§5.1 登记）：`ace-core::link::run_deadlined_typed`（新增、纯增量、
+  消费者仅 typed runner；既有执行器符号零修改）；`ace_av::cache::split_units`
+  只读复用；888 的 H 合同四点（contract/dispatcher/stale/groups）均已释放。
+- **T-02 ABI/transport 冻结**：`msvc-x64/priv-typed-data-v1`；帧协议
+  `mn891.typed.frames/v1`（请求 32B 头+对齐 payload+fnv1a64，响应恰 44B，
+  nonce/签名 id/校验绑定，value/trap/resource/error 互斥，trap 原因 1..6，
+  无尾随字节）；typed-entry-runtime 为 no_std/kernel32-only 指针纪律静态库
+  （一次 slice-index 会拖入 panicking core CGU——已实测并消除）。真 PE
+  probe：七标量 const-return 逐位、identity 高位区分、六混参逐一选择
+  （跨寄存器/栈边界）、跨对象调用、纯 record 宽字段往返、value70 vs
+  除零 trap 帧互斥，全绿（typed_entry_tier）。
+- **T-03 准入/指纹**：typed 准入闭包（六标量+纯值宽 record；Str/borrow/
+  owned/collections/closures/Dyn 具名拒绝，宽算术拒绝）；`ac9.` 符号域与
+  旧域隔离+import 闭包 link 前逐签名校验；fingerprint 宽类型按逻辑标签、
+  宽常量按精确位型（同 bits 不同 kind/NaN payload/零符号不碰撞，死表项
+  不入键）；layout 宽字段 8/8、4/4；lower 增 LowerMode::Typed（legacy
+  行为不变——128 项 conformance 全绿证实）。
+- **T-04 缓存/恢复/居民会话**：typed CoffMeta（abi 轴隔离+恢复重准入含
+  typed 符号重算）；wrapper 居民缓存（签名身份键，参数/nonce 不入键；
+  信封+长度+blake3+结构 COFF 重校验）；TypedSession 暖编辑（只重备受影响
+  单元、whole_fallback 恒 0、A→B→A 历史对象复用、原子多单元签名变更、
+  冷重启 emit 0 仍真跑）；fresh/hit/param-only 生产计数（typed_entry_tier
+  + typed_entry_incremental_tier 共 15 测试绿）。
+- **T-05 正式面**：recipe `ac/mir-native-typed-v1` 四点同步（contract/
+  dispatcher/worker/stale）；`.mnf`（mn-typed-fixture/1，typed-fixture
+  语法）文件化 fixture；expect.typed 父侧独立 oracle（canonical hex 与
+  AV 同源规则）；suite typed-native-891 **12/12 PASS**（W01–W05 位型行、
+  value70、除零 trap、identity、六混参选择、record 字段、跨对象调用、
+  f32 分支 subnormal）；binding.tsv W01–W05 ac 列 → `ok:P891-typed`；
+  SDK 对照绿 12 行+错 bits/错 kind 红控各命中具名 mismatch 轴；V-10
+  四状态×20 样本 P90 实测 fresh 328/hit 424/restart 433/edit 182ms
+  （门 2000ms），结构门随行；V-11 指纹隔离（kind/位型/callee 签名/ac9
+  域）、V-14 具名预算（64KiB 参数区分配前拒）与循环 record 具名拒绝；
+  scripts/verify-native-typed-891.ps1（abi/transport/incremental/
+  performance/compat/sdk/acceptance 七档）；固定组 case-ace-m1-typed-
+  native-891；SD-01 新增 docs/specs/auto-mir/native-typed-entry.md，
+  SD-02..06 增量已落工作树。
+- **验证汇总**：typed_entry_tier 12 绿、typed_entry_incremental_tier 3 绿、
+  typed suite 12/12 PASS、SDK 2 绿（含红控）、legacy conformance 128 绿
+  （V-09 兼容）、889 suite 40/40 绿、auto-test-case 79 绿；ace-core/
+  ace-native/auto-test-case/auto-lang-core 编译零新增警告，rustfmt 已过。
+  统一回归门（merge 冻结档）留 merge owner（AC-08）。
+- 分支提交：02b8f0da4（ABI/transport/probe tier）→ 9a3a96c9e（居民会话）
+  → 98c7c0cf7（recipe/suite/binding/specs）→ 7dd44182a（fmt 收口）。
 
 ## 10. 待澄清事项
 
