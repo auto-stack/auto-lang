@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from module_catalog import ROOT,load
+from governance_io import ROOT,load
 
 
 def discover_inputs(output,language):

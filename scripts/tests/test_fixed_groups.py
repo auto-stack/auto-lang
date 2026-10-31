@@ -193,7 +193,6 @@ class FixedGroups(unittest.TestCase):
             self.assertEqual(value['test-groups']['fixed-http']['max-threads'], 1)
             self.assertTrue(any(row.get('test-group') == 'fixed-http' and 'http' in row['filter']
                                 for row in value['profile']['default']['overrides']))
-        self.assertEqual(self.groups['legacy-th']['args'], ['-p', 'auto-lang', '--lib', '--features', 'test-http-e2e'])
 
     def test_ace_set_is_explicit_and_separate_from_daily(self):
         selected = fixed.select(['ace'], self.value, self.groups)
@@ -316,13 +315,9 @@ class FixedGroups(unittest.TestCase):
         with self.assertRaises(ValueError):
             fixed.terminal_results(raw(dict(excluded, event='ok')), expected, {'p::p$filtered'})
 
-    def test_legacy_trans_and_book_keep_the_entire_original_native_configuration(self):
-        for name, feature in [('legacy-tt', 'test-trans'), ('legacy-tb', 'test-book')]:
-            group = self.groups[name]
-            self.assertEqual(group['expression'], 'all()')
-            self.assertIn(feature, ','.join(group['args']))
-            self.assertTrue(group['respect_default_filter'])
-            self.assertNotIn('--ignore-default-filter', fixed.nextest_args(fixed.invocations([group])[0]))
+    def test_legacy_compat_groups_are_retired(self):
+        # PLAN-898: tm/tier compat groups and aliases are deleted entirely.
+        self.assertFalse({'legacy-tv', 'legacy-tt', 'legacy-tb', 'legacy-th'} & set(self.groups))
 
     def test_invalid_navigation_cannot_inject_a_filter(self):
         with self.assertRaises(ValueError):

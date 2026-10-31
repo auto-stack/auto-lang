@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from module_catalog import ROOT,load,source_identity,write
+from governance_io import ROOT,load,source_identity,write
 from native_meter import measure
 
 PHASES={'prepare_ms','transport_ms','admission_compare_receipt_ms','cleanup_ms'}

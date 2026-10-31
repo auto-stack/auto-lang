@@ -108,7 +108,7 @@ class PilotCLI(unittest.TestCase):
         import sys,copy
         sys.path.insert(0,str(ROOT/'scripts/test-governance'))
         from measure_pilot import validate_report
-        from module_catalog import load
+        from governance_io import load
         from native_meter import measure
         contract=load(ROOT/'scripts/test-governance/measurement-contract.json')
         cohort=next(c for c in contract['cohorts'] if c['id']=='a-d3')
