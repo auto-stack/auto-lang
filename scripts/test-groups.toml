@@ -10,7 +10,10 @@ name = "daily"
 title = "原日常范围（无参数）"
 runner = "nextest"
 workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--test", "schema_drift", "--test", "docs_gen", "--test", "component_registry_test", "--features", "auto-lang/test-cases"]
+# PLAN-900：schema_drift/docs_gen/component_registry_test 三集成目标随
+# UI 域迁 auto-ui-runtime/tests（其断言面=auto-ui 代码 + auto-lang docs
+# 语料跨仓读取）；daily 收敛回 --lib 面。
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases"]
 expression = "all()"
 tools = []
 domain = "legacy"
@@ -33,7 +36,7 @@ title = "解析及语法集成"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^parser::/) or test(/^ast_parse_ext::/) or test(/^tests::(plan_088_parser_tests|test_parser_arrow|test_generic_parse|plan442_parser_regress_tests|plan634_block_tail_semi_tests|plan789_lex_extraction)::/)"
+expression = "test(/^parser::/) or test(/^ast_parse_ext::/) or test(/^tests::(plan_088_parser_tests|test_parser_arrow|test_generic_parse|plan442_parser_regress_tests|plan789_lex_extraction)::/)"
 tools = []
 domain = "legacy"
 all = false
@@ -66,7 +69,7 @@ title = "VM完整行为组"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^vm::/) or test(/^tests::(vm_[A-Za-z_0-9]*|list_tests|string_tests|mem_tests|memory_tests|actor_tests|actor_state_tests|generator_tests|storage_tests|storage_strategy_tests|stdlib_tests|trait_vm_tests)::/) or test(/^tests::(actor_state_tests|actor_tests|dstr_tests|generator_tests|list_growth_tests|list_tests|listdata_heap_object_tests|may_tests|mem_tests|memory_quick_test|memory_tests|native_css_tests|plan024_named_view_tests|plan046_obj_natives_tests|plan348_concurrency_tests|plan367_viewfn_tests|plan593_theme_registry_tests|plan707_cancel_tests|plan707_client_tests|plan707_wait_tests|plan711_cpu_slice_tests|plan711_init_demand_tests|string_tests|trait_vm_tests|vm_functions_tests|vm_json_float_read_tests|vm_tests|vm_types_tests)::/)"
+expression = "test(/^vm::/) or test(/^tests::(vm_[A-Za-z_0-9]*|list_tests|string_tests|mem_tests|memory_tests|actor_tests|actor_state_tests|generator_tests|storage_tests|storage_strategy_tests|stdlib_tests|trait_vm_tests)::/) or test(/^tests::(actor_state_tests|actor_tests|dstr_tests|generator_tests|list_growth_tests|list_tests|listdata_heap_object_tests|may_tests|mem_tests|memory_quick_test|memory_tests|plan046_obj_natives_tests|plan348_concurrency_tests|plan707_cancel_tests|plan707_client_tests|plan707_wait_tests|string_tests|trait_vm_tests|vm_functions_tests|vm_tests|vm_types_tests)::/)"
 tools = []
 domain = "legacy"
 all = false
@@ -132,7 +135,7 @@ title = "AutoDown语法"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-cases,auto-lang/test-trans,auto-lang/test-book,auto-lang/test-http-e2e", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^autodown::/) or test(/^tests::(autodown_tests|autodown_codegen_debts_tests|auto_down_vm_server_probe_tests)::/)"
+expression = "test(/^autodown::/) or test(/^tests::(autodown_tests|auto_down_vm_server_probe_tests)::/)"
 tools = []
 domain = "legacy"
 all = false
@@ -440,61 +443,6 @@ title = "Cargo包 auto-bindgen"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-bindgen", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
-[[group]]
-name = "auto-cosmic-ports"
-title = "Cargo包 auto-cosmic-ports"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-cosmic-ports", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
-[[group]]
-name = "auto-cosmic-demo"
-title = "Cargo包 auto-cosmic-demo"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-cosmic-demo", "--tests"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
-[[group]]
-name = "auto-cosmic-host-libcosmic"
-title = "Cargo包 auto-cosmic-host-libcosmic"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-cosmic-host-libcosmic", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
-[[group]]
-name = "auto-cosmic-ports-linux"
-title = "Cargo包 auto-cosmic-ports-linux"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-cosmic-ports-linux", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
-[[group]]
-name = "auto-cosmic-host-smithay"
-title = "Cargo包 auto-cosmic-host-smithay"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-cosmic-host-smithay", "--tests", "--lib"]
 expression = "all()"
 tools = []
 domain = "legacy"

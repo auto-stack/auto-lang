@@ -62,7 +62,7 @@ members = [
     # runtime autoterm_core.dll engine service + 34-method terminal capability
     # port); auto-lang keeps the VM codec, UI view/input adapter and assembly.
     "crates/auto-terminal-core",
-    "crates/auto-lsp",
+    # PLAN-900：auto-lsp 迁 auto-ui 仓（crates/auto-lsp）。
     "crates/auto-val",
     "crates/auto-vm",
     # Plan 330: auto-shell + ash-core moved to separate repo (../auto-shell)
@@ -76,16 +76,8 @@ members = [
     "crates/auto-playground",
     # Plan 216: C FFI Bindgen
     "crates/auto-bindgen",
-    # Plan 365 W2–W4: COSMIC replication — ports, demo, libcosmic host, Linux adapters.
-    # W3/W4 use cfg(target_os) so they compile on all platforms (Windows falls
-    # back to mock/headless stubs; Linux compiles real zbus/libcosmic code).
-    "crates/auto-cosmic/ports",
-    "crates/auto-cosmic/demo",
-    "crates/auto-cosmic/host-libcosmic",
-    "crates/auto-cosmic/ports-linux",
-    # Plan 509 route B: Smithay compositor host (Linux-gated smithay dep;
-    # non-Linux compiles a cfg stub — Windows dev flow unaffected).
-    "crates/auto-cosmic/host-smithay",
+    # PLAN-900：auto-cosmic 整族（ports/demo/host-libcosmic/ports-linux/
+    # host-smithay）迁 auto-ui 仓 crates/auto-cosmic/*。
     # PLAN-815 T-03: I-TOOL light tool protocol (version/capability/budget/
     # error/framing over stdio; pure data — reuses the one-source
     # auto-project-model request + wire codec, no AST/VM/renderer/Man).
@@ -309,8 +301,6 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
-# PLAN-043 走查（2026-09-25）：iced_widget 本地补丁——container.rs 布局
-# 空窗容错（P041-D1 竞态族 unwrap 崩桌面的宿主侧根治），见 crates/patches/README.md。
-# 升级 iced 版本时需重审本补丁。
-[patch.crates-io]
-iced_widget = { path = "crates/patches/iced_widget" }
+# PLAN-900：iced_widget 本地补丁随 UI 栈迁 auto-ui——本仓工作区零 iced
+# 边，[patch] 段退役；补丁 crate（crates/patches/iced_widget）保留，
+# auto-man 以 path 直连消费，auto-ui 侧由其自身 [patch] 接管（计划 D）。

@@ -19,7 +19,11 @@ keywords = ["automation", "language", "scripting"]
 # （Design 32）落地后按新 crate 边界重新分档。
 # PLAN-841：default 不再隐式装配 UI 文法；UI 消费方通过领域端口显式
 # 组合 auto-ui-dialect，Core Parser 和 UI 文法的所有权保持分离。
-default = ["with-file-history", "ui-iced"]
+# PLAN-900（Design 52 §2.1）：UI 栈整体迁 auto-ui 仓——本 crate 零 auto-ui
+# 依赖，default = []；ui/ui-iced 等 16 个 UI 转发 feature 全删（auto-ui 侧
+# 同名 feature 才是真身）。with-file-history/use-evaluator 等死 feature 的
+# 拍平归 Design 52 计划 B。
+default = []
 # Plan 289: Feature-gated test groups for faster daily development
 test-trans = []
 # Plan 768: AutoDown TestCase protocol adapters + auto-case bin (empty
@@ -55,64 +59,22 @@ use-evaluator = []
 # Plan 152: SSE parsing + advanced streaming support (futures now unconditional per Plan 341)
 streaming-http = ["tokio-util", "auto-lang-core/streaming-http"]
 
+# Plan 413: code editor（PLAN-900 后单 owner——SDK a2r diff 双轨门
+# auto-lang-core/code-editor；runtime editor 注册表/provider 臂归
+# auto-ui-runtime/code-editor，本 crate 只保留 SDK 转发）。
+code-editor = ["auto-lang-core/code-editor"]
+
 # Plan 214: Python FFI (embed CPython via PyO3)
 python = ["pyo3", "auto-lang-core/python"]
 
-# Plan 015: UI Features (AutoUI Core)
-# PLAN-814 T-04：ui/ 运行域整体迁 auto-ui-runtime——本 crate 同名 feature
-# 全部转为 auto-ui-runtime 转发器（旧 feature 语义/组合面不变；实装与
-# optional 依赖随迁）。ui 同时转发 auto-ui-compiler/ui（T-03 迁移代码的
-# cfg 门——pac.at ui_config 装载实臂/生成器测试门）。
-ui = ["auto-ui-compiler/ui", "auto-ui-runtime/ui"]
-# PLAN-699: ui-interpreter 的 ureq 依赖随迁 runtime（MCP streamable HTTP
-# 客户端臂）。
-ui-interpreter = ["ui", "auto-ui-runtime/ui-interpreter"]
-ui-headless = ["ui", "ui-interpreter", "auto-ui-compiler/ui-headless", "auto-ui-runtime/ui-headless"]
-# ui-gpui（Zed GPUI 后端）2026-09-22 用户裁定移除——全仓零启用者，休眠 feature 与
-# 模块一并删除（PLAN-691）；未来 auto-ui 拆分后如需要再独立加。
-# Shared asynchronous media loading, decoding, rendition, and cache runtime.
-# PLAN-811: pipeline 在 auto-media-core；PLAN-814 T-04 起 photo_service 等
-# 消费面随 ui/ 迁 auto-ui-runtime，本 feature 转发。
-image-pipeline = ["auto-ui-runtime/image-pipeline"]
-ui-iced = [
-    "ui",
-    "ui-interpreter",
-    "image-pipeline",
-    "code-editor",
-    "ui-clipboard",
-    "ui-dialog",
-    "native-dock",
-    "native-clipboard",
-    "auto-ui-runtime/ui-iced",
-]
-# Plan 413: code editor widget（cosmic-text/syntect 依赖随迁 runtime）。
-# 双 owner 保持：SDK a2r diff 双轨（auto-lang-core/code-editor）+ runtime
-# editor 注册表/provider（auto-ui-runtime/code-editor）。
-code-editor = ["ui", "auto-lang-core/code-editor", "auto-ui-runtime/code-editor"]
-# PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime（依赖随迁 runtime）。
-highlight-treesitter = ["code-editor", "auto-ui-runtime/highlight-treesitter"]
-# Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
-ui-clipboard = ["auto-ui-runtime/ui-clipboard"]
-ui-dialog = ["auto-ui-runtime/ui-dialog"]
-# Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test)。
-iced-layout-tests = ["ui-iced", "auto-ui-runtime/iced-layout-tests"]
-# PLAN-617 T-16..T-19: mpv 播放引擎/帧上屏/spike 门（依赖随迁 runtime）。
-mpv-native = ["auto-ui-runtime/mpv-native"]
-mpv-gpu = ["mpv-native", "auto-ui-runtime/mpv-gpu"]
-mpv-widget = ["mpv-gpu", "auto-ui-runtime/mpv-widget"]
-mpv-spike = ["mpv-gpu", "auto-ui-runtime/mpv-spike"]
-# Plan 019 批次七: autodown-core crate 消费（跨仓 path 依赖随迁 runtime；
-# VM natives dispatch 槽/编辑壳实装在 auto-ui-runtime::ui）。
-autodown = ["ui-iced", "auto-ui-runtime/autodown"]
-
-# Plan 473/485/488: 原生 dock/剪贴板/OLE 拖放（windows/windows-core/image
-# optional 依赖随迁 runtime，同名转发）。
-native-dock = ["auto-ui-runtime/native-dock"]
-native-clipboard = ["auto-ui-runtime/native-clipboard"]
-native-dnd = ["auto-ui-runtime/native-dnd"]
-# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控；隐含
-# ui-iced + native-dock，`cargo t` 日常档不含。
-test-native-dock = ["ui-iced", "native-dock", "auto-ui-runtime/test-native-dock"]
+# PLAN-900：UI feature 族（ui/ui-iced/ui-interpreter/ui-headless/
+# image-pipeline/highlight-treesitter/ui-clipboard/ui-dialog/
+# iced-layout-tests/native-dock/native-clipboard/native-dnd/autodown/
+# test-native-dock/mpv-*）整体迁 auto-ui 仓——真身在 auto-ui-runtime。
+# PLAN-900：UI feature 族（ui/ui-iced/ui-interpreter/ui-headless/
+# image-pipeline/highlight-treesitter/ui-clipboard/ui-dialog/
+# iced-layout-tests/native-dock/native-clipboard/native-dnd/autodown/
+# test-native-dock/mpv-*）整体迁 auto-ui 仓——真身在 auto-ui-runtime。
 
 [dependencies]
 auto-web = { path="../../../auto-web/crates/auto-web", version="=0.1.0" }
@@ -120,8 +82,6 @@ auto-web = { path="../../../auto-web/crates/auto-web", version="=0.1.0" }
 # 三个新包（机制切片：use_scanner 已迁 auto-lang-core，旧路径经 lib.rs
 # 再导出保类型身份；UI compiler/runtime 迁移面见 T-03/T-04）。
 auto-lang-core = { path = "../auto-lang-core" }
-auto-ui-compiler = { path = "../../../auto-ui/crates/auto-ui-compiler" }
-auto-ui-runtime = { path = "../../../auto-ui/crates/auto-ui-runtime", default-features = false }
 # Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
 # （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
 # PLAN-681：升为正式依赖——迷你库 a2r_std::fs 的 tree/basename re-export
@@ -141,10 +101,6 @@ auto-ast = { path = "../auto-ast" }
 # ExternalDialect + 对象安全 ParseContext）；session/DialectPriority 为薄
 # re-export 门面，ParserBridge 实现端口并经 adapter 进同一三段派发表。
 auto-parser-api = { path = "../auto-parser-api" }
-# PLAN-806: UI msg/model 声明文法单一份实现（完整算法自本 crate Parser
-# 迁出）；pub parse_msg_decl/parse_model_block 与结构路径 inner 一律薄
-# 委托此处，经 ParserBridge 的 ParseContext 端口驱动，无第二份算法。
-auto-ui-dialect = { path = "../../../auto-ui/crates/auto-ui-dialect" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }
@@ -269,12 +225,9 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 # (跨进程命名互斥,串行化剪贴板集成测试防 nextest 多进程并行互清)。
 [target.'cfg(windows)'.dependencies]
 
-
-
 [dev-dependencies]
 auto-tool-execution = { path = "../auto-tool-execution" }
 # 示例直接使用 iced::daemon/application；版本与 auto-ui-runtime 锁定同源。
-iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"] }
 
 # PLAN-619 §8.5 回归锚用：把 lucide 文档栅格化后断言 ink 充满度=几何值。
 # 两者已在依赖图中（经 iced_wgpu），此处只作测试期直接依赖。
@@ -298,48 +251,10 @@ harness = false
 # Integration tests
 # ============================================================================
 
-[[test]]
-name = "mpv_engine"
-path = "tests/mpv_engine.rs"
-# PLAN-617 T-16: 原生播放引擎的降级与生命周期回归。**必须**是集成测试目标而
-# 不是 lib 单测：该特性挂在 lib 的 `--test` 目标上会触发 rustc ICE（见上方
-# mpv_spike example 的注释 / 债务 P617-D1）。默认档与 CI 不编译（AC-20）。
-required-features = ["mpv-native"]
-
-[[test]]
-name = "mpv_channel"
-path = "tests/mpv_channel.rs"
-# PLAN-617 T-17: 帧上屏通道的实测回归（帧率 / 上屏代价 / 像素级无闪烁 / 背压丢帧）。
-# 需要 `mpv-gpu`（通道要 wgpu）；同为集成目标以避开 lib `--test` 的 rustc ICE。
-# 默认档与 CI 不编译（AC-20）。
-required-features = ["mpv-gpu"]
-
-[[test]]
-name = "mpv_contract"
-path = "tests/mpv_contract.rs"
-# PLAN-617 T-18: 受控媒体契约（§2.3）在 mpv 侧的实测回归——起播/seek/音量/上行事件。
-# 只需 `mpv-native`（不碰 GPU）。默认档与 CI 不编译（AC-20）。
-required-features = ["mpv-native"]
-
 # ============================================================================
-# Examples
+# Examples（PLAN-900：28 个 UI examples 迁 auto-ui-runtime/examples；仅剩
+# a2r_step*/run_vm_test 4 个非 UI 项，仍走 build-examples 门）
 # ============================================================================
-
-[[example]]
-name = "mpv_spike"
-path = "examples/mpv_spike.rs"
-# PLAN-617 T-15 门控 spike：需本机 libmpv-2.dll + GPU + 视频样本，故默认档与
-# CI 一律不编译（`required-features`）。另注：该特性挂在 **lib 的 `--test` 目标**
-# 上会撞 rustc 1.98.0 的 ICE（`collect_and_partition_mono_items`，查询栈指向
-# ui/mcp_server.rs:1718，与 spike 代码无关）；`--lib` 与 example 目标正常。
-required-features = ["mpv-spike"]
-
-[[example]]
-name = "native_pixels_counter"
-path = "examples/native_pixels_counter.rs"
-# Plan 020 T-03：native 像素臂 e2e 子进程（winit 主线程约束——窗口臂的
-# 载体必须是生产形态二进制；测试内 build + spawn）。
-required-features = ["ui-iced"]
 
 [[example]]
 name = "run_vm_test"
@@ -361,110 +276,3 @@ name = "a2r_step04"
 path = "examples/a2r_step04.rs"
 required-features = ["build-examples"]
 
-[[example]]
-name = "ui_todo"
-path = "examples/ui_todo.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_accordion"
-path = "examples/ui_accordion.rs"
-required-features = ["build-examples"]
-
-# Plan 459 T4: dual-window demo (two AppSessions, two OS windows, iced::daemon).
-[[example]]
-name = "ui_dual_app"
-path = "examples/ui_dual_app.rs"
-required-features = ["ui-iced"]
-
-[[example]]
-name = "ui_container"
-path = "examples/ui_container.rs"
-required-features = ["build-examples"]
-
-# p023_probe 依赖 iced_test（iced-layout-tests 门控）——原无 [[example]] 声明，
-# 裸 cargo check --examples 恒红（master 预存 14×E0433，PLAN-691 勘定补门）。
-[[example]]
-name = "p023_probe"
-path = "examples/p023_probe.rs"
-required-features = ["iced-layout-tests"]
-
-[[example]]
-name = "ui_counter"
-path = "examples/ui_counter.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_gallery"
-path = "examples/ui_gallery.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_hello_loader"
-path = "examples/ui_hello_loader.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_input"
-path = "examples/ui_input.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_layout"
-path = "examples/ui_layout.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_list"
-path = "examples/ui_list.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_navigation_rail"
-path = "examples/ui_navigation_rail.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_progress"
-path = "examples/ui_progress.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_radio"
-path = "examples/ui_radio.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_scroll"
-path = "examples/ui_scroll.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_select"
-path = "examples/ui_select.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_sidebar"
-path = "examples/ui_sidebar.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_slider"
-path = "examples/ui_slider.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_table"
-path = "examples/ui_table.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_tabs"
-path = "examples/ui_tabs.rs"
-required-features = ["build-examples"]
-
-[[example]]
-name = "ui_todos"
-path = "examples/ui_todos.rs"
-required-features = ["build-examples"]

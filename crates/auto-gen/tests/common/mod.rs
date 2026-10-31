@@ -16,8 +16,8 @@ pub fn templates_dir() -> PathBuf {
 /// Standard in-memory data atom used by the frozen cases. Mirrors the shape
 /// auto-man passes to the legacy API (a to_atom() node) and exercises both
 /// scalar interpolation and `$ for` code lines over an array of nodes.
-pub fn sample_atom() -> auto_lang::atom::Atom {
-    use auto_lang::atom::Atom;
+pub fn sample_atom() -> auto_lang_core::atom::Atom {
+    use auto_lang_core::atom::Atom;
     use auto_val::{Node, Value};
 
     let mut alpha = Node::new("item");

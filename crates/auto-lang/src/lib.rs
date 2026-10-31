@@ -110,7 +110,6 @@ pub use auto_lang_core::host; // Plan 011 (MS3-B): ShellHost bridge for system()
 pub use auto_lang_core::mcp; // Plan 265: MCP server for AI agent interaction
 pub use auto_lang_core::module_cache;
 pub use auto_lang_core::stdlib_assembly;
-pub use auto_ui_runtime::back_proxy;
 pub use auto_web::http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub use auto_web::http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
 pub use auto_web::http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
@@ -123,22 +122,9 @@ use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 #[cfg(feature = "test-cases")]
 pub use auto_lang_core::test_cases;
-// Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
-// PLAN-814 T-03 Batch 2：UI 分析/生成域迁 auto-ui-compiler；旧路径经再导出保持。
-pub use auto_ui_compiler::aura;
-// PLAN-841: use-module resolution moved with the UI-owned parse pipeline
-// (auto-ui-compiler::ui_ast); old facade paths stay valid for consumers.
-pub use auto_ui_compiler::ui_ast::{
-    find_store_decl_files, resolve_use_module, UseModuleResolution,
-};
-// PLAN-814 R3-02：生成器源指纹公开面（auto-man 管线在 UICache::load 前
-// 注入——Plan 698 SD-01 失效合同时序）。
-pub use auto_ui_compiler::generator_fingerprint;
-// Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
-pub use auto_ui_compiler::a2ui;
-// Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
-pub use auto_ui_compiler::design_tokens;
-pub use auto_ui_compiler::ui_gen;
+// PLAN-900：aura/ui_ast/a2ui/design_tokens/ui_gen/generator_fingerprint
+// 再导出随去 auto-ui 依赖退役——单源在 auto-ui-compiler（crate 根路径
+// auto_ui_compiler::* 自 PLAN-814 起即正式公开面）。
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
 pub use auto_lang_core::os_paths;
@@ -147,8 +133,7 @@ pub use auto_lang_core::os_paths;
 pub use auto_lang_core::state_file;
 // Plan 152: Server-Sent Events (SSE) 解析
 pub use auto_lang_core::sse;
-// Plan 114: Hybrid Routing (Convention + Config)
-pub use auto_ui_compiler::route;
+// PLAN-900：route 再导出随去 auto-ui 依赖退役（单源 auto-ui-compiler::route）。
 // Plan 081 Phase 2: Execution mode selection (autovm, evaluator, c, rust)
 pub use auto_lang_core::mode;
 // Plan 081 Phase 4: Multi-mode compilation pipeline
@@ -265,44 +250,23 @@ use crate::error::AutoResult;
 /// only（无 ui）构建恢复迁移前高层对话框路径**（不把 OS 实现藏在 ui
 /// renderer 门后）；dnd adapter 走 windows+native-dnd 双门控（模块本身
 /// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-fn install_ui_host_capabilities() {
-    // PLAN-841 T-01/T-03：UI 文法函数表装配退役——文法不再进程级注入，
-    // UI 解析一律经 Parser::parse_domain(&UiDialect) 显式端口（auto-ui
-    // 侧 parse_ui 单源）。本安装器只保留宿主能力装配。
-    // PLAN-814 R3-01：本安装器同时注册进 SDK 钩子——SDK 侧旧公开入口
-    // （create_vm_from_source/abt、eval_config、execute 族等）经
-    // auto_lang_core::install_ui_host_capabilities() 回调本包真实装配
-    // （PLAN-779 装配合同保持）。
-    // PLAN-814 T-04：provider 实装随 ui/ 迁 auto-ui-runtime（装配扇入
-    // 单点=auto_ui_runtime::install_ui_host_capabilities）；本包装保留
-    // 钩子注册，钩子回调臂与旧行为一致（provider 实装）。
-    auto_lang_core::set_ui_host_install_hook(plan814_sdk_hook_install);
-    auto_ui_runtime::install_ui_host_capabilities();
-}
 
 /// SDK 钩子回调臂（旧=本包安装器自注册）：provider 实装委托 runtime
 /// 单点。runtime 无 renderer 构建时其安装器为 no-op，语义与旧 no-op
 /// 安装器一致。（PLAN-841 T-03：文法重装臂随函数表退役删除。）
-fn plan814_sdk_hook_install() {
-    auto_ui_runtime::install_ui_host_capabilities();
-}
 
-#[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
-fn install_ui_host_capabilities() {
-    // PLAN-841 T-03：无 renderer 构建不再装配文法表（文法经显式领域
-    // 端口）；SDK 钩子语义与纯 SDK 形态一致（无 UI 默认实现）。
-    auto_lang_core::set_ui_host_install_hook(plan814_sdk_hook_install);
-}
 
 // PLAN-814 R3-01/R3-04：上层装配的进程期自注册（SDK 收集点
 // UiCompatInstaller——本 crate 被链接即生效；覆盖不经漏斗的直达调用：
 // 旧公开入口/native dispatch 的槽未设路径）。非 inventory 依赖添加：
 // SDK 侧已依赖，本 crate 经 re-export 面使用。
-fn plan814_ui_compat_install() {
-    install_ui_host_capabilities();
-}
-inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install));
+// PLAN-815 T-04：注释剥离单源在 SDK——根级路径保持（store-deps 两路径
+// 随 PLAN-900 去 auto-ui 依赖退役，单源 auto_ui_compiler::store_deps）。
+pub use auto_lang_core::strip_line_block_comments;
+
+// PLAN-900：UiCompatInstaller 进程期收集点随宿主能力装配迁
+// auto-ui-runtime（其 install 单点自注册 SDK 钩子——本 crate 零 auto-ui
+// 依赖后不再承担装配扇入）。
 
 // PLAN-841 T-01/T-03：UiGrammarSource inventory 收集点随文法函数表退役
 // 删除——"UI 文法恒可用"的旧默认行为由显式领域端口（parse_domain）取代；
@@ -312,7 +276,7 @@ inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install))
 // 这四个入口在 SDK 侧经钩子回调本包安装器；包装确保消费者首次直达调用
 // （未经 run 家族漏斗）也先注册钩子再进 SDK 实现。签名与旧行为逐位一致。
 
-/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+/// 兼容包装：委托 SDK 实现（PLAN-900 后装配扇入归 auto-ui-runtime install 单点）。
 pub fn create_vm_from_source(
     source: &str,
 ) -> AutoResult<(
@@ -321,11 +285,10 @@ pub fn create_vm_from_source(
     usize,
     auto_lang_core::vm::codegen::ObjectType,
 )> {
-    install_ui_host_capabilities();
     auto_lang_core::create_vm_from_source(source)
 }
 
-/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+/// 兼容包装：委托 SDK 实现（PLAN-900 后装配扇入归 auto-ui-runtime install 单点）。
 pub fn create_vm_from_abt(
     abt_text: &str,
 ) -> AutoResult<(
@@ -333,13 +296,11 @@ pub fn create_vm_from_abt(
     std::sync::Arc<std::sync::RwLock<String>>,
     usize,
 )> {
-    install_ui_host_capabilities();
     auto_lang_core::create_vm_from_abt(abt_text)
 }
 
-/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+/// 兼容包装：委托 SDK 实现（PLAN-900 后装配扇入归 auto-ui-runtime install 单点）。
 pub fn eval_config_with_vm(code: &str, args: &auto_val::Obj) -> AutoResult<auto_val::Value> {
-    install_ui_host_capabilities();
     auto_lang_core::eval_config_with_vm(code, args)
 }
 
@@ -497,15 +458,10 @@ pub fn dump_lowered(path: &str) -> AutoResult<String> {
 /// 直跑透传形态)。Args land in the process-wide `process.args()` 表 =
 /// [程序路径] + args。每次调用覆盖前值（同进程串行多次运行不残留）。
 pub fn run_file_with_args(path: &str, args: Vec<String>) -> AutoResult<String> {
-    // PLAN-816 T-05：纯语言执行单源在 SDK；本兼容包保留动态 UI 分岔
-    // （ui-iced 构建下旧行为冻结——has_ui_keywords → iced 宿主直跑）。
+    // PLAN-900：动态 UI 分岔（has_ui_keywords → iced 宿主直跑）随去
+    // auto-ui 依赖退役——UI 动态执行单源在 auto-ui 侧（auto-ui-tools
+    // run_vm 同语义复刻）；本入口退化为纯语言执行委托。
     set_script_args(args.clone());
-    #[cfg(feature = "ui-iced")]
-    if let Ok(code) = std::fs::read_to_string(path) {
-        if has_ui_keywords(&code) {
-            return run_file_dynamic_ui(&code, Some(path));
-        }
-    }
     auto_lang_core::script_entry::run_file_with_args(path, args)
 }
 
@@ -604,558 +560,11 @@ pub fn transpile_r2a_file(path: &str) -> AutoResult<String> {
 }
 
 // ============================================================================
-// Plan 096: UI Backend Generators
+// PLAN-900：UI 解析/生成管线装配（ui_build 族）整体迁 auto-ui-compiler
+// `pipeline` 模块（依赖方向反转，Design 52 §2.1）。旧 auto_lang::ui_build*
+// 公开路径随本 crate 去 auto-ui 依赖一并退役；消费方直连
+// auto_ui_compiler::pipeline（组合层）或 ui_gen::generate_component_from_file。
 // ============================================================================
-
-/// Build UI components from Auto files using AURA pipeline
-///
-/// This is the main entry point for UI scenario compilation.
-///
-/// # Arguments
-/// * `path` - Input file or directory
-/// * `scenario` - Compilation scenario (core, ui, shell)
-/// * `backend` - Backend target (vue, rust)
-/// * `output` - Optional output directory
-pub fn ui_build(
-    path: &str,
-    scenario: &str,
-    backend: &str,
-    output: Option<&str>,
-) -> AutoResult<String> {
-    use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, JetGenerator, RustGenerator, VueGenerator};
-
-    // Parse scenario
-    let session = match scenario {
-        "ui" => CompilerSession::ui().with_backend(backend),
-        "core" => CompilerSession::default(),
-        "shell" => CompilerSession::shell(),
-        _ => CompilerSession::ui().with_backend(backend),
-    };
-
-    // Read input file
-    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-
-    // PLAN-635: pre-register use-imported recipes before the parse (parser
-    // symbol-checker hook), then replay after the parse.
-    let base_dir = std::path::Path::new(path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .to_path_buf();
-    let recipe_imports =
-        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
-            .map_err(|e| e.to_string())?;
-
-    // Parse with scenario
-    let mut parser = Parser::from(code.as_str());
-    parser = parser.with_session(session.clone());
-    // PLAN-841: UI sources enter via the explicit domain port.
-    let ast = parser
-        .parse_domain(&auto_ui_dialect::UiDialect)
-        .map(auto_ui_dialect::UiCode)
-        .and_then(|ui| auto_ui_compiler::ui_ast::lower_ui(&ui).map(|lowered| lowered.ui))
-        .map_err(|e| format!("Parse/validation error: {:?}", e))?;
-
-    // Extract AURA widgets from AST
-    crate::aura::extract::clear_view_fragments();
-    for frag in ast.domain_stmts().filter_map(|s| match s {
-        auto_ui_dialect::UiStmt::ViewFragmentDecl(f) => Some(f),
-        _ => None,
-    }) {
-        crate::aura::extract::register_view_fragment(frag);
-    }
-    // PLAN-607: register and validate style recipes before extracting widget.
-    // PLAN-635: replay imported (source-tagged) + local recipes in order.
-    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
-        &recipe_imports,
-        &ast,
-    )
-    .map_err(|e| e.to_string())?;
-    let mut widgets = Vec::new();
-    for widget_decl in ast.domain_stmts().filter_map(|s| match s {
-        auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }) {
-        {
-            // Convert WidgetDecl to AuraWidget
-            let aura_widget =
-                crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() {
-        return Err("No widget or store declarations found in input file".into());
-    }
-
-    // Generate code based on backend
-    // Rust backend uses auto-ui abstract components (Iced handled by auto-ui crate)
-    // Jet backend generates Kotlin/Compose code for Android
-    let mut output_code = String::new();
-    match backend {
-        "vue" => {
-            let mut gen = VueGenerator::new();
-            for widget in &widgets {
-                let code = gen.generate(widget).map_err(|e| e.to_string())?;
-                output_code.push_str(&code);
-                output_code.push_str("\n\n");
-            }
-        }
-        "rust" => {
-            let mut gen = RustGenerator::new();
-            for widget in &widgets {
-                let code = gen.generate(widget).map_err(|e| e.to_string())?;
-                output_code.push_str(&code);
-                output_code.push_str("\n\n");
-            }
-        }
-        "jet" => {
-            let mut gen = JetGenerator::new();
-            for widget in &widgets {
-                let code = gen.generate(widget).map_err(|e| e.to_string())?;
-                output_code.push_str(&code);
-                output_code.push_str("\n\n");
-            }
-        }
-        _ => {
-            return Err(format!("Unknown backend: {}. Available: vue, rust, jet", backend).into());
-        }
-    }
-
-    // Write output if specified
-    if let Some(out_dir) = output {
-        let ext = match backend {
-            "vue" => "vue",
-            "rust" => "rs",
-            "jet" => "kt",
-            _ => "txt",
-        };
-        std::fs::create_dir_all(out_dir).ok();
-        for widget in &widgets {
-            let out_path = std::path::Path::new(out_dir).join(format!("{}.{}", widget.name, ext));
-            // Generate individual widget code
-            let widget_code = match backend {
-                "vue" => {
-                    let mut gen = VueGenerator::new();
-                    gen.generate(widget).map_err(|e| e.to_string())?
-                }
-                "rust" => {
-                    let mut gen = RustGenerator::new();
-                    gen.generate(widget).map_err(|e| e.to_string())?
-                }
-                "jet" => {
-                    let mut gen = JetGenerator::new();
-                    gen.generate(widget).map_err(|e| e.to_string())?
-                }
-                _ => output_code.clone(),
-            };
-            std::fs::write(&out_path, &widget_code)
-                .map_err(|e| format!("Failed to write output file: {}", e))?;
-        }
-    }
-
-    Ok(output_code)
-}
-
-/// Build UI components with shadcn-vue mode enabled
-///
-/// This is a convenience function for generating Vue components
-/// with shadcn-vue support enabled.
-pub fn ui_build_shadcn(path: &str, output: Option<&str>) -> AutoResult<String> {
-    use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
-
-    // Read input file
-    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-
-    // PLAN-635: pre-register use-imported recipes before the parse (parser
-    // symbol-checker hook), then replay after the parse.
-    let base_dir = std::path::Path::new(path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .to_path_buf();
-    let recipe_imports =
-        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
-            .map_err(|e| e.to_string())?;
-
-    // Parse with UI scenario
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(code.as_str());
-    parser = parser.with_session(session);
-    // PLAN-841: UI sources enter via the explicit domain port.
-    let ast = parser
-        .parse_domain(&auto_ui_dialect::UiDialect)
-        .map(auto_ui_dialect::UiCode)
-        .and_then(|ui| auto_ui_compiler::ui_ast::lower_ui(&ui).map(|lowered| lowered.ui))
-        .map_err(|e| format!("Parse/validation error: {:?}", e))?;
-
-    // Extract AURA widgets from AST
-    crate::aura::extract::clear_view_fragments();
-    for frag in ast.domain_stmts().filter_map(|s| match s {
-        auto_ui_dialect::UiStmt::ViewFragmentDecl(f) => Some(f),
-        _ => None,
-    }) {
-        crate::aura::extract::register_view_fragment(frag);
-    }
-    // PLAN-607: register and validate style recipes before extracting widget.
-    // PLAN-635: replay imported (source-tagged) + local recipes in order.
-    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
-        &recipe_imports,
-        &ast,
-    )
-    .map_err(|e| e.to_string())?;
-    let mut widgets = Vec::new();
-    for widget_decl in ast.domain_stmts().filter_map(|s| match s {
-        auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }) {
-        {
-            let aura_widget =
-                crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() {
-        return Err("No widget or store declarations found in input file".into());
-    }
-
-    // Generate code with shadcn-vue mode
-    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
-    let mut output_code = String::new();
-
-    for widget in &widgets {
-        let code = gen.generate(widget).map_err(|e| e.to_string())?;
-        output_code.push_str(&code);
-        output_code.push_str("\n\n");
-    }
-
-    // Write output if specified
-    if let Some(out_dir) = output {
-        std::fs::create_dir_all(out_dir).ok();
-        for widget in &widgets {
-            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", widget.name));
-            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
-            let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
-            std::fs::write(&out_path, &widget_code)
-                .map_err(|e| format!("Failed to write output file: {}", e))?;
-        }
-    }
-
-    Ok(output_code)
-}
-
-/// Build UI components with shadcn-vue mode enabled and return parsed widgets
-///
-/// This function is similar to `ui_build_shadcn` but also returns the parsed
-/// AuraWidget structs, allowing callers to inspect widget metadata like routes.
-///
-/// # Arguments
-/// * `path` - Input file path
-/// * `output` - Optional output directory for generated files
-///
-/// # Returns
-/// A tuple of (generated_code, widgets) on success
-///
-/// # Example
-/// ```no_run
-/// use auto_lang::ui_build_shadcn_with_widgets;
-///
-/// let (code, widgets) = ui_build_shadcn_with_widgets("app.at", None).unwrap();
-///
-/// Extract API function names from `use back.api: fn1, fn2, ...` statements in an AST
-fn extract_api_imports_from_ast(code: &crate::ast::Code) -> Vec<String> {
-    let mut api_imports = Vec::new();
-    for stmt in &code.stmts {
-        if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
-            if is_api_use_stmt(use_stmt) {
-                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-        }
-    }
-    api_imports
-}
-
-/// Check if a `use` statement targets `back.api`
-fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
-    // Check legacy paths: ["back", "api"]
-    if use_stmt.paths.len() == 2
-        && use_stmt.paths[0].as_str() == "back"
-        && use_stmt.paths[1].as_str() == "api"
-    {
-        return true;
-    }
-    // Check module_path: display == "back.api"
-    if let Some(ref mp) = use_stmt.module_path {
-        if mp.display() == "back.api" {
-            return true;
-        }
-    }
-    false
-}
-
-// PLAN-815 T-04 R1-F03: store-deps 提取族迁 auto-ui-compiler、注释剥离
-// 单源在 SDK——三个历史根级公开路径经转发保持（消费者零改动）。
-pub use auto_lang_core::strip_line_block_comments;
-pub use auto_ui_compiler::store_deps::{
-    extract_store_deps_from_file, extract_store_imports_from_ast,
-};
-
-/// // Check if any widget has routes
-/// let has_routes = widgets.iter().any(|w| w.routes.is_some());
-/// ```
-pub fn ui_build_shadcn_with_widgets(
-    path: &str,
-    output: Option<&str>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) =
-        ui_build_shadcn_with_widgets_and_stores(path, output, None, None, None)?;
-    Ok((vue_code, widgets))
-}
-
-/// Plan 043 store-codegen: same as `ui_build_shadcn_with_widgets`, but also
-/// returns the generated store composable files `(filename, code)`. Use this
-/// when compiling multiple .at files in a loop and you need to collect stores
-/// explicitly (the `STORE_EXTRA_FILES` thread-local is cleared per call).
-///
-/// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
-/// (`~Stream<T>`) are resolved from `back/api.at` so the store composable can
-/// wire type-driven SSE. Pass the project root (where `src/back/api.at` lives).
-///
-/// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
-/// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
-///
-/// `default_classes` (Plan 014): `None`/`Some(true)` = inject doc-theme
-/// default Tailwind classes (default); `Some(false)` = skip them except for
-/// structural layout primitives (row/col/grid/...).
-pub fn ui_build_shadcn_with_widgets_and_stores(
-    path: &str,
-    output: Option<&str>,
-    root_dir: Option<&str>,
-    shadcn: Option<bool>,
-    default_classes: Option<bool>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
-    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
-
-    let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
-    let opts = ComponentGenOptions {
-        stream_endpoints,
-        shadcn,
-        default_classes,
-        ..Default::default()
-    };
-    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
-    let store_composables = result.store_composables.clone();
-
-    // Plan 012 Batch A: surface codegen validation warnings on the build path
-    // (deduplicated — auto-man pre-scans each file before the real pass).
-    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
-
-    // Write output if specified (legacy behavior)
-    if let Some(out_dir) = output {
-        std::fs::create_dir_all(out_dir).ok();
-        for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
-            std::fs::write(&out_path, code)
-                .map_err(|e| format!("Failed to write output file: {}", e))?;
-        }
-        // Also write store composables
-        for (filename, code) in &result.store_composables {
-            let out_path = std::path::Path::new(out_dir).join(filename);
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            std::fs::write(&out_path, code).ok();
-        }
-    }
-
-    Ok((result.vue_code, result.widgets, store_composables))
-}
-
-/// Plan 408 P11 / KNOWN-DEBT pages 写盘：薄包装，返回完整 `GeneratedComponent`
-/// （含 `all_widget_codes`——每个 component fn / widget 一个 SFC），让调用方
-/// （auto-man `from_workspace` 的 pages 路径）能把 component fn SFC 也写盘到
-/// components/，而非只取 first widget 的 vue_code。与
-/// `ui_build_shadcn_with_widgets_and_stores` 同语义，只是不丢弃 all_widget_codes。
-pub fn ui_build_shadcn_all_widget_codes(
-    path: &str,
-    root_dir: Option<&str>,
-    shadcn: Option<bool>,
-    default_classes: Option<bool>,
-) -> AutoResult<crate::ui_gen::GeneratedComponent> {
-    ui_build_shadcn_all_widget_codes_with_bound(path, root_dir, shadcn, default_classes, None)
-}
-
-/// Plan 443: `ui_build_shadcn_all_widget_codes` + the workspace-aggregated
-/// bound-channel map (which model channels some parent actually binds).
-pub fn ui_build_shadcn_all_widget_codes_with_bound(
-    path: &str,
-    root_dir: Option<&str>,
-    shadcn: Option<bool>,
-    default_classes: Option<bool>,
-    bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
-) -> AutoResult<crate::ui_gen::GeneratedComponent> {
-    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
-    let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
-    let opts = ComponentGenOptions {
-        stream_endpoints,
-        shadcn,
-        default_classes,
-        bound_model_channels,
-        ..Default::default()
-    };
-    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
-    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
-    Ok(result)
-}
-
-/// Like `ui_build_shadcn_with_widgets`, but accepts a list of known sub-widget names
-/// to avoid naming collisions with shadcn-vue components (e.g. custom "Sidebar" widget
-/// should not be mapped to shadcn's Sidebar).
-pub fn ui_build_shadcn_with_sub_widgets(
-    path: &str,
-    output: Option<&str>,
-    sub_widget_names: Vec<String>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
-        path,
-        output,
-        sub_widget_names,
-        None,
-        None,
-        None,
-    )?;
-    Ok((vue_code, widgets))
-}
-
-/// Plan 043 store-codegen: same as `ui_build_shadcn_with_sub_widgets`, but also
-/// returns the generated store composable files `(filename, code)`. Callers that
-/// need to write store files explicitly (e.g. `VueProject::from_workspace`) use
-/// this variant instead of relying on the `STORE_EXTRA_FILES` thread-local,
-/// which is cleared at the start of every `generate_component_from_file` call
-/// and thus loses stores when multiple .at files are compiled in sequence.
-///
-/// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
-/// (`~Stream<T>`) are resolved from `back/api.at` for type-driven SSE wiring.
-///
-/// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
-/// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
-///
-/// `default_classes` (Plan 014): `None`/`Some(true)` = inject doc-theme
-/// default Tailwind classes (default); `Some(false)` = skip them except for
-/// structural layout primitives (row/col/grid/...).
-/// PLAN-037 T5: `ui_build_shadcn_with_sub_widgets_and_stores` + the
-/// cross-file sub-widget model-var map (call-site model addressing). The
-/// legacy entry delegates here with `None`.
-pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
-    path: &str,
-    output: Option<&str>,
-    sub_widget_names: Vec<String>,
-    sub_widget_models: Option<std::collections::HashMap<String, Vec<String>>>,
-    root_dir: Option<&str>,
-    shadcn: Option<bool>,
-    default_classes: Option<bool>,
-    bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
-    sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
-) -> AutoResult<(
-    String,
-    Vec<crate::aura::AuraWidget>,
-    Vec<(String, String)>,
-    Vec<(String, String, String)>,
-)> {
-    // PLAN-024：第四返回段 = named_view_codes（widget, view, SFC code）——
-    // 桌面 vue 宿主 Mini.vue 产物源（仅本 fn 的唯一调用方 auto-man 消费）。
-    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
-
-    let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
-    let opts = ComponentGenOptions {
-        sub_widgets: Some(sub_widget_names),
-        sub_widget_models,
-        bound_model_channels,
-        stream_endpoints,
-        shadcn,
-        default_classes,
-        sub_widget_msgs,
-        ..Default::default()
-    };
-    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
-    let store_composables = result.store_composables.clone();
-
-    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
-
-    if let Some(out_dir) = output {
-        std::fs::create_dir_all(out_dir).ok();
-        for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
-            std::fs::write(&out_path, code)
-                .map_err(|e| format!("Failed to write output file: {}", e))?;
-        }
-        for (filename, code) in &result.store_composables {
-            let out_path = std::path::Path::new(out_dir).join(filename);
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            std::fs::write(&out_path, code)
-                .map_err(|e| format!("Failed to write store file: {}", e))?;
-        }
-    }
-
-    Ok((
-        result.vue_code,
-        result.widgets,
-        store_composables,
-        result.named_view_codes,
-    ))
-}
-
-pub fn ui_build_shadcn_with_sub_widgets_and_stores(
-    path: &str,
-    output: Option<&str>,
-    sub_widget_names: Vec<String>,
-    root_dir: Option<&str>,
-    shadcn: Option<bool>,
-    default_classes: Option<bool>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
-    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
-
-    let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
-    let opts = ComponentGenOptions {
-        sub_widgets: Some(sub_widget_names),
-        stream_endpoints,
-        shadcn,
-        default_classes,
-        ..Default::default()
-    };
-    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
-    let store_composables = result.store_composables.clone();
-
-    // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
-    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
-
-    // Write output if specified (legacy behavior)
-    if let Some(out_dir) = output {
-        std::fs::create_dir_all(out_dir).ok();
-        for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
-            std::fs::write(&out_path, code)
-                .map_err(|e| format!("Failed to write output file: {}", e))?;
-        }
-        for (filename, code) in &result.store_composables {
-            let out_path = std::path::Path::new(out_dir).join(filename);
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            std::fs::write(&out_path, code).ok();
-        }
-    }
-
-    Ok((result.vue_code, result.widgets, store_composables))
-}
-
 // ============================================================================
 // Plan 075: Unified Compilation API for Multiple Execution Modes
 // ============================================================================
@@ -1328,39 +737,17 @@ pub(crate) mod tests; // PLAN-726 T-02: heavy_gate 机器闸门跨档共用(crat
 // =============================================================================
 // PLAN-814 T-04：ui/ 运行域整体迁 auto-ui-runtime；旧路径 auto_lang::ui::*
 // 经再导出保类型身份（crate::ui::x 引用零改写）。
-#[cfg(feature = "ui")]
-pub use auto_ui_runtime::ui;
+// PLAN-900：ui 运行域再导出随去 auto-ui 依赖退役——单源在
+// auto-ui-runtime（crate::ui / 根再导出面）。
 
 // PLAN-804: 宿主 OS 能力适配层（vm core 与 ui renderer 门之外的第三
 // 落点——首员 = ui-dialog 单门控的 OS 文件对话框）。crate 根是宿主接线
 // 的合法层；vm core 经 vm::host_capabilities provider 接口消费，不直引
 // 本层。PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime。
-pub use auto_ui_runtime::host_adapters;
-
-// Re-export UI types when feature is enabled
-#[cfg(feature = "ui")]
-pub use ui::{
-    view_to_vtree, App, AppResult, Component, Style, VNode, VNodeId, VNodeKind, VNodeProps, VTree,
-    View, ViewBuilder,
-};
-
-#[cfg(feature = "ui-interpreter")]
-pub use ui::{
-    event_router::{EventContext, EventRouter, EventType},
-    hot_reload::{HotReloadComponent, UIWatcher},
-    interpreter::{DynamicMessage, InterpreterBridge},
-};
-
-#[cfg(feature = "ui-iced")]
-pub use ui::iced::{ComponentIced, IntoIcedElement};
+// PLAN-900：host_adapters 再导出退役（单源 auto-ui-runtime::host_adapters）。
 
 // PLAN-814 T-04：UI 动态构建管线兼容再导出（原 lib.rs 根项；实装随迁
 // auto-ui-runtime::dynamic_build——run 族漏斗/CLI/examples/测试树旧路径保持）。
-#[cfg(feature = "ui-iced")]
-pub use auto_ui_runtime::run_file_dynamic_ui_with_scenario;
-pub use auto_ui_runtime::ui_module_parse_failures;
-#[cfg(feature = "ui-iced")]
-pub use auto_ui_runtime::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui};
 // Plan 446 批一 (C1-2) parse 错误定位换算回归：随 positioned_parse_errors
 // 实装迁 auto-ui-runtime::dynamic_build（PLAN-814 T-04）。
 
@@ -1381,49 +768,13 @@ mod plan608_dispatch_golden_tests;
 #[path = "tests/plan394_future_arch_tests.rs"]
 mod plan394_future_arch_tests;
 
-// os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
-#[cfg(test)]
-#[path = "tests/plan577_avatar_tests.rs"]
-mod plan577_avatar_tests;
-
-// os-007（origin PLAN-577/P530-D1）：widget 自名折叠环守卫回归。
-#[cfg(test)]
-#[path = "tests/plan577_breadcrumb_cycle_tests.rs"]
-mod plan577_breadcrumb_cycle_tests;
-
-// P499-6 清偿:widgets-gallery 全页可编译冒烟(lib 级,入日常门禁)。
-#[cfg(test)]
-#[path = "tests/gallery_pages_compile_tests.rs"]
-mod gallery_pages_compile_tests;
+// os-007 avatar 家族渲染探针随 PLAN-900 迁 auto-ui（ui::dynamic 域）。
+// os-007 breadcrumb 折叠环守卫随 PLAN-900 迁 auto-ui（ui::dynamic 域）。
 
 // PLAN-614 临时探针:VM 轨模块 fn 对 Obj 嵌套 children/List/bool 参数行为
 // 隔离(tree 组件族 VM 端 first-light 排障;定位后可退役)。
 
 // PLAN-618 探针:VM 轨模块 fn 递归(filter_tree)能力验证。
-
-// PLAN-632: 画廊内嵌 demo 的模块组件桥接（store 装配顺序 + dep item
-// 文件解析 + 适配器链 widget 注册）回归。
-#[cfg(all(test, feature = "ui-iced"))]
-#[path = "tests/plan632_demo_bridge_tests.rs"]
-mod plan632_demo_bridge_tests;
-
-// PLAN-664 U-4：use 导入静默死面报错化负例（P-15 模块解析失败 /
-// P-16 导入符号 × model 字段撞名）。
-#[cfg(all(test, feature = "ui-iced"))]
-#[path = "tests/plan664_use_diag_tests.rs"]
-mod plan664_use_diag_tests;
-
-// PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
-// 回归。
-#[cfg(all(test, feature = "ui-iced"))]
-#[path = "tests/plan633_fullstack_embed_tests.rs"]
-mod plan633_fullstack_embed_tests;
-
-// PLAN-658 T-01: back proxy 骨架回归（真 TCP，cargo th 档；测试名带
-// http_e2e 前缀以被 `cargo th` 的名字过滤器收录）。
-#[cfg(all(test, feature = "test-http-e2e"))]
-#[path = "tests/back_proxy_tests.rs"]
-mod back_proxy_tests;
 
 // PLAN-707 T-06/T-07: 外部流端到端 relay 与取消生命周期（真 TCP，cargo th
 // 串行池；测试名带 http_e2e+plan707 双前缀以被 th 过滤器与交集命令收录）。
@@ -1434,50 +785,10 @@ mod plan707_stream_e2e_tests;
 // ---- PLAN-814：run 入口族的上层装配包装（原三处隐式扇入收敛点） ----
 // ui/ui-dialog 构建下，run 管线先装兼容宿主能力（if-absent 补缺，不覆盖
 // 显式默认——779/785 三级装配契约），再委托 SDK 实现；纯 SDK 消费者无
-// UI 装配（install 为 no-op hook 未注册形态）。
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run(code: &str) -> auto_lang_core::AutoResult<String> {
-    install_ui_host_capabilities();
-    auto_lang_core::run(code)
-}
-
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_with_capture(code: &str) -> auto_lang_core::AutoResult<(String, String)> {
-    install_ui_host_capabilities();
-    auto_lang_core::run_with_capture(code)
-}
-
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_with_capture_and_path(
-    code: &str,
-    path: &str,
-) -> auto_lang_core::AutoResult<(String, String)> {
-    install_ui_host_capabilities();
-    auto_lang_core::run_with_capture_and_path(code, path)
-}
-
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_with_capture_and_path_staged(
-    code: &str,
-    path: &str,
-) -> Result<(String, String), auto_lang_core::StagedRunFailure> {
-    install_ui_host_capabilities();
-    auto_lang_core::run_with_capture_and_path_staged(code, path)
-}
-
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_autovm(code: &str) -> auto_lang_core::AutoResult<String> {
-    install_ui_host_capabilities();
-    auto_lang_core::run_autovm(code)
-}
-
-#[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_autovm_capture(code: &str) -> auto_lang_core::AutoResult<(String, String)> {
-    install_ui_host_capabilities();
-    auto_lang_core::run_autovm_capture(code)
-}
-
-#[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
+// PLAN-900：run 族兼容包装（ui 构建先装宿主能力再委托 SDK）随去
+// auto-ui 依赖退役——装配扇入已归 auto-ui-runtime install 单点（其
+// inventory 收集点被链接即生效），此处无条件 re-export SDK 实现，
+// 消费方签名与返回类型不变。
 pub use auto_lang_core::{
     run, run_autovm, run_autovm_capture, run_with_capture, run_with_capture_and_path,
     run_with_capture_and_path_staged,
