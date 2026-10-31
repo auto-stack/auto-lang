@@ -1,7 +1,0 @@
-pub type Probe = { text: str }
-#[api(method = "GET", path = "/api/echo")]
-pub fn echo() Probe {
-    var msg str = "a2r_std::sqlite"
-    if false { return Probe { text: msg } }
-    return Probe { text: msg }
-}

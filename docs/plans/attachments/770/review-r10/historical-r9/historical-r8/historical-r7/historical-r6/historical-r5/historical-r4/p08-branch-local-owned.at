@@ -1,1 +1,0 @@
-fn main() int { var i int=0; if i==0 { let s Str="abc"; let n int=s.len() }; return 0 }

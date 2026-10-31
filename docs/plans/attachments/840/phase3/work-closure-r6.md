@@ -1,5 +1,0 @@
-# PLAN-840 r6 Phase3 affected work closure
-
-Frozen00c688867be040aa0f1d3e88d63b2b18a484f675 atop49261f09e. Real RQHost pending publication race fixed only in existing test setup: hold actual client; wait bounded5s for real server gamma, assert exactly1 pending; retain all original window/boot/stop assertions. No fake client-side endpoint push. Producer publication is observed before clear, so no duplicate late arrival can invalidate the final condition.
-
-Real pipe controls4/4 pass (last-window, concurrent-adoption, VM fork/lifecycle, rendezvous/probe). Production rqhost.rs prefix and all production exit/protocol logic byte-identical. New count1 assertion rejects duplicate setup deterministically; original pending-not-exit and final-exit controls remain. Phase3Init48-case evidence reused because helper/caller/input code unchanged; Phase2Core/config/locks also unchanged. Full r5t5342 passed, r5tt4359/5714 incomplete/failed and no r5tb run: never claimed global pass. New freeze must pass review then complete merge gates.

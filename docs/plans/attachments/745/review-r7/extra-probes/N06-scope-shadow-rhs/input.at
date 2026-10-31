@@ -1,1 +1,0 @@
-fn main() int { let x=2; if true { let x=x+3; if false { let x=x+10; return x } else { return x+1 } } else { return x } }

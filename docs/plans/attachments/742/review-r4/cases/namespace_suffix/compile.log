@@ -1,9 +1,0 @@
-error[E0433]: cannot find `custom_auto_lang` in `crate`
-  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r4\cases\namespace_suffix\runner.rs:25:29
-   |
-25 |     let mut n: i64 = crate::custom_auto_lang::a2r_std::ping();
-   |                             ^^^^^^^^^^^^^^^^ could not find `custom_auto_lang` in the crate root
-
-error: aborting due to 1 previous error
-
-For more information about this error, try `rustc --explain E0433`.

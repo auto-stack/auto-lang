@@ -1,5 +1,0 @@
-PLAN-741 link receipt
-linker: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe
-obj: D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\review-770-r2\mut02-no-runtime-requires-hir.obj
-exe: D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\review-770-r2\mut02-no-runtime-requires-hir.exe
-entry: ac_start

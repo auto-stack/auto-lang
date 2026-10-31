@@ -1,1 +1,0 @@
-clean: D:\autostack\.wt\lang-745\auto-lang (no reparse points)

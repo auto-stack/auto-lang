@@ -1,6 +1,0 @@
-pub type Probe = { text: str }
-#[api(method = "POST", path = "/api/echo")]
-pub fn echo() {
-    if false { return }
-    var x int = 1
-}

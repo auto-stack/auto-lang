@@ -1,1 +1,0 @@
-fn main() int { let mark_b = 2; return mark_b() }

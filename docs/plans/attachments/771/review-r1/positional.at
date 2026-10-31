@@ -1,2 +1,0 @@
-type Q { v int }
-fn main() int { let q = Q(7); return q.v - 7 }

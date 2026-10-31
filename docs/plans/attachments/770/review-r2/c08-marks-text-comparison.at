@@ -1,3 +1,0 @@
-fn a() str { let m = mark_a(); return "abc" }
-fn b() str { let m = mark_b(); return "abc" }
-fn main() int { if a() == b() { return 0 }; return 1 }

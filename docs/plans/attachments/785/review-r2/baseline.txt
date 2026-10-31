@@ -1,8 +1,0 @@
-{
-  "review_scope": "final",
-  "outcome": "needs_fix",
-  "spec_delta_sha256": "3E0B81AA3A92D6CE62F70F719F4EB8261A6FE7DE64FA7978F8A3BCEC67C12EF8",
-  "head": "0ac6e2ff5ced743974ce274bb0fa8cf424c14453",
-  "fixture_sha256": "1ab9ee3ea9c8b7ecf8cc239c42756684ed7046a72591f892f50300e0adcfc9d0",
-  "plan_revision": 1
-}

@@ -1,2 +1,0 @@
-{"failures": ["工作区 status 变化: [' M f.txt'] != [' M f.txt', '?? u.txt']", "原文件已删除: u.txt（untracked）"], "ok": false, "repo": "source-matrix", "snapshot": "0fa43977dbccd0ac"}
-

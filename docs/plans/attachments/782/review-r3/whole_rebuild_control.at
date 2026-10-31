@@ -1,7 +1,0 @@
-type T { a Str; b Str }
-fn rebuild(move x T) T { return x.move }
-fn main() int {
- var r T = T { a: "aa", b: "bbb" }
- r = rebuild(r.move)
- return r.b.len()
-}

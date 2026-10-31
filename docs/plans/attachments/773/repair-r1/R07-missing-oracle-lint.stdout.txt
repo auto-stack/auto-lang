@@ -1,2 +1,0 @@
-suite ok: 1 case file(s), 1 case(s), full reference admission FAILED
-ERROR D:\autostack\.wt\lang-773\auto-lang\target\r773\replay2-scratch\missing-oracle-lint\c.case.ad: case review.case: expect: expected artifact expected.rs (check "emit"): read failed for "\\\\?\\D:\\autostack\\.wt\\lang-773\\auto-lang\\target\\r773\\replay2-scratch\\missing-oracle-lint\\expected.rs": 系统找不到指定的文件。 (os error 2)

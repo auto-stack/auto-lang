@@ -1,1 +1,0 @@
-pub fn take(value str) int { return value.len() }

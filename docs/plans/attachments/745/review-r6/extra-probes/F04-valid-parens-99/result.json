@@ -1,9 +1,0 @@
-{
-  "id": "F04-valid-parens-99",
-  "bytes": 224,
-  "result": {
-    "stderr": "",
-    "exit": 0,
-    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4709fb14248dbd47, module(s)=1, capabilities required: []\n"
-  }
-}

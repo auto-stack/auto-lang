@@ -1,2 +1,0 @@
-{"failures": ["工作区 status 变化: [' D f.txt', '?? u.txt'] != [' M f.txt', '?? u.txt']", "原文件已删除: f.txt"], "ok": false, "repo": "source-matrix", "snapshot": "07bac3f00fd68fec"}
-

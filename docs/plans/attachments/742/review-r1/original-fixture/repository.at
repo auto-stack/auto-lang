@@ -1,5 +1,0 @@
-
-pub fn repo_list_active() []NoteDocument {
-    var out List<NoteDocument> = List<NoteDocument>.new([])
-    return out
-}

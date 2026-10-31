@@ -1,4 +1,0 @@
-pub fn choose(flag bool, value str) int {
-    if flag { return value.len() }
-    return 0
-}

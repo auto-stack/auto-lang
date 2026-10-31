@@ -1,4 +1,0 @@
-M17-wrapped-trace-args check=0 run=23 diag=
-M18-binary-trace-args check=1 run= diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r6\extra-probes\M18-binary-trace-args\input.at:1:78: error[text/source.syntax]: expected operator, found `,`
-M19-unclosed-if-condition check=0 run=5 diag=
-M20-unclosed-while-condition check=0 run=3 diag=

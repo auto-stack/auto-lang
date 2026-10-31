@@ -1,4 +1,0 @@
-DELETED_ROW_ORPHAN after_gc=3244080 backoff=true orphans_removed=0 after_recover=3244080 recover_removed=0
-LIVE_ROW_ORPHAN after_gc=3244080 backoff=true deleted=1 orphan_gc=0 after_recover=98304 recover_removed=1
-TEMPORARY_CAP staging=6291552 cas_tmp=6291552 combined=12583104 cap=8388608
-TEMPORARY_CAP producers_ok=2 failed=0

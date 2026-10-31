@@ -1,2 +1,0 @@
-STAGING_GC_JUNCTION exit=1 before=True after=True
-ERROR {"error":"store boundary violation: managed namespace `staging` is a reparse point — refusing to operate through it"}

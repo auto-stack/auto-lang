@@ -1,4 +1,0 @@
-K01-call-999-native check=0 run=1 diag=
-K02-if-999-native check=0 run=1 diag=
-K03-call-1000 check=0 run= diag=
-K04-if-1000 check=1 run= diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r6\extra-probes\K04-if-1000\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted

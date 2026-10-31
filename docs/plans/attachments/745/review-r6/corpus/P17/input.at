@@ -1,2 +1,0 @@
-fn choose(n int, flag bool) int { if flag { return n } else { return 0 } }
-fn main() int { return choose(flag: true, n: 6) }

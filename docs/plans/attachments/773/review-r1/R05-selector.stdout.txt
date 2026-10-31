@@ -1,6 +1,0 @@
-suite review (cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f), schema autolang.test-report/1
-PASS         review.case / vm [avm::run]
-NOT_RUN      review.case / other [avm::run] — not selected (--check vm)
-total 2 (NOT_RUN=1 PASS=1)
-exit 1
-

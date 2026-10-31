@@ -1,3 +1,0 @@
-# PLAN-840 r8 complete main batch triage
-
-**PASS**: tf6291/6291, tt5717/5717, tb5316/5316; zero failures/timeouts. Full original selected sets plus three durable regressions; skips518/1800/1548 unchanged. Named mutex, source-tree/lock/dependency before-after guards pass. Preexisting shared generated report restored byte-exactly. Frozen reviewed ba6479da5; landed covered53298cd27. Prior r1/r2 reds and failed diagnostic fixture preserved; none waived with isolated green. Last-batch835 advances to840 only after complete all-green verification. D-762-1 production UI helper remains separate preexisting debt; no claim it was repaired.

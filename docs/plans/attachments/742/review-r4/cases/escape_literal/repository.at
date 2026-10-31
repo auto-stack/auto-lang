@@ -1,2 +1,0 @@
-pub fn ping() int { return 7 }
-pub fn take(value str) int { return value.len() }

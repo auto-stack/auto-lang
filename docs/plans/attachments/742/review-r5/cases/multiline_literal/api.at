@@ -1,9 +1,0 @@
-pub type Probe = { text: str }
-#[api(method = "GET", path = "/api/echo")]
-pub fn echo() Probe {
-    var s str = """first
-a2r_std::sqlite repository.take(value) List<int>.new([])
-last"""
-    if true { return Probe { text: s } }
-    return Probe { text: "bad" }
-}

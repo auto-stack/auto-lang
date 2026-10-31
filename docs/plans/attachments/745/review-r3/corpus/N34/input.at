@@ -1,2 +1,0 @@
-fn main() int { return 0 }
-fn unused() int { return 1 % 2 }

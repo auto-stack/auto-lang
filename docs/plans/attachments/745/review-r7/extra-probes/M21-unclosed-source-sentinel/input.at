@@ -1,1 +1,0 @@
-fn f(x int) int { return x*10 } fn main() int { return f(1+2 }

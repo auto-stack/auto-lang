@@ -1,3 +1,0 @@
-{"action": "create", "bundle_sha256": "72d7991c7be51571d6787d7dc6fd01293bc42f5b68f25a81b409823c12823f9c", "head": "c2c4e40a0c9d6261b33c8b1e9723cda31c0f064d", "ignored_keep": 1, "manifest": "D:/autostack/.review/plan784-r1-cc154ca4083c4cb88384b34a994f5fa9/payload-ignored/ignored-drift/manifest.json", "repo": "ignored-drift", "untracked": 0, "wip": 0}
-
-bundle: create ignored-drift-full.bundle sha256=72d7991c7be5…

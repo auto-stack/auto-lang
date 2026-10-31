@@ -1,1 +1,0 @@
-pub fn measure(value str) int { return value.len() }

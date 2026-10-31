@@ -1,1 +1,0 @@
-pub fn path() str { return "readme.txt" }

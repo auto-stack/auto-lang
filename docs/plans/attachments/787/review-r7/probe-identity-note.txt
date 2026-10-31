@@ -1,3 +1,0 @@
-First historical R6 replay reused the R5 test executable in shared CARGO_TARGET_DIR (same package name/version and test target). --list confirmed wrong four R5 names. R1-R5 observed names matched expected.
-Corrective replay copies exact R6 counterexamples.rs bytes into review-r7/probes, changes only package name to plan787-review-r7-r6 for artifact isolation; implementation dependencies and real range-query bin remain original worktree paths.
-First run is invalid evidence for R6 and retained as r6-first-run-identity-mismatch.log; definitive run is r6-replay.log.

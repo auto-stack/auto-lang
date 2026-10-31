@@ -1,8 +1,0 @@
-{
-  "exact_rlib": "D:\\autostack\\.wt\\lang-745\\auto-lang\\experimental\\ac-core\\target\\debug\\libauto_ac_prototype.rlib",
-  "rlib_sha256": "fced3a7602560fd9c4879b6eff72790f781137be7f52ba46b4b7d466fef8fb9e",
-  "binary_sha256": "8a6299f9b0103f9a700a03f4833169e2529cf1af1c059f59a1e91e9acaaf6cf4",
-  "exit": 0,
-  "stdout": "CASE=--root-exits deadline_ms=500 elapsed_ms=515 timeout=true code=-1 out=\"\"\nDESCENDANT_ALIVE=false\nCASE=--root-late deadline_ms=3000 elapsed_ms=738 timeout=false code=0 out=\"DESCENDANT_PID=37464\\nLATE\\n\"\nDESCENDANT_ALIVE=false\nCASE=--root-waits deadline_ms=500 elapsed_ms=513 timeout=true code=-1 out=\"\"\nDESCENDANT_ALIVE=false\nCASE=--invalid-utf8 deadline_ms=1000 elapsed_ms=54 timeout=false code=0 out=\"PREFIX�SUFFIX\"\n",
-  "stderr": ""
-}

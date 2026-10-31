@@ -1,7 +1,0 @@
-pub type Probe = { text: str }
-#[api(method = "GET", path = "/api/echo/:id")]
-pub fn echo(id int) ?Probe {
-    var p ?Probe = Some(Probe { text: "ok" })
-    if id > 0 { return p }
-    return None
-}

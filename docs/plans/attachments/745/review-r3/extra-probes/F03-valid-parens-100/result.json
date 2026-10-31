@@ -1,9 +1,0 @@
-{
-  "id": "F03-valid-parens-100",
-  "bytes": 226,
-  "result": {
-    "exit": 1,
-    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\extra-probes\\F03-valid-parens-100\\input.at:1:123: error[text/source.syntax]: nesting deeper than 200 levels is not accepted\n",
-    "stdout": ""
-  }
-}

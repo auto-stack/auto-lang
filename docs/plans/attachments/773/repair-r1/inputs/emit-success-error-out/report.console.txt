@@ -1,5 +1,0 @@
-suite review (cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f), schema autolang.test-report/1
-FAIL         review.case / emit [a2r::emit]
-    completion[stage] mismatch: expected "error completion", actual "emit succeeded with 1 artifact(s): [\"main.rs\"]"
-total 1 (FAIL=1)
-exit 1

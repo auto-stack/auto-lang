@@ -1,1 +1,0 @@
-fn type() int { return 1 } fn main() int { return type() }

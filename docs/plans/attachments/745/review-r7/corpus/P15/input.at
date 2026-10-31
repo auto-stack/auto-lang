@@ -1,2 +1,0 @@
-fn pair(a int, b int) int { return a * 10 + b }
-fn main() int { return pair(b: mark_b(), a: mark_a()) }

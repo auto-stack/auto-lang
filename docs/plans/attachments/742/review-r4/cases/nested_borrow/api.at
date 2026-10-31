@@ -1,8 +1,0 @@
-pub type Probe = { text: str }
-#[api(method = "GET", path = "/api/echo")]
-pub fn echo() Probe {
-    var s str = "hi"
-    var n int = repository.outer(repository.measure(s))
-    if n == 2 { return Probe { text: "ok" } }
-    return Probe { text: "bad" }
-}

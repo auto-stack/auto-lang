@@ -1,8 +1,0 @@
-# Plan 857 R2 比较器修复交接
-
-- 基线 `e20b95e175f9184e13c00c78efa7b63349165276`；修复提交 `4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837`；同一工作树 `D:/autostack/.wt/lang-857/auto-lang`，分支 `plan-857-dev`。两次复审未通过的[诊断](../../review-r2/diagnosis-r2.md)已逐项处理；本轮仅修改Python验证工具与来源清单，不改运行时代码。
-- **F-857-R2-01 修复**：新增 `tools/check_default_3d_baseline.py`，必需真实Home报告和截图；检查通过标记、34阶段及具名case、冻结runner SHA/路径、源码清单、干净HEAD、SDK、两锁和856冻结runner/来源身份，再验证Home报告与截图各自的收据SHA。仅默认和Home的3D纹理与最终合成区域都一致时生成成功摘要；失败非零且无成功摘要。`tools/check_editor_viewport3d.py` 将实际正常截图SHA写入结果收据。该哈希链是本地证据完整性检查，不声称是数字签名。
-- **原反例和新增控制**：[controls.json.txt](controls.json.txt) 对同一真实比较器执行8个负控：缺Home报告、实际partial、篡改runner SHA、缺截图、错误源码身份、错误856基线身份、截图与收据哈希不一致、实际像素差异；均按各自断言非零退出且没有成功摘要。实际旧比较器缺报告仍exit 0的重放及旧脚本停用后的exit 1记录见 [evidence.json.txt](evidence.json.txt)。有效冻结856和当前runner各真实运行80帧、完整Home及RGB逐像素比较为正控，exit 0；正控摘要记录来源/报告/截图/runner及锁的SHA。所有负控基于同一次真实生成的完整报告及真实partial，不以人为构造的通过报告冒充实际运行。
-- **历史比较器**：R1 `compare-default.py.txt` 为可追溯历史证据，现加明确的非零停用入口，防止误当验收门；原文历史版本可从 `git show cde3c271d:docs/plans/attachments/857/work/repair-r1/compare-default.py.txt` 或R2复审反例获取。当前可执行门是实现树 `tools/check_default_3d_baseline.py`，其真实负控入口为 `tools/test_default_3d_baseline.py`。
-- **身份及复用**：提交后的producer实际窗口34阶段和真实partial通过，source identity `f99c2bd651199d5ae58026e78ea2bbd57246de16e9f70b417e36fd4e861a0b91`，SDK锁摘要与856一致。验证源码477项及缺项/篡改恢复控制通过。独立consumer重新导出并实际运行窗口/收据测试，复用R1已验证的consumer程序；逐文件对照只有三个Python验证工具变化，非重新空目录编译，见 `consumer-reuse.json.txt`。R1三项交互修复及855性能/owner证据按R2独立复审所核结果复用，不以新HEAD重复无关测试。
-- **待办**：F-857-R2-01的工作修复与定向检查完成，等待独立复审新提交；Plan未reviewed或合入。完整双端、AGP、原新native/owner/content等门仍属merge阶段；没有运行整档。共享风险登记已有其他会话WIP，未覆盖或纳入提交。

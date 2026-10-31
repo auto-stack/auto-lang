@@ -1,9 +1,0 @@
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\c01-refreshed-view-reentry.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\c02-refreshed-view-continue.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\c03-true-else-unreachable.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\c04-nested-fresh-owner.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\c05-break-only-no-postread.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\p01-stale-reentry-call.at: ["verify.owned-scope-escape"]
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r7\p02-nested-stale-view.at: ["verify.owned-scope-escape"]
-m02 view source redirected s->x: verify=true
-m01 actual mutation Loop.body BlockId(3)->BlockId(1): ["verify.owned-scope-escape"]

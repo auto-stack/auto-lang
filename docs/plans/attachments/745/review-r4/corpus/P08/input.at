@@ -1,2 +1,0 @@
-fn down(n int) int { if n < 1 { return 0 } else { return down(n + -1) + 1 } }
-fn main() int { return down(3) }

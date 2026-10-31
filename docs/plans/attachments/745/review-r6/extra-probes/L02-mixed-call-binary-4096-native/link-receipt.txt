@@ -1,7 +1,0 @@
-PLAN-741 link receipt
-linker: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe
-obj: D:\autostack\auto-lang\docs\plans\attachments\745\review-r6\extra-probes\L02-mixed-call-binary-4096-native\app.obj
-exe: D:\autostack\auto-lang\docs\plans\attachments\745\review-r6\extra-probes\L02-mixed-call-binary-4096-native\app.exe
-entry: ac_start
-source-profile: auto.source.core-i32.draft
-source-input-hash: 49bc80b1bc294202

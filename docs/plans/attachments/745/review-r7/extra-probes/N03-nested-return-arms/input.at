@@ -1,1 +1,0 @@
-fn f(flag bool) int { if flag { if false { return 1 } else { return 2 } } else { if true { return 4 } else { return 8 } } } fn main() int { return f(true)+f(false) }

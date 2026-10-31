@@ -1,1 +1,0 @@
-fn main() int { var x=1; if false { x=3 } else { x=4 }; while x<7 { if true { x=x+1 } else { x=x+2 } }; return x }

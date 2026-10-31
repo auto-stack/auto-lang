@@ -1,8 +1,0 @@
-# PLAN-842 r2 T-00 最终定向验证
-
-源码：lang `ecc78701124fe6e0ab6f0e262148a1d853ba2af5`，UI `49aa54d6e18e8d893be69b9430022aea14624ce7`，Man `7cc37fa364a2f59bedc2c920638f8007cd0075ce`，down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。均为同组 worktree；未合入。前版 UI 82217b7 在合法 package.metadata 同名字段的反例下失败，见 [历史报告](../t00-verification/report.md) 和计划 §9；现按 TOML 实际 features/dependencies 作用域定位，同时在写入前拒绝坏状态。
-
-- 最终 UI `cargo test --locked --offline -p auto-ui-tools --lib projection -- --test-threads=1` 3/3，含原态/安装态/已投影、异常结构及合法同名 metadata；`delivery_bundle_end_to_end` 1/1，`cargo build --locked --offline -p auto-ui-tools`、格式及 diff 检查成功。修前新增 metadata 反例实际失败。基线 warnings 存在，不声称零 warnings。
-- Full 安装 `probe-install-r2-scoped` 校验 6800 文件及四仓上述 source；manifest SHA-256 `655efed1d8877107d3d028b9c0f5f58a2cac897eb5888bc9aa69a9cf9da80768`，auto `9d27e52910040175f331d0b33774b2c13fb168a45a87f8ed7031b14d6ac6abfa`，UI tool `69343c0a98d1a15f49faf39c3728b4cc7e1b9d02fe2893811af048b90c40f396`。运行 Man 最终已提交 `installed_rust_delivery`，环境去掉 AUTO 覆盖：真实安装 CLI 成功、producer 指向邻接 SDK，UI 输入与安装源码字节相等，fresh lock 和 `cargo build --locked` 成功（170.3s），资源验证成功。修改实际 SDK manifest 为错误 feature 后真实生成具名拒绝；既有 manifest、main.rs 与 avatar.png 的 SHA 不变；恢复安装后完整 verify、再次生成及资源 verify 成功。本目录 installed-*.log.txt 保留原始输出；SHA 与成功/失败断言由已提交驱动执行。
-- Core 安装 `probe-install-core-r2-scoped` 校验 637 文件，manifest SHA `4dda8ab985c058b876a22c3c72931f4a898ceb23097b0e6eee70433a7c8c4093`；真实安装二进制执行 `probe.at` 输出 `plan842-core-ok`，`auto ui list` 退出 1 并提示 full profile/ui-extra。与之前执行 `cargo tree --locked --edges normal,build,dev` 无 UI 依赖的 Core 安装比较，除每次生成的 `.man-staging.marker` 外文件哈希全部相等、source_closure 相同。
-- 最终 `cargo check -p auto-lang --locked --offline` 成功，原有 warnings 存在。工作阶段未运行整档；独立最终审查及 merge 冻结门仍 pending。未知安装 schema 999 属原 T-05，未由本项解决。

@@ -1,8 +1,0 @@
-cargo.exe :     Blocking waiting for file lock on package cache
-At D:\autostack\.wt\lang-770\auto-lang\scripts\verify-ac-text-770.ps1:54 char:19
-+         $output = & cargo @ArgList 2>&1
-+                   ~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (    Blocking wa...n package cache:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s

@@ -1,3 +1,0 @@
-```test-case
-case { schema: "autolang.case/1", id: "review.case", source: { text: "1 + 2", syntax: "auto", path: "main.at" }, entry: { mode: "script" }, checks: [{ id: "vm", adapter: "avm", action: "run", expect: { completion: "success", result: { format: "legacy-display", text: "3" } } },{ id: "other", adapter: "avm", action: "run", expect: { completion: "success", result: { format: "legacy-display", text: "3" } } }] }
-```

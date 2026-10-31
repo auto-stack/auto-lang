@@ -1,1 +1,0 @@
-Raw JSON and log evidence is committed with ordinary .json.txt/.log.txt transports. Each transport retains the original bytes; restore the original suffix/name for replay of the frozen audit. The original review and binding retain their recorded names and hashes. Canonical Spec delta text is preserved verbatim.

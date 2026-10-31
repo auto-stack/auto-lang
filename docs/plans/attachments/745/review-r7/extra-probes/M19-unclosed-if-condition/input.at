@@ -1,1 +1,0 @@
-fn main() int { if (1<2 { return 5 } else { return 0 } }

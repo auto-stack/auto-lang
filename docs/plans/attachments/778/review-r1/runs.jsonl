@@ -1,3 +1,0 @@
-{"command": ["cargo", "test", "--manifest-path", "test/fixtures/modularity/ui-dialect-consumer/Cargo.toml", "--locked", "--test", "v01_v05_external_dialect"], "file": "external.log", "exit_code": 0, "sha256": "3f6d16f72e7f4b449361401c6bc94999288c6b0525041044930410383938e834"}
-{"command": ["cargo", "nextest", "run", "-p", "auto-lang", "--lib", "--features", "ui-iced,test-cases", "-E", "test(parser::tests) | test(dialect) | test(model) | test(widget)"], "file": "scoped.log", "exit_code": 0, "sha256": "e9653149ea3335f6ac45bbf609093064acccb8f98b93f6acc6353e0ac8e0960f"}
-{"command": ["cargo", "check", "-p", "auto-lang", "--locked"], "file": "check.log", "exit_code": 0, "sha256": "03e821e695ded8c0732a2e8930995466b73a66db4e7ceaa9df016e07955abcd4"}

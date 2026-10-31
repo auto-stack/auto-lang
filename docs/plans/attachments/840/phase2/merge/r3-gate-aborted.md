@@ -1,1 +1,0 @@
-r3 full gate aborted before completion after discovering real metering-gap defect; no full-tier pass claimed. Worker warm builds remain reusable because their source/lock/config unchanged. Revised r4 shared-boundary repair must pass affected review before new gates.

@@ -1,2 +1,0 @@
-fn main() int { return later(4) }
-fn later(x int) int { return x * 2 }

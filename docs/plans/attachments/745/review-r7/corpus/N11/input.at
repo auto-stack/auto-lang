@@ -1,2 +1,0 @@
-fn f(x int) int { return x }
-fn main() int { return f(x: 1, x: 2) }

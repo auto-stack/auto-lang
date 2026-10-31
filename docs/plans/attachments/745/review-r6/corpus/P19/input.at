@@ -1,2 +1,0 @@
-fn mark_a() int { return 6 }
-fn main() int { return mark_a() }

@@ -1,9 +1,0 @@
-{
-  "id": "F06-valid-flat-add-512",
-  "result": {
-    "stderr": "",
-    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d755e2996d24a32e, module(s)=1, capabilities required: []\n",
-    "exit": 0
-  },
-  "bytes": 1050
-}

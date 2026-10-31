@@ -1,9 +1,0 @@
-F01-flat-add-4096-valid exit=0 diag=
-F02-flat-add-4096-malformed exit=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\F02-flat-add-4096-malformed\input.at:1:8217: error[text/source.syntax]: expected expression, found `}`
-F03-valid-parens-100 exit=0 diag=
-F04-valid-parens-99 exit=0 diag=
-F05-deep-unclosed-blocks exit=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\F05-deep-unclosed-blocks\input.at:1:36881: error[text/source.syntax]: expected statement or `}`, found end of file
-F06-valid-flat-add-512 exit=0 diag=
-F07-flat-add-16384-malformed exit=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\F07-flat-add-16384-malformed\input.at:1:32793: error[text/source.syntax]: expected expression, found `}`
-F08-flat-add-16384-valid exit=0 diag=
-F09-flat-add-16384-wrong-type exit=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\F09-flat-add-16384-wrong-type\input.at:1:32792: error[verify/source.type-mismatch]: expected i32, found bool

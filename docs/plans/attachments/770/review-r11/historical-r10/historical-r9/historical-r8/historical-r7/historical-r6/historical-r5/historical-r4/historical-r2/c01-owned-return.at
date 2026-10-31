@@ -1,2 +1,0 @@
-fn make() Str { return "abc" }
-fn main() int { let x Str = make(); return x.len() }

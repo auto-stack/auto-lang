@@ -1,9 +1,0 @@
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c01-nested-once-move.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c02-both-arms-move-break.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c03-two-owners-one-transfer.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c04-false-loop-owner-read.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c05-no-transfer-loop-read.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c06-nested-return-break.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\c07-fresh-loop-move.at: Checked
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\p01-nested-mixed-move.at: ["verify.ownership-required"]
-D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\p02-outer-break-mixed.at: ["verify.ownership-required"]

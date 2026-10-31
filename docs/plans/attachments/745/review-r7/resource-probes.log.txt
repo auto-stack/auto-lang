@@ -1,4 +1,0 @@
-K01-call-999-native check=0 run=1 diag=
-K02-if-999-native check=0 run=1 diag=
-K03-call-1000 check=0 run= diag=
-K04-if-1000 check=0 run= diag=

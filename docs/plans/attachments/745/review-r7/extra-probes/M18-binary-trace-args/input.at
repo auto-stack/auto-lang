@@ -1,1 +1,0 @@
-fn f(a int,b int) int { return a*10+b } fn main() int { return f(b:mark_b()+1,a:mark_a()*2) }

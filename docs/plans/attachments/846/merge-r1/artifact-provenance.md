@@ -1,5 +1,0 @@
-# Frozen source versus relink identities
-
-All native invocations use graphics bf22, unchanged 345 source/asset hashes and 681 SDK hashes, with fixed dependencies and original native parameters. Owner-control builds and final artifact builds relink the executable. Reports retain the actual per-invocation binary SHA, which is not a promise that successive relinks have the same SHA.
-
-Spatial pre/post relink executables are preserved outside the worktree; full PE comparison proves all bytes identical except COFF/debug timestamps and RSDS GUID (native-link-equivalence.json.txt). Both reserve32MB stack. Original assets/play binaries were not separately preserved; no binary-byte equivalence is claimed for those older hashes. Their actual executable hash, build/source identity, raw commands, case reports and source closure remain the evidence. The audit binds those families to their own recorded invocation hash rather than falsely requiring the later relink SHA. Product assertions, thresholds, cases and expected failures are unchanged.

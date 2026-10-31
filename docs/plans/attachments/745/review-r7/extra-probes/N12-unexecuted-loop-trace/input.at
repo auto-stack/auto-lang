@@ -1,1 +1,0 @@
-fn main() int { while false { let x=mark_a() }; if true { let y=mark_b() }; return 0 }

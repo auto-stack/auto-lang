@@ -59,23 +59,22 @@ All AI coding assistants working in this repository must strictly adhere to the 
   >5MB 的暂存文件（防二进制/大日志/大量截图误入跟踪；已跟踪存量不受影响），单次提交
   暂存总量 >100MB 仅警告（证据批量沉淀合法）。豁免：`AUTO_LANG_ALLOW_LARGE=1 git commit`
   并在对应 plan 记录理由；证据一律提交截断/摘要（2026-10-21 裁定）。
-- **复审证据不入库（2026-10-28 用户裁定）**：`docs/plans/attachments/**` 下的复审/执行
-  证据（探针源码与输出、日志、截图、gate/ledger 转储、delivery 拷贝）一律**本地保留、
-  禁止 git add/commit/push**——attachments 的 .gitignore 只放行 `*.md`（摘要/契约/治理
-  文档），pre-commit 钩子拒绝暂存非 md 证据路径（`git add -f` 与已跟踪文件再暂存同样
-  拦截；豁免 `AUTO_LANG_ALLOW_EVIDENCE=1`，须在 plan 记录理由）。证据只在复审与修复
-  期间有意义；摘要（结论/命令/退出码/关键数字/本地路径+内容哈希）写入 plan 文件即可。
-  已 push 的存量证据不动；未 push 的存量证据在全部在途 worktree 合并后做历史过滤再
-  push。auto-plan-* 技能已同步此政策（auto-musk 源 b98aacd）。
-- **计划证据收尾折叠进计划文件（2026-10-31 用户裁定）**：`docs/plans/attachments/<NNN>/`
-  只是 work/review 轮次的**本地暂存**；merge 收尾时必须把全部计划相关证据（探针源码与
-  输出、日志、截图、gate/ledger 转储、receipts/handoffs/spec-delta）以 markdown 摘要
-  （命令、退出码、关键数字、代码/日志节选）**折叠进计划文件本身**（§7 验证记录 /
-  §9 复审记录），然后**删除该计划的整个 attachments 目录**。理由：历史计划的原始证据
-  几乎不会被回看——后续核验一律用最新代码重新测验；附件目录否则无限膨胀并占据检出
-  空间与 git 历史。具名未解决问题（owner+理由记入 plan）可临时保留本地范围。本条将
-  2026-10-28 的"本地保留"升级为"收尾折叠+删除"；.gitignore/pre-commit 防线不变。
-  auto-plan-* 技能已同步（merge 新增 Evidence consolidation at closure 章节）。
+- **计划证据不入 git、暂存放 worktree 组目录（2026-10-31 用户裁定，升级 2026-10-28/10-31）**：
+  `docs/plans/attachments/` 整目录**不入库**（含 `*.md`，`docs/plans/` 下只有计划文件本身入库）；
+  根 .gitignore 整目录忽略 + pre-commit 拒绝该路径的任何暂存（`git add -f` 与已跟踪文件再暂存
+  同样拦截；豁免 `AUTO_LANG_ALLOW_EVIDENCE=1`，须在 plan 记录理由）。存量 8548 个已跟踪
+  attachments 文件已随本裁定去跟踪（`git rm -r --cached`，磁盘文件保留、git 历史不重写）；
+  已 push 历史中的证据不做历史重写，未 push 存量的历史过滤任务不变。复审/执行证据（探针
+  源码与输出、日志、截图、gate/ledger 转储、receipts/handoffs/spec-delta）的**暂存区是
+  worktree 组目录** `D:/autostack/.wt/<group>/evidence/<NNN>/`（检出旁，跨仓组共享一个；
+  无 worktree 的纯文档工作用系统临时目录）——**绝不放进任何仓的项目目录**（auto-musk /
+  auto-down 同规则整目录忽略）。merge 收尾把仍需要的证据以 markdown 摘要（命令、退出码、
+  关键数字、代码/日志节选、保留件的本地路径+内容哈希）**折叠进计划文件本身**（§7 验证
+  记录 / §9 复审记录），证据目录**随组目录一起删除**。理由：历史计划的原始证据几乎不会被
+  回看——后续核验一律用最新代码重新测验；检出内附件目录无限膨胀且已泄漏进 git 历史。
+  具名未解决问题（owner+理由记入 plan）可临时保留本地范围（如移入
+  `D:/autostack/plan-artifacts/plan-<NNN>/`）。auto-plan-* 技能已同步（auto-musk 源
+  merge 技能 Evidence handling: worktree-group scratch 章节）。
 ### 测试证据保留（2026-10-30 用户更新裁定：最近5个计划）
 
 - `D:/autostack/plan-artifacts` 是临时工作区。跨仓按实际归档/交付时间保留最近 **5个已完成计划**；

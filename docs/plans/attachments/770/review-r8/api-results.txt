@@ -1,7 +1,0 @@
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\c01-both-arm-break.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\c02-loop-refresh.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\c03-direct-return.at: Checked
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\p01-constant-then-break.at: ["verify.owned-scope-escape"]
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\p02-constant-else-break.at: ["verify.owned-scope-escape"]
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\p03-stale-actual-backedge.at: ["verify.owned-scope-escape"]
-D:/autostack/auto-lang/docs/plans/attachments/770/review-r8\p04-constant-return.at: ["verify.owned-scope-escape"]

@@ -1,1 +1,0 @@
-fn main() int { let ok bool=("a"+"b").len()==0 && "c".len()>0; if ok { return 1 }; return 0 }

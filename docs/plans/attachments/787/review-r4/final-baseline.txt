@@ -1,8 +1,0 @@
-worktree=D:/autostack/.wt/lang-787/auto-lang
-branch=plan-787-dev
-HEAD=15cfeac977a3a87b35b18aa92e56bfe9097b7174
-git status --porcelain: empty
-git diff --quiet: exit 0
-merge-base master HEAD=bf773ca9bfc5a2d6ed672f904011419b03eff1ef
-Spec inputs: all spec-inputs.tsv hashes unchanged at end review.
-No implementation writes performed by reviewer.

@@ -1,1 +1,0 @@
-First targeted execution was interrupted before completion: new worktree had cold standalone workers and no ignored standalone lockfiles. No test pass claimed from this partial run. Exact main worker locks copied; build workers explicitly before re-running same scoped set. Original thresholds unchanged.

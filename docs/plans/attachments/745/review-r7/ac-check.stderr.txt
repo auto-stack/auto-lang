@@ -1,2 +1,0 @@
-    Checking auto-ac-prototype v0.1.0 (D:\autostack\.wt\lang-745\auto-lang\experimental\ac-core)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.46s

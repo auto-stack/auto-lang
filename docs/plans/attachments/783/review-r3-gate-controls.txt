@@ -1,4 +1,0 @@
-mode=valid exit=0 old_report_preserved=False promoted_semantic_failures=0
-mode=empty-churn exit=1 old_report_preserved=False promoted_semantic_failures=0
-mode=no-output exit=1 old_report_preserved=True promoted_semantic_failures=0
-mode=invalid-report exit=1 old_report_preserved=False promoted_semantic_failures=1

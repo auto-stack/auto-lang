@@ -1,2 +1,0 @@
-E01-shallow-parenthesis-control exit=0 stderr=
-E02-deep-unclosed-parenthesis exit=1 stderr=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\E02-deep-unclosed-parenthesis\input.at:1:4122: error[text/source.syntax]: expected `)`

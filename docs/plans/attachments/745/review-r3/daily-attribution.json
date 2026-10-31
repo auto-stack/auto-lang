@@ -1,9 +1,0 @@
-{
-  "historical_union_count": 37,
-  "current_nonpass_count": 28,
-  "new_names": [
-    "auto-lang tests::ffi_dep_parity_tests::dep_parity_018_dep_fields"
-  ],
-  "production_and_config_diff": "git diff eea7a8061..HEAD -- crates .cargo .config Cargo.toml Cargo.lock: empty",
-  "strict_same_source_main_comparison": false
-}

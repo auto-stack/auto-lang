@@ -1,1 +1,0 @@
-fn main() int { let x Str="abc"; for true { break }; return 0 }

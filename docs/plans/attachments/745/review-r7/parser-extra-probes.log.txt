@@ -1,4 +1,0 @@
-M17-wrapped-trace-args check=0 run=23 diag=
-M18-binary-trace-args check=0 run=23 diag=
-M19-unclosed-if-condition check=1 run= diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\M19-unclosed-if-condition\input.at:1:25: error[text/source.syntax]: expected `)`
-M20-unclosed-while-condition check=1 run= diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\M20-unclosed-while-condition\input.at:1:37: error[text/source.syntax]: expected `)`

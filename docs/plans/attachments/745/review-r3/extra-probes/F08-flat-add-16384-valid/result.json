@@ -1,9 +1,0 @@
-{
-  "id": "F08-flat-add-16384-valid",
-  "bytes": 32794,
-  "result": {
-    "exit": -1073741571,
-    "stderr": "\nthread 'main' (35104) has overflowed its stack\n",
-    "stdout": ""
-  }
-}

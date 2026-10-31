@@ -1,1 +1,0 @@
-fn main() int { var x=0; loop { if true { while false { return 3 }; x=7; break } else { return 2 } }; return x }

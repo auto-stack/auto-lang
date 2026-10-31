@@ -1,2 +1,0 @@
-p03-once-return-move.hir.json : old check/build/run=1/1/; new=0/0/3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
-p03-once-return-move.json : old check/build/run=1/1/; new=0/0/3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 

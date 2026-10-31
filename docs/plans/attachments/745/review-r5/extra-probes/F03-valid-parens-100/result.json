@@ -1,9 +1,0 @@
-{
-  "bytes": 226,
-  "id": "F03-valid-parens-100",
-  "result": {
-    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c3fab07c5372885a, module(s)=1, capabilities required: []\n",
-    "stderr": "",
-    "exit": 0
-  }
-}

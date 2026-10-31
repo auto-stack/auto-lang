@@ -1,7 +1,0 @@
-type I { s Str }
-type O { i I }
-fn main() int {
- let a O = O { i: I { s: "abc" } }
- let b O = O { i: a.i }
- return b.i.s.len() + a.i.s.len()
-}

@@ -1,1 +1,0 @@
-fn main() int { while false { let x = 1 }; return x }

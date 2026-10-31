@@ -1,1 +1,0 @@
-fn main() int { loop { if true { return 1 } else { break }; let x = 2 }; return 0 }

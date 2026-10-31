@@ -1,2 +1,0 @@
-fn below(x int) bool { return x < 3 }
-fn main() int { let b bool = below(2); if b { return 4 } else { return 0 } }

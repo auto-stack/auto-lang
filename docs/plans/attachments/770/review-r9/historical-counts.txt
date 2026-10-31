@@ -1,7 +1,0 @@
-historical-r8 source=7 HIR=7
-historical-r8/historical-r7 source=7 HIR=9
-historical-r8/historical-r7/historical-r6 source=8 HIR=8
-historical-r8/historical-r7/historical-r6/historical-r5 source=9 HIR=9
-historical-r8/historical-r7/historical-r6/historical-r5/historical-r4 source=15 HIR=15
-historical-r8/historical-r7/historical-r6/historical-r5/historical-r4/historical-r2 source=17 HIR=19
-historical-r8/historical-r7/historical-r6/historical-r5/historical-r4/historical-r3 source=5 HIR=7

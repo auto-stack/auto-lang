@@ -1,8 +1,0 @@
-{
-  "workspace": "D:/autostack/auto-lang",
-  "ledger": "D:/autostack/auto-lang/.autoos/specs.json",
-  "active_workspace_writer_count": 0,
-  "inspection": "Process inventory for Musk/AutoForge and auto.exe ledger services; no active writer",
-  "timestamp": "2026-10-08T09:39:40.6978192Z",
-  "existing_runtime_tmp_preserved": ".autoos/specs.json.tmp2"
-}

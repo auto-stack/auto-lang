@@ -1,1 +1,0 @@
-fn main() int { var v str=""; if true { let x Str="abc"; v=x.to(str) }; return v.len() }

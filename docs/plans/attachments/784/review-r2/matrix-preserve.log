@@ -1,2 +1,0 @@
-{"action": "create", "bundle_sha256": "01bb94a2734f5ec84dc63d35185815d63dd1b3736570b47089a2bd53a118ddf7", "head": "da7ff35dbff69c64f54a0e3efc223765af19d53c", "ignored_keep": 1, "manifest": "D:/autostack/.review/plan784-r2-f3da9a6bbb634ff3b2bd59adfa431e81/matrix-payload/source-matrix/snapshots/0fa43977dbccd0ac/manifest.json", "repo": "source-matrix", "snapshot": "0fa43977dbccd0ac", "untracked": 1, "wip": 1}
-

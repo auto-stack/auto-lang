@@ -1,1 +1,0 @@
-PLAN-851 r4 merge-owned frozen gates on 75452a3e1daaba74c5557e78b83eeab2cc1e0763 after independent review pass. Original849 sequential gate matrix preserved with current851 source and fresh own-SDK/empty-target consumer; added14motion native cases plus4reopens and motion owner controls on each runner. Historical attempts remain raw. Root Cargo aliases are outside851 scope.

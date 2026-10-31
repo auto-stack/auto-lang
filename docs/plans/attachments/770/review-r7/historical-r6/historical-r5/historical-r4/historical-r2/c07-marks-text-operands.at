@@ -1,3 +1,0 @@
-fn a() str { let m = mark_a(); return "a" }
-fn b() str { let m = mark_b(); return "b" }
-fn main() int { return (a() + b()).len() }

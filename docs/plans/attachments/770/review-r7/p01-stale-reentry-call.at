@@ -1,1 +1,0 @@
-fn read(v str) int { return v.len() } fn main() int { var v str=""; var i int=0; for i<2 { let s Str="abc"; if i>0 { return read(v) }; v=s.to(str); i=i+1 }; return 0 }

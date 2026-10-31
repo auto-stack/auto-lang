@@ -1,2 +1,0 @@
-STAGING_GC_JUNCTION before=True after=False
-GC {"ran":true,"reason":"over high watermark","scanned_chunks":0,"live_chunks":0,"deleted_chunks":0,"failed_deletes":0,"invalid_bytes":0,"freed_bytes":23,"pending_reader_bytes":0,"orphans_removed":0,"staging_removed":1,"stale_leases_swept":0,"total_before":90135,"total_after":90112,"live_bytes":57344,"backoff":null,"duration_ms":1}

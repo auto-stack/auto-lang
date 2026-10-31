@@ -1,9 +1,0 @@
-{
-  "key": "PLAN-745:r1",
-  "actual_storage": "Git tracked .autoos/specs.json",
-  "readme_claim": "ignored compatibility projection (stale for this checkout)",
-  "corrective_action": "verified main projection copied into original plan tree, committed there; main restores exact original under excluded writers before ff-only publication",
-  "ledger_commit": "fd58c91b63f12776a99c0afa4748cf59bad17ff8",
-  "projected_sha256": "8aceebb8bd97bf4bc77cef4402409ad52e76ab454b7a033f46bb2baad8f67539",
-  "pending": "main publication after running batch gates"
-}

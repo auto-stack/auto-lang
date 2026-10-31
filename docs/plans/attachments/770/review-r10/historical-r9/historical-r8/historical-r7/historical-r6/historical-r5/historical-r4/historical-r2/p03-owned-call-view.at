@@ -1,5 +1,0 @@
-fn make() Str { return "abc" }
-fn main() int {
-    let v str = make().to(str)
-    return v.len()
-}

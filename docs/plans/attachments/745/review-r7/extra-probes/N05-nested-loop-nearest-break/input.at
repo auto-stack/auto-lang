@@ -1,1 +1,0 @@
-fn main() int { var i=0; var n=0; while i<3 { i=i+1; var j=0; while j<4 { j=j+1; if j<2 { continue } else { n=n+1; break } }; n=n+10 }; return n }

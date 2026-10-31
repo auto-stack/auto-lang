@@ -1,9 +1,0 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.14s
-{
-  "exact_rlib": "D:\\autostack\\.wt\\lang-745\\auto-lang\\experimental\\ac-core\\target\\debug\\libauto_ac_prototype.rlib",
-  "rlib_sha256": "dce53db6b74ac385fffca9a0e0bc1e912e95bac7eb4062184ee54f03b04c4793",
-  "binary_sha256": "b3b33ce632ee1631b1cfc158ef063750b07e22d5bd04c0ca57e5b7e67c5b1f61",
-  "exit": 0,
-  "stdout": "VALID_CONTROL=true ACTUAL_SAME_TYPE_SCOPE_MUTATION=true CODES=[\"verify.uninitialized-read\"]\n",
-  "stderr": ""
-}

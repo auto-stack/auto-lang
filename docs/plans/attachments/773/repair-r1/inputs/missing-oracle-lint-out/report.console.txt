@@ -1,4 +1,0 @@
-suite review (cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f), schema autolang.test-report/1
-ERROR        review.case / emit [a2r::emit] — oracle resolution failed: case review.case: expect: expected artifact expected.rs (check "emit"): read failed for "\\\\?\\D:\\autostack\\.wt\\lang-773\\auto-lang\\target\\r773\\replay2-scratch\\missing-oracle-lint\\expected.rs": 系统找不到指定的文件。 (os error 2)
-total 1 (ERROR=1)
-exit 2

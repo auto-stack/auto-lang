@@ -1,6 +1,0 @@
-fn consume(move s Str) bool { return s.len() == 3 }
-fn main() int {
-    let x Str = "abc"
-    let ignored = 1 == 0 && consume(x.move)
-    return 0
-}

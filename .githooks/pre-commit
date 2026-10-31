@@ -19,15 +19,15 @@ if ! git diff --cached --name-only --diff-filter=d -z > "$tmp"; then
 fi
 [ -s "$tmp" ] || exit 0   # 无暂存文件(或仅删除),放行
 
-# 复审证据路径门禁(2026-10-28 用户裁定):attachments 下仅 *.md 入库。
+# 复审证据路径门禁(2026-10-31 用户裁定,升级 2026-10-28):attachments 整目录不入库(含 *.md)。
 # 覆盖 gitignore 之外的强制路径(add -f / 已跟踪文件再暂存同样拦截)。
 if [ -z "$AUTO_LANG_ALLOW_EVIDENCE" ]; then
-  evbad=$(tr '\0' '\n' < "$tmp" | grep '^docs/plans/attachments/' | grep -v '\.md$' | grep -v '^docs/plans/attachments/\.gitignore$' | head -5)
+  evbad=$(tr '\0' '\n' < "$tmp" | grep '^docs/plans/attachments/' | head -5)
   if [ -n "$evbad" ]; then
-    echo "pre-commit 拒绝:复审证据不入库(2026-10-28 用户裁定),以下暂存路径非 *.md:" >&2
+    echo "pre-commit 拒绝:attachments 整目录不入库(2026-10-31 用户裁定),以下暂存路径被拦截:" >&2
     printf '%s\n' "$evbad" >&2
-    echo "证据留本地 attachments(gitignore 已排除),摘要写入 plan 文件;确需入库用" >&2
-    echo "AUTO_LANG_ALLOW_EVIDENCE=1 git commit,并在对应 plan 记录理由。" >&2
+    echo "证据放 worktree 组目录 .wt/<group>/evidence/(merge 时随组目录删除),摘要写入 plan 文件;" >&2
+    echo "确需入库用 AUTO_LANG_ALLOW_EVIDENCE=1 git commit,并在对应 plan 记录理由。" >&2
     exit 1
   fi
 fi
@@ -68,7 +68,7 @@ fi
 if [ -n "$blocked" ]; then
   echo "pre-commit 拒绝:以下暂存文件超过 5MB(字节  路径):" >&2
   printf '%s' "$blocked" >&2
-  echo "证据请提交截断/摘要(attachments/.gitignore 2026-10-21 裁定);确需大文件请用" >&2
+  echo "证据请提交截断/摘要(原始证据不入 attachments,摘要写 plan 文件);确需大文件请用" >&2
   echo "AUTO_LANG_ALLOW_LARGE=1 git commit,并在对应 plan 中记录豁免理由。" >&2
   exit 1
 fi

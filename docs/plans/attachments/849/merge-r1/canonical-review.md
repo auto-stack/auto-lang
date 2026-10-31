@@ -1,3 +1,0 @@
-# Canonical delta audit
-
-Compared actual new swept-aabb-profile and nine extensions against frozen SD01..04 and implementation6bb85f354. Numerical geometry/filter/error/f32/tie/initial/underflow rules, shared typed slot/token/budget/memory boundary, full identity/configuration/frame/lifecycle and portable source/CLI/native/owner contracts match. Fifteen canonical targets include regenerated unchanged INDEX; current knowledge adds no new implementation requirement, old contracts retained. Global overview/goals and module overview/plans updated. R849-NATIVE-CLOCK appended separately as observed verifier stability risk; no runtime timing threshold waived. Provenance links resolve after explicit archive. No implementation/SDK/lock edits in deposit branch.

@@ -1,5 +1,0 @@
-
-Algorithm : SHA256
-Hash      : 84D2B2776FABA28671437FBC91E708986408ADB1240057639689923CCA4C5BAC
-Path      : D:\autostack\auto-lang\docs\plans\attachments\794\review-r1\spec-delta.md
-
