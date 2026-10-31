@@ -209,11 +209,16 @@ class FixedGroups(unittest.TestCase):
     def test_incompatible_packages_remain_separate(self):
         self.assertEqual(len(fixed.invocations(fixed.select(['lexer', 'parser'], self.value, self.groups))), 2)
 
-    def test_all_is_explicit_and_contains_full_packages_and_ace(self):
+    def test_all_is_explicit_language_only(self):
         names = {r['name'] for r in fixed.select(['all'], self.value, self.groups)}
         self.assertIn('auto-lang-core', names)
         self.assertIn('auto-lex', names)
-        self.assertIn('ace-host', names)
+        # PLAN-898 user ruling: `all` is the language-side union only; ACE
+        # domain groups (incl. ace-host) run explicitly via `cargo t ace`.
+        self.assertNotIn('ace-host', names)
+        self.assertFalse(any(n.startswith('ace-') or n.startswith('case-ace-')
+                             for n in names) or any(
+            self.groups[n].get('domain') == 'ace' for n in names))
         self.assertNotIn('daily', names)
         self.assertNotIn('parser', names)  # covered by full package; avoid repeated execution
         with self.assertRaises(ValueError):
