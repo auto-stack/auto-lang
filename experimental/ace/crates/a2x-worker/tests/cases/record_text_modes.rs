@@ -8,7 +8,9 @@
 
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{assemble_record_text_file_set, lower_program};
-use ace_core::source::{compile_parts_with, compile_record_source, compile_text_record_source, SourceProfile};
+use ace_core::source::{
+    compile_parts_with, compile_record_source, compile_text_record_source, SourceProfile,
+};
 use ace_core::text_resources::seed_param_exclusions;
 use ace_core::verify::verify_text_function;
 
@@ -141,7 +143,10 @@ fn credential_def_mismatch_rejects() {
     assert_eq!(g_view.functions()[0].source_name, "Gauge_read");
     // cross-admission is structurally impossible: the def id keys the match
     let cross = SemanticView::from_parts(&gparts, &c_cred);
-    assert!(cross.is_err(), "a Counter credential must not admit a Gauge bundle");
+    assert!(
+        cross.is_err(),
+        "a Counter credential must not admit a Gauge bundle"
+    );
 }
 
 /// V-01: the capability front door holds on the single-body path — the
@@ -163,8 +168,8 @@ fn text_credential_needs_capability() {
     let mut stripped = parts.bundle.clone();
     stripped.requires.clear();
     let excl = seed_param_exclusions(&stripped);
-    let err = verify_text_function(&stripped, 0, &excl)
-        .expect_err("capability front door must reject");
+    let err =
+        verify_text_function(&stripped, 0, &excl).expect_err("capability front door must reject");
     assert_eq!(err[0].code, "capability.missing");
 }
 
@@ -235,14 +240,10 @@ fn same_name_free_and_two_owner_methods() {
 fn receiver_once_before_args() {
     let src = "type Counter { value int\n  fn add(delta int) int { return .value + delta } }\n\
                fn main() int {\n    let c Counter = Counter(mark_b())\n    return c.add(mark_a())\n}";
-    let compiled = compile_record_source(
-        src,
-        "marks.at",
-        &["hir.test.trace.v1".to_string()],
-    )
-    .unwrap_or_else(|ds| panic!("marks record compile: {ds:?}"));
-    let view = SemanticView::from_checked(&compiled.checked)
-        .unwrap_or_else(|r| panic!("view: {r}"));
+    let compiled = compile_record_source(src, "marks.at", &["hir.test.trace.v1".to_string()])
+        .unwrap_or_else(|ds| panic!("marks record compile: {ds:?}"));
+    let view =
+        SemanticView::from_checked(&compiled.checked).unwrap_or_else(|r| panic!("view: {r}"));
     let program = lower_program(&view, "main").expect("lower");
     let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "main");
     let dir = crate::rt_common::out_root().join("RECV_ONCE");

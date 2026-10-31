@@ -45,9 +45,8 @@ fn run_assembly(name: &str, asm: &ace_a2x_store::Assembly) -> String {
     let exe = dir.join("case.exe");
     let compile = auto_tool_execution::run_command_capture(
         {
-            let mut c = Command::new(
-                std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
-            );
+            let mut c =
+                Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
             c.args(["--edition", "2021", "-o"])
                 .arg(&exe)
                 .arg("main.rs")
@@ -249,7 +248,10 @@ fn store_rt_readonly_quota_close() {
     let b = s
         .warm_edit("main", TEXT_B_FRAG, "main", true)
         .expect("read-only warm");
-    assert_eq!(s.stats.bytes_persisted, before, "read-only writes zero bytes");
+    assert_eq!(
+        s.stats.bytes_persisted, before,
+        "read-only writes zero bytes"
+    );
     assert_eq!(run_assembly("ops-B", &b), "value:23\n");
 
     // close: warm edits are a controlled source.closed rejection
@@ -296,7 +298,9 @@ fn store_rt_family_isolation() {
     s.cold_assemble_profile(RECORD_A, SourceProfile::Record, &[], "main", false)
         .expect("rt cold");
     // scalar restart still hits its own layer
-    let restarted = s.restart_assemble(scalar_src, true, &[], "main").expect("scalar restart");
+    let restarted = s
+        .restart_assemble(scalar_src, true, &[], "main")
+        .expect("scalar restart");
     assert_eq!(run_assembly("mixed-scalar", &restarted), "value:42\n");
     assert!(
         s.stats.print < scalar_prints + 10,

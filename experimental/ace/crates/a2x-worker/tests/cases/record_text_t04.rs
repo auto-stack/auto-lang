@@ -108,7 +108,12 @@ fn t04_combining_and_eq() {
 #[test]
 fn t04_slice_char_at_traps() {
     for (name, bind, expr, tail) in [
-        ("neg-idx", "let c char = ", "s.char_at(0 - 1)", "c.to_codepoint()"),
+        (
+            "neg-idx",
+            "let c char = ",
+            "s.char_at(0 - 1)",
+            "c.to_codepoint()",
+        ),
         ("oob", "let c char = ", "s.char_at(3)", "c.to_codepoint()"),
         ("byte-oob", "let v str = ", "s.slice(1, 9)", "v.len()"),
         ("neg-range", "let v str = ", "s.slice(2, 1)", "v.len()"),

@@ -10,7 +10,7 @@
 
 use ace_a2x_core::{semantic_fingerprint, SemanticView};
 use ace_core::source::{
-    compile_record_source, compile_text_record_source, SourceProfile, compile_parts_with,
+    compile_parts_with, compile_record_source, compile_text_record_source, SourceProfile,
 };
 
 const RUNTIME_TEXT_CAP: &str = "ac.runtime.text.v1";
@@ -18,8 +18,8 @@ const RUNTIME_TEXT_CAP: &str = "ac.runtime.text.v1";
 fn fp_record(src: &str, focus: &str) -> String {
     let compiled = compile_record_source(src, "fp.at", &[])
         .unwrap_or_else(|ds| panic!("record compile: {ds:?}"));
-    let view = SemanticView::from_checked(&compiled.checked)
-        .unwrap_or_else(|r| panic!("view: {r}"));
+    let view =
+        SemanticView::from_checked(&compiled.checked).unwrap_or_else(|r| panic!("view: {r}"));
     let f = view
         .functions()
         .iter()
@@ -31,8 +31,8 @@ fn fp_record(src: &str, focus: &str) -> String {
 fn fp_text_record(src: &str, focus: &str) -> String {
     let compiled = compile_text_record_source(src, "fp.at", &[RUNTIME_TEXT_CAP.to_string()])
         .unwrap_or_else(|ds| panic!("text-record compile: {ds:?}"));
-    let view = SemanticView::from_checked(&compiled.checked)
-        .unwrap_or_else(|r| panic!("view: {r}"));
+    let view =
+        SemanticView::from_checked(&compiled.checked).unwrap_or_else(|r| panic!("view: {r}"));
     let f = view
         .functions()
         .iter()
@@ -56,7 +56,10 @@ fn callee_signature_change_invalidates_caller() {
          fn main() int {\n    var c Counter = Counter(20)\n    let r int = bump(c.mut, 1, 0)\n    return r + c.value\n}",
         "main",
     );
-    assert_ne!(base, changed, "callee signature change must invalidate the caller");
+    assert_ne!(
+        base, changed,
+        "callee signature change must invalidate the caller"
+    );
 }
 
 #[test]
@@ -69,7 +72,10 @@ fn callee_mode_change_invalidates_caller() {
          fn main() int {\n    var c Counter = Counter(20)\n    let r int = bump(c, 1)\n    return r + c.value\n}",
         "main",
     );
-    assert_ne!(base, changed, "callee param-mode change must invalidate the caller");
+    assert_ne!(
+        base, changed,
+        "callee param-mode change must invalidate the caller"
+    );
 }
 
 #[test]
@@ -98,7 +104,10 @@ fn record_shape_and_name_changes_invalidate() {
          fn main() int {\n    var c Gauge = Gauge(20)\n    let r int = bump(c.mut, 1)\n    return r + c.value\n}",
         "main",
     );
-    assert_ne!(base, renamed, "record rename must invalidate (nominal identity)");
+    assert_ne!(
+        base, renamed,
+        "record rename must invalidate (nominal identity)"
+    );
 }
 
 #[test]
@@ -165,8 +174,7 @@ fn credential_context_binding_rejects_same_shape_foreign_bundle() {
         .iter()
         .position(|d| d.id_text == "d_f0_read")
         .unwrap();
-    let c_cred =
-        ace_core::verify::verify_function_ref(&cparts.bundle, c_def).expect("credential");
+    let c_cred = ace_core::verify::verify_function_ref(&cparts.bundle, c_def).expect("credential");
     let err = SemanticView::from_parts(&gparts, &c_cred)
         .expect_err("foreign same-shape bundle must reject the credential");
     assert_eq!(err.code, "a2x.credential");

@@ -426,10 +426,7 @@ pub fn lower_records(view: &SemanticView<'_>) -> Result<Vec<RustRecord>, A2xReje
     Ok(out)
 }
 
-fn lower_fn<'a>(
-    view: &SemanticView<'a>,
-    f: &FnFacts<'a>,
-) -> Result<(RustFn, Vec<u32>), A2xReject> {
+fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<(RustFn, Vec<u32>), A2xReject> {
     let mut lx = FnLowering::new(view, f)?;
     let body = lx.lower_block(f.body.entry)?;
     let params = lx.rust_params();
@@ -616,11 +613,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         &self,
         buf: &ace_core::text_resources::RecordBuffer,
     ) -> Result<RStmt, A2xReject> {
-        let name = self
-            .local_names
-            .get(&buf.root)
-            .cloned()
-            .ok_or_else(|| A2xReject::new("a2x.internal", "plan free names an unknown local"))?;
+        let name =
+            self.local_names.get(&buf.root).cloned().ok_or_else(|| {
+                A2xReject::new("a2x.internal", "plan free names an unknown local")
+            })?;
         let path = self.field_names_of(self.local_ty(buf.root)?, &buf.path)?;
         Ok(RStmt::Free { name, path })
     }
@@ -660,7 +656,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         // terminator statement carries its own exit key).
         let terminated = matches!(
             block.stmts.last(),
-            Some(hir::Stmt::Return { .. }) | Some(hir::Stmt::Break { .. }) | Some(hir::Stmt::Continue { .. })
+            Some(hir::Stmt::Return { .. })
+                | Some(hir::Stmt::Break { .. })
+                | Some(hir::Stmt::Continue { .. })
         );
         if !terminated {
             self.emit_buffer_frees((self.cur_block, None), &mut out)?;
@@ -765,9 +763,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 // RHS fully materialized (894 §5.1) — plain roots and
                 // resource-record field paths alike.
                 if let Some(bp) = self.plan {
-                    if let Some(bufs) =
-                        bp.replace_frees.get(&(self.cur_block, self.cur_stmt))
-                    {
+                    if let Some(bufs) = bp.replace_frees.get(&(self.cur_block, self.cur_stmt)) {
                         for b in bufs.clone() {
                             out.push(self.buffer_free_stmt(&b)?);
                         }
@@ -782,7 +778,11 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     hir::PlaceKind::FieldPath(path) => {
                         let path = self.resolve_field_names(place.local.0, path)?;
                         self.drain_frees(out);
-                        out.push(RStmt::AssignField { name, path, value: v });
+                        out.push(RStmt::AssignField {
+                            name,
+                            path,
+                            value: v,
+                        });
                     }
                 }
             }
@@ -943,12 +943,12 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 Ok((RExpr::CharLit(c), Ty::Char))
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
-                let lt = self.view.resolve_use_ty(
-                    self.facts.body.exprs[lhs.0 as usize].ty,
-                )?;
-                let rt = self.view.resolve_use_ty(
-                    self.facts.body.exprs[rhs.0 as usize].ty,
-                )?;
+                let lt = self
+                    .view
+                    .resolve_use_ty(self.facts.body.exprs[lhs.0 as usize].ty)?;
+                let rt = self
+                    .view
+                    .resolve_use_ty(self.facts.body.exprs[rhs.0 as usize].ty)?;
                 // text equality: full bytes, no normalization (pure)
                 if matches!(op, hir::BinOp::Eq | hir::BinOp::Ne) && lt.is_text() {
                     let (l, _) = self.lower_view_value(*lhs, out)?;
@@ -1001,7 +1001,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (r, _) = self.lower_pure(*rhs, &mut side)?;
                 // drain the side's own view-consumer temps into it
                 for name in std::mem::take(&mut self.pending_frees) {
-                    side.push(RStmt::Free { name, path: Vec::new() });
+                    side.push(RStmt::Free {
+                        name,
+                        path: Vec::new(),
+                    });
                 }
                 let block = RBlock {
                     stmts: side,
@@ -1091,8 +1094,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         .and_then(|b| target_params.get(b.param as usize))
                         .map(|p| p.ty)
                         .unwrap_or(Ty::I32);
-                    let view_owned = matches!(mode, hir::ParamMode::View | hir::ParamMode::MutBorrow)
-                        && matches!(pty, Ty::StrOwned);
+                    let view_owned =
+                        matches!(mode, hir::ParamMode::View | hir::ParamMode::MutBorrow)
+                            && matches!(pty, Ty::StrOwned);
                     let (v, aty) = if view_owned {
                         self.lower_view_value(arg, out)?
                     } else {
@@ -1227,10 +1231,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             hir::ExprKind::CharToCodepoint { operand } => {
                 let (v, _) = self.lower_pure(*operand, out)?;
-                Ok((
-                    RExpr::CharToI32 { inner: Box::new(v) },
-                    Ty::I32,
-                ))
+                Ok((RExpr::CharToI32 { inner: Box::new(v) }, Ty::I32))
             }
             hir::ExprKind::CharFromCodepoint { operand } => {
                 let (v, _) = self.lower_pure(*operand, out)?;
@@ -1257,8 +1258,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     let (v, _) = self.lower_pure(a, out)?;
                     slots.push(v);
                 }
-                let mut fields: Vec<Option<(String, RExpr)>> =
-                    vec![None; rec.fields.len()];
+                let mut fields: Vec<Option<(String, RExpr)>> = vec![None; rec.fields.len()];
                 for b in bindings {
                     let v = slots.get(b.arg as usize).cloned().ok_or_else(|| {
                         A2xReject::new("a2x.internal", "ctor arg index out of range")
@@ -1275,10 +1275,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let mut placed = Vec::with_capacity(fields.len());
                 for (i, f) in fields.into_iter().enumerate() {
                     placed.push(f.ok_or_else(|| {
-                        A2xReject::new(
-                            "a2x.internal",
-                            format!("ctor field #{} left unbound", i),
-                        )
+                        A2xReject::new("a2x.internal", format!("ctor field #{} left unbound", i))
                     })?);
                 }
                 Ok((
@@ -1291,9 +1288,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             hir::ExprKind::FieldGet { base, path } => {
                 let (b, _) = self.lower_pure(*base, out)?;
-                let root_ty = self.view.resolve_use_ty(
-                    self.facts.body.exprs[base.0 as usize].ty,
-                )?;
+                let root_ty = self
+                    .view
+                    .resolve_use_ty(self.facts.body.exprs[base.0 as usize].ty)?;
                 let ids: Vec<u32> = path.iter().map(|f| f.0).collect();
                 let names = self.field_names_of(root_ty, &ids)?;
                 // the returned type is the FIELD's declared type (the Rust
@@ -1304,7 +1301,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let mut cur = root_ty;
                 for fid in &ids {
                     let Ty::Record(tid) = cur else { break };
-                    let Some(rec) = self.view.record(tid) else { break };
+                    let Some(rec) = self.view.record(tid) else {
+                        break;
+                    };
                     match rec.fields.get(*fid as usize) {
                         Some(f) => {
                             field_ty = f.ty;
@@ -1313,7 +1312,13 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         None => break,
                     }
                 }
-                Ok((RExpr::FieldPath { base: Box::new(b), path: names }, field_ty))
+                Ok((
+                    RExpr::FieldPath {
+                        base: Box::new(b),
+                        path: names,
+                    },
+                    field_ty,
+                ))
             }
             hir::ExprKind::BorrowView { base } => {
                 let (v, _) = self.lower_pure(*base, out)?;
@@ -1321,7 +1326,12 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             hir::ExprKind::BorrowMut { local } => {
                 let name = self.local_name(local.0)?;
-                Ok((RExpr::RefMut { inner: Box::new(RExpr::Local(name)) }, ty))
+                Ok((
+                    RExpr::RefMut {
+                        inner: Box::new(RExpr::Local(name)),
+                    },
+                    ty,
+                ))
             }
             hir::ExprKind::Move { inner } => {
                 // whole-root ownership transfer: the Rust move IS the
@@ -1383,11 +1393,15 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             },
             (hir::ParamMode::View, Ty::Record(_)) => match raw {
                 RExpr::Ref { .. } => raw,
-                other => RExpr::Ref { inner: Box::new(other) },
+                other => RExpr::Ref {
+                    inner: Box::new(other),
+                },
             },
             (hir::ParamMode::MutBorrow, Ty::Record(_)) => match raw {
                 RExpr::RefMut { .. } | RExpr::Ref { .. } => raw,
-                other => RExpr::RefMut { inner: Box::new(other) },
+                other => RExpr::RefMut {
+                    inner: Box::new(other),
+                },
             },
             _ => raw,
         }
@@ -1409,9 +1423,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 .view
                 .record(tid)
                 .ok_or_else(|| A2xReject::new("a2x.internal", "unknown record type"))?;
-            let fld = rec.fields.get(*fid as usize).ok_or_else(|| {
-                A2xReject::new("a2x.internal", "field index out of range")
-            })?;
+            let fld = rec
+                .fields
+                .get(*fid as usize)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "field index out of range"))?;
             names.push(format!("f_{}", sanitize(&fld.name)));
             cur = fld.ty;
         }
@@ -1531,4 +1546,3 @@ fn collect_assignees(f: &FnFacts<'_>, into: &mut std::collections::BTreeSet<u32>
 pub(super) fn cmp_rust_str(op: CmpOp) -> &'static str {
     op.rust_str()
 }
-

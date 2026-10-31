@@ -133,7 +133,13 @@ fn clone_helper(rec: &RustRecord, p: &RustProgram) -> String {
 /// Render one function (records context needed only for record/text
 /// programs; kept for scalar-compatible external use).
 pub fn print_fn(f: &RustFn) -> String {
-    print_fn_in(&PrintCtx { records: HashMap::new() }, f, false)
+    print_fn_in(
+        &PrintCtx {
+            records: HashMap::new(),
+        },
+        f,
+        false,
+    )
 }
 
 /// Render one function against the module's RECORD table (the fragment
@@ -452,7 +458,9 @@ fn render_block_value(side: &RBlock) -> String {
     if side.stmts.is_empty() {
         render_val(&side.value)
     } else {
-        let ctx = PrintCtx { records: HashMap::new() };
+        let ctx = PrintCtx {
+            records: HashMap::new(),
+        };
         let mut inner = String::new();
         for s in &side.stmts {
             inner.push_str(&render_stmt(&ctx, s, 1));

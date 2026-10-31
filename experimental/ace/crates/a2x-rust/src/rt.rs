@@ -89,7 +89,14 @@ pub fn assemble_record_text_file_set(
         ("a2x_runtime.rs".to_string(), runtime),
         ("generated.rs".to_string(), generated),
     ];
-    let manifest = build_rt_manifest(&files, view, input_hash, entry_source_name, program, &target);
+    let manifest = build_rt_manifest(
+        &files,
+        view,
+        input_hash,
+        entry_source_name,
+        program,
+        &target,
+    );
     RtFileSet { files, manifest }
 }
 

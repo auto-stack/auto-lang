@@ -171,8 +171,7 @@ fn record_text_902_method_fragment_credential() {
         .def_index;
 
     // single-body credential over the same bundle
-    let parts = compile_parts_with(R08, "R08.at", &[], SourceProfile::Record)
-        .expect("parts");
+    let parts = compile_parts_with(R08, "R08.at", &[], SourceProfile::Record).expect("parts");
     let credential = verify_function_ref(&parts.bundle, read_def)
         .unwrap_or_else(|ds| panic!("record method credential: {ds:?}"));
     assert_eq!(credential.domain(), ace_core::hir::HirDomain::Record);
@@ -187,7 +186,9 @@ fn record_text_902_method_fragment_credential() {
     assert_eq!(frag.functions[0].name, "mt_Counter_read");
     let frag_text = ace_a2x_rust::print_program(&frag);
     let whole_fn: String = {
-        let start = whole_text.find("pub fn mt_Counter_read").expect("method in whole");
+        let start = whole_text
+            .find("pub fn mt_Counter_read")
+            .expect("method in whole");
         let end = whole_text[start..]
             .find("}\n")
             .map(|i| start + i + 2)
@@ -195,14 +196,19 @@ fn record_text_902_method_fragment_credential() {
         whole_text[start..end].to_string()
     };
     let frag_fn: String = {
-        let start = frag_text.find("pub fn mt_Counter_read").expect("method in fragment");
+        let start = frag_text
+            .find("pub fn mt_Counter_read")
+            .expect("method in fragment");
         let end = frag_text[start..]
             .find("}\n")
             .map(|i| start + i + 2)
             .expect("fragment end");
         frag_text[start..end].to_string()
     };
-    assert_eq!(whole_fn, frag_fn, "fragment must render the method identically");
+    assert_eq!(
+        whole_fn, frag_fn,
+        "fragment must render the method identically"
+    );
 }
 
 /// The text domains keep the whole-module credential gate (the cross-body
@@ -210,8 +216,13 @@ fn record_text_902_method_fragment_credential() {
 /// credential) — a named rejection, never a silent pass.
 #[test]
 fn record_text_902_text_function_gate() {
-    let parts = compile_parts_with(T03, "T03.at", &[RUNTIME_TEXT_CAP.to_string()], SourceProfile::TextRecord)
-        .expect("parts");
+    let parts = compile_parts_with(
+        T03,
+        "T03.at",
+        &[RUNTIME_TEXT_CAP.to_string()],
+        SourceProfile::TextRecord,
+    )
+    .expect("parts");
     let err = verify_function_ref(&parts.bundle, 0).expect_err("text fragment must reject");
     assert_eq!(err[0].code, "verify.domain");
 }

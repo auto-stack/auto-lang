@@ -316,7 +316,10 @@ impl<'a> SemanticView<'a> {
     /// `f`). `None` when the domain carries no plan or the body has none.
     /// A fragment view serves the credential's own plan, body-index
     /// checked (PLAN-902 T-03).
-    pub fn body_plan(&self, f: &FnFacts<'a>) -> Option<&ace_core::text_resources::BodyResourcePlan> {
+    pub fn body_plan(
+        &self,
+        f: &FnFacts<'a>,
+    ) -> Option<&ace_core::text_resources::BodyResourcePlan> {
         if let Some((plan, body_index)) = self.fragment_plan {
             if body_index == f.body_index {
                 return Some(plan);
@@ -466,9 +469,7 @@ impl<'a> SemanticView<'a> {
             // PLAN-902: the record/text/text-record surfaces carry the
             // full scalar operator set (their verifiers are supersets of
             // the scalar verifier for the compute nodes).
-            hir::HirDomain::Text
-            | hir::HirDomain::Record
-            | hir::HirDomain::TextRecord => matches!(
+            hir::HirDomain::Text | hir::HirDomain::Record | hir::HirDomain::TextRecord => matches!(
                 op,
                 hir::BinOp::AddI32
                     | hir::BinOp::SubI32
@@ -657,7 +658,10 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
         Family::TextRecord => {
             text_kinds
                 || record_kinds
-                || matches!(k, hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. })
+                || matches!(
+                    k,
+                    hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. }
+                )
         }
     }
 }
@@ -704,10 +708,15 @@ fn collect_functions<'m>(
                 body,
                 record,
                 receiver,
-            } => (name, *ty, *body, FnKind::Method {
-                owner: record.0,
-                receiver: *receiver,
-            }),
+            } => (
+                name,
+                *ty,
+                *body,
+                FnKind::Method {
+                    owner: record.0,
+                    receiver: *receiver,
+                },
+            ),
             hir::DefKind::Intrinsic { .. } => continue,
         };
         if let Some(want) = only_def {
@@ -770,19 +779,22 @@ fn collect_externals(
     let mut externals = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         let (name, ty, body_id, kind) = match &def.kind {
-            hir::DefKind::Function { name, ty, body } => {
-                (name, *ty, *body, FnKind::Free)
-            }
+            hir::DefKind::Function { name, ty, body } => (name, *ty, *body, FnKind::Free),
             hir::DefKind::Method {
                 name,
                 ty,
                 body,
                 record,
                 receiver,
-            } => (name, *ty, *body, FnKind::Method {
-                owner: record.0,
-                receiver: *receiver,
-            }),
+            } => (
+                name,
+                *ty,
+                *body,
+                FnKind::Method {
+                    owner: record.0,
+                    receiver: *receiver,
+                },
+            ),
             hir::DefKind::Intrinsic { .. } => continue,
         };
         if def.id_text == planned_def {
@@ -841,7 +853,11 @@ fn collect_records(module: &hir::Module) -> Result<Vec<RecordFacts>, A2xReject> 
             }
             records.push(RecordFacts {
                 type_index: idx as u32,
-                name: td.id_text.strip_prefix("t_rec_").unwrap_or(&td.id_text).to_string(),
+                name: td
+                    .id_text
+                    .strip_prefix("t_rec_")
+                    .unwrap_or(&td.id_text)
+                    .to_string(),
                 fields,
                 resource: false,
             });

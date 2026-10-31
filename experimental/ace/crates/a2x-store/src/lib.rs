@@ -504,10 +504,7 @@ impl A2xSession {
             // 2) store hit on the TARGET layer: reuse the checked payload
             //    (A→B→A revisits land here with real historical bytes)
             let frag_key = self.fragment_key(f, &sem_fp, &runtime_sha);
-            if let Ok(Some(hit)) = self
-                .store
-                .get_artifact(self.layer_fragment().id, &frag_key)
-            {
+            if let Ok(Some(hit)) = self.store.get_artifact(self.layer_fragment().id, &frag_key) {
                 let text = String::from_utf8(hit.payload).map_err(|_| {
                     A2xRejectOrResource::Reject(A2xReject::new(
                         "a2x.internal",
@@ -551,8 +548,7 @@ impl A2xSession {
             if !read_only {
                 // semantic layer first
                 let sig_input = self.signature_input(view, f);
-                let sem_key =
-                    self.semantic_key(f, &sem_fp, view.domain.schema(), &sig_input);
+                let sem_key = self.semantic_key(f, &sem_fp, view.domain.schema(), &sig_input);
                 let sem_payload = format!(
                     "{{\"schema\":\"{}\",\"decl\":\"{}\",\"signature\":\"{}\",\"sem_fp\":\"{}\"}}",
                     self.layer_semantic().schema_id,
@@ -594,10 +590,7 @@ impl A2xSession {
             .map(|(_, r)| (r.source_name.clone(), r.clone()))
             .collect();
         let rt_records = if self.family() == Family::RecordText {
-            Some(
-                ace_a2x_rust::lower::lower_records(view)
-                    .map_err(A2xRejectOrResource::Reject)?,
-            )
+            Some(ace_a2x_rust::lower::lower_records(view).map_err(A2xRejectOrResource::Reject)?)
         } else {
             None
         };
@@ -890,10 +883,7 @@ impl A2xSession {
         read_only: bool,
     ) -> Result<ResidentFragment, A2xRejectOrResource> {
         let frag_key = self.fragment_key(f, sem_fp, runtime_sha);
-        if let Ok(Some(hit)) = self
-            .store
-            .get_artifact(self.layer_fragment().id, &frag_key)
-        {
+        if let Ok(Some(hit)) = self.store.get_artifact(self.layer_fragment().id, &frag_key) {
             if let Ok(text) = String::from_utf8(hit.payload) {
                 self.stats.store_hit_fragment += 1;
                 return Ok(ResidentFragment {
@@ -920,10 +910,7 @@ impl A2xSession {
                 ))
             })?;
         let rt_records = if self.family() == Family::RecordText {
-            Some(
-                ace_a2x_rust::lower::lower_records(view)
-                    .map_err(A2xRejectOrResource::Reject)?,
-            )
+            Some(ace_a2x_rust::lower::lower_records(view).map_err(A2xRejectOrResource::Reject)?)
         } else {
             None
         };

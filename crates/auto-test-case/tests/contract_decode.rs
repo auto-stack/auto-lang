@@ -557,10 +557,7 @@ fn a2x_record_text_recipe_profile_strictness() {
         ("ac-a2r/hir-record-text-emit-v1", "scalar"),
         ("ac-a2r/hir-record-text-emit-v1", "collections"),
     ] {
-        let err = decode(&base(recipe, bad))
-            .unwrap_err()
-            .message
-            .to_string();
+        let err = decode(&base(recipe, bad)).unwrap_err().message.to_string();
         assert!(
             err.contains("is not valid for recipe"),
             "{recipe}/{bad}: {err}"

@@ -59,8 +59,8 @@ pub fn run_chain(
     let compiled = compile_case(name, src, prof);
     let view = SemanticView::from_checked(&compiled.checked)
         .unwrap_or_else(|r| panic!("view admission for {name}: {r}"));
-    let program = lower_program(&view, "main")
-        .unwrap_or_else(|r| panic!("lowering for {name}: {r}"));
+    let program =
+        lower_program(&view, "main").unwrap_or_else(|r| panic!("lowering for {name}: {r}"));
     let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "main");
 
     let dir = out_root().join(name).join(flavor);
@@ -93,7 +93,12 @@ pub fn run_chain(
     assert!(
         compile_out.kind == auto_tool_execution::ExitKind::Success,
         "rustc failed for {name} ({flavor}):\n{}",
-        String::from_utf8_lossy(compile_out.stderr.as_ref().expect("captured compiler stderr"))
+        String::from_utf8_lossy(
+            compile_out
+                .stderr
+                .as_ref()
+                .expect("captured compiler stderr")
+        )
     );
 
     let mut command = Command::new(&exe);
@@ -120,7 +125,8 @@ pub fn run_chain(
 
 pub fn assert_value(name: &str, out: &str, expected: i32) {
     assert_eq!(
-        out, format!("value:{expected}\n"),
+        out,
+        format!("value:{expected}\n"),
         "stdout mismatch for {name}"
     );
 }

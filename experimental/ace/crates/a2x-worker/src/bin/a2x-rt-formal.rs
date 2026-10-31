@@ -122,7 +122,14 @@ fn certify_assembly(asm: &ace_a2x_store::Assembly, tag: &str) -> String {
     let exe = dir.join("a2x_rt_formal.exe");
     let mut owned_compiler = std::process::Command::new(&rustc);
     owned_compiler
-        .args(["--edition", "2021", "-O", "-C", "debug-assertions=off", "-o"])
+        .args([
+            "--edition",
+            "2021",
+            "-O",
+            "-C",
+            "debug-assertions=off",
+            "-o",
+        ])
         .arg(&exe)
         .arg("main.rs")
         .current_dir(&dir);
@@ -181,7 +188,13 @@ fn main() {
         assert_eq!(line, format!("value:{}", record_expected()));
         cert_ok += 1;
         let asm = s
-            .cold_assemble_profile(&text_load_base(), SourceProfile::TextRecord, &caps, "main", false)
+            .cold_assemble_profile(
+                &text_load_base(),
+                SourceProfile::TextRecord,
+                &caps,
+                "main",
+                false,
+            )
             .unwrap();
         let line = certify_assembly(&asm, "txt-0");
         assert_eq!(line, format!("value:{}", text_expected(0)));
@@ -227,9 +240,14 @@ fn main() {
         .unwrap();
     // residents after cold: measure via the first hit-state reuse count
     let lower_before_hit = s.stats().lower;
-    s.cold_assemble_profile(&rec_src, SourceProfile::TextRecord, &caps, "main", false).unwrap();
+    s.cold_assemble_profile(&rec_src, SourceProfile::TextRecord, &caps, "main", false)
+        .unwrap();
     let fns_total = s.stats().fragments_reused_resident;
-    assert_eq!(s.stats().lower, lower_before_hit, "hit probe produced nothing");
+    assert_eq!(
+        s.stats().lower,
+        lower_before_hit,
+        "hit probe produced nothing"
+    );
     let lower_after_cold = s.stats().lower;
     let mut hit: Vec<u64> = Vec::new();
     for _ in 0..SAMPLES {
@@ -239,7 +257,8 @@ fn main() {
         hit.push(t.elapsed().as_millis() as u64);
     }
     assert_eq!(
-        s.stats().lower, lower_after_cold,
+        s.stats().lower,
+        lower_after_cold,
         "hit state produced nothing new (all residents reused)"
     );
     let hit_store_bytes = s.space().total;
@@ -264,7 +283,8 @@ fn main() {
         restart.push(t.elapsed().as_millis() as u64);
         if i == 0 {
             assert_eq!(
-                s.stats().lower, 0,
+                s.stats().lower,
+                0,
                 "restart re-admits by pure store hits (zero lowering)"
             );
             restart_store_bytes = s.space().total;
@@ -275,8 +295,14 @@ fn main() {
     // ---- body-edit x30 distinct revisions (warm fragment path) ----
     let ed_root = tmp("edit");
     let mut s = A2xSession::open(&ed_root, "a2x-rt-formal", "formal", 128 * 1024 * 1024).unwrap();
-    s.cold_assemble_profile(&text_load_base(), SourceProfile::TextRecord, &caps, "main", false)
-        .unwrap();
+    s.cold_assemble_profile(
+        &text_load_base(),
+        SourceProfile::TextRecord,
+        &caps,
+        "main",
+        false,
+    )
+    .unwrap();
     let mut edits: Vec<u64> = Vec::new();
     for r in 1..=SAMPLES as u32 {
         let frag = tgt_fragment(r);

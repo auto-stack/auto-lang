@@ -13,8 +13,8 @@
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{
-    assemble_record_text_file_set, lower_program, CertDraft, ToolchainIdentity, RT_CERT_SCHEMA,
-    RT_RECIPE, CERT_SCHEMA, RECIPE,
+    assemble_record_text_file_set, lower_program, CertDraft, ToolchainIdentity, CERT_SCHEMA,
+    RECIPE, RT_CERT_SCHEMA, RT_RECIPE,
 };
 use ace_core::source::compile_text_record_source;
 use std::path::{Path, PathBuf};
@@ -45,8 +45,7 @@ const REFERENCE_WRONG: &str = "fn main() { println!(\"value:3\"); }\n";
 /// A LATE-FAILURE reference: prints the correct observation, then exits
 /// non-zero — a successful observation followed by an abnormal exit is
 /// never a PASS.
-const REFERENCE_LATE_EXIT: &str =
-    "fn main() { println!(\"value:23\"); std::process::exit(1); }\n";
+const REFERENCE_LATE_EXIT: &str = "fn main() { println!(\"value:23\"); std::process::exit(1); }\n";
 
 fn out_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/a2x-out/cert-rt-902")
@@ -92,11 +91,7 @@ fn write(dir: &Path, name: &str, content: &str) {
 /// The judge of the certify axis: actual and reference each really
 /// compile+run; PASS only when BOTH observed lines equal the oracle AND
 /// neither leg aborted after observing.
-fn judge(
-    actual_dir: &Path,
-    ref_src: &str,
-    oracle: i32,
-) -> (String, Result<String, String>, bool) {
+fn judge(actual_dir: &Path, ref_src: &str, oracle: i32) -> (String, Result<String, String>, bool) {
     let actual = compile_run(actual_dir, "main.rs", "rt_actual.exe").expect("actual leg");
     let ref_dir = actual_dir.join("ref");
     write(&ref_dir, "main.rs", ref_src);
@@ -187,8 +182,15 @@ fn rt_certify_pass_leg_and_binding() {
             .stdout,
     )
     .to_string();
-    let cert = rt_cert_draft("a2r-hir-record-text-902.t03", "PASS", &fs.files, REFERENCE_T03, &vv);
-    cert.validate_as(RT_CERT_SCHEMA, RT_RECIPE).expect("valid rt cert");
+    let cert = rt_cert_draft(
+        "a2r-hir-record-text-902.t03",
+        "PASS",
+        &fs.files,
+        REFERENCE_T03,
+        &vv,
+    );
+    cert.validate_as(RT_CERT_SCHEMA, RT_RECIPE)
+        .expect("valid rt cert");
     assert_eq!(cert.to_json(), cert.to_json(), "byte-stable serialization");
     assert_eq!(cert.toolchain.version_vv_sha256.len(), 64);
     assert_eq!(cert.toolchain.flags, vec!["--edition", "2021"]);
@@ -251,7 +253,10 @@ fn rt_certify_late_failure_not_pass() {
     let (actual, reference, pass) = judge(&dir, REFERENCE_LATE_EXIT, ORACLE);
     assert_eq!(actual, "value:23");
     assert!(reference.is_err(), "the abnormal exit must be a refusal");
-    assert!(!pass, "an observation followed by an abnormal exit never passes");
+    assert!(
+        !pass,
+        "an observation followed by an abnormal exit never passes"
+    );
 }
 
 /// V-09/V-10: cross-channel impersonation and tampered cert shapes are
@@ -302,8 +307,7 @@ fn rt_certify_protocol_legs_via_prebuilt_worker() {
         .ok()
         .map(PathBuf::from)
         .or_else(|| {
-            let mut dir: Option<PathBuf> =
-                Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+            let mut dir: Option<PathBuf> = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
             while let Some(d) = dir {
                 let exe = d
                     .join("experimental/ace/target/release")
@@ -336,9 +340,7 @@ fn rt_certify_protocol_legs_via_prebuilt_worker() {
 
     let run_certify = |oracle: i64| -> String {
         // JSON-escape Windows path separators in the request payloads
-        let esc = |p: &Path| -> String {
-            p.display().to_string().replace('\\', "\\\\")
-        };
+        let esc = |p: &Path| -> String { p.display().to_string().replace('\\', "\\\\") };
         let req = format!(
             "{{\"op\":\"certify\",\"source_path\":\"{}\",\"profile\":\"text-record\",\"entry\":\"main\",\"caps\":[\"ac.runtime.text.v1\"],\"out_dir\":\"{}\",\"reference_path\":\"{}\",\"oracle_kind\":\"value\",\"oracle_value\":{},\"case_id\":\"rt-protocol\"}}",
             esc(&src_path),
@@ -346,7 +348,10 @@ fn rt_certify_protocol_legs_via_prebuilt_worker() {
             esc(&ref_path),
             oracle
         );
-        let out = Command::new(&worker).arg(req).output().expect("spawn worker");
+        let out = Command::new(&worker)
+            .arg(req)
+            .output()
+            .expect("spawn worker");
         assert!(
             out.status.success(),
             "worker failed: {}",
@@ -358,7 +363,10 @@ fn rt_certify_protocol_legs_via_prebuilt_worker() {
     // right oracle -> PASS with the rt identities bound
     let pass = run_certify(ORACLE as i64);
     assert_eq!(json_field(&pass, "verdict"), "PASS");
-    assert_eq!(json_field(&pass, "recipe"), "ac-a2r/hir-record-text-emit-v1");
+    assert_eq!(
+        json_field(&pass, "recipe"),
+        "ac-a2r/hir-record-text-emit-v1"
+    );
     assert_eq!(json_field(&pass, "actual_observed"), "value:23");
     assert_eq!(json_field(&pass, "reference_observed"), "value:23");
 
@@ -377,7 +385,9 @@ fn rt_certify_protocol_legs_via_prebuilt_worker() {
 /// (a few named fields only — no JSON model needed here).
 fn json_field(raw: &str, name: &str) -> String {
     let needle = format!("\"{}\"", name);
-    let pos = raw.find(&needle).unwrap_or_else(|| panic!("field {name} in response"));
+    let pos = raw
+        .find(&needle)
+        .unwrap_or_else(|| panic!("field {name} in response"));
     let rest = raw[pos + needle.len()..].trim_start();
     let rest = rest.strip_prefix(':').expect("colon").trim_start();
     let end = rest.find([',', '\n', '}']).expect("value end");
