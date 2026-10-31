@@ -4,9 +4,11 @@
   "samples": 2,
   "verdict": {
     "status": "fail",
-    "reason": "controlled negative: P95 exceeded the 1000ms gate",
+    "reason": "controlled negative: P90 exceeded the 2000ms gate",
     "structure": "pass",
+    "p90_ms": 2100.0,
     "p95_ms": 2100.0,
+    "time_gate_ms": 2000.0,
     "time_gate": false
   },
   "revisions": [

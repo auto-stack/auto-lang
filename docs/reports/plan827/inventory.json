@@ -5,7 +5,7 @@
     {
       "id": "AP-01",
       "kind": "ap-seed",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-gcd-euclid.at",
       "sha256": "6d466c03e1b0012f7ac9b883cf88f253345fd911ac3ced2d1f282ce042799af3",
       "status": "supported-G1",
       "owner": "827",
@@ -14,7 +14,7 @@
     {
       "id": "AP-02",
       "kind": "ap-seed",
-      "path": "experimental/ac-core/fixtures/record-source/valid/p01-records.at",
+      "path": "experimental/ace/crates/core/fixtures/record-source/valid/p01-records.at",
       "sha256": "f24d50042fbb82ca125acd52b83b99718fb1bc7d7532f4581dd795b309b5739e",
       "status": "gap",
       "owner": "G2a",
@@ -23,7 +23,7 @@
     {
       "id": "AP-03",
       "kind": "ap-seed",
-      "path": "experimental/ac-core/fixtures/text-record-source/valid/p02-overlap.at",
+      "path": "experimental/ace/crates/core/fixtures/text-record-source/valid/p02-overlap.at",
       "sha256": "561bb4a7160a437b73e52ee87933547712b752b56de3f4229f51a2bf5ed69c03",
       "status": "gap",
       "owner": "G2a",
@@ -194,7 +194,7 @@
     {
       "id": "AP-22",
       "kind": "ap-seed",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-binop-args.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-binop-args.at",
       "sha256": "46d6a431a5c1b9bbe6e2e87b8732c09a9c584b58eb92799fdb4ab073f423e625",
       "status": "supported-G1",
       "owner": "827",
@@ -203,133 +203,133 @@
     {
       "id": "AP-23",
       "kind": "ap-seed",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
       "sha256": "d6871b77c9b02e797c77a2cf34900e005fe97062bf1fc95ffcdf1cf7707052a9",
       "status": "supported-G1",
       "owner": "827",
       "note": "nature=ac-source; oracle=none"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-a-minus-1.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-a-minus-1.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-a-minus-1.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-a-minus-1.at",
       "sha256": "2f4496793e6a4db42d53f377a30031441843a0a8a08aaefb895995e9370dc641",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "456 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-binop-args.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-binop-args.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-binop-args.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-binop-args.at",
       "sha256": "46d6a431a5c1b9bbe6e2e87b8732c09a9c584b58eb92799fdb4ab073f423e625",
       "status": "seed",
       "owner": "827/G2",
       "note": "519 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-cmp-matrix.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-cmp-matrix.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-cmp-matrix.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-cmp-matrix.at",
       "sha256": "290961bc12288fd5e1523320bac43aeace7a1a770c941449aa3223cdbba50101",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "1148 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-count-digits.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-count-digits.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-count-digits.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-count-digits.at",
       "sha256": "716d9e896d8eac777d6b14d121b11929fe77972d82adef19ce79f88b576ce3c9",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "309 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-crlf.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-crlf.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-crlf.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-crlf.at",
       "sha256": "d1064b0a16aec0cbeab5a669353109e131d6ec304fb560a4dd449443d3674e3f",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "201 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-for-loops.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-for-loops.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-for-loops.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-for-loops.at",
       "sha256": "fa358a467646a370567d2c1fceb16dc6ea8b631d38e75b1c5199132b7ff1e38d",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "528 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-gcd-euclid.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-gcd-euclid.at",
       "sha256": "6d466c03e1b0012f7ac9b883cf88f253345fd911ac3ced2d1f282ce042799af3",
       "status": "seed",
       "owner": "827/G2",
       "note": "540 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-is-digit.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-is-digit.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-is-digit.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-is-digit.at",
       "sha256": "6e6797b67aca64c6c1b4d44fc0f323d54585974cce6bab1288bdb20b22943923",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "391 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-contexts.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-contexts.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-contexts.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-contexts.at",
       "sha256": "b2cbf94dfd30be472f8362cae1efb68a8485e33550ba3bda35b978128be3a2ad",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "980 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trace.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-trace.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trace.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-trace.at",
       "sha256": "aa4baf2b834d37538c9ecb4000e080043035d09c0d2c594740e8448a0436bc49",
       "status": "gap-no-oracle",
       "owner": "827/G2",
       "note": "802 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
+      "id": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
+      "path": "experimental/ace/crates/core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
       "sha256": "d6871b77c9b02e797c77a2cf34900e005fe97062bf1fc95ffcdf1cf7707052a9",
       "status": "seed",
       "owner": "827/G2",
       "note": "262 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/record-source/valid/p01-records.at",
+      "id": "experimental/ace/crates/core/fixtures/record-source/valid/p01-records.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/record-source/valid/p01-records.at",
+      "path": "experimental/ace/crates/core/fixtures/record-source/valid/p01-records.at",
       "sha256": "f24d50042fbb82ca125acd52b83b99718fb1bc7d7532f4581dd795b309b5739e",
       "status": "seed",
       "owner": "G2a",
       "note": "1149 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/text-record-source/valid/p01-combination.at",
+      "id": "experimental/ace/crates/core/fixtures/text-record-source/valid/p01-combination.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/text-record-source/valid/p01-combination.at",
+      "path": "experimental/ace/crates/core/fixtures/text-record-source/valid/p01-combination.at",
       "sha256": "8b1cc0bbec684e966a6568b237ee197cec7aabe52cb1f6136d03f29731164ff3",
       "status": "seed",
       "owner": "G2a",
       "note": "1547 bytes"
     },
     {
-      "id": "experimental/ac-core/fixtures/text-record-source/valid/p02-overlap.at",
+      "id": "experimental/ace/crates/core/fixtures/text-record-source/valid/p02-overlap.at",
       "kind": "ac-fixture",
-      "path": "experimental/ac-core/fixtures/text-record-source/valid/p02-overlap.at",
+      "path": "experimental/ace/crates/core/fixtures/text-record-source/valid/p02-overlap.at",
       "sha256": "561bb4a7160a437b73e52ee87933547712b752b56de3f4229f51a2bf5ed69c03",
       "status": "seed",
       "owner": "G2a",
@@ -6663,6 +6663,24 @@
       "note": "440 bytes"
     },
     {
+      "id": "stdlib-auto/zip.at",
+      "kind": "stdlib-auto-file",
+      "path": "stdlib/auto/zip.at",
+      "sha256": "f694a450ad526f7e9581ca52d192707e4041ed65c17686c4632973da11be2e62",
+      "status": "layer=public",
+      "owner": "PLAN-738",
+      "note": "1732 bytes"
+    },
+    {
+      "id": "stdlib-auto/zip.vm.at",
+      "kind": "stdlib-auto-file",
+      "path": "stdlib/auto/zip.vm.at",
+      "sha256": "d64c9ccffd056f3e01569220fca0ec6a7cef921c69a46db5baeafb8f5fc90357",
+      "status": "layer=vm-shim",
+      "owner": "PLAN-738",
+      "note": "296 bytes"
+    },
+    {
       "id": "C-01",
       "kind": "capability",
       "path": "",
@@ -6713,7 +6731,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "798不支持Unit值",
+      "owner": "862已归档；旧798不自动扩面",
       "note": "gate=G2 / R2-E; Unit值、无返回main、隐式尾表达式/顶层脚本"
     },
     {
@@ -6758,7 +6776,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "823部分基础",
+      "owner": "823执行；865源码",
       "note": "gate=G2 / R2-E,R2-L; 默认/变参、函数值和高阶调用"
     },
     {
@@ -6794,7 +6812,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822",
+      "owner": "822执行；864源码",
       "note": "gate=G2 / R2-L; List<T>布局、Index/增删/清理"
     },
     {
@@ -6803,7 +6821,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822",
+      "owner": "822执行；864源码",
       "note": "gate=G2 / R2-L; Option/Result/有限enum载荷"
     },
     {
@@ -6812,7 +6830,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822",
+      "owner": "822执行；864源码",
       "note": "gate=G2 / R2-L; is/match、guard与载荷解构"
     },
     {
@@ -6821,7 +6839,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "823",
+      "owner": "823执行；865源码",
       "note": "gate=G2 / R2-L; owned闭包、捕获、间接调用"
     },
     {
@@ -6875,7 +6893,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "820/821部分基础",
+      "owner": "771/782语义；881 producer已归档，871核整体覆盖",
       "note": "gate=G2/G3 / R3-T; 方法/ext/接收者/动态分派"
     },
     {
@@ -6920,7 +6938,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "798不提供普通IO",
+      "owner": "862已归档/863 r2 drafting",
       "note": "gate=G2/G4 / R2-E,R4-P; print/stdin/stderr、普通CLI结果"
     },
     {
@@ -7010,8 +7028,8 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "817/796；824不扩其schema",
-      "note": "gate=自举分支 / RB; CTE/meta反射/类型生成"
+      "owner": "817/796已有限交付；824不扩其schema",
+      "note": "gate=v0.6语言/语义扩面；AACE另在v0.7; CTE/meta反射/类型生成"
     },
     {
       "id": "C-40",
@@ -7371,7 +7389,7 @@
     "vm_corpus_cases": 517,
     "vm_categories": 47,
     "stdlib_providers": 37,
-    "stdlib_auto_files": 102,
+    "stdlib_auto_files": 104,
     "capabilities": 43,
     "entry_points": 10,
     "gates": 10,
