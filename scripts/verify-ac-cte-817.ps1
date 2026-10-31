@@ -56,7 +56,12 @@ function Test-Scope([string]$s) {
         "turnaround" {
             Run-Step "workspace cte_turnaround_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }
             Run-Step "bench raw report" {
-                $out = Join-Path $repo "$ReportDir/turnaround.jsonl"
+                # PLAN-899 T-03: -ReportDir may be absolute (plan-artifacts
+                # scope lives OUTSIDE any repo checkout); relative paths stay
+                # repo-rooted as before.
+                $reportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) { $ReportDir } else { Join-Path $repo $ReportDir }
+                New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+                $out = Join-Path $reportDir "turnaround.jsonl"
                 $exe = Join-Path $repo "experimental/ace/target/release/ace-comptime-worker.exe"
                 Invoke-AceCargo build --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --release -p ace-comptime --bin ace-comptime-worker 2>&1 | Select-Object -Last 1
                 & $exe bench-turnaround --samples 30 --out $out

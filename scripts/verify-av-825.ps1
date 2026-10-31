@@ -154,7 +154,7 @@ function Invoke-Benchmark {
     foreach ($name in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl', 'summary.json', 'js-tier.log', 'liftoff-tier.log', 'turbofan-tier.log', 'turnaround.jsonl', 'turnaround-summary.json')) {
         if (Test-Path (Join-Path $raw $name)) { Remove-Item -LiteralPath (Join-Path $raw $name) -Force }
     }
-    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ace/Cargo.toml', '--bin', 'av_runtime_bench', '--bin', 'av-worker') | Out-Host
+    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ace/Cargo.toml', '-p', 'ace-av', '--bin', 'av_runtime_bench', '--bin', 'av-worker') | Out-Host
     Invoke-Native -Exe (Join-Path $probe 'target/release/av_runtime_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av.jsonl')) -Log (Join-Path $raw 'av-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--jitless', '--print-bytecode', 'scripts/av-825-bench.mjs', '--engine', 'v8-js-ignition', '--out', (Join-Path $raw 'js.jsonl')) -Log (Join-Path $raw 'js-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--liftoff-only', '--no-wasm-tier-up', '--no-wasm-dynamic-tiering', '--trace-wasm-compilation-times', 'scripts/av-825-bench.mjs', '--engine', 'v8-wasm-liftoff', '--out', (Join-Path $raw 'liftoff.jsonl')) -Log (Join-Path $raw 'liftoff-tier.log')

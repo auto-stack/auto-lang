@@ -113,7 +113,7 @@ function Invoke-Benchmark {
         if (Test-Path $p) { Remove-Item -LiteralPath $p -Force }
     }
     Get-ChildItem -LiteralPath $raw -Filter '*.bin' -File | Remove-Item -Force
-    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ace/Cargo.toml', '--bin', 'av_wire_bench', '--bin', 'av-worker') | Out-Host
+    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ace/Cargo.toml', '-p', 'ace-av', '--bin', 'av_wire_bench', '--bin', 'av-worker') | Out-Host
     Invoke-Native -Exe (Join-Path $probe 'target/release/av_wire_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av826.jsonl'), '--payload-dir', $raw) -Log (Join-Path $raw 'av-tier.log')
     # V8/Wasm comparator entries over the frozen common load (the PLAN-825
     # bench driver, engine-parameterized; tier flags pin the tiers).
