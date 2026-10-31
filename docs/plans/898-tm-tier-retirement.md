@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-898
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: tm-tier-retirement
 author: [zcode-session 2026-10-31]
 created_at: 2026-10-31
@@ -143,17 +143,59 @@ python_tests.py prepare_tools.py native_meter.py`
 
 - T-01 基线快照：`cargo t --select-only all > /tmp/all-before.txt`；`cargo t`（daily）
   记录绿；记录 `--list` 组数。[验证：两输出非空]
+  [✅ 已完成] 快照=79 组 1870 行 JSON（attachments/898/work/all-before.txt，本地证据）；
+  daily=3078 例 3076 绿 + 2 预存红（plan872_binding_table_json_matches_regeneration、
+  plan884_provider_input_coverage::domain_dir_sources_all_covered）+667 skip，84.9s；--list=110 组。
 - T-02 SET A 删除 + 驱动收敛（config.toml 别名、main.rs、fixed-tests.py、
   run-full-regression.py、引擎/目录/txt/两脚本、治理测试三组+四 legacy 组）。
   [验证：`cargo t --list`；`cargo tm` 报 unknown alias；python -m pytest 存活治理测试]
+  [✅ 已完成] worktree 提交 736064ce7（含 amend）：别名仅剩 t、`cargo tm`=no such command、
+  --list=103 组；main.rs 收敛为 fixed-tests.py 直通；fixed-tests.py 删 --legacy-tier 9 行。
 - T-03 SET B 逐文件消费者核查，零消费者者删，否则留档。[验证：grep 审计清单入复审记录]
+  [✅ 已完成] 传递可达性（根=fixed-tests/test-groups/存活测试/ps1）+ 全仓反查：删
+  discover_cases/measure-first-wave/partition_policy/recipe_runtime.py +
+  atomic-contract/coverage-matrix/daily-admission-proposal/partition-policy/
+  test-purpose-policy.json（引用仅在未跟踪垃圾堆 `scripts/\` 内，见 898-N1）；
+  ace-cargo.ps1 零静态消费者但保留（898-N2）。**修正**：module_catalog.py 实为共享
+  I/O 助手（7 处存活 import），误删后拆出通用部 governance_io.py（ROOT/digest/
+  load/write/source_identity）并改 7 处引用；其 tm 引擎函数（validate/select/
+  closure/write_catalog/load_top）不恢复。test_test_governance.py 整文件绑死
+  run-full-regression.py（importlib 按路径加载、无组接线）→ 随删。
 - T-04 选择面守恒：`cargo t --select-only all > /tmp/all-after.txt`，差集仅允许
   为空（四组测试名 ⊆ 并集）。[验证：diff 输出空或具名解释]
+  [✅ 已完成] 79→76 组，removed={infra-modules,infra-purpose,infra-regression}（随主体
+  删的 python 治理测试），added=∅；四 legacy 组 all=false 本就不在并集（对照快照证实），
+  守恒成立。test_fixed_groups.py 3 处断言旧 legacy 组配置 → 改为退役缺失断言。
 - T-05 文档对齐（AGENTS/README×2/project.md/893/KNOWN-DEBT）。[验证：grep 现行时态零残留]
+  [✅ 已完成] AGENTS.md 三处（888 残留句/AG 节 tf/tv/Heavy-Mem 节 taa/ta/t3→aavm 组+
+  T3_MILESTONE）；test-governance/README.md 与 full-regression.md 重写（现行范式+
+  存活计量段落，历史归档指向）；specs/auto-test-case/project.md 888 节改历史时态；
+  KNOWN-DEBT 记 898-N1..N4。893=主检出未跟踪草稿，无法在 worktree 改（898-N3 记录）。
 - T-06 技能更新：仓内副本改毕提交；用户级两副本 diff 摘要呈报用户后同步。
   [验证：三副本 grep 零残留]
+  [✅ 仓内完成/用户级待批] 仓内仅 autoui-verifier:125（tm→cargo t 固定组）与 commit:10
+  （module union/cargo tf→固定组并集/cargo t all）两处，已随 736064ce7 提交。
+  auto-plan-* 五/六技能为**纯用户级资产**（~/.zcode + ~/.agents，两处互同）；其
+  888 时代指令（new:115/120, work:240-249, merge:176-183/201, review:169-177/296-298,
+  regress:33-116）待用户过目后同步。
+  [✅ 已完成] 用户 2026-10-31 批准；update-user-skills.py 执行两副本：~/.zcode（LF）
+  直改，~/.agents（CRLF）行尾适配；每替换唯一命中断言 + 幂等；末尾 grep 审计
+  cargo tm/tf --batch/--legacy-tier/tm -- **两副本零残留**（auto-plan-goal 无引用未动）。
 - T-07 冻结合入门：worktree 内 `cargo t all` 单实例全跑 + 收尾 grep 审计。
   [验证：全绿或已知红归属清单]
+  [进行中] 三轮迭代：①含 ace 全门（旧 76 组语义）中途停止（裁定改纯语言门，ACE
+  冷编不再属门义务，进程树已清）；②纯语言门（37 组）跑完 22 PASS/10 FAIL/6 NA，
+  三角化：4 红=master 预存（shim-metadata E0061、auto-gen E0433、auto-lang-core
+  plan884、auto-api-gen plan734_tauri_fixture，均主检出复现）；2 红=门内负载时序
+  flake（a2r-std plan727、auto-tool-execution timeout，主检检出+worktree 单跑均绿）；
+  **1 红=898 自身**：auto-lang 组秒败——SET A 误删存活的 legacy-wrapper-contract.json
+  （462KB VM/语料包装身份合同，wrapper_bindings.py:55 消费），**根因=反向引用扫描
+  过滤器写坏造成假阴性**；infra-fixed 红=测试与门自碰撞（execution_lease mkdir
+  target/test-groups/active）。修复（2a450f9cd）：合同自 ee0a1059e 恢复；
+  machine_gate 逐字迁 governance_io、measure_pilot 弃 importlib 加载已删 runner；
+  check_inventory/inventory（绑已删基线、零消费者）删；租约碰撞测试 patch nullcontext。
+  全面重扫 95 已删文件确认无其余真实引用（README/docstring 提及不算）。
+  ③修复后门排队等待他方会话（plan-890 legacy 回放构建）结束后自动起跑。
 
 ## 复审记录
 
@@ -161,3 +203,11 @@ python_tests.py prepare_tools.py native_meter.py`
 
 - SET B 中 partition-policy/test-purpose-policy 族是否已被 896 固定组机制完全取代：
   执行时以消费者核查结果为准，存疑保留并记录（不影响本计划目标）。
+- （2026-10-31 用户问询挂起）`cargo t all` 并集含 ace 域 39 组：批量门是否改为
+  仅语言侧（ace 组 all=false、ACE 路线自己显式 `cargo t ace`）待用户拍板；不改则
+  维持 896 现语义。属 test-groups.toml 一行级配置，若改随本计划 T-07 后追加。
+  [✅ 已裁定] 用户 2026-10-31 拍板"cargo t all 不需要ace"：39 个 ace 域组
+  all=true→false（提交 733e73b31），all 并集 76→37 组，与 AGENTS 既有"语言仓全部
+  固定组"表述对齐；test_fixed_groups all 断言改语言侧语义。T-04 的 76 组口径
+  以此为准更新，T-07 冻结门按 37 组重跑（首跑含 ace 的证据作废——ace 冷编译
+  成本不再属门义务）。
