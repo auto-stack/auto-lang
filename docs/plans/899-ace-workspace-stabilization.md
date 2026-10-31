@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-899
-status: executing
+status: execution_done
 feature_name: ACE组织收尾、历史probe清退与行号级调试
 author: [Codex]
 created_at: 2026-10-31
-updated_at: 2026-10-31
+updated_at: 2026-11-01
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-test-case/build-storage-lifecycle.md]
 new_spec_components: []
@@ -23,7 +23,7 @@ r2依据900/891已交付、901在途的真实基线修订原计划，不另取�
 
 保留独立workspace、实现职责、语言隔离与全部有效测试/oracle/正式样本；四个原no_std运行时加891新typed-entry运行时的panic-abort合同全部保护。debug=0改行号会增加成员调试信息，不把这一项宣传为减量。
 
-r2实施已获用户 /goal 授权（2026-10-31，见§4.1与§9收据），当前executing、2/7：T-01审计与T-02 profile/README已在lang-899树交付（代码提交416060511）；T-03/T-04等U901（901仍executing未合入master），届时续work。审计结论：本轮19 bins+2 fixtures全有真实职责或消费者，零可删；两处断链/落后文档（verify-av脚本旧bin名、KNOWN-DEBT旧路径）归T-03原子修复。
+r2实施已获用户 /goal 授权（2026-10-31，见§4.1与§9收据），当前executing、4/7：T-01审计与T-02 profile/README已在lang-899树交付（代码提交416060511）；**U901已满足**（901归档合入master，archive/901-test-feature-flattening.md，落地2fcae41ba在master祖先链）后T-03/T-04于2026-11-01完成（树同步901后依次提交9c2641c1c/83f6b8de5/e9f3e5b38/81197a45d）：CTE改名原子接线、AV bench按职责命名+断链闭合（含896后虚拟workspace第二断链-p消歧修复）、R12-04定位修正、-EvidenceRoot显式输出参数、891既存lib-test编译红顺修；T-04冻结门全部跑完（4个具名既存/环境红除外全绿，见§8 T-04证据）。审计结论：本轮19 bins+2 fixtures全有真实职责或消费者，零可删。
 
 ## 1. 目标
 
@@ -149,9 +149,9 @@ merge把必要命令/退出码/关键数字/代码或日志节选折叠计划本
 
 ## 7. 验收标准
 
-- [ ] AC-01（owner_stage: work）：现有30成员单workspace/五运行时职责、普通语言隔离保持；当前README/manifest/入口不再误述旧all/结构/附件，V-01/06有证。
-- [ ] AC-02（work）：dev/test成员行号、非成员无调试，full-debug成员2可显式用；原release/syntax-release/runtime abort与真实typed-entry消费者合同保持。V-02不只清单证明。
-- [ ] AC-03（work）：所有删除/改名逐项审计，使命结束或长期替代有证；有效CTE/AV样本/诊断/ABI/资源义务保持；V-03/04/06实际终态及负控成立，无缺项/空选/减样本。
+- [x] AC-01（owner_stage: work）：现有30成员单workspace/五运行时职责、普通语言隔离保持；当前README/manifest/入口不再误述旧all/结构/附件，V-01/06有证。[✅ 2026-11-01] V-01改名后复跑30成员/5 default/同root；README all排除ACE/五运行时/行号说明T-02已修（416060511）；V-06 case-ac-cte 6/6走901常驻接口+toolchains新名（§8 T-03/T-04证据）。
+- [x] AC-02（work）：dev/test成员行号、非成员无调试，full-debug成员2可显式用；原release/syntax-release/runtime abort与真实typed-entry消费者合同保持。V-02不只清单证明。[✅ 2026-10-31 T-02] rustc实参日志五运行时/成员/依赖/full-debug覆盖（plan-artifacts/plan-899/v02_*.log），§9 work收据。
+- [x] AC-03（work）：所有删除/改名逐项审计，使命结束或长期替代有证；有效CTE/AV样本/诊断/ABI/资源义务保持；V-03/04/06实际终态及负控成立，无缺项/空选/减样本。[✅ 2026-11-01] T-01审计零可删→本轮唯一删除集为空；CTE/AV改名逐项原子（§8 T-03），样本10+30/1720/2176行/schema/父分析器守恒（§8 T-04），负控（缺worker/坏env/缺peak/缺EvidenceRoot）全拒。cte_turnaround_脚本行0例为具名既存空选quirk（真oracle=bench-turnaround 9×30全过），非本轮空选。
 - [ ] AC-04（owner_stage: merge）：main精确旧缓存安全处置或具名合理保护、失败/已不存在如实记录；回收及完整构建稳态分列，无他树/证据误删。V-05证明，不要求未知目录硬删。
 - [ ] AC-05（owner_stage: review）：独立上下文逐AC/删除/遗漏/延期/workaround审查pass；零本包新增未处理warning/格式/debug输出，既存边界具名，SD真实可沉淀。
 - [ ] AC-06（owner_stage: merge）：冻结版本及必要有效验证落地、canonical Spec回写、archive归档、guard清树和统一scope所有输出路径对账/删除完成；仅具名未解决持有，应用派生索引，不写specs.json。
@@ -162,13 +162,13 @@ merge把必要命令/退出码/关键数字/代码或日志节选折叠计划本
 |---|---|---|---|
 | T-01 | work / 用户批准r2实施 | 以§4 main/891基线建唯一lang-899树、登记plan-899；审计实际probe/worker/父分析链/债务，旧main精确嵌套target来源与保护项；冻结共享写面和具体验证命令 | AC-01/03/04；V-01基线和逐项判定，无工具先删再找替代。[✅ 已完成] 树lang-899/auto-lang@03797707b+兄弟auto-down/auto-web(detached)；scope plan-artifacts/plan-899登记（.retention/policy.json auto-lang/PLAN-899）；审计表t01_audit.md：19 bins+2 fixtures全有真实职责/消费者（cte worker 7类消费点、mem_stage_probe为R12-04改进机会复现工具保留、AV双bench/863console/layout_probe/collections fixture有效）→零可删；断链2处（verify-av-825.ps1:144旧名av_runtime_bench、verify-av-826.ps1:103旧名av_wire_bench）+落后文档2处（KNOWN-DEBT R12-04旧路径、README four/attachments/all失实）归T-03；主检出16个嵌套target根全在f1493989e(=1795038c9^,HEAD祖先)有manifest证明、0跟踪文件、dir /AL无junction、~49.5G du逻辑量（不作回收承诺）；T-06冻结命令build_storage.py --retired-source f1493989e先preview后apply |
 | T-02 | work / T-01；不依赖U901共享接线 | experimental/ace/Cargo.toml及当前README落成员行号/非成员false、full-debug说明和30成员/五运行时；不动锁版本/默认成员/真实能力 | AC-01/02；V-02代表实际参数；最终证据待T-04稳定组合，测量避901窗口。[✅ 已完成] 提交416060511：dev/test根profile=debug="line-tables-only"+两者[profile.*.package."*"]debug=false（通配只匹配非成员依赖）；V-02实测rustc实参（plan-artifacts/plan-899/v02_*.log）：dev成员ace_syntax_grammar/runtime=line-tables-only而auto_atom/auto_val/blake3/serde等依赖无debuginfo；test成员test目标line-tables-only、blake3强制重编仍无debuginfo；full-debug成员=2依赖仍ABSENT；五运行时（含891 typed-entry、text-runtime crate名ac_text_runtime）runtime-dev=staticlib+panic=abort+line-tables-only、runtime-release=panic=abort+opt3+无debug；V-01复跑cargo metadata --locked=30成员/5默认/同workspace_root/零警告；README修all排除ACE（实测all=34语言组0 ACE组）、五staticlib、行号说明（明确为增量不宣传减量）、归档896计划引用 |
-| T-03 | work / T-01；共享写入必须U901 | 先接受901正式交付并同步本树，依审计表改CTE/benchmark工具定位与bin/fixtures/manifest/README、Core ac_cte、toolchains/固定组及verify消费者；有据删一次性工具；必要输出参数统一scope | AC-01/03；V-03/04/06；无cteworker/1语义/样本变更，901私有实现不被覆盖 |
-| T-04 | work / T-02/03 + 稳定901组合 | 冻结提交跑完整常规ACE、ace-runtime及必要typed/adapter/CTE/bench完整原子；记首红/修复/重放、计数/分段时间/稳态，SD提议 | AC-01..03；V-01..04/06，不用旧profile结果替新结果 |
+| T-03 | work / T-01；共享写入必须U901 | 先接受901正式交付并同步本树，依审计表改CTE/benchmark工具定位与bin/fixtures/manifest/README、Core ac_cte、toolchains/固定组及verify消费者；有据删一次性工具；必要输出参数统一scope | AC-01/03；V-03/04/06；无cteworker/1语义/样本变更，901私有实现不被覆盖。[✅ 已完成] 2026-11-01 U901满足（901归档合入）后执行。树同步：merge master→80d8bb694（零冲突），组内只读兄弟auto-web c48924f→ec9c4ba（901落地提交；不同步则语言workspace解析失败——其旧版仍要求已退役的auto-lang-core/test-http-e2e feature），auto-down 7c4d5cb=master不变。改名提交9c2641c1c：①bin文件cte_probe_worker.rs→ace-comptime-worker.rs（自动发现，Cargo.toml无显式bin）；②13处CARGO_BIN_EXE_ace-comptime-worker（turnaround 8/resources 3/first 1/adapter 1——**env宏保留连字符**，本仓既有CARGO_BIN_EXE_av-worker等证实cargo不转下划线，首版下划线形态13处编译红已即时修正）；③conformance host注释；④Core ac_cte.rs 4处（exe名×2/默认构建-p ace-comptime --bin新名/注释顺修旧crate名auto-cte-probe）；⑤toolchains.json /tools/cte/binaries[0]（prepare_tools.py泛型消费，固定组tools键"cte"不变故test-groups.toml零改动）；⑥verify-ac-cte-817.ps1 build+exe路径；⑦ac-cte.suite.ad注释。协议cteworker/1、AC_CTE_CASE_WORKER、recipe/身份/负控行为零变更（contract-decision.md按§5.1保历史身份）。AV bench职责命名：av_runtime_825_bench.rs→av_runtime_bench.rs、av_wire_826_bench.rs→av_wire_bench.rs（JSONL行schema无bin名字段、父分析器只吃RawDir/OutFile，样本schema/分母/分析器零改动；verify-av-825:144/826:103断链因脚本本就引用职责名而闭合）。R12-04定位修正（KNOWN-DEBT仅改路径+注记，结论未动）。B-3适配：verify-av-825/826新增-EvidenceRoot参数（无默认，缺省即throw"pass -EvidenceRoot"），替换全部5+2处attachments路径；负控实证：-Scope bench无参数立即显式拒绝。第二断链修复（e9f3e5b38）：896合并为虚拟workspace后workspace根--bin不再可解析（"no bin target ... in default-run packages"），verify-av-825/826 bench构建补-p ace-av消歧；verify-ac-cte-817 -ReportDir支持绝对路径（plan-artifacts在仓外）。审计表零可删项→无删除。 |
+| T-04 | work / T-02/03 + 稳定901组合 | 冻结提交跑完整常规ACE、ace-runtime及必要typed/adapter/CTE/bench完整原子；记首红/修复/重放、计数/分段时间/稳态，SD提议 | AC-01..03；V-01..04/06，不用旧profile结果替新结果。[✅ 已完成] 冻结树81197a45d（组证据跑于83f6b8de5，其后仅scripts/+reports/增量，组输入未变，按输入身份复用）。**V-01复核**：cargo metadata --locked 30成员/5 default/同workspace_root（改名后复跑）。**V-03**：cargo t ace-comptime PASS 100/100执行（discovery 14.4s+run 1485.8s，含串行resources重家族——已知长原子具名；0 not_run/0 excluded），13处env宏spawn真worker；case-ac-cte PASS 6/6（6.6s，Core默认发现构建release worker+真IPC）。**V-04**：verify-ac-cte-817 -Scope turnaround PASS（release worker构建45.4s+bench-turnaround 9场景×30样本全ok，hard_gate_failures=[]，target_met=true，bench_wall 102.2s；cte_turnaround_过滤行0例为脚本既有空选quirk具名非新缺陷）；verify-av-825 -Scope bench端到端PASS：av_runtime_bench+av-worker release构建、4引擎（av+V8三档node v25.2.1）、40组/1720行父分析器全验（每组43行=load1+first1+warmup10+hot30+peak1守恒）、turnaround硬门空（single-body-edit p95 935.3ms<1000门、内存双目标met）、缺process-peak负控被拒（guard目录建后清）；verify-av-826 -Scope bench端到端PASS：50组/13 wire-size行/2176行、single-body-edit p95 868.7ms<1000、负控被拒。**-EvidenceRoot fail-closed负控**：缺参数显式throw。**V-06**：case-ac-cte走901常驻接口+toolchains新名准备（prepare_tools构建ace-comptime-worker成功）；显式env覆盖负控（bogus worker/坏路径拒）随conformance host绿（ace-workspace内comptime_protocol全过）。**首红与归属**：①ace-core lib-test编译红E0061=既存（53d0d6b5a=PLAN-891加stdin_bytes第5参未更新link.rs:1480调用点，master同红），1行顺修83f6b8de5（containment_failure_is_controlled_rejection绿0.27s）；②ace-workspace组2088执行/2084过/4具名红：3个=去跟踪裁定结构性既存（abi 797收据/sema 796 contract-decision×2——文件仅存主检出磁盘，主检出可过新worktree必红，797/796主检出磁盘均在证），1个=reuse_obligations并行flake（nextest并行红exit2/25.3s，串行--test-threads=1重放绿23.7s，环境归因）；③ace-adapters/ace-batch/ace-runtime全PASS。**健康**：fmt——本包触面crate全clean（ac_mn/typed.rs:7漂移为master既存非本包，具名）；新warning零（ace-av lib 1 warning与av_owned_first_case FIRST_CASE_INT_TWIN dead-code均既存）。plan827 inventory/负控凭证为测试自动再生刷新（旧probe路径→896后现址），81197a45d具名提交。SD提议见规范增量表（SD-01/02内容不变）。 |
 | T-05 | review / T-04 | 同树独立上下文逐AC、删除与反控/健康审查，核SD/债和当前清理候选来源 | AC-05，revision-bound证据；需修回原树，未来事项不预勾 |
 | T-06 | merge / T-05 | 冻结有效门与合入，main每精确旧target即时preview/活动/持有核→apply/后验；SD01/02沉淀，真实回收与保护摘要折计划 | AC-04；V-05；来源变化重preview，不停他方任务 |
 | T-07 | merge / T-06 | git mv至docs/plans/archive、置archived；摘要折叠；统一scope/全部散落实际路径核清及删除/具名hold；各树即时wt-guard clean后移除树/分支/空组 | AC-06；最新政策不再最近5个，legacy ledger只读 |
 
-当前下一步是U901（901正式合入master）后续work T-03共享接线与T-04最终门（2026-10-31核查：901仍executing@fe825a67e未合入，T-03/T-04为明确等待点）。不联系901会话或向其发消息；以正式代码/计划实际交付结果作为接收依据。
+当前下一步是review（T-05，同树独立上下文逐AC/删除/反控/健康审查）；T-06/T-07（merge）含主检出16个旧target根的build_storage.py精确preview→apply（§5.3/T-01冻结命令）与归档清树。U901已于2026-11-01满足（901归档合入master），T-03/T-04据此完成。不联系901会话或向其发消息；以正式代码/计划实际交付结果作为接收依据。
 
 ## 9. 复审记录
 
@@ -186,10 +186,16 @@ merge把必要命令/退出码/关键数字/代码或日志节选折叠计划本
 
 2026-10-31 / stage: goal | plan_id: PLAN-899 | plan_revision: r2 | round: 4 | from: work(暂停) | to: blocked | status: executing | outcome: blocked（等待轮3/3触发上限） | 核查：master=49b0f3e45 无901合入；901 worktree lang-901/auto-lang 仍在@fe825a67e、计划仍executing；本计划检查点完好（plan-899-dev@416060511、scope已登记、T-01/02证据在案）。三轮连续等待无新证据，按goal循环上限置blocked。精确解除条件：PLAN-901正式合入master（U901）后 /goal resume 本目标→同树续work T-03（CTE改名原子接线+verify-av断链修复）；或用户明示批准"899先行于901基线"合同修订后按修订推进 | next: user
 
+2026-11-01 / stage: work | plan_id: PLAN-899 | plan_revision: r2 | outcome: pass（T-03/T-04完成，work-owned AC-01..03全闭，无阻塞问题）| worktree: D:/autostack/.wt/lang-899/auto-lang | branch: plan-899-dev | base: 03797707b（T-03起同步master 75223fc47=含901归档）| code_commit: 81197a45d（链：80d8bb694 merge master → 9c2641c1c 改名/EvidenceRoot → 83f6b8de5 891既存lib-test红顺修 → e9f3e5b38 -p消歧/ReportDir绝对路径 → 81197a45d plan827再生刷新）| deps: auto-down 7c4d5cb（=master）、auto-web ec9c4ba（c48924f→901落地提交，必需）；语言与ACE Cargo.lock均未动 | task_ids: T-03,T-04 | evidence（plan-artifacts/plan-899/）: v03_cte_groups_results.json（ace-comptime 100/100 + case-ac-cte 6/6）；v04/cte817/turnaround.jsonl（9×30样本、hard_gate_failures=[]）；av-825/bench-r6/{av,js,liftoff,turbofan}.jsonl+summary.json（1720行40组）+turnaround-summary.json（p95 935.3ms）；av-826/bench-r1/{av826,...}.jsonl+summary.json（2176行50组13 wire）+turnaround-summary.json（p95 868.7ms）；树内target/test-groups/run-vqnbvhnl/results.json（ace set：ace-workspace 2088执行/2084过/4具名红、adapters/batch/runtime PASS）| 组证据身份：组门跑于83f6b8de5，终树81197a45d仅增scripts/+docs/reports/增量（组不消费），按输入未变复用；verify脚本跑于终态脚本内容 | 既存红具名（非本包回归，§10.6/7）：3×attachments去跟踪结构红、1×并行flake串行绿、891 lib-test编译红已顺修、ac_mn/typed.rs fmt漂移master既存 | 未跑：cargo t ace-performance（改名/脚本不触正式计量路径，T-02 profile增量影响的计量按§4.3不冒旧结果——如review判需则交merge/里程碑档）| blockers: 无 | next_responsible_role: review（T-05：同树独立上下文逐AC-01..03复核、4具名红归属复核、83f6b8de5顺修合规、SD-01/02可沉淀性、§10.6债务登记）
+
+2026-11-01 / stage: goal | plan_id: PLAN-899 | plan_revision: r2 | round: 5 | from: blocked(U901) | to: work | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-899/auto-lang | commit: 81197a45d | 解锁核查：master 75223fc47 含901归档（archive/901-test-feature-flattening.md，2fcae41ba为祖先），lang-901树已清；lang-899树完好@416060511→本轮推进至81197a45d。本轮执行唯一阶段work（T-03+T-04），§9 work收据pass→status置execution_done | next: review
+
 ## 10. 待澄清事项
 
 1. T-01已结：19 bins+2 fixtures全有真实职责或消费者（cte worker 7类消费点、AV双bench为正式样本producer但父脚本断链、mem_stage_probe为R12-04改进机会复现工具、ABI/资源fixture被真实消费）——本轮零可删，具名断链/落后文档修复归T-03。后续若审计再发现可删项仍须逐项使命结束证明。
 2. CTE/bench新bin名与受支持旧消费者兼容已按T-01冻结触面清单（t01_audit.md §D：7类CTE消费点+verify-av两处断链），T-03接受901后原子接线；协议/env/样本身份不擅变。必要外部消费者超出既有边界时先呈报具体合同差额。
 3. 旧main缓存来源已由T-01证明（16根全锚定f1493989e，无junction，无源码/证据混入抽查）；字节/进程引用/lease活锁由T-06 preview+守卫机检，历史51.8GiB与当前du~49.5G逻辑量都不作可回收承诺。
 4. 若用户要并入语言workspace或移动experimental，须另审依赖/ABI/profile/默认成员与验收，这不属于r2等价整理。
-5. 【等待用户/U901】T-03/T-04为901前置等待点：2026-10-31核查901仍executing（worktree fe825a67e，master=03797707b未含901）。解除动作：等待PLAN-901正式合入master后，以同一 /goal 目标resume续work T-03；或用户明示改序（如授权899先在当前基线做T-03再rebase 901）则属合同修订需另行确认。不联系901会话。
+5. 【已解除 2026-11-01】T-03/T-04的901前置：PLAN-901已归档合入master（archive/901-test-feature-flattening.md；落地2fcae41ba在master祖先链），本目标resume后同树完成T-03/T-04。未联系901会话。
+6. 【review输入·债务候选】去跟踪裁定（2026-10-31）后3个ACE测试读`docs/plans/attachments/{796/contract-decision.md,797/semref-retirement-receipt.md}`（ace-abi binding.rs:64、ace-semantics-store sema_boundary_audit.rs:208/278）在任何新worktree结构性必红（文件仅存主检出磁盘）；非899合同面（不改796/797证据消费测试），建议review按§3登记KNOWN-DEBT候选：owner=attachments裁定后续/测试owner，关闭条件=测试改读canonical specs或内嵌冻结常量。另：reuse_obligations_run_green_via_original_suites在全workspace并行下flake（串行绿），属并发环境边界。
+7. 【review输入·既存红顺修说明】83f6b8de5修复的ace-core lib-test编译红（891遗留）使`cargo t ace`组自891落地以来首次可编译执行——该组在891/901门中应未被完整执行过（否则必红），review可核此推断；修复本身1行加`None`参数语义保持。
