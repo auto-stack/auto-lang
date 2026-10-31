@@ -11,7 +11,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 > 在本仓执行时以此为准）：技能文档中的 `docs/plans/archived/` 在本仓为 **`docs/plans/archive/`**；
 > 技能文档中的 `.worktrees/plan-<NNN>-dev` 在本仓为 **`D:/autostack/.wt/lang-<NNN>/auto-lang`**
 > （Plan 529 分组平铺布局；在途的 525/526 仍用旧 `.worktrees/`，fold 后退役）；
-> `.autoos/specs.json` 两仓一致。
+> `.autoos/specs.json` 仅作只读旧数据来源（auto-musk PLAN-107）；当前规范在 docs/specs，分类/关系/历史由应用派生，agent 不再写该 JSON。
 > Plan 状态机：`drafting → executing → execution_done → reviewed → archived`（终态）。
 >
 > **Worktree 红线（2026-09-03 三仓 .git 删除事故，Plan 529）**：worktree 内**禁止创建任何
@@ -164,7 +164,7 @@ Before merging or archiving, the agent **must explicitly execute an independent 
 ### 4. Plan Archiving & Status Tracking
 
 1. Update `docs/plans/<NNN>-<plan-name>.md` with the review record (复审记录) and completion summary; flip `status: reviewed`.
-2. Deposit knowledge per `/auto-plan:merge` + [docs/specs/README.md](docs/specs/README.md) §4 extension (`.autoos/specs.json` upsert + module overview/ADR/plans.md 回写 + `python scripts/spec-index.py`).
+2. Deposit reviewed current knowledge in canonical module Specs/ADR per `/auto-plan:merge` and [docs/specs/README.md](docs/specs/README.md) §4. Verify landing/source identity; the application derives indexes. Never write legacy specs.json or require index/cache availability for archive (PLAN-107).
 3. Archive the plan (terminal state — archived plans do not go back):
    ```bash
    git mv docs/plans/<NNN>-<plan-name>.md docs/plans/archive/

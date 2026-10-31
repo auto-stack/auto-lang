@@ -1,6 +1,6 @@
 # Auto-Lang Specs 体系规约
 
-> 版本：v2.1 兼容期（2026-09-04，PLAN-543）
+> 版本：v3 文档单源（2026-10-31，auto-musk PLAN-107；保留 PLAN-543 知识分层）
 > 设计文档：[docs/design/autoplan-spec-ledger.md](../design/autoplan-spec-ledger.md)（现行范式）
 > 知识生命周期：[Design 27](../design/27-knowledge-base-lifecycle.md)（canonical-source 与同步模型）
 > 历史版本：v1 见 [docs/design/plan-spec-hybrid-model.md](../design/plan-spec-hybrid-model.md)（已被取代，
@@ -20,15 +20,14 @@ adr       已接受的重要决策、理由与后果；接受后只追加 supers
 catalog   从 Git 跟踪文档与代码 metadata 生成的结构/引用索引，不手工维护
 ledger    goals/architecture/designs/tests/reviews/reports 六个知识视角；
           canonical 形态 = 本目录 Git 跟踪的 Markdown current-state，
-          兼容期机器投影 = .autoos/specs.json（现有 merge 技能本地 upsert）
+          机器分类/关系/历史 = 应用从文档与归档 Plan 派生；旧 JSON 仅作迁移输入
 ```
 
 原则：**Design/RFC 管 target-state，ADR 管原因，Spec 管 current-state，Plan 管过程，
 Generated Catalog 管代码事实；只引用，不复制；状态机推进，门禁不跳步。**
 
 `.autoos/specs.json` 当前被 Git ignore 且覆盖依赖本地执行，因此不是共享 canonical source。
-兼容期允许继续写入，但不得以其内容覆盖 Git 跟踪的 Spec/ADR；目标态由后续计划改为从
-Markdown frontmatter 与代码 metadata 单向生成。
+PLAN-107 起停止 agent/merge 写入；原记录已逐条保全，当前知识在 Markdown 中维护，应用从文档与归档 Plan 单向生成索引。
 
 ## 2. 目录结构
 
@@ -46,7 +45,7 @@ docs/specs/
         ├── overview.md      # 模块概述（必有）
         ├── architecture.md  # 架构图 + ADR 追加日志（有架构内容才建）
         ├── design/          # 主题设计文档（按需，slug 命名）
-        └── plans.md         # 相关 plan 索引表（merge 回写维护）
+        └── plans.md         # 可选的旧 plan 索引表（保留既有内容，不要求 merge 回写）
 ```
 
 ## 3. 文档类型与模板
@@ -74,30 +73,29 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 ```
 /auto-plan:new ─→ /auto-plan:work ─→ /auto-plan:review ─→ /auto-plan:merge
    drafting         executing          execution_done        reviewed → archived
-   读 overview.md    worktree 隔离       逐项验收审查           账本沉淀 + module 回写 + 归档
-   取材背景         plan 作执行合同      遗漏/延后/workaround   current spec/ADR → catalog → archive
+   读 overview.md    worktree 隔离       逐项验收审查           canonical 文档落地核验 + 归档
+   取材背景         plan 作执行合同      遗漏/延后/workaround   current spec/ADR → landing → archive
 ```
 
 - **new**：`scripts/new-plan.sh <slug>` 中央取号（`.next-id`）；drafting 等用户确认。
 - **work**：一切实现修改在 `D:/autostack/.wt/lang-<NNN>/auto-lang` sibling-group worktree
   （一 plan 一 worktree 全生命周期，禁止 junction/symlink）；
   `[✅]` 簿记写主检出的 plan 文件；scoped 测试；多阶段计划按阶段 fold + re-sync；
-  最终审查通过后，merge 在冻结提交执行受影响完整模块及消费者/集成/必要慢模块并集；
-  不叠跑旧裸 t/触面档。周期 `tf --batch` 仍按原到期条件在主检出单实例执行显式模块调度。
+  测试遵守当前 AGENTS.md 的固定职责组与必要集成组；merge 在复审后的冻结基线执行受影响并集，周期批次沿当前单实例与到期规则，不因知识迁移加全局测试门。
 - **review**：逐项核验验收（不信勾选框），只跑必要反例/受影响模块，不触发周期全集；填
   `supersedes_spec_components` / `new_spec_components` / `touched_goals`。
 - **merge**：gate（必须 reviewed）→ fold worktree → current-state Spec/ADR 蒸馏 →
-  specs.json 兼容 upsert → 索引再生 → 归档。Plan 正文不复制进 current-state Spec。
+  核验真实 landing 与 canonical 源 → 归档。索引由应用派生，旧 JSON 不写；Plan 正文不复制进 current-state Spec。
 
 **merge 本仓扩展程序**（技能文档之外，本规约追加）：
 
 1. **module 回写**：按 plan 的 `affects`/review 元数据，把一句话级现状变化写进对应
    `<module>/overview.md`（或 architecture.md 追加 ADR / design 新增），并在该 module
-   `plans.md` 追加一行。typo 级改动可只写 plans.md。
+   文档中保留相关 Plan 出处。无需为了历史清单或配额强制追加 plans.md。
 2. **全局件维护**：结构性变化（新模块/新 crate/状态翻转）时更新 `overview.md`；
    目标推进时更新 `goals.md` 对应条目状态。
-3. **索引再生**：`python scripts/spec-index.py`。
-4. 在归档后的 plan 文末追加"spec-sync 回写记录"节（v1 惯例保留）。
+3. **派生索引**：由应用读取文档生成；已有 scripts/spec-index.py 可作可选维护工具，运行与否不参与交付门。
+4. 在归档 Plan 中记录已落地 canonical 路径/哈希与提交、清理和迁移对账结果。
 
 ## 5. 路径映射表（四技能硬编码路径 → 本仓）
 
@@ -110,20 +108,20 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 | `.worktrees/plan-<NNN>-dev` | `D:/autostack/.wt/lang-<NNN>/auto-lang`（Plan 529 sibling-group） |
 | `.autoos/specs.json` | 相同 |
 | `docs/designs/008-auto-plan.md` | `docs/design/autoplan-spec-ledger.md` |
-| musk 后端 `127.0.0.1:8080` | 通常不可用 → 走手工回退 + §4 扩展 |
+| musk 后端 `127.0.0.1:8080` | 应用不可用不阻断文档交付；按 §4 验证 Git 源，不回填 JSON |
 
 ## 6. 六段账本映射
 
-| 账本段 | specs.json（兼容期本地投影） | markdown canonical source |
+| 知识视角 | 应用派生分类（不由 agent 写 JSON） | markdown canonical source |
 |---|---|---|
 | goals | `goals` | `goals.md` + project.md 目标节 |
 | architecture | `architecture` | `<module>/architecture.md`（ADR） |
 | designs | `designs` | `<module>/design/<slug>.md` |
 | tests | `tests` | overview.md 测试节 / `design/testing-*.md` |
 | reviews | `reviews` | plan 文件 `## 复审记录`（只引用不复制） |
-| reports | `reports` | plan 变更摘要 + `plans.md` 行 |
+| reports | `reports` | 归档 Plan 变更摘要；`plans.md` 为可选历史导航 |
 
-条目溯源：兼容期机器条目带 `file` + `related: [PLAN-NNN]`；Markdown 侧用 `(plan-NNN)`。
+条目溯源：文档保留规范路径及 Plan 出处；旧 file/related/状态全字段见历史保全，不重新生成中央账本。
 发生分歧时以 Git 跟踪的 current-state Spec/ADR 和可执行代码/测试为准。
 
 ## 7. 编号与引用
@@ -146,6 +144,10 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 
 v1 §9 八条（手工中央 manifest / 按流程产物分文档 / 多 role 接力 / 并发自行取号 /
 同构双索引 / 描述不存在的代码 / 内容互相复制 / 归档双轨）+ Design 26 新增三条
-（状态机跳步 / 账本双写不一致 / plan 复制 spec 全文）——全文见
+（状态机跳步 / 双事实源 / plan 复制 spec 全文）——全文见
 [autoplan-spec-ledger.md §7](../design/autoplan-spec-ledger.md)。Design 27 进一步禁止把本地
 `.autoos/specs.json` 当作共享真相，以及在 overview 中长期手工维护可生成的数量。
+
+## 10. 旧账本迁移与回滚
+
+[PLAN-107 对账](history/legacy-ledger/README.md)保全每条旧记录及来源；原 JSON 不改写不删除。当前知识仍以本目录文档为准，历史验证数字不自动批准为现状，别名副本不重复导入。临时恢复材料按证据政策保留，长期撤销使用已审阅的 Git 反向提交并保护后续用户修改。
