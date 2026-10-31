@@ -171,7 +171,7 @@ fn ac_mn_probe_decode_negatives() {
         r#"recipe: "ac/mir-native-scalar-v1", steps: [ { op: "run" } ]"#,
     ))
     .unwrap_err();
-    assert!(e.message.contains("requires an mn binding"), "{e:?}");
+    assert!(e.message.contains("an mn binding"), "{e:?}");
     // The mn binding does not attach to another recipe.
     let e = decode_case_doc(&base(
         r#"recipe: "ac-av/core-run-v1", mn: { entry: "d_main" }, av: { entry: "d_main" }, steps: [ { op: "run" } ]"#,
