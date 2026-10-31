@@ -3,7 +3,7 @@
 # Scoped entry for the shared-text source/resource/incremental delivery.
 # Every scope runs REAL tests (no skip-counted greens); each step captures
 # command, exit code and wall time into a receipt file under
-# experimental\ac-core\target\ac-verify-receipts\text-894.
+# target\verification\text-894.
 #
 # Scopes:
 #   source      the frontend admission + rejection surface (T-03)
@@ -20,11 +20,12 @@
 param([string]$Scope = 'acceptance')
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$AcCore = Join-Path $RepoRoot 'experimental\ac-core'
-$AcMn = Join-Path $RepoRoot 'experimental\ac-mir-native'
-$AvProbe = Join-Path $RepoRoot 'experimental\ac-av-probe\probe'
-$ReceiptsDir = Join-Path $AcCore 'target\ac-verify-receipts\text-894'
+$AcCore = Join-Path $RepoRoot 'experimental\ace\crates\core'
+$AcMn = Join-Path $RepoRoot 'experimental\ace\crates\native'
+$AvProbe = Join-Path $RepoRoot 'experimental\ace\crates\av'
+$ReceiptsDir = Join-Path $RepoRoot 'target\verification\text-894'
 New-Item -ItemType Directory -Force -Path $ReceiptsDir | Out-Null
 
 $script:Results = New-Object System.Collections.Generic.List[object]
@@ -51,7 +52,9 @@ function Invoke-Cargo {
         try {
             # cargo writes progress/warnings to stderr; keep them as text
             # (EAP=Stop would turn the first stderr line into a failure).
-            $out = cmd /c ('cargo test ' + ($TestArgs -join ' ') + ' 2>&1') | Out-String
+            $package = if ($WorkDir -eq $AcCore) { 'ace-core' } elseif ($WorkDir -eq $AcMn) { 'ace-native' } elseif ($WorkDir -eq $AvProbe) { 'ace-av' } else { throw "Unknown ACE owner: $WorkDir" }
+            $nativeArgs = @('test','-p',$package) + $TestArgs
+            $out = Invoke-AceCargo @nativeArgs | Out-String
             if ($LASTEXITCODE -ne 0) {
                 throw ($out -split "`n" | Select-Object -Last 40)
             }
@@ -64,19 +67,19 @@ $scopes = if ($Scope -eq 'acceptance') { @('source','resources','incremental','c
 foreach ($s in $scopes) {
     switch ($s) {
         'source' {
-            Invoke-Cargo -WorkDir $AcCore -TestArgs @('--test','text_replace_894') -Name 'ac-core text_replace_894 (frontend admission + named rejections)'
+            Invoke-Cargo -WorkDir $AcCore -TestArgs @('--test','text_replacement') -Name 'ac-core text_replacement (frontend admission + named rejections)'
         }
         'resources' {
             Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','data_owned_tier') -Name 'mn data_owned_tier (T03=23 corpus row, three-path + ledger)'
-            Invoke-Cargo -WorkDir $AvProbe -TestArgs @('--test','text_source_894_semantics') -Name 'av semantics tier (V-05 comparison matrix, V-02 ledger, V-04 faults)'
+            Invoke-Cargo -WorkDir $AvProbe -TestArgs @('--test','text_semantics') -Name 'av semantics tier (V-05 comparison matrix, V-02 ledger, V-04 faults)'
         }
         'incremental' {
-            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','text_source_894_incremental') -Name 'mn owned-source session (65/66/65, failure atomicity)'
-            Invoke-Cargo -WorkDir $AvProbe -TestArgs @('--test','text_source_894_av') -Name 'av owned-source session (65/66/65, refusal keeps running)'
+            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','owned_text_incremental') -Name 'mn owned-source session (65/66/65, failure atomicity)'
+            Invoke-Cargo -WorkDir $AvProbe -TestArgs @('--test','owned_text_incremental') -Name 'av owned-source session (65/66/65, refusal keeps running)'
         }
         'cache' {
-            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','text_source_894_incremental','--','owned_894_cross_process','--exact') -Name 'cross-process restore (decode+verify+run)'
-            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','text_source_894_incremental','--','owned_894_restore_refuses','--exact') -Name 'restore refuses corrupted store'
+            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','owned_text_incremental','--','owned_cross_process_restore_and_continuation','--exact') -Name 'cross-process restore (decode+verify+run)'
+            Invoke-Cargo -WorkDir $AcMn -TestArgs @('--test','owned_text_incremental','--','owned_restore_refuses_corrupted_store','--exact') -Name 'restore refuses corrupted store'
         }
         'contract' {
             Invoke-Step 'case binding t03 row migrated to value 23' {
@@ -99,15 +102,14 @@ foreach ($s in $scopes) {
                 }
             }
             Invoke-Step 'case runner: migrated t03 row executes green (33/33)' {
-                $exe = Join-Path $RepoRoot 'target\debug\auto-case.exe'
-                if (-not (Test-Path $exe)) { throw 'auto-case.exe missing (build via discovery first)' }
-                $out = & $exe run --suite (Join-Path $RepoRoot 'crates\auto-lang\test\cases\ace-m1\ace-m1-tr-native.suite.ad') --out (Join-Path $ReceiptsDir 'tr-native-run.json') 2>&1 | Out-String
-                if ($LASTEXITCODE -ne 0) { throw ($out | Select-Object -Last 15) }
+                $destination = Join-Path $ReceiptsDir ('tr-native-' + [guid]::NewGuid().ToString('N'))
+                $out = & python (Join-Path $RepoRoot 'scripts/fixed-tests.py') 'case-ace-m1-tr-native' --out $destination 2>&1 | Out-String
+                if ($LASTEXITCODE -ne 0) { throw $out }
             }
             Invoke-Step 'case runner: independent dual oracle executes green (4/4)' {
-                $exe = Join-Path $RepoRoot 'target\debug\auto-case.exe'
-                $out = & $exe run --suite (Join-Path $RepoRoot 'crates\auto-lang\test\cases\ace-m1\text-source-894.suite.ad') --out (Join-Path $ReceiptsDir 'text-source-894-run.json') 2>&1 | Out-String
-                if ($LASTEXITCODE -ne 0) { throw ($out | Select-Object -Last 15) }
+                $destination = Join-Path $ReceiptsDir ('text-source-' + [guid]::NewGuid().ToString('N'))
+                $out = & python (Join-Path $RepoRoot 'scripts/fixed-tests.py') 'case-ace-m1-text-source-894' --out $destination 2>&1 | Out-String
+                if ($LASTEXITCODE -ne 0) { throw $out }
             }
         }
     }

@@ -6,9 +6,10 @@
 //! no trusted flags, then a legal edit continues). The AV-side twin
 //! lives in `ac-av-probe/probe/tests/text_source_894_av.rs`.
 
+#[path = "../common/mod.rs"]
 mod common;
 
-use ac_mn::owned_source_incremental::OwnedSourceMnSession;
+use ace_native::owned_source_incremental::OwnedSourceMnSession;
 use std::collections::BTreeMap;
 
 /// The §5.3 supplement source: text_job carries the T03 algorithm (23
@@ -56,7 +57,7 @@ fn tools_ready() -> bool {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_warmup_and_single_body_edit_65_66() {
+fn owned_warmup_and_single_body_edit_65_66() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;
@@ -123,7 +124,7 @@ fn owned_894_warmup_and_single_body_edit_65_66() {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_a_to_b_to_a_history_reuse() {
+fn owned_a_to_b_to_a_history_reuse() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;
@@ -180,7 +181,7 @@ fn owned_894_a_to_b_to_a_history_reuse() {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_cmp_job_edit_is_independent() {
+fn owned_cmp_job_edit_is_independent() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;
@@ -212,7 +213,7 @@ fn owned_894_cmp_job_edit_is_independent() {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_failed_candidate_keeps_old_program_running() {
+fn owned_failed_candidate_keeps_old_program_running() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;
@@ -262,7 +263,7 @@ fn owned_894_failed_candidate_keeps_old_program_running() {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_cross_process_restore_and_continuation() {
+fn owned_cross_process_restore_and_continuation() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;
@@ -314,7 +315,7 @@ fn owned_894_cross_process_restore_and_continuation() {
 
 #[test]
 #[cfg(windows)]
-fn owned_894_restore_refuses_corrupted_store() {
+fn owned_restore_refuses_corrupted_store() {
     if !tools_ready() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — not run");
         return;

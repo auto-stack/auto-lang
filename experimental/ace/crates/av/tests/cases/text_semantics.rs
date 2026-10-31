@@ -2,20 +2,20 @@
 //! the replacement free-exactly-once ledger oracle (V-02) and the
 //! controlled-allocation-fault atomicity oracle (V-04).
 
-use auto_av_core::abc::{decode_abc, encode_abc};
-use auto_av_core::av::{execute, CancelFlag, ExecLimits};
-use auto_av_core::contract::{
+use ace_av_core::abc::{decode_abc, encode_abc};
+use ace_av_core::av::{execute, CancelFlag, ExecLimits};
+use ace_av_core::contract::{
     ExecOutcome, Value, ABC_OWNED_VERSION, ABC_PROFILE_OWNED, MIR_OWNED_SCHEMA,
 };
-use auto_av_core::mir::*;
-use auto_av_core::{abc_verify, mir_verify};
-use auto_mir_lower::lower_checked_owned;
+use ace_av_core::mir::*;
+use ace_av_core::{abc_verify, mir_verify};
+use ace_lowering::lower_checked_owned;
 
 /// Compile + lower + verify + admit an owned text source (the shared
 /// chain both recipes ride).
 fn admit(src: &str) -> abc_verify::LoadedModule {
     let compiled =
-        auto_ac_prototype::source::compile_text_record_source(src, "p.at", &[]).expect("compiles");
+        ace_core::source::compile_text_record_source(src, "p.at", &[]).expect("compiles");
     let mir = lower_checked_owned(&compiled.checked, "d_main", 0x894).expect("lowering");
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let wire = encode_abc(&mir).expect("encode");
@@ -46,7 +46,7 @@ fn expect_i32(loaded: &abc_verify::LoadedModule, limits: &ExecLimits, want: i32,
 /// the owned-mix test below); view variety comes from different
 /// constructions (literal views, a concat owner's rooted view, a clone's).
 #[test]
-fn av_owned_894_eq_ne_exact_bytes_matrix() {
+fn av_owned_eq_ne_exact_bytes_matrix() {
     // (x-prelude building `x` as a view, literal, expect_eq) — hand-audited
     // INDEPENDENT of any engine.
     #[allow(clippy::type_complexity)]
@@ -104,7 +104,7 @@ fn av_owned_894_eq_ne_exact_bytes_matrix() {
 /// durable machine-level negative is the hand-built Bin-on-views control
 /// above.)
 #[test]
-fn av_owned_894_mixed_eq_types_rejected() {
+fn av_owned_mixed_eq_types_rejected() {
     let lhs_owned = "\
 fn make() Str { return \"A\\0B\" }
 fn main() int {
@@ -113,7 +113,7 @@ fn main() int {
     return 40
 }
 ";
-    let ds = auto_ac_prototype::source::compile_text_record_source(lhs_owned, "p.at", &[])
+    let ds = ace_core::source::compile_text_record_source(lhs_owned, "p.at", &[])
         .expect_err("mixed Str/str eq is rejected");
     assert!(
         ds.iter().any(|d| d.code == "source.type-mismatch"),
@@ -127,7 +127,7 @@ fn main() int {
     return 42
 }
 ";
-    let ds2 = auto_ac_prototype::source::compile_text_record_source(rhs_owned, "p.at", &[])
+    let ds2 = ace_core::source::compile_text_record_source(rhs_owned, "p.at", &[])
         .expect_err("view/owned eq is rejected");
     assert!(
         ds2.iter().any(|d| d.code == "source.type-mismatch"),
@@ -139,7 +139,7 @@ fn main() int {
 /// operands does not type-check — text never rides the integer BIN (the
 /// pre-fix shape the T-02 probe caught as mir.bin-type).
 #[test]
-fn av_owned_894_bin_eqi32_on_views_is_invalid_mir() {
+fn av_owned_bin_eqi32_on_views_is_invalid_mir() {
     let mut m = MirModule::new_owned(OwnerScope {
         schema: MIR_OWNED_SCHEMA.to_string(),
         module: "m_neg894".to_string(),
@@ -204,11 +204,11 @@ fn av_owned_894_bin_eqi32_on_views_is_invalid_mir() {
 // ---- V-02: the replacement ledger oracle ------------------------------------
 
 #[test]
-fn av_owned_894_replacement_frees_old_once_new_once() {
+fn av_owned_replacement_frees_old_once_new_once() {
     // The §5.1 canonical chain: old c is READ by the RHS (its view), the
     // new owner materializes, then the old buffer frees exactly once and
     // the new one frees exactly once at exit.
-    let out = auto_av_probe::owned_driver::request_owned(
+    let out = ace_av::owned_driver::request_owned(
         None,
         "p894-ledger",
         "fn main() int {\n    let a Str = \"ab\"\n    var c Str = a.clone()\n    c = c + \"中\"\n    return c.len()\n}\n",
@@ -246,7 +246,7 @@ fn av_owned_894_replacement_frees_old_once_new_once() {
 // ---- V-04: controlled allocation-fault atomicity ----------------------------
 
 #[test]
-fn av_owned_894_fault_during_rhs_keeps_old_target_unfreed() {
+fn av_owned_fault_during_rhs_keeps_old_target_unfreed() {
     // Fail the Nth allocation INSIDE the RHS of a replacement: the outcome
     // is a resource/infra rejection (never a value); the OLD target's
     // buffer is NOT freed before the RHS completes — the fault precedes

@@ -40,3 +40,6 @@ mod text_record_hir;
 mod text_record_source;
 #[path = "cases/text_source.rs"]
 mod text_source;
+
+#[path = "cases/text_replacement.rs"]
+mod text_replacement;

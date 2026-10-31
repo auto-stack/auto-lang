@@ -46,3 +46,9 @@ mod shadow_tier;
 mod transaction_tier;
 #[path = "cases/turnaround_tier.rs"]
 mod turnaround_tier;
+
+#[path = "cases/owned_text_incremental.rs"]
+mod owned_text_incremental;
+
+#[path = "cases/owned_text_performance.rs"]
+mod owned_text_performance;

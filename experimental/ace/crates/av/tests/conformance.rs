@@ -146,3 +146,9 @@ mod mir_tier;
 mod resources_tier;
 #[path = "cases/vertical.rs"]
 mod vertical;
+
+#[path = "cases/owned_text_incremental.rs"]
+mod owned_text_incremental;
+
+#[path = "cases/text_semantics.rs"]
+mod text_semantics;

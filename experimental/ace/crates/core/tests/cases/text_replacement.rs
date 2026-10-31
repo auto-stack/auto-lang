@@ -7,25 +7,25 @@
 //! (free-once events, values) live in the AV/native tiers
 //! (`text_source_894*`), the lowering fixes in T-04.
 
-use auto_ac_prototype::hir::HirDomain;
-use auto_ac_prototype::source::{compile_text_record_source, compile_text_source};
+use ace_core::hir::HirDomain;
+use ace_core::source::{compile_text_record_source, compile_text_source};
 
-fn compile_ok_rec(src: &str) -> auto_ac_prototype::source::CompiledSource {
+fn compile_ok_rec(src: &str) -> ace_core::source::CompiledSource {
     compile_text_record_source(src, "p.at", &[]).expect("combination compile must succeed")
 }
-fn compile_ok_text(src: &str) -> auto_ac_prototype::source::CompiledSource {
+fn compile_ok_text(src: &str) -> ace_core::source::CompiledSource {
     compile_text_source(src, "p.at", &[]).expect("text compile must succeed")
 }
-fn compile_err_rec(src: &str) -> Vec<auto_ac_prototype::atom_text::Diagnostic> {
+fn compile_err_rec(src: &str) -> Vec<ace_core::atom_text::Diagnostic> {
     compile_text_record_source(src, "p.at", &[]).expect_err("must be rejected")
 }
-fn has(ds: &[auto_ac_prototype::atom_text::Diagnostic], code: &str) -> bool {
+fn has(ds: &[ace_core::atom_text::Diagnostic], code: &str) -> bool {
     ds.iter().any(|d| d.code == code)
 }
 
 /// Every scheduled plain-root (empty path) replacement across all bodies
 /// of the module: (block id, stmt idx) pairs.
-fn plain_replace_frees(c: &auto_ac_prototype::source::CompiledSource) -> Vec<(u32, u32)> {
+fn plain_replace_frees(c: &ace_core::source::CompiledSource) -> Vec<(u32, u32)> {
     let plan = c.checked.text_resources().expect("text plan present");
     let mut out = Vec::new();
     for bp in plan.bodies.values() {
@@ -97,7 +97,10 @@ fn main() int {
 }
 ";
     let c = compile_ok_rec(src);
-    assert!(plain_replace_frees(&c).len() >= 3, "loop + branch replacements");
+    assert!(
+        plain_replace_frees(&c).len() >= 3,
+        "loop + branch replacements"
+    );
 }
 
 #[test]

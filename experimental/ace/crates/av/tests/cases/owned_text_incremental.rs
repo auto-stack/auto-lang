@@ -6,7 +6,7 @@
 //! `ac-mir-native/tests/text_source_894_incremental.rs`; the frozen
 //! original T03/T05 values are covered by the corpus tiers.
 
-use auto_av_probe::owned_session::OwnedFunctionSession;
+use ace_av::owned_session::OwnedFunctionSession;
 
 /// The §5.3 supplement source: text_job = 23 (with the `c = c + "中"`
 /// replacement), cmp_job = 42, main = 65; disjoint() is uncalled.
@@ -36,7 +36,7 @@ fn production_sums(s: &OwnedFunctionSession) -> Vec<(String, u32, u32)> {
 }
 
 #[test]
-fn av_owned_894_session_increment_65_66_65() {
+fn av_owned_session_increment_65_66_65() {
     let mut s = OwnedFunctionSession::warmup(SUPPLEMENT, "d_main", &[])
         .expect("warmup on the text-only supplement");
     assert_eq!(s.run_i32(), 65, "cold value 23 + 42");
@@ -99,7 +99,7 @@ fn av_owned_894_session_increment_65_66_65() {
 }
 
 #[test]
-fn av_owned_894_session_refused_edit_keeps_running() {
+fn av_owned_session_refused_edit_keeps_running() {
     let mut s = OwnedFunctionSession::warmup(SUPPLEMENT, "d_main", &[]).expect("warmup");
     // A type-broken body edit: `return a.len() * 10 + c.len()` -> `return a`.
     let pos = SUPPLEMENT.find("return a.len() * 10 + c.len()").unwrap();

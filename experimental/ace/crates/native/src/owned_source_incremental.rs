@@ -23,14 +23,14 @@ use crate::cache::{self, CoffMeta};
 use crate::config::*;
 use crate::link_driver::{self, ObjectInput};
 use crate::{emit, MnError};
-use ac_artifact_probe::store::ManagedStore;
-use auto_ac_prototype::hir;
-use auto_ac_prototype::source::{
+use ace_artifacts::store::ManagedStore;
+use ace_av_core::contract::fnv1a64;
+use ace_core::hir;
+use ace_core::source::{
     compile_text_record_source, env_fn_names, parse_program_with, prepare_candidate_document,
     resolve_env, SourceProfile,
 };
-use auto_av_core::contract::fnv1a64;
-use auto_mir_lower::lower_checked_owned;
+use ace_lowering::lower_checked_owned;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -147,7 +147,7 @@ pub struct OwnedSourceMnSession {
     src: String,
     entry: String,
     caps: Vec<String>,
-    env: auto_ac_prototype::source::resolve::CheckedEnv,
+    env: ace_core::source::resolve::CheckedEnv,
     decl_fns: Vec<DeclFn>,
     decl_types: Vec<(u64, u64)>,
     sig_modes: BTreeMap<String, Vec<hir::ParamMode>>,
@@ -164,7 +164,7 @@ pub struct OwnedSourceMnSession {
     store_root: PathBuf,
     workdir_root: PathBuf,
     round: u64,
-    owner: auto_av_core::mir::OwnerScope,
+    owner: ace_av_core::mir::OwnerScope,
     production: BTreeMap<String, UnitProduction>,
     last_exit: Option<i32>,
 }
@@ -182,7 +182,7 @@ fn whole_module_owned_units(
     src: &str,
     entry: &str,
     caps: &[String],
-) -> Result<Vec<auto_av_core::mir::MirModule>, MnError> {
+) -> Result<Vec<ace_av_core::mir::MirModule>, MnError> {
     let compiled = compile_text_record_source(src, "mn894.at", caps).map_err(|ds| {
         MnError::Unsupported(
             "frontend",
@@ -193,16 +193,16 @@ fn whole_module_owned_units(
     })?;
     let mir = lower_checked_owned(&compiled.checked, entry, fnv1a64(src.as_bytes()))
         .map_err(|e| MnError::Unsupported("adapter", format!("{e:?}")))?;
-    let checked = auto_av_core::mir_verify::verify_mir(&mir)
+    let checked = ace_av_core::mir_verify::verify_mir(&mir)
         .map_err(|e| MnError::Unsupported("mir", format!("{e:?}")))?;
-    auto_av_probe::cache::split_units(checked.module())
+    ace_av::cache::split_units(checked.module())
         .map_err(|e| MnError::Backend(format!("unit split: {e}")))
 }
 
 /// Scan the top-level declaration spans (free functions and types) of a
 /// TextRecord-profile program.
-fn decl_spans(program: &auto_ac_prototype::source::ast::Program) -> (Vec<DeclFn>, Vec<(u64, u64)>) {
-    use auto_ac_prototype::source::ast::Item;
+fn decl_spans(program: &ace_core::source::ast::Program) -> (Vec<DeclFn>, Vec<(u64, u64)>) {
+    use ace_core::source::ast::Item;
     let mut fns = Vec::new();
     let mut types = Vec::new();
     for it in &program.items {
@@ -262,13 +262,10 @@ fn slice_of<'a>(src: &'a str, decls: &[DeclFn], unit_name: &str) -> &'a str {
 
 /// Parse ONE fn slice into its item (the single-body channel's only
 /// parse). Fails when the slice is not exactly one function.
-fn parse_single_fn(
-    slice: &str,
-    name: &str,
-) -> Result<auto_ac_prototype::source::ast::FnItem, String> {
+fn parse_single_fn(slice: &str, name: &str) -> Result<ace_core::source::ast::FnItem, String> {
     let parsed = parse_program_with(slice, SourceProfile::TextRecord)
         .map_err(|d| format!("parse {name}: {} {}", d.code, d.message))?;
-    use auto_ac_prototype::source::ast::Item;
+    use ace_core::source::ast::Item;
     match parsed.items.as_slice() {
         [Item::Fn(f)] => Ok(f.clone()),
         _ => Err(format!(
@@ -284,7 +281,7 @@ impl OwnedSourceMnSession {
     /// fails loudly).
     fn support_libs(&self) -> Result<Vec<PathBuf>, MnError> {
         Ok(vec![
-            auto_av_probe::text_runtime::text_runtime_lib().map_err(MnError::Infra)?
+            ace_av::text_runtime::text_runtime_lib().map_err(MnError::Infra)?
         ])
     }
 
@@ -580,7 +577,7 @@ impl OwnedSourceMnSession {
                                 .unwrap_or_else(|| "prepare".into()),
                         )
                     })?;
-                    let unit = auto_mir_lower::lower_function_owned_unit_with_modes(
+                    let unit = ace_lowering::lower_function_owned_unit_with_modes(
                         &cand.parts().bundle,
                         name,
                         &s.caps,
@@ -914,7 +911,7 @@ impl OwnedSourceMnSession {
                 Ok(candidate) => {
                     let def_id = format!("d_{}", item.name.name);
                     let modes = self.sig_modes.clone();
-                    let produced = auto_mir_lower::lower_function_owned_unit_with_modes(
+                    let produced = ace_lowering::lower_function_owned_unit_with_modes(
                         &candidate.parts().bundle,
                         &def_id,
                         &self.caps,
@@ -923,7 +920,7 @@ impl OwnedSourceMnSession {
                     )
                     .map_err(|e| format!("lower: {}", e.code()))
                     .and_then(|unit| {
-                        auto_av_core::mir_verify::verify_mir(&unit)
+                        ace_av_core::mir_verify::verify_mir(&unit)
                             .map_err(|e| format!("verify: {e:?}"))
                             .map(|_| unit)
                     })

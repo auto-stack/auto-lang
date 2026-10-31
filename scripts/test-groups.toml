@@ -1226,3 +1226,15 @@ expression = "test(/::performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"
 all = false
+
+[[group]]
+name = "case-ace-m1-text-source-894"
+title = "TestCase shared text source dual oracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/text-source-894.suite.ad"
+all = true
