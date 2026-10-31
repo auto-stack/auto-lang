@@ -6,12 +6,12 @@ plan_revision: 7
 author: [Codex]
 created_at: 2026-10-30
 updated_at: 2026-10-31
-current_step: 16
+current_step: 17
 total_steps: 17
 completion_kind: delivered
 reviewed_commit: 523a623f2646fce4fa2db39a0181653928dd5399
 delivery_commit: a9bd4f948c1280c53522ddb343acfa1fe56f6a57
-cleanup_pending: true
+cleanup_pending: false
 supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/test-purpose-and-admission.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/project.md, docs/specs/aavm/project.md, docs/specs/repository-boundaries/build-cost-baseline.md, docs/specs/auto-av/project.md, docs/specs/auto-cte/project.md, docs/specs/tool-execution/project.md, docs/specs/auto-cache/project.md, docs/specs/auto-ac/mir-native-scalar.md, docs/specs/auto-ac/data-resource-contract.md]
 new_spec_components: [docs/specs/auto-test-case/build-storage-lifecycle.md]
 touched_goals: []
@@ -224,7 +224,7 @@ Cargo原生package/target/features/profile，Rust模块测试命名空间，next
 | [x] | T-07 | work | T-06/13 | 代表固定组/旧日常同选面实跑及空间/成本对照V-07，吸收897库存/减量结论；不重跑全目录/收益矩阵，实际背景与慢例分列 | AC-06/10/11 |
 | [x] | T-08 | work | T-07 | SD-01..10、AGENTS与本仓入口文档同步，原叶规则明确替换；列需维护技能/在途计划的准确接口交接；健康及逐AC证据，冻结execution_done | AC-01..06/09..11 |
 | [x] | T-09 | review | T-08 | 同树独立上下文auto-plan-review逐AC/V/SD及897吸收对账、遗漏/健康/债务；绑定代码SHA，有finding回work | AC-07 |
-| [ ] | T-10 | merge | T-09 pass | auto-plan-merge按新固定组冻结门、真实合入/规范沉淀；896归档；897已按用户指示删除，不再归档或双份完成；留存/周期及guard清唯一树/分支/空组 | AC-08 |
+| [x] | T-10 | merge | T-09 pass | auto-plan-merge按新固定组冻结门、真实合入/规范沉淀；896归档；897已按用户指示删除，不再归档或双份完成；留存/周期及guard清唯一树/分支/空组 | AC-08 |
 | [x] | T-14 | work | T-01；核ACE在途写窗 | 盘点本节范围所有测试及库/工具消费者；给出保留/合并/删除理由、语义名称与逐包入口/改名表，本地明细+Markdown摘要，不新建运行时测试目录 | AC-12/13/14 |
 | [x] | T-15 | work | T-14/17及相关包新路径稳定、文件释放 | 按能力逐包合并测试入口、命名/fixture复用与有据删临时case，更新过滤/资源配置，V-10/11；不借机改协议或削压力 | AC-12/13 |
 | [x] | T-16 | work | T-14；与T-17同批迁移、真实消费者释放 | 按已核实职责改库/验证工具目录及包名，迁Cargo path/工具/shim/脚本与固定组，V-12及逐包存储对照；与T-17一次搬迁并与T-12/13共用路径决策避免重复迁移 | AC-14/15/10/11 |
@@ -282,14 +282,14 @@ A2R最终一轮与890争用全局TEMP固定rmeta输出，386中385PASS/1真实co
 
 实现及规范提交216dfdc14（前置真实整门b2c4eedd3）；最终只删除新performance wrapper未用import，805个ACE-AV native身份/ignored前后相同且实际编译exit0，未修改测试输入/assert/配置。真实终态：日常3075、A2R386、ACE2065+16+12全部PASS；PS894 acceptance12步骤PASS（含33/4完整Case）。35固定/清理、49历史审计、9治理、PS7控制均PASS；设施40、采样4及原IPC1、手动ignored安全1等具名证据按不变闭包沿用。三腿strict Job均None。四项原时限精确预留pool，真实各窗口0交叠，其余并发峰21；保原首次红与隔离重放，不放宽时限。
 
-V01..13/AC01..06、09..15工作项、SD01..10的逐项来源和限制见[最终验证摘要](attachments/896/r7-verification-summary.md)。同量1027×2、真实错profile拒绝、生产旧cache6225080204字节与验证控制15558580字节分列。日常64.715秒用户接受。472条既有去重有源warning具名核原源码；唯一新增unused已移除。30个M类Rust格式全0、19 Python编译无错、迁移保真/最终额外AV格式全0。D-896-BASELINE-01四处历史all编译红保留，不将all认证绿色。
+V01..13/AC01..06、09..15工作项、SD01..10的逐项来源和限制见[最终验证摘要](../attachments/896/r7-verification-summary.md)。同量1027×2、真实错profile拒绝、生产旧cache6225080204字节与验证控制15558580字节分列。日常64.715秒用户接受。472条既有去重有源warning具名核原源码；唯一新增unused已移除。30个M类Rust格式全0、19 Python编译无错、迁移保真/最终额外AV格式全0。D-896-BASELINE-01四处历史all编译红保留，不将all认证绿色。
 
 本轮没有借用户接受时长豁免正确性；原红、repair、guard与实际来源明细在本地target，清树前转存精简证据包。最新直接human AGENTS要求14天/具名hold/500MiB计划预算；技能中的全局latest-five与之冲突时以该直接指令为准，本会话只维护896范围，不删除其他会话证据。AC07独立总审与AC08合入/归档/清理仍待实际执行，未预记完成。
 
 
 ### 最终独立复审 PASS（PLAN-896:r7）
 
-reviewed_commit: `523a623f2646fce4fa2db39a0181653928dd5399`；基面87de883e6；只读依赖down c3464d0/UI69690df均clean。独立角色/root/review896_r4报告[最终PASS](attachments/896/review-r7-final-pass.md)，继承[逐15AC/13V/10SD总审](attachments/896/review-r7-final-98e91.md)及精确C05闭合：环境工具与argv无分隔符盘符相对路径统一拒绝，修前13个区分性子反例失败，修后37控制全部PASS，独立亦37/37。没有清理实际路径或改变执行器/分组/oracle；已通过完整ACE/A2R/PS/Profile证据按不变闭包沿用。15AC中仅AC08为实际merge-owned，其余及13V/10SD均pass，零未闭实现finding；历史all四crate红与条件限制保留。
+reviewed_commit: `523a623f2646fce4fa2db39a0181653928dd5399`；基面87de883e6；只读依赖down c3464d0/UI69690df均clean。独立角色/root/review896_r4报告[最终PASS](../attachments/896/review-r7-final-pass.md)，继承[逐15AC/13V/10SD总审](../attachments/896/review-r7-final-98e91.md)及精确C05闭合：环境工具与argv无分隔符盘符相对路径统一拒绝，修前13个区分性子反例失败，修后37控制全部PASS，独立亦37/37。没有清理实际路径或改变执行器/分组/oracle；已通过完整ACE/A2R/PS/Profile证据按不变闭包沿用。15AC中仅AC08为实际merge-owned，其余及13V/10SD均pass，零未闭实现finding；历史all四crate红与条件限制保留。
 
 合入前冻结门采用具名收据复用：日常3075、A2R386、ACE2065+16+12、PS89412步骤（33/4 Case）、设施40、采样4+原IPC1、最终守卫37。末次AV未用import差异已实际重新编译且805身份/ignored全等，文档后继不改实现。15提交同步master range-diff全等；894较早整合冲突不宣称全等。
 
@@ -303,3 +303,10 @@ reviewed_commit: `523a623f2646fce4fa2db39a0181653928dd5399`；基面87de883e6；
 - cleaned：待fresh guard与实际worktree移除后补收据，当前cleanup_pending=true，不预记完成。
 - 留存：D:/autostack/plan-artifacts/auto-lang/plan-896，执行包execution-98e91ee1e.zip SHA256=777bfc226b6dfd454a3c22ab981f079c9773a80e17c7b2c4305c3061518e1d8a，9785原始文本文件267128520字节压为31998874；必要probe exe/wrong-profile库单留，总40426378字节（另少量收尾收据），低于500MiB。登记14天至2026-11-14T02:32:26Z复核，精确owner/范围/hold，不搬Cargo target/PDB。全目录观测9293421971唯一字节，低于10GiB；未知/他方材料未删。兼容维护helper仅在896自有根预览→apply，零候选/零删除/零错误，原4旧cache实际释放6225080204字节另有收据。
 - 周期检查：上次覆盖895，896非5倍数、距收据不足48h、895以上无新5倍数落地，本次不触发批量；不把895用户豁免伪作896执行。
+
+
+### 清理完成与终态核验
+
+归档簿记提交8bf1539a1。三树auto-down/auto-ui/auto-lang均在各自移除前fresh wt-guard clean；随后原生git worktree remove成功，三个目录和lang-896组目录实际不存在、plan-896-dev分支已删除、三个仓的worktree登记无本组。回收可重建target/PDB，未把整目录转存；受保护源/首次红/最终收据已在执行与收尾两包留存。收尾包closeout-523a623f2.zip SHA256=118e689e8b545952aa75be228afcd33d5358e6feb6c59feb2691d9a0a31cd80e，2813246字节，含最终37反控、规范来源核与主WIP重叠核；两包+必要角色约43.24MB，仍低于500MiB。精确清理收据在留存根cleanup-receipt.json。
+
+最终T01..17全部完成、AC08实际完成；归档链接已按archive位置修正。main保留他方文档WIP，不把共享主检出描述为整体clean；本会话代码WIP为0。旧897文档无在途/归档副本、.next-id=897；用户批准的新固定测试流程已交付，不再等待时长优化。
