@@ -5,6 +5,12 @@ param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
     [ValidateSet("first", "targeted", "compat", "incremental", "bench", "baseline", "acceptance")]
     [string]$Scope,
+    # Raw-evidence root (bench/compat/acceptance scopes). No default: the old
+    # docs/plans/attachments/825 location is retired and git-ignored — callers
+    # must pass an explicit plan-artifacts path (PLAN-899 T-03, 2026-10-31
+    # plan-artifacts ruling).
+    [Parameter(ParameterSetName = 'Scope')]
+    [string]$EvidenceRoot,
     [Parameter(ParameterSetName = 'Guard')]
     [switch]$GuardSelfTest
 )
@@ -14,6 +20,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot | Split-Path -Parent
 $probe = Join-Path $root 'experimental/ace'
+
+function Get-EvidenceRoot {
+    if ([string]::IsNullOrWhiteSpace($script:EvidenceRoot)) {
+        throw 'this scope writes raw evidence; pass -EvidenceRoot <dir> (docs/plans/attachments is retired and git-ignored)'
+    }
+    $script:EvidenceRoot
+}
 
 function Assert-Selected {
     param([string]$Output, [string]$Label, [string[]]$RequiredIds)
@@ -68,7 +81,7 @@ function Assert-TierEvidence {
 }
 
 function Assert-MissingPeakControl {
-    $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
+    $raw = Join-Path (Get-EvidenceRoot) 'bench-r6'
     $guard = Join-Path $raw 'guard'
     if (Test-Path $guard) { Remove-Item -LiteralPath $guard -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $guard | Out-Null
@@ -95,7 +108,7 @@ function Get-Fnv64Hex {
 }
 
 function Assert-BenchmarkEvidence {
-    $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
+    $raw = Join-Path (Get-EvidenceRoot) 'bench-r6'
     $summaryPath = Join-Path $raw 'summary.json'
     $turnaroundPath = Join-Path $raw 'turnaround-summary.json'
     $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -114,7 +127,7 @@ function Assert-BenchmarkEvidence {
 }
 
 function Assert-CompatEvidence {
-    $receiptPath = Join-Path $root 'docs/plans/attachments/825/compat-receipt.json.txt'
+    $receiptPath = Join-Path (Get-EvidenceRoot) 'compat-receipt.json.txt'
     if (-not (Test-Path $receiptPath)) { throw 'compat evidence receipt missing; run -Scope compat first' }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $head = & git rev-parse HEAD
@@ -136,7 +149,7 @@ function Assert-CompatEvidence {
 }
 
 function Invoke-Benchmark {
-    $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
+    $raw = Join-Path (Get-EvidenceRoot) 'bench-r6'
     New-Item -ItemType Directory -Force -Path $raw | Out-Null
     foreach ($name in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl', 'summary.json', 'js-tier.log', 'liftoff-tier.log', 'turbofan-tier.log', 'turnaround.jsonl', 'turnaround-summary.json')) {
         if (Test-Path (Join-Path $raw $name)) { Remove-Item -LiteralPath (Join-Path $raw $name) -Force }
@@ -243,7 +256,7 @@ switch ($Scope) {
         Run-Probe -Bin 'av_runtime_semantics' -RequiredIds $TARGETED
     }
     'compat' {
-        $receiptDir = Join-Path $root 'docs/plans/attachments/825'
+        $receiptDir = (Get-EvidenceRoot)
         $logPath = Join-Path $receiptDir 'compat.log.txt'
         Start-Transcript -LiteralPath $logPath -Force | Out-Null
         try {

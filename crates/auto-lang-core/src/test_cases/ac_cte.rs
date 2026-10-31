@@ -50,9 +50,9 @@ fn fnv1a64_hex(bytes: &[u8]) -> String {
 
 fn cte_worker_exe_name() -> &'static str {
     if cfg!(windows) {
-        "cte_probe_worker.exe"
+        "ace-comptime-worker.exe"
     } else {
-        "cte_probe_worker"
+        "ace-comptime-worker"
     }
 }
 
@@ -63,7 +63,7 @@ fn worker_file_sha256(path: &Path) -> Result<String, String> {
 
 /// Locate (and on first use build, bounded) the cte worker binary. Env
 /// override first; otherwise build `experimental/ace`
-/// `-p auto-cte-probe --bin cte_probe_worker` (release) from the repo
+/// `-p ace-comptime --bin ace-comptime-worker` (release) from the repo
 /// root above this crate.
 pub fn worker_binary() -> Result<PathBuf, String> {
     if std::env::var("AUTO_TEST_DOMAIN").as_deref() == Ok("legacy") {
@@ -130,7 +130,7 @@ fn locate_worker() -> Result<PathBuf, String> {
         "-p",
         "ace-comptime",
         "--bin",
-        "cte_probe_worker",
+        "ace-comptime-worker",
         "--manifest-path",
     ])
     .arg(&manifest)

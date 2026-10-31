@@ -23,7 +23,7 @@ fn request_json(nonce: &str, request_hash: &str, store: &str, steps: serde_json:
 }
 
 fn call_worker_raw(raw: &str) -> serde_json::Value {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
         .arg("case-serve")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

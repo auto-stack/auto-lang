@@ -14,7 +14,7 @@
 use std::process::{Command, Stdio};
 
 fn run_bench(args: &[&str]) -> (i32, serde_json::Value, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+    let out = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
         .arg("bench-turnaround")
         .args(args)
         .stdout(Stdio::piped())
@@ -40,7 +40,7 @@ fn run_bench(args: &[&str]) -> (i32, serde_json::Value, String) {
 fn serve_one_with_env(envs: &[(&str, &str)], store: &std::path::Path) -> (String, bool) {
     let kind = ace_comptime::bench::DeckKind::EditRev(0);
     let req = ace_comptime::bench::build_worker_request_line("mut", "rh-mut", store, "mut", &kind);
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"));
     cmd.arg("case-serve")
         .envs(envs.iter().copied())
         .stdin(Stdio::piped())
@@ -279,7 +279,7 @@ mod performance {
         } else {
             "2000"
         };
-        let exe = env!("CARGO_BIN_EXE_cte_probe_worker");
+        let exe = env!("CARGO_BIN_EXE_ace-comptime-worker");
 
         // (a) Normal incremental traffic: green, zero re-warms.
         let (code, s, _) = run_bench(&["--samples", samples, "--gate-ms", gate]);
@@ -406,7 +406,7 @@ mod performance {
                 "sm",
                 &kind,
             );
-            let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+            let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
                 .arg("case-serve-stream")
                 .env("AUTO_CTE_BENCH_MUTATE", mode)
                 .stdin(Stdio::piped())
@@ -434,7 +434,7 @@ mod performance {
     /// must turn the SAME formal worker gate red via the bench.
     #[test]
     fn cte_turnaround_child_memory_spike_control_is_red() {
-        let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        let out = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
             .args([
                 "bench-turnaround",
                 "--samples",
@@ -489,7 +489,7 @@ mod performance {
                 "tree",
                 &kind,
             );
-            let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+            let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
                 .arg("case-serve")
                 .env("AUTO_CTE_BENCH_INJECT_ALLOC_MIB", "10")
                 .stdin(Stdio::piped())
@@ -539,7 +539,7 @@ mod performance {
     /// red through the wire's managed verdict.
     #[test]
     fn cte_turnaround_managed_budget_control_is_red() {
-        let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        let out = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
             .args([
                 "bench-turnaround",
                 "--samples",
@@ -572,7 +572,7 @@ mod performance {
     fn cte_turnaround_sampling_unavailable_control_is_red() {
         let tmp = tempfile::tempdir().unwrap();
         let raw = tmp.path().join("omit.jsonl");
-        let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        let out = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
             .args([
                 "bench-turnaround",
                 "--samples",

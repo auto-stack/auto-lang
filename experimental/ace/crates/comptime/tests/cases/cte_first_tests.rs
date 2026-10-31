@@ -237,13 +237,13 @@ fn cte_first_cross_project_hit() {
 // helpers
 // ---------------------------------------------------------------------------
 
-/// Spawn the REAL worker binary (`cte_probe_worker case-serve`) in a
+/// Spawn the REAL worker binary (`ace-comptime-worker case-serve`) in a
 /// fresh process — the cross-process restore path.
 fn call_worker(store: &Path, deck: &str) -> serde_json::Value {
     use base64::Engine as _;
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let exe = env!("CARGO_BIN_EXE_cte_probe_worker");
+    let exe = env!("CARGO_BIN_EXE_ace-comptime-worker");
     let req = serde_json::json!({
         "recipe": "cte/scalar-query-v1",
         "nonce": "n1",
@@ -259,7 +259,7 @@ fn call_worker(store: &Path, deck: &str) -> serde_json::Value {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn cte_probe_worker");
+        .expect("spawn ace-comptime-worker");
     child
         .stdin
         .take()

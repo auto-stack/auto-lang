@@ -3,7 +3,7 @@
 # edits, cross-process restart hits, executed-trap completions).
 #
 # Recipe cte/scalar-query-v1 on the unified probe/run seam. Worker:
-# cte_probe_worker case-serve (cteworker/1). All judgement parent-side;
+# ace-comptime-worker case-serve (cteworker/1). All judgement parent-side;
 # independent oracles are hand-computed.
 
 ```test-suite

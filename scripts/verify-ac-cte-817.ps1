@@ -57,8 +57,8 @@ function Test-Scope([string]$s) {
             Run-Step "workspace cte_turnaround_" { Invoke-AceCargo test --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }
             Run-Step "bench raw report" {
                 $out = Join-Path $repo "$ReportDir/turnaround.jsonl"
-                $exe = Join-Path $repo "experimental/ace/target/release/cte_probe_worker.exe"
-                Invoke-AceCargo build --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --release -p ace-comptime --bin cte_probe_worker 2>&1 | Select-Object -Last 1
+                $exe = Join-Path $repo "experimental/ace/target/release/ace-comptime-worker.exe"
+                Invoke-AceCargo build --manifest-path $ws -p ace-comptime -p ace-comptime-core -p ace-comptime-contract --offline --release -p ace-comptime --bin ace-comptime-worker 2>&1 | Select-Object -Last 1
                 & $exe bench-turnaround --samples 30 --out $out
             }
         }

@@ -333,7 +333,7 @@ fn resources_worker_peak_under_hard_gates() {
         "request_hash": "h",
     });
     let parent_sampler = ace_av::mempeek::PeakSampler::start(1);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
         .arg("case-serve")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -454,7 +454,7 @@ fn cte_resources_request_wall_real_ten_seconds() {
             deck,
             &serde_json::json!([{ "op": "query" }]),
         );
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
             .arg("case-serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -852,7 +852,7 @@ fn cte_resources_wire_input_bounded() {
             deck,
             &serde_json::json!([{ "op": "query" }]),
         );
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
             .arg("case-serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

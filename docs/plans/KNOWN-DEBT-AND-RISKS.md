@@ -2770,7 +2770,8 @@ compile_scalar_source 的瞬态分配做剖析与收敛（或由 798 后续修�
 av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反控）。
 
 **2026-10-20 R12-04 精确归属（T-01 义务交付，分阶段测量，常驻工具
-`experimental/ac-av-probe/probe/src/bin/mem_stage_probe.rs`，release 独立进程
+`experimental/ace/crates/av/src/bin/mem_stage_probe.rs`（PLAN-896 迁移后现址，
+原 `experimental/ac-av-probe/probe/src/bin/`；PLAN-899 T-03 修定位），release 独立进程
 2ms 采样）**：冻结 273 575 B 负载上，parse+resolve+typecheck（公共 seam 逐段、
 值全持有）合计 ≤ ~20 MiB；Emitter 渲染 atom_text 4 719 087 B；
 **`descriptor::bind(scalar_descriptor, atom_text)` 单独运行峰值

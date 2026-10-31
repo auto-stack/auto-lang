@@ -29,7 +29,7 @@ fn status_of(report: &auto_test_case::report::RunReport, check: &str) -> Status 
 }
 
 /// The committed ac-cte corpus runs END TO END through the unified
-/// runner — a real cte_probe_worker process, the frozen store on disk,
+/// runner — a real ace-comptime-worker process, the frozen store on disk,
 /// REAL AV execution on the miss, consumer backfill re-derived
 /// parent-verified, and the native observable judged against the
 /// hand-computed oracle.

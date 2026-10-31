@@ -1,4 +1,4 @@
-//! The cte_probe_worker binary (`cteworker/1`).
+//! The ace-comptime-worker binary (`cteworker/1`).
 //!
 //! `case-serve` — one request JSON on stdin (to EOF), one JSON response
 //! line on stdout, exit 0. Protocol failures exit non-zero (the parent
@@ -18,7 +18,7 @@ fn main() {
         }
         Some("case-serve") => case_serve(),
         _ => {
-            eprintln!("usage: cte_probe_worker case-serve < request.json");
+            eprintln!("usage: ace-comptime-worker case-serve < request.json");
             std::process::exit(2);
         }
     }

@@ -6,6 +6,12 @@ param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
     [ValidateSet("first", "targeted", "compat", "incremental", "bench", "baseline", "acceptance")]
     [string]$Scope,
+    # Raw-evidence root (bench/acceptance scopes). No default: the old
+    # docs/plans/attachments/826 location is retired and git-ignored — callers
+    # must pass an explicit plan-artifacts path (PLAN-899 T-03, 2026-10-31
+    # plan-artifacts ruling).
+    [Parameter(ParameterSetName = 'Scope')]
+    [string]$EvidenceRoot,
     [Parameter(ParameterSetName = 'Guard')]
     [switch]$GuardSelfTest
 )
@@ -15,6 +21,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot | Split-Path -Parent
 $probe = Join-Path $root 'experimental/ace'
+
+function Get-EvidenceRoot {
+    if ([string]::IsNullOrWhiteSpace($script:EvidenceRoot)) {
+        throw 'this scope writes raw evidence; pass -EvidenceRoot <dir> (docs/plans/attachments is retired and git-ignored)'
+    }
+    $script:EvidenceRoot
+}
 
 function Assert-Selected {
     param([string]$Output, [string]$Label, [string[]]$RequiredIds)
@@ -93,7 +106,7 @@ function Run-ParallelHarness {
 }
 
 function Invoke-Benchmark {
-    $raw = Join-Path $root 'docs/plans/attachments/826/bench-r1'
+    $raw = Join-Path (Get-EvidenceRoot) 'bench-r1'
     New-Item -ItemType Directory -Force -Path $raw | Out-Null
     foreach ($name in @('av826.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl', 'summary.json', 'js-tier.log', 'liftoff-tier.log', 'turbofan-tier.log', 'turnaround.jsonl', 'turnaround-summary.json')) {
         $p = Join-Path $raw $name
@@ -267,7 +280,7 @@ switch ($Scope) {
             if ($LASTEXITCODE -ne 0) { throw "acceptance scope '$required' failed" }
         }
         # SD drafts must exist before review consumes them.
-        if (-not (Test-Path (Join-Path $root 'docs/plans/attachments/826/sd-draft.md'))) {
+        if (-not (Test-Path (Join-Path (Get-EvidenceRoot) 'sd-draft.md'))) {
             throw 'SD draft missing'
         }
     }
