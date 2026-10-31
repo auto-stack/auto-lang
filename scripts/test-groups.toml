@@ -531,7 +531,7 @@ args = ["-p", "ace-core", "--lib", "--tests", "--config-file", "../../.config/ne
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-syntax"
@@ -542,7 +542,7 @@ args = ["-p", "ace-syntax-runtime", "-p", "ace-syntax-grammar", "-p", "ace-synta
 expression = "all()"
 tools = []
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-semantics"
@@ -553,7 +553,7 @@ args = ["-p", "ace-semantics-contract", "-p", "ace-semantics", "-p", "ace-semant
 expression = "all()"
 tools = []
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-artifacts"
@@ -564,7 +564,7 @@ args = ["-p", "ace-artifacts", "--lib", "--tests", "--config-file", "../../.conf
 expression = "all()"
 tools = ["execution-fixture"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-av"
@@ -575,7 +575,7 @@ args = ["-p", "ace-av-core", "-p", "ace-av", "--lib", "--tests", "--config-file"
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-native-worker"
@@ -586,7 +586,7 @@ args = ["-p", "ace-case-worker", "--lib", "--tests", "--config-file", "../../.co
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-native"
@@ -597,7 +597,7 @@ args = ["-p", "ace-native", "--lib", "--tests", "--config-file", "../../.config/
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-abi"
@@ -608,7 +608,7 @@ args = ["-p", "ace-abi", "--lib", "--tests", "--config-file", "../../.config/nex
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-comptime"
@@ -619,7 +619,7 @@ args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-com
 expression = "all()"
 tools = []
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-lowering"
@@ -630,19 +630,7 @@ args = ["-p", "ace-lowering", "--lib", "--tests", "--config-file", "../../.confi
 expression = "all()"
 tools = []
 domain = "ace"
-all = true
-
-[[group]]
-name = "infra-modules"
-title = "治理 scripts/tests/test_module_selection.py"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/tests/test_module_selection.py"
-all = true
+all = false
 
 [[group]]
 name = "infra-meter"
@@ -669,18 +657,6 @@ file = "scripts/tests/test_case_pilot_cli.py"
 all = true
 
 [[group]]
-name = "infra-regression"
-title = "治理 scripts/test_full_regression.py"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/test_full_regression.py"
-all = true
-
-[[group]]
 name = "case-ac-av"
 title = "TestCase case-ac-av"
 runner = "case"
@@ -690,7 +666,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ac-av/ac-av.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ac-cte"
@@ -702,7 +678,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ac-cte/ac-cte.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ac-mn"
@@ -714,7 +690,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ac-mn/ac-mn.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ac-native"
@@ -726,7 +702,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ac-native/ac-native.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ac-semantics"
@@ -738,7 +714,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ac-semantics/ac-semantics.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-base"
@@ -750,7 +726,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-tr-native"
@@ -762,7 +738,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-closures-865-source"
@@ -774,7 +750,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-collections-864"
@@ -786,7 +762,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-entry-862"
@@ -798,7 +774,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-method-881"
@@ -810,7 +786,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/method-881.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-resident-866"
@@ -822,7 +798,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-autoabi"
@@ -834,7 +810,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/autoabi/autoabi.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-abc-825"
@@ -846,7 +822,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-abc/825/av-abc-825.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-abc-826"
@@ -858,7 +834,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-abc/826/av-abc-826.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-data-821"
@@ -870,7 +846,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-data/821/av-data-821.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-data-822"
@@ -882,7 +858,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-data/822/av-data-822.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-data-823"
@@ -894,7 +870,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-data-824"
@@ -906,7 +882,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-data/824/av-data-824.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-av-source-827"
@@ -918,7 +894,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/av-source-827/av-source-827.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-governance-887-first-wave"
@@ -930,7 +906,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/governance-887/first-wave.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-pilot"
@@ -954,7 +930,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "case-ace-m1-console-863"
@@ -966,7 +942,7 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad"
-all = true
+all = false
 
 [[group]]
 name = "ace-host"
@@ -977,7 +953,7 @@ args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../.
 expression = "all()"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-batch"
@@ -988,7 +964,7 @@ args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../.
 expression = "test(/^batch::/)"
 tools = ["case-parent", "batch-av"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-console"
@@ -1022,66 +998,6 @@ args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p",
 expression = "all()"
 tools = []
 domain = "ace"
-all = true
-
-[[group]]
-name = "infra-purpose"
-title = "历史用途审计治理"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/tests/test_test_purpose_policy.py"
-all = true
-
-[[group]]
-name = "legacy-tv"
-title = "旧入口固定配置兼容 legacy-tv"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "--lib", "--profile", "tv", "--features", "test-cases"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-tt"
-title = "旧入口固定配置兼容 legacy-tt"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-trans,auto-lang/test-cases"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-tb"
-title = "旧入口固定配置兼容 legacy-tb"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-book"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-th"
-title = "旧入口固定配置兼容 legacy-th"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "--lib", "--features", "test-http-e2e"]
-expression = "test(http_e2e)"
-tools = []
-domain = "legacy"
-respect_default_filter = true
 all = false
 
 [[group]]
@@ -1203,7 +1119,7 @@ args = ["-p", "auto-lang-core", "--lib", "--features", "test-ace,test-case-batch
 expression = "test(/^test_cases::(ac|abi|sema|ace_)/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-runtime"
@@ -1214,7 +1130,7 @@ args = ["-p", "ace-text-conformance", "-p", "ace-data-conformance", "--lib", "--
 expression = "all()"
 tools = ["trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
-all = true
+all = false
 
 [[group]]
 name = "ace-performance"
@@ -1237,4 +1153,4 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/text-source-894.suite.ad"
-all = true
+all = false

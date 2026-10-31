@@ -23,4 +23,4 @@ API imports: []
 Store deps: ["NotesStore"]
 Store composables: 0
 Validation warnings: 0
-SFC 'EditorPanel': 7132 bytes, has template: true, has script: true, has style: true
+SFC 'EditorPanel': 7282 bytes, has template: true, has script: true, has style: true

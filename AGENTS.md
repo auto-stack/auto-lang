@@ -106,9 +106,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
   保留。原样本、压力、金样和oracle不减；真实终态及包装内部check核对，父exit0不代替子项。
 - 开发迭代跑相关反例与受影响完整组；最终审查后在冻结提交跑明确的固定组/必要集成并集。
   复用身份/输入未变的有效证据，不为修复、提交或复审反复跑全目录。纯文档/资产只做目标验证。
-- `tm`公共执行入口及细叶ID退役；888/895目录只作历史/迁移审计资料，不作为每次运行前置。
-  旧t/tv/tt/tb/th义务由固定原生组承接；周期tf/taa/ta/t3不再调用tm，UI/Man保原owner入口。
-  周期到期仍为计划号%5、或>48h且有合并、缺收据即到期，主检出单实例，不成为每计划全局门。
+- `tm`与旧档别名（t除外的tv/tt/tb/th/tf/taa/ta/t3）已整体退役删除（PLAN-898，2026-10-31
+  用户裁定豁免2026-11-30兼容期）；888/895目录及tm引擎一并删除，不再有"迁移审计资料"。
+  义务由固定原生组承接；UI/Man保原owner入口。
+  周期到期仍为计划号%5、或>48h且有合并、缺收据即到期（`cargo t all`，主检出单实例），
+  不成为每计划全局门。
 - 非ACE组不得补建ACE worker/实验工程；ACE相关及真实共享修改显式选对应ACE组。ACE宿主接线
   用默认关闭test-ace隔离，普通legacy TestCase保持可用。不得靠计划标题豁免真正必要的ACE验证。
 - AAVM/AA2R仅保代码/测试/夹具/期望与显式手动入口，实验测试默认ignore（2026-10-31用户裁定）；
@@ -128,14 +130,14 @@ All AI coding assistants working in this repository must strictly adhere to the 
   因此 merge 不再以全量套件作为合入门槛，改为记录“里程碑档 pending”并保留一次已跑过的全量结果作为参考。
 - 该线的定向面：新增/受影响的 `tests/*.rs`（单进程 `--test-threads=1`）、`verify_planNNN.py --controls`、
   `check_*.py`（含 `--controls`）、owner/窗口探针的命名 case；根 crate 零改动时**不**跑根
-  `cargo t/tf/tv/tu/docs_gen`（沿用既有裁定）。
+  `cargo t/tu/docs_gen`（沿用既有裁定；旧 tf/tv 别名已随 PLAN-898 删除）。
 - 已知环境边界：原生窗口类测试（`authoring_interaction`/`authoring_probe_exit` 等）在同机并发或反复
   spawn 窗口时可能瞬时红/挂起，隔离重放绿时应按环境归因记录，不据此判代码失败。
 
 #### Heavy-Mem Test Tiering (Plan 564)
 
 - Per-test peak weights live in `.config/test-mem-weights.md` (single source of truth; measured by `python scripts/measure_test_mem.py <filter>`, nextest `--jobs=1` serial + per-process peak polling).
-- Tiers: XL ≥800MB, LG 300-800MB, MD 100-300MB. nextest `[test-groups]` in `.config/nextest.toml` + `nextest-full.toml` + `nextest-t3.toml` enforce xl/lg/md = 1/1/2 threads. Since Plan 568's feature split, aavm heavy tests run under `taa`/`ta` (full config) and `t3` — the daily tier never includes them (structural exclusion via `test-aavm` feature); groups in the daily config remain as a guard for ad-hoc `cargo nextest run --features test-aavm` without `--config-file`.
+- Tiers: XL ≥800MB, LG 300-800MB, MD 100-300MB. nextest `[test-groups]` in `.config/nextest.toml` + `nextest-full.toml` + `nextest-t3.toml` enforce xl/lg/md = 1/1/2 threads. Since Plan 568's feature split, aavm heavy tests run via the `aavm` fixed group (manual `--ignored` replay) and the T3 milestone swap (`T3_MILESTONE=1` with the full-group union) — the daily tier never includes them (structural exclusion via `test-aavm` feature); groups in the daily config remain as a guard for ad-hoc `cargo nextest run --features test-aavm` without `--config-file`.
 - XL/LG tests carry an in-body `heavy_gate` guard (`crates/auto-lang/src/tests/heavy_gate.rs`): under bare `cargo test` (no `NEXTEST` env) they SKIP instantly — the 2026-09-05 incident (bare run, 12 threads, 9.78GB peak) cannot recur. SKIP guidance is visible with `--nocapture`; force-run with `AUTO_LANG_HEAVY_MEM=1`.
 - Registering a new heavy test (3 steps): measure → classify in the weights file → add to nextest overrides (all three configs) + wire `heavy_gate` at the test's first line.
 

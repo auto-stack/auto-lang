@@ -136,7 +136,7 @@ class FixedGroups(unittest.TestCase):
         self.assertIn('parser:', out.getvalue())
 
     def test_case_owner_rejection_precedes_all_final_output_writes(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory() as temp,                 mock.patch.object(fixed, 'execution_lease', lambda: contextlib.nullcontext()):
             output = Path(temp) / 'protected-output'
             with mock.patch.object(fixed, 'audit_suite_outputs', side_effect=ValueError('protected source domain')) as audit:
                 with self.assertRaisesRegex(ValueError, 'protected source domain'):
@@ -193,7 +193,6 @@ class FixedGroups(unittest.TestCase):
             self.assertEqual(value['test-groups']['fixed-http']['max-threads'], 1)
             self.assertTrue(any(row.get('test-group') == 'fixed-http' and 'http' in row['filter']
                                 for row in value['profile']['default']['overrides']))
-        self.assertEqual(self.groups['legacy-th']['args'], ['-p', 'auto-lang', '--lib', '--features', 'test-http-e2e'])
 
     def test_ace_set_is_explicit_and_separate_from_daily(self):
         selected = fixed.select(['ace'], self.value, self.groups)
@@ -210,11 +209,16 @@ class FixedGroups(unittest.TestCase):
     def test_incompatible_packages_remain_separate(self):
         self.assertEqual(len(fixed.invocations(fixed.select(['lexer', 'parser'], self.value, self.groups))), 2)
 
-    def test_all_is_explicit_and_contains_full_packages_and_ace(self):
+    def test_all_is_explicit_language_only(self):
         names = {r['name'] for r in fixed.select(['all'], self.value, self.groups)}
         self.assertIn('auto-lang-core', names)
         self.assertIn('auto-lex', names)
-        self.assertIn('ace-host', names)
+        # PLAN-898 user ruling: `all` is the language-side union only; ACE
+        # domain groups (incl. ace-host) run explicitly via `cargo t ace`.
+        self.assertNotIn('ace-host', names)
+        self.assertFalse(any(n.startswith('ace-') or n.startswith('case-ace-')
+                             for n in names) or any(
+            self.groups[n].get('domain') == 'ace' for n in names))
         self.assertNotIn('daily', names)
         self.assertNotIn('parser', names)  # covered by full package; avoid repeated execution
         with self.assertRaises(ValueError):
@@ -316,13 +320,9 @@ class FixedGroups(unittest.TestCase):
         with self.assertRaises(ValueError):
             fixed.terminal_results(raw(dict(excluded, event='ok')), expected, {'p::p$filtered'})
 
-    def test_legacy_trans_and_book_keep_the_entire_original_native_configuration(self):
-        for name, feature in [('legacy-tt', 'test-trans'), ('legacy-tb', 'test-book')]:
-            group = self.groups[name]
-            self.assertEqual(group['expression'], 'all()')
-            self.assertIn(feature, ','.join(group['args']))
-            self.assertTrue(group['respect_default_filter'])
-            self.assertNotIn('--ignore-default-filter', fixed.nextest_args(fixed.invocations([group])[0]))
+    def test_legacy_compat_groups_are_retired(self):
+        # PLAN-898: tm/tier compat groups and aliases are deleted entirely.
+        self.assertFalse({'legacy-tv', 'legacy-tt', 'legacy-tb', 'legacy-th'} & set(self.groups))
 
     def test_invalid_navigation_cannot_inject_a_filter(self):
         with self.assertRaises(ValueError):

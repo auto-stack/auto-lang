@@ -64,9 +64,11 @@ heavy gate与里程碑条件保留。发现/选择/编译/实际执行/通过分
 模块并集。替代旧裸t+触面档叠跑；目录守恒用实际枚举/负控核，迁移用代表性真实入口和局部并集核。
 可复用本次有效单轮计量与定向验收，不因横切runner再重复全目录。统一门仍由merge持有。
 
-tv/tt/tb/th截至2026-11-30保留原Cargo配置及profile过滤，旧列表只作迁移审计。
-语言周期入口tf/ta/t3显式调用固定all并集，taa调用默认ignored的aavm组；不读取旧recipe schedule或生成叶清单。
-UI/Man保留owner腿。周期触发仍为计划号%5、或>48h且有合并、缺回执即到期；主检出单实例，
+PLAN-898（2026-10-31）：tv/tt/tb/th兼容期与tf/taa/ta/t3周期别名已整体删除（用户
+裁定豁免2026-11-30），旧列表/引擎/冻结目录一并退役；历史语义见归档计划888/896/898。
+语言周期批量入口=主检出单实例 `cargo t all`（纯语言侧并集，ace域组all=false，
+ACE显式 `cargo t ace`）；aavm默认ignored、手动 `cargo t aavm --ignored` 重放。
+UI/Man保留owner腿。周期触发仍为计划号%5、或>48h且有合并、缺回执即到期；
 不成为每计划第二个全局门；T3/手动/ignored条件不绕过。显式全仓语言测试使用cargo t all。
 
 关联：[批量试点](batch-execution.md)、[治理守恒](governance-and-inventory.md)。

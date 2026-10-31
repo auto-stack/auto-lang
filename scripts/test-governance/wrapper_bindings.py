@@ -3,7 +3,7 @@ import copy
 import hashlib
 from pathlib import Path
 
-from module_catalog import ROOT,load
+from governance_io import ROOT,load
 
 
 def normalize(value):

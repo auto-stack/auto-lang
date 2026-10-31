@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from module_catalog import ROOT,load,source_identity,write
+from governance_io import ROOT,load,source_identity,write
 from native_meter import measure
 
 PHASES={'prepare_ms','transport_ms','admission_compare_receipt_ms','cleanup_ms'}
@@ -180,9 +180,8 @@ def main():
         'planned_warmups':len(contract['cohorts'])*len(contract['parallelism'])*contract['warmup_rounds'],
         'background_workload_observations':_background_observations}
     write(args.output/'campaign.json',document)
-    spec=importlib.util.spec_from_file_location('measurement_machine_gate',ROOT/'scripts/run-full-regression.py')
-    gate=importlib.util.module_from_spec(spec);spec.loader.exec_module(gate)
-    with gate.machine_gate(),gate.machine_gate('AutoLangFormalPerformance'):
+    from governance_io import machine_gate
+    with machine_gate(),machine_gate('AutoLangFormalPerformance'):
         for parallelism in contract['parallelism']:
             plan=[('diagnostic',0)] if args.smoke else [('warmup',-1),*[('measurement',i) for i in range(contract['rounds'])]]
             for series,round_index in plan:
