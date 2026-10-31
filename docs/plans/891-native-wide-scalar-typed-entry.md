@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-891
-status: executing
+status: execution_done
 feature_name: native宽标量typed入口与逐位结果通道
 author: [Codex]
 created_at: 2026-10-30
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-test-case]
 depends_on: [PLAN-820, PLAN-828, PLAN-871]
-current_step: 3
+current_step: 5
 total_steps: 10
 ---
 
@@ -206,8 +206,8 @@ typed模式的结果是互斥value/trap/resource/error判别：value70与i32除�
 | T-01 | work | 用户后续明确执行；只读可先，写入需对应窗 | 核树/HEAD/D门/889 r2真实N阶段及888 H状态；按§5.1列N/S/H具体符号、consumer/源锁与接受/回交；冻结实际输入/拒绝闭包、预算和V-01..14映射；只读基线不冒充已释放 | AC-01/04/06 | [✅ 已完成] |
 | T-02 | work | T-01；N及所需S/H helper符号释放 | 冻结物理ABI/record复制与隐藏结果、typed文件输入/patch编码、帧状态机/来源绑定、预算/采样口径；真PE跨对象identity+constant return、六混参各位返回、最小record往返、W05、value70/trap对照、晚失败/挂起/超量I/O；不通过回本步，不缩W支持 | AC-01/02/05 | [✅ 已完成] |
 | T-03 | work | T-02；N独占，改共享闭包时需对应S | emit/lower/layout/symbols/fingerprint/config的typed独立准入、调用/record及精确类型/const指纹，按请求传ABI与符号隔离；V-02/03/04/09/11命名验证，旧域/889兼容及拒绝保留 | AC-01/02/04/06 | [✅ 已完成] |
-| T-04 | work | T-03；N及必要S/H helper同时释放 | typed wrapper/runtime/runner、trap失败帧、COFF与wrapper恢复/required-data、typed居民unit更新与真实生产点/身份计量、候选原子回滚/close；V-05..08/11/12/14定向，不能套scalar session全量carry | AC-02/04/05 | [ ] |
-| T-05 | work | T-04；H及必要N/S同时释放、正式采样择窗 | 文件化recipe/SDK/父侧独立oracle/report stale与decoder/worker镜像；W五行及V-01..14全验收、当时实际模块发现/原子义务与源锁接纳、四状态各20样本/资源及敏感性反控；SD-01..06候选与证据摘要、提交实现，不擅加888批量白名单 | AC-01..06 | [ ] |
+| T-04 | work | T-03；N及必要S/H helper同时释放 | typed wrapper/runtime/runner、trap失败帧、COFF与wrapper恢复/required-data、typed居民unit更新与真实生产点/身份计量、候选原子回滚/close；V-05..08/11/12/14定向，不能套scalar session全量carry | AC-02/04/05 | [✅ 已完成] |
+| T-05 | work | T-04；H及必要N/S同时释放、正式采样择窗 | 文件化recipe/SDK/父侧独立oracle/report stale与decoder/worker镜像；W五行及V-01..14全验收、当时实际模块发现/原子义务与源锁接纳、四状态各20样本/资源及敏感性反控；SD-01..06候选与证据摘要、提交实现，不擅加888批量白名单 | AC-01..06 | [✅ 已完成] |
 | T-06 | review | T-01..05完成、冻结commit | 独立final review，修复回同树work并复核受影响证据；不把work自检当final、不跑merge整档 | AC-07 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交required gates与batch到期判定；代码改变则回受影响review/新freeze门禁 | AC-08 | [ ] |
 | T-08 | merge | T-07 | 实际合入、SD沉淀/索引/ledger与逐行M1来源/限制读回；不改旧expected/分母 | AC-09 | [ ] |
@@ -282,7 +282,7 @@ stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass | worktree_pa
   → 98c7c0cf7（recipe/suite/binding/specs）→ 7dd44182a（fmt 收口）。
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 7dd44182a | next: review
 
 
 stage: review | review_scope: final | reviewer_identity: 同一会话执行+终审(计划未指定独立final reviewer);判决自工件重建(diff审计/代码核验/测试重放),未采信执行者总结 | plan_id: PLAN-891 | plan_revision: 2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | reviewed_commit: 7dd44182a | base_commit: b55889dff | dependency_revisions: 889/888/894 archived; master 已前进(基面后含 reader fixtures 退役等,与本计划文件无交集,merge 时 delete/unchanged 自动解决) | spec_inputs: docs/specs/auto-mir/data-place-profile.md, native-data-owned-lowering.md, auto-ac/native-backend-and-retirement.md, auto-test-case/ace-m1-conformance.md, architecture.md | acceptance_results: AC-01 partial, AC-02 partial, AC-03 pass, AC-04 partial, AC-05 partial, AC-06 pass, AC-07 本记录, AC-08/09 merge-owned pending | findings: F-01..F-06 | evidence: typed suite 12/12 + tiers 15 绿 + SDK 2 绿 + legacy conformance 128 绿重放确认;diff 审计确认无调试残留、worktree clean | next: work(同树修复 F-01..F-06 后重审)
@@ -312,6 +312,12 @@ stage: review | review_scope: final | reviewer_identity: 同一会话执行+终�
 - **F-06(测试缺,AC-01/V-04,T-05)**:record"callee 改局部副本、caller
   原值不变"无显式正例。补 fixture:main 建 record 传 helper,helper
   FieldSet 后 main FieldGet 原字段,期望原位型。
+
+
+stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass (repair of review#1 F-01..F-06) | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 68793865e | task_ids: T-04, T-05 (reopened→closed) | evidence: F-03 admit_frame_and_exit 通道级强制+负例;closure 缺陷(跨单元原始类型索引比较)改解析形状比较(F-06 测试发现);F-01 ±Inf/+qNaN 逐位;F-02 损坏信封/COFF 具名拒;F-04 ghost import mn.admit.callee-sig;F-05 位清洗反控;F-06 record 副本隔离真 PE | 重放: typed_entry_tier 18 绿、incremental 3 绿、suite 12/12、SDK 2 绿 | blockers: 无 | next_responsible_role: review (final #2)
+
+
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: execution_done | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 68793865e | next: review
 
 ## 10. 待澄清事项
 
