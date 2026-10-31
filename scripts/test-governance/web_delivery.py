@@ -241,8 +241,8 @@ def validate_distribution_receipt(receipt, path, source_roots=None):
             if changed.strip() or added.strip():
                 raise ValueError('distribution payload inputs differ from the selected current owner: ' + name)
     package_names = [p['name'] for p in manifest.get('source_closure', {}).get('packages', [])]
-    if (len(package_names) != len(set(package_names)) or len(package_names) != 19
-            or not {'auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core'}.issubset(package_names)
+    if (len(package_names) != len(set(package_names)) or len(package_names) != 20
+            or not {'auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core', 'auto-tool-execution'}.issubset(package_names)
             or by_id['independent-installed-closure'].get('detail', {}).get('local_packages') != len(package_names)):
         raise ValueError('independent installed source closure missing/duplicated/different')
     for name, record in manifest['files'].items():
@@ -297,7 +297,21 @@ def validate_distribution_receipt(receipt, path, source_roots=None):
     legacy_by_id = {r['id']: r for r in legacy['checks']}
     old_sources = {'auto-lang': '674871e2a3bcc1a9cf594ac7446f3c1d1129ecbb',
                    'auto-man': 'e6cc06fbc496f366edde7929abfd49254ec13647'}
-    new_sources = {**receipt['sources'], 'auto-man': manifest['tool_producer']['source_commit']}
+    # The immutable transaction artifact's revision identifies that script,
+    # not the independently built current Man Core CLI and its dependency lock.
+    consumers = receipt.get('consumer_sources', {})
+    if set(consumers) != {'auto-man'} or not re.fullmatch('[0-9a-f]{40}', consumers['auto-man']):
+        raise ValueError('current Core CLI consumer source missing')
+    new_sources = {**receipt['sources'], **consumers}
+    if source_roots is not None:
+        if 'auto-man' not in source_roots:
+            raise ValueError('current Core CLI consumer owner missing')
+        root = source_roots['auto-man']
+        scopes = ['Cargo.toml', 'Cargo.lock', 'core', 'crates', 'scripts', 'LICENSE']
+        changed = subprocess.check_output(['git', '-C', str(root), 'diff', '--name-only', consumers['auto-man'], '--', *scopes])
+        added = subprocess.check_output(['git', '-C', str(root), 'ls-files', '--others', '--exclude-standard', '--', *scopes])
+        if changed.strip() or added.strip():
+            raise ValueError('current Core CLI consumer inputs differ')
     if legacy_by_id['old-core-install'].get('sources') != old_sources or legacy_by_id['new-core-install'].get('sources') != new_sources:
         raise ValueError('legacy/new Core producer cohort differs')
     snapshots = legacy.get('snapshots', [])

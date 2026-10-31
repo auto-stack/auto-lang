@@ -12,6 +12,12 @@ import four_repository as gate
 
 
 class FourOwnerControls(unittest.TestCase):
+    def test_distribution_consumer_source_and_closure_controls(self):
+        # Run the existing real distribution-consumer oracle, including its
+        # current-cohort source/closure mutations, without legacy tm fixtures.
+        suite = gate.module('four_distribution_controls', Path(__file__).parent / 'tests/test_web_test_ownership.py')
+        suite.WebOwnershipTests('test_distribution_rejects_partial_missing_steps_changed_sources_and_unexecuted_commands').debug()
+
     def test_web_original_required_cannot_be_consistently_dropped(self):
         rows = gate.load(gate.ROOT / 'scripts/test-governance/web-test-migrations.json')['migrations']
         selected = {r['new']['binary'] + '\t' + r['new']['test'] for r in rows if not r['original_ignored']}

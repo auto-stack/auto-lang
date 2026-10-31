@@ -22,6 +22,7 @@ Web受管源包包含20实际package（含896引入的auto-tool-execution依赖�
 服务生成接受Web最小SDK或Man Core/Full；UI生成仍要求Full。
 prepare/verify/swap失败不得破坏旧有效workspace/安装或用户文件；成功升级后重读实际产物。
 通用事务算法归Man，Web携带逐字且Git来源可验证的不可编辑owner快照，不养第二份安装算法。
+该快照提交只标识安装脚本；当前Core CLI的Man消费者提交独立记录，并核实际Git恢复材料及所选Man的core/crates/scripts/锁文件，不能借旧脚本来源认证新CLI。
 
 原旧架构验收仅认证真实合法Core形态，不据此冒认旧UI/Full。ZIP、fresh/locked/重定位、故障恢复和
 当前组合的实际结果见[Web发行](../../../../auto-web/docs/specs/delivery.md)与归档收据。

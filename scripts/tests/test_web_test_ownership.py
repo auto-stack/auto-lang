@@ -137,11 +137,11 @@ class WebOwnershipTests(unittest.TestCase):
             payload.write_text('test-threads = 1\n')
             files = {'sdk/.config/nextest.toml': {'bytes': payload.stat().st_size, 'sha256': h(payload)}}
             sources = {'auto-lang': '1'*40, 'auto-web': '2'*40}
-            man = '3'*40
-            names = ['auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core',
+            man = '4'*40
+            names = ['auto-web', 'auto-web-contract', 'auto-lang-core', 'auto-generation-core', 'a2r-std', 'auto-media-core', 'auto-tool-execution',
                      *('sdk-dep-'+str(i) for i in range(13))]
             manifest = {'schema': 'web-source/1', 'candidate': False, 'sources': sources,
-                        'source_sha256': fhash(files), 'files': files, 'tool_producer': {'source_commit': man},
+                        'source_sha256': fhash(files), 'files': files, 'tool_producer': {'source_commit': '3'*40},
                         'source_closure': {'root_inputs':[], 'packages': [{'name': n, 'source_repo':'auto-web' if n in ('auto-web','auto-web-contract') else 'auto-lang', 'source_path':'crates/'+n} for n in names]}}
             (source/'source-manifest.json').write_text(json.dumps(manifest))
             old = {'auto-lang': '674871e2a3bcc1a9cf594ac7446f3c1d1129ecbb', 'auto-man': 'e6cc06fbc496f366edde7929abfd49254ec13647'}
@@ -172,7 +172,7 @@ class WebOwnershipTests(unittest.TestCase):
                     row['detail'] = {'exact_json': 890, 'shutdown': 202, 'exit': 0, 'port_released': True,
                                      'binary_sha256': '5'*64, 'log_sha256': h(log)}
                 elif name == 'legacy-three-owner-recovery': row['detail'] = {'receipt': str(legacy_path), 'sha256': h(legacy_path)}
-                elif name == 'independent-installed-closure': row['detail'] = {'local_packages': 19}
+                elif name == 'independent-installed-closure': row['detail'] = {'local_packages': 20}
                 elif name == 'interrupted-generation-recovered': row['detail'] = {'checkpoint': 'public Web workspace phase'}
                 else:
                     log.write_text((''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(217))+'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n') if name == 'independent-sdk-tests' else 'real command output\n')
@@ -181,6 +181,7 @@ class WebOwnershipTests(unittest.TestCase):
                                log=str(log), log_sha256=h(log))
                 checks.append(row)
             receipt = {'schema': 'web-repository-distribution/1', 'outcome': 'pass', 'candidate': False, 'pending': [],
+                       'consumer_sources': {'auto-man': man},
                        'sources': sources, 'source_sha256': fhash(files), 'checks': checks,
                        'summary': {'executed': 45, 'passed': 45, 'failed': 0, 'pending': 0}}
             path = root/'receipt.json'
@@ -200,9 +201,25 @@ class WebOwnershipTests(unittest.TestCase):
                 else: next(r for r in bad['checks'] if 'command' in r)['log_sha256'] = '0'*64
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError): validate_distribution_receipt(bad, path)
             with patch('subprocess.check_output',return_value=b'') as git:
-                self.assertTrue(validate_distribution_receipt(receipt,path,{'auto-lang':root/'lang','auto-web':root/'web'}))
-                self.assertEqual(git.call_count,4)
+                self.assertTrue(validate_distribution_receipt(receipt,path,{'auto-lang':root/'lang','auto-web':root/'web','auto-man':root/'man'}))
+                self.assertEqual(git.call_count,6)
                 self.assertTrue(any('crates/auto-lang-core' in call.args[0] for call in git.call_args_list))
+            with patch('subprocess.check_output', side_effect=[b'', b'', b'', b'', b'core/Cargo.lock\n', b'']):
+                with self.assertRaisesRegex(ValueError, 'CLI consumer inputs differ'):
+                    validate_distribution_receipt(receipt,path,{'auto-lang':root/'lang','auto-web':root/'web','auto-man':root/'man'})
+            wrong_consumer = copy.deepcopy(receipt)
+            wrong_consumer['consumer_sources']['auto-man'] = manifest['tool_producer']['source_commit']
+            with self.assertRaisesRegex(ValueError, 'producer cohort differs'):
+                validate_distribution_receipt(wrong_consumer, path)
+            original_manifest = (source/'source-manifest.json').read_bytes()
+            missing = copy.deepcopy(manifest)
+            missing['source_closure']['packages'] = [r for r in missing['source_closure']['packages'] if r['name'] != 'auto-tool-execution']
+            (source/'source-manifest.json').write_text(json.dumps(missing))
+            matching = copy.deepcopy(receipt)
+            next(r for r in matching['checks'] if r['id'] == 'independent-installed-closure')['detail']['local_packages'] = 19
+            with self.assertRaisesRegex(ValueError, 'source closure'):
+                validate_distribution_receipt(matching, path)
+            (source/'source-manifest.json').write_bytes(original_manifest)
             with patch('subprocess.check_output',return_value=b'crates/auto-lang-core/src/script_entry.rs\n'):
                 with self.assertRaisesRegex(ValueError,'payload inputs differ'):
                     validate_distribution_receipt(receipt,path,{'auto-lang':root/'lang','auto-web':root/'web'})

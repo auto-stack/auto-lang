@@ -102,7 +102,7 @@ def run(args):
         def distribution():
             result = json.loads(args.distribution_receipt.read_text(encoding='utf-8'))
             validate_distribution_receipt(result, args.distribution_receipt,
-                                          {'auto-lang': roots['lang'], 'auto-web': roots['web']})
+                                          {'auto-lang': roots['lang'], 'auto-web': roots['web'], 'auto-man': roots['man']})
             return str(args.distribution_receipt)
         check('independent-distribution-and-recovery', distribution)
     else:
