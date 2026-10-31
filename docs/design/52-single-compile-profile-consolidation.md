@@ -1,6 +1,10 @@
 # 52 · 单一编译 profile 整改（auto-lang 去 UI / feature 拍平 / tm 清退）
 
 状态：target-state r1（2026-10-31 用户六问裁定驱动；实施经四计划 C→A→B（本仓）+ D（auto-ui 仓））
+进度：**计划 A（PLAN-900）已实施待复审**（2026-10-31）——§2.1 依赖方向反转落地
+（facade default=[]、零 auto-ui 包、ui_build 族/install 单点/测试/examples/cosmic/
+auto-lsp 迁 auto-ui 仓；auto-ui 兄弟仓依赖解除实证）。注：单仓完整不变量尚余
+auto-web-contract path 边（900-N7，另行计划）。
 性质：架构（L2）——依赖方向反转 + feature 面退役 + 测试设施概念清退
 
 ## 1. 背景与动机
