@@ -1896,7 +1896,8 @@ a2r 编译面轨随缺省翻转计划另立。
   冷启动证据合同（MCP `autoui_scroll_state`/`autoui_visibility` 只读
   工具 + 驱动纪律），见
   [ui/design/native-acceptance-channel.md](design/native-acceptance-channel.md)；
-  驱动 `scripts/tools/test_native_reader_acceptance.py`。
+  驱动由应用仓 auto-reader 拥有（`tests/native/test_native_reader_acceptance.py`，
+  READER-004 迁出本仓）。
 - 两面均已由 `examples/capability-tests/p781-scroll-child-anchor/` 双端
   几何驱动（41+43 项）与阶段 A 病例族（v07~v13）锁定。
 - **阶段 D 修订（2026-10-15/16）**：锚点身份 = 不透明序号 + build 期

@@ -78,5 +78,8 @@
   CPU 段四路（deadline 负/正对照、RST、关闭）+ 同进程关停→重启不受
   旧排水截止污染——entered 握手 + 副作用文件冻结 + 单终态 + scope/
   live-op/许可回收断言）。
-- 全链驱动：`scripts/tools/test_reader_import_budget.py` +
-  `test/fixtures/reader-import-budget/`（V-14/15/17/18/19/20）。
+- 全链驱动（应用 owner=auto-reader，READER-004 迁出本仓）：auto-reader 仓
+  `tests/spec/test_reader_import_budget.py` +
+  `tests/fixtures/reader-import-budget/`（V-14/15/17/18/19/20 用例与
+  oracle 守恒）。语言侧预算语义单测/真 TCP（`cargo t plan781` /
+  `cargo th http_e2e_plan781`）不变。

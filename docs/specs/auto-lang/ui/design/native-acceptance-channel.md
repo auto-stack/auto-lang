@@ -57,5 +57,9 @@ VM+HTTP 实例上的**真实动作、当前帧裁剪几何、隔离库与冷启�
 
 ## 验证面
 
-- 驱动：`scripts/tools/test_native_reader_acceptance.py`（v07~v13 病例族
-  + fixture `test/fixtures/native-reader-acceptance/`）。
+- 驱动（应用 owner=auto-reader，READER-004 迁出本仓）：auto-reader 仓
+  `tests/native/test_native_reader_acceptance.py`（v07~v13 病例族 +
+  fixture `tests/fixtures/native-reader-acceptance/`）。身份断言 = 本 run
+  进程树持有端口（READER-004 T-03 适配分裂宿主拓扑：`auto run -r vm` 的
+  VM HTTP 后端与 UI 由 auto.exe 子进程 auto-ui-tool 实际持有端口）；
+  本文件通道合同不变。
