@@ -314,10 +314,10 @@ stage: review | review_scope: final | reviewer_identity: 同一会话执行+终�
   FieldSet 后 main FieldGet 原字段,期望原位型。
 
 
-stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass (repair of review#1 F-01..F-06) | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 68793865e | task_ids: T-04, T-05 (reopened→closed) | evidence: F-03 admit_frame_and_exit 通道级强制+负例;closure 缺陷(跨单元原始类型索引比较)改解析形状比较(F-06 测试发现);F-01 ±Inf/+qNaN 逐位;F-02 损坏信封/COFF 具名拒;F-04 ghost import mn.admit.callee-sig;F-05 位清洗反控;F-06 record 副本隔离真 PE | 重放: typed_entry_tier 18 绿、incremental 3 绿、suite 12/12、SDK 2 绿 | blockers: 无 | next_responsible_role: review (final #2)
+stage: work | plan_id: PLAN-891 | plan_revision: 2 | outcome: pass (repair of review#1 F-01..F-06) | worktree_path: D:/autostack/.wt/lang-891/auto-lang | branch: plan-891-dev | base_commit: b55889dff | code_commit: 675cae800 | task_ids: T-04, T-05 (reopened→closed) | evidence: F-03 admit_frame_and_exit 通道级强制+负例;closure 缺陷(跨单元原始类型索引比较)改解析形状比较(F-06 测试发现);F-01 ±Inf/+qNaN 逐位;F-02 损坏信封/COFF 具名拒;F-04 ghost import mn.admit.callee-sig;F-05 位清洗反控;F-06 record 副本隔离真 PE | 重放: typed_entry_tier 18 绿、incremental 3 绿、suite 12/12、SDK 2 绿 | blockers: 无 | next_responsible_role: review (final #2)
 
 
-stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: execution_done | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 68793865e | next: review
+stage: goal | plan_id: PLAN-891 | plan_revision: 2 | round: 2 | from: review | to: work | status: execution_done | outcome: needs_fix→repaired | worktree: D:/autostack/.wt/lang-891/auto-lang | commit: 675cae800 | next: review
 
 ## 10. 待澄清事项
 
