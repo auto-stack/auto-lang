@@ -1177,3 +1177,14 @@ tools = []
 domain = "legacy"
 file = "scripts/test_four_repository_fixed.py"
 all = true
+
+[[group]]
+name = "ace-rust-lowering"
+title = "ACE已迁移Rust lowering宿主完整命名空间"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "test(host::rust_lowering::)"
+tools = ["a2x"]
+domain = "ace"
+all = false
