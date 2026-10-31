@@ -120,7 +120,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
   周期到期仍为计划号%5、或>48h且有合并、缺收据即到期（`cargo t all`，主检出单实例），
   不成为每计划全局门。
 - 非ACE组不得补建ACE worker/实验工程；ACE相关及真实共享修改显式选对应ACE组。ACE宿主接线
-  用默认关闭test-ace隔离，普通legacy TestCase保持可用。不得靠计划标题豁免真正必要的ACE验证。
+  经显式ace组隔离（PLAN-901起语言测试feature拍平：test-ace等七feature退役，ACE桥接测试常驻编译、仅显式ace组选择），普通legacy TestCase保持可用。不得靠计划标题豁免真正必要的ACE验证。
 - AAVM/AA2R仅保代码/测试/夹具/期望与显式手动入口，实验测试默认ignore（2026-10-31用户裁定）；
   正常VM/Rust实现A2R和真实产品消费者不误关。其他research/special不得据名/耗时批量停用。
 - 列用例数/实际执行数/原条件排除数，准备/冷编译、发现/运行/清理和整命令时间分列；完整组尽量
