@@ -17,7 +17,6 @@
 |---|---|---|
 | [auto-lang](auto-lang/project.md) | 语言核心：lexer/parser/typeck/infer/ownership/comptime/VM execution/trans/ui/mcp（本快照约 528 个 Rust src 文件，九模块见下；数量后续改由 Generated Catalog 提供） | active |
 | [auto-diagnostics](auto-diagnostics/project.md) | 通用诊断基础（PLAN-793 起）：AutoError 聚合+各族诊断+attach_source/格式化单一实现（同族先例 auto-lex，PLAN-789 词法外置）；闭包零 auto-lang/AST/UI | active |
-| [auto-web](auto-web/project.md) | 独立兄弟Web领域owner；Core中立宿主、HTTP/共享生成边界及四仓交付见指针（PLAN-890） | active |
 | [auto-media-core](auto-media-core/project.md) | renderer-neutral 媒体单源（PLAN-811 起）：image_pipeline（资产/registry/缓存/worker/会话）+ media_service（索引/Range 规则），VM 17 native/HTTP/Vue 生成/Rust merged/Iced 共享同机制；闭包零 auto-lang/VM/UI/Man/iced | active |
 | [auto-val](auto-val/project.md) | 运行时 Value/Node 值体系（含 serde 双向、nano_value） | active |
 | [auto-atom](auto-atom/project.md) | Atom 静态数据结构与解析器 | active |
@@ -34,6 +33,7 @@
 | [auto](auto-cli/project.md)（目录 auto-cli spec） | `auto` CLI 主入口（run/ui/vue/block/docs…） | active |
 | [auto-man](auto-man/project.md) | 包管理器/构建调度/工程导出/各前端生态集成 | active |
 | [auto-gen](auto-gen/project.md) | AutoGen：Auto 数据/可执行模板 adapter + legacy 兼容门面（PLAN-791 起编排/guard 委托 auto-gen-core） | active |
+| [auto-generation-core](auto-api-gen/project.md) | HTTP与非HTTP生成共用的受限四模块载体；函数清单与单源边界见生成规范（PLAN-890） | active |
 | [auto-gen-core](auto-gen-core/project.md) | 无解释器生成核心（guard/输出编排/通用错误/生成报告；闭包零 auto-lang） | active |
 | [auto-package-lock](package-lock/project.md) | pac.lock 模型/codec/校验核心（PLAN-795 起 auto-man 锁门面委托；闭包零 auto-lang） | active |
 | [auto-lsp](auto-lsp/project.md) | LSP 服务器（补全/诊断/hover/跳转/semantic tokens） | active |
@@ -49,6 +49,7 @@
 
 | 资源 | 职责 | 状态 |
 |---|---|---|
+| [auto-web](auto-web/project.md) | 独立兄弟Web领域owner；Core中立宿主、HTTP/共享生成边界及四仓交付见指针（PLAN-890） | active |
 | [auto-playground](auto-playground/project.md) | Playground Web API 服务（axum+ws+前端） | active |
 | [packages/](../design/autoui/examples-app-track.md) | 4 个 JS 包：@auto-ui/widgets、forge-ui、lab-ui、playground-vue | active |
 | [blueprint/](blueprint/project.md) | Blueprint 蓝图包（Design 17；六问契约+三通道消费） | active |

@@ -67,3 +67,9 @@ producer与公开收据consumer共用原baseline/retirement/migration/floor，�
 迁移credit只能来自已验证实际PASS目标。ui-tu仍单进程执行，以同批ui-full来源flags还原libtest省略的原ignore。
 缺执行、错命令/输出/hash、重复/零选择/无依据排除、未执行腿或旧SDK认证新来源均失败。
 用途分类只作建议。选择/执行/周期和当前组合发行的门分列，详见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)。
+
+### 可观测工具准备与指令边界（PLAN-890 修复3）
+
+受管a2r-hir用例与直接六项控制在计时前构建同源a2x-worker，并以明确的AC_A2X_HIR_WORKER交给消费者；测试不能借排序或外部CARGO_TARGET_DIR碰巧得到固定路径程序。准备成本/内容哈希/进程计量独立记录，原缺worker ERROR及坏golden FAIL反控保持。只允许准备阶段原有精确哈希编译辅助程序的已完成回收例外，不能对测试体的后代泄漏豁免。
+
+原AAVM独立Rust guest维持零依赖测试载体及既有File实现，通过薄命名空间转发匹配原发射路径；不改变通用合并转译契约或复制生产运行库。guest构建/缓存发布使用自己的target目录。原生引用闭包仍须走实际指令边界，闭包调用的一字节参数和future捕获名的四字节数据不能作为新指令，也不能掩盖非法后继；原golden、native签名/缺实现门与有效性拒绝不削弱。

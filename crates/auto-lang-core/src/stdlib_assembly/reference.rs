@@ -37,13 +37,12 @@ pub fn verify_linked_native_closure(
         }
         let byte = flash.read_u8(ip);
         if !OpCode::is_valid(byte) {
-            return Err(format!("STDASSEMBLY.INVALID_BYTECODE: {ip}"));
+            return Err(format!(
+                "STDASSEMBLY.INVALID_BYTECODE: {ip} (byte={byte:#04x})"
+            ));
         }
         let op = OpCode::from(byte);
-        let operands = match op {
-            OpCode::CREATE_FUTURE => 5 + 2 * flash.read_u8(ip + 5) as usize,
-            _ => crate::vm::disasm::Disassembler::new(flash).instruction_operands(op, ip),
-        };
+        let operands = crate::vm::disasm::Disassembler::new(flash).instruction_operands(op, ip);
         let next = ip + 1 + operands;
         if next > flash.memory.len() {
             return Err(format!(
@@ -319,5 +318,43 @@ mod plan738_reference {
             .verify_core_reference(1902)
             .unwrap_err()
             .contains("SIGNATURE_UNVERIFIED"));
+    }
+}
+
+#[cfg(test)]
+mod instruction_boundary_tests {
+    use super::*;
+    use crate::vm::{opcode::OpCode, virt_memory::VirtualFlash};
+
+    #[test]
+    fn closure_argument_count_cannot_hide_invalid_successor() {
+        let interface = NativeInterface::new();
+        let accepted =
+            VirtualFlash::new_with_code(vec![OpCode::CALL_CLOSURE as u8, 2, OpCode::HALT as u8]);
+        assert!(verify_linked_native_closure(&accepted, 0, &interface, &[]).is_ok());
+        // With a zero-width CALL_CLOSURE decoder, argc=2 becomes POP_N,
+        // which consumes the invalid byte instead of rejecting it.
+        let invalid = VirtualFlash::new_with_code(vec![OpCode::CALL_CLOSURE as u8, 2, 0x0a]);
+        let error = verify_linked_native_closure(&invalid, 0, &interface, &[]).unwrap_err();
+        assert!(error.contains("INVALID_BYTECODE: 2"), "{error}");
+    }
+
+    #[test]
+    fn future_capture_names_are_four_byte_operands() {
+        // A high byte in a capture name is data, not an executable opcode.
+        let mut code = vec![OpCode::HALT as u8, OpCode::CREATE_FUTURE as u8];
+        code.extend_from_slice(&0u32.to_le_bytes());
+        code.push(1);
+        code.extend_from_slice(&0x000a0000u32.to_le_bytes());
+        code.push(OpCode::HALT as u8);
+        let flash = VirtualFlash::new_with_code(code.clone());
+        assert!(verify_linked_native_closure(&flash, 1, &NativeInterface::new(), &[]).is_ok());
+        *code.last_mut().unwrap() = 0x0a;
+        let invalid = VirtualFlash::new_with_code(code);
+        assert!(
+            verify_linked_native_closure(&invalid, 1, &NativeInterface::new(), &[])
+                .unwrap_err()
+                .contains("INVALID_BYTECODE: 11")
+        );
     }
 }

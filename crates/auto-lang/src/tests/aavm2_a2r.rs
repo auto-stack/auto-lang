@@ -366,7 +366,8 @@ fn test_aavm2_goldens_check() {
         let rs = String::from_utf8_lossy(sink.done().unwrap()).to_string();
         let rs_path = dir.join(format!("{}.expected.rs", name));
         // ② 参考输出
-        let (_r, out) = crate::run_with_capture(&code).expect("rust reference run");
+        let (_r, out) = crate::run_with_capture(&code)
+            .unwrap_or_else(|e| panic!("rust reference run for {name}: {e}"));
         let out_path = dir.join(format!("{}.expected.out", name));
 
         if bless {

@@ -216,7 +216,6 @@ impl<'a> Disassembler<'a> {
             | OpCode::SPAWN_GO
             | OpCode::REPLY
             | OpCode::HANDLE_MSG
-            | OpCode::CALL_CLOSURE
             | OpCode::TYPE_F64_TO_I32
             | OpCode::TYPE_STR_TO_I64
             | OpCode::TYPE_F32_TO_I32
@@ -267,6 +266,10 @@ impl<'a> Disassembler<'a> {
                     },
                     1,
                 )
+            }
+            OpCode::CALL_CLOSURE => {
+                let count = self.flash.read_u8(ip);
+                (format!("n_args={}", count), 1)
             }
             OpCode::POP_N => {
                 let v = self.flash.read_u8(ip);

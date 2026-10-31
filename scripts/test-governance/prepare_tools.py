@@ -56,7 +56,7 @@ def case_tools(rows):
         elif row["adapter"]=="probe":
             recipe=row.get("case_recipe") or ""
             matched=False
-            for prefix,tool in (("ac-av/","av"),("ac/mir-native-collections-","mn-collections"),("ac/mir-native-","mn"),("cte/","cte"),("sema/","sema"),("abi/","abi")):
+            for prefix,tool in (("ac-a2r/","a2x"),("ac-av/","av"),("ac/mir-native-collections-","mn-collections"),("ac/mir-native-","mn"),("cte/","cte"),("sema/","sema"),("abi/","abi")):
                 if recipe.startswith(prefix):names.add(tool);matched=True;break
             if not matched:raise ValueError(f"unmapped probe tool recipe: {recipe}")
     return sorted(names)

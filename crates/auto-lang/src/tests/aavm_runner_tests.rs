@@ -187,6 +187,8 @@ edition = \"2021\"
 
     let build = Command::new("cargo")
         .args(["build", "--release"])
+        // This standalone guest owns its staging target and published exe.
+        .env_remove("CARGO_TARGET_DIR")
         .current_dir(&proj)
         .output()
         .expect("cargo spawn");
@@ -285,6 +287,21 @@ fn build_aavm_rust_bin() -> PathBuf {
     // 在 a2r 转译侧无原生映射——bin 层提供同名直通实现(leg 语料不触达,
     // 仅为可编译;divergence 登记 D-AA2R-struct 条目内)
     let prelude = r#"
+// Match the emitter's public runtime namespace without adding a dependency
+// to this standalone self-hosted guest. Delegate to the existing fixture
+// implementation rather than changing merged output for every consumer.
+#[allow(dead_code)]
+mod auto_lang {
+    pub mod a2r_std {
+        pub mod fs {
+            pub fn read_text_range(
+                path: impl AsRef<std::path::Path>, offset: usize, limit: usize,
+            ) -> String {
+                crate::File::read_text_range(path, offset as u64, limit as u64)
+            }
+        }
+    }
+}
 #[allow(dead_code)]
 pub struct File;
 #[allow(dead_code)]
@@ -436,6 +453,8 @@ fn main() {
 
     let build = Command::new("cargo")
         .args(["build", "--release"])
+        // This standalone guest owns its staging target and published exe.
+        .env_remove("CARGO_TARGET_DIR")
         .current_dir(&staging)
         .output()
         .expect("cargo spawn");
