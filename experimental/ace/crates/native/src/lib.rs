@@ -37,6 +37,7 @@ pub mod typed_entry;
 pub mod typed_fixture;
 pub mod typed_pipeline;
 pub mod typed_runtime;
+pub mod typed_session;
 pub mod worker;
 pub mod workload;
 

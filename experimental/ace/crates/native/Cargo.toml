@@ -51,5 +51,9 @@ path = "tests/conformance.rs"
 name = "typed_entry_tier"
 path = "tests/typed_entry_tier.rs"
 
+[[test]]
+name = "typed_entry_incremental_tier"
+path = "tests/typed_entry_incremental_tier.rs"
+
 [dev-dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

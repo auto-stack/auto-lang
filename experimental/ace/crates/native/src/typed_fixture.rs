@@ -132,14 +132,9 @@ pub fn parse_fixture(bytes: &[u8]) -> Result<FixtureDoc, MnError> {
             format!("fixture schema `{}` is not `{FIXTURE_SCHEMA}`", doc.schema),
         ));
     }
-    if doc.units.iter().any(|u| u.name == doc.entry) {
-        Ok(doc)
-    } else {
-        Err(MnError::Unsupported(
-            "fixture",
-            format!("fixture entry `{}` is not a declared unit", doc.entry),
-        ))
-    }
+    // The entry is validated against the FULL unit set at module build;
+    // single-unit documents (edit payloads) parse without it.
+    Ok(doc)
 }
 
 struct Builder {

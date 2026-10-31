@@ -279,36 +279,18 @@ pub fn run_built(
     trace_lib: Option<&Path>,
 ) -> Result<TypedRun, MnError> {
     let mut counters = built.counters.clone();
-    let frame = typed_entry::encode_request(&built.sig_plan, nonce, args)?;
-
-    let mut support: Vec<PathBuf> = vec![built.runtime_library.clone()];
-    if let Some(t) = trace_lib {
-        support.push(t.to_path_buf());
-    }
-    let linked = link_driver::link_only(
+    let (run, linked, outcome, echoed_sig_id, echoed_nonce) = run_objects(
         &built.objects,
         &built.wrapper,
-        START_SYMBOL,
+        &built.sig_plan,
+        args,
+        nonce,
         workdir,
-        &support,
-        &format!("plan891-typed;sig={};abi={TYPED_ABI}", built.sig_plan.sig_id),
+        trace_lib,
+        &built.runtime_library,
+        &mut counters,
     )?;
-    counters.link_invocations += 1;
-
-    let mut run_cmd = std::process::Command::new(&linked.exe_path);
-    let run = ace_core::link::run_deadlined_typed(
-        &mut run_cmd,
-        RUN_BUDGET,
-        ace_core::link::CaptureCaps {
-            stdout_max: STREAM_CAP,
-            stderr_max: STREAM_CAP,
-        },
-        frame,
-    )
-    .map_err(|e| MnError::Infra(format!("typed run {}: {e:?}", linked.exe_path.display())))?;
-    counters.run_invocations += 1;
-
-    let (echoed_sig_id, echoed_nonce, outcome) = typed_entry::decode_response(&run.stdout)?;
+    let _ = &linked;
     if echoed_sig_id != built.sig_plan.sig_id {
         return Err(MnError::Admit(
             "typed-frame",
@@ -341,6 +323,78 @@ pub fn run_built(
         wrapper_built: built.wrapper_built,
         runtime_identity: built.runtime_identity.clone(),
     })
+}
+
+/// Link the given unit objects + wrapper and run the REAL PE with the
+/// one-shot frame; shared by the one-shot pipeline and the resident
+/// session. Counters are the caller's (production points stay with their
+/// owner; this helper adds only link/run).
+#[allow(clippy::too_many_arguments)]
+pub fn run_objects(
+    objects: &[ObjectInput],
+    wrapper: &[u8],
+    plan: &TypedSigPlan,
+    args: &[TypedArg],
+    nonce: u64,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+    runtime_library: &Path,
+    counters: &mut TypedCounters,
+) -> Result<
+    (
+        ace_core::link::CapturedRun,
+        link_driver::PeLink,
+        TypedOutcome,
+        u32,
+        u64,
+    ),
+    MnError,
+> {
+    let frame = typed_entry::encode_request(plan, nonce, args)?;
+    let mut support: Vec<PathBuf> = vec![runtime_library.to_path_buf()];
+    if let Some(t) = trace_lib {
+        support.push(t.to_path_buf());
+    }
+    let linked = link_driver::link_only(
+        objects,
+        wrapper,
+        START_SYMBOL,
+        workdir,
+        &support,
+        &format!("plan891-typed;sig={};abi={TYPED_ABI}", plan.sig_id),
+    )?;
+    counters.link_invocations += 1;
+    let mut run_cmd = std::process::Command::new(&linked.exe_path);
+    let run = ace_core::link::run_deadlined_typed(
+        &mut run_cmd,
+        RUN_BUDGET,
+        ace_core::link::CaptureCaps {
+            stdout_max: STREAM_CAP,
+            stderr_max: STREAM_CAP,
+        },
+        frame,
+    )
+    .map_err(|e| MnError::Infra(format!("typed run {}: {e:?}", linked.exe_path.display())))?;
+    counters.run_invocations += 1;
+    let (echoed_sig_id, echoed_nonce, outcome) = typed_entry::decode_response(&run.stdout)?;
+    if echoed_sig_id != plan.sig_id {
+        return Err(MnError::Admit(
+            "typed-frame",
+            format!(
+                "response signature id {echoed_sig_id:#x} does not match the plan {:#x}",
+                plan.sig_id
+            ),
+        ));
+    }
+    if echoed_nonce != nonce {
+        return Err(MnError::Admit(
+            "typed-frame",
+            format!(
+                "response nonce {echoed_nonce:#x} does not echo the request nonce {nonce:#x}"
+            ),
+        ));
+    }
+    Ok((run, linked, outcome, echoed_sig_id, echoed_nonce))
 }
 
 /// Every `fn:<name>` import of every unit must resolve within THIS typed
@@ -437,6 +491,19 @@ fn wrapper_header(
 /// Get (admit) or build+persist the typed wrapper. The restore admission
 /// re-checks the envelope, exact length, content hash and structural COFF
 /// — a self-consistent wrong wrapper still fails.
+/// Session-facing wrapper cache access: identical admission/build
+/// discipline to the one-shot pipeline (the session's edits are genuine
+/// production work, so no forbid_codegen seam here).
+pub fn typed_wrapper_for_session(
+    entry_symbol: &str,
+    plan: &TypedSigPlan,
+    store: Option<&ManagedStore>,
+    mode: TypedCacheMode,
+    runtime: &typed_runtime::Identity,
+) -> Result<(Vec<u8>, bool), MnError> {
+    typed_wrapper_cached(entry_symbol, plan, store, mode, false, runtime)
+}
+
 fn typed_wrapper_cached(
     entry_symbol: &str,
     plan: &TypedSigPlan,
