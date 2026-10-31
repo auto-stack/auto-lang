@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-902
-status: reviewed
+status: archived
 feature_name: AX-B Checked HIR到Rust的record/text、参数模式与资源闭环
 author: [Codex]
 created_at: 2026-10-31
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-a2r/record-text-hir-backend.md, docs/specs
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-a2r, auto-ac, auto-test-case]
 depends_on: [PLAN-892, PLAN-881, PLAN-894]
-current_step: 12
+current_step: 14
 total_steps: 14
 ---
 
@@ -226,7 +226,7 @@ work优先相关反例、`cargo t ace-a2x`完整职责组及本包新增固定ca
 | T-10 | review | T-09；冻结SHA/同树 | 独立逐项源/资源/真假增量/认证/预算/边界/SD与遗漏审查；findings回同树work再绑定，pass仅reviewed、merge门pending | AC-09 | [x] 2026-11-01 §9 |
 | T-11 | merge | T-10 pass | 冻结提交跑明确受影响完整固定组/必要集成并集，有据复用未变样本；改变代码/工具/profile则重审重验受影响项；周期cargo t all仅到期/主检出单实例，不叠已删旧档 | AC-10 | [x] 2026-11-01 §9 |
 | T-12 | merge | T-11通过 | 实际合入、SD-01..06 current Spec/ADR/模块导航沉淀与来源读回、正式接口/限制交AX-C；不写legacy specs.json、不把派生索引可用性设门 | AC-10 | [x] 2026-11-01 §9 |
-| T-13 | merge | T-12 | archive真实delivered、摘要/命令/数字/节选/hash折叠计划；cleanup pending不报14/14，AX-C不提前消费WIP | AC-10 | [ ] |
+| T-13 | merge | T-12 | archive真实delivered、摘要/命令/数字/节选/hash折叠计划；cleanup pending不报14/14，AX-C不提前消费WIP | AC-10 | [x] 2026-11-01 §9 |
 | T-14 | merge | T-13 | 指定树fresh wt-guard clean后清树/分支/组，核全部实际输出目录归属/持有和唯一材料scope；按最新政策删plan-artifacts或具名hold/关闭条件，登记完成hash/删除/例外；真实14/14 | AC-10 | [ ] |
 
 ## 9. 复审记录
@@ -389,3 +389,16 @@ drafting、0/14；取号scripts/new-plan.sh，902唯一、.next-id=903。旧894�
 - 正式接口/限制交 AX-C：List/Variant、闭包/HOF、mut 实例方法、用户泛型（SD-02/SD-06 边界节）。
 
 `stage: merge | plan_id: PLAN-902 | plan_revision: 1 | outcome: in-progress(T-11/T-12 pass; T-13/T-14 pending) | worktree: D:/autostack/.wt/lang-902/auto-lang | delivery_commit: 4303c4457050 | checkpoints: prepared+landed+canonical_verified | findings-fixed: scalar-shape b1497d67f, golden-manifest-tracking 4303c4457 | pending: archive(T-13), cleanup(T-14), batch-regression due(user disposition) | next: T-13`
+
+2026-11-01 merge T-13（归档）：`git mv` 至 `docs/plans/archive/902-hir-to-rust-record-text-resources.md`，`status: archived`，T-13 勾选；交付=`delivered`（delivery commit `4303c4457050`，T-11 四组门全绿，SD-01..06 已沉淀读回）。AX-C 不提前消费 WIP（本包接口/边界以 SD-02/SD-06 为准）。T-14 cleanup pending（见下）。
+
+2026-11-01 merge T-14（清理与收尾）：
+- **wt-guard + 树移除**：`bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-902/auto-lang` clean → `git worktree remove`；兄弟树 auto-down/auto-web 各自 guard clean 后移除；组目录 lang-902 删除；分支 plan-902-dev 删除（已 ff 入 master）。
+- **plan-artifacts scope 全删**（2026-10-31 裁定）：`D:/autostack/plan-artifacts/plan-902/` 整目录删除（证据已折叠本计划：§9 各任务收据、formal/acceptance 数字、两次合并发现与修复、金样刷新程序）；无具名 hold。`.retention/policy.json` 登记 scope 删除。
+- **收尾路径对账**：本计划实际使用的输出目录=worktree target（随树删）、`D:/autostack/plan-artifacts/plan-902/`（删）、主检出 target/test-groups 收据（构建产物，随批队列惯例）——无散落第二证据目录/外置 target/其他盘符输出（曾误写 `D:\d\...` 垃圾路径已于发现时清理）。
+- **着陆后生产工件观察**：本包为编译器/测试面交付，无 daemon/web bundle 消费面；预构建 a2x-worker（case 组 tools 预备路径）已在门中重建验证。批回归 due 登记在 §9 T-12（用户/regress 处置）。
+- 14/14 真实计数：T-01..T-14 全勾。
+
+`stage: merge | plan_id: PLAN-902 | plan_revision: 1 | outcome: pass | delivery_commit: 4303c4457050 | canonical: docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/auto-a2r/record-text-hir-backend.md + SD-03..06 修改 | archive: docs/plans/archive/902-hir-to-rust-record-text-resources.md | cleanup: 见本节 | pending_user: 批量回归 due（regress 队列） | next: done`
+
+`stage: goal | plan_id: PLAN-902 | plan_revision: 1 | round: 11 | from: merge | to: done | status: archived | outcome: pass(14/14 delivered) | delivery_commit: 4303c4457050(master) | archive: docs/plans/archive/902-hir-to-rust-record-text-resources.md(4dae79a03) | cleanup: 三树guard-clean移除+分支删除+组目录删+plan-artifacts/plan-902整删+登记表刷新 | pending_user: 批量回归due（regress队列，两次历史豁免在录） | next: done`
