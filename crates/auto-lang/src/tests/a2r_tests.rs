@@ -847,6 +847,13 @@ fn a2r_rustc_real_compile_gate() {
     let skipped: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
     let known_broken_hits: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
+    // Each invocation owns its output namespace; independent worktrees may
+    // typecheck the same corpus concurrently without sharing .rs/.rmeta files.
+    let products = tempfile::Builder::new()
+        .prefix("auto-a2r-gate-")
+        .tempdir()
+        .expect("create private real-compile output directory");
+
     let workers = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
@@ -855,6 +862,7 @@ fn a2r_rustc_real_compile_gate() {
 
     std::thread::scope(|scope| {
         for chunk in cases.chunks(chunk_size) {
+            let product_dir = products.path();
             let failures = &failures;
             let skipped = &skipped;
             let passed = &passed;
@@ -911,7 +919,7 @@ fn a2r_rustc_real_compile_gate() {
                             .chars()
                             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
                             .collect();
-                        let rs_path = std::env::temp_dir().join(format!("a2r_gate_{safe}.rs"));
+                        let rs_path = product_dir.join(format!("a2r_gate_{safe}.rs"));
                         if std::fs::write(&rs_path, &rs).is_err() {
                             failures.lock().unwrap().push(format!(
                                 "{}: failed to write product to {}",
@@ -920,7 +928,7 @@ fn a2r_rustc_real_compile_gate() {
                             ));
                             continue;
                         }
-                        let rmeta = std::env::temp_dir().join(format!("a2r_gate_{safe}.rmeta"));
+                        let rmeta = product_dir.join(format!("a2r_gate_{safe}.rmeta"));
                         let crate_name: String = format!("a2r_gate_{safe}")
                             .chars()
                             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
