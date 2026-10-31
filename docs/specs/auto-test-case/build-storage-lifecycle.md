@@ -25,3 +25,6 @@ scripts/test-governance/build_storage.py <精确target路径>默认预览；--ap
 外层CARGO_TARGET_DIR仅在本检出内有效，由同一规范化校验转成语言list/run命令的显式--target-dir；实际测试与工具编译环境移除该键，嵌套FFI/shim消费者保自己的目标目录。ACE既定regular/batch目标不被operator覆盖合并。
 
 迁移后旧manifest已移走的确切target，可用--retired-source <祖先提交>证明本树历史Cargo owner；工具核该提交是HEAD祖先、该精确目录原Cargo.toml是真实package/workspace，仍执行所有reparse/活动/证据/路径拒绝及删除前复核。它是清理来源证明，不是测试目录或执行选择输入。
+
+
+并发机器上不按映像名停止进程。清理器仅在实际读取活跃编译进程的cwd/argv/env后，确认其工作/引用/显式目标均在本树外，才保留它并继续清理本树已确认闲置缓存；CIM本身无cwd，因此该并发例外需本机可用psutil，否则有编译进程时保守拒绝，不自动安装。相对路径按真实cwd解析；Cargo的--之后不是目标覆盖；继承的本树目标/工具即使被外层CLI覆盖也拒绝。无法证明的responsefile、非空编译flags、自定义配置/runner保持拒绝，不在清理器内重建Cargo参数解释器。原精确根、祖先owner、reparse、源码/证据/预留、execution lease、中途失败及唯一文件数据计量规则保持。实际首次回收与后来守卫修复收据分别保留，不冒称重跑已经不存在的缓存。

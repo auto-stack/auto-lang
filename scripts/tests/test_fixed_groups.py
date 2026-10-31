@@ -19,6 +19,81 @@ import build_storage
 
 
 class FixedGroups(unittest.TestCase):
+    def test_cleanup_foreign_compiler_requires_observed_cwd_and_explicit_target(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                scope = build_storage.foreign_compiler_scope(foreign, ['cargo', 'test'], {'CARGO_TARGET_DIR': str(foreign / 'target')})
+                self.assertEqual(scope['target_dir'], str(foreign / 'target'))
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo', 'test'], {})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(root, ['cargo', 'test'], {'CARGO_TARGET_DIR': str(foreign / 'target')})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', str(root / 'source.rs')], {'CARGO_TARGET_DIR': str(foreign / 'target')})
+
+    def test_cleanup_cli_target_override_cannot_hide_an_owned_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', '--target-dir', str(root / 'target')], {'CARGO_TARGET_DIR': str(foreign / 'target')})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', '--target-dir=../ours/target'], {})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', '--target-dir', str(foreign / 'explicit')], {'CARGO_TARGET_DIR': str(root / 'target')})
+                scope = build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', '--target-dir', str(foreign / 'explicit')], {'CARGO_TARGET_DIR': str(foreign / 'inherited')})
+                self.assertEqual(scope['target_dir'], str(foreign / 'explicit'))
+
+    def test_cleanup_resolves_relative_manifest_source_and_nested_tool_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                for argv in (['cargo','test','--manifest-path','../ours/Cargo.toml'],
+                             ['cargo','test','--manifest-path=../ours/Cargo.toml'],
+                             ['rustc','../ours/target/generated.rs']):
+                    with self.assertRaises(ValueError):
+                        build_storage.foreign_compiler_scope(foreign, argv, {'CARGO_TARGET_DIR': str(foreign / 'target')})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR': str(foreign / 'target'), 'RUSTC_WRAPPER':'../ours/target/wrapper.exe'})
+
+    def test_cleanup_does_not_treat_program_arguments_as_cargo_target_overrides(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','test','--','--target-dir',str(foreign / 'fake')], {'CARGO_TARGET_DIR':str(root / 'target')})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','test','--','--target-dir',str(foreign / 'fake')], {})
+                scope = build_storage.foreign_compiler_scope(foreign, ['cargo','test','--','--target-dir',str(foreign / 'fake')], {'CARGO_TARGET_DIR':str(foreign / 'actual')})
+                self.assertEqual(scope['target_dir'], str(foreign / 'actual'))
+
+    def test_cleanup_rejects_opaque_response_files_without_reading_them(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                for value in ('@../ours/build.rsp', '@foreign.rsp', 'link-arg=@foreign.rsp'):
+                    with self.assertRaises(ValueError):
+                        build_storage.foreign_compiler_scope(foreign, ['rustc',value], {'CARGO_TARGET_DIR':str(foreign / 'target')})
+
+    def test_cleanup_rejects_opaque_inherited_flags_and_linker_references(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                for name in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','RUSTDOCFLAGS','CARGO_BUILD_RUSTFLAGS','CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS','CFLAGS','LDFLAGS','CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER'):
+                    with self.assertRaises(ValueError):
+                        build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':str(foreign / 'target'),name:'-L ../ours/target'})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':str(foreign / 'target'),'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER':'../ours/target/linker.exe'})
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':str(foreign / 'target'),'CARGO_BUILD_RUSTC_WRAPPER':'../ours/target/wrapper.exe'})
+
     def setUp(self):
         self.value, self.groups = fixed.configuration()
 

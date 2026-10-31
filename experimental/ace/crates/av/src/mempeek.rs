@@ -19,7 +19,10 @@ pub struct PeakSampler {
 impl PeakSampler {
     /// Start polling `private_bytes` every `interval_ms`.
     pub fn start(interval_ms: u64) -> PeakSampler {
-        let peak = Arc::new(AtomicU64::new(0));
+        // The scope may finish before the polling thread first gets CPU.
+        // Keep a real synchronous initial sample, including zero on platforms
+        // where the existing measurement is unavailable.
+        let peak = Arc::new(AtomicU64::new(sample_private_bytes()));
         let stop = Arc::new(AtomicBool::new(false));
         let peak2 = Arc::clone(&peak);
         let stop2 = Arc::clone(&stop);
@@ -55,11 +58,10 @@ impl PeakSampler {
     /// Stop sampling and return the observed peak.
     pub fn stop(mut self) -> u64 {
         self.stop.store(true, Ordering::Relaxed);
-        let peak = self.peak.load(Ordering::Relaxed);
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
-        peak
+        self.peak.load(Ordering::Relaxed)
     }
 }
 
@@ -174,6 +176,40 @@ impl ChildPeakSampler {
 #[cfg(test)]
 mod sampling_controls {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn self_sampler_start_already_contains_a_real_process_sample() {
+        let sampler = PeakSampler::start(5);
+        assert!(sampler.current_peak() > 0);
+        assert!(sampler.stop() > 0);
+    }
+
+    #[test]
+    fn self_sampler_shutdown_includes_the_final_in_flight_poll() {
+        let peak = Arc::new(AtomicU64::new(1));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (release, wait) = std::sync::mpsc::channel();
+        let p = Arc::clone(&peak);
+        let poll = std::thread::spawn(move || {
+            wait.recv().unwrap();
+            p.store(4096, Ordering::Relaxed);
+        });
+        let sampler = PeakSampler {
+            peak,
+            stop: Arc::clone(&stop),
+            handle: Some(poll),
+        };
+        let finish = std::thread::spawn(move || sampler.stop());
+        let limit = std::time::Instant::now() + Duration::from_secs(5);
+        while !stop.load(Ordering::Relaxed) && std::time::Instant::now() < limit {
+            std::thread::yield_now();
+        }
+        let requested = stop.load(Ordering::Relaxed);
+        release.send(()).unwrap();
+        assert_eq!(finish.join().unwrap(), 4096);
+        assert!(requested);
+    }
 
     #[test]
     #[cfg(windows)]
