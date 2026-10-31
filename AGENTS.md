@@ -59,36 +59,34 @@ All AI coding assistants working in this repository must strictly adhere to the 
   >5MB 的暂存文件（防二进制/大日志/大量截图误入跟踪；已跟踪存量不受影响），单次提交
   暂存总量 >100MB 仅警告（证据批量沉淀合法）。豁免：`AUTO_LANG_ALLOW_LARGE=1 git commit`
   并在对应 plan 记录理由；证据一律提交截断/摘要（2026-10-21 裁定）。
-- **计划证据不入 git、暂存放 worktree 组目录（2026-10-31 用户裁定，升级 2026-10-28/10-31）**：
+- **计划证据不入 git（2026-10-31 用户裁定，升级 2026-10-28）**：
   `docs/plans/attachments/` 整目录**不入库**（含 `*.md`，`docs/plans/` 下只有计划文件本身入库）；
   根 .gitignore 整目录忽略 + pre-commit 拒绝该路径的任何暂存（`git add -f` 与已跟踪文件再暂存
   同样拦截；豁免 `AUTO_LANG_ALLOW_EVIDENCE=1`，须在 plan 记录理由）。存量 8548 个已跟踪
   attachments 文件已随本裁定去跟踪（`git rm -r --cached`，磁盘文件保留、git 历史不重写）；
-  已 push 历史中的证据不做历史重写，未 push 存量的历史过滤任务不变。复审/执行证据（探针
-  源码与输出、日志、截图、gate/ledger 转储、receipts/handoffs/spec-delta）的**暂存区是
-  worktree 组目录** `D:/autostack/.wt/<group>/evidence/<NNN>/`（检出旁，跨仓组共享一个；
-  无 worktree 的纯文档工作用系统临时目录）——**绝不放进任何仓的项目目录**（auto-musk /
-  auto-down 同规则整目录忽略）。merge 收尾把仍需要的证据以 markdown 摘要（命令、退出码、
-  关键数字、代码/日志节选、保留件的本地路径+内容哈希）**折叠进计划文件本身**（§7 验证
-  记录 / §9 复审记录），证据目录**随组目录一起删除**。理由：历史计划的原始证据几乎不会被
-  回看——后续核验一律用最新代码重新测验；检出内附件目录无限膨胀且已泄漏进 git 历史。
-  具名未解决问题（owner+理由记入 plan）可临时保留本地范围（如移入
-  `D:/autostack/plan-artifacts/plan-<NNN>/`）。auto-plan-* 技能已同步（auto-musk 源
-  merge 技能 Evidence handling: worktree-group scratch 章节）。
-### 测试证据保留（2026-10-30 用户更新裁定：最近5个计划）
+  已 push 历史中的证据不做历史重写，未 push 存量的历史过滤任务不变。auto-musk / auto-down
+  同规则整目录忽略。auto-plan-* 技能已同步（auto-musk 源 merge 技能 Evidence handling 章节）。
+### 计划暂存与证据：plan-artifacts 唯一暂存区，merge 即全删（2026-10-31 用户裁定，取代 2026-10-30 最近-5 裁定）
 
-- `D:/autostack/plan-artifacts` 是临时工作区。跨仓按实际归档/交付时间保留最近 **5个已完成计划**；
-  同一仓/计划的多个目录、exe副本和散落日志合并计数，不按目录mtime或跨仓不可比的编号排序。
-- 另保留在途计划、未解决问题及仍被在途工作明确使用的必要证据。例外必须具名说明理由/owner；
-  历史已关闭finding或后继功能扩面不自动构成未解决问题，未知归属/状态先核查，不盲删。
-- 更早且已完成、无未解决问题的计划，其本地证据 **全部删除**，包括exe、源码/消费包副本、截图、
-  日志与缓存；本条替代此前14天过渡期/到期清单和exe长期保留。长期知识/测试/唯一依赖源存所属仓。
-- `.retention/policy.json` v2按仓/计划身份登记实际状态、交付时间、完成文档hash、issues_clear及全部
-  路径。归档状态单独不足以证明问题已闭；合并收尾和每日03:00维护先核实当前问题/关闭记录再刷新登记。
-- 调用 `auto-plan-merge/scripts/artifact_retention.py`，先预览再 `--apply`；单实例锁与逐scope恢复日志，
-  跳过活动进程/完成文档变更。链接仅删除链接本身，绝不穿透目标；不得chmod污染保留/目录外hardlink。
-- 原500 MiB/计划、10 GiB总量仅作容量提醒，不能覆盖最近5个/在途/未解决问题的保护条件。
-  原始证据不入库；摘要记录删掉的计划、保留例外、回收文件数据字节与失败项。
+- **唯一暂存区**：除计划文件本身外，计划相关的一切文件（探针源码与输出、日志、截图、
+  gate/ledger 转储、receipts/handoffs/spec-delta、构建产物副本）统一放
+  `D:/autostack/plan-artifacts/plan-<NNN>/`（无 plan 号的轻量任务用任务 slug，如 `fix-<slug>/`）。
+  计划开工即建目录，在途期间受保护；**绝不放进任何仓的项目目录**（attachments 三仓已整目录
+  忽略；当日早前 `.wt/<group>/evidence/` 约定同日废除）。无 worktree 的纯文档工作用系统临时目录。
+- **merge 即全删**：merge 收尾把仍需要的证据以 markdown 摘要（命令、退出码、关键数字、
+  代码/日志节选、保留件的本地路径+内容哈希）**折叠进计划文件本身**（§7 验证记录 / §9 复审记录），
+  然后**删除该计划的整个 plan-artifacts 目录**；构建中间产物（cargo target 树、.pdb、exe 副本）
+  **不再回收暂存**，随 worktree 直接删除。仅**具名未解决问题**持有可保留（owner+理由+关闭
+  条件记入 plan 与登记表）。理由：历史计划的原始证据几乎不会被回看——后续核验一律用最新
+  代码重新测验；双暂存区+保留窗口已累积 67GB 构建中间产物，检出内附件目录还泄漏了 8916 个
+  文件进 git 历史。
+- **取代关系**：本节取代 2026-10-30"最近5个已完成计划"保留裁定及其 500 MiB/10 GiB 容量提醒、
+  每日03:00维护指令；也取代 2026-10-27"保留每个 exe"旧令与当日早前 `.wt` 组内证据目录约定。
+  清理由 merge 收尾自清 + 机会性孤儿清扫承担；未知归属/状态的目录 fail-closed，先核查再处置。
+- **登记表**：`.retention/policy.json` 保留为"磁盘现存物+持有"索引（在途 scope、具名持有），
+  merge 收尾刷新（记录删除与持有）。归档状态单独不足以证明问题已闭；持有不因时间流逝自动
+  释放——须核对当前债务/关闭记录。`artifact_retention.py` 保留为保守的手动清扫/预览工具，
+  其最近-5 逻辑不再是政策；链接仅删除链接本身，绝不穿透目标，不盲删活动进程相关目录。
 
 ### 固定Cargo包与Rust模块测试（PLAN-896）
 
