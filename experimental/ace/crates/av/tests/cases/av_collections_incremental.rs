@@ -1013,8 +1013,6 @@ fn av_collections_incremental_host_grant_carried_closure() {
 
 // Explicit formal benchmark or sustained scale/stress contract.
 mod performance {
-    use super::*;
-
     /// V-13 sub-case 1 — the frozen D828 baseline campaign replays GREEN
     /// through the shared core AFTER the collections extension (dual gate:
     /// all-correct + structural + P90 <= 2000 ms). The scalar campaign is the
