@@ -1,0 +1,4 @@
+# PLAN-891: native wide-scalar typed entry — real PE bitwise frames.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-typed-native-891", include: ["typed-native-891.case.ad"] }
+```

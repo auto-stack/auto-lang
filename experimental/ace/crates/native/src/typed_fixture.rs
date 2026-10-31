@@ -119,7 +119,12 @@ pub enum InstrDecl {
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum TermDecl {
     Ret { value: String },
-    Br { cond: String, then: u32, else_: u32 },
+    Br {
+        cond: String,
+        then: u32,
+        #[serde(rename = "else")]
+        else_: u32,
+    },
     Jmp { target: u32 },
 }
 
@@ -141,6 +146,9 @@ struct Builder {
     types: Vec<MirType>,
     consts: Vec<MirConst>,
     type_cache: BTreeMap<String, u32>,
+    /// Record names currently being expanded (a cycle is a NAMED fixture
+    /// rejection, never a stack overflow).
+    in_progress: std::collections::BTreeSet<String>,
     owner: OwnerScope,
 }
 
@@ -150,6 +158,7 @@ impl Builder {
             types: Vec::new(),
             consts: Vec::new(),
             type_cache: BTreeMap::new(),
+            in_progress: std::collections::BTreeSet::new(),
             owner: OwnerScope {
                 schema: MIR_DATA_SCHEMA.to_string(),
                 module: module.to_string(),
@@ -183,19 +192,31 @@ impl Builder {
                         format!("fixture type `{other}` is not a scalar or record"),
                     )
                 })?;
-                let mut fields = Vec::with_capacity(decl.fields.len());
-                for (fname, fty) in &decl.fields {
-                    let t = self.named_ty(fty, records)?;
-                    fields.push(MirFieldDef {
-                        name: fname.clone(),
-                        ty: t,
-                    });
+                if !self.in_progress.insert(other.to_string()) {
+                    return Err(MnError::Unsupported(
+                        "fixture",
+                        format!(
+                            "record `{other}` reaches itself through its field closure (cyclic)"
+                        ),
+                    ));
                 }
-                MirType::Record(RecordTypeRef {
-                    owner_module: self.owner.module.clone(),
-                    name: decl.name.clone(),
-                    fields,
-                })
+                let mut fields = Vec::with_capacity(decl.fields.len());
+                let built = (|| -> Result<MirType, MnError> {
+                    for (fname, fty) in &decl.fields {
+                        let t = self.named_ty(fty, records)?;
+                        fields.push(MirFieldDef {
+                            name: fname.clone(),
+                            ty: t,
+                        });
+                    }
+                    Ok(MirType::Record(RecordTypeRef {
+                        owner_module: self.owner.module.clone(),
+                        name: decl.name.clone(),
+                        fields,
+                    }))
+                })();
+                self.in_progress.remove(other);
+                built?
             }
         };
         let idx = self.intern(ty);

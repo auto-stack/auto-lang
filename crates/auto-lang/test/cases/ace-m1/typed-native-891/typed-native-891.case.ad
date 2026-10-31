@@ -1,0 +1,195 @@
+# PLAN-891: native wide-scalar typed entry — file-ized fixtures through the
+# real PE bitwise frame channel. The (kind, bits) oracles below are the
+# parent's INDEPENDENT hand-computed expectations (binding.tsv W01–W05 rows
+# frozen since PLAN-820); the worker never sees them.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.w01-mn891"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891", "W01"]
+  source: { file: "src/W01-i64-min.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-w01-typed", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/W01-i64-min.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "i64", bits: "8000000000000000" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.w02-mn891"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891", "W02"]
+  source: { file: "src/W02-u64-max.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-w02-typed", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/W02-u64-max.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "u64", bits: "ffffffffffffffff" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.w03-mn891"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891", "W03"]
+  source: { file: "src/W03-f64-negzero.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-w03-typed", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/W03-f64-negzero.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "f64", bits: "8000000000000000" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.w04-mn891"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891", "W04"]
+  source: { file: "src/W04-f64-nan.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-w04-typed", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/W04-f64-nan.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "f64", bits: "fff80000deadbeef" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.w05-mn891"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891", "W05"]
+  source: { file: "src/W05-f32-nan.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-w05-typed", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/W05-f32-nan.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "f32", bits: "7f80ad00" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-value70"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/V70-value.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-value70", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/V70-value.mnf" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "i32", bits: "46" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-div-trap"
+  tags: ["ace-m1", "typed", "trap"]
+  links: ["PLAN-891"]
+  source: { file: "src/TRAP-div-zero.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-div-zero", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/TRAP-div-zero.mnf", args: [["i32", "1"], ["i32", "0"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "mn.typed.trap" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-ident-i64"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/IDENT-i64.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-ident-i64", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/IDENT-i64.mnf", args: [["i64", "0000000100000001"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "i64", bits: "0000000100000001" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-mix-select"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/MIX-select.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-mix-select", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/MIX-select.mnf", args: [["i32", "1234567f"], ["i64", "1122334455667788"], ["f32", "7f80ad00"], ["bool", "1"], ["u64", "ffffffffffffffff"], ["f64", "fff80000deadbeef"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "u64", bits: "ffffffffffffffff" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-record-field"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/REC-field.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-record-field", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/REC-field.mnf", args: [["f64", "fff80000deadbeef"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "f64", bits: "fff80000deadbeef" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-call-forward"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/CALL-forward.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-call-forward", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/CALL-forward.mnf", args: [["i64", "8000000000000000"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "i64", bits: "8000000000000000" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t891-f32-branch-subnormal"
+  tags: ["ace-m1", "typed", "value"]
+  links: ["PLAN-891"]
+  source: { file: "src/F32-subnormal.mnf", syntax: "typed-fixture", path: "main.mnf" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-typed-f32-branch", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-typed-v1", mn: { entry: "main", typed: { fixture: "src/F32-subnormal.mnf", args: [["f32", "00000001"]] } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", typed: { kind: "f32", bits: "00000001" } } }
+  ]
+}
+```

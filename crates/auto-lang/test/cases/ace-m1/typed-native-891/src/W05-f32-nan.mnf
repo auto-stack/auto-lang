@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_w05","units":[{"name":"main","params":[],"result":"f32","body":[{"op":"const","dst":"t0","kind":"f32","bits":"7f80ad00"}],"ret":"t0"}],"entry":"main"}

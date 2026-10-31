@@ -762,6 +762,9 @@ mod case_run {
             ExitCode::FAILURE
         };
         let recipe = req.get("recipe").and_then(|v| v.as_str()).unwrap_or("");
+        if recipe == "ac/mir-native-typed-v1" {
+            return typed_case_run::serve_typed(req, echo);
+        }
         if recipe != "ac/mir-native-scalar-v1" {
             return fail(
                 echo,
@@ -1087,5 +1090,375 @@ fn main() -> ExitCode {
             eprintln!("mn-worker: unknown mode `{other}`");
             ExitCode::from(2)
         }
+    }
+}
+
+// ---- PLAN-891 typed case-run (ac/mir-native-typed-v1) --------------------
+//
+// The formal typed recipe: the parent sends the file-ized fixture content
+// (mn-typed-fixture/1), the entry name and the actual run arguments as
+// canonical (kind, bits) pairs; the worker runs the real admission chain
+// (fixture parse -> shared verify_mir -> split -> typed admission -> unit
+// COFFs -> cached wrapper -> one real PE per run) and reports ONLY what
+// the machine returned (value kind + raw bits, or a named trap/resource/
+// error frame). Expected values never enter the request; judgement is
+// entirely parent-side.
+mod typed_case_run {
+    use super::case_run::{MN_WORKER_PROTOCOL, MN_WORKER_VERSION};
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+    use ace_native::typed_entry::{self, TypedArg, TypedKind, TypedOutcome};
+    use ace_native::typed_fixture::{self, FixtureDoc};
+    use ace_native::typed_pipeline::{self, TypedCacheMode};
+    use ace_native::typed_session::TypedSession;
+    use ace_artifacts::store::ManagedStore;
+    use std::io::{BufRead, Write};
+    use std::path::PathBuf;
+    use std::process::ExitCode;
+
+    pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
+
+    fn typed_json(run: &ace_native::typed_pipeline::TypedRun) -> serde_json::Value {
+        let mut t = serde_json::json!({
+            "status": match &run.outcome {
+                TypedOutcome::Value { .. } => "value",
+                TypedOutcome::Trap { .. } => "trap",
+                TypedOutcome::Resource { .. } => "resource",
+                TypedOutcome::Error { .. } => "error",
+            },
+            "nonce": run.echoed_nonce,
+            "sig_id": run.echoed_sig_id,
+        });
+        match &run.outcome {
+            TypedOutcome::Value { kind_code, bits } => {
+                t["kind"] = serde_json::json!(typed_entry::kind_label_of(*kind_code).unwrap_or("?"));
+                t["bits"] = serde_json::json!(typed_entry::canonical_hex(*kind_code, *bits));
+            }
+            TypedOutcome::Trap { reason }
+            | TypedOutcome::Resource { reason }
+            | TypedOutcome::Error { reason } => {
+                t["reason"] = serde_json::json!(reason);
+            }
+        }
+        t
+    }
+
+    fn counters_json(c: &ace_native::typed_pipeline::TypedCounters) -> serde_json::Value {
+        serde_json::json!({
+            "verify_mir": c.verify_mir,
+            "unit_prepare": c.unit_prepare,
+            "unit_fp_render": c.unit_fp_render,
+            "native_admit": c.native_admit,
+            "emit_units": c.emit_units,
+            "persist_units": c.persist_units,
+            "cache_hits": c.cache_hits,
+            "wrapper_builds": c.wrapper_builds,
+            "wrapper_hits": c.wrapper_hits,
+            "link_invocations": c.link_invocations,
+            "run_invocations": c.run_invocations,
+            "whole_fallback": c.whole_fallback,
+        })
+    }
+
+    fn parse_args(v: Option<&serde_json::Value>) -> Result<Vec<TypedArg>, String> {
+        let mut out = Vec::new();
+        let Some(list) = v.and_then(|a| a.as_array()) else {
+            return Ok(out);
+        };
+        for pair in list {
+            let arr = pair.as_array().ok_or("arg entry is not a [kind,bits] pair")?;
+            if arr.len() != 2 {
+                return Err("arg entry is not a [kind,bits] pair".into());
+            }
+            let kind = arr[0].as_str().ok_or("arg kind is not a string")?;
+            let bits = arr[1].as_str().ok_or("arg bits is not a string")?;
+            let k = TypedKind::from_label(kind).ok_or(format!("unknown arg kind `{kind}`"))?;
+            out.push(typed_entry::parse_arg(k, bits).map_err(|e| e.message())?);
+        }
+        Ok(out)
+    }
+
+    pub fn serve_typed(req: serde_json::Value, echo: serde_json::Value) -> ExitCode {
+        let fail = |echo: serde_json::Value, code: &str, message: String| -> ExitCode {
+            let mut r = echo;
+            r["error"] = serde_json::json!({"code": code, "message": message});
+            println!("{r}");
+            ExitCode::FAILURE
+        };
+        use base64::Engine as _;
+        let Some(fixture_b64) = req.get("typed_fixture_b64").and_then(|v| v.as_str()) else {
+            return fail(echo, "mn.worker.request", "missing typed_fixture_b64".into());
+        };
+        let Ok(fixture_bytes) = base64::engine::general_purpose::STANDARD.decode(fixture_b64) else {
+            return fail(echo, "mn.worker.request", "typed_fixture_b64 is not valid base64".into());
+        };
+        let doc = match typed_fixture::parse_fixture(&fixture_bytes) {
+            Ok(d) => d,
+            Err(e) => return fail(echo, "mn.worker.fixture", e.message()),
+        };
+        let entry = req
+            .get("entry")
+            .and_then(|v| v.as_str())
+            .unwrap_or("main")
+            .to_string();
+        let args = match parse_args(req.get("args")) {
+            Ok(a) => a,
+            Err(m) => return fail(echo, "mn.worker.request", m),
+        };
+        let store_root = req.get("store_root").and_then(|v| v.as_str()).unwrap_or_default();
+        if store_root.is_empty() {
+            return fail(echo, "mn.worker.request", "missing store_root".into());
+        }
+        let workdir = req.get("workdir").and_then(|v| v.as_str()).unwrap_or_default();
+        if workdir.is_empty() {
+            return fail(echo, "mn.worker.request", "missing workdir".into());
+        }
+        let tracelib = match req.get("tracelib").and_then(|v| v.as_str()) {
+            Some(p) => Some(PathBuf::from(p)),
+            None => None,
+        };
+        let nonce = req.get("nonce").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        if req.get("mode").and_then(|v| v.as_str()) == Some("rounds") {
+            return serve_rounds(doc, entry, store_root.into(), workdir.into(), tracelib);
+        }
+
+        // One-shot: build once, run once, report the machine frame.
+        let module = match typed_fixture::build_verified_module(&doc) {
+            Ok(m) => m,
+            Err(e) => return fail(echo, "mn.worker.fixture", e.message()),
+        };
+        let store = match ManagedStore::open(std::path::Path::new(store_root)) {
+            Ok(s) => s,
+            Err(e) => return fail(echo, "mn.worker.store", format!("{e:?}")),
+        };
+        match typed_pipeline::run_typed(
+            &module,
+            &entry,
+            &args,
+            nonce,
+            std::path::Path::new(workdir),
+            Some(&store),
+            TypedCacheMode::Reuse,
+            false,
+            tracelib.as_deref(),
+        ) {
+            Ok(run) => {
+                let ok = serde_json::json!({
+                    "recipe": TYPED_RECIPE,
+                    "worker_version": MN_WORKER_VERSION,
+                    "mn_abi": ace_native::config::TYPED_ABI,
+                    "mn_target": ace_native::config::MN_TARGET,
+                    "counters": counters_json(&run.counters),
+                    "typed": typed_json(&run),
+                    "manifest_fp": run.manifest_fp,
+                    "exit_code": run.exit_code,
+                    "stderr_hex": hex(&run.stderr),
+                    "stdout_hex": hex(&run.stdout_frame),
+                });
+                let mut resp = echo;
+                resp["ok"] = ok;
+                println!("{resp}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                let mut resp = echo;
+                resp["ok"] = serde_json::json!({
+                    "recipe": TYPED_RECIPE,
+                    "worker_version": MN_WORKER_VERSION,
+                    "mn_abi": ace_native::config::TYPED_ABI,
+                    "mn_target": ace_native::config::MN_TARGET,
+                });
+                resp["diagnostic"] = serde_json::json!({"code": e.code(), "message": e.message()});
+                println!("{resp}");
+                ExitCode::SUCCESS
+            }
+        }
+    }
+
+    fn serve_rounds(
+        doc: FixtureDoc,
+        entry: String,
+        store_root: PathBuf,
+        workdir: PathBuf,
+        tracelib: Option<PathBuf>,
+    ) -> ExitCode {
+        let respond = |v: serde_json::Value| {
+            println!("{v}");
+            let _ = std::io::stdout().flush();
+        };
+        let mut store_path = store_root;
+        if store_path
+            .components()
+            .last()
+            .map(|c| c.as_os_str() == "mn-store")
+            .unwrap_or(false)
+        {
+            store_path = workdir.clone();
+        }
+        store_path.push("mn-typed-store");
+        let store = match ManagedStore::open(&store_path) {
+            Ok(s) => s,
+            Err(e) => {
+                let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
+                r["error"] = serde_json::json!({"code": "mn.worker.store", "message": format!("{e:?}")});
+                respond(r);
+                return ExitCode::FAILURE;
+            }
+        };
+        let _ = entry;
+        let mut session = match TypedSession::start(doc, &workdir, Some(store), TypedCacheMode::Reuse)
+        {
+            Ok(s) => s,
+            Err(e) => {
+                let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
+                r["error"] =
+                    serde_json::json!({"code": "mn.worker.typed-session", "message": e.message()});
+                respond(r);
+                return ExitCode::FAILURE;
+            }
+        };
+        let warm = serde_json::json!({
+            "schema": MN_WORKER_PROTOCOL,
+            "ok": {
+                "recipe": TYPED_RECIPE,
+                "worker_version": MN_WORKER_VERSION,
+                "mn_abi": ace_native::config::TYPED_ABI,
+                "mn_target": ace_native::config::MN_TARGET,
+                "step": "warmup",
+                "counters": counters_json(session.counters()),
+            }
+        });
+        respond(warm);
+        let stdin = std::io::stdin();
+        let mut lines = stdin.lock().lines();
+        while let Some(Ok(line)) = lines.next() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let op: serde_json::Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
+                    r["error"] =
+                        serde_json::json!({"code": "mn.worker.request", "message": format!("bad op line: {e}")});
+                    respond(r);
+                    return ExitCode::FAILURE;
+                }
+            };
+            let nonce = op.get("nonce").and_then(|v| v.as_u64()).unwrap_or(0);
+            match op.get("op").and_then(|v| v.as_str()).unwrap_or("") {
+                "run" => {
+                    let args = match parse_args(op.get("args")) {
+                        Ok(a) => a,
+                        Err(m) => {
+                            let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
+                            r["error"] =
+                                serde_json::json!({"code": "mn.worker.request", "message": m});
+                            respond(r);
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    match session.run(&args, nonce, tracelib.as_deref()) {
+                        Ok(run) => {
+                            respond(serde_json::json!({
+                                "schema": MN_WORKER_PROTOCOL,
+                                "nonce": nonce,
+                                "ok": {
+                                    "recipe": TYPED_RECIPE,
+                                    "worker_version": MN_WORKER_VERSION,
+                                    "mn_abi": ace_native::config::TYPED_ABI,
+                                    "mn_target": ace_native::config::MN_TARGET,
+                                    "step": "run",
+                                    "typed": typed_json(&run),
+                                    "counters": counters_json(&run.counters),
+                                    "exit_code": run.exit_code,
+                                    "stderr_hex": hex(&run.stderr),
+                                }
+                            }));
+                        }
+                        Err(e) => {
+                            respond(serde_json::json!({
+                                "schema": MN_WORKER_PROTOCOL,
+                                "nonce": nonce,
+                                "error": {"code": e.code(), "message": e.message()},
+                            }));
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                }
+                "edit-unit" => {
+                    let unit = op.get("unit").cloned().unwrap_or(serde_json::Value::Null);
+                    let decl: Result<typed_fixture::UnitDecl, String> =
+                        serde_json::from_value(unit).map_err(|e| format!("edit-unit payload: {e}"));
+                    match decl {
+                        Ok(decl) => match session.edit_unit(decl) {
+                            Ok(obs) => {
+                                respond(serde_json::json!({
+                                    "schema": MN_WORKER_PROTOCOL,
+                                    "nonce": nonce,
+                                    "ok": {
+                                        "recipe": TYPED_RECIPE,
+                                        "worker_version": MN_WORKER_VERSION,
+                                        "mn_abi": ace_native::config::TYPED_ABI,
+                                        "mn_target": ace_native::config::MN_TARGET,
+                                        "step": "edit-unit",
+                                        "edit": {
+                                            "edited_unit": obs.edited_unit,
+                                            "reprepared_units": obs.reprepared_units,
+                                            "verify_mir": obs.verify_mir,
+                                            "unit_prepare": obs.unit_prepare,
+                                            "unit_fp_render": obs.unit_fp_render,
+                                            "native_admit": obs.native_admit,
+                                            "emit_units": obs.emit_units,
+                                            "persist_units": obs.persist_units,
+                                            "cache_hits": obs.cache_hits,
+                                            "whole_fallback": obs.whole_fallback,
+                                        },
+                                        "counters": counters_json(session.counters()),
+                                    }
+                                }));
+                            }
+                            Err(e) => {
+                                respond(serde_json::json!({
+                                    "schema": MN_WORKER_PROTOCOL,
+                                    "nonce": nonce,
+                                    "error": {"code": e.code(), "message": e.message()},
+                                }));
+                                return ExitCode::FAILURE;
+                            }
+                        },
+                        Err(m) => {
+                            let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
+                            r["error"] = serde_json::json!({"code": "mn.worker.request", "message": m});
+                            respond(r);
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                }
+                "close" => {
+                    session.close();
+                    respond(serde_json::json!({
+                        "schema": MN_WORKER_PROTOCOL,
+                        "nonce": nonce,
+                        "ok": {"step": "closed"}
+                    }));
+                    return ExitCode::SUCCESS;
+                }
+                other => {
+                    let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
+                    r["error"] = serde_json::json!({
+                        "code": "mn.worker.request",
+                        "message": format!("unknown typed op `{other}`")
+                    });
+                    respond(r);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        ExitCode::SUCCESS
     }
 }

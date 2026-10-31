@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_divz","units":[{"name":"main","params":[["a","i32"],["b","i32"]],"result":"i32","body":[{"op":"bin","dst":"t0","oper":"div","lhs":"a","rhs":"b"}],"ret":"t0"}],"entry":"main"}

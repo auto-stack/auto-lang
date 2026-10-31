@@ -124,6 +124,9 @@ pub enum Syntax {
     /// source). Registered with the probe seam; sema/query-v1 consumes
     /// `.at` sources and rejects this kind at admission.
     AtomData,
+    /// `.mnf` (v2 only, PLAN-891): a file-ized native typed fixture
+    /// (mn-typed-fixture/1 JSON bytes) consumed by the typed recipe only.
+    TypedFixture,
 }
 
 impl Syntax {
@@ -133,6 +136,8 @@ impl Syntax {
             Syntax::AutoScript => "as",
             Syntax::HirAtom => "atom",
             Syntax::AtomData => "atomdata",
+            // PLAN-891: the file-ized typed fixture input.
+            Syntax::TypedFixture => "mnf",
         }
     }
 
@@ -141,6 +146,7 @@ impl Syntax {
             Syntax::Auto => "auto",
             Syntax::AutoScript => "auto-script",
             Syntax::HirAtom => "hir-atom",
+            Syntax::TypedFixture => "typed-fixture",
             Syntax::AtomData => "atom-data",
         }
     }
@@ -480,6 +486,17 @@ pub struct ExpectSpec {
     /// an int entry returning 0 (T-02 entry-contract §4/§6: Unit ≠ 0, and a
     /// consumer that prints only a number cannot tell them apart).
     pub av_channel: Option<String>,
+    /// PLAN-891: the typed-entry VALUE oracle (probe, typed recipe only) —
+    /// the machine result's kind and canonical raw bits. Judgement is
+    /// parent-side; the worker never sees this.
+    pub typed: Option<TypedExpect>,
+}
+
+/// PLAN-891 typed-entry expectation: kind label + canonical hex bits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedExpect {
+    pub kind: String,
+    pub bits: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -895,6 +912,8 @@ fn decode_source(
         "auto-script" => Syntax::AutoScript,
         "hir-atom" if version == ContractVersion::V2 => Syntax::HirAtom,
         "atom-data" if version == ContractVersion::V2 => Syntax::AtomData,
+        // PLAN-891: v2 typed fixtures (mn-typed-fixture/1 JSON bytes).
+        "typed-fixture" if version == ContractVersion::V2 => Syntax::TypedFixture,
         other => {
             return Err(err(
                 &f.path_of("syntax"),
@@ -1536,6 +1555,9 @@ fn decode_options(
                             "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source" | "restart")
                             }
+                            // PLAN-891: the typed recipe consumes exactly a
+                            // single run step in the formal case form.
+                            "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
                             // PLAN-892: the daily emit is a single run step
                             // (edit/restart sessions arrive with their own
                             // contract when the session face lands).
@@ -1933,11 +1955,13 @@ fn decode_options(
                 None => {
                     if matches!(
                         recipe.as_str(),
-                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                        "ac/mir-native-scalar-v1"
+                            | "ac/mir-native-collections-v1"
+                            | "ac/mir-native-typed-v1"
                     ) {
                         return Err(err(
                             &f.path_of("mn"),
-                            "ac/mir-native-scalar-v1 requires an mn binding",
+                            "ac/mir-native recipes require an mn binding",
                         ));
                     }
                     None
@@ -1945,7 +1969,9 @@ fn decode_options(
                 Some(v) => {
                     if !matches!(
                         recipe.as_str(),
-                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                        "ac/mir-native-scalar-v1"
+                            | "ac/mir-native-collections-v1"
+                            | "ac/mir-native-typed-v1"
                     ) {
                         return Err(err(
                             &f.path_of("mn"),
@@ -1957,7 +1983,7 @@ fn decode_options(
                     }
                     let mpath = f.path_of("mn");
                     let pairs = as_obj(v, &mpath)?;
-                    let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session"])?;
+                    let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session", "typed"])?;
                     let entry = req_str(&mf, "entry")?;
                     let caps = match mf.sub("caps") {
                         None => Vec::new(),
@@ -1975,10 +2001,57 @@ fn decode_options(
                         None => None,
                         Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
                     };
+                    let typed = match mf.sub("typed") {
+                        None => {
+                            if recipe == "ac/mir-native-typed-v1" {
+                                return Err(err(
+                                    &mf.path_of("typed"),
+                                    "ac/mir-native-typed-v1 requires a typed binding",
+                                ));
+                            }
+                            None
+                        }
+                        Some(v) => {
+                            if recipe != "ac/mir-native-typed-v1" {
+                                return Err(err(
+                                    &mf.path_of("typed"),
+                                    "the typed binding belongs to ac/mir-native-typed-v1",
+                                ));
+                            }
+                            let tpath = mf.path_of("typed");
+                            let tpairs = as_obj(v, &tpath)?;
+                            let tf = Fields::new(&tpath, tpairs, &["fixture", "args"])?;
+                            let fixture = req_str(&tf, "fixture")?;
+                            let args = match tf.sub("args") {
+                                None => Vec::new(),
+                                Some(av) => {
+                                    let list = as_list(av, &tf.path_of("args"))?;
+                                    let mut out = Vec::new();
+                                    for (i, item) in list.iter().enumerate() {
+                                        let ipath = format!("{tpath}.args[{i}]");
+                                        let pair = as_list(item, &ipath)?;
+                                        if pair.len() != 2 {
+                                            return Err(err(
+                                                &ipath,
+                                                "a typed argument is a [kind, bits] pair",
+                                            ));
+                                        }
+                                        out.push((
+                                            as_str(&pair[0], &format!("{ipath}[0]"))?.to_string(),
+                                            as_str(&pair[1], &format!("{ipath}[1]"))?.to_string(),
+                                        ));
+                                    }
+                                    out
+                                }
+                            };
+                            Some(ProbeMnTypedSpec { fixture, args })
+                        }
+                    };
                     Some(ProbeMnSpec {
                         entry,
                         caps,
                         session,
+                        typed,
                     })
                 }
             };
@@ -2111,6 +2184,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/closures-source-run-v1",
     // PLAN-863: exact byte-stream observations, separate host-console profile.
     "ac-av/console-run-v1",
+    // PLAN-891: the native typed-entry recipe — file-ized typed fixtures
+    // through the real PE bitwise frame channel, parent-side judgement.
+    "ac/mir-native-typed-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
@@ -2191,6 +2267,18 @@ pub struct ProbeMnSpec {
     /// calls of one session share a warm store across worker processes;
     /// the PARENT owns the scratch root's cleanup.
     pub session: Option<String>,
+    /// PLAN-891 typed-entry binding: the fixture FILE (mn-typed-fixture/1
+    /// bytes ride the request; the worker re-verifies them) and the run
+    /// arguments as canonical (kind, bits) pairs. Expected values never
+    /// enter the request.
+    pub typed: Option<ProbeMnTypedSpec>,
+}
+
+/// PLAN-891 ac/mir-native-typed-v1 binding payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnTypedSpec {
+    pub fixture: String,
+    pub args: Vec<(String, String)>,
 }
 
 /// PLAN-892 ac-a2r/hir-scalar-emit-v1 binding: the explicit source
@@ -2272,6 +2360,9 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         // (decode admits the artifacts field for this recipe only).
         (Adapter::Probe, "artifacts") => true,
         (Adapter::Probe, "stdout" | "stderr") => true,
+        // PLAN-891: the native typed-entry recipe observes the machine
+        // result's (kind, canonical bits) frame face.
+        (Adapter::Probe, "typed") => true,
         _ => false,
     }
 }
@@ -2318,11 +2409,13 @@ fn decode_expect(
     } else if probe_channels {
         // PLAN-798 T-07: + exit (value-reporting recipes).
         // PLAN-862: + av_channel (the Unit/value channel discriminant).
+        // PLAN-891: + typed (the native typed-entry value oracle).
         &[
             "completion",
             "probe",
             "exit",
             "av_channel",
+            "typed",
             "stdout",
             "stderr",
         ]
@@ -2772,6 +2865,39 @@ fn decode_expect(
         None
     };
 
+    // PLAN-891: the typed value oracle (typed recipe only; success only).
+    let typed = match f.sub("typed") {
+        None => None,
+        Some(v) => {
+            if !probe_channels {
+                return Err(err(
+                    &f.path_of("typed"),
+                    "`typed` is a probe observation (the typed-entry machine value)",
+                ));
+            }
+            let tpath = f.path_of("typed");
+            let tpairs = as_obj(v, &tpath)?;
+            let tf = Fields::new(&tpath, tpairs, &["kind", "bits"])?;
+            let kind = req_str(&tf, "kind")?.to_string();
+            if !matches!(
+                kind.as_str(),
+                "i32" | "bool" | "i64" | "u64" | "f32" | "f64"
+            ) {
+                return Err(err(
+                    &tf.path_of("kind"),
+                    format!("unknown typed kind {kind:?}"),
+                ));
+            }
+            let bits = req_str(&tf, "bits")?.to_string();
+            if matches!(completion, Completion::Error { .. }) {
+                return Err(err(
+                    &f.path_of("typed"),
+                    "`typed` requires completion \"success\" (a trap/resource/error frame is judged by its own face)",
+                ));
+            }
+            Some(TypedExpect { kind, bits })
+        }
+    };
     Ok(ExpectSpec {
         completion,
         result,
@@ -2782,6 +2908,7 @@ fn decode_expect(
         perf,
         probe,
         av_channel,
+        typed,
     })
 }
 

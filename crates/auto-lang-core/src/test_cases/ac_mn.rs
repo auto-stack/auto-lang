@@ -47,7 +47,10 @@ const BUILD_WALL: Duration = Duration::from_secs(300);
 
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
+/// PLAN-891: the native typed-entry recipe (real PE bitwise frame channel).
+pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
 mod collections;
+mod typed;
 pub use collections::campaign::{
     run as run_collections_campaign, run_cold_repair as run_collections_cold_repair_campaign,
 };
@@ -133,6 +136,20 @@ fn bound_worker_sha(recipe: &str) -> Result<String, String> {
         worker_file_sha256(&binary)
     }
 }
+/// PLAN-891: the typed recipe's current toolchain identity axes (report
+/// staleness binds these per row).
+pub fn current_typed_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    let mut axes = std::collections::BTreeMap::from([
+        ("recipe".into(), TYPED_RECIPE.into()),
+        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
+        ("mn-typed-abi".into(), typed::EXPECTED_TYPED_ABI.into()),
+    ]);
+    if let Ok(hash) = bound_worker_sha(TYPED_RECIPE) {
+        axes.insert("mn-worker-exe-sha256".into(), hash);
+    }
+    axes
+}
+
 pub fn current_collections_toolchain_identity() -> std::collections::BTreeMap<String, String> {
     let mut axes = std::collections::BTreeMap::from([
         ("recipe".into(), COLLECTIONS_RECIPE.into()),
@@ -909,6 +926,11 @@ pub fn run_check(
         .probe_recipe
         .as_deref()
         .ok_or("missing native recipe")?;
+    if recipe == TYPED_RECIPE {
+        // PLAN-891: the typed recipe consumes the file-ized fixture
+        // (mn-typed-fixture/1), not .at source text.
+        return typed::run_check_typed(case, check, oracle, artifact_dir);
+    }
     let started = Instant::now();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(

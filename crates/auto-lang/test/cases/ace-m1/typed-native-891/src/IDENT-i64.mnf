@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_ident","units":[{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"}],"entry":"main"}

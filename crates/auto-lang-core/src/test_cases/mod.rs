@@ -975,7 +975,9 @@ fn dispatch_check(
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if matches!(
                 check.options.probe_recipe.as_deref(),
-                Some(ac_mn::MN_RECIPE) | Some(ac_mn::COLLECTIONS_RECIPE)
+                Some(ac_mn::MN_RECIPE)
+                        | Some(ac_mn::COLLECTIONS_RECIPE)
+                        | Some(ac_mn::TYPED_RECIPE)
             ) =>
         {
             ac_mn::run_check(

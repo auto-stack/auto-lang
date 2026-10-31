@@ -428,3 +428,352 @@ fn typed_cache_fresh_hit_and_param_only_rerun() {
         other => panic!("param-only rerun produced {other:?}"),
     }
 }
+
+/// V-11: typed fingerprints are exact — same raw bits under DIFFERENT
+/// logical kinds never collide; a NaN payload or zero-sign change changes
+/// the key; re-parsing the same fixture is stable.
+#[test]
+fn typed_fingerprints_distinguish_kind_and_bits() {
+    let mk = |kind: &str, bits: &str, module: &str| {
+        let json = format!(
+            r#"{{"schema":"mn-typed-fixture/1","module":"{module}","units":[{{"name":"main","params":[],"result":"{kind}","body":[{{"op":"const","dst":"t0","kind":"{kind}","bits":"{bits}"}}],"ret":"t0"}}],"entry":"main"}}"#
+        );
+        let doc = typed_fixture::parse_fixture(json.as_bytes()).expect("fixture");
+        let m = typed_fixture::build_verified_module(&doc).expect("verify");
+        ace_av::cache::split_units(&m).expect("split").remove(0)
+    };
+    let u64_max = mk("u64", "ffffffffffffffff", "m_fp1");
+    let i64_same = mk("i64", "ffffffffffffffff", "m_fp2");
+    assert_ne!(
+        ace_native::cache::unit_fp(&u64_max),
+        ace_native::cache::unit_fp(&i64_same),
+        "same bits under different logical kinds must not collide"
+    );
+    let nan_a = mk("f64", "fff80000deadbeef", "m_fp3");
+    let nan_b = mk("f64", "fff80000deadbee0", "m_fp4");
+    assert_ne!(
+        ace_native::cache::unit_fp(&nan_a),
+        ace_native::cache::unit_fp(&nan_b),
+        "a NaN payload change must change the key"
+    );
+    let neg_zero = mk("f64", "8000000000000000", "m_fp5");
+    let pos_zero = mk("f64", "0000000000000000", "m_fp6");
+    assert_ne!(
+        ace_native::cache::unit_fp(&neg_zero),
+        ace_native::cache::unit_fp(&pos_zero),
+        "zero-sign bits must stay distinct"
+    );
+    let again = mk("f64", "fff80000deadbeef", "m_fp3");
+    assert_eq!(
+        ace_native::cache::unit_fp(&nan_a),
+        ace_native::cache::unit_fp(&again)
+    );
+}
+
+/// V-11 (closure axis): a callee signature change flows into every
+/// caller's fingerprint (callee-sig invalidation), and the typed symbol
+/// domain stays `ac9.` (isolated from the scalar `ac8.` domain).
+#[test]
+fn typed_fingerprints_track_callee_signatures_and_symbol_domain() {
+    let mk = |helper_second: bool| {
+        let helper = if helper_second {
+            r#"{"name":"helper","params":[["a","i64"],["b","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"b"}],"ret":"t0"}"#
+        } else {
+            r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"}"#
+        };
+        let main = if helper_second {
+            r#"{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t9","kind":"i64","bits":"0000000000000002"},{"op":"call","dst":"t0","callee":"helper","args":["a","t9"]}],"ret":"t0"}"#
+        } else {
+            r#"{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"call","dst":"t0","callee":"helper","args":["a"]}],"ret":"t0"}"#
+        };
+        let json = format!(
+            r#"{{"schema":"mn-typed-fixture/1","module":"m891_sigfp","units":[{helper},{main}],"entry":"main"}}"#
+        );
+        let doc = typed_fixture::parse_fixture(json.as_bytes()).expect("fixture");
+        let m = typed_fixture::build_verified_module(&doc).expect("verify");
+        let units = ace_av::cache::split_units(&m).expect("split");
+        units
+            .iter()
+            .find(|u| u.funcs[0].name == "main")
+            .unwrap()
+            .clone()
+    };
+    let before = mk(false);
+    let after = mk(true);
+    assert_ne!(
+        ace_native::cache::unit_fp(&before),
+        ace_native::cache::unit_fp(&after),
+        "a callee signature change must flow into the caller key"
+    );
+    let f = &before.funcs[0];
+    let symbol = ace_native::symbols::typed_function_symbol(&before.owner, &f.name);
+    assert!(
+        symbol.starts_with("ac9."),
+        "typed symbols live in the ac9. domain: {symbol}"
+    );
+}
+
+/// V-14: the typed argument payload cap is a NAMED pre-allocation
+/// rejection (never an overflow), and a cyclic record fixture dies at
+/// shared verification with codegen 0.
+#[test]
+fn typed_budget_and_cycle_rejections_are_named() {
+    // 8200 i64 parameters -> 65600 payload bytes, above the 64KiB cap.
+    // The unit is hand-built (the shared verifier's own 255-param cap is a
+    // separate earlier door); plan construction is the budget gate that
+    // must reject BEFORE any frame allocation.
+    let n = 8200usize;
+    let mut m = ace_av_core::mir::MirModule::data_unit(ace_av_core::mir::OwnerScope {
+        schema: ace_av_core::contract::MIR_DATA_SCHEMA.to_string(),
+        module: "m891_big".to_string(),
+    });
+    let i64_ty = m.intern_type(ace_av_core::mir::MirType::I64);
+    let i32_ty = m.intern_type(ace_av_core::mir::MirType::I32);
+    let sig = m.intern_type(ace_av_core::mir::MirType::Fn(ace_av_core::mir::FnSig {
+        params: vec![i64_ty; n],
+        result: i32_ty,
+    }));
+    m.funcs.push(ace_av_core::mir::MirFunction {
+        owner: m.owner.clone(),
+        name: "main".into(),
+        sig,
+        slots: vec![],
+        blocks: vec![],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+        env: None,
+    });
+    match typed_entry::entry_plan(&m) {
+        Err(ace_native::MnError::Resource(kind, _)) => {
+            assert_eq!(kind, "typed-args", "the args budget is the named rejection");
+        }
+        other => panic!("expected the typed-args budget rejection, got {other:?}"),
+    }
+    // A self-referential record is a named shared-verify rejection.
+    let cyclic = r#"{"schema":"mn-typed-fixture/1","module":"m891_cyc","records":[{"name":"A","fields":[["a","A"]]}],"units":[{"name":"main","params":[],"result":"i32","body":[{"op":"const","dst":"t0","kind":"i32","bits":"1"}],"ret":"t0"}],"entry":"main"}"#;
+    let doc = typed_fixture::parse_fixture(cyclic.as_bytes()).expect("decodes");
+    match typed_fixture::build_verified_module(&doc) {
+        Err(ace_native::MnError::Unsupported("fixture", _)) => {}
+        other => panic!("cyclic record must be a named verify rejection, got {other:?}"),
+    }
+}
+
+/// PLAN-891 V-10 formal turnaround measurement: the four §5.4 states × 20
+/// formal samples each, nearest-rank P90 gate ≤ 2000ms per state (the dev
+/// formal gate; the long-term sub-second target is tracked separately).
+/// Each sample is the CONTINUOUS formal-entry → real-PE-result interval
+/// (build/link/run/judge included); tool/library builds happen before the
+/// samples. Structure gates ride along: a body edit leaves untouched-unit
+/// production at zero and the machine result follows the edited body.
+mod performance {
+    use ace_artifacts::store::ManagedStore;
+    use ace_native::typed_entry::{self, TypedArg, TypedOutcome};
+    use ace_native::typed_fixture::{self, FixtureDoc};
+    use ace_native::typed_pipeline::{self, TypedCacheMode};
+    use ace_native::typed_session::TypedSession;
+    use std::time::Instant;
+
+    const SAMPLES: usize = 20;
+    const P90_LIMIT_MS: f64 = 2000.0;
+
+    const BASE: &str = r#"{"schema":"mn-typed-fixture/1","module":"m891_perf","units":[
+      {"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"},
+      {"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"call","dst":"t0","callee":"helper","args":["a"]}],"ret":"t0"}],
+     "entry":"main"}"#;
+
+    fn tools_available() -> bool {
+        ace_core::link::find_rust_lld().is_ok() && ace_core::link::find_sdk_um_dir().is_ok()
+    }
+
+    fn percentile(sorted: &[f64], p: f64) -> f64 {
+        let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
+        sorted[idx.min(sorted.len() - 1)]
+    }
+
+    fn report(state: &str, ms: &mut Vec<f64>) {
+        ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        eprintln!(
+            "{state}: n={} P50={:.0}ms P90={:.0}ms P95={:.0}ms P99={:.0}ms max={:.0}ms",
+            ms.len(),
+            percentile(ms, 0.50),
+            percentile(ms, 0.90),
+            percentile(ms, 0.95),
+            percentile(ms, 0.99),
+            ms.last().copied().unwrap_or(0.0),
+        );
+    }
+
+    fn arg(bits: &str) -> TypedArg {
+        typed_entry::parse_arg(typed_entry::TypedKind::I64, bits).expect("arg")
+    }
+
+    fn value_bits(out: &TypedOutcome) -> String {
+        match out {
+            TypedOutcome::Value { kind_code, bits } => {
+                typed_entry::canonical_hex(*kind_code, *bits)
+            }
+            other => panic!("expected a value, got {other:?}"),
+        }
+    }
+
+    fn doc() -> FixtureDoc {
+        typed_fixture::parse_fixture(BASE.as_bytes()).expect("fixture")
+    }
+
+    fn helper_body_const(ff: &str) -> typed_fixture::UnitDecl {
+        let wrapped = format!(
+            r#"{{"schema":"mn-typed-fixture/1","module":"m891_perf","units":[{{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{{"op":"const","dst":"t0","kind":"i64","bits":"{ff}"}}],"ret":"t0"}}],"entry":"main"}}"#
+        );
+        let d = typed_fixture::parse_fixture(wrapped.as_bytes()).expect("unit decodes");
+        d.units.into_iter().next().unwrap()
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn typed_v10_four_state_20_samples_p90_gate() {
+        if !tools_available() {
+            eprintln!("infra-blocked: rust-lld/SDK unavailable — typed performance skipped");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!(
+            "mn891-perf-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let workdir = root.join("work");
+        std::fs::create_dir_all(&workdir).unwrap();
+
+        // Tool/library builds precede the samples (one warmup run).
+        {
+            let warm_store = root.join("warm");
+            let store = ManagedStore::open(&warm_store).expect("store");
+            let module = typed_fixture::build_verified_module(&doc()).expect("verify");
+            let r = typed_pipeline::run_typed(
+                &module, "main", &[arg("0000000000000001")], 0, &workdir,
+                Some(&store), TypedCacheMode::Fresh, false, None,
+            )
+            .expect("warmup");
+            assert_eq!(value_bits(&r.outcome), "0000000000000001");
+        }
+
+        // State 1: fresh (forced recompute + publish) per sample.
+        let mut ms: Vec<f64> = Vec::with_capacity(SAMPLES);
+        for i in 0..SAMPLES {
+            let store_root = root.join(format!("fresh-{i}"));
+            let t0 = Instant::now();
+            let store = ManagedStore::open(&store_root).expect("store");
+            let module = typed_fixture::build_verified_module(&doc()).expect("verify");
+            let r = typed_pipeline::run_typed(
+                &module, "main", &[arg("0000000000000002")], i as u64 + 1, &workdir,
+                Some(&store), TypedCacheMode::Fresh, false, None,
+            )
+            .expect("fresh run");
+            let dt = t0.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(value_bits(&r.outcome), "0000000000000002");
+            assert_eq!(r.counters.emit_units, 2);
+            ms.push(dt);
+        }
+        report("typed-fresh", &mut ms);
+        assert!(
+            percentile(&ms, 0.90) <= P90_LIMIT_MS,
+            "fresh P90 {:.0}ms above the {}ms gate",
+            percentile(&ms, 0.90),
+            P90_LIMIT_MS
+        );
+
+        // State 2: warm hit per sample (units + wrapper restored).
+        let hit_root = root.join("hit");
+        {
+            let store = ManagedStore::open(&hit_root).expect("store");
+            let module = typed_fixture::build_verified_module(&doc()).expect("verify");
+            let _ = typed_pipeline::run_typed(
+                &module, "main", &[arg("0000000000000001")], 100, &workdir,
+                Some(&store), TypedCacheMode::Fresh, false, None,
+            )
+            .expect("seed");
+        }
+        let mut ms: Vec<f64> = Vec::with_capacity(SAMPLES);
+        for i in 0..SAMPLES {
+            let store = ManagedStore::open(&hit_root).expect("store");
+            let module = typed_fixture::build_verified_module(&doc()).expect("verify");
+            let t0 = Instant::now();
+            let r = typed_pipeline::run_typed(
+                &module, "main", &[arg("0000000000000003")], i as u64 + 200, &workdir,
+                Some(&store), TypedCacheMode::Reuse, false, None,
+            )
+            .expect("hit run");
+            let dt = t0.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(value_bits(&r.outcome), "0000000000000003");
+            assert_eq!(r.counters.emit_units, 0, "hit produces no unit COFF");
+            assert_eq!(r.counters.wrapper_builds, 0, "hit produces no wrapper");
+            ms.push(dt);
+        }
+        report("typed-hit", &mut ms);
+        assert!(
+            percentile(&ms, 0.90) <= P90_LIMIT_MS,
+            "hit P90 {:.0}ms above the gate",
+            percentile(&ms, 0.90)
+        );
+
+        // State 3: cold restart per sample (new session, store re-admits).
+        let mut ms: Vec<f64> = Vec::with_capacity(SAMPLES);
+        for i in 0..SAMPLES {
+            let store = ManagedStore::open(&hit_root).expect("store");
+            let t0 = Instant::now();
+            let mut s =
+                TypedSession::restart(doc(), &workdir, store).expect("restart");
+            let r = s.run(&[arg("0000000000000004")], i as u64 + 300, None).expect("restart run");
+            let dt = t0.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(value_bits(&r.outcome), "0000000000000004");
+            assert_eq!(s.counters().emit_units, 0, "restart emits nothing");
+            s.close();
+            ms.push(dt);
+        }
+        report("typed-restart", &mut ms);
+        assert!(
+            percentile(&ms, 0.90) <= P90_LIMIT_MS,
+            "restart P90 {:.0}ms above the gate",
+            percentile(&ms, 0.90)
+        );
+
+        // State 4: warm body edit per sample (helper A/B alternating) with
+        // the structure gate: only helper re-produces; main stays 0.
+        let edit_root = root.join("edit");
+        let store = ManagedStore::open(&edit_root).expect("store");
+        let mut s = TypedSession::start(doc(), &workdir, Some(store), TypedCacheMode::Reuse)
+            .expect("session");
+        let mut ms: Vec<f64> = Vec::with_capacity(SAMPLES);
+        for i in 0..SAMPLES {
+            let decl = if i % 2 == 0 {
+                helper_body_const("00000000000000ff")
+            } else {
+                helper_body_const("00000000000000ee")
+            };
+            let want = if i % 2 == 0 { "00000000000000ff" } else { "00000000000000ee" };
+            let t0 = Instant::now();
+            let obs = s.edit_unit(decl).expect("edit");
+            let r = s
+                .run(&[arg("0000000000000005")], i as u64 + 400, None)
+                .expect("edit run");
+            let dt = t0.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(value_bits(&r.outcome), want, "the machine result follows the edit");
+            assert_eq!(obs.reprepared_units, vec!["helper"], "only helper re-prepares");
+            assert_eq!(obs.whole_fallback, 0);
+            ms.push(dt);
+        }
+        report("typed-body-edit", &mut ms);
+        assert!(
+            percentile(&ms, 0.90) <= P90_LIMIT_MS,
+            "body-edit P90 {:.0}ms above the gate",
+            percentile(&ms, 0.90)
+        );
+        s.close();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

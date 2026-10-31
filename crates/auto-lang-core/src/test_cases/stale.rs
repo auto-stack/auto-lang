@@ -180,6 +180,7 @@ pub fn check_with_families(
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
     let mut current_probe_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_collections: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_typed: Option<BTreeMap<String, String>> = None;
     let mut current_probe_cte: Option<BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
@@ -337,7 +338,22 @@ pub fn check_with_families(
                                     == Some(crate::test_cases::ac_mn::COLLECTIONS_RECIPE)
                         })
                     });
-            let current = if collections_probe_row {
+            let typed_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .is_some_and(|axes| {
+                        axes.iter().any(|pair| {
+                            pair[0].as_str() == Some("recipe")
+                                && pair[1].as_str()
+                                    == Some(crate::test_cases::ac_mn::TYPED_RECIPE)
+                        })
+                    });
+            let current = if typed_probe_row {
+                current_probe_typed.get_or_insert_with(
+                    crate::test_cases::ac_mn::current_typed_toolchain_identity,
+                )
+            } else if collections_probe_row {
                 current_probe_collections.get_or_insert_with(
                     crate::test_cases::ac_mn::current_collections_toolchain_identity,
                 )
@@ -407,6 +423,12 @@ pub fn check_with_families(
                             "abi-worker-version",
                             "abi-protocol",
                             "recipe",
+                        ],
+                        Some(false) if typed_probe_row => vec![
+                            "recipe",
+                            "mir-lowering",
+                            "mn-worker-exe-sha256",
+                            "mn-typed-abi",
                         ],
                         Some(false) if collections_probe_row => {
                             vec!["recipe", "mir-lowering", "mn-worker-exe-sha256"]

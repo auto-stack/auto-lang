@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_mix","units":[{"name":"main","params":[["a","i32"],["b","i64"],["c","f32"],["d","bool"],["e","u64"],["f","f64"]],"result":"u64","body":[{"op":"copy","dst":"t0","src":"e"}],"ret":"t0"}],"entry":"main"}

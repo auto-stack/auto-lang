@@ -9,9 +9,12 @@
   `av.core-i32/1`、`av.data/1`、`av.owned/1`；其余（collections/closures/
   dynamic/entry-unit）在旧通用入口具名拒绝 `mn.unsupported.profile`。PLAN-889新增的
   **显式collections入口**按[独立合同](native-collections-variants.md)受检，不放宽此旧入口。
-- 宽数值标量（I64/U64/F32/F64）**触达即拒**（槽/签名/record 字段：
-  `mn.unsupported.type`；被引用常量：`mn.unsupported.const`）——R2-N 保持
-  关闭；未触达的死表项不拒。`MirType::Unit`（av.entry-unit/1）同样防御性
+- 宽数值标量（I64/U64/F32/F64）在**本旧 ABI** 触达即拒（槽/签名/record
+  字段：`mn.unsupported.type`；被引用常量：`mn.unsupported.const`）——
+  R2-N 保持关闭；未触达的死表项不拒。PLAN-891 并列新增独立 typed 入口
+  （`msvc-x64/priv-typed-data-v1`，`ac9.` 符号域）按
+  [native-typed-entry](native-typed-entry.md) 消费宽标量与纯值宽
+  record；两种约定不得互链（link 前具名拒绝）。`MirType::Unit`（av.entry-unit/1）同样防御性
   具名拒绝。
 - 入口冻结为零参 i32 族结果（wrapper `ac_start` 合同）；违者
   `mn.unsupported.entry`。

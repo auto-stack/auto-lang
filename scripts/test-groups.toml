@@ -881,6 +881,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m1-typed-native-891"
+title = "TestCase case-ace-m1-typed-native-891"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-console-863"
 title = "TestCase case-ace-m1-console-863"
 runner = "case"

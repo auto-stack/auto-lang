@@ -81,6 +81,23 @@ fixtures/schema、`runtime_contract.rs`（PLAN-770 运行时合同门，`ac-nati
   构造器操作数快照顺序。
 
 
+## PLAN-891：native宽标量typed入口
+
+- 新增**独立版本化 typed ABI 选择** `msvc-x64/priv-typed-data-v1`（非旧
+  priv-i32-bool-v1，非 797 AutoABI）：六标量整数位载体 + 纯值宽 record
+  内部传递；typed 符号域 `ac9.<owner>.<unit>` 与旧域隔离。
+- 唯一共享 MIR native 源不变：typed 输入为受检 MIR（文件化
+  `mn-typed-fixture/1` → 共享 verify_mir → split → typed 准入），不走
+  源码推导，不在旧入口放宽任何拒绝。
+- 结果通道 `mn891.typed.frames/v1`：子 PE stdin 请求帧/stdout 单响应帧
+  （nonce/签名/校验绑定，value/trap/resource/error 互斥），父侧独立
+  oracle 判定 canonical (kind,bits)。详细合同见
+  [auto-mir/native-typed-entry](../auto-mir/native-typed-entry.md)。
+- 缓存/恢复：单元 COFF 键含 typed ABI 轴；typed wrapper 为居民产物按
+  签名身份缓存；typed 居民会话暖编辑（whole fallback 恒 0）与冷恢复
+  分账。计量：fresh/hit/restart/body-edit 各 20 样本，dev 门 P90≤2000ms
+  （2026-10-31 实测最大状态 P90≈433ms）。
+
 ## PLAN-889：显式native集合消费者
 
 显式`--source-profile collections`与`ac/mir-native-collections-v1`进入同一共享MIR→

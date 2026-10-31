@@ -62,7 +62,7 @@ SDK adapter 须拿 852 交付后的测试窗口（关联核心合同另拿核心
 
 ## PLAN-824：动态 typed 能力绑定
 
-D01–D09 的 `av-dyn-824` 行绑定 `ac-av/dynamic-run-v1` 和真实 typed MIR/ABC/AV、portable 恢复及父侧 oracle；W01–W05 保留整数和浮点精确位型验证，I04–I06/I10–I12 追加动态会话、失效与资源证据。源码、复合 native/CTE 及旧 AVM/a2r 的 Dyn API 未由 typed fixture 关闭，仍按各自 owner/gap 记录。
+D01–D09 的 `av-dyn-824` 行绑定 `ac-av/dynamic-run-v1` 和真实 typed MIR/ABC/AV、portable 恢复及父侧 oracle；W01–W05 保留整数和浮点精确位型验证，I04–I06/I10–I12 追加动态会话、失效与资源证据。PLAN-891：W01–W05 经 `ac/mir-native-typed-v1` 真实 native 交付（binding.tsv ac 列 `ok:P891-typed`，suite `typed-native-891`）——mn 侧与 AV 侧各自独立 oracle，canonical (kind,bits) 逐位一致；typed 能力不冒领 source/全 M1。源码、复合 native/CTE 及旧 AVM/a2r 的 Dyn API 未由 typed fixture 关闭，仍按各自 owner/gap 记录。
 
 ## PLAN-823：闭包 typed 能力绑定
 

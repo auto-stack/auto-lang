@@ -669,6 +669,112 @@ fn copy_tree(src: &Path, dst: &Path) {
     }
 }
 
+/// PLAN-891 formal SDK: the native typed-entry suite — five frozen W-row
+/// bit patterns plus value/trap/identity/selection/record/call/branch
+/// cases, every (kind, bits) oracle held parent-side.
+#[test]
+fn ace_m1_native_typed_891_sdk() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
+        .join("test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad");
+    let root = temp_root("typed-native-891");
+    let report =
+        run_suite(&suite, &root.join("out"), &Limits::defaults()).expect("891 typed SDK");
+    let failures: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} {:?} {:?} {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(report.results.len(), 12, "12 typed checks");
+    assert!(report.coverage_gaps.is_empty());
+}
+
+/// PLAN-891 red controls: a wrong expected BIT turns exactly its row red
+/// (the parent's independent oracle is the judge), and a wrong declared
+/// KIND turns it red on the kind axis — never a silent pass.
+#[test]
+fn ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1/typed-native-891");
+    let root = temp_root("typed-native-891-negative");
+    let corpus = root.join("corpus");
+    copy_tree(&suite, &corpus);
+    let file = corpus.join("typed-native-891.case.ad");
+    let original = std::fs::read_to_string(&file).unwrap();
+    // Wrong bits on W01 (i64-min bit flipped in the low nibble).
+    let wrong_bits = original.replacen(
+        "typed: { kind: \"i64\", bits: \"8000000000000000\" }",
+        "typed: { kind: \"i64\", bits: \"8000000000000001\" }",
+        1,
+    );
+    assert_ne!(wrong_bits, original);
+    std::fs::write(&file, wrong_bits).unwrap();
+    let report = crate::test_cases::run_suite_selected(
+        &corpus.join("typed-native-891.suite.ad"),
+        &root.join("oracle-out"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.w01-mn891".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let wrongs: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass && r.status != Status::NotRun)
+        .collect();
+    assert_eq!(wrongs.len(), 1, "{:?}", wrongs);
+    assert_eq!(wrongs[0].case_id, "ace.m1.w01-mn891");
+    assert_eq!(wrongs[0].status, Status::Fail);
+    assert!(
+        wrongs[0]
+            .mismatches
+            .iter()
+            .any(|m| m.kind.contains("typed-bits")),
+        "the wrong-bits axis must be the named mismatch"
+    );
+    // Wrong declared KIND (i64 expected where the machine returns u64).
+    std::fs::write(&file, original.clone()).unwrap();
+    let wrong_kind = original.replacen(
+        "typed: { kind: \"u64\", bits: \"ffffffffffffffff\" }",
+        "typed: { kind: \"i64\", bits: \"ffffffffffffffff\" }",
+        1,
+    );
+    assert_ne!(wrong_kind, original);
+    std::fs::write(&file, wrong_kind).unwrap();
+    let report = crate::test_cases::run_suite_selected(
+        &corpus.join("typed-native-891.suite.ad"),
+        &root.join("kind-out"),
+        &Limits::defaults(),
+        &crate::test_cases::Selection {
+            case: Some("ace.m1.w02-mn891".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let wrongs: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass && r.status != Status::NotRun)
+        .collect();
+    assert_eq!(wrongs.len(), 1, "{:?}", wrongs);
+    assert!(
+        wrongs[0]
+            .mismatches
+            .iter()
+            .any(|m| m.kind.contains("typed-tag")),
+        "the wrong-kind axis must be the named mismatch"
+    );
+}
+
 /// PLAN-889 formal SDK: original 17 sources on both engines plus three owned
 /// List<Variant> combinations on both, each judged against its own oracle.
 #[test]
@@ -743,7 +849,7 @@ fn ace_m1_native_collections_wrong_oracle_and_wrong_type_turn_red() {
     assert_eq!(wrongs[0].status, Status::Fail);
     // Reuse the entire accepted suite but mutate a real original source in this
     // private fixture; both the native and AV judges must reject the wrong type.
-    std::fs::write(&file, original).unwrap();
+    std::fs::write(&file, original.clone()).unwrap();
     let source = corpus.join("src/L01.at");
     let old = std::fs::read_to_string(&source).unwrap();
     let wrong = old.replacen("List<int>", "List<Str>", 1);

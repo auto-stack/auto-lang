@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_call","units":[{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"},{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"call","dst":"t0","callee":"helper","args":["a"]}],"ret":"t0"}],"entry":"main"}

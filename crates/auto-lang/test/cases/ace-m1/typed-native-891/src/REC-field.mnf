@@ -1,0 +1,1 @@
+{"schema":"mn-typed-fixture/1","module":"m891_rec","records":[{"name":"Pt","fields":[["x","f64"],["tag","i32"]]}],"units":[{"name":"main","params":[["a","f64"]],"result":"f64","body":[{"op":"const","dst":"t0","kind":"i32","bits":"2a"},{"op":"aggregate","dst":"r0","record":"Pt","args":["a","t0"]},{"op":"field-get","dst":"t1","base":"r0","path":[0]}],"ret":"t1"}],"entry":"main"}

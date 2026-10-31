@@ -180,6 +180,20 @@ OWNED_CASES / mod.rs 分派），owned 面准入与逐面判决；V-10 sabotage 
 （exit 15）与 mut 写回正控（exit 808）。沿实际 auto-lang-core test_cases
 owner，无新执行器。
 
+## PLAN-891：ac/mir-native-typed-v1 recipe（native typed 结果通道）
+
+- 形状：probe 适配器 + mn 绑定（entry + typed{fixture,args}）+ 单 run
+  步；source 为 `typed-fixture`(`.mnf`) 语法的 mn-typed-fixture/1 文件。
+  判定通道新增 `typed` expect 面（`{kind,bits}`，canonical hex 规则与
+  AV typed 判定同一来源）——仅 success 完成态可携带，trap/resource/error
+  帧按 `mn.typed.<status>` 映射 run 阶段错误完成。
+- 身份：typed 行 stale 轴 = [recipe, mir-lowering, mn-worker-exe-sha256,
+  mn-typed-abi]；worker 侧请求永不携带 expected，回显 nonce/request_hash
+  必须逐位一致，counters 强制 run_invocations≥1（always-execute）。
+- 模块发现：suite `typed-native-891`（固定组 case-ace-m1-typed-native-891，
+  domain ace）；SDK 对照（绿 12 行 + 错 bits/错 kind 红控）挂 ace-conformance
+  language_conformance。
+
 ## PLAN-852：ace-m1 认证拓扑与身份分离
 
 认证器是**独立 bin**（`ace-certify` → `auto-lang-core/src/test_cases/ace_certify.rs`），

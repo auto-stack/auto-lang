@@ -2066,6 +2066,15 @@ fn run_check_with_transport(
 /// report must name one of the six scalar tags and carry the kind's
 /// canonical lowercase-hex width — malformed reports are mismatches, not
 /// silent passes. Returns the violation message, if any.
+/// PLAN-891: parent-side canonical-shape check shared by the native typed
+/// judgement (same rules, single source of truth).
+pub(crate) fn typed_expect_shape_violation(kind: &str, bits: &str) -> Option<String> {
+    typed_shape_violation(&TypedOut {
+        kind: kind.to_string(),
+        bits: bits.to_string(),
+    })
+}
+
 fn typed_shape_violation(t: &TypedOut) -> Option<String> {
     let width_ok = match t.kind.as_str() {
         "i64" | "u64" | "f64" => t.bits.len() == 16,
