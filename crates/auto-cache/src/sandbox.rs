@@ -713,14 +713,25 @@ crate-type = ["cdylib"]
 
         // 3. Run cargo build --release
         let cargo = self.cargo_path();
-        let output = Command::new(&cargo)
+        let mut command = Command::new(&cargo);
+        command
             .args(["build", "--release"])
+            .arg("--target-dir")
+            .arg(build_dir.join("target"))
             .current_dir(&build_dir)
-            .output()
-            .map_err(|e| SandboxError::CompilationFailed(format!("cargo spawn failed: {}", e)))?;
+            .env_remove("CARGO_TARGET_DIR");
+        // Existing caller budget stays unchanged; the shared primitive owns
+        // compiler descendants even after the Cargo root has exited.
+        let output = auto_tool_execution::run_command_capture(
+            command,
+            auto_tool_execution::TreeScope::ProcessTree,
+            None,
+        )
+        .map_err(|e| SandboxError::CompilationFailed(format!("cargo spawn failed: {}", e)))?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.kind != auto_tool_execution::ExitKind::Success {
+            let stderr =
+                String::from_utf8_lossy(output.stderr.as_ref().expect("captured compiler stderr"));
             return Err(SandboxError::CompilationFailed(format!(
                 "cargo build failed for {}: {}",
                 crate_name, stderr

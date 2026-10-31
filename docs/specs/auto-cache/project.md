@@ -61,3 +61,7 @@
    生产缓存。探针详情 [auto-ac/artifact-probe.md](../auto-ac/artifact-probe.md)。
 
 > 来源：PLAN-783（r6 pass,aa8c666ca）;探针 `experimental/ace/crates/artifacts/`。
+
+## PLAN-896：私有编译目标与owned寿命
+
+FFI sandbox/methods pack的cargo build及nightly rustdoc使用既有std-only auto-tool-execution持有、捕获、等待和回收编译树，保原编译参数/生成输入/退出失败与上层预算，不引入ACE依赖。原来未声明逐编译deadline的调用继续使用None，不新增短截止冒绿。显式--target-dir绑定build_dir/target并移除继承的CARGO_TARGET_DIR，保持实际产物与包内查找路径一致；指纹中的features/source与宽窄ABI门不减弱。正常元数据读取不承诺改变任意外部环境，必须以实际owner路径和原变体反例验收。

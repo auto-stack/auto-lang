@@ -24,9 +24,10 @@ fn manifest_face_only_sanctioned_dependencies() {
         "ace-a2x-store",
         "ace-core",
         "ace-artifacts",
-        "windows-sys", // probe-only, cfg(windows): process memory counters
-        "serde_json",  // probe-only: the a2xworker/1 JSON protocol (the same
-                       // crate the 783 store already depends on)
+        "auto-tool-execution", // std-only dev dependency: owned test compiler processes
+        "windows-sys",         // probe-only, cfg(windows): process memory counters
+        "serde_json",          // probe-only: the a2xworker/1 JSON protocol (the same
+                               // crate the 783 store already depends on)
     ];
     let members = [
         "crates/a2x-core",

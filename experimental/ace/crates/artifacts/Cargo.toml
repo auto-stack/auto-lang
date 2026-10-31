@@ -13,6 +13,7 @@ publish = false
 [dependencies]
 ace-core = { path = "../core" }
 auto-cache = { path = "../../../../crates/auto-cache" }
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1.5"
 rusqlite = { version = "0.30", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

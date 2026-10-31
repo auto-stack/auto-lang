@@ -35,6 +35,11 @@ fn arg3() -> String {
 fn main() {
     let mode = std::env::var(MODE).unwrap_or_default();
     match mode.as_str() {
+        "stdout-invalid-utf8" => {
+            std::io::stdout()
+                .write_all(b"{\"value\":\"\xff\"}")
+                .unwrap();
+        }
         // 每个 argv 参数(含 argv[0] 之后的全部)单行打到 stdout;空参数
         // 打印空行(长度即身份)。
         "echo-args" => {

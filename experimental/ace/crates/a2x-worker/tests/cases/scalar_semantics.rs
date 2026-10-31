@@ -501,37 +501,53 @@ fn run_case(case: &Case, flavor: &str, extra_flags: &[&str]) {
     std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
 
     let exe = dir.join("ace_a2x_worker.exe");
-    let compile_out = Command::new(rustc())
+    let mut compiler = Command::new(rustc());
+    compiler
         .arg("--edition")
         .arg("2021")
         .args(extra_flags)
         .arg("-o")
         .arg(&exe)
         .arg("main.rs")
-        .current_dir(&dir)
-        .output()
-        .expect("spawn rustc");
+        .current_dir(&dir);
+    let compile_out = auto_tool_execution::run_command_capture(
+        compiler,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc");
     assert!(
-        compile_out.status.success(),
+        compile_out.kind == auto_tool_execution::ExitKind::Success,
         "rustc failed for {} ({}):\n{}",
         case.name,
         flavor,
-        String::from_utf8_lossy(&compile_out.stderr)
+        String::from_utf8_lossy(
+            compile_out
+                .stderr
+                .as_ref()
+                .expect("captured compiler stderr")
+        )
     );
 
-    let run = Command::new(&exe)
-        .current_dir(&dir)
-        .output()
-        .expect("run exe");
+    let mut command = Command::new(&exe);
+    command.current_dir(&dir);
+    let run = auto_tool_execution::run_command_capture(
+        command,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
     assert!(
-        run.status.success(),
+        run.kind == auto_tool_execution::ExitKind::Success,
         "wrapper exit non-zero for {} ({}): {}",
         case.name,
         flavor,
-        String::from_utf8_lossy(&run.stderr)
+        String::from_utf8_lossy(run.stderr.as_ref().expect("captured program stderr"))
     );
-    let stdout = String::from_utf8_lossy(&run.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+    let stdout =
+        String::from_utf8_lossy(run.stdout.as_ref().expect("captured program stdout")).to_string();
+    let stderr =
+        String::from_utf8_lossy(run.stderr.as_ref().expect("captured program stderr")).to_string();
     let expected_line = match &case.expect {
         Expect::Value(x) => format!("value:{}\n", x),
         Expect::Trap(t) => format!("trap:{}\n", t),

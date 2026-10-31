@@ -14,6 +14,124 @@ const MODE: &str = "TE_CHILD_MODE";
 const ARG1: &str = "TE_CHILD_ARG1";
 const ARG2: &str = "TE_CHILD_ARG2";
 
+#[test]
+fn prepared_command_keeps_environment_clear_argv_and_cwd() {
+    use auto_tool_execution::run_command_capture;
+    let temp = TempDir::new("prepared-command");
+    let mut command = std::process::Command::new(TE_CHILD);
+    command
+        .env_clear()
+        .env(MODE, "probe")
+        .env(ARG1, "PREPARED_COMMAND_MARKER")
+        .env("PREPARED_COMMAND_MARKER", "actual-value")
+        .current_dir(temp.path());
+    let result = run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_secs(5)),
+    )
+    .unwrap();
+    assert_eq!(result.kind, ExitKind::Success);
+    let stderr = result.stderr_lossy().unwrap();
+    assert!(stderr.contains("PREPARED_COMMAND_MARKER=actual-value"));
+    assert!(stderr.contains(temp.path().to_str().unwrap()));
+
+    let key = "AUTO_TOOL_EXEC_PREPARED_PARENT_ONLY";
+    let previous = std::env::var_os(key);
+    std::env::set_var(key, "must-not-inherit");
+    let mut command = std::process::Command::new(TE_CHILD);
+    command.env_clear().env(MODE, "env").env(ARG1, key);
+    let result = run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_secs(5)),
+    );
+    match previous {
+        Some(value) => std::env::set_var(key, value),
+        None => std::env::remove_var(key),
+    }
+    assert_eq!(
+        result.unwrap().kind,
+        ExitKind::Failure(3),
+        "env_clear must survive the adapter"
+    );
+
+    let mut command = std::process::Command::new(TE_CHILD);
+    command
+        .env(MODE, "echo-args")
+        .args(["with spaces", "", "literal;$value"]);
+    let result = run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_secs(5)),
+    )
+    .unwrap();
+    assert_eq!(result.kind, ExitKind::Success);
+    assert_eq!(
+        result.stdout_lossy().unwrap(),
+        "with spaces\n\nliteral;$value\n"
+    );
+}
+
+#[test]
+fn prepared_command_timeout_keeps_partial_capture() {
+    let mut command = std::process::Command::new(TE_CHILD);
+    command
+        .env(MODE, "stdout-kib")
+        .env(ARG1, "1")
+        .env(ARG2, "30");
+    let result = auto_tool_execution::run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_millis(500)),
+    )
+    .unwrap();
+    assert!(matches!(result.kind, ExitKind::Timeout { .. }));
+    assert_eq!(result.stdout.as_ref().unwrap(), &vec![b'x'; 1024]);
+}
+
+#[test]
+fn prepared_command_preserves_invalid_utf8_as_raw_capture() {
+    let mut command = std::process::Command::new(TE_CHILD);
+    command.env(MODE, "stdout-invalid-utf8");
+    let result = auto_tool_execution::run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_secs(5)),
+    )
+    .unwrap();
+    assert_eq!(result.kind, ExitKind::Success);
+    assert_eq!(
+        result.stdout.as_deref(),
+        Some(b"{\"value\":\"\xff\"}".as_slice())
+    );
+}
+
+#[test]
+fn prepared_command_reaps_the_exited_parents_descendants() {
+    let temp = TempDir::new("prepared-tree");
+    let heartbeat = temp.path().join("heartbeat");
+    let mut command = std::process::Command::new(TE_CHILD);
+    command
+        .env(MODE, "grandchild")
+        .env(ARG1, "1")
+        .env(ARG2, &heartbeat);
+    let result = auto_tool_execution::run_command_capture(
+        command,
+        TreeScope::ProcessTree,
+        Some(Duration::from_secs(5)),
+    )
+    .unwrap();
+    assert_eq!(result.kind, ExitKind::Success);
+    let before = last_tick_millis(&heartbeat).expect("the real descendant ran");
+    std::thread::sleep(Duration::from_millis(350));
+    assert_eq!(
+        last_tick_millis(&heartbeat),
+        Some(before),
+        "no owned descendant after return"
+    );
+}
+
 /// te-child + 模式环境(argv 保持纯负载,协议不占 argv)。
 fn child_spec(mode: &str) -> ExecutionSpec {
     let mut spec = ExecutionSpec::new([TE_CHILD]);

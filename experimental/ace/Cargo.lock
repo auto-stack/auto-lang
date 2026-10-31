@@ -49,6 +49,7 @@ dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
  "ace-core",
+ "auto-tool-execution",
  "serde_json",
  "windows-sys 0.59.0",
 ]
@@ -77,6 +78,7 @@ version = "0.1.0"
 dependencies = [
  "ace-core",
  "auto-cache",
+ "auto-tool-execution",
  "blake3",
  "rusqlite",
  "serde",
@@ -96,6 +98,7 @@ dependencies = [
  "ace-syntax-core",
  "ace-syntax-grammar",
  "ace-syntax-runtime",
+ "auto-tool-execution",
  "base64 0.22.1",
  "blake3",
  "rusqlite",
@@ -574,6 +577,7 @@ dependencies = [
 name = "auto-cache"
 version = "0.1.0"
 dependencies = [
+ "auto-tool-execution",
  "bincode",
  "blake3",
  "chrono",
@@ -734,6 +738,10 @@ version = "0.1.0"
 dependencies = [
  "imara-diff",
 ]
+
+[[package]]
+name = "auto-tool-execution"
+version = "0.1.0"
 
 [[package]]
 name = "auto-val"

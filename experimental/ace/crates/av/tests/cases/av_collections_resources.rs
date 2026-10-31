@@ -335,91 +335,6 @@ fn sampled_collections_request(
     )
 }
 
-/// T-09/V-07: the collections worker's REAL private-bytes peak (fresh
-/// release processes, parent-sampled) stays under the 798 B-line 128MiB
-/// envelope, and the managed partitions hold their own dimensions
-/// (hot8/staging16/execution8).
-#[test]
-fn av_collections_worker_memory_hard_gate_parent_sampled() {
-    let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .expect("ACE workspace root")
-        .to_path_buf();
-    let build = std::process::Command::new(env!("CARGO"))
-        .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
-        .current_dir(&ws)
-        .output()
-        .expect("build");
-    assert!(
-        build.status.success(),
-        "{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let worker = ws.join("target").join("release").join(if cfg!(windows) {
-        "av-worker.exe"
-    } else {
-        "av-worker"
-    });
-
-    let root = std::env::temp_dir().join(format!(
-        "av822-memgate-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&root).unwrap();
-    let store = root.join("store");
-
-    // Fresh worker processes over the frozen fixture: 4 independent
-    // samples against ONE accumulating managed store.
-    let mut evidence = Vec::new();
-    for i in 0..4u32 {
-        let (ev, ok) = sampled_collections_request(&worker, &store);
-        assert!(ok, "sample {i} runs green");
-        evidence.push(ev);
-    }
-
-    const B_LINE: u64 = 128 * 1024 * 1024;
-    const HOT: u64 = 8 * 1024 * 1024;
-    const STAGING: u64 = 16 * 1024 * 1024;
-    const EXECUTION: u64 = 8 * 1024 * 1024;
-    assert!(
-        evidence.iter().all(|e| e.worker_private_peak > 0),
-        "a real process peak was measured"
-    );
-    for (i, e) in evidence.iter().enumerate() {
-        assert!(
-            e.worker_private_peak <= B_LINE,
-            "sample {i}: worker B-line private-bytes peak {} > {}",
-            e.worker_private_peak,
-            B_LINE
-        );
-        assert!(
-            e.peak_hot <= HOT,
-            "sample {i}: managed hot partition {} > {}",
-            e.peak_hot,
-            HOT
-        );
-        assert!(
-            e.peak_staging <= STAGING,
-            "sample {i}: managed staging partition {} > {}",
-            e.peak_staging,
-            STAGING
-        );
-        assert!(
-            e.peak_exec_slot <= EXECUTION,
-            "sample {i}: managed execution partition {} > {}",
-            e.peak_exec_slot,
-            EXECUTION
-        );
-    }
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 // -- F822-R1-01: transactional precheck/commit counter-examples ----------
 
 /// The shared probe of the failure-seam contract: run `m` once under a
@@ -863,4 +778,99 @@ fn av_collections_resources_variantproject_transaction_both_sides() {
         "{short:?}"
     );
     assert_clean_ledger(&arena);
+}
+
+// Formal parent-sampled memory hard gate: original four requests and thresholds.
+mod performance {
+    use super::*;
+
+    /// T-09/V-07: the collections worker's REAL private-bytes peak (fresh
+    /// release processes, parent-sampled) stays under the 798 B-line 128MiB
+    /// envelope, and the managed partitions hold their own dimensions
+    /// (hot8/staging16/execution8).
+    #[test]
+    fn av_collections_worker_memory_hard_gate_parent_sampled() {
+        let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .expect("ACE workspace root")
+            .to_path_buf();
+        let mut compiler = std::process::Command::new(env!("CARGO"));
+        compiler
+            .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
+            .current_dir(&ws);
+        let build = auto_tool_execution::run_command_capture(
+            compiler,
+            auto_tool_execution::TreeScope::ProcessTree,
+            None,
+        )
+        .expect("build");
+        assert!(
+            build.kind == auto_tool_execution::ExitKind::Success,
+            "{}",
+            String::from_utf8_lossy(build.stderr.as_ref().expect("captured compiler stderr"))
+        );
+        let worker = ws.join("target").join("release").join(if cfg!(windows) {
+            "av-worker.exe"
+        } else {
+            "av-worker"
+        });
+
+        let root = std::env::temp_dir().join(format!(
+            "av822-memgate-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = root.join("store");
+
+        // Fresh worker processes over the frozen fixture: 4 independent
+        // samples against ONE accumulating managed store.
+        let mut evidence = Vec::new();
+        for i in 0..4u32 {
+            let (ev, ok) = sampled_collections_request(&worker, &store);
+            assert!(ok, "sample {i} runs green");
+            evidence.push(ev);
+        }
+
+        const B_LINE: u64 = 128 * 1024 * 1024;
+        const HOT: u64 = 8 * 1024 * 1024;
+        const STAGING: u64 = 16 * 1024 * 1024;
+        const EXECUTION: u64 = 8 * 1024 * 1024;
+        assert!(
+            evidence.iter().all(|e| e.worker_private_peak > 0),
+            "a real process peak was measured"
+        );
+        for (i, e) in evidence.iter().enumerate() {
+            assert!(
+                e.worker_private_peak <= B_LINE,
+                "sample {i}: worker B-line private-bytes peak {} > {}",
+                e.worker_private_peak,
+                B_LINE
+            );
+            assert!(
+                e.peak_hot <= HOT,
+                "sample {i}: managed hot partition {} > {}",
+                e.peak_hot,
+                HOT
+            );
+            assert!(
+                e.peak_staging <= STAGING,
+                "sample {i}: managed staging partition {} > {}",
+                e.peak_staging,
+                STAGING
+            );
+            assert!(
+                e.peak_exec_slot <= EXECUTION,
+                "sample {i}: managed execution partition {} > {}",
+                e.peak_exec_slot,
+                EXECUTION
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

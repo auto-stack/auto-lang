@@ -36,6 +36,7 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [dev-dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # PLAN-827: seed-identity receipts (SHA256 over the frozen AP fixture bytes).
 sha2 = "0.10"
 

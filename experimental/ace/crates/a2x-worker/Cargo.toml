@@ -22,3 +22,6 @@ windows-sys = { version = "0.59", features = [
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[dev-dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

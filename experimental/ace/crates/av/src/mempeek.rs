@@ -102,8 +102,14 @@ impl ChildPeakSampler {
             if raw == 0 {
                 return None;
             }
-            let peak = Arc::new(AtomicU64::new(0));
-            let samples = Arc::new(AtomicU64::new(0));
+            // Take the original first poll synchronously: start returning must
+            // not race an unscheduled sampler thread against a short child.
+            let Some(first) = poll_child_private_bytes(raw as *mut core::ffi::c_void) else {
+                unsafe { windows_sys::Win32::Foundation::CloseHandle(raw as _) };
+                return None;
+            };
+            let peak = Arc::new(AtomicU64::new(first));
+            let samples = Arc::new(AtomicU64::new(1));
             let stop = Arc::new(AtomicBool::new(false));
             let (peak2, samples2, stop2) =
                 (Arc::clone(&peak), Arc::clone(&samples), Arc::clone(&stop));
@@ -155,14 +161,65 @@ impl ChildPeakSampler {
     /// Stop sampling and return `(observed peak, sample count)`.
     pub fn stop(mut self) -> (u64, u64) {
         self.stop.store(true, Ordering::Relaxed);
-        let out = (
-            self.peak.load(Ordering::Relaxed),
-            self.samples.load(Ordering::Relaxed),
-        );
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
-        out
+        (
+            self.peak.load(Ordering::Relaxed),
+            self.samples.load(Ordering::Relaxed),
+        )
+    }
+}
+
+#[cfg(test)]
+mod sampling_controls {
+    use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn immediate_stop_keeps_the_first_real_process_sample() {
+        let sampler =
+            ChildPeakSampler::start(std::process::id(), 5).expect("own process is queryable");
+        let (peak, count) = sampler.stop();
+        assert!(peak > 0, "actual private bytes, never a synthesized zero");
+        assert!(
+            count >= 1,
+            "a successful start already observed the process"
+        );
+        assert!(ChildPeakSampler::start(u32::MAX, 5).is_none());
+    }
+
+    #[test]
+    fn shutdown_includes_a_poll_finishing_after_stop_was_requested() {
+        let peak = Arc::new(AtomicU64::new(1));
+        let samples = Arc::new(AtomicU64::new(1));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (release, wait) = std::sync::mpsc::channel();
+        let (p, n) = (Arc::clone(&peak), Arc::clone(&samples));
+        let poll = std::thread::spawn(move || {
+            wait.recv().expect("release final in-flight poll");
+            p.store(4096, Ordering::Relaxed);
+            n.fetch_add(1, Ordering::Relaxed);
+        });
+        let sampler = ChildPeakSampler {
+            peak,
+            samples,
+            stop: Arc::clone(&stop),
+            handle: Some(poll),
+        };
+        let finish = std::thread::spawn(move || sampler.stop());
+        let limit = std::time::Instant::now() + Duration::from_secs(5);
+        while !stop.load(Ordering::Relaxed) && std::time::Instant::now() < limit {
+            std::thread::yield_now();
+        }
+        let requested = stop.load(Ordering::Relaxed);
+        release.send(()).unwrap();
+        assert_eq!(
+            finish.join().unwrap(),
+            (4096, 2),
+            "include the completed final poll"
+        );
+        assert!(requested, "stop reached its controlled interleaving");
     }
 }
 

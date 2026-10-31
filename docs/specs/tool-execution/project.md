@@ -99,3 +99,11 @@ exec_lifecycle 与 plan816_cli_driver 永久回归锁定；审查期持久回放
 ## PLAN-832 client 仓属（SD-03，as-built）
 
 `auto-tool-execution` 继续作为语言仓 std-only 中立设施，UI 与 Man 双消费，不迁成 Man 独占。`auto-tool-client`（含 discovery）已迁 auto-man 仓；真实工具宿主、协议和 owned 寿命合同不变。`plan816_cli_driver` 与 tool-client-consumer 从 Man 固定 source 重放，UI tool 不静态链接。
+
+## PLAN-896：既有Command捕获与真实编译消费者
+
+`run_command_capture(Command, TreeScope, Option<Duration>)`直接消费原Command并进入同一个spawn/run/reader/owned收尾实现；不重建环境，因此env_clear、显式env覆盖、argv与cwd保留。该output式入口将stdin设为null、stdout/stderr设为捕获；ProcessTree使用设施的Windows挂起/入Job/恢复创建策略，不承诺保留调用方自定Windows创建标志。没有隐式缩短deadline，None仍由原调用方预算约束。
+
+语言FFI的auto-cache编译与rustdoc、ACE A2X测试中的真实rustc/程序、资源门的Cargo构建及artifact兼容包装复用此原语；不新增一套执行器，不引入ACE/UI/Man runtime依赖到语言侧。auto-cache的实际构建/rustdoc显式绑定自己的build_dir/target，operator的外层target不泄入该私有编译面。
+
+artifact包装保留原RunResult code/timed_out/partial stdout/stderr；完整截止含清理，reader/containment/清理错误仍为Err。原先忽略错误/可选Job/返回后读者残留的紧凑执行器退出。字符串协议拒绝无效UTF8，不把损坏字节替换成可接受JSON。外层测试Job对工作负载残留仍严格失败，MSVC辅助进程仅在真实编译producer持有的owned树内回收，未增工作负载豁免。

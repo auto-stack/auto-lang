@@ -9,7 +9,10 @@
 // 降级策略:nightly 不可用 → 返回 Ok(None),仅自由函数路径可用(现状不变)。
 
 use crate::sandbox::{DepSource, Sandbox, SandboxError};
-use shim_metadata::classify::{classify_all_third_party as classify_all, classify_all_third_party_mono, Exceptions, MonoInstances};
+use shim_metadata::classify::{
+    classify_all_third_party as classify_all, classify_all_third_party_mono, Exceptions,
+    MonoInstances,
+};
 use shim_metadata::emit_cdylib::{emit_pack_parts, PackMeta};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -69,7 +72,11 @@ impl Sandbox {
     /// 返回 (lib 路径, manifest JSON)。
     pub fn find_methods_pack(&self, crate_name: &str) -> Option<(PathBuf, String)> {
         let wrapper = Self::methods_wrapper_name(crate_name);
-        let manifest_path = self.root().join("builds").join(&wrapper).join("manifest.json");
+        let manifest_path = self
+            .root()
+            .join("builds")
+            .join(&wrapper)
+            .join("manifest.json");
         let manifest_json = std::fs::read_to_string(&manifest_path).ok()?;
         let fp = extract_fingerprint(&manifest_json)?;
         let version = format!("fp{}", &fp[..12.min(fp.len())]);
@@ -122,10 +129,8 @@ impl Sandbox {
                     .ok()
                     .map(|m| m.mono)
                     .unwrap_or_default();
-                let current: std::collections::BTreeMap<String, Vec<String>> = mono
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+                let current: std::collections::BTreeMap<String, Vec<String>> =
+                    mono.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 cached != current
             };
             if mono_stale {
@@ -134,59 +139,59 @@ impl Sandbox {
                     crate_name
                 );
             } else {
-            let format_stale = manifest_format(&manifest_json)
-                .map(|f| f != shim_metadata::emit_cdylib::MANIFEST_FORMAT)
-                .unwrap_or(false);
-            if format_stale {
-                log::info!(
-                    "plan430: cached methods pack for {} has old manifest format, rebuilding",
-                    crate_name
-                );
-            } else {
-                if path_source_is_stale(self.root(), crate_name, source) {
+                let format_stale = manifest_format(&manifest_json)
+                    .map(|f| f != shim_metadata::emit_cdylib::MANIFEST_FORMAT)
+                    .unwrap_or(false);
+                if format_stale {
                     log::info!(
-                        "plan430: cached methods pack for {} is stale (path source changed), rebuilding",
+                        "plan430: cached methods pack for {} has old manifest format, rebuilding",
                         crate_name
                     );
                 } else {
-                    let stale = match (
-                        extract_crate_version(&manifest_json),
-                        resolved_crate_version(
-                            &self.cargo_path(),
-                            &self.root().join("builds").join(&wrapper),
-                            crate_name,
-                        ),
-                    ) {
-                        (Some(cached), Some(current)) if cached != current => {
-                            log::info!(
+                    if path_source_is_stale(self.root(), crate_name, source) {
+                        log::info!(
+                        "plan430: cached methods pack for {} is stale (path source changed), rebuilding",
+                        crate_name
+                    );
+                    } else {
+                        let stale = match (
+                            extract_crate_version(&manifest_json),
+                            resolved_crate_version(
+                                &self.cargo_path(),
+                                &self.root().join("builds").join(&wrapper),
+                                crate_name,
+                            ),
+                        ) {
+                            (Some(cached), Some(current)) if cached != current => {
+                                log::info!(
                                 "plan430: cached methods pack for {} is stale ({} -> {}), rebuilding",
                                 crate_name,
                                 cached,
                                 current
                             );
-                            true
+                                true
+                            }
+                            _ => false,
+                        };
+                        if !stale {
+                            log::info!(
+                                "plan430: cached methods pack for {}: {}",
+                                crate_name,
+                                lib.display()
+                            );
+                            let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
+                            let (methods, skipped) = count_entries(&manifest_json);
+                            return Ok(Some(MethodsPackBuilt {
+                                lib_path: lib,
+                                manifest_json,
+                                fingerprint: fp,
+                                methods,
+                                skipped,
+                            }));
                         }
-                        _ => false,
-                    };
-                    if !stale {
-                        log::info!(
-                            "plan430: cached methods pack for {}: {}",
-                            crate_name,
-                            lib.display()
-                        );
-                        let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
-                        let (methods, skipped) = count_entries(&manifest_json);
-                        return Ok(Some(MethodsPackBuilt {
-                            lib_path: lib,
-                            manifest_json,
-                            fingerprint: fp,
-                            methods,
-                            skipped,
-                        }));
                     }
                 }
             }
-        }
         } // PLAN-596 T4 mono_stale guard
 
         // 2. wrapper 工程(独立工作区,防被宿主 repo 吸收)。
@@ -196,29 +201,43 @@ impl Sandbox {
         let src_dir = build_dir.join("src");
         std::fs::create_dir_all(&src_dir)?;
         let dep_line = source.to_cargo_line(crate_name);
-        std::fs::write(build_dir.join("Cargo.toml"), wrapper_cargo_toml(&crate_ident, &dep_line))?;
+        std::fs::write(
+            build_dir.join("Cargo.toml"),
+            wrapper_cargo_toml(&crate_ident, &dep_line),
+        )?;
         let placeholder = src_dir.join("lib.rs");
         if !placeholder.exists() {
-            std::fs::write(&placeholder, "// placeholder (plan-430 C2); overwritten by the generator\n")?;
+            std::fs::write(
+                &placeholder,
+                "// placeholder (plan-430 C2); overwritten by the generator\n",
+            )?;
         }
 
         // 3. nightly rustdoc 提取元信息(-p 在依赖里文档化目标 crate)
-        let out = Command::new("cargo")
+        let mut command = Command::new("cargo");
+        command
             .arg("+nightly")
             .arg("rustdoc")
+            .arg("--target-dir")
+            .arg(build_dir.join("target"))
             .arg("-p")
             .arg(crate_name)
             .arg("-Zunstable-options")
             .arg("--output-format")
             .arg("json")
             .current_dir(&build_dir)
-            .output()
-            .map_err(|e| SandboxError::CompilationFailed(format!("rustdoc spawn failed: {e}")))?;
-        if !out.status.success() {
+            .env_remove("CARGO_TARGET_DIR");
+        let out = auto_tool_execution::run_command_capture(
+            command,
+            auto_tool_execution::TreeScope::ProcessTree,
+            None,
+        )
+        .map_err(|e| SandboxError::CompilationFailed(format!("rustdoc spawn failed: {e}")))?;
+        if out.kind != auto_tool_execution::ExitKind::Success {
             return Err(SandboxError::CompilationFailed(format!(
                 "rustdoc failed for {}: {}",
                 crate_name,
-                String::from_utf8_lossy(&out.stderr)
+                String::from_utf8_lossy(out.stderr.as_ref().expect("captured rustdoc stderr"))
             )));
         }
         let doc_json = find_rustdoc_json(&build_dir.join("target").join("doc"), &crate_ident)
@@ -283,17 +302,27 @@ impl Sandbox {
             );
             std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
 
-            let out = Command::new(self.cargo_path())
+            let mut command = Command::new(self.cargo_path());
+            command
                 .args(["build", "--release"])
+                .arg("--target-dir")
+                .arg(build_dir.join("target"))
                 .current_dir(&build_dir)
-                .output()
-                .map_err(|e| {
-                    SandboxError::CompilationFailed(format!("cargo spawn failed: {e}"))
-                })?;
-            if out.status.success() {
+                .env_remove("CARGO_TARGET_DIR");
+            // Preserve the original caller's compile budget (no new per-build
+            // deadline), while owning/reaping the complete compiler subtree.
+            let out = auto_tool_execution::run_command_capture(
+                command,
+                auto_tool_execution::TreeScope::ProcessTree,
+                None,
+            )
+            .map_err(|e| SandboxError::CompilationFailed(format!("cargo spawn failed: {e}")))?;
+            if out.kind == auto_tool_execution::ExitKind::Success {
                 break (fp, files);
             }
-            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            let stderr =
+                String::from_utf8_lossy(out.stderr.as_ref().expect("captured compiler stderr"))
+                    .to_string();
             let before = plans.len();
             let mut offenders = offending_symbols(&stderr);
             // PLAN-591 T9:类型级错误归因——深模块路径类型(uuid::fmt::Braced 族,
@@ -498,7 +527,9 @@ fn manifest_format(manifest_json: &str) -> Option<u32> {
 fn path_source_hash(path: &Path) -> Option<u64> {
     let mut buf: Vec<u8> = Vec::new();
     fn walk(dir: &Path, buf: &mut Vec<u8>) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<_> = rd.filter_map(|e| e.ok()).collect();
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
@@ -531,7 +562,9 @@ fn path_source_hash(path: &Path) -> Option<u64> {
 /// 无记录/读不到 → 按"不 stale"处理(保持 430 降级姿态;registry 源恒 false)。
 fn path_source_is_stale(sandbox_root: &Path, crate_name: &str, source: &DepSource) -> bool {
     let Some(p) = &source.path else { return false };
-    let Some(current) = path_source_hash(Path::new(p)) else { return false };
+    let Some(current) = path_source_hash(Path::new(p)) else {
+        return false;
+    };
     let key = staleness_key(current, &source.features);
     let recorded = sandbox_root
         .join("builds")
@@ -566,7 +599,9 @@ fn resolved_crate_version(cargo: &Path, build_dir: &Path, crate_name: &str) -> O
         }
         cmd.current_dir(build_dir).output().ok()
     };
-    let out = run(true).filter(|o| o.status.success()).or_else(|| run(false))?;
+    let out = run(true)
+        .filter(|o| o.status.success())
+        .or_else(|| run(false))?;
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
     json.get("packages")?
         .as_array()?
@@ -660,11 +695,19 @@ mod tests {
         // 跨跑残留清理(上次运行结束态的记录会污染首断言)
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&src).unwrap();
-        fs::write(tmp.join("fixture/Cargo.toml"), "[package]
+        fs::write(
+            tmp.join("fixture/Cargo.toml"),
+            "[package]
 name = \"fx\"
-").unwrap();
-        fs::write(src.join("lib.rs"), "pub struct S { pub a: i64 }
-").unwrap();
+",
+        )
+        .unwrap();
+        fs::write(
+            src.join("lib.rs"),
+            "pub struct S { pub a: i64 }
+",
+        )
+        .unwrap();
         let root = tmp.join("sandbox");
         let dep_source = crate::sandbox::DepSource {
             version: None,
@@ -677,14 +720,24 @@ name = \"fx\"
         assert!(!super::path_source_is_stale(&root, "fx", &dep_source));
         // 记录 hash 后:未变更 → 不 stale(记录端与比较端同用 staleness_key)
         let hash = super::path_source_hash(Path::new(&tmp.join("fixture"))).unwrap();
-        let rec = root.join("builds").join("fx_methods_wrapper").join("source_hash.txt");
+        let rec = root
+            .join("builds")
+            .join("fx_methods_wrapper")
+            .join("source_hash.txt");
         fs::create_dir_all(rec.parent().unwrap()).unwrap();
         fs::write(&rec, super::staleness_key(hash, &[])).unwrap();
         assert!(!super::path_source_is_stale(&root, "fx", &dep_source));
         // 源码变更(加字段,签名不变)→ stale
-        fs::write(src.join("lib.rs"), "pub struct S { pub a: i64, pub b: u8 }
-").unwrap();
-        assert!(super::path_source_is_stale(&root, "fx", &dep_source), "source change must be detected as stale");
+        fs::write(
+            src.join("lib.rs"),
+            "pub struct S { pub a: i64, pub b: u8 }
+",
+        )
+        .unwrap();
+        assert!(
+            super::path_source_is_stale(&root, "fx", &dep_source),
+            "source change must be detected as stale"
+        );
         let _ = fs::remove_dir_all(&tmp);
     }
 

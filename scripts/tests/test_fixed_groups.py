@@ -118,6 +118,25 @@ class FixedGroups(unittest.TestCase):
         self.assertEqual(args[args.index('--target-dir') + 1], str(ROOT / 'experimental/ace/target'))
         self.assertFalse((ROOT / 'experimental/ace/crates/native/.cargo/config.toml').exists())
 
+    def test_outer_target_override_does_not_leak_to_private_build_consumers(self):
+        import os
+        target = ROOT / 'target/isolated-outer-control'
+        group = fixed.invocations([self.groups['parser']])[0]
+        listing = subprocess.CompletedProcess([], 0, json.dumps(self.enumeration()).encode(), b'')
+        terminal = {'type': 'test', 'event': 'ok', 'name': 'p::p$parser::decls::a'}
+        execution = subprocess.CompletedProcess([], 0, (json.dumps(terminal) + '\n').encode(), b'')
+        with mock.patch.dict(os.environ, {'CARGO_TARGET_DIR': str(target)}), tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(fixed, 'invoke', side_effect=[(listing, {}), (execution, {})]) as invoke:
+                self.assertEqual(fixed.run_rust(group, Path(temp), dict(os.environ))['outcome'], 'PASS')
+                for call in invoke.call_args_list:
+                    argv, _, env = call.args[:3]
+                    self.assertEqual(argv[argv.index('--target-dir') + 1], str(target.resolve()))
+                    self.assertNotIn('CARGO_TARGET_DIR', env)
+            for name, directory in [('ace-native', 'target'), ('ace-batch', 'target-batch')]:
+                argv = fixed.nextest_args(fixed.invocations([self.groups[name]])[0])
+                self.assertEqual(argv.count('--target-dir'), 1)
+                self.assertEqual(argv[argv.index('--target-dir') + 1], str(ROOT / 'experimental/ace' / directory))
+
     def test_ace_declaration_in_legacy_group_fails_before_execution(self):
         doc = self.enumeration()
         suite = doc['rust-suites']['p']

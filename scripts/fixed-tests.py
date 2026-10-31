@@ -93,12 +93,24 @@ def invocations(groups, test_name=None):
     return list(merged.values())
 
 
+def owned_target_override():
+    value = os.environ.get('CARGO_TARGET_DIR')
+    if not value:
+        return None
+    target = Path(value).resolve()
+    if not target.is_relative_to(ROOT):
+        raise ValueError('CARGO_TARGET_DIR must stay inside this checkout')
+    return target
+
+
 def nextest_args(group, ignored=False):
     args = [*group['args'], '--ignore-default-filter', '-E', group['expression']]
     if group['workspace'].startswith('experimental/'):
         # ACE tests/workers share this tree; batch remains a distinct target.
         # Native runtime profiles/triples remain explicit at their real consumers.
         args += ['--target-dir', str(ROOT / ('experimental/ace/target-batch' if group['groups'] == ['ace-batch'] else 'experimental/ace/target'))]
+    elif owned_target_override():
+        args += ['--target-dir', str(owned_target_override())]
     if 'aavm' in group['groups'] and os.environ.get('T3_MILESTONE') == '1':
         args[args.index('--config-file') + 1] = '.config/nextest-t3.toml'
     # Daily retains nextest's original default-filter and original applicability.
@@ -192,6 +204,8 @@ def invoke(argv, cwd, env, output, label, timeout=1800, preparation=False):
 
 
 def run_rust(group, output, env, ignored=False, discover_only=False):
+    env = dict(env)
+    env.pop('CARGO_TARGET_DIR', None)
     cwd = ROOT / group['workspace']
     args = nextest_args(group, ignored)
     # One real enumeration per compatible Cargo configuration, not per leaf.
@@ -375,9 +389,10 @@ def main(argv=None):
                 ap.error('legacy navigation accepts one optional test-name filter')
             args.test_name = args.groups[0]
         args.groups = fixed[args.legacy_tier]
-    target_override = os.environ.get('CARGO_TARGET_DIR')
-    if target_override and not Path(target_override).resolve().is_relative_to(ROOT):
-        ap.error('CARGO_TARGET_DIR must stay inside this checkout')
+    try:
+        owned_target_override()
+    except ValueError as error:
+        ap.error(str(error))
     selected = select(args.groups, value, groups)
     if args.ignored and any(g['name'] != 'aavm' for g in selected):
         ap.error('ignored-only replay must explicitly name aavm')
@@ -418,6 +433,7 @@ def execute_plan(plan, output, summary, args):
     for index, group in enumerate(plan):
         destination = output / str(index); destination.mkdir()
         env = {**os.environ, 'AUTO_TEST_DOMAIN': group['domain']}
+        env.pop('CARGO_TARGET_DIR', None)
         try:
             from prepare_tools import prepare
             extra, receipts = prepare(ROOT, [] if args.discover_only else group['tools'], destination / 'tools', prepared)

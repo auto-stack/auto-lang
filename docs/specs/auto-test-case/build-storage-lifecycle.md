@@ -21,3 +21,7 @@ scripts/test-governance/build_storage.py <精确target路径>默认预览；--ap
 原始证据保留按仓内现行政策和具名hold；计划/复审/成本摘要长期入库。空间按唯一文件数据及实际
 完整必需构建后的稳态比较，列PDB/其余与实际回收。旧897拟50%未批准门不作为已授权结果；禁止以
 空目录或取消必要测试虚报收益。Windows原生Job及计量禁wrapper纪律保持。
+
+外层CARGO_TARGET_DIR仅在本检出内有效，由同一规范化校验转成语言list/run命令的显式--target-dir；实际测试与工具编译环境移除该键，嵌套FFI/shim消费者保自己的目标目录。ACE既定regular/batch目标不被operator覆盖合并。
+
+迁移后旧manifest已移走的确切target，可用--retired-source <祖先提交>证明本树历史Cargo owner；工具核该提交是HEAD祖先、该精确目录原Cargo.toml是真实package/workspace，仍执行所有reparse/活动/证据/路径拒绝及删除前复核。它是清理来源证明，不是测试目录或执行选择输入。

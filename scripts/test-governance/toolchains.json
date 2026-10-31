@@ -132,6 +132,17 @@
       ],
       "profile": "runtime-release",
       "target": "experimental/ace/target"
+    },
+    "execution-fixture": {
+      "workspace": ".",
+      "package": "auto-tool-execution",
+      "binaries": [
+        "te-child"
+      ],
+      "profile": "debug",
+      "features": "",
+      "target": "target",
+      "env": "AUTO_TOOL_EXECUTION_FIXTURE"
     }
   }
 }

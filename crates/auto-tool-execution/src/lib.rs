@@ -311,15 +311,6 @@ fn build_command(spec: &ExecutionSpec) -> Command {
     cmd.stdin(spec.stdin.to_stdio());
     cmd.stdout(spec.stdout.to_stdio());
     cmd.stderr(spec.stderr.to_stdio());
-    #[cfg(unix)]
-    if spec.tree_scope == TreeScope::ProcessTree {
-        use std::os::unix::process::CommandExt;
-        // 子进程先入新进程组再 exec,消除父侧 setpgid 与 exec 的竞态;
-        // setpgid 属 async-signal-safe,pre_exec 内合法。
-        unsafe {
-            cmd.pre_exec(unix_pg::child_setpgid);
-        }
-    }
     cmd
 }
 
@@ -328,8 +319,18 @@ fn build_command(spec: &ExecutionSpec) -> Command {
 /// [`OwnedProcess::wait_deadline`]/[`OwnedProcess::cancel`] 自管。
 pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     validate(spec)?;
-    let _ = &spec;
-    let mut cmd = build_command(spec);
+    spawn_prepared(spec, build_command(spec))
+}
+
+fn spawn_prepared(spec: &ExecutionSpec, mut cmd: Command) -> Result<OwnedProcess, ExecutionError> {
+    #[cfg(unix)]
+    if spec.tree_scope == TreeScope::ProcessTree {
+        use std::os::unix::process::CommandExt;
+        // Both spec and prepared-Command callers use the same owned group.
+        unsafe {
+            cmd.pre_exec(unix_pg::child_setpgid);
+        }
+    }
     #[cfg(windows)]
     if spec.tree_scope == TreeScope::ProcessTree {
         // 挂起启动(F-816-R1-04):任何用户代码——包括派生后代——只在
@@ -1273,10 +1274,44 @@ fn bounded_cancel(proc: &mut OwnedProcess, grace: Duration) -> Result<(), io::Er
 /// 终止失败在正常/超时/关闭各路径具名传播(F-816-R1-06/R2-06);
 /// `elapsed` 取实际返回时刻(F-816-R2-06)。
 pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
+    run_prepared(spec, None)
+}
+
+/// Capture an existing Command through the same owned execution lifecycle.
+/// argv, cwd and its complete environment policy (including env_clear) stay
+/// on the original Command. This output-style entry uses null stdin and
+/// captured stdout/stderr; ProcessTree uses the facility's owned creation
+/// flags, not caller-supplied Windows flags. No implicit deadline is added.
+pub fn run_command_capture(
+    mut command: Command,
+    tree_scope: TreeScope,
+    deadline: Option<Duration>,
+) -> Result<ExecutionResult, ExecutionError> {
+    let argv = std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(OsString::from);
+    let mut spec = ExecutionSpec::new(argv);
+    spec.cwd = command.get_current_dir().map(PathBuf::from);
+    spec.tree_scope = tree_scope;
+    spec.deadline = deadline;
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    run_prepared(&spec, Some(command))
+}
+
+fn run_prepared(
+    spec: &ExecutionSpec,
+    command: Option<Command>,
+) -> Result<ExecutionResult, ExecutionError> {
     validate(spec)?;
     let start = Instant::now();
     let deadline_at = spec.deadline.map(|limit| start + limit);
-    let mut proc = spawn(spec)?;
+    let mut proc = match command {
+        Some(command) => spawn_prepared(spec, command)?,
+        None => spawn(spec)?,
+    };
 
     // F-816-R9：写端准入（凭证创建/复制）先于任何自有线程——失败时
     // 无 reader/writer 需要收尾（宿主进程由 OwnedProcess::drop 有界
