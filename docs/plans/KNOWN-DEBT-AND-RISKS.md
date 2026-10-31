@@ -3775,3 +3775,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **898-N3 (INFO)**：主检出存在未跟踪草稿 `docs/plans/893-ace-test-framework-and-slow-case-attribution.md`（未提交，worktree 不可见），其验证面引用已删的 cargo tm；后续若激活 893 须先重基底到 `cargo t` 固定组范式。
 - **898-N4 (INFO)**：`scripts/pre-split-universe/`、`split-closure.py`、`split-golden-ledger.py` 等 850/867 拆分账本工具随基线文件删除失去守恒对象，但属 867 归档证据链组成部分，保留不动；其语义记录在归档计划 867。
 - **898-N5 (FIX-FORWARD，2026-10-31 复审登记)**：合并门三角化确认的 master 预存红（898 零新增）——编译红：`shim-metadata` lib/bin 测试 E0061（emit_pack 改 8 参、测试调用点 7 参）、`auto-gen` v02/v03 集成测试 E0433（dev-dep 缺 auto_lang、建议改 auto_gen 路径或补 dev-dep）、`auto-macros` value_macro_tests E0308、`auto-cache` lib 测试 E0063（ShimMethod 漏 trait_name 字段）；运行红：plan872_binding_table_json_matches_regeneration、plan884_provider_input_coverage::domain_dir_sources_all_covered、auto-api-gen plan734_tauri_fixture_matches_generator；daily 不覆盖的集成红：vue_capabilities×11、ui_snapshots×3、sys_natives_vm_tests、gallery_vue_golden（UI 测试族与计划 A"auto-lang 去 UI"迁出高度相关，建议随 A 一并处置）、http_e2e_back_proxy（网络 flaky 族，主检出同组两次跑 17↔19 红波动）；python：acc_inventory Qa02 分类。前三编译红为两行级修复，走 L0。
+
+## PLAN-900（2026-10-31 work 冻结时登记，非阻塞；均为 master 预存 parity 实证）
+
+- **900-N1 (MEDIUM)**：`cargo t vm`/`cargo t a2r` 单组运行经治理包装器读 `scripts/test-governance/legacy-wrapper-contract.json`——该文件已被 PLAN-898（fa2a8287e）删除但 wrapper_bindings.py:55 仍引用，单组运行即 Errno 红（master 同错实证；组等价 nextest 直跑 vm 905/905、a2r 386/386 绿）。修复归测试治理面（898 后续或专项）。
+- **900-N2 (MEDIUM)**：generated-ui-consumer 交付门（driver.py）在 master 与 plan-900 分支同点红：vendored auto-api-gen manifest 的 `../../../auto-web` 相对 path 越出交付根被显式拒绝（PLAN-890 后交付闭包检查收紧后暴露）。交付闭包 crate 的受管形态（path="../crates/<name>"）改造归交付/890 后续。
+- **900-N3 (MEDIUM)**：`crates/auto-macros/tests/value_macro_tests.rs` 4×E0308（value! 宏类型不匹配）——master 预存（`cargo check -p auto-macros --tests` 主检出同红），与 UI 迁移无关。owner：语言宏面。
+- **900-N4 (LOW)**：`auto-man/crates/auto-man/examples/rust-workspace` 存量样例不可从检出位置构建（成员 015-notes-back/ 目录缺失 + path 形态为交付落位快照）——master 同状；生成工程真实门=generated-ui-consumer driver（见 900-N2）。
+- **900-N5 (INFO)**：UI 域已知红族随迁 auto-ui 侧登记：vue_capabilities×11、ui_snapshots×3（insta 快照内嵌 CARGO_MANIFEST_DIR 绝对路径——worktree 环境排除，源文件头注自证）、gallery_vue_golden（898-N5 基线原样）。auto-ui 侧 test 编档归该仓（计划 D 域）。
+- **900-N6 (INFO)**：UI-host 独立夹具的 inventory 链接保留在 MSVC linker GC 下不保证（clipboard-provider ui-host 臂首轮实证红）——canonical 宿主范式=显式 `auto_ui_runtime::install_ui_host_capabilities()` bootstrap（auto-man 同款）；夹具与 host-assembly 已改显式式，进程期自注册收集点保留为兜底语义（install 单点内同幂等）。
+- **900-N7 (LOW)**：裸 worktree 单仓构建仍需 auto-web 兄弟仓（auto-lang-core→auto-web-contract path 边，预存非 auto-ui）——Design 52 §2.1"无需组内兄弟仓"完整不变量待 auto-web 边收口（另行计划）；本计划已解除 auto-ui 兄弟依赖（bare probe + 仅 auto-web 兄弟实证 check 绿）。
