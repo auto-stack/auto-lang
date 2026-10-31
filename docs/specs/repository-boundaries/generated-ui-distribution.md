@@ -39,17 +39,19 @@
 - **镜像布局的硬理由**：auto-lang `build.rs` 以 `../../crates` 与根
   `Cargo.lock` 为编译期输入（缺失即 unwrap 红）；非镜像布局在受管 build
   阶段确定性失败。
-- **交付闭包**：当前 24 个受管 crate、patch 与根级输入以 UI tools 的 `DELIVERY_CRATES`、`DELIVERY_PATCHES` 和根输入声明为准；语言包归语言 owner，UI 包归实际选中的 UI owner。生成应用直接依赖 SDK 与 UI runtime；闭包中保留的 auto-lang 不表示应用仍直接依赖旧门面。根 workspace、锁、patch、stdlib/schema 等实际编译输入随包核验。
+- **交付闭包**：当前 28 个受管 crate（PLAN-901 闭包补全：常驻 `auto-test-case` 随包、`auto-generation-core` 与 web owner 家族 `auto-web-contract`/`auto-web` 入闭包——`auto-ui-tools`/`auto-api-gen`/`auto-lang`/`auto-lang-core` 自 PLAN-890 起对其硬 path 依赖；web 源经组内 auto-web 兄弟或 `AUTO_WEB_SOURCE_ROOT` 解析，缺位显式判红）、patch 与根级输入以 UI tools 的 `DELIVERY_CRATES`、`DELIVERY_PATCHES` 和根输入声明为准；语言包归语言 owner，UI 包归实际选中的 UI owner，web 包归 web owner。生成应用直接依赖 SDK 与 UI runtime；闭包中保留的 auto-lang 不表示应用仍直接依赖旧门面。根 workspace、锁、patch、stdlib/schema 等实际编译输入随包核验；交付根 manifest 另携带 web owner `[workspace.package]` 继承包表与 vendored 快照树 `exclude`（嵌套 workspace 根不入交付工作区——否则 fresh 解析 "multiple workspace roots" 红）。
 
 ## 身份与失败合同
 
 - **单一 package 身份**：iced_widget 仅以 patch 单源出现在交付根
   `[patch.crates-io]`（不写在依赖包内）；bundle 内 package.name 全局唯一
   （同包 source 重复显式拒绝）；应用包名不得与 vendored 撞名。
-- **投影修剪**（对受管 auto-lang、core、runtime 清单按实际结构处理）：剥交付闭包外
-  optional path 依赖（autodown-core 跨仓 / auto-test-case 测试协议——
-  cargo 对成员 optional path 依赖仍读 manifest，不剥则解析红）+ feature
-  行剥 `dep:` 引用保留 feature 名；合法源码态、安装中间态和已投影态分别按结构准入，不因合法零编辑或部分编辑判红；缺项或异常混态判为 producer 结构漂移。
+- **投影修剪**（对受管清单按实际结构处理）：PLAN-901 起语言测试 feature 拍平——
+  `auto-test-case` 转常驻依赖随包交付（不再剥除），`PROJECTION_AUTO_LANG`/`_CORE`
+  收敛为恒等投影（仅跨仓 path 前缀改写 `../../../auto-ui|auto-web/crates/` →
+  交付根包内兄弟）；runtime 仍剥 autodown-core 跨仓 optional path 行，feature 行剥
+  `dep:` 引用保留 feature 名；合法源码态、安装中间态和已投影态分别按结构准入，
+  不因合法零编辑或部分编辑判红；缺项或异常混态判为 producer 结构漂移。
 - **锁与 pin**：交付应用清单对历史漂移家族（wgpu/iced 家族，来源=生成时
   producer 根 Cargo.lock 已验证版本）精确钉扎；与基础依赖同名者（iced）
   并入基础行；多槽成员（windows/windows-core 三槽）TOML 单键不可重复声明

@@ -1,7 +1,7 @@
 # auto-test-case
 
 > PLAN-896测试调度：固定Cargo包+Rust模块组取代tm动态目录，入口cargo t <组>、显式cargo t all。
-> 本crate的TestCase协议/oracle/准入比较保持；ACE宿主迁至独立experimental/ace workspace的ace-conformance包；语言侧私有协议单测仅显式test-ace桥接。cargo t ace为常规集合，ace-performance保正式计量原合同，all含完整包条件集合。普通语言日常/具名组/静态list均不编ACE。
+> 本crate的TestCase协议/oracle/准入比较保持；ACE宿主迁至独立experimental/ace workspace的ace-conformance包。PLAN-901测试feature拍平：本crate为auto-lang/auto-lang-core常驻依赖（原test-cases optional门退役），三工具bin恒真实形态；语言侧ACE桥接测试常驻编译、仅显式ace组选择（cargo t ace为常规集合，ace-performance保正式计量原合同，all含完整包条件集合）。普通语言日常/具名组/静态list不选择ACE桥接，语言all不准备/构建ACE worker。
 
 > **Status**: active
 > 路径：`crates/auto-test-case` | 技术栈：Rust（仅依赖 vendored `autodown-test-parser`；auto-atom/auto-val 仅 dev）

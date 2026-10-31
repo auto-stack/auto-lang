@@ -26,8 +26,10 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
 - 协议核心零 GUI/零 auto-lang 运行时依赖（`cargo tree --edges normal` 仅 vendored
   parser；auto-atom/auto-val 仅 dev-dep，供解码器测试构造 Atom 值）。
 - 执行 adapter（AVM run / a2r emit）与 materializer/编排/`auto-case` CLI 在
-  auto-lang 侧 `src/test_cases/`，空 feature `test-cases` 门控、无默认 feature
-  可无窗口构建运行。被测 a2r 不得在运行时再生裁判（parser 快照固定）。
+  auto-lang 侧 `src/test_cases/`。PLAN-901测试feature拍平：auto-test-case 为
+  两 crate 常驻依赖（无 feature 门），测试代码同编译形态可见，运行由固定组/
+  nextest 过滤与原 ignore/环境条件决定；无窗口构建运行保持。被测 a2r 不得在
+  运行时再生裁判（parser 快照固定）。
 
 ## 阶段观测通道（类型边界，非文本）
 
@@ -329,3 +331,14 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 显式 certify 腿=实际＋手写独立 reference 双编译运行对闭式 oracle，严格证书
 `ace.a2r-hir.cert/1`。与旧 `a2r/emit`/`ace.m1.cert/1` 并列互不授信。
 见 [a2r-hir 认证通道](a2r-hir-certification.md)。
+
+## 2026-10-31 / PLAN-901：测试feature拍平与批量观察常驻
+
+七个语言测试feature（`test-trans`/`test-cases`/`test-ace`/`test-book`/
+`test-aavm`/`test-http-e2e`/`test-case-batch`）退役：测试代码常驻编译可见，
+运行由固定组、nextest 过滤与原 ignore/平台/环境/资源条件决定。trace 与
+批处理观察常驻编译但 env 驱动——无显式执行（`AUTO_TEST_TRACE_DIR` 等）
+不 spawn worker、不写报告，普通语言返回值/诊断不变；AAVM/AA2R 默认 ignore
++显式手动入口与重内存分组保持；跨 crate HTTP helper 常驻中立支撑
+（经 auto-web re-export 保持原路径）。完整合同见
+[test-feature-flattening](test-feature-flattening.md)。
