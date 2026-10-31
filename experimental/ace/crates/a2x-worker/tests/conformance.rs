@@ -10,6 +10,8 @@ mod incremental_cache;
 mod record_text_902;
 #[path = "cases/record_text_modes.rs"]
 mod record_text_modes;
+#[path = "cases/record_text_t04.rs"]
+mod record_text_t04;
 #[path = "cases/resource_budget.rs"]
 mod resource_budget;
 #[path = "cases/rt_common.rs"]

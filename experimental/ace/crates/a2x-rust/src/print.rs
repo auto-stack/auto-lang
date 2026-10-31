@@ -55,8 +55,8 @@ impl<'p> PrintCtx<'p> {
 }
 
 /// Render a whole program to the `generated.rs` body (record declarations
-/// + function definitions only; module wiring lives in the wrapper emitted
-/// by artifacts.rs).
+/// + deep-clone helpers + function definitions only; module wiring lives in
+/// the wrapper emitted by artifacts.rs).
 pub fn print_program(p: &RustProgram) -> String {
     let ctx = PrintCtx::new(p);
     let mut out = String::new();
@@ -64,11 +64,70 @@ pub fn print_program(p: &RustProgram) -> String {
         out.push_str(&print_record(&ctx, r));
         out.push('\n');
     }
+    for h in clone_helper_closure(p) {
+        out.push_str(&h);
+        out.push('\n');
+    }
     for f in &p.functions {
         out.push_str(&print_fn_in(&ctx, f, p.borrowed));
         out.push('\n');
     }
     out
+}
+
+/// The transitive deep-clone helper set for the records the program clones
+/// (a helper that clones a nested resource-record field needs that field's
+/// own helper). One allocation per non-empty owned-Str field; scalars and
+/// Copy records copy by value.
+fn clone_helper_closure(p: &RustProgram) -> Vec<String> {
+    let mut needed: Vec<u32> = p.clones.clone();
+    let mut i = 0;
+    while i < needed.len() {
+        let id = needed[i];
+        if let Some(rec) = p.records.iter().find(|r| r.type_index == id) {
+            for (_, ty) in &rec.fields {
+                if let Ty::Record(inner) = ty {
+                    if !needed.contains(inner) {
+                        needed.push(*inner);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    needed
+        .iter()
+        .filter_map(|id| p.records.iter().find(|r| r.type_index == *id))
+        .map(|rec| clone_helper(rec, p))
+        .collect()
+}
+
+fn clone_helper(rec: &RustRecord, p: &RustProgram) -> String {
+    let mut inits = Vec::new();
+    for (fname, ty) in &rec.fields {
+        let init = match ty {
+            Ty::StrOwned => format!("{fname}: a2x_str_clone(src.{fname}.as_str())?"),
+            Ty::Record(inner) => {
+                let inner_name = p
+                    .records
+                    .iter()
+                    .find(|r| r.type_index == *inner)
+                    .map(|r| r.name.clone())
+                    .unwrap_or_else(|| "Rec".to_string());
+                format!("{fname}: a2x_rt_clone_{inner_name}(&src.{fname})?")
+            }
+            _ => format!("{fname}: src.{fname}"),
+        };
+        inits.push(init);
+    }
+    format!(
+        "pub fn a2x_rt_clone_{}(src: &{}) -> A2xResult<{}> {{\n    Ok({} {{ {} }})\n}}\n",
+        rec.name,
+        rec.name,
+        rec.name,
+        rec.name,
+        inits.join(", ")
+    )
 }
 
 /// Render one function (records context needed only for record/text
@@ -112,7 +171,7 @@ fn print_fn_in(ctx: &PrintCtx<'_>, f: &RustFn, _program_borrowed: bool) -> Strin
         f.name,
         life,
         params.join(", "),
-        render_result(ctx, f.result)
+        render_result(ctx, f.result, borrowed)
     ));
     for s in &f.body {
         out.push_str(&render_stmt(ctx, s, 1));
@@ -131,27 +190,32 @@ fn param_borrows(p: &RustParam) -> bool {
     }
 }
 
-/// Mode-legalized parameter text (PLAN-902 §5.2): view text params borrow
-/// content (`&'a str`), view record params shared-borrow (`&'a Rec_X`),
-/// mut params exclusive-borrow, move params take the value.
+/// Mode-legalized parameter text (PLAN-902 §5.2): text view AND mut-text
+/// params borrow content (`&'a str` — mut text is an exclusive view whose
+/// exclusivity the VERIFIER proved at the call sites; no runtime mutation
+/// surface exists for text), view record params shared-borrow, mut record
+/// params exclusive-borrow (inherent write-back), move params take the
+/// value.
 fn render_param(ctx: &PrintCtx<'_>, p: &RustParam) -> String {
     let ty = match (p.mode, p.ty) {
-        (ParamMode::View, Ty::Str | Ty::StrOwned) => "&'a str".to_string(),
+        (_, Ty::Str | Ty::StrOwned) if p.mode != ParamMode::MoveOwn => "&'a str".to_string(),
         (ParamMode::View, Ty::Record(_)) => format!("&'a {}", ctx.ty_str(p.ty)),
         (ParamMode::MutBorrow, Ty::Record(_)) => format!("&'a mut {}", ctx.ty_str(p.ty)),
-        (ParamMode::MutBorrow, Ty::StrOwned) => "&'a mut A2xStr".to_string(),
-        (ParamMode::MutBorrow, Ty::Str) => "&'a mut A2xStr".to_string(),
         (ParamMode::MoveOwn, Ty::StrOwned) => "A2xStr".to_string(),
         (ParamMode::MoveOwn, Ty::Record(_)) => ctx.ty_str(p.ty),
-        (_, Ty::Str) => "&'a str".to_string(),
         (_, other) => ctx.ty_str(other),
     };
     format!("{}: {}", p.name, ty)
 }
 
-fn render_result(ctx: &PrintCtx<'_>, ty: Ty) -> String {
+/// Result text. A borrowed `str` result borrows from the view params
+/// (`&'a str`, provenance-verified); a literal-only str result from a
+/// borrowing-free signature is `&'static str` (a promoted literal outlives
+/// everything — the verifier's borrow-escape rules admit nothing else).
+fn render_result(ctx: &PrintCtx<'_>, ty: Ty, borrowed: bool) -> String {
     match ty {
-        Ty::Str => "&'a str".to_string(),
+        Ty::Str if borrowed => "&'a str".to_string(),
+        Ty::Str => "&'static str".to_string(),
         other => ctx.ty_str(other),
     }
 }
@@ -188,7 +252,14 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
             }
             format!("{}{} = {};\n", pad, target, render_val(value))
         }
-        RStmt::Free { name } => format!("{}a2x_str_free(&mut {});\n", pad, name),
+        RStmt::Free { name, path } => {
+            let mut target = name.clone();
+            for f in path {
+                target.push('.');
+                target.push_str(f);
+            }
+            format!("{}a2x_str_free(&mut {});\n", pad, target)
+        }
         RStmt::If { cond, then, els } => {
             let mut out = format!("{}if {} {{\n", pad, render_cond(cond));
             for s in then {

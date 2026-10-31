@@ -41,7 +41,7 @@
 //! * **Receiver discipline** — the receiver is `params[0]`; call sites
 //!   evaluate it exactly once before explicit args (`eval_args` order).
 
-use ace_a2x_core::{A2xReject, FnFacts, FnKind, RecordFacts, SemanticView, Ty};
+use ace_a2x_core::{A2xReject, FnFacts, FnKind, SemanticView, Ty};
 use ace_core::hir;
 use ace_core::text_resources::BodyResourcePlan;
 use std::collections::HashMap;
@@ -89,10 +89,12 @@ pub enum RStmt {
         path: Vec<String>,
         value: RExpr,
     },
-    /// Explicit free of an owned value at a plan-scheduled point
-    /// (PLAN-902): `a2x_str_free(&mut l0_a);` — never lexical Drop.
+    /// Explicit free of an owned buffer at a plan-scheduled point
+    /// (PLAN-902): `a2x_str_free(&mut l0_a);` or, for a resource record's
+    /// Str field, `a2x_str_free(&mut l1_w.f_inner);` — never lexical Drop.
     Free {
         name: String,
+        path: Vec<String>,
     },
     If {
         cond: RExpr,
@@ -165,7 +167,7 @@ pub enum RExpr {
     // ---- PLAN-902 record/text surface (never produced for scalar/core) ----
     /// Fallible typed text helper (`a2x_str_*`) — allocation/trap carrying.
     StrFn {
-        func: &'static str,
+        func: String,
         args: Vec<RExpr>,
     },
     /// Full-byte equality/inequality of two text views (pure, no
@@ -237,7 +239,7 @@ impl RExpr {
             RExpr::OrSC { .. } => "or",
             RExpr::Call { .. } => "call",
             RExpr::Trace { func } => func,
-            RExpr::StrFn { func, .. } => func,
+            RExpr::StrFn { .. } => "str-fn",
             RExpr::StrCmp { .. } => "str-cmp",
             RExpr::AsStr { .. } => "as-str",
             RExpr::RecCtor { .. } => "ctor",
@@ -294,6 +296,9 @@ pub struct RustProgram {
     pub marks: Vec<&'static str>,
     /// Nominal record declarations (PLAN-902; empty for scalar/core).
     pub records: Vec<RustRecord>,
+    /// Resource-record type ids whose deep-clone helpers must be emitted
+    /// (transitively closed in the printer).
+    pub clones: Vec<u32>,
     /// Whether any signature needs the elided-all `'a` lifetime
     /// (PLAN-902: any reference parameter or borrowed result).
     pub borrowed: bool,
@@ -352,8 +357,15 @@ pub fn rust_record_name(name: &str) -> String {
 /// Lower a whole module for the given explicit entry function name.
 pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xReject> {
     let mut functions = Vec::new();
+    let mut clones: Vec<u32> = Vec::new();
     for f in view.functions() {
-        functions.push(lower_fn(view, f)?);
+        let (rf, used) = lower_fn(view, f)?;
+        for c in used {
+            if !clones.contains(&c) {
+                clones.push(c);
+            }
+        }
+        functions.push(rf);
     }
     let mut marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
     marks.sort_unstable();
@@ -366,6 +378,7 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
         entry: String::new(),
         marks,
         records,
+        clones,
         borrowed,
     })
 }
@@ -413,17 +426,21 @@ fn lower_records(view: &SemanticView<'_>) -> Result<Vec<RustRecord>, A2xReject> 
     Ok(out)
 }
 
-fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<RustFn, A2xReject> {
+fn lower_fn<'a>(
+    view: &SemanticView<'a>,
+    f: &FnFacts<'a>,
+) -> Result<(RustFn, Vec<u32>), A2xReject> {
     let mut lx = FnLowering::new(view, f)?;
     let body = lx.lower_block(f.body.entry)?;
     let params = lx.rust_params();
-    Ok(RustFn {
+    let rf = RustFn {
         name: rust_name_of(f),
         params,
         result: f.result,
         origin: f.origin,
         body,
-    })
+    };
+    Ok((rf, std::mem::take(&mut lx.clones)))
 }
 
 /// The Rust function name of a def: free functions keep the 892 rule;
@@ -454,6 +471,9 @@ struct FnLowering<'v, 'a> {
     /// The verifier's resource plan for THIS body (text/text-record
     /// domains); cleanup is emitted from it verbatim.
     plan: Option<&'v BodyResourcePlan>,
+    /// Resource-record type ids this function deep-clones (the generated
+    /// per-record helper set is derived in the printer, transitively).
+    clones: Vec<u32>,
     /// View-consumed pinned owned temporaries pending a free (drained at
     /// the next pin or the end of the current statement).
     pending_frees: Vec<String>,
@@ -518,98 +538,22 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             for frees in bp.exit_frees.values() {
                 assigned.extend(frees.iter().copied());
             }
+            for bufs in bp.buffer_frees.values() {
+                assigned.extend(bufs.iter().map(|b| b.root));
+            }
             for bufs in bp.replace_frees.values() {
                 assigned.extend(bufs.iter().map(|b| b.root));
             }
         }
 
-        // PLAN-902: reject the surface this backend does not legalize yet
-        // (named, never silent): mut text params and resource-record
-        // cleanup belong to the T-04 widening.
-        for p in &facts.params {
-            match (p.mode, p.ty) {
-                (hir::ParamMode::MutBorrow, Ty::Str | Ty::StrOwned) => {
-                    return Err(A2xReject::new(
-                        "a2x.param-mode",
-                        format!(
-                            "in `{}`: `mut` text parameters are not yet in this backend's frozen surface (T-04)",
-                            facts.source_name
-                        ),
-                    ));
-                }
-                (hir::ParamMode::MutBorrow, Ty::Record(_))
-                    if record_of(view, p.ty).map(|r| r.resource).unwrap_or(false) =>
-                {
-                    return Err(A2xReject::new(
-                        "a2x.param-mode",
-                        format!(
-                            "in `{}`: `mut` resource-record parameters are not yet in this backend's frozen surface (T-04)",
-                            facts.source_name
-                        ),
-                    ));
-                }
-                _ => {}
-            }
-        }
-        if let Some(rec) = record_of(view, facts.result) {
-            if rec.resource {
-                return Err(A2xReject::new(
-                    "a2x.unsupported-type",
-                    format!(
-                        "in `{}`: resource-record results are not yet in this backend's frozen surface (T-04)",
-                        facts.source_name
-                    ),
-                ));
-            }
-        }
+        // PLAN-902 T-04: the full surface is legalized — mut text params are
+        // exclusive VIEWS (reads + forwarding; reassignment/move-out are
+        // verifier-rejected, exclusivity is source-verified per 774 D-04),
+        // mut record params borrow exclusively with inherent write-back,
+        // resource records own their Str fields with planned field-level
+        // cleanup and explicit deep clone.
 
         let plan = view.body_plan(facts);
-        if let Some(bp) = plan {
-            // T-02: only plain owned-Str roots are cleaned here; resource
-            // record buffers (non-empty paths) land with T-04.
-            for bufs in bp.buffer_frees.values() {
-                for b in bufs {
-                    if !b.path.is_empty() {
-                        return Err(A2xReject::new(
-                            "a2x.unsupported-expr",
-                            format!(
-                                "in `{}`: resource-record field cleanup is not yet in this backend's frozen surface (T-04)",
-                                facts.source_name
-                            ),
-                        ));
-                    }
-                }
-            }
-            for bufs in bp.replace_frees.values() {
-                for b in bufs {
-                    if !b.path.is_empty() {
-                        return Err(A2xReject::new(
-                            "a2x.unsupported-expr",
-                            format!(
-                                "in `{}`: resource-record field replacement is not yet in this backend's frozen surface (T-04)",
-                                facts.source_name
-                            ),
-                        ));
-                    }
-                }
-            }
-            // resource-record owned roots (whole records owning Str fields)
-            for l in &bp.owned {
-                if let Some(ty) = local_tys.get(l) {
-                    if let Ty::Record(id) = ty {
-                        if view.record(*id).map(|r| r.resource).unwrap_or(false) {
-                            return Err(A2xReject::new(
-                                "a2x.unsupported-expr",
-                                format!(
-                                    "in `{}`: resource-record owned roots are not yet in this backend's frozen surface (T-04)",
-                                    facts.source_name
-                                ),
-                            ));
-                        }
-                    }
-                }
-            }
-        }
 
         Ok(FnLowering {
             view,
@@ -620,6 +564,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             param_locals,
             assigned,
             plan,
+            clones: Vec::new(),
             pending_frees: Vec::new(),
             cur_block: 0,
             cur_stmt: 0,
@@ -657,8 +602,43 @@ impl<'v, 'a> FnLowering<'v, 'a> {
     /// temps free before the next allocation point).
     fn drain_frees(&mut self, out: &mut Vec<RStmt>) {
         for name in std::mem::take(&mut self.pending_frees) {
-            out.push(RStmt::Free { name });
+            out.push(RStmt::Free {
+                name,
+                path: Vec::new(),
+            });
         }
+    }
+
+    /// One plan-scheduled buffer free: a plain owned-Str root (empty path)
+    /// or a resource record's Str FIELD path. Field ids are declaration
+    /// indices resolved to hygienic names through the record table.
+    fn buffer_free_stmt(
+        &self,
+        buf: &ace_core::text_resources::RecordBuffer,
+    ) -> Result<RStmt, A2xReject> {
+        let name = self
+            .local_names
+            .get(&buf.root)
+            .cloned()
+            .ok_or_else(|| A2xReject::new("a2x.internal", "plan free names an unknown local"))?;
+        let path = self.field_names_of(self.local_ty(buf.root)?, &buf.path)?;
+        Ok(RStmt::Free { name, path })
+    }
+
+    /// Emit the UNIFIED buffer schedule (`buffer_frees`) of one plan key.
+    fn emit_buffer_frees(
+        &self,
+        key: (u32, Option<usize>),
+        out: &mut Vec<RStmt>,
+    ) -> Result<(), A2xReject> {
+        if let Some(bp) = self.plan {
+            if let Some(bufs) = bp.buffer_frees.get(&key) {
+                for b in bufs {
+                    out.push(self.buffer_free_stmt(b)?);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn lower_block(&mut self, block_id: hir::BlockId) -> Result<Vec<RStmt>, A2xReject> {
@@ -683,32 +663,26 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             Some(hir::Stmt::Return { .. }) | Some(hir::Stmt::Break { .. }) | Some(hir::Stmt::Continue { .. })
         );
         if !terminated {
-            if let Some(bp) = self.plan {
-                if let Some(frees) = bp.exit_frees.get(&(self.cur_block, None)) {
-                    self.emit_local_frees(frees, &mut out);
-                }
-            }
+            self.emit_buffer_frees((self.cur_block, None), &mut out)?;
             self.drain_frees(&mut out);
         }
         self.cur_block = prev_block;
         Ok(out)
     }
 
-    /// `a2x_str_free` for plain owned-Str locals (plan order verbatim).
-    fn emit_local_frees(&self, frees: &[u32], out: &mut Vec<RStmt>) {
-        for l in frees {
-            if let Some(name) = self.local_names.get(l) {
-                out.push(RStmt::Free { name: name.clone() });
-            }
-        }
-    }
-
     fn lower_stmt(&mut self, s: &hir::Stmt, out: &mut Vec<RStmt>) -> Result<(), A2xReject> {
         match s {
             hir::Stmt::Let { local, value } => {
-                let (v, _) = self.lower_move_value(*value, out)?;
+                let (v, vty) = self.lower_move_value(*value, out)?;
                 let name = self.local_name(local.0)?;
                 let ty = self.local_ty(local.0)?;
+                // a str-binding initialized from an owner-repr value (a Str
+                // field read) borrows it — provenance-verified view
+                let v = if matches!(ty, Ty::Str) && matches!(vty, Ty::StrOwned) {
+                    self.as_str_form(v, vty)
+                } else {
+                    v
+                };
                 let mutable = self.assigned.contains(&local.0);
                 self.drain_frees(out);
                 out.push(RStmt::Let {
@@ -719,18 +693,23 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 });
             }
             hir::Stmt::Return { value } => {
-                let (v, vty) = self.lower_move_value(*value, out)?;
+                let (mut v, vty) = self.lower_move_value(*value, out)?;
+                // a str result returning an owner-repr value (a Str field
+                // read) borrows it — provenance-verified
+                if matches!(self.facts.result, Ty::Str) && matches!(vty, Ty::StrOwned) {
+                    v = self.as_str_form(v, vty);
+                }
                 // plan-scheduled exit frees: the return value must be
                 // materialized (pinned when it is not a bare local read)
                 // BEFORE any freed local dies — the frees render as
                 // statements preceding the return.
                 let mut value = v;
-                let frees = self
+                let key = (self.cur_block, Some(self.cur_stmt));
+                let has_frees = self
                     .plan
-                    .and_then(|bp| bp.exit_frees.get(&(self.cur_block, Some(self.cur_stmt))))
-                    .cloned()
-                    .unwrap_or_default();
-                if !frees.is_empty() {
+                    .and_then(|bp| bp.buffer_frees.get(&key))
+                    .is_some_and(|b| !b.is_empty());
+                if has_frees {
                     let bare = matches!(value, RExpr::Local(_));
                     if !bare {
                         let t = self.fresh_temp();
@@ -742,7 +721,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         });
                         value = RExpr::Local(t);
                     }
-                    self.emit_local_frees(&frees, out);
+                    self.emit_buffer_frees(key, out)?;
                 }
                 self.drain_frees(out);
                 out.push(RStmt::Return { value });
@@ -774,16 +753,25 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     .places
                     .get(place.0 as usize)
                     .ok_or_else(|| A2xReject::new("a2x.internal", "place index out of range"))?;
-                let (v, _) = self.lower_move_value(*value, out)?;
+                let (v, vty) = self.lower_move_value(*value, out)?;
+                // a str local re-bound from an owner-repr value borrows it
+                let place_ty = self.view.resolve_use_ty(place.ty).unwrap_or(Ty::I32);
+                let v = if matches!(place_ty, Ty::Str) && matches!(vty, Ty::StrOwned) {
+                    self.as_str_form(v, vty)
+                } else {
+                    v
+                };
                 // replacement frees: the OLD buffer dies only after the
-                // RHS fully materialized (894 §5.1).
-                let replaces = self
-                    .plan
-                    .and_then(|bp| bp.replace_frees.get(&(self.cur_block, self.cur_stmt)))
-                    .map(|bufs| bufs.iter().map(|b| b.root).collect::<Vec<_>>())
-                    .unwrap_or_default();
-                if !replaces.is_empty() {
-                    self.emit_local_frees(&replaces, out);
+                // RHS fully materialized (894 §5.1) — plain roots and
+                // resource-record field paths alike.
+                if let Some(bp) = self.plan {
+                    if let Some(bufs) =
+                        bp.replace_frees.get(&(self.cur_block, self.cur_stmt))
+                    {
+                        for b in bufs.clone() {
+                            out.push(self.buffer_free_stmt(&b)?);
+                        }
+                    }
                 }
                 let name = self.local_name(place.local.0)?;
                 match &place.kind {
@@ -800,23 +788,13 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             hir::Stmt::Break { target } => {
                 self.assert_nearest(target.0, "break")?;
-                if let Some(bp) = self.plan {
-                    if let Some(frees) = bp.exit_frees.get(&(self.cur_block, Some(self.cur_stmt))) {
-                        let frees = frees.clone();
-                        self.emit_local_frees(&frees, out);
-                    }
-                }
+                self.emit_buffer_frees((self.cur_block, Some(self.cur_stmt)), out)?;
                 self.drain_frees(out);
                 out.push(RStmt::Break);
             }
             hir::Stmt::Continue { target } => {
                 self.assert_nearest(target.0, "continue")?;
-                if let Some(bp) = self.plan {
-                    if let Some(frees) = bp.exit_frees.get(&(self.cur_block, Some(self.cur_stmt))) {
-                        let frees = frees.clone();
-                        self.emit_local_frees(&frees, out);
-                    }
-                }
+                self.emit_buffer_frees((self.cur_block, Some(self.cur_stmt)), out)?;
                 self.drain_frees(out);
                 out.push(RStmt::Continue);
             }
@@ -837,26 +815,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         root: u32,
         path: &[hir::FieldId],
     ) -> Result<Vec<String>, A2xReject> {
-        let mut names = Vec::with_capacity(path.len());
-        let mut cur = self.local_ty(root)?;
-        for fid in path {
-            let Ty::Record(tid) = cur else {
-                return Err(A2xReject::new(
-                    "a2x.internal",
-                    "field path traverses a non-record type",
-                ));
-            };
-            let rec = self
-                .view
-                .record(tid)
-                .ok_or_else(|| A2xReject::new("a2x.internal", "unknown record type"))?;
-            let fld = rec.fields.get(fid.0 as usize).ok_or_else(|| {
-                A2xReject::new("a2x.internal", "field index out of range")
-            })?;
-            names.push(format!("f_{}", sanitize(&fld.name)));
-            cur = fld.ty;
-        }
-        Ok(names)
+        self.field_names_of(
+            self.local_ty(root)?,
+            &path.iter().map(|f| f.0).collect::<Vec<u32>>(),
+        )
     }
 
     /// Auto break/continue always target the innermost enclosing loop; a
@@ -940,16 +902,30 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             .ok_or_else(|| A2xReject::new("a2x.internal", "expr index out of range"))?;
         let ty = self.view.resolve_use_ty(e.ty)?;
         match &e.kind {
-            hir::ExprKind::ReadLocal { local } => Ok((
-                RExpr::Local(self.local_name(local.0)?),
-                self.local_ty(local.0)?,
-            )),
+            hir::ExprKind::ReadLocal { local } => {
+                let ty = self.local_ty(local.0)?;
+                // text view/mut params pass CONTENT (`&'a str` at the
+                // ABI) — their reads are already content views, never
+                // owner values, so consumers must not wrap `.as_str()`
+                let is_content_param = matches!(ty, Ty::Str | Ty::StrOwned)
+                    && matches!(
+                        self.facts.body.locals[local.0 as usize].role,
+                        hir::LocalRole::Param
+                    )
+                    && *self
+                        .local_modes
+                        .get(&local.0)
+                        .unwrap_or(&hir::ParamMode::View)
+                        != hir::ParamMode::MoveOwn;
+                let ty = if is_content_param { Ty::Str } else { ty };
+                Ok((RExpr::Local(self.local_name(local.0)?), ty))
+            }
             hir::ExprKind::Constant { value } => Ok((RExpr::I32Lit(*value), Ty::I32)),
             hir::ExprKind::StrLit { value } => match ty {
                 // owned promotion context (AP-4): an allocation
                 Ty::StrOwned => Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_from_lit",
+                        func: "a2x_str_from_lit".to_string(),
                         args: vec![RExpr::StrLit(value.clone())],
                     },
                     Ty::StrOwned,
@@ -1025,7 +1001,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (r, _) = self.lower_pure(*rhs, &mut side)?;
                 // drain the side's own view-consumer temps into it
                 for name in std::mem::take(&mut self.pending_frees) {
-                    side.push(RStmt::Free { name });
+                    side.push(RStmt::Free { name, path: Vec::new() });
                 }
                 let block = RBlock {
                     stmts: side,
@@ -1106,7 +1082,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         .map(|p| p.mode)
                         .unwrap_or(hir::ParamMode::View)
                 };
-                let mut slots: Vec<RExpr> = Vec::with_capacity(eval_args.len());
+                let mut slots: Vec<(RExpr, Ty)> = Vec::with_capacity(eval_args.len());
                 for (i, &arg) in eval_args.iter().enumerate() {
                     let mode = mode_of_arg(i as u32);
                     let pty = bindings
@@ -1115,18 +1091,18 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         .and_then(|b| target_params.get(b.param as usize))
                         .map(|p| p.ty)
                         .unwrap_or(Ty::I32);
-                    let view_owned = matches!(mode, hir::ParamMode::View)
+                    let view_owned = matches!(mode, hir::ParamMode::View | hir::ParamMode::MutBorrow)
                         && matches!(pty, Ty::StrOwned);
-                    let (v, _) = if view_owned {
+                    let (v, aty) = if view_owned {
                         self.lower_view_value(arg, out)?
                     } else {
                         self.lower_pure(arg, out)?
                     };
-                    slots.push(v);
+                    slots.push((v, aty));
                 }
                 // Placement by the binding map, in param order, legalized
-                // per the target param's mode.
-                let mut placed: Vec<Option<RExpr>> = vec![None; n];
+                // per the target param's mode and the argument's type.
+                let mut placed: Vec<Option<(RExpr, Ty)>> = vec![None; n];
                 for b in bindings {
                     let arg = slots.get(b.arg as usize).cloned().ok_or_else(|| {
                         A2xReject::new("a2x.internal", "binding arg index out of range")
@@ -1145,7 +1121,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 }
                 let mut args = Vec::with_capacity(n);
                 for (i, p) in placed.into_iter().enumerate() {
-                    let raw = p.ok_or_else(|| {
+                    let (raw, aty) = p.ok_or_else(|| {
                         A2xReject::new(
                             "a2x.internal",
                             format!(
@@ -1156,7 +1132,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     })?;
                     let mode = target_params[i].mode;
                     let pty = target_params[i].ty;
-                    args.push(self.legalize_arg(raw, mode, pty)?);
+                    args.push(self.legalize_arg(raw, aty, mode, pty));
                 }
                 Ok((
                     RExpr::Call {
@@ -1171,7 +1147,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (v, vt) = self.lower_view_value(*operand, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_len",
+                        func: "a2x_str_len".to_string(),
                         args: vec![self.as_str_form(v, vt)],
                     },
                     Ty::I32,
@@ -1181,7 +1157,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (v, vt) = self.lower_view_value(*operand, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_len_bytes",
+                        func: "a2x_str_len_bytes".to_string(),
                         args: vec![self.as_str_form(v, vt)],
                     },
                     Ty::I32,
@@ -1192,7 +1168,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (i, _) = self.lower_pure(*index, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_char_at",
+                        func: "a2x_str_char_at".to_string(),
                         args: vec![self.as_str_form(v, vt), i],
                     },
                     Ty::Char,
@@ -1208,7 +1184,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (e, _) = self.lower_pure(*end, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_slice",
+                        func: "a2x_str_slice".to_string(),
                         args: vec![self.as_str_form(v, vt), s, e],
                     },
                     Ty::Str,
@@ -1219,7 +1195,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (r, rt) = self.lower_view_value(*rhs, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_concat",
+                        func: "a2x_str_concat".to_string(),
                         args: vec![self.as_str_form(l, lt), self.as_str_form(r, rt)],
                     },
                     Ty::StrOwned,
@@ -1229,7 +1205,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (v, vt) = self.lower_view_value(*operand, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_clone",
+                        func: "a2x_str_clone".to_string(),
                         args: vec![self.as_str_form(v, vt)],
                     },
                     Ty::StrOwned,
@@ -1239,7 +1215,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (v, vt) = self.lower_view_value(*operand, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_str_to_owned",
+                        func: "a2x_str_to_owned".to_string(),
                         args: vec![self.as_str_form(v, vt)],
                     },
                     Ty::StrOwned,
@@ -1260,7 +1236,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let (v, _) = self.lower_pure(*operand, out)?;
                 Ok((
                     RExpr::StrFn {
-                        func: "a2x_char_from_codepoint",
+                        func: "a2x_char_from_codepoint".to_string(),
                         args: vec![v],
                     },
                     Ty::Char,
@@ -1318,8 +1294,26 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let root_ty = self.view.resolve_use_ty(
                     self.facts.body.exprs[base.0 as usize].ty,
                 )?;
-                let names = self.field_names_of(root_ty, path)?;
-                Ok((RExpr::FieldPath { base: Box::new(b), path: names }, ty))
+                let ids: Vec<u32> = path.iter().map(|f| f.0).collect();
+                let names = self.field_names_of(root_ty, &ids)?;
+                // the returned type is the FIELD's declared type (the Rust
+                // REPRESENTATION truth): a Str field reads as a view but
+                // renders as an owner place (`l_w.f_inner: A2xStr`), so
+                // consumers convert by representation, not by view type
+                let mut field_ty = ty;
+                let mut cur = root_ty;
+                for fid in &ids {
+                    let Ty::Record(tid) = cur else { break };
+                    let Some(rec) = self.view.record(tid) else { break };
+                    match rec.fields.get(*fid as usize) {
+                        Some(f) => {
+                            field_ty = f.ty;
+                            cur = f.ty;
+                        }
+                        None => break,
+                    }
+                }
+                Ok((RExpr::FieldPath { base: Box::new(b), path: names }, field_ty))
             }
             hir::ExprKind::BorrowView { base } => {
                 let (v, _) = self.lower_pure(*base, out)?;
@@ -1340,13 +1334,29 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 }
                 Ok((v, t))
             }
-            hir::ExprKind::RecordClone { .. } => Err(A2xReject::new(
-                "a2x.unsupported-expr",
-                format!(
-                    "in `{}`: record deep-clone is not yet in this backend's frozen surface (T-04)",
-                    self.facts.source_name
-                ),
-            )),
+            hir::ExprKind::RecordClone { record, base } => {
+                // explicit DEEP clone (PLAN-782): one allocation per
+                // non-empty owned Str field, scalars copied — emitted as a
+                // per-record generated helper (fallible: Resource).
+                let rec = self.view.record(record.0).ok_or_else(|| {
+                    A2xReject::new("a2x.internal", "unknown record type in RecordClone")
+                })?;
+                if !self.clones.contains(&record.0) {
+                    self.clones.push(record.0);
+                }
+                let (b, bty) = self.lower_view_value(*base, out)?;
+                let b = match bty {
+                    Ty::Record(_) => RExpr::Ref { inner: Box::new(b) },
+                    _ => RExpr::Ref { inner: Box::new(b) },
+                };
+                Ok((
+                    RExpr::StrFn {
+                        func: format!("a2x_rt_clone_{}", rust_record_name(&rec.name)),
+                        args: vec![b],
+                    },
+                    Ty::Record(record.0),
+                ))
+            }
             other => Err(A2xReject::unsupported_expr(format!(
                 "in `{}`: expression kind `{:?}` is outside the compute surface",
                 self.facts.name, other
@@ -1354,30 +1364,38 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         }
     }
 
-    /// Legalize a placed call argument against its target param's mode.
-    fn legalize_arg(&self, raw: RExpr, mode: hir::ParamMode, pty: Ty) -> Result<RExpr, A2xReject> {
-        match mode {
-            hir::ParamMode::View => match pty {
-                // text views: pass `&str` content views
-                Ty::Str | Ty::StrOwned => Ok(raw),
-                // record views: borrow the place
-                Ty::Record(_) => match raw {
-                    RExpr::Ref { .. } => Ok(raw),
-                    other => Ok(RExpr::Ref { inner: Box::new(other) }),
+    /// Legalize a placed call argument against its target param's mode and
+    /// the argument's own type. Text view/mut params take content views
+    /// (`&str`); record views borrow the place; record mut params take the
+    /// exclusive borrow; move params take the value (Rust move).
+    fn legalize_arg(&self, raw: RExpr, aty: Ty, mode: hir::ParamMode, pty: Ty) -> RExpr {
+        match (mode, pty) {
+            // text view AND mut-text params borrow CONTENT: mut text is an
+            // exclusive view whose exclusivity the verifier already proved
+            // at the call sites (774 D-04) — no runtime mutation surface
+            // exists for text, so a shared view is observationally complete
+            (_, Ty::Str | Ty::StrOwned) => match aty {
+                Ty::StrOwned => RExpr::AsStr {
+                    val: Box::new(raw),
+                    owned: true,
                 },
-                _ => Ok(raw),
+                _ => raw,
             },
-            hir::ParamMode::MutBorrow => Ok(raw),
-            hir::ParamMode::MoveOwn => Ok(raw),
+            (hir::ParamMode::View, Ty::Record(_)) => match raw {
+                RExpr::Ref { .. } => raw,
+                other => RExpr::Ref { inner: Box::new(other) },
+            },
+            (hir::ParamMode::MutBorrow, Ty::Record(_)) => match raw {
+                RExpr::RefMut { .. } | RExpr::Ref { .. } => raw,
+                other => RExpr::RefMut { inner: Box::new(other) },
+            },
+            _ => raw,
         }
     }
 
-    /// Field names of a path rooted at an expression type (reads).
-    fn field_names_of(
-        &self,
-        root_ty: Ty,
-        path: &[hir::FieldId],
-    ) -> Result<Vec<String>, A2xReject> {
+    /// Field names of a path rooted at an expression type (reads); the
+    /// path is declaration indices (HIR FieldId payloads or plan paths).
+    fn field_names_of(&self, root_ty: Ty, path: &[u32]) -> Result<Vec<String>, A2xReject> {
         let mut names = Vec::with_capacity(path.len());
         let mut cur = root_ty;
         for fid in path {
@@ -1391,7 +1409,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 .view
                 .record(tid)
                 .ok_or_else(|| A2xReject::new("a2x.internal", "unknown record type"))?;
-            let fld = rec.fields.get(fid.0 as usize).ok_or_else(|| {
+            let fld = rec.fields.get(*fid as usize).ok_or_else(|| {
                 A2xReject::new("a2x.internal", "field index out of range")
             })?;
             names.push(format!("f_{}", sanitize(&fld.name)));
@@ -1514,10 +1532,3 @@ pub(super) fn cmp_rust_str(op: CmpOp) -> &'static str {
     op.rust_str()
 }
 
-/// Record facts lookup by raw `Ty` (None for non-records).
-fn record_of<'v>(view: &'v SemanticView<'_>, ty: Ty) -> Option<&'v RecordFacts> {
-    match ty {
-        Ty::Record(id) => view.record(id),
-        _ => None,
-    }
-}

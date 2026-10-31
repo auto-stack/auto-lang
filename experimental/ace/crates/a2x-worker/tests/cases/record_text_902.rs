@@ -216,29 +216,17 @@ fn record_text_902_text_function_gate() {
     assert_eq!(err[0].code, "verify.domain");
 }
 
-/// Honest refusal of the not-yet-frozen T-04 surface: resource records
-/// (owned Str fields) and `mut` text params are named rejections, never
-/// silently wrong Rust.
+/// The T-04 surface (resource records, mut text params) is now LEGALIZED —
+/// this boundary test keeps only the still-honest refusal: `tag` is a
+/// reserved source word (a named syntax rejection at the front door).
 #[test]
 fn record_text_902_t04_boundaries() {
-    let resource_record = r#"type Wrap { inner Str }
-fn main() int {
-    let b Wrap = Wrap("x")
-    return b.inner.len()
-}"#;
+    let resource_record = "type Wrap { inner Str }\nfn main() int {\n    let b Wrap = Wrap(\"x\")\n    return b.inner.len()\n}";
     let compiled = compile_case("RES_REC", resource_record, Prof::TextRecord);
-    let err = SemanticView::from_checked(&compiled.checked)
-        .and_then(|v| lower_program(&v, "main"))
-        .expect_err("resource record must reject");
-    assert!(
-        err.code.starts_with("a2x."),
-        "named rejection, got {err}"
-    );
-
-    let mut_text = "fn f(mut s str) int { return s.len_bytes() }\nfn main() int { return f(\"ab\") }";
-    let compiled = compile_case("MUT_STR", mut_text, Prof::Text);
-    let err = SemanticView::from_checked(&compiled.checked)
-        .and_then(|v| lower_program(&v, "main"))
-        .expect_err("mut str param must reject");
-    assert_eq!(err.code, "a2x.param-mode");
+    let (view, program) = SemanticView::from_checked(&compiled.checked)
+        .and_then(|v| lower_program(&v, "main").map(|p| (v, p)))
+        .expect("resource records lower since T-04");
+    assert_eq!(program.records.len(), 1);
+    assert!(program.records[0].resource);
+    let _ = view;
 }
