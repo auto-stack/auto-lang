@@ -1,0 +1,17 @@
+# PLAN-902 a2r-hir record-text suite — the registered AX-B emit channel's
+# evidence set (ac-a2r/hir-record-text-emit-v1): the FOUR frozen required
+# sources (byte-exact ace-m1 originals, provenance ../ace-m1/src/) through
+# the real A2X record/text chain — R07 mut-param write-back, R08
+# static/view methods, T03 owned Str clone/move/concat with planned
+# cleanup, T05 borrowed str full-byte eq/ne with NUL. Every included case is
+# green by real execution on the current tree; the scalar a2r-hir-892 suite
+# and the old ace-m1 denominator are untouched (parallel channels).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2r-hir-record-text-902", include: [
+  "R07.case.ad",
+  "R08.case.ad",
+  "T03.case.ad",
+  "T05.case.ad",
+] }
+```

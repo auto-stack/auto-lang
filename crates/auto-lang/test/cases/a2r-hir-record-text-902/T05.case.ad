@@ -1,0 +1,30 @@
+# PLAN-902 a2r-hir record-text — T05 (frozen ace-m1 bytes, provenance
+# ../ace-m1/src/T05.at, sha256 84541676…): borrowed `str` literals with an
+# embedded NUL; `==`/`!=` compare the FULL bytes with no normalization
+# ("A\0B" != "A", "A\0B" == "A\0B"). Pure views — no allocation, empty
+# resource plan. Oracle 42.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-record-text-902.t05"
+  tags: ["a2r-hir", "record-text", "borrowed-text", "nul"]
+  links: ["PLAN-902", "PLAN-894"]
+  source: { file: "src/T05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-T05/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-T05/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-T05/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-T05/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

@@ -27,11 +27,17 @@ use std::process::Command;
 
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::SemanticView;
-use ace_a2x_rust::{assemble_file_set, lower_program};
-use ace_core::source::{compile_scalar_source, compile_source};
+use ace_a2x_rust::{assemble_file_set, assemble_record_text_file_set, lower_program};
+use ace_core::source::{
+    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
+    compile_text_source,
+};
 
 const PROTOCOL: &str = "a2xworker/1";
 const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
+/// PLAN-902: the record/text/text-record channel — parallel to (and
+/// mutually untrusted with) the scalar recipe above.
+const RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
 
 fn main() {
     let mut req = String::new();
@@ -63,12 +69,12 @@ fn fail(detail: &str) -> ! {
     std::process::exit(2);
 }
 
-fn ok_base() -> serde_json::Value {
+fn ok_base(recipe: &str) -> serde_json::Value {
     serde_json::json!({
         "status": "ok",
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
-        "recipe": RECIPE,
+        "recipe": recipe,
     })
 }
 
@@ -79,6 +85,7 @@ fn identity() -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
+        "recipes": [RECIPE, RT_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
@@ -124,15 +131,15 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
                 .collect()
         })
         .unwrap_or_default();
-    let scalar = match profile.as_str() {
-        "core" => false,
-        "scalar" => true,
+    // The profile selects BOTH the frontend entry and the recipe channel
+    // (PLAN-902: record/text/text-record ride the record-text fileset).
+    let compiled = match profile.as_str() {
+        "core" => compile_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_source(&src, "a2x-worker", &caps),
+        "record" => compile_record_source(&src, "a2x-worker", &caps),
+        "text" => compile_text_source(&src, "a2x-worker", &caps),
+        "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
         other => fail(&format!("unknown source profile `{}`", other)),
-    };
-    let compiled = if scalar {
-        compile_scalar_source(&src, "a2x-worker", &caps)
-    } else {
-        compile_source(&src, "a2x-worker", &caps)
     };
     let compiled = match compiled {
         Ok(c) => c,
@@ -154,14 +161,34 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         Err(r) => fail(&format!("lowering: {}", r)),
     };
     let entry_fn = program.entry.clone();
-    let fs = assemble_file_set(&view, &program, &compiled.input_hash, &entry);
+    let (files, manifest) = if is_rt_profile(&profile) {
+        let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, &entry);
+        (fs.files, fs.manifest)
+    } else {
+        let fs = assemble_file_set(&view, &program, &compiled.input_hash, &entry);
+        (fs.files, fs.manifest)
+    };
     EmitOutcome {
-        files: fs.files,
-        manifest: fs.manifest,
+        files,
+        manifest,
         input_hash: compiled.input_hash,
         entry_fn,
         profile: view.profile.to_string(),
         source_sha256,
+    }
+}
+
+/// Whether the profile rides the PLAN-902 record-text channel.
+fn is_rt_profile(profile: &str) -> bool {
+    matches!(profile, "record" | "text" | "text-record")
+}
+
+/// The recipe this profile's responses must echo.
+fn recipe_of_profile(profile: &str) -> &'static str {
+    if is_rt_profile(profile) {
+        RT_RECIPE
+    } else {
+        RECIPE
     }
 }
 
@@ -195,9 +222,10 @@ fn daily_emit(v: &serde_json::Value) -> serde_json::Value {
         .as_str()
         .unwrap_or_else(|| fail("out_dir required"));
     let nonce = v["nonce"].as_str().unwrap_or("");
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
     let out = emit(v);
     write_out_dir(out_dir, &out);
-    let mut r = ok_base();
+    let mut r = ok_base(recipe_of_profile(&profile));
     r["mode"] = "daily-emit".into();
     r["nonce"] = nonce.into();
     r["profile"] = out.profile.clone().into();
@@ -240,6 +268,8 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
         other => fail(&format!("oracle_kind must be value|trap, got {other}")),
     };
     let case_id = v["case_id"].as_str().unwrap_or("a2r-hir-892/unnamed");
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let rt = is_rt_profile(&profile);
     let out = emit(v);
     write_out_dir(out_dir, &out);
     let dir = PathBuf::from(out_dir);
@@ -259,7 +289,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let (reference_out, reference_err) = compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
     let reference_wall_ms = t1.elapsed().as_millis() as u64;
 
-    let mut r = ok_base();
+    let mut r = ok_base(recipe_of_profile(&profile));
     r["mode"] = "certify".into();
     r["case"] = case_id.into();
     r["actual_observed"] = actual_out.clone().into();
@@ -283,11 +313,17 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     }
 
     // the strict certificate draft binds the full actual file set, the
-    // reference bytes and the OBSERVED toolchain identity
+    // reference bytes and the OBSERVED toolchain identity (schema/recipe
+    // follow the profile's channel)
     let vv = toolchain_vv();
+    let (cert_schema, cert_recipe) = if rt {
+        (ace_a2x_rust::RT_CERT_SCHEMA, ace_a2x_rust::RT_RECIPE)
+    } else {
+        (ace_a2x_rust::CERT_SCHEMA, ace_a2x_rust::RECIPE)
+    };
     let cert = ace_a2x_rust::CertDraft {
-        schema: ace_a2x_rust::CERT_SCHEMA,
-        recipe: ace_a2x_rust::RECIPE,
+        schema: cert_schema,
+        recipe: cert_recipe,
         case: case_id.to_string(),
         profile: out.profile.clone(),
         hir_domain: {
@@ -343,7 +379,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
             })
             .unwrap_or_default(),
     };
-    if let Err(e) = cert.validate() {
+    if let Err(e) = cert.validate_as(cert_schema, cert_recipe) {
         fail(&format!("certificate draft invalid: {e}"));
     }
     let cert_json = cert.to_json();
@@ -356,11 +392,18 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     r
 }
 
-fn domain_of(profile: &str) -> String {
-    if profile.contains("scalar") {
-        "scalar-i32-draft".to_string()
-    } else {
-        "core-i32-draft".to_string()
+/// HIR domain text of a VIEW profile id (`auto.source.<p>.draft`).
+fn domain_of(view_profile: &str) -> String {
+    let short = view_profile
+        .strip_prefix("auto.source.")
+        .and_then(|s| s.strip_suffix(".draft"))
+        .unwrap_or("core");
+    match short {
+        "scalar" => "scalar-i32-draft".to_string(),
+        "record" => "record-i32-draft".to_string(),
+        "text" => "text-i32-draft".to_string(),
+        "text-record" => "text-record-i32-draft".to_string(),
+        _ => "core-i32-draft".to_string(),
     }
 }
 

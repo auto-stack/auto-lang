@@ -1075,9 +1075,12 @@ fn decode_check(
     };
 
     let console_recipe = options.probe_recipe.as_deref() == Some("ac-av/console-run-v1");
-    // PLAN-892: the a2x emit recipe judges the four-file ACTUAL SET as
-    // byte goldens — the only probe recipe with an artifacts channel.
-    let a2x_recipe = options.probe_recipe.as_deref() == Some("ac-a2r/hir-scalar-emit-v1");
+    // PLAN-892/902: the a2x emit recipes judge the four-file ACTUAL SET as
+    // byte goldens — the only probe recipes with an artifacts channel.
+    let a2x_recipe = matches!(
+        options.probe_recipe.as_deref(),
+        Some("ac-a2r/hir-scalar-emit-v1") | Some("ac-a2r/hir-record-text-emit-v1")
+    );
     let expect = decode_expect(
         f.req("expect")?,
         &f.path_of("expect"),
@@ -1560,8 +1563,10 @@ fn decode_options(
                             "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
                             // PLAN-892: the daily emit is a single run step
                             // (edit/restart sessions arrive with their own
-                            // contract when the session face lands).
-                            "ac-a2r/hir-scalar-emit-v1" => matches!(op.as_str(), "run"),
+                            // contract when the session face lands). The
+                            // PLAN-902 record-text recipe shares the shape.
+                            "ac-a2r/hir-scalar-emit-v1"
+                            | "ac-a2r/hir-record-text-emit-v1" => matches!(op.as_str(), "run"),
                             _ => op != "run",
                         };
                         if !allowed {
@@ -2056,24 +2061,30 @@ fn decode_options(
                 }
             };
 
-            // PLAN-892: ac-a2r/hir-scalar-emit-v1 binding (same seam
-            // contract as mn — required for its recipe, invalid elsewhere).
+            // PLAN-892/902: the a2x_hir binding (same seam contract as mn —
+            // required for its recipe, invalid elsewhere). The scalar recipe
+            // keeps its core/scalar profiles; the record-text recipe admits
+            // record/text/text-record (strictly disjoint).
+            let is_a2x_recipe = matches!(
+                recipe.as_str(),
+                "ac-a2r/hir-scalar-emit-v1" | "ac-a2r/hir-record-text-emit-v1"
+            );
             let a2x_hir = match f.sub("a2x_hir") {
                 None => {
-                    if recipe.as_str() == "ac-a2r/hir-scalar-emit-v1" {
+                    if is_a2x_recipe {
                         return Err(err(
                             &f.path_of("a2x_hir"),
-                            "ac-a2r/hir-scalar-emit-v1 requires an a2x_hir binding",
+                            format!("{} requires an a2x_hir binding", recipe),
                         ));
                     }
                     None
                 }
                 Some(v) => {
-                    if recipe.as_str() != "ac-a2r/hir-scalar-emit-v1" {
+                    if !is_a2x_recipe {
                         return Err(err(
                             &f.path_of("a2x_hir"),
                             format!(
-                                "the a2x_hir binding belongs to ac-a2r/hir-scalar-emit-v1; it is not valid for recipe {:?}",
+                                "the a2x_hir binding belongs to the a2x emit recipes; it is not valid for recipe {:?}",
                                 recipe
                             ),
                         ));
@@ -2082,10 +2093,19 @@ fn decode_options(
                     let pairs = as_obj(v, &hpath)?;
                     let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps"])?;
                     let profile = req_str(&hf, "profile")?;
-                    if !matches!(profile.as_str(), "core" | "scalar") {
+                    let profile_ok = match recipe.as_str() {
+                        "ac-a2r/hir-scalar-emit-v1" => {
+                            matches!(profile.as_str(), "core" | "scalar")
+                        }
+                        _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
+                    };
+                    if !profile_ok {
                         return Err(err(
                             &hf.path_of("profile"),
-                            format!("a2x_hir profile must be core|scalar, got {:?}", profile),
+                            format!(
+                                "a2x_hir profile {:?} is not valid for recipe {:?}",
+                                profile, recipe
+                            ),
                         ));
                     }
                     let entry = req_str(&hf, "entry")?;
@@ -2157,6 +2177,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-892: the A2X Checked-HIR -> Rust emit recipe (prebuilt worker,
     // daily spawn-zero emit + parent-side golden judging).
     "ac-a2r/hir-scalar-emit-v1",
+    // PLAN-902: the record/text/text-record A2X emit recipe — the same
+    // prebuilt worker and seam contract, riding the record-text fileset.
+    "ac-a2r/hir-record-text-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.
@@ -2282,8 +2305,9 @@ pub struct ProbeMnTypedSpec {
 }
 
 /// PLAN-892 ac-a2r/hir-scalar-emit-v1 binding: the explicit source
-/// profile (core/scalar), entry function name and declared capabilities
-/// the prebuilt a2x worker compiles the case source under.
+/// profile (core/scalar for the scalar recipe; record/text/text-record
+/// for the record-text recipe), entry function name and declared
+/// capabilities the prebuilt a2x worker compiles the case source under.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeA2xHirSpec {
     pub profile: String,

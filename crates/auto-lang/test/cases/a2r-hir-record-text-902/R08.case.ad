@@ -1,0 +1,30 @@
+# PLAN-902 a2r-hir record-text — R08 (frozen ace-m1 bytes, provenance
+# ../ace-m1/src/R08.at, sha256 b2ea23e7…): a static constructor method and
+# a view instance method on a nominal record; the receiver is params[0],
+# evaluated exactly once (BorrowView at the call site), method identity is
+# owner-qualified (`mt_Counter_new`/`mt_Counter_read`). Oracle 42.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-record-text-902.r08"
+  tags: ["a2r-hir", "record-text", "record", "method"]
+  links: ["PLAN-902", "PLAN-881"]
+  source: { file: "src/R08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "record", entry: "main" },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-R08/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-R08/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-R08/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-R08/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

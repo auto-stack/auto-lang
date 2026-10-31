@@ -36,6 +36,10 @@ use super::avm::Verdict;
 use auto_test_case::report::Status;
 
 pub const A2R_HIR_RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
+/// PLAN-902: the record/text/text-record emit recipe — the same prebuilt
+/// worker, adapter contracts and parent-side judging as the scalar
+/// channel; the worker derives the channel from the case's profile.
+pub const A2R_RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
 pub const A2X_WORKER_PROTOCOL: &str = "a2xworker/1";
 pub const A2X_WORKER_ENV: &str = "AC_A2X_HIR_WORKER";
 /// F-2 (review): OPTIONAL pinned content credential for the prebuilt
@@ -107,11 +111,19 @@ pub fn run_check(
     let started = Instant::now();
     if case.spec.source.syntax != Syntax::Auto {
         return Err(format!(
-            "{A2R_HIR_RECIPE} consumes auto source files; syntax {:?} is not accepted",
+            "{} consumes auto source files; syntax {:?} is not accepted",
+            A2R_HIR_RECIPE,
             case.spec.source.syntax.as_str()
         ));
     }
-    if check.options.probe_recipe.as_deref() != Some(A2R_HIR_RECIPE) {
+    // PLAN-902: both a2x emit recipes ride this adapter; the case's recipe
+    // is the identity the worker must echo back.
+    let recipe = check
+        .options
+        .probe_recipe
+        .as_deref()
+        .ok_or("probe check without a recipe (contract violation)")?;
+    if recipe != A2R_HIR_RECIPE && recipe != A2R_RT_RECIPE {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     let binding = check
@@ -126,7 +138,7 @@ pub fn run_check(
         .ok_or("probe check without steps (contract violation)")?;
     if steps.len() != 1 || !matches!(steps[0], ProbeStep::Run) {
         return Err(format!(
-            "{A2R_HIR_RECIPE} takes exactly one `run` step (the daily emit); other step shapes arrive with their own contract"
+            "{recipe} takes exactly one `run` step (the daily emit); other step shapes arrive with their own contract"
         ));
     }
     let source_bytes = case
@@ -201,9 +213,10 @@ pub fn run_check(
             ..Verdict::pass()
         });
     }
-    // Identity echo (trust but verify).
+    // Identity echo (trust but verify): the worker must have served the
+    // case's own recipe channel.
     if resp["protocol"].as_str() != Some(A2X_WORKER_PROTOCOL)
-        || resp["recipe"].as_str() != Some(A2R_HIR_RECIPE)
+        || resp["recipe"].as_str() != Some(recipe)
     {
         return Ok(Verdict {
             status: Status::Error,
@@ -311,7 +324,7 @@ pub fn run_check(
             Ok(v)
         }
         other => Err(format!(
-            "{A2R_HIR_RECIPE} daily checks declare success completions only (got {:?}); the trap/diagnostic axes are certification-leg observations",
+            "{recipe} daily checks declare success completions only (got {:?}); the trap/diagnostic axes are certification-leg observations",
             other
         )),
     }

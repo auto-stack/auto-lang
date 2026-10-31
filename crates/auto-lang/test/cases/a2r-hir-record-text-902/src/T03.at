@@ -1,0 +1,7 @@
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "中"
+    return a.len() * 10 + c.len()
+}

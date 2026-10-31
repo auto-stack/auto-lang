@@ -780,10 +780,13 @@ fn dispatch_check(
                 run_dir,
             )
         }
-        // PLAN-892: the A2X Checked-HIR -> Rust emit recipe (prebuilt
-        // worker, daily spawn-zero, parent-side golden judging).
+        // PLAN-892/902: the A2X Checked-HIR -> Rust emit recipes (prebuilt
+        // worker, daily spawn-zero, parent-side golden judging) — the
+        // scalar channel and the record-text channel share the adapter.
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_HIR_RECIPE) =>
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_a2r_hir::A2R_HIR_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_RT_RECIPE) =>
         {
             ac_a2r_hir::run_check(
                 resolved,

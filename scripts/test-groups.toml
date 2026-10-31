@@ -1119,6 +1119,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/text-source-894.suite.ad"
 all = false
 
 [[group]]
+name = "case-a2r-hir-record-text-902"
+title = "TestCase a2x record/text emit daily golden oracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2r-hir-record-text-902/a2r-hir-record-text-902.suite.ad"
+all = false
+
+[[group]]
 name = "auto-generation-core"
 title = "共享生成核心完整包（Web与非HTTP消费者）"
 runner = "nextest"
