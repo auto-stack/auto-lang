@@ -349,7 +349,8 @@ mod tests {
             ("u64", ShimType::I64),
             ("f64", ShimType::F64),
             ("bool", ShimType::Bool),
-            ("String", ShimType::CString),
+            // 按值 String 走 CStringOwned(所有权转移,PLAN-592);&str 仍 CString
+            ("String", ShimType::CStringOwned),
             ("&str", ShimType::CString),
             ("()", ShimType::Void),
         ];

@@ -464,7 +464,7 @@ impl HostCb {
         })).collect::<Vec<_>>(),
         "skips": skips.iter().map(|s| serde_json::json!({
             "type": s.type_name, "method": s.method, "reason": s.reason,
-        })).chain(free_fns.iter().filter(|f| f.generic).map(|f| serde_json::json!({
+        })).chain(free_fns_raw.iter().filter(|f| f.generic && !mono.get(&f.method).is_some_and(|l| !l.is_empty())).map(|f| serde_json::json!({
             "type": "", "method": f.method, "reason": "generic free fn (430 review): no monomorphization available",
         }))).collect::<Vec<_>>(),
     });
@@ -1153,6 +1153,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &crate::classify::MonoInstances::new(),
         );
         assert_eq!(fp.len(), 16);
         assert!(files.lib_rs.contains("auto_Counter_new_s_p"));
@@ -1248,7 +1249,7 @@ mod tests {
             field: None,
             trait_name: None,
         };
-        let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()], &[], &[]);
+        let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()], &[], &[], &crate::classify::MonoInstances::new());
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();
         let names: Vec<&str> = man.functions.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, vec!["add_one"], "泛型自由函数必须被过滤");

@@ -757,6 +757,7 @@ name = \"fx\"
                     fallible: false,
                     nullable: false,
                     field: None,
+                    trait_name: None,
                 },
                 args: vec![],
                 ret: RetPlan::Void,
