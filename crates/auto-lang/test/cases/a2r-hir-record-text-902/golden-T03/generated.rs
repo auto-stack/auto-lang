@@ -6,20 +6,18 @@ use crate::a2x_runtime::*;
 
 // origin: 0..139 (def `fn_main`, byte span in the compiled source)
 pub fn fn_main() -> A2xResult<i32> {
-    let t0: A2xStr = a2x_str_from_lit("ab")?;
-    let mut l0_a: A2xStr = t0;
-    let t1: A2xStr = a2x_str_clone(l0_a.as_str())?;
-    let l1_b: A2xStr = t1;
+    let mut l0_a: A2xStr = a2x_str_from_lit("ab")?;
+    let l1_b: A2xStr = a2x_str_clone(l0_a.as_str())?;
     let mut l2_c: A2xStr = l1_b;
-    let t2: A2xStr = a2x_str_concat(l2_c.as_str(), "中")?;
+    let t0: A2xStr = a2x_str_concat(l2_c.as_str(), "中")?;
     a2x_str_free(&mut l2_c);
-    l2_c = t2;
-    let t3: i32 = a2x_str_len(l0_a.as_str())?;
-    let t4: i32 = a2x_mul(t3, 10)?;
-    let t5: i32 = a2x_str_len(l2_c.as_str())?;
-    let t6: i32 = a2x_add(t4, t5)?;
+    l2_c = t0;
+    let t1: i32 = a2x_str_len(l0_a.as_str())?;
+    let t2: i32 = a2x_mul(t1, 10)?;
+    let t3: i32 = a2x_str_len(l2_c.as_str())?;
+    let t4: i32 = a2x_add(t2, t3)?;
     a2x_str_free(&mut l2_c);
     a2x_str_free(&mut l0_a);
-    return Ok(t6);
+    return Ok(t4);
 }
 

@@ -671,7 +671,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
     fn lower_stmt(&mut self, s: &hir::Stmt, out: &mut Vec<RStmt>) -> Result<(), A2xReject> {
         match s {
             hir::Stmt::Let { local, value } => {
-                let (v, vty) = self.lower_move_value(*value, out)?;
+                let (v, vty) = self.lower_expr(*value, out)?;
                 let name = self.local_name(local.0)?;
                 let ty = self.local_ty(local.0)?;
                 // a str-binding initialized from an owner-repr value (a Str
@@ -691,7 +691,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 });
             }
             hir::Stmt::Return { value } => {
-                let (mut v, vty) = self.lower_move_value(*value, out)?;
+                // the FROZEN scalar shape renders a fallible return root
+                // inline (`return Ok(a2x_add(..)?);`) — self-pinning is
+                // reserved for the plan-driven case below
+                let (mut v, vty) = self.lower_expr(*value, out)?;
                 // a str result returning an owner-repr value (a Str field
                 // read) borrows it — provenance-verified
                 if matches!(self.facts.result, Ty::Str) && matches!(vty, Ty::StrOwned) {
@@ -751,9 +754,21 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     .places
                     .get(place.0 as usize)
                     .ok_or_else(|| A2xReject::new("a2x.internal", "place index out of range"))?;
-                let (v, vty) = self.lower_move_value(*value, out)?;
-                // a str local re-bound from an owner-repr value borrows it
                 let place_ty = self.view.resolve_use_ty(place.ty).unwrap_or(Ty::I32);
+                // replacement frees need the RHS MATERIALIZED before the
+                // old buffer dies — pin it first (an inline RHS would read
+                // the target after the free); otherwise the frozen shape
+                // keeps inline assignment (no self-pinning)
+                let has_replace = self
+                    .plan
+                    .and_then(|bp| bp.replace_frees.get(&(self.cur_block, self.cur_stmt)))
+                    .is_some_and(|b| !b.is_empty());
+                let (v, vty) = if has_replace {
+                    self.lower_move_value(*value, out)?
+                } else {
+                    self.lower_expr(*value, out)?
+                };
+                // a str local re-bound from an owner-repr value borrows it
                 let v = if matches!(place_ty, Ty::Str) && matches!(vty, Ty::StrOwned) {
                     self.as_str_form(v, vty)
                 } else {

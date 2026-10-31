@@ -21,9 +21,7 @@ pub fn mt_Counter_read<'a>(l0_self: &'a RecCounter) -> A2xResult<i32> {
 
 // origin: 122..195 (def `fn_main`, byte span in the compiled source)
 pub fn fn_main() -> A2xResult<i32> {
-    let t0: RecCounter = mt_Counter_new(42)?;
-    let l0_x: RecCounter = t0;
-    let t1: i32 = mt_Counter_read(&l0_x)?;
-    return Ok(t1);
+    let l0_x: RecCounter = mt_Counter_new(42)?;
+    return Ok(mt_Counter_read(&l0_x)?);
 }
 

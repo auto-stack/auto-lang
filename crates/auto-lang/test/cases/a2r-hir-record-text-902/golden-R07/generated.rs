@@ -11,17 +11,14 @@ pub struct RecCounter {
 
 // origin: 27..117 (def `fn_bump`, byte span in the compiled source)
 pub fn fn_bump<'a>(l0_x: &'a mut RecCounter, l1_delta: i32) -> A2xResult<i32> {
-    let t0: i32 = a2x_add(l0_x.f_value, l1_delta)?;
-    l0_x.f_value = t0;
+    l0_x.f_value = a2x_add(l0_x.f_value, l1_delta)?;
     return Ok(l0_x.f_value);
 }
 
 // origin: 118..225 (def `fn_main`, byte span in the compiled source)
 pub fn fn_main() -> A2xResult<i32> {
     let mut l0_x: RecCounter = RecCounter { f_value: 20 };
-    let t0: i32 = fn_bump(&mut l0_x, 1)?;
-    let l1_now: i32 = t0;
-    let t1: i32 = a2x_add(l1_now, l0_x.f_value)?;
-    return Ok(t1);
+    let l1_now: i32 = fn_bump(&mut l0_x, 1)?;
+    return Ok(a2x_add(l1_now, l0_x.f_value)?);
 }
 
