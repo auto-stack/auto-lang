@@ -88,3 +88,6 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 
 
 真实比较收据的 PID 不能单独视为进程生命期身份：同一次大集合执行中 Windows 可回收 PID。每次 Invocation 先用 create_new 原子保留 PID-sequence.claim，保留至整 trace 目录回收；仅 claim 的 AlreadyExists 分配下一序号，其余 I/O 直接失败。start/finish JSON 仍 create_new，重复事件、已有 JSON 无 claim 等情况不被吞掉；不改变 schema、原输入绑定或判定。
+
+
+合并并行不改变功能反控中的原墙钟/协议预算。完整nextest配置仅对三个具名短时限反控（native生命周期的cap/阻塞stdin、collections真实漏释放及实际整前端/降低/复制退化）保留本次test pool排他，使用num-test-threads随实际-j生效；普通组继续原并行。它不隔离其他会话，失败原收据保留，定向重放不能覆盖首次红，也不扩大时限或用笼统ERROR代替原fault物证。

@@ -94,6 +94,15 @@ class FixedGroups(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':str(foreign / 'target'),'CARGO_BUILD_RUSTC_WRAPPER':'../ours/target/wrapper.exe'})
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows drive-relative path contract')
+    def test_cleanup_rejects_drive_relative_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                with self.assertRaises(ValueError):
+                    build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':foreign.drive + 'relative-cache'})
+
     def setUp(self):
         self.value, self.groups = fixed.configuration()
 

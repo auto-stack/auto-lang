@@ -69,6 +69,8 @@ def foreign_compiler_scope(cwd, argv, environment):
     root_text = str(root).replace('\\', '/').casefold()
     def overlaps(path):
         path = Path(path)
+        if path.drive and not path.is_absolute():
+            raise ValueError('drive-relative process path ownership is unknown')
         path = (path if path.is_absolute() else cwd / path).resolve()
         return path == root or path.is_relative_to(root) or root.is_relative_to(path)
     if cwd == root or cwd.is_relative_to(root):

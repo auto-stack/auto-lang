@@ -61,3 +61,9 @@ test-group = "ffi-dual"
 [[profile.default.overrides]]
 filter = "test(/http/)"
 test-group = "fixed-http"
+
+# These three functional counter-controls assert the original short wall/IPC
+# deadlines. Reserve this invocation's pool; keep every assertion and budget.
+[[profile.default.overrides]]
+filter = "binary(=conformance) and (test(=native_lifecycle::r3_parent_io_lifecycle_overcap_and_deadline) or test(=tests::language_conformance::ace_m1_native_collections_actual_missing_free_turns_parent_red) or test(=tests::language_conformance::ace_m1_native_collections_real_whole_work_and_code_copy_turn_sdk_red))"
+threads-required = "num-test-threads"

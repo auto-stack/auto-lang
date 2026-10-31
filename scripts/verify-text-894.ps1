@@ -17,7 +17,7 @@
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-text-894.ps1 -Scope <scope>
 
-param([string]$Scope = 'acceptance')
+param([ValidateSet('source','resources','incremental','cache','contract','acceptance')][string]$Scope = 'acceptance')
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'test-governance/ace-cargo.ps1')
