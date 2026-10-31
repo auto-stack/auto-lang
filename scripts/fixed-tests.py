@@ -369,26 +369,16 @@ def main(argv=None):
     ap.add_argument('--out', type=Path)
     ap.add_argument('--ignored', action='store_true', help='explicit ignored-only manual replay')
     ap.add_argument('--test-name', help='optional native test navigation inside the selected groups')
-    ap.add_argument('--legacy-tier', choices=['t', 'tv', 'tt', 'tb', 'th', 'tf', 'taa', 'ta', 't3'])
     args = ap.parse_args(argv)
     value, groups = configuration()
     if args.list:
-        if args.groups or args.legacy_tier:
+        if args.groups:
             ap.error('--list takes no groups')
         for name in value.get('sets', {}):
             print(name + ': ACE常规自动测试（独立workspace及语言私有协议桥接）')
         for name, g in groups.items():
             print(name + ': ' + g['title'])
         return 0
-    if args.legacy_tier:
-        # Transition names now navigate fixed native groups, never old leaves.
-        fixed = {'t': ['daily'], 'tv': ['legacy-tv'], 'tt': ['legacy-tt'], 'tb': ['legacy-tb'],
-                 'th': ['legacy-th'], 'tf': ['all'], 'taa': ['aavm'], 'ta': ['all'], 't3': ['all']}
-        if args.groups:
-            if len(args.groups) != 1:
-                ap.error('legacy navigation accepts one optional test-name filter')
-            args.test_name = args.groups[0]
-        args.groups = fixed[args.legacy_tier]
     try:
         owned_target_override()
     except ValueError as error:

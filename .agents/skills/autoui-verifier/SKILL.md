@@ -122,7 +122,7 @@ python scripts/tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
 ### 步骤 4：分级门禁与合入规范 (Change-Scoped Gating)
 严格遵循 AGENTS.md 的测试纪律，杜绝无谓测试开销：
 - **纯验证 / 资产 / 计划跟踪任务**：未修改 `crates/` 下 Rust 源码时，**严禁运行 `cargo t` 和 `docs_gen`**，完成双端截图核验与计划矩阵更新后直接合入。
-- **局部 Rust 代码修改任务**：开发调试使用 `cargo check -p auto-lang`，验证使用 `cargo tm` 的受影响完整模块及消费者并集；UI owner 模块在 auto-ui 仓执行。
+- **局部 Rust 代码修改任务**：开发调试使用 `cargo check -p auto-lang`，验证使用 `cargo t <固定组>` 的受影响完整组并集（PLAN-896；tm 已随 PLAN-898 退役）；UI owner 组在 auto-ui 仓执行。
 - **修改文档生成器/Schema定义/语法参考时**：才执行 `cargo test -p auto-lang --test docs_gen`。
 
 ---

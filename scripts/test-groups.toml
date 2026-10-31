@@ -633,18 +633,6 @@ domain = "ace"
 all = true
 
 [[group]]
-name = "infra-modules"
-title = "治理 scripts/tests/test_module_selection.py"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/tests/test_module_selection.py"
-all = true
-
-[[group]]
 name = "infra-meter"
 title = "治理 scripts/tests/test_native_meter.py"
 runner = "python"
@@ -666,18 +654,6 @@ expression = "all()"
 tools = []
 domain = "legacy"
 file = "scripts/tests/test_case_pilot_cli.py"
-all = true
-
-[[group]]
-name = "infra-regression"
-title = "治理 scripts/test_full_regression.py"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/test_full_regression.py"
 all = true
 
 [[group]]
@@ -1023,66 +999,6 @@ expression = "all()"
 tools = []
 domain = "ace"
 all = true
-
-[[group]]
-name = "infra-purpose"
-title = "历史用途审计治理"
-runner = "python"
-workspace = "."
-args = []
-expression = "all()"
-tools = []
-domain = "legacy"
-file = "scripts/tests/test_test_purpose_policy.py"
-all = true
-
-[[group]]
-name = "legacy-tv"
-title = "旧入口固定配置兼容 legacy-tv"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "--lib", "--profile", "tv", "--features", "test-cases"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-tt"
-title = "旧入口固定配置兼容 legacy-tt"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-trans,auto-lang/test-cases"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-tb"
-title = "旧入口固定配置兼容 legacy-tb"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features", "auto-lang/test-book"]
-expression = "all()"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
-
-[[group]]
-name = "legacy-th"
-title = "旧入口固定配置兼容 legacy-th"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lang", "--lib", "--features", "test-http-e2e"]
-expression = "test(http_e2e)"
-tools = []
-domain = "legacy"
-respect_default_filter = true
-all = false
 
 [[group]]
 name = "stdlib"

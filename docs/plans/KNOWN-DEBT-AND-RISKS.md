@@ -3767,3 +3767,10 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 
 - **865-N1 (INFO)**: PLAN-865 deliberately rejects shared-mutable and recursive captures, and keeps async/cross-thread/persistent closure behavior outside r2. C-19 remains open if existing consumers need shared mutation; K06 records `gap:R5-O` and the capability matrix assigns that decision to R5-O. This does not block r2, whose contract requires named rejection. R5-O must inventory existing consumers and record the support contract or an evidence-based continued exclusion.
 - **865-N2 (INFO)**: Collection-method HOF APIs such as `map/filter/reduce` remain outside r2 because they require library/method dispatch; §10 points to a future R3-H/stdlib slice. Defaults, variadics, and named function-item values also remain outside this closure delivery per C-11/C-18. Future planning must define those interfaces and their source-to-runtime acceptance oracles; closure parameter/return support does not imply their delivery.
+
+## PLAN-898（2026-10-31 tm/tier 清退时登记，非阻塞）
+
+- **898-N1 (INFO)**：`scripts/\`（字面反斜杠名目录，未跟踪）与 `docs/specs/\` 是历史退役脚本的本地垃圾堆，含 measure-first-wave/partition_policy/verify-* 等旧副本与对已删 ace-cargo.ps1 的唯一引用；因未跟踪不属本计划 git 面，建议本地维护时整体删除（删除前无 contained 唯一内容需抢救——同名文件在 scripts/ 正式位置均有现行版本或已随 898 删除）。
+- **898-N2 (INFO)**：`scripts/test-governance/ace-cargo.ps1` 零静态消费者（唯一引用在 898-N1 垃圾堆），作为 896 过渡期 verify argv 手动适配器保留；若后续两周无手动使用记录可删。
+- **898-N3 (INFO)**：主检出存在未跟踪草稿 `docs/plans/893-ace-test-framework-and-slow-case-attribution.md`（未提交，worktree 不可见），其验证面引用已删的 cargo tm；后续若激活 893 须先重基底到 `cargo t` 固定组范式。
+- **898-N4 (INFO)**：`scripts/pre-split-universe/`、`split-closure.py`、`split-golden-ledger.py` 等 850/867 拆分账本工具随基线文件删除失去守恒对象，但属 867 归档证据链组成部分，保留不动；其语义记录在归档计划 867。

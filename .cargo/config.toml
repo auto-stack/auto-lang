@@ -1,9 +1,9 @@
 # PLAN-896: cargo t <fixed-group> [...]; cargo t all is the explicit full union.
 # Cargo packages and Rust module paths define groups; no leaf discovery graph.
 # cargo t --list reads static group names without compiling.
-# tv/tt/tb/th retain native tier configurations until 2026-11-30.
 # Optional test-name filters navigate within explicitly selected fixed groups.
-# tf/taa/ta/t3 retain periodic/milestone conditions and external owner references.
+# PLAN-898: tm 与全部旧档别名（tv/tt/tb/th/tf/taa/ta/t3）已退役删除；
+# 周期批量回归 = cargo t all（收据见 docs/plans/.last-batch-regression.json）。
 # UI tu belongs to auto-ui; there is no language-side tu alias.
 
 [target.x86_64-pc-windows-msvc]
@@ -30,16 +30,8 @@ jobs = 12
 
 [alias]
 # PLAN-896: explicit fixed groups; all is opt-in. Old tm IDs are retired.
-tm = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm"
+# PLAN-898: single entry; legacy tier aliases removed.
 t = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test"
-tv = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tv"
-tt = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tt"
-tb = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier tb"
-th = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- test --legacy-tier th"
-tf = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tf"
-taa = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- taa"
-ta = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- ta"
-t3 = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- t3"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
 # 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高
