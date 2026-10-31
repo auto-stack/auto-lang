@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-897
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived              # delivered via a25e67983 + probe fixes
 feature_name: VM zip native三件套（list_json/read_text/extract_entry）
 author: [Codex]
 created_at: 2026-10-31
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-vm/zip-natives.md]
 touched_goals: []
 affects: [auto-vm]
 depends_on: []
-current_step: 0
+current_step: 6
 total_steps: 6
 base_commit: c260cd966
 consumer: READER-003（auto-reader 仓，blocked on N-003-1..6）
@@ -173,7 +173,7 @@ stage: work | plan_id: PLAN-897 | plan_revision: 1 | outcome: pass（T-01..T-04 
 
 stage: review | plan_id: PLAN-897 | review_scope: final | reviewed_plan_revision: 1 | reviewer_identity/limitations: 同会话独立复审（沿 001 先例，以工件重建保证独立性——重放测试/重读 diff/基线对照） | outcome: **pass（→ reviewed）** | evidence: 冻结 HEAD c6ee4afbd 上重放 plan897 3/3；diff 面=计划授权面（zip_io.rs/stdlib.rs+2/Cargo.toml+1/stdlib 两声明/规格/探针/Cargo.lock）；native_id 相关既有测试全绿；N-003 缺陷目录与本包无交集（三函数全标量/String 返回） | AC-01..03 work 侧全过；AC-04 通过
 
-stage: merge | plan_id: PLAN-897 | outcome: pass（→ archived 待 landing 记录） | merge_commit: a25e67983（master） | 交付物: 新 auto.exe（auto-man 重建，SHA256 见下）+ zip natives 三件套 + 规格 + 探针 | READER-003 解除条件核对: framework-gap.md 选项 B 交付项=zip native 可用 ✅ | landing: 待补
+stage: merge | plan_id: PLAN-897 | outcome: pass（archived） | merge_commit: a25e67983（master， natives）→ 817dcb? 见 git log（探针修正合并） | 交付物: 新 auto.exe = D:/autostack/auto-man/target/debug/auto.exe SHA256 706d13f56277fc70913571bee675b554a3d08e4809d67953fe4d8ed5a2310543（auto-man path-dep 指向 auto-lang 主检出，重建即含 natives；版本串仍为 0.1.0+v0.0.20-118-ge6cc06f——auto-man 版本戳不随依赖变化）+ zip natives 三件套 + 规格 docs/specs/auto-vm/zip-natives.md + 探针 | VM 轨端到端: plan897_zip_probe 22/22 PASS exit 0（Z-01..Z-04；Z-05 模块上下文由 READER-003 消费集成承担） | 过程补录: expr_ident 模块白名单需登记 "zip"（裸模块调用解析，2 处 matches!）；json.parse 数组 len() 为在册缺陷 F-8（探针改 for-in 计数） | READER-003 解除条件核对: framework-gap.md 选项 B 交付项=zip native 可用 ✅ | landing: probe exit 0 = PASS（2026-10-31）
 
 ## 10. 待澄清事项
 
