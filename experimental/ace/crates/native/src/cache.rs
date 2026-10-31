@@ -94,10 +94,9 @@ impl CoffMeta {
                 "typed runtime ABI mismatch".into(),
             ));
         }
-        let f = unit
-            .funcs
-            .first()
-            .ok_or_else(|| MnError::Unsupported("unit-shape", "typed unit has no function".into()))?;
+        let f = unit.funcs.first().ok_or_else(|| {
+            MnError::Unsupported("unit-shape", "typed unit has no function".into())
+        })?;
         Ok(CoffMeta {
             owner: unit.owner.clone(),
             unit: f.name.clone(),
@@ -109,7 +108,8 @@ impl CoffMeta {
             backend: MN_BACKEND_TAG.to_string(),
             runtime: format!(
                 "{};transport=mn891.typed.frames/v1;library={}",
-                crate::config::TYPED_RUNTIME_TAG, runtime.content_hash
+                crate::config::TYPED_RUNTIME_TAG,
+                runtime.content_hash
             ),
             mir_schema: MIR_SCHEMA_AXIS.to_string(),
             mir_semantics: MIR_SEMANTICS_AXIS.to_string(),

@@ -1109,11 +1109,11 @@ mod typed_case_run {
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
+    use ace_artifacts::store::ManagedStore;
     use ace_native::typed_entry::{self, TypedArg, TypedKind, TypedOutcome};
     use ace_native::typed_fixture::{self, FixtureDoc};
     use ace_native::typed_pipeline::{self, TypedCacheMode};
     use ace_native::typed_session::TypedSession;
-    use ace_artifacts::store::ManagedStore;
     use std::io::{BufRead, Write};
     use std::path::PathBuf;
     use std::process::ExitCode;
@@ -1133,7 +1133,8 @@ mod typed_case_run {
         });
         match &run.outcome {
             TypedOutcome::Value { kind_code, bits } => {
-                t["kind"] = serde_json::json!(typed_entry::kind_label_of(*kind_code).unwrap_or("?"));
+                t["kind"] =
+                    serde_json::json!(typed_entry::kind_label_of(*kind_code).unwrap_or("?"));
                 t["bits"] = serde_json::json!(typed_entry::canonical_hex(*kind_code, *bits));
             }
             TypedOutcome::Trap { reason }
@@ -1168,7 +1169,9 @@ mod typed_case_run {
             return Ok(out);
         };
         for pair in list {
-            let arr = pair.as_array().ok_or("arg entry is not a [kind,bits] pair")?;
+            let arr = pair
+                .as_array()
+                .ok_or("arg entry is not a [kind,bits] pair")?;
             if arr.len() != 2 {
                 return Err("arg entry is not a [kind,bits] pair".into());
             }
@@ -1189,10 +1192,19 @@ mod typed_case_run {
         };
         use base64::Engine as _;
         let Some(fixture_b64) = req.get("typed_fixture_b64").and_then(|v| v.as_str()) else {
-            return fail(echo, "mn.worker.request", "missing typed_fixture_b64".into());
+            return fail(
+                echo,
+                "mn.worker.request",
+                "missing typed_fixture_b64".into(),
+            );
         };
-        let Ok(fixture_bytes) = base64::engine::general_purpose::STANDARD.decode(fixture_b64) else {
-            return fail(echo, "mn.worker.request", "typed_fixture_b64 is not valid base64".into());
+        let Ok(fixture_bytes) = base64::engine::general_purpose::STANDARD.decode(fixture_b64)
+        else {
+            return fail(
+                echo,
+                "mn.worker.request",
+                "typed_fixture_b64 is not valid base64".into(),
+            );
         };
         let doc = match typed_fixture::parse_fixture(&fixture_bytes) {
             Ok(d) => d,
@@ -1207,11 +1219,17 @@ mod typed_case_run {
             Ok(a) => a,
             Err(m) => return fail(echo, "mn.worker.request", m),
         };
-        let store_root = req.get("store_root").and_then(|v| v.as_str()).unwrap_or_default();
+        let store_root = req
+            .get("store_root")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if store_root.is_empty() {
             return fail(echo, "mn.worker.request", "missing store_root".into());
         }
-        let workdir = req.get("workdir").and_then(|v| v.as_str()).unwrap_or_default();
+        let workdir = req
+            .get("workdir")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if workdir.is_empty() {
             return fail(echo, "mn.worker.request", "missing workdir".into());
         }
@@ -1303,14 +1321,19 @@ mod typed_case_run {
             Ok(s) => s,
             Err(e) => {
                 let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
-                r["error"] = serde_json::json!({"code": "mn.worker.store", "message": format!("{e:?}")});
+                r["error"] =
+                    serde_json::json!({"code": "mn.worker.store", "message": format!("{e:?}")});
                 respond(r);
                 return ExitCode::FAILURE;
             }
         };
         let _ = entry;
-        let mut session = match TypedSession::start(doc, &workdir, Some(store), TypedCacheMode::Reuse)
-        {
+        let mut session = match TypedSession::start(
+            doc,
+            &workdir,
+            Some(store),
+            TypedCacheMode::Reuse,
+        ) {
             Ok(s) => s,
             Err(e) => {
                 let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
@@ -1343,8 +1366,7 @@ mod typed_case_run {
                 Ok(v) => v,
                 Err(e) => {
                     let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL});
-                    r["error"] =
-                        serde_json::json!({"code": "mn.worker.request", "message": format!("bad op line: {e}")});
+                    r["error"] = serde_json::json!({"code": "mn.worker.request", "message": format!("bad op line: {e}")});
                     respond(r);
                     return ExitCode::FAILURE;
                 }
@@ -1355,7 +1377,8 @@ mod typed_case_run {
                     let args = match parse_args(op.get("args")) {
                         Ok(a) => a,
                         Err(m) => {
-                            let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
+                            let mut r =
+                                serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
                             r["error"] =
                                 serde_json::json!({"code": "mn.worker.request", "message": m});
                             respond(r);
@@ -1432,8 +1455,10 @@ mod typed_case_run {
                             }
                         },
                         Err(m) => {
-                            let mut r = serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
-                            r["error"] = serde_json::json!({"code": "mn.worker.request", "message": m});
+                            let mut r =
+                                serde_json::json!({"schema": MN_WORKER_PROTOCOL, "nonce": nonce});
+                            r["error"] =
+                                serde_json::json!({"code": "mn.worker.request", "message": m});
                             respond(r);
                             return ExitCode::FAILURE;
                         }

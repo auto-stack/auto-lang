@@ -339,7 +339,13 @@ pub fn run_deadlined_split(
     cmd: &mut Command,
     deadline: Duration,
 ) -> Result<(Option<i32>, String, String), SubprocError> {
-    let run = run_captured_inner(cmd, deadline, CaptureCaps::none(), job::JobGuard::for_child, None)?;
+    let run = run_captured_inner(
+        cmd,
+        deadline,
+        CaptureCaps::none(),
+        job::JobGuard::for_child,
+        None,
+    )?;
     Ok((
         run.exit_code,
         String::from_utf8_lossy(&run.stdout).to_string(),
@@ -415,7 +421,13 @@ pub fn run_deadlined_typed(
     caps: CaptureCaps,
     stdin_bytes: Vec<u8>,
 ) -> Result<CapturedRun, SubprocError> {
-    run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, Some(stdin_bytes))
+    run_captured_inner(
+        cmd,
+        deadline,
+        caps,
+        job::JobGuard::for_child,
+        Some(stdin_bytes),
+    )
 }
 
 /// Inner executor with an injectable containment factory so tests can

@@ -678,8 +678,7 @@ fn ace_m1_native_typed_891_sdk() {
     let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
         .join("test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad");
     let root = temp_root("typed-native-891");
-    let report =
-        run_suite(&suite, &root.join("out"), &Limits::defaults()).expect("891 typed SDK");
+    let report = run_suite(&suite, &root.join("out"), &Limits::defaults()).expect("891 typed SDK");
     let failures: Vec<_> = report
         .results
         .iter()
@@ -702,7 +701,8 @@ fn ace_m1_native_typed_891_sdk() {
 #[test]
 fn ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1/typed-native-891");
+    let suite =
+        PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1/typed-native-891");
     let root = temp_root("typed-native-891-negative");
     let corpus = root.join("corpus");
     copy_tree(&suite, &corpus);

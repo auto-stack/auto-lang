@@ -8,9 +8,7 @@
 //! supplementary equality observation.
 
 use ace_artifacts::store::ManagedStore;
-use ace_native::typed_entry::{
-    self, TypedArg, TypedOutcome, TypedSigPlan,
-};
+use ace_native::typed_entry::{self, TypedArg, TypedOutcome, TypedSigPlan};
 use ace_native::typed_fixture;
 use ace_native::typed_pipeline::{self, TypedCacheMode};
 
@@ -116,7 +114,10 @@ fn typed_probe_identity_distinguishes_high_bits_real_pe() {
         )
         .expect("typed run");
         match &run.outcome {
-            TypedOutcome::Value { kind_code, bits: got } => {
+            TypedOutcome::Value {
+                kind_code,
+                bits: got,
+            } => {
                 assert_eq!(typed_entry::canonical_hex(*kind_code, *got), *bits);
             }
             other => panic!("identity produced {other:?}"),
@@ -168,7 +169,10 @@ fn typed_probe_mixed_params_each_selection_real_pe() {
         )
         .expect("typed run");
         match &run.outcome {
-            TypedOutcome::Value { kind_code, bits: got } => {
+            TypedOutcome::Value {
+                kind_code,
+                bits: got,
+            } => {
                 assert_eq!(
                     typed_entry::canonical_hex(*kind_code, *got),
                     *bits,
@@ -276,7 +280,15 @@ fn typed_probe_value70_and_div_trap_are_distinct_real_pe() {
     let val70 = r#"{"schema":"mn-typed-fixture/1","module":"m891_v70","units":[{"name":"main","params":[],"result":"i32","body":[{"op":"const","dst":"t0","kind":"i32","bits":"46"}],"ret":"t0"}],"entry":"main"}"#;
     let m = fixture(val70);
     let run = typed_pipeline::run_typed(
-        &m, "main", &[], 0x8960, &dir, None, TypedCacheMode::Reuse, false, None,
+        &m,
+        "main",
+        &[],
+        0x8960,
+        &dir,
+        None,
+        TypedCacheMode::Reuse,
+        false,
+        None,
     )
     .expect("typed run");
     match &run.outcome {
@@ -304,7 +316,11 @@ fn typed_probe_value70_and_div_trap_are_distinct_real_pe() {
     match &run.outcome {
         TypedOutcome::Trap { reason } => {
             assert_eq!(*reason, typed_entry::TRAP_DIV_ZERO, "named div-by-zero");
-            assert_eq!(run.exit_code, Some(0), "trap frame exits 0 with status trap");
+            assert_eq!(
+                run.exit_code,
+                Some(0),
+                "trap frame exits 0 with status trap"
+            );
         }
         other => panic!("division by zero produced {other:?}"),
     }
@@ -323,8 +339,8 @@ fn typed_frame_codec_rejects_protocol_violations() {
         payload_len: 8,
         result: typed_entry::TypedKind::I64,
     };
-    let frame = typed_entry::encode_request(&plan, 42, &[arg("i64", "8000000000000000")])
-        .expect("encode");
+    let frame =
+        typed_entry::encode_request(&plan, 42, &[arg("i64", "8000000000000000")]).expect("encode");
     assert_eq!(frame.len(), plan.frame_len());
     // Argument-count mismatch.
     assert!(typed_entry::encode_request(&plan, 42, &[]).is_err());
@@ -389,8 +405,15 @@ fn typed_cache_fresh_hit_and_param_only_rerun() {
     let dir = workdir("cache");
 
     let run1 = typed_pipeline::run_typed(
-        &m, "main", &[arg("u64", "0000000000000001")], 1, &dir,
-        Some(&store), TypedCacheMode::Fresh, false, None,
+        &m,
+        "main",
+        &[arg("u64", "0000000000000001")],
+        1,
+        &dir,
+        Some(&store),
+        TypedCacheMode::Fresh,
+        false,
+        None,
     )
     .expect("fresh run");
     assert_eq!(run1.counters.emit_units, 1, "fresh emits its unit");
@@ -398,8 +421,15 @@ fn typed_cache_fresh_hit_and_param_only_rerun() {
     assert!(matches!(run1.outcome, TypedOutcome::Value { .. }));
 
     let run2 = typed_pipeline::run_typed(
-        &m, "main", &[arg("u64", "0000000000000001")], 2, &dir,
-        Some(&store), TypedCacheMode::Reuse, false, None,
+        &m,
+        "main",
+        &[arg("u64", "0000000000000001")],
+        2,
+        &dir,
+        Some(&store),
+        TypedCacheMode::Reuse,
+        false,
+        None,
     )
     .expect("hit run");
     assert_eq!(run2.counters.emit_units, 0, "hit reuses the unit COFF");
@@ -410,12 +440,22 @@ fn typed_cache_fresh_hit_and_param_only_rerun() {
     assert_eq!(run2.counters.link_invocations, 1);
 
     let run3 = typed_pipeline::run_typed(
-        &m, "main", &[arg("u64", "ffffffffffffffff")], 3, &dir,
-        Some(&store), TypedCacheMode::Reuse, false, None,
+        &m,
+        "main",
+        &[arg("u64", "ffffffffffffffff")],
+        3,
+        &dir,
+        Some(&store),
+        TypedCacheMode::Reuse,
+        false,
+        None,
     )
     .expect("param-only run");
     assert_eq!(run3.counters.emit_units, 0, "param-only produces no COFF");
-    assert_eq!(run3.counters.wrapper_builds, 0, "param-only produces no wrapper");
+    assert_eq!(
+        run3.counters.wrapper_builds, 0,
+        "param-only produces no wrapper"
+    );
     assert_eq!(run3.counters.run_invocations, 1);
     match &run3.outcome {
         TypedOutcome::Value { kind_code, bits } => {
@@ -655,8 +695,15 @@ mod performance {
             let store = ManagedStore::open(&warm_store).expect("store");
             let module = typed_fixture::build_verified_module(&doc()).expect("verify");
             let r = typed_pipeline::run_typed(
-                &module, "main", &[arg("0000000000000001")], 0, &workdir,
-                Some(&store), TypedCacheMode::Fresh, false, None,
+                &module,
+                "main",
+                &[arg("0000000000000001")],
+                0,
+                &workdir,
+                Some(&store),
+                TypedCacheMode::Fresh,
+                false,
+                None,
             )
             .expect("warmup");
             assert_eq!(value_bits(&r.outcome), "0000000000000001");
@@ -670,8 +717,15 @@ mod performance {
             let store = ManagedStore::open(&store_root).expect("store");
             let module = typed_fixture::build_verified_module(&doc()).expect("verify");
             let r = typed_pipeline::run_typed(
-                &module, "main", &[arg("0000000000000002")], i as u64 + 1, &workdir,
-                Some(&store), TypedCacheMode::Fresh, false, None,
+                &module,
+                "main",
+                &[arg("0000000000000002")],
+                i as u64 + 1,
+                &workdir,
+                Some(&store),
+                TypedCacheMode::Fresh,
+                false,
+                None,
             )
             .expect("fresh run");
             let dt = t0.elapsed().as_secs_f64() * 1000.0;
@@ -693,8 +747,15 @@ mod performance {
             let store = ManagedStore::open(&hit_root).expect("store");
             let module = typed_fixture::build_verified_module(&doc()).expect("verify");
             let _ = typed_pipeline::run_typed(
-                &module, "main", &[arg("0000000000000001")], 100, &workdir,
-                Some(&store), TypedCacheMode::Fresh, false, None,
+                &module,
+                "main",
+                &[arg("0000000000000001")],
+                100,
+                &workdir,
+                Some(&store),
+                TypedCacheMode::Fresh,
+                false,
+                None,
             )
             .expect("seed");
         }
@@ -704,8 +765,15 @@ mod performance {
             let module = typed_fixture::build_verified_module(&doc()).expect("verify");
             let t0 = Instant::now();
             let r = typed_pipeline::run_typed(
-                &module, "main", &[arg("0000000000000003")], i as u64 + 200, &workdir,
-                Some(&store), TypedCacheMode::Reuse, false, None,
+                &module,
+                "main",
+                &[arg("0000000000000003")],
+                i as u64 + 200,
+                &workdir,
+                Some(&store),
+                TypedCacheMode::Reuse,
+                false,
+                None,
             )
             .expect("hit run");
             let dt = t0.elapsed().as_secs_f64() * 1000.0;
@@ -726,9 +794,10 @@ mod performance {
         for i in 0..SAMPLES {
             let store = ManagedStore::open(&hit_root).expect("store");
             let t0 = Instant::now();
-            let mut s =
-                TypedSession::restart(doc(), &workdir, store).expect("restart");
-            let r = s.run(&[arg("0000000000000004")], i as u64 + 300, None).expect("restart run");
+            let mut s = TypedSession::restart(doc(), &workdir, store).expect("restart");
+            let r = s
+                .run(&[arg("0000000000000004")], i as u64 + 300, None)
+                .expect("restart run");
             let dt = t0.elapsed().as_secs_f64() * 1000.0;
             assert_eq!(value_bits(&r.outcome), "0000000000000004");
             assert_eq!(s.counters().emit_units, 0, "restart emits nothing");
@@ -755,15 +824,27 @@ mod performance {
             } else {
                 helper_body_const("00000000000000ee")
             };
-            let want = if i % 2 == 0 { "00000000000000ff" } else { "00000000000000ee" };
+            let want = if i % 2 == 0 {
+                "00000000000000ff"
+            } else {
+                "00000000000000ee"
+            };
             let t0 = Instant::now();
             let obs = s.edit_unit(decl).expect("edit");
             let r = s
                 .run(&[arg("0000000000000005")], i as u64 + 400, None)
                 .expect("edit run");
             let dt = t0.elapsed().as_secs_f64() * 1000.0;
-            assert_eq!(value_bits(&r.outcome), want, "the machine result follows the edit");
-            assert_eq!(obs.reprepared_units, vec!["helper"], "only helper re-prepares");
+            assert_eq!(
+                value_bits(&r.outcome),
+                want,
+                "the machine result follows the edit"
+            );
+            assert_eq!(
+                obs.reprepared_units,
+                vec!["helper"],
+                "only helper re-prepares"
+            );
             assert_eq!(obs.whole_fallback, 0);
             ms.push(dt);
         }

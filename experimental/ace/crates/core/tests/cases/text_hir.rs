@@ -498,7 +498,9 @@ fn mutation_owned_scope_and_assign_gates() {
         .expect("text plan present after the replacement");
     let bp = plan.bodies.get(&(0, 0)).expect("play body plan");
     assert!(
-        bp.replace_frees.values().any(|bufs| bufs.iter().any(|r| r.root == 1 && r.path.is_empty())),
+        bp.replace_frees
+            .values()
+            .any(|bufs| bufs.iter().any(|r| r.root == 1 && r.path.is_empty())),
         "the replacement schedules the old root buffer free: {:?}",
         bp.replace_frees
     );

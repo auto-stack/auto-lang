@@ -171,12 +171,14 @@ impl TypedSigPlan {
         let mut params = Vec::with_capacity(sig.params.len());
         for p in &sig.params {
             match m.types.get(*p as usize) {
-                Some(ty @ (MirType::I32
-                | MirType::Bool
-                | MirType::I64
-                | MirType::U64
-                | MirType::F32
-                | MirType::F64)) => {
+                Some(
+                    ty @ (MirType::I32
+                    | MirType::Bool
+                    | MirType::I64
+                    | MirType::U64
+                    | MirType::F32
+                    | MirType::F64),
+                ) => {
                     let k = TypedKind::of_type(ty).expect("scalar arm");
                     args.push(k);
                     params.push(k.label().to_string());
@@ -195,12 +197,14 @@ impl TypedSigPlan {
             }
         }
         let result = match m.types.get(sig.result as usize) {
-            Some(ty @ (MirType::I32
-            | MirType::Bool
-            | MirType::I64
-            | MirType::U64
-            | MirType::F32
-            | MirType::F64)) => TypedKind::of_type(ty).expect("scalar arm"),
+            Some(
+                ty @ (MirType::I32
+                | MirType::Bool
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64),
+            ) => TypedKind::of_type(ty).expect("scalar arm"),
             _ => {
                 return Err(MnError::Unsupported(
                     "typed-result",
@@ -331,7 +335,8 @@ pub fn admit_typed_unit(unit: &MirModule, is_entry: bool) -> Result<(), MnError>
             }
             None => {
                 return Err(MnError::Unsupported(
-                    "type", format!("type {t} is missing from the unit table")
+                    "type",
+                    format!("type {t} is missing from the unit table"),
                 ));
             }
         }
@@ -367,11 +372,13 @@ pub fn admit_typed_unit(unit: &MirModule, is_entry: bool) -> Result<(), MnError>
                     }
                 }
                 MirInstr::Copy { .. } => {}
-                MirInstr::Bin { lhs, dst, .. } | MirInstr::Un { operand: lhs, dst, .. } => {
+                MirInstr::Bin { lhs, dst, .. }
+                | MirInstr::Un {
+                    operand: lhs, dst, ..
+                } => {
                     let op_ty = |s: u32| unit.types.get(f.slots[s as usize].ty as usize);
-                    let scalar32 = |s: u32| {
-                        matches!(op_ty(s), Some(MirType::I32) | Some(MirType::Bool))
-                    };
+                    let scalar32 =
+                        |s: u32| matches!(op_ty(s), Some(MirType::I32) | Some(MirType::Bool));
                     if !scalar32(*lhs) || !scalar32(*dst) {
                         return Err(MnError::Unsupported(
                             "typed-op",
@@ -566,9 +573,7 @@ pub fn emit_typed_unit_coff(unit: &MirModule, is_entry: bool) -> Result<TypedUni
     })
 }
 
-fn declare_exit(
-    om: &mut ObjectModule,
-) -> Result<cranelift_module::FuncId, MnError> {
+fn declare_exit(om: &mut ObjectModule) -> Result<cranelift_module::FuncId, MnError> {
     let sig = Signature {
         call_conv: WINCALL,
         params: vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
@@ -593,7 +598,10 @@ fn trace_call_sig() -> Signature {
 /// against this wrapper's frozen signature identity, loads the arguments
 /// from the payload, calls the entry, and writes the machine result as
 /// the single response frame. Argument VALUES never enter the wrapper.
-pub fn emit_typed_wrapper_coff(entry_symbol: &str, plan: &TypedSigPlan) -> Result<Vec<u8>, MnError> {
+pub fn emit_typed_wrapper_coff(
+    entry_symbol: &str,
+    plan: &TypedSigPlan,
+) -> Result<Vec<u8>, MnError> {
     let isa = crate::emit::make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn9-ac-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -606,7 +614,10 @@ pub fn emit_typed_wrapper_coff(entry_symbol: &str, plan: &TypedSigPlan) -> Resul
     let read_id = declare_helper(
         &mut om,
         "mn_typed_read",
-        &[cranelift_codegen::ir::types::I64, cranelift_codegen::ir::types::I32],
+        &[
+            cranelift_codegen::ir::types::I64,
+            cranelift_codegen::ir::types::I32,
+        ],
         &[cranelift_codegen::ir::types::I32],
     )?;
     let check_id = declare_helper(
@@ -653,8 +664,12 @@ pub fn emit_typed_wrapper_coff(entry_symbol: &str, plan: &TypedSigPlan) -> Resul
             frame_cap,
             3, // 8-byte aligned
         ));
-        let buf = fb.ins().stack_addr(cranelift_codegen::ir::types::I64, frame_slot, 0);
-        let cap = fb.ins().iconst(cranelift_codegen::ir::types::I32, frame_cap as i64);
+        let buf = fb
+            .ins()
+            .stack_addr(cranelift_codegen::ir::types::I64, frame_slot, 0);
+        let cap = fb
+            .ins()
+            .iconst(cranelift_codegen::ir::types::I32, frame_cap as i64);
 
         let read_ref = om.declare_func_in_func(read_id, fb.func);
         fb.ins().call(read_ref, &[buf, cap]);
@@ -668,7 +683,8 @@ pub fn emit_typed_wrapper_coff(entry_symbol: &str, plan: &TypedSigPlan) -> Resul
         let want_argc = fb
             .ins()
             .iconst(cranelift_codegen::ir::types::I32, plan.args.len() as i64);
-        fb.ins().call(check_ref, &[buf, sig_id, want_len, want_argc]);
+        fb.ins()
+            .call(check_ref, &[buf, sig_id, want_len, want_argc]);
 
         // Load each argument from the payload at its planned offset.
         let mut argv: Vec<cranelift_codegen::ir::Value> = Vec::with_capacity(plan.args.len());
@@ -707,7 +723,11 @@ pub fn emit_typed_wrapper_coff(entry_symbol: &str, plan: &TypedSigPlan) -> Resul
 fn typed_entry_sig(plan: &TypedSigPlan) -> Signature {
     Signature {
         call_conv: WINCALL,
-        params: plan.args.iter().map(|k| AbiParam::new(k.carrier())).collect(),
+        params: plan
+            .args
+            .iter()
+            .map(|k| AbiParam::new(k.carrier()))
+            .collect(),
         returns: vec![AbiParam::new(plan.result.carrier())],
     }
 }
@@ -768,7 +788,10 @@ pub fn parse_arg(kind: TypedKind, hex: &str) -> Result<TypedArg, MnError> {
     } else if lowered.len() > 8 || (lowered.len() > 1 && lowered.starts_with('0')) {
         return Err(MnError::Admit(
             "typed-arg",
-            format!("argument `{hex}` is not a canonical unpadded {} form", kind.label()),
+            format!(
+                "argument `{hex}` is not a canonical unpadded {} form",
+                kind.label()
+            ),
         ));
     }
     let bits = u64::from_str_radix(&lowered, 16)
@@ -785,7 +808,11 @@ pub fn parse_arg(kind: TypedKind, hex: &str) -> Result<TypedArg, MnError> {
 /// Encode ONE request frame for `plan` from actual arguments. The frame
 /// binds the signature id, arg count, nonce and the exact payload bytes;
 /// the fnv1a64 checksum closes it. Trailing bytes never exist.
-pub fn encode_request(plan: &TypedSigPlan, nonce: u64, args: &[TypedArg]) -> Result<Vec<u8>, MnError> {
+pub fn encode_request(
+    plan: &TypedSigPlan,
+    nonce: u64,
+    args: &[TypedArg],
+) -> Result<Vec<u8>, MnError> {
     if args.len() != plan.args.len() {
         return Err(MnError::Admit(
             "typed-argc",
@@ -886,14 +913,19 @@ pub fn decode_response(stdout: &[u8]) -> Result<(u32, u64, TypedOutcome), MnErro
             ),
         ));
     }
-    let le32 = |at: usize| u32::from_le_bytes([stdout[at], stdout[at + 1], stdout[at + 2], stdout[at + 3]]);
+    let le32 = |at: usize| {
+        u32::from_le_bytes([stdout[at], stdout[at + 1], stdout[at + 2], stdout[at + 3]])
+    };
     let le64 = |at: usize| {
         let mut b = [0u8; 8];
         b.copy_from_slice(&stdout[at..at + 8]);
         u64::from_le_bytes(b)
     };
     if le32(0) != RES_MAGIC {
-        return Err(MnError::Admit("typed-frame", "response magic mismatch".into()));
+        return Err(MnError::Admit(
+            "typed-frame",
+            "response magic mismatch".into(),
+        ));
     }
     if le32(4) != FRAME_VERSION {
         return Err(MnError::Admit(
@@ -901,7 +933,9 @@ pub fn decode_response(stdout: &[u8]) -> Result<(u32, u64, TypedOutcome), MnErro
             "response version mismatch".into(),
         ));
     }
-    if fnv1a64(&stdout[..RES_FRAME_BYTES - FRAME_HASH_BYTES]) != le64(RES_FRAME_BYTES - FRAME_HASH_BYTES) {
+    if fnv1a64(&stdout[..RES_FRAME_BYTES - FRAME_HASH_BYTES])
+        != le64(RES_FRAME_BYTES - FRAME_HASH_BYTES)
+    {
         return Err(MnError::Admit(
             "typed-frame",
             "response checksum mismatch".into(),

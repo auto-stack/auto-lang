@@ -118,14 +118,18 @@ pub enum InstrDecl {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum TermDecl {
-    Ret { value: String },
+    Ret {
+        value: String,
+    },
     Br {
         cond: String,
         then: u32,
         #[serde(rename = "else")]
         else_: u32,
     },
-    Jmp { target: u32 },
+    Jmp {
+        target: u32,
+    },
 }
 
 pub fn parse_fixture(bytes: &[u8]) -> Result<FixtureDoc, MnError> {
@@ -285,8 +289,7 @@ impl Builder {
             return Ok(idx as u32);
         }
         self.consts.push(c);
-        Ok((self.consts.len() - 1) as u32
-        )
+        Ok((self.consts.len() - 1) as u32)
     }
 }
 
@@ -364,7 +367,10 @@ fn bin_op(label: &str) -> Result<BinOp, MnError> {
 /// split turns them into `fn:<name>` imports). The result is UNVERIFIED —
 /// callers must run `verify_mir` before any admission.
 pub fn build_module(doc: &FixtureDoc) -> Result<MirModule, MnError> {
-    let module_name = doc.module.clone().unwrap_or_else(|| "m891_typed".to_string());
+    let module_name = doc
+        .module
+        .clone()
+        .unwrap_or_else(|| "m891_typed".to_string());
     let mut b = Builder::new(&module_name);
     // Pre-intern record types (recursion via named_ty).
     for r in &doc.records {
@@ -373,7 +379,12 @@ pub fn build_module(doc: &FixtureDoc) -> Result<MirModule, MnError> {
     let unit_idx: BTreeMap<&str, usize> = doc
         .units
         .iter()
-        .map(|u| (u.name.as_str(), doc.units.iter().position(|x| x.name == u.name).unwrap()))
+        .map(|u| {
+            (
+                u.name.as_str(),
+                doc.units.iter().position(|x| x.name == u.name).unwrap(),
+            )
+        })
         .collect();
 
     // Callee registry (pre-resolved): name -> (module-level ref, result ty).
@@ -388,14 +399,12 @@ pub fn build_module(doc: &FixtureDoc) -> Result<MirModule, MnError> {
         let f = build_function(&mut b, unit, &doc.records, &callees, &mut uses_trace)?;
         funcs.push(f);
     }
-    let entry = unit_idx
-        .get(doc.entry.as_str())
-        .ok_or_else(|| {
-            MnError::Unsupported(
-                "fixture",
-                format!("fixture entry `{}` is missing", doc.entry),
-            )
-        })?;
+    let entry = unit_idx.get(doc.entry.as_str()).ok_or_else(|| {
+        MnError::Unsupported(
+            "fixture",
+            format!("fixture entry `{}` is missing", doc.entry),
+        )
+    })?;
     let mut m = MirModule::new_data(b.owner.clone());
     m.types = b.types;
     m.consts = b.consts;
@@ -410,36 +419,45 @@ pub fn build_module(doc: &FixtureDoc) -> Result<MirModule, MnError> {
 /// Build ONE unit directly (post-split shape: callees through `fn:<name>`
 /// imports) — the warm body-edit path rebuilds exactly the edited unit,
 /// never the whole module.
-pub fn build_unit(
-    doc: &FixtureDoc,
-    unit_name: &str,
-) -> Result<MirModule, MnError> {
-    let module_name = doc.module.clone().unwrap_or_else(|| "m891_typed".to_string());
+pub fn build_unit(doc: &FixtureDoc, unit_name: &str) -> Result<MirModule, MnError> {
+    let module_name = doc
+        .module
+        .clone()
+        .unwrap_or_else(|| "m891_typed".to_string());
     let mut b = Builder::new(&module_name);
     for r in &doc.records {
         b.named_ty(&r.name, &doc.records)?;
     }
-    let target = doc.units.iter().find(|u| u.name == unit_name).ok_or_else(|| {
-        MnError::Unsupported(
-            "fixture",
-            format!("fixture unit `{unit_name}` is missing"),
-        )
-    })?;
+    let target = doc
+        .units
+        .iter()
+        .find(|u| u.name == unit_name)
+        .ok_or_else(|| {
+            MnError::Unsupported("fixture", format!("fixture unit `{unit_name}` is missing"))
+        })?;
     // Pre-scan every call op of this unit: each distinct callee becomes one
     // `fn:<name>` import with its declared signature.
     let mut imports: Vec<MirImport> = Vec::new();
     let mut callees: BTreeMap<String, (CalleeRef, u32)> = BTreeMap::new();
-    for ins in target.body.iter().chain(target.blocks.iter().flat_map(|b| b.instrs.iter())) {
+    for ins in target
+        .body
+        .iter()
+        .chain(target.blocks.iter().flat_map(|b| b.instrs.iter()))
+    {
         if let InstrDecl::Call { callee, .. } = ins {
             if callees.contains_key(callee) {
                 continue;
             }
-            let callee_unit = doc.units.iter().find(|u| u.name == *callee).ok_or_else(|| {
-                MnError::Unsupported(
-                    "fixture",
-                    format!("fixture callee `{callee}` does not resolve"),
-                )
-            })?;
+            let callee_unit = doc
+                .units
+                .iter()
+                .find(|u| u.name == *callee)
+                .ok_or_else(|| {
+                    MnError::Unsupported(
+                        "fixture",
+                        format!("fixture callee `{callee}` does not resolve"),
+                    )
+                })?;
             let sig = unit_sig_ty(&mut b, callee_unit, &doc.records);
             let result = b.named_ty(&callee_unit.result, &doc.records)?;
             imports.push(MirImport {
@@ -539,7 +557,12 @@ fn build_function(
                     let d = slots.ensure_temp(dst, t)?;
                     out.push(MirInstr::Copy { dst: d, src: s });
                 }
-                InstrDecl::Bin { dst, oper, lhs, rhs } => {
+                InstrDecl::Bin {
+                    dst,
+                    oper,
+                    lhs,
+                    rhs,
+                } => {
                     let o = bin_op(oper)?;
                     let l = slots.get(lhs)?;
                     let r = slots.get(rhs)?;
@@ -575,7 +598,11 @@ fn build_function(
                         operand: x,
                     });
                 }
-                InstrDecl::Call { dst, callee, args: _ } => {
+                InstrDecl::Call {
+                    dst,
+                    callee,
+                    args: _,
+                } => {
                     let Some((_, result_ty)) = callees.get(callee) else {
                         return Err(MnError::Unsupported(
                             "fixture",
@@ -649,7 +676,10 @@ fn build_function(
                         format!("fixture callee `{callee}` does not resolve"),
                     )
                 })?;
-                let argv: Vec<u32> = args.iter().map(|a| slots.get(a)).collect::<Result<_, _>>()?;
+                let argv: Vec<u32> = args
+                    .iter()
+                    .map(|a| slots.get(a))
+                    .collect::<Result<_, _>>()?;
                 instrs_per_block[bi][ii] = MirInstr::Call {
                     callee: cr.clone(),
                     dst: d,

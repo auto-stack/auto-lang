@@ -1859,9 +1859,7 @@ impl<'a> ResourceWalk<'a> {
                                     // only by a fresh binding, never by `=`.
                                     if let Some(cause) = st_snapshot.dead.get(&target) {
                                         let why = match cause {
-                                            DeadCause::ScopeExit => {
-                                                "its binding block exited"
-                                            }
+                                            DeadCause::ScopeExit => "its binding block exited",
                                             DeadCause::Moved | DeadCause::Dropped => {
                                                 "it was moved out or dropped"
                                             }

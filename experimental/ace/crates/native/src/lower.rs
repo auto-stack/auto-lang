@@ -387,7 +387,8 @@ pub fn emit_function(
         let reason = fx.fb.block_params(trap)[0];
         fx.fb.ins().call(helper, &[reason]);
         // never reached (the helper exits); any trap code suffices
-        fx.fb.ins()
+        fx.fb
+            .ins()
             .trap(TrapCode::user(1).expect("valid user trap code"));
     }
     drop(fx);
@@ -770,9 +771,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             let (trap, _) = self.ensure_typed_trap_block();
             let cont = self.fb.create_block();
             let r = self.fb.ins().iconst(types::I32, reason as i64);
-            self.fb
-                .ins()
-                .brif(cond, trap, &[r.into()], cont, &[]);
+            self.fb.ins().brif(cond, trap, &[r.into()], cont, &[]);
             self.fb.seal_block(cont);
             self.fb.switch_to_block(cont);
             return;
@@ -795,9 +794,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         self.fb.switch_to_block(cont);
     }
 
-    fn ensure_typed_trap_block(
-        &mut self,
-    ) -> (cranelift_codegen::ir::Block, FuncRef) {
+    fn ensure_typed_trap_block(&mut self) -> (cranelift_codegen::ir::Block, FuncRef) {
         if let Some((b, h)) = self.typed_trap_block {
             return (b, h);
         }
@@ -1156,9 +1153,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     }
                     // PLAN-891: a wide copy moves the carrier — bitwise,
                     // no float round trip, sNaN payloads intact.
-                    MirType::I64 | MirType::U64 | MirType::F64
-                        if self.mode == LowerMode::Typed =>
-                    {
+                    MirType::I64 | MirType::U64 | MirType::F64 if self.mode == LowerMode::Typed => {
                         let v = self.fb.use_var(self.v_wide(*src)?);
                         self.def_wide(*dst, v)?;
                     }

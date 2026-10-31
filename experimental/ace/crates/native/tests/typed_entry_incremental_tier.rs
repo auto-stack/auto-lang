@@ -57,9 +57,7 @@ fn unit_decl(json: &str) -> typed_fixture::UnitDecl {
 
 fn value_bits(run: &ace_native::typed_pipeline::TypedRun) -> String {
     match &run.outcome {
-        TypedOutcome::Value { kind_code, bits } => {
-            typed_entry::canonical_hex(*kind_code, *bits)
-        }
+        TypedOutcome::Value { kind_code, bits } => typed_entry::canonical_hex(*kind_code, *bits),
         other => panic!("expected a value outcome, got {other:?}"),
     }
 }
@@ -74,8 +72,13 @@ fn typed_session_warm_edit_hits_history_and_param_only_production_zero() {
     let root = workdir("store");
     let store = ManagedStore::open(&root).expect("store");
     let dir = workdir("run");
-    let mut s = TypedSession::start(doc_from(BASE), &dir, Some(store), ace_native::typed_pipeline::TypedCacheMode::Reuse)
-        .expect("session starts");
+    let mut s = TypedSession::start(
+        doc_from(BASE),
+        &dir,
+        Some(store),
+        ace_native::typed_pipeline::TypedCacheMode::Reuse,
+    )
+    .expect("session starts");
 
     // Baseline run: helper identity with a = 0x10.
     let run = s
@@ -90,12 +93,22 @@ fn typed_session_warm_edit_hits_history_and_param_only_production_zero() {
     );
     let obs = s.edit_unit(helper_b).expect("edit B");
     assert_eq!(obs.edited_unit, "helper");
-    assert_eq!(obs.reprepared_units, vec!["helper"], "only the edited unit re-prepares");
+    assert_eq!(
+        obs.reprepared_units,
+        vec!["helper"],
+        "only the edited unit re-prepares"
+    );
     assert_eq!(obs.verify_mir, 1, "one single-unit verify");
     assert_eq!(obs.emit_units, 1, "the new fingerprint emits once");
     assert_eq!(obs.whole_fallback, 0, "no whole-module fallback");
-    let run = s.run(&[arg("i64", "0000000000000010")], 2, None).expect("run after edit B");
-    assert_eq!(value_bits(&run), "00000000000000ff", "helper now returns the 0xff constant");
+    let run = s
+        .run(&[arg("i64", "0000000000000010")], 2, None)
+        .expect("run after edit B");
+    assert_eq!(
+        value_bits(&run),
+        "00000000000000ff",
+        "helper now returns the 0xff constant"
+    );
     assert_eq!(s.counters().whole_fallback, 0);
 
     // ---- param-only rerun: NO unit or wrapper production --------------
@@ -103,10 +116,26 @@ fn typed_session_warm_edit_hits_history_and_param_only_production_zero() {
     let run = s
         .run(&[arg("i64", "0000000000000020")], 3, None)
         .expect("param-only rerun");
-    assert_eq!(value_bits(&run), "00000000000000ff", "same constant body ignores the argument");
-    assert_eq!(s.counters().emit_units, before.emit_units, "param-only emits nothing");
-    assert_eq!(s.counters().wrapper_builds, before.wrapper_builds, "param-only builds no wrapper");
-    assert_eq!(s.counters().run_invocations, before.run_invocations + 1, "it still really runs");
+    assert_eq!(
+        value_bits(&run),
+        "00000000000000ff",
+        "same constant body ignores the argument"
+    );
+    assert_eq!(
+        s.counters().emit_units,
+        before.emit_units,
+        "param-only emits nothing"
+    );
+    assert_eq!(
+        s.counters().wrapper_builds,
+        before.wrapper_builds,
+        "param-only builds no wrapper"
+    );
+    assert_eq!(
+        s.counters().run_invocations,
+        before.run_invocations + 1,
+        "it still really runs"
+    );
 
     // ---- A→B→A: the historical object is REUSED, not re-minted --------
     let helper_a = unit_decl(
@@ -116,8 +145,14 @@ fn typed_session_warm_edit_hits_history_and_param_only_production_zero() {
     assert_eq!(obs.emit_units, 0, "A revisit emits nothing");
     assert_eq!(obs.cache_hits, 1, "the historical object is the hit");
     assert_eq!(obs.reprepared_units, vec!["helper"]);
-    let run = s.run(&[arg("i64", "0000000000000010")], 4, None).expect("run after edit back");
-    assert_eq!(value_bits(&run), "0000000000000010", "helper identity is back");
+    let run = s
+        .run(&[arg("i64", "0000000000000010")], 4, None)
+        .expect("run after edit back");
+    assert_eq!(
+        value_bits(&run),
+        "0000000000000010",
+        "helper identity is back"
+    );
     assert_eq!(s.counters().whole_fallback, 0);
     s.close();
 }
@@ -130,8 +165,13 @@ fn typed_session_signature_change_reprepares_real_dependents_only() {
         return;
     }
     let dir = workdir("sig");
-    let mut s = TypedSession::start(doc_from(BASE), &dir, None, ace_native::typed_pipeline::TypedCacheMode::Reuse)
-        .expect("session starts");
+    let mut s = TypedSession::start(
+        doc_from(BASE),
+        &dir,
+        None,
+        ace_native::typed_pipeline::TypedCacheMode::Reuse,
+    )
+    .expect("session starts");
 
     // helper gains a SECOND parameter: its signature changes, so every
     // real dependent (main) re-prepares; disjoint stays untouched.
@@ -144,7 +184,9 @@ fn typed_session_signature_change_reprepares_real_dependents_only() {
             {"op":"call","dst":"t0","callee":"helper","args":["a","t9"]}],
           "ret":"t0"}"#,
     );
-    let obs = s.edit_units(vec![helper_wide.clone(), main_wide.clone()]).expect("atomic helper+main signature change");
+    let obs = s
+        .edit_units(vec![helper_wide.clone(), main_wide.clone()])
+        .expect("atomic helper+main signature change");
     assert!(
         obs.reprepared_units.iter().any(|u| u == "helper"),
         "the edited unit re-prepares"
@@ -154,15 +196,24 @@ fn typed_session_signature_change_reprepares_real_dependents_only() {
     // declaration edit below is the sanctioned way a caller follows its
     // callee). Re-preparing main with the OLD body would fail the import
     // closure — assert that honestly by re-preparing only after the edit.
-    assert!(obs.reprepared_units.iter().any(|u| u == "main"), "the caller re-prepares in the same change set");
+    assert!(
+        obs.reprepared_units.iter().any(|u| u == "main"),
+        "the caller re-prepares in the same change set"
+    );
     let obs2 = obs.clone();
     assert!(
         !obs.reprepared_units.iter().any(|u| u == "disjoint")
             && !obs2.reprepared_units.iter().any(|u| u == "disjoint"),
         "disjoint units produce nothing"
     );
-    let run = s.run(&[arg("i64", "0000000000000010")], 5, None).expect("run after signature change");
-    assert_eq!(value_bits(&run), "0000000000000002", "helper now returns its second parameter");
+    let run = s
+        .run(&[arg("i64", "0000000000000010")], 5, None)
+        .expect("run after signature change");
+    assert_eq!(
+        value_bits(&run),
+        "0000000000000002",
+        "helper now returns its second parameter"
+    );
     assert_eq!(s.counters().whole_fallback, 0);
 }
 
@@ -184,7 +235,9 @@ fn typed_session_cold_restart_readmits_from_store_without_remission() {
             ace_native::typed_pipeline::TypedCacheMode::Fresh,
         )
         .expect("first session");
-        let run = s.run(&[arg("i64", "0000000000000010")], 6, None).expect("first run");
+        let run = s
+            .run(&[arg("i64", "0000000000000010")], 6, None)
+            .expect("first run");
         assert_eq!(value_bits(&run), "0000000000000010");
         s.close();
     }
@@ -193,10 +246,24 @@ fn typed_session_cold_restart_readmits_from_store_without_remission() {
     let store2 = ManagedStore::open(&root).expect("store reopens");
     let mut s2 = TypedSession::restart(doc_from(BASE), &dir, store2).expect("restart");
     assert_eq!(s2.counters().emit_units, 0, "cold restart emits nothing");
-    assert_eq!(s2.counters().cache_hits, 3, "all three units re-admitted from the store");
-    let run = s2.run(&[arg("i64", "0000000000000020")], 7, None).expect("restart run");
-    assert_eq!(value_bits(&run), "0000000000000020", "helper identity from cold bytes");
+    assert_eq!(
+        s2.counters().cache_hits,
+        3,
+        "all three units re-admitted from the store"
+    );
+    let run = s2
+        .run(&[arg("i64", "0000000000000020")], 7, None)
+        .expect("restart run");
+    assert_eq!(
+        value_bits(&run),
+        "0000000000000020",
+        "helper identity from cold bytes"
+    );
     assert_eq!(s2.counters().emit_units, 0, "still nothing re-emitted");
-    assert_eq!(s2.counters().wrapper_builds, 0, "wrapper restored, not rebuilt");
+    assert_eq!(
+        s2.counters().wrapper_builds,
+        0,
+        "wrapper restored, not rebuilt"
+    );
     s2.close();
 }

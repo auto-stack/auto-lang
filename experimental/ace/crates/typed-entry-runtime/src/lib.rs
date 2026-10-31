@@ -236,7 +236,11 @@ pub extern "system" fn mn_typed_read(buf: *mut u8, cap: u32) -> u32 {
     if total > MAX_FRAME_BYTES || total > cap as usize {
         mn_typed_fail(ERR_LENGTH);
     }
-    if !read_exact(stdin, unsafe { buf.add(HEADER_BYTES) }, payload_len + HASH_BYTES) {
+    if !read_exact(
+        stdin,
+        unsafe { buf.add(HEADER_BYTES) },
+        payload_len + HASH_BYTES,
+    ) {
         mn_typed_fail(ERR_IO);
     }
     let mut i = 0usize;

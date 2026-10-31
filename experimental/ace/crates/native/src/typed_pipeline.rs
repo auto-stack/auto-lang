@@ -127,10 +127,8 @@ pub fn build_typed(
     counters.verify_mir += 1;
 
     // 2. Split into single-function units (S-shared helper).
-    let units = ace_av::cache::split_units(module).map_err(|e| MnError::Unsupported(
-        "typed-split",
-        format!("unit split failed: {e}"),
-    ))?;
+    let units = ace_av::cache::split_units(module)
+        .map_err(|e| MnError::Unsupported("typed-split", format!("unit split failed: {e}")))?;
     counters.unit_prepare += units.len() as u64;
 
     let entry_unit = units
@@ -221,8 +219,14 @@ pub fn build_typed(
     //    layer; argument values and nonces NEVER enter its key.
     let plan = typed_entry::entry_plan(entry_unit)?;
     let entry_symbol = crate::symbols::typed_function_symbol(&entry_unit.owner, &entry);
-    let (wrapper, wrapper_built) =
-        typed_wrapper_cached(&entry_symbol, &plan, store, mode, forbid_codegen, &runtime.identity)?;
+    let (wrapper, wrapper_built) = typed_wrapper_cached(
+        &entry_symbol,
+        &plan,
+        store,
+        mode,
+        forbid_codegen,
+        &runtime.identity,
+    )?;
     if wrapper_built {
         counters.wrapper_builds += 1;
     } else {
@@ -303,9 +307,7 @@ pub fn run_built(
     if echoed_nonce != nonce {
         return Err(MnError::Admit(
             "typed-frame",
-            format!(
-                "response nonce {echoed_nonce:#x} does not echo the request nonce {nonce:#x}"
-            ),
+            format!("response nonce {echoed_nonce:#x} does not echo the request nonce {nonce:#x}"),
         ));
     }
     Ok(TypedRun {
@@ -389,9 +391,7 @@ pub fn run_objects(
     if echoed_nonce != nonce {
         return Err(MnError::Admit(
             "typed-frame",
-            format!(
-                "response nonce {echoed_nonce:#x} does not echo the request nonce {nonce:#x}"
-            ),
+            format!("response nonce {echoed_nonce:#x} does not echo the request nonce {nonce:#x}"),
         ));
     }
     Ok((run, linked, outcome, echoed_sig_id, echoed_nonce))
@@ -469,11 +469,7 @@ fn wrapper_key(
     )
 }
 
-fn wrapper_header(
-    entry_symbol: &str,
-    plan: &TypedSigPlan,
-    bytes: &[u8],
-) -> String {
+fn wrapper_header(entry_symbol: &str, plan: &TypedSigPlan, bytes: &[u8]) -> String {
     format!(
         "schema={}\nabi={}\nentry-symbol={}\nsig={}\nsig-id={:08x}\ntarget={}\nflags={}\nlen={}\nsha256={}\n",
         TYPED_WRAPPER_SCHEMA,

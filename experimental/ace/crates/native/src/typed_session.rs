@@ -84,9 +84,8 @@ impl TypedSession {
     ) -> Result<TypedSession, MnError> {
         let module = typed_fixture::build_verified_module(&doc)?;
         let runtime = typed_runtime::prepare(None)?;
-        let units = ace_av::cache::split_units(&module).map_err(|e| {
-            MnError::Unsupported("typed-split", format!("unit split failed: {e}"))
-        })?;
+        let units = ace_av::cache::split_units(&module)
+            .map_err(|e| MnError::Unsupported("typed-split", format!("unit split failed: {e}")))?;
         let mut residents = BTreeMap::new();
         let mut counters = TypedCounters {
             verify_mir: 1,
@@ -262,7 +261,8 @@ impl TypedSession {
                 return Ok(());
             }
             // Park the outgoing object for A→B→A reuse (real bytes).
-            self.history.insert((name.to_string(), old.fp.clone()), old.coff.clone());
+            self.history
+                .insert((name.to_string(), old.fp.clone()), old.coff.clone());
         }
         // Historical revisit? Reuse the actual admitted bytes.
         if let Some(bytes) = self.history.remove(&(name.to_string(), fp.clone())) {
@@ -279,7 +279,11 @@ impl TypedSession {
         // Store hit for this exact identity (a prior session may have
         // produced it): admit from bytes, emit stays 0.
         let meta_fp = fp.clone();
-        if let Some(store) = self.store.as_ref().filter(|_| self.mode != TypedCacheMode::Fresh) {
+        if let Some(store) = self
+            .store
+            .as_ref()
+            .filter(|_| self.mode != TypedCacheMode::Fresh)
+        {
             let meta = CoffMeta::for_typed_unit(&unit, meta_fp, &self.runtime_identity)?;
             if let Some((_, bytes)) = cache::get_unit_coff_with_id(store, &meta)? {
                 obs.cache_hits += 1;
@@ -292,7 +296,11 @@ impl TypedSession {
         let obj = crate::typed_entry::emit_typed_unit_coff(&unit, name == self.doc.entry)?;
         obs.emit_units += 1;
         self.counters.emit_units += 1;
-        if let Some(store) = self.store.as_ref().filter(|_| self.mode != TypedCacheMode::ReadOnly) {
+        if let Some(store) = self
+            .store
+            .as_ref()
+            .filter(|_| self.mode != TypedCacheMode::ReadOnly)
+        {
             let meta = CoffMeta::for_typed_unit(&unit, fp.clone(), &self.runtime_identity)?;
             let _ = cache::put_unit_coff(store, None, &meta, &obj.bytes)?;
             obs.persist_units += 1;
@@ -328,10 +336,9 @@ impl TypedSession {
 
     /// The current entry signature plan.
     pub fn entry_plan(&self) -> Result<TypedSigPlan, MnError> {
-        let resident = self
-            .residents
-            .get(&self.entry)
-            .ok_or_else(|| MnError::Unsupported("typed-entry", "entry unit is not resident".into()))?;
+        let resident = self.residents.get(&self.entry).ok_or_else(|| {
+            MnError::Unsupported("typed-entry", "entry unit is not resident".into())
+        })?;
         crate::typed_entry::entry_plan(&resident.unit)
     }
 
@@ -345,8 +352,7 @@ impl TypedSession {
         trace_lib: Option<&Path>,
     ) -> Result<TypedRun, MnError> {
         let plan = self.entry_plan()?;
-        let entry_symbol =
-            crate::symbols::typed_function_symbol(&self.owner, &self.entry);
+        let entry_symbol = crate::symbols::typed_function_symbol(&self.owner, &self.entry);
         let (wrapper, built_now) = typed_pipeline::typed_wrapper_for_session(
             &entry_symbol,
             &plan,

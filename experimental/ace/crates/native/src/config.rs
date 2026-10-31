@@ -42,7 +42,8 @@ pub const START_SYMBOL: &str = "ac_start";
 /// Private typed-data ABI tag (PLAN-891 §2 freeze).
 pub const TYPED_ABI: &str = "msvc-x64/priv-typed-data-v1";
 /// Runtime policy tag of the typed wrapper/helper channel.
-pub const TYPED_RUNTIME_TAG: &str = "typed-frames=mn891.typed.frames/v1,helper=ace-typed-entry-runtime";
+pub const TYPED_RUNTIME_TAG: &str =
+    "typed-frames=mn891.typed.frames/v1,helper=ace-typed-entry-runtime";
 /// Store schema of the cached typed wrapper object.
 pub const TYPED_WRAPPER_SCHEMA: &str = "ac891/typed-wrapper/v1";
 /// Typed export symbol domain (isolated from the scalar `ac8.` domain).

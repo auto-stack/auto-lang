@@ -381,6 +381,7 @@ mod tests {
                     perf: None,
                     probe: None,
                     av_channel: None,
+                    typed: None,
                 },
                 product_from: None,
                 skip: None,

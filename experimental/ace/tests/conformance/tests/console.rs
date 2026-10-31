@@ -1,7 +1,5 @@
 //! Real worker/parent tests: independent byte oracles and fail-closed controls.
-use auto_lang_core::test_cases::{
-    ac_av, run_suite, stale, ac_cte::EXPECTED_MIR_LOWERING_VERSION,
-};
+use auto_lang_core::test_cases::{ac_av, ac_cte::EXPECTED_MIR_LOWERING_VERSION, run_suite, stale};
 use auto_test_case::{
     admission::Limits,
     discovery::load_suite,
