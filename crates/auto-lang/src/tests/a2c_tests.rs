@@ -119,9 +119,7 @@ int add(int x, int y);
 }
 
 fn test_a2c(case: &str) -> AutoResult<()> {
-    #[cfg(feature = "test-cases")]
-    {
-        return crate::test_cases::execution_trace::observe(
+        crate::test_cases::execution_trace::observe(
             || {
                 crate::test_cases::execution_trace::legacy_files(
                     env!("CARGO_MANIFEST_DIR"),
@@ -131,10 +129,7 @@ fn test_a2c(case: &str) -> AutoResult<()> {
                 )
             },
             || test_a2c_impl(case),
-        );
-    }
-    #[cfg(not(feature = "test-cases"))]
-    test_a2c_impl(case)
+        )
 }
 
 fn test_a2c_impl(case: &str) -> AutoResult<()> {

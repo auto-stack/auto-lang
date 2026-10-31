@@ -198,7 +198,6 @@ fn plan729_match_route_explicit_head_precedence() {
 // 双端矩阵的生成 Rust 腿在 auto-man api_gen 测试（同 feature 名）。
 // ===========================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e {
     use std::io::{Read, Write};
     use std::net::TcpStream;
@@ -740,7 +739,6 @@ fn plain_int() int {{
 // T-07：有界与生命周期矩阵（慢发送/取消/关闭/配额）+ 727 客户端互通。
 // ===========================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod lifecycle {
     use super::http_e2e::*;
     use std::io::{Read, Write};
@@ -1112,7 +1110,6 @@ Connection: close
 // 头值 wire/路径替换/auth 计数/半关闭/idle/缓冲公式/HEAD 优先级。
 // ===========================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod r1_fixes {
     use super::http_e2e::*;
     use super::lifecycle::Blackhole;

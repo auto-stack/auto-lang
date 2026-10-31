@@ -377,7 +377,6 @@ pub fn vm_upload_counts() -> (usize, usize, usize) {
     (r, s, c)
 }
 
-#[cfg(feature = "test-http-e2e")]
 #[doc(hidden)]
 pub fn upload_request_registered_for_test(id: u64) -> bool {
     VM_UPLOAD_REQUESTS.lock().unwrap().contains_key(&id)

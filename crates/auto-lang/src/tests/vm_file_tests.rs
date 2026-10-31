@@ -125,7 +125,6 @@ pub(crate) fn get_cached_test(case: &str) -> Option<&VmTestData> {
 /// Read-only inventory of this wrapper's ACTUAL cache, including `.as` inputs.
 /// It is separate from the product TestRunner discoverer because those are
 /// different consumers and need not discover the same file set.
-#[cfg(feature = "test-cases")]
 #[test]
 #[ignore = "explicit read-only inventory tool; requires AUTO_TEST_INVENTORY_OUT"]
 fn inventory_vm_cache_read_only() {
@@ -209,7 +208,6 @@ fn inventory_vm_cache_read_only() {
 }
 
 fn test_vm(case: &str) -> AutoResult<()> {
-    #[cfg(feature = "test-cases")]
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
         use auto_test_case::sha256::{hex, sha256};
         let data = get_cached_test(case).expect("original cache binding");
@@ -220,7 +218,6 @@ fn test_vm(case: &str) -> AutoResult<()> {
             "oracle_sha256":hex(&sha256(&serde_json::to_vec(&oracle).unwrap()))})
     });
     let result = test_vm_impl(case);
-    #[cfg(feature = "test-cases")]
     if let Some(trace) = trace {
         trace.finish(serde_json::json!({"status":if result.is_ok(){"PASS"}else{"ERROR"}}));
     }
@@ -2598,7 +2595,6 @@ fn test_99_plan664_001_value_lexemes() {
 // `--features test-cases` (cargo tv carries it) this reaches the protocol
 // pilot's avm half from the corpus tier; the harness assertion (suite
 // loads, half non-empty) and the dynamic-check assertions are separate.
-#[cfg(feature = "test-cases")]
 #[test]
 fn pilot_aggregate_vm() {
     let report = crate::tests::test_cases_tests::run_pilot_for_aggregate("vm");

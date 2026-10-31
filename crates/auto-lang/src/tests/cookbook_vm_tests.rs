@@ -26,7 +26,6 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
             )
         })?;
     let src = fs::read_to_string(at_file.path())?;
-    #[cfg(feature = "test-cases")]
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
         serde_json::json!({
         "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
@@ -70,7 +69,6 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
         );
     }
 
-    #[cfg(feature = "test-cases")]
     if let Some(trace) = trace {
         trace.finish(serde_json::json!({"status":"PASS"}));
     }

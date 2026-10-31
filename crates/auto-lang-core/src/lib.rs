@@ -102,7 +102,6 @@ pub mod sse;
 pub mod state_file;
 pub mod stdlib_assembly;
 pub mod target;
-#[cfg(feature = "test-cases")]
 pub mod test_cases;
 pub mod test_runner;
 pub mod trans;

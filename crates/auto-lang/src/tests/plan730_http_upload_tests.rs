@@ -220,7 +220,6 @@ print("done")
 // 生成 Rust 腿 + 727/729 互通在 T-06/T-08（auto-man api_gen 测试 + 本族扩展）。
 // ===========================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e {
     use std::io::{Read, Write};
     use std::net::TcpStream;

@@ -237,7 +237,6 @@ print(e)
 // e2e：真 TCP + 转译 + cargo build/run（test-http-e2e；cargo th 串行）
 // ===========================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod e2e {
     use super::*;
     use std::io::{Read, Write};

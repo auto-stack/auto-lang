@@ -1,11 +1,5 @@
 //! Explicit developer-only A/B pilot and independent per-case replay.
-#[cfg(not(feature = "test-case-batch"))]
-fn main() {
-    eprintln!("test-case-pilot requires --features test-case-batch");
-    std::process::exit(2);
-}
 
-#[cfg(feature = "test-case-batch")]
 fn main() {
     match enabled::run() {
         Ok((report, code)) => {
@@ -19,7 +13,6 @@ fn main() {
     }
 }
 
-#[cfg(feature = "test-case-batch")]
 mod enabled {
     use auto_lang::test_cases::ac_av::{
         self,

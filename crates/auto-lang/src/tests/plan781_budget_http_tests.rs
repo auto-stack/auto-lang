@@ -28,7 +28,6 @@
 //! 仍持有失效队列/半关闭边界，本族持有 LegacyHttp policy 长忙路径的端
 //! 到端绑定。
 
-#[cfg(feature = "test-http-e2e")]
 mod budget_e2e {
     use std::io::{Read, Write};
     use std::net::TcpStream;

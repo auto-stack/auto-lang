@@ -5,9 +5,7 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
-    #[cfg(feature = "test-cases")]
-    {
-        return crate::test_cases::execution_trace::observe(
+        crate::test_cases::execution_trace::observe(
             || {
                 crate::test_cases::execution_trace::legacy_files(
                     env!("CARGO_MANIFEST_DIR"),
@@ -17,10 +15,7 @@ fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
                 )
             },
             || test_a2r_with_base_impl(base, case),
-        );
-    }
-    #[cfg(not(feature = "test-cases"))]
-    test_a2r_with_base_impl(base, case)
+        )
 }
 
 fn test_a2r_with_base_impl(base: &str, case: &str) -> AutoResult<()> {
@@ -370,7 +365,6 @@ fn test_cookbook_deep(case: &str) {
 /// like direct self-reference that must be rejected). Asserts the error
 /// message contains the given substring.
 fn test_a2r_expect_error(case: &str, error_substring: &str) {
-    #[cfg(feature = "test-cases")]
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
         crate::test_cases::execution_trace::legacy_error_identity(
             env!("CARGO_MANIFEST_DIR"),
@@ -400,7 +394,6 @@ fn test_a2r_expect_error(case: &str, error_substring: &str) {
         error_substring,
         err_msg
     );
-    #[cfg(feature = "test-cases")]
     if let Some(trace) = trace {
         trace.finish(serde_json::json!({"status":"PASS"}));
     }
@@ -3163,7 +3156,6 @@ fn test_04_strings_010_print_concat() {
 // --features test-trans,test-cases); asserts the protocol pilot's a2r
 // half. Harness presence and dynamic-check outcomes are separate
 // assertions.
-#[cfg(feature = "test-cases")]
 #[test]
 fn pilot_aggregate_a2r() {
     let report = crate::tests::test_cases_tests::run_pilot_for_aggregate("a2r");

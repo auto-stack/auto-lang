@@ -385,7 +385,7 @@ pub(super) fn admit_body(ok: &Value) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod controls {
     use super::*;
     #[test]

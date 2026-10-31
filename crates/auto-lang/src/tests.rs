@@ -1,9 +1,7 @@
 // Plan 289: Transpiler tests (a2c/a2r/a2ts) gated behind test-trans feature
-#[cfg(feature = "test-trans")]
 mod a2c_tests;
 mod env_restore;
 // Plan 768: TestCase protocol adapter + runner integration (real VM/a2r)
-#[cfg(feature = "test-cases")]
 mod test_cases_tests;
 // PLAN-790: clipboard media 2934..2937 host provider——core 剪断/降级契约/
 // 装配优先/ownership 回归锚
@@ -13,15 +11,11 @@ mod plan790_clipboard_media_provider;
 // PLAN-804 V-04/V-05: 真 OS 实机证据档——env 门控（AUTO_LANG_DIALOG_E2E/
 // AUTO_LANG_DND_E2E=1 才运行，日常档零 OS 面零交互；详见文件头）。
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
-#[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;
 mod a2r_std_signature_parity;
-#[cfg(feature = "test-trans")]
 mod a2r_tests;
-#[cfg(feature = "test-trans")]
 mod a2ts_tests;
 // Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
-#[cfg(feature = "test-trans")]
 mod a2ts_directed_probes;
 mod atom_tests;
 // Plan 075: Unified API tests
@@ -81,37 +75,35 @@ mod vm_tests; // Plan 327: actor state field persistence
               // "调研后删除") and broke `cargo test --lib` on master. The research report
               // itself lives in docs/plans/.
               // Plan 289: Book listing tests gated behind test-book feature (slow: ~5-7s each)
-#[cfg(feature = "test-book")]
 mod book_listing_tests;
 // Plan 177: VM file-based test framework(Plan 568: 纯 .at 语料 golden 档,aavm 腿已迁出;
 // PLAN-700: 原 Plan 289 语料档门拆除,语料三族常驻编译——tv 降为纯 nextest filter 档)
-#[cfg(feature = "test-aavm")] // Plan 568: vm_file_tests 内嵌 aavm 腿整体迁入
+// // Plan 568: vm_file_tests 内嵌 aavm 腿整体迁入
 mod aavm_runner_tests;
 mod vm_file_tests;
 // Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test
 // 全并发)。PLAN-726 T-02 拆除 test-aavm feature 门并升 pub(crate):machine_gate
 // 机器级单实例闸门为跨档跨树基建(画廊围栏在 lib.rs 顶层、churn-1m 在 crate::vm、
 // aavm 族在 crate::tests,三树共用)。
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
-#[cfg(feature = "test-aavm")]
 // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
 mod aavm2_corpus_runner;
-#[cfg(feature = "test-aavm")] // Plan 568: 原无门(日常档在跑),随 aavm 系入独立档
+// // Plan 568: 原无门(日常档在跑),随 aavm 系入独立档
 mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m2; // Plan 432 S2: M2 parser AST dump 一致性闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m3; // Plan 432 S3: M3 typeinfo .type 一致性闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m4; // Plan 432 S4: M4 codegen 字节码结构一致性闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m5; // Plan 432 S5: M3 主里程碑 —— 全管线行为一致性闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最终验收(大版本升级专用)
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+// // Plan 568: AAVM/AA2R 独立档
 mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests

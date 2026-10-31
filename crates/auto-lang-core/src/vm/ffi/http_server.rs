@@ -221,7 +221,6 @@ pub use value_json::*;
 ///
 /// panic 载荷必须 downcast 提取字符串——`{panic:?}` 对 `Box<dyn Any>` 只会
 /// 得到 `Any { .. }`，丢失原因（R2 负向反例实证）。
-#[cfg(any(test, feature = "test-http-e2e"))]
 pub(crate) fn spawn_outcome_reporter<F, T>(
     stack_size: usize,
     label: &str,
@@ -248,7 +247,6 @@ where
 }
 
 /// Cross-crate HTTP test harness port; not present in ordinary product builds.
-#[cfg(feature = "test-http-e2e")]
 #[doc(hidden)]
 pub fn spawn_outcome_reporter_for_test<F, T>(
     stack_size: usize,
@@ -263,7 +261,6 @@ where
 }
 
 /// catch_unwind 载荷的字符串提取（`&'static str` / `String` / 未知兜底）。
-#[cfg(any(test, feature = "test-http-e2e"))]
 pub(crate) fn panic_payload_text(panic: Box<dyn std::any::Any + Send>) -> String {
     match panic.downcast::<String>() {
         Ok(text) => *text,

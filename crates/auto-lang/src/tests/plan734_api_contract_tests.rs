@@ -132,7 +132,6 @@ fn main() {
 // T-07：VM HTTP 形态——参数校验/i64 wire/错误收敛（AC-02/AC-03）
 // ============================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e {
     use std::io::{Read, Write};
     use std::net::TcpStream;

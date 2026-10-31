@@ -119,8 +119,6 @@ pub use auto_web::http_upload_service; // PLAN-730: 服务端上传宿主 execut
                                                                                                                // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
                                                                                                                // orchestration; depends on the dependency-light `auto-test-case` core.
 use auto_lang_core::session;
-#[cfg(feature = "test-cases")]
-#[cfg(feature = "test-cases")]
 pub use auto_lang_core::test_cases;
 // PLAN-900：aura/ui_ast/a2ui/design_tokens/ui_gen/generator_fingerprint
 // 再导出随去 auto-ui 依赖退役——单源在 auto-ui-compiler（crate 根路径
@@ -313,7 +311,6 @@ pub fn eval_config_with_vm(code: &str, args: &auto_val::Obj) -> AutoResult<auto_
 /// run_task_loop terminates all tasks with a synthetic "ExecutionTimeout"
 /// error instead of letting a runaway program spin forever.
 
-#[cfg(feature = "test-aavm")]
 /// Auto library files to prepend for AAVM bootstrap tests.
 /// Single source of truth — vm_file_tests.rs reuses this list (plan-429 A3).
 pub(crate) const AUTO_LIB_FILES: &[&str] = &[
@@ -332,7 +329,6 @@ pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     "packages/aavm/lib-legacy/eval.at",
 ];
 
-#[cfg(feature = "test-aavm")]
 /// Plan 431 E2:AAVM v2(packages/aavm/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
 /// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
 /// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
@@ -348,7 +344,6 @@ pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     "packages/aavm/lib/a2r.at",
 ];
 
-#[cfg(feature = "test-aavm")]
 /// Plan 517 W2 双轨剥离:读 AUTO_LIB_FILES_V2 拼接并剥除 `use auto.lib.*`
 /// 行(拼接消费面专用——行为与模块化前逐字节等价:符号同居一程序;真 use
 /// 解析只走 auto.exe 直跑/auto build 模块路径。剥离规则单一事实源,
@@ -778,7 +773,7 @@ mod plan394_future_arch_tests;
 
 // PLAN-707 T-06/T-07: 外部流端到端 relay 与取消生命周期（真 TCP，cargo th
 // 串行池；测试名带 http_e2e+plan707 双前缀以被 th 过滤器与交集命令收录）。
-#[cfg(all(test, feature = "test-http-e2e"))]
+#[cfg(test)]
 #[path = "tests/plan707_stream_e2e_tests.rs"]
 mod plan707_stream_e2e_tests;
 

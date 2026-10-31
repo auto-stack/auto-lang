@@ -1,7 +1,7 @@
 //! `ace-certify` — PLAN-852 T-04 explicit independent a2r certification
 //! entry. This is the ONLY tool that compiles/runs Rust for the ace-m1
-//! corpus; the suite runner and every daily scope never touch it. Empty stub
-//! without `--features test-cases`.
+//! corpus; the suite runner and every daily scope never touch it. PLAN-901：
+//! 随语言测试 feature 拍平，本 bin 恒为真实形态（无 feature 缺席 stub）。
 //!
 //! ```text
 //! ace-certify --corpus <crates/auto-lang/test/cases/ace-m1>
@@ -12,12 +12,7 @@
 //!             [--scratch <dir>]      (default: isolated temp dir; removed)
 //! ```
 
-#[cfg(not(feature = "test-cases"))]
-fn main() {
-    eprintln!("ace-certify: this binary needs `--features test-cases` (empty stub build)");
-}
 
-#[cfg(feature = "test-cases")]
 fn main() {
     use auto_lang::test_cases::ace_certify::{certify_and_report, CertifyArgs};
     use std::path::PathBuf;

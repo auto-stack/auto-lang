@@ -1,148 +1,147 @@
 {
-  "schema": "test-module-tools/1",
-  "tools": {
-    "case-parent": {
-      "workspace": ".",
-      "package": "auto-lang",
-      "binaries": [
-        "auto-case",
-        "test-case-pilot"
-      ],
-      "profile": "debug",
-      "features": "test-cases,test-case-batch,test-trans,test-book,test-aavm,test-http-e2e",
-      "target": "target"
-    },
-    "av": {
-      "workspace": "experimental/ace",
-      "package": "ace-av",
-      "binaries": [
-        "av-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_AV_CASE_WORKER"
-    },
-    "batch-av": {
-      "workspace": "experimental/ace",
-      "package": "ace-av",
-      "binaries": [
-        "av-worker"
-      ],
-      "profile": "release",
-      "features": "test-case-batch",
-      "target": "experimental/ace/target-batch",
-      "env": "AC_AV_CASE_WORKER"
-    },
-    "ac": {
-      "workspace": "experimental/ace",
-      "package": "ace-case-worker",
-      "binaries": [
-        "ace-case-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_CASE_WORKER"
-    },
-    "mn": {
-      "workspace": "experimental/ace",
-      "package": "ace-native",
-      "binaries": [
-        "mn-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_MN_CASE_WORKER"
-    },
-    "mn-collections": {
-      "workspace": "experimental/ace",
-      "package": "ace-native",
-      "binaries": [
-        "mn-collections-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_MN_COLLECTIONS_CASE_WORKER"
-    },
-    "cte": {
-      "workspace": "experimental/ace",
-      "package": "ace-comptime",
-      "binaries": [
-        "cte_probe_worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_CTE_CASE_WORKER"
-    },
-    "abi": {
-      "workspace": "experimental/ace",
-      "package": "ace-abi",
-      "binaries": [
-        "abi-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "ABI_CASE_WORKER"
-    },
-    "sema": {
-      "workspace": "experimental/ace",
-      "package": "ace-semantics-store",
-      "binaries": [
-        "sema-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "SEMA_CASE_WORKER"
-    },
-    "a2x": {
-      "workspace": "experimental/ace",
-      "package": "ace-a2x-worker",
-      "binaries": [
-        "a2x-worker"
-      ],
-      "profile": "release",
-      "target": "experimental/ace/target",
-      "env": "AC_A2X_HIR_WORKER"
-    },
-    "trace-runtime": {
-      "workspace": "experimental/ace",
-      "package": "ace-trace-runtime",
-      "binaries": [],
-      "artifacts": [
-        "ace_trace_runtime.lib"
-      ],
-      "profile": "runtime-dev",
-      "target": "experimental/ace/target"
-    },
-    "text-runtime": {
-      "workspace": "experimental/ace",
-      "package": "ace-text-runtime",
-      "binaries": [],
-      "artifacts": [
-        "ac_text_runtime.lib"
-      ],
-      "profile": "runtime-release",
-      "target": "experimental/ace/target"
-    },
-    "data-runtime": {
-      "workspace": "experimental/ace",
-      "package": "ace-data-runtime",
-      "binaries": [],
-      "artifacts": [
-        "ace_data_runtime.lib"
-      ],
-      "profile": "runtime-release",
-      "target": "experimental/ace/target"
-    },
-    "execution-fixture": {
-      "workspace": ".",
-      "package": "auto-tool-execution",
-      "binaries": [
-        "te-child"
-      ],
-      "profile": "debug",
-      "features": "",
-      "target": "target",
-      "env": "AUTO_TOOL_EXECUTION_FIXTURE"
-    }
+ "schema": "test-module-tools/1",
+ "tools": {
+  "case-parent": {
+   "workspace": ".",
+   "package": "auto-lang",
+   "binaries": [
+    "auto-case",
+    "test-case-pilot"
+   ],
+   "profile": "debug",
+   "target": "target"
+  },
+  "av": {
+   "workspace": "experimental/ace",
+   "package": "ace-av",
+   "binaries": [
+    "av-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_AV_CASE_WORKER"
+  },
+  "batch-av": {
+   "workspace": "experimental/ace",
+   "package": "ace-av",
+   "binaries": [
+    "av-worker"
+   ],
+   "profile": "release",
+   "features": "test-case-batch",
+   "target": "experimental/ace/target-batch",
+   "env": "AC_AV_CASE_WORKER"
+  },
+  "ac": {
+   "workspace": "experimental/ace",
+   "package": "ace-case-worker",
+   "binaries": [
+    "ace-case-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_CASE_WORKER"
+  },
+  "mn": {
+   "workspace": "experimental/ace",
+   "package": "ace-native",
+   "binaries": [
+    "mn-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_MN_CASE_WORKER"
+  },
+  "mn-collections": {
+   "workspace": "experimental/ace",
+   "package": "ace-native",
+   "binaries": [
+    "mn-collections-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_MN_COLLECTIONS_CASE_WORKER"
+  },
+  "cte": {
+   "workspace": "experimental/ace",
+   "package": "ace-comptime",
+   "binaries": [
+    "cte_probe_worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_CTE_CASE_WORKER"
+  },
+  "abi": {
+   "workspace": "experimental/ace",
+   "package": "ace-abi",
+   "binaries": [
+    "abi-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "ABI_CASE_WORKER"
+  },
+  "sema": {
+   "workspace": "experimental/ace",
+   "package": "ace-semantics-store",
+   "binaries": [
+    "sema-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "SEMA_CASE_WORKER"
+  },
+  "a2x": {
+   "workspace": "experimental/ace",
+   "package": "ace-a2x-worker",
+   "binaries": [
+    "a2x-worker"
+   ],
+   "profile": "release",
+   "target": "experimental/ace/target",
+   "env": "AC_A2X_HIR_WORKER"
+  },
+  "trace-runtime": {
+   "workspace": "experimental/ace",
+   "package": "ace-trace-runtime",
+   "binaries": [],
+   "artifacts": [
+    "ace_trace_runtime.lib"
+   ],
+   "profile": "runtime-dev",
+   "target": "experimental/ace/target"
+  },
+  "text-runtime": {
+   "workspace": "experimental/ace",
+   "package": "ace-text-runtime",
+   "binaries": [],
+   "artifacts": [
+    "ac_text_runtime.lib"
+   ],
+   "profile": "runtime-release",
+   "target": "experimental/ace/target"
+  },
+  "data-runtime": {
+   "workspace": "experimental/ace",
+   "package": "ace-data-runtime",
+   "binaries": [],
+   "artifacts": [
+    "ace_data_runtime.lib"
+   ],
+   "profile": "runtime-release",
+   "target": "experimental/ace/target"
+  },
+  "execution-fixture": {
+   "workspace": ".",
+   "package": "auto-tool-execution",
+   "binaries": [
+    "te-child"
+   ],
+   "profile": "debug",
+   "features": "",
+   "target": "target",
+   "env": "AUTO_TOOL_EXECUTION_FIXTURE"
   }
+ }
 }

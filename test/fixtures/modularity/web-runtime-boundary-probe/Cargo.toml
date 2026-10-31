@@ -9,8 +9,9 @@ publish = false
 [features]
 # Required opt-in source-boundary audit; the empty default is not a check.
 boundary = []
-# Match the formally delivered Core test-only interface gate.
-test-http-e2e = ["auto-lang-core/test-http-e2e"]
+# PLAN-901：Core 测试 HTTP helper 已常驻——本探针同名 feature 保留（外部
+# 入口兼容），语言侧转发退役。
+test-http-e2e = []
 
 [dependencies]
 auto-web={path="../../../../../auto-web/crates/auto-web"}

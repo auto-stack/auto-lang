@@ -49,9 +49,7 @@ pub fn with_module_private_sessions<T>(run: impl FnOnce() -> T) -> T {
     run()
 }
 
-#[cfg(feature = "test-case-batch")]
 pub mod parent_observations;
-#[cfg(feature = "test-case-batch")]
 pub mod test_batch;
 
 const READ_CAP: usize = (4 << 20) + (64 << 10);
@@ -294,7 +292,7 @@ fn worker_file_sha256(exe: &Path) -> Result<String, String> {
     Ok(hex(&Sha256::digest(&bytes)))
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod worker_identity_tests {
     use super::*;
 
@@ -709,7 +707,6 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn av worker ({}): {}", exe.display(), e))?;
-    #[cfg(feature = "test-case-batch")]
     parent_observations::spawned(child.id());
     #[cfg(windows)]
     let mut job = match containment::JobGuard::for_child(&child) {
@@ -829,7 +826,6 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             }
         }
         if exit_status.is_some() {
-            #[cfg(feature = "test-case-batch")]
             let _cleanup = parent_observations::Phase::start("cleanup_ms");
             // Child gone: closing the job reaps descendants holding the
             // inherited pipes, then bounded reader joins.
@@ -864,7 +860,6 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         });
     }
     // Normal exit: job already dropped (descendants reaped).
-    #[cfg(feature = "test-case-batch")]
     let cleanup = parent_observations::Phase::start("cleanup_ms");
     drop(job.take());
     if write_rx.recv_timeout(READER_GRACE).is_err() {
@@ -894,7 +889,6 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             .unwrap_or_default(),
     };
     // F798-R3-05: process identity — a non-zero exit is Infra even when a
-    #[cfg(feature = "test-case-batch")]
     drop(cleanup);
     // plausible JSON line preceded it.
     let status = exit_status.unwrap_or_else(|| child.wait().unwrap_or_default());
@@ -1326,7 +1320,6 @@ fn run_check_with_transport(
     mut transport: impl FnMut(&str, Duration) -> Result<WorkerResponse, String>,
     leased_worker_sha: Option<&str>,
 ) -> Result<Verdict, String> {
-    #[cfg(feature = "test-case-batch")]
     let mut parent_clock = parent_observations::Clock::new();
     let started = Instant::now();
     let recipe = family.recipe();
@@ -1636,10 +1629,8 @@ fn run_check_with_transport(
         .map(Duration::from_millis)
         .unwrap_or(SESSION_WALL);
     let request_text = request.to_string();
-    #[cfg(feature = "test-case-batch")]
     parent_clock.lap("prepare_ms");
     let resp_result = transport(&request_text, wall);
-    #[cfg(feature = "test-case-batch")]
     parent_clock.lap("transport_ms");
     let worker_us = worker_started.elapsed().as_micros() as u64;
 
@@ -2054,7 +2045,6 @@ fn run_check_with_transport(
         artifacts: vec![],
         native: Some(native),
     };
-    #[cfg(feature = "test-case-batch")]
     parent_clock.lap("admission_compare_receipt_ms");
     Ok(verdict)
 }
@@ -3273,7 +3263,7 @@ pub mod tests_seam {
     }
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod judge_tests {
     //! F820-R7-01 pins: the typed channel is a DATA-recipe increment —
     //! the shared judge and admission rules are exercised HERE, on the
@@ -3575,7 +3565,7 @@ mod judge_tests {
     }
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod closures_judge_tests {
     //! PLAN-823 (R1-F02): the PARENT-side closures judgement — the frozen
     //! table decides; a lying worker face turns the verdict red.
@@ -3652,7 +3642,7 @@ mod closures_judge_tests {
     }
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod closures_source_judge_tests {
     use super::*;
 
@@ -3890,7 +3880,7 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
     }
 }
 
-#[cfg(all(test, feature = "test-ace"))]
+#[cfg(test)]
 mod console_tests {
     use super::*;
 

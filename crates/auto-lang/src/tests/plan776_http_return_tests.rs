@@ -246,7 +246,6 @@ fn plan776_t02_file_response_shim_pushes_resource() {
 // T-03：wire 级（真 TCP，test-http-e2e）——资源回复/快照重放/真碰撞
 // ============================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e {
     use std::io::{Read, Write};
     use std::net::TcpStream;
@@ -455,7 +454,6 @@ fn main() {
     );
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_t04 {
     use super::http_e2e::{get, start_server};
 
@@ -545,7 +543,6 @@ fn async_note() ~Note {
     }
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_t05 {
     use super::http_e2e::start_server;
     use std::io::{Read, Write};
@@ -818,7 +815,6 @@ fn plan776_t06_vm_gate_respects_compile_time_shadowing() {
 // R1 修复复现族（review-r1 F01..F09 的可重放 oracle）
 // ============================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r1 {
     use super::http_e2e::{ephemeral_port, get, start_server};
     use std::io::{Read, Write};
@@ -1308,7 +1304,6 @@ fn plan776_r1_credential_accessors_read_snapshot() {
 // R2 修复复现族（review-r2 F01..F08 的可重放 oracle）
 // ============================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r2 {
     use super::http_e2e::{get, start_server};
     use std::io::{Read, Write};
@@ -1646,7 +1641,6 @@ fn r() Resp {
     );
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r3 {
     use super::http_e2e::{get, start_server};
     use crate::vm::ffi::http_return_resource::live_resource_count;
@@ -1744,7 +1738,6 @@ Connection: close
     }
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r5 {
     use super::http_e2e::{get, start_server};
     use std::io::{Read, Write};
@@ -2001,7 +1994,6 @@ fn t5() CycA {
     assert_eq!(kind_of("t5"), ResponseKind::Json);
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r6 {
     use super::http_e2e::{get, start_server};
     use std::io::{Read, Write};
@@ -2203,7 +2195,6 @@ fn c() CycA {
     assert_eq!(kind, crate::api::contract::ResponseKind::Json);
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r7 {
     use super::http_e2e::{get, start_server};
     use std::io::{Read, Write};
@@ -2381,7 +2372,6 @@ fn plan776_r7_iterator_credential_native_family() {
     assert_eq!(auto_val::decode_i32(first), 0, "enumerate 首帧 index=0");
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r8 {
     use super::http_e2e::{get, start_server};
 
@@ -2529,7 +2519,6 @@ fn plan776_r8_iterator_consumer_ownership_protocol() {
     }
 }
 
-#[cfg(feature = "test-http-e2e")]
 mod http_e2e_r9 {
     use super::http_e2e::{get, start_server};
 

@@ -184,7 +184,6 @@ fn main() {
 // 编译运行腿（真 TCP + cargo 工程）：test-http-e2e 门（cargo th 过滤器收集）。
 // ============================================================================
 
-#[cfg(feature = "test-http-e2e")]
 mod e2e {
     use super::*;
 

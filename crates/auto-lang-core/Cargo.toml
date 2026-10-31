@@ -7,11 +7,14 @@ license = "MIT"
 keywords = ["language", "sdk", "parser", "vm", "transpiler"]
 
 [features]
-test-ace = ["test-cases"]
-
 # 镜像 auto-lang 的非 UI 特性（PLAN-814 T-02；UI 特性族留上层兼容包转发）
-default = ["with-file-history"]
-with-file-history = []
+# PLAN-901：语言测试 feature（test-cases/test-ace/test-http-e2e/
+# test-case-batch 及 facade 侧 test-trans/test-book/test-aavm）拍平退役——
+# 测试代码在同一 Cargo 测试编译形态可见，运行范围由固定组/nextest 过滤/
+# 原 ignore/平台/环境条件决定；TestCase 依赖转常驻。
+# PLAN-901：with-file-history 死 feature 同步退出（crates 内零 cfg 命中、
+# 无外部请求者；rustyline 自身同名依赖 feature 不受影响）。default 置空。
+default = []
 # PLAN-814 R3-03b：原 `ui-dialect` 显式组合 feature 已删除——SDK 清单
 # （含 optional path）不再引用 auto-ui-dialect（无 UI checkout 的源码快照
 # 消费要求）。UI 文法经函数表端口装配：上层组合点注入
@@ -25,10 +28,6 @@ code-editor = []
 python = ["dep:pyo3"]
 streaming-http = ["dep:tokio-util"]
 mem-profile = []
-test-cases = ["dep:auto-test-case"]
-# PLAN-888: cross-crate e2e harness helpers, absent from product builds.
-test-http-e2e = []
-test-case-batch = ["test-cases"]
 
 [dependencies]
 # Pure domain contract only; never the Web runtime.
@@ -47,7 +46,9 @@ a2r-std = { path = "../a2r-std" }
 auto-atom = { path = "../auto-atom" }
 auto-cache = { path = "../auto-cache" }
 shim-metadata = { path = "../shim-metadata" }
-auto-test-case = { path = "../auto-test-case", optional = true }
+# PLAN-901：TestCase 协议核心转常驻依赖（原 optional + test-cases feature
+# 门拍平；SDK 发行闭包随之包含 auto-test-case 及其 vendored parser）。
+auto-test-case = { path = "../auto-test-case" }
 auto-bindgen = { path = "../auto-bindgen" }
 auto-terminal-core = { path = "../auto-terminal-core" }
 rustyline = { workspace = true, features = ["with-file-history"] }

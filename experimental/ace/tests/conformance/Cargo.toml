@@ -11,11 +11,14 @@ path = "tests/conformance.rs"
 
 [features]
 default = ["test-cases"]
+# 本 crate 自有的测试可见性 feature（ACE 域内分组选择用）；PLAN-901 起
+# auto-lang-core 侧语言测试 feature 已拍平退役，转发面随之清空。
 test-cases = []
-test-case-batch = ["auto-lang-core/test-case-batch"]
+test-case-batch = []
 
 [dependencies]
-auto-lang-core = { path = "../../../../crates/auto-lang-core", features = ["test-cases", "test-case-batch", "test-http-e2e", "code-editor"] }
+# PLAN-901：core 测试面常驻——仅保留真实能力 feature code-editor。
+auto-lang-core = { path = "../../../../crates/auto-lang-core", features = ["code-editor"] }
 auto-test-case = { path = "../../../../crates/auto-test-case" }
 serde_json = "1"
 base64 = "0.22"

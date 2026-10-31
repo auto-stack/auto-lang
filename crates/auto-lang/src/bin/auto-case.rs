@@ -1,8 +1,8 @@
 //! `auto-case` — developer entry for the AutoDown TestCase protocol pilot
 //! (Plan 768 T-07; proposed interface from the plan §6.2).
 //!
-//! Only meaningful with `--features test-cases` (without it this binary is
-//! an empty stub). The runner exit code is the GATE code — 0 selected gate
+//! PLAN-901：随语言测试 feature 拍平，本 bin 恒为真实形态（无 feature
+//! 缺席 stub）。The runner exit code is the GATE code — 0 selected gate
 //! satisfied, 1 assertion/coverage failure, 2 contract/infrastructure error
 //! — and never replaces any tested program's own exit code.
 //!
@@ -25,12 +25,7 @@
 //! auto-case stale    --suite <pilot.suite.ad> --report <old report.json>
 //! ```
 
-#[cfg(not(feature = "test-cases"))]
-fn main() {
-    eprintln!("auto-case: this binary needs `--features test-cases` (empty stub build)");
-}
 
-#[cfg(feature = "test-cases")]
 fn main() {
     // The executable is the host for VM-backed cases; the Core SDK remains
     // explicit and has no built-in Web implementation.
@@ -45,25 +40,19 @@ fn main() {
     std::process::exit(code);
 }
 
-#[cfg(feature = "test-cases")]
 fn real_main() -> Result<i32, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     run(&args)
 }
 
-#[cfg(feature = "test-cases")]
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "test-cases")]
 use auto_test_case::admission::{
     check_no_reparse_ancestors, validate_output_domain, validate_output_file, Limits,
 };
-#[cfg(feature = "test-cases")]
 use auto_test_case::discovery::load_suite;
-#[cfg(feature = "test-cases")]
 use auto_test_case::suite::apply_defaults;
 
-#[cfg(feature = "test-cases")]
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter()
         .position(|a| a == name)
@@ -71,7 +60,6 @@ fn flag(args: &[String], name: &str) -> Option<String> {
         .cloned()
 }
 
-#[cfg(feature = "test-cases")]
 fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
     match args
         .iter()
@@ -83,7 +71,6 @@ fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn run(args: &[String]) -> Result<i32, String> {
     let cmd = args.first().ok_or_else(|| usage())?;
     if cmd == "legacy-inventory" {
@@ -118,7 +105,6 @@ fn run(args: &[String]) -> Result<i32, String> {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn usage() -> String {
     "usage: auto-case <lint|list|inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>"
         .to_string()
@@ -126,7 +112,6 @@ fn usage() -> String {
 
 /// Protected input/oracle roots for the suite: its directory and the
 /// fixture base every `file:` reference resolves against.
-#[cfg(feature = "test-cases")]
 fn protected_roots(suite: &Path) -> Result<Vec<PathBuf>, String> {
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     let mut roots = Vec::new();
@@ -140,7 +125,6 @@ fn protected_roots(suite: &Path) -> Result<Vec<PathBuf>, String> {
 /// Audit one output directory (created first so canonicalization resolves
 /// the real Windows form); on rejection, remove the directory only if this
 /// call created it empty (F-05).
-#[cfg(feature = "test-cases")]
 fn audit_output_dir(out: &Path, protected: &[PathBuf]) -> Result<(), String> {
     let existed = out.exists();
     std::fs::create_dir_all(out).map_err(|e| format!("create {}: {}", out.display(), e))?;
@@ -157,7 +141,6 @@ fn audit_output_dir(out: &Path, protected: &[PathBuf]) -> Result<(), String> {
 /// Audit a single output FILE target: parent must exist (created on
 /// demand), no reparse point on the chain, and the file must stay outside
 /// the protected roots (F-05).
-#[cfg(feature = "test-cases")]
 fn audit_output_file(target: &Path, protected: &[PathBuf]) -> Result<(), String> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
@@ -168,7 +151,6 @@ fn audit_output_file(target: &Path, protected: &[PathBuf]) -> Result<(), String>
         .map_err(|e| format!("output path rejected: {}", e))
 }
 
-#[cfg(feature = "test-cases")]
 fn lint(suite: &std::path::Path) -> Result<i32, String> {
     // F-09: full admission — references (payload sidecars AND expected
     // artifacts) resolve before lint can claim the contract is sound.
@@ -195,7 +177,6 @@ fn lint(suite: &std::path::Path) -> Result<i32, String> {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     let json = matches!(format, Some("json"));
@@ -256,7 +237,6 @@ fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
     // F-09: inspect shares the full admission — a broken reference is
     // reported here too, not only at run time.
@@ -309,7 +289,6 @@ fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
     Err(format!("case {:?} not found in suite", case_id))
 }
 
-#[cfg(feature = "test-cases")]
 fn fmt_entry(spec: &auto_test_case::contract::CaseSpec) -> String {
     use auto_test_case::contract::EntryMode;
     match spec.entry {
@@ -320,7 +299,6 @@ fn fmt_entry(spec: &auto_test_case::contract::CaseSpec) -> String {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn fmt_source(spec: &auto_test_case::contract::CaseSpec) -> String {
     use auto_test_case::contract::PayloadSpec;
     match &spec.source.payload {
@@ -330,7 +308,6 @@ fn fmt_source(spec: &auto_test_case::contract::CaseSpec) -> String {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn fmt_completion(c: &auto_test_case::contract::Completion) -> String {
     match c {
         auto_test_case::contract::Completion::Success => "success".to_string(),
@@ -353,7 +330,6 @@ fn fmt_completion(c: &auto_test_case::contract::Completion) -> String {
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let format = flag(args, "--format");
@@ -395,7 +371,6 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
 /// A complete case is an independently executable leaf. Keep the original
 /// whole-suite report (including NOT_RUN) and expose a separate case scope;
 /// a case result must never masquerade as the whole suite's passing gate.
-#[cfg(feature = "test-cases")]
 fn output_audit_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
     let supplied: std::collections::BTreeSet<_> = args[1..]
         .chunks_exact(2)
@@ -415,7 +390,6 @@ fn output_audit_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
     Ok(0)
 }
 
-#[cfg(feature = "test-cases")]
 fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
     let expected: &[&str] = match args.len() {
         7 => &["--suite", "--case", "--out"],
@@ -471,7 +445,6 @@ fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
     Ok(gate)
 }
 
-#[cfg(feature = "test-cases")]
 fn persist_reports(out: &Path, console: &str, json: &str) -> Result<(), String> {
     std::fs::write(out.join("report.console.txt"), console)
         .map_err(|e| format!("write report.console.txt: {}", e))?;
@@ -480,7 +453,6 @@ fn persist_reports(out: &Path, console: &str, json: &str) -> Result<(), String> 
     Ok(())
 }
 
-#[cfg(feature = "test-cases")]
 fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let proposal_dir = flag(args, "--proposal-dir")
@@ -520,7 +492,6 @@ fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String>
 /// F-06: re-check an old report against the CURRENT tree via the library
 /// staleness check (`test_cases::stale`). Exit 0 = all fresh, 1 = stale
 /// findings, 2 = errors.
-#[cfg(feature = "test-cases")]
 fn stale_cmd(suite: &std::path::Path, report_path: &str) -> Result<i32, String> {
     let raw = std::fs::read_to_string(report_path)
         .map_err(|e| format!("reading report {}: {}", report_path, e))?;
@@ -555,7 +526,6 @@ fn stale_cmd(suite: &std::path::Path, report_path: &str) -> Result<i32, String> 
     }
 }
 
-#[cfg(feature = "test-cases")]
 fn jstr(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -574,7 +544,7 @@ fn jstr(s: &str) -> String {
     out
 }
 
-#[cfg(all(test, feature = "test-cases"))]
+#[cfg(test)]
 mod tests {
     use super::persist_reports;
     use std::time::{SystemTime, UNIX_EPOCH};
