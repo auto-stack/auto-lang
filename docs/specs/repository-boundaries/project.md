@@ -130,5 +130,5 @@ M2 收口后的常态治理 = 三件事（不再有"拆分期"特殊态）：
 ## PLAN-890 Web独立owner
 
 新增本地auto-web0.1.0领域owner；language/Web/UI/Man为完整组合，Down只作固定依赖。
-Web canonical、显式SDK装配、原ID/资源/实际执行、19包源交付及安装恢复见
+Web canonical、显式SDK装配、原ID/资源/实际执行、20包源交付及安装恢复见
 [web-four-repository-delivery](web-four-repository-delivery.md)。旧三仓历史锚不移动；未远端发布。

@@ -31,7 +31,8 @@ class FourOwnerControls(unittest.TestCase):
         gate.owner_selection('ui-full', ids, selected, credit)
         with self.assertRaisesRegex(ValueError, 'actual media PASS'):
             gate.owner_selection('ui-full', ids, selected, set())
-        victim = next(iter(selected))
+        gate.owner_selection('ui-full', ids - {'current\textra0'}, selected - {'current\textra0'}, credit)
+        victim = sorted(required - moved)[0]
         with self.assertRaisesRegex(ValueError, 'baseline coverage lost'):
             gate.owner_selection('ui-full', ids - {victim}, selected - {victim}, credit)
 

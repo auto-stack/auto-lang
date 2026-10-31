@@ -18,7 +18,7 @@ Man保留CLI/工程/依赖和通用进程编排，UI保留renderer/tool/worker/p
 ## 来源、SDK及恢复
 
 冻结前后核对源码、锁、17原资源和真实producer身份。显式所选/邻接受管SDK失败不借ambient来源。
-Web受管源包包含19实际package、完整stdlib、必要fixture/license与版本/全文件inventory/hash。
+Web受管源包包含20实际package（含896引入的auto-tool-execution依赖）、完整stdlib、必要fixture/license与版本/全文件inventory/hash。
 服务生成接受Web最小SDK或Man Core/Full；UI生成仍要求Full。
 prepare/verify/swap失败不得破坏旧有效workspace/安装或用户文件；成功升级后重读实际产物。
 通用事务算法归Man，Web携带逐字且Git来源可验证的不可编辑owner快照，不养第二份安装算法。
