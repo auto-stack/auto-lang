@@ -101,7 +101,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 31 | [AutoScape / AutoWeb](31-autoscape-autoweb.md) | Auto 原生浏览器与统一应用寻址运行时：URI/Intent/AppResolver、AppRealm/AppSession/AppProvider、AutoFrame/BrowsingContext、AutoWeb 部署模型、远程语义流；含术语×本地实现对照与差距分析 | 📝 Draft（2026-09-20 立档；外来设计输入融入重排版，v0.6 主打候选 M1 见其 §13） |
 | 33 | [Stdlib Runtime & HTTP](33-stdlib-runtime-and-http.md) | 标准库多后台实际装配、AutoUI API 拓扑、Axum/VM owner 与 HTTP/task 分阶段路线 | 696–738 主线及 751/755 修复已交付；v0.6 下一项 776 返回资源/异步终值 drafting；剩余四阶段见进度审计 |
 | 34 | [VM Store 所有权与 Handler 阻塞纪律](34-vm-store-ownership-and-handler-discipline.md) | 决策工件：段执行/actor 双形态下的 store 所有权（Erlang vs Go 式）与 handler 阻塞纪律（类型化 vs ui_lint+段切预算）两案对比、迁移面评估与裁定建议 | 📝 决策工件（PLAN-702 T-07 产出，待用户裁定；不含实现） |
-| 50 | [AutoWeb服务框架与仓库边界](50-autoweb-service-framework-and-repo-boundaries.md) | 独立auto-web仓首期：Web/语言/Man/UI职责、HTTP生成与运行、测试发行、Blog消费及885/887交接 | target-state r1（2026-10-29）；884→887→Web→UI/Man；仅设计，887后正式立迁移Plan，未建仓/实施 |
+| 50 | [AutoWeb服务框架与仓库边界](50-autoweb-service-framework-and-repo-boundaries.md) | 独立auto-web仓首期：Web/语言/Man/UI职责、HTTP生成与运行、测试发行、Blog消费及885/887/888交接 | target-state r3（2026-10-30）；890实施/完整交付→[auto-ui/014结构收口草案](../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)→按007原门推进；014仅规划 |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
@@ -152,6 +152,9 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 有限文件化基础788/852已交付；a2r日常金样/独立认证分轴，完整消费者覆盖待扩 |
 | [模块选测与ACE成组执行](testing/module-selection-and-ace-batching.md) | 复用887义务清单建立模块/影响闭包、ACE独立与成组/组合表达式对照、逐项定位与实测推广 | target-state r1，PLAN-888草案；建议U887后优先质量支线，未实施，不取消全局冻结门 |
 | [Cargo包与Rust模块固定测试分组](testing/crate-and-rust-module-tests.md) | 替换tm动态叶/顶级/自动闭包体系，固定源码职责组、原生并行、必要构建与存储生命周期 | target-state r1（2026-10-31），PLAN-896 r4吸收897；待确认，尚未实施 |
+| [ACE测试框架与慢例归因](testing/ace-test-framework-and-cost-attribution.md) | 复用888唯一叶/计量建立ACE接入策略、13慢原子分相归因与独立执行导航 | target-state r2，PLAN-893仅规划；保原义务/规模/正式门，不建第二runner |
+| [共享文本源码与资源收口](strategy/shared-text-source-resource-contract.md) | T03局部Str替换、T05完整字节比较及AV/native真函数增量、资源/恢复与交接 | target-state r1，PLAN-894仅规划；复用现有profile/recipe，必要版本镜像同步，不依赖888/891/892整包 |
+| [UI/Man结构收口边界](../../../auto-ui/docs/design/autoui/ui-man-structure-closure.md) | 主改面UI，Man CLI/Vue/Aura/renderer四面收口；890拥有Web、007拥有新主题/示例 | target-state r1，auto-ui/014 drafting0/11；U890→U014→按007原门推进；本轮只规划 |
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 774/770/771/782有限合同已归档；本篇为历史共同设计，现状查Spec |
 | [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 模块/仓界、宿主与项目模型解耦、结构/减法及交付门 | 831/832与841–844已归档；867等价出口在途，869/872/873及两个未编号结构包见[总路线v11](../plans/reports/v06-extraction-execution-roadmap.md) |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | Auto语言工具基础设施：Auto/Atom Grammar、CST/AST/HIR分层、ACE编译部署与插件、auto-edit/编码工具及可选语义LSP；复用增量/cache/有界工作集 | 📝 2026-10-22补长期定位与P1–P4路线；787有限实验已交付，完整通用产品未交付；本次仅设计 |
@@ -170,6 +173,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [48-ui-domain-ast-and-lowering](48-ui-domain-ast-and-lowering.md) | UI owned领域模型、泛型领域解析、受检lowering与Core准入 | PLAN-841 架构合同 |
 | [49-native-single-mir-lowering](49-native-single-mir-lowering.md) | 共享HIR→Typed MIR→native收敛、五旧profile覆盖/删除门、布局/身份/cache交接 | 868已交付；870/871待实施，不提前删除旧能力；保留verify资源分析 |
 | [51-shared-a2x-and-hir-to-rust](51-shared-a2x-and-hir-to-rust.md) | 共享Checked HIR事实/结构化准备/编译服务，各目标合法化/AST/runtime；Rust首期三包与增量、认证、889/891/888交接 | target-state r1（2026-10-30）；仅规划；AX-A已立892草案，AX-B/C未编号、不施工 |
+| [52-single-compile-profile-consolidation](52-single-compile-profile-consolidation.md) | 单一编译profile：auto-lang去UI依赖反转、测试feature拍平（编译恒定+运行期选择）、tm/tier清退 | target-state r1（2026-10-31）；实施中，四计划 C→A→B（本仓）+D（auto-ui） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
@@ -270,4 +274,3 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
 - **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。
-
