@@ -19,4 +19,4 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 
 | 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | 运行桥接单源（G1/G2/G3）+ G4/G5 刻意分离；stdlib 域装配 13 域/19 个有序注册 helper/指纹闭包+V-09 守卫；call_inner 22 族 CallShape 三态；rust 主管线 9 主题模块+收集器去重（param_types 分叉留债）；见 [structure-closure.md](structure-closure.md) |
 
-| 890 | AutoWeb独立仓与四仓交付 | reviewed；最终交付见归档收据 | [PLAN-890](../../plans/archive/890-auto-web-independent-repository-delivery.md) | 中立local HTTP宿主/声明与launch快照，显式服务装配 |
+| 890 | AutoWeb独立仓与四仓交付 | 已合入；归档收据为准 | [PLAN-890](../../plans/archive/890-auto-web-independent-repository-delivery.md) | 中立local HTTP宿主/声明与launch快照，显式服务装配 |

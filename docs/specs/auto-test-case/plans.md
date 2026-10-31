@@ -32,4 +32,4 @@
 | 895 | 全仓测试用途审查、顶级模块重组与日常包准入建议 | archived（建议层交付） | [计划](../../plans/archive/895-test-purpose-audit-and-daily-admission.md) | 66 顶级职责模块精确分区 1181 叶、7165 逐项用途审查行（daily 48/专项 17/调研 1）、全仓来源台账与准入建议；建议不改默认执行；[用途与准入](test-purpose-and-admission.md) |
 | 894 | 共享文本T03/T05源码、资源与函数级增量收口 | delivered（r1，final pass F-R1 闭环；合入门见归档计划） | [计划](../../plans/archive/894-shared-text-source-and-resource-closure.md) | ace.m1.t03 迁 value=23（保 check 身份/历史依据）、T05 增 42 检查、独立套件 text-source-894 与 binding ac/av 列 ok；[ace-m1-conformance.md](ace-m1-conformance.md) |
 
-| 890 | AutoWeb独立仓与四仓交付 | reviewed；最终交付见归档收据 | [PLAN-890](../../plans/archive/890-auto-web-independent-repository-delivery.md) | 源ID/floor/迁移实际PASS与原ignore守恒 |
+| 890 | AutoWeb独立仓与四仓交付 | 已合入；归档收据为准 | [PLAN-890](../../plans/archive/890-auto-web-independent-repository-delivery.md) | 源ID/floor/迁移实际PASS与原ignore守恒 |
