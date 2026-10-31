@@ -583,18 +583,60 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
 }
 
 /// UI crates are selected from their UI owner or a receipt-validated
-/// installation. Other crates must come from the language producer itself.
+/// installation. Web crates (PLAN-901 r2/§5.5：auto-ui-tools/auto-api-gen 自
+/// PLAN-890 起硬依赖 auto-web，交付闭包随包) resolve from the web owner root
+/// or group sibling. Other crates must come from the language producer itself.
 pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> {
     let ui = matches!(
         name,
         "auto-ui-dialect" | "auto-ui-compiler" | "auto-ui-runtime" | "auto-ui-tools" | "shell-pack"
     );
-    if !ui {
+    let web = matches!(name, "auto-web-contract" | "auto-web");
+    if !ui && !web {
         let source = producer_root.join("crates").join(name);
         return source
             .is_dir()
             .then_some(source)
             .ok_or_else(|| format!("delivery: producer 语言源缺失: crates/{name}").into());
+    }
+    if web {
+        if let Some(value) = std::env::var_os("AUTO_WEB_SOURCE_ROOT") {
+            let root = PathBuf::from(value);
+            let source = root.join("crates").join(name);
+            if !valid_source_crate(&source, name) {
+                return Err(format!(
+                    "delivery: producer 显式 AUTO_WEB_SOURCE_ROOT 无效或缺少 crates/{name}: {}",
+                    root.display()
+                )
+                .into());
+            }
+            if is_managed_sdk(&root) {
+                installed_crate_source(&root, name, None, "auto-web")?.ok_or_else(|| {
+                    format!("delivery: 显式 AUTO_WEB_SOURCE_ROOT 安装清单缺少 crates/{name}")
+                })?;
+            } else {
+                validate_development_dependencies(&source).map_err(|err| {
+                    format!("delivery: producer 显式 AUTO_WEB_SOURCE_ROOT 的本地依赖无效: {err}")
+                })?;
+            }
+            return Ok(source);
+        }
+        if let Some(parent) = producer_root.parent() {
+            let source = parent.join("auto-web/crates").join(name);
+            if source.is_dir() {
+                if valid_source_crate(&source, name) {
+                    validate_development_dependencies(&source).map_err(|err| {
+                        format!("delivery: producer 组内 web 包依赖无效: {err}")
+                    })?;
+                    return Ok(source);
+                }
+                return Err(format!("delivery: producer 组内 web 包无效: crates/{name}").into());
+            }
+        }
+        return Err(format!(
+            "delivery: producer web owner 源缺失: crates/{name}（AUTO_WEB_SOURCE_ROOT / 组内 auto-web）"
+        )
+        .into());
     }
     if let Some(value) = std::env::var_os("AUTO_UI_SOURCE_ROOT") {
         let root = PathBuf::from(value);
@@ -679,6 +721,83 @@ mod plan842_receipt_tests {
             "[dev-dependencies]\napp = { path = \"../app\" }\n",
         );
         validate_development_dependencies(&root.join("crates/app")).unwrap();
+    }
+
+    /// PLAN-901 r2/§5.5：交付闭包 web crate（auto-web-contract/auto-web）
+    /// 解析——组内 auto-web 兄弟为默认源；AUTO_WEB_SOURCE_ROOT 显式覆盖；
+    /// 两 web crate 不得回落到语言 producer 语言源（fail-closed 显式报错）。
+    #[test]
+    fn web_crate_source_group_sibling_and_explicit_root() {
+        struct EnvGuard(Option<std::ffi::OsString>);
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_WEB_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_WEB_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _guard = EnvGuard(std::env::var_os("AUTO_WEB_SOURCE_ROOT"));
+        std::env::remove_var("AUTO_WEB_SOURCE_ROOT");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let lang = tmp.path().join("auto-lang");
+        let web = tmp.path().join("auto-web");
+        for root in [&lang, &web] {
+            fs::create_dir_all(root.join("crates/auto-lang/src")).unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"crates/auto-lang\"]\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join("crates/auto-lang/Cargo.toml"),
+                "[package]\nname = \"auto-lang\"\nversion = \"0.1.0\"\n",
+            )
+            .unwrap();
+            fs::write(root.join("crates/auto-lang/src/lib.rs"), "").unwrap();
+        }
+        ui_crate_source(&lang, "auto-lang").unwrap();
+
+        // 组内 auto-web 兄弟缺失 → web owner 显式报错（不误报语言源缺失）。
+        let err = ui_crate_source(&lang, "auto-web").unwrap_err().to_string();
+        assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
+        let err = ui_crate_source(&lang, "auto-web-contract")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
+
+        // 建立组内兄弟后解析成功，且指向 web 仓兄弟而非语言 producer。
+        for name in ["auto-web", "auto-web-contract"] {
+            fs::create_dir_all(web.join("crates").join(name).join("src")).unwrap();
+            fs::write(
+                web.join("crates").join(name).join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+            fs::write(web.join("crates").join(name).join("src/lib.rs"), "").unwrap();
+            let got = ui_crate_source(&lang, name).unwrap();
+            assert_eq!(got, web.join("crates").join(name), "{name} 组内兄弟解析");
+        }
+
+        // 显式 AUTO_WEB_SOURCE_ROOT 覆盖优先于组内兄弟。
+        let other = tmp.path().join("web-alt");
+        fs::create_dir_all(other.join("crates/auto-web/src")).unwrap();
+        fs::write(
+            other.join("crates/auto-web/Cargo.toml"),
+            "[package]\nname = \"auto-web\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(other.join("crates/auto-web/src/lib.rs"), "").unwrap();
+        std::env::set_var("AUTO_WEB_SOURCE_ROOT", &other);
+        let got = ui_crate_source(&lang, "auto-web").unwrap();
+        assert_eq!(got, other.join("crates/auto-web"), "显式覆盖生效");
+
+        // 显式根缺 crate → 显式报错。
+        let err = ui_crate_source(&lang, "auto-web-contract")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
     }
 
     #[test]
