@@ -180,6 +180,7 @@ version = "0.1.0"
 dependencies = [
  "auto-lang-core",
  "auto-test-case",
+ "auto-tool-execution",
  "base64 0.22.1",
  "serde",
  "serde_json",

@@ -1813,7 +1813,7 @@ fn slot_name(f: &crate::mir::MirFunction, s: usize) -> String {
 }
 
 #[cfg(test)]
-mod scalar_side_tables_889 {
+mod scalar_side_tables_tests {
     use super::*;
     use crate::mir::*;
     fn fixture(width: usize, mask: u32, extra: Option<MirType>) -> MirModule {

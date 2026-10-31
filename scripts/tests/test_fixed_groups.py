@@ -89,8 +89,13 @@ class FixedGroups(unittest.TestCase):
 
     def test_ace_set_is_explicit_and_separate_from_daily(self):
         selected = fixed.select(['ace'], self.value, self.groups)
-        self.assertEqual([g['name'] for g in selected], ['ace-workspace', 'ace-adapters'])
+        self.assertEqual([g['name'] for g in selected], ['ace-workspace', 'ace-adapters', 'ace-batch'])
         self.assertEqual(selected[0]['workspace'], 'experimental/ace')
+        batch = fixed.invocations([selected[2]])[0]
+        argv = fixed.nextest_args(batch)
+        self.assertTrue(argv[argv.index('--target-dir') + 1].endswith('target-batch'))
+        self.assertIn('test-case-batch', batch['args'])
+        self.assertIn('batch-av', batch['tools'])
         self.assertNotIn('daily', [g['name'] for g in selected])
         self.assertNotIn('ace-workspace', [g['name'] for g in fixed.select([], self.value, self.groups)])
 

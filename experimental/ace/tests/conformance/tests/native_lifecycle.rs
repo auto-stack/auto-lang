@@ -478,14 +478,15 @@ fn main(){
         )
         .unwrap();
         let exe = root.join("mock-worker.exe");
-        let out = Command::new("rustc")
+        let mut compiler = Command::new("rustc");
+        compiler
             .arg(&src)
             .arg("-o")
-            .arg(&exe)
-            .output()
+            .arg(&exe);
+        let out = compile_fixture(compiler)
             .expect("rustc for mock worker");
         assert!(
-            out.status.success(),
+            out.success,
             "mock rustc: {}",
             String::from_utf8_lossy(&out.stderr)
         );
@@ -965,17 +966,10 @@ fn main(){
     )
     .unwrap();
     let exe = root.join("bytes-prod.exe");
-    let out = Command::new("rustc")
-        .arg(&src)
-        .arg("-o")
-        .arg(&exe)
-        .output()
-        .expect("rustc bytes fixture");
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+    let mut compiler = Command::new("rustc");
+    compiler.arg(&src).arg("-o").arg(&exe);
+    let out = compile_fixture(compiler).expect("rustc bytes fixture");
+    assert!(out.success, "{}", String::from_utf8_lossy(&out.stderr));
     exe
 }
 
@@ -1384,14 +1378,11 @@ fn main() {
             )
             .unwrap();
             let exe = root.join("relay.exe");
-            let out = Command::new("rustc")
-                .arg(&src)
-                .arg("-o")
-                .arg(&exe)
-                .output()
-                .expect("rustc for relay");
+            let mut compiler = Command::new("rustc");
+            compiler.arg(&src).arg("-o").arg(&exe);
+            let out = compile_fixture(compiler).expect("rustc for relay");
             assert!(
-                out.status.success(),
+                out.success,
                 "relay rustc: {}",
                 String::from_utf8_lossy(&out.stderr)
             );
@@ -2861,4 +2852,27 @@ mod performance {
             "HARD GATE syntax edit P90 {syntax_p90}ms > {P90_GATE_MS}ms"
         );
     }
+}
+
+// Fixture builds have no original deadline; contain their compiler descendants
+// without changing argv, source, environment or the original test assertions.
+struct FixtureCompileOutput {
+    success: bool,
+    stderr: Vec<u8>,
+}
+fn compile_fixture(command: Command) -> std::io::Result<FixtureCompileOutput> {
+    use auto_tool_execution::{run_command_capture, ExecutionError, ExitKind, TreeScope};
+    let result =
+        run_command_capture(command, TreeScope::ProcessTree, None).map_err(
+            |error| match error {
+                ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => source,
+                other => std::io::Error::other(other.to_string()),
+            },
+        )?;
+    Ok(FixtureCompileOutput {
+        success: matches!(result.kind, ExitKind::Success),
+        stderr: result
+            .stderr
+            .ok_or_else(|| std::io::Error::other("missing compiler stderr capture"))?,
+    })
 }

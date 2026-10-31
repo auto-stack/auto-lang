@@ -226,7 +226,7 @@ pub fn table(raw: Option<&str>) -> Result<Vec<(Profile, Backend)>, SpecError> {
 }
 
 #[cfg(test)]
-mod tests_871 {
+mod profile_resolution_tests {
     use super::*;
 
     #[test]

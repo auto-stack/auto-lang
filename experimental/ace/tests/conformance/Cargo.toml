@@ -23,3 +23,6 @@ sha2 = "0.10"
 
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
+
+[dev-dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

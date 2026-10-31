@@ -44,7 +44,7 @@ fn run_exe(exe: &std::path::Path) -> Option<i32> {
 }
 
 #[test]
-fn gap871_tp02_view_record_clone_deep_copies_owned_fields() {
+fn gap_tp02_view_record_clone_deep_copies_owned_fields() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -77,7 +77,7 @@ fn gap871_tp02_view_record_clone_deep_copies_owned_fields() {
 }
 
 #[test]
-fn gap871_r01_hir_plain_method_ids_and_forward_mutret_wrapper() {
+fn gap_r01_hir_plain_method_ids_and_forward_mutret_wrapper() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -112,7 +112,7 @@ fn gap871_r01_hir_plain_method_ids_and_forward_mutret_wrapper() {
 }
 
 #[test]
-fn gap871_ctor_operand_snapshot_survives_a_sibling_mut_call() {
+fn gap_ctor_operand_snapshot_survives_a_sibling_mut_call() {
     // 771 SP05 (F-771-R2-01): a constructor operand is captured at its own
     // source-order evaluation point; the later `.mut` sibling must not
     // retroactively change it. Exit 11 is the fixture's own assertion of the
@@ -144,7 +144,7 @@ fn gap871_ctor_operand_snapshot_survives_a_sibling_mut_call() {
 }
 
 #[test]
-fn gap871_hp01_text_record_hir_entry_runs() {
+fn gap_hp01_text_record_hir_entry_runs() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;

@@ -49,3 +49,6 @@ pub mod console_host;
 
 /// Console recipe observation producer (PLAN-863).
 pub mod console_worker;
+
+#[cfg(test)]
+mod formal_turnaround_tests;

@@ -3,7 +3,7 @@ schema = 1
 default = ["daily"]
 
 [sets]
-ace = ["ace-workspace", "ace-adapters"]
+ace = ["ace-workspace", "ace-adapters", "ace-batch"]
 
 [[group]]
 name = "daily"

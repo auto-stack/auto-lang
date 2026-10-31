@@ -206,7 +206,7 @@ fn ac_av_probe_decode_negatives() {
     .expect("valid ac-av check decodes");
 }
 
-fn plan823_p90_10_gate(windows: &[f64], gate_ms: f64) -> bool {
+fn ten_sample_p90_gate(windows: &[f64], gate_ms: f64) -> bool {
     windows.len() == 10
         && gate_ms.is_finite()
         && gate_ms > 0.0
@@ -217,14 +217,14 @@ fn plan823_p90_10_gate(windows: &[f64], gate_ms: f64) -> bool {
 #[test]
 fn p90_controls() {
     let mut windows = [2000.0; 10];
-    assert!(plan823_p90_10_gate(&windows, 2000.0));
+    assert!(ten_sample_p90_gate(&windows, 2000.0));
     windows[9] = 2000.1;
-    assert!(plan823_p90_10_gate(&windows, 2000.0));
+    assert!(ten_sample_p90_gate(&windows, 2000.0));
     windows[8] = 2000.1;
-    assert!(!plan823_p90_10_gate(&windows, 2000.0));
-    assert!(!plan823_p90_10_gate(&windows[..9], 2000.0));
+    assert!(!ten_sample_p90_gate(&windows, 2000.0));
+    assert!(!ten_sample_p90_gate(&windows[..9], 2000.0));
     windows[8] = f64::NAN;
-    assert!(!plan823_p90_10_gate(&windows, 2000.0));
+    assert!(!ten_sample_p90_gate(&windows, 2000.0));
 }
 
 /// F798-R3-05/06 formal counter-controls: worker-contract violations are
@@ -1328,11 +1328,11 @@ suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
             );
             eprintln!("plan823 798 raw: edit={edit_walls:?} sig={sig_walls:?}");
             assert!(
-                plan823_p90_10_gate(&edit_walls, gate_ms),
+                ten_sample_p90_gate(&edit_walls, gate_ms),
                 "plan 823 edit P90 must satisfy 9/10 <= 2000ms"
             );
             assert!(
-                plan823_p90_10_gate(&sig_walls, gate_ms),
+                ten_sample_p90_gate(&sig_walls, gate_ms),
                 "plan 823 signature P90 must satisfy 9/10 <= 2000ms"
             );
         } else {

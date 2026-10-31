@@ -111,7 +111,7 @@ fn build_and_check(profile: &str, src: &str, want: i32, caps: &[&str], tag: &str
 }
 
 #[test]
-fn cli871_default_table_is_mn() {
+fn cli_default_table_is_mn() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -154,7 +154,7 @@ fn cli871_default_table_is_mn() {
 }
 
 #[test]
-fn cli871_five_profiles_build_and_run() {
+fn cli_five_profiles_build_and_run() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -185,7 +185,7 @@ fn cli871_five_profiles_build_and_run() {
 }
 
 #[test]
-fn cli871_hir_build_keeps_the_retiring_receipt_needles() {
+fn cli_hir_build_keeps_the_retiring_receipt_needles() {
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -218,7 +218,7 @@ fn cli871_hir_build_keeps_the_retiring_receipt_needles() {
 }
 
 #[test]
-fn cli871_legacy_resolved_profile_is_an_explicit_refusal() {
+fn cli_legacy_resolved_profile_is_an_explicit_refusal() {
     let dir = scratch("legacy-refusal");
     let exe = dir.join("app.exe");
     let out = run_cli(
@@ -251,7 +251,7 @@ fn cli871_legacy_resolved_profile_is_an_explicit_refusal() {
 }
 
 #[test]
-fn cli871_malformed_switch_is_an_explicit_refusal() {
+fn cli_malformed_switch_is_an_explicit_refusal() {
     let dir = scratch("malformed");
     let exe = dir.join("app.exe");
     let out = run_cli(

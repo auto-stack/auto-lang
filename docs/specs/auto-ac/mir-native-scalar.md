@@ -1,6 +1,6 @@
 # auto-ac MIR-native 有限标量后端（PLAN-818）
 
-> Status: active（实现=`experimental/ace/crates/native/` 独立 workspace：`src/{config,
+> Status: active（实现=`experimental/ace/crates/native/` 成员包（workspace根为`experimental/ace/Cargo.toml`）：`src/{config,
 > symbols,lower,emit,cache,link_driver,driver,worker,incremental,observe,resources,
 > workload}.rs` + `src/bin/mn-worker.rs`）。实验通道，非生产默认入口。
 
