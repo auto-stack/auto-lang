@@ -22,7 +22,7 @@ total_steps: 12
 
 > **当前授权（最终）**：用户明确“不需要再次测试了”，要求更新主分支后安全合入。896新cargo t与四仓冻结门已有实际通过证据；898及后续主干整合只做独立静态核查，不追加构建、测试或周期批次，不把旧结果认证为新基线已执行。禁止远端发布保持。
 >
-> **当前进度**：四仓已ff-only合入、canonical已核；r7独立终审与恢复复审通过。以下各早期停止点/pending均属历史。归档已完成，工作树清理待最终收据。
+> **当前进度**：四仓已ff-only合入、canonical已核；r7独立终审与恢复复审通过。以下各早期停止点/pending均属历史。归档与五工作树清理已完成；附件本地副本和空组目录删除被自动策略拒绝，T-12保留该清理尾项。
 
 > r6 / executing / 6/12；2026-10-30。用户已授权890完整交付，并明确选择“显式安装 Web adapter”。885收尾已由用户确认；当前按下述显式SDK装配迁移合同执行。r1的仅规划限制与等待记录为历史，不覆盖当前授权。
 > **当前停止点（2026-10-30）**：用户“继续后续阶段”启动r4单元2；T-05～T-06运行时/生成器迁移及定向验收已完成并提交，暂停在该单元末。语言`1b177ebab`，Web`d8c889c78`；见[本阶段交接](#e890-ca5b663d4f4f80ee)。**组合产品尚未构建通过**：根check暴露UI back-proxy三项旧Core引用错误，Vue另有旧HTTP生成调用，均由下一单元T-07消费迁移关闭；不冒baseline红或整包可用。**完整tm闭包仍NOT_PASSED**，保留旧3个AAVM红及未执行项。整体executing6/12，T-07待启动，未合入/归档/清理。
@@ -7673,3 +7673,14 @@ stage: work / plan_id: PLAN-890 / plan_revision: 6 / scope: T-05,T-06 / outcome:
 ### 2026-10-31 T-10 bounded consumer repair (r6; execution continues)
 
 固定Blog `b42a660` 的实际Vue输入得到保存PUT 422；独立API13项通过，真实请求缺body/expected_rev。已定位既有Vue store发射器将同名局部快照误当state ref，错误发射`snap_body.value`/`snap_rev.value`。T-10在原UI owner补有界正确性修复：按块追踪局部绑定；局部保持原名，冲突状态仅在实际使用时发射内部别名，保留委托函数/lambda捕获及旧公开getter。无新AST/运行时协议、产品目标、AC、仓集合或预算变更；SD-09增补现行`auto-ui-compiler/project.md`触面及plans索引。原ui_gen整模块866通过/2原ignore，旧断言未改；新增4反例覆盖快照字段、块/循环/闭包、同名初始化与委托捕获。首次0选、夹具解析红、初版源码形态控制红与缺失SQLite生成缓存输出均保留；不得视为完整应用绿。初版工具真实UI7项任务通过但重启有Windows esbuild目录访问失败，整profile13/15，保留失败；最终修订工具仍须重建并复跑Vue/原生完整profile。完整四仓门、独立终审、合入/归档/guard均pending。
+
+
+### 归档后实际清理收据（2026-10-31）
+
+- archived: `9207c0b49` 已提交实际归档文件；旧活跃路径不存在，68份MD已收拢，原59份受跟踪附件均已从Git删除。
+- 五个权威工作树（Lang/Web/UI/Man/Down）逐仓确认clean、HEAD已入各master，再即时执行wt-guard全部clean，随后git worktree remove成功；四条开发分支均以branch -d成功删除。保留验证tag与历史恢复refs，不冒称它们是未清工作树。
+- 局部清理阻塞：`D:/autostack/auto-lang/docs/plans/attachments/890`仍有10569文件/546目录/515080414bytes，无reparse point。自动批准审查拒绝整目录递归删除、先核查后逐文件删除和移除空组目录，均返回“blocked by policy”，未给更细原因。未继续绕过；临时hold owner为本PLAN-890收尾，原因仅为自动策略拒绝，不代表产品未解决缺陷。T-12整体清理仍pending，不能宣称merge全链pass或goal complete。空组`D:/autostack/.wt/lang-890`亦暂留。
+- 用户明确不再测试，故没有落地主干后测试/构建或到期周期批次；原冻结通过证据的来源身份保持。其他会话的主检出文档WIP未混入提交。
+- stage: goal | plan_id: PLAN-890 | plan_revision: r7 | from: merge | to: merge | status: archived | outcome: partial_delivery_cleanup_pending | next: delete_classified_local_scratch_when_policy_allows
+
+- 证据保留维护已先preview再apply，退出0，最新五项为890/896/Blog003/UI013/888；删除旧Musk106证据等，实际释放1104410978bytes，无错误。剩余唯一文件数据38378036695bytes，仍超过10GiB监控预算，未冒称达标，受保护材料不为预算删减。收据：D:/autostack/plan-artifacts/.retention/receipts/last-five-20261031T072931628989Z.json。该维护没有删除上文被策略拒绝的本地附件或空组目录。
