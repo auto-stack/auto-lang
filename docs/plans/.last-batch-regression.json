@@ -17,11 +17,10 @@
   "single_instance": true,
   "taa": "not-triggered: no AAVM trigger paths in the merge window.",
   "last_due_check": {
-    "plan_id": 887,
-    "checked_at": "2026-10-29T15:53:56Z",
-    "due": true,
-    "reason": "PLAN-885 (id%5==0) landed after the 880 receipt.",
-    "resolved": "User-authorized accepted closeout; see unexecuted_batch_legs_user_accepted."
+    "plan_id": 896,
+    "checked_at": "2026-10-31T02:37:05.407988+00:00",
+    "due": false,
+    "reason": "896 is not divisible by five; less than 48h since receipt; no landed plan id above 895 divisible by five. Prior 895 waiver remains historical, not a new execution."
   },
   "unexecuted_batch_legs_user_accepted": [
     "man-t",
