@@ -226,3 +226,5 @@ Design52原“cargo build→cargo t all零新增rlib”不能直接当所有目�
 - archived: docs/plans/archive/901-test-feature-flattening.md（终验簿记更正：merge 收据初落技能默认 archived/ 路径，按 AGENTS 本仓映射规约 git mv 至 archive/，AC-07 勾选同步补记）
 - cleaned: wt-guard clean后移除lang-901组三树+三分支+组目录；plan-artifacts/plan-901 scope全删（证据已折叠本§9）；registry刷新
 / next: done（B正式交付；重入auto-ui PLAN-018 work T-01，U901已满足）
+
+2026-11-01 / stage: goal / PLAN-901 r2 / goal验证轮（archived→done，只核不写代码）/ outcome: pass / 独立重推磁盘终态：⑴交付提交三仓均为master祖先且ff完整（lang 2fcae41ba←HEAD 23f60489b、web ec9c4ba、ui e1fe4ca）；⑵canonical specs 实证于落地提交（be8ff8e67=SD-01新合同62行+SD-02+SD-04；2fcae41ba=module-selection F1），master specs 树无未提交改动；⑶本计划已归档入库（archive/901-test-feature-flattening.md，status: archived，git 干净）；⑷lang-901组树/三分支全无（.wt 仅余 edit-029/lang-899/os-052/ui-018 他组）、plan-artifacts/plan-901 已删、registry 条目 scopes=[]/cleaned/holds=[]；⑸主检出无本计划 WIP（他方 docs WIP 与 test/fixtures/reader-import-budget/ 沿 T-01 记录原样保留）；落地观察免重建已记录 / next: done
