@@ -84,14 +84,14 @@ def foreign_compiler_scope(cwd, argv, environment):
         raise ValueError('inherited compiler target overlaps this checkout')
     for name in ('RUSTC', 'RUSTDOC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER', 'CC', 'CXX', 'AR', 'LD'):
         value = environment.get(name, '')
-        if ('/' in value or '\\' in value) and overlaps(value):
+        if ('/' in value or '\\' in value or Path(value).drive) and overlaps(value):
             raise ValueError('inherited compiler tool references this checkout')
     # Opaque compiler/linker instructions can hide paths. Do not build a
     # response-file or flags resolver in a cache cleaner: postpone instead.
     for name, value in environment.items():
         if value and ('RUSTFLAGS' in name or 'RUSTDOCFLAGS' in name or name in ('CFLAGS', 'CXXFLAGS', 'LDFLAGS')):
             raise ValueError('live compiler has opaque inherited flags; postpone cleanup')
-        if value and name.startswith('CARGO_') and name.endswith(('_LINKER', '_RUSTC', '_RUSTDOC', '_RUSTC_WRAPPER', '_RUSTC_WORKSPACE_WRAPPER')) and ('/' in value or '\\' in value) and overlaps(value):
+        if value and name.startswith('CARGO_') and name.endswith(('_LINKER', '_RUSTC', '_RUSTDOC', '_RUSTC_WRAPPER', '_RUSTC_WORKSPACE_WRAPPER')) and ('/' in value or '\\' in value or Path(value).drive) and overlaps(value):
             raise ValueError('inherited Cargo tool references this checkout')
         if value and name.startswith('CARGO_') and name.endswith('_RUNNER'):
             raise ValueError('live compiler has opaque runner configuration; postpone cleanup')
@@ -107,7 +107,7 @@ def foreign_compiler_scope(cwd, argv, environment):
         candidate = value.rsplit('=', 1)[-1].strip('"\'')
         if candidate.startswith('/out:'):
             candidate = candidate[5:]
-        if previous in path_options or '/' in candidate or '\\' in candidate or Path(candidate).suffix.lower() in ('.rs', '.toml', '.rlib', '.rmeta', '.lib', '.exe', '.obj', '.pdb', '.dll'):
+        if previous in path_options or '/' in candidate or '\\' in candidate or Path(candidate).drive or Path(candidate).suffix.lower() in ('.rs', '.toml', '.rlib', '.rmeta', '.lib', '.exe', '.obj', '.pdb', '.dll'):
             try:
                 if overlaps(candidate):
                     raise ValueError('live compiler path argument overlaps this checkout')

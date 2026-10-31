@@ -103,6 +103,30 @@ class FixedGroups(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     build_storage.foreign_compiler_scope(foreign, ['cargo','build'], {'CARGO_TARGET_DIR':foreign.drive + 'relative-cache'})
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows drive-relative tool contract')
+    def test_cleanup_rejects_drive_relative_tool_environment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                for name in ('RUSTC', 'RUSTDOC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
+                             'CC', 'CXX', 'AR', 'LD', 'CARGO_BUILD_RUSTC_WRAPPER',
+                             'CARGO_BUILD_RUSTC', 'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER'):
+                    with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'drive-relative'):
+                        build_storage.foreign_compiler_scope(foreign, ['cargo', 'build'],
+                            {'CARGO_TARGET_DIR': str(foreign / 'target'), name: foreign.drive + 'compiler.exe'})
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows drive-relative argv contract')
+    def test_cleanup_rejects_drive_relative_extensionless_argv(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'ours'; root.mkdir()
+            foreign = Path(temp) / 'foreign'; foreign.mkdir()
+            with mock.patch.object(build_storage, 'ROOT', root):
+                for value in (foreign.drive + 'compiler', 'key=' + foreign.drive + 'resource'):
+                    with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'drive-relative'):
+                        build_storage.foreign_compiler_scope(foreign, ['cargo', 'build', value],
+                            {'CARGO_TARGET_DIR': str(foreign / 'target')})
+
     def setUp(self):
         self.value, self.groups = fixed.configuration()
 
