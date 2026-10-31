@@ -61,8 +61,9 @@ combo、退役双清单与 floor 3189 等 887 冻结条款不受本节影响。
 
 ## PLAN-890 四仓实际执行守恒
 
-Web库/HTTP/生成各有独立recipe，原Web/媒体迁移ID、断言、条件及17资源由具名清单守恒。
-完整tm并集的source/catalog/selection/命令/逐ID实际结果及内部case/child oracle必须相符；原ignore/manual/milestone不算通过。
+896新`cargo t`采用固定组；890显式选择宿主集成、生成核心、API生成、媒体核心、A2R标准库与TestCase，
+Web独立库/HTTP及UI/Man保留原生入口。原Web/媒体迁移ID、断言、条件及17资源由具名清单守恒。
+源码/配置/所选命令/逐ID实际结果及内部case/child oracle必须相符；不读旧叶目录。原ignore/manual/milestone不算通过。
 producer与公开收据consumer共用原baseline/retirement/migration/floor，内部一致的删项也须拒绝；
 迁移credit只能来自已验证实际PASS目标。ui-tu仍单进程执行，以同批ui-full来源flags还原libtest省略的原ignore。
 缺执行、错命令/输出/hash、重复/零选择/无依据排除、未执行腿或旧SDK认证新来源均失败。

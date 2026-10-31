@@ -12,8 +12,8 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts/test-governance'))
 from test_identity_migrations import validate_sources, validate_resources, validate_historical_obligations
-from module_catalog import load
-from web_delivery import validate_four_receipt, validate_distribution_receipt
+from web_delivery import validate_distribution_receipt
+import four_repository
 
 spec = importlib.util.spec_from_file_location('full_regression', ROOT / 'scripts/run-full-regression.py')
 full = importlib.util.module_from_spec(spec)
@@ -42,11 +42,15 @@ def run(args):
             receipt['checks'].append({'id': name, 'status': 'FAIL', 'detail': str(error)})
 
     for name, path in roots.items():
-        check('identity-'+name, lambda name=name, path=path: receipt['sources'].setdefault(name, full.identity(path)))
+        check('identity-'+name, lambda name=name, path=path: receipt['sources'].setdefault(name, four_repository.snapshot(path)))
     check('migration-original-source-identities', lambda: validate_sources(roots['lang']) or 'Original Git source/hash and target test declarations match')
     check('original-resource-identities', lambda: validate_resources(roots['lang']) or 'All 17 original resources match their declared unique owner/hash')
+    # Static provenance here; actual destination enumeration is mandatory in the
+    # fixed four-owner receipt below, without consulting the retired leaf catalog.
+    historical = json.loads((roots['lang']/'scripts/test-governance/web-historical-obligations.json').read_text(encoding='utf-8'))
     check('historical-Web-test-identities', lambda: validate_historical_obligations(
-        load(roots['lang']/'scripts/test-governance/modules.json'), roots['lang']) or '696 original tier rows / 116 unique IDs conserved')
+        {'obligations': [{'id': row['target']} for row in historical['entries']]}, roots['lang'])
+        or '696 original tier rows / 116 unique IDs; actual destinations checked by execution gate')
 
     def closure():
         data = json.loads(subprocess.check_output(['cargo', 'metadata', '--locked', '--format-version', '1'], cwd=roots['web']))
@@ -85,11 +89,12 @@ def run(args):
     if args.gate_receipt:
         def gate():
             gate_receipt = json.loads(args.gate_receipt.read_text(encoding='utf-8'))
-            validate_four_receipt(gate_receipt)
-            expected = {('language' if name == 'lang' else name): full.identity(path) for name, path in roots.items()}
+            four_repository.validate(gate_receipt, args.output.parent / (args.output.stem + '-admission'))
+            expected = {('language' if name == 'lang' else name): four_repository.snapshot(path) for name, path in roots.items()}
             if gate_receipt['identities_after'] != expected:
                 raise ValueError('gate source/lock/resource/producer hash differs from the actual selected repositories')
-            return {'path': str(args.gate_receipt), 'required_legs': gate_receipt['required_legs']}
+            return {'path': str(args.gate_receipt), 'required_legs': list(four_repository.EXTERNAL_LEGS),
+                    'language_groups': gate_receipt['language_groups']}
         check('four-owner-actual-execution', gate)
     else:
         receipt['pending'].append('four-owner-actual-execution: supply the frozen --with-web gate receipt (T-12)')

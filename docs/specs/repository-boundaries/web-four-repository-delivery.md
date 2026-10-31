@@ -29,16 +29,17 @@ prepare/verify/swap失败不得破坏旧有效workspace/安装或用户文件；
 
 ## 实际执行与拒绝边界
 
-`run-full-regression.py --batch --with-web --frozen-trees`冻结四仓，language通过完整显式tm模块并集执行，
-Web库/HTTP/生成和media腿来自真实模块结果；UI/Man保留原owner命令和单进程ui_gen语义。
+`python scripts/web-four-repository.py --out <本地目录>`冻结四仓及Down依赖，语言通过896新`cargo t`显式固定组
+`integration auto-generation-core auto-api-gen auto-media-core a2r-std auto-test-case`执行；Web独立库/HTTP、
+UI/Man保留原owner命令和单进程ui_gen语义。只列举指定Cargo配置，不读取旧叶目录或自动扩大消费者图。
 公开`web-repository-fixture.py run --require-complete`核来源/闭包/资源/迁移/执行及发行恢复收据。
 list-only/过滤/缺腿/重复/零选择/未执行/错误hash/缺command-output/原始失败不能认证完整交付。
 
 执行端和收据消费端共享原baseline/retirement/migration/frozen-floor规则；清单/输出/ID/数量/hash彼此一致
-也不能删去原必需用例。迁移credit只来自原必需ID对应目标的实际PASS，不来自自报count或仅在catalog出现。
+也不能删去原必需用例。迁移credit只来自原必需ID对应目标的实际PASS，不来自自报count或仅在清单出现。
 原ignored/platform/manual/milestone保持NOT_APPLICABLE，不算执行或通过；ui-tu使用同批ui-full原ignore身份
 补足libtest清单不标ignore的缺口，exact condition_excluded拒绝任意排除，原floor不降。
-用途建议不改变启用条件；最终受影响完整叶+消费者/集成并集、实际四仓与发行门分列，周期门只在主检出到期执行。
+用途建议不改变启用条件；最终显式受影响固定组及必要消费者/集成、实际四仓与发行门分列，周期门只在主检出到期执行。
 
 ## 支持与证据
 

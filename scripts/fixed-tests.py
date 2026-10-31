@@ -123,12 +123,13 @@ def nextest_args(group, ignored=False):
     return args
 
 
-def enumerate_rust(document, ignored=False):
+def enumerate_rust(document, ignored=False, root=None):
+    root = ROOT if root is None else Path(root).resolve()
     active, excluded = {}, []
     for binary, suite in document['rust-suites'].items():
         if suite.get('status') == 'skipped':
             continue
-        if suite.get('cwd') and not Path(suite['cwd']).resolve().is_relative_to(ROOT):
+        if suite.get('cwd') and not Path(suite['cwd']).resolve().is_relative_to(root):
             raise ValueError('native test cwd escapes selected checkout')
         for name, case in suite['testcases'].items():
             if case['filter-match']['status'] != 'matches':
@@ -203,6 +204,22 @@ def invoke(argv, cwd, env, output, label, timeout=1800, preparation=False):
     return result, record
 
 
+def source_bindings(document, expected, output):
+    """Current selected wrappers' original input/check contract, shared by admission."""
+    bound = [dict(r, recipe='language') for r in expected.values()]
+    wrapper_names = ('tests::vm_file_tests::', 'tests::a2r_tests::', 'tests::a2c_tests::',
+                     'tests::a2ts_tests::', 'tests::cookbook_vm_tests::')
+    needs_bindings = any(r['binary'] == 'auto-lang' and r['test'].startswith(wrapper_names) for r in bound)
+    if needs_bindings:
+        from input_inventory import discover_inputs, attach_inputs
+        inventories = output / 'inputs'; inventories.mkdir(parents=True)
+        records = discover_inputs(inventories, document)
+        binding_set = {'obligations': bound}
+        attach_inputs(binding_set, {'inputs': records}, inventories)
+        bound = binding_set['obligations']
+    return bound
+
+
 def run_rust(group, output, env, ignored=False, discover_only=False):
     env = dict(env)
     env.pop('CARGO_TARGET_DIR', None)
@@ -230,17 +247,7 @@ def run_rust(group, output, env, ignored=False, discover_only=False):
         raise ValueError('fixed group selected zero actual tests')
     # Preserve original wrapper child identities using their existing read-only
     # inventories, only when selected tests actually consume those wrappers.
-    bound = [dict(r, recipe='language') for r in expected.values()]
-    wrapper_names = ('tests::vm_file_tests::', 'tests::a2r_tests::', 'tests::a2c_tests::',
-                     'tests::a2ts_tests::', 'tests::cookbook_vm_tests::')
-    needs_bindings = any(r['binary'] == 'auto-lang' and r['test'].startswith(wrapper_names) for r in bound)
-    if needs_bindings:
-        from input_inventory import discover_inputs, attach_inputs
-        inventories = output / 'inputs'; inventories.mkdir()
-        records = discover_inputs(inventories, document)
-        binding_set = {'obligations': bound}
-        attach_inputs(binding_set, {'inputs': records}, inventories)
-        bound = binding_set['obligations']
+    bound = source_bindings(document, expected, output)
     trace = output / 'trace'; trace.mkdir()
     trace_id = 'fixed-invocation'
     env = {**env, 'AUTO_TEST_TRACE_DIR': str(trace.resolve()), 'AUTO_TEST_TRACE_MODULE': trace_id}
@@ -260,7 +267,7 @@ def run_rust(group, output, env, ignored=False, discover_only=False):
     return {'outcome': 'PASS' if result.returncode == 0 and not terminals['errors'] else 'FAIL',
             'executed': len(terminals['results']), 'selected': list(expected.values()),
             'excluded': excluded, 'preparation': prep, 'execution': execution,
-            'child_observations': children, 'child_validation': child_validation, **terminals}
+            'bound_inputs': bound, 'child_observations': children, 'child_validation': child_validation, **terminals}
 
 
 def run_python(group, output, env, discover_only=False):
