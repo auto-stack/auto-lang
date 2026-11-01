@@ -13,6 +13,10 @@ DST 形态（migration-phases.json 冻结口径）：
   DST-4 sdk-only     无 auto-ui 兄弟的隔离 lang clone 内 language-sdk-consumer
                      真实 build+test（UI checkout 缺席反向控制）
 
+PLAN-910：clone 显式 `-c core.longpaths=true`——auto-ui 自 AG 计划起含 183 字符
+相对路径夹具（experimental/autographics-auto-driver/research/…），Windows 默认
+MAX_PATH 下任何 scratch 位置的 checkout 均 "Filename too long"（门本身与路径上限
+无关）。
 用法：
   python scripts/ui-repository-distribution.py [--scratch <dir>] [--skip-dst3]
 
@@ -122,8 +126,15 @@ def main() -> int:
     down_src = lang_src.parent / "auto-down"
     if not down_src.is_dir():
         down_src = Path("D:/autostack/auto-down")
-    for repo, src in (("auto-ui", ui_src), ("auto-lang", lang_src), ("auto-down", down_src)):
-        r = run(["git", "clone", "--quiet", "--local", str(src), str(group_a / repo)],
+    # PLAN-910：四仓组——auto-ui 自 PLAN-890/901 起硬依赖兄弟仓 auto-web
+    #（crates/auto-ui-tools → ../../../auto-web/crates/auto-web），独立 clone 布局
+    # 缺席即 generate-lockfile 红（"failed to load manifest for dependency auto-web"）。
+    web_src = lang_src.parent / "auto-web"
+    if not web_src.is_dir():
+        web_src = Path("D:/autostack/auto-web")
+    receipt["sources"]["web"] = git_head(web_src) if web_src.is_dir() else None
+    for repo, src in (("auto-ui", ui_src), ("auto-lang", lang_src), ("auto-web", web_src), ("auto-down", down_src)):
+        r = run(["git", "-c", "core.longpaths=true", "clone", "--quiet", "--local", str(src), str(group_a / repo)],
                 scratch, timeout=600)
         if r.returncode != 0:
             record("clone", False, f"{repo} clone 失败: {r.stderr[-300:]}", 0)
@@ -131,7 +142,7 @@ def main() -> int:
             return 2
     ui_clone = group_a / "auto-ui"
     record("clone", True,
-           f"三仓组 clone @ {group_a.name}（ui={receipt['sources']['ui'][:9] if receipt['sources']['ui'] else '?'} "
+           f"四仓组 clone @ {group_a.name}（ui={receipt['sources']['ui'][:9] if receipt['sources']['ui'] else '?'} "
            f"lang={receipt['sources']['lang'][:9] if receipt['sources']['lang'] else '?'}）", 0)
 
     # ---- DST-1 fresh-lock ----
@@ -183,7 +194,7 @@ def main() -> int:
 
     # ---- DST-4 sdk-only（隔离 lang clone，无 auto-ui 兄弟）----
     iso = scratch / "iso-lang"
-    r = run(["git", "clone", "--quiet", "--local", str(lang_src), str(iso)], scratch, timeout=600)
+    r = run(["git", "-c", "core.longpaths=true", "clone", "--quiet", "--local", str(lang_src), str(iso)], scratch, timeout=600)
     fixture = iso / "test" / "fixtures" / "modularity" / "language-sdk-consumer"
     sibling_ui = iso.parent / "auto-ui"
     no_sibling = not sibling_ui.exists()
