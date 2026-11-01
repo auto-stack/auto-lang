@@ -7,7 +7,7 @@ use ace_av::closures_session::ClosuresUpdateSession;
 use ace_av_core::mir::MirType;
 use ace_core::hir::DefKind;
 use ace_core::source::compile_closures_source;
-use ace_lowering::lower_function_closures_unit;
+use ace_lowering::{lower_checked_closures, lower_function_closures_unit};
 use std::sync::Arc;
 
 fn closure_units(source: &str) -> Vec<(String, ace_av_core::mir::MirModule)> {
@@ -256,6 +256,119 @@ fn av_closures_909_let_and_var_neighbours() {
         "fn main() int { let a int = 1; var b int = 2; let f = () => { return a + b }; var g = () => { b = b + 38; return b }; return g() + f() }",
         81,
     );
+}
+
+/// V-08: sweep the value-allocation fault seam over a shared-cell program
+/// (cell + two envs + call frames). Every faulted attempt leaves the
+/// distinct Infra state with ZERO live owned bytes — no half-built env, no
+/// orphaned cell; the un-faulted run still yields 42.
+#[test]
+fn av_closures_909_fault_sweep_releases_every_cell_and_env() {
+    use ace_av_core::abc::encode_abc;
+    use ace_av_core::abc_verify::verify_abc_bytes;
+    use ace_av_core::av::{execute, CancelFlag, ExecLimits};
+    use ace_av_core::contract::ExecOutcome;
+    use ace_av_core::mir_verify::verify_mir;
+
+    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; var g = (n int) => { x = x + n; return x }; return f(20) + g(0) }";
+    let compiled = compile_closures_source(source, "fault-sweep.at", &[])
+        .unwrap_or_else(|d| panic!("compile: {d:#?}"));
+    let mir = lower_checked_closures(&compiled.checked, "main", 909).expect("whole module lowers");
+    verify_mir(&mir).expect("verifies");
+    let wire = encode_abc(&mir).expect("encode");
+    let loaded = verify_abc_bytes(&wire.to_flat(), &mir.owner).expect("admits");
+
+    let (ok, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(ok, ExecOutcome::Success { value: ace_av_core::contract::Value::I32(42), .. }),
+        "{ok:?}"
+    );
+    assert_eq!(trace.arena.clone().expect("ledger").live(), 0);
+
+    let mut faulted = 0usize;
+    for n in 1..=16u64 {
+        let mut limits = ExecLimits::default();
+        limits.fault_after_allocs = Some(n);
+        let (out, trace) = execute(&loaded, &limits, &CancelFlag::new(false));
+        let live = trace.arena.clone().expect("ledger").live();
+        match out {
+            ExecOutcome::Infra(msg) => {
+                faulted += 1;
+                assert!(msg.contains('#'), "attempt-numbered fault: {msg:?}");
+                assert_eq!(live, 0, "fault at allocation #{n} leaked {live} live bytes");
+            }
+            ExecOutcome::Success { .. } => {
+                assert_eq!(live, 0, "success at seam #{n} leaked {live} live bytes");
+            }
+            other => panic!("seam #{n}: unexpected {other:?}"),
+        }
+    }
+    assert!(faulted >= 2, "the sweep must hit the cell and env allocations ({faulted} faults)");
+}
+
+fn isolated_store(tag: &str) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "plan909-{tag}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("create isolated closure store");
+    root
+}
+
+/// V-11 (minimal leg): a pure body edit of ONE shared-cell writer resubmits
+/// exactly that unit — the creator and the untouched sibling keep their
+/// installed code (wire-compare warm path over an unchanged cell layout).
+#[test]
+fn av_closures_909_body_edit_of_one_writer_resubmits_one_unit() {
+    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; var g = (n int) => { x = x + n; return x }; return f(20) + g(0) }";
+    let edited = source.replacen("x = x + n; return x }; var g", "x = x + n + 1; return x }; var g", 1);
+    assert_ne!(source, edited);
+    let root = isolated_store("body-edit");
+    let mut session = ClosuresSourceSession::new(&root);
+    let first = session.apply_source(source, "shared.at").expect("initial applies");
+    assert_eq!(first.value, 42);
+    let next = session.apply_source(&edited, "shared.at").expect("edited applies");
+    // f(20): x = 1 + 20 + 1 = 22; g(0): 22 -> 22 + 22 = 44.
+    assert_eq!(next.value, 44);
+    assert_eq!(next.submitted_units, 1, "{:?}", next.submitted_unit_names);
+    assert_ne!(next.submitted_unit_names[0], "d_main");
+    assert_eq!(next.production.verified, 1);
+    assert_eq!(next.production.encoded, 1);
+    assert_eq!(next.production.admitted, 1);
+    session.close().expect("close");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// V-12 (minimal leg): turning a READER into a WRITER changes the capture
+/// FACTS (snapshot -> shared cell): the creator (its cell materialization
+/// and capture mode) and that lambda are resubmitted; the unrelated lambda
+/// is not produced.
+#[test]
+fn av_closures_909_capture_fact_change_invalidates_creator_not_unrelated_lambda() {
+    let source = "fn main() int { var x int = 1; let r = () => { return x }; let u = (n int) => { return n + 1 }; return r() + u(40) }";
+    let edited = source.replacen("let r = () => { return x }", "let r = () => { x = x + 1; return x }", 1);
+    let root = isolated_store("fact-change");
+    let mut session = ClosuresSourceSession::new(&root);
+    let first = session.apply_source(source, "facts.at").expect("initial applies");
+    assert_eq!(first.value, 42);
+    let next = session.apply_source(&edited, "facts.at").expect("edited applies");
+    assert_eq!(next.value, 43);
+    assert_eq!(next.submitted_units, 2, "{:?}", next.submitted_unit_names);
+    assert!(next.submitted_unit_names.iter().any(|n| n == "d_main"), "{:?}", next.submitted_unit_names);
+    // The unrelated lambda `u` is the LAST closure unit; it must not be in the set.
+    let u_unit = session_unit_names(&first).into_iter().filter(|n| n != "d_main").max().expect("u unit");
+    assert!(!next.submitted_unit_names.contains(&u_unit), "unrelated lambda {u_unit} resubmitted: {:?}", next.submitted_unit_names);
+    assert_eq!(next.production.verified, 2);
+    session.close().expect("close");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+fn session_unit_names(run: &ace_av::closures_865_support::ClosuresSourceRun) -> Vec<String> {
+    run.submitted_unit_names.clone()
 }
 
 /// Mixed row: a move capture of a shared cell snapshots the CURRENT value
