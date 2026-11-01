@@ -102,6 +102,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 33 | [Stdlib Runtime & HTTP](33-stdlib-runtime-and-http.md) | 标准库多后台实际装配、AutoUI API 拓扑、Axum/VM owner 与 HTTP/task 分阶段路线 | 696–738 主线及 751/755 修复已交付；v0.6 下一项 776 返回资源/异步终值 drafting；剩余四阶段见进度审计 |
 | 34 | [VM Store 所有权与 Handler 阻塞纪律](34-vm-store-ownership-and-handler-discipline.md) | 决策工件：段执行/actor 双形态下的 store 所有权（Erlang vs Go 式）与 handler 阻塞纪律（类型化 vs ui_lint+段切预算）两案对比、迁移面评估与裁定建议 | 📝 决策工件（PLAN-702 T-07 产出，待用户裁定；不含实现） |
 | 50 | [AutoWeb服务框架与仓库边界](50-autoweb-service-framework-and-repo-boundaries.md) | 独立auto-web仓首期：Web/语言/Man/UI职责、HTTP生成与运行、测试发行、Blog消费及885/887/888交接 | target-state r3（2026-10-30）；890实施/完整交付→[auto-ui/014结构收口草案](../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)→按007原门推进；014仅规划 |
+| 53 | [独立构建边界与生成Cargo产物治理](53-independent-build-and-generated-cargo-governance.md) | 现有生成workspace/缓存差额实测、有限治理方案；Core及完整语言workspace的Web检出依赖边界、类型/政策/来源兼容 | target-state r1（2026-11-01）；PLAN-905有界研究、PLAN-906独立构建收口合同；均仅立项，未实施，方案门不冒已交付 |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
