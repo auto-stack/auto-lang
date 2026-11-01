@@ -7,9 +7,13 @@
 
 ## 交付模式与开发模式
 
-- **开发模式**（现行，PLAN-792 零变化）：框架仓内项目 = 共享
-  `examples/rust-workspace/` + workspace 继承清单（P584-D1 语义保留）；
-  仓外项目 = 项目仓内 `rust-workspace/`。
+- **开发模式**（PLAN-910 SD-02 修订）：源码 workspace 落点不变（框架仓内
+  项目 = 共享 `examples/rust-workspace/`，**以项目目录为锚、cwd 无关**；仓外
+  项目 = 项目仓内 `rust-workspace/`），但成员目录为 `<basename>-<id8>`
+  （路径身份，同 basename 不同根不碰撞），Cargo 缓存根统一落**实际选中
+  producer** 的 `target/generated-consumers/<ctx8>/`（安装 SDK 只读 → 项目
+  本地 `<ws>/target`），flags 经 env 钉住；旧 basename 成员不认领不删除。
+  完整合同见 generated-cargo-build-lifecycle。开发缓存协议**不进入交付包**。
 - **交付模式**（`auto gen --delivery-root <dir>`，有效前端须为 rust）：
   显式可搬动受管 bundle。其 manifest **不隐式搜索 D:/autostack、不落
   编译期 `CARGO_MANIFEST_DIR` 兜底**；环境覆盖（AUTO_RUST_WORKSPACE/

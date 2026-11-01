@@ -16,6 +16,11 @@ ACE dev/test根profile为成员debug=line-tables-only（行号级调试），两
 固定ACE调用与正常worker准备共用本树`experimental/ace/target`，batch worker用`experimental/ace/target-batch`；
 profile/triple/features仍由Cargo区分。工具、shim消费者硬编码路径一并迁移，原worker哈希/来源校验保持。
 不同worktree不共享可写target；固定工具消费原来源/hash保持，不复制未知旧二进制。
+生成消费者缓存（PLAN-910）与工具target分离：每个producer树的`target/generated-consumers/<ctx8>/`
+是同producer兼容生成工程（UI前端debug、Web服务release等）共用的受管根，`context.json`记schema/
+producer/flags/toolchain/来源，`.lease/`记活构建/服务pid；清理器对该精确根在context.json归属本检出
+且无活pid lease时准入，过期lease报告忽略，他producer/无记录/篡改/嵌套一律拒绝，其余reparse/证据/
+活动编译/execution lease规则同本树target；主检出与各worktree各自拥有自己的根，不互指。
 ACE长期工具按职责命名（PLAN-899）：CTE常驻worker为`ace-comptime-worker`（cteworker/1协议与
 AC_CTE_CASE_WORKER env不变），AV正式样本producer为`av_runtime_bench`/`av_wire_bench`（10 warmup/
 30正式样本、失败行全输出、父分析器schema/分母冻结）；一次性probe退出须逐项使命结束/真实替代/

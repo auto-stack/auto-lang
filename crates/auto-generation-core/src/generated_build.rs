@@ -91,6 +91,9 @@ pub struct GeneratedBuildContext {
     pub user_flags_override: Option<String>,
     /// `rustc -vV` summary (host/release/commit-hash), recorded not keyed.
     pub toolchain: String,
+    /// How the producer was selected (env var name, "安装 SDK", discovery
+    /// arm, "编译期语言源"): audit record, not part of the context key.
+    pub producer_origin: String,
 }
 
 fn sha256_hex(parts: &[&str]) -> String {
@@ -358,6 +361,7 @@ impl GeneratedBuildContext {
             managed_rustflags,
             user_flags_override: user_flags.map(|(name, _)| name.to_string()),
             toolchain: toolchain_summary(),
+            producer_origin: origin,
         })
     }
 
@@ -398,6 +402,7 @@ impl GeneratedBuildContext {
             "rustflags": self.managed_rustflags,
             "user_flags_override": self.user_flags_override,
             "toolchain": self.toolchain,
+            "producer_origin": self.producer_origin,
         });
         write_if_changed(&path, format!("{record}\n").as_bytes()).map(|_| ())
     }
@@ -1226,6 +1231,7 @@ mod plan910_tests {
                 .unwrap();
         assert_eq!(record["schema"], CONTEXT_SCHEMA);
         assert_eq!(record["context_id"], ctx.context_id.as_str());
+        assert_eq!(record["producer_origin"], "AUTO_LANG_ROOT");
         // Second write with unchanged identity does not rewrite.
         let mtime = fs::metadata(ctx.target_root.join(CONTEXT_FILE))
             .unwrap()
