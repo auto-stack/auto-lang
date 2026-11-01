@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-01
 updated_at: 2026-11-02
 plan_revision: 1
-current_step: 8
+current_step: 9
 total_steps: 9
 supersedes_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-test-case/build-storage-lifecycle.md]
 new_spec_components: [docs/specs/repository-boundaries/generated-cargo-build-lifecycle.md]
@@ -283,7 +283,7 @@ frontmatter仅列本仓路径；跨仓Spec由对应实际改动owner沉淀，T-0
 | T-06 | [x] 最终健康/遗漏/workaround扫描，冻结全部work证据/数账/限制、SD-01..05 proposal及007交接表；原始证据摘要可随scope删除而独立读回，execution_done6/9 —— **完成 2026-11-02**：健康扫描过、既有红 4 处精确修复、债务 D-910-1/2 登记、边界全列、SD-01..05 落稿（四仓）、007 交接表+预算对账在案 | T-05；AC-01..07 | work |
 | T-07 | [x] 同组冻结提交独立上下文final review，核真实调用/反控/空间数账/残项及SD；finding回同树work且使受影响证据失效 —— **完成 2026-11-02**：独立审查代理 R1 needs_fix（1 阻断+6 非阻断）→ 修复轮 R1 → 复审 final pass（绑 lang f086a1d8d / ui e03a294 / web 3de5524 / man 67add3c） | T-06；AC-08，V-11 | review |
 | T-08 | [x] 冻结受影响职责并集与必要消费者门，各仓依赖顺序真实合入，沉淀canonical与最终007交接；路线按本包有限出口判M1，不自动执行007 —— **完成 2026-11-02**：四仓 ff 落地（lang f665ce113 / ui 01f99fd / web 3de5524 / man 67add3c），门复跑，canonical 哈希在案；007 交接见 T-06 表与 SD-01 §7 | T-07 pass；AC-09 | merge |
-| T-09 | 全实际输出路径/进程/链接/归属对账，必要摘要折Plan；删除统一scope/树内构建物、每树wt-guard clean后移除树/分支/空组，更新持有登记，归archive终态9/9 | T-08；AC-09 | merge |
+| T-09 | [x] 全实际输出路径/进程/链接/归属对账，必要摘要折Plan；删除统一scope/树内构建物、每树wt-guard clean后移除树/分支/空组，更新持有登记，归archive终态9/9 —— **完成 2026-11-02**：路径对账、树/分支/组/scope 清理、登记刷新；持有 f3f98a9e 具名（见 cleaned 收据） | T-08；AC-09 | merge |
 
 材料唯一scope=`D:/autostack/plan-artifacts/plan-910/`，按repo及消费者身份区分，创建时登记owner/用途/在途。源码副本/SDK/发行包/日志/探针/图/截图/外置target只在此；正常工具构建在本组树内。不得写attachments或第二套外部根。merge摘要含命令/退出码/关键数字/节选/源与保留件hash，随后整scope删除，构建中间物不回收暂存；仅具名未解决问题可持有owner/理由/关闭条件。不因archive或时间自动释放未知物，不触其他会话缓存/进程。
 
@@ -322,6 +322,14 @@ a881d2442054d263 auto-lang/docs/specs/repository-boundaries/generated-cargo-buil
 5ea3c021e6113662 auto-man/docs/specs/modules/generated-cargo-context.md
 7e29ac3c46ebfd36 auto-web/docs/specs/project.md
 （均为 git 跟踪文件；应用索引自动派生，无 specs.json/.autoos 写入）
+
+stage: merge | plan_id: PLAN-910:r1 | checkpoint: archived | evidence: `git mv` → docs/plans/archive/910-generated-cargo-build-governance.md，status archived，相对链接按新父目录修正（0 断链），归档与链接修正均已提交 master（1a58314ef / a84f7611b）；completion_kind: delivered；任务计数核对 9/9（T-01..T-09）
+stage: merge | plan_id: PLAN-910:r1 | checkpoint: cleaned | evidence: 五树 wt-guard 全 clean、porcelain 全空、各 HEAD 均为 master 祖先后 `git worktree remove`（auto-lang/auto-ui/auto-web/auto-man/auto-down），分支 plan-910-dev/-ui-dev/-web-dev/-man-dev 删除（tip f665ce113/01f99fd/3de5524/67add3c），组目录 D:/autostack/.wt/lang-910 rmdir；构建中间物（含 lang-910 受管根 54892519 ≈22G、四仓工具 target）随树消亡不回收；scope D:/autostack/plan-artifacts/plan-910（3.2G）整删，`.retention/policy.json` 登记 auto-lang/PLAN-910（archived、deletions、last_merge_cleanup）；D: 余量 226G→292G。**具名持有 1 项**：D:/autostack/auto-lang/target/generated-consumers/f3f98a9e（15.38GB unique/11275 文件；master 清理器 preview 通过、`--apply --idle-confirmed` 因机器存在他会话 cargo/rustc 进程且无 psutil 而保守拒绝 "live compiler ownership unavailable; postpone cleanup"）——owner PLAN-910/语言仓主检出，关闭条件=无活动 cargo 进程时重跑 apply。
+stage: merge | plan_id: PLAN-910:r1 | checkpoint: deployment | evidence: 主检出 auto-ui `cargo build -p auto-ui-tools --bin auto-ui-tool` exit 0（1m21s，auto-ui-tool.exe 11-02 07:21 已为 910 后代码）；主检出 auto-man `cargo build -p auto --bin auto` 编译完成但最终替换 exit 101 "failed to remove auto.exe 拒绝访问"——生产 `D:/autostack/auto-man/target/debug/auto.exe`（11-01 09:16，910 前）正被他会话 `auto service --server vm`（pid 9180）占用，本包不杀他人进程；**观察项**：该进程退出后增量重跑即更新（秒级）。auto-web/auto-lang 无独立生产二进制。
+stage: merge | plan_id: PLAN-910:r1 | checkpoint: batch-regression-due | evidence: `docs/plans/.last-batch-regression.json` last_covered 895；910（id%5==0）已落地 → **到期**。沿 906 先例登记为 user-pending（2026-10-30 用户对主检出全目录冷编批量门的裁定仍为最近裁定；本机此刻另有他会话 cargo 实例，单实例纪律不满足）；由 /auto-plan:regress 于主检出单实例执行，红则 fix-forward 不回滚。
+stage: merge | plan_id: PLAN-910 | plan_revision: r1 | outcome: pass | delivery_commit: lang f665ce113 / ui 01f99fd / web 3de5524 / man 67add3c | canonical: 见 canonical_verified 六文件哈希 | archive: docs/plans/archive/910-generated-cargo-build-governance.md | cleanup: 树/分支/组/scope 已清；持有 f3f98a9e（具名）；观察 auto.exe 待进程退出后重建；批量回归到期 user-pending
+
+stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 5 | from: merge | to: done | status: archived | outcome: pass | commit: lang f665ce113 (ui 01f99fd, web 3de5524, man 67add3c) | next: done
 
 ## 10. 待澄清事项
 
