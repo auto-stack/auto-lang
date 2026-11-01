@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-910
-status: executing
+status: execution_done
 feature_name: 生成Cargo工程的有限构建与产物治理
 author: [Codex]
 created_at: 2026-11-01
 updated_at: 2026-11-02
 plan_revision: 1
-current_step: 4
+current_step: 6
 total_steps: 9
 supersedes_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-test-case/build-storage-lifecycle.md]
 new_spec_components: [docs/specs/repository-boundaries/generated-cargo-build-lifecycle.md]
@@ -244,6 +244,19 @@ frontmatter仅列本仓路径；跨仓Spec由对应实际改动owner沉淀，T-0
   - 必需重验：007 的 V-09/10 与受影响 fresh/locked；以本包 V-01/02/03/08/09 为基线（§6.1）。
   - 限制：上行"记录边界"全部条款；预算对账以实时 df 为准。
 
+**修复轮 R1（2026-11-02，work，针对 review R1 findings）。代码终点：lang f086a1d8d / ui e03a294 / web 3de5524（不变）/ man 67add3c（不变）。**
+
+| finding | invariant | 受影响路径/状态 | 修复与永久用例 | 当前结果 | 剩余缺口 |
+|---|---|---|---|---|---|
+| F-910-R1-01（blocking） | 受管 cargo 派生 cwd 恒为 `<ws>`，config 链不来自缓存根祖先 | dev 模式（上溯到 producer 根）/ Explicit 模式（显式根祖先）/ UI build/run 两入口 | `cargo_managed_build(…, ws_dir, …)` 直接传 `managed.ws_dir`，`find_ws_dir_for_cwd` 删除（e03a294）；SD-01 §4 写明 | 强制重链（删 `.fingerprint/counter-72e31f46-*`）后 PE 头 **14.44+Rich**（修前 14.0/无 Rich=lld）；build2 **0 单位**；receipt sha 一致 | 框架内 ws 的祖先仍含语言仓 config（linker 不钉既有边界，非回归） |
+| F-910-R1-02 | 唯一名 bin 的 pdb 随 exe 同轮发布 | 所有前端成员 | `BuiltArtifacts{exe,pdb}` 取自 cargo `filenames`；`publish_artifact(uplifted, pdb, …)`；core 单测加下划线 pdb 断言（f086a1d8d） | `bin/debug/counter.pdb` 06:45:56 与 exe 06:45:55 同轮，754 MB | 无 |
+| F-910-R1-03 | 证据绑定措辞准确 | §6.1 V-08 | 措辞改为"产品代码 lang 64a4cd450（收据所绑）；门脚本修复 19bfb579d 于收据后提交" | 已改 | 无（merge 时若复跑 DST 以新 SHA 重绑） |
+| F-910-R1-04 | SD-01 不过度声称 | SD-01 §5 | 锁范围改为"保护 workspace ensure；生成物/收据靠 tmp+rename+输入快照" | 已改 | 无 |
+| F-910-R1-05 | 单测不翻转真实根 context.json | core write_context_file | `producer_origin` 首见保持（f086a1d8d） | 真实根 origin 经多次写入保持 `AUTO_LANG_ROOT` | 测试仍会在被测检出 target 下创建 ctx 根（gitignored，与任何写 target 的测试同类） |
+| F-910-R1-07 | docstring 与实现一致 | cargo_managed_build | 措辞改为"cargo 报告的成员 uplifted 产物（bin 名带 id8）" | 已改 | 无 |
+
+重放范围（check → finding）：PE 头+0 单位 → F-01；pdb 同轮 → F-02；core `cargo test -p auto-generation-core --lib` 28/0 → F-02/F-05；ui `test_plan015…/app_repo_layout…/rust_workspace_resolution_order/delivery_bundle_end_to_end` 4/0 → F-01 交付面无损。其余 AC 证据（V-02..V-10）输入未变，沿用。
+
 ## 7. 验收标准
 
 | ID | 可观察验收 / 验证 | owner_stage |
@@ -263,8 +276,8 @@ frontmatter仅列本仓路径；跨仓Spec由对应实际改动owner沉淀，T-0
 | ID | 动作/真实修改入口与关闭条件 | 依赖 / AC | owner_stage |
 |---|---|---|---|
 | T-01 | [x] 授权后建唯一组，冻结906组合/调用与exe图/两真实样本/支持与配置覆盖表/工作树隔离/精确门和资源预算；判既有红是否阻塞；有界布局选择和公开兼容迁移差额，记录开工决策 —— **完成 2026-11-02**：组五树已建（wt-guard clean）、scope 已建、四仓只读扫描冻结 5 派生/3 发现/1写2读收据点、布局 B 单一冻结、身份/flags/支持模式/预算/既有红判定全部记入 §5.1.1 | 用户明确实施授权；全部work AC前置 | work |
-| T-02 | [ ] auto-generation-core::rust_workspace及必要新辅助模块实现单源上下文/写前比较；UI rust_ui与Man serve_rust/Web真实调用接线，target owner分离且安装/delivery独立；建立V-01正反 —— **完成 2026-11-02**：lang d4c1217+9e3793bf5 / ui 2308db4 / web 8217075 / man 55a4c20；V-01 正反控见 §6.1 | T-01；AC-01 | work |；**R1 重开（F-910-R1-01 cwd 合同回归）**
-| T-03 | [ ] 统一front/back成员与bin发现身份；UI needs_regeneration内容/receipt与Web已有freshness整合，保source_owner/锁三态、原成员迁移/拒绝和失败发布；补V-02/03/05 —— **完成 2026-11-02**：唯一 cargo bin+发布恢复可见名、内容收据/布局版本/清单比对、空集与坏件护栏、写前比较；V-02/03/05 见 §6.1 | T-02；AC-02/03 | work |；**R1 重开（F-910-R1-02 pdb 发布缺失）**
+| T-02 | [x] auto-generation-core::rust_workspace及必要新辅助模块实现单源上下文/写前比较；UI rust_ui与Man serve_rust/Web真实调用接线，target owner分离且安装/delivery独立；建立V-01正反 —— **完成 2026-11-02**：lang d4c1217+9e3793bf5 / ui 2308db4 / web 8217075 / man 55a4c20；V-01 正反控见 §6.1 | T-01；AC-01 | work |；**R1 重开（F-910-R1-01 cwd 合同回归）** → **R1 修复关闭（e03a294，cwd=ws）**
+| T-03 | [x] 统一front/back成员与bin发现身份；UI needs_regeneration内容/receipt与Web已有freshness整合，保source_owner/锁三态、原成员迁移/拒绝和失败发布；补V-02/03/05 —— **完成 2026-11-02**：唯一 cargo bin+发布恢复可见名、内容收据/布局版本/清单比对、空集与坏件护栏、写前比较；V-02/03/05 见 §6.1 | T-02；AC-02/03 | work |；**R1 重开（F-910-R1-02 pdb 发布缺失）** → **R1 修复关闭（f086a1d8d+e03a294，pdb 发布）**
 | T-04 | [x] 成员更新/生成/构建lease与owned取消恢复；有限扩展build_storage精确子根预览/apply守卫，真实竞争/清理正负控V-05/06/07 —— **完成 2026-11-02**：lease（spawn/进程生命周期/服务）、dead-pid 清扫、清理器受管子根准入、混合 ws auto-web 保留；V-06/07 见 §6.1 | T-03；AC-04/05 | work |
 | T-05 | [x] 在906新组合完成两类A/B完整收益对照、外部fresh/locked/来源失败恢复、模拟007移根和回滚；必需既有红按精确触面闭门，全部work AC实证，无未批准支持缩减 —— **完成 2026-11-02**：V-04 两类严格正收益（§6.1 表）、发行门 DST-1..4 全过（两处既有红精确修复）、安装 SDK 独立模式实证（D-906-1 man-install 腿根因修复）、V-09 移根/旧成员保全、V-10 原入口回滚；预算对账后 v04 根已回收 | T-04；AC-01..07，V-01..10 | work |
 | T-06 | [x] 最终健康/遗漏/workaround扫描，冻结全部work证据/数账/限制、SD-01..05 proposal及007交接表；原始证据摘要可随scope删除而独立读回，execution_done6/9 —— **完成 2026-11-02**：健康扫描过、既有红 4 处精确修复、债务 D-910-1/2 登记、边界全列、SD-01..05 落稿（四仓）、007 交接表+预算对账在案 | T-05；AC-01..07 | work |
@@ -285,6 +298,10 @@ stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 1 | from: work | to
 stage: review | review_scope: final | reviewer_identity/limitations: 独立审查代理（general-purpose，独立上下文，只读+定向重放；非作者自查；从冻结树重建 auto/auto-ui-tool 以覆盖精确 HEAD） | plan_id: PLAN-910 | plan_revision: r1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-910/{auto-lang,auto-ui,auto-web,auto-man,auto-down} | branch: plan-910-dev / plan-910-ui-dev / plan-910-web-dev / plan-910-man-dev | reviewed_commit: lang eb77695a5, ui 2330d56, web 3de5524, man 67add3c（五树 porcelain 全空） | base_commit: 367258e7a / 30c9027 / 847527e / 7f30eb8 | dependency_revisions: down 7c4d5cb | spec_inputs: SD-01..05 稿（lang generated-cargo-build-lifecycle.md 新、generated-ui-distribution.md、build-storage-lifecycle.md；ui ui-compilation-configuration.md；man generated-cargo-context.md 新；web project.md）于各冻结提交 | acceptance_results: AC-01 partial（F-01）；AC-02/03/04/05/06/07 pass（独立重放：core 28/0、web api_gen 48/0、ui 四例 4/0 含 delivery e2e、清理器六负一正、真实构建 build2 0 单位四文件 bytes+mtime 全稳、发布件标记+receipt sha 一致、他树/工具 target 根 exit 1、743 指纹 json 全钉 256MiB）；AC-08 本审；AC-09 pending(merge) | pending_closeout_gates: 冻结固定组并集（web-delivery-controls 12/13，D-910-1 既有 ERROR 按登记不计）、canonical 落地+007 交接、具名持有 f3f98a9e（master 清理器 apply）与 54892519（T-09）、scope 折叠删除、wt-guard 拆树 | findings: **F-910-R1-01 blocking/新回归**：rust_ui.rs `cargo_managed_build` cwd=`find_ws_dir_for_cwd(target_root.parent())` 在 dev 模式上溯至 producer 仓根（吃语言仓 config：linker=rust-lld/jobs/[env]），Explicit 模式可吃显式根祖先无关 config——违反 §5.1.1 "cwd=ws_dir"/SD-01 §2；实测同上下文 PE 头 14.0/无 Rich(lld) vs 显式根 14.44+Rich；修复=cwd 传 managed.ws_dir、删上溯；重放=强制重链后 PE 头 14.4x+Rich 且 build2 0 单位。F-910-R1-02 nonblocking：rustc 产出 `counter_72e31f46.pdb`（下划线）而发布找 `counter-72e31f46.pdb` → 唯一名 bin 的 pdb 从不发布；修=从 cargo filenames 取 .pdb。F-910-R1-03 nonblocking：v08 receipt 绑 lang 64a4cd450 而 §6.1 写 19bfb579d（门脚本修复 41s 后才提交；产品代码在 64a4cd450 已全提交）→ 改措辞。F-910-R1-04 nonblocking：SD-01 §5 锁范围过度声称（锁仅覆盖 try_ensure_workspace_for；生成物/收据靠 tmp+rename 与输入快照）。F-910-R1-05 nonblocking：web api_gen 单测副作用改写真实 producer 根 54892519/context.json 的 producer_origin → 测试钉 AUTO_GENERATED_TARGET_ROOT 到 temp。F-910-R1-06 记录：v06 篡改负控驱动内未落盘，审查已补测闭合。F-910-R1-07 记录：cargo_managed_build docstring "deps/" 措辞与实际升位取件不符 | evidence: D:/autostack/plan-artifacts/plan-910/review/review-report.md（sha256 前16 11916db7645651d7；merge 时折叠入本文件后随 scope 删除）、同目录 e-build1/2.log、e-neg-a/b.log、e-snap0/1/2.txt | next: work（修 F-01 阻断，顺带 F-02/F-03/F-04/F-05/F-07；影响任务 T-02（cwd 合同）、T-03（pdb 发布）；重放范围=F-01 PE 头+0 单位、F-02 pdb 发布存在且与 exe 同轮、core/ui 定向单测；其余 AC 证据保留）
 
 stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-910/auto-lang | commit: eb77695a5 (ui 2330d56, web 3de5524, man 67add3c) | next: work
+
+stage: work | plan_id: PLAN-910 | plan_revision: r1 | outcome: pass（修复轮 R1） | worktree_path: D:/autostack/.wt/lang-910/{auto-lang,auto-ui,auto-web,auto-man,auto-down} | branch: plan-910-dev / plan-910-ui-dev / plan-910-web-dev / plan-910-man-dev | base_commit: 367258e7a / 30c9027 / 847527e / 7f30eb8 | code_commit: lang f086a1d8d, ui e03a294, web 3de5524, man 67add3c | dependency_revisions: down 7c4d5cb | task_ids: T-02/T-03 重新关闭；6/9 | evidence: §6.1 "修复轮 R1" 闭合表（PE 头 14.44+Rich、build2 0 单位、pdb 同轮、core 28/0、ui 4/0）；原始日志 scope `repair-r1/` | blockers: 无 | next_responsible_role: review（复审仅重放 F-01..F-07 受影响面：核 cwd 代码路径、PE 头/0 单位、pdb 发布、SD-01 措辞；其余 AC 证据沿用）
+
+stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-910/auto-lang | commit: f086a1d8d (ui e03a294, web 3de5524, man 67add3c) | next: review
 
 ## 10. 待澄清事项
 
