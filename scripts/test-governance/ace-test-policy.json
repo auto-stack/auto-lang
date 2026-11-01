@@ -1,0 +1,336 @@
+{
+  "schema": "ace-test-policy/1",
+  "plan": "PLAN-893",
+  "views": {
+    "affected": "plan authors and review name the affected complete responsibility groups and necessary consumer groups; no --changes auto graph",
+    "slow": "this items[] list: current native navigation + single-item replay via the fixed driver; overlap dedupes by same-config OR in one invocation",
+    "formal": "formal capability gates stay with the explicit ace-performance group and the original scripts/conditions; a slow-list single round is not a formal P90"
+  },
+  "items": [
+    {
+      "id": "K-01",
+      "family_owner": "av",
+      "obligation": "512真实修订有界历史+稳定水位（原t07 V-07义务，迁名保断言）",
+      "historical_leaf_id": "ace-av/auto-av-probe-function_incremental_828/auto-av-probe-function_incremental_828/direct/017",
+      "historical_name": "t07_v07_512_revisions_bounded_history_stable_watermark",
+      "migration": "renamed by 896 (5d7afcf78): ac-av-probe function_incremental_828.rs moved to ace av conformance cases, t07_ prefix dropped",
+      "native": {
+        "binary": "ace-av::conformance",
+        "test": "function_incremental::performance::v07_512_revisions_bounded_history_stable_watermark",
+        "fn": "v07_512_revisions_bounded_history_stable_watermark",
+        "source_file": "experimental/ace/crates/av/tests/cases/function_incremental.rs"
+      },
+      "groups": {
+        "responsibility": "ace-av",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-av --test-name v07_512_revisions_bounded_history_stable_watermark --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-01 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-02",
+      "family_owner": "av",
+      "obligation": "512编辑全存储轴：真实存储/GC/restart/sentinel闭包（原t07 V-07义务）",
+      "historical_leaf_id": "ace-av/auto-av-probe-function_incremental_828/auto-av-probe-function_incremental_828/direct/018",
+      "historical_name": "t07_v07_full_storage_axis_512_edits_gc_restart_sentinel",
+      "migration": "renamed by 896 (5d7afcf78): same migration as K-01, assertions preserved per git show 5d7afcf78",
+      "native": {
+        "binary": "ace-av::conformance",
+        "test": "function_incremental::performance::v07_full_storage_axis_512_edits_gc_restart_sentinel",
+        "fn": "v07_full_storage_axis_512_edits_gc_restart_sentinel",
+        "source_file": "experimental/ace/crates/av/tests/cases/function_incremental.rs"
+      },
+      "groups": {
+        "responsibility": "ace-av",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-av --test-name v07_full_storage_axis_512_edits_gc_restart_sentinel --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-02 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-03",
+      "family_owner": "cte",
+      "obligation": "真实水位GC物理删除并收敛",
+      "historical_leaf_id": "ace-comptime/auto-cte-probe-cte_resources_tests/auto-cte-probe-cte_resources_tests/direct/015",
+      "historical_name": "resources_real_watermark_gc_physical_delete_and_converge",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-comptime::conformance",
+        "test": "cte_resources_tests::performance::resources_real_watermark_gc_physical_delete_and_converge",
+        "fn": "resources_real_watermark_gc_physical_delete_and_converge",
+        "source_file": "experimental/ace/crates/comptime/tests/cases/cte_resources_tests.rs"
+      },
+      "groups": {
+        "responsibility": "ace-comptime",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-comptime --test-name resources_real_watermark_gc_physical_delete_and_converge --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-03 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-04",
+      "family_owner": "cte",
+      "obligation": "≥32MiB真实页+512个不同修订",
+      "historical_leaf_id": "ace-comptime/auto-cte-probe-cte_resources_tests/auto-cte-probe-cte_resources_tests/direct/017",
+      "historical_name": "resources_thirty_two_mib_pages_and_512_distinct_revisions",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-comptime::conformance",
+        "test": "cte_resources_tests::performance::resources_thirty_two_mib_pages_and_512_distinct_revisions",
+        "fn": "resources_thirty_two_mib_pages_and_512_distinct_revisions",
+        "source_file": "experimental/ace/crates/comptime/tests/cases/cte_resources_tests.rs"
+      },
+      "groups": {
+        "responsibility": "ace-comptime",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-comptime --test-name resources_thirty_two_mib_pages_and_512_distinct_revisions --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-04 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-05",
+      "family_owner": "cte",
+      "obligation": "注入尖峰负控必须红（turnaround门）",
+      "historical_leaf_id": "ace-comptime/auto-cte-probe-cte_turnaround_tests/auto-cte-probe-cte_turnaround_tests/direct/003",
+      "historical_name": "cte_turnaround_injected_spike_control_is_red",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-comptime::conformance",
+        "test": "cte_turnaround_tests::performance::cte_turnaround_injected_spike_control_is_red",
+        "fn": "cte_turnaround_injected_spike_control_is_red",
+        "source_file": "experimental/ace/crates/comptime/tests/cases/cte_turnaround_tests.rs"
+      },
+      "groups": {
+        "responsibility": "ace-comptime",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-comptime --test-name cte_turnaround_injected_spike_control_is_red --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-05 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-06",
+      "family_owner": "cte",
+      "obligation": "居民降级门+受控对照（turnaround门）",
+      "historical_leaf_id": "ace-comptime/auto-cte-probe-cte_turnaround_tests/auto-cte-probe-cte_turnaround_tests/direct/007",
+      "historical_name": "cte_turnaround_resident_degrade_gate_and_control",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-comptime::conformance",
+        "test": "cte_turnaround_tests::performance::cte_turnaround_resident_degrade_gate_and_control",
+        "fn": "cte_turnaround_resident_degrade_gate_and_control",
+        "source_file": "experimental/ace/crates/comptime/tests/cases/cte_turnaround_tests.rs"
+      },
+      "groups": {
+        "responsibility": "ace-comptime",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-comptime --test-name cte_turnaround_resident_degrade_gate_and_control --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-06 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-07",
+      "family_owner": "native",
+      "obligation": "冷集churn GC收敛（资源层）",
+      "historical_leaf_id": "ace-native/ac-mn-resources_tier/ac-mn-resources_tier/direct/001",
+      "historical_name": "mir_native_resources_cold_set_churn_gc_convergence",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-native::conformance",
+        "test": "resources_tier::performance::mir_native_resources_cold_set_churn_gc_convergence",
+        "fn": "mir_native_resources_cold_set_churn_gc_convergence",
+        "source_file": "experimental/ace/crates/native/tests/cases/resources_tier.rs"
+      },
+      "groups": {
+        "responsibility": "ace-native",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-native --test-name mir_native_resources_cold_set_churn_gc_convergence --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": true
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-07 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-08",
+      "family_owner": "semantics",
+      "obligation": "4096深链全路径sema预算压力",
+      "historical_leaf_id": "ace-semantics/ac-sema-probe-sema_budget_pressure/ac-sema-probe-sema_budget_pressure/direct/003",
+      "historical_name": "sema_budget_deep_chain_4096_full_path",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-semantics-store::conformance",
+        "test": "sema_budget_pressure::performance::sema_budget_deep_chain_4096_full_path",
+        "fn": "sema_budget_deep_chain_4096_full_path",
+        "source_file": "experimental/ace/crates/semantics-store/tests/cases/sema_budget_pressure.rs"
+      },
+      "groups": {
+        "responsibility": "ace-semantics",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-semantics --test-name sema_budget_deep_chain_4096_full_path --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-08 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-09",
+      "family_owner": "syntax",
+      "obligation": "64MiB流式小查询语法预算",
+      "historical_leaf_id": "ace-syntax/ac-syntax-artifact-adapter-syntax_budget_/ac-syntax-artifact-adapter-syntax_budget_/direct/001",
+      "historical_name": "syntax_budget_64mib_streaming_small_queries",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-syntax-artifacts::conformance",
+        "test": "syntax_budget::performance::syntax_budget_64mib_streaming_small_queries",
+        "fn": "syntax_budget_64mib_streaming_small_queries",
+        "source_file": "experimental/ace/crates/syntax-artifacts/tests/cases/syntax_budget.rs"
+      },
+      "groups": {
+        "responsibility": "ace-syntax",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-syntax --test-name syntax_budget_64mib_streaming_small_queries --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-09 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-10",
+      "family_owner": "av",
+      "obligation": "AV探针formal turnaround门（父侧协议）",
+      "historical_leaf_id": "language/auto-lang/ac-av-probe/direct/001",
+      "historical_name": "tests::ac_av_probe_tests::ac_av_probe_formal_turnaround_gates",
+      "migration": "moved from language auto-lang probe tests to ace conformance host (896)",
+      "native": {
+        "binary": "ace-conformance::conformance",
+        "test": "tests::av_protocol::performance::ac_av_probe_formal_turnaround_gates",
+        "fn": "ac_av_probe_formal_turnaround_gates",
+        "source_file": "experimental/ace/tests/conformance/tests/host/av_protocol.rs"
+      },
+      "groups": {
+        "responsibility": "ace-host",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-host --test-name ac_av_probe_formal_turnaround_gates --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-10 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-11",
+      "family_owner": "native",
+      "obligation": "body-edit增量门（父侧协议）",
+      "historical_leaf_id": "language/auto-lang/ac-mn-probe/t-tt/018",
+      "historical_name": "tests::ac_mn_probe_tests::mir_native_turnaround_body_edit_gate",
+      "migration": "moved from language auto-lang probe tests to ace conformance host (896)",
+      "native": {
+        "binary": "ace-conformance::conformance",
+        "test": "tests::mir_native_protocol::performance::mir_native_turnaround_body_edit_gate",
+        "fn": "mir_native_turnaround_body_edit_gate",
+        "source_file": "experimental/ace/tests/conformance/tests/host/mir_native_protocol.rs"
+      },
+      "groups": {
+        "responsibility": "ace-host",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-host --test-name mir_native_turnaround_body_edit_gate --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": true
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-11 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-12",
+      "family_owner": "av",
+      "obligation": "32MiB产物随机读取+churn（AV资源）",
+      "historical_leaf_id": "ace-av/auto-av-probe-resources_tier/auto-av-probe-resources_tier/direct/002",
+      "historical_name": "av_resources_32mib_product_random_read_and_churn",
+      "migration": "unchanged name since the 888 handover",
+      "native": {
+        "binary": "ace-av::conformance",
+        "test": "resources_tier::performance::av_resources_32mib_product_random_read_and_churn",
+        "fn": "av_resources_32mib_product_random_read_and_churn",
+        "source_file": "experimental/ace/crates/av/tests/cases/resources_tier.rs"
+      },
+      "groups": {
+        "responsibility": "ace-av",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-av --test-name av_resources_32mib_product_random_read_and_churn --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": false
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-12 (real nextest list via fixed driver, DISCOVERED)"
+    },
+    {
+      "id": "K-13",
+      "family_owner": "native",
+      "obligation": "签名重建门（父侧协议）",
+      "historical_leaf_id": "language/auto-lang/ac-mn-probe/t-tt/022",
+      "historical_name": "tests::ac_mn_probe_tests::mir_native_turnaround_signature_rebuild_gate",
+      "migration": "moved from language auto-lang probe tests to ace conformance host (896)",
+      "native": {
+        "binary": "ace-conformance::conformance",
+        "test": "tests::mir_native_protocol::performance::mir_native_turnaround_signature_rebuild_gate",
+        "fn": "mir_native_turnaround_signature_rebuild_gate",
+        "source_file": "experimental/ace/tests/conformance/tests/host/mir_native_protocol.rs"
+      },
+      "groups": {
+        "responsibility": "ace-host",
+        "formal": "ace-performance",
+        "formal_note": "selected by ace-performance via ::performance:: namespace"
+      },
+      "replay": "cargo t ace-host --test-name mir_native_turnaround_signature_rebuild_gate --out <fresh-dir>",
+      "conditions": {
+        "ignored": false,
+        "windows_only": true
+      },
+      "discovery_evidence": "plan-artifacts/plan-893/t01-discover/K-13 (real nextest list via fixed driver, DISCOVERED)"
+    }
+  ]
+}

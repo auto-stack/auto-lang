@@ -941,6 +941,30 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "infra-ace-policy"
+title = "治理 scripts/tests/test_ace_test_policy.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_test_policy.py"
+all = true
+
+[[group]]
+name = "infra-ace-cost-report"
+title = "治理 scripts/tests/test_ace_cost_report.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_cost_report.py"
+all = true
+
+[[group]]
 name = "infra-fixed"
 title = "固定Cargo/Rust模块分组与缓存所有权"
 runner = "python"

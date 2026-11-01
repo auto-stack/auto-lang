@@ -173,6 +173,10 @@ test_temp.txt
 # 被 *.json 母规则静默吞掉致 master 执行链断——同 F-793-R1-01 缺陷类，自
 # 736064ce7^ 内容恢复并加豁免防复发）
 !scripts/test-governance/legacy-wrapper-contract.json
+# PLAN-893：13项慢例接入策略元数据（ace_cost_report/ace-policy 治理测试消费；
+# *.json 母规则会吞掉致固定组治理断——同 F-793-R1-01 缺陷类）
+!scripts/test-governance/ace-test-policy.json
+
 # I6 双端共享布局期望值表（465 T4 产出；472 T2 修复入库）
 !crates/auto-lang/src/ui/layout_cases.json
 !crates/auto-lang/test/cases/ac-semantics/oracle/ac.sema.infer-bindings.bindings.json
