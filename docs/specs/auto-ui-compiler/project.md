@@ -9,6 +9,15 @@
 > **vue/jet/ark/rust 四生成器** ≈11.3 万行单源迁入；旧路径
 > （`ui::style`/`aura`/`a2ui`/`ui_gen` 等）经上层再导出全保持。
 
+## 结构收口（PLAN-014）
+
+`src/ui_gen/vue.rs` 拆分为 `src/ui_gen/vue/` 目录家族（mod+nav_sidebar/script/
+template_media/expr/tags/style_helpers/shadcn_attrs/project_files/store/library，
+2026-11-01）：单 `VueGenerator` state/registry、公开路径 `ui_gen::vue::VueGenerator`
+与 golden 字节/reset/fingerprint 语义零改；`build.rs` 对 `src/ui_gen` 逐文件指纹
+随布局如实变化=缓存身份失效重建（Plan 692 语义不变）。合同详见
+[ui 结构收口](../../../../auto-ui/docs/specs/ui/structure-closure.md)。
+
 ## 职责与边界
 
 - 依赖纯语言 SDK（auto-lang-core）+ auto-ui-dialect（文法单源，本包

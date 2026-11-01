@@ -78,3 +78,8 @@ freshness 字节对拍门 `test_shell_pack_lib_freshness`)——F-815-T09-01 修
 UI tool/VM worker/Rust生成与back-proxy直接消费固定auto-web，内部显式安装provider并传递typed launch。
 HTTP生成/运行策略归Web，UI仍拥有界面与非HTTP适配；命令、工具身份与ready/关闭义务不因迁仓降级。
 [UI消费指南](../../../../auto-ui/docs/web-integration.md)与[Web指针](../auto-web/project.md)。
+## 结构收口指针（PLAN-014）
+
+PLAN-014 未改本包结构/合同；auto-ui 仓内 compiler/runtime 三面拆分与本工具的
+I-TOOL 协议面零交叠，`auto-ui-tool` 入口与协议行为不变。背景见
+[ui 结构收口](../../../../auto-ui/docs/specs/ui/structure-closure.md)。

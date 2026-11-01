@@ -10,6 +10,16 @@
 > `assets/*.at` 五件 + UI 动态构建管线（原 lib.rs Plan 015 glue 区=
 > `dynamic_build.rs`）单源迁入；旧路径经上层再导出全保持。
 
+## 结构收口（PLAN-014）
+
+`src/ui/aura_view_builder.rs` 拆分为 `src/ui/aura_view_builder/` 12家族目录、
+`src/ui/iced/renderer.rs` 拆分为 `src/ui/iced/renderer/` 7家族目录（2026-11-01）：
+`&VmBridge` 仅借用（owner=dynamic.rs）、`DesktopSession`（session.rs）仍为
+windows/apps/host 唯一owner；消息序/active判据/last-owner exit/纹理与external
+pin寿命、公开 `renderer::{X}` 路径零改。合同与测试映射详见
+[ui 结构收口](../../../../auto-ui/docs/specs/ui/structure-closure.md)、
+[ui 结构测试映射](../../../../auto-ui/docs/specs/ui/structure-test-map.md)。
+
 ## 职责与边界
 
 - 依赖：auto-lang-core（SDK）+ auto-ui-compiler（UI 编译域）+

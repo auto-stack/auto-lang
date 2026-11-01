@@ -435,3 +435,10 @@ merged 进程内 API 客户端（auto-ui-tools `generate_merged_api_client`）�
 ## 解析失败与受信准入双轨（PLAN-842 r3 SD-08）
 
 vue/jet/ark 生成的前置整树预校验（`validate_ui_tree`）只对**受信准入失败**（UI domain/module 校验：重复 widget/store/model 字段/message 变体声明、坏模块导入）在任何模式硬拒绝且先于缓存/输出（PLAN-841 合同）；语法解析失败不在此列——普通（非严格）模式交还各生成路径的逐文件统一语义（PLAN-012 Batch B：警告 + 跳过坏文件、正常文件照常产出；严格模式硬失败），fresh 与 incremental 一致。不得以删除前置校验放宽受信准入，也不得以前置校验吞掉非严格模式的解析宽容；Rust 后端路径的前置文件校验行为不变。规范锚见 [auto-ui-compiler](../auto-ui-compiler/project.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+## CLI 结构收口指针（PLAN-014，2026-11-01）
+
+auto-man 仓 `crates/auto/src/main.rs`（3223行）拆分为 cli_spec（解析声明）/
+diag（机器诊断）/cmd_{build,run,test,env,trans,req,wizard}（编排）+瘦分派；
+help/flag/默认值/机器JSON/退出码与 owned 工具进程设施（tool_ui_ops/
+auto_tool_execution）零改；Core 路径共享面与 ui-extra 门保持。合同详见
+[CLI 结构收口](../../../auto-man/docs/specs/cli/structure-closure.md)（auto-man 仓）。
