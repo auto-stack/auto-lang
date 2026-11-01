@@ -17,7 +17,7 @@ args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib"]
 # PLAN-901：测试 feature 拍平后，原靠 feature 缺席隐藏的转译/书稿/HTTP e2e/
 # ACE 桥接测试族常驻可见——静态边界钉住原日常范围（与 profile.default 的
 # default-filter 语义叠加；31 模块前缀=旧 test-cases-only 形态差集，实证零丢失）。
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|tests::a2r_tests|tests::a2ts_tests|tests::book_listing_tests|tests::plan724_http_client_tests::e2e|tests::plan727_http_transfer_tests::e2e|tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::tests::plan781_budget_http_tests::budget_e2e)::/))"
+expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|tests::a2r_tests|tests::a2ts_tests|tests::book_listing_tests|tests::plan724_http_client_tests::e2e|tests::plan727_http_transfer_tests::e2e)::/"))
 tools = []
 domain = "legacy"
 all = false
