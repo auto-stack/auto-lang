@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-01
 updated_at: 2026-11-01
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 supersedes_spec_components: []
 new_spec_components: []
