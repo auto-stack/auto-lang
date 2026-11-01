@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-a2r/collections-hir-backend.md]
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-a2r, auto-ac, auto-test-case]
 depends_on: [PLAN-902, PLAN-864, PLAN-889]
-current_step: 11
+current_step: 14
 total_steps: 14
 ---
 
@@ -319,8 +319,8 @@ work/review先相关反例与实际受影响完整职责组：ace-a2x；S source
 | T-10 | review | T-09冻结SHA/同树 | 独立核全部AC/V（至17）/SD/type修复范围/真增量/资源/认证/预算与遗漏；finding回同树work，pass仅reviewed，merge门pending | AC-09 | [x] 2026-11-01：final r1 needs_fix（RV-1..4，见§9）→work修复410ad5900→final r2 pass（修复重验+受影响并集重跑84/84+3/3+组gate:True；AC-01..08全pass、SD提案校验过、零未决finding；限制：同会话独立上下文，自工件重构）；AC-09 关闭 |
 | T-11 | merge | T-10 pass | 冻结作用域完整职责/必要消费者组门并核原始子终态，有据复用同身份证据；新代码/工具/profile漂移重审受影响项；周期全量仅due主检出，不额外叠旧档 | AC-10 | [x] 2026-11-01：rebase onto master（893 已落地，range-diff 6/6 全等）+lock 再生提交 12f9adf18；并集与三案组 gate:True（两次并发瞬红环境归因）；main 前进已按"正式版本接"重跑门 |
 | T-12 | merge | T-11 | 实际合入、SD-01..06沉淀及来源读回、type片段能力/限制/新producer交893903；不写legacy specs.json、不以派生索引可用设门 | AC-10 | [x] 2026-11-01：ff-only 合入 master=12f9adf18；9 规范路径读回（hash 见 §9 merge 收据）；893/903 交接记录在案（新组/采样窗=其受影响输入）；未写任何 legacy specs.json |
-| T-13 | merge | T-12 | archive真实delivered，摘要/命令/数字/节选/hash折叠计划、后继接口/未覆盖交接；cleanup pending不报14/14 | AC-10 | [ ] |
-| T-14 | merge | T-13 | fresh wt-guard clean后清树/分支/组；核所有实际输出路径/材料scope与hold，删plan-artifacts及树构建物、刷新登记，真实14/14 | AC-10 | [ ] |
+| T-13 | merge | T-12 | archive真实delivered，摘要/命令/数字/节选/hash折叠计划、后继接口/未覆盖交接；cleanup pending不报14/14 | AC-10 | [x] 2026-11-01：docs/plans/archive/904…md（status: archived）提交 916454628；验证记录/复审/合并收据/交接全部折叠于本件 §6..§9 |
+| T-14 | merge | T-13 | fresh wt-guard clean后清树/分支/组；核所有实际输出路径/材料scope与hold，删plan-artifacts及树构建物、刷新登记，真实14/14 | AC-10 | [x] 2026-11-01：wt-guard 双树 clean→worktree/branch plan-904-dev/组目录 lang-904 全删；plan-artifacts/plan-904（345 文件 58.7MiB）整删、登记表刷新无 hold；生产工件=main release worker 已重建（13:43）；批回归 due（48h+合并，904 非%5；2026-10-30 用户豁免在案）→**pending 交用户**；输出路径对账：worktree target 树随树删，main checkout 仅常规 target/ 重建 |
 
 ## 9. 复审记录
 
@@ -428,6 +428,15 @@ worktree: D:/autostack/.wt/lang-904/auto-lang | branch: plan-904-dev
 **893/903 交接（T-12）**：
 - 893（慢测/成本归因）：904 提供正式起点——新固定组 `case-a2r-hir-collections-904`（20 案，gate 首跑即绿；日常 spawn=0 仅 worker emit+判定）与 `a2x-coll-formal`（显式采样窗，非日常）；正式合入后 893 若已采样，其成本数据基于不含 904 的分母——**新组/新采样窗属受影响输入，需按其正式版本重核或标注**；resolve 融合索引修复（collections 面）不触及 893 观测符号。
 - 903（M1 净缺口审计）：并列 producer 已就绪——recipe/fileset/cert/固定组身份与不支持项（见 docs/specs/auto-a2r/collections-hir-backend.md 已知边界：单位臂限定构造、call 结果非 fresh rvalue、List/Variant 参数返回字段嵌套等）；903 审计输入若引用 collections producer，以本合并为分界（12f9adf18 前=无此通道）。
+
+### 2026-11-01 merge 收据（T-13/T-14，收尾）
+
+stage: merge | plan_id: PLAN-904 | plan_revision: 2 | outcome: pass（delivered）
+**archived**：docs/plans/archive/904-hir-to-rust-collections-variants.md，status: archived，提交 916454628；14/14 任务真实勾闭；后续接口/未覆盖交接（893 受影响输入、903 producer 分界、单位臂限定构造/call-result 非 fresh rvalue 边界）记录于 §8 收据与 collections-hir-backend.md。
+**cleaned**：wt-guard 双树（auto-lang+auto-web 兄弟）clean → worktree×2 / branch plan-904-dev / 组目录 lang-904 全移除；plan-artifacts/plan-904 整删（345 文件 58.7MiB；冻结表/oracle 数字/正式报告/交接均已折叠本件）；.retention/policy.json 刷新、无 hold。
+**landing checks**：main checkout release a2x-worker 重建（13:43，日常通道当前）；批回归 **due**（48h+895 后有合并；904 非 %5）——2026-10-30 用户明示豁免该批运行（90 分钟冷编译被叫停）在 .last-batch-regression.json，本轮不擅自启动，**pending 交用户**决定择时执行 `cargo t all`（regress 技能，主检出单实例）。
+**生产工件**：无 backend daemon/web bundle 面（语言仓库/测试通道）；唯一受影响工件=预构建 worker（已重建）。
+receipt: stage: merge | outcome: pass | delivery_commit: 12f9adf18（+docs 916454628）| specs: 9 路径 hash 见上 | archive: docs/plans/archive/904-…md | cleanup: 全清 | pending: 批回归（用户定时）
 ## 10. 待澄清事项
 
 | D | owner/关闭任务 | 未关闭边界 |
