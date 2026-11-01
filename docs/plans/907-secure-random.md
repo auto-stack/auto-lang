@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-907
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: secure-random
 author: [Codex]
 created_at: 2026-11-01
@@ -12,7 +12,7 @@ new_spec_components: ["docs/specs/stdlib/a2r-std.md"]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 2
+current_step: 3
 total_steps: 4
 ---
 
@@ -75,10 +75,12 @@ a2r-std 新增基于 OS CSPRNG 的安全随机原语 `rand::secure_hex(n)`（n �
 
 - [x] T-1（work）：worktree `D:/autostack/.wt/lang-907/auto-lang`（branch plan-907-dev）；实现 rand.rs/rand.at/rand.rs.at/lib.rs/Cargo.toml + 分发双臂 + parity 登记 + 金样 018_rand。 [✅ 2026-11-01] 提交 `0fd8ac5fb`（11 文件：新 4 + 改 7）；组内补 detached auto-web 兄弟（auto-lang-core 相对路径依赖 auto-web-contract 实测必需）。
 - [x] T-2（work）：`cargo t a2r-std a2r` 于冻结提交全绿；零新增 warning。 [✅ 2026-11-01] a2r-std PASS（含 rand 4 单测）；a2r PASS 387/387（含 018_rand 金样与 a2r_std_signature_parity）；rustfmt rand.rs clean；fs.rs:145 格式漂移为既有（stash 复证），不在本计划范围。
-- [ ] T-3（review）：独立复审（/auto-plan:review 范式）AC-1/2。
+- [x] T-3（review）：独立复审（/auto-plan:review 范式）AC-1/2。 [✅ 2026-11-01] 独立上下文复审 `0fd8ac5fb`：AC-1/AC-2/security/一致性/遗漏扫描/健康 六区全 pass；2 条非阻塞观察（rand.rs vec 分配上限属计划设计内；金样测试断言消息内嵌样本仅测试路径）。全 diff 逐行核对：纯增量（235+/2-，2 行为白名单追加 rand）。
 - [ ] T-4（merge）：落 master（feat(stdlib): a2r-std secure random via OS CSPRNG (Plan 907)）；guard+清理 worktree；Spec 沉淀；归档。
 
 ## 复审记录
+
+- stage: review | plan_id: PLAN-907 | outcome: pass | commit: 0fd8ac5fb（worktree plan-907-dev） | 复审范围：AC-1/2 逐项、rand.rs 安全性（getrandom/小写 hex/哨兵失败/无日志）、三方签名一致、遗漏与 workaround 扫描、健康检查 | 结论：pass，无阻塞发现。
 
 ## 待澄清事项
 
