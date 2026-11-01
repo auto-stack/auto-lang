@@ -101,6 +101,15 @@ pub fn resolve_rust_workspace_dir(project_dir: &Path) -> PathBuf {
     if let Some(env) = std::env::var_os("AUTO_RUST_WORKSPACE") {
         return PathBuf::from(env);
     }
+    // PLAN-910: anchor the in-framework landing point on the PROJECT dir
+    // first (a project under the producer tree shares `examples/
+    // rust-workspace` no matter which cwd the tool was launched from — the
+    // CWD anchor below stays as a fallback), then project-local.
+    if let Some(root) = find_lang_repo_root(project_dir) {
+        if path_contains(&root, project_dir) {
+            return root.join("examples").join("rust-workspace");
+        }
+    }
     let fw_ws = get_rust_workspace_dir();
     if let Some(fw_root) = fw_ws.parent().and_then(|examples| examples.parent()) {
         if fw_root.join("crates").join("auto-lang").exists() && path_contains(fw_root, project_dir)
@@ -199,11 +208,37 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
     compute_auto_lang_rel_path_for(project_dir, ws_dir, WorkspaceRequirements::Ui)
 }
 
-fn compute_auto_lang_rel_path_for(
+/// PLAN-910: the selected language producer (absolute crate path + origin
+/// label). Single selection shared by workspace manifest anchoring and the
+/// generated-cargo build context (`generated_build`), so the target root
+/// owner and the `[workspace.dependencies]` anchor can never disagree.
+#[derive(Clone, Debug)]
+pub struct ProducerSelection {
+    /// Absolute `crates/auto-lang` crate path of the selected producer.
+    pub lang_crate: PathBuf,
+    /// Selection origin: env var name, "安装 SDK", "发现的语言源",
+    /// "发现的语言兄弟源" or "编译期语言源".
+    pub origin: String,
+}
+
+impl ProducerSelection {
+    /// Absolute producer root (parent of `crates/`).
+    pub fn producer_root(&self) -> PathBuf {
+        self.lang_crate
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or(&self.lang_crate)
+            .to_path_buf()
+    }
+}
+
+/// Select the language producer for a project: explicit envs (setting is
+/// authoritative), adjacent installed SDK, project walk-up/sibling discovery,
+/// compiled-in fallback — same order the workspace rel-path anchor uses.
+pub fn select_language_producer(
     project_dir: &Path,
-    ws_dir: &Path,
     requirements: WorkspaceRequirements,
-) -> AutoResult<String> {
+) -> AutoResult<ProducerSelection> {
     for key in [
         "AUTO_DELIVERY_SOURCE_ROOT",
         "AUTO_LANG_ROOT",
@@ -217,7 +252,10 @@ fn compute_auto_lang_rel_path_for(
                 path.join("crates/auto-lang")
             };
             validate_language_candidate(&candidate, &format!("显式 {key}"), requirements)?;
-            return Ok(compute_relative_path(ws_dir, &candidate));
+            return Ok(ProducerSelection {
+                lang_crate: candidate,
+                origin: key.to_string(),
+            });
         }
     }
     // An adjacent managed install owns its SDK even if it is damaged or
@@ -231,7 +269,10 @@ fn compute_auto_lang_rel_path_for(
                 }
                 let candidate = sdk.join("crates/auto-lang");
                 validate_language_candidate(&candidate, "安装 SDK", requirements)?;
-                return Ok(compute_relative_path(ws_dir, &candidate));
+                return Ok(ProducerSelection {
+                    lang_crate: candidate,
+                    origin: "安装 SDK".to_string(),
+                });
             }
         }
     }
@@ -240,13 +281,19 @@ fn compute_auto_lang_rel_path_for(
         let direct = dir.join("crates/auto-lang");
         if direct.exists() {
             validate_language_candidate(&direct, "发现的语言源", requirements)?;
-            return Ok(compute_relative_path(ws_dir, &direct));
+            return Ok(ProducerSelection {
+                lang_crate: direct,
+                origin: "发现的语言源".to_string(),
+            });
         }
         if let Some(parent) = dir.parent() {
             let sibling = parent.join("auto-lang/crates/auto-lang");
             if sibling.exists() {
                 validate_language_candidate(&sibling, "发现的语言兄弟源", requirements)?;
-                return Ok(compute_relative_path(ws_dir, &sibling));
+                return Ok(ProducerSelection {
+                    lang_crate: sibling,
+                    origin: "发现的语言兄弟源".to_string(),
+                });
             }
         }
         if !dir.pop() {
@@ -264,9 +311,21 @@ fn compute_auto_lang_rel_path_for(
                     .is_some_and(|crates| crates.join("auto-lang-core/Cargo.toml").is_file())
     }) {
         validate_language_candidate(&candidate, "编译期语言源", requirements)?;
-        return Ok(compute_relative_path(ws_dir, &candidate));
+        return Ok(ProducerSelection {
+            lang_crate: candidate,
+            origin: "编译期语言源".to_string(),
+        });
     }
     Err("producer 语言源缺失: crates/auto-lang".into())
+}
+
+fn compute_auto_lang_rel_path_for(
+    project_dir: &Path,
+    ws_dir: &Path,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<String> {
+    let selection = select_language_producer(project_dir, requirements)?;
+    Ok(compute_relative_path(ws_dir, &selection.lang_crate))
 }
 
 /// Compute relative path from `from` to `to` using only `..` and directory names.
@@ -319,29 +378,6 @@ fn compute_auto_ui_runtime_rel_path(auto_lang_rel: &str, ws_dir: &Path) -> AutoR
         .ok_or("producer 语言源路径无效")?;
     let source = crate::source_owner::ui_crate_source(producer, "auto-ui-runtime")?;
     Ok(compute_relative_path(ws_dir, &source))
-}
-
-fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
-    let mut dir = project_dir.to_path_buf();
-    for _ in 0..10 {
-        if dir.join("crates").exists() {
-            let target_abs = dir.join("target");
-            return compute_relative_path(ws_dir, &target_abs);
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    // PLAN-039 T-05 发现臂⑤（台账 M7-c「缺口即发现即修」）：原 fallback
-    // "../../autostack/auto-lang/target" 为幻影路径——app 仓布局（auto-os
-    // apps/<app>）祖先链永无 crates/，生成物 .cargo/config.toml 恒重定向
-    // 到不存在布局（minesweeper 实测 exe 落 apps/autostack/auto-lang/
-    // target 幽灵目录；tetris 在役 exe 实为旧默认位产物）。改落
-    // workspace 本地默认 "target"（cargo 缺省）——desktop_exe 声明路径
-    // 布局无关可循；框架内项目（祖先含 crates/）共享 target 行为不变。
-    // 隔离需求由构建时 CARGO_TARGET_DIR env 覆盖（cargo 优先级高于
-    // config build.target-dir），不烘焙进持久化配置。
-    "target".to_string()
 }
 
 /// Absolute path of the repo-wide shared cargo target for a UI project:
@@ -454,6 +490,10 @@ pub fn try_ensure_workspace_for(
     // from this actual landing dir.
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     fs::create_dir_all(&ws_dir)?;
+    // PLAN-910: generation state mutation (member scan → manifest/config
+    // rewrite) is guarded by the reentrant workspace lock; unchanged content
+    // is never rewritten (mtime stability is observable by freshness gates).
+    let _guard = crate::generated_build::WorkspaceGenerationGuard::acquire(&ws_dir)?;
 
     let ws_cargo = ws_dir.join("Cargo.toml");
 
@@ -517,7 +557,6 @@ pub fn try_ensure_workspace_for(
         String::new()
     };
     let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
-    let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
     let members_toml = members
         .iter()
@@ -555,13 +594,24 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 "#
     );
 
-    // Always rewrite to update members list
-    fs::write(&ws_cargo, &content)?;
+    // PLAN-910: never rewrite unchanged bytes — the manifest/config are part
+    // of observable generation state (905's intermittent rebuilds tracked
+    // rewritten-identical files; this removes the rewrite, not the claim that
+    // it alone fixed that root cause).
+    crate::generated_build::write_if_changed(&ws_cargo, content.as_bytes())?;
 
-    // Write .cargo/config.toml with target-dir.
+    // Write .cargo/config.toml with the managed generated-consumer target
+    // root (context-resolved; manual cargo runs inside the ws land in the
+    // same cache as managed spawns).
     // PLAN-039 T-04（批次 E 连带）：MSVC 主线程栈扩至 256MB——深视图
     // app（klondike 7 列×嵌套条件）的视图构造/drop 递归溢出默认栈
     // （minesweeper 浅视图无此面）；栈是上限非预留，浅 app 无扰。
+    let context = crate::generated_build::GeneratedBuildContext::resolve(
+        project_dir,
+        &ws_dir,
+        language_requirements,
+    )?;
+    let target_rel = compute_relative_path(&ws_dir, &context.target_root);
     let config_dir = ws_dir.join(".cargo");
     fs::create_dir_all(&config_dir)?;
     let mut config = format!(
@@ -571,7 +621,7 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     config.push_str(
         "\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=/STACK:268435456\"]\n",
     );
-    fs::write(config_dir.join("config.toml"), config)?;
+    crate::generated_build::write_if_changed(&config_dir.join("config.toml"), config.as_bytes())?;
 
     Ok(ws_dir)
 }

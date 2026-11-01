@@ -29,6 +29,7 @@
 //! consumers compile unchanged.
 
 pub mod api_gen;
+pub use auto_generation_core::generated_build;
 pub mod rust_workspace;
 pub mod sidecar;
 pub mod source_owner;
