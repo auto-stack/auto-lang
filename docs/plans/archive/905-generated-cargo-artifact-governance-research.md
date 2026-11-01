@@ -186,3 +186,10 @@ T-05在本计划中写出推荐有限方案、明确哪些目标本期闭合/仍
 - archived: 本 git mv + status 翻转 + 本收据提交（docs/plans/archive/905-*.md）。
 - deployment check: 文档研究、零代码落地→无生产制品（backend release/依赖仓二进制/web bundle 均非本计划触面），无 stale 项。
 - batch regression due check: 905%5==0 触发；.last-batch-regression.json last_covered=895 verdict=waived_by_user（2026-10-30 用户令"不用进行回归测试了"，904 同样登记 user-pending）→ 本计划零 Rust 编译面改动，沿既定豁免登记 user-pending，不静默跳过、不自行开跑全量批（主检出单实例窗口归用户/regress 技能）。
+
+- cleaned: 六 worktree（含 lang-drift 探针）guard 全 clean 后移除（auto-ui Cargo.lock F-R1 先恢复）；plan-905-dev 分支删除（was 174652b5c 零提交）；组目录 .wt/lang-905 移除；**plan-artifacts/plan-905 整删（20G，证据已折 §9；构建中间产物随 worktree 消亡不回收）**；.retention/policy.json 刷新（archived/cleaned，deleted_scopes=[plan-905]，无文件 holds）。
+- completion_kind: delivered（研究文档交付；无生产代码/Spec 改动——SD-01）。
+
+§9 目标收据（goal 循环终态）：
+
+`stage: goal | plan_id: PLAN-905 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed, group .wt/lang-905 cleaned) | commit: master 65f3b8c92 delivery + 7b48c56e9 archive | next: done`
