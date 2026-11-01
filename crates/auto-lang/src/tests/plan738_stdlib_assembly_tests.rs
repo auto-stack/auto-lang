@@ -42,7 +42,9 @@ mod t02_inventory {
                 d.message
             );
         }
-        // 全库 isolated-parse 基线（T-01 探针只扫六核心；全库实勘 39/115）：
+        // 全库 isolated-parse 基线（T-01 探针只扫六核心；全库实勘 39/115；
+        // PLAN-906 merge 门重钉：PLAN-907 新增 stdlib/auto/rand.rs.at 镜像
+        // （.rs.at 镜像语法漂移类）入列，38→39 逐名核对后更新）：
         // 三类构成见 738-stdlib-decision §2——语法破损（str.at `with` 参数名、
         // list/async `type X[T]`、iter/* spec 上下文）、跨模块类型依赖
         // （app.at Widget）、镜像语法漂移（json.rs.at 等 .rs.at）。
@@ -50,7 +52,7 @@ mod t02_inventory {
         // shim），stdlib_tests.rs 的 `use auto.str` 系 #[ignore] 即佐证。
         assert_eq!(
             failed.len(),
-            38,
+            39,
             "全库 isolated-parse 失败数漂移——逐名核对后更新本基线与决策报告 §2"
         );
         assert!(
