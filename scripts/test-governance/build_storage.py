@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Preview/reclaim only explicitly owned idle Cargo caches in this checkout."""
+"""Preview/reclaim only explicitly owned idle Cargo caches in this checkout.
+
+PLAN-910 extension: exact managed generated-consumer cache roots
+(<ROOT>/target/generated-consumers/<ctx8>/) are admitted when their
+context.json proves this checkout is the producer and no live build/run
+lease (pid alive) holds them. Every other refusal (reparse, evidence, active
+compilers, execution lease, foreign roots) is unchanged."""
 import argparse
 import json
 import os
@@ -17,6 +23,62 @@ def reparse(path):
     return path.is_symlink() or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
+GENERATED_CONSUMERS = 'generated-consumers'
+CONTEXT_SCHEMA = 'generated-build-context/v1'
+
+
+def process_alive(pid):
+    """Windows liveness via tasklist (no psutil dependency); unknown -> alive."""
+    if os.name != 'nt':
+        return Path('/proc', str(pid)).exists()
+    try:
+        out = subprocess.check_output(['tasklist', '/FI', 'PID eq %d' % pid, '/NH', '/FO', 'CSV'], text=True)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return ('"%d"' % pid) in out
+
+
+def generated_consumer_root(target):
+    """PLAN-910: an exact managed generated-consumer cache root owned by THIS
+    checkout: <ROOT>/target/generated-consumers/<ctx8>/ with a schema-v1
+    context.json whose producer_root is this checkout. Anything else (another
+    producer's root, a missing/foreign record, a nested path) is refused."""
+    base = (ROOT / 'target' / GENERATED_CONSUMERS).resolve()
+    if target.parent != base:
+        return False
+    record = target / 'context.json'
+    if not record.is_file():
+        raise ValueError('generated-consumer root without context.json is unowned: ' + str(target))
+    data = json.loads(record.read_text(encoding='utf-8'))
+    if data.get('schema') != CONTEXT_SCHEMA:
+        raise ValueError('generated-consumer root has an unknown context schema: ' + str(data.get('schema')))
+    producer = str(data.get('producer_root', '')).replace('\\', '/').rstrip('/').casefold()
+    if producer != str(ROOT.resolve()).replace('\\', '/').rstrip('/').casefold():
+        raise ValueError('generated-consumer root belongs to another producer: ' + str(data.get('producer_root')))
+    if data.get('context_id') != target.name:
+        raise ValueError('generated-consumer root name does not match its context id')
+    return True
+
+
+def refuse_live_leases(target):
+    """A build/run lease whose pid is still alive proves the root is in use;
+    stale leases (dead pid) are reported and ignored, never deleted here."""
+    lease_dir = target / '.lease'
+    if not lease_dir.is_dir():
+        return []
+    stale = []
+    for lease in sorted(lease_dir.glob('*.json')):
+        try:
+            data = json.loads(lease.read_text(encoding='utf-8'))
+            pid = int(data.get('pid'))
+        except (ValueError, TypeError, OSError) as error:
+            raise ValueError('unreadable lease (fail closed): ' + str(lease)) from error
+        if process_alive(pid):
+            raise ValueError('live build/run lease pid %d (%s) holds this root' % (pid, data.get('purpose')))
+        stale.append(str(lease))
+    return stale
+
+
 def inspect(path, retired_source=None):
     lexical = Path(path).absolute()
     for parent in [lexical, *lexical.parents]:
@@ -26,6 +88,10 @@ def inspect(path, retired_source=None):
     allowed = target in {ROOT / 'target', ROOT / 'target/test-tools/regular', ROOT / 'target/test-tools/batch', ROOT / 'experimental/ace/target-batch'} or (
         target.is_relative_to(ROOT / 'experimental') and target.name == 'target'
         and (target.parent / 'Cargo.toml').is_file())
+    stale_leases = []
+    if not allowed and generated_consumer_root(target):
+        allowed = True
+        stale_leases = refuse_live_leases(target)
     if not allowed and retired_source and target.is_relative_to(ROOT / 'experimental') and target.name == 'target':
         # A migrated manifest is no longer present at its old cache root.
         # Prove this exact checkout owned that Cargo workspace in an ancestor;
@@ -59,7 +125,8 @@ def inspect(path, retired_source=None):
         value['inside'] += 1
     return {'path': str(target), 'files': len(files),
             'unique_file_bytes': sum(v['bytes'] for v in unique.values()),
-            'reclaimable_file_data_bytes': sum(v['bytes'] for v in unique.values() if v['inside'] == v['links'])}
+            'reclaimable_file_data_bytes': sum(v['bytes'] for v in unique.values() if v['inside'] == v['links']),
+            'stale_leases_ignored': stale_leases}
 
 
 def foreign_compiler_scope(cwd, argv, environment):

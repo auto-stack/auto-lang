@@ -703,6 +703,20 @@ impl Drop for TargetLease {
     }
 }
 
+/// Keep a lease alive for the rest of this process (a spawned backend that
+/// runs from the target root outlives the function that started it). Dropped
+/// on normal exit; a killed process leaves a dead-pid lease the cleaner
+/// reports as stale and ignores.
+pub fn hold_lease_for_process(lease: TargetLease) {
+    static HELD: OnceLock<std::sync::Mutex<Vec<TargetLease>>> = OnceLock::new();
+    if let Ok(mut held) = HELD
+        .get_or_init(|| std::sync::Mutex::new(Vec::new()))
+        .lock()
+    {
+        held.push(lease);
+    }
+}
+
 /// Live (pid still running) lease count under a target root — advisory only;
 /// the authoritative cleanup gate lives in the cleaner.
 pub fn live_leases(target_root: &Path) -> Vec<(PathBuf, u32)> {
@@ -785,20 +799,29 @@ use OpenProcess as windows_open_process;
 /// immune to same-basename uplift races in the shared target root, and is
 /// what discovery receipts point at. A running published exe is renamed
 /// away before the new copy lands (Windows allows renaming a mapped image).
-pub fn publish_artifact(uplifted: &Path, member_dir: &Path, release: bool) -> io::Result<PathBuf> {
+pub fn publish_artifact(
+    uplifted: &Path,
+    member_dir: &Path,
+    release: bool,
+    published_file_name: &str,
+) -> io::Result<PathBuf> {
     let profile = if release { "release" } else { "debug" };
     let dest_dir = member_dir.join("bin").join(profile);
     fs::create_dir_all(&dest_dir)?;
-    let file_name = uplifted
-        .file_name()
-        .ok_or_else(|| io::Error::other("uplifted artifact has no file name"))?
-        .to_os_string();
-    let dest = dest_dir.join(&file_name);
+    // The cargo bin target carries the member id (Windows/MSVC cargo links
+    // bins WITHOUT a metadata hash — `deps/<bin>.exe` and the uplifted
+    // `<profile>/<bin>.exe` are shared by every same-named bin in a target
+    // root, so uniqueness must live in the bin name); the user-visible exe
+    // name is restored here, at publication.
+    let dest = dest_dir.join(published_file_name);
     replace_durable(uplifted, &dest, true)?;
     let pdb = uplifted.with_extension("pdb");
     if pdb.is_file() {
-        let pdb_name = pdb.file_name().unwrap().to_os_string();
-        let pdb_dest = dest_dir.join(&pdb_name);
+        let pdb_dest = Path::new(published_file_name)
+            .with_extension("pdb")
+            .file_name()
+            .map(|n| dest_dir.join(n))
+            .unwrap_or_else(|| dest_dir.join("published.pdb"));
         if !same_file(&pdb, &pdb_dest) {
             replace_durable(&pdb, &pdb_dest, false)?;
         }
@@ -869,8 +892,10 @@ pub struct FrontReceipt {
     /// published exe absolute path.
     pub exe: Option<String>,
     pub exe_sha256: Option<String>,
-    /// cargo bin name (the user-visible exe file name).
+    /// user-visible published exe stem (pac exe_name else snake pac name).
     pub bin_name: Option<String>,
+    /// cargo `[[bin]]` target name (`<bin_name>-<id8>`, unique in the root).
+    pub cargo_bin: Option<String>,
     pub release: bool,
 }
 
@@ -887,6 +912,7 @@ impl FrontReceipt {
                 "exe": self.exe,
                 "exe_sha256": self.exe_sha256,
                 "bin_name": self.bin_name,
+                "cargo_bin": self.cargo_bin,
                 "profile": if self.release { "release" } else { "debug" },
             },
         })
@@ -943,6 +969,10 @@ impl FrontReceipt {
                 .map(str::to_string),
             bin_name: artifact
                 .get("bin_name")
+                .and_then(|e| e.as_str())
+                .map(str::to_string),
+            cargo_bin: artifact
+                .get("cargo_bin")
                 .and_then(|e| e.as_str())
                 .map(str::to_string),
             release: artifact.get("profile").and_then(|p| p.as_str()) == Some("release"),
@@ -1092,12 +1122,12 @@ mod plan910_tests {
         let src = dir.join("uplifted.exe");
         fs::write(&src, b"payload-a").unwrap();
         let member = dir.join("member");
-        let dest = publish_artifact(&src, &member, false).unwrap();
+        let dest = publish_artifact(&src, &member, false, "app.exe").unwrap();
         assert!(dest.is_file());
         assert_eq!(fs::read(&dest).unwrap(), b"payload-a");
         // Rebuild same member with new bytes replaces the publication.
         fs::write(&src, b"payload-b-longer").unwrap();
-        let dest2 = publish_artifact(&src, &member, false).unwrap();
+        let dest2 = publish_artifact(&src, &member, false, "app.exe").unwrap();
         assert_eq!(dest2, dest);
         assert_eq!(fs::read(&dest).unwrap(), b"payload-b-longer");
         // The published exe is an independent copy: rewriting the uplifted

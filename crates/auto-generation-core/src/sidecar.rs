@@ -94,14 +94,20 @@ pub fn apply_sidecar_to_crate(
             .into());
         }
         let dest = src_dir.join(format!("{name}.rs"));
-        std::fs::copy(&source, &dest).map_err(|e| {
-            format!(
-                "sidecar: copy {} → {}: {}",
-                source.display(),
-                dest.display(),
-                e
-            )
-        })?;
+        // PLAN-910: copy only when bytes differ — an unconditional copy bumps
+        // the destination mtime on every generation and forces one pointless
+        // rebuild of the member crate.
+        let same = std::fs::read(&dest).ok() == std::fs::read(&source).ok();
+        if !same {
+            std::fs::copy(&source, &dest).map_err(|e| {
+                format!(
+                    "sidecar: copy {} → {}: {}",
+                    source.display(),
+                    dest.display(),
+                    e
+                )
+            })?;
+        }
     }
 
     // 2) main.rs 追加 mod 声明(幂等)。
