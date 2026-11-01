@@ -215,6 +215,49 @@ fn av_closures_909_clone_detaches_the_cell() {
     );
 }
 
+/// V-04: each factory ACTIVATION owns an independent cell (42; a single
+/// global cell would yield 63).
+#[test]
+fn av_closures_909_independent_activations_own_independent_cells() {
+    run_source(
+        "fn make() fn(int) int { var c int = 0; var inc = (n int) => { c = c + n; return c }; return inc } fn main() int { let a = make(); let b = make(); let x = a(20); let y = b(1); let z = a(1); return x + y + z }",
+        42,
+    );
+}
+
+/// V-04: a nested lambda writes the grand-outer `var` THROUGH the enclosing
+/// closure's capture — one cell across three lexical levels (82; a snapshot
+/// at any level would yield 42).
+#[test]
+fn av_closures_909_nested_lexical_write_reaches_outer_cell() {
+    run_source(
+        "fn main() int { var x int = 1; var outer = () => { var inner = (n int) => { x = x + n; return x }; return inner(40) }; return outer() + x }",
+        82,
+    );
+}
+
+/// V-04: the shared group is STATIC — a writer in an untaken branch still
+/// makes the binding a cell, so the reader created first observes the
+/// external write (41; a snapshot reader would yield 1), and the
+/// initializer runs exactly once.
+#[test]
+fn av_closures_909_writer_in_untaken_branch_still_shares() {
+    run_source(
+        "fn main() int { var x int = 1; let r = () => { return x }; if 1 > 2 { let w = () => { x = 100; return 0 }; let t = w() }; x = 41; return r() }",
+        41,
+    );
+}
+
+/// V-04: `let` and `var` neighbours — the read-only `let` stays a 865
+/// snapshot while the written `var` is a shared cell (81).
+#[test]
+fn av_closures_909_let_and_var_neighbours() {
+    run_source(
+        "fn main() int { let a int = 1; var b int = 2; let f = () => { return a + b }; var g = () => { b = b + 38; return b }; return g() + f() }",
+        81,
+    );
+}
+
 /// Mixed row: a move capture of a shared cell snapshots the CURRENT value
 /// at creation and detaches; the non-move sibling keeps sharing.
 #[test]

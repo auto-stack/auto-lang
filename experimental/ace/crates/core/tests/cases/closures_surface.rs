@@ -232,3 +232,117 @@ fn closures_hir_verifier_rejects_borrow_closure_escape_bypass() {
         .iter()
         .any(|diagnostic| diagnostic.code == "verify.closure-borrow-escape"));
 }
+
+// -- PLAN-909 shared mutable captures: lexical facts and checked-fact gates --
+
+/// V-04: the shared-cell group is LEXICAL (binding identity), not by name —
+/// two sibling `var x` bindings: only the one a non-move closure writes
+/// becomes `shared`; the read-only sibling stays a `move` snapshot.
+#[test]
+fn closures_909_shared_group_is_lexical_not_by_name() {
+    let source = "fn main() int { var r int = 0; if 1 < 2 { var x int = 1; let f = () => { return x }; r = r + f() }; if 1 < 2 { var x int = 10; let g = () => { x = x + 5; return x }; r = r + g() }; return r }";
+    let compiled = compile_closures_source(source, "closures-909-lexical.at", &[])
+        .expect("sibling shadowed vars compile");
+    let shared = compiled.atom_text.matches("mode: shared").count();
+    let moved = compiled.atom_text.matches("mode: move").count();
+    assert_eq!(shared, 1, "exactly the written sibling is shared:\n{}", compiled.atom_text);
+    assert_eq!(moved, 1, "the read-only sibling stays a snapshot:\n{}", compiled.atom_text);
+}
+
+/// K06 fact shape: a move closure that writes a scalar capture declares the
+/// callee capture local `mutable: true` (the checked private-cell fact) and
+/// keeps `mode: move` at the creating site.
+#[test]
+fn closures_909_k06_private_writable_capture_fact() {
+    let source = "fn main() int { var base int = 1; var f = move (n int) => { base = base + n; return base }; return f(20) + f(0) }";
+    let compiled = compile_closures_source(source, "closures-909-k06.at", &[]).expect("K06 compiles");
+    assert!(compiled.atom_text.contains("role: capture; index: 0u32; mutable: true"), "{}", compiled.atom_text);
+    assert!(compiled.atom_text.contains("mode: move"), "{}", compiled.atom_text);
+    assert!(!compiled.atom_text.contains("mode: shared"), "{}", compiled.atom_text);
+}
+
+fn bundle_of(source: &str, label: &str) -> ace_core::hir::Bundle {
+    compile_closures_source(source, label, &[])
+        .expect("valid source compiles")
+        .checked
+        .bundle()
+        .clone()
+}
+
+fn flip_capture_mode(
+    bundle: &mut ace_core::hir::Bundle,
+    mode: ace_core::hir::CaptureMode,
+) {
+    let module = &mut bundle.modules[0];
+    for body in &mut module.bodies {
+        for expr in &mut body.exprs {
+            if let ace_core::hir::ExprKind::CreateClosure { captures, .. } = &mut expr.kind {
+                for capture in captures.iter_mut() {
+                    capture.mode = mode;
+                }
+            }
+        }
+    }
+}
+
+/// V-10: a descriptor-authored `shared` capture over an IMMUTABLE `let`
+/// source is rejected by HIR verify (the cell domain is `var` only).
+#[test]
+fn closures_909_hir_verifier_rejects_shared_over_immutable_source() {
+    let mut bundle = bundle_of(
+        "fn main() int { let base int = 40; let f = (n int) => { return base + n }; return f(2) }",
+        "closures-909-fake-shared-let.at",
+    );
+    flip_capture_mode(&mut bundle, ace_core::hir::CaptureMode::Shared);
+    let diagnostics = ace_core::verify::verify_closures(bundle)
+        .expect_err("shared over an immutable source is outside the cell domain");
+    assert!(
+        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        "{diagnostics:#?}"
+    );
+}
+
+/// V-10: a descriptor-authored `shared` capture over a NON-SCALAR (owned
+/// Str) `var` source is rejected — no owned aggregate rides the cell.
+#[test]
+fn closures_909_hir_verifier_rejects_shared_over_non_scalar() {
+    let mut bundle = bundle_of(
+        "fn make(move s Str) fn(int) int { return move (n int) => { return s.len() + n } } fn main() int { let s Str = \"hello\"; let f = make(s.move); return f(37) }",
+        "closures-909-fake-shared-str.at",
+    );
+    flip_capture_mode(&mut bundle, ace_core::hir::CaptureMode::Shared);
+    let diagnostics = ace_core::verify::verify_closures(bundle)
+        .expect_err("shared over an owned Str is outside the cell domain");
+    assert!(
+        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        "{diagnostics:#?}"
+    );
+}
+
+/// V-10: a descriptor-authored WRITABLE (`mutable: true`) capture local
+/// behind a `borrow` capture is rejected — borrow captures are never
+/// writable, and a writable move capture must be scalar.
+#[test]
+fn closures_909_hir_verifier_rejects_writable_borrow_capture() {
+    let mut bundle = bundle_of(
+        "fn main() int { let s Str = \"ok\"; let size = () => s.len(); return size() }",
+        "closures-909-fake-writable-borrow.at",
+    );
+    let module = &mut bundle.modules[0];
+    let mut flipped = 0;
+    for body in &mut module.bodies {
+        for local in &mut body.locals {
+            if local.role == ace_core::hir::LocalRole::Capture {
+                local.mutable = true;
+                flipped += 1;
+            }
+        }
+    }
+    assert!(flipped > 0, "the fixture has a borrow capture local");
+    let diagnostics = ace_core::verify::verify_closures(bundle)
+        .expect_err("a writable borrow capture is rejected");
+    assert!(
+        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        "{diagnostics:#?}"
+    );
+}
