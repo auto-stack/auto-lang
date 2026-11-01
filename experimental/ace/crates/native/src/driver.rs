@@ -302,6 +302,28 @@ impl MnDriver {
         MnRequest::of(result, obs, workdir)
     }
 
+    /// PLAN-911: the frontend gate of a whole-request candidate — the SAME
+    /// escalating source compile `request()` runs, and NOTHING else (zero
+    /// codegen/link/run, zero guest production). Used by the worker's
+    /// strict-mode per-candidate fallback gate so a materialized edit's
+    /// real semantic failure stops the sequence at ITS candidate instead
+    /// of being discovered after the whole tail was applied. This is not
+    /// a second compile to "recover" a cause: each candidate is compiled
+    /// exactly once, here or by the request that runs it.
+    pub fn check_source(&mut self, src: &str, caps: &[String]) -> Result<(), MnError> {
+        if src.len() > MAX_INPUT_BYTES {
+            return Err(MnError::Unsupported(
+                "input-size",
+                format!("source is {} bytes, above the frozen input cap", src.len()),
+            ));
+        }
+        compile_escalating(src, caps)
+            .map(|_| ())
+            .map_err(|failure| {
+                sd::mn_error_from_compile_failure(src, "mn.at", failure, sd::Operation::cold(src))
+            })
+    }
+
     /// PLAN-871 backend entry: run the SAME mn pipeline from a
     /// pre-checked module (the caller owns the frontend — the ac-case
     /// worker's direct/backend arms, the ac-native CLI and the shadow gate

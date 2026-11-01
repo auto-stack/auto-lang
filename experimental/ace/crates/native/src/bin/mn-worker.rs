@@ -18,6 +18,7 @@ use std::process::ExitCode;
 
 mod case_run {
     use super::*;
+    use ace_native::source_diagnostics as sd;
 
     pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
     pub const MN_WORKER_VERSION: &str = "mnworker/1.0";
@@ -156,8 +157,16 @@ mod case_run {
 
     /// One incremental step's record (byte-exact streams included —
     /// F-818-R2-01: trace bytes ride every record, never dropped).
-    fn step_json(obs: &ace_native::incremental::EditObservation, op: &str) -> serde_json::Value {
-        serde_json::json!({
+    /// PLAN-911: in `source-v1` mode the record also carries the typed
+    /// refusal (kind/phase/snapshot) and the producer's body-work window;
+    /// the default mode keeps the exact pre-911 key set.
+    fn step_json(
+        obs: &ace_native::incremental::EditObservation,
+        op: &str,
+        mode: DiagMode,
+        step: Option<u64>,
+    ) -> serde_json::Value {
+        let mut v = serde_json::json!({
             "op": op,
             "exit_code": obs.exit_code,
             "changed_fn": obs.changed_fn,
@@ -173,7 +182,72 @@ mod case_run {
             "phase_walls": obs.phase_walls_us,
             "stderr_hex": hex(&obs.stderr),
             "stdout_hex": hex(&obs.stdout),
-        })
+        });
+        if mode == DiagMode::SourceV1 {
+            if let Some(refusal) = &obs.refusal {
+                let mut r = refusal.clone();
+                if let (Some(se), Some(step)) = (r.source_error.as_mut(), step) {
+                    se.operation.step = Some(step);
+                }
+                v["refusal"] = serde_json::to_value(&r).expect("refusal serializes");
+            }
+            v["body_work"] = body_work_json(&obs.body_work);
+        }
+        v
+    }
+
+    fn body_work_json(
+        bw: &std::collections::BTreeMap<String, ace_core::body_work::BodyWork>,
+    ) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        for (name, w) in bw {
+            m.insert(
+                name.clone(),
+                serde_json::json!({
+                    "resolve": w.resolve, "typecheck": w.typecheck,
+                    "plan": w.plan, "bind": w.bind,
+                }),
+            );
+        }
+        serde_json::Value::Object(m)
+    }
+
+    /// PLAN-911: the explicit diagnostics observation mode of ONE request.
+    /// `source-v1` turns on the typed fact channel; omitted keeps the
+    /// pre-911 behavior bit-for-bit.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum DiagMode {
+        Default,
+        SourceV1,
+    }
+
+    fn parse_diag_mode(req: &serde_json::Value) -> Result<DiagMode, String> {
+        match req.get("diagnostics") {
+            None => Ok(DiagMode::Default),
+            Some(v) if v.as_str() == Some(sd::SD_MODE) => Ok(DiagMode::SourceV1),
+            Some(v) => Err(format!("unknown diagnostics mode {v}")),
+        }
+    }
+
+    /// Strict-mode echo: EVERY ok container names the enabled mode/schema —
+    /// legal programs included — so a worker that silently ignores the new
+    /// field cannot pass as compatible (the parent rejects a missing echo).
+    fn echo_mode(ok: &mut serde_json::Value, mode: DiagMode) {
+        if mode == DiagMode::SourceV1 {
+            ok["diagnostics_mode"] = serde_json::json!(sd::SD_MODE);
+            ok["diagnostics_schema"] = serde_json::json!(sd::SD_SCHEMA);
+        }
+    }
+
+    /// Shape ② — a REAL source rejection: the typed snapshot at the top
+    /// level, the legacy projection kept as `diagnostic`, and no execution
+    /// result anywhere in the response.
+    fn attach_source_error(resp: &mut serde_json::Value, snap: &sd::SourceDiagnosticSnapshot) {
+        resp["source_error"] = snap.to_json();
+        resp["diagnostic"] = serde_json::json!({
+            "code": "mn.unsupported.frontend",
+            "message": snap.legacy_message(),
+        });
     }
 
     /// Exactly-once literal replacement on `cur` (the shared edit oracle:
@@ -193,6 +267,13 @@ mod case_run {
     /// request; edit-source steps are applied as single-body transactions
     /// (literal located exactly once in the CURRENT source); every step
     /// really links and runs. The judged value is the LAST step's exit.
+    ///
+    /// PLAN-911 `source-v1`: a warm-up frontend rejection is the request's
+    /// typed snapshot (shape ②); a typed edit refusal STOPS the sequence at
+    /// the first failure (the accepted prefix is reported, later steps are
+    /// never executed); only `syntax-not-converged` still falls back — and
+    /// the fallback gates every materialized candidate's semantics one
+    /// edit at a time instead of applying the whole tail first.
     #[allow(clippy::too_many_arguments)]
     fn serve_incremental(
         req: serde_json::Value,
@@ -203,6 +284,7 @@ mod case_run {
         store_root: String,
         workdir: String,
         tracelib: Option<PathBuf>,
+        mode: DiagMode,
     ) -> ExitCode {
         let fail = |echo: serde_json::Value, code: &str, message: String| -> ExitCode {
             let mut r = echo.clone();
@@ -235,10 +317,32 @@ mod case_run {
             tracelib.as_deref(),
         ) {
             Ok(pair) => pair,
-            Err(e) => return fail(echo, "mn.worker.incremental", e.message()),
+            Err(e) => {
+                // PLAN-911: a warm-up frontend rejection is the typed fact
+                // (shape ②), not an incremental-infra error.
+                if let (DiagMode::SourceV1, Some(snap)) = (mode, e.source_diagnostic()) {
+                    let mut ok = serde_json::json!({
+                        "recipe": "ac/mir-native-scalar-v1",
+                        "worker_version": MN_WORKER_VERSION,
+                        "mn_abi": ace_native::config::MN_ABI,
+                        "mn_target": ace_native::config::MN_TARGET,
+                        "incremental": true,
+                        "steps": [step_json(&cold_stub(), "warmup", mode, None)],
+                        "counters": {},
+                        "spans": {},
+                    });
+                    echo_mode(&mut ok, mode);
+                    let mut resp = echo;
+                    resp["ok"] = ok;
+                    attach_source_error(&mut resp, snap);
+                    println!("{resp}");
+                    return ExitCode::SUCCESS;
+                }
+                return fail(echo, "mn.worker.incremental", e.message());
+            }
         };
         let mut step_records: Vec<serde_json::Value> = Vec::new();
-        step_records.push(step_json(&cold, "warmup"));
+        step_records.push(step_json(&cold, "warmup", mode, None));
         // F-818-R2-01: the judged streams are the judged round's REAL PE
         // bytes — authorized trace bytes survive the incremental path.
         let mut judged_streams = (cold.stdout.clone(), cold.stderr.clone());
@@ -265,7 +369,66 @@ mod case_run {
                     if let Some(i) = &obs.infra {
                         return fail(echo, "mn.worker.incremental", i.clone());
                     }
-                    if let Some(r) = &obs.refused_reason {
+                    if mode == DiagMode::SourceV1 {
+                        if let Some(refusal) = &obs.refusal {
+                            if refusal.kind == sd::RefusalKind::SyntaxNotConverged {
+                                // A LEGAL edit the engine cannot converge on:
+                                // the explicit fallback, now per-candidate.
+                                return serve_incremental_strict_fallback(
+                                    echo,
+                                    &session_source(&session),
+                                    steps[st_idx..].to_vec(),
+                                    from,
+                                    to,
+                                    &entry,
+                                    &caps,
+                                    &store_root,
+                                    &workdir,
+                                    tracelib.as_deref(),
+                                    st_idx,
+                                );
+                            }
+                            // First failure: STOP. Later steps are not
+                            // executed; the accepted prefix is this
+                            // session's current source.
+                            let accepted = session_source(&session);
+                            step_records.push(step_json(
+                                &obs,
+                                "edit-source",
+                                mode,
+                                Some(st_idx as u64),
+                            ));
+                            session.close();
+                            let mut ok = serde_json::json!({
+                                "recipe": "ac/mir-native-scalar-v1",
+                                "worker_version": MN_WORKER_VERSION,
+                                "mn_abi": ace_native::config::MN_ABI,
+                                "mn_target": ace_native::config::MN_TARGET,
+                                "incremental": true,
+                                "steps": step_records,
+                                "accepted_prefix": {
+                                    "steps_applied": st_idx,
+                                    "source_sha256": sd::sha256_hex(accepted.as_bytes()),
+                                },
+                                "counters": {},
+                                "spans": {},
+                            });
+                            echo_mode(&mut ok, mode);
+                            let mut resp = echo;
+                            match &refusal.source_error {
+                                Some(snap) => attach_source_error(&mut resp, snap),
+                                None => {
+                                    resp["diagnostic"] = serde_json::json!({
+                                        "code": "mn.incremental.refused",
+                                        "message": refusal.reason,
+                                    });
+                                }
+                            }
+                            resp["ok"] = ok;
+                            println!("{resp}");
+                            return ExitCode::SUCCESS;
+                        }
+                    } else if let Some(r) = &obs.refused_reason {
                         if r.contains("syntax fallback") {
                             // The 828 syntax increment engine cannot
                             // converge on THIS edit shape (a LEGAL edit,
@@ -292,7 +455,7 @@ mod case_run {
                     }
                     judged_exit = obs.exit_code;
                     judged_streams = (obs.stdout.clone(), obs.stderr.clone());
-                    step_records.push(step_json(&obs, "edit-source"));
+                    step_records.push(step_json(&obs, "edit-source", mode, Some(st_idx as u64)));
                 }
                 Some("run") => {
                     let obs = session.run_only();
@@ -301,7 +464,7 @@ mod case_run {
                     }
                     judged_exit = obs.exit_code;
                     judged_streams = (obs.stdout.clone(), obs.stderr.clone());
-                    step_records.push(step_json(&obs, "run"));
+                    step_records.push(step_json(&obs, "run", mode, Some(st_idx as u64)));
                 }
                 _ => {
                     return fail(
@@ -321,6 +484,7 @@ mod case_run {
             "incremental": true,
             "steps": step_records,
         });
+        echo_mode(&mut ok, mode);
         ok["counters"] = serde_json::json!({});
         ok["spans"] = serde_json::json!({});
         let mut resp = echo;
@@ -336,12 +500,181 @@ mod case_run {
         ExitCode::SUCCESS
     }
 
-    /// The whole-request FALLBACK for syntax-increment non-convergence:
-    /// materialize the refused edit (plus every remaining edit step) on
-    /// the ORIGINAL source and run ONE full MnDriver request. The
-    /// response is the legacy whole-request shape plus
-    /// `warm_edit_fallback: true` — never labeled incremental
-    /// (F-818-R1-03).
+    /// A warm-up that never produced an observation (its source rejected):
+    /// the step record still names the op — with no execution result.
+    fn cold_stub() -> ace_native::incremental::EditObservation {
+        Default::default()
+    }
+
+    /// PLAN-911 strict fallback (syntax-not-converged on a LEGAL edit):
+    /// materialize the remaining edits ONE candidate at a time; every
+    /// candidate except the last is gated by ONE real frontend compile
+    /// (`check_source` — zero codegen/link/run); the first semantic
+    /// failure stops the sequence at THAT candidate (shape ②, operation
+    /// `fallback-cold`, step index, base + candidate SHAs). Only when
+    /// every candidate passes does ONE whole request over the fully
+    /// materialized source link and run (the judged result). The tail is
+    /// never applied past a rejected candidate.
+    #[allow(clippy::too_many_arguments)]
+    fn serve_incremental_strict_fallback(
+        echo: serde_json::Value,
+        source: &str,
+        remaining: Vec<serde_json::Value>,
+        refused_from: &str,
+        refused_to: &str,
+        entry: &str,
+        caps: &[String],
+        store_root: &str,
+        workdir: &str,
+        tracelib: Option<&Path>,
+        start_step: usize,
+    ) -> ExitCode {
+        let fail = |echo: serde_json::Value, code: &str, message: String| -> ExitCode {
+            let mut r = echo;
+            r["error"] = serde_json::json!({"code": code, "message": message});
+            println!("{r}");
+            ExitCode::FAILURE
+        };
+        let mut driver =
+            match ace_native::driver::MnDriver::with_store(&PathBuf::from(store_root), "mn-case") {
+                Ok(d) => d,
+                Err(e) => return fail(echo.clone(), "mn.worker.store", e.message()),
+            };
+        let mut cur = source.to_string();
+        let mut last_edit_idx = start_step;
+        let mut materialized = 0usize;
+        let mut gate_records: Vec<serde_json::Value> = Vec::new();
+        for (i, st) in remaining.iter().enumerate() {
+            let step_idx = start_step + i;
+            match st.get("op").and_then(|v| v.as_str()) {
+                Some("edit-source") => {
+                    let from = if i == 0 {
+                        refused_from
+                    } else {
+                        st.get("from").and_then(|v| v.as_str()).unwrap_or("")
+                    };
+                    let to = if i == 0 {
+                        refused_to
+                    } else {
+                        st.get("to").and_then(|v| v.as_str()).unwrap_or("")
+                    };
+                    let base = cur.clone();
+                    if let Err(e) = replacen_once(&mut cur, from, to) {
+                        return fail(echo.clone(), "mn.worker.edit", e);
+                    }
+                    // The last edit's semantics are proven by the final
+                    // whole request that runs it; earlier candidates get
+                    // their own one-compile gate.
+                    let more_edits = remaining[i + 1..]
+                        .iter()
+                        .any(|s| s.get("op").and_then(|v| v.as_str()) == Some("edit-source"));
+                    if more_edits {
+                        if let Err(e) = driver.check_source(&cur, caps) {
+                            if let Some(snap) = e.source_diagnostic() {
+                                let mut snap = snap.clone();
+                                snap.operation = sd::Operation::fallback_cold(&base, &cur)
+                                    .with_step(step_idx as u64);
+                                let mut ok = serde_json::json!({
+                                    "recipe": "ac/mir-native-scalar-v1",
+                                    "worker_version": MN_WORKER_VERSION,
+                                    "mn_abi": ace_native::config::MN_ABI,
+                                    "mn_target": ace_native::config::MN_TARGET,
+                                    "warm_edit_fallback": true,
+                                    "steps": gate_records,
+                                    "accepted_prefix": {
+                                        "steps_applied": step_idx,
+                                        "source_sha256": sd::sha256_hex(base.as_bytes()),
+                                    },
+                                    "counters": {},
+                                    "spans": {},
+                                });
+                                echo_mode(&mut ok, DiagMode::SourceV1);
+                                let mut resp = echo;
+                                attach_source_error(&mut resp, &snap);
+                                resp["ok"] = ok;
+                                println!("{resp}");
+                                return ExitCode::SUCCESS;
+                            }
+                            return fail(echo.clone(), "mn.worker.incremental", e.message());
+                        }
+                        gate_records.push(serde_json::json!({
+                            "op": "edit-source", "warm_edit_fallback": true,
+                            "materialized": true, "semantic_gate": "pass",
+                            "step": step_idx,
+                        }));
+                    } else {
+                        gate_records.push(serde_json::json!({
+                            "op": "edit-source", "warm_edit_fallback": true,
+                            "materialized": true, "semantic_gate": "final",
+                            "step": step_idx,
+                        }));
+                    }
+                    materialized += 1;
+                    last_edit_idx = step_idx;
+                }
+                Some("run") => {}
+                _ => {
+                    return fail(
+                        echo.clone(),
+                        "mn.worker.steps",
+                        "unsupported op in the strict fallback path".to_string(),
+                    );
+                }
+            }
+        }
+        let _ = materialized;
+        // Every candidate passed: ONE whole request over the fully
+        // materialized source is the judged execution.
+        let r = driver.request(&cur, entry, caps, &PathBuf::from(workdir), tracelib);
+        let mut ok = serde_json::json!({
+            "recipe": "ac/mir-native-scalar-v1",
+            "worker_version": MN_WORKER_VERSION,
+            "mn_abi": ace_native::config::MN_ABI,
+            "mn_target": ace_native::config::MN_TARGET,
+            "warm_edit_fallback": true,
+            "steps": gate_records,
+            "counters": {},
+            "spans": {},
+        });
+        echo_mode(&mut ok, DiagMode::SourceV1);
+        for (k, v) in &r.obs.counters {
+            ok["counters"][k] = serde_json::json!(v);
+        }
+        for (k, v) in &r.obs.spans {
+            ok["spans"][k] = serde_json::json!(v);
+        }
+        if let Some(fp) = &r.manifest_fp {
+            ok["manifest_fp"] = serde_json::json!(fp);
+        }
+        let mut resp = echo.clone();
+        if r.ok {
+            ok["exit_code"] = serde_json::json!(r.exit_code);
+            ok["stderr_hex"] = serde_json::json!(hex(&r.stderr));
+            ok["stdout_hex"] = serde_json::json!(hex(&r.stdout));
+            resp["ok"] = ok;
+        } else if let Some(e) = &r.error {
+            if let Some(snap) = e.source_diagnostic() {
+                let mut snap = snap.clone();
+                snap.operation.step = Some(last_edit_idx as u64);
+                resp["ok"] = ok;
+                attach_source_error(&mut resp, &snap);
+            } else {
+                resp["ok"] = ok;
+                resp["diagnostic"] = serde_json::json!({"code": e.code(), "message": e.message()});
+            }
+        } else {
+            return fail(echo, "mn.worker.internal", "inconsistent result".into());
+        }
+        println!("{resp}");
+        ExitCode::SUCCESS
+    }
+
+    /// The whole-request FALLBACK for syntax-increment non-convergence
+    /// (default mode, unchanged pre-911 behavior): materialize the refused
+    /// edit (plus every remaining edit step) on the ORIGINAL source and
+    /// run ONE full MnDriver request. The response is the legacy
+    /// whole-request shape plus `warm_edit_fallback: true` — never labeled
+    /// incremental (F-818-R1-03).
     #[allow(clippy::too_many_arguments)]
     fn serve_incremental_whole_fallback(
         echo: serde_json::Value,
@@ -432,6 +765,13 @@ mod case_run {
     /// edits materialize exactly once, and the trailing run executes ONE
     /// whole-request pipeline over the fully edited source (recorded as
     /// warm_edit_fallback, never labeled incremental).
+    ///
+    /// PLAN-911 `source-v1`: the warmup echo carries the mode/schema; a
+    /// typed refusal answers its round with the refusal object (and the
+    /// snapshot for language diagnostics, inside `ok`); the strict
+    /// materialization mode gates each candidate's semantics with one
+    /// real frontend compile — a rejected candidate is reported and the
+    /// accepted prefix is retained (never silently materialized past).
     #[allow(clippy::too_many_arguments)]
     fn serve_rounds(
         echo: serde_json::Value,
@@ -441,6 +781,7 @@ mod case_run {
         store_root: String,
         workdir: String,
         tracelib: Option<PathBuf>,
+        mode: DiagMode,
     ) -> ExitCode {
         let respond = |v: serde_json::Value| {
             println!("{v}");
@@ -474,12 +815,28 @@ mod case_run {
             tracelib.as_deref(),
         ) {
             Ok(pair) => pair,
-            Err(e) => return fail_round("", "mn.worker.incremental", e.message()),
+            Err(e) => {
+                if let (DiagMode::SourceV1, Some(snap)) = (mode, e.source_diagnostic()) {
+                    let mut warm = serde_json::json!({});
+                    echo_mode(&mut warm, mode);
+                    let mut r = serde_json::json!({
+                        "schema": MN_WORKER_PROTOCOL,
+                        "nonce": "",
+                    });
+                    attach_source_error(&mut r, snap);
+                    r["ok"] = warm;
+                    respond(r);
+                    return ExitCode::SUCCESS;
+                }
+                return fail_round("", "mn.worker.incremental", e.message());
+            }
         };
-        let mut warm_ok = step_json(&cold, "warmup");
+        let mut warm_ok = step_json(&cold, "warmup", mode, None);
         warm_ok["recipe"] = serde_json::json!("ac/mir-native-scalar-v1");
         warm_ok["worker_version"] = serde_json::json!(MN_WORKER_VERSION);
         warm_ok["mn_abi"] = serde_json::json!(ace_native::config::MN_ABI);
+        warm_ok["mn_target"] = serde_json::json!(ace_native::config::MN_TARGET);
+        echo_mode(&mut warm_ok, mode);
         // Test-only fixture faults that need the REAL serving logic (the
         // echoes stay valid; only the faulted dimension misbehaves).
         match fixture_fault().as_deref() {
@@ -520,11 +877,16 @@ mod case_run {
         }
         // Materialization state after a syntax fallback: the accepted
         // prefix is the session's CURRENT source, the refused edit (and
-        // every later edit) materializes exactly once on it.
+        // every later edit) materializes exactly once on it. In strict
+        // mode each materialized candidate is gated by one real frontend
+        // compile; a rejected candidate keeps the accepted prefix.
         let mut fallback_src: Option<String> = None;
+        let mut gate_driver =
+            ace_native::driver::MnDriver::with_store(&PathBuf::from(&store_root), "mn-case");
         let stdin = std::io::stdin();
         let mut lock = stdin.lock();
         let mut line = String::new();
+        let mut round_no: u64 = 0;
         loop {
             line.clear();
             match lock.read_line(&mut line) {
@@ -542,6 +904,7 @@ mod case_run {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            round_no += 1;
             let mut resp = serde_json::json!({
                 "schema": MN_WORKER_PROTOCOL,
                 "nonce": nonce,
@@ -575,8 +938,39 @@ mod case_run {
                     let from = st.get("from").and_then(|v| v.as_str()).unwrap_or("");
                     let to = st.get("to").and_then(|v| v.as_str()).unwrap_or("");
                     if let Some(src) = fallback_src.as_mut() {
+                        let base = src.clone();
                         if let Err(e) = replacen_once(src, from, to) {
                             return fail_round(&nonce, "mn.worker.edit", e);
+                        }
+                        if mode == DiagMode::SourceV1 {
+                            // Strict gate: one real frontend compile of THIS
+                            // candidate; a failure keeps the accepted prefix.
+                            let driver = match gate_driver.as_mut() {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    return fail_round(&nonce, "mn.worker.store", e.message());
+                                }
+                            };
+                            if let Err(e) = driver.check_source(src, &caps) {
+                                if let Some(snap) = e.source_diagnostic() {
+                                    let mut snap = snap.clone();
+                                    snap.operation = sd::Operation::fallback_cold(&base, src)
+                                        .with_step(round_no);
+                                    let mut ok = serde_json::json!({
+                                        "op": "edit-source",
+                                        "warm_edit_fallback": true,
+                                        "materialized": false,
+                                    });
+                                    echo_mode(&mut ok, mode);
+                                    attach_source_error(&mut resp, &snap);
+                                    resp["ok"] = ok;
+                                    // Restore the accepted prefix.
+                                    *src = base;
+                                    respond(resp);
+                                    continue;
+                                }
+                                return fail_round(&nonce, "mn.worker.incremental", e.message());
+                            }
                         }
                         resp["ok"] = serde_json::json!({
                             "op": "edit-source",
@@ -603,9 +997,43 @@ mod case_run {
                     }
                     if let Some(r) = &obs.refused_reason {
                         if r.contains("syntax fallback") {
-                            let mut src = cur;
+                            let mut src = cur.clone();
                             if let Err(e) = replacen_once(&mut src, from, to) {
                                 return fail_round(&nonce, "mn.worker.edit", e);
+                            }
+                            // Strict: the FIRST materialized candidate is
+                            // gated too (a legal edit that cannot converge
+                            // may still be semantically illegal).
+                            if mode == DiagMode::SourceV1 {
+                                let driver = match gate_driver.as_mut() {
+                                    Ok(d) => d,
+                                    Err(e) => {
+                                        return fail_round(&nonce, "mn.worker.store", e.message());
+                                    }
+                                };
+                                if let Err(e) = driver.check_source(&src, &caps) {
+                                    if let Some(snap) = e.source_diagnostic() {
+                                        let mut snap = snap.clone();
+                                        snap.operation = sd::Operation::fallback_cold(&cur, &src)
+                                            .with_step(round_no);
+                                        let mut ok = serde_json::json!({
+                                            "op": "edit-source",
+                                            "warm_edit_fallback": true,
+                                            "materialized": false,
+                                            "refused": r,
+                                        });
+                                        echo_mode(&mut ok, mode);
+                                        attach_source_error(&mut resp, &snap);
+                                        resp["ok"] = ok;
+                                        respond(resp);
+                                        continue;
+                                    }
+                                    return fail_round(
+                                        &nonce,
+                                        "mn.worker.incremental",
+                                        e.message(),
+                                    );
+                                }
                             }
                             fallback_src = Some(src);
                             resp["ok"] = serde_json::json!({
@@ -617,11 +1045,29 @@ mod case_run {
                             respond(resp);
                             continue;
                         }
-                        resp["ok"] = step_json(&obs, "edit-source");
+                        if mode == DiagMode::SourceV1 {
+                            // A typed refusal answers its own round; the
+                            // session keeps the accepted prefix (the
+                            // parent stops the sequence — V-16).
+                            let mut ok = step_json(&obs, "edit-source", mode, Some(round_no));
+                            echo_mode(&mut ok, mode);
+                            if let Some(snap) =
+                                obs.refusal.as_ref().and_then(|f| f.source_error.as_ref())
+                            {
+                                let mut snap = snap.clone();
+                                snap.operation.step = Some(round_no);
+                                attach_source_error(&mut resp, &snap);
+                            }
+                            resp["ok"] = ok;
+                            respond(resp);
+                            continue;
+                        }
+                        resp["ok"] = step_json(&obs, "edit-source", mode, Some(round_no));
                         respond(resp);
                         continue;
                     }
-                    resp["ok"] = step_json(&obs, "edit-source");
+                    round_no += 1;
+                    resp["ok"] = step_json(&obs, "edit-source", mode, Some(round_no));
                     respond(resp);
                 }
                 Some("run") => {
@@ -652,6 +1098,7 @@ mod case_run {
                             "counters": {},
                             "spans": {},
                         });
+                        echo_mode(&mut ok, mode);
                         for (k, v) in &r.obs.counters {
                             ok["counters"][k] = serde_json::json!(v);
                         }
@@ -666,8 +1113,15 @@ mod case_run {
                             ok["stderr_hex"] = serde_json::json!(hex(&r.stderr));
                             ok["stdout_hex"] = serde_json::json!(hex(&r.stdout));
                         } else if let Some(e) = &r.error {
-                            ok["diagnostic"] =
-                                serde_json::json!({"code": e.code(), "message": e.message()});
+                            if let (DiagMode::SourceV1, Some(snap)) = (mode, e.source_diagnostic())
+                            {
+                                let mut snap = snap.clone();
+                                snap.operation.step = Some(round_no);
+                                attach_source_error(&mut resp, &snap);
+                            } else {
+                                ok["diagnostic"] =
+                                    serde_json::json!({"code": e.code(), "message": e.message()});
+                            }
                         } else {
                             return fail_round(
                                 &nonce,
@@ -683,7 +1137,7 @@ mod case_run {
                     if let Some(i) = &obs.infra {
                         return fail_round(&nonce, "mn.worker.incremental", i.clone());
                     }
-                    resp["ok"] = step_json(&obs, "run");
+                    resp["ok"] = step_json(&obs, "run", mode, Some(round_no));
                     respond(resp);
                 }
                 _ => {
@@ -772,6 +1226,12 @@ mod case_run {
                 format!("recipe `{recipe}` is not ac/mir-native-scalar-v1"),
             );
         }
+        // PLAN-911: the explicit diagnostics mode belongs to the scalar
+        // recipe only; an unknown value is a named request error.
+        let diag_mode = match parse_diag_mode(&req) {
+            Ok(m) => m,
+            Err(e) => return fail(echo, "mn.worker.request", e),
+        };
         let Some(source_b64) = req.get("source_b64").and_then(|v| v.as_str()) else {
             return fail(echo, "mn.worker.request", "missing source_b64".into());
         };
@@ -835,6 +1295,7 @@ mod case_run {
                 store_root.to_string(),
                 workdir.to_string(),
                 tracelib,
+                diag_mode,
             );
         }
 
@@ -867,6 +1328,7 @@ mod case_run {
                 store_root.to_string(),
                 workdir.to_string(),
                 tracelib,
+                diag_mode,
             );
         }
 
@@ -903,6 +1365,7 @@ mod case_run {
             "counters": {},
             "spans": {},
         });
+        echo_mode(&mut ok, diag_mode);
         for (k, v) in &r.obs.counters {
             ok["counters"][k] = serde_json::json!(v);
         }
@@ -925,9 +1388,17 @@ mod case_run {
             (false, Some(e)) => {
                 // A diagnosed pipeline rejection: report the mn.* code —
                 // the parent maps it to the contract's completion faces.
+                // PLAN-911: in strict mode a REAL source rejection is the
+                // typed snapshot (shape ②); the legacy projection rides
+                // `diagnostic` for default consumers.
                 let mut resp = echo;
                 resp["ok"] = ok;
-                resp["diagnostic"] = serde_json::json!({"code": e.code(), "message": e.message()});
+                if let (DiagMode::SourceV1, Some(snap)) = (diag_mode, e.source_diagnostic()) {
+                    attach_source_error(&mut resp, snap);
+                } else {
+                    resp["diagnostic"] =
+                        serde_json::json!({"code": e.code(), "message": e.message()});
+                }
                 println!("{resp}");
                 ExitCode::SUCCESS
             }

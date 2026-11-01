@@ -313,3 +313,311 @@ fn mn_sd911_raw_cause_projection_shape() {
         assert_eq!(c.legacy_projection(), format!("{debug}/some.code: boom"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-911 T-02: the mn-worker `source-v1` protocol legs (real binary).
+// ---------------------------------------------------------------------------
+
+use serde_json::{json, Value};
+
+fn spawn_worker(req: &Value) -> (Value, Option<i32>) {
+    use std::io::{BufRead, Write};
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mn-worker"))
+        .arg("case-run")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mn-worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(format!("{req}\n").as_bytes())
+        .expect("write request");
+    let mut line = String::new();
+    {
+        use std::io::BufRead as _;
+        let mut reader = std::io::BufReader::new(child.stdout.take().unwrap());
+        reader.read_line(&mut line).expect("read response");
+    }
+    let status = child.wait().expect("reap worker");
+    let resp: Value = serde_json::from_str(line.trim()).expect("one JSON response line");
+    (resp, status.code())
+}
+
+fn req_json(
+    tag: &str,
+    src: &str,
+    steps: Value,
+    diagnostics: Option<&str>,
+) -> (Value, std::path::PathBuf) {
+    use base64::Engine as _;
+    let root = temp_dir(tag);
+    let source_b64 = base64::engine::general_purpose::STANDARD.encode(src.as_bytes());
+    let mut r = json!({
+        "recipe": "ac/mir-native-scalar-v1",
+        "nonce": "n911",
+        "source_b64": source_b64,
+        "entry": "d_main",
+        "caps": [],
+        "store_root": root.join("mn-store").display().to_string().replace('/', "\\"),
+        "workdir": root.join("mn-work").display().to_string().replace('/', "\\"),
+        "steps": steps,
+    });
+    if let Some(m) = diagnostics {
+        r["diagnostics"] = json!(m);
+    }
+    r["request_hash"] = json!(sd::sha256_hex(r.to_string().as_bytes()));
+    (r, root)
+}
+
+const WARM_SRC: &str =
+    "fn alpha(x int) int {\n    return x * 2\n}\n\nfn main() int {\n    return alpha(5)\n}\n";
+
+#[test]
+fn mn_sd911_worker_cold_strict_rejection_shape() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let (req, root) = req_json(
+        "w-cold-strict",
+        B17.trim(),
+        json!([{ "op": "run" }]),
+        Some("source-v1"),
+    );
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(
+        code,
+        Some(0),
+        "a diagnosed rejection is a delivered verdict"
+    );
+    assert_eq!(resp["schema"], "mnworker/1");
+    assert_eq!(resp["nonce"], "n911");
+    assert_eq!(resp["request_hash"], req["request_hash"]);
+    // Shape echo on ok; no execution result.
+    assert_eq!(resp["ok"]["diagnostics_mode"], "source-v1");
+    assert_eq!(resp["ok"]["diagnostics_schema"], "mn.source-diagnostic/1");
+    assert!(resp["ok"].get("exit_code").is_none());
+    assert!(resp["ok"].get("stdout_hex").is_none());
+    assert!(resp["ok"].get("manifest_fp").is_none());
+    // The typed fact + the legacy projection.
+    let snap = &resp["source_error"];
+    assert_eq!(snap["schema"], "mn.source-diagnostic/1");
+    assert_eq!(snap["profile"], "scalar");
+    assert_eq!(snap["causes"][0]["stage"], "verify");
+    assert_eq!(snap["causes"][0]["code"], "source.type-mismatch");
+    assert_eq!(
+        snap["primary"].as_u64(),
+        Some(0),
+        "primary is JSON integer 0"
+    );
+    assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+    let want = format!(
+        "Verify/source.type-mismatch: {}",
+        snap["causes"][0]["message"].as_str().unwrap_or("")
+    );
+    assert_eq!(resp["diagnostic"]["message"].as_str().unwrap(), want);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_cold_strict_legal_echo() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let (req, root) = req_json(
+        "w-cold-legal",
+        NB17.trim(),
+        json!([{ "op": "run" }]),
+        Some("source-v1"),
+    );
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        resp["ok"]["diagnostics_mode"], "source-v1",
+        "a LEGAL program still echoes the mode"
+    );
+    assert_eq!(resp["ok"]["exit_code"].as_i64(), Some(2));
+    assert!(resp.get("source_error").is_none());
+    assert!(resp.get("diagnostic").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_cold_default_shape_unchanged() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let (req, root) = req_json("w-cold-default", B17.trim(), json!([{ "op": "run" }]), None);
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(code, Some(0));
+    assert!(
+        resp["ok"].get("diagnostics_mode").is_none(),
+        "default mode gains no new field"
+    );
+    assert!(resp.get("source_error").is_none());
+    assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_unknown_mode_is_named_error() {
+    let (req, root) = req_json(
+        "w-bad-mode",
+        NB17.trim(),
+        json!([{ "op": "run" }]),
+        Some("source-v2"),
+    );
+    let (resp, code) = spawn_worker(&req);
+    assert_ne!(code, Some(0));
+    assert_eq!(resp["error"]["code"], "mn.worker.request");
+    assert!(resp["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("unknown diagnostics mode"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_incremental_strict_first_failure_stops() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    // A legal edit, then B an ILLEGAL candidate, then C a repair whose
+    // literal matches the accepted prefix. Strict mode stops at B: C is
+    // never executed, the accepted prefix is the post-A source, and the
+    // failing candidate's snapshot names B's own source.
+    let steps = json!([
+        { "op": "edit-source", "from": "x * 2", "to": "x + 2" },
+        { "op": "edit-source", "from": "x + 2", "to": "true + 1" },
+        { "op": "edit-source", "from": "x + 2", "to": "x * 3" },
+        { "op": "run" },
+    ]);
+    let (req, root) = req_json("w-inc-strict", WARM_SRC, steps, Some("source-v1"));
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(code, Some(0), "a first-failure stop is a delivered verdict");
+    let src_after_a = WARM_SRC.replacen("x * 2", "x + 2", 1);
+    let src_after_b = src_after_a.replacen("x + 2", "true + 1", 1);
+    // Step accounting: warmup + A + B; C and the trailing run are absent.
+    let steps_out = resp["ok"]["steps"].as_array().expect("steps");
+    assert_eq!(steps_out.len(), 3, "stopped at the first failure");
+    assert_eq!(steps_out[0]["op"], "warmup");
+    assert_eq!(steps_out[1]["op"], "edit-source");
+    assert!(steps_out[1].get("refusal").is_none(), "A accepted");
+    assert_eq!(steps_out[2]["op"], "edit-source");
+    let refusal = &steps_out[2]["refusal"];
+    assert_eq!(refusal["kind"], "language-diagnostics");
+    assert_eq!(refusal["phase"], "frontend");
+    assert!(
+        refusal["source_error"].is_object(),
+        "language refusals carry the snapshot in the step record too"
+    );
+    let bw = steps_out[2]["body_work"].as_object().expect("body work");
+    assert!(bw.get("alpha").is_some(), "the failed body was reached");
+    // Accepted prefix: post-A source, B not applied.
+    assert_eq!(
+        resp["ok"]["accepted_prefix"]["steps_applied"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        resp["ok"]["accepted_prefix"]["source_sha256"],
+        sd::sha256_hex(src_after_a.as_bytes())
+    );
+    // No judged execution result.
+    assert!(resp["ok"].get("exit_code").is_none());
+    assert!(resp["ok"].get("stdout_hex").is_none());
+    // The typed fact at the top level, bound to B's candidate.
+    let snap = &resp["source_error"];
+    assert_eq!(snap["operation"]["kind"], "warm-edit");
+    assert_eq!(
+        snap["operation"]["candidate_sha256"],
+        sd::sha256_hex(src_after_b.as_bytes())
+    );
+    assert_eq!(
+        snap["operation"]["base_sha256"],
+        sd::sha256_hex(src_after_a.as_bytes())
+    );
+    assert_eq!(snap["causes"][0]["code"], "source.type-mismatch");
+    assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_incremental_default_keeps_legacy_covered_result() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    // The PRE-911 default behavior, byte-shape: B's refusal is recorded as
+    // a `mn.incremental.refused` diagnostic, the sequence CONTINUES past
+    // it (C repairs from the accepted prefix), and the judged result is
+    // C's run — the exact covered-intermediate-state behavior source-v1
+    // exists to end (kept here as the default compatibility control).
+    let steps = json!([
+        { "op": "edit-source", "from": "x * 2", "to": "x + 2" },
+        { "op": "edit-source", "from": "x + 2", "to": "true + 1" },
+        { "op": "edit-source", "from": "x + 2", "to": "x * 3" },
+        { "op": "run" },
+    ]);
+    let (req, root) = req_json("w-inc-default", WARM_SRC, steps, None);
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(code, Some(0));
+    assert_eq!(resp["diagnostic"]["code"], "mn.incremental.refused");
+    // The response level reports no judged exit once a refusal occurred,
+    // but the step records prove C and the trailing run REALLY executed
+    // after B's refusal (the covered-intermediate-state behavior).
+    let steps_out = resp["ok"]["steps"].as_array().expect("steps");
+    assert_eq!(steps_out.len(), 5, "warmup + A + B(refused) + C + run");
+    let run_rec = steps_out.last().unwrap();
+    assert_eq!(run_rec["op"], "run");
+    assert_eq!(
+        run_rec["exit_code"].as_i64(),
+        Some(15),
+        "alpha(5) with x*3 = 15 — C ran past the refusal"
+    );
+    assert!(resp["ok"].get("exit_code").is_none());
+    assert!(resp["ok"].get("accepted_prefix").is_none());
+    assert!(resp.get("source_error").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_worker_incremental_warmup_reject_shapes() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let steps = json!([
+        { "op": "edit-source", "from": "true + 1", "to": "1 + 1" },
+        { "op": "run" },
+    ]);
+    // Strict: the warm-up rejection is the typed fact (shape 2, exit 0).
+    let (req, root) = req_json(
+        "w-warm-strict",
+        B17.trim(),
+        steps.clone(),
+        Some("source-v1"),
+    );
+    let (resp, code) = spawn_worker(&req);
+    assert_eq!(code, Some(0));
+    assert_eq!(resp["ok"]["diagnostics_mode"], "source-v1");
+    assert_eq!(
+        resp["source_error"]["causes"][0]["code"],
+        "source.type-mismatch"
+    );
+    assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+    let _ = std::fs::remove_dir_all(&root);
+    // Default: the pre-911 infra error shape (exit FAILURE).
+    let (req, root) = req_json("w-warm-default", B17.trim(), steps, None);
+    let (resp, code) = spawn_worker(&req);
+    assert_ne!(code, Some(0));
+    assert_eq!(resp["error"]["code"], "mn.worker.incremental");
+    assert!(resp.get("ok").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
