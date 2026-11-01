@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-905
-status: reviewed
+status: archived
 feature_name: 生成Rust工程与Cargo产物治理的有界实测和方案设计
 author: [Codex]
 created_at: 2026-11-01
@@ -102,7 +102,7 @@ T-05在本计划中写出推荐有限方案、明确哪些目标本期闭合/仍
 - [x] AC-03（work）：V-03/04正确失效、源码隔离、并发/取消/坏件恢复区分性控制有效；未验证轴不冒支持。→ E3-1（1/659）、E3-2b（1/502）、E3-0（全量=配置轴）、E2-S5 双向劫持判定性反例、E4 全套+负控（真实 target 前后一致）；weak 轴如实标（E4-1 锁争用重叠不足）。
 - [x] AC-04（work）：经确认的有限验收建议、推荐/否定依据、owner/配置/回滚及后继实施合同输入具体可审阅；研究与治理/M1完成分列。→ t05_analysis.md §2–§5（候选判定/有限M1-1..4/量化口径不承诺百分比/后继合同输入/具名未闭）；**M1 验收的"用户确认"与后继取号属 §10 待决，本研究不冒已确认**。
 - [x] AC-05（owner_stage: review）：独立上下文按输入/执行/误差/反控/结论核查pass，无未批范围扩展或遗漏，Spec无虚构交付。→ 见 §9 review 收据：独立子代理上下文对原始工件全量重算（6 组 census、4 组磁盘账、负控前后聚合全等、劫持哈希、校准复跑、时序串、零改动面）全部对上；1 轮 needs_fix（3 处数字出处）→ R1 文档修复 → 复核 pass；未批范围扩展=无（lang-drift 探针 worktree 已登记）；Spec 零写入（SD-01 成立）。
-- [ ] AC-06（owner_stage: merge）：本研究结论按正式来源沉淀、计划归档/guard清树、完整scope及实际输出路径核清删除，未闭问题具名持有；不虚称生产改造已交付。
+- [x] AC-06（owner_stage: merge）：本研究结论按正式来源沉淀、计划归档/guard清树、完整scope及实际输出路径核清删除，未闭问题具名持有；不虚称生产改造已交付。→ 归档提交 + merge 收据（本节）；SD-01 无生产 Spec 变化（docs/specs 零写入，已证实现状折 Design53 §5+本计划）；未闭 4 项具名于 §10（无需文件持有，均附 owner/关闭条件）。
 
 ## 8. 执行步骤
 
@@ -177,3 +177,12 @@ T-05在本计划中写出推荐有限方案、明确哪些目标本期闭合/仍
 - **具名未闭（work 中发现，2026-11-01）**：examples/ui/013-todo `--render rust` 再生成前端在冻结 SHA（auto-ui@145d414a9+auto-lang@174652b5c）编译失败 45 错（详见 §9 work 记录与 plan-905/exp/logs/e1-ui.log）。owner=auto-ui 生成线（UI014 相关）；关闭条件=该 fixture rust 轨再生成编译通过或修正为显式不支持。本研究不修复、不据此推断其他 fixture。
 - 观察项（非门）：D: 余量 2026-11-01 15:15 实测 315.8GiB，较开工 388.97 降 ~73GiB，其中本计划 scope 12G+组内 target ~17G，其余约 44G 属他方活动（未归属，不清理）；触发线 D:剩<100G 持续有效。
 - **T-05 后待用户决定（不阻塞本计划 review/merge）**：有限 M1（t05_analysis.md §3：flags 单源化/Web 共享 target/清理 owner/成员身份修复移交）是否按所列验收出口确认并另取号实施——本计划只交付建议与合同输入，不自动开工；后继实施计划立项前该确认是必要输入。
+
+2026-11-01 / stage: merge / PLAN-905 r1 / **outcome: pass（archived）** / merge 收据：
+- prepared: reviewed 基线（独立复审 final pass r1，绑定 174652b5c 零代码分支+五仓依赖冻结）；canonical delta=SD-01 无生产 Spec 变化（已证实现状→Design53 §5+本计划，docs/specs 零写入；design 文档为本仓既有知识基，00-intro 行 53 已登记提交）。
+- landed: 交付提交 **65f3b8c92**（master 直接文档提交；plan-905-dev 与 master 同 SHA 零提交，无需 rebase/ff-merge——研究计划交付物=文档，AGENTS 簿记豁免内）；仅含 00-intro 行53 hunk+Design53+计划文件（他方 00-intro 行未纳入，保留为 WIP）。
+- canonical_verified: 交付提交仅 3 个 docs 文件（diff --stat 核）；SD-01 成立（无 spec 路径写入）。
+- affected-group gate: 纯文档研究计划→scoped content checks（独立复审对原始工件全量重算）替代 cargo 固定组；无 Rust 编译面改动。
+- archived: 本 git mv + status 翻转 + 本收据提交（docs/plans/archive/905-*.md）。
+- deployment check: 文档研究、零代码落地→无生产制品（backend release/依赖仓二进制/web bundle 均非本计划触面），无 stale 项。
+- batch regression due check: 905%5==0 触发；.last-batch-regression.json last_covered=895 verdict=waived_by_user（2026-10-30 用户令"不用进行回归测试了"，904 同样登记 user-pending）→ 本计划零 Rust 编译面改动，沿既定豁免登记 user-pending，不静默跳过、不自行开跑全量批（主检出单实例窗口归用户/regress 技能）。
