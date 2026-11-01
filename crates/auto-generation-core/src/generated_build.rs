@@ -685,6 +685,21 @@ impl TargetLease {
     pub fn acquire(target_root: &Path, purpose: &str) -> io::Result<Self> {
         let dir = target_root.join(LEASE_DIR);
         fs::create_dir_all(&dir)?;
+        // Sweep leases left by force-killed holders (dead pid = no holder);
+        // live leases are never touched here.
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let dead = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .and_then(|value| value.get("pid").and_then(|p| p.as_u64()))
+                    .is_some_and(|pid| !process_alive(pid as u32));
+                if dead {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+        }
         let path = dir.join(format!("{}-{}.json", std::process::id(), now_millis()));
         let record = serde_json::json!({
             "pid": std::process::id(),

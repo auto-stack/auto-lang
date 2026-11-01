@@ -471,6 +471,25 @@ pub enum WorkspaceRequirements {
     Ui,
 }
 
+/// PLAN-910: a member referencing `auto-web` (generated service backends use
+/// `auto-web = { workspace = true }`) needs the workspace to carry that
+/// dependency. Previously only the Web facade injected it after the core
+/// rewrite, so the next UI-side ensure dropped it and cargo failed to load
+/// every member of a mixed front/back workspace (V-07 observed).
+fn manifest_needs_web(value: &toml::Value) -> bool {
+    match value {
+        toml::Value::Table(table) => table.iter().any(|(key, entry)| {
+            key.as_str() == "auto-web"
+                || entry
+                    .get("package")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|name| name == "auto-web")
+                || manifest_needs_web(entry)
+        }),
+        _ => false,
+    }
+}
+
 fn manifest_needs_ui(value: &toml::Value) -> bool {
     match value {
         toml::Value::Table(table) => table.iter().any(|(key, entry)| {
@@ -510,6 +529,7 @@ pub fn try_ensure_workspace_for(
     // automatically once generate_rust_ui writes their src/.
     let mut members: Vec<String> = Vec::new();
     let mut needs_ui = requirements == WorkspaceRequirements::Ui;
+    let mut needs_web = false;
     if let Ok(entries) = fs::read_dir(&ws_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -531,6 +551,7 @@ pub fn try_ensure_workspace_for(
                     let member_manifest: toml::Value =
                         fs::read_to_string(path.join("Cargo.toml"))?.parse()?;
                     needs_ui |= manifest_needs_ui(&member_manifest);
+                    needs_web |= manifest_needs_web(&member_manifest);
                     members.push(name.to_string());
                 }
             }
@@ -563,6 +584,22 @@ pub fn try_ensure_workspace_for(
         String::new()
     };
     let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
+    // Mixed workspaces: the web implementation crate is resolved through the
+    // same owner rules the Web facade uses (env → installed → group sibling),
+    // pinned to the facade's exact version, so no later ensure can drop it.
+    let web_dependency = if needs_web {
+        let lang_crate = ws_dir.join(auto_lang_rel.replace(char::from(92), "/"));
+        let lang_crate = fs::canonicalize(&lang_crate).unwrap_or(lang_crate);
+        let producer = lang_crate
+            .parent()
+            .and_then(Path::parent)
+            .ok_or("producer 语言源路径无效")?;
+        let source = crate::source_owner::ui_crate_source(producer, "auto-web")?;
+        let rel = compute_relative_path(&ws_dir, &source);
+        format!("auto-web = {{ path = \"{rel}\", version = \"=0.1.0\" }}\n")
+    } else {
+        String::new()
+    };
 
     let members_toml = members
         .iter()
@@ -587,7 +624,7 @@ a2r-std = {{ path = "{a2r_std_rel}" }}
 auto-media-core = {{ path = "{auto_media_core_rel}" }}
 # PLAN-814 T-05 canonical 双直依赖（import_policy.rs）——rust 生成组件的
 # `auto_ui_runtime::ui`/`auto_lang_core` import 需成员直依赖两包。
-{ui_dependencies}auto-lang-core = {{ path = "{auto_lang_core_rel}" }}
+{ui_dependencies}{web_dependency}auto-lang-core = {{ path = "{auto_lang_core_rel}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}
@@ -914,6 +951,90 @@ mod plan842_tests {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
+    }
+
+    /// PLAN-910 (V-07 finding): a UI-side ensure must keep `auto-web` in the
+    /// workspace when any member references it — otherwise a mixed front/
+    /// back workspace fails to load for every member.
+    #[test]
+    fn mixed_workspace_keeps_web_dependency_across_ui_ensure() {
+        const CHILD: &str = "PLAN910_MIXED_WS_PROBE";
+        if std::env::var_os(CHILD).is_some() {
+            let project = PathBuf::from(std::env::var_os("PLAN910_PROJECT").unwrap());
+            let ws = resolve_rust_workspace_dir(&project);
+            try_ensure_workspace_for(&project, WorkspaceRequirements::Ui).unwrap();
+            let manifest = fs::read_to_string(ws.join("Cargo.toml")).unwrap();
+            assert!(
+                manifest.contains("auto-web = { path = ")
+                    && manifest.contains("version = \"=0.1.0\""),
+                "{manifest}"
+            );
+            assert!(
+                manifest.contains("auto-ui-runtime = { path = "),
+                "{manifest}"
+            );
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let lang = tmp.path().join("auto-lang");
+        let ui = tmp.path().join("auto-ui");
+        let web = tmp.path().join("auto-web");
+        let project = tmp.path().join("project");
+        let ws = project.join("workspace");
+        fs::create_dir_all(&lang).unwrap();
+        fs::write(lang.join("Cargo.toml"), "[workspace]\n").unwrap();
+        for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+            let package = lang.join("crates").join(name);
+            fs::create_dir_all(package.join("src")).unwrap();
+            fs::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+            fs::write(package.join("src/lib.rs"), "").unwrap();
+        }
+        for (root, name, version) in [
+            (&ui, "auto-ui-runtime", "0.2.0"),
+            (&web, "auto-web", "0.1.0"),
+        ] {
+            let package = root.join("crates").join(name);
+            fs::create_dir_all(package.join("src")).unwrap();
+            fs::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"{version}\"\n"),
+            )
+            .unwrap();
+            fs::write(package.join("src/lib.rs"), "").unwrap();
+        }
+        // A back member that references auto-web through the workspace.
+        let back = ws.join("app-back");
+        fs::create_dir_all(back.join("src")).unwrap();
+        fs::write(
+            back.join("Cargo.toml"),
+            "[package]\nname = \"app-back\"\nversion = \"0.1.0\"\n[dependencies]\nauto-web = { workspace = true }\n",
+        )
+        .unwrap();
+        fs::write(back.join("src/main.rs"), "fn main() {}").unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "rust_workspace::plan842_tests::mixed_workspace_keeps_web_dependency_across_ui_ensure", "--nocapture"])
+            .env(CHILD, "1")
+            .env("PLAN910_PROJECT", &project)
+            .env("AUTO_RUST_WORKSPACE", &ws)
+            .env("AUTO_LANG_ROOT", &lang)
+            .env("AUTO_UI_SOURCE_ROOT", &ui)
+            .env("AUTO_WEB_SOURCE_ROOT", &web)
+            .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
+            .env_remove("AUTO_LANG_CRATE")
+            .env_remove("CARGO_TARGET_DIR")
+            .env_remove(crate::generated_build::TARGET_ROOT_ENV)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]
