@@ -829,13 +829,65 @@ fn closures_env_for_def(
         .filter(|local| local.role == hir::LocalRole::Capture)
         .collect();
     captures.sort_by_key(|local| local.index);
+    let cell_flags = closure_capture_cell_flags(module, def_index, body).unwrap_or_default();
     let mut memo = BTreeMap::new();
     let mut visiting = std::collections::BTreeSet::new();
     let env = captures
         .iter()
-        .map(|local| collections_type_idx_of(&local.ty, module, out, &mut memo, &mut visiting))
-        .collect::<Result<Vec<_>, _>>()?;
+        .enumerate()
+        .map(|(field, local)| {
+            let ty = collections_type_idx_of(&local.ty, module, out, &mut memo, &mut visiting)?;
+            // PLAN-909: a cell field is declared as its List representation
+            // — the ONE derivation `closure_capture_cell_flags` owns, so the
+            // import declaration, the body's slot types and the creator's
+            // operands can never disagree.
+            if cell_flags.get(field).copied().unwrap_or(false) {
+                Ok(out.intern_type(MirType::List(ace_av_core::mir::ListTypeRef { elem: ty })))
+            } else {
+                Ok(ty)
+            }
+        })
+        .collect::<Result<Vec<_>, AdapterError>>()?;
     Ok(Some(env))
+}
+
+/// PLAN-909: per-field (capture-index order) cell flags of a closure body,
+/// or `None` when `def_index` is not a closure body. A field is a cell when
+/// the (site-unique) creating CREATE_CLOSURE captured it `Shared` (a shared
+/// `var` cell) or `Move` with the body's capture local declared mutable
+/// (the private env cell the body writes). This is the single source for
+/// the import env declaration, the body's slot representation and the
+/// creator's operand shapes.
+fn closure_capture_cell_flags(
+    module: &hir::Module,
+    def_index: u32,
+    body: &hir::Body,
+) -> Option<Vec<bool>> {
+    let site = module.bodies.iter().find_map(|other| {
+        other.exprs.iter().find_map(|expr| match &expr.kind {
+            hir::ExprKind::CreateClosure { callee, captures } if callee.0 == def_index => {
+                Some(captures)
+            }
+            _ => None,
+        })
+    })?;
+    let mut captures: Vec<&hir::LocalDef> = body
+        .locals
+        .iter()
+        .filter(|local| local.role == hir::LocalRole::Capture)
+        .collect();
+    captures.sort_by_key(|local| local.index);
+    Some(
+        captures
+            .iter()
+            .enumerate()
+            .map(|(field, local)| match site.get(field).map(|c| c.mode) {
+                Some(hir::CaptureMode::Shared) => true,
+                Some(hir::CaptureMode::Move) => local.mutable,
+                _ => false,
+            })
+            .collect(),
+    )
 }
 
 fn next_import_dummy() -> ImportIdx {
@@ -2232,6 +2284,12 @@ struct FnLower<'a> {
     /// through (or a continuation with remaining statements starts) —
     /// a both-arms-terminated `if` never materializes its join.
     pending_joins: Vec<Option<BlockId>>,
+    /// PLAN-909: cell-represented locals of THIS body (local table
+    /// indices). Shared-capture sources in this body, plus — when this
+    /// body is itself a closure body — its cell capture fields (Shared
+    /// mode, or Move over a mutable scalar = the private env cell). Their
+    /// slots carry `List<T>`; every read/write routes through index 0.
+    cell_locals: BTreeSet<usize>,
 }
 
 impl<'a> FnLower<'a> {
@@ -2521,6 +2579,24 @@ impl<'a> FnLower<'a> {
         self.out.intern_const(MirConst::I32(v))
     }
 
+    /// PLAN-909: a fresh i32 constant slot holding the cell element index
+    /// (single-element cells read/write index 0).
+    fn cell_index_slot(&mut self, t_i32: TypeIdx) -> SlotId {
+        let idx = self.temp_ty(t_i32);
+        let c = self.const_i32(0);
+        self.emit(MirInstr::Const { dst: idx, value: c }, None);
+        idx
+    }
+
+    /// PLAN-909: the scalar element type of a cell slot (`List<T>`), if the
+    /// slot type is a cell representation.
+    fn cell_elem_of(&self, list_ty: TypeIdx) -> Option<TypeIdx> {
+        match self.out.types.get(list_ty as usize) {
+            Some(MirType::List(list_ref)) => Some(list_ref.elem),
+            _ => None,
+        }
+    }
+
     fn const_bool(&mut self, v: bool) -> u32 {
         self.out.intern_const(MirConst::Bool(v))
     }
@@ -2605,7 +2681,27 @@ impl<'a> FnLower<'a> {
             _ => false,
         };
         match expr_kind {
-            hir::ExprKind::ReadLocal { local } => Ok(self.slot_of_local[local.0 as usize]),
+            hir::ExprKind::ReadLocal { local } => {
+                let slot = self.slot_of_local[local.0 as usize];
+                if self.cell_locals.contains(&(local.0 as usize)) {
+                    // PLAN-909: a cell read observes the CURRENT shared
+                    // value (never a snapshot): LIST_GET element 0 of the
+                    // creator/callee-shared buffer.
+                    let dst = self.temp_ty(ty);
+                    let index = self.cell_index_slot(self.t_i32);
+                    self.emit(
+                        MirInstr::ListGet {
+                            dst,
+                            base: slot,
+                            index,
+                        },
+                        sp,
+                    );
+                    Ok(dst)
+                } else {
+                    Ok(slot)
+                }
+            }
             // PLAN-862: the unit value. Zero-width: the temp slot carries the
             // Unit type and NO instruction initializes it (there is no data
             // to write). `verify_mir` treats Unit slots as initialized by
@@ -3042,8 +3138,31 @@ impl<'a> FnLower<'a> {
                         format!("closure callee def {} has no MIR binding", callee.0),
                     )
                 })?;
+                // PLAN-909: the callee's capture locals in field order —
+                // the per-field writability fact (a mutable Move capture is
+                // the K06 private env cell; a Shared capture is a shared
+                // cell) decides the operand shape below.
+                let callee_capture_mutability: Vec<bool> = self
+                    .hir_module
+                    .defs
+                    .get(callee.0 as usize)
+                    .and_then(|def| match &def.kind {
+                        hir::DefKind::Function { body, .. } => Some(body),
+                        _ => None,
+                    })
+                    .and_then(|body_id| self.hir_module.bodies.get(body_id.0 as usize))
+                    .map(|callee_body| {
+                        let mut caps: Vec<&hir::LocalDef> = callee_body
+                            .locals
+                            .iter()
+                            .filter(|l| l.role == hir::LocalRole::Capture)
+                            .collect();
+                        caps.sort_by_key(|l| l.index);
+                        caps.iter().map(|l| l.mutable).collect()
+                    })
+                    .unwrap_or_default();
                 let mut operands = Vec::with_capacity(captures.len());
-                for capture in captures {
+                for (field, capture) in captures.iter().enumerate() {
                     let source = *self
                         .slot_of_local
                         .get(capture.local.0 as usize)
@@ -3054,13 +3173,115 @@ impl<'a> FnLower<'a> {
                             )
                         })?;
                     let source_ty = self.slot_ty_cache[source as usize];
+                    let child_writes = callee_capture_mutability
+                        .get(field)
+                        .copied()
+                        .unwrap_or(false);
                     let kind = match capture.mode {
                         hir::CaptureMode::Borrow => CaptureKind::Borrow,
+                        hir::CaptureMode::Shared => {
+                            // The cell handle share: the creator slot stays
+                            // live and unpinned; the env field is one more
+                            // owner of the SAME buffer.
+                            CaptureKind::Shared
+                        }
                         hir::CaptureMode::Move => {
-                            if matches!(
+                            let source_is_cell =
+                                self.cell_locals.contains(&(capture.local.0 as usize));
+                            let scalar_copy = matches!(
                                 self.out.types.get(source_ty as usize),
                                 Some(MirType::I32 | MirType::Bool | MirType::Char)
-                            ) {
+                            );
+                            if source_is_cell {
+                                // A move capture of a SHARED cell snapshots
+                                // its CURRENT value at creation (the mixed
+                                // row): the move copy is fully detached from
+                                // the cell from here on. When the body
+                                // WRITES it, the snapshot seeds a fresh
+                                // PRIVATE cell the env alone owns.
+                                let elem = self
+                                    .cell_elem_of(source_ty)
+                                    .unwrap_or(source_ty);
+                                let value = self.temp_ty_from_cache(elem);
+                                let index = self.cell_index_slot(self.t_i32);
+                                self.emit(
+                                    MirInstr::ListGet {
+                                        dst: value,
+                                        base: source,
+                                        index,
+                                    },
+                                    sp,
+                                );
+                                if child_writes {
+                                    let cell = self.temp_ty(source_ty);
+                                    self.emit(
+                                        MirInstr::ListNew {
+                                            dst: cell,
+                                            list_ty: source_ty,
+                                            cap: 1,
+                                        },
+                                        sp,
+                                    );
+                                    self.emit(
+                                        MirInstr::ListPush {
+                                            root: cell,
+                                            value,
+                                        },
+                                        sp,
+                                    );
+                                    operands.push(CaptureOperand {
+                                        kind: CaptureKind::Move,
+                                        src: cell,
+                                    });
+                                    continue;
+                                }
+                                operands.push(CaptureOperand {
+                                    kind: CaptureKind::Move,
+                                    src: value,
+                                });
+                                continue;
+                            }
+                            if scalar_copy && child_writes {
+                                // K06 private env cell: copy the current
+                                // scalar into a FRESH one-element list the
+                                // environment alone owns; the source stays
+                                // live and is never written back.
+                                let copied = self.temp_ty_from_cache(source_ty);
+                                self.emit(
+                                    MirInstr::Copy {
+                                        dst: copied,
+                                        src: source,
+                                    },
+                                    sp,
+                                );
+                                let cell_ty = self
+                                    .out
+                                    .intern_type(MirType::List(ace_av_core::mir::ListTypeRef {
+                                        elem: source_ty,
+                                    }));
+                                let cell = self.temp_ty(cell_ty);
+                                self.emit(
+                                    MirInstr::ListNew {
+                                        dst: cell,
+                                        list_ty: cell_ty,
+                                        cap: 1,
+                                    },
+                                    sp,
+                                );
+                                self.emit(
+                                    MirInstr::ListPush {
+                                        root: cell,
+                                        value: copied,
+                                    },
+                                    sp,
+                                );
+                                operands.push(CaptureOperand {
+                                    kind: CaptureKind::Move,
+                                    src: cell,
+                                });
+                                continue;
+                            }
+                            if scalar_copy {
                                 // Copy captures keep the source live. Copy to
                                 // a fresh temp, then transfer that temp into
                                 // the closure env so CREATE_CLOSURE retains
@@ -4069,6 +4290,37 @@ fn lower_function(
     let t_i32 = out.intern_type(MirType::I32);
     let t_bool = out.intern_type(MirType::Bool);
 
+    // PLAN-909: the body's cell-represented locals. (a) Every Shared
+    // capture source in THIS body is a shared cell — the creator, sibling
+    // closures and the closures' bodies all alias one buffer. (b) When
+    // this body IS a closure body, its capture fields are cells when the
+    // (site-unique) creating site captured them Shared, or Move over a
+    // scalar the body WRITES (the K06 private env cell).
+    let mut cell_locals: BTreeSet<usize> = BTreeSet::new();
+    for e in &body.exprs {
+        if let hir::ExprKind::CreateClosure { captures, .. } = &e.kind {
+            for capture in captures {
+                if capture.mode == hir::CaptureMode::Shared {
+                    cell_locals.insert(capture.local.0 as usize);
+                }
+            }
+        }
+    }
+    if let Some(cell_flags) = closure_capture_cell_flags(hir_module, def_index, body) {
+        let mut capture_locals: Vec<(usize, &hir::LocalDef)> = body
+            .locals
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.role == hir::LocalRole::Capture)
+            .collect();
+        capture_locals.sort_by_key(|(_, l)| l.index);
+        for (field, (li, _)) in capture_locals.iter().enumerate() {
+            if cell_flags.get(field).copied().unwrap_or(false) {
+                cell_locals.insert(*li);
+            }
+        }
+    }
+
     // Base slots: params lead in signature order (HIR verify guarantees the
     // param locals lead the local table in order), then the other locals.
     let mut slots: Vec<MirSlot> = Vec::with_capacity(body.locals.len());
@@ -4083,6 +4335,12 @@ fn lower_function(
         } else {
             type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?
         };
+        if cell_locals.contains(&li) {
+            // The HIR type stays scalar; the CELL is a one-element List
+            // handle — the shared/private mutable state every reader and
+            // writer of this local goes through.
+            ty = out.intern_type(MirType::List(ace_av_core::mir::ListTypeRef { elem: ty }));
+        }
         if owned && l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::View {
             // R1-F08: a plain record param is a READ-ONLY borrow — the
             // slot type mirrors the signature's RecordView.
@@ -4162,6 +4420,7 @@ fn lower_function(
         spans: vec![],
         root_wired: false,
         pending_joins: vec![],
+        cell_locals,
     };
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
@@ -4270,6 +4529,31 @@ fn lower_function(
                     lower.end_stmt_temp_views();
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
+                    if lower.cell_locals.contains(&(local.0 as usize)) {
+                        // PLAN-909: the initializer evaluates EXACTLY ONCE,
+                        // then the cell is created and charged before any
+                        // closure that shares it — a reader created first
+                        // still observes later writes (§5.1 static cell
+                        // grouping; the write lambda may sit in an untaken
+                        // branch).
+                        let list_ty = lower.slot_ty_cache[dst as usize];
+                        lower.emit(
+                            MirInstr::ListNew {
+                                dst,
+                                list_ty,
+                                cap: 1,
+                            },
+                            sp,
+                        );
+                        lower.emit(
+                            MirInstr::ListPush {
+                                root: dst,
+                                value: v,
+                            },
+                            sp,
+                        );
+                        continue;
+                    }
                     let slot_ty = lower
                         .out
                         .types
@@ -4307,6 +4591,26 @@ fn lower_function(
                     match &p.kind {
                         hir::PlaceKind::Local => {
                             let dst = lower.slot_of_local[p.local.0 as usize];
+                            if lower.cell_locals.contains(&(p.local.0 as usize)) {
+                                // PLAN-909: the write lands in the SHARED
+                                // buffer (in-place replace, generation
+                                // bump) — creator, siblings and nested
+                                // closures observe it through their own
+                                // handle of the same cell.
+                                let v = lower.eval_expr(*value, 0)?;
+                                lower.end_stmt_temp_views();
+                                let sp = lower.span(*value);
+                                let index = lower.cell_index_slot(lower.t_i32);
+                                lower.emit(
+                                    MirInstr::ListSet {
+                                        root: dst,
+                                        index,
+                                        value: v,
+                                    },
+                                    sp,
+                                );
+                                continue;
+                            }
                             // PLAN-864: `r = Ok(42)` — variant slot writes
                             // ride VARIANT_SWITCH (old live arm drops once,
                             // guard facts die with the switch).

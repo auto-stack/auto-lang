@@ -643,7 +643,9 @@ pub enum MirInstr {
 }
 
 /// One CREATE_CLOSURE capture operand's mode (PLAN-823 T-03, wire tag
-/// 0=move / 1=clone / 2=borrow inside the v5 closure opcode).
+/// 0=move / 1=clone / 2=borrow inside the v5 closure opcode; r8 added
+/// 3=move_from_env, PLAN-909 added 4=shared — an older decoder rejects
+/// an unknown tag outright, never guessing its meaning).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureKind {
     /// Whole-root MOVE transfer (kills the source slot).
@@ -661,6 +663,17 @@ pub enum CaptureKind {
     /// re-transferring it in the same body rejects at verify) and lands
     /// in the child env, which alone owns it from commit on.
     MoveFromEnv,
+    /// SHARED capture (PLAN-909, wire tag 4): the env field receives a
+    /// HANDLE SHARE of the source slot — one more owner of the SAME
+    /// buffer, so the creator's slot, every sibling closure and nested
+    /// closures read and write one cell. The source slot stays live and
+    /// unpinned (no move kill, no borrow discipline); the closure may
+    /// escape like an owned capture. Domain-gated at verify to the cell
+    /// representation: a `List<T>` whose element is a Copy scalar
+    /// (i32/bool/char) — the single-element shared/private cell the
+    /// source front materializes. Staging is infallible (a handle clone);
+    /// the deep size is charged conservatively per reference like ENV_GET.
+    Shared,
 }
 
 /// One CREATE_CLOSURE capture operand: the mode plus the source slot.

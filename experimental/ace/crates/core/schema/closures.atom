@@ -25,7 +25,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         enum LogicOp { cases: [and, or] }
         enum OverflowPolicy { cases: [trap] }
         enum LocalRole { cases: [param, binding, capture] }
-        enum CaptureMode { cases: [move, borrow] }
+        enum CaptureMode { cases: [move, borrow, shared] }
         enum PlaceKind { cases: [local] }
         enum AccessKind { cases: [mutable, readonly] }
         enum EffectKind { cases: [observable, pure] }
@@ -144,7 +144,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
         branch(key: "local.binding") { require: [name, role]; forbid: [index] }
-        branch(key: "local.capture") { require: [name, role, index]; forbid: [mutable, mode] }
+        branch(key: "local.capture") { require: [name, role, index]; forbid: [mode] }
         branch(key: "place.local") { require: [local, type, access] }
         branch(key: "expr.read_local") {
             require: [type, local]

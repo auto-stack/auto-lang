@@ -432,6 +432,14 @@ pub struct CallBinding {
 pub enum CaptureMode {
     Move,
     Borrow,
+    /// PLAN-909 shared write capture: the source is a cell-represented
+    /// mutable scalar `var` (physical form: a single-element typed List
+    /// handle). The environment field receives a handle share — creator
+    /// local, sibling closures and nested closures all read/write the SAME
+    /// buffer; the source stays live (no move kill, no borrow pinning) and
+    /// the closure may escape. Only `int`/`bool`/`char` cells are in this
+    /// domain; anything else must be rejected by name at the source front.
+    Shared,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

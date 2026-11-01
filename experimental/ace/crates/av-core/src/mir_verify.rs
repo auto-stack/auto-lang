@@ -3316,6 +3316,35 @@ impl<'a> Verifier<'a> {
                                 }
                                 continue;
                             }
+                            if c.kind == crate::mir::CaptureKind::Shared {
+                                // PLAN-909 cell domain: a handle share is
+                                // admitted ONLY over the cell representation
+                                // — `List<T>` with a Copy scalar element
+                                // (i32/bool/char). Sharing any other owned
+                                // aggregate (Str, record, nested list,
+                                // variant) is not a cell contract and is
+                                // rejected by name; an ordinary list copy
+                                // never stands in for a cell.
+                                let cell_ok = match self.module.types.get(st as usize) {
+                                    Some(MirType::List(l)) => matches!(
+                                        self.module.types.get(l.elem as usize),
+                                        Some(MirType::I32 | MirType::Bool | MirType::Char)
+                                    ),
+                                    _ => false,
+                                };
+                                if !cell_ok {
+                                    return Err(err(
+                                        "mir.capture.shared-domain",
+                                        format!(
+                                            "shared capture #{} type {} is not a scalar cell \
+                                             (List<i32|bool|char>); shared captures exist only \
+                                             over the single-element cell representation",
+                                            ci, st
+                                        ),
+                                    ));
+                                }
+                                continue;
+                            }
                             if matches!(
                                 self.module.types.get(st as usize),
                                 Some(MirType::StrView)

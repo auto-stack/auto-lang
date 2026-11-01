@@ -170,6 +170,12 @@ pub struct LocalDecl {
     /// Capture environment index for a synthesized closure body.
     pub capture_index: Option<u32>,
     pub is_capture: bool,
+    /// PLAN-909: this local is CELL-represented (a shared write cell for a
+    /// `var` binding some non-move closure writes, or a closure body's
+    /// private/shared writable capture). The HIR type stays scalar; the
+    /// lowering materializes the single-element List handle and routes
+    /// every read/write through it.
+    pub cell: bool,
     /// Parameter ownership mode (PLAN-770): Default = view, Mut = exclusive
     /// borrow, Move = transfer in. Bindings always carry Default.
     pub mode: super::ast::ParamMode,
@@ -2399,6 +2405,10 @@ struct FnResolver<'a> {
     /// type). Method resolution rejects structural modification of the
     /// iterated list inside the body (`source.iterate-mutate`).
     iterate_targets: Vec<(LocalRef, VT, Span)>,
+    /// PLAN-909: start offsets of cell-eligible `var` bindings this
+    /// function's non-move closures write (function-wide static grouping;
+    /// `scan_shared_capture_cells` owns the scope model).
+    shared_cell_spans: BTreeSet<usize>,
 }
 
 fn resolve_fn(
@@ -2444,6 +2454,9 @@ fn resolve_fn(
         rec_index,
         coll,
         iterate_targets: Vec::new(),
+        shared_cell_spans: super::closure_capture::scan_shared_capture_cells(
+            &f.params, &f.body,
+        ),
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -2460,6 +2473,7 @@ fn resolve_fn(
             is_param: true,
             param_index: Some(0),
             capture_index: None,
+            cell: false,
             is_capture: false,
             mode: super::ast::ParamMode::Default,
             span: f.name.span,
@@ -2514,6 +2528,7 @@ fn resolve_fn(
                 }) as u32,
             ),
             capture_index: None,
+            cell: false,
             is_capture: false,
             span: p.span,
         });
@@ -2752,18 +2767,61 @@ impl<'a> FnResolver<'a> {
                 continue;
             };
             let source_vt = self.locals[source_local.0].vt;
-            if capture.written {
-                self.bind_err("source.closure-shared-mutable", format!("closure writes captured local `{}`; shared mutable captures are unsupported", capture.name), capture.span);
+            let source_mutable = self.locals[source_local.0].mutable;
+            let source_cell = self.locals[source_local.0].cell;
+            let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
+            // PLAN-909 SEM-04 extension: a written capture is admitted only
+            // in the scalar `var` domain. Everything else (owned Str /
+            // record / List / Variant / closure / Dyn) keeps the NAMED
+            // rejection — the cell contract does not silently clone, share
+            // an owned aggregate or promote a borrow.
+            if capture.written && !copy {
+                self.bind_err(
+                    "source.closure-shared-mutable",
+                    format!(
+                        "closure writes captured local `{}` of type `{}`; shared mutable captures support scalar `int`/`bool`/`char` vars only",
+                        capture.name,
+                        source_vt.as_str()
+                    ),
+                    capture.span,
+                );
                 continue;
             }
-            let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
             let owned = self.vt_is_coll_owned(source_vt);
-            let (mode, body_vt, moved) = if copy {
-                (crate::hir::CaptureMode::Move, source_vt, false)
+            // (mode, body type, kills source, body local writable, body local cell)
+            let (mode, body_vt, moved, writable, cell) = if copy {
+                if !move_capture && source_cell {
+                    // Shared cell: any non-move capture of a binding in the
+                    // function's shared-write group — reader OR writer — sees
+                    // the same cell (a reader created first still observes
+                    // later writes). Writability mirrors the source `var`.
+                    (
+                        crate::hir::CaptureMode::Shared,
+                        source_vt,
+                        false,
+                        source_mutable,
+                        true,
+                    )
+                } else if move_capture && capture.written {
+                    // K06 private writable env: snapshot the current value
+                    // into a cell the env alone owns; the source stays live
+                    // and is never written back. A `let` source keeps the
+                    // immutable-write rejection on the body assignment.
+                    (
+                        crate::hir::CaptureMode::Move,
+                        source_vt,
+                        false,
+                        source_mutable,
+                        source_mutable,
+                    )
+                } else {
+                    // 865 read-only Copy snapshot (no sibling writer).
+                    (crate::hir::CaptureMode::Move, source_vt, false, false, false)
+                }
             } else if owned && move_capture {
-                (crate::hir::CaptureMode::Move, source_vt, true)
+                (crate::hir::CaptureMode::Move, source_vt, true, false, false)
             } else if source_vt == VT::StrOwned && !move_capture {
-                (crate::hir::CaptureMode::Borrow, VT::Str, false)
+                (crate::hir::CaptureMode::Borrow, VT::Str, false, false, false)
             } else {
                 self.bind_err("source.closure-capture-unsupported", format!("capture `{}` of type `{}` requires a supported move or synchronous Str borrow", capture.name, source_vt.as_str()), capture.span);
                 continue;
@@ -2772,7 +2830,7 @@ impl<'a> FnResolver<'a> {
                 self.moved_locals.insert(source_local);
             }
             capture_bindings.push((source_local, mode));
-            capture_decls.push((capture.name, body_vt, mode));
+            capture_decls.push((capture.name, body_vt, mode, writable, cell));
         }
 
         let old_locals = std::mem::replace(&mut self.locals, Vec::new());
@@ -2825,6 +2883,7 @@ impl<'a> FnResolver<'a> {
                 is_param: true,
                 param_index: Some(param_types.len() as u32),
                 capture_index: None,
+                cell: false,
                 is_capture: false,
                 mode: ast::ParamMode::Default,
                 span: param.span,
@@ -2835,15 +2894,18 @@ impl<'a> FnResolver<'a> {
             param_names.push(param.name.name.clone());
             param_types.push(vt);
         }
-        for (index, (name, vt, _mode)) in capture_decls.iter().enumerate() {
+        for (index, (name, vt, _mode, writable, capture_cell)) in
+            capture_decls.iter().enumerate()
+        {
             let local = LocalRef(self.locals.len());
             self.locals.push(LocalDecl {
                 name: name.clone(),
                 vt: *vt,
-                mutable: false,
+                mutable: *writable,
                 is_param: false,
                 param_index: None,
                 capture_index: Some(index as u32),
+                cell: *capture_cell,
                 is_capture: true,
                 mode: ast::ParamMode::Default,
                 span,
@@ -3040,6 +3102,7 @@ impl<'a> FnResolver<'a> {
             is_param: false,
             param_index: None,
             capture_index: None,
+            cell: false,
             is_capture: false,
             mode: ast::ParamMode::Default,
             span: Span { start: 0, end: 0 },
@@ -3693,6 +3756,14 @@ impl<'a> FnResolver<'a> {
                     ) {
                         self.borrowed_closure_locals.insert(lref);
                     }
+                    // PLAN-909: a scalar `var` some non-move closure of this
+                    // function writes is a shared cell from its declaration
+                    // on (static grouping by the declaring name token's
+                    // offset, computed by `scan_shared_capture_cells`
+                    // before the body resolved).
+                    let cell_binding = *mutable
+                        && matches!(vt, VT::I32 | VT::Bool | VT::Char)
+                        && self.shared_cell_spans.contains(&name.span.start);
                     self.locals.push(LocalDecl {
                         name: name.name.clone(),
                         vt,
@@ -3701,6 +3772,7 @@ impl<'a> FnResolver<'a> {
                         is_param: false,
                         param_index: None,
                         capture_index: None,
+                        cell: cell_binding,
                         is_capture: false,
                         span: name.span.join(value.span),
                     });

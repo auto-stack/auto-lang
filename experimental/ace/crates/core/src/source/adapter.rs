@@ -3259,12 +3259,22 @@ impl<'p> Emitter<'p> {
                         mode_suffix
                     )
                 } else if l.is_capture {
+                    // PLAN-909: a writable capture (K06 private env cell or
+                    // a shared `var` cell) carries `mutable: true` — the
+                    // checked fact the verifier's immutable-write gate and
+                    // the lowering's cell materialization both consume.
+                    let mutable_suffix = if l.mutable {
+                        "; mutable: true"
+                    } else {
+                        ""
+                    };
                     format!(
-                        "local l{} {} {{ name: \"{}\"; role: capture; index: {}u32 }}",
+                        "local l{} {} {{ name: \"{}\"; role: capture; index: {}u32{} }}",
                         li,
                         self.ty_name(l.vt),
                         Self::esc(&l.name),
-                        l.capture_index.unwrap_or(0)
+                        l.capture_index.unwrap_or(0),
+                        mutable_suffix
                     )
                 } else {
                     format!(
@@ -3501,6 +3511,7 @@ impl<'p> Emitter<'p> {
                                     let mode = match mode {
                                         crate::hir::CaptureMode::Move => "move",
                                         crate::hir::CaptureMode::Borrow => "borrow",
+                                        crate::hir::CaptureMode::Shared => "shared",
                                     };
                                     format!("{{ local: l{}, mode: {} }}", local, mode)
                                 })

@@ -103,7 +103,7 @@ fn av_closures_source_clone_deep_copies_mutable_owned_list_env() {
 }
 
 #[test]
-fn av_closures_k04_k06_reject_unsupported_borrow_escape_and_mutation() {
+fn av_closures_k04_rejects_borrow_escape_and_non_scalar_shared_write() {
     let escape = "fn bad() fn(int) int { let s Str = \"local\"; return (n int) => { return s.len() + n } } fn main() int { let f = bad(); return f(37) }";
     let diagnostics = compile_closures_source(escape, "K04.at", &[])
         .expect_err("a borrow-capturing return must fail before execution");
@@ -114,14 +114,116 @@ fn av_closures_k04_k06_reject_unsupported_borrow_escape_and_mutation() {
         "unexpected K04 diagnostics: {diagnostics:#?}"
     );
 
-    let mutable = "fn main() int { var base int = 1; var f = move (n int) => { base = base + n; return base }; return f(20) + f(0) }";
-    let diagnostics = compile_closures_source(mutable, "K06.at", &[])
-        .expect_err("mutable closure state is outside the frozen profile");
+    // PLAN-909 named unsupported domain: a non-scalar shared write (owned
+    // Str) keeps the `source.closure-shared-mutable` rejection — the cell
+    // contract covers scalar int/bool/char vars only and never silently
+    // clones or shares an owned aggregate.
+    let owned_write = "fn main() int { var s Str = \"a\"; var f = (n int) => { s = \"b\"; return n }; return f(42) }";
+    let diagnostics = compile_closures_source(owned_write, "shared-str.at", &[])
+        .expect_err("a non-scalar shared write is outside the cell domain");
     assert!(
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "source.closure-shared-mutable"),
-        "unexpected K06 diagnostics: {diagnostics:#?}"
+        "unexpected non-scalar shared-write diagnostics: {diagnostics:#?}"
+    );
+
+    // A written `let` capture stays the static immutable-assignment
+    // rejection (the body local mirrors the source's immutability).
+    let let_write = "fn main() int { let x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
+    let diagnostics = compile_closures_source(let_write, "shared-let.at", &[])
+        .expect_err("writing a captured let is an immutable write");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "verify.immutable-write"),
+        "unexpected let-write diagnostics: {diagnostics:#?}"
+    );
+}
+
+// -- PLAN-909 shared mutable captures (T-02 minimal chain) -----------------
+
+/// V-01: the UNCHANGED corpus K06 source runs to 42 through the real
+/// source→HIR→lowering→MIR/ABC→AV chain (private writable move env).
+#[test]
+fn av_closures_909_k06_private_env_runs_42() {
+    let source = include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/K06.at");
+    run_source(source, 42);
+}
+
+/// V-02: a move capture's writes stay PRIVATE — the creator's `base` is
+/// never written back (43; a mis-shared cell would yield 63).
+#[test]
+fn av_closures_909_move_capture_writes_do_not_write_back() {
+    run_source(
+        "fn main() int { var base int = 1; var f = move (n int) => { base = base + n; return base }; return base + f(20) + f(0) }",
+        43,
+    );
+}
+
+/// V-03: two non-move writers of one `var` share ONE cell (42; two
+/// snapshot copies would yield 22).
+#[test]
+fn av_closures_909_sibling_writers_share_one_cell() {
+    run_source(
+        "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; var g = (n int) => { x = x + n; return x }; return f(20) + g(0) }",
+        42,
+    );
+}
+
+/// V-03: a reader created BEFORE the writer still observes shared writes
+/// (static cell grouping; 82 — a snapshot reader would yield 42).
+#[test]
+fn av_closures_909_reader_created_first_observes_shared_writes() {
+    run_source(
+        "fn main() int { var x int = 1; var r = () => { return x }; var w = (n int) => { x = x + n; return x }; return w(40) + r() }",
+        82,
+    );
+}
+
+/// V-03: external assignment and closure writes land in the same cell
+/// (182); bool/char cells share the same way.
+#[test]
+fn av_closures_909_external_writes_and_closure_writes_share() {
+    run_source(
+        "fn main() int { var x int = 1; var f = () => { return x }; var g = () => { x = 100; return 0 }; x = 41; return f() + x + g() + f() }",
+        182,
+    );
+    run_source(
+        "fn main() int { var flag bool = false; var set = () => { flag = true; return 0 }; let a = set(); if flag == true { return 42 }; return a }",
+        42,
+    );
+}
+
+/// V-05: a factory's shared cell escapes with the returned closure — the
+/// creator has returned, both calls still mutate one live cell (42).
+#[test]
+fn av_closures_909_factory_cell_escapes_with_closure() {
+    run_source(
+        "fn make() fn(int) int { var count int = 1; var inc = (n int) => { count = count + n; return count }; return inc } fn main() int { let f = make(); return f(20) + f(0) }",
+        42,
+    );
+}
+
+/// V-06: an explicit clone deep-copies the cell — original and copy never
+/// write back to each other (44; a shared-cell clone would yield 65).
+#[test]
+fn av_closures_909_clone_detaches_the_cell() {
+    run_source(
+        "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; let g = f.clone(); let a = f(20); let b = g(1); let c = f(0); return a + b + c }",
+        44,
+    );
+}
+
+/// Mixed row: a move capture of a shared cell snapshots the CURRENT value
+/// at creation and detaches; the non-move sibling keeps sharing.
+#[test]
+fn av_closures_909_move_snapshot_of_shared_cell_detaches() {
+    // x: cell (w writes it). m is created when x == 1 (snapshot 1, private).
+    // w(40) -> x = 41. m(1) -> private 2. Result 41 + 2 + x(41) = 84.
+    run_source(
+        "fn main() int { var x int = 1; var m = move (n int) => { x = x + n; return x }; var w = (n int) => { x = x + n; return x }; return w(40) + m(1) + x }",
+        84,
     );
 }
 

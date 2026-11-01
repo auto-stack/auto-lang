@@ -53,6 +53,16 @@ pub enum CaptureMode {
     /// it; the module validates the source kind and consumes the staged
     /// value). Views hold no drop right and stage infallibly.
     Borrow,
+    /// SHARED capture (PLAN-909): the staged field is a HANDLE SHARE of
+    /// the source — one more owner of the same buffer (a `Value::clone`
+    /// of a List handle bumps the owner count; the buffer frees at the
+    /// last owner's drop). The source stays with its creator, live and
+    /// unpinned; the creator, every sibling closure and nested closures
+    /// read/write one cell through it. Admitted only over the cell
+    /// representation (a List source — the typed verifier narrows the
+    /// element to a Copy scalar); staging is infallible and never attempts
+    /// an allocation. Deep size is charged per reference, conservatively.
+    Shared,
 }
 
 /// One capture source handed to prepare (borrowed — never owned here).
@@ -330,6 +340,15 @@ impl EnvPlan {
                         kind: spec.src.type_name(),
                     });
                 }
+            } else if spec.mode == CaptureMode::Shared {
+                // PLAN-909: a handle share exists only over the cell
+                // representation (a List handle); sharing any other value
+                // kind is not a cell contract.
+                if kind != ValueKind::List {
+                    return Err(EnvPrepareError::UnsupportedKind {
+                        kind: spec.src.type_name(),
+                    });
+                }
             } else if !escape_admissible(kind) {
                 return Err(EnvPrepareError::UnsupportedKind {
                     kind: spec.src.type_name(),
@@ -397,6 +416,13 @@ impl EnvPlan {
                             "a Borrow capture arrived without a staged view".to_string(),
                         )
                     })?;
+                    plan.planned.push(PlannedCapture::Clone { staged });
+                }
+                CaptureMode::Shared => {
+                    // Infallible staging: a handle share of the source cell
+                    // (owner-count bump, same buffer). The source is never
+                    // consumed; the staged share is placed at commit.
+                    let staged = spec.src.clone();
                     plan.planned.push(PlannedCapture::Clone { staged });
                 }
             }

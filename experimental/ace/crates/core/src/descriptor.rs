@@ -2375,6 +2375,7 @@ impl<'d> Binder<'d> {
                         let mode = match mode_word.as_str() {
                             "move" => hir::CaptureMode::Move,
                             "borrow" => hir::CaptureMode::Borrow,
+                            "shared" => hir::CaptureMode::Shared,
                             _ => return None,
                         };
                         captures.push(hir::CaptureBinding { local, mode });
@@ -3651,6 +3652,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                         match capture.mode {
                             hir::CaptureMode::Move => "move",
                             hir::CaptureMode::Borrow => "borrow",
+                            hir::CaptureMode::Shared => "shared",
                         }
                     )
                 })

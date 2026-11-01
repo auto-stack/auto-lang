@@ -2663,6 +2663,12 @@ fn dispatch_with_host<V: ModuleView>(
                                 crate::mir::CaptureKind::MoveFromEnv => {
                                     crate::closures::CaptureMode::Move
                                 }
+                                // PLAN-909: a handle share of the creator's
+                                // cell slot — the slot stays live; prepare
+                                // stages the share, nothing transfers.
+                                crate::mir::CaptureKind::Shared => {
+                                    crate::closures::CaptureMode::Shared
+                                }
                             };
                             let src: &Value = if c.kind == crate::mir::CaptureKind::MoveFromEnv {
                                 let h = env_handle.expect(
@@ -3229,23 +3235,63 @@ fn dispatch_with_host<V: ModuleView>(
                                 message: "could not reserve cloned environment fields".into(),
                             });
                         }
+                        // PLAN-909 clone memo (§5.2.3): fields that alias
+                        // ONE cell (same buffer id) inside this clone root
+                        // map to ONE fresh buffer — the copy re-shares it,
+                        // so the original graph's internal sharing shape
+                        // survives a closure clone (both copied fields keep
+                        // observing each other's writes; nothing reconnects
+                        // to the source graph).
+                        let mut cell_memo: std::collections::BTreeMap<u64, Value> =
+                            std::collections::BTreeMap::new();
                         for i in 0..env.field_count() {
                             let f = env.field(i).expect("field_count bounds i");
-                            let cloned_field = match clone_owned_value(
-                                f,
-                                &st.arena,
-                                &cancel,
-                                wall_left,
-                                &mut st.steps,
-                                limits.max_steps,
-                            ) {
-                                Ok(v) => v,
-                                Err(out) => {
-                                    // Partial output unwinds through the
-                                    // fields' own handle drops (the visitor
-                                    // fully unwound each single clone).
-                                    return Some(out);
+                            let cloned_field = match f {
+                                Value::List(handle) => {
+                                    match cell_memo.get(&handle.buf_id()) {
+                                        Some(shared) => shared.clone(),
+                                        None => {
+                                            let fresh = match clone_owned_value(
+                                                f,
+                                                &st.arena,
+                                                &cancel,
+                                                wall_left,
+                                                &mut st.steps,
+                                                limits.max_steps,
+                                            ) {
+                                                Ok(v) => v,
+                                                Err(out) => {
+                                                    // Partial output unwinds through the
+                                                    // fields' own handle drops (the visitor
+                                                    // fully unwound each single clone).
+                                                    return Some(out);
+                                                }
+                                            };
+                                            if let Value::List(new_handle) = &fresh {
+                                                cell_memo
+                                                    .insert(handle.buf_id(), fresh.clone());
+                                                let _ = new_handle;
+                                            }
+                                            fresh
+                                        }
+                                    }
                                 }
+                                _ => match clone_owned_value(
+                                    f,
+                                    &st.arena,
+                                    &cancel,
+                                    wall_left,
+                                    &mut st.steps,
+                                    limits.max_steps,
+                                ) {
+                                    Ok(v) => v,
+                                    Err(out) => {
+                                        // Partial output unwinds through the
+                                        // fields' own handle drops (the visitor
+                                        // fully unwound each single clone).
+                                        return Some(out);
+                                    }
+                                },
                             };
                             new_fields.push(cloned_field);
                         }

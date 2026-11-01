@@ -583,6 +583,14 @@ impl ListHandle {
     pub fn len(&self) -> usize {
         self.rc.borrow().elems.len()
     }
+
+    /// Buffer identity (the `ListBuf::id` the arena allocated): two handles
+    /// alias ONE buffer iff their ids are equal. PLAN-909 clone memo — a
+    /// closure-clone root must copy a shared cell exactly once and re-share
+    /// the copy, preserving the original graph's internal sharing shape.
+    pub fn buf_id(&self) -> u64 {
+        self.rc.borrow().id
+    }
 }
 
 impl Clone for ListHandle {

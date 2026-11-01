@@ -3848,11 +3848,16 @@ impl Verifier {
                         l.span,
                     );
                 }
-                if l.mutable || l.param_mode != hir::ParamMode::View {
+                // PLAN-909: a capture local MAY declare `mutable: true` —
+                // it is the checked writability fact of a private env cell
+                // (K06) or a shared `var` cell, cross-checked against the
+                // creating site's mode by the closure-env rules. A
+                // parameter mode stays forbidden on captures.
+                if l.param_mode != hir::ParamMode::View {
                     self.error(
                         "verify.binding-invalid",
                         format!(
-                            "capture local `{}` cannot declare mutability or a parameter mode",
+                            "capture local `{}` cannot declare a parameter mode",
                             l.id_text
                         ),
                         l.span,
@@ -4097,6 +4102,37 @@ impl Verifier {
                                             self.error(
                                                 "verify.closure-env-mismatch",
                                                 format!("expr `{}` capture local type does not match the callee environment", e.id_text),
+                                                e.span,
+                                            );
+                                        }
+                                        // PLAN-909 cell domain: a SHARED capture
+                                        // (handle-shared `var` cell) and a
+                                        // WRITABLE capture local (K06 private
+                                        // env cell) exist only over scalar
+                                        // int/bool/char; a shared capture must
+                                        // name a mutable source and mirror its
+                                        // writability so the creator, every
+                                        // sibling and the body agree on one
+                                        // checked fact. Borrow captures are
+                                        // never writable.
+                                        let scalar = matches!(
+                                            target_type,
+                                            ValueType::I32 | ValueType::Bool | ValueType::Char
+                                        );
+                                        let domain_ok = match capture.mode {
+                                            hir::CaptureMode::Shared => {
+                                                scalar && source.mutable && target.mutable
+                                            }
+                                            hir::CaptureMode::Move => !target.mutable || scalar,
+                                            hir::CaptureMode::Borrow => !target.mutable,
+                                        };
+                                        if !domain_ok {
+                                            self.error(
+                                                "verify.closure-shared-domain",
+                                                format!(
+                                                    "expr `{}` capture `{}` ({:?}) is outside the shared/writable cell domain: scalar int/bool/char `var` sources only, writability mirrored by the callee local",
+                                                    e.id_text, source.name, capture.mode
+                                                ),
                                                 e.span,
                                             );
                                         }

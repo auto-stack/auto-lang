@@ -452,6 +452,10 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                     e.out.push(match capture.mode {
                         hir::CaptureMode::Move => 0,
                         hir::CaptureMode::Borrow => 1,
+                        // PLAN-909: a pre-909 decoder rejects byte 2 by the
+                        // unknown-mode rule (the whole artifact is skipped,
+                        // never trusted) instead of guessing a meaning.
+                        hir::CaptureMode::Shared => 2,
                     });
                 }
             }
@@ -802,6 +806,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
                     let mode = match d.u8()? {
                         0 => hir::CaptureMode::Move,
                         1 => hir::CaptureMode::Borrow,
+                        2 => hir::CaptureMode::Shared,
                         _ => return Err("unknown closure capture mode".into()),
                     };
                     captures.push(hir::CaptureBinding {

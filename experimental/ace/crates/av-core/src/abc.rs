@@ -95,13 +95,17 @@ pub const OP_CALL_CLOSURE: u8 = 0x33;
 pub const OP_ENV_GET: u8 = 0x34;
 
 /// PLAN-823 T-03: the capture-mode tag inside the v5 CREATE_CLOSURE
-/// payload (0=move / 1=clone / 2=borrow).
+/// payload (0=move / 1=clone / 2=borrow / r8 3=move_from_env / PLAN-909
+/// 4=shared). The v5 wire version is unchanged: a pre-909 decoder meets
+/// tag 4 and rejects the payload by the unknown-tag rule below instead of
+/// guessing a meaning.
 fn capture_kind_code(k: crate::mir::CaptureKind) -> u8 {
     match k {
         crate::mir::CaptureKind::Move => 0,
         crate::mir::CaptureKind::Clone => 1,
         crate::mir::CaptureKind::Borrow => 2,
         crate::mir::CaptureKind::MoveFromEnv => 3,
+        crate::mir::CaptureKind::Shared => 4,
     }
 }
 
@@ -178,6 +182,7 @@ fn decode_capture_kind(b: u8) -> Result<crate::mir::CaptureKind, AbcDecodeError>
         1 => Ok(crate::mir::CaptureKind::Clone),
         2 => Ok(crate::mir::CaptureKind::Borrow),
         3 => Ok(crate::mir::CaptureKind::MoveFromEnv),
+        4 => Ok(crate::mir::CaptureKind::Shared),
         other => Err(AbcDecodeError::fmt_err(
             "abc.decode.arity",
             format!("unknown capture mode tag {}", other),
