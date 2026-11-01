@@ -93,3 +93,16 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 
 
 合并并行不改变功能反控中的原墙钟/协议预算。完整nextest配置仅对四个具名短时限反控（native生命周期的cap/阻塞stdin、collections真实漏释放及实际整前端/降低/复制退化、MIR-native rounds的liveness/caps协议故障）保留本次test pool排他，使用num-test-threads随实际-j生效；普通组继续原并行。它不隔离其他会话，失败原收据保留，定向重放不能覆盖首次红，也不扩大时限或用笼统ERROR代替原fault物证。
+
+## ACE慢例策略元数据与只读归因（PLAN-893）
+
+- `scripts/test-governance/ace-test-policy.json`（schema `ace-test-policy/1`）是13项原慢义务的
+  **有限策略数据**：家族owner、历史888叶ID→当前原生身份（binary+完整test名+源文件）、迁移
+  证据（K-01/02=896 `5d7afcf78` 迁`ac-av-probe`→ace av conformance并去`t07_`前缀）、职责组/
+  formal组导航、单项重放命令与适用条件。**不参与日常发现/选择/调度**：`fixed-tests.py`正常
+  运行不加载它；执行仍由固定组与原runner决定。治理测试=固定组`infra-ace-policy`
+  （`scripts/tests/test_ace_test_policy.py`）：13项守恒/唯一性/迁名证据/旧叶名拒/组注册/
+  formal轴（13项均处`::performance::`命名空间，T-01真实发现冻结；静态rg解析曾误判4项）。
+- `scripts/test-governance/ace_cost_report.py` 是**只读**归因：输入=既有`cargo t --out`产物
+  （results.json/命令meter/libtest终态/TestCase收据），不启动测试/Job/编译，不覆写旧报告；
+  治理测试=固定组`infra-ace-cost-report`。两者均不建第二目录/第二runner/影响图。

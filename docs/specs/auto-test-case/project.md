@@ -119,3 +119,14 @@ ACE批量B及D3组合C保持显式实验，公开pilot默认A；历史候选数�
 [用途与准入](test-purpose-and-admission.md)、[模块选测](module-selection.md) 顶级模块节；建议未经
 用户批准不改变默认选择。
 
+
+## 已交付范围与限制（PLAN-893）
+
+- 已交付：13项慢测当前原生身份冻结（真实nextest发现）、K-01/02迁名证据、四轴接入约定活例
+  （source=case-av-source-827、typed=case-ace-m1-typed-native-891、资源=case-ac-av、892 emit
+  日常=a2r组，rustc腿按设计ignore）、13项当前单轮成本归因（全部PASS；正文69–1074s、单核
+  CPU密集、峰值102–428MB；单轮不冒正式P90）。T-02记录两次未归因环境干扰红（WER
+  LiveKernelEvent相邻、重放绿）按“原红/干扰/重放均留”保留。
+- 限制/未做：全M1净缺口审计归PLAN-903；产品算法/存储/ABI修复不预占号（具名后继：K-08 publish
+  分区计数核实、K-07 native产物生成吞吐、K-09流式构建单核）；不缩512/4096/32–64MiB样本、
+  不改原触发/预算/分母；无逐测试新鲜度/影响图/定时任务。

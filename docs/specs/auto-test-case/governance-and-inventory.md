@@ -74,3 +74,13 @@ producer与公开收据consumer共用原baseline/retirement/migration/floor，�
 受管a2r-hir用例与直接六项控制在计时前构建同源a2x-worker，并以明确的AC_A2X_HIR_WORKER交给消费者；测试不能借排序或外部CARGO_TARGET_DIR碰巧得到固定路径程序。准备成本/内容哈希/进程计量独立记录，原缺worker ERROR及坏golden FAIL反控保持。只允许准备阶段原有精确哈希编译辅助程序的已完成回收例外，不能对测试体的后代泄漏豁免。
 
 原AAVM独立Rust guest维持零依赖测试载体及既有File实现，通过薄命名空间转发匹配原发射路径；不改变通用合并转译契约或复制生产运行库。guest构建/缓存发布使用自己的target目录。原生引用闭包仍须走实际指令边界，闭包调用的一字节参数和future捕获名的四字节数据不能作为新指令，也不能掩盖非法后继；原golden、native签名/缺实现门与有效性拒绝不削弱。
+
+## 13项慢例登记与调度边界（PLAN-893）
+
+- 13项慢例（syntax1/sema1/AV4/native3/CTE4）的当前身份登记在
+  [ace-test-policy.md](ace-test-policy.md)所述策略数据：旧888叶ID仅历史对照，改名须治理owner
+  提供一一映射证据；13项全部处于`::performance::`命名空间、formal轴=`cargo t ace-performance`，
+  单项重放经职责组`--test-name`导航（不替代最终完整职责组门）。
+- 成本登记=只读报告（[ace-cost-attribution.md](ace-cost-attribution.md)）：真实终态+命令meter+
+  逐测试exec_time关联；父侧判定/persist-GC/copy/cleanup在命令粒度UNOBSERVED有界，不填0；
+  旧成本跨树/配置漂移标STALE不得复用。不新增执行目录、不改触发/频率/预算。

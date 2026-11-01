@@ -342,3 +342,14 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 +显式手动入口与重内存分组保持；跨 crate HTTP helper 常驻中立支撑
 （经 auto-web re-export 保持原路径）。完整合同见
 [test-feature-flattening](test-feature-flattening.md)。
+
+## 计量关联与取消/失败完整性（PLAN-893）
+
+- 成本归因只**关联**既有`process_capture`计量（discovery/inventory/run命令的wall/CPU/Job树
+  峰值+逐测试exec_time），不复制meter、不新建Job；顺序命令wall合成观察窗、CPU分列不相加、
+  峰值取max（嵌套Job共享树）。Case行工具准备以result内收据（build_seconds/exit）呈现并注明
+  收据边界。
+- 判定完整性：PASS主张须有真实执行产物（run.command存在、executed>0、Rust行每执行测试有
+  terminal `ok`事件）；driver errors/零选择/伪PASS/取消超时（exit 124/meter error）一律红；
+  外部杀driver遗留stale lease→后续运行fail-closed拒跑（WinError 183），人工恢复路径成立——
+  该行为经刻意取消控制实证（PLAN-893 T-02）。
