@@ -361,3 +361,6 @@ stage: merge | plan_id: PLAN-908 | plan_revision: r2 | outcome: pass | completio
 | G-DEC-5 | 已裁定2026-11-01：原103核心+扩28已承诺AV双层签章 | O非AV45列future仍gap/owner，不改NA/PASS或隐出全登记；实际未过门不签M1 |
 | D-06 | T-02核原报告/脚本/同义诊断H桥与上限 | 超规则/观测收口修订或另案，不顺手修生产/造runner |
 | D-07 | T-01/06接受904正式接口；重核906等当前H/构建/运行窗 | 904已释放无整项等待；不消费他方WIP、不持窗等别窗；只受影响兼容/来源重核 |
+
+
+stage: goal | plan_id: PLAN-908 | plan_revision: r2 | round: 5 | from: reviewed | to: done | status: archived | outcome: pass | worktree: (removed) | commit: dc8eca3ae (delivery) / 2a78a3247 (archive) / da4fcf14f (cleaned) | next: done
