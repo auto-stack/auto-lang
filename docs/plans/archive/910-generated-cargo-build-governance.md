@@ -19,7 +19,7 @@ depends_on: [PLAN-905, PLAN-906]
 
 ## 0. 变更摘要
 
-承接[905研究](archive/905-generated-cargo-artifact-governance-research.md)、[906交付](archive/906-standalone-language-web-boundary.md)和[Design53](../design/53-independent-build-and-generated-cargo-governance.md)。一个跨仓实施包交付：生成消费者构建配置/target归属单源化、稳定工程与成员身份、内容驱动的生成失效、并发/取消/恢复、可预览且仅针对自有闲置缓存的回收；用真实UI与Web消费者验证正确性和有限空间收益，再向UI007交接。
+承接[905研究](905-generated-cargo-artifact-governance-research.md)、[906交付](906-standalone-language-web-boundary.md)和[Design53](../../design/53-independent-build-and-generated-cargo-governance.md)。一个跨仓实施包交付：生成消费者构建配置/target归属单源化、稳定工程与成员身份、内容驱动的生成失效、并发/取消/恢复、可预览且仅针对自有闲置缓存的回收；用真实UI与Web消费者验证正确性和有限空间收益，再向UI007交接。
 
 当前drafting r1、0/9，仅用户授权制定实施合同，暂不实施。未建worktree/运行metadata、构建、测试或容量实验，未改生产源码、用户环境、共享缓存或现行Spec。905仅研究交付；本计划才是有限治理实施载体，归档前不得称Cargo/M1已关闭。
 
@@ -54,7 +54,7 @@ depends_on: [PLAN-905, PLAN-906]
 
 **实施授权（2026-11-02）**：用户 `/goal 完成计划910` 经 auto-plan-goal 授权整链（work 含建树、review、有界修复、merge）；§10.1 的实施授权缺口由此关闭，后续阶段继承不再追问。不授权改目标/AC/阈值/兼容承诺/仓库范围/预算。
 
-已读`docs/specs/overview.md`（部分仓地图是旧快照）、[语言独立边界](../specs/repository-boundaries/standalone-language-build.md)、[生成发行](../specs/repository-boundaries/generated-ui-distribution.md)、[测试存储生命周期](../specs/auto-test-case/build-storage-lifecycle.md)、[auto-cache](../specs/auto-cache/project.md)，以及UI[结构](../../../auto-ui/docs/specs/ui/structure-closure.md)/[测试映射](../../../auto-ui/docs/specs/ui/structure-test-map.md)/[编译配置](../../../auto-ui/docs/specs/build/ui-compilation-configuration.md)/[选择](../../../auto-ui/docs/specs/build/ui-test-selection.md)。当前无共享生成生命周期专篇，SD-01补齐；不改auto-cache通用存储合同来冒Cargo治理。
+已读`docs/specs/overview.md`（部分仓地图是旧快照）、[语言独立边界](../../specs/repository-boundaries/standalone-language-build.md)、[生成发行](../../specs/repository-boundaries/generated-ui-distribution.md)、[测试存储生命周期](../../specs/auto-test-case/build-storage-lifecycle.md)、[auto-cache](../../specs/auto-cache/project.md)，以及UI[结构](../../../../auto-ui/docs/specs/ui/structure-closure.md)/[测试映射](../../../../auto-ui/docs/specs/ui/structure-test-map.md)/[编译配置](../../../../auto-ui/docs/specs/build/ui-compilation-configuration.md)/[选择](../../../../auto-ui/docs/specs/build/ui-test-selection.md)。当前无共享生成生命周期专篇，SD-01补齐；不改auto-cache通用存储合同来冒Cargo治理。
 
 只读快照：lang `367258e7ac3b90aa51fd90cc2d4b4e148522e011`；UI `98cbcd2e79ebc61b0683886f24f0747b20d72617`；Web `847527e388a9bc6a3bcb0f9cf7e5acac979d36bb`；Man `7f30eb88d66c511d60a2f3415ac2b254278f9a0d`；down `7c4d5cbb28d2093cc2e5dfb76d3104984a8dfe9c`。开工重绑实际SHA/锁/源码hash和子目录指令；主检出已有大量docs/号源WIP保全。本次不递归统计磁盘，905旧空间/工具版本均须重核。
 
