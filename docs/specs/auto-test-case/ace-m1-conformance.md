@@ -257,3 +257,17 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
   → 六诊断负例 a2r 面（G-DEC-3）保 `gap:a2r-golden`。当前 acceptance：core 247/285
   红、extension 28/28 绿、future 45 显示、cert 38 gap、`can_claim_m1=false`——治理交付
   完成 ≠ M1 通过。
+
+## PLAN-911：B17–B19 ac 格位实证（2026-11-02，SD-04）
+
+- 908 冻结计数（core 247/285、38 阻塞、extension 28/28、future 45、cert 38 gap、`can_claim_m1=false`）
+  **保持为历史收据**；本节记录 911 之后三格的当前状态，不预言总数。
+- `b-diags.case.ad` 的 `ace.m1.b17/b18/b19` × `ac-native` 腿迁移为 `mn.diagnostics: "source-v1"`，expected
+  由 `parse/mn.unsupported.frontend` 改为真实 raw 面：`typecheck/source.type-mismatch`、
+  `typecheck/verify.immutable-write`、`typecheck/verify.no-return-path`（raw stage `verify` → `typecheck`）；
+  av 腿、id、source、其他 94 检查不变，base 套件 97 检查迁移后 PASS。
+- binding.tsv 第 38–40 行 ac 列 `diff:pending → ok`（任务列 `T-02/911`，备注记事实 artifact 证据）；
+  其余 9 列/128 行不动；`source-manifest.json` 同步（`plan_911_update`）。回填依据 = 正式父报告
+  `mn-source-diagnostic.json`（`execution_key` 绑定、raw verify、profile scalar、worker mnworker/1.0）。
+- 近邻 NB17/18/19 在严格模式亦 2/2/0 并 echo 能力；默认 908 近邻套件 9/9 不变。
+- **M1 不据此签章**：K06（909）、旧 a2r 认证、B18 avm infra、scenario 等账保持。

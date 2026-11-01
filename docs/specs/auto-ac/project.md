@@ -247,3 +247,15 @@ PLAN-863 增加实验性 [host-console 源码域](source-console-output.md)：ty
 原864合法集合/Variant源码经共享MIR→native机器链，单独recipe/worker、真实拥有值清理、
 source函数候选/坐标与深验恢复；正式suite40检查使原14L/V native源码格关闭，其他引擎格和W/在线帧gap保持。
 见[native合同](../auto-mir/native-collections-variants.md)；旧五域/recipe/cert键集/legacy退役不变。
+
+## native 源码诊断事实通道导航（PLAN-911）
+
+- 规范：[native-source-diagnostics.md](native-source-diagnostics.md)（`mn.source-diagnostic/1` 快照、
+  全部生产出口、worker `source-v1` 互斥结果、父侧严格准入、正式事实落点、入口支持矩阵、具名边界）。
+- 关联：[mir-native-scalar.md](mir-native-scalar.md)（源码拒绝原子/首失败停）、
+  [mir-native-cache.md](mir-native-cache.md)（零缓存写入）、
+  [../auto-av/resident-function-install.md](../auto-av/resident-function-install.md)（`EditOutcome.rejection`
+  只读出口与 attempt 计量）、[../auto-test-case/profile-v2-native.md](../auto-test-case/profile-v2-native.md)
+  （`mn.diagnostics` 与严格准入）。
+- 残余 owner：`syntax-not-converged` 严格 fallback 端到端触发形状（828 引擎）；`OwnedSourceMnSession`
+  暖 API 的 typed 诊断入口（未接，非本通道声称支持）。

@@ -116,3 +116,21 @@ ace-m1 的收据（`ace.m1.cert/1`）、分母登记（`ace.m1.binding/1`）与 
 **语料侧独立版本化资产**，不进本解码器；其严格验证由
 `verify-ace-m1-852.ps1` 与 `ace-certify` 承载，见
 [a2r-golden-certification.md](a2r-golden-certification.md)。
+
+## 显式源码诊断观察模式 `source-v1`（PLAN-911，SD-03）
+
+- v2 `mn` 绑定新增可选字段 `diagnostics: "source-v1"`：仅 `ac/mir-native-scalar-v1` 合法；其他值/类型/
+  recipe（含 typed）为具名 decode 错误；省略 = 旧合同（字段集、判面、报告键均不变）。
+- 严格准入在 oracle 比较**之前**（失败 = `Error`，不是语言 FAIL）：mode/schema echo 必在（合法程序含），
+  原始字节重复键扫描，精确字段集/字面/上限/span 边界（utf8-byte 且落在父侧候选的 char boundary）、
+  `primary` 整数 0、stage 仅 text/bind/verify 可承族、operation 按父侧自身请求链绑定（cold/warm-edit/
+  fallback-cold 的 base/candidate SHA）、与执行结果值级互斥、legacy `diagnostic` 投影一致。
+- 判面：raw stage `text→parse`、`bind→resolve`、`verify→typecheck`，code = 编译器 primary 原样；
+  泛化壳 `mn.unsupported.frontend` 在严格模式不被授信（登记红控 `ace.m1.nd911.red.generic-shell`）。
+- rounds（增量）路径：语言拒绝回合被准入后父侧**停止后续 step**，父侧源回滚 accepted prefix；非语言
+  typed 拒绝 = Error。
+- 正式事实落点：`mn-source-diagnostic.json`（`mn-source-diagnostic-fact/1`，绑 `execution_key`，写后重读）
+  经 `ArtifactRef` 发布，`NativeRecord` / `test-report/2` 键集不变。
+- 固定组：`case-ace-m1-native-diags-911`（套件 `native-diags-911.suite.ad`，17 case：B17–19 负例、
+  NB17–19 近邻 2/2/0、同族变体、多因 primary、多字节注释、Text→parse / Bind→resolve 异族、warm rounds
+  A→B→C 首失败停、3 个登记红控）。协议级反控为 `ac_mn::source_diag_tests` 单元控制（15）。

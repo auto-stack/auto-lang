@@ -136,3 +136,13 @@ ACE批量B及D3组合C保持显式实验，公开pilot默认A；历史候选数�
 - 限制/未做：全M1净缺口审计归PLAN-903；产品算法/存储/ABI修复不预占号（具名后继：K-08 publish
   分区计数核实、K-07 native产物生成吞吐、K-09流式构建单核）；不缩512/4096/32–64MiB样本、
   不改原触发/预算/分母；无逐测试新鲜度/影响图/定时任务。
+
+### PLAN-911：native 源码诊断事实通道与 B17–19 ac 实证
+
+- `mn.diagnostics: "source-v1"`（scalar recipe 专属）与父侧严格准入/正式事实 artifact：
+  [profile-v2-native.md](profile-v2-native.md) 第 "显式源码诊断观察模式" 节；通道合同见
+  [../auto-ac/native-source-diagnostics.md](../auto-ac/native-source-diagnostics.md)。
+- 固定组 `case-ace-m1-native-diags-911`；`b-diags.case.ad` 的 B17/B18/B19 ac 腿已迁移严格模式（真实
+  raw code），binding.tsv 三格 `diff:pending → ok`（[ace-m1-conformance.md](ace-m1-conformance.md) /
+  [ace-m1-gap-audit.md](ace-m1-gap-audit.md) 的 911 节）。
+- 登记红控（`case-control-oracles.json`）：错族 / 错 stage / 旧泛化壳三个 expected-FAIL 控制。

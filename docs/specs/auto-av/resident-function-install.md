@@ -216,3 +216,18 @@ r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常�
 不恢复trusted凭据。该native静态产物消费不提供活native帧HMR，也不改变旧AV集合source会话的
 whole前端差额。预算、性能/512口径及实际限制见
 [native collections](../auto-mir/native-collections-variants.md)。
+
+## PLAN-911：拒绝的 typed 只读出口（SD-06）
+
+- `EditOutcome` 新增 `rejection: Option<EditRejection{kind: RefusalKind, phase: Option<RejectPhase>,
+  typed_diagnostics: Vec<Diagnostic>, base_revision, changed_fn}>`：在**同一拒绝站点**随本次
+  `EditOutcome` 返回（`prepare_edit` 全部 11 站点、`commit`/`cancel_prepared` 的 session/candidate 拒绝、
+  env install 拒绝），`typed_diagnostics` 是编译器实际返回的 `Vec<Diagnostic>` 原序克隆（不去重）；
+  `diagnostics`（rendered）与 `non_fast_path_reason` 字符串**不变**，仍是同决定的展示投影。
+- 不改 prepare/commit 决策、安装、捕获、资源生命周期；不从 session "last errors" 迟读；不 pin AST/HIR/
+  code/env。`rejected()` 保留给无 kind 的旧构造（data/resident 会话），scalar 会话全部站点 typed。
+- W-S2 真实计量：`frontend_body_attempt:{fn}` 在 `prepare_candidate_document` **调用前**、
+  `verify_hir_attempt:{fn}` 在 `verify_function` 调用前 bump（原成功后计数保留为 success 账）；
+  `structural_deltas` 的 unaffected 口径不受影响（attempt 键归 changed fn）。
+- 909 交付基面上单写；全部 `EditOutcome` 构造/消费者（formal_828/formal_worker/av-worker/resident/
+  av_resident tests/native incremental）编译验证，`ace-av`、`case-ace-m1-shared-mutable-909` 组回归通过。

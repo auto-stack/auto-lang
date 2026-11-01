@@ -58,3 +58,12 @@
   不扣编译/IPC/排队——计时语义见
   [auto-test-case/architecture.md](../auto-test-case/architecture.md) 的
   rounds 协议（父侧观测连续窗口，含独立期望比较）。
+
+## 源码拒绝与缓存语义（PLAN-911，SD-02）
+
+- 真实源码拒绝（frontend/verify/commit 三类）**零缓存写入**：无 unit COFF put、无 manifest 发布、无
+  history/cv_map 变化、resident 工作集与 unit 身份（fp/generation）恒等；拒绝不缓存 PASS，下一次独立
+  操作（修复编辑或新进程 restore）按原身份真实执行。
+- 成功路径 hit/miss/publish/read-only 语义与 783/818/871 合同不变；`source-v1` 元数据（echo 字段、步骤
+  记录内 refusal/body_work）不参与 unit 键或 manifest 指纹。
+- 增量 warmup 顺序调整为 mn 单元编译先于 828 session（同编译器同源一次编译），对缓存键与产物无影响。

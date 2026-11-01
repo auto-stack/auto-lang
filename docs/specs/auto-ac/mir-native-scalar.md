@@ -42,3 +42,18 @@
   expected**（手审算例/golden）核对——typed 结果/PE 自检码、trace 字节及
   trap 前副作用顺序一致；不允许仅两后端互比。详见
   [project.md](project.md) 818 节与 [mir-native-cache.md](mir-native-cache.md)。
+
+## 源码拒绝的 typed 事实与首失败原子（PLAN-911，SD-02）
+
+- 升级前门 `compile_escalating`（scalar→record→text-record）失败时返回**真实终止 profile**、实际
+  attempted 序与仅用于升级的 surface 拒绝；`MnDriver::request` 把它构造成 `MnError::Source`
+  （`mn.source-diagnostic/1` 不可变快照，见 [native-source-diagnostics.md](native-source-diagnostics.md)）。
+  `code()`/`message()` 仍是旧 `mn.unsupported.frontend` + `{Stage:?}/{code}: {message}` 投影，默认消费者不变。
+- `MnDriver::check_source`：同一升级前门、仅前端（0 codegen/link/run），供 worker 严格 fallback 逐候选语义门。
+- 源码拒绝 phase（frontend / HIR verify / commit）**不**进入 MIR lower/codegen/link/run，不产生 guest
+  COFF/PE，不提交 source/env/安装/manifest；后段（MIR 准入/资源/link/发布）失败保持各自原分类与事务合同，
+  不伪装为语言族。
+- 暖编辑（`MnIncrementalSession::edit`）：每个出口经 `close_exit` 计量结构 delta 与 core body-work（失败路径
+  同样计量，不留 `Default` 零值）；拒绝携带 typed `EditRefusal`（kind/phase/快照绑定 base/candidate SHA、
+  session revision、编辑区间）。语言诊断为终态不进 fallback；仅 `syntax-not-converged` 允许显式 fallback。
+- worker `source-v1`：多 step 请求首失败即停并报 accepted prefix；默认模式字节形状不变。

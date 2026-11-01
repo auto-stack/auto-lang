@@ -204,3 +204,14 @@ G-DEC-1..5 已由用户按推荐全部裁定（决策件 §13，2026-11-01），
 名解析 2、B17–19 ac 3、B18 avm 1、a2r 诊断面 7（六负例 + T08 归一）、scenario 观察通道 14、
 AV 故障/代际/共享可变 3、mn 复合场景面 7、R07 a2r 未定型 1）；extension 28/28 绿；future 45 显示；
 cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签章待 §8 顺序④。
+
+## PLAN-911 后状态（2026-11-02，SD-04；§11 冻结表为 908 历史）
+
+- **F-REG-2 / G-DEC-2（B17–19 ac 面）**：mn 诊断面已交付——native `mn.source-diagnostic/1` 通道把共享
+  编译器真实 raw stage/code 透传到父侧严格判面；三格由 `diff:pending` 回填 `ok`（依据正式父报告
+  事实 artifact，非 token 手改、非旧 generic 绿）。owner 关闭；G-DEC-2 的"族面不满足可辨识原因"
+  前提已消失（原因可辨识且来自真实编译器）。
+- 不变：F-REG-3（a2r `gap:a2r-golden` ×6）、F-INFRA-3（B18 avm infra）、F-NAT-4、38 核心 blocker 其余项、
+  future 45、cert 轴——本包不触。
+- 新具名边界（非阻塞，owner 已记）：`syntax-not-converged` 严格 fallback 无端到端触发形状；
+  `OwnedSourceMnSession` 暖 API 未接 typed 通道。
