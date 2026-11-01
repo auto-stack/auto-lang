@@ -372,6 +372,12 @@ pub fn compute_relative_path(from: &Path, to: &Path) -> String {
 /// Resolve the UI owner consistently for generated workspaces and delivery.
 fn compute_auto_ui_runtime_rel_path(auto_lang_rel: &str, ws_dir: &Path) -> AutoResult<String> {
     let lang_crate = ws_dir.join(auto_lang_rel.replace(char::from(92), "/"));
+    // PLAN-910: resolve `..` segments before parent arithmetic. An
+    // in-framework workspace (`<root>/examples/rust-workspace`) anchors the
+    // language crate as `../../crates/auto-lang`; lexical parent() on that
+    // yields `..` and the UI owner lookup lands on `examples/auto-ui`
+    // (observed: "producer UI owner 源缺失" for examples/ui/002-counter).
+    let lang_crate = fs::canonicalize(&lang_crate).unwrap_or(lang_crate);
     let producer = lang_crate
         .parent()
         .and_then(Path::parent)
@@ -933,7 +939,19 @@ mod plan842_tests {
         let chosen = compute_auto_ui_runtime_rel_path(&lang_rel, &ws).unwrap();
         assert_eq!(
             fs::canonicalize(ws.join(chosen)).unwrap(),
-            fs::canonicalize(canonical).unwrap()
+            fs::canonicalize(&canonical).unwrap()
+        );
+        // PLAN-910: in-framework workspace (`<root>/examples/rust-workspace`)
+        // anchors the crate as `../../crates/auto-lang`; the UI owner must
+        // still resolve to the sibling checkout, not `examples/auto-ui`.
+        let in_ws = lang.join("examples/rust-workspace");
+        fs::create_dir_all(&in_ws).unwrap();
+        let in_rel = compute_relative_path(&in_ws, &lang.join("crates/auto-lang"));
+        assert!(in_rel.starts_with("../../crates"), "{in_rel}");
+        let chosen = compute_auto_ui_runtime_rel_path(&in_rel, &in_ws).unwrap();
+        assert_eq!(
+            fs::canonicalize(in_ws.join(chosen)).unwrap(),
+            fs::canonicalize(&canonical).unwrap()
         );
     }
 }

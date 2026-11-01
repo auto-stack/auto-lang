@@ -777,9 +777,14 @@ use OpenProcess as windows_open_process;
 // ---------------------------------------------------------------------------
 
 /// Publish the uplifted cargo artifact (exe + optional pdb) into the member's
-/// own `bin/<profile>/` directory via hard link (fallback: copy). The
-/// published path is stable per member, immune to same-basename uplift races
-/// in the shared target root, and is what discovery receipts point at.
+/// own `bin/<profile>/` directory. The exe is COPIED (a hard link would share
+/// the inode with cargo's deps/uplift files, and a running published exe
+/// would then lock cargo out of rebuilding — observed on Windows as
+/// "failed to remove file ... os error 5"); the pdb is hard-linked (never
+/// mapped by the running process). The published path is stable per member,
+/// immune to same-basename uplift races in the shared target root, and is
+/// what discovery receipts point at. A running published exe is renamed
+/// away before the new copy lands (Windows allows renaming a mapped image).
 pub fn publish_artifact(uplifted: &Path, member_dir: &Path, release: bool) -> io::Result<PathBuf> {
     let profile = if release { "release" } else { "debug" };
     let dest_dir = member_dir.join("bin").join(profile);
@@ -789,13 +794,13 @@ pub fn publish_artifact(uplifted: &Path, member_dir: &Path, release: bool) -> io
         .ok_or_else(|| io::Error::other("uplifted artifact has no file name"))?
         .to_os_string();
     let dest = dest_dir.join(&file_name);
-    replace_durable(uplifted, &dest)?;
+    replace_durable(uplifted, &dest, true)?;
     let pdb = uplifted.with_extension("pdb");
     if pdb.is_file() {
         let pdb_name = pdb.file_name().unwrap().to_os_string();
         let pdb_dest = dest_dir.join(&pdb_name);
         if !same_file(&pdb, &pdb_dest) {
-            replace_durable(&pdb, &pdb_dest)?;
+            replace_durable(&pdb, &pdb_dest, false)?;
         }
     }
     Ok(dest)
@@ -808,12 +813,14 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn replace_durable(src: &Path, dest: &Path) -> io::Result<()> {
+fn replace_durable(src: &Path, dest: &Path, copy: bool) -> io::Result<()> {
     if dest.exists() {
         // Windows: a running exe cannot be deleted but can be renamed away.
         let old = dest.with_extension(format!("old-{}", now_millis()));
         match fs::rename(dest, &old) {
             Ok(()) => {
+                // Best effort: a still-running old image stays as *.old-* and
+                // is swept on the next successful publication.
                 let _ = fs::remove_file(&old);
             }
             Err(_) => {
@@ -821,9 +828,21 @@ fn replace_durable(src: &Path, dest: &Path) -> io::Result<()> {
             }
         }
     }
-    if let Err(hard_error) = fs::hard_link(src, dest) {
-        let _ = hard_error;
+    if copy {
         fs::copy(src, dest)?;
+    } else if fs::hard_link(src, dest).is_err() {
+        fs::copy(src, dest)?;
+    }
+    // Sweep stale renamed images from earlier publications (ignore locked).
+    if let Some(parent) = dest.parent() {
+        if let Ok(entries) = fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.contains(".old-") {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1080,6 +1099,11 @@ mod plan910_tests {
         fs::write(&src, b"payload-b-longer").unwrap();
         let dest2 = publish_artifact(&src, &member, false).unwrap();
         assert_eq!(dest2, dest);
+        assert_eq!(fs::read(&dest).unwrap(), b"payload-b-longer");
+        // The published exe is an independent copy: rewriting the uplifted
+        // source afterwards must not change the published bytes (a hard link
+        // would), so cargo can relink while the published copy runs.
+        fs::write(&src, b"payload-c").unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"payload-b-longer");
     }
 
