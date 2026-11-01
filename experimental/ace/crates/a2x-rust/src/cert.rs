@@ -231,7 +231,21 @@ impl CertDraft {
 }
 
 fn kv(key: &str, value: &str) -> String {
-    format!("  \"{}\": \"{}\",\n", key, value)
+    // JSON-escape the value (the PLAN-904 execution-config identity is a
+    // canonical JSON object carried as a string field)
+    let mut esc = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '"' => esc.push_str("\\\""),
+            '\\' => esc.push_str("\\\\"),
+            '\n' => esc.push_str("\\n"),
+            '\r' => esc.push_str("\\r"),
+            '\t' => esc.push_str("\\t"),
+            c if (c as u32) < 0x20 => esc.push_str(&format!("\\u{:04x}", c as u32)),
+            c => esc.push(c),
+        }
+    }
+    format!("  \"{}\": \"{}\",\n", key, esc)
 }
 
 #[cfg(test)]

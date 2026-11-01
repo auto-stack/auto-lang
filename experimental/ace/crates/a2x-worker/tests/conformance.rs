@@ -2,6 +2,8 @@
 mod collections_v15;
 #[path = "cases/store_coll_904.rs"]
 mod store_coll_904;
+#[path = "cases/cert_coll_904.rs"]
+mod cert_coll_904;
 #[path = "cases/collections_904.rs"]
 mod collections_904;
 #[path = "cases/boundaries.rs"]
