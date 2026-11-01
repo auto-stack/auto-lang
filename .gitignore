@@ -173,6 +173,11 @@ test_temp.txt
 # 被 *.json 母规则静默吞掉致 master 执行链断——同 F-793-R1-01 缺陷类，自
 # 736064ce7^ 内容恢复并加豁免防复发）
 !scripts/test-governance/legacy-wrapper-contract.json
+# PLAN-908：M1 适用登记与来源清单（verify-ace-m1-852 contract/acceptance 与
+# infra-ace-m1 治理测试消费的长期测试合同数据；R1 F-908-R1-01：*.json 母规则
+# 吞掉两件致交付提交缺失、fresh 检出 contract 必红——同 F-793-R1-01 缺陷类）
+!crates/auto-lang/test/cases/ace-m1/applicability.json
+!crates/auto-lang/test/cases/ace-m1/source-manifest.json
 # PLAN-893：13项慢例接入策略元数据（ace_cost_report/ace-policy 治理测试消费；
 # *.json 母规则会吞掉致固定组治理断——同 F-793-R1-01 缺陷类）
 !scripts/test-governance/ace-test-policy.json

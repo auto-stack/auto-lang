@@ -132,6 +132,22 @@ class StaticRegistryTests(unittest.TestCase):
         self.assertEqual(app['approval_source']['decision_doc_sha256'], sha)
         self.assertEqual(app['approval_source']['ruling_date'], '2026-11-01')
 
+    def test_sidecars_are_git_tracked_and_not_ignored(self):
+        """F-908-R1-01 regression lock: the `*.json` parent ignore rule once
+        swallowed both registries out of the delivery commit (fresh checkout
+        contract red). They must be tracked and must not match any ignore
+        rule; skipped only when the tree is not a git checkout."""
+        if shutil.which('git') is None or not (ROOT / '.git').exists():
+            self.skipTest('not a git checkout')
+        for rel in ('crates/auto-lang/test/cases/ace-m1/applicability.json',
+                    'crates/auto-lang/test/cases/ace-m1/source-manifest.json'):
+            tracked = subprocess.run(['git', 'ls-files', '--error-unmatch', rel],
+                                     cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(tracked.returncode, 0, f"{rel} is not git-tracked")
+            ignored = subprocess.run(['git', 'check-ignore', '-q', rel],
+                                     cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(ignored.returncode, 0, f"{rel} matches an ignore rule")
+
     def test_manifest_counts_and_neighbors(self):
         m = json.loads((CORPUS / 'source-manifest.json').read_text(encoding='utf-8'))
         self.assertEqual(m['schema'], 'ace.m1.source-manifest/1')

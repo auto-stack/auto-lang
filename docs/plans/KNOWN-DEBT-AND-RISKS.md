@@ -28,7 +28,7 @@
 
 绑定 T-07 reviewed_commit `0e9c08189`（plan-862-dev）。两项，均**不在** PLAN-862 合同写面内：
 
-- **D-862-R1-01（P2，预存缺陷）**：`scripts/verify-ace-m1-852.ps1` 的 `Load-Binding` 用 `$line -split "`t", -1`；PowerShell 的 `-split` 第三操作数是 options 而非 limit，pwsh 7.6.9 实测返回 1 段 → 852 的 `contract`/`acceptance` scope 直接红（"binding row has 1 columns"）。本计划未改该脚本（diff 为空），`verify-av-862.ps1` 已用 `.Split([char]9)` 覆盖同一完整性面（12 列/唯一 id/owner 注记/`na` 规则 ID）。852 已归档，修复需独立 L0 worktree；修好前不得把 852 scope 当作可运行的 M1 完整性门。
+- **D-862-R1-01（P2，预存缺陷）**：`scripts/verify-ace-m1-852.ps1` 的 `Load-Binding` 用 `$line -split "`t", -1`；PowerShell 的 `-split` 第三操作数是 options 而非 limit，pwsh 7.6.9 实测返回 1 段 → 852 的 `contract`/`acceptance` scope 直接红（"binding row has 1 columns"）。本计划未改该脚本（diff 为空），`verify-av-862.ps1` 已用 `.Split([char]9)` 覆盖同一完整性面（12 列/唯一 id/owner 注记/`na` 规则 ID）。852 已归档，修复需独立 L0 worktree；修好前不得把 852 scope 当作可运行的 M1 完整性门。 **→ 已关闭（PLAN-908 T-06，2026-11-01）**：`Load-Binding` 改 `.Split([char]9)`（862 同源规则）并退出 attachments/cases.json 依赖，contract/acceptance 在 plan-908-dev 复跑 exit 0（base97 97/97、infra-ace-m1 治理反控绿）；852 scope 恢复为可运行 M1 完整性门。
 - **待决策（P2，口径）**：对等口径决策件的附录把 C01/C02/I01–I11/G02–G08 写成**无规则 ID** 的 `na:m1`，与其 §5 规则 1（无规则 ID 即视为 `diff:pending`）冲突。全表五态词表回填须先裁定这些行的规则归属（候选 NA-5/NA-6）；在此之前 M1 clean 只能以实测口径（PLAN-862 T-06：20/73）记，不得引用 50/103 投影。
 ### Plan 869（2026-10-28，work 交接；结构性候选待签核 + 防护面限制记录）
 

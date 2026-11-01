@@ -1,0 +1,2083 @@
+{
+ "schema": "ace.m1.applicability/1",
+ "plan": "PLAN-908",
+ "approval_source": {
+  "decision_doc": "docs/plans/reports/ace-m1-scope-decision-2026-10-28.md",
+  "decision_doc_sha256": "874ccc1198bf23c284fa588a6dfcdee80eecc8f5a0e392b88b34ddd74db0875b",
+  "ruling_date": "2026-11-01",
+  "ruling_section": "13",
+  "plan_file": "docs/plans/908-ace-m1-rules-registry-and-acceptance.md",
+  "user_ruling": "G-DEC-1..5 all approved per recommendation (2026-11-01); prior approvals inherited directly"
+ },
+ "layers": {
+  "core": {
+   "rows": 103,
+   "cells": 412,
+   "na_cells": 95,
+   "ruled_accepted_cells": 32,
+   "required_cells": 285,
+   "definition": "all binding rows except extension row groups U01-U10/H01-H03/O01-O15"
+  },
+  "extension_committed": {
+   "cells": 28,
+   "path": "av",
+   "row_groups": [
+    "U01-U10",
+    "H01-H03",
+    "O01-O15"
+   ],
+   "origin": "G-DEC-5 two-layer acceptance: committed extension profile"
+  },
+  "extension_na": {
+   "cells": 39,
+   "rules": "NA-4 (U non-AV 30) + NA-6-H (6) + NA-3-H (3)"
+  },
+  "ruled_accepted": {
+   "cells": 32,
+   "rule": "R-ACCEPTED",
+   "note": "inherited R-A/B/C/D legacy differences: executed, ruled accepted, never green; not M1 blockers"
+  },
+  "future_uncommitted": {
+   "cells": 45,
+   "rule": "FUTURE-O",
+   "note": "honest gaps shown in every report; never PASS/NA by this registry"
+  }
+ },
+ "extension_rows": [
+  {
+   "ids": [
+    "U01",
+    "U02",
+    "U03",
+    "U04",
+    "U05",
+    "U06",
+    "U07",
+    "U08",
+    "U09",
+    "U10"
+   ],
+   "ns": "corpus",
+   "origin": "PLAN-862 entry/unit",
+   "committed_path": "av"
+  },
+  {
+   "ids": [
+    "H01",
+    "H02",
+    "H03"
+   ],
+   "ns": "corpus",
+   "origin": "PLAN-866 resident",
+   "committed_path": "av"
+  },
+  {
+   "ids": [
+    "O01",
+    "O02",
+    "O03",
+    "O04",
+    "O05",
+    "O06",
+    "O07",
+    "O08",
+    "O09",
+    "O10",
+    "O11",
+    "O12",
+    "O13",
+    "O14",
+    "O15"
+   ],
+   "ns": "corpus",
+   "origin": "PLAN-863 console",
+   "committed_path": "av"
+  }
+ ],
+ "expected_totals": {
+  "rows": 131,
+  "corpus_rows": 91,
+  "scenario_rows": 40,
+  "columns": 12,
+  "cells": 524,
+  "core_rows": 103,
+  "core_cells": 412,
+  "extension_rows": 28,
+  "extension_cells": 112,
+  "committed_cells": 28,
+  "extension_na_cells": 39,
+  "future_cells": 45,
+  "core_na_cells": 95,
+  "ruled_accepted_cells": 32,
+  "core_ruled_accepted_cells": 32,
+  "required_cells": 313,
+  "rule_cells": 134,
+  "gdec_migrated_cells": 61,
+  "gdec_migrated_split": "54 bare n/a + 7 raw gap; 2 inherited-clarified + 59 new"
+ },
+ "rules": [
+  {
+   "rule": "NA-1",
+   "layer": "core_na",
+   "origin": "2026-10-28 scope decision (inherited)",
+   "reentry": "a plan freezing legacy/a2r typed-entry support re-admits these rows as gap:<plan>",
+   "cells": [
+    {
+     "ns": "corpus",
+     "id": "W01",
+     "path": "avm",
+     "old_token": "gap:avm-no-typed-entry",
+     "binding_token": "gap:avm-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W01",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-typed-entry",
+     "binding_token": "gap:a2r-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W02",
+     "path": "avm",
+     "old_token": "gap:avm-no-typed-entry",
+     "binding_token": "gap:avm-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W02",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-typed-entry",
+     "binding_token": "gap:a2r-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W03",
+     "path": "avm",
+     "old_token": "gap:avm-no-typed-entry",
+     "binding_token": "gap:avm-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W03",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-typed-entry",
+     "binding_token": "gap:a2r-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W04",
+     "path": "avm",
+     "old_token": "gap:avm-no-typed-entry",
+     "binding_token": "gap:avm-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W04",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-typed-entry",
+     "binding_token": "gap:a2r-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W05",
+     "path": "avm",
+     "old_token": "gap:avm-no-typed-entry",
+     "binding_token": "gap:avm-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    },
+    {
+     "ns": "corpus",
+     "id": "W05",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-typed-entry",
+     "binding_token": "gap:a2r-no-typed-entry",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-1)"
+    }
+   ]
+  },
+  {
+   "rule": "NA-2",
+   "layer": "core_na",
+   "origin": "2026-10-28 scope decision (inherited)",
+   "reentry": "SEM-07 or a legacy Dyn capability plan re-admits these rows",
+   "cells": [
+    {
+     "ns": "scenario",
+     "id": "D01",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D01",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D02",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D02",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D03",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D03",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D04",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D04",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D05",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D05",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D06",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D06",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D07",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D07",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D08",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D08",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D09",
+     "path": "avm",
+     "old_token": "gap:avm-no-dyn-api",
+     "binding_token": "gap:avm-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D09",
+     "path": "a2r",
+     "old_token": "gap:a2r-no-dyn-api",
+     "binding_token": "gap:a2r-no-dyn-api",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-2)"
+    }
+   ]
+  },
+  {
+   "rule": "NA-3",
+   "layer": "core_na/extension_na",
+   "origin": "2026-10-28 NA-3; extended by G-DEC-4 (2026-11-01): corpus H01-H03 ac new, scenario I07/I08 ac inherited-clarified",
+   "reentry": "native closure/Dyn ABI, resident loader or online hot-reload capability plans freeze interfaces, rows revert to gap:<plan>",
+   "cells": [
+    {
+     "ns": "corpus",
+     "id": "K01",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "K02",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "K03",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "K04",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "K05",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "K06",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "gap:mn-scalar-only",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D01",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D02",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D03",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D04",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D05",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D06",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D07",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D08",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "scenario",
+     "id": "D09",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "gap:ac-composite-native",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-3)"
+    },
+    {
+     "ns": "corpus",
+     "id": "H01",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "na:m1(NA-3)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H02",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "na:m1(NA-3)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H03",
+     "path": "ac",
+     "old_token": "gap:mn-scalar-only",
+     "binding_token": "na:m1(NA-3)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I07",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "na:m1(NA-3)",
+     "migrated": true,
+     "approval": "inherited NA-3 clarified by G-DEC-4 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I08",
+     "path": "ac",
+     "old_token": "gap:ac-native-loader",
+     "binding_token": "na:m1(NA-3)",
+     "migrated": true,
+     "approval": "inherited NA-3 clarified by G-DEC-4 2026-11-01"
+    }
+   ]
+  },
+  {
+   "rule": "NA-4",
+   "layer": "extension_na",
+   "origin": "2026-10-28 user ruling (binding already carries na:m1(NA-4))",
+   "reentry": "a plan freezing native/legacy entry-profile support re-admits these rows",
+   "cells": [
+    {
+     "ns": "corpus",
+     "id": "U01",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U01",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U01",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U02",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U02",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U02",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U03",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U03",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U03",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U04",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U04",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U04",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U05",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U05",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U05",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U06",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U06",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U06",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U07",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U07",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U07",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U08",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U08",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U08",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U09",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U09",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U09",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U10",
+     "path": "ac",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U10",
+     "path": "avm",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    },
+    {
+     "ns": "corpus",
+     "id": "U10",
+     "path": "a2r",
+     "old_token": "na:m1(NA-4)",
+     "binding_token": "na:m1(NA-4)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 (NA-4, already migrated)"
+    }
+   ]
+  },
+  {
+   "rule": "NA-5",
+   "layer": "core_na",
+   "origin": "G-DEC-1 (2026-11-01): CTE/certification-subject and ACE-incremental-session-subject exclusions",
+   "reentry": "a successor formally consuming the same capability on a new producer freezes interface/rules first; ordinary execution/codegen duties unaffected",
+   "cells": [
+    {
+     "ns": "scenario",
+     "id": "C01",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "C01",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "C02",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "C02",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G01",
+     "path": "ac",
+     "old_token": "gap:ac-composite-native",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G01",
+     "path": "av",
+     "old_token": "gap:av-822",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G01",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G02",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G02",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G02",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G03",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G03",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G03",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G04",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G04",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G04",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G05",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G05",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G05",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G06",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G06",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G06",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G07",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G07",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G07",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G08",
+     "path": "ac",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G08",
+     "path": "av",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "G08",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-5)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    }
+   ]
+  },
+  {
+   "rule": "NA-6",
+   "layer": "core_na/extension_na",
+   "origin": "G-DEC-1 (I01-I11 avm/a2r) + G-DEC-4 (H01-H03 avm/a2r), 2026-11-01",
+   "reentry": "formal adoption of the same scenario interface or consumer migration re-admits; legacy VM cache and old a2r snapshot duties remain verified",
+   "cells": [
+    {
+     "ns": "scenario",
+     "id": "I01",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I01",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I02",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I02",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I03",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I03",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I04",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I04",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I05",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I05",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I06",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I06",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I07",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I07",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I08",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I08",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I09",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I09",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I10",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I10",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I11",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "scenario",
+     "id": "I11",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-1 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H01",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H01",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H02",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H02",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H03",
+     "path": "avm",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    },
+    {
+     "ns": "corpus",
+     "id": "H03",
+     "path": "a2r",
+     "old_token": "n/a",
+     "binding_token": "na:m1(NA-6)",
+     "migrated": true,
+     "approval": "G-DEC-4 new 2026-11-01"
+    }
+   ]
+  },
+  {
+   "rule": "R-ACCEPTED",
+   "layer": "ruled_accepted",
+   "origin": "inherited 2026-10-28 R-A/R-B/R-C/R-D group ruling: legacy value/semantics/runtime/accepts differences and the K02/K05 legacy-grammar a2r differences are ruled accepted — executed differences, never green, evidence kept",
+   "reentry": "a semantic ruling overturning a difference re-admits the cell as gap:<owner>; the ruled-accepted state never silently becomes ok",
+   "cells": [
+    {
+     "ns": "corpus",
+     "id": "B08",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "B11",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "B13",
+     "path": "avm",
+     "old_token": "diff-old-int-i64",
+     "binding_token": "diff-old-int-i64",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "B15",
+     "path": "avm",
+     "old_token": "diff-old-int-i64",
+     "binding_token": "diff-old-int-i64",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "B17",
+     "path": "avm",
+     "old_token": "diff:accepted(R-C)",
+     "binding_token": "diff:accepted(R-C)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "B19",
+     "path": "avm",
+     "old_token": "diff:accepted(R-C)",
+     "binding_token": "diff:accepted(R-C)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "T01",
+     "path": "avm",
+     "old_token": "diff-legacy-runtime(NoneType +)",
+     "binding_token": "diff-legacy-runtime(NoneType +)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "T02",
+     "path": "avm",
+     "old_token": "diff-legacy-runtime(NoneType +)",
+     "binding_token": "diff-legacy-runtime(NoneType +)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "T03",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "T04",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "T06",
+     "path": "avm",
+     "old_token": "diff-legacy-accepts",
+     "binding_token": "diff-legacy-accepts",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R01",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R03",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R04",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R07",
+     "path": "avm",
+     "old_token": "diff-legacy-runtime(2-owners mut)",
+     "binding_token": "diff-legacy-runtime(2-owners mut)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R09",
+     "path": "avm",
+     "old_token": "diff-legacy-accepts",
+     "binding_token": "diff-legacy-accepts",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "R10",
+     "path": "avm",
+     "old_token": "diff-legacy-accepts",
+     "binding_token": "diff-legacy-accepts",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L01",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L02",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L03",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L04",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L05",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L06",
+     "path": "avm",
+     "old_token": "diff-legacy-accepts",
+     "binding_token": "diff-legacy-accepts",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "L07",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "V03",
+     "path": "avm",
+     "old_token": "diff-legacy-runtime(Option.len missing)",
+     "binding_token": "diff-legacy-runtime(Option.len missing)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "K02",
+     "path": "avm",
+     "old_token": "diff-legacy-grammar(parse)",
+     "binding_token": "diff-legacy-grammar(parse)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "K02",
+     "path": "a2r",
+     "old_token": "diff-legacy-grammar(parse)",
+     "binding_token": "diff-legacy-grammar(parse)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 legacy-grammar ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "K05",
+     "path": "avm",
+     "old_token": "diff-legacy-grammar(parse)",
+     "binding_token": "diff-legacy-grammar(parse)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "corpus",
+     "id": "K05",
+     "path": "a2r",
+     "old_token": "diff-legacy-grammar(parse)",
+     "binding_token": "diff-legacy-grammar(parse)",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 legacy-grammar ruling"
+    },
+    {
+     "ns": "scenario",
+     "id": "R01",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "scenario",
+     "id": "R03",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    },
+    {
+     "ns": "scenario",
+     "id": "R04",
+     "path": "avm",
+     "old_token": "diff-legacy-value",
+     "binding_token": "diff-legacy-value",
+     "migrated": false,
+     "approval": "inherited 2026-10-28 R-A/B/C/D group ruling"
+    }
+   ]
+  },
+  {
+   "rule": "FUTURE-O",
+   "layer": "future",
+   "origin": "G-DEC-5 (2026-11-01): O01-O15 non-AV = uncommitted console capability, kept as honest gap",
+   "reentry": "console product/M2 commitment plans update scope and re-entry rules; never counted as M1-required by this registry",
+   "cells": [
+    {
+     "ns": "corpus",
+     "id": "O01",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O01",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O01",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O02",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O02",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O02",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O03",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O03",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O03",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O04",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O04",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O04",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O05",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O05",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O05",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O06",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O06",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O06",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O07",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O07",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O07",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O08",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O08",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O08",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O09",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O09",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O09",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O10",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O10",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O10",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O11",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O11",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O11",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O12",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O12",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O12",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O13",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O13",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O13",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O14",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O14",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O14",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O15",
+     "path": "ac",
+     "old_token": "gap:ac-console-profile",
+     "binding_token": "gap:ac-console-profile",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O15",
+     "path": "avm",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    },
+    {
+     "ns": "corpus",
+     "id": "O15",
+     "path": "a2r",
+     "old_token": "gap:console-profile-parity",
+     "binding_token": "gap:console-profile-parity",
+     "migrated": false,
+     "approval": "G-DEC-5 future layer 2026-11-01 (not NA, stays gap)"
+    }
+   ]
+  }
+ ]
+}
