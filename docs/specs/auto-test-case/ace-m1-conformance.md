@@ -19,7 +19,11 @@
 
 ## 分母登记（binding.tsv，schema ace.m1.binding/1，12 列冻结）
 
-63 corpus 行（58 源例 + 5 typed 入口）+ 40 scenario 行 = M1 required 分母的登记处。
+当前 131 数据行 = **91 corpus**（852 原 58 源例 + 5 typed 入口 W01–W05；+U01–U10
+入口/Unit[862]、+H01–H03 常驻[866]、+O01–O15 console 源码[863，ns=corpus]）+
+**40 scenario** 行 = 登记处；四路径（ac/av/avm/a2r）共 524 登记格。**登记总量 ≠
+M1 required 分母**：适用范围按已批准规则（NA-1..NA-4、R-A..R-F）与逐格归账划定，
+现行口径/净缺口/owner/顺序见 [净缺口审计](ace-m1-gap-audit.md)（PLAN-903）。
 逐行给出四路径单元状态：
 
 - `ok` / `ok-emit`：能力已交付且已正式接线（base 套件真绿）。
@@ -33,6 +37,23 @@
 
 selector/局部 run 不削减 required 分母；零选择、缺行、仅 emit、SKIP=PASS 均不能
 作为 M1 绿证据。
+
+### 净缺口审计导航与待验收边界（PLAN-903，2026-11-01 冻结）
+
+- 五态词表/`na` 反滥用/两轴分离已裁定（2026-10-28），但 binding.tsv 尚未迁移
+  （raw token 保留为证据）；bare `n/a`（无规则 ID）与 B17–19 ac 诊断面、H/I07/I08
+  的 NA-3 扩展均**待裁定**——裁定前 M1 clean 只能以实测口径记（862 T-06 的
+  20/73 仅覆盖当时 corpus 73 行，不得引用 50/103 投影冒全表）。
+- a2r 双轴：M1 判据=金样/emit 逐字节轴；`emit-ok-run-unverified`/
+  `snapshot-only-cert-gap`/`cert-diff` 为 ok+cert-gap 等价，认证缺口另账
+  （owner=a2r 复合 lowering）。892/902/904 新 HIR A2R 证据**并列**，不自动替换
+  旧 a2r 身份或旧 M1 分母。
+- 日常绿证据入口=固定组 `cargo t case-ace-m1-*`（11 组注册于
+  `scripts/test-groups.toml`）+ 常驻 cargo 测试；`verify-ace-m1-852.ps1` 现
+  infra 红（split bug + attachments 依赖，见审计 F-INFRA-1），修好前不作可运行
+  M1 完整性门。
+- 逐格七类归账、缺口族 owner/关闭 oracle/后继顺序、未决项清单全部以
+  [ace-m1-gap-audit.md](ace-m1-gap-audit.md) 为 current 账本。
 
 ## 底座套件（ace-m1-base.suite.ad）
 

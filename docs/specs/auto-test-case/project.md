@@ -32,13 +32,16 @@ ACE M1 闭包源码套件以 append-only 文件方式消费未改动的 K01–K0
 
 ### PLAN-852 ace-m1 语料与认证（正式资产，非本 crate）
 
-- 语料/分母登记：`crates/auto-lang/test/cases/ace-m1/`（binding.tsv 103 行 =
-  58 主源 + 43 参考 + 5 typed + 40 场景；base 套件 36 例 97 检查；金样
-  `oracle/m1_*.rs` + 单源 wrapper `oracle/wrapper-main-v1.rs` + 证书 registry
-  `oracle/certs/*.cert.json`，schema `ace.m1.cert/1` 随库版本化）。
-- 验证入口：`scripts/verify-ace-m1-852.ps1` 六+一 scope
-  （contract/source/snapshot/certify/lifecycle/acceptance/receipts 直达面）；
-  认证 bin `ace-certify`。合同与差异行语义见
+- 语料/分母登记：`crates/auto-lang/test/cases/ace-m1/`（binding.tsv 当前 131 行 =
+  91 corpus[58 源例 + 5 typed + U10 入口 + H3 常驻 + O15 console] + 40 scenario，
+  四路径 524 登记格；base 套件 36 例 97 检查；金样 `oracle/m1_*.rs` 24 + 单源
+  wrapper `oracle/wrapper-main-v1.rs` + 证书 registry `oracle/certs/*.cert.json`
+  10，schema `ace.m1.cert/1` 随库版本化）。登记总量≠M1 required 分母，适用/净缺口
+  /owner 以 [ace-m1-gap-audit.md](ace-m1-gap-audit.md)（PLAN-903 审计账本）为准。
+- 验证入口：固定组 `cargo t case-ace-m1-*`（11 组）+ 常驻 cargo 负控为日常绿证据
+  入口；`scripts/verify-ace-m1-852.ps1` 六+一 scope 为原 852 直达面，**现 infra
+  红**（split bug + attachments/852 依赖缺失，审计 F-INFRA-1），修好前不作可运行
+  M1 完整性门；认证 bin `ace-certify`。合同与差异行语义见
   [ace-m1-conformance.md](ace-m1-conformance.md) /
   [a2r-golden-certification.md](a2r-golden-certification.md)。
 
