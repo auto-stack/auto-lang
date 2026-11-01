@@ -245,8 +245,16 @@ fn closures_909_shared_group_is_lexical_not_by_name() {
         .expect("sibling shadowed vars compile");
     let shared = compiled.atom_text.matches("mode: shared").count();
     let moved = compiled.atom_text.matches("mode: move").count();
-    assert_eq!(shared, 1, "exactly the written sibling is shared:\n{}", compiled.atom_text);
-    assert_eq!(moved, 1, "the read-only sibling stays a snapshot:\n{}", compiled.atom_text);
+    assert_eq!(
+        shared, 1,
+        "exactly the written sibling is shared:\n{}",
+        compiled.atom_text
+    );
+    assert_eq!(
+        moved, 1,
+        "the read-only sibling stays a snapshot:\n{}",
+        compiled.atom_text
+    );
 }
 
 /// K06 fact shape: a move closure that writes a scalar capture declares the
@@ -255,10 +263,25 @@ fn closures_909_shared_group_is_lexical_not_by_name() {
 #[test]
 fn closures_909_k06_private_writable_capture_fact() {
     let source = "fn main() int { var base int = 1; var f = move (n int) => { base = base + n; return base }; return f(20) + f(0) }";
-    let compiled = compile_closures_source(source, "closures-909-k06.at", &[]).expect("K06 compiles");
-    assert!(compiled.atom_text.contains("role: capture; index: 0u32; mutable: true"), "{}", compiled.atom_text);
-    assert!(compiled.atom_text.contains("mode: move"), "{}", compiled.atom_text);
-    assert!(!compiled.atom_text.contains("mode: shared"), "{}", compiled.atom_text);
+    let compiled =
+        compile_closures_source(source, "closures-909-k06.at", &[]).expect("K06 compiles");
+    assert!(
+        compiled
+            .atom_text
+            .contains("role: capture; index: 0u32; mutable: true"),
+        "{}",
+        compiled.atom_text
+    );
+    assert!(
+        compiled.atom_text.contains("mode: move"),
+        "{}",
+        compiled.atom_text
+    );
+    assert!(
+        !compiled.atom_text.contains("mode: shared"),
+        "{}",
+        compiled.atom_text
+    );
 }
 
 fn bundle_of(source: &str, label: &str) -> ace_core::hir::Bundle {
@@ -269,10 +292,7 @@ fn bundle_of(source: &str, label: &str) -> ace_core::hir::Bundle {
         .clone()
 }
 
-fn flip_capture_mode(
-    bundle: &mut ace_core::hir::Bundle,
-    mode: ace_core::hir::CaptureMode,
-) {
+fn flip_capture_mode(bundle: &mut ace_core::hir::Bundle, mode: ace_core::hir::CaptureMode) {
     let module = &mut bundle.modules[0];
     for body in &mut module.bodies {
         for expr in &mut body.exprs {
@@ -297,7 +317,9 @@ fn closures_909_hir_verifier_rejects_shared_over_immutable_source() {
     let diagnostics = ace_core::verify::verify_closures(bundle)
         .expect_err("shared over an immutable source is outside the cell domain");
     assert!(
-        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        diagnostics
+            .iter()
+            .any(|d| d.code == "verify.closure-shared-domain"),
         "{diagnostics:#?}"
     );
 }
@@ -314,7 +336,9 @@ fn closures_909_hir_verifier_rejects_shared_over_non_scalar() {
     let diagnostics = ace_core::verify::verify_closures(bundle)
         .expect_err("shared over an owned Str is outside the cell domain");
     assert!(
-        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        diagnostics
+            .iter()
+            .any(|d| d.code == "verify.closure-shared-domain"),
         "{diagnostics:#?}"
     );
 }
@@ -342,7 +366,9 @@ fn closures_909_hir_verifier_rejects_writable_borrow_capture() {
     let diagnostics = ace_core::verify::verify_closures(bundle)
         .expect_err("a writable borrow capture is rejected");
     assert!(
-        diagnostics.iter().any(|d| d.code == "verify.closure-shared-domain"),
+        diagnostics
+            .iter()
+            .any(|d| d.code == "verify.closure-shared-domain"),
         "{diagnostics:#?}"
     );
 }

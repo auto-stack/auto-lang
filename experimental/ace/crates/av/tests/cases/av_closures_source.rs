@@ -130,7 +130,8 @@ fn av_closures_k04_rejects_borrow_escape_and_non_scalar_shared_write() {
 
     // A written `let` capture stays the static immutable-assignment
     // rejection (the body local mirrors the source's immutability).
-    let let_write = "fn main() int { let x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
+    let let_write =
+        "fn main() int { let x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
     let diagnostics = compile_closures_source(let_write, "shared-let.at", &[])
         .expect_err("writing a captured let is an immutable write");
     assert!(
@@ -248,12 +249,20 @@ fn av_closures_909_trap_exit_releases_cells_and_envs() {
 /// source produces nothing.
 #[test]
 fn av_closures_909_failed_candidate_then_recovery() {
-    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
-    let bad = "fn main() int { var x int = 1; var f = (n int) => { x = x + s; return x }; return f(41) }";
-    let edited = source.replacen("x = x + n; return x }; return f(41)", "x = x + n + 1; return x }; return f(40)", 1);
+    let source =
+        "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
+    let bad =
+        "fn main() int { var x int = 1; var f = (n int) => { x = x + s; return x }; return f(41) }";
+    let edited = source.replacen(
+        "x = x + n; return x }; return f(41)",
+        "x = x + n + 1; return x }; return f(40)",
+        1,
+    );
     let root = isolated_store("recover");
     let mut session = ClosuresSourceSession::new(&root);
-    let first = session.apply_source(source, "recover.at").expect("cold apply");
+    let first = session
+        .apply_source(source, "recover.at")
+        .expect("cold apply");
     assert_eq!(first.value, 42);
 
     // The failed candidate: unknown name `s` — Diagnostics, nothing installed.
@@ -268,16 +277,22 @@ fn av_closures_909_failed_candidate_then_recovery() {
 
     // Recovery: the valid edit produces exactly its unit; the session state
     // (wires, cache) survived the failure untouched.
-    let next = session.apply_source(&edited, "recover.at").expect("edited applies after failure");
+    let next = session
+        .apply_source(&edited, "recover.at")
+        .expect("edited applies after failure");
     assert_eq!(next.value, 42);
     // The edit touches BOTH main's call site and the lambda body: exactly
     // those two units are produced — nothing else, nothing missing.
     assert_eq!(next.submitted_units, 2, "{:?}", next.submitted_unit_names);
     assert!(next.submitted_unit_names.contains(&"d_main".to_string()));
-    assert!(next.submitted_unit_names.contains(&"d___closure_main_0".to_string()));
+    assert!(next
+        .submitted_unit_names
+        .contains(&"d___closure_main_0".to_string()));
 
     // Re-applying the installed source: zero production of any kind.
-    let again = session.apply_source(&edited, "recover.at").expect("re-apply");
+    let again = session
+        .apply_source(&edited, "recover.at")
+        .expect("re-apply");
     assert_eq!(again.submitted_units, 0);
     assert!(again.lowered_units.is_empty(), "{:?}", again.lowered_units);
     assert!(again.frontend.reused_owners.contains("main"));
@@ -292,7 +307,11 @@ fn av_closures_909_failed_candidate_then_recovery() {
 #[test]
 fn av_closures_909_warm_body_edit_zero_walks_for_unchanged_owners() {
     let source = "fn helper(n int) int { return n + 1 }\nfn other() int { return 0 }\nfn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; let g = (n int) => { return helper(n) }; return f(20) + g(20) + other() }";
-    let edited = source.replacen("x = x + n; return x }; let g", "x = x + n + 0; return x }; let g", 1);
+    let edited = source.replacen(
+        "x = x + n; return x }; let g",
+        "x = x + n + 0; return x }; let g",
+        1,
+    );
     assert_ne!(source, edited);
     let root = isolated_store("warm-ledger");
     let mut session = ClosuresSourceSession::new(&root);
@@ -303,7 +322,9 @@ fn av_closures_909_warm_body_edit_zero_walks_for_unchanged_owners() {
     assert!(first.frontend.resolve_walks.contains_key("other"));
     assert_eq!(first.frontend.parse, 1);
 
-    let next = session.apply_source(&edited, "warm.at").expect("warm apply");
+    let next = session
+        .apply_source(&edited, "warm.at")
+        .expect("warm apply");
     assert_eq!(next.value, 42);
     // Only the edited owner re-walked; untouched owners: ZERO resolve and
     // typecheck walks (absent from the ledger, not zeroed by hand).
@@ -320,8 +341,16 @@ fn av_closures_909_warm_body_edit_zero_walks_for_unchanged_owners() {
     assert!(next.frontend.reused_owners.contains("helper"));
     assert!(next.frontend.reused_owners.contains("other"));
     // Lowering/encoding skipped for every reused owner's unit.
-    assert!(!next.lowered_units.iter().any(|n| n == "d_helper"), "{:?}", next.lowered_units);
-    assert!(!next.lowered_units.iter().any(|n| n == "d_other"), "{:?}", next.lowered_units);
+    assert!(
+        !next.lowered_units.iter().any(|n| n == "d_helper"),
+        "{:?}",
+        next.lowered_units
+    );
+    assert!(
+        !next.lowered_units.iter().any(|n| n == "d_other"),
+        "{:?}",
+        next.lowered_units
+    );
     // Submission: the edited lambda unit (main's own unit stays wire-equal
     // — its cell layout and capture facts did not change).
     assert_eq!(next.submitted_units, 1, "{:?}", next.submitted_unit_names);
@@ -346,19 +375,40 @@ fn av_closures_909_unrelated_lambda_insertion_keeps_sibling_identity() {
     assert_ne!(source, edited);
     let root = isolated_store("stable-id");
     let mut session = ClosuresSourceSession::new(&root);
-    let first = session.apply_source(source, "stable.at").expect("cold apply");
+    let first = session
+        .apply_source(source, "stable.at")
+        .expect("cold apply");
     // a()=2; b()= g(40)=41 + y=41 = 82; main = 2 + 82 = 84.
     assert_eq!(first.value, 84);
-    let next = session.apply_source(&edited, "stable.at").expect("warm apply");
+    let next = session
+        .apply_source(&edited, "stable.at")
+        .expect("warm apply");
     // The inserted lambda is never called: the program value is unchanged.
     assert_eq!(next.value, 84);
     // Only `a` re-walked; `b` (a LATER owner with its own lambda) reused
     // verbatim — its lambda is still `__closure_b_0` and its unit untouched.
-    assert_eq!(next.frontend.resolve_walks.keys().collect::<Vec<_>>(), ["a"]);
+    assert_eq!(
+        next.frontend.resolve_walks.keys().collect::<Vec<_>>(),
+        ["a"]
+    );
     assert!(next.frontend.reused_owners.contains("b"));
     assert!(next.frontend.reused_owners.contains("main"));
-    assert!(!next.lowered_units.iter().any(|n| n.contains("__closure_b_")), "{:?}", next.lowered_units);
-    assert!(!next.submitted_unit_names.iter().any(|n| n.contains("__closure_b_") || n == "d_b"), "{:?}", next.submitted_unit_names);
+    assert!(
+        !next
+            .lowered_units
+            .iter()
+            .any(|n| n.contains("__closure_b_")),
+        "{:?}",
+        next.lowered_units
+    );
+    assert!(
+        !next
+            .submitted_unit_names
+            .iter()
+            .any(|n| n.contains("__closure_b_") || n == "d_b"),
+        "{:?}",
+        next.submitted_unit_names
+    );
     session.close().expect("close");
     std::fs::remove_dir_all(&root).ok();
 }
@@ -372,7 +422,9 @@ fn av_closures_909_store_restart_reuses_artifacts_zero_production() {
     let root = isolated_store("restart");
     {
         let mut session = ClosuresSourceSession::new(&root);
-        let first = session.apply_source(source, "restart.at").expect("cold apply");
+        let first = session
+            .apply_source(source, "restart.at")
+            .expect("cold apply");
         assert_eq!(first.value, 42);
         assert_eq!(first.submitted_units, 3);
         session.close().expect("close");
@@ -383,7 +435,9 @@ fn av_closures_909_store_restart_reuses_artifacts_zero_production() {
         // the sanctioned restart path), every artifact is a cache HIT and
         // NOTHING is written back to the store.
         let mut session = ClosuresSourceSession::new(&root);
-        let again = session.apply_source(source, "restart.at").expect("restart apply");
+        let again = session
+            .apply_source(source, "restart.at")
+            .expect("restart apply");
         assert_eq!(again.value, 42);
         assert_eq!(again.production.cache_hits, 3, "{:?}", again.production);
         assert_eq!(again.production.store_writes, 0, "{:?}", again.production);
@@ -457,7 +511,13 @@ fn av_closures_909_fault_sweep_releases_every_cell_and_env() {
 
     let (ok, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     assert!(
-        matches!(ok, ExecOutcome::Success { value: ace_av_core::contract::Value::I32(42), .. }),
+        matches!(
+            ok,
+            ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(42),
+                ..
+            }
+        ),
         "{ok:?}"
     );
     assert_eq!(trace.arena.clone().expect("ledger").live(), 0);
@@ -480,7 +540,10 @@ fn av_closures_909_fault_sweep_releases_every_cell_and_env() {
             other => panic!("seam #{n}: unexpected {other:?}"),
         }
     }
-    assert!(faulted >= 2, "the sweep must hit the cell and env allocations ({faulted} faults)");
+    assert!(
+        faulted >= 2,
+        "the sweep must hit the cell and env allocations ({faulted} faults)"
+    );
 }
 
 fn isolated_store(tag: &str) -> std::path::PathBuf {
@@ -502,13 +565,21 @@ fn isolated_store(tag: &str) -> std::path::PathBuf {
 #[test]
 fn av_closures_909_body_edit_of_one_writer_resubmits_one_unit() {
     let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; var g = (n int) => { x = x + n; return x }; return f(20) + g(0) }";
-    let edited = source.replacen("x = x + n; return x }; var g", "x = x + n + 1; return x }; var g", 1);
+    let edited = source.replacen(
+        "x = x + n; return x }; var g",
+        "x = x + n + 1; return x }; var g",
+        1,
+    );
     assert_ne!(source, edited);
     let root = isolated_store("body-edit");
     let mut session = ClosuresSourceSession::new(&root);
-    let first = session.apply_source(source, "shared.at").expect("initial applies");
+    let first = session
+        .apply_source(source, "shared.at")
+        .expect("initial applies");
     assert_eq!(first.value, 42);
-    let next = session.apply_source(&edited, "shared.at").expect("edited applies");
+    let next = session
+        .apply_source(&edited, "shared.at")
+        .expect("edited applies");
     // f(20): x = 1 + 20 + 1 = 22; g(0): 22 -> 22 + 22 = 44.
     assert_eq!(next.value, 44);
     assert_eq!(next.submitted_units, 1, "{:?}", next.submitted_unit_names);
@@ -527,18 +598,38 @@ fn av_closures_909_body_edit_of_one_writer_resubmits_one_unit() {
 #[test]
 fn av_closures_909_capture_fact_change_invalidates_creator_not_unrelated_lambda() {
     let source = "fn main() int { var x int = 1; let r = () => { return x }; let u = (n int) => { return n + 1 }; return r() + u(40) }";
-    let edited = source.replacen("let r = () => { return x }", "let r = () => { x = x + 1; return x }", 1);
+    let edited = source.replacen(
+        "let r = () => { return x }",
+        "let r = () => { x = x + 1; return x }",
+        1,
+    );
     let root = isolated_store("fact-change");
     let mut session = ClosuresSourceSession::new(&root);
-    let first = session.apply_source(source, "facts.at").expect("initial applies");
+    let first = session
+        .apply_source(source, "facts.at")
+        .expect("initial applies");
     assert_eq!(first.value, 42);
-    let next = session.apply_source(&edited, "facts.at").expect("edited applies");
+    let next = session
+        .apply_source(&edited, "facts.at")
+        .expect("edited applies");
     assert_eq!(next.value, 43);
     assert_eq!(next.submitted_units, 2, "{:?}", next.submitted_unit_names);
-    assert!(next.submitted_unit_names.iter().any(|n| n == "d_main"), "{:?}", next.submitted_unit_names);
+    assert!(
+        next.submitted_unit_names.iter().any(|n| n == "d_main"),
+        "{:?}",
+        next.submitted_unit_names
+    );
     // The unrelated lambda `u` is the LAST closure unit; it must not be in the set.
-    let u_unit = session_unit_names(&first).into_iter().filter(|n| n != "d_main").max().expect("u unit");
-    assert!(!next.submitted_unit_names.contains(&u_unit), "unrelated lambda {u_unit} resubmitted: {:?}", next.submitted_unit_names);
+    let u_unit = session_unit_names(&first)
+        .into_iter()
+        .filter(|n| n != "d_main")
+        .max()
+        .expect("u unit");
+    assert!(
+        !next.submitted_unit_names.contains(&u_unit),
+        "unrelated lambda {u_unit} resubmitted: {:?}",
+        next.submitted_unit_names
+    );
     assert_eq!(next.production.verified, 2);
     session.close().expect("close");
     std::fs::remove_dir_all(&root).ok();

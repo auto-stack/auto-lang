@@ -106,9 +106,7 @@ impl CheckedModule {
 
     /// The verifier-computed collections facts plan (PLAN-904). `None`
     /// outside the collections/closures families.
-    pub fn collections_plan(
-        &self,
-    ) -> Option<&crate::collections_facts::CollectionsPlan> {
+    pub fn collections_plan(&self) -> Option<&crate::collections_facts::CollectionsPlan> {
         self.coll_plan.as_ref()
     }
 }
@@ -449,7 +447,9 @@ pub fn verify_function_ref(
             excl_adds: std::collections::BTreeSet::new(),
             body_digest: crate::collections_facts::body_content_digest(body),
             coll_facts: if bundle.domain == HirDomain::Collections {
-                Some(Box::new(crate::collections_facts::compute_body_facts(m, body)))
+                Some(Box::new(crate::collections_facts::compute_body_facts(
+                    m, body,
+                )))
             } else {
                 None
             },
@@ -528,7 +528,11 @@ pub fn verify_text_function(
         };
         match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::Function(sig)) => {
-                let params: Vec<ValueType> = sig.params.iter().map(|p| v.value_of(p, &type_map)).collect();
+                let params: Vec<ValueType> = sig
+                    .params
+                    .iter()
+                    .map(|p| v.value_of(p, &type_map))
+                    .collect();
                 let result = v.value_of(&sig.result, &type_map);
                 sigs.insert(i as u32, (params, result));
             }
@@ -556,7 +560,10 @@ pub fn verify_text_function(
             return Err(vec![Diagnostic::new(
                 Stage::Verify,
                 "verify.def-kind",
-                format!("def `{}` is an intrinsic and has no body to verify", def.id_text),
+                format!(
+                    "def `{}` is an intrinsic and has no body to verify",
+                    def.id_text
+                ),
                 def.span,
             )]);
         }
@@ -565,7 +572,10 @@ pub fn verify_text_function(
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.body-ref",
-            format!("function `{name}` declares body `{}` which is out of range", body_id.0),
+            format!(
+                "function `{name}` declares body `{}` which is out of range",
+                body_id.0
+            ),
             def.span,
         )]);
     };
@@ -573,7 +583,10 @@ pub fn verify_text_function(
         return Err(vec![Diagnostic::new(
             Stage::Verify,
             "verify.owner-mismatch",
-            format!("function `{name}` declares body `{}` which belongs to another def", body_id.0),
+            format!(
+                "function `{name}` declares body `{}` which belongs to another def",
+                body_id.0
+            ),
             def.span,
         )]);
     }
@@ -1353,7 +1366,8 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
             bundle,
             text_plan: None,
             runtime_text_needed: false,
-            coll_plan: None,})
+            coll_plan: None,
+        })
     } else {
         Err(v.diags)
     }

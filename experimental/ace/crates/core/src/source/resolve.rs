@@ -913,7 +913,12 @@ pub fn resolve_closures_cached(
         },
         reused: BTreeSet::new(),
     };
-    let (fns, records, coll, _) = resolve_detailed(program, capabilities, SourceProfile::Closures, Some(&mut warm))?;
+    let (fns, records, coll, _) = resolve_detailed(
+        program,
+        capabilities,
+        SourceProfile::Closures,
+        Some(&mut warm),
+    )?;
     Ok((
         ResolvedProgram {
             fns,
@@ -2628,9 +2633,7 @@ fn resolve_fn(
         rec_index,
         coll,
         iterate_targets: Vec::new(),
-        shared_cell_spans: super::closure_capture::scan_shared_capture_cells(
-            &f.params, &f.body,
-        ),
+        shared_cell_spans: super::closure_capture::scan_shared_capture_cells(&f.params, &f.body),
         owner_name: f.name.name.clone(),
         closure_count: 0,
     };
@@ -2992,12 +2995,24 @@ impl<'a> FnResolver<'a> {
                     )
                 } else {
                     // 865 read-only Copy snapshot (no sibling writer).
-                    (crate::hir::CaptureMode::Move, source_vt, false, false, false)
+                    (
+                        crate::hir::CaptureMode::Move,
+                        source_vt,
+                        false,
+                        false,
+                        false,
+                    )
                 }
             } else if owned && move_capture {
                 (crate::hir::CaptureMode::Move, source_vt, true, false, false)
             } else if source_vt == VT::StrOwned && !move_capture {
-                (crate::hir::CaptureMode::Borrow, VT::Str, false, false, false)
+                (
+                    crate::hir::CaptureMode::Borrow,
+                    VT::Str,
+                    false,
+                    false,
+                    false,
+                )
             } else {
                 self.bind_err("source.closure-capture-unsupported", format!("capture `{}` of type `{}` requires a supported move or synchronous Str borrow", capture.name, source_vt.as_str()), capture.span);
                 continue;
@@ -3070,9 +3085,7 @@ impl<'a> FnResolver<'a> {
             param_names.push(param.name.name.clone());
             param_types.push(vt);
         }
-        for (index, (name, vt, _mode, writable, capture_cell)) in
-            capture_decls.iter().enumerate()
-        {
+        for (index, (name, vt, _mode, writable, capture_cell)) in capture_decls.iter().enumerate() {
             let local = LocalRef(self.locals.len());
             self.locals.push(LocalDecl {
                 name: name.clone(),

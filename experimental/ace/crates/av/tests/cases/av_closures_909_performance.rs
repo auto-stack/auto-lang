@@ -72,7 +72,15 @@ pub mod performance {
             let t = std::time::Instant::now();
             let fresh = session.apply_source(&source, "perf.at").expect("fresh");
             fresh_t.push(ms(t.elapsed()));
-            assert_eq!(fresh.submitted_units, fresh.frontend.changed_owners.len().max(1).max(fresh.submitted_units));
+            assert_eq!(
+                fresh.submitted_units,
+                fresh
+                    .frontend
+                    .changed_owners
+                    .len()
+                    .max(1)
+                    .max(fresh.submitted_units)
+            );
             assert!(fresh.value > 0);
 
             // hit: identical re-apply — zero production of every kind.
@@ -80,22 +88,34 @@ pub mod performance {
             let hit = session.apply_source(&source, "perf.at").expect("hit");
             hit_t.push(ms(t.elapsed()));
             assert_eq!(hit.submitted_units, 0, "sample {id}: hit produced units");
-            assert!(hit.lowered_units.is_empty(), "sample {id}: hit lowered units");
-            assert_eq!(hit.production.store_writes, 0, "sample {id}: hit wrote artifacts");
+            assert!(
+                hit.lowered_units.is_empty(),
+                "sample {id}: hit lowered units"
+            );
+            assert_eq!(
+                hit.production.store_writes, 0,
+                "sample {id}: hit wrote artifacts"
+            );
             max_history_hot = max_history_hot.max(hit.history_hot_bytes);
 
             // body-edit: exactly the edited lambda's unit is produced.
             let t = std::time::Instant::now();
             let edit = session.apply_source(&edited, "perf.at").expect("edit");
             edit_t.push(ms(t.elapsed()));
-            assert_eq!(edit.submitted_units, 1, "sample {id}: {:#?}", edit.submitted_unit_names);
+            assert_eq!(
+                edit.submitted_units, 1,
+                "sample {id}: {:#?}",
+                edit.submitted_unit_names
+            );
             session.close().expect("close");
 
             // restart: a fresh session over the same store re-admits from
             // persisted artifacts (read/decode/re-verify), zero writes.
             let mut fresh_session = ClosuresSourceSession::new(&root);
             let t = std::time::Instant::now();
-            let restart = fresh_session.apply_source(&edited, "perf.at").expect("restart");
+            let restart = fresh_session
+                .apply_source(&edited, "perf.at")
+                .expect("restart");
             restart_t.push(ms(t.elapsed()));
             // The store holds the PRE-edit artifacts; the edited lambda's
             // unit is genuinely new — at most that one write on restart.
@@ -104,7 +124,10 @@ pub mod performance {
                 "sample {id}: restart wrote {} artifacts",
                 restart.production.store_writes
             );
-            assert!(restart.production.cache_hits >= 1, "sample {id}: restart hit the store");
+            assert!(
+                restart.production.cache_hits >= 1,
+                "sample {id}: restart hit the store"
+            );
             fresh_session.close().expect("close");
             std::fs::remove_dir_all(&root).ok();
         }
@@ -125,10 +148,18 @@ pub mod performance {
             report("restart", &restart_t),
             report("body-edit", &edit_t),
         ];
-        eprintln!("PLAN-909 V-15 formal (30 samples x 4 states):\n  {}", lines.join("\n  "));
+        eprintln!(
+            "PLAN-909 V-15 formal (30 samples x 4 states):\n  {}",
+            lines.join("\n  ")
+        );
 
         // The development-period gate: P90 within 2000ms for every state.
-        for (name, v) in [("fresh", &fresh_t), ("hit", &hit_t), ("restart", &restart_t), ("body-edit", &edit_t)] {
+        for (name, v) in [
+            ("fresh", &fresh_t),
+            ("hit", &hit_t),
+            ("restart", &restart_t),
+            ("body-edit", &edit_t),
+        ] {
             let p90 = percentile(v.clone(), 90.0);
             assert!(p90 <= 2000, "{name} P90 {p90}ms above the 2000ms gate");
         }
@@ -139,8 +170,13 @@ pub mod performance {
         let source = sample_source(1, 4);
         let root = isolated_store("churn");
         let mut session = ClosuresSourceSession::new(&root);
-        session.apply_source(&source, "churn.at").expect("churn cold");
-        let baseline = session.apply_source(&source, "churn.at").expect("churn base").value;
+        session
+            .apply_source(&source, "churn.at")
+            .expect("churn cold");
+        let baseline = session
+            .apply_source(&source, "churn.at")
+            .expect("churn base")
+            .value;
         let mut variant_a = source.replacen("x = x + n", "x = x + n + 1", 1);
         let mut flip = true;
         let mut last_value = baseline;
@@ -165,8 +201,13 @@ pub mod performance {
             last_value = run.value;
         }
         variant_a.clear();
-        assert_eq!(last_value, baseline, "the churn family returns to the base value");
-        let final_hit = session.apply_source(&source, "churn.at").expect("churn final");
+        assert_eq!(
+            last_value, baseline,
+            "the churn family returns to the base value"
+        );
+        let final_hit = session
+            .apply_source(&source, "churn.at")
+            .expect("churn final");
         assert_eq!(final_hit.submitted_units, 0);
         session.close().expect("close");
         std::fs::remove_dir_all(&root).ok();

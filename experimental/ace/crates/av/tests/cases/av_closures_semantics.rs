@@ -124,20 +124,40 @@ fn shared_case() -> MirModule {
         name: "body".to_string(),
         sig: 5,
         env: Some(vec![t_cell as u32]),
-        slots: vec![param(0, "n"), slot(8, "cell"), slot(0, "cur"), slot(0, "z"), slot(0, "ret")],
+        slots: vec![
+            param(0, "n"),
+            slot(8, "cell"),
+            slot(0, "cur"),
+            slot(0, "z"),
+            slot(0, "ret"),
+        ],
         blocks: vec![MirBlock {
             instrs: vec![
                 MirInstr::EnvGet { dst: 1, field: 0 },
-                MirInstr::Const { dst: 3, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 2, base: 1, index: 3 },
+                MirInstr::Const {
+                    dst: 3,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 2,
+                    base: 1,
+                    index: 3,
+                },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
                     dst: 2,
                     lhs: 2,
                     rhs: 0,
                 },
-                MirInstr::Const { dst: 3, value: c_zero as u32 },
-                MirInstr::ListSet { root: 1, index: 3, value: 2 },
+                MirInstr::Const {
+                    dst: 3,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListSet {
+                    root: 1,
+                    index: 3,
+                    value: 2,
+                },
                 MirInstr::Copy { dst: 4, src: 2 },
             ],
             term: Terminator::Return { value: 4 },
@@ -176,7 +196,10 @@ fn shared_case() -> MirModule {
                     list_ty: t_cell as u32,
                     cap: 1,
                 },
-                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_one as u32,
+                },
                 MirInstr::ListPush { root: 0, value: 1 },
                 MirInstr::CreateClosure {
                     dst: 2,
@@ -194,20 +217,33 @@ fn shared_case() -> MirModule {
                         src: 0,
                     }],
                 },
-                MirInstr::Const { dst: 8, value: m.intern_const(MirConst::I32(20)) as u32 },
+                MirInstr::Const {
+                    dst: 8,
+                    value: m.intern_const(MirConst::I32(20)) as u32,
+                },
                 MirInstr::CallClosure {
                     dst: 5,
                     closure: 2,
                     args: vec![8],
                 },
-                MirInstr::Const { dst: 8, value: c_zero as u32 },
+                MirInstr::Const {
+                    dst: 8,
+                    value: c_zero as u32,
+                },
                 MirInstr::CallClosure {
                     dst: 6,
                     closure: 3,
                     args: vec![8],
                 },
-                MirInstr::Const { dst: 1, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 7, base: 0, index: 1 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 7,
+                    base: 0,
+                    index: 1,
+                },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
                     dst: 4,
@@ -246,7 +282,16 @@ fn shared_case() -> MirModule {
 fn av_closures_sem_shared_capture_shares_one_cell() {
     let m = shared_case();
     let (out, arena) = run_pipeline(&m);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(63), .. }), "{out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(63),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
     assert_eq!(arena.live(), 0, "the cell frees with the last owner");
 }
 
@@ -272,8 +317,15 @@ fn av_closures_sem_shared_source_stays_live_and_writable() {
         blocks: vec![MirBlock {
             instrs: vec![
                 MirInstr::EnvGet { dst: 0, field: 0 },
-                MirInstr::Const { dst: 1, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 2, base: 0, index: 1 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 2,
+                    base: 0,
+                    index: 1,
+                },
             ],
             term: Terminator::Return { value: 2 },
         }],
@@ -305,7 +357,10 @@ fn av_closures_sem_shared_source_stays_live_and_writable() {
                     list_ty: t_cell as u32,
                     cap: 1,
                 },
-                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_one as u32,
+                },
                 MirInstr::ListPush { root: 0, value: 1 },
                 MirInstr::CreateClosure {
                     dst: 2,
@@ -315,12 +370,33 @@ fn av_closures_sem_shared_source_stays_live_and_writable() {
                         src: 0,
                     }],
                 },
-                MirInstr::Const { dst: 1, value: m.intern_const(MirConst::I32(41)) as u32 },
-                MirInstr::Const { dst: 3, value: c_zero as u32 },
-                MirInstr::ListSet { root: 0, index: 3, value: 1 },
-                MirInstr::CallClosure { dst: 4, closure: 2, args: vec![] },
-                MirInstr::Const { dst: 3, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 1, base: 0, index: 3 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: m.intern_const(MirConst::I32(41)) as u32,
+                },
+                MirInstr::Const {
+                    dst: 3,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListSet {
+                    root: 0,
+                    index: 3,
+                    value: 1,
+                },
+                MirInstr::CallClosure {
+                    dst: 4,
+                    closure: 2,
+                    args: vec![],
+                },
+                MirInstr::Const {
+                    dst: 3,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 1,
+                    base: 0,
+                    index: 3,
+                },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
                     dst: 4,
@@ -339,7 +415,16 @@ fn av_closures_sem_shared_source_stays_live_and_writable() {
     m.funcs = vec![main, body];
     m.entry = 0;
     let (out, arena) = run_pipeline(&m);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(82), .. }), "{out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(82),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
     assert_eq!(arena.live(), 0);
 }
 
@@ -411,7 +496,10 @@ fn av_closures_sem_shared_domain_rejects_non_cell_source() {
     m.funcs = vec![main, body];
     m.entry = 0;
     let err = verify_mir(&m).expect_err("Shared over a non-cell is rejected");
-    assert!(format!("{err:?}").contains("mir.capture.shared-domain"), "{err:?}");
+    assert!(
+        format!("{err:?}").contains("mir.capture.shared-domain"),
+        "{err:?}"
+    );
 }
 
 /// V-05 (typed leg): the env-alias discipline — a Shared capture of an
@@ -436,8 +524,15 @@ fn av_closures_sem_shared_capture_of_env_alias_is_legal() {
         blocks: vec![MirBlock {
             instrs: vec![
                 MirInstr::EnvGet { dst: 0, field: 0 },
-                MirInstr::Const { dst: 1, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 2, base: 0, index: 1 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 2,
+                    base: 0,
+                    index: 1,
+                },
             ],
             term: Terminator::Return { value: 2 },
         }],
@@ -502,7 +597,10 @@ fn av_closures_sem_shared_capture_of_env_alias_is_legal() {
                     list_ty: t_cell as u32,
                     cap: 1,
                 },
-                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_one as u32,
+                },
                 MirInstr::ListPush { root: 0, value: 1 },
                 MirInstr::CreateClosure {
                     dst: 2,
@@ -512,13 +610,38 @@ fn av_closures_sem_shared_capture_of_env_alias_is_legal() {
                         src: 0,
                     }],
                 },
-                MirInstr::Const { dst: 1, value: m.intern_const(MirConst::I32(41)) as u32 },
-                MirInstr::Const { dst: 5, value: c_zero as u32 },
-                MirInstr::ListSet { root: 0, index: 5, value: 1 },
-                MirInstr::CallClosure { dst: 3, closure: 2, args: vec![] },
-                MirInstr::CallClosure { dst: 4, closure: 3, args: vec![] },
-                MirInstr::Const { dst: 5, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 1, base: 0, index: 5 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: m.intern_const(MirConst::I32(41)) as u32,
+                },
+                MirInstr::Const {
+                    dst: 5,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListSet {
+                    root: 0,
+                    index: 5,
+                    value: 1,
+                },
+                MirInstr::CallClosure {
+                    dst: 3,
+                    closure: 2,
+                    args: vec![],
+                },
+                MirInstr::CallClosure {
+                    dst: 4,
+                    closure: 3,
+                    args: vec![],
+                },
+                MirInstr::Const {
+                    dst: 5,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 1,
+                    base: 0,
+                    index: 5,
+                },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
                     dst: 4,
@@ -538,7 +661,16 @@ fn av_closures_sem_shared_capture_of_env_alias_is_legal() {
     m.funcs = vec![main, outer, inner];
     m.entry = 0;
     let (out, arena) = run_pipeline(&m);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(82), .. }), "{out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(82),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
     assert_eq!(arena.live(), 0);
 }
 
@@ -572,14 +704,28 @@ fn av_closures_sem_shared_clone_memo_preserves_internal_sharing() {
             instrs: vec![
                 MirInstr::EnvGet { dst: 0, field: 0 },
                 MirInstr::EnvGet { dst: 1, field: 1 },
-                MirInstr::Const { dst: 2, value: c_zero as u32 },
+                MirInstr::Const {
+                    dst: 2,
+                    value: c_zero as u32,
+                },
                 MirInstr::Const {
                     dst: 3,
                     value: m.intern_const(MirConst::I32(7)) as u32,
                 },
-                MirInstr::ListSet { root: 0, index: 2, value: 3 },
-                MirInstr::Const { dst: 2, value: c_zero as u32 },
-                MirInstr::ListGet { dst: 4, base: 1, index: 2 },
+                MirInstr::ListSet {
+                    root: 0,
+                    index: 2,
+                    value: 3,
+                },
+                MirInstr::Const {
+                    dst: 2,
+                    value: c_zero as u32,
+                },
+                MirInstr::ListGet {
+                    dst: 4,
+                    base: 1,
+                    index: 2,
+                },
             ],
             term: Terminator::Return { value: 4 },
         }],
@@ -617,7 +763,10 @@ fn av_closures_sem_shared_clone_memo_preserves_internal_sharing() {
                     list_ty: t_cell as u32,
                     cap: 1,
                 },
-                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::Const {
+                    dst: 1,
+                    value: c_one as u32,
+                },
                 MirInstr::ListPush { root: 0, value: 1 },
                 MirInstr::CreateClosure {
                     dst: 2,
@@ -634,8 +783,16 @@ fn av_closures_sem_shared_clone_memo_preserves_internal_sharing() {
                     ],
                 },
                 MirInstr::Clone { dst: 3, src: 2 },
-                MirInstr::CallClosure { dst: 4, closure: 2, args: vec![] },
-                MirInstr::CallClosure { dst: 5, closure: 3, args: vec![] },
+                MirInstr::CallClosure {
+                    dst: 4,
+                    closure: 2,
+                    args: vec![],
+                },
+                MirInstr::CallClosure {
+                    dst: 5,
+                    closure: 3,
+                    args: vec![],
+                },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
                     dst: 6,
@@ -655,7 +812,16 @@ fn av_closures_sem_shared_clone_memo_preserves_internal_sharing() {
     m.funcs = vec![main, writer];
     m.entry = 0;
     let (out, arena) = run_pipeline(&m);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(14), .. }), "{out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(14),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
     assert_eq!(arena.live(), 0);
 }
 
@@ -669,7 +835,16 @@ fn av_closures_sem_shared_wire_roundtrip_and_unknown_tag_rejected() {
     let wire = encode_abc(&m).expect("encode");
     let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).expect("abc admit");
     let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(63), .. }), "{out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(63),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
 
     // Deterministic corruption: main's first CREATE_CLOSURE (dst 2, callee
     // Func(1), ONE Shared capture of slot 0) encodes as
@@ -690,7 +865,10 @@ fn av_closures_sem_shared_wire_roundtrip_and_unknown_tag_rejected() {
     corrupted[body_len..].copy_from_slice(&seal);
     let err = ace_av_core::abc::decode_abc(&corrupted)
         .expect_err("an unknown capture tag must be rejected");
-    assert!(format!("{err:?}").contains("unknown capture mode tag"), "{err:?}");
+    assert!(
+        format!("{err:?}").contains("unknown capture mode tag"),
+        "{err:?}"
+    );
 }
 
 fn borrow_case() -> MirModule {

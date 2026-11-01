@@ -36,10 +36,10 @@ use super::resolve::{
 };
 use super::typecheck;
 use super::{SourceProfile, SOURCE_PROFILE, TRACE_CAPABILITY};
-use std::collections::BTreeSet;
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::verify::CheckedModule;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 /// Successful source compilation: the checked module plus the receipt data
 /// traveling with the adapter result (profile identity, input content hash,
@@ -214,36 +214,35 @@ pub fn compile_closures_source_incremental(
     Vec<Diagnostic>,
 > {
     type WarmFrontendParts = Result<
-    (
-        String,
-        crate::hir::Bundle,
-        super::resolve::ClosuresOwnerCache,
-        std::collections::BTreeSet<String>,
-    ),
-    Vec<Diagnostic>,
->;
-    let (parts, work) = crate::body_work::capture_body_work(
-        || -> WarmFrontendParts {
-                let program = super::parse_program_with(src, SourceProfile::Closures)
-                    .map_err(|d| vec![d])?;
-            let (resolved, cache, reused) =
-                super::resolve::resolve_closures_cached(&program, src, capabilities, prev)?;
-            // Skipped typecheck set: every reused owner plus its lambdas.
-            let mut skip = BTreeSet::new();
-            for owner in &reused {
-                if let Some(entry) = cache.owners.get(owner) {
-                    skip.insert(entry.resolved.name.clone());
-                    for lambda in &entry.lambdas {
-                        skip.insert(lambda.name.clone());
-                    }
+        (
+            String,
+            crate::hir::Bundle,
+            super::resolve::ClosuresOwnerCache,
+            std::collections::BTreeSet<String>,
+        ),
+        Vec<Diagnostic>,
+    >;
+    let (parts, work) = crate::body_work::capture_body_work(|| -> WarmFrontendParts {
+        let program =
+            super::parse_program_with(src, SourceProfile::Closures).map_err(|d| vec![d])?;
+        let (resolved, cache, reused) =
+            super::resolve::resolve_closures_cached(&program, src, capabilities, prev)?;
+        // Skipped typecheck set: every reused owner plus its lambdas.
+        let mut skip = BTreeSet::new();
+        for owner in &reused {
+            if let Some(entry) = cache.owners.get(owner) {
+                skip.insert(entry.resolved.name.clone());
+                for lambda in &entry.lambdas {
+                    skip.insert(lambda.name.clone());
                 }
             }
-            super::typecheck::typecheck_with_skip(&resolved, &skip)?;
-            let mut em = Emitter::new(&resolved, src.len(), SourceProfile::Closures);
-            em.plan_module();
-            let atom_text = em.render(module_path);
-            let bundle = crate::descriptor::bind(crate::closures_descriptor(), &atom_text)?;
-            Ok((atom_text, bundle, cache, reused))
+        }
+        super::typecheck::typecheck_with_skip(&resolved, &skip)?;
+        let mut em = Emitter::new(&resolved, src.len(), SourceProfile::Closures);
+        em.plan_module();
+        let atom_text = em.render(module_path);
+        let bundle = crate::descriptor::bind(crate::closures_descriptor(), &atom_text)?;
+        Ok((atom_text, bundle, cache, reused))
     });
     let (atom_text, bundle, cache, reused) = parts?;
     let checked = crate::verify::verify_closures(bundle)?;
@@ -256,7 +255,9 @@ pub fn compile_closures_source_incremental(
             ledger.resolve_walks.insert(name.clone(), counts.resolve);
         }
         if counts.typecheck > 0 {
-            ledger.typecheck_walks.insert(name.clone(), counts.typecheck);
+            ledger
+                .typecheck_walks
+                .insert(name.clone(), counts.typecheck);
         }
         if counts.plan > 0 {
             ledger.plan_walks.insert(name.clone(), counts.plan);
@@ -3380,11 +3381,7 @@ impl<'p> Emitter<'p> {
                     // a shared `var` cell) carries `mutable: true` — the
                     // checked fact the verifier's immutable-write gate and
                     // the lowering's cell materialization both consume.
-                    let mutable_suffix = if l.mutable {
-                        "; mutable: true"
-                    } else {
-                        ""
-                    };
+                    let mutable_suffix = if l.mutable { "; mutable: true" } else { "" };
                     format!(
                         "local l{} {} {{ name: \"{}\"; role: capture; index: {}u32{} }}",
                         li,

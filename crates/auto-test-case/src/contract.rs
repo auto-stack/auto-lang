@@ -1173,7 +1173,9 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte", "mn", "a2x_hir"],
+        Adapter::Probe => &[
+            "recipe", "steps", "sema", "abi", "av", "cte", "mn", "a2x_hir",
+        ],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1449,11 +1451,19 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte, probe_mn, probe_a2x_hir) =
-        if adapter == Adapter::Probe {
-            let recipe = req_str(&f, "recipe")?;
-            if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
-                return Err(err(
+    let (
+        probe_recipe,
+        probe_steps,
+        probe_sema,
+        probe_abi,
+        probe_av,
+        probe_cte,
+        probe_mn,
+        probe_a2x_hir,
+    ) = if adapter == Adapter::Probe {
+        let recipe = req_str(&f, "recipe")?;
+        if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
+            return Err(err(
                 &f.path_of("recipe"),
                 format!(
                     "recipe {:?} is not registered (registered: {}; a case can never name an executable)",
@@ -1461,326 +1471,322 @@ fn decode_options(
                     REGISTERED_PROBE_RECIPES.join(", ")
                 ),
             ));
+        }
+        let steps = match f.sub("steps") {
+            None => {
+                return Err(err(
+                    &f.path_of("steps"),
+                    "probe/run requires a non-empty step sequence",
+                ))
             }
-            let steps = match f.sub("steps") {
-                None => {
+            Some(v) => {
+                let list = as_list(v, &f.path_of("steps"))?;
+                if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                     return Err(err(
                         &f.path_of("steps"),
-                        "probe/run requires a non-empty step sequence",
-                    ))
+                        format!(
+                            "probe step sequence must be 1..={} steps, got {}",
+                            PROBE_MAX_STEPS,
+                            list.len()
+                        ),
+                    ));
                 }
-                Some(v) => {
-                    let list = as_list(v, &f.path_of("steps"))?;
-                    if list.is_empty() || list.len() > PROBE_MAX_STEPS {
+                let mut out = Vec::new();
+                for (i, item) in list.iter().enumerate() {
+                    let ipath = format!("{}.steps[{}]", f.path, i);
+                    let pairs = as_obj(item, &ipath)?;
+                    let sf = Fields::new(&ipath, pairs, &["op", "from", "to", "slices"])?;
+                    let op = req_str(&sf, "op")?;
+                    // PLAN-798: `run` joins the known op vocabulary
+                    // (ac-av's only op); recipes never borrow each other's
+                    // ops, and genuinely unknown ops keep the original
+                    // unknown-op error.
+                    let known_op = matches!(
+                        op.as_str(),
+                        "query"
+                            | "edit-source"
+                            | "restart"
+                            | "run"
+                            | "resident-slice"
+                            | "resident-apply"
+                            | "resident-finish"
+                    );
+                    if !known_op {
                         return Err(err(
-                            &f.path_of("steps"),
-                            format!(
-                                "probe step sequence must be 1..={} steps, got {}",
-                                PROBE_MAX_STEPS,
-                                list.len()
-                            ),
-                        ));
-                    }
-                    let mut out = Vec::new();
-                    for (i, item) in list.iter().enumerate() {
-                        let ipath = format!("{}.steps[{}]", f.path, i);
-                        let pairs = as_obj(item, &ipath)?;
-                        let sf = Fields::new(&ipath, pairs, &["op", "from", "to", "slices"])?;
-                        let op = req_str(&sf, "op")?;
-                        // PLAN-798: `run` joins the known op vocabulary
-                        // (ac-av's only op); recipes never borrow each other's
-                        // ops, and genuinely unknown ops keep the original
-                        // unknown-op error.
-                        let known_op = matches!(
-                            op.as_str(),
-                            "query"
-                                | "edit-source"
-                                | "restart"
-                                | "run"
-                                | "resident-slice"
-                                | "resident-apply"
-                                | "resident-finish"
-                        );
-                        if !known_op {
-                            return Err(err(
                             &sf.path_of("op"),
                             format!("unknown probe op {:?} (supported: query, edit-source, restart, run, resident-slice, resident-apply, resident-finish)", op),
                         ));
+                    }
+                    let allowed = match recipe.as_str() {
+                        // T-07 edit-session: runs + discriminating edits.
+                        "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                        "ac-av/console-run-v1" => op == "run",
+                        // PLAN-820: the data recipe shares the core recipe's
+                        // step vocabulary (runs + discriminating edits).
+                        "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                        // PLAN-821: the owned recipe shares the av step
+                        // vocabulary (runs + discriminating edits).
+                        "ac-av/owned-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
                         }
-                        let allowed = match recipe.as_str() {
-                            // T-07 edit-session: runs + discriminating edits.
-                            "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
-                            "ac-av/console-run-v1" => op == "run",
-                            // PLAN-820: the data recipe shares the core recipe's
-                            // step vocabulary (runs + discriminating edits).
-                            "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
-                            // PLAN-821: the owned recipe shares the av step
-                            // vocabulary (runs + discriminating edits).
-                            "ac-av/owned-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-822: the collections recipe shares the av
-                            // step vocabulary (runs + discriminating edits).
-                            "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-826: the compact-wire recipe shares the
-                            // av step vocabulary.
-                            "ac-av/compact-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-864: the collections-source recipe shares
-                            // the av step vocabulary.
-                            "ac-av/collections-source-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            "ac-av/closures-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-865: source closures run through the same
-                            // run/edit session vocabulary as the frozen fixture.
-                            "ac-av/closures-source-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-824: the dynamic recipe shares the same
-                            // step vocabulary.
-                            "ac-av/dynamic-run-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source")
-                            }
-                            // PLAN-866: the resident-online recipe — slice /
-                            // apply-at-safety-point / finish plus the shared
-                            // discriminating edit vocabulary.
-                            "ac-av/resident-run-v1" => matches!(
-                                op.as_str(),
-                                "edit-source"
-                                    | "resident-slice"
-                                    | "resident-apply"
-                                    | "resident-finish"
-                            ),
-                            // PLAN-818 T-06: runs + discriminating edits +
-                            // restart session boundaries (`query` stays a
-                            // sema/abi op — recipes never borrow ops).
-                            "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
-                                matches!(op.as_str(), "run" | "edit-source" | "restart")
-                            }
-                            // PLAN-891: the typed recipe consumes exactly a
-                            // single run step in the formal case form.
-                            "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
-                            // PLAN-892: the daily emit is a single run step
-                            // (edit/restart sessions arrive with their own
-                            // contract when the session face lands). The
-                            // PLAN-902 record-text recipe shares the shape.
-                            "ac-a2r/hir-scalar-emit-v1"
-                            | "ac-a2r/hir-record-text-emit-v1"
-                            | "ac-a2r/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
-                            _ => op != "run",
-                        };
-                        if !allowed {
-                            return Err(err(
+                        // PLAN-822: the collections recipe shares the av
+                        // step vocabulary (runs + discriminating edits).
+                        "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        // PLAN-826: the compact-wire recipe shares the
+                        // av step vocabulary.
+                        "ac-av/compact-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        // PLAN-864: the collections-source recipe shares
+                        // the av step vocabulary.
+                        "ac-av/collections-source-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        "ac-av/closures-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        // PLAN-865: source closures run through the same
+                        // run/edit session vocabulary as the frozen fixture.
+                        "ac-av/closures-source-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        // PLAN-824: the dynamic recipe shares the same
+                        // step vocabulary.
+                        "ac-av/dynamic-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
+                        // PLAN-866: the resident-online recipe — slice /
+                        // apply-at-safety-point / finish plus the shared
+                        // discriminating edit vocabulary.
+                        "ac-av/resident-run-v1" => matches!(
+                            op.as_str(),
+                            "edit-source" | "resident-slice" | "resident-apply" | "resident-finish"
+                        ),
+                        // PLAN-818 T-06: runs + discriminating edits +
+                        // restart session boundaries (`query` stays a
+                        // sema/abi op — recipes never borrow ops).
+                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source" | "restart")
+                        }
+                        // PLAN-891: the typed recipe consumes exactly a
+                        // single run step in the formal case form.
+                        "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-892: the daily emit is a single run step
+                        // (edit/restart sessions arrive with their own
+                        // contract when the session face lands). The
+                        // PLAN-902 record-text recipe shares the shape.
+                        "ac-a2r/hir-scalar-emit-v1"
+                        | "ac-a2r/hir-record-text-emit-v1"
+                        | "ac-a2r/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
+                        _ => op != "run",
+                    };
+                    if !allowed {
+                        return Err(err(
                             &sf.path_of("op"),
                             format!(
                                 "probe op {:?} is not valid for recipe {:?} (recipe-specific step vocabulary)",
                                 op, recipe
                             ),
                         ));
-                        }
-                        let step = match op.as_str() {
-                            "query" => ProbeStep::Query,
-                            "run" => ProbeStep::Run,
-                            "resident-apply" => ProbeStep::ResidentApply,
-                            "resident-finish" => ProbeStep::ResidentFinish,
-                            "resident-slice" => {
-                                let raw = req_str(&sf, "slices")?;
-                                let slices = match raw.parse::<u32>() {
-                                    Ok(n) if (1..=65_536).contains(&n) => n,
-                                    _ => {
-                                        return Err(err(
-                                            &sf.path_of("slices"),
-                                            "resident-slice needs an integer 1..=65536",
-                                        ))
-                                    }
-                                };
-                                ProbeStep::ResidentSlice { slices }
-                            }
-                            "edit-source" => {
-                                let from = req_str(&sf, "from")?;
-                                let to = req_str(&sf, "to")?;
-                                if from.is_empty() || from == to {
+                    }
+                    let step = match op.as_str() {
+                        "query" => ProbeStep::Query,
+                        "run" => ProbeStep::Run,
+                        "resident-apply" => ProbeStep::ResidentApply,
+                        "resident-finish" => ProbeStep::ResidentFinish,
+                        "resident-slice" => {
+                            let raw = req_str(&sf, "slices")?;
+                            let slices = match raw.parse::<u32>() {
+                                Ok(n) if (1..=65_536).contains(&n) => n,
+                                _ => {
                                     return Err(err(
+                                        &sf.path_of("slices"),
+                                        "resident-slice needs an integer 1..=65536",
+                                    ))
+                                }
+                            };
+                            ProbeStep::ResidentSlice { slices }
+                        }
+                        "edit-source" => {
+                            let from = req_str(&sf, "from")?;
+                            let to = req_str(&sf, "to")?;
+                            if from.is_empty() || from == to {
+                                return Err(err(
                                     &sf.path_of("from"),
                                     "edit-source needs a non-empty `from` distinct from `to` (a discriminating edit oracle)",
                                 ));
-                                }
-                                if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
-                                    return Err(err(
-                                        &sf.path_of("to"),
-                                        "edit-source literals exceed the 64KiB step cap",
-                                    ));
-                                }
-                                ProbeStep::EditSource { from, to }
                             }
-                            "restart" => ProbeStep::Restart,
-                            other => {
+                            if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
                                 return Err(err(
-                                    &sf.path_of("op"),
-                                    format!(
+                                    &sf.path_of("to"),
+                                    "edit-source literals exceed the 64KiB step cap",
+                                ));
+                            }
+                            ProbeStep::EditSource { from, to }
+                        }
+                        "restart" => ProbeStep::Restart,
+                        other => {
+                            return Err(err(
+                                &sf.path_of("op"),
+                                format!(
                                 "unknown probe op {:?} (supported: query, edit-source, restart)",
                                 other
                             ),
-                                ))
-                            }
-                        };
-                        out.push(step);
-                    }
-                    if recipe == "ac-av/core-run-v1"
-                        || recipe == "ac-av/console-run-v1"
-                        || recipe == "ac-av/data-run-v1"
-                        || recipe == "ac-av/owned-run-v1"
-                        || recipe == "ac-av/collections-run-v1"
-                        || recipe == "ac-av/collections-source-run-v1"
-                        || recipe == "ac-av/loaded-run-v1"
-                        || recipe == "ac-av/closures-run-v1"
-                        || recipe == "ac-av/closures-source-run-v1"
-                        || recipe == "ac-av/dynamic-run-v1"
-                        || recipe == "ac-av/compact-run-v1"
-                    {
-                        // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
-                        // plus discriminating edit-source steps; a sequence
-                        // may LEAD with edits (the measured formal window —
-                        // the request materializes the source, applies leading
-                        // edits, then runs) but must END with the judged run,
-                        // and leading edits require an explicit session only
-                        // for cross-call warmth (single-call shapes are
-                        // unchanged). PLAN-820: the data recipe shares the
-                        // same shape (its judged step is also a run).
-                        if !matches!(out.last(), Some(ProbeStep::Run)) {
-                            return Err(err(
-                                &f.path_of("steps"),
-                                "ac-av step sequences must end with a run step (the judged step)",
-                            ));
+                            ))
                         }
-                        if out.is_empty() {
-                            return Err(err(&f.path_of("steps"), "steps must not be empty"));
-                        }
-                    }
-                    // PLAN-866: the resident recipe's judged step is the
-                    // resident-finish (the chain's terminal outcome), never
-                    // a bare run.
-                    if recipe == "ac-av/resident-run-v1"
-                        && !matches!(out.last(), Some(ProbeStep::ResidentFinish))
-                    {
+                    };
+                    out.push(step);
+                }
+                if recipe == "ac-av/core-run-v1"
+                    || recipe == "ac-av/console-run-v1"
+                    || recipe == "ac-av/data-run-v1"
+                    || recipe == "ac-av/owned-run-v1"
+                    || recipe == "ac-av/collections-run-v1"
+                    || recipe == "ac-av/collections-source-run-v1"
+                    || recipe == "ac-av/loaded-run-v1"
+                    || recipe == "ac-av/closures-run-v1"
+                    || recipe == "ac-av/closures-source-run-v1"
+                    || recipe == "ac-av/dynamic-run-v1"
+                    || recipe == "ac-av/compact-run-v1"
+                {
+                    // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
+                    // plus discriminating edit-source steps; a sequence
+                    // may LEAD with edits (the measured formal window —
+                    // the request materializes the source, applies leading
+                    // edits, then runs) but must END with the judged run,
+                    // and leading edits require an explicit session only
+                    // for cross-call warmth (single-call shapes are
+                    // unchanged). PLAN-820: the data recipe shares the
+                    // same shape (its judged step is also a run).
+                    if !matches!(out.last(), Some(ProbeStep::Run)) {
                         return Err(err(
+                            &f.path_of("steps"),
+                            "ac-av step sequences must end with a run step (the judged step)",
+                        ));
+                    }
+                    if out.is_empty() {
+                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
+                    }
+                }
+                // PLAN-866: the resident recipe's judged step is the
+                // resident-finish (the chain's terminal outcome), never
+                // a bare run.
+                if recipe == "ac-av/resident-run-v1"
+                    && !matches!(out.last(), Some(ProbeStep::ResidentFinish))
+                {
+                    return Err(err(
                             &f.path_of("steps"),
                             "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
                         ));
-                    }
-                    if recipe == "cte/scalar-query-v1"
-                        && !matches!(out.last(), Some(ProbeStep::Query))
-                    {
-                        return Err(err(
+                }
+                if recipe == "cte/scalar-query-v1" && !matches!(out.last(), Some(ProbeStep::Query))
+                {
+                    return Err(err(
                             &f.path_of("steps"),
                             "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
                         ));
-                    }
-                    if matches!(
-                        recipe.as_str(),
-                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
-                    ) {
-                        // PLAN-818 T-06 session shape: leading edits
-                        // materialize parent-side, `restart` splits worker
-                        // sessions (a real new process each), and the judged
-                        // step is the sequence's LAST run.
-                        if !matches!(out.last(), Some(ProbeStep::Run)) {
-                            return Err(err(
+                }
+                if matches!(
+                    recipe.as_str(),
+                    "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1"
+                ) {
+                    // PLAN-818 T-06 session shape: leading edits
+                    // materialize parent-side, `restart` splits worker
+                    // sessions (a real new process each), and the judged
+                    // step is the sequence's LAST run.
+                    if !matches!(out.last(), Some(ProbeStep::Run)) {
+                        return Err(err(
                                 &f.path_of("steps"),
                                 "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
                             ));
-                        }
-                        if out.is_empty() {
-                            return Err(err(&f.path_of("steps"), "steps must not be empty"));
-                        }
                     }
-                    out
-                }
-            };
-            // The binding object is RECIPE-SPECIFIC: sema/query-v1 takes
-            // `sema`, abi/interop-v1 takes `abi`; declaring the wrong one
-            // (or none) is an admission error, never a parsed-then-ignored
-            // field.
-            let sema = match f.sub("sema") {
-                None => {
-                    if recipe == "sema/query-v1" {
-                        return Err(err(
-                            &f.path_of("sema"),
-                            "sema/query-v1 requires a sema binding",
-                        ));
+                    if out.is_empty() {
+                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
                     }
-                    None
                 }
-                Some(v) => {
-                    if recipe != "sema/query-v1" {
-                        return Err(err(
+                out
+            }
+        };
+        // The binding object is RECIPE-SPECIFIC: sema/query-v1 takes
+        // `sema`, abi/interop-v1 takes `abi`; declaring the wrong one
+        // (or none) is an admission error, never a parsed-then-ignored
+        // field.
+        let sema = match f.sub("sema") {
+            None => {
+                if recipe == "sema/query-v1" {
+                    return Err(err(
+                        &f.path_of("sema"),
+                        "sema/query-v1 requires a sema binding",
+                    ));
+                }
+                None
+            }
+            Some(v) => {
+                if recipe != "sema/query-v1" {
+                    return Err(err(
                         &f.path_of("sema"),
                         format!(
                             "the sema binding belongs to sema/query-v1; it is not valid for recipe {:?}",
                             recipe
                         ),
                     ));
-                    }
-                    let spath = f.path_of("sema");
-                    let pairs = as_obj(v, &spath)?;
-                    let sf = Fields::new(&spath, pairs, &["package", "module", "kind", "fn"])?;
-                    let kind = req_str(&sf, "kind")?;
-                    if kind != "infer-body" {
-                        return Err(err(
-                            &sf.path_of("kind"),
-                            format!("unknown sema query kind {:?} (v1 freezes infer-body)", kind),
-                        ));
-                    }
-                    Some(ProbeSemaSpec {
-                        package: req_str(&sf, "package")?,
-                        module: req_str(&sf, "module")?,
-                        kind,
-                        fn_name: req_str(&sf, "fn")?,
-                    })
                 }
-            };
-            let abi = match f.sub("abi") {
-                None => {
-                    if recipe == "abi/interop-v1" {
-                        return Err(err(
-                            &f.path_of("abi"),
-                            "abi/interop-v1 requires an abi binding",
-                        ));
-                    }
-                    None
+                let spath = f.path_of("sema");
+                let pairs = as_obj(v, &spath)?;
+                let sf = Fields::new(&spath, pairs, &["package", "module", "kind", "fn"])?;
+                let kind = req_str(&sf, "kind")?;
+                if kind != "infer-body" {
+                    return Err(err(
+                        &sf.path_of("kind"),
+                        format!("unknown sema query kind {:?} (v1 freezes infer-body)", kind),
+                    ));
                 }
-                Some(v) => {
-                    if recipe != "abi/interop-v1" {
-                        return Err(err(
-                            &f.path_of("abi"),
-                            format!(
-                                "the abi binding belongs to abi/interop-v1, not {:?}",
-                                recipe
-                            ),
-                        ));
-                    }
-                    let apath = f.path_of("abi");
-                    let pairs = as_obj(v, &apath)?;
-                    let af = Fields::new(&apath, pairs, &["leg"])?;
-                    let leg = req_str(&af, "leg")?;
-                    if !matches!(leg.as_str(), "a" | "b" | "c") {
-                        return Err(err(
-                            &af.path_of("leg"),
-                            format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
-                        ));
-                    }
-                    Some(ProbeAbiSpec { leg })
+                Some(ProbeSemaSpec {
+                    package: req_str(&sf, "package")?,
+                    module: req_str(&sf, "module")?,
+                    kind,
+                    fn_name: req_str(&sf, "fn")?,
+                })
+            }
+        };
+        let abi = match f.sub("abi") {
+            None => {
+                if recipe == "abi/interop-v1" {
+                    return Err(err(
+                        &f.path_of("abi"),
+                        "abi/interop-v1 requires an abi binding",
+                    ));
                 }
-            };
-            let av = match f.sub("av") {
-                None => {
-                    if recipe == "ac-av/core-run-v1"
+                None
+            }
+            Some(v) => {
+                if recipe != "abi/interop-v1" {
+                    return Err(err(
+                        &f.path_of("abi"),
+                        format!(
+                            "the abi binding belongs to abi/interop-v1, not {:?}",
+                            recipe
+                        ),
+                    ));
+                }
+                let apath = f.path_of("abi");
+                let pairs = as_obj(v, &apath)?;
+                let af = Fields::new(&apath, pairs, &["leg"])?;
+                let leg = req_str(&af, "leg")?;
+                if !matches!(leg.as_str(), "a" | "b" | "c") {
+                    return Err(err(
+                        &af.path_of("leg"),
+                        format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
+                    ));
+                }
+                Some(ProbeAbiSpec { leg })
+            }
+        };
+        let av = match f.sub("av") {
+            None => {
+                if recipe == "ac-av/core-run-v1"
                         || recipe == "ac-av/console-run-v1"
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
@@ -1794,16 +1800,16 @@ fn decode_options(
                         // PLAN-866: the resident recipe requires the av
                         // binding (entry) like its siblings.
                         || recipe == "ac-av/resident-run-v1"
-                    {
-                        return Err(err(
-                            &f.path_of("av"),
-                            format!("{recipe} requires an av binding"),
-                        ));
-                    }
-                    None
+                {
+                    return Err(err(
+                        &f.path_of("av"),
+                        format!("{recipe} requires an av binding"),
+                    ));
                 }
-                Some(v) => {
-                    if recipe != "ac-av/core-run-v1"
+                None
+            }
+            Some(v) => {
+                if recipe != "ac-av/core-run-v1"
                         && recipe != "ac-av/console-run-v1"
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
@@ -1817,326 +1823,330 @@ fn decode_options(
                         // PLAN-866: the resident recipe takes the same av
                         // binding shape as its siblings.
                         && recipe != "ac-av/resident-run-v1"
-                    {
-                        return Err(err(
-                            &f.path_of("av"),
-                            format!(
+                {
+                    return Err(err(
+                        &f.path_of("av"),
+                        format!(
                             "av binding is not valid for recipe {:?} (recipe-specific bindings)",
                             recipe
                         ),
-                        ));
-                    }
-                    let apath = f.path_of("av");
-                    let pairs = as_obj(v, &apath)?;
-                    let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile"])?;
-                    let entry = req_str(&sf, "entry")?;
-                    // PLAN-862: the SOURCE-profile selector (append-only). A
-                    // check that omits it keeps the historical scalar path
-                    // byte-for-byte (`auto.source.scalar-i32.draft`); the
-                    // entry-unit profile is the ONLY other value, and it is
-                    // served by the core recipe (it is the same AV worker /
-                    // pipeline, a different front door and wire family). Any
-                    // other combination is an admission error, never a
-                    // silent fallback to scalar.
-                    let profile = match sf.sub("profile") {
-                        None => None,
-                        Some(pv) => {
-                            let p = as_str(pv, &sf.path_of("profile"))?.to_string();
-                            if p != "entry-unit" {
-                                return Err(err(
+                    ));
+                }
+                let apath = f.path_of("av");
+                let pairs = as_obj(v, &apath)?;
+                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile"])?;
+                let entry = req_str(&sf, "entry")?;
+                // PLAN-862: the SOURCE-profile selector (append-only). A
+                // check that omits it keeps the historical scalar path
+                // byte-for-byte (`auto.source.scalar-i32.draft`); the
+                // entry-unit profile is the ONLY other value, and it is
+                // served by the core recipe (it is the same AV worker /
+                // pipeline, a different front door and wire family). Any
+                // other combination is an admission error, never a
+                // silent fallback to scalar.
+                let profile = match sf.sub("profile") {
+                    None => None,
+                    Some(pv) => {
+                        let p = as_str(pv, &sf.path_of("profile"))?.to_string();
+                        if p != "entry-unit" {
+                            return Err(err(
                                     &sf.path_of("profile"),
                                     format!(
                                         "unknown av profile {p:?} (supported: entry-unit; omit for the default scalar profile)"
                                     ),
                                 ));
-                            }
-                            if recipe != "ac-av/core-run-v1" {
-                                return Err(err(
+                        }
+                        if recipe != "ac-av/core-run-v1" {
+                            return Err(err(
                                     &sf.path_of("profile"),
                                     format!(
                                         "the entry-unit source profile belongs to ac-av/core-run-v1, not {recipe:?}"
                                     ),
                                 ));
-                            }
-                            Some(p)
                         }
-                    };
-                    let session = match sf.sub("session") {
-                        None => None,
-                        Some(v) => {
-                            let sid = as_str(v, &sf.path_of("session"))?.to_string();
-                            if sid.is_empty()
-                                || sid.len() > 64
-                                || !sid
-                                    .chars()
-                                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                            {
-                                return Err(err(
-                                    &sf.path_of("session"),
-                                    "av session id must be 1-64 chars of [A-Za-z0-9_-]",
-                                ));
-                            }
-                            Some(sid)
-                        }
-                    };
-                    let caps = match sf.sub("caps") {
-                        None => Vec::new(),
-                        Some(v) => {
-                            let list = as_list(v, &sf.path_of("caps"))?;
-                            let mut out = Vec::new();
-                            for (i, item) in list.iter().enumerate() {
-                                let cpath = format!("{}.caps[{}]", apath, i);
-                                out.push(as_str(item, &cpath)?.to_string());
-                            }
-                            out
-                        }
-                    };
-                    Some(ProbeAvSpec {
-                        entry,
-                        caps,
-                        session,
-                        profile,
-                    })
-                }
-            };
-            // PLAN-817: the cte binding (entry/caps/session — the query and
-            // binding tables live in the atom-data deck the worker owns).
-            let cte = match f.sub("cte") {
-                None => {
-                    if recipe == "cte/scalar-query-v1" {
-                        return Err(err(
-                            &f.path_of("cte"),
-                            "cte/scalar-query-v1 requires a cte binding",
-                        ));
+                        Some(p)
                     }
-                    None
+                };
+                let session = match sf.sub("session") {
+                    None => None,
+                    Some(v) => {
+                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                        if sid.is_empty()
+                            || sid.len() > 64
+                            || !sid
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err(err(
+                                &sf.path_of("session"),
+                                "av session id must be 1-64 chars of [A-Za-z0-9_-]",
+                            ));
+                        }
+                        Some(sid)
+                    }
+                };
+                let caps = match sf.sub("caps") {
+                    None => Vec::new(),
+                    Some(v) => {
+                        let list = as_list(v, &sf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for (i, item) in list.iter().enumerate() {
+                            let cpath = format!("{}.caps[{}]", apath, i);
+                            out.push(as_str(item, &cpath)?.to_string());
+                        }
+                        out
+                    }
+                };
+                Some(ProbeAvSpec {
+                    entry,
+                    caps,
+                    session,
+                    profile,
+                })
+            }
+        };
+        // PLAN-817: the cte binding (entry/caps/session — the query and
+        // binding tables live in the atom-data deck the worker owns).
+        let cte = match f.sub("cte") {
+            None => {
+                if recipe == "cte/scalar-query-v1" {
+                    return Err(err(
+                        &f.path_of("cte"),
+                        "cte/scalar-query-v1 requires a cte binding",
+                    ));
                 }
-                Some(v) => {
-                    if recipe != "cte/scalar-query-v1" {
-                        return Err(err(
+                None
+            }
+            Some(v) => {
+                if recipe != "cte/scalar-query-v1" {
+                    return Err(err(
                             &f.path_of("cte"),
                             format!(
                                 "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
                                 recipe
                             ),
                         ));
-                    }
-                    let cpath = f.path_of("cte");
-                    let pairs = as_obj(v, &cpath)?;
-                    let sf = Fields::new(&cpath, pairs, &["entry", "caps", "session"])?;
-                    let entry = req_str(&sf, "entry")?;
-                    let session = match sf.sub("session") {
-                        None => None,
-                        Some(v) => {
-                            let sid = as_str(v, &sf.path_of("session"))?.to_string();
-                            if sid.is_empty()
-                                || sid.len() > 64
-                                || !sid
-                                    .chars()
-                                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                            {
-                                return Err(err(
-                                    &sf.path_of("session"),
-                                    "cte session id must be 1-64 chars of [A-Za-z0-9_-]",
-                                ));
-                            }
-                            Some(sid)
-                        }
-                    };
-                    let caps = match sf.sub("caps") {
-                        None => Vec::new(),
-                        Some(v) => {
-                            let list = as_list(v, &sf.path_of("caps"))?;
-                            let mut out = Vec::new();
-                            for (i, item) in list.iter().enumerate() {
-                                let cpath = format!("{}.caps[{}]", cpath, i);
-                                out.push(as_str(item, &cpath)?.to_string());
-                            }
-                            out
-                        }
-                    };
-                    Some(ProbeCteSpec {
-                        entry,
-                        caps,
-                        session,
-                    })
                 }
-            };
-            let mn = match f.sub("mn") {
-                None => {
-                    if matches!(
-                        recipe.as_str(),
-                        "ac/mir-native-scalar-v1"
-                            | "ac/mir-native-collections-v1"
-                            | "ac/mir-native-typed-v1"
-                    ) {
-                        return Err(err(
-                            &f.path_of("mn"),
-                            "ac/mir-native recipes require an mn binding",
-                        ));
+                let cpath = f.path_of("cte");
+                let pairs = as_obj(v, &cpath)?;
+                let sf = Fields::new(&cpath, pairs, &["entry", "caps", "session"])?;
+                let entry = req_str(&sf, "entry")?;
+                let session = match sf.sub("session") {
+                    None => None,
+                    Some(v) => {
+                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                        if sid.is_empty()
+                            || sid.len() > 64
+                            || !sid
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err(err(
+                                &sf.path_of("session"),
+                                "cte session id must be 1-64 chars of [A-Za-z0-9_-]",
+                            ));
+                        }
+                        Some(sid)
                     }
-                    None
+                };
+                let caps = match sf.sub("caps") {
+                    None => Vec::new(),
+                    Some(v) => {
+                        let list = as_list(v, &sf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for (i, item) in list.iter().enumerate() {
+                            let cpath = format!("{}.caps[{}]", cpath, i);
+                            out.push(as_str(item, &cpath)?.to_string());
+                        }
+                        out
+                    }
+                };
+                Some(ProbeCteSpec {
+                    entry,
+                    caps,
+                    session,
+                })
+            }
+        };
+        let mn = match f.sub("mn") {
+            None => {
+                if matches!(
+                    recipe.as_str(),
+                    "ac/mir-native-scalar-v1"
+                        | "ac/mir-native-collections-v1"
+                        | "ac/mir-native-typed-v1"
+                ) {
+                    return Err(err(
+                        &f.path_of("mn"),
+                        "ac/mir-native recipes require an mn binding",
+                    ));
                 }
-                Some(v) => {
-                    if !matches!(
-                        recipe.as_str(),
-                        "ac/mir-native-scalar-v1"
-                            | "ac/mir-native-collections-v1"
-                            | "ac/mir-native-typed-v1"
-                    ) {
-                        return Err(err(
+                None
+            }
+            Some(v) => {
+                if !matches!(
+                    recipe.as_str(),
+                    "ac/mir-native-scalar-v1"
+                        | "ac/mir-native-collections-v1"
+                        | "ac/mir-native-typed-v1"
+                ) {
+                    return Err(err(
                             &f.path_of("mn"),
                             format!(
                                 "the mn binding belongs to ac/mir-native-scalar-v1; it is not valid for recipe {:?}",
                                 recipe
                             ),
                         ));
+                }
+                let mpath = f.path_of("mn");
+                let pairs = as_obj(v, &mpath)?;
+                let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session", "typed"])?;
+                let entry = req_str(&mf, "entry")?;
+                let caps = match mf.sub("caps") {
+                    None => Vec::new(),
+                    Some(v) => {
+                        let list = as_list(v, &mf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for (i, item) in list.iter().enumerate() {
+                            let cpath = format!("{}.caps[{}]", mpath, i);
+                            out.push(as_str(item, &cpath)?.to_string());
+                        }
+                        out
                     }
-                    let mpath = f.path_of("mn");
-                    let pairs = as_obj(v, &mpath)?;
-                    let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session", "typed"])?;
-                    let entry = req_str(&mf, "entry")?;
-                    let caps = match mf.sub("caps") {
-                        None => Vec::new(),
-                        Some(v) => {
-                            let list = as_list(v, &mf.path_of("caps"))?;
-                            let mut out = Vec::new();
-                            for (i, item) in list.iter().enumerate() {
-                                let cpath = format!("{}.caps[{}]", mpath, i);
-                                out.push(as_str(item, &cpath)?.to_string());
-                            }
-                            out
+                };
+                let session = match mf.sub("session") {
+                    None => None,
+                    Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
+                };
+                let typed = match mf.sub("typed") {
+                    None => {
+                        if recipe == "ac/mir-native-typed-v1" {
+                            return Err(err(
+                                &mf.path_of("typed"),
+                                "ac/mir-native-typed-v1 requires a typed binding",
+                            ));
                         }
-                    };
-                    let session = match mf.sub("session") {
-                        None => None,
-                        Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
-                    };
-                    let typed = match mf.sub("typed") {
-                        None => {
-                            if recipe == "ac/mir-native-typed-v1" {
-                                return Err(err(
-                                    &mf.path_of("typed"),
-                                    "ac/mir-native-typed-v1 requires a typed binding",
-                                ));
-                            }
-                            None
+                        None
+                    }
+                    Some(v) => {
+                        if recipe != "ac/mir-native-typed-v1" {
+                            return Err(err(
+                                &mf.path_of("typed"),
+                                "the typed binding belongs to ac/mir-native-typed-v1",
+                            ));
                         }
-                        Some(v) => {
-                            if recipe != "ac/mir-native-typed-v1" {
-                                return Err(err(
-                                    &mf.path_of("typed"),
-                                    "the typed binding belongs to ac/mir-native-typed-v1",
-                                ));
-                            }
-                            let tpath = mf.path_of("typed");
-                            let tpairs = as_obj(v, &tpath)?;
-                            let tf = Fields::new(&tpath, tpairs, &["fixture", "args"])?;
-                            let fixture = req_str(&tf, "fixture")?;
-                            let args = match tf.sub("args") {
-                                None => Vec::new(),
-                                Some(av) => {
-                                    let list = as_list(av, &tf.path_of("args"))?;
-                                    let mut out = Vec::new();
-                                    for (i, item) in list.iter().enumerate() {
-                                        let ipath = format!("{tpath}.args[{i}]");
-                                        let pair = as_list(item, &ipath)?;
-                                        if pair.len() != 2 {
-                                            return Err(err(
-                                                &ipath,
-                                                "a typed argument is a [kind, bits] pair",
-                                            ));
-                                        }
-                                        out.push((
-                                            as_str(&pair[0], &format!("{ipath}[0]"))?.to_string(),
-                                            as_str(&pair[1], &format!("{ipath}[1]"))?.to_string(),
+                        let tpath = mf.path_of("typed");
+                        let tpairs = as_obj(v, &tpath)?;
+                        let tf = Fields::new(&tpath, tpairs, &["fixture", "args"])?;
+                        let fixture = req_str(&tf, "fixture")?;
+                        let args = match tf.sub("args") {
+                            None => Vec::new(),
+                            Some(av) => {
+                                let list = as_list(av, &tf.path_of("args"))?;
+                                let mut out = Vec::new();
+                                for (i, item) in list.iter().enumerate() {
+                                    let ipath = format!("{tpath}.args[{i}]");
+                                    let pair = as_list(item, &ipath)?;
+                                    if pair.len() != 2 {
+                                        return Err(err(
+                                            &ipath,
+                                            "a typed argument is a [kind, bits] pair",
                                         ));
                                     }
-                                    out
+                                    out.push((
+                                        as_str(&pair[0], &format!("{ipath}[0]"))?.to_string(),
+                                        as_str(&pair[1], &format!("{ipath}[1]"))?.to_string(),
+                                    ));
                                 }
-                            };
-                            Some(ProbeMnTypedSpec { fixture, args })
-                        }
-                    };
-                    Some(ProbeMnSpec {
-                        entry,
-                        caps,
-                        session,
-                        typed,
-                    })
-                }
-            };
-
-            // PLAN-892/902: the a2x_hir binding (same seam contract as mn —
-            // required for its recipe, invalid elsewhere). The scalar recipe
-            // keeps its core/scalar profiles; the record-text recipe admits
-            // record/text/text-record (strictly disjoint).
-            let is_a2x_recipe = matches!(
-                recipe.as_str(),
-                "ac-a2r/hir-scalar-emit-v1"
-                    | "ac-a2r/hir-record-text-emit-v1"
-                    | "ac-a2r/hir-collections-emit-v1"
-            );
-            let a2x_hir = match f.sub("a2x_hir") {
-                None => {
-                    if is_a2x_recipe {
-                        return Err(err(
-                            &f.path_of("a2x_hir"),
-                            format!("{} requires an a2x_hir binding", recipe),
-                        ));
+                                out
+                            }
+                        };
+                        Some(ProbeMnTypedSpec { fixture, args })
                     }
-                    None
+                };
+                Some(ProbeMnSpec {
+                    entry,
+                    caps,
+                    session,
+                    typed,
+                })
+            }
+        };
+
+        // PLAN-892/902: the a2x_hir binding (same seam contract as mn —
+        // required for its recipe, invalid elsewhere). The scalar recipe
+        // keeps its core/scalar profiles; the record-text recipe admits
+        // record/text/text-record (strictly disjoint).
+        let is_a2x_recipe = matches!(
+            recipe.as_str(),
+            "ac-a2r/hir-scalar-emit-v1"
+                | "ac-a2r/hir-record-text-emit-v1"
+                | "ac-a2r/hir-collections-emit-v1"
+        );
+        let a2x_hir = match f.sub("a2x_hir") {
+            None => {
+                if is_a2x_recipe {
+                    return Err(err(
+                        &f.path_of("a2x_hir"),
+                        format!("{} requires an a2x_hir binding", recipe),
+                    ));
                 }
-                Some(v) => {
-                    if !is_a2x_recipe {
-                        return Err(err(
+                None
+            }
+            Some(v) => {
+                if !is_a2x_recipe {
+                    return Err(err(
                             &f.path_of("a2x_hir"),
                             format!(
                                 "the a2x_hir binding belongs to the a2x emit recipes; it is not valid for recipe {:?}",
                                 recipe
                             ),
                         ));
-                    }
-                    let hpath = f.path_of("a2x_hir");
-                    let pairs = as_obj(v, &hpath)?;
-                    let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps"])?;
-                    let profile = req_str(&hf, "profile")?;
-                    let profile_ok = match recipe.as_str() {
-                        "ac-a2r/hir-scalar-emit-v1" => {
-                            matches!(profile.as_str(), "core" | "scalar")
-                        }
-                        "ac-a2r/hir-collections-emit-v1" => profile == "collections",
-                        _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
-                    };
-                    if !profile_ok {
-                        return Err(err(
-                            &hf.path_of("profile"),
-                            format!(
-                                "a2x_hir profile {:?} is not valid for recipe {:?}",
-                                profile, recipe
-                            ),
-                        ));
-                    }
-                    let entry = req_str(&hf, "entry")?;
-                    let caps = match hf.sub("caps") {
-                        None => Vec::new(),
-                        Some(cv) => {
-                            let list = as_list(cv, &hf.path_of("caps"))?;
-                            let mut out = Vec::new();
-                            for item in list {
-                                out.push(as_str(item, &hf.path_of("caps"))?.to_string());
-                            }
-                            out
-                        }
-                    };
-                    Some(ProbeA2xHirSpec { profile, entry, caps })
                 }
-            };
-
-            (Some(recipe), Some(steps), sema, abi, av, cte, mn, a2x_hir)
-        } else {
-            (None, None, None, None, None, None, None, None)
+                let hpath = f.path_of("a2x_hir");
+                let pairs = as_obj(v, &hpath)?;
+                let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps"])?;
+                let profile = req_str(&hf, "profile")?;
+                let profile_ok = match recipe.as_str() {
+                    "ac-a2r/hir-scalar-emit-v1" => {
+                        matches!(profile.as_str(), "core" | "scalar")
+                    }
+                    "ac-a2r/hir-collections-emit-v1" => profile == "collections",
+                    _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
+                };
+                if !profile_ok {
+                    return Err(err(
+                        &hf.path_of("profile"),
+                        format!(
+                            "a2x_hir profile {:?} is not valid for recipe {:?}",
+                            profile, recipe
+                        ),
+                    ));
+                }
+                let entry = req_str(&hf, "entry")?;
+                let caps = match hf.sub("caps") {
+                    None => Vec::new(),
+                    Some(cv) => {
+                        let list = as_list(cv, &hf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for item in list {
+                            out.push(as_str(item, &hf.path_of("caps"))?.to_string());
+                        }
+                        out
+                    }
+                };
+                Some(ProbeA2xHirSpec {
+                    profile,
+                    entry,
+                    caps,
+                })
+            }
         };
+
+        (Some(recipe), Some(steps), sema, abi, av, cte, mn, a2x_hir)
+    } else {
+        (None, None, None, None, None, None, None, None)
+    };
 
     Ok(Options {
         module_name,

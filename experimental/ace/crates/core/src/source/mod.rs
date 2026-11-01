@@ -26,19 +26,17 @@ pub mod typecheck;
 
 pub use adapter::{
     compile_closures_source, compile_closures_source_incremental, compile_collections_source,
-    compile_entry_unit_source,
-    ClosuresFrontendLedger,
-    compile_host_console_source, compile_parts, compile_parts_with, compile_program_parts,
-    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
-    compile_text_source, emit_collections_function_batch, emit_function_body,
-    prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt, CompiledSource,
-    FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_entry_unit_source, compile_host_console_source, compile_parts, compile_parts_with,
+    compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
+    compile_text_record_source, compile_text_source, emit_collections_function_batch,
+    emit_function_body, prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt,
+    ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_function_fragment, parse_program, parse_program_with};
 pub use resolve::{
     env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_note_cold_walks,
-    recheck_function, resolve_closures_cached, resolve_env, resolve_with, CachedOwner,
-    CheckedEnv, ClosuresOwnerCache, ResolvedFn, ResolvedProgram, VT,
+    recheck_function, resolve_closures_cached, resolve_env, resolve_with, CachedOwner, CheckedEnv,
+    ClosuresOwnerCache, ResolvedFn, ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with, typecheck_with_skip};
 

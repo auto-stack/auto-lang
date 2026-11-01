@@ -1,5 +1,7 @@
 #[path = "cases/abc_semantics_tier.rs"]
 mod abc_semantics_tier;
+#[path = "cases/av_closures_909_performance.rs"]
+mod av_closures_909_performance;
 #[path = "cases/av_closures_cache_compat.rs"]
 mod av_closures_cache_compat;
 #[path = "cases/av_closures_dynamic_compat.rs"]
@@ -14,8 +16,6 @@ mod av_closures_recipe;
 mod av_closures_resources;
 #[path = "cases/av_closures_semantics.rs"]
 mod av_closures_semantics;
-#[path = "cases/av_closures_909_performance.rs"]
-mod av_closures_909_performance;
 
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;

@@ -3199,9 +3199,7 @@ impl<'a> FnLower<'a> {
                                 // the cell from here on. When the body
                                 // WRITES it, the snapshot seeds a fresh
                                 // PRIVATE cell the env alone owns.
-                                let elem = self
-                                    .cell_elem_of(source_ty)
-                                    .unwrap_or(source_ty);
+                                let elem = self.cell_elem_of(source_ty).unwrap_or(source_ty);
                                 let value = self.temp_ty_from_cache(elem);
                                 let index = self.cell_index_slot(self.t_i32);
                                 self.emit(
@@ -3222,13 +3220,7 @@ impl<'a> FnLower<'a> {
                                         },
                                         sp,
                                     );
-                                    self.emit(
-                                        MirInstr::ListPush {
-                                            root: cell,
-                                            value,
-                                        },
-                                        sp,
-                                    );
+                                    self.emit(MirInstr::ListPush { root: cell, value }, sp);
                                     operands.push(CaptureOperand {
                                         kind: CaptureKind::Move,
                                         src: cell,
@@ -3254,11 +3246,9 @@ impl<'a> FnLower<'a> {
                                     },
                                     sp,
                                 );
-                                let cell_ty = self
-                                    .out
-                                    .intern_type(MirType::List(ace_av_core::mir::ListTypeRef {
-                                        elem: source_ty,
-                                    }));
+                                let cell_ty = self.out.intern_type(MirType::List(
+                                    ace_av_core::mir::ListTypeRef { elem: source_ty },
+                                ));
                                 let cell = self.temp_ty(cell_ty);
                                 self.emit(
                                     MirInstr::ListNew {

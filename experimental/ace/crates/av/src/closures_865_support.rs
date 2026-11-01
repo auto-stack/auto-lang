@@ -72,13 +72,9 @@ impl ClosuresSourceSession {
         // units skip lowering and encoding entirely (the installed code
         // object, wire and generation stay; the structural gate still owns
         // submission through the wire identity).
-        let (compiled, frontend, ledger) = compile_closures_source_incremental(
-            self.frontend.as_ref(),
-            source,
-            source_path,
-            &[],
-        )
-        .map_err(CompileAndRunError::Diagnostics)?;
+        let (compiled, frontend, ledger) =
+            compile_closures_source_incremental(self.frontend.as_ref(), source, source_path, &[])
+                .map_err(CompileAndRunError::Diagnostics)?;
         // Units owned by reused owners: skip lower/encode when their wire
         // is already installed (a cache hit without an installed wire — a
         // failed previous apply — still goes through the full path).

@@ -361,13 +361,16 @@ pub(crate) fn scan_shared_capture_cells(
                     visit_expr(value, scopes, shared)
                 }
                 Stmt::Let {
-                    name, value, mutable, ..
+                    name,
+                    value,
+                    mutable,
+                    ..
                 } => {
                     visit_expr(value, scopes, shared);
-                    scopes.last_mut().unwrap().insert(
-                        name.name.clone(),
-                        (name.span.start, *mutable),
-                    );
+                    scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert(name.name.clone(), (name.span.start, *mutable));
                 }
                 Stmt::Assign { value, .. } => visit_expr(value, scopes, shared),
                 Stmt::If {
@@ -388,7 +391,10 @@ pub(crate) fn scan_shared_capture_cells(
                     var, iter, body, ..
                 } => {
                     visit_expr(iter, scopes, shared);
-                    scopes.push(BTreeMap::from([(var.name.clone(), (var.span.start, false))]));
+                    scopes.push(BTreeMap::from([(
+                        var.name.clone(),
+                        (var.span.start, false),
+                    )]));
                     visit_block(body, scopes, shared);
                     scopes.pop();
                 }
@@ -398,7 +404,10 @@ pub(crate) fn scan_shared_capture_cells(
                             arm.binding
                                 .as_ref()
                                 .map(|binding| {
-                                    BTreeMap::from([(binding.name.clone(), (binding.span.start, false))])
+                                    BTreeMap::from([(
+                                        binding.name.clone(),
+                                        (binding.span.start, false),
+                                    )])
                                 })
                                 .unwrap_or_default(),
                         );
