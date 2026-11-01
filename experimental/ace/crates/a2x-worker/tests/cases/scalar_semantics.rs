@@ -577,12 +577,10 @@ fn full_corpus_true_chain() {
     }
 }
 
-/// Admission negatives: wider HIR never passes the view into a target — a
-/// collections-domain module is a NAMED domain rejection. (The text domain
-/// joined the admitted set with PLAN-902; its true chain lives in
-/// record_text_902.rs.)
+/// Admission boundary (PLAN-904 update): the collections domain JOINED
+/// the admitted set (its true chain lives in collections_904.rs).
 #[test]
-fn view_admission_rejects_wider_domains() {
+fn view_admission_collections_joined_904() {
     use ace_core::source::compile_collections_source;
     let compiled = compile_collections_source(
         "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    return xs.get(0)\n}",
@@ -590,9 +588,11 @@ fn view_admission_rejects_wider_domains() {
         &[],
     )
     .expect("collections compile");
-    let err = SemanticView::from_checked(&compiled.checked)
-        .expect_err("collections domain must be rejected by the view");
-    assert_eq!(err.code, "a2x.domain", "got: {}", err);
+    // PLAN-904: collections is admitted now (profile bound, one function,
+    // verifier facts attached)
+    let view = SemanticView::from_checked(&compiled.checked)
+        .expect("collections domain is admitted since PLAN-904");
+    assert_eq!(view.profile, "auto.source.collections.draft");
 }
 
 /// Entry-shape rejections (§5.1): nonzero-param or non-i32 entries are

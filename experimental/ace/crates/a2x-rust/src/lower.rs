@@ -109,6 +109,26 @@ pub enum RStmt {
     Return {
         value: RExpr,
     },
+    // ---- PLAN-904 collections surface (never produced for 902/scalar) ----
+    /// Free one named owned slot via the explicit helper call (never
+    /// lexical Drop): `call(&mut name);`
+    FreeSlot {
+        name: String,
+        call: String,
+    },
+    /// Typed let with a raw Rust type string (collections temps and
+    /// locals whose types render through the view's list/variant names).
+    CollLet {
+        name: String,
+        ty_str: String,
+        mutable: bool,
+        init: RExpr,
+    },
+    /// Evaluate an effectful expression and discard its unit result
+    /// (`xs.push(v)` statement form).
+    EvalExpr {
+        expr: RExpr,
+    },
 }
 
 /// Statements + tail value of a lazily-evaluated short-circuit side. Used
@@ -205,6 +225,44 @@ pub enum RExpr {
     CharToI32 {
         inner: Box<RExpr>,
     },
+    // ---- PLAN-904 collections surface (never produced for 902/scalar) ----
+    /// A fallible operation with its VERIFIER-SCHEDULED error-path frees:
+    /// renders as `match (inner) { Ok(v) => v, Err(e) => { frees; return
+    /// Err(e) } }` — trap/cancel unwind cleans the frame exactly once.
+    Wrap {
+        inner: Box<RExpr>,
+        frees: Vec<(String, String)>,
+    },
+    /// Collections runtime helper call (fallible; always under `Wrap`).
+    CollCall {
+        func: String,
+        turbo: Option<String>,
+        args: Vec<RExpr>,
+    },
+    /// `matches!(&root, Variant::Arm(_))` guard test (pure).
+    VariantIs {
+        variant: String,
+        arm: String,
+        payload: bool,
+        root: Box<RExpr>,
+    },
+    /// Generated per-arm projection helper call `a2x_coll_take_V_A(root)`
+    /// (fallible; under `Wrap`). Moving by value is the static single-
+    /// move discipline; the helper's discriminant check is the runtime
+    /// defense.
+    VariantTake {
+        helper: String,
+        root: Box<RExpr>,
+    },
+    /// The unit value (collections Eval statements' discarded result).
+    UnitExpr,
+    /// Nominal variant construction `A2xv<Name>::<Arm>(payload)` (pure;
+    /// the ctor charge precedes it as its own fallible statement).
+    VariantCtorExpr {
+        variant: String,
+        arm: String,
+        payload: Option<Box<RExpr>>,
+    },
 }
 
 impl RExpr {
@@ -247,6 +305,12 @@ impl RExpr {
             RExpr::Ref { .. } => "ref",
             RExpr::RefMut { .. } => "ref-mut",
             RExpr::CharToI32 { .. } => "char-to-i32",
+            RExpr::Wrap { .. } => "wrap",
+            RExpr::CollCall { .. } => "coll-call",
+            RExpr::VariantIs { .. } => "variant-is",
+            RExpr::VariantTake { .. } => "variant-take",
+            RExpr::VariantCtorExpr { .. } => "variant-ctor",
+            RExpr::UnitExpr => "unit",
         }
     }
 }
@@ -272,6 +336,17 @@ pub struct RustRecord {
     /// Resource records (transitive owned `Str`) derive nothing — clone
     /// and cleanup are explicit; Copy records derive `Clone, Copy`.
     pub resource: bool,
+}
+
+/// One nominal variant rendered into `generated.rs` (PLAN-904). Arms are
+/// in declaration order; the arm INDEX is the runtime discriminant.
+#[derive(Clone, Debug)]
+pub struct RustVariant {
+    pub type_index: u32,
+    /// Sanitized Rust enum name (`A2xv<Token>`).
+    pub name: String,
+    /// Sanitized arm names in declaration order with payload types.
+    pub arms: Vec<(String, Option<Ty>)>,
 }
 
 /// One lowered user function. `origin` is the def's byte span in the
@@ -302,10 +377,14 @@ pub struct RustProgram {
     /// Whether any signature needs the elided-all `'a` lifetime
     /// (PLAN-902: any reference parameter or borrowed result).
     pub borrowed: bool,
+    /// Nominal variant declarations (PLAN-904; empty for 902/scalar).
+    pub variants: Vec<RustVariant>,
+    /// Whether this program is a collections-channel program (PLAN-904).
+    pub coll: bool,
 }
 
 /// Sanitize a source name into Rust-identifier-safe ASCII ([A-Za-z0-9_]).
-fn sanitize(name: &str) -> String {
+pub fn sanitize(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for c in name.chars() {
         if c.is_ascii_alphanumeric() || c == '_' {
@@ -354,6 +433,20 @@ pub fn rust_record_name(name: &str) -> String {
     }
 }
 
+/// Rust enum name of a nominal variant type (PLAN-904): upper-camel,
+/// `A2xv`-prefixed (hygienic against keywords, records and runtime names).
+pub fn rust_variant_name(name: &str) -> String {
+    let s = sanitize(name);
+    let mut cs = s.chars();
+    match cs.next() {
+        Some(c) => {
+            let first = c.to_ascii_uppercase();
+            format!("A2xv{}{}", first, cs.as_str())
+        }
+        None => "A2xv".to_string(),
+    }
+}
+
 /// Lower a whole module for the given explicit entry function name.
 pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xReject> {
     let mut functions = Vec::new();
@@ -380,6 +473,8 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
         records,
         clones,
         borrowed,
+        variants: Vec::new(),
+        coll: false,
     })
 }
 

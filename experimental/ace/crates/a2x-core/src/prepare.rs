@@ -272,6 +272,60 @@ fn collect_expr(
                 ops.insert("move");
                 stack.push((*inner, d + 1));
             }
+            // ---- PLAN-904 collections surface (new tags never appear for
+            // scalar/902 functions) ----
+            hir::ExprKind::ListNew { .. } => {
+                ops.insert("list_new");
+            }
+            hir::ExprKind::ListLen { list } => {
+                ops.insert("list_len");
+                stack.push((*list, d + 1));
+            }
+            hir::ExprKind::ListPush { list, value } => {
+                ops.insert("list_push");
+                stack.push((*list, d + 1));
+                stack.push((*value, d + 1));
+            }
+            hir::ExprKind::ListInsert { list, index, value } => {
+                ops.insert("list_insert");
+                stack.push((*list, d + 1));
+                stack.push((*index, d + 1));
+                stack.push((*value, d + 1));
+            }
+            hir::ExprKind::ListGet { list, index } => {
+                ops.insert("list_get");
+                stack.push((*list, d + 1));
+                stack.push((*index, d + 1));
+            }
+            hir::ExprKind::ListSet { list, index, value } => {
+                ops.insert("list_set");
+                stack.push((*list, d + 1));
+                stack.push((*index, d + 1));
+                stack.push((*value, d + 1));
+            }
+            hir::ExprKind::ListRemove { list, index } => {
+                ops.insert("list_remove");
+                stack.push((*list, d + 1));
+                stack.push((*index, d + 1));
+            }
+            hir::ExprKind::ListClear { list } => {
+                ops.insert("list_clear");
+                stack.push((*list, d + 1));
+            }
+            hir::ExprKind::VariantCtor { payload, .. } => {
+                ops.insert("variant_ctor");
+                if let Some(p) = payload {
+                    stack.push((*p, d + 1));
+                }
+            }
+            hir::ExprKind::VariantGuardTest { root, .. } => {
+                ops.insert("variant_guard");
+                stack.push((*root, d + 1));
+            }
+            hir::ExprKind::VariantProject { root, .. } => {
+                ops.insert("variant_project");
+                stack.push((*root, d + 1));
+            }
             other => {
                 return Err(A2xReject::unsupported_expr(format!(
                     "in `{}`: expression `{:?}` outside the compute surface",
@@ -415,6 +469,12 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
                 }
                 hir::Stmt::Break { .. } => ser.push_str("brk;"),
                 hir::Stmt::Continue { .. } => ser.push_str("cont;"),
+                // PLAN-904: the collections unit-effect statement
+                hir::Stmt::Eval { value } => {
+                    ser.push_str("eval:");
+                    ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push(';');
+                }
                 _ => return Err(A2xReject::unsupported_stmt("outside the compute surface")),
             }
         }
@@ -430,25 +490,41 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
     Ok(crate::sha256::sha256_hex(ser.as_bytes()))
 }
 
-/// Whether the view sits on a PLAN-902 source domain (the fingerprint
-/// extensions are gated here so the 892 scalar bytes never move).
+/// Whether the view sits on a PLAN-902/PLAN-904 keyed source domain (the
+/// fingerprint extensions are gated here so the 892 scalar bytes never
+/// move; the collections family joins with its own fresh bytes).
 fn is_902_family(view: &SemanticView<'_>) -> bool {
     matches!(
         view.domain,
-        hir::HirDomain::Text | hir::HirDomain::Record | hir::HirDomain::TextRecord
+        hir::HirDomain::Text
+            | hir::HirDomain::Record
+            | hir::HirDomain::TextRecord
+            | hir::HirDomain::Collections
     )
 }
 
-/// Sorted nominal shape digest of every record type the function's
-/// signature, locals or expressions reference (name + ordered fields with
-/// nominal type names). Empty for scalar functions.
+/// Sorted nominal shape digest of every record/variant/list type the
+/// function's signature, locals or expressions reference (name + ordered
+/// fields/arms with nominal type names; lists structurally). Empty for
+/// scalar functions. PLAN-904: the closure crosses variant arms and list
+/// elements too — an arm/payload/element change invalidates even when the
+/// body serialization alone would not show it.
 fn record_digest(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<Vec<String>, A2xReject> {
-    let mut refs = std::collections::BTreeSet::<u32>::new();
-    fn note(refs: &mut std::collections::BTreeSet<u32>, ty: Ty) {
-        if let Ty::Record(id) = ty {
-            refs.insert(id);
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    enum Nominal {
+        Rec(u32),
+        Var(u32),
+        List(u32),
+    }
+    fn note(refs: &mut Vec<Nominal>, ty: Ty) {
+        match ty {
+            Ty::Record(id) => refs.push(Nominal::Rec(id)),
+            Ty::Variant(id) => refs.push(Nominal::Var(id)),
+            Ty::List(id) => refs.push(Nominal::List(id)),
+            _ => {}
         }
     }
+    let mut refs = Vec::new();
     for p in &f.params {
         note(&mut refs, p.ty);
     }
@@ -459,38 +535,76 @@ fn record_digest(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<Vec<String>
     for e in &f.body.exprs {
         match &e.kind {
             hir::ExprKind::RecordCtor { record, .. }
-            | hir::ExprKind::RecordClone { record, .. } => {
-                refs.insert(record.0);
+            | hir::ExprKind::RecordClone { record, .. } => refs.push(Nominal::Rec(record.0)),
+            hir::ExprKind::VariantCtor { variant, .. } => {
+                refs.push(Nominal::Var(variant.0));
+                note(&mut refs, view.resolve_use_ty(e.ty)?);
             }
             _ => note(&mut refs, view.resolve_use_ty(e.ty)?),
         }
     }
-    // close over nested record fields (transitive identity)
-    let mut closed = std::collections::BTreeSet::<u32>::new();
-    let mut queue: Vec<u32> = refs.into_iter().collect();
-    while let Some(id) = queue.pop() {
-        if !closed.insert(id) {
+    // close over nested shapes (transitive identity; iterative walk)
+    let mut closed = std::collections::BTreeSet::<Nominal>::new();
+    let mut queue: Vec<Nominal> = refs;
+    while let Some(n) = queue.pop() {
+        if !closed.insert(n) {
             continue;
         }
-        if let Some(rec) = view.record(id) {
-            for fld in &rec.fields {
-                if let Ty::Record(inner) = fld.ty {
-                    if !closed.contains(&inner) {
-                        queue.push(inner);
+        match n {
+            Nominal::Rec(id) => {
+                if let Some(rec) = view.record(id) {
+                    for fld in &rec.fields {
+                        note(&mut queue, fld.ty);
                     }
+                }
+            }
+            Nominal::Var(id) => {
+                if let Some(v) = view.variant(id) {
+                    for arm in &v.arms {
+                        if let Some(p) = arm.payload {
+                            note(&mut queue, p);
+                        }
+                    }
+                }
+            }
+            Nominal::List(id) => {
+                if let Ok(elem) = view.list_elem(id) {
+                    note(&mut queue, elem);
                 }
             }
         }
     }
     let mut out = Vec::new();
-    for id in closed {
-        if let Some(rec) = view.record(id) {
-            let fields: Vec<String> = rec
-                .fields
-                .iter()
-                .map(|fld| format!("{}:{}", fld.name, view.ty_name(fld.ty)))
-                .collect();
-            out.push(format!("rec {}{{{}}}", rec.name, fields.join(",")));
+    for n in closed {
+        match n {
+            Nominal::Rec(id) => {
+                if let Some(rec) = view.record(id) {
+                    let fields: Vec<String> = rec
+                        .fields
+                        .iter()
+                        .map(|fld| format!("{}:{}", fld.name, view.ty_name(fld.ty)))
+                        .collect();
+                    out.push(format!("rec {}{{{}}}", rec.name, fields.join(",")));
+                }
+            }
+            Nominal::Var(id) => {
+                if let Some(v) = view.variant(id) {
+                    let arms: Vec<String> = v
+                        .arms
+                        .iter()
+                        .map(|a| match &a.payload {
+                            Some(p) => format!("{}:{}", a.name, view.ty_name(*p)),
+                            None => a.name.clone(),
+                        })
+                        .collect();
+                    out.push(format!("var {}{{{}}}", v.name, arms.join(",")));
+                }
+            }
+            Nominal::List(id) => {
+                if let Ok(elem) = view.list_elem(id) {
+                    out.push(format!("list<{}>", view.ty_name(elem)));
+                }
+            }
         }
     }
     Ok(out)
@@ -736,6 +850,85 @@ fn ser_expr(
         hir::ExprKind::Move { inner } => {
             out.push_str("move(");
             ser_expr(view, f, *inner, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        // ---- PLAN-904 collections surface ----
+        hir::ExprKind::ListNew { list } => {
+            let elem = view.list_elem(list.0).map(|t| view.ty_name(t)).unwrap_or_default();
+            out.push_str(&format!("lnew<{elem}>"));
+        }
+        hir::ExprKind::ListLen { list } => {
+            out.push_str("llen(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListPush { list, value } => {
+            out.push_str("lpush(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *value, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListInsert { list, index, value } => {
+            out.push_str("lins(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *index, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *value, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListGet { list, index } => {
+            out.push_str("lget(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *index, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListSet { list, index, value } => {
+            out.push_str("lset(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *index, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *value, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListRemove { list, index } => {
+            out.push_str("lrem(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(',');
+            ser_expr(view, f, *index, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::ListClear { list } => {
+            out.push_str("lclr(");
+            ser_expr(view, f, *list, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::VariantCtor {
+            variant,
+            disc,
+            payload,
+        } => {
+            let name = view
+                .variant(variant.0)
+                .map(|v| v.name.clone())
+                .unwrap_or_else(|| format!("#{}", variant.0));
+            out.push_str(&format!("vnew {name}#{disc}("));
+            if let Some(p) = payload {
+                ser_expr(view, f, *p, canon, next, out, depth + 1)?;
+            }
+            out.push(')');
+        }
+        hir::ExprKind::VariantGuardTest { root, disc } => {
+            out.push_str(&format!("vis#{disc}("));
+            ser_expr(view, f, *root, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        hir::ExprKind::VariantProject { root, disc } => {
+            out.push_str(&format!("vproj#{disc}("));
+            ser_expr(view, f, *root, canon, next, out, depth + 1)?;
             out.push(')');
         }
         other => {

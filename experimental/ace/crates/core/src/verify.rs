@@ -58,6 +58,12 @@ pub struct CheckedModule {
     /// Derived text-runtime need (PLAN-770 r2 QA-02): computed by
     /// `verify_text` from the verified content itself.
     runtime_text_needed: bool,
+    /// PLAN-904: the verified collections body-facts plan — present only
+    /// for the collections/closures families. The frame-owned LIFO
+    /// cleanup/responsibility schedule (owned locals, per-exit frees,
+    /// replace frees, per-fallible-node error-path frees) the Rust target
+    /// consumes instead of re-deriving ownership.
+    coll_plan: Option<crate::collections_facts::CollectionsPlan>,
 }
 
 impl CheckedModule {
@@ -97,6 +103,14 @@ impl CheckedModule {
     pub fn text_resources(&self) -> Option<&crate::text_resources::TextResourcePlan> {
         self.text_plan.as_ref()
     }
+
+    /// The verifier-computed collections facts plan (PLAN-904). `None`
+    /// outside the collections/closures families.
+    pub fn collections_plan(
+        &self,
+    ) -> Option<&crate::collections_facts::CollectionsPlan> {
+        self.coll_plan.as_ref()
+    }
 }
 
 /// ONE function body verified against its module's declaration context
@@ -131,6 +145,15 @@ pub struct CheckedFunction {
     /// R4-05) — the facts a retained environment merges into its fixpoint
     /// and later call-site checks consume.
     excl_adds: std::collections::BTreeSet<(u32, u32)>,
+    /// PLAN-904: canonical span-free digest of the verified BODY content.
+    /// Binds the credential (and its facts) to the exact body: a fragment
+    /// view admits a credential only when the body digests match, so the
+    /// same owner + same declaration context + a different body can never
+    /// mix (V-13).
+    body_digest: String,
+    /// PLAN-904: the verifier-computed collections body facts of THIS body
+    /// (collections/closures single-body credentials; `None` elsewhere).
+    coll_facts: Option<Box<crate::collections_facts::CollectionsBodyFacts>>,
 }
 
 impl CheckedFunction {
@@ -178,6 +201,17 @@ impl CheckedFunction {
     /// call sites (PLAN-902 T-03).
     pub fn excl_adds(&self) -> &std::collections::BTreeSet<(u32, u32)> {
         &self.excl_adds
+    }
+
+    /// Canonical span-free digest of the verified body content (PLAN-904).
+    pub fn body_digest(&self) -> &str {
+        &self.body_digest
+    }
+
+    /// The verified collections body facts of this credential (PLAN-904;
+    /// collections/closures domains only).
+    pub fn coll_facts(&self) -> Option<&crate::collections_facts::CollectionsBodyFacts> {
+        self.coll_facts.as_deref()
     }
 }
 
@@ -413,6 +447,12 @@ pub fn verify_function_ref(
             intrinsics,
             resource_plan: None,
             excl_adds: std::collections::BTreeSet::new(),
+            body_digest: crate::collections_facts::body_content_digest(body),
+            coll_facts: if bundle.domain == HirDomain::Collections {
+                Some(Box::new(crate::collections_facts::compute_body_facts(m, body)))
+            } else {
+                None
+            },
         })
     } else {
         Err(v.diags)
@@ -624,6 +664,8 @@ pub fn verify_text_function(
         intrinsics,
         resource_plan: Some(plan),
         excl_adds,
+        body_digest: crate::collections_facts::body_content_digest(body),
+        coll_facts: None,
     })
 }
 
@@ -1015,6 +1057,7 @@ fn verify_text_domain(
             bundle,
             text_plan: Some(plan),
             runtime_text_needed: needs_runtime,
+            coll_plan: None,
         })
     } else {
         Err(v.diags)
@@ -1118,6 +1161,7 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
             bundle,
             text_plan: Some(plan),
             runtime_text_needed: needs_runtime,
+            coll_plan: None,
         })
     } else {
         Err(v.diags)
@@ -1183,13 +1227,24 @@ fn verify_collection_family(
         v.check_collections_rules(m, None);
     }
     if v.diags.is_empty() {
-        // no text resource plan: profile 4 releases frame-owned values at
-        // exits (runtime LIFO sweep), and this domain never emits the
-        // ac_rt text runtime.
+        // PLAN-904: whole-module collections facts — the frame-owned LIFO
+        // cleanup/responsibility schedule for every body (no text plan:
+        // profile 4 releases frame-owned values at exits and never emits
+        // the ac_rt text runtime).
+        let mut plan = crate::collections_facts::CollectionsPlan::default();
+        for (mi, m) in bundle.modules.iter().enumerate() {
+            for (bi, body) in m.bodies.iter().enumerate() {
+                plan.bodies.insert(
+                    (mi, bi as u32),
+                    crate::collections_facts::compute_body_facts(m, body),
+                );
+            }
+        }
         Ok(CheckedModule {
             bundle,
             text_plan: None,
             runtime_text_needed: false,
+            coll_plan: Some(plan),
         })
     } else {
         Err(v.diags)
@@ -1298,7 +1353,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
             bundle,
             text_plan: None,
             runtime_text_needed: false,
-        })
+            coll_plan: None,})
     } else {
         Err(v.diags)
     }

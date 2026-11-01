@@ -31,7 +31,8 @@ use std::collections::BTreeSet;
 use crate::A2xReject;
 
 /// The value types of the supported source surfaces (PLAN-892: i32/bool;
-/// PLAN-902: char, borrowed str, owned Str, nominal records).
+/// PLAN-902: char, borrowed str, owned Str, nominal records; PLAN-904:
+/// structural `List<T>` and nominal variants).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Ty {
     I32,
@@ -46,6 +47,15 @@ pub enum Ty {
     /// Nominal identity is the type table entry (name + shape), never the
     /// layout alone.
     Record(u32),
+    /// Owned typed list (PLAN-904). The payload is the module type-table
+    /// index of the `List { elem }` entry; the frontend interns list types
+    /// STRUCTURALLY (same element type ⇒ same entry), so index equality
+    /// within one module is structural equality.
+    List(u32),
+    /// Nominal variant (PLAN-904: `enum`/`?T`/`Result<T,E>`); the payload
+    /// is the module type-table index of the `Variant { arms }` entry
+    /// (nominal identity by declaration).
+    Variant(u32),
 }
 
 impl Ty {
@@ -56,8 +66,11 @@ impl Ty {
             Ty::Char => "char",
             Ty::Str => "str",
             Ty::StrOwned => "Str",
-            // nominal rendering needs the module — see SemanticView::ty_name
+            // nominal/structural rendering needs the module — see
+            // SemanticView::ty_name
             Ty::Record(_) => "record",
+            Ty::List(_) => "list",
+            Ty::Variant(_) => "variant",
         }
     }
 
@@ -151,6 +164,24 @@ pub struct RecordFacts {
     pub resource: bool,
 }
 
+/// One arm of a nominal variant, in declaration order (PLAN-904). The arm
+/// INDEX is the runtime discriminant; `payload: None` is the no-payload
+/// case.
+#[derive(Clone, Debug)]
+pub struct VariantArmFacts {
+    pub name: String,
+    pub payload: Option<Ty>,
+}
+
+/// Declaration facts of one nominal variant type (PLAN-904).
+#[derive(Clone, Debug)]
+pub struct VariantFacts {
+    pub type_index: u32,
+    /// Nominal name (`t_variant_` prefix stripped).
+    pub name: String,
+    pub arms: Vec<VariantArmFacts>,
+}
+
 /// The read-only semantic view. Constructed only via
 /// [`SemanticView::from_checked`]; every admission failure is a named
 /// [`A2xReject`].
@@ -164,12 +195,20 @@ pub struct SemanticView<'a> {
     /// Signature-only functions (single-body fragments; see `ExternalFn`).
     externals: Vec<ExternalFn>,
     records: Vec<RecordFacts>,
+    /// Nominal variant declarations, in type-table order (PLAN-904).
+    variants: Vec<VariantFacts>,
     /// The verifier-computed text resource plan (text/text-record domains),
     /// consumed verbatim — the view never re-derives ownership.
     resource_plan: Option<&'a TextResourcePlan>,
     /// PLAN-902 T-03: a single-body credential's OWN plan (fragment views);
     /// bound to the credential's body index, lookup-checked per function.
     fragment_plan: Option<(&'a ace_core::text_resources::BodyResourcePlan, u32)>,
+    /// PLAN-904: the verifier-computed collections facts plan
+    /// (collections/closures domains), consumed verbatim.
+    coll_plan: Option<&'a ace_core::collections_facts::CollectionsPlan>,
+    /// PLAN-904: a single-body credential's OWN collections facts (fragment
+    /// views); bound to the credential's body index, lookup-checked.
+    fragment_facts: Option<(&'a ace_core::collections_facts::CollectionsBodyFacts, u32)>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
@@ -190,6 +229,7 @@ impl<'a> SemanticView<'a> {
         let module = single_module(bundle)?;
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
+        let variants = collect_variants(module)?;
         let trace_defs = collect_trace_defs(module, bundle)?;
         let view = SemanticView {
             module,
@@ -198,8 +238,11 @@ impl<'a> SemanticView<'a> {
             functions,
             externals: Vec::new(),
             records,
+            variants,
             resource_plan: checked.text_resources(),
             fragment_plan: None,
+            coll_plan: checked.collections_plan(),
+            fragment_facts: None,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -263,12 +306,34 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
+        // PLAN-904 (V-13): a declaration-context match does NOT prove the
+        // credential was verified against THIS body. Bind the credential
+        // to the exact body content by the canonical span-free digest —
+        // the same owner + the same declaration context + a different
+        // body can never mix (A's credential + B's SourceParts is a
+        // named rejection, and B's own legitimate credential still
+        // admits).
+        let parts_digest = ace_core::collections_facts::body_content_digest(functions[0].body);
+        if credential.body_digest() != parts_digest {
+            return Err(A2xReject::new(
+                "a2x.credential",
+                format!(
+                    "credential body digest `{}` does not bind this fragment's body `{}` (same context, different body)",
+                    credential.body_digest(),
+                    parts_digest
+                ),
+            ));
+        }
         let trace_defs = collect_trace_defs(module, bundle)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
         let fragment_plan = credential
             .resource_plan()
+            .map(|p| (p, functions[0].body_index));
+        // PLAN-904: the same binding for the collections body facts.
+        let fragment_facts = credential
+            .coll_facts()
             .map(|p| (p, functions[0].body_index));
         let view = SemanticView {
             module,
@@ -277,8 +342,11 @@ impl<'a> SemanticView<'a> {
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
             records: collect_records(module)?,
+            variants: collect_variants(module)?,
             resource_plan: None,
             fragment_plan,
+            coll_plan: None,
+            fragment_facts,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -306,6 +374,27 @@ impl<'a> SemanticView<'a> {
         self.records.iter().find(|r| r.type_index == type_index)
     }
 
+    /// All nominal variant declarations, in type-table order (PLAN-904).
+    pub fn variants(&self) -> &[VariantFacts] {
+        &self.variants
+    }
+
+    /// The variant owning `type_index`, if any (PLAN-904).
+    pub fn variant(&self, type_index: u32) -> Option<&VariantFacts> {
+        self.variants.iter().find(|v| v.type_index == type_index)
+    }
+
+    /// The element type of the list type-table entry (PLAN-904).
+    pub fn list_elem(&self, type_index: u32) -> Result<Ty, A2xReject> {
+        match self.module.types.get(type_index as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::List { elem }) => resolve_ty(self.module, *elem),
+            _ => Err(A2xReject::new(
+                "a2x.internal",
+                format!("type #{type_index} is not a list entry"),
+            )),
+        }
+    }
+
     /// The verifier-computed text resource plan, when this domain carries
     /// one (text/text-record). `None` for core/scalar/record.
     pub fn resource_plan(&self) -> Option<&TextResourcePlan> {
@@ -327,6 +416,23 @@ impl<'a> SemanticView<'a> {
             return None;
         }
         self.resource_plan
+            .and_then(|p| p.bodies.get(&(0, f.body_index)))
+    }
+
+    /// The verifier-computed collections body facts of one function's body
+    /// (PLAN-904; module 0). A fragment view serves the credential's own
+    /// facts, body-index checked.
+    pub fn body_facts(
+        &self,
+        f: &FnFacts<'a>,
+    ) -> Option<&ace_core::collections_facts::CollectionsBodyFacts> {
+        if let Some((facts, body_index)) = self.fragment_facts {
+            if body_index == f.body_index {
+                return Some(facts);
+            }
+            return None;
+        }
+        self.coll_plan
             .and_then(|p| p.bodies.get(&(0, f.body_index)))
     }
 
@@ -393,14 +499,23 @@ impl<'a> SemanticView<'a> {
     }
 
     /// Nominal type rendering (semantic identity text): builtins as their
-    /// surface names, records by NAME. Used by the semantic fingerprint and
-    /// canonical signature — never spans or table indices.
+    /// surface names, records/variants by NAME, lists structurally. Used by
+    /// the semantic fingerprint and canonical signature — never spans or
+    /// table indices.
     pub fn ty_name(&self, ty: Ty) -> String {
         match ty {
             Ty::Record(id) => self
                 .record(id)
                 .map(|r| r.name.clone())
                 .unwrap_or_else(|| format!("record#{}", id)),
+            Ty::Variant(id) => self
+                .variant(id)
+                .map(|v| v.name.clone())
+                .unwrap_or_else(|| format!("variant#{}", id)),
+            Ty::List(id) => match self.list_elem(id) {
+                Ok(elem) => format!("List<{}>", self.ty_name(elem)),
+                Err(_) => format!("list#{}", id),
+            },
             other => other.as_str().to_string(),
         }
     }
@@ -469,7 +584,12 @@ impl<'a> SemanticView<'a> {
             // PLAN-902: the record/text/text-record surfaces carry the
             // full scalar operator set (their verifiers are supersets of
             // the scalar verifier for the compute nodes).
-            hir::HirDomain::Text | hir::HirDomain::Record | hir::HirDomain::TextRecord => matches!(
+            // PLAN-904: the collections surface carries it too (its
+            // verifier is the scalar verifier plus the collections rules).
+            hir::HirDomain::Text
+            | hir::HirDomain::Record
+            | hir::HirDomain::TextRecord
+            | hir::HirDomain::Collections => matches!(
                 op,
                 hir::BinOp::AddI32
                     | hir::BinOp::SubI32
@@ -544,6 +664,7 @@ impl<'a> SemanticView<'a> {
             hir::ExprKind::Unary { .. } | hir::ExprKind::Logical { .. } => {
                 if self.domain == hir::HirDomain::Scalar
                     || self.text_record_family(self.domain).is_some()
+                    || self.domain == hir::HirDomain::Collections
                 {
                     Ok(())
                 } else {
@@ -569,24 +690,34 @@ impl<'a> SemanticView<'a> {
             }
             other => {
                 // PLAN-902: the record/text/text-record node surfaces.
-                if self.text_record_family(self.domain).is_none() {
+                // PLAN-904: the collections node surface.
+                if let Some(family) = self.text_record_family(self.domain) {
+                    if kind_in_family(other, family) {
+                        return Ok(());
+                    }
                     return Err(A2xReject::unsupported_expr(format!(
-                        "in `{}`: expression kind `{}` is outside the core/scalar compute surface",
-                        f.name,
-                        kind_name(other)
-                    )));
-                }
-                let family = self.text_record_family(self.domain).unwrap();
-                if kind_in_family(other, family) {
-                    Ok(())
-                } else {
-                    Err(A2xReject::unsupported_expr(format!(
                         "in `{}`: expression kind `{}` is outside the {} surface",
                         f.name,
                         kind_name(other),
                         self.profile
-                    )))
+                    )));
                 }
+                if self.domain == hir::HirDomain::Collections {
+                    if kind_in_family(other, Family::Collections) {
+                        return Ok(());
+                    }
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "in `{}`: expression kind `{}` is outside the {} surface",
+                        f.name,
+                        kind_name(other),
+                        self.profile
+                    )));
+                }
+                Err(A2xReject::unsupported_expr(format!(
+                    "in `{}`: expression kind `{}` is outside the core/scalar compute surface",
+                    f.name,
+                    kind_name(other)
+                )))
             }
         }
     }
@@ -600,6 +731,9 @@ impl<'a> SemanticView<'a> {
             | hir::Stmt::Assign { .. }
             | hir::Stmt::Break { .. }
             | hir::Stmt::Continue { .. } => Ok(()),
+            // PLAN-904: the collections unit-effect statement (`xs.push(v)`
+            // and friends); its value is verified Unit/copy-discard only.
+            hir::Stmt::Eval { .. } if self.domain == hir::HirDomain::Collections => Ok(()),
             other => Err(A2xReject::unsupported_stmt(format!(
                 "in `{}`: statement kind `{}` is outside the compute surface",
                 f.name,
@@ -624,6 +758,10 @@ enum Family {
     Text,
     Record,
     TextRecord,
+    /// PLAN-904: the collections surface — the restricted Str face
+    /// (literal, `.len()`, clone), record construction/field reads and
+    /// borrows, whole-root move, and the List/Variant node set.
+    Collections,
 }
 
 /// Whether the expression kind belongs to the domain family's verified
@@ -652,6 +790,20 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
             | hir::ExprKind::BorrowView { .. }
             | hir::ExprKind::BorrowMut { .. }
     );
+    let collections_kinds = matches!(
+        k,
+        hir::ExprKind::ListNew { .. }
+            | hir::ExprKind::ListLen { .. }
+            | hir::ExprKind::ListPush { .. }
+            | hir::ExprKind::ListInsert { .. }
+            | hir::ExprKind::ListGet { .. }
+            | hir::ExprKind::ListSet { .. }
+            | hir::ExprKind::ListRemove { .. }
+            | hir::ExprKind::ListClear { .. }
+            | hir::ExprKind::VariantCtor { .. }
+            | hir::ExprKind::VariantGuardTest { .. }
+            | hir::ExprKind::VariantProject { .. }
+    );
     match family {
         Family::Text => text_kinds,
         Family::Record => record_kinds,
@@ -662,6 +814,19 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     k,
                     hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. }
                 )
+        }
+        // restricted Str face (literal + len + clone), record ctor/field
+        // reads/borrows, whole-root move, and the List/Variant set — the
+        // wider text surface (slices/char ops/concat) stays out
+        Family::Collections => {
+            matches!(
+                k,
+                hir::ExprKind::StrLit { .. }
+                    | hir::ExprKind::TextLen { .. }
+                    | hir::ExprKind::TextClone { .. }
+                    | hir::ExprKind::Move { .. }
+            ) || record_kinds
+                || collections_kinds
         }
     }
 }
@@ -683,8 +848,10 @@ fn profile_of(domain: hir::HirDomain) -> Result<&'static str, A2xReject> {
         hir::HirDomain::Text => Ok("auto.source.text.draft"),
         hir::HirDomain::Record => Ok("auto.source.record.draft"),
         hir::HirDomain::TextRecord => Ok("auto.source.text-record.draft"),
+        // PLAN-904: the collections source domain (List/Variant surface).
+        hir::HirDomain::Collections => Ok("auto.source.collections.draft"),
         other => Err(A2xReject::domain(format!(
-            "supported domains are core/scalar/record/text/text-record drafts; bundle is {}",
+            "supported domains are core/scalar/record/text/text-record/collections drafts; bundle is {}",
             other.as_str()
         ))),
     }
@@ -895,6 +1062,37 @@ fn collect_records(module: &hir::Module) -> Result<Vec<RecordFacts>, A2xReject> 
     Ok(records)
 }
 
+/// Collect nominal variant declarations with resolved arm payloads
+/// (PLAN-904). Arms are in declaration order; the arm INDEX is the
+/// runtime discriminant.
+fn collect_variants(module: &hir::Module) -> Result<Vec<VariantFacts>, A2xReject> {
+    let mut variants = Vec::new();
+    for (idx, td) in module.types.iter().enumerate() {
+        if let hir::TypeKind::Variant { arms } = &td.kind {
+            let mut facts = Vec::with_capacity(arms.len());
+            for a in arms {
+                facts.push(VariantArmFacts {
+                    name: a.name.clone(),
+                    payload: match a.payload {
+                        Some(p) => Some(resolve_ty(module, p)?),
+                        None => None,
+                    },
+                });
+            }
+            variants.push(VariantFacts {
+                type_index: idx as u32,
+                name: td
+                    .id_text
+                    .strip_prefix("t_variant_")
+                    .unwrap_or(&td.id_text)
+                    .to_string(),
+                arms: facts,
+            });
+        }
+    }
+    Ok(variants)
+}
+
 fn collect_trace_defs(
     module: &hir::Module,
     bundle: &hir::Bundle,
@@ -1002,6 +1200,9 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
             Some(hir::TypeKind::StrOwned) => Ok(Ty::StrOwned),
             Some(hir::TypeKind::Char) => Ok(Ty::Char),
             Some(hir::TypeKind::Record(_)) => Ok(Ty::Record(id.0)),
+            // PLAN-904: structural lists and nominal variants
+            Some(hir::TypeKind::List { .. }) => Ok(Ty::List(id.0)),
+            Some(hir::TypeKind::Variant { .. }) => Ok(Ty::Variant(id.0)),
             Some(other) => Err(A2xReject::unsupported_type(format!(
                 "type `{}` is outside the supported value types",
                 type_kind_name(other)

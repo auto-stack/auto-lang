@@ -1,3 +1,7 @@
+#[path = "cases/collections_v15.rs"]
+mod collections_v15;
+#[path = "cases/collections_904.rs"]
+mod collections_904;
 #[path = "cases/boundaries.rs"]
 mod boundaries;
 #[path = "cases/cert_rt_902.rs"]

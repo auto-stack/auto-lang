@@ -27,4 +27,5 @@ pub use prepare::{
 pub use reject::A2xReject;
 pub use semantic_view::{
     ExternalFn, FieldFacts, FnFacts, FnKind, ParamFacts, RecordFacts, SemanticView, Ty,
+    VariantArmFacts, VariantFacts,
 };

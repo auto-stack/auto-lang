@@ -24,6 +24,7 @@ use std::collections::HashMap;
 
 /// Rendering context: nominal record names by type-table index.
 struct PrintCtx<'p> {
+    variants: HashMap<u32, &'p crate::lower::RustVariant>,
     records: HashMap<u32, &'p RustRecord>,
 }
 
@@ -33,7 +34,11 @@ impl<'p> PrintCtx<'p> {
         for r in &program.records {
             records.insert(r.type_index, r);
         }
-        PrintCtx { records }
+        let mut variants = HashMap::new();
+        for v in &program.variants {
+            variants.insert(v.type_index, v);
+        }
+        PrintCtx { records, variants }
     }
 
     /// Rust type text of a target-neutral type. Scalar types render
@@ -50,6 +55,12 @@ impl<'p> PrintCtx<'p> {
                 .get(&id)
                 .map(|r| r.name.clone())
                 .unwrap_or_else(|| format!("Rec_#{}", id)),
+            Ty::Variant(id) => self
+                .variants
+                .get(&id)
+                .map(|v| v.name.clone())
+                .unwrap_or_else(|| format!("A2xv_#{}", id)),
+            Ty::List(_) => "A2xList".to_string(),
         }
     }
 }
@@ -67,6 +78,21 @@ pub fn print_program(p: &RustProgram) -> String {
     for h in clone_helper_closure(p) {
         out.push_str(&h);
         out.push('\n');
+    }
+    // PLAN-904: nominal variants + elem impls + free/clone/take helpers
+    for v in &p.variants {
+        out.push_str(&print_variant(&ctx, v));
+        out.push('\n');
+    }
+    if p.coll {
+        for r in &p.records {
+            out.push_str(&coll_record_helpers(&ctx, r, p));
+            out.push('\n');
+        }
+        for v in &p.variants {
+            out.push_str(&coll_variant_helpers(&ctx, v, p));
+        out.push('\n');
+        }
     }
     for f in &p.functions {
         out.push_str(&print_fn_in(&ctx, f, p.borrowed));
@@ -136,6 +162,7 @@ pub fn print_fn(f: &RustFn) -> String {
     print_fn_in(
         &PrintCtx {
             records: HashMap::new(),
+            variants: HashMap::new(),
         },
         f,
         false,
@@ -149,7 +176,7 @@ pub fn print_fn_records(records: &[crate::lower::RustRecord], f: &RustFn) -> Str
     for r in records {
         map.insert(r.type_index, r);
     }
-    print_fn_in(&PrintCtx { records: map }, f, false)
+    print_fn_in(&PrintCtx { records: map, variants: HashMap::new() }, f, false)
 }
 
 fn print_record(ctx: &PrintCtx<'_>, r: &RustRecord) -> String {
@@ -301,6 +328,25 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
         RStmt::Break => format!("{}break;\n", pad),
         RStmt::Continue => format!("{}continue;\n", pad),
         RStmt::Return { value } => format!("{}return Ok({});\n", pad, render_val(value)),
+        // ---- PLAN-904 collections surface ----
+        RStmt::FreeSlot { name, call } => format!("{}{}(&mut {});\n", pad, call, name),
+        RStmt::CollLet {
+            name,
+            ty_str,
+            mutable,
+            init,
+        } => {
+            let m = if *mutable { "mut " } else { "" };
+            format!(
+                "{}let {}{}: {} = {};\n",
+                pad,
+                m,
+                name,
+                ty_str,
+                render_val(init)
+            )
+        }
+        RStmt::EvalExpr { expr } => format!("{}{};\n", pad, render_val(expr)),
     }
 }
 
@@ -314,6 +360,8 @@ fn local_ty_text(ctx: &PrintCtx<'_>, ty: Ty) -> String {
         Ty::Str => "&str".to_string(),
         Ty::StrOwned => "A2xStr".to_string(),
         Ty::Record(id) => ctx.ty_str(Ty::Record(id)),
+        Ty::Variant(id) => ctx.ty_str(Ty::Variant(id)),
+        Ty::List(id) => ctx.ty_str(Ty::List(id)),
     }
 }
 
@@ -448,6 +496,58 @@ fn render_expr(e: &RExpr) -> String {
         RExpr::Ref { inner } => format!("&{}", render_operand(inner)),
         RExpr::RefMut { inner } => format!("&mut {}", render_operand(inner)),
         RExpr::CharToI32 { inner } => format!("{} as i32", render_operand(inner)),
+        // ---- PLAN-904 collections surface ----
+        RExpr::Wrap { inner, frees } => {
+            if frees.is_empty() {
+                return format!("{}?", render_expr(inner));
+            }
+            let mut out = String::from("match ");
+            out.push_str(&render_expr(inner));
+            out.push_str(" { Ok(v) => v, Err(e) => {");
+            for (name, call) in frees {
+                out.push_str(&format!(" {}(&mut {});", call, name));
+            }
+            out.push_str(" return Err(e) } }");
+            out
+        }
+        RExpr::UnitExpr => "()".to_string(),
+        RExpr::CollCall { func, turbo, args } => {
+            let mut out = String::from(func);
+            if let Some(t) = turbo {
+                out.push_str("::<");
+                out.push_str(t);
+                out.push('>');
+            }
+            out.push('(');
+            let rendered: Vec<String> = args.iter().map(render_operand).collect();
+            out.push_str(&rendered.join(", "));
+            out.push(')');
+            out
+        }
+        RExpr::VariantIs {
+            variant,
+            arm,
+            payload,
+            root,
+        } => {
+            let pat = if *payload {
+                format!("{}::{}(_)", variant, arm)
+            } else {
+                format!("{}::{}", variant, arm)
+            };
+            format!("::std::matches!(&{}, {})", render_operand(root), pat)
+        }
+        RExpr::VariantTake { helper, root } => {
+            format!("{}({})", helper, render_operand(root))
+        }
+        RExpr::VariantCtorExpr {
+            variant,
+            arm,
+            payload,
+        } => match payload {
+            Some(p) => format!("{}::{}({})", variant, arm, render_operand(p)),
+            None => format!("{}::{}", variant, arm),
+        },
     }
 }
 
@@ -460,6 +560,7 @@ fn render_block_value(side: &RBlock) -> String {
     } else {
         let ctx = PrintCtx {
             records: HashMap::new(),
+            variants: HashMap::new(),
         };
         let mut inner = String::new();
         for s in &side.stmts {
@@ -553,6 +654,8 @@ fn rt_prelude_into(
         records: records.to_vec(),
         clones: ids.clone(),
         borrowed: false,
+        variants: Vec::new(),
+        coll: false,
     };
     let ctx = PrintCtx::new(&fake);
     for r in &fake.records {
@@ -565,4 +668,238 @@ fn rt_prelude_into(
             out.push('\n');
         }
     }
+}
+
+/// PLAN-904: one nominal variant enum (arms in declaration order; the arm
+/// INDEX is the runtime discriminant; payloads by value).
+fn print_variant(ctx: &PrintCtx<'_>, v: &crate::lower::RustVariant) -> String {
+    let arms: Vec<String> = v
+        .arms
+        .iter()
+        .map(|(name, payload)| match payload {
+            Some(t) => format!("    {}({}),", name, ctx.ty_str(*t)),
+            None => format!("    {},", name),
+        })
+        .collect();
+    format!(
+        "#[allow(dead_code)]\npub enum {} {{\n{}\n}}\n",
+        v.name,
+        arms.join("\n")
+    )
+}
+
+/// PLAN-904: per-record explicit helpers + the list-element impl.
+fn coll_record_helpers(
+    ctx: &PrintCtx<'_>,
+    r: &crate::lower::RustRecord,
+    p: &RustProgram,
+) -> String {
+    let _ = ctx;
+    if !r.resource {
+        // Copy records hold no resources: free is a no-op, clone is a value
+        // copy with the ctor charge only.
+        return format!(
+            "fn a2x_coll_free_{n}(_v: &mut {n}) {{}}\nfn a2x_coll_clone_{n}(src: &{n}) -> A2xResult<{n}> {{ a2x_coll_charge_ctor()?; Ok(*src) }}\nimpl A2xCollElem for {n} {{\n    fn a2x_elem_free(&mut self) {{}}\n    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {{ a2x_coll_clone_{n}(self) }}\n    fn a2x_elem_str_bytes(&self) -> u64 {{ 0 }}\n}}\n",
+            n = r.name
+        );
+    }
+    // resource record: explicit frees in field order; sequential clone with
+    // partial-output rollback (field k's failure frees the cloned k-1..0)
+    let mut free_body = String::new();
+    let mut bytes_body = String::new();
+    for (fname, ty) in &r.fields {
+        match ty {
+            Ty::StrOwned => {
+                free_body.push_str(&format!("    a2x_str_free(&mut v.{});\n", fname));
+                bytes_body.push_str(&format!(
+                    "    b += self.{}.as_str().len() as u64;\n",
+                    fname
+                ));
+            }
+            Ty::Record(id) => {
+                let inner = record_name_of(p, *id);
+                free_body.push_str(&format!(
+                    "    a2x_coll_free_{}(&mut v.{});\n",
+                    inner, fname
+                ));
+                bytes_body.push_str(&format!(
+                    "    b += self.{}.a2x_elem_str_bytes();\n",
+                    fname
+                ));
+            }
+            _ => {}
+        }
+    }
+    let mut clone_stmts = String::from("    a2x_coll_charge_ctor()?;\n");
+    let mut owned: Vec<(String, String)> = Vec::new();
+    for (fname, ty) in &r.fields {
+        match ty {
+            Ty::StrOwned => {
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_str_clone(src.{f}.as_str()) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), "a2x_str_free".to_string()));
+            }
+            Ty::Record(id) => {
+                let inner = record_name_of(p, *id);
+                let call = format!("a2x_coll_free_{}", inner);
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    inner = inner,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), call));
+            }
+            _ => {}
+        }
+    }
+    let inits: Vec<String> = r
+        .fields
+        .iter()
+        .map(|(fname, ty)| match ty {
+            Ty::StrOwned | Ty::Record(_) => format!("{}: c_{}", fname, fname),
+            _ => format!("{}: src.{}", fname, fname),
+        })
+        .collect();
+    clone_stmts.push_str(&format!("    Ok({} {{ {} }})\n", r.name, inits.join(", ")));
+    format!(
+        "fn a2x_coll_free_{n}(v: &mut {n}) {{\n{fb}}}\nfn a2x_coll_clone_{n}(src: &{n}) -> A2xResult<{n}> {{\n{cs}}}\nimpl A2xCollElem for {n} {{\n    fn a2x_elem_free(&mut self) {{ a2x_coll_free_{n}(self) }}\n    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {{ a2x_coll_clone_{n}(self) }}\n    fn a2x_elem_str_bytes(&self) -> u64 {{ let mut b = 0u64; {bb}    b }}\n}}\n",
+        n = r.name,
+        fb = free_body,
+        cs = clone_stmts,
+        bb = bytes_body
+    )
+}
+
+fn record_name_of(p: &RustProgram, id: u32) -> String {
+    p.records
+        .iter()
+        .find(|x| x.type_index == id)
+        .map(|x| x.name.clone())
+        .unwrap_or_else(|| "Rec".to_string())
+}
+
+fn variant_name_of(p: &RustProgram, id: u32) -> String {
+    p.variants
+        .iter()
+        .find(|x| x.type_index == id)
+        .map(|x| x.name.clone())
+        .unwrap_or_else(|| "A2xv".to_string())
+}
+
+/// The error-path free statements for already-cloned owned fields.
+fn rollback_stmts(owned: &[(String, String)]) -> String {
+    let mut out = String::new();
+    for (name, call) in owned.iter().rev() {
+        out.push_str(&format!("{}(&mut c_{}); ", call, name));
+    }
+    out
+}
+
+/// PLAN-904: per-variant explicit helpers (free by active arm, per-arm
+/// take with the runtime discriminant defense, deep clone) + the elem
+/// impl.
+fn coll_variant_helpers(
+    ctx: &PrintCtx<'_>,
+    v: &crate::lower::RustVariant,
+    p: &RustProgram,
+) -> String {
+    let mut out = String::new();
+    let mut free_arms = String::new();
+    for (arm, payload) in &v.arms {
+        let frees = match payload {
+            Some(Ty::StrOwned) => "    a2x_str_free(p);\n".to_string(),
+            Some(Ty::Record(id)) => {
+                format!("    a2x_coll_free_{}(p);\n", record_name_of(p, *id))
+            }
+            Some(Ty::Variant(id)) => {
+                format!("    a2x_coll_free_{}(p);\n", variant_name_of(p, *id))
+            }
+            _ => String::new(),
+        };
+        match payload {
+            Some(_) => free_arms.push_str(&format!(
+                "            {}::{}(ref mut p) => {{\n{}            }}\n",
+                v.name, arm, frees
+            )),
+            None => free_arms.push_str(&format!("            {}::{} => {{}}\n", v.name, arm)),
+        }
+    }
+    out.push_str(&format!(
+        "fn a2x_coll_free_{n}(v: &mut {n}) {{\n    match v {{\n{arms}    }}\n}}\n",
+        n = v.name,
+        arms = free_arms
+    ));
+    for (arm, payload) in v.arms.iter() {
+        if let Some(ty) = payload {
+            out.push_str(&format!(
+                "fn a2x_coll_take_{n}_{a}(v: {n}) -> A2xResult<{t}> {{\n    match v {{\n        {n}::{a}(p) => Ok(p),\n        _ => Err(AutoTrap::VariantBranch),\n    }}\n}}\n",
+                n = v.name,
+                a = arm,
+                t = ctx.ty_str(*ty)
+            ));
+        }
+    }
+    let mut clone_arms = String::new();
+    for (arm, payload) in &v.arms {
+        match payload {
+            Some(Ty::StrOwned) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(a2x_str_clone(p.as_str())?)),\n",
+                n = v.name,
+                a = arm
+            )),
+            Some(Ty::Record(id)) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(a2x_coll_clone_{inner}(p)?)),\n",
+                n = v.name,
+                a = arm,
+                inner = record_name_of(p, *id)
+            )),
+            Some(Ty::Variant(id)) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(a2x_coll_clone_{inner}(p)?)),\n",
+                n = v.name,
+                a = arm,
+                inner = variant_name_of(p, *id)
+            )),
+            Some(_) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(p.clone())),\n",
+                n = v.name,
+                a = arm
+            )),
+            None => clone_arms.push_str(&format!(
+                "            {n}::{a} => Ok({n}::{a}),\n",
+                n = v.name,
+                a = arm
+            )),
+        }
+    }
+    out.push_str(&format!(
+        "fn a2x_coll_clone_{n}(src: &{n}) -> A2xResult<{n}> {{\n    a2x_coll_charge_ctor()?;\n    match src {{\n{arms}    }}\n}}\n",
+        n = v.name,
+        arms = clone_arms
+    ));
+    out.push_str(&format!(
+        "impl A2xCollElem for {n} {{\n    fn a2x_elem_free(&mut self) {{ a2x_coll_free_{n}(self) }}\n    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {{ a2x_coll_clone_{n}(self) }}\n    fn a2x_elem_str_bytes(&self) -> u64 {{ match self {{",
+        n = v.name
+    ));
+    for (arm, payload) in &v.arms {
+        match payload {
+            Some(Ty::StrOwned) => out.push_str(&format!(
+                " {n}::{a}(p) => p.as_str().len() as u64,",
+                n = v.name,
+                a = arm
+            )),
+            Some(Ty::Record(_)) | Some(Ty::Variant(_)) => out.push_str(&format!(
+                " {n}::{a}(p) => p.a2x_elem_str_bytes(),",
+                n = v.name,
+                a = arm
+            )),
+            Some(_) => out.push_str(&format!(" {n}::{a}(_) => 0,", n = v.name, a = arm)),
+            None => out.push_str(&format!(" {n}::{a} => 0,", n = v.name, a = arm)),
+        }
+    }
+    out.push_str(" }}\n}\n");
+    out
 }
