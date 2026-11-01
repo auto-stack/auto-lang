@@ -123,9 +123,13 @@ fn run_assembly(dir: &PathBuf, asm: &ace_a2x_store::Assembly) -> i64 {
     out.trim().strip_prefix("value:").unwrap().parse().unwrap()
 }
 
-fn p90(mut xs: Vec<u128>) -> u128 {
+fn percentile(mut xs: Vec<u128>, p: f64) -> u128 {
     xs.sort_unstable();
-    xs[((xs.len() as f64) * 0.9).ceil() as usize - 1]
+    xs[((xs.len() as f64) * p).ceil() as usize - 1]
+}
+
+fn p90(xs: Vec<u128>) -> u128 {
+    percentile(xs, 0.9)
 }
 
 fn fn_line_range(src: &str, name: &str) -> (usize, usize) {
@@ -162,6 +166,7 @@ fn main() {
     let oracle_b = oracle_of(21);
     let store_root = base.join("store");
     let mut certify_session = A2xSession::open(&store_root, "p904-formal", "owner", 64 << 20).unwrap();
+    let t_prepare = Instant::now();
     let a_asm = certify_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
         .expect("cold A");
@@ -179,10 +184,14 @@ fn main() {
         .expect("warm B pre-certify");
     let got = run_assembly(&base.join("pre-B"), &b_asm);
     assert_eq!(got, oracle_b, "revision B oracle");
+    let certify_secs = t_prepare.elapsed().as_secs_f64();
     eprintln!("pre-certified A={oracle_a} B={oracle_b}");
+
 
     let mut report = serde_json::json!({
         "schema": "a2904/coll-formal/1",
+        "prepare_compile_certify_secs": (certify_secs as u64),
+        "original_failures": 0,
         "samples": SAMPLES,
         "p90_limit_ms": P90_LIMIT_MS,
         "load": { "fns": fn_count, "non_comment_bytes": non_comment, "string_data_bytes": str_bytes },
@@ -268,13 +277,18 @@ fn main() {
     // gates: P90 per state + structural invariants asserted inline above
     let gates = [("fresh", fresh_ms), ("hit", hit_ms), ("restart", restart_ms), ("body-edit", edit_ms)];
     let mut all_ok = true;
+    // §5.7: P50/P90/P95/P99 and the prepared/compile/certify split are
+    // listed separately from the P90 gate
     for (name, ms) in &gates {
         let p = p90(ms.clone());
         let ok = p <= P90_LIMIT_MS;
         all_ok &= ok;
         eprintln!("{name}: P90={p}ms (limit {P90_LIMIT_MS}) {}", if ok { "PASS" } else { "FAIL" });
-        report[format!("{}_p90_ms", name.replace('-', "_"))] = (p as u64).into();
-        report[format!("{}_ok", name.replace('-', "_"))] = ok.into();
+        let key = name.replace('-', "_");
+        for (tag, pv) in [("p50", 0.5), ("p90", 0.9), ("p95", 0.95), ("p99", 0.99)] {
+            report[format!("{key}_{tag}_ms")] = (percentile(ms.clone(), pv) as u64).into();
+        }
+        report[format!("{key}_ok")] = ok.into();
     }
     let report_path = base.join("report.json");
     std::fs::write(&report_path, serde_json::to_string_pretty(&report).unwrap()).unwrap();

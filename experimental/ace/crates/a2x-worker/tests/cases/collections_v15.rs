@@ -233,3 +233,53 @@ fn v15_deep_clone_rollback_and_cleanup() {
         "rollback + cleanup reclaim the partial prefix: {out}"
     );
 }
+
+/// RV-2 (final review r1): the frozen resource-side witness — a chain of
+/// 3072+ nesting levels constructed, cloned and freed ENTIRELY inside a
+/// 256KiB-stack thread (the iterative work-loop cleanup never multiplies
+/// the host stack; a shallow control proves the mechanism, not the depth).
+#[test]
+fn v15_deep_3072_small_stack_witness() {
+    let exe = compile_probe(
+        "deep-small-stack",
+        r#"
+mod a2x_runtime;
+use a2x_runtime::*;
+
+fn main() {
+    // the witness runs under a 256KiB stack: iterative helpers must not
+    // multiply the host stack by nesting depth
+    let h = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(|| -> i32 {
+            let mut chain: Option<Box<A2xDeepLink>> = None;
+            for _ in 0..3072 {
+                if let Err(e) = a2x_coll_deep_push(&mut chain, "w-0123456789") {
+                    return -1;
+                }
+            }
+            let len = a2x_coll_deep_len(&chain);
+            let mut cloned = match a2x_coll_deep_clone(&chain) { Ok(v) => v, Err(_) => return -2 };
+            let clen = a2x_coll_deep_len(&cloned);
+            a2x_coll_deep_free(&mut cloned);
+            a2x_coll_deep_free(&mut chain);
+            if a2x_coll_live_str_bytes() != 0 { return -3; }
+            len * 10_000 + clen
+        })
+        .expect("spawn witness thread");
+    let r = h.join().expect("witness thread");
+    println!("str_bytes:{}", a2x_coll_live_str_bytes());
+    if r >= 0 {
+        println!("value:{}", r / 10_000 + r % 10_000);
+    } else {
+        println!("trap:Resource");
+    }
+}
+"#,
+    );
+    let (out, _) = run_with(&exe, &[]);
+    // 3072-deep chain built, cloned, both freed under the small stack,
+    // live accounting back to zero
+    assert!(out.contains("value:6144"), "3072 + clone 3072: {out}");
+    assert!(out.contains("str_bytes:0"), "both chains fully reclaimed: {out}");
+}

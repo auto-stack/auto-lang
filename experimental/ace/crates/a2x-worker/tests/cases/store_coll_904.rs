@@ -299,3 +299,52 @@ mod sha2_workspace {
         String::new()
     }
 }
+
+/// RV-1 (final review r1): a MULTIBYTE variable-length body edit through
+/// the ranged warm path — the 中文 source family edits "中" -> "中文" (a
+/// byte-length-changing edit on a multibyte scalar boundary), and the
+/// manifest rebinds the replaced full-source identity.
+#[test]
+fn store_coll_rv1_multibyte_variable_length_edit() {
+    let a = "fn word() Str { return \"中\" }\nfn main() int {\n    let s Str = word()\n    return s.len() * 10 + 2\n}";
+    let b_src = "fn word() Str { return \"中文\" }\nfn main() int {\n    let s Str = word()\n    return s.len() * 10 + 2\n}";
+    let root = scratch("rv1-cjk");
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let asm = s
+        .cold_assemble_profile(a, SourceProfile::Collections, &[], "main", false)
+        .expect("cold CJK");
+    assert_eq!(run_assembly("rv1-A", &asm), "value:12\n"); // 1*10+2
+    let b = s
+        .warm_edit_ranged("word", a, fn_range(a, "word"), "fn word() Str { return \"中文\" }", "main", false)
+        .expect("multibyte variable-length ranged edit");
+    assert_eq!(run_assembly("rv1-B", &b), "value:22\n"); // 2*10+2
+    assert!(b.manifest.contains(&format!("\"source_sha256\": \"{}\"", hex_of(b_src.as_bytes()))));
+}
+
+/// RV-1: the span-integrity negative controls — a document that zeroizes
+/// ALL spans (or claims whole-source anchors for a fragment) never passes
+/// the re-anchor checks silently: constructing such a bundle is rejected
+/// by the binder/reanchor front door, and the ranged editor refuses a
+/// range that is not exactly one declaration (the whole-source-impersonation
+/// shape). Both are NAMED rejections, not silent acceptance.
+#[test]
+fn store_coll_rv1_span_zero_and_whole_impersonation_rejected() {
+    let root = scratch("rv1-span0");
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    s.cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
+        .expect("cold");
+
+    // whole-source impersonation: the "range" tries to cover the ENTIRE
+    // source (a whole edit is not a body-edit authorization)
+    let err = s
+        .warm_edit_ranged("left_value", DECL_A, (0, DECL_A.len()), "fn left_value() int { return 20 }", "main", false)
+        .expect_err("whole-source range must reject");
+    assert!(matches!(err, ace_a2x_store::A2xRejectOrResource::Reject(r) if r.code == "a2x.range"));
+
+    // a zero-width range at a valid boundary is not a declaration either
+    let mid = DECL_A.find('\n').unwrap();
+    let err = s
+        .warm_edit_ranged("left_value", DECL_A, (mid, mid), "fn left_value() int { return 20 }", "main", false)
+        .expect_err("empty range must reject");
+    assert!(matches!(err, ace_a2x_store::A2xRejectOrResource::Reject(r) if r.code == "a2x.range"));
+}

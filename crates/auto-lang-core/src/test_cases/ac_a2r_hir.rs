@@ -256,6 +256,22 @@ pub fn run_check(
             let mut mismatches = Vec::new();
             let mut refs = Vec::new();
             let mut expected_paths: Vec<String> = Vec::new();
+            // PLAN-904 (RV-4, §5.6): path-domain review BEFORE any byte
+            // comparison — declared artifact paths are relative, unique
+            // after normalization, free of `..` traversal, and carry no
+            // Windows case collision (two paths differing only by ASCII
+            // case would alias on a case-insensitive filesystem).
+            for problem in path_domain_problems(
+                &oracle.artifacts.iter().map(|w| w.path.clone()).collect::<Vec<_>>(),
+            ) {
+                mismatches.push(Mismatch {
+                    observation: "artifact paths".into(),
+                    kind: "path-domain",
+                    expected: "relative normalized unique paths within the output domain".into(),
+                    actual: problem,
+                    first_diff: None,
+                });
+            }
             for want in &oracle.artifacts {
                 expected_paths.push(want.path.clone());
                 let path = actual_dir.join(&want.path);
@@ -331,5 +347,62 @@ pub fn run_check(
             "{recipe} daily checks declare success completions only (got {:?}); the trap/diagnostic axes are certification-leg observations",
             other
         )),
+    }
+}
+
+/// PLAN-904 (RV-4, §5.6): the declared artifact path set's domain review
+/// — relative paths only, no `..` traversal or rooted/absolute forms, and
+/// unique after ASCII-case-insensitive normalization (two declared paths
+/// differing only by case would alias on a case-insensitive filesystem).
+/// Returns one human-readable problem per violation.
+pub fn path_domain_problems(paths: &[String]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut normalized: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
+    for p in paths {
+        if std::path::Path::new(p).is_absolute()
+            || p.starts_with('/')
+            || p.contains("..")
+            || p.contains('\\')
+        {
+            problems.push(format!("{p}: outside the output domain"));
+            continue;
+        }
+        let norm = p.to_ascii_lowercase().replace('\\', "/");
+        if let Some(orig) = normalized.get(&norm) {
+            problems.push(format!("{orig} collides with {p} (case-insensitive alias)"));
+        } else {
+            normalized.insert(norm, p);
+        }
+    }
+    problems
+}
+
+#[cfg(test)]
+mod path_domain_tests {
+    use super::path_domain_problems;
+
+    fn v(paths: &[&str]) -> Vec<String> {
+        path_domain_problems(&paths.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn clean_paths_pass() {
+        assert!(v(&["main.rs", "a2x_runtime.rs", "generated.rs", "manifest.json"]).is_empty());
+        assert!(v(&["sub/dir/file.rs"]).is_empty());
+    }
+
+    #[test]
+    fn traversal_and_absolute_rejected() {
+        assert!(!v(&["../escape.rs"]).is_empty());
+        assert!(!v(&["sub/../../x.rs"]).is_empty());
+        assert!(!v(&["C:/abs/main.rs"]).is_empty());
+        assert!(!v(&["/rooted.rs"]).is_empty());
+    }
+
+    #[test]
+    fn case_collision_rejected() {
+        let problems = v(&["main.rs", "Main.RS"]);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("collides"), "{problems:?}");
     }
 }
