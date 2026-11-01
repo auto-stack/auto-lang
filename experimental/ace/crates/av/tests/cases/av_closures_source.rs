@@ -300,6 +300,43 @@ fn av_closures_909_failed_candidate_then_recovery() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// RV-03 (T-09 review): a nested non-move lambda INSIDE a move (private
+/// cell) closure shares that private cell across three lexical levels —
+/// the outer's env field, the inner's env field and the outer body all
+/// observe one buffer, while the creator's own `x` stays untouched (83 =
+/// 41 + 41 + 1; a snapshot anywhere would give 42).
+#[test]
+fn av_closures_909_nested_shared_inside_move_closure_shares_private_cell() {
+    run_source(
+        "fn main() int { var x int = 1; var outer = move () => { let inner = (n int) => { x = x + n; return x }; return inner(40) + x }; return outer() + x }",
+        83,
+    );
+}
+
+/// RV-03: a move capture of a shared cell snapshots the CURRENT value at
+/// creation — not the declaration value. Here w(10) runs BEFORE the move
+/// closure is created: m starts at 11, m(1) = 12, x = 11 → 23 (a
+/// declaration-time snapshot would give 12 + 1 + 11 = wait: 1+1=2, 2+1... the
+/// wrong implementations diverge; the oracle is the semantic definition).
+#[test]
+fn av_closures_909_move_snapshot_takes_the_current_cell_value() {
+    run_source(
+        "fn main() int { var x int = 1; var w = () => { x = x + 10; return x }; let a = w(); var m = move (n int) => { x = x + n; return x }; return m(1) + x }",
+        23,
+    );
+}
+
+/// RV-04: a CHAR cell — the write-back is observable through a char
+/// comparison after the closure ran (中 -> 文; `to_codepoint` gives the
+/// independent numeric oracle 25991).
+#[test]
+fn av_closures_909_char_cell_write_back_observed() {
+    run_source(
+        "fn main() int { var c char = '\u{4e2d}'; var w = () => { c = '\u{6587}'; return 0 }; let a = w(); if c.to_codepoint() == 25991 { return 42 }; return 0 }",
+        42,
+    );
+}
+
 /// V-11 (deep): a body-only edit of ONE lambda re-walks ONLY its owner —
 /// every other owner's resolve/typecheck walk is ZERO (observed in the
 /// frontend ledger), its units skip lowering/encoding entirely, and only

@@ -1132,9 +1132,11 @@ fn closures_source_body_edit_value(id: &str) -> i32 {
     match id {
         "K01" => 43,
         "S01" => 46,
-        "S03" => 45,
         "S02" => 44,
-        _ => 43,
+        "S03" => 45,
+        // Fail closed: an id without a recorded body-edit oracle is a
+        // parent-table defect, never K01's value in disguise.
+        other => unreachable!("body-edit oracle missing for source `{other}`"),
     }
 }
 

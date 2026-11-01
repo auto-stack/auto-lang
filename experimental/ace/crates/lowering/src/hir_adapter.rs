@@ -1989,6 +1989,11 @@ fn collections_type_idx_of(
             hir::BuiltinType::StrSlice if out.is_closures_profile() => {
                 Ok(out.intern_type(MirType::StrView))
             }
+            // PLAN-909:  joins the CLOSURES surface (shared cell
+            // value domain int/bool/char, SEM-04 / V-03).
+            hir::BuiltinType::Char if out.is_closures_profile() => {
+                Ok(out.intern_type(MirType::Char))
+            }
             // PLAN-864: unit-typed expressions are intercepted before type
             // mapping (the effect arms return NO_SLOT); reaching here means
             // a unit value would materialize — an internal violation.
@@ -2020,6 +2025,11 @@ fn collections_type_idx_of(
                 hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
                 hir::TypeKind::Str if out.is_closures_profile() => {
                     Ok(out.intern_type(MirType::StrView))
+                }
+                // PLAN-909:  joins the CLOSURES surface (the shared
+                // cell value domain is int/bool/char, SEM-04 / V-03).
+                hir::TypeKind::Char if out.is_closures_profile() => {
+                    Ok(out.intern_type(MirType::Char))
                 }
                 hir::TypeKind::Record(shape) => {
                     let mut fields = Vec::with_capacity(shape.fields.len());

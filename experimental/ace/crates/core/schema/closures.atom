@@ -18,8 +18,8 @@
 descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-closures-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, text_len, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
-        enum TypeKind { cases: [i32, bool, str, Str, function, closure, record, list, variant] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, char_lit, text_len, char_to_codepoint, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, function, closure, record, list, variant] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
@@ -92,6 +92,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
                 local: LocalRef
                 value: I32
                 text: Text
+                scalar: U32
                 op: BinOp
                 overflow: OverflowPolicy
                 lhs: ExprRef
@@ -137,6 +138,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "type.function") { require: [params, result]; forbid: [fields, elem, arms] }
         branch(key: "type.closure") { require: [params, result]; forbid: [fields, elem, arms] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result, elem, arms] }
+        branch(key: "type.char") { forbid: [params, result] }
         branch(key: "type.list") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "type.variant") { require: [arms]; forbid: [params, result, fields, elem] }
         branch(key: "function") { require: [name]; forbid: [symbol, effect] }
@@ -225,6 +227,16 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "expr.str_lit") {
             require: [type, text]
             forbid: [local, value, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload]
+        }
+
+        branch(key: "expr.char_lit") {
+            require: [type, scalar]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings]
+        }
+
+        branch(key: "expr.char_to_codepoint") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, callee, eval_args, bindings]
         }
         branch(key: "expr.text_len") {
             require: [type, operand]

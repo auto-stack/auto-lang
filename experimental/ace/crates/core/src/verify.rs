@@ -283,9 +283,16 @@ pub fn verify_function_ref(
             hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
         );
         // PLAN-864: the collections domain owns owned-`Str` values (the
-        // `t_Str` table entry); `char`/borrowed `str` stay excluded.
-        let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
-            && matches!(v.domain, HirDomain::Collections | HirDomain::Closures);
+        // `t_Str` table entry); `char`/borrowed `str` stay excluded —
+        // except that PLAN-909 admits `char` in the CLOSURES domain (the
+        // shared-cell value domain is int/bool/char, SEM-04 / V-03).
+        let admitted = match t.kind {
+            hir::TypeKind::StrOwned => {
+                matches!(v.domain, HirDomain::Collections | HirDomain::Closures)
+            }
+            hir::TypeKind::Char => v.domain == HirDomain::Closures,
+            _ => false,
+        };
         if text_kind && !admitted {
             v.error(
                 "verify.local-type",
@@ -2335,9 +2342,15 @@ impl Verifier {
         ) {
             for t in &m.types {
                 // PLAN-864: the collections domain owns the named owned-Str
-                // entry (`t_Str`); borrowed `str` and `char` stay excluded.
-                let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
-                    && matches!(self.domain, HirDomain::Collections | HirDomain::Closures);
+                // entry (`t_Str`); borrowed `str` stays excluded; `char`
+                // joins the CLOSURES domain under PLAN-909 (cell domain).
+                let admitted = match t.kind {
+                    hir::TypeKind::StrOwned => {
+                        matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
+                    }
+                    hir::TypeKind::Char => self.domain == HirDomain::Closures,
+                    _ => false,
+                };
                 if matches!(
                     t.kind,
                     hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
@@ -3759,7 +3772,10 @@ impl Verifier {
                     && lvt == ValueType::StrOwned)
                     || (self.domain == HirDomain::Closures
                         && l.role == hir::LocalRole::Capture
-                        && lvt == ValueType::Str))
+                        && lvt == ValueType::Str)
+                    // PLAN-909:  locals join the CLOSURES domain (the
+                    // shared-cell value domain is int/bool/char, SEM-04).
+                    || (self.domain == HirDomain::Closures && lvt == ValueType::Char))
             {
                 self.error(
                     "verify.local-type",

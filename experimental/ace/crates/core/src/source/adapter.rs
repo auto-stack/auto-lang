@@ -3006,6 +3006,11 @@ impl<'p> Emitter<'p> {
                 frag!("type t_str str {}", program_span);
                 spans.types.push(program_span);
                 nl!(12);
+                // PLAN-909: the closures surface admits  — the shared
+                // cell value domain is int/bool/char (SEM-04 / V-03).
+                frag!("type t_char char {}", program_span);
+                spans.types.push(program_span);
+                nl!(12);
             }
             frag!("type t_Str Str {}", program_span);
             spans.types.push(program_span);

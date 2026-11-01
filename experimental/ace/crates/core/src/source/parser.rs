@@ -1897,6 +1897,17 @@ impl<'s> Parser<'s> {
                     span: t.span,
                 })
             }
+            // PLAN-909: the closures surface admits  annotations — the
+            // shared-cell value domain (SEM-04) is int/bool/char, and V-03's
+            // oracle writes a char cell. The collections surface keeps its
+            // frozen grammar (char stays a named rejection there).
+            Some(Tok::Ident(w)) if w == "char" && self.surface.is_closures() => {
+                let t = self.bump();
+                Ok(TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Char),
+                    span: t.span,
+                })
+            }
             Some(Tok::Ident(w)) if w == "str" || w == "char" => {
                 let t = self.peek().unwrap();
                 Err(self.unsupported(

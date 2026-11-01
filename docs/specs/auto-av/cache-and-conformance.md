@@ -113,7 +113,7 @@ v1/v2/v3 互不可读；好信封坏内层、内容寻址同键冲突（防篡�
 - 失败候选（诊断/链接/门拒）：缓存、线与已装代码保全；下一次有效编辑精确生产被
   触单元，重应用已装源零产。坏载荷/陈旧身份沿 A23 既有拒绝（payload≠key、envelope
   校验和），缓存计数（hits/misses/store_writes）为常驻观测面。
-- 环境注记：具名 session case 组在持久机重复运行需清 `%TEMP%v798-session-*`
+- 环境注记：具名 session case 组在持久机重复运行需清 `%TEMP%\av798-session-*`
   （865 跨运行复用设计使 fresh 期望 hits=0 与持久 store 冲突；组运行彼此隔离）。
 
 ## PLAN-823：A23 closures 层与恢复身份

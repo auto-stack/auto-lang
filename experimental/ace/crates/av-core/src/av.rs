@@ -3268,8 +3268,10 @@ fn dispatch_with_host<V: ModuleView>(
                                                 }
                                             };
                                             if let Value::List(new_handle) = &fresh {
-                                                cell_memo.insert(handle.buf_id(), fresh.clone());
-                                                let _ = new_handle;
+                                                cell_memo.insert(
+                                                    handle.buf_id(),
+                                                    Value::List(new_handle.clone()),
+                                                );
                                             }
                                             fresh
                                         }
