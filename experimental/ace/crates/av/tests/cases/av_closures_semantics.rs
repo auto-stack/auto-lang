@@ -96,6 +96,603 @@ fn run_pipeline(m: &MirModule) -> (ExecOutcome, ace_av_core::owned_text::StrAren
 /// closure synchronously, drops it, then still USES the source (a VIEW +
 /// StrLen after the pin lifted). Hand oracle: env view len 4 + source view
 /// len 4 = **8**.
+// ---------------------------------------------------------------------------
+// PLAN-909: SHARED captures — the single-element `List<i32>` cell domain
+// ---------------------------------------------------------------------------
+
+/// The 909 type table: the semantics table plus `List<i32>` (cell) —
+/// indices 0..7 as above, 8 = List<i32>.
+fn shared_types() -> Vec<MirType> {
+    let mut types = semantics_types();
+    types.push(MirType::List(ListTypeRef { elem: 0 }));
+    types
+}
+
+fn shared_case() -> MirModule {
+    let owner = closures_owner_scope();
+    let mut m = MirModule::new_closures(owner.clone());
+    m.types = shared_types();
+    let t_cell = 8usize; // List<i32>
+    let c_one = m.intern_const(MirConst::I32(1));
+    let c_zero = m.intern_const(MirConst::I32(0));
+
+    // body (func 1): (i32) -> i32 — the shared cell arrives as field 0;
+    // add n to the CURRENT value and store it back; return the new value.
+    // slots: 0 n(param), 1 cell(List<i32>), 2 cur:i32, 3 z:i32, 4 ret:i32
+    let body = MirFunction {
+        owner: owner.clone(),
+        name: "body".to_string(),
+        sig: 5,
+        env: Some(vec![t_cell as u32]),
+        slots: vec![param(0, "n"), slot(8, "cell"), slot(0, "cur"), slot(0, "z"), slot(0, "ret")],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::EnvGet { dst: 1, field: 0 },
+                MirInstr::Const { dst: 3, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 2, base: 1, index: 3 },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 2,
+                    lhs: 2,
+                    rhs: 0,
+                },
+                MirInstr::Const { dst: 3, value: c_zero as u32 },
+                MirInstr::ListSet { root: 1, index: 3, value: 2 },
+                MirInstr::Copy { dst: 4, src: 2 },
+            ],
+            term: Terminator::Return { value: 4 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+
+    // main (func 0, entry): create the cell [1], TWO shared closures over
+    // it, call f(20) then g(0), and add the creator's OWN read of the cell.
+    // Hand oracle: f(20) -> 21; g(0) -> 21 (SHARED, not snapshot); creator
+    // LIST_GET -> 21. 21 + 21 + 21 = **63** — two snapshot copies would
+    // give 21 + 1 + 21 = 43, and a copy-on-capture would never reach 63.
+    // slots: 0 cell, 1 z:i32, 2 f:Closure, 3 g:Closure, 4 ret:i32,
+    //        5 a:i32, 6 b:i32, 7 c:i32, 8 arg:i32
+    let main = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        slots: vec![
+            slot(8, "cell"),
+            slot(0, "z"),
+            slot(6, "f"),
+            slot(6, "g"),
+            slot(0, "ret"),
+            slot(0, "a"),
+            slot(0, "b"),
+            slot(0, "c"),
+            slot(0, "arg"),
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_cell as u32,
+                    cap: 1,
+                },
+                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::CreateClosure {
+                    dst: 2,
+                    callee: ace_av_core::mir::CalleeRef::Func(1),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+                MirInstr::CreateClosure {
+                    dst: 3,
+                    callee: ace_av_core::mir::CalleeRef::Func(2),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+                MirInstr::Const { dst: 8, value: m.intern_const(MirConst::I32(20)) as u32 },
+                MirInstr::CallClosure {
+                    dst: 5,
+                    closure: 2,
+                    args: vec![8],
+                },
+                MirInstr::Const { dst: 8, value: c_zero as u32 },
+                MirInstr::CallClosure {
+                    dst: 6,
+                    closure: 3,
+                    args: vec![8],
+                },
+                MirInstr::Const { dst: 1, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 7, base: 0, index: 1 },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 4,
+                    lhs: 5,
+                    rhs: 6,
+                },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 4,
+                    lhs: 4,
+                    rhs: 7,
+                },
+                MirInstr::Drop { slot: 2 },
+                MirInstr::Drop { slot: 3 },
+            ],
+            term: Terminator::Return { value: 4 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+
+    // The whole-module first-case rule: ONE CREATE_CLOSURE site per callee —
+    // the sibling writer g gets its own (identical) body.
+    let mut body_g = body.clone();
+    body_g.name = "body_g".to_string();
+    m.funcs = vec![main, body, body_g];
+    m.entry = 0;
+    m
+}
+
+/// V-03 (typed leg): two Shared captures of one cell — creator, sibling
+/// and callee observe ONE buffer through the whole chain.
+#[test]
+fn av_closures_sem_shared_capture_shares_one_cell() {
+    let m = shared_case();
+    let (out, arena) = run_pipeline(&m);
+    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(63), .. }), "{out:?}");
+    assert_eq!(arena.live(), 0, "the cell frees with the last owner");
+}
+
+/// V-02 (typed leg): the shared source slot is NOT killed by the capture —
+/// the creator keeps writing the cell after CREATE_CLOSURE and the closure
+/// observes the write (mir.closure-use-after-move would fire on a kill).
+#[test]
+fn av_closures_sem_shared_source_stays_live_and_writable() {
+    let owner = closures_owner_scope();
+    let mut m = MirModule::new_closures(owner.clone());
+    m.types = shared_types();
+    let c_one = m.intern_const(MirConst::I32(1));
+    let c_zero = m.intern_const(MirConst::I32(0));
+    let t_cell = 8usize;
+
+    // body: () -> i32 — read the shared cell.
+    let body = MirFunction {
+        owner: owner.clone(),
+        name: "body".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        env: Some(vec![t_cell as u32]),
+        slots: vec![slot(8, "cell"), slot(0, "z"), slot(0, "ret")],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::EnvGet { dst: 0, field: 0 },
+                MirInstr::Const { dst: 1, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 2, base: 0, index: 1 },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+
+    // main: cell[1] -> closure over it -> creator writes 41 -> call -> 41+41=82
+    let cl0 = m.intern_type(MirType::Closure(FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let main = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        slots: vec![
+            slot(8, "cell"),
+            slot(0, "z"),
+            slot(cl0, "cl"),
+            slot(0, "v"),
+            slot(0, "ret"),
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_cell as u32,
+                    cap: 1,
+                },
+                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::CreateClosure {
+                    dst: 2,
+                    callee: ace_av_core::mir::CalleeRef::Func(1),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+                MirInstr::Const { dst: 1, value: m.intern_const(MirConst::I32(41)) as u32 },
+                MirInstr::Const { dst: 3, value: c_zero as u32 },
+                MirInstr::ListSet { root: 0, index: 3, value: 1 },
+                MirInstr::CallClosure { dst: 4, closure: 2, args: vec![] },
+                MirInstr::Const { dst: 3, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 1, base: 0, index: 3 },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 4,
+                    lhs: 4,
+                    rhs: 1,
+                },
+                MirInstr::Drop { slot: 2 },
+            ],
+            term: Terminator::Return { value: 4 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+    m.funcs = vec![main, body];
+    m.entry = 0;
+    let (out, arena) = run_pipeline(&m);
+    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(82), .. }), "{out:?}");
+    assert_eq!(arena.live(), 0);
+}
+
+/// V-10 (typed leg): the Shared domain gate — a Shared capture over an
+/// owned Str source is rejected BY NAME at verify, before encode/execute.
+#[test]
+fn av_closures_sem_shared_domain_rejects_non_cell_source() {
+    let owner = closures_owner_scope();
+    let mut m = MirModule::new_closures(owner.clone());
+    m.types = shared_types();
+    let ts = 1usize;
+    let sig = m.intern_type(fn_type(vec![], 0));
+    let cl = m.intern_type(MirType::Closure(FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let text = m.intern_const(MirConst::Str(Box::from(*b"no")));
+    let lslot = |ty| MirSlot {
+        kind: SlotKind::Local,
+        ty,
+        name: None,
+    };
+    let body = MirFunction {
+        owner: owner.clone(),
+        name: "body".to_string(),
+        sig,
+        env: Some(vec![ts as u32]),
+        slots: vec![lslot(ts as u32)],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::EnvGet { dst: 0, field: 0 }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+    let main = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig,
+        slots: vec![lslot(ts as u32), lslot(cl), lslot(0)],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const {
+                    dst: 0,
+                    value: text as u32,
+                },
+                MirInstr::CreateClosure {
+                    dst: 1,
+                    callee: ace_av_core::mir::CalleeRef::Func(1),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+                MirInstr::CallClosure {
+                    dst: 2,
+                    closure: 1,
+                    args: vec![],
+                },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+    m.funcs = vec![main, body];
+    m.entry = 0;
+    let err = verify_mir(&m).expect_err("Shared over a non-cell is rejected");
+    assert!(format!("{err:?}").contains("mir.capture.shared-domain"), "{err:?}");
+}
+
+/// V-05 (typed leg): the env-alias discipline — a Shared capture of an
+/// ENV alias (a cell the closure body itself ENV_GET'd) is legal: the
+/// child env co-owns the same buffer (a handle share, not a transfer).
+#[test]
+fn av_closures_sem_shared_capture_of_env_alias_is_legal() {
+    let owner = closures_owner_scope();
+    let mut m = MirModule::new_closures(owner.clone());
+    m.types = shared_types();
+    let c_one = m.intern_const(MirConst::I32(1));
+    let c_zero = m.intern_const(MirConst::I32(0));
+    let t_cell = 8usize;
+
+    // inner (func 2): () -> i32 — its env field 0 is the shared cell.
+    let inner = MirFunction {
+        owner: owner.clone(),
+        name: "inner".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        env: Some(vec![t_cell as u32]),
+        slots: vec![slot(8, "cell"), slot(0, "z"), slot(0, "ret")],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::EnvGet { dst: 0, field: 0 },
+                MirInstr::Const { dst: 1, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 2, base: 0, index: 1 },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+
+    // outer body (func 1): () -> Closure — ENV_GETs the parent's cell and
+    // shared-captures the ALIAS into the child env.
+    let cl_inner = m.intern_type(MirType::Closure(FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let outer = MirFunction {
+        owner: owner.clone(),
+        name: "outer".to_string(),
+        sig: m.intern_type(fn_type(vec![], cl_inner)),
+        env: Some(vec![t_cell as u32]),
+        slots: vec![slot(8, "cell"), slot(cl_inner, "cl")],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::EnvGet { dst: 0, field: 0 },
+                MirInstr::CreateClosure {
+                    dst: 1,
+                    callee: ace_av_core::mir::CalleeRef::Func(2),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+            ],
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+
+    // main: cell[1]; outer() -> closure over the same cell (creator writes
+    // 41 between); inner call reads 41 -> return cell + inner = 41 + 41 = 82.
+    let cl_outer = m.intern_type(MirType::Closure(FnSig {
+        params: vec![],
+        result: cl_inner,
+    }));
+    let main = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        slots: vec![
+            slot(8, "cell"),
+            slot(0, "z"),
+            slot(cl_outer, "cl"),
+            slot(cl_inner, "cl"),
+            slot(0, "ret"),
+            slot(0, "v"),
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_cell as u32,
+                    cap: 1,
+                },
+                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::CreateClosure {
+                    dst: 2,
+                    callee: ace_av_core::mir::CalleeRef::Func(1),
+                    captures: vec![CaptureOperand {
+                        kind: CaptureKind::Shared,
+                        src: 0,
+                    }],
+                },
+                MirInstr::Const { dst: 1, value: m.intern_const(MirConst::I32(41)) as u32 },
+                MirInstr::Const { dst: 5, value: c_zero as u32 },
+                MirInstr::ListSet { root: 0, index: 5, value: 1 },
+                MirInstr::CallClosure { dst: 3, closure: 2, args: vec![] },
+                MirInstr::CallClosure { dst: 4, closure: 3, args: vec![] },
+                MirInstr::Const { dst: 5, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 1, base: 0, index: 5 },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 4,
+                    lhs: 4,
+                    rhs: 1,
+                },
+                MirInstr::Drop { slot: 3 },
+                MirInstr::Drop { slot: 2 },
+            ],
+            term: Terminator::Return { value: 4 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+    m.funcs = vec![main, outer, inner];
+    m.entry = 0;
+    let (out, arena) = run_pipeline(&m);
+    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(82), .. }), "{out:?}");
+    assert_eq!(arena.live(), 0);
+}
+
+/// V-06 (typed leg): one closure env holds TWO Shared fields aliasing the
+/// SAME buffer; cloning the closure copies the cell EXACTLY ONCE — the two
+/// copied fields keep observing each other's writes (the clone memo).
+#[test]
+fn av_closures_sem_shared_clone_memo_preserves_internal_sharing() {
+    let owner = closures_owner_scope();
+    let mut m = MirModule::new_closures(owner.clone());
+    m.types = shared_types();
+    let c_one = m.intern_const(MirConst::I32(1));
+    let c_zero = m.intern_const(MirConst::I32(0));
+    let t_cell = 8usize;
+
+    // writer body (func 1): () -> i32 — writes 7 into ITS field-0 cell,
+    // reads ITS field-1 cell (must observe 7 if the sharing survived).
+    let writer = MirFunction {
+        owner: owner.clone(),
+        name: "writer".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        env: Some(vec![t_cell as u32, t_cell as u32]),
+        slots: vec![
+            slot(8, "a"),
+            slot(8, "b"),
+            slot(0, "z"),
+            slot(0, "seven"),
+            slot(0, "ret"),
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::EnvGet { dst: 0, field: 0 },
+                MirInstr::EnvGet { dst: 1, field: 1 },
+                MirInstr::Const { dst: 2, value: c_zero as u32 },
+                MirInstr::Const {
+                    dst: 3,
+                    value: m.intern_const(MirConst::I32(7)) as u32,
+                },
+                MirInstr::ListSet { root: 0, index: 2, value: 3 },
+                MirInstr::Const { dst: 2, value: c_zero as u32 },
+                MirInstr::ListGet { dst: 4, base: 1, index: 2 },
+            ],
+            term: Terminator::Return { value: 4 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+
+    // main: cell[1]; closure with TWO Shared captures of the SAME cell
+    // slot; clone it; call the ORIGINAL (writes 7 via field0, reads 7 via
+    // field1 — 7), then the CLONE (reads the CLONE's own buffer — 7 iff the
+    // copy kept the internal sharing, 1 if it duplicated the cell twice).
+    // 7 + 7 = **14**; a per-occurrence clone would yield 7 + 1 = 8.
+    let cl_writer = m.intern_type(MirType::Closure(FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let main = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: m.intern_type(fn_type(vec![], 0)),
+        slots: vec![
+            slot(8, "cell"),
+            slot(0, "z"),
+            slot(cl_writer, "cl"),
+            slot(cl_writer, "cl"),
+            slot(0, "a"),
+            slot(0, "b"),
+            slot(0, "ret"),
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_cell as u32,
+                    cap: 1,
+                },
+                MirInstr::Const { dst: 1, value: c_one as u32 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::CreateClosure {
+                    dst: 2,
+                    callee: ace_av_core::mir::CalleeRef::Func(1),
+                    captures: vec![
+                        CaptureOperand {
+                            kind: CaptureKind::Shared,
+                            src: 0,
+                        },
+                        CaptureOperand {
+                            kind: CaptureKind::Shared,
+                            src: 0,
+                        },
+                    ],
+                },
+                MirInstr::Clone { dst: 3, src: 2 },
+                MirInstr::CallClosure { dst: 4, closure: 2, args: vec![] },
+                MirInstr::CallClosure { dst: 5, closure: 3, args: vec![] },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 6,
+                    lhs: 4,
+                    rhs: 5,
+                },
+                MirInstr::Drop { slot: 3 },
+                MirInstr::Drop { slot: 2 },
+            ],
+            term: Terminator::Return { value: 6 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+    m.funcs = vec![main, writer];
+    m.entry = 0;
+    let (out, arena) = run_pipeline(&m);
+    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(14), .. }), "{out:?}");
+    assert_eq!(arena.live(), 0);
+}
+
+/// V-01/W-16 (typed leg): the wire carries Shared as capture tag 4; the
+/// ABC roundtrip re-verifies it, and an UNKNOWN tag (5) is rejected by the
+/// decoder — an older decoder never guesses a newer meaning.
+#[test]
+fn av_closures_sem_shared_wire_roundtrip_and_unknown_tag_rejected() {
+    let m = shared_case();
+    verify_mir(&m).expect("shared fixture verifies");
+    let wire = encode_abc(&m).expect("encode");
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).expect("abc admit");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(63), .. }), "{out:?}");
+
+    // Deterministic corruption: main's first CREATE_CLOSURE (dst 2, callee
+    // Func(1), ONE Shared capture of slot 0) encodes as
+    // [0x32][dst le32=2][disc 0][idx le32=1][count 1][tag 4][src le32=0].
+    // Rewrite that tag 4 to the unknown tag 5 and decode.
+    let flat = wire.to_flat();
+    let sig: [u8; 16] = [0x32, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 0, 0, 0];
+    let at = flat
+        .windows(sig.len())
+        .position(|w| w == sig)
+        .expect("fixture wire carries the Shared capture signature");
+    let mut corrupted = flat.clone();
+    corrupted[at + 11] = 5;
+    // Re-seal the trailer (fnv1a64 over everything before the last 8
+    // bytes) so the UNKNOWN-TAG rule — not the checksum — is what rejects.
+    let body_len = corrupted.len() - 8;
+    let seal = ace_av_core::contract::fnv1a64(&corrupted[..body_len]).to_le_bytes();
+    corrupted[body_len..].copy_from_slice(&seal);
+    let err = ace_av_core::abc::decode_abc(&corrupted)
+        .expect_err("an unknown capture tag must be rejected");
+    assert!(format!("{err:?}").contains("unknown capture mode tag"), "{err:?}");
+}
+
 fn borrow_case() -> MirModule {
     let owner = closures_owner_scope();
     let mut m = MirModule::new_closures(owner.clone());
