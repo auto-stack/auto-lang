@@ -31,7 +31,10 @@ fn os_random(buf: &mut [u8]) -> Result<(), String> {
 /// `n` random bytes from the OS CSPRNG as lowercase hex (`2n` chars).
 /// `n <= 0` yields the empty string. On OS entropy failure, returns ""
 /// and records the reason for [`last_error`].
-pub fn secure_hex(n: i32) -> String {
+///
+/// `n` is `i64` to match the `.at int` → `i64` a2r mapping (Plan 399
+/// Phase 11.1 precedent, `str_find` returns i64 for the same reason).
+pub fn secure_hex(n: i64) -> String {
     if n <= 0 {
         return String::new();
     }
@@ -61,7 +64,7 @@ mod tests {
 
     #[test]
     fn secure_hex_length_and_charset() {
-        for n in [1i32, 8, 32, 64] {
+        for n in [1i64, 8, 32, 64] {
             let s = secure_hex(n);
             assert_eq!(s.len(), (n as usize) * 2, "len mismatch for n={n}");
             assert!(s.chars().all(|c| HEX.contains(c)), "non-hex char in {s}");
@@ -89,6 +92,6 @@ mod tests {
     #[test]
     fn secure_hex_edge_inputs() {
         assert_eq!(secure_hex(0), "");
-        assert_eq!(secure_hex(-5), "");
+        assert_eq!(secure_hex(-5i64), "");
     }
 }
