@@ -23,7 +23,7 @@ fn main() {
     print(s)
 }
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         let lines: Vec<&str> = out
             .lines()
             .map(str::trim)
@@ -51,7 +51,7 @@ fn main() {
     print(s)
 }
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         // P734-D4（同族）：u64-tagged int 与 str 拼接走 i32 lane 截断
         //（-1705032704 = 5000000000 的 i32 回绕）——泛型 stdlib 转换通路，
         // 登记 debt；HTTP/marshal 面（本期范围）已全修并有 e2e 锁定。
@@ -91,7 +91,7 @@ fn main() {
     print(c.value)
 }
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         let lines: Vec<&str> = out
             .lines()
             .map(str::trim)
@@ -111,7 +111,7 @@ fn main() {
     print(v)
 }
 "#;
-        let err = crate::run_with_capture(code).expect_err("undefined fn must fail");
+        let err = auto_lang::run_with_capture(code).expect_err("undefined fn must fail");
         let msg = format!("{err:?}");
         assert!(
             msg.contains("no_such_api_fn") || msg.contains("Undefined"),
@@ -147,14 +147,14 @@ mod http_e2e {
     }
 
     fn start_server(code: &str, port: u16) -> u16 {
-        super::super::http_host_test_support::install();
-        crate::vm::ffi::stdlib::clear_http_routes();
+        crate::install_web_http_host();
+        auto_lang::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let outcome = crate::vm::ffi::http_server::spawn_outcome_reporter_for_test(
+        let outcome = auto_web::http_server::spawn_outcome_reporter_for_test(
             8 * 1024 * 1024,
             "plan734 service owner",
-            move || crate::run(&code),
+            move || auto_lang::run(&code),
         );
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while std::time::Instant::now() < deadline {

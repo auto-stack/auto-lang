@@ -1,11 +1,13 @@
+//! PLAN-907/707 T-05 companion（PLAN-906 随 http e2e 家族迁入：SSE 测试
+//! 助手 next_sse_generator_value_for_test/sse_value_is 为 auto_web 测试面）。
 //! PLAN-707 T-05：generator/段等待凭据化（D-6）。
 //!
 //! AC-02 判据：gate 关闭期间驱动次数不随等待时长增长（旧形态 yield_now
 //! 自旋 → spawn id 每 200ms 窗口数千增长；凭据化等待后静态）；链式
 //! future await 在 generator 体内停步恢复。
 
-use crate::vm::ffi::http_stream as hs;
-use crate::vm::task::AutoTask;
+use auto_lang::vm::ffi::http_stream as hs;
+use auto_lang::vm::task::AutoTask;
 
 /// 起 SSE 上游：headers + 首事件立即发送，随后**握住**直到放行栅栏。
 /// 返回 (port, open_tx, done_rx)——open_tx 发送后补发第二事件。
@@ -44,7 +46,7 @@ fn serve_gated_sse() -> (
 
 /// 编译 generator relay 并推进到首个产出（驱动一次 pull）。
 /// 返回 (vm, iterator_id)。
-fn make_relay_generator(port: u16) -> (std::rc::Rc<crate::vm::engine::AutoVM>, u32) {
+fn make_relay_generator(port: u16) -> (std::rc::Rc<auto_lang::vm::engine::AutoVM>, u32) {
     let code = format!(
         r#"
 fn relay() ~Iter<str> {{
@@ -54,11 +56,11 @@ fn relay() ~Iter<str> {{
 }}
 "#
     );
-    let (vm, _out, _entry, _obj) = crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _out, _entry, _obj) = auto_lang::create_vm_from_source(&code).expect("compile");
     let vm = std::rc::Rc::new(vm);
     let mut task = AutoTask::new(0, 65536, 0);
     match vm.call_fn_by_name_segment(&mut task, "relay", 0) {
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
         other => panic!("generator dispatch 应 Completed(Ok)，得到 {other:?}"),
     }
     let iter_id = auto_val::decode_i32(task.ram.pop_nv()) as u32;
@@ -67,7 +69,7 @@ fn relay() ~Iter<str> {{
 
 /// Reserve adjacent IDs whose registry operations contend on the same shard.
 /// Probing is nonblocking; never hold a guard across an actual task insert.
-fn colliding_task_ids(vm: &crate::vm::engine::AutoVM) -> u64 {
+fn colliding_task_ids(vm: &auto_lang::vm::engine::AutoVM) -> u64 {
     let mut collision = None;
     for _ in 0..4096 {
         let id = vm.spawn_task(0, 16);
@@ -95,19 +97,19 @@ async fn plan707_wait_generator_park_drive_count_static() {
     // 首个值：数据已在途（headers+首事件已发送）→ 快速返回。
     let first = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+        auto_web::http_server::next_sse_generator_value_for_test(&vm, iter_id),
     )
     .await
     .expect("首值 5s 内应产出");
     let first = first.expect("首值存在");
     assert!(
-        crate::vm::ffi::http_server::sse_value_is(&vm, first, "first"),
+        auto_web::http_server::sse_value_is(&vm, first, "first"),
         "首值应为 first"
     );
 
     // 第二次 pull：gate 关闭 → 凭据化 park。采样两个 200ms 窗口的
     // spawn 计数（vm.id_gen）——自旋形态每窗口数千，凭据化 ≈ 0。
-    let wait_fut = crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id);
+    let wait_fut = auto_web::http_server::next_sse_generator_value_for_test(&vm, iter_id);
     tokio::pin!(wait_fut);
     let mut spawns_total = 0u64;
     for _ in 0..3 {
@@ -129,14 +131,14 @@ async fn plan707_wait_generator_park_drive_count_static() {
         .expect("放行后 5s 内应产出");
     let second = second.expect("第二值存在");
     assert!(
-        crate::vm::ffi::http_server::sse_value_is(&vm, second, "second"),
+        auto_web::http_server::sse_value_is(&vm, second, "second"),
         "第二值应为 second"
     );
 
     // 收尾：连接关闭 → 流终结（资源观测由 T-07 收口）。
     let _ = tokio::time::timeout(
         std::time::Duration::from_secs(3),
-        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+        auto_web::http_server::next_sse_generator_value_for_test(&vm, iter_id),
     )
     .await;
     let _ = hs::stream_live_count();
@@ -150,12 +152,12 @@ async fn plan840_nested_generator_task_shard_collision_completes() {
 fn leaf() ~Iter<str> { yield "nested" }
 fn outer() ~Iter<str> { for s in leaf() { yield s } }
 "#;
-    let (vm, _, _, _) = crate::create_vm_from_source(code).expect("compile nested generator");
+    let (vm, _, _, _) = auto_lang::create_vm_from_source(code).expect("compile nested generator");
     let vm = std::rc::Rc::new(vm);
     let mut task = AutoTask::new(0, 65536, 0);
     assert!(matches!(
         vm.call_fn_by_name_segment(&mut task, "outer", 0),
-        crate::vm::engine::SegmentOutcome::Completed(Ok(()))
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(()))
     ));
     let iter_id = auto_val::decode_i32(task.ram.pop_nv()) as u32;
     let mut id = colliding_task_ids(&vm);
@@ -167,17 +169,17 @@ fn outer() ~Iter<str> { for s in leaf() { yield s } }
         .store(id - 1, std::sync::atomic::Ordering::Relaxed);
     let value = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+        auto_web::http_server::next_sse_generator_value_for_test(&vm, iter_id),
     )
     .await
     .expect("nested pull must complete")
     .expect("nested value");
-    assert!(crate::vm::ffi::http_server::sse_value_is(
+    assert!(auto_web::http_server::sse_value_is(
         &vm, value, "nested"
     ));
     let eof = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+        auto_web::http_server::next_sse_generator_value_for_test(&vm, iter_id),
     )
     .await
     .expect("nested EOF must complete");

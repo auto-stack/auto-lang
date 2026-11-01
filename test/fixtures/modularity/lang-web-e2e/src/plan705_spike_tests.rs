@@ -10,8 +10,8 @@
 //! 观察者线程只是测试脚手架（等待 shim worker 落槽后替它发通知），
 //! owner 侧的 enable→check→await 模式则是将来 owner loop 的最终形态。
 
-use crate::vm::engine::{ParkedWait, SegmentOutcome};
-use crate::vm::task::AutoTask;
+use auto_lang::vm::engine::{ParkedWait, SegmentOutcome};
+use auto_lang::vm::task::AutoTask;
 
 /// (1) notify 驱动 owner loop：真 VM 段 park → 完成通知唤醒 → 恢复取值。
 /// select 只有三臂：完成通知 / 兜底超时（30s，通知丢失即红）/ 永不触发的
@@ -43,7 +43,7 @@ fn pick_data() str {
 }
 "#
     .replace("7050", &port.to_string());
-    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = auto_lang::create_vm_from_source(&code).expect("compile");
 
     let mut task = AutoTask::new(0, 65536, 0);
     let outcome = vm.call_fn_by_name_segment(&mut task, "pick_data", 0);
@@ -62,7 +62,7 @@ fn pick_data() str {
     let notify_for_worker = notify.clone();
     let observer = std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+        while !auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
             assert!(std::time::Instant::now() < deadline, "server 应答超时");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
@@ -79,7 +79,7 @@ fn pick_data() str {
                 tokio::pin!(notified);
                 notified.as_mut().enable();
                 // (b) 检查就绪（覆盖"先完成再 park"与"enable 前完成"两态）。
-                if crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+                if auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
                     break;
                 }
                 // (c) 等通知：enable 之后的任意完成必然唤醒本 waiter。
@@ -116,15 +116,15 @@ fn pick_data() str {
 /// Pending 态 take 不删除 live 令牌（探测/重入不丢条目）。
 #[test]
 fn plan705_spike_cancel_and_late_completion_single_finalization() {
-    use crate::vm::ffi::async_http as reg;
-    use crate::vm::ffi::stdlib::AsyncResult;
+    use auto_lang::vm::ffi::async_http as reg;
+    use auto_lang::vm::ffi::stdlib::AsyncResult;
 
     let count_before = reg::live_op_count();
 
     // -- register → Pending。
-    let req_id = crate::vm::ffi::stdlib::alloc_async_id();
+    let req_id = auto_lang::vm::ffi::stdlib::alloc_async_id();
     reg::register_live_op(req_id);
-    assert!(!crate::vm::ffi::stdlib::async_http_result_ready(req_id));
+    assert!(!auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id));
     assert!(reg::live_op_exists(req_id));
 
     // -- Pending 态 take：不得删除 live 令牌（探测/重入不丢条目）。
@@ -132,7 +132,7 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
     assert!(reg::live_op_exists(req_id), "Pending take 不得消费令牌");
 
     // -- cancel-first：等待方放弃（引擎超时臂/scope 取消的终结入口）。
-    crate::vm::ffi::stdlib::drop_async_result(req_id);
+    auto_lang::vm::ffi::stdlib::drop_async_result(req_id);
     assert!(!reg::live_op_exists(req_id));
 
     // -- 迟到完成（worker 慢于取消）：presence 守卫丢弃，禁止复活。
@@ -146,13 +146,13 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
     );
 
     // -- complete-before-take：完成先于消费 → 就绪立即可见，一次消费终结。
-    let req_id2 = crate::vm::ffi::stdlib::alloc_async_id();
+    let req_id2 = auto_lang::vm::ffi::stdlib::alloc_async_id();
     reg::register_live_op(req_id2);
     assert!(reg::complete_live_op(
         req_id2,
         Ok(AsyncResult::Body("early".to_string()))
     ));
-    assert!(crate::vm::ffi::stdlib::async_http_result_ready(req_id2));
+    assert!(auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id2));
     assert!(reg::take_live_op(req_id2).is_some(), "Completed 必须可消费");
     assert!(!reg::live_op_exists(req_id2), "take 后条目终结移除");
     assert!(
@@ -161,7 +161,7 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
     );
 
     // -- 重复完成（未取消）：单次终结——首胜，次弃。
-    let req_id3 = crate::vm::ffi::stdlib::alloc_async_id();
+    let req_id3 = auto_lang::vm::ffi::stdlib::alloc_async_id();
     reg::register_live_op(req_id3);
     assert!(reg::complete_live_op(
         req_id3,
@@ -177,7 +177,7 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
         Some(Err(e)) => panic!("首完成应胜出，得到 Err: {e}"),
         None => panic!("首完成应可消费，得到 None"),
     }
-    crate::vm::ffi::stdlib::drop_async_result(req_id3); // 幂等（已移除）
+    auto_lang::vm::ffi::stdlib::drop_async_result(req_id3); // 幂等（已移除）
 
     assert_eq!(
         reg::live_op_count(),
@@ -207,13 +207,13 @@ fn one_shot_server(response: String, delay_ms: u64) -> (u16, std::thread::JoinHa
 }
 
 /// 等待 req_id 完成（真实 worker 写入），返回 take 结果。
-fn wait_completed(req_id: u64) -> Option<Result<crate::vm::ffi::stdlib::AsyncResult, String>> {
+fn wait_completed(req_id: u64) -> Option<Result<auto_lang::vm::ffi::stdlib::AsyncResult, String>> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+    while !auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
         assert!(std::time::Instant::now() < deadline, "worker 完成超时");
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    crate::vm::ffi::async_http::take_live_op(req_id)
+    auto_lang::vm::ffi::async_http::take_live_op(req_id)
 }
 
 /// T-03 (1) 队满=终结性错误：queue_capacity=1 时第二个 job 提交即以
@@ -223,10 +223,10 @@ fn wait_completed(req_id: u64) -> Option<Result<crate::vm::ffi::stdlib::AsyncRes
 /// cargo test 同进程混跑多个改限额的探针。
 #[test]
 fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
-    crate::vm::ffi::async_http::set_client_limits_for_test(
-        crate::vm::ffi::async_http::ClientLimits {
+    auto_lang::vm::ffi::async_http::set_client_limits_for_test(
+        auto_lang::vm::ffi::async_http::ClientLimits {
             queue_capacity: 1,
-            ..crate::vm::ffi::async_http::ClientLimits {
+            ..auto_lang::vm::ffi::async_http::ClientLimits {
                 workers: 2,
                 max_active: 1,
                 queue_capacity: 64,
@@ -240,10 +240,10 @@ fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
         "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
         300,
     );
-    let id1 = crate::vm::ffi::stdlib::alloc_async_id();
-    crate::vm::ffi::async_http::register_live_op(id1);
+    let id1 = auto_lang::vm::ffi::stdlib::alloc_async_id();
+    auto_lang::vm::ffi::async_http::register_live_op(id1);
     assert!(
-        crate::vm::ffi::stdlib::spawn_async_http(
+        auto_lang::vm::ffi::stdlib::spawn_async_http(
             "GET".into(),
             format!("http://127.0.0.1:{port}/slow"),
             None,
@@ -251,10 +251,10 @@ fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
         ),
         "第一个 job 应入队"
     );
-    let id2 = crate::vm::ffi::stdlib::alloc_async_id();
-    crate::vm::ffi::async_http::register_live_op(id2);
+    let id2 = auto_lang::vm::ffi::stdlib::alloc_async_id();
+    auto_lang::vm::ffi::async_http::register_live_op(id2);
     assert!(
-        !crate::vm::ffi::stdlib::spawn_async_http(
+        !auto_lang::vm::ffi::stdlib::spawn_async_http(
             "GET".into(),
             format!("http://127.0.0.1:{port}/rejected"),
             None,
@@ -273,10 +273,10 @@ fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
 /// T-03 (2) 响应体预算：超预算响应 → 终结性错误（增量读不强吞全量）。
 #[test]
 fn plan705_client_body_budget_enforced() {
-    crate::vm::ffi::async_http::set_client_limits_for_test(
-        crate::vm::ffi::async_http::ClientLimits {
+    auto_lang::vm::ffi::async_http::set_client_limits_for_test(
+        auto_lang::vm::ffi::async_http::ClientLimits {
             body_limit: 16,
-            ..crate::vm::ffi::async_http::ClientLimits {
+            ..auto_lang::vm::ffi::async_http::ClientLimits {
                 workers: 2,
                 max_active: 8,
                 queue_capacity: 64,
@@ -294,9 +294,9 @@ fn plan705_client_body_budget_enforced() {
         ),
         0,
     );
-    let id = crate::vm::ffi::stdlib::alloc_async_id();
-    crate::vm::ffi::async_http::register_live_op(id);
-    crate::vm::ffi::stdlib::spawn_async_http(
+    let id = auto_lang::vm::ffi::stdlib::alloc_async_id();
+    auto_lang::vm::ffi::async_http::register_live_op(id);
+    auto_lang::vm::ffi::stdlib::spawn_async_http(
         "GET".into(),
         format!("http://127.0.0.1:{port}/big"),
         None,
@@ -315,10 +315,10 @@ fn plan705_client_body_budget_enforced() {
 /// T-03 (3) 单 job 总期限：慢上游在期限后以终结性错误收口（不悬挂）。
 #[test]
 fn plan705_client_total_deadline_terminal_error() {
-    crate::vm::ffi::async_http::set_client_limits_for_test(
-        crate::vm::ffi::async_http::ClientLimits {
+    auto_lang::vm::ffi::async_http::set_client_limits_for_test(
+        auto_lang::vm::ffi::async_http::ClientLimits {
             total_timeout: std::time::Duration::from_millis(200),
-            ..crate::vm::ffi::async_http::ClientLimits {
+            ..auto_lang::vm::ffi::async_http::ClientLimits {
                 workers: 2,
                 max_active: 8,
                 queue_capacity: 64,
@@ -331,9 +331,9 @@ fn plan705_client_total_deadline_terminal_error() {
         "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
         2_000,
     );
-    let id = crate::vm::ffi::stdlib::alloc_async_id();
-    crate::vm::ffi::async_http::register_live_op(id);
-    crate::vm::ffi::stdlib::spawn_async_http(
+    let id = auto_lang::vm::ffi::stdlib::alloc_async_id();
+    auto_lang::vm::ffi::async_http::register_live_op(id);
+    auto_lang::vm::ffi::stdlib::spawn_async_http(
         "GET".into(),
         format!("http://127.0.0.1:{port}/slow"),
         None,
@@ -381,18 +381,18 @@ fn grab() str {
 }
 "#
     .replace("7051", &port.to_string());
-    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = auto_lang::create_vm_from_source(&code).expect("compile");
 
-    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+    let mut task = auto_lang::vm::task::AutoTask::new(0, 65536, 0);
     let started = std::time::Instant::now();
     let outcome = vm.call_fn_by_name_segment(&mut task, "grab", 0);
     let first_elapsed = started.elapsed();
     let (req_id, seg) = match &outcome {
-        crate::vm::engine::SegmentOutcome::Parked {
-            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+        auto_lang::vm::engine::SegmentOutcome::Parked {
+            wait: auto_lang::vm::engine::ParkedWait::HttpRequest(id),
             seg,
         } => (*id, seg.clone()),
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => {
             panic!("builder send 应 park 而非同步跑完——server 延迟 400ms 下跑完=同步 drain 回归")
         }
         other => panic!("预期 Parked(HttpRequest)，得到 {:?}", other),
@@ -403,19 +403,19 @@ fn grab() str {
         first_elapsed
     );
     assert!(
-        crate::vm::ffi::async_http::live_op_exists(req_id),
+        auto_lang::vm::ffi::async_http::live_op_exists(req_id),
         "parked 后 live-op 不得回收"
     );
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+    while !auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
         assert!(std::time::Instant::now() < deadline, "server 应答超时");
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     server.join().expect("server thread");
 
     match vm.resume_fn_by_name_segment(&mut task, &seg) {
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
         other => panic!("恢复段应 Completed(Ok)，得到 {:?}", other),
     }
     let nv = task.ram.pop_nv();
@@ -444,14 +444,14 @@ fn ephemeral_port() -> u16 {
 /// 启动 AutoVM HTTP server（临时端口 + 等待可连接；plan326 同款约束——
 /// 端口经 AUTO_HTTP_PORT env 传入，调用方用 ephemeral_port() 预分配）。
 fn start_plan705_server(code: &str, port: u16) {
-    crate::tests::http_host_test_support::install();
-    crate::vm::ffi::stdlib::clear_http_routes();
+    crate::install_web_http_host();
+    auto_lang::vm::ffi::stdlib::clear_http_routes();
     std::env::set_var("AUTO_HTTP_PORT", port.to_string());
     let code = code.to_string();
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            let _ = crate::run(&code);
+            let _ = auto_lang::run(&code);
         })
         .expect("spawn plan705 server thread");
     for _ in 0..50 {
@@ -702,25 +702,25 @@ fn guarded() str {
 }
 "#
     .replace("P1", &port.to_string());
-    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
-    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+    let (vm, _stdout, _entry, _object_type) = auto_lang::create_vm_from_source(&code).expect("compile");
+    let mut task = auto_lang::vm::task::AutoTask::new(0, 65536, 0);
     let outcome = vm.call_fn_by_name_segment(&mut task, "guarded", 0);
     let (req_id, seg) = match &outcome {
-        crate::vm::engine::SegmentOutcome::Parked {
-            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+        auto_lang::vm::engine::SegmentOutcome::Parked {
+            wait: auto_lang::vm::engine::ParkedWait::HttpRequest(id),
             seg,
         } => (*id, seg.clone()),
         other => panic!("预期 park，得到 {:?}", other),
     };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+    while !auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
         assert!(std::time::Instant::now() < deadline, "server 应答超时");
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     server.join().expect("server thread");
     let resumed = vm.resume_fn_by_name_segment(&mut task, &seg);
     match resumed {
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => {
             let nv = task.ram.pop_nv();
             let got = vm
                 .get_string(auto_val::decode_string(nv) as u32)
@@ -746,7 +746,7 @@ fn guarded() str {
 fn plan705_e2e_deadline_cancels_parked_and_reclaims() {
     let server_port = ephemeral_port();
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "400");
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
     let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
@@ -783,12 +783,12 @@ fn slow() str {
     // 被丢弃）：live-op 表回基线、scope 表空、许可全量可用。
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert_eq!(
-        crate::vm::ffi::async_http::live_op_count(),
+        auto_lang::vm::ffi::async_http::live_op_count(),
         op_baseline,
         "live-op 未回基线——parked 等待未回收"
     );
     assert_eq!(
-        crate::vm::ffi::http_server::live_scope_count(),
+        auto_web::http_server::live_scope_count(),
         0,
         "scope 未回基线"
     );
@@ -805,33 +805,33 @@ fn touch() str {
     "touched"
 }
 "#;
-    let (vm, _out, _entry, _t) = crate::create_vm_from_source(code).expect("compile");
-    let routes = crate::vm::ffi::http_server::get_routes();
+    let (vm, _out, _entry, _t) = auto_lang::create_vm_from_source(code).expect("compile");
+    let routes = auto_web::http_server::get_routes();
     assert!(!routes.is_empty(), "路由应已注册");
     let tasks_before = vm.tasks.len();
-    let (tx, rx) = tokio::sync::oneshot::channel::<crate::vm::ffi::http_server::ApiReply>();
-    let scope = crate::vm::ffi::http_server::create_scope(
+    let (tx, rx) = tokio::sync::oneshot::channel::<auto_web::http_server::ApiReply>();
+    let scope = auto_web::http_server::create_scope(
         999,
         std::time::Instant::now() + std::time::Duration::from_secs(30),
         0,
     )
     .expect("scope");
     // 取消发生在出队前（桥超时/连接终结/关闭皆可到达此态）。
-    assert!(crate::vm::ffi::http_server::cancel_scope(&scope));
-    assert!(!crate::vm::ffi::http_server::scope_usable(&scope));
+    assert!(auto_web::http_server::cancel_scope(&scope));
+    assert!(!auto_web::http_server::scope_usable(&scope));
     let mut parked = Vec::new();
     let vm = std::rc::Rc::new(vm);
-    crate::vm::ffi::http_server::dispatch_owner_request(
+    auto_web::http_server::dispatch_owner_request(
         &vm,
         &routes,
-        crate::vm::ffi::http_server::test_api_request_get("/api/touch"),
+        auto_web::http_server::test_api_request_get("/api/touch"),
         tx,
         scope.id,
         &mut parked,
     );
     let reply = rx.blocking_recv().expect("503 reply");
     match reply {
-        crate::vm::ffi::http_server::ApiReply::Full { status, .. } => {
+        auto_web::http_server::ApiReply::Full { status, .. } => {
             assert_eq!(status, 503, "失效 scope 应 503");
         }
         _ => panic!("应 Full 503"),
@@ -843,7 +843,7 @@ fn touch() str {
     );
     assert!(parked.is_empty(), "失效请求不得挂表");
     assert_eq!(
-        crate::vm::ffi::http_server::live_scope_count(),
+        auto_web::http_server::live_scope_count(),
         0,
         "取消后 scope 回基线"
     );
@@ -858,7 +858,7 @@ fn plan705_e2e_shutdown_cancels_parked_side_effect_kept() {
     std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "500");
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
     let server_port = ephemeral_port();
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
     let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
@@ -894,7 +894,7 @@ fn hits_fn() int {
     assert_eq!(hits_now, "1", "await 前副作用应可见: {hits_now}");
     // 优雅关停：parked 请求废弃、503、资源回收。
     assert!(
-        crate::vm::ffi::http_server::test_trigger_shutdown(),
+        auto_web::http_server::test_trigger_shutdown(),
         "关停触发"
     );
     let (status, body) = client.join().expect("client");
@@ -909,12 +909,12 @@ fn hits_fn() int {
     up.join().expect("upstream");
     std::thread::sleep(std::time::Duration::from_millis(200));
     assert_eq!(
-        crate::vm::ffi::async_http::live_op_count(),
+        auto_lang::vm::ffi::async_http::live_op_count(),
         op_baseline,
         "live-op 未回基线"
     );
     assert_eq!(
-        crate::vm::ffi::http_server::live_scope_count(),
+        auto_web::http_server::live_scope_count(),
         0,
         "scope 未回基线"
     );
@@ -999,7 +999,7 @@ fn after_mw() str {
     // middleware 经 main 面注册不可行（run() 已进 server），改由诊断：
     // 直接驱动 MIDDLEWARE_CHAIN 等价于 http.server.middleware 调用效果。
     drop(stream);
-    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+    auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN
         .lock()
         .unwrap()
         .clear();
@@ -1013,9 +1013,9 @@ fn gate_mw(info) {
 }
 "#
     .replace("UPREG", &upstream_port.to_string());
-    let (vm_reg, _o, _e, _t) = crate::create_vm_from_source(&code_reg).expect("compile mw");
+    let (vm_reg, _o, _e, _t) = auto_lang::create_vm_from_source(&code_reg).expect("compile mw");
     let _ = vm_reg;
-    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+    auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN
         .lock()
         .unwrap()
         .push("gate_mw".to_string());
@@ -1061,7 +1061,7 @@ fn closure_target() str {
 }
 "#
     .replace("7059", &port.to_string());
-    let (vm, _out, _entry, _t) = crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _out, _entry, _t) = auto_lang::create_vm_from_source(&code).expect("compile");
     // 合成 fn-ref closure：func_addr 指向目标导出（axum_adapter 注册的
     // 同一形态——Plan 383 fn-ref closure）。
     let (addr, _name) = vm
@@ -1076,7 +1076,7 @@ fn closure_target() str {
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     vm.closures.insert(
         closure_id,
-        crate::vm::engine::Closure {
+        auto_lang::vm::engine::Closure {
             func_addr: addr as u32,
             env: Default::default(),
             n_args: 0,
@@ -1085,16 +1085,16 @@ fn closure_target() str {
             creator_frame: None,
         },
     );
-    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+    let mut task = auto_lang::vm::task::AutoTask::new(0, 65536, 0);
     let started = std::time::Instant::now();
     let outcome = vm.call_closure_segment(&mut task, closure_id, 0);
     let first = started.elapsed();
     let (req_id, seg) = match &outcome {
-        crate::vm::engine::SegmentOutcome::Parked {
-            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+        auto_lang::vm::engine::SegmentOutcome::Parked {
+            wait: auto_lang::vm::engine::ParkedWait::HttpRequest(id),
             seg,
         } => (*id, seg.clone()),
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => panic!(
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => panic!(
             "closure 段应 park（server 延迟 300ms 下跑完=同步自旋回归），{:?}",
             first
         ),
@@ -1106,13 +1106,13 @@ fn closure_target() str {
         first
     );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+    while !auto_lang::vm::ffi::stdlib::async_http_result_ready(req_id) {
         assert!(std::time::Instant::now() < deadline, "server 应答超时");
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     server.join().expect("server");
     match vm.resume_fn_by_name_segment(&mut task, &seg) {
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
+        auto_lang::vm::engine::SegmentOutcome::Completed(Ok(())) => {}
         other => panic!("closure 恢复应 Completed(Ok)，得到 {:?}", other),
     }
     let nv = task.ram.pop_nv();
@@ -1188,7 +1188,7 @@ fn current_process_thread_count() -> usize {
 fn plan705_e2e_cancel_storm_reclaims_deterministically() {
     let server_port = ephemeral_port();
     std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "250");
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
     let upstream_port = listener.local_addr().unwrap().port();
     let up = std::thread::spawn(move || {
@@ -1232,12 +1232,12 @@ fn slow() str {
         // 上游迟到应答落地后：无复活、无泄漏（逐轮基线）。
         std::thread::sleep(std::time::Duration::from_millis(500));
         assert_eq!(
-            crate::vm::ffi::async_http::live_op_count(),
+            auto_lang::vm::ffi::async_http::live_op_count(),
             op_baseline,
             "round {round}: live-op 未回基线"
         );
         assert_eq!(
-            crate::vm::ffi::http_server::live_scope_count(),
+            auto_web::http_server::live_scope_count(),
             0,
             "round {round}: scope 未回基线"
         );
@@ -1361,10 +1361,10 @@ fn plan705_gate_default_callgraph_no_busy_wait() {
     let manifest = env!("CARGO_MANIFEST_DIR");
     // PLAN-843：http_server 拆分后扫描面=入口+server_* 族文件（随 owner 迁移；
     // 断言语义不变——全树恰 1 处 legacy 标记调用点）。
-    let core = std::path::Path::new(manifest).join("../auto-lang-core/src/vm/ffi");
+    let core = std::path::Path::new(manifest).join("../../../../../auto-lang/crates/auto-lang-core/src/vm/ffi");
     let web = std::env::var_os("AUTO_WEB_ROOT")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::Path::new(manifest).join("../../../auto-web"))
+        .unwrap_or_else(|| std::path::Path::new(manifest).join("../../../../../auto-web"))
         .join("crates/auto-web/src");
     // The dispatch owner moved to Web; audit it together with the neutral
     // Core bridge, retaining the original exact legacy count and rejection.

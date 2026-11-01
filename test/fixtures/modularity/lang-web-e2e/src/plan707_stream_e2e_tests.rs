@@ -14,14 +14,14 @@
 /// 在独立线程起 VM HTTP server（AUTO_HTTP_PORT 进程内一次性；nextest 每
 /// 测试独立进程，无 env 竞争），5s 内探活。
 fn start_plan707_server(code: &str, port: u16) {
-    crate::tests::http_host_test_support::install();
-    crate::vm::ffi::stdlib::clear_http_routes();
+    crate::install_web_http_host();
+    auto_lang::vm::ffi::stdlib::clear_http_routes();
     std::env::set_var("AUTO_HTTP_PORT", port.to_string());
     let code = code.to_string();
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            let _ = crate::run(&code);
+            let _ = auto_lang::run(&code);
         })
         .expect("spawn plan707 server thread");
     for _ in 0..50 {
@@ -179,7 +179,7 @@ fn sse_client_read(
 /// 真 TCP 下游；两帧分时到达、末尾仅终结一次；上游流经请求资源组登记。
 #[test]
 fn http_e2e_plan707_relay_frames_timed_single_termination() {
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
 
     // 上游：两帧间隔 250ms。
     let (up_port, _up_rx) = serve_upstream_sse(
@@ -222,12 +222,12 @@ fn relay() ~Iter<str> {{
 
     // 资源回基线（SSE 输出结束后 generator/stream 收口）。
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while crate::vm::ffi::http_stream::stream_live_count() > 0 {
+    while auto_lang::vm::ffi::http_stream::stream_live_count() > 0 {
         assert!(std::time::Instant::now() < deadline, "5s 内流未回基线");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert_eq!(
-        crate::vm::ffi::async_http::live_op_count(),
+        auto_lang::vm::ffi::async_http::live_op_count(),
         op_baseline,
         "live-op 未回基线"
     );
@@ -237,7 +237,7 @@ fn relay() ~Iter<str> {{
 /// 上游读端观测到连接关闭，而非 timeout）。
 #[test]
 fn http_e2e_plan707_relay_downstream_disconnect_cancels_upstream() {
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
 
     // 上游发 1 帧后握住——下游收帧后立即断连，上游读端应观测到关闭。
     let (up_port, up_rx) = serve_upstream_sse(vec!["data: only\n\n".to_string()], 0);
@@ -299,12 +299,12 @@ fn relay() ~Iter<str> {{
 
     // 资源回基线。
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while crate::vm::ffi::http_stream::stream_live_count() > 0 {
+    while auto_lang::vm::ffi::http_stream::stream_live_count() > 0 {
         assert!(std::time::Instant::now() < deadline, "5s 内流未回基线");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert_eq!(
-        crate::vm::ffi::async_http::live_op_count(),
+        auto_lang::vm::ffi::async_http::live_op_count(),
         op_baseline,
         "live-op 未回基线"
     );
@@ -314,9 +314,9 @@ fn relay() ~Iter<str> {{
 /// 上游连接终结；两轮无增长（风暴收口的直接证据面）。
 #[test]
 fn http_e2e_plan707_stream_explicit_close_two_rounds_baseline() {
-    let op_baseline = crate::vm::ffi::async_http::live_op_count();
-    let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
-    let (vm, _out, _e, _o) = crate::create_vm_from_source("fn main() {}").expect("vm");
+    let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
+    let mut task = auto_lang::vm::task::AutoTask::new(0, 65536, 0);
+    let (vm, _out, _e, _o) = auto_lang::create_vm_from_source("fn main() {}").expect("vm");
 
     // 上游：accept 后握住（close 必须不依赖 EOF 生效）。
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -332,22 +332,22 @@ fn http_e2e_plan707_stream_explicit_close_two_rounds_baseline() {
         let url_idx =
             vm.add_string(format!("http://127.0.0.1:{up_port}/hold?r={round}").into_bytes());
         vm.rc_push_str_idx(&mut task, url_idx as usize);
-        crate::vm::ffi::stdlib::shim_http_get_stream(&mut task, &vm).expect("open");
+        auto_lang::vm::ffi::stdlib::shim_http_get_stream(&mut task, &vm).expect("open");
         let id = task.ram.pop_i32() as u64;
         assert!(
-            crate::vm::ffi::http_stream::stream_is_live_for_test(id),
+            auto_lang::vm::ffi::http_stream::stream_is_live_for_test(id),
             "round {round} 应存活"
         );
         task.ram.push_i32(id as i32);
-        crate::vm::ffi::stdlib::shim_http_stream_close(&mut task, &vm).expect("close");
+        auto_lang::vm::ffi::stdlib::shim_http_stream_close(&mut task, &vm).expect("close");
         assert_eq!(
-            crate::vm::ffi::http_stream::stream_live_count(),
+            auto_lang::vm::ffi::http_stream::stream_live_count(),
             0,
             "round {round} close 后应回基线"
         );
     }
     assert_eq!(
-        crate::vm::ffi::async_http::live_op_count(),
+        auto_lang::vm::ffi::async_http::live_op_count(),
         op_baseline,
         "live-op 未回基线"
     );

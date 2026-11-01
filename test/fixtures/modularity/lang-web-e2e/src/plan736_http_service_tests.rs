@@ -4,15 +4,15 @@
 //! 有界限速器、to_json round-trip、upload 转发壳完备性（qualify 后路径可解析）。
 //! 真 TCP wire 族（`http_e2e_plan736`，test-http-e2e）随 T-03..T-06 落地。
 
-use crate::http_service_config::{
+use auto_web::http_service_config::{
     resolve_service_config, CorsOutcome, RateDecision, RateLimiter, ServiceProfile,
 };
 
-fn dev() -> crate::http_service_config::HttpServiceConfig {
+fn dev() -> auto_web::http_service_config::HttpServiceConfig {
     resolve_service_config(r#"{"profile":"development"}"#, None).unwrap()
 }
 
-fn svc() -> crate::http_service_config::HttpServiceConfig {
+fn svc() -> auto_web::http_service_config::HttpServiceConfig {
     resolve_service_config(
         r#"{"profile":"proxy_service","allowed_hosts":["api.test"],"auth":{"responsibility":"edge"}}"#,
         None,
@@ -106,7 +106,7 @@ fn t02_trusted_proxy_identity_rules() {
 
 #[test]
 fn t02_rate_limiter_conservative_on_full_table() {
-    let rl = RateLimiter::new(crate::http_service_config::RateLimitConfig {
+    let rl = RateLimiter::new(auto_web::http_service_config::RateLimitConfig {
         max_requests: 1,
         window_ms: 60_000,
         bucket_capacity: 1,
@@ -139,9 +139,9 @@ fn t02_service_json_round_trip_preserves_hash() {
 #[test]
 fn t02_upload_facade_reachable_after_qualify() {
     // api_gen qualify_a2r_std 把上传 glue 的 `a2r_std::` 全量改写为
-    // `crate::a2r_std::`——本测试锁定转发壳对 730 面完备（缺一项即
+    // `auto_lang::a2r_std::`——本测试锁定转发壳对 730 面完备（缺一项即
     // 生成上传后端 E0425，T-02 实测回归）。
-    use crate::a2r_std::http as facade;
+    use auto_lang::a2r_std::http as facade;
     // 符号存在性锁定（生成 glue 消费的面）；签名不在此钉——a2r-std 单源。
     // 具体签名函数（非泛型）直接锁；impl AsRef<str> 入口（upload_receive/
     // commit/reject/error）由生成 glue 编译面覆盖（真实 e2e T-06 兜底）。
@@ -179,7 +179,7 @@ fn raw_get(port: u16, path: &str) -> Option<String> {
 /// Ctrl+C 汇入同一 watch——headless 的确定性注入路径，实机信号面见 SD-01）。
 #[test]
 fn http_e2e_plan736_file_body_drain_window_and_rebind() {
-    crate::tests::http_host_test_support::install();
+    crate::install_web_http_host();
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;
@@ -206,19 +206,19 @@ pub fn main() {{}}
 
     // 服务面装配（显式 config seam）：drain 窗 2s，port 固定。
     let cfg = std::sync::Arc::new(
-        crate::http_service_config::resolve_service_config(
+        auto_web::http_service_config::resolve_service_config(
             r#"{"profile":"development","listen":{"port":18610},"limits":{"drain_timeout_ms":2000}}"#,
             None,
         )
         .unwrap(),
     );
-    crate::vm::ffi::http_server::reset_serve_state();
-    crate::http_service_config::set_active_service_config(cfg);
+    auto_web::http_server::reset_serve_state();
+    auto_web::http_service_config::set_active_service_config(cfg);
     let src_thread = src.clone();
     let server = std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
-            if let Err(e) = crate::run(&src_thread) {
+            if let Err(e) = auto_lang::run(&src_thread) {
                 eprintln!("[p736-e2e] run error: {}", e);
             }
         })
@@ -268,7 +268,7 @@ pub fn main() {{}}
 
     // 注入关停（同一 watch）：draining 期 ready 不得再 200。
     assert!(
-        crate::vm::ffi::http_server::test_trigger_shutdown(),
+        auto_web::http_server::test_trigger_shutdown(),
         "shutdown trigger must be registered"
     );
     std::thread::sleep(Duration::from_millis(150));
@@ -312,8 +312,8 @@ pub fn main() {{}}
 #[test]
 fn t02_active_config_seam_single_take() {
     let c = std::sync::Arc::new(dev());
-    crate::http_service_config::set_active_service_config(c.clone());
-    let taken = crate::http_service_config::take_active_service_config().expect("take once");
+    auto_web::http_service_config::set_active_service_config(c.clone());
+    let taken = auto_web::http_service_config::take_active_service_config().expect("take once");
     assert_eq!(taken.effective_config_hash(), c.effective_config_hash());
-    assert!(crate::http_service_config::take_active_service_config().is_none());
+    assert!(auto_web::http_service_config::take_active_service_config().is_none());
 }

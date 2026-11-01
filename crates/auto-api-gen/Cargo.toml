@@ -6,7 +6,7 @@ description = "API server/client generation core (PLAN-815 T-04): single-algorit
 license = "MIT"
 
 [dependencies]
-auto-web={path="../../../auto-web/crates/auto-web",version="=0.1.0"}
+# PLAN-906: auto-web 依赖退役（vue/axum 生成归 auto_web 直连；本 crate 仅保留 tauri 腿）。
 auto-generation-core = { path = "../auto-generation-core", version = "=0.1.0" }
 # Language SDK single source (api/ast/compile/trans/config/http services).
 auto-lang-core = { path = "../auto-lang-core" }
@@ -20,8 +20,7 @@ regex = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
-# PLAN-738 e2e（随 api_gen 迁入；auto-man 同名 feature 转发）。
-test-http-e2e = ["auto-web/test-http-e2e"]
+# PLAN-906: test-http-e2e 转发随 auto-web 依赖退役（e2e 家族迁 lang-web-e2e 探针工程）。
 
 [dev-dependencies]
 blake3 = "1.5"

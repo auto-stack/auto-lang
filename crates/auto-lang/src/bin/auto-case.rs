@@ -27,9 +27,9 @@
 
 
 fn main() {
-    // The executable is the host for VM-backed cases; the Core SDK remains
-    // explicit and has no built-in Web implementation.
-    auto_web::install_http_service_host_if_absent();
+    // PLAN-906: no implicit Web host here — the language workspace builds
+    // without auto-web. No TestCase uses `serve`; an HTTP service call without
+    // an installed provider is refused by name before listening (host-port spec).
     let code = match real_main() {
         Ok(code) => code,
         Err(e) => {

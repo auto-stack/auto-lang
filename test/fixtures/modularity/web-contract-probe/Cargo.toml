@@ -7,6 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-auto-web-contract = { path = "../../../../../auto-web/crates/auto-web-contract", version = "=0.1.0" }
+# PLAN-906: 合同单源迁语言仓（本探针钉 Core 消费的独立可解析）
+auto-web-contract = { path = "../../../../../auto-lang/crates/auto-web-contract", version = "=0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -73,8 +73,9 @@ def run(args):
         if any(packages[i]['name'] in ('auto-lang-core', 'auto-web', 'axum', 'hyper', 'tokio')
                or packages[i]['name'].startswith(('auto-ui', 'auto-man')) for i in pure):
             raise ValueError('pure contract closure contains an implementation')
+        # PLAN-906: auto-web-contract 单源迁语言仓——物理源断言翻转。
         expected = {'auto-lang-core': roots['lang']/ 'crates/auto-lang-core',
-                    'auto-web-contract': roots['web']/ 'crates/auto-web-contract',
+                    'auto-web-contract': roots['lang']/ 'crates/auto-web-contract',
                     'auto-generation-core': roots['lang']/ 'crates/auto-generation-core'}
         for name, directory in expected.items():
             found = [p for p in packages.values() if p['name'] == name]

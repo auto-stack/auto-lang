@@ -1,15 +1,19 @@
-//! Compatibility dispatcher: IPC stays here, HTTP delegates to its Web owner.
+//! Compatibility dispatcher: IPC stays here; HTTP generation is owned by Web.
 pub use auto_generation_core::shared_generation::*;
 pub use auto_generation_core::source_owner::fnv1a;
 use auto_val::AutoResult;
-pub use auto_web::api_gen::{
-    backend_generation_is_fresh, current_generated_api_assembly, generate_initial_data_pub,
-    install_project_api_glue,
-};
+// PLAN-906: auto-web 依赖退役——原 `pub use auto_web::api_gen::{backend_
+// generation_is_fresh, current_generated_api_assembly, generate_initial_data_
+// pub, install_project_api_glue}` 四符号四仓零消费者（UI 经 auto_web 直连）。
 use std::path::Path;
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     if backend != "tauri" {
-        return auto_web::generate_api(root_dir, backend);
+        // PLAN-906: 非 tauri 生成归 Web owner——调用方直连 auto_web::generate_api
+        // （UI vue 腿已如此）。具名错误，不静默降级。
+        return Err(format!(
+            "generate_api: backend '{backend}' is Web-owned; call auto_web::generate_api directly (PLAN-906 language/web boundary)"
+        )
+        .into());
     }
 
     // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at
@@ -52,9 +56,8 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
                 }
                 None => {
                     println!("  ⚠ Could not extract API definitions");
-                    if backend == "vue" {
-                        install_project_api_glue(root_dir);
-                    }
+                    // PLAN-906: vue 腿的 glue 兜底归 auto_web::generate_api
+                    // （本函数仅 tauri，非 tauri 已在入口具名拒绝）。
                     return Ok(());
                 }
             }
@@ -64,16 +67,8 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // Check if any endpoints or types were extracted
     if api_module.endpoints.is_empty() && api_module.types.is_empty() {
         println!("  ⚠ No API endpoints or types found");
-        // Plan 559 W2: implementation-style back/api.at (VM-dialect bodies —
-        // os-config's 80 fn http/json surface) yields no contract endpoints.
-        // If the project ships the web implementation as a hand-written TS
-        // twin at src/back/api.ts (the "vue codegen → @/lib/api" arm of the
-        // same `use back.api` import line), install it as the gen tree's
-        // lib/api.ts so the vue track type-checks. Without a twin, the gen
-        // tree gets no glue (desktop-host v1 keeps skipping such apps).
-        if backend == "vue" {
-            install_project_api_glue(root_dir);
-        }
+        // Plan 559 W2 的 vue TS-twin glue 兜底随 vue 腿归 auto_web::
+        // generate_api（PLAN-906；本函数仅 tauri，此处不再有 vue 分支）。
         return Ok(());
     }
 

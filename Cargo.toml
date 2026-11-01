@@ -1,5 +1,8 @@
 [workspace]
 members = [
+    # PLAN-906: Web 轻合同单源迁入（Web workspace 去成员、auto-web path 回指本仓；
+    # 类型身份/links/严格策略随包逐字不变）
+    "crates/auto-web-contract",
     "crates/a2r-std",
     # Plan 430: rustdoc 元信息工具(离线,不入 auto-lang 依赖树)
     "crates/shim-metadata",

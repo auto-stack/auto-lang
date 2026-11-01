@@ -4,7 +4,7 @@
 //!
 //! `http_e2e_plan781` 族挂 `test-http-e2e`（cargo th 档；nextest 每测试
 //! 一进程——env 置换天然隔离）。服务器 fixture 同 plan730 `start_server`
-//! 形态（真 TCP、crate::run 自动起服）；预算经 `AUTO_HTTP_STEP_BUDGET`
+//! 形态（真 TCP、auto_lang::run 自动起服）；预算经 `AUTO_HTTP_STEP_BUDGET`
 //! env 注入（AutoVM 构造期快照 → LegacyHttp 累计档）。
 //!
 //! 覆盖：低预算 = 指名资源拒绝（500 + "per-request cumulative budget"）
@@ -37,14 +37,14 @@ mod budget_e2e {
     /// 同 plan730 start_server 形态：编译+运行 .at（#[api] 路由自动起服，
     /// 真 TCP），失败载荷有界上报。
     fn start_server(code: &str, port: u16) -> u16 {
-        crate::tests::http_host_test_support::install();
-        crate::vm::ffi::stdlib::clear_http_routes();
+        crate::install_web_http_host();
+        auto_lang::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let outcome_rx = crate::vm::ffi::http_server::spawn_outcome_reporter_for_test(
+        let outcome_rx = auto_web::http_server::spawn_outcome_reporter_for_test(
             8 * 1024 * 1024,
-            "crate::run",
-            move || crate::run(&code),
+            "auto_lang::run",
+            move || auto_lang::run(&code),
         );
         for _ in 0..50 {
             if TcpStream::connect(("127.0.0.1", port)).is_ok() {
@@ -271,12 +271,12 @@ fn ping() str {{
         );
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(
-            crate::vm::ffi::async_http::live_op_count(),
+            auto_lang::vm::ffi::async_http::live_op_count(),
             op_baseline,
             "{ctx}: live-op must return to baseline (task/scope reclaimed)"
         );
         assert_eq!(
-            crate::vm::ffi::http_server::live_scope_count(),
+            auto_web::http_server::live_scope_count(),
             0,
             "{ctx}: scope map must be empty (single terminal reached, permit released)"
         );
@@ -332,7 +332,7 @@ fn ping() str {{
         std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "600");
         let total = 20000;
         start_server(&slowwrite_program(&d, total), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let t0 = Instant::now();
         let (status, body) = http_get(port, "/api/slowwrite");
         let elapsed = t0.elapsed();
@@ -380,7 +380,7 @@ fn ping() str {{
         std::env::set_var("AUTO_HTTP_MAX_INFLIGHT", "1");
         let total = 20000;
         start_server(&slowwrite_program(&d, total), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
         write!(
             &mut s,
@@ -426,11 +426,11 @@ fn ping() str {{
         std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "300");
         let total = 20000;
         start_server(&slowwrite_program(&d, total), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let client = std::thread::spawn(move || http_get(port, "/api/slowwrite"));
         wait_handshake(dir.path(), 3, Duration::from_secs(15));
         assert!(
-            crate::vm::ffi::http_server::test_trigger_shutdown(),
+            auto_web::http_server::test_trigger_shutdown(),
             "shutdown trigger must be registered"
         );
         let (status, body) = client.join().expect("client thread");
@@ -520,7 +520,7 @@ Connection: close
         std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
         std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "200");
         start_server(&cpuloop_program(&d), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let t0 = Instant::now();
         let (status, body) = http_get(port, "/api/cpuloop");
         let elapsed = t0.elapsed();
@@ -536,12 +536,12 @@ Connection: close
         assert_late_never_written(dir.path(), "cpu-deadline");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(
-            crate::vm::ffi::async_http::live_op_count(),
+            auto_lang::vm::ffi::async_http::live_op_count(),
             op_baseline,
             "live-op must return to baseline"
         );
         assert_eq!(
-            crate::vm::ffi::http_server::live_scope_count(),
+            auto_web::http_server::live_scope_count(),
             0,
             "scope map must be empty"
         );
@@ -577,7 +577,7 @@ Connection: close
         std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
         std::env::set_var("AUTO_HTTP_MAX_INFLIGHT", "1");
         start_server(&cpuloop_program(&d), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
         write!(
             &mut s,
@@ -597,12 +597,12 @@ Connection: close
         assert_late_never_written(dir.path(), "cpu-rst");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(
-            crate::vm::ffi::async_http::live_op_count(),
+            auto_lang::vm::ffi::async_http::live_op_count(),
             op_baseline,
             "live-op must return to baseline"
         );
         assert_eq!(
-            crate::vm::ffi::http_server::live_scope_count(),
+            auto_web::http_server::live_scope_count(),
             0,
             "scope map must be empty"
         );
@@ -625,11 +625,11 @@ Connection: close
         std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
         std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "300");
         start_server(&cpuloop_program(&d), port);
-        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let op_baseline = auto_lang::vm::ffi::async_http::live_op_count();
         let client = std::thread::spawn(move || http_get(port, "/api/cpuloop"));
         wait_entered(dir.path(), Duration::from_secs(15));
         assert!(
-            crate::vm::ffi::http_server::test_trigger_shutdown(),
+            auto_web::http_server::test_trigger_shutdown(),
             "shutdown trigger must be registered"
         );
         let (status, body) = client.join().expect("client thread");
@@ -640,12 +640,12 @@ Connection: close
         assert_late_never_written(dir.path(), "cpu-shutdown");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(
-            crate::vm::ffi::async_http::live_op_count(),
+            auto_lang::vm::ffi::async_http::live_op_count(),
             op_baseline,
             "live-op must return to baseline"
         );
         assert_eq!(
-            crate::vm::ffi::http_server::live_scope_count(),
+            auto_web::http_server::live_scope_count(),
             0,
             "scope map must be empty"
         );

@@ -132,7 +132,7 @@ mod plan730_t02 {
     /// 是上传路由；同名用户函数/普通参数不误判（AC-01 反例）。
     #[test]
     fn plan730_route_classification_by_param_type() {
-        use crate::vm::ffi::http_server::{
+        use auto_web::http_server::{
             record_api_param_sigs, route_declares_upload, ApiParamSig,
         };
         let sig = |name: &str, ty: &str| ApiParamSig {
@@ -162,7 +162,7 @@ fn up(req UploadRequest) UploadReceipt {
     return http.upload_error(500, "x")
 }
 "#;
-        let err = crate::run_with_capture(get_upload).expect_err("GET upload must be rejected");
+        let err = auto_lang::run_with_capture(get_upload).expect_err("GET upload must be rejected");
         let msg = format!("{err:?}");
         assert!(msg.contains("POST/PUT"), "method diagnostic: {msg}");
 
@@ -172,7 +172,7 @@ fn up(req UploadRequest, note str) UploadReceipt {
     return http.upload_error(500, "x")
 }
 "#;
-        let err = crate::run_with_capture(mixed_body).expect_err("body param must be rejected");
+        let err = auto_lang::run_with_capture(mixed_body).expect_err("body param must be rejected");
         let msg = format!("{err:?}");
         assert!(
             msg.contains("upload endpoints allow only path params"),
@@ -185,7 +185,7 @@ fn up() UploadReceipt {
     return http.upload_error(500, "x")
 }
 "#;
-        let err = crate::run_with_capture(no_param).expect_err("receipt without request rejected");
+        let err = auto_lang::run_with_capture(no_param).expect_err("receipt without request rejected");
         let msg = format!("{err:?}");
         assert!(msg.contains("no UploadRequest param"), "{msg}");
     }
@@ -202,14 +202,14 @@ let receipt = http.upload_error(401, "missing token")
 let unknown = http.upload_metadata(99999)
 print("done")
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         assert!(out.contains("done"), "{out}");
-        let (reqs, sessions, receipts) = crate::vm::ffi::http_upload::vm_upload_counts();
+        let (reqs, sessions, receipts) = auto_lang::vm::ffi::http_upload::vm_upload_counts();
         assert_eq!(reqs, 0, "no injected capability in plain script");
         assert!(receipts >= 1, "upload_error receipt registered");
         assert_eq!(sessions, 0);
         // 编组门反例：普通 fn（非 #[api]）不在上传返回表。
-        assert!(!crate::vm::ffi::http_server::fn_is_api_upload_return(
+        assert!(!auto_web::http_server::fn_is_api_upload_return(
             "main"
         ));
     }
@@ -251,20 +251,20 @@ mod http_e2e {
     }
 
     /// PLAN-755 T-02：启动诊断有界化。751-R2 复验实证——启动失败（如
-    /// SIGNATURE_UNVERIFIED，`crate::run` 32ms 即返 Err）被 `let _ =` 吞掉
+    /// SIGNATURE_UNVERIFIED，`auto_lang::run` 32ms 即返 Err）被 `let _ =` 吞掉
     /// 后，客户端 connect-refused 等待把它藏成 nextest 120s TERMINATING
     /// （本机每次拒绝连接实测 ~2.15s，50+60 次重试远超击杀线）。run 的
     /// Err/panic 载荷必须在 ready 窗口内有界上报（R2 共享核心），不得落入
     /// 客户端等待。
     pub(super) fn start_server(code: &str, port: u16) -> u16 {
-        crate::tests::http_host_test_support::install();
-        crate::vm::ffi::stdlib::clear_http_routes();
+        crate::install_web_http_host();
+        auto_lang::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let outcome_rx = crate::vm::ffi::http_server::spawn_outcome_reporter_for_test(
+        let outcome_rx = auto_web::http_server::spawn_outcome_reporter_for_test(
             8 * 1024 * 1024,
-            "crate::run",
-            move || crate::run(&code),
+            "auto_lang::run",
+            move || auto_lang::run(&code),
         );
         for _ in 0..50 {
             if TcpStream::connect(("127.0.0.1", port)).is_ok() {
@@ -278,7 +278,7 @@ mod http_e2e {
         panic!(
             "test server never accepted connections on port {port}: {}",
             outcome_rx.try_recv().unwrap_or_else(|_| {
-                "crate::run still blocking but the port is not accepting".to_string()
+                "auto_lang::run still blocking but the port is not accepting".to_string()
             })
         );
     }
@@ -576,7 +576,7 @@ fn plain_int() int {{
         assert!(staging_is_empty(&staging), "early reject stages nothing");
         // middleware 拒绝（短路体 legacy 200 形状）：零落盘（授权先于存储）。
         {
-            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+            if let Ok(mut chain) = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
                 chain.push("plan730_guard".to_string());
             }
         }
@@ -602,7 +602,7 @@ fn plain_int() int {{
             "no published file"
         );
         {
-            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+            if let Ok(mut chain) = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
                 chain.clear();
             }
         }
@@ -800,7 +800,7 @@ fn plain_int() int {{
         drop(s);
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while (std::fs::read_dir(&staging).unwrap().next().is_some()
-            || crate::http_upload_service::upload_session_count() > 0)
+            || auto_web::http_upload_service::upload_session_count() > 0)
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(100));
@@ -809,7 +809,7 @@ fn plain_int() int {{
             std::fs::read_dir(&staging).unwrap().next().is_none(),
             "disconnect mid-upload cleans staging"
         );
-        assert_eq!(crate::http_upload_service::upload_session_count(), 0);
+        assert_eq!(auto_web::http_upload_service::upload_session_count(), 0);
         assert!(!root.join("raw/data.bin").exists(), "nothing published");
     }
 
@@ -911,7 +911,7 @@ fn plain_int() int {{
         std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_string_lossy().to_string());
         let port = start_server(&program, 18977);
         {
-            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+            if let Ok(mut chain) = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
                 chain.push("plan730_guard".to_string());
             }
         }
@@ -930,7 +930,7 @@ fn plain_int() int {{
         assert_eq!(s, 200);
         // 中间件拦截（短路）后零写盘：推一个全拦 guard。
         {
-            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+            if let Ok(mut chain) = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
                 chain.clear();
                 chain.push("plan730_block_all".to_string());
             }
@@ -948,7 +948,7 @@ fn plain_int() int {{
         let entries: Vec<_> = std::fs::read_dir(&upload_dir).unwrap().collect();
         assert_eq!(entries.len(), 1, "只有成功请求的 1 个文件；拦截请求零写盘");
         {
-            if let Ok(mut chain) = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
+            if let Ok(mut chain) = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock() {
                 chain.clear();
             }
         }
@@ -1041,12 +1041,14 @@ const UPLOAD_CASE_DIR: &str = "test/a2r/33_plan730/001_http_upload";
 
 #[test]
 fn plan730_golden_upload_lowering_matrix() {
-    let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let d = std::path::// PLAN-906: golden 用例随 facade crate 留语言仓（test/a2r/...），
+        // 探针经组内 5 级相对路径回指 crates/auto-lang。
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../../auto-lang/crates/auto-lang");
     let full = d.join(UPLOAD_CASE_DIR);
     let name = "http_upload";
     let src = std::fs::read_to_string(full.join(format!("{name}.at"))).expect("case .at");
     let mut rcode =
-        crate::trans::rust::transpile_rust_with_source_dir(&full, name, &src).expect("transpile");
+        auto_lang::trans::rust::transpile_rust_with_source_dir(&full, name, &src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     let expected =
         std::fs::read_to_string(full.join(format!("{name}.expected.rs"))).unwrap_or_default();
@@ -1069,7 +1071,7 @@ fn sync_caller(req UploadRequest) UploadReceipt {
     return http.upload_error(500, "unreachable")
 }
 "#;
-    let err = match crate::trans::rust::transpile_rust("plan730_sync_probe", src) {
+    let err = match auto_lang::trans::rust::transpile_rust("plan730_sync_probe", src) {
         Err(e) => e,
         Ok(_) => panic!("sync ctx upload_receive must be diagnosed, not emitted"),
     };
@@ -1093,7 +1095,7 @@ fn main() {
 }
 "#;
     let mut rcode =
-        crate::trans::rust::transpile_rust("plan730_type_probe", src).expect("transpile");
+        auto_lang::trans::rust::transpile_rust("plan730_type_probe", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(rs.contains("-> a2r_std::http::UploadReceipt"), "{rs}");
     assert!(rs.contains("req: a2r_std::http::UploadRequest"), "{rs}");

@@ -59,7 +59,7 @@ python = ["pyo3", "auto-lang-core/python"]
 # test-native-dock/mpv-*）整体迁 auto-ui 仓——真身在 auto-ui-runtime。
 
 [dependencies]
-auto-web = { path="../../../auto-web/crates/auto-web", version="=0.1.0" }
+# PLAN-906: 语言 facade 零 auto-web 依赖（Web 实现再导出面退役；服务消费者直连 auto-web）。
 # PLAN-814: SDK/UI 包组拆分——旧 auto-lang 转为上层兼容/默认组合层，依赖
 # 三个新包（机制切片：use_scanner 已迁 auto-lang-core，旧路径经 lib.rs
 # 再导出保类型身份；UI compiler/runtime 迁移面见 T-03/T-04）。

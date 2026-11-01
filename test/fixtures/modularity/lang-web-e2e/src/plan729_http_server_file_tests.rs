@@ -7,7 +7,7 @@
 //! - e2e wire/生命周期矩阵在 `http_e2e_plan729_*`（`test-http-e2e` 串行档，
 //!   T-06/T-07 增补）。
 
-use crate::trans::rust::transpile_rust_with_source_dir;
+use auto_lang::trans::rust::transpile_rust_with_source_dir;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
@@ -25,7 +25,9 @@ fn case_name(case_dir: &str) -> String {
 }
 
 fn transpile_case(case_dir: &str) -> Vec<u8> {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let d = // PLAN-906: golden 用例随 facade crate 留语言仓（test/a2r/...），
+        // 探针经组内 5 级相对路径回指 crates/auto-lang。
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../../auto-lang/crates/auto-lang");
     let full = d.join(case_dir);
     let name = case_name(case_dir);
     let src = read_to_string(full.join(format!("{name}.at"))).expect("case .at");
@@ -34,7 +36,9 @@ fn transpile_case(case_dir: &str) -> Vec<u8> {
 }
 
 fn assert_golden(case_dir: &str) {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let d = // PLAN-906: golden 用例随 facade crate 留语言仓（test/a2r/...），
+        // 探针经组内 5 级相对路径回指 crates/auto-lang。
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../../auto-lang/crates/auto-lang");
     let name = case_name(case_dir);
     let expected =
         read_to_string(d.join(case_dir).join(format!("{name}.expected.rs"))).unwrap_or_default();
@@ -64,7 +68,7 @@ fn main() {
     let b = http.file_response("root", "y.bin", "{\"etag\":\"\\\"e\\\"\"}")
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan729_probe", src).expect("transpile");
+    let mut rcode = auto_lang::trans::rust::transpile_rust("plan729_probe", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(rs.contains("a2r_std::http::file_response("), "{rs}");
     // options 字面量字节保真（含转义引号）。
@@ -88,7 +92,7 @@ fn main() {
 }
 "#;
     let mut rcode =
-        crate::trans::rust::transpile_rust("plan729_async_probe", src).expect("transpile");
+        auto_lang::trans::rust::transpile_rust("plan729_async_probe", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(
         rs.contains("a2r_std::http::file_response("),
@@ -112,7 +116,7 @@ fn main() {
     let f = helper("a")
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan729_type_map", src).expect("transpile");
+    let mut rcode = auto_lang::trans::rust::transpile_rust("plan729_type_map", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(
         rs.contains("-> a2r_std::http::FileResponse"),
@@ -136,10 +140,10 @@ mod vm {
 let fr = http.file_response("C:/definitely/not/a/real/root", "missing.bin", "{}")
 print("ok")
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         assert!(out.contains("ok"), "构造零 I/O（缺 root 不失败）: {out}");
         assert!(
-            crate::vm::ffi::http_server_file::vm_file_response_count() >= 1,
+            auto_lang::vm::ffi::http_server_file::vm_file_response_count() >= 1,
             "描述符登记进 VM 注册表"
         );
     }
@@ -152,7 +156,7 @@ print("ok")
 let bad = http.file_response("root", "a", "{\"bogus\":1}")
 print("done")
 "#;
-        let (_, out) = crate::run_with_capture(code).expect("run");
+        let (_, out) = auto_lang::run_with_capture(code).expect("run");
         assert!(out.contains("done"), "坏 options 构造不中断: {out}");
     }
 
@@ -161,7 +165,7 @@ print("done")
     #[test]
     fn plan729_vm_plain_int_not_file_return() {
         assert!(
-            !crate::vm::ffi::http_server::fn_is_api_file_return("main"),
+            !auto_web::http_server::fn_is_api_file_return("main"),
             "普通 fn 不在文件返回表"
         );
     }
@@ -171,8 +175,8 @@ print("done")
 /// 而非 GET 文件路由的自动 HEAD（两遍匹配语义）。
 #[test]
 fn plan729_match_route_explicit_head_precedence() {
-    use crate::vm::ffi::http_server::{match_route, record_api_return_type, HttpRoute};
-    crate::vm::ffi::stdlib::clear_http_routes();
+    use auto_web::http_server::{match_route, record_api_return_type, HttpRoute};
+    auto_lang::vm::ffi::stdlib::clear_http_routes();
     record_api_return_type("get_file", "FileResponse".into());
     record_api_return_type("head_file", "FileResponse".into());
     let mk = |method: &str, fn_name: &str| HttpRoute {
@@ -313,14 +317,14 @@ mod http_e2e {
     }
 
     pub(super) fn start_server(code: &str, port: u16) -> u16 {
-        crate::tests::http_host_test_support::install();
-        crate::vm::ffi::stdlib::clear_http_routes();
+        crate::install_web_http_host();
+        auto_lang::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
         let _server = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(move || {
-                let _ = crate::run(&code);
+                let _ = auto_lang::run(&code);
             })
             .expect("spawn server thread");
         for _ in 0..50 {
@@ -859,13 +863,13 @@ Connection: close
         }
         // 等待 active 占满（对账探针）。
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while crate::http_file_service::file_active_count() < 4
+        while auto_web::http_file_service::file_active_count() < 4
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(
-            crate::http_file_service::file_active_count(),
+            auto_web::http_file_service::file_active_count(),
             4,
             "4 个慢客户端占满 active"
         );
@@ -875,13 +879,13 @@ Connection: close
         }
         drop(holes);
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        while crate::http_file_service::file_active_count() > 0
+        while auto_web::http_file_service::file_active_count() > 0
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert_eq!(
-            crate::http_file_service::file_active_count(),
+            auto_web::http_file_service::file_active_count(),
             0,
             "断连后文件资源回基线"
         );
@@ -957,13 +961,13 @@ Connection: close
             })
             .collect();
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        while crate::http_file_service::file_queued_count() < 16
+        while auto_web::http_file_service::file_queued_count() < 16
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(
-            crate::http_file_service::file_queued_count(),
+            auto_web::http_file_service::file_queued_count(),
             16,
             "16 笔在文件排队（队内无句柄无缓冲）"
         );
@@ -978,19 +982,19 @@ Connection: close
         }
         drop(holes);
         let deadline = std::time::Instant::now() + Duration::from_secs(45);
-        while (crate::http_file_service::file_active_count() > 0
-            || crate::http_file_service::file_queued_count() > 0)
+        while (auto_web::http_file_service::file_active_count() > 0
+            || auto_web::http_file_service::file_queued_count() > 0)
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(100));
         }
         assert_eq!(
-            crate::http_file_service::file_active_count(),
+            auto_web::http_file_service::file_active_count(),
             0,
             "active 回基线"
         );
         assert_eq!(
-            crate::http_file_service::file_queued_count(),
+            auto_web::http_file_service::file_queued_count(),
             0,
             "排队回基线（到期出队）"
         );
@@ -1091,13 +1095,13 @@ Connection: close
         let receipt5 = a2r_std::http::transfer_wait_typed(&t5);
         assert_eq!(receipt5.kind.as_str(), "cancelled", "{receipt5:?}");
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while crate::http_file_service::file_active_count() > 0
+        while auto_web::http_file_service::file_active_count() > 0
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert_eq!(
-            crate::http_file_service::file_active_count(),
+            auto_web::http_file_service::file_active_count(),
             0,
             "客户端取消后 server 文件资源退出"
         );
@@ -1219,12 +1223,12 @@ mod r1_fixes {
             holes.push(h);
         }
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while crate::http_file_service::file_active_count() < 4
+        while auto_web::http_file_service::file_active_count() < 4
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert_eq!(crate::http_file_service::file_active_count(), 4);
+        assert_eq!(auto_web::http_file_service::file_active_count(), 4);
         // 饱和期：20 次 /plain 全部 <500ms 且不劣于基线 10×。
         let mut worst = Duration::from_millis(0);
         for _ in 0..20 {
@@ -1244,7 +1248,7 @@ mod r1_fixes {
         }
         drop(holes);
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        while crate::http_file_service::file_active_count() > 0
+        while auto_web::http_file_service::file_active_count() > 0
             && std::time::Instant::now() < deadline
         {
             std::thread::sleep(Duration::from_millis(50));
@@ -1326,7 +1330,7 @@ mod r1_fixes {
         );
         // 注册拒绝 middleware（测试直接注入链——.at 面为 http.server.use）。
         {
-            let mut chain = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+            let mut chain = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN
                 .lock()
                 .expect("middleware chain");
             chain.push("plan729_guard".to_string());
@@ -1334,7 +1338,7 @@ mod r1_fixes {
         let (s, _, b) = raw_request(port, "GET", "/guarded/g.bin", &[]);
         // 清链（防污染后续测试）。
         {
-            let mut chain = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+            let mut chain = auto_lang::vm::ffi::stdlib::MIDDLEWARE_CHAIN
                 .lock()
                 .expect("middleware chain");
             chain.clear();
@@ -1344,16 +1348,16 @@ mod r1_fixes {
         assert!(text.contains("auth required"), "拒绝体: {text}");
         assert!(!text.contains("guarded-data"), "文件字节未泄露");
         assert_eq!(
-            crate::http_file_service::file_open_count(),
+            auto_web::http_file_service::file_open_count(),
             0,
             "auth 拒绝时受限打开计数不增长"
         );
         // 放行请求（无 /guarded/ 前缀路径不经 guard）：文件正常服务 + 计数 +1。
-        let before = crate::http_file_service::file_open_count();
+        let before = auto_web::http_file_service::file_open_count();
         let (s, _, b) = raw_request(port, "GET", "/files/g.bin", &[]);
         assert_eq!((s, b.as_slice()), (200u16, b"guarded-data".as_slice()));
         assert_eq!(
-            crate::http_file_service::file_open_count(),
+            auto_web::http_file_service::file_open_count(),
             before + 1,
             "放行请求恰好打开一次"
         );

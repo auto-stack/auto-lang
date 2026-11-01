@@ -25,10 +25,10 @@
 //!   442 scoped 族 + auto-man api_gen 46（legacy 6 wire 用例 = plan326
 //!   http_e2e 34 项内含 redirect/SSE/accessors/musk 常量）。
 
-use crate::vm::engine::{AutoVM, FutureKind, FutureState, FutureValue};
-use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-use crate::vm::ffi::stdlib;
-use crate::vm::virt_memory::VirtualFlash;
+use auto_lang::vm::engine::{AutoVM, FutureKind, FutureState, FutureValue};
+use auto_lang::vm::ffi::rust_stdlib::RustStdlibObject;
+use auto_lang::vm::ffi::stdlib;
+use auto_lang::vm::virt_memory::VirtualFlash;
 
 fn fresh_vm() -> AutoVM {
     AutoVM::new(VirtualFlash::new(1024), 1024)
@@ -172,8 +172,8 @@ fn plan776_probe_legacy_registry_lookup_vs_object_identity() {
 // T-02：producer 接线（shim 级——构造点返回 TAG_OBJECT 凭据）
 // ============================================================================
 
-use crate::vm::ffi::http_return_resource::{self, ResourceClaim};
-use crate::vm::task::AutoTask;
+use auto_lang::vm::ffi::http_return_resource::{self, ResourceClaim};
+use auto_lang::vm::task::AutoTask;
 
 fn fresh_task() -> AutoTask {
     AutoTask::new(0, 1024, 0)
@@ -185,7 +185,7 @@ fn fresh_task() -> AutoTask {
 fn plan776_t02_redirect_shim_pushes_resource() {
     let vm = fresh_vm();
     let mut task = fresh_task();
-    use crate::vm::ffi::VMConvertible;
+    use auto_lang::vm::ffi::VMConvertible;
     "/next".to_string().push_to_stack(&mut task, &vm).unwrap();
     task.ram.push_i32(302);
     stdlib::shim_http_response_redirect(&mut task, &vm).unwrap();
@@ -206,7 +206,7 @@ fn plan776_t02_musk_ok_response_pushes_resource() {
     let vm = fresh_vm();
     let mut task = fresh_task();
     task.ram.push_i32(7);
-    crate::vm::ffi::musk_response_ctor::shim_ok_response(&mut task, &vm).unwrap();
+    auto_lang::vm::ffi::musk_response_ctor::shim_ok_response(&mut task, &vm).unwrap();
     let nv = task.ram.pop_nv();
     assert!(auto_val::is_object(nv));
     match http_return_resource::resolve_resource(&vm, nv).unwrap() {
@@ -225,18 +225,18 @@ fn plan776_t02_musk_ok_response_pushes_resource() {
 fn plan776_t02_file_response_shim_pushes_resource() {
     let vm = fresh_vm();
     let mut task = fresh_task();
-    use crate::vm::ffi::VMConvertible;
+    use auto_lang::vm::ffi::VMConvertible;
     "root".to_string().push_to_stack(&mut task, &vm).unwrap();
     "x.bin".to_string().push_to_stack(&mut task, &vm).unwrap();
     "{}".to_string().push_to_stack(&mut task, &vm).unwrap();
-    crate::vm::ffi::http_server_file::shim_http_file_response(&mut task, &vm).unwrap();
+    auto_lang::vm::ffi::http_server_file::shim_http_file_response(&mut task, &vm).unwrap();
     let nv = task.ram.pop_nv();
     assert!(auto_val::is_object(nv));
     match http_return_resource::resolve_resource(&vm, nv).unwrap() {
         ResourceClaim::File { descriptor_id } => {
             // 表项在位（take 可消费——单次移交）。
-            assert!(crate::vm::ffi::http_server_file::take_file_response(descriptor_id).is_some());
-            assert!(crate::vm::ffi::http_server_file::take_file_response(descriptor_id).is_none());
+            assert!(auto_lang::vm::ffi::http_server_file::take_file_response(descriptor_id).is_some());
+            assert!(auto_lang::vm::ffi::http_server_file::take_file_response(descriptor_id).is_none());
         }
         other => panic!("错种类：{other:?}"),
     }
@@ -282,7 +282,7 @@ fn plain(n int) int {
 
     /// OS 分配临时端口（R1-F09：固定端口在并行 worktree 下互踩/跨 run 连错
     /// 服务——fix-test-tiering 裁定同款；755 有界启动：5s 探活失败即 panic，
-    /// 不吞 `crate::run` 结果——启动诊断在服务线程 stderr 可见）。
+    /// 不吞 `auto_lang::run` 结果——启动诊断在服务线程 stderr 可见）。
     pub(super) fn ephemeral_port() -> u16 {
         std::net::TcpListener::bind("127.0.0.1:0")
             .expect("bind :0")
@@ -295,19 +295,19 @@ fn plain(n int) int {
     /// WSAEACCES——服务 bind 被拒即静默未就绪）——就绪失败换端口重试
     ///（最多 3 次；755 有界启动语义保持：全部失败才 panic）。
     pub(super) fn start_server(code: &str, _fixed: u16) -> u16 {
-        crate::tests::http_host_test_support::install();
+        crate::install_web_http_host();
         for _attempt in 0..3 {
             let port = ephemeral_port();
-            crate::vm::ffi::stdlib::clear_http_routes();
+            auto_lang::vm::ffi::stdlib::clear_http_routes();
             std::env::set_var("AUTO_HTTP_PORT", port.to_string());
             let code = code.to_string();
             // R2-08：启动结果传回测试线程（755 有界结果语义——spawn 侧
             // AutoResult 经 mpsc 发送，探活窗口内收到 Err 即 panic 带错误）。
-            let (tx, rx) = std::sync::mpsc::channel::<Result<String, crate::error::AutoError>>();
+            let (tx, rx) = std::sync::mpsc::channel::<Result<String, auto_lang_core::error::AutoError>>();
             let _server = std::thread::Builder::new()
                 .stack_size(8 * 1024 * 1024)
                 .spawn(move || {
-                    let _ = tx.send(crate::run(&code));
+                    let _ = tx.send(auto_lang::run(&code));
                 })
                 .expect("spawn server thread");
             for _ in 0..50 {
@@ -400,7 +400,7 @@ fn plain(n int) int {
         assert_eq!(location, "/target");
 
         // 2) 观察钩子取活跃资源的实际 heap id，构造同值普通 int。
-        let handle = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let handle = auto_lang::vm::ffi::http_return_resource::probe_last_resource_handle();
         assert!(handle > 0, "观察钩子应捕获构造");
         let (s2, _, body2) = get(port, &format!("/api/plain/{handle}"));
         assert_eq!(s2, 200, "同值普通 int 是数据（不得被劫持为资源）");
@@ -442,7 +442,7 @@ fn main() {
     print("done")
 }
 "#;
-    let (stderr, stdout) = crate::run_with_capture(code).expect("run");
+    let (stderr, stdout) = auto_lang::run_with_capture(code).expect("run");
     assert!(
         stdout.contains("done"),
         "stdout: {stdout:?} stderr: {stderr:?}"
@@ -571,7 +571,7 @@ fn drain() int {
 "#,
             19030,
         );
-        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let baseline = auto_lang::vm::ffi::http_return_resource::live_resource_count();
         let mut ok = 0u32;
         for _ in 0..1000 {
             let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
@@ -600,13 +600,13 @@ fn drain() int {
         //（每请求解释步数有限，需多轮跨窗；10s 上界）。
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         loop {
-            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+            if auto_lang::vm::ffi::http_return_resource::live_resource_count() <= baseline {
                 break;
             }
             assert!(
                 std::time::Instant::now() < deadline,
                 "1000 闭环后凭据未回基线: live={}",
-                crate::vm::ffi::http_return_resource::live_resource_count()
+                auto_lang::vm::ffi::http_return_resource::live_resource_count()
             );
             let mut s = TcpStream::connect(("127.0.0.1", port)).expect("drain connect");
             let _ = s.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
@@ -650,7 +650,7 @@ fn events_stream() ~Iter<int> {
 "#,
             19031,
         );
-        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let baseline = auto_lang::vm::ffi::http_return_resource::live_resource_count();
         // 读到第一帧 data: 后立即断开。
         let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
         s.set_read_timeout(Some(Duration::from_secs(30))).ok();
@@ -673,13 +673,13 @@ fn events_stream() ~Iter<int> {
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let mut drained = 0;
         loop {
-            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+            if auto_lang::vm::ffi::http_return_resource::live_resource_count() <= baseline {
                 break;
             }
             if std::time::Instant::now() > deadline {
                 panic!(
                     "断连后凭据未回收: live={} baseline={}",
-                    crate::vm::ffi::http_return_resource::live_resource_count(),
+                    auto_lang::vm::ffi::http_return_resource::live_resource_count(),
                     baseline
                 );
             }
@@ -770,9 +770,9 @@ fn real_upload() UploadReceipt {
     return upload_error(400, "no")
 }
 "#;
-    let mut parser = crate::parser::Parser::from(code);
+    let mut parser = auto_lang_core::parser::Parser::from(code);
     let ast = parser.parse().expect("parse");
-    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("test", &ast.stmts);
     let kind_of = |name: &str| {
         module
             .endpoints
@@ -781,7 +781,7 @@ fn real_upload() UploadReceipt {
             .map(|e| e.response)
             .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
     };
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     // 用户同名声明（struct×2 + enum）→ Json（不冒领专属身份）。
     assert_eq!(kind_of("user_response"), ResponseKind::Json);
     assert_eq!(kind_of("user_file"), ResponseKind::Json);
@@ -794,21 +794,21 @@ fn real_upload() UploadReceipt {
 ///（用户同名 FileResponse 返回按 Json 编组，不误消费描述符表）。
 #[test]
 fn plan776_t06_vm_gate_respects_compile_time_shadowing() {
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     let name = "plan776_t06_shadowed_fn";
-    crate::vm::ffi::http_server::record_api_return_type(name, "FileResponse".into());
+    auto_web::http_server::record_api_return_type(name, "FileResponse".into());
     assert_eq!(
-        crate::vm::ffi::http_server::fn_response_kind(name),
+        auto_web::http_server::fn_response_kind(name),
         ResponseKind::File,
         "未遮蔽：File 门保持"
     );
-    crate::vm::ffi::http_server::record_api_return_shadowed(name);
+    auto_web::http_server::record_api_return_shadowed(name);
     assert_eq!(
-        crate::vm::ffi::http_server::fn_response_kind(name),
+        auto_web::http_server::fn_response_kind(name),
         ResponseKind::Json,
         "编译期冻结的用户同名遮蔽 → Json"
     );
-    assert!(!crate::vm::ffi::http_server::fn_is_api_file_return(name));
+    assert!(!auto_web::http_server::fn_is_api_file_return(name));
 }
 
 // ============================================================================
@@ -912,7 +912,7 @@ fn drain() int {
 "#,
             0,
         );
-        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let baseline = auto_lang::vm::ffi::http_return_resource::live_resource_count();
         for _ in 0..11 {
             let (status, headers, _) = get(port, "/api/ir");
             assert_eq!(status, 302, "Internal 终值 302");
@@ -920,13 +920,13 @@ fn drain() int {
         }
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
         loop {
-            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+            if auto_lang::vm::ffi::http_return_resource::live_resource_count() <= baseline {
                 break;
             }
             assert!(
                 std::time::Instant::now() < deadline,
                 "Internal 路径凭据未回基线: live={}",
-                crate::vm::ffi::http_return_resource::live_resource_count()
+                auto_lang::vm::ffi::http_return_resource::live_resource_count()
             );
             let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
             let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
@@ -961,20 +961,20 @@ fn drain() int {
 "#,
             0,
         );
-        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let baseline = auto_lang::vm::ffi::http_return_resource::live_resource_count();
         for _ in 0..11 {
             let (status, _, _) = get(port, "/api/boom");
             assert_eq!(status, 500, "除零 → 500");
         }
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
         loop {
-            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+            if auto_lang::vm::ffi::http_return_resource::live_resource_count() <= baseline {
                 break;
             }
             assert!(
                 std::time::Instant::now() < deadline,
                 "异常退出凭据未回基线: live={}",
-                crate::vm::ffi::http_return_resource::live_resource_count()
+                auto_lang::vm::ffi::http_return_resource::live_resource_count()
             );
             let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
             let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
@@ -1022,7 +1022,7 @@ fn drain() int {
         );
         let (status, _, _) = get(port, "/api/mk");
         assert_eq!(status, 302);
-        let handle = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let handle = auto_lang::vm::ffi::http_return_resource::probe_last_resource_handle();
         // 同值普通 int 往返 30 次（每次 dispatch cleanup 都不该扣共享份额）。
         for _ in 0..30 {
             let (s, _, b) = get(port, &format!("/api/plain/{handle}"));
@@ -1060,11 +1060,11 @@ fn plain(n int) int {
         assert_eq!((sa, sb), (302, 302));
         // 两 VM 的凭据 heap id 同号（各自 4M 起步）——同值 int 在两服务都
         // 是数据。
-        let handle_a = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let handle_a = auto_lang::vm::ffi::http_return_resource::probe_last_resource_handle();
         let (s1, _, b1) = get(port_a, &format!("/api/plain/{handle_a}"));
         assert_eq!(s1, 200);
         assert_eq!(b1, handle_a.to_string().into_bytes());
-        let handle_b = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let handle_b = auto_lang::vm::ffi::http_return_resource::probe_last_resource_handle();
         let (s2, _, b2) = get(port_b, &format!("/api/plain/{handle_b}"));
         assert_eq!(s2, 200);
         assert_eq!(b2, handle_b.to_string().into_bytes());
@@ -1245,16 +1245,16 @@ fn r() Response {
     return 1
 }
 "#;
-    let mut parser = crate::parser::Parser::from(alias_code);
+    let mut parser = auto_lang_core::parser::Parser::from(alias_code);
     let ast = parser.parse().expect("parse alias");
-    let module = crate::api::ApiExtractor::new().extract("t", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("t", &ast.stmts);
     assert!(
         module.types.iter().any(|t| t.name == "Response"),
         "type alias 进名集"
     );
     assert_eq!(
         module.endpoints[0].response,
-        crate::api::contract::ResponseKind::Json,
+        auto_lang::api::contract::ResponseKind::Json,
         "用户 alias 遮蔽 → Json"
     );
 
@@ -1266,16 +1266,16 @@ fn r2() Response {
     return 1
 }
 "#;
-    let mut parser2 = crate::parser::Parser::from(empty_code);
+    let mut parser2 = auto_lang_core::parser::Parser::from(empty_code);
     let ast2 = parser2.parse().expect("parse empty");
-    let module2 = crate::api::ApiExtractor::new().extract("t2", &ast2.stmts);
+    let module2 = auto_lang::api::ApiExtractor::new().extract("t2", &ast2.stmts);
     assert!(
         module2.types.iter().any(|t| t.name == "Response"),
         "空成员声明进名集"
     );
     assert_eq!(
         module2.endpoints[0].response,
-        crate::api::contract::ResponseKind::Json,
+        auto_lang::api::contract::ResponseKind::Json,
         "空声明遮蔽 → Json"
     );
 }
@@ -1427,20 +1427,20 @@ fn drain() int {
 "#,
             0,
         );
-        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let baseline = auto_lang::vm::ffi::http_return_resource::live_resource_count();
         for _ in 0..11 {
             let (status, _, _) = get(port, "/api/boom");
             assert_eq!(status, 500, "除零 → 500");
         }
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
         loop {
-            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+            if auto_lang::vm::ffi::http_return_resource::live_resource_count() <= baseline {
                 break;
             }
             assert!(
                 std::time::Instant::now() < deadline,
                 "record 容器内凭据未回基线: live={}",
-                crate::vm::ffi::http_return_resource::live_resource_count()
+                auto_lang::vm::ffi::http_return_resource::live_resource_count()
             );
             let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
             let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
@@ -1514,7 +1514,7 @@ fn plan776_r2_bytes_setter_roundtrip() {
     let mut task = fresh_task();
     http_return_resource::push_response_resource(&mut task, &vm, 0, Vec::new(), Vec::new())
         .unwrap();
-    let mut list = crate::vm::types::ListData::<i32>::new();
+    let mut list = auto_lang::vm::types::ListData::<i32>::new();
     list.push(65);
     list.push(66);
     let list_id = vm.insert_heap_object(list);
@@ -1598,7 +1598,7 @@ fn plan776_r2_setter_return_slot_ownership() {
 /// F776-R2-07：alias 按目标解析 + stdlib 限定名。
 #[test]
 fn plan776_r2_alias_target_and_qualified_name_identity() {
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     let alias_code = r#"
 type Download = FileResponse;
 
@@ -1607,9 +1607,9 @@ fn dl() Download {
     return http.file_response("root", "a.bin", "{}")
 }
 "#;
-    let mut parser = crate::parser::Parser::from(alias_code);
+    let mut parser = auto_lang_core::parser::Parser::from(alias_code);
     let ast = parser.parse().expect("parse alias");
-    let module = crate::api::ApiExtractor::new().extract("t", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("t", &ast.stmts);
     assert_eq!(
         module.endpoints[0].response,
         ResponseKind::File,
@@ -1625,9 +1625,9 @@ fn r() Resp {
     return MyResp { x: 1 }
 }
 "#;
-    let mut p2 = crate::parser::Parser::from(alias_user);
+    let mut p2 = auto_lang_core::parser::Parser::from(alias_user);
     let ast2 = p2.parse().expect("parse alias-user");
-    let m2 = crate::api::ApiExtractor::new().extract("t2", &ast2.stmts);
+    let m2 = auto_lang::api::ApiExtractor::new().extract("t2", &ast2.stmts);
     assert_eq!(m2.endpoints[0].response, ResponseKind::Json, "alias→用户名");
 
     assert_eq!(
@@ -1643,7 +1643,7 @@ fn r() Resp {
 
 mod http_e2e_r3 {
     use super::http_e2e::{get, start_server};
-    use crate::vm::ffi::http_return_resource::live_resource_count;
+    use auto_lang::vm::ffi::http_return_resource::live_resource_count;
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;
@@ -1923,9 +1923,9 @@ fn t2() Download {
     return http.file_response(".", "x", "{}")
 }
 "#;
-    let mut parser = crate::parser::Parser::from(code);
+    let mut parser = auto_lang_core::parser::Parser::from(code);
     let ast = parser.parse().expect("parse");
-    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("test", &ast.stmts);
     let kind_of = |name: &str| {
         module
             .endpoints
@@ -1934,7 +1934,7 @@ fn t2() Download {
             .map(|e| e.response)
             .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
     };
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     // V5-T1：限定名是 stdlib 绑定——用户 `type FileResponse {}` 不遮蔽。
     assert_eq!(kind_of("t1"), ResponseKind::File);
     // 正控制：同名裸声明仍是用户来源 → Json。
@@ -1974,9 +1974,9 @@ fn t5() CycA {
     return 1
 }
 "#;
-    let mut parser = crate::parser::Parser::from(code);
+    let mut parser = auto_lang_core::parser::Parser::from(code);
     let ast = parser.parse().expect("parse");
-    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("test", &ast.stmts);
     let kind_of = |name: &str| {
         module
             .endpoints
@@ -1985,7 +1985,7 @@ fn t5() CycA {
             .map(|e| e.response)
             .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
     };
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     // V5-T3：alias 链（Second→First→FileResponse）按链尾 stdlib 解析。
     assert_eq!(kind_of("t3"), ResponseKind::File);
     // 链尾用户声明 → Json。
@@ -2151,9 +2151,9 @@ fn t5x() A3 {{
 }}
 "#
     );
-    let mut parser = crate::parser::Parser::from(&code);
+    let mut parser = auto_lang_core::parser::Parser::from(&code);
     let ast = parser.parse().expect("parse");
-    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("test", &ast.stmts);
     let kind_of = |name: &str| {
         module
             .endpoints
@@ -2162,7 +2162,7 @@ fn t5x() A3 {{
             .map(|e| e.response)
             .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
     };
-    use crate::api::contract::ResponseKind;
+    use auto_lang::api::contract::ResponseKind;
     // V6-T4：alias 目标带 Future 包装 → 与直接 Future<FileResponse> 同 File。
     assert_eq!(kind_of("t4"), ResponseKind::File);
     assert_eq!(kind_of("t4d"), ResponseKind::File);
@@ -2183,16 +2183,16 @@ fn c() CycA {
     return 1
 }
 "#;
-    let mut parser = crate::parser::Parser::from(code);
+    let mut parser = auto_lang_core::parser::Parser::from(code);
     let ast = parser.parse().expect("parse");
-    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let module = auto_lang::api::ApiExtractor::new().extract("test", &ast.stmts);
     let kind = module
         .endpoints
         .iter()
         .find(|e| e.fn_name == "c")
         .map(|e| e.response)
         .unwrap();
-    assert_eq!(kind, crate::api::contract::ResponseKind::Json);
+    assert_eq!(kind, auto_lang::api::contract::ResponseKind::Json);
 }
 
 mod http_e2e_r7 {
@@ -2329,12 +2329,12 @@ Connection: close
 /// （TAG_OBJECT）且经 next 可迭代出元素（镜 R7 探针 native 模式）。
 #[test]
 fn plan776_r7_iterator_credential_native_family() {
-    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
-    use crate::vm::task::AutoTask;
-    use crate::vm::virt_memory::VirtualFlash;
+    use auto_lang::vm::engine::{AutoVM, Iterator, ListIterator};
+    use auto_lang::vm::task::AutoTask;
+    use auto_lang::vm::virt_memory::VirtualFlash;
 
     let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
-    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+    let list_id = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
         elems: vec![42],
         storage: None,
     });
@@ -2351,15 +2351,15 @@ fn plan776_r7_iterator_credential_native_family() {
     // 裸 id 控制：enumerate 派生句柄有效（非 -1）。
     let mut raw_task = AutoTask::new(0, 1024, 0);
     raw_task.ram.push_i32(0);
-    crate::vm::native::shim_iterator_enumerate(&mut raw_task, &vm).expect("raw enumerate");
+    auto_lang::vm::native::shim_iterator_enumerate(&mut raw_task, &vm).expect("raw enumerate");
     let raw_handle_nv = raw_task.ram.pop_nv();
     let raw_handle = auto_val::decode_i32(raw_handle_nv);
     assert!(raw_handle >= 0, "裸 id 派生句柄: {raw_handle}");
 
     // 凭据载荷：同一底层表项——enumerate 不再读裸 i32（R7 反例 -1）。
     let mut cred_task = AutoTask::new(0, 1024, 0);
-    crate::vm::ffi::http_return_resource::push_sse_resource(&mut cred_task, &vm, 0).unwrap();
-    crate::vm::native::shim_iterator_enumerate(&mut cred_task, &vm).expect("credential enumerate");
+    auto_lang::vm::ffi::http_return_resource::push_sse_resource(&mut cred_task, &vm, 0).unwrap();
+    auto_lang::vm::native::shim_iterator_enumerate(&mut cred_task, &vm).expect("credential enumerate");
     let derived_nv = cred_task.ram.pop_nv();
     assert!(
         auto_val::is_object(derived_nv),
@@ -2367,7 +2367,7 @@ fn plan776_r7_iterator_credential_native_family() {
     );
     // 派生凭据经 next 可迭代（enumerate 产 (idx, elem)——List 臂首元素）。
     cred_task.ram.push_nv(derived_nv);
-    crate::vm::native::shim_iterator_next(&mut cred_task, &vm).expect("next on derived");
+    auto_lang::vm::native::shim_iterator_next(&mut cred_task, &vm).expect("next on derived");
     let first = cred_task.ram.pop_nv();
     assert_eq!(auto_val::decode_i32(first), 0, "enumerate 首帧 index=0");
 }
@@ -2440,14 +2440,14 @@ fn f2r7() ~Iter<int> {
 /// 派生输出复用同槽，直接槽断言不可事后观测）。
 #[test]
 fn plan776_r8_iterator_consumer_ownership_protocol() {
-    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
-    use crate::vm::ffi::http_return_resource;
-    use crate::vm::native;
-    use crate::vm::task::AutoTask;
-    use crate::vm::virt_memory::VirtualFlash;
+    use auto_lang::vm::engine::{AutoVM, Iterator, ListIterator};
+    use auto_lang::vm::ffi::http_return_resource;
+    use auto_lang::vm::native;
+    use auto_lang::vm::task::AutoTask;
+    use auto_lang::vm::virt_memory::VirtualFlash;
 
     let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
-    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+    let list_id = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
         elems: vec![42],
         storage: None,
     });
@@ -2496,7 +2496,7 @@ fn plan776_r8_iterator_consumer_ownership_protocol() {
     // —— 错误早退也清偿：非凭据对象作源 → 裸语义 -1 且无泄漏。
     {
         let mut task = AutoTask::new(0, 1024, 0);
-        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        let foreign = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
             elems: vec![],
             storage: None,
         });
@@ -2579,14 +2579,14 @@ fn neg() ~Iter<int> {
 /// 全局份额跨 reap 存活且凭据仍可解析（R9 反例：双释放把全局份额销毁）。
 #[test]
 fn plan776_r9_iterator_consumer_single_release_shared() {
-    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
-    use crate::vm::ffi::http_return_resource;
-    use crate::vm::native;
-    use crate::vm::task::AutoTask;
-    use crate::vm::virt_memory::VirtualFlash;
+    use auto_lang::vm::engine::{AutoVM, Iterator, ListIterator};
+    use auto_lang::vm::ffi::http_return_resource;
+    use auto_lang::vm::native;
+    use auto_lang::vm::task::AutoTask;
+    use auto_lang::vm::virt_memory::VirtualFlash;
 
     let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
-    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+    let list_id = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
         elems: vec![42],
         storage: None,
     });
@@ -2668,11 +2668,11 @@ fn plan776_r9_iterator_consumer_single_release_shared() {
 /// 五 setter 全覆盖 + RC1 独占 + 重复链 + 错误早退恰一份。
 #[test]
 fn plan776_r10_setter_single_release_shared() {
-    use crate::vm::engine::AutoVM;
-    use crate::vm::ffi::http_return_resource as res;
-    use crate::vm::ffi::stdlib;
-    use crate::vm::task::AutoTask;
-    use crate::vm::virt_memory::VirtualFlash;
+    use auto_lang::vm::engine::AutoVM;
+    use auto_lang::vm::ffi::http_return_resource as res;
+    use auto_lang::vm::ffi::stdlib;
+    use auto_lang::vm::task::AutoTask;
+    use auto_lang::vm::virt_memory::VirtualFlash;
 
     // —— RC2 共享矩阵：status（string-free 形态）——
     {
@@ -2782,7 +2782,7 @@ fn plan776_r10_setter_single_release_shared() {
     {
         let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
         let mut task = AutoTask::new(0, 1024, 0);
-        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        let foreign = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
             elems: vec![],
             storage: None,
         });
@@ -2929,7 +2929,7 @@ fn plan776_r10_setter_single_release_shared() {
         let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
         let mut task = AutoTask::new(0, 1024, 0);
         let h = setup_shared(&vm, &mut task);
-        let mut list = crate::vm::types::ListData::<i32>::new();
+        let mut list = auto_lang::vm::types::ListData::<i32>::new();
         list.push(72);
         list.push(105);
         let list_id = vm.insert_heap_object(list);
@@ -2985,7 +2985,7 @@ fn plan776_r10_setter_single_release_shared() {
         |vm: &AutoVM,
          task: &mut AutoTask,
          foreign: u64,
-         call: &dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), crate::vm::engine::VMError>| {
+         call: &dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), auto_lang::vm::engine::VMError>| {
             let r = call(task, vm);
             assert!(r.is_err(), "非凭据 receiver 必须 Err");
             assert_eq!(
@@ -3004,7 +3004,7 @@ fn plan776_r10_setter_single_release_shared() {
     };
     // helper：建立错误 receiver（foreign ListData，参数 owned + 外部保留一份）。
     let setup_foreign = |vm: &AutoVM, task: &mut AutoTask| {
-        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        let foreign = vm.insert_heap_object(auto_lang::vm::types::ListData::<i32> {
             elems: vec![],
             storage: None,
         });
@@ -3122,7 +3122,7 @@ fn plan776_r10_setter_single_release_shared() {
         let mut task = AutoTask::new(0, 1024, 0);
         let base = res::live_resource_count();
         setup_exclusive(&vm, &mut task);
-        let mut list = crate::vm::types::ListData::<i32>::new();
+        let mut list = auto_lang::vm::types::ListData::<i32>::new();
         list.push(72);
         list.push(105);
         let list_id = vm.insert_heap_object(list);
@@ -3143,7 +3143,7 @@ fn plan776_r10_setter_single_release_shared() {
         let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
         let mut task = AutoTask::new(0, 1024, 0);
         let foreign = setup_foreign(&vm, &mut task);
-        let mut list = crate::vm::types::ListData::<i32>::new();
+        let mut list = auto_lang::vm::types::ListData::<i32>::new();
         list.push(1);
         let list_id = vm.insert_heap_object(list);
         task.ram.push_nv(auto_val::encode_object(list_id as u32));

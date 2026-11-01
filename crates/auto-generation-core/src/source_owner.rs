@@ -368,7 +368,8 @@ pub fn validate_installed_service_source(producer_root: &Path) -> AutoResult<()>
         ("auto-media-core", "auto-lang"),
         ("auto-generation-core", "auto-lang"),
         ("auto-web", "auto-web"),
-        ("auto-web-contract", "auto-web"),
+        // PLAN-906: 轻合同单源迁语言仓——receipt owner 随源树翻转。
+        ("auto-web-contract", "auto-lang"),
     ] {
         let revision = receipt.source_revision(owner).unwrap_or_default();
         if revision.len() != 40 || !revision.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -583,15 +584,17 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
 }
 
 /// UI crates are selected from their UI owner or a receipt-validated
-/// installation. Web crates (PLAN-901 r2/§5.5：auto-ui-tools/auto-api-gen 自
-/// PLAN-890 起硬依赖 auto-web，交付闭包随包) resolve from the web owner root
+/// installation. Web crates (PLAN-901 r2/§5.5 谱系；PLAN-906 起 auto-web-contract
+/// 单源迁语言仓、web 类别仅 auto-web) resolve from the web owner root
 /// or group sibling. Other crates must come from the language producer itself.
 pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> {
     let ui = matches!(
         name,
         "auto-ui-dialect" | "auto-ui-compiler" | "auto-ui-runtime" | "auto-ui-tools" | "shell-pack"
     );
-    let web = matches!(name, "auto-web-contract" | "auto-web");
+    // PLAN-906: auto-web-contract 单源已迁语言仓（语言 producer 源解析，
+    // 默认分支 crates/auto-web-contract）；web 类别仅剩 auto-web 实现 crate。
+    let web = matches!(name, "auto-web");
     if !ui && !web {
         let source = producer_root.join("crates").join(name);
         return source
@@ -762,13 +765,14 @@ mod plan842_receipt_tests {
         // 组内 auto-web 兄弟缺失 → web owner 显式报错（不误报语言源缺失）。
         let err = ui_crate_source(&lang, "auto-web").unwrap_err().to_string();
         assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
+        // PLAN-906：合同包迁语言仓——缺失时按语言源缺失报错（不再走 web 类）。
         let err = ui_crate_source(&lang, "auto-web-contract")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
+        assert!(err.contains("producer 语言源缺失"), "{err}");
 
         // 建立组内兄弟后解析成功，且指向 web 仓兄弟而非语言 producer。
-        for name in ["auto-web", "auto-web-contract"] {
+        for name in ["auto-web"] {
             fs::create_dir_all(web.join("crates").join(name).join("src")).unwrap();
             fs::write(
                 web.join("crates").join(name).join("Cargo.toml"),
@@ -793,10 +797,21 @@ mod plan842_receipt_tests {
         let got = ui_crate_source(&lang, "auto-web").unwrap();
         assert_eq!(got, other.join("crates/auto-web"), "显式覆盖生效");
 
-        // 显式根缺 crate → 显式报错。
-        let err = ui_crate_source(&lang, "auto-web-contract")
-            .unwrap_err()
-            .to_string();
+        // 显式根缺 crate → 显式报错（web-empty 无 crates/auto-web）。
+        // PLAN-906：合同包已非 web 类——缺源负控改用 auto-web 本身。
+        let empty = tmp.path().join("web-empty");
+        fs::create_dir_all(empty.join("crates/other/src")).unwrap();
+        fs::write(
+            empty.join("crates/other/Cargo.toml"),
+            "[package]
+name = \"other\"
+version = \"0.1.0\"
+",
+        )
+        .unwrap();
+        fs::write(empty.join("crates/other/src/lib.rs"), "").unwrap();
+        std::env::set_var("AUTO_WEB_SOURCE_ROOT", &empty);
+        let err = ui_crate_source(&lang, "auto-web").unwrap_err().to_string();
         assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
     }
 
@@ -947,11 +962,8 @@ mod plan842_receipt_tests {
                 format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n").as_bytes(),
             );
             add(&format!("{relative}/src/lib.rs"), b"// source\n");
-            let owner = if name.starts_with("auto-web") {
-                "auto-web"
-            } else {
-                "auto-lang"
-            };
+            // PLAN-906：合同包 receipt owner=auto-lang（单源迁语言仓）。
+            let owner = if name == "auto-web" { "auto-web" } else { "auto-lang" };
             packages.push(serde_json::json!({"name":name,"source_repo":owner,"source_path":relative,"installed_path":relative}));
         }
         let receipt = tmp.path().join("install-manifest.json");

@@ -235,7 +235,6 @@ mod plan082_shell_query_tests;
 // 非 yield handler 同步对拍 + resume 段 .at try/catch 捕获）。
 #[cfg(test)]
 mod plan702_segment_tests;
-mod plan781_budget_http_tests;
 mod plan781_budget_tests;
 // PLAN-712 T-17（候选②）：Http.*_json 失败语义分层（传输失败 = 可捕获
 // 异常 / 非 2xx 保持值面）——018 详情页吞错链的语义层回归锁。
@@ -244,12 +243,6 @@ mod plan712_http_error_semantics_tests;
 mod plan724_http_client_tests; // PLAN-724: a2r HTTP 客户端收敛（golden + 探针 + http_e2e_plan724 编译运行腿）
                                // PLAN-727: HTTP 文件传输（31_plan727 golden + legacy 发射探针 + http_e2e_plan727 三方编译运行腿）
 mod plan727_http_transfer_tests;
-// PLAN-729: 服务端文件响应（32_plan729 golden + 发射/类型映射/VM native 探针 + http_e2e_plan729 T-06 增补）
-mod plan729_http_server_file_tests;
-// PLAN-734: API 契约与生成一致性（探针→§6.1 矩阵）
-mod plan734_api_contract_tests;
-// PLAN-736: HTTP 服务部署基线（配置/策略/身份 scoped + http_e2e_plan736 wire）
-mod plan736_http_service_tests;
 // PLAN-738 T-01：装配原型探针（真实入口层选择/死缓存/persistent 可见性/
 // a2r 名称表漂移/六核心 parser 分母；T-02 起由正式 stdlib_assembly 族收编）
 mod plan738_assembly_probe_tests;
@@ -257,21 +250,16 @@ mod plan738_assembly_probe_tests;
 mod plan738_stdlib_assembly_tests;
 // PLAN-776 T-01：HTTP 返回资源身份表示探针（TAG_OBJECT 凭据传播/数字不可
 // 伪造/查表制对照；T-02 起扩展为返回资源全矩阵）
-mod plan776_http_return_tests;
 // PLAN-755 T-01/T-03：HTTP 公共面契约覆盖走查 + CFFI merge 存活守卫
 mod plan755_http_contract_tests;
 // PLAN-872 T-01：六族 builtin 绑定面实测探针（证据生成器，--nocapture 转录进绑定表）。
 mod plan872_builtin_binding_probes;
 // PLAN-872 T-04：六族 DISTINGUISH 区分性测试（生效语义钉死 + 绑定槽位漂移反控）。
 mod plan872_builtin_semantics_tests;
-// PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
-mod plan730_http_upload_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。
 #[cfg(test)]
 // PLAN-705 T-01 spike：notify 驱动 owner loop + 取消/迟到完成单次终结
 // 协议种子（T-02 统一登记表与 T-04 owner loop 的前提探针）。
-#[cfg(test)]
-mod plan705_spike_tests;
 // PLAN-707 T-01 spike：外部流/取消三前提红测（705 managed 取消缺口 +
 // 流建立阻塞 owner + SSE 跨 chunk UTF-8 玷污；修复落地后逐个转绿）。
 #[cfg(test)]
@@ -284,10 +272,7 @@ mod plan707_cancel_tests;
 // SSE poll/close/error 新面 + 队满终结性 + 许可独立）。
 #[cfg(test)]
 mod plan707_client_tests;
-// PLAN-707 T-05：generator/段等待凭据化（gate 关闭期间驱动次数静态——
-// 自旋红转绿判据 + 放行唤醒取值）。
-#[cfg(test)]
-mod plan707_wait_tests;
+// PLAN-906: plan707_wait_tests 随 Web SSE 测试助手迁 lang-web-e2e 探针工程。
 // PLAN-707 T-07：流资源生命周期收口探针（背压钉界/取消风暴/线程稳定/
 // 预算终结/abort 表收口；真 TCP relay 在 plan707_stream_e2e_tests）。
 #[cfg(test)]
@@ -300,4 +285,3 @@ mod plan746_pg_mem_tests;
 
 // PLAN-814 T-05：V-02 旧公开 API 编译 pin（Parser/桥/VM/NativeInterface/
 // 根再导出/类型身份同一）。
-pub(crate) mod http_host_test_support;

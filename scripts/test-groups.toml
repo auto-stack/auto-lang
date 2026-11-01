@@ -127,7 +127,10 @@ title = "HTTP及服务"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^(sse|http_service_config|http_upload_service|http_file_service|back_proxy_tests)::/) or test(/^vm::ffi::stdlib::http::/) or test(/^tests::plan(724|727|729|730|734|736|755|776|781)_/)"
+# PLAN-906: e2e 家族（729/730/734/736/776 及 781 的 http 腿、707 relay）迁
+# test/fixtures/modularity/lang-web-e2e/（需 Web 宿主，四仓 fixture 门驱动）；
+# 此处保留客户端面（724/727/755）与非 http 的 781 budget。
+expression = "test(/^(sse|http_service_config|http_upload_service|http_file_service|back_proxy_tests)::/) or test(/^vm::ffi::stdlib::http::/) or test(/^tests::plan(724|727|755|781)_/)"
 tools = []
 domain = "legacy"
 all = false

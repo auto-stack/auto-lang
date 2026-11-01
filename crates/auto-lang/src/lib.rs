@@ -41,28 +41,10 @@ pub use auto_lang_core::{
 };
 
 pub mod api {
+    // PLAN-906: Web 生成器（Axum/TypeScript）不再经语言 facade 转发——四仓
+    // 零外部消费者，Man/UI/生成工程均直连 auto_web::api。Target 回归 core
+    // 单源（Tauri-only，经下方 glob 再导出，`auto_lang::api::Target` 路径不变）。
     pub use auto_lang_core::api::*;
-    pub use auto_web::api::{AxumGenerator, TypeScriptGenerator};
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub enum Target {
-        Tauri,
-        Axum,
-        TypeScript,
-    }
-    impl Target {
-        pub fn generator(&self) -> Box<dyn auto_lang_core::api::TargetGenerator> {
-            match self {
-                Self::Tauri => Box::new(auto_lang_core::api::TauriGenerator::new()),
-                Self::Axum => Box::new(auto_web::api::AxumGenerator::new()),
-                Self::TypeScript => Box::new(auto_web::api::TypeScriptGenerator::new()),
-            }
-        }
-    }
-    pub mod targets {
-        pub use super::Target;
-        pub use auto_lang_core::api::targets::*;
-        pub use auto_web::api::{AxumGenerator, TypeScriptGenerator};
-    }
 }
 use auto_lang_core::ast;
 // PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
@@ -110,10 +92,10 @@ pub use auto_lang_core::host; // Plan 011 (MS3-B): ShellHost bridge for system()
 pub use auto_lang_core::mcp; // Plan 265: MCP server for AI agent interaction
 pub use auto_lang_core::module_cache;
 pub use auto_lang_core::stdlib_assembly;
-pub use auto_web::http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
-pub use auto_web::http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
-pub use auto_web::http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
-pub use auto_web::http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型） // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）；PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime
+// PLAN-906: http_file_service 执行面归 auto_web 直连（本 crate 零消费者；a2r-std 描述符单源不变）。
+pub use auto_lang_core::http_service_config; // PLAN-906: 合同单源迁语言仓后改指 core（合同+槽函数不变；RateLimiter/ServiceRuntime 留 auto_web）
+// PLAN-906: http_service_observability 归 auto_web 直连（本 crate 零消费者）。
+// PLAN-906: http_upload_service 归 auto_web 直连（本 crate 零消费者）。
                                                                                                                // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
                                                                                                                // Plan 096 Phase 0: Scenario-based compilation
                                                                                                                // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
@@ -189,7 +171,8 @@ pub mod vm {
     pub use auto_lang_core::vm::*;
     pub mod ffi {
         pub use auto_lang_core::vm::ffi::*;
-        pub use auto_web::{http_server, http_transport};
+    // PLAN-906: vm::ffi 的 http_server/http_transport Web 执行再导出移除（零消费者；
+    // Core 中立 host port 与 stdlib http 面不变，Web 侧原文不动）。
     }
 }
 // Plan 095: Compile-Time Execution Engine
@@ -771,11 +754,9 @@ mod plan394_future_arch_tests;
 
 // PLAN-618 探针:VM 轨模块 fn 递归(filter_tree)能力验证。
 
-// PLAN-707 T-06/T-07: 外部流端到端 relay 与取消生命周期（真 TCP，cargo th
-// 串行池；测试名带 http_e2e+plan707 双前缀以被 th 过滤器与交集命令收录）。
-#[cfg(test)]
-#[path = "tests/plan707_stream_e2e_tests.rs"]
-mod plan707_stream_e2e_tests;
+// PLAN-906: plan707 真 TCP relay e2e 随 http e2e 家族迁独立探针工程
+// test/fixtures/modularity/lang-web-e2e/（facade 退役 auto-web 依赖；四仓
+// fixture 门驱动）。
 
 // ---- PLAN-814：run 入口族的上层装配包装（原三处隐式扇入收敛点） ----
 // ui/ui-dialog 构建下，run 管线先装兼容宿主能力（if-absent 补缺，不覆盖

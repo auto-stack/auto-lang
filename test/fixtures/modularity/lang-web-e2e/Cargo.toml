@@ -1,0 +1,20 @@
+[package]
+name = "lang-web-e2e"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-906: language/Web HTTP e2e family (plan705/707/729/730/734/736/776/781) — standalone probe crate, NOT a language workspace member. Resolves group-sibling auto-lang/auto-web; driven by the four-repository fixture gate."
+license = "MIT"
+publish = false
+
+[dependencies]
+auto-lang = { path = "../../../../../auto-lang/crates/auto-lang" }
+a2r-std = { path = "../../../../../auto-lang/crates/a2r-std" }
+auto-lang-core = { path = "../../../../../auto-lang/crates/auto-lang-core" }
+auto-val = { path = "../../../../../auto-lang/crates/auto-val", features = ["serde"] }
+socket2 = "0.5"
+auto-web = { path = "../../../../../auto-web/crates/auto-web" }
+blake3 = "1.5"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+
+[workspace]

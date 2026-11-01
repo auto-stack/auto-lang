@@ -355,6 +355,13 @@ def validate(receipt, output):
     rows = receipt.get('results', [])
     if len(rows) != len(EXTERNAL_LEGS) or {r['leg'] for r in rows} != set(EXTERNAL_LEGS):
         raise ValueError('missing/duplicate/extra external owner leg')
+    e2e = receipt.get('lang_web_e2e')
+    if not e2e or e2e.get('run_exit') != 0:
+        raise ValueError('PLAN-906 lang-web-e2e combined-face leg missing or failed')
+    e2e_log = read(e2e['run_output']).decode('utf-8', 'replace')
+    e2e_match = re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed, (\d+) failed', e2e_log)
+    if not e2e_match or e2e_match.group(3) != '0':
+        raise ValueError('lang-web-e2e leg is not a clean all-pass summary')
     by_name = {r['leg']: r for r in rows}
     ui_listing = json.loads(read(by_name['ui-full']['listing']))
     historical = {'language|' + identity.replace('\t', '|') for identity in media}
@@ -389,6 +396,24 @@ def run(output):
             if result.returncode:
                 raise ValueError('fixed language groups failed')
             full.man_bootstrap(list(specs.values()), selected_roots['language'], selected_roots['ui'], output, 14400, env)
+            # PLAN-906: http e2e 家族（plan705/707/729/730/734/736/776/781 +
+            # 707_wait/349 CORS）迁出语言 facade 后的强制组合面执行——独立
+            # 探针工程显式装配 Web 宿主，串行配置与原 http 固定组同源。
+            e2e_dir = selected_roots['language'] / 'test/fixtures/modularity/lang-web-e2e'
+            e2e_out = output / 'lang-web-e2e'
+            e2e_out.mkdir()
+            e2e_run = ['cargo', 'nextest', 'run', '--no-fail-fast',
+                       '--config-file', str(selected_roots['language'] / '.config/nextest-full.toml'),
+                       '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
+            e2e_result, e2e_exec = fixed.invoke(e2e_run, e2e_dir, env, e2e_out, 'run', timeout=14400)
+            e2e_log = (e2e_out / e2e_exec['stdout']).read_text(encoding='utf-8', errors='replace')
+            import re as _re
+            e2e_summary = _re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed, (\d+) failed(?:, (\d+) skipped)?', e2e_log)
+            if e2e_result.returncode or not e2e_summary or e2e_summary.group(3) != '0':
+                raise ValueError('lang-web-e2e family failed: exit=%s' % e2e_result.returncode)
+            receipt['lang_web_e2e'] = {'cwd': str(e2e_dir), 'run_command': e2e_run,
+                                        'run_output': proof(e2e_out / e2e_exec['stdout']),
+                                        'run_exit': e2e_result.returncode}
             ui_listing = None
             for name in EXTERNAL_LEGS:
                 spec = specs[name]
