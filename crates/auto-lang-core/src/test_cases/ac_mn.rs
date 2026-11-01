@@ -517,10 +517,22 @@ mod source_diag {
         if source_sha != candidate {
             return Err("source_error.source_sha256 must equal the operation candidate".into());
         }
-        // Mutual exclusion (shape 2): no execution result anywhere.
+        // Mutual exclusion (shape 2): no execution RESULT anywhere. Step
+        // records carry the result keys structurally (null / empty on a
+        // refusal), so the test is value-based: a non-null exit, non-empty
+        // streams or a manifest fingerprint next to a source_error is a
+        // forged mixed shape.
         if let Some(ok) = resp.get("ok").and_then(|v| v.as_object()) {
-            for k in ["exit_code", "stdout_hex", "stderr_hex", "manifest_fp"] {
-                if ok.contains_key(k) {
+            if ok.get("exit_code").map(|v| !v.is_null()).unwrap_or(false) {
+                return Err("a source_error response must not carry an execution exit_code".into());
+            }
+            for k in ["stdout_hex", "stderr_hex", "manifest_fp"] {
+                if ok
+                    .get(k)
+                    .and_then(|v| v.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false)
+                {
                     return Err(format!(
                         "a source_error response must not carry the execution result {k}"
                     ));
@@ -591,6 +603,7 @@ mod source_diag {
             "raw_stage": fact.raw_stage,
             "observed_stage": format!("{:?}", fact.mapped_stage).to_lowercase(),
             "observed_code": fact.primary_code,
+            "primary_message": fact.primary_message,
             "primary_index": 0,
             "snapshot": fact.snapshot,
         });
@@ -1586,7 +1599,7 @@ pub fn run_check(
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
-    /// PLAN-911: the admitted typed fact of the judged session (if any).
+    // PLAN-911: the admitted typed fact of the judged session (if any).
     let mut source_fact: Option<source_diag::AdmittedFact> = None;
     let mut exit_code: Option<i32> = None;
     let mut stderr_hex = String::new();
@@ -2268,7 +2281,7 @@ fn run_incremental(
     let mut collection_runtime: Option<serde_json::Value> = None;
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
-    /// PLAN-911: the admitted typed fact of the judged refusal (if any).
+    // PLAN-911: the admitted typed fact of the judged refusal (if any).
     let mut source_fact: Option<source_diag::AdmittedFact> = None;
     let mut exit_code: Option<i32> = None;
     let mut stderr_hex = String::new();
@@ -2493,7 +2506,9 @@ fn run_incremental(
                     };
                     match source_diag::admit(&line, &resp, "probe.at", &expect) {
                         Ok(fact) => {
-                            source = base_source;
+                            // The accepted prefix is `base_source` (bound in
+                            // the fact); the sequence stops here, so the
+                            // parent's cursor is not advanced further.
                             diag = Some((fact.primary_code.clone(), fact.legacy_message.clone()));
                             source_fact = Some(fact);
                             let mut rec = ok;
@@ -2899,13 +2914,26 @@ fn run_incremental(
     } else {
         Status::Fail
     };
+    // PLAN-911: the admitted typed fact of a strict rounds verdict is
+    // published exactly like the whole-request path's (bound to the
+    // execution key; a write failure is an error).
+    let mut artifacts: Vec<auto_test_case::report::ArtifactRef> = Vec::new();
+    if let Some(fact) = &source_fact {
+        artifacts.push(source_diag::write_fact_artifact(
+            artifact_dir,
+            execution_key,
+            recipe,
+            EXPECTED_MN_WORKER_VERSION,
+            fact,
+        )?);
+    }
     Ok(Verdict {
         status,
         mismatches,
         detail: Some(format!(
             "{recipe}: incremental run judged (exit {exit_code:?}); receipt mn-probe-receipt.json"
         )),
-        artifacts: vec![],
+        artifacts,
         native: Some(NativeRecord {
             exit_code,
             stage_spans: vec![

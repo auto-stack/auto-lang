@@ -1,0 +1,7 @@
+fn alpha(x int) int {
+    return x * 2
+}
+
+fn main() int {
+    return alpha(5)
+}

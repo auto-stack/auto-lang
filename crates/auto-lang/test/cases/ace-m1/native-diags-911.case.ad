@@ -287,3 +287,30 @@ case {
   ]
 }
 ```
+
+# Warm (rounds) strict leg: a legal edit A, then an ILLEGAL candidate B, then a
+# repair C whose literal matches the accepted prefix, then run. The parent
+# admits B's typed refusal (bound to A's source as base, B's as candidate),
+# STOPS the sequence (C and the run are never sent) and publishes the fact
+# artifact — the judged face is B's real cause.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.warm-reject-stops"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/WARM.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict-warm", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" },
+        steps: [
+          { op: "edit-source", from: "x * 2", to: "x + 2" },
+          { op: "edit-source", from: "x + 2", to: "true + 1" },
+          { op: "edit-source", from: "x + 2", to: "x * 3" },
+          { op: "run" },
+        ] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
