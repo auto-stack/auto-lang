@@ -1,6 +1,6 @@
 {
   "schema": "web-native-owner-contracts/1",
-  "source_tag": "plan-890-verified-r7-t19",
+  "source_tag": "plan-906-contract-migrated",
   "purpose": "Plan890 original native owner commands and compatibility obligations; not a general scheduler or discovery catalog. Future discovery checks actual complete owner targets.",
   "owners": {
     "web": {
@@ -10,8 +10,6 @@
       "options": [
         "-p",
         "auto-web",
-        "-p",
-        "auto-web-contract",
         "--lib",
         "--tests",
         "--features",
