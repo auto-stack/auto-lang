@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-910
-status: execution_done
+status: reviewed
 feature_name: 生成Cargo工程的有限构建与产物治理
 author: [Codex]
 created_at: 2026-11-01
 updated_at: 2026-11-02
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 9
 supersedes_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-test-case/build-storage-lifecycle.md]
 new_spec_components: [docs/specs/repository-boundaries/generated-cargo-build-lifecycle.md]
@@ -281,7 +281,7 @@ frontmatter仅列本仓路径；跨仓Spec由对应实际改动owner沉淀，T-0
 | T-04 | [x] 成员更新/生成/构建lease与owned取消恢复；有限扩展build_storage精确子根预览/apply守卫，真实竞争/清理正负控V-05/06/07 —— **完成 2026-11-02**：lease（spawn/进程生命周期/服务）、dead-pid 清扫、清理器受管子根准入、混合 ws auto-web 保留；V-06/07 见 §6.1 | T-03；AC-04/05 | work |
 | T-05 | [x] 在906新组合完成两类A/B完整收益对照、外部fresh/locked/来源失败恢复、模拟007移根和回滚；必需既有红按精确触面闭门，全部work AC实证，无未批准支持缩减 —— **完成 2026-11-02**：V-04 两类严格正收益（§6.1 表）、发行门 DST-1..4 全过（两处既有红精确修复）、安装 SDK 独立模式实证（D-906-1 man-install 腿根因修复）、V-09 移根/旧成员保全、V-10 原入口回滚；预算对账后 v04 根已回收 | T-04；AC-01..07，V-01..10 | work |
 | T-06 | [x] 最终健康/遗漏/workaround扫描，冻结全部work证据/数账/限制、SD-01..05 proposal及007交接表；原始证据摘要可随scope删除而独立读回，execution_done6/9 —— **完成 2026-11-02**：健康扫描过、既有红 4 处精确修复、债务 D-910-1/2 登记、边界全列、SD-01..05 落稿（四仓）、007 交接表+预算对账在案 | T-05；AC-01..07 | work |
-| T-07 | 同组冻结提交独立上下文final review，核真实调用/反控/空间数账/残项及SD；finding回同树work且使受影响证据失效 | T-06；AC-08，V-11 | review |
+| T-07 | [x] 同组冻结提交独立上下文final review，核真实调用/反控/空间数账/残项及SD；finding回同树work且使受影响证据失效 —— **完成 2026-11-02**：独立审查代理 R1 needs_fix（1 阻断+6 非阻断）→ 修复轮 R1 → 复审 final pass（绑 lang f086a1d8d / ui e03a294 / web 3de5524 / man 67add3c） | T-06；AC-08，V-11 | review |
 | T-08 | 冻结受影响职责并集与必要消费者门，各仓依赖顺序真实合入，沉淀canonical与最终007交接；路线按本包有限出口判M1，不自动执行007 | T-07 pass；AC-09 | merge |
 | T-09 | 全实际输出路径/进程/链接/归属对账，必要摘要折Plan；删除统一scope/树内构建物、每树wt-guard clean后移除树/分支/空组，更新持有登记，归archive终态9/9 | T-08；AC-09 | merge |
 
@@ -302,6 +302,10 @@ stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 2 | from: review | 
 stage: work | plan_id: PLAN-910 | plan_revision: r1 | outcome: pass（修复轮 R1） | worktree_path: D:/autostack/.wt/lang-910/{auto-lang,auto-ui,auto-web,auto-man,auto-down} | branch: plan-910-dev / plan-910-ui-dev / plan-910-web-dev / plan-910-man-dev | base_commit: 367258e7a / 30c9027 / 847527e / 7f30eb8 | code_commit: lang f086a1d8d, ui e03a294, web 3de5524, man 67add3c | dependency_revisions: down 7c4d5cb | task_ids: T-02/T-03 重新关闭；6/9 | evidence: §6.1 "修复轮 R1" 闭合表（PE 头 14.44+Rich、build2 0 单位、pdb 同轮、core 28/0、ui 4/0）；原始日志 scope `repair-r1/` | blockers: 无 | next_responsible_role: review（复审仅重放 F-01..F-07 受影响面：核 cwd 代码路径、PE 头/0 单位、pdb 发布、SD-01 措辞；其余 AC 证据沿用）
 
 stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-910/auto-lang | commit: f086a1d8d (ui e03a294, web 3de5524, man 67add3c) | next: review
+
+stage: review | review_scope: final（修复轮 R1 复审） | reviewer_identity/limitations: 同一独立审查代理上下文（只读+定向重放；auto-ui-tool/auto 重建覆盖精确 HEAD） | plan_id: PLAN-910 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-910/{auto-lang,auto-ui,auto-web,auto-man,auto-down} | branch: plan-910-dev / plan-910-ui-dev / plan-910-web-dev / plan-910-man-dev | reviewed_commit: lang f086a1d8d, ui e03a294, web 3de5524, man 67add3c（五树 porcelain 全空） | base_commit: 367258e7a / 30c9027 / 847527e / 7f30eb8 | dependency_revisions: down 7c4d5cb | spec_inputs: SD-01..05 稿于各冻结提交（SD-01 §4/§5 措辞已按 F-04/F-07 修订，冻结 hash 随报告） | acceptance_results: AC-01 pass（F-01 闭合：cwd=ws 直传、上溯函数删除；强制重链 1 单位 PE 14.44+Rich；审查自选反例=显式根置于 linker=rust-lld+[term]verbose 带毒祖先下冷构建 582 单位、0 条 verbose 行、升位/发布件 14.44+Rich、730/730 钉值；build2 0 单位）；AC-02..07 pass（R1 证据沿用，输入未变）；AC-08 pass；AC-09 pending(merge) | pending_closeout_gates: 冻结固定组并集（lang auto-generation-core/auto-api-gen + web-delivery-controls 12/13 按 D-910-1 登记；ui rust_ui 族；web api_gen 族；man http_service 族）、canonical 四仓落地+007 交接、§9 折叠审查报告、具名持有 f3f98a9e（master 清理器 apply）与 54892519（T-09）、scope 删除、wt-guard 拆树 | findings: F-910-R1-01..07 全部 closed（F-02 实证 bin/debug/counter.pdb 与 debug/counter_72e31f46.pdb 同 inode 链接数 3 且与 exe 同轮；F-05 复测 web api_gen 全套后真实根 producer_origin 保持 AUTO_LANG_ROOT）；无新回归（仅一处测试块缩进）；既有边界如实披露（框架内 ws 祖先含语言仓 config，等同 910 前行为） | evidence: D:/autostack/plan-artifacts/plan-910/review/review-report.md "R1 repair re-review" 节（sha256 前16 8c4736d094f03576）、r1-build1/2.log、r1-explicit-build.log（merge 时折叠后随 scope 删除） | next: merge（T-08/T-09）
+
+stage: goal | plan_id: PLAN-910 | plan_revision: r1 | round: 4 | from: review | to: merge | status: reviewed | commit: f086a1d8d (ui e03a294, web 3de5524, man 67add3c) | outcome: pass | worktree: D:/autostack/.wt/lang-910/auto-lang | next: merge
 
 ## 10. 待澄清事项
 
