@@ -56,6 +56,9 @@ pub enum Ty {
     /// is the module type-table index of the `Variant { arms }` entry
     /// (nominal identity by declaration).
     Variant(u32),
+    /// The unit type (PLAN-904: the collections `Eval` statement's
+    /// discarded result).
+    Unit,
 }
 
 impl Ty {
@@ -71,6 +74,7 @@ impl Ty {
             Ty::Record(_) => "record",
             Ty::List(_) => "list",
             Ty::Variant(_) => "variant",
+            Ty::Unit => "unit",
         }
     }
 
@@ -1193,6 +1197,7 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
         hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => Ok(Ty::Str),
         hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Ok(Ty::StrOwned),
         hir::TypeUse::Builtin(hir::BuiltinType::Char) => Ok(Ty::Char),
+        hir::TypeUse::Builtin(hir::BuiltinType::Unit) => Ok(Ty::Unit),
         hir::TypeUse::Ref(id) => match module.types.get(id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::I32) => Ok(Ty::I32),
             Some(hir::TypeKind::Bool) => Ok(Ty::Bool),

@@ -58,6 +58,10 @@ pub struct CertDraft {
     pub protocol: &'static str,
     pub toolchain: ToolchainIdentity,
     pub capabilities: Vec<String>,
+    /// PLAN-904: the canonical execution-config identity (collections
+    /// schema REQUIRES it; the older schemas carry none — `None`
+    /// serializes to the frozen null and validates as absent).
+    pub execution_config: Option<String>,
 }
 
 /// Observed rustc identity (D-04: the DEFAULT/explicit rustc is probed and
@@ -148,6 +152,10 @@ impl CertDraft {
             s.push_str(&format!("    \"{}\"{}\n", c, comma));
         }
         s.push_str("  ]\n");
+        match &self.execution_config {
+            Some(cfg) => s.push_str(&kv("execution_config", cfg)),
+            None => s.push_str("  \"execution_config\": null,\n"),
+        }
         s.push_str("}\n");
         s
     }
@@ -193,6 +201,18 @@ impl CertDraft {
         }
         if self.actual_files.is_empty() {
             return Err("actual_files must bind at least one file".to_string());
+        }
+        // PLAN-904: the collections schema REQUIRES the execution-config
+        // identity (mode/budget/cancel/fault/events are key material —
+        // configs never cross-trust); the older schemas must NOT carry one.
+        if schema == crate::coll::COLL_CERT_SCHEMA {
+            if self.execution_config.as_deref().unwrap_or("").is_empty() {
+                return Err(
+                    "collections certificates require the execution_config identity".to_string(),
+                );
+            }
+        } else if self.execution_config.is_some() {
+            return Err("execution_config is collections-schema key material only".to_string());
         }
         for f in &self.actual_files {
             if f.path.is_empty() || f.sha256.len() != 64 {

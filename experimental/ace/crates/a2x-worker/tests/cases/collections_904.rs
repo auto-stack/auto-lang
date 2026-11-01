@@ -123,25 +123,48 @@ fn coll_904_nested_owned_variant() {
     );
 }
 
+/// T-06 green: the STORE channel carries the Collections family —
+/// cold assembly over AXS3/AXR3 with the collections fileset, certified
+/// by a real rustc run (the trap case keeps its named identity through
+/// the whole store round-trip).
 #[test]
-fn coll_904_channel_rejects_before_store_wiring() {
-    // T-02 red bookkeeping: the STORE channel (Family dispatch) does not
-    // carry Collections yet — `cold_assemble_profile` rejects it. This
-    // documents the gap T-06 closes; the S+P chain above is real.
-    let root = scratch("store-red");
+fn coll_904_store_channel_green() {
+    let root = scratch("store-green");
     let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
-    let err = s
+    let asm = s
         .cold_assemble_profile(L06, ace_core::source::SourceProfile::Collections, &[], "main", false)
-        .expect_err("collections family lands with T-06");
-    match err {
-        ace_a2x_store::A2xRejectOrResource::Reject(r) => {
-            assert!(
-                r.detail.contains("unsupported") || r.detail.contains("profile"),
-                "unexpected rejection: {r}"
-            );
-        }
-        other => panic!("expected reject, got {other:?}"),
+        .expect("collections store family (T-06)");
+    assert!(asm.manifest.contains("auto.a2x.rust.collections.fileset/1"));
+    let dir = out_base().join("store-green-L06");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (p, c) in &asm.files {
+        std::fs::write(dir.join(p), c).unwrap();
     }
+    std::fs::write(dir.join("manifest.json"), &asm.manifest).unwrap();
+    let exe = dir.join("case.exe");
+    let compile = auto_tool_execution::run_command_capture(
+        {
+            let mut c = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+            c.args(["--edition", "2021", "-o"]).arg(&exe).arg("main.rs").current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("rustc");
+    assert_eq!(compile.kind, auto_tool_execution::ExitKind::Success);
+    let run = auto_tool_execution::run_command_capture(
+        { let mut c = Command::new(&exe); c.current_dir(&dir); c },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run");
+    assert_eq!(
+        String::from_utf8_lossy(run.stdout.as_ref().unwrap()),
+        "trap:ListIndex
+"
+    );
 }
 
 // ---- V-13: credential binding (same owner/context, different body) ----
@@ -211,30 +234,42 @@ const TR_TYPED_FULL: &str = "fn pad() int {\n    // a deliberately long padding 
 
 const TR_TYPED_FRAG_B: &str = "fn main() int {\n    let w W = W(\"ab\")\n    return w.text.len()\n}";
 
+/// T-03 S repair (green): the record/text-record family's TYPED sources
+/// take the real warm FRAGMENT path again — the retained type declaration
+/// is inert scaffold metadata in the fragment document, the edited
+/// fragment re-produces exactly once, and the assembly value changes.
 #[test]
-fn coll_904_typed_record_warm_fragment_red() {
-    let root = scratch("tr-warm-red");
+fn coll_904_typed_record_warm_fragment_green() {
+    let root = scratch("tr-warm-green");
     let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
-    s.cold_assemble_profile(
-        TR_TYPED_FULL,
-        ace_core::source::SourceProfile::TextRecord,
-        &["ac.runtime.text.v1".to_string()],
-        "main",
-        false,
-    )
-    .expect("cold typed text-record");
-    // The current behavior: the warm FRAGMENT path fails on the retained
-    // type-declaration span. Documents the T-03 S-window gap.
-    let result = s.warm_edit("main", TR_TYPED_FRAG_B, "main", false);
-    match result {
-        Err(ace_a2x_store::A2xRejectOrResource::Reject(r)) => {
-            // the named rejection of today's bounded boundary
-            assert!(
-                r.detail.contains("span") || r.detail.contains("source."),
-                "unexpected rejection shape: {r}"
-            );
-        }
-        Err(other) => panic!("expected reject, got resource: {other:?}"),
-        Ok(_) => panic!("typed warm fragment unexpectedly worked before T-03"),
+    let a = s
+        .cold_assemble_profile(
+            TR_TYPED_FULL,
+            ace_core::source::SourceProfile::TextRecord,
+            &["ac.runtime.text.v1".to_string()],
+            "main",
+            false,
+        )
+        .expect("cold typed text-record");
+    // control: cold A value (w.text.len()*10+2 = "ab"→4)
+    let dir = out_base().join("tr-warm-A");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (p, c) in &a.files {
+        std::fs::write(dir.join(p), c).unwrap();
     }
+    std::fs::write(dir.join("manifest.json"), &a.manifest).unwrap();
+    let prints_a = s.stats.print;
+    // the REAL fragment edit (single-declaration parse path)
+    let b = s
+        .warm_edit("main", TR_TYPED_FRAG_B, "main", false)
+        .expect("typed warm fragment edit works after the T-03 repair");
+    assert_eq!(s.stats.print, prints_a + 1, "exactly the edited fragment");
+    let dir = out_base().join("tr-warm-B");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (p, c) in &b.files {
+        std::fs::write(dir.join(p), c).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &b.manifest).unwrap();
 }

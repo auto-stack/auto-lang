@@ -31,9 +31,9 @@ use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{gc_config_default, run_gc, ManagedStore, PutRequest, SpaceReport};
 use ace_core::hir::HirDomain;
 use ace_core::source::{
-    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
-    compile_text_source, parse_function_fragment, parse_program_with, prepare_function_candidate,
-    resolve_env, SourceProfile,
+    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
+    compile_text_record_source, compile_text_source, parse_function_fragment, parse_program_with,
+    prepare_function_candidate, resolve_env, SourceProfile,
 };
 use ace_core::text_resources::{param_exclusions_fixpoint, ParamExclusions};
 use ace_core::verify::{verify_function_ref, verify_text_function};
@@ -163,12 +163,68 @@ pub const LAYER_FRAGMENT_RT: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-904 T-06: the collections semantic layer — same key shape, its
+/// own namespace (list/variant nominal digests ride `sem_fp`; keys/bytes
+/// of AXS1/AXS2 never move).
+pub const LAYER_SEMANTIC_COLL: LayerSpec = LayerSpec {
+    id: "AXS3",
+    name: "a2x-collections-function-semantic",
+    schema_id: "a2904/axs-coll-sem/v1",
+    producer: "auto-a2x-core prepare",
+    consumers: &["auto-a2x-rust"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "profile",
+        "hir_schema",
+        "signature",
+        "sem_fp",
+        "caps",
+        "pass",
+    ],
+    ref_kinds: &[],
+    storage: "one collections semantic-plan artifact per function",
+    residency: "restored on demand; a restored fragment is re-verified, never trusted blind",
+    regeneration: ace_artifacts::schema::Regeneration::FromUserInputs,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-904 T-06: the collections fragment layer — the runtime content
+/// input is the COLLECTIONS runtime (list/billing/cleanup helpers), so a
+/// scalar or record-text hit can never satisfy a collections key.
+pub const LAYER_FRAGMENT_COLL: LayerSpec = LayerSpec {
+    id: "AXR3",
+    name: "a2x-collections-rust-fragment",
+    schema_id: "a2904/axr-coll-fn/v1",
+    producer: "auto-a2x-rust",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "edition",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed collections Rust fragment per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// Pass-version constants of THIS build (key inputs; §5.4 "pass版本").
 pub const PASS_PREPARE: &str = "a2x-prepare/1";
 pub const PRINT_VERSION: &str = "a2x-print/1";
 /// PLAN-902: the record-text prepare pass (fingerprint carries modes,
 /// nominal identities, callee signatures and record-shape digests).
 pub const PASS_PREPARE_RT: &str = "a2x-prepare-rt/1";
+/// PLAN-904: the collections prepare pass (the fingerprint carries the
+/// list/variant nominal digests and callee signatures).
+pub const PASS_PREPARE_COLL: &str = "a2x-prepare-coll/1";
 
 /// Real per-function production accounting (§5.4 "真实producer按function计…
 /// 次数/字节与whole fallback"). Every counter is a fact the probes assert.
@@ -225,6 +281,9 @@ impl std::fmt::Display for ResourceReject {
 pub enum Family {
     Scalar,
     RecordText,
+    /// PLAN-904: the collections (List/Variant) channel — AXS3/AXR3
+    /// namespaces, the collections runtime and fileset.
+    Collections,
 }
 
 /// The A2X session: cold init, warm per-function edits with RESIDENT reuse,
@@ -247,6 +306,10 @@ pub struct A2xSession {
     retained_excl: Option<ParamExclusions>,
     profile: SourceProfile,
     caps: Vec<String>,
+    /// PLAN-904: sha256 of the CURRENT FULL SOURCE the collections
+    /// channel binds its manifest to (cold init and every ranged warm
+    /// edit rebind it).
+    source_sha256: Option<String>,
 }
 
 impl A2xSession {
@@ -267,6 +330,7 @@ impl A2xSession {
             retained_excl: None,
             profile: SourceProfile::Core,
             caps: vec![],
+            source_sha256: None,
         })
     }
 
@@ -285,6 +349,7 @@ impl A2xSession {
             SourceProfile::Record | SourceProfile::Text | SourceProfile::TextRecord => {
                 Family::RecordText
             }
+            SourceProfile::Collections => Family::Collections,
             _ => Family::Scalar,
         }
     }
@@ -293,6 +358,7 @@ impl A2xSession {
         match self.family() {
             Family::Scalar => &LAYER_SEMANTIC,
             Family::RecordText => &LAYER_SEMANTIC_RT,
+            Family::Collections => &LAYER_SEMANTIC_COLL,
         }
     }
 
@@ -300,6 +366,7 @@ impl A2xSession {
         match self.family() {
             Family::Scalar => &LAYER_FRAGMENT,
             Family::RecordText => &LAYER_FRAGMENT_RT,
+            Family::Collections => &LAYER_FRAGMENT_COLL,
         }
     }
 
@@ -307,6 +374,7 @@ impl A2xSession {
         match self.family() {
             Family::Scalar => PASS_PREPARE,
             Family::RecordText => PASS_PREPARE_RT,
+            Family::Collections => PASS_PREPARE_COLL,
         }
     }
 
@@ -341,6 +409,7 @@ impl A2xSession {
         match self.family() {
             Family::Scalar => ace_a2x_core::canonical_signature(f),
             Family::RecordText => view.canonical_signature(f),
+            Family::Collections => view.canonical_signature(f),
         }
     }
 
@@ -424,6 +493,7 @@ impl A2xSession {
     ) -> Result<Assembly, A2xRejectOrResource> {
         self.profile = profile;
         self.caps = caps.to_vec();
+        self.source_sha256 = Some(sha256_hex(src.as_bytes()));
         self.stats.parse += 1;
         let compiled = match profile {
             SourceProfile::Core => compile_source(src, "a2x", caps),
@@ -431,6 +501,7 @@ impl A2xSession {
             SourceProfile::Record => compile_record_source(src, "a2x", caps),
             SourceProfile::Text => compile_text_source(src, "a2x", caps),
             SourceProfile::TextRecord => compile_text_record_source(src, "a2x", caps),
+            SourceProfile::Collections => compile_collections_source(src, "a2x", caps),
             other => {
                 return Err(A2xRejectOrResource::Reject(A2xReject::domain(format!(
                     "unsupported profile {:?}",
@@ -527,23 +598,41 @@ impl A2xSession {
             // 3) produce: lower + print (+ persist)
             self.stats.lower += 1;
             self.stats.print += 1;
-            if whole.is_none() {
-                whole = Some(lower_functions(view).map_err(A2xRejectOrResource::Reject)?);
-            }
-            let program = whole.as_ref().unwrap();
-            let rust_name = rust_fragment_name(f);
-            let rust_fn = program
-                .functions
-                .iter()
-                .find(|rf| rf.name == rust_name)
-                .cloned()
-                .ok_or_else(|| {
-                    A2xRejectOrResource::Reject(A2xReject::new(
-                        "a2x.internal",
-                        format!("fragment for `{}` missing after lowering", f.source_name),
-                    ))
-                })?;
-            let text = print_fragment_text(whole.as_ref().unwrap().records.as_slice(), &rust_fn);
+            let text = if self.family() == Family::Collections {
+                let program = ace_a2x_rust::lower_coll::lower_coll_functions(view)
+                    .map_err(A2xRejectOrResource::Reject)?;
+                let rust_name = rust_fragment_name(f);
+                let rust_fn = program
+                    .functions
+                    .iter()
+                    .find(|rf| rf.name == rust_name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        A2xRejectOrResource::Reject(A2xReject::new(
+                            "a2x.internal",
+                            format!("fragment for `{}` missing after lowering", f.source_name),
+                        ))
+                    })?;
+                print_coll_fragment_text(&program.records, &program.variants, &rust_fn)
+            } else {
+                if whole.is_none() {
+                    whole = Some(lower_functions(view).map_err(A2xRejectOrResource::Reject)?);
+                }
+                let program = whole.as_ref().unwrap();
+                let rust_name = rust_fragment_name(f);
+                let rust_fn = program
+                    .functions
+                    .iter()
+                    .find(|rf| rf.name == rust_name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        A2xRejectOrResource::Reject(A2xReject::new(
+                            "a2x.internal",
+                            format!("fragment for `{}` missing after lowering", f.source_name),
+                        ))
+                    })?;
+                print_fragment_text(whole.as_ref().unwrap().records.as_slice(), &rust_fn)
+            };
 
             if !read_only {
                 // semantic layer first
@@ -601,6 +690,7 @@ impl A2xSession {
             Some(view),
             rt_records.as_deref(),
             runtime,
+            None,
         )
     }
 
@@ -608,6 +698,7 @@ impl A2xSession {
     /// warm assembly tail). Scalar output is byte-identical to the frozen
     /// 892 assembly; the record-text channel adds the nominal-record and
     /// clone-helper prelude derived from the view + fragment texts.
+    #[allow(clippy::too_many_arguments)]
     fn build_fileset(
         &self,
         entry: &str,
@@ -616,6 +707,7 @@ impl A2xSession {
         view: Option<&SemanticView<'_>>,
         rt_records: Option<&[ace_a2x_rust::RustRecord]>,
         runtime: String,
+        coll_variants: Option<&[ace_a2x_rust::lower::RustVariant]>,
     ) -> Result<Assembly, A2xRejectOrResource> {
         let mut generated = String::new();
         generated.push_str(&format!(
@@ -632,6 +724,34 @@ impl A2xSession {
             })?;
             let texts: Vec<&str> = fragments.iter().map(|(_, r)| r.text.as_str()).collect();
             generated.push_str(&ace_a2x_rust::print::print_rt_prelude_from(records, &texts));
+        }
+        if self.family() == Family::Collections {
+            // the type tables re-derive from the view (cold) or the
+            // session's fragment-view snapshot (warm); free/clone/take
+            // helpers and elem impls follow the same tables
+            let records = match rt_records {
+                Some(r) => r.to_vec(),
+                None => match view {
+                    Some(v) => ace_a2x_rust::lower::lower_records(v)
+                        .map_err(A2xRejectOrResource::Reject)?,
+                    None => {
+                        return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                            "a2x.internal",
+                            "collections assembly needs its type tables",
+                        )))
+                    }
+                },
+            };
+            let variants = match coll_variants {
+                Some(vs) => vs.to_vec(),
+                None => match view {
+                    Some(v) => ace_a2x_rust::lower_coll::lower_coll_variants(v),
+                    None => Vec::new(),
+                },
+            };
+            generated.push_str(&ace_a2x_rust::print::print_coll_prelude_from(
+                &records, &variants,
+            ));
         }
         for (_, r) in fragments {
             generated.push_str(&r.text);
@@ -655,10 +775,30 @@ impl A2xSession {
         let schema = match self.family() {
             Family::Scalar => "auto.a2x.rust.fileset/1",
             Family::RecordText => "auto.a2x.rust.record-text.fileset/1",
+            Family::Collections => ace_a2x_rust::COLL_FILESET_SCHEMA,
         };
         let mut manifest = String::new();
         manifest.push_str(&format!("{{\n  \"schema\": \"{}\",\n", schema));
         manifest.push_str(&format!("  \"input_hash\": \"{}\",\n", input_hash));
+        if self.family() == Family::Collections {
+            // PLAN-904: the manifest binds the REPLACED FULL SOURCE hash
+            // (never a fragment-only hash) and the execution-config
+            // identity
+            let sha = self.source_sha256.clone().unwrap_or_default();
+            manifest.push_str(&format!("  \"source_sha256\": \"{}\",
+", sha));
+            manifest.push_str(&format!(
+                "  \"execution_config\": {},
+",
+                ace_a2x_rust::coll::canonical_execution_config(
+                    "debug",
+                    16_777_216,
+                    None,
+                    false,
+                    false
+                )
+            ));
+        }
         manifest.push_str(&format!(
             "  \"entry\": \"{}\",\n  \"functions\": [\n",
             entry
@@ -738,10 +878,143 @@ impl A2xSession {
         entry: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
+        // PLAN-904: the collections channel binds its manifest to the
+        // REPLACED FULL SOURCE — a fragment-only edit cannot establish
+        // that identity, so the ranged authorization is the collections
+        // warm contract (a fragment-only request is a NAMED boundary, not
+        // a silent stale binding).
+        if self.family() == Family::Collections {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                "collections warm edits take the ranged authorization (warm_edit_ranged): the manifest binds the replaced full source, which a fragment alone cannot establish",
+            )));
+        }
+        self.warm_edit_core(fn_name, edited_src, entry, read_only)
+    }
+
+    /// PLAN-904 (§5.2): the base-bound ranged warm edit. The candidate
+    /// carries the EDIT AUTHORIZATION — the current full source snapshot
+    /// (`base_src`, checked against the session's bound hash), a UTF-8
+    /// `range` covering exactly the target function's declaration, and
+    /// the candidate `fragment`. The manifest binds sha256 of the
+    /// REPLACED full source (never a fragment-only hash).
+    pub fn warm_edit_ranged(
+        &mut self,
+        fn_name: &str,
+        base_src: &str,
+        range: (usize, usize),
+        fragment: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        if self.family() != Family::Collections {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                "ranged authorization is the collections warm contract; the other families keep their frozen fragment path",
+            )));
+        }
+        // the 828 close contract FIRST: a closed environment rejects every
+        // warm edit before any lookup
+        if let Some(env) = self.env.as_ref() {
+            if env.closed() {
+                return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                    "a2x.prepare",
+                    "source.closed: the checked environment is closed; warm edits are a rejection",
+                )));
+            }
+        }
+        // 1) base binding: the caller's snapshot must be the CURRENT
+        //    published source (a stale base is a named rejection)
+        let cur = self.source_sha256.clone().ok_or_else(|| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.session",
+                "cold init required before warm edit",
+            ))
+        })?;
+        let base_sha = sha256_hex(base_src.as_bytes());
+        if cur != base_sha {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.stale-base",
+                format!(
+                    "base source sha256 {base_sha} does not bind the session's current source {cur}"
+                ),
+            )));
+        }
+        // 2) range validation: in-bounds, whole UTF-8 scalars, and it
+        //    covers EXACTLY one function declaration — the target's
+        let (start, end) = range;
+        if start > end || end > base_src.len() {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                format!("range {start}..{end} escapes the base source (len {})", base_src.len()),
+            )));
+        }
+        if !base_src.is_char_boundary(start) || !base_src.is_char_boundary(end) {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                "range cuts a multi-byte UTF-8 scalar",
+            )));
+        }
+        let replaced = &base_src[start..end];
+        let old_item = parse_function_fragment(replaced, 0..replaced.len(), self.profile).map_err(
+            |d| {
+                A2xRejectOrResource::Reject(A2xReject::new(
+                    "a2x.range",
+                    format!(
+                        "range does not cover exactly one function declaration: {}",
+                        d.message
+                    ),
+                ))
+            },
+        )?;
+        if old_item.name.name != fn_name {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                format!(
+                    "range covers `{}`, expected `{}`",
+                    old_item.name.name, fn_name
+                ),
+            )));
+        }
+        // 3) the candidate fragment is a single same-named declaration
+        let frag_item = parse_function_fragment(fragment, 0..fragment.len(), self.profile).map_err(
+            |d| {
+                A2xRejectOrResource::Reject(A2xReject::new(
+                    "a2x.parse",
+                    format!("fragment: {}", d.message),
+                ))
+            },
+        )?;
+        if frag_item.name.name != fn_name {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.parse",
+                format!(
+                    "edited fragment is `{}`, expected `{}`",
+                    frag_item.name.name, fn_name
+                ),
+            )));
+        }
+        // 4) the replaced full source identity binds the NEXT manifest
+        let full_after = format!("{}{}{}", &base_src[..start], fragment, &base_src[end..]);
+        let next_sha = sha256_hex(full_after.as_bytes());
+        self.source_sha256 = Some(next_sha.clone());
+        // 5) the ordinary warm machinery (prepare → verify → produce →
+        //    swap → assemble) runs on the fragment; the manifest built
+        //    under it carries the replaced-full-source identity
+        self.warm_edit_core(fn_name, fragment, entry, read_only)
+    }
+
+    fn warm_edit_core(
+        &mut self,
+        fn_name: &str,
+        edited_src: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
         let profile = self.profile;
         // produce the candidate fragment text + identity while the
         // candidate is alive (SourceParts is not Clone — borrowed use only)
-        let (frag_def, frag_name, frag_sem_fp, frag_text, input_hash, runtime, frag_view_records) = {
+        let (frag_def, frag_name, frag_sem_fp, frag_text, input_hash, runtime, frag_view_records, frag_view_variants) = {
             let env = self.env.as_mut().ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::new(
                     "a2x.session",
@@ -821,11 +1094,18 @@ impl A2xSession {
             };
             // the rt prelude needs the (record-carrying) fragment view
             // AFTER the borrow ends — snapshot the lowered record table
-            let records_snapshot = if self.family() == Family::RecordText {
+            let records_snapshot = if self.family() == Family::RecordText
+                || self.family() == Family::Collections
+            {
                 Some(
                     ace_a2x_rust::lower::lower_records(&view)
                         .map_err(A2xRejectOrResource::Reject)?,
                 )
+            } else {
+                None
+            };
+            let variants_snapshot = if self.family() == Family::Collections {
+                Some(ace_a2x_rust::lower_coll::lower_coll_variants(&view))
             } else {
                 None
             };
@@ -837,6 +1117,7 @@ impl A2xSession {
                 parts.input_hash.clone(),
                 runtime,
                 records_snapshot,
+                variants_snapshot,
             )
         };
         let def_index = frag_def;
@@ -859,11 +1140,15 @@ impl A2xSession {
 
         // assemble from residents (no extra production; manifest built
         // here) — the rt prelude re-derives from the snapshot record table
-        let residents: Vec<(usize, ResidentFragment)> = self
+        let mut residents: Vec<(usize, ResidentFragment)> = self
             .resident
             .values()
             .map(|r| (r.def_index, r.clone()))
             .collect();
+        // declaration order (BTreeMap iteration is name-alphabetical;
+        // multi-function modules must assemble in def order — the cold
+        // path's byte shape)
+        residents.sort_by_key(|(d, _)| *d);
         self.build_fileset(
             entry,
             &input_hash,
@@ -871,6 +1156,7 @@ impl A2xSession {
             None,
             frag_view_records.as_deref(),
             runtime,
+            frag_view_variants.as_deref(),
         )
     }
 
@@ -896,27 +1182,48 @@ impl A2xSession {
         }
         self.stats.lower += 1;
         self.stats.print += 1;
-        let program = lower_functions(view).map_err(A2xRejectOrResource::Reject)?;
-        let rust_name = rust_fragment_name(f);
-        let rust_fn = program
-            .functions
-            .iter()
-            .find(|rf| rf.name == rust_name)
-            .cloned()
-            .ok_or_else(|| {
-                A2xRejectOrResource::Reject(A2xReject::new(
-                    "a2x.internal",
-                    format!("fragment for `{}` missing after lowering", f.source_name),
-                ))
-            })?;
-        let rt_records = if self.family() == Family::RecordText {
-            Some(ace_a2x_rust::lower::lower_records(view).map_err(A2xRejectOrResource::Reject)?)
+        let text = if self.family() == Family::Collections {
+            let program = ace_a2x_rust::lower_coll::lower_coll_functions(view)
+                .map_err(A2xRejectOrResource::Reject)?;
+            let rust_name = rust_fragment_name(f);
+            let rust_fn = program
+                .functions
+                .iter()
+                .find(|rf| rf.name == rust_name)
+                .cloned()
+                .ok_or_else(|| {
+                    A2xRejectOrResource::Reject(A2xReject::new(
+                        "a2x.internal",
+                        format!("fragment for `{}` missing after lowering", f.source_name),
+                    ))
+                })?;
+            print_coll_fragment_text(&program.records, &program.variants, &rust_fn)
         } else {
-            None
-        };
-        let text = match &rt_records {
-            Some(records) => print_fragment_text(records, &rust_fn),
-            None => ace_a2x_rust::print::print_fn(&rust_fn),
+            let program = lower_functions(view).map_err(A2xRejectOrResource::Reject)?;
+            let rust_name = rust_fragment_name(f);
+            let rust_fn = program
+                .functions
+                .iter()
+                .find(|rf| rf.name == rust_name)
+                .cloned()
+                .ok_or_else(|| {
+                    A2xRejectOrResource::Reject(A2xReject::new(
+                        "a2x.internal",
+                        format!("fragment for `{}` missing after lowering", f.source_name),
+                    ))
+                })?;
+            let rt_records = if self.family() == Family::RecordText {
+                Some(
+                    ace_a2x_rust::lower::lower_records(view)
+                        .map_err(A2xRejectOrResource::Reject)?,
+                )
+            } else {
+                None
+            };
+            match &rt_records {
+                Some(records) => print_fragment_text(records, &rust_fn),
+                None => ace_a2x_rust::print::print_fn(&rust_fn),
+            }
         };
         if !read_only {
             let sig_input = self.signature_input(view, f);
@@ -1060,6 +1367,16 @@ fn print_fragment_text(
     }
 }
 
+/// PLAN-904: the collections fragment text (types render through the
+/// record AND variant tables).
+fn print_coll_fragment_text(
+    records: &[ace_a2x_rust::RustRecord],
+    variants: &[ace_a2x_rust::lower::RustVariant],
+    rust_fn: &ace_a2x_rust::RustFn,
+) -> String {
+    ace_a2x_rust::print::print_coll_fn(records, variants, rust_fn)
+}
+
 /// The fragment's Rust function name (free functions and owner-qualified
 /// methods alike — the lowered `RustFn::name`).
 fn rust_fragment_name(f: &FnFacts<'_>) -> String {
@@ -1085,6 +1402,7 @@ fn fragment_runtime_source(view: &SemanticView<'_>) -> String {
         HirDomain::Text | HirDomain::Record | HirDomain::TextRecord => {
             ace_a2x_rust::record_text_runtime_source(&marks)
         }
+        HirDomain::Collections => ace_a2x_rust::collections_runtime_source(&marks),
         _ => ace_a2x_rust::runtime_source(&marks),
     }
 }
@@ -1096,6 +1414,8 @@ fn static_layer(id: &str) -> &'static str {
         "AXM1" => LAYER_MANIFEST.id,
         "AXS2" => LAYER_SEMANTIC_RT.id,
         "AXR2" => LAYER_FRAGMENT_RT.id,
+        "AXS3" => LAYER_SEMANTIC_COLL.id,
+        "AXR3" => LAYER_FRAGMENT_COLL.id,
         other => panic!("unknown layer {}", other),
     }
 }

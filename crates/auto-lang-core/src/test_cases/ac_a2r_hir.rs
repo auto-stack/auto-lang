@@ -40,6 +40,10 @@ pub const A2R_HIR_RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
 /// worker, adapter contracts and parent-side judging as the scalar
 /// channel; the worker derives the channel from the case's profile.
 pub const A2R_RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
+/// PLAN-904: the collections (List/Variant) emit recipe — same prebuilt
+/// worker, adapter contracts and parent-side judging; strict recipe/
+/// profile/fileset/cert isolation from both channels above.
+pub const A2R_COLL_RECIPE: &str = "ac-a2r/hir-collections-emit-v1";
 pub const A2X_WORKER_PROTOCOL: &str = "a2xworker/1";
 pub const A2X_WORKER_ENV: &str = "AC_A2X_HIR_WORKER";
 /// F-2 (review): OPTIONAL pinned content credential for the prebuilt
@@ -123,7 +127,7 @@ pub fn run_check(
         .probe_recipe
         .as_deref()
         .ok_or("probe check without a recipe (contract violation)")?;
-    if recipe != A2R_HIR_RECIPE && recipe != A2R_RT_RECIPE {
+    if recipe != A2R_HIR_RECIPE && recipe != A2R_RT_RECIPE && recipe != A2R_COLL_RECIPE {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     let binding = check

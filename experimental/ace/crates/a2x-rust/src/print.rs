@@ -61,6 +61,7 @@ impl<'p> PrintCtx<'p> {
                 .map(|v| v.name.clone())
                 .unwrap_or_else(|| format!("A2xv_#{}", id)),
             Ty::List(_) => "A2xList".to_string(),
+            Ty::Unit => "()".to_string(),
         }
     }
 }
@@ -362,6 +363,7 @@ fn local_ty_text(ctx: &PrintCtx<'_>, ty: Ty) -> String {
         Ty::Record(id) => ctx.ty_str(Ty::Record(id)),
         Ty::Variant(id) => ctx.ty_str(Ty::Variant(id)),
         Ty::List(id) => ctx.ty_str(Ty::List(id)),
+        Ty::Unit => "()".to_string(),
     }
 }
 
@@ -901,5 +903,61 @@ fn coll_variant_helpers(
         }
     }
     out.push_str(" }}\n}\n");
+    out
+}
+
+/// PLAN-904: render ONE collections function against the module's record
+/// and variant tables (the store's per-fragment text).
+pub fn print_coll_fn(
+    records: &[crate::lower::RustRecord],
+    variants: &[crate::lower::RustVariant],
+    f: &RustFn,
+) -> String {
+    let mut map = HashMap::new();
+    for r in records {
+        map.insert(r.type_index, r);
+    }
+    let mut vmap = HashMap::new();
+    for v in variants {
+        vmap.insert(v.type_index, v);
+    }
+    print_fn_in(&PrintCtx { records: map, variants: vmap }, f, false)
+}
+
+/// PLAN-904: the collections assembly prelude — nominal record structs,
+/// variant enums and the explicit free/clone/take helpers + elem impls
+/// (everything except the function texts).
+pub fn print_coll_prelude_from(
+    records: &[crate::lower::RustRecord],
+    variants: &[crate::lower::RustVariant],
+) -> String {
+    let fake = RustProgram {
+        functions: vec![],
+        entry: String::new(),
+        marks: vec![],
+        records: records.to_vec(),
+        clones: Vec::new(),
+        borrowed: false,
+        variants: variants.to_vec(),
+        coll: true,
+    };
+    let ctx = PrintCtx::new(&fake);
+    let mut out = String::new();
+    for r in records {
+        out.push_str(&print_record(&ctx, r));
+        out.push('\n');
+    }
+    for v in variants {
+        out.push_str(&print_variant(&ctx, v));
+        out.push('\n');
+    }
+    for r in records {
+        out.push_str(&coll_record_helpers(&ctx, r, &fake));
+        out.push('\n');
+    }
+    for v in variants {
+        out.push_str(&coll_variant_helpers(&ctx, v, &fake));
+        out.push('\n');
+    }
     out
 }

@@ -27,10 +27,13 @@ use std::process::Command;
 
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::SemanticView;
-use ace_a2x_rust::{assemble_file_set, assemble_record_text_file_set, lower_program};
+use ace_a2x_rust::{
+    assemble_collections_file_set, assemble_file_set, assemble_record_text_file_set,
+    canonical_execution_config, lower_collections_program, lower_program,
+};
 use ace_core::source::{
-    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
-    compile_text_source,
+    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
+    compile_text_record_source, compile_text_source,
 };
 
 const PROTOCOL: &str = "a2xworker/1";
@@ -38,6 +41,9 @@ const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
 /// PLAN-902: the record/text/text-record channel — parallel to (and
 /// mutually untrusted with) the scalar recipe above.
 const RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
+/// PLAN-904: the collections channel (List/Variant) — parallel to (and
+/// mutually untrusted with) both recipes above.
+const COLL_RECIPE: &str = "ac-a2r/hir-collections-emit-v1";
 
 fn main() {
     let mut req = String::new();
@@ -139,6 +145,7 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         "record" => compile_record_source(&src, "a2x-worker", &caps),
         "text" => compile_text_source(&src, "a2x-worker", &caps),
         "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
+        "collections" => compile_collections_source(&src, "a2x-worker", &caps),
         other => fail(&format!("unknown source profile `{}`", other)),
     };
     let compiled = match compiled {
@@ -156,12 +163,37 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         Ok(view) => view,
         Err(r) => fail(&format!("view admission: {}", r)),
     };
-    let program = match lower_program(&view, &entry) {
-        Ok(p) => p,
-        Err(r) => fail(&format!("lowering: {}", r)),
+    let (program, entry_fn) = if is_coll_profile(&profile) {
+        match lower_collections_program(&view, &entry) {
+            Ok(p) => {
+                let e = p.entry.clone();
+                (p, e)
+            }
+            Err(r) => fail(&format!("lowering: {}", r)),
+        }
+    } else {
+        match lower_program(&view, &entry) {
+            Ok(p) => {
+                let e = p.entry.clone();
+                (p, e)
+            }
+            Err(r) => fail(&format!("lowering: {}", r)),
+        }
     };
-    let entry_fn = program.entry.clone();
-    let (files, manifest) = if is_rt_profile(&profile) {
+    let (files, manifest) = if is_coll_profile(&profile) {
+        // the collections manifest binds the REPLACED FULL SOURCE sha256
+        // and the execution-config identity (never a fragment-only hash)
+        let cfg = execution_config_of(v);
+        let fs = assemble_collections_file_set(
+            &view,
+            &program,
+            &compiled.input_hash,
+            &source_sha256,
+            &cfg,
+            &entry,
+        );
+        (fs.files, fs.manifest)
+    } else if is_rt_profile(&profile) {
         let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, &entry);
         (fs.files, fs.manifest)
     } else {
@@ -183,9 +215,28 @@ fn is_rt_profile(profile: &str) -> bool {
     matches!(profile, "record" | "text" | "text-record")
 }
 
+/// Whether the profile rides the PLAN-904 collections channel.
+fn is_coll_profile(profile: &str) -> bool {
+    profile == "collections"
+}
+
+/// The canonical execution-config identity of a request (PLAN-904 §5.6:
+/// fixed key order; any field difference is a different identity).
+fn execution_config_of(v: &serde_json::Value) -> String {
+    canonical_execution_config(
+        v["mode"].as_str().unwrap_or("debug"),
+        v["budget_work_units"].as_u64().unwrap_or(16_777_216),
+        v["fault_alloc"].as_u64(),
+        v["events"].as_bool().unwrap_or(false),
+        v["cancel"].as_bool().unwrap_or(false),
+    )
+}
+
 /// The recipe this profile's responses must echo.
 fn recipe_of_profile(profile: &str) -> &'static str {
-    if is_rt_profile(profile) {
+    if is_coll_profile(profile) {
+        COLL_RECIPE
+    } else if is_rt_profile(profile) {
         RT_RECIPE
     } else {
         RECIPE
@@ -316,7 +367,9 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     // reference bytes and the OBSERVED toolchain identity (schema/recipe
     // follow the profile's channel)
     let vv = toolchain_vv();
-    let (cert_schema, cert_recipe) = if rt {
+    let (cert_schema, cert_recipe) = if is_coll_profile(&profile) {
+        (ace_a2x_rust::COLL_CERT_SCHEMA, COLL_RECIPE)
+    } else if rt {
         (ace_a2x_rust::RT_CERT_SCHEMA, ace_a2x_rust::RT_RECIPE)
     } else {
         (ace_a2x_rust::CERT_SCHEMA, ace_a2x_rust::RECIPE)
@@ -378,6 +431,11 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
                     .collect()
             })
             .unwrap_or_default(),
+        execution_config: if is_coll_profile(&profile) {
+            Some(execution_config_of(v))
+        } else {
+            None
+        },
     };
     if let Err(e) = cert.validate_as(cert_schema, cert_recipe) {
         fail(&format!("certificate draft invalid: {e}"));
@@ -403,6 +461,7 @@ fn domain_of(view_profile: &str) -> String {
         "record" => "record-i32-draft".to_string(),
         "text" => "text-i32-draft".to_string(),
         "text-record" => "text-record-i32-draft".to_string(),
+        "collections" => "collections-draft".to_string(),
         _ => "core-i32-draft".to_string(),
     }
 }

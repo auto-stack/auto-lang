@@ -785,7 +785,8 @@ fn dispatch_check(
         // scalar channel and the record-text channel share the adapter.
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_HIR_RECIPE)
-                || check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_RT_RECIPE) =>
+                || check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_RT_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_COLL_RECIPE) =>
         {
             ac_a2r_hir::run_check(
                 resolved,

@@ -1,0 +1,8 @@
+fn fail() Result<int, Str> { return Err("bad") }
+fn main() int {
+    let r = fail()
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}

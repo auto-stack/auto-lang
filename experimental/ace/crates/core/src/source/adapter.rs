@@ -2899,7 +2899,13 @@ impl<'p> Emitter<'p> {
         let is_record_profile = self.profile.is_record();
         if is_record_profile {
             for rec in &self.program.records {
-                let span = if self.scoped() && self.profile == SourceProfile::Collections {
+                // PLAN-904 T-03: in a SCOPED fragment document the retained
+                // declaration is inert interface metadata for EVERY family —
+                // its anchor belongs to the retained environment's source,
+                // never the fragment being emitted (the Collections rule,
+                // now shared with the record/text-record families). Whole-
+                // module emission keeps the real declaration spans.
+                let span = if self.scoped() {
                     Span { start: 0, end: 0 }
                 } else {
                     rec.name_span
@@ -2955,9 +2961,11 @@ impl<'p> Emitter<'p> {
             for v in &self.program.variants {
                 // Interned body-local Option/Result entries can outlive the
                 // source revision that created their name_span. In a scoped
-                // collections document these declarations are inert interface
-                // metadata, just like the other functions' signature scaffolds.
-                let span = if self.scoped() && self.profile == SourceProfile::Collections {
+                // document these declarations are inert interface metadata,
+                // just like the other functions' signature scaffolds (the
+                // PLAN-904 T-03 shared rule across the type-carrying
+                // families).
+                let span = if self.scoped() {
                     Span { start: 0, end: 0 }
                 } else {
                     v.name_span

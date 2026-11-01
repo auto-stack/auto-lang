@@ -1,0 +1,34 @@
+# PLAN-904 a2r-hir collections suite — the registered AX-C emit channel's
+# evidence set (ac-a2r/hir-collections-emit-v1): the TWENTY frozen sources
+# (byte-exact ace-m1 originals: L01..L07/V01..V07 + the 864/889
+# supplements) through the real A2X collections chain. Goldens were frozen
+# from the real prebuilt worker after a cross-nonce determinism check and
+# independently verified on real rustc against the hand-computed oracles
+# (each case also carries a hand-written std-only reference for the certify
+# leg). The scalar 892 suite, the record-text 902 suite and the old ace-m1
+# denominator are untouched (parallel channels).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2r-hir-collections-904", include: [
+    "L01.case.ad",
+    "L02.case.ad",
+    "L03.case.ad",
+    "L04.case.ad",
+    "L05.case.ad",
+    "L06.case.ad",
+    "L07.case.ad",
+    "V01.case.ad",
+    "V02.case.ad",
+    "V03.case.ad",
+    "V04.case.ad",
+    "V05.case.ad",
+    "V06.case.ad",
+    "V07.case.ad",
+    "LSTR864.case.ad",
+    "FIN864A.case.ad",
+    "FIN864B.case.ad",
+    "N889-list-variant.case.ad",
+    "N889-nested-variant.case.ad",
+    "N889-optional-variant.case.ad"
+] }
+```

@@ -1,0 +1,562 @@
+// AUTO-GENERATED typed collections runtime (PLAN-904 AX-C) — DO NOT EDIT.
+#![allow(dead_code)]
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoTrap {
+    Overflow,
+    DivByZero,
+    DivOverflow,
+    RemByZero,
+    RemOverflow,
+    InvalidScalar,
+    TextIndex,
+    Resource,
+    ListIndex,
+    VariantBranch,
+    Budget,
+    Cancelled,
+}
+
+impl AutoTrap {
+    pub fn name(self) -> &'static str {
+        match self {
+            AutoTrap::Overflow => "Overflow",
+            AutoTrap::DivByZero => "DivByZero",
+            AutoTrap::DivOverflow => "DivOverflow",
+            AutoTrap::RemByZero => "RemByZero",
+            AutoTrap::RemOverflow => "RemOverflow",
+            AutoTrap::InvalidScalar => "InvalidScalar",
+            AutoTrap::TextIndex => "TextIndex",
+            AutoTrap::Resource => "Resource",
+            AutoTrap::ListIndex => "ListIndex",
+            AutoTrap::VariantBranch => "VariantBranch",
+            AutoTrap::Budget => "Budget",
+            AutoTrap::Cancelled => "Cancelled",
+        }
+    }
+}
+
+pub type A2xResult<T> = Result<T, AutoTrap>;
+
+pub fn a2x_add(a: i32, b: i32) -> A2xResult<i32> { a.checked_add(b).ok_or(AutoTrap::Overflow) }
+pub fn a2x_sub(a: i32, b: i32) -> A2xResult<i32> { a.checked_sub(b).ok_or(AutoTrap::Overflow) }
+pub fn a2x_mul(a: i32, b: i32) -> A2xResult<i32> { a.checked_mul(b).ok_or(AutoTrap::Overflow) }
+pub fn a2x_neg(a: i32) -> A2xResult<i32> { a.checked_neg().ok_or(AutoTrap::Overflow) }
+pub fn a2x_div(a: i32, b: i32) -> A2xResult<i32> {
+    if b == 0 { Err(AutoTrap::DivByZero) } else { a.checked_div(b).ok_or(AutoTrap::DivOverflow) }
+}
+pub fn a2x_rem(a: i32, b: i32) -> A2xResult<i32> {
+    if b == 0 { Err(AutoTrap::RemByZero) } else { a.checked_rem(b).ok_or(AutoTrap::RemOverflow) }
+}
+
+// ---- work budget / cooperative cancellation / fault hooks -------------
+//
+// Frozen billing table (PLAN-904 T-02): 2 WU per list element slot, 1 WU
+// per 8 copied Str bytes, 1 WU per ctor, 4 WU per call frame, 1 WU per
+// loop back-edge poll. Budget default 2^24; A2X_RT_BUDGET overrides;
+// A2X_RT_CANCEL=1 arms cancellation (observed at polling points only).
+// Cleanup paths never bill, never poll, never allocate.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+const DEFAULT_BUDGET: i64 = 16_777_216;
+
+struct CollState {
+    work_remaining: i64,
+    cancelled: bool,
+    fault_alloc: i64,
+    alloc_count: i64,
+    free_count: i64,
+    live_nodes: i64,
+    live_str_bytes: i64,
+    live_backing_bytes: i64,
+    events: bool,
+}
+
+thread_local! {
+    static COLL: RefCell<CollState> = RefCell::new(CollState {
+        work_remaining: 0,
+        cancelled: false,
+        fault_alloc: -1,
+        alloc_count: -1,
+        free_count: 0,
+        live_nodes: 0,
+        live_str_bytes: 0,
+        live_backing_bytes: 0,
+        events: false,
+    });
+}
+
+fn coll_with<T>(f: impl FnOnce(&mut CollState) -> T) -> T {
+    COLL.with(|c| f(&mut c.borrow_mut()))
+}
+
+fn coll_state() {
+    // lazy init from the environment exactly once (the emitted file set is
+    // identical in daily and certified runs; knobs are runtime-observed)
+    coll_with(|s| {
+        if s.alloc_count < 0 {
+            s.alloc_count = 0;
+            s.work_remaining = std::env::var("A2X_RT_BUDGET")
+                .ok()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(DEFAULT_BUDGET);
+            s.cancelled = std::env::var("A2X_RT_CANCEL").ok().as_deref() == Some("1");
+            s.fault_alloc = std::env::var("A2X_RT_FAULT_ALLOC")
+                .ok()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
+            s.events = std::env::var("A2X_RT_EVENTS").ok().as_deref() == Some("1");
+        }
+    });
+}
+
+/// Deduct work units at a real work site; exhaustion is the typed Budget
+/// trap. Charged BEFORE the allocation/commit it pays for.
+fn coll_charge(units: i64, why: &str) -> A2xResult<()> {
+    coll_state();
+    coll_with(|s| {
+        s.work_remaining -= units;
+        if s.events {
+            eprintln!("coll:charge:{}:{}", units, why);
+        }
+        if s.work_remaining < 0 {
+            return Err(AutoTrap::Budget);
+        }
+        Ok(())
+    })
+}
+
+/// Cooperative cancellation point (loop back-edges; 1 WU each).
+pub fn a2x_coll_poll() -> A2xResult<()> {
+    coll_state();
+    coll_with(|s| {
+        s.work_remaining -= 1;
+        if s.events {
+            eprintln!("coll:poll");
+        }
+        if s.work_remaining < 0 {
+            return Err(AutoTrap::Budget);
+        }
+        if s.cancelled {
+            return Err(AutoTrap::Cancelled);
+        }
+        Ok(())
+    })
+}
+
+/// Call-frame charge (4 WU; callee prologue).
+pub fn a2x_coll_charge_call() -> A2xResult<()> {
+    coll_charge(4, "call")
+}
+
+/// Record/variant construction charge (1 WU).
+pub fn a2x_coll_charge_ctor() -> A2xResult<()> {
+    coll_charge(1, "ctor")
+}
+
+/// Str copy charge (1 WU per 8 bytes, rounded up).
+fn coll_charge_str_bytes(bytes: usize) -> A2xResult<()> {
+    let units = ((bytes as i64) + 7) / 8;
+    coll_charge(units.max(1), "str-bytes")
+}
+
+/// The n-th allocation fault gate; fires BEFORE the real request.
+fn coll_alloc_gate(bytes: usize, what: &str) -> A2xResult<()> {
+    coll_state();
+    coll_with(|s| {
+        s.alloc_count += 1;
+        if s.fault_alloc > 0 && s.alloc_count == s.fault_alloc {
+            if s.events {
+                eprintln!("coll:fault:{}:{}", what, bytes);
+            }
+            return Err(AutoTrap::Resource);
+        }
+        if s.events {
+            eprintln!("coll:alloc:{}:{}", what, bytes);
+        }
+        s.live_backing_bytes += bytes as i64;
+        Ok(())
+    })
+}
+
+fn coll_alloc_release(bytes: usize) {
+    coll_with(|s| {
+        s.free_count += 1;
+        s.live_backing_bytes -= bytes as i64;
+        if s.events {
+            eprintln!("coll:free-backing:{}", bytes);
+        }
+    });
+}
+
+/// Live accounting observers (test observation; the language never reads
+/// them — helper probes verify cleanup by these counters, not by logs).
+pub fn a2x_coll_live_nodes() -> i64 {
+    coll_with(|s| s.live_nodes)
+}
+pub fn a2x_coll_live_str_bytes() -> i64 {
+    coll_with(|s| s.live_str_bytes)
+}
+pub fn a2x_coll_live_backing_bytes() -> i64 {
+    coll_with(|s| s.live_backing_bytes)
+}
+pub fn a2x_coll_alloc_count() -> i64 {
+    coll_state();
+    coll_with(|s| s.alloc_count)
+}
+pub fn a2x_coll_free_count() -> i64 {
+    coll_with(|s| s.free_count)
+}
+
+// ---- owned Str layer (same contract as the 902 runtime) ----------------
+
+pub struct A2xStr {
+    buf: Option<String>,
+}
+
+impl A2xStr {
+    pub fn as_str(&self) -> &str {
+        self.buf.as_deref().unwrap_or("")
+    }
+}
+
+fn alloc_buffer(cap: usize, fill: &str) -> A2xResult<A2xStr> {
+    let mut b = String::new();
+    if b.try_reserve(cap).is_err() {
+        return Err(AutoTrap::Resource);
+    }
+    coll_charge_str_bytes(cap)?;
+    coll_alloc_gate(cap, "str")?;
+    coll_with(|s| s.live_str_bytes += cap as i64);
+    b.push_str(fill);
+    Ok(A2xStr { buf: Some(b) })
+}
+
+pub fn a2x_str_from_lit(s: &str) -> A2xResult<A2xStr> {
+    alloc_buffer(s.len(), s)
+}
+pub fn a2x_str_clone(s: &str) -> A2xResult<A2xStr> {
+    alloc_buffer(s.len(), s)
+}
+pub fn a2x_str_concat(l: &str, r: &str) -> A2xResult<A2xStr> {
+    let cap = l.len().checked_add(r.len()).ok_or(AutoTrap::Resource)?;
+    let mut b = String::new();
+    if b.try_reserve(cap).is_err() {
+        return Err(AutoTrap::Resource);
+    }
+    coll_charge_str_bytes(cap)?;
+    coll_alloc_gate(cap, "str")?;
+    coll_with(|s| s.live_str_bytes += cap as i64);
+    b.push_str(l);
+    b.push_str(r);
+    Ok(A2xStr { buf: Some(b) })
+}
+
+pub fn a2x_str_free(s: &mut A2xStr) {
+    // zero-charge, zero-poll, zero-allocation release path
+    if let Some(b) = s.buf.take() {
+        coll_with(|st| {
+            st.live_str_bytes -= b.len() as i64;
+        });
+    }
+}
+
+pub fn a2x_str_len(s: &str) -> A2xResult<i32> {
+    i32::try_from(s.chars().count()).map_err(|_| AutoTrap::Resource)
+}
+pub fn a2x_str_eq(l: &str, r: &str) -> bool {
+    l == r
+}
+pub fn a2x_str_ne(l: &str, r: &str) -> bool {
+    l != r
+}
+
+impl A2xCollElem for A2xStr {
+    fn a2x_elem_free(&mut self) {
+        a2x_str_free(self)
+    }
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        a2x_str_clone(self.as_str())
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        self.as_str().len() as u64
+    }
+}
+
+// ---- list element contract ----------------------------------------------
+
+pub trait A2xCollElem: Sized {
+    /// Explicit release (zero-charge/zero-poll/zero-allocation).
+    fn a2x_elem_free(&mut self);
+    /// Deep clone with billing + partial-output rollback at the helper.
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self>;
+    /// Owned Str payload bytes inside (live accounting).
+    fn a2x_elem_str_bytes(&self) -> u64;
+}
+
+impl A2xCollElem for i32 {
+    fn a2x_elem_free(&mut self) {}
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        a2x_coll_charge_ctor()?;
+        Ok(*self)
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        0
+    }
+}
+
+impl A2xCollElem for bool {
+    fn a2x_elem_free(&mut self) {}
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        a2x_coll_charge_ctor()?;
+        Ok(*self)
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        0
+    }
+}
+
+// ---- typed list ----------------------------------------------------------
+
+pub struct A2xList<E> {
+    buf: std::mem::ManuallyDrop<Vec<E>>,
+}
+
+const LIST_START_CAP: usize = 4;
+pub const LIST_MAX_ELEMS: usize = 65536;
+
+fn list_cap_bytes<E>(cap: usize) -> usize {
+    cap.saturating_mul(std::mem::size_of::<E>())
+}
+
+impl<E: A2xCollElem> A2xList<E> {
+    fn reserve_exact_cap(&mut self, want: usize) -> A2xResult<()> {
+        if self.buf.len() + want <= self.buf.capacity() {
+            return Ok(());
+        }
+        let mut new_cap = if self.buf.capacity() == 0 {
+            LIST_START_CAP.max(want)
+        } else {
+            self.buf.capacity()
+        };
+        while new_cap < self.buf.len() + want {
+            new_cap = new_cap.checked_mul(2).ok_or(AutoTrap::Resource)?;
+        }
+        if new_cap > LIST_MAX_ELEMS {
+            return Err(AutoTrap::ListIndex);
+        }
+        // bill BEFORE the request; fault BEFORE the request
+        coll_charge(2 * (new_cap - self.buf.capacity()) as i64, "list-slots")?;
+        let old_cap = self.buf.capacity();
+        let add_bytes = list_cap_bytes::<E>(new_cap).saturating_sub(list_cap_bytes::<E>(old_cap));
+        coll_alloc_gate(add_bytes, "list-grow")?;
+        if self.buf.try_reserve_exact(new_cap - old_cap).is_err() {
+            return Err(AutoTrap::Resource);
+        }
+        Ok(())
+    }
+}
+
+pub fn a2x_coll_list_new<E: A2xCollElem>() -> A2xResult<A2xList<E>> {
+    coll_state();
+    let mut v: Vec<E> = Vec::new();
+    // the ledger shows exactly one buffer allocation per .new(): the base
+    // capacity request (billed 2 WU/slot, fault-gated before the request)
+    coll_charge(2 * LIST_START_CAP as i64, "list-new")?;
+    let bytes = list_cap_bytes::<E>(LIST_START_CAP);
+    coll_alloc_gate(bytes, "list-new")?;
+    if v.try_reserve_exact(LIST_START_CAP).is_err() {
+        return Err(AutoTrap::Resource);
+    }
+    Ok(A2xList {
+        buf: std::mem::ManuallyDrop::new(v),
+    })
+}
+
+pub fn a2x_coll_list_len<E>(l: &A2xList<E>) -> i32 {
+    l.buf.len() as i32
+}
+
+pub fn a2x_coll_list_push<E: A2xCollElem>(l: &mut A2xList<E>, v: E) -> A2xResult<()> {
+    // precheck: capacity first (no mutation), then commit
+    let need = l.buf.len() + 1;
+    if need > LIST_MAX_ELEMS {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(AutoTrap::ListIndex);
+    }
+    // growth (if any) bills + faults BEFORE the element work
+    if l.buf.len() + 1 > l.buf.capacity() {
+        l.reserve_exact_cap(1)?;
+    }
+    // element slot work
+    if let Err(e) = coll_charge(2, "list-push") {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(e);
+    }
+    coll_with(|s| s.live_nodes += 1);
+    l.buf.push(v);
+    if coll_with(|s| s.events) {
+        eprintln!("coll:list_push:{}", l.buf.len());
+    }
+    Ok(())
+}
+
+pub fn a2x_coll_list_insert<E: A2xCollElem>(
+    l: &mut A2xList<E>,
+    index: i32,
+    v: E,
+) -> A2xResult<()> {
+    let idx = usize::try_from(index).map_err(|_| AutoTrap::ListIndex)?;
+    if idx > l.buf.len() {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(AutoTrap::ListIndex);
+    }
+    if l.buf.len() + 1 > l.buf.capacity() {
+        l.reserve_exact_cap(1)?;
+    }
+    if let Err(e) = coll_charge(2, "list-insert") {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(e);
+    }
+    coll_with(|s| s.live_nodes += 1);
+    l.buf.insert(idx, v);
+    Ok(())
+}
+
+pub fn a2x_coll_list_get<E: A2xCollElem + Copy>(l: &A2xList<E>, index: i32) -> A2xResult<E> {
+    let idx = usize::try_from(index).map_err(|_| AutoTrap::ListIndex)?;
+    l.buf.get(idx).copied().ok_or(AutoTrap::ListIndex)
+}
+
+/// Checked read-only view of one owned element (never materializes; the
+/// index check traps ListIndex BEFORE any access).
+pub fn a2x_coll_list_borrow_elem<'a, E>(
+    l: &'a A2xList<E>,
+    index: i32,
+) -> A2xResult<&'a E> {
+    let idx = usize::try_from(index).map_err(|_| AutoTrap::ListIndex)?;
+    l.buf.get(idx).ok_or(AutoTrap::ListIndex)
+}
+
+pub fn a2x_coll_list_set<E: A2xCollElem>(l: &mut A2xList<E>, index: i32, v: E) -> A2xResult<()> {
+    let idx = usize::try_from(index).map_err(|_| AutoTrap::ListIndex)?;
+    if idx >= l.buf.len() {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(AutoTrap::ListIndex);
+    }
+    if let Err(e) = coll_charge(2, "list-set") {
+        let mut v = v;
+        v.a2x_elem_free();
+        return Err(e);
+    }
+    // commit: the old element frees exactly once at commit
+    let mut old = std::mem::replace(&mut l.buf[idx], v);
+    old.a2x_elem_free();
+    Ok(())
+}
+
+pub fn a2x_coll_list_remove<E: A2xCollElem>(l: &mut A2xList<E>, index: i32) -> A2xResult<E> {
+    let idx = usize::try_from(index).map_err(|_| AutoTrap::ListIndex)?;
+    if idx >= l.buf.len() {
+        return Err(AutoTrap::ListIndex);
+    }
+    coll_with(|s| s.live_nodes -= 1);
+    Ok(l.buf.remove(idx))
+}
+
+/// Tail-delete clear: elements release in REVERSE index order; capacity
+/// stays (no reallocation); zero-charge/zero-poll.
+pub fn a2x_coll_list_clear<E: A2xCollElem>(l: &mut A2xList<E>) {
+    while let Some(mut e) = l.buf.pop() {
+        e.a2x_elem_free();
+        coll_with(|s| s.live_nodes -= 1);
+    }
+}
+
+/// The ONLY list release path: elements in reverse index order, buffer
+/// last. Zero-charge/zero-poll/zero-allocation.
+pub fn a2x_coll_list_free<E: A2xCollElem>(l: &mut A2xList<E>) {
+    while let Some(mut e) = l.buf.pop() {
+        e.a2x_elem_free();
+        coll_with(|s| s.live_nodes -= 1);
+    }
+    let cap = l.buf.capacity();
+    let bytes = list_cap_bytes::<E>(cap);
+    unsafe { std::mem::ManuallyDrop::drop(&mut l.buf) };
+    coll_alloc_release(bytes);
+}
+
+// ---- deep-link witness chain (helper probes; iterative, no host
+// recursion — proves the cleanup/fault mechanism scales past host stack
+// limits under a small thread stack) --------------------------------------
+
+pub struct A2xDeepLink {
+    payload: Option<Box<A2xStr>>,
+    next: Option<Box<A2xDeepLink>>,
+}
+
+pub fn a2x_coll_deep_push(head: &mut Option<Box<A2xDeepLink>>, s: &str) -> A2xResult<()> {
+    let node = A2xDeepLink {
+        payload: Some(Box::new(a2x_str_from_lit(s)?)),
+        next: head.take(),
+    };
+    *head = Some(Box::new(node));
+    Ok(())
+}
+
+/// Iterative free of a chain of ANY length (explicit work loop, no
+/// recursion — allocation-free).
+pub fn a2x_coll_deep_free(head: &mut Option<Box<A2xDeepLink>>) {
+    while let Some(mut node) = head.take() {
+        if let Some(mut p) = node.payload.take() {
+            a2x_str_free(&mut p);
+        }
+        *head = node.next.take();
+    }
+}
+
+/// Iterative deep clone with billing and rollback: the n-th payload
+/// failure frees the partially cloned prefix.
+pub fn a2x_coll_deep_clone(
+    head: &Option<Box<A2xDeepLink>>,
+) -> A2xResult<Option<Box<A2xDeepLink>>> {
+    let mut out: Option<Box<A2xDeepLink>> = None;
+    let mut cur = head.as_deref();
+    while let Some(node) = cur {
+        let payload = match &node.payload {
+            Some(p) => Some(Box::new(a2x_str_clone(p.as_str()).map_err(|e| {
+                a2x_coll_deep_free(&mut out);
+                e
+            })?)),
+            None => None,
+        };
+        let next_node = A2xDeepLink {
+            payload,
+            next: out.take(),
+        };
+        out = Some(Box::new(next_node));
+        cur = node.next.as_deref();
+    }
+    Ok(out)
+}
+
+pub fn a2x_coll_deep_len(head: &Option<Box<A2xDeepLink>>) -> i32 {
+    let mut n = 0i32;
+    let mut cur = head.as_deref();
+    while let Some(node) = cur {
+        n += 1;
+        cur = node.next.as_deref();
+    }
+    n
+}
+
+// marker: Rc/RefCell kept for the thread-local state cell only
+#[allow(dead_code)]
+fn _rc_marker(_: Option<Rc<()>>) {}

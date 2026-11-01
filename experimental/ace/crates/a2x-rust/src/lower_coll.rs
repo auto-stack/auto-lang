@@ -43,6 +43,7 @@ pub fn rust_ty_str(view: &SemanticView<'_>, ty: Ty) -> String {
             .ok()
             .map(|e| format!("A2xList<{}>", rust_ty_str(view, e)))
             .unwrap_or_else(|| "A2xList".into()),
+        Ty::Unit => "()".into(),
     }
 }
 
@@ -52,6 +53,14 @@ pub fn lower_collections_program(
     entry_name: &str,
 ) -> Result<RustProgram, A2xReject> {
     let entry = view.entry(entry_name)?;
+    let mut p = lower_coll_functions(view)?;
+    p.entry = rust_fn_name(entry.source_name);
+    Ok(p)
+}
+
+/// Lower every function of a collections view WITHOUT entry selection
+/// (the store's per-fragment produce path needs the function table only).
+pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xReject> {
     let mut functions = Vec::new();
     for f in view.functions() {
         functions.push(lower_coll_fn(view, f)?);
@@ -59,22 +68,10 @@ pub fn lower_collections_program(
     let mut marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
     marks.sort_unstable();
     let records = crate::lower::lower_records(view)?;
-    let variants = view
-        .variants()
-        .iter()
-        .map(|v| RustVariant {
-            type_index: v.type_index,
-            name: rust_variant_name(&v.name),
-            arms: v
-                .arms
-                .iter()
-                .map(|a| (sanitize(&a.name), a.payload))
-                .collect(),
-        })
-        .collect();
+    let variants = lower_coll_variants(view);
     Ok(RustProgram {
         functions,
-        entry: rust_fn_name(entry.source_name),
+        entry: String::new(),
         marks,
         records,
         clones: Vec::new(),
@@ -1078,4 +1075,20 @@ fn root_ty_of(w: &CollLower<'_, '_>, root: hir::ExprId) -> Result<Ty, A2xReject>
 
 fn is_copy(ty: Ty) -> bool {
     matches!(ty, Ty::I32 | Ty::Bool | Ty::Char)
+}
+
+/// The nominal variant table of a collections view (PLAN-904).
+pub fn lower_coll_variants(view: &SemanticView<'_>) -> Vec<RustVariant> {
+    view.variants()
+        .iter()
+        .map(|v| RustVariant {
+            type_index: v.type_index,
+            name: rust_variant_name(&v.name),
+            arms: v
+                .arms
+                .iter()
+                .map(|a| (sanitize(&a.name), a.payload))
+                .collect(),
+        })
+        .collect()
 }

@@ -1,0 +1,8 @@
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    xs.push(30)
+    xs.insert(1, 20)
+    xs.remove(1)
+    return xs.get(0) + xs.get(1) + xs.len()
+}

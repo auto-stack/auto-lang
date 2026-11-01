@@ -1079,7 +1079,9 @@ fn decode_check(
     // byte goldens — the only probe recipes with an artifacts channel.
     let a2x_recipe = matches!(
         options.probe_recipe.as_deref(),
-        Some("ac-a2r/hir-scalar-emit-v1") | Some("ac-a2r/hir-record-text-emit-v1")
+        Some("ac-a2r/hir-scalar-emit-v1")
+            | Some("ac-a2r/hir-record-text-emit-v1")
+            | Some("ac-a2r/hir-collections-emit-v1")
     );
     let expect = decode_expect(
         f.req("expect")?,
@@ -1566,7 +1568,8 @@ fn decode_options(
                             // contract when the session face lands). The
                             // PLAN-902 record-text recipe shares the shape.
                             "ac-a2r/hir-scalar-emit-v1"
-                            | "ac-a2r/hir-record-text-emit-v1" => matches!(op.as_str(), "run"),
+                            | "ac-a2r/hir-record-text-emit-v1"
+                            | "ac-a2r/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
                             _ => op != "run",
                         };
                         if !allowed {
@@ -2067,7 +2070,9 @@ fn decode_options(
             // record/text/text-record (strictly disjoint).
             let is_a2x_recipe = matches!(
                 recipe.as_str(),
-                "ac-a2r/hir-scalar-emit-v1" | "ac-a2r/hir-record-text-emit-v1"
+                "ac-a2r/hir-scalar-emit-v1"
+                    | "ac-a2r/hir-record-text-emit-v1"
+                    | "ac-a2r/hir-collections-emit-v1"
             );
             let a2x_hir = match f.sub("a2x_hir") {
                 None => {
@@ -2097,6 +2102,7 @@ fn decode_options(
                         "ac-a2r/hir-scalar-emit-v1" => {
                             matches!(profile.as_str(), "core" | "scalar")
                         }
+                        "ac-a2r/hir-collections-emit-v1" => profile == "collections",
                         _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
                     };
                     if !profile_ok {
@@ -2180,6 +2186,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-902: the record/text/text-record A2X emit recipe — the same
     // prebuilt worker and seam contract, riding the record-text fileset.
     "ac-a2r/hir-record-text-emit-v1",
+    // PLAN-904: the collections (List/Variant) A2X emit recipe — the same
+    // prebuilt worker and seam contract, riding the collections fileset
+    // (strictly disjoint recipe/profile/fileset/cert identities).
+    "ac-a2r/hir-collections-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.

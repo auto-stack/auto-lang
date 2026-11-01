@@ -147,6 +147,7 @@ fn rt_cert_draft(
             vec!["--edition".into(), "2021".into()],
         ),
         capabilities: vec!["ac.runtime.text.v1".to_string()],
+        execution_config: None,
     }
 }
 
@@ -292,6 +293,7 @@ fn rt_certify_strict_validation_negatives() {
             version_vv_sha256: String::new(),
             flags: vec![],
         },
+        execution_config: None,
         ..rt_cert_draft("c", "PASS", &files, REFERENCE_T03, vv)
     };
     assert!(no_tool.validate_as(RT_CERT_SCHEMA, RT_RECIPE).is_err());
