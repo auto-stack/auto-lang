@@ -207,6 +207,15 @@ pub fn qualify_a2r_std(code: String) -> String {
                         i += "a2r_std::sqlite".len();
                         continue;
                     }
+                    // fix-rand-face (Plan 907 rider):  is standalone-crate
+                    // only — the embedded facade has no rand module (getrandom
+                    // dep lives in crates/a2r-std), so route to the app
+                    // workspace's a2r-std path dep, mirroring sqlite.
+                    if l[i..].starts_with("a2r_std::rand") {
+                        out.push_str("::a2r_std::rand");
+                        i += "a2r_std::rand".len();
+                        continue;
+                    }
                     // Generic qualification.
                     if l[i..].starts_with("a2r_std::") {
                         out.push_str("auto_lang_core::a2r_std::");
@@ -872,4 +881,25 @@ pub fn parse_params(params_str: &str) -> Vec<ApiParam> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod qualify_faces_tests {
+    use super::qualify_a2r_std;
+
+    /// fix-rand-face: standalone-only faces route to the app workspace's
+    /// a2r-std path dep (::a2r_std), while generic modules qualify through
+    /// the embedded facade (auto_lang_core::a2r_std). sqlite pins the
+    /// Plan 742 precedent; rand pins the Plan 907 addition.
+    #[test]
+    fn sqlite_and_rand_route_standalone_generic_unchanged() {
+        let out = qualify_a2r_std(
+            "let db = a2r_std::sqlite::open(p);
+let s = a2r_std::rand::secure_hex(32);
+let h = a2r_std::env::get(\"K\");".to_string(),
+        );
+        assert!(out.contains("::a2r_std::sqlite::open(p)"), "{out}");
+        assert!(out.contains("::a2r_std::rand::secure_hex(32)"), "{out}");
+        assert!(out.contains("auto_lang_core::a2r_std::env::get"), "{out}");
+    }
 }
