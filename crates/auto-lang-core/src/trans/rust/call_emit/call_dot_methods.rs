@@ -1592,6 +1592,22 @@ impl RustTrans {
                             write!(out, "a2r_std::redis::last_error()")?;
                             return Ok(CallShape::Handled);
                         }
+                        // Plan 907: rand module fns on the Dot-path dispatch
+                        // (`use auto.rand` + `rand.secure_hex(n)` — OS CSPRNG).
+                        ("rand", "secure_hex") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::rand::secure_hex(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(CallShape::Handled);
+                        }
+                        ("rand", "last_error") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::rand::last_error()")?;
+                            return Ok(CallShape::Handled);
+                        }
                         ("Map", "new") => {
                             write!(out, "std::collections::HashMap::new()")?;
                             return Ok(CallShape::Handled);

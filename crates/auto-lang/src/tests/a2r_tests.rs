@@ -1946,6 +1946,11 @@ fn test_18_rust_std_016_cmp_ordering() {
 fn test_18_rust_std_017_hash_map_ops() {
     test_a2r("17_rust_std/017_hash_map_ops").unwrap();
 }
+// Plan 907: rand stdlib module (OS CSPRNG secure_hex) a2r emission.
+#[test]
+fn test_18_rust_std_018_rand() {
+    test_a2r("17_rust_std/018_rand").unwrap();
+}
 // Plan 349: http.download / http.upload / http.download_resume a2r parity.
 #[test]
 fn test_18_rust_std_011_http_download_upload() {

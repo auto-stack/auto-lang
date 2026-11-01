@@ -196,6 +196,18 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                 allow_only_rs: &[],
             },
         ),
+        (
+            // Plan 907: rand module — secure_hex/last_error mirror exactly.
+            "rand.rs.at",
+            PairOpt {
+                rs_mod: "rand",
+                implicit_self: false,
+                qualified_methods: false,
+                renames: &[],
+                allow_only_at: &[],
+                allow_only_rs: &[],
+            },
+        ),
     ]
 }
 

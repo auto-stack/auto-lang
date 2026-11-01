@@ -1,0 +1,37 @@
+/// Rust implementation of the rand module (secure randomness).
+/// Backs `crates/a2r-std/src/rand.rs` (getrandom, OS CSPRNG) — Plan 907.
+///
+/// This file is the Auto-side source of truth for the hand-copied a2r-std
+/// module (KNOWN-DEBT 396 manual-copy pattern): keep the signatures below in
+/// sync with the Rust copy. The 396 signature-parity test checks name/arity
+/// alignment between the two.
+
+/// Draw n random bytes from the OS CSPRNG as lowercase hex (2n chars).
+/// Returns "" for n <= 0; on entropy failure returns "" and records the
+/// reason in last_error().
+#[rs]
+pub fn secure_hex(n int) str {
+    if n <= 0 {
+        return ""
+    }
+    let mut buf Vec<u8> = Vec.with_capacity(n)
+    match getrandom::getrandom(&mut buf) {
+        Ok(_) => {
+            let mut out String = String.with_capacity(n * 2)
+            for b in buf {
+                out.push_str(&format!("{:02x}", b))
+            }
+            return out
+        }
+        Err(e) => {
+            *LAST_ERROR.lock().unwrap() = format!("getrandom failed: {}", e)
+            return ""
+        }
+    }
+}
+
+/// The most recent error message recorded by this module ("" if none).
+#[rs]
+pub fn last_error() str {
+    return LAST_ERROR.lock().unwrap().clone()
+}

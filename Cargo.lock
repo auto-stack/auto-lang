@@ -14,6 +14,7 @@ name = "a2r-std"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "getrandom 0.2.17",
  "redis",
  "reqwest 0.12.28",
  "rusqlite",
