@@ -359,8 +359,8 @@ def validate(receipt, output):
     if not e2e or e2e.get('run_exit') != 0:
         raise ValueError('PLAN-906 lang-web-e2e combined-face leg missing or failed')
     e2e_log = read(e2e['run_output']).decode('utf-8', 'replace')
-    e2e_match = re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed, (\d+) failed', e2e_log)
-    if not e2e_match or e2e_match.group(3) != '0':
+    e2e_match = re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed(?:, (\d+) failed)?', e2e_log)
+    if not e2e_match or int(e2e_match.group(3) or 0) != 0:
         raise ValueError('lang-web-e2e leg is not a clean all-pass summary')
     by_name = {r['leg']: r for r in rows}
     ui_listing = json.loads(read(by_name['ui-full']['listing']))
@@ -406,13 +406,14 @@ def run(output):
                        '--config-file', str(selected_roots['language'] / '.config/nextest-full.toml'),
                        '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
             e2e_result, e2e_exec = fixed.invoke(e2e_run, e2e_dir, env, e2e_out, 'run', timeout=14400)
-            e2e_log = (e2e_out / e2e_exec['stdout']).read_text(encoding='utf-8', errors='replace')
-            import re as _re
-            e2e_summary = _re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed, (\d+) failed(?:, (\d+) skipped)?', e2e_log)
-            if e2e_result.returncode or not e2e_summary or e2e_summary.group(3) != '0':
-                raise ValueError('lang-web-e2e family failed: exit=%s' % e2e_result.returncode)
+            # nextest 人读 Summary 走 stderr；stdout 是 libtest-json-plus。
+            e2e_log = (e2e_out / e2e_exec['stderr']).read_text(encoding='utf-8', errors='replace')
+            e2e_summary = re.search(r'Summary \[[^\]]+\] (\d+) tests run: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?', e2e_log)
+            e2e_failed = int(e2e_summary.group(3) or 0) if e2e_summary else None
+            if e2e_result.returncode or e2e_failed is None or e2e_failed != 0:
+                raise ValueError('lang-web-e2e family failed: exit=%s failed=%s' % (e2e_result.returncode, e2e_failed))
             receipt['lang_web_e2e'] = {'cwd': str(e2e_dir), 'run_command': e2e_run,
-                                        'run_output': proof(e2e_out / e2e_exec['stdout']),
+                                        'run_output': proof(e2e_out / e2e_exec['stderr']),
                                         'run_exit': e2e_result.returncode}
             ui_listing = None
             for name in EXTERNAL_LEGS:
