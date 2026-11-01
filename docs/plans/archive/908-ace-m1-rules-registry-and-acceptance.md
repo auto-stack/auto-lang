@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-applicability.md, docs/sp
 touched_goals: [GOAL-002]
 affects: [auto-test-case, ace-m1, test-infrastructure]
 depends_on: [PLAN-903, PLAN-893, PLAN-862]
-current_step: 11
+current_step: 12
 total_steps: 12
 ---
 
@@ -276,7 +276,7 @@ a2r emit与compile-run分列：复合认证缺不否定获准金样轴，但原�
 | T-09 | review | T-08冻结SHA/同树 | 独立核批准映射/源/实际oracle/反控/残余scope/SD/遗漏延期，finding同树修复重绑，pass仅reviewed | AC-07 | [x] R1 needs_fix（3 findings）→ 修复 dc8eca3ae → R2 final pass（fresh git-archive 树 contract/acceptance 绿） |
 | T-10 | merge | T-09 pass | 冻结完整受影响职责/消费者门或有据复用，同身份漂移重核受影响；批回归仅due主检出单实例 | AC-08 | [x] 交付提交 dc8eca3ae 上一次跑并集 `cargo t infra-ace-m1 infra-fixed infra-ace-policy case-ace-m1-nb-diags-908 case-ace-m1-base` 5/5 PASS（run-yw3mm3ti）；批回归：收据 last_covered 895 waived_by_user（2026-10-30 常设豁免），48h 规则下 due → 记 user-pending（沿 904/905 惯例，不在计划树内启动） |
 | T-11 | merge | T-10 | 合入、SD-01..05/批准来源读回、旧债具名关闭/保留及路线/能力后继，archive delivered，不签虚假M1 | AC-08 | [x] wt-guard clean → 主检出恢复同内容决策件（874ccc11 两侧相同）→ `git merge --ff-only plan-908-dev`：master=dc8eca3ae、0 merge commit、线性；SD-01..05 落地读回 blob 一致（applicability 0cba0d20/scenario-oracles c0539b96/conformance d27e80e3/golden bd784343/gap-audit 63343b86·blob ed8ed9ab/project fd71c4ef）；sidecar tracked on main；main smoke：contract exit0、acceptance exit0（can_claim_m1=false）、治理 23 OK；D-862-R1-01 闭合在档；archive delivered，M1 仍红不签 |
-| T-12 | merge | T-11 | 摘要折计划、全输出/hold对账、fresh wt-guard clean后清树/分支/组/plan-artifacts并登记，真实12/12 | AC-08 | [ ] |
+| T-12 | merge | T-11 | 摘要折计划、全输出/hold对账、fresh wt-guard clean后清树/分支/组/plan-artifacts并登记，真实12/12 | AC-08 | [x] fresh wt-guard 5/5 clean（lang-908/auto-lang·auto-web·auto-ui·auto-down·auto-man）且各树 0 dirty、auto-lang HEAD=dc8eca3ae 已落地 → `git worktree remove`×5、`git branch -d plan-908-dev`（was dc8eca3ae）、`rmdir .wt/lang-908`；scope `plan-artifacts/plan-908`（6.4M/931 文件）整删，残余证据 hash 折叠：gen_sidecars.py 7eb69da3…/migration-diff.tsv 7b4cfb75…/acceptance-final 报告 c7830376…(152345B)/probe-out report 5b36f06a…；dev target 随树删除不回收；登记：plan-artifacts/.retention/policy.json 新增 auto-lang/PLAN-908 cleaned 记录，repo 本地索引无 908 条目（906 in-flight 保留）；无 holds；真实 12/12 |
 
 ## 9. 复审记录
 
@@ -340,13 +340,13 @@ stage: goal | plan_id: PLAN-908 | plan_revision: r2 | round: 4 | from: execution
 
 ### r2 沉淀 merge（2026-11-01）—— PLAN-908:r2
 
-stage: merge | plan_id: PLAN-908 | plan_revision: r2 | completion_kind: delivered | checkpoints:
+stage: merge | plan_id: PLAN-908 | plan_revision: r2 | outcome: pass | completion_kind: delivered | delivery_commit: dc8eca3ae | archive_path: docs/plans/archive/908-ace-m1-rules-registry-and-acceptance.md | checkpoints:
 - `prepared`：reviewed r2 final pass @ dc8eca3ae（父 a93eb8463，基 ed4286792=master tip，无需 rebase）；SD-01..05 已在树内提交并经终审；worktree 净、wt-guard clean。
 - `gate`（T-10）：并集 5 组 PASS @ dc8eca3ae（run-yw3mm3ti）；批回归 due 记 user-pending（standing waiver 2026-10-30）。
 - `landed`：主检出 `git checkout -- docs/plans/reports/ace-m1-scope-decision-2026-10-28.md`（未提交副本 874ccc11 与来件逐字节相同，无损）→ `git merge --ff-only plan-908-dev` → master = **dc8eca3ae**，`git log --merges dc8eca3ae..master`=0，线性；.next-id 工作区 910 为他会在途取号，未动。
 - `canonical_verified`：六规范 blob sha256 见 T-11；两 sidecar `git ls-files` on main=2；binding caf5f79f/applicability 74c9109b/manifest e20494ea；main smoke contract/acceptance exit 0、治理 23 OK。无 index/ledger 写（PLAN-106）。
 - `archived`：本文件 → `docs/plans/archive/908-ace-m1-rules-registry-and-acceptance.md`，status archived，随本节一起提交到 master（仅本计划文件；主检出其他会话 docs WIP 原样保留不入本提交）。
-- `cleaned`：待 T-12（下节记录）。
+- `cleaned`：T-12 完成——5 树 fresh guard clean 后移除、分支/组目录删除、scope 整删、登记刷新（见 T-12 行）；主检出全路径对账：本包命令/日志实际输出目录仅 `plan-artifacts/plan-908/**`（含 acceptance-run1/final/review-acc/repair-acc/main-acc/fresh/fresh-acc/nb-run/nb-run2/source-run/probe/probe-out/wrongfam/wrongfam-out）与 worktree 内 target/，均已随整删/树删消失；无其他盘符/外置目录。
 - 落地≠部署：本包仅测试治理/脚本/规范/测试数据，无生产二进制或 web bundle 消费；worktree 内 dev `auto-case.exe` 随树删除——显式观察项，无需重建/重启。
 
 
