@@ -232,7 +232,11 @@ pub enum RExprKind {
         args: Vec<ResolvedArg>,
     },
     CreateClosure {
-        fn_index: usize,
+        /// PLAN-909 stable lambda identity: the callee is referenced by its
+        /// owner-stable name (`__closure_<owner>_<k>`), never by a
+        /// module-wide index — inserting/removing an unrelated lambda in
+        /// another owner shifts no DefIds here.
+        callee: String,
         captures: Vec<(LocalRef, crate::hir::CaptureMode)>,
     },
     CallIntrinsic {
@@ -604,6 +608,7 @@ impl Drop for RBlock {
     }
 }
 
+#[derive(Clone)]
 pub struct ResolvedFn {
     pub name: String,
     pub name_span: Span,
@@ -816,12 +821,118 @@ pub fn resolve(
 /// Resolve with an explicit profile surface (PLAN-767): identical name
 /// resolution on both surfaces — the profile only gated which operators
 /// the parser accepted; value types are computed per operator here.
+/// PLAN-909 §5.5: the owner-granular frontend cache of one closures
+/// module — per top-level function, its item-text fingerprint plus the
+/// resolved entry and its lambdas. A later apply whose DECLARATION CONTEXT
+/// fingerprint matches and whose owner text is byte-identical reuses the
+/// entry wholesale (no resolve walk); anything else re-resolves that owner.
+#[derive(Clone)]
+pub struct ClosuresOwnerCache {
+    /// Fingerprint of every item's declaration region (fn signatures,
+    /// type/other items) — the module-level fact a cached body's resolve
+    /// depends on outside its own text.
+    pub context_fp: u64,
+    pub owners: BTreeMap<String, CachedOwner>,
+    /// The module's closure-signature table as of this cache: body-driven
+    /// (lambdas intern during their owner's resolve) and referenced BY
+    /// INDEX from cached entries (`VT::Function(i)`). A warm apply SEEDS
+    /// the fresh table with this snapshot before resolving, so interning
+    /// (value-dedup, append-only) can never shift a cached index.
+    pub function_types: Vec<ClosureFnType>,
+}
+
+#[derive(Clone)]
+pub struct CachedOwner {
+    pub text_fp: u64,
+    pub resolved: ResolvedFn,
+    /// The owner's lambdas in creation order (stable owner-bound names).
+    pub lambdas: Vec<ResolvedFn>,
+}
+
+pub(crate) struct WarmIo<'a> {
+    pub src: &'a str,
+    pub prev: Option<&'a ClosuresOwnerCache>,
+    pub context_fp: u64,
+    pub out: ClosuresOwnerCache,
+    pub reused: BTreeSet<String>,
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_001b_3);
+    }
+    h
+}
+
+/// The module's declaration-context fingerprint: every item's signature
+/// region (`fn name(params) -> ret`, everything before the body brace) or,
+/// for non-fn items, the whole item text. Length-framed pieces — no
+/// concatenation ambiguity.
+pub(crate) fn decl_context_fp(program: &ast::Program, src: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mix = |piece: &str, h: &mut u64| {
+        *h ^= piece.len() as u64;
+        *h = h.wrapping_mul(0x0000_0100_0000_001b_3);
+        for b in piece.bytes() {
+            *h ^= b as u64;
+            *h = h.wrapping_mul(0x0000_0100_0000_001b_3);
+        }
+    };
+    for item in &program.items {
+        match item {
+            ast::Item::Fn(f) => mix(&src[f.span.start..f.body.span.start], &mut h),
+            ast::Item::Type(t) => mix(&src[t.span.start..t.span.end], &mut h),
+            ast::Item::Enum(e) => mix(&src[e.span.start..e.span.end], &mut h),
+        }
+    }
+    h
+}
+
+/// PLAN-909 §5.5 warm closures resolve: the whole module resolves cold
+/// unless a previous cache is supplied; with one, owners whose text and
+/// the declaration context are unchanged are reused without a walk.
+/// Returns the resolved program, the NEW cache (for the next apply) and
+/// the set of reused owner names (the incremental report).
+pub fn resolve_closures_cached(
+    program: &ast::Program,
+    src: &str,
+    capabilities: &[String],
+    prev: Option<&ClosuresOwnerCache>,
+) -> Result<(ResolvedProgram, ClosuresOwnerCache, BTreeSet<String>), Vec<Diagnostic>> {
+    let context_fp = decl_context_fp(program, src);
+    let mut warm = WarmIo {
+        src,
+        prev,
+        context_fp,
+        out: ClosuresOwnerCache {
+            context_fp,
+            owners: BTreeMap::new(),
+            function_types: Vec::new(),
+        },
+        reused: BTreeSet::new(),
+    };
+    let (fns, records, coll, _) = resolve_detailed(program, capabilities, SourceProfile::Closures, Some(&mut warm))?;
+    Ok((
+        ResolvedProgram {
+            fns,
+            records,
+            lists: coll.lists,
+            variants: coll.variants,
+            function_types: coll.function_types,
+        },
+        warm.out,
+        warm.reused,
+    ))
+}
+
 pub fn resolve_with(
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface)?;
+    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None)?;
     Ok(ResolvedProgram {
         fns,
         records,
@@ -883,6 +994,7 @@ fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
+    mut warm: Option<&mut WarmIo<'_>>,
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -1161,11 +1273,54 @@ fn resolve_detailed(
         }
     }
 
-    // Pass 2: per-function body resolution.
+    // PLAN-909 §5.5 warm seeding: cached owners reference the module's
+    // closure-signature table by INDEX; seeding the fresh table with the
+    // previous snapshot keeps every cached index valid (interning is
+    // value-dedup and append-only past the seed).
+    if let Some(w) = warm.as_ref() {
+        if let Some(prev) = w.prev {
+            coll.function_types = prev.function_types.clone();
+        }
+    }
+    // Pass 2: per-function body resolution. PLAN-909 §5.5: with a warm
+    // cache present, an owner whose ITEM TEXT and the module's DECLARATION
+    // CONTEXT are unchanged reuses its resolved entry (and its lambdas)
+    // without a resolve walk — the reuse is a real work skip, observed as
+    // zero `resolve` body-work for that owner.
     let mut fns = Vec::new();
     let mut closure_fns = Vec::new();
     for (i, f) in flat.iter().enumerate() {
+        let owner_name = f.name.name.clone();
+        let text_fp = warm.as_ref().map(|w| {
+            let span = f.span;
+            fnv64(w.src[span.start..span.end].as_bytes())
+        });
+        let cached_owner: Option<CachedOwner> = {
+            let mut hit = None;
+            if let (Some(w), Some(fp)) = (warm.as_ref(), text_fp) {
+                if let Some(prev) = w.prev {
+                    if prev.context_fp == w.context_fp {
+                        if let Some(o) = prev.owners.get(&owner_name) {
+                            if o.text_fp == fp {
+                                hit = Some(o.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            hit
+        };
+        if let Some(owner) = cached_owner {
+            fns.push(owner.resolved.clone());
+            closure_fns.extend(owner.lambdas.iter().cloned());
+            if let Some(w) = warm.as_mut() {
+                w.out.owners.insert(owner_name.clone(), owner);
+                w.reused.insert(owner_name.clone());
+            }
+            continue;
+        }
         crate::body_work::record_resolve(&f.name.name);
+        let lambdas_before = closure_fns.len();
         fns.push(resolve_fn(
             f,
             &sigs,
@@ -1180,8 +1335,23 @@ fn resolve_detailed(
             &mut closure_fns,
             flat.len(),
         ));
+        if let (Some(w), Some(fp)) = (warm.as_mut(), text_fp) {
+            let lambdas: Vec<ResolvedFn> = closure_fns[lambdas_before..].to_vec();
+            let resolved = fns.last().expect("just pushed").clone();
+            w.out.owners.insert(
+                owner_name.clone(),
+                CachedOwner {
+                    text_fp: fp,
+                    resolved,
+                    lambdas,
+                },
+            );
+        }
     }
     fns.extend(closure_fns);
+    if let Some(w) = warm.as_mut() {
+        w.out.function_types = coll.function_types.clone();
+    }
 
     // PLAN-862 entry matrix: the entry-unit profile has exactly one entry
     // and a frozen accept/reject set (`entry-contract.md` §2). Runs after
@@ -1633,7 +1803,7 @@ pub fn resolve_env(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<CheckedEnv, Vec<Diagnostic>> {
-    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface)?;
+    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
             fns,
@@ -2396,7 +2566,6 @@ struct FnResolver<'a> {
     loop_count: usize,
     used_intrinsics: BTreeSet<&'static str>,
     closure_defs: &'a mut Vec<ResolvedFn>,
-    closure_base: usize,
     moved_locals: BTreeSet<LocalRef>,
     /// Borrow-capturing closures are restricted to direct calls through a
     /// local binding; any value read is an escape.
@@ -2409,6 +2578,12 @@ struct FnResolver<'a> {
     /// function's non-move closures write (function-wide static grouping;
     /// `scan_shared_capture_cells` owns the scope model).
     shared_cell_spans: BTreeSet<usize>,
+    /// PLAN-909 §5.5: the enclosing top-level function's name and the
+    /// per-owner lambda ordinal — together they mint the OWNER-STABLE
+    /// synthetic identity `__closure_<owner>_<k>` (an unrelated owner's
+    /// lambda insertion/removal never renames this owner's units).
+    owner_name: String,
+    closure_count: usize,
 }
 
 fn resolve_fn(
@@ -2423,7 +2598,7 @@ fn resolve_fn(
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
     closure_defs: &mut Vec<ResolvedFn>,
-    closure_base: usize,
+    _closure_base: usize,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -2447,7 +2622,6 @@ fn resolve_fn(
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
         closure_defs,
-        closure_base,
         moved_locals: BTreeSet::new(),
         borrowed_closure_locals: BTreeSet::new(),
         records,
@@ -2457,6 +2631,8 @@ fn resolve_fn(
         shared_cell_spans: super::closure_capture::scan_shared_capture_cells(
             &f.params, &f.body,
         ),
+        owner_name: f.name.name.clone(),
+        closure_count: 0,
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -2964,10 +3140,13 @@ impl<'a> FnResolver<'a> {
             params: param_types.clone(),
             result,
         });
-        let fn_index = self.closure_base + self.closure_defs.len();
-        let name = format!("__closure_{}", fn_index);
+        // PLAN-909 §5.5: the owner-stable identity. The previous
+        // module-wide ordinal made every later lambda rename when an
+        // unrelated function or earlier lambda was inserted or reordered.
+        let name = format!("__closure_{}_{}", self.owner_name, self.closure_count);
+        self.closure_count += 1;
         self.closure_defs.push(ResolvedFn {
-            name,
+            name: name.clone(),
             name_span: span,
             item_span: span,
             param_names,
@@ -2985,7 +3164,7 @@ impl<'a> FnResolver<'a> {
             span,
             vt: VT::Function(type_index),
             kind: RExprKind::CreateClosure {
-                fn_index,
+                callee: name.clone(),
                 captures: capture_bindings,
             },
         }

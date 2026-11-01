@@ -29,6 +29,8 @@ use super::resolve::{
     ResolvedProgram, VT,
 };
 use super::SourceProfile;
+use std::collections::BTreeSet;
+
 use crate::atom_text::{Diagnostic, Span, Stage};
 
 pub fn typecheck(program: &ResolvedProgram) -> Result<(), Vec<Diagnostic>> {
@@ -42,8 +44,22 @@ pub fn typecheck_with(
     program: &ResolvedProgram,
     _surface: SourceProfile,
 ) -> Result<(), Vec<Diagnostic>> {
+    typecheck_with_skip(program, &BTreeSet::new())
+}
+
+/// PLAN-909 §5.5: the whole-module typecheck walk, minus a named skip set —
+/// a warm apply skips the bodies (and lambdas) of owners the frontend cache
+/// reused verbatim. The skip is a REAL work skip: no `typecheck` body-work
+/// is recorded for a skipped name.
+pub fn typecheck_with_skip(
+    program: &ResolvedProgram,
+    skip: &BTreeSet<String>,
+) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for f in &program.fns {
+        if skip.contains(&f.name) {
+            continue;
+        }
         check_block(&f.body, program, f, &mut diags);
     }
     if diags.is_empty() {
@@ -294,8 +310,11 @@ fn check_expr(
                     }
                 }
             }
-            RExprKind::CreateClosure { fn_index, captures } => {
-                if let Some(closure) = program.fns.get(*fn_index) {
+            RExprKind::CreateClosure { callee, captures } => {
+                // PLAN-909: the callee is referenced by its owner-stable
+                // name; the module index never leaks here (inserting an
+                // unrelated lambda shifts no cached body).
+                if let Some(closure) = program.fns.iter().find(|f| &f.name == callee) {
                     let signature = match e.vt {
                         VT::Function(index) => program.function_types.get(index),
                         _ => None,

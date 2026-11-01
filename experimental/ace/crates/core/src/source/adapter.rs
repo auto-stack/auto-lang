@@ -36,6 +36,7 @@ use super::resolve::{
 };
 use super::typecheck;
 use super::{SourceProfile, SOURCE_PROFILE, TRACE_CAPABILITY};
+use std::collections::BTreeSet;
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::verify::CheckedModule;
 use std::collections::BTreeMap;
@@ -168,6 +169,121 @@ pub fn compile_closures_source(
         atom_text: parts.atom_text,
         checked,
     })
+}
+
+/// PLAN-909 §5.5 observed frontend stages of one closures compile. The
+/// maps are the REAL body-work ledger (`crate::body_work` records, per
+/// function): a reused owner appears with zero resolve/typecheck walks;
+/// plan (module atom emission) and bind (module descriptor binding) stay
+/// whole-module steps and are reported as they run — never zeroed out.
+#[derive(Clone, Debug, Default)]
+pub struct ClosuresFrontendLedger {
+    pub parse: u32,
+    /// resolve walks per function name (cached owners absent entirely).
+    pub resolve_walks: BTreeMap<String, u64>,
+    /// typecheck walks per function name (skipped bodies absent).
+    pub typecheck_walks: BTreeMap<String, u64>,
+    /// atom-emission walks per function name (module-level today).
+    pub plan_walks: BTreeMap<String, u64>,
+    /// descriptor-bind walks per function name (module-level today).
+    pub bind_walks: BTreeMap<String, u64>,
+    /// owners reused verbatim from the previous apply's cache.
+    pub reused_owners: BTreeSet<String>,
+    /// owners re-resolved this apply.
+    pub changed_owners: BTreeSet<String>,
+}
+
+/// PLAN-909 §5.5: the closures compile with an owner-granular warm cache.
+/// On a body-only edit (declaration context unchanged), every owner whose
+/// item text is unchanged reuses its resolved entry — ZERO resolve and
+/// typecheck walks for it — and its lambda unit identities (owner-stable
+/// names) are untouched. Emission and binding remain whole-module steps,
+/// visible as such in the returned ledger. Verification is the same
+/// whole-module `verify_closures` gate as the cold path.
+pub fn compile_closures_source_incremental(
+    prev: Option<&super::resolve::ClosuresOwnerCache>,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<
+    (
+        CompiledSource,
+        super::resolve::ClosuresOwnerCache,
+        ClosuresFrontendLedger,
+    ),
+    Vec<Diagnostic>,
+> {
+    type WarmFrontendParts = Result<
+    (
+        String,
+        crate::hir::Bundle,
+        super::resolve::ClosuresOwnerCache,
+        std::collections::BTreeSet<String>,
+    ),
+    Vec<Diagnostic>,
+>;
+    let (parts, work) = crate::body_work::capture_body_work(
+        || -> WarmFrontendParts {
+                let program = super::parse_program_with(src, SourceProfile::Closures)
+                    .map_err(|d| vec![d])?;
+            let (resolved, cache, reused) =
+                super::resolve::resolve_closures_cached(&program, src, capabilities, prev)?;
+            // Skipped typecheck set: every reused owner plus its lambdas.
+            let mut skip = BTreeSet::new();
+            for owner in &reused {
+                if let Some(entry) = cache.owners.get(owner) {
+                    skip.insert(entry.resolved.name.clone());
+                    for lambda in &entry.lambdas {
+                        skip.insert(lambda.name.clone());
+                    }
+                }
+            }
+            super::typecheck::typecheck_with_skip(&resolved, &skip)?;
+            let mut em = Emitter::new(&resolved, src.len(), SourceProfile::Closures);
+            em.plan_module();
+            let atom_text = em.render(module_path);
+            let bundle = crate::descriptor::bind(crate::closures_descriptor(), &atom_text)?;
+            Ok((atom_text, bundle, cache, reused))
+    });
+    let (atom_text, bundle, cache, reused) = parts?;
+    let checked = crate::verify::verify_closures(bundle)?;
+    let mut ledger = ClosuresFrontendLedger {
+        parse: 1,
+        ..Default::default()
+    };
+    for (name, counts) in work {
+        if counts.resolve > 0 {
+            ledger.resolve_walks.insert(name.clone(), counts.resolve);
+        }
+        if counts.typecheck > 0 {
+            ledger.typecheck_walks.insert(name.clone(), counts.typecheck);
+        }
+        if counts.plan > 0 {
+            ledger.plan_walks.insert(name.clone(), counts.plan);
+        }
+        if counts.bind > 0 {
+            ledger.bind_walks.insert(name.clone(), counts.bind);
+        }
+    }
+    ledger.reused_owners = reused.clone();
+    let changed: BTreeSet<String> = cache
+        .owners
+        .keys()
+        .filter(|o| !reused.contains(*o))
+        .cloned()
+        .collect();
+    ledger.changed_owners = changed;
+    let parts_input = fnv1a_hex(src.as_bytes());
+    Ok((
+        CompiledSource {
+            profile: super::CLOSURES_SOURCE_PROFILE,
+            input_hash: parts_input,
+            atom_text,
+            checked,
+        },
+        cache,
+        ledger,
+    ))
 }
 
 /// Compile under the record source profile (PLAN-771): the scalar surface
@@ -841,7 +957,8 @@ enum EKind {
         eval: Vec<usize>,
     },
     CreateClosure {
-        callee_fn: usize,
+        /// PLAN-909: the owner-stable lambda NAME — not a module index.
+        callee_fn: String,
         captures: Vec<(usize, crate::hir::CaptureMode)>,
     },
     /// String literal (PLAN-770); the VT records the contextual borrowing
@@ -1991,10 +2108,10 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::CreateClosure { fn_index, captures } => {
+            RExprKind::CreateClosure { callee, captures } => {
                 plan.exprs.push(ENode {
                     kind: EKind::CreateClosure {
-                        callee_fn: *fn_index,
+                        callee_fn: callee.clone(),
                         captures: captures
                             .iter()
                             .map(|(local, mode)| (local.0, *mode))
@@ -3499,12 +3616,10 @@ impl<'p> Emitter<'p> {
                             callee_fn,
                             captures,
                         } => {
-                            let callee = self
-                                .program
-                                .fns
-                                .get(*callee_fn)
-                                .map(|function| format!("d_{}", function.name))
-                                .unwrap_or_else(|| "d_unknown".to_string());
+                            // PLAN-909: owner-stable name — the emitted
+                            // callee text is identical for a cached owner
+                            // regardless of other owners' lambda counts.
+                            let callee = format!("d_{}", callee_fn);
                             let capture_text = captures
                                 .iter()
                                 .map(|(local, mode)| {

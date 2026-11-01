@@ -215,6 +215,183 @@ fn av_closures_909_clone_detaches_the_cell() {
     );
 }
 
+/// V-09 (source leg): a program that creates live cells and closures and
+/// then TRAPS — the trap exit still releases every owned buffer (the
+/// all-exit cleanup law), observed on the real whole-module dispatch.
+#[test]
+fn av_closures_909_trap_exit_releases_cells_and_envs() {
+    use ace_av_core::abc::encode_abc;
+    use ace_av_core::abc_verify::verify_abc_bytes;
+    use ace_av_core::av::{execute, CancelFlag, ExecLimits};
+    use ace_av_core::contract::ExecOutcome;
+    use ace_av_core::mir_verify::verify_mir;
+
+    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; let a = f(20); let b = 41 / 0; return a + b }";
+    let compiled = compile_closures_source(source, "trap-exit.at", &[])
+        .unwrap_or_else(|d| panic!("compile: {d:#?}"));
+    let mir = lower_checked_closures(&compiled.checked, "main", 909).expect("lower");
+    verify_mir(&mir).expect("verify");
+    let wire = encode_abc(&mir).expect("encode");
+    let loaded = verify_abc_bytes(&wire.to_flat(), &mir.owner).expect("admit");
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Trap { .. }), "{out:?}");
+    assert_eq!(
+        trace.arena.clone().expect("ledger").live(),
+        0,
+        "the trap exit released the cell and both closure envs"
+    );
+}
+
+/// V-14 (source leg): a FAILED candidate (diagnostics) leaves the session
+/// usable — the installed program, wires and frontend cache survive, the
+/// next valid edit produces exactly its unit, and re-applying the installed
+/// source produces nothing.
+#[test]
+fn av_closures_909_failed_candidate_then_recovery() {
+    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; return f(41) }";
+    let bad = "fn main() int { var x int = 1; var f = (n int) => { x = x + s; return x }; return f(41) }";
+    let edited = source.replacen("x = x + n; return x }; return f(41)", "x = x + n + 1; return x }; return f(40)", 1);
+    let root = isolated_store("recover");
+    let mut session = ClosuresSourceSession::new(&root);
+    let first = session.apply_source(source, "recover.at").expect("cold apply");
+    assert_eq!(first.value, 42);
+
+    // The failed candidate: unknown name `s` — Diagnostics, nothing installed.
+    let err = match session.apply_source(bad, "recover.at") {
+        Err(err) => err,
+        Ok(_) => panic!("bad candidate must be rejected"),
+    };
+    assert!(
+        matches!(err, CompileAndRunError::Diagnostics(ref ds) if ds.iter().any(|d| d.code == "source.undefined")),
+        "expected the unknown-name diagnostics, got: {err:?}"
+    );
+
+    // Recovery: the valid edit produces exactly its unit; the session state
+    // (wires, cache) survived the failure untouched.
+    let next = session.apply_source(&edited, "recover.at").expect("edited applies after failure");
+    assert_eq!(next.value, 42);
+    // The edit touches BOTH main's call site and the lambda body: exactly
+    // those two units are produced — nothing else, nothing missing.
+    assert_eq!(next.submitted_units, 2, "{:?}", next.submitted_unit_names);
+    assert!(next.submitted_unit_names.contains(&"d_main".to_string()));
+    assert!(next.submitted_unit_names.contains(&"d___closure_main_0".to_string()));
+
+    // Re-applying the installed source: zero production of any kind.
+    let again = session.apply_source(&edited, "recover.at").expect("re-apply");
+    assert_eq!(again.submitted_units, 0);
+    assert!(again.lowered_units.is_empty(), "{:?}", again.lowered_units);
+    assert!(again.frontend.reused_owners.contains("main"));
+    session.close().expect("close");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// V-11 (deep): a body-only edit of ONE lambda re-walks ONLY its owner —
+/// every other owner's resolve/typecheck walk is ZERO (observed in the
+/// frontend ledger), its units skip lowering/encoding entirely, and only
+/// the edited lambda's unit is submitted.
+#[test]
+fn av_closures_909_warm_body_edit_zero_walks_for_unchanged_owners() {
+    let source = "fn helper(n int) int { return n + 1 }\nfn other() int { return 0 }\nfn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; let g = (n int) => { return helper(n) }; return f(20) + g(20) + other() }";
+    let edited = source.replacen("x = x + n; return x }; let g", "x = x + n + 0; return x }; let g", 1);
+    assert_ne!(source, edited);
+    let root = isolated_store("warm-ledger");
+    let mut session = ClosuresSourceSession::new(&root);
+    let first = session.apply_source(source, "warm.at").expect("cold apply");
+    assert_eq!(first.value, 42);
+    // Cold: every owner walked.
+    assert!(first.frontend.resolve_walks.contains_key("helper"));
+    assert!(first.frontend.resolve_walks.contains_key("other"));
+    assert_eq!(first.frontend.parse, 1);
+
+    let next = session.apply_source(&edited, "warm.at").expect("warm apply");
+    assert_eq!(next.value, 42);
+    // Only the edited owner re-walked; untouched owners: ZERO resolve and
+    // typecheck walks (absent from the ledger, not zeroed by hand).
+    let resolve_names: Vec<&String> = next.frontend.resolve_walks.keys().collect();
+    assert_eq!(resolve_names, ["main"], "{resolve_names:?}");
+    // Owner granularity: the edited owner's own sibling lambda re-walks
+    // with it (it lives inside main's body); OTHER owners' lambdas do not.
+    let typecheck_names: Vec<&String> = next.frontend.typecheck_walks.keys().collect();
+    assert_eq!(
+        typecheck_names,
+        ["__closure_main_0", "__closure_main_1", "main"],
+        "{typecheck_names:?}"
+    );
+    assert!(next.frontend.reused_owners.contains("helper"));
+    assert!(next.frontend.reused_owners.contains("other"));
+    // Lowering/encoding skipped for every reused owner's unit.
+    assert!(!next.lowered_units.iter().any(|n| n == "d_helper"), "{:?}", next.lowered_units);
+    assert!(!next.lowered_units.iter().any(|n| n == "d_other"), "{:?}", next.lowered_units);
+    // Submission: the edited lambda unit (main's own unit stays wire-equal
+    // — its cell layout and capture facts did not change).
+    assert_eq!(next.submitted_units, 1, "{:?}", next.submitted_unit_names);
+    assert_eq!(next.submitted_unit_names[0], "d___closure_main_0");
+    assert_eq!(next.production.verified, 1);
+    session.close().expect("close");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// V-12 (deep): inserting an UNRELATED lambda into an earlier owner keeps
+/// every later owner's lambda identity and unit wire stable — nothing of
+/// the later owner is re-walked, lowered or submitted.
+#[test]
+fn av_closures_909_unrelated_lambda_insertion_keeps_sibling_identity() {
+    let source = "fn a() int { let f = (n int) => { return n + 1 }; return f(1) }\nfn b() int { var y int = 1; let g = (n int) => { y = y + n; return y }; return g(40) + y }\nfn main() int { return a() + b() }";
+    // Insert a NEW, unrelated lambda BEFORE `f` in `a`.
+    let edited = source.replacen(
+        "fn a() int { let f =",
+        "fn a() int { let z = (n int) => { return n * 2 }; let f =",
+        1,
+    );
+    assert_ne!(source, edited);
+    let root = isolated_store("stable-id");
+    let mut session = ClosuresSourceSession::new(&root);
+    let first = session.apply_source(source, "stable.at").expect("cold apply");
+    // a()=2; b()= g(40)=41 + y=41 = 82; main = 2 + 82 = 84.
+    assert_eq!(first.value, 84);
+    let next = session.apply_source(&edited, "stable.at").expect("warm apply");
+    // The inserted lambda is never called: the program value is unchanged.
+    assert_eq!(next.value, 84);
+    // Only `a` re-walked; `b` (a LATER owner with its own lambda) reused
+    // verbatim — its lambda is still `__closure_b_0` and its unit untouched.
+    assert_eq!(next.frontend.resolve_walks.keys().collect::<Vec<_>>(), ["a"]);
+    assert!(next.frontend.reused_owners.contains("b"));
+    assert!(next.frontend.reused_owners.contains("main"));
+    assert!(!next.lowered_units.iter().any(|n| n.contains("__closure_b_")), "{:?}", next.lowered_units);
+    assert!(!next.submitted_unit_names.iter().any(|n| n.contains("__closure_b_") || n == "d_b"), "{:?}", next.submitted_unit_names);
+    session.close().expect("close");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// V-13 (leg): a session RESTART on the same store reuses the persisted
+/// artifacts — the unchanged program produces ZERO submitted units and
+/// ZERO lowered units from a fresh process-fresh session over the store.
+#[test]
+fn av_closures_909_store_restart_reuses_artifacts_zero_production() {
+    let source = "fn main() int { var x int = 1; var f = (n int) => { x = x + n; return x }; var g = (n int) => { x = x + n; return x }; return f(20) + g(0) }";
+    let root = isolated_store("restart");
+    {
+        let mut session = ClosuresSourceSession::new(&root);
+        let first = session.apply_source(source, "restart.at").expect("cold apply");
+        assert_eq!(first.value, 42);
+        assert_eq!(first.submitted_units, 3);
+        session.close().expect("close");
+    }
+    {
+        // Fresh session over the same store root: a RESTART — the units are
+        // re-admitted from the persisted artifacts (read/decode/re-verify is
+        // the sanctioned restart path), every artifact is a cache HIT and
+        // NOTHING is written back to the store.
+        let mut session = ClosuresSourceSession::new(&root);
+        let again = session.apply_source(source, "restart.at").expect("restart apply");
+        assert_eq!(again.value, 42);
+        assert_eq!(again.production.cache_hits, 3, "{:?}", again.production);
+        assert_eq!(again.production.store_writes, 0, "{:?}", again.production);
+        session.close().expect("close");
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
 /// V-04: each factory ACTIVATION owns an independent cell (42; a single
 /// global cell would yield 63).
 #[test]
