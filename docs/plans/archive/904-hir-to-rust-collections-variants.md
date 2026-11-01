@@ -437,6 +437,8 @@ stage: merge | plan_id: PLAN-904 | plan_revision: 2 | outcome: pass（delivered�
 **landing checks**：main checkout release a2x-worker 重建（13:43，日常通道当前）；批回归 **due**（48h+895 后有合并；904 非 %5）——2026-10-30 用户明示豁免该批运行（90 分钟冷编译被叫停）在 .last-batch-regression.json，本轮不擅自启动，**pending 交用户**决定择时执行 `cargo t all`（regress 技能，主检出单实例）。
 **生产工件**：无 backend daemon/web bundle 面（语言仓库/测试通道）；唯一受影响工件=预构建 worker（已重建）。
 receipt: stage: merge | outcome: pass | delivery_commit: 12f9adf18（+docs 916454628）| specs: 9 路径 hash 见上 | archive: docs/plans/archive/904-…md | cleanup: 全清 | pending: 批回归（用户定时）
+
+stage: goal | plan_id: PLAN-904 | plan_revision: 2 | round: 3 | from: merge | to: done | status: archived | outcome: pass | delivery_commit: 12f9adf18（docs 916454628+ff5947e08）| next: done（唯一 pending：批回归 due→用户择时 cargo t all，2026-10-30 豁免在案）
 ## 10. 待澄清事项
 
 | D | owner/关闭任务 | 未关闭边界 |
