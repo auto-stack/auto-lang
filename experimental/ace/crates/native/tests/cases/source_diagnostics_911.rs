@@ -621,3 +621,200 @@ fn mn_sd911_worker_incremental_warmup_reject_shapes() {
     assert!(resp.get("ok").is_none());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-911 T-05 V-13: the formal four-state leg in `source-v1` mode through
+// the REAL worker over the frozen reference workload (115 functions) —
+// registered under `::performance::` for `cargo t ace-performance`.
+// ---------------------------------------------------------------------------
+mod performance {
+    use super::*;
+
+    fn percentile(v: &[f64], p: f64) -> f64 {
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[((p / 100.0) * (s.len() - 1) as f64).round() as usize % s.len()]
+    }
+
+    fn counter(resp: &Value, k: &str) -> u64 {
+        resp["ok"]["counters"][k].as_u64().unwrap_or(0)
+    }
+
+    /// One strict request against a given store root; returns (wall_ms, resp).
+    fn strict_request(tag: &str, store: &std::path::Path, src: &str) -> (f64, Value) {
+        use base64::Engine as _;
+        let work = store.parent().unwrap().join(format!("w-{tag}"));
+        let _ = std::fs::create_dir_all(&work);
+        let mut r = json!({
+            "recipe": "ac/mir-native-scalar-v1",
+            "nonce": format!("n-{tag}"),
+            "source_b64": base64::engine::general_purpose::STANDARD.encode(src.as_bytes()),
+            "entry": "d_main",
+            "caps": [],
+            "store_root": store.display().to_string().replace('/', "\\"),
+            "workdir": work.display().to_string().replace('/', "\\"),
+            "steps": [{ "op": "run" }],
+            "diagnostics": "source-v1",
+        });
+        r["request_hash"] = json!(sd::sha256_hex(r.to_string().as_bytes()));
+        let t0 = std::time::Instant::now();
+        let (resp, code) = spawn_worker(&r);
+        let wall = t0.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(code, Some(0), "{tag}: worker exit");
+        assert_eq!(
+            resp["ok"]["diagnostics_mode"], "source-v1",
+            "{tag}: mode echo"
+        );
+        (wall, resp)
+    }
+
+    /// Four states, 30 samples each (MN818_FORMAL_SAMPLES overrides), dual
+    /// gate: the structural facts of each state (fresh = all units emitted;
+    /// restart-warm = zero codegen, all hits; body-edit = exactly one unit
+    /// emitted, the rest hits; signature-reject = the typed fact with zero
+    /// production) AND P90 <= 2000 ms on the restart-warm / body-edit /
+    /// signature-reject states. `fresh` (a cold 115-function compile + 115
+    /// COFF emits + link + run in a debug-tier worker process) is REPORTED,
+    /// not gated — exactly the native tier's existing convention (the 818
+    /// turnaround legs report cold absolutes; only the edit paths are
+    /// gated) — and a DEFAULT-mode fresh control is sampled alongside to
+    /// show the strict mode adds no cold cost. Preparation (store warm-up)
+    /// is outside the sampled windows.
+    #[test]
+    #[cfg(windows)]
+    fn mn_sd911_source_v1_four_state_p90_30() {
+        if !common::tools_available() {
+            eprintln!("infra-blocked: skipped (link tools)");
+            return;
+        }
+        let samples: usize = std::env::var("MN818_FORMAL_SAMPLES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+        let root = temp_dir("perf4");
+        let wl0 = ace_native::workload::generate(0);
+        let units = 115u64;
+
+        // ---- fresh: a NEW store per sample, cold request ------------------
+        let mut fresh = Vec::with_capacity(samples);
+        for i in 0..samples {
+            let store = root.join(format!("fresh-{i}")).join("mn-store");
+            std::fs::create_dir_all(&store).unwrap();
+            let (w, resp) = strict_request(&format!("fresh-{i}"), &store, &wl0.src);
+            assert_eq!(resp["ok"]["exit_code"].as_i64(), Some(wl0.expected as i64));
+            assert_eq!(
+                counter(&resp, "codegen_emit_units"),
+                units,
+                "fresh emits every unit"
+            );
+            assert_eq!(counter(&resp, "cache_hit_coff"), 0);
+            fresh.push(w);
+        }
+
+        // ---- restart-warm: ONE store warmed once, every sample a new
+        // process restoring the same source (zero codegen, all hits) -------
+        let warm_store = root.join("warm").join("mn-store");
+        std::fs::create_dir_all(&warm_store).unwrap();
+        let _ = strict_request("warmup", &warm_store, &wl0.src); // preparation, unsampled
+        let mut restart = Vec::with_capacity(samples);
+        for i in 0..samples {
+            let (w, resp) = strict_request(&format!("restart-{i}"), &warm_store, &wl0.src);
+            assert_eq!(resp["ok"]["exit_code"].as_i64(), Some(wl0.expected as i64));
+            assert_eq!(
+                counter(&resp, "codegen_emit_units"),
+                0,
+                "restart-warm: no codegen"
+            );
+            assert_eq!(counter(&resp, "cache_hit_coff"), units);
+            restart.push(w);
+        }
+
+        // ---- body-edit: each sample a NEW revision of fn_041's body on the
+        // warm store — exactly one unit re-emitted, 114 hits --------------
+        let mut edit = Vec::with_capacity(samples);
+        for n in 1..=samples {
+            let wl = ace_native::workload::generate(n as i64);
+            let (w, resp) = strict_request(&format!("edit-{n}"), &warm_store, &wl.src);
+            assert_eq!(
+                resp["ok"]["exit_code"].as_i64(),
+                Some(wl.expected as i64),
+                "rev {n}"
+            );
+            assert_eq!(counter(&resp, "codegen_emit_units"), 1, "rev {n}: one unit");
+            assert_eq!(
+                counter(&resp, "cache_hit_coff"),
+                units - 1,
+                "rev {n}: the rest hit"
+            );
+            edit.push(w);
+        }
+
+        // ---- signature-reject: the frozen signature-conflict source — a
+        // REAL frontend rejection returns the typed fact with zero guest
+        // production (no codegen/link/run) ---------------------------------
+        let conflict = ace_native::workload::signature_conflict_source();
+        let mut reject = Vec::with_capacity(samples);
+        for i in 0..samples {
+            let (w, resp) = strict_request(&format!("reject-{i}"), &warm_store, &conflict);
+            assert!(resp["source_error"].is_object(), "typed fact present");
+            assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+            assert!(resp["ok"].get("exit_code").is_none());
+            assert_eq!(counter(&resp, "codegen_emit_units"), 0);
+            assert_eq!(counter(&resp, "link_invocations"), 0);
+            assert_eq!(counter(&resp, "run_invocations"), 0);
+            reject.push(w);
+        }
+
+        // ---- fresh DEFAULT-mode control (5 samples): the strict mode must
+        // not change the cold cost class ------------------------------------
+        let mut fresh_default = Vec::new();
+        for i in 0..5usize {
+            use base64::Engine as _;
+            let store = root.join(format!("freshd-{i}")).join("mn-store");
+            std::fs::create_dir_all(&store).unwrap();
+            let work = root.join(format!("freshd-{i}")).join("w");
+            let _ = std::fs::create_dir_all(&work);
+            let mut r = json!({
+                "recipe": "ac/mir-native-scalar-v1",
+                "nonce": format!("nd-{i}"),
+                "source_b64": base64::engine::general_purpose::STANDARD.encode(wl0.src.as_bytes()),
+                "entry": "d_main",
+                "caps": [],
+                "store_root": store.display().to_string().replace('/', "\\"),
+                "workdir": work.display().to_string().replace('/', "\\"),
+                "steps": [{ "op": "run" }],
+            });
+            r["request_hash"] = json!(sd::sha256_hex(r.to_string().as_bytes()));
+            let t0 = std::time::Instant::now();
+            let (resp, code) = spawn_worker(&r);
+            fresh_default.push(t0.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(code, Some(0));
+            assert_eq!(resp["ok"]["exit_code"].as_i64(), Some(wl0.expected as i64));
+        }
+
+        let mut red = Vec::new();
+        for (name, v, gated) in [
+            ("fresh", &fresh, false),
+            ("fresh(default-mode control)", &fresh_default, false),
+            ("restart-warm", &restart, true),
+            ("body-edit", &edit, true),
+            ("signature-reject", &reject, true),
+        ] {
+            let (p50, p90, p99) = (
+                percentile(v, 50.0),
+                percentile(v, 90.0),
+                percentile(v, 99.0),
+            );
+            eprintln!(
+                "mn911 source-v1 {name}: P50/P90/P99 = {p50:.1}/{p90:.1}/{p99:.1} ms ({} samples, debug tier{})",
+                v.len(),
+                if gated { ", gated P90<=2000" } else { ", reported" }
+            );
+            if gated && p90 > 2000.0 {
+                red.push(format!("{name} P90 {p90:.1} ms > 2000 ms"));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(red.is_empty(), "V-13 P90 gate red: {red:?}");
+    }
+}
