@@ -203,3 +203,8 @@ PLAN-906:r1 consolidation receipt
 - archived：docs/plans/archive/906-standalone-language-web-boundary.md，completion_kind: delivered，8/8 任务，AC-01..07 全勾；900-N7 真实关闭（L1+L2 两层门齐：隔离消费 2/2、全 workspace --locked 构建 exit 0、缺源具名红）。906 版本回交：905 已归档（其 Web path 闭包观测在新身份下需沿 4571f55e9 更新——登记为 905 后继合同输入，不改归档）；UI 014 的 source_owner/投影接线已由本计划 rust_ui 改动承接。
 - 批量回归到期：895 后多笔合并且 >48h → due；按 standing 2026-10-30 用户豁免登记 user-pending（同 904/905/908 先例），不自跑。
 - cleaned：见下一条回执。
+
+- cleaned：五树（lang/web/ui/man/down）各 wt-guard clean + 已落地核验后 `git worktree remove`；分支 plan-906-dev/plan-906-web-dev/plan-906-ui-dev/plan-906-man-dev 删除；组目录 D:/autostack/.wt/lang-906 rmdir；plan-artifacts/plan-906 整删（14G/39769 文件，含 iso-lang 导出树、探针、门收据、fixture 副本）；登记表 plan-artifacts/.retention/policy.json 刷新（plans[auto-lang/PLAN-906] archived/cleaned，deletions 记 plan-906，holds=[]）；系统临时 /tmp/p906-* 清除；误建的 auto-lang/.retention/ 已删除。landing≠deployment 观察：语言仓无常驻生产进程；主检出 target/debug 既有二进制（auto-case.exe 等）早于本次落地，下次构建自然刷新——不另做发布动作。stale 观察登记：无需重启的生产面。
+- final counts：8/8 任务（T-01..T-08），AC-01..07 全勾，completion_kind: delivered。
+
+stage: goal | plan_id: PLAN-906 | plan_revision: r1 | round: 2 | from: merge | to: done | status: archived | outcome: pass | worktree: removed (D:/autostack/.wt/lang-906 gone) | commit: lang 4571f55e9 / web 847527e / ui 98cbcd2 / man 7f30eb8；归档簿记 c26e9e8de | next: done
