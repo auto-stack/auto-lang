@@ -46,3 +46,14 @@ a2x-store  → a2x-core, a2x-rust, ac-artifact-probe（783 store 只读复用）
 a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde_json 协议）
 根 workspace ⇏ 任何 a2x crate（实验栈不入产品 workspace；消费经预构建 worker 进程）
 ```
+
+## Collections 域与 AX-C（PLAN-904）
+
+- `SemanticView` 准入扩至 collections 域（`Ty::List(u32)`/`Ty::Variant(u32)`/
+  `Ty::Unit`；名义 variant 表/臂序=disc；受限 Str 面+record 构造/字段读+List/Variant
+  节点集）。语义指纹增量 gated（902/892 字节不动）：list/variant op 标签、名义 digest
+  闭包（变体臂+载荷传递图+list 元素）、`eval` 语句。
+- 声明 required 闭包：候选 fragment 的 manifest/文件集绑定全部必需类型与片段；类型/
+  元素/臂序/mode/被调事实变化失效，等价表序稳定。
+- 配置分层失效：语义层 target 中立；目标 runtime/printer 变化→目标片段/manifest 失效；
+  工具/认证配置变化→证书 STALE（execution_config 为证书键材）。

@@ -50,3 +50,11 @@
   特征，归 AC 线，非 A2X 预算面。
 - 正式采样（31 修订全预认证）：hit P90=427ms / restart 490ms / body-edit
   176ms（三暖门 ≤2000ms）；fresh（冷整源）P90=10229ms 单列（828 先例）。
+
+## Collections 增量与恢复（PLAN-904）
+
+- 层：AXS3（`a2x-collections-function-semantic`）/AXR3（`a2x-collections-rust-fragment`）；
+  runtime 内容 hash 入 fragment 键（标量/rt 命中不可满足 collections 键）。
+- 暖合同 `warm_edit_ranged`：base 完整源 sha 绑定/UTF-8 range 精确单声明/同名片段；
+  替换后完整源 sha + execution_config 入 manifest。restore/restart 逐内容重验再命中，
+  只读写 0，close 先于一切查找。

@@ -37,3 +37,16 @@
 - `ParamFacts.mode`（view/mut/move）与 `FnKind`（自由函数/owner 限定方法）
   随视图导出；**ExternalFn 携带验证 param modes**（从被调方自身 param
   locals 取，非缺 body 猜测）——被调方模式变化是依赖变化（入指纹）。
+
+## Collections 受检事实（PLAN-904 AX-C）
+
+- collections/closures 族新增验证器权威出口 `CollectionsPlan`/`CollectionsBodyFacts`
+  （`core/src/collections_facts.rs`）：owned 局部集、逐出口 LIFO `exit_frees`（return/
+  break/continue/块贯穿/回边）、`replace_frees`（owned 局部赋值提交时释放旧值）、
+  逐可失败节点 `err_frees`（含 pending 临时与存活局部——trap/cancel 出口同样清帧一次）、
+  `loop_survivors`（回边轮询错误路径的存活集）。目标 lowering 只消费该计划，不再推导
+  ownership；Rust 编译器交叉核对调度（错调度=生成代码编译错）。
+- `body_content_digest`：规范 span 无关 body 序列化摘要，凭证层绑定事实与 body 内容
+  （V-13）。
+- resolve `.len()` 视图融合的延迟索引任务已修正入节点 subtask 序（修复前第二个融合视图
+  恒渲染索引 0）；反例 `v02_fused_view_indices_preserved` 常驻。

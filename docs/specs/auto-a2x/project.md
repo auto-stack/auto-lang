@@ -38,3 +38,10 @@
 - List/Variant（AX-C）、闭包/HOF、mut 实例方法、Unit 入口、宽源码、
   泛型/meta、多模块/全 stdlib、public ABI、native loader/HMR、第二目标、
   旧 A2X 切换均不在现状。
+
+## PLAN-904（AX-C）扩展
+
+三通道并列：scalar(892) / record-text(902) / **collections(904)**——recipe
+`ac-a2r/hir-collections-emit-v1`、fileset/cert/store 层 AXS3/AXR3 严格互拒；typed
+List/Variant 通道合同见 [collections-hir-backend](../auto-a2r/collections-hir-backend.md)。
+本仓仍不含 M1 全量完成或全部 A2X 面。

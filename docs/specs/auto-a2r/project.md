@@ -46,3 +46,8 @@ typed Resource 无部分提交）。通道：recipe
 实例方法、用户泛型、第二目标、native 链接、旧 A2X 默认切换均不在现状。
 899/901 交接：工具命名/测试布局由 899 收尾线所有（本线未改 workspace
 Cargo/profile/固定工具名）；901 已落地的 test-feature 拍平为本线消费面。
+
+## PLAN-904（AX-C）新域
+
+collections(List/Variant) HIR→Rust 通道已交付（[collections-hir-backend](collections-hir-backend.md)）；
+未覆盖面与 893/903 交接记录在 PLAN-904 归档件。

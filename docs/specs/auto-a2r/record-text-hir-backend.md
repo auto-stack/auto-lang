@@ -51,3 +51,10 @@
 - 源形态约束（前端语法非后端限制）：`==` 两操作数须同名义类型；条件以
   标识符紧邻 `{` 结尾解析为命名构造（比较经辅助函数/调用形式书写）；
   `tag` 为保留字。
+
+## 含 type 源暖片段限制解除（PLAN-904）
+
+902 登记的"record 族含 `type` 声明源 warm 片段不可用"边界已按实证解除：scoped 文档的
+保留声明按 inert 元数据处理（见 [function-incremental-source](../auto-ac/function-incremental-source.md)
+PLAN-904 节）；含 type 的自由函数 body 编辑走真片段路径（typed 红反例→绿兼容见证在
+PLAN-904 §9）。方法 body 编辑仍按 902 声明上下文冷路径策略。

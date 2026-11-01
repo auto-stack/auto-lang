@@ -40,3 +40,18 @@
 - body 事实查询核心（`FnEnv::{set_body_fact,body_fact_of,body_fact_current}`）：
   凭据属具体受检产物（history 条目自带冻结 deps）；已读事实变化→消费者失效；
   重读返回新值不刷新旧凭据；未读不失效；只读接口 caller 零重编。
+
+## 含 type/enum 声明族的暖片段（PLAN-904 共享修复）
+
+- Scoped 片段文档中，保留的 type/variant 声明是 **inert 接口元数据**（span 置零），跨
+  record/text-record/collections 族共享（整模块发射保留真实声明 span，902 字节不变）；
+  902 含 type 的 Record/TextRecord 自由函数 body 编辑恢复**真 warm 片段路径**（不再走
+  整源冷路径），902 原文件集/golden/语义键不变。
+- 凭证绑定（V-13）：`context_revision` 声明指纹匹配**不证明** body 相同——
+  `CheckedFunction` 携带规范 span 无关 `body_digest`，`SemanticView::from_parts` 同时核
+  声明上下文与 body 摘要；同 owner+同上下文+异 body 是具名 `a2x.credential` 拒绝，
+  合法凭证照常准入。
+- collections 族的暖编辑授权是 **ranged**（见 auto-a2r/collections-hir-backend.md）：
+  base 完整源 sha 绑定 + UTF-8 range 精确覆盖目标声明 + 同名单声明片段；manifest/证书
+  绑定**替换后完整源** sha，不是 fragment-only hash。中文/多字节变长编辑合法；整源/
+  零宽/错名 range 具名拒。

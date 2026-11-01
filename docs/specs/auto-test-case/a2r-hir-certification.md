@@ -53,3 +53,14 @@ body-edit P90=427/490/176ms≤2000ms，fresh 单列（828 先例）。
   `scripts/verify-a2r-record-text-902.ps1`（八作用域收据；formal=四状态
   ×30 样本预认证窗口，暖门 P90=6/21/40ms）。标量五例/58 语料与旧 a2r
   产物不变。
+
+## Collections 通道认证（PLAN-904）
+
+- 并列 recipe `ac-a2r/hir-collections-emit-v1`（仅 profile `collections`；contract
+  recipe/注册表/profile 绑定表互斥）；fileset `auto.a2x.rust.collections.fileset/1`
+  （4 文件，manifest 绑替换后完整源 sha + execution_config）。
+- 证书 `ace.a2r-hir.collections.cert/1`：`execution_config`（canonical 定键序 JSON：
+  mode/budget/cancel/events/fault）为**必填键材**——debug/release 分键互不授信；旧
+  schema 携带该字段=无效。两腿（actual+手写 std-only reference）真编译运行对独立
+  oracle；父侧全文件重 hash+字节金样+未声明额外文件拒+路径域校验（相对/无 `..`/
+  归一化唯一/大小写碰撞具名拒）。
