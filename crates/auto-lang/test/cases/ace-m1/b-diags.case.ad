@@ -1,7 +1,8 @@
 # PLAN-852 ace-m1 scalar diagnostic cases, rejected by AC (mn) and AV
 # through their typed frontend channels. B16 is also rejected by AutoVM
-# (typed auto_link_E0401). B17/B18/B19: legacy accepts or rejects with
-# an untyped message (B18 classifies infra) — difference rows, no green.
+# (typed auto_link_E0401). B17/B18/B19: the ac legs migrated to the
+# PLAN-911 strict source-v1 fact channel (real raw stage/code via
+# mn.source-diagnostic/1; the av legs and all ids/sources unchanged).
 
 ```test-case
 case {
@@ -34,8 +35,8 @@ case {
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
-      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
     { id: "av", adapter: "probe", action: "run",
       options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
       expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
@@ -53,8 +54,8 @@ case {
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
-      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.immutable-write" } } },
     { id: "av", adapter: "probe", action: "run",
       options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
       expect: { completion: { stage: "parse", code: "verify.immutable-write" } } },
@@ -72,8 +73,8 @@ case {
   entry: { mode: "program" }
   checks: [
     { id: "ac-native", adapter: "probe", action: "run",
-      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.no-return-path" } } },
     { id: "av", adapter: "probe", action: "run",
       options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
       expect: { completion: { stage: "parse", code: "verify.no-return-path" } } },

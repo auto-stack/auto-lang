@@ -1,0 +1,218 @@
+# PLAN-911 native source-diagnostic suite — the typed fact channel for the
+# M1 B17/B18/B19 negatives. Every ac-native leg runs the REAL scalar worker
+# in the explicit `source-v1` observation mode (`mn.diagnostics`): the
+# parent admits the worker's `mn.source-diagnostic/1` fact on the raw wire
+# bytes BEFORE comparing against the expected face, so these checks verify
+# the real shared-compiler cause (raw stage/code), never a generic shell.
+#
+#   negatives  src/B17|B18|B19.at  — verify/source.type-mismatch,
+#                                 verify/verify.immutable-write,
+#                                 verify/verify.no-return-path (raw stage
+#                                 `verify` → judged face `typecheck`)
+#   neighbors  src/NB17|NB18|NB19.at — legal programs, real PE 2/2/0, and
+#                                 the strict mode echo is itself admitted
+#                                 (a worker silently ignoring the field
+#                                 cannot pass)
+#   variants   nd911-src/*.at — same-family shapes (the family is the CODE,
+#                                 stable across shapes), the multi-cause
+#                                 source (primary = the compiler's first
+#                                 cause), and two OTHER-stage rejections
+#                                 (Text → parse, Bind → resolve) that must
+#                                 stay distinct from the three families.
+#
+# Protocol-level admission negatives (duplicate wire keys, forged primary,
+# over-cap payloads, mixed result shapes) are parent-side unit controls
+# (auto-lang-core ac_mn::source_diag_tests) — a mutating fixture cannot be
+# a committed green case.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b17"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b18"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/B18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.immutable-write" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b19"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/B19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.no-return-path" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.nb17"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/NB17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.nb18"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/NB18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.nb19"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "src/NB19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b17v"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/B17V.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b18v"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/B18V.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.immutable-write" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.b19v"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/B19V.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.no-return-path" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.multi"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/MULTI.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.other-stage-syntax"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/SYN.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.unsupported" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.other-stage-bind"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/BIND.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "resolve", code: "source.undefined" } } },
+  ]
+}
+```

@@ -2000,7 +2000,11 @@ fn decode_options(
                 }
                 let mpath = f.path_of("mn");
                 let pairs = as_obj(v, &mpath)?;
-                let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session", "typed"])?;
+                let mf = Fields::new(
+                    &mpath,
+                    pairs,
+                    &["entry", "caps", "session", "typed", "diagnostics"],
+                )?;
                 let entry = req_str(&mf, "entry")?;
                 let caps = match mf.sub("caps") {
                     None => Vec::new(),
@@ -2064,11 +2068,31 @@ fn decode_options(
                         Some(ProbeMnTypedSpec { fixture, args })
                     }
                 };
+                let diagnostics = match mf.sub("diagnostics") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-scalar-v1" {
+                            return Err(err(
+                                &mf.path_of("diagnostics"),
+                                "mn.diagnostics belongs to ac/mir-native-scalar-v1 only",
+                            ));
+                        }
+                        let dv = as_str(v, &mf.path_of("diagnostics"))?;
+                        if dv != "source-v1" {
+                            return Err(err(
+                                &mf.path_of("diagnostics"),
+                                "mn.diagnostics accepts only \"source-v1\" (the mn.source-diagnostic/1 observation mode)",
+                            ));
+                        }
+                        Some(dv.to_string())
+                    }
+                };
                 Some(ProbeMnSpec {
                     entry,
                     caps,
                     session,
                     typed,
+                    diagnostics,
                 })
             }
         };
@@ -2318,6 +2342,10 @@ pub struct ProbeMnSpec {
     /// arguments as canonical (kind, bits) pairs. Expected values never
     /// enter the request.
     pub typed: Option<ProbeMnTypedSpec>,
+    /// PLAN-911: explicit source-diagnostic observation mode. The only
+    /// legal value is "source-v1" (mn.source-diagnostic/1); only the
+    /// scalar recipe accepts it; omitted keeps the pre-911 behavior.
+    pub diagnostics: Option<String>,
 }
 
 /// PLAN-891 ac/mir-native-typed-v1 binding payload.

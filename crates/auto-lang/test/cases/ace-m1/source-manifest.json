@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "8dea9b9fd98ad379d62dff51cce9074b7e4b434c2537cdeae331d072ea343422"
+  "sha256": "67bf520d26e7d541f8fd5f44b8c218da9d40b67d3fd808b4b3e801b89ec47fb9"
  },
  "corpus_src": {
   "dir": "src",
@@ -287,7 +287,7 @@
   }
  },
  "suites_cases": {
-  "expected_count": 66,
+  "expected_count": 74,
   "files": {
    "ace-m1-base.suite.ad": "7fd00b8d1c79d45be1f4d5ad90083780a8acb67798c6c36b9d29b8f53d26ae63",
    "ace-m1-tr-native.suite.ad": "4e2b320d1b44f6c317ff1c69e29706efb4fc1332b04864f955f85aa5208d7fb3",
@@ -298,7 +298,7 @@
    "nb-diags-908.suite.ad": "fa483e564ba28cf33de81ab65f94c914414bd5a1f007ebc57e60019e279bd532",
    "resident-online-866.suite.ad": "f4d8ebb9c439102110ba6190b4a7cf56f70be784d45a698357337e18a3e59bb4",
    "text-source-894.suite.ad": "f01c231e9db1ded80f84af7c8a24ed5303a083b5b58ace3fd08c6fe354a91562",
-   "b-diags.case.ad": "5f77823d4e7015cd77e6503cddf56b4546cd72cfff8259004d36b88b85d5a080",
+   "b-diags.case.ad": "97552180ef19899273f5614c427d023247d6e1577f5b5842529e701578073308",
    "b-scalar.case.ad": "758863818ad3c5b501fbda65cecbbb6949e424bc9eb27eafa0c52df243f927ee",
    "b-traps.case.ad": "c3865c08e794f22cb2634a04bfb978ae2c2c978e1cd3cf39887ea76b4bc0bf87",
    "closures-source-865.case.ad": "78cb9d50971401ff8293fe958be0c59f6a0f9e353e77d0ae2701e8e5404413f5",
@@ -354,7 +354,15 @@
    "console-863/src/O12.at": "3c243429e3d6c7d81a34dd5116cdd646711506ca50c5d9676f85cae205ebcdb6",
    "console-863/src/O13.at": "49834a7ad8e1fd98749e0a1f7f504c3edc3b15d0bf9f0e234da23c95135684d5",
    "console-863/src/O14.at": "1646d2c8de2fcc26c1ba6abd0c9b02944a89eb713362378ae5e252dbae77da36",
-   "console-863/src/O15.at": "31f4331fbfc8d334223a7858f156b84c89095aaeb34ecf37b1cbf0a07fb0a709"
+   "console-863/src/O15.at": "31f4331fbfc8d334223a7858f156b84c89095aaeb34ecf37b1cbf0a07fb0a709",
+   "native-diags-911.suite.ad": "5eb78357d0622ef67599dcad7fc32acd51c60405ef1a2efb31a1accc460ac651",
+   "native-diags-911.case.ad": "9a7b3bd55a451b6c5a0248e9a69516aa23fa874bedd1b4d1a86a6afd38d219fd",
+   "nd911-src/B17V.at": "308b849a45877035868df3c97f4ef10d3a6fb9a0baded600c064d0149bb79cd3",
+   "nd911-src/B18V.at": "67649ea7c54db8a8db52cfa8d7d69d950e30efe104450411704c319764be5e4e",
+   "nd911-src/B19V.at": "6ec3bdcf3c21f149888882079ffea4ca5a73535a7e9dd7c090d3f54a0eb6ecdd",
+   "nd911-src/SYN.at": "27d1ce622f5ff7d1eeb9c25e7006838e7942023e33f729e0d27fe1654c12ffc2",
+   "nd911-src/BIND.at": "bd74f91064fb8b8d90ff82b104b0864b0e16a3e41ea26810bc4c9cefa04d3ba9",
+   "nd911-src/MULTI.at": "b4da11001a3baec55fc5c4b1d9afff98929689733ce769bf96dadfcf9abe015f"
   }
  },
  "scenario_oracles": {
@@ -365,5 +373,9 @@
  "decision_doc": {
   "path": "docs/plans/reports/ace-m1-scope-decision-2026-10-28.md",
   "sha256": "874ccc1198bf23c284fa588a6dfcdee80eecc8f5a0e392b88b34ddd74db0875b"
+ },
+ "plan_911_update": {
+  "date": "2026-11-02",
+  "summary": "PLAN-911 T-04: b-diags.case.ad B17-19 ac legs migrated to the strict source-v1 fact channel; new suite native-diags-911 (12 cases: negatives/neighbors/same-family variants/multi-cause/other-stage) + nd911-src variant fixtures; binding.tsv B17-19 ac cells diff:pending -> ok on formal parent-report fact artifacts."
  }
 }

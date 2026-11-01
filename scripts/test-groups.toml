@@ -695,6 +695,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/nb-diags-908.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m1-native-diags-911"
+title = "TestCase case-ace-m1-native-diags-911（PLAN-911 native源码诊断事实通道 B17-19 typed cause/近邻/变体/异族）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/native-diags-911.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-tr-native"
 title = "TestCase case-ace-m1-tr-native"
 runner = "case"

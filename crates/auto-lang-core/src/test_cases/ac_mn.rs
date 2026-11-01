@@ -58,6 +58,533 @@ pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
 pub const EXPECTED_MN_WORKER_VERSION: &str = "mnworker/1.0";
+/// PLAN-911: parent-side STRICT admission of a `mn.source-diagnostic/1`
+/// fact — everything here runs BEFORE any oracle comparison, so a
+/// protocol/fact failure is an `Error`, never a language FAIL. The
+/// admission is taken on the RAW response line (duplicate keys inside
+/// `source_error` are scanned on the wire bytes — serde's Map would
+/// already have collapsed them) and on the parsed value (exact field
+/// sets, types, caps, span bounds, source/operation binding, and the
+/// legacy `diagnostic` projection agreement).
+mod source_diag {
+    use auto_test_case::contract::Stage;
+    use serde_json::Value;
+
+    pub const SNAPSHOT_SCHEMA: &str = "mn.source-diagnostic/1";
+    pub const MODE: &str = "source-v1";
+    const MAX_CAUSES: usize = 64;
+    const MAX_MESSAGE_UTF8: usize = 4096;
+    const MAX_PAYLOAD_UTF8: usize = 64 * 1024;
+    const SNAPSHOT_FIELDS: &[&str] = &[
+        "schema",
+        "mode",
+        "producer",
+        "profile",
+        "attempted",
+        "surface_rejections",
+        "path",
+        "source_sha256",
+        "source_len",
+        "span_basis",
+        "causes",
+        "primary",
+        "operation",
+    ];
+    const CAUSE_FIELDS: &[&str] = &["stage", "code", "message", "span"];
+    const OPERATION_FIELDS: &[&str] = &[
+        "kind",
+        "step",
+        "base_sha256",
+        "candidate_sha256",
+        "session_revision",
+        "edit",
+    ];
+    const SURFACE_FIELDS: &[&str] = &["profile", "codes"];
+    const SPAN_FIELDS: &[&str] = &["start", "end"];
+    const PROFILES: &[&str] = &["scalar", "record", "text-record"];
+    const OPERATIONS: &[&str] = &["cold", "warm-edit", "fallback-cold"];
+    /// The raw stage vocabulary (Stage::as_str()); only these three can
+    /// carry a language-rejection family — anything else is admitted as a
+    /// fact ERROR, never defaulted into a family.
+    const LANGUAGE_STAGES: &[&str] = &["text", "bind", "verify"];
+
+    /// The admitted fact: what the parent uses for judgement and the
+    /// evidence artifact.
+    #[derive(Debug)]
+    pub struct AdmittedFact {
+        /// The validated snapshot, verbatim (for the evidence artifact).
+        pub snapshot: Value,
+        pub raw_stage: String,
+        pub mapped_stage: Stage,
+        pub primary_code: String,
+        pub primary_message: String,
+        pub source_sha256: String,
+        pub candidate_sha256: String,
+        /// The exact legacy `mn.unsupported.frontend` message projection.
+        pub legacy_message: String,
+    }
+
+    /// What the operation block must be bound to (the parent's own view of
+    /// the request chain — never the payload's self-report).
+    pub enum OperationExpectation<'a> {
+        Cold {
+            candidate_sha: &'a str,
+        },
+        WarmEdit {
+            base_sha: &'a str,
+            candidate_sha: &'a str,
+        },
+        FallbackCold {
+            base_sha: &'a str,
+            candidate_sha: &'a str,
+        },
+    }
+
+    fn obj_keys(v: &Value, path: &str, known: &[&str]) -> Result<(), String> {
+        let Some(m) = v.as_object() else {
+            return Err(format!("{path} must be an object"));
+        };
+        for k in m.keys() {
+            if !known.contains(&k.as_str()) {
+                return Err(format!("{path} has unknown field {k:?}"));
+            }
+        }
+        if m.len() != known.len() {
+            let missing: Vec<&str> = known
+                .iter()
+                .filter(|f| !m.contains_key(**f))
+                .copied()
+                .collect();
+            return Err(format!("{path} is missing fields {missing:?}"));
+        }
+        Ok(())
+    }
+
+    fn req_str(v: &Value, path: &str) -> Result<String, String> {
+        v.as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("{path} must be a string"))
+    }
+
+    fn req_u64(v: &Value, path: &str) -> Result<u64, String> {
+        v.as_u64()
+            .ok_or_else(|| format!("{path} must be an unsigned integer (no strings/floats/bools)"))
+    }
+
+    fn stage_debug_name(stage: &str) -> String {
+        let mut c = stage.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }
+
+    /// RAW-BYTE duplicate-key scan inside the `source_error` object of the
+    /// line the worker actually wrote (V-18): a key appearing twice in the
+    /// same object — in either order — is rejected on the wire bytes, not
+    /// on the (already collapsed) parsed Map.
+    pub fn scan_raw_duplicate_keys(line: &str) -> Result<(), String> {
+        const ANCHOR: &str = "\"source_error\"";
+        let Some(pos) = line.find(ANCHOR) else {
+            return Ok(());
+        };
+        let bytes = line.as_bytes();
+        let mut i = pos + ANCHOR.len();
+        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b':' {
+            i += 1;
+        }
+        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'{' {
+            return Err("source_error is not an object".into());
+        }
+        let mut stack: Vec<std::collections::BTreeSet<String>> = Vec::new();
+        let mut in_str = false;
+        let mut esc = false;
+        // After `{` or `,` the next string token is an object KEY; after
+        // `:` it is a value.
+        let mut expect_key = false;
+        let mut key = String::new();
+        let mut started = false;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    in_str = false;
+                    if expect_key {
+                        expect_key = false;
+                        let Some(top) = stack.last_mut() else {
+                            return Err("source_error key outside any object".into());
+                        };
+                        if !top.insert(key.clone()) {
+                            return Err(format!(
+                                "duplicate object key {key:?} inside source_error (raw wire bytes)"
+                            ));
+                        }
+                        key.clear();
+                    }
+                } else if expect_key {
+                    key.push(c);
+                }
+            } else {
+                match c {
+                    '{' => {
+                        stack.push(Default::default());
+                        expect_key = true;
+                        started = true;
+                    }
+                    '}' => {
+                        if stack.pop().is_none() {
+                            return Err("source_error braces are unbalanced".into());
+                        }
+                        if started && stack.is_empty() {
+                            return Ok(());
+                        }
+                        expect_key = false;
+                    }
+                    ',' => expect_key = true,
+                    ':' => expect_key = false,
+                    '"' => in_str = true,
+                    _ => {}
+                }
+            }
+            i += 1;
+        }
+        Err("source_error object is truncated".into())
+    }
+
+    /// Full admission of a source-v1 response carrying a source rejection.
+    /// `raw_line` is the worker's response line as read; `resp` its parsed
+    /// value; `expected_path` the path the producer must have received
+    /// ("mn.at" cold / "probe.at" warm); `op` the parent's own operation
+    /// binding.
+    pub fn admit(
+        raw_line: &str,
+        resp: &Value,
+        expected_path: &str,
+        op: &OperationExpectation<'_>,
+    ) -> Result<AdmittedFact, String> {
+        scan_raw_duplicate_keys(raw_line)?;
+        let snap = resp
+            .get("source_error")
+            .ok_or_else(|| "source-v1 response without source_error".to_string())?;
+        obj_keys(snap, "source_error", SNAPSHOT_FIELDS)?;
+        if req_str(&snap["schema"], "source_error.schema")? != SNAPSHOT_SCHEMA {
+            return Err("source_error.schema mismatch".into());
+        }
+        if req_str(&snap["mode"], "source_error.mode")? != MODE {
+            return Err("source_error.mode mismatch".into());
+        }
+        if req_str(&snap["span_basis"], "source_error.span_basis")? != "utf8-byte" {
+            return Err("source_error.span_basis must be utf8-byte".into());
+        }
+        if req_str(&snap["producer"], "source_error.producer")?.is_empty() {
+            return Err("source_error.producer must be named".into());
+        }
+        let profile = req_str(&snap["profile"], "source_error.profile")?;
+        if !PROFILES.contains(&profile.as_str()) {
+            return Err(format!("source_error.profile {profile:?} is unknown"));
+        }
+        // The escalation chain: attempted is non-empty, ends at the
+        // terminating profile, and every entry is a known profile.
+        let attempted = snap["attempted"]
+            .as_array()
+            .ok_or("source_error.attempted must be an array")?;
+        if attempted.is_empty() {
+            return Err("source_error.attempted must name at least the terminating profile".into());
+        }
+        for a in attempted {
+            let a = req_str(a, "source_error.attempted[..]")?;
+            if !PROFILES.contains(&a.as_str()) {
+                return Err(format!("source_error.attempted entry {a:?} is unknown"));
+            }
+        }
+        let last = req_str(
+            attempted.last().expect("non-empty"),
+            "source_error.attempted[last]",
+        )?;
+        if last != profile {
+            return Err(format!(
+                "source_error.attempted ends at {last:?} but the terminating profile is {profile:?}"
+            ));
+        }
+        let surfaces = snap["surface_rejections"]
+            .as_array()
+            .ok_or("source_error.surface_rejections must be an array")?;
+        for s in surfaces {
+            obj_keys(s, "source_error.surface_rejections[..]", SURFACE_FIELDS)?;
+            let p = req_str(&s["profile"], "surface_rejections[..].profile")?;
+            if !PROFILES.contains(&p.as_str()) {
+                return Err(format!("surface rejection profile {p:?} is unknown"));
+            }
+            let codes = s["codes"]
+                .as_array()
+                .ok_or("surface_rejections[..].codes must be an array")?;
+            for c in codes {
+                req_str(c, "surface_rejections[..].codes[..]")?;
+            }
+        }
+        if req_str(&snap["path"], "source_error.path")? != expected_path {
+            return Err(format!(
+                "source_error.path must be the producer's real path {expected_path:?}"
+            ));
+        }
+        let source_sha = req_str(&snap["source_sha256"], "source_error.source_sha256")?;
+        if source_sha.len() != 64 || !source_sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("source_error.source_sha256 must be a hex sha256".into());
+        }
+        let source_len = req_u64(&snap["source_len"], "source_error.source_len")?;
+        // Causes: non-empty, capped, exact fields, in-bounds spans.
+        let causes = snap["causes"]
+            .as_array()
+            .ok_or("source_error.causes must be an array")?;
+        if causes.is_empty() {
+            return Err("source_error.causes must be non-empty".into());
+        }
+        if causes.len() > MAX_CAUSES {
+            return Err(format!(
+                "source_error.causes is {} (cap {MAX_CAUSES}) — over-cap is an error, never truncation",
+                causes.len()
+            ));
+        }
+        for (i, c) in causes.iter().enumerate() {
+            let path = format!("source_error.causes[{i}]");
+            obj_keys(c, &path, CAUSE_FIELDS)?;
+            let stage = req_str(&c["stage"], &format!("{path}.stage"))?;
+            if ![
+                "text",
+                "bind",
+                "verify",
+                "capability",
+                "backend",
+                "link",
+                "run",
+            ]
+            .contains(&stage.as_str())
+            {
+                return Err(format!("{path}.stage {stage:?} is not a raw stage name"));
+            }
+            if !LANGUAGE_STAGES.contains(&stage.as_str()) {
+                return Err(format!(
+                    "{path}.stage {stage:?} cannot carry a language-rejection family"
+                ));
+            }
+            req_str(&c["code"], &format!("{path}.code"))?;
+            let message = req_str(&c["message"], &format!("{path}.message"))?;
+            if message.as_bytes().len() > MAX_MESSAGE_UTF8 {
+                return Err(format!(
+                    "{path}.message is {} UTF-8 bytes (cap {MAX_MESSAGE_UTF8})",
+                    message.as_bytes().len()
+                ));
+            }
+            obj_keys(&c["span"], &format!("{path}.span"), SPAN_FIELDS)?;
+            let start = req_u64(&c["span"]["start"], &format!("{path}.span.start"))?;
+            let end = req_u64(&c["span"]["end"], &format!("{path}.span.end"))?;
+            if start > end || end > source_len {
+                return Err(format!(
+                    "{path}.span [{start},{end}] is out of bounds (len {source_len})"
+                ));
+            }
+        }
+        // primary: the JSON INTEGER 0 — as_u64 rejects "0"/0.0/false.
+        if req_u64(&snap["primary"], "source_error.primary")? != 0 {
+            return Err("source_error.primary must be the integer 0".into());
+        }
+        // Payload cap on the admitted object.
+        let payload = serde_json::to_string(snap).map_err(|e| format!("reserialize: {e}"))?;
+        if payload.len() > MAX_PAYLOAD_UTF8 {
+            return Err(format!(
+                "source_error payload is {} UTF-8 bytes (cap {MAX_PAYLOAD_UTF8})",
+                payload.len()
+            ));
+        }
+        // Operation binding — the parent's own view decides.
+        let operation = &snap["operation"];
+        obj_keys(operation, "source_error.operation", OPERATION_FIELDS)?;
+        let kind = req_str(&operation["kind"], "source_error.operation.kind")?;
+        if !OPERATIONS.contains(&kind.as_str()) {
+            return Err(format!("source_error.operation.kind {kind:?} is unknown"));
+        }
+        let candidate = req_str(
+            &operation["candidate_sha256"],
+            "source_error.operation.candidate_sha256",
+        )?;
+        match op {
+            OperationExpectation::Cold { candidate_sha } => {
+                if kind != "cold" {
+                    return Err(format!("expected a cold operation, got {kind:?}"));
+                }
+                if candidate != *candidate_sha {
+                    return Err(
+                        "source_error candidate SHA does not bind the parent's source".into(),
+                    );
+                }
+                for (k, v) in [
+                    ("step", &operation["step"]),
+                    ("base_sha256", &operation["base_sha256"]),
+                    ("session_revision", &operation["session_revision"]),
+                    ("edit", &operation["edit"]),
+                ] {
+                    if !v.is_null() {
+                        return Err(format!("cold operation must leave {k} null"));
+                    }
+                }
+            }
+            OperationExpectation::WarmEdit {
+                base_sha,
+                candidate_sha,
+            } => {
+                if kind != "warm-edit" {
+                    return Err(format!("expected a warm-edit operation, got {kind:?}"));
+                }
+                if candidate != *candidate_sha {
+                    return Err(
+                        "source_error candidate SHA does not bind the failing candidate".into(),
+                    );
+                }
+                let base = req_str(
+                    &operation["base_sha256"],
+                    "source_error.operation.base_sha256",
+                )?;
+                if base != *base_sha {
+                    return Err("source_error base SHA does not bind the accepted prefix".into());
+                }
+                if operation["step"].as_u64().is_none() {
+                    return Err("warm-edit operation must name its step index".into());
+                }
+            }
+            OperationExpectation::FallbackCold {
+                base_sha,
+                candidate_sha,
+            } => {
+                if kind != "fallback-cold" {
+                    return Err(format!("expected a fallback-cold operation, got {kind:?}"));
+                }
+                if candidate != *candidate_sha {
+                    return Err(
+                        "source_error candidate SHA does not bind the gate candidate".into(),
+                    );
+                }
+                let base = req_str(
+                    &operation["base_sha256"],
+                    "source_error.operation.base_sha256",
+                )?;
+                if base != *base_sha {
+                    return Err("source_error base SHA does not bind the accepted prefix".into());
+                }
+            }
+        }
+        // The snapshot's own source identity must equal the candidate the
+        // compiler saw.
+        if source_sha != candidate {
+            return Err("source_error.source_sha256 must equal the operation candidate".into());
+        }
+        // Mutual exclusion (shape 2): no execution result anywhere.
+        if let Some(ok) = resp.get("ok").and_then(|v| v.as_object()) {
+            for k in ["exit_code", "stdout_hex", "stderr_hex", "manifest_fp"] {
+                if ok.contains_key(k) {
+                    return Err(format!(
+                        "a source_error response must not carry the execution result {k}"
+                    ));
+                }
+            }
+        }
+        // The legacy projection must agree with the primary cause.
+        let cause0 = &causes[0];
+        let stage0 = req_str(&cause0["stage"], "source_error.causes[0].stage")?;
+        let code0 = req_str(&cause0["code"], "source_error.causes[0].code")?;
+        let msg0 = req_str(&cause0["message"], "source_error.causes[0].message")?;
+        let legacy = format!("{}/{}: {}", stage_debug_name(&stage0), code0, msg0);
+        let diag_code = resp
+            .get("diagnostic")
+            .and_then(|d| d.get("code"))
+            .and_then(|v| v.as_str())
+            .ok_or("source_error response without the legacy diagnostic")?;
+        if diag_code != "mn.unsupported.frontend" {
+            return Err(format!(
+                "a source_error response's legacy diagnostic must be mn.unsupported.frontend, got {diag_code}"
+            ));
+        }
+        let diag_msg = resp
+            .get("diagnostic")
+            .and_then(|d| d.get("message"))
+            .and_then(|v| v.as_str())
+            .ok_or("legacy diagnostic without a message")?;
+        if diag_msg != legacy {
+            return Err("legacy diagnostic message is not the primary cause's projection".into());
+        }
+        let mapped_stage = match stage0.as_str() {
+            "text" => Stage::Parse,
+            "bind" => Stage::Resolve,
+            _ => Stage::Typecheck,
+        };
+        Ok(AdmittedFact {
+            snapshot: snap.clone(),
+            raw_stage: stage0,
+            mapped_stage,
+            primary_code: code0,
+            primary_message: msg0,
+            source_sha256: source_sha,
+            candidate_sha256: candidate,
+            legacy_message: legacy,
+        })
+    }
+
+    /// Write the parent's evidence artifact: the admitted fact (snapshot
+    /// verbatim) plus the admission block bound to the check's execution
+    /// key. A write failure is an error, never a green comparison.
+    pub fn write_fact_artifact(
+        artifact_dir: &std::path::Path,
+        execution_key: &str,
+        recipe: &str,
+        worker_version: &str,
+        fact: &AdmittedFact,
+    ) -> Result<auto_test_case::report::ArtifactRef, String> {
+        let doc = serde_json::json!({
+            "schema": "mn-source-diagnostic-fact/1",
+            "execution_key": execution_key,
+            "admitted": true,
+            "mode": MODE,
+            "snapshot_schema": SNAPSHOT_SCHEMA,
+            "recipe": recipe,
+            "worker_version": worker_version,
+            "source_sha256": fact.source_sha256,
+            "candidate_sha256": fact.candidate_sha256,
+            "raw_stage": fact.raw_stage,
+            "observed_stage": format!("{:?}", fact.mapped_stage).to_lowercase(),
+            "observed_code": fact.primary_code,
+            "primary_index": 0,
+            "snapshot": fact.snapshot,
+        });
+        let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| format!("fact serialize: {e}"))?;
+        let path = artifact_dir.join("mn-source-diagnostic.json");
+        std::fs::write(&path, &bytes).map_err(|e| format!("write fact artifact: {e}"))?;
+        // Re-read: the durable artifact must parse back.
+        let reread: Value = serde_json::from_slice(
+            &std::fs::read(&path).map_err(|e| format!("re-read fact: {e}"))?,
+        )
+        .map_err(|e| format!("re-read fact parse: {e}"))?;
+        if reread["execution_key"] != execution_key || reread["snapshot"] != fact.snapshot {
+            return Err("fact artifact re-read mismatch".into());
+        }
+        use auto_test_case::sha256::{hex, sha256};
+        Ok(auto_test_case::report::ArtifactRef {
+            logical_path: "mn-source-diagnostic.json".to_string(),
+            stored_path: path.display().to_string(),
+            sha256: hex(&sha256(&bytes)),
+            bytes: Some(bytes.len()),
+        })
+    }
+}
+
 /// PLAN-868: admission mirror of `ace_lowering::MIR_LOWERING_VERSION` —
 /// the mn pipeline lowers through the shared crate; a lowering contract
 /// bump without a mirror update fails the identity axis loudly.
@@ -920,6 +1447,7 @@ pub fn run_check(
     _project_dir: &Path,
     artifact_dir: &Path,
     _run_dir: &Path,
+    execution_key: &str,
 ) -> Result<Verdict, String> {
     let recipe = check
         .options
@@ -964,6 +1492,10 @@ pub fn run_check(
     // measured edit) share one warm store across worker processes; the
     // PARENT owns cleanup. Without a session, the check's own artifact
     // dir hosts a private per-request store.
+    // PLAN-911: the strict source-diagnostic observation mode (mn.diagnostics
+    // = "source-v1", decoder-validated). Everything below admits the typed
+    // fact BEFORE any oracle comparison when set.
+    let strict = mn.diagnostics.as_deref() == Some(source_diag::MODE);
     let store_root = match &mn.session {
         Some(id) => {
             // The session scratch's PARENT is the adapter host: the
@@ -1012,7 +1544,7 @@ pub fn run_check(
         .iter()
         .any(|s| matches!(s, auto_test_case::contract::ProbeStep::Restart));
     if has_edit_step && !has_restart {
-        return run_incremental(case, check, oracle, artifact_dir, mn, steps);
+        return run_incremental(case, check, oracle, artifact_dir, execution_key, mn, steps);
     }
     let total_runs = steps
         .iter()
@@ -1024,6 +1556,8 @@ pub fn run_check(
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
+    /// PLAN-911: the admitted typed fact of the judged session (if any).
+    let mut source_fact: Option<source_diag::AdmittedFact> = None;
     let mut exit_code: Option<i32> = None;
     let mut stderr_hex = String::new();
     let mut session_records: Vec<SessionRecord> = Vec::new();
@@ -1089,6 +1623,9 @@ pub fn run_check(
                 request["manifest_id"] = serde_json::json!(id);
             }
         }
+        if strict {
+            request["diagnostics"] = serde_json::json!(source_diag::MODE);
+        }
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
 
@@ -1102,10 +1639,10 @@ pub fn run_check(
         let mut session_manifest: Option<String> = None;
 
         'admit: {
-            let resp = match resp_result {
-                Ok(r) => serde_json::from_str::<serde_json::Value>(&r)
+            let resp = match &resp_result {
+                Ok(r) => serde_json::from_str::<serde_json::Value>(r)
                     .map_err(|e| format!("bad mn worker response ({e}): {r:.200}")),
-                Err(e) => Err(e),
+                Err(e) => Err(e.clone()),
             };
             let resp = match resp {
                 Ok(r) => r,
@@ -1170,6 +1707,19 @@ pub fn run_check(
                     }
                 }
             }
+            if strict {
+                // The mode echo is mandatory for EVERY strict response —
+                // legal programs included (a worker silently ignoring the
+                // field is not compatible).
+                if ok.get("diagnostics_mode").and_then(|v| v.as_str()) != Some(source_diag::MODE)
+                    || ok.get("diagnostics_schema").and_then(|v| v.as_str())
+                        != Some(source_diag::SNAPSHOT_SCHEMA)
+                {
+                    infra_detail =
+                        Some("mn worker did not echo the source-v1 diagnostics mode".into());
+                    break 'admit;
+                }
+            }
             if let Some(d) = resp.get("diagnostic").or_else(|| {
                 if recipe == COLLECTIONS_RECIPE {
                     ok.get("diagnostic")
@@ -1179,16 +1729,47 @@ pub fn run_check(
             }) {
                 // A diagnosed pipeline rejection (mn.* / mir.* code) —
                 // only the judged session's diagnosis is a verdict.
-                let code = d
+                let mut code = d
                     .get("code")
                     .and_then(|v| v.as_str())
                     .unwrap_or("?")
                     .to_string();
-                let message = d
+                let mut message = d
                     .get("message")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                if strict {
+                    // PLAN-911: a REAL source rejection is the typed fact —
+                    // admitted on the raw line BEFORE any oracle comparison;
+                    // the judged code/message become the primary cause's
+                    // RAW stage/code (never the generic mn.* shell).
+                    let raw_line = resp_result.as_deref().unwrap_or("");
+                    match source_diag::admit(
+                        raw_line,
+                        &resp,
+                        "mn.at",
+                        &source_diag::OperationExpectation::Cold {
+                            candidate_sha: &source_sha,
+                        },
+                    ) {
+                        Ok(fact) => {
+                            source_fact = Some(fact);
+                            code = source_fact
+                                .as_ref()
+                                .map(|f| f.primary_code.clone())
+                                .unwrap_or(code);
+                            message = source_fact
+                                .as_ref()
+                                .map(|f| f.legacy_message.clone())
+                                .unwrap_or(message);
+                        }
+                        Err(e) => {
+                            infra_detail = Some(format!("source-v1 admission: {e}"));
+                            break 'admit;
+                        }
+                    }
+                }
                 let judged = run_index + 1 == total_runs;
                 session_records.push(SessionRecord {
                     steps: step_labels,
@@ -1321,7 +1902,12 @@ pub fn run_check(
         // probe stage vocabulary admits parse/resolve/typecheck/run —
         // PLAN-870 T-05 wiring; the underlying pipeline boundary stays
         // named by the mn.* code itself).
-        let stage = if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
+        let stage = if let Some(fact) = &source_fact {
+            // PLAN-911 strict: the RAW producer stage decides (text→parse,
+            // bind→resolve, verify→typecheck) — the admission already
+            // rejected every non-language stage, so this never defaults.
+            fact.mapped_stage
+        } else if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
             Stage::Run
         } else if code.starts_with("mn.unsupported.frontend")
             || code.starts_with("mn.unsupported.input")
@@ -1499,13 +2085,26 @@ pub fn run_check(
     } else {
         Status::Fail
     };
+    // PLAN-911: the admitted typed fact is published as the check's
+    // evidence artifact (bound to the execution key; a write failure is
+    // an error, never a green comparison).
+    let mut artifacts: Vec<auto_test_case::report::ArtifactRef> = Vec::new();
+    if let Some(fact) = &source_fact {
+        artifacts.push(source_diag::write_fact_artifact(
+            artifact_dir,
+            execution_key,
+            recipe,
+            EXPECTED_MN_WORKER_VERSION,
+            fact,
+        )?);
+    }
     Ok(Verdict {
         status,
         mismatches,
         detail: Some(format!(
             "{recipe}: run judged (outcome {observed}); receipt mn-probe-receipt.json"
         )),
-        artifacts: vec![],
+        artifacts,
         native: Some(native),
     })
 }
@@ -1532,9 +2131,11 @@ fn run_incremental(
     check: &CheckSpec,
     oracle: &ResolvedOracle,
     artifact_dir: &Path,
+    execution_key: &str,
     mn: &auto_test_case::contract::ProbeMnSpec,
     steps: &[auto_test_case::contract::ProbeStep],
 ) -> Result<Verdict, String> {
+    let strict = mn.diagnostics.as_deref() == Some(source_diag::MODE);
     use auto_test_case::contract::{Completion, Stage};
     let recipe = check
         .options
@@ -1611,6 +2212,9 @@ fn run_incremental(
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "workdir": workdir.display().to_string().replace('/', "\\"),
     });
+    if strict {
+        request["diagnostics"] = serde_json::json!(source_diag::MODE);
+    }
     let request_hash = hex(&sha256(request.to_string().as_bytes()));
     request["request_hash"] = serde_json::json!(request_hash);
 
@@ -1636,6 +2240,8 @@ fn run_incremental(
     let mut collection_runtime: Option<serde_json::Value> = None;
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
+    /// PLAN-911: the admitted typed fact of the judged refusal (if any).
+    let mut source_fact: Option<source_diag::AdmittedFact> = None;
     let mut exit_code: Option<i32> = None;
     let mut stderr_hex = String::new();
     let mut stdout_hex = String::new();
@@ -1679,6 +2285,43 @@ fn run_incremental(
             infra_detail = Some("mn rounds worker identity mismatch".to_string());
             break 'admit;
         }
+        if strict {
+            // The warmup round must echo the strict mode too (a legal
+            // warmup included); a warmup source rejection arrives as the
+            // typed fact and is admitted below like any other round.
+            if warm_ok.get("diagnostics_mode").and_then(|v| v.as_str()) != Some(source_diag::MODE)
+                || warm_ok.get("diagnostics_schema").and_then(|v| v.as_str())
+                    != Some(source_diag::SNAPSHOT_SCHEMA)
+            {
+                // A warm-up source rejection: shape with source_error and
+                // no execution result — the identity checks above already
+                // passed on the ok metadata.
+                if warm.get("source_error").is_some() {
+                    match source_diag::admit(
+                        &warm_line,
+                        &warm,
+                        "mn.at",
+                        &source_diag::OperationExpectation::Cold {
+                            candidate_sha: &hex(&sha256(&input_bytes)),
+                        },
+                    ) {
+                        Ok(fact) => {
+                            diag = Some((fact.primary_code.clone(), fact.legacy_message.clone()));
+                            source_fact = Some(fact);
+                            step_records.push(warm_ok);
+                            break 'admit;
+                        }
+                        Err(e) => {
+                            infra_detail = Some(format!("source-v1 admission (warmup): {e}"));
+                            break 'admit;
+                        }
+                    }
+                }
+                infra_detail =
+                    Some("mn rounds worker did not echo the source-v1 diagnostics mode".into());
+                break 'admit;
+            }
+        }
         if recipe == COLLECTIONS_RECIPE {
             collections::admit_raw(&warm_ok)?;
             collection_runtime = Some(
@@ -1700,8 +2343,12 @@ fn run_incremental(
             // round payload serialization happen INSIDE it.
             let round_started = Instant::now();
             let round_nonce = hex(&sha256(format!("{nonce}|step{i}").as_bytes()));
-            let (op, round_line, step_expect) = match st {
+            let (op, round_line, step_expect, round_sources) = match st {
                 auto_test_case::contract::ProbeStep::EditSource { from, to } => {
+                    // PLAN-911: the parent's own view of the failing
+                    // candidate — the accepted prefix (pre-edit source)
+                    // and the candidate (post-edit) bind the snapshot.
+                    let base_source = source.clone();
                     let next = match replace_once(&source, from, to) {
                         Ok(s) => s,
                         Err(e) => {
@@ -1710,6 +2357,7 @@ fn run_incremental(
                         }
                     };
                     source = next;
+                    let candidate_source = source.clone();
                     let step_expect = expected_exits.as_ref().map(|xs| xs[expect_idx]);
                     expect_idx += 1;
                     (
@@ -1722,11 +2370,13 @@ fn run_incremental(
                         })
                         .to_string(),
                         step_expect,
+                        Some((base_source, candidate_source)),
                     )
                 }
                 auto_test_case::contract::ProbeStep::Run => (
                     "run",
                     serde_json::json!({"op": "run", "nonce": round_nonce}).to_string(),
+                    None,
                     None,
                 ),
                 other => {
@@ -1790,6 +2440,59 @@ fn run_incremental(
                 }
             }
             if op == "edit-source" {
+                if strict && resp.get("source_error").is_some() {
+                    // PLAN-911 strict: a REAL source rejection of this
+                    // round's candidate (fast-path refusal or the strict
+                    // materialization gate). Admitted on the raw line; the
+                    // sequence STOPS here — later steps are not sent (the
+                    // parent's side of first-failure-stop), and the
+                    // parent's source rolls back to the accepted prefix.
+                    let (base_source, candidate_source) =
+                        round_sources.expect("edit-source rounds carry their sources");
+                    let base_sha = hex(&sha256(&base_source));
+                    let candidate_sha = hex(&sha256(&candidate_source));
+                    let expect = if ok.get("warm_edit_fallback").and_then(|v| v.as_bool())
+                        == Some(true)
+                        && ok.get("materialized").and_then(|v| v.as_bool()) == Some(false)
+                    {
+                        source_diag::OperationExpectation::FallbackCold {
+                            base_sha: &base_sha,
+                            candidate_sha: &candidate_sha,
+                        }
+                    } else {
+                        source_diag::OperationExpectation::WarmEdit {
+                            base_sha: &base_sha,
+                            candidate_sha: &candidate_sha,
+                        }
+                    };
+                    match source_diag::admit(&line, &resp, "probe.at", &expect) {
+                        Ok(fact) => {
+                            source = base_source;
+                            diag = Some((fact.primary_code.clone(), fact.legacy_message.clone()));
+                            source_fact = Some(fact);
+                            let mut rec = ok;
+                            rec["parent_window_ms"] =
+                                serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                            step_records.push(rec);
+                            // Stop the sequence at the first failure.
+                            break 'admit;
+                        }
+                        Err(e) => {
+                            infra_detail = Some(format!("source-v1 admission (round {i}): {e}"));
+                            break 'admit;
+                        }
+                    }
+                }
+                if strict && ok.get("refusal").is_some() {
+                    // A typed NON-language refusal (invalid edit, session,
+                    // drift, untyped): not a language rejection — the check
+                    // errors instead of guessing a family.
+                    infra_detail = Some(format!(
+                        "typed refusal in round {i}: {}",
+                        serde_json::to_string(&ok["refusal"]).unwrap_or_default()
+                    ));
+                    break 'admit;
+                }
                 if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
                     // F-818-R2-02: the syntax increment could not converge
                     // on this legal edit; the worker materialized it on the
@@ -1879,6 +2582,37 @@ fn run_incremental(
                 // A run round: either the judged incremental re-link/run or
                 // the whole-request leg after a syntax fallback.
                 if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+                    if strict && resp.get("source_error").is_some() {
+                        // PLAN-911 strict: the whole-request leg's source
+                        // rejection — the final materialized source is the
+                        // candidate. Admitted, judged, sequence stops.
+                        let candidate_sha = hex(&sha256(&source));
+                        match source_diag::admit(
+                            &line,
+                            &resp,
+                            "mn.at",
+                            &source_diag::OperationExpectation::Cold {
+                                candidate_sha: &candidate_sha,
+                            },
+                        ) {
+                            Ok(fact) => {
+                                diag =
+                                    Some((fact.primary_code.clone(), fact.legacy_message.clone()));
+                                source_fact = Some(fact);
+                                let mut rec = ok;
+                                rec["parent_window_ms"] = serde_json::json!(
+                                    round_started.elapsed().as_secs_f64() * 1000.0
+                                );
+                                step_records.push(rec);
+                                break 'admit;
+                            }
+                            Err(e) => {
+                                infra_detail =
+                                    Some(format!("source-v1 admission (run round): {e}"));
+                                break 'admit;
+                            }
+                        }
+                    }
                     if let Some(d) = ok.get("diagnostic") {
                         // A diagnosed rejection from the whole-request leg
                         // (a diagnosed rejection never reaches link/run by
@@ -2010,7 +2744,10 @@ fn run_incremental(
     // path; the judged value is the LAST step's PE exit).
     let mut mismatches: Vec<Mismatch> = Vec::new();
     if let Some((code, message)) = &diag {
-        let stage = if code.starts_with("mn.unsupported.frontend")
+        let stage = if let Some(fact) = &source_fact {
+            // PLAN-911 strict: the RAW producer stage decides.
+            fact.mapped_stage
+        } else if code.starts_with("mn.unsupported.frontend")
             || code.starts_with("mn.unsupported.input")
         {
             Stage::Parse
@@ -2159,4 +2896,302 @@ fn run_incremental(
             gaps: vec![],
         }),
     })
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-911 T-03: parent-side strict admission unit controls (V-06/V-18).
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod source_diag_tests {
+    use super::source_diag::{self, OperationExpectation};
+    use serde_json::{json, Value};
+
+    const SRC: &str = "fn main() int { return true + 1 }\n";
+
+    fn sha(bytes: &[u8]) -> String {
+        auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(bytes))
+    }
+
+    /// A valid cold B17 response (the worker's real shape).
+    fn valid_response() -> (String, Value) {
+        let snap = json!({
+            "schema": "mn.source-diagnostic/1",
+            "mode": "source-v1",
+            "producer": "ace-core.source",
+            "profile": "scalar",
+            "attempted": ["scalar"],
+            "surface_rejections": [],
+            "path": "mn.at",
+            "source_sha256": sha(SRC.as_bytes()),
+            "source_len": SRC.len(),
+            "span_basis": "utf8-byte",
+            "causes": [
+                {
+                    "stage": "verify",
+                    "code": "source.type-mismatch",
+                    "message": "operator `+` expects i32 operands",
+                    "span": { "start": 24, "end": 33 },
+                }
+            ],
+            "primary": 0,
+            "operation": {
+                "kind": "cold",
+                "step": null,
+                "base_sha256": null,
+                "candidate_sha256": sha(SRC.as_bytes()),
+                "session_revision": null,
+                "edit": null,
+            },
+        });
+        let resp = json!({
+            "schema": "mnworker/1",
+            "nonce": "n",
+            "request_hash": "h",
+            "ok": {
+                "recipe": "ac/mir-native-scalar-v1",
+                "worker_version": "mnworker/1.0",
+                "mn_abi": "msvc-x64/priv-i32-bool-v1",
+                "mn_target": "x86_64-pc-windows-msvc",
+                "diagnostics_mode": "source-v1",
+                "diagnostics_schema": "mn.source-diagnostic/1",
+                "counters": {},
+                "spans": {},
+            },
+            "source_error": snap,
+            "diagnostic": {
+                "code": "mn.unsupported.frontend",
+                "message": "Verify/source.type-mismatch: operator `+` expects i32 operands",
+            },
+        });
+        let raw = serde_json::to_string(&resp).expect("serializes");
+        (raw, resp)
+    }
+
+    fn admit_ok(raw: &str, resp: &Value) -> Result<source_diag::AdmittedFact, String> {
+        source_diag::admit(
+            raw,
+            resp,
+            "mn.at",
+            &OperationExpectation::Cold {
+                candidate_sha: &sha(SRC.as_bytes()),
+            },
+        )
+    }
+
+    #[test]
+    fn mn911_admit_valid_cold_fact() {
+        let (raw, resp) = valid_response();
+        let fact = admit_ok(&raw, &resp).expect("admits");
+        assert_eq!(fact.raw_stage, "verify");
+        assert_eq!(fact.primary_code, "source.type-mismatch");
+        assert_eq!(
+            fact.mapped_stage,
+            auto_test_case::contract::Stage::Typecheck
+        );
+        assert_eq!(
+            fact.legacy_message,
+            "Verify/source.type-mismatch: operator `+` expects i32 operands"
+        );
+    }
+
+    #[test]
+    fn mn911_admit_rejects_raw_duplicate_keys_both_orders() {
+        // Mutate the WIRE string so `"primary"` appears twice — after the
+        // causes array and before it. serde's Map would collapse either;
+        // the raw scanner must reject both.
+        for order in ["after", "before"] {
+            let (raw, _) = valid_response();
+            let dup = match order {
+                "after" => raw.replace(
+                    "\"primary\":0",
+                    "\"primary\":0,\"stage\":\"verify\",\"primary\":0",
+                ),
+                _ => raw.replace("\"primary\":0", "\"primary\":0,\"zz\":1,\"primary\":1"),
+            };
+            let resp: Value = serde_json::from_str(&dup).expect("parses (collapsed)");
+            let err = admit_ok(&dup, &resp).expect_err("duplicate keys are wire-rejected");
+            assert!(err.contains("duplicate object key"), "{order}: {err}");
+        }
+    }
+
+    #[test]
+    fn mn911_admit_rejects_forged_primary() {
+        for forge in [json!("0"), json!(0.0), json!(false), json!(1), json!(null)] {
+            let (raw, mut resp) = valid_response();
+            resp["source_error"]["primary"] = forge.clone();
+            let r = serde_json::to_string(&resp).unwrap();
+            let err = admit_ok(&r, &resp).expect_err("forged primary");
+            assert!(err.contains("primary"), "{forge}: {err}");
+        }
+    }
+
+    #[test]
+    fn mn911_admit_rejects_unknown_field_and_missing_field() {
+        let (raw, mut resp) = valid_response();
+        resp["source_error"]["expected_family"] = json!("type");
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("unknown field");
+        assert!(err.contains("unknown field"), "{err}");
+
+        let (raw, mut resp) = valid_response();
+        resp["source_error"]
+            .as_object_mut()
+            .unwrap()
+            .remove("span_basis");
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("missing field");
+        assert!(err.contains("missing fields"), "{err}");
+        let _ = raw;
+    }
+
+    #[test]
+    fn mn911_admit_rejects_non_family_stage() {
+        for stage in ["capability", "backend", "link", "run", "unknown-stage"] {
+            let (_, mut resp) = valid_response();
+            resp["source_error"]["causes"][0]["stage"] = json!(stage);
+            let r = serde_json::to_string(&resp).unwrap();
+            let err = admit_ok(&r, &resp).expect_err("stage gate");
+            assert!(
+                err.contains("stage") || err.contains("family"),
+                "{stage}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn mn911_admit_rejects_out_of_bounds_and_misordered_span() {
+        for (start, end) in [
+            (999usize, 1000usize),
+            (33usize, 24usize),
+            (0usize, 999usize),
+        ] {
+            let (_, mut resp) = valid_response();
+            resp["source_error"]["causes"][0]["span"] = json!({"start": start, "end": end});
+            let r = serde_json::to_string(&resp).unwrap();
+            let err = admit_ok(&r, &resp).expect_err("span bounds");
+            assert!(err.contains("out of bounds"), "({start},{end}): {err}");
+        }
+    }
+
+    #[test]
+    fn mn911_admit_rejects_over_cap_causes_and_message() {
+        let (_, mut resp) = valid_response();
+        let mut causes = Vec::new();
+        for _ in 0..65 {
+            causes.push(json!({
+                "stage": "verify", "code": "source.type-mismatch",
+                "message": "m", "span": {"start": 0, "end": 1},
+            }));
+        }
+        resp["source_error"]["causes"] = json!(causes);
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("cause cap");
+        assert!(err.contains("cap"), "{err}");
+
+        let (_, mut resp) = valid_response();
+        resp["source_error"]["causes"][0]["message"] = json!("m".repeat(4097));
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("message cap");
+        assert!(err.contains("cap"), "{err}");
+    }
+
+    #[test]
+    fn mn911_admit_rejects_execution_result_mixing() {
+        // A source_error response that also claims an execution result.
+        let (_, mut resp) = valid_response();
+        resp["ok"]["exit_code"] = json!(0);
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("mutual exclusion");
+        assert!(err.contains("must not carry"), "{err}");
+    }
+
+    #[test]
+    fn mn911_admit_rejects_legacy_projection_mismatch() {
+        let (_, mut resp) = valid_response();
+        resp["diagnostic"]["message"] = json!("something else");
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("projection");
+        assert!(err.contains("projection"), "{err}");
+    }
+
+    #[test]
+    fn mn911_admit_rejects_unbound_candidate_and_cold_with_base() {
+        // The snapshot claims a different source than the parent sent.
+        let (_, mut resp) = valid_response();
+        let other = sha(b"fn main() int { return 1 }\n");
+        resp["source_error"]["operation"]["candidate_sha256"] = json!(other);
+        resp["source_error"]["source_sha256"] = json!(other);
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("binding");
+        assert!(err.contains("bind"), "{err}");
+
+        // A cold operation must not carry warm-session binding.
+        let (_, mut resp) = valid_response();
+        resp["source_error"]["operation"]["base_sha256"] = json!(sha(b"base"));
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("cold purity");
+        assert!(err.contains("must leave"), "{err}");
+    }
+
+    #[test]
+    fn mn911_admit_rejects_wrong_path_and_escalation_lie() {
+        let (_, mut resp) = valid_response();
+        resp["source_error"]["path"] = json!("case-logical-path.at");
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("path");
+        assert!(err.contains("path"), "{err}");
+
+        // attempted must end at the terminating profile.
+        let (_, mut resp) = valid_response();
+        resp["source_error"]["attempted"] = json!(["scalar", "record"]);
+        let r = serde_json::to_string(&resp).unwrap();
+        let err = admit_ok(&r, &resp).expect_err("escalation");
+        assert!(err.contains("terminating"), "{err}");
+    }
+
+    #[test]
+    fn mn911_admit_rejects_truncated_source_error() {
+        // The wire line ends mid-object: the raw scanner must reject.
+        let (raw, resp) = valid_response();
+        // Cut MID-object (right before the span_basis key) and add no
+        // closing braces: the wire line ends inside source_error.
+        let cut = raw.find("\"span_basis\"").expect("anchor");
+        let truncated = raw[..cut].to_string();
+        let err = admit_ok(&truncated, &resp).expect_err("truncated");
+        assert!(
+            err.contains("truncated") || err.contains("unbalanced"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn mn911_admit_warm_edit_binding() {
+        let (_, mut resp) = valid_response();
+        let base = sha(b"base\n");
+        let candidate = sha(b"candidate\n");
+        resp["source_error"]["path"] = json!("probe.at");
+        resp["source_error"]["source_sha256"] = json!(candidate);
+        resp["source_error"]["source_len"] = json!(10);
+        resp["source_error"]["causes"][0]["span"] = json!({"start": 0, "end": 4});
+        resp["source_error"]["operation"] = json!({
+            "kind": "warm-edit",
+            "step": 2,
+            "base_sha256": base,
+            "candidate_sha256": candidate,
+            "session_revision": 1,
+            "edit": {"start": 0, "end": 4, "insert_len": 3},
+        });
+        let raw = serde_json::to_string(&resp).unwrap();
+        let fact = source_diag::admit(
+            &raw,
+            &resp,
+            "probe.at",
+            &OperationExpectation::WarmEdit {
+                base_sha: &base,
+                candidate_sha: &candidate,
+            },
+        )
+        .expect("warm-edit admits with the right binding");
+        assert_eq!(fact.candidate_sha256, candidate);
+    }
 }

@@ -990,6 +990,7 @@ fn dispatch_check(
                 &project_dir,
                 &artifact_dir,
                 run_dir,
+                &execution_key(loaded, &spec.id, &check.id),
             )
         }
         (Adapter::Probe, auto_test_case::contract::Action::Run) => sema::run_check(
