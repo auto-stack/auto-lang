@@ -68,7 +68,12 @@ flags 供手工 cargo 使用；**在受管根内运行未钉 flags 的手工 car
   件锁死 cargo 重链接）、pdb 硬链接；运行中的旧发布件 rename 让位；发布前校验
   PE 头/可读，坏件具名拒绝并保留上一好副本（cargo fresh 不检测任意篡改，恢复
   =删该单元 `.fingerprint/<pkg>-*` 或整根重建）。bin 名解析清单优先、收据回退。
-- `auto run` = 受管 build+发布 + 直接运行发布件（应用 cwd=前端目录）。
+- 受管 cargo 派生 cwd 恒为 `<ws>`（不从缓存根反推；显式根亦然），config 链只
+  来自 ws 自身及其祖先。`auto run` = 受管 build+发布 + 直接运行发布件（应用
+  cwd=前端目录）。pdb 取 cargo `compiler-artifact.filenames` 所报路径（rustc
+  以下划线命名 `counter_<id8>.pdb`），发布为 `<published>.pdb`。
+- `context.json.producer_origin` 为首见值：同一 producer 经不同选择臂（env/
+  发现/编译期）再写入时不翻转该字段。
 - 发现：`generated_build::discover_front_exe(app_dir)`（收据优先）；auto-ui
   `app_registry::convention_native_exe` 与 runtime `launcher_compiled_exe` 先走
   `published_native_exe`，约定路径仅作 910 前布局回退。
@@ -77,8 +82,10 @@ flags 供手工 cargo 使用；**在受管根内运行未钉 flags 的手工 car
 
 ## 5. 并发、lease 与清理
 
-- `<ws>/.generation.lock`（`File::lock`，线程内可重入）保护成员表/生成/收据
-  读改写；两不同工程并发不丢成员，同工程并发串行（cargo 目标锁争用可观测）。
+- `<ws>/.generation.lock`（`File::lock`，线程内可重入）保护 workspace ensure
+  （成员扫描→清单/config 重写）；生成产物与收据本身靠 tmp+rename 原子替换与
+  生成期输入快照保证不出混合体，不在该锁临界区内。两不同工程并发不丢成员，
+  同工程并发由 cargo 目标锁串行（争用可观测）。
 - `<root>/.lease/<pid>-<ms>.json`：受管 cargo 派生期间、split 后端与 serve
   服务生命周期内持有；外杀留 dead-pid 件，下次 acquire 清扫；清理器对活 pid
   lease 拒绝、对过期 lease 报告并忽略。owned 树（Job/ProcessTree）随父进程

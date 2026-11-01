@@ -389,6 +389,20 @@ impl GeneratedBuildContext {
     pub fn write_context_file(&self) -> io::Result<()> {
         let path = self.target_root.join(CONTEXT_FILE);
         fs::create_dir_all(&self.target_root)?;
+        // `producer_origin` is first-seen: two callers selecting the SAME
+        // producer through different arms (env vs discovery vs compiled-in,
+        // e.g. the CLI and a unit test) must not keep flipping the record
+        // (F-910-R1-05). Everything else differing means a real change.
+        let existing_origin = fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|value| {
+                value
+                    .get("producer_origin")
+                    .and_then(|o| o.as_str())
+                    .map(str::to_string)
+            });
+        let origin = existing_origin.unwrap_or_else(|| self.producer_origin.clone());
         let record = serde_json::json!({
             "schema": CONTEXT_SCHEMA,
             "context_id": self.context_id,
@@ -402,7 +416,7 @@ impl GeneratedBuildContext {
             "rustflags": self.managed_rustflags,
             "user_flags_override": self.user_flags_override,
             "toolchain": self.toolchain,
-            "producer_origin": self.producer_origin,
+            "producer_origin": origin,
         });
         write_if_changed(&path, format!("{record}\n").as_bytes()).map(|_| ())
     }
@@ -821,6 +835,7 @@ use OpenProcess as windows_open_process;
 /// away before the new copy lands (Windows allows renaming a mapped image).
 pub fn publish_artifact(
     uplifted: &Path,
+    pdb: Option<&Path>,
     member_dir: &Path,
     release: bool,
     published_file_name: &str,
@@ -835,7 +850,12 @@ pub fn publish_artifact(
     // name is restored here, at publication.
     let dest = dest_dir.join(published_file_name);
     replace_durable(uplifted, &dest, true)?;
-    let pdb = uplifted.with_extension("pdb");
+    // The pdb is the one cargo reported (rustc names it with underscores:
+    // `counter_72e31f46.pdb`), not a guess from the exe stem (F-910-R1-02);
+    // legacy callers without a report fall back to the exe stem.
+    let pdb = pdb
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| uplifted.with_extension("pdb"));
     if pdb.is_file() {
         let pdb_dest = Path::new(published_file_name)
             .with_extension("pdb")
@@ -1142,12 +1162,12 @@ mod plan910_tests {
         let src = dir.join("uplifted.exe");
         fs::write(&src, b"payload-a").unwrap();
         let member = dir.join("member");
-        let dest = publish_artifact(&src, &member, false, "app.exe").unwrap();
+        let dest = publish_artifact(&src, None, &member, false, "app.exe").unwrap();
         assert!(dest.is_file());
         assert_eq!(fs::read(&dest).unwrap(), b"payload-a");
         // Rebuild same member with new bytes replaces the publication.
         fs::write(&src, b"payload-b-longer").unwrap();
-        let dest2 = publish_artifact(&src, &member, false, "app.exe").unwrap();
+        let dest2 = publish_artifact(&src, None, &member, false, "app.exe").unwrap();
         assert_eq!(dest2, dest);
         assert_eq!(fs::read(&dest).unwrap(), b"payload-b-longer");
         // The published exe is an independent copy: rewriting the uplifted
@@ -1155,6 +1175,16 @@ mod plan910_tests {
         // would), so cargo can relink while the published copy runs.
         fs::write(&src, b"payload-c").unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"payload-b-longer");
+        // F-910-R1-02: the pdb cargo reports (underscore stem) is published
+        // next to the exe under the user-visible stem; a guessed `-` name
+        // would miss it.
+        let pdb_src = dir.join("app_12345678.pdb");
+        fs::write(&pdb_src, b"pdb-bytes").unwrap();
+        publish_artifact(&src, Some(&pdb_src), &member, false, "app.exe").unwrap();
+        assert_eq!(
+            fs::read(member.join("bin/debug/app.pdb")).unwrap(),
+            b"pdb-bytes"
+        );
     }
 
     #[test]
