@@ -36,12 +36,18 @@ ACE M1 闭包源码套件以 append-only 文件方式消费未改动的 K01–K0
   91 corpus[58 源例 + 5 typed + U10 入口 + H3 常驻 + O15 console] + 40 scenario，
   四路径 524 登记格；base 套件 36 例 97 检查；金样 `oracle/m1_*.rs` 24 + 单源
   wrapper `oracle/wrapper-main-v1.rs` + 证书 registry `oracle/certs/*.cert.json`
-  10，schema `ace.m1.cert/1` 随库版本化）。登记总量≠M1 required 分母，适用/净缺口
-  /owner 以 [ace-m1-gap-audit.md](ace-m1-gap-audit.md)（PLAN-903 审计账本）为准。
-- 验证入口：固定组 `cargo t case-ace-m1-*`（11 组）+ 常驻 cargo 负控为日常绿证据
-  入口；`scripts/verify-ace-m1-852.ps1` 六+一 scope 为原 852 直达面，**现 infra
-  红**（split bug + attachments/852 依赖缺失，审计 F-INFRA-1），修好前不作可运行
-  M1 完整性门；认证 bin `ace-certify`。合同与差异行语义见
+  10，schema `ace.m1.cert/1` 随库版本化）。登记总量≠M1 required 分母：适用分层以
+  [ace-m1-applicability.md](ace-m1-applicability.md)（PLAN-908 `applicability.json`，
+  required 313 = 核心 285 + 扩展已承诺 AV 28）为准，净缺口/owner 以
+  [ace-m1-gap-audit.md](ace-m1-gap-audit.md)（PLAN-903 冻结 + §11 908 后继）为准；
+  来源身份由 `source-manifest.json` 冻结，40 场景 oracle 正文见
+  [ace-m1-scenario-oracles.md](ace-m1-scenario-oracles.md)。
+- 验证入口：固定组 `cargo t case-ace-m1-*`（12 组，含 908 近邻
+  `case-ace-m1-nb-diags-908`）+ 常驻 cargo 负控为日常绿证据入口；
+  `scripts/verify-ace-m1-852.ps1` 六+一 scope（PLAN-908 修复：.NET Split、去
+  attachments 依赖、contract 严格校验 applicability/manifest、acceptance 零执行 strict
+  核算 `ace.m1.acceptance/2`）为可运行的 M1 完整性门，治理反控组 `infra-ace-m1`；
+  认证 bin `ace-certify`（certify 恒显式）。合同与差异行语义见
   [ace-m1-conformance.md](ace-m1-conformance.md) /
   [a2r-golden-certification.md](a2r-golden-certification.md)。
 

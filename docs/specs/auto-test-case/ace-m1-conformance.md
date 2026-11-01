@@ -6,7 +6,8 @@
 
 ## 同源四路径
 
-一份 Auto 源码（`src/*.at`，byte-identity 由 binding.tsv 的 cases.json hash 轴冻结）经四条真实路径独立判决，父侧判定，worker 不接收 expected：
+一份 Auto 源码（`src/*.at`，byte-identity 由 tracked `source-manifest.json`（schema
+`ace.m1.source-manifest/1`，PLAN-908）冻结；旧 attachments/852/cases.json 依赖已退出）经四条真实路径独立判决，父侧判定，worker 不接收 expected：
 
 | 路径 | recipe/adapter | 判决面 |
 |---|---|---|
@@ -22,38 +23,44 @@
 当前 131 数据行 = **91 corpus**（852 原 58 源例 + 5 typed 入口 W01–W05；+U01–U10
 入口/Unit[862]、+H01–H03 常驻[866]、+O01–O15 console 源码[863，ns=corpus]）+
 **40 scenario** 行 = 登记处；四路径（ac/av/avm/a2r）共 524 登记格。**登记总量 ≠
-M1 required 分母**：适用范围按已批准规则（NA-1..NA-4、R-A..R-F）与逐格归账划定，
-现行口径/净缺口/owner/顺序见 [净缺口审计](ace-m1-gap-audit.md)（PLAN-903）。
-逐行给出四路径单元状态：
+M1 required 分母**：适用范围按已批准规则（NA-1..NA-6、R-A..R-F、FUTURE-O）逐格
+归账于 [适用性登记](ace-m1-applicability.md)（PLAN-908，`applicability.json`）：
+**required = 313**（核心 285 + 扩展已承诺 AV 28），核心 NA 95、已裁定差异 32、扩展
+NA 39、future 45；净缺口/owner/顺序见 [净缺口审计](ace-m1-gap-audit.md)（PLAN-903
+冻结数 + §11 908 后继状态）。逐行给出四路径单元状态（五态词表，862 SD-01/02）：
 
-- `ok` / `ok-emit`：能力已交付且已正式接线（base 套件真绿）。
-- `diff-*`：引擎真实执行但与冻结 oracle 语义分歧（如 B08/B11 旧引擎 10/-7 vs
-  oracle 7；B13/B15 旧 i64 不陷阱；B16 a2r 不做名解析）——如实登记，永不冒绿；
-  改已议语义须携反例交用户裁定。
-- `gap:<owner>` / `wait:D82x`：未交付能力（native 扩面、822~824 类型族、native
-  在线 loader 等），带 owner/关闭 oracle；不阻塞底座，但阻止 M1 全绿。
-- `snapshot-only-cert-gap`：a2r 复合产物为伪 Rust（`List<int>`/`int`），快照可比
-  较、不可编译认证。
+- `ok` / `ok:<producer>` / `ok-emit` / `ok-parse-reject`：能力已交付且已正式接线。
+- `emit-ok-run-unverified` / `snapshot-only-cert-gap` / `cert-diff`：a2r 金样轴绿、
+  认证轴缺（ok+cert-gap 等价；M1 a2r 判据=金样轴，认证另账）。
+- `diff:accepted(R-x)` 与 `diff-legacy-*`/`diff-old-*`（R-ACCEPTED 认领）：引擎真实
+  执行但与冻结 oracle 语义分歧且**已裁定接受**——如实登记、永不冒绿、不阻 M1 核心
+  （B18 avm 例外：infra 观察，`diff:pending` 仍阻）。`diff:pending`/`diff-no-name-check`
+  （R-E 不接受）为未裁定/真缺口，阻塞。
+- `gap:<owner>` / `wait:D82x`：未交付能力，带 owner/关闭 oracle；不阻塞底座，但阻止
+  M1 全绿（除非被 NA/FUTURE 规则认领出 required）。
+- `na:m1(NA-x)`：M1 不要求，**必须**被 applicability 规则认领（裸 `n/a` 自 908 起不
+  存在，contract 直接拒）。
 
-selector/局部 run 不削减 required 分母；零选择、缺行、仅 emit、SKIP=PASS 均不能
-作为 M1 绿证据。
+selector/局部 run 不削减 required 分母；零选择、缺行、仅 emit、SKIP=PASS、伪父报告均
+不能作为 M1 绿证据（acceptance scope 拒）。
 
-### 净缺口审计导航与待验收边界（PLAN-903，2026-11-01 冻结）
+### 净缺口审计导航与待验收边界（PLAN-903，2026-11-01 冻结；**908 后继见文末**）
 
-- 五态词表/`na` 反滥用/两轴分离已裁定（2026-10-28），但 binding.tsv 尚未迁移
-  （raw token 保留为证据）；bare `n/a`（无规则 ID）与 B17–19 ac 诊断面、H/I07/I08
-  的 NA-3 扩展均**待裁定**——裁定前 M1 clean 只能以实测口径记（862 T-06 的
-  20/73 仅覆盖当时 corpus 73 行，不得引用 50/103 投影冒全表）。
+- ~~五态词表/`na` 反滥用/两轴分离已裁定（2026-10-28），但 binding.tsv 尚未迁移~~
+  （PLAN-908 T-05 已迁移：61 格 G-DEC 批准回填 + T08 a2r 归一；raw 前态保留在 note 与
+  `applicability.json.old_token`）；~~bare `n/a` 与 B17–19 ac 诊断面、H/I07/I08 的
+  NA-3 扩展均待裁定~~（G-DEC-1..5 于 2026-11-01 全部裁定，见
+  [适用性登记](ace-m1-applicability.md)）。862 T-06 的 20/73 实测口径仅为历史记录。
 - a2r 双轴：M1 判据=金样/emit 逐字节轴；`emit-ok-run-unverified`/
   `snapshot-only-cert-gap`/`cert-diff` 为 ok+cert-gap 等价，认证缺口另账
   （owner=a2r 复合 lowering）。892/902/904 新 HIR A2R 证据**并列**，不自动替换
   旧 a2r 身份或旧 M1 分母。
-- 日常绿证据入口=固定组 `cargo t case-ace-m1-*`（11 组注册于
-  `scripts/test-groups.toml`）+ 常驻 cargo 测试；`verify-ace-m1-852.ps1` 现
-  infra 红（split bug + attachments 依赖，见审计 F-INFRA-1），修好前不作可运行
-  M1 完整性门。
-- 逐格七类归账、缺口族 owner/关闭 oracle/后继顺序、未决项清单全部以
-  [ace-m1-gap-audit.md](ace-m1-gap-audit.md) 为 current 账本。
+- 日常绿证据入口=固定组 `cargo t case-ace-m1-*`（12 组，含 908 的
+  `case-ace-m1-nb-diags-908`）+ 常驻 cargo 测试；`verify-ace-m1-852.ps1`
+  ~~现 infra 红~~（PLAN-908 T-06 已修：.NET Split、去附件依赖、strict
+  acceptance/2）——contract/acceptance 恢复为可运行的 M1 完整性门。
+- 逐格七类归账、缺口族 owner/关闭 oracle/后继顺序以
+  [ace-m1-gap-audit.md](ace-m1-gap-audit.md) 为 current 账本（903 冻结数 + §11）。
 
 ## 底座套件（ace-m1-base.suite.ad）
 
@@ -221,3 +228,32 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
 `ac-a2r/hir-scalar-emit-v1` 产生**并列**证据：本文件的 M1 分母、expected、
 旧 a2r-snapshot 检查与 NA/accepted-diff 行**不变**；新后端能力不冒认旧路径
 交付，M1 a2r 消费者是否迁移由专门审计认领（892 不宣称 M1 或旧 A2X 替换完成）。
+
+## PLAN-908：规则、登记与验收入口归一（2026-11-01）
+
+- **适用登记**：`applicability.json`（`ace.m1.applicability/1`）冻结 G-DEC-1..5 批准的
+  逐格规则（NA-1..6 / R-ACCEPTED / FUTURE-O）、批准来源 SHA、重入条件与分层总数；
+  规范见 [ace-m1-applicability.md](ace-m1-applicability.md)。61 格批准迁移
+  （54 裸 n/a + 7 raw gap → `na:m1(NA-3/5/6)`）与 T08 a2r 五态归一只动路径 token
+  与 note，id/ns/feature/outcome/expected/status 守恒；binding 前态
+  `d9f05da0…` → 后态见 source-manifest `binding.sha256`。
+- **来源清单**：`source-manifest.json`（`ace.m1.source-manifest/1`）冻结 81 源
+  （58 原 + 881×12 + 864×3 + 889×4 + 866×1 + 908 近邻 3）、24 金样 + wrapper、10 证书、
+  43 reference、66 suite/case/子树源与 [40 场景 oracle 规范](ace-m1-scenario-oracles.md)
+  及决策件的 SHA256；fresh 树 contract 不依赖任何 attachments，缺/漂移/伪造 D 源拒。
+- **统一入口**：`verify-ace-m1-852.ps1` contract = 12 列 .NET Split + ns 唯一 +
+  131/91/40 守恒 + applicability/manifest 严格校验 + NA 反滥用 + 基线/owner；
+  acceptance = 零执行 strict 核算，报告 `ace.m1.acceptance/2`（binding/规则/清单/批准
+  身份、registered/core/extension/future/ruled-accepted 账、required 集合 hash、逐格
+  ledger、base/core/extension/future/cert verdict、`can_claim_m1`），可 `-ParentReport`
+  准入真实父报告（空/失败/伪报告拒）、`-Select` 仅报告选择、`-BuildIdentity` 零 spawn
+  严格验证证书；source/snapshot/lifecycle/certify/receipts 职责不变，certify 仍显式。
+- **诊断近邻**：`nb-diags-908.suite.ad`（NB17/NB18/NB19 = B17/B18/B19 的合法近邻，
+  2/2/0）在 ac-native/av/autovm 三引擎实跑 9/9 绿——证明 B17–B19 的拒绝是区分性拒绝；
+  base 套件 36 例 97 检查冻结不扩。固定组：`case-ace-m1-nb-diags-908`（真实运行）、
+  `infra-ace-m1`（治理反控：登记/白名单/来源/核算变异必红，all=false）。
+- **T-04 实证（2026-11-01）**：base97 全绿（B16–19 ac/av 腿当前身份）；B18 avm 重探针
+  仍 infra（可辨识消息、无 typed stage/code）保 `diff:pending`；B17 a2r 探针 emit 成功
+  → 六诊断负例 a2r 面（G-DEC-3）保 `gap:a2r-golden`。当前 acceptance：core 247/285
+  红、extension 28/28 绿、future 45 显示、cert 38 gap、`can_claim_m1=false`——治理交付
+  完成 ≠ M1 通过。

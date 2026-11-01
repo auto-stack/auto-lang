@@ -1,0 +1,8 @@
+# PLAN-908 near-neighbor suite — independent of the frozen 852 base suite
+# (36 cases / 97 checks unchanged). 3 cases / 9 checks.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-nb-diags-908", include: [
+  "nb-diags-908.case.ad",
+] }
+```

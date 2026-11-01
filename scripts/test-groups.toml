@@ -680,6 +680,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m1-nb-diags-908"
+title = "TestCase case-ace-m1-nb-diags-908（PLAN-908 B17-19合法近邻2/2/0）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/nb-diags-908.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-tr-native"
 title = "TestCase case-ace-m1-tr-native"
 runner = "case"
@@ -938,6 +950,18 @@ args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../.
 expression = "test(/^console::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
+all = false
+
+[[group]]
+name = "infra-ace-m1"
+title = "治理 scripts/tests/test_ace_m1_acceptance.py（PLAN-908 M1适用/来源/严格核算控制）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_m1_acceptance.py"
 all = false
 
 [[group]]

@@ -176,3 +176,31 @@ avm `diff-legacy-*` 不翻绿；任意非零 exit 不当负例成功（L06 必�
 | base 组重验（当前 HEAD 接线） | `cargo t case-ace-m1-base`（专属树） | 见计划 §7 收据（首红-auto-web 缺失→补 detached 兄弟后重跑，首红保留） | F-OK-1 同身份新证据；组脚本未建 auto-web 兄弟实录入 F-INFRA-1 注记 |
 | B18 avm 重探针 | avm/run × `src/B18.at` | **未执行**（avm 腿未接线任何现行 suite；构造新 case 超静态审计授权） | 保未实证 + 下一探针具名（F-INFRA-3）；重绑定计划执行 |
 | 其余各族 | 冻结收据按身份复用（各交付计划 §9 + binding 注记 + suite/固定组注册静态核） | 未重跑 | 计划 §5.3"先冻结证据"；无界全套/13 慢测非本审计门（893 边界） |
+
+## 11. PLAN-908 后继状态（2026-11-01；§1–§10 为 903 冻结历史，不重写）
+
+G-DEC-1..5 已由用户按推荐全部裁定（决策件 §13，2026-11-01），PLAN-908 实施规则/登记/
+来源/入口归一。本节只记各族**当前**状态与 owner；逐格 token 以 binding.tsv 为准，
+适用分层以 [ace-m1-applicability.md](ace-m1-applicability.md) 为准。
+
+| 族/事项 | 908 后状态 | 证据/去向 |
+|---|---|---|
+| G-DEC-1（54 裸 n/a） | **闭**：NA-5（C01/02 avm/a2r + G01–08 ac/av/avm，28）、NA-6-I（I01–11 avm/a2r，22）回填 `na:m1`；G01 ac/av 两 raw gap 专属主体排除 | applicability NA-5/NA-6；binding note `908T05` |
+| G-DEC-2（B17–19 ac 面） | 裁定语义族映射；ac 现 `mn.unsupported.frontend` 泛化码不满足可辨识原因 → **保 `diff:pending`**，owner=mn 诊断面（同义透传 H 或后继） | 近邻 NB17/18/19 三引擎 2/2/0 实跑 9/9 绿（区分性成立） |
+| G-DEC-3（六负例 a2r） | 裁定前端拒绝面、不造金样；a2r 现仍 emit（B17 探针 1 产物）→ **保 `gap:a2r-golden`** 真缺口，owner=旧 a2r 线（242） | [a2r 认证规范](a2r-golden-certification.md) 诊断面节 |
+| G-DEC-4（H/I07/I08） | **闭**：I07/I08 ac NA-3 继承澄清（2）；H01–03 ac NA-3 新（3）、avm/a2r NA-6 新（6）；H AV 仍 required（ok:P866） | applicability NA-3/NA-6 |
+| G-DEC-5（双层） | **闭**：核心 412（required 285 / NA 95 / 已裁定差异 32）+ 扩展已承诺 AV 28；U 非AV 30 NA-4、H 非AV 9 NA；O 非AV 45 **FUTURE-O**（保 gap，不计 required，不隐出报告） | acceptance/2：required 313，hash `35ad43aa…` |
+| F-REG-1（五态回填） | **闭（批准范围内）**：61 格 + T08 a2r `source-bound`→`gap:a2r-golden`；R-A/B/C/D 差异 32 格以 R-ACCEPTED 规则认领（token 保 raw 证据，不阻核心） | contract/acceptance 守恒门 + `cargo t infra-ace-m1` 变异反控 |
+| F-REG-2 | 随 G-DEC-2：口径已定，ac 三格为具名诊断缺口（非登记落后） | 核心 blocker 列表 |
+| F-REG-3 | 随 G-DEC-3：owner token 保 `gap:a2r-golden`，语义=前端拒绝面 | 同上 |
+| F-REG-4（G01 av 陈旧 owner） | **闭**：G01 av → `na:m1(NA-5)`；**勘误**：822 实际已归档 r5（9/9，类型集合 Spec 已交付），903 "822 从未立项"为文字错误；G01 适用性按 a2r 认证主体裁定，非凭错 owner 直接 NA | binding note；本节 |
+| F-INFRA-1（852 脚本） | **闭**：.NET Split（862 同源规则）、去 attachments/cases.json、applicability/manifest 严格校验、strict acceptance/2；contract/source/acceptance 当前全绿 | 908 T-06/T-07 |
+| F-INFRA-2（oracle 不入库） | **闭**：[ace-m1-scenario-oracles.md](ace-m1-scenario-oracles.md) 沉淀 40 场景 oracle，manifest 绑其 SHA；旧附件 hash 仅历史线索 | 908 T-03 |
+| F-INFRA-3（B18 avm） | **重探针已执行**（2026-11-01）：avm 错误完成、无 typed stage/code、消息文本可辨识 → 仍 infra 分类，保 `diff:pending`/`gap:legacy-b18-infra`，owner=legacy avm 诊断通道 | binding note `908T04` |
+| F-INFRA-5（892 固定组） | 不变：独立后继事项，不随 908/904 关闭 | — |
+| 其余能力族（F-SCN/F-AV/F-CON/F-NAT/F-A2R） | 不变：owner/关闭 oracle 沿 §5；FUTURE-O 45 格显示为 future 账；NA-3 扩展后 H ac 3 格不再计 ⑦ | §5 |
+
+**M1 现状（acceptance/2，2026-11-01）**：core 247/285 红（38 真实 blocker：B16/E03 a2r
+名解析 2、B17–19 ac 3、B18 avm 1、a2r 诊断面 7（六负例 + T08 归一）、scenario 观察通道 14、
+AV 故障/代际/共享可变 3、mn 复合场景面 7、R07 a2r 未定型 1）；extension 28/28 绿；future 45 显示；
+cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签章待 §8 顺序④。

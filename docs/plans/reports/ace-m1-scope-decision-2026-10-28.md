@@ -4,6 +4,8 @@
 > 目的：让"M1 全绿"成为一个**可计数、可达**的目标，而不是一个永远收不了口的口号。
 > 关联：[852 底座合同](ace-852-baseline-and-capability-validation-2026-10-26.md)、[ACE-M1 语料 Spec](../../specs/auto-test-case/ace-m1-conformance.md)、[Design43 §12](../../design/43-ac-av-typed-mir-and-abc.md)、[Design49](../../design/49-native-single-mir-lowering.md)、[批次规划](ace-next-batch-2026-10-28.md)。
 
+> **最新裁定（2026-11-01）**：用户已批准[§13](#13-补充裁定g-dec-15plan-9082026-11-01)的G-DEC-1..5全部推荐，已有批准直接继承；实施合同为[PLAN-908 r2](../908-ace-m1-rules-registry-and-acceptance.md)。下方2026-10-28的103行、50/53等是历史测算，不是当前执行结果；当前保留131行/524格登记，按§13的核心/扩展承诺/future分层判决。本轮只记录决策，binding、规则文件和验收实现尚未迁移。
+
 ## 0. 摘要
 
 当前 M1 分母（`crates/auto-lang/test/cases/ace-m1/binding.tsv`，103 行 × 4 路径 = 412 单元格）**没有"按合同不适用"这一态**，导致三类互不相同的情况被混记：
@@ -168,6 +170,45 @@ a2r 线（242）→ 关 39 个认证缺口 + 2 个名解析
 1. NA-4 只覆盖 `entry-unit` 这一新 profile 的行；不得用于把既有 103 行里的 `gap`/`probe` 转成 `na`。
 2. 该规则不解除附录 A 中其他无规则 ID 的 `na:m1`（C01/C02/I01–I11/G02–G08）的待裁定状态——那些行仍需单独裁定规则归属后才能回填（见 PLAN-862 T-07 B2 边界与 KNOWN-DEBT 待决策项）。
 3. merge 的 852/862 acceptance 报告必须与 `NA-1..NA-4` 的分布一并单列（PLAN-862 当前：`NA-4=30`，其余为 0）。
+
+## 13. 补充裁定：G-DEC-1..5（PLAN-908，2026-11-01）
+
+**批准来源**：本会话用户原话：“908的G-DEC-1..5都按推荐方案裁定，已有批准直接继承。”对应PLAN-908 r1 §5.1的五项推荐；r2记录批准与904交付后的交接。批准的是精确范围与判据，不是实际执行PASS，也不是本轮施工授权。NA-1..4、R-A..F及原oracle已有批准直接继承，不向范围外类推。
+
+| 决策 | 已批准方案 | 必须保留的边界 |
+|---|---|---|
+| G-DEC-1 | 新增NA-5、NA-6的有限白名单，详见下表 | 本项50格=48裸n/a+G01 ac/av两raw gap；H6归G-DEC-4，不重复计数；不因能力困难排除 |
+| G-DEC-2 | B17/B18/B19 native按原expected语义族type/assign-immutable/missing-return显式映射，保raw stage/code/message与实际原因；B16 resolve同原则 | 泛unsupported/syntax/任意非零不足；原负例不改，新增合法近邻独立oracle分别2/2/0；原因不足仍gap:mn-diagnostic-observation或pending，批准不自动使3格ok |
+| G-DEC-3 | 六个旧a2r负例B17–19/T06/R09/R10仍required，判正确前端拒绝，不生成非法程序的可执行Rust金样 | 另三族borrow-escape/nominal-type/use-after-move；不得用rustc失败、NA或accepted代替。B16/E03名解析、R07未定型及复合认证欠账保留，新HIR producer不顶替旧a2r |
+| G-DEC-4 | I07/I08 ac两格直接继承原NA-3；新增H01–H03 ac归NA-3，H01–H03 avm/a2r归NA-6 | 本组2旧批准+9新增批准；H三行AV仍required，native loader/闭包ABI未来交付后按正式合同重入，重启进程不冒在线HMR |
+| G-DEC-5 | 保131行/524格全登记；原103行核心+扩展28行已承诺AV profile双层required；O01–15非AV45格列future真实能力gap | 45格不阻本次所定义核心M1签章，但必须展示gap/双owner/关闭oracle与重入条件，不能改NA/PASS、删行或隐出报告；完整131行四路径支持仍未承诺 |
+
+### 13.1 精确适用白名单与重入
+
+| 规则 | namespace/id/path白名单 | 数量 | 依据与重入条件 |
+|---|---|---|---|
+| NA-5 | scenario:C01/C02 × avm/a2r；scenario:G01..G08 × ac/av/avm | 28（26原裸n/a+G01 ac/av两raw gap） | 原ACE查询/权限/回灌与原a2r认证系统各有专属主体；后继正式消费相同接口/迁移consumer时先冻结profile和规则，再逐格重入；不排除旧路径普通执行、代码生成、缓存或快照义务 |
+| NA-6 | scenario:I01..I11 × avm/a2r；corpus:H01..H03 × avm/a2r | 28（I22+H6） | 原ACE函数产物/在线常驻会话API不要求旧批处理/快照路径新增同接口；若正式接入这些接口，逐格重入。不得泛排所有增量/性能测试 |
+| NA-3扩展 | corpus:H01..H03 × ac | 3 | 同原NA-3的native在线loader边界；正式冻结相应ABI/loader后逐格重入 |
+| NA-3既有 | scenario:I07/I08 × ac | 2 | 原§5已经明确覆盖，本次仅继承/澄清，禁止重复索取批准 |
+
+合计61唯一格=NA-5 28+NA-6 I22+NA-6 H6+NA-3 H3+NA-3 I2；包含54原裸n/a、7原gap，其中2格旧批准、59格本次新增批准。迁移须保原token/观察/批准与证据，不把规则分类等同执行PASS。NA-4的U非AV30格另沿旧批准，不计入61。
+
+登记namespace严格按原表：C/I/G属于scenario；扩展U/H/O属于corpus。白名单键须含namespace，不能只凭字母ID推断；future45对应corpus:O01..O15，与40个scenario oracle分别核算。
+
+### 13.2 M1签章与双轴
+
+1. 原103×4=412格核心登记完整保留，按原规则和本次逐格白名单得到required；真实gap/infra/未执行仍阻该层。
+2. 扩展28行=U10+H3+O15，AV28格required；U非AV30沿NA-4、H非AV9沿本次裁定，不能冒实际执行。
+3. O01–O15的ac/avm/a2r45格保持future能力gap及后继责任，不转NA/PASS；范围先于结果固定，不按绿选分母。未来正式承诺该profile时先更新合同/范围再接线。
+4. M1签章要求核心适用义务+扩展已承诺profile及各自独立oracle/来源/结构/资源/增量门均成立，并展示全登记剩余gap。base97、局部selected、治理合同PASS均不足；不得宣称131行四路径全部支持。
+5. a2r emit/golden与独立compile-run认证分轴，沿已有批准；获准金样轴不因cert-gap自动失败，也不能称认证PASS。严格收据scope、G06/G07和坏证书拒绝不弱化，不隐式certify或刷新golden，不跨892/902/904与旧a2r授信。
+
+### 13.3 批准落地与未完成能力
+
+908实施时把本节批准来源/逐格scope/重入条件与版本绑定进有限规则、登记迁移和strict报告；原source/outcome/expected不改。诊断观察不足、旧a2r真实检查/发射缺口、AV失败注入/句柄代际、native console及未来loader等仍分别保能力owner与判定owner/独立关闭oracle，不能因本次批准记已闭。
+
+904已archived r2、14/14，delivery `12f9adf18`在主线；含type/enum片段修复及collections新recipe/cert可按正式Spec消费。它是并列新producer，不替旧M1 a2r身份/证据或自动迁移认证。908本轮只更新计划与决策文档，不改binding/生效规则/current Spec、不运行测试/探针/认证，也不重写903冻结审计数。实施/复审/沉淀与材料清理顺序见908 §5.6、§5.8、§8。
 
 ## 附录 A：逐行重分类（103 行）
 

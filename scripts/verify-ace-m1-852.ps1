@@ -2,8 +2,11 @@
 #
 # Scopes (built by the plan's tasks; each scope fails loudly until its task
 # delivers it — a missing scope is NEVER a silent green):
-#   contract   T-01: frozen baseline + binding-table integrity + design
-#              package source identity (sha256) + owner coverage.
+#   contract   T-01 (rewritten PLAN-908 T-06): frozen baseline + binding-table
+#              integrity + APPROVED APPLICABILITY (applicability.json) +
+#              TRACKED SOURCE IDENTITY (source-manifest.json) + owner coverage.
+#              Reads ONLY tracked files (the retired docs/plans/attachments/852
+#              dependency is gone); never executes guests or target compiles.
 #   source     T-02: four-path scalar baseline actually runs (suite gate).
 #   snapshot   T-03: daily a2r emit + golden byte-compare + STRICT
 #              certificate validity (structure + file axes + build-time
@@ -16,10 +19,17 @@
 #              other scope (G08 / F-852-R1-02).
 #   lifecycle  T-05: scalar cache/session fresh/hit/restart/body-edit
 #              observations (no compilation happens in this scope).
-#   acceptance T-06: base-layer acceptance over the NON-certifying scopes,
-#              reporting M1 completeness as a separate axis. It never
-#              certifies: missing/stale certificates are REPORTED, never
-#              written here (F-852-R1-02).
+#   acceptance T-06 (rewritten PLAN-908 T-06): STRICT single-source M1
+#              accounting over binding.tsv + applicability.json — two-layer
+#              (core / committed-extension) required set, NA/future separate,
+#              golden-vs-cert DUAL AXIS, per-cell ledger and required-set
+#              hash, report schema ace.m1.acceptance/2. It NEVER executes,
+#              NEVER certifies, and NEVER orchestrates the other scopes; a
+#              current parent report may be admitted via -ParentReport
+#              (fake/empty/failing reports are rejected). Exit 0 = accounting
+#              integrity held (M1 red verdicts stay honestly red); exit 1 =
+#              integrity violation (half-migrated rules, bare n/a, shrunk
+#              denominator, fake parent report...).
 #
 # Exit codes: 0 = scope satisfied; 1 = verification failure; 2 = usage /
 # contract error; 3 = scope not yet implemented by its owning task.
@@ -38,7 +48,15 @@ param(
     # receipts scope: the build-rustc-identity axis to compare receipts
     # against (normally taken from a fresh suite report; the direct receipt
     # matrix seam has no suite run, so it must be supplied).
-    [string]$BuildIdentity
+    [string]$BuildIdentity,
+
+    # acceptance scope (optional): a real parent suite report whose executed
+    # evidence this accounting admits; identity and PASS state are validated.
+    [string]$ParentReport,
+
+    # acceptance scope (optional): explicit selection list "ns:id,ns:id,..."
+    # reported as a selection ONLY — selections never change verdicts.
+    [string]$Select
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,20 +68,23 @@ function Fail([string]$message) {
 }
 
 # ---- shared locations -------------------------------------------------------
-$bindingPath = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/binding.tsv'
-$designDir   = Join-Path $RepoRoot 'docs/plans/attachments/852'
-$casesJson   = Join-Path $designDir 'cases.json'
-$corpusDir   = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1'
+$bindingPath  = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/binding.tsv'
+$applicPath   = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/applicability.json'
+$manifestPath = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/source-manifest.json'
+$corpusDir    = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1'
 
 # ---- binding.tsv loader (schema frozen by T-01; column order is contract) ---
 # Columns (12): id ns feature outcome expected ac av avm a2r status enabling owner_or_note
+# PLAN-908 T-06: reliable Split semantics — .NET String.Split([char]9), the
+# same single-source rule as verify-av-862.ps1 (D-862-R1-01), never the
+# PowerShell -split operator whose regex/limit semantics mangle columns.
 function Load-Binding {
     if (-not (Test-Path $bindingPath)) { Fail "binding table missing: $bindingPath" }
     $rows = @()
-    foreach ($line in Get-Content $bindingPath -Encoding UTF8) {
+    foreach ($line in (Get-Content $bindingPath -Encoding UTF8)) {
         if ($line -notmatch '\S') { continue }          # blank
         if ($line.StartsWith('#')) { continue }         # comments (header included)
-        $f = $line -split "`t", -1
+        $f = $line.Split([char]9)
         if ($f.Count -ne 12) { Fail "binding row has $($f.Count) columns (frozen schema = 12): $($line.Substring(0, [Math]::Min(60, $line.Length)))" }
         $rows += [pscustomobject]@{
             id = $f[0]; ns = $f[1]; feature = $f[2]; outcome = $f[3]; expected = $f[4]
@@ -83,6 +104,199 @@ function Sha256File([string]$path) {
 function Sha256Text([string]$text) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     -join ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString('x2') })
+}
+
+# ---- PLAN-908 applicability.json STRICT loader ------------------------------
+# Schema ace.m1.applicability/1. Required top-level keys; every rule cell must
+# reference an existing (ns,id,path); no cell may be claimed by two rules;
+# every rule cell's binding_token must equal the CURRENT binding token
+# (migrated cells carry na:m1(<rule>), inherited cells keep their raw token —
+# a half-written migration or a silently edited whitelist fails here); layer
+# totals are recomputed from binding+rules and must equal expected_totals.
+function Load-Applicability {
+    param($rows)
+    if (-not (Test-Path $applicPath)) { Fail "applicability registry missing: $applicPath (PLAN-908 tracked asset)" }
+    $app = $null
+    try { $app = Get-Content $applicPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { Fail "applicability.json is not valid JSON: $_" }
+    if ($app.schema -cne 'ace.m1.applicability/1') { Fail "applicability schema is '$($app.schema)', expected ace.m1.applicability/1" }
+    foreach ($k in @('plan', 'approval_source', 'layers', 'extension_rows', 'expected_totals', 'rules')) {
+        if (-not $app.PSObject.Properties[$k]) { Fail "applicability.json missing required key: $k" }
+    }
+    # approval source: the tracked decision document must exist and hash to
+    # the frozen value (approval drift is a rejection, never a warning).
+    $docRel = $app.approval_source.decision_doc
+    $docSha = $app.approval_source.decision_doc_sha256
+    if (-not $docRel -or -not $docSha) { Fail "applicability approval_source lacks decision_doc/decision_doc_sha256" }
+    $docPath = Join-Path $RepoRoot $docRel
+    if (-not (Test-Path $docPath)) { Fail "approval decision doc missing: $docRel" }
+    if ((Sha256File $docPath) -cne $docSha) { Fail "approval decision doc DRIFTED: $docRel no longer matches the frozen ruling hash" }
+
+    $rowByKey = @{}
+    foreach ($r in $rows) { $rowByKey["$($r.ns):$($r.id)"] = $r }
+    $claimed = @{}
+    $naCells = 0; $futureCells = 0; $ruledAccepted = 0
+    foreach ($rule in @($app.rules)) {
+        if (-not $rule.rule -or -not $rule.cells) { Fail "applicability rule entry incomplete (missing rule/cells)" }
+        foreach ($c in @($rule.cells)) {
+            foreach ($k in @('ns', 'id', 'path', 'old_token', 'binding_token', 'migrated', 'approval')) {
+                if (-not $c.PSObject.Properties[$k]) { Fail "rule $($rule.rule) cell missing field: $k" }
+            }
+            if (@('ac', 'av', 'avm', 'a2r') -notcontains $c.path) { Fail "rule $($rule.rule) cell has unknown path: $($c.path)" }
+            $row = $rowByKey["$($c.ns):$($c.id)"]
+            if (-not $row) { Fail "rule $($rule.rule) references unknown row: $($c.ns):$($c.id)" }
+            $ck = "$($c.ns):$($c.id):$($c.path)"
+            if ($claimed.ContainsKey($ck)) { Fail "cell claimed by two rules: $ck ($($claimed[$ck]) and $($rule.rule))" }
+            $claimed[$ck] = $rule.rule
+            $current = $row.($c.path)
+            if ($current -cne $c.binding_token) {
+                Fail "rule $($rule.rule) cell $ck binding_token '$($c.binding_token)' != current binding token '$($current)' (half-written migration or edited whitelist)"
+            }
+            if ($c.migrated -and $c.binding_token -cne "na:m1($($rule.rule))") {
+                Fail "rule $($rule.rule) cell $ck is migrated but token is not na:m1($($rule.rule))"
+            }
+            if ($rule.rule -eq 'FUTURE-O') { $futureCells++ }
+            elseif ($rule.rule -eq 'R-ACCEPTED') { $ruledAccepted++ }
+            else { $naCells++ }
+        }
+    }
+    if ($naCells -eq 0) { Fail "applicability carries zero NA cells" }
+
+    # extension rows (explicit id lists; committed path av)
+    $extIds = @{}
+    foreach ($g in @($app.extension_rows)) {
+        foreach ($i in @($g.ids)) {
+            if ($extIds.ContainsKey($i)) { Fail "extension row group lists '$i' twice" }
+            $extIds[$i] = $g.committed_path
+        }
+    }
+
+    # layer recompute from binding + rules (the denominator can only change
+    # with a ruling — a shrunk or enlarged recompute fails here)
+    $tot = $app.expected_totals
+    $corpusRows = @($rows | Where-Object ns -eq 'corpus')
+    $scenRows = @($rows | Where-Object ns -eq 'scenario')
+    $coreCells = 0; $extCells = 0; $committed = 0
+    foreach ($r in $rows) {
+        $isExt = ($extIds.ContainsKey($r.id) -and $r.ns -eq 'corpus')
+        foreach ($p in 'ac', 'av', 'avm', 'a2r') {
+            if ($isExt) {
+                $extCells++
+                if ($extIds[$r.id] -eq $p) { $committed++ }
+            } else { $coreCells++ }
+        }
+    }
+    $cells = $rows.Count * 4
+    $required = $cells - $naCells - $futureCells - $ruledAccepted
+    $coreNa = 0
+    foreach ($rule in @($app.rules)) {
+        if ($rule.rule -in @('FUTURE-O', 'R-ACCEPTED')) { continue }
+        foreach ($c in @($rule.cells)) {
+            if (-not ($extIds.ContainsKey($c.id) -and $c.ns -eq 'corpus')) { $coreNa++ }
+        }
+    }
+    $checks = @(
+        @{ have = $rows.Count;      want = $tot.rows;          what = 'rows' },
+        @{ have = $corpusRows.Count; want = $tot.corpus_rows;  what = 'corpus rows' },
+        @{ have = $scenRows.Count;  want = $tot.scenario_rows; what = 'scenario rows' },
+        @{ have = $cells;           want = $tot.cells;         what = 'cells' },
+        @{ have = ($rows.Count - @($extIds.Keys).Count); want = $tot.core_rows; what = 'core rows' },
+        @{ have = $coreCells;       want = $tot.core_cells;    what = 'core cells' },
+        @{ have = $extCells;        want = $tot.extension_cells; what = 'extension cells' },
+        @{ have = $committed;       want = $tot.committed_cells; what = 'committed cells' },
+        @{ have = $naCells;         want = $tot.rule_cells;    what = 'NA rule cells' },
+        @{ have = $futureCells;     want = $tot.future_cells;  what = 'future cells' },
+        @{ have = $ruledAccepted;   want = $tot.ruled_accepted_cells; what = 'ruled-accepted cells' },
+        @{ have = $coreNa;          want = $tot.core_na_cells; what = 'core NA cells' },
+        @{ have = $required;        want = $tot.required_cells; what = 'required cells' }
+    )
+    foreach ($c in $checks) {
+        if ([int]$c.have -ne [int]$c.want) { Fail "applicability layer total mismatch: $($c.what) = $($c.have), approved registry says $($c.want) — the denominator was shrunk or enlarged without a ruling" }
+    }
+    return @{ app = $app; claimed = $claimed; extIds = $extIds; naCells = $naCells; futureCells = $futureCells; ruledAccepted = $ruledAccepted; required = $required }
+}
+
+# ---- PLAN-908 source-manifest.json STRICT loader ----------------------------
+# Schema ace.m1.source-manifest/1. Tracked source identity for fresh trees:
+# every listed file must exist with the exact frozen sha256; counts must
+# match; the binding and scenario-oracles doc axes must bind; scenario rows
+# never fabricate sources (no src/D*.at).
+function Load-SourceManifest {
+    param($rows)
+    if (-not (Test-Path $manifestPath)) { Fail "source manifest missing: $manifestPath (PLAN-908 tracked asset)" }
+    $m = $null
+    try { $m = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { Fail "source-manifest.json is not valid JSON: $_" }
+    if ($m.schema -cne 'ace.m1.source-manifest/1') { Fail "source-manifest schema is '$($m.schema)', expected ace.m1.source-manifest/1" }
+
+    if ((Sha256File $bindingPath) -cne $m.binding.sha256) { Fail "binding.tsv DRIFTED against the frozen source manifest" }
+
+    $srcDir = Join-Path $corpusDir 'src'
+    $onDisk = @(Get-ChildItem $srcDir -Filter '*.at' | Sort-Object Name | ForEach-Object Name)
+    if ($onDisk.Count -ne [int]$m.corpus_src.expected_count) {
+        Fail "corpus src count $($onDisk.Count) != manifest $($m.corpus_src.expected_count) (unregistered source added/removed)"
+    }
+    foreach ($f in $onDisk) {
+        if ($f -cmatch '^D\d+\.at$') { Fail "scenario D-row source fabricated: src/$f (typed/scenario rows never get corpus sources)" }
+        $want = $m.corpus_src.files.$f
+        if (-not $want) { Fail "src/$f not listed in the source manifest" }
+        if ((Sha256File (Join-Path $srcDir $f)) -cne $want) { Fail "corpus source DRIFTED: src/$f" }
+    }
+    foreach ($cat in @(
+        @{ node = $m.oracle_golden;  dir = 'oracle';        pattern = 'm1_*.rs';     label = 'goldens' },
+        @{ node = $m.oracle_certs;   dir = 'oracle/certs';  pattern = '*.cert.json'; label = 'certificates' },
+        @{ node = $m.reference;      dir = 'reference';     pattern = '*.rs';        label = 'references' }
+    )) {
+        $files = @(Get-ChildItem (Join-Path $corpusDir $cat.dir) -Filter $cat.pattern | Sort-Object Name)
+        if ($files.Count -ne [int]$cat.node.expected_count) { Fail "$($cat.label) count $($files.Count) != manifest $($cat.node.expected_count)" }
+        foreach ($f in $files) {
+            $want = $cat.node.files.($f.Name)
+            if (-not $want) { Fail "$($cat.label) not in manifest: $($cat.dir)/$($f.Name)" }
+            if ((Sha256File $f.FullName) -cne $want) { Fail "$($cat.label) DRIFTED: $($cat.dir)/$($f.Name)" }
+        }
+    }
+    $wrap = Sha256File (Join-Path $corpusDir 'oracle/wrapper-main-v1.rs')
+    if ($wrap -cne $m.oracle_golden.wrapper_sha256) { Fail "oracle wrapper DRIFTED: oracle/wrapper-main-v1.rs" }
+
+    # suites/cases + subtree sources
+    $scCount = 0
+    foreach ($p in $m.suites_cases.files.PSObject.Properties) {
+        $full = Join-Path $corpusDir $p.Name
+        if (-not (Test-Path $full)) { Fail "manifest suite/case file missing: $($p.Name)" }
+        if ((Sha256File $full) -cne $p.Value) { Fail "suite/case file DRIFTED: $($p.Name)" }
+        $scCount++
+    }
+    if ($scCount -ne [int]$m.suites_cases.expected_count) { Fail "suites_cases count $scCount != manifest $($m.suites_cases.expected_count)" }
+
+    # scenario oracles doc (tracked authority for the 40 scenario rows)
+    $soPath = Join-Path $RepoRoot $m.scenario_oracles.path
+    if (-not (Test-Path $soPath)) { Fail "scenario oracles spec missing: $($m.scenario_oracles.path)" }
+    if ((Sha256File $soPath) -cne $m.scenario_oracles.sha256) { Fail "scenario oracles spec DRIFTED: $($m.scenario_oracles.path)" }
+
+    # every source-bound original corpus family (B/T/R/L/V/K ids) has its
+    # frozen src/<id>.at registered (existence enforced by the per-file loop;
+    # here the binding rows must resolve to manifest entries).
+    foreach ($r in ($rows | Where-Object { $_.ns -eq 'corpus' -and $_.id -cmatch '^(B|T|R|L|V|K)\d\d$' })) {
+        if (-not $m.corpus_src.files.("$($r.id).at")) { Fail "binding row $($r.id) has no registered corpus source src/$($r.id).at" }
+    }
+    return $m
+}
+
+# ---- cell classification (shared by contract + acceptance) ------------------
+# Five-state vocabulary (PLAN-862 SD-01/02) + PLAN-908 a2r dual-axis split:
+# the M1 a2r judgment axis is the golden/emit byte axis; the compile-certify
+# axis is accounted separately (decision four / G-DEC-3).
+function Get-CellState([string]$token) {
+    if ($token -cmatch '^ok') { return @{ cls = 'green'; cert = 'none' } }
+    if ($token -in @('emit-ok-run-unverified', 'snapshot-only-cert-gap', 'cert-diff')) {
+        return @{ cls = 'green-cert-gap'; cert = 'cert-gap' }
+    }
+    if ($token -cmatch '^diff:accepted') { return @{ cls = 'accepted-diff'; cert = 'none' } }
+    if ($token -cmatch '^diff' -or $token -cmatch '^emit-') { return @{ cls = 'pending-diff'; cert = 'none' } }
+    if ($token -cmatch '^(gap|wait):') { return @{ cls = 'gap'; cert = 'none' } }
+    if ($token -cmatch '^na:m1\(NA-[0-9A-Za-z-]+\)$') { return @{ cls = 'na'; cert = 'none' } }
+    if ($token -ceq 'n/a') { return @{ cls = 'bare-na'; cert = 'none' } }
+    return @{ cls = 'invalid'; cert = 'none' }
 }
 
 # Locate a prebuilt binary WITHOUT building (the daily snapshot face must
@@ -220,58 +434,48 @@ switch ($Scope) {
     'contract' {
         $rows = Load-Binding
 
-        # 1. unique (ns, id)
+        # 1. unique (ns, id) + frozen denominator shape
         $dupes = $rows | Group-Object { "$($_.ns):$($_.id)" } | Where-Object Count -gt 1
         if ($dupes) { Fail "duplicate (ns,id): $($dupes.Name -join ', ')" }
-
-        # 2. design package identity: every cases.json source/reference exists
-        #    and hashes to the recorded frozen value.
-        if (-not (Test-Path $casesJson)) { Fail "cases.json missing: $casesJson" }
-        $design = Get-Content $casesJson -Raw | ConvertFrom-Json
-        $checked = 0
-        foreach ($c in @($design.cases) + @($design.typed_source_cases)) {
-            $rel = if ($c.source) { $c.source } else { "typed-source/$($c.id).at" }
-            $src = Join-Path $designDir $rel
-            if (-not (Test-Path $src)) { Fail "$($c.id): source file missing: $rel" }
-            if ($c.source_sha256) {
-                $h = Sha256File $src
-                if ($h -ne $c.source_sha256) { Fail "$($c.id): source hash drifted: $rel" }
-            }
-            if ($c.reference) {
-                $ref = Join-Path $designDir $c.reference
-                if (-not (Test-Path $ref)) { Fail "$($c.id): reference file missing: $($c.reference)" }
-            }
-            $row = $rows | Where-Object { $_.ns -eq 'corpus' -and $_.id -eq $c.id }
-            if (-not $row) { Fail "$($c.id): declared in cases.json but absent from binding.tsv" }
-            $checked++
+        $corpus = @($rows | Where-Object ns -eq 'corpus')
+        $scenario = @($rows | Where-Object ns -eq 'scenario')
+        if ($rows.Count -ne 131) { Fail "binding rows $($rows.Count) != 131 (frozen denominator)" }
+        if ($corpus.Count -ne 91 -or $scenario.Count -ne 40) { Fail "binding split $($corpus.Count)/$($scenario.Count) != 91/40" }
+        # corpus:R03 (named ctor) and scenario:R03 (live borrow) are two
+        # independent obligations — namespace uniqueness is the contract.
+        if (-not ($corpus | Where-Object id -eq 'R03') -or -not ($scenario | Where-Object id -eq 'R03')) {
+            Fail "dual-namespace R03 rows must both exist (corpus R03 + scenario R03)"
         }
 
-        # 2b. formal corpus sources are byte-identical to the design package
-        #     (hash equality against the same frozen identity).
-        $formalSrc = Join-Path $corpusDir 'src'
-        if (-not (Test-Path $formalSrc)) { Fail "formal corpus src dir missing: $formalSrc" }
-        $formalFiles = @(Get-ChildItem $formalSrc -Filter '*.at')
-        foreach ($file in $formalFiles) {
-            $row = $design.cases | Where-Object { $_.source -eq "src/$($file.Name)" }
-            if (-not $row) { Fail "formal corpus file not in cases.json: $($file.Name)" }
-            $h = Sha256File $file.FullName
-            if ($h -ne $row.source_sha256) { Fail "formal corpus source drifted: $($file.Name)" }
-        }
-        if ($formalFiles.Count -ne $design.cases.Count) {
-            Fail "formal corpus src count mismatch vs cases.json ($($design.cases.Count))"
-        }
+        # 2. approved applicability (PLAN-908) — strict registry validation
+        $appv = Load-Applicability $rows
 
-        # 3. scenario coverage: every SCENARIOS.md group row is bound.
-        $scenarioRows = $rows | Where-Object ns -eq 'scenario'
+        # 3. tracked source identity (PLAN-908) — replaces cases.json
+        Load-SourceManifest $rows | Out-Null
+
+        # 4. scenario coverage: every scenario group row is bound.
         foreach ($gid in @('D01','D02','D03','D04','D05','D06','D07','D08','D09',
                            'E01','E02','E03','C01','C02',
                            'R01','R02','R03','R04','R05','R06',
                            'I01','I02','I03','I04','I05','I06','I07','I08','I09','I10','I11','I12',
                            'G01','G02','G03','G04','G05','G06','G07','G08')) {
-            if (-not ($scenarioRows | Where-Object id -eq $gid)) { Fail "scenario row $gid missing from binding.tsv" }
+            if (-not ($scenario | Where-Object id -eq $gid)) { Fail "scenario row $gid missing from binding.tsv" }
         }
 
-        # 4. frozen scalar baseline (contract-decision 2026-10-26): the four
+        # 5. NA anti-abuse: no bare n/a anywhere; every na:m1 cell is claimed
+        #    by an approved rule (unclaimed NA = sourceless NA = rejected).
+        foreach ($r in $rows) {
+            foreach ($p in 'ac', 'av', 'avm', 'a2r') {
+                $st = Get-CellState $r.$p
+                if ($st.cls -eq 'bare-na') { Fail "$($r.ns):$($r.id) path $p carries bare 'n/a' — an NA without a rule ID is not admissible (anti-abuse)" }
+                if ($st.cls -eq 'invalid') { Fail "$($r.ns):$($r.id) path $p token '$($r.$p)' is outside the five-state vocabulary" }
+                if ($st.cls -eq 'na' -and -not $appv.claimed.ContainsKey("$($r.ns):$($r.id):$p")) {
+                    Fail "$($r.ns):$($r.id) path $p is na:m1 but NOT covered by any approved rule (sourceless NA)"
+                }
+            }
+        }
+
+        # 6. frozen scalar baseline (contract-decision 2026-10-26): the four
         #    minimum required positives are bound on all four paths with exact
         #    values (a2r binds as ok-emit once its reviewed golden is frozen —
         #    T-03; behavior certification is the separate certify axis).
@@ -286,20 +490,21 @@ switch ($Scope) {
             if ($row.a2r -notin @('ok', 'ok-emit')) { Fail "baseline $k path a2r is '$($row.a2r)' — requires ok/ok-emit (golden-bound)" }
         }
 
-        # 5. every gap/wait row names an owner or owning plan in its note.
+        # 7. every gap/wait row names an owner or owning plan in its note.
         foreach ($r in $rows) {
             if ($r.ac -match '^(gap|wait):' -or $r.av -match '^(gap|wait):' -or $r.avm -match '^(gap|wait):' -or $r.a2r -match '^(gap|wait):') {
                 if ($r.note -notmatch '\S') { Fail "$($r.id): gap/wait row without owner note" }
             }
         }
 
-        # 6. two-axis summary (base layer vs M1 completeness are separate
+        # 8. two-axis summary (base layer vs M1 completeness are separate
         #    conclusions — this count is the denominator, not a verdict).
-        $corpus = $rows | Where-Object ns -eq 'corpus'
         $byOutcome = $corpus | Group-Object outcome | ForEach-Object { "$($_.Name)=$($_.Count)" }
         Write-Host "verify-ace-m1-852 [contract]: PASS — $($rows.Count) binding rows" `
-            "($($corpus.Count) corpus + $($scenarioRows.Count) scenario);" `
-            "corpus outcomes: $($byOutcome -join ', ')." `
+            "($($corpus.Count) corpus + $($scenario.Count) scenario);" `
+            "corpus outcomes: $($byOutcome -join ', ');" `
+            "approved applicability: $($appv.naCells) NA + $($appv.futureCells) future cells," `
+            "$($appv.required) required cells; tracked source manifest verified." `
             "M1 completeness is NOT implied by this scope."
         exit 0
     }
@@ -546,64 +751,216 @@ switch ($Scope) {
     }
 
     'acceptance' {
-        if (-not $OutDir) { Write-Host "usage: -Scope acceptance requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
-        # T-06: base-layer acceptance ORCHESTRATES the NON-CERTIFYING scopes
-        # (F-852-R1-02: acceptance never compiles, never writes certificates)
-        # and reports M1 completeness as a SEPARATE axis — exit 0 certifies
-        # the base layer only, never "M1 is green". Missing/stale certificates
-        # are REPORTED by the snapshot scope and fail here; producing them is
-        # the explicit certify scope's job.
-        $self = $PSCommandPath
-        & $self -Scope contract | Write-Host
-        if ($LASTEXITCODE -ne 0) { Fail "base-layer scope 'contract' failed (exit $LASTEXITCODE)" }
-        foreach ($s in @('source', 'snapshot', 'lifecycle')) {
-            & $self -Scope $s -OutDir (Join-Path $OutDir $s) | Write-Host
-            if ($LASTEXITCODE -ne 0) { Fail "base-layer scope '$s' failed (exit $LASTEXITCODE)" }
-        }
+        if (-not $OutDir) { Write-Host "usage: -Scope acceptance requires -OutDir (scratch report dir)" -ForegroundColor Red; exit 2 }
+        # PLAN-908 T-06 rewrite: STRICT single-source M1 accounting. This
+        # scope never executes anything, never writes certificates, never
+        # certifies, and never orchestrates the other scopes (G06/G08/F-852-
+        # R1-02). It re-runs every contract integrity check first, then
+        # classifies all 524 cells against the approved applicability
+        # registry and emits an ace.m1.acceptance/2 report. Exit 0 means the
+        # ACCOUNTING is valid — red verdicts stay honestly red.
 
-        # The frozen four-path baseline must carry present receipts (their
-        # STRICT validity was just enforced by the snapshot scope).
-        $certDir = Join-Path $corpusDir 'oracle/certs'
-        foreach ($b in @('m1_b01', 'm1_b02', 'm1_b04', 'm1_b09')) {
-            if (-not (Test-Path (Join-Path $certDir "$b.cert.json"))) {
-                Fail "baseline certificate missing: $b.cert.json — four-path baseline needs certified a2r; run the EXPLICIT certify scope (never implicit here)."
-            }
-        }
-
-        # ---- M1 completeness axis (from the frozen denominator registry) ----
         $rows = Load-Binding
-        $corpus = @($rows | Where-Object ns -eq 'corpus')
-        $scenario = @($rows | Where-Object ns -eq 'scenario')
-        $greenCells = 0; $totalCells = 0; $blockers = @{}
-        foreach ($r in $corpus) {
+        $dupes = $rows | Group-Object { "$($_.ns):$($_.id)" } | Where-Object Count -gt 1
+        if ($dupes) { Fail "duplicate (ns,id): $($dupes.Name -join ', ')" }
+        $appv = Load-Applicability $rows
+        Load-SourceManifest $rows | Out-Null
+
+        # vocabulary + NA anti-abuse parity with the contract scope (a bare
+        # n/a or a sourceless na:m1 cell fails the accounting itself)
+        foreach ($r in $rows) {
             foreach ($p in 'ac', 'av', 'avm', 'a2r') {
-                $totalCells++
-                $v = $r.$p
-                $isGreen = switch ($p) {
-                    'a2r' { $v -in @('ok', 'ok-emit') }   # snapshot-only needs behavior cert for M1
-                    default { $v -eq 'ok' }
+                $st = Get-CellState $r.$p
+                if ($st.cls -eq 'bare-na') { Fail "$($r.ns):$($r.id) path $p carries bare 'n/a' — an NA without a rule ID is not admissible (anti-abuse)" }
+                if ($st.cls -eq 'invalid') { Fail "$($r.ns):$($r.id) path $p token '$($r.$p)' is outside the five-state vocabulary" }
+                if ($st.cls -eq 'na' -and -not $appv.claimed.ContainsKey("$($r.ns):$($r.id):$p")) {
+                    Fail "$($r.ns):$($r.id) path $p is na:m1 but NOT covered by any approved rule (sourceless NA)"
                 }
-                if ($isGreen) { $greenCells++ }
-                elseif ($v -match '^(gap|wait):([^|]+)') {
-                    $owner = $Matches[2]; $blockers[$owner] = ($blockers[$owner] + 1)
-                }
-                else { $blockers['semantic-difference'] = ($blockers['semantic-difference'] + 1) }
             }
         }
-        $scenarioOpen = @($scenario | Where-Object { $_.ac -notmatch '^ok' -or $_.av -notmatch '^ok' }).Count
+
+        # ---- cell ledger -------------------------------------------------
+        # Layer scope is driven by the APPROVED RULE CLAIM, not by the token
+        # class: an inherited rule's cells keep their honest gap:* tokens
+        # (capability gaps with owners) while being out of the M1-required
+        # set exactly as approved.
+        $ledger = @()
+        $requiredCells = @()
+        $coreBlockers = @(); $extBlockers = @(); $futureGaps = @()
+        foreach ($r in $rows) {
+            $isExt = ($appv.extIds.ContainsKey($r.id) -and $r.ns -eq 'corpus')
+            foreach ($p in 'ac', 'av', 'avm', 'a2r') {
+                $token = $r.$p
+                $st = Get-CellState $token
+                $key = "$($r.ns):$($r.id):$p"
+                $claimRule = $appv.claimed[$key]
+                $isFuture = ($claimRule -eq 'FUTURE-O')
+                $isRuled = ($claimRule -eq 'R-ACCEPTED')
+                $isNa = ($null -ne $claimRule -and -not $isFuture -and -not $isRuled)
+                if ($isFuture) { $layer = 'future' }
+                elseif ($isRuled) { $layer = 'core_ruled_accepted' }
+                elseif ($isExt) {
+                    if ($appv.extIds[$r.id] -eq $p) { $layer = 'extension_committed' }
+                    elseif ($isNa) { $layer = 'extension_na' }
+                    else { $layer = 'extension_other' }
+                }
+                else {
+                    if ($isNa) { $layer = 'core_na' } else { $layer = 'core' }
+                }
+                $required = ($layer -eq 'core' -or $layer -eq 'extension_committed')
+                if ($required) { $requiredCells += $key }
+                $green = ($st.cls -in @('green', 'green-cert-gap'))
+                if ($required -and -not $green) {
+                    $owner = if ($token -cmatch '^(gap|wait):([^|]+)') { $Matches[2] } else { 'language-difference-or-pending' }
+                    $entry = "$key=$token"
+                    if ($layer -eq 'core') { $coreBlockers += $entry } else { $extBlockers += $entry }
+                }
+                if ($layer -eq 'future' -and -not $green) { $futureGaps += "$key=$token" }
+                $ledger += [pscustomobject]@{
+                    ns = $r.ns; id = $r.id; path = $p; layer = $layer
+                    required = $required; token = $token; state = $st.cls
+                    cert_axis = $st.cert; producer = $token
+                    rule = $appv.claimed[$key]
+                }
+            }
+        }
+
+        $coreRequired = @($ledger | Where-Object { $_.layer -eq 'core' })
+        $coreGreen = @($coreRequired | Where-Object { $_.state -in @('green', 'green-cert-gap') })
+        $extRequired = @($ledger | Where-Object { $_.layer -eq 'extension_committed' })
+        $extGreen = @($extRequired | Where-Object { $_.state -in @('green', 'green-cert-gap') })
+        $ruledShown = @($ledger | Where-Object { $_.layer -eq 'core_ruled_accepted' })
+        if ($coreRequired.Count -ne 285) { Fail "core required recompute $($coreRequired.Count) != 285 — registry tampered mid-report" }
+        if ($extRequired.Count -ne 28) { Fail "extension required recompute $($extRequired.Count) != 28 — registry tampered mid-report" }
+        if ($requiredCells.Count -ne 313) { Fail "required set $($requiredCells.Count) != 313 — the approved rule export was altered" }
+        if ($ruledShown.Count -ne 32) { Fail "ruled-accepted recompute $($ruledShown.Count) != 32 — registry tampered mid-report" }
+
+        $requiredSetHash = Sha256Text (($requiredCells | Sort-Object) -join "`n")
+
+        # ---- optional parent-report admission (never a substitute) --------
+        $parentAdmission = $null
+        if ($ParentReport) {
+            if (-not (Test-Path $ParentReport)) { Fail "parent report missing: $ParentReport" }
+            $pr = $null
+            try { $pr = Get-Content $ParentReport -Raw | ConvertFrom-Json } catch { Fail "parent report is not valid JSON: $_" }
+            $prResults = @($pr.results)
+            if ($prResults.Count -lt 1) { Fail "parent report carries zero results (fake/empty report)" }
+            $prNonPass = @($prResults | Where-Object status -ne 'PASS')
+            if ($prNonPass.Count -gt 0) {
+                Fail ("parent report has {0} non-PASS results (first: {1}:{2} {3}) — failing evidence cannot be admitted" -f $prNonPass.Count, $prNonPass[0].case, $prNonPass[0].check, $prNonPass[0].status)
+            }
+            $parentAdmission = [pscustomobject]@{
+                report = $ParentReport
+                suite = $pr.suite
+                executed_checks = $prResults.Count
+                all_pass = $true
+                scope_note = 'executed evidence admitted for its own scope only; base/selected green NEVER implies M1'
+            }
+        }
+
+        # ---- optional explicit selection (report-only) --------------------
+        $selection = $null
+        if ($Select) {
+            $selection = @()
+            foreach ($part in ($Select -split ',')) {
+                $k = $part.Trim()
+                $found = @($ledger | Where-Object { "$($_.ns):$($_.id)" -ceq $k })
+                if ($found.Count -eq 0) { Fail "selection entry not found in binding: $k" }
+                $selection += [pscustomobject]@{ row = $k; cells = @($found | ForEach-Object { "$($_.path)=$($_.token)" }) }
+            }
+        }
+
+        # ---- optional strict cert-axis validation (zero spawn) ------------
+        $certValidated = $null
+        if ($BuildIdentity) {
+            $certValidated = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
+        }
+        $certAxisRequired = @($ledger | Where-Object { $_.required -and $_.path -eq 'a2r' })
+        $certGapCells = @($certAxisRequired | Where-Object { $_.cert_axis -eq 'cert-gap' })
+
+        # ---- verdicts ------------------------------------------------------
+        $coreVerdict = if ($coreGreen.Count -eq $coreRequired.Count) { 'pass' } else { 'red' }
+        $extVerdict = if ($extGreen.Count -eq $extRequired.Count) { 'pass' } else { 'red' }
+        $futureVerdict = 'reported-not-required'
+        $baseVerdict = if ($parentAdmission) { "pass(parent-report-admitted, $($parentAdmission.executed_checks) checks)" } else { 'not-claimed(this scope never executes)' }
+        $certVerdict = if ($null -ne $certValidated) { "strictly-validated($certValidated receipts)" }
+            elseif ($certGapCells.Count -gt 0) { "gap($($certGapCells.Count) required a2r cells carry cert-gap; validation via snapshot/receipts scope)" }
+            else { 'not-validated(supply -BuildIdentity or run snapshot/receipts)' }
+        # G-DEC-5: M1 may be claimed only when the core obligation AND the
+        # committed extension profile are fully green with valid evidence,
+        # while the full 131/524 registry still displays its remaining gaps
+        # (including the 45 future console cells).
+        $canClaimM1 = ($coreVerdict -eq 'pass') -and ($extVerdict -eq 'pass') -and ($futureGaps.Count -eq 45)
+
+        $classCount = @{}
+        foreach ($l in $ledger) {
+            $n = 0
+            if ($classCount.ContainsKey($l.state)) { $n = [int]$classCount[$l.state] }
+            $classCount[$l.state] = $n + 1
+        }
+
+        $report = [pscustomobject]@{
+            schema = 'ace.m1.acceptance/2'
+            generated_by = 'scripts/verify-ace-m1-852.ps1 -Scope acceptance (PLAN-908 T-06)'
+            repo_root = $RepoRoot
+            identity = [pscustomobject]@{
+                binding_sha256 = Sha256File $bindingPath
+                applicability_sha256 = Sha256File $applicPath
+                source_manifest_sha256 = Sha256File $manifestPath
+                approval_doc = $appv.app.approval_source.decision_doc
+                approval_doc_sha256 = $appv.app.approval_source.decision_doc_sha256
+                ruling_date = $appv.app.approval_source.ruling_date
+            }
+            registered = [pscustomobject]@{ rows = 131; corpus_rows = 91; scenario_rows = 40; cells = 524 }
+            layers = [pscustomobject]@{
+                core_rows = 103; core_cells = 412; core_na_cells = 95
+                core_ruled_accepted_cells = 32; core_required = $coreRequired.Count
+                extension_rows = 28; extension_cells = 112
+                extension_committed_cells = 28; extension_na_cells = 39
+                future_cells = 45; required_cells = $requiredCells.Count
+            }
+            required_set_sha256 = $requiredSetHash
+            cell_states = [pscustomobject]$classCount
+            executed = [pscustomobject]@{
+                selected = 0; executed = 0; conditionally_excluded = 0; not_executed = 0
+                parent_admission = $parentAdmission
+                selection = $selection
+                note = 'this scope executes nothing; executed evidence comes from admitted parent reports or the fixed cargo groups only'
+            }
+            ledger = $ledger
+            verdicts = [pscustomobject]@{
+                base = $baseVerdict
+                core = "$coreVerdict ($($coreGreen.Count)/$($coreRequired.Count) required cells green; 32 ruled-accepted shown, never green)"
+                extension = "$extVerdict ($($extGreen.Count)/$($extRequired.Count) committed cells green)"
+                future = "$futureVerdict ($($futureGaps.Count)/45 gap cells shown)"
+                cert = $certVerdict
+                can_claim_m1 = $canClaimM1
+            }
+            core_blockers = $coreBlockers
+            extension_blockers = $extBlockers
+            ruled_accepted = @($ruledShown | ForEach-Object { "$($_.ns):$($_.id):$($_.path)=$($_.token)" })
+            future_gaps = $futureGaps
+        }
+
+        # frozen report cap (PLAN-908 T-02: 4 MiB cumulative report budget)
+        $json = $report | ConvertTo-Json -Depth 6
+        if ($json.Length -gt 4194304) { Fail "acceptance report exceeds the frozen 4 MiB cap ($($json.Length) chars)" }
+        New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+        $reportPath = Join-Path $OutDir 'ace-m1-acceptance.json'
+        [System.IO.File]::WriteAllText($reportPath, $json, [System.Text.UTF8Encoding]::new($false))
 
         Write-Host ""
-        Write-Host "==== two-axis verdict ====" -ForegroundColor Cyan
-        Write-Host "BASE-LAYER (852 acceptance): PASS — contract/source/snapshot/lifecycle" `
-            "all green WITHOUT any certification run (G08: certify is explicit-only);" `
-            "frozen baseline B01/B02/B04/B09 four-path with strictly validated certificates."
-        Write-Host "M1 COMPLETENESS: NOT claimable from this gate — corpus path-cells green:" `
-            "$greenCells/$totalCells; scenario rows fully open: $scenarioOpen/$($scenario.Count)." `
-            "Registered blockers by owner/cause:"
-        foreach ($k in ($blockers.Keys | Sort-Object)) { Write-Host ("  {0}: {1} cell(s)" -f $k, $blockers[$k]) }
-        Write-Host "Base-layer PASS does not imply M1 green; full M1 needs every required row" `
-            "real on all four paths (owners: 822/823/824, a2r composite lowering, native" `
-            "expansion + online loader, legacy semantic rulings)."
+        Write-Host "==== ace.m1.acceptance/2 ====" -ForegroundColor Cyan
+        Write-Host "registered: 131 rows / 524 cells (91 corpus + 40 scenario); required set hash $requiredSetHash"
+        Write-Host "cell states: $(($classCount.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', ')"
+        Write-Host "BASE: $baseVerdict"
+        Write-Host "CORE: $($report.verdicts.core)"
+        Write-Host "EXTENSION: $($report.verdicts.extension)"
+        Write-Host "FUTURE: $($report.verdicts.future)"
+        Write-Host "CERT: $certVerdict"
+        Write-Host "can_claim_m1: $canClaimM1" -ForegroundColor Yellow
+        Write-Host "Report: $reportPath"
+        Write-Host "Integrity PASS (accounting valid); red verdicts above are the honest M1 state — they are NOT failures of this gate."
         exit 0
     }
 }

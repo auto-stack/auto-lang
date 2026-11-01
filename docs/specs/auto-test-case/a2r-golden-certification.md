@@ -64,3 +64,22 @@ scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径
 当前认证集=标量值例（10 例）。a2r 复合产物为伪 Rust（`List<int>`/`int` 不可编
 译），复合行为认证是登记 gap（owner=a2r 复合 lowering）；陷阱/诊断负例按前端拒
 绝通道判决，不生成可执行金样。
+
+## 诊断负例面与双轴（PLAN-908，G-DEC-3 2026-11-01 裁定）
+
+- **六个 a2r 诊断负例保持 required**（corpus B17/B18/B19/T06/R09/R10）：义务面 =
+  a2r 前端以**正确语义族拒绝**（B17 `type`、B18 `assign-immutable`、B19
+  `missing-return`、T06 `borrow-escape`、R09 `nominal-type`、R10 `use-after-move`），
+  **不生成可执行金样**——与"诊断负例不生成可执行金样"的本规范一致；也不得以
+  rustc 编译失败、任意非零或统一 unsupported 冒充拒绝。
+- **现状（908 T-04 探针，2026-11-01）**：a2r 对 B17 仍 **emit 成功**（1 产物），
+  六负例 face 均为 `gap:a2r-golden`（emit 面）下登记的**真实诊断缺口**，owner=
+  旧 a2r 能力线（242 在册）；B16/E03 的名解析（R-E，不接受）为独立真缺口
+  `gap:a2r-resolve`。G-DEC-2 裁定语义族映射（保 raw stage/code/message 及可辨识
+  原因），不要求后端错误码字面相同；B17–19 ac 侧 `mn.unsupported.frontend` 为
+  泛化码，不满足可辨识原因，保持 `diff:pending`。
+- **双轴不降格**：金样/emit 轴绿 + 认证缺 ≠ 未认证冒进，坏证书也不能降成"未认证"
+  绕过 strict 防伪（REJECTED→不复用/不覆盖）；acceptance scope（`ace.m1.acceptance/2`）
+  分轴报告 38 个 required a2r 格的 cert-gap，日常零编译（rustc/cargo/目标 Rust
+  spawn=0），certify 恒显式。892/902/904 新 HIR A2R 证据并列，不自动顶替旧 a2r
+  身份或旧负例义务。
