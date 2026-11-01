@@ -52,14 +52,14 @@ function Run-Targeted {
     ) 2
     Run-CargoTest "parent-side source closure oracle" @(
         "test", "--manifest-path", "crates/auto-lang-core/Cargo.toml",
-        "--features", "test-cases", "--lib", "closures_source_judge_tests"
+        "--lib", "closures_source_judge_tests"
     ) 1
 }
 
 function Run-Compat {
     Run-CargoTest "frozen closures-run-v1 corpus" @(
-        "test", "--manifest-path", "crates/auto-lang/Cargo.toml",
-        "--features", "test-cases", "--lib", "av_closures_corpus_green", "--", "--nocapture"
+        "test", "--manifest-path", "experimental/ace/tests/conformance/Cargo.toml",
+        "--test", "conformance", "av_closures_corpus_green", "--", "--nocapture"
     ) 1
 }
 
@@ -69,8 +69,8 @@ function Run-Closures {
         "--test", "av_closures_source"
     ) 5
     Run-CargoTest "ACE M1 K01-K06 file-backed source suite" @(
-        "test", "--manifest-path", "crates/auto-lang/Cargo.toml",
-        "--features", "test-cases", "--lib", "ace_m1_closures_source_suite_green", "--", "--nocapture"
+        "test", "--manifest-path", "experimental/ace/tests/conformance/Cargo.toml",
+        "--test", "conformance", "ace_m1_closures_source_suite_green", "--", "--nocapture"
     ) 1
 }
 

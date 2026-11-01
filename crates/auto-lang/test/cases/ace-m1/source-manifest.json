@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "caf5f79fdc79f7853dd7fd66ee7d5b933cafc6b1a207bd05fd0e12a81185afd2"
+  "sha256": "8dea9b9fd98ad379d62dff51cce9074b7e4b434c2537cdeae331d072ea343422"
  },
  "corpus_src": {
   "dir": "src",
@@ -301,7 +301,7 @@
    "b-diags.case.ad": "5f77823d4e7015cd77e6503cddf56b4546cd72cfff8259004d36b88b85d5a080",
    "b-scalar.case.ad": "758863818ad3c5b501fbda65cecbbb6949e424bc9eb27eafa0c52df243f927ee",
    "b-traps.case.ad": "c3865c08e794f22cb2634a04bfb978ae2c2c978e1cd3cf39887ea76b4bc0bf87",
-   "closures-source-865.case.ad": "5e261adb20a463715d47f26de61d485f6c817328bd03091323b2fce9d09fdffc",
+   "closures-source-865.case.ad": "78cb9d50971401ff8293fe958be0c59f6a0f9e353e77d0ae2701e8e5404413f5",
    "collections-source-864.case.ad": "8880b437ed092c5dd2c1b90668433ccab8221aacb6ee3d33b65bf3558419522f",
    "legacy-composite.case.ad": "c53da5c0b3ccf2942242841e2d862642563ce409fb60e64df63deef665846f44",
    "legacy-negative.case.ad": "13d85d8352eccfff9f1556c134bb5ae0fbb961452a02e51bd7e60645fa05c007",

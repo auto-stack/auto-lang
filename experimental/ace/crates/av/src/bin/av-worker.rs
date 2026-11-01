@@ -1281,11 +1281,20 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                         eprintln!("invalid closures source selector {selector}");
                         exit(2);
                     }
-                    if !matches!(source_id, "K01" | "K02" | "K03" | "K04" | "K05" | "K06") {
+                    // PLAN-909: the K01..K06 corpus plus the dedicated
+                    // shared-mutable-909 sources (S01..S08).
+                    if !matches!(
+                        source_id,
+                        "K01" | "K02" | "K03" | "K04" | "K05" | "K06"
+                            | "S01" | "S02" | "S03" | "S04" | "S05" | "S06"
+                            | "S07" | "S08"
+                    ) {
                         eprintln!("unknown closures source id {source_id}");
                         exit(2);
                     }
-                    if mode == Some("body-edit") && source_id != "K01" {
+                    // body-edit stays frozen to K01 among the K corpus; the
+                    // PLAN-909 sources may edit their writer bodies.
+                    if mode == Some("body-edit") && source_id != "K01" && !source_id.starts_with('S') {
                         eprintln!("body-edit source mode is frozen to K01");
                         exit(2);
                     }

@@ -1,0 +1,11 @@
+fn main() int {
+    var x int = 1
+    let r = () => {
+        return x
+    }
+    var w = (n int) => {
+        x = x + n
+        return x
+    }
+    return w(40) + r()
+}

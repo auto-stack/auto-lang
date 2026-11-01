@@ -393,7 +393,10 @@ impl Stage {
             // PLAN-798 T-07: value-reporting probe recipes execute the
             // pipeline, so run-stage completions (language traps) are
             // declarable alongside the parse/resolve/typecheck faces.
-            Adapter::Probe => &["parse", "resolve", "typecheck", "run"],
+            // PLAN-909: "verify" completes the probe diagnostic-stage
+            // vocabulary (the HIR verifier's rejections, e.g.
+            // verify.immutable-write, were already documented upstream).
+            Adapter::Probe => &["parse", "resolve", "typecheck", "verify", "run"],
         }
     }
 

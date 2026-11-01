@@ -119,7 +119,7 @@ avm `diff-legacy-*` 不翻绿；任意非零 exit 不当负例成功（L06 必�
 | F-SCN-1 scenario 观察通道（trace/events/harness） | E01/E02×4、R01/R04/R06 scn、I04/I09（14 格 `gap:scenario-tooling`） | ②（引擎能力多已有，观测通道缺） | scenario 工具包（未立项；E01 av 有 `av.core.trace-order` 既有 recipe 证据） | 同左 | **否** | 新 scenario harness 写面（不动生产） | SCENARIOS.md 逐行 oracle：trace 字节恰 ba（E01）、逐 owner LIFO 事件（R01）、构造/clone 失败注入回收（R02）、budget/cancel 退出面（R06）、layout 漂移拒绝（I04/I09） | 立项 scenario 工具包（规划责任=ACE 路线） |
 | F-AV-1 AV 分配失败注入 | R02 scn av | ③ | AV 资源故障代际包（未立项；852 T-05 调查 owner） | 同左 | 否 | 注入通道 API | SCENARIOS R02：逐分配点注入+合法正控+部分回收，错误分类不伪装语言错误 | 与 F-SCN-1 合并候选 |
 | F-AV-2 AV 句柄代际运行期校验 | R03 scn av | ③ | AV 句柄/generation 包（未立项；821 gen 字段≠运行期校验） | 同左 | 否 | gen 字段→运行期校验 | SCENARIOS R03：扩容后旧 view 访问受控拒绝、危险访问=0 | 同上候选 |
-| F-AV-3 C-19 共享可变捕获 | K06 av | ③ | R5-O（具名 owner，binding 注记） | 同左 | 否 | 共享可变 env 捕获语义 | K06 源码正例（现以 `source.closure-shared-mutable` 拒绝）+独立性 oracle | 语义裁定+能力包 |
+| F-AV-3 C-19 共享可变捕获 | K06 av | ③ | **标量切片已交付（PLAN-909 2026-11-02：K06 av=ok:av-closures-source-865，原源 42）**；共享 owned/循环/跨挂起仍属后继 gap | 同左 | 否 | 共享可变 env 捕获语义 | K06 源码正例（PLAN-909 已实证 42）+shared-mutable-909 独立性 oracle（S04 clone 44） | 标量切片已闭；残余另立项 |
 | F-CON-1 native console profile | O01–15 ac | ③ | native console 扩面包（未立项；现显式拒 profile 8） | 同左 | 否 | mn console 前端/运行时 | O 行字节级 stdout/stderr + 独立 exit/Unit/trap oracle（863 手算） | 立项；D-863-NB-01 边界保持 |
 | F-CON-2 legacy/a2r console parity | O01–15 avm+a2r（30 格） | ③（未承诺交付） | 各 backend 扩面/验证立项（D-863-NB-01：尚无交付承诺） | 同左 | 否 | profile 8 parity 验证 | 同 863 字节 oracle 于 legacy/a2r 通道 | 用户决定是否立项；不因 AV 行宣称 whole-M1 |
 | F-NAT-1 native 在线 loader | I08 ac（+H01–03 ac 同族） | ③（M1 适用性待 NA-3 扩展确认） | native loader 能力包（未立项；**重启 exe 不满足**） | 同左 | 否 | 常驻进程内安装新机器码 | SCENARIOS I08：同一宿主进程真实调用新码、旧帧旧版完成 | 立项 loader 包；893 慢测不覆盖 |

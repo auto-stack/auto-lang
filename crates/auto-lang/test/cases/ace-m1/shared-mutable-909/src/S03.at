@@ -1,0 +1,12 @@
+fn make() fn(int) int {
+    var count int = 1
+    var inc = (n int) => {
+        count = count + n
+        return count
+    }
+    return inc
+}
+fn main() int {
+    let f = make()
+    return f(20) + f(0)
+}

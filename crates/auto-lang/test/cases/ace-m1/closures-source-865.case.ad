@@ -109,14 +109,14 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.k06-av865"
-  tags: ["ace-m1", "closures", "diagnostic", "plan-865"]
-  links: ["PLAN-865"]
+  tags: ["ace-m1", "closures", "value", "plan-865", "plan-909"]
+  links: ["PLAN-865", "PLAN-909"]
   source: { file: "src/K06.at", syntax: "auto", path: "K06.at" }
   entry: { mode: "program" }
   checks: [
     { id: "av-k06-closures-source", adapter: "probe", action: "run",
-      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K06" }, steps: [{ op: "run" }] },
-      expect: { completion: { stage: "resolve", code: "source.closure-shared-mutable" } } }
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K06:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
   ]
 }
 ```

@@ -706,6 +706,20 @@ domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad"
 all = false
 
+# PLAN-909: the shared mutable captures source suite (six positives through
+# the real closures recipe + two named unsupported-domain negatives).
+[[group]]
+name = "case-ace-m1-shared-mutable-909"
+title = "ACE M1 shared mutable captures 909 source suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/shared-mutable-909/shared-mutable-909.suite.ad"
+domain = "ace"
+all = false
+
 [[group]]
 name = "case-ace-m1-closures-865-source"
 title = "TestCase case-ace-m1-closures-865-source"

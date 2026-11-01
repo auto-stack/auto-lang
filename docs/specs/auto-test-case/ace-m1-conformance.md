@@ -141,9 +141,9 @@ L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 pr
 | K03 | 同步非逃逸 `Str` 借用返回 42 | 实际执行；父侧检查 session 释放余额。 |
 | K04 | 返回借用捕获闭包 | 编译期以 `source.closure-borrow-escape` 拒绝。 |
 | K05 | 显式 clone 的拥有型闭包返回 42 | 实际执行；clone 独立性反例返回 11，若环境别名会返回 12。 |
-| K06 | 共享可变捕获环境 | 编译期以 `source.closure-shared-mutable` 拒绝；C-19 仍为 `gap:R5-O`。 |
+| K06 | 共享可变捕获环境 | **PLAN-909（2026-11-02）**：原源文件真实执行返回 42（move 闭包私有可写 env，cell=单元素 `List<T>` 句柄）；AV check 由 resolve 期拒绝迁移为 success/42。非标量共享写/let 写的拒绝面移至 `shared-mutable-909` suite（S07/S08）；C-19 残余（共享 owned/循环/跨挂起）仍具名后继。 |
 
-源码 AV 绑定关闭 K02/K05 的 `823-future-source` 缺口，但不修改 legacy AVM/a2r 的 `diff-legacy-grammar(parse)` 单元格。case suite 独立核对结果或诊断码，并检查闭包 session 的 live 值、分配/释放计数；SKIP 不计覆盖。
+源码 AV 绑定关闭 K02/K05 的 `823-future-source` 缺口；PLAN-909 追加 `shared-mutable-909` suite（S01–S06 正例 fresh/body-edit/restart + S07/S08 不支持域负控，`case-ace-m1-shared-mutable-909` 组）。两者均不修改 legacy AVM/a2r 的 `diff-legacy-grammar(parse)` 单元格。case suite 独立核对结果或诊断码，并检查闭包 session 的 live 值、分配/释放计数；SKIP 不计覆盖。
 
 V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot set 4,483 bytes，符合现行 P90 ≤ 2000 ms 门和继承资源预算。fresh/restart/body-edit 明细留在 PLAN-865 review receipt；本地测量源及其 hash 继续仅保存在 Plan 收据，不复制进规范。
 

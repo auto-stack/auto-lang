@@ -1,0 +1,8 @@
+# PLAN-909 T-06: the shared mutable captures source suite — six positives
+# through the real closures recipe (fresh / body-edit / restart) plus the
+# two named unsupported-domain negatives.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-shared-mutable-909", include: [
+  "shared-mutable-909.case.ad",
+] }
+```

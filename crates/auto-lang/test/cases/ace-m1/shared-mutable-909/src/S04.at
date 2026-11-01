@@ -1,0 +1,12 @@
+fn main() int {
+    var x int = 1
+    var f = (n int) => {
+        x = x + n
+        return x
+    }
+    let g = f.clone()
+    let a = f(20)
+    let b = g(1)
+    let c = f(0)
+    return a + b + c
+}

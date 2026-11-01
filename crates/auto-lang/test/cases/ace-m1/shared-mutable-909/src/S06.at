@@ -1,0 +1,12 @@
+fn main() int {
+    var x int = 1
+    var m = move (n int) => {
+        x = x + n
+        return x
+    }
+    var w = (n int) => {
+        x = x + n
+        return x
+    }
+    return w(40) + m(1) + x
+}

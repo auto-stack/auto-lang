@@ -928,7 +928,10 @@ fn map_diag_stage(stage: &str) -> Stage {
     match stage {
         "admission" | "frontend" | "parse" | "text" => Stage::Parse,
         "resolve" | "bind" => Stage::Resolve,
-        "typecheck" | "verify" => Stage::Typecheck,
+        "typecheck" => Stage::Typecheck,
+        // PLAN-909: the HIR verifier's own rejections (verify.*) keep their
+        // verify stage — the completion vocabulary distinguishes them from
+        // typecheck-face rejections.
         _ => Stage::Verify,
     }
 }
@@ -1107,8 +1110,33 @@ const CLOSURES_SOURCE_CASES: &[(&str, Option<i32>, Option<&str>, usize)] = &[
     ("K03", Some(42), None, 2),
     ("K04", None, Some("source.closure-borrow-escape"), 0),
     ("K05", Some(42), None, 3),
-    ("K06", None, Some("source.closure-shared-mutable"), 0),
+    // PLAN-909: K06's original move-closure source now EXECUTES to 42
+    // (private writable env); the unsupported non-scalar shared-write
+    // rejection moved to the shared-mutable-909 corpus (S07/S08).
+    ("K06", Some(42), None, 2),
+    // PLAN-909 shared mutable captures — the dedicated corpus (fresh value,
+    // no diagnostic, fresh submitted-unit count).
+    ("S01", Some(43), None, 2),
+    ("S02", Some(42), None, 3),
+    ("S03", Some(42), None, 3),
+    ("S04", Some(44), None, 2),
+    ("S05", Some(82), None, 3),
+    ("S06", Some(84), None, 3),
+    ("S07", None, Some("source.closure-shared-mutable"), 0),
+    ("S08", None, Some("verify.immutable-write"), 0),
 ];
+
+/// PLAN-909: the expected value of each source case's `body-edit` mode
+/// (the edit pair lives in the case file; the parent holds the oracle).
+fn closures_source_body_edit_value(id: &str) -> i32 {
+    match id {
+        "K01" => 43,
+        "S01" => 46,
+        "S03" => 45,
+        "S02" => 44,
+        _ => 43,
+    }
+}
 
 pub fn run_closures_check(
     case: &ResolvedCase,
@@ -1569,9 +1597,11 @@ fn run_check_with_transport(
         let mut parts = selector.split(':');
         let id = parts.next().unwrap_or_default();
         let mode = parts.next();
+        // PLAN-909: body-edit stays K01-frozen in the K corpus; the
+        // shared-mutable-909 sources (S*) may edit their writer bodies.
         if parts.next().is_some()
             || mode.is_some_and(|mode| !matches!(mode, "fresh" | "restart" | "body-edit"))
-            || (mode == Some("body-edit") && id != "K01")
+            || (mode == Some("body-edit") && id != "K01" && !id.starts_with('S'))
         {
             return Err(format!("invalid closures-source selector `{selector}`"));
         }
@@ -2485,7 +2515,7 @@ fn judge_closures_source(
     }
 
     let want_value = if mode == Some("body-edit") {
-        43
+        closures_source_body_edit_value(id)
     } else {
         base_value.expect("success case has an expected value")
     };
