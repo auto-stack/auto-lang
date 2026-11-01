@@ -1,0 +1,2 @@
+// 类型：bool 与 int 不可相加
+fn main() int { return true + 1 }

@@ -125,19 +125,27 @@ mod source_diag {
     }
 
     /// What the operation block must be bound to (the parent's own view of
-    /// the request chain — never the payload's self-report).
+    /// the request chain — never the payload's self-report). The parent
+    /// supplies the candidate/base BYTES: the SHAs are computed here and the
+    /// bytes also back the utf8-byte span boundary check.
     pub enum OperationExpectation<'a> {
-        Cold {
-            candidate_sha: &'a str,
-        },
-        WarmEdit {
-            base_sha: &'a str,
-            candidate_sha: &'a str,
-        },
-        FallbackCold {
-            base_sha: &'a str,
-            candidate_sha: &'a str,
-        },
+        Cold { candidate: &'a [u8] },
+        WarmEdit { base: &'a [u8], candidate: &'a [u8] },
+        FallbackCold { base: &'a [u8], candidate: &'a [u8] },
+    }
+
+    impl OperationExpectation<'_> {
+        fn candidate_bytes(&self) -> &[u8] {
+            match self {
+                OperationExpectation::Cold { candidate }
+                | OperationExpectation::WarmEdit { candidate, .. }
+                | OperationExpectation::FallbackCold { candidate, .. } => candidate,
+            }
+        }
+    }
+
+    fn sha_hex(bytes: &[u8]) -> String {
+        auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(bytes))
     }
 
     fn obj_keys(v: &Value, path: &str, known: &[&str]) -> Result<(), String> {
@@ -342,6 +350,13 @@ mod source_diag {
             return Err("source_error.source_sha256 must be a hex sha256".into());
         }
         let source_len = req_u64(&snap["source_len"], "source_error.source_len")?;
+        let candidate_bytes = op.candidate_bytes();
+        if source_len as usize != candidate_bytes.len() {
+            return Err(format!(
+                "source_error.source_len {source_len} does not match the parent's candidate ({} bytes)",
+                candidate_bytes.len()
+            ));
+        }
         // Causes: non-empty, capped, exact fields, in-bounds spans.
         let causes = snap["causes"]
             .as_array()
@@ -393,6 +408,16 @@ mod source_diag {
                     "{path}.span [{start},{end}] is out of bounds (len {source_len})"
                 ));
             }
+            // utf8-byte basis: both ends must sit on char boundaries of the
+            // candidate the compiler saw (a half-UTF-8 offset is a forged or
+            // mis-based span, never a displayable position).
+            if let Ok(text) = std::str::from_utf8(candidate_bytes) {
+                if !text.is_char_boundary(start as usize) || !text.is_char_boundary(end as usize) {
+                    return Err(format!(
+                        "{path}.span [{start},{end}] does not sit on UTF-8 char boundaries of the candidate"
+                    ));
+                }
+            }
         }
         // primary: the JSON INTEGER 0 — as_u64 rejects "0"/0.0/false.
         if req_u64(&snap["primary"], "source_error.primary")? != 0 {
@@ -418,17 +443,19 @@ mod source_diag {
             "source_error.operation.candidate_sha256",
         )?;
         match op {
-            OperationExpectation::Cold { candidate_sha } => {
+            OperationExpectation::Cold { candidate: cbytes } => {
                 if kind != "cold" {
                     return Err(format!("expected a cold operation, got {kind:?}"));
                 }
-                if candidate != *candidate_sha {
+                if candidate != sha_hex(cbytes) {
                     return Err(
                         "source_error candidate SHA does not bind the parent's source".into(),
                     );
                 }
+                // A cold operation may name the step it answered (the rounds
+                // protocol carries an internal index); the warm-session
+                // binding stays null — there is no accepted prefix.
                 for (k, v) in [
-                    ("step", &operation["step"]),
                     ("base_sha256", &operation["base_sha256"]),
                     ("session_revision", &operation["session_revision"]),
                     ("edit", &operation["edit"]),
@@ -437,15 +464,18 @@ mod source_diag {
                         return Err(format!("cold operation must leave {k} null"));
                     }
                 }
+                if !operation["step"].is_null() && operation["step"].as_u64().is_none() {
+                    return Err("cold operation step must be an unsigned integer".into());
+                }
             }
             OperationExpectation::WarmEdit {
-                base_sha,
-                candidate_sha,
+                base: bbytes,
+                candidate: cbytes,
             } => {
                 if kind != "warm-edit" {
                     return Err(format!("expected a warm-edit operation, got {kind:?}"));
                 }
-                if candidate != *candidate_sha {
+                if candidate != sha_hex(cbytes) {
                     return Err(
                         "source_error candidate SHA does not bind the failing candidate".into(),
                     );
@@ -454,7 +484,7 @@ mod source_diag {
                     &operation["base_sha256"],
                     "source_error.operation.base_sha256",
                 )?;
-                if base != *base_sha {
+                if base != sha_hex(bbytes) {
                     return Err("source_error base SHA does not bind the accepted prefix".into());
                 }
                 if operation["step"].as_u64().is_none() {
@@ -462,13 +492,13 @@ mod source_diag {
                 }
             }
             OperationExpectation::FallbackCold {
-                base_sha,
-                candidate_sha,
+                base: bbytes,
+                candidate: cbytes,
             } => {
                 if kind != "fallback-cold" {
                     return Err(format!("expected a fallback-cold operation, got {kind:?}"));
                 }
-                if candidate != *candidate_sha {
+                if candidate != sha_hex(cbytes) {
                     return Err(
                         "source_error candidate SHA does not bind the gate candidate".into(),
                     );
@@ -477,7 +507,7 @@ mod source_diag {
                     &operation["base_sha256"],
                     "source_error.operation.base_sha256",
                 )?;
-                if base != *base_sha {
+                if base != sha_hex(bbytes) {
                     return Err("source_error base SHA does not bind the accepted prefix".into());
                 }
             }
@@ -1749,9 +1779,7 @@ pub fn run_check(
                         raw_line,
                         &resp,
                         "mn.at",
-                        &source_diag::OperationExpectation::Cold {
-                            candidate_sha: &source_sha,
-                        },
+                        &source_diag::OperationExpectation::Cold { candidate: &source },
                     ) {
                         Ok(fact) => {
                             source_fact = Some(fact);
@@ -2302,7 +2330,7 @@ fn run_incremental(
                         &warm,
                         "mn.at",
                         &source_diag::OperationExpectation::Cold {
-                            candidate_sha: &hex(&sha256(&input_bytes)),
+                            candidate: &input_bytes,
                         },
                     ) {
                         Ok(fact) => {
@@ -2449,20 +2477,18 @@ fn run_incremental(
                     // parent's source rolls back to the accepted prefix.
                     let (base_source, candidate_source) =
                         round_sources.expect("edit-source rounds carry their sources");
-                    let base_sha = hex(&sha256(&base_source));
-                    let candidate_sha = hex(&sha256(&candidate_source));
                     let expect = if ok.get("warm_edit_fallback").and_then(|v| v.as_bool())
                         == Some(true)
                         && ok.get("materialized").and_then(|v| v.as_bool()) == Some(false)
                     {
                         source_diag::OperationExpectation::FallbackCold {
-                            base_sha: &base_sha,
-                            candidate_sha: &candidate_sha,
+                            base: &base_source,
+                            candidate: &candidate_source,
                         }
                     } else {
                         source_diag::OperationExpectation::WarmEdit {
-                            base_sha: &base_sha,
-                            candidate_sha: &candidate_sha,
+                            base: &base_source,
+                            candidate: &candidate_source,
                         }
                     };
                     match source_diag::admit(&line, &resp, "probe.at", &expect) {
@@ -2586,14 +2612,11 @@ fn run_incremental(
                         // PLAN-911 strict: the whole-request leg's source
                         // rejection — the final materialized source is the
                         // candidate. Admitted, judged, sequence stops.
-                        let candidate_sha = hex(&sha256(&source));
                         match source_diag::admit(
                             &line,
                             &resp,
                             "mn.at",
-                            &source_diag::OperationExpectation::Cold {
-                                candidate_sha: &candidate_sha,
-                            },
+                            &source_diag::OperationExpectation::Cold { candidate: &source },
                         ) {
                             Ok(fact) => {
                                 diag =
@@ -2973,7 +2996,7 @@ mod source_diag_tests {
             resp,
             "mn.at",
             &OperationExpectation::Cold {
-                candidate_sha: &sha(SRC.as_bytes()),
+                candidate: SRC.as_bytes(),
             },
         )
     }
@@ -3187,11 +3210,102 @@ mod source_diag_tests {
             &resp,
             "probe.at",
             &OperationExpectation::WarmEdit {
-                base_sha: &base,
-                candidate_sha: &candidate,
+                base: b"base
+",
+                candidate: b"candidate
+",
             },
         )
         .expect("warm-edit admits with the right binding");
         assert_eq!(fact.candidate_sha256, candidate);
+    }
+
+    #[test]
+    fn mn911_admit_rejects_half_utf8_span_and_accepts_multibyte_control() {
+        // A candidate with a multibyte comment: the error span sits after
+        // the comment on char boundaries (valid control); a span cutting a
+        // multibyte char is rejected on the utf8-byte basis.
+        let src = "// 类型\nfn main() int { return true + 1 }\n";
+        let (_, mut resp) = valid_response();
+        resp["source_error"]["source_sha256"] = json!(sha(src.as_bytes()));
+        resp["source_error"]["source_len"] = json!(src.len());
+        resp["source_error"]["operation"]["candidate_sha256"] = json!(sha(src.as_bytes()));
+        let ok_start = src.find("true").unwrap();
+        resp["source_error"]["causes"][0]["span"] = json!({"start": ok_start, "end": ok_start + 8});
+        let raw = serde_json::to_string(&resp).unwrap();
+        source_diag::admit(
+            &raw,
+            &resp,
+            "mn.at",
+            &OperationExpectation::Cold {
+                candidate: src.as_bytes(),
+            },
+        )
+        .expect("multibyte source with boundary-aligned span admits");
+        // Offset 4 is inside the 3-byte `类` (bytes 3..6): a half-UTF-8 span.
+        resp["source_error"]["causes"][0]["span"] = json!({"start": 4, "end": 7});
+        let raw = serde_json::to_string(&resp).unwrap();
+        let err = source_diag::admit(
+            &raw,
+            &resp,
+            "mn.at",
+            &OperationExpectation::Cold {
+                candidate: src.as_bytes(),
+            },
+        )
+        .expect_err("half-UTF-8 span rejected");
+        assert!(err.contains("char boundaries"), "{err}");
+        // source_len lying about the candidate is rejected too.
+        resp["source_error"]["causes"][0]["span"] = json!({"start": ok_start, "end": ok_start + 8});
+        resp["source_error"]["source_len"] = json!(src.len() + 1);
+        let raw = serde_json::to_string(&resp).unwrap();
+        let err = source_diag::admit(
+            &raw,
+            &resp,
+            "mn.at",
+            &OperationExpectation::Cold {
+                candidate: src.as_bytes(),
+            },
+        )
+        .expect_err("source_len mismatch rejected");
+        assert!(err.contains("source_len"), "{err}");
+    }
+
+    #[test]
+    fn mn911_fact_artifact_write_failure_is_an_error() {
+        let (raw, resp) = valid_response();
+        let fact = admit_ok(&raw, &resp).expect("admits");
+        // An artifact directory that cannot exist (a FILE in the way).
+        let tmp = std::env::temp_dir().join(format!("mn911-noart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::write(&tmp, b"not a dir").unwrap();
+        let err = source_diag::write_fact_artifact(
+            &tmp,
+            "s:h:c:k",
+            "ac/mir-native-scalar-v1",
+            "mnworker/1.0",
+            &fact,
+        )
+        .expect_err("write into a non-directory must error");
+        assert!(err.contains("write fact artifact"), "{err}");
+        let _ = std::fs::remove_file(&tmp);
+        // And a good directory round-trips with the execution key bound.
+        let dir = std::env::temp_dir().join(format!("mn911-art-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let art = source_diag::write_fact_artifact(
+            &dir,
+            "s:h:c:k",
+            "ac/mir-native-scalar-v1",
+            "mnworker/1.0",
+            &fact,
+        )
+        .expect("writes");
+        assert_eq!(art.logical_path, "mn-source-diagnostic.json");
+        let doc: Value = serde_json::from_slice(&std::fs::read(&art.stored_path).unwrap()).unwrap();
+        assert_eq!(doc["execution_key"], "s:h:c:k");
+        assert_eq!(doc["observed_stage"], "typecheck");
+        assert_eq!(doc["observed_code"], "source.type-mismatch");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

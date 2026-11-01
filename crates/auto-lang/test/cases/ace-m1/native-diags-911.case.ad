@@ -14,7 +14,10 @@
 #                                 (a worker silently ignoring the field
 #                                 cannot pass)
 #   variants   nd911-src/*.at — same-family shapes (the family is the CODE,
-#                                 stable across shapes), the multi-cause
+#                                 stable across shapes), a MULTIBYTE-comment
+#                                 source (utf8-byte spans stay on char
+#                                 boundaries past non-ASCII text),
+#                                 the multi-cause
 #                                 source (primary = the compiler's first
 #                                 cause), and two OTHER-stage rejections
 #                                 (Text → parse, Bind → resolve) that must
@@ -213,6 +216,74 @@ case {
     { id: "ac-native-strict", adapter: "probe", action: "run",
       options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
       expect: { completion: { stage: "resolve", code: "source.undefined" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.multibyte"
+  tags: ["ace-m1", "diagnostic", "native-diags-911"]
+  links: ["PLAN-911"]
+  source: { file: "nd911-src/MB17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
+# Registered RED controls (scripts/test-governance/case-control-oracles.json:
+# expected_status FAIL — a mismatch, never an Error): the strict face compares
+# the REAL cause, so a wrong family, a wrong stage, and the pre-911 generic
+# `mn.unsupported.frontend` shell must all stay red against src/B17.at.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.red.wrong-family"
+  tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+  links: ["PLAN-911"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict-wrong-family", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "verify.immutable-write" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.red.wrong-stage"
+  tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+  links: ["PLAN-911"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict-wrong-stage", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nd911.red.generic-shell"
+  tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+  links: ["PLAN-911"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native-strict-generic-shell", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
   ]
 }
 ```

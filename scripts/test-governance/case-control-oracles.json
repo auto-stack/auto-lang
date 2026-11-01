@@ -1,8 +1,47 @@
 {
-  "schema": "test-case-meta-oracles/1",
-  "overrides": [
-    {"suite": "ac-native", "case": "ac.src.wrong-stage-build-red", "check": "bld-red", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; original ac-native corpus meta-oracle"},
-    {"suite": "ac-native", "case": "ac.red.build-golden-fail-product-still-runs", "check": "bld-bad-golden", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; preserve failed producer and passing product consumer"},
-    {"suite": "ac-native", "case": "ac.red.wrong-exit-fails", "check": "run-wrong-exit", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; wrong expected exit must remain a mismatch"}
-  ]
+ "schema": "test-case-meta-oracles/1",
+ "overrides": [
+  {
+   "suite": "ac-native",
+   "case": "ac.src.wrong-stage-build-red",
+   "check": "bld-red",
+   "expected_status": "FAIL",
+   "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; original ac-native corpus meta-oracle"
+  },
+  {
+   "suite": "ac-native",
+   "case": "ac.red.build-golden-fail-product-still-runs",
+   "check": "bld-bad-golden",
+   "expected_status": "FAIL",
+   "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; preserve failed producer and passing product consumer"
+  },
+  {
+   "suite": "ac-native",
+   "case": "ac.red.wrong-exit-fails",
+   "check": "run-wrong-exit",
+   "expected_status": "FAIL",
+   "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; wrong expected exit must remain a mismatch"
+  },
+  {
+   "suite": "ace-m1-native-diags-911",
+   "case": "ace.m1.nd911.red.wrong-family",
+   "check": "ac-native-strict-wrong-family",
+   "expected_status": "FAIL",
+   "evidence": "PLAN-911 V-05/V-07/V-11: strict source-v1 face compares the real cause (crates/auto-lang-core/src/test_cases/ac_mn.rs source_diag); wrong family code is an oracle mismatch, not an error"
+  },
+  {
+   "suite": "ace-m1-native-diags-911",
+   "case": "ace.m1.nd911.red.wrong-stage",
+   "check": "ac-native-strict-wrong-stage",
+   "expected_status": "FAIL",
+   "evidence": "PLAN-911 V-05/V-07/V-11: strict source-v1 face compares the real cause (crates/auto-lang-core/src/test_cases/ac_mn.rs source_diag); raw verify maps to typecheck; parse is a stage mismatch"
+  },
+  {
+   "suite": "ace-m1-native-diags-911",
+   "case": "ace.m1.nd911.red.generic-shell",
+   "check": "ac-native-strict-generic-shell",
+   "expected_status": "FAIL",
+   "evidence": "PLAN-911 V-05/V-07/V-11: strict source-v1 face compares the real cause (crates/auto-lang-core/src/test_cases/ac_mn.rs source_diag); the pre-911 generic mn.unsupported.frontend shell is not accepted as the typed face"
+  }
+ ]
 }

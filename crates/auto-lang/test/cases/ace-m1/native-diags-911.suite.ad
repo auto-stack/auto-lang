@@ -1,6 +1,6 @@
 # PLAN-911 native source-diagnostic suite — independent of the frozen 852
 # base suite (36 cases / 97 checks unchanged) and the 908 near-neighbor
-# suite (3 cases / 9 checks unchanged). 12 cases / 12 checks.
+# suite (3 cases / 9 checks unchanged). 16 cases / 16 checks (13 green + 3 registered red controls).
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-native-diags-911", include: [
