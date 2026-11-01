@@ -281,6 +281,7 @@ mod tests {
                 vec!["--edition".to_string(), "2021".to_string()],
             ),
             capabilities: vec![],
+            execution_config: None,
         }
     }
 

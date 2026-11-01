@@ -295,7 +295,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
         for (si, stmt) in stmts.iter().enumerate() {
             match stmt {
                 hir::Stmt::Let { local, value } => {
-                    let v = self.expr(*value, &mut out)?;
+                    // an owned-position literal promotes (a2x_str_from_lit)
+                    let v = if is_lit(self.f.body, *value) && owned_target(self, local.0) {
+                        self.owned_or_plain_child(*value, &mut out)?
+                    } else {
+                        self.expr(*value, &mut out)?
+                    };
                     let l = self
                         .locals
                         .get(local.0 as usize)
@@ -309,14 +314,34 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     });
                 }
                 hir::Stmt::Return { value } => {
-                    let v = self.expr(*value, &mut out)?;
+                    // an owned-result literal promotes at the return slot
+                    let owned_ret = self
+                        .view
+                        .resolve_use_ty(self.f.body.exprs[value.0 as usize].ty)
+                        .map(|t| matches!(t, Ty::StrOwned))
+                        .unwrap_or(false);
+                    let v = if is_lit(self.f.body, *value) && owned_ret {
+                        self.owned_or_plain_child(*value, &mut out)?
+                    } else {
+                        self.expr(*value, &mut out)?
+                    };
                     if let Some(frees) = self.facts.exit_frees.get(&(block.0, Some(si))) {
                         out.extend(self.free_stmts(frees));
                     }
                     out.push(RStmt::Return { value: v });
                 }
                 hir::Stmt::Assign { place, value } => {
-                    let v = self.expr(*value, &mut out)?;
+                    let p_pre = &self.f.body.places[place.0 as usize];
+                    let owned_place = p_pre.kind == hir::PlaceKind::Local
+                        && self
+                            .local_ty(p_pre.local)
+                            .map(|t| matches!(t, Ty::StrOwned))
+                            .unwrap_or(false);
+                    let v = if is_lit(self.f.body, *value) && owned_place {
+                        self.owned_or_plain_child(*value, &mut out)?
+                    } else {
+                        self.expr(*value, &mut out)?
+                    };
                     let p = &self.f.body.places[place.0 as usize];
                     if let hir::PlaceKind::Local = p.kind {
                         if let Some(old) = self.facts.replace_frees.get(&(block.0, si)) {
@@ -1071,6 +1096,16 @@ impl<'a, 'v> CollLower<'a, 'v> {
 fn root_ty_of(w: &CollLower<'_, '_>, root: hir::ExprId) -> Result<Ty, A2xReject> {
     w.view
         .resolve_use_ty(w.f.body.exprs[root.0 as usize].ty)
+}
+
+fn is_lit(body: &hir::Body, id: hir::ExprId) -> bool {
+    matches!(body.exprs[id.0 as usize].kind, hir::ExprKind::StrLit { .. })
+}
+
+fn owned_target(w: &CollLower<'_, '_>, local: u32) -> bool {
+    w.local_ty(hir::LocalId(local))
+        .map(|t| matches!(t, Ty::StrOwned))
+        .unwrap_or(false)
 }
 
 fn is_copy(ty: Ty) -> bool {

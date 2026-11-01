@@ -5557,7 +5557,13 @@ impl<'a> FnResolver<'a> {
                         };
                         // PLAN-864: `xs.get(i).len()` over a List<Str>
                         // local — the get receiver is a whole-element view,
-                        // not a value.
+                        // not a value. (PLAN-904 fix: the index visit is
+                        // DEFERRED into this node's subtask list — pushing
+                        // it during classification put it UNDER the
+                        // RecordMethodOut combiner on the LIFO stack, so
+                        // the combiner read a dummy index and every fused
+                        // view rendered index 0.)
+                        let mut elemview_idx_task: Option<Task> = None;
                         let recv_class = if matches!(recv_class, RecvClass::Value)
                             && name.name == "len"
                             && args.is_empty()
@@ -5588,7 +5594,7 @@ impl<'a> FnResolver<'a> {
                                                             "get takes one positional index"
                                                         ),
                                                     };
-                                                    stack.push(Task::Visit {
+                                                    elemview_idx_task = Some(Task::Visit {
                                                         node: idx_ast,
                                                         slot: idx_slot,
                                                     });
@@ -5652,6 +5658,13 @@ impl<'a> FnResolver<'a> {
                                     });
                                 }
                             }
+                        }
+                        // the deferred fused-view index visit must run
+                        // BEFORE the combiner (vec order: args…, idx,
+                        // RecordMethodOut — the reversed push pops the
+                        // combiner last)
+                        if let Some(t) = elemview_idx_task.take() {
+                            subtasks.push(t);
                         }
                         subtasks.push(Task::RecordMethodOut {
                             name: name.clone(),

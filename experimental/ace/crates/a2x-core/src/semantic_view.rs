@@ -1214,10 +1214,6 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
             ))),
             None => Err(A2xReject::new("a2x.internal", "type index out of range")),
         },
-        other => Err(A2xReject::unsupported_type(format!(
-            "builtin type `{:?}` is outside the supported value types",
-            other
-        ))),
     }
 }
 
