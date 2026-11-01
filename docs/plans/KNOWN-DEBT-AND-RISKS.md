@@ -3810,3 +3810,9 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - 附带（同类观察）:reuse_obligations_run_green_via_original_suites 在全workspace
   nextest并行下观察到一次flake（exit 2/25.3s；串行 --test-threads=1 重放绿23.7s），
   环境归因在案；再发则按并发spawn边界立案。
+
+## PLAN-906 登记（2026-11-01）
+
+- **D-906-1 发行分布门既有破损（owner: Web，Plan 901 谱系）**：`auto-web/scripts/web-repository-distribution.py` 的源暂存腿 `web-install.py source` 在 web 解析图含 `vendor/autodown-test-parser`（PLAN-901 起 auto-test-case 常驻→lang 仓 vendor 路径依赖）时报 "unexpected local package layout"——自 901 起未再整跑过该门；另 master web 检出 `cargo metadata --locked` 本身红（锁/清单漂移）。PLAN-906 复核中在 worktree 组内复现（log: plan-artifacts/plan-906/lang/distribution-gate.log，master 复现于 /tmp/p906-dist-master 尝试）。906 自身的发行面改动（web-install.py validate_packages owner 翻转、stage_source 位置派生 owner）为代码级验证，端到端待该门修复后由 Web owner 重验。关闭条件：Web owner 修复 stage_source 的 vendor 树处理与 web 锁漂移后整跑 distribution 门并出收据。
+- **D-906-2 ui-full 3 项 iced layout 既有红（owner: UI）**：`auto-ui-runtime::ui::iced::layout_tests::{desktop_surface_z_slot_window_covers_icons,p625_uigallery_sidebar_pills_visible,popover_modal_centers_within_clipped_host}` 在 UI master a3df9e8 同命令确定性复现（PLAN-906 四仓门跑8 与隔离重放双证）。关闭条件：UI owner 修复后四仓门 ui-full 腿恢复 exit 0。
+- **D-906-3 modularity-audit strict 既有红（治理）**：master 与 906 分支同判 fail 2 违例（auto-cache→auto-tool-execution 新增禁向边 + stale_baseline）。基线重采样属维护任务。
