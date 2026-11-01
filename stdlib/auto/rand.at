@@ -1,0 +1,21 @@
+/// Rand module — secure randomness for the backend (a2r/rust) track (Plan 907).
+///
+/// `secure_hex(n)` draws `n` bytes from the OS CSPRNG (getrandom crate:
+/// ProcessPrng on Windows, getrandom(2) on Unix) and returns them as
+/// lowercase hex (`2n` chars). This is the supported ≥128-bit entropy source
+/// for credentials and session tokens in transpiled backends — do NOT use
+/// `uuid()` (epoch nanos) or SQLite `randomblob()` (timing-seeded on
+/// Windows) for secrets.
+///
+/// Backend track only: `use auto.rand` maps to `a2r_std::rand`. The VM track
+/// keeps its own `auto.random` natives (`rand_int` etc., Plan 250) — they are
+/// time-seeded Xorshift and are NOT credential-grade.
+
+/// Draw n random bytes from the OS CSPRNG as lowercase hex (2n chars).
+/// Returns "" for n <= 0. On entropy failure returns "" and records the
+/// reason in last_error().
+/// Example: let secret str = rand.secure_hex(32)
+pub fn secure_hex(n int) str;
+
+/// The most recent error message recorded by this module ("" if none).
+pub fn last_error() str;

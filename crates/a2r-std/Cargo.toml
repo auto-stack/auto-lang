@@ -23,3 +23,7 @@ rusqlite = { version = "0.30", features = ["bundled"] }
 # Plan 415-B2: Redis client for the `redis` stdlib module. Default features
 # are the pure-Rust sync API (no C deps, no tokio) — Windows/MSVC safe.
 redis = "0.27"
+# Plan 907: OS CSPRNG for the `rand` stdlib module (secure_hex) — ProcessPrng
+# on Windows / getrandom(2) on Unix. NOT the SQLite PRNG (timing-seeded on
+# Windows) and NOT uuid() (epoch nanos); credential-grade entropy only.
+getrandom = "0.2"

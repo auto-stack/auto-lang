@@ -1,0 +1,11 @@
+// Plan 907: rand module — `use auto.rand` maps to a2r_std::rand; the bare
+// 2-segment call form dispatches through the shared module-method arm
+// (sqlite advanced-golden precedent). secure_hex is the OS-CSPRNG source
+// for backend credentials/tokens.
+use auto.rand
+
+fn main() {
+    let secret str = rand.secure_hex(32)
+    let err str = rand.last_error()
+    print(secret)
+}

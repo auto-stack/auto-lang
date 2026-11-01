@@ -13,6 +13,7 @@ pub mod json;
 pub mod list;
 pub mod math;
 pub mod process;
+pub mod rand;
 pub mod redis;
 pub mod sqlite;
 pub mod sse;

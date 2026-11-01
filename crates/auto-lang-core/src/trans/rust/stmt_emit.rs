@@ -3011,7 +3011,7 @@ impl RustTrans {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque" | "char"
                             | "conv" | "io" | "log" | "path" | "net" | "process" | "sys"
-                            | "sse" | "may" | "sqlite" | "redis" => {
+                            | "sse" | "may" | "sqlite" | "redis" | "rand" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
@@ -3035,7 +3035,7 @@ impl RustTrans {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque" | "char"
                             | "conv" | "io" | "log" | "path" | "net" | "process" | "sys"
-                            | "sse" | "may" | "sqlite" | "redis" => {
+                            | "sse" | "may" | "sqlite" | "redis" | "rand" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -3071,6 +3071,7 @@ impl RustTrans {
                                 | "may"
                                 | "sqlite"
                                 | "redis"
+                                | "rand"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);
