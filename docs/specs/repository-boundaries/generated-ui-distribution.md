@@ -39,7 +39,7 @@
 - **镜像布局的硬理由**：auto-lang `build.rs` 以 `../../crates` 与根
   `Cargo.lock` 为编译期输入（缺失即 unwrap 红）；非镜像布局在受管 build
   阶段确定性失败。
-- **交付闭包**：当前 28 个受管 crate（PLAN-901 闭包补全：常驻 `auto-test-case` 随包、`auto-generation-core` 与 web owner 家族 `auto-web-contract`/`auto-web` 入闭包——`auto-ui-tools`/`auto-api-gen`/`auto-lang`/`auto-lang-core` 自 PLAN-890 起对其硬 path 依赖；web 源经组内 auto-web 兄弟或 `AUTO_WEB_SOURCE_ROOT` 解析，缺位显式判红）、patch 与根级输入以 UI tools 的 `DELIVERY_CRATES`、`DELIVERY_PATCHES` 和根输入声明为准；语言包归语言 owner，UI 包归实际选中的 UI owner，web 包归 web owner。生成应用直接依赖 SDK 与 UI runtime；闭包中保留的 auto-lang 不表示应用仍直接依赖旧门面。根 workspace、锁、patch、stdlib/schema 等实际编译输入随包核验；交付根 manifest 另携带 web owner `[workspace.package]` 继承包表与 vendored 快照树 `exclude`（嵌套 workspace 根不入交付工作区——否则 fresh 解析 "multiple workspace roots" 红）。
+- **交付闭包**：当前 28 个受管 crate（PLAN-901 闭包补全谱系（PLAN-906 修订）：常驻 `auto-test-case` 随包、`auto-generation-core` 与 `auto-web-contract`/`auto-web` 入闭包——`auto-web-contract` 单源自 PLAN-906 起居语言仓（lang 类别源/receipt owner=auto-lang），`auto-web` 仍 web owner 类别（组内 auto-web 兄弟或 `AUTO_WEB_SOURCE_ROOT` 解析，缺位显式判红）；对 `auto-web` 的硬 path 依赖方自 PLAN-906 起为 `auto-ui-tools`/`auto-ui-runtime`（语言 facade/`auto-api-gen` 已退役该依赖））、patch 与根级输入以 UI tools 的 `DELIVERY_CRATES`、`DELIVERY_PATCHES` 和根输入声明为准；语言包归语言 owner，UI 包归实际选中的 UI owner，web 包归 web owner。生成应用直接依赖 SDK 与 UI runtime；闭包中保留的 auto-lang 不表示应用仍直接依赖旧门面。根 workspace、锁、patch、stdlib/schema 等实际编译输入随包核验；交付根 manifest 另携带 web owner `[workspace.package]` 继承包表与 vendored 快照树 `exclude`（嵌套 workspace 根不入交付工作区——否则 fresh 解析 "multiple workspace roots" 红）。
 
 ## 身份与失败合同
 

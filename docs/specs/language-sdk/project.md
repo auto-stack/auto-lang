@@ -138,7 +138,7 @@ Man 的 runtime、CLI、three-repository-consumer 均从语言仓固定 source �
 
 ## PLAN-890 HTTP 装配
 
-Core不再拥有HTTP领域运行时/生成器；只依赖纯`auto-web-contract`，服务provider由宿主显式安装。
+Core不再拥有HTTP领域运行时/生成器；只依赖纯`auto-web-contract`（PLAN-906 起单源在语言仓 crates/auto-web-contract，仓内 path），服务provider由宿主显式安装。
 直接SDK服务消费者迁移到固定Web依赖及`install_http_service_host_if_absent`；无服务语言调用保持。
 编译元数据冻结、local/!Send owner、worker文件线程launch传递和实际cleanup义务见
 [http-host-port](http-host-port.md)；HTTP/共享生成owner与发行见[四仓合同](../repository-boundaries/web-four-repository-delivery.md)。

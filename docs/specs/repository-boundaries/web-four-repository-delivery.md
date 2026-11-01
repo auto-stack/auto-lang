@@ -5,7 +5,7 @@
 ## 单源及消费者
 
 Web领域规范唯一来源：[Web项目](../../../../auto-web/docs/specs/project.md)。
-Core仅持语言语义、编译元数据、中立[宿主端口](../language-sdk/http-host-port.md)和纯合同类型。
+Core仅持语言语义、编译元数据、中立[宿主端口](../language-sdk/http-host-port.md)和纯合同类型（`auto-web-contract` 单源自 PLAN-906 起居语言仓，交付闭包 receipt owner=auto-lang；Web 仓成员仅 auto-web）。
 HTTP服务/客户端生成与模板归Web；IPC/Tauri和非HTTPadapter留原owner。
 受限共享`rust_workspace/shared_generation/sidecar/source_owner`单源在`auto-generation-core`，
 不形成Web→auto-api-gen大门面/UI/Man/Tauri的反向实现边。

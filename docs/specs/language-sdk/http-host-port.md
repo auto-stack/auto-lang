@@ -5,12 +5,14 @@
 ## 依赖与装配
 
 Core 拥有编译声明、`CompilationMetadataGuard`冻结快照、值/JSON转换、VM/native注册、
-request-context与资源hook。协议纯数据/配置/校验来自单源`auto-web-contract`；Core无 Web 实现依赖。
+request-context与资源hook。协议纯数据/配置/校验来自单源`auto-web-contract`
+（PLAN-906 起包居语言仓 `crates/auto-web-contract`，Web 经 path 回指消费）；Core无 Web 实现依赖。
 `HttpServiceHost: Send + Sync`只共享provider；返回`HttpServiceFuture`和`Rc<AutoVM>`仍是local/!Send。
 `HttpVmOwner`留在原执行线程/LocalSet，网络只接收owned请求、应答、body与取消消息。
 禁止将VM指针编码为整数跨线程恢复，不复制AST/Store/VM或传输框架对象。
 
-直接服务消费者固定依赖`auto-web`并调用`install_http_service_host_if_absent()`；它不覆盖自定义provider。
+直接服务消费者（Man/UI/组合探针工程，PLAN-906 起不含语言 facade/auto-case）固定依赖
+`auto-web`并调用`install_http_service_host_if_absent()`；它不覆盖自定义provider。
 显式替换使用SDK setter。普通无服务入口无需provider；实际服务调用缺席时在监听前具名拒绝，
 Core不自装隐式框架、不保留旧运行时回退。Man/UI在各自组合点安装。
 

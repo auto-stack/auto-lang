@@ -17,6 +17,11 @@ graph LR
   core --> contract[auto-web-contract 纯合同]
 ```
 
+```text
+PLAN-906: auto-web-contract 包单源居语言仓 crates/auto-web-contract
+（Web 仓成员仅 auto-web；四方消费同一包，links 防同名双 source）
+```
+
 Core 只拥有语言语义、编译元数据、VM/值转换和[中立宿主端口](../language-sdk/http-host-port.md)，
 不反依赖 Web 实现。Web 独立 normal/build/必需 dev 闭包无 UI/Man/Tauri 实现。
 直接 SDK 服务消费者显式链接并安装 Web adapter；普通语言执行无需 Web。

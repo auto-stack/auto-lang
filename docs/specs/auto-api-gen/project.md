@@ -5,7 +5,7 @@
 
 ## 职责与边界
 
-auto-api-gen 保留Tauri IPC/非HTTP语言adapter，物理owner留语言仓；HTTP服务/客户端生成与模板已迁独立auto-web，旧HTTP入口只薄委托。sidecar 声明自 auto-project-model 读取（SidecarDecl/sidecar_decl_from_root 单源），零 Man 管理实现依赖（闭包内无 auto-man-core）。adapter 不拥有第二份 SidecarDecl 或根声明解析，不持有 UI 宿主状态。
+auto-api-gen 保留Tauri IPC/非HTTP语言adapter，物理owner留语言仓；HTTP服务/客户端生成与模板已迁独立auto-web。PLAN-906 起本 crate 零 auto-web 依赖：`generate_api` 非 tauri 入口具名拒绝并指路 `auto_web::generate_api` 直连（原 4 个 web `api_gen` 再导出符号退役，四仓零消费者）；`test-http-e2e` feature 转发随之退出。sidecar 声明自 auto-project-model 读取（SidecarDecl/sidecar_decl_from_root 单源），零 Man 管理实现依赖（闭包内无 auto-man-core）。adapter 不拥有第二份 SidecarDecl 或根声明解析，不持有 UI 宿主状态。
 
 ## 接口与兼容
 
