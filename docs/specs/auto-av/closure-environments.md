@@ -20,9 +20,11 @@
 
 显式 auto.source.closures.draft profile 见[源码闭包规范](../auto-ac/source-closures.md)。它在集合源码面上加入函数类型、lambda、捕获分析和间接调用，并降到现有 av.closures/1 环境与调用合同；不新增 AVAD 版本、profile id、类型 tag 或闭包 opcode。
 
-源码分析在 lowering 前生成有序 Move/Borrow 捕获模式。Copy 捕获仍复制；拥有值需由 move lambda 转入环境；借用仅限可静态证明同步且不逃逸的 Str，映射为 StrView。源码 f.clone() 使用既有闭包深复制路径，生成独立 env 与句柄，不改变捕获列表或顺序。env 声明与 fn: 链接期精确相等检查保持原合同。借用逃逸、共享可变捕获和不支持的捕获类型在源码编译阶段拒绝。
+源码分析在 lowering 前生成有序 Move/Borrow/**Shared** 捕获模式。Copy 捕获仍复制；拥有值需由 move lambda 转入环境；借用仅限可静态证明同步且不逃逸的 Str，映射为 StrView。源码 f.clone() 使用既有闭包深复制路径，生成独立 env 与句柄，不改变捕获列表或顺序；PLAN-909 起 clone 对同一根内同缓冲 cell 以 buf_id memo 只复制一次，副本内部共享关系保持。env 声明与 fn: 链接期精确相等检查保持原合同。借用逃逸和不支持的捕获类型在源码编译阶段拒绝。
 
-K01、K02、K03、K05 已经由源码编译进入现有闭包 session 执行。K04 仍是借用逃逸编译期拒绝；K06 以 source.closure-shared-mutable 拒绝并保留 R5-O owner，本次不关闭 C-19。命名函数项值、闭包字段/List 元素、async、持久化、跨线程、native closure ABI 与集合方法 HOF 仍在本 profile 之外。
+**PLAN-909 共享可变捕获（标量切片）**：Shared 捕获在 prepare 阶段以句柄共享 staging（`Value::clone` 的 owner 计数 +1，不可失败、无分配尝试），commit 纯放置；深字节按引用保守计费入唯一活值预算线。cell 的生命周期沿既有句柄法则：creator 槽/env 字段/嵌套闭包多 owner 共享，最后 owner 释放归零；trap/预算/取消/故障全出口清理保持（逐分配点故障扫描全部 Infra 且 live=0）。K06 原源真实执行 42（av 格 ok:av-closures-source-865），私有可写 env 不随 CALL 重建。详见[共享可变捕获](../auto-ac/shared-mutable-captures.md)。
+
+K01、K02、K03、K05 已经由源码编译进入现有闭包 session 执行。K04 仍是借用逃逸编译期拒绝；K06 由 PLAN-909 迁移为真实执行 42，非标量共享写/let 写负控在 shared-mutable-909 suite（S07/S08）承接。命名函数项值、闭包字段/List 元素、async、持久化、跨线程、native closure ABI 与集合方法 HOF 仍在本 profile 之外。
 
 ## 缓存与恢复
 

@@ -55,3 +55,20 @@
   base 完整源 sha 绑定 + UTF-8 range 精确覆盖目标声明 + 同名单声明片段；manifest/证书
   绑定**替换后完整源** sha，不是 fragment-only hash。中文/多字节变长编辑合法；整源/
   零宽/错名 range 具名拒。
+
+
+## closures 源码入口的 owner 粒度增量（PLAN-909）
+
+- lambda 稳定身份 `__closure_<owner>_<k>`（owner 内序号，resolver 按 owner 计数）；
+  resolved IR 的 `CreateClosure` **按名**引用 callee（typecheck/adapter 按名查），
+  无关 lambda 的插入/删除/重排不移动任何 DefId 或单元身份；模块递增序号退役。
+- owner 粒度前端缓存（`ClosuresOwnerCache`）：每顶层函数记条目文本指纹、resolved
+  条目与其 lambdas；模块声明区上下文指纹（各 item 签名区/非 fn item 全文）与闭包
+  签名表快照（`VT::Function` 索引稳定——暖路径先播种旧表，intern 值去重只追加）。
+  未改 owner **零 resolve/typecheck walk**（`body_work` 真实计数观测），其单元跳过
+  lower/encode；提交仍由 wire 身份经 ClosuresUpdateSession 结构门决定。
+- 边界（具名残余，如实计数非零）：atom 发射（plan）与描述符绑定（bind）为模块级
+  步骤；同 owner 的兄弟 lambda 随 owner 重走（粒度=owner）；restart 在内容键可算前
+  重 lower/encode（read/decode/重验零写入已证）。全复用应用=零产命中；失败候选不
+  损缓存与已装线；hit/restart/body-edit 的调度计数经 `ClosuresSourceRun.frontend/
+  lowered_units` 可观测。

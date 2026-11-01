@@ -102,6 +102,20 @@ v1/v2/v3 互不可读；好信封坏内层、内容寻址同键冲突（防篡�
 
 `plan824/av-dynamic` 的 `av.dynamic/1`（profile 5、AVAD v4）沿现有受检代码缓存恢复链，portable 值以 `auto.portable.av-dynamic/1` 分域；恢复重验当前类型/字段/分支及授权，不从保存的载荷恢复信任。动态与旧 profile 的 schema/producer/语义身份隔离，坏内层或改变依赖受控拒绝。资源和 typed 支持边界见 [dynamic-portable-values](dynamic-portable-values.md)。
 
+## PLAN-909：closures 源码会话的 hit/restart/失败候选
+
+- `ClosuresSourceSession`（closures_865_support）持有 owner 前端缓存与逐单元线身
+  份：全复用应用是零产命中（submitted=0、lowered 空、store 零写）；未改 owner 的
+  单元不进生产管线，`Arc<FunctionCode>`/代际经 ClosuresUpdateSession 未提交携带保
+  留。
+- restart（新会话同 store）：逐单元 store 命中→payload 相等核对→verify_abc→
+  admit（read/decode/重验），零写盘；暖编辑后 restart 最多写 genuinely-new 单元。
+- 失败候选（诊断/链接/门拒）：缓存、线与已装代码保全；下一次有效编辑精确生产被
+  触单元，重应用已装源零产。坏载荷/陈旧身份沿 A23 既有拒绝（payload≠key、envelope
+  校验和），缓存计数（hits/misses/store_writes）为常驻观测面。
+- 环境注记：具名 session case 组在持久机重复运行需清 `%TEMP%v798-session-*`
+  （865 跨运行复用设计使 fresh 期望 hits=0 与持久 store 冲突；组运行彼此隔离）。
+
 ## PLAN-823：A23 closures 层与恢复身份
 
 新 producer `plan823/av-closures` + A23 层（AVAD v5、profile id 6，键轴

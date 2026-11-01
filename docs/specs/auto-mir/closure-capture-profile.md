@@ -10,7 +10,9 @@
 - 源码闭包值的 .clone() 映射到既有 ClosureClone，深复制已构造的 owned env 并生成独立句柄；它不改变 lambda 捕获列表或字段顺序。
 - Borrow 仅接受可证明同步且不逃逸的源码 Str 捕获，映射为冻结的 StrView env 条目。
 
-lowered env vector 仍须与闭包 body 声明的 MirFunction.env 逐字段相等。既有 CalleeRef、唯一创建点和 fn: 链接期 env 等价规则不变；声明漂移在候选发布前拒绝。函数类型参数/返回值沿用现有闭包签名和间接调用机制。PLAN-865 不增加 MIR 指令或 wire 身份。共享可变捕获、闭包字段/List 元素及集合方法 HOF 仍不支持，详见[源码闭包规范](../auto-ac/source-closures.md)。
+lowered env vector 仍须与闭包 body 声明的 MirFunction.env 逐字段相等。既有 CalleeRef、唯一创建点和 fn: 链接期 env 等价规则不变；声明漂移在候选发布前拒绝。函数类型参数/返回值沿用现有闭包签名和间接调用机制。PLAN-865 不增加 MIR 指令或 wire 身份。
+
+**PLAN-909 共享可变捕获（标量切片）**：新增捕获态 `CaptureKind::Shared`（CREATE_CLOSURE 捕获 **wire tag 4**；0/1/2 既有，3=MoveFromEnv）——env 字段获得源槽 `List<i32|bool|char>`（单元素 cell）的**句柄共享**：源不 kill、不 pin、闭包可逃逸；verify 门 `mir.capture.shared-domain` 仅准该 cell 表示，其他值类共享具名拒。私有可写 env（K06）与共享 cell 的读写均走既有 LIST_GET/LIST_SET 于索引 0（ENV_GET 合同既有的 list 内部可变性路径），**零新增 opcode**；未知捕获 tag 旧解码器即拒，不猜含义。闭包 CLONE 对同根同 cell（buf_id）只复制一次，副本内部共享关系保持。详见[共享可变捕获](../auto-ac/shared-mutable-captures.md)。闭包字段/List 元素及集合方法 HOF 仍不支持，详见[源码闭包规范](../auto-ac/source-closures.md)。
 
 ## 既有 MIR 合同（PLAN-823）
 

@@ -14,6 +14,9 @@ mod av_closures_recipe;
 mod av_closures_resources;
 #[path = "cases/av_closures_semantics.rs"]
 mod av_closures_semantics;
+#[path = "cases/av_closures_909_performance.rs"]
+mod av_closures_909_performance;
+
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]
