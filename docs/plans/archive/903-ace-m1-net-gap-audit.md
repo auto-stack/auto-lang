@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-gap-audit.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-mir, auto-a2r]
 depends_on: [PLAN-862, PLAN-863, PLAN-864, PLAN-865, PLAN-866, PLAN-871, PLAN-881, PLAN-889, PLAN-891, PLAN-892, PLAN-894, PLAN-901]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -162,7 +162,7 @@ n/a只有批准规则才规范化；accepted-diff保原观察且不等ok，R-E�
 | T-07 | review | T-06冻结SHA/同树 | 独立重核全账、抽查真实producer/oracle与批准范围/首红/未实证；finding同树修复重绑，pass仅reviewed | AC-06 | [x] 独立上下文（general-purpose subagent，非实施者）终审 504e4acbf：8 组核查全 PASS——worktree/分支/clean、diff 仅 3 spec 文件、binding blob 两 commit 同一、**自研独立重算** 131/91/40/12列/U10/H3/O15 + av ok*=113/avm diff*=31/a2r golden=6 全符、census 负控 3/3 REJECT、results.json gate_passed+97/97 PASS 解析、5 项事实抽查（11 固定组+902 组、852 脚本 attachments 依赖+主检出无 cases.json+worktree 无 attachments、24 金样/10 证书/78 源、892 套件无固定组、裁定件 NA/R 全在）、SD-01..03 diff 核（无批准规则改动）、UTF-8 无损；AC-01..05 全 pass；唯一 finding P3（F-SCN-2 悬空引用）→ 同树修复 18bac254b + 全 F-ID 定义复核无悬空 |
 | T-08 | merge | T-07 pass | 冻结文档/源身份及受影响原入口证据核验，纯审计不附全仓/慢测门，来源改变只重核受影响结论，实际合入 | AC-07 | [x] worktree clean+wt-guard clean；master b1a4871aa 未动（rebase no-op）；`git merge --ff-only plan-903-dev` → master=18bac254b 线性无 merge commit；canonical 读回：三 spec blob master≡delivery（a0df39b9/8cb67325/d8e5cdef）；纯文档不附全仓门（内容/UTF-8/引用检查=review 已核） |
 | T-09 | merge | T-08 | SD-01..03沉淀/来源读回、archive delivered、路线/残余owner交接，不冒M1已绿，不写legacy specs.json | AC-07 | [x] SD-01（ace-m1-gap-audit.md 新增）/SD-02（conformance 登记节+导航节）/SD-03（project 852 节）全部随 delivery 18bac254b 落 master 并 blob 读回一致；残余 owner=G-DEC-1..5 交裁定（账本§6）+19 族后继（§5/§8）；未写任何 legacy specs.json；审计 PASS≠M1 绿在账本头部/§9 与本计划双处声明 |
-| T-10 | merge | T-09 | 摘要/命令/数字/hash折叠计划，全输出/hold对账，fresh wt-guard clean后清树/分支/组/plan-artifacts并登记，真实10/10 | AC-07 | [ ] |
+| T-10 | merge | T-09 | 摘要/命令/数字/hash折叠计划，全输出/hold对账，fresh wt-guard clean后清树/分支/组/plan-artifacts并登记，真实10/10 | AC-07 | [x] 三树 fresh wt-guard 全 clean 且 plan-903-dev==master 已并入→worktree×3 移除、分支删（was 18bac254b）、组目录 rmdir；plan-artifacts/plan-903 整删（census脚本/manifest/README；摘要已折§8/§9）；登记表刷 archived/cleaned/无holds；输出对账：auto-case 临时目录 runner 自清、无外置 target/第二证据目录/散落输出；无具名 hold |
 
 ## 9. 复审记录
 
@@ -183,6 +183,11 @@ stage: goal | plan_id: PLAN-903 | plan_revision: r1 | round: 1 | from: new | to:
 stage: goal | plan_id: PLAN-903 | plan_revision: r1 | round: 2 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-903/auto-lang | commit: 18bac254b | next: merge
 
 2026-11-01 stage:merge | PLAN-903 r1 | outcome:pass（delivered；cleaned 见下条） | worktree D:/autostack/.wt/lang-903/auto-lang @ plan-903-dev | delivery_commit 18bac254b（=reviewed 504e4acbf + 其 P3 finding 单行文档修复，docs-only descendant，实现/依赖零变） | base b1a4871aa | checkpoints: prepared=reviewed r1 pass 绑 504e4acbf+冻结 SD-01..03；landed=master `git merge --ff-only plan-903-dev`→18bac254b 线性（无 merge commit，master 未动无需 rebase）；canonical_verified=三 spec 路径 blob master≡delivery（ace-m1-gap-audit a0df39b9、conformance 8cb67325、project d8e5cdef；sha256 34e35f4b/2d67ea47/b737c0ee）；archived=docs/plans/archive/903-ace-m1-net-gap-audit.md status:archived 本提交 | batch-regression due-check：未到期（903%5=3≠0；.last-batch-regression 收据 2026-10-30T15:25:49Z，距今约33h<48h；902 系其前合入） | landing-not-deployment：纯文档落地，无生产二进制/web bundle 消费本 delta——无 stale 产物需重建（既有 852 脚本 infra 红状态不因本落地改变，账本 F-INFRA-1 在案） | 主检出他方 WIP 保留未动：docs/design*、docs/plans/reports/*、893/904 草案、test/fixtures/reader-import-budget/（非本计划，交其 owner 路由） | next: T-10 清理收尾
+
+
+2026-11-01 stage:merge(cleaned) | PLAN-903 r1 | outcome:pass（10/10 真实） | checkpoints: cleaned=三 worktree fresh guard clean→移除（auto-lang/auto-down/auto-web）、分支 plan-903-dev 删除、组目录删除、plan-artifacts/plan-903 整删、登记表刷新（archived/cleaned/holds=[]）；证据折叠完成（census 守恒+负控3拒、base 组 97/97 PASS wall365s、blob 读回三 hash、binding d9f05da0… 前后一致，全文见 §8/§9 各收据） | 主检出状态：本计划产物全部入库（18bac254b+98ce5723a）；他方 WIP/未跟踪件保持原样 | 待裁/后继：G-DEC-1..5 交用户（账本§6），19 族后继（账本§5/§8）——非本计划未决，不冒 M1 已绿
+
+stage: goal | plan_id: PLAN-903 | plan_revision: r1 | round: 3 | from: review | to: merge | status: archived | outcome: pass | worktree: (removed, group lang-903 cleaned) | commit: 98ce5723a | next: done
 
 
 ## 10. 待澄清事项
