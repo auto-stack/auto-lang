@@ -7,7 +7,7 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 
 ## 目标与范围
 
-- 提供转译代码依赖的运行时类型与函数：list、hashmap、string_builder、str、json、http、fs、env、math、time、sqlite、redis。
+- 提供转译代码依赖的运行时类型与函数：list、hashmap、string_builder、str、json、http、fs、env、math、time、sqlite、redis、rand。
 - 行为对齐 AutoVM 后端的标准库语义（parity 检查的对照对象之一）。
 - 不做：不实现转译器本身（在 auto-lang）；只覆盖转译产物实际用到的 std 子集。
 
@@ -31,6 +31,16 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 - 调用方不得把返回值与 `String::len()`（字节）混用于同一索引运算（字符偏移 + 字节长度会错位）。
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
+| rand | 安全随机（getrandom 0.2 OS CSPRNG，Plan 907） | active |
+
+## rand 模块契约（PLAN-907）
+
+`secure_hex(n: i32) -> String`（n 字节 OS CSPRNG → 2n 位小写 hex）与 `last_error() -> String`：
+
+- **熵源是 OS CSPRNG**（getrandom crate：Windows ProcessPrng / Unix getrandom(2)）。凭据/会话 token 一律用 `secure_hex`；**禁止**用 `uuid()`（epoch 纳秒）或 SQLite `randomblob()`（bundled build 在 Windows 上种子仅时间+PID，`SQLITE_WIN32_USE_UUID` 未定义）生成秘密——二者可预测，消费者审计（auto-chat CHAT-002 T-00）实证排除。
+- **失败哨兵**：绝不 panic；熵失败返回 `""` 并记录 `last_error()`（sqlite 先例同款）。`n <= 0` 返回 `""`。
+- **轨边界**：仅后端（a2r/rust）轨。VM 轨的 `auto.random` natives（rand_int 等）是时间种子 Xorshift，非凭据级，勿混用。
+- 分发：`use auto.rand` + 裸 `rand.secure_hex(n)`（Dot 臂）与 `auto.rand.secure_hex(n)`（Bina 臂）双路径；stdlib 模块白名单含 `rand`；签名 parity 由 `a2r_std_signature_parity` 钉（全空 allowlist，零漂移）。
 
 ## 浮点数学 helper（PLAN-813）
 
