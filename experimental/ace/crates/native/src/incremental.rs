@@ -12,10 +12,12 @@
 use crate::cache::{self, CoffMeta};
 use crate::config::*;
 use crate::link_driver::{self, ObjectInput};
+use crate::source_diagnostics as sd;
 use crate::{emit, MnError};
 use ace_artifacts::store::ManagedStore;
 use ace_av::session::{self, FunctionIncrementalSession};
 use ace_av_core::mir::OwnerScope;
+use ace_core::body_work::BodyWork;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +37,10 @@ pub struct EditObservation {
     pub changed_fn: Option<String>,
     /// Refusal reason (non-fast-path / diagnostics) — nothing changed.
     pub refused_reason: Option<String>,
+    /// PLAN-911: the typed refusal (kind, producer phase, and for language
+    /// diagnostics the operation-owned snapshot). `refused_reason` is its
+    /// display projection.
+    pub refusal: Option<sd::EditRefusal>,
     /// Infra failure text (the mn pipeline failed around a committed edit).
     pub infra: Option<String>,
     /// mn-side counters for this edit.
@@ -50,8 +56,14 @@ pub struct EditObservation {
     pub phase_walls_us: BTreeMap<String, u64>,
     /// Session stage-counter deltas of functions OTHER than the changed
     /// one (must be 0 on the fast path) and any whole-module stage delta.
+    /// PLAN-911 V-17: computed on EVERY exit, refusals included.
     pub unaffected_stage_delta: u64,
     pub whole_module_stage_delta: u64,
+    /// PLAN-911 V-17: the core producer's own per-function body work for
+    /// this edit (resolve/typecheck/plan/bind walks), captured around the
+    /// real prepare/commit calls. Unchanged functions must be all-zero on
+    /// every path; a reached-but-failed body shows its attempt here.
+    pub body_work: BTreeMap<String, BodyWork>,
     /// Edit entry → real PE result observed by the parent (ms).
     pub wall_ms: f64,
     /// The round's raw PE stdout/stderr (byte-exact — the trace evidence
@@ -120,6 +132,27 @@ fn av_resident_cv(av: &FunctionIncrementalSession, source_name: &str) -> Option<
     av.resident_content_version(source_name)
 }
 
+/// PLAN-911 V-17: what an edit exit needs to report honestly — the counter
+/// baseline at entry, the core producer's body-work window(s), the
+/// attribution of the changed body (when known) and the window clock.
+struct ExitCtx {
+    window_started: std::time::Instant,
+    before: BTreeMap<String, u64>,
+    changed_name: Option<String>,
+    body_work: BTreeMap<String, BodyWork>,
+}
+
+/// Sum a second capture window into the first (prepare + commit windows).
+fn merge_body_work(dst: &mut BTreeMap<String, BodyWork>, more: BTreeMap<String, BodyWork>) {
+    for (name, w) in more {
+        let e = dst.entry(name).or_default();
+        e.resolve += w.resolve;
+        e.typecheck += w.typecheck;
+        e.plan += w.plan;
+        e.bind += w.bind;
+    }
+}
+
 impl MnIncrementalSession {
     /// The session's link support libraries. PLAN-870 boundary: the
     /// incremental session remains scalar-profile (its 828 session and
@@ -134,11 +167,22 @@ fn whole_module_units(
     src: &str,
     entry: &str,
     caps: &[String],
+    operation: sd::Operation,
 ) -> Result<Vec<ace_av_core::mir::MirModule>, MnError> {
+    // PLAN-911: this is the incremental session's ONE scalar cold compile
+    // (warm-up) or its recorded whole fallback — a real frontend failure
+    // here is the operation's typed snapshot, not a first-message string.
     let compiled = ace_core::source::compile_scalar_source(src, "mn.at", caps).map_err(|ds| {
-        MnError::Unsupported(
-            "frontend",
-            ds.first().map(|d| d.message.clone()).unwrap_or_default(),
+        sd::mn_error_from_compile_failure(
+            src,
+            "mn.at",
+            sd::CompileFailure {
+                profile: sd::SourceProfile::Scalar,
+                attempted: vec![sd::SourceProfile::Scalar],
+                surface_rejections: Vec::new(),
+                diagnostics: ds,
+            },
+            operation,
         )
     })?;
     let mir = ace_lowering::lower_checked(
@@ -165,11 +209,15 @@ impl MnIncrementalSession {
         store_root: &Path,
         tracelib: Option<&Path>,
     ) -> Result<(MnIncrementalSession, EditObservation), MnError> {
+        // PLAN-911: the mn unit compile goes FIRST so a real frontend
+        // rejection of the warm-up source is this operation's typed
+        // snapshot (the 828 session compiles the same source through the
+        // same shared frontend and would only re-render it as infra text).
+        let units = whole_module_units(src, entry, caps, sd::Operation::cold(src))?;
         let av = session::warmup(src, entry, caps)
             .map_err(|e| MnError::Infra(format!("828 warmup: {e}")))?;
         let store = ManagedStore::open(store_root)
             .map_err(|e| MnError::Infra(format!("store open: {e}")))?;
-        let units = whole_module_units(src, entry, caps)?;
         let owner = units.first().expect("units").owner.clone();
         let workdir_root = store_root
             .parent()
@@ -284,6 +332,7 @@ impl MnIncrementalSession {
             reused_history_unit: false,
             changed_fn: changed.map(|s| s.to_string()),
             refused_reason: None,
+            refusal: None,
             infra: None,
             codegen_units,
             cache_hits: hits,
@@ -291,6 +340,7 @@ impl MnIncrementalSession {
             phase_walls_us: phase_walls,
             unaffected_stage_delta: unaffected_delta,
             whole_module_stage_delta: whole_module_delta,
+            body_work: BTreeMap::new(),
             wall_ms,
             stdout: run.stdout,
             stderr: run.stderr,
@@ -305,56 +355,93 @@ impl MnIncrementalSession {
     /// interval: preparation, the single-body transaction, re-verify,
     /// emission/persist (or historical restore), commit, link and run are
     /// all inside it.
+    ///
+    /// PLAN-911: every exit — refusal, infra, success — closes through
+    /// [`Self::close_exit`], so the structural deltas and the core
+    /// producer's body-work window are measured on failures too (a zero is
+    /// an observed zero, never a `Default` left behind by an early return),
+    /// and a refusal carries its typed kind/snapshot from the session's own
+    /// `EditOutcome`.
     pub fn edit(&mut self, start: u64, end: u64, insert: Vec<u8>) -> EditObservation {
-        let window_started = std::time::Instant::now();
-        let wall = |obs: &mut EditObservation| {
-            obs.wall_ms = window_started.elapsed().as_secs_f64() * 1000.0;
+        let mut ctx = ExitCtx {
+            window_started: std::time::Instant::now(),
+            before: self.av.counters().snapshot(),
+            changed_name: None,
+            body_work: BTreeMap::new(),
         };
-        let before = self.av.counters().snapshot();
+        let base_src = self.av.src().to_string();
+        let base_revision = self.av.revision();
+        let insert_len = insert.len() as u64;
         // The post-edit source, rebuilt locally (prepare does not publish;
         // the session's own `src()` stays pre-edit until commit).
         let new_src = {
-            let cur = self.av.src();
+            let cur = &base_src;
             let mut n = String::with_capacity(cur.len());
             n.push_str(&cur[..(start as usize).min(cur.len())]);
             match std::str::from_utf8(&insert) {
                 Ok(text) => n.push_str(text),
                 Err(_) => {
-                    let mut o = EditObservation {
-                        refused_reason: Some("insert is not UTF-8".into()),
-                        ..Default::default()
-                    };
-                    wall(&mut o);
-                    return o;
+                    let reason = "insert is not UTF-8".to_string();
+                    return self.close_exit(
+                        &ctx,
+                        EditObservation {
+                            refused_reason: Some(reason.clone()),
+                            refusal: Some(sd::EditRefusal {
+                                kind: sd::RefusalKind::InvalidEdit,
+                                phase: None,
+                                source_error: None,
+                                reason,
+                            }),
+                            ..Default::default()
+                        },
+                    );
                 }
             }
             n.push_str(&cur[(end as usize).min(cur.len())..]);
             n
         };
-        let prepared = match self.av.prepare_edit(start, end, insert) {
+        // The producer's own body-work window wraps the REAL prepare call
+        // (W-S2): reached-but-failed bodies show their attempt here.
+        let (prepared, work) =
+            ace_core::body_work::capture_body_work(|| self.av.prepare_edit(start, end, insert));
+        ctx.body_work = work;
+        let prepared = match prepared {
             Err(e) => {
-                let mut o = EditObservation {
-                    infra: Some(format!("prepare infra: {e}")),
-                    ..Default::default()
-                };
-                wall(&mut o);
-                return o;
+                return self.close_exit(
+                    &ctx,
+                    EditObservation {
+                        infra: Some(format!("prepare infra: {e}")),
+                        ..Default::default()
+                    },
+                );
             }
             Ok(Err(outcome)) => {
-                let mut o = EditObservation {
-                    refused_reason: outcome
-                        .non_fast_path_reason
-                        .or_else(|| outcome.diagnostics.first().cloned()),
-                    ..Default::default()
-                };
-                wall(&mut o);
-                return o;
+                ctx.changed_name = outcome
+                    .rejection
+                    .as_ref()
+                    .and_then(|r| r.changed_fn.clone());
+                let refusal = Self::typed_refusal(
+                    &outcome,
+                    &base_src,
+                    &new_src,
+                    base_revision,
+                    (start, end, insert_len),
+                );
+                return self.close_exit(
+                    &ctx,
+                    EditObservation {
+                        refused_reason: Some(refusal.reason.clone()),
+                        refusal: Some(refusal),
+                        ..Default::default()
+                    },
+                );
             }
             Ok(Ok(p)) => p,
         };
         // The session speaks SOURCE names; the unit layer's keys are the
         // pipeline's def ids (`d_<name>`).
         let changed_name = prepared.changed_name().to_string();
+        ctx.changed_name = Some(changed_name.clone());
         let changed_key = format!("d_{changed_name}");
         let mut codegen_units = 0u64;
         let mut fallback_whole = 0u64;
@@ -365,12 +452,13 @@ impl MnIncrementalSession {
                 // MINT: mn door re-verifies the exact unit (cheap, single
                 // unit); a changed fingerprint re-emits exactly this unit.
                 if let Err(e) = ace_av_core::mir_verify::verify_mir(unit) {
-                    let mut o = EditObservation {
-                        infra: Some(format!("mn re-verify: {e:?}")),
-                        ..Default::default()
-                    };
-                    wall(&mut o);
-                    return o;
+                    return self.close_exit(
+                        &ctx,
+                        EditObservation {
+                            infra: Some(format!("mn re-verify: {e:?}")),
+                            ..Default::default()
+                        },
+                    );
                 }
                 let fp = cache::unit_fp(unit);
                 let prev = self
@@ -382,22 +470,24 @@ impl MnIncrementalSession {
                     let obj = match emit::emit_unit_coff(unit) {
                         Ok(o) => o,
                         Err(e) => {
-                            let mut o = EditObservation {
-                                infra: Some(format!("emit: {e}")),
-                                ..Default::default()
-                            };
-                            wall(&mut o);
-                            return o;
+                            return self.close_exit(
+                                &ctx,
+                                EditObservation {
+                                    infra: Some(format!("emit: {e}")),
+                                    ..Default::default()
+                                },
+                            );
                         }
                     };
                     let meta = self.meta_of(&changed_key, &fp);
                     if let Err(e) = cache::put_unit_coff(&self.store, None, &meta, &obj.bytes) {
-                        let mut o = EditObservation {
-                            infra: Some(format!("put: {e}")),
-                            ..Default::default()
-                        };
-                        wall(&mut o);
-                        return o;
+                        return self.close_exit(
+                            &ctx,
+                            EditObservation {
+                                infra: Some(format!("put: {e}")),
+                                ..Default::default()
+                            },
+                        );
                     }
                     codegen_units = 1;
                     self.units.insert(
@@ -410,16 +500,25 @@ impl MnIncrementalSession {
                     self.resident.insert(changed_key.clone(), obj.bytes);
                 }
                 // COMMIT after the mn layer accepted the unit.
-                let outcome = self.av.commit(prepared);
+                let (outcome, commit_work) =
+                    ace_core::body_work::capture_body_work(|| self.av.commit(prepared));
+                merge_body_work(&mut ctx.body_work, commit_work);
                 if !outcome.ok {
-                    let mut o = EditObservation {
-                        refused_reason: outcome
-                            .non_fast_path_reason
-                            .or_else(|| outcome.diagnostics.first().cloned()),
-                        ..Default::default()
-                    };
-                    wall(&mut o);
-                    return o;
+                    let refusal = Self::typed_refusal(
+                        &outcome,
+                        &base_src,
+                        &new_src,
+                        base_revision,
+                        (start, end, insert_len),
+                    );
+                    return self.close_exit(
+                        &ctx,
+                        EditObservation {
+                            refused_reason: Some(refusal.reason.clone()),
+                            refusal: Some(refusal),
+                            ..Default::default()
+                        },
+                    );
                 }
                 // The minted content version now maps to the unit's fp (the
                 // current identity, whether it just moved or not).
@@ -434,26 +533,38 @@ impl MnIncrementalSession {
                 // map. Zero whole-module work; the identity moves back to
                 // the historical fp and the generation does NOT bump (no
                 // new object was minted).
-                let outcome = self.av.commit(prepared);
+                let (outcome, commit_work) =
+                    ace_core::body_work::capture_body_work(|| self.av.commit(prepared));
+                merge_body_work(&mut ctx.body_work, commit_work);
                 if !outcome.ok {
-                    let mut o = EditObservation {
-                        refused_reason: outcome
-                            .non_fast_path_reason
-                            .or_else(|| outcome.diagnostics.first().cloned()),
-                        ..Default::default()
-                    };
-                    wall(&mut o);
-                    return o;
+                    let refusal = Self::typed_refusal(
+                        &outcome,
+                        &base_src,
+                        &new_src,
+                        base_revision,
+                        (start, end, insert_len),
+                    );
+                    return self.close_exit(
+                        &ctx,
+                        EditObservation {
+                            refused_reason: Some(refusal.reason.clone()),
+                            refusal: Some(refusal),
+                            ..Default::default()
+                        },
+                    );
                 }
                 let cv = match av_resident_cv(&self.av, &changed_name) {
                     Some(cv) => cv,
                     None => {
-                        let mut o = EditObservation {
-                            infra: Some("content hit without a resident content version".into()),
-                            ..Default::default()
-                        };
-                        wall(&mut o);
-                        return o;
+                        return self.close_exit(
+                            &ctx,
+                            EditObservation {
+                                infra: Some(
+                                    "content hit without a resident content version".into(),
+                                ),
+                                ..Default::default()
+                            },
+                        );
                     }
                 };
                 match self.cv_map.get(&(changed_key.clone(), cv.clone())).cloned() {
@@ -472,14 +583,15 @@ impl MnIncrementalSession {
                                 reused_history = true;
                             }
                             other => {
-                                let mut o = EditObservation {
-                                    infra: Some(format!(
-                                        "historical unit restore failed: {other:?}"
-                                    )),
-                                    ..Default::default()
-                                };
-                                wall(&mut o);
-                                return o;
+                                return self.close_exit(
+                                    &ctx,
+                                    EditObservation {
+                                        infra: Some(format!(
+                                            "historical unit restore failed: {other:?}"
+                                        )),
+                                        ..Default::default()
+                                    },
+                                );
                             }
                         }
                     }
@@ -490,14 +602,16 @@ impl MnIncrementalSession {
                         // (with the warm-up capability grants), never
                         // silently. The structural gate fires on it.
                         fallback_whole = 1;
-                        if let Err(e) = self.whole_lower_fallback(&new_src, &changed_key) {
-                            let mut o = EditObservation {
-                                infra: Some(e),
-                                fallback_whole_lower: fallback_whole,
-                                ..Default::default()
-                            };
-                            wall(&mut o);
-                            return o;
+                        if let Err(e) = self.whole_lower_fallback(&base_src, &new_src, &changed_key)
+                        {
+                            return self.close_exit(
+                                &ctx,
+                                EditObservation {
+                                    infra: Some(e),
+                                    fallback_whole_lower: fallback_whole,
+                                    ..Default::default()
+                                },
+                            );
                         }
                     }
                 }
@@ -505,9 +619,9 @@ impl MnIncrementalSession {
         }
         // Structural evidence from the session counters (deltas).
         let after = self.av.counters().snapshot();
-        let (unaffected, whole) = structural_deltas(&before, &after, &changed_name);
+        let (unaffected, whole) = structural_deltas(&ctx.before, &after, &changed_name);
         let phase_walls = self.av.phase_walls().clone();
-        let elapsed_ms = window_started.elapsed().as_secs_f64() * 1000.0;
+        let elapsed_ms = ctx.window_started.elapsed().as_secs_f64() * 1000.0;
         let mut obs = match self.run_current(
             Some(&changed_key),
             codegen_units,
@@ -530,10 +644,101 @@ impl MnIncrementalSession {
             },
         };
         obs.reused_history_unit = reused_history;
-        wall(&mut obs);
+        self.close_exit(&ctx, obs)
+    }
+
+    /// PLAN-911: finish ANY edit exit with measured facts — structural
+    /// deltas against the entry baseline, the body-work window, the
+    /// session's phase walls, and the window clock. No exit leaves zeros
+    /// it did not observe.
+    fn close_exit(&self, ctx: &ExitCtx, mut obs: EditObservation) -> EditObservation {
+        let after = self.av.counters().snapshot();
+        let (unaffected, whole) = structural_deltas(
+            &ctx.before,
+            &after,
+            ctx.changed_name.as_deref().unwrap_or(""),
+        );
+        obs.unaffected_stage_delta = unaffected;
+        obs.whole_module_stage_delta = whole;
+        obs.body_work = ctx.body_work.clone();
+        if obs.phase_walls_us.is_empty() {
+            obs.phase_walls_us = self.av.phase_walls().clone();
+        }
+        obs.wall_ms = ctx.window_started.elapsed().as_secs_f64() * 1000.0;
         obs
     }
 
+    /// PLAN-911: the typed refusal of one edit straight from the session's
+    /// own `EditOutcome` — kind/phase from the enum, the snapshot built from
+    /// the exact typed diagnostics (never re-parsed from the rendered text,
+    /// never re-compiled). The candidate identity is the post-edit source
+    /// the compiler actually saw; the base is the session's accepted prefix.
+    fn typed_refusal(
+        outcome: &session::EditOutcome,
+        base_src: &str,
+        new_src: &str,
+        base_revision: u64,
+        region: (u64, u64, u64),
+    ) -> sd::EditRefusal {
+        let reason = outcome
+            .non_fast_path_reason
+            .clone()
+            .or_else(|| outcome.diagnostics.first().cloned())
+            .unwrap_or_default();
+        let Some(rej) = &outcome.rejection else {
+            // The scalar session types every refusal; an untyped one is
+            // reported as such (a consumer in strict mode treats it as an
+            // error, never as a language family).
+            return sd::EditRefusal {
+                kind: sd::RefusalKind::Untyped,
+                phase: None,
+                source_error: None,
+                reason,
+            };
+        };
+        let phase = rej.phase.map(sd::RejectPhase::from);
+        if rej.kind != session::RefusalKind::LanguageDiagnostics {
+            return sd::EditRefusal {
+                kind: rej.kind.into(),
+                phase,
+                source_error: None,
+                reason,
+            };
+        }
+        let failure = sd::CompileFailure {
+            profile: sd::SourceProfile::Scalar,
+            attempted: vec![sd::SourceProfile::Scalar],
+            surface_rejections: Vec::new(),
+            diagnostics: rej.typed_diagnostics.clone(),
+        };
+        let (start, end, insert_len) = region;
+        let operation = sd::Operation::warm_edit(
+            base_src,
+            new_src,
+            base_revision,
+            sd::EditRegion {
+                start,
+                end,
+                insert_len,
+            },
+        );
+        // The 828 session renders against `probe.at`: that IS the path the
+        // producer received for this candidate.
+        match sd::SourceDiagnosticSnapshot::capture(new_src, "probe.at", failure, operation) {
+            Ok(snap) => sd::EditRefusal {
+                kind: sd::RefusalKind::LanguageDiagnostics,
+                phase,
+                source_error: Some(snap),
+                reason,
+            },
+            Err(e) => sd::EditRefusal {
+                kind: sd::RefusalKind::Resource,
+                phase,
+                source_error: None,
+                reason: format!("{reason} [{e}]"),
+            },
+        }
+    }
     /// A judged RUN of the current revision (no edit): a fresh real
     /// link/run of the resident working set — the formal recipe's judged
     /// trailing step.
@@ -562,9 +767,19 @@ impl MnIncrementalSession {
     /// only — normal sequences never reach it): re-lower the whole
     /// post-edit module WITH the warm-up capability grants and re-emit
     /// every unit whose fingerprint moved.
-    fn whole_lower_fallback(&mut self, new_src: &str, changed_key: &str) -> Result<(), String> {
-        let units = whole_module_units(new_src, &self.entry, &self.caps)
-            .map_err(|e| format!("fallback whole lower: {e}"))?;
+    fn whole_lower_fallback(
+        &mut self,
+        base_src: &str,
+        new_src: &str,
+        changed_key: &str,
+    ) -> Result<(), String> {
+        let units = whole_module_units(
+            new_src,
+            &self.entry,
+            &self.caps,
+            sd::Operation::fallback_cold(base_src, new_src),
+        )
+        .map_err(|e| format!("fallback whole lower: {e}"))?;
         for unit in &units {
             let name = unit.funcs[0].name.clone();
             let fp = cache::unit_fp(unit);

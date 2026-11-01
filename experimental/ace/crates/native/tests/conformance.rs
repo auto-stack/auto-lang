@@ -42,6 +42,8 @@ mod record_method_tier;
 mod resources_tier;
 #[path = "cases/shadow_tier.rs"]
 mod shadow_tier;
+#[path = "cases/source_diagnostics_911.rs"]
+mod source_diagnostics_911;
 #[path = "cases/transaction_tier.rs"]
 mod transaction_tier;
 #[path = "cases/turnaround_tier.rs"]

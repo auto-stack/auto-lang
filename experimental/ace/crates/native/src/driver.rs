@@ -9,6 +9,7 @@ use crate::config::*;
 use crate::link_driver::{self, ObjectInput};
 use crate::observe::Obs;
 use crate::resources::Partition;
+use crate::source_diagnostics as sd;
 use crate::{emit, MnError};
 use ace_artifacts::store::ManagedStore;
 use ace_av_core::mir::MirType;
@@ -40,21 +41,58 @@ fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
         .all(|d| d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text)
 }
 
+/// The escalating source front door, PLAN-911 shape: a failure names the
+/// profile that TERMINATED the chain, the profiles actually attempted and
+/// the surface rejections consumed only to escalate — the terminal
+/// diagnostics are never a surface rejection re-read from an earlier
+/// domain, and nothing here re-runs a compile to learn "where it failed".
 fn compile_escalating(
     src: &str,
     caps: &[String],
-) -> std::result::Result<Domain, Vec<ace_core::atom_text::Diagnostic>> {
+) -> std::result::Result<Domain, sd::CompileFailure> {
+    let mut attempted = Vec::with_capacity(3);
+    let mut surface = Vec::new();
+    attempted.push(sd::SourceProfile::Scalar);
     match ace_core::source::compile_scalar_source(src, "mn.at", caps) {
         Ok(c) => return Ok(Domain::Scalar(c)),
-        Err(ds) if is_surface_rejection(&ds) => {}
-        Err(ds) => return Err(ds),
+        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
+            profile: sd::SourceProfile::Scalar,
+            codes: ds.iter().map(|d| d.code.clone()).collect(),
+        }),
+        Err(ds) => {
+            return Err(sd::CompileFailure {
+                profile: sd::SourceProfile::Scalar,
+                attempted,
+                surface_rejections: surface,
+                diagnostics: ds,
+            })
+        }
     }
+    attempted.push(sd::SourceProfile::Record);
     match ace_core::source::compile_record_source(src, "mn.at", caps) {
         Ok(c) => return Ok(Domain::Data(c)),
-        Err(ds) if is_surface_rejection(&ds) => {}
-        Err(ds) => return Err(ds),
+        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
+            profile: sd::SourceProfile::Record,
+            codes: ds.iter().map(|d| d.code.clone()).collect(),
+        }),
+        Err(ds) => {
+            return Err(sd::CompileFailure {
+                profile: sd::SourceProfile::Record,
+                attempted,
+                surface_rejections: surface,
+                diagnostics: ds,
+            })
+        }
     }
-    ace_core::source::compile_text_record_source(src, "mn.at", caps).map(Domain::Owned)
+    attempted.push(sd::SourceProfile::TextRecord);
+    ace_core::source::compile_text_record_source(src, "mn.at", caps)
+        .map(Domain::Owned)
+        .map_err(|ds| sd::CompileFailure {
+            profile: sd::SourceProfile::TextRecord,
+            attempted,
+            surface_rejections: surface,
+            diagnostics: ds,
+        })
 }
 
 impl Domain {
@@ -236,13 +274,15 @@ impl MnDriver {
             ))
         } else {
             let compiled = obs.span("frontend", |o| {
-                compile_escalating(src, caps).map_err(|ds| {
+                compile_escalating(src, caps).map_err(|failure| {
                     o.counter("frontend_reject", 1);
-                    MnError::Unsupported(
-                        "frontend",
-                        ds.first()
-                            .map(|d| format!("{:?}/{}: {}", d.stage, d.code, d.message))
-                            .unwrap_or_else(|| "frontend failed".into()),
+                    // PLAN-911: the operation's own typed snapshot rides the
+                    // error; `code()`/`message()` stay the legacy projection.
+                    sd::mn_error_from_compile_failure(
+                        src,
+                        "mn.at",
+                        failure,
+                        sd::Operation::cold(src),
                     )
                 })
             });

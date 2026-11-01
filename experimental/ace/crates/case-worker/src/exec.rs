@@ -532,7 +532,12 @@ fn exec_mn(
                 ref err @ (ace_native::MnError::Unsupported(_, _)
                 | ace_native::MnError::Admit(_, _)
                 | ace_native::MnError::Backend(_)
-                | ace_native::MnError::Resource(_, _)) => {
+                | ace_native::MnError::Resource(_, _)
+                // PLAN-911: a typed source snapshot — `build_checked` runs
+                // from pre-checked HIR and never compiles source, so this
+                // arm is unreachable here; kept identical (the code/message
+                // projection) so the taxonomy stays total.
+                | ace_native::MnError::Source(_)) => {
                     check_total(&started, req)?;
                     Ok(OkOut {
                         diagnostics: vec![DiagOut {

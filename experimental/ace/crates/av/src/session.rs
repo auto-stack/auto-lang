@@ -229,6 +229,59 @@ pub struct ResidentInventory {
     pub history_entries: usize,
 }
 
+/// PLAN-911 W-S1: why one edit was refused — the Rust enum at the refusal
+/// site itself, never recovered from the rendered reason text. The
+/// `non_fast_path_reason` / `diagnostics` strings stay exactly what they
+/// were (display projections of the same decision).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefusalKind {
+    /// Real language diagnostics from the shared frontend/verify: terminal
+    /// for the candidate — never a fallback input.
+    LanguageDiagnostics,
+    /// The syntax increment engine could not converge on a LEGAL edit.
+    SyntaxNotConverged,
+    /// Interface / declaration-context drift (the retained environment's
+    /// interface gate, including `source.incremental`).
+    SignatureOrContextDrift,
+    /// Edit shape outside the single-body fast path (multi-decl, decl set
+    /// change, projection failure, non-UTF-8, front-door budget).
+    InvalidEdit,
+    /// Candidate / session identity: closed session, stale base revision,
+    /// cross-session candidate, cancelled candidate.
+    SessionOrCandidate,
+    /// Post-frontend MIR lower/admit rejection (already rendered upstream).
+    LowerAdmit,
+}
+
+/// Which producer the language diagnostics came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RejectPhase {
+    /// `prepare_candidate_document` (resolve + typecheck of the one body).
+    Frontend,
+    /// `verify_function` (HIR semantic verification).
+    Verify,
+    /// `FnCandidate::commit` into the environment.
+    Commit,
+}
+
+/// PLAN-911 W-S1: the typed fact of one refusal, owned by that edit's
+/// `EditOutcome` (never a session "last errors" read later). The typed
+/// diagnostics are a clone of the exact `Vec<Diagnostic>` the compiler
+/// returned, in order, un-deduplicated; empty for every non-language kind.
+#[derive(Clone, Debug)]
+pub struct EditRejection {
+    pub kind: RefusalKind,
+    pub phase: Option<RejectPhase>,
+    pub typed_diagnostics: Vec<Diagnostic>,
+    /// The session revision the candidate was prepared against.
+    pub base_revision: u64,
+    /// The single declaration the edit had been attributed to when the
+    /// refusal fired (`None` when it fired before attribution: syntax
+    /// fallback, multi-declaration edits). Lets a consumer split the
+    /// changed body's own attempt counters from unaffected work.
+    pub changed_fn: Option<String>,
+}
+
 /// Outcome of one edit request.
 #[derive(Clone, Debug)]
 pub struct EditOutcome {
@@ -245,6 +298,9 @@ pub struct EditOutcome {
     /// Why a non-fast-path edit was refused (recorded, never silently
     /// degraded to a whole-module recompute).
     pub non_fast_path_reason: Option<String>,
+    /// PLAN-911: the typed refusal fact (`None` on success and on legacy
+    /// `rejected()` constructions that carry no kind).
+    pub rejection: Option<EditRejection>,
 }
 
 impl EditOutcome {
@@ -256,7 +312,37 @@ impl EditOutcome {
             install_set: Vec::new(),
             diagnostics,
             non_fast_path_reason: Some(reason),
+            rejection: None,
         }
+    }
+
+    /// A refusal that names its kind (and, for language diagnostics, the
+    /// producer phase and the typed list) — same strings as `rejected`.
+    pub(crate) fn refused(
+        revision: u64,
+        reason: String,
+        diagnostics: Vec<String>,
+        kind: RefusalKind,
+        phase: Option<RejectPhase>,
+        typed: Vec<Diagnostic>,
+    ) -> Self {
+        let mut o = EditOutcome::rejected(revision, reason, diagnostics);
+        o.rejection = Some(EditRejection {
+            kind,
+            phase,
+            typed_diagnostics: typed,
+            base_revision: revision,
+            changed_fn: None,
+        });
+        o
+    }
+
+    /// Attribute a refusal to the declaration the edit had been resolved to.
+    pub(crate) fn attributed(mut self, changed_fn: &str) -> Self {
+        if let Some(r) = self.rejection.as_mut() {
+            r.changed_fn = Some(changed_fn.to_string());
+        }
+        self
     }
 }
 
@@ -1456,24 +1542,32 @@ impl FunctionIncrementalSession {
     /// candidate minted by another session is refused exactly like a
     /// commit would be (the minting session can still dispose of its own).
     pub fn cancel_prepared(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        let candidate_refusal = |revision: u64, reason: String| {
+            EditOutcome::refused(
+                revision,
+                reason,
+                Vec::new(),
+                RefusalKind::SessionOrCandidate,
+                None,
+                Vec::new(),
+            )
+        };
         if self.closed {
-            return EditOutcome::rejected(self.revision, "session closed".to_string(), Vec::new());
+            return candidate_refusal(self.revision, "session closed".to_string());
         }
         if prepared.session_id != self.session_id {
-            return EditOutcome::rejected(
+            return candidate_refusal(
                 self.revision,
                 "cross-session candidate refused: prepared by a different session".to_string(),
-                Vec::new(),
             );
         }
         self.counters.bump("candidates_cancelled");
-        EditOutcome::rejected(
+        candidate_refusal(
             self.revision,
             format!(
                 "candidate cancelled (base revision {}); session remains at revision {}",
                 prepared.base_revision, self.revision
             ),
-            Vec::new(),
         )
     }
 
@@ -2165,9 +2259,12 @@ impl FunctionIncrementalSession {
         self.counters
             .add("syntax_reused_decls", inc.reused_decls as u64);
         if let Some(reason) = &inc.fallback {
-            return Ok(Err(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::refused(
                 self.revision,
                 format!("non-fast-path: syntax fallback {reason:?}"),
+                Vec::new(),
+                RefusalKind::SyntaxNotConverged,
+                None,
                 Vec::new(),
             )));
         }
@@ -2185,12 +2282,15 @@ impl FunctionIncrementalSession {
             }
         }
         if changed.len() != 1 {
-            return Ok(Err(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::refused(
                 self.revision,
                 format!(
                     "non-fast-path: edit meets {} declarations (single body edit supported)",
                     changed.len()
                 ),
+                Vec::new(),
+                RefusalKind::InvalidEdit,
+                None,
                 Vec::new(),
             )));
         }
@@ -2202,16 +2302,22 @@ impl FunctionIncrementalSession {
         let old_names: Vec<&str> = old_outline.iter().map(|o| o.name.as_str()).collect();
         let new_names: Vec<&str> = new_outline.iter().map(|o| o.name.as_str()).collect();
         if old_names != new_names {
-            return Ok(Err(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::refused(
                 self.revision,
                 "non-fast-path: declaration set changed (add/remove/rename)".to_string(),
+                Vec::new(),
+                RefusalKind::SignatureOrContextDrift,
+                None,
                 Vec::new(),
             )));
         }
         if changed_idx >= inc.tree.decls.len() {
-            return Ok(Err(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::refused(
                 self.revision,
                 "non-fast-path: changed decl missing in new tree".to_string(),
+                Vec::new(),
+                RefusalKind::InvalidEdit,
+                None,
                 Vec::new(),
             )));
         }
@@ -2246,11 +2352,15 @@ impl FunctionIncrementalSession {
         ) {
             Ok(f) => f,
             Err(e) => {
-                return Ok(Err(EditOutcome::rejected(
+                return Ok(Err(EditOutcome::refused(
                     self.revision,
                     format!("candidate rejected: projection `{e:?}`"),
                     Vec::new(),
-                )));
+                    RefusalKind::InvalidEdit,
+                    None,
+                    Vec::new(),
+                )
+                .attributed(&changed_name)));
             }
         };
         if projected_fn.name.name != self.fns[changed_idx].name {
@@ -2270,6 +2380,11 @@ impl FunctionIncrementalSession {
         // unchanged functions contribute no body work (the producer window
         // gate proves it). Current is restored before the candidate is
         // returned; the environment slot publishes only at commit (D-03).
+        // PLAN-911 W-S2: the ATTEMPT is recorded before the real call so a
+        // failing body still shows as reached (success counters below stay
+        // the success account).
+        self.counters
+            .bump(&format!("frontend_body_attempt:{changed_name}"));
         let candidate = match {
             let t_front = std::time::Instant::now();
             let r = prepare_candidate_document(
@@ -2290,18 +2405,27 @@ impl FunctionIncrementalSession {
                 // edit, never silently re-checked. Anything else is a
                 // candidate rejection carrying real diagnostics.
                 if ds.iter().any(|d| d.code == "source.incremental") {
-                    return Ok(Err(EditOutcome::rejected(
+                    return Ok(Err(EditOutcome::refused(
                         self.revision,
                         "non-fast-path: signature change refused by the retained environment's interface gate"
                             .to_string(),
                         Vec::new(),
-                    )));
+                        RefusalKind::SignatureOrContextDrift,
+                        None,
+                        Vec::new(),
+                    )
+                    .attributed(&changed_name)));
                 }
-                return Ok(Err(EditOutcome::rejected(
+                let rendered = ds.iter().map(|d| d.render("probe.at", &new_src)).collect();
+                return Ok(Err(EditOutcome::refused(
                     self.revision,
                     "candidate rejected: frontend diagnostics".to_string(),
-                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
-                )));
+                    rendered,
+                    RefusalKind::LanguageDiagnostics,
+                    Some(RejectPhase::Frontend),
+                    ds,
+                )
+                .attributed(&changed_name)));
             }
         };
         for stage in ["resolve", "typecheck", "hir_build"] {
@@ -2329,11 +2453,15 @@ impl FunctionIncrementalSession {
         // must be identical to the resident environment.
         let candidate_env = FnEnv::from_bundle(&candidate.parts().bundle)?;
         if !self.env.interface_unchanged(&candidate_env, &changed_name) {
-            return Ok(Err(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::refused(
                 self.revision,
                 "non-fast-path: interface or declaration context changed".to_string(),
                 Vec::new(),
-            )));
+                RefusalKind::SignatureOrContextDrift,
+                None,
+                Vec::new(),
+            )
+            .attributed(&changed_name)));
         }
 
         // In-session content-addressed reuse (T-04): the candidate body's
@@ -2418,17 +2546,25 @@ impl FunctionIncrementalSession {
                 // document prepare defers verification so a content HIT
                 // can reuse the stored pair with zero re-verify (T-04).
                 let t_verify = std::time::Instant::now();
+                // PLAN-911 W-S2: attempt recorded before the real verify.
+                self.counters
+                    .bump(&format!("verify_hir_attempt:{changed_name}"));
                 let checked = verify_function(candidate.parts().bundle.clone(), def_idx);
                 self.phase_walls
                     .insert("verify_hir_us".into(), elapsed_us(t_verify));
                 let checked_fn = match checked {
                     Ok(c) => c,
                     Err(ds) => {
-                        return Ok(Err(EditOutcome::rejected(
+                        let rendered = ds.iter().map(|d| d.render("probe.at", &new_src)).collect();
+                        return Ok(Err(EditOutcome::refused(
                             self.revision,
                             "candidate rejected: verification diagnostics".to_string(),
-                            ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
-                        )));
+                            rendered,
+                            RefusalKind::LanguageDiagnostics,
+                            Some(RejectPhase::Verify),
+                            ds,
+                        )
+                        .attributed(&changed_name)));
                     }
                 };
                 self.counters.bump(&format!("verify_hir:{changed_name}"));
@@ -2440,11 +2576,15 @@ impl FunctionIncrementalSession {
                 )? {
                     Ok((body, code, unit)) => (body, code, Some(unit)),
                     Err(diags) => {
-                        return Ok(Err(EditOutcome::rejected(
+                        return Ok(Err(EditOutcome::refused(
                             self.revision,
                             "candidate rejected: verification diagnostics".to_string(),
                             diags,
-                        )));
+                            RefusalKind::LowerAdmit,
+                            None,
+                            Vec::new(),
+                        )
+                        .attributed(&changed_name)));
                     }
                 }
             }
@@ -2485,24 +2625,32 @@ impl FunctionIncrementalSession {
     /// current is refused — a late/slow candidate never overwrites a newer
     /// committed result (its diagnostics carry the refusal reason).
     pub fn commit(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        let candidate_refusal = |revision: u64, reason: String| {
+            EditOutcome::refused(
+                revision,
+                reason,
+                Vec::new(),
+                RefusalKind::SessionOrCandidate,
+                None,
+                Vec::new(),
+            )
+        };
         if self.closed {
-            return EditOutcome::rejected(self.revision, "session closed".to_string(), Vec::new());
+            return candidate_refusal(self.revision, "session closed".to_string());
         }
         if prepared.session_id != self.session_id {
-            return EditOutcome::rejected(
+            return candidate_refusal(
                 self.revision,
                 "cross-session candidate refused: prepared by a different session".to_string(),
-                Vec::new(),
             );
         }
         if prepared.base_revision != self.revision {
-            return EditOutcome::rejected(
+            return candidate_refusal(
                 self.revision,
                 format!(
                     "stale candidate refused: prepared at revision {} but current revision is {}",
                     prepared.base_revision, self.revision
                 ),
-                Vec::new(),
             );
         }
         let next_revision = self.revision + 1;
@@ -2561,9 +2709,12 @@ impl FunctionIncrementalSession {
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => {
-                return EditOutcome::rejected(
+                return EditOutcome::refused(
                     self.revision,
                     format!("candidate rejected: link failure `{e}`"),
+                    Vec::new(),
+                    RefusalKind::LowerAdmit,
+                    None,
                     Vec::new(),
                 );
             }
@@ -2650,7 +2801,7 @@ impl FunctionIncrementalSession {
         // env's sole publisher and the base-revision guard above matches
         // the env base); surface it honestly rather than ignore.
         if let Err(ds) = candidate.commit(&mut self.env_core) {
-            return EditOutcome::rejected(
+            return EditOutcome::refused(
                 self.revision,
                 format!(
                     "env install refused: {}",
@@ -2660,6 +2811,9 @@ impl FunctionIncrementalSession {
                         .join("; ")
                 ),
                 Vec::new(),
+                RefusalKind::LanguageDiagnostics,
+                Some(RejectPhase::Commit),
+                ds,
             );
         }
         let changed_rec = &mut self.fns[changed_idx];
@@ -2733,6 +2887,7 @@ impl FunctionIncrementalSession {
             install_set: vec![self.fns[changed_idx].def_id.clone()],
             diagnostics: Vec::new(),
             non_fast_path_reason: None,
+            rejection: None,
         }
     }
 }

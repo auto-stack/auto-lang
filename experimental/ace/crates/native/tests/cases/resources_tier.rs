@@ -139,7 +139,12 @@ fn mir_native_resources_reference_workload_mirror_and_budgets() {
     );
     assert!(!r4.ok, "the signature conflict must be diagnosed");
     match &r4.error {
-        Some(MnError::Unsupported("frontend", msg)) => {
+        // PLAN-911: a real frontend rejection is now carried as the typed
+        // `Source` snapshot; its code/message are the exact legacy
+        // projection, so both variants are the same diagnosis here.
+        Some(e @ (MnError::Unsupported("frontend", _) | MnError::Source(_))) => {
+            assert_eq!(e.code(), "mn.unsupported.frontend");
+            let msg = e.message();
             assert!(
                 msg.contains("fn_leaf_2") || msg.to_lowercase().contains("arg"),
                 "diagnosis points at the broken leaf/arity: {msg}"

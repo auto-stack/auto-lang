@@ -32,6 +32,7 @@ pub mod lower;
 pub mod observe;
 pub mod owned_source_incremental;
 pub mod resources;
+pub mod source_diagnostics;
 pub mod symbols;
 pub mod typed_entry;
 pub mod typed_fixture;
@@ -56,6 +57,11 @@ pub enum MnError {
     Resource(&'static str, String),
     /// Toolchain/executor failures (missing tools, link infra, crashes).
     Infra(String),
+    /// PLAN-911: a REAL shared-frontend/verify rejection, carried as the
+    /// operation's immutable typed snapshot. Its `code()`/`message()` are
+    /// the exact legacy `mn.unsupported.frontend` projection, so default
+    /// consumers see no change; `source-v1` consumers read the fact.
+    Source(Box<source_diagnostics::SourceDiagnosticSnapshot>),
 }
 
 impl MnError {
@@ -66,6 +72,7 @@ impl MnError {
             MnError::Backend(_) => "mn.backend.lowering".to_string(),
             MnError::Resource(k, _) => format!("mn.resource.{k}"),
             MnError::Infra(_) => "mn.infra".to_string(),
+            MnError::Source(_) => "mn.unsupported.frontend".to_string(),
         }
     }
 
@@ -74,6 +81,15 @@ impl MnError {
             MnError::Unsupported(_, m) | MnError::Admit(_, m) => m.clone(),
             MnError::Backend(m) | MnError::Infra(m) => m.clone(),
             MnError::Resource(_, m) => m.clone(),
+            MnError::Source(s) => s.legacy_message(),
+        }
+    }
+
+    /// The typed source-diagnostic fact when this error IS one (PLAN-911).
+    pub fn source_diagnostic(&self) -> Option<&source_diagnostics::SourceDiagnosticSnapshot> {
+        match self {
+            MnError::Source(s) => Some(s),
+            _ => None,
         }
     }
 }

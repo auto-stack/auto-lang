@@ -1,0 +1,315 @@
+//! PLAN-911 T-01 minimal chain: the native source-diagnostic fact channel.
+//!
+//! 1. The three M1 negatives (B17/B18/B19 shapes) reject through the REAL
+//!    shared frontend and the operation owns a typed snapshot — raw
+//!    verify/<code>, terminating profile, attempts, source identity — with
+//!    the legacy `mn.unsupported.frontend` code/message unchanged and zero
+//!    guest production (no codegen/link/run).
+//! 2. The legal neighbor (NB17 shape) still runs through the real pipeline.
+//! 3. A record-domain semantic error terminates at the RECORD profile after
+//!    a recorded scalar surface rejection — the escalation is observable,
+//!    the primary comes from the terminating domain.
+//! 4. An illegal warm single-body edit refuses with a typed
+//!    `LanguageDiagnostics`/`Frontend` refusal whose snapshot binds the
+//!    failing candidate (base + candidate SHAs, session revision, edit
+//!    region), while unchanged functions show zero body work and the
+//!    session stays usable for the NEXT independent edit.
+//! 5. The frozen capture caps (64 causes / 4 KiB message / 64 KiB payload)
+//!    are typed `mn.resource.source-diagnostic` breaches, never truncation.
+
+#[path = "../common/mod.rs"]
+mod common;
+
+use ace_core::atom_text::{Diagnostic, Span, Stage};
+use ace_native::driver::MnDriver;
+use ace_native::incremental::MnIncrementalSession;
+use ace_native::source_diagnostics as sd;
+use ace_native::source_diagnostics::{OperationKind, RawCause, SourceProfile};
+use ace_native::MnError;
+
+fn temp_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("mn911-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+// The frozen corpus shapes (PLAN-852 src/B17..19.at, NB17.at). The case
+// suite (T-04) references the real files; these unit legs pin the CHANNEL.
+const B17: &str = "fn main() int { return true + 1 }\n";
+const B18: &str = "fn main() int {\n    let x int = 1\n    x = 2\n    return x\n}\n";
+const B19: &str = "fn main() int { if false { return 1 } }\n";
+const NB17: &str = "fn main() int { return 1 + 1 }\n";
+
+#[test]
+fn mn_sd911_cold_negative_snapshots() {
+    // A frontend rejection never reaches codegen/link/run: no toolchain.
+    for (name, src, code) in [
+        ("b17", B17, "source.type-mismatch"),
+        ("b18", B18, "verify.immutable-write"),
+        ("b19", B19, "verify.no-return-path"),
+    ] {
+        let root = temp_dir(&format!("cold-{name}"));
+        let mut d = MnDriver::ephemeral();
+        let r = d.request(src, "d_main", &[], &root, None);
+        assert!(!r.ok, "{name}: must be rejected");
+        let e = r.error.as_ref().expect("error present");
+        // Default-channel compatibility: same code, same first-cause string.
+        assert_eq!(e.code(), "mn.unsupported.frontend", "{name}");
+        let snap = e
+            .source_diagnostic()
+            .unwrap_or_else(|| panic!("{name}: expected a typed Source snapshot, got {e:?}"));
+        // Snapshot identity: this exact source, this operation.
+        assert_eq!(snap.schema, sd::SD_SCHEMA);
+        assert_eq!(snap.mode, sd::SD_MODE);
+        assert_eq!(snap.producer, sd::SD_PRODUCER);
+        assert_eq!(snap.profile, SourceProfile::Scalar);
+        assert_eq!(snap.attempted, vec![SourceProfile::Scalar]);
+        assert!(
+            snap.surface_rejections.is_empty(),
+            "{name}: scalar is the terminating domain, no escalation"
+        );
+        assert_eq!(snap.source_sha256, sd::sha256_hex(src.as_bytes()));
+        assert_eq!(snap.source_len, src.len());
+        assert_eq!(snap.path, "mn.at");
+        assert_eq!(snap.span_basis, "utf8-byte");
+        assert_eq!(snap.primary, 0);
+        assert!(!snap.causes.is_empty());
+        let c0 = &snap.causes[0];
+        assert_eq!(c0.stage, "verify", "{name}: raw producer stage");
+        assert_eq!(c0.code, code, "{name}: raw producer code");
+        assert!(c0.span.start <= c0.span.end, "{name}: span ordered");
+        assert!(c0.span.end <= snap.source_len, "{name}: span in bounds");
+        // The primary is the compiler's first cause — never oracle-picked.
+        assert_eq!(snap.primary_cause(), c0);
+        // The legacy display is a projection of the SAME fact.
+        assert_eq!(e.message(), c0.legacy_projection());
+        assert!(
+            e.message().starts_with(&format!("Verify/{code}: ")),
+            "{name}: legacy projection shape: {}",
+            e.message()
+        );
+        // Operation binding: cold request, this source.
+        assert_eq!(snap.operation.kind, OperationKind::Cold);
+        assert_eq!(
+            snap.operation.candidate_sha256,
+            sd::sha256_hex(src.as_bytes())
+        );
+        assert!(snap.operation.base_sha256.is_none());
+        assert!(snap.operation.edit.is_none());
+        // Zero guest production: no codegen, no link, no run, no streams.
+        assert_eq!(*r.obs.counters.get("codegen_emit_units").unwrap_or(&0), 0);
+        assert_eq!(*r.obs.counters.get("link_invocations").unwrap_or(&0), 0);
+        assert_eq!(*r.obs.counters.get("run_invocations").unwrap_or(&0), 0);
+        assert_eq!(r.exit_code, None);
+        assert!(r.stdout.is_empty() && r.stderr.is_empty());
+        // JSON round-trip is lossless (the parent's fact artifact basis).
+        let back: sd::SourceDiagnosticSnapshot =
+            serde_json::from_value(snap.to_json()).expect("snapshot JSON round-trips");
+        assert_eq!(&back, snap);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[test]
+fn mn_sd911_cold_legal_neighbor_still_runs() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let root = temp_dir("cold-nb17");
+    let mut d = MnDriver::ephemeral();
+    let r = d.request(NB17, "d_main", &[], &root, None);
+    assert!(r.ok, "NB17 must run: {:?}", r.error);
+    assert_eq!(r.exit_code, Some(2));
+    assert!(r.error.is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_cold_escalation_names_terminating_profile() {
+    // A record-domain program with a SEMANTIC error: the scalar surface
+    // rejects (`source.unsupported` at Text — a recorded escalation input),
+    // the RECORD domain terminates with the real type error.
+    let src = "type P { v int\n    fn mix(q P) int { return true + 1 }\n    static fn mk(n int) P { return P { v: n } }\n}\nfn main() int {\n    var p = P.mk(7)\n    return p.v\n}\n";
+    let root = temp_dir("cold-esc");
+    let mut d = MnDriver::ephemeral();
+    let r = d.request(src, "d_main", &[], &root, None);
+    assert!(!r.ok);
+    let e = r.error.as_ref().expect("error");
+    let snap = e
+        .source_diagnostic()
+        .unwrap_or_else(|| panic!("typed snapshot, got {e:?}"));
+    assert_eq!(snap.profile, SourceProfile::Record, "record terminates");
+    assert_eq!(
+        snap.attempted,
+        vec![SourceProfile::Scalar, SourceProfile::Record]
+    );
+    // The escalation's surface rejection is recorded, not silently consumed.
+    assert_eq!(snap.surface_rejections.len(), 1);
+    assert_eq!(snap.surface_rejections[0].profile, SourceProfile::Scalar);
+    assert!(snap
+        .surface_rejections
+        .iter()
+        .all(|s| s.codes.iter().all(|c| c == "source.unsupported")));
+    // The primary is the TERMINATING domain's real cause.
+    assert_eq!(snap.causes[0].code, "source.type-mismatch");
+    assert_eq!(snap.causes[0].stage, "verify");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_warm_illegal_body_edit_typed_refusal() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped (link tools)");
+        return;
+    }
+    let src =
+        "fn alpha(x int) int {\n    return x * 2\n}\n\nfn main() int {\n    return alpha(5)\n}\n";
+    let root = temp_dir("warm-illegal");
+    let (mut s, cold) = MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store"), None)
+        .expect("warmup");
+    assert_eq!(cold.exit_code, Some(10), "alpha(5) = 10");
+    let units_before = s.units().clone();
+    let revision_before = s.session_revision();
+
+    // The illegal candidate: alpha's body `x * 2` -> `true + 1`.
+    let site = src.find("x * 2").expect("edit site");
+    let insert = b"true + 1".to_vec();
+    let mut candidate = src.to_string();
+    candidate.replace_range(site..site + 5, "true + 1");
+    let obs = s.edit(site as u64, (site + 5) as u64, insert);
+    assert!(!obs.ok, "the illegal candidate must refuse");
+    assert!(obs.infra.is_none(), "a language refusal is not infra");
+    let refusal = obs.refusal.as_ref().expect("typed refusal");
+    assert_eq!(refusal.kind, sd::RefusalKind::LanguageDiagnostics);
+    assert_eq!(refusal.phase, Some(sd::RejectPhase::Frontend));
+    assert_eq!(
+        obs.refused_reason.as_deref(),
+        Some(refusal.reason.as_str()),
+        "legacy reason is the refusal's projection"
+    );
+    let snap = refusal
+        .source_error
+        .as_ref()
+        .expect("language refusal carries the snapshot");
+    assert_eq!(snap.schema, sd::SD_SCHEMA);
+    assert_eq!(snap.profile, SourceProfile::Scalar);
+    assert_eq!(snap.path, "probe.at", "the 828 producer's real path");
+    assert_eq!(snap.causes[0].stage, "verify");
+    assert_eq!(snap.causes[0].code, "source.type-mismatch");
+    // Candidate binding: base = the session's accepted prefix, candidate =
+    // exactly the post-edit source the compiler saw.
+    assert_eq!(
+        snap.operation.base_sha256.as_deref(),
+        Some(sd::sha256_hex(src.as_bytes()).as_str())
+    );
+    assert_eq!(
+        snap.operation.candidate_sha256,
+        sd::sha256_hex(candidate.as_bytes())
+    );
+    assert_eq!(snap.source_len, candidate.len());
+    assert!(snap.source_sha256 == snap.operation.candidate_sha256);
+    assert_eq!(snap.operation.session_revision, Some(revision_before));
+    assert_eq!(snap.operation.kind, OperationKind::WarmEdit);
+    let region = snap.operation.edit.as_ref().expect("edit region");
+    assert_eq!(region.start, site as u64);
+    assert_eq!(region.end, (site + 5) as u64);
+    assert_eq!(region.insert_len, 8, "true + 1 is 8 bytes");
+    // Honest accounting on a FAILED edit: nothing whole-module, nothing
+    // unaffected, no fallback, no codegen — and the changed body's own
+    // frontend attempt IS visible in the producer's body work.
+    assert_eq!(obs.unaffected_stage_delta, 0);
+    assert_eq!(obs.whole_module_stage_delta, 0);
+    assert_eq!(obs.fallback_whole_lower, 0);
+    assert_eq!(obs.codegen_units, 0);
+    let alpha = obs
+        .body_work
+        .get("alpha")
+        .expect("the failed body was reached");
+    assert!(
+        alpha.typecheck >= 1 || alpha.resolve >= 1,
+        "attempt visible"
+    );
+    let main = obs.body_work.get("main");
+    assert!(
+        main.map(|w| w.resolve + w.typecheck + w.plan + w.bind == 0)
+            .unwrap_or(true),
+        "unchanged body did zero work: {:?}",
+        main
+    );
+    // The refusal committed nothing: identities and source are unchanged.
+    assert_eq!(s.units(), &units_before);
+    assert_eq!(s.source(), src);
+
+    // The NEXT independent edit (repair on the still-accepted base) works.
+    let obs2 = s.edit(site as u64, (site + 5) as u64, b"x + 2".to_vec());
+    assert!(obs2.ok, "repair on the accepted base: {:?}", obs2.infra);
+    assert_eq!(obs2.exit_code, Some(7), "alpha(5) with x+2 = 7");
+    s.close();
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn mn_sd911_capture_caps_are_typed_breaches() {
+    let mk = |n: usize, msg: &str| sd::CompileFailure {
+        profile: SourceProfile::Scalar,
+        attempted: vec![SourceProfile::Scalar],
+        surface_rejections: Vec::new(),
+        diagnostics: (0..n)
+            .map(|_| {
+                Diagnostic::new(
+                    Stage::Verify,
+                    "source.type-mismatch",
+                    msg,
+                    Span { start: 0, end: 1 },
+                )
+            })
+            .collect(),
+    };
+    let op = sd::Operation::cold("fn main() int { return 1 }\n");
+    // 65 causes: breach, not truncation.
+    match sd::SourceDiagnosticSnapshot::capture("src", "mn.at", mk(65, "x"), op.clone()) {
+        Err(MnError::Resource(k, _)) => assert_eq!(k, "source-diagnostic"),
+        other => panic!("65 causes must breach: {other:?}"),
+    }
+    // One over-long message (4 KiB cap): breach.
+    match sd::SourceDiagnosticSnapshot::capture(
+        "src",
+        "mn.at",
+        mk(1, &"m".repeat(4097)),
+        op.clone(),
+    ) {
+        Err(MnError::Resource(k, _)) => assert_eq!(k, "source-diagnostic"),
+        other => panic!("over-long message must breach: {other:?}"),
+    }
+    // Empty diagnostics keep the legacy generic error (no fake snapshot).
+    match sd::SourceDiagnosticSnapshot::capture("src", "mn.at", mk(0, "x"), op.clone()) {
+        Err(MnError::Unsupported("frontend", m)) => assert_eq!(m, "frontend failed"),
+        other => panic!("empty diagnostics stay legacy: {other:?}"),
+    }
+    // The payload cap (64 KiB): 40 causes x ~1.6 KiB each breaches it.
+    match sd::SourceDiagnosticSnapshot::capture("src", "mn.at", mk(40, &"m".repeat(1600)), op) {
+        Err(MnError::Resource(k, _)) => assert_eq!(k, "source-diagnostic"),
+        other => panic!("payload over cap must breach: {other:?}"),
+    }
+}
+
+#[test]
+fn mn_sd911_raw_cause_projection_shape() {
+    // The pre-911 display used the Stage DEBUG name — the projection must
+    // keep those exact bytes for every stage vocabulary member.
+    for (stage, debug) in [
+        (Stage::Text, "Text"),
+        (Stage::Bind, "Bind"),
+        (Stage::Verify, "Verify"),
+        (Stage::Capability, "Capability"),
+        (Stage::Backend, "Backend"),
+        (Stage::Link, "Link"),
+        (Stage::Run, "Run"),
+    ] {
+        let d = Diagnostic::new(stage, "some.code", "boom", Span { start: 2, end: 4 });
+        let c = RawCause::from_diagnostic(&d);
+        assert_eq!(c.legacy_projection(), format!("{debug}/some.code: boom"));
+    }
+}
