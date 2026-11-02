@@ -408,6 +408,69 @@ fn av_closures_recovery_913_publish_requires_real_artifacts() {
 }
 
 #[test]
+fn av_closures_recovery_913_failed_publication_keeps_previous_root() {
+    // A failed publication must leave the PREVIOUS root valid and restorable:
+    // the new root is registered only after every required artifact exists,
+    // and the superseded root is retired last.
+    let p = publish("failed-publish");
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    let before = handle
+        .root_artifacts("ac913-recovery", "source-recovery-current")
+        .expect("roots");
+    assert_eq!(before, vec![p.manifest.clone()]);
+    drop(handle);
+    // A publication attempt that cannot complete (no declaration context).
+    let failed = publish_source_recovery(
+        &p.store,
+        PublicationRequest {
+            project: "ac913-recovery",
+            source_sha256: &"a".repeat(64),
+            source_len: SRC.len(),
+            logical_owner: "main.at",
+            owner_module: "m_src",
+            owner_schema: "auto.mir.av-closures/1",
+            entry: "d_main",
+            profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+            capabilities: &[],
+            accepted_generation: 1,
+            commit_point: 1,
+            context_revision: "ctx",
+            accepted_state_schema: RECOVERY_SCHEMA,
+            context_payload: b"",
+            context_schema: "ace.closures.context-dump/1",
+            units: Vec::new(),
+        },
+    );
+    assert_eq!(
+        failed
+            .expect_err("an incomplete publication must fail")
+            .code,
+        "recovery.unit-count",
+        "the first publication guard a context-less, unit-less attempt trips"
+    );
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    let after = handle
+        .root_artifacts("ac913-recovery", "source-recovery-current")
+        .expect("roots");
+    assert_eq!(after, before, "the previous root survives a failed publication");
+    drop(handle);
+    // ...and it still restores for real.
+    let store_arg = p.store.to_string_lossy().to_string();
+    let source_arg = p.source.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &p.manifest,
+        &p.digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(probe.ok, "the previous root must still restore: {}", probe.line);
+    assert_eq!(probe.json["restore_value"], 51);
+}
+
+#[test]
 fn av_closures_recovery_913_old_path_control_reports_production() {
     // CONTROL (V-01): the same "restart" scenario WITHOUT a source-bound
     // binding is the legacy shape — it re-produces the module. This proves
