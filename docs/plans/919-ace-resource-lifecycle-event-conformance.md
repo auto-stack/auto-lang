@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-919
-status: executing
+status: execution_done
 feature_name: AC与AV资源生命周期事件正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/resource-lifecycle-observations.
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-ac, auto-test-case]
 depends_on: [PLAN-864, PLAN-889, PLAN-912, PLAN-913, PLAN-914]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -130,7 +130,7 @@ P私有fixture/观察codec/native探针可先做；AV S=av-core/av arena/结果�
 | T-04 | work | T-02，native/runtime N窗 | native三场景+实际清理与codec，V-01..04，cargo t ace-native ace-runtime | AC-01/02 | [x] 已完成（runtime MN-EVT/cap/end+wrapper 旋钮+observe 严格解码+worker 面+ac_mn 父判表；native 8 测试绿；实际修复两处：Frame seq 使 codegen 栈槽 32→40 同步（原硬编码为潜伏栈损坏）、mn worker 分类/recipe 回显接线） |
 | T-05 | work | T-03/04，H窗 | AutoDown/严格父判/负控/拟新组/六格回填，V-05/09；cargo t ace-adapters auto-test-case infra-ace-m1及新组 | AC-03 | [x] 已完成（套件 10 checks 一次全绿 run-cff9f6ld：六格经真实 worker+父侧冻结表+19+7 反控；binding 三行六格 ok:P919-events；manifest scenario_assets 清单化+plan_919_update+oracles hash 刷新；ps1 修退役 feature 与清单化；contract/source/acceptance 三 scope PASS，acceptance core 红 -6） |
 | T-06 | work | T-03..05，错峰 | V-06..08真实暖编辑/恢复/资源/计量，必要原ace-performance命名门 | AC-04/05 | [x] 已完成（观察 OFF 一致性双侧常驻对照；913 closures-recovery 与 889 native-collections 暖/恢复组复跑 PASS＝零额外重编/重装；t06 预算界测试：事件流 ≤4MiB 断言+wall<2s；P90 正式采样属 ace-performance 里程碑档，与 915/917/921 错峰 pending） |
-| T-07 | work | T-01..06 | 完整受影响固定组自查/SD提案/差额清单，保未执行和旧红，不签总M1 | AC-01..05 [ ] 复审退回（F-919-R1..R3 健康面：rustfmt 2021 五文件漂移；completion_code_for 死码+私型公函警告；judge_resource_events 可见性越权）——修复后连坐重验：cargo check 零 919 警告、rustfmt --check 六文件净、19 条 admission 控制+套件复放 |
+| T-07 | work | T-01..06 | 完整受影响固定组自查/SD提案/差额清单，保未执行和旧红，不签总M1 | AC-01..05 | [x] 已完成（修复提交 735aa75b0：R1 rustfmt×5、R2 死码移除、R3 pub(super)；连坐复放全绿——cargo check 零 919 警告、rustfmt 六文件净、父判 19/19、av 8/8、native 8/8、套件 PASS run-eubocovi；SD/并集证据沿 82208b51a 有效，identity 变更仅限三健康修复不改行为） |
 | T-08 | review | work任务完成，冻结SHA | 独立验每AC/负控及Spec delta；pass才reviewed，修复回同树 | AC-06 | [ ] |
 | T-09 | merge | review pass | 冻结职责并集/漂移重验、主线落地、SD-01..06读回与归档 | AC-07 | [ ] |
 | T-10 | merge | T-09 | 全输出对账/摘要折计划，guard后删树/分支/组及整个scope、刷新登记 | AC-07 | [ ] |
@@ -161,3 +161,7 @@ stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 1 | from: work | to
 2026-11-03 | stage: review | review_scope: final | reviewer: 同会话独立复审（自 artifacts/受审提交重跑重建，未采信执行摘要；实施会话内复审的既有限制如实声明） | plan_id: PLAN-919 | plan_revision: r1 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-919/auto-lang | branch: plan-919-dev | reviewed_commit: 82208b51a | base_commit: 8bb1a0d52 | dependency_revisions: 915/917 分支未合入未消费；AV 写面 master 稳定符号（av.rs 基 ff0d3e19，diff hunk 清单复核未触 fault/Place 区） | spec_inputs: SD-01..06 全文本 vs 行为核验（新规范+oracles 三行仅起点列更新+conformance/gap-audit/两附录；manifest oracles hash 3ed6ca2a 刷新，contract PASS 绑定 82208b51a） | acceptance_results: AC-01..05 逐项 pass（独立重跑：套件 10/10 run-gwfaqals、av 8/8、native 8/8、父判 19/19、852 contract PASS；冻结表与 zz_dump 独立再推导一致——native dump 常量 4-seed 与套件 8-seed 源分裂仅记 N1 非表错；AC-04 暖/恢复=913/889 组绿+观察 OFF 构造性零重编；AC-05 界测试绿、P90 里程碑档 pending 属合同内） | pending_closeout_gates: 冻结受影响模块并集（merge-owned；work 侧已全绿一轮：ace-av 987/ace-native 183/worker 39/runtime 84/auto-test-case 111/infra 23/套件/913/889）；852 acceptance 复放 | findings: F-919-R1（P3，T-07）rustfmt --edition 2021 --check 漂移 5 文件（av/src/resource_events.rs、两 919 测试文件、ac_av/ac_mn resource_events.rs）；F-919-R2（P3，T-07）ac_av/resource_events.rs completion_code_for 死码（Arms 已直连 judge_expectation）+ 私型公函警告；F-919-R3（P3，T-07）judge_resource_events pub 签名暴露私有 StepOut（收紧 pub(super)）。观察项不阻断：N1 native dump 测试常量与套件源分裂（表值正确，套件 PASS 证）；N2 VariantSwitch 继承占位 ty=u32::MAX 既有 VM 事实（owned_identity 注释已冻结）。 | evidence: 本 §9 记录即持久证据（命令+结果如上）；无合同内功能缺陷，六格闭合与反控真实性经受独立重验 | next: work（最小修复集 R1..R3；修复提交后仅复放：cargo check 零警告、rustfmt 六文件、19 控制+套件）
 
 stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-919/auto-lang | commit: 82208b51a | next: work
+
+2026-11-03 | stage: work | PLAN-919 r1 | outcome: pass（修复轮） | worktree: D:/autostack/.wt/lang-919/auto-lang | branch: plan-919-dev | base_commit: 8bb1a0d52 | code_commit: 735aa75b0 | dependency_revisions: 同上轮 | task_ids: T-07（F-919-R1..R3 修复；顺带修复 T-07 行列数并档） | evidence: 复审最小复放集全绿（19 控制/av 8/native 8/套件 PASS run-eubocovi）；rustfmt 2021 六文件净；cargo check 零 919 警告；六格功能证据沿 82208b51a 复审轮有效 | blockers: 无 | next_responsible_role: review（受影响项重审：R1..R3 关闭核对+复放）
+
+stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-919/auto-lang | commit: 735aa75b0 | next: review
