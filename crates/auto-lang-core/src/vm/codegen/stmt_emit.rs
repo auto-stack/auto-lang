@@ -837,10 +837,12 @@ impl Codegen {
                     // Reassignment of existing variable — check immutability
                     if let Some(is_mutable) = self.var_mutability.get(&name_str) {
                         if !is_mutable {
-                            return Err(crate::error::AutoError::Msg(format!(
-                                "Cannot reassign to immutable variable '{}' (declared with 'let')",
-                                name_str
-                            )));
+                            // PLAN-920: typed fact (auto_name_E0203)。当前语法
+                            // 下仅 StoreKind::Field 能进本分支（声明类 kind 均
+                            // 在 is_new_declaration 中豁免，Field 语句位由
+                            // TypeDecl 路径编译）——生产不可达的防御位，与
+                            // expr_ops 两处同族对齐，杜绝任何残留 Msg 白文本。
+                            return Err(self.immutable_assign_error(&name_str));
                         }
                     }
                 }

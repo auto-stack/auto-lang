@@ -89,9 +89,9 @@ impl Codegen {
                             // Variable found in local scope - check mutability
                             if let Some(is_mutable) = self.var_mutability.get(&name_str) {
                                 if !is_mutable {
-                                    return Err(crate::error::AutoError::Msg(
-                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                                    ));
+                                    // PLAN-920: typed fact (auto_name_E0203) —
+                                    // 复合赋值（+= 等）写不可变 let 同族拒绝。
+                                    return Err(self.immutable_assign_error(&name_str));
                                 }
                             }
                             // Load variable FIRST (for correct operand order)
@@ -223,9 +223,11 @@ impl Codegen {
                             // Variable found in local scope - check mutability
                             if let Some(is_mutable) = self.var_mutability.get(&name_str) {
                                 if !is_mutable {
-                                    return Err(crate::error::AutoError::Msg(
-                                        format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                                    ));
+                                    // PLAN-920: typed fact (auto_name_E0203) ——
+                                    // B18 命中分支：裸 `x = 2` 表达式语句写
+                                    // 不可变 let。stage/code 事实见
+                                    // immutable_assign_error。
+                                    return Err(self.immutable_assign_error(&name_str));
                                 }
                             }
                             // Plan 377: 全值单槽化 —— 恒为 DUP + 单 STORE_LOC。

@@ -21,6 +21,10 @@ mod tests_string_pool;
 // 2026-08-22 已知 VM 限制复现(方法链 / fn 返回复合值)。
 #[cfg(test)]
 mod tests_known_limits;
+// PLAN-920 旧 AVM 不可变赋值拒绝 typed 事实回归锁（B18/复合/Store 防御位/
+// 合法近邻/span 精度/文本反控）。
+#[cfg(test)]
+mod immutable_assign_920;
 // Plan 419 Phase 1:引用计数生命周期里程碑测试(§2.2)。
 #[cfg(test)]
 mod tests_rc_lifecycle;

@@ -1454,6 +1454,53 @@ impl Codegen {
         }
     }
 
+    /// PLAN-920 D-01: 旧 AST（`Name`/`Expr::Bina`/`Store` 均无节点级 span）
+    /// 下，不可变赋值拒绝能拿到的最近**合法**源码上下文是当前语句所在行
+    /// —— Plan 199 的 `current_source_line`（Block 循环在 compile_stmt 前
+    /// 经 emit_source_line 更新）× Plan 057 持有的 `source_text`，返回该行
+    /// 的字节范围（行粒度，不含换行符；不猜指向任何变量）。行号未跟踪
+    /// （如顶层脚本语句不经 emit_source_line）或无源文本时，退化为 (0,1)
+    /// —— 与 trans/rust `fn_span(None)`（semantics.rs）同一约定。
+    pub(super) fn current_source_span(&self) -> miette::SourceSpan {
+        fn degenerate() -> miette::SourceSpan {
+            miette::SourceSpan::new(miette::SourceOffset::from(0usize), 1)
+        }
+        if self.current_source_line == 0 {
+            return degenerate();
+        }
+        let Some(text) = self.source_text.as_deref() else {
+            return degenerate();
+        };
+        let want = self.current_source_line as usize;
+        let mut offset = 0usize;
+        for (idx, line) in text.split_inclusive('\n').enumerate() {
+            if idx + 1 == want {
+                let mut len = line.len();
+                if line.ends_with('\n') {
+                    len -= 1;
+                }
+                if len > 0 && line[..len].ends_with('\r') {
+                    len -= 1;
+                }
+                return miette::SourceSpan::new(miette::SourceOffset::from(offset), len.max(1));
+            }
+            offset += line.len();
+        }
+        degenerate()
+    }
+
+    /// PLAN-920: 不可变赋值拒绝的 typed 事实。复用既有
+    /// `NameError::ImmutableAssignment`（miette code `auto_name_E0203`，
+    /// trans/rust walk.rs 同族先例），取代原先的白文本 `AutoError::Msg`——
+    /// 父侧 `classify_staged` 把 `Name` 判 Language/type，把裸 `Msg` 判
+    /// infra，旧 VM 的语言负例因此从未成立。
+    pub(super) fn immutable_assign_error(&self, name: &str) -> crate::error::AutoError {
+        crate::error::AutoError::Name(crate::error::NameError::ImmutableAssignment {
+            name: name.to_string(),
+            span: self.current_source_span(),
+        })
+    }
+
     // Plan 073: Emit i16 value (2 bytes, little-endian) for jump offsets
     fn emit_i16(&mut self, val: i16) {
         self.code.extend_from_slice(&val.to_le_bytes());
