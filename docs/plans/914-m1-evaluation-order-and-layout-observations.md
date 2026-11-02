@@ -5,7 +5,7 @@ feature_name: M1命名求值顺序与布局场景观察
 author: [Codex]
 created_at: 2026-11-02
 updated_at: 2026-11-02
-plan_revision: 1
+plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-gap-audit.md, docs/specs/auto-test-case/ace-m1-scenario-oracles.md, docs/specs/auto-test-case/a2r-golden-certification.md, docs/specs/auto-ac/function-incremental-source.md, docs/specs/auto-av/cache-and-conformance.md]
 new_spec_components: [docs/specs/auto-test-case/m1-order-layout-observations.md]
 touched_goals: [GOAL-002]
@@ -67,7 +67,7 @@ Rust；现有auto-test-case、auto-lang-core adapters、experimental/ace独立wo
 
 E01/E02的ac/av/avm/a2r各4格；I04/I09仅ac/av各2格，ns=scenario。原值/trace/拒绝oracle不变；fixture使用普通命名调用/构造，不能把参数预先排好序再测。命名参数/字段调换、嵌套副作用、合法同类型近邻与强制重排应可区分；标记函数只承担冻结场景副作用，不扩console profile8产品承诺。
 
-I04必须观察真正layout读依赖；变更相关字段/类型后重编或按已冻结不兼容策略拒绝，旧成功状态仍安全，无关函数真实parse/resolve/typecheck/plan/bind/verify/lower/encode/codegen/load/工件IO=0、对象/代际同进程不变。T-02必须给至少一个真实依赖失效场景及拒绝/非布局body编辑的对照；不能靠“一律reject任何type编辑”关闭I04。I09持旧值/pin进行不兼容候选，必须在使用旧值的新布局危险读前拒绝；宿主重启只可作为明确策略结果，不能冒在线HMR。
+I04判据（2026-11-02 用户裁定 D-05，采用引擎真实策略）：declaration/layout 变更允许「保留环境冷全前端 + 依赖精确 rebuild」（两引擎既有策略，冷前端工作如实计入 `declaration_frontend_invalidations`/cold body work，不得隐藏）；必须观察真正 layout 读依赖——未受影响 defs 的 lower/encode/codegen/load/工件IO 增量为 0、同进程对象/代际不变、旧成功值仍安全、不隐式重解释；不兼容候选必须按既有 link/env-contract 策略拒绝且旧快照仍可执行。仍禁止把「一律 reject 任何 type 编辑」当 I04 通过；body 编辑对照与非布局 body 编辑不接受重编。I09 活状态沿此判据：持旧值/pin 的不兼容候选在使用旧值的新布局危险读前拒绝或要求显式重启，不冒在线 HMR。
 
 ### 5.2 事实、父准入及A2R双轴
 
@@ -103,8 +103,8 @@ fresh/hit/restart/body-edit各有文件化首例、独立oracle、失败后修�
 |---|---|---|---|---|
 | V-01 | AC-01 命名调用 | E01各真实生产入口 | 7+ba；强制声明序ab/只返7/旧trace复用均红 | work T-02/03 |
 | V-02 | AC-01 命名构造 | E02四路径 | 103+ba；字段声明序/二次求值红，近邻正控 | work T-02/03 |
-| V-03 | AC-02 layout依赖 | I04 ac/av真实类型编辑 | 相关依赖正确失效、未改P/IO0/对象代际；全编译后filter红 | work T-02/04 |
-| V-04 | AC-02 活状态 | I09旧值/pin+候选 | 不重解释、危险读0；正确兼容近邻接受，强制旧值新layout红 | work T-04 |
+| V-03 | AC-02 layout依赖（D-05 判据） | I04 ac/av真实类型编辑 | 依赖 defs 精确失效；未受影响 defs 的 lower/encode/codegen/load/工件IO 增量=0、同进程对象/代际不变、旧值安全；强制全编/只换hash/全拒三反控必须红 | work T-04 |
+| V-04 | AC-02 活状态 | I09旧值/pin+不兼容候选 | 不重解释、危险读0；兼容近邻受控接受；旧快照在拒绝后仍可执行（不要求 OSR） | work T-04 |
 | V-05 | AC-03 父准入 | 坏类型/重复key/错source/deps/op/旧工具/超额 | 一律非绿，有效非零id仍准入 | work T-03/05 |
 | V-06 | AC-03 A2R双轴 | 新场景actual/reference+日常snapshot | 显式双侧值/trace认证；日常Rust spawn0；改golden/伪旧证书/expected入worker红 | work T-03/05 |
 | V-07 | AC-05 恢复/预算 | 四状态/失败修复/原规模/30样本/原压力 | 结果/零生产/重验/资源/P90同过，原门不缩 | work T-04/06 |
@@ -117,7 +117,7 @@ fresh/hit/restart/body-edit各有文件化首例、独立oracle、失败后修�
 | ID | owner_stage | observable closing condition |
 |---|---|---|
 | AC-01 | work | E01/E02八格真实值/trace与区分性控制通过V-01/02，输入与reference独立 |
-| AC-02 | work | I04/I09四格真实布局/活状态/未改P0/恢复和强制红控制通过V-03/04 |
+| AC-02 | work | I04/I09四格按 D-05 冻结判据通过 V-03/04：declaration 变更 = 冷全前端 + 依赖精确 rebuild（未受影响 defs 的 lower/encode/codegen/load/工件IO 增量=0、对象/代际不变、旧值安全），I09 不兼容候选按既有策略拒绝且旧快照可执行 |
 | AC-03 | work | 同操作严格父准入/预算/A2R显式认证与日常零编译通过V-05/06 |
 | AC-04 | work | 仅本12格有正式报告后更新binding/manifest；原source/expected/NA/分母不改，V-08 |
 | AC-05 | work | V-07/08及受影响完整组/消费者/健康门有效，913窗口与支持边界真实 |
@@ -176,6 +176,10 @@ I09 ac 落地并纳入正式 suite（10/10 PASS，固定组/治理/contract 全�
 2026-11-02 | stage:goal | PLAN-914 r1 | round 6 | from: executing | to: executing | outcome: waiting | worktree: plan-914-dev | commit: f8df3fb5e | next: user
 I04 能力调查结论：两台引擎对 declaration/layout 变更均采用「冷全前端 + 依赖精确 rebuild」，§5.1 要求的「无关函数 parse/resolve/typecheck=0」不可达；需用户在 D-05 的 A/B/C 中裁定（A 采用真实策略判据并补接线；B 交付 declaration 级前端增量；C 两格转新能力计划）。本轮至此不再执行检查/写码，等待裁定。
 
+
+2026-11-02 | stage:goal | PLAN-914 r1 | round 6b | from: waiting | to: executing | outcome: pass | worktree: plan-914-dev | commit: c3b6a3616 | next: work
+用户裁定 D-05 = 选项 A（采用引擎真实策略为 I04 冻结判据）。plan_revision 1→2：§5.1 I04 判据改写为「declaration/layout 变更允许保留环境冷全前端 + 依赖精确 rebuild；未受影响 defs 的 lower/encode/codegen/load/工件IO 增量=0、同进程对象/代际不变、旧值安全、不隐式重解释；不兼容候选按既有 link/env-contract 策略拒绝且旧快照仍可执行」，§7 AC-02 与 §6 V-03/V-04 同步改写；不允许以「一律拒任何 type 编辑」或全编/只换 hash 通过。D-05 转为实现义务：AC collections declaration-invalidate op+父判、AV data-session rebuilt-defs/identity/partial-rebuild 面。下一步回 work 执行 T-04。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
@@ -184,5 +188,5 @@ I04 能力调查结论：两台引擎对 declaration/layout 变更均采用「�
 | D-02 layout策略 | T-02实证至少一个真依赖失效及活状态不兼容拒绝；若需扩大语言/ABI则needs_replan，不偷偷改oracle |
 | D-03 913及其他窗口 | T-01/05逐符号正式SHA/全部consumer收据，漂移仅重核受影响，不互等整包 |
 | D-04 残余M1 | ACE路线负责后继R族10剩格/B18/native边界及独立签章，未立项不预占号；本包12格必须全闭才交付 |
-| D-05 I04 判据与生产边界 | **需用户裁定**：两台引擎对 declaration/layout 变更的实际策略都是「保留环境冷全前端 + 依赖精确 rebuild」（AV `data_session.rs::apply_source_impl` 注释 "Cold-class whole frontend for the new revision (justified by the non-body change)"; AC `collections_incremental.rs::prepare_declaration_change` 计 `declaration_frontend_invalidations=1` 后 cold_admitted，仅不兼容 unit 进 object producer），因此 §5.1 I04 要求的「无关函数真实 parse/resolve/typecheck=0」在当前实现不可达。选项：(A) 采用引擎真实策略作 I04 冻结判据——declaration 变更允许冷全前端，但要求未受影响 defs 的 lower/encode/codegen/load/工件IO 增量=0、对象/代际同进程不变、旧值安全（需改 §5.1/AC-02 文字，并补 collections declaration-invalidate op + 父判；AV 暴露 data-session rebuilt-defs/identity 面）；(B) 保持严格判据，把 declaration 级前端增量作为本计划 T-04 交付的新能力（等同新能力计划，周期长）；(C) I04 两格改由新能力计划承接，本计划以 9 格+明确 owner 交付。I09 av 同受此裁定影响（source 级布局编辑走精确重编而非 link 拒绝；link 级 env-contract 拒绝仅 unit 层可达）。 |
+| D-05 I04 判据与生产边界 | **已裁定（2026-11-02，选项 A）**：采用引擎真实策略为冻结判据——declaration/layout 变更允许「保留环境冷全前端 + 依赖精确 rebuild」，冷前端工作如实计量；未受影响 defs 的 lower/encode/codegen/load/工件IO 增量必须=0、同进程对象/代际不变、旧值安全、不隐式重解释；不兼容候选按既有 link/env-contract 策略拒绝且旧快照仍可执行。据此 §5.1/§7 AC-02/V-03/V-04 已改写（r2）；实现仍待：AC collections `declaration-invalidate` op+父判、AV 暴露 data-session rebuilt-defs/identity/partial-rebuild 面（I09 av）。 |
 | D-04 残余M1 | ACE路线负责后继R族10剩格/B18/native边界及独立签章，未立项不预占号；本包12格必须全闭才交付 |
