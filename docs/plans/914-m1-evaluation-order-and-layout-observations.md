@@ -172,6 +172,10 @@ T-05 首片落地：12 格中的 8 格（E01/E02 四路径）有了正式 tracke
 2026-11-02 | stage:goal | PLAN-914 r1 | round 5 | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: f8df3fb5e | next: work
 I09 ac 落地并纳入正式 suite（10/10 PASS，固定组/治理/contract 全绿），binding I09 ac 回填 ok；I04 ac/I04 av/I09 av 的路线已用真实探针钉死并写入 §8 T-04 注记，尚待实现。计划保持 executing。
 
+
+2026-11-02 | stage:goal | PLAN-914 r1 | round 6 | from: executing | to: executing | outcome: waiting | worktree: plan-914-dev | commit: f8df3fb5e | next: user
+I04 能力调查结论：两台引擎对 declaration/layout 变更均采用「冷全前端 + 依赖精确 rebuild」，§5.1 要求的「无关函数 parse/resolve/typecheck=0」不可达；需用户在 D-05 的 A/B/C 中裁定（A 采用真实策略判据并补接线；B 交付 declaration 级前端增量；C 两格转新能力计划）。本轮至此不再执行检查/写码，等待裁定。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
@@ -179,4 +183,6 @@ I09 ac 落地并纳入正式 suite（10/10 PASS，固定组/治理/contract 全�
 | D-01 四路径trace最小链 | T-02冻结真实fixture/mark来源/新场景证书；不可拿模拟器或“缺能力已登记”关闭AC |
 | D-02 layout策略 | T-02实证至少一个真依赖失效及活状态不兼容拒绝；若需扩大语言/ABI则needs_replan，不偷偷改oracle |
 | D-03 913及其他窗口 | T-01/05逐符号正式SHA/全部consumer收据，漂移仅重核受影响，不互等整包 |
+| D-04 残余M1 | ACE路线负责后继R族10剩格/B18/native边界及独立签章，未立项不预占号；本包12格必须全闭才交付 |
+| D-05 I04 判据与生产边界 | **需用户裁定**：两台引擎对 declaration/layout 变更的实际策略都是「保留环境冷全前端 + 依赖精确 rebuild」（AV `data_session.rs::apply_source_impl` 注释 "Cold-class whole frontend for the new revision (justified by the non-body change)"; AC `collections_incremental.rs::prepare_declaration_change` 计 `declaration_frontend_invalidations=1` 后 cold_admitted，仅不兼容 unit 进 object producer），因此 §5.1 I04 要求的「无关函数真实 parse/resolve/typecheck=0」在当前实现不可达。选项：(A) 采用引擎真实策略作 I04 冻结判据——declaration 变更允许冷全前端，但要求未受影响 defs 的 lower/encode/codegen/load/工件IO 增量=0、对象/代际同进程不变、旧值安全（需改 §5.1/AC-02 文字，并补 collections declaration-invalidate op + 父判；AV 暴露 data-session rebuilt-defs/identity 面）；(B) 保持严格判据，把 declaration 级前端增量作为本计划 T-04 交付的新能力（等同新能力计划，周期长）；(C) I04 两格改由新能力计划承接，本计划以 9 格+明确 owner 交付。I09 av 同受此裁定影响（source 级布局编辑走精确重编而非 link 拒绝；link 级 env-contract 拒绝仅 unit 层可达）。 |
 | D-04 残余M1 | ACE路线负责后继R族10剩格/B18/native边界及独立签章，未立项不预占号；本包12格必须全闭才交付 |
