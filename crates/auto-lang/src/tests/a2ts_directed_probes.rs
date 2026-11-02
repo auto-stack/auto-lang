@@ -36,11 +36,12 @@ fn find_tsc() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
         let tsc = std::path::PathBuf::from(p);
         return Some((tsc.clone(), tsc));
     }
-    // PLAN-590:widgets-gallery 迁 auto-os 顶层(gen 产物随画廊;015-notes
-    // 仍留框架仓 examples/ui)。绝对主检出锚沿既有跨仓只读引用纪律。
+    // PLAN-590:widgets-gallery 迁 auto-os 顶层(gen 产物随画廊)。
+    // PLAN-007 T-03:015-notes 语料随 examples/ui 归 auto-ui,gen 产物在
+    // 该仓再生。绝对主检出锚沿既有跨仓只读引用纪律。
     let candidates = [
         "D:/autostack/auto-os/widgets-gallery/gen/front/vue/node_modules/typescript/lib/tsc.js",
-        "D:/autostack/auto-lang/examples/ui/015-notes/gen/front/vue/node_modules/typescript/lib/tsc.js",
+        "D:/autostack/auto-ui/examples/ui/015-notes/gen/front/vue/node_modules/typescript/lib/tsc.js",
     ];
     for c in candidates {
         let p = std::path::PathBuf::from(c);

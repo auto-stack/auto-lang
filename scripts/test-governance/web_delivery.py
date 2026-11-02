@@ -83,7 +83,9 @@ def validate_distribution_receipt(receipt, path, source_roots=None):
         import subprocess
         scopes = {'auto-lang': ['Cargo.toml', 'stdlib/auto', 'stdlib/assembly-providers.json', 'docs/schema/aura.at',
                                *manifest['source_closure']['root_inputs'], 'vendor/autodown-test-parser',
-                               *(f'examples/ui/{name}/{part}' for name in ('015-notes', '017-chat', '023-realworld') for part in ('src/back', 'pac.at')), 'LICENSE'],
+                               # examples/ui corpus moved to auto-ui repo (PLAN-007 T-03); scope keeps
+                               # lang-owned inputs only.
+                               'LICENSE'],
                   'auto-web': ['Cargo.toml', 'Cargo.lock', '.config', 'scripts',
                                'test/fixtures/standalone-consumer', 'README.md', 'LICENSE']}
         for package in manifest['source_closure']['packages']:

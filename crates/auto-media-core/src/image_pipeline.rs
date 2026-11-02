@@ -2608,7 +2608,7 @@ mod tests {
     #[test]
     fn viewer_session_opens_directory_and_exposes_only_metadata() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+            .join("tests/fixtures"); // PLAN-007 T-03: in-repo fixed fixtures (corpus lives in auto-ui)
         let session = super::open_media_session(root);
         let deadline = Instant::now() + Duration::from_secs(2);
         while super::media_session_names(&session).is_empty() && Instant::now() < deadline {
@@ -2634,7 +2634,7 @@ mod tests {
         use super::{media_change_generation, queue_media_path, MediaPriority};
         let before = media_change_generation();
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+            .join("tests/fixtures/rgb-1x1.png"); // PLAN-007 T-03: in-repo fixed fixture
         let ticket = queue_media_path(&fixture, MediaPriority::Current);
         assert_ne!(
             media_change_generation(),
@@ -2660,7 +2660,7 @@ mod tests {
         // Supported fixture queues a Thumbnail-priority rendition and returns
         // an opaque media URI that never leaks the source path.
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+            .join("tests/fixtures/rgb-1x1.png"); // PLAN-007 T-03: in-repo fixed fixture
         let uri = super::queue_media_thumbnail(&fixture, 64);
         assert!(uri.starts_with("/api/__auto/media/"));
         assert!(!uri.contains("fixtures"));
@@ -2729,7 +2729,7 @@ mod tests {
     #[test]
     fn close_during_populate_releases_tickets_and_never_resurrects() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+            .join("tests/fixtures"); // PLAN-007 T-03: in-repo fixed fixtures (corpus lives in auto-ui)
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let session = runtime.open_session(&root);
         // Close immediately: the populate worker is still scanning. Late
@@ -3555,7 +3555,7 @@ mod tests {
         let other = super::MediaRuntime::new(Duration::from_secs(60));
         let ticket = other.queue_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+                .join("tests/fixtures/rgb-1x1.png"), // PLAN-007 T-03: in-repo fixed fixture
             MediaPriority::Current,
         );
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -3719,7 +3719,7 @@ mod tests {
 
     fn fixtures_path() -> PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures")
+            .join("tests/fixtures") // PLAN-007 T-03: in-repo fixed fixtures (moved corpus lives in auto-ui)
     }
 
     #[test]
@@ -3732,7 +3732,7 @@ mod tests {
         let registry = runtime.registry().clone();
         let ticket = runtime.queue_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+                .join("tests/fixtures/rgb-1x1.png"), // PLAN-007 T-03: in-repo fixed fixture
             MediaPriority::Current,
         );
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -3763,7 +3763,7 @@ mod tests {
         let local = super::MediaRuntime::new(Duration::from_secs(60));
         let ticket = local.queue_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+                .join("tests/fixtures/rgb-1x1.png"), // PLAN-007 T-03: in-repo fixed fixture
             MediaPriority::Current,
         );
         // The local ticket is invisible through the process-default
@@ -3775,7 +3775,7 @@ mod tests {
         );
         let session = local.open_session(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/ui/031-image-viewer/tests/fixtures"),
+                .join("tests/fixtures") // PLAN-007 T-03: in-repo fixed fixtures (moved corpus lives in auto-ui),
         );
         assert_eq!(
             super::media_session_snapshot(&session),
@@ -3980,7 +3980,7 @@ mod tests {
     #[test]
     fn fixture_manifest() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+            .join("tests/fixtures"); // PLAN-007 T-03: in-repo fixed fixtures (corpus lives in auto-ui)
         let manifest: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("manifest.json")).unwrap())
                 .unwrap();

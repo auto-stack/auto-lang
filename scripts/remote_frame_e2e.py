@@ -38,8 +38,11 @@ import time
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIXTURE = os.path.join(REPO, "examples", "ui", "remote-frame-e2e", "fixture")
-HOST_TMPL = os.path.join(REPO, "examples", "ui", "remote-frame-e2e", "host")
+# PLAN-007 T-03: remote-frame-e2e moved to auto-ui/examples/ui with the rest
+# of the UI examples; resolve the group sibling from this repo root.
+UI_REPO = os.environ.get("AUTO_UI_ROOT", os.path.join(REPO, os.pardir, "auto-ui"))
+FIXTURE = os.path.join(UI_REPO, "examples", "ui", "remote-frame-e2e", "fixture")
+HOST_TMPL = os.path.join(UI_REPO, "examples", "ui", "remote-frame-e2e", "host")
 OUT_DIR = os.path.join(REPO, "tmp", "remote-frame-e2e")
 TOKEN = "rf-e2e"
 PIPE = "rf-e2e-bridge"

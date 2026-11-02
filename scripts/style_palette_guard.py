@@ -22,13 +22,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = REPO_ROOT / "scripts" / "style_palette_manifest.json"
-DEFAULT_EXAMPLES = REPO_ROOT / "examples" / "ui"
+# PLAN-007 T-03: demo sources moved to auto-ui/examples/ui (group sibling).
+DEFAULT_EXAMPLES = Path(os.environ.get("AUTO_UI_ROOT", REPO_ROOT.parent / "auto-ui")) / "examples" / "ui"
 
 PALETTES = (
     "red|blue|green|yellow|purple|pink|indigo|gray|slate|zinc|neutral|stone|"
