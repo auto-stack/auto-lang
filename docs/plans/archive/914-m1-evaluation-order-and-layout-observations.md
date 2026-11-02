@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-914
-status: execution_done
+status: archived
 feature_name: M1命名求值顺序与布局场景观察
 author: [Codex]
 created_at: 2026-11-02
@@ -226,6 +226,10 @@ work 阶段完成：T-01..T-06 全部勾选，12 格有正式父证据并回填 
 
 2026-11-02 | stage: merge | PLAN-914 r2 | outcome: pass | delivery_commit: 6ffbaf49e1b13f41f40a17fa9064ebda71ccedb3 | branch: plan-914-dev | reviewed_commit: fdebc5eda | merge: ff-only onto master (master ancestor of delivery tip) | canonical_specs: docs/specs/auto-test-case/m1-order-layout-observations.md (new), ace-m1-conformance.md, ace-m1-gap-audit.md, ace-m1-scenario-oracles.md, a2r-golden-certification.md, auto-ac/function-incremental-source.md, auto-av/cache-and-conformance.md | post_merge: binding.sha256 rebound to the LF blob hash 134d93f6… (post-checkout normalization), contract PASS 131/313 + governance 23 passed on master | batch: not due (916 batch cargo t all covered cf4694880 at 2026-11-02T10:31:57Z, 929s, single-instance; 914%5≠0, <48h)
 合并实况：plan-914-dev 在计划期间与 master 进行了两次合并（第一次带入 PLAN-916 的 master 提交；第二次为 916 的 docs 收尾提交），冲突仅在 binding.tsv（E01/E02 取本计划、E03 取 916）、source-manifest.json（以 master 为底 + 本计划 scenario_assets/plan_914_update + 重算 binding/scenario-oracles hash）、conformance/gap-audit（914 与 916 两段并列保留）；全部按"两计划内容并存"解决并复跑 contract/治理/suite。落地后 master 上 contract 一度报 binding 漂移，根因为检出时 LF 归一化：按磁盘（LF）字节重绑 manifest 后 PASS。交付证据折叠：本计划验证数值（suite 15/15、contract 131/313、治理 23、infra-ace-m1 23、adapter 34、a2r 391、vm 510+166+13、native collections 53、AV data 49、预算 1.0–20.2 KiB/ledger 21.3 KiB）与探针/反控结论均已写入 §8 注记与本 §9；plan-artifacts/plan-914 scratch 随合并清理（无具名持有）。
+
+
+2026-11-02 | stage: merge | PLAN-914 r2 | outcome: pass (archived) | delivery_commit: 6ffbaf49e1b13f41f40a17fa9064ebda71ccedb3 | cleanup: worktree D:/autostack/.wt/lang-914/auto-lang wt-guard clean -> git worktree remove (dir removed via cmd rmdir after the last test process was killed) -> branch plan-914-dev deleted -> group dir D:/autostack/.wt/lang-914 removed; plan-artifacts/plan-914 and plan-artifacts/plan-review-914 deleted after folding; %TEMP% mn818-*i09-914* session stores removed; retention policy refreshed (plan-914 + plan-review-914 = deleted, no holds) | archive: docs/plans/archive/914-m1-evaluation-order-and-layout-observations.md | post_merge_gates: contract PASS 131/313 + governance 23 passed on master after binding-hash rebind 134d93f6…; batch not due (916 cargo t all covered cf4694880, 2026-11-02T10:31:57Z, 929s, single-instance)
+收尾对账：本计划实际使用的输出目录=worktree（已删）、plan-artifacts/plan-914（已删）、plan-artifacts/plan-review-914（复审者探针，已删）、%TEMP% 下 mn818-*i09-914* 会话存储（已删）；无其他盘符/散落目录。残余（非本计划所有/不删）：%TEMP%/av798-session-av_closures_912_* 等旧会话缓存（环境遗留，已记录为 closures-fn 复跑前提）、主检出其他会话的 docs WIP。构建中间产物随 worktree 删除，未回收。归档后终态 archived。
 
 ## 10. 待澄清事项
 
