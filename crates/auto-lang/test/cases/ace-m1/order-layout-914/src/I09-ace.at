@@ -1,0 +1,11 @@
+fn f(x int) int {
+    return x * 2
+}
+
+fn g() int {
+    return 1
+}
+
+fn main() int {
+    return f(3) + g()
+}

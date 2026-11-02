@@ -71,6 +71,36 @@ fn hex_stream(raw: &str) -> Result<Vec<u8>, String> {
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
 /// PLAN-891: the native typed-entry recipe (real PE bitwise frame channel).
+
+/// PLAN-914 (I09): read the typed refusal of an incremental round. The
+/// kind comes from the worker's typed face (top-level `refusal`, or the last
+/// step record's `refusal` in the strict source-v1 shape); the reason is
+/// the rendered text. A bare `refused` string degrades to the `untyped`
+/// kind — never guessed from the text.
+fn refusal_verdict(ok: &serde_json::Value) -> Option<(String, String)> {
+    let refusal = ok.get("refusal").or_else(|| {
+        ok.get("steps")
+            .and_then(|s| s.as_array())
+            .and_then(|a| a.last())
+            .and_then(|last| last.get("refusal"))
+    });
+    let refused = ok.get("refused").and_then(|v| v.as_str());
+    if refusal.is_none() && refused.is_none() {
+        return None;
+    }
+    let kind = refusal
+        .and_then(|r| r.get("kind"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("untyped");
+    let reason = refusal
+        .and_then(|r| r.get("reason"))
+        .and_then(|v| v.as_str())
+        .or(refused)
+        .unwrap_or("refused by the retained environment")
+        .to_string();
+    Some((format!("mn.incremental.refused.{kind}"), reason))
+}
+
 pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
 mod collections;
 mod typed;
@@ -2616,17 +2646,23 @@ fn run_incremental(
                         }
                     }
                 }
-                if strict && ok.get("refusal").is_some() {
-                    // A typed NON-language refusal (invalid edit, session,
-                    // drift, untyped): not a language rejection — the check
-                    // errors instead of guessing a family.
-                    infra_detail = Some(format!(
-                        "typed refusal in round {i}: {}",
-                        serde_json::to_string(&ok["refusal"]).unwrap_or_default()
-                    ));
-                    break 'admit;
-                }
-                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+                if strict {
+                    // PLAN-914 (I09): a typed NON-language refusal (the
+                    // retained environment's interface/layout gate, an
+                    // invalid edit shape, session/candidate drift) is the
+                    // engine's DECLARED POLICY decision, not an
+                    // infrastructure failure: judge it as the typed refusal
+                    // verdict and stop the sequence. LanguageDiagnostics
+                    // refusals carry a source_error and are admitted above.
+                    if let Some((code, reason)) = refusal_verdict(&ok) {
+                        diag = Some((code, reason));
+                        let mut rec = ok;
+                        rec["parent_window_ms"] =
+                            serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                        step_records.push(rec);
+                        break 'admit;
+                    }
+                }                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
                     // F-818-R2-02: the syntax increment could not converge
                     // on this legal edit; the worker materialized it on the
                     // session's CURRENT source (accepted prefix preserved).
@@ -2645,16 +2681,24 @@ fn run_incremental(
                     step_records.push(rec);
                     continue;
                 }
-                // Parent-side INCREMENTALITY admission: the edit is truly
-                // incremental and its PE result is a real, admitted exit.
-                if ok.get("refused").map(|v| !v.is_null()) == Some(true) {
-                    infra_detail = Some(format!(
-                        "warm edit refused by the session: {}",
-                        ok.get("refused").and_then(|v| v.as_str()).unwrap_or("")
-                    ));
+                // PLAN-914 (I09): the retained environment REFUSED this warm
+                // edit (the non-fast-path interface/declaration-context gate).
+                // That refusal IS the live-state policy result the scenario
+                // judges — record it as the typed verdict and stop the
+                // sequence; the accepted prefix remains the session state.
+                if let Some((code, reason)) = refusal_verdict(&ok) {
+                    // PLAN-914 (I09): the retained environment REFUSED this
+                    // warm edit (the non-fast-path interface/declaration
+                    // gate). That refusal IS the live-state policy result the
+                    // scenario judges; record the typed verdict and stop. The
+                    // accepted prefix remains the session state.
+                    diag = Some((code, reason));
+                    let mut rec = ok;
+                    rec["parent_window_ms"] =
+                        serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                    step_records.push(rec);
                     break 'admit;
-                }
-                let unaffected = ok
+                }                let unaffected = ok
                     .get("unaffected_stage_delta")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
@@ -3474,3 +3518,4 @@ mod source_diag_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
