@@ -560,6 +560,25 @@ impl ClosuresUpdateSession {
             &self.entry,
             candidate_rev,
         )?;
+        // PLAN-912 §5.4: the REAL code-index build seam — every function
+        // whose dispatch index the link actually built is a per-unit
+        // IndexBuild attempt. The closures profile is index-gated (no
+        // per-unit index exists), so this records zero attempts today; the
+        // axis stays live for any future profile change instead of being
+        // silently absent from the ledger.
+        for (built, code) in snapshot
+            .loaded_program()
+            .function_builds()
+            .iter()
+            .zip(snapshot.code())
+        {
+            if *built != 0 {
+                ace_core::body_work::record_attempt(
+                    ace_core::body_work::Stage::IndexBuild,
+                    code.name(),
+                );
+            }
+        }
         let (out, trace) =
             execute_program(&snapshot, &ExecLimits::default(), &CancelFlag::new(false));
         let arena = trace.arena.clone().expect("execute attaches the ledger");

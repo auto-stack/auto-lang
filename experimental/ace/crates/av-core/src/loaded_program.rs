@@ -335,6 +335,7 @@ impl<'a> LoadedProgram<'a> {
         self.budget.usage()
     }
 
+
     pub fn builds(&self) -> u64 {
         self.builds
     }
@@ -470,6 +471,13 @@ impl ResidentProgram {
 
     pub fn usage(&self) -> (usize, usize, usize) {
         self.budget.usage()
+    }
+
+    /// PLAN-912 §5.4: per-function index-build flags of the last prepare
+    /// (1 = this unit's dispatch index was built, 0 = profile-gated or
+    /// reused by Arc identity). The closures profile builds no index.
+    pub fn function_builds(&self) -> &[u8] {
+        &self.fn_builds
     }
 
     pub fn builds(&self) -> u64 {

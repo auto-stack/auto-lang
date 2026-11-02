@@ -109,6 +109,11 @@ pub mod performance {
             assert_eq!(fresh.value, base, "sample {id}");
             assert!(matches!(fresh.route, RouteReport::Cold { units: 70 }), "{:?}", fresh.route);
             assert!(fresh.retained_bytes <= POOL);
+            // The code-index build axis is WIRED at the real link seam and
+            // honestly reports ZERO for the closures profile (it is
+            // index-gated in ResidentProgram::prepare); a future profile
+            // change would surface here instead of silently vanishing.
+            assert_eq!(fresh.stages.total(ace_core::body_work::Stage::IndexBuild), 0);
 
             let t = std::time::Instant::now();
             let hit = session.apply_source(&source).expect("hit");
@@ -241,15 +246,22 @@ pub mod performance {
         let sampler = ace_av::mempeek::PeakSampler::start(50);
         let mut churn = ClosuresFunctionSession::new(&root, "churn.at");
         churn.apply_source(&source).expect("churn cold");
-        let mut flip = true;
+        // §5.5: the churn rotates across DIFFERENT lambdas (f0's writer
+        // body, f1's reader body, f2's pure body) and revisits prior
+        // contents (history hits), flipping back to the base each 4th leg.
+        let variants = [
+            ("x = x + n; return x", "x = x + n + 1; return x"),
+            ("return x - n }", "return x - n - 1 }"),
+            ("return n * 2 }", "return n * 3 }"),
+        ];
         let mut last_value = 0;
         for rev in 0..512 {
-            let next = if flip {
-                source.replace("x = x + n; return x", "x = x + n + 1; return x")
+            let next = if rev % 2 == 0 {
+                let (from, to) = variants[(rev / 2) % variants.len()];
+                source.replace(from, to)
             } else {
                 source.clone()
             };
-            flip = !flip;
             let run = churn.apply_source(&next).expect("churn rev");
             if rev % 64 == 0 {
                 assert!(
