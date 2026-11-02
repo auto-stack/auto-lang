@@ -23,6 +23,8 @@ mod closures_fn_912_performance;
 mod closures_fn_912;
 #[path = "cases/closures_recovery_913.rs"]
 mod closures_recovery_913;
+#[path = "cases/closures_recovery_913_performance.rs"]
+mod closures_recovery_913_performance;
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]

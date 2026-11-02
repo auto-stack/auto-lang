@@ -90,10 +90,12 @@ fn main() {
         capabilities: &caps,
         read_only: true,
     };
+    let started = std::time::Instant::now();
     let restored = match restore_source_session(store_root, &request) {
         Ok(r) => r,
         Err(e) => reject(e.code, e.message),
     };
+    let restore_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
     let counters = restored.counters;
     let manifest_info = &restored.manifest;
     let base = json!({
@@ -109,6 +111,7 @@ fn main() {
         "r_admits": counters.unit_admits,
         "r_context_reads": counters.context_reads,
         "p_axis_attempts": counters.p_axis_attempts,
+        "restore_wall_ms": restore_wall_ms,
         "source_sha256": manifest_info.source_sha256,
         "context_revision": manifest_info.context_revision,
         "accepted_generation": manifest_info.accepted_generation,

@@ -1031,7 +1031,6 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // run of a recovery check; later runs in this process are warm edits).
     let mut recovery_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> =
         None;
-    let mut recovery_restore_value: Option<i32> = None;
     // PLAN-866: the resident-online serving state — ONE chain (the 828
     // session + the resident driver, frozen 64-step fuel slices), created
     // lazily on the first resident step; the names of functions edited
@@ -1684,13 +1683,13 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                                 exit(2);
                             }
                         };
-                        recovery_restore_value = restored.restore_value;
+                        let restore_value = restored.restore_value;
                         recovery_session = Some(restored.session);
                         let counters = restored.counters;
                         step_outs.push(serde_json::json!({
                             "op": "run",
                             "outcome": "success",
-                            "value": recovery_restore_value,
+                            "value": restore_value,
                             "recovery": {
                                 "phase": "restore",
                                 "manifest": ticket["manifest"].clone(),
