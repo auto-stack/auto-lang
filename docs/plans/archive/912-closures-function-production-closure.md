@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-ac/closures-function-production.md]
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-909, PLAN-828, PLAN-868]
-current_step: 8
+current_step: 12
 total_steps: 12
 ---
 
@@ -199,7 +199,7 @@ stable function/lambda/binding ID属于逻辑身份，不直接用易移动token
 | T-09 | review | T-08同树冻结SHA | 独立核机制/依赖/反控/粒度/全部实际门与SD，finding有界修复重绑，pass→reviewed | AC-06 | [ ] |
 | T-10 | work(merge) | T-09 pass | 冻结职责/consumer门或有效同身份证据；batch仅due主检出单实例/既有用户择时，不额外造全局门 | AC-07 | [x] 2026-11-02 冻结并集（rebase后`13a465336`，含911落地码）：ace-source/ace-lowering/ace-av + ace-native/ace-a2x/auto-test-case + case-ace-m1-closures-fn-912/closures-865-source/shared-mutable-909 + infra-fixed/infra-ace-m1 **11组全PASS**（runs drxvv73n/c6ehavke/2w4bifco）；run1仅驱动器盘满预检拒（t07-full-groups.log），盘清后全绿。batch due check：receipt last_covered=895(2026-10-30用户豁免)+48h内有merge（911）→ **due=true，user-pending交接**（沿910/911先例，`cargo t all`主检出单实例由用户择时，不在本计划内执行） |
 | T-11 | work(merge) | T-10 | 合入/SD-01..06读回、A→B正式类型/版本/阶段/预算及剩余owner交接、archive delivered，R3不冒已闭 | AC-07/08 | [x] 2026-11-02 **landed**：worktree guard clean（lang+down）→`git rebase master`（master已含911@ca4848f5d+007 sweep）零冲突→**range-diff 8/8全等**（旧88af52b13..ea4ef2906 → 新61ed79ed9..13a465336）→主检出`git merge --ff-only plan-912-dev`→master==delivery **`13a465336`**，无merge commit。**canonical_verified**：SD-01 `c99a4c8c…`、SD-02 `863ac6a0/8820b572/efe8f4ef…`、SD-03 `a1782378/c5e73745…`、SD-04 `46b659be/59972c1d…`、SD-05 `6e178ad2…`、SD-06 `e3a28ea1…`（主检出实读）。A→B交接=SD-01 §A→B（AcceptedSourceState schema/版本/预算/无PASS/913落盘仍须重验）；R3/D-909-1/完整C-19具名未闭。archive见下receipt |
-| T-12 | merge | T-11 | 折摘要/hash、核全部实际输出/hold、fresh wt-guard clean后清树/分支/组/整个材料scope及登记，真实12/12 | AC-07/08 | [ ] |
+| T-12 | work(merge) | T-11 | 折摘要/hash、核全部实际输出/hold、fresh wt-guard clean后清树/分支/组/整个材料scope及登记，真实12/12 | AC-07/08 | [x] 2026-11-02 证据已折入计划（各行收据含命令/退出码/run id/关键数字）；fresh `wt-guard.sh` clean（lang+down，reparse扫描空）→worktree两棵移除（lang树先清plan827测试副产物：tracked还原+untracked删）、分支`plan-912-dev`删除（was 13a465336）、组目录`.wt/lang-912`删除；材料scope `D:/autostack/plan-artifacts/plan-912/`（422K：t01冻结/四代码映射/t02-t10组日志）**整体删除**；registry刷新（scopes.plan-912=deleted、deletions+1、last_merge_cleanup=PLAN-912，holds=[]）；构建中间产物随worktree删除未回收。收尾路径对账：本计划命令实际输出目录=worktree target（随树删）、`plan-artifacts/plan-912`（已删）、`%TEMP%`perf/session stores（已清）——无散落第二目录 |
 
 拟树`D:/autostack/.wt/lang-912/auto-lang`、分支`plan-912-dev`，未创建；work/自查/独立review同树顺序，无用户指定agent/model。开工登记唯一材料`D:/autostack/plan-artifacts/plan-912/`，探针/日志/报告/变异副本/外部target只在此；长期case/oracle才入职责目录。每case/store用自己scope隔离，禁止批删全机`%TEMP%/av798-session-*`凑fresh。merge按新规全材料折计划后删除，具名未解问题才hold，不动他方目录、不写旧specs.json/attachments。
 
@@ -221,7 +221,8 @@ next: 后续实施指令后T-01/02；N911/parent可并行，S/H先核实际owner
 
 2026-11-02 | stage: goal | plan_id: PLAN-912 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-912/auto-lang | commit: 81bc7a9a2 | next: review
 
-2026-11-02 | stage: merge | PLAN-912:r1 | prepared: reviewed基线`8b5400937`+SD冻结表→spec提交（rebase后`13a465336`） | landed: ff-only，master==`13a465336`，rebase零冲突，range-diff 8/8全等（88af52b13→61ed79ed9, 63a1ea067→30dcb1268, 9f1db93e0→4c86142b8, 69b0632e1→f252f98a2, 88aeb500f→14c9fb5b2, 81bc7a9a2→f277778c0, 8b5400937→50bb8ee0b, ea4ef2906→13a465336） | canonical_verified: 10路径hash如T-11行 | archived: docs/plans/archive/912-closures-function-production-closure.md，completion_kind delivered | 911窗协调：contract.rs/test-groups.toml/三Spec零冲突（不同hunk）；911 worker/parent面与912 recipe并行共存，11组并集绿 | landing observation: 主检出生产二进制（auto.exe等）未随本merge重建——910已记其被外部服务锁定；本包交付为实验栈ace与测试设施，产品构建图零依赖（根workspace exclude experimental不变），stale风险限于实验工具按需重建 | batch: due=true（895后48h内有merge），user-pending交接（沿910/911先例） | cleaned: 见下一receipt
+2026-11-02 | stage: merge | PLAN-912:r1 | prepared: reviewed基线`8b5400937`+SD冻结表→spec提交（rebase后`13a465336`） | landed: ff-only，master==`13a465336`，rebase零冲突，range-diff 8/8全等（88af52b13→61ed79ed9, 63a1ea067→30dcb1268, 9f1db93e0→4c86142b8, 69b0632e1→f252f98a2, 88aeb500f→14c9fb5b2, 81bc7a9a2→f277778c0, 8b5400937→50bb8ee0b, ea4ef2906→13a465336） | canonical_verified: 10路径hash如T-11行 | archived: docs/plans/archive/912-closures-function-production-closure.md，completion_kind delivered | 911窗协调：contract.rs/test-groups.toml/三Spec零冲突（不同hunk）；911 worker/parent面与912 recipe并行共存，11组并集绿 | landing observation: 主检出生产二进制（auto.exe等）未随本merge重建——910已记其被外部服务锁定；本包交付为实验栈ace与测试设施，产品构建图零依赖（根workspace exclude experimental不变），stale风险限于实验工具按需重建 | batch: due=true（895后48h内有merge），user-pending交接（沿910/911先例） | cleaned: wt-guard clean（lang 8f无reparse/auto-lang + auto-down）→`git worktree remove`×2（lang树先清plan827测试副产物）、`git branch -d plan-912-dev`（was 13a465336）、`rmdir .wt/lang-912`；plan-artifacts/plan-912（422K）全删，registry刷新holds=[]；无具名未解问题持有（R3/D-909-1/完整C-19为具名计划债非文件持有）
+2026-11-02 | stage: merge | PLAN-912:r1 | outcome: pass（delivered） | delivery_commit `13a465336`（master tip，ff-only） | docs tip `2872b70ea`→本提交 | canonical: SD-01..06 hash见T-11行 | archive: docs/plans/archive/912-closures-function-production-closure.md status=archived | cleanup: 完成如上，真实12/12 | pending: batch regression due=user-pending（用户择时）；主检出生产二进制观察项（910已记外部锁定）
 
 ## 10. 待澄清事项
 
@@ -232,3 +233,4 @@ next: 后续实施指令后T-01/02；N911/parent可并行，S/H先核实际owner
 | D-03 accepted state | T-02/05，912→913 | 版本/实际依赖/所有权/预算与无PASS数据契约交付，913持久数据仍未授信，A不关闭R3 |
 | D-04 911 S/H与观测 | T-01/05/07 | 原typed失败/attempt接口与全部consumer具名收据，未释放只等实际依赖任务；不消费WIP/强迫对方整包等待 |
 | D-05 预算/残余 | T-02/07/merge | 16MiB新池与原cap/时间同时证可行，放宽需修订；D-909-1、R3及完整C-19另列owner，不豁免新回归 |
+2026-11-02 | stage: goal | plan_id: PLAN-912 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 13a465336 | next: done
