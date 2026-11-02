@@ -3831,3 +3831,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **D-910-2 `auto build -d <dir> -r rust` 派发缺陷（owner: Man CLI）**：build 的 rust 分支以 `std::env::current_dir()` 判定 `src/front` 存在，`-d` 指向他处时静默走 pac/ninja 转译分支（"ninja: no work to do" exit 0），不进 rust_ui 生成（PLAN-910 V-01 实录）。关闭条件：rust 分支改用解析后的项目目录，并补 `-d` 的 UI 工程回归用例。
 - **D-906-1 补记**：man-install 腿的同根因（PLAN-901 vendor 快照 crate 进 metadata 图）已由 PLAN-910 d823fdd 精确修复并实证（full --skip-build 安装 + 安装版 SDK 模式构建）；Web 发行门腿（web-repository-distribution / web 锁漂移）维持 Web owner 关闭条件，可复用同一映射/排除做法。
 
+
+
+## PLAN-916 到期批量回归归因（2026-11-02，run-ffy4jmss）
+
+- **916自身（closed）**：`stream_next`被名称准入误拒，L0仅补`stream_next/stream_is_done/stream_close`，原失败测试与语义控制绿，落地`cf46948803034eefb205025fca23bcf0424c31cf`。
+- **PLAN-007（owner: auto-media-core/fix-forward）**：`fixture_manifest`读取的`crates/auto-media-core/tests/fixtures/manifest.json`不存在；七个fixture与PROVENANCE已在库，但清单缺失使read_to_string unwrap必败。关闭条件：补真实七项manifest及fixture_manifest单独通过。
+- **PLAN-900/901（owner: 测试分组/fix-forward）**：`auto-lsp`已迁出仓却仍在固定组；`auto-lang-core`被守门将ACE host tests判为legacy泄漏；`infra-pilot-cli` legacy组请求ACE worker（5失败+1错误）。关闭条件：按当前owner修正组归属/legacy准备路径并逐项复放，不把条件排除充PASS。
+- **auto-macros（owner: macros/fix-forward）**：`value_macro_tests.rs`四处`Box<Obj>` vs `Obj`编译错误。关闭条件：修宏展开/调用形态后auto-macros组绿。
+- **sys_natives_vm（owner: sys natives/fix-forward）**：`test_sys_natives_vm`在第49行断言失败。关闭条件：定位实际native结果差异并恢复该测试；不归因916（非A2R路径）。
+- **D-910-1已知项**：`execution_ids`未定义仍属既有治理债，非本次新增；沿918既定owner。

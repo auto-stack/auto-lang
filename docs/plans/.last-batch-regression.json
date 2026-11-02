@@ -1,40 +1,33 @@
 {
-  "last_covered_plan_id": 895,
-  "timestamp": "2026-10-30T15:25:49Z",
-  "covered_commit": "fd89a47f5",
-  "covered_note": "PLAN-895 (id%5==0) landed at 1dc06a9df (docs/bookkeeping tip fd89a47f5). User explicitly waived the batch run on 2026-10-30: the main-checkout cold compile of the full test-binary/tool set had run ~90 minutes with no execution start and the user judged it problematic and ordered the compile processes killed. Waiver is user-authorized, not an executed pass: the only batch artifacts were discovery receipts (39 recipes) before termination; bootstrap dirs were removed. Language-side evidence for this merge window: PLAN-895 changed zero Rust compile surface (Python governance/catalog/docs only); its merge gate ran the affected governance closure (infra/selection+infra/meter, 9 modules) PASS at the frozen delivery commit, plus spot-check single rounds (ace/lowering, lang/corpus-book-listing PASS; infra/meter environment-attributed flake with green isolated replay).",
-  "legs": [],
-  "leg_results": {},
-  "verdict": "waived_by_user",
-  "verdict_note": "No batch leg executed. Waiver recorded per explicit user order; next due check proceeds from plan id 895 per the standing rules.",
-  "new_reds": [],
-  "known_reds_seen": [
-    "mir_native_rounds_failure_liveness_and_caps (Plan 868 P3 load-sensitive timeout): failed in the first attempt alongside external DB/Vue work; targeted replay passed 1/1 and the completed sequential tt leg passed 3578/3578."
-  ],
-  "environment_attributed_reds": [
-    "book_ch09_06: expected golden in the sibling book repo changed at 23:46:26 after the mismatch at 23:46:23; targeted replay after the update passed 1/1."
-  ],
+  "last_covered_plan_id": 916,
+  "timestamp": "2026-11-02T10:31:57Z",
+  "covered_commit": "cf46948803034eefb205025fca23bcf0424c31cf",
+  "command": "cargo t all",
   "single_instance": true,
-  "taa": "not-triggered: no AAVM trigger paths in the merge window.",
-  "last_due_check": {
-    "plan_id": 890,
-    "checked_at": "2026-10-31T07:27:08.343414+00:00",
-    "due": true,
-    "disposition": "waived_by_user",
-    "reason": "890 divisible by five; latest explicit instruction: 不需要再次测试了，直接安全合入。No batch execution; prior historical verdict unchanged."
-  },
-  "unexecuted_batch_legs_user_accepted": [
-    "man-t",
-    "man-tcore",
-    "man-tc",
-    "man-ti",
-    "ui-tu",
-    "ui-ti",
-    "ui-tn"
+  "results_path": "target/test-groups/run-ffy4jmss/results.json",
+  "log_sha256": "c7ee1c903e3c643ce44793653e1908c860a3f5e44a825bafabe7539bfa0d48fd",
+  "elapsed_seconds": 929,
+  "verdict": "new_reds",
+  "new_reds": [
+    "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (read_to_string unwrap)",
+    "PLAN-900 auto-lsp: package moved out of this workspace but fixed group still selects it",
+    "PLAN-901 auto-lang-core: ACE host tests leaked into legacy group",
+    "PLAN-901 infra-pilot-cli: legacy group requested ACE worker; 5 failures + 1 error",
+    "auto-macros: four Box<Obj> versus Obj compile errors in value_macro_tests.rs",
+    "auto-lang::sys_natives_vm_tests::test_sys_natives_vm: assertion failed at line 49",
+    "PLAN-916 plan724_probe_stream_free_fn_typed_dispatch: stream_next rejected; fixed and landed in cf4694880"
   ],
-  "user_disposition": {
-    "date": "2026-10-30",
-    "instruction": "不用进行回归测试了。请直接完成895的收尾即可。…先删除掉编译进程。",
-    "scope": "The due tf --batch run after PLAN-895 landing; compile processes killed before any test execution began."
-  }
+  "known_reds_seen": [
+    "D-910-1 web-delivery-controls: execution_ids is not defined; existing governance debt"
+  ],
+  "fix_forward": {
+    "plan_916": "stream_next/stream_is_done/stream_close restored in cf46948803034eefb205025fca23bcf0424c31cf; targeted original failure and semantic controls passed; fix worktree and artifacts cleaned",
+    "other_reds": "Attributed and recorded in docs/plans/KNOWN-DEBT-AND-RISKS.md; no unrelated repair attempted by the batch runner"
+  },
+  "exclusions": [
+    "aavm NOT_APPLICABLE",
+    "a2r-actor-tests NOT_APPLICABLE",
+    "auto-vm NOT_APPLICABLE",
+    "Existing ignored/manual/milestone conditions preserved; conditional non-execution is not PASS"
+  ]
 }
