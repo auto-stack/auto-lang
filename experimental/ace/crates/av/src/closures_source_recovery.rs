@@ -89,6 +89,11 @@ pub const MAX_MANIFEST_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_WIRE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_UNITS: usize = 4096;
 
+/// The AVEN framing overhead a bounded read must allow on top of a payload
+/// budget (magic/version/stage/semantics/snapshot, five length-prefixed
+/// strings, the payload length and the checksum).
+pub const ENVELOPE_OVERHEAD: u64 = 512;
+
 /// The error of the recovery entry: a NAMED, locatable state — never a
 /// silent cold fallback and never a "miss" that rewrites a PASS.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -761,7 +766,10 @@ pub fn restore_source_recovery(
             ));
         }
         let found = store
-            .get_artifact_by_id(&manifest.context.artifact)
+            .get_artifact_by_id_bounded(
+                &manifest.context.artifact,
+                MAX_MANIFEST_BYTES as u64 + ENVELOPE_OVERHEAD,
+            )
             .map_err(|e| {
                 RecoveryError::new("recovery.read", format!("read context: {e}"))
             })?
@@ -824,7 +832,7 @@ pub fn restore_source_recovery(
     let mut units: Vec<AdmittedUnit> = Vec::with_capacity(manifest.units.len());
     for u in &manifest.units {
         let found = store
-            .get_artifact_by_id(&u.artifact)
+            .get_artifact_by_id_bounded(&u.artifact, MAX_WIRE_BYTES as u64 + ENVELOPE_OVERHEAD)
             .map_err(|e| {
                 RecoveryError::new(
                     "recovery.read",

@@ -88,6 +88,9 @@ struct Published {
     manifest: String,
     digest: String,
     units: usize,
+    source_sha256: String,
+    /// `(unit wire identity, artifact id)` for every published unit.
+    unit_artifacts: Vec<(String, String)>,
 }
 
 /// The parent-side cold production + publication used by every case.
@@ -101,6 +104,18 @@ fn publish(tag: &str) -> Published {
     let ticket = session
         .publish_source_recovery("ac913-recovery")
         .expect("publish source recovery");
+    let state = session.accepted_state().expect("accepted state");
+    let source_sha256 = state.source_sha256.clone();
+    let unit_artifacts: Vec<(String, String)> = state
+        .units
+        .iter()
+        .map(|u| {
+            (
+                u.unit.clone(),
+                u.store_ref.clone().expect("persisted unit artifact"),
+            )
+        })
+        .collect();
     assert_eq!(ticket.source_sha256.len(), 64);
     assert_eq!(ticket.units, 5);
     assert!(ticket.manifest_bytes > 0 && ticket.manifest_bytes <= 4 * 1024 * 1024);
@@ -130,6 +145,8 @@ fn publish(tag: &str) -> Published {
         manifest: ticket.manifest_artifact,
         digest: ticket.manifest_digest,
         units: ticket.units,
+        source_sha256,
+        unit_artifacts,
     }
 }
 
@@ -534,12 +551,13 @@ fn av_closures_recovery_913_missing_required_data_is_a_named_miss() {
 fn synthetic_publication<'a>(
     project: &'a str,
     generation: u64,
+    source_sha256: &'a str,
     artifact: &'a str,
     context_payload: &'a [u8],
 ) -> PublicationRequest<'a> {
     PublicationRequest {
         project,
-        source_sha256: "a".repeat(64).leak(),
+        source_sha256,
         source_len: SRC.len(),
         logical_owner: "main.at",
         owner_module: "m_src",
@@ -586,7 +604,7 @@ fn av_closures_recovery_913_stale_generation_cannot_overwrite_newer_root() {
     // A stale (generation 0) publication attempt is refused before any write.
     let stale = publish_source_recovery(
         &store,
-        synthetic_publication("ac913-cas", 0, &second.manifest_artifact, b"{}"),
+        synthetic_publication("ac913-cas", 0, &p_source_sha(&second), &second.manifest_artifact, b"{}"),
     );
     assert_eq!(
         stale.expect_err("a stale generation must not publish").code,
@@ -693,7 +711,7 @@ fn av_closures_recovery_913_a_commit_b_publish_failure_keeps_old_binding() {
     // B: the publication of the NEW state fails.
     let failed = publish_source_recovery(
         &store,
-        synthetic_publication("ac913-ab", 99, &first.manifest_artifact, b""),
+        synthetic_publication("ac913-ab", 99, &p_source_sha(&first), &first.manifest_artifact, b""),
     );
     assert!(
         failed.is_err(),
@@ -863,6 +881,238 @@ fn av_closures_recovery_913_read_only_restore_leaves_the_store_bytes_alone() {
         .find(|(name, _, _)| name == "journal.db")
         .expect("store database");
     assert!(db.1 > 0);
+}
+
+fn p_source_sha(t: &ace_av::closures_source_recovery::RecoveryTicket) -> String {
+    t.source_sha256.clone()
+}
+
+#[test]
+fn av_closures_recovery_913_config_mismatch_is_named() {
+    // V-02: the binding covers entry/profile/capabilities, not just the source.
+    let p = publish("config");
+    let store_arg = p.store.to_string_lossy().to_string();
+    let source_arg = p.source.to_string_lossy().to_string();
+    for (entry, profile, caps, expected) in [
+        (
+            "d_other",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+            "",
+            "recovery.context-mismatch",
+        ),
+        ("d_main", "auto.source.core", "", "recovery.context-mismatch"),
+        (
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+            "trace",
+            "recovery.capability",
+        ),
+    ] {
+        let probe = run_probe(&[
+            &store_arg,
+            &p.manifest,
+            &p.digest,
+            &source_arg,
+            "main.at",
+            entry,
+            profile,
+            caps,
+        ]);
+        assert!(
+            !probe.ok,
+            "a changed config must be rejected: {}",
+            probe.line
+        );
+        assert_eq!(probe.json["code"], expected, "probe: {}", probe.line);
+    }
+}
+
+#[test]
+fn av_closures_recovery_913_store_root_index_is_not_an_authority() {
+    // V-03: the store's root/index is a HINT. The caller's expected id +
+    // digest is the authority, so a restore still works when the project has
+    // NO current root — and a wrong expectation still fails.
+    let p = publish("index-hint");
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    handle
+        .remove_root("ac913-recovery", "source-recovery-current", &p.manifest)
+        .expect("remove root");
+    let roots = handle
+        .root_artifacts("ac913-recovery", "source-recovery-current")
+        .expect("roots");
+    assert!(roots.is_empty(), "no current root remains");
+    drop(handle);
+    let store_arg = p.store.to_string_lossy().to_string();
+    let source_arg = p.source.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &p.manifest,
+        &p.digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(
+        probe.ok,
+        "the caller-held binding must not depend on the store index: {}",
+        probe.line
+    );
+    assert_eq!(probe.json["restore_value"], 51);
+    // The caller's expectation is authoritative: a different digest fails even
+    // though the store still holds the artifact.
+    let forged = "1".repeat(64);
+    let probe = run_probe(&[
+        &store_arg,
+        &p.manifest,
+        &forged,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(!probe.ok);
+    assert!(
+        probe.json["code"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("recovery."),
+        "unexpected rejection: {}",
+        probe.line
+    );
+}
+
+#[test]
+fn av_closures_recovery_913_caps_are_enforced_before_any_write() {
+    // V-12: bounded data is refused at the publication door, before a single
+    // artifact or root is written.
+    let p = publish("caps");
+    let big = vec![b'{'; 4 * 1024 * 1024 + 1];
+    let err = publish_source_recovery(
+        &p.store,
+        synthetic_publication("ac913-caps", 1, &p.source_sha256, &p.manifest, &big),
+    )
+    .err()
+    .expect("an oversized context must be refused");
+    assert_eq!(err.code, "recovery.context-too-large");
+    let mut request =
+        synthetic_publication("ac913-caps", 1, &p.source_sha256, &p.manifest, b"{}");
+    request.units[0].wire_bytes = 8 * 1024 * 1024 + 1;
+    let err = publish_source_recovery(&p.store, request)
+        .err()
+        .expect("an oversized unit must be refused");
+    assert_eq!(err.code, "recovery.unit-too-large");
+    // Neither attempt moved the project's root.
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    let roots = handle
+        .root_artifacts("ac913-recovery", "source-recovery-current")
+        .expect("roots");
+    assert_eq!(roots, vec![p.manifest.clone()]);
+}
+
+#[test]
+fn av_closures_recovery_913_cross_unit_artifact_is_rejected() {
+    // V-04: a manifest that self-consistently points at ANOTHER unit's valid
+    // artifact is rejected by the envelope's unit binding, not silently
+    // installed as that unit.
+    let p = publish("cross-unit");
+    let helper = p
+        .unit_artifacts
+        .iter()
+        .find(|(unit, _)| unit == "d_helper")
+        .expect("helper artifact")
+        .1
+        .clone();
+    let request = synthetic_publication("ac913-cross", 0, &p.source_sha256, &helper, b"{}");
+    let ticket = publish_source_recovery(&p.store, request).expect("synthetic publication");
+    let store_arg = p.store.to_string_lossy().to_string();
+    let source_arg = p.source.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &ticket.manifest_artifact,
+        &ticket.manifest_digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(
+        !probe.ok,
+        "a cross-unit artifact must be rejected: {}",
+        probe.line
+    );
+    assert_eq!(probe.json["code"], "recovery.envelope");
+}
+
+#[test]
+fn av_closures_recovery_913_restart_runs_from_initial_values() {
+    // V-11: a restored session executes from the source's INITIAL values every
+    // time (the shared cell f writes is created and released per run), and no
+    // live env/cell survives a run.
+    let p = publish("restart-values");
+    let request = RestoreRequest {
+        expected_manifest: &p.manifest,
+        expected_digest: &p.digest,
+        source: SRC,
+        logical_owner: "main.at",
+        entry: "d_main",
+        profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+        capabilities: &[],
+        read_only: true,
+    };
+    let restored = restore_source_session(&p.store, &request).expect("restore session");
+    assert_eq!(restored.restore_value, Some(51));
+    let mut session = restored.session;
+    // Re-running the SAME source in the restored session is a fresh execution
+    // from the initial values (51), not a cached result.
+    let again = session.apply_source(SRC).expect("re-run");
+    assert_eq!(again.value, 51);
+    assert_eq!(again.live_after_release, 0, "cells cleaned after the run");
+    assert_eq!(again.allocs, again.frees);
+    // The edit then runs from the same initial values.
+    let edited = session.apply_source(&edited_source()).expect("edit");
+    assert_eq!(edited.value, 48);
+    assert_eq!(edited.live_after_release, 0);
+    // ...and reverting re-runs the original semantics.
+    let reverted = session.apply_source(SRC).expect("revert");
+    assert_eq!(reverted.value, 51);
+    assert_eq!(reverted.live_after_release, 0);
+    session.close().expect("close");
+}
+
+#[test]
+fn av_closures_recovery_913_bounded_by_id_read_enforces_the_budget() {
+    // V-12: recovery data is addressed BY ARTIFACT ID, so the read itself must
+    // be bounded — a payload over budget is refused before its bytes are
+    // materialized (the recovery entry never reads unbounded data).
+    let store = temp_store("bounded-read");
+    let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+    let big = vec![7u8; 2 * 1024 * 1024];
+    let id = handle
+        .put_artifact(ace_artifacts::store::PutRequest {
+            layer: ace_av::closures_source_recovery::RECOVERY_LAYER.id,
+            key: ace_artifacts::identity::QueryKey::new(
+                &ace_av::closures_source_recovery::RECOVERY_LAYER,
+                vec![("test".into(), "bounded".into())],
+            ),
+            kind: ace_artifacts::codec::ChunkKind::LayoutData,
+            payload: big.clone(),
+            edges: Vec::new(),
+            project: None,
+        })
+        .expect("put oversized artifact");
+    // A small budget refuses it...
+    let bounded = handle.get_artifact_by_id_bounded(&id, 4096);
+    assert!(
+        bounded.is_err() || matches!(bounded, Ok(None)),
+        "an over-budget payload must not be materialized"
+    );
+    // ...a sufficient budget reads it.
+    let read = handle
+        .get_artifact_by_id_bounded(&id, 4 * 1024 * 1024)
+        .expect("bounded read")
+        .expect("artifact present");
+    assert_eq!(read.payload.len(), big.len());
 }
 
 #[test]

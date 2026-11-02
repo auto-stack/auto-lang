@@ -1064,6 +1064,51 @@ impl ManagedStore {
         }
     }
 
+    /// Artifact payload by artifact id, BOUNDED: a corrupt/replaced blob larger
+    /// than the granted budget is rejected BEFORE its bytes are read (the same
+    /// admission as [`get_artifact_bounded`], addressed by id because a
+    /// recovery manifest references its required data by artifact id).
+    pub fn get_artifact_by_id_bounded(
+        &self,
+        artifact_id: &str,
+        max_framed_bytes: u64,
+    ) -> Result<Option<LoadedArtifact>, StoreError> {
+        let row: Option<(String, u8)> = self
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT payload_chunk, kind FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk WHERE a.artifact_id=?1",
+                params![artifact_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((chunk_id, kind_byte)) = row else {
+            return Ok(None);
+        };
+        let kind = ChunkKind::from_code(kind_byte)
+            .ok_or_else(|| StoreError::Internal("bad kind".into()))?;
+        match self.read_chunk_gated_bounded(&chunk_id, max_framed_bytes) {
+            Ok(Some(bytes)) => {
+                let (k, payload) = unframe_chunk(&bytes)?;
+                if k != kind {
+                    return Err(StoreError::Internal(format!(
+                        "kind mismatch for {artifact_id}"
+                    )));
+                }
+                Ok(Some(LoadedArtifact {
+                    artifact_id: artifact_id.to_string(),
+                    chunk_id,
+                    kind,
+                    payload: payload.to_vec(),
+                }))
+            }
+            Ok(None) => Ok(None),
+            Err(StoreError::TombstonedMiss(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn remove_project_roots(&self, project: &str) -> Result<usize, StoreError> {
         let _live = self.liveness_shared()?;
         let n = self.db.lock().unwrap().execute(
