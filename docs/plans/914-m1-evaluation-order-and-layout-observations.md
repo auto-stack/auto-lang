@@ -215,6 +215,10 @@ T-06 基础设施组：`cargo t infra-ace-m1` 首跑红（5 个 mutation/registr
 2026-11-02 | stage: work | PLAN-914 r2 | outcome: pass (execution_done) | worktree: D:/autostack/.wt/lang-914/auto-lang | branch: plan-914-dev | base_commit: 3140cceb4 | code_commit: 01c6ee843 | dependency_revisions: (none) | task_ids: T-01..T-06 | evidence: 12 格 formal suite（order-layout-914，15 checks）+ 固定组/治理 23/contract PASS/case-* 六组/ infra-ace-m1+infra-fixed / adapter 单测 34 / native collections 53 / AV data 49 / a2r 组 PASS / 预算与恢复计量（见 §8 T-06 注记与 T-04 注记） | blockers: none | next: review
 work 阶段完成：T-01..T-06 全部勾选，12 格有正式父证据并回填 binding，规范增量 SD-01..07 已在 worktree 拟好（merge 发布），冻结修订 01c6ee843 工作树 clean。ace-native/ace-av 全组并集按 T-08 在 merge 时于空闲主机执行（本机曾因多会话 target 锁挂起，已用预建 conformance 二进制补证）。交 review。
 
+
+2026-11-02 | stage: work | PLAN-914 r2 | outcome: needs_fix-addressed | worktree: D:/autostack/.wt/lang-914/auto-lang | branch: plan-914-dev | base_commit: 3140cceb4 | code_commit: fdebc5eda | task_ids: T-07 findings F-914-R1/R2 + notes N1-N3 | evidence: 格式修复（8 处拼接行+7 个文件 EOF 空行）；`scenario_assets` 13 文件入 source-manifest 且 verifier 精确枚举/逐哈希（漂移与多文件两条负控实测红、恢复后 contract PASS）；`Arg::Name` 值恢复冻结的 `Nil`；spec §4 增「冷声明前端豁免并计入、零生产限 rebuild 层」、§5 增 refusal 判定适用范围、§7 增资产登记；复验 15/15 suite、contract PASS、治理 23 passed、infra-ace-m1 gate True、adapter 34 passed | blockers: none | next: review
+复审 findings 全部处理并复验；交回独立复审（re-review）确认。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
