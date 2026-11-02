@@ -3864,3 +3864,6 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **T08 Auto trap 认证通道**：a2r 证据仅到「冻结 slice-oob 的 Rust panic 行为观察」，
   Auto trap（av.trap.str-index 级）认证仍缺受控 trap 通道；不得用 Rust panic 冒充。
   owner=M1 认证账。
+- **PLAN-919 遗留A（owner: 源前端/fix-forward，探针实证）**：text/owned profile 的多参数函数中 \`move\` 参数核对错位一位——\`fn pick(move s Str, flag int)\` 被判 "parameter 1 does not declare move"（919 R01 源被迫用单参数 move 形）。关闭条件：修正 verify 的 arg/param 索引并加多参数 move 正反例；919 源不因本项改写。
+- **PLAN-919 遗留B（owner: mn 复合前端，既有能力边界如实登记）**：collections source profile 不支持 record 字段赋值（\`place.field_path\` 前端拒绝）与 record \`.clone()\`；919 的 ac R01 源按支持域书写，不宣称该面。关闭条件：随 mn 复合前端扩面计划交付。
+- **PLAN-919 顺带修复记录**：\`verify-ace-m1-852.ps1\` 构建行引用 901/896 已退役 \`test-cases\` feature（master 即红）与 \`scenario_assets\` 单对象限制——已在 919 修正（feature 移除、资产清单化），contract/source/acceptance 三 scope 复跑 PASS。
