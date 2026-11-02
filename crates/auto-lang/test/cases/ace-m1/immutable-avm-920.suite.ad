@@ -1,0 +1,8 @@
+# PLAN-920 legacy-AVM immutable-assignment diagnostic suite — independent of
+# the frozen 852 base suite (36 cases / 97 checks unchanged). 5 cases / 5 checks.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-immutable-avm-920", include: [
+  "immutable-avm-920.case.ad",
+] }
+```

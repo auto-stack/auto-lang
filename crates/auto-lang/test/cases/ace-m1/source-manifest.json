@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "30c5d680d33132e877a3a311c61e73cc9b7f84c7208292eeb0fe16bffd035c75"
+  "sha256": "b429cb4f922fa1cca73989100684c8775c7b10812f42dea114734b88a92c6177"
  },
  "corpus_src": {
   "dir": "src",
@@ -287,7 +287,7 @@
   }
  },
  "suites_cases": {
-  "expected_count": 76,
+  "expected_count": 81,
   "files": {
    "ace-m1-base.suite.ad": "7fd00b8d1c79d45be1f4d5ad90083780a8acb67798c6c36b9d29b8f53d26ae63",
    "ace-m1-tr-native.suite.ad": "4e2b320d1b44f6c317ff1c69e29706efb4fc1332b04864f955f85aa5208d7fb3",
@@ -364,7 +364,12 @@
    "nd911-src/BIND.at": "bd74f91064fb8b8d90ff82b104b0864b0e16a3e41ea26810bc4c9cefa04d3ba9",
    "nd911-src/MULTI.at": "b4da11001a3baec55fc5c4b1d9afff98929689733ce769bf96dadfcf9abe015f",
    "nd911-src/MB17.at": "302631edbdf267530006400b29e66e04afe8b7dc94ed4b6c12ced80aea6fd04e",
-   "nd911-src/WARM.at": "96c379693c2c05be935c23a15fce4f24df632a8d1cea5ca934d874c5c850e870"
+   "nd911-src/WARM.at": "96c379693c2c05be935c23a15fce4f24df632a8d1cea5ca934d874c5c850e870",
+   "immutable-avm-920.case.ad": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "immutable-avm-920.suite.ad": "be2909add47887fb2a5880daeb29a2fe6c7c7f76088994519781c047f74b1374",
+   "immutable-avm-920/B18C.at": "104e46a2e63a0c6167ff2f7a18660dd6e2d395180c744e066ec398872d22babd",
+   "immutable-avm-920/NB18S.at": "3c0841d9b5d59007a1c09b7dd2d2bfab0d6b5d514cabbd6470dbdbe1f078d61a",
+   "immutable-avm-920/TOP.at": "8d26487ebc42749556d2bee81e61fa93f94a5781c6e4c2536c8583147b50e472"
   }
  },
  "scenario_oracles": {
@@ -425,5 +430,9 @@
  "plan_915_update": {
   "date": "2026-11-02",
   "summary": "PLAN-915: scenario R02/R03 av cells delivered (per-allocation-point fault sweep over L04/L05/V05/K02 + typed verified stale-Place witness). New 12-check suite case-ace-m1-resource-915 and its 9 asset files (L04/L05/V05/LSTR/K02 sweeps + typed capture-clone + place sequences) registered under scenario_assets_915; binding av cells rebound to ok:av-resource-915; binding hash recomputed; worker facts judged against parent frozen attempt tables."
+ },
+ "plan_920_update": {
+  "date": "2026-11-03",
+  "summary": "PLAN-920: legacy AVM immutable-assignment typed closure of the B18 avm cell. Old codegen emits NameError::ImmutableAssignment (auto_name_E0203) from all three reject branches (plain/compound expression + Store guard); staged classification judges Language/type. New suite immutable-avm-920 (5 cases/5 checks: B18 original source + compound + script-top-level negatives, NB18 + same-name inner-var shadow neighbors); binding.tsv B18 avm cell diff:pending -> ok:P920; gap-audit F-INFRA-3 closed. Original negative sources, expected codes and all other backend cells unchanged."
  }
 }

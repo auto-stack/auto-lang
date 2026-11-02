@@ -707,6 +707,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/native-diags-911.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m1-immutable-avm-920"
+title = "TestCase case-ace-m1-immutable-avm-920（PLAN-920 B18 avm typed不可变赋值/近邻）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-a2r-semantics-916"
 title = "TestCase legacy A2R semantic admission 916"
 runner = "case"

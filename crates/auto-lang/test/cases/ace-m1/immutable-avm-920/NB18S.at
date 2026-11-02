@@ -1,0 +1,9 @@
+fn main() int {
+    let x int = 1
+    if true {
+        var x int = 5
+        x = 6
+        print(x)
+    }
+    return x
+}

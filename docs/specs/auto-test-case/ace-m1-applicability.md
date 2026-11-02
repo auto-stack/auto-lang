@@ -26,7 +26,7 @@
 |---|---|---:|
 | core | 原 103 行 ×4（除扩展行组 U01-U10/H01-H03/O01-O15 外全部行） | 412 |
 | core NA | NA-1/NA-2/NA-3(旧)/NA-5/NA-6-I/NA-3-I 认领 | 95 |
-| core ruled-accepted | R-ACCEPTED（R-A/B/C/D 旧引擎差异，含 B17/B19 avm `diff:accepted(R-C)`、K02/K05 a2r legacy-grammar；**B18 avm 除外**——infra 观察仍阻核心） | 32 |
+| core ruled-accepted | R-ACCEPTED（R-A/B/C/D 旧引擎差异，含 B17/B19 avm `diff:accepted(R-C)`、K02/K05 a2r legacy-grammar；**B18 avm 除外**——非裁定差异格：原 infra 观察阻核心，PLAN-920 已 typed 关闭为 `ok:P920` 绿，不入 R-ACCEPTED） | 32 |
 | **core required** | 412 − 95 − 32 | **285** |
 | extension committed | U/H/O 行的 av 格（已承诺 profile） | 28 |
 | extension NA | U 非AV 30（NA-4）+ H 非AV 9（NA-6-H/NA-3-H） | 39 |
@@ -51,7 +51,7 @@ SKIP、伪父报告均不授信 full（acceptance 拒假报告，选择不改判
 | NA-4 | U01-U10 ac/avm/a2r（30，token 已是 na:m1(NA-4)） | 继承 2026-10-28 | native/legacy 冻结 entry-profile 支持 |
 | NA-5 | C01/C02 avm/a2r（4）+ G01-G08 ac/av/avm（24，含 G01 ac/av 两个 raw gap 的专属主体排除） | **G-DEC-1 新增** | 后继正式消费相同能力/新 producer 先冻结接口/规则；普通执行/代码生成旧义务不免 |
 | NA-6 | I01-I11 avm/a2r（22，G-DEC-1）+ H01-H03 avm/a2r（6，G-DEC-4） | **G-DEC-1/4 新增** | 正式接同场景接口或 consumer 迁移；旧 VM 缓存/旧 a2r 快照义务仍验 |
-| R-ACCEPTED | avm 全部 diff* 格除 B18 外（30）+ K02/K05 a2r（2） | 继承 R-A/B/C/D 组裁定 | 语义裁定推翻差异时改回 gap:<owner> |
+| R-ACCEPTED | avm 全部 diff* 格除 B18 外（30；B18 avm 于 PLAN-920 关闭为 ok:P920 绿，非 R-ACCEPTED 认领）+ K02/K05 a2r（2） | 继承 R-A/B/C/D 组裁定 | 语义裁定推翻差异时改回 gap:<owner> |
 | FUTURE-O | O01-O15 ac/avm/a2r（45） | **G-DEC-5** | console 产品/M2 承诺；永不计入本次 M1-required |
 
 批准映射去重：61 唯一迁移格 = 54 原裸 n/a + 7 原 raw gap；2 旧批准澄清

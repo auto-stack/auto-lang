@@ -1,0 +1,102 @@
+# PLAN-920 legacy-AVM immutable-assignment diagnostic suite — the typed-fact
+# closure of the M1 B18 avm cell (gap-audit F-INFRA-3 / `gap:legacy-b18-infra`).
+# The old codegen now emits the REAL typed NameError::ImmutableAssignment
+# (miette `auto_name_E0203`) from all three immutable-reject branches, so the
+# avm adapter's staged classification (classify_staged) judges the rejection
+# as a Language/type fact — the 2026-11-01 908T04 re-probe's infra-only
+# observation is closed by production facts, never by text matching:
+#
+#   negative  src/B18.at                  — the frozen original (bare `x = 2`
+#                                           expr-statement on a `let`)
+#   negative  immutable-avm-920/B18C.at   — same family via compound `x += 2`
+#   negative  immutable-avm-920/TOP.at    — same family at script top level
+#                                           (statement wrapper path)
+#   neighbor  src/NB18.at                 — `let`→`var`, real run, result 2
+#   neighbor  immutable-avm-920/NB18S.at  — same-name inner `var` over outer
+#                                           `let`: legal writes, never
+#                                           over-rejected (slot-reuse result
+#                                           6 is the legacy display fact)
+#
+# Strict-boundary counter-controls (forged B18-text Msg, other-family typed
+# codes, run-trap channel separation, IO/panic infra) are parent-side unit
+# controls (auto-lang-core vm::immutable_assign_920) — a mutating fixture
+# cannot be a committed green case (PLAN-911 precedent).
+# The stmt_emit Store-guard branch is production-unreachable (only
+# StoreKind::Field passes `!is_new_declaration` and Field statements compile
+# via the TypeDecl path) — locked AST-level in the same unit file; no source
+# case is fabricated for it.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.ia920.b18"
+  tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+  links: ["PLAN-920"]
+  source: { file: "src/B18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "type", code: "auto_name_E0203" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.ia920.b18c"
+  tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+  links: ["PLAN-920"]
+  source: { file: "immutable-avm-920/B18C.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "type", code: "auto_name_E0203" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.ia920.top"
+  tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+  links: ["PLAN-920"]
+  source: { file: "immutable-avm-920/TOP.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "script" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "type", code: "auto_name_E0203" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.ia920.nb18"
+  tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+  links: ["PLAN-920"]
+  source: { file: "src/NB18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "2" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.ia920.nb18s"
+  tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+  links: ["PLAN-920"]
+  source: { file: "immutable-avm-920/NB18S.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "6" } } },
+  ]
+}
+```
