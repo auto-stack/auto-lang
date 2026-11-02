@@ -308,6 +308,12 @@ fn main() int {
 }
 fn main() int { return bad().len() }
 "#,
+            r#"fn bad() str {
+    let s Str = "temporary"
+    return if false { s.to(str) } else { "ok" }
+}
+fn main() int { return bad().len() }
+"#,
             r#"type Item { code int }
 fn main() int {
     let a Item = Item(41)
@@ -436,6 +442,15 @@ fn main() int {
             (
                 "R10",
                 include_str!("../../../../../crates/auto-lang/test/cases/ace-m1/src/R10.at"),
+            ),
+            (
+                "nested-expr-borrow",
+                r#"fn bad() str {
+    let s Str = "temporary"
+    return if false { s.to(str) } else { "ok" }
+}
+fn main() int { return bad().len() }
+"#,
             ),
         ];
         for (name, source) in sources {

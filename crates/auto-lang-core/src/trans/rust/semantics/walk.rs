@@ -33,6 +33,7 @@ struct Analysis<'a> {
     external_names: HashSet<String>,
     allow_external: bool,
     has_task: bool,
+    return_depth: usize,
 }
 
 impl<'a> Analysis<'a> {
@@ -70,6 +71,7 @@ impl<'a> Analysis<'a> {
             external_names,
             allow_external,
             has_task,
+            return_depth: 0,
         }
     }
 
@@ -119,12 +121,13 @@ impl<'a> Analysis<'a> {
     fn walk_stmt(&mut self, stmt: &Stmt) -> Result<(), AutoError> {
         match stmt {
             Stmt::Expr(expr) => self.walk_expr(expr),
-            Stmt::Return(expr) | Stmt::Reply(expr) => {
-                if matches!(stmt, Stmt::Return(_)) {
-                    self.check_borrow(expr)?;
-                }
-                self.walk_expr(expr)
+            Stmt::Return(expr) => {
+                self.return_depth += 1;
+                let result = self.walk_expr(expr);
+                self.return_depth -= 1;
+                result
             }
+            Stmt::Reply(expr) => self.walk_expr(expr),
             Stmt::Store(store) => {
                 self.walk_expr(&store.expr)?;
                 let ty = if matches!(store.ty, Type::Unknown) {
@@ -431,6 +434,9 @@ impl<'a> Analysis<'a> {
     }
 
     fn enter_expr(&mut self, expr: &Expr) -> Result<(), AutoError> {
+        if self.return_depth > 0 {
+            self.check_borrow(expr)?;
+        }
         match expr {
             Expr::Ident(name) => {
                 if let Some(id) = self.lookup_id(name) {
