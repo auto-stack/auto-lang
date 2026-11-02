@@ -8,5 +8,6 @@ title: "ClipboardBridge"
 title_zh: "剪贴板桥"
 
 dep stylekit {
-    path: "../../ui/stylekit"
+    # PLAN-007 T-03：stylekit 随示例归 auto-ui（组内兄弟/平铺主检出双形态）。
+    path: "../../../../auto-ui/examples/ui/stylekit"
 }
