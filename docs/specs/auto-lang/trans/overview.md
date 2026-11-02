@@ -19,6 +19,8 @@
 （plan716 先例）。收集器去重：`collect_fn_spec_params`/`collect_fn_str_params` 单份共用，
 `collect_fn_param_types` 因 merged 版多收 merge-mut 标志而保持双份（884-N1 在册）。
 
+PLAN-916 新增私有 `rust/semantics.rs`，在 CTE 前对 single/full-options/project/merged 执行七族高置信静态准入；不整包采信旧 `infer` 的不完整诊断，合法 import/动态边界保持。详见 [rust-semantic-admission](rust-semantic-admission.md)。
+
 ## `call_inner` 形状族派发（PLAN-884）
 
 - 原顺序 if-let 链（25 段）经**逐块 early-return 审计**后按调用形状拆为 **22 个顶层阶段**，
@@ -119,8 +121,8 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
   恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen
   py-类型侧表路径（.at 直跑）殊途同归，`.as`/`.at` 双模式同值。
-规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`，2026-09-07 快照，
-复现 `wc -l crates/auto-lang/src/trans/*.rs`）：
+规模与成熟度（按代码行数，`crates/auto-lang-core/src/trans/`，2026-09-07 快照，
+复现 `wc -l crates/auto-lang-core/src/trans/*.rs`）：
 
 | 后端 | 文件 | 行数 | 状态 |
 |------|------|------|------|
@@ -182,18 +184,18 @@ a2r 267、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` �
 
 ## 关键入口
 
-- `crates/auto-lang/src/trans.rs:Trans` — 后端统一 trait（`fn trans(&mut self, ast: Code, sink: &mut Sink)`）
-- `crates/auto-lang/src/trans.rs:Sink` / `MultiSink` — 输出缓冲与多文件项目输出
-- `crates/auto-lang/src/trans.rs:escape_str` — 字符串字面量转义
-- `crates/auto-lang/src/trans/c.rs:CTrans` / `transpile_c` — C 后端
-- `crates/auto-lang/src/trans/rust.rs:RustTrans` / `transpile_rust` / `transpile_rust_project_merged` / `RustTrans::post_process` — Rust 后端
-- `crates/auto-lang/src/trans/typescript.rs:TypeScriptTrans` — TS 后端（实现分散在 ts_expr/ts_stmt/ts_types/ts_runtime）
-- `crates/auto-lang/src/trans/python.rs:PythonTrans` — Python 后端
-- `crates/auto-lang/src/trans/javascript.rs:JavaScriptTrans` — JS 后端
-- `crates/auto-lang/src/trans/gdscript.rs:GDScriptTrans` — GDScript 后端
-- `crates/auto-lang/src/trans/tscn.rs:generate_scene` — Godot .tscn 生成
-- `crates/auto-lang/src/trans/r2a.rs:transpile_r2a` — Rust → Auto 逆翻译
-- `crates/auto-lang/src/trans/escape/analyzer.rs:EscapeAnalyzer` — 逃逸分析
+- `crates/auto-lang-core/src/trans.rs:Trans` — 后端统一 trait（`fn trans(&mut self, ast: Code, sink: &mut Sink)`）
+- `crates/auto-lang-core/src/trans.rs:Sink` / `MultiSink` — 输出缓冲与多文件项目输出
+- `crates/auto-lang-core/src/trans.rs:escape_str` — 字符串字面量转义
+- `crates/auto-lang-core/src/trans/c.rs:CTrans` / `transpile_c` — C 后端
+- `crates/auto-lang-core/src/trans/rust.rs:RustTrans` / `transpile_rust` / `transpile_rust_project_merged` / `RustTrans::post_process` — Rust 后端
+- `crates/auto-lang-core/src/trans/typescript.rs:TypeScriptTrans` — TS 后端（实现分散在 ts_expr/ts_stmt/ts_types/ts_runtime）
+- `crates/auto-lang-core/src/trans/python.rs:PythonTrans` — Python 后端
+- `crates/auto-lang-core/src/trans/javascript.rs:JavaScriptTrans` — JS 后端
+- `crates/auto-lang-core/src/trans/gdscript.rs:GDScriptTrans` — GDScript 后端
+- `crates/auto-lang-core/src/trans/tscn.rs:generate_scene` — Godot .tscn 生成
+- `crates/auto-lang-core/src/trans/r2a.rs:transpile_r2a` — Rust → Auto 逆翻译
+- `crates/auto-lang-core/src/trans/escape/analyzer.rs:EscapeAnalyzer` — 逃逸分析
 - `crates/auto-lang/src/lib.rs:trans_c / trans_rust / trans_python / trans_javascript / trans_typescript / trans_gdscript / transpile_r2a_file` — 库级入口
 - `crates/auto/src/main.rs:TransTarget` — CLI 子命令枚举
 
@@ -224,7 +226,7 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `docs/a2r-transpiler-guide.md`、`docs/a2r-api-documentation.md`
 - `docs/javascript-transpiler.md`、`docs/python-transpiler.md`
 - `docs/plan-indices/06-transpilers.md` 及各 plan 文件（见 plans.md）
-- `crates/auto-lang/src/trans.rs`、`trans/`、`crates/auto-lang/src/lib.rs`、`crates/auto/src/main.rs`
+- `crates/auto-lang-core/src/trans.rs`、`trans/`、`crates/auto-lang/src/lib.rs`、`crates/auto/src/main.rs`
 - `test/runners/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 - a2r 文件传输发射（PLAN-727）：`http.transfer_*` submit/observe 面在 sync/async 上下文同形发射（非阻塞提交/观察无 async 变体），仅 `transfer_wait` 分叉（sync 桥接面 / `transfer_wait_async(&t).await`）；builder `.multipart_file/.multipart_text` 方法直发（路径描述到发送）；发射契约见 [http-client-lowering](design/http-client-lowering.md) 文件传输节，运行契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)
 

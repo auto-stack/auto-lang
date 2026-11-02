@@ -10,7 +10,7 @@ graph TD
         Syn[syn crate<br/>仅 r2a 使用]
     end
 
-    subgraph trans["crates/auto-lang/src/trans"]
+    subgraph trans["crates/auto-lang-core/src/trans"]
         Trait["Trans trait<br/>(trans.rs:Trans)"]
         Sink["Sink / MultiSink<br/>(trans.rs) 输出缓冲 + source map"]
         Esc["escape/ 逃逸分析<br/>(EscapeAnalyzer, plan-310)"]
@@ -61,7 +61,7 @@ graph TD
 ## ADR 日志
 
 ### ADR-01: 统一 Trans trait + Sink 输出抽象
-- 日期 / 来源：docs/design/06-code-generation.md；代码 `crates/auto-lang/src/trans.rs:Trans`
+- 日期 / 来源：docs/design/06-code-generation.md；代码 `crates/auto-lang-core/src/trans.rs:Trans`
 - 决策：所有后端实现同一 `Trans` trait，输出统一写入 `Sink`（body/header/source 三段 + source map）。
 - 备选：每后端自定义输出 API（pros：更自由；cons：source map、多文件、CLI 接线无法复用）。
 - 后果：正面——新增后端只需实现一个 trait，测试与 CLI 一次接线；负面——`Sink` 的 C 风格
@@ -123,4 +123,11 @@ graph TD
 - 决策：r2a 用 `syn` crate 解析 Rust 源码，直接映射 syn AST → Auto 源码文本，不经过 Auto AST。
 - 备选：自建 Rust parser（pros：无外部依赖；cons：工作量不可接受）。
 - 后果：正面——四个 phase 快速交付（116 测试）；负面——r2a 与正向转译器无任何代码复用。
+- 状态：active
+
+### ADR-09: 旧 A2R 在 CTE 前执行共享静态准入
+- 日期 / 来源：PLAN-916；`crates/auto-lang-core/src/trans/rust/semantics.rs`
+- 决策：single/full-options 与 project/merged 在 CTE 和 Rust 发射前执行七族高置信检查，typed 错误直接返回；不只在 TestCase adapter 增加过滤。
+- 备选：开启旧 `infer` 全部诊断（会误拒闭包/Option/generator）；交给 rustc 拒绝（不是 Auto 前端准入）。
+- 后果：B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 格关闭；既有合法 import/动态边界及所有合法 golden 保持。细则见 [rust-semantic-admission](rust-semantic-admission.md)。
 - 状态：active

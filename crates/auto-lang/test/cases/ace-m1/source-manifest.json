@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "60a57931317ceb04ed9fd3483a53984c689921e72f670a7653952b053f02d3a0"
+  "sha256": "4112552cb146f8ef410b49032b956783c65936e4afdaad31bdc045cbb894d8a7"
  },
  "corpus_src": {
   "dir": "src",
@@ -369,7 +369,7 @@
  },
  "scenario_oracles": {
   "path": "docs/specs/auto-test-case/ace-m1-scenario-oracles.md",
-  "sha256": "2bd8e3b9e818c2f45dd9bb7227798775831eab491538ed641e7cc6c72657cb7b"
+  "sha256": "b8791a06b9aa26474d5da8f7d33f81ca04ef1c53ae82e0f76e3857317d66fb78"
  },
  "typed_scenario_note": "typed entries (W01-W05) ride the typed-native-891 suite channel; scenario rows (D/E/C/R/I/G) have no corpus source by design; missing sources are never fabricated (no src/D*.at)",
  "decision_doc": {
@@ -380,11 +380,15 @@
   "date": "2026-11-02",
   "summary": "PLAN-911 T-04: b-diags.case.ad B17-19 ac legs migrated to the strict source-v1 fact channel; new suite native-diags-911 (12 cases: negatives/neighbors/same-family variants/multi-cause/other-stage) + nd911-src variant fixtures; binding.tsv B17-19 ac cells diff:pending -> ok on formal parent-report fact artifacts. T-05: +multibyte-comment positive (nd911-src/MB17.at) and 3 registered RED controls (wrong-family/wrong-stage/generic-shell, case-control-oracles.json expected FAIL) — 16 cases. + warm rounds strict leg (nd911-src/WARM.at, A->B->C stop) — 17 cases."
  },
+ "plan_916_update": {
+  "date": "2026-11-02",
+  "summary": "PLAN-916 T-05: legacy A2R semantic admission closes B16/B17/B18/B19/T06/R09/R10 plus scenario E03's a2r cells. New 17-check suite proves typed single/project rejection without accepted artifacts and three independent NB17/18/19 emit references; original negative sources and all other backend cells are unchanged."
+ },
  "scenario_assets": {
   "dir": "order-layout-914",
   "expected_count": 13,
   "files": {
-   "E01-E02.case.ad": "926e153c81d109a6679240f6ba0b01c070190eaf1e26687724e49b040ce23d76",
+   "E01-E02.case.ad": "bcbca6ee625898f9e4e64bf7b3b14cde33ba9b58dae876fb88059c6372306cf2",
    "oracle/m1_e01.rs": "7acd93d06e59ef3ba32a87c51d12f97724a764514b32effbfbf6993eabe31fa3",
    "oracle/m1_e02.rs": "ac4ae99cc81ba1481430d13b7490bd81910000faa2afbdef35e84d807029b4aa",
    "order-layout-914.suite.ad": "6cf8f0960ad31e3cc1fcb0330f2537395df970ffa6d7ccded8db818c2f33bbe4",
@@ -394,13 +398,13 @@
    "src/E01-legacy.at": "6748b461969416f1eee67be6d83f3c952f6defa6625880667cdb165697f24c17",
    "src/E02-ace.at": "97a60ce0958cce91f5ec2fc91f9e10fd61328bd03d3b20b4c98fb59399b02388",
    "src/E02-legacy.at": "a5fc80f24e8234c327f2e0ad0fb3988c9d6c72184a099b131e14c9035808fd58",
-   "src/I04-ace.at": "b6be6ba9c79ff7133cb1ad92eb70837576e05606d66270c5771db68cd86c869a",
+   "src/I04-ace.at": "3a3c9d1b717863687f5afda188118f91adf0c85c808020c01a11b5b72dbca08d",
    "src/I04-av.at": "548bad7ba06273e549798e3657703caad2e950618d136a25f2a8ea5af9889dcc",
    "src/I09-ace.at": "c1b1406b6dd4ead1b4973f339921a460d39c9196a3449d8721df0995fdb49e11"
   }
  },
  "plan_914_update": {
   "date": "2026-11-02",
-  "summary": "PLAN-914: E01/E02 命名求值顺序四路径 + I04/I09 布局/活状态格位落地；新增 order-layout-914 场景资产（13 files）并在本清单登记（scenario_assets，drift 可检）；binding 12 格回填 ok/ok-emit，binding/scenario-oracles hash 同步；来源规格 m1-order-layout-observations.md。"
+  "summary": "PLAN-914: E01/E02 named-order four-path cells + I04/I09 layout/live-state cells delivered; order-layout-914 scenario assets (13 files) registered under scenario_assets (drift-checkable by verify-ace-m1-852 contract); binding rows E01/E02/I04/I09 rebound to ok/ok-emit; binding and scenario-oracles hashes recomputed; source spec docs/specs/auto-test-case/m1-order-layout-observations.md."
  }
 }

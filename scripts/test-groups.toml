@@ -707,6 +707,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/native-diags-911.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m1-a2r-semantics-916"
+title = "TestCase legacy A2R semantic admission 916"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-semantics-916/a2r-semantics-916.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-tr-native"
 title = "TestCase case-ace-m1-tr-native"
 runner = "case"
