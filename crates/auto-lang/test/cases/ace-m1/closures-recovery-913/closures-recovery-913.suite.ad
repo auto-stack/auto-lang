@@ -1,0 +1,9 @@
+# PLAN-913 T-06: the source-bound recovery suite — the F01/K06 corpus through
+# `ac-av/closures-recovery-run-v1` (publish in one process, restore in another,
+# then the next single-lambda edit through the restored context). The parent
+# (auto-lang-core) judges values, the P/R axes and the warm-edit identity.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-closures-recovery-913", include: [
+  "closures-recovery-913.case.ad",
+] }
+```

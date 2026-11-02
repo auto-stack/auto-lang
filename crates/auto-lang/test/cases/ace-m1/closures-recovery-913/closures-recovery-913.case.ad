@@ -1,0 +1,53 @@
+# PLAN-913 T-06: the source-bound RECOVERY corpus. Real production publishes
+# an accepted source state in ONE worker process; a DIFFERENT process restores
+# it from the caller-held binding (manifest id + digest) with zero source
+# production and takes the next single-lambda edit through the restored
+# declaration context. The sources are byte-identical copies of the shared
+# K/F corpus (the contract forbids `..` in source paths). The parent oracle in
+# crates/auto-lang-core (CLOSURES_RECOVERY_EDIT_VALUES over the shared
+# closures tables) holds the values AND judges the P/R axes, the warm-edit
+# identity counters and the caller-held binding.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.f01rcv-av913"
+  tags: ["ace-m1", "closures", "recovery", "value", "plan-913"]
+  links: ["PLAN-913"]
+  source: { file: "src/F01.at", syntax: "auto", path: "F01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-f01-recovery-publish", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-recovery-run-v1", av: { entry: "source:F01:publish", session: "av_closures_913_f01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av-f01-recovery-restore", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-recovery-run-v1", av: { entry: "source:F01:restore", session: "av_closures_913_f01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av-f01-recovery-restore-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-recovery-run-v1", av: { entry: "source:F01:restore-edit", session: "av_closures_913_f01" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return x - n }", to: "return x - n * 2 }" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 48 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k06rcv-av913"
+  tags: ["ace-m1", "closures", "recovery", "value", "plan-913"]
+  links: ["PLAN-913"]
+  source: { file: "src/K06.at", syntax: "auto", path: "K06.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k06-recovery-publish", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-recovery-run-v1", av: { entry: "source:K06:publish", session: "av_closures_913_k06" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-k06-recovery-restore", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-recovery-run-v1", av: { entry: "source:K06:restore", session: "av_closures_913_k06" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```

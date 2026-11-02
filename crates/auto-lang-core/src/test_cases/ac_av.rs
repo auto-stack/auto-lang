@@ -100,6 +100,8 @@ pub const AV_CLOSURES_SOURCE_RECIPE: &str = "ac-av/closures-source-run-v1";
 /// faces through the FUNCTION session (retained frontend + registry + the
 /// per-unit zero-production axes the parent judges below).
 pub const AV_CLOSURES_FN_RECIPE: &str = "ac-av/closures-fn-run-v1";
+/// PLAN-913: the source-bound recovery recipe (publish / restore / restore-edit).
+pub const AV_CLOSURES_RECOVERY_RECIPE: &str = "ac-av/closures-recovery-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 pub const AV_LOADED_RECIPE: &str = "ac-av/loaded-run-v1";
 
@@ -152,6 +154,9 @@ pub enum RecipeFamily {
     DataIncremental,
     /// PLAN-912: the single-function closures source recipe.
     ClosuresFn,
+    /// PLAN-913: the source-bound recovery recipe (publish -> fresh-process
+    /// restore -> the next warm edit through the restored context).
+    ClosuresRecovery,
     /// PLAN-866: the resident-online recipe — one continuously-running
     /// chain, edits at call-boundary safety points.
     Resident,
@@ -173,6 +178,7 @@ impl RecipeFamily {
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
             RecipeFamily::ClosuresSource => AV_CLOSURES_SOURCE_RECIPE,
             RecipeFamily::ClosuresFn => AV_CLOSURES_FN_RECIPE,
+            RecipeFamily::ClosuresRecovery => AV_CLOSURES_RECOVERY_RECIPE,
             RecipeFamily::Resident => AV_RESIDENT_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
@@ -189,9 +195,9 @@ impl RecipeFamily {
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
-            RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn => {
-                EXPECTED_AV_CLOSURES_CORE_VERSION
-            }
+            RecipeFamily::ClosuresSource
+            | RecipeFamily::ClosuresFn
+            | RecipeFamily::ClosuresRecovery => EXPECTED_AV_CLOSURES_CORE_VERSION,
             // PLAN-866: the resident recipe rides the scalar profile
             // identity (the 828 session pipeline).
             RecipeFamily::Resident => EXPECTED_AV_CORE_VERSION,
@@ -677,6 +683,10 @@ struct StepOut {
     /// PLAN-865: source closures' independently checked resource summary.
     #[serde(default)]
     closures_source: Option<serde_json::Value>,
+    /// PLAN-913: the source-bound recovery face (phase publish|restore|edit,
+    /// manifest/digest binding, P/R axes, warm-edit identity counters).
+    #[serde(default)]
+    recovery: Option<serde_json::Value>,
     #[serde(default)]
     dynamic: Option<serde_json::Value>,
     /// PLAN-862: the AV result channel of a run step — `"value"` for an
@@ -1235,6 +1245,28 @@ pub fn run_closures_fn_check(
     )
 }
 
+/// PLAN-913: the source-bound recovery check (publish -> fresh-process
+/// restore -> the next warm edit; the parent judges the P/R axes and the
+/// restored-context identity).
+pub fn run_closures_recovery_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::ClosuresRecovery,
+    )
+}
+
 /// PLAN-824: the frozen dynamic-fixture faces the PARENT judges against.
 /// Same tuple shape as the collections table; the judge ADDITIONALLY
 /// asserts the Dyn face's portable axes when the fixture returns a Dyn
@@ -1677,8 +1709,12 @@ fn run_check_with_transport(
     } else {
         None
     };
-    let is_closures_source_family =
-        matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn);
+    let is_closures_source_family = matches!(
+        family,
+        RecipeFamily::ClosuresSource
+            | RecipeFamily::ClosuresFn
+            | RecipeFamily::ClosuresRecovery
+    );
     let closures_source_id = if is_closures_source_family {
         let selector = av.entry.strip_prefix("source:").ok_or_else(|| {
             "closures-source requires a registered source:<K-id> av.entry".to_string()
@@ -1691,7 +1727,10 @@ fn run_check_with_transport(
         // PLAN-912 adds the `hit` mode (an identical re-apply is judged as a
         // zero-production hit).
         let fn_family = family == RecipeFamily::ClosuresFn;
-        let modes: &[&str] = if fn_family {
+        let recovery_family = family == RecipeFamily::ClosuresRecovery;
+        let modes: &[&str] = if recovery_family {
+            &["publish", "restore", "restore-edit"]
+        } else if fn_family {
             &["fresh", "restart", "body-edit", "hit"]
         } else {
             &["fresh", "restart", "body-edit"]
@@ -1705,7 +1744,9 @@ fn run_check_with_transport(
         {
             return Err(format!("invalid closures-source selector `{selector}`"));
         }
-        let registered = if fn_family {
+        let registered = if recovery_family {
+            closures_recovery_case(id).is_some()
+        } else if fn_family {
             closures_fn_case(id).is_some()
         } else {
             CLOSURES_SOURCE_CASES.iter().any(|(case_id, ..)| *case_id == id)
@@ -2136,7 +2177,9 @@ fn run_check_with_transport(
     } else if let Some(id) = &closures_fixture {
         judge_closures_fixture(id, &step, &mut mismatches);
     } else if let Some(id) = &closures_source_id {
-        if family == RecipeFamily::ClosuresFn {
+        if family == RecipeFamily::ClosuresRecovery {
+            judge_closures_recovery(&id.0, id.1.as_deref(), &step, &mut mismatches);
+        } else if family == RecipeFamily::ClosuresFn {
             judge_closures_fn(&id.0, id.1.as_deref(), &step, &mut mismatches);
         } else {
             judge_closures_source(&id.0, id.1.as_deref(), &step, &mut mismatches);
@@ -2185,6 +2228,7 @@ fn run_check_with_transport(
             "diag": step.diag,
             "owned": step.owned,
             "closures_source": step.closures_source,
+        "recovery": step.recovery,
             "counters": step.counters,
             "source_hash": step.source_hash,
             "wall_ms": step.wall_ms,
@@ -4486,6 +4530,223 @@ fn judge_invalidation(
                 actual: "absent".into(),
                 first_diff: None,
             });
+        }
+    }
+}
+
+
+// -- PLAN-913: source-bound recovery ---------------------------------------
+
+/// The ids the recovery recipe may publish/restore. The BASE value and the
+/// unit count come from the shared closures tables (one corpus, one oracle);
+/// this table only adds the value AFTER the post-restore body edit.
+const CLOSURES_RECOVERY_EDIT_VALUES: &[(&str, i32)] = &[
+    // F01: the second lambda's body (x - n) -> (x - n * 2) = 48.
+    ("F01", 48),
+    // K06: no body edit is exercised; the restore leg re-runs the source.
+    ("K06", 42),
+];
+
+fn closures_recovery_case(id: &str) -> Option<(&'static str, i32, i32, usize)> {
+    let (cid, base, want_code, units) = closures_fn_case(id)?;
+    if want_code.is_some() {
+        return None;
+    }
+    let base = base?;
+    let edited = CLOSURES_RECOVERY_EDIT_VALUES
+        .iter()
+        .find(|(c, _)| *c == id)
+        .map(|(_, v)| *v)
+        .unwrap_or(base);
+    Some((cid, base, edited, units))
+}
+
+/// PLAN-913: judge one recovery step. The parent holds the value oracle; the
+/// worker's face is only a claim. A positive restore MUST report zero
+/// source-production attempts and real deep-verification work, and the
+/// post-restore edit MUST be the warm single-unit route with every unchanged
+/// unit keeping its object and producing nothing.
+fn judge_closures_recovery(
+    id: &str,
+    mode: Option<&str>,
+    step: &StepOut,
+    mismatches: &mut Vec<Mismatch>,
+) {
+    let Some((_, base_value, edited_value, units)) = closures_recovery_case(id) else {
+        mismatches.push(Mismatch {
+            observation: "closures_recovery".into(),
+            kind: "source-registration".into(),
+            expected: format!("recovery source `{id}` in the parent table"),
+            actual: "unregistered".into(),
+            first_diff: None,
+        });
+        return;
+    };
+    let obs = "closures_recovery";
+    let bad =
+        |mismatches: &mut Vec<Mismatch>, kind: &'static str, expected: String, actual: String| {
+            mismatches.push(Mismatch {
+                observation: obs.to_string(),
+                kind,
+                expected,
+                actual,
+                first_diff: None,
+            });
+        };
+    if step.outcome != "success" {
+        bad(mismatches, "recovery-outcome", "success".into(), step_summary(step));
+        return;
+    }
+    let Some(face) = &step.recovery else {
+        bad(
+            mismatches,
+            "recovery-face",
+            "a recovery face".into(),
+            "no recovery report".into(),
+        );
+        return;
+    };
+    let units_want = units as u64;
+    let phase = face
+        .get("phase")
+        .and_then(|p| p.as_str())
+        .unwrap_or("");
+    if !matches!(phase, "publish" | "restore" | "edit") {
+        bad(
+            mismatches,
+            "recovery-phase",
+            "publish|restore|edit".into(),
+            phase.to_string(),
+        );
+        return;
+    }
+    // The BINDING legs carry the unit count AND the caller-held binding; the
+    // edit face reports the warm edit's identity counters instead (the
+    // catalog was already verified). A malformed or missing binding is a
+    // mismatch, not a pass.
+    if phase != "edit" {
+        let manifest = face.get("manifest").and_then(|m| m.as_str()).unwrap_or("");
+        let digest = face.get("digest").and_then(|d| d.as_str()).unwrap_or("");
+        let well_formed = manifest.starts_with("art")
+            && manifest.len() > 16
+            && digest.len() == 64
+            && digest.chars().all(|c| c.is_ascii_hexdigit());
+        if !well_formed {
+            bad(
+                mismatches,
+                "recovery-binding",
+                "a manifest artifact id + 64-hex digest".into(),
+                format!("manifest={manifest:?} digest={digest:?}"),
+            );
+        }
+    }
+    if phase != "edit" && face_u64(face, "units") != Some(units_want) {
+        bad(
+            mismatches,
+            "recovery-units",
+            units_want.to_string(),
+            format!("{:?}", face_u64(face, "units")),
+        );
+    }
+    let want_value = if mode == Some("restore-edit") {
+        edited_value
+    } else {
+        base_value
+    };
+    if step.value != Some(want_value) {
+        bad(
+            mismatches,
+            "recovery-result",
+            want_value.to_string(),
+            format!("{:?}", step.value),
+        );
+    }
+    match phase {
+        "publish" => {
+            // The publication leg is a REAL production: every unit went
+            // through verify + encode + admit.
+            for field in ["p_verified", "p_encoded", "p_admitted"] {
+                if face_u64(face, field) != Some(units_want) {
+                    bad(
+                        mismatches,
+                        "recovery-publish-production",
+                        format!("{field}={units_want}"),
+                        format!("{:?}", face_u64(face, field)),
+                    );
+                }
+            }
+        }
+        "restore" => {
+            if face_u64(face, "p_axis_attempts") != Some(0) {
+                bad(
+                    mismatches,
+                    "recovery-zero-production",
+                    "0 source-production attempts".into(),
+                    format!("{:?}", face_u64(face, "p_axis_attempts")),
+                );
+            }
+            for (field, want) in [
+                ("r_manifest_reads", 1),
+                ("r_unit_reads", units_want),
+                ("r_deep_verifies", units_want),
+                ("r_admits", units_want),
+                ("r_context_reads", 1),
+            ] {
+                if face_u64(face, field) != Some(want) {
+                    bad(
+                        mismatches,
+                        "recovery-verification",
+                        format!("{field}={want}"),
+                        format!("{:?}", face_u64(face, field)),
+                    );
+                }
+            }
+        }
+        _ => {
+            if face.get("route").and_then(|r| r.as_str()) != Some("fast-unit") {
+                bad(
+                    mismatches,
+                    "recovery-edit-route",
+                    "fast-unit".into(),
+                    format!("{:?}", face.get("route")),
+                );
+            }
+            if face.get("warm_gate_pass").and_then(|g| g.as_bool()) != Some(true) {
+                bad(
+                    mismatches,
+                    "recovery-edit-gate",
+                    "warm gate pass".into(),
+                    format!("{:?}", face.get("warm_gate_violations")),
+                );
+            }
+            for (field, want) in [
+                ("whole_attempts", 0),
+                ("submitted_units", 1),
+                ("unchanged_total", units_want.saturating_sub(1)),
+                ("unchanged_same_object", units_want.saturating_sub(1)),
+                ("unchanged_production_attempts", 0),
+                ("store_writes", 0),
+                ("live_after_release", 0),
+            ] {
+                if face_u64(face, field) != Some(want) {
+                    bad(
+                        mismatches,
+                        "recovery-edit-identity",
+                        format!("{field}={want}"),
+                        format!("{:?}", face_u64(face, field)),
+                    );
+                }
+            }
+            let allocs = face_u64(face, "allocs");
+            let frees = face_u64(face, "frees");
+            if allocs.is_none() || frees.is_none() || allocs != frees {
+                bad(
+                    mismatches,
+                    "recovery-edit-arena",
+                    format!("{allocs:?}"),
+                    format!("{frees:?}"),
+                );
+            }
         }
     }
 }

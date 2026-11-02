@@ -1639,6 +1639,13 @@ fn decode_options(
                         "ac-av/closures-fn-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-913: the source-bound recovery recipe — the
+                        // same run/edit session vocabulary (publish/restore
+                        // are `run` steps; the post-restore edit is
+                        // `edit-source` + `run`).
+                        "ac-av/closures-recovery-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
                         // PLAN-824: the dynamic recipe shares the same
                         // step vocabulary.
                         "ac-av/dynamic-run-v1" => {
@@ -1802,6 +1809,7 @@ fn decode_options(
                     || recipe == "ac-av/closures-run-v1"
                     || recipe == "ac-av/closures-source-run-v1"
                     || recipe == "ac-av/closures-fn-run-v1"
+                    || recipe == "ac-av/closures-recovery-run-v1"
                     || recipe == "ac-av/dynamic-run-v1"
                     || recipe == "ac-av/compact-run-v1"
                 {
@@ -1951,6 +1959,7 @@ fn decode_options(
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/closures-source-run-v1"
                         || recipe == "ac-av/closures-fn-run-v1"
+                        || recipe == "ac-av/closures-recovery-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                         || recipe == "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe requires the av
@@ -1975,6 +1984,7 @@ fn decode_options(
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/closures-source-run-v1"
                         && recipe != "ac-av/closures-fn-run-v1"
+                        && recipe != "ac-av/closures-recovery-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
                         && recipe != "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe takes the same av
@@ -2539,6 +2549,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/loaded-run-v1",
     // PLAN-823: the typed closures fixture uses the AV protocol.
     "ac-av/closures-run-v1",
+    // PLAN-913: the source-bound recovery recipe (publish / restore /
+    // restore-edit) — same seam contract, one closures profile identity.
+    "ac-av/closures-recovery-run-v1",
     // PLAN-866: the resident-online recipe — one continuously-running
     // chain, edits at call-boundary safety points. Same seam contract.
     "ac-av/resident-run-v1",

@@ -881,6 +881,22 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-913: the source-bound recovery recipe (publish -> fresh-process
+        // restore -> the next warm edit; the parent judges the P/R axes, the
+        // restored-context identity and the caller-held binding).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_CLOSURES_RECOVERY_RECIPE) =>
+        {
+            ac_av::run_closures_recovery_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-912: the single-function closures source recipe (function
         // session; the parent judges the zero-production axes).
         (Adapter::Probe, auto_test_case::contract::Action::Run)

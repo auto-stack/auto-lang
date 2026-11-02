@@ -1,0 +1,9 @@
+fn helper(n int) int { return n + 1 }
+fn other() int { return 7 }
+fn main() int {
+    var x int = 10
+    var base int = 1
+    var f = (n int) => { base = base + n; return base }
+    var g = (n int) => { return x - n }
+    return f(20) + f(0) + g(3) + helper(1)
+}

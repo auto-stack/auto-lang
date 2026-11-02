@@ -772,6 +772,20 @@ suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.su
 domain = "ace"
 all = false
 
+# PLAN-913: the source-bound recovery suite (publish -> fresh-process
+# restore with zero source production -> the next warm single-unit edit).
+[[group]]
+name = "case-ace-m1-closures-recovery-913"
+title = "ACE M1 closures source-bound recovery 913 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/closures-recovery-913/closures-recovery-913.suite.ad"
+domain = "ace"
+all = false
+
 [[group]]
 name = "case-ace-m1-closures-865-source"
 title = "TestCase case-ace-m1-closures-865-source"
