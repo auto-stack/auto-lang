@@ -1,3 +1,11 @@
+### Plan 911（2026-11-02，work T-06 自查登记；均非本包合同内阻塞）
+
+- **D-911-1（环境脆弱性，owner=909 套件/closures-source）**：`case-ace-m1-shared-mutable-909` 的 `av-s02-closures-source-fresh` 断言 fresh=misses/writes，但 `ac_av.rs` 会话 store 根为 `%TEMP%/av798-session-{session_id}`（固定名、无清理代码），任何先前运行遗留即令"fresh"命中 → 首跑红；删除 `%TEMP%/av798-session-av_closures_909_*` 后重放绿（本包实证：2026-11-02 首红→清理→PASS，且该运行又重建了目录）。套件跨运行非幂等；merge 复跑该组前需先清该 %TEMP% 前缀。与本包 diff 无耦合（closures-source session 未触）。
+- **D-911-2（既有仓内写入，owner=AV 源码增量性能腿）**：`experimental/ace/crates/av/tests/cases/av_source_incremental.rs` 把 `incremental-raw*.json` 写入仓内 `docs/reports/plan827/`（跟踪文件被改 + 新未跟踪文件，主检出自检同见）。非本包引入；正式收尾对账时需甄别处置，长期应由该测试改写 plan-artifacts/临时目录。
+- **D-911-3（具名 gap，owner=828 引擎/mn）**：worker 严格模式 `syntax-not-converged` 逐候选 fallback 门（`serve_incremental_strict_fallback`/rounds materialize gate）无端到端可触发的非收敛合法编辑形状；代码路径与单元逻辑完备（kind 路由不读文本、语言诊断不进 fallback 均有测试），但无真实 fallback 样本。后继发现触发形状时补端到端腿。
+- **D-911-4（负载敏感正式计量，owner=native perf / 固定组治理）**：`mn_sd911_source_v1_four_state_p90_30`（`::performance::`，已 `threads-required=num-test-threads`）在多组并集同命令调度或机器残留负载下红（restart-warm P90 3407ms；或 PE 5s run-budget 超限→exit None），安静单实例在交付候选 `ca4848f5d` 4 次绿（435s）。与 D-909-1 六场景、868 rounds-liveness 同类：正式 perf 腿应仅由 `ace-performance` 单实例承接，日常 `ace-native` 组对其并行调度是治理缺口（候选：perf 腿从日常组排除或并集按组串行）。
+- **V-13 口径注记（非债务）**：fresh（debug tier 冷编译 115 函数+115 COFF+link+run）按 native tier 818 惯例报告不门（P90 8703ms；default 模式对照 6755ms 同成本级）；门仅约束 restart-warm(1770)/body-edit(1532)/signature-reject(243) ms P90≤2000。若需 fresh 也入 2000 门为用户阈值决定（现无既有门可违）。
+
 ### Plan 896（2026-10-31，迁移发现：此前未注册 Cargo 测试目标）
 
 - **F-896-R4-01..04（独立阶段审查，合同内修复，非豁免）**：9464b7263 上输出域审查、5个活跃PS消费者、规范旧规则、同选面对照缺失；已在同树修补并补实跑/反例，b8e2396b0独立phase复核关闭F01..04；新增F05混合HTTP全局串行由4444ea6d4修复并经独立单项phase复核关闭。AC06/10/11剩余完整验收证据限制见两份复核报告，不视作全计划pass。r7新增范围尚待本会话授权核对，当前Plan不作完成或合入声明。见 attachments/896/review-r4.md 与 implementation-summary.md。
