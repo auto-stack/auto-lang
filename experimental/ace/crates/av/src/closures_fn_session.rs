@@ -669,8 +669,18 @@ impl ClosuresFunctionSession {
         &self,
         project: &str,
     ) -> Result<crate::closures_source_recovery::RecoveryTicket, String> {
+        self.publish_source_recovery_with_fault(project, None)
+    }
+
+    /// [`Self::publish_source_recovery`] with an INJECTED fault at one seam
+    /// (verification seam; production callers pass `None`).
+    pub fn publish_source_recovery_with_fault(
+        &self,
+        project: &str,
+        fault: Option<crate::closures_source_recovery::PublishSeam>,
+    ) -> Result<crate::closures_source_recovery::RecoveryTicket, String> {
         use crate::closures_source_recovery::{
-            publish_source_recovery, PublicationRequest, RecoveryUnitInput,
+            publish_source_recovery_with_fault, PublicationRequest, RecoveryUnitInput,
         };
         let store_root = self
             .update
@@ -757,7 +767,7 @@ impl ClosuresFunctionSession {
         let dump = ace_core::source::closures_context::dump_context(front);
         let context_payload = serde_json::to_vec(&dump)
             .map_err(|e| format!("encode declaration context: {e}"))?;
-        publish_source_recovery(
+        publish_source_recovery_with_fault(
             store_root,
             PublicationRequest {
                 project,
@@ -777,6 +787,7 @@ impl ClosuresFunctionSession {
                 context_schema: &dump.schema,
                 units,
             },
+            fault,
         )
         .map_err(|e| e.to_string())
     }

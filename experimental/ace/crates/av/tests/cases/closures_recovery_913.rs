@@ -1252,6 +1252,256 @@ fn av_closures_recovery_913_concurrent_reader_survives_gc() {
     assert!(values.iter().all(|n| *n == p.units));
 }
 
+
+#[test]
+fn av_closures_recovery_913_publication_seam_faults_keep_the_old_root() {
+    // F-913-R1 (V-07): a fault INJECTED at every publication seam must never
+    // hand out a new ticket, never lose the previous root, and the retry must
+    // publish the SAME accepted state without re-producing anything.
+    use ace_av::closures_source_recovery::PublishSeam;
+    let seams = [
+        PublishSeam::AfterContextWrite,
+        PublishSeam::AfterManifestWrite,
+        PublishSeam::BeforeRootRegister,
+        PublishSeam::AfterRootRegister,
+        PublishSeam::BeforeReturn,
+    ];
+    for seam in seams {
+        let store = temp_store("seam");
+        let mut session = ClosuresFunctionSession::new(&store, "main.at");
+        session.apply_source(SRC).expect("cold");
+        let first = session.publish_source_recovery("ac913-seam").expect("first");
+        let units_before: Vec<String> = session
+            .accepted_state()
+            .expect("state")
+            .units
+            .iter()
+            .map(|u| u.store_ref.clone().expect("artifact"))
+            .collect();
+        // A: the parent accepts the edited source; B: the publication is
+        // interrupted at `seam`.
+        session.apply_source(&edited_source()).expect("edit");
+        // What the publication would publish, and the generation the failed
+        // publication must not advance.
+        let units_published: Vec<String> = session
+            .accepted_state()
+            .expect("state")
+            .units
+            .iter()
+            .map(|u| u.store_ref.clone().expect("artifact"))
+            .collect();
+        assert_ne!(
+            units_published, units_before,
+            "seam {seam:?}: the edit really produced a new unit artifact"
+        );
+        let generation_before = session.frontend().expect("frontend").generation();
+        let error = session
+            .publish_source_recovery_with_fault("ac913-seam", Some(seam))
+            .err()
+            .expect("an injected fault must not return a ticket");
+        assert!(
+            error.contains("recovery.injected-fault"),
+            "seam {seam:?}: {error}"
+        );
+        // The accepted state is untouched and nothing was re-produced.
+        assert_eq!(
+            session.frontend().expect("frontend").generation(),
+            generation_before,
+            "seam {seam:?}: a failed publication must not advance the frontend"
+        );
+        let units_after: Vec<String> = session
+            .accepted_state()
+            .expect("state")
+            .units
+            .iter()
+            .map(|u| u.store_ref.clone().expect("artifact"))
+            .collect();
+        assert_eq!(
+            units_after, units_published,
+            "seam {seam:?}: a failed publication re-produces nothing"
+        );
+        // The visible root set matches the seam: before the root write the
+        // OLD root stands alone; after it, old+new coexist; once the old root
+        // is retired the NEW root is the single current root (the caller got
+        // no ticket, but no rollback is claimed and nothing is half-closed).
+        let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+        let roots = handle
+            .root_artifacts("ac913-seam", "source-recovery-current")
+            .expect("roots");
+        match seam {
+            PublishSeam::AfterContextWrite
+            | PublishSeam::AfterManifestWrite
+            | PublishSeam::BeforeRootRegister => assert_eq!(
+                roots,
+                vec![first.manifest_artifact.clone()],
+                "seam {seam:?}: the previous root stands alone"
+            ),
+            PublishSeam::AfterRootRegister => {
+                assert!(
+                    roots.contains(&first.manifest_artifact) && roots.len() == 2,
+                    "seam {seam:?}: old+new coexist ({roots:?})"
+                );
+            }
+            PublishSeam::BeforeReturn => {
+                assert_eq!(roots.len(), 1, "seam {seam:?}: one current root ({roots:?})");
+                assert_ne!(
+                    roots[0], first.manifest_artifact,
+                    "seam {seam:?}: the published root is the new one"
+                );
+            }
+        }
+        drop(handle);
+        // The OLD binding still restores the OLD source in a fresh process
+        // (the old manifest artifact is still present; no GC ran here).
+        let store_arg = store.to_string_lossy().to_string();
+        let base_path = write_source(&store, "base.at", SRC);
+        let base_arg = base_path.to_string_lossy().to_string();
+        let probe = run_probe(&[
+            &store_arg,
+            &first.manifest_artifact,
+            &first.manifest_digest,
+            &base_arg,
+            "main.at",
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+        ]);
+        assert!(
+            probe.ok,
+            "seam {seam:?}: the previous binding must still restore: {}",
+            probe.line
+        );
+        assert_eq!(probe.json["restore_value"], 51);
+        // The retry publishes the SAME accepted state and restores the edit.
+        let second = session.publish_source_recovery("ac913-seam").expect("retry");
+        assert_eq!(second.units, first.units);
+        let edited_path = write_source(&store, "edited.at", &edited_source());
+        let edited_arg = edited_path.to_string_lossy().to_string();
+        let probe = run_probe(&[
+            &store_arg,
+            &second.manifest_artifact,
+            &second.manifest_digest,
+            &edited_arg,
+            "main.at",
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+        ]);
+        assert!(
+            probe.ok,
+            "seam {seam:?}: the retried root must restore: {}",
+            probe.line
+        );
+        assert_eq!(probe.json["restore_value"], 48);
+        let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+        let roots = handle
+            .root_artifacts("ac913-seam", "source-recovery-current")
+            .expect("roots");
+        assert_eq!(
+            roots,
+            vec![second.manifest_artifact.clone()],
+            "seam {seam:?}: the retry leaves exactly one current root"
+        );
+        drop(handle);
+        session.close().expect("close");
+    }
+}
+
+#[test]
+fn av_closures_recovery_913_read_seam_rot_is_rejected_by_name() {
+    // F-913-R2 (V-16): a PARTIAL or ROTTED binding in the required closure is
+    // a named rejection BEFORE anything executes — never a silent miss that
+    // rewrites a PASS.
+    use ace_artifacts::codec::ChunkKind;
+    use ace_artifacts::identity::QueryKey;
+    use ace_artifacts::store::PutRequest;
+    let p = publish("read-rot");
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    let mut put = |tag: &str, kind: ChunkKind, payload: Vec<u8>| -> String {
+        handle
+            .put_artifact(PutRequest {
+                layer: ace_av::closures_source_recovery::RECOVERY_LAYER.id,
+                key: QueryKey::new(
+                    &ace_av::closures_source_recovery::RECOVERY_LAYER,
+                    vec![("test".into(), tag.to_string())],
+                ),
+                kind,
+                payload,
+                edges: Vec::new(),
+                project: None,
+            })
+            .expect("put artifact")
+    };
+    // (a) the right address but the WRONG KIND.
+    let wrong_kind = put("wrong-kind", ChunkKind::Hir, vec![1, 2, 3, 4]);
+    // (b) a TRUNCATED envelope (a valid frame prefix).
+    let real = handle
+        .get_artifact_by_id(&p.unit_artifacts[0].1)
+        .expect("read unit")
+        .expect("unit artifact");
+    let truncated = put(
+        "truncated",
+        ChunkKind::LayoutData,
+        real.payload[..40].to_vec(),
+    );
+    // (c) a self-consistent envelope whose PAYLOAD does not match the
+    //     fingerprint the manifest records.
+    let claimed_fp = "1111111111111111";
+    let identity = ace_av::cache::EnvelopeIdentity {
+        kind: ace_av::cache::EnvelopeKind::AbcUnit,
+        producer: ace_av_core::contract::CLOSURES_PRODUCER_ID,
+        schema: ace_av_core::contract::ABC_CLOSURES_SCHEMA,
+        owner_module: "m_src",
+        stage: 2,
+        mir_sem: ace_av_core::contract::MIR_CLOSURES_SEMANTICS.0,
+        abc_sem: ace_av_core::contract::ABC_CLOSURES_SEMANTICS.0,
+        av_sem: ace_av_core::contract::AV_CLOSURES_SEMANTICS.0,
+        snapshot: ace_av_core::contract::fnv1a64(b"main.at"),
+        unit: "d_main",
+        body_fp: claimed_fp,
+    };
+    let mismatched = put(
+        "fingerprint",
+        ChunkKind::LayoutData,
+        ace_av::cache::envelope_wrap(&[9, 9, 9, 9], &identity),
+    );
+    drop(handle);
+    for (tag, artifact, want, fingerprint) in [
+        ("wrong-kind", wrong_kind, "recovery.kind", None),
+        ("truncated", truncated, "recovery.envelope", None),
+        (
+            "fingerprint",
+            mismatched,
+            "recovery.unit-fingerprint",
+            Some(claimed_fp),
+        ),
+    ] {
+        let mut request = synthetic_publication("ac913-rot", 1, &p.source_sha256, &artifact, b"{}");
+        // A distinct declaration-context revision keeps each case's manifest
+        // key unique (the store refuses same-key/different-payload writes).
+        request.context_revision = Box::leak(format!("ctx-{tag}").into_boxed_str());
+        if let Some(fp) = fingerprint {
+            request.units[0].body_fp = fp.to_string();
+        }
+        let ticket = publish_source_recovery(&p.store, request).expect("synthetic publication");
+        let store_arg = p.store.to_string_lossy().to_string();
+        let source_arg = p.source.to_string_lossy().to_string();
+        let probe = run_probe(&[
+            &store_arg,
+            &ticket.manifest_artifact,
+            &ticket.manifest_digest,
+            &source_arg,
+            "main.at",
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+        ]);
+        assert!(
+            !probe.ok,
+            "{tag}: a rotted binding must be rejected: {}",
+            probe.line
+        );
+        assert_eq!(probe.json["code"], want, "{tag}: {}", probe.line);
+    }
+}
+
 #[test]
 fn av_closures_recovery_913_session_entry_matches_probe() {
     // The same restore entry through a plain in-process call: the counters,

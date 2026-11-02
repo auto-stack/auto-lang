@@ -361,6 +361,35 @@ fn manifest_key(m: &SourceRecoveryManifest) -> QueryKey {
     )
 }
 
+/// One PUBLICATION SEAM a verification run may inject a fault at. The
+/// default publish path never sets one; the injection exists so the ordering
+/// claim ("a failure between any two writes never leaves a half closure
+/// visible, never hands out a ticket and never loses the previous root") is
+/// measurable instead of asserted by reading the code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PublishSeam {
+    /// The declaration context artifact is written and leased.
+    AfterContextWrite,
+    /// The manifest artifact is written (no root yet).
+    AfterManifestWrite,
+    /// Every required artifact is leased; the root is not registered yet.
+    BeforeRootRegister,
+    /// The NEW root is registered; the superseded root is not retired yet.
+    AfterRootRegister,
+    /// The publication succeeded; the ticket is not returned yet.
+    BeforeReturn,
+}
+
+fn inject(fault: Option<PublishSeam>, at: PublishSeam) -> Result<(), RecoveryError> {
+    if fault == Some(at) {
+        return Err(RecoveryError::new(
+            "recovery.injected-fault",
+            format!("injected publication fault at {at:?}"),
+        ));
+    }
+    Ok(())
+}
+
 /// Publish one accepted source state as the project's CURRENT recovery root.
 ///
 /// Order (§5.3): serialize + cap → put the manifest (leased) → register the
@@ -372,6 +401,16 @@ fn manifest_key(m: &SourceRecoveryManifest) -> QueryKey {
 pub fn publish_source_recovery(
     store_root: &Path,
     request: PublicationRequest<'_>,
+) -> Result<RecoveryTicket, RecoveryError> {
+    publish_source_recovery_with_fault(store_root, request, None)
+}
+
+/// [`publish_source_recovery`] with an optional INJECTED fault at one seam
+/// (verification seam; production callers pass `None`).
+pub fn publish_source_recovery_with_fault(
+    store_root: &Path,
+    request: PublicationRequest<'_>,
+    fault: Option<PublishSeam>,
 ) -> Result<RecoveryTicket, RecoveryError> {
     if request.source_len > MAX_SOURCE_BYTES {
         return Err(RecoveryError::new(
@@ -515,6 +554,7 @@ pub fn publish_source_recovery(
         .map_err(|e| {
             RecoveryError::new("recovery.lease", format!("lease context: {e}"))
         })?;
+    inject(fault, PublishSeam::AfterContextWrite)?;
     let manifest = SourceRecoveryManifest {
         schema: RECOVERY_SCHEMA.to_string(),
         source_sha256: request.source_sha256.to_string(),
@@ -586,6 +626,7 @@ pub fn publish_source_recovery(
             project: None,
         })
         .map_err(|e| RecoveryError::new("recovery.put", format!("put manifest: {e}")))?;
+    inject(fault, PublishSeam::AfterManifestWrite)?;
     // Leases for every referenced artifact and the manifest itself for the
     // publication window (an OS-backed lease dies with this process).
     let _manifest_lease = store
@@ -606,6 +647,7 @@ pub fn publish_source_recovery(
                 })?,
         );
     }
+    inject(fault, PublishSeam::BeforeRootRegister)?;
     // Atomic root update: new root first, superseded roots second.
     let previous = store
         .root_artifacts(request.project, RECOVERY_ROOT_KIND)
@@ -613,6 +655,7 @@ pub fn publish_source_recovery(
     store
         .register_root(request.project, &artifact, RECOVERY_ROOT_KIND)
         .map_err(|e| RecoveryError::new("recovery.root", format!("register root: {e}")))?;
+    inject(fault, PublishSeam::AfterRootRegister)?;
     for old in previous {
         if old == artifact {
             continue;
@@ -623,6 +666,7 @@ pub fn publish_source_recovery(
                 RecoveryError::new("recovery.root", format!("retire old root {old}: {e}"))
             })?;
     }
+    inject(fault, PublishSeam::BeforeReturn)?;
     Ok(RecoveryTicket {
         manifest_bytes: payload.len(),
         manifest_digest: digest,
@@ -1156,7 +1200,12 @@ fn peek_envelope_payload(framed: &[u8], expect_unit: &str) -> Option<Vec<u8>> {
 /// The accepted generation of the project's CURRENT recovery root, if any.
 fn current_root_generation(store: &ManagedStore, project: &str) -> Option<u64> {
     for id in store.root_artifacts(project, RECOVERY_ROOT_KIND).ok()? {
-        let Some(found) = store.get_artifact_by_id(&id).ok()? else {
+        // A hint read is still bounded: a tampered/large stored root must be
+        // refused before its bytes are materialized (§5.2 rule).
+        let Some(found) = store
+            .get_artifact_by_id_bounded(&id, MAX_MANIFEST_BYTES as u64 + ENVELOPE_OVERHEAD)
+            .ok()?
+        else {
             continue;
         };
         if found.kind != ChunkKind::LayoutData {
