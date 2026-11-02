@@ -1,0 +1,85 @@
+# PLAN-914 E01/E02 named evaluation order — the four real production paths.
+#
+# Frozen oracle (docs/specs/auto-test-case/ace-m1-scenario-oracles.md E01/E02):
+# value 7 (E01) / 103 (E02) and the mark trace bytes exactly "ba".
+#
+# Producer split (per-path real entry, same frozen oracle):
+# - ac/av consume the ACE source (capability-gated mark_a/mark_b intrinsics);
+# - avm/a2r consume the legacy source (ordinary Auto mark functions using
+#   `write`, which the legacy engines render without a newline).
+# Discriminators: positional binding yields 8/203; declaration-order
+# evaluation (E02) yields trace "ab".
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.e01.ace"
+  tags: ["ace-m1", "scenario", "order-914"]
+  links: ["PLAN-914"]
+  source: { file: "src/E01-ace.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7, stderr: { text: "ba" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7, trace: { text: "ba" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.e01.legacy"
+  tags: ["ace-m1", "scenario", "order-914"]
+  links: ["PLAN-914"]
+  source: { file: "src/E01-legacy.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "7" }, stdout: { text: "ba", compare: "bytes" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_e01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_e01.rs", file: "oracle/m1_e01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.e02.ace"
+  tags: ["ace-m1", "scenario", "order-914"]
+  links: ["PLAN-914"]
+  source: { file: "src/E02-ace.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 103, stderr: { text: "ba" } } },
+    { id: "av-data", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 103, trace: { text: "ba" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.e02.legacy"
+  tags: ["ace-m1", "scenario", "order-914"]
+  links: ["PLAN-914"]
+  source: { file: "src/E02-legacy.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "103" }, stdout: { text: "ba", compare: "bytes" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_e02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_e02.rs", file: "oracle/m1_e02.rs", compare: "bytes" } ] } }
+  ]
+}
+```

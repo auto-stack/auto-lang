@@ -1,0 +1,8 @@
+# PLAN-914 order layout scenario suite — E01/E02 named evaluation order on the
+# four real production paths (8 checks). I04/I09 (layout) join here in T-04.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-order-layout-914", include: [
+  "E01-E02.case.ad",
+] }
+```

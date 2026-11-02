@@ -746,6 +746,20 @@ suite = "crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suit
 domain = "ace"
 all = false
 
+# PLAN-914: the named evaluation-order scenario suite (E01/E02 on the four
+# real production paths; I04/I09 join in T-04).
+[[group]]
+name = "case-ace-m1-order-layout-914"
+title = "ACE M1 named-order scenario 914 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad"
+domain = "ace"
+all = false
+
 [[group]]
 name = "case-ace-m1-closures-865-source"
 title = "TestCase case-ace-m1-closures-865-source"
