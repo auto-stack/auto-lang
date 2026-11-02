@@ -1603,6 +1603,20 @@ fn run_check_with_transport(
     } else {
         family.expected_core_version()
     };
+    // PLAN-915: the resource recipe drives two REAL profiles; the entry
+    // pins which identity it may report, and the receipt's toolchain axis
+    // records that same identity instead of the family default.
+    let resource_core_axis: Option<&str> = if family == RecipeFamily::Resource {
+        Some(if av.entry == "source:k02" {
+            EXPECTED_AV_CLOSURES_CORE_VERSION
+        } else {
+            EXPECTED_AV_COLLECTIONS_CORE_VERSION
+        })
+    } else {
+        None
+    };
+    let receipt_core_override = resource_core_axis
+        .or(entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION));
     // F798-R3-07 shape: leading edit-source allowed (measured window);
     // the judged last step must be a run. PLAN-866: the resident recipe
     // judges the resident-finish step instead.
@@ -2018,16 +2032,11 @@ fn run_check_with_transport(
             ));
             break 'admit;
         }
-        if family == RecipeFamily::Resource {
+        if let Some(want_core) = resource_core_axis {
             // PLAN-915: the resource recipe attaches the real profile of the
             // entry it drove; the parent pins WHICH entry may report which
             // identity (the K02 capture source is the closures profile, all
             // collections sources and place witnesses the collections one).
-            let want_core = if av.entry == "source:k02" {
-                EXPECTED_AV_CLOSURES_CORE_VERSION
-            } else {
-                EXPECTED_AV_COLLECTIONS_CORE_VERSION
-            };
             if ok.av_core_version != want_core {
                 infra_detail = Some(format!(
                     "av core version `{}` does not match the entry's admitted `{}`",
@@ -2316,8 +2325,10 @@ fn run_check_with_transport(
         judge_dynamic_fixture(id, &step, &mut mismatches);
     } else if family == RecipeFamily::Resource {
         // PLAN-915: the R02 sweep / R03 place judgement against the
-        // parent's frozen tables (the worker's word is never the oracle).
+        // parent's frozen tables (the worker's word is never the oracle),
+        // plus the case's own declared completion face.
         judge_resource(&av.entry, &step, &mut mismatches);
+        judge_expectation(family, &step, oracle, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
         if family == RecipeFamily::Loaded {
@@ -2368,7 +2379,7 @@ fn run_check_with_transport(
         },
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,
-        "toolchain": probe_toolchain_axes(&exe_sha, family, entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION)),
+        "toolchain": probe_toolchain_axes(&exe_sha, family, receipt_core_override),
     });
     std::fs::write(
         artifact_dir.join("probe-receipt.json"),

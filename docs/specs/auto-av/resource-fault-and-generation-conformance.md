@@ -35,6 +35,9 @@
 - **每个失败点断言**：outcome 是带序号的可辨识 `Infra`（`fault-injected at …#<n>`），
   live owned 缓冲 = 0（部分产物已回收），失败点之前的 attempt 成功计数 = n-1（arena seam），
   语言结果不产生 PASS/半产物。
+- **口径**：record/Variant 的 `Rc` 头不单列 attempt——它们的构造以"槽写正增量"计入值
+  seam（与 821/822 的 V-07 既有定义一致）；owned Str/List 缓冲才是 arena attempt。
+  这两类合起来覆盖本域运行时真正记账的每一次分配尝试。
 - **支持域**：原 corpus `L04`（owned record 字段 view）、`L05`（remove 移出 owner）、
   `V05`（Variant owned payload）、`K02`（创建者退出后 owned 闭包，capture/env 物化）。
 - **父侧冻结**（worker 只报事实，不带期望）：每例的结果值与两个 attempt 总数写死在父表
