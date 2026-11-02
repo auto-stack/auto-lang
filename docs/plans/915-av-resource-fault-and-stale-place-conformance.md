@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-915
-status: executing
+status: execution_done
 feature_name: AV资源故障与陈旧Place正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-av/resource-fault-and-generation-conforman
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-test-case]
 depends_on: [PLAN-821, PLAN-822, PLAN-864, PLAN-909, PLAN-912]
-current_step: 2
+current_step: 6
 total_steps: 10
 ---
 
@@ -35,7 +35,7 @@ Rust；av-core/av/core/lowering、auto-lang-core TestCase adapter；沿固定car
 
 ## 4. 需求分析与背景调查
 
-2026-11-02 用户 `/goal 完成计划915` 授权整链（work→review→bounded repair→merge），继承原批准范围；T-01 起在唯一树施工。实际基面 = main `5a0ef7609`（913 已归档合入；914/916 亦已交付），计划起草时引用的 `0e93e3cc9` 仅历史。D911=`ca4848f5d`、D912=`13a465336` 均已是祖先。**T-01 实测基线更正**：binding.tsv SHA256=`7b3092173791447f7791df13e6d51ef7c196bf5968f53853fd104135e6215e2f`（起草稿 `67bf520d…` 已被 914/916 落盘更新，作废）；`ace-m1-scenario-oracles.md`=`b8791a06…`（起草稿 `c0539b96…` 同因作废）；`applicability.json`=`74c9109b…`（与起草一致）。av.rs=`ff0d3e19…` 与起草一致；owned_text/closures/place 实测见 §9。34 静态阻塞中的本两格确实**不是**同名 corpus:R02/R03（corpus R02/R03 是另一对行，`applies` 命名空间见 binding.tsv:3-5）。
+2026-11-02 用户 `/goal 完成计划915` 授权整链（work→review→bounded repair→merge），继承原批准范围；T-01 起在唯一树施工。实际基面 = main `5a0ef7609`（913 已归档合入；914/916 亦已交付），计划起草时引用的 `0e93e3cc9` 仅历史。D911=`ca4848f5d`、D912=`13a465336` 均已是祖先。**T-01 实测基线更正**：binding.tsv 基线 SHA256=`134d93f6…`（起草稿 `67bf520d…` 已被 914/916 落盘更新，作废；本次 915 改动后的最终值为 `9563cfc6…`）；`ace-m1-scenario-oracles.md`=`b8791a06…`（起草稿 `c0539b96…` 同因作废）；`applicability.json`=`74c9109b…`（与起草一致）。av.rs=`ff0d3e19…` 与起草一致；owned_text/closures/place 实测见 §9。34 静态阻塞中的本两格确实**不是**同名 corpus:R02/R03（corpus R02/R03 是另一对行，`applies` 命名空间见 binding.tsv:3-5）。
 
 | 来源 / 实读符号 | 当前事实 / 基线 |
 |---|---|
@@ -114,10 +114,10 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 |---|---|---|---|---|---|
 | T-01 | work | 后续实施指令；D912；913/914实际S/H | 冻结两格/已有防护、hash/支持域/cap/consumer/唯一树材料与窗口 | AC-01..04 | [✅] |
 | T-02 | work | T-01；P/必要S | 最小源/typed逐点fault→清理→修复、合法stale→拒绝→fresh，冻结N/事实codec；缺可行路径needs_replan | AC-01/02/03 | [✅] |
-| T-03 | work | T-02；av-core资源S | 接既有fault seam/真实attempt/事务与显式清理，修实证缺口，V-01/02 | AC-01 | [ ] |
-| T-04 | work | T-02/03；Place/恢复只读S | 接真实使用期检查/危险访问事实、合法近邻与D912暖门，V-03/04/06 | AC-02/04 | [ ] |
-| T-05 | work | T-03/04；H/M1 | 正式case/codec/父判/独立oracle/新固定组、两格父证据回填与全consumer，V-05/08 | AC-03/04 | [ ] |
-| T-06 | work | T-01..05；运行错峰 | V-01..08、原资源/时间/完整组/健康与遗漏自查，冻结SD/SHA→execution_done | AC-01..04 | [ ] |
+| T-03 | work | T-02；av-core资源S | 接既有fault seam/真实attempt/事务与显式清理，修实证缺口，V-01/02 | AC-01 | [✅] |
+| T-04 | work | T-02/03；Place/恢复只读S | 接真实使用期检查/危险访问事实、合法近邻与D912暖门，V-03/04/06 | AC-02/04 | [✅] |
+| T-05 | work | T-03/04；H/M1 | 正式case/codec/父判/独立oracle/新固定组、两格父证据回填与全consumer，V-05/08 | AC-03/04 | [✅] |
+| T-06 | work | T-01..05；运行错峰 | V-01..08、原资源/时间/完整组/健康与遗漏自查，冻结SD/SHA→execution_done | AC-01..04 | [✅] |
 | T-07 | review | T-06同树冻结SHA | 独立全链反例/支持/所有权/真实P0复审，修复重绑pass→reviewed | AC-05 | [ ] |
 | T-08 | merge | T-07 pass | 冻结受影响组/消费者并集或有效同身份证据；batch仅due主检出单实例 | AC-06 | [ ] |
 | T-09 | merge | T-08 | 合入、SD-01..07读回、窗口/残余owner交接并archive delivered | AC-06 | [ ] |
@@ -142,7 +142,7 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 
 2026-11-02 | stage: work | plan_id: PLAN-915 | plan_revision: 1 | outcome: pass（T-01..T-06，execution_done）| worktree: D:/autostack/.wt/lang-915/auto-lang | branch: plan-915-dev | base_commit: 5a0ef7609 | code_commit: b1e6cf127 | dependency_revisions: 无（未改跨仓依赖）| next_responsible_role: review
 证据：
-- T-01 基线冻结：main `5a0ef7609`（913/914/916 已合入）；binding.tsv=`9563cfc6…`（起草稿 `67bf520d…` 已被 914/916 更新，作废）、scenario-oracles=`b8791a06…`（同因）、applicability=`74c9109b…`（未变）、av.rs=`ff0d3e19…`（与起草一致）、owned_text=`5056069…`、closures=`ed2bb48…`、place=`c7de6e9…`；唯一树/材料/窗口按 §8 末段执行，未建链接、未动 913 数据。
+- T-01 基线冻结：main `5a0ef7609`（913/914/916 已合入）；binding.tsv 基线=`134d93f6…`、本次改动后=`9563cfc6…`（起草稿 `67bf520d…` 已被 914/916 更新，作废）、scenario-oracles=`b8791a06…`（同因）、applicability=`74c9109b…`（未变）、av.rs=`ff0d3e19…`（与起草一致）、owned_text=`5056069…`、closures=`ed2bb48…`、place=`c7de6e9…`；唯一树/材料/窗口按 §8 末段执行，未建链接、未动 913 数据。
 - T-02 fixture 与冻结 N：父表 `RESOURCE_SWEEP_CASES` = L04 42/6/2、L05 42/5/2、V05 42/6/1、LSTR 51/5/3、K02 42/5/1（结果 / 值 seam attempt / arena seam attempt）；`PLACE_SEQUENCES` = push/insert/remove/replace → `av.trap.stale-place`；`CAPTURE_CASES` = clone attempt 3/4 失败、5 成功、live 恒 2。
 - T-03 事务与清理：值 seam 增补 List 容量扩容为真实 allocation attempt（先于变异，仅 seam 配置时计数）；arena seam 覆盖 owned Str/List 缓冲；每点失败均为可辨识 `Infra` 且 live=0；N+1 正控、无注入对照、故障清除后同进程重跑、全链重编译恢复（`after` / `after_recompile`）全部断言。
 - T-04 Place 与合法近邻：`ExecLimits::observe_places`（默认 false，生产零成本）→ `ExecTrace.place_facts`（mints/get_ok/get_stale/set_ok/set_stale/buffer_reads，仅统计通过全部校验后的访问）；typed 授信序列（verify_mir→encode→ABC admit）四种结构变更后旧 token 均 `av.trap.stale-place` 且 `buffer_reads` 仅含合法读；fresh token 与无变更 legal 正控成功；源码侧静态反例以 `bind/source.iterate-mutate`（stage=resolve）另记，不与运行期证据混用。
@@ -175,3 +175,22 @@ findings（按独立复审报告编号）：
 
 规范增量复核：SD-01 原则接受但需按 R3/R4/R13 修正（补 LSTR=51）；SD-02 需按 R9 修正（MutRef 边界表述本身正确）；SD-03 需按 R3/R9 修正（“先于 buffer 访问”是代码顺序而非测量）；SD-04 接受；SD-05 需按 R2/R11 修正（仅到重编译级恢复，不交 P90/会话状态；补 LSTR）；SD-06 需按 R8/R11 修正；SD-07 接受（只关两格 av，can_claim_m1=false 已核）。
 2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b1e6cf127 | next: work
+2026-11-02 | stage: work | plan_id: PLAN-915 | plan_revision: 1 | outcome: pass（修复复审 F-915-R1..R13，T-03..T-06 重新完成，execution_done）| worktree: D:/autostack/.wt/lang-915/auto-lang | branch: plan-915-dev | base_commit: b1e6cf127 | code_commit: b65f21ce9 | dependency_revisions: 无 | next_responsible_role: review
+逐项闭合：
+- **F-915-R1（major，可测性）已闭**：`ExecLimits::place_access_before_validate`（test-only，默认 false）在 `resolve_place_elem` 中执行"先访问后校验"的错误顺序并计入同一计数器；crate 单测 `resource_915_r03_access_before_validate_is_measurable` 证明正确实现 `buffer_reads=1`、错误顺序 =3；worker 负控 `AV915_SABOTAGE=read-first` 使父侧冻结 `buffer_reads=1` 判红（实测：push/insert/remove/replace 四项均 `place[stale-facts] expected buffer_reads=1, actual 3`，fresh 2 vs 1）。"校验先于访问"现为可测事实。
+- **F-915-R2（major，P90）已闭**：四状态 ×30 样本 P90 门在冻结提交实测——`closures_fn_formal_states_scale_and_churn`：fresh P50=590/P90=668/P99=758ms、hit 4/4/6、restart 142/156/160、body-edit 26/28/33（全部 ≤2000ms，wall 30.47s）；该测试亦在 9 组并集的 ace-av 组内通过（988 tests）。fault 遍历总时长与单编辑时间分列：资源扫描每个 step 的 `wall_ms` 见 probe-receipt（L04 sweep 约 2ms 量级），单编辑即上表 body-edit P90=28ms。
+- **F-915-R3 已闭**：`ListInsert` 容量扩容并入值 seam 的真实 attempt（先于变异）；typed cap-1 模块单测 `resource_915_r02_insert_growth_is_an_attempt` 证明 growth point 可出现（干净值 10、控件/重编译同为 10）。SD-01 §2 措辞同步为"push 与 insert 两条路径"。
+- **F-915-R4 已闭**：父判新增 arena ledger 三轴（attempts==n、successful==n-1、frees==n-1），单测 `resource_arena_ledger_is_judged` 反证。
+- **F-915-R5 已闭**：LSTR 纳入 crate sweep 测试（51/5/3），`const LSTR` 不再未使用；ace-av 组 988 tests 无新增 warning。
+- **F-915-R6 已闭**：新文件与新区域 rustfmt 0 diff（av.rs/resource_915.rs/tests/av-worker.rs）；ac_av.rs 回到该文件基线 33 处历史偏差（未新增）。
+- **F-915-R7 已闭**：source-manifest `scenario_assets_915.files` 去重为 9 个唯一键、summary 改为 "12-check suite / 9 asset files（L04/L05/V05/LSTR/K02 + capture + place）"；contract scope 复跑 PASS。
+- **F-915-R8 已闭**：`resource`/`place`/`capture` 三个 face 及其嵌套 facts/sub-face 均做未知键拒绝；单测 `resource_faces_reject_unknown_keys`。
+- **F-915-R9 已闭**：SD-02/SD-03 改写——fresh/无变更 mint→read 是本计划实测，活 Share/Static 明确为继承不变量（本计划未新增该面证据）。
+- **F-915-R10 已闭**：§4/§9 基线 binding hash 更正为 `134d93f6…`，并注明 `9563cfc6…` 是本次改动后的值。
+- **F-915-R11 已闭**：SD-05 补 LSTR=51、声明恢复只到"全链重编译后重执行"级；SD-06 改为五份语料/三个 face/entry 词汇含 capture/资产计数；5 个 spec 文件补行尾换行。
+- **F-915-R12 已闭**：`finish_trace` 用于 resume 两个出口（含 `dispatch_limits` 版本），stepped+observe_places 也返回 place facts。
+- **F-915-R13 已闭**：SD-01 明示测量边界——逐点"源/旧值不变"由"带序号 Infra + live=0 + 同源确定性重跑 + 全链重编译恢复"证明；capture 面另有宿主侧 source_readable 直接测量。
+验证（冻结提交 b65f21ce9）：`cargo t ace-av auto-test-case case-ace-m1-resource-915 case-ace-m1-collections-864 case-ace-m1-closures-865-source case-ace-m1-shared-mutable-909 case-ace-m1-closures-fn-912 case-ace-m1-closures-recovery-913 case-ace-m1-order-layout-914` → **9/9 PASS，gate_passed=true，error 空，wall 599s**（run-_6dtmkih；ace-av 988 / auto-test-case 111 / resource 12 / collections 17 / closures-865 8 / shared-909 12 / closures-fn-912 13 / recovery-913 5 / order-layout-914 15）；负控 read-first / drop-point / no-stale 三者均红；父判 10/10、JSON 门 4/4、crate 9/9；`verify-ace-m1-852 -Scope contract` PASS（131 行/313 required）。
+环境记录（如实）：修复后第一次并集 run-wkvab0yh 在 **同一代码** 上红——(a) `closures_fn_formal_states_scale_and_churn` fresh P90=2609ms 超门（机器负载态，独立复跑 P90=668ms 通过；该测试在 9 组并集中须独占资源）；(b) closures-865/909/912 三个 case 组因 `%TEMP%\av798-session-*` 被上一轮运行留温、fresh 计数变 hit 而红（清温后同提交 9/9 绿）。两者均按环境归因保留记录，不记为代码失败。
+blockers：无。
+2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b65f21ce9 | next: review
