@@ -1,11 +1,12 @@
-use crate::ast::{Arg, Body, Code, Expr, Fn, Name, Stmt, StoreKind, Type};
+use crate::ast::{Body, Code, Fn, Name, Stmt, Type};
 use crate::error::{AutoError, TypeError};
 use crate::infer::InferenceContext;
 use crate::types::TypeStore;
-use auto_val::Op;
 use miette::SourceSpan;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+mod walk;
 
 pub(super) fn check(
     ast: &Code,
@@ -107,520 +108,7 @@ fn check_fn(
         }
     }
     ctx.current_ret = Some(decl.ret.clone());
-    let allow_external = ast
-        .stmts
-        .iter()
-        .any(|stmt| matches!(stmt, Stmt::Use(_) | Stmt::TaskDef(_)));
-    check_calls(&decl.body, &mut ctx, functions, decl.span, allow_external);
-    check_movement(&decl.body, decl.span)?;
-    check_borrow_escape(decl, &ctx)?;
-    check_return_paths(decl)?;
-    if let Some(error) = ctx.errors.into_iter().next() {
-        return Err(error);
-    }
-    Ok(())
-}
-
-fn check_calls(
-    body: &Body,
-    ctx: &mut InferenceContext,
-    functions: &HashMap<Name, &Fn>,
-    fallback: Option<(usize, usize)>,
-    allow_external: bool,
-) {
-    for stmt in &body.stmts {
-        match stmt {
-            Stmt::Expr(expr) => check_expr_calls(expr, ctx, functions, fallback, allow_external),
-            Stmt::Return(expr) | Stmt::Reply(expr) => {
-                check_expr_calls(expr, ctx, functions, fallback, allow_external)
-            }
-            Stmt::Store(store) => {
-                check_expr_calls(&store.expr, ctx, functions, fallback, allow_external)
-            }
-            Stmt::If(if_) => {
-                for branch in &if_.branches {
-                    check_expr_calls(&branch.cond, ctx, functions, fallback, allow_external);
-                    check_calls(&branch.body, ctx, functions, fallback, allow_external);
-                }
-                if let Some(body) = &if_.else_ {
-                    check_calls(body, ctx, functions, fallback, allow_external);
-                }
-            }
-            Stmt::For(for_) => {
-                check_expr_calls(&for_.range, ctx, functions, fallback, allow_external);
-                check_calls(&for_.body, ctx, functions, fallback, allow_external);
-            }
-            Stmt::Block(body) => check_calls(body, ctx, functions, fallback, allow_external),
-            _ => {}
-        }
-    }
-}
-
-fn check_expr_calls(
-    expr: &Expr,
-    ctx: &mut InferenceContext,
-    functions: &HashMap<Name, &Fn>,
-    fallback: Option<(usize, usize)>,
-    allow_external: bool,
-) {
-    match expr {
-        Expr::Call(call) => {
-            check_expr_calls(&call.name, ctx, functions, fallback, allow_external);
-            for arg in &call.args.args {
-                match arg {
-                    Arg::Pos(value) | Arg::Pair(_, value) => {
-                        check_expr_calls(value, ctx, functions, fallback, allow_external)
-                    }
-                    Arg::Name(_) => {}
-                }
-            }
-            let Expr::Ident(name) = call.name.as_ref() else {
-                return;
-            };
-            let span = call
-                .pos
-                .map(|pos| SourceSpan::new(pos.pos.into(), pos.len.max(1)))
-                .unwrap_or_else(|| fn_span(fallback));
-            let Some(decl) = functions.get(name) else {
-                let macro_call = matches!(
-                    name.as_str(),
-                    "assert"
-                        | "assert_eq"
-                        | "assert_ne"
-                        | "print"
-                        | "println"
-                        | "eprint"
-                        | "eprintln"
-                        | "format"
-                        | "panic"
-                        | "todo"
-                        | "unimplemented"
-                        | "unreachable"
-                        | "vec"
-                        | "write"
-                        | "writeln"
-                        | "say"
-                        | "printf"
-                        | "not"
-                        | "sleep_ms"
-                        | "pair"
-                        | "str_new"
-                        | "str_len"
-                        | "str_drop"
-                        | "Node"
-                );
-                if !macro_call && !allow_external && ctx.lookup_type(name).is_none() {
-                    let candidates = ctx.get_defined_var_names();
-                    ctx.errors.push(
-                        crate::error::NameError::undefined_function(
-                            name.to_string(),
-                            span,
-                            &candidates,
-                        )
-                        .into(),
-                    );
-                }
-                return;
-            };
-            if !decl.type_params.is_empty() {
-                return;
-            }
-            for (arg, param) in call.args.args.iter().zip(&decl.params) {
-                let Arg::Pos(value) = arg else {
-                    continue;
-                };
-                let mut actual = crate::infer::infer_expr(ctx, value);
-                let constructor_name = match value {
-                    Expr::Call(constructor) => match constructor.name.as_ref() {
-                        Expr::Ident(type_name) => Some(type_name),
-                        _ => None,
-                    },
-                    Expr::Node(node) => Some(&node.name),
-                    _ => None,
-                };
-                if let Some(type_name) = constructor_name {
-                    if let Some(decl) = ctx.lookup_type_decl(type_name) {
-                        actual = Type::User(decl);
-                    }
-                }
-                if let (Type::User(expected), Type::User(found)) = (&param.ty, &actual) {
-                    if expected.name != found.name {
-                        ctx.errors.push(
-                            TypeError::Mismatch {
-                                expected: expected.name.to_string(),
-                                found: found.name.to_string(),
-                                span,
-                            }
-                            .into(),
-                        );
-                    }
-                }
-            }
-        }
-        Expr::Bina(left, op, right) => {
-            check_expr_calls(left, ctx, functions, fallback, allow_external);
-            check_expr_calls(right, ctx, functions, fallback, allow_external);
-            if matches!(op, Op::Add | Op::Sub | Op::Mul | Op::Div) {
-                let left_ty = crate::infer::infer_expr(ctx, left);
-                let right_ty = crate::infer::infer_expr(ctx, right);
-                let numeric = |ty: &Type| {
-                    matches!(
-                        ty,
-                        Type::Byte
-                            | Type::Int
-                            | Type::Uint
-                            | Type::USize
-                            | Type::I64
-                            | Type::U64
-                            | Type::Float
-                            | Type::Double
-                    )
-                };
-                if (matches!(left_ty, Type::Bool) && numeric(&right_ty))
-                    || (matches!(right_ty, Type::Bool) && numeric(&left_ty))
-                {
-                    ctx.errors.push(
-                        TypeError::Mismatch {
-                            expected: left_ty.to_string(),
-                            found: right_ty.to_string(),
-                            span: fn_span(fallback),
-                        }
-                        .into(),
-                    );
-                }
-            }
-        }
-        Expr::NullCoalesce(left, right) => {
-            check_expr_calls(left, ctx, functions, fallback, allow_external);
-            check_expr_calls(right, ctx, functions, fallback, allow_external);
-        }
-        Expr::Unary(_, value)
-        | Expr::View(value)
-        | Expr::Mut(value)
-        | Expr::Move(value)
-        | Expr::Take(value)
-        | Expr::ErrorPropagate(value)
-        | Expr::Some(value)
-        | Expr::Ok(value)
-        | Expr::Err(value)
-        | Expr::BoxExpr(value)
-        | Expr::ArcExpr(value)
-        | Expr::Yield(value) => check_expr_calls(value, ctx, functions, fallback, allow_external),
-        Expr::Dot(value, _) | Expr::Index(value, _) => {
-            check_expr_calls(value, ctx, functions, fallback, allow_external)
-        }
-        Expr::Index(_, index) => check_expr_calls(index, ctx, functions, fallback, allow_external),
-        Expr::Cast { expr: value, .. } | Expr::To { expr: value, .. } => {
-            check_expr_calls(value, ctx, functions, fallback, allow_external)
-        }
-        Expr::Array(values) | Expr::Tuple(values) => {
-            for value in values {
-                check_expr_calls(value, ctx, functions, fallback, allow_external);
-            }
-        }
-        Expr::Object(pairs) => {
-            for pair in pairs {
-                check_expr_calls(&pair.value, ctx, functions, fallback, allow_external);
-            }
-        }
-        Expr::Pair(pair) => check_expr_calls(&pair.value, ctx, functions, fallback, allow_external),
-        Expr::If(if_) => {
-            for branch in &if_.branches {
-                check_expr_calls(&branch.cond, ctx, functions, fallback, allow_external);
-                check_calls(&branch.body, ctx, functions, fallback, allow_external);
-            }
-            if let Some(body) = &if_.else_ {
-                check_calls(body, ctx, functions, fallback, allow_external);
-            }
-        }
-        Expr::Block(body) => check_calls(body, ctx, functions, fallback, allow_external),
-        _ => {}
-    }
-}
-
-fn check_movement(body: &Body, fallback: Option<(usize, usize)>) -> Result<(), AutoError> {
-    let mut bindings = HashMap::new();
-    check_body_mutability(body, &mut bindings, fallback)?;
-    let mut moved = HashSet::new();
-    check_body_moves(body, &mut moved, fallback)
-}
-
-fn check_body_mutability(
-    body: &Body,
-    bindings: &mut HashMap<Name, StoreKind>,
-    fallback: Option<(usize, usize)>,
-) -> Result<(), AutoError> {
-    for stmt in &body.stmts {
-        match stmt {
-            Stmt::Store(store) => {
-                check_expr_mutability(&store.expr, bindings, fallback)?;
-                bindings.insert(store.name.clone(), store.kind.clone());
-            }
-            Stmt::Expr(expr) => check_expr_mutability(expr, bindings, fallback)?,
-            Stmt::Return(expr) | Stmt::Reply(expr) => {
-                check_expr_mutability(expr, bindings, fallback)?
-            }
-            Stmt::If(if_) => {
-                for branch in &if_.branches {
-                    check_expr_mutability(&branch.cond, bindings, fallback)?;
-                    let mut branch_bindings = bindings.clone();
-                    check_body_mutability(&branch.body, &mut branch_bindings, fallback)?;
-                }
-                if let Some(body) = &if_.else_ {
-                    let mut branch_bindings = bindings.clone();
-                    check_body_mutability(body, &mut branch_bindings, fallback)?;
-                }
-            }
-            Stmt::For(for_) => {
-                check_expr_mutability(&for_.range, bindings, fallback)?;
-                let mut loop_bindings = bindings.clone();
-                check_body_mutability(&for_.body, &mut loop_bindings, fallback)?;
-            }
-            Stmt::Block(body) => {
-                let mut block_bindings = bindings.clone();
-                check_body_mutability(body, &mut block_bindings, fallback)?;
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
-fn check_expr_mutability(
-    expr: &Expr,
-    bindings: &HashMap<Name, StoreKind>,
-    fallback: Option<(usize, usize)>,
-) -> Result<(), AutoError> {
-    match expr {
-        Expr::Bina(left, op, right) => {
-            if matches!(op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
-                if let Expr::Ident(name) = left.as_ref() {
-                    if matches!(bindings.get(name), Some(StoreKind::Let | StoreKind::Const)) {
-                        return Err(crate::error::NameError::ImmutableAssignment {
-                            name: name.to_string(),
-                            span: fn_span(fallback),
-                        }
-                        .into());
-                    }
-                }
-            }
-            check_expr_mutability(left, bindings, fallback)?;
-            check_expr_mutability(right, bindings, fallback)
-        }
-        Expr::Call(call) => {
-            check_expr_mutability(&call.name, bindings, fallback)?;
-            for arg in &call.args.args {
-                match arg {
-                    Arg::Pos(value) | Arg::Pair(_, value) => {
-                        check_expr_mutability(value, bindings, fallback)?
-                    }
-                    Arg::Name(_) => {}
-                }
-            }
-            Ok(())
-        }
-        Expr::Unary(_, value)
-        | Expr::View(value)
-        | Expr::Mut(value)
-        | Expr::Move(value)
-        | Expr::Take(value)
-        | Expr::ErrorPropagate(value)
-        | Expr::Some(value)
-        | Expr::Ok(value)
-        | Expr::Err(value)
-        | Expr::BoxExpr(value)
-        | Expr::ArcExpr(value)
-        | Expr::Yield(value) => check_expr_mutability(value, bindings, fallback),
-        Expr::Dot(value, _) => check_expr_mutability(value, bindings, fallback),
-        Expr::Index(value, index) => {
-            check_expr_mutability(value, bindings, fallback)?;
-            check_expr_mutability(index, bindings, fallback)
-        }
-        Expr::Cast { expr: value, .. } | Expr::To { expr: value, .. } => {
-            check_expr_mutability(value, bindings, fallback)
-        }
-        Expr::NullCoalesce(left, right) => {
-            check_expr_mutability(left, bindings, fallback)?;
-            check_expr_mutability(right, bindings, fallback)
-        }
-        Expr::Array(values) | Expr::Tuple(values) => {
-            for value in values {
-                check_expr_mutability(value, bindings, fallback)?;
-            }
-            Ok(())
-        }
-        Expr::Object(pairs) => {
-            for pair in pairs {
-                check_expr_mutability(&pair.value, bindings, fallback)?;
-            }
-            Ok(())
-        }
-        Expr::Pair(pair) => check_expr_mutability(&pair.value, bindings, fallback),
-        _ => Ok(()),
-    }
-}
-
-fn check_body_moves(
-    body: &Body,
-    moved: &mut HashSet<Name>,
-    fallback: Option<(usize, usize)>,
-) -> Result<(), AutoError> {
-    for stmt in &body.stmts {
-        match stmt {
-            Stmt::Expr(expr) => check_expr_moves(expr, moved, fallback)?,
-            Stmt::Return(expr) | Stmt::Reply(expr) => check_expr_moves(expr, moved, fallback)?,
-            Stmt::Store(store) => {
-                check_expr_moves(&store.expr, moved, fallback)?;
-                moved.remove(&store.name);
-            }
-            Stmt::If(if_) => {
-                let mut branch_moves = HashSet::new();
-                for branch in &if_.branches {
-                    check_expr_moves(&branch.cond, moved, fallback)?;
-                    let mut branch_moved = moved.clone();
-                    check_body_moves(&branch.body, &mut branch_moved, fallback)?;
-                    branch_moves.extend(branch_moved);
-                }
-                if let Some(body) = &if_.else_ {
-                    let mut branch_moved = moved.clone();
-                    check_body_moves(body, &mut branch_moved, fallback)?;
-                    branch_moves.extend(branch_moved);
-                }
-                moved.extend(branch_moves);
-            }
-            Stmt::For(for_) => {
-                check_expr_moves(&for_.range, moved, fallback)?;
-                check_body_moves(&for_.body, moved, fallback)?;
-            }
-            Stmt::Block(body) => check_body_moves(body, moved, fallback)?,
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
-fn check_expr_moves(
-    expr: &Expr,
-    moved: &mut HashSet<Name>,
-    fallback: Option<(usize, usize)>,
-) -> Result<(), AutoError> {
-    match expr {
-        Expr::Ident(name) => ensure_not_moved(name, moved, fallback),
-        Expr::Move(value) | Expr::Take(value) => {
-            if let Expr::Ident(name) = value.as_ref() {
-                ensure_not_moved(name, moved, fallback)?;
-                moved.insert(name.clone());
-                Ok(())
-            } else {
-                check_expr_moves(value, moved, fallback)
-            }
-        }
-        Expr::Bina(left, op, right) => {
-            check_expr_moves(left, moved, fallback)?;
-            check_expr_moves(right, moved, fallback)?;
-            if matches!(op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
-                if let Expr::Ident(name) = left.as_ref() {
-                    moved.remove(name);
-                }
-            }
-            Ok(())
-        }
-        Expr::Call(call) => {
-            check_expr_moves(&call.name, moved, fallback)?;
-            for arg in &call.args.args {
-                match arg {
-                    Arg::Pos(value) | Arg::Pair(_, value) => {
-                        check_expr_moves(value, moved, fallback)?
-                    }
-                    Arg::Name(_) => {}
-                }
-            }
-            Ok(())
-        }
-        Expr::Dot(value, _) => check_expr_moves(value, moved, fallback),
-        Expr::Index(value, index) => {
-            check_expr_moves(value, moved, fallback)?;
-            check_expr_moves(index, moved, fallback)
-        }
-        Expr::Unary(_, value)
-        | Expr::View(value)
-        | Expr::Mut(value)
-        | Expr::ErrorPropagate(value)
-        | Expr::Some(value)
-        | Expr::Ok(value)
-        | Expr::Err(value)
-        | Expr::BoxExpr(value)
-        | Expr::ArcExpr(value)
-        | Expr::Yield(value) => check_expr_moves(value, moved, fallback),
-        Expr::Cast { expr: value, .. } | Expr::To { expr: value, .. } => {
-            check_expr_moves(value, moved, fallback)
-        }
-        Expr::NullCoalesce(left, right) => {
-            check_expr_moves(left, moved, fallback)?;
-            check_expr_moves(right, moved, fallback)
-        }
-        Expr::Array(values) | Expr::Tuple(values) => {
-            for value in values {
-                check_expr_moves(value, moved, fallback)?;
-            }
-            Ok(())
-        }
-        Expr::Object(pairs) => {
-            for pair in pairs {
-                check_expr_moves(&pair.value, moved, fallback)?;
-            }
-            Ok(())
-        }
-        Expr::Pair(pair) => check_expr_moves(&pair.value, moved, fallback),
-        _ => Ok(()),
-    }
-}
-
-fn ensure_not_moved(
-    name: &Name,
-    moved: &HashSet<Name>,
-    fallback: Option<(usize, usize)>,
-) -> Result<(), AutoError> {
-    if moved.contains(name) {
-        return Err(TypeError::InvalidOperation {
-            op: format!("read moved value '{}'", name),
-            ty: "use-after-move".into(),
-            span: fn_span(fallback),
-        }
-        .into());
-    }
-    Ok(())
-}
-
-fn check_borrow_escape(decl: &Fn, ctx: &InferenceContext) -> Result<(), AutoError> {
-    if !matches!(decl.ret, Type::StrSlice | Type::Reference(_)) {
-        return Ok(());
-    }
-    for stmt in &decl.body.stmts {
-        let Stmt::Return(expr) = stmt else {
-            continue;
-        };
-        let borrowed_local = match expr.as_ref() {
-            Expr::To {
-                expr,
-                target_type: Type::StrSlice,
-            } => match expr.as_ref() {
-                Expr::Ident(name) => matches!(ctx.lookup_type(name), Some(Type::StrOwned)),
-                _ => false,
-            },
-            Expr::View(value) => matches!(value.as_ref(), Expr::Ident(_)),
-            _ => false,
-        };
-        if borrowed_local {
-            return Err(TypeError::Mismatch {
-                expected: "borrow with a non-local owner".into(),
-                found: "borrow of a local value escapes the function".into(),
-                span: fn_span(decl.span),
-            }
-            .into());
-        }
-    }
-    Ok(())
+    walk::check_fn(decl, ast, functions, ctx)
 }
 
 fn check_return_paths(decl: &Fn) -> Result<(), AutoError> {
@@ -808,6 +296,109 @@ fn main() int {
 }
 "#;
         transpile_rust("semantic_admission", valid_branch).unwrap();
+    }
+
+    #[test]
+    fn review_counterexamples_and_legal_scope_controls() {
+        let invalid = [
+            r#"fn bad() str {
+    let s Str = "temporary"
+    if false { return s.to(str) }
+    return "ok"
+}
+fn main() int { return bad().len() }
+"#,
+            r#"type Item { code int }
+fn main() int {
+    let a Item = Item(41)
+    let b Item = if true { a.move } else { a.move }
+    return a.code + b.code
+}
+"#,
+            r#"fn main() int {
+    let x int = 1
+    let y int = if true { x = 2 } else { 0 }
+    return x + y
+}
+"#,
+            r#"fn main() int {
+    let f = () => missing()
+    return 42
+}
+"#,
+            r#"use.rs std::fs
+fn main() int {
+    if false { return missing() }
+    return 42
+}
+"#,
+            r#"fn main() int {
+    let x int = 1
+    try { x = 2 } catch { }
+    return x
+}
+"#,
+            r#"type Item { code int }
+fn main() int {
+    let a Item = Item(41)
+    is 0 { else -> { let b Item = a.move } }
+    return a.code
+}
+"#,
+            r#"type Item { code int }
+fn main() int {
+    let a Item = Item(41)
+    let f = () => a.move
+    return a.code
+}
+"#,
+        ];
+        for source in invalid {
+            let error = rejects(source);
+            assert!(
+                !matches!(error, AutoError::Msg(_) | AutoError::Io(_)),
+                "non-language error: {:?}",
+                error
+            );
+        }
+
+        let legal = [
+            r#"fn main() int {
+    var x int = 1
+    let y int = if true { x = 2 } else { 0 }
+    return x + y
+}
+"#,
+            r#"fn helper() int { return 42 }
+fn main() int {
+    let f = () => helper()
+    return f()
+}
+"#,
+            r#"use.rs std::fs
+fn missing() int { return 42 }
+fn main() int {
+    if false { return missing() }
+    return 42
+}
+"#,
+            r#"type Item { code int }
+fn main() int {
+    let a Item = Item(41)
+    let b Item = a.move
+    if true {
+        let a Item = Item(2)
+        return a.code
+    }
+    return b.code
+}
+"#,
+        ];
+        for source in legal {
+            transpile_rust("semantic_admission", source).unwrap_or_else(|error| {
+                panic!("legal scope control rejected: {}\n{}", error, source)
+            });
+        }
     }
 
     #[test]
