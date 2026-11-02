@@ -268,6 +268,29 @@ function Load-SourceManifest {
     }
     if ($scCount -ne [int]$m.suites_cases.expected_count) { Fail "suites_cases count $scCount != manifest $($m.suites_cases.expected_count)" }
 
+    # PLAN-914: plan-scoped SCENARIO assets (a sub-directory suite's sources,
+    # goldens and references). The root oracle/reference enumeration above
+    # only covers the corpus root, so a sub-directory scenario's frozen files
+    # would otherwise be invisible to this contract. Present => enumerate
+    # EXACTLY (extra files fail), hash every file, and reject drift.
+    if ($m.PSObject.Properties['scenario_assets']) {
+        $sa = $m.scenario_assets
+        $saRel = [string]$sa.dir
+        $saDir = Join-Path $corpusDir $saRel
+        if (-not (Test-Path $saDir)) { Fail "scenario asset dir missing: $saRel" }
+        $saFiles = @(Get-ChildItem $saDir -Recurse -File | Sort-Object FullName)
+        if ($saFiles.Count -ne [int]$sa.expected_count) {
+            Fail "scenario asset count $($saFiles.Count) != manifest $($sa.expected_count) ($saRel)"
+        }
+        foreach ($f in $saFiles) {
+            $rel = $f.FullName.Substring($saDir.Length + 1).Replace('\', '/')
+            $want = $sa.files.PSObject.Properties[$rel]
+            if (-not $want) { Fail "scenario asset not in manifest: $saRel/$rel" }
+            if ((Sha256File $f.FullName) -cne [string]$want.Value) {
+                Fail "scenario asset DRIFTED: $saRel/$rel"
+            }
+        }
+    }
     # scenario oracles doc (tracked authority for the 40 scenario rows)
     $soPath = Join-Path $RepoRoot $m.scenario_oracles.path
     if (-not (Test-Path $soPath)) { Fail "scenario oracles spec missing: $($m.scenario_oracles.path)" }

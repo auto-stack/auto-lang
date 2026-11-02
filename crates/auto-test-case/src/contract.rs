@@ -1135,7 +1135,8 @@ fn decode_check(
                     "mn.declaration is declared without a declaration-invalidate step",
                 ));
             }
-        }        // PLAN-914 (I04): the same two-way rule for the AV data-incremental
+        }
+        // PLAN-914 (I04): the same two-way rule for the AV data-incremental
         // recipe — an edit is judged through the invalidation oracle, and the
         // oracle never dangles.
         if let Some(av) = options.probe_av.as_ref().filter(|_| {
@@ -3444,12 +3445,4 @@ pub fn validate_console_oracle(
         _ => Ok(()),
     }
 }
-
-
-
-
-
-
-
-
 

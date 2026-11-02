@@ -874,7 +874,8 @@ pub fn run_check(
             }
             ProbeStep::DeclarationInvalidate { .. } => {
                 return Err("abi/interop-v1 does not accept declaration-invalidate steps".into())
-            }            ProbeStep::Restart => serde_json::json!({"op": "restart"}),
+            }
+            ProbeStep::Restart => serde_json::json!({"op": "restart"}),
         };
         let step_tag = match st {
             ProbeStep::Query => "query",
@@ -890,7 +891,8 @@ pub fn run_check(
             }
             ProbeStep::DeclarationInvalidate { .. } => {
                 return Err("abi/interop-v1 does not accept declaration-invalidate steps".into())
-            }            ProbeStep::Restart => "restart",
+            }
+            ProbeStep::Restart => "restart",
         };
         let t_step = Instant::now();
         let nonce = hex(&sha256(
@@ -1298,5 +1300,3 @@ pub fn run_check(
         }),
     })
 }
-
-

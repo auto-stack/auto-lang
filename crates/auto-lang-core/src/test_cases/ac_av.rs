@@ -638,7 +638,8 @@ struct StepOut {
     wall_ms: f64,
     /// mark trace events ("a"/"b" sequence; observation only).
     #[serde(default)]
-    trace: Vec<String>,    /// PLAN-914 (I09): the typed refusal of a controlled partial rebuild
+    trace: Vec<String>,
+    /// PLAN-914 (I09): the typed refusal of a controlled partial rebuild
     /// (`{kind, reason}`); present only on a refused step.
     #[serde(default)]
     refusal: Option<serde_json::Value>,
@@ -1888,7 +1889,8 @@ fn run_check_with_transport(
                 infra_detail = Some("av worker returned no run step".to_string());
                 break 'admit;
             }
-        }        admitted_steps = ok.steps.clone();
+        }
+        admitted_steps = ok.steps.clone();
         // F798-R3-05: the response is bound to THIS request and revision —
         // step count, op echo, edit outcomes, and every run step's
         // source_hash re-derived parent-side over the request's own source
@@ -3525,7 +3527,8 @@ fn judge_expectation(
                         first_diff: None,
                     });
                 }
-            } else if expect.av_channel.is_none()                && expect.stdout.is_none()
+            } else if expect.av_channel.is_none()
+                && expect.stdout.is_none()
                 && expect.stderr.is_none()
             {
                 // Success without a value oracle still requires a value
@@ -4486,8 +4489,3 @@ fn judge_invalidation(
         }
     }
 }
-
-
-
-
-

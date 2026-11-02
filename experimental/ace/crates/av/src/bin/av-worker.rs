@@ -2627,6 +2627,3 @@ fn closures_request(args: &[String]) -> ! {
         4
     });
 }
-
-
-

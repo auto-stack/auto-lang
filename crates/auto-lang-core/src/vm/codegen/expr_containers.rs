@@ -167,7 +167,7 @@ impl Codegen {
                                 crate::ast::Arg::Name(key) => {
                                     source_fields.push((
                                         Some(key.to_string()),
-                                        crate::ast::Expr::Ident(key.clone()),
+                                        crate::ast::Expr::Nil,
                                     ));
                                 }
                             }

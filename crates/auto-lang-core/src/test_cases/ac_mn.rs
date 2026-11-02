@@ -2712,7 +2712,8 @@ fn run_incremental(
                         step_records.push(rec);
                         break 'admit;
                     }
-                }                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+                }
+                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
                     // F-818-R2-02: the syntax increment could not converge
                     // on this legal edit; the worker materialized it on the
                     // session's CURRENT source (accepted prefix preserved).
@@ -2748,7 +2749,8 @@ fn run_incremental(
                         serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
                     step_records.push(rec);
                     break 'admit;
-                }                let unaffected = ok
+                }
+                let unaffected = ok
                     .get("unaffected_stage_delta")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
@@ -3685,4 +3687,6 @@ fn judge_declaration_invalidation(
     }
     out
 }
+
+
 

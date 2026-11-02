@@ -1403,5 +1403,3 @@ fn compare_bindings(oracle_bytes: &[u8], got: &[BindingOut]) -> Result<(), Diff>
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
-
-

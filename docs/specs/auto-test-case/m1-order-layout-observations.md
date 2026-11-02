@@ -57,9 +57,12 @@ body work），不得隐藏或伪造为零。必须同时满足：
 1. 受影响 defs 的失效集**由真实依赖事实决定**（AC：`prepare_declaration_change` 的
    COFF-meta 复用 + 不兼容 unit 才进 object producer；AV：`apply_source` 的
    changed-types/nesting/signature 事实）；
-2. 未受影响的 defs 的 **lower/encode/codegen/load/工件IO 增量 = 0**，同进程 resident
-   MIR/COFF 对象与代际不变（AC 用 `identities_before/after` 的 MIR/COFF 指针承载；
-   AV 用 `identity_all` 的 ptr/generation 承载），声明的 `stable_defs` 逐个核对；
+2. **冷声明前端对全部 body 的 resolve/typecheck/plan/bind 重跑是豁免且如实计入的**
+   （不是「未受影响」的违例：AC 的 `bodies`/`unaffected_stage_delta`、AV 的冷前端
+   body work 都保留为证据）；**零生产要求作用于 rebuild 层**：未受影响的 defs 的
+   **lower/encode/codegen/load/工件IO 增量 = 0**，同进程 resident MIR/COFF 对象与
+   代际不变（AC 用 `identities_before/after` 的 MIR/COFF 指针承载；AV 用
+   `identity_all` 的 ptr/generation 承载），声明的 `stable_defs` 逐个核对；
 3. 旧成功值仍安全、不被按新 layout 隐式重解释；
 4. 禁止以「一律拒绝任何 type 编辑」或「全量重编/只换 hash」冒充通过。
 
@@ -77,6 +80,9 @@ import 签名**，因此使用中记录类型的 layout 变更按设计是**全 
 - **av**：对「只重建部分 defs 的布局候选」走受控 `apply_source_partial`，link/env-contract
   门必须**拒绝**（typed `env-contract` 或 `link-rejected`），且拒绝后旧快照仍可执行
   （后续 run 返回旧值）。父侧不推进已接受源码；不得把拒绝降级为 infra 或静默接受。
+- 拒绝 verdict 的适用范围：`ac_mn` 的严格（source-v1）refusal 判定对**所有增量 mn
+  recipe** 生效（不只本场景的 I09 格）——策略上正确，但全量证据由 merge 的受影响组并集
+  承担；非本场景的旧用例如出现该路径变化，按同一 typed refusal 语义判定。
 - 任何路径都不得隐式重解释旧值、不要求在线的 OSR/HMR。
 
 ## 6. a2r 双轴与显式认证（本场景域）
@@ -93,6 +99,9 @@ actual（发射产物）与 `reference/` 独立 reference 各自经 rustc 编译
   `ac-av/*`；`mn.declaration` 仅 collections；`av.invalidation` 仅 data-incremental），
   未声明不比较、声明了不可观察即准入错误；**worker 的期望永不进入请求**。
 - 两向绑定：声明轮/编辑步必须有对应 oracle，oracle 不能悬空；稳定与重建的 def 不得重叠。
+- 资产登记：`order-layout-914/` 下的 suite/case/金样/reference/src 全部登记在
+  `source-manifest.json` 的 `scenario_assets` 节点（13 files），`verify-ace-m1-852.ps1
+  contract` 对该目录做**精确枚举 + 逐文件哈希**（多一个文件、任一字节漂移都红）。
 - 预算：单操作 receipt ≤4 MiB（本场景实测 1.0–20.2 KiB）、stdout/stderr ≤1 MiB/流、
   AV 值 8 MiB / 受管 32 MiB / 父增量 128 MiB；AC 声明轮 ledger 峰值（本次 21.3 KiB）
   计入既有 ledger 门。超额即非 PASS。
@@ -105,3 +114,5 @@ native 闭包/Dyn ABI 扩展、在线 loader/OSR、资源事件全谱、完整 A
 913 的 closures source recovery、916/917 的旧 A2R 静态准入与 mut/text 发射、以及
 native（avm）B18 等残余 M1 格均不在本文件范围；I04/I09 的 avm/a2r 两列按 NA-6 冻结
 （见 [ace-m1-applicability.md](ace-m1-applicability.md)）。
+
+

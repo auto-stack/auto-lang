@@ -111,7 +111,8 @@ fn trace_oracle_requires_success_completion() {
 }
 
 #[test]
-fn trace_oracle_is_part_of_the_oracle_identity() {    let base = std::env::temp_dir();
+fn trace_oracle_is_part_of_the_oracle_identity() {
+    let base = std::env::temp_dir();
     let limits = Limits::defaults();
     let spec_ba = decode(&av_case(
         "completion: \"success\", exit: 7, trace: { text: \"ba\" }",
@@ -204,3 +205,4 @@ fn mn_stderr_is_part_of_the_oracle_identity() {
         "an edited stderr oracle must change the content-bound identity"
     );
 }
+

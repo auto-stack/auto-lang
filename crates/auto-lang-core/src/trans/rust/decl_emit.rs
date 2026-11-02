@@ -2445,4 +2445,3 @@ impl RustTrans {
         Ok(())
     }
 }
-

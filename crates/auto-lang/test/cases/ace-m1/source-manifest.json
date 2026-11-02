@@ -379,5 +379,28 @@
  "plan_911_update": {
   "date": "2026-11-02",
   "summary": "PLAN-911 T-04: b-diags.case.ad B17-19 ac legs migrated to the strict source-v1 fact channel; new suite native-diags-911 (12 cases: negatives/neighbors/same-family variants/multi-cause/other-stage) + nd911-src variant fixtures; binding.tsv B17-19 ac cells diff:pending -> ok on formal parent-report fact artifacts. T-05: +multibyte-comment positive (nd911-src/MB17.at) and 3 registered RED controls (wrong-family/wrong-stage/generic-shell, case-control-oracles.json expected FAIL) — 16 cases. + warm rounds strict leg (nd911-src/WARM.at, A->B->C stop) — 17 cases."
+ },
+ "scenario_assets": {
+  "dir": "order-layout-914",
+  "expected_count": 13,
+  "files": {
+   "E01-E02.case.ad": "926e153c81d109a6679240f6ba0b01c070190eaf1e26687724e49b040ce23d76",
+   "oracle/m1_e01.rs": "7acd93d06e59ef3ba32a87c51d12f97724a764514b32effbfbf6993eabe31fa3",
+   "oracle/m1_e02.rs": "ac4ae99cc81ba1481430d13b7490bd81910000faa2afbdef35e84d807029b4aa",
+   "order-layout-914.suite.ad": "6cf8f0960ad31e3cc1fcb0330f2537395df970ffa6d7ccded8db818c2f33bbe4",
+   "reference/E01-a2r-reference.rs": "c0d9be13c095b35c54d04d5a3fe69e256e088173fbaed7b280b9c869e765f1b1",
+   "reference/E02-a2r-reference.rs": "0dff01ed6b2a228f07d164df1934e573dc64f440fac15ce1422ff09012cffea7",
+   "src/E01-ace.at": "4863d1c2afe44fd41d844a0443085fa0e4fb9b7e6f5f0dbead97b38600339dcc",
+   "src/E01-legacy.at": "6748b461969416f1eee67be6d83f3c952f6defa6625880667cdb165697f24c17",
+   "src/E02-ace.at": "97a60ce0958cce91f5ec2fc91f9e10fd61328bd03d3b20b4c98fb59399b02388",
+   "src/E02-legacy.at": "a5fc80f24e8234c327f2e0ad0fb3988c9d6c72184a099b131e14c9035808fd58",
+   "src/I04-ace.at": "b6be6ba9c79ff7133cb1ad92eb70837576e05606d66270c5771db68cd86c869a",
+   "src/I04-av.at": "548bad7ba06273e549798e3657703caad2e950618d136a25f2a8ea5af9889dcc",
+   "src/I09-ace.at": "c1b1406b6dd4ead1b4973f339921a460d39c9196a3449d8721df0995fdb49e11"
+  }
+ },
+ "plan_914_update": {
+  "date": "2026-11-02",
+  "summary": "PLAN-914: E01/E02 命名求值顺序四路径 + I04/I09 布局/活状态格位落地；新增 order-layout-914 场景资产（13 files）并在本清单登记（scenario_assets，drift 可检）；binding 12 格回填 ok/ok-emit，binding/scenario-oracles hash 同步；来源规格 m1-order-layout-observations.md。"
  }
 }
