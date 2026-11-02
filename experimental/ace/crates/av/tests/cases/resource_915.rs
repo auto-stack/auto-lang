@@ -205,11 +205,15 @@ fn main() int {
 /// frozen attempt counts.
 #[test]
 fn resource_915_r02_l05_v05_sweeps() {
-    for (name, src, arena_want, value_want) in [("l05", L05, 2u64, 5u64), ("v05", V05, 1u64, 6u64)]
-    {
+    for (name, src, arena_want, value_want) in [
+        ("l05", L05, 2u64, 5u64),
+        ("v05", V05, 1u64, 6u64),
+        ("lstr", LSTR, 3u64, 5u64),
+    ] {
         let facts = resource_915::source_fault_sweep(src, "main", SourceFrontend::Collections)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        assert_eq!(facts["source_value"], 42, "{name}: {facts:#}");
+        let want_value = if name == "lstr" { 51 } else { 42 };
+        assert_eq!(facts["source_value"], want_value, "{name}: {facts:#}");
         assert_eq!(facts["arena_attempts"], arena_want, "{name}: {facts:#}");
         assert_eq!(facts["value_attempts"], value_want, "{name}: {facts:#}");
         for point in facts["arena_points"].as_array().unwrap() {
@@ -220,9 +224,15 @@ fn resource_915_r02_l05_v05_sweeps() {
             assert_eq!(point["faulted"], true, "{name} value: {point}");
             assert_eq!(point["live"], 0, "{name} value: {point}");
         }
-        assert_eq!(facts["arena_control"]["value"], 42, "{name}: {facts:#}");
-        assert_eq!(facts["value_control"]["value"], 42, "{name}: {facts:#}");
-        assert_eq!(facts["after"]["value"], 42, "{name}: {facts:#}");
+        assert_eq!(
+            facts["arena_control"]["value"], want_value,
+            "{name}: {facts:#}"
+        );
+        assert_eq!(
+            facts["value_control"]["value"], want_value,
+            "{name}: {facts:#}"
+        );
+        assert_eq!(facts["after"]["value"], want_value, "{name}: {facts:#}");
         assert_eq!(facts["after"]["live"], 0, "{name}: {facts:#}");
     }
 }
@@ -246,4 +256,71 @@ fn resource_915_r02_capture_clone_sweep() {
     }
     assert_eq!(facts["control"]["outcome"], "success", "{facts:#}");
     assert_eq!(facts["control"]["live"], 2, "{facts:#}");
+}
+
+/// R02 (F-915-R3): insert capacity growth is counted on the value seam like
+/// push growth. A typed module reserves cap 1, one push fills it, and the
+/// insert must therefore grow — the sweep's points must include that
+/// growth attempt.
+#[test]
+fn resource_915_r02_insert_growth_is_an_attempt() {
+    use ace_av_core::av::{execute_with_arena, CancelFlag, ExecLimits};
+    use ace_av_core::contract::{ExecOutcome, Value};
+    use ace_av_core::owned_text::StrArena;
+
+    let m = resource_915::insert_growth_module();
+    let loaded = resource_915::admit(&m).expect("insert module admits");
+    let cancel = CancelFlag::new(false);
+    let (out, _) = execute_with_arena(&loaded, &ExecLimits::default(), &cancel, StrArena::new());
+    // push 10 -> [10]; insert(0, 20) -> [20, 10]; get(1) = 10.
+    match out {
+        ExecOutcome::Success {
+            value: Value::I32(10),
+            ..
+        } => {}
+        other => panic!("clean insert run: {other:?}"),
+    }
+
+    let mut discovery = ExecLimits::default();
+    discovery.fault_after_allocs = Some(u64::MAX);
+    let (_, trace) = execute_with_arena(&loaded, &discovery, &cancel, StrArena::new());
+    let attempts = trace.alloc_events;
+    assert!(
+        attempts >= 1,
+        "the insert growth must be an attempt (trace alloc_events={attempts})"
+    );
+    let mut growth_faulted = false;
+    for k in 1..=attempts {
+        let mut limits = ExecLimits::default();
+        limits.fault_after_allocs = Some(k);
+        let (out, trace) = execute_with_arena(&loaded, &limits, &cancel, StrArena::new());
+        if let ExecOutcome::Infra(msg) = &out {
+            let live = trace.arena.as_ref().map(|a| a.live()).unwrap_or(0);
+            assert_eq!(live, 0, "point {k} leaked {live} buffers");
+            if msg.contains("(list growth)") {
+                growth_faulted = true;
+            }
+        }
+    }
+    assert!(growth_faulted, "no value point reported the insert growth");
+}
+
+/// R03 measurement control (F-915-R1): with the test-only wrong order
+/// (access BEFORE validation) the same counter reports the premature access,
+/// so a read-then-trap implementation is caught by the frozen
+/// `buffer_reads == 1`.
+#[test]
+fn resource_915_r03_access_before_validate_is_measurable() {
+    let m = resource_915::place_module(Some(PlaceMutation::Push));
+    let correct = resource_915::run_place_module_with(&m, true, false).expect("correct");
+    assert_eq!(correct["facts"]["buffer_reads"], 1, "{correct:#}");
+    let wrong = resource_915::run_place_module_with(&m, true, true).expect("wrong order");
+    assert_eq!(wrong["outcome"], "trap", "{wrong:#}");
+    // Every PlaceGet under the wrong order records its premature touch in
+    // addition to the validated read: the legal get counts 2, the stale get
+    // counts 1 (and is then rejected) -> 3 total instead of the correct 1.
+    assert_eq!(
+        wrong["facts"]["buffer_reads"], 3,
+        "the premature accesses must be visible in the counter: {wrong:#}"
+    );
 }

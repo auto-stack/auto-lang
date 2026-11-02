@@ -85,8 +85,9 @@ frame/slot/buf_id/epoch/index/elem_gen 六元组）在 scenario R03 上的正式
 - typed、经 `verify_mir`→`encode_abc`→`verify_abc_bytes` 授信的序列，结构性变更
   （push/insert/remove/元素替换）后旧 token 使用 = `av.trap.stale-place`，校验先于任何
   buffer 访问（`observe_places` 下 `buffer_reads` 只计合法读）。
-- 合法近邻保持：fresh token、未变元素、活 Share/Static 缓冲仍可读——"Snapshot 语义下
-  旧 view 读旧字节"与"List 结构变更后旧 token 失效"是两条不同规则，不把全部旧 view
-  判无效。
+- 合法近邻保持：fresh token 与无变更 mint→read 由本计划实测；活 Share/Static 缓冲的
+  可读性是**继承不变量**（place.rs snapshot 单测未改，本计划未新增该面证据）——
+  "Snapshot 语义下旧 view 读旧字节"与"List 结构变更后旧 token 失效"是两条不同规则，
+  不把全部旧 view 判无效。
 - 证据入口：`case-ace-m1-resource-915`；合同见
   [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。

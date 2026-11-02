@@ -518,7 +518,7 @@ fn fresh_module(mutation: PlaceMutation) -> MirModule {
     b.build(got)
 }
 
-fn admit(m: &MirModule) -> Result<LoadedModule, String> {
+pub fn admit(m: &MirModule) -> Result<LoadedModule, String> {
     let owner = m.owner.clone();
     verify_mir(m).map_err(|e| format!("verify_mir: {e:?}"))?;
     let wire = encode_abc(m).map_err(|e| format!("encode: {e:?}"))?;
@@ -537,9 +537,22 @@ fn facts_json(facts: PlaceFacts) -> serde_json::Value {
 }
 
 pub fn run_place_module(m: &MirModule, observe: bool) -> Result<serde_json::Value, String> {
+    run_place_module_with(m, observe, false)
+}
+
+/// `access_first` is the PLAN-915 test-only measurement control: it makes
+/// the executor touch the element BEFORE validation (the wrong order), so a
+/// test can prove the observation counter would catch such an
+/// implementation. Never set in a formal run.
+pub fn run_place_module_with(
+    m: &MirModule,
+    observe: bool,
+    access_first: bool,
+) -> Result<serde_json::Value, String> {
     let loaded = admit(m)?;
     let mut limits = ExecLimits::default();
     limits.observe_places = observe;
+    limits.place_access_before_validate = access_first;
     let (out, trace) =
         execute_with_arena(&loaded, &limits, &CancelFlag::new(false), StrArena::new());
     let facts = trace
@@ -572,9 +585,18 @@ pub fn run_place_module(m: &MirModule, observe: bool) -> Result<serde_json::Valu
 /// R03 face: the stale witness for `mutation`, the fresh-token positive
 /// control beside it, and the legal no-mutation control.
 pub fn place_sequence(mutation: PlaceMutation) -> Result<serde_json::Value, String> {
-    let stale = run_place_module(&place_module(Some(mutation)), true)?;
-    let fresh = run_place_module(&fresh_module(mutation), true)?;
-    let legal = run_place_module(&place_module(None), true)?;
+    place_sequence_with(mutation, false)
+}
+
+/// PLAN-915: the sequence with the optional test-only access-before-validate
+/// control (see `run_place_module_with`).
+pub fn place_sequence_with(
+    mutation: PlaceMutation,
+    access_first: bool,
+) -> Result<serde_json::Value, String> {
+    let stale = run_place_module_with(&place_module(Some(mutation)), true, access_first)?;
+    let fresh = run_place_module_with(&fresh_module(mutation), true, access_first)?;
+    let legal = run_place_module_with(&place_module(None), true, access_first)?;
     Ok(serde_json::json!({
         "mutation": mutation.as_str(),
         "stale": stale,
@@ -676,4 +698,40 @@ pub fn capture_clone_sweep() -> Result<serde_json::Value, String> {
         "points": points,
         "control": control,
     }))
+}
+
+/// PLAN-915 R02 (F-915-R3): a typed module whose ONLY capacity growth is a
+/// `LIST_INSERT` — `LIST_NEW` reserves cap 1, one push fills it exactly, and
+/// the insert then must grow. Used to prove insert growth is counted as an
+/// allocation attempt (the source-level programs cannot isolate it).
+pub fn insert_growth_module() -> MirModule {
+    let mut b = Builder::new();
+    let list = b.slot(TY_LIST, "list");
+    let v = b.slot(TY_I32, "v");
+    let idx = b.slot(TY_I32, "idx");
+    let out = b.slot(TY_I32, "out");
+    b.i(MirInstr::ListNew {
+        dst: list,
+        list_ty: TY_LIST,
+        cap: 1,
+    });
+    b.iconst(v, 10);
+    b.i(MirInstr::ListPush {
+        root: list,
+        value: v,
+    });
+    b.iconst(idx, 0);
+    b.iconst(v, 20);
+    b.i(MirInstr::ListInsert {
+        root: list,
+        index: idx,
+        value: v,
+    });
+    b.iconst(idx, 1);
+    b.i(MirInstr::ListGet {
+        dst: out,
+        base: list,
+        index: idx,
+    });
+    b.build(out)
 }

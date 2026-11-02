@@ -837,8 +837,11 @@ fn resource_case(req: &serde_json::Value) -> Result<serde_json::Value, String> {
         let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
         let mutation =
             PlaceMutation::parse(name).ok_or_else(|| format!("unknown place mutation {name}"))?;
-        let mut sequence = resource_915::place_sequence(mutation)?;
         let mode = std::env::var("AV915_SABOTAGE").unwrap_or_default();
+        // Test-only measurement control: drive the wrong access-before-validate
+        // order so the parent's frozen `buffer_reads == 1` must go red.
+        let access_first = mode == "read-first";
+        let mut sequence = resource_915::place_sequence_with(mutation, access_first)?;
         if mode == "no-stale" {
             // Test-only negative control: a worker that claims the stale use
             // did not happen must be rejected by the frozen place table.

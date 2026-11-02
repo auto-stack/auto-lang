@@ -1839,8 +1839,8 @@ fn run_check_with_transport(
     } else {
         None
     };
-    let receipt_core_override = resource_core_axis
-        .or(entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION));
+    let receipt_core_override =
+        resource_core_axis.or(entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION));
     // F798-R3-07 shape: leading edit-source allowed (measured window);
     // the judged last step must be a run. PLAN-866: the resident recipe
     // judges the resident-finish step instead.
@@ -2868,7 +2868,11 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
         let Some(obj) = face.as_object() else {
             return bad("place face is not an object".into());
         };
-        for key in ["mutation", "stale", "fresh", "legal"] {
+        let face_keys = ["mutation", "stale", "fresh", "legal"];
+        if let Some(key) = obj.keys().find(|k| !face_keys.contains(&k.as_str())) {
+            return bad(format!("place face carries unknown key `{key}`"));
+        }
+        for key in face_keys {
             if obj.get(key).is_none() {
                 return bad(format!("place face is missing `{key}`"));
             }
@@ -2891,17 +2895,29 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
             if f.get("live").and_then(|v| v.as_u64()).is_none() {
                 return bad(format!("place.{face_name}.live is not an unsigned integer"));
             }
+            let sub_keys = ["outcome", "value", "trap", "facts", "live"];
+            if let Some(inner) = f.as_object() {
+                if let Some(key) = inner.keys().find(|k| !sub_keys.contains(&k.as_str())) {
+                    return bad(format!("place.{face_name} carries unknown key `{key}`"));
+                }
+            }
             let Some(facts) = f.get("facts").and_then(|v| v.as_object()) else {
                 return bad(format!("place.{face_name}.facts is not an object"));
             };
-            for key in [
+            let fact_keys = [
                 "mints",
                 "get_ok",
                 "get_stale",
                 "set_ok",
                 "set_stale",
                 "buffer_reads",
-            ] {
+            ];
+            if let Some(key) = facts.keys().find(|k| !fact_keys.contains(&k.as_str())) {
+                return bad(format!(
+                    "place.{face_name}.facts carries unknown key `{key}`"
+                ));
+            }
+            for key in fact_keys {
                 if facts.get(key).and_then(|v| v.as_u64()).is_none() {
                     return bad(format!("place.{face_name}.facts.{key} is not unsigned"));
                 }
@@ -2912,15 +2928,33 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
         let Some(obj) = face.as_object() else {
             return bad("capture face is not an object".into());
         };
-        for key in ["clean", "points", "control"] {
+        let capture_keys = ["clean", "points", "control"];
+        if let Some(key) = obj.keys().find(|k| !capture_keys.contains(&k.as_str())) {
+            return bad(format!("capture face carries unknown key `{key}`"));
+        }
+        for key in capture_keys {
             if obj.get(key).is_none() {
                 return bad(format!("capture face is missing `{key}`"));
             }
         }
+        let entry_keys = [
+            "attempt",
+            "outcome",
+            "fault_attempt",
+            "code",
+            "live",
+            "source_readable",
+        ];
         let Some(points) = obj.get("points").and_then(|v| v.as_array()) else {
             return bad("capture.points is not an array".into());
         };
         for (i, point) in points.iter().enumerate() {
+            if let Some(key) = point
+                .as_object()
+                .and_then(|o| o.keys().find(|k| !entry_keys.contains(&k.as_str())))
+            {
+                return bad(format!("capture.points[{i}] carries unknown key `{key}`"));
+            }
             if point.get("outcome").and_then(|v| v.as_str()).is_none()
                 || point
                     .get("fault_attempt")
@@ -2939,6 +2973,12 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
             let Some(f) = obj.get(face_name) else {
                 continue;
             };
+            if let Some(key) = f
+                .as_object()
+                .and_then(|o| o.keys().find(|k| !entry_keys.contains(&k.as_str())))
+            {
+                return bad(format!("capture.{face_name} carries unknown key `{key}`"));
+            }
             if f.get("outcome").and_then(|v| v.as_str()).is_none()
                 || f.get("live").and_then(|v| v.as_u64()).is_none()
                 || f.get("source_readable").and_then(|v| v.as_bool()).is_none()
@@ -3066,6 +3106,36 @@ fn judge_resource(entry: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
                         format!("#{} {marker}… with live=0", i + 1),
                         format!("{point}"),
                     );
+                }
+                if field == "arena_points" {
+                    // The arena ledger must be internally consistent: the
+                    // faulted attempt exists, no successful allocation was
+                    // produced by it, and the released ids are exactly the
+                    // prior attempts.
+                    let ledger_attempts = point
+                        .get("attempts")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(u64::MAX);
+                    let successful = point
+                        .get("successful")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(u64::MAX);
+                    let frees = point
+                        .get("frees")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(u64::MAX);
+                    let want = (i + 1) as u64;
+                    if ledger_attempts != want || successful != want - 1 || frees != want - 1 {
+                        push(
+                            mismatches,
+                            "resource",
+                            "arena-ledger",
+                            format!("attempts={want} successful={} frees={}", want - 1, want - 1),
+                            format!(
+                                "attempts={ledger_attempts} successful={successful} frees={frees}"
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -3212,8 +3282,14 @@ fn judge_resource(entry: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
                 .get("outcome")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-            let code = point.get("code").and_then(|v| v.as_str()).unwrap_or_default();
-            let live = point.get("live").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+            let code = point
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let live = point
+                .get("live")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX);
             let src_ok = point.get("source_readable").and_then(|v| v.as_bool()) == Some(true);
             if outcome != "faulted-clone"
                 || got_attempt != want_attempt
@@ -6002,6 +6078,47 @@ mod resource_915_tests {
         let step = step_with(None, Some(face));
         let mut mismatches = Vec::new();
         judge_resource("place:push", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+    }
+
+    /// The unknown-key gate covers all three faces (F-915-R8).
+    #[test]
+    fn resource_faces_reject_unknown_keys() {
+        let mut sweep = clean_sweep();
+        sweep["unexpected"] = serde_json::json!(1);
+        assert!(
+            malformed_resource(RecipeFamily::Resource, &[step_with(Some(sweep), None)]).is_some()
+        );
+
+        let mut place = place_face("push");
+        place["extra"] = serde_json::json!(true);
+        assert!(
+            malformed_resource(RecipeFamily::Resource, &[step_with(None, Some(place))]).is_some()
+        );
+
+        let mut place_inner = place_face("push");
+        place_inner["stale"]["extra"] = serde_json::json!(1);
+        assert!(malformed_resource(
+            RecipeFamily::Resource,
+            &[step_with(None, Some(place_inner))]
+        )
+        .is_some());
+
+        let mut capture = capture_face();
+        capture["points"][0]["extra"] = serde_json::json!(1);
+        let mut step = step_with(None, None);
+        step.capture = Some(capture);
+        assert!(malformed_resource(RecipeFamily::Resource, &[step]).is_some());
+    }
+
+    /// The arena ledger axes are judged, not just reported (F-915-R4).
+    #[test]
+    fn resource_arena_ledger_is_judged() {
+        let mut sweep = clean_sweep();
+        sweep["arena_points"][0]["successful"] = serde_json::json!(1);
+        let step = step_with(Some(sweep), None);
+        let mut mismatches = Vec::new();
+        judge_resource("source:l04", &step, &mut mismatches);
         assert!(!mismatches.is_empty());
     }
 

@@ -47,7 +47,10 @@ LIST_NEW/PUSH/INSERT/REMOVE/GET/SET/LEN/CAP、LIST_FIELD_GET/LIST_FIELD_SET、VA
   指令/布局/预算零改动，生产默认不配置 seam。
 - **R03（旧 buffer/活借用）**：Index Place 的 `buf_id/epoch/elem_gen` 使用期校验由
   typed 授信序列（verify_mir→ABC admit→执行）正式见证：push/insert/remove/元素替换后
-  旧 token 均 `av.trap.stale-place` 且先于 buffer 访问；fresh token 与未变元素保持可用。
-  完整合同见 [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。
+  旧 token 均 `av.trap.stale-place`。"先于 buffer 访问"由门控计数与 test-only
+  access-before-validate 控制测量（正确实现 buffer_reads 只含合法读）；fresh token 与
+  无变更 mint→read 是实测正控，活 Share/Static 缓冲的可读性为继承不变量（本计划未新增
+  该面证据）。完整合同见
+  [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。
 - 边界不变：源码不铸造 Place（`source.view-escape`/`source.iterate-mutate` 仍静态拒绝），
   本 profile 仍不承诺通用失效句柄校验。

@@ -39,6 +39,13 @@ pub struct ExecLimits {
     /// claim is a measured fact rather than a code-reading claim. The flag
     /// is a single branch per place op; no counter is allocated otherwise.
     pub observe_places: bool,
+    /// PLAN-915 test-only MEASUREMENT control (never set in production):
+    /// when true the List-Place resolution performs the element ACCESS
+    /// before the identity/epoch/element-generation validation — the wrong
+    /// order — so the observation counter proves the scenario's
+    /// "checked before any access" claim is measurable rather than a
+    /// code-reading assertion.
+    pub place_access_before_validate: bool,
 }
 
 impl Default for ExecLimits {
@@ -51,6 +58,7 @@ impl Default for ExecLimits {
             max_trace_bytes: MAX_TRACE_BYTES,
             fault_after_allocs: None,
             observe_places: false,
+            place_access_before_validate: false,
         }
     }
 }
@@ -736,7 +744,7 @@ fn resume_program_mode(
             if !state.frames.is_empty() {
                 cleanup_owned_frames(&mut state);
             }
-            state.trace.frames_remaining = state.frames.len() as u64;
+            finish_trace(&mut state, &limits);
             return SteppedOutcome::Finished(out, state.trace);
         }
     };
@@ -754,7 +762,7 @@ fn resume_program_mode(
             if !state.frames.is_empty() {
                 cleanup_owned_frames(&mut state);
             }
-            state.trace.frames_remaining = state.frames.len() as u64;
+            finish_trace(&mut state, &dispatch_limits);
             SteppedOutcome::Finished(out, state.trace)
         }
         None => SteppedOutcome::Paused(PausedRun {
@@ -2037,6 +2045,7 @@ fn resolve_place_elem(
     st: &mut LoopState,
     place: &crate::contract::ListPlaceV,
     observe: bool,
+    access_first: bool,
 ) -> Result<Value, crate::contract::TrapKind> {
     let fr = st
         .frames
@@ -2052,12 +2061,23 @@ fn resolve_place_elem(
         _ => return Err(crate::contract::TrapKind::StalePlace),
     };
     let buf = h.rc.borrow();
+    let idx = place.index as usize;
+    if access_first {
+        // PLAN-915 TEST-ONLY wrong order: touch the element BEFORE the
+        // identity/epoch/generation validation and record that touch in the
+        // SAME counter the scenario reads — this is what makes the
+        // "checked before any access" claim measurable (a correct executor
+        // never reaches this branch).
+        if observe {
+            st.place_facts.buffer_reads += 1;
+        }
+        let _ = buf.elems.get(idx).cloned();
+    }
     if buf.id != place.buf_id || buf.epoch != place.epoch {
         // A structural change (realloc / element shift) happened after
         // the mint — the OLD place may not touch the new buffer.
         return Err(crate::contract::TrapKind::StalePlace);
     }
-    let idx = place.index as usize;
     if idx >= buf.elems.len() || buf.elem_gens[idx] != place.elem_gen {
         // In-place replacement retired this element's places.
         return Err(crate::contract::TrapKind::StalePlace);
@@ -3990,6 +4010,34 @@ fn dispatch_with_host<V: ModuleView>(
                             ),
                         });
                     }
+                    // PLAN-915 R02: insert capacity growth is the same real
+                    // allocation attempt as push growth — counted on the
+                    // value seam (before any mutation, only while a seam is
+                    // armed).
+                    if limits.fault_after_allocs.is_some() {
+                        let grows = {
+                            let fr = st.frames.last().expect("frame present");
+                            match &fr.slots[*root as usize] {
+                                Value::List(h) => {
+                                    let buf = h.rc.borrow();
+                                    buf.elems.len() as u32 == buf.cap
+                                        && buf.elems.len() < crate::contract::MAX_LIST_ELEMS
+                                }
+                                _ => false,
+                            }
+                        };
+                        if grows {
+                            if let Some(n) = limits.fault_after_allocs {
+                                st.alloc_events += 1;
+                                if st.alloc_events == n {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "fault-injected at value allocation #{} (list growth)",
+                                        n
+                                    )));
+                                }
+                            }
+                        }
+                    }
                     let shifted = {
                         let fr = st.frames.last_mut().expect("frame present");
                         match fr.slots[*root as usize].clone() {
@@ -4591,7 +4639,12 @@ fn dispatch_with_host<V: ModuleView>(
                         }
                     };
                     // Root resolution + stale validation BEFORE any access.
-                    let elem = match resolve_place_elem(st, &place, limits.observe_places) {
+                    let elem = match resolve_place_elem(
+                        st,
+                        &place,
+                        limits.observe_places,
+                        limits.place_access_before_validate,
+                    ) {
                         Ok(e) => {
                             if limits.observe_places {
                                 st.place_facts.get_ok += 1;

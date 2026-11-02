@@ -36,8 +36,9 @@
   live owned 缓冲 = 0（部分产物已回收），失败点之前的 attempt 成功计数 = n-1（arena seam），
   语言结果不产生 PASS/半产物。
 - **口径**：record/Variant 的 `Rc` 头不单列 attempt——它们的构造以"槽写正增量"计入值
-  seam（与 821/822 的 V-07 既有定义一致）；owned Str/List 缓冲才是 arena attempt。
-  这两类合起来覆盖本域运行时真正记账的每一次分配尝试。
+  seam（与 821/822 的 V-07 既有定义一致）；owned Str/List 缓冲才是 arena attempt；
+  List 容量扩容的两条路径（push 与 insert）都按真实 attempt 计入值 seam。这两类合起来
+  覆盖本域运行时真正记账的每一次分配尝试。
 - **支持域**：原 corpus `L04`（owned record 字段 view）、`L05`（remove 移出 owner）、
   `V05`（Variant owned payload）、`LSTR`（List<Str> push/remove）、`K02`（创建者退出后
   owned 闭包，capture/env 物化），外加 typed 层的 capture-clone 控制：AutoLang 源码
@@ -49,6 +50,9 @@
   `RESOURCE_SWEEP_CASES`。当前冻结值：L04=42/6/2、L05=42/5/2、V05=42/6/1、LSTR=51/5/3、
   K02=42/5/1（值 / 值 seam attempt / arena attempt）；capture-clone 冻结为
   attempt 3/4 失败、attempt 5 成功、live 恒为 2。任一 seam 少一点即红。
+- **测量边界**：逐点的"源/旧值不变"由"失败是带序号的可辨识 Infra + live=0 + 同一源
+  确定性重跑得冻结值 + 全链重编译恢复得冻结值"证明；执行已终止，不读取被中断程序的
+  内部槽位作二次快照。capture-clone 面另有宿主侧"源仍可读"的直接测量（source_readable）。
 - **不声称**：随机主机 OOM、非本域容器（List 嵌 List 等）、native/旧 AVM 的对应格、
   以及把预算拒绝当作 allocator 故障（预算 precheck 先于 attempt，attempt=0）。
 
@@ -67,6 +71,10 @@ AutoLang 源码当前**不能**铸造 List Place（`xs.get(i)` 的 owned 元素�
   `ExecTrace.place_facts` 报告 mints/get_ok/get_stale/set_ok/set_stale 与
   `buffer_reads`（**只统计通过全部校验后真正发生的访问**）。场景断言
   `get_stale=1` 且 `buffer_reads` 只等于变更前那次合法读的数量——stale 使用不产生任何访问。
+- **可测性控制**：`ExecLimits::place_access_before_validate`（test-only，默认 false）让
+  解析先访问后校验；crate 单测证明同一计数器会由 1 变 3（合法读 2 次 + stale 提前读 1 次），
+  worker 负控 `AV915_SABOTAGE=read-first` 使父侧冻结的 `buffer_reads=1` 判红。因此
+  "校验先于访问"是可测事实，而不是代码顺序主张。
 - **正控**：变更后新铸 token 读到当前元素（fresh）；无变更的 mint→read 读回原值（legal）；
   两者都要求 `get_stale=0`。
 - **父侧冻结**（`PLACE_SEQUENCES`）：四种变更都必须是 `av.trap.stale-place`；
