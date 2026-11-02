@@ -17,6 +17,8 @@ mod av_closures_resources;
 #[path = "cases/av_closures_semantics.rs"]
 mod av_closures_semantics;
 
+#[path = "cases/closures_fn_912_performance.rs"]
+mod closures_fn_912_performance;
 #[path = "cases/closures_fn_912.rs"]
 mod closures_fn_912;
 #[path = "cases/av_closures_source.rs"]
