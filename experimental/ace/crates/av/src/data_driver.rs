@@ -120,6 +120,10 @@ pub fn data_module_key(owner: &str, entry: &str, mir: &ace_av_core::mir::MirModu
 pub struct DataRequestOutcome {
     pub av: Option<ExecOutcome>,
     pub steps: u64,
+    /// PLAN-914: the executed mark events of THIS run (the same
+    /// `hir.test.trace.v1` event channel the scalar recipe reports), in
+    /// execution order. Observation only — the parent judges it.
+    pub trace: Vec<ace_av_core::mir::TraceEvent>,
     /// Artifact id of the persisted AVAD module (`None` without a store).
     pub artifact: Option<String>,
     pub owner: String,
@@ -185,6 +189,7 @@ pub fn request_data(
     Ok(DataRequestOutcome {
         av: Some(out),
         steps: trace.execution_seq,
+        trace: trace.events,
         artifact,
         owner,
         entry: entry.to_string(),

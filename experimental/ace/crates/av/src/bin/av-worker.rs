@@ -1809,6 +1809,13 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                                 "diag": diag,
                                 "source_hash": format!("{:016x}", r.snapshot),
                                 "wall_ms": r.wall_ms,
+                                // PLAN-914: the record/data execution's
+                                // real mark events, same channel and
+                                // alphabet as the scalar recipe's run step.
+                                "trace": r.trace.iter().map(|e| match e {
+                                    ace_av_core::mir::TraceEvent::MarkA => "a",
+                                    ace_av_core::mir::TraceEvent::MarkB => "b",
+                                }).collect::<Vec<&str>>(),
                             }));
                         }
                         Err(e) => {
