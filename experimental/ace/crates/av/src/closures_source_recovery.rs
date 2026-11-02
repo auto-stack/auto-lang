@@ -390,6 +390,31 @@ fn inject(fault: Option<PublishSeam>, at: PublishSeam) -> Result<(), RecoveryErr
     Ok(())
 }
 
+/// The ONE bounded read every recovery artifact goes through. An over-budget
+/// blob is refused by the store BEFORE its bytes are materialized
+/// (`StoreError::ResourceExhausted`) and maps to `recovery.oversized`; every
+/// other read failure stays a `recovery.read` naming the artifact's ROLE.
+fn read_bounded(
+    store: &ManagedStore,
+    artifact: &str,
+    cap: u64,
+    role: &str,
+) -> Result<Option<ace_artifacts::store::LoadedArtifact>, RecoveryError> {
+    match store.get_artifact_by_id_bounded(artifact, cap) {
+        Ok(found) => Ok(found),
+        Err(ace_artifacts::store::StoreError::ResourceExhausted(message)) => Err(
+            RecoveryError::new(
+                "recovery.oversized",
+                format!("{role} `{artifact}` was refused before materialization: {message}"),
+            ),
+        ),
+        Err(error) => Err(RecoveryError::new(
+            "recovery.read",
+            format!("read {role} `{artifact}`: {error}"),
+        )),
+    }
+}
+
 /// Publish one accepted source state as the project's CURRENT recovery root.
 ///
 /// Order (§5.3): serialize + cap → put the manifest (leased) → register the
@@ -730,10 +755,13 @@ pub fn restore_source_recovery(
     })?;
     // 1. Resolve the caller's expected manifest BY ID. A missing artifact is
     //    a locatable MISS — never a silent cold rebuild.
-    let found = store
-        .get_artifact_by_id(request.expected_manifest)
-        .map_err(|e| RecoveryError::new("recovery.read", format!("read manifest: {e}")))?
-        .ok_or_else(|| {
+    let found = read_bounded(
+        &store,
+        request.expected_manifest,
+        MAX_MANIFEST_BYTES as u64 + ENVELOPE_OVERHEAD,
+        "manifest",
+    )?
+    .ok_or_else(|| {
             RecoveryError::new(
                 "recovery.miss",
                 format!(
@@ -809,15 +837,13 @@ pub fn restore_source_recovery(
                 ),
             ));
         }
-        let found = store
-            .get_artifact_by_id_bounded(
-                &manifest.context.artifact,
-                MAX_MANIFEST_BYTES as u64 + ENVELOPE_OVERHEAD,
-            )
-            .map_err(|e| {
-                RecoveryError::new("recovery.read", format!("read context: {e}"))
-            })?
-            .ok_or_else(|| {
+        let found = read_bounded(
+            &store,
+            &manifest.context.artifact,
+            MAX_MANIFEST_BYTES as u64 + ENVELOPE_OVERHEAD,
+            "declaration context",
+        )?
+        .ok_or_else(|| {
                 RecoveryError::new(
                     "recovery.miss",
                     format!(
@@ -875,15 +901,13 @@ pub fn restore_source_recovery(
     };
     let mut units: Vec<AdmittedUnit> = Vec::with_capacity(manifest.units.len());
     for u in &manifest.units {
-        let found = store
-            .get_artifact_by_id_bounded(&u.artifact, MAX_WIRE_BYTES as u64 + ENVELOPE_OVERHEAD)
-            .map_err(|e| {
-                RecoveryError::new(
-                    "recovery.read",
-                    format!("read unit {}: {e}", u.unit),
-                )
-            })?
-            .ok_or_else(|| {
+        let found = read_bounded(
+            &store,
+            &u.artifact,
+            MAX_WIRE_BYTES as u64 + ENVELOPE_OVERHEAD,
+            "unit",
+        )?
+        .ok_or_else(|| {
                 RecoveryError::new(
                     "recovery.miss",
                     format!("unit {} artifact {} is absent", u.unit, u.artifact),
@@ -1354,4 +1378,56 @@ pub fn restore_source_session(
         counters,
         restore_value: outcome.value,
     })
+}
+
+#[cfg(test)]
+mod read_bound_tests {
+    use super::*;
+    use ace_artifacts::codec::ChunkKind;
+    use ace_artifacts::identity::QueryKey;
+    use ace_artifacts::store::PutRequest;
+
+    /// F-913-R4: the bounded read is the ONE entry every recovery artifact
+    /// goes through, and an over-budget blob maps to the DISTINGUISHABLE
+    /// `recovery.oversized` state (the store refuses it before reading).
+    /// An end-to-end oversized case is not constructible: the store's own
+    /// staging budget caps a payload at ~4 MiB, i.e. exactly the manifest
+    /// budget, so this mapping is the reachable seam for the rule.
+    #[test]
+    fn read_bounded_maps_over_budget_to_recovery_oversized() {
+        let root = std::env::temp_dir().join(format!(
+            "plan913-read-bound-{}-1",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("store dir");
+        let store = ManagedStore::open(&root).expect("store");
+        let id = store
+            .put_artifact(PutRequest {
+                layer: RECOVERY_LAYER.id,
+                key: QueryKey::new(&RECOVERY_LAYER, vec![("t".into(), "1".into())]),
+                kind: ChunkKind::LayoutData,
+                payload: vec![7u8; 1024 * 1024],
+                edges: Vec::new(),
+                project: None,
+            })
+            .expect("put");
+        // Over budget: refused BEFORE materialization, with its own code.
+        let error = read_bounded(&store, &id, 4096, "manifest")
+            .err()
+            .expect("an over-budget read must fail");
+        assert_eq!(error.code, "recovery.oversized", "{error:?}");
+        // Within budget: the artifact reads.
+        let found = read_bounded(&store, &id, 2 * 1024 * 1024, "manifest")
+            .expect("in-budget read")
+            .expect("artifact present");
+        assert_eq!(found.payload.len(), 1024 * 1024);
+        // An unknown address is a MISS (None), never an error that could be
+        // mistaken for a bound refusal.
+        assert!(read_bounded(&store, "art-missing", 4096, "unit")
+            .expect("miss")
+            .is_none());
+        drop(store);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
