@@ -3709,6 +3709,10 @@ mod judge_tests {
 
     fn step(value: Option<i32>, typed: Option<TypedOut>) -> StepOut {
         StepOut {
+            rebuilt_defs: Vec::new(),
+            identities_before: Default::default(),
+            identities_after: Default::default(),
+            refusal: None,
             op: "run".into(),
             outcome: "success".into(),
             value,
@@ -4009,6 +4013,10 @@ mod closures_judge_tests {
 
     fn cstep(face: serde_json::Value) -> StepOut {
         StepOut {
+            rebuilt_defs: Vec::new(),
+            identities_before: Default::default(),
+            identities_after: Default::default(),
+            refusal: None,
             op: "run".into(),
             outcome: "success".into(),
             value: None,
@@ -4083,6 +4091,10 @@ mod closures_source_judge_tests {
 
     fn successful_step(value: Option<i32>) -> StepOut {
         StepOut {
+            rebuilt_defs: Vec::new(),
+            identities_before: Default::default(),
+            identities_after: Default::default(),
+            refusal: None,
             op: "run".into(),
             outcome: "success".into(),
             value,
