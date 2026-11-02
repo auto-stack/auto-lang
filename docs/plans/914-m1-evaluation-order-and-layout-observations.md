@@ -202,6 +202,10 @@ SD-01..07 规范增量已在 worktree 拟好并提交（新文件 `docs/specs/au
 2026-11-02 | stage:goal | PLAN-914 r2 | round 10b | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: cad87b1ad | next: work
 T-06 发现并修复一处真实回归：`StepOut` 新增 rebuilt_defs/identities/refusal 后，auto-lang-core 的 3 个测试构造器未补字段，导致 `cargo test -p auto-lang-core --lib` 编译失败（此前 epXX 组用的是 auto-case 二进制，未暴露）。已补全并验证：`cargo test -p auto-lang-core --lib -- test_cases::ac` → 34 passed / 0 failed；适配器单元面恢复绿。此项证明 T-06 的受影响组并集不可省略；ace 组仍待机器空闲补跑。
 
+
+2026-11-02 | stage:goal | PLAN-914 r2 | round 10c | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: cad87b1ad | next: work
+T-06 案例组并集补跑完成：base/nb-diags-908/native-diags-911/collections-864/native-collections-889/order-layout-914 全 PASS；closures-fn-912 首跑红的原因定位为 %TEMP%/av798-session-av_closures_912_* 陈旧会话存储（早前一次运行留下，fresh 检查因此命中缓存）——清除后 PASS（环境问题，非代码回归），merge 时须清洁 temp 会话根或换 session id。ace-native/ace-av 组在机器空闲后重试中。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
