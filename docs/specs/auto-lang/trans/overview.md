@@ -258,3 +258,12 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
   auto-man/api_gen tests）。fs 面有 `mkdir_all` 与 `dir_names`（Plan 742
   D9：非递归直接子名、排序、略点名、缺目录返回空——`list_dir` 名字归
   Plan 626 VM walk face）。
+
+## 旧 A2R 两格证据（PLAN-917，SD-02）
+
+ace-m1 语料 R07（mut 参数写回）与 T08（str 切片越界）的旧 A2R 证据已由 PLAN-917 交付：
+发射契约、冻结支持矩阵与双轴证据边界见
+[legacy-rust-mut-and-text-evidence.md](legacy-rust-mut-and-text-evidence.md)。
+日常轴为固定组 `case-ace-m1-a2r-emit-917`（emit+字节比对，零编译）；
+显式认证轴为独立域 `ace.m1.a2r-emit917.cert/1`。此交付不替代新 HIR A2R 线，
+其余 38 格复合认证账不因此关闭。

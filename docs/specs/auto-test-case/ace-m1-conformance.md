@@ -328,3 +328,11 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
   缺 root、异源/异 owner、跨单元 artifact、缺 required 数据、超预算、陈旧
   generation、读缝坏件）由 Rust 侧 `closures_recovery_913`（26 例）承担，不在
   case 层冒充。原 865/909/912 套件与分母不改。
+
+## R07/T08 a2r 证据回填（PLAN-917，SD-05）
+
+corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PLAN-917 的正式父报告
+回填为 ok:P917：日常 emit+字节金样（组 `case-ace-m1-a2r-emit-917`，零编译）+
+显式认证域 `ace.m1.a2r-emit917.cert/1`（R07 实跑 42；T08 冻结 slice-oob 以 Rust panic
+观察）。T08 的 Auto trap 认证缺口单列保留，不以 emit 或 Rust panic 冒充；
+其余 38 格复合认证账不因此关闭。

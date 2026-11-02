@@ -1,0 +1,11 @@
+# PLAN-917 legacy A2R mut-record (R07) + text-slice (T08) emit evidence —
+# daily emit axis only (zero Rust compilation in this suite).
+
+```test-suite
+suite {
+  schema: "autolang.suite/2"
+  id: "case-ace-m1-a2r-emit-917"
+  fixture_root: ".."
+  include: ["a2r-emit-917.case.ad"]
+}
+```

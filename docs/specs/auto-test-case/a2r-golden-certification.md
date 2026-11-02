@@ -96,3 +96,12 @@ scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径
 - 该证据不写入 `oracle/certs/`、不改 `ace.m1.cert/1` 字段含义、不把新场景并入 38 格
   复合认证；日常仍是 emit + bytes，零 rustc/cargo spawn。
 - 非标量形状的全命名调用仍是历史发射（登记边界）；扩到复合/字符串见后续能力线。
+
+## 917 本域证据隔离（PLAN-917，SD-04）
+
+PLAN-917 为 ace-m1 R07/T08 及其合法近邻建立独立认证域 `ace.m1.a2r-emit917.cert/1`：
+receipt 存于 `a2r-emit-917/certs/`，与本文所述 852 标量域（`ace.m1.cert/1`，
+`oracle/certs/`）严格隔离——旧消费者（按 `ok-emit` 扫描 binding.tsv 的 certifier 与
+verify 脚本）不会误收本域证书。日常轴仍是零编译 emit+字节比对（固定组
+`case-ace-m1-a2r-emit-917`）；认证轴经显式入口 `a2r-emit-917-cert` 执行，
+receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force 覆写路径。

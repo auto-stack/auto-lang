@@ -719,6 +719,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/a2r-semantics-916/a2r-semantics-916.
 all = false
 
 [[group]]
+name = "case-ace-m1-a2r-emit-917"
+title = "TestCase legacy A2R R07/T08 emit evidence 917（日常emit轴，零Rust编译）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-emit-917/a2r-emit-917.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-tr-native"
 title = "TestCase case-ace-m1-tr-native"
 runner = "case"

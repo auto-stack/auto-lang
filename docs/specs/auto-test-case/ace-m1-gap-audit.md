@@ -241,3 +241,11 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
 - **F-A2R-1 名解析与 F-REG-3 六负例**：旧 A2R 生产 single/project/adapter 已交付 typed 前端拒绝，B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 列均为 `ok:P916`，八格 owner 关闭；不再保留 `diff-no-name-check`/`gap:a2r-golden` 作为这些格的当前状态。
 - 新 17-check suite 与三份 NB emit reference 已接固定组；完整 a2r 391/391、base97、NB 908、infra 23 通过。原始 negative source 与其他后端差异不改，manifest 只更新 binding hash 与追加 916 说明。
 - 不变：R07 a2r 未定型发射、T08、38 格复合认证、B18 avm infra、scenario/native/console 其余 owner、future/cert 账及 `can_claim_m1=false`。本包关闭八个 a2r 格，不重开 242/908，也不签 M1。
+
+## 917 两格状态（PLAN-917，SD-06）
+
+- `gap:a2r-untyped-emit`（R07）：已关闭——发射定型（单/项目两入口），支持矩阵冻结，
+  认证域实跑 42；残余：同根双 `.mut` 前端准入欠账（记入 KNOWN-DEBT，非 917 范围）。
+- `gap:a2r-golden`（T08）：已关闭——冻结金样（含界断言块）经独立审阅；
+  Auto trap 认证通道仍为 cert-gap（行为观察≠trap 认证）。
+- 其余 38 格复合认证、`can_claim_m1=false` 及新 HIR A2R 迁移账保持不变。

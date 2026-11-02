@@ -1,0 +1,152 @@
+# PLAN-917 legacy A2R mut-record (R07) and text-slice (T08) evidence —
+# daily emit axis ONLY: real production emission + byte comparison against
+# independently reviewed frozen goldens. Zero Rust compilation happens here
+# (no rustc/cargo spawn); the explicit compile+run certification lives in the
+# separate `ace.m1.a2r-emit917.cert/1` domain (a2r-emit-917-cert), which this
+# suite never invokes.
+#
+# Golden provenance: `golden/daily/*` bytes came from the REAL adapter-driven
+# production emission (adapter-materialized layout), reviewed and frozen per
+# plan §5.2/§5.3 — never copied from an expected/oracle file. The cert-domain
+# goldens under `golden/` (top level) belong to the certification receipts.
+# Original corpus sources stay in ../src (R07.at/T08.at are only referenced).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.r07.single"
+  tags: ["ace-m1", "a2r", "mut-record", "daily-emit"]
+  links: ["PLAN-917"]
+  source: { file: "src/R07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "R07" }, expect: { completion: "success", artifacts: [{ path: "R07.rs", file: "a2r-emit-917/golden/daily/r07.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.r07.project"
+  tags: ["ace-m1", "a2r", "mut-record", "daily-emit"]
+  links: ["PLAN-917"]
+  source: { file: "src/R07.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-emit-917/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: "success", artifacts: [
+    { path: "main.rs", file: "a2r-emit-917/golden/daily/r07.project.main.rs", compare: "bytes" },
+    { path: "Cargo.toml", file: "a2r-emit-917/golden/daily/r07.project.Cargo.toml", compare: "bytes" }
+  ] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.t08.single"
+  tags: ["ace-m1", "a2r", "text-slice", "daily-emit"]
+  links: ["PLAN-917"]
+  source: { file: "src/T08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "T08" }, expect: { completion: "success", artifacts: [{ path: "T08.rs", file: "a2r-emit-917/golden/daily/t08.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.t08.project"
+  tags: ["ace-m1", "a2r", "text-slice", "daily-emit"]
+  links: ["PLAN-917"]
+  source: { file: "src/T08.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-emit-917/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: "success", artifacts: [
+    { path: "main.rs", file: "a2r-emit-917/golden/daily/t08.project.main.rs", compare: "bytes" },
+    { path: "Cargo.toml", file: "a2r-emit-917/golden/daily/t08.project.Cargo.toml", compare: "bytes" }
+  ] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_now21"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_now21.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_now21" }, expect: { completion: "success", artifacts: [{ path: "nb_now21.rs", file: "a2r-emit-917/golden/daily/nb_now21.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_caller21"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_caller21.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_caller21" }, expect: { completion: "success", artifacts: [{ path: "nb_caller21.rs", file: "a2r-emit-917/golden/daily/nb_caller21.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_view"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_view.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_view" }, expect: { completion: "success", artifacts: [{ path: "nb_view.rs", file: "a2r-emit-917/golden/daily/nb_view.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_move"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_move.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_move" }, expect: { completion: "success", artifacts: [{ path: "nb_move.rs", file: "a2r-emit-917/golden/daily/nb_move.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_two_roots"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_two_roots.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_two_roots" }, expect: { completion: "success", artifacts: [{ path: "nb_two_roots.rs", file: "a2r-emit-917/golden/daily/nb_two_roots.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_nested"
+  tags: ["ace-m1", "a2r", "mut-record", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_nested.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_nested" }, expect: { completion: "success", artifacts: [{ path: "nb_nested.rs", file: "a2r-emit-917/golden/daily/nb_nested.single.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r917.nb_slice_ok"
+  tags: ["ace-m1", "a2r", "text-slice", "legal-neighbor"]
+  links: ["PLAN-917"]
+  source: { file: "a2r-emit-917/src/nb_slice_ok.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb_slice_ok" }, expect: { completion: "success", artifacts: [{ path: "nb_slice_ok.rs", file: "a2r-emit-917/golden/daily/nb_slice_ok.single.rs", compare: "bytes" }] } }]
+}
+```

@@ -47,3 +47,11 @@ Auto 有统一字符串模型（`str` / `Str` / 字面量），Rust 区分 `&str
 - 不生成带生命周期参数的 struct（字段一律 `String`，见 escape-analysis-tiers.md ADR-06 决策 1）。
 
 > 来源: docs/design/06-code-generation.md §Rust Transpiler；docs/plans/archive/232-a2r-lexer-compilation.md、old/241-a2r-string-type-cleanup.md；crates/auto-lang/src/trans/rust.rs
+
+## 两参 str.slice 的 Unicode 边界证据（PLAN-917，SD-03）
+
+`str.slice(a, b)`（两参）自 PLAN-917 起发射带界字符位块：接收者按引用绑定一次、
+`a`/`b` 各求值一次、`assert!(a <= b <= char_count, "auto str slice out of range")`
+越界即 panic。语料 T08（`"中".slice(0, 2)`）的冻结 slice-oob 语义由此在旧 A2R 产物中
+真实可观察（Rust panic 级行为观察；Auto trap 认证通道仍为独立 cert-gap）。
+单参 `slice(a)` 形态与所有权约定不变。
