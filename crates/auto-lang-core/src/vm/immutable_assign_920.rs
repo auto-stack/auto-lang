@@ -182,3 +182,36 @@ fn plain_msg_with_b18_text_stays_infrastructure() {
         other => panic!("forged Msg text must never be a language negative: {:?}", other),
     }
 }
+
+#[test]
+fn other_family_typed_name_keeps_its_own_code() {
+    // V-04 异族 typed 反控：不同 NameError 变体（E0201）判 Language/type
+    // 但码各归其位——B18 的 E0203 判定靠错误类型身份，不是 Name 族群
+    // 整体放行，更不是文本匹配。
+    let e = AutoError::Name(NameError::UndefinedVariable {
+        name: "y".into(),
+        span: miette::SourceSpan::new(miette::SourceOffset::from(0usize), 1),
+        suggested: None,
+    });
+    match classify_staged(&e, None) {
+        StageOutcome::Language(Failure { stage, code, .. }) => {
+            assert_eq!(stage.as_str(), "type");
+            assert_eq!(code.as_deref(), Some("auto_name_E0201"), "each typed variant keeps its own stable code");
+        }
+        other => panic!("typed Name must classify as language, got: {:?}", other),
+    }
+}
+
+#[test]
+fn run_trap_channel_does_not_cross_into_b18_compile_stage() {
+    // V-04 run trap 反控：带 typed trap 的运行期失败判 Run；B18 的编译期
+    // 拒绝（无 trap，b18_staged… 已证）判 Type——两条 typed 通道不串道。
+    let e = AutoError::Msg("Cannot reassign to immutable variable 'x' (declared with 'let')".into());
+    match classify_staged(&e, Some("ImmutableWriteTrap")) {
+        StageOutcome::Language(Failure { stage, code, .. }) => {
+            assert_eq!(stage.as_str(), "run");
+            assert_eq!(code.as_deref(), Some("ImmutableWriteTrap"));
+        }
+        other => panic!("typed trap must classify run-stage, got: {:?}", other),
+    }
+}
