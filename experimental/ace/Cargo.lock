@@ -197,6 +197,8 @@ dependencies = [
  "anyhow",
  "auto-tool-execution",
  "object 0.37.3",
+ "serde",
+ "serde_json",
  "windows-sys 0.59.0",
 ]
 

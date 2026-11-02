@@ -762,6 +762,7 @@ fn non_fast_text(reason: &NonFastReason) -> String {
         }
         NonFastReason::LambdaSiteChanged(why) => format!("lambda-site-changed:{why:?}"),
         NonFastReason::LambdaNested => "lambda-nested".to_string(),
+        NonFastReason::RestoredContext => "restored-context".to_string(),
     }
 }
 
