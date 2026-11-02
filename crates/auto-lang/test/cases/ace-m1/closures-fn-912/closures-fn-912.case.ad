@@ -1,0 +1,132 @@
+# PLAN-912 T-06: the closures FUNCTION session corpus. The same two-lambda
+# shape the Rust oracles use (F01/F02) plus the ORIGINAL K01/K06/S02 sources
+# re-run through the new chain (V-01; byte-identical copies of the original
+# corpus files — the contract forbids `..` in source paths). The parent oracle in
+# crates/auto-lang-core (CLOSURES_FN_CASES over CLOSURES_SOURCE_CASES) holds
+# independent values AND judges the zero-production axes (route, warm gate,
+# whole/mir attempts, retained pool); R3 stays open and reported on restart.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.f01-av912"
+  tags: ["ace-m1", "closures", "value", "plan-912"]
+  links: ["PLAN-912"]
+  source: { file: "src/F01.at", syntax: "auto", path: "F01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-f01-closures-fn-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F01:fresh", session: "av_closures_912_f01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av-f01-closures-fn-restart", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F01:restart", session: "av_closures_912_f01" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av-f01-closures-fn-lambda-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F01:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return x - n }", to: "return x - n * 2 }" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 48 } },
+    { id: "av-f01-closures-fn-hit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F01:hit" }, steps: [
+        { op: "run" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 51 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.f02-av912"
+  tags: ["ace-m1", "closures", "value", "plan-912"]
+  links: ["PLAN-912"]
+  source: { file: "src/F01.at", syntax: "auto", path: "F01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-f02-closures-fn-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F02:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av-f02-closures-fn-owner-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F02:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "var x int = 10", to: "var x int = 20" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 61 } },
+    { id: "av-f02-closures-fn-hit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:F02:hit" }, steps: [
+        { op: "run" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 51 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k06fn-av912"
+  tags: ["ace-m1", "closures", "value", "plan-912"]
+  links: ["PLAN-912"]
+  source: { file: "src/K06.at", syntax: "auto", path: "K06.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k06-closures-fn-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:K06:fresh", session: "av_closures_912_k06" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-k06-closures-fn-restart", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:K06:restart", session: "av_closures_912_k06" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k01fn-av912"
+  tags: ["ace-m1", "closures", "value", "plan-912"]
+  links: ["PLAN-912"]
+  source: { file: "src/K01.at", syntax: "auto", path: "K01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k01-closures-fn-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:K01:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return base + n", to: "return base + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s02fn-av912"
+  tags: ["ace-m1", "closures", "value", "plan-912"]
+  links: ["PLAN-912"]
+  source: { file: "src/S02.at", syntax: "auto", path: "S02.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s02-closures-fn-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:S02:fresh", session: "av_closures_912_s02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-s02-closures-fn-restart", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:S02:restart", session: "av_closures_912_s02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-s02-closures-fn-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-fn-run-v1", av: { entry: "source:S02:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "x = x + n", to: "x = x + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 44 } }
+  ]
+}
+```

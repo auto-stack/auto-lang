@@ -1552,6 +1552,11 @@ fn decode_options(
                         "ac-av/closures-source-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-912: the FUNCTION-session closures source
+                        // recipe — same run/edit vocabulary.
+                        "ac-av/closures-fn-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
                         // PLAN-824: the dynamic recipe shares the same
                         // step vocabulary.
                         "ac-av/dynamic-run-v1" => {
@@ -1648,6 +1653,7 @@ fn decode_options(
                     || recipe == "ac-av/loaded-run-v1"
                     || recipe == "ac-av/closures-run-v1"
                     || recipe == "ac-av/closures-source-run-v1"
+                    || recipe == "ac-av/closures-fn-run-v1"
                     || recipe == "ac-av/dynamic-run-v1"
                     || recipe == "ac-av/compact-run-v1"
                 {
@@ -1795,6 +1801,7 @@ fn decode_options(
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/closures-source-run-v1"
+                        || recipe == "ac-av/closures-fn-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                         || recipe == "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe requires the av
@@ -1818,6 +1825,7 @@ fn decode_options(
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/closures-source-run-v1"
+                        && recipe != "ac-av/closures-fn-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
                         && recipe != "ac-av/compact-run-v1"
                         // PLAN-866: the resident recipe takes the same av
@@ -2252,6 +2260,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-865: the closures SOURCE recipe — real .at sources through the
     // closures frontend onto the frozen 823 execution, same seam contract.
     "ac-av/closures-source-run-v1",
+    // PLAN-912: the closures FUNCTION source recipe — same corpus through
+    // the function session; the parent judges zero-production axes.
+    "ac-av/closures-fn-run-v1",
     // PLAN-863: exact byte-stream observations, separate host-console profile.
     "ac-av/console-run-v1",
     // PLAN-891: the native typed-entry recipe — file-ized typed fixtures

@@ -732,6 +732,20 @@ suite = "crates/auto-lang/test/cases/ace-m1/shared-mutable-909/shared-mutable-90
 domain = "ace"
 all = false
 
+# PLAN-912: the closures FUNCTION session suite (single-unit warm
+# production, zero-production axes judged by the parent).
+[[group]]
+name = "case-ace-m1-closures-fn-912"
+title = "ACE M1 closures function session 912 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suite.ad"
+domain = "ace"
+all = false
+
 [[group]]
 name = "case-ace-m1-closures-865-source"
 title = "TestCase case-ace-m1-closures-865-source"

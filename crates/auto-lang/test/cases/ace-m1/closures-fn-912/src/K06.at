@@ -1,0 +1,8 @@
+fn main() int {
+    var base int = 1
+    var f = move (n int) => {
+        base = base + n
+        return base
+    }
+    return f(20) + f(0)
+}

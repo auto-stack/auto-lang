@@ -2637,8 +2637,19 @@ fn judge_closures_fn(
     let mir_lower = face_u64(face, "mir_lower_attempts");
     let retained = face_u64(face, "retained_bytes").unwrap_or(u64::MAX);
     let units = function_count as u64;
-    if gate.is_none() {
-        bad(mismatches, "warm-gate", "warm gate verdict present".into(), "absent".into());
+    // The warm gate verdict exists exactly on the WARM routes; a cold or
+    // non-fast apply claiming a warm gate would be a lie.
+    match mode {
+        Some("body-edit") | Some("hit") => {
+            if gate.is_none() {
+                bad(mismatches, "warm-gate", "warm gate verdict present".into(), "absent".into());
+            }
+        }
+        _ => {
+            if face.get("warm_gate_pass").map(|v| !v.is_null()).unwrap_or(false) {
+                bad(mismatches, "warm-gate", "null on a cold route".into(), "present".into());
+            }
+        }
     }
     // §5.5 pool: the retained frontend estimate stays within 16 MiB.
     if retained > 16 * 1024 * 1024 {

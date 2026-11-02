@@ -1,0 +1,8 @@
+# PLAN-912 T-06: the closures function-session suite — the F01/F02 corpus
+# plus the original K01/K06/S02 sources re-run through the FUNCTION session
+# recipe; the parent (auto-lang-core) judges values AND zero-production axes.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-closures-fn-912", include: [
+  "closures-fn-912.case.ad",
+] }
+```
