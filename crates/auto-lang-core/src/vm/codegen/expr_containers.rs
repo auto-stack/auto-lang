@@ -150,21 +150,25 @@ impl Codegen {
                         // CONSTRUCT_INSTANCE expects: [..., field_count, value1, value2, ..., instance_id]
                         // So we need to push field_count FIRST, then values, then instance_id
 
-                        // Collect all field values from both args and body
-                        let mut field_values = Vec::new();
+                        // PLAN-914: collect the literal's field expressions in
+                        // SOURCE order together with their declared field name
+                        // (None for a positional shape).
+                        let mut source_fields: Vec<(Option<String>, crate::ast::Expr)> = Vec::new();
 
                         // 1. Collect from args (if any, e.g., Counter(count: 42))
                         for arg in &node.args.args {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
-                                    field_values.push(expr.clone());
+                                    source_fields.push((None, expr.clone()));
                                 }
-                                crate::ast::Arg::Pair(_, expr) => {
-                                    field_values.push(expr.clone());
+                                crate::ast::Arg::Pair(key, expr) => {
+                                    source_fields.push((Some(key.to_string()), expr.clone()));
                                 }
-                                crate::ast::Arg::Name(_) => {
-                                    // Name-only arg - treat as nil value
-                                    field_values.push(crate::ast::Expr::Nil);
+                                crate::ast::Arg::Name(key) => {
+                                    source_fields.push((
+                                        Some(key.to_string()),
+                                        crate::ast::Expr::Ident(key.clone()),
+                                    ));
                                 }
                             }
                         }
@@ -174,11 +178,20 @@ impl Codegen {
                         for stmt in &node.body.stmts {
                             if let crate::ast::Stmt::Expr(expr) = stmt {
                                 if let crate::ast::Expr::Pair(pair) = expr {
-                                    // Extract the value from the pair
-                                    field_values.push(pair.value.as_ref().clone());
+                                    // PLAN-914: the FIELD NAME (Key's Display
+                                    // adds the `(name ...)` wrapper, so unwrap
+                                    // the key variant instead of printing it).
+                                    let key_name = match &pair.key {
+                                        crate::ast::Key::NamedKey(n) => Some(n.to_string()),
+                                        crate::ast::Key::StrKey(s) => Some(s.to_string()),
+                                        _ => None,
+                                    };
+                                    source_fields.push((key_name, pair.value.as_ref().clone()));
                                 }
                             }
                         }
+                        let mut field_values: Vec<crate::ast::Expr> =
+                            source_fields.iter().map(|(_, e)| e.clone()).collect();
 
                         vm_debug!("DEBUG codegen: field_count = {}, collected {} field values from args ({}), body ({})",
                             field_count,
@@ -194,6 +207,35 @@ impl Codegen {
                         // 1. Compile each field value expression (pushes values onto stack)
                         // Stack: ..., value1, value2, ..., valueN
                         let field_defs = class_type.fields();
+                        // PLAN-914: a FULLY-NAMED literal binds by FIELD NAME
+                        // after evaluating the value expressions in SOURCE
+                        // order. `None` keeps the positional emission
+                        // (unnamed, partial, unknown-field shapes).
+                        let mut field_order: Option<Vec<usize>> = None;
+                        if !field_defs.is_empty()
+                            && source_fields.len() == field_defs.len()
+                            && source_fields.iter().all(|(n, _)| n.is_some())
+                        {
+                            let mut mapping = Vec::with_capacity(field_defs.len());
+                            let mut used = vec![false; field_defs.len()];
+                            let mut ok = true;
+                            for (name, _) in &source_fields {
+                                let name = name.as_deref().unwrap_or("");
+                                match field_defs.iter().position(|fd| fd.name == name) {
+                                    Some(pos) if !used[pos] => {
+                                        used[pos] = true;
+                                        mapping.push(pos);
+                                    }
+                                    _ => {
+                                        ok = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if ok && mapping.iter().enumerate().any(|(src, &dst)| src != dst) {
+                                field_order = Some(mapping);
+                            }
+                        }
                         // EDGE-04-B: `Type{}` 空字面量(无 args/body)时 field_values
                         // 不足 field_count,CONSTRUCT_INSTANCE 会从栈上 pop 垃圾值 →
                         // 字段是无效 heap id(Invalid instance ID: 0)。补类型默认值。
@@ -204,6 +246,27 @@ impl Codegen {
                                 .unwrap_or(crate::ast::Expr::Nil);
                             field_values.push(default_expr);
                         }
+                        if let Some(mapping) = field_order.as_ref() {
+                            let mut temps: Vec<usize> = Vec::with_capacity(source_fields.len());
+                            for (i, (_, expr)) in source_fields.iter().enumerate() {
+                                self.compile_expr(expr)?;
+                                if let Some(field_def) = field_defs.get(mapping[i]) {
+                                    if matches!(field_def.field_type, Type::Double)
+                                        && self.last_expr_type == ObjectType::Float
+                                    {
+                                        self.emit(OpCode::PROMOTE_F64);
+                                    }
+                                }
+                                let slot = self.add_var(&format!("__named_field_{i}"));
+                                self.emit_store_loc(slot);
+                                temps.push(slot);
+                            }
+                            for target in 0..mapping.len() {
+                                if let Some(src) = mapping.iter().position(|&f| f == target) {
+                                    self.emit_load_loc(temps[src]);
+                                }
+                            }
+                        } else {
                         for (i, value_expr) in field_values.iter().enumerate() {
                             vm_debug!("DEBUG codegen: Compiling field value {}", i);
                             self.compile_expr(value_expr)?;
@@ -220,6 +283,7 @@ impl Codegen {
                                 self.code.len(),
                                 i
                             );
+                        }
                         }
 
                         // 2. Push mono_name length onto stack (for NEW_INSTANCE to pop)
