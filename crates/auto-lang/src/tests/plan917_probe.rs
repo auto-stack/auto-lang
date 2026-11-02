@@ -66,7 +66,7 @@ fn plan917_probe_emit_r07_t08() {
         "nb_move",
         "nb_two_roots",
         "nb_nested",
-        "zz_conflict_probe",
+        "nb_slice_ok",
     ] {
         emit_one(&corpus, &extra, &out, name, false);
     }

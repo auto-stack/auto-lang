@@ -710,7 +710,7 @@ fn certify_one(
 
 /// Capture a tool identity for an EXPLICIT --rustc override through the
 /// same contained, bounded execution as every other tool invocation.
-fn capture_toolchain_contained(rustc: &str) -> Result<String, String> {
+pub(crate) fn capture_toolchain_contained(rustc: &str) -> Result<String, String> {
     let mut cmd = Command::new(rustc);
     cmd.arg("-vV").stdout(Stdio::piped()).stderr(Stdio::piped());
     let out = run_bounded(cmd, COMPILE_WALL, "rustc -vV (identity capture)")?;
@@ -733,7 +733,7 @@ pub struct RunOutcome {
 }
 
 /// Run a certified binary under containment with the run wall and caps.
-fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
+pub(crate) fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
     let mut cmd = Command::new(exe);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let out = run_bounded(cmd, RUN_WALL, &format!("run {}", exe.display()))?;
@@ -746,7 +746,7 @@ fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
 }
 
 /// Compile one file under containment with the frozen flags and wall.
-fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &str) -> Result<(), String> {
+pub(crate) fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &str) -> Result<(), String> {
     let mut cmd = Command::new(rustc);
     cmd.args(RUSTC_FLAG_TOKENS)
         .arg("--crate-name")
@@ -766,7 +766,7 @@ fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &str) -> Resul
 /// exceeds STREAM_CAP the WHOLE job tree is killed and a parent-visible
 /// overflow error is returned — output is never silently truncated. The
 /// wall overrun kills the tree the same way.
-fn run_bounded(mut cmd: Command, wall: Duration, what: &str) -> Result<RunOutcome, String> {
+pub(crate) fn run_bounded(mut cmd: Command, wall: Duration, what: &str) -> Result<RunOutcome, String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

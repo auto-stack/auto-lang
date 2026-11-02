@@ -48,6 +48,7 @@ mod ac_protocol;
 /// PLAN-852 T-04: the explicit independent a2r certification entry. Never
 /// invoked by the suite runner or any daily scope.
 pub mod ace_certify;
+pub mod a2r_emit_917_cert;
 pub mod avm;
 pub mod execution_trace;
 pub mod inventory;

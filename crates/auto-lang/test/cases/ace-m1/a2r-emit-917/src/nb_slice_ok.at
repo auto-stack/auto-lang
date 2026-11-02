@@ -1,0 +1,4 @@
+fn main() int {
+    let s str = "中ab"
+    return s.slice(1, 3).len()
+}
