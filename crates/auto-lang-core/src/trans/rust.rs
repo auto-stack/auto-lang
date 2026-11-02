@@ -2375,15 +2375,42 @@ pub fn transpile_rust_full_with_options(
     let mut escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap> = HashMap::new();
     {
         use crate::trans::escape::EscapeAnalyzer;
+        // PLAN-917: struct-field types (shared across fns) for the escape
+        // analysis Copy-projection predicate; per-fn annotated local/param
+        // types are collected per function below. Unknown types stay
+        // conservative (pre-917 escalation) — the predicate only ever SKIPS
+        // an escalation when it can prove the projection Copy.
+        let struct_fields: std::collections::HashMap<AutoStr, Vec<(AutoStr, crate::ast::Type)>> =
+            ast.stmts
+                .iter()
+                .filter_map(|s| match s {
+                    crate::ast::Stmt::TypeDecl(td) => Some((
+                        td.name.clone(),
+                        td.members
+                            .iter()
+                            .map(|m| (m.name.clone(), m.ty.clone()))
+                            .collect(),
+                    )),
+                    _ => None,
+                })
+                .collect();
         for stmt in &ast.stmts {
             match stmt {
                 crate::ast::Stmt::Fn(func) => {
-                    let map = EscapeAnalyzer::analyze_fn(func);
+                    let local_tys = plan917_fn_local_types(&func.params, &func.body);
+                    let pred = |obj: &str, field: &str| -> bool {
+                        plan917_copy_projection(&struct_fields, &local_tys, obj, field)
+                    };
+                    let map = EscapeAnalyzer::analyze_fn_with(func, Some(&pred));
                     escape_results.insert(func.name.clone(), map);
                 }
                 crate::ast::Stmt::TypeDecl(td) => {
                     for method in &td.methods {
-                        let map = EscapeAnalyzer::analyze_fn(method);
+                        let local_tys = plan917_fn_local_types(&method.params, &method.body);
+                        let pred = |obj: &str, field: &str| -> bool {
+                            plan917_copy_projection(&struct_fields, &local_tys, obj, field)
+                        };
+                        let map = EscapeAnalyzer::analyze_fn_with(method, Some(&pred));
                         let key = format!("{}.{}", td.name, method.name).into();
                         escape_results.insert(key, map);
                     }
@@ -2516,6 +2543,85 @@ pub fn escape_analysis_summary(code: &str) -> std::collections::HashMap<AutoStr,
     }
     summary
 }
+/// PLAN-917: collect annotated local types (params + `let/var/const` stores)
+/// for the escape-analysis Copy-projection predicate. Only *annotated* types
+/// are collected — an unannotated binding simply stays unknown, and the
+/// predicate conservatively keeps the pre-917 escalation for it. Nested
+/// blocks / if branches / try bodies are walked; loop bodies are skipped
+/// (loop-local bindings conservatively unknown).
+fn plan917_fn_local_types(
+    params: &[crate::ast::Param],
+    body: &crate::ast::Body,
+) -> std::collections::HashMap<AutoStr, crate::ast::Type> {
+    let mut map: std::collections::HashMap<AutoStr, crate::ast::Type> =
+        std::collections::HashMap::new();
+    for p in params {
+        if !matches!(p.ty, crate::ast::Type::Unknown) {
+            map.insert(p.name.clone(), p.ty.clone());
+        }
+    }
+    plan917_collect_store_types(&body.stmts, &mut map);
+    map
+}
+
+fn plan917_collect_store_types(
+    stmts: &[crate::ast::Stmt],
+    map: &mut std::collections::HashMap<AutoStr, crate::ast::Type>,
+) {
+    for s in stmts {
+        match s {
+            crate::ast::Stmt::Store(store) => {
+                if !matches!(store.ty, crate::ast::Type::Unknown) {
+                    map.insert(store.name.clone(), store.ty.clone());
+                }
+            }
+            crate::ast::Stmt::Block(b) => plan917_collect_store_types(&b.stmts, map),
+            crate::ast::Stmt::If(if_stmt) => {
+                for b in &if_stmt.branches {
+                    plan917_collect_store_types(&b.body.stmts, map);
+                }
+                if let Some(else_body) = &if_stmt.else_ {
+                    plan917_collect_store_types(&else_body.stmts, map);
+                }
+            }
+            crate::ast::Stmt::Try(t) => {
+                plan917_collect_store_types(&t.body.stmts, map);
+                plan917_collect_store_types(&t.catch_body.stmts, map);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// PLAN-917: prove `obj.field` a Copy projection: `obj` has an annotated
+/// record type and the field's declared type is Copy. Any unknown step
+/// returns false (the predicate may only SKIP an escalation on proof).
+fn plan917_copy_projection(
+    struct_fields: &std::collections::HashMap<AutoStr, Vec<(AutoStr, crate::ast::Type)>>,
+    local_tys: &std::collections::HashMap<AutoStr, crate::ast::Type>,
+    obj: &str,
+    field: &str,
+) -> bool {
+    let ty = match local_tys.get(obj) {
+        Some(t) => t,
+        None => return false,
+    };
+    let type_name = match ty {
+        crate::ast::Type::User(td) => td.name.as_str(),
+        _ => return false,
+    };
+    struct_fields
+        .get(type_name)
+        .and_then(|fields| {
+            fields
+                .iter()
+                .find(|(n, _)| n.as_str() == field)
+                .map(|(_, t)| t)
+        })
+        .map(|t| RustTrans::is_copy_type(t))
+        .unwrap_or(false)
+}
+
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);

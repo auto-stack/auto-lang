@@ -524,24 +524,41 @@ impl RustTrans {
 
     /// Plan 019 Phase 1: emit Auto str slicing for a string receiver using
     /// CHAR positions. s.slice(a) → s.chars().skip(a)...collect;
-    /// s.slice(a, b) → s.chars().take(b).skip(a)...collect (take-then-skip
-    /// equals skip-then-take(b-a) but emits each argument exactly once).
-    /// Byte slicing would panic on non-boundary positions in non-ASCII text.
+    /// PLAN-917: the two-arg form `s.slice(a, b)` freezes corpus T08's
+    /// slice-oob semantics — an out-of-range char range MUST fail loudly
+    /// (the old `take(b).skip(a)` silently truncated, yielding a wrong
+    /// value instead of the frozen trap). Emit a guarded block: bind the
+    /// receiver by reference (so an arbitrary receiver expr is evaluated
+    /// exactly once), evaluate each bound exactly once, assert
+    /// `a <= b <= char_count` (panic on violation — the Auto trap
+    /// certification for this channel is a separate gap, per plan §5.2),
+    /// then take the char range.
     pub(super) fn emit_str_slice_chars(
         &mut self,
         recv: &Expr,
         args: &[Arg],
         out: &mut impl Write,
     ) -> AutoResult<()> {
-        self.expr(recv, out)?;
-        write!(out, ".chars()")?;
         if args.len() >= 2 {
-            if let Some(Arg::Pos(b)) = args.get(1) {
-                write!(out, ".take((")?;
+            if let (Some(Arg::Pos(a)), Some(Arg::Pos(b))) = (args.first(), args.get(1)) {
+                write!(out, "{{ let __a2r_s = &(")?;
+                self.expr(recv, out)?;
+                write!(out, "); let __a2r_a = (")?;
+                self.expr(a, out)?;
+                write!(out, ") as usize; let __a2r_b = (")?;
                 self.expr(b, out)?;
-                write!(out, ") as usize)")?;
+                write!(
+                    out,
+                    ") as usize; let __a2r_n = __a2r_s.chars().count(); \
+                     assert!(__a2r_a <= __a2r_b && __a2r_b <= __a2r_n, \
+                             \"auto str slice out of range\"); \
+                     __a2r_s.chars().skip(__a2r_a).take(__a2r_b - __a2r_a).collect::<String>() }}"
+                )?;
+                return Ok(());
             }
         }
+        self.expr(recv, out)?;
+        write!(out, ".chars()")?;
         if let Some(Arg::Pos(a)) = args.first() {
             write!(out, ".skip((")?;
             self.expr(a, out)?;

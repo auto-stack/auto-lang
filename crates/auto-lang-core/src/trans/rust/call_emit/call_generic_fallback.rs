@@ -397,10 +397,16 @@ impl RustTrans {
             // reference, killing later uses. The ident itself is emitted by
             // arg() below, so only the `*` differs here.
             if is_mut_param {
-                if is_already_mut_param {
-                    write!(out, "&mut *")?;
-                } else {
-                    write!(out, "&mut ")?;
+                // PLAN-917: when the source arg is already an explicit borrow
+                // (`x.mut` → Expr::Mut → arg() emits `&mut x` via emit_borrow),
+                // do NOT prefix another `&mut ` — `&mut &mut x` is E0308.
+                let arg_already_borrow = matches!(arg, Arg::Pos(Expr::Mut(_)));
+                if !arg_already_borrow {
+                    if is_already_mut_param {
+                        write!(out, "&mut *")?;
+                    } else {
+                        write!(out, "&mut ")?;
+                    }
                 }
             }
             // Plan 384 A3: borrow owned arg for `&T` reference params.

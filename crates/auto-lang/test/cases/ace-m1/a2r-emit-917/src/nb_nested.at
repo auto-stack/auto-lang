@@ -1,0 +1,12 @@
+type Counter { value int }
+fn wrap(v int) int {
+    return v + 100
+}
+fn bump(mut x Counter, delta int) int {
+    x.value = x.value + delta
+    return x.value
+}
+fn main() int {
+    var x Counter = Counter(20)
+    return wrap(bump(x.mut, 1))
+}

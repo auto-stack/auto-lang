@@ -1,0 +1,9 @@
+type Counter { value int }
+fn consume(m Counter) int {
+    return m.value
+}
+fn main() int {
+    var x Counter = Counter(20)
+    let a int = consume(x.move)
+    return a
+}

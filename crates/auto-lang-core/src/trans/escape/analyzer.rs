@@ -25,8 +25,7 @@ use crate::trans::escape::escape_map::{BindingId, EscapeMap, OwnershipTier};
 
 /// The analyzer. Stateless across functions — create one per function (or per
 /// `analyze_body` call) so scope depths start fresh.
-#[derive(Debug)]
-pub struct EscapeAnalyzer {
+pub struct EscapeAnalyzer<'p> {
     map: EscapeMap,
     /// Lexical scope stack. `scope_stack.len() - 1` is the current depth.
     /// Each entry is the set of binding names introduced at that depth, so we
@@ -39,21 +38,39 @@ pub struct EscapeAnalyzer {
     /// (binding id, intended tier) — the id is resolved at collection time so
     /// the depth is captured correctly.
     borrow_uses: Vec<(BindingId, OwnershipTier)>,
+    /// PLAN-917: optional `(obj, field) -> bool` predicate deciding whether
+    /// `obj.field` is a Copy projection. When it returns true, a field READ of
+    /// that projection in a `return` expression does NOT escalate the binding
+    /// (reading a Copy field never moves or aliases the binding, so borrowing
+    /// it elsewhere — e.g. an earlier `x.mut` — stays sound). `None` keeps the
+    /// historical conservative escalation for every projection.
+    copy_field_pred: Option<&'p dyn std::ops::Fn(&str, &str) -> bool>,
 }
 
-impl EscapeAnalyzer {
+impl<'p> EscapeAnalyzer<'p> {
     pub fn new() -> Self {
         Self {
             map: EscapeMap::new(),
             // depth 0 = function body; pushed by analyze_fn / analyze_body.
             scope_stack: vec![Vec::new()],
             borrow_uses: Vec::new(),
+            copy_field_pred: None,
         }
     }
 
     /// Analyze a top-level function's body and return the escape decisions.
     pub fn analyze_fn(func: &Fn) -> EscapeMap {
+        Self::analyze_fn_with(func, None)
+    }
+
+    /// PLAN-917: `analyze_fn` with a Copy-projection predicate (see the field
+    /// doc). Pass `None` for the pre-917 conservative behavior.
+    pub fn analyze_fn_with(
+        func: &Fn,
+        copy_field_pred: Option<&'p dyn std::ops::Fn(&str, &str) -> bool>,
+    ) -> EscapeMap {
         let mut analyzer = Self::new();
+        analyzer.copy_field_pred = copy_field_pred;
         analyzer.visit_body(&func.body, 0);
         analyzer.apply_lowering();
         analyzer.detect_closure_write_captures(&func.body);
@@ -213,7 +230,11 @@ impl EscapeAnalyzer {
                 // the function signature — which Auto does not emit. So any
                 // visible binding referenced in a return expression escapes.
                 let mut names = Vec::new();
-                self.gather_var_refs(expr, &mut names);
+                // PLAN-917: use the Copy-projection-aware gather — a read of a
+                // provably-Copy `obj.field` in the return expression does not
+                // move/alias `obj` and must not escalate it (corpus R07:
+                // `return now + x.value` with an earlier `bump(x.mut, 1)`).
+                self.gather_return_refs(expr, &mut names);
                 // PLAN-667 (F-03): a closure returned from the function takes
                 // its captures with it — descend via find_escapes too.
                 let mut esc = Vec::new();
@@ -722,6 +743,133 @@ impl EscapeAnalyzer {
     /// Gather all variable references (`Expr::Ident` / `Expr::Ref`) reachable
     /// from `expr`. Used for closure/async capture and return-value tracking.
     /// Does NOT descend into nested closures (their captures belong to them).
+    /// PLAN-917: `gather_var_refs` variant for `Stmt::Return`. Identical
+    /// escalation behavior EXCEPT that `obj.field` — where `obj` is a visible
+    /// binding and the [`Self::copy_field_pred`] predicate proves the
+    /// projection Copy — is a pure read: it never moves `obj` nor hands out a
+    /// reference to it, so escalating it would be a false positive that kills
+    /// legitimate earlier/later `x.mut` borrows (corpus R07). Without a
+    /// predicate, or for a non-Copy projection, the historical conservative
+    /// escalation is kept (`return x.y` may move a non-Copy field out of `x`,
+    /// which can conflict with an outstanding borrow — keep the Clone tier so
+    /// the borrow site falls back to a warned clone instead of rustc E0503).
+    /// This mirrors gather_var_refs' recursion exactly (including the
+    /// fail-closed catch-all); only two arms differ:
+    ///  - `obj.field` with a provably-Copy projection (see above) is skipped;
+    ///  - a `.view`/`.mut` **nested inside** the return expression (e.g. an
+    ///    argument of a call returned directly, `return wrap(bump(x.mut, 1))`)
+    ///    hands the borrow only within the expression — Rust elided lifetimes
+    ///    cannot retain it — so a bare visible binding operand is NOT
+    ///    escalated. At the return ROOT the historical escalation is kept
+    ///    (`return x.mut` would escape the borrow).
+    fn gather_return_refs(&self, expr: &Expr, out: &mut Vec<Name>) {
+        self.gather_return_refs_inner(expr, true, out)
+    }
+
+    fn gather_return_refs_inner(&self, expr: &Expr, root: bool, out: &mut Vec<Name>) {
+        match expr {
+            Expr::Dot(obj, field) => match obj.as_ref() {
+                Expr::Ident(name) | Expr::Ref(name) if self.is_visible(name) => {
+                    let is_copy_projection = self
+                        .copy_field_pred
+                        .map(|p| p(name.as_str(), field.as_str()))
+                        .unwrap_or(false);
+                    if !is_copy_projection {
+                        out.push(name.clone());
+                    }
+                }
+                _ => self.gather_return_refs_inner(obj, false, out),
+            },
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
+                let bare_visible_binding = matches!(
+                    e.as_ref(),
+                    Expr::Ident(name) | Expr::Ref(name) if self.is_visible(name)
+                );
+                if root || !bare_visible_binding {
+                    // Historical behavior: the borrow/move operand is gathered
+                    // (and thus escalated).
+                    self.gather_var_refs(expr, out);
+                }
+                // else: pure borrow operand nested in the return expression —
+                // non-escaping (see gather_return_refs doc).
+            }
+            // Compound forms: recurse with the same refined gather so nested
+            // projections get the same treatment.
+            Expr::Call(call) => {
+                self.gather_return_refs_inner(&call.name, false, out);
+                for arg in &call.args.args {
+                    if let Arg::Pos(e) = arg {
+                        self.gather_return_refs_inner(e, false, out);
+                    }
+                }
+            }
+            Expr::Unary(_, e) => self.gather_return_refs_inner(e, false, out),
+            Expr::Bina(l, _, r) => {
+                self.gather_return_refs_inner(l, false, out);
+                self.gather_return_refs_inner(r, false, out);
+            }
+            Expr::Index(base, idx) => {
+                self.gather_return_refs_inner(base, false, out);
+                self.gather_return_refs_inner(idx, false, out);
+            }
+            Expr::Array(elems) => {
+                for e in elems {
+                    self.gather_return_refs_inner(e, false, out);
+                }
+            }
+            Expr::Object(pairs) => {
+                for p in pairs {
+                    self.gather_return_refs_inner(&p.value, false, out);
+                }
+            }
+            Expr::AsyncBlock { body, .. } => {
+                for s in &body.stmts {
+                    if let Stmt::Expr(e) = s {
+                        self.gather_return_refs_inner(e, false, out);
+                    }
+                }
+            }
+            Expr::FStr(f) => {
+                for part in &f.parts {
+                    self.gather_return_refs_inner(part, false, out);
+                }
+            }
+            Expr::Tuple(elems) => {
+                for e in elems {
+                    self.gather_return_refs_inner(e, false, out);
+                }
+            }
+            Expr::TupleDestruct { expr, .. } => self.gather_return_refs_inner(expr, false, out),
+            Expr::NullCoalesce(l, r) => {
+                self.gather_return_refs_inner(l, false, out);
+                self.gather_return_refs_inner(r, false, out);
+            }
+            Expr::ErrorPropagate(e)
+            | Expr::Some(e)
+            | Expr::Ok(e)
+            | Expr::Err(e)
+            | Expr::BoxExpr(e)
+            | Expr::ArcExpr(e)
+            | Expr::Yield(e) => {
+                self.gather_return_refs_inner(e, false, out);
+            }
+            Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
+                self.gather_return_refs_inner(expr, false, out);
+            }
+            Expr::Block(body) => {
+                for s in &body.stmts {
+                    if let Stmt::Expr(e) = s {
+                        self.gather_return_refs_inner(e, false, out);
+                    }
+                }
+            }
+            // Leaves and the fail-closed catch-all keep the historical gather
+            // (identical behavior: leaves no-op, unknown forms surface all
+            // visible bindings).
+            _ => self.gather_var_refs(expr, out),
+        }
+    }
+
     fn gather_var_refs(&self, expr: &Expr, out: &mut Vec<Name>) {
         match expr {
             Expr::Ident(name) | Expr::Ref(name) => {
@@ -896,7 +1044,7 @@ impl EscapeAnalyzer {
     }
 }
 
-impl Default for EscapeAnalyzer {
+impl Default for EscapeAnalyzer<'static> {
     fn default() -> Self {
         Self::new()
     }

@@ -1,0 +1,6 @@
+type Counter { value int }
+fn main() int {
+    var x Counter = Counter(20)
+    let v Counter = x.view
+    return v.value + x.value
+}
