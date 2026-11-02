@@ -10,10 +10,41 @@ impl RustTrans {
         call: &Call,
         out: &mut impl Write,
     ) -> AutoResult<CallShape> {
-        self.expr(&call.name, out)?;
-        // Plan 395: explicit generic type args → Rust turbofish
-        self.emit_turbofish_args(call, out)?;
-        write!(out, "(")?;
+        // PLAN-914: a fully-named direct call whose argument names are NOT in
+        // parameter order evaluates its arguments in SOURCE order and binds
+        // them by NAME. The emitted shape is a closure over the source-order
+        // values whose body calls the callee in PARAMETER order:
+        //   (|__p914_a0, __p914_a1| sub(__p914_a1, __p914_a0))(b, a)
+        // The scalar-only guard keeps every transformation-heavy call shape on
+        // the historical positional emission; the shared argument loop below
+        // still emits the arguments in source order.
+        let named_plan = self.named_scalar_reorder(call);
+        if let Some(plan) = &named_plan {
+            write!(out, "(|")?;
+            for k in 0..plan.len() {
+                if k > 0 {
+                    write!(out, ", ")?;
+                }
+                write!(out, "__p914_a{k}")?;
+            }
+            write!(out, "| ")?;
+            self.expr(&call.name, out)?;
+            self.emit_turbofish_args(call, out)?;
+            write!(out, "(")?;
+            for target in 0..plan.len() {
+                if target > 0 {
+                    write!(out, ", ")?;
+                }
+                let src = plan.iter().position(|&p| p == target).unwrap_or(target);
+                write!(out, "__p914_a{src}")?;
+            }
+            write!(out, "))(")?;
+        } else {
+            self.expr(&call.name, out)?;
+            // Plan 395: explicit generic type args → Rust turbofish
+            self.emit_turbofish_args(call, out)?;
+            write!(out, "(")?;
+        }
 
         // Look up str-param flags for auto-borrow at call sites
         let str_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
@@ -847,5 +878,69 @@ impl RustTrans {
         }
 
         Ok(CallShape::Handled)
+    }
+}
+
+
+impl RustTrans {
+    /// PLAN-914: detect a FULLY-NAMED direct call whose argument names are
+    /// NOT in parameter order, restricted to the scalar-only shape (no
+    /// str/struct/spec/mut/merge flags, every parameter a plain scalar).
+    /// Returns the source->parameter index mapping, or None (historical
+    /// positional emission) for every other shape.
+    fn named_scalar_reorder(&self, call: &Call) -> Option<Vec<usize>> {
+        let Expr::Ident(fn_name) = call.name.as_ref() else {
+            return None;
+        };
+        let params = self.fn_param_names.get(fn_name)?;
+        let types = self.fn_param_types.get(fn_name)?;
+        if params.is_empty() || params.len() != call.args.args.len() || types.len() != params.len()
+        {
+            return None;
+        }
+        let scalar = |t: &Type| {
+            matches!(
+                t,
+                Type::Int
+                    | Type::Bool
+                    | Type::Uint
+                    | Type::I64
+                    | Type::U64
+                    | Type::Double
+                    | Type::Float
+                    | Type::Char
+            )
+        };
+        if !types.iter().all(scalar) {
+            return None;
+        }
+        for flags in [
+            self.fn_str_param_indices.get(fn_name),
+            self.fn_struct_param_indices.get(fn_name),
+            self.fn_mut_params.get(fn_name),
+            self.fn_spec_param_indices.get(fn_name),
+            self.fn_merge_mut_params.get(fn_name),
+        ] {
+            if flags.map(|f| f.iter().any(|b| *b)).unwrap_or(false) {
+                return None;
+            }
+        }
+        let mut mapping = Vec::with_capacity(params.len());
+        let mut used = vec![false; params.len()];
+        for arg in &call.args.args {
+            let Arg::Pair(key, _) = arg else {
+                return None;
+            };
+            let pos = params.iter().position(|p| p.as_str() == key.as_str())?;
+            if used[pos] {
+                return None;
+            }
+            used[pos] = true;
+            mapping.push(pos);
+        }
+        if mapping.iter().enumerate().all(|(src, &param)| src == param) {
+            return None;
+        }
+        Some(mapping)
     }
 }

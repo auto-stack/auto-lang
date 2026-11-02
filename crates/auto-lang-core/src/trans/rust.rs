@@ -379,6 +379,7 @@ pub struct RustTrans {
     // Full parameter types per function: fn_name -> Vec<Type>
     // Used for precise type-aware call site generation (&mut, &str, etc.)
     fn_param_types: HashMap<AutoStr, Vec<Type>>,
+    fn_param_names: HashMap<AutoStr, Vec<String>>,
     fn_ret_types: HashMap<AutoStr, Type>, // Plan 373: return-type cache for .await insertion
     // In merge mode, track which params use &mut (context types like Parser, TypeEnv)
     fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>,
@@ -573,6 +574,7 @@ impl RustTrans {
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             fn_param_types: HashMap::new(),
+            fn_param_names: HashMap::new(),
             fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_mut_params: HashMap::new(),
@@ -683,6 +685,7 @@ impl RustTrans {
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             fn_param_types: HashMap::new(),
+            fn_param_names: HashMap::new(),
             fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_mut_params: HashMap::new(),

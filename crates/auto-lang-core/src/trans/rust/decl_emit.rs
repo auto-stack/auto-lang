@@ -496,6 +496,16 @@ impl RustTrans {
 
         // Plan 523 H3: 未注解 fn 返回推断值（签名/缓存/调用点三处同源）。
         // 未注解 fn 在 parser 即坍缩为 Void(:8761)，故以 Void 为触发位；
+        // PLAN-914: parameter NAMES per function — the binding keys for
+        // fully-named call arguments (evaluated in source order, bound by
+        // name; see the scalar reorder emission in call_generic_fallback).
+        let param_names: Vec<String> = fn_decl.params.iter().map(|p| p.name.to_string()).collect();
+        self.fn_param_names
+            .insert(fn_decl.name.clone(), param_names.clone());
+        if let Some(parent) = &fn_decl.parent {
+            let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
+            self.fn_param_names.insert(qualified, param_names);
+        }
         // 体无显式 return 表达式时推断回 Unknown → 维持 Void 原样。
         // main 排除（Rust 要求 fn main 返回 ()；main 体内 return 值仅作
         // 退出语义，002_const_generics/002_list_storage 金样实证）。
@@ -2435,3 +2445,4 @@ impl RustTrans {
         Ok(())
     }
 }
+
