@@ -1,5 +1,9 @@
 # AutoGraphics（AG）M2：场景编辑视口与公共接口游戏原型
 
+> **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、正式游戏独立仓、Demo ag-examples**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/032-autographics-node2d-full-game-composition.md)、[G2-001](../../../../ag-platformer-2d/docs/plans/001-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
+>
+> 当前事实：AG012已交付05f1b498，新语法活入口**16/22**，这不是M2完成比例；030已落主804d7303，但review记录同实现会话自审，独立上下文证据待补，不按归档字样放行。两款完整M2游戏尚未交付，M2-01..09/G2-01..09/G3-01..08及原预算保持。引擎/自身Specs与计划归auto-ui，Gallery归ag-examples，新游戏计划/素材/实现归ag-platformer-2d；auto-lang本页仅保战略和历史来源。下文旧日期、编号、份数和在途状态保留历史，当前执行以各仓最新合同/源码/收据为准，不预取后继编号，也不以ACE/AOT/ECS/CPC/跨端作为当前M2前置。
+
 > **2026-10-30 目标要求回归**：公共图形应用的作者模型为AutoUI式声明、组件、绑定和事件，正常use、实例化与多场景组合是方向；model/view/on允许同组件内聚或拆出导入。具体要求AG-A01..09和六项讨论见auto-ui的[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。本专题下述单场景/旧VM/JSON/整帧拒绝/预算是阶段实验事实与旧合同保持面，不是最终架构约束。逻辑事务按关联状态管理，资源或组件局部失败不天然拒绝整个世界；渲染有效输入/同步与GPU呈现分别设计。树状声明允许未来lowering到数据导向/ECS存储，初期不要求实现。保留M2玩法分母与在途验收，未来作者模型接线、限额变化和示例迁移另行立约，不凭文档纠偏宣称新能力已实现。
 
 更新：2026-10-28。状态：设计基线v8；874已有实现WIP、877 executing/仓树已建，均未交付；875/878仍drafting，原范围不变。动态状态与长期决策见[交接快照](tracking-handoff-2026-10-28.md)，新会话先核实际Plan/owner，不接管在途树。
@@ -113,7 +117,7 @@ auto-ui已完成独立仓交付；技术上AG可先作为其experimental独立wo
 
 ### 5.3 当前运行能力切片
 
-858 Phase1冻结自有关卡G2/G3、参考与原始候选资源；860已交付真实Auto角色/支撑/路线/128负载go，861交付公共动作/2D角色。当前[874公共3D角色](../../plans/874-autographics-public-character3d.md)→[875运行相机](../../plans/875-autographics-runtime-cameras.md)，详见[运行设计](m2-runtime-and-character-control.md)。后者等前者实际交付后冻结；派生美术、实例/触发、音频/HUD与独立游戏仍未交付，不扩大旧合同认领完成。
+858 Phase1冻结自有关卡G2/G3、参考与原始候选资源；860已交付真实Auto角色/支撑/路线/128负载go，861交付公共动作/2D角色。当前[874公共3D角色](../../plans/archive/874-autographics-public-character3d.md)→[875运行相机](../../plans/archive/875-autographics-runtime-cameras.md)，详见[运行设计](m2-runtime-and-character-control.md)。后者等前者实际交付后冻结；派生美术、实例/触发、音频/HUD与独立游戏仍未交付，不扩大旧合同认领完成。
 
 ### 5.4 Gallery与three.js能力矩阵
 
@@ -164,6 +168,6 @@ Gallery另外使用轻量`ag-examples`仓（建议名），保存小示例/目�
 
 ## 9. 进入实施与后续细化
 
-856/857视口、860 go与861公共2D角色均已交付。当前874树有未提交实现、Plan簿记待同步，875等874实际交付；[877 GY-A](../../plans/877-autographics-gallery-catalog-and-basic-six.md)executing/内容仓树已建，[878 XP-0](../../plans/878-autographics-platform-boundary-and-dependency-audit.md)仍drafting。后两者固定读取861，写面互斥；现场树/状态见[交接快照](tracking-handoff-2026-10-28.md)，按owner最新记录接棒，不由状态或树存在推断交付。本会话不改四Plan合同/进度。
+856/857视口、860 go与861公共2D角色均已交付。当前874树有未提交实现、Plan簿记待同步，875等874实际交付；[877 GY-A](../../plans/archive/877-autographics-gallery-catalog-and-basic-six.md)executing/内容仓树已建，[878 XP-0](../../plans/archive/878-autographics-platform-boundary-and-dependency-audit.md)仍drafting。后两者固定读取861，写面互斥；现场树/状态见[交接快照](tracking-handoff-2026-10-28.md)，按owner最新记录接棒，不由状态或树存在推断交付。本会话不改四Plan合同/进度。
 
 原引擎/游戏路线剩余约9–12份，Gallery净增约2–3份，合计暂估11–15份（含874/875，两份后约9–13），见[估算](m2-runtime-and-character-control.md#4-当前m2剩余工作估计)。其余不取号/承诺月份，内容可并行但不按零成本计算。新profile/资源/语义须先证明可行并冻结，旧851、841/ACE和生产融合门独立。两维角色＋运行相机底座仍非完整G2/G3或M2。

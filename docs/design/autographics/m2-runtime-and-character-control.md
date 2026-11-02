@@ -1,8 +1,12 @@
 # AG M2运行能力：从真实Auto探针到公共角色接口
 
+> **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、正式游戏独立仓、Demo ag-examples**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/032-autographics-node2d-full-game-composition.md)、[G2-001](../../../../ag-platformer-2d/docs/plans/001-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
+>
+> 当前事实：AG012已交付05f1b498，新语法活入口**16/22**，这不是M2完成比例；030已落主804d7303，但review记录同实现会话自审，独立上下文证据待补，不按归档字样放行。两款完整M2游戏尚未交付，M2-01..09/G2-01..09/G3-01..08及原预算保持。引擎/自身Specs与计划归auto-ui，Gallery归ag-examples，新游戏计划/素材/实现归ag-platformer-2d；auto-lang本页仅保战略和历史来源。下文旧日期、编号、份数和在途状态保留历史，当前执行以各仓最新合同/源码/收据为准，不预取后继编号，也不以ACE/AOT/ECS/CPC/跨端作为当前M2前置。
+
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。
 
-日期：2026-10-29。状态：设计v7；角色/相机874/875与纯迁仓879已交付，AG唯一实现权威为auto-ui/experimental（4adf2d03）；880在途。下一批[882有限对象](../../../../auto-ui/docs/plans/001-autographics-runtime-object-lifecycle.md)→[883触发/新局](../../../../auto-ui/docs/plans/002-autographics-trigger-events-and-round-restart.md)已规划，尚未实施。长期目标与分母不变；早期状态段落是历史背景，当前以Plan/代码/收据为准。归属[Design45§13](../45-autographics-wgpu-engine-and-game-prototypes.md#13-m2运行对象触发与新局事务2026-10-29拟议合同)。
+日期：2026-10-29。状态：设计v7；角色/相机874/875与纯迁仓879已交付，AG唯一实现权威为auto-ui/experimental（4adf2d03）；880在途。下一批[882有限对象](../../../../auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md)→[883触发/新局](../../../../auto-ui/docs/plans/archived/002-autographics-trigger-events-and-round-restart.md)已规划，尚未实施。长期目标与分母不变；早期状态段落是历史背景，当前以Plan/代码/收据为准。归属[Design45§13](../45-autographics-wgpu-engine-and-game-prototypes.md#13-m2运行对象触发与新局事务2026-10-29拟议合同)。
 
 ## 1. 当前进度与目标
 
@@ -64,6 +68,6 @@
 
 882补有限运行实例：从已接受叶模板注册新身份(run,slot,generation)，最多8槽非solid根叶，base+reserved≤128、mesh潜在≤512；创建/销毁不是显隐，代次不回绕，旧句柄不可操作同槽新生。静态角色/solid和camera维持原合同。完整新对象集合/角色/相机同事务，源/SDK/时间/步数/32credits预算不升，T-02先做真实Auto全路径可行性门。
 
-auto-ui/002等auto-ui/001实际交付后冻结签名/价格，补最多8对触发、单tick确定enter/stay/exit及一次读取、圆/球与实际AABB几何（不能用包围盒替半径区域）、事件/实例共同发布与新Run隔离。用户Auto拥有收集/巡逻/胜负/Enter请求；Host只按受检请求创建新VM/Run，新初始化失败保完整旧呈现、旧消息不可入新局。G11两维/目录/锁/验收/包现由[ag-examples/001](../../../../ag-examples/docs/plans/001-autographics-gallery-runtime-objects.md)独立承接，硬等auto-ui/002实际交付；002只做引擎与必要夹具，不写内容仓。
+auto-ui/002等auto-ui/001实际交付后冻结签名/价格，补最多8对触发、单tick确定enter/stay/exit及一次读取、圆/球与实际AABB几何（不能用包围盒替半径区域）、事件/实例共同发布与新Run隔离。用户Auto拥有收集/巡逻/胜负/Enter请求；Host只按受检请求创建新VM/Run，新初始化失败保完整旧呈现、旧消息不可入新局。G11两维/目录/锁/验收/包现由[ag-examples/001](../../../../ag-examples/docs/plans/archived/001-autographics-gallery-runtime-objects.md)独立承接，硬等auto-ui/002实际交付；002只做引擎与必要夹具，不写内容仓。
 
 各Plan在所属仓独立簿记/工作树/复审/合入，auto-ui/001→002引擎串行，G11另在内容仓固定消费002真实交付；已有001实施不由本轮接管，旧知识保持跨仓引用。真实OS自动化仍暂停，用公开逻辑输入/无窗口内容与适用的未变证据；不把新语义未测写Ready。本阶段不交付完整游戏/精灵动画/声音/HUD，也不提前跨端或融合ACE。

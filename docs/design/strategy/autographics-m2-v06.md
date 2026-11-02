@@ -1,12 +1,16 @@
 # AutoGraphics（AG）v0.6 M2战略步骤
 
+> **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、正式游戏独立仓、Demo ag-examples**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/032-autographics-node2d-full-game-composition.md)、[G2-001](../../../../ag-platformer-2d/docs/plans/001-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
+>
+> 当前事实：AG012已交付05f1b498，新语法活入口**16/22**，这不是M2完成比例；030已落主804d7303，但review记录同实现会话自审，独立上下文证据待补，不按归档字样放行。两款完整M2游戏尚未交付，M2-01..09/G2-01..09/G3-01..08及原预算保持。引擎/自身Specs与计划归auto-ui，Gallery归ag-examples，新游戏计划/素材/实现归ag-platformer-2d；auto-lang本页仅保战略和历史来源。下文旧日期、编号、份数和在途状态保留历史，当前执行以各仓最新合同/源码/收据为准，不预取后继编号，也不以ACE/AOT/ECS/CPC/跨端作为当前M2前置。
+
 > **2026-10-30 作者目标与后继设计入口**：M2已有能力继续作为实验成果；长期AG以AutoUI式声明/组件/model/view/on、绑定/事件与普通模块use组织图形应用，不以单文件行为桥作为最终范式。旧32credits/单活动脚本/JSON格式保留在对应profile，不能作为永久语言要求；“可审计”不能推出单模块/单VM/单场景或全世界故障回滚。下一轮作者体验与示例改造先按[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)收敛语义，能力实现归auto-ui、内容迁移归ag-examples；不在本轮新增计划、启动改造或改变任何在途合同。下文日期状态为各轮快照，当前进度依实际Plan/交付收据核实。
 
 > **本仓编号更正（2026-10-29）**：auto-ui计划从001起独立编号，当前001=旧auto-lang/882（运行对象）、002=旧883的引擎部分（触发/新局），下一个003；ag-examples/001独立承接G11，硬等auto-ui/002实际交付，下一号002。旧880为legacy历史。下文早期882/883只是旧号映射；当前唯一合同见auto-ui/docs/plans。各仓不能以外仓迁入编号作为本地高水位。
 
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。
 
-更新：2026-10-29。状态：战略基线v11（按用户批准拆分）；AG源码权威为auto-ui/experimental，879源4adf2d03；旧auto-lang/autographics-dev仅历史指引。旧880已交付8项14入口。当前[auto-ui/001对象](../../../../auto-ui/docs/plans/001-autographics-runtime-object-lifecycle.md)已有权威工作树，进度由其owner记录；[auto-ui/002引擎触发/新局](../../../../auto-ui/docs/plans/002-autographics-trigger-events-and-round-restart.md)为drafting r4，只做引擎；新[ag-examples/001 G11](../../../../ag-examples/docs/plans/001-autographics-gallery-runtime-objects.md)为drafting r1，硬等002实际交付后实施。本轮仅修计划/引用，不接管001实现或启动后两份。设计见[M2](../autographics/m2-editor-and-public-game-prototypes.md)、[运行](../autographics/m2-runtime-and-character-control.md)、[Gallery](../autographics/m2-gallery-and-capability-matrix.md)、[平台](../autographics/platform-architecture-and-research.md)。
+更新：2026-10-29。状态：战略基线v11（按用户批准拆分）；AG源码权威为auto-ui/experimental，879源4adf2d03；旧auto-lang/autographics-dev仅历史指引。旧880已交付8项14入口。当前[auto-ui/001对象](../../../../auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md)已有权威工作树，进度由其owner记录；[auto-ui/002引擎触发/新局](../../../../auto-ui/docs/plans/archived/002-autographics-trigger-events-and-round-restart.md)为drafting r4，只做引擎；新[ag-examples/001 G11](../../../../ag-examples/docs/plans/archived/001-autographics-gallery-runtime-objects.md)为drafting r1，硬等002实际交付后实施。本轮仅修计划/引用，不接管001实现或启动后两份。设计见[M2](../autographics/m2-editor-and-public-game-prototypes.md)、[运行](../autographics/m2-runtime-and-character-control.md)、[Gallery](../autographics/m2-gallery-and-capability-matrix.md)、[平台](../autographics/platform-architecture-and-research.md)。
 
 ## 1. 阶段定位
 
@@ -157,10 +161,10 @@ GY-A约1份、GY-B约1份，GY-C并入原分发或另拆1份，净增2–3份；
 |---|---|---|
 | [auto-ui/001 运行对象](../../../../auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md) | archived，代码交付537122b09c025191355e260bc8e9880a4358cda2 | 不重开/接管 |
 | [auto-ui/002 触发与新局](../../../../auto-ui/docs/plans/archived/002-autographics-trigger-events-and-round-restart.md) | archived r5，实际交付0ee5ad0747ec3bb67e1288401fcc31daf3901c6e；簿记已入7e56dc8 | 引擎已交付，不再要求G11反向作前置 |
-| [ag-examples/001 G11](../../../../ag-examples/docs/plans/001-autographics-gallery-runtime-objects.md) | 用户确认正在实施；已见唯一.wt/ag-001/ag-examples、codex/plan-001-dev，主Plan簿记尚未同步 | 继续固定002交付，Gallery自己的目录/锁/README/包与独立门；本轮只读不修改 |
-| [auto-ui/004 图片与2D精灵帧](../../../../auto-ui/docs/plans/004-autographics-public-images-and-sprite-frames.md) | 新drafting r1，0/10；002实际前置已满足，未启动 | 公共PNG/有界closure、真实Auto取帧/翻向、与角色/相机/触发共同发布 |
-| [auto-ui/005 3D纹理与UV](../../../../auto-ui/docs/plans/005-autographics-textured-models-and-uv.md) | 新drafting r1，0/10 | 硬等004实际交付；固定素材色图/UV/变换与完整离线依赖 |
-| [auto-ui/006 节点动画与视觉朝向](../../../../auto-ui/docs/plans/006-autographics-node-animation-and-visual-facing.md) | 新drafting r1，0/10 | 硬等005实际交付；无skin clip/Auto phase/yaw，碰撞独立、same-tick |
+| [ag-examples/001 G11](../../../../ag-examples/docs/plans/archived/001-autographics-gallery-runtime-objects.md) | 用户确认正在实施；已见唯一.wt/ag-001/ag-examples、codex/plan-001-dev，主Plan簿记尚未同步 | 继续固定002交付，Gallery自己的目录/锁/README/包与独立门；本轮只读不修改 |
+| [auto-ui/004 图片与2D精灵帧](../../../../auto-ui/docs/plans/archived/004-autographics-public-images-and-sprite-frames.md) | 新drafting r1，0/10；002实际前置已满足，未启动 | 公共PNG/有界closure、真实Auto取帧/翻向、与角色/相机/触发共同发布 |
+| [auto-ui/005 3D纹理与UV](../../../../auto-ui/docs/plans/archived/005-autographics-textured-models-and-uv.md) | 新drafting r1，0/10 | 硬等004实际交付；固定素材色图/UV/变换与完整离线依赖 |
+| [auto-ui/006 节点动画与视觉朝向](../../../../auto-ui/docs/plans/archived/006-autographics-node-animation-and-visual-facing.md) | 新drafting r1，0/10 | 硬等005实际交付；无skin clip/Auto phase/yaw，碰撞独立、same-tick |
 
 本仓003已由Blog原生VM路线占用；AG没有另起独立数字序列，按auto-ui本地中央取号器004..006分配，下一号当前007。后续取号仍实时核验。Gallery本地下一号当前002，本轮未预占。
 
