@@ -137,6 +137,7 @@ fresh/hit/restart/body-edit各有文件化首例、独立oracle、失败后修�
 | T-04 | work | T-02；layout实际S/N窗 | I04/I09生产/活状态/恢复/失败原子/真实计量与预算；V-03/04/07 | AC-02/05 | [ ] |
 |  |  |  | I04/I09 能力调查（只读，file:line 见 plan-artifacts/plan-914/t01-t02-probe-evidence.md）：可编辑通道存在且 `EditSource` 为字面替换（contract.rs:2274、ac_av.rs:1508），但 AC/AV 增量 recipe 今天无任何 case 编辑类型声明；布局依赖事实已有三种（`declaration_context_fingerprint` av/src/function_queries.rs:161+verify.rs:1490；data-session record-mention 边 data_session.rs:859-960；AC collections 走显式 `prepare_declaration_change` native/src/collections_incremental.rs:528-633 并计数 `declaration_frontend_invalidations`）；拒绝也已存在（AC `SignatureOrContextDrift`/`declaration-invalidation` 且会话存活；AV "snapshot env-contract mismatch" 带恢复测试），但父侧把 AC 拒绝转成 infra ERROR（ac_mn.rs:2601-2607）、AV closures-source 遇 Pipeline 直接 exit(2)（av-worker.rs:1505-1508）。收敛判断：I04 ac=小接线（collections worker 加 declaration-invalidate 操作+父判生效计数）、I04 av=新能力（依赖精确失效只在 DataIncrementalSession，无 recipe 可达）、I09 ac/av=小接线（把既有拒绝+会话存活变成可判 verdict）。"unrelated production==0" 计数器两路径均已存在（unaffected_stage_delta/whole_module_stage_delta/fallback_whole_lower；whole_attempts/mir_lower_attempts/stage_attempts/body_work）。未核 `ac/arg`、stale.rs/materialize.rs 在本包中的角色，留 T-04 实施时按需核。 |
 | T-05 | work | T-03/04；H/M1窗 | 正式case/suite/独立reference/新固定组与所有consumer、12格证据回填；V-05/06/08 | AC-03/04/05 | [ ] |
+|  |  |  | T-05 首片（8/12 格）：新增 tracked `order-layout-914` case/suite（E01/E02 × ace/legacy 四路径 8 检查）、a2r 金样 `oracle/m1_e0{12}.rs`、独立 reference 两件；`scripts/test-groups.toml` 注册固定组 `case-ace-m1-order-layout-914`（runner=case），`cargo t case-ace-m1-order-layout-914` PASS、`auto-case run` 8/8 PASS；binding.tsv E01/E02 四路径回填 ok/ok/ok/ok-emit（source-bound，含生产者与反控注记），source-manifest.json 的 binding.sha256 同步更新；`scripts/tests/test_ace_m1_acceptance.py` 23 passed、`verify-ace-m1-852.ps1 contract` PASS（131 rows/313 required）。a2r 显式认证：actual 与 tracked 独立 reference 经 rustc 实跑同为 "bai32:7\\n"/"bai32:103\\n"。I04/I09 四格仍待 T-04。 |
 | T-06 | work | T-01..05；错峰运行 | V-01..08、相关完整组/正式原门/健康与遗漏自查；冻结SD/证据/提交→execution_done | AC-01..05 | [ ] |
 | T-07 | review | T-06冻结SHA同树 | 独立源码→真实事实→父判→格位审查，修复重绑证据后reviewed | AC-06 | [ ] |
 | T-08 | merge | T-07 pass | 冻结受影响组/必要consumer并集；有效同身份证据复用，batch仅due主检出单实例 | AC-07 | [ ] |
@@ -161,6 +162,10 @@ T-01 已完成（hash/祖先/913窗口/树/材料登记见 §8 T-01）。T-02 �
 
 2026-11-02 | stage:goal | PLAN-914 r1 | round 3 | from: executing | to: executing | outcome: progress | worktree: D:/autostack/.wt/lang-914/auto-lang | commit: 29195fdd8 | next: work
 E01/E02 四路径生产链已真实可观测：ac(mn) 值+stderr trace、av(scalar trace / data record trace)、avm(命名绑定修复后 7/103 + 精确 "ba" + 常驻回归)、a2r(闭包形式发射 + actual/reference 双侧 rustc 实测 "ba"+值)。未改 oracle/原语料/binding。仍开：I04/I09 接线、a2r 场景证据域落库、T-05 正式 suite/固定组与 binding 回填。
+
+
+2026-11-02 | stage:goal | PLAN-914 r1 | round 4 | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: (suite+group+binding backfill) | next: work
+T-05 首片落地：12 格中的 8 格（E01/E02 四路径）有了正式 tracked case/suite、固定组 `case-ace-m1-order-layout-914`、a2r 金样与独立 reference、binding 回填与 manifest 同步；`cargo t case-ace-m1-order-layout-914` 与 `cargo t a2r` 均 PASS，M1 治理测试 23 passed、contract scope PASS。I04/I09 四格仍 gap，T-04 未开工，计划保持 executing。
 
 ## 10. 待澄清事项
 
