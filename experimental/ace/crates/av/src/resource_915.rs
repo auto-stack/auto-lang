@@ -23,7 +23,9 @@
 use ace_av_core::abc::encode_abc;
 use ace_av_core::abc_verify::{verify_abc_bytes, LoadedModule};
 use ace_av_core::av::{execute_with_arena, CancelFlag, ExecLimits, PlaceFacts};
-use ace_av_core::contract::{ExecOutcome, Value, MIR_COLLECTIONS_SCHEMA};
+use ace_av_core::contract::{
+    ExecOutcome, Value, MAX_AV_INSTR_STEPS, MAX_AV_WALL, MIR_COLLECTIONS_SCHEMA,
+};
 use ace_av_core::mir::{
     FnSig, ListTypeRef, MirBlock, MirConst, MirFunction, MirInstr, MirModule, MirSlot, MirType,
     OwnerScope, SlotKind, Terminator,
@@ -578,5 +580,100 @@ pub fn place_sequence(mutation: PlaceMutation) -> Result<serde_json::Value, Stri
         "stale": stale,
         "fresh": fresh,
         "legal": legal,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// R02 typed control: capture CLONE at the prepare boundary
+// ---------------------------------------------------------------------------
+
+/// PLAN-915 R02: AutoLang source cannot produce a clone capture (a
+/// borrow-capturing closure may not escape — `source.closure-borrow-escape`),
+/// so the capture-clone contract is exercised at the typed prepare boundary
+/// the executor itself uses: a two-field owned record is cloned through
+/// `EnvPlan::prepare` with the arena seam armed on EVERY clone attempt. Each
+/// failure is the typed `env.capture.faulted-clone` carrying the attempt
+/// ordinal, the source stays readable, and the post-fault control succeeds.
+pub fn capture_clone_sweep() -> Result<serde_json::Value, String> {
+    use ace_av_core::closures::{CaptureMode, CaptureSpec, CloneContext, EnvLimits, EnvPlan};
+    use ace_av_core::contract::{RecordValue, Value};
+    use std::rc::Rc;
+
+    let limits = EnvLimits::default();
+    let cancel = CancelFlag::new(false);
+
+    let run = |fault: Option<u64>| -> Result<serde_json::Value, String> {
+        // Two source buffers are attempts 1/2; the clone's two Str copies are
+        // attempts 3/4, so the sweep below is exactly the clone attempts.
+        let arena = StrArena::new();
+        let a = arena.alloc(b"he");
+        let b = arena.alloc(b"llo");
+        let src = Value::Record(Rc::new(RecordValue {
+            ty: 0,
+            fields: vec![Value::Str(a.clone()), Value::Str(b.clone())],
+        }));
+        if let Some(k) = fault {
+            arena.set_fault_at(k);
+        }
+        let mut fuel = 0u64;
+        let mut ctx = CloneContext {
+            cancel: &cancel,
+            wall_left: MAX_AV_WALL,
+            fuel: &mut fuel,
+            max_fuel: MAX_AV_INSTR_STEPS,
+        };
+        let specs = [CaptureSpec {
+            mode: CaptureMode::Clone,
+            src: &src,
+        }];
+        let (outcome, fault_attempt, code) =
+            match EnvPlan::prepare(&arena, &specs, &limits, &mut ctx, Vec::new()) {
+                Ok((plan, _acc)) => {
+                    drop(plan);
+                    ("success".to_string(), None, None)
+                }
+                Err(e) => {
+                    let code = e.code().to_string();
+                    match &e {
+                        ace_av_core::closures::EnvPrepareError::FaultedClone {
+                            attempt, ..
+                        } => ("faulted-clone".to_string(), Some(*attempt), Some(code)),
+                        other => {
+                            return Err(format!(
+                                "unexpected prepare error at {fault:?}: {} ({code})",
+                                other.code()
+                            ))
+                        }
+                    }
+                }
+            };
+        let source_readable = match &src {
+            Value::Record(r) => r.fields.iter().all(|f| match f {
+                Value::Str(h) => !h.bytes().is_empty(),
+                _ => false,
+            }),
+            _ => false,
+        };
+        Ok(serde_json::json!({
+            "attempt": fault,
+            "outcome": outcome,
+            "fault_attempt": fault_attempt,
+            "code": code,
+            "live": arena.live(),
+            "source_readable": source_readable,
+        }))
+    };
+
+    let clean = run(None)?;
+    let mut points = Vec::new();
+    // Clone attempts are 3 and 4 (two source buffers were allocated first).
+    for attempt in 3..=4u64 {
+        points.push(run(Some(attempt))?);
+    }
+    let control = run(Some(5))?;
+    Ok(serde_json::json!({
+        "clean": clean,
+        "points": points,
+        "control": control,
     }))
 }

@@ -177,6 +177,15 @@ fn main() int {
 }
 "#;
 
+const LSTR: &str = r#"fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("中")
+    let removed Str = xs.remove(0)
+    return removed.len() * 10 + xs.get(0).len()
+}
+"#;
+
 const V05: &str = r#"type Item { name Str; code int }
 enum Token {
     Data(Item)
@@ -216,4 +225,25 @@ fn resource_915_r02_l05_v05_sweeps() {
         assert_eq!(facts["after"]["value"], 42, "{name}: {facts:#}");
         assert_eq!(facts["after"]["live"], 0, "{name}: {facts:#}");
     }
+}
+
+/// R02 typed control: every capture-clone attempt fails as the typed
+/// `env.capture.faulted-clone`, the source stays readable and owned, and the
+/// post-fault control clones successfully.
+#[test]
+fn resource_915_r02_capture_clone_sweep() {
+    let facts = resource_915::capture_clone_sweep().expect("capture sweep");
+    assert_eq!(facts["clean"]["outcome"], "success", "{facts:#}");
+    assert_eq!(facts["clean"]["live"], 2, "{facts:#}");
+    let points = facts["points"].as_array().expect("points");
+    assert_eq!(points.len(), 2, "{facts:#}");
+    for (i, point) in points.iter().enumerate() {
+        assert_eq!(point["outcome"], "faulted-clone", "{facts:#}");
+        assert_eq!(point["fault_attempt"], (i as u64) + 3, "{facts:#}");
+        assert_eq!(point["code"], "env.capture.faulted-clone", "{facts:#}");
+        assert_eq!(point["live"], 2, "the source must stay owned: {facts:#}");
+        assert_eq!(point["source_readable"], true, "{facts:#}");
+    }
+    assert_eq!(facts["control"]["outcome"], "success", "{facts:#}");
+    assert_eq!(facts["control"]["live"], 2, "{facts:#}");
 }

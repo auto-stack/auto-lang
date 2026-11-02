@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "7b3092173791447f7791df13e6d51ef7c196bf5968f53853fd104135e6215e2f"
+  "sha256": "9563cfc61f909d3e1b407a3963b382f8954f7de05d2271c5b2c7ecf15893876e"
  },
  "corpus_src": {
   "dir": "src",
@@ -409,13 +409,16 @@
  },
  "scenario_assets_915": {
   "dir": "resource-915",
-  "expected_count": 8,
+  "expected_count": 9,
   "files": {
-   "resource-915.case.ad": "58c271d9d5f994dc30c34f40292dad2bebd06e44192f1467ac4245e160251d78",
+   "resource-915.case.ad": "207c8323036453643c9ece21c86d932594c71c8cff7b8d865d8773a589aac40d",
    "resource-915.suite.ad": "19c8e93a5fe9dfd691d18f82f3b93664ed83d4b87378c8676162b21606075bc8",
    "src/K02-915.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
    "src/L04-915.at": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",
    "src/L05-915.at": "3c55fc65f45724c072aaf7a772cfdc7d52da0d4f117ec6f23841795551629149",
+   "src/R03-av.at": "afebd81b5eb6e3462f7cea29578429fceaa65d44d5deb570db02e3a6499b8bb5",
+   "src/R03-static-reject.at": "2d17a68d39fe3e437a7ecd7ba35ec0e0e0a4b7f2e26a275317d736466f03736b",
+   "src/LSTR-915.at": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff",
    "src/R03-av.at": "afebd81b5eb6e3462f7cea29578429fceaa65d44d5deb570db02e3a6499b8bb5",
    "src/R03-static-reject.at": "2d17a68d39fe3e437a7ecd7ba35ec0e0e0a4b7f2e26a275317d736466f03736b",
    "src/V05-915.at": "734c211d1ea0e62d52f14617369a77c975c0a23c915e3ed9dff91fa1f4c7c0c3"

@@ -39,10 +39,16 @@
   seam（与 821/822 的 V-07 既有定义一致）；owned Str/List 缓冲才是 arena attempt。
   这两类合起来覆盖本域运行时真正记账的每一次分配尝试。
 - **支持域**：原 corpus `L04`（owned record 字段 view）、`L05`（remove 移出 owner）、
-  `V05`（Variant owned payload）、`K02`（创建者退出后 owned 闭包，capture/env 物化）。
+  `V05`（Variant owned payload）、`LSTR`（List<Str> push/remove）、`K02`（创建者退出后
+  owned 闭包，capture/env 物化），外加 typed 层的 capture-clone 控制：AutoLang 源码
+  无法产生 clone 捕获（返回借用捕获闭包被 `source.closure-borrow-escape` 拒），故按
+  executor 自用的 prepare 边界直接见证——两字段 owned record 经 `EnvPlan::prepare`
+  clone，逐 attempt 失败均报 `env.capture.faulted-clone`（带序号），源保持可读/仍在
+  owner，N+1 控件成功。
 - **父侧冻结**（worker 只报事实，不带期望）：每例的结果值与两个 attempt 总数写死在父表
-  `RESOURCE_SWEEP_CASES`。当前冻结值：L04=42/6/2、L05=42/5/2、V05=42/6/1、K02=42/5/1
-  （值 / 值 seam attempt / arena attempt）。任一 seam 少一点即红。
+  `RESOURCE_SWEEP_CASES`。当前冻结值：L04=42/6/2、L05=42/5/2、V05=42/6/1、LSTR=51/5/3、
+  K02=42/5/1（值 / 值 seam attempt / arena attempt）；capture-clone 冻结为
+  attempt 3/4 失败、attempt 5 成功、live 恒为 2。任一 seam 少一点即红。
 - **不声称**：随机主机 OOM、非本域容器（List 嵌 List 等）、native/旧 AVM 的对应格、
   以及把预算拒绝当作 allocator 故障（预算 precheck 先于 attempt，attempt=0）。
 

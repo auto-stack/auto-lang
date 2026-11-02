@@ -722,6 +722,11 @@ struct StepOut {
     /// A resource-recipe increment only.
     #[serde(default)]
     place: Option<serde_json::Value>,
+    /// PLAN-915: the R02 capture-clone control face ({clean, points,
+    /// control}) at the typed prepare boundary. A resource-recipe increment
+    /// only.
+    #[serde(default)]
+    capture: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -1329,6 +1334,11 @@ pub fn run_data_check(
     )
 }
 
+/// PLAN-915 R02 (capture clone): (id, first clone attempt, last clone
+/// attempt, control attempt, expected live after the plan drops). The two
+/// source buffers are attempts 1/2, so the clone attempts start at 3.
+const CAPTURE_CASES: &[(&str, u64, u64, u64, usize)] = &[("clone", 3, 4, 5, 2)];
+
 /// PLAN-915 R02: the PARENT's frozen per-corpus expectation table —
 /// (entry id, frozen i32 result, owned-arena allocation attempts, value
 /// allocation attempts). Hand-audited from the frozen corpus programs at
@@ -1341,6 +1351,8 @@ const RESOURCE_SWEEP_CASES: &[(&str, i32, u64, u64)] = &[
     ("l05", 42, 2, 5),
     // V05: owned variant payload — one arena attempt (the payload buffer).
     ("v05", 42, 1, 6),
+    // LSTR: List<Str> push/remove — three owned buffers, five value writes.
+    ("lstr", 51, 3, 5),
     // K02: creator-exit owned closure — one arena attempt (the captured Str).
     ("k02", 42, 1, 5),
 ];
@@ -1817,11 +1829,13 @@ fn run_check_with_transport(
     // pins which identity it may report, and the receipt's toolchain axis
     // records that same identity instead of the family default.
     let resource_core_axis: Option<&str> = if family == RecipeFamily::Resource {
-        Some(if av.entry == "source:k02" {
-            EXPECTED_AV_CLOSURES_CORE_VERSION
-        } else {
-            EXPECTED_AV_COLLECTIONS_CORE_VERSION
-        })
+        Some(
+            if av.entry == "source:k02" || av.entry.starts_with("capture:") {
+                EXPECTED_AV_CLOSURES_CORE_VERSION
+            } else {
+                EXPECTED_AV_COLLECTIONS_CORE_VERSION
+            },
+        )
     } else {
         None
     };
@@ -2076,11 +2090,20 @@ fn run_check_with_transport(
                         "av resource place mutation `{name}` is not registered (parent table)"
                     ))
                 }
-                None => {
-                    return Err(
-                        "the resource recipe requires source:<id> or place:<mutation>".into(),
-                    )
-                }
+                None => match av.entry.strip_prefix("capture:") {
+                    Some(id) if CAPTURE_CASES.iter().any(|(fid, ..)| *fid == id) => {}
+                    Some(id) => {
+                        return Err(format!(
+                            "av resource capture `{id}` is not registered (parent table)"
+                        ))
+                    }
+                    None => {
+                        return Err(
+                            "the resource recipe requires source:<id>, place:<mutation> or capture:<id>"
+                                .into(),
+                        )
+                    }
+                },
             },
         }
     }
@@ -2736,7 +2759,7 @@ fn resource_on_non_resource(family: RecipeFamily, steps: &[StepOut]) -> bool {
     family != RecipeFamily::Resource
         && steps
             .iter()
-            .any(|s| s.resource.is_some() || s.place.is_some())
+            .any(|s| s.resource.is_some() || s.place.is_some() || s.capture.is_some())
 }
 
 /// Admission rule (PLAN-915): every resource/place face is SHAPE-validated
@@ -2749,10 +2772,13 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
     }
     let step = steps.iter().rev().find(|s| s.op == "run")?;
     let bad = |why: String| Some(format!("malformed resource report: {why}"));
-    match (&step.resource, &step.place) {
-        (Some(_), Some(_)) => return bad("both resource and place faces are present".into()),
-        (None, None) => return bad("neither resource nor place face is present".into()),
-        _ => {}
+    let faces = [
+        step.resource.is_some(),
+        step.place.is_some(),
+        step.capture.is_some(),
+    ];
+    if faces.iter().filter(|present| **present).count() != 1 {
+        return bad("the run step must carry exactly one resource/place/capture face".into());
     }
     if let Some(face) = &step.resource {
         let Some(obj) = face.as_object() else {
@@ -2879,6 +2905,45 @@ fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String>
                 if facts.get(key).and_then(|v| v.as_u64()).is_none() {
                     return bad(format!("place.{face_name}.facts.{key} is not unsigned"));
                 }
+            }
+        }
+    }
+    if let Some(face) = &step.capture {
+        let Some(obj) = face.as_object() else {
+            return bad("capture face is not an object".into());
+        };
+        for key in ["clean", "points", "control"] {
+            if obj.get(key).is_none() {
+                return bad(format!("capture face is missing `{key}`"));
+            }
+        }
+        let Some(points) = obj.get("points").and_then(|v| v.as_array()) else {
+            return bad("capture.points is not an array".into());
+        };
+        for (i, point) in points.iter().enumerate() {
+            if point.get("outcome").and_then(|v| v.as_str()).is_none()
+                || point
+                    .get("fault_attempt")
+                    .and_then(|v| v.as_u64())
+                    .is_none()
+                || point.get("live").and_then(|v| v.as_u64()).is_none()
+                || point
+                    .get("source_readable")
+                    .and_then(|v| v.as_bool())
+                    .is_none()
+            {
+                return bad(format!("capture.points[{i}] is malformed"));
+            }
+        }
+        for face_name in ["clean", "control"] {
+            let Some(f) = obj.get(face_name) else {
+                continue;
+            };
+            if f.get("outcome").and_then(|v| v.as_str()).is_none()
+                || f.get("live").and_then(|v| v.as_u64()).is_none()
+                || f.get("source_readable").and_then(|v| v.as_bool()).is_none()
+            {
+                return bad(format!("capture.{face_name} is malformed"));
             }
         }
     }
@@ -3071,6 +3136,115 @@ fn judge_resource(entry: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
                 "after-recompile",
                 format!("{want_value} live=0"),
                 format!("{recompiled_value} live={recompiled_live}"),
+            );
+        }
+        return;
+    }
+    if let Some(id) = entry.strip_prefix("capture:") {
+        let Some((_, first, last, control_attempt, want_live)) =
+            CAPTURE_CASES.iter().find(|(fid, ..)| *fid == id)
+        else {
+            return;
+        };
+        let Some(face) = &step.capture else {
+            push(
+                mismatches,
+                "capture",
+                "missing-face",
+                "the R02 capture-clone face".into(),
+                "absent".into(),
+            );
+            return;
+        };
+        let text = |face_name: &str, key: &str| {
+            face.get(face_name)
+                .and_then(|f| f.get(key))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        let number = |face_name: &str, key: &str| {
+            face.get(face_name)
+                .and_then(|f| f.get(key))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX)
+        };
+        let readable = |face_name: &str| {
+            face.get(face_name)
+                .and_then(|f| f.get("source_readable"))
+                .and_then(|v| v.as_bool())
+                == Some(true)
+        };
+        if text("clean", "outcome") != "success"
+            || number("clean", "live") != *want_live as u64
+            || !readable("clean")
+        {
+            push(
+                mismatches,
+                "capture",
+                "clean-control",
+                format!("success live={want_live} source readable"),
+                format!("{face:?}"),
+            );
+        }
+        let points = face
+            .get("points")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let want_points = last - first + 1;
+        if points.len() as u64 != want_points {
+            push(
+                mismatches,
+                "capture",
+                "point-count",
+                want_points.to_string(),
+                points.len().to_string(),
+            );
+        }
+        for (i, point) in points.iter().enumerate() {
+            let want_attempt = first + i as u64;
+            let got_attempt = point
+                .get("fault_attempt")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX);
+            let outcome = point
+                .get("outcome")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let code = point.get("code").and_then(|v| v.as_str()).unwrap_or_default();
+            let live = point.get("live").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+            let src_ok = point.get("source_readable").and_then(|v| v.as_bool()) == Some(true);
+            if outcome != "faulted-clone"
+                || got_attempt != want_attempt
+                || code != "env.capture.faulted-clone"
+                || live != *want_live as u64
+                || !src_ok
+            {
+                push(
+                    mismatches,
+                    "capture",
+                    "point",
+                    format!(
+                        "clone attempt {want_attempt} → env.capture.faulted-clone, live={want_live}, source readable"
+                    ),
+                    format!("{point}"),
+                );
+            }
+        }
+        let control_ok = text("control", "outcome") == "success"
+            && number("control", "live") == *want_live as u64
+            && number("control", "attempt") == *control_attempt
+            && readable("control");
+        if !control_ok {
+            push(
+                mismatches,
+                "capture",
+                "control",
+                format!(
+                    "the N+1 control (attempt {control_attempt}) clones successfully with live={want_live}"
+                ),
+                format!("{face:?}"),
             );
         }
         return;
@@ -4624,6 +4798,7 @@ mod judge_tests {
             console: None,
             resource: None,
             place: None,
+            capture: None,
         }
     }
 
@@ -4931,6 +5106,7 @@ mod closures_judge_tests {
             console: None,
             resource: None,
             place: None,
+            capture: None,
         }
     }
 
@@ -5012,6 +5188,7 @@ mod closures_source_judge_tests {
             console: None,
             resource: None,
             place: None,
+            capture: None,
         }
     }
 
@@ -5650,6 +5827,7 @@ mod resource_915_tests {
             console: None,
             resource,
             place,
+            capture: None,
         }
     }
 
@@ -5712,6 +5890,50 @@ mod resource_915_tests {
                 "live": 0,
             },
         })
+    }
+
+    fn capture_face() -> serde_json::Value {
+        serde_json::json!({
+            "clean": {"attempt": null, "outcome": "success", "fault_attempt": null,
+                      "code": null, "live": 2, "source_readable": true},
+            "points": [
+                {"attempt": 3, "outcome": "faulted-clone", "fault_attempt": 3,
+                 "code": "env.capture.faulted-clone", "live": 2, "source_readable": true},
+                {"attempt": 4, "outcome": "faulted-clone", "fault_attempt": 4,
+                 "code": "env.capture.faulted-clone", "live": 2, "source_readable": true},
+            ],
+            "control": {"attempt": 5, "outcome": "success", "fault_attempt": null,
+                        "code": null, "live": 2, "source_readable": true},
+        })
+    }
+
+    #[test]
+    fn resource_capture_face_is_admitted_and_judged_green() {
+        let step = step_with(None, None);
+        let mut step = step;
+        step.capture = Some(capture_face());
+        assert!(malformed_resource(RecipeFamily::Resource, &[step.clone()]).is_none());
+        let mut mismatches = Vec::new();
+        judge_resource("capture:clone", &step, &mut mismatches);
+        assert!(mismatches.is_empty(), "{mismatches:?}");
+    }
+
+    #[test]
+    fn resource_capture_skipped_point_is_rejected() {
+        let mut face = capture_face();
+        face["points"].as_array_mut().unwrap().pop();
+        let mut step = step_with(None, None);
+        step.capture = Some(face);
+        let mut mismatches = Vec::new();
+        judge_resource("capture:clone", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+        let mut face2 = capture_face();
+        face2["points"][1]["code"] = serde_json::json!("env.capture.unsupported-kind");
+        let mut step2 = step_with(None, None);
+        step2.capture = Some(face2);
+        let mut mismatches2 = Vec::new();
+        judge_resource("capture:clone", &step2, &mut mismatches2);
+        assert!(!mismatches2.is_empty());
     }
 
     #[test]
@@ -5791,6 +6013,9 @@ mod resource_915_tests {
             &[step.clone()]
         ));
         let both = step_with(Some(clean_sweep()), Some(place_face("push")));
+        let mut capture_mixed = step_with(Some(clean_sweep()), None);
+        capture_mixed.capture = Some(capture_face());
+        assert!(malformed_resource(RecipeFamily::Resource, &[capture_mixed]).is_some());
         assert!(malformed_resource(RecipeFamily::Resource, &[both]).is_some());
         let neither = step_with(None, None);
         assert!(malformed_resource(RecipeFamily::Resource, &[neither]).is_some());

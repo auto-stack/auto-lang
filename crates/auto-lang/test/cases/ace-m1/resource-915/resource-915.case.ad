@@ -72,6 +72,38 @@ case {
 ```test-case
 case {
   schema: "autolang.case/2"
+  id: "ace.m1.r02.lstr"
+  tags: ["ace-m1", "scenario", "resource-915", "r02"]
+  links: ["PLAN-915"]
+  source: { file: "src/LSTR-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-lstr-sweep", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:lstr" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02.capture"
+  tags: ["ace-m1", "scenario", "resource-915", "r02", "capture"]
+  links: ["PLAN-915"]
+  source: { file: "src/K02-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-capture-clone", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "capture:clone" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
   id: "ace.m1.r02.k02"
   tags: ["ace-m1", "scenario", "resource-915", "r02", "capture"]
   links: ["PLAN-915"]
