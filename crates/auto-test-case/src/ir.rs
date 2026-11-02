@@ -200,6 +200,10 @@ pub struct ResolvedOracle {
     /// run step — part of the content-bound identity (changing it
     /// invalidates old PASSes).
     pub av_channel: Option<String>,
+    /// PLAN-914: the AV run-step mark-trace oracle (probe, AV recipes only)
+    /// — the exact execution-order event bytes. Part of the content-bound
+    /// identity (changing it invalidates old PASSes).
+    pub trace: Option<StreamExpect>,
     pub oracle_sha256: String,
 }
 
@@ -300,7 +304,11 @@ pub fn resolve_oracle(
     if let Some(r) = &expect.result {
         combined.push_str(&format!("result\0{}\0{}\0", r.format, r.text));
     }
-    for (name, s) in [("stdout", &expect.stdout), ("stderr", &expect.stderr)] {
+    for (name, s) in [
+        ("stdout", &expect.stdout),
+        ("stderr", &expect.stderr),
+        ("trace", &expect.trace),
+    ] {
         if let Some(s) = s {
             combined.push_str(&format!("{}\0{}\0{:?}\0", name, s.text, s.compare));
         }
@@ -334,6 +342,7 @@ pub fn resolve_oracle(
         perf: expect.perf,
         probe,
         av_channel: expect.av_channel.clone(),
+        trace: expect.trace.clone(),
         oracle_sha256,
     })
 }
@@ -382,6 +391,7 @@ mod tests {
                     probe: None,
                     av_channel: None,
                     typed: None,
+                    trace: None,
                 },
                 product_from: None,
                 skip: None,

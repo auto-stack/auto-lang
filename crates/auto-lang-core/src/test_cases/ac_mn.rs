@@ -27,7 +27,7 @@
 //!   pipeline rejection.
 
 use crate::test_cases::sema::containment;
-use auto_test_case::compare::Mismatch;
+use auto_test_case::compare::{compare_bytes, Mismatch};
 use auto_test_case::contract::{CheckSpec, Completion, Stage};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
 use auto_test_case::report::{NativeRecord, Status};
@@ -44,6 +44,29 @@ const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
 const SESSION_WALL: Duration = Duration::from_secs(120);
 const BUILD_WALL: Duration = Duration::from_secs(300);
+
+/// PLAN-914: decode a worker-reported hex stream (`stdout_hex`/`stderr_hex`).
+/// Odd length or a non-hex byte is a real admission mismatch on the stream
+/// face (never a silently skipped comparison).
+fn hex_stream(raw: &str) -> Result<Vec<u8>, String> {
+    let bytes = raw.as_bytes();
+    if bytes.len() % 2 != 0 {
+        return Err(format!("odd-length hex stream ({} nibbles)", bytes.len()));
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut i = 0;
+    while i < bytes.len() {
+        let hi = (bytes[i] as char)
+            .to_digit(16)
+            .ok_or_else(|| format!("non-hex nibble at byte {i}"))? as u8;
+        let lo = (bytes[i + 1] as char)
+            .to_digit(16)
+            .ok_or_else(|| format!("non-hex nibble at byte {}", i + 1))? as u8;
+        out.push((hi << 4) | lo);
+        i += 2;
+    }
+    Ok(out)
+}
 
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
@@ -2057,6 +2080,32 @@ pub fn run_check(
                         first_diff: None,
                     });
                 }
+                // PLAN-914: the real PE's stderr (the executed mark bytes on
+                // the MIR-native scenario path). The worker reports it
+                // hex-encoded; the parent decodes and compares it to the
+                // declared oracle. A malformed stream is a mismatch, never a
+                // silent skip.
+                if let Some(want) = &oracle.stderr {
+                    match hex_stream(&stderr_hex) {
+                        Ok(actual) => {
+                            if let Some(m) = compare_bytes(
+                                want.text.as_bytes(),
+                                &actual,
+                                want.compare,
+                                "stderr",
+                            ) {
+                                mismatches.push(m);
+                            }
+                        }
+                        Err(detail) => mismatches.push(Mismatch {
+                            observation: "stderr".into(),
+                            kind: "decode".into(),
+                            expected: "a hex-encoded PE stderr stream".into(),
+                            actual: detail,
+                            first_diff: None,
+                        }),
+                    }
+                }
             }
             Completion::Error { stage, .. } => {
                 mismatches.push(Mismatch {
@@ -2896,6 +2945,32 @@ fn run_incremental(
                         actual: "none".into(),
                         first_diff: None,
                     });
+                }
+                // PLAN-914: the real PE's stderr (the executed mark bytes on
+                // the MIR-native scenario path). The worker reports it
+                // hex-encoded; the parent decodes and compares it to the
+                // declared oracle. A malformed stream is a mismatch, never a
+                // silent skip.
+                if let Some(want) = &oracle.stderr {
+                    match hex_stream(&stderr_hex) {
+                        Ok(actual) => {
+                            if let Some(m) = compare_bytes(
+                                want.text.as_bytes(),
+                                &actual,
+                                want.compare,
+                                "stderr",
+                            ) {
+                                mismatches.push(m);
+                            }
+                        }
+                        Err(detail) => mismatches.push(Mismatch {
+                            observation: "stderr".into(),
+                            kind: "decode".into(),
+                            expected: "a hex-encoded PE stderr stream".into(),
+                            actual: detail,
+                            first_diff: None,
+                        }),
+                    }
                 }
             }
             Completion::Error { stage, .. } => {

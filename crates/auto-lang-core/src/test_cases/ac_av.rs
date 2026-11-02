@@ -19,7 +19,7 @@
 //!   diagnosed admission/frontend/pipeline rejection.
 
 use crate::test_cases::sema::containment;
-use auto_test_case::compare::Mismatch;
+use auto_test_case::compare::{compare_bytes, Mismatch};
 use auto_test_case::contract::{CheckSpec, Completion, MessageMatcher, Stage};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
 use auto_test_case::report::{NativeRecord, Status};
@@ -3388,6 +3388,20 @@ fn judge_expectation(
                     _ => {}
                 }
             }
+            // PLAN-914: the MARK TRACE oracle. The worker reports the
+            // executed `hir.test.trace.v1` events in execution order; the
+            // parent compares that observed sequence to the declared bytes
+            // (the worker never sees this expectation). A recipe that does
+            // not report a trace can never satisfy it (empty actual is red
+            // for any non-empty oracle).
+            if let Some(want) = &expect.trace {
+                let actual: String = step.trace.concat();
+                if let Some(m) =
+                    compare_bytes(want.text.as_bytes(), actual.as_bytes(), want.compare, "trace")
+                {
+                    mismatches.push(m);
+                }
+            }
             if let Some(want) = expect.exit {
                 if step.value != Some(want) {
                     mismatches.push(Mismatch {
@@ -3398,8 +3412,7 @@ fn judge_expectation(
                         first_diff: None,
                     });
                 }
-            } else if expect.av_channel.is_none()
-                && expect.stdout.is_none()
+            } else if expect.av_channel.is_none()                && expect.stdout.is_none()
                 && expect.stderr.is_none()
             {
                 // Success without a value oracle still requires a value
@@ -3621,6 +3634,7 @@ mod judge_tests {
             perf: None,
             probe: None,
             av_channel: None,
+            trace: None,
             oracle_sha256: String::new(),
         }
     }

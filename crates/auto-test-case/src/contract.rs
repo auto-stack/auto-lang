@@ -493,6 +493,11 @@ pub struct ExpectSpec {
     /// the machine result's kind and canonical raw bits. Judgement is
     /// parent-side; the worker never sees this.
     pub typed: Option<TypedExpect>,
+    /// PLAN-914: the AV run-step MARK TRACE oracle (probe, AV recipes
+    /// only) — the exact execution-order event sequence the worker
+    /// reported (`step.trace`, e.g. "ba"). The worker's own report is
+    /// observation, never an oracle; the parent compares these bytes.
+    pub trace: Option<StreamExpect>,
 }
 
 /// PLAN-891 typed-entry expectation: kind label + canonical hex bits.
@@ -1086,6 +1091,21 @@ fn decode_check(
             | Some("ac-a2r/hir-record-text-emit-v1")
             | Some("ac-a2r/hir-collections-emit-v1")
     );
+    // PLAN-914: the AV recipes are the only probe recipes whose run steps
+    // report `step.trace`; the mark-trace oracle is admitted there only.
+    let trace_recipe = options
+        .probe_recipe
+        .as_deref()
+        .map(|r| r.starts_with("ac-av/"))
+        .unwrap_or(false);
+    // PLAN-914: the MIR-native recipes run a real PE and capture its
+    // stdout/stderr (`stdout_hex`/`stderr_hex`); stderr is admitted there
+    // for the executed mark bytes.
+    let mn_recipe = options
+        .probe_recipe
+        .as_deref()
+        .map(|r| r.starts_with("ac/mir-native-"))
+        .unwrap_or(false);
     let expect = decode_expect(
         f.req("expect")?,
         &f.path_of("expect"),
@@ -1093,6 +1113,7 @@ fn decode_check(
         action,
         console_recipe,
         a2x_recipe,
+        trace_recipe,
     )?;
     if adapter == Adapter::Probe {
         if console_recipe {
@@ -1128,7 +1149,16 @@ fn decode_check(
                     "console-run-v1 requires exactly one run step",
                 ));
             }
-        } else if expect.stdout.is_some() || expect.stderr.is_some() {
+        } else if expect.stderr.is_some() && !mn_recipe {
+            // PLAN-914: the MIR-native recipes capture the produced PE's
+            // real streams; `stderr` is admitted there so a scenario can
+            // observe the executed mark bytes. stdout stays console-only
+            // until a consumer actually needs it (no silent widening).
+            return Err(err(
+                &f.path_of("expect"),
+                "probe stderr is observable only with ac-av/console-run-v1 or an ac/mir-native-* recipe",
+            ));
+        } else if expect.stdout.is_some() {
             return Err(err(
                 &f.path_of("expect"),
                 "probe streams are observable only with ac-av/console-run-v1",
@@ -2449,6 +2479,11 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         // PLAN-891: the native typed-entry recipe observes the machine
         // result's (kind, canonical bits) frame face.
         (Adapter::Probe, "typed") => true,
+        // PLAN-914: the AV run-step mark trace (`step.trace`, the executed
+        // `hir.test.trace.v1` events in execution order). Decode admits the
+        // field for the AV recipes only (`trace_recipe`); the parent judges
+        // the sequence the worker actually reported, never a worker verdict.
+        (Adapter::Probe, "trace") => true,
         _ => false,
     }
 }
@@ -2465,6 +2500,7 @@ fn decode_expect(
     action: Action,
     console_recipe: bool,
     a2x_recipe: bool,
+    trace_recipe: bool,
 ) -> Result<ExpectSpec, ContractError> {
     let v2_channels = adapter == Adapter::Ac;
     let probe_channels = adapter == Adapter::Probe;
@@ -2504,6 +2540,7 @@ fn decode_expect(
             "typed",
             "stdout",
             "stderr",
+            "trace",
         ]
     } else {
         &["completion", "result", "stdout", "stderr", "artifacts"]
@@ -2518,7 +2555,7 @@ fn decode_expect(
     } else if probe_channels && a2x_recipe {
         &["probe", "exit", "stdout", "stderr", "artifacts"]
     } else if probe_channels {
-        &["probe", "exit", "stdout", "stderr"]
+        &["probe", "exit", "stdout", "stderr", "trace"]
     } else {
         &["result", "stdout", "stderr", "artifacts"]
     };
@@ -2683,6 +2720,47 @@ fn decode_expect(
     };
     let stdout = decode_stream("stdout")?;
     let stderr = decode_stream("stderr")?;
+
+    // PLAN-914: the AV run-step mark trace. Only the AV recipes report
+    // `step.trace`, so the field is admitted by recipe (never parsed and
+    // then ignored on a path that cannot observe it). The oracle is the
+    // exact execution-order event sequence; a declared trace is a
+    // success-completion observation like the other streams.
+    let trace = match f.sub("trace") {
+        None => None,
+        Some(tv) => {
+            let tp = f.path_of("trace");
+            if !probe_channels || !trace_recipe {
+                return Err(err(
+                    &tp,
+                    "`trace` is an AV run-step observation — only the ac-av/* probe recipes report a mark trace",
+                ));
+            }
+            if matches!(completion, Completion::Error { .. }) {
+                return Err(err(
+                    &tp,
+                    "`trace` expectations require completion \"success\" (a failed run carries no judged mark trace)",
+                ));
+            }
+            let pairs = as_obj(tv, &tp)?;
+            let tf = Fields::new(&tp, pairs, &["text", "compare"])?;
+            let compare = decode_compare(tf.sub("compare"), &format!("{}.compare", tp))?;
+            let text = req_str(&tf, "text")?;
+            // The AV trace alphabet is the delivered mark set ("a"/"b");
+            // anything else cannot be produced and would only ever be a
+            // silently-never-matching oracle.
+            if let Some(byte) = text.bytes().find(|b| *b != b'a' && *b != b'b') {
+                return Err(err(
+                    &format!("{}.text", tp),
+                    format!(
+                        "unknown trace event byte {:?} (the delivered mark alphabet is \"a\" and \"b\")",
+                        byte as char
+                    ),
+                ));
+            }
+            Some(StreamExpect { text, compare })
+        }
+    };
 
     let exit = match f.sub("exit") {
         None => None,
@@ -2995,6 +3073,7 @@ fn decode_expect(
         probe,
         av_channel,
         typed,
+        trace,
     })
 }
 
