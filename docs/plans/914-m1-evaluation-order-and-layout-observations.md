@@ -194,6 +194,10 @@ I04 av 与 I09 av 落地：新 AV data-incremental recipe + invalidation oracle 
 2026-11-02 | stage:goal | PLAN-914 r2 | round 9 | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: (T-04 evidence) | next: work
 T-04 收尾证据：形式 suite 一次运行的逐操作 receipt 1.0-2.2 KiB（AC declaration 20.2 KiB 为最大，仍远低于 ≤4MiB/操作门），AC declaration 轮 ledger_peak_total 21,317B（mir-symbol 12,468/staging 6,884/io 3,379）在受管上限内，AV 步 1.1 KiB、值 i32；恢复/失败原子：I09 ac 拒绝后同 session 仍执行（cache_hit_coff=3）、I09 av 拒绝候选后旧快照仍返回旧值 104。T-06 阶段一：case-ace-m1-base（36 cases/97 checks，含 session-lifecycle 四态）PASS、case-ace-m1-order-layout-914 gate_passed=True、治理 23 passed、contract PASS。T-01..T-05 标记完成（current_step 5/10）；ace-native/ace-av 组在机器高负载（另有 913/916 会话在建）下仍在跑，结果下轮并入 T-06 冻结并集。
 
+
+2026-11-02 | stage:goal | PLAN-914 r2 | round 10 | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: d98b09e4c | next: work
+SD-01..07 规范增量已在 worktree 拟好并提交（新文件 `docs/specs/auto-test-case/m1-order-layout-observations.md`；conformance/gap-audit/scenario-oracles/a2r-golden-certification/function-incremental-source/cache-and-conformance 各追加 PLAN-914 段），merge 时发布。T-06 阶段一仍绿（case-ace-m1-base、新场景组、治理 23、contract PASS）；ace-native/ace-av 组在本机多会话（913/916 等）并发 cargo 构建/测试的锁与 CPU 竞争下挂起（nextest 驱动 idle >1.5h，定向 conformance 与 adapter 单测亦排队），已取消并如实记录为环境限制而非测试失败——变更的 collections/dava worker 代码已由正式场景 suite 端到端跑通（I04 ac declaration 轮、I04/I09 av 三检查）。T-06 的冻结受影响组并集待机器空闲时补跑；计划保持 executing。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
