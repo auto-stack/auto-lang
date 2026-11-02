@@ -62,6 +62,25 @@ impl GateReport {
     }
 }
 
+/// PLAN-913 §5.4: one unit that passed decode + deep verification OUTSIDE
+/// the session (the source-bound recovery entry). Carrying it here is
+/// bookkeeping, never a credential: the code object came out of a real
+/// `verify_abc_bytes` + `FunctionCode::admit_unit` in the restoring process.
+pub struct AdmittedUnit {
+    pub name: String,
+    pub code: Arc<FunctionCode>,
+    pub wire: Arc<[u8]>,
+    pub body_fp: String,
+    pub artifact: Option<String>,
+}
+
+/// What one revision submits: freshly produced MIR, or a unit that a real
+/// verification path already admitted.
+enum UnitInput {
+    Mir(MirModule),
+    Admitted(Box<AdmittedUnit>),
+}
+
 /// One revision's observed outcome.
 #[derive(Clone, Debug)]
 pub struct ApplyOutcome {
@@ -248,6 +267,24 @@ impl ClosuresUpdateSession {
         &self.store_project
     }
 
+    /// PLAN-913: the managed-store root this session persists to (None for a
+    /// non-persisting or recovery session).
+    pub fn store_root(&self) -> Option<&Path> {
+        self.store_root.as_deref()
+    }
+
+    /// PLAN-913: the canonical admitted wire of a unit (the bytes the store
+    /// artifact carries). The recovery publication reads it to compute the
+    /// artifact's own fingerprint; it is never used as a key.
+    pub fn current_wire_bytes(&self, name: &str) -> Option<&[u8]> {
+        self.current_wire.get(name).map(|w| w.as_ref())
+    }
+
+    /// PLAN-913: every installed unit's wire identity (`d_<name>`), sorted.
+    pub fn unit_names(&self) -> Vec<String> {
+        self.units.keys().cloned().collect()
+    }
+
     /// Release this session's roots and resident references. External
     /// snapshots own their code independently and can continue to run.
     pub fn close(&mut self) -> Result<(), String> {
@@ -432,6 +469,37 @@ impl ClosuresUpdateSession {
         &mut self,
         submitted: &[(&str, MirModule)],
     ) -> Result<ApplyOutcome, String> {
+        let units: Vec<(String, UnitInput)> = submitted
+            .iter()
+            .map(|(name, m)| (name.to_string(), UnitInput::Mir(m.clone())))
+            .collect();
+        self.apply_units(&units)
+    }
+
+    /// PLAN-913 §5.4: install units that were decoded + deep-verified
+    /// OUTSIDE this session (the source-bound recovery entry,
+    /// [`crate::closures_source_recovery::restore_source_recovery`]). No
+    /// production stage runs here: no `verify_mir`, no `encode_abc`, no
+    /// store write. The session still links, executes and commits through the
+    /// SAME transaction, so a restore cannot bypass the structural gate or
+    /// the atomic install. A recovery session is created WITHOUT a store root
+    /// (`new(None, entry)`), so `close` performs no data/root write either
+    /// (the read-only positive path).
+    pub fn restore_install(
+        &mut self,
+        units: Vec<AdmittedUnit>,
+    ) -> Result<ApplyOutcome, String> {
+        let units: Vec<(String, UnitInput)> = units
+            .into_iter()
+            .map(|u| (u.name.clone(), UnitInput::Admitted(Box::new(u))))
+            .collect();
+        self.apply_units(&units)
+    }
+
+    fn apply_units(
+        &mut self,
+        submitted: &[(String, UnitInput)],
+    ) -> Result<ApplyOutcome, String> {
         if self.closed {
             return Err("session is closed".into());
         }
@@ -442,12 +510,12 @@ impl ClosuresUpdateSession {
             }),
             None => None,
         };
-        self.apply_revision_inner(submitted, staged.as_ref())
+        self.apply_units_inner(submitted, staged.as_ref())
     }
 
-    fn apply_revision_inner(
+    fn apply_units_inner(
         &mut self,
-        submitted: &[(&str, MirModule)],
+        submitted: &[(String, UnitInput)],
         staged: Option<&StagedStore>,
     ) -> Result<ApplyOutcome, String> {
         let prev_units = self.units.clone();
@@ -471,7 +539,8 @@ impl ClosuresUpdateSession {
         // revision time, not retroactively).
         for name in &order {
             let required: &[String] = match submitted.iter().find(|(n, _)| *n == name.as_str()) {
-                Some((_, m)) => &m.capabilities,
+                Some((_, UnitInput::Mir(m))) => &m.capabilities,
+                Some((_, UnitInput::Admitted(u))) => &u.code.unit().module().capabilities,
                 None => {
                     &self
                         .units
@@ -492,12 +561,33 @@ impl ClosuresUpdateSession {
         }
         for name in &order {
             match submitted.iter().find(|(n, _)| *n == name.as_str()) {
-                Some((_, m)) => {
+                Some((_, UnitInput::Mir(m))) => {
                     if m.funcs.first().map(|f| f.name.as_str()) != Some(name.as_str()) {
                         return Err(format!("submitted unit name does not match `{name}`"));
                     }
                     let (fc, fp, wire, artifact) = self.produce_unit(m, staged)?;
                     next.insert(name.clone(), (fc, fp, wire, artifact));
+                }
+                Some((_, UnitInput::Admitted(u))) => {
+                    // PLAN-913: an already-verified restored unit. Installing
+                    // it is bookkeeping only — the verification that admitted
+                    // it is the recovery entry's R axis (recorded there).
+                    if u.code.name() != name.as_str() {
+                        return Err(format!(
+                            "restored unit `{}` does not match `{name}`",
+                            u.code.name()
+                        ));
+                    }
+                    self.counters.admitted += 1;
+                    next.insert(
+                        name.clone(),
+                        (
+                            u.code.clone(),
+                            u.body_fp.clone(),
+                            u.wire.clone(),
+                            u.artifact.clone(),
+                        ),
+                    );
                 }
                 None => {
                     let fc = self

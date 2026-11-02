@@ -628,6 +628,114 @@ impl ClosuresFunctionSession {
             units,
         })
     }
+    /// PLAN-913 §5.3 (T-02): publish the ACCEPTED source state as this
+    /// project's CURRENT source-origin recovery root. Requires a store-backed
+    /// session — the per-unit ABC artifacts the session persisted are the
+    /// ones the manifest references. The caller keeps the returned ticket's
+    /// artifact id + digest OUT OF BAND and forwards it to a DIFFERENT
+    /// process; the digest is never re-derived from the store.
+    pub fn publish_source_recovery(
+        &self,
+        project: &str,
+    ) -> Result<crate::closures_source_recovery::RecoveryTicket, String> {
+        use crate::closures_source_recovery::{
+            publish_source_recovery, PublicationRequest, RecoveryUnitInput,
+        };
+        let store_root = self
+            .update
+            .store_root()
+            .ok_or("source recovery requires a store-backed session")?;
+        let state = self.accepted_state().ok_or("no accepted state to publish")?;
+        let front = self.front.as_ref().ok_or("no retained frontend")?;
+        // Every unit's wire was lowered against ONE MIR owner module; the
+        // unit envelopes bind to it, so the manifest records it and the
+        // publication refuses a mixed-owner catalog.
+        let mut owner_module: Option<String> = None;
+        let mut owner_schema: Option<String> = None;
+        for u in &state.units {
+            let code = self
+                .update
+                .unit(&u.unit)
+                .ok_or_else(|| format!("unit {} is not installed", u.unit))?;
+            let module = code.unit().module().owner.module.clone();
+            let schema = code.unit().module().owner.schema.clone();
+            match &owner_schema {
+                None => owner_schema = Some(schema),
+                Some(existing) if *existing != schema => {
+                    return Err(format!(
+                        "unit {} carries owner schema `{schema}`, catalog is `{existing}`",
+                        u.unit
+                    ))
+                }
+                Some(_) => {}
+            }
+            match &owner_module {
+                None => owner_module = Some(module),
+                Some(existing) if *existing != module => {
+                    return Err(format!(
+                        "unit {} carries owner module `{module}`, catalog is `{existing}`",
+                        u.unit
+                    ))
+                }
+                Some(_) => {}
+            }
+        }
+        let owner_module = owner_module.ok_or("no units to publish")?;
+        let owner_schema = owner_schema.ok_or("no units to publish")?;
+        let mut units = Vec::with_capacity(state.units.len());
+        for u in &state.units {
+            let artifact = u
+                .store_ref
+                .clone()
+                .ok_or_else(|| format!("unit {} has no persisted artifact", u.unit))?;
+            let wire = self
+                .update
+                .current_wire_bytes(&u.unit)
+                .ok_or_else(|| format!("unit {} has no installed wire", u.unit))?;
+            if wire.is_empty() {
+                return Err(format!("unit {} has an empty wire", u.unit));
+            }
+            let logical = match &u.logical {
+                AcceptedUnitLogical::Owner => "owner".to_string(),
+                AcceptedUnitLogical::Lambda { logical_id, owner } => {
+                    format!("lambda:{logical_id}:{owner}")
+                }
+            };
+            units.push(RecoveryUnitInput {
+                unit: u.unit.clone(),
+                logical,
+                body_digest: u.body_digest.clone(),
+                dependency_digest: u.dependency_digest.clone(),
+                env_layout_identity: u.env_layout_identity.clone(),
+                mir_identity: u.mir_identity.clone(),
+                body_fp: format!("{:016x}", fnv1a64(wire)),
+                wire_bytes: wire.len(),
+                artifact,
+                mint_span: u.mint_span,
+                current_span: u.current_span,
+            });
+        }
+        publish_source_recovery(
+            store_root,
+            PublicationRequest {
+                project,
+                source_sha256: &state.source_sha256,
+                source_len: front.source().len(),
+                logical_owner: &state.logical_owner,
+                owner_module: &owner_module,
+                owner_schema: &owner_schema,
+                entry: &state.entry,
+                profile: &state.profile,
+                capabilities: &state.capabilities,
+                accepted_generation: state.accepted_generation,
+                commit_point: state.commit_point,
+                context_revision: &state.context_revision,
+                accepted_state_schema: state.schema,
+                units,
+            },
+        )
+        .map_err(|e| e.to_string())
+    }
 }
 
 fn mix_bytes(h: &mut u64, s: &str) {

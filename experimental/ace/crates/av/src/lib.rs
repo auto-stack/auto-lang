@@ -13,6 +13,7 @@ pub mod closures_865_support;
 pub mod closures_fn_session;
 pub mod closures_fixture;
 pub mod closures_session;
+pub mod closures_source_recovery;
 pub mod coff_admission;
 pub mod collections_864_session;
 pub mod collections_864_support;
