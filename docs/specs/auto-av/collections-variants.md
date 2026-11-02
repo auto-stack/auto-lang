@@ -38,3 +38,16 @@ LIST_NEW/PUSH/INSERT/REMOVE/GET/SET/LEN/CAP、LIST_FIELD_GET/LIST_FIELD_SET、VA
 - 值恢复身份见 [cache-and-conformance.md](cache-and-conformance.md) A22 节（profile/types-fp/entry/snapshot 四绑定 + owner 重盖章）。
 
 证据与边界：`av_collections_822` 语义/资源/缓存/增量档与 attachments/822 各轮复审记录；touched_goals 为空（有限实验扩面，不核销生产目标）。
+
+## PLAN-915：R02/R03 正式场景证据（2026-11-02）
+
+- **R02（构造/clone/扩容失败注入）**：L04/L05（本 profile 源码域）与 V05 的每个真实分配
+  attempt 现由 `ac-av/resource-run-v1` 逐点注入并父侧冻结计数；本 profile 的 List 容量
+  扩容是真实分配 attempt（值 seam 覆盖），List/Str 缓冲 attempt 由 arena seam 覆盖。
+  指令/布局/预算零改动，生产默认不配置 seam。
+- **R03（旧 buffer/活借用）**：Index Place 的 `buf_id/epoch/elem_gen` 使用期校验由
+  typed 授信序列（verify_mir→ABC admit→执行）正式见证：push/insert/remove/元素替换后
+  旧 token 均 `av.trap.stale-place` 且先于 buffer 访问；fresh token 与未变元素保持可用。
+  完整合同见 [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。
+- 边界不变：源码不铸造 Place（`source.view-escape`/`source.iterate-mutate` 仍静态拒绝），
+  本 profile 仍不承诺通用失效句柄校验。

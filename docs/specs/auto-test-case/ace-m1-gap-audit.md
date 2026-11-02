@@ -241,3 +241,14 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
 - **F-A2R-1 名解析与 F-REG-3 六负例**：旧 A2R 生产 single/project/adapter 已交付 typed 前端拒绝，B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 列均为 `ok:P916`，八格 owner 关闭；不再保留 `diff-no-name-check`/`gap:a2r-golden` 作为这些格的当前状态。
 - 新 17-check suite 与三份 NB emit reference 已接固定组；完整 a2r 391/391、base97、NB 908、infra 23 通过。原始 negative source 与其他后端差异不改，manifest 只更新 binding hash 与追加 916 说明。
 - 不变：R07 a2r 未定型发射、T08、38 格复合认证、B18 avm infra、scenario/native/console 其余 owner、future/cert 账及 `can_claim_m1=false`。本包关闭八个 a2r 格，不重开 242/908，也不签 M1。
+
+## PLAN-915 后状态（2026-11-02；上节为历史）
+
+- **F-AV-1（R02 scn av）与 F-AV-2（R03 scn av）关闭**：两格由正式场景套件
+  `case-ace-m1-resource-915` + 父侧冻结表见证（逐 attempt 注入 / typed 授信 Place
+  使用前拒绝，dangerous access=0）；binding.tsv 对应 av 列改为 `ok:av-resource-915`。
+- 关闭的是 **av 列**：scenario R02 的 ac/avm/a2r 与 R03 的 ac(diff)/avm(diff)/a2r
+  保持各自状态；`MutRef` 通用失效句柄校验、native/旧 AVM 对应格、R01/R04/R06 事件
+  通道、B18 avm 与 38 格复合认证等残余 owner 不变。
+- 计数口径：本轮只改两格 av 值，不重算 `can_claim_m1`（仍 false），不签 M1、不改
+  分母/批准规则/其他格。

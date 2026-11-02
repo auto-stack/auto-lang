@@ -772,6 +772,20 @@ suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.su
 domain = "ace"
 all = false
 
+# PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario suite
+# (the two ns=scenario AV cells; frozen corpus sources + typed place witness).
+[[group]]
+name = "case-ace-m1-resource-915"
+title = "ACE M1 resource-fault/stale-place scenario 915 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/resource-915/resource-915.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-913: the source-bound recovery suite (publish -> fresh-process
 # restore with zero source production -> the next warm single-unit edit).
 [[group]]

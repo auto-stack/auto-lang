@@ -1,0 +1,130 @@
+# PLAN-915 R02/R03 scenario suite — the two ns=scenario AV cells the plan
+# owns (binding.tsv:113-114), NOT the same-named corpus rows R02/R03.
+#
+# R02 (构造/clone/扩容失败注入): the frozen corpus programs L04/L05/V05/K02
+# are driven through the real frontends and the recipe sweeps EVERY
+# allocation attempt on both existing seams (value allocations: slot
+# writes, closure-env materialization, list capacity growth; owned arena:
+# Str/List buffers), then asserts the N+1 positive control and a real re-run
+# after the fault is cleared. Sources are byte-copies of the corpus
+# `src/<ID>.at` files; the parent freezes the result value and both attempt
+# counts in its own table (never the worker's word).
+#
+# R03 (活借用/旧 buffer): AutoLang source cannot mint a List Place, so the
+# runtime witness is a typed MIR module that passes the same verifier gates
+# (`verify_mir` → `encode_abc` → `verify_abc_bytes`) and runs on the real
+# executor: mint a place, read it legally, mutate the list structurally
+# (push/insert/remove/element replace), then use the OLD place — it must
+# trap `av.trap.stale-place` BEFORE any buffer access (the gated counters
+# report buffer_reads=1: the legal read only). Fresh-token and no-mutation
+# controls keep every legal neighbour usable, and a source-level
+# counterexample shows the STATIC rejection of a structural mutation while
+# iterating (the two faces stay distinct).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02.l04"
+  tags: ["ace-m1", "scenario", "resource-915", "r02"]
+  links: ["PLAN-915"]
+  source: { file: "src/L04-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-l04-sweep", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:l04" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02.l05"
+  tags: ["ace-m1", "scenario", "resource-915", "r02"]
+  links: ["PLAN-915"]
+  source: { file: "src/L05-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-l05-sweep", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:l05" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02.v05"
+  tags: ["ace-m1", "scenario", "resource-915", "r02"]
+  links: ["PLAN-915"]
+  source: { file: "src/V05-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-v05-sweep", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:v05" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02.k02"
+  tags: ["ace-m1", "scenario", "resource-915", "r02", "capture"]
+  links: ["PLAN-915"]
+  source: { file: "src/K02-915.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r02-k02-sweep", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:k02" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03.stale"
+  tags: ["ace-m1", "scenario", "resource-915", "r03"]
+  links: ["PLAN-915"]
+  source: { file: "src/R03-av.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r03-stale-push", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "place:push" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "av-r03-stale-insert", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "place:insert" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "av-r03-stale-remove", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "place:remove" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "av-r03-stale-replace", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-run-v1", av: { entry: "place:replace" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "av-r03-legal-neighbour", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 130 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03.static-reject"
+  tags: ["ace-m1", "scenario", "resource-915", "r03"]
+  links: ["PLAN-915"]
+  source: { file: "src/R03-static-reject.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-r03-static-reject", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "resolve", code: "bind/source.iterate-mutate" } } }
+  ]
+}
+```

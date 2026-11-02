@@ -37,6 +37,7 @@ pub mod owned_driver;
 pub mod owned_fixture;
 pub mod owned_session;
 pub mod resident;
+pub mod resource_915;
 pub mod semrefs;
 pub mod session;
 #[cfg(feature = "test-case-batch")]

@@ -273,8 +273,10 @@ function Load-SourceManifest {
     # only covers the corpus root, so a sub-directory scenario's frozen files
     # would otherwise be invisible to this contract. Present => enumerate
     # EXACTLY (extra files fail), hash every file, and reject drift.
-    if ($m.PSObject.Properties['scenario_assets']) {
-        $sa = $m.scenario_assets
+    # PLAN-915: EVERY plan-scoped scenario asset group is enumerated exactly
+    # (the 914 group and the 915 group each carry dir/expected_count/files).
+    foreach ($assetsProp in @($m.PSObject.Properties | Where-Object { $_.Name -like 'scenario_assets*' })) {
+        $sa = $assetsProp.Value
         $saRel = [string]$sa.dir
         $saDir = Join-Path $corpusDir $saRel
         if (-not (Test-Path $saDir)) { Fail "scenario asset dir missing: $saRel" }

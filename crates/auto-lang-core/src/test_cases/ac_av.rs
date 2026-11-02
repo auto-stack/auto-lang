@@ -120,6 +120,14 @@ pub const EXPECTED_AV_DYNAMIC_CORE_VERSION: &str = "av.dynamic/1";
 /// against the compact-codec counters, never the worker's word.
 pub const AV_COMPACT_RECIPE: &str = "ac-av/compact-run-v1";
 
+/// PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario
+/// recipe. Two faces selected by `av.entry`: `source:<l04|l05|v05|k02>`
+/// sweeps every allocation attempt of a frozen corpus program,
+/// `place:<push|insert|remove|replace>` runs the typed stale-Place
+/// sequence. The parent judges the frozen attempt counts and place facts;
+/// the worker never sees them.
+pub const AV_RESOURCE_RECIPE: &str = "ac-av/resource-run-v1";
+
 /// PLAN-866: the resident-online recipe (`av.core-i32/1` scalar profile) —
 /// ONE continuously-running guest chain driven by fuel slices, edits
 /// applied exactly at guest call-boundary safety points (prepare → armed
@@ -160,6 +168,8 @@ pub enum RecipeFamily {
     /// PLAN-866: the resident-online recipe — one continuously-running
     /// chain, edits at call-boundary safety points.
     Resident,
+    /// PLAN-915: the R02 fault sweep / R03 stale-Place scenario recipe.
+    Resource,
     Loaded,
     Closures,
     Dynamic,
@@ -180,6 +190,7 @@ impl RecipeFamily {
             RecipeFamily::ClosuresFn => AV_CLOSURES_FN_RECIPE,
             RecipeFamily::ClosuresRecovery => AV_CLOSURES_RECOVERY_RECIPE,
             RecipeFamily::Resident => AV_RESIDENT_RECIPE,
+            RecipeFamily::Resource => AV_RESOURCE_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
@@ -201,6 +212,11 @@ impl RecipeFamily {
             // PLAN-866: the resident recipe rides the scalar profile
             // identity (the 828 session pipeline).
             RecipeFamily::Resident => EXPECTED_AV_CORE_VERSION,
+            // PLAN-915: the resource recipe admits the TWO real profiles it
+            // drives (collections sources/place witnesses → av.collections/1,
+            // the K02 capture source → av.closures/1); the per-entry check
+            // below pins which entry may report which identity.
+            RecipeFamily::Resource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::Closures => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
             // PLAN-826: the compact wire is a WIRE generation of the same
@@ -696,6 +712,16 @@ struct StepOut {
     channel: Option<String>,
     #[serde(default)]
     console: Option<ConsoleOut>,
+    /// PLAN-915: the R02 sweep face of a resource-recipe run step
+    /// ({source_value, arena_attempts, value_attempts, arena_points,
+    /// value_points, arena_control, value_control, after}). A
+    /// resource-recipe increment only.
+    #[serde(default)]
+    resource: Option<serde_json::Value>,
+    /// PLAN-915: the R03 stale-Place face ({mutation, stale, fresh, legal}).
+    /// A resource-recipe increment only.
+    #[serde(default)]
+    place: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -1093,6 +1119,34 @@ pub fn run_data_check(
     )
 }
 
+/// PLAN-915 R02: the PARENT's frozen per-corpus expectation table —
+/// (entry id, frozen i32 result, owned-arena allocation attempts, value
+/// allocation attempts). Hand-audited from the frozen corpus programs at
+/// T-02 and then re-verified by the crate-side controls; the judge compares
+/// against THIS, never against anything the worker reports.
+const RESOURCE_SWEEP_CASES: &[(&str, i32, u64, u64)] = &[
+    // L04: owned-record field view — "hello" buffer + list buffer.
+    ("l04", 42, 2, 6),
+    // L05: remove transfers the owner out — same two buffers.
+    ("l05", 42, 2, 5),
+    // V05: owned variant payload — one arena attempt (the payload buffer).
+    ("v05", 42, 1, 6),
+    // K02: creator-exit owned closure — one arena attempt (the captured Str).
+    ("k02", 42, 1, 5),
+];
+
+/// PLAN-915 R03: the PARENT's frozen stale-Place sequence table —
+/// (mutation, trap code, fresh-token value, legal-face value). The legal
+/// face is the no-mutation control (mint → read = 10); the fresh face is a
+/// token minted AFTER the mutation reading the current element; the stale
+/// face is the pre-mutation token used after it (must trap).
+const PLACE_SEQUENCES: &[(&str, &str, i32, i32)] = &[
+    ("push", "av.trap.stale-place", 30, 10),
+    ("insert", "av.trap.stale-place", 30, 10),
+    ("remove", "av.trap.stale-place", 20, 10),
+    ("replace", "av.trap.stale-place", 99, 10),
+];
+
 /// PLAN-821 T-02: the PARENT's frozen av.owned-fixture/1 expectation
 /// table — an INDEPENDENT hand-audited copy of the frozen fixture truths
 /// (contract-decision §11): the canonical result face, the owned
@@ -1421,6 +1475,26 @@ pub fn run_owned_check(
         artifact_dir,
         run_dir,
         RecipeFamily::Owned,
+    )
+}
+
+/// PLAN-915: the R02/R03 scenario recipe entry.
+pub fn run_resource_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Resource,
     )
 }
 
@@ -1760,6 +1834,32 @@ fn run_check_with_transport(
     } else {
         None
     };
+    // PLAN-915: the resource recipe's entry selector is validated against
+    // the parent's OWN frozen tables before any request — an unregistered
+    // source id or place mutation is a check error, never a green run.
+    if family == RecipeFamily::Resource {
+        match av.entry.strip_prefix("source:") {
+            Some(id) if RESOURCE_SWEEP_CASES.iter().any(|(fid, ..)| *fid == id) => {}
+            Some(id) => {
+                return Err(format!(
+                    "av resource source `{id}` is not registered (parent table)"
+                ))
+            }
+            None => match av.entry.strip_prefix("place:") {
+                Some(name) if PLACE_SEQUENCES.iter().any(|(fid, ..)| *fid == name) => {}
+                Some(name) => {
+                    return Err(format!(
+                        "av resource place mutation `{name}` is not registered (parent table)"
+                    ))
+                }
+                None => {
+                    return Err(
+                        "the resource recipe requires source:<id> or place:<mutation>".into(),
+                    )
+                }
+            },
+        }
+    }
     let mut request = serde_json::json!({
         "recipe": recipe,
         "nonce": nonce,
@@ -1901,6 +2001,16 @@ fn run_check_with_transport(
             infra_detail = Some(v);
             break 'admit;
         }
+        if resource_on_non_resource(family, &ok.steps) {
+            infra_detail = Some(
+                "resource/place face on a non-resource recipe (protocol violation)".to_string(),
+            );
+            break 'admit;
+        }
+        if let Some(v) = malformed_resource(family, &ok.steps) {
+            infra_detail = Some(v);
+            break 'admit;
+        }
         if ok.worker_version != EXPECTED_AV_WORKER_VERSION {
             infra_detail = Some(format!(
                 "av worker version `{}` does not match the admitted `{}`",
@@ -1908,7 +2018,24 @@ fn run_check_with_transport(
             ));
             break 'admit;
         }
-        if ok.av_core_version != expected_core_version {
+        if family == RecipeFamily::Resource {
+            // PLAN-915: the resource recipe attaches the real profile of the
+            // entry it drove; the parent pins WHICH entry may report which
+            // identity (the K02 capture source is the closures profile, all
+            // collections sources and place witnesses the collections one).
+            let want_core = if av.entry == "source:k02" {
+                EXPECTED_AV_CLOSURES_CORE_VERSION
+            } else {
+                EXPECTED_AV_COLLECTIONS_CORE_VERSION
+            };
+            if ok.av_core_version != want_core {
+                infra_detail = Some(format!(
+                    "av core version `{}` does not match the entry's admitted `{}`",
+                    ok.av_core_version, want_core
+                ));
+                break 'admit;
+            }
+        } else if ok.av_core_version != expected_core_version {
             infra_detail = Some(format!(
                 "av core version `{}` does not match the admitted `{}`",
                 ok.av_core_version, expected_core_version
@@ -2187,6 +2314,10 @@ fn run_check_with_transport(
         judge_expectation(family, &step, oracle, &mut mismatches);
     } else if let Some(id) = &dynamic_fixture {
         judge_dynamic_fixture(id, &step, &mut mismatches);
+    } else if family == RecipeFamily::Resource {
+        // PLAN-915: the R02 sweep / R03 place judgement against the
+        // parent's frozen tables (the worker's word is never the oracle).
+        judge_resource(&av.entry, &step, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
         if family == RecipeFamily::Loaded {
@@ -2375,6 +2506,497 @@ fn malformed_closures_source(steps: &[StepOut]) -> Option<String> {
             "malformed closures_source face (expected u64 runtime/cache/resource axes)".into()
         })
     })
+}
+
+/// Admission rule (PLAN-915): the `resource`/`place` faces belong to the
+/// resource recipe only — their presence on any other recipe is a protocol
+/// violation, never a pass-shaped extra channel.
+fn resource_on_non_resource(family: RecipeFamily, steps: &[StepOut]) -> bool {
+    family != RecipeFamily::Resource
+        && steps
+            .iter()
+            .any(|s| s.resource.is_some() || s.place.is_some())
+}
+
+/// Admission rule (PLAN-915): every resource/place face is SHAPE-validated
+/// here, before and independent of any oracle. Wrong types, unknown keys,
+/// point counts that disagree with the reported attempt totals, and
+/// half-present control faces are all explicit rejections.
+fn malformed_resource(family: RecipeFamily, steps: &[StepOut]) -> Option<String> {
+    if family != RecipeFamily::Resource {
+        return None;
+    }
+    let step = steps.iter().rev().find(|s| s.op == "run")?;
+    let bad = |why: String| Some(format!("malformed resource report: {why}"));
+    match (&step.resource, &step.place) {
+        (Some(_), Some(_)) => return bad("both resource and place faces are present".into()),
+        (None, None) => return bad("neither resource nor place face is present".into()),
+        _ => {}
+    }
+    if let Some(face) = &step.resource {
+        let Some(obj) = face.as_object() else {
+            return bad("resource face is not an object".into());
+        };
+        let known = [
+            "source_value",
+            "arena_attempts",
+            "arena_successful",
+            "arena_frees",
+            "value_attempts",
+            "arena_points",
+            "value_points",
+            "arena_control",
+            "value_control",
+            "after",
+            "after_recompile",
+        ];
+        if let Some(key) = obj.keys().find(|k| !known.contains(&k.as_str())) {
+            return bad(format!("resource face carries unknown key `{key}`"));
+        }
+        if obj.get("source_value").and_then(|v| v.as_i64()).is_none() {
+            return bad("source_value is not an integer".into());
+        }
+        for field in ["arena_attempts", "value_attempts"] {
+            if obj.get(field).and_then(|v| v.as_u64()).is_none() {
+                return bad(format!("{field} is not an unsigned integer"));
+            }
+        }
+        for (points_field, attempts_field) in [
+            ("arena_points", "arena_attempts"),
+            ("value_points", "value_attempts"),
+        ] {
+            let Some(points) = obj.get(points_field).and_then(|v| v.as_array()) else {
+                return bad(format!("{points_field} is not an array"));
+            };
+            let attempts = obj
+                .get(attempts_field)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if points.len() as u64 != attempts {
+                return bad(format!(
+                    "{points_field} has {} points for {attempts} attempts",
+                    points.len()
+                ));
+            }
+            for (i, point) in points.iter().enumerate() {
+                if point.get("attempt").and_then(|v| v.as_u64()) != Some(i as u64 + 1) {
+                    return bad(format!("{points_field}[{i}] attempt ordinal mismatch"));
+                }
+                if !point.get("faulted").and_then(|v| v.as_bool()).is_some() {
+                    return bad(format!("{points_field}[{i}] faulted is not a bool"));
+                }
+                if point.get("live").and_then(|v| v.as_u64()).is_none() {
+                    return bad(format!(
+                        "{points_field}[{i}] live is not an unsigned integer"
+                    ));
+                }
+            }
+        }
+        for control in ["arena_control", "value_control"] {
+            let Some(c) = obj.get(control) else {
+                return bad(format!("{control} is missing"));
+            };
+            if c.get("attempt").and_then(|v| v.as_u64()).is_none() {
+                return bad(format!("{control}.attempt is not an unsigned integer"));
+            }
+            if c.get("value").and_then(|v| v.as_i64()).is_none() {
+                return bad(format!("{control}.value is not an integer"));
+            }
+            if c.get("live").and_then(|v| v.as_u64()).is_none() {
+                return bad(format!("{control}.live is not an unsigned integer"));
+            }
+        }
+        for field in ["after", "after_recompile"] {
+            let Some(after) = obj.get(field) else {
+                return bad(format!("{field} face is missing"));
+            };
+            if after.get("value").and_then(|v| v.as_i64()).is_none()
+                || after.get("live").and_then(|v| v.as_u64()).is_none()
+            {
+                return bad(format!("{field}.value/live are not integers"));
+            }
+        }
+    }
+    if let Some(face) = &step.place {
+        let Some(obj) = face.as_object() else {
+            return bad("place face is not an object".into());
+        };
+        for key in ["mutation", "stale", "fresh", "legal"] {
+            if obj.get(key).is_none() {
+                return bad(format!("place face is missing `{key}`"));
+            }
+        }
+        if obj
+            .get("mutation")
+            .and_then(|v| v.as_str())
+            .map(str::is_empty)
+            .unwrap_or(true)
+        {
+            return bad("place mutation is not a non-empty string".into());
+        }
+        for face_name in ["stale", "fresh", "legal"] {
+            let Some(f) = obj.get(face_name) else {
+                continue;
+            };
+            if f.get("outcome").and_then(|v| v.as_str()).is_none() {
+                return bad(format!("place.{face_name}.outcome is not a string"));
+            }
+            if f.get("live").and_then(|v| v.as_u64()).is_none() {
+                return bad(format!("place.{face_name}.live is not an unsigned integer"));
+            }
+            let Some(facts) = f.get("facts").and_then(|v| v.as_object()) else {
+                return bad(format!("place.{face_name}.facts is not an object"));
+            };
+            for key in [
+                "mints",
+                "get_ok",
+                "get_stale",
+                "set_ok",
+                "set_stale",
+                "buffer_reads",
+            ] {
+                if facts.get(key).and_then(|v| v.as_u64()).is_none() {
+                    return bad(format!("place.{face_name}.facts.{key} is not unsigned"));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// PLAN-915: judge the R02 sweep / R03 place sequence against the parent's
+/// frozen tables. Every axis is checked against the table, never against the
+/// worker's reported expectations.
+fn judge_resource(entry: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    fn push(
+        mismatches: &mut Vec<Mismatch>,
+        observation: &str,
+        kind: &'static str,
+        expected: String,
+        actual: String,
+    ) {
+        mismatches.push(Mismatch {
+            observation: observation.to_string(),
+            kind,
+            expected,
+            actual,
+            first_diff: None,
+        });
+    }
+    if let Some(id) = entry.strip_prefix("source:") {
+        let Some((_, want_value, want_arena, want_values)) =
+            RESOURCE_SWEEP_CASES.iter().find(|(fid, ..)| *fid == id)
+        else {
+            return;
+        };
+        let Some(face) = &step.resource else {
+            push(
+                mismatches,
+                "resource",
+                "missing-face",
+                "the R02 sweep face".into(),
+                "absent".into(),
+            );
+            return;
+        };
+        let got_value = face
+            .get("source_value")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(-1);
+        if got_value != *want_value as i64 {
+            push(
+                mismatches,
+                "resource",
+                "source-value",
+                want_value.to_string(),
+                got_value.to_string(),
+            );
+        }
+        let got_arena = face
+            .get("arena_attempts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(u64::MAX);
+        if got_arena != *want_arena {
+            push(
+                mismatches,
+                "resource",
+                "arena-attempts",
+                want_arena.to_string(),
+                got_arena.to_string(),
+            );
+        }
+        let got_values = face
+            .get("value_attempts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(u64::MAX);
+        if got_values != *want_values {
+            push(
+                mismatches,
+                "resource",
+                "value-attempts",
+                want_values.to_string(),
+                got_values.to_string(),
+            );
+        }
+        let points = |name: &str| {
+            face.get(name)
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+        };
+        for (field, count) in [
+            ("arena_points", *want_arena),
+            ("value_points", *want_values),
+        ] {
+            let got = points(field);
+            if got.len() as u64 != count {
+                push(
+                    mismatches,
+                    "resource",
+                    field,
+                    count.to_string(),
+                    got.len().to_string(),
+                );
+                continue;
+            }
+            for (i, point) in got.iter().enumerate() {
+                let faulted = point.get("faulted").and_then(|v| v.as_bool()) == Some(true);
+                let live = point.get("live").and_then(|v| v.as_u64()).unwrap_or(1);
+                let message = point
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let marker = if field == "arena_points" {
+                    "fault-injected at owned allocation attempt #"
+                } else {
+                    "fault-injected at value allocation #"
+                };
+                if !faulted || live != 0 || !message.contains(marker) {
+                    push(
+                        mismatches,
+                        "resource",
+                        "point",
+                        format!("#{} {marker}… with live=0", i + 1),
+                        format!("{point}"),
+                    );
+                }
+            }
+        }
+        for (field, attempt) in [
+            ("arena_control", *want_arena + 1),
+            ("value_control", *want_values + 1),
+        ] {
+            let got_attempt = face
+                .get(field)
+                .and_then(|v| v.get("attempt"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX);
+            let got_value = face
+                .get(field)
+                .and_then(|v| v.get("value"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(-1);
+            let got_live = face
+                .get(field)
+                .and_then(|v| v.get("live"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1);
+            if got_attempt != attempt || got_value != *want_value as i64 || got_live != 0 {
+                push(
+                    mismatches,
+                    "resource",
+                    field,
+                    format!("attempt {attempt} → {want_value} live=0"),
+                    format!("attempt {got_attempt} → {got_value} live={got_live}"),
+                );
+            }
+        }
+        let after_value = face
+            .get("after")
+            .and_then(|v| v.get("value"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(-1);
+        let after_live = face
+            .get("after")
+            .and_then(|v| v.get("live"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1);
+        if after_value != *want_value as i64 || after_live != 0 {
+            push(
+                mismatches,
+                "resource",
+                "after",
+                format!("{want_value} live=0"),
+                format!("{after_value} live={after_live}"),
+            );
+        }
+        // The recovery run must be a FULL re-verification of the same
+        // source (never a cached result) and must reproduce the frozen value.
+        let recompiled_value = face
+            .get("after_recompile")
+            .and_then(|v| v.get("value"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(-1);
+        let recompiled_live = face
+            .get("after_recompile")
+            .and_then(|v| v.get("live"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1);
+        if recompiled_value != *want_value as i64 || recompiled_live != 0 {
+            push(
+                mismatches,
+                "resource",
+                "after-recompile",
+                format!("{want_value} live=0"),
+                format!("{recompiled_value} live={recompiled_live}"),
+            );
+        }
+        return;
+    }
+    let Some(name) = entry.strip_prefix("place:") else {
+        return;
+    };
+    let Some((_, want_trap, want_fresh, want_legal)) =
+        PLACE_SEQUENCES.iter().find(|(fid, ..)| *fid == name)
+    else {
+        return;
+    };
+    let Some(face) = &step.place else {
+        push(
+            mismatches,
+            "place",
+            "missing-face",
+            "the R03 place sequence".into(),
+            "absent".into(),
+        );
+        return;
+    };
+    let got_mutation = face.get("mutation").and_then(|v| v.as_str()).unwrap_or("");
+    if got_mutation != name {
+        push(
+            mismatches,
+            "place",
+            "mutation",
+            name.to_string(),
+            got_mutation.to_string(),
+        );
+    }
+    let facts = |face_name: &str, key: &str| {
+        face.get(face_name)
+            .and_then(|f| f.get("facts"))
+            .and_then(|f| f.get(key))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(u64::MAX)
+    };
+    // Stale face: the pre-mutation token must be REJECTED by the stale
+    // validation; mints=1, one legal read happened, the rejected use added
+    // NO buffer access.
+    let stale_outcome = face
+        .get("stale")
+        .and_then(|f| f.get("outcome"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let stale_trap = face
+        .get("stale")
+        .and_then(|f| f.get("trap"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let stale_live = face
+        .get("stale")
+        .and_then(|f| f.get("live"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1);
+    if stale_outcome != "trap" || stale_trap != *want_trap || stale_live != 0 {
+        push(
+            mismatches,
+            "place",
+            "stale-trap",
+            format!("{want_trap} with live=0"),
+            format!("{stale_outcome}/{stale_trap} live={stale_live}"),
+        );
+    }
+    for (key, want) in [
+        ("mints", 1u64),
+        ("get_ok", 1),
+        ("get_stale", 1),
+        ("set_ok", 0),
+        ("set_stale", 0),
+        // the legal pre-mutation read is the ONLY buffer access.
+        ("buffer_reads", 1),
+    ] {
+        let got = facts("stale", key);
+        if got != want {
+            push(
+                mismatches,
+                "place",
+                "stale-facts",
+                format!("{key}={want}"),
+                format!("{key}={got}"),
+            );
+        }
+    }
+    // Fresh face: a token minted after the mutation reads the current value.
+    let fresh_outcome = face
+        .get("fresh")
+        .and_then(|f| f.get("outcome"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let fresh_value = face
+        .get("fresh")
+        .and_then(|f| f.get("value"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+    if fresh_outcome != "success" || fresh_value != *want_fresh as i64 {
+        push(
+            mismatches,
+            "place",
+            "fresh-read",
+            format!("success {want_fresh}"),
+            format!("{fresh_outcome} {fresh_value}"),
+        );
+    }
+    for (key, want) in [("get_ok", 1u64), ("get_stale", 0), ("buffer_reads", 1)] {
+        let got = facts("fresh", key);
+        if got != want {
+            push(
+                mismatches,
+                "place",
+                "fresh-facts",
+                format!("{key}={want}"),
+                format!("{key}={got}"),
+            );
+        }
+    }
+    // Legal face: no mutation at all — the token stays valid.
+    let legal_outcome = face
+        .get("legal")
+        .and_then(|f| f.get("outcome"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let legal_value = face
+        .get("legal")
+        .and_then(|f| f.get("value"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+    if legal_outcome != "success" || legal_value != *want_legal as i64 {
+        push(
+            mismatches,
+            "place",
+            "legal-read",
+            format!("success {want_legal}"),
+            format!("{legal_outcome} {legal_value}"),
+        );
+    }
+    if facts("legal", "get_stale") != 0 {
+        push(
+            mismatches,
+            "place",
+            "legal-facts",
+            "get_stale=0".into(),
+            format!("get_stale={}", facts("legal", "get_stale")),
+        );
+    }
 }
 
 /// Admission rule (PLAN-821): EVERY owned report on an owned response is
@@ -3779,6 +4401,8 @@ mod judge_tests {
             dynamic: None,
             channel: None,
             console: None,
+            resource: None,
+            place: None,
         }
     }
 
@@ -4084,6 +4708,8 @@ mod closures_judge_tests {
             dynamic: None,
             channel: None,
             console: None,
+            resource: None,
+            place: None,
         }
     }
 
@@ -4163,6 +4789,8 @@ mod closures_source_judge_tests {
             dynamic: None,
             channel: None,
             console: None,
+            resource: None,
+            place: None,
         }
     }
 
@@ -4767,5 +5395,183 @@ fn judge_closures_recovery(
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod resource_915_tests {
+    use super::*;
+
+    fn step_with(resource: Option<serde_json::Value>, place: Option<serde_json::Value>) -> StepOut {
+        StepOut {
+            op: "run".into(),
+            outcome: "success".into(),
+            value: None,
+            typed: None,
+            trap: None,
+            diag: None,
+            counters: Default::default(),
+            source_hash: String::new(),
+            wall_ms: 0.0,
+            trace: vec![],
+            refusal: None,
+            rebuilt_defs: vec![],
+            identities_before: Default::default(),
+            identities_after: Default::default(),
+            spans: vec![],
+            owned: None,
+            collections: None,
+            closures: None,
+            closures_source: None,
+            recovery: None,
+            dynamic: None,
+            channel: None,
+            console: None,
+            resource,
+            place,
+        }
+    }
+
+    fn point(attempt: u64, arena: bool) -> serde_json::Value {
+        serde_json::json!({
+            "attempt": attempt,
+            "faulted": true,
+            "live": 0,
+            "attempts": attempt,
+            "successful": attempt - 1,
+            "frees": attempt - 1,
+            "message": if arena {
+                format!("fault-injected at owned allocation attempt #{attempt}")
+            } else {
+                format!("fault-injected at value allocation #{attempt}")
+            },
+        })
+    }
+
+    /// A complete, well-formed R02 face for the frozen `l04` row (2 arena +
+    /// 6 value attempts) — the accepting control.
+    fn clean_sweep() -> serde_json::Value {
+        serde_json::json!({
+            "source_value": 42,
+            "arena_attempts": 2,
+            "arena_successful": 2,
+            "arena_frees": 2,
+            "value_attempts": 6,
+            "arena_points": (1..=2).map(|n| point(n, true)).collect::<Vec<_>>(),
+            "value_points": (1..=6).map(|n| point(n, false)).collect::<Vec<_>>(),
+            "arena_control": {"attempt": 3, "faulted": false, "live": 0, "value": 42},
+            "value_control": {"attempt": 7, "faulted": false, "live": 0, "value": 42},
+            "after": {"value": 42, "live": 0},
+            "after_recompile": {"value": 42, "live": 0},
+        })
+    }
+
+    fn place_face(mutation: &str) -> serde_json::Value {
+        serde_json::json!({
+            "mutation": mutation,
+            "stale": {
+                "outcome": "trap",
+                "value": null,
+                "trap": "av.trap.stale-place",
+                "facts": {"mints":1,"get_ok":1,"get_stale":1,"set_ok":0,"set_stale":0,"buffer_reads":1},
+                "live": 0,
+            },
+            "fresh": {
+                "outcome": "success",
+                "value": 30,
+                "trap": null,
+                "facts": {"mints":1,"get_ok":1,"get_stale":0,"set_ok":0,"set_stale":0,"buffer_reads":1},
+                "live": 0,
+            },
+            "legal": {
+                "outcome": "success",
+                "value": 10,
+                "trap": null,
+                "facts": {"mints":1,"get_ok":2,"get_stale":0,"set_ok":0,"set_stale":0,"buffer_reads":2},
+                "live": 0,
+            },
+        })
+    }
+
+    #[test]
+    fn resource_clean_faces_are_admitted_and_judged_green() {
+        let sweep = step_with(Some(clean_sweep()), None);
+        assert!(malformed_resource(RecipeFamily::Resource, &[sweep.clone()]).is_none());
+        let mut mismatches = Vec::new();
+        judge_resource("source:l04", &sweep, &mut mismatches);
+        assert!(mismatches.is_empty(), "{mismatches:?}");
+
+        let place = step_with(None, Some(place_face("push")));
+        assert!(malformed_resource(RecipeFamily::Resource, &[place.clone()]).is_none());
+        let mut mismatches = Vec::new();
+        judge_resource("place:push", &place, &mut mismatches);
+        assert!(mismatches.is_empty(), "{mismatches:?}");
+    }
+
+    /// V-01 distinguishing control: a worker that skips the LAST allocation
+    /// point must fail — both the shape gate (points != attempts) and the
+    /// judge (attempt count) must catch it.
+    #[test]
+    fn resource_skipped_point_is_rejected() {
+        let mut face = clean_sweep();
+        face["arena_points"].as_array_mut().unwrap().pop();
+        let step = step_with(Some(face), None);
+        assert!(malformed_resource(RecipeFamily::Resource, &[step.clone()]).is_some());
+        let mut mismatches = Vec::new();
+        judge_resource("source:l04", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+    }
+
+    /// Only the FIRST point is not enough (the plan's explicit control).
+    #[test]
+    fn resource_first_point_only_is_rejected() {
+        let mut face = clean_sweep();
+        face["arena_points"] = serde_json::json!([point(1, true)]);
+        let step = step_with(Some(face), None);
+        let mut mismatches = Vec::new();
+        judge_resource("source:l04", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+    }
+
+    /// V-03: a stale use that "trap"s for another reason must not pass.
+    #[test]
+    fn resource_non_stale_trap_is_rejected() {
+        let mut face = place_face("push");
+        face["stale"]["trap"] = serde_json::json!("av.trap.list-index");
+        let step = step_with(None, Some(face));
+        let mut mismatches = Vec::new();
+        judge_resource("place:push", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+    }
+
+    /// The stale use must not have read the buffer: a claim of an extra
+    /// buffer read fails the frozen facts.
+    #[test]
+    fn resource_stale_buffer_access_is_rejected() {
+        let mut face = place_face("push");
+        face["stale"]["facts"]["buffer_reads"] = serde_json::json!(2);
+        let step = step_with(None, Some(face));
+        let mut mismatches = Vec::new();
+        judge_resource("place:push", &step, &mut mismatches);
+        assert!(!mismatches.is_empty());
+    }
+
+    /// A resource face on another recipe is a protocol violation, and a
+    /// resource step must carry exactly one face.
+    #[test]
+    fn resource_face_admission_rules() {
+        let step = step_with(Some(clean_sweep()), None);
+        assert!(resource_on_non_resource(
+            RecipeFamily::Core,
+            &[step.clone()]
+        ));
+        assert!(!resource_on_non_resource(
+            RecipeFamily::Resource,
+            &[step.clone()]
+        ));
+        let both = step_with(Some(clean_sweep()), Some(place_face("push")));
+        assert!(malformed_resource(RecipeFamily::Resource, &[both]).is_some());
+        let neither = step_with(None, None);
+        assert!(malformed_resource(RecipeFamily::Resource, &[neither]).is_some());
     }
 }

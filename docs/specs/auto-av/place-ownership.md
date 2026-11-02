@@ -74,3 +74,19 @@ List/闭包/Dyn/async/native ABI（见 [project](project.md)）。
 定向）、av_owned_821_r1_replay（12，含 mut 循环/重初始化/父子重叠/808/
 810/8917/801/RecordView 载荷）、av_owned_821_resources（7）、
 av_owned_821_first_case（5）、corpus `crates/auto-lang/test/cases/av-data/821/`。
+
+## PLAN-915：List Place 运行期校验与本 profile 的边界（2026-11-02）
+
+本文件 §V-05 的裁定不变：`av.owned/1` 的 `MutRefV{frame,slot,gen}` 无解引用消费入口，
+**不交付**通用运行期失效句柄校验。PLAN-915 不扩这条边界；它关闭的是
+`av.collections/1` 的 Index Place 使用期校验（`LIST_PLACE` 铸造的
+frame/slot/buf_id/epoch/index/elem_gen 六元组）在 scenario R03 上的正式证据：
+
+- typed、经 `verify_mir`→`encode_abc`→`verify_abc_bytes` 授信的序列，结构性变更
+  （push/insert/remove/元素替换）后旧 token 使用 = `av.trap.stale-place`，校验先于任何
+  buffer 访问（`observe_places` 下 `buffer_reads` 只计合法读）。
+- 合法近邻保持：fresh token、未变元素、活 Share/Static 缓冲仍可读——"Snapshot 语义下
+  旧 view 读旧字节"与"List 结构变更后旧 token 失效"是两条不同规则，不把全部旧 view
+  判无效。
+- 证据入口：`case-ace-m1-resource-915`；合同见
+  [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。

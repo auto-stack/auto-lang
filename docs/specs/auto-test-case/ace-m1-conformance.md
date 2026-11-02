@@ -328,3 +328,21 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
   缺 root、异源/异 owner、跨单元 artifact、缺 required 数据、超预算、陈旧
   generation、读缝坏件）由 Rust 侧 `closures_recovery_913`（26 例）承担，不在
   case 层冒充。原 865/909/912 套件与分母不改。
+
+## PLAN-915：scenario R02/R03 的 AV 正式证据（2026-11-02）
+
+- **材料**：`test/cases/ace-m1/resource-915/`（case/suite + 四份语料字节拷贝源 +
+  R03 合法近邻源与静态反例源）；固定组 `case-ace-m1-resource-915`。
+- **配方/父判**：`ac-av/resource-run-v1`（`resource`/`place` 两个 face）；
+  父侧冻结表 `RESOURCE_SWEEP_CASES`（值 + 值 seam attempt + arena attempt）与
+  `PLACE_SEQUENCES`（trap 码 + fresh/legal 值）。worker 只报操作事实，期望不经请求下发。
+- **准入**：`av.entry` 必须命中父表（`source:<id>`/`place:<mutation>`）；face 先做
+  **与 oracle 无关的形状校验**（未知键/错类型/点数与 attempt 数不符均拒），再判值；
+  `resource/place` 出现在别的配方上是协议违规；core 身份按 entry 绑定
+  （`source:k02` → `av.closures/1`，其余 `av.collections/1`）。
+- **判据**：R02 每点必须 faulted 且 live=0、消息带序号、控件与 after 重跑得冻结值；
+  R03 必须 `av.trap.stale-place`、`get_stale=1`、`buffer_reads` 只含合法读，
+  fresh/legal 正控成功。静态反例由 `collections-source-run-v1` 观察
+  `bind/source.iterate-mutate`（stage=resolve），不冒充运行期证据。
+- **格位**：binding.tsv 的 `scenario:R02/R03` av 列改为 `ok:av-resource-915`
+  （源/expected/NA/分母与 ac/avm/a2r 列不变）；这是两个 av 格，不是 M1 签章。

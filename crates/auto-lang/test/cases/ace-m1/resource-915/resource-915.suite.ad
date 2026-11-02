@@ -1,0 +1,7 @@
+# PLAN-915 R02 allocation-fault sweep / R03 stale-Place scenario suite.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-resource-915", include: [
+  "resource-915.case.ad",
+] }
+```

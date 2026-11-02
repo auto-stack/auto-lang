@@ -762,6 +762,99 @@ fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, S
         "av_core_version": core_version_for("ac-av/data-incremental-v1"),
     }))
 }
+/// PLAN-915: the R02/R03 scenario recipe. One `run` step selects either a
+/// frozen corpus source (`source:<l04|l05|v05|k02>`, swept over EVERY
+/// allocation attempt) or a typed stale-Place witness
+/// (`place:<push|insert|remove|replace>`). The worker reports operational
+/// facts only — it never sees the parent's frozen expectation table.
+fn resource_case(req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use ace_av::resource_915::{self, PlaceMutation, SourceFrontend};
+    use base64::Engine;
+    let entry = req["entry"]
+        .as_str()
+        .ok_or("missing entry (source:<id>|place:<mutation>)")?;
+    let steps = req["steps"].as_array().ok_or("steps")?;
+    if steps.len() != 1 || steps[0]["op"].as_str() != Some("run") {
+        return Err("the resource recipe takes exactly one run step".into());
+    }
+    let started = std::time::Instant::now();
+    let (step, core_version) = if let Some(id) = entry.strip_prefix("source:") {
+        let source = req["source_b64"]
+            .as_str()
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .ok_or("missing/invalid source_b64")?;
+        let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+        let (frontend, core) = match id {
+            "k02" => (
+                SourceFrontend::Closures,
+                ace_av_core::contract::AV_CLOSURES_PROFILE,
+            ),
+            _ => (
+                SourceFrontend::Collections,
+                ace_av_core::contract::AV_COLLECTIONS_PROFILE,
+            ),
+        };
+        let mut facts = resource_915::source_fault_sweep(&source, "main", frontend)?;
+        let mode = std::env::var("AV915_SABOTAGE").unwrap_or_default();
+        if mode == "drop-point" {
+            // Test-only negative control (never set in production): a worker
+            // that skips one allocation point must be rejected by the
+            // parent's frozen attempt count.
+            if let Some(points) = facts["arena_points"].as_array_mut() {
+                points.pop();
+            }
+        }
+        let value = facts["source_value"].as_i64().unwrap_or(0) as i32;
+        (
+            serde_json::json!({
+                "op": "run",
+                "outcome": "success",
+                "value": value,
+                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+                "resource": facts,
+                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+            }),
+            core,
+        )
+    } else if let Some(name) = entry.strip_prefix("place:") {
+        let source = req["source_b64"]
+            .as_str()
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .ok_or("missing/invalid source_b64")?;
+        let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+        let mutation =
+            PlaceMutation::parse(name).ok_or_else(|| format!("unknown place mutation {name}"))?;
+        let mut sequence = resource_915::place_sequence(mutation)?;
+        let mode = std::env::var("AV915_SABOTAGE").unwrap_or_default();
+        if mode == "no-stale" {
+            // Test-only negative control: a worker that claims the stale use
+            // did not happen must be rejected by the frozen place table.
+            sequence["stale"]["facts"]["get_stale"] = serde_json::json!(0);
+        }
+        (
+            serde_json::json!({
+                "op": "run",
+                "outcome": "success",
+                "value": null,
+                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+                "place": sequence,
+                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+            }),
+            ace_av_core::contract::AV_COLLECTIONS_PROFILE,
+        )
+    } else {
+        return Err(format!(
+            "resource entry `{entry}` is neither source:<id> nor place:<mutation>"
+        ));
+    };
+    Ok(serde_json::json!({
+        "recipe": ace_av::resource_915::RESOURCE_RECIPE,
+        "steps": [step],
+        "worker_version": EXPECTED_WORKER_VERSION,
+        "av_core_version": core_version,
+    }))
+}
+
 fn case_serve() -> ! {
     use std::io::Read;
     const REQUEST_CAP: usize = 4 * 1024 * 1024;
@@ -808,6 +901,15 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             "ok": ok,
         })
     };
+    if recipe == "ac-av/resource-run-v1" {
+        return match resource_case(&req) {
+            Ok(ok) => echo(ok),
+            Err(error) => {
+                eprintln!("resource request: {error}");
+                exit(2);
+            }
+        };
+    }
     if recipe == "ac-av/data-incremental-v1" {
         return match data_incremental_case(&req) {
             Ok(ok) => echo(ok),
