@@ -29,3 +29,13 @@ K01、K02、K03、K05 已经由源码编译进入现有闭包 session 执行。K
 ## 缓存与恢复
 
 代码缓存与活环境分域：缓存仅持久化代码及可持久依赖（A23 层），活帧/borrow/宿主地址不入缓存；新 worker 从同 store 重验身份（producer/owner/entry/profile/types-fp/语义版本/source-snapshot）、payload、entry 与 snapshot 后执行，好 hash 不替代内部深验。恢复与交叉身份规则见 [缓存合同](cache-and-conformance.md)；与 824 的交叉正反控（wire 身份、pack/freeze 任意深度拒绝、合法值正控）为常驻回归面。
+
+**PLAN-913 来源绑定恢复**：新进程由 caller 持有的 manifest id+摘要直接恢复已接受
+状态（不再先生产再查表），逐单元有界读取→envelope→`verify_abc_bytes` 深验→
+`FunctionCode::admit_unit`，并与 `apply_revision` **共用同一安装事务**（不
+`verify_mir`/`encode`、不写 store、不取读侧租约）；恢复会话 close 亦不触 store。
+**活环境不入缓存、也不入恢复数据**：持久产物只有代码与声明（每函数签名、resolver
+表、单元目录/站点事实、registry 声明），恢复后的执行每次从原初始化值开始（无活
+cell/env 复活）；env 布局由已解码单元的 `env` 声明与 registry 声明交叉核对，坏
+声明/错 owner/错 profile 在安装前拒绝。详见
+[闭包源码来源绑定恢复](closures-source-recovery.md)。

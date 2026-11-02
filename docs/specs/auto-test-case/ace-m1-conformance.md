@@ -305,3 +305,26 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
 - 新 `a2r-semantics-916` suite（17 checks，固定组 `case-ace-m1-a2r-semantics-916`）直接引用原七源，single/project 各 7 个负例，另含 NB17/18/19 三个独立 emit reference。父判精确检查 `auto_name_E0204`、`auto_name_E0203`、`auto_type_E0101`、`auto_type_E0102`；emit 成功、普通 `Msg`、infra/panic 或 Rust 编译错误均不能满足负例。
 - binding 的 B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 列回填 `ok:P916`；E03 继续复用 B16/B04/B20，不新增虚构 scenario 源。其他路径单元、131 行分母、原 negative source、24 金样与证书不变；manifest 仅更新 binding hash 并追加 `plan_916_update`。
 - 生产准入与兼容边界见 [旧 A2R 静态语义准入](../auto-lang/trans/rust-semantic-admission.md)。完整 a2r 组、base97、NB 908 与 infra 23 控制共同防止误拒/登记漂移；R07/T08、38 格复合认证及 M1 总签章不由本包关闭。
+## PLAN-913：来源绑定恢复套件（2026-11-02，SD-05）
+
+- 新 recipe `ac-av/closures-recovery-run-v1`（`av.closures/1`；selector
+  `source:<id>:<publish|restore|restore-edit>`，id 限 K01/K06/S02/F01/F02）：
+  `publish` 为真实生产+发布并把 ticket（manifest id/digest/source sha/units）写入
+  session store，请求**不含** oracle/期望值；`restore` 在**新进程**按 caller
+  binding 恢复并执行；`restore-edit` 在同进程恢复后立刻做一次单 body 编辑。
+- 新套件 `closures-recovery-913/{suite,case}.ad` 与固定组
+  `case-ace-m1-closures-recovery-913`（runner=case、all=false、domain=ace）：
+  F01 publish 51／restore 51／restore-edit 48 与 K06 publish 42／restore 42，
+  源为 912 语料的字节同拷贝，独立 reference `reference/F01.rs` 手写行为模型。
+- **父侧判据**（`RecipeFamily::ClosuresRecovery` + `judge_closures_recovery`）：
+  publish 判 `p_verified/p_encoded/p_admitted == units`；restore 判
+  `p_axis_attempts == 0`、`r_manifest_reads=1`、`r_unit_reads=r_deep_verifies=
+  r_admits=units`、`r_context_reads=1`，绑定腿要求 manifest id 形如 `art…` +
+  64 hex digest，并**按 case 字节重算 source SHA-256** 与 worker 报告比对；
+  edit 判 `fast-unit`/warm gate pass/whole 0/submitted 1/
+  `unchanged_total=unchanged_same_object=units-1`/`unchanged_production_attempts=0`/
+  `store_writes=0`/live 0/allocs==frees。worker 的 face 只是声明，值一律父侧 oracle。
+- **反控位置如实**：case DSL 对 probe recipe 无负完成通道，故具名拒绝（错 digest、
+  缺 root、异源/异 owner、跨单元 artifact、缺 required 数据、超预算、陈旧
+  generation、读缝坏件）由 Rust 侧 `closures_recovery_913`（26 例）承担，不在
+  case 层冒充。原 865/909/912 套件与分母不改。

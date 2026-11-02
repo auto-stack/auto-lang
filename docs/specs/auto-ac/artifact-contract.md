@@ -133,3 +133,20 @@ GC 在独占生存期锁内额外清理两类终态元数据（真实 512 次编
 物理水位对照（512 修订前/后 store 字节）与用户哨兵/他方工件不动为验收轴；
 锁文件清理实测面为 Windows（非 Windows 并发/水位为登记缺口）。实现：
 `experimental/ace/crates/artifacts/src/store/gc.rs` + `tests/plan823_gc_metadata.rs`。
+
+## PLAN-913：来源 root 与有界 required 读
+
+闭包域新增**来源 root**：一次已提交 source 生产发布一个 manifest artifact
+（schema `ace.closures.source-origin/1`，私有层 `A23-R`，root kind
+`source-recovery-current`），并以 `RefKind::RequiredData` 闭包每个单元 ABC 与
+声明上下文 artifact（`ace.closures.context-dump/1`）。发布顺序为"写上下文 →
+写 manifest → 取租约 → 注册新 root → 摘旧 root"，任一间隙失败都不交 ticket：
+写前失败只留旧 root，写后失败至多旧+新并存，退役后仅新 root——每个可见 root
+都闭包在存活 required 数据上。`accepted_generation` 单调（CAS）：陈旧发布在
+任何写之前被拒；当前 root 的 generation 只经校验和验证的提示读获取，提示读
+只能导致拒绝、不能导致接受。
+
+required 数据按 artifact id 的读取**必须有界**（先判预算再物化；超预算拒绝而
+不加载，manifest/声明上下文/单元三类读共用同一入口），恢复路径不得出现无界
+按 id 读取。层号、ChunkKind 与 A00–A23 既有义务不变，来源 root 不抢全局层号。
+详见[闭包源码来源绑定恢复](../auto-av/closures-source-recovery.md)。

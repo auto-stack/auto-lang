@@ -35,6 +35,23 @@ lambda 支持零参、多参、表达式体和语句块体：
 
 源码编译进入现有 `ClosuresUpdateSession` 候选路径。PLAN-912 起未变化函数不应重新生产为**逐单元**事实：lambda/owner 纯 body 暖编辑只生产被改单元及其真实依赖者（捕获事实变化的"真读者"），未改单元（含同 owner 兄弟 lambda）全阶段生产/工件 IO 为零且同对象/代际；签名、声明集、lambda 拓扑与跨单元编辑是具名非快路径（详见[闭包单函数前端生产](closures-function-production.md)与[共享可变捕获](shared-mutable-captures.md)§函数增量）。源码诊断、MIR/链接拒绝和运行时结果保持分态。
 
+## 来源绑定恢复与下一次编辑（PLAN-913）
+
+已提交的 source 生产可发布为项目来源 root（manifest schema
+`ace.closures.source-origin/1`，`RequiredData` 闭包每单元 ABC 与声明上下文）。
+新进程恢复由 caller 持有的 manifest id + 强摘要授权（store 的 root/index 只是
+提示），按 id 有界读取后 envelope→decode→`verify_abc_bytes` 深验→admit→安装，
+**P 轴为 0**、R 轴如实非零；不像旧 restart 那样先 lower/encode 求 flat 键。
+
+恢复出的安全上下文由 `ace.closures.context-dump/1` 的未授信数据经
+`restore_context` 重建，并与已解码单元事实交叉核对（lambda env arity、creator
+的 `CreateClosure` 站点 callee+mode 序列、owner 不带 env），registry 由
+`from_declarations` 重建并重跑冷构造不变量。恢复后**下一次单 lambda body 编辑**
+沿 912 暖路径（未改单元 P/IO 0、对象/代际保持）；需要保留 body 的 owner 路由为
+具名非快 `RestoredContext`。坏载荷/错绑定/错 profile/越界/超预算均为具名拒绝，
+不静默 cold、不重写 PASS。详见
+[闭包源码来源绑定恢复](../auto-av/closures-source-recovery.md)。
+
 ## 诊断与边界
 
 常见具名拒绝包括：`source.closure-use-after-move`、`source.closure-capture-unsupported`、`source.closure-borrow-escape`、`source.closure-shared-mutable`、`source.closure-unsupported` 和 `source.closure-env-mismatch`。间接调用的元数与签名错误由普通参数/类型诊断拒绝。

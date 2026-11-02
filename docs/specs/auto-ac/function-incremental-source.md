@@ -72,9 +72,17 @@
   创建点事实只重解析/发射/验证/lower 该单元；owner body 改经 retained-lambda 复用
   oracle（兄弟 lambda 不重走，`resolve_walks` 对真实走过的 lambda 逐单元可见）；
   签名/拓扑/跨单元编辑具名非快路径走整模块 truth；未改单元全阶段 P=0 且同对象/
-  代际，whole 轴在暖路径必须为 0。残余如实：restart 仍先重 lower/encode（R3，属
-  913）；`ClosuresOwnerCache` 路径保留为 865 recipe 的观测基线。
-
+  代际，whole 轴在暖路径必须为 0。`ClosuresOwnerCache` 路径保留为 865 recipe 的
+  观测基线。
+- **PLAN-913 起 R3 关闭**：restart 不再先重 lower/encode。新进程来源绑定恢复按
+  caller 持有的 manifest id+摘要直接读取已接受状态（有界读 → envelope →
+  `verify_abc_bytes` 深验 → admit → 安装），P 轴（parse/resolve/typecheck/plan/
+  bind/HIR 构造/lower/encode）为 0；续接**下一次**单 body 编辑所需的声明上下文
+  以 `ace.closures.context-dump/1` 持久化（每函数签名 + resolver 五表 + 单元目录 +
+  站点事实 + registry 声明，**不含 body**），由 `restore_context` 与已解码单元交叉
+  核对后重建。恢复后未改函数是只有签名的脚手架条目，只服务单 lambda body 暖编辑；
+  需要保留 body 的 owner 路由是具名非快 `RestoredContext`（调用方走整模块 truth）。
+  详见[闭包源码来源绑定恢复](../auto-av/closures-source-recovery.md)。
 ## 声明/布局变更的显式失效边界（PLAN-914，2026-11-02，SD-06）
 
 - **策略**：declaration/layout 变更走显式失效（collections 增量会话的

@@ -104,3 +104,18 @@ PLAN-868 起 probe 不再是 HIR→MIR lowering 的提供者：唯一实现出�
 `av.host-console/1` / AVHC/1 / profile 8 executes typed print/eprint from real Auto source with separate host imports, current-grant admission, bounded output and portable artifact reauthorization. Exact lifecycle/budget/diagnostic contract is in `host-import-and-console.md`, source syntax/formatting in `../auto-ac/source-console-output.md`. Whole-module console only; old profiles keep their contracts. This does not switch default CLI/SDK engines, expose arbitrary host FFI, or add FS/network/stdin/async/native/resident-console support. C-29 has this AV output surface; peer parity remains explicitly unverified.
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
+
+## PLAN-913：闭包来源绑定恢复（R3 关闭）
+
+闭包域新进程恢复有独立入口：caller 持有 parent 观察到的来源 root（manifest id +
+强摘要），新进程按 id **有界**读取 manifest、声明上下文与每单元 ABC，逐层
+envelope→decode→`verify_abc_bytes` 深验后 admit 并 `restore_install`（与
+`apply_revision` 同一安装事务，P 轴为 0、R 轴如实非零），随后可继续一次普通单
+lambda body 暖编辑。来源 root 是 `A23-R` 私有层、root kind
+`source-recovery-current`，以 `RequiredData` 闭包单元与声明上下文，发布原子 +
+`accepted_generation` CAS，任一间隙失败不交 ticket。store 的 root/index 只是
+提示，授权来自 caller 持有的 id+摘要。合同见
+[closures-source-recovery](closures-source-recovery.md)；测试面见
+[ACE M1 语料](../auto-test-case/ace-m1-conformance.md) 的 `PLAN-913` 节。
+**非目标**：通用 source 缓存平台/全局层号重排/远端签名信任/Native 或 A2R 恢复/
+活 env 持久化。

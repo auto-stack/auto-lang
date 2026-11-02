@@ -197,7 +197,24 @@ P/M/R attempt 轴，whole 轴暖路径必须 0；同 wire 重提交被 823 结�
 `commit_candidate` 唯一安装（stale/foreign 拒）；registry overlay 仅在安装成功后落位。
 4MiB 源前门与驻留前端池 ≤16MiB 在会话层执行；A→B `AcceptedSourceState` 只读导出见
 [闭包单函数前端生产](../auto-ac/closures-function-production.md)。R3（新进程恢复前置
-lower/encode）仍开放，属 913。
+lower/encode）由 PLAN-913 关闭，见下节。
+
+## 闭包来源绑定恢复安装（PLAN-913）
+
+- 恢复入口不复用 `apply_revision` 的生产面，而是 `restore_install`：接收**已由
+  调用方验证路径** admit 的单元（`AdmittedUnit`：code/wire/body_fp/artifact），
+  与 `apply_revision` 共用同一安装事务（授权预检 → link → index_build 记录 →
+  execute → history/hot/roots → 原子提交），因此恢复不能绕过 823 结构门或原子
+  安装；恢复期 `verified/encoded` 恒 0、`admitted` 为单元数。
+- 恢复会话用 `new(None, entry)`：无 store root，`close` 不触 store（只读正例）。
+  会话不取读侧租约，故"最后 owner 释放"语义不适用于恢复路径；发布期租约是
+  OS-backed，进程亡即释放，不遗留永久 pin。
+- 恢复后的下一次单 body 编辑仍由 912 的暖路径完成（未改单元同 `Arc`/代际、全阶段
+  生产与工件 IO=0）；恢复上下文对需要保留 body 的 owner 路由返回具名非快
+  `RestoredContext`，调用方走整模块 truth 并如实计 whole 轴。
+- 预算/轴：P 轴正例 0；R 轴按单元记 `Stage::RestartDeepVerify`；manifest/声明
+  上下文/单元 wire 全部有界读（超预算读前拒）。详见
+  [闭包源码来源绑定恢复](closures-source-recovery.md)。
 
 ## 方法单体前端与会话（PLAN-881）
 

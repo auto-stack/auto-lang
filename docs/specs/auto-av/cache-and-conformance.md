@@ -174,3 +174,25 @@ owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工
   而非 infra，且旧快照保持可执行（后续 run 返回旧值），父侧不得推进已接受源码。
 - **准入**：`av.invalidation` 仅该 recipe 可声明，与 edit 步骤双向绑定；`partial-rebuild`
   步骤必须带非空 defs；worker 的上报只作观察，期望永不进入请求。
+## PLAN-913：来源绑定恢复（R3 关闭）
+
+闭包域新进程恢复**不再是先生产再查表**：内容键仍是 canonical wire 的 domain
+hash（`av-closures-unit/v1`），因此恢复另设入口——caller 持有 parent 观察到的
+manifest id + 强摘要，新进程按 id **有界**读取 manifest/声明上下文/单元 ABC，
+逐层 envelope→decode→`verify_abc_bytes` 深验后 `admit_unit` 并安装（与
+`apply_revision` 同一安装事务，不 verify_mir/encode、不写 store、不取读侧租约）。
+P 轴（parse/resolve/typecheck/plan/bind/HIR 构造/lower/encode）在正例必须为 0；
+R 轴（decode、深验、上下文重建）按单元记 `Stage::RestartDeepVerify` 并如实非零。
+store 的 root/index 只是提示：移除项目 root 后 caller 持 id+digest 仍恢复，错
+digest 仍拒。
+
+授权要求：来源 root 的 manifest 以 `RequiredData` 闭包单元与声明上下文；发布
+原子（先注册新 root 再摘旧）+ `accepted_generation` CAS；任一间隙失败不交
+ticket 且不假称回滚。预算：source/manifest/声明上下文各 ≤4MiB、单 wire
+≤8MiB、恢复自有 namespace ≤128MiB，全部在读前判（超预算 → `recovery.oversized`）。
+
+正式门：固定组 `case-ace-m1-closures-recovery-913`（publish 51 / restore 51 /
+restore-edit 48 与 K06 42/42；父侧独立判值 + P0 + R 计数 + 绑定形状 + 父侧重算
+source SHA）；V-14 在 68 顶层函数/70 单元、四状态×30 样本下 P90 = fresh 634ms /
+hit 5ms / restart 53ms（执行腿 39ms）/ restore+edit 42ms。详见
+[闭包源码来源绑定恢复](closures-source-recovery.md)。
