@@ -71,10 +71,7 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
     // unit, zero for everyone else.
     let gate = warm.warm_gate.as_ref().expect("gate");
     assert!(gate.pass(), "gate violations: {:?}", gate.violations);
-    assert!(matches!(
-        gate.changed_unit.as_deref(),
-        Some("d___closure_main_1")
-    ));
+    assert_eq!(gate.changed_units, vec!["d___closure_main_1".to_string()]);
     assert_eq!(warm.stages.whole_total(), 0);
     assert_eq!(warm.body.len(), 1);
     let w = warm.body.get("__closure_main_1").unwrap();
@@ -118,30 +115,37 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
         assert_eq!(zero.stages.total(stage), 0, "zero-hit {stage:?}");
     }
 
-    // A capture-decl change (f stops writing base) is the NAMED non-fast
-    // route: the whole truth path, honestly whole.
+    // A capture-decl change (f stops writing base) is the OWNER route with
+    // precise invalidation (V-05): `main` (creation site: base is no longer
+    // a cell) and `f` re-resolve; `g` is REUSED — zero work, same object.
     // base stays 1: f(20)=21, f(0)=1, g(3)=4, helper=2 → 28.
+    let g_before = session.unit("d___closure_main_1").unwrap().clone();
+    let helper_before = session.unit("d_helper").unwrap().clone();
     let no_write = commented.replace(
         "base = base + n; return base",
         "return base + n",
     );
-    let nonfast = session.apply_source(&no_write).expect("non-fast apply");
-    assert_eq!(nonfast.value, 28);
-    match &nonfast.route {
-        RouteReport::NonFast { reason } => {
-            assert!(
-                reason.starts_with("lambda-site-changed"),
-                "reason: {reason}"
-            );
+    let owner = session.apply_source(&no_write).expect("owner apply");
+    assert_eq!(owner.value, 28);
+    assert_eq!(
+        owner.route,
+        RouteReport::FastOwner {
+            owner: "d_main".to_string(),
+            changed: vec!["d___closure_main_0".to_string()],
+            reused: vec!["d___closure_main_1".to_string()],
         }
-        other => panic!("expected non-fast, got {other:?}"),
-    }
-    assert!(nonfast.warm_gate.is_none());
-    // The non-fast route is whole on the module axis — the gate would be red
-    // if this observation ever came back under a fast-route claim.
-    assert!(nonfast.stages.whole_total() > 0);
-    // Value-level check of the change: f no longer writes through the cell.
-    assert_ne!(nonfast.value, 48);
+    );
+    let gate = owner.warm_gate.as_ref().expect("gate");
+    assert!(gate.pass(), "gate violations: {:?}", gate.violations);
+    assert_eq!(owner.stages.whole_total(), 0);
+    assert!(owner.body.get("__closure_main_1").is_none(), "reused g has no body work");
+    assert!(owner.body.get("helper").is_none());
+    // main's wire changes (operand shape + cell local) and f's wire changes.
+    let mut names = owner.submitted_unit_names.clone();
+    names.sort();
+    assert_eq!(names, vec!["d___closure_main_0", "d_main"]);
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_before));
+    assert!(Arc::ptr_eq(session.unit("d_helper").unwrap(), &helper_before));
 
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
@@ -200,4 +204,165 @@ fn av_closures_fn_912_forced_whole_path_is_observably_red() {
     session.close().expect("close");
     old.close().expect("close 865");
     let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_owner_body_edit_reuses_every_lambda() {
+    // V-02 owner leg: a pure body edit of `main` OUTSIDE its lambdas.
+    let store = temp_store("owner");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    let cold = session.apply_source(SRC).expect("cold");
+    assert_eq!(cold.value, 51);
+    let f_obj = session.unit("d___closure_main_0").unwrap().clone();
+    let g_obj = session.unit("d___closure_main_1").unwrap().clone();
+    let helper_obj = session.unit("d_helper").unwrap().clone();
+    // x: 10 → 20 ⇒ g(3) = 17 ⇒ 21 + 21 + 17 + 2 = 61.
+    let edited = SRC.replace("var x int = 10", "var x int = 20");
+    let run = session.apply_source(&edited).expect("owner edit");
+    assert_eq!(run.value, 61);
+    assert_eq!(
+        run.route,
+        RouteReport::FastOwner {
+            owner: "d_main".to_string(),
+            changed: vec![],
+            reused: vec![
+                "d___closure_main_0".to_string(),
+                "d___closure_main_1".to_string()
+            ],
+        }
+    );
+    let gate = run.warm_gate.as_ref().expect("gate");
+    assert!(gate.pass(), "gate violations: {:?}", gate.violations);
+    assert_eq!(run.submitted_unit_names, vec!["d_main"]);
+    // ZERO work for both lambdas and every other function.
+    assert_eq!(run.body.keys().collect::<Vec<_>>(), vec!["main"]);
+    assert_eq!(run.stages.whole_total(), 0);
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_obj));
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    assert!(Arc::ptr_eq(session.unit("d_helper").unwrap(), &helper_obj));
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_utf8_variable_length_remap_then_lambda_edit() {
+    // V-03: a multibyte, length-changing owner edit BEFORE the lambdas shifts
+    // every catalog coordinate; the following lambda-only edit must still
+    // land on the right unit (coordinate remap is M-axis, not a body walk).
+    let store = temp_store("utf8");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
+    let g_obj = session.unit("d___closure_main_1").unwrap().clone();
+    // Insert an owned-Str local with CJK content before the lambdas (owner
+    // route; value unchanged).
+    let shifted = SRC.replace(
+        "    var base int = 1\n",
+        "    var base int = 1\n    let note Str = \"中文备注：变长\"\n",
+    );
+    let run = session.apply_source(&shifted).expect("utf8 owner edit");
+    assert_eq!(run.value, 51);
+    assert!(matches!(run.route, RouteReport::FastOwner { .. }), "{:?}", run.route);
+    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    // Now a lambda-only edit of `g` at its SHIFTED position.
+    let lambda_edit = shifted.replace("return x - n }", "return x - n * 2 }");
+    let run = session.apply_source(&lambda_edit).expect("lambda edit after shift");
+    assert_eq!(run.value, 48);
+    assert_eq!(
+        run.route,
+        RouteReport::FastUnit {
+            unit: "d___closure_main_1".to_string()
+        }
+    );
+    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_creation_point_visibility_and_param_shadowing() {
+    // V-03: a lambda edit may only capture names visible AT ITS CREATION
+    // POINT; a name declared later in the owner is not silently captured.
+    let store = temp_store("visibility");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    let src = SRC.replace(
+        "    return f(20) + f(0) + g(3) + helper(1)\n",
+        "    var later int = 5\n    return f(20) + f(0) + g(3) + helper(1) + later\n",
+    );
+    assert_eq!(session.apply_source(&src).expect("cold").value, 56);
+    // g tries to read `later` (declared after g): diagnostics, state kept.
+    let bad = src.replace("return x - n }", "return x - n + later }");
+    match session.apply_source(&bad) {
+        Err(ace_av::closures_865_support::CompileAndRunError::Diagnostics(ds)) => {
+            assert!(!ds.is_empty());
+        }
+        other => panic!("expected diagnostics for a later-declared capture, got {}", match other { Ok(r) => format!("value {}", r.value), Err(e) => format!("{e:?}") }),
+    }
+    assert_eq!(session.apply_source(&src).expect("zero hit").route, RouteReport::ZeroHit);
+    // A lambda PARAMETER named like an owner local is the param, never a
+    // capture: g(n) with `x` renamed param shadows the owner's x.
+    let shadow = src.replace("var g = (n int) => { return x - n }", "var g = (x int) => { return x * 2 }");
+    // The lambda's capture set changed (x no longer captured) → owner route.
+    let run = session.apply_source(&shadow).expect("shadowing edit");
+    // g(3) = 6 ⇒ 21 + 21 + 6 + 2 + 5 = 55.
+    assert_eq!(run.value, 55);
+    assert!(matches!(run.route, RouteReport::FastOwner { .. }), "{:?}", run.route);
+    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_topology_change_is_named_and_carries_identity() {
+    // Inserting a lambda before `f` renumbers `f`/`g` display names (the
+    // 909 ordinal contract); the frontend reports the NAMED topology change,
+    // takes the whole truth path, and carries the surviving lambdas'
+    // LOGICAL ids by unique (owner, text) match.
+    let store = temp_store("topology");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
+    let ids_before: Vec<(String, u64)> = lambda_ids(&session);
+    assert_eq!(ids_before.len(), 2);
+    let inserted = SRC.replace(
+        "    var f = (n int) =>",
+        "    var z = (n int) => { return n * 7 }\n    var f = (n int) =>",
+    );
+    let run = session.apply_source(&inserted).expect("insertion");
+    assert_eq!(run.value, 51, "z is never called");
+    match &run.route {
+        RouteReport::NonFast { reason } => {
+            assert!(reason.starts_with("owner-topology-changed:2->3"), "{reason}");
+        }
+        other => panic!("expected a named topology non-fast, got {other:?}"),
+    }
+    assert!(run.stages.whole_total() > 0, "the truth path is honestly whole");
+    let ids_after: std::collections::BTreeMap<String, u64> =
+        lambda_ids(&session).into_iter().collect();
+    assert_eq!(ids_after.len(), 3);
+    // f was __closure_main_0 (id a), g __closure_main_1 (id b); now z is
+    // __closure_main_0, f is _1, g is _2 — f and g keep their logical ids.
+    let (f_id, g_id) = (ids_before[0].1, ids_before[1].1);
+    assert_eq!(ids_after["__closure_main_1"], f_id, "f keeps its logical id");
+    assert_eq!(ids_after["__closure_main_2"], g_id, "g keeps its logical id");
+    assert!(
+        ids_after["__closure_main_0"] != f_id && ids_after["__closure_main_0"] != g_id,
+        "z is a NEW logical unit"
+    );
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+fn lambda_ids(session: &ClosuresFunctionSession) -> Vec<(String, u64)> {
+    session
+        .frontend()
+        .unwrap()
+        .units()
+        .iter()
+        .filter_map(|u| match &u.kind {
+            ace_core::source::closures_fn::UnitKind::Lambda { logical_id, .. } => {
+                Some((u.name.clone(), *logical_id))
+            }
+            _ => None,
+        })
+        .collect()
 }

@@ -1,55 +1,57 @@
 //! PLAN-912: the closures FUNCTION frontend — a RETAINED checked environment
 //! plus the per-lambda creation-site facts and the checked closures registry,
 //! with an explicit single-body edit entry. The warm path re-parses only the
-//! target unit's fragment, re-resolves only that unit, emits a scoped
-//! single-function document (body-less scaffolds elsewhere) and hands the
-//! verifier both — the credential and the registry — so a lambda body edit
-//! produces exactly ONE unit without its owner or siblings ever being
-//! walked, planned, bound, verified or lowered.
+//! target unit's fragment, re-resolves only that unit (an owner re-resolves
+//! through the retained-lambda reuse oracle, so unchanged siblings are never
+//! walked), emits a scoped document (body-less scaffolds elsewhere) and hands
+//! the verifier both — the credential and the registry — so an edit produces
+//! exactly the changed units without any other unit being walked, planned,
+//! bound, verified or lowered.
 //!
 //! The cold path is the whole-module truth (`resolve → typecheck → emit →
 //! bind → verify_closures`) and BUILDS the retained state; the warm path is
 //! an optimization over it that must be observably zero for every unchanged
 //! unit (`crate::body_work` per-unit counts + `Stage` attempts, P/M/R axes).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::body_work::{self, Stage as StageAxis};
 use crate::runtime_contract::sha256_hex;
-use crate::verify::{
-    verify_closures, ClosuresVerifyContext, CheckedModule,
-};
+use crate::verify::{verify_closures, CheckedModule, ClosuresVerifyContext};
 
-use super::adapter::{emit_function_body, emit_whole_document, BodyEmitReceipt, SourceParts};
-use super::resolve::{
-    resolve_closures_env, resolve_lambda_in_context, CheckedEnv, LambdaNonFast, LambdaReResolve,
-    LambdaSiteFacts, BodyState,
+use super::adapter::{
+    emit_closures_function_batch, emit_function_body, emit_whole_document, BodyEmitReceipt,
+    SourceParts,
 };
-use super::parser::parse_closure_fragment;
+use super::parser::{parse_closure_fragment, parse_function_fragment};
+use super::resolve::{
+    resolve_closures_env, resolve_lambda_in_context, resolve_owner_in_env, BodyState, CheckedEnv,
+    LambdaNonFast, LambdaReResolve, LambdaSiteFacts, ReuseEntry,
+};
 use super::{parse_program_with, SourceProfile};
 
-/// Why an edit did not take the single-unit fast path. Each reason is a
-/// NAMED decision, never a silent fallback (§5.1 `non_fast_path_reason`).
+/// Why an edit did not take a warm path. Each reason is a NAMED decision,
+/// never a silent fallback (§5.1 `non_fast_path_reason`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NonFastReason {
-    /// The base source SHA does not match the frontend's current source
-    /// (`source.stale` for callers; the edit entry is explicit about it).
+    /// The base source SHA does not match the frontend's current source.
     StaleBase,
-    /// The range crosses unit boundaries (partly outside any one unit).
+    /// The range is not inside any one unit (crosses owners, or touches a
+    /// declaration outside every function body).
     CrossesUnits,
-    /// The edit touches a top-level function's body (owner path; PLAN-912
-    /// T-03 widens this route — until then it is the whole-module path).
-    OwnerBodyEdit,
-    /// The edit is inside a lambda expression but the re-resolved fragment
-    /// changed the creation-site fact (capture uses / params / move / result).
+    /// The owner's signature changed (the retained interface is stale).
+    OwnerSignatureChanged,
+    /// The owner's lambda topology changed (count differs) — identity cannot
+    /// be matched by position; the whole truth path re-establishes it.
+    OwnerTopologyChanged { before: usize, after: usize },
+    /// A lambda-only edit changed its creation-site fact and the enclosing
+    /// owner route also declined (reported with the owner's reason).
     LambdaSiteChanged(LambdaNonFast),
-    /// The lambda (old or new) contains nested lambdas — its ordinal space
-    /// is not self-contained.
+    /// The lambda (old or new) contains nested lambdas and was edited alone;
+    /// the owner route handles nesting through reuse.
     LambdaNested,
-    /// More than one contiguous changed region.
-    MultiRegion,
 }
 
 /// One unit of the retained catalog (index = the fn's index in the retained
@@ -62,38 +64,53 @@ pub struct UnitEntry {
     /// The unit's whole source span in CURRENT coordinates (owner: fn item;
     /// lambda: lambda expression).
     pub span: Span,
-    /// The unit's editable body span (owner: fn body block; lambda: the
-    /// expression after the parameter list).
+    /// The unit's editable body span (owner: fn body block; lambda: same as
+    /// `span`).
     pub body_span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnitKind {
     /// A top-level function; `lambdas` lists its lambda fn indices in
-    /// creation order.
+    /// creation (post-order) order.
     Owner { lambdas: Vec<usize> },
     /// A lambda body; `site` carries the frozen creation-site facts.
     Lambda {
-        /// Stable LOGICAL identity minted at cold init (never reused; a
-        /// topological change that cannot be uniquely matched forces the
-        /// non-fast path instead of silently reminting).
+        /// Stable LOGICAL identity minted at cold init and carried across
+        /// rebuilds by unique (owner, text) match; never reused for a
+        /// different lambda in one frontend lineage.
         logical_id: u64,
         owner: usize,
         site: LambdaSiteFacts,
     },
 }
 
-/// The candidate of ONE single-unit edit: it owns the new body entry (moved,
-/// never cloned) with the environment identity and publication generation it
-/// was prepared against, the scoped document, the new full source and the
+/// One unit the candidate re-resolved (owner or lambda).
+pub struct CandidateUnit {
+    pub fn_index: usize,
+    pub name: String,
+    state: BodyState,
+}
+
+/// The owner-route bookkeeping a candidate carries: the owner slot plus the
+/// post-walk site facts of EVERY lambda of that owner (reused ones carry
+/// their re-derived capture sources and current spans).
+pub struct OwnerUpdate {
+    pub owner_index: usize,
+    pub sites: Vec<(usize, LambdaSiteFacts)>,
+    pub reused_ordinals: Vec<usize>,
+}
+
+/// The candidate of ONE edit: the re-resolved unit entries (moved, never
+/// cloned) with the environment identity and publication generation they
+/// were prepared against, the scoped document, the new full source and the
 /// coordinate delta. `commit` is the only installer (exactly once); a plain
 /// drop publishes nothing.
 pub struct ClosuresFnCandidate {
     env_id: u64,
     base_generation: u64,
-    pub fn_index: usize,
-    pub unit_name: String,
-    state: BodyState,
+    pub units: Vec<CandidateUnit>,
+    pub owner: Option<OwnerUpdate>,
     pub parts: SourceParts,
     pub receipt: BodyEmitReceipt,
     pub new_source: String,
@@ -104,22 +121,41 @@ pub struct ClosuresFnCandidate {
 }
 
 impl ClosuresFnCandidate {
-    /// The def id (`d_<name>`) of the edited unit in the scoped document.
-    pub fn def_id_text(&self) -> String {
-        format!("d_{}", self.unit_name)
+    /// The primary (first) unit's fn index — for a lambda edit the lambda,
+    /// for an owner edit the owner.
+    pub fn fn_index(&self) -> usize {
+        self.units[0].fn_index
     }
-    /// The def INDEX of the edited unit in the scoped document's module.
-    pub fn def_index(&self) -> usize {
+    /// The primary unit's display name.
+    pub fn unit_name(&self) -> &str {
+        &self.units[0].name
+    }
+    /// The def id (`d_<name>`) of a unit in the scoped document.
+    pub fn def_id_text_of(&self, unit: &CandidateUnit) -> String {
+        format!("d_{}", unit.name)
+    }
+    /// The primary unit's def id.
+    pub fn def_id_text(&self) -> String {
+        format!("d_{}", self.units[0].name)
+    }
+    /// The def INDEX of a unit in the scoped document's module.
+    pub fn def_index_of(&self, unit: &CandidateUnit) -> usize {
+        let id = self.def_id_text_of(unit);
         self.parts
             .bundle
             .modules
             .first()
-            .and_then(|m| {
-                m.defs
-                    .iter()
-                    .position(|d| d.id_text == self.def_id_text())
-            })
-            .unwrap_or(self.fn_index)
+            .and_then(|m| m.defs.iter().position(|d| d.id_text == id))
+            .unwrap_or(unit.fn_index)
+    }
+    /// The primary unit's def index.
+    pub fn def_index(&self) -> usize {
+        self.def_index_of(&self.units[0])
+    }
+    /// Def ids of every unit whose body is REAL in the document (the
+    /// creators the registry overlay must re-derive from).
+    pub fn real_def_ids(&self) -> Vec<String> {
+        self.units.iter().map(|u| self.def_id_text_of(u)).collect()
     }
 }
 
@@ -137,16 +173,48 @@ pub struct ClosuresFunctionFrontend {
     generation: u64,
 }
 
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_001b_3);
+    }
+    h
+}
+
 impl ClosuresFunctionFrontend {
     /// Cold init: the whole-module truth path, retained. Returns the
-    /// frontend plus the whole `CompiledSource` (for the caller's cold
-    /// unit production — lowering may consume the whole-module bundle there).
+    /// frontend plus the whole document and credential (for the caller's
+    /// cold unit production).
     pub fn cold(
         src: &str,
         module_path: &str,
         capabilities: &[String],
     ) -> Result<(Self, SourceParts, CheckedModule), Vec<Diagnostic>> {
-        body_work::record_whole(StageAxis::WholeParse);
+        Self::cold_inner(src, module_path, capabilities, None)
+    }
+
+    /// Cold rebuild that CARRIES lambda logical ids from a previous frontend
+    /// of the same lineage: a lambda is matched by (owner, expression text)
+    /// when that match is unique on both sides; anything ambiguous or new
+    /// mints a fresh id (never a silent re-hit). The whole truth path still
+    /// runs — this only preserves identity bookkeeping (§5.1 "能唯一匹配的
+    /// 存活单元保身份，歧义不误命中").
+    pub fn cold_carrying(
+        src: &str,
+        module_path: &str,
+        capabilities: &[String],
+        previous: &ClosuresFunctionFrontend,
+    ) -> Result<(Self, SourceParts, CheckedModule), Vec<Diagnostic>> {
+        Self::cold_inner(src, module_path, capabilities, Some(previous))
+    }
+
+    fn cold_inner(
+        src: &str,
+        module_path: &str,
+        capabilities: &[String],
+        previous: Option<&ClosuresFunctionFrontend>,
+    ) -> Result<(Self, SourceParts, CheckedModule), Vec<Diagnostic>> {
         let program = parse_program_with(src, SourceProfile::Closures).map_err(|d| vec![d])?;
         let (mut env, cache) = resolve_closures_env(&program, src, capabilities)?;
         env.typecheck_all()?;
@@ -156,7 +224,7 @@ impl ClosuresFunctionFrontend {
         // Catalog: owners in declaration order with their lambdas; lambdas
         // are appended after all owners (resolve_detailed's layout).
         let mut units: Vec<UnitEntry> = Vec::with_capacity(env.program.fns.len());
-        let mut owner_of_lambda: BTreeMap<String, usize> = BTreeMap::new();
+        let mut owner_of: BTreeMap<String, usize> = BTreeMap::new();
         for (i, f) in env.program.fns.iter().enumerate() {
             units.push(UnitEntry {
                 name: f.name.clone(),
@@ -164,11 +232,39 @@ impl ClosuresFunctionFrontend {
                 span: f.item_span,
                 body_span: f.body.span,
             });
-            owner_of_lambda.insert(f.name.clone(), i);
+            owner_of.insert(f.name.clone(), i);
         }
+        // Previous-lineage identity index: (owner, text fp) → logical id,
+        // only for texts unique within their owner on the previous side.
+        let mut carry: BTreeMap<(String, u64), u64> = BTreeMap::new();
         let mut next_logical: u64 = 1;
+        if let Some(prev) = previous {
+            let mut seen: BTreeMap<(String, u64), usize> = BTreeMap::new();
+            for u in &prev.units {
+                if let UnitKind::Lambda { logical_id, owner, .. } = &u.kind {
+                    let key = (prev.units[*owner].name.clone(), fnv64(prev.source[u.span.start..u.span.end].as_bytes()));
+                    *seen.entry(key.clone()).or_default() += 1;
+                    carry.insert(key, *logical_id);
+                }
+            }
+            for (key, n) in seen {
+                if n > 1 {
+                    carry.remove(&key);
+                }
+            }
+            next_logical = prev.next_logical;
+        }
+        // New-side uniqueness: a text that appears twice in one owner is
+        // ambiguous on this side too.
+        let mut new_counts: BTreeMap<(String, u64), usize> = BTreeMap::new();
         for (owner_name, owner) in &cache.owners {
-            let Some(&owner_idx) = owner_of_lambda.get(owner_name) else {
+            for lambda in &owner.lambdas {
+                let key = (owner_name.clone(), fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()));
+                *new_counts.entry(key).or_default() += 1;
+            }
+        }
+        for (owner_name, owner) in &cache.owners {
+            let Some(&owner_idx) = owner_of.get(owner_name) else {
                 return Err(vec![Diagnostic::new(
                     Stage::Bind,
                     "source.internal",
@@ -191,8 +287,6 @@ impl ClosuresFunctionFrontend {
                             Span { start: 0, end: 0 },
                         )]
                     })?;
-                // The site facts of THIS lambda (cache stores per owner, in
-                // creation order — same order as `lambdas`).
                 let site = owner
                     .sites
                     .iter()
@@ -206,17 +300,25 @@ impl ClosuresFunctionFrontend {
                             Span { start: 0, end: 0 },
                         )]
                     })?;
+                let key = (owner_name.clone(), fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()));
+                let logical_id = match (carry.get(&key), new_counts.get(&key)) {
+                    (Some(id), Some(1)) => *id,
+                    _ => {
+                        let id = next_logical;
+                        next_logical += 1;
+                        id
+                    }
+                };
                 units[idx] = UnitEntry {
                     name: lambda.name.clone(),
                     kind: UnitKind::Lambda {
-                        logical_id: next_logical,
+                        logical_id,
                         owner: owner_idx,
                         site,
                     },
                     span: lambda.item_span,
                     body_span: lambda.item_span,
                 };
-                next_logical += 1;
                 lambda_indices.push(idx);
             }
             if let UnitKind::Owner { lambdas } = &mut units[owner_idx].kind {
@@ -267,8 +369,7 @@ impl ClosuresFunctionFrontend {
     pub fn capabilities(&self) -> &[String] {
         &self.capabilities
     }
-    /// The next un-minted lambda LOGICAL id (accepted-state export;
-    /// PLAN-912 §5.3).
+    /// The next un-minted lambda LOGICAL id (accepted-state export).
     pub fn next_logical_id(&self) -> u64 {
         self.next_logical
     }
@@ -278,7 +379,11 @@ impl ClosuresFunctionFrontend {
     pub fn retained_bytes_estimate(&self) -> usize {
         let mut bytes = self.source.len()
             + self.module_path.len()
-            + self.units.iter().map(|u| std::mem::size_of::<UnitEntry>() + u.name.len()).sum::<usize>();
+            + self
+                .units
+                .iter()
+                .map(|u| std::mem::size_of::<UnitEntry>() + u.name.len())
+                .sum::<usize>();
         for f in &self.env.program.fns {
             bytes += f.name.len() + f.locals.len() * 64 + count_resolved_nodes(f);
         }
@@ -289,10 +394,9 @@ impl ClosuresFunctionFrontend {
 
     /// The explicit edit entry (§5.1): base full-source SHA + UTF-8 range +
     /// replacement. Only the target unit's fragment is parsed; the rest of
-    /// the pipeline (resolve/typecheck/emit/bind) touches exactly the
-    /// target. Returns the candidate (verify/lower/install are the caller's
-    /// stages), or the NAMED non-fast reason for the caller's whole-module
-    /// route.
+    /// the pipeline touches exactly the changed units. Returns the candidate
+    /// (verify/lower/install are the caller's stages), or the NAMED non-fast
+    /// reason for the caller's whole-module route.
     pub fn edit_body(
         &mut self,
         base_sha: &str,
@@ -303,8 +407,10 @@ impl ClosuresFunctionFrontend {
         if base_sha != self.source_sha {
             return Ok(Err(NonFastReason::StaleBase));
         }
-        if !self.source.is_char_boundary(range.start) || !self.source.is_char_boundary(range.end)
-            || range.start > range.end || range.end > self.source.len()
+        if !self.source.is_char_boundary(range.start)
+            || !self.source.is_char_boundary(range.end)
+            || range.start > range.end
+            || range.end > self.source.len()
         {
             return Err(vec![Diagnostic::new(
                 Stage::Text,
@@ -313,50 +419,72 @@ impl ClosuresFunctionFrontend {
                 Span { start: 0, end: 0 },
             )]);
         }
-        // Classify: the innermost lambda whose span contains the range, else
-        // the owner whose body span contains it without touching any lambda.
-        let target = classify_edit(&self.units, &range)?;
-        let Some(target_idx) = target else {
-            return Ok(Err(match classify_edit_loose(&self.units, &range) {
-                Some(ClassLoose::Owner) => NonFastReason::OwnerBodyEdit,
-                _ => NonFastReason::CrossesUnits,
-            }));
-        };
+        // Innermost lambda containing the range → lambda route first.
+        if let Some(lambda_idx) = innermost_lambda(&self.units, &range) {
+            match self.edit_lambda(lambda_idx, range.clone(), replacement)? {
+                Ok(candidate) => return Ok(Ok(candidate)),
+                Err(LambdaDecline::Diverted(reason)) => {
+                    // The creation-site fact changed: the OWNER route owns
+                    // the edit (the owner re-resolves; unchanged siblings are
+                    // reused). Report the lambda reason if the owner declines.
+                    let owner_idx = match &self.units[lambda_idx].kind {
+                        UnitKind::Lambda { owner, .. } => *owner,
+                        _ => unreachable!("lambda unit"),
+                    };
+                    return match self.edit_owner(owner_idx, range, replacement)? {
+                        Ok(candidate) => Ok(Ok(candidate)),
+                        Err(NonFastReason::OwnerSignatureChanged) => {
+                            Ok(Err(NonFastReason::OwnerSignatureChanged))
+                        }
+                        Err(other) => Ok(Err(match other {
+                            NonFastReason::OwnerTopologyChanged { .. } => other,
+                            _ => NonFastReason::LambdaSiteChanged(reason),
+                        })),
+                    };
+                }
+            }
+        }
+        // Otherwise the owner whose ITEM contains the range.
+        if let Some(owner_idx) = owner_containing(&self.units, &range) {
+            return self.edit_owner(owner_idx, range, replacement);
+        }
+        Ok(Err(NonFastReason::CrossesUnits))
+    }
+
+    /// The lambda-only fast route.
+    fn edit_lambda(
+        &mut self,
+        target_idx: usize,
+        range: Range<usize>,
+        replacement: &str,
+    ) -> Result<Result<ClosuresFnCandidate, LambdaDecline>, Vec<Diagnostic>> {
         let UnitKind::Lambda { site, .. } = &self.units[target_idx].kind else {
-            // Owner body edits are the T-03 route; today: named non-fast.
-            return Ok(Err(NonFastReason::OwnerBodyEdit));
+            unreachable!("lambda unit")
         };
         if site.nested != 0 {
-            return Ok(Err(NonFastReason::LambdaNested));
+            return Ok(Err(LambdaDecline::Diverted(LambdaNonFast::NestedLambdas)));
         }
         let unit_name = self.units[target_idx].name.clone();
         let old_span = self.units[target_idx].span;
-        let delta = replacement.len() as i64 - (range.end - range.start) as i64;
-        let mut new_source = String::with_capacity((self.source.len() as i64 + delta) as usize);
-        new_source.push_str(&self.source[..range.start]);
-        new_source.push_str(replacement);
-        new_source.push_str(&self.source[range.end..]);
+        let (new_source, delta) = splice(&self.source, &range, replacement);
         let new_span = Span {
             start: old_span.start,
             end: (old_span.end as i64 + delta) as usize,
         };
         // P axis: one fragment parse for the changed unit only (wire-keyed).
         body_work::record_attempt(StageAxis::ParseProject, &format!("d_{unit_name}"));
-        let expr =
-            parse_closure_fragment(&new_source, new_span.start..new_span.end, SourceProfile::Closures)
-                .map_err(|d| vec![d])?;
+        let expr = parse_closure_fragment(
+            &new_source,
+            new_span.start..new_span.end,
+            SourceProfile::Closures,
+        )
+        .map_err(|d| vec![d])?;
         // P axis: one resolve of the changed unit only (inside).
         let state = match resolve_lambda_in_context(&self.env, site, &expr) {
-            Err(LambdaReResolve::NonFast(why)) => {
-                return Ok(Err(match why {
-                    LambdaNonFast::NestedLambdas => NonFastReason::LambdaNested,
-                    other => NonFastReason::LambdaSiteChanged(other),
-                }))
-            }
+            Err(LambdaReResolve::NonFast(why)) => return Ok(Err(LambdaDecline::Diverted(why))),
             Err(LambdaReResolve::Diagnostics(ds)) => return Err(ds),
             Ok(state) => state,
         };
-        // Graft, typecheck the ONE body, emit the scoped document, restore.
         let env_id = self.env.env_id();
         let base_generation = self.env.generation();
         let previous = state.swap_into(&mut self.env, target_idx);
@@ -377,9 +505,12 @@ impl ClosuresFunctionFrontend {
         Ok(Ok(ClosuresFnCandidate {
             env_id,
             base_generation,
-            fn_index: target_idx,
-            unit_name,
-            state: new_state,
+            units: vec![CandidateUnit {
+                fn_index: target_idx,
+                name: unit_name,
+                state: new_state,
+            }],
+            owner: None,
             parts,
             receipt,
             new_sha: sha256_hex(new_source.as_bytes()),
@@ -388,47 +519,221 @@ impl ClosuresFunctionFrontend {
         }))
     }
 
-    /// Commit ONE verified edit: installs the prepared body entry, swaps the
-    /// source, remaps the catalog coordinates (M axis — spans only, never a
-    /// resolved body walk) and publishes a new generation. The registry is
-    /// unchanged (the fast path's oracle IS that the creation-site facts did
-    /// not change).
-    pub fn commit_candidate(&mut self, candidate: ClosuresFnCandidate) -> Result<(), String> {
+    /// The owner route (PLAN-912 T-03): re-parse the owner ITEM fragment,
+    /// re-resolve it through the retained-lambda reuse oracle, graft the
+    /// owner plus only the lambdas that genuinely re-resolved, typecheck
+    /// those, emit them as one batch document, restore.
+    fn edit_owner(
+        &mut self,
+        owner_idx: usize,
+        range: Range<usize>,
+        replacement: &str,
+    ) -> Result<Result<ClosuresFnCandidate, NonFastReason>, Vec<Diagnostic>> {
+        let UnitKind::Owner { lambdas } = &self.units[owner_idx].kind else {
+            unreachable!("owner unit")
+        };
+        let lambda_indices = lambdas.clone();
+        let owner_name = self.units[owner_idx].name.clone();
+        let old_span = self.units[owner_idx].span;
+        let (new_source, delta) = splice(&self.source, &range, replacement);
+        let new_span = Span {
+            start: old_span.start,
+            end: (old_span.end as i64 + delta) as usize,
+        };
+        // P axis: one fragment parse — the owner ITEM (its nested lambda
+        // text is part of the owner body; no lambda is resolved by this).
+        body_work::record_attempt(StageAxis::ParseProject, &format!("d_{owner_name}"));
+        let item = parse_function_fragment(
+            &new_source,
+            new_span.start..new_span.end,
+            SourceProfile::Closures,
+        )
+        .map_err(|d| vec![d])?;
+        if item.name.name != owner_name {
+            return Ok(Err(NonFastReason::OwnerSignatureChanged));
+        }
+        // The reuse oracle: this owner's retained lambdas in post-order.
+        let mut entries = Vec::with_capacity(lambda_indices.len());
+        for &li in &lambda_indices {
+            let UnitKind::Lambda { site, .. } = &self.units[li].kind else {
+                unreachable!("lambda unit")
+            };
+            let span = self.units[li].span;
+            entries.push(ReuseEntry {
+                text_fp: fnv64(self.source[span.start..span.end].as_bytes()),
+                site: site.clone(),
+                body: self.env.program.fns[li].clone(),
+            });
+        }
+        entries.sort_by_key(|e| e.site.ordinal);
+        let recheck = match resolve_owner_in_env(&self.env, &item, owner_idx, entries, &new_source) {
+            Ok(r) => r,
+            Err(ds) => {
+                if ds.iter().any(|d| d.code == "source.incremental") {
+                    return Ok(Err(NonFastReason::OwnerSignatureChanged));
+                }
+                return Err(ds);
+            }
+        };
+        if recheck.lambdas.len() != lambda_indices.len() {
+            return Ok(Err(NonFastReason::OwnerTopologyChanged {
+                before: lambda_indices.len(),
+                after: recheck.lambdas.len(),
+            }));
+        }
+        // Position-based identity: retained ordinal k ↔ new ordinal k.
+        let mut by_ordinal: BTreeMap<usize, usize> = BTreeMap::new();
+        for &li in &lambda_indices {
+            if let UnitKind::Lambda { site, .. } = &self.units[li].kind {
+                by_ordinal.insert(site.ordinal, li);
+            }
+        }
+        let reused: BTreeSet<usize> = recheck.reused.iter().copied().collect();
+        let env_id = self.env.env_id();
+        let base_generation = self.env.generation();
+        // Graft the owner and the re-resolved lambdas; keep the displaced
+        // states for restore.
+        let mut displaced: Vec<(usize, BodyState)> = Vec::new();
+        let mut units: Vec<CandidateUnit> = Vec::new();
+        let mut sites: Vec<(usize, LambdaSiteFacts)> = Vec::new();
+        let owner_prev = recheck.state.swap_into(&mut self.env, owner_idx);
+        displaced.push((owner_idx, owner_prev));
+        let mut changed_lambda_slots: Vec<usize> = Vec::new();
+        for (lambda, site) in recheck.lambdas.into_iter().zip(recheck.sites.into_iter()) {
+            let Some(&slot) = by_ordinal.get(&site.ordinal) else {
+                // Should not happen with equal counts; treat as topology.
+                for (idx, state) in displaced.into_iter().rev() {
+                    state.swap_into(&mut self.env, idx);
+                }
+                return Ok(Err(NonFastReason::OwnerTopologyChanged {
+                    before: lambda_indices.len(),
+                    after: lambda_indices.len(),
+                }));
+            };
+            if reused.contains(&site.ordinal) {
+                // Unchanged body: nothing to graft; its site facts carry the
+                // re-derived capture sources and span.
+                sites.push((slot, site));
+                continue;
+            }
+            // Re-resolved: graft (no pools of its own; the owner's
+            // transaction carries the table growth).
+            let state = BodyState::entry_only(lambda);
+            let prev = state.swap_into(&mut self.env, slot);
+            displaced.push((slot, prev));
+            changed_lambda_slots.push(slot);
+            sites.push((slot, site));
+        }
+        // Typecheck exactly the owner + the re-resolved lambdas.
+        let mut check = super::typecheck::check_body_in(&self.env.program, owner_idx);
+        for &slot in &changed_lambda_slots {
+            check.extend(super::typecheck::check_body_in(&self.env.program, slot));
+        }
+        if !check.is_empty() {
+            for (idx, state) in displaced.into_iter().rev() {
+                state.swap_into(&mut self.env, idx);
+            }
+            return Err(check);
+        }
+        let mut indices = vec![owner_idx];
+        indices.extend(changed_lambda_slots.iter().copied());
+        let emit = emit_closures_function_batch(&self.env, &indices, &new_source, &self.module_path);
+        let (parts, receipt) = match emit {
+            Ok(ok) => ok,
+            Err(ds) => {
+                for (idx, state) in displaced.into_iter().rev() {
+                    state.swap_into(&mut self.env, idx);
+                }
+                return Err(ds);
+            }
+        };
+        // Restore current; the candidate owns the new states.
+        for (idx, prev) in displaced.into_iter().rev() {
+            let new_state = prev.swap_into(&mut self.env, idx);
+            let name = self.units[idx].name.clone();
+            units.push(CandidateUnit {
+                fn_index: idx,
+                name,
+                state: new_state,
+            });
+        }
+        units.reverse(); // owner first, then lambdas in graft order
+        Ok(Ok(ClosuresFnCandidate {
+            env_id,
+            base_generation,
+            units,
+            owner: Some(OwnerUpdate {
+                owner_index: owner_idx,
+                sites,
+                reused_ordinals: recheck.reused,
+            }),
+            parts,
+            receipt,
+            new_sha: sha256_hex(new_source.as_bytes()),
+            new_source,
+            shift: (range.end, delta),
+        }))
+    }
+
+    /// Commit ONE verified edit: installs the prepared unit entries, swaps
+    /// the source, remaps the catalog coordinates (M axis — spans only,
+    /// never a resolved body walk), installs the verified registry overlay
+    /// (owner route) and publishes a new generation.
+    pub fn commit_candidate(
+        &mut self,
+        candidate: ClosuresFnCandidate,
+        registry_after: Option<ClosuresVerifyContext>,
+    ) -> Result<(), String> {
         if self.env.env_id() != candidate.env_id {
-            return Err("source.foreign: the candidate was prepared against another environment".to_string());
+            return Err(
+                "source.foreign: the candidate was prepared against another environment"
+                    .to_string(),
+            );
         }
         if self.env.generation() != candidate.base_generation {
-            return Err("source.stale: the base has been published since the candidate was prepared".to_string());
+            return Err(
+                "source.stale: the base has been published since the candidate was prepared"
+                    .to_string(),
+            );
         }
-        let state = candidate.state.swap_into(&mut self.env, candidate.fn_index);
-        debug_assert_eq!(state.entry.name, candidate.unit_name);
-        let _ = state;
+        let primary = candidate.units[0].fn_index;
+        for unit in candidate.units {
+            let displaced = unit.state.swap_into(&mut self.env, unit.fn_index);
+            debug_assert_eq!(displaced.entry.name, unit.name);
+            let _ = displaced;
+        }
         self.source = candidate.new_source;
         self.source_sha = candidate.new_sha;
         // M axis: shift every catalog span after the edit point (plus the
-        // edited unit's end). No resolved body is visited.
+        // containing units' ends). No resolved body is visited.
         body_work::record_whole(StageAxis::CoordRemap);
         let (edit_end, delta) = candidate.shift;
-        for (i, u) in self.units.iter_mut().enumerate() {
-            let is_target = i == candidate.fn_index;
-            if delta != 0 {
-                if u.span.start >= edit_end {
-                    u.span.start = (u.span.start as i64 + delta) as usize;
-                    u.span.end = (u.span.end as i64 + delta) as usize;
-                    u.body_span.start = (u.body_span.start as i64 + delta) as usize;
-                    u.body_span.end = (u.body_span.end as i64 + delta) as usize;
-                } else if is_target || u.span.end > edit_end {
-                    // The edited unit (its end moves by delta) or a span
-                    // that contains the edit point (only the target can).
-                    u.span.end = (u.span.end as i64 + delta) as usize;
-                    u.body_span.end = (u.body_span.end as i64 + delta) as usize;
-                }
-            }
-            if is_target {
+        if delta != 0 {
+            for u in self.units.iter_mut() {
+                shift_span(&mut u.span, edit_end, delta);
+                shift_span(&mut u.body_span, edit_end, delta);
                 if let UnitKind::Lambda { site, .. } = &mut u.kind {
                     site.expr_span = u.span;
                 }
             }
+        }
+        if let Some(owner) = candidate.owner {
+            // Owner route: every lambda of the owner carries its post-walk
+            // site facts (re-derived capture sources; reused or re-resolved).
+            // Their spans were produced in NEW coordinates by the walk, so
+            // they are authoritative over the remapped catalog spans.
+            for (slot, site) in owner.sites {
+                let span = site.expr_span;
+                if let UnitKind::Lambda { site: retained, .. } = &mut self.units[slot].kind {
+                    *retained = site;
+                }
+                self.units[slot].span = span;
+                self.units[slot].body_span = span;
+            }
+        }
+        let _ = primary;
+        if let Some(reg) = registry_after {
+            self.registry = reg;
         }
         self.env.generation += 1;
         self.generation += 1;
@@ -441,23 +746,48 @@ impl ClosuresFunctionFrontend {
     }
 }
 
+/// Internal: why the lambda route handed the edit to the owner route.
+enum LambdaDecline {
+    Diverted(LambdaNonFast),
+}
+
+fn splice(source: &str, range: &Range<usize>, replacement: &str) -> (String, i64) {
+    let delta = replacement.len() as i64 - (range.end - range.start) as i64;
+    let mut out = String::with_capacity((source.len() as i64 + delta).max(0) as usize);
+    out.push_str(&source[..range.start]);
+    out.push_str(replacement);
+    out.push_str(&source[range.end..]);
+    (out, delta)
+}
+
+/// Shift a catalog span across an edit at `edit_end` by `delta`: spans that
+/// start at/after the edit point move whole; spans that contain the edit
+/// point grow/shrink at their end; spans before it are untouched.
+fn shift_span(span: &mut Span, edit_end: usize, delta: i64) {
+    if span.start >= edit_end {
+        span.start = (span.start as i64 + delta) as usize;
+        span.end = (span.end as i64 + delta) as usize;
+    } else if span.end >= edit_end {
+        span.end = (span.end as i64 + delta) as usize;
+    }
+}
+
 fn count_resolved_nodes(f: &super::resolve::ResolvedFn) -> usize {
     fn block(b: &super::resolve::RBlock) -> usize {
         b.stmts.iter().map(stmt).sum()
     }
     fn stmt(s: &super::resolve::RStmt) -> usize {
-        let self_cost = 1 + match s {
+        1 + match s {
             super::resolve::RStmt::Let { value, .. }
             | super::resolve::RStmt::Assign { value, .. }
             | super::resolve::RStmt::Return { value, .. } => expr(value),
-            super::resolve::RStmt::If { cond, then, els, .. } => {
-                expr(cond) + block(then) + els.as_ref().map(block).unwrap_or(0)
-            }
+            super::resolve::RStmt::If {
+                cond, then, els, ..
+            } => expr(cond) + block(then) + els.as_ref().map(block).unwrap_or(0),
             super::resolve::RStmt::While { cond, body, .. } => expr(cond) + block(body),
             super::resolve::RStmt::Loop { body, .. } => block(body),
             _ => 0,
-        };
-        self_cost
+        }
     }
     fn expr(e: &super::resolve::ResolvedExpr) -> usize {
         1 + match &e.kind {
@@ -469,32 +799,29 @@ fn count_resolved_nodes(f: &super::resolve::ResolvedFn) -> usize {
     f.locals.len() * 32 + block(&f.body)
 }
 
-enum ClassLoose {
-    Owner,
-}
-
-fn classify_edit(units: &[UnitEntry], range: &Range<usize>) -> Result<Option<usize>, Vec<Diagnostic>> {
-    // Innermost LAMBDA containing the range.
+/// Innermost LAMBDA whose span contains the range.
+fn innermost_lambda(units: &[UnitEntry], range: &Range<usize>) -> Option<usize> {
     let mut best: Option<usize> = None;
     for (i, u) in units.iter().enumerate() {
-        if matches!(u.kind, UnitKind::Lambda { .. }) && u.span.start <= range.start && range.end <= u.span.end {
+        if matches!(u.kind, UnitKind::Lambda { .. })
+            && u.span.start <= range.start
+            && range.end <= u.span.end
+        {
             match best {
                 Some(b) if units[b].span.end - units[b].span.start <= u.span.end - u.span.start => {}
                 _ => best = Some(i),
             }
         }
     }
-    Ok(best)
+    best
 }
 
-fn classify_edit_loose(units: &[UnitEntry], range: &Range<usize>) -> Option<ClassLoose> {
-    for u in units {
-        if matches!(u.kind, UnitKind::Owner { .. })
-            && u.body_span.start <= range.start
-            && range.end <= u.body_span.end
-        {
-            return Some(ClassLoose::Owner);
-        }
-    }
-    None
+/// The OWNER whose item span contains the range (body or signature; the
+/// resolver's drift guard decides whether a signature edit is non-fast).
+fn owner_containing(units: &[UnitEntry], range: &Range<usize>) -> Option<usize> {
+    units.iter().position(|u| {
+        matches!(u.kind, UnitKind::Owner { .. })
+            && u.span.start <= range.start
+            && range.end <= u.span.end
+    })
 }

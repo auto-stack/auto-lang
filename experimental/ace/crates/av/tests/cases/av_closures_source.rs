@@ -365,8 +365,16 @@ fn av_closures_909_warm_body_edit_zero_walks_for_unchanged_owners() {
     assert_eq!(next.value, 42);
     // Only the edited owner re-walked; untouched owners: ZERO resolve and
     // typecheck walks (absent from the ledger, not zeroed by hand).
+    // PLAN-912: the 865/909 owner path has no lambda-reuse oracle, so the
+    // owner's lambdas are REALLY walked with it and now show as their own
+    // resolve attempts (the R4 sibling rewalk made visible per unit; the
+    // function session's owner route is the path that reuses them).
     let resolve_names: Vec<&String> = next.frontend.resolve_walks.keys().collect();
-    assert_eq!(resolve_names, ["main"], "{resolve_names:?}");
+    assert_eq!(
+        resolve_names,
+        ["__closure_main_0", "__closure_main_1", "main"],
+        "{resolve_names:?}"
+    );
     // Owner granularity: the edited owner's own sibling lambda re-walks
     // with it (it lives inside main's body); OTHER owners' lambdas do not.
     let typecheck_names: Vec<&String> = next.frontend.typecheck_walks.keys().collect();
@@ -424,9 +432,11 @@ fn av_closures_909_unrelated_lambda_insertion_keeps_sibling_identity() {
     assert_eq!(next.value, 84);
     // Only `a` re-walked; `b` (a LATER owner with its own lambda) reused
     // verbatim — its lambda is still `__closure_b_0` and its unit untouched.
+    // PLAN-912: `a`'s two lambdas (the inserted `z` and `f`) are walked with
+    // `a` on this path and show as their own resolve attempts.
     assert_eq!(
         next.frontend.resolve_walks.keys().collect::<Vec<_>>(),
-        ["a"]
+        ["__closure_a_0", "__closure_a_1", "a"]
     );
     assert!(next.frontend.reused_owners.contains("b"));
     assert!(next.frontend.reused_owners.contains("main"));

@@ -102,7 +102,7 @@ fn closures_fn_912_lambda_body_edit_single_unit_chain_and_identity() {
         })
     });
     let candidate = fast(result);
-    assert_eq!(candidate.unit_name, "__closure_main_1");
+    assert_eq!(candidate.unit_name(), "__closure_main_1");
     assert_eq!(candidate.receipt.real_body_plans, 1);
     // The scoped document scaffolded every other unit (5 fns total).
     assert_eq!(candidate.receipt.scaffold_fns, 4);
@@ -163,7 +163,7 @@ fn closures_fn_912_lambda_body_edit_single_unit_chain_and_identity() {
 
     // Commit and verify the catalog survived with shifted coordinates.
     let sha_before = front.source_sha().to_string();
-    front.commit_candidate(candidate).expect("commit");
+    front.commit_candidate(candidate, None).expect("commit");
     assert_ne!(front.source_sha(), sha_before);
     assert_eq!(front.source(), new_src.as_str());
     assert_eq!(front.generation(), 1);
@@ -177,8 +177,8 @@ fn closures_fn_912_lambda_body_edit_single_unit_chain_and_identity() {
         u,
         "(n int) => { return x - n * 3 }",
     ));
-    assert_eq!(candidate2.unit_name, "__closure_main_1");
-    front.commit_candidate(candidate2).expect("commit2");
+    assert_eq!(candidate2.unit_name(), "__closure_main_1");
+    front.commit_candidate(candidate2, None).expect("commit2");
     assert_eq!(front.generation(), 2);
 }
 
@@ -260,22 +260,37 @@ fn closures_fn_912_forged_env_and_missing_registry_rejected() {
 }
 
 #[test]
-fn closures_fn_912_capture_decl_change_is_a_named_non_fast() {
+fn closures_fn_912_capture_decl_change_takes_owner_route_with_sibling_reuse() {
     let (mut front, _parts, _checked) =
         ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
     // f stops WRITING `base`: the raw capture fact changes (written=true →
-    // false) — the owner's creation site changed; the fast path declines.
+    // false) — the lambda-only route declines and the OWNER route takes the
+    // edit: `main` re-resolves, `f` re-resolves, `g` is REUSED (no walk).
     let u = unit_of(&front, "__closure_main_0");
-    let outcome = non_fast(edit(
-        &mut front,
-        u,
-        "(n int) => { return base + n }",
-    ));
-    match outcome {
-        NonFastReason::LambdaSiteChanged(_) => {}
-        other => panic!("expected a lambda-site change, got {other:?}"),
-    }
-    // The frontend is untouched by the decline.
+    let sha = front.source_sha().to_string();
+    let span = front.units()[u].span;
+    let ((result, body), stages) = body_work::capture_stage_attempts(|| {
+        body_work::capture_body_work(|| {
+            front.edit_body(&sha, span.start..span.end, "(n int) => { return base + n }")
+        })
+    });
+    let candidate = fast(result);
+    let owner = candidate.owner.as_ref().expect("owner route");
+    assert_eq!(candidate.unit_name(), "main");
+    assert_eq!(candidate.units.len(), 2, "owner + the one re-resolved lambda");
+    assert_eq!(candidate.units[1].name, "__closure_main_0");
+    assert_eq!(owner.reused_ordinals, vec![1], "g (ordinal 1) reused without a walk");
+    // Zero work for g; one walk each for main and f.
+    assert!(body.get("__closure_main_1").is_none(), "reused sibling has no body work: {body:?}");
+    let m = body.get("main").unwrap();
+    let f = body.get("__closure_main_0").unwrap();
+    assert_eq!((m.resolve, m.typecheck, m.plan, m.bind), (1, 1, 1, 1));
+    assert_eq!((f.resolve, f.typecheck, f.plan, f.bind), (1, 1, 1, 1));
+    assert_eq!(stages.whole_total(), 0);
+    assert_eq!(stages.of("d_main", Stage::ParseProject), 1);
+    // The batch document: 2 real bodies (main + f), g a scaffold.
+    assert_eq!(candidate.receipt.real_body_plans, 2);
+    // The frontend is untouched until commit.
     assert_eq!(front.generation(), 0);
     assert_eq!(front.source(), SRC);
 }
@@ -289,18 +304,12 @@ fn closures_fn_912_stale_base_and_cross_unit_edits_refused() {
     let stale = front.units()[g].span;
     let r = non_fast(front.edit_body("0000", stale.start..stale.end, "(n int) => { return x }"));
     assert_eq!(r, NonFastReason::StaleBase);
-    // A range crossing units (owner body + lambda together).
-    let main_body = front.units()[unit_of(&front, "main")].body_span;
+    // A range crossing two OWNERS (helper's tail + other's head).
+    let helper = front.units()[unit_of(&front, "helper")].span;
+    let other = front.units()[unit_of(&front, "other")].span;
     let sha = front.source_sha().to_string();
-    let reason = non_fast(front.edit_body(
-        &sha,
-        main_body.start..main_body.start + 20,
-        "x int = 10 var base int = 1  ",
-    ));
-    assert!(
-        matches!(reason, NonFastReason::CrossesUnits | NonFastReason::OwnerBodyEdit),
-        "cross-unit edit classified as {reason:?}"
-    );
+    let reason = non_fast(front.edit_body(&sha, helper.end - 1..other.start + 2, "} fn"));
+    assert_eq!(reason, NonFastReason::CrossesUnits);
     // A type error inside the edited lambda: diagnostics, state preserved.
     let r = match edit(&mut front, g, "(n int) => { return x - true }") {
         Err(ds) => ds,
@@ -316,7 +325,7 @@ fn closures_fn_912_stale_base_and_cross_unit_edits_refused() {
     assert_eq!(front.source(), SRC);
     // The next valid edit still works (recovery).
     let recovery = fast(edit(&mut front, g, "(n int) => { return x - n }"));
-    assert_eq!(recovery.unit_name, "__closure_main_1");
+    assert_eq!(recovery.unit_name(), "__closure_main_1");
 }
 
 #[test]

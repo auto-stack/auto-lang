@@ -983,6 +983,197 @@ impl ClosuresVerifyContext {
                 .collect(),
         }
     }
+
+    /// PLAN-912 T-03: the registry as it WOULD be after an owner batch
+    /// document commits — `creator`'s creation sites re-derived from its
+    /// REAL body in `bundle`: a callee whose body is real in the document
+    /// (a re-resolved lambda) contributes its declared environment; a callee
+    /// that is a body-less scaffold (a reused sibling) keeps its RETAINED
+    /// environment declaration (reuse guaranteed its site facts unchanged).
+    /// Every other creator is untouched. The overlay is what the owner and
+    /// its re-resolved lambdas are verified against; the frontend installs
+    /// it only when that verification and the install both succeed.
+    pub fn overlay_from_batch(
+        &self,
+        bundle: &hir::Bundle,
+        creators: &[String],
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let mut next = self.clone();
+        for creator in creators {
+            next = next.overlay_one_creator(self, bundle, creator)?;
+        }
+        Ok(next)
+    }
+
+    /// One creator's sites re-derived from its real body (see
+    /// [`ClosuresVerifyContext::overlay_from_batch`]); `retained` is the
+    /// pre-batch registry the reused scaffolds read their declarations from.
+    fn overlay_one_creator(
+        &self,
+        retained: &ClosuresVerifyContext,
+        bundle: &hir::Bundle,
+        creator: &str,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let Some(m) = bundle.modules.first() else {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.modules",
+                "the overlay needs exactly one module",
+                Span { start: 0, end: 0 },
+            )]);
+        };
+        let Some((creator_index, creator_def)) =
+            m.defs.iter().enumerate().find(|(_, d)| d.id_text == creator)
+        else {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.closure-site",
+                format!("overlay creator `{creator}` is not in the document"),
+                Span { start: 0, end: 0 },
+            )]);
+        };
+        let hir::DefKind::Function { body, .. } = &creator_def.kind else {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.closure-site",
+                format!("overlay creator `{creator}` is not a function"),
+                creator_def.span,
+            )]);
+        };
+        let Some(body) = m.bodies.get(body.0 as usize) else {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.closure-site",
+                format!("overlay creator `{creator}` has no real body in the document"),
+                creator_def.span,
+            )]);
+        };
+        if body.owner.0 as usize != creator_index {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.owner-mismatch",
+                format!("overlay creator `{creator}` body is owned by another def"),
+                creator_def.span,
+            )]);
+        }
+        let mut next = self.clone();
+        // Drop this creator's previous sites (same callee set is re-added
+        // below; a callee that vanished would make its lambda unreachable —
+        // the frontend treats a topology change as non-fast before here).
+        let previous: Vec<String> = next.sites_by_creator.remove(creator).unwrap_or_default();
+        for callee in &previous {
+            next.lambdas.remove(callee);
+        }
+        let mut order = Vec::new();
+        for e in &body.exprs {
+            let hir::ExprKind::CreateClosure { callee, captures } = &e.kind else {
+                continue;
+            };
+            let Some(callee_def) = m.defs.get(callee.0 as usize) else {
+                return Err(vec![Diagnostic::new(
+                    Stage::Verify,
+                    "verify.closure-site",
+                    format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                    e.span,
+                )]);
+            };
+            if next.lambdas.contains_key(&callee_def.id_text) {
+                return Err(vec![Diagnostic::new(
+                    Stage::Verify,
+                    "verify.closure-site-duplicate",
+                    format!(
+                        "lambda `{}` is created at more than one site",
+                        callee_def.id_text
+                    ),
+                    e.span,
+                )]);
+            }
+            let site_modes: Vec<hir::CaptureMode> = captures.iter().map(|c| c.mode).collect();
+            let hir::DefKind::Function {
+                body: callee_body, ..
+            } = &callee_def.kind
+            else {
+                return Err(vec![Diagnostic::new(
+                    Stage::Verify,
+                    "verify.closure-site",
+                    format!("lambda `{}` is not a function", callee_def.id_text),
+                    e.span,
+                )]);
+            };
+            let env: Vec<ClosureEnvField> = match m.bodies.get(callee_body.0 as usize) {
+                Some(real) => {
+                    let mut locals: Vec<&hir::LocalDef> = real
+                        .locals
+                        .iter()
+                        .filter(|l| l.role == hir::LocalRole::Capture)
+                        .collect();
+                    locals.sort_by_key(|l| l.index);
+                    if locals.len() != site_modes.len() {
+                        return Err(vec![Diagnostic::new(
+                            Stage::Verify,
+                            "verify.closure-env-mismatch",
+                            format!(
+                                "lambda `{}` declares {} captures but its creation site passes {}",
+                                callee_def.id_text,
+                                locals.len(),
+                                site_modes.len()
+                            ),
+                            e.span,
+                        )]);
+                    }
+                    locals
+                        .iter()
+                        .zip(site_modes.iter())
+                        .map(|(l, mode)| ClosureEnvField {
+                            ty: l.ty,
+                            mutable: l.mutable,
+                            cell: env_field_is_cell(*mode, l.mutable),
+                        })
+                        .collect()
+                }
+                None => {
+                    // Reused sibling: retained declaration (its site facts
+                    // are unchanged by construction of the reuse oracle).
+                    let Some(retained) = retained.lambdas.get(&callee_def.id_text) else {
+                        return Err(vec![Diagnostic::new(
+                            Stage::Verify,
+                            "verify.closure-env-unknown",
+                            format!(
+                                "lambda `{}` is a scaffold in the batch and has no retained declaration",
+                                callee_def.id_text
+                            ),
+                            e.span,
+                        )]);
+                    };
+                    if retained.site_modes != site_modes {
+                        return Err(vec![Diagnostic::new(
+                            Stage::Verify,
+                            "verify.closure-env-mismatch",
+                            format!(
+                                "lambda `{}` is reused but its creation-site modes changed",
+                                callee_def.id_text
+                            ),
+                            e.span,
+                        )]);
+                    }
+                    retained.env.clone()
+                }
+            };
+            next.lambdas.insert(
+                callee_def.id_text.clone(),
+                LambdaDecl {
+                    creator: creator.to_string(),
+                    site_modes,
+                    env,
+                },
+            );
+            order.push(callee_def.id_text.clone());
+        }
+        if !order.is_empty() {
+            next.sites_by_creator.insert(creator.to_string(), order);
+        }
+        Ok(next)
+    }
 }
 
 /// The one cell rule (mirrors the lowering's materialization decision so

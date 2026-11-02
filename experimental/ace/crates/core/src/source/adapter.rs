@@ -460,6 +460,34 @@ pub fn emit_function_body(
     emit_scoped_document(env, &[fn_index], src, module_path, false)
 }
 
+/// PLAN-912 T-03: the closures OWNER batch — the edited owner body plus the
+/// lambdas that genuinely re-resolved (a reused sibling is NOT in the batch:
+/// it stays a body-less scaffold with zero plan/bind work). Same emitter and
+/// binder as the single-body document; each selected body is planned once.
+pub(crate) fn emit_closures_function_batch(
+    env: &super::resolve::CheckedEnv,
+    indices: &[usize],
+    src: &str,
+    module_path: &str,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    if env.closed()
+        || env.profile != SourceProfile::Closures
+        || indices.is_empty()
+        || indices
+            .iter()
+            .enumerate()
+            .any(|(i, n)| *n >= env.program.fns.len() || indices[..i].contains(n))
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.closures-batch",
+            "closures batch requires an open closures environment and distinct valid functions",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    emit_scoped_document(env, indices, src, module_path, true)
+}
+
 /// Bounded cold collections batching over the same emitter and binder. Pure
 /// body edits keep using `emit_function_body` and never enter this API.
 /// Indices may be unordered; each selected body is planned exactly once.

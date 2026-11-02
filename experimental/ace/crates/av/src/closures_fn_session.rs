@@ -40,6 +40,13 @@ pub enum RouteReport {
     ZeroHit,
     /// The single-unit fast path produced exactly this unit (`d_<name>`).
     FastUnit { unit: String },
+    /// The owner route re-resolved the owner plus exactly `changed` lambdas;
+    /// `reused` lambdas were pushed from the retained entries without a walk.
+    FastOwner {
+        owner: String,
+        changed: Vec<String>,
+        reused: Vec<String>,
+    },
     /// A NAMED non-fast reason routed the apply through the whole-module
     /// path (correct invalidation, honestly counted on the whole axis).
     NonFast { reason: String },
@@ -51,6 +58,7 @@ impl RouteReport {
             RouteReport::Cold { .. } => "cold",
             RouteReport::ZeroHit => "zero-hit",
             RouteReport::FastUnit { .. } => "fast-unit",
+            RouteReport::FastOwner { .. } => "fast-owner",
             RouteReport::NonFast { .. } => "non-fast",
         }
     }
@@ -63,7 +71,10 @@ impl RouteReport {
 /// nobody increments) fails the gate exactly like a hidden whole walk.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WarmGateReport {
-    pub changed_unit: Option<String>,
+    /// The units this edit was allowed to produce (`d_<name>`): none for a
+    /// zero-hit, one for a lambda edit, owner + re-resolved lambdas for an
+    /// owner edit.
+    pub changed_units: Vec<String>,
     pub violations: Vec<String>,
 }
 impl WarmGateReport {
@@ -137,7 +148,10 @@ impl ClosuresFunctionSession {
         let mut run = result?;
         run.body = body;
         run.stages = stages;
-        if matches!(run.route, RouteReport::FastUnit { .. } | RouteReport::ZeroHit) {
+        if matches!(
+            run.route,
+            RouteReport::FastUnit { .. } | RouteReport::FastOwner { .. } | RouteReport::ZeroHit
+        ) {
             run.warm_gate = Some(warm_gate(&run));
         }
         Ok(run)
@@ -193,54 +207,74 @@ impl ClosuresFunctionSession {
         }
     }
 
-    /// The single-unit fast path: verify → lower from verified facts →
-    /// spanless identity wire → submit at most this unit → commit.
+    /// The warm route (lambda-only or owner batch): verify every re-resolved
+    /// unit against the registry (overlaid with the owner's re-derived
+    /// creation sites when the owner re-resolved) → lower each from VERIFIED
+    /// facts → spanless identity wire → submit only units whose wire changed
+    /// → commit the frontend (and the overlay) only after the session
+    /// installed the revision.
     fn apply_fast(
         &mut self,
         candidate: ClosuresFnCandidate,
     ) -> Result<ClosuresFunctionRun, CompileAndRunError> {
-        let front = self.front.as_ref().expect("fast implies a retained frontend");
-        let wire_name = candidate.def_id_text();
-        // The REAL credential: verifier-minted against the retained registry.
-        let credential = verify_closures_function(
-            &candidate.parts.bundle,
-            candidate.def_index(),
-            front.registry(),
-        )
-        .map_err(CompileAndRunError::Diagnostics)?;
-        if credential.def_id_text() != wire_name {
-            return Err(CompileAndRunError::Pipeline(format!(
-                "credential `{}` does not name the edited unit `{wire_name}`",
-                credential.def_id_text()
-            )));
-        }
-        let source_snapshot = fnv1a64(self.source_path.as_bytes());
-        body_work::record_attempt(Stage::MirLower, &wire_name);
-        let unit = lower_function_closures_unit_checked(
-            &candidate.parts.bundle,
-            &credential,
-            &[],
-            source_snapshot,
-        )
-        .map_err(|error| {
-            CompileAndRunError::Pipeline(format!("lower {wire_name}: {error:?}"))
-        })?;
-        let mut identity = unit.clone();
-        for function in &mut identity.funcs {
-            function.spans.clear();
-        }
-        body_work::record_attempt(Stage::AbcEncode, &wire_name);
-        let bytes = encode_abc(&identity)
-            .map_err(|error| {
-                CompileAndRunError::Pipeline(format!("encode {wire_name}: {}", error.code()))
-            })?
-            .to_flat();
-        let unchanged = self.current_wires.get(&wire_name) == Some(&bytes);
-        let submitted: Vec<(&str, MirModule)> = if unchanged {
-            Vec::new()
+        let front = self.front.as_ref().expect("warm implies a retained frontend");
+        let registry_after = if candidate.owner.is_some() {
+            Some(
+                front
+                    .registry()
+                    .overlay_from_batch(&candidate.parts.bundle, &candidate.real_def_ids())
+                    .map_err(CompileAndRunError::Diagnostics)?,
+            )
         } else {
-            vec![(wire_name.as_str(), unit)]
+            None
         };
+        let ctx = registry_after.as_ref().unwrap_or_else(|| front.registry());
+        let source_snapshot = fnv1a64(self.source_path.as_bytes());
+        let mut lowered: Vec<(String, MirModule, Vec<u8>)> = Vec::with_capacity(candidate.units.len());
+        for unit in &candidate.units {
+            let wire_name = candidate.def_id_text_of(unit);
+            // The REAL credential: verifier-minted against the (overlaid)
+            // retained registry.
+            let credential = verify_closures_function(
+                &candidate.parts.bundle,
+                candidate.def_index_of(unit),
+                ctx,
+            )
+            .map_err(CompileAndRunError::Diagnostics)?;
+            if credential.def_id_text() != wire_name {
+                return Err(CompileAndRunError::Pipeline(format!(
+                    "credential `{}` does not name the edited unit `{wire_name}`",
+                    credential.def_id_text()
+                )));
+            }
+            body_work::record_attempt(Stage::MirLower, &wire_name);
+            let mir = lower_function_closures_unit_checked(
+                &candidate.parts.bundle,
+                &credential,
+                &[],
+                source_snapshot,
+            )
+            .map_err(|error| {
+                CompileAndRunError::Pipeline(format!("lower {wire_name}: {error:?}"))
+            })?;
+            let mut identity = mir.clone();
+            for function in &mut identity.funcs {
+                function.spans.clear();
+            }
+            body_work::record_attempt(Stage::AbcEncode, &wire_name);
+            let bytes = encode_abc(&identity)
+                .map_err(|error| {
+                    CompileAndRunError::Pipeline(format!("encode {wire_name}: {}", error.code()))
+                })?
+                .to_flat();
+            lowered.push((wire_name, mir, bytes));
+        }
+        let submitted: Vec<(&str, MirModule)> = lowered
+            .iter()
+            .filter(|(name, _, bytes)| self.current_wires.get(name) != Some(bytes))
+            .map(|(name, mir, _)| (name.as_str(), mir.clone()))
+            .collect();
+        let submitted_names: Vec<String> = submitted.iter().map(|(n, _)| n.to_string()).collect();
         let outcome = self
             .update
             .apply_revision(&submitted)
@@ -248,25 +282,44 @@ impl ClosuresFunctionSession {
         if !outcome.gate.pass() {
             // The session leaves the installed revision intact on refusal.
             return Err(CompileAndRunError::Pipeline(format!(
-                "fast revision failed the closures structural gate: {:?}",
+                "warm revision failed the closures structural gate: {:?}",
                 outcome.gate
             )));
         }
-        let submitted_names: Vec<String> = if unchanged { Vec::new() } else { vec![wire_name.clone()] };
+        let route = match &candidate.owner {
+            None => RouteReport::FastUnit {
+                unit: candidate.def_id_text(),
+            },
+            Some(owner) => {
+                let owner_name = candidate.def_id_text();
+                let changed: Vec<String> = candidate
+                    .units
+                    .iter()
+                    .skip(1)
+                    .map(|u| candidate.def_id_text_of(u))
+                    .collect();
+                let reused: Vec<String> = owner
+                    .sites
+                    .iter()
+                    .filter(|(_, site)| owner.reused_ordinals.contains(&site.ordinal))
+                    .map(|(_, site)| format!("d_{}", site.name))
+                    .collect();
+                RouteReport::FastOwner {
+                    owner: owner_name,
+                    changed,
+                    reused,
+                }
+            }
+        };
         self.front
             .as_mut()
             .expect("frontend present")
-            .commit_candidate(candidate)
+            .commit_candidate(candidate, registry_after)
             .map_err(CompileAndRunError::Pipeline)?;
-        if !unchanged {
-            self.current_wires.insert(wire_name.clone(), bytes);
+        for (name, _, bytes) in lowered {
+            self.current_wires.insert(name, bytes);
         }
-        self.run_face(
-            outcome,
-            submitted_names.len(),
-            submitted_names,
-            RouteReport::FastUnit { unit: wire_name },
-        )
+        self.run_face(outcome, submitted_names.len(), submitted_names, route)
     }
 
     /// The named non-fast route: the whole-module truth path (cold rebuild
@@ -291,9 +344,18 @@ impl ClosuresFunctionSession {
         source: &str,
         route: Option<RouteReport>,
     ) -> Result<ClosuresFunctionRun, CompileAndRunError> {
-        let (front, _parts, checked) =
-            ClosuresFunctionFrontend::cold(source, &self.source_path, &[])
-                .map_err(CompileAndRunError::Diagnostics)?;
+        // A rebuild over an existing frontend CARRIES lambda logical ids by
+        // unique (owner, text) match (§5.1); the truth path still runs whole.
+        let (front, _parts, checked) = match self.front.as_ref() {
+            Some(prev) => ClosuresFunctionFrontend::cold_carrying(
+                source,
+                &self.source_path,
+                &[],
+                prev,
+            ),
+            None => ClosuresFunctionFrontend::cold(source, &self.source_path, &[]),
+        }
+        .map_err(CompileAndRunError::Diagnostics)?;
         let bundle = checked.bundle();
         let source_snapshot = fnv1a64(self.source_path.as_bytes());
         // Cold lowers every unit once (whole-module frontend work).
@@ -398,10 +460,12 @@ fn non_fast_text(reason: &NonFastReason) -> String {
     match reason {
         NonFastReason::StaleBase => "stale-base".to_string(),
         NonFastReason::CrossesUnits => "crosses-units".to_string(),
-        NonFastReason::OwnerBodyEdit => "owner-body-edit".to_string(),
+        NonFastReason::OwnerSignatureChanged => "owner-signature-changed".to_string(),
+        NonFastReason::OwnerTopologyChanged { before, after } => {
+            format!("owner-topology-changed:{before}->{after}")
+        }
         NonFastReason::LambdaSiteChanged(why) => format!("lambda-site-changed:{why:?}"),
         NonFastReason::LambdaNested => "lambda-nested".to_string(),
-        NonFastReason::MultiRegion => "multi-region".to_string(),
     }
 }
 
@@ -442,11 +506,17 @@ fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) 
 /// units AND exactly-one work for the changed unit — a missing counter is a
 /// violation, not a pass.
 fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
+    let changed_units: Vec<String> = match &run.route {
+        RouteReport::FastUnit { unit } => vec![unit.clone()],
+        RouteReport::FastOwner { owner, changed, .. } => {
+            let mut v = vec![owner.clone()];
+            v.extend(changed.iter().cloned());
+            v
+        }
+        _ => Vec::new(),
+    };
     let mut report = WarmGateReport {
-        changed_unit: match &run.route {
-            RouteReport::FastUnit { unit } => Some(unit.clone()),
-            _ => None,
-        },
+        changed_units: changed_units.clone(),
         violations: Vec::new(),
     };
     if run.stages.whole_total() > 0 {
@@ -454,20 +524,16 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
             .violations
             .push(format!("whole-axis attempts non-zero: {}", run.stages.whole_total()));
     }
-    let produced = run
-        .submitted_unit_names
-        .iter()
-        .any(|u| Some(u) == report.changed_unit.as_ref());
+    let is_changed = |unit: &str| changed_units.iter().any(|c| c == unit);
     for ((unit, stage), n) in &run.stages.by_unit {
         if !stage.is_production() || unit == "*" {
             continue;
         }
-        let cap: u64 = if Some(unit) == report.changed_unit.as_ref() {
+        let cap: u64 = if is_changed(unit) {
             match stage {
                 // The identity wire (session-front) plus the canonical wire
-                // (produce_unit) are two REAL encodes of the changed unit.
+                // (produce_unit) are two REAL encodes of a changed unit.
                 Stage::AbcEncode => 2,
-                Stage::DecodeAdmit | Stage::ArtifactWrite => 1,
                 _ => 1,
             }
         } else {
@@ -482,9 +548,13 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
     }
     for (unit, work) in &run.body {
         let wire = format!("d_{unit}");
-        let changed = report.changed_unit.as_deref() == Some(wire.as_str());
-        let expected: u64 = if changed { 1 } else { 0 };
-        for (name, value) in [("resolve", work.resolve), ("typecheck", work.typecheck), ("plan", work.plan), ("bind", work.bind)] {
+        let expected: u64 = if is_changed(&wire) { 1 } else { 0 };
+        for (name, value) in [
+            ("resolve", work.resolve),
+            ("typecheck", work.typecheck),
+            ("plan", work.plan),
+            ("bind", work.bind),
+        ] {
             if value > expected {
                 report.violations.push(format!(
                     "unit {unit}: {value} {name} walks (cap {expected})"
@@ -492,11 +562,12 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
             }
         }
     }
-    // The changed unit must ALSO show its work — a zero nobody recorded is
-    // the "Default 0" control's red. A same-wire edit (comment-only) stops
-    // after encode: the session produce stages are then legitimately absent.
-    if let Some(changed) = report.changed_unit.clone() {
-        let plain = changed.strip_prefix("d_").unwrap_or(&changed).to_string();
+    // Every changed unit must ALSO show its work — a zero nobody recorded is
+    // the "Default 0" control's red. A same-wire unit (e.g. whitespace-only
+    // body edit) stops after encode: the session produce stages are then
+    // legitimately absent for it.
+    for changed in &changed_units {
+        let plain = changed.strip_prefix("d_").unwrap_or(changed).to_string();
         let work = run.body.get(&plain).cloned().unwrap_or_default();
         for (name, value) in [
             ("resolve", work.resolve),
@@ -510,12 +581,20 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
                     .push(format!("unit {plain}: missing {name} walk ({value} < 1)"));
             }
         }
-        let mut required = vec![Stage::ParseProject, Stage::HirVerify, Stage::MirLower];
+        // The owner's parse_project attempt is recorded once for the owner
+        // batch (its lambdas' text is part of the owner item): re-resolved
+        // lambdas inside an owner batch have no separate parse attempt.
+        let produced = run.submitted_unit_names.iter().any(|u| u == changed);
+        let owner_batch_lambda = matches!(&run.route, RouteReport::FastOwner { owner, .. } if owner != changed);
+        let mut required = vec![Stage::HirVerify, Stage::MirLower];
+        if !owner_batch_lambda {
+            required.push(Stage::ParseProject);
+        }
         if produced {
             required.push(Stage::MirVerify);
         }
         for stage in required {
-            if run.stages.of(&changed, stage) < 1 {
+            if run.stages.of(changed, stage) < 1 {
                 report
                     .violations
                     .push(format!("unit {changed}: missing {} attempt", stage.as_str()));

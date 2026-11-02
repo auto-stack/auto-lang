@@ -2054,6 +2054,12 @@ struct BodyTypePools {
     function_types: Vec<ClosureFnType>,
 }
 impl BodyState {
+    /// PLAN-912: a body entry WITHOUT its own interned-table transaction (a
+    /// lambda re-resolved inside its owner's transaction — the owner's
+    /// pools carry the table growth).
+    pub(crate) fn entry_only(entry: ResolvedFn) -> Self {
+        BodyState { entry, pools: None }
+    }
     /// Move the complete state into one slot and return the displaced state.
     /// Unchanged function entries and their body allocations are never visited.
     pub(crate) fn swap_into(mut self, env: &mut CheckedEnv, index: usize) -> Self {
@@ -2339,6 +2345,7 @@ pub(crate) fn resolve_lambda_in_context(
             owner_name: site.owner.clone(),
             closure_count: site.ordinal,
             lambda_sites: &mut nested_sites,
+            reuse: None,
         };
         r.lambda_body(params, body, &site.capture_decls, expr.span)
     };
@@ -2390,6 +2397,379 @@ pub(crate) fn resolve_lambda_in_context(
             function_types: coll.function_types,
         }),
     })
+}
+
+/// PLAN-912 T-03: the result of re-resolving ONE owner body against the
+/// retained environment with retained-lambda reuse.
+pub(crate) struct OwnerRecheck {
+    /// The owner's new entry with its interned-table transaction.
+    pub state: BodyState,
+    /// The owner's lambdas after the walk, in `closure_defs` (post-order)
+    /// order — reused entries verbatim, re-resolved ones fresh.
+    pub lambdas: Vec<ResolvedFn>,
+    pub sites: Vec<LambdaSiteFacts>,
+    /// Retained ordinals that were reused WITHOUT a walk.
+    pub reused: Vec<usize>,
+}
+
+/// PLAN-912 T-03: re-resolve ONE top-level owner body against the retained
+/// environment. Same signature-drift guard as [`recheck_swap`] (a signature
+/// edit is the explicit non-fast path); the owner's lambdas are resolved
+/// through the retained-lambda reuse oracle so unchanged siblings are not
+/// walked. Nothing is grafted here — the caller owns the transaction.
+pub(crate) fn resolve_owner_in_env(
+    env: &CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+    reuse_entries: Vec<ReuseEntry>,
+    src: &str,
+) -> Result<OwnerRecheck, Vec<Diagnostic>> {
+    if env.closed {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.closed",
+            "the checked environment is closed; rechecks are rejected",
+            item.name.span,
+        )]);
+    }
+    if fn_index >= env.program.fns.len() || env.program.fns[fn_index].name != item.name.name {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental",
+            format!(
+                "function `{}` is not the retained entry at slot {fn_index}",
+                item.name.name
+            ),
+            item.name.span,
+        )]);
+    }
+    if item.receiver != ast::Receiver::Free || env.program.fns[fn_index].receiver != ast::Receiver::Free
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental",
+            "closures owners are free functions",
+            item.name.span,
+        )]);
+    }
+    // Signature drift guard with the cold pass's exact rules.
+    let mut guard_diags = Vec::new();
+    let mut c2 = CollTables::default();
+    c2.lists = env.program.lists.clone();
+    let names2: Vec<(String, usize)> = env
+        .program
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(k, v)| (v.name.clone(), k))
+        .collect();
+    c2.variants = env.program.variants.clone();
+    for (nm, k) in names2 {
+        c2.reindex_variant(&nm, k);
+    }
+    let rebuilt = fn_sig_of_coll(
+        item,
+        ast::Receiver::Free,
+        None,
+        &env.rec_index,
+        &mut c2,
+        &mut guard_diags,
+        fn_index,
+        true,
+    );
+    let expected = &env.sigs[&item.name.name];
+    if !guard_diags.is_empty()
+        || rebuilt.param_names != expected.param_names
+        || rebuilt.params != expected.params
+        || rebuilt.result != expected.result
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental",
+            format!(
+                "function `{}` changed its signature; that is the non-fast path",
+                item.name.name
+            ),
+            item.name.span,
+        )]);
+    }
+    let mut diags = Vec::new();
+    crate::body_work::record_resolve(&item.name.name);
+    let mut coll = CollTables::default();
+    coll.lists = env.program.lists.clone();
+    coll.function_types = env.program.function_types.clone();
+    let names: Vec<(String, usize)> = env
+        .program
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.name.clone(), i))
+        .collect();
+    coll.variants = env.program.variants.clone();
+    for (name, i) in names {
+        coll.reindex_variant(&name, i);
+    }
+    let mut closure_defs = Vec::new();
+    let mut sites = Vec::new();
+    let mut reuse = LambdaReuse {
+        src,
+        entries: reuse_entries,
+        reused: Vec::new(),
+    };
+    let resolved = resolve_fn_reuse(
+        item,
+        &env.sigs,
+        env.trace_enabled,
+        SourceProfile::Closures,
+        &mut diags,
+        ast::Receiver::Free,
+        None,
+        &env.program.records,
+        &env.rec_index,
+        &mut coll,
+        &mut closure_defs,
+        &mut sites,
+        env.program.fns.len(),
+        Some(&mut reuse),
+    );
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    Ok(OwnerRecheck {
+        state: BodyState {
+            entry: resolved,
+            pools: Some(BodyTypePools {
+                lists: coll.lists,
+                variants: coll.variants,
+                function_types: coll.function_types,
+            }),
+        },
+        lambdas: closure_defs,
+        sites,
+        reused: reuse.reused,
+    })
+}
+
+/// PLAN-912: the ONE capture-mode decision table (PLAN-865/909 rules),
+/// shared by the owner walk and the retained-lambda reuse oracle so both
+/// derive identical declarations from identical source facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CaptureDecision {
+    Decl {
+        mode: crate::hir::CaptureMode,
+        body_vt: VT,
+        moved: bool,
+        writable: bool,
+        cell: bool,
+    },
+    /// A written capture of a non-scalar (`source.closure-shared-mutable`).
+    SharedMutableRejected,
+    /// Neither Copy, nor supported owned move, nor synchronous Str borrow.
+    Unsupported,
+}
+
+pub(crate) fn decide_capture(
+    source_vt: VT,
+    source_mutable: bool,
+    source_cell: bool,
+    owned: bool,
+    move_capture: bool,
+    written: bool,
+) -> CaptureDecision {
+    let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
+    // PLAN-909 SEM-04 extension: a written capture is admitted only in the
+    // scalar `var` domain. Everything else (owned Str / record / List /
+    // Variant / closure / Dyn) keeps the NAMED rejection — the cell contract
+    // does not silently clone, share an owned aggregate or promote a borrow.
+    if written && !copy {
+        return CaptureDecision::SharedMutableRejected;
+    }
+    // (mode, body type, kills source, body local writable, body local cell)
+    if copy {
+        if !move_capture && source_cell {
+            // Shared cell: any non-move capture of a binding in the
+            // function's shared-write group — reader OR writer — sees the
+            // same cell (a reader created first still observes later
+            // writes). Writability mirrors the source `var`.
+            CaptureDecision::Decl {
+                mode: crate::hir::CaptureMode::Shared,
+                body_vt: source_vt,
+                moved: false,
+                writable: source_mutable,
+                cell: true,
+            }
+        } else if move_capture && written {
+            // K06 private writable env: snapshot the current value into a
+            // cell the env alone owns; the source stays live and is never
+            // written back. A `let` source keeps the immutable-write
+            // rejection on the body assignment.
+            CaptureDecision::Decl {
+                mode: crate::hir::CaptureMode::Move,
+                body_vt: source_vt,
+                moved: false,
+                writable: source_mutable,
+                cell: source_mutable,
+            }
+        } else {
+            // 865 read-only Copy snapshot (no sibling writer).
+            CaptureDecision::Decl {
+                mode: crate::hir::CaptureMode::Move,
+                body_vt: source_vt,
+                moved: false,
+                writable: false,
+                cell: false,
+            }
+        }
+    } else if owned && move_capture {
+        CaptureDecision::Decl {
+            mode: crate::hir::CaptureMode::Move,
+            body_vt: source_vt,
+            moved: true,
+            writable: false,
+            cell: false,
+        }
+    } else if source_vt == VT::StrOwned && !move_capture {
+        CaptureDecision::Decl {
+            mode: crate::hir::CaptureMode::Borrow,
+            body_vt: VT::Str,
+            moved: false,
+            writable: false,
+            cell: false,
+        }
+    } else {
+        CaptureDecision::Unsupported
+    }
+}
+
+/// PLAN-912 T-03: one retained lambda an owner re-resolve may reuse.
+#[derive(Clone)]
+pub(crate) struct ReuseEntry {
+    /// fnv64 of the lambda expression text in the source it was resolved from.
+    pub text_fp: u64,
+    pub site: LambdaSiteFacts,
+    pub body: ResolvedFn,
+}
+
+/// PLAN-912 T-03: the retained-lambda reuse oracle handed to an owner
+/// re-resolve. `entries` are the owner's retained lambdas in `closure_defs`
+/// (post-order) order; `reused` collects the ordinals the walk reused.
+pub(crate) struct LambdaReuse<'a> {
+    pub src: &'a str,
+    pub entries: Vec<ReuseEntry>,
+    pub reused: Vec<usize>,
+}
+
+impl<'a, 's> FnResolver<'a, 's> {
+    /// Try to push lambda `k = closure_count` (and its nested lambdas) from
+    /// the retained entries instead of walking it. Succeeds only when the
+    /// expression text is byte-identical AND every retained capture still
+    /// derives the identical declaration from the CURRENT creation-point
+    /// locals; otherwise the caller performs the real walk.
+    fn try_reuse_lambda(&mut self, move_capture: bool, span: Span) -> Option<ResolvedExpr> {
+        let k = self.closure_count;
+        let (entry_idx, nested, text_fp, retained_move, uses, decls) = {
+            let reuse = self.reuse.as_deref()?;
+            let idx = reuse
+                .entries
+                .iter()
+                .position(|e| e.site.ordinal == k + e.site.nested)?;
+            let e = &reuse.entries[idx];
+            let text_now = reuse.src.get(span.start..span.end)?;
+            (
+                idx,
+                e.site.nested,
+                fnv64(text_now.as_bytes()),
+                e.site.move_capture,
+                e.site.capture_uses.clone(),
+                e.site.capture_decls.clone(),
+            )
+        };
+        {
+            let reuse = self.reuse.as_deref()?;
+            if reuse.entries[entry_idx].text_fp != text_fp || retained_move != move_capture {
+                return None;
+            }
+        }
+        if uses.len() != decls.len() {
+            return None;
+        }
+        // Re-derive every retained capture from the CURRENT locals.
+        let mut bindings = Vec::with_capacity(uses.len());
+        let mut moved_now = Vec::new();
+        for ((name, written), decl) in uses.iter().zip(decls.iter()) {
+            let source_local = self.lookup(name)?;
+            let l = &self.locals[source_local.0];
+            let owned = self.vt_is_coll_owned(l.vt);
+            match decide_capture(l.vt, l.mutable, l.cell, owned, move_capture, *written) {
+                CaptureDecision::Decl {
+                    mode,
+                    body_vt,
+                    moved,
+                    writable,
+                    cell,
+                } if (name.as_str(), body_vt, mode, writable, cell)
+                    == (decl.0.as_str(), decl.1, decl.2, decl.3, decl.4) =>
+                {
+                    bindings.push((source_local, mode));
+                    if moved {
+                        moved_now.push(source_local);
+                    }
+                }
+                _ => return None,
+            }
+        }
+        // Commit the reuse: nested entries first (post-order), then this one.
+        let (name, type_index) = {
+            let reuse = self.reuse.as_deref_mut()?;
+            let first = entry_idx - nested;
+            // The outer lambda's text is byte-identical, so every nested
+            // lambda sits at the same offset relative to it: shift nested
+            // spans by the outer's displacement (M-axis coordinate remap,
+            // no body walk).
+            let outer_shift =
+                span.start as i64 - reuse.entries[entry_idx].site.expr_span.start as i64;
+            let mut pushed = Vec::with_capacity(nested + 1);
+            for i in first..=entry_idx {
+                let e = &reuse.entries[i];
+                let mut site = e.site.clone();
+                let mut body = e.body.clone();
+                if i == entry_idx {
+                    site.expr_span = span;
+                    site.capture_sources = bindings.iter().map(|(l, _)| *l).collect();
+                    body.item_span = span;
+                    body.name_span = span;
+                } else {
+                    let shifted = Span {
+                        start: (site.expr_span.start as i64 + outer_shift) as usize,
+                        end: (site.expr_span.end as i64 + outer_shift) as usize,
+                    };
+                    site.expr_span = shifted;
+                    body.item_span = shifted;
+                    body.name_span = shifted;
+                }
+                pushed.push((site, body, e.site.ordinal));
+            }
+            for (site, body, ordinal) in pushed {
+                self.lambda_sites.push(site);
+                self.closure_defs.push(body);
+                reuse.reused.push(ordinal);
+                self.closure_count += 1;
+            }
+            let e = &reuse.entries[entry_idx];
+            (e.site.name.clone(), e.site.type_index)
+        };
+        for l in moved_now {
+            self.moved_locals.insert(l);
+        }
+        Some(ResolvedExpr {
+            span,
+            vt: VT::Function(type_index),
+            kind: RExprKind::CreateClosure {
+                callee: name,
+                captures: bindings,
+            },
+        })
+    }
 }
 
 /// Output of one lambda body walk (see [`FnResolver::lambda_body`]).
@@ -2821,7 +3201,7 @@ enum RecvClass {
     },
 }
 
-struct FnResolver<'a> {
+struct FnResolver<'a, 's> {
     sigs: &'a BTreeMap<String, FnSig>,
     trace_enabled: bool,
     /// PLAN-782: the combination profile keeps `.move` wrappers as
@@ -2867,6 +3247,8 @@ struct FnResolver<'a> {
     /// PLAN-912 §5.2: creation-site facts sink (one entry per lambda this
     /// walk mints, in `closure_defs` order).
     lambda_sites: &'a mut Vec<LambdaSiteFacts>,
+    /// PLAN-912 T-03: retained lambdas an owner re-resolve may reuse.
+    reuse: Option<&'a mut LambdaReuse<'s>>,
 }
 
 fn resolve_fn(
@@ -2882,7 +3264,45 @@ fn resolve_fn(
     coll: &mut CollTables,
     closure_defs: &mut Vec<ResolvedFn>,
     lambda_sites: &mut Vec<LambdaSiteFacts>,
+    closure_base: usize,
+) -> ResolvedFn {
+    resolve_fn_reuse(
+        f,
+        sigs,
+        trace_enabled,
+        surface,
+        diags,
+        receiver,
+        owner_rec,
+        records,
+        rec_index,
+        coll,
+        closure_defs,
+        lambda_sites,
+        closure_base,
+        None,
+    )
+}
+
+/// [`resolve_fn`] with an optional retained-lambda reuse oracle (PLAN-912
+/// T-03): the owner's lambdas whose text and creation-point facts are
+/// unchanged are pushed from the oracle instead of being walked.
+#[allow(clippy::too_many_arguments)]
+fn resolve_fn_reuse<'a, 's>(
+    f: &FnItem,
+    sigs: &'a BTreeMap<String, FnSig>,
+    trace_enabled: bool,
+    surface: SourceProfile,
+    diags: &'a mut Vec<Diagnostic>,
+    receiver: ast::Receiver,
+    owner_rec: Option<usize>,
+    records: &'a [ResolvedRecord],
+    rec_index: &'a BTreeMap<String, usize>,
+    coll: &'a mut CollTables,
+    closure_defs: &'a mut Vec<ResolvedFn>,
+    lambda_sites: &'a mut Vec<LambdaSiteFacts>,
     _closure_base: usize,
+    reuse: Option<&'a mut LambdaReuse<'s>>,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -2916,6 +3336,7 @@ fn resolve_fn(
         owner_name: f.name.name.clone(),
         closure_count: 0,
         lambda_sites,
+        reuse,
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -3035,7 +3456,7 @@ fn resolve_fn(
     }
 }
 
-impl<'a> FnResolver<'a> {
+impl<'a, 's> FnResolver<'a, 's> {
     fn bind_err(&mut self, code: &str, msg: impl Into<String>, span: Span) {
         self.diags
             .push(Diagnostic::new(Stage::Bind, code, msg, span));
@@ -3212,6 +3633,17 @@ impl<'a> FnResolver<'a> {
             };
         }
 
+        // PLAN-912 T-03: retained-lambda REUSE. When an owner re-resolves
+        // with a reuse oracle, a lambda whose expression TEXT is byte-identical
+        // to the retained one and whose capture sources still derive the same
+        // declaration (same mode/type/writability/cell from the CURRENT
+        // creation-point locals) is pushed from the retained entry — its AST
+        // body and its nested lambdas are never walked. Any difference falls
+        // through to the real walk below (a true reader re-resolves).
+        if let Some(reused) = self.try_reuse_lambda(move_capture, span) {
+            return reused;
+        }
+
         let outer_names: BTreeSet<String> = self
             .scopes
             .iter()
@@ -3233,74 +3665,38 @@ impl<'a> FnResolver<'a> {
             let source_vt = self.locals[source_local.0].vt;
             let source_mutable = self.locals[source_local.0].mutable;
             let source_cell = self.locals[source_local.0].cell;
-            let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
-            // PLAN-909 SEM-04 extension: a written capture is admitted only
-            // in the scalar `var` domain. Everything else (owned Str /
-            // record / List / Variant / closure / Dyn) keeps the NAMED
-            // rejection — the cell contract does not silently clone, share
-            // an owned aggregate or promote a borrow.
-            if capture.written && !copy {
-                self.bind_err(
-                    "source.closure-shared-mutable",
-                    format!(
-                        "closure writes captured local `{}` of type `{}`; shared mutable captures support scalar `int`/`bool`/`char` vars only",
-                        capture.name,
-                        source_vt.as_str()
-                    ),
-                    capture.span,
-                );
-                continue;
-            }
             let owned = self.vt_is_coll_owned(source_vt);
-            // (mode, body type, kills source, body local writable, body local cell)
-            let (mode, body_vt, moved, writable, cell) = if copy {
-                if !move_capture && source_cell {
-                    // Shared cell: any non-move capture of a binding in the
-                    // function's shared-write group — reader OR writer — sees
-                    // the same cell (a reader created first still observes
-                    // later writes). Writability mirrors the source `var`.
-                    (
-                        crate::hir::CaptureMode::Shared,
-                        source_vt,
-                        false,
-                        source_mutable,
-                        true,
-                    )
-                } else if move_capture && capture.written {
-                    // K06 private writable env: snapshot the current value
-                    // into a cell the env alone owns; the source stays live
-                    // and is never written back. A `let` source keeps the
-                    // immutable-write rejection on the body assignment.
-                    (
-                        crate::hir::CaptureMode::Move,
-                        source_vt,
-                        false,
-                        source_mutable,
-                        source_mutable,
-                    )
-                } else {
-                    // 865 read-only Copy snapshot (no sibling writer).
-                    (
-                        crate::hir::CaptureMode::Move,
-                        source_vt,
-                        false,
-                        false,
-                        false,
-                    )
+            let (mode, body_vt, moved, writable, cell) = match decide_capture(
+                source_vt,
+                source_mutable,
+                source_cell,
+                owned,
+                move_capture,
+                capture.written,
+            ) {
+                CaptureDecision::Decl {
+                    mode,
+                    body_vt,
+                    moved,
+                    writable,
+                    cell,
+                } => (mode, body_vt, moved, writable, cell),
+                CaptureDecision::SharedMutableRejected => {
+                    self.bind_err(
+                        "source.closure-shared-mutable",
+                        format!(
+                            "closure writes captured local `{}` of type `{}`; shared mutable captures support scalar `int`/`bool`/`char` vars only",
+                            capture.name,
+                            source_vt.as_str()
+                        ),
+                        capture.span,
+                    );
+                    continue;
                 }
-            } else if owned && move_capture {
-                (crate::hir::CaptureMode::Move, source_vt, true, false, false)
-            } else if source_vt == VT::StrOwned && !move_capture {
-                (
-                    crate::hir::CaptureMode::Borrow,
-                    VT::Str,
-                    false,
-                    false,
-                    false,
-                )
-            } else {
-                self.bind_err("source.closure-capture-unsupported", format!("capture `{}` of type `{}` requires a supported move or synchronous Str borrow", capture.name, source_vt.as_str()), capture.span);
-                continue;
+                CaptureDecision::Unsupported => {
+                    self.bind_err("source.closure-capture-unsupported", format!("capture `{}` of type `{}` requires a supported move or synchronous Str borrow", capture.name, source_vt.as_str()), capture.span);
+                    continue;
+                }
             };
             if moved {
                 self.moved_locals.insert(source_local);
@@ -3328,6 +3724,10 @@ impl<'a> FnResolver<'a> {
         let ordinal = self.closure_count;
         let name = format!("__closure_{}_{}", self.owner_name, ordinal);
         self.closure_count += 1;
+        // PLAN-912 §5.4: a lambda body that was REALLY walked is a resolve
+        // attempt of its own unit (a reused one records nothing) — the
+        // PLAN-909 sibling rewalk becomes visible per unit.
+        crate::body_work::record_resolve(&name);
         self.lambda_sites.push(LambdaSiteFacts {
             owner: self.owner_name.clone(),
             ordinal,
