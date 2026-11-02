@@ -260,3 +260,16 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   通道、B18 avm 与 38 格复合认证等残余 owner 不变。
 - 计数口径：本轮只改两格 av 值，不重算 `can_claim_m1`（仍 false），不签 M1、不改
   分母/批准规则/其他格。
+
+## PLAN-920 后状态（2026-11-03，SD-04；§5/§11 冻结行为 903/908 历史，保留不改）
+
+- **F-INFRA-3（B18 avm）闭**：按本表预置的"干净拒绝带辨识→另记"路径关闭——
+  旧 codegen 三拒绝分支发 typed `NameError::ImmutableAssignment`
+  （`auto_name_E0203`），`classify_staged` 判 Language/type，avm/run 对
+  `src/B18.at` 的观察从 infra error 变为干净 typed 语言负例。binding B18 avm
+  → `ok:P920`（非 R-C `diff:accepted`，非 token 手改：正式父报告=
+  `ace-m1-immutable-avm-920` 套件 5/5，含 B18 原源负例与 NB18/NB18S 合法近邻）。
+  历史行（含 908T04 重探针 infra 实录）原样保留为时间线。
+- 诊断语义契约与反控清单沉淀：[legacy-immutable-diagnostic.md](legacy-immutable-diagnostic.md)。
+- 不变：F-REG-3、F-NAT-4、其余 ⑦/⑤ 项、future 45、cert 轴——本包只闭 F-INFRA-3 一格，
+  不重开 911/916，不签 M1。

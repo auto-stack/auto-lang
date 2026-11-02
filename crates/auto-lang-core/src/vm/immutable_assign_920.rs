@@ -215,3 +215,26 @@ fn run_trap_channel_does_not_cross_into_b18_compile_stage() {
         other => panic!("typed trap must classify run-stage, got: {:?}", other),
     }
 }
+
+#[test]
+fn negative_repair_recheck_cycle_on_same_fixture() {
+    // V-06 失败修复循环：同一夹具 负→合法修复→负，真实走生产入口。
+    // 类型/原因不串（修复期合法运行得 2，再破坏仍回到同一 typed 事实），
+    // 不报伪 P0；每次断言都由真实执行产生。
+    let b18 = "fn main() int {\n    let x int = 1\n    x = 2\n    return x\n}\n";
+    let repaired = "fn main() int {\n    let x int = 1\n    var x2 int = x\n    x2 = 2\n    return x2\n}\n";
+
+    // 负：typed E0203。
+    let err1 = crate::run_autovm_capture(b18).expect_err("cycle step 1: negative must reject");
+    let (name, _) = expect_immutable_assignment(&err1);
+    assert_eq!(name, "x");
+
+    // 修复：合法 body 真实运行得 2（合法重验）。
+    let (result, _) = crate::run_autovm_capture(repaired).expect("cycle step 2: repaired body must run");
+    assert_eq!(result.trim(), "2");
+
+    // 再破坏：同一 typed 事实重现（重复执行/串行回归不因上一步合法而漂移）。
+    let err3 = crate::run_autovm_capture(b18).expect_err("cycle step 3: re-broken must reject again");
+    let (name2, _) = expect_immutable_assignment(&err3);
+    assert_eq!(name2, "x");
+}

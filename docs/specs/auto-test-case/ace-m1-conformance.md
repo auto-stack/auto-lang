@@ -34,7 +34,7 @@ NA 39、future 45；净缺口/owner/顺序见 [净缺口审计](ace-m1-gap-audit
   认证轴缺（ok+cert-gap 等价；M1 a2r 判据=金样轴，认证另账）。
 - `diff:accepted(R-x)` 与 `diff-legacy-*`/`diff-old-*`（R-ACCEPTED 认领）：引擎真实
   执行但与冻结 oracle 语义分歧且**已裁定接受**——如实登记、永不冒绿、不阻 M1 核心
-  （B18 avm 例外：infra 观察，`diff:pending` 仍阻）。`diff:pending`/`diff-no-name-check`
+  （B18 avm 例外已闭：PLAN-920 typed 关闭为 `ok:P920` 绿，仍非 R-ACCEPTED 认领）。`diff:pending`/`diff-no-name-check`
   （R-E 不接受）为未裁定/真缺口，阻塞。
 - `gap:<owner>` / `wait:D82x`：未交付能力，带 owner/关闭 oracle；不阻塞底座，但阻止
   M1 全绿（除非被 NA/FUTURE 规则认领出 required）。
@@ -360,3 +360,21 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
   （stage=resolve），不冒充运行期证据。
 - **格位**：binding.tsv 的 `scenario:R02/R03` av 列改为 `ok:av-resource-915`
   （源/expected/NA/分母与 ac/avm/a2r 列不变）；这是两个 av 格，不是 M1 签章。
+
+## PLAN-920：B18 avm 格位实证（2026-11-03，SD-03）
+
+- 908/911/916 冻结计数与历史收据**保持不变**；本节记录 B18 avm 单格的当前状态。
+- 旧 codegen 三处 `let` 重赋值拒绝分支发真实 typed
+  `NameError::ImmutableAssignment`（`auto_name_E0203`，span=语句行级），staged 判
+  Language/type——2026-11-01 908T04 的"错误完成无 typed stage/code"观察不复存在，
+  gap-audit F-INFRA-3 按"干净拒绝带辨识→另记"路径关闭。
+- 新套件 `immutable-avm-920`（固定组 `case-ace-m1-immutable-avm-920`，5 检查全绿）：
+  B18 原源/复合 `+=`/顶层脚本三负例 + NB18/同名内层 var 遮蔽两合法近邻；原
+  B18 source/expected/其余 96 基检查与 NB18 原例不动（base 97 冻结不扩）。
+- binding.tsv B18 行 avm 列 `diff:pending → ok:P920`（其余 11 列与 130 行不动）；
+  `source-manifest.json` 同步（suites_cases 76→81、`plan_920_update`、binding sha256）。
+- 单元面：`vm/immutable_assign_920.rs` 10 例（staged 同型/复合/防御位 AST 证人/近邻/
+  span 精度/伪造 Msg·异族 typed·run-trap 反控/负→修复→负循环）；`cargo t vm` 整组绿。
+- **M1 不据此签章**：scenario 观察通道、AV 故障/代际/共享可变、mn 复合场景面、
+  R07 a2r 未定型等其余 blocker 账保持；本包只闭 B18 avm 一格。
+- 语义契约沉淀：[legacy-immutable-diagnostic.md](legacy-immutable-diagnostic.md)。
