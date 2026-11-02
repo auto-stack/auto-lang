@@ -19,7 +19,7 @@ total_steps: 10
 
 ## 0. 变更摘要
 
-为旧production TransRust在发射前建立真实静态准入，认领corpus B16/B17/B18/B19/T06/R09/R10和scenario E03的a2r共8格，按原oracle拒绝非法程序；合法近邻继续转译。独立于917的R07/T08发射两格。依据[Design43 §17](../design/43-ac-av-typed-mir-and-abc.md#17-m1下一阶段场景观察av资源与旧a2r2026-11-02target-state)。archived r1、10/10：delivery edfdabc2e已ff-only落地，七份Spec读回、九组冻结门和主线smoke通过；worktree/分支/组/plan-artifacts全清理。merge pass尚待到期的主检出单实例批量回归。
+为旧production TransRust在发射前建立真实静态准入，认领corpus B16/B17/B18/B19/T06/R09/R10和scenario E03的a2r共8格，按原oracle拒绝非法程序；合法近邻继续转译。独立于917的R07/T08发射两格。依据[Design43 §17](../design/43-ac-av-typed-mir-and-abc.md#17-m1下一阶段场景观察av资源与旧a2r2026-11-02target-state)。archived r1、10/10 delivered：edfdabc2e落地，七份Spec读回、九组冻结门和主线smoke通过；到期批量回归如实new_reds，916 stream回归由cf4694880修复并清理，其他红已归因fix-forward。worktree/分支/组/plan-artifacts全清理。
 
 ## 1. 目标
 
@@ -198,6 +198,10 @@ P=新semantic模块/定向单测/独立输入；S-L=auto-lang-core parser/infer/
 2026-11-02 | stage: merge | plan_id: PLAN-916:r1 | outcome: cleaned pending batch regression | delivery_commit: edfdabc2e4e2fa32ae579fede9d4bf31b24ad0e8 | archive_commit: 9647820ebba6f9a11e566050578f5b75c3dd16a6 | archive_path: docs/plans/archive/916-legacy-a2r-semantic-admission.md | cleaned: 2026-11-02T17:55:52+08:00，`wt-guard`对worktree与plan-artifacts均clean；`D:/autostack/.wt/lang-916/auto-lang`、`plan-916-dev`、空组目录及`D:/autostack/plan-artifacts/plan-916/`已删除；worktree list/分支/dir存在性复核通过，registry `auto-lang/PLAN-916` status=deleted-at-merge、holds=none | artifact_observation: 本计划为编译器库/测试adapter变更，未授权生产部署；主线`target/release/auto*`与`gen/front/vue/dist`均不存在，无运行中生产进程需重启，未伪称重建。批量due：last covered 895且多计划合并>48h；检测到PLAN-913 ace-av nextest运行，待其结束后主检出单实例`cargo t all`，不并发 | next: batch regression then final merge receipt
 
 2026-11-02 | stage: merge batch regression | plan_id: PLAN-916:r1 | outcome: new_reds with 916 own regression fixed | batch_commit: cf46948803034eefb205025fca23bcf0424c31cf | evidence: 主检出单实例`cargo t all` exit1，run-ffy4jmss，约15.5min，log SHA256 c7ee1c903e3c643ce44793653e1908c860a3f5e44a825bafabe7539bfa0d48fd；原条件aavm/a2r-actor-tests/auto-vm NOT_APPLICABLE，其他排除不冒PASS | own_regression: `plan724_probe_stream_free_fn_typed_dispatch`因stream_next undefined失败，L0 `fix-916-stream-builtins`仅补stream_next/stream_is_done/stream_close三内建名，原失败测试+语义控制通过，ff-only至cf4694880，guard后树/分支/scope全删 | other_new_reds: PLAN-007 auto-media-core fixture_manifest缺manifest.json；PLAN-900 auto-lsp包已迁出；PLAN-901 auto-lang-core ACE host ownership与infra-pilot-cli legacy worker；auto-macros Box<Obj>编译错；sys_natives_vm断言；web-delivery-controls为已知D-910-1 execution_ids未定义。均记录fix-forward，不在916/回归中混修 | next: receipt+debt then done（非全绿声明）
+
+2026-11-02 | stage: merge | plan_id: PLAN-916:r1 | outcome: pass | delivery_commit: cf46948803034eefb205025fca23bcf0424c31cf | original_delivery: edfdabc2e4e2fa32ae579fede9d4bf31b24ad0e8 | spec_paths: docs/specs/auto-lang/trans/architecture.md, overview.md, rust-semantic-admission.md, types/design/ownership.md, auto-test-case/a2r-golden-certification.md, ace-m1-conformance.md, ace-m1-gap-audit.md；`git diff edfdabc2e..HEAD -- docs/specs`为空 | archive_path: docs/plans/archive/916-legacy-a2r-semantic-admission.md | cleanup: 916与L0 worktree/分支/组/两个artifact scope均不存在，registry无hold；主检出无916未提交文件，其他会话文档WIP原样保留 | batch_receipt: docs/plans/.last-batch-regression.json，covered=cf4694880，verdict=new_reds；916 own red closed，其他owner已记fix-forward，非全绿声明 | next: done
+
+2026-11-02 | stage: goal | plan_id: PLAN-916 | plan_revision: r1 | round: 7 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: cf46948803034eefb205025fca23bcf0424c31cf | next: done | delivery_verified: original+follow-up均在master祖先链，canonical/archived/cleanup真实核验通过
 
 ## 10. 待澄清事项
 
