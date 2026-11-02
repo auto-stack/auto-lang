@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-av/resource-fault-and-generation-conforman
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-test-case]
 depends_on: [PLAN-821, PLAN-822, PLAN-864, PLAN-909, PLAN-912]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -121,7 +121,7 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 | T-07 | review | T-06同树冻结SHA | 独立全链反例/支持/所有权/真实P0复审，修复重绑pass→reviewed | AC-05 | [✅] |
 | T-08 | merge | T-07 pass | 冻结受影响组/消费者并集或有效同身份证据；batch仅due主检出单实例 | AC-06 | [✅] |
 | T-09 | merge | T-08 | 合入、SD-01..07读回、窗口/残余owner交接并archive delivered | AC-06 | [✅] |
-| T-10 | merge | T-09 | 所有实际输出摘要折计划，guard clean后清唯一树/分支/组/整个scope及登记 | AC-06 | [ ] |
+| T-10 | merge | T-09 | 所有实际输出摘要折计划，guard clean后清唯一树/分支/组/整个scope及登记 | AC-06 | [✅] |
 
 拟唯一树D:/autostack/.wt/lang-915/auto-lang、分支plan-915-dev，未建；开工材料唯一D:/autostack/plan-artifacts/plan-915/登记owner/用途/在途，所有探针/报告/验证副本/外置target入此，禁attachments/仓内reports/全机TEMP批删。merge整删，具名未解hold才可留，不动913数据/他方输出、不建链接。
 
@@ -203,4 +203,14 @@ blockers：无。
 - `landed`： 主检出 `git merge --ff-only plan-915-dev` 成功，无 merge commit；master tip = `5ba5d4cd282961d6855af8434a77b9720bbdccbe` = delivery commit。
 - `canonical_verified`： 落主后 7 条规范路径与哈希——resource-fault-and-generation-conformance=`1aeb5c68…`、place-ownership=`f0c52ecb…`、collections-variants=`5801fc0d…`、closure-environments=`38bd861f…`、cache-and-conformance=`967883ad…`、ace-m1-conformance=`e919c502…`、ace-m1-gap-audit=`f01170a5…`；binding.tsv=`9563cfc6…` 与 source-manifest 一致；主检出 `verify-ace-m1-852.ps1 -Scope contract` PASS（131 行 / 313 required）；落地检查 `cargo build -p auto-lang-core` 完成（35.79s，无新 warning）与 `cargo t case-ace-m1-resource-915` PASS（12/12，run-0b4c21qy）——主检出已知良好。
 - `archived`： `docs/plans/archive/915-av-resource-fault-and-stale-place-conformance.md`，`status: archived`，docs 与收据随本提交入库（K13：不留在未跟踪状态）。
+
+2026-11-02 | stage: merge | plan_id: PLAN-915 | checkpoint: cleaned | outcome: pass
+- `wt-guard.sh`（Git Bash：`/d/autostack/wt-guard.sh D:/autostack/.wt/lang-915/auto-lang`）fresh 运行 = `clean`（0 reparse point），exit 0。
+- `git worktree remove D:/autostack/.wt/lang-915/auto-lang` 成功；`git branch -d plan-915-dev`（was 5ba5d4cd2）成功；空组目录 `D:/autostack/.wt/lang-915` 已删除；`git worktree list` 仅余主检出与其他计划树（917/919/ui-*，未触碰）。
+- 证据已全部折入本文件（工作/复审/修复/复验/合并收据、9 组并集 run-7zqs3bd7 与 run-_6dtmkih 的 gate/wall/executed 数字、四状态 P90、三次负控、环境归因），随后整删 `D:/autostack/plan-artifacts/plan-915/`（104 文件，~1.0MiB 及其子目录），无具名 hold。
+- 登记表 `D:/autostack/plan-artifacts/.retention/policy.json` 已刷新：`scopes.plan-915 = deleted`（owner auto-lang/PLAN-915，无 holds）、`deletions` 追加 plan-915、`last_merge_cleanup` = auto-lang/PLAN-915 @ 2026-11-02。
+- 主检出状态：master tip = `1f8638c2e`（本收据提交前的归档提交；本收据随其后提交）；本次计划相关文件（代码、规范、binding/manifest、计划/归档）均已入库，工作树无本计划的未提交改动（其余 `docs/design/**` 等改动为会话开始前既存他方 WIP，未触碰）。
+- 落地检查：`cargo build -p auto-lang-core` 完成（35.79s）、`cargo t case-ace-m1-resource-915` 主检出 PASS 12/12（run-0b4c21qy）、`verify-ace-m1-852 -Scope contract` PASS。
+- 批次回归 due 检查：`docs/plans/.last-batch-regression.json` 记 last_covered_plan_id=916 / 2026-11-02T10:31:57Z；本计划 915<916 且非 %5，收据未超 48h → **not due**（后续 %5 计划或 48h 后按 PLAN-898 触发）。
+- `completion_kind: delivered`；无剩余 merge-owned 操作。
 
