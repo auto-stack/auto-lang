@@ -737,6 +737,209 @@ struct ConsoleOut {
     stderr_truncated: bool,
 }
 
+/// PLAN-915 (V-05): the worker observation line must not carry DUPLICATE
+/// object keys — `serde_json` silently keeps the last one, so a relay could
+/// smuggle a second `resource`/`value` past the typed mirror. This bounded
+/// scanner validates the frame BEFORE parsing: one pass, depth <= 32,
+/// <= 4096 keys per object, decoded keys compared (so `"\u0061"` and `"a"`
+/// collide), and every object's key set must be duplicate-free.
+fn reject_duplicate_keys(line: &str) -> Result<(), String> {
+    struct P<'a> {
+        b: &'a [u8],
+        i: usize,
+        depth: usize,
+        keys: usize,
+    }
+    impl P<'_> {
+        fn ws(&mut self) {
+            while let Some(&c) = self.b.get(self.i) {
+                if matches!(c, b' ' | b'\t' | b'\r' | b'\n') {
+                    self.i += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        fn lit(&mut self, want: &[u8]) -> Result<(), String> {
+            if self.b.get(self.i..self.i + want.len()) == Some(want) {
+                self.i += want.len();
+                Ok(())
+            } else {
+                Err("bad literal".into())
+            }
+        }
+        fn number(&mut self) -> Result<(), String> {
+            let start = self.i;
+            while let Some(&c) = self.b.get(self.i) {
+                if c.is_ascii_digit() || matches!(c, b'-' | b'+' | b'.' | b'e' | b'E') {
+                    self.i += 1;
+                } else {
+                    break;
+                }
+            }
+            if self.i == start {
+                Err("empty number".into())
+            } else {
+                Ok(())
+            }
+        }
+        fn string(&mut self) -> Result<String, String> {
+            if self.b.get(self.i) != Some(&b'"') {
+                return Err("expected a string".into());
+            }
+            self.i += 1;
+            let mut out = String::new();
+            loop {
+                let c = *self.b.get(self.i).ok_or("unterminated string")?;
+                match c {
+                    b'"' => {
+                        self.i += 1;
+                        return Ok(out);
+                    }
+                    b'\\' => {
+                        self.i += 1;
+                        let e = *self.b.get(self.i).ok_or("escape eof")?;
+                        match e {
+                            b'"' => out.push('"'),
+                            b'\\' => out.push('\\'),
+                            b'/' => out.push('/'),
+                            b'b' => out.push('\u{8}'),
+                            b'f' => out.push('\u{c}'),
+                            b'n' => out.push('\n'),
+                            b'r' => out.push('\r'),
+                            b't' => out.push('\t'),
+                            b'u' => {
+                                let hex = self
+                                    .b
+                                    .get(self.i + 1..self.i + 5)
+                                    .ok_or("unicode escape eof")?;
+                                let text =
+                                    std::str::from_utf8(hex).map_err(|_| "unicode escape")?;
+                                let cp =
+                                    u32::from_str_radix(text, 16).map_err(|_| "unicode escape")?;
+                                out.push(char::from_u32(cp).unwrap_or('\u{fffd}'));
+                                self.i += 4;
+                            }
+                            _ => return Err("bad escape".into()),
+                        }
+                        self.i += 1;
+                    }
+                    _ => {
+                        let start = self.i;
+                        let len = if c < 0x80 {
+                            1
+                        } else if c >> 5 == 0b110 {
+                            2
+                        } else if c >> 4 == 0b1110 {
+                            3
+                        } else {
+                            4
+                        };
+                        self.i += len;
+                        let piece = self
+                            .b
+                            .get(start..self.i)
+                            .ok_or_else(|| "truncated utf-8".to_string())?;
+                        out.push_str(std::str::from_utf8(piece).map_err(|_| "bad utf-8")?);
+                    }
+                }
+            }
+        }
+        fn value(&mut self) -> Result<(), String> {
+            self.ws();
+            if self.depth > 32 {
+                return Err("nesting too deep".into());
+            }
+            match self.b.get(self.i) {
+                Some(b'{') => self.object(),
+                Some(b'[') => self.array(),
+                Some(b'"') => {
+                    self.string()?;
+                    Ok(())
+                }
+                Some(b't') => self.lit(b"true"),
+                Some(b'f') => self.lit(b"false"),
+                Some(b'n') => self.lit(b"null"),
+                Some(c) if c.is_ascii_digit() || *c == b'-' => self.number(),
+                _ => Err("bad value".into()),
+            }
+        }
+        fn object(&mut self) -> Result<(), String> {
+            self.i += 1;
+            self.depth += 1;
+            let mut seen = std::collections::BTreeSet::new();
+            self.ws();
+            if self.b.get(self.i) == Some(&b'}') {
+                self.i += 1;
+                self.depth -= 1;
+                return Ok(());
+            }
+            loop {
+                self.ws();
+                let key = self.string()?;
+                self.keys += 1;
+                if self.keys > 4096 {
+                    return Err("too many object keys".into());
+                }
+                if !seen.insert(key) {
+                    return Err("duplicate object key".into());
+                }
+                self.ws();
+                if self.b.get(self.i) != Some(&b':') {
+                    return Err("missing colon".into());
+                }
+                self.i += 1;
+                self.value()?;
+                self.ws();
+                match self.b.get(self.i) {
+                    Some(b',') => self.i += 1,
+                    Some(b'}') => {
+                        self.i += 1;
+                        self.depth -= 1;
+                        return Ok(());
+                    }
+                    _ => return Err("bad object separator".into()),
+                }
+            }
+        }
+        fn array(&mut self) -> Result<(), String> {
+            self.i += 1;
+            self.depth += 1;
+            self.ws();
+            if self.b.get(self.i) == Some(&b']') {
+                self.i += 1;
+                self.depth -= 1;
+                return Ok(());
+            }
+            loop {
+                self.value()?;
+                self.ws();
+                match self.b.get(self.i) {
+                    Some(b',') => self.i += 1,
+                    Some(b']') => {
+                        self.i += 1;
+                        self.depth -= 1;
+                        return Ok(());
+                    }
+                    _ => return Err("bad array separator".into()),
+                }
+            }
+        }
+    }
+    let mut p = P {
+        b: line.as_bytes(),
+        i: 0,
+        depth: 0,
+        keys: 0,
+    };
+    p.value()?;
+    p.ws();
+    if p.i != p.b.len() {
+        return Err("trailing content after the JSON frame".into());
+    }
+    Ok(())
+}
+
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
 /// executor contract (F798-R3-05/06 — mirrors the sema executor and
 /// ac-core's `run_deadlined_captured` shape):
@@ -979,6 +1182,13 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             text
         ));
     }
+    reject_duplicate_keys(non_empty[0]).map_err(|e| {
+        format!(
+            "bad av worker response ({e}): {:.200} | stderr: {:.300}",
+            non_empty[0],
+            String::from_utf8_lossy(&err_buf)
+        )
+    })?;
     serde_json::from_str(non_empty[0]).map_err(|e| {
         format!(
             "bad av worker response ({e}): {:.200} | stderr: {:.300}",
@@ -5584,5 +5794,36 @@ mod resource_915_tests {
         assert!(malformed_resource(RecipeFamily::Resource, &[both]).is_some());
         let neither = step_with(None, None);
         assert!(malformed_resource(RecipeFamily::Resource, &[neither]).is_some());
+    }
+}
+
+#[cfg(test)]
+mod worker_json_tests {
+    use super::reject_duplicate_keys;
+
+    #[test]
+    fn valid_response_passes() {
+        let line = r#"{"schema":"avworker/1","nonce":"n","request_hash":"h","ok":{"recipe":"ac-av/resource-run-v1","steps":[{"op":"run","outcome":"success","value":42,"resource":{"source_value":42,"arena_points":[{"attempt":1,"faulted":true,"live":0}]}}],"worker_version":"avworker/1.0","av_core_version":"av.collections/1"}}"#;
+        assert!(reject_duplicate_keys(line).is_ok());
+    }
+
+    #[test]
+    fn duplicate_key_is_rejected() {
+        let line = r#"{"ok":{"resource":{"source_value":42,"source_value":0}}}"#;
+        let err = reject_duplicate_keys(line).expect_err("duplicate must reject");
+        assert!(err.contains("duplicate"), "{err}");
+    }
+
+    #[test]
+    fn escaped_duplicate_key_is_rejected() {
+        // "\u0076alue" decodes to "value" — the decoded form collides.
+        let line = r#"{"value":1,"\u0076alue":2}"#;
+        assert!(reject_duplicate_keys(line).is_err());
+    }
+
+    #[test]
+    fn truncated_or_trailing_frames_are_rejected() {
+        assert!(reject_duplicate_keys(r#"{"a":1"#).is_err());
+        assert!(reject_duplicate_keys(r#"{"a":1} {}"#).is_err());
     }
 }
