@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-lang/trans/rust-semantic-admission.md]
 touched_goals: [GOAL-002]
 affects: [auto-lang/trans, auto-lang/types, auto-test-case]
 depends_on: [PLAN-908, PLAN-911]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -19,7 +19,7 @@ total_steps: 10
 
 ## 0. 变更摘要
 
-为旧production TransRust在发射前建立真实静态准入，认领corpus B16/B17/B18/B19/T06/R09/R10和scenario E03的a2r共8格，按原oracle拒绝非法程序；合法近邻继续转译。独立于917的R07/T08发射两格。依据[Design43 §17](../design/43-ac-av-typed-mir-and-abc.md#17-m1下一阶段场景观察av资源与旧a2r2026-11-02target-state)。archived r1、9/10：delivery edfdabc2e已ff-only落地，七份Spec读回、九组冻结门和主线smoke通过；仅worktree/分支/plan-artifacts清理待完成。
+为旧production TransRust在发射前建立真实静态准入，认领corpus B16/B17/B18/B19/T06/R09/R10和scenario E03的a2r共8格，按原oracle拒绝非法程序；合法近邻继续转译。独立于917的R07/T08发射两格。依据[Design43 §17](../design/43-ac-av-typed-mir-and-abc.md#17-m1下一阶段场景观察av资源与旧a2r2026-11-02target-state)。archived r1、10/10：delivery edfdabc2e已ff-only落地，七份Spec读回、九组冻结门和主线smoke通过；worktree/分支/组/plan-artifacts全清理。merge pass尚待到期的主检出单实例批量回归。
 
 ## 1. 目标
 
@@ -146,9 +146,9 @@ P=新semantic模块/定向单测/独立输入；S-L=auto-lang-core parser/infer/
 | T-07 | review | T-06同树冻结SHA | 独立原源→public准入→typed事实→父判，查遗漏/绕过，修复重绑pass→reviewed | AC-05 | [x] |
 | T-08 | merge | T-07 pass | 冻结职责/必要consumer并集或有效证据复用，batch仅due主检出单实例 | AC-06 | [x] |
 | T-09 | merge | T-08 | 合入/SD-01..07读回、917/914接口/残余交接及archive delivered | AC-06 | [x] |
-| T-10 | merge | T-09 | 全实际输出对账折计划，guard clean后清唯一树/分支/组/整个scope和登记 | AC-06 | [ ] |
+| T-10 | merge | T-09 | 全实际输出对账折计划，guard clean后清唯一树/分支/组/整个scope和登记 | AC-06 | [x] |
 
-唯一树D:/autostack/.wt/lang-916/auto-lang、plan-916-dev，基面48126444f、实现提交6b855f1ae；唯一材料D:/autostack/plan-artifacts/plan-916/已登记owner/用途/在途，所有探针/日志/reference生成输出均入此，未写attachments/仓内reports或其他盘散落；merge摘要折计划后整删，具名未解才hold，禁止链接/动他方材料。
+唯一树D:/autostack/.wt/lang-916/auto-lang、plan-916-dev，基面48126444f、delivery edfdabc2e；唯一材料D:/autostack/plan-artifacts/plan-916/已登记owner/用途/在途，所有探针/日志/reference生成输出均入此，未写attachments/仓内reports或其他盘散落；merge摘要已折计划，worktree/分支/空组目录和整个plan-artifacts scope已于2026-11-02删除，登记无hold。
 
 ## 9. 复审记录
 
@@ -194,6 +194,8 @@ P=新semantic模块/定向单测/独立输入；S-L=auto-lang-core parser/infer/
 2026-11-02 | stage: goal | plan_id: PLAN-916 | plan_revision: r1 | round: 6 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-916/auto-lang | commit: 9ee15d466c767d2c9212d2225667dd21c1427d5b | next: merge | repair_cycles_used: 2/3
 
 2026-11-02 | stage: merge | plan_id: PLAN-916:r1 | outcome: landed+canonical_verified | delivery_commit: edfdabc2e4e2fa32ae579fede9d4bf31b24ad0e8 | prepared: reviewed 9ee15d466；ff-only rebase映射6b855f1ae→9b2c763ef2d624f61d1a0922b68867b2ce70bc70、1b6f88897→798bcb5eec2be2e5e05708cf84336301f2c4739d、9ee15d466→edfdabc2e，range-diff三行全`=`（SHA256 a4212c4f6ba4d7649b7b4deaf538f10f929b213429f60afbbde815cfe3ffeca9） | gates: rebased tip执行`cargo t a2r parser infer ownership auto-test-case infra-fixed` exit0（log 4af1d86d0fe39ef54671ba7f5fffe4c1e193359450417c257299d127493e72f9）与`cargo t infra-ace-m1 case-ace-m1-base case-ace-m1-nb-diags-908 case-ace-m1-a2r-semantics-916` exit0（log 969fb41470e85cc34029c8274f622a8001e88b5c02ee6fb011f01acbf65d2493）；select-only已核对九组但不当执行证据 | landed: master `f422b0ef4..edfdabc2e` fast-forward，master tip==delivery；`wt-guard` clean | canonical_verified: 七份Spec均在主线提交，hash清单SHA256 d4d24336f46413a1bcbffabab08bedcb6ac9e32bcbb540c2347bb26d819f641f（architecture 450a02fd、overview 85a9b6bb、rust-semantic-admission 54b23e0d、ownership 6c754e84、a2r-golden e6ab0be2、conformance a6e6d3a0、gap-audit 3655ee44）；主线定向smoke exit0（log ba9e903428c29ef54a3042f37a98a7de61b0c59e832cc1b6a2b2edc3f9fc7e35） | handoff: 917复用同一公共准入/rust.rs提交，914共享adapter版本；未消费WIP、未改R07/T08/ACE/证书 | next: archive+guard cleanup
+
+2026-11-02 | stage: merge | plan_id: PLAN-916:r1 | outcome: cleaned pending batch regression | delivery_commit: edfdabc2e4e2fa32ae579fede9d4bf31b24ad0e8 | archive_commit: 9647820ebba6f9a11e566050578f5b75c3dd16a6 | archive_path: docs/plans/archive/916-legacy-a2r-semantic-admission.md | cleaned: 2026-11-02T17:55:52+08:00，`wt-guard`对worktree与plan-artifacts均clean；`D:/autostack/.wt/lang-916/auto-lang`、`plan-916-dev`、空组目录及`D:/autostack/plan-artifacts/plan-916/`已删除；worktree list/分支/dir存在性复核通过，registry `auto-lang/PLAN-916` status=deleted-at-merge、holds=none | artifact_observation: 本计划为编译器库/测试adapter变更，未授权生产部署；主线`target/release/auto*`与`gen/front/vue/dist`均不存在，无运行中生产进程需重启，未伪称重建。批量due：last covered 895且多计划合并>48h；检测到PLAN-913 ace-av nextest运行，待其结束后主检出单实例`cargo t all`，不并发 | next: batch regression then final merge receipt
 
 ## 10. 待澄清事项
 
