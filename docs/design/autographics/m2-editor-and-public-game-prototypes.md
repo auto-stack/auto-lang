@@ -1,8 +1,8 @@
 # AutoGraphics（AG）M2：场景编辑视口与公共接口游戏原型
 
-> **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、正式游戏独立仓、Demo ag-examples**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/032-autographics-node2d-full-game-composition.md)、[G2-001](../../../../ag-platformer-2d/docs/plans/001-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
+> **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、ag-examples/games完整游戏、ag-examples/examples小Demo**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/032-autographics-node2d-full-game-composition.md)、[AG014（原G2-001）](../../../../ag-examples/docs/plans/014-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
 >
-> 当前事实：AG012已交付05f1b498，新语法活入口**16/22**，这不是M2完成比例；030已落主804d7303，但review记录同实现会话自审，独立上下文证据待补，不按归档字样放行。两款完整M2游戏尚未交付，M2-01..09/G2-01..09/G3-01..08及原预算保持。引擎/自身Specs与计划归auto-ui，Gallery归ag-examples，新游戏计划/素材/实现归ag-platformer-2d；auto-lang本页仅保战略和历史来源。下文旧日期、编号、份数和在途状态保留历史，当前执行以各仓最新合同/源码/收据为准，不预取后继编号，也不以ACE/AOT/ECS/CPC/跨端作为当前M2前置。
+> 当前事实：AG012已交付05f1b498，新语法活入口**16/22**，这不是M2完成比例；030已落主804d7303，但review记录同实现会话自审，独立上下文证据待补，不按归档字样放行。两款完整M2游戏尚未交付，M2-01..09/G2-01..09/G3-01..08及原预算保持。引擎/自身Specs与计划归auto-ui，Demo和完整游戏均归ag-examples，分别组织在examples/和games/，共用本仓计划编号且每游戏独立启动/资源/离线闭包；auto-lang本页仅保战略和历史来源。下文旧日期、编号、份数和在途状态保留历史，当前执行以各仓最新合同/源码/收据为准，不预取后继编号，也不以ACE/AOT/ECS/CPC/跨端作为当前M2前置。
 
 > **2026-10-30 目标要求回归**：公共图形应用的作者模型为AutoUI式声明、组件、绑定和事件，正常use、实例化与多场景组合是方向；model/view/on允许同组件内聚或拆出导入。具体要求AG-A01..09和六项讨论见auto-ui的[声明与组件模型](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。本专题下述单场景/旧VM/JSON/整帧拒绝/预算是阶段实验事实与旧合同保持面，不是最终架构约束。逻辑事务按关联状态管理，资源或组件局部失败不天然拒绝整个世界；渲染有效输入/同步与GPU呈现分别设计。树状声明允许未来lowering到数据导向/ECS存储，初期不要求实现。保留M2玩法分母与在途验收，未来作者模型接线、限额变化和示例迁移另行立约，不凭文档纠偏宣称新能力已实现。
 
@@ -37,7 +37,7 @@ M2继续桌面独立研究路线。生产AutoUI完整组件/主题、统一Atom�
 ## 3. 架构边界
 
 ```text
-独立游戏仓库：Auto玩法、场景/关卡、项目配置、资源引用与许可
+ag-examples/games独立工程：Auto玩法、场景/关卡、项目配置、资源引用与许可
     ↓ 公共且版本明确的场景/行为/资源/游戏服务接口
 AG独立宿主：编辑会话 / Play会话 / 输入 / 项目与资源 / renderer adapter
     ↓ 现有公开旧AutoVM SDK + 共享wgpu/Iced实验基础
@@ -129,7 +129,7 @@ Gallery目录/基础6项可在独立仓、固定861引擎版本上与874→875�
 
 ## 6. 独立工程与资源交付
 
-两个正式游戏放在`auto-lang`和未来引擎仓之外，各自建仓；建议名`ag-platformer-2d`、`ag-platformer-3d`，实际远端/所有者在建仓Plan确定。本轮不建仓。引擎只保留必要最小示例/回归资源及示例索引；既有M1资产和证据不在优化阶段删除或搬迁。
+2026-11-02用户修订组织：两个正式游戏放在引擎仓外的`ag-examples/games/platformer-2d`与未来`games/platformer-3d`，小Demo保留`examples/`；共用计划号、各自独立工程/锁/启动/资源/验收和离线包。原G2-001已迁为AG014，旧本地规划仓仅留指引。本轮不建游戏实现目录或远端；共享素材/工具须按清单随包收齐，移除其余Demo后仍可运行。引擎只保留必要最小示例/回归资源及示例索引；既有M1资产和证据不在优化阶段删除或搬迁。
 
 Gallery另外使用轻量`ag-examples`仓（建议名），保存小示例/目录/源码/许可与小资源；两个游戏只被索引，不复制到集合。仓级共享资源按hash管理，单项下载包按支持的项目格式实体化为完整本地闭包，无跨仓路径/链接/cache前置。大资源/录屏/制作源按固定包可选下载，网页初版只做预览和下载索引，原生运行入口明确。目录结构、元数据、资源来源/派生与下载规则见[专题§5](m2-gallery-and-capability-matrix.md#5-仓库目录和资源组织)。
 
