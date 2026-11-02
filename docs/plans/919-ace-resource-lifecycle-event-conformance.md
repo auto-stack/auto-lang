@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-919
-status: execution_done
+status: reviewed
 feature_name: AC与AV资源生命周期事件正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -165,3 +165,7 @@ stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 2 | from: review | 
 2026-11-03 | stage: work | PLAN-919 r1 | outcome: pass（修复轮） | worktree: D:/autostack/.wt/lang-919/auto-lang | branch: plan-919-dev | base_commit: 8bb1a0d52 | code_commit: 735aa75b0 | dependency_revisions: 同上轮 | task_ids: T-07（F-919-R1..R3 修复；顺带修复 T-07 行列数并档） | evidence: 复审最小复放集全绿（19 控制/av 8/native 8/套件 PASS run-eubocovi）；rustfmt 2021 六文件净；cargo check 零 919 警告；六格功能证据沿 82208b51a 复审轮有效 | blockers: 无 | next_responsible_role: review（受影响项重审：R1..R3 关闭核对+复放）
 
 stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-919/auto-lang | commit: 735aa75b0 | next: review
+
+2026-11-03 | stage: review | review_scope: final（修复重审，受影响项） | reviewer: 同会话独立复审（工件重建；限制同前） | plan_id: PLAN-919 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-919/auto-lang | branch: plan-919-dev | reviewed_commit: 735aa75b0 | base_commit: 8bb1a0d52 | dependency_revisions: 同前轮 | spec_inputs: SD-01..06 无变更（修复轮零规范改动） | acceptance_results: F-919-R1/R2/R3 全关（独立复验：rustfmt 2021 六文件净、completion_code_for 零残留、pub(super)；cargo check 零 919 警告；控制 19/19、套件 PASS run-uqfa_1y8 @735aa75b0）；修复 diff 最小（82208b51a..735aa75b0 仅三修复+格式，无行为变更）→前轮六格功能证据沿用有效；AC-06 关闭 | pending_closeout_gates: merge-owned：冻结受影响模块并集在合入基面重验（ace-av/ace-native/ace-native-worker/ace-runtime/auto-test-case/infra-ace-m1/case-ace-m1-resource-events-919 + 913/889 抽验）、852 三 scope 复放、SD 读回、归档与 guard 清理（AC-07） | findings: 无新发现；N1/N2 观察项维持不阻断（N1 已记 KNOWN-DEBT 侧无，属维护性注记） | evidence: 本 §9 + 复审两轮记录 | next: merge
+
+stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-919/auto-lang | commit: 735aa75b0 | next: merge
