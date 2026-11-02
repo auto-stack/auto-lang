@@ -651,16 +651,14 @@ fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, S
     if steps.last().and_then(|s| s["op"].as_str()) != Some("run") {
         return Err("the data-incremental sequence must end with a run step".into());
     }
-    let mut session =
-        ace_av::data_session::DataIncrementalSession::warmup(&source, &entry, &caps)?;
+    let mut session = ace_av::data_session::DataIncrementalSession::warmup(&source, &entry, &caps)?;
     let mut current = source.clone();
     let mut step_outs: Vec<serde_json::Value> = Vec::new();
     let id_map = |m: &std::collections::BTreeMap<String, ace_av::data_session::CodeIdentity>| {
-        serde_json::json!(
-            m.iter()
-                .map(|(k, v)| (k.clone(), serde_json::json!([v.ptr, v.generation])))
-                .collect::<std::collections::BTreeMap<_, _>>()
-        )
+        serde_json::json!(m
+            .iter()
+            .map(|(k, v)| (k.clone(), serde_json::json!([v.ptr, v.generation])))
+            .collect::<std::collections::BTreeMap<_, _>>())
     };
     for st in steps {
         match st["op"].as_str().unwrap_or("") {
@@ -722,9 +720,7 @@ fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, S
                     .unwrap_or_default();
                 match session.apply_source_partial(&next, &defs) {
                     Ok(rebuilt) => {
-                        return Err(format!(
-                            "partial rebuild unexpectedly linked: {rebuilt:?}"
-                        ))
+                        return Err(format!("partial rebuild unexpectedly linked: {rebuilt:?}"))
                     }
                     Err(e) if e.contains("env-contract") || e.contains("link rejected") => {
                         // The link gate's typed refusal of the incompatible
@@ -742,9 +738,7 @@ fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, S
                         }));
                     }
                     Err(e) => {
-                        return Err(format!(
-                            "partial rebuild failed with a non-refusal: {e}"
-                        ))
+                        return Err(format!("partial rebuild failed with a non-refusal: {e}"))
                     }
                 }
             }
@@ -762,6 +756,121 @@ fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, S
         "av_core_version": core_version_for("ac-av/data-incremental-v1"),
     }))
 }
+/// PLAN-915: the R02/R03 scenario recipe. One `run` step selects either a
+/// frozen corpus source (`source:<l04|l05|v05|k02>`, swept over EVERY
+/// allocation attempt) or a typed stale-Place witness
+/// (`place:<push|insert|remove|replace>`). The worker reports operational
+/// facts only — it never sees the parent's frozen expectation table.
+fn resource_case(req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use ace_av::resource_915::{self, PlaceMutation, SourceFrontend};
+    use base64::Engine;
+    let entry = req["entry"]
+        .as_str()
+        .ok_or("missing entry (source:<id>|place:<mutation>)")?;
+    let steps = req["steps"].as_array().ok_or("steps")?;
+    if steps.len() != 1 || steps[0]["op"].as_str() != Some("run") {
+        return Err("the resource recipe takes exactly one run step".into());
+    }
+    let started = std::time::Instant::now();
+    let (step, core_version) = if let Some(id) = entry.strip_prefix("source:") {
+        let source = req["source_b64"]
+            .as_str()
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .ok_or("missing/invalid source_b64")?;
+        let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+        let (frontend, core) = if id.starts_with("k02") {
+            (
+                SourceFrontend::Closures,
+                ace_av_core::contract::AV_CLOSURES_PROFILE,
+            )
+        } else {
+            (
+                SourceFrontend::Collections,
+                ace_av_core::contract::AV_COLLECTIONS_PROFILE,
+            )
+        };
+        let mut facts = resource_915::source_fault_sweep(&source, "main", frontend)?;
+        let mode = std::env::var("AV915_SABOTAGE").unwrap_or_default();
+        if mode == "drop-point" {
+            // Test-only negative control (never set in production): a worker
+            // that skips one allocation point must be rejected by the
+            // parent's frozen attempt count.
+            if let Some(points) = facts["arena_points"].as_array_mut() {
+                points.pop();
+            }
+        }
+        let value = facts["source_value"].as_i64().unwrap_or(0) as i32;
+        (
+            serde_json::json!({
+                "op": "run",
+                "outcome": "success",
+                "value": value,
+                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+                "resource": facts,
+                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+            }),
+            core,
+        )
+    } else if entry == "capture:clone" {
+        let source = req["source_b64"]
+            .as_str()
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .ok_or("missing/invalid source_b64")?;
+        let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+        let facts = resource_915::capture_clone_sweep()?;
+        (
+            serde_json::json!({
+                "op": "run",
+                "outcome": "success",
+                "value": null,
+                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+                "capture": facts,
+                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+            }),
+            ace_av_core::contract::AV_CLOSURES_PROFILE,
+        )
+    } else if let Some(name) = entry.strip_prefix("place:") {
+        let source = req["source_b64"]
+            .as_str()
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .ok_or("missing/invalid source_b64")?;
+        let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+        let mutation =
+            PlaceMutation::parse(name).ok_or_else(|| format!("unknown place mutation {name}"))?;
+        let mode = std::env::var("AV915_SABOTAGE").unwrap_or_default();
+        // Test-only measurement control: drive the wrong access-before-validate
+        // order so the parent's frozen `buffer_reads == 1` must go red.
+        let access_first = mode == "read-first";
+        let mut sequence = resource_915::place_sequence_with(mutation, access_first)?;
+        if mode == "no-stale" {
+            // Test-only negative control: a worker that claims the stale use
+            // did not happen must be rejected by the frozen place table.
+            sequence["stale"]["facts"]["get_stale"] = serde_json::json!(0);
+        }
+        (
+            serde_json::json!({
+                "op": "run",
+                "outcome": "success",
+                "value": null,
+                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+                "place": sequence,
+                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+            }),
+            ace_av_core::contract::AV_COLLECTIONS_PROFILE,
+        )
+    } else {
+        return Err(format!(
+            "resource entry `{entry}` is neither source:<id> nor place:<mutation>"
+        ));
+    };
+    Ok(serde_json::json!({
+        "recipe": ace_av::resource_915::RESOURCE_RECIPE,
+        "steps": [step],
+        "worker_version": EXPECTED_WORKER_VERSION,
+        "av_core_version": core_version,
+    }))
+}
+
 fn case_serve() -> ! {
     use std::io::Read;
     const REQUEST_CAP: usize = 4 * 1024 * 1024;
@@ -808,6 +917,15 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             "ok": ok,
         })
     };
+    if recipe == "ac-av/resource-run-v1" {
+        return match resource_case(&req) {
+            Ok(ok) => echo(ok),
+            Err(error) => {
+                eprintln!("resource request: {error}");
+                exit(2);
+            }
+        };
+    }
     if recipe == "ac-av/data-incremental-v1" {
         return match data_incremental_case(&req) {
             Ok(ok) => echo(ok),
@@ -1029,8 +1147,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         None;
     // PLAN-913: the restored FUNCTION session (created by the first restore
     // run of a recovery check; later runs in this process are warm edits).
-    let mut recovery_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> =
-        None;
+    let mut recovery_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> = None;
     // PLAN-866: the resident-online serving state — ONE chain (the 828
     // session + the resident driver, frozen 64-step fuel slices), created
     // lazily on the first resident step; the names of functions edited
@@ -1453,9 +1570,22 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     }
                     if !matches!(
                         source_id,
-                        "K01" | "K02" | "K03" | "K04" | "K05" | "K06"
-                            | "S01" | "S02" | "S03" | "S04" | "S05" | "S06" | "S07" | "S08"
-                            | "F01" | "F02"
+                        "K01"
+                            | "K02"
+                            | "K03"
+                            | "K04"
+                            | "K05"
+                            | "K06"
+                            | "S01"
+                            | "S02"
+                            | "S03"
+                            | "S04"
+                            | "S05"
+                            | "S06"
+                            | "S07"
+                            | "S08"
+                            | "F01"
+                            | "F02"
                     ) {
                         eprintln!("unknown closures-fn source id {source_id}");
                         exit(2);
@@ -1470,13 +1600,12 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     }
                     let started = std::time::Instant::now();
                     let source_hash = current_source.clone();
-                    let session = closures_fn_session
-                        .get_or_insert_with(|| {
-                            ace_av::closures_fn_session::ClosuresFunctionSession::new(
-                                &store_dir,
-                                &format!("{source_id}.at"),
-                            )
-                        });
+                    let session = closures_fn_session.get_or_insert_with(|| {
+                        ace_av::closures_fn_session::ClosuresFunctionSession::new(
+                            &store_dir,
+                            &format!("{source_id}.at"),
+                        )
+                    });
                     let sampler = ace_av::mempeek::PeakSampler::start(5);
                     let result = session.apply_source(&current_source);
                     let process_peak_bytes = sampler.stop();
@@ -1584,18 +1713,16 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     }
                     let module = format!("{source_id}.at");
                     let project = format!("ac913-{source_id}");
-                    let ticket_path =
-                        std::path::Path::new(&store_dir).join("recovery-ticket.json");
+                    let ticket_path = std::path::Path::new(&store_dir).join("recovery-ticket.json");
                     let started = std::time::Instant::now();
                     let source_hash = format!(
                         "{:016x}",
                         ace_av_core::contract::fnv1a64(current_source.as_bytes())
                     );
                     if mode == "publish" {
-                        let mut session =
-                            ace_av::closures_fn_session::ClosuresFunctionSession::new(
-                                &store_dir, &module,
-                            );
+                        let mut session = ace_av::closures_fn_session::ClosuresFunctionSession::new(
+                            &store_dir, &module,
+                        );
                         let run = match session.apply_source(&current_source) {
                             Ok(run) => run,
                             Err(error) => {
@@ -1606,9 +1733,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                         let ticket = match session.publish_source_recovery(&project) {
                             Ok(ticket) => ticket,
                             Err(error) => {
-                                eprintln!(
-                                    "closures-recovery publish {source_id}: {error}"
-                                );
+                                eprintln!("closures-recovery publish {source_id}: {error}");
                                 exit(2);
                             }
                         };
@@ -1670,19 +1795,19 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                             capabilities: &[],
                             read_only: true,
                         };
-                        let restored = match ace_av::closures_source_recovery::restore_source_session(
-                            &store_dir,
-                            &request,
-                        ) {
-                            Ok(r) => r,
-                            Err(error) => {
-                                eprintln!(
-                                    "closures-recovery restore {source_id}: {}: {}",
-                                    error.code, error.message
-                                );
-                                exit(2);
-                            }
-                        };
+                        let restored =
+                            match ace_av::closures_source_recovery::restore_source_session(
+                                &store_dir, &request,
+                            ) {
+                                Ok(r) => r,
+                                Err(error) => {
+                                    eprintln!(
+                                        "closures-recovery restore {source_id}: {}: {}",
+                                        error.code, error.message
+                                    );
+                                    exit(2);
+                                }
+                            };
                         let restore_value = restored.restore_value;
                         recovery_session = Some(restored.session);
                         let counters = restored.counters;
@@ -1758,8 +1883,10 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     let mut stage_attempts = serde_json::Map::new();
                     for ((unit, stage), n) in &run.stages.by_unit {
                         if *n > 0 {
-                            stage_attempts
-                                .insert(format!("{}|{}", unit, stage.as_str()), serde_json::json!(n));
+                            stage_attempts.insert(
+                                format!("{}|{}", unit, stage.as_str()),
+                                serde_json::json!(n),
+                            );
                         }
                     }
                     let mut body_work = serde_json::Map::new();

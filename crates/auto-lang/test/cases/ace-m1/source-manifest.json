@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "1074f0d1c9487c38e160cd179bdb192d9ef6da25349abc5e1f2fed214a4c6628"
+  "sha256": "30c5d680d33132e877a3a311c61e73cc9b7f84c7208292eeb0fe16bffd035c75"
  },
  "corpus_src": {
   "dir": "src",
@@ -406,5 +406,24 @@
  "plan_914_update": {
   "date": "2026-11-02",
   "summary": "PLAN-914: E01/E02 named-order four-path cells + I04/I09 layout/live-state cells delivered; order-layout-914 scenario assets (13 files) registered under scenario_assets (drift-checkable by verify-ace-m1-852 contract); binding rows E01/E02/I04/I09 rebound to ok/ok-emit; binding and scenario-oracles hashes recomputed; source spec docs/specs/auto-test-case/m1-order-layout-observations.md."
+ },
+ "scenario_assets_915": {
+  "dir": "resource-915",
+  "expected_count": 9,
+  "files": {
+   "resource-915.case.ad": "867111701c722e8a48323ed26ee089a1638d05071262bd628761ebfb75ca0c32",
+   "resource-915.suite.ad": "19c8e93a5fe9dfd691d18f82f3b93664ed83d4b87378c8676162b21606075bc8",
+   "src/K02-915.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
+   "src/L04-915.at": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",
+   "src/L05-915.at": "3c55fc65f45724c072aaf7a772cfdc7d52da0d4f117ec6f23841795551629149",
+   "src/R03-av.at": "afebd81b5eb6e3462f7cea29578429fceaa65d44d5deb570db02e3a6499b8bb5",
+   "src/R03-static-reject.at": "2d17a68d39fe3e437a7ecd7ba35ec0e0e0a4b7f2e26a275317d736466f03736b",
+   "src/LSTR-915.at": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff",
+   "src/V05-915.at": "734c211d1ea0e62d52f14617369a77c975c0a23c915e3ed9dff91fa1f4c7c0c3"
+  }
+ },
+ "plan_915_update": {
+  "date": "2026-11-02",
+  "summary": "PLAN-915: scenario R02/R03 av cells delivered (per-allocation-point fault sweep over L04/L05/V05/K02 + typed verified stale-Place witness). New 12-check suite case-ace-m1-resource-915 and its 9 asset files (L04/L05/V05/LSTR/K02 sweeps + typed capture-clone + place sequences) registered under scenario_assets_915; binding av cells rebound to ok:av-resource-915; binding hash recomputed; worker facts judged against parent frozen attempt tables."
  }
 }

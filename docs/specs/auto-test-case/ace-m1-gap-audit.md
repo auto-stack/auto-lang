@@ -249,3 +249,14 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
 - `gap:a2r-golden`（T08）：已关闭——冻结金样（含界断言块）经独立审阅；
   Auto trap 认证通道仍为 cert-gap（行为观察≠trap 认证）。
 - 其余 38 格复合认证、`can_claim_m1=false` 及新 HIR A2R 迁移账保持不变。
+
+## PLAN-915 后状态（2026-11-02；上节为历史）
+
+- **F-AV-1（R02 scn av）与 F-AV-2（R03 scn av）关闭**：两格由正式场景套件
+  `case-ace-m1-resource-915` + 父侧冻结表见证（逐 attempt 注入 / typed 授信 Place
+  使用前拒绝，dangerous access=0）；binding.tsv 对应 av 列改为 `ok:av-resource-915`。
+- 关闭的是 **av 列**：scenario R02 的 ac/avm/a2r 与 R03 的 ac(diff)/avm(diff)/a2r
+  保持各自状态；`MutRef` 通用失效句柄校验、native/旧 AVM 对应格、R01/R04/R06 事件
+  通道、B18 avm 与 38 格复合认证等残余 owner 不变。
+- 计数口径：本轮只改两格 av 值，不重算 `can_claim_m1`（仍 false），不签 M1、不改
+  分母/批准规则/其他格。

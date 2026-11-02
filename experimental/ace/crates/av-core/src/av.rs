@@ -32,6 +32,20 @@ pub struct ExecLimits {
     /// stay intact, proving allocation failure does not corrupt state.
     /// `None` in every production path.
     pub fault_after_allocs: Option<u64>,
+    /// PLAN-915: gated place-fact observation (`None`/false in every
+    /// production path). When enabled the executor counts List-Place
+    /// mint/get/set outcomes and the buffer accesses that actually ran
+    /// AFTER validation, so the R03 scenario's "checked before any access"
+    /// claim is a measured fact rather than a code-reading claim. The flag
+    /// is a single branch per place op; no counter is allocated otherwise.
+    pub observe_places: bool,
+    /// PLAN-915 test-only MEASUREMENT control (never set in production):
+    /// when true the List-Place resolution performs the element ACCESS
+    /// before the identity/epoch/element-generation validation — the wrong
+    /// order — so the observation counter proves the scenario's
+    /// "checked before any access" claim is measurable rather than a
+    /// code-reading assertion.
+    pub place_access_before_validate: bool,
 }
 
 impl Default for ExecLimits {
@@ -43,6 +57,8 @@ impl Default for ExecLimits {
             wall: MAX_AV_WALL,
             max_trace_bytes: MAX_TRACE_BYTES,
             fault_after_allocs: None,
+            observe_places: false,
+            place_access_before_validate: false,
         }
     }
 }
@@ -102,6 +118,38 @@ pub struct ExecTrace {
     pub root_frame_commits: u64,
     pub call_frame_commits: u64,
     pub frames_remaining: u64,
+    /// PLAN-915: the value-allocation ordinal the fault seam counted during
+    /// THIS execution (0 when no fault seam was configured). A discovery
+    /// run arms `fault_after_allocs = Some(u64::MAX)` and reads the total
+    /// number of value-allocation attempts here before sweeping 1..=N.
+    pub alloc_events: u64,
+    /// PLAN-915: gated place facts (`observe_places`); `None` in every
+    /// production path.
+    pub place_facts: Option<PlaceFacts>,
+}
+
+/// PLAN-915 R03 observation: what the List-Place path actually did.
+///
+/// `buffer_reads` counts only accesses that ran AFTER the full
+/// frame/slot/buffer-identity/epoch/element-generation validation — the
+/// rejected (stale) uses therefore contribute nothing, and a scenario that
+/// claims "checked before any access" must report `*_stale > 0` with
+/// `buffer_reads` unchanged across the stale step.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlaceFacts {
+    /// `LIST_PLACE` mints that reached the slot write.
+    pub mints: u64,
+    /// `PLACE_GET` uses that validated and read the current element.
+    pub get_ok: u64,
+    /// `PLACE_GET` uses rejected by stale-place validation.
+    pub get_stale: u64,
+    /// `PLACE_SET` uses that validated and replaced the element.
+    pub set_ok: u64,
+    /// `PLACE_SET` uses rejected by stale-place validation.
+    pub set_stale: u64,
+    /// Buffer accesses that ran after validation (the dangerous-access
+    /// counter's complement: a stale use never reaches this).
+    pub buffer_reads: u64,
 }
 
 /// One dispatched payload's identity evidence (see [`ExecTrace::dispatched`]).
@@ -267,6 +315,20 @@ pub fn execute_console(
     ))
 }
 
+/// PLAN-915: fold the loop-state observation facts into the returned trace.
+/// `alloc_events` is the value-allocation ordinal (0 without a fault seam);
+/// the place facts exist only while `observe_places` is enabled, so a
+/// production trace never carries a counter that no path produced.
+fn finish_trace(st: &mut LoopState, limits: &ExecLimits) {
+    st.trace.frames_remaining = st.frames.len() as u64;
+    st.trace.alloc_events = st.alloc_events;
+    st.trace.place_facts = if limits.observe_places {
+        Some(st.place_facts)
+    } else {
+        None
+    };
+}
+
 fn execute_module_impl_with_host(
     module: &LoadedModule,
     limits: &ExecLimits,
@@ -382,7 +444,7 @@ fn execute_module_impl_with_host(
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
     }
-    st.trace.frames_remaining = st.frames.len() as u64;
+    finish_trace(&mut st, &limits);
     (out, st.trace)
 }
 
@@ -474,7 +536,7 @@ fn execute_program_impl(
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
     }
-    st.trace.frames_remaining = st.frames.len() as u64;
+    finish_trace(&mut st, &limits);
     (out, st.trace)
 }
 
@@ -585,7 +647,7 @@ pub fn execute_program_steps(
             if !st.frames.is_empty() {
                 cleanup_owned_frames(&mut st);
             }
-            st.trace.frames_remaining = st.frames.len() as u64;
+            finish_trace(&mut st, &dispatch_limits);
             SteppedOutcome::Finished(out, st.trace)
         }
         None => SteppedOutcome::Paused(PausedRun {
@@ -682,7 +744,7 @@ fn resume_program_mode(
             if !state.frames.is_empty() {
                 cleanup_owned_frames(&mut state);
             }
-            state.trace.frames_remaining = state.frames.len() as u64;
+            finish_trace(&mut state, &limits);
             return SteppedOutcome::Finished(out, state.trace);
         }
     };
@@ -700,7 +762,7 @@ fn resume_program_mode(
             if !state.frames.is_empty() {
                 cleanup_owned_frames(&mut state);
             }
-            state.trace.frames_remaining = state.frames.len() as u64;
+            finish_trace(&mut state, &dispatch_limits);
             SteppedOutcome::Finished(out, state.trace)
         }
         None => SteppedOutcome::Paused(PausedRun {
@@ -730,6 +792,8 @@ struct LoopState {
     arena: crate::owned_text::StrArena,
     /// Monotonic frame ACTIVATION sequence (V-05 handle domain).
     frame_seq: u64,
+    /// PLAN-915 gated place facts (only written under `observe_places`).
+    place_facts: PlaceFacts,
     /// PLAN-823 closure env store: handle → the owned env aggregate. The
     /// store outlives frames (a closure escapes its creator's frame); env
     /// bytes count toward `slot_bytes` (the one value-data line).
@@ -1978,8 +2042,10 @@ fn variant_payload_ty(v: &dyn ModuleView, func_idx: u32, variant_slot_ty: u32, d
 /// index bound. Any mismatch is the contracted `av.trap.stale-place`
 /// (F822-R2-02) — checked BEFORE any buffer access.
 fn resolve_place_elem(
-    st: &LoopState,
+    st: &mut LoopState,
     place: &crate::contract::ListPlaceV,
+    observe: bool,
+    access_first: bool,
 ) -> Result<Value, crate::contract::TrapKind> {
     let fr = st
         .frames
@@ -1995,24 +2061,44 @@ fn resolve_place_elem(
         _ => return Err(crate::contract::TrapKind::StalePlace),
     };
     let buf = h.rc.borrow();
+    let idx = place.index as usize;
+    if access_first {
+        // PLAN-915 TEST-ONLY wrong order: touch the element BEFORE the
+        // identity/epoch/generation validation and record that touch in the
+        // SAME counter the scenario reads — this is what makes the
+        // "checked before any access" claim measurable (a correct executor
+        // never reaches this branch).
+        if observe {
+            st.place_facts.buffer_reads += 1;
+        }
+        let _ = buf.elems.get(idx).cloned();
+    }
     if buf.id != place.buf_id || buf.epoch != place.epoch {
         // A structural change (realloc / element shift) happened after
         // the mint — the OLD place may not touch the new buffer.
         return Err(crate::contract::TrapKind::StalePlace);
     }
-    let idx = place.index as usize;
     if idx >= buf.elems.len() || buf.elem_gens[idx] != place.elem_gen {
         // In-place replacement retired this element's places.
         return Err(crate::contract::TrapKind::StalePlace);
     }
-    Ok(buf.elems[idx].clone())
+    // PLAN-915: the access below runs only after every validation above —
+    // the gated counter is incremented AT the access, so a stale use can
+    // never be counted as a buffer read.
+    let elem = buf.elems[idx].clone();
+    drop(buf);
+    if observe {
+        st.place_facts.buffer_reads += 1;
+    }
+    Ok(elem)
 }
 
 /// Same validation, returning the current element's deep size for the
 /// PLACE_SET precheck (the write path's old-value half).
 fn validate_place_for_write(
-    st: &LoopState,
+    st: &mut LoopState,
     place: &crate::contract::ListPlaceV,
+    observe: bool,
 ) -> Result<usize, crate::contract::TrapKind> {
     let fr = st
         .frames
@@ -2036,7 +2122,12 @@ fn validate_place_for_write(
         return Err(crate::contract::TrapKind::StalePlace);
     }
     let mut visited = 0u64;
-    Ok(buf.elems[idx].deep_size(&mut visited))
+    let size = buf.elems[idx].deep_size(&mut visited);
+    drop(buf);
+    if observe {
+        st.place_facts.buffer_reads += 1;
+    }
+    Ok(size)
 }
 
 /// Kill a source slot after its value transferred into a container/variant:
@@ -3816,6 +3907,36 @@ fn dispatch_with_host<V: ModuleView>(
                             ),
                         });
                     }
+                    // PLAN-915 R02: a capacity growth is a REAL allocation
+                    // attempt (the backing reallocation). The value seam
+                    // counts it so the per-point sweep covers construction,
+                    // clone and growth alike; it is checked BEFORE the
+                    // mutation and only while a fault seam is armed (no
+                    // production cost otherwise).
+                    if limits.fault_after_allocs.is_some() {
+                        let grows = {
+                            let fr = st.frames.last().expect("frame present");
+                            match &fr.slots[*root as usize] {
+                                Value::List(h) => {
+                                    let buf = h.rc.borrow();
+                                    buf.elems.len() as u32 == buf.cap
+                                        && buf.elems.len() < crate::contract::MAX_LIST_ELEMS
+                                }
+                                _ => false,
+                            }
+                        };
+                        if grows {
+                            if let Some(n) = limits.fault_after_allocs {
+                                st.alloc_events += 1;
+                                if st.alloc_events == n {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "fault-injected at value allocation #{} (list growth)",
+                                        n
+                                    )));
+                                }
+                            }
+                        }
+                    }
                     let push = {
                         let fr = st.frames.last_mut().expect("frame present");
                         match fr.slots[*root as usize].clone() {
@@ -3888,6 +4009,34 @@ fn dispatch_with_host<V: ModuleView>(
                                 limits.max_slot_bytes
                             ),
                         });
+                    }
+                    // PLAN-915 R02: insert capacity growth is the same real
+                    // allocation attempt as push growth — counted on the
+                    // value seam (before any mutation, only while a seam is
+                    // armed).
+                    if limits.fault_after_allocs.is_some() {
+                        let grows = {
+                            let fr = st.frames.last().expect("frame present");
+                            match &fr.slots[*root as usize] {
+                                Value::List(h) => {
+                                    let buf = h.rc.borrow();
+                                    buf.elems.len() as u32 == buf.cap
+                                        && buf.elems.len() < crate::contract::MAX_LIST_ELEMS
+                                }
+                                _ => false,
+                            }
+                        };
+                        if grows {
+                            if let Some(n) = limits.fault_after_allocs {
+                                st.alloc_events += 1;
+                                if st.alloc_events == n {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "fault-injected at value allocation #{} (list growth)",
+                                        n
+                                    )));
+                                }
+                            }
+                        }
                     }
                     let shifted = {
                         let fr = st.frames.last_mut().expect("frame present");
@@ -4471,6 +4620,9 @@ fn dispatch_with_host<V: ModuleView>(
                     {
                         return Some(out);
                     }
+                    if limits.observe_places {
+                        st.place_facts.mints += 1;
+                    }
                 }
                 MirInstr::PlaceGet { dst, src } => {
                     let pv = {
@@ -4487,13 +4639,26 @@ fn dispatch_with_host<V: ModuleView>(
                         }
                     };
                     // Root resolution + stale validation BEFORE any access.
-                    let elem = match resolve_place_elem(st, &place) {
-                        Ok(e) => e,
+                    let elem = match resolve_place_elem(
+                        st,
+                        &place,
+                        limits.observe_places,
+                        limits.place_access_before_validate,
+                    ) {
+                        Ok(e) => {
+                            if limits.observe_places {
+                                st.place_facts.get_ok += 1;
+                            }
+                            e
+                        }
                         Err(kind) => {
+                            if limits.observe_places {
+                                st.place_facts.get_stale += 1;
+                            }
                             return Some(ExecOutcome::Trap {
                                 kind,
                                 span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
-                            })
+                            });
                         }
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, elem, limits) {
@@ -4522,13 +4687,22 @@ fn dispatch_with_host<V: ModuleView>(
                     let mut visited = 0u64;
                     let new_deep = val.deep_size(&mut visited);
                     st.steps += visited;
-                    let old_deep = match validate_place_for_write(st, &place) {
-                        Ok(d) => d,
+                    let old_deep = match validate_place_for_write(st, &place, limits.observe_places)
+                    {
+                        Ok(d) => {
+                            if limits.observe_places {
+                                st.place_facts.set_ok += 1;
+                            }
+                            d
+                        }
                         Err(kind) => {
+                            if limits.observe_places {
+                                st.place_facts.set_stale += 1;
+                            }
                             return Some(ExecOutcome::Trap {
                                 kind,
                                 span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
-                            })
+                            });
                         }
                     };
                     if new_deep > old_deep {

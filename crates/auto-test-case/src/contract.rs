@@ -1675,6 +1675,9 @@ fn decode_options(
                         // PLAN-891: the typed recipe consumes exactly a
                         // single run step in the formal case form.
                         "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-915: the resource recipe takes exactly the
+                        // judged run step (the sweep/sequence is the op).
+                        "ac-av/resource-run-v1" => matches!(op.as_str(), "run"),
                         // PLAN-892: the daily emit is a single run step
                         // (edit/restart sessions arrive with their own
                         // contract when the session face lands). The
@@ -1993,6 +1996,9 @@ fn decode_options(
                         // PLAN-914: the data INCREMENTAL recipe takes the
                         // same av binding shape (entry/caps/session).
                         && recipe != "ac-av/data-incremental-v1"
+                        // PLAN-915: the resource scenario recipe selects its
+                        // face through av.entry (source:<id>|place:<mutation>).
+                        && recipe != "ac-av/resource-run-v1"
                 {
                     return Err(err(
                         &f.path_of("av"),
@@ -2580,6 +2586,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-891: the native typed-entry recipe — file-ized typed fixtures
     // through the real PE bitwise frame channel, parent-side judgement.
     "ac/mir-native-typed-v1",
+    // PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario
+    // recipe — frozen corpus sources and typed place witnesses through the
+    // real AV executor; the parent judges the frozen attempt counts.
+    "ac-av/resource-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

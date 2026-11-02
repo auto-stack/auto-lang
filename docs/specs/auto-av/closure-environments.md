@@ -39,3 +39,10 @@ K01、K02、K03、K05 已经由源码编译进入现有闭包 session 执行。K
 cell/env 复活）；env 布局由已解码单元的 `env` 声明与 registry 声明交叉核对，坏
 声明/错 owner/错 profile 在安装前拒绝。详见
 [闭包源码来源绑定恢复](closures-source-recovery.md)。
+
+**PLAN-915 捕获故障证据（2026-11-02）**：R02 的 closure 支持域由 K02 真实源（创建者
+退出后 owned 闭包）经 `ac-av/resource-run-v1` 逐点扫描：闭包环境物化是值 seam 的一次
+attempt，捕获 Str 的缓冲是 arena seam 的一次 attempt，两者各自 1..=N 注入后均以可辨识
+Infra 失败、live=0、无半建环境发布；N+1 正控与清除故障后的重跑仍得 42。
+capture-clone 的 `env.capture.faulted-clone` 分类不变（结构化 attempt 仍在 prepare 层）。
+合同见 [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。

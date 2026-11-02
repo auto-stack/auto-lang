@@ -336,3 +336,27 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
 显式认证域 `ace.m1.a2r-emit917.cert/1`（R07 实跑 42；T08 冻结 slice-oob 以 Rust panic
 观察）。T08 的 Auto trap 认证缺口单列保留，不以 emit 或 Rust panic 冒充；
 其余 38 格复合认证账不因此关闭。
+
+## PLAN-915：scenario R02/R03 的 AV 正式证据（2026-11-02）
+
+- **材料**：`test/cases/ace-m1/resource-915/`（case/suite + 五份语料字节拷贝源
+  L04/L05/V05/LSTR/K02 + R03 合法近邻源与静态反例源，目录共 7 个 `.at`）；固定组
+  `case-ace-m1-resource-915`（12 checks）。
+- **配方/父判**：`ac-av/resource-run-v1`（`resource`/`place`/`capture` 三个 face）；
+  父侧冻结表 `RESOURCE_SWEEP_CASES`（值 + 值 seam attempt + arena attempt）、
+  `PLACE_SEQUENCES`（trap 码 + fresh/legal 值）、`CAPTURE_CASES`（逐 clone attempt +
+  控件 attempt + live）。worker 只报操作事实，期望不经请求下发。
+- **准入**：`av.entry` 必须命中父表（`source:<id>` / `place:<mutation>` / `capture:<id>`）；
+  三个 face 都做**与 oracle 无关的形状校验**（未知键/错类型/点数与 attempt 数不符/
+  同时出现多个 face 均拒），再判值；`resource`/`place`/`capture` 出现在别的配方上是
+  协议违规；core 身份按 entry 绑定（`source:k02` 与 `capture:*` → `av.closures/1`，
+  其余 → `av.collections/1`）；响应帧重复 key 在 serde 之前拒绝（全部 AV 配方）。
+- **判据**：R02 每点必须 faulted 且 live=0、消息带序号、arena ledger 的
+  attempts/successful/frees 与序号一致，控件、after 与 after_recompile 得冻结值；
+  capture 的 clone attempt 3/4 必须 `env.capture.faulted-clone`（源可读、live=2），
+  attempt 5 成功；R03 必须 `av.trap.stale-place`、`get_stale=1`、`buffer_reads` 只含
+  合法读（受 test-only access-before-validate 控制反证），fresh/legal 正控成功。
+  静态反例由 `collections-source-run-v1` 观察 `bind/source.iterate-mutate`
+  （stage=resolve），不冒充运行期证据。
+- **格位**：binding.tsv 的 `scenario:R02/R03` av 列改为 `ok:av-resource-915`
+  （源/expected/NA/分母与 ac/avm/a2r 列不变）；这是两个 av 格，不是 M1 签章。
