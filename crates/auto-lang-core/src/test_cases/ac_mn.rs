@@ -1733,6 +1733,11 @@ pub fn run_check(
                 }
                 // PLAN-914 (I04): declaration rounds belong to the
                 // incremental rounds path, never the restart-session path.
+                auto_test_case::contract::ProbeStep::PartialRebuild { .. } => {
+                    return Err(format!(
+                        "{recipe} does not take partial-rebuild steps in the restart-session path"
+                    ));
+                }
                 auto_test_case::contract::ProbeStep::DeclarationInvalidate { .. } => {
                     return Err(format!(
                         "{recipe} does not take declaration rounds in the restart-session path"
@@ -3680,3 +3685,4 @@ fn judge_declaration_invalidation(
     }
     out
 }
+

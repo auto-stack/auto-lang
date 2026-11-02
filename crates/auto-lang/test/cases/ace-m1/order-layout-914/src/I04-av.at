@@ -1,0 +1,16 @@
+type Pair {
+    left int
+    right int
+}
+
+fn fan(p Pair) int {
+    return p.left * 101 + p.right
+}
+
+fn unrelated(x int) int {
+    return x + 1
+}
+
+fn main() int {
+    return fan(Pair { right: 2, left: 1 }) + unrelated(0)
+}

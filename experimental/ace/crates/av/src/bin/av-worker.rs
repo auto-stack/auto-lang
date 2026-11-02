@@ -600,6 +600,8 @@ fn core_version_for(recipe: &str) -> &'static str {
         // PLAN-866: the resident recipe rides the scalar profile identity.
         "ac-av/resident-run-v1" => "av.core-i32/1",
         "ac-av/data-run-v1" => ace_av_core::contract::AV_DATA_PROFILE,
+        // PLAN-914: the data INCREMENTAL recipe rides the same data profile.
+        "ac-av/data-incremental-v1" => ace_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => ace_av_core::contract::AV_OWNED_PROFILE,
         "ac-av/collections-run-v1" => ace_av_core::contract::AV_COLLECTIONS_PROFILE,
         // PLAN-864: the collections SOURCE recipe rides the same profile-4
@@ -621,6 +623,142 @@ fn core_version_for(recipe: &str) -> &'static str {
 /// and the parent-side runner judges. Request cap 4 MiB (probe metadata
 /// budget); the run store is a fresh per-request scratch under the given
 /// store root.
+/// PLAN-914 (I04/I09): the DATA-profile INCREMENTAL recipe. A retained
+/// `DataIncrementalSession` is driven by the request's steps; every edit
+/// reports the dependency-precise rebuild set it really produced and the
+/// per-def resident code identities before/after, so the PARENT can judge
+/// which defs were rebuilt and which kept their resident code object.
+fn data_incremental_case(req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    let source = req["source_b64"]
+        .as_str()
+        .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+        .ok_or("missing/invalid source_b64")?;
+    let source = String::from_utf8(source).map_err(|_| "source is not utf-8")?;
+    let entry = req["entry"].as_str().unwrap_or("d_main").to_string();
+    let caps: Vec<String> = req["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let steps = req["steps"].as_array().ok_or("steps")?;
+    if steps.last().and_then(|s| s["op"].as_str()) != Some("run") {
+        return Err("the data-incremental sequence must end with a run step".into());
+    }
+    let mut session =
+        ace_av::data_session::DataIncrementalSession::warmup(&source, &entry, &caps)?;
+    let mut current = source.clone();
+    let mut step_outs: Vec<serde_json::Value> = Vec::new();
+    let id_map = |m: &std::collections::BTreeMap<String, ace_av::data_session::CodeIdentity>| {
+        serde_json::json!(
+            m.iter()
+                .map(|(k, v)| (k.clone(), serde_json::json!([v.ptr, v.generation])))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        )
+    };
+    for st in steps {
+        match st["op"].as_str().unwrap_or("") {
+            "run" => {
+                let value = session.run()?;
+                step_outs.push(serde_json::json!({
+                    "op": "run",
+                    "outcome": "success",
+                    "value": value.as_i32(),
+                    "channel": "value",
+                    "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(current.as_bytes())),
+                    "wall_ms": 0.0,
+                    "counters": session.counters(),
+                    "trace": [],
+                }));
+            }
+            "edit-source" => {
+                let from = st["from"].as_str().ok_or("missing from")?;
+                let to = st["to"].as_str().ok_or("missing to")?;
+                let hits = current.matches(from).count();
+                if hits != 1 {
+                    return Err(format!(
+                        "edit-source literal matched {hits} times (expected exactly once)"
+                    ));
+                }
+                let next = current.replacen(from, to, 1);
+                let before = session.identity_all();
+                let rebuilt = session.apply_source(&next)?;
+                let after = session.identity_all();
+                current = next;
+                step_outs.push(serde_json::json!({
+                    "op": "edit-source",
+                    "outcome": "edited",
+                    "rebuilt_defs": rebuilt,
+                    "identities_before": id_map(&before),
+                    "identities_after": id_map(&after),
+                    "counters": session.counters(),
+                    "wall_ms": 0.0,
+                }));
+            }
+            "partial-rebuild" => {
+                // PLAN-914 (I09): the CONTROLLED partial rebuild — only the
+                // named defs are rebuilt against the edited source while the
+                // other residents stay; the link/env-contract gate must
+                // REFUSE the incompatible mix (the transactional prepare
+                // never installs a rejected mix).
+                let from = st["from"].as_str().ok_or("missing from")?;
+                let to = st["to"].as_str().ok_or("missing to")?;
+                let hits = current.matches(from).count();
+                if hits != 1 {
+                    return Err(format!(
+                        "partial-rebuild literal matched {hits} times (expected exactly once)"
+                    ));
+                }
+                let next = current.replacen(from, to, 1);
+                let defs: Vec<&str> = st["defs"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|d| d.as_str()).collect())
+                    .unwrap_or_default();
+                match session.apply_source_partial(&next, &defs) {
+                    Ok(rebuilt) => {
+                        return Err(format!(
+                            "partial rebuild unexpectedly linked: {rebuilt:?}"
+                        ))
+                    }
+                    Err(e) if e.contains("env-contract") || e.contains("link rejected") => {
+                        // The link gate's typed refusal of the incompatible
+                        // mix: an env-contract drift or a signature mismatch.
+                        let kind = if e.contains("env-contract") {
+                            "env-contract"
+                        } else {
+                            "link-rejected"
+                        };
+                        step_outs.push(serde_json::json!({
+                            "op": "partial-rebuild",
+                            "outcome": "refused",
+                            "refusal": {"kind": kind, "reason": e},
+                            "wall_ms": 0.0,
+                        }));
+                    }
+                    Err(e) => {
+                        return Err(format!(
+                            "partial rebuild failed with a non-refusal: {e}"
+                        ))
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "the data-incremental recipe does not take {other:?} steps"
+                ))
+            }
+        }
+    }
+    Ok(serde_json::json!({
+        "recipe": "ac-av/data-incremental-v1",
+        "steps": step_outs,
+        "worker_version": EXPECTED_WORKER_VERSION,
+        "av_core_version": core_version_for("ac-av/data-incremental-v1"),
+    }))
+}
 fn case_serve() -> ! {
     use std::io::Read;
     const REQUEST_CAP: usize = 4 * 1024 * 1024;
@@ -667,6 +805,15 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             "ok": ok,
         })
     };
+    if recipe == "ac-av/data-incremental-v1" {
+        return match data_incremental_case(&req) {
+            Ok(ok) => echo(ok),
+            Err(error) => {
+                eprintln!("data-incremental request: {error}");
+                exit(2);
+            }
+        };
+    }
     if recipe == ace_av::console_worker::RECIPE {
         return match ace_av::console_worker::serve(&req) {
             Ok(observations) => echo(observations),
@@ -2480,3 +2627,6 @@ fn closures_request(args: &[String]) -> ! {
         4
     });
 }
+
+
+

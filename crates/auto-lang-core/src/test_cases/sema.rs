@@ -922,6 +922,9 @@ pub fn run_check(
                 // PLAN-914: declaration invalidation is the collections
                 // incremental recipe's op (defensive explicit arm; decode
                 // rejects it for sema).
+                ProbeStep::PartialRebuild { from, to, defs } => {
+                    serde_json::json!({"op": "partial-rebuild", "from": from, "to": to, "defs": defs})
+                }
                 ProbeStep::DeclarationInvalidate { from, to } => {
                     serde_json::json!({"op": "declaration-invalidate", "from": from, "to": to})
                 }
@@ -1400,4 +1403,5 @@ fn compare_bindings(oracle_bytes: &[u8], got: &[BindingOut]) -> Result<(), Diff>
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
+
 

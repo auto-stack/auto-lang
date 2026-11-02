@@ -68,6 +68,10 @@ pub const EXPECTED_AV_CONSOLE_CORE_VERSION: &str = "av.host-console/1";
 /// parent-side. Registered as its own recipe identity (append-only; the
 /// core recipe contract is untouched).
 pub const AV_DATA_RECIPE: &str = "ac-av/data-run-v1";
+/// PLAN-914 (I04/I09): the DATA-profile incremental recipe (a retained
+/// DataIncrementalSession; edits report their dependency-precise rebuild set
+/// and per-def resident code identities).
+pub const AV_DATA_INCREMENTAL_RECIPE: &str = "ac-av/data-incremental-v1";
 pub const EXPECTED_AV_DATA_CORE_VERSION: &str = "av.data/1";
 /// PLAN-821: the owned-profile recipe (`av.owned/1`, profile id 3) —
 /// text-record source → owned Typed MIR → AVAD v2 → AV with the arena
@@ -142,6 +146,10 @@ pub enum RecipeFamily {
     /// PLAN-865: real `.at` source through closure lowering and the existing
     /// per-function closures update/link/runtime session.
     ClosuresSource,
+    /// PLAN-914 (I04/I09): the DATA-profile incremental recipe (a retained
+    /// `DataIncrementalSession`; edits report their dependency-precise
+    /// rebuild set and per-def resident code identities).
+    DataIncremental,
     /// PLAN-912: the single-function closures source recipe.
     ClosuresFn,
     /// PLAN-866: the resident-online recipe — one continuously-running
@@ -159,6 +167,7 @@ impl RecipeFamily {
             RecipeFamily::Core => AV_RECIPE,
             RecipeFamily::Console => AV_CONSOLE_RECIPE,
             RecipeFamily::Data => AV_DATA_RECIPE,
+            RecipeFamily::DataIncremental => AV_DATA_INCREMENTAL_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
@@ -175,6 +184,7 @@ impl RecipeFamily {
         match self {
             RecipeFamily::Core | RecipeFamily::Loaded => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
+            RecipeFamily::DataIncremental => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Console => EXPECTED_AV_CONSOLE_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
@@ -628,7 +638,20 @@ struct StepOut {
     wall_ms: f64,
     /// mark trace events ("a"/"b" sequence; observation only).
     #[serde(default)]
-    trace: Vec<String>,
+    trace: Vec<String>,    /// PLAN-914 (I09): the typed refusal of a controlled partial rebuild
+    /// (`{kind, reason}`); present only on a refused step.
+    #[serde(default)]
+    refusal: Option<serde_json::Value>,
+    /// PLAN-914 (I04): the dependency-precise rebuild set the incremental
+    /// edit step really produced (AFTER the edit committed).
+    #[serde(default)]
+    rebuilt_defs: Vec<String>,
+    /// PLAN-914 (I04): per-def resident code identities around the step
+    /// (`[ptr, generation]` pairs) — the carry-over evidence.
+    #[serde(default)]
+    identities_before: std::collections::BTreeMap<String, (u64, u64)>,
+    #[serde(default)]
+    identities_after: std::collections::BTreeMap<String, (u64, u64)>,
     /// Stage spans of the run step (name, own-duration ms) — bounded
     /// observability carried into the receipt.
     #[serde(default)]
@@ -1309,6 +1332,27 @@ pub fn run_collections_check(
     )
 }
 
+/// PLAN-914 (I04/I09): the data-incremental recipe rides the data family's
+/// value/presence faces; the invalidation facts are judged separately.
+pub fn run_data_incremental_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::DataIncremental,
+    )
+}
+
 pub fn run_dynamic_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -1517,6 +1561,15 @@ fn run_check_with_transport(
             auto_test_case::contract::ProbeStep::ResidentFinish => {
                 serde_json::json!({ "op": "resident-finish" })
             }
+            // PLAN-914 (I09): the controlled partial rebuild carries its own
+            // rebuild set (never silently downgraded to a run).
+            auto_test_case::contract::ProbeStep::PartialRebuild { from, to, defs } => {
+                serde_json::json!({ "op": "partial-rebuild", "from": from, "to": to, "defs": defs })
+            }
+            // PLAN-914 (I04): declaration rounds are not an AV step shape.
+            auto_test_case::contract::ProbeStep::DeclarationInvalidate { from, to } => {
+                serde_json::json!({ "op": "declaration-invalidate", "from": from, "to": to })
+            }
             _ => serde_json::json!({ "op": "run" }),
         })
         .collect();
@@ -1713,6 +1766,9 @@ fn run_check_with_transport(
     let worker_us = worker_started.elapsed().as_micros() as u64;
 
     let mut mismatches: Vec<Mismatch> = Vec::new();
+    // PLAN-914 (I04): the admitted step records (the invalidation facts live
+    // on the EDIT steps, not on the judged run).
+    let mut admitted_steps: Vec<StepOut> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let mut step_out: Option<StepOut> = None;
     // A test batch may reuse the digest ONLY while its Windows file lease
@@ -1832,7 +1888,7 @@ fn run_check_with_transport(
                 infra_detail = Some("av worker returned no run step".to_string());
                 break 'admit;
             }
-        }
+        }        admitted_steps = ok.steps.clone();
         // F798-R3-05: the response is bound to THIS request and revision —
         // step count, op echo, edit outcomes, and every run step's
         // source_hash re-derived parent-side over the request's own source
@@ -1871,6 +1927,51 @@ fn run_check_with_transport(
                     "resident-apply"
                 }
                 auto_test_case::contract::ProbeStep::ResidentFinish => "resident-finish",
+                auto_test_case::contract::ProbeStep::PartialRebuild { from, to, defs } => {
+                    // PLAN-914 (I09): a CONTROLLED partial rebuild MUST be
+                    // refused by the link/env-contract gate; the accepted
+                    // snapshot stays the session's state (the parent's
+                    // current source is NOT advanced).
+                    let hits = current_source.matches(from.as_str()).count();
+                    if hits != 1 {
+                        infra_detail = Some(format!(
+                            "step {i}: partial-rebuild literal matched {hits} times"
+                        ));
+                        break 'admit;
+                    }
+                    let _ = to; // the candidate is the refused one; never installed
+                    if got.outcome != "refused" {
+                        mismatches.push(Mismatch {
+                            observation: "partial-rebuild".into(),
+                            kind: "refusal".into(),
+                            expected: "the link/env-contract gate REFUSES the incompatible mix"
+                                .into(),
+                            actual: format!("outcome `{}`", got.outcome),
+                            first_diff: None,
+                        });
+                    }
+                    let kind = got
+                        .refusal
+                        .as_ref()
+                        .and_then(|r| r.get("kind"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if kind != "env-contract" && kind != "link-rejected" {
+                        mismatches.push(Mismatch {
+                            observation: "partial-rebuild".into(),
+                            kind: "refusal-kind".into(),
+                            expected: "a typed link refusal (env-contract or link-rejected)".into(),
+                            actual: if kind.is_empty() {
+                                "no typed refusal".to_string()
+                            } else {
+                                kind.to_string()
+                            },
+                            first_diff: None,
+                        });
+                    }
+                    let _ = defs;
+                    "partial-rebuild"
+                }
                 auto_test_case::contract::ProbeStep::EditSource { from, to } => {
                     let hits = current_source.matches(from.as_str()).count();
                     if hits != 1 {
@@ -1946,6 +2047,18 @@ fn run_check_with_transport(
     }
 
     let step = step_out.expect("admitted");
+    // PLAN-914 (I04, D-05 criterion): the data-incremental invalidation
+    // oracle — the dependency-precise rebuild set and the resident code
+    // identities of the EDIT steps, judged parent-side (the judged run only
+    // carries the outcome).
+    if check.options.probe_recipe.as_deref() == Some(AV_DATA_INCREMENTAL_RECIPE) {
+        match av.invalidation.as_ref() {
+            Some(spec) => judge_invalidation(&admitted_steps, spec, &mut mismatches),
+            // A refusal-only check (I09) carries no invalidation oracle: the
+            // contract already rejects an oracle without an edit step.
+            None => {}
+        }
+    }
     if let Some(id) = &typed_fixture {
         // The typed judge face: tag + exact raw bits against the parent's
         // frozen expectation — independent of `value` (which cannot carry
@@ -3427,6 +3540,7 @@ fn judge_expectation(
                 // record/Str results have no i32 form).
                 let present = step.value.is_some()
                     || (family == RecipeFamily::Data && step.typed.is_some())
+                    || (family == RecipeFamily::DataIncremental && step.typed.is_some())
                     || (family == RecipeFamily::Owned && step.owned.is_some());
                 if !present {
                     mismatches.push(Mismatch {
@@ -4281,3 +4395,87 @@ mod console_tests {
         assert!(admit(v).is_none());
     }
 }
+
+
+
+
+/// PLAN-914 (I04, D-05 criterion): judge the data-incremental edits against
+/// the declared invalidation oracle — every declared rebuilt def must really
+/// be in the edit's dependency-precise rebuild set, and every def declared
+/// stable must keep its resident code identity (and never appear in the
+/// rebuild set).
+fn judge_invalidation(
+    steps: &[StepOut],
+    spec: &auto_test_case::contract::ProbeAvInvalidationSpec,
+    mismatches: &mut Vec<Mismatch>,
+) {
+    let edits: Vec<&StepOut> = steps.iter().filter(|s| s.op == "edit-source").collect();
+    if edits.is_empty() {
+        mismatches.push(Mismatch {
+            observation: "invalidation".into(),
+            kind: "steps".into(),
+            expected: "at least one edit-source step".into(),
+            actual: "none".into(),
+            first_diff: None,
+        });
+        return;
+    }
+    let rebuilt: std::collections::BTreeSet<&str> = edits
+        .iter()
+        .flat_map(|e| e.rebuilt_defs.iter().map(String::as_str))
+        .collect();
+    for def in &spec.rebuilt_defs {
+        if !rebuilt.contains(def.as_str()) {
+            mismatches.push(Mismatch {
+                observation: format!("rebuilt[{def}]"),
+                kind: "invalidation".into(),
+                expected: "def in the dependency-precise rebuild set".into(),
+                actual: format!("build set {:?}", rebuilt),
+                first_diff: None,
+            });
+        }
+    }
+    for def in &spec.stable_defs {
+        if rebuilt.contains(def.as_str()) {
+            mismatches.push(Mismatch {
+                observation: format!("rebuilt[{def}]"),
+                kind: "invalidation".into(),
+                expected: "an UNAFFECTED def (never rebuilt)".into(),
+                actual: "present in the rebuild set".into(),
+                first_diff: None,
+            });
+        }
+        let mut seen = false;
+        for e in &edits {
+            if let (Some(b), Some(a)) = (
+                e.identities_before.get(def),
+                e.identities_after.get(def),
+            ) {
+                seen = true;
+                if b != a {
+                    mismatches.push(Mismatch {
+                        observation: format!("identities[{def}]"),
+                        kind: "identity".into(),
+                        expected: format!("carried code identity {b:?}"),
+                        actual: format!("{a:?}"),
+                        first_diff: None,
+                    });
+                }
+            }
+        }
+        if !seen {
+            mismatches.push(Mismatch {
+                observation: format!("identities[{def}]"),
+                kind: "missing".into(),
+                expected: "a resident code identity around the edit".into(),
+                actual: "absent".into(),
+                first_diff: None,
+            });
+        }
+    }
+}
+
+
+
+
+

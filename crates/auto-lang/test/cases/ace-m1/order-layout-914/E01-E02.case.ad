@@ -126,3 +126,57 @@ case {
   ]
 }
 ```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.i04.av"
+  tags: ["ace-m1", "scenario", "order-914", "layout"]
+  links: ["PLAN-914"]
+  source: { file: "src/I04-av.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "unused-declaration-carry", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-incremental-v1", av: { entry: "d_main", invalidation: { stable_defs: ["d_fan", "d_main", "d_unrelated"] } }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "fn fan(p Pair) int {", to: "type Extra {\n    v int\n}\nfn fan(p Pair) int {" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 104 } },
+    { id: "layout-change-rebuild", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-incremental-v1", av: { entry: "d_main", invalidation: { rebuilt_defs: ["d_fan", "d_main", "d_unrelated"] } }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "left int\n    right int", to: "right int\n    left int" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 104 } },
+    { id: "body-edit-precision", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-incremental-v1", av: { entry: "d_main", invalidation: { stable_defs: ["d_fan", "d_main"], rebuilt_defs: ["d_unrelated"] } }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return x + 1", to: "return x + 2" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 105 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.i09.av"
+  tags: ["ace-m1", "scenario", "order-914", "layout"]
+  links: ["PLAN-914"]
+  source: { file: "src/I04-av.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "partial-rebuild-refused", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-incremental-v1", av: { entry: "d_main" }, steps: [
+        { op: "run" },
+        { op: "partial-rebuild", from: "left int\n    right int", to: "right int\n    left int", defs: ["d_fan"] },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 104 } }
+  ]
+}
+```

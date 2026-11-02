@@ -936,6 +936,22 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-914 (I04/I09): the DATA-profile incremental recipe — the
+        // retained DataIncrementalSession; the parent judges the rebuild set
+        // and the resident code identity carry-over.
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_DATA_INCREMENTAL_RECIPE) =>
+        {
+            ac_av::run_data_incremental_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-824: the dynamic-profile av recipe (append-only
         // registration; prior recipe contracts untouched; avworker/1
         // envelope domain — the recipe id itself discriminates).
@@ -1134,3 +1150,4 @@ fn not_run_outcome(
     };
     o
 }
+

@@ -1135,6 +1135,29 @@ fn decode_check(
                     "mn.declaration is declared without a declaration-invalidate step",
                 ));
             }
+        }        // PLAN-914 (I04): the same two-way rule for the AV data-incremental
+        // recipe — an edit is judged through the invalidation oracle, and the
+        // oracle never dangles.
+        if let Some(av) = options.probe_av.as_ref().filter(|_| {
+            options.probe_recipe.as_deref() == Some("ac-av/data-incremental-v1")
+        }) {
+            let has_edit = options
+                .probe_steps
+                .as_deref()
+                .map(|s| s.iter().any(|st| matches!(st, ProbeStep::EditSource { .. })))
+                .unwrap_or(false);
+            if has_edit && av.invalidation.is_none() {
+                return Err(err(
+                    &f.path_of("options"),
+                    "an edit step on ac-av/data-incremental-v1 requires the av.invalidation oracle (the rebuild set is judged, never merely executed)",
+                ));
+            }
+            if av.invalidation.is_some() && !has_edit {
+                return Err(err(
+                    &f.path_of("options"),
+                    "av.invalidation is declared without an edit-source step",
+                ));
+            }
         }
         if console_recipe {
             if expect.probe.is_some() {
@@ -1545,7 +1568,7 @@ fn decode_options(
                 for (i, item) in list.iter().enumerate() {
                     let ipath = format!("{}.steps[{}]", f.path, i);
                     let pairs = as_obj(item, &ipath)?;
-                    let sf = Fields::new(&ipath, pairs, &["op", "from", "to", "slices"])?;
+                    let sf = Fields::new(&ipath, pairs, &["op", "from", "to", "slices", "defs"])?;
                     let op = req_str(&sf, "op")?;
                     // PLAN-798: `run` joins the known op vocabulary
                     // (ac-av's only op); recipes never borrow each other's
@@ -1556,6 +1579,7 @@ fn decode_options(
                         "query"
                             | "edit-source"
                             | "declaration-invalidate"
+                            | "partial-rebuild"
                             | "restart"
                             | "run"
                             | "resident-slice"
@@ -1575,6 +1599,12 @@ fn decode_options(
                         // PLAN-820: the data recipe shares the core recipe's
                         // step vocabulary (runs + discriminating edits).
                         "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                        // PLAN-914: the data INCREMENTAL session recipe shares the same
+                        // run/edit vocabulary (the parent judges the invalidation facts).
+                        "ac-av/data-incremental-v1" => matches!(
+                            op.as_str(),
+                            "run" | "edit-source" | "partial-rebuild"
+                        ),
                         // PLAN-821: the owned recipe shares the av step
                         // vocabulary (runs + discriminating edits).
                         "ac-av/owned-run-v1" => {
@@ -1691,6 +1721,40 @@ fn decode_options(
                             ProbeStep::EditSource { from, to }
                         }
                         "restart" => ProbeStep::Restart,
+                        "partial-rebuild" => {
+                            let from = req_str(&sf, "from")?;
+                            let to = req_str(&sf, "to")?;
+                            if from.is_empty() || from == to {
+                                return Err(err(
+                                    &sf.path_of("from"),
+                                    "partial-rebuild needs a non-empty `from` distinct from `to`",
+                                ));
+                            }
+                            let defs = match sf.sub("defs") {
+                                None => {
+                                    return Err(err(
+                                        &sf.path_of("defs"),
+                                        "partial-rebuild needs the non-empty `defs` list (the controlled rebuild set)",
+                                    ))
+                                }
+                                Some(lv) => {
+                                    let list = as_list(lv, &sf.path_of("defs"))?;
+                                    let mut out = Vec::new();
+                                    for (i, item) in list.iter().enumerate() {
+                                        let ipath = format!("{}.defs[{}]", sf.path_of("defs"), i);
+                                        out.push(as_str(item, &ipath)?.to_string());
+                                    }
+                                    out
+                                }
+                            };
+                            if defs.is_empty() {
+                                return Err(err(
+                                    &sf.path_of("defs"),
+                                    "partial-rebuild defs must not be empty",
+                                ));
+                            }
+                            ProbeStep::PartialRebuild { from, to, defs }
+                        }
                         "declaration-invalidate" => {
                             // PLAN-914 (I04): an explicit declaration/layout
                             // invalidation round — the same exactly-once
@@ -1729,6 +1793,7 @@ fn decode_options(
                 if recipe == "ac-av/core-run-v1"
                     || recipe == "ac-av/console-run-v1"
                     || recipe == "ac-av/data-run-v1"
+                    || recipe == "ac-av/data-incremental-v1"
                     || recipe == "ac-av/owned-run-v1"
                     || recipe == "ac-av/collections-run-v1"
                     || recipe == "ac-av/collections-source-run-v1"
@@ -1877,6 +1942,7 @@ fn decode_options(
                 if recipe == "ac-av/core-run-v1"
                         || recipe == "ac-av/console-run-v1"
                         || recipe == "ac-av/data-run-v1"
+                    || recipe == "ac-av/data-incremental-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
                         || recipe == "ac-av/collections-source-run-v1"
@@ -1913,6 +1979,9 @@ fn decode_options(
                         // PLAN-866: the resident recipe takes the same av
                         // binding shape as its siblings.
                         && recipe != "ac-av/resident-run-v1"
+                        // PLAN-914: the data INCREMENTAL recipe takes the
+                        // same av binding shape (entry/caps/session).
+                        && recipe != "ac-av/data-incremental-v1"
                 {
                     return Err(err(
                         &f.path_of("av"),
@@ -1924,7 +1993,7 @@ fn decode_options(
                 }
                 let apath = f.path_of("av");
                 let pairs = as_obj(v, &apath)?;
-                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile"])?;
+                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile", "invalidation"])?;
                 let entry = req_str(&sf, "entry")?;
                 // PLAN-862: the SOURCE-profile selector (append-only). A
                 // check that omits it keeps the historical scalar path
@@ -1987,11 +2056,74 @@ fn decode_options(
                         out
                     }
                 };
+                let invalidation = match sf.sub("invalidation") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac-av/data-incremental-v1" {
+                            return Err(err(
+                                &sf.path_of("invalidation"),
+                                "the invalidation oracle belongs to ac-av/data-incremental-v1 only",
+                            ));
+                        }
+                        let ipath = sf.path_of("invalidation");
+                        let ipairs = as_obj(v, &ipath)?;
+                        let inf = Fields::new(
+                            &ipath,
+                            ipairs,
+                            &["stable_defs", "rebuilt_defs"],
+                        )?;
+                        let read_defs = |key: &str| -> Result<Vec<String>, ContractError> {
+                            match inf.sub(key) {
+                                None => Ok(Vec::new()),
+                                Some(lv) => {
+                                    let list = as_list(lv, &inf.path_of(key))?;
+                                    let mut out = Vec::new();
+                                    for (i, item) in list.iter().enumerate() {
+                                        let dpath = format!("{}.{}[{}]", ipath, key, i);
+                                        let name = as_str(item, &dpath)?.to_string();
+                                        if name.is_empty() {
+                                            return Err(err(
+                                                &dpath,
+                                                "empty def id identifies nothing",
+                                            ));
+                                        }
+                                        out.push(name);
+                                    }
+                                    Ok(out)
+                                }
+                            }
+                        };
+                        let stable_defs = read_defs("stable_defs")?;
+                        let rebuilt_defs = read_defs("rebuilt_defs")?;
+                        if stable_defs.is_empty() && rebuilt_defs.is_empty() {
+                            return Err(err(
+                                &ipath,
+                                "the invalidation oracle needs stable_defs and/or rebuilt_defs (an empty oracle judges nothing)",
+                            ));
+                        }
+                        for d in &stable_defs {
+                            if rebuilt_defs.contains(d) {
+                                return Err(err(
+                                    &ipath,
+                                    format!(
+                                        "def {:?} is declared both stable and rebuilt (contradictory oracle)",
+                                        d
+                                    ),
+                                ));
+                            }
+                        }
+                        Some(ProbeAvInvalidationSpec {
+                            stable_defs,
+                            rebuilt_defs,
+                        })
+                    }
+                };
                 Some(ProbeAvSpec {
                     entry,
                     caps,
                     session,
                     profile,
+                    invalidation,
                 })
             }
         };
@@ -2426,6 +2558,11 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/closures-fn-run-v1",
     // PLAN-863: exact byte-stream observations, separate host-console profile.
     "ac-av/console-run-v1",
+    // PLAN-914 (I04/I09): the DATA-profile INCREMENTAL recipe — a retained
+    // DataIncrementalSession driven by run/edit-source steps; each edit
+    // reports its dependency-precise rebuild set and the per-def resident
+    // code identities.
+    "ac-av/data-incremental-v1",
     // PLAN-891: the native typed-entry recipe — file-ized typed fixtures
     // through the real PE bitwise frame channel, parent-side judgement.
     "ac/mir-native-typed-v1",
@@ -2445,6 +2582,15 @@ pub enum ProbeStep {
     EditSource {
         from: String,
         to: String,
+    },
+    /// PLAN-914 (I09): a CONTROLLED partial rebuild — rebuild exactly the
+    /// named defs against the edited source while the other residents stay
+    /// in place; the link/env-contract gate must REFUSE the incompatible
+    /// mix and the previous snapshot must stay executable.
+    PartialRebuild {
+        from: String,
+        to: String,
+        defs: Vec<String>,
     },
     /// PLAN-914 (I04): an explicit DECLARATION/layout invalidation round
     /// (collections incremental session only). The same exactly-once literal
@@ -2495,6 +2641,20 @@ pub struct ProbeAvSpec {
     /// family). Append-only: the field carries no default that could
     /// reinterpret an old check.
     pub profile: Option<String>,
+    /// PLAN-914 (I04): the data-incremental invalidation oracle — the defs
+    /// whose resident code identity must be CARRIED across an edit and the
+    /// defs the dependency-precise rebuild must actually contain.
+    pub invalidation: Option<ProbeAvInvalidationSpec>,
+}
+
+/// PLAN-914 ac-av/data-incremental-v1 invalidation oracle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeAvInvalidationSpec {
+    /// Def ids whose resident code identity must be unchanged (the
+    /// UNAFFECTED definitions: not rebuilt, not re-lowered).
+    pub stable_defs: Vec<String>,
+    /// Def ids the rebuild set must contain (the affected definitions).
+    pub rebuilt_defs: Vec<String>,
 }
 
 /// cte/scalar-query-v1 binding (PLAN-817 T-02): the consumer entry
@@ -3284,3 +3444,12 @@ pub fn validate_console_oracle(
         _ => Ok(()),
     }
 }
+
+
+
+
+
+
+
+
+
