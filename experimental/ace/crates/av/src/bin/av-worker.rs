@@ -1695,6 +1695,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                                 "manifest": ticket["manifest"].clone(),
                                 "digest": ticket["digest"].clone(),
                                 "units": ticket["units"].clone(),
+                                "source_sha256": ticket["source_sha256"].clone(),
                                 "p_axis_attempts": counters.p_axis_attempts,
                                 "r_manifest_reads": counters.manifest_reads,
                                 "r_unit_reads": counters.unit_reads,

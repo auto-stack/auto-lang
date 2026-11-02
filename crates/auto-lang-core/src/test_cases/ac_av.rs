@@ -2178,7 +2178,7 @@ fn run_check_with_transport(
         judge_closures_fixture(id, &step, &mut mismatches);
     } else if let Some(id) = &closures_source_id {
         if family == RecipeFamily::ClosuresRecovery {
-            judge_closures_recovery(&id.0, id.1.as_deref(), &step, &mut mismatches);
+            judge_closures_recovery(&id.0, id.1.as_deref(), &step, &input_bytes, &mut mismatches);
         } else if family == RecipeFamily::ClosuresFn {
             judge_closures_fn(&id.0, id.1.as_deref(), &step, &mut mismatches);
         } else {
@@ -4573,6 +4573,7 @@ fn judge_closures_recovery(
     id: &str,
     mode: Option<&str>,
     step: &StepOut,
+    source_bytes: &[u8],
     mismatches: &mut Vec<Mismatch>,
 ) {
     let Some((_, base_value, edited_value, units)) = closures_recovery_case(id) else {
@@ -4640,6 +4641,21 @@ fn judge_closures_recovery(
                 "recovery-binding",
                 "a manifest artifact id + 64-hex digest".into(),
                 format!("manifest={manifest:?} digest={digest:?}"),
+            );
+        }
+        // V-13: the SOURCE hash is parent-verified against the case bytes —
+        // the worker's claim is never taken on its own word.
+        let want_sha = hex(&sha256(source_bytes));
+        let got_sha = face
+            .get("source_sha256")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        if got_sha != want_sha {
+            bad(
+                mismatches,
+                "recovery-source-hash",
+                want_sha,
+                got_sha.to_string(),
             );
         }
     }
