@@ -241,6 +241,8 @@ pub struct RecoveryTicket {
     pub units: usize,
     pub source_sha256: String,
     pub context_revision: String,
+    /// The accepted generation this publication carried (the CAS axis).
+    pub accepted_generation: u64,
     /// The project root this publication registered.
     pub root_project: String,
 }
@@ -461,6 +463,21 @@ pub fn publish_source_recovery(
     let store = ManagedStore::open(store_root).map_err(|e| {
         RecoveryError::new("recovery.store-open", format!("open store: {e}"))
     })?;
+    // CAS on the accepted generation: a slow, OLD publication never overwrites
+    // a newer root. Rejected BEFORE any write, so the authoritative root and
+    // its required closure are untouched (the current root's own manifest is
+    // read through the checksum-verified HINT reader only).
+    if let Some(current) = current_root_generation(&store, request.project) {
+        if request.accepted_generation < current {
+            return Err(RecoveryError::new(
+                "recovery.stale-generation",
+                format!(
+                    "publication carries accepted generation {} but the project root is at {current}",
+                    request.accepted_generation
+                ),
+            ));
+        }
+    }
     // The declaration context rides its own REQUIRED artifact so a manifest
     // stays bounded and the context is digest-addressed independently.
     let context_digest = ace_core::runtime_contract::sha256_hex(request.context_payload);
@@ -608,6 +625,7 @@ pub fn publish_source_recovery(
         units: manifest.units.len(),
         source_sha256: manifest.source_sha256.clone(),
         context_revision: manifest.context_revision.clone(),
+        accepted_generation: manifest.accepted_generation,
         root_project: request.project.to_string(),
     })
 }
@@ -1069,6 +1087,84 @@ fn unit_evidence(
         env_arity: func.env.as_ref().map(|env| env.len()),
         sites,
     })
+}
+
+/// Read a framed artifact's inner payload WITHOUT an expected identity.
+///
+/// This is a HINT reader, never an authority: it verifies the envelope's own
+/// framing and checksum (a corrupt root is never silently interpreted) and
+/// returns bytes the caller must still treat as untrusted. The only decision
+/// that uses it is the publication CAS — an OLD accepted generation must not
+/// overwrite a newer root — so a tampered hint can cause a rejection, never
+/// an acceptance.
+fn peek_envelope_payload(framed: &[u8], expect_unit: &str) -> Option<Vec<u8>> {
+    if framed.len() < 4 + 2 + 1 + 1 + 12 + 8 {
+        return None;
+    }
+    if &framed[0..4] != b"AVEN" {
+        return None;
+    }
+    let version = u16::from_le_bytes([framed[4], framed[5]]);
+    if version != crate::cache::ENVELOPE_VERSION {
+        return None;
+    }
+    let body_end = framed.len() - 8;
+    let want = u64::from_le_bytes(framed[body_end..].try_into().ok()?);
+    if want != ace_av_core::contract::fnv1a64_parts(&[&framed[..body_end]]) {
+        return None;
+    }
+    let mut p = 6usize;
+    p += 1; // kind
+    p += 1; // stage
+    p += 12; // semantics triple (mir/abc/av)
+    p += 8; // source snapshot
+    let mut strings: Vec<&str> = Vec::with_capacity(5);
+    for _ in 0..5 {
+        if p + 2 > body_end {
+            return None;
+        }
+        let len = u16::from_le_bytes([framed[p], framed[p + 1]]) as usize;
+        p += 2;
+        if p + len > body_end {
+            return None;
+        }
+        strings.push(std::str::from_utf8(&framed[p..p + len]).ok()?);
+        p += len;
+    }
+    if strings[3] != expect_unit {
+        return None;
+    }
+    if p + 8 > body_end {
+        return None;
+    }
+    let payload_len = u64::from_le_bytes(framed[p..p + 8].try_into().ok()?) as usize;
+    p += 8;
+    if p + payload_len != body_end {
+        return None;
+    }
+    Some(framed[p..body_end].to_vec())
+}
+
+/// The accepted generation of the project's CURRENT recovery root, if any.
+fn current_root_generation(store: &ManagedStore, project: &str) -> Option<u64> {
+    for id in store.root_artifacts(project, RECOVERY_ROOT_KIND).ok()? {
+        let Some(found) = store.get_artifact_by_id(&id).ok()? else {
+            continue;
+        };
+        if found.kind != ChunkKind::LayoutData {
+            continue;
+        }
+        let Some(payload) = peek_envelope_payload(&found.payload, "source-recovery") else {
+            continue;
+        };
+        if payload.len() > MAX_MANIFEST_BYTES {
+            continue;
+        }
+        if let Ok(m) = serde_json::from_slice::<SourceRecoveryManifest>(&payload) {
+            return Some(m.accepted_generation);
+        }
+    }
+    None
 }
 
 fn verify_manifest_binding(

@@ -321,7 +321,10 @@ fn av_closures_recovery_913_publish_republishes_root_atomically() {
     let second = session
         .publish_source_recovery("ac913-repub")
         .expect("second");
-    assert_ne!(first.manifest_artifact, second.manifest_artifact);
+    assert_ne!(
+        first.manifest_artifact, second.manifest_artifact,
+        "the edited accepted state is a different manifest"
+    );
     let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
     let roots = handle
         .root_artifacts("ac913-repub", "source-recovery-current")
@@ -522,6 +525,344 @@ fn av_closures_recovery_913_missing_required_data_is_a_named_miss() {
     ]);
     assert!(!probe.ok, "a purged root must not restore: {}", probe.line);
     assert_eq!(probe.json["code"], "recovery.miss");
+}
+
+/// A synthetic publication request: enough shape to reach the guards that do
+/// not require a real production (CAS, caps, addressing). The unit's identity
+/// wire and fingerprint are self-consistent, so only the guard under test can
+/// reject it.
+fn synthetic_publication<'a>(
+    project: &'a str,
+    generation: u64,
+    artifact: &'a str,
+    context_payload: &'a [u8],
+) -> PublicationRequest<'a> {
+    PublicationRequest {
+        project,
+        source_sha256: "a".repeat(64).leak(),
+        source_len: SRC.len(),
+        logical_owner: "main.at",
+        owner_module: "m_src",
+        owner_schema: "auto.mir.av-closures/1",
+        entry: "d_main",
+        profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+        capabilities: &[],
+        accepted_generation: generation,
+        commit_point: generation,
+        context_revision: "ctx",
+        accepted_state_schema: RECOVERY_SCHEMA,
+        context_payload,
+        context_schema: "ace.closures.context-dump/1",
+        units: vec![RecoveryUnitInput {
+            unit: "d_main".into(),
+            logical: "owner".into(),
+            body_digest: "b".into(),
+            dependency_digest: "c".into(),
+            env_layout_identity: None,
+            mir_identity: format!("{:016x}", ace_av_core::contract::fnv1a64(&[1, 2, 3, 4])),
+            body_fp: "e".into(),
+            wire_bytes: 4,
+            artifact: artifact.to_string(),
+            mint_span: (0, 1),
+            current_span: (0, 1),
+            identity_wire: vec![1, 2, 3, 4],
+        }],
+    }
+}
+
+#[test]
+fn av_closures_recovery_913_stale_generation_cannot_overwrite_newer_root() {
+    // V-07: a slow publication carrying an OLD accepted generation must not
+    // overwrite a newer root, and must not disturb its required closure.
+    let store = temp_store("cas");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    session.apply_source(SRC).expect("cold");
+    let first = session.publish_source_recovery("ac913-cas").expect("first");
+    assert_eq!(first.accepted_generation, 0);
+    let warm = session.apply_source(&edited_source()).expect("warm");
+    assert_eq!(warm.value, 48);
+    let second = session.publish_source_recovery("ac913-cas").expect("second");
+    assert_eq!(second.accepted_generation, 1, "the edit advanced the generation");
+    // A stale (generation 0) publication attempt is refused before any write.
+    let stale = publish_source_recovery(
+        &store,
+        synthetic_publication("ac913-cas", 0, &second.manifest_artifact, b"{}"),
+    );
+    assert_eq!(
+        stale.expect_err("a stale generation must not publish").code,
+        "recovery.stale-generation"
+    );
+    let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+    let roots = handle
+        .root_artifacts("ac913-cas", "source-recovery-current")
+        .expect("roots");
+    assert_eq!(
+        roots,
+        vec![second.manifest_artifact.clone()],
+        "the newer root survives a stale publication"
+    );
+    drop(handle);
+    // The surviving root restores the EDITED source with zero production.
+    let store_arg = store.to_string_lossy().to_string();
+    let edited_path = write_source(&store, "edited.at", &edited_source());
+    let edited_arg = edited_path.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &second.manifest_artifact,
+        &second.manifest_digest,
+        &edited_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(probe.ok, "the newer root must restore: {}", probe.line);
+    assert_eq!(probe.json["restore_value"], 48);
+    session.close().expect("close");
+}
+
+#[test]
+fn av_closures_recovery_913_gc_keeps_rooted_required_closure() {
+    // V-08 minimal: a rooted manifest keeps its required closure alive across
+    // a real GC pass; without the root the same data is collectable.
+    let p = publish("gc-rooted");
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    ace_artifacts::store::gc::run_gc(
+        &handle,
+        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .expect("gc");
+    drop(handle);
+    let store_arg = p.store.to_string_lossy().to_string();
+    let source_arg = p.source.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &p.manifest,
+        &p.digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(
+        probe.ok,
+        "a rooted recovery closure must survive GC: {}",
+        probe.line
+    );
+    assert_eq!(probe.json["restore_value"], 51);
+    assert_eq!(probe.json["p_axis_attempts"], 0);
+    // CONTROL: without a root the required data is no longer protected.
+    let handle = ace_artifacts::store::ManagedStore::open(&p.store).expect("store");
+    handle
+        .remove_root("ac913-recovery", "source-recovery-current", &p.manifest)
+        .expect("remove root");
+    ace_artifacts::store::gc::run_gc(
+        &handle,
+        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .expect("gc");
+    drop(handle);
+    let probe = run_probe(&[
+        &store_arg,
+        &p.manifest,
+        &p.digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(
+        !probe.ok,
+        "unrooted required data must be collectable: {}",
+        probe.line
+    );
+}
+
+#[test]
+fn av_closures_recovery_913_a_commit_b_publish_failure_keeps_old_binding() {
+    // V-07: the source commit (A) and the recovery publication (B) are
+    // SEPARATE states. A failed B never claims an A rollback and never hands
+    // out a new ticket: the old binding still restores the OLD source, and
+    // the NEW source has no binding at all.
+    let store = temp_store("ab-split");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    session.apply_source(SRC).expect("cold");
+    let first = session.publish_source_recovery("ac913-ab").expect("first");
+    // A: the parent accepts the edited source (source commit happened).
+    let warm = session.apply_source(&edited_source()).expect("warm");
+    assert_eq!(warm.value, 48);
+    // B: the publication of the NEW state fails.
+    let failed = publish_source_recovery(
+        &store,
+        synthetic_publication("ac913-ab", 99, &first.manifest_artifact, b""),
+    );
+    assert!(
+        failed.is_err(),
+        "the failed publication must report an error, not a ticket"
+    );
+    session.close().expect("close");
+    // The project root still points at the FIRST manifest and the store still
+    // protects it (closing the session does not retire the project's root).
+    let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+    let roots = handle
+        .root_artifacts("ac913-ab", "source-recovery-current")
+        .expect("roots");
+    assert_eq!(roots, vec![first.manifest_artifact.clone()]);
+    drop(handle);
+    // The OLD binding restores the OLD source...
+    let store_arg = store.to_string_lossy().to_string();
+    let base_arg = p_source_arg(&store, "base.at", SRC);
+    let probe = run_probe(&[
+        &store_arg,
+        &first.manifest_artifact,
+        &first.manifest_digest,
+        &base_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(probe.ok, "the old binding must still restore: {}", probe.line);
+    assert_eq!(probe.json["restore_value"], 51);
+    // ...and the NEW source is NOT restoreable through it (no fake rollback,
+    // no hidden re-binding).
+    let edited_arg = p_source_arg(&store, "edited2.at", &edited_source());
+    let probe = run_probe(&[
+        &store_arg,
+        &first.manifest_artifact,
+        &first.manifest_digest,
+        &edited_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(!probe.ok, "the new source has no binding: {}", probe.line);
+    assert!(
+        matches!(
+            probe.json["code"].as_str(),
+            Some("recovery.envelope") | Some("recovery.source-mismatch")
+        ),
+        "unexpected rejection: {}",
+        probe.line
+    );
+}
+
+fn p_source_arg(dir: &Path, name: &str, src: &str) -> String {
+    write_source(dir, name, src).to_string_lossy().to_string()
+}
+
+#[test]
+fn av_closures_recovery_913_bad_state_cold_repair_then_restore_again() {
+    // V-10: a missing/bad accepted state is a named MISS; the caller repairs
+    // by an explicit COLD rebuild and a fresh publication, and the NEXT fresh
+    // process restores with zero production again — the earlier failure is
+    // not papered over.
+    let store = temp_store("repair");
+    let src_path = write_source(&store, "main.at", SRC);
+    let mut parent = ClosuresFunctionSession::new(&store, "main.at");
+    parent.apply_source(SRC).expect("cold");
+    let first = parent.publish_source_recovery("ac913-repair").expect("publish");
+    parent.close().expect("close");
+    // Break the accepted state.
+    let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+    handle.purge_layer("A23-R").expect("purge recovery layer");
+    drop(handle);
+    let request = RestoreRequest {
+        expected_manifest: &first.manifest_artifact,
+        expected_digest: &first.manifest_digest,
+        source: SRC,
+        logical_owner: "main.at",
+        entry: "d_main",
+        profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+        capabilities: &[],
+        read_only: true,
+    };
+    let err = restore_source_recovery(&store, &request).err().expect("miss");
+    assert!(
+        err.code == "recovery.miss",
+        "a broken accepted state is a named miss: {err:?}"
+    );
+    // REPAIR: an explicit cold rebuild + a NEW publication (never a silent
+    // reuse of the broken root).
+    let mut repaired = ClosuresFunctionSession::new(&store, "main.at");
+    let cold = repaired.apply_source(SRC).expect("cold repair");
+    assert_eq!(cold.value, 51);
+    let second = repaired.publish_source_recovery("ac913-repair").expect("republish");
+    assert_eq!(
+        first.manifest_artifact, second.manifest_artifact,
+        "a byte-identical accepted state is the SAME content-addressed artifact"
+    );
+    repaired.close().expect("close");
+    // The next fresh process restores the repaired state with P=0.
+    let store_arg = store.to_string_lossy().to_string();
+    let source_arg = src_path.to_string_lossy().to_string();
+    let probe = run_probe(&[
+        &store_arg,
+        &second.manifest_artifact,
+        &second.manifest_digest,
+        &source_arg,
+        "main.at",
+        "d_main",
+        ace_core::source::CLOSURES_SOURCE_PROFILE,
+    ]);
+    assert!(probe.ok, "the repaired root must restore: {}", probe.line);
+    assert_eq!(probe.json["restore_value"], 51);
+    assert_eq!(probe.json["p_axis_attempts"], 0);
+    assert_eq!(probe.json["r_deep_verifies"], 5);
+}
+
+#[test]
+fn av_closures_recovery_913_read_only_restore_leaves_the_store_bytes_alone() {
+    // V-09 minimal (data/root write zero): a restore runs against the caller's
+    // PRE-AUTHORIZED root and performs no data or root write. The evidence is
+    // the store's own files: their size and modification time must not move.
+    let p = publish("readonly");
+    let snapshot = |dir: &Path| {
+        let mut rows = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("read store dir") {
+            let entry = entry.expect("dir entry");
+            let meta = entry.metadata().expect("metadata");
+            rows.push((
+                entry.file_name().to_string_lossy().to_string(),
+                meta.len(),
+                meta.modified().ok(),
+            ));
+        }
+        rows.sort();
+        rows
+    };
+    let before = snapshot(&p.store);
+    let request = RestoreRequest {
+        expected_manifest: &p.manifest,
+        expected_digest: &p.digest,
+        source: SRC,
+        logical_owner: "main.at",
+        entry: "d_main",
+        profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+        capabilities: &[],
+        read_only: true,
+    };
+    let restored = restore_source_session(&p.store, &request).expect("read-only restore");
+    assert_eq!(restored.restore_value, Some(51));
+    let after = snapshot(&p.store);
+    // The store's own liveness LOCK directory is refreshed by opening the
+    // store (an OS-held shared lock, not a data/root write). Everything that
+    // carries DATA — the database and every content/staging/trash directory —
+    // must be byte- and time-identical.
+    let data_rows = |rows: &[(String, u64, Option<std::time::SystemTime>)]| {
+        rows.iter()
+            .filter(|(name, _, _)| name != "locks")
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        data_rows(&before),
+        data_rows(&after),
+        "a read-only restore must not write the store's data or root state"
+    );
+    let db = before
+        .iter()
+        .find(|(name, _, _)| name == "journal.db")
+        .expect("store database");
+    assert!(db.1 > 0);
 }
 
 #[test]
