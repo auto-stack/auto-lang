@@ -52,6 +52,11 @@ pub enum NonFastReason {
     /// The lambda (old or new) contains nested lambdas and was edited alone;
     /// the owner route handles nesting through reuse.
     LambdaNested,
+    /// PLAN-913: the context was restored from persisted DECLARATIONS, so a
+    /// retained BODY cannot be reused. An edit that needs one (the owner
+    /// route's lambda reuse) is this named non-fast; the caller then runs the
+    /// whole-module truth path and reports its production honestly.
+    RestoredContext,
 }
 
 /// One unit of the retained catalog (index = the fn's index in the retained
@@ -191,6 +196,50 @@ pub struct ClosuresFunctionFrontend {
     /// The declaration-context fingerprint of the accepted document (the
     /// `context_revision` every unit credential binds).
     context_revision: String,
+    /// PLAN-913: this frontend came from persisted declarations (bodies are
+    /// scaffolds, not retained bodies) — the owner route must decline.
+    restored: bool,
+}
+
+impl ClosuresFunctionFrontend {
+    /// PLAN-913 T-05: build a frontend from a RESTORED declaration context.
+    /// The environment carries signature-only entries for every function
+    /// (empty bodies/locals) — they are document scaffolds, never bodies the
+    /// warm path may reuse. Route vetoes that depend on a retained body are
+    /// the caller's named non-fast decision, not a silent widening here.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_restored(
+        env: CheckedEnv,
+        source: String,
+        source_sha: String,
+        module_path: String,
+        capabilities: Vec<String>,
+        units: Vec<UnitEntry>,
+        registry: ClosuresVerifyContext,
+        next_logical: u64,
+        generation: u64,
+        context_revision: String,
+    ) -> Self {
+        ClosuresFunctionFrontend {
+            env,
+            source,
+            source_sha,
+            module_path,
+            capabilities,
+            units,
+            registry,
+            next_logical,
+            generation,
+            context_revision,
+            restored: true,
+        }
+    }
+
+    /// PLAN-913 T-05: is this a context rebuilt from persisted declarations
+    /// (so a retained BODY cannot be reused)?
+    pub fn is_restored(&self) -> bool {
+        self.restored
+    }
 }
 
 fn fnv64(bytes: &[u8]) -> u64 {
@@ -376,6 +425,7 @@ impl ClosuresFunctionFrontend {
                 next_logical,
                 generation: 0,
                 context_revision,
+                restored: false,
             },
             parts,
             checked,
@@ -577,6 +627,13 @@ impl ClosuresFunctionFrontend {
         range: Range<usize>,
         replacement: &str,
     ) -> Result<Result<ClosuresFnCandidate, NonFastReason>, Vec<Diagnostic>> {
+        // PLAN-913: a restored context carries declarations only — the owner
+        // route would push retained lambda BODIES that do not exist here. It
+        // declines by name so the caller runs the whole-module truth path
+        // (whose production is reported on the whole axis, not hidden).
+        if self.restored {
+            return Ok(Err(NonFastReason::RestoredContext));
+        }
         let UnitKind::Owner { lambdas } = &self.units[owner_idx].kind else {
             unreachable!("owner unit")
         };

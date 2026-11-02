@@ -10,6 +10,10 @@ publish = false
 # PLAN-871 T-06: the Cranelift lowering stack is GONE with `native.rs` (the
 # backend now lives in ac-mn); this crate is frontend/HIR/verify/link only.
 anyhow = "1"
+# PLAN-913 T-03: the portable closures DECLARATION context is serialized as
+# untrusted data (serde derive on the context module's own mirror types only —
+# no core AST/HIR/resolver type gains a serialized form).
+serde = { version = "1", features = ["derive"] }
 # Phase 3 (R2-QA-02): Job Object containment for the deadline executor —
 # descendants that inherit our stdout/stderr pipes must die with the direct
 # child, or the post-exit output collection can wait forever. Only the
@@ -28,6 +32,9 @@ windows-sys = { version = "0.59", features = [
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # COFF symbol inspection for native_execution tests
 object = "0.37"
+# PLAN-913 T-03: the context dump's wire form is serde JSON; the fidelity test
+# round-trips it through the real codec.
+serde_json = "1"
 
 [[test]]
 name = "conformance"

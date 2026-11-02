@@ -958,6 +958,65 @@ impl ClosuresVerifyContext {
         self.lambdas.get(def_id_text)
     }
 
+    /// PLAN-913 T-03: the portable declaration view of this registry.
+    pub(crate) fn declarations(
+        &self,
+    ) -> (
+        &BTreeMap<String, LambdaDecl>,
+        &BTreeMap<String, Vec<String>>,
+    ) {
+        (&self.lambdas, &self.sites_by_creator)
+    }
+
+    /// PLAN-913 T-03: re-form a registry from untrusted portable data. The
+    /// cross-body invariants the cold builder enforces are re-checked here:
+    /// every lambda has EXACTLY ONE creation site, every listed site names a
+    /// declared lambda, and each declaration's creator lists it. A violation
+    /// is a controlled rejection — a caller can never fill the registry with
+    /// a self-consistent text.
+    pub(crate) fn from_declarations(
+        lambdas: BTreeMap<String, LambdaDecl>,
+        sites_by_creator: BTreeMap<String, Vec<String>>,
+    ) -> Result<Self, String> {
+        let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+        for (creator, sites) in &sites_by_creator {
+            for callee in sites {
+                if !lambdas.contains_key(callee) {
+                    return Err(format!(
+                        "creator `{creator}` lists unknown lambda `{callee}`"
+                    ));
+                }
+                if let Some(previous) = seen.insert(callee.as_str(), creator.as_str()) {
+                    return Err(format!(
+                        "lambda `{callee}` is created at more than one site (`{previous}`, `{creator}`)"
+                    ));
+                }
+            }
+        }
+        for (callee, decl) in &lambdas {
+            let listed = sites_by_creator
+                .get(&decl.creator)
+                .is_some_and(|sites| sites.iter().any(|c| c == callee));
+            if !listed {
+                return Err(format!(
+                    "lambda `{callee}` is declared created by `{}` but absent from that creator's site list",
+                    decl.creator
+                ));
+            }
+            if decl.site_modes.len() != decl.env.len() {
+                return Err(format!(
+                    "lambda `{callee}` declares {} capture modes for {} environment fields",
+                    decl.site_modes.len(),
+                    decl.env.len()
+                ));
+            }
+        }
+        Ok(ClosuresVerifyContext {
+            lambdas,
+            sites_by_creator,
+        })
+    }
+
     pub fn is_lambda(&self, def_id_text: &str) -> bool {
         self.lambdas.contains_key(def_id_text)
     }

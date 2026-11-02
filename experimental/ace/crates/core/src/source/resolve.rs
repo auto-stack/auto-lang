@@ -811,6 +811,33 @@ impl Clone for FnSig {
     }
 }
 
+impl FnSig {
+    /// PLAN-913 T-03: the portable declaration view of this signature.
+    pub(crate) fn dump(&self) -> (Vec<String>, Vec<VT>, VT, usize) {
+        (
+            self.param_names.clone(),
+            self.params.clone(),
+            self.result,
+            self.index,
+        )
+    }
+}
+
+/// PLAN-913 T-03: re-form a signature from untrusted portable data.
+pub(crate) fn fn_sig_from_parts(
+    param_names: Vec<String>,
+    params: Vec<VT>,
+    result: VT,
+    index: usize,
+) -> FnSig {
+    FnSig {
+        param_names,
+        params,
+        result,
+        index,
+    }
+}
+
 pub fn resolve(
     program: &ast::Program,
     capabilities: &[String],
@@ -1914,6 +1941,30 @@ impl CheckedEnv {
     /// plus in-place rechecks) this environment has served.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+}
+
+/// PLAN-913 T-03: assemble a retained environment from portable declaration
+/// parts. Only the declaration tables + per-function signatures are supplied;
+/// bodies are the caller's responsibility (a restored context is
+/// signature-only by construction).
+pub(crate) fn checked_env_from_parts(
+    program: ResolvedProgram,
+    rec_index: BTreeMap<String, usize>,
+    sigs: BTreeMap<String, FnSig>,
+    trace_enabled: bool,
+) -> CheckedEnv {
+    CheckedEnv {
+        program,
+        rec_index,
+        sigs,
+        trace_enabled,
+        profile: SourceProfile::Closures,
+        resolve_walks: 0,
+        check_walks: 0,
+        id: next_env_id(),
+        generation: 0,
+        closed: false,
     }
 }
 

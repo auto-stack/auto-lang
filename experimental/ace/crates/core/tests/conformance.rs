@@ -1,5 +1,7 @@
 #[path = "cases/closures_fn_912.rs"]
 mod closures_fn_912;
+#[path = "cases/closures_context_913.rs"]
+mod closures_context_913;
 #[path = "cases/closures_surface.rs"]
 mod closures_surface;
 #[path = "cases/collections.rs"]
