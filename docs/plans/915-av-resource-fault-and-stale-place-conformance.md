@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-915
-status: execution_done
+status: executing
 feature_name: AV资源故障与陈旧Place正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-av/resource-fault-and-generation-conforman
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-test-case]
 depends_on: [PLAN-821, PLAN-822, PLAN-864, PLAN-909, PLAN-912]
-current_step: 6
+current_step: 2
 total_steps: 10
 ---
 
@@ -114,10 +114,10 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 |---|---|---|---|---|---|
 | T-01 | work | 后续实施指令；D912；913/914实际S/H | 冻结两格/已有防护、hash/支持域/cap/consumer/唯一树材料与窗口 | AC-01..04 | [✅] |
 | T-02 | work | T-01；P/必要S | 最小源/typed逐点fault→清理→修复、合法stale→拒绝→fresh，冻结N/事实codec；缺可行路径needs_replan | AC-01/02/03 | [✅] |
-| T-03 | work | T-02；av-core资源S | 接既有fault seam/真实attempt/事务与显式清理，修实证缺口，V-01/02 | AC-01 | [✅] |
-| T-04 | work | T-02/03；Place/恢复只读S | 接真实使用期检查/危险访问事实、合法近邻与D912暖门，V-03/04/06 | AC-02/04 | [✅] |
-| T-05 | work | T-03/04；H/M1 | 正式case/codec/父判/独立oracle/新固定组、两格父证据回填与全consumer，V-05/08 | AC-03/04 | [✅] |
-| T-06 | work | T-01..05；运行错峰 | V-01..08、原资源/时间/完整组/健康与遗漏自查，冻结SD/SHA→execution_done | AC-01..04 | [✅] |
+| T-03 | work | T-02；av-core资源S | 接既有fault seam/真实attempt/事务与显式清理，修实证缺口，V-01/02 | AC-01 | [ ] |
+| T-04 | work | T-02/03；Place/恢复只读S | 接真实使用期检查/危险访问事实、合法近邻与D912暖门，V-03/04/06 | AC-02/04 | [ ] |
+| T-05 | work | T-03/04；H/M1 | 正式case/codec/父判/独立oracle/新固定组、两格父证据回填与全consumer，V-05/08 | AC-03/04 | [ ] |
+| T-06 | work | T-01..05；运行错峰 | V-01..08、原资源/时间/完整组/健康与遗漏自查，冻结SD/SHA→execution_done | AC-01..04 | [ ] |
 | T-07 | review | T-06同树冻结SHA | 独立全链反例/支持/所有权/真实P0复审，修复重绑pass→reviewed | AC-05 | [ ] |
 | T-08 | merge | T-07 pass | 冻结受影响组/消费者并集或有效同身份证据；batch仅due主检出单实例 | AC-06 | [ ] |
 | T-09 | merge | T-08 | 合入、SD-01..07读回、窗口/残余owner交接并archive delivered | AC-06 | [ ] |
@@ -153,4 +153,25 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 - 复用证据：D912 暖链/未改函数身份由既有 `case-ace-m1-closures-fn-912` 在本冻结提交上重跑通过（未改该会话语义）；place.rs 的 Share/Static snapshot 单测未改；预算/布局/样本未变（本计划未改预算或布局）。
 - blockers：无。已知边界写在本计划 §10 D-04（集合旧前端粒度、其余 M1 格 owner 不变）。
 
-2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b1e6cf127 | next: review
+2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 1 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b1e6cf127 | next: review
+2026-11-02 | stage: review | review_scope: final | reviewer: 独立上下文子代理（fresh-context subagent，同机同模型族）+ 编排侧独立制品复核；限制=非独立模型/环境，结论按制品与可复跑命令重建 | plan_id: PLAN-915 | plan_revision: 1 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-915/auto-lang | branch: plan-915-dev | reviewed_commit: b1e6cf127 | base_commit: 5a0ef7609 | dependency_revisions: 无 | spec_inputs: SD-01 新文件 + SD-02..07 增补（工作树内已读）；frontmatter 声明的 7 条 docs/specs 路径均存在 | acceptance_results: AC-01 partial / AC-02 partial / AC-03 pass / AC-04 partial / AC-05 本审 needs_fix | pending_closeout_gates: merge 阶段受影响固定组并集（本审已见 9 组冻结 PASS 证据，merge 仍按冻结提交复核）、`cargo t all` 周期批量不属本计划 | next: work（修复 F-915-R1..R13 后重审）
+
+复核证据（均绑定 b1e6cf127）：独立子代理复跑 `cargo t case-ace-m1-resource-915` PASS 12/12（run-y3ctej3z）、`AV915_SABOTAGE=drop-point`/`no-stale` 均红、`cargo test -p auto-lang-core --lib resource_915_tests` 8/8、`worker_json_tests` 4/4、`ace-av resource_915` 7/7、`verify-ace-m1-852` contract+acceptance PASS；编排侧另核：分支 diff 29 文件无 stray artifact、binding 哈希=manifest、9 个 scenario asset 哈希全等、suite inventory 12 checks 全 RUN、scenario oracles/applicability 未改、9 组冻结并集 run-7zqs3bd7 gate_passed（ace-av 986 / auto-test-case 111 / resource 12 / collections-864 17 / closures-865 8 / shared-909 12 / closures-fn-912 13 / recovery-913 5 / order-layout-914 15）。
+
+findings（按独立复审报告编号）：
+- F-915-R1 major（AC-02/V-03 可测性）：「校验先于访问」目前只是代码顺序主张。`PlaceFacts.buffer_reads` 只在通过校验后的访问点自增，因此“先读后判”的错误实现仍可报 1；V-03 要求的“禁检查/事后 trap 红”负控缺失。修复：加 test-only `place_access_before_validate` seam（先访问并计同一计数器，再校验），crate 单测证明计数器会变 2，worker `AV915_SABOTAGE=read-first` 让父侧冻结 `buffer_reads=1` 判红。
+- F-915-R2 major（AC-04/V-07 时间门）：§5.3 的“四状态×30 样本 P90≤2000ms + fault 遍历/单编辑时间分列”未在 b1e6cf127 执行（该腿在 `ace-performance` 组，不在 9 组并集内）。修复：跑命名性能腿并记录数字，或按 912 基线给出具名 deferral；不得以“预算/样本未变”代替。
+- F-915-R3 minor（AC-01）：值 seam 只在 `ListPush` 计扩容；`ListInsert` 同样重分配却未计 attempt，SD-01 §2「List 容量扩容」表述过宽。修复：insert 扩容也计 attempt，或收窄规则。
+- F-915-R4 minor（AC-01/SD-01 §2）：正文断言 arena 点 `successful = n-1`，但父判与 crate 测试都只判 faulted/live/message，ledger 的 attempts/successful/frees 未被判。修复：父判补这三轴（并同步单测夹具），或删该断言。
+- F-915-R5 minor（健康/AC-01）：`tests/cases/resource_915.rs:180` 的 `const LSTR` 未使用（新编译器 warning），且“LSTR 有 crate 覆盖”的说法不成立。修复：把 LSTR 纳入 sweep 测试。
+- F-915-R6 minor（健康）：ac_av.rs 基线 33 处 rustfmt 偏差、当前 35 处，新增区含 2 处（resource_core_axis 一带），与“新增区域已对齐”不符。修复：格式化新增区。
+- F-915-R7 minor（AC-03 注册表）：`source-manifest.json` 的 `scenario_assets_915.files` 重复 `src/R03-av.at`、`src/R03-static-reject.at`（重复 JSON key），summary 仍写 “8 asset files” 而 expected_count=9。修复：去重 + 改文案。
+- F-915-R8 minor（AC-03/SD-06）：未知键拒绝只在 `resource` face 生效；`place`/`capture` face 忽略多余键，而 SD-06 声称“未知键…均拒”。修复：三个 face 都做已知键门，或收窄规范措辞。
+- F-915-R9 minor（SD-02/SD-03）：把“未变元素/活 Share/Static 缓冲仍可读”写成本计划观测到的证据；实际只跑了 fresh-token 与无变更 legal，Share/Static 是继承的未改单测。修复：改写为继承不变量或补控制。
+- F-915-R10 minor（基线记录）：§4 把 `7b309217…` 记为基线、§9 把 `9563cfc6…` 记为基线；真实基线是 `134d93f6…`（7b/9563 均为本次改动后的值）。修复：改正两处。
+- F-915-R11 minor（SD-05/SD-06 文本）：SD-05 的 42 值清单漏 LSTR=51；SD-06 仍写“四份语料字节拷贝源”（实为 5 份；目录共 7 个 .at）；5 个被改 spec 文件缺行尾换行。修复：补齐。
+- F-915-R12 minor（SD-01 §4/实现）：`finish_trace` 未用于 resume 路径（av.rs:739/757），stepped+observe_places 会返回 `place_facts=None`/`alloc_events=0`，与规范不符。修复：两处 resume 出口也走 `finish_trace`。
+- F-915-R13 minor（AC-01）：逐点“源/旧值不变”是断言而非测量；source 程序无宿主源值可测。修复：在 SD-01/§10 明确边界（原子性由 Infra+live=0+确定性重跑证明；typed capture 面另行测 source readable），或补 digest。
+
+规范增量复核：SD-01 原则接受但需按 R3/R4/R13 修正（补 LSTR=51）；SD-02 需按 R9 修正（MutRef 边界表述本身正确）；SD-03 需按 R3/R9 修正（“先于 buffer 访问”是代码顺序而非测量）；SD-04 接受；SD-05 需按 R2/R11 修正（仅到重编译级恢复，不交 P90/会话状态；补 LSTR）；SD-06 需按 R8/R11 修正；SD-07 接受（只关两格 av，can_claim_m1=false 已核）。
+2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b1e6cf127 | next: work
