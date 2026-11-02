@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-915
-status: execution_done
+status: reviewed
 feature_name: AV资源故障与陈旧Place正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-av/resource-fault-and-generation-conforman
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-test-case]
 depends_on: [PLAN-821, PLAN-822, PLAN-864, PLAN-909, PLAN-912]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -118,7 +118,7 @@ work自查→同一唯一实施树独立上下文review→merge。新增长期�
 | T-04 | work | T-02/03；Place/恢复只读S | 接真实使用期检查/危险访问事实、合法近邻与D912暖门，V-03/04/06 | AC-02/04 | [✅] |
 | T-05 | work | T-03/04；H/M1 | 正式case/codec/父判/独立oracle/新固定组、两格父证据回填与全consumer，V-05/08 | AC-03/04 | [✅] |
 | T-06 | work | T-01..05；运行错峰 | V-01..08、原资源/时间/完整组/健康与遗漏自查，冻结SD/SHA→execution_done | AC-01..04 | [✅] |
-| T-07 | review | T-06同树冻结SHA | 独立全链反例/支持/所有权/真实P0复审，修复重绑pass→reviewed | AC-05 | [ ] |
+| T-07 | review | T-06同树冻结SHA | 独立全链反例/支持/所有权/真实P0复审，修复重绑pass→reviewed | AC-05 | [✅] |
 | T-08 | merge | T-07 pass | 冻结受影响组/消费者并集或有效同身份证据；batch仅due主检出单实例 | AC-06 | [ ] |
 | T-09 | merge | T-08 | 合入、SD-01..07读回、窗口/残余owner交接并archive delivered | AC-06 | [ ] |
 | T-10 | merge | T-09 | 所有实际输出摘要折计划，guard clean后清唯一树/分支/组/整个scope及登记 | AC-06 | [ ] |
@@ -194,3 +194,6 @@ findings（按独立复审报告编号）：
 环境记录（如实）：修复后第一次并集 run-wkvab0yh 在 **同一代码** 上红——(a) `closures_fn_formal_states_scale_and_churn` fresh P90=2609ms 超门（机器负载态，独立复跑 P90=668ms 通过；该测试在 9 组并集中须独占资源）；(b) closures-865/909/912 三个 case 组因 `%TEMP%\av798-session-*` 被上一轮运行留温、fresh 计数变 hit 而红（清温后同提交 9/9 绿）。两者均按环境归因保留记录，不记为代码失败。
 blockers：无。
 2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b65f21ce9 | next: review
+2026-11-02 | stage: review | review_scope: final（repair re-review）| reviewer: 同一独立上下文子代理（对上轮 F-915-R1..R13 逐项复验）+ 编排侧制品复核 | plan_id: PLAN-915 | plan_revision: 1 | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | branch: plan-915-dev | reviewed_commit: b65f21ce9 | base_commit: b1e6cf127（首审基线 5a0ef7609）| dependency_revisions: 无 | spec_inputs: SD-01..07（修复后文本，7 条路径均存在、均以换行结尾）| acceptance_results: AC-01 pass / AC-02 pass / AC-03 pass / AC-04 pass / AC-05 pass（本审）| pending_closeout_gates: merge 阶段冻结受影响组并集（已有同提交 9/9 PASS 证据 run-_6dtmkih，merge 按冻结提交复核/复用）、落主后 `cargo build -p auto` 落地检查、归档/清理与登记 | next: merge
+复验证据（均绑定 b65f21ce9）：逐项 R1..R13 全闭——R1 错误顺序控制（正确 buffer_reads=1、错误=3；worker read-first 使 4 个 stale 检查红，`expected 1, actual 3`）；R2 复审者亲跑四状态 P90（fresh 593 / hit 5 / restart 148 / body-edit 30ms ≤2000，且该测试在 ace-av `all()` 组内）；R3 insert 扩容 attempt + typed cap-1 测试；R4 ledger 三轴父判 + 负控；R5 LSTR 进 crate sweep（51/5/3，无残留 warning）；R6 新文件 rustfmt 0、ac_av.rs 回到基线 33 处；R7 manifest 9 唯一键 + 文案，contract 复跑 PASS；R8 三 face 及嵌套未知键门；R9/R11/R13 规范改写与行尾；R10 基线 hash 更正；R12 两处 resume 出口 `finish_trace`。复跑：父判 10/10、worker_json 4/4、crate 9/9、resource 组 12/12 PASS、read-first 红、contract PASS；冻结并集 run-_6dtmkih（9/9、gate_passed、599s、executed 988/111/12/17/8/12/13/5/15）的 source_state 与当前树一致，即绑定 b65f21ce9。无新回归；SD-01..07 全部 accepted；binding 仅两格 av 变化，can_claim_m1 仍 false。复审限制：同一子代理复验（同模型族/同机），非独立模型环境。
+2026-11-02 | stage: goal | plan_id: PLAN-915 | plan_revision: 1 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-915/auto-lang | commit: b65f21ce9 | next: merge
