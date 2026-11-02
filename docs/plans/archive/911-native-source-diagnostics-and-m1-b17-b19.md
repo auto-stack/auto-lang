@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-ac/native-source-diagnostics.md]
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-av, auto-test-case, native-diagnostics]
 depends_on: [PLAN-908, PLAN-818, PLAN-871]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -279,7 +279,7 @@ work内部逐AC/V/SD自查，final独立上下文review同唯一树顺序执行�
 | T-07 | review | T-06冻结提交；同树独立上下文 | 逐机制/数据流/判据/来源/反控/未执行及遗漏延期独立核，修复重绑身份，pass→reviewed | AC-06 | [x] R1 needs_fix（F-911-R1-01 step 轴）→ 修复 `4cf907fb7` → R2 final **pass**（同会话 artifact-based review，自选反例 A/A2/B/D + E 代码核 + 受影响重跑；见 §9 review R1/R2） |
 | T-08 | merge | T-07 pass | 冻结完整受影响职责/必要消费者门或有据同身份证据；漂移仅重核受影响；cargo t all按due主检出单实例/既有用户择时，不造每计划全局门 | AC-07 | [x] rebase `plan-911-dev` 4cf907fb7→**`ca4848f5d`**（onto master `5923d4dee`=910 归档，`range-diff` 9/9 `=`，零文件重叠）；先清 `%TEMP%/av798-session-av_closures_909_*`；冻结并集一次调用 14 组：**12 PASS**（auto-test-case / ace-adapters / infra-fixed / infra-ace-m1 / nd911 / base / nb-908 / typed-891 / collections-889 / shared-mutable-909 / ace-native-worker / ace-av），ace-native 174/175、ace-host 170/172——三红全为 `::performance::` 时序硬门：① 本包 V-13 腿（并集下 restart-warm P90 3407ms；机器残留负载时隔离红一次=PE 5s run-budget 超限表现为 exit None；安静单实例在 ca4848f5d **PASS 435s**，累计 4 次安静绿）→ D-911-4；② `abi_recipe_formal_turnaround_hard_gates` 隔离 **PASS** 49s（负载归因，非本 diff 触面）；③ `turnaround_native_six_scenarios_p95_gates` 隔离仍红 = master 已知 **D-909-1**。`cargo t all`：due（905/910 %5==0 已落）→ 沿 910 收据 user-pending 登记，不在计划树内跑。日志 `frozen-union.log`/`isolated-replays.log`/`perf-fail3.log` 摘要折本行 |
 | T-09 | merge | T-08 | 合入、SD-01..06/代码来源身份读回、M1状态与909并行接口/残余后继沉淀、archive delivered，不签M1 | AC-07 | [x] **landed**：主检出 `git merge --ff-only plan-911-dev` → master tip **`ca4848f5d`**（无 merge commit）。**canonical_verified**（master blob hash 前 12）：native-source-diagnostics.md `7e8e9d2e3537`（新）/ mir-native-scalar `badd9f083521` / mir-native-cache `4b1ba334a299` / auto-ac project `5d1b68db4021` / resident-function-install `7a1ebc265b0b` / profile-v2-native `2fa6f2e909c4` / auto-test-case project `9b79232d5fae` / ace-m1-conformance `cfcf0e99a5d7` / ace-m1-gap-audit `bed874142f3b`；源身份 source_diagnostics.rs `b6617a1944c0`、ac_mn.rs `654538e35553`、binding.tsv `a54c4a11594b`。M1 未签章；909 接口按交付基面单写无并行窗。**archived**：本文件 `git mv` → `docs/plans/archive/`，status archived，与 KNOWN-DEBT 同提交落 master |
-| T-10 | merge | T-09 | 摘要/hash/所有实际输出/hold对账；fresh wt-guard clean后清唯一树/分支/组/整个材料scope，刷新登记，真实10/10 | AC-07 | [ ] |
+| T-10 | merge | T-09 | 摘要/hash/所有实际输出/hold对账；fresh wt-guard clean后清唯一树/分支/组/整个材料scope，刷新登记，真实10/10 | AC-07 | [x] **cleaned**：交付 `ca4848f5d` 为 master 祖先核；树 clean（0 行）；fresh `wt-guard.sh` clean → `git worktree remove` + `git branch -d plan-911-dev`（was ca4848f5d）+ `rmdir .wt/lang-911`（组内无兄弟）；`git worktree list` 无 lang-911。材料 scope `plan-artifacts/plan-911`（344K/38 文件：探针脚本、组日志、T-01 冻结文档）整删，registry `auto-lang/PLAN-911` → archived/cleaned、无 holds。输出路径对账：计划命令仅用 worktree 内 `target/`（随树删）、`%TEMP%/mn911-*`/`rv911-*`（测试自清）、`%TEMP%/av798-session-av_closures_909_*`（909 套件产物，已清，D-911-1）、树内 `docs/reports/plan796|818|827/*.json` 测试回写（恢复未入提交，D-911-2）；无散落外置目录。**落地观察**：主检出无 release `auto.exe`；debug `auto-case.exe` 03:27 早于交付 08:53——主检出工具链未重建（ACE 实验通道无生产进程消费；完整冷编译为用户 2026-10-30 裁定问题项，登记不重建）。批量回归 due（905/910 已落）沿 910 收据 **user-pending**。真实 **10/10** |
 
 唯一拟树`D:/autostack/.wt/lang-911/auto-lang`、分支`plan-911-dev`，本轮未建。开工登记`D:/autostack/plan-artifacts/plan-911/` owner/用途/在途；探针/日志/JSON报告/变异副本/发行或外部target只在此scope，长期case/oracle入其职责路径。work/自查/独立review同树顺序。merge摘要折计划，核全部实际输出目录后整个scope/树产物删除；具名未解决问题才hold，不碰他方目录，不写attachments/散落证据/legacy specs.json。
 
@@ -356,6 +356,12 @@ stage: goal | plan_id: PLAN-911 | plan_revision: r2 | round: 4 | from: execution
 stage: merge | plan_id: PLAN-911 | plan_revision: r2 | completion_kind: **delivered** | reviewed_commit: `4cf907fb7`（rebase 前）→ delivery_commit: **`ca4848f5d`**（range-diff 9/9 等价） | base: `5923d4dee` | checkpoints: **prepared** ✓（reviewed+R2 pass、SD 增量冻结、源目标核）→ **landed** ✓（master==ca4848f5d ff-only）→ **canonical_verified** ✓（9 路径 hash 见 T-09）→ **archived** ✓（本��交）→ cleaned：见下一收据 | gates: 冻结并集见 T-08（12 PASS + 3 具名时序红：D-911-4 本腿负载/安静单实例绿、abi 隔离绿、D-909-1 既有）；`cargo t all` due user-pending（沿 910） | 残余：D-911-1..4（KNOWN-DEBT Plan 911 节）；M1 不签 | next: cleanup（T-10）
 
 stage: goal | plan_id: PLAN-911 | plan_revision: r2 | round: 5 | from: reviewed | to: archived | status: archived | outcome: pass（cleanup pending） | worktree: D:/autostack/.wt/lang-911/auto-lang | commit: ca4848f5d | next: merge-cleanup
+
+### merge 收据 PLAN-911:r2 — cleaned（2026-11-02）
+
+stage: merge | plan_id: PLAN-911 | plan_revision: r2 | outcome: **pass** | completion_kind: delivered | delivery_commit: `ca4848f5d`（master ff-only）| archive_commit: `be54108e9` | canonical: 9 Spec 路径与 hash 见 T-09 | archive_path: `docs/plans/archive/911-native-source-diagnostics-and-m1-b17-b19.md` | cleanup: worktree/分支/组目录已移除（guard clean）、scope plan-911 整删、registry 刷新、无 holds | pending merge-owned: `cargo t all` 批量回归 due → user-pending（沿 905/910 用户裁定语境，不在计划树内跑）；D-911-4 perf 腿并集并行调度治理（候选后继） | landing observation: 主检出工具链未重建（见 T-10）| 10/10
+
+stage: goal | plan_id: PLAN-911 | plan_revision: r2 | round: 5 | from: archived | to: archived | status: archived | outcome: pass | worktree: removed | commit: ca4848f5d | next: done
 
 ## 10. 待澄清事项
 
