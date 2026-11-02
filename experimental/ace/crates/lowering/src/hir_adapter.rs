@@ -695,6 +695,236 @@ pub fn lower_function_closures_unit(
     capabilities: &[String],
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
+    lower_function_closures_unit_with(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        &ModuleScanFacts,
+    )
+}
+
+/// PLAN-912 §5.2: lower ONE closures unit from a verifier-minted
+/// single-function credential. The document (`bundle`) carries the target
+/// body plus body-less scaffolds; every closure fact the body cannot see —
+/// its own environment layout and cell flags, each creation site's callee
+/// environment and operand kinds — comes from the credential's
+/// [`ClosureBodyFacts`](ace_core::verify::ClosureBodyFacts), never from a scan
+/// of other bodies. The credential must be FOR `def_id_text` (owner/domain
+/// mismatch is a named rejection) and the lowered mapping is byte-identical
+/// to the whole-module derivation for the same facts (no
+/// `MIR_LOWERING_VERSION` bump: same rules, verified source).
+pub fn lower_function_closures_unit_checked(
+    bundle: &hir::Bundle,
+    credential: &ace_core::verify::CheckedFunction,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    if credential.domain() != hir::HirDomain::Closures {
+        return Err(AdapterError::uns(
+            "lower.domain",
+            format!(
+                "credential domain `{}` is outside the av.closures/1 profile",
+                credential.domain().as_str()
+            ),
+        ));
+    }
+    let Some(facts) = credential.closure_facts() else {
+        return Err(AdapterError::inv(
+            "lower.closure-facts",
+            format!(
+                "credential for `{}` carries no closure facts; only `verify_closures_function` mints a lowerable closures credential",
+                credential.def_id_text()
+            ),
+        ));
+    };
+    let module = bundle.modules.first().ok_or_else(|| {
+        AdapterError::uns("lower.modules", "expected exactly one module".to_string())
+    })?;
+    if module.id_text != credential.owner() {
+        return Err(AdapterError::inv(
+            "lower.closure-facts",
+            format!(
+                "credential owner `{}` is not this document's module `{}`",
+                credential.owner(),
+                module.id_text
+            ),
+        ));
+    }
+    // The document's target body must BE the credential's body (span-free
+    // content digest) — a same-owner different-body document cannot borrow
+    // another body's facts (PLAN-904 V-13 rule carried to lowering).
+    let target = module
+        .defs
+        .iter()
+        .find(|d| d.id_text == credential.def_id_text())
+        .ok_or_else(|| {
+            AdapterError::inv(
+                "lower.entry",
+                format!("no function named `{}` in module", credential.def_id_text()),
+            )
+        })?;
+    if let hir::DefKind::Function { body, .. } = &target.kind {
+        let doc_body = module.bodies.get(body.0 as usize).ok_or_else(|| {
+            AdapterError::inv("lower.body-ref", format!("body {} out of range", body.0))
+        })?;
+        if ace_core::collections_facts::body_content_digest(doc_body) != credential.body_digest() {
+            return Err(AdapterError::inv(
+                "lower.closure-facts",
+                format!(
+                    "document body of `{}` differs from the credential's verified body",
+                    credential.def_id_text()
+                ),
+            ));
+        }
+    }
+    let checked = CheckedClosureFacts {
+        facts,
+        target: credential.def_id_text().to_string(),
+    };
+    lower_function_closures_unit_with(
+        bundle,
+        credential.def_id_text(),
+        capabilities,
+        source_snapshot,
+        &checked,
+    )
+}
+
+/// One environment field as lowering consumes it (PLAN-912): HIR type, body
+/// writability and the cell flag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EnvFieldFact {
+    pub ty: hir::TypeUse,
+    pub mutable: bool,
+    pub cell: bool,
+}
+
+/// PLAN-912 §5.2: the closure facts lowering needs about a def — whether it
+/// is a closure body and, if so, its environment fields in capture-index
+/// order. The provider decides the trust model: [`ModuleScanFacts`] derives
+/// them from the whole checked module (the cold truth path; every body is
+/// real), [`CheckedClosureFacts`] reads them from a verifier-minted
+/// single-function credential (a scoped document cannot see other bodies).
+/// Lowering never computes them a third way.
+pub trait ClosureFacts {
+    fn env_of(
+        &self,
+        module: &hir::Module,
+        def_index: u32,
+    ) -> Result<Option<Vec<EnvFieldFact>>, AdapterError>;
+}
+
+/// Whole-module derivation (PLAN-865/909 rules, unchanged): a def is a
+/// closure body iff some body creates it; fields are its Capture locals in
+/// index order; a field is a cell iff the (site-unique) creating site
+/// captured it `Shared`, or `Move` with the body local declared mutable.
+pub struct ModuleScanFacts;
+
+impl ClosureFacts for ModuleScanFacts {
+    fn env_of(
+        &self,
+        module: &hir::Module,
+        def_index: u32,
+    ) -> Result<Option<Vec<EnvFieldFact>>, AdapterError> {
+        let Some(site) = module.bodies.iter().find_map(|other| {
+            other.exprs.iter().find_map(|expr| match &expr.kind {
+                hir::ExprKind::CreateClosure { callee, captures } if callee.0 == def_index => {
+                    Some(captures)
+                }
+                _ => None,
+            })
+        }) else {
+            return Ok(None);
+        };
+        let def = module.defs.get(def_index as usize).ok_or_else(|| {
+            AdapterError::inv("lower.callee", format!("callee def {def_index} out of range"))
+        })?;
+        let hir::DefKind::Function { body, .. } = &def.kind else {
+            return Err(AdapterError::uns(
+                "lower.function-kind",
+                "closures source units currently require free functions only".to_string(),
+            ));
+        };
+        let body = module.bodies.get(body.0 as usize).ok_or_else(|| {
+            AdapterError::inv(
+                "lower.body-ref",
+                format!("closure body {} out of range", body.0),
+            )
+        })?;
+        let mut captures: Vec<&hir::LocalDef> = body
+            .locals
+            .iter()
+            .filter(|local| local.role == hir::LocalRole::Capture)
+            .collect();
+        captures.sort_by_key(|local| local.index);
+        Ok(Some(
+            captures
+                .iter()
+                .enumerate()
+                .map(|(field, local)| EnvFieldFact {
+                    ty: local.ty,
+                    mutable: local.mutable,
+                    cell: match site.get(field).map(|c| c.mode) {
+                        Some(hir::CaptureMode::Shared) => true,
+                        Some(hir::CaptureMode::Move) => local.mutable,
+                        _ => false,
+                    },
+                })
+                .collect(),
+        ))
+    }
+}
+
+/// Credential-backed facts (PLAN-912): the target's own env from
+/// `facts.env`, a referenced callee's env from the creation site recorded in
+/// `facts.sites`. Any other def is not a closure body as far as this unit
+/// is concerned (the verifier already rejected direct calls to lambdas).
+pub struct CheckedClosureFacts<'a> {
+    pub facts: &'a ace_core::verify::ClosureBodyFacts,
+    pub target: String,
+}
+
+impl ClosureFacts for CheckedClosureFacts<'_> {
+    fn env_of(
+        &self,
+        module: &hir::Module,
+        def_index: u32,
+    ) -> Result<Option<Vec<EnvFieldFact>>, AdapterError> {
+        let Some(def) = module.defs.get(def_index as usize) else {
+            return Err(AdapterError::inv(
+                "lower.callee",
+                format!("callee def {def_index} out of range"),
+            ));
+        };
+        let fields = if def.id_text == self.target {
+            self.facts.env.as_ref()
+        } else {
+            self.facts
+                .sites
+                .iter()
+                .find(|s| s.callee == def.id_text)
+                .map(|s| &s.callee_env)
+        };
+        Ok(fields.map(|env| {
+            env.iter()
+                .map(|f| EnvFieldFact {
+                    ty: f.ty,
+                    mutable: f.mutable,
+                    cell: f.cell,
+                })
+                .collect()
+        }))
+    }
+}
+
+fn lower_function_closures_unit_with(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    facts: &dyn ClosureFacts,
+) -> Result<MirModule, AdapterError> {
     if bundle.domain != hir::HirDomain::Closures {
         return Err(AdapterError::uns(
             "lower.domain",
@@ -776,7 +1006,7 @@ pub fn lower_function_closures_unit(
             ));
         };
         let sig = collections_fn_sig_for_def(module, def_index, *ty, &mut out)?;
-        let env = closures_env_for_def(module, def_index, *body, &mut out)?;
+        let env = closures_env_for_def(module, def_index, *body, &mut out, facts)?;
         let import = out.intern_import(MirImport {
             symbol: format!("fn:{}", def.id_text),
             effect: Effect::Pure,
@@ -785,7 +1015,7 @@ pub fn lower_function_closures_unit(
         });
         def_map.insert(def_index, CalleeRef::Import(import));
     }
-    let function = lower_function(
+    let function = lower_function_with(
         module,
         &mut out,
         di as u32,
@@ -797,51 +1027,36 @@ pub fn lower_function_closures_unit(
         false,
         true,
         &BTreeMap::new(),
+        facts,
     )?;
     out.funcs.push(function);
     out.entry = 0;
     Ok(out)
 }
 
+/// The `fn:` import environment declaration of a referenced def: `None` for
+/// a plain function, the env layout (cell fields as their List
+/// representation) for a closure body. The fact provider is the ONE source
+/// — the import declaration, the body's slot types and the creator's operand
+/// shapes can never disagree.
 fn closures_env_for_def(
     module: &hir::Module,
     def_index: u32,
-    body_id: hir::BodyId,
+    _body_id: hir::BodyId,
     out: &mut MirModule,
+    facts: &dyn ClosureFacts,
 ) -> Result<Option<Vec<TypeIdx>>, AdapterError> {
-    let is_closure_body = module.bodies.iter().any(|body| {
-        body.exprs.iter().any(|expr| {
-            matches!(expr.kind, hir::ExprKind::CreateClosure { callee, .. } if callee.0 == def_index)
-        })
-    });
-    if !is_closure_body {
+    let Some(fields) = facts.env_of(module, def_index)? else {
         return Ok(None);
-    }
-    let body = module.bodies.get(body_id.0 as usize).ok_or_else(|| {
-        AdapterError::inv(
-            "lower.body-ref",
-            format!("closure body {} out of range", body_id.0),
-        )
-    })?;
-    let mut captures: Vec<_> = body
-        .locals
-        .iter()
-        .filter(|local| local.role == hir::LocalRole::Capture)
-        .collect();
-    captures.sort_by_key(|local| local.index);
-    let cell_flags = closure_capture_cell_flags(module, def_index, body).unwrap_or_default();
+    };
     let mut memo = BTreeMap::new();
     let mut visiting = std::collections::BTreeSet::new();
-    let env = captures
+    let env = fields
         .iter()
-        .enumerate()
-        .map(|(field, local)| {
-            let ty = collections_type_idx_of(&local.ty, module, out, &mut memo, &mut visiting)?;
-            // PLAN-909: a cell field is declared as its List representation
-            // — the ONE derivation `closure_capture_cell_flags` owns, so the
-            // import declaration, the body's slot types and the creator's
-            // operands can never disagree.
-            if cell_flags.get(field).copied().unwrap_or(false) {
+        .map(|field| {
+            let ty = collections_type_idx_of(&field.ty, module, out, &mut memo, &mut visiting)?;
+            // PLAN-909: a cell field is declared as its List representation.
+            if field.cell {
                 Ok(out.intern_type(MirType::List(ace_av_core::mir::ListTypeRef { elem: ty })))
             } else {
                 Ok(ty)
@@ -849,45 +1064,6 @@ fn closures_env_for_def(
         })
         .collect::<Result<Vec<_>, AdapterError>>()?;
     Ok(Some(env))
-}
-
-/// PLAN-909: per-field (capture-index order) cell flags of a closure body,
-/// or `None` when `def_index` is not a closure body. A field is a cell when
-/// the (site-unique) creating CREATE_CLOSURE captured it `Shared` (a shared
-/// `var` cell) or `Move` with the body's capture local declared mutable
-/// (the private env cell the body writes). This is the single source for
-/// the import env declaration, the body's slot representation and the
-/// creator's operand shapes.
-fn closure_capture_cell_flags(
-    module: &hir::Module,
-    def_index: u32,
-    body: &hir::Body,
-) -> Option<Vec<bool>> {
-    let site = module.bodies.iter().find_map(|other| {
-        other.exprs.iter().find_map(|expr| match &expr.kind {
-            hir::ExprKind::CreateClosure { callee, captures } if callee.0 == def_index => {
-                Some(captures)
-            }
-            _ => None,
-        })
-    })?;
-    let mut captures: Vec<&hir::LocalDef> = body
-        .locals
-        .iter()
-        .filter(|local| local.role == hir::LocalRole::Capture)
-        .collect();
-    captures.sort_by_key(|local| local.index);
-    Some(
-        captures
-            .iter()
-            .enumerate()
-            .map(|(field, local)| match site.get(field).map(|c| c.mode) {
-                Some(hir::CaptureMode::Shared) => true,
-                Some(hir::CaptureMode::Move) => local.mutable,
-                _ => false,
-            })
-            .collect(),
-    )
 }
 
 fn next_import_dummy() -> ImportIdx {
@@ -2300,6 +2476,10 @@ struct FnLower<'a> {
     /// mode, or Move over a mutable scalar = the private env cell). Their
     /// slots carry `List<T>`; every read/write routes through index 0.
     cell_locals: BTreeSet<usize>,
+    /// PLAN-912: the closure fact provider (whole-module scan or verified
+    /// credential) — the ONE source of callee environment facts at
+    /// creation sites.
+    closure_facts: &'a dyn ClosureFacts,
 }
 
 impl<'a> FnLower<'a> {
@@ -3151,25 +3331,14 @@ impl<'a> FnLower<'a> {
                 // PLAN-909: the callee's capture locals in field order —
                 // the per-field writability fact (a mutable Move capture is
                 // the K06 private env cell; a Shared capture is a shared
-                // cell) decides the operand shape below.
+                // cell) decides the operand shape below. PLAN-912: read from
+                // the fact provider (whole-module scan or the verified
+                // credential's creation-site record), never from a body this
+                // document may not carry.
                 let callee_capture_mutability: Vec<bool> = self
-                    .hir_module
-                    .defs
-                    .get(callee.0 as usize)
-                    .and_then(|def| match &def.kind {
-                        hir::DefKind::Function { body, .. } => Some(body),
-                        _ => None,
-                    })
-                    .and_then(|body_id| self.hir_module.bodies.get(body_id.0 as usize))
-                    .map(|callee_body| {
-                        let mut caps: Vec<&hir::LocalDef> = callee_body
-                            .locals
-                            .iter()
-                            .filter(|l| l.role == hir::LocalRole::Capture)
-                            .collect();
-                        caps.sort_by_key(|l| l.index);
-                        caps.iter().map(|l| l.mutable).collect()
-                    })
+                    .closure_facts
+                    .env_of(self.hir_module, callee.0)?
+                    .map(|fields| fields.iter().map(|f| f.mutable).collect())
                     .unwrap_or_default();
                 let mut operands = Vec::with_capacity(captures.len());
                 for (field, capture) in captures.iter().enumerate() {
@@ -4283,6 +4452,36 @@ fn lower_function(
     owned: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
 ) -> Result<MirFunction, AdapterError> {
+    lower_function_with(
+        hir_module,
+        out,
+        def_index,
+        body_id,
+        sig,
+        source_snapshot,
+        def_map,
+        name,
+        data,
+        owned,
+        mode_overrides,
+        &ModuleScanFacts,
+    )
+}
+
+fn lower_function_with(
+    hir_module: &hir::Module,
+    out: &mut MirModule,
+    def_index: u32,
+    body_id: hir::BodyId,
+    sig: TypeIdx,
+    source_snapshot: u64,
+    def_map: &BTreeMap<u32, CalleeRef>,
+    name: String,
+    data: bool,
+    owned: bool,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
+    closure_facts: &dyn ClosureFacts,
+) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
     })?;
@@ -4295,7 +4494,8 @@ fn lower_function(
     // closures and the closures' bodies all alias one buffer. (b) When
     // this body IS a closure body, its capture fields are cells when the
     // (site-unique) creating site captured them Shared, or Move over a
-    // scalar the body WRITES (the K06 private env cell).
+    // scalar the body WRITES (the K06 private env cell). PLAN-912: (b) is
+    // read from the fact provider, never derived by scanning other bodies.
     let mut cell_locals: BTreeSet<usize> = BTreeSet::new();
     for e in &body.exprs {
         if let hir::ExprKind::CreateClosure { captures, .. } = &e.kind {
@@ -4306,7 +4506,8 @@ fn lower_function(
             }
         }
     }
-    if let Some(cell_flags) = closure_capture_cell_flags(hir_module, def_index, body) {
+    let own_env = closure_facts.env_of(hir_module, def_index)?;
+    if let Some(fields) = &own_env {
         let mut capture_locals: Vec<(usize, &hir::LocalDef)> = body
             .locals
             .iter()
@@ -4314,8 +4515,18 @@ fn lower_function(
             .filter(|(_, l)| l.role == hir::LocalRole::Capture)
             .collect();
         capture_locals.sort_by_key(|(_, l)| l.index);
+        if capture_locals.len() != fields.len() {
+            return Err(AdapterError::inv(
+                "lower.closure-env-arity",
+                format!(
+                    "closure body `{name}` declares {} captures but its environment fact has {}",
+                    capture_locals.len(),
+                    fields.len()
+                ),
+            ));
+        }
         for (field, (li, _)) in capture_locals.iter().enumerate() {
-            if cell_flags.get(field).copied().unwrap_or(false) {
+            if fields[field].cell {
                 cell_locals.insert(*li);
             }
         }
@@ -4421,18 +4632,16 @@ fn lower_function(
         root_wired: false,
         pending_joins: vec![],
         cell_locals,
+        closure_facts,
     };
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
 
     // A HIR function referenced by CREATE_CLOSURE is a closure body. The
     // capture local indices are its declared environment layout; ENV_GET
-    // initializes those locals at entry in the same order.
-    let closure_body = hir_module.bodies.iter().any(|candidate| {
-        candidate.exprs.iter().any(|expr| {
-            matches!(&expr.kind, hir::ExprKind::CreateClosure { callee, .. } if callee.0 == def_index)
-        })
-    });
+    // initializes those locals at entry in the same order. PLAN-912: the
+    // "is a closure body" fact is the provider's (`own_env`), not a scan.
+    let closure_body = own_env.is_some();
     let mut env = None;
     if closure_body {
         let mut captures: Vec<_> = body

@@ -111,6 +111,9 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         start: 0,
         end: src.len(),
     });
+    // PLAN-912 §5.4 whole-axis observation: every whole-source parse is a
+    // module-axis attempt (the warm closures path must never reach here).
+    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
     let toks = super::lexer::tokenize_with(src, profile.admits_text_literals())?;
     let mut p = Parser {
         src,
@@ -187,6 +190,73 @@ pub fn parse_function_fragment(
                 start: range.start,
                 end: range.end,
             },
+        )),
+    }
+}
+
+/// PLAN-912 §5.1: parse exactly one lambda EXPRESSION fragment (`(..) => ..`,
+/// optionally `move`-prefixed) with the same lexer/parser and absolute source
+/// spans. Only the granted range is tokenized; the owner body around it and
+/// every other function are never lexed or parsed. The fragment must be
+/// consumed completely and must BE a lambda — a trailing token, a non-lambda
+/// expression or a block is the named `source.incremental-fragment`
+/// rejection (the caller's explicit non-fast path, never a silent widen).
+pub fn parse_closure_fragment(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+) -> Result<Expr, Diagnostic> {
+    let fragment = src.get(range.clone()).ok_or_else(|| {
+        Diagnostic::new(
+            Stage::Text,
+            "source.incremental-fragment",
+            "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+            Span { start: 0, end: 0 },
+        )
+    })?;
+    note_tokenize(Span {
+        start: range.start,
+        end: range.end,
+    });
+    let mut toks = super::lexer::tokenize_with(fragment, profile.admits_text_literals()).map_err(
+        |mut error| {
+            error.span.start += range.start;
+            error.span.end += range.start;
+            error
+        },
+    )?;
+    for token in &mut toks {
+        token.span.start += range.start;
+        token.span.end += range.start;
+    }
+    let token_count = toks.len();
+    let mut parser = Parser {
+        src,
+        end: range.end,
+        toks,
+        pos: 0,
+        last_line: 1,
+        surface: profile,
+        pending_is: Vec::new(),
+    };
+    let expr = parser.expr(true)?;
+    let whole = Span {
+        start: range.start,
+        end: range.end,
+    };
+    if parser.pos != token_count {
+        return Err(parser.err(
+            "source.incremental-fragment",
+            "a lambda fragment must contain exactly one lambda expression",
+            whole,
+        ));
+    }
+    match expr.kind {
+        ExprKind::Closure { .. } => Ok(expr),
+        _ => Err(parser.err(
+            "source.incremental-fragment",
+            "a lambda fragment must be a lambda expression",
+            whole,
         )),
     }
 }

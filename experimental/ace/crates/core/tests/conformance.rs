@@ -1,3 +1,5 @@
+#[path = "cases/closures_fn_912.rs"]
+mod closures_fn_912;
 #[path = "cases/closures_surface.rs"]
 mod closures_surface;
 #[path = "cases/collections.rs"]

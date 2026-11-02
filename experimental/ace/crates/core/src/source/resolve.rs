@@ -847,6 +847,74 @@ pub struct CachedOwner {
     pub resolved: ResolvedFn,
     /// The owner's lambdas in creation order (stable owner-bound names).
     pub lambdas: Vec<ResolvedFn>,
+    /// PLAN-912 §5.2: the creation-site facts of each lambda in `lambdas`
+    /// (same order) — the checked interface context a lambda body can be
+    /// re-resolved against WITHOUT walking its owner or its siblings.
+    pub sites: Vec<LambdaSiteFacts>,
+}
+
+/// PLAN-912 §5.2: everything a lambda's CREATION SITE fixes for its body.
+/// Minted by the resolver while it resolves the owner; retained by the
+/// closures function frontend; consumed by [`resolve_lambda_in_context`]
+/// to re-resolve ONE lambda body alone. The capture declaration here is the
+/// fast-path oracle: a re-resolve whose raw capture uses / params / move
+/// flag differ from these facts is the explicit non-fast path (the owner's
+/// creation site changed), never a silent widen of the body's authority.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LambdaSiteFacts {
+    /// Enclosing top-level function (the owner).
+    pub owner: String,
+    /// Per-owner creation ordinal `k` of `__closure_<owner>_<k>` (depth-first).
+    pub ordinal: usize,
+    /// The synthetic display name (wire identity `d_<name>`).
+    pub name: String,
+    /// The whole lambda expression span in the source the owner was
+    /// resolved from (coordinate catalog; remapped by the frontend's M axis).
+    pub expr_span: Span,
+    pub move_capture: bool,
+    /// Declared parameters `(name, type)` in order.
+    pub params: Vec<(String, VT)>,
+    /// Raw capture uses `(name, written)` in first-use order — the pre-mode
+    /// fact the creation site derived modes from.
+    pub capture_uses: Vec<(String, bool)>,
+    /// Derived capture declarations `(name, body type, mode, writable, cell)`
+    /// in environment order — the body's Capture locals.
+    pub capture_decls: Vec<(String, VT, crate::hir::CaptureMode, bool, bool)>,
+    /// The owner locals the creation site captures (CreateClosure operands),
+    /// same order as `capture_decls`.
+    pub capture_sources: Vec<LocalRef>,
+    /// Every local name visible at the creation point (the set
+    /// `analyze_capture_uses` ran against).
+    pub outer_names: BTreeSet<String>,
+    /// Inferred result type and the interned closure signature index.
+    pub result: VT,
+    pub type_index: usize,
+    /// How many lambdas were created INSIDE this body (ordinals
+    /// `ordinal+1 ..= ordinal+nested`).
+    pub nested: usize,
+}
+
+/// PLAN-912: why an isolated lambda re-resolve declined the fast path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LambdaNonFast {
+    /// Raw capture uses (names / order / written) differ from the site.
+    CaptureUsesChanged,
+    /// Parameter list or `move` flag differ (closure signature changed).
+    SignatureChanged,
+    /// The new body creates nested lambdas, or the retained one did.
+    NestedLambdas,
+    /// The inferred result type differs (closure signature changed).
+    ResultChanged,
+}
+
+/// The error side of [`resolve_lambda_in_context`]: either a NAMED
+/// non-fast decline or the body's own source diagnostics. Success is the
+/// returned [`BodyState`].
+pub enum LambdaReResolve {
+    /// Declined: the owner must re-resolve (bounded non-fast path).
+    NonFast(LambdaNonFast),
+    /// Source diagnostics from the body itself.
+    Diagnostics(Vec<Diagnostic>),
 }
 
 pub(crate) struct WarmIo<'a> {
@@ -929,6 +997,57 @@ pub fn resolve_closures_cached(
         },
         warm.out,
         warm.reused,
+    ))
+}
+
+/// PLAN-912 §5.2: cold closures resolve that RETAINS the checked environment
+/// (the function frontend's resident program: owners then lambdas, the
+/// signature/record indexes and the closure-signature table) AND returns the
+/// owner cache whose entries carry each lambda's creation-site facts.
+/// [`resolve_closures_cached`] stays byte-identical for the PLAN-909 path.
+pub(crate) fn resolve_closures_env(
+    program: &ast::Program,
+    src: &str,
+    capabilities: &[String],
+) -> Result<(CheckedEnv, ClosuresOwnerCache), Vec<Diagnostic>> {
+    let context_fp = decl_context_fp(program, src);
+    let mut warm = WarmIo {
+        src,
+        prev: None,
+        context_fp,
+        out: ClosuresOwnerCache {
+            context_fp,
+            owners: BTreeMap::new(),
+            function_types: Vec::new(),
+        },
+        reused: BTreeSet::new(),
+    };
+    let (fns, records, coll, ix) = resolve_detailed(
+        program,
+        capabilities,
+        SourceProfile::Closures,
+        Some(&mut warm),
+    )?;
+    Ok((
+        CheckedEnv {
+            program: ResolvedProgram {
+                fns,
+                records,
+                lists: coll.lists,
+                variants: coll.variants,
+                function_types: coll.function_types,
+            },
+            rec_index: ix.rec_index,
+            sigs: ix.sigs,
+            trace_enabled: ix.trace_enabled,
+            profile: SourceProfile::Closures,
+            resolve_walks: 0,
+            check_walks: 0,
+            id: next_env_id(),
+            generation: 0,
+            closed: false,
+        },
+        warm.out,
     ))
 }
 
@@ -1326,6 +1445,7 @@ fn resolve_detailed(
         }
         crate::body_work::record_resolve(&f.name.name);
         let lambdas_before = closure_fns.len();
+        let mut sites = Vec::new();
         fns.push(resolve_fn(
             f,
             &sigs,
@@ -1338,6 +1458,7 @@ fn resolve_detailed(
             &rec_index,
             &mut coll,
             &mut closure_fns,
+            &mut sites,
             flat.len(),
         ));
         if let (Some(w), Some(fp)) = (warm.as_mut(), text_fp) {
@@ -1349,6 +1470,7 @@ fn resolve_detailed(
                     text_fp: fp,
                     resolved,
                     lambdas,
+                    sites,
                 },
             );
         }
@@ -2095,6 +2217,7 @@ pub(crate) fn recheck_swap(
         &env.rec_index,
         &mut coll,
         &mut Vec::new(),
+        &mut Vec::new(),
         env.program.fns.len(),
     );
     if !diags.is_empty() {
@@ -2126,6 +2249,158 @@ pub(crate) fn recheck_swap(
 
 // D-03 (T01-C05): the candidate/transaction types live in `adapter.rs`
 // next to `prepare_function_candidate` — the pipeline that produces them.
+
+/// PLAN-912 §5.2: re-resolve ONE lambda body alone against its retained
+/// creation site — no owner walk, no sibling walk. The site's raw capture
+/// uses, parameter list and `move` flag are the fast-path oracle: any
+/// difference is returned as the bounded [`LambdaReResolve::NonFast`]
+/// (the owner's creation site changed and must re-resolve), never a silent
+/// re-derivation of modes/cells from a partial view. On success the body's
+/// interned tables travel with it as a [`BodyState`] so the frontend commits
+/// pool growth in the same transaction (PLAN-864 rule).
+pub(crate) fn resolve_lambda_in_context(
+    env: &CheckedEnv,
+    site: &LambdaSiteFacts,
+    expr: &ast::Expr,
+) -> Result<BodyState, LambdaReResolve> {
+    let ast::ExprKind::Closure {
+        move_capture,
+        params,
+        body,
+    } = &expr.kind
+    else {
+        return Err(LambdaReResolve::Diagnostics(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental-fragment",
+            "a lambda fragment must be a lambda expression",
+            expr.span,
+        )]));
+    };
+    if *move_capture != site.move_capture {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::SignatureChanged));
+    }
+    if site.nested != 0 {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::NestedLambdas));
+    }
+    let uses = super::closure_capture::analyze_capture_uses(params, body, &site.outer_names);
+    let uses: Vec<(String, bool)> = uses.into_iter().map(|c| (c.name, c.written)).collect();
+    if uses != site.capture_uses {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::CaptureUsesChanged));
+    }
+    let mut coll = CollTables::default();
+    coll.lists = env.program.lists.clone();
+    coll.function_types = env.program.function_types.clone();
+    let names: Vec<(String, usize)> = env
+        .program
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.name.clone(), i))
+        .collect();
+    coll.variants = env.program.variants.clone();
+    for (name, i) in names {
+        coll.reindex_variant(&name, i);
+    }
+    let mut diags = Vec::new();
+    let mut nested_defs = Vec::new();
+    let mut nested_sites = Vec::new();
+    let shared_cell_spans = match body.as_ref() {
+        ast::ClosureBody::Block(block) => {
+            super::closure_capture::scan_shared_capture_cells(params, block)
+        }
+        ast::ClosureBody::Expr(_) => BTreeSet::new(),
+    };
+    // The ONE resolve walk this edit performs — the changed lambda's.
+    crate::body_work::record_resolve(&site.name);
+    let lb = {
+        let mut r = FnResolver {
+            sigs: &env.sigs,
+            trace_enabled: env.trace_enabled,
+            profile: SourceProfile::Closures,
+            diags: &mut diags,
+            locals: Vec::new(),
+            scopes: vec![Scope {
+                names: BTreeMap::new(),
+                views: BTreeMap::new(),
+            }],
+            declared_names: BTreeSet::new(),
+            fn_result: site.result,
+            loop_stack: Vec::new(),
+            loop_count: 0,
+            used_intrinsics: BTreeSet::new(),
+            closure_defs: &mut nested_defs,
+            moved_locals: BTreeSet::new(),
+            borrowed_closure_locals: BTreeSet::new(),
+            records: &env.program.records,
+            rec_index: &env.rec_index,
+            coll: &mut coll,
+            iterate_targets: Vec::new(),
+            shared_cell_spans,
+            owner_name: site.owner.clone(),
+            closure_count: site.ordinal,
+            lambda_sites: &mut nested_sites,
+        };
+        r.lambda_body(params, body, &site.capture_decls, expr.span)
+    };
+    if !nested_defs.is_empty() {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::NestedLambdas));
+    }
+    if !diags.is_empty() {
+        return Err(LambdaReResolve::Diagnostics(diags));
+    }
+    let params_now: Vec<(String, VT)> = lb
+        .param_names
+        .iter()
+        .cloned()
+        .zip(lb.param_types.iter().copied())
+        .collect();
+    if params_now != site.params {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::SignatureChanged));
+    }
+    if lb.result != site.result {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::ResultChanged));
+    }
+    let type_index = coll.intern_function(ClosureFnType {
+        params: lb.param_types.clone(),
+        result: lb.result,
+    });
+    if type_index != site.type_index {
+        return Err(LambdaReResolve::NonFast(LambdaNonFast::SignatureChanged));
+    }
+    let entry = ResolvedFn {
+        name: site.name.clone(),
+        name_span: expr.span,
+        item_span: expr.span,
+        param_names: lb.param_names,
+        params: lb.param_types,
+        param_modes: vec![false; params.len()],
+        result: lb.result,
+        locals: lb.locals,
+        body: lb.body,
+        loop_count: 0,
+        used_intrinsics: lb.used_intrinsics,
+        receiver: ast::Receiver::Free,
+        owner_rec: None,
+    };
+    Ok(BodyState {
+        entry,
+        pools: Some(BodyTypePools {
+            lists: coll.lists,
+            variants: coll.variants,
+            function_types: coll.function_types,
+        }),
+    })
+}
+
+/// Output of one lambda body walk (see [`FnResolver::lambda_body`]).
+struct LambdaBodyOut {
+    param_names: Vec<String>,
+    param_types: Vec<VT>,
+    result: VT,
+    locals: Vec<LocalDecl>,
+    body: RBlock,
+    used_intrinsics: BTreeSet<&'static str>,
+}
 
 /// PLAN-828 D-01 observation, producer-reported: cumulative body walks
 /// this environment has performed — the cold resolve walks every
@@ -2589,6 +2864,9 @@ struct FnResolver<'a> {
     /// lambda insertion/removal never renames this owner's units).
     owner_name: String,
     closure_count: usize,
+    /// PLAN-912 §5.2: creation-site facts sink (one entry per lambda this
+    /// walk mints, in `closure_defs` order).
+    lambda_sites: &'a mut Vec<LambdaSiteFacts>,
 }
 
 fn resolve_fn(
@@ -2603,6 +2881,7 @@ fn resolve_fn(
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
     closure_defs: &mut Vec<ResolvedFn>,
+    lambda_sites: &mut Vec<LambdaSiteFacts>,
     _closure_base: usize,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
@@ -2636,6 +2915,7 @@ fn resolve_fn(
         shared_cell_spans: super::closure_capture::scan_shared_capture_cells(&f.params, &f.body),
         owner_name: f.name.name.clone(),
         closure_count: 0,
+        lambda_sites,
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -2939,6 +3219,11 @@ impl<'a> FnResolver<'a> {
             .collect();
         let captures =
             super::closure_capture::analyze_capture_uses(params_ast, body_ast, &outer_names);
+        // PLAN-912 §5.2: the raw pre-mode capture fact the site derives from.
+        let capture_uses: Vec<(String, bool)> = captures
+            .iter()
+            .map(|c| (c.name.clone(), c.written))
+            .collect();
         let mut capture_bindings = Vec::new();
         let mut capture_decls = Vec::new();
         for capture in captures {
@@ -3024,6 +3309,82 @@ impl<'a> FnResolver<'a> {
             capture_decls.push((capture.name, body_vt, mode, writable, cell));
         }
 
+        // Body walk FIRST, ordinal AFTER (post-order): nested lambdas mint
+        // their ordinals during this walk and therefore sit BEFORE their
+        // parent in `closure_defs` — the PLAN-909 identity order every
+        // existing `__closure_<owner>_<k>` wire name depends on. PLAN-912
+        // keeps that order byte-for-byte and only records the site facts
+        // alongside.
+        let count_before = self.closure_count;
+        let lb = self.lambda_body(params_ast, body_ast, &capture_decls, span);
+        let nested = self.closure_count - count_before;
+        let type_index = self.coll.intern_function(ClosureFnType {
+            params: lb.param_types.clone(),
+            result: lb.result,
+        });
+        // PLAN-909 §5.5: the owner-stable identity. The previous
+        // module-wide ordinal made every later lambda rename when an
+        // unrelated function or earlier lambda was inserted or reordered.
+        let ordinal = self.closure_count;
+        let name = format!("__closure_{}_{}", self.owner_name, ordinal);
+        self.closure_count += 1;
+        self.lambda_sites.push(LambdaSiteFacts {
+            owner: self.owner_name.clone(),
+            ordinal,
+            name: name.clone(),
+            expr_span: span,
+            move_capture,
+            params: lb
+                .param_names
+                .iter()
+                .cloned()
+                .zip(lb.param_types.iter().copied())
+                .collect(),
+            capture_uses,
+            capture_decls: capture_decls.clone(),
+            capture_sources: capture_bindings.iter().map(|(l, _)| *l).collect(),
+            outer_names,
+            result: lb.result,
+            type_index,
+            nested,
+        });
+        self.closure_defs.push(ResolvedFn {
+            name: name.clone(),
+            name_span: span,
+            item_span: span,
+            param_names: lb.param_names,
+            params: lb.param_types,
+            param_modes: vec![false; params_ast.len()],
+            result: lb.result,
+            locals: lb.locals,
+            body: lb.body,
+            loop_count: 0,
+            used_intrinsics: lb.used_intrinsics,
+            receiver: ast::Receiver::Free,
+            owner_rec: None,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::Function(type_index),
+            kind: RExprKind::CreateClosure {
+                callee: name.clone(),
+                captures: capture_bindings,
+            },
+        }
+    }
+
+    /// PLAN-912: resolve ONE lambda body under an already-decided capture
+    /// declaration. Shared by the owner walk ([`FnResolver::resolve_closure`])
+    /// and the isolated re-resolve ([`resolve_lambda_in_context`]); the
+    /// resolver's owner-level state is saved around the walk exactly as the
+    /// inline path always did (the lambda sees only its params and captures).
+    fn lambda_body(
+        &mut self,
+        params_ast: &[ast::Param],
+        body_ast: &ast::ClosureBody,
+        capture_decls: &[(String, VT, crate::hir::CaptureMode, bool, bool)],
+        span: Span,
+    ) -> LambdaBodyOut {
         let old_locals = std::mem::replace(&mut self.locals, Vec::new());
         let old_scopes = std::mem::replace(
             &mut self.scopes,
@@ -3148,38 +3509,13 @@ impl<'a> FnResolver<'a> {
         self.moved_locals = old_moved;
         self.borrowed_closure_locals = old_borrowed;
         self.iterate_targets = old_iterate;
-
-        let type_index = self.coll.intern_function(ClosureFnType {
-            params: param_types.clone(),
-            result,
-        });
-        // PLAN-909 §5.5: the owner-stable identity. The previous
-        // module-wide ordinal made every later lambda rename when an
-        // unrelated function or earlier lambda was inserted or reordered.
-        let name = format!("__closure_{}_{}", self.owner_name, self.closure_count);
-        self.closure_count += 1;
-        self.closure_defs.push(ResolvedFn {
-            name: name.clone(),
-            name_span: span,
-            item_span: span,
+        LambdaBodyOut {
             param_names,
-            params: param_types,
-            param_modes: vec![false; params_ast.len()],
+            param_types,
             result,
             locals: synthetic_locals,
             body: resolved_body,
-            loop_count: 0,
             used_intrinsics,
-            receiver: ast::Receiver::Free,
-            owner_rec: None,
-        });
-        ResolvedExpr {
-            span,
-            vt: VT::Function(type_index),
-            kind: RExprKind::CreateClosure {
-                callee: name.clone(),
-                captures: capture_bindings,
-            },
         }
     }
 

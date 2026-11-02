@@ -853,6 +853,56 @@ fn compile_program_observed(
     })
 }
 
+/// PLAN-912: emit + bind + re-anchor the WHOLE module from an already
+/// resolved+typechecked program (the cold truth path of the closures
+/// function frontend, which retains the resolved program instead of
+/// discarding it). Same emitter/binder rules as [`compile_program_observed`];
+/// no resolve or typecheck happens here.
+pub(crate) fn emit_whole_document(
+    program: &ResolvedProgram,
+    src: &str,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let mut em = Emitter::new(program, src.len(), profile);
+    em.plan_module();
+    let atom_text = em.render(module_path);
+    let descriptor = match profile.hir_domain() {
+        crate::hir::HirDomain::Core => crate::descriptor(),
+        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
+        crate::hir::HirDomain::Text => crate::text_descriptor(),
+        crate::hir::HirDomain::Record => crate::record_descriptor(),
+        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
+        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
+        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
+        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
+    };
+    let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
+        Ok(b) => b,
+        Err(ds) => {
+            let detail: Vec<String> = ds.iter().map(|d| d.render("atom", &atom_text)).collect();
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.internal",
+                format!(
+                    "internal adapter error: generated Atom text failed to bind\n{}",
+                    detail.join("\n")
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+    };
+    em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
+    Ok(SourceParts {
+        profile: profile.as_str(),
+        input_hash: fnv1a_hex(src.as_bytes()),
+        atom_text,
+        bundle,
+        planned_fns: em.plans.len(),
+    })
+}
+
 /// Unverified core-profile compilation output (see [`compile_parts_with`]);
 /// the 745-era mutation-matrix test seam.
 pub fn compile_parts(
@@ -2813,6 +2863,9 @@ impl<'p> Emitter<'p> {
     }
 
     fn plan_module(&mut self) {
+        // PLAN-912 §5.4 whole-axis observation: planning every body is a
+        // module-axis attempt (the warm closures path must never reach here).
+        crate::body_work::record_whole(crate::body_work::Stage::WholePlan);
         for f in &self.program.fns {
             let mut ctx = PlanCtx {
                 program: self.program,

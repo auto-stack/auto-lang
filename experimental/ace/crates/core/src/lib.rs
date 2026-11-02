@@ -90,6 +90,163 @@ pub mod body_work {
         let m = COUNTS.with(|c| c.borrow_mut().take()).unwrap_or_default();
         (out, m)
     }
+
+    /// PLAN-912 §5.4: a production stage attempt, recorded at the REAL
+    /// dispatch site BEFORE the stage runs (so an early failure still
+    /// counts — a zero that only appears on success is not an observation).
+    /// `Whole*` kinds are the module-axis counters: any non-zero whole
+    /// attempt on the warm supported path is the structural red of the
+    /// "whole-then-filter" degradation. The four PLAN-828 body kinds keep
+    /// their own counters above; this enum covers the stages 828 did not
+    /// meter (source projection, HIR verify, MIR lower/verify, ABC encode,
+    /// decode/admit, index build, artifact IO) plus the M axis (catalog /
+    /// hash / coordinate work that is allowed to be non-zero but must never
+    /// include a body walk) and the R axis (recovery re-verification, which
+    /// PLAN-913 owns — PLAN-912 reports it honestly as non-zero).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum Stage {
+        ParseProject,
+        HirVerify,
+        MirLower,
+        MirVerify,
+        AbcEncode,
+        DecodeAdmit,
+        IndexBuild,
+        ArtifactWrite,
+        WholeParse,
+        WholePlan,
+        WholeBind,
+        WholeVerify,
+        WholeLower,
+        CatalogTraverse,
+        SourceHash,
+        CoordRemap,
+        FragmentDiff,
+        RestartDecode,
+        RestartDeepVerify,
+        RestartRelower,
+    }
+
+    impl Stage {
+        /// Stable wire name (JSON faces / receipts).
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Stage::ParseProject => "parse_project",
+                Stage::HirVerify => "hir_verify",
+                Stage::MirLower => "mir_lower",
+                Stage::MirVerify => "mir_verify",
+                Stage::AbcEncode => "abc_encode",
+                Stage::DecodeAdmit => "decode_admit",
+                Stage::IndexBuild => "index_build",
+                Stage::ArtifactWrite => "artifact_write",
+                Stage::WholeParse => "whole_parse",
+                Stage::WholePlan => "whole_plan",
+                Stage::WholeBind => "whole_bind",
+                Stage::WholeVerify => "whole_verify",
+                Stage::WholeLower => "whole_lower",
+                Stage::CatalogTraverse => "catalog_traverse",
+                Stage::SourceHash => "source_hash",
+                Stage::CoordRemap => "coord_remap",
+                Stage::FragmentDiff => "fragment_diff",
+                Stage::RestartDecode => "restart_decode",
+                Stage::RestartDeepVerify => "restart_deep_verify",
+                Stage::RestartRelower => "restart_relower",
+            }
+        }
+        /// Whether this stage belongs to the per-unit P (production) axis.
+        pub fn is_production(self) -> bool {
+            matches!(
+                self,
+                Stage::ParseProject
+                    | Stage::HirVerify
+                    | Stage::MirLower
+                    | Stage::MirVerify
+                    | Stage::AbcEncode
+                    | Stage::DecodeAdmit
+                    | Stage::IndexBuild
+                    | Stage::ArtifactWrite
+            )
+        }
+        /// Whether this stage is a module-axis (whole) counter.
+        pub fn is_whole(self) -> bool {
+            matches!(
+                self,
+                Stage::WholeParse
+                    | Stage::WholePlan
+                    | Stage::WholeBind
+                    | Stage::WholeVerify
+                    | Stage::WholeLower
+            )
+        }
+    }
+
+    /// Per-window stage attempts: `(unit, stage) -> attempts` for the P/R
+    /// axes (unit = the `d_<name>` / `<name>` key the producer uses) and
+    /// `stage -> attempts` for the whole and M axes (unit = `"*"`).
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct StageAttempts {
+        pub by_unit: BTreeMap<(String, Stage), u64>,
+    }
+
+    impl StageAttempts {
+        pub fn of(&self, unit: &str, stage: Stage) -> u64 {
+            self.by_unit
+                .get(&(unit.to_string(), stage))
+                .copied()
+                .unwrap_or(0)
+        }
+        /// Sum over every unit for one stage.
+        pub fn total(&self, stage: Stage) -> u64 {
+            self.by_unit
+                .iter()
+                .filter(|((_, s), _)| *s == stage)
+                .map(|(_, n)| *n)
+                .sum()
+        }
+        /// Every unit that has ANY production-axis attempt.
+        pub fn produced_units(&self) -> std::collections::BTreeSet<String> {
+            self.by_unit
+                .iter()
+                .filter(|((u, s), n)| s.is_production() && **n > 0 && u != "*")
+                .map(|((u, _), _)| u.clone())
+                .collect()
+        }
+        /// Sum of all whole-axis attempts.
+        pub fn whole_total(&self) -> u64 {
+            self.by_unit
+                .iter()
+                .filter(|((_, s), _)| s.is_whole())
+                .map(|(_, n)| *n)
+                .sum()
+        }
+    }
+
+    thread_local! {
+        static STAGES: RefCell<Option<StageAttempts>> = RefCell::new(None);
+    }
+
+    /// Record one attempt of `stage` for `unit` (ignored outside a window).
+    pub fn record_attempt(stage: Stage, unit: &str) {
+        STAGES.with(|c| {
+            if let Some(s) = c.borrow_mut().as_mut() {
+                *s.by_unit.entry((unit.to_string(), stage)).or_default() += 1;
+            }
+        });
+    }
+    /// Record one whole-axis / M-axis attempt (unit `*`).
+    pub fn record_whole(stage: Stage) {
+        record_attempt(stage, "*");
+    }
+
+    /// Run `f` inside a stage-attempt window. Nests with
+    /// [`capture_body_work`] (independent thread-locals).
+    pub fn capture_stage_attempts<T>(f: impl FnOnce() -> T) -> (T, StageAttempts) {
+        let previous = STAGES.with(|c| c.borrow_mut().replace(StageAttempts::default()));
+        let out = f();
+        let s = STAGES.with(|c| c.borrow_mut().take()).unwrap_or_default();
+        STAGES.with(|c| *c.borrow_mut() = previous);
+        (out, s)
+    }
 }
 
 pub const DESCRIPTOR_SCHEMA: &str = include_str!("../schema/core-i32.atom");

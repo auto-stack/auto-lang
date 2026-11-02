@@ -1,16 +1,16 @@
 //! PLAN-822 F-822-R1-02: the REAL closures update consumer.
 //!
 //! A session over the D828 function-code/snapshot seam: units enter ONLY
-//! through the real gates (verify → encode → abc-admit → unit-admit,
+//! through the real gates (verify â encode â abc-admit â unit-admit,
 //! optional store persist); a revision rebuilds the SUBMITTED functions
 //! through those gates while the SESSION carries the rest (the caller
 //! never hands it an Arc); link resolves `fn:<name>` imports with
 //! signature equivalence; the executed face reports semantics + cleanup;
 //! the production counters prove un-submitted units produced nothing; and
 //! the structural gate is a PRODUCTION predicate over the content-
-//! fingerprint domain — re-submitting an identical module is the
+//! fingerprint domain â re-submitting an identical module is the
 //! forced-whole shape: the fresh object under the same fingerprint reads
-//! degraded-unchanged (non-zero → gate FAILS), an honest revision passes.
+//! degraded-unchanged (non-zero â gate FAILS), an honest revision passes.
 
 use ace_artifacts::codec::ChunkKind;
 use ace_artifacts::store::{ManagedStore, PutRequest};
@@ -33,7 +33,7 @@ use ace_artifacts::identity::QueryKey;
 
 /// The production counters of one revision: how many units went through
 /// each REAL production stage. An un-submitted unit produces NOTHING
-/// (V-13 sub-case 2: 未改生产阶段/IO=0).
+/// (V-13 sub-case 2: æªæ¹çäº§é¶æ®µ/IO=0).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProductionCounters {
     pub verified: usize,
@@ -47,7 +47,7 @@ pub struct ProductionCounters {
 /// The production structural gate over one revision. A unit is
 /// UNCHANGED when its admitted wire's content fingerprint did not
 /// change; it is DEGRADED when that unchanged content arrived in a
-/// DIFFERENT object anyway (the forced-whole-recompute signature — "only
+/// DIFFERENT object anyway (the forced-whole-recompute signature â "only
 /// the hash kept, the object/generation swapped"). An honest revision
 /// passes; a forced rebuild fails with a non-zero count.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -200,7 +200,7 @@ pub struct ClosuresUpdateSession {
     entry: String,
     /// F822-R17-01: the CURRENT host grants. A submitted module's
     /// declared capabilities (the input's REQUIRED capabilities) are
-    /// admitted only against this set — required and granted stay
+    /// admitted only against this set â required and granted stay
     /// SEPARATE facts (the F798-R3-02 restore pattern, applied at the
     /// revision seam): an ungranted capability rejects the revision
     /// BEFORE any production stage or installation.
@@ -273,14 +273,14 @@ impl ClosuresUpdateSession {
     }
 
     /// F822-R17-01: set the host's CURRENT capability grants (empty by
-    /// default — a capability-requiring unit is never admitted unless the
+    /// default â a capability-requiring unit is never admitted unless the
     /// host explicitly grants it).
     pub fn set_host_grants(&mut self, grants: Vec<String>) {
         self.host_grants = grants;
     }
 
     /// F822-R18-01: the production counters of the LATEST revision
-    /// ATTEMPT — including a REJECTED one (the authorization preflight
+    /// ATTEMPT â including a REJECTED one (the authorization preflight
     /// performs none; a shortfall leaves every stage at zero, observable
     /// here).
     pub fn production_counters(&self) -> ProductionCounters {
@@ -315,8 +315,13 @@ impl ClosuresUpdateSession {
             .ok_or("submitted unit has no function")?
             .name
             .clone();
+        // PLAN-912 Â§5.4: per-unit P-axis attempts at the REAL dispatch
+        // sites — an early failure still counts (the counters above are
+        // separate aggregates).
+        ace_core::body_work::record_attempt(ace_core::body_work::Stage::MirVerify, &name);
         verify_mir(m).map_err(|e| format!("verify {name}: {e:?}"))?;
         self.counters.verified += 1;
+        ace_core::body_work::record_attempt(ace_core::body_work::Stage::AbcEncode, &name);
         let wire = encode_abc(m).map_err(|e| format!("encode {name}: {}", e.code()))?;
         self.counters.encoded += 1;
         let flat: Arc<[u8]> = wire.to_flat().into();
@@ -366,6 +371,7 @@ impl ClosuresUpdateSession {
                         .map_err(|e| format!("cached unit {name} re-admit: {e:?}"))?;
                     let fc = FunctionCode::admit_unit(loaded, self.revision + 1)
                         .map_err(|e| format!("cached unit {name} unit-admit: {e}"))?;
+                    ace_core::body_work::record_attempt(ace_core::body_work::Stage::DecodeAdmit, &name);
                     self.counters.admitted += 1;
                     self.counters.cache_hits += 1;
                     return Ok((Arc::new(fc), body_fp, flat, Some(artifact.artifact_id)));
@@ -373,6 +379,7 @@ impl ClosuresUpdateSession {
                 None => self.counters.cache_misses += 1,
             }
         }
+        ace_core::body_work::record_attempt(ace_core::body_work::Stage::DecodeAdmit, &name);
         let loaded =
             verify_abc_bytes(&flat, &m.owner).map_err(|e| format!("abc-admit {name}: {e:?}"))?;
         let fc = FunctionCode::admit_unit(loaded, self.revision + 1)
@@ -396,6 +403,7 @@ impl ClosuresUpdateSession {
             // returns a controlled error and the candidate is not installed.
             staged.protect(&id)?;
             artifact = Some(id);
+            ace_core::body_work::record_attempt(ace_core::body_work::Stage::ArtifactWrite, &name);
             self.counters.store_writes += 1;
         }
         Ok((Arc::new(fc), body_fp, flat, artifact))
@@ -404,9 +412,9 @@ impl ClosuresUpdateSession {
     /// Apply one revision: rebuild the SUBMITTED functions through the
     /// real gates, carry the un-submitted units from the session, link,
     /// execute, and report the production gate. Re-submitting a module
-    /// whose content equals an installed unit is the FORCED-WHOLE shape —
+    /// whose content equals an installed unit is the FORCED-WHOLE shape â
     /// the fresh object under the same fingerprint reads
-    /// degraded-unchanged (non-zero → gate FAILS). A link failure (a real
+    /// degraded-unchanged (non-zero â gate FAILS). A link failure (a real
     /// dependency change) is an Err; the session keeps its prior state.
     pub fn apply_revision(
         &mut self,
@@ -442,11 +450,11 @@ impl ClosuresUpdateSession {
         }
         // F822-R18-01: authorize the COMPLETE candidate closure against
         // the CURRENT host grants BEFORE any production stage. A carried
-        // unit's code is reused, not re-derived — its required
+        // unit's code is reused, not re-derived â its required
         // capabilities still bind every NEW revision that would execute
         // it; a submitted replacement supplies its OWN requirements (it
         // does not inherit the carried unit's). This is a decision about
-        // the new candidate only — snapshots already published under an
+        // the new candidate only â snapshots already published under an
         // earlier, live grant fact keep executing (authorization binds at
         // revision time, not retroactively).
         for name in &order {

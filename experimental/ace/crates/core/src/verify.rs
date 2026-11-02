@@ -152,6 +152,13 @@ pub struct CheckedFunction {
     /// PLAN-904: the verifier-computed collections body facts of THIS body
     /// (collections/closures single-body credentials; `None` elsewhere).
     coll_facts: Option<Box<crate::collections_facts::CollectionsBodyFacts>>,
+    /// PLAN-912 §5.2: the verifier-computed CLOSURE facts of THIS body
+    /// (closures single-function credentials only; `None` elsewhere): the
+    /// lambda's own environment layout with cell flags, and every creation
+    /// site's callee environment and operand kinds. Lowering consumes these
+    /// — it never re-derives env layout / cell flags by scanning other
+    /// bodies, which a single-function document does not carry.
+    closure_facts: Option<Box<ClosureBodyFacts>>,
 }
 
 impl CheckedFunction {
@@ -211,6 +218,12 @@ impl CheckedFunction {
     pub fn coll_facts(&self) -> Option<&crate::collections_facts::CollectionsBodyFacts> {
         self.coll_facts.as_deref()
     }
+
+    /// The verified closure facts of this credential (PLAN-912; closures
+    /// single-function credentials only).
+    pub fn closure_facts(&self) -> Option<&ClosureBodyFacts> {
+        self.closure_facts.as_deref()
+    }
 }
 
 /// Verify exactly one function body of a bound bundle against the module's
@@ -249,12 +262,59 @@ pub fn verify_function_ref(
             Stage::Verify,
             "verify.domain",
             format!(
-                "function-level verification is available for scalar/core/collections/record domains, not `{}`; use the whole-module verifier of the document's own profile",
+                "function-level verification is available for scalar/core/collections/record domains, not `{}`; use the whole-module verifier of the document's own profile (closures: `verify_closures_function` with the checked registry)",
                 bundle.domain.as_str()
             ),
             Span { start: 0, end: 0 },
         )]);
     }
+    verify_function_impl(bundle, def_index, None)
+}
+
+/// PLAN-912 §5.2: the single-function CLOSURES credential. Same complete
+/// body/context verification as [`verify_function_ref`], plus the closures
+/// obligations a whole-module walk used to carry across bodies, now supplied
+/// by the resident checked registry `ctx` ([`ClosuresVerifyContext`]):
+/// callee environment declarations for creation sites whose callee is a
+/// body-less scaffold in this document, creation-site association and
+/// uniqueness (a lambda is created at exactly one site in exactly one owner),
+/// the lambda's own environment layout against its registered declaration,
+/// and the prohibition of calling a lambda body directly. The minted
+/// credential carries [`ClosureBodyFacts`] so lowering consumes verified env
+/// layout / cell flags instead of re-deriving them from bodies it cannot see.
+/// Only the verifier mints this; a `checked` marker, a re-sliced
+/// [`CheckedModule`] or a hand-built `CheckedFunction` carries no authority.
+pub fn verify_closures_function(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    ctx: &ClosuresVerifyContext,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    if bundle.domain != HirDomain::Closures {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "closures single-function verification requires the closures domain, not `{}`",
+                bundle.domain.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let unit = bundle
+        .modules
+        .first()
+        .and_then(|m| m.defs.get(def_index))
+        .map(|d| d.id_text.clone())
+        .unwrap_or_default();
+    crate::body_work::record_attempt(crate::body_work::Stage::HirVerify, &unit);
+    verify_function_impl(bundle, def_index, Some(ctx))
+}
+
+fn verify_function_impl(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    closures: Option<&ClosuresVerifyContext>,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
     if bundle.modules.len() != 1 {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
@@ -269,6 +329,7 @@ pub fn verify_function_ref(
     let m = &bundle.modules[0];
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: closures.map(|c| c.view()),
         domain: bundle.domain,
     };
     // Context construction mirrors `check_module`: type bounds first, then
@@ -277,31 +338,37 @@ pub fn verify_function_ref(
     if !v.check_module_type_bounds(m) {
         return Err(v.diags);
     }
-    for t in &m.types {
-        let text_kind = matches!(
-            t.kind,
-            hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
-        );
-        // PLAN-864: the collections domain owns owned-`Str` values (the
-        // `t_Str` table entry); `char`/borrowed `str` stay excluded —
-        // except that PLAN-909 admits `char` in the CLOSURES domain (the
-        // shared-cell value domain is int/bool/char, SEM-04 / V-03).
-        let admitted = match t.kind {
-            hir::TypeKind::StrOwned => {
-                matches!(v.domain, HirDomain::Collections | HirDomain::Closures)
-            }
-            hir::TypeKind::Char => v.domain == HirDomain::Closures,
-            _ => false,
-        };
-        if text_kind && !admitted {
-            v.error(
-                "verify.local-type",
-                format!(
-                    "type `{}` has text kind `{:?}`; text types exist only in the text-i32-draft profile",
-                    t.id_text, t.kind
-                ),
-                t.span,
+    // Same isolation rule as the whole-module `check_module`: the closures
+    // family owns its text kinds (borrowed `str` on captures, owned `Str`,
+    // `char` cells) and skips this table-level gate — capture-local typing
+    // (`verify.local-type` in `check_params`) owns their admission instead.
+    if !matches!(bundle.domain, HirDomain::Closures) {
+        for t in &m.types {
+            let text_kind = matches!(
+                t.kind,
+                hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
             );
+            // PLAN-864: the collections domain owns owned-`Str` values (the
+            // `t_Str` table entry); `char`/borrowed `str` stay excluded —
+            // except that PLAN-909 admits `char` in the CLOSURES domain (the
+            // shared-cell value domain is int/bool/char, SEM-04 / V-03).
+            let admitted = match t.kind {
+                hir::TypeKind::StrOwned => {
+                    matches!(v.domain, HirDomain::Collections | HirDomain::Closures)
+                }
+                hir::TypeKind::Char => v.domain == HirDomain::Closures,
+                _ => false,
+            };
+            if text_kind && !admitted {
+                v.error(
+                    "verify.local-type",
+                    format!(
+                        "type `{}` has text kind `{:?}`; text types exist only in the text-i32-draft profile",
+                        t.id_text, t.kind
+                    ),
+                    t.span,
+                );
+            }
         }
     }
     let type_map = Verifier::build_type_map(m);
@@ -399,8 +466,25 @@ pub fn verify_function_ref(
     }
     v.check_profile_ops(m, body);
     v.check_body(m, body_id, body, &type_map, &sigs);
-    if bundle.domain == HirDomain::Collections && v.diags.is_empty() {
+    if matches!(
+        bundle.domain,
+        HirDomain::Collections | HirDomain::Closures
+    ) && v.diags.is_empty()
+    {
+        // Collections rules (view-escape / pattern-scrutinee / discarded
+        // eval) and, for the closures domain, the borrow-closure non-escape
+        // discipline this dispatch owns (`check_closure_borrow_rules`).
         v.check_collections_rules(m, Some(body_id));
+    }
+    // PLAN-912 §5.2: the closures cross-body obligations against the
+    // resident registry, and the verifier-computed closure facts.
+    let mut closure_facts = None;
+    if let Some(ctx) = closures {
+        if v.diags.is_empty() {
+            closure_facts = v
+                .check_closures_function_rules(m, def, body, ctx)
+                .map(Box::new);
+        }
     }
     if v.diags.is_empty() {
         // Collect the intrinsics THIS body actually calls (body-read
@@ -453,13 +537,17 @@ pub fn verify_function_ref(
             resource_plan: None,
             excl_adds: std::collections::BTreeSet::new(),
             body_digest: crate::collections_facts::body_content_digest(body),
-            coll_facts: if bundle.domain == HirDomain::Collections {
+            coll_facts: if matches!(
+                bundle.domain,
+                HirDomain::Collections | HirDomain::Closures
+            ) {
                 Some(Box::new(crate::collections_facts::compute_body_facts(
                     m, body,
                 )))
             } else {
                 None
             },
+            closure_facts,
         })
     } else {
         Err(v.diags)
@@ -519,6 +607,7 @@ pub fn verify_text_function(
     let m = &bundle.modules[0];
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: None,
         domain: bundle.domain,
     };
     if !v.check_module_type_bounds(m) {
@@ -686,7 +775,399 @@ pub fn verify_text_function(
         excl_adds,
         body_digest: crate::collections_facts::body_content_digest(body),
         coll_facts: None,
+        closure_facts: None,
     })
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// PLAN-912 §5.2: the resident checked closures registry and closure facts.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// One field of a lambda's environment as the verifier fixed it: the HIR
+/// type, the body local's writability and whether the field is a CELL (a
+/// handle-shared `var` cell for `Shared`, or a K06 private writable cell for
+/// `Move` + writable) — the fact lowering materializes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClosureEnvField {
+    pub ty: hir::TypeUse,
+    pub mutable: bool,
+    pub cell: bool,
+}
+
+/// One creation site inside a verified body: the callee lambda, the capture
+/// operands `(mode, cell)` in environment order and the callee's declared
+/// environment (so the unit's `fn:` import carries the env layout).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClosureSiteFact {
+    pub callee: String,
+    pub operands: Vec<(hir::CaptureMode, bool)>,
+    pub callee_env: Vec<ClosureEnvField>,
+}
+
+/// The verifier-computed closure facts of ONE body (travels inside a
+/// closures [`CheckedFunction`]). `env` is `Some` for a lambda body.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClosureBodyFacts {
+    pub env: Option<Vec<ClosureEnvField>>,
+    pub sites: Vec<ClosureSiteFact>,
+}
+
+/// A registered lambda: who creates it, with which capture modes, and the
+/// environment its body declares.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LambdaDecl {
+    /// Creator def id text (`d_<owner>` or an enclosing lambda's id).
+    pub creator: String,
+    pub site_modes: Vec<hir::CaptureMode>,
+    pub env: Vec<ClosureEnvField>,
+}
+
+/// The resident CHECKED closures registry (PLAN-912 §5.2 "冷声明/类型/创建点
+/// registry受检后驻留"): the cross-body facts a single-function document
+/// cannot carry — every lambda's environment declaration, its creation site
+/// (exactly one, in exactly one creator) and the site's capture modes. Built
+/// only from a whole-module [`CheckedModule`] (the cold truth path) and
+/// updated only from verifier-minted credentials; a caller cannot fill it
+/// from unverified text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClosuresVerifyContext {
+    lambdas: BTreeMap<String, LambdaDecl>,
+    sites_by_creator: BTreeMap<String, Vec<String>>,
+}
+
+/// Verifier-internal projection of the registry (callee id → env fields).
+pub(crate) struct ClosuresVerifyView {
+    pub(crate) env: BTreeMap<String, Vec<ClosureEnvField>>,
+}
+
+impl ClosuresVerifyContext {
+    /// Build the registry from a whole-module closures credential.
+    pub fn from_checked(checked: &CheckedModule) -> Result<Self, Vec<Diagnostic>> {
+        let bundle = checked.bundle();
+        if bundle.domain != HirDomain::Closures || bundle.modules.len() != 1 {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.domain",
+                "the closures registry is built from a single-module closures credential",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let m = &bundle.modules[0];
+        let mut lambdas: BTreeMap<String, LambdaDecl> = BTreeMap::new();
+        let mut sites_by_creator: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for body in &m.bodies {
+            let Some(creator) = m.defs.get(body.owner.0 as usize) else {
+                continue;
+            };
+            for e in &body.exprs {
+                let hir::ExprKind::CreateClosure { callee, captures } = &e.kind else {
+                    continue;
+                };
+                let Some(callee_def) = m.defs.get(callee.0 as usize) else {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Verify,
+                        "verify.closure-site",
+                        format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                        e.span,
+                    )]);
+                };
+                if lambdas.contains_key(&callee_def.id_text) {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Verify,
+                        "verify.closure-site-duplicate",
+                        format!(
+                            "lambda `{}` is created at more than one site; every lambda has exactly one creation site",
+                            callee_def.id_text
+                        ),
+                        e.span,
+                    )]);
+                }
+                let hir::DefKind::Function {
+                    body: callee_body, ..
+                } = &callee_def.kind
+                else {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Verify,
+                        "verify.closure-site",
+                        format!("lambda `{}` is not a function", callee_def.id_text),
+                        e.span,
+                    )]);
+                };
+                let Some(callee_body) = m.bodies.get(callee_body.0 as usize) else {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Verify,
+                        "verify.closure-site",
+                        format!(
+                            "lambda `{}` has no body in the checked module",
+                            callee_def.id_text
+                        ),
+                        e.span,
+                    )]);
+                };
+                let mut locals: Vec<&hir::LocalDef> = callee_body
+                    .locals
+                    .iter()
+                    .filter(|l| l.role == hir::LocalRole::Capture)
+                    .collect();
+                locals.sort_by_key(|l| l.index);
+                let site_modes: Vec<hir::CaptureMode> = captures.iter().map(|c| c.mode).collect();
+                if locals.len() != site_modes.len() {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Verify,
+                        "verify.closure-env-mismatch",
+                        format!(
+                            "lambda `{}` declares {} captures but its creation site passes {}",
+                            callee_def.id_text,
+                            locals.len(),
+                            site_modes.len()
+                        ),
+                        e.span,
+                    )]);
+                }
+                let env = locals
+                    .iter()
+                    .zip(site_modes.iter())
+                    .map(|(l, mode)| ClosureEnvField {
+                        ty: l.ty,
+                        mutable: l.mutable,
+                        cell: env_field_is_cell(*mode, l.mutable),
+                    })
+                    .collect();
+                lambdas.insert(
+                    callee_def.id_text.clone(),
+                    LambdaDecl {
+                        creator: creator.id_text.clone(),
+                        site_modes,
+                        env,
+                    },
+                );
+                sites_by_creator
+                    .entry(creator.id_text.clone())
+                    .or_default()
+                    .push(callee_def.id_text.clone());
+            }
+        }
+        Ok(ClosuresVerifyContext {
+            lambdas,
+            sites_by_creator,
+        })
+    }
+
+    /// The registered declaration of lambda `def_id_text`, if any.
+    pub fn lambda(&self, def_id_text: &str) -> Option<&LambdaDecl> {
+        self.lambdas.get(def_id_text)
+    }
+
+    pub fn is_lambda(&self, def_id_text: &str) -> bool {
+        self.lambdas.contains_key(def_id_text)
+    }
+
+    pub fn lambda_count(&self) -> usize {
+        self.lambdas.len()
+    }
+
+    /// The lambdas `creator` creates, in body order.
+    pub fn sites_of(&self, creator: &str) -> &[String] {
+        self.sites_by_creator
+            .get(creator)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn view(&self) -> ClosuresVerifyView {
+        ClosuresVerifyView {
+            env: self
+                .lambdas
+                .iter()
+                .map(|(k, d)| (k.clone(), d.env.clone()))
+                .collect(),
+        }
+    }
+}
+
+/// The one cell rule (mirrors the lowering's materialization decision so
+/// the verifier, not the lowering, owns it): a `Shared` capture is a shared
+/// cell; a `Move` capture of a WRITABLE body local is a K06 private cell.
+pub fn env_field_is_cell(mode: hir::CaptureMode, mutable: bool) -> bool {
+    match mode {
+        hir::CaptureMode::Shared => true,
+        hir::CaptureMode::Move => mutable,
+        hir::CaptureMode::Borrow => false,
+    }
+}
+
+impl Verifier {
+    /// PLAN-912 §5.2: the closures obligations of ONE function against the
+    /// resident registry. Returns the body's closure facts when no error was
+    /// pushed.
+    fn check_closures_function_rules(
+        &mut self,
+        m: &hir::Module,
+        def: &hir::Def,
+        body: &hir::Body,
+        ctx: &ClosuresVerifyContext,
+    ) -> Option<ClosureBodyFacts> {
+        let before = self.diags.len();
+        let mut facts = ClosureBodyFacts::default();
+        // (a) A lambda body's own environment must match its registered
+        //     declaration field by field; a body that declares captures
+        //     without being a registered lambda has no creation site.
+        let mut own: Vec<&hir::LocalDef> = body
+            .locals
+            .iter()
+            .filter(|l| l.role == hir::LocalRole::Capture)
+            .collect();
+        own.sort_by_key(|l| l.index);
+        match ctx.lambdas.get(&def.id_text) {
+            Some(decl) => {
+                if own.len() != decl.env.len() {
+                    self.error(
+                        "verify.closure-env-mismatch",
+                        format!(
+                            "lambda `{}` declares {} captures but its registered environment has {}",
+                            def.id_text,
+                            own.len(),
+                            decl.env.len()
+                        ),
+                        def.span,
+                    );
+                } else {
+                    for (l, f) in own.iter().zip(decl.env.iter()) {
+                        if l.ty != f.ty || l.mutable != f.mutable {
+                            self.error(
+                                "verify.closure-env-mismatch",
+                                format!(
+                                    "lambda `{}` capture `{}` does not match its registered environment field",
+                                    def.id_text, l.name
+                                ),
+                                l.span,
+                            );
+                        }
+                    }
+                }
+                facts.env = Some(decl.env.clone());
+            }
+            None => {
+                if !own.is_empty() {
+                    self.error(
+                        "verify.closure-site",
+                        format!(
+                            "function `{}` declares capture locals but is not a registered lambda (no creation site)",
+                            def.id_text
+                        ),
+                        def.span,
+                    );
+                }
+            }
+        }
+        // (b) Every creation site in this body must be registered to THIS
+        //     creator with THESE modes, exactly once; (c) a lambda body is
+        //     never called directly.
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for e in &body.exprs {
+            match &e.kind {
+                hir::ExprKind::CreateClosure { callee, captures } => {
+                    let Some(callee_id) = m.defs.get(callee.0 as usize).map(|d| d.id_text.as_str())
+                    else {
+                        self.error(
+                            "verify.closure-site",
+                            format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                            e.span,
+                        );
+                        continue;
+                    };
+                    let Some(decl) = ctx.lambdas.get(callee_id) else {
+                        self.error(
+                            "verify.closure-site",
+                            format!(
+                                "expr `{}` creates `{callee_id}`, which is not a registered lambda",
+                                e.id_text
+                            ),
+                            e.span,
+                        );
+                        continue;
+                    };
+                    if decl.creator != def.id_text {
+                        self.error(
+                            "verify.closure-site",
+                            format!(
+                                "expr `{}` creates `{callee_id}` but that lambda's registered creation site is in `{}`",
+                                e.id_text, decl.creator
+                            ),
+                            e.span,
+                        );
+                        continue;
+                    }
+                    if !seen.insert(callee_id.to_string()) {
+                        self.error(
+                            "verify.closure-site-duplicate",
+                            format!(
+                                "expr `{}` is a second creation site of `{callee_id}`",
+                                e.id_text
+                            ),
+                            e.span,
+                        );
+                        continue;
+                    }
+                    let modes: Vec<hir::CaptureMode> = captures.iter().map(|c| c.mode).collect();
+                    if modes != decl.site_modes {
+                        self.error(
+                            "verify.closure-env-mismatch",
+                            format!(
+                                "expr `{}` capture modes differ from the registered creation site of `{callee_id}`",
+                                e.id_text
+                            ),
+                            e.span,
+                        );
+                        continue;
+                    }
+                    facts.sites.push(ClosureSiteFact {
+                        callee: callee_id.to_string(),
+                        operands: decl
+                            .env
+                            .iter()
+                            .zip(modes.iter())
+                            .map(|(f, mode)| (*mode, f.cell))
+                            .collect(),
+                        callee_env: decl.env.clone(),
+                    });
+                }
+                hir::ExprKind::Call { callee, .. } => {
+                    if let Some(callee_id) = m.defs.get(callee.0 as usize).map(|d| d.id_text.as_str())
+                    {
+                        if ctx.is_lambda(callee_id) {
+                            self.error(
+                                "verify.closure-body-direct-call",
+                                format!(
+                                    "expr `{}` calls lambda body `{callee_id}` directly; lambda bodies are reachable only through CALL_CLOSURE",
+                                    e.id_text
+                                ),
+                                e.span,
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for expected in ctx.sites_of(&def.id_text) {
+            if !seen.contains(expected) {
+                self.error(
+                    "verify.closure-site",
+                    format!(
+                        "function `{}` no longer creates registered lambda `{expected}`; the creation-site catalog must be re-established by the owner path",
+                        def.id_text
+                    ),
+                    def.span,
+                );
+            }
+        }
+        if self.diags.len() == before {
+            Some(facts)
+        } else {
+            None
+        }
+    }
 }
 
 /// Deterministic FNV-1a fingerprint of the declaration context a function
@@ -1004,6 +1485,7 @@ fn verify_text_domain(
     }
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: None,
         domain: expected,
     };
     for m in &bundle.modules {
@@ -1113,6 +1595,7 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
     }
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: None,
         domain: HirDomain::TextRecord,
     };
     for m in &bundle.modules {
@@ -1225,6 +1708,9 @@ fn verify_collection_family(
     bundle: hir::Bundle,
     expected: HirDomain,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
+    // PLAN-912 §5.4 whole-axis observation: verifying every body is a
+    // module-axis attempt (the warm closures path must never reach here).
+    crate::body_work::record_whole(crate::body_work::Stage::WholeVerify);
     if bundle.domain != expected {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
@@ -1239,6 +1725,7 @@ fn verify_collection_family(
     }
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: None,
         domain: expected,
     };
     v.check_bundle(&bundle);
@@ -1365,6 +1852,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
     }
     let mut v = Verifier {
         diags: Vec::new(),
+        closures_ctx: None,
         domain: expect,
     };
     v.check_bundle(&bundle);
@@ -1523,6 +2011,11 @@ struct TypeMemo {
 pub(crate) struct Verifier {
     diags: Vec<Diagnostic>,
     domain: HirDomain,
+    /// PLAN-912 §5.2: the resident closures registry view for a SINGLE-
+    /// FUNCTION document — supplies the callee environment declarations a
+    /// body-less scaffold cannot (whole-module walks leave it `None`; every
+    /// callee body is real there).
+    closures_ctx: Option<ClosuresVerifyView>,
 }
 
 impl Verifier {
@@ -4102,15 +4595,49 @@ impl Verifier {
                                     e.span,
                                 );
                             }
-                            let capture_locals = m.bodies.get(callee_body.0 as usize).map(|body| {
-                                let mut locals: Vec<_> = body
-                                    .locals
-                                    .iter()
-                                    .filter(|local| local.role == hir::LocalRole::Capture)
-                                    .collect();
-                                locals.sort_by_key(|local| local.index);
-                                locals
-                            });
+                            // The callee's environment declaration: from its REAL
+                            // body when the document carries one, otherwise (a
+                            // single-function document where the callee is a
+                            // body-less scaffold) from the resident closures
+                            // registry view. PLAN-912 §5.2: a single-function
+                            // Closures credential is never minted with this check
+                            // silently skipped — no body and no registry entry is
+                            // a named rejection.
+                            let capture_locals: Option<Vec<(hir::TypeUse, bool)>> = m
+                                .bodies
+                                .get(callee_body.0 as usize)
+                                .map(|body| {
+                                    let mut locals: Vec<_> = body
+                                        .locals
+                                        .iter()
+                                        .filter(|local| local.role == hir::LocalRole::Capture)
+                                        .collect();
+                                    locals.sort_by_key(|local| local.index);
+                                    locals
+                                        .into_iter()
+                                        .map(|l| (l.ty.clone(), l.mutable))
+                                        .collect()
+                                })
+                                .or_else(|| {
+                                    let callee_id = callee.map(|d| d.id_text.as_str())?;
+                                    self.closures_ctx
+                                        .as_ref()?
+                                        .env
+                                        .get(callee_id)
+                                        .map(|env| {
+                                            env.iter().map(|f| (f.ty.clone(), f.mutable)).collect()
+                                        })
+                                });
+                            if capture_locals.is_none() && self.closures_ctx.is_some() {
+                                self.error(
+                                    "verify.closure-env-unknown",
+                                    format!(
+                                        "expr `{}` creates a closure whose callee environment is neither in this document nor in the checked closures registry",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
                             if let Some(capture_locals) = capture_locals {
                                 if capture_locals.len() != captures.len() {
                                     self.error(
@@ -4119,11 +4646,13 @@ impl Verifier {
                                         e.span,
                                     );
                                 }
-                                for (capture, target) in captures.iter().zip(capture_locals) {
+                                for (capture, (target_ty, target_mutable)) in
+                                    captures.iter().zip(capture_locals.iter())
+                                {
                                     if let Some(source) = body.locals.get(capture.local.0 as usize)
                                     {
                                         let source_type = self.value_of(&source.ty, type_map);
-                                        let target_type = self.value_of(&target.ty, type_map);
+                                        let target_type = self.value_of(target_ty, type_map);
                                         let compatible = source_type == target_type
                                             || (capture.mode == hir::CaptureMode::Borrow
                                                 && source_type == ValueType::StrOwned
@@ -4149,12 +4678,13 @@ impl Verifier {
                                             target_type,
                                             ValueType::I32 | ValueType::Bool | ValueType::Char
                                         );
+                                        let target_mutable = *target_mutable;
                                         let domain_ok = match capture.mode {
                                             hir::CaptureMode::Shared => {
-                                                scalar && source.mutable && target.mutable
+                                                scalar && source.mutable && target_mutable
                                             }
-                                            hir::CaptureMode::Move => !target.mutable || scalar,
-                                            hir::CaptureMode::Borrow => !target.mutable,
+                                            hir::CaptureMode::Move => !target_mutable || scalar,
+                                            hir::CaptureMode::Borrow => !target_mutable,
                                         };
                                         if !domain_ok {
                                             self.error(
@@ -6393,6 +6923,7 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
                 Some(hir::TypeKind::Function(sig)) => {
                     let v = Verifier {
                         diags: Vec::new(),
+                        closures_ctx: None,
                         domain: HirDomain::HostConsole,
                     };
                     sig.params.len() == 1
