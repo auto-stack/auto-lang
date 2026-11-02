@@ -128,6 +128,32 @@ impl ClosuresFunctionSession {
         }
     }
 
+    /// PLAN-913 T-05: build a session from a RESTORED accepted state — the
+    /// already-admitted units installed in a non-persisting update session,
+    /// the declaration-only frontend, and the persisted spanless identity
+    /// wires (the warm path's submission identity). Nothing here produces a
+    /// source stage; the next `apply_source` is a normal warm edit.
+    pub(crate) fn from_restored(
+        update: ClosuresUpdateSession,
+        front: ace_core::source::closures_fn::ClosuresFunctionFrontend,
+        current_wires: BTreeMap<String, Vec<u8>>,
+    ) -> Self {
+        let source_path = front.source_path().to_string();
+        Self {
+            update,
+            front: Some(front),
+            current_wires,
+            source_path,
+            degrade_resubmit_unchanged: false,
+        }
+    }
+
+    /// PLAN-913 T-05: the spanless identity wire of a unit (the publication's
+    /// identity-wire input).
+    pub fn identity_wire_bytes(&self, unit: &str) -> Option<&[u8]> {
+        self.current_wires.get(unit).map(|v| v.as_slice())
+    }
+
     /// PLAN-912 V-06: the "same hash, new object" degradation control for
     /// tests. It is NOT a feature — it exists so a test can prove the
     /// structural gate refuses a revision that re-mints unchanged units.
@@ -138,6 +164,11 @@ impl ClosuresFunctionSession {
 
     pub fn unit(&self, name: &str) -> Option<&std::sync::Arc<ace_av_core::function_code::FunctionCode>> {
         self.update.unit(name)
+    }
+
+    /// The installed unit wire identities (`d_<name>`), sorted.
+    pub fn unit_names(&self) -> Vec<String> {
+        self.current_wires.keys().cloned().collect()
     }
 
     pub fn frontend(&self) -> Option<&ClosuresFunctionFrontend> {
@@ -701,6 +732,10 @@ impl ClosuresFunctionSession {
                     format!("lambda:{logical_id}:{owner}")
                 }
             };
+            let identity_wire = self
+                .identity_wire_bytes(&u.unit)
+                .ok_or_else(|| format!("unit {} has no spanless identity wire", u.unit))?
+                .to_vec();
             units.push(RecoveryUnitInput {
                 unit: u.unit.clone(),
                 logical,
@@ -713,8 +748,15 @@ impl ClosuresFunctionSession {
                 artifact,
                 mint_span: u.mint_span,
                 current_span: u.current_span,
+                identity_wire,
             });
         }
+        // The portable declaration context is REQUIRED data: without it a
+        // restored process could execute but never take another single-body
+        // edit without re-producing the module.
+        let dump = ace_core::source::closures_context::dump_context(front);
+        let context_payload = serde_json::to_vec(&dump)
+            .map_err(|e| format!("encode declaration context: {e}"))?;
         publish_source_recovery(
             store_root,
             PublicationRequest {
@@ -731,6 +773,8 @@ impl ClosuresFunctionSession {
                 commit_point: state.commit_point,
                 context_revision: &state.context_revision,
                 accepted_state_schema: state.schema,
+                context_payload: &context_payload,
+                context_schema: &dump.schema,
                 units,
             },
         )

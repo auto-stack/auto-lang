@@ -46,6 +46,12 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
 use crate::closures_session::AdmittedUnit;
 
+use ace_core::source::closures_context::{
+    restore_context, CaptureModeDump, ContextDump, UnitEvidence,
+};
+use ace_core::source::closures_fn::ClosuresFunctionFrontend;
+use base64::Engine as _;
+
 /// The manifest schema of the source-origin root. Every consumer of the
 /// recovery fact reads this id; a different schema is a controlled STALE.
 pub const RECOVERY_SCHEMA: &str = "ace.closures.source-origin/1";
@@ -120,6 +126,9 @@ pub struct RecoveryCounters {
     /// Source-production attempts taken by this restore (parse/resolve/
     /// typecheck/plan/bind/lower/encode). Always zero on the positive path.
     pub p_axis_attempts: usize,
+    /// The declaration-context artifact decoded + cross-checked here (R axis:
+    /// context decode, evidence build, context rebuild).
+    pub context_reads: usize,
 }
 
 /// One unit of the published manifest: identity facts plus the address of
@@ -146,6 +155,21 @@ pub struct RecoveryUnit {
     pub artifact: String,
     pub mint_span: (usize, usize),
     pub current_span: (usize, usize),
+    /// PLAN-913 T-05: the unit's SPANLESS identity wire (base64) — the wire
+    /// the warm path compares against before it submits. A restore can never
+    /// re-encode it (encode is a production stage), so it is required data.
+    /// Its `fnv1a64` must equal the accepted state's `mir_identity`.
+    pub identity_wire_b64: String,
+    pub identity_fnv: String,
+}
+
+/// The required declaration-context artifact this manifest closes over.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryContextRef {
+    pub schema: String,
+    pub artifact: String,
+    pub digest: String,
+    pub bytes: usize,
 }
 
 /// The published, versioned source-origin manifest.
@@ -177,6 +201,9 @@ pub struct SourceRecoveryManifest {
     /// The accepted-state export this manifest was formed from (a data view,
     /// recorded so a consumer can tell WHICH accepted state it restores).
     pub accepted_state_schema: String,
+    /// The required declaration context (dump) that lets the restored process
+    /// take ONE more single-body edit without re-producing the module.
+    pub context: RecoveryContextRef,
     pub units: Vec<RecoveryUnit>,
 }
 
@@ -233,6 +260,8 @@ pub struct RecoveryUnitInput {
     pub artifact: String,
     pub mint_span: (usize, usize),
     pub current_span: (usize, usize),
+    /// The spanless identity wire (see [`RecoveryUnit::identity_wire_b64`]).
+    pub identity_wire: Vec<u8>,
 }
 
 /// The publication request: the accepted source state plus the project that
@@ -255,6 +284,11 @@ pub struct PublicationRequest<'a> {
     pub commit_point: u64,
     pub context_revision: &'a str,
     pub accepted_state_schema: &'a str,
+    /// The serialized declaration context (`ContextDump`, schema
+    /// `ace.closures.context-dump/1`) — published as a REQUIRED artifact the
+    /// manifest closes over.
+    pub context_payload: &'a [u8],
+    pub context_schema: &'a str,
     pub units: Vec<RecoveryUnitInput>,
 }
 
@@ -365,6 +399,9 @@ pub fn publish_source_recovery(
             artifact: u.artifact.clone(),
             mint_span: u.mint_span,
             current_span: u.current_span,
+            identity_wire_b64: base64::engine::general_purpose::STANDARD
+                .encode(&u.identity_wire),
+            identity_fnv: format!("{:016x}", fnv1a64(&u.identity_wire)),
         })
         .collect();
     units.sort_by(|a, b| a.unit.cmp(&b.unit));
@@ -388,7 +425,74 @@ pub fn publish_source_recovery(
                 format!("unit `{}` has no persisted artifact", u.unit),
             ));
         }
+        // The spanless identity wire is required data: its fingerprint must
+        // be the accepted state's submission identity.
+        if u.identity_wire_b64.is_empty() {
+            return Err(RecoveryError::new(
+                "recovery.unit-identity",
+                format!("unit `{}` has no spanless identity wire", u.unit),
+            ));
+        }
+        if u.identity_fnv != u.mir_identity {
+            return Err(RecoveryError::new(
+                "recovery.unit-identity",
+                format!(
+                    "unit `{}` identity wire {} != accepted state's mir_identity {}",
+                    u.unit, u.identity_fnv, u.mir_identity
+                ),
+            ));
+        }
     }
+    if request.context_payload.is_empty() {
+        return Err(RecoveryError::new(
+            "recovery.context-missing",
+            "publication requires the serialized declaration context",
+        ));
+    }
+    if request.context_payload.len() > MAX_MANIFEST_BYTES {
+        return Err(RecoveryError::new(
+            "recovery.context-too-large",
+            format!(
+                "context is {} bytes (cap {MAX_MANIFEST_BYTES})",
+                request.context_payload.len()
+            ),
+        ));
+    }
+    let store = ManagedStore::open(store_root).map_err(|e| {
+        RecoveryError::new("recovery.store-open", format!("open store: {e}"))
+    })?;
+    // The declaration context rides its own REQUIRED artifact so a manifest
+    // stays bounded and the context is digest-addressed independently.
+    let context_digest = ace_core::runtime_contract::sha256_hex(request.context_payload);
+    let mut context_identity = manifest_identity(
+        request.logical_owner,
+        request.source_sha256,
+    );
+    context_identity.unit = "context-dump";
+    context_identity.body_fp = &context_digest;
+    let context_artifact = store
+        .put_artifact(PutRequest {
+            layer: RECOVERY_LAYER.id,
+            key: QueryKey::new(
+                &RECOVERY_LAYER,
+                vec![
+                    ("producer".into(), CLOSURES_PRODUCER_ID.into()),
+                    ("owner-module".into(), request.logical_owner.to_string()),
+                    ("context-schema".into(), request.context_schema.to_string()),
+                    ("context-digest".into(), context_digest.clone()),
+                ],
+            ),
+            kind: ChunkKind::LayoutData,
+            payload: envelope_wrap(request.context_payload, &context_identity),
+            edges: Vec::new(),
+            project: None,
+        })
+        .map_err(|e| RecoveryError::new("recovery.put", format!("put context: {e}")))?;
+    let _context_lease = store
+        .acquire_lease("plan913-recovery-publish", 300, Some(&context_artifact))
+        .map_err(|e| {
+            RecoveryError::new("recovery.lease", format!("lease context: {e}"))
+        })?;
     let manifest = SourceRecoveryManifest {
         schema: RECOVERY_SCHEMA.to_string(),
         source_sha256: request.source_sha256.to_string(),
@@ -410,6 +514,12 @@ pub fn publish_source_recovery(
         commit_point: request.commit_point,
         context_revision: request.context_revision.to_string(),
         accepted_state_schema: request.accepted_state_schema.to_string(),
+        context: RecoveryContextRef {
+            schema: request.context_schema.to_string(),
+            artifact: context_artifact.clone(),
+            digest: context_digest,
+            bytes: request.context_payload.len(),
+        },
         units,
     };
     let payload = serde_json::to_vec(&manifest).map_err(|e| {
@@ -425,23 +535,32 @@ pub fn publish_source_recovery(
         ));
     }
     let digest = ace_core::runtime_contract::sha256_hex(&payload);
-    let store = ManagedStore::open(store_root).map_err(|e| {
-        RecoveryError::new("recovery.store-open", format!("open store: {e}"))
-    })?;
     let mut identity = manifest_identity(&manifest.logical_owner, &manifest.source_sha256);
     identity.body_fp = &digest;
     let framed = envelope_wrap(&payload, &identity);
+    // The manifest's required closure: every unit wire AND the declaration
+    // context. A visible root therefore always closes over live required data.
+    let mut edges: Vec<(String, ace_artifacts::identity::RefKind)> = manifest
+        .units
+        .iter()
+        .map(|u| {
+            (
+                u.artifact.clone(),
+                ace_artifacts::identity::RefKind::RequiredData,
+            )
+        })
+        .collect();
+    edges.push((
+        context_artifact,
+        ace_artifacts::identity::RefKind::RequiredData,
+    ));
     let artifact = store
         .put_artifact(PutRequest {
             layer: RECOVERY_LAYER.id,
             key: manifest_key(&manifest),
             kind: ChunkKind::LayoutData,
             payload: framed,
-            edges: manifest
-                .units
-                .iter()
-                .map(|u| (u.artifact.clone(), ace_artifacts::identity::RefKind::Provenance))
-                .collect(),
+            edges,
             project: None,
         })
         .map_err(|e| RecoveryError::new("recovery.put", format!("put manifest: {e}")))?;
@@ -514,6 +633,11 @@ pub struct RestoreRequest<'a> {
 pub struct RestoreOutcome {
     pub manifest: SourceRecoveryManifest,
     pub units: Vec<AdmittedUnit>,
+    /// PLAN-913 T-05: the SAFE frontend context rebuilt from the persisted
+    /// declaration context, cross-checked against the decoded units.
+    pub frontend: ClosuresFunctionFrontend,
+    /// Per-unit spanless identity wires (the warm path's submission identity).
+    pub identity_wires: BTreeMap<String, Vec<u8>>,
     pub counters: RecoveryCounters,
     pub accepted_state_schema: String,
     pub accepted_generation: u64,
@@ -604,6 +728,76 @@ pub fn restore_source_recovery(
     })?;
     // 4. Bind the manifest to THIS request (source/config/producer).
     verify_manifest_binding(&manifest, request)?;
+    // 4b. The REQUIRED declaration context: read BY ARTIFACT ID, unwrap
+    //     against the manifest's recorded digest, re-digest and decode. The
+    //     decoded dump stays untrusted until `restore_context` cross-checks it
+    //     against the units this restore admits below.
+    let context_bytes = {
+        if manifest.context.bytes > MAX_MANIFEST_BYTES {
+            return Err(RecoveryError::new(
+                "recovery.context-too-large",
+                format!(
+                    "manifest declares a {} byte context (cap {MAX_MANIFEST_BYTES})",
+                    manifest.context.bytes
+                ),
+            ));
+        }
+        let found = store
+            .get_artifact_by_id(&manifest.context.artifact)
+            .map_err(|e| {
+                RecoveryError::new("recovery.read", format!("read context: {e}"))
+            })?
+            .ok_or_else(|| {
+                RecoveryError::new(
+                    "recovery.miss",
+                    format!(
+                        "declaration context artifact {} is absent",
+                        manifest.context.artifact
+                    ),
+                )
+            })?;
+        if found.kind != ChunkKind::LayoutData {
+            return Err(RecoveryError::new(
+                "recovery.kind",
+                format!(
+                    "declaration context artifact carries kind {:?}",
+                    found.kind
+                ),
+            ));
+        }
+        let mut context_identity =
+            manifest_identity(&manifest.logical_owner, &manifest.source_sha256);
+        context_identity.unit = "context-dump";
+        context_identity.body_fp = &manifest.context.digest;
+        let bytes = envelope_unwrap(&found.payload, &context_identity).map_err(|e| {
+            RecoveryError::new(
+                "recovery.envelope",
+                format!("declaration context envelope rejected: {e:?}"),
+            )
+        })?;
+        let digest = ace_core::runtime_contract::sha256_hex(&bytes);
+        if !constant_time_eq(digest.as_bytes(), manifest.context.digest.as_bytes()) {
+            return Err(RecoveryError::new(
+                "recovery.digest",
+                format!(
+                    "declaration context digest mismatch: {} != {}",
+                    digest, manifest.context.digest
+                ),
+            ));
+        }
+        if bytes.len() != manifest.context.bytes {
+            return Err(RecoveryError::new(
+                "recovery.context-mismatch",
+                format!(
+                    "declaration context is {} bytes, manifest says {}",
+                    bytes.len(),
+                    manifest.context.bytes
+                ),
+            ));
+        }
+        counters.context_reads = 1;
+        bytes
+    };
     // 5. Read + re-verify every required unit BY ARTIFACT ID.
     let owner = OwnerScope {
         schema: manifest.owner_schema.clone(),
@@ -686,8 +880,7 @@ pub fn restore_source_recovery(
                 format!("unit {} deep verification rejected: {e:?}", u.unit),
             )
         })?;
-        ace_core::body_work::record_attempt(
-            ace_core::body_work::Stage::DecodeAdmit,
+        ace_core::body_work::record_attempt(ace_core::body_work::Stage::RestartDeepVerify,
             &u.unit,
         );
         counters.unit_deep_verifies += 1;
@@ -723,13 +916,158 @@ pub fn restore_source_recovery(
         // A read-only restore performs no data/root write: opening the store
         // is a read, and no publication/root API is touched above.
     }
+    // 6. The spanless identity wires (required data; their fingerprint is the
+    //    accepted state's submission identity).
+    let mut identity_wires: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for u in &manifest.units {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(u.identity_wire_b64.as_bytes())
+            .map_err(|e| {
+                RecoveryError::new(
+                    "recovery.identity",
+                    format!("unit {} identity wire is not base64: {e}", u.unit),
+                )
+            })?;
+        if bytes.is_empty() {
+            return Err(RecoveryError::new(
+                "recovery.identity",
+                format!("unit {} has an empty identity wire", u.unit),
+            ));
+        }
+        let fp = format!("{:016x}", fnv1a64(&bytes));
+        if fp != u.identity_fnv || fp != u.mir_identity {
+            return Err(RecoveryError::new(
+                "recovery.identity",
+                format!(
+                    "unit {} identity wire fingerprint {fp} != accepted identity {}",
+                    u.unit, u.mir_identity
+                ),
+            ));
+        }
+        identity_wires.insert(u.unit.clone(), bytes);
+    }
+    // 7. Rebuild the SAFE declaration context from the untrusted dump, using
+    //    the DECODED unit facts as the cross-check. No parse/resolve/typecheck/
+    //    lower/encode runs here.
+    let dump: ContextDump = serde_json::from_slice(&context_bytes).map_err(|e| {
+        RecoveryError::new(
+            "recovery.decode",
+            format!("decode declaration context: {e}"),
+        )
+    })?;
+    if dump.schema != manifest.context.schema {
+        return Err(RecoveryError::new(
+            "recovery.stale",
+            format!(
+                "declaration context schema {} != manifest {}",
+                dump.schema, manifest.context.schema
+            ),
+        ));
+    }
+    // The dump is the SAME accepted state the manifest describes.
+    if dump.source_sha != manifest.source_sha256
+        || dump.module_path != manifest.logical_owner
+        || dump.context_revision != manifest.context_revision
+        || dump.generation != manifest.accepted_generation
+    {
+        return Err(RecoveryError::new(
+            "recovery.context-mismatch",
+            "the declaration context describes a different accepted state than the manifest",
+        ));
+    }
+    let mut evidence: Vec<UnitEvidence> = Vec::with_capacity(units.len());
+    for unit in &units {
+        evidence.push(unit_evidence(&unit.name, unit.code.unit().module())?);
+    }
+    let frontend = restore_context(
+        dump,
+        request.source,
+        request.logical_owner,
+        request.capabilities,
+        &evidence,
+    )
+    .map_err(|ds| {
+        RecoveryError::new(
+            "recovery.context",
+            format!(
+                "the declaration context was rejected: {}",
+                ds.iter()
+                    .map(|d| format!("{} ({})", d.code, d.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        )
+    })?;
     Ok(RestoreOutcome {
         units,
+        frontend,
+        identity_wires,
         counters,
         accepted_state_schema: manifest.accepted_state_schema.clone(),
         accepted_generation: manifest.accepted_generation,
         commit_point: manifest.commit_point,
         manifest,
+    })
+}
+
+/// Build the decoded-unit evidence the restored declaration context is
+/// cross-checked against: a lambda's MIR environment arity and a creator's
+/// `CreateClosure` sites (callee + capture-mode sequence, in body order).
+fn unit_evidence(
+    unit: &str,
+    module: &ace_av_core::mir::MirModule,
+) -> Result<ace_core::source::closures_context::UnitEvidence, RecoveryError> {
+    use ace_av_core::mir::{CalleeRef, CaptureKind, MirInstr};
+    let func = module.funcs.first().ok_or_else(|| {
+        RecoveryError::new(
+            "recovery.evidence",
+            format!("unit {unit} carries no function"),
+        )
+    })?;
+    let mut sites = Vec::new();
+    for instr in func.blocks.iter().flat_map(|b| b.instrs.iter()) {
+        let MirInstr::CreateClosure { callee, captures, .. } = instr else {
+            continue;
+        };
+        let symbol = match callee {
+            CalleeRef::Import(i) => module
+                .imports
+                .get(*i as usize)
+                .map(|im| im.symbol.clone())
+                .unwrap_or_default(),
+            CalleeRef::Func(f) => module
+                .funcs
+                .get(*f as usize)
+                .map(|f| f.name.clone())
+                .unwrap_or_default(),
+        };
+        let callee_name = symbol
+            .strip_prefix("fn:")
+            .unwrap_or(symbol.as_str())
+            .to_string();
+        let mut modes = Vec::with_capacity(captures.len());
+        for capture in captures {
+            modes.push(match capture.kind {
+                CaptureKind::Move => CaptureModeDump::Move,
+                CaptureKind::Borrow => CaptureModeDump::Borrow,
+                CaptureKind::Shared => CaptureModeDump::Shared,
+                other => {
+                    return Err(RecoveryError::new(
+                        "recovery.evidence",
+                        format!(
+                            "unit {unit} creates {callee_name} with capture kind {other:?}, \
+                             which the closures registry does not declare"
+                        ),
+                    ))
+                }
+            });
+        }
+        sites.push((callee_name, modes));
+    }
+    Ok(ace_core::source::closures_context::UnitEvidence {
+        unit: unit.to_string(),
+        env_arity: func.env.as_ref().map(|env| env.len()),
+        sites,
     })
 }
 
@@ -815,4 +1153,52 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+/// A restored closures FUNCTION session: the accepted units installed and the
+/// SAFE declaration context, ready for ONE more single-body edit. This is the
+/// entry a restoring process uses; [`restore_source_recovery`] alone is the
+/// execute-only face.
+pub struct ClosuresRestoredSession {
+    pub session: crate::closures_fn_session::ClosuresFunctionSession,
+    pub manifest: SourceRecoveryManifest,
+    pub counters: RecoveryCounters,
+    /// The restored program's entry value (the restore EXECUTED it for real;
+    /// the request never carried an expected value).
+    pub restore_value: Option<i32>,
+}
+
+/// Restore a source-bound accepted state into a live FUNCTION session: install
+/// the admitted units, rebuild the declaration context, and hand back a
+/// session whose next `apply_source` is a normal 912 warm edit.
+pub fn restore_source_session(
+    store_root: &Path,
+    request: &RestoreRequest<'_>,
+) -> Result<ClosuresRestoredSession, RecoveryError> {
+    let restored = restore_source_recovery(store_root, request)?;
+    let RestoreOutcome {
+        manifest,
+        units,
+        frontend,
+        identity_wires,
+        counters,
+        ..
+    } = restored;
+    let mut update =
+        crate::closures_session::ClosuresUpdateSession::new(None, &manifest.entry);
+    update.set_host_grants(request.capabilities.to_vec());
+    let outcome = update
+        .restore_install(units)
+        .map_err(|e| RecoveryError::new("recovery.install", e))?;
+    let session = crate::closures_fn_session::ClosuresFunctionSession::from_restored(
+        update,
+        frontend,
+        identity_wires,
+    );
+    Ok(ClosuresRestoredSession {
+        session,
+        manifest,
+        counters,
+        restore_value: outcome.value,
+    })
 }
