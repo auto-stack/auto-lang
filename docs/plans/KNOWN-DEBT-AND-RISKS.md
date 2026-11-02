@@ -3833,6 +3833,19 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 
 
 
+## 2026-11-02 拆分后治理接续（PLAN-918，仅规划）
+
+- **D-910-1**：只读确认直接与reused receipt两路径均汇入未定义`execution_ids`；由[918](918-cross-repository-admission-and-boundary-closure.md)收口日志ID/原分母/源配置哈希准入及原控制。当前未修、未重跑门，不标closed。
+- **D-906-3**：`auto-cache`按896规范使用std-only owned设施有据；旧域禁向规则需精确表达。baseline base_revision `9d96d0f7602aad96231b875d812b81683da04d10`本机不可解析（git对象检查exit128），config hash仍与记录相同，旧集合无该设施边。918先核全边/owner决策和窄设施准入，再干净提交重冻；本轮未运行strict/改基线，不把旧“2违例”当当前全量结论。
+- Web **D-906-1**仍归Web，Man **D-910-2**仍归Man，UI布局/013-todo及真实OS事件沿各自合同；918控制门的绿不替代外仓产品/发行实际执行。031必要生成输入接线由031负责，双方按正式来源协调，不互等整线。
+
+## PLAN-916 final review repair candidates（2026-11-02）
+
+- **R916-F01..F03（owner: plan-916 work）**：旧A2R准入未覆盖嵌套return、Expr::If move/immutable与Closure名称；仓外consumer三类均accepted。关闭条件：共享结构遍历+作用域/分支合并反例及合法控制通过，single/project父证据重绑。
+- **R916-F04（owner: plan-916 work）**：任一Use/TaskDef使`allow_external=true`并跳过全部unknown-call检查，import下missing仍accepted。关闭条件：真实import/builtin/task可见域判定，import下missing拒绝且合法Rust/C/module消费者不回归。
+- **R916-F05（owner: plan-916 work，第二次final review）**：`return if false { s.to(str) } else { "ok" }`仍accepted，直接Return检查未递归复合返回表达式。关闭条件：完整返回表达式树递归oracle+If/Block/项目路径反例与合法owned/view控制通过；repair commit前落实两次失败诊断检查点。
+- 以上均为计划内needs_fix，不以外部债豁免；修复提交与受影响final review pass前不得merge。原始probe/log hash见PLAN-916 §9 round2/4。
+
 ## PLAN-916 到期批量回归归因（2026-11-02，run-ffy4jmss）
 
 - **916自身（closed）**：`stream_next`被名称准入误拒，L0仅补`stream_next/stream_is_done/stream_close`，原失败测试与语义控制绿，落地`cf46948803034eefb205025fca23bcf0424c31cf`。
@@ -3841,3 +3854,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **auto-macros（owner: macros/fix-forward）**：`value_macro_tests.rs`四处`Box<Obj>` vs `Obj`编译错误。关闭条件：修宏展开/调用形态后auto-macros组绿。
 - **sys_natives_vm（owner: sys natives/fix-forward）**：`test_sys_natives_vm`在第49行断言失败。关闭条件：定位实际native结果差异并恢复该测试；不归因916（非A2R路径）。
 - **D-910-1已知项**：`execution_ids`未定义仍属既有治理债，非本次新增；沿918既定owner。
+
+## PLAN-917 债务候选（2026-11-02 work 复审扫描）
+
+- **同根双 `.mut` 前端未拒绝**：`f(x.mut, x.mut)` 在旧 A2R emit 路径不被前端拒绝，产物为
+  `f(&mut x, &mut x)`（rustc E0499，不可编译）。owner=前端借用规则/916 准入缝；PLAN-917
+  如实记录于支持矩阵，不在本包范围（不实现第二套准入）。关闭条件：前端对同根并发 `.mut`
+  给出 typed 拒绝，或 916 缝认领。
+- **T08 Auto trap 认证通道**：a2r 证据仅到「冻结 slice-oob 的 Rust panic 行为观察」，
+  Auto trap（av.trap.str-index 级）认证仍缺受控 trap 通道；不得用 Rust panic 冒充。
+  owner=M1 认证账。
