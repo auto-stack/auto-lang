@@ -612,6 +612,9 @@ fn core_version_for(recipe: &str) -> &'static str {
         // PLAN-912: the FUNCTION-session closures source recipe rides the
         // same av.closures/1 profile identity (same wire/runtime contract).
         "ac-av/closures-fn-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
+        // PLAN-913: the source-bound recovery recipe — same closures wire,
+        // same profile; only the binding/restore phase differs.
+        "ac-av/closures-recovery-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/dynamic-run-v1" => ace_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => ace_av_core::contract::AV_PROFILE,
     }
@@ -839,6 +842,9 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // PLAN-912: the single-function closures recipe — the FUNCTION session
     // (retained frontend + registry + per-unit zero production).
     let closures_fn_recipe = recipe == "ac-av/closures-fn-run-v1";
+    // PLAN-913: the source-bound recovery recipe (publish → restore in a
+    // fresh process → the next warm edit through the restored context).
+    let closures_recovery_recipe = recipe == "ac-av/closures-recovery-run-v1";
     // PLAN-866: the resident-online recipe — one continuously-running
     // guest chain (fuel slices, edits at call-boundary safety points).
     let resident_recipe = recipe == "ac-av/resident-run-v1";
@@ -873,6 +879,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         && !collections_source_recipe
         && !closures_source_recipe
         && !closures_fn_recipe
+        && !closures_recovery_recipe
         && !resident_recipe
         && !loaded_recipe
         && !closures_recipe
@@ -1020,6 +1027,11 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // source-snapshot axis exactly like the 865 recipe).
     let mut closures_fn_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> =
         None;
+    // PLAN-913: the restored FUNCTION session (created by the first restore
+    // run of a recovery check; later runs in this process are warm edits).
+    let mut recovery_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> =
+        None;
+    let mut recovery_restore_value: Option<i32> = None;
     // PLAN-866: the resident-online serving state — ONE chain (the 828
     // session + the resident driver, frozen 64-step fuel slices), created
     // lazily on the first resident step; the names of functions edited
@@ -1547,6 +1559,248 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                             exit(2);
                         }
                     }
+                    continue;
+                }
+                if closures_recovery_recipe {
+                    // PLAN-913: the source-bound recovery entry. `publish` is a
+                    // real production + publication; `restore` / `restore-edit`
+                    // run in a FRESH process and take the caller-held binding
+                    // from the ticket file the publish step wrote.
+                    let Some(selector) = entry.strip_prefix("source:") else {
+                        eprintln!("closures-recovery requires a source:<id> entry");
+                        exit(2);
+                    };
+                    let mut parts = selector.split(':');
+                    let source_id = parts.next().unwrap_or_default();
+                    let mode = parts.next().unwrap_or("restore");
+                    if parts.next().is_some()
+                        || !matches!(mode, "publish" | "restore" | "restore-edit")
+                    {
+                        eprintln!("invalid closures-recovery selector {selector}");
+                        exit(2);
+                    }
+                    if !matches!(source_id, "K01" | "K06" | "S02" | "F01" | "F02") {
+                        eprintln!("unknown closures-recovery source id {source_id}");
+                        exit(2);
+                    }
+                    let module = format!("{source_id}.at");
+                    let project = format!("ac913-{source_id}");
+                    let ticket_path =
+                        std::path::Path::new(&store_dir).join("recovery-ticket.json");
+                    let started = std::time::Instant::now();
+                    let source_hash = format!(
+                        "{:016x}",
+                        ace_av_core::contract::fnv1a64(current_source.as_bytes())
+                    );
+                    if mode == "publish" {
+                        let mut session =
+                            ace_av::closures_fn_session::ClosuresFunctionSession::new(
+                                &store_dir, &module,
+                            );
+                        let run = match session.apply_source(&current_source) {
+                            Ok(run) => run,
+                            Err(error) => {
+                                eprintln!("closures-recovery publish {source_id}: {error:?}");
+                                exit(2);
+                            }
+                        };
+                        let ticket = match session.publish_source_recovery(&project) {
+                            Ok(ticket) => ticket,
+                            Err(error) => {
+                                eprintln!(
+                                    "closures-recovery publish {source_id}: {error}"
+                                );
+                                exit(2);
+                            }
+                        };
+                        let _ = session.close();
+                        let _ = std::fs::write(
+                            &ticket_path,
+                            serde_json::json!({
+                                "manifest": ticket.manifest_artifact,
+                                "digest": ticket.manifest_digest,
+                                "source_sha256": ticket.source_sha256,
+                                "units": ticket.units,
+                            })
+                            .to_string(),
+                        );
+                        step_outs.push(serde_json::json!({
+                            "op": "run",
+                            "outcome": "success",
+                            "value": run.value,
+                            "recovery": {
+                                "phase": "publish",
+                                "manifest": ticket.manifest_artifact,
+                                "digest": ticket.manifest_digest,
+                                "units": ticket.units,
+                                "source_sha256": ticket.source_sha256,
+                                "accepted_generation": ticket.accepted_generation,
+                                "p_verified": run.production.verified,
+                                "p_encoded": run.production.encoded,
+                                "p_admitted": run.production.admitted,
+                            },
+                            "trap": null,
+                            "diag": null,
+                            "source_hash": source_hash,
+                            "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                        }));
+                        continue;
+                    }
+                    if recovery_session.is_none() {
+                        let ticket: serde_json::Value = match std::fs::read_to_string(&ticket_path)
+                            .ok()
+                            .and_then(|t| serde_json::from_str(&t).ok())
+                        {
+                            Some(t) => t,
+                            None => {
+                                eprintln!(
+                                    "closures-recovery restore {source_id}: no published ticket"
+                                );
+                                exit(2);
+                            }
+                        };
+                        let manifest = ticket["manifest"].as_str().unwrap_or_default();
+                        let digest = ticket["digest"].as_str().unwrap_or_default();
+                        let request = ace_av::closures_source_recovery::RestoreRequest {
+                            expected_manifest: manifest,
+                            expected_digest: digest,
+                            source: &current_source,
+                            logical_owner: &module,
+                            entry: "d_main",
+                            profile: ace_core::source::CLOSURES_SOURCE_PROFILE,
+                            capabilities: &[],
+                            read_only: true,
+                        };
+                        let restored = match ace_av::closures_source_recovery::restore_source_session(
+                            &store_dir,
+                            &request,
+                        ) {
+                            Ok(r) => r,
+                            Err(error) => {
+                                eprintln!(
+                                    "closures-recovery restore {source_id}: {}: {}",
+                                    error.code, error.message
+                                );
+                                exit(2);
+                            }
+                        };
+                        recovery_restore_value = restored.restore_value;
+                        recovery_session = Some(restored.session);
+                        let counters = restored.counters;
+                        step_outs.push(serde_json::json!({
+                            "op": "run",
+                            "outcome": "success",
+                            "value": recovery_restore_value,
+                            "recovery": {
+                                "phase": "restore",
+                                "manifest": ticket["manifest"].clone(),
+                                "digest": ticket["digest"].clone(),
+                                "units": ticket["units"].clone(),
+                                "p_axis_attempts": counters.p_axis_attempts,
+                                "r_manifest_reads": counters.manifest_reads,
+                                "r_unit_reads": counters.unit_reads,
+                                "r_deep_verifies": counters.unit_deep_verifies,
+                                "r_admits": counters.unit_admits,
+                                "r_context_reads": counters.context_reads,
+                                "manifest_bytes": counters.manifest_bytes,
+                                "wire_bytes": counters.wire_bytes,
+                            },
+                            "trap": null,
+                            "diag": null,
+                            "source_hash": source_hash,
+                            "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                        }));
+                        continue;
+                    }
+                    // A later run in the SAME restored process: the warm edit.
+                    let session = recovery_session.as_mut().expect("restored session");
+                    let before: Vec<(String, std::sync::Arc<ace_av_core::FunctionCode>)> = session
+                        .unit_names()
+                        .into_iter()
+                        .filter_map(|name| session.unit(&name).cloned().map(|c| (name, c)))
+                        .collect();
+                    let run = match session.apply_source(&current_source) {
+                        Ok(run) => run,
+                        Err(error) => {
+                            eprintln!("closures-recovery edit {source_id}: {error:?}");
+                            exit(2);
+                        }
+                    };
+                    let changed: Vec<String> = run.submitted_unit_names.clone();
+                    let mut unchanged_same_object = 0usize;
+                    let mut unchanged_total = 0usize;
+                    let mut unchanged_production_attempts = 0u64;
+                    for (name, code) in &before {
+                        let now = session.unit(name).expect("installed unit");
+                        if changed.iter().any(|c| c == name) {
+                            continue;
+                        }
+                        unchanged_total += 1;
+                        if std::sync::Arc::ptr_eq(now, code) {
+                            unchanged_same_object += 1;
+                        }
+                        for stage in [
+                            ace_core::body_work::Stage::ParseProject,
+                            ace_core::body_work::Stage::HirVerify,
+                            ace_core::body_work::Stage::MirLower,
+                            ace_core::body_work::Stage::MirVerify,
+                            ace_core::body_work::Stage::AbcEncode,
+                            ace_core::body_work::Stage::DecodeAdmit,
+                            ace_core::body_work::Stage::IndexBuild,
+                            ace_core::body_work::Stage::ArtifactWrite,
+                            ace_core::body_work::Stage::RestartDecode,
+                            ace_core::body_work::Stage::RestartDeepVerify,
+                            ace_core::body_work::Stage::RestartRelower,
+                        ] {
+                            unchanged_production_attempts += run.stages.of(name, stage);
+                        }
+                    }
+                    let mut stage_attempts = serde_json::Map::new();
+                    for ((unit, stage), n) in &run.stages.by_unit {
+                        if *n > 0 {
+                            stage_attempts
+                                .insert(format!("{}|{}", unit, stage.as_str()), serde_json::json!(n));
+                        }
+                    }
+                    let mut body_work = serde_json::Map::new();
+                    for (unit, work) in &run.body {
+                        body_work.insert(
+                            unit.clone(),
+                            serde_json::json!({
+                                "resolve": work.resolve,
+                                "typecheck": work.typecheck,
+                                "plan": work.plan,
+                                "bind": work.bind,
+                            }),
+                        );
+                    }
+                    step_outs.push(serde_json::json!({
+                        "op": "run",
+                        "outcome": "success",
+                        "value": run.value,
+                        "recovery": {
+                            "phase": "edit",
+                            "route": run.route.as_str(),
+                            "warm_gate_pass": run.warm_gate.as_ref().map(|g| g.pass()),
+                            "warm_gate_violations": run.warm_gate.as_ref().map(|g| g.violations.clone()),
+                            "whole_attempts": run.stages.whole_total(),
+                            "submitted_units": run.submitted_units,
+                            "submitted_unit_names": run.submitted_unit_names,
+                            "unchanged_total": unchanged_total,
+                            "unchanged_same_object": unchanged_same_object,
+                            "unchanged_production_attempts": unchanged_production_attempts,
+                            "store_writes": run.production.store_writes,
+                            "live_after_release": run.live_after_release,
+                            "allocs": run.allocs,
+                            "frees": run.frees,
+                            "stage_attempts": stage_attempts,
+                            "body_work": body_work,
+                        },
+                        "trap": null,
+                        "diag": null,
+                        "source_hash": source_hash,
+                        "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                    }));
                     continue;
                 }
                 if closures_source_recipe {
