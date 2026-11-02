@@ -1,0 +1,10 @@
+type Pair {
+    left int
+    right int
+}
+
+fn fan(p Pair) int {
+    p.left * 101 + p.right
+}
+
+fan(Pair { right: 2, left: 1 })

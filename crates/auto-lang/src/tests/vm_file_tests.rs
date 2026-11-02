@@ -687,6 +687,16 @@ fn test_09_functions_001_fn_simple() {
 fn test_09_functions_002_fn_named_args() {
     test_vm("09_functions/002_fn_named_args").unwrap();
 }
+
+#[test]
+fn test_09_functions_020_named_args_reordered() {
+    test_vm("09_functions/020_fn_named_args_reordered").unwrap();
+}
+
+#[test]
+fn test_09_functions_021_named_ctor_reordered() {
+    test_vm("09_functions/021_fn_named_ctor_reordered").unwrap();
+}
 #[test]
 #[ignore]
 fn test_09_functions_003_fn_multiple() {

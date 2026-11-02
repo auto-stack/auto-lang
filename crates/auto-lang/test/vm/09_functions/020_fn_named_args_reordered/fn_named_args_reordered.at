@@ -1,0 +1,5 @@
+fn sub(a int, b int) int {
+    a * 3 + b * 2
+}
+
+sub(b: 2, a: 1)
