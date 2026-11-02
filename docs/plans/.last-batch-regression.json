@@ -1,33 +1,30 @@
 {
-  "last_covered_plan_id": 916,
-  "timestamp": "2026-11-02T10:31:57Z",
-  "covered_commit": "cf46948803034eefb205025fca23bcf0424c31cf",
-  "command": "cargo t all",
-  "single_instance": true,
-  "results_path": "target/test-groups/run-ffy4jmss/results.json",
-  "log_sha256": "c7ee1c903e3c643ce44793653e1908c860a3f5e44a825bafabe7539bfa0d48fd",
-  "elapsed_seconds": 929,
-  "verdict": "new_reds",
-  "new_reds": [
-    "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (read_to_string unwrap)",
-    "PLAN-900 auto-lsp: package moved out of this workspace but fixed group still selects it",
-    "PLAN-901 auto-lang-core: ACE host tests leaked into legacy group",
-    "PLAN-901 infra-pilot-cli: legacy group requested ACE worker; 5 failures + 1 error",
-    "auto-macros: four Box<Obj> versus Obj compile errors in value_macro_tests.rs",
-    "auto-lang::sys_natives_vm_tests::test_sys_natives_vm: assertion failed at line 49",
-    "PLAN-916 plan724_probe_stream_free_fn_typed_dispatch: stream_next rejected; fixed and landed in cf4694880"
-  ],
-  "known_reds_seen": [
-    "D-910-1 web-delivery-controls: execution_ids is not defined; existing governance debt"
-  ],
-  "fix_forward": {
-    "plan_916": "stream_next/stream_is_done/stream_close restored in cf46948803034eefb205025fca23bcf0424c31cf; targeted original failure and semantic controls passed; fix worktree and artifacts cleaned",
-    "other_reds": "Attributed and recorded in docs/plans/KNOWN-DEBT-AND-RISKS.md; no unrelated repair attempted by the batch runner"
-  },
-  "exclusions": [
-    "aavm NOT_APPLICABLE",
-    "a2r-actor-tests NOT_APPLICABLE",
-    "auto-vm NOT_APPLICABLE",
-    "Existing ignored/manual/milestone conditions preserved; conditional non-execution is not PASS"
-  ]
+ "last_covered_plan_id": 920,
+ "timestamp": "2026-11-02T23:57:09Z",
+ "covered_commit": "890c7df105c253f62ca27b9eb1aa01d39419aa06",
+ "command": "cargo t all",
+ "single_instance": true,
+ "results_path": "target/test-groups/run-0tcccll9/results.json",
+ "legs": 36,
+ "pass_legs": 26,
+ "verdict": "known_reds_only",
+ "new_reds": [],
+ "known_reds_seen": [
+  "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (read_to_string unwrap) — shape-identical to 2026-11-02 receipt",
+  "auto-lang sys_natives_vm_tests::test_sys_natives_vm assertion — shape-identical",
+  "auto-macros: selected Cargo target discovery/build failed (Box<Obj> vs Obj compile errors) — shape-identical",
+  "PLAN-900 auto-lsp: package moved out of this workspace, fixed group still selects it (discovery/build failed) — shape-identical",
+  "PLAN-901 auto-lang-core: ACE host tests leaked into a legacy group (pre-execution ownership rejection, executed=0) — shape-identical",
+  "PLAN-901 infra-pilot-cli: ACE worker requested by a legacy test group — shape-identical",
+  "D-910-1 web-delivery-controls: execution_ids is not defined (NameError in web_delivery.py validate_distribution_receipt) — existing governance debt"
+ ],
+ "exclusions": [
+  "aavm NOT_APPLICABLE",
+  "a2r-actor-tests NOT_APPLICABLE",
+  "auto-vm NOT_APPLICABLE",
+  "vm/ace-adapters/case-ace-m1-*/infra-ace-m1 等组 all=false（计划/日常范围组，不入批量并集）；PLAN-920 冻结职责并集已在 06a6f8c72 由 merge 复验 7/7 PASS（run-5z5qf0ss）",
+  "Existing ignored/manual/milestone conditions preserved; conditional non-execution is not PASS"
+ ],
+ "merged_window": "cf4694880..890c7df10 (PLAN-917 a2r certifier, PLAN-920 legacy-AVM immutable diagnostic, 919/920 bookkeeping commits); window touches no known-red area",
+ "triage": "No new reds; all non-PASS legs match the 2026-11-02 receipt by name and failure shape. No fix-forward opened."
 }
