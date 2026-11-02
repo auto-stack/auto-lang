@@ -158,3 +158,19 @@ owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工
   计量 = 编辑入队 → 安全点生效（SafetyPointReport.visibility 样本）。结构
   计数（未改函数生产=0、whole-module=0、chain_entries=1、安装集合、代际）
   由父侧 judge 独立判定，不采信 worker 值言。
+
+## data-incremental 失效与拒绝面（PLAN-914，2026-11-02，SD-07）
+
+- **会话面**：`ac-av/data-incremental-v1` 驱动保留的 `DataIncrementalSession`；每个
+  edit 步骤上报**真实的 rebuilt 集合**与逐 def code identity（ptr/generation），父侧按
+  `av.invalidation{stable_defs,rebuilt_defs}` 判定：声明 rebuilt 的 def 必须在集合里、
+  声明 stable 的 def 不得在集合里且身份必须承载；两者互斥，空 oracle 不成立。
+- **引擎事实（不得隐去）**：data profile 的每个 unit 内嵌全部 def 的 import 签名，
+  因此**使用中记录类型的 layout 变更按设计是全 unit 签名变化**（rebuild 集 = 类型闭包）；
+  「未受影响」的精度由未被引用声明的新增（零 rebuild）与 helper body 编辑（只重建该 def）
+  两格证明，而不是由「所有 unit 都重建」反推为 bug。
+- **拒绝面（I09）**：只重建部分 defs 的布局候选走受控 `apply_source_partial`，
+  link/env-contract 门必须拒绝（typed `env-contract` 或 `link-rejected`）；拒绝是 verdict
+  而非 infra，且旧快照保持可执行（后续 run 返回旧值），父侧不得推进已接受源码。
+- **准入**：`av.invalidation` 仅该 recipe 可声明，与 edit 步骤双向绑定；`partial-rebuild`
+  步骤必须带非空 defs；worker 的上报只作观察，期望永不进入请求。

@@ -105,3 +105,24 @@ Auto 源 API。源 API 未冻结 → 不造 `src/D*.at`，typed/probe 证据不�
 - 合法近邻（G-DEC-2）：`NB17/NB18/NB19`（`src/NB*.at` + `nb-diags-908.suite.ad`）证明
   B17–B19 的拒绝是区分性拒绝（近邻必须真实运行得 2/2/0）；错族、缺原因、崩溃与合法
   近邻被拒都判红。
+
+## 3. E01/E02/I04/I09 的真实生产落地（PLAN-914，2026-11-02）
+
+本文件 §1 的语义 oracle **不变**（E01 值 7 + trace `ba`；E02 值 103 + trace `ba`；
+I04 依赖精确失效/无关零生产；I09 按实际策略拒绝且旧状态安全）。PLAN-914 补齐的是
+「怎么真实产生并观察」：
+
+- E01/E02：ac 走 `ac/mir-native-scalar-v1`（记录源同 recipe）并以 PE 真实 **stderr**
+  字节为 trace；av 走 `core-run-v1`/`data-run-v1` 并以 worker 上报的 `step.trace` 为
+  trace（`expect.trace` 仅 `ac-av/*` 可声明）；avm 走 legacy 源（`write` 记号）+ 精确
+  stdout；a2r 走金样字节 + 显式双侧认证（actual 与 tracked reference 的 stdout 同为
+  `bai32:<值>\n`）。冻结输入见 `order-layout-914/src/E01-*.at`、`E02-*.at`。
+- I04 ac：collections 增量会话的显式声明失效轮（冷声明前端 + 依赖精确 rebuild，
+  `declaration_frontend_invalidations`/`codegen_units`/`identities_*` 由父侧判定）。
+- I04 av：data-incremental recipe 的 `rebuilt_defs` + 逐 def code identity 承载；
+  使用中记录布局变更按引擎既有签名策略重建全 unit，未引用声明新增与 helper body 编辑
+  两格证明零生产精度。
+- I09 ac/av：typed refusal（`signature-or-context-drift` / `env-contract`/`link-rejected`）
+  是 verdict；拒绝后旧环境/旧快照仍执行。
+
+细节与预算边界见 [m1-order-layout-observations.md](m1-order-layout-observations.md)。

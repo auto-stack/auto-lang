@@ -215,3 +215,23 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   future 45、cert 轴——本包不触。
 - 新具名边界（非阻塞，owner 已记）：`syntax-not-converged` 严格 fallback 无端到端触发形状；
   `OwnedSourceMnSession` 暖 API 未接 typed 通道。
+
+## PLAN-914 后状态（2026-11-02，SD-03；§11 与本段之前的冻结历史不重写）
+
+已由 914 的真实父报告关闭（binding token `ok`/`ok-emit`，`source-bound`）：
+
+- **E01/E02（8 格）**：四路径的值 + trace `ba` 均来自真实生产入口（AC PE stderr、
+  AV step.trace、legacy stdout、a2r 金样 + 双侧认证），区分性反控常驻。
+- **I04 ac/av（2 格）**：declaration/layout 变更按 D-05 判据——冷声明前端如实计量 +
+  依赖精确 rebuild；未受影响 defs 的 lower/encode/codegen/load/工件IO 增量为 0、resident
+  MIR/COFF 身份承载（AC collections 失效轮；AV data-incremental 的 stable/rebuilt 集合）。
+- **I09 ac/av（2 格）**：不兼容替换被**按实际策略拒绝**（AC typed
+  `mn.incremental.refused.signature-or-context-drift`；AV `env-contract`/`link-rejected`），
+  且拒绝后旧成功状态仍可执行；无隐式重解释、无 OSR 要求。
+
+**真实残余（不由本段关闭）**：
+
+- scenario R 族其余格（R01/R03/R04/R06 的 ac/av 逐 owner 事件通道等）、B18 avm、
+  native loader/OSR 面、G 族 a2r 复合认证缺口 —— owner 仍为 ACE 路线与旧 A2R 能力线。
+- AC/AV 的 avm/a2r 两列在本轮 scenario 内是 `na:m1(NA-6)`，不是「已交付」。
+- 本段不签整个 M1 acceptance；`verify-ace-m1-852.ps1 contract` 绿不等于 completeness。

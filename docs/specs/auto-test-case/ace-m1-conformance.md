@@ -279,3 +279,23 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
   `mn-source-diagnostic.json`（`execution_key` 绑定、raw verify、profile scalar、worker mnworker/1.0）。
 - 近邻 NB17/18/19 在严格模式亦 2/2/0 并 echo 能力；默认 908 近邻套件 9/9 不变。
 - **M1 不据此签章**：K06（909）、旧 a2r 认证、B18 avm infra、scenario 等账保持。
+
+## PLAN-914：命名顺序与布局场景的逐格证据（2026-11-02，SD-02）
+
+> 本段只补「token 何时可以变绿」的判据与已实证格位；scenario 语义 oracle 仍在
+> [ace-m1-scenario-oracles.md](ace-m1-scenario-oracles.md)，输入/入口/准入细节在
+> [m1-order-layout-observations.md](m1-order-layout-observations.md)。
+
+- **绿的定义**：一个格位只有在**正式父侧报告**（`case-ace-m1-order-layout-914` 的
+  run report + receipt）出现后才可以改 token；worker 自报的成功、只看值不看 trace、
+  或声明了不可观察通道都不得变绿。
+- **本轮实证（12 格）**：E01/E02 的 ac（`ac/mir-native-scalar-v1`，record 源同用该
+  recipe）、av（`core-run-v1` / `data-run-v1`，`expect.trace`）、avm（legacy 源，result +
+  stdout 精确 `ba`）、a2r（闭包形式发射 + 金样字节 + 显式双侧认证）四路径各 4 格；
+  I04 ac（collections 声明失效轮 + 声明 oracle）、I04 av（data-incremental 的
+  rebuilt/identity oracle）、I09 ac（typed refusal + 会话存活）、I09 av（受控部分重建
+  被 link 拒绝 + 旧快照可执行）。
+- **判别性反控常驻**：位置绑定 8/203、声明序求值 trace `ab`、`max_codegen_units` 超界、
+  把实际重建的 def 声明为 stable —— 任一都必须红。
+- **边界**：I04/I09 的 avm/a2r 两列维持 `na:m1(NA-6)`；本段不主张整个 M1 完成，残余
+  R/G/B18 与 native loader 仍按原 owner 登记（见 gap-audit）。

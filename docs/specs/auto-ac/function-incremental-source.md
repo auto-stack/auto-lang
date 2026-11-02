@@ -74,3 +74,19 @@
   签名/拓扑/跨单元编辑具名非快路径走整模块 truth；未改单元全阶段 P=0 且同对象/
   代际，whole 轴在暖路径必须为 0。残余如实：restart 仍先重 lower/encode（R3，属
   913）；`ClosuresOwnerCache` 路径保留为 865 recipe 的观测基线。
+
+## 声明/布局变更的显式失效边界（PLAN-914，2026-11-02，SD-06）
+
+- **策略**：declaration/layout 变更走显式失效（collections 增量会话的
+  `prepare_declaration_change`）：冷声明前端（`declaration_frontend_invalidations`
+  如实计量，不伪造为零）+ 依赖精确 rebuild；字节相同 unit 保留 resident MIR/code 对象，
+  只有不兼容 unit 进入 object producer（`codegen_units` 只计真实产物）。
+- **冻结判据（2026-11-02 用户裁定 D-05）**：未受影响 defs 的 lower/encode/codegen/load/
+  工件IO 增量为 0、同进程对象/代际不变、旧值不被新 layout 重解释；禁止用「一律拒绝任何
+  type 编辑」或全量重编冒充通过。单 body 快路径只吃一个函数体，声明编辑必须走显式轮
+  （body 路径的拒绝文案「use explicit declaration invalidation」即该边界）。
+- **可观察面**：`declaration-invalidate` 轮上报真实 counters 与 `identities_before/after`
+  （MIR/COFF 指针承载）；父侧按声明 oracle（`min_frontend_invalidations`、
+  `max_codegen_units`、`stable_defs`）判定，反控（超界/把重建 def 当 stable）必须红。
+- 该边界只覆盖 AC collections 记录域；字面/文本/借用族的声明失效仍在既有域内，
+  此处不扩大语言承诺。

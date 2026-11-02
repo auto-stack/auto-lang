@@ -83,3 +83,14 @@ scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径
   分轴报告 38 个 required a2r 格的 cert-gap，日常零编译（rustc/cargo/目标 Rust
   spawn=0），certify 恒显式。892/902/904 新 HIR A2R 证据并列，不自动顶替旧 a2r
   身份或旧负例义务。
+
+## PLAN-914 场景证据与旧 schema 的隔离（2026-11-02，SD-05）
+
+- 本文件的 `ace.m1.cert/1` schema、10 例标量认证集、六 hash 轴与复用/失效规则**不变**。
+- PLAN-914 为 E01/E02 的旧 a2r 路径新增的只是**场景证据**：命名调用以闭包形式发射
+  （`(|__a0,__a1| sub(__a1,__a0))(实参源码序)`），金样落在
+  `order-layout-914/oracle/m1_e0{1,2}.rs`；显式认证对 actual 与 tracked 独立 reference
+  分别编译运行，两侧 stdout 均为冻结 oracle 串 `bai32:7\n` / `bai32:103\n`。
+- 该证据不写入 `oracle/certs/`、不改 `ace.m1.cert/1` 字段含义、不把新场景并入 38 格
+  复合认证；日常仍是 emit + bytes，零 rustc/cargo spawn。
+- 非标量形状的全命名调用仍是历史发射（登记边界）；扩到复合/字符串见后续能力线。
