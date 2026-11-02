@@ -408,7 +408,7 @@ fn certify_one(
 
     // --- 2. Byte drift vs frozen goldens (never auto-update).
     let mut golden_shas: BTreeMap<String, String> = BTreeMap::new();
-    for (golden_rel, project, _runnable) in case.goldens {
+    for (golden_rel, _project, _runnable) in case.goldens {
         let golden_path = case_dir.join(golden_rel);
         let want = match std::fs::read(&golden_path) {
             Ok(b) => b,
