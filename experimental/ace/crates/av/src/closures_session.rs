@@ -298,6 +298,18 @@ impl ClosuresUpdateSession {
 
     /// The code object the session currently holds for `name` (the
     /// identity observation seam).
+    /// PLAN-912 §5.3: the installed revision number (the accepted state's
+    /// commit point).
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// PLAN-912 §5.3: the store artifact id of a unit's CURRENT wire, when
+    /// this session persists (a reference, never a trusted credential).
+    pub fn artifact_of(&self, name: &str) -> Option<&str> {
+        self.current_artifacts.get(name).map(String::as_str)
+    }
+
     pub fn unit(&self, name: &str) -> Option<&Arc<FunctionCode>> {
         self.units.get(name)
     }

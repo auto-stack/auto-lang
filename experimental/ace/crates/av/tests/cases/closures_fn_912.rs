@@ -543,10 +543,112 @@ fn av_closures_fn_912_stale_and_foreign_candidates_cannot_commit() {
         Ok(Ok(c)) => c,
         _ => panic!("fast"),
     };
-    a.commit_candidate(first, None).expect("first commit");
-    let err = a.commit_candidate(second, None).unwrap_err();
+    a.commit_candidate(first, None, &[]).expect("first commit");
+    let err = a.commit_candidate(second, None, &[]).unwrap_err();
     assert!(err.starts_with("source.stale"), "{err}");
-    let err = a.commit_candidate(foreign, None).unwrap_err();
+    let err = a.commit_candidate(foreign, None, &[]).unwrap_err();
     assert!(err.starts_with("source.foreign"), "{err}");
     assert_eq!(a.generation(), 1);
+}
+
+#[test]
+fn av_closures_fn_912_restart_reports_honest_r3() {
+    // V-08 / R3: a fresh session over the SAME store restarts from store
+    // artifacts — cache hits, zero store writes, real decode/deep-verify —
+    // and STILL re-lowers every unit before the content key is computable.
+    // PLAN-913 owns closing that; this test pins the honest non-zero.
+    let store = temp_store("restart");
+    {
+        let mut session = ClosuresFunctionSession::new(&store, "main.at");
+        let cold = session.apply_source(SRC).expect("cold");
+        assert_eq!(cold.value, 51);
+        assert!(matches!(cold.route, RouteReport::Cold { units: 5 }));
+        session.close().expect("close");
+    }
+    let mut restart = ClosuresFunctionSession::new(&store, "main.at");
+    let run = restart.apply_source(SRC).expect("restart");
+    assert_eq!(run.value, 51);
+    assert!(matches!(run.route, RouteReport::Cold { units: 5 }), "{:?}", run.route);
+    assert_eq!(run.production.cache_hits, 5);
+    assert_eq!(run.production.store_writes, 0);
+    assert_eq!(run.production.verified, 5);
+    assert_eq!(run.production.encoded, 5);
+    assert_eq!(run.production.admitted, 5);
+    // R3 open and reported: every unit is re-lowered (P > 0 on restart) and
+    // the whole frontend ran; nothing is relabeled as "recovery".
+    assert_eq!(run.stages.total(Stage::MirLower), 5);
+    assert!(run.stages.whole_total() > 0);
+    assert!(run.warm_gate.is_none());
+    // The warm path works right after the restart leg.
+    let warm = restart
+        .apply_source(&SRC.replace("return x - n }", "return x - n * 2 }"))
+        .expect("warm after restart");
+    assert_eq!(warm.value, 48);
+    assert!(matches!(warm.route, RouteReport::FastUnit { .. }));
+    assert!(warm.warm_gate.as_ref().unwrap().pass());
+    restart.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_accepted_state_export() {
+    // V-11: the accepted source state is exported from COMMITTED state only,
+    // carries identities/references (no guest value, no PASS, no live
+    // env/cell — the type has no such fields), and moves with commits.
+    let store = temp_store("accepted");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    assert!(session.accepted_state().is_none(), "nothing accepted before the first commit");
+    assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
+    let cold_state = session.accepted_state().expect("accepted after cold");
+    assert_eq!(cold_state.schema, "ace.closures.accepted-source/1");
+    assert_eq!(cold_state.profile, "auto.source.closures.draft");
+    assert_eq!(
+        cold_state.source_sha256,
+        ace_core::runtime_contract::sha256_hex(SRC.as_bytes())
+    );
+    assert_eq!(cold_state.entry, "d_main");
+    assert_eq!(cold_state.accepted_generation, 0);
+    assert_eq!(cold_state.commit_point, 1);
+    assert_eq!(cold_state.units.len(), 5);
+    assert!(cold_state.units.iter().all(|u| u.store_ref.is_some(),));
+    let g_cold = cold_state
+        .units
+        .iter()
+        .find(|u| u.unit == "d___closure_main_1")
+        .expect("g in accepted state");
+    assert!(g_cold.mint_span == g_cold.current_span);
+    assert!(!g_cold.body_digest.is_empty());
+    assert_eq!(g_cold.env_layout_identity.as_deref(), Some(g_cold.dependency_digest.as_str()));
+
+    // A warm edit moves the export: new source sha, new generation, the
+    // edited unit's digest and span change, its mir identity changes.
+    let edited = SRC.replace("return x - n }", "return x - n * 2 }");
+    assert_eq!(session.apply_source(&edited).expect("warm").value, 48);
+    let warm_state = session.accepted_state().expect("accepted after warm");
+    assert_eq!(warm_state.accepted_generation, 1);
+    assert_eq!(
+        warm_state.source_sha256,
+        ace_core::runtime_contract::sha256_hex(edited.as_bytes())
+    );
+    let g_warm = warm_state
+        .units
+        .iter()
+        .find(|u| u.unit == "d___closure_main_1")
+        .expect("g");
+    assert_ne!(g_warm.body_digest, g_cold.body_digest, "the edited body's digest moved");
+    assert_ne!(g_warm.current_span, g_cold.current_span, "the longer body shifted the span");
+    assert_eq!(g_warm.mint_span, g_cold.mint_span, "mint coordinates are stable");
+    assert_ne!(g_warm.mir_identity, g_cold.mir_identity);
+    // An unchanged sibling keeps every identity axis.
+    let f_warm = warm_state.units.iter().find(|u| u.unit == "d___closure_main_0").unwrap();
+    let f_cold = cold_state.units.iter().find(|u| u.unit == "d___closure_main_0").unwrap();
+    assert_eq!(f_warm.body_digest, f_cold.body_digest);
+    assert_eq!(f_warm.mir_identity, f_cold.mir_identity);
+    assert_eq!(f_warm.logical, f_cold.logical);
+    // Producer identity is the live contract set.
+    assert_eq!(warm_state.producer_mir_lowering_version, "4");
+    assert_eq!(warm_state.producer_closures_schema, "auto.mir.av-closures/1");
+    assert_eq!(warm_state.producer_unit_codec, "av-closures-unit/v1");
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
 }

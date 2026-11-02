@@ -67,6 +67,23 @@ pub struct UnitEntry {
     /// The unit's editable body span (owner: fn body block; lambda: same as
     /// `span`).
     pub body_span: Span,
+    /// PLAN-912 §5.3: span-free canonical digest of the unit's VERIFIED HIR
+    /// body (cold: from the whole checked document; warm: from the minted
+    /// credential at commit).
+    pub body_digest: String,
+    /// PLAN-912 §5.3: the unit's span at the revision its LOGICAL identity
+    /// was minted (carried unchanged across edits and identity-carrying
+    /// rebuilds); `span` is the current coordinate.
+    pub mint_span: Span,
+}
+
+/// PLAN-912 §5.3: the verified facts a committed unit binds into the
+/// catalog (from the credential the session minted for it).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnitCommitFacts {
+    pub fn_index: usize,
+    pub body_digest: String,
+    pub context_revision: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -171,6 +188,9 @@ pub struct ClosuresFunctionFrontend {
     next_logical: u64,
     /// Successful publications this frontend has served (cold init = 0).
     generation: u64,
+    /// The declaration-context fingerprint of the accepted document (the
+    /// `context_revision` every unit credential binds).
+    context_revision: String,
 }
 
 fn fnv64(bytes: &[u8]) -> u64 {
@@ -221,6 +241,21 @@ impl ClosuresFunctionFrontend {
         let parts = emit_whole_document(&env.program, src, module_path, SourceProfile::Closures)?;
         let checked = verify_closures(parts.bundle.clone())?;
         let registry = ClosuresVerifyContext::from_checked(&checked)?;
+        // Per-def verified body digests + the document's context revision.
+        let module = &parts.bundle.modules[0];
+        let context_revision =
+            crate::verify::declaration_context_fingerprint_in(module, crate::hir::HirDomain::Closures);
+        let mut digests: BTreeMap<String, String> = BTreeMap::new();
+        for d in &module.defs {
+            if let crate::hir::DefKind::Function { body, .. } = &d.kind {
+                if let Some(b) = module.bodies.get(body.0 as usize) {
+                    digests.insert(
+                        d.id_text.clone(),
+                        crate::collections_facts::body_content_digest(b),
+                    );
+                }
+            }
+        }
         // Catalog: owners in declaration order with their lambdas; lambdas
         // are appended after all owners (resolve_detailed's layout).
         let mut units: Vec<UnitEntry> = Vec::with_capacity(env.program.fns.len());
@@ -231,12 +266,14 @@ impl ClosuresFunctionFrontend {
                 kind: UnitKind::Owner { lambdas: Vec::new() },
                 span: f.item_span,
                 body_span: f.body.span,
+                body_digest: digests.get(&format!("d_{}", f.name)).cloned().unwrap_or_default(),
+                mint_span: f.item_span,
             });
             owner_of.insert(f.name.clone(), i);
         }
         // Previous-lineage identity index: (owner, text fp) → logical id,
         // only for texts unique within their owner on the previous side.
-        let mut carry: BTreeMap<(String, u64), u64> = BTreeMap::new();
+        let mut carry: BTreeMap<(String, u64), (u64, Span)> = BTreeMap::new();
         let mut next_logical: u64 = 1;
         if let Some(prev) = previous {
             let mut seen: BTreeMap<(String, u64), usize> = BTreeMap::new();
@@ -244,7 +281,7 @@ impl ClosuresFunctionFrontend {
                 if let UnitKind::Lambda { logical_id, owner, .. } = &u.kind {
                     let key = (prev.units[*owner].name.clone(), fnv64(prev.source[u.span.start..u.span.end].as_bytes()));
                     *seen.entry(key.clone()).or_default() += 1;
-                    carry.insert(key, *logical_id);
+                    carry.insert(key, (*logical_id, u.mint_span));
                 }
             }
             for (key, n) in seen {
@@ -301,12 +338,12 @@ impl ClosuresFunctionFrontend {
                         )]
                     })?;
                 let key = (owner_name.clone(), fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()));
-                let logical_id = match (carry.get(&key), new_counts.get(&key)) {
-                    (Some(id), Some(1)) => *id,
+                let (logical_id, mint_span) = match (carry.get(&key), new_counts.get(&key)) {
+                    (Some((id, mint)), Some(1)) => (*id, *mint),
                     _ => {
                         let id = next_logical;
                         next_logical += 1;
-                        id
+                        (id, lambda.item_span)
                     }
                 };
                 units[idx] = UnitEntry {
@@ -318,6 +355,8 @@ impl ClosuresFunctionFrontend {
                     },
                     span: lambda.item_span,
                     body_span: lambda.item_span,
+                    body_digest: digests.get(&format!("d_{}", lambda.name)).cloned().unwrap_or_default(),
+                    mint_span,
                 };
                 lambda_indices.push(idx);
             }
@@ -336,6 +375,7 @@ impl ClosuresFunctionFrontend {
                 registry,
                 next_logical,
                 generation: 0,
+                context_revision,
             },
             parts,
             checked,
@@ -372,6 +412,14 @@ impl ClosuresFunctionFrontend {
     /// The next un-minted lambda LOGICAL id (accepted-state export).
     pub fn next_logical_id(&self) -> u64 {
         self.next_logical
+    }
+    /// The accepted document's declaration-context fingerprint.
+    pub fn context_revision(&self) -> &str {
+        &self.context_revision
+    }
+    /// The module path (logical owner) of the accepted source.
+    pub fn source_path(&self) -> &str {
+        &self.module_path
     }
     /// PLAN-912 §5.5: retained frontend bytes estimate — the source, the
     /// retained resolved program's fns (nodes counted by a bounded walk) and
@@ -683,6 +731,7 @@ impl ClosuresFunctionFrontend {
         &mut self,
         candidate: ClosuresFnCandidate,
         registry_after: Option<ClosuresVerifyContext>,
+        facts: &[UnitCommitFacts],
     ) -> Result<(), String> {
         if self.env.env_id() != candidate.env_id {
             return Err(
@@ -734,6 +783,12 @@ impl ClosuresFunctionFrontend {
         let _ = primary;
         if let Some(reg) = registry_after {
             self.registry = reg;
+        }
+        for f in facts {
+            if let Some(u) = self.units.get_mut(f.fn_index) {
+                u.body_digest = f.body_digest.clone();
+            }
+            self.context_revision = f.context_revision.clone();
         }
         self.env.generation += 1;
         self.generation += 1;

@@ -163,7 +163,7 @@ fn closures_fn_912_lambda_body_edit_single_unit_chain_and_identity() {
 
     // Commit and verify the catalog survived with shifted coordinates.
     let sha_before = front.source_sha().to_string();
-    front.commit_candidate(candidate, None).expect("commit");
+    front.commit_candidate(candidate, None, &[]).expect("commit");
     assert_ne!(front.source_sha(), sha_before);
     assert_eq!(front.source(), new_src.as_str());
     assert_eq!(front.generation(), 1);
@@ -178,7 +178,7 @@ fn closures_fn_912_lambda_body_edit_single_unit_chain_and_identity() {
         "(n int) => { return x - n * 3 }",
     ));
     assert_eq!(candidate2.unit_name(), "__closure_main_1");
-    front.commit_candidate(candidate2, None).expect("commit2");
+    front.commit_candidate(candidate2, None, &[]).expect("commit2");
     assert_eq!(front.generation(), 2);
 }
 

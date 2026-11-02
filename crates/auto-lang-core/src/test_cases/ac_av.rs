@@ -92,6 +92,10 @@ pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
 /// PLAN-865: source-backed closures cases run through the per-function
 /// update session; the existing typed fixture recipe remains unchanged.
 pub const AV_CLOSURES_SOURCE_RECIPE: &str = "ac-av/closures-source-run-v1";
+/// PLAN-912: the single-function closures source recipe — the same corpus
+/// faces through the FUNCTION session (retained frontend + registry + the
+/// per-unit zero-production axes the parent judges below).
+pub const AV_CLOSURES_FN_RECIPE: &str = "ac-av/closures-fn-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 pub const AV_LOADED_RECIPE: &str = "ac-av/loaded-run-v1";
 
@@ -138,6 +142,8 @@ pub enum RecipeFamily {
     /// PLAN-865: real `.at` source through closure lowering and the existing
     /// per-function closures update/link/runtime session.
     ClosuresSource,
+    /// PLAN-912: the single-function closures source recipe.
+    ClosuresFn,
     /// PLAN-866: the resident-online recipe — one continuously-running
     /// chain, edits at call-boundary safety points.
     Resident,
@@ -157,6 +163,7 @@ impl RecipeFamily {
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
             RecipeFamily::ClosuresSource => AV_CLOSURES_SOURCE_RECIPE,
+            RecipeFamily::ClosuresFn => AV_CLOSURES_FN_RECIPE,
             RecipeFamily::Resident => AV_RESIDENT_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
@@ -172,7 +179,9 @@ impl RecipeFamily {
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
-            RecipeFamily::ClosuresSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
+            RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn => {
+                EXPECTED_AV_CLOSURES_CORE_VERSION
+            }
             // PLAN-866: the resident recipe rides the scalar profile
             // identity (the 828 session pipeline).
             RecipeFamily::Resident => EXPECTED_AV_CORE_VERSION,
@@ -271,7 +280,7 @@ fn probe_toolchain_axes(
     if family == RecipeFamily::Dynamic {
         v.push(("av-profile".into(), "5".into()));
     }
-    if family == RecipeFamily::ClosuresSource {
+    if matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn) {
         v.push(("av-profile".into(), "6".into()));
     }
     v
@@ -1180,6 +1189,28 @@ pub fn run_closures_source_check(
         RecipeFamily::ClosuresSource,
     )
 }
+
+/// PLAN-912: the single-function closures source check (same corpus, the
+/// FUNCTION session's observation axes).
+pub fn run_closures_fn_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::ClosuresFn,
+    )
+}
+
 /// PLAN-824: the frozen dynamic-fixture faces the PARENT judges against.
 /// Same tuple shape as the collections table; the judge ADDITIONALLY
 /// asserts the Dyn face's portable axes when the fixture returns a Dyn
@@ -1454,7 +1485,7 @@ fn run_check_with_transport(
         // Explicit module-case execution owns a private run. Ordinary suite
         // callers may intentionally restart the same session across runs.
         Some(_)
-            if family == RecipeFamily::ClosuresSource
+            if matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn)
                 && MODULE_PRIVATE_SESSIONS.with(|scope| scope.get()) =>
         {
             _run_dir.join("av-closures-sessions")
@@ -1592,7 +1623,9 @@ fn run_check_with_transport(
     } else {
         None
     };
-    let closures_source_id = if family == RecipeFamily::ClosuresSource {
+    let is_closures_source_family =
+        matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn);
+    let closures_source_id = if is_closures_source_family {
         let selector = av.entry.strip_prefix("source:").ok_or_else(|| {
             "closures-source requires a registered source:<K-id> av.entry".to_string()
         })?;
@@ -1600,17 +1633,30 @@ fn run_check_with_transport(
         let id = parts.next().unwrap_or_default();
         let mode = parts.next();
         // PLAN-909: body-edit stays K01-frozen in the K corpus; the
-        // shared-mutable-909 sources (S*) may edit their writer bodies.
+        // shared-mutable-909 (S*) and PLAN-912 (F*) sources may edit bodies.
+        // PLAN-912 adds the `hit` mode (an identical re-apply is judged as a
+        // zero-production hit).
+        let fn_family = family == RecipeFamily::ClosuresFn;
+        let modes: &[&str] = if fn_family {
+            &["fresh", "restart", "body-edit", "hit"]
+        } else {
+            &["fresh", "restart", "body-edit"]
+        };
         if parts.next().is_some()
-            || mode.is_some_and(|mode| !matches!(mode, "fresh" | "restart" | "body-edit"))
-            || (mode == Some("body-edit") && id != "K01" && !id.starts_with('S'))
+            || mode.is_some_and(|mode| !modes.contains(&mode))
+            || (mode == Some("body-edit")
+                && id != "K01"
+                && !id.starts_with('S')
+                && !id.starts_with('F'))
         {
             return Err(format!("invalid closures-source selector `{selector}`"));
         }
-        if !CLOSURES_SOURCE_CASES
-            .iter()
-            .any(|(case_id, ..)| *case_id == id)
-        {
+        let registered = if fn_family {
+            closures_fn_case(id).is_some()
+        } else {
+            CLOSURES_SOURCE_CASES.iter().any(|(case_id, ..)| *case_id == id)
+        };
+        if !registered {
             return Err(format!(
                 "closures source `{id}` is not registered (parent table)"
             ));
@@ -1975,7 +2021,11 @@ fn run_check_with_transport(
     } else if let Some(id) = &closures_fixture {
         judge_closures_fixture(id, &step, &mut mismatches);
     } else if let Some(id) = &closures_source_id {
-        judge_closures_source(&id.0, id.1.as_deref(), &step, &mut mismatches);
+        if family == RecipeFamily::ClosuresFn {
+            judge_closures_fn(&id.0, id.1.as_deref(), &step, &mut mismatches);
+        } else {
+            judge_closures_source(&id.0, id.1.as_deref(), &step, &mut mismatches);
+        }
         judge_expectation(family, &step, oracle, &mut mismatches);
     } else if let Some(id) = &dynamic_fixture {
         judge_dynamic_fixture(id, &step, &mut mismatches);
@@ -2137,7 +2187,8 @@ fn owned_on_non_owned(family: RecipeFamily, steps: &[StepOut]) -> bool {
 /// PLAN-865: the source-session face belongs only to the source closures
 /// recipe; fixture closures keep their original ledger contract.
 fn closures_source_on_non_recipe(family: RecipeFamily, steps: &[StepOut]) -> bool {
-    family != RecipeFamily::ClosuresSource && steps.iter().any(|s| s.closures_source.is_some())
+    !matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn)
+        && steps.iter().any(|s| s.closures_source.is_some())
 }
 
 fn malformed_closures_source(steps: &[StepOut]) -> Option<String> {
@@ -2468,6 +2519,219 @@ fn judge_closures_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatc
 /// (V-10): AV824_DYNAMIC_EXPECT_SABOTAGE.
 /// PLAN-865: source closure semantics and resource release are judged from
 /// the parent's own K-case table, independently of the worker report.
+/// PLAN-912 T-05: the FUNCTION-session closures source judge (parent-side
+/// independent oracle). Values and diagnostics come from the parent's own
+/// frozen tables; the zero-production axes (route, warm gate, whole/mir
+/// attempts, retained pool) are judged from the worker's observation, never
+/// from the worker's claim about itself.
+/// PLAN-912: the dedicated function-session corpus (the 912 suite). The
+/// K01..K06 / S01..S08 rows are shared verbatim with the source table
+/// (V-01: the original corpus through the new chain).
+const CLOSURES_FN_CASES: &[(&str, Option<i32>, Option<&str>, usize)] = &[
+    // F01: two sibling lambdas + two unrelated functions; fresh = 51
+    // (21 + 21 + 7 + 2), body-edit of the SECOND lambda's body (x - n →
+    // x - n * 2) = 48, 5 units.
+    ("F01", Some(51), None, 5),
+    // F02: the same source; body-edit is the OWNER body (x: 10 → 20) = 61
+    // with both lambdas reused.
+    ("F02", Some(51), None, 5),
+];
+
+fn closures_fn_case(id: &str) -> Option<(&'static str, Option<i32>, Option<&'static str>, usize)> {
+    if let Some((cid, v, d, n)) = CLOSURES_FN_CASES.iter().find(|(c, ..)| *c == id) {
+        return Some((cid, *v, *d, *n));
+    }
+    CLOSURES_SOURCE_CASES
+        .iter()
+        .find(|(c, ..)| *c == id)
+        .map(|(c, v, d, n)| (*c, *v, *d, *n))
+}
+
+/// PLAN-912: the expected `body-edit` value per source (the edit pair lives
+/// in the case file; the parent holds the oracle).
+fn closures_fn_body_edit_value(id: &str) -> i32 {
+    match id {
+        "F01" => 48,
+        "F02" => 61,
+        other => closures_source_body_edit_value(other),
+    }
+}
+
+fn face_u64(face: &serde_json::Value, field: &str) -> Option<u64> {
+    face.get(field).and_then(|v| v.as_u64())
+}
+
+fn judge_closures_fn(
+    id: &str,
+    mode: Option<&str>,
+    step: &StepOut,
+    mismatches: &mut Vec<Mismatch>,
+) {
+    let Some((_, base_value, want_code, function_count)) = closures_fn_case(id) else {
+        mismatches.push(Mismatch {
+            observation: "closures_fn".into(),
+            kind: "source-registration".into(),
+            expected: format!("source `{id}` in the parent table"),
+            actual: "unregistered".into(),
+            first_diff: None,
+        });
+        return;
+    };
+    let obs = "closures_fn";
+    let bad =
+        |mismatches: &mut Vec<Mismatch>, kind: &'static str, expected: String, actual: String| {
+            mismatches.push(Mismatch {
+                observation: obs.to_string(),
+                kind,
+                expected,
+                actual,
+                first_diff: None,
+            });
+        };
+    if let Some(want_code) = want_code {
+        if step.outcome != "diag" {
+            bad(mismatches, "source-rejection", format!("compile-time diagnostic {want_code}"), step_summary(step));
+            return;
+        }
+        let got_code = step
+            .diag
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str())
+            .unwrap_or_default();
+        if got_code != want_code {
+            bad(mismatches, "source-diagnostic", want_code.to_string(), got_code.to_string());
+        }
+        if step.closures_source.is_some() {
+            bad(mismatches, "source-rejection-face", "no runtime face for a rejected source".into(), "face present".into());
+        }
+        return;
+    }
+    let want_value = match mode {
+        Some("body-edit") => closures_fn_body_edit_value(id),
+        // hit/fresh/restart all run the base source.
+        _ => base_value.expect("success case has an expected value"),
+    };
+    if step.outcome != "success" {
+        bad(mismatches, "source-outcome", "success".into(), step_summary(step));
+        return;
+    }
+    if step.value != Some(want_value) {
+        bad(mismatches, "source-result", want_value.to_string(), format!("{:?}", step.value));
+    }
+    let Some(face) = &step.closures_source else {
+        bad(mismatches, "source-resource-report", "function-session face".into(), "no closures_source report".into());
+        return;
+    };
+    if face_u64(face, "live_after_release") != Some(0) {
+        bad(mismatches, "source-live", "0".into(), format!("{:?}", face_u64(face, "live_after_release")));
+    }
+    let (allocs, frees) = (face_u64(face, "allocs"), face_u64(face, "frees"));
+    if allocs.is_none() || frees.is_none() || allocs != frees {
+        bad(mismatches, "source-alloc-free-balance", format!("{allocs:?}"), format!("{frees:?}"));
+    }
+    // The 912 axes.
+    let route = face.get("route").and_then(|r| r.as_str()).unwrap_or("");
+    let gate = face.get("warm_gate_pass").and_then(|g| g.as_bool());
+    let whole = face_u64(face, "whole_attempts");
+    let mir_lower = face_u64(face, "mir_lower_attempts");
+    let retained = face_u64(face, "retained_bytes").unwrap_or(u64::MAX);
+    let units = function_count as u64;
+    if gate.is_none() {
+        bad(mismatches, "warm-gate", "warm gate verdict present".into(), "absent".into());
+    }
+    // §5.5 pool: the retained frontend estimate stays within 16 MiB.
+    if retained > 16 * 1024 * 1024 {
+        bad(mismatches, "retained-pool", "<= 16 MiB".into(), retained.to_string());
+    }
+    let counters = |field: &str| face_u64(face, field);
+    match mode {
+        Some("body-edit") => {
+            if route != "fast-unit" && route != "fast-owner" {
+                bad(mismatches, "route", "fast-unit|fast-owner".into(), route.to_string());
+            }
+            if gate != Some(true) {
+                bad(mismatches, "warm-gate", "pass".into(), format!("{gate:?}"));
+            }
+            if whole != Some(0) {
+                bad(mismatches, "whole-attempts", "0".into(), whole.unwrap_or_default().to_string());
+            }
+            let submitted = counters("submitted_units");
+            if submitted.is_none() || submitted.unwrap() == 0 || submitted.unwrap() >= units {
+                bad(mismatches, "submitted", format!("1..{} (strictly fewer than whole)", units - 1), format!("{submitted:?}"));
+            }
+            for field in ["verified", "encoded", "admitted"] {
+                if counters(field) != submitted {
+                    bad(mismatches, field, format!("{submitted:?}"), format!("{:?}", counters(field)));
+                }
+            }
+            if counters("cache_hits") != Some(0) {
+                bad(mismatches, "cache-hits", "0".into(), format!("{:?}", counters("cache_hits")));
+            }
+        }
+        Some("hit") => {
+            if route != "zero-hit" {
+                bad(mismatches, "route", "zero-hit".into(), route.to_string());
+            }
+            if gate != Some(true) {
+                bad(mismatches, "warm-gate", "pass".into(), format!("{gate:?}"));
+            }
+            if whole != Some(0) {
+                bad(mismatches, "whole-attempts", "0".into(), whole.unwrap_or_default().to_string());
+            }
+            for field in ["submitted_units", "verified", "encoded", "admitted", "store_writes", "cache_misses", "cache_hits"] {
+                if counters(field) != Some(0) {
+                    bad(mismatches, field, "0".into(), format!("{:?}", counters(field)));
+                }
+            }
+            if mir_lower != Some(0) {
+                bad(mismatches, "mir-lower", "0 on a hit".into(), mir_lower.unwrap_or_default().to_string());
+            }
+        }
+        Some("restart") => {
+            if route != "cold" {
+                bad(mismatches, "route", "cold".into(), route.to_string());
+            }
+            for field in ["verified", "encoded", "admitted"] {
+                if counters(field) != Some(units) {
+                    bad(mismatches, field, units.to_string(), format!("{:?}", counters(field)));
+                }
+            }
+            if counters("cache_hits") != Some(units) {
+                bad(mismatches, "cache-hits", units.to_string(), format!("{:?}", counters("cache_hits")));
+            }
+            if counters("store_writes") != Some(0) {
+                bad(mismatches, "store-writes", "0".into(), format!("{:?}", counters("store_writes")));
+            }
+            // R3 stays OPEN and is REPORTED, not hidden: a restart still
+            // re-lowers every unit before the content key is computable.
+            if mir_lower != Some(units) {
+                bad(mismatches, "mir-lower", format!("{units} (R3 open: honestly non-zero)"), mir_lower.unwrap_or_default().to_string());
+            }
+            if whole.unwrap_or_default() < 1 {
+                bad(mismatches, "whole-attempts", ">= 1 (the truth path is whole)".into(), whole.unwrap_or_default().to_string());
+            }
+        }
+        _ => {
+            // fresh
+            if route != "cold" {
+                bad(mismatches, "route", "cold".into(), route.to_string());
+            }
+            for field in ["submitted_units", "verified", "encoded", "admitted", "store_writes", "cache_misses"] {
+                if counters(field) != Some(units) {
+                    bad(mismatches, field, units.to_string(), format!("{:?}", counters(field)));
+                }
+            }
+            if counters("cache_hits") != Some(0) {
+                bad(mismatches, "cache-hits", "0".into(), format!("{:?}", counters("cache_hits")));
+            }
+            if whole.unwrap_or_default() < 1 {
+                bad(mismatches, "whole-attempts", ">= 1 (the truth path is whole)".into(), whole.unwrap_or_default().to_string());
+            }
+        }
+    }
+}
+
 fn judge_closures_source(
     id: &str,
     mode: Option<&str>,

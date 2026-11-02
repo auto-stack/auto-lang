@@ -607,6 +607,9 @@ fn core_version_for(recipe: &str) -> &'static str {
         "ac-av/collections-source-run-v1" => ace_av_core::contract::AV_COLLECTIONS_PROFILE,
         "ac-av/closures-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/closures-source-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
+        // PLAN-912: the FUNCTION-session closures source recipe rides the
+        // same av.closures/1 profile identity (same wire/runtime contract).
+        "ac-av/closures-fn-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/dynamic-run-v1" => ace_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => ace_av_core::contract::AV_PROFILE,
     }
@@ -686,6 +689,9 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // PLAN-865: real closures-profile source through per-function units and
     // the existing closures update/link/runtime session.
     let closures_source_recipe = recipe == "ac-av/closures-source-run-v1";
+    // PLAN-912: the single-function closures recipe — the FUNCTION session
+    // (retained frontend + registry + per-unit zero production).
+    let closures_fn_recipe = recipe == "ac-av/closures-fn-run-v1";
     // PLAN-866: the resident-online recipe — one continuously-running
     // guest chain (fuel slices, edits at call-boundary safety points).
     let resident_recipe = recipe == "ac-av/resident-run-v1";
@@ -719,6 +725,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         && !collections_recipe
         && !collections_source_recipe
         && !closures_source_recipe
+        && !closures_fn_recipe
         && !resident_recipe
         && !loaded_recipe
         && !closures_recipe
@@ -862,6 +869,10 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     } else {
         None
     };
+    // PLAN-912: lazily created per source path (the path pins the store's
+    // source-snapshot axis exactly like the 865 recipe).
+    let mut closures_fn_session: Option<ace_av::closures_fn_session::ClosuresFunctionSession> =
+        None;
     // PLAN-866: the resident-online serving state — ONE chain (the 828
     // session + the resident driver, frozen 64-step fuel slices), created
     // lazily on the first resident step; the names of functions edited
@@ -1261,6 +1272,131 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                         })),
                         Err(e) => {
                             eprintln!("collections fixture {fid}: {e}");
+                            exit(2);
+                        }
+                    }
+                    continue;
+                }
+                if closures_fn_recipe {
+                    let Some(selector) = entry.strip_prefix("source:") else {
+                        eprintln!("closures-fn requires a source:<id> entry");
+                        exit(2);
+                    };
+                    let mut parts = selector.split(':');
+                    let source_id = parts.next().unwrap_or_default();
+                    let mode = parts.next();
+                    if parts.next().is_some()
+                        || mode.is_some_and(|mode| {
+                            !matches!(mode, "fresh" | "restart" | "body-edit" | "hit")
+                        })
+                    {
+                        eprintln!("invalid closures-fn selector {selector}");
+                        exit(2);
+                    }
+                    if !matches!(
+                        source_id,
+                        "K01" | "K02" | "K03" | "K04" | "K05" | "K06"
+                            | "S01" | "S02" | "S03" | "S04" | "S05" | "S06" | "S07" | "S08"
+                            | "F01" | "F02"
+                    ) {
+                        eprintln!("unknown closures-fn source id {source_id}");
+                        exit(2);
+                    }
+                    if mode == Some("body-edit")
+                        && source_id != "K01"
+                        && !source_id.starts_with('S')
+                        && !source_id.starts_with('F')
+                    {
+                        eprintln!("body-edit source mode is frozen to K01");
+                        exit(2);
+                    }
+                    let started = std::time::Instant::now();
+                    let source_hash = current_source.clone();
+                    let session = closures_fn_session
+                        .get_or_insert_with(|| {
+                            ace_av::closures_fn_session::ClosuresFunctionSession::new(
+                                &store_dir,
+                                &format!("{source_id}.at"),
+                            )
+                        });
+                    let sampler = ace_av::mempeek::PeakSampler::start(5);
+                    let result = session.apply_source(&current_source);
+                    let process_peak_bytes = sampler.stop();
+                    match result {
+                        Ok(run) => {
+                            let mut stage_attempts = serde_json::Map::new();
+                            for ((unit, stage), n) in &run.stages.by_unit {
+                                if *n > 0 {
+                                    let key = format!("{}|{}", unit, stage.as_str());
+                                    stage_attempts.insert(key, serde_json::json!(n));
+                                }
+                            }
+                            let mut body_work = serde_json::Map::new();
+                            for (unit, work) in &run.body {
+                                body_work.insert(
+                                    unit.clone(),
+                                    serde_json::json!({
+                                        "resolve": work.resolve,
+                                        "typecheck": work.typecheck,
+                                        "plan": work.plan,
+                                        "bind": work.bind,
+                                    }),
+                                );
+                            }
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "success",
+                                "value": run.value,
+                                "closures_source": {
+                                    "live_after_release": run.live_after_release,
+                                    "allocs": run.allocs,
+                                    "frees": run.frees,
+                                    "submitted_units": run.submitted_units,
+                                    "submitted_unit_names": run.submitted_unit_names,
+                                    "verified": run.production.verified,
+                                    "encoded": run.production.encoded,
+                                    "admitted": run.production.admitted,
+                                    "store_writes": run.production.store_writes,
+                                    "cache_hits": run.production.cache_hits,
+                                    "cache_misses": run.production.cache_misses,
+                                    "current_hot_bytes": run.current_hot_bytes,
+                                    "history_hot_bytes": run.history_hot_bytes,
+                                    "process_peak_bytes": process_peak_bytes,
+                                    // PLAN-912 axes the parent judges.
+                                    "route": run.route.as_str(),
+                                    "warm_gate_pass": run.warm_gate.as_ref().map(|g| g.pass()),
+                                    "whole_attempts": run.stages.whole_total(),
+                                    "mir_lower_attempts": run.stages.total(ace_core::body_work::Stage::MirLower),
+                                    "retained_bytes": run.retained_bytes,
+                                    "stage_attempts": stage_attempts,
+                                    "body_work": body_work,
+                                },
+                                "trap": null,
+                                "diag": null,
+                                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(ace_av::closures_865_support::CompileAndRunError::Diagnostics(ds)) => {
+                            let diagnostic =
+                                ds.first().expect("compiler diagnostics are non-empty");
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "closures_source": null,
+                                "trap": null,
+                                "diag": {
+                                    "stage": diagnostic.stage.as_str(),
+                                    "code": diagnostic.code,
+                                    "message": diagnostic.message,
+                                },
+                                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(ace_av::closures_865_support::CompileAndRunError::Pipeline(error)) => {
+                            eprintln!("closures-fn {source_id}: {error}");
                             exit(2);
                         }
                     }

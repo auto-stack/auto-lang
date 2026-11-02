@@ -881,6 +881,20 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-912: the single-function closures source recipe (function
+        // session; the parent judges the zero-production axes).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_CLOSURES_FN_RECIPE) =>
+        {
+            ac_av::run_closures_fn_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(ac_av::AV_COLLECTIONS_RECIPE) =>
         {

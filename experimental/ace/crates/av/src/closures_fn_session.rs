@@ -22,7 +22,7 @@ use ace_av_core::mir::MirModule;
 use ace_core::body_work::{self, BodyWork, Stage, StageAttempts};
 use ace_core::hir::DefKind;
 use ace_core::source::closures_fn::{
-    ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason,
+    ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason, UnitCommitFacts, UnitKind,
 };
 use ace_core::verify::verify_closures_function;
 use ace_lowering::{lower_function_closures_unit, lower_function_closures_unit_checked};
@@ -244,6 +244,7 @@ impl ClosuresFunctionSession {
         let ctx = registry_after.as_ref().unwrap_or_else(|| front.registry());
         let source_snapshot = fnv1a64(self.source_path.as_bytes());
         let mut lowered: Vec<(String, MirModule, Vec<u8>)> = Vec::with_capacity(candidate.units.len());
+        let mut facts: Vec<UnitCommitFacts> = Vec::with_capacity(candidate.units.len());
         for unit in &candidate.units {
             let wire_name = candidate.def_id_text_of(unit);
             // The REAL credential: verifier-minted against the (overlaid)
@@ -260,6 +261,11 @@ impl ClosuresFunctionSession {
                     credential.def_id_text()
                 )));
             }
+            facts.push(UnitCommitFacts {
+                fn_index: unit.fn_index,
+                body_digest: credential.body_digest().to_string(),
+                context_revision: credential.context_revision().to_string(),
+            });
             body_work::record_attempt(Stage::MirLower, &wire_name);
             let mir = lower_function_closures_unit_checked(
                 &candidate.parts.bundle,
@@ -346,7 +352,7 @@ impl ClosuresFunctionSession {
         self.front
             .as_mut()
             .expect("frontend present")
-            .commit_candidate(candidate, registry_after)
+            .commit_candidate(candidate, registry_after, &facts)
             .map_err(CompileAndRunError::Pipeline)?;
         for (name, _, bytes) in lowered {
             self.current_wires.insert(name, bytes);
@@ -485,6 +491,156 @@ impl ClosuresFunctionSession {
                 .map(|f| f.retained_bytes_estimate())
                 .unwrap_or(0),
         })
+    }
+}
+
+/// PLAN-912 §5.3 / Design43 §16.2: the READ-ONLY accepted source state the
+/// closures function session exports after a successful production+install
+/// commit — the A→B contract PLAN-913 consumes. It carries identities and
+/// references only: no guest value, no PASS, no live env/cell, no host
+/// address. It is a data VIEW, not a credential: a consumer that persists it
+/// must re-verify after landing (913's deep re-verification).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcceptedSourceState {
+    pub schema: &'static str,
+    pub source_sha256: String,
+    /// The logical owner (module path) and entry def.
+    pub logical_owner: String,
+    pub entry: String,
+    pub profile: String,
+    pub capabilities: Vec<String>,
+    /// Producer identity of the accepted pipeline.
+    pub producer_mir_lowering_version: String,
+    pub producer_closures_schema: String,
+    pub producer_unit_codec: &'static str,
+    /// The frontend's accepted generation and the session's commit point.
+    pub accepted_generation: u64,
+    pub commit_point: u64,
+    pub context_revision: String,
+    pub units: Vec<AcceptedUnit>,
+}
+
+/// One unit of the accepted state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcceptedUnit {
+    /// Wire identity (`d_<name>`).
+    pub unit: String,
+    pub logical: AcceptedUnitLogical,
+    /// Span-free canonical digest of the unit's verified HIR body.
+    pub body_digest: String,
+    /// Identity of the closure facts this unit READS: for a lambda its
+    /// registered environment declaration; for a creator its ordered
+    /// creation sites (callee + modes + callee envs).
+    pub dependency_digest: String,
+    /// For a lambda body: its own env layout identity.
+    pub env_layout_identity: Option<String>,
+    /// Spanless MIR wire fingerprint (the session's submission identity).
+    pub mir_identity: String,
+    /// Store artifact reference of the current wire (persisted sessions).
+    pub store_ref: Option<String>,
+    /// (mint, current) source spans of the unit.
+    pub mint_span: (usize, usize),
+    pub current_span: (usize, usize),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AcceptedUnitLogical {
+    Owner,
+    Lambda { logical_id: u64, owner: String },
+}
+
+impl ClosuresFunctionSession {
+    /// PLAN-912 §5.3: export the accepted state. `None` before the first
+    /// successful apply. Formed ONLY from committed state (the frontend's
+    /// accepted catalog + the session's installed wires/revisions).
+    pub fn accepted_state(&self) -> Option<AcceptedSourceState> {
+        let front = self.front.as_ref()?;
+        let mut units = Vec::with_capacity(front.units().len());
+        for u in front.units() {
+            let wire = format!("d_{}", u.name);
+            let (logical, dependency_digest, env_layout_identity) = match &u.kind {
+                UnitKind::Owner { .. } => {
+                    let sites = front.registry().sites_of(&wire);
+                    let mut h = 0xcbf2_9ce4_8422_2325u64;
+                    for callee in sites {
+                        if let Some(decl) = front.registry().lambda(callee) {
+                            mix_bytes(&mut h, callee);
+                            for f in &decl.env {
+                                mix_bytes(&mut h, &format!("{:?}|{}|{}", f.ty, f.mutable, f.cell));
+                            }
+                        }
+                    }
+                    (
+                        AcceptedUnitLogical::Owner,
+                        format!("{h:016x}"),
+                        None,
+                    )
+                }
+                UnitKind::Lambda { logical_id, owner, .. } => {
+                    let owner_name = &front.units()[*owner].name;
+                    let mut h = 0xcbf2_9ce4_8422_2325u64;
+                    let mut env_layout = String::new();
+                    if let Some(decl) = front.registry().lambda(&wire) {
+                        mix_bytes(&mut h, &decl.creator);
+                        for f in &decl.env {
+                            mix_bytes(&mut h, &format!("{:?}|{}|{}", f.ty, f.mutable, f.cell));
+                        }
+                    }
+                    env_layout = format!("{h:016x}");
+                    (
+                        AcceptedUnitLogical::Lambda {
+                            logical_id: *logical_id,
+                            owner: owner_name.clone(),
+                        },
+                        format!("{h:016x}"),
+                        Some(env_layout),
+                    )
+                }
+            };
+            units.push(AcceptedUnit {
+                unit: wire.clone(),
+                logical,
+                body_digest: u.body_digest.clone(),
+                dependency_digest,
+                env_layout_identity,
+                mir_identity: format!(
+                    "{:016x}",
+                    fnv1a64(self.current_wires.get(&wire).map(|w| w.as_slice()).unwrap_or(&[]))
+                ),
+                store_ref: self.update.artifact_of(&wire).map(str::to_string),
+                mint_span: (u.mint_span.start, u.mint_span.end),
+                current_span: (u.span.start, u.span.end),
+            });
+        }
+        Some(AcceptedSourceState {
+            schema: "ace.closures.accepted-source/1",
+            source_sha256: front.source_sha().to_string(),
+            logical_owner: front.source_path().to_string(),
+            entry: "d_main".to_string(),
+            profile: ace_core::source::CLOSURES_SOURCE_PROFILE.to_string(),
+            capabilities: front.capabilities().to_vec(),
+            producer_mir_lowering_version: ace_lowering::MIR_LOWERING_VERSION.to_string(),
+            producer_closures_schema: ace_av_core::contract::MIR_CLOSURES_SCHEMA.to_string(),
+            producer_unit_codec: "av-closures-unit/v1",
+            accepted_generation: front.generation(),
+            commit_point: self.update.revision(),
+            context_revision: front.context_revision().to_string(),
+            units,
+        })
+    }
+}
+
+fn mix_bytes(h: &mut u64, s: &str) {
+    for b in s.as_bytes() {
+        *h ^= *b as u64;
+        *h = h.wrapping_mul(0x0000_0100_0000_001b_3);
+    }
+}
+
+fn mix_u64(h: &mut u64, v: u64) {
+    for b in v.to_le_bytes() {
+        *h ^= b as u64;
+        *h = h.wrapping_mul(0x0000_0100_0000_001b_3);
     }
 }
 
