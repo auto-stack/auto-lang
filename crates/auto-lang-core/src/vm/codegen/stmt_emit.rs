@@ -405,6 +405,7 @@ impl Codegen {
                     .map(|param| ParamInfo {
                         ty: param.ty.clone(),
                         mode: param.mode,
+                        name: param.name.to_string(),
                     })
                     .collect();
 

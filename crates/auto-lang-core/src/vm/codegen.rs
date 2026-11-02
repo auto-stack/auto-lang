@@ -116,6 +116,10 @@ pub struct TypeInfo {
 pub struct ParamInfo {
     pub ty: Type,
     pub mode: ParamMode,
+    /// PLAN-914: the declared parameter NAME — the binding key for named
+    /// call arguments (`sub(b: mark_b(), a: mark_a())` binds by name after
+    /// the arguments were evaluated in SOURCE order).
+    pub name: String,
 }
 
 /// Plan 340: Metadata for an API function whose bare call should be rewritten

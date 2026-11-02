@@ -400,6 +400,72 @@ impl Codegen {
                         } else {
                             None
                         };
+                        // PLAN-914: a FULLY-NAMED type literal binds its
+                        // field expressions by FIELD NAME after evaluating
+                        // them in SOURCE order (declaration order is the
+                        // frame order). `None` keeps the positional
+                        // emission for unnamed/partial/unknown shapes.
+                        let field_order: Option<Vec<usize>> = if !member_names.is_empty()
+                            && call.args.args.len() == member_names.len()
+                            && call
+                                .args
+                                .args
+                                .iter()
+                                .all(|a| matches!(a, crate::ast::Arg::Pair(_, _)))
+                        {
+                            let mut mapping = Vec::with_capacity(member_names.len());
+                            let mut used = vec![false; member_names.len()];
+                            let mut ok = true;
+                            for arg in &call.args.args {
+                                let crate::ast::Arg::Pair(key, _) = arg else {
+                                    ok = false;
+                                    break;
+                                };
+                                match member_names.iter().position(|m| m == key.as_str()) {
+                                    Some(pos) if !used[pos] => {
+                                        used[pos] = true;
+                                        mapping.push(pos);
+                                    }
+                                    _ => {
+                                        ok = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if ok && mapping.iter().enumerate().any(|(src, &dst)| src != dst) {
+                                Some(mapping)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        if let Some(mapping) = field_order.as_ref() {
+                            let mut temps: Vec<usize> = Vec::with_capacity(arg_count as usize);
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                let crate::ast::Arg::Pair(_, expr) = arg else {
+                                    unreachable!("field_order requires named pairs")
+                                };
+                                self.compile_expr(expr)?;
+                                if let Some(ref field_types) = constructor_field_types {
+                                    if let Some(field_type) = field_types.get(mapping[i]) {
+                                        if matches!(field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
+                                            self.emit(OpCode::PROMOTE_F64);
+                                        }
+                                    }
+                                }
+                                let slot = self.add_var(&format!("__named_field_{i}"));
+                                self.emit_store_loc(slot);
+                                temps.push(slot);
+                            }
+                            for target in 0..mapping.len() {
+                                if let Some(src) = mapping.iter().position(|&f| f == target) {
+                                    self.emit_load_loc(temps[src]);
+                                }
+                            }
+                        } else {
                         for (i, arg) in call.args.args.iter().enumerate() {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
@@ -423,6 +489,7 @@ impl Codegen {
                                 }
                             }
                         }
+                        }
 
                         // Create object keys using type member names
                         let keys: Vec<auto_val::ValueKey> = member_names
@@ -434,18 +501,36 @@ impl Codegen {
                         let _key_index = self.object_keys.len() as u32;
                         self.object_keys.push(keys);
 
-                        // Infer field types from args
-                        let types: Vec<ObjectType> = call
-                            .args
-                            .args
-                            .iter()
-                            .take(arg_count as usize)
-                            .map(|arg| match arg {
-                                crate::ast::Arg::Pos(expr) => self.infer_object_type(expr),
-                                crate::ast::Arg::Pair(_, expr) => self.infer_object_type(expr),
-                                crate::ast::Arg::Name(_) => ObjectType::Int,
-                            })
-                            .collect();
+                        // Infer field types in FIELD order (identical to the
+                        // source order unless the literal was re-bound by
+                        // name): each type travels with the value's field.
+                        let types: Vec<ObjectType> = if let Some(mapping) = field_order.as_ref() {
+                            (0..arg_count as usize)
+                                .map(|field| {
+                                    let src = mapping
+                                        .iter()
+                                        .position(|&f| f == field)
+                                        .unwrap_or(field);
+                                    match &call.args.args[src] {
+                                        crate::ast::Arg::Pair(_, expr) => {
+                                            self.infer_object_type(expr)
+                                        }
+                                        _ => ObjectType::Int,
+                                    }
+                                })
+                                .collect()
+                        } else {
+                            call.args
+                                .args
+                                .iter()
+                                .take(arg_count as usize)
+                                .map(|arg| match arg {
+                                    crate::ast::Arg::Pos(expr) => self.infer_object_type(expr),
+                                    crate::ast::Arg::Pair(_, expr) => self.infer_object_type(expr),
+                                    crate::ast::Arg::Name(_) => ObjectType::Int,
+                                })
+                                .collect()
+                        };
                         self.object_types.push(types);
 
                         // Plan 118 Phase 7: Use NEW_INSTANCE + CONSTRUCT_INSTANCE for user types
@@ -2819,6 +2904,96 @@ impl Codegen {
                     } else {
                         None
                     };
+                    // PLAN-914: a FULLY-NAMED direct call binds by parameter
+                    // NAME after evaluating every argument in SOURCE order.
+                    // The mapping is computed once per call site; `None`
+                    // keeps the historical positional emission (unnamed,
+                    // mixed, partial, method, or unknown-callee calls).
+                    let named_reorder: Option<Vec<usize>> = if arg_offset == 0
+                        && !is_instance_method_call
+                        && call
+                            .args
+                            .args
+                            .iter()
+                            .all(|a| matches!(a, crate::ast::Arg::Pair(_, _)))
+                    {
+                        match self.fn_params.get(func_name_for_params) {
+                            Some(params)
+                                if !params.is_empty()
+                                    && params.len() == call.args.args.len() =>
+                            {
+                                let mut mapping = Vec::with_capacity(params.len());
+                                let mut used = vec![false; params.len()];
+                                let mut ok = true;
+                                for arg in &call.args.args {
+                                    let crate::ast::Arg::Pair(name, _) = arg else {
+                                        ok = false;
+                                        break;
+                                    };
+                                    match params.iter().position(|p| p.name == name.as_str()) {
+                                        Some(pos) if !used[pos] => {
+                                            used[pos] = true;
+                                            mapping.push(pos);
+                                        }
+                                        _ => {
+                                            ok = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if ok
+                                    && mapping
+                                        .iter()
+                                        .enumerate()
+                                        .any(|(src, &dst)| src != dst)
+                                {
+                                    Some(mapping)
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(mapping) = named_reorder.as_ref() {
+                        // 1. Evaluate in SOURCE order, storing each converted
+                        //    argument in a hidden local (side effects keep
+                        //    source order; only the VALUES are re-ordered).
+                        let mut temps: Vec<usize> = Vec::with_capacity(call.args.args.len());
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            let crate::ast::Arg::Pair(_, expr) = arg else {
+                                unreachable!("named_reorder requires named pairs")
+                            };
+                            let target = mapping[i];
+                            if !func_name_for_params.is_empty()
+                                && self.fn_params.contains_key(func_name_for_params)
+                            {
+                                self.compile_call_arg(expr, func_name_for_params, target)?;
+                            } else {
+                                self.compile_expr(expr)?;
+                            }
+                            if let Some(ref field_types) = constructor_field_types {
+                                if let Some(field_type) = field_types.get(target) {
+                                    if matches!(field_type, Type::Double)
+                                        && self.last_expr_type == ObjectType::Float
+                                    {
+                                        self.emit(OpCode::PROMOTE_F64);
+                                    }
+                                }
+                            }
+                            let slot = self.add_var(&format!("__named_arg_{i}"));
+                            self.emit_store_loc(slot);
+                            temps.push(slot);
+                        }
+                        // 2. Push in PARAMETER order (the callee's frame).
+                        for target in 0..mapping.len() {
+                            if let Some(src) = mapping.iter().position(|&p| p == target) {
+                                self.emit_load_loc(temps[src]);
+                            }
+                        }
+                    } else {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         match arg {
                             crate::ast::Arg::Pos(expr) => {
@@ -2908,6 +3083,7 @@ impl Codegen {
                                 }
                             }
                         }
+                    }
                     }
                 }
                 // 2. Emit CALL or CALL_SPEC opcode
