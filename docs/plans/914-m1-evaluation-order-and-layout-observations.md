@@ -219,6 +219,10 @@ work 阶段完成：T-01..T-06 全部勾选，12 格有正式父证据并回填 
 2026-11-02 | stage: work | PLAN-914 r2 | outcome: needs_fix-addressed | worktree: D:/autostack/.wt/lang-914/auto-lang | branch: plan-914-dev | base_commit: 3140cceb4 | code_commit: fdebc5eda | task_ids: T-07 findings F-914-R1/R2 + notes N1-N3 | evidence: 格式修复（8 处拼接行+7 个文件 EOF 空行）；`scenario_assets` 13 文件入 source-manifest 且 verifier 精确枚举/逐哈希（漂移与多文件两条负控实测红、恢复后 contract PASS）；`Arg::Name` 值恢复冻结的 `Nil`；spec §4 增「冷声明前端豁免并计入、零生产限 rebuild 层」、§5 增 refusal 判定适用范围、§7 增资产登记；复验 15/15 suite、contract PASS、治理 23 passed、infra-ace-m1 gate True、adapter 34 passed | blockers: none | next: review
 复审 findings 全部处理并复验；交回独立复审（re-review）确认。
 
+
+2026-11-02 | stage: review | PLAN-914 r2 | outcome: pass | reviewed_commit: fdebc5eda | reviewer: independent context (subagent, read-only) | first review: needs_fix F-914-R1/R2 + notes N1-N3 -> work fixed at fdebc5eda -> re-review pass
+独立复审两轮：第 1 轮 needs_fix（F-R1 拼接行/EOF 空行、F-R2 scenario 资产未登记；注记 N1 判据措辞、N2 Nil 恢复、N3 refusal 范围）。work 修复（fdebc5eda）后第 2 轮 **pass**：复审者自行复算 15/15 suite、contract 131/313（分母与 master 一致）、治理 23、infra-ace-m1 gate True、`test_cases::ac` 34 passed；F-R1 实质缺陷关闭（拼接行全消，残余 EOF 空行 4 个 .rs + spec 为 cosmetic、非阻塞）、F-R2 关闭（scenario_assets 13 文件登记 + 真 verifier 双负控：改字节 DRIFTED、多文件 count 14!=13、恢复 PASS；根计数 131/313 不变）、N1/N2/N3 关闭（spec §4 冷前端豁免+零生产限 rebuild 层、`Arg::Name` 恢复 Nil 且 avm 探针与 master 同错、spec §5 refusal 覆盖全部增量 mn recipe）。AC-01/02/03 PASS；AC-04 关闭；AC-05 的完整受影响组并集为 merge-owned。复审列出的 merge 门槛：①空闲主机跑冻结组并集（a2r/vm/case-* 含本套/ace-native/ace-av/infra-*）②closures-fn 前清 %TEMP%/av798-session-av_closures_912_*③SD-01..07 发布并读回/链接检查④可选硬化（scenario_assets 改必填、清残余 EOF 空行）⑤早前 P90/30 样本与 native/AV conformance 不复跑。本轮保留被审基线 fdebc5eda，未把 cosmetic 修剪做成新代码提交（避免超出 reviewed_commit 的代码改动）；残余 EOF 空行记入交付后可选清理。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
