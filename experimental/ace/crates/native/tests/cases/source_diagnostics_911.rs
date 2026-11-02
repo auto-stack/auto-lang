@@ -545,6 +545,9 @@ fn mn_sd911_worker_incremental_strict_first_failure_stops() {
     );
     assert_eq!(snap["causes"][0]["code"], "source.type-mismatch");
     assert_eq!(resp["diagnostic"]["code"], "mn.unsupported.frontend");
+    // F-911-R1-01: the step axis is the 0-based index within the request's
+    // step sequence — B is step 1 (A was 0).
+    assert_eq!(snap["operation"]["step"].as_u64(), Some(1));
     let _ = std::fs::remove_dir_all(&root);
 }
 

@@ -28,7 +28,7 @@
 | `source_sha256` / `source_len` | 编译器实际看到的候选源身份 |
 | `causes[]` | `{stage, code, message, span{start,end}}`，`stage` = `Stage::as_str()`（text/bind/verify/capability/backend/link/run），顺序 = 编译器返回顺序，**不去重** |
 | `primary` | JSON 整数 `0` |
-| `operation` | `{kind: cold\|warm-edit\|fallback-cold, step, base_sha256, candidate_sha256, session_revision, edit{start,end,insert_len}}` |
+| `operation` | `{kind: cold\|warm-edit\|fallback-cold, step, base_sha256, candidate_sha256, session_revision, edit{start,end,insert_len}}`；`step` = 请求内 **0-based** 步骤索引（一次请求=steps 下标；rounds=父侧回合序），请求级 cold 为 null |
 
 **上限（native 诊断分区，超额为 `mn.resource.source-diagnostic`，不截断授信）**：causes ≤ 64、
 单 message UTF-8 ≤ 4096 B、整快照序列化 ≤ 65536 B。空诊断列表不构造快照（保留旧 `frontend failed`）。
@@ -74,8 +74,8 @@ kind 由 Rust 枚举直接序列化，**禁止**由 rendered 文本解析。
    span `start≤end≤len` 且两端落在候选 UTF-8 char boundary、`primary` 为 JSON 整数 0
    （`"0"`/`0.0`/`false` 拒）、stage 仅 text/bind/verify 可承族（其余 ERROR，不默认成族）。
 5. operation 按**父侧自身视图**绑定：cold = candidate SHA == 父发送源、base/session/edit 为 null
-   （step 可带整数）；warm-edit = base == accepted prefix、candidate == 父自算候选、step 为整数；
-   fallback-cold 同 base/candidate。`source_sha256 == candidate_sha256`。
+   （rounds 内 cold 整请求则 step == 父侧回合索引）；warm-edit = base == accepted prefix、candidate == 父自算
+   候选、**step == 父侧自身 0-based 回合索引**；fallback-cold 同 base/candidate/step。`source_sha256 == candidate_sha256`。
 6. 与执行结果值级互斥（非 null exit / 非空 stream / manifest_fp 与 `source_error` 共存 → ERROR）。
 7. legacy `diagnostic` 必为 `mn.unsupported.frontend` 且 message == causes[0] 投影。
 8. 通过后 raw stage 映射判面：`text→parse`、`bind→resolve`、`verify→typecheck`；code 原样比较。

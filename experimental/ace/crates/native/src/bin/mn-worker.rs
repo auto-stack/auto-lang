@@ -416,7 +416,13 @@ mod case_run {
                             echo_mode(&mut ok, mode);
                             let mut resp = echo;
                             match &refusal.source_error {
-                                Some(snap) => attach_source_error(&mut resp, snap),
+                                Some(snap) => {
+                                    // The top-level fact names the failing
+                                    // step (0-based within this request).
+                                    let mut snap = snap.clone();
+                                    snap.operation.step = Some(st_idx as u64);
+                                    attach_source_error(&mut resp, &snap);
+                                }
                                 None => {
                                     resp["diagnostic"] = serde_json::json!({
                                         "code": "mn.incremental.refused",
@@ -906,6 +912,9 @@ mod case_run {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            // `operation.step` / step records: the 0-based index of this round
+            // within the parent's step sequence (one round line per step).
+            let step = round_no;
             round_no += 1;
             let mut resp = serde_json::json!({
                 "schema": MN_WORKER_PROTOCOL,
@@ -961,8 +970,8 @@ mod case_run {
                             if let Err(e) = driver.check_source(src, &caps) {
                                 if let Some(snap) = e.source_diagnostic() {
                                     let mut snap = snap.clone();
-                                    snap.operation = sd::Operation::fallback_cold(&base, src)
-                                        .with_step(round_no);
+                                    snap.operation =
+                                        sd::Operation::fallback_cold(&base, src).with_step(step);
                                     let mut ok = serde_json::json!({
                                         "op": "edit-source",
                                         "warm_edit_fallback": true,
@@ -1027,7 +1036,7 @@ mod case_run {
                                     if let Some(snap) = e.source_diagnostic() {
                                         let mut snap = snap.clone();
                                         snap.operation = sd::Operation::fallback_cold(&cur, &src)
-                                            .with_step(round_no);
+                                            .with_step(step);
                                         let mut ok = serde_json::json!({
                                             "op": "edit-source",
                                             "warm_edit_fallback": true,
@@ -1061,25 +1070,24 @@ mod case_run {
                             // A typed refusal answers its own round; the
                             // session keeps the accepted prefix (the
                             // parent stops the sequence — V-16).
-                            let mut ok = step_json(&obs, "edit-source", mode, Some(round_no));
+                            let mut ok = step_json(&obs, "edit-source", mode, Some(step));
                             echo_mode(&mut ok, mode);
                             if let Some(snap) =
                                 obs.refusal.as_ref().and_then(|f| f.source_error.as_ref())
                             {
                                 let mut snap = snap.clone();
-                                snap.operation.step = Some(round_no);
+                                snap.operation.step = Some(step);
                                 attach_source_error(&mut resp, &snap);
                             }
                             resp["ok"] = ok;
                             respond(resp);
                             continue;
                         }
-                        resp["ok"] = step_json(&obs, "edit-source", mode, Some(round_no));
+                        resp["ok"] = step_json(&obs, "edit-source", mode, Some(step));
                         respond(resp);
                         continue;
                     }
-                    round_no += 1;
-                    resp["ok"] = step_json(&obs, "edit-source", mode, Some(round_no));
+                    resp["ok"] = step_json(&obs, "edit-source", mode, Some(step));
                     respond(resp);
                 }
                 Some("run") => {
@@ -1128,7 +1136,7 @@ mod case_run {
                             if let (DiagMode::SourceV1, Some(snap)) = (mode, e.source_diagnostic())
                             {
                                 let mut snap = snap.clone();
-                                snap.operation.step = Some(round_no);
+                                snap.operation.step = Some(step);
                                 attach_source_error(&mut resp, &snap);
                             } else {
                                 ok["diagnostic"] =
@@ -1149,7 +1157,7 @@ mod case_run {
                     if let Some(i) = &obs.infra {
                         return fail_round(&nonce, "mn.worker.incremental", i.clone());
                     }
-                    resp["ok"] = step_json(&obs, "run", mode, Some(round_no));
+                    resp["ok"] = step_json(&obs, "run", mode, Some(step));
                     respond(resp);
                 }
                 _ => {

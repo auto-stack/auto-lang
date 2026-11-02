@@ -129,15 +129,30 @@ mod source_diag {
     /// supplies the candidate/base BYTES: the SHAs are computed here and the
     /// bytes also back the utf8-byte span boundary check.
     pub enum OperationExpectation<'a> {
-        Cold { candidate: &'a [u8] },
-        WarmEdit { base: &'a [u8], candidate: &'a [u8] },
-        FallbackCold { base: &'a [u8], candidate: &'a [u8] },
+        /// `step`: `None` for a request-level cold operation (the snapshot
+        /// must leave it null); `Some(i)` when a rounds round answered with
+        /// a cold whole-request (the snapshot must name exactly that index).
+        Cold {
+            candidate: &'a [u8],
+            step: Option<u64>,
+        },
+        /// `step`: the parent's own 0-based step index of the failing round.
+        WarmEdit {
+            base: &'a [u8],
+            candidate: &'a [u8],
+            step: u64,
+        },
+        FallbackCold {
+            base: &'a [u8],
+            candidate: &'a [u8],
+            step: u64,
+        },
     }
 
     impl OperationExpectation<'_> {
         fn candidate_bytes(&self) -> &[u8] {
             match self {
-                OperationExpectation::Cold { candidate }
+                OperationExpectation::Cold { candidate, .. }
                 | OperationExpectation::WarmEdit { candidate, .. }
                 | OperationExpectation::FallbackCold { candidate, .. } => candidate,
             }
@@ -443,7 +458,10 @@ mod source_diag {
             "source_error.operation.candidate_sha256",
         )?;
         match op {
-            OperationExpectation::Cold { candidate: cbytes } => {
+            OperationExpectation::Cold {
+                candidate: cbytes,
+                step: want_step,
+            } => {
                 if kind != "cold" {
                     return Err(format!("expected a cold operation, got {kind:?}"));
                 }
@@ -464,13 +482,22 @@ mod source_diag {
                         return Err(format!("cold operation must leave {k} null"));
                     }
                 }
-                if !operation["step"].is_null() && operation["step"].as_u64().is_none() {
-                    return Err("cold operation step must be an unsigned integer".into());
+                // The step axis binds to the PARENT's view: null for a
+                // request-level cold operation, the parent's own index for
+                // a cold whole-request answered inside a rounds round.
+                if operation["step"].as_u64() != *want_step
+                    || (want_step.is_none() && !operation["step"].is_null())
+                {
+                    return Err(format!(
+                        "cold operation step {} does not bind the parent's step {:?}",
+                        operation["step"], want_step
+                    ));
                 }
             }
             OperationExpectation::WarmEdit {
                 base: bbytes,
                 candidate: cbytes,
+                step: want_step,
             } => {
                 if kind != "warm-edit" {
                     return Err(format!("expected a warm-edit operation, got {kind:?}"));
@@ -487,16 +514,26 @@ mod source_diag {
                 if base != sha_hex(bbytes) {
                     return Err("source_error base SHA does not bind the accepted prefix".into());
                 }
-                if operation["step"].as_u64().is_none() {
-                    return Err("warm-edit operation must name its step index".into());
+                if operation["step"].as_u64() != Some(*want_step) {
+                    return Err(format!(
+                        "warm-edit operation step {} does not bind the parent's step {want_step}",
+                        operation["step"]
+                    ));
                 }
             }
             OperationExpectation::FallbackCold {
                 base: bbytes,
                 candidate: cbytes,
+                step: want_step,
             } => {
                 if kind != "fallback-cold" {
                     return Err(format!("expected a fallback-cold operation, got {kind:?}"));
+                }
+                if operation["step"].as_u64() != Some(*want_step) {
+                    return Err(format!(
+                        "fallback-cold operation step {} does not bind the parent's step {want_step}",
+                        operation["step"]
+                    ));
                 }
                 if candidate != sha_hex(cbytes) {
                     return Err(
@@ -1792,7 +1829,10 @@ pub fn run_check(
                         raw_line,
                         &resp,
                         "mn.at",
-                        &source_diag::OperationExpectation::Cold { candidate: &source },
+                        &source_diag::OperationExpectation::Cold {
+                            candidate: &source,
+                            step: None,
+                        },
                     ) {
                         Ok(fact) => {
                             source_fact = Some(fact);
@@ -2344,6 +2384,7 @@ fn run_incremental(
                         "mn.at",
                         &source_diag::OperationExpectation::Cold {
                             candidate: &input_bytes,
+                            step: None,
                         },
                     ) {
                         Ok(fact) => {
@@ -2497,11 +2538,13 @@ fn run_incremental(
                         source_diag::OperationExpectation::FallbackCold {
                             base: &base_source,
                             candidate: &candidate_source,
+                            step: i as u64,
                         }
                     } else {
                         source_diag::OperationExpectation::WarmEdit {
                             base: &base_source,
                             candidate: &candidate_source,
+                            step: i as u64,
                         }
                     };
                     match source_diag::admit(&line, &resp, "probe.at", &expect) {
@@ -2631,7 +2674,10 @@ fn run_incremental(
                             &line,
                             &resp,
                             "mn.at",
-                            &source_diag::OperationExpectation::Cold { candidate: &source },
+                            &source_diag::OperationExpectation::Cold {
+                                candidate: &source,
+                                step: Some(i as u64),
+                            },
                         ) {
                             Ok(fact) => {
                                 diag =
@@ -3025,6 +3071,7 @@ mod source_diag_tests {
             "mn.at",
             &OperationExpectation::Cold {
                 candidate: SRC.as_bytes(),
+                step: None,
             },
         )
     }
@@ -3238,14 +3285,26 @@ mod source_diag_tests {
             &resp,
             "probe.at",
             &OperationExpectation::WarmEdit {
-                base: b"base
-",
-                candidate: b"candidate
-",
+                base: b"base\n",
+                candidate: b"candidate\n",
+                step: 2,
             },
         )
         .expect("warm-edit admits with the right binding");
         assert_eq!(fact.candidate_sha256, candidate);
+        // The step axis is bound to the parent's own index (F-911-R1-01).
+        let err = source_diag::admit(
+            &raw,
+            &resp,
+            "probe.at",
+            &OperationExpectation::WarmEdit {
+                base: b"base\n",
+                candidate: b"candidate\n",
+                step: 1,
+            },
+        )
+        .expect_err("a step that is not the parent's is rejected");
+        assert!(err.contains("step"), "{err}");
     }
 
     #[test]
@@ -3267,6 +3326,7 @@ mod source_diag_tests {
             "mn.at",
             &OperationExpectation::Cold {
                 candidate: src.as_bytes(),
+                step: None,
             },
         )
         .expect("multibyte source with boundary-aligned span admits");
@@ -3279,6 +3339,7 @@ mod source_diag_tests {
             "mn.at",
             &OperationExpectation::Cold {
                 candidate: src.as_bytes(),
+                step: None,
             },
         )
         .expect_err("half-UTF-8 span rejected");
@@ -3293,6 +3354,7 @@ mod source_diag_tests {
             "mn.at",
             &OperationExpectation::Cold {
                 candidate: src.as_bytes(),
+                step: None,
             },
         )
         .expect_err("source_len mismatch rejected");
