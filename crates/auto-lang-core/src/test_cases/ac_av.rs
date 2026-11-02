@@ -4605,7 +4605,13 @@ fn judge_expectation(
                 let present = step.value.is_some()
                     || (family == RecipeFamily::Data && step.typed.is_some())
                     || (family == RecipeFamily::DataIncremental && step.typed.is_some())
-                    || (family == RecipeFamily::Owned && step.owned.is_some());
+                    || (family == RecipeFamily::Owned && step.owned.is_some())
+                    // PLAN-915: the resource recipe's typed witnesses report
+                    // their own faces (a stale-Place sequence or a capture
+                    // clone sweep has no i32 result); the face IS the
+                    // success evidence and is judged separately.
+                    || (family == RecipeFamily::Resource
+                        && (step.place.is_some() || step.capture.is_some()));
                 if !present {
                     mismatches.push(Mismatch {
                         observation: "exit".into(),
