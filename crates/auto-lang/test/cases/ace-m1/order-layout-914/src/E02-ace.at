@@ -1,0 +1,20 @@
+// PLAN-914 E02 (ACE paths: ac/mn record + av data record): named record
+// construction evaluates its field expressions in SOURCE order (right then
+// left) and then binds by field name. The declaration order is (left,right),
+// so declaration-order evaluation would be observable as trace "a","b".
+// Frozen oracle: value 103, mark trace "b","a".
+// Discriminators: declaration-order evaluation -> trace "a","b"; positional
+// field binding -> left=2,right=1 -> 2*101+1 = 203 (value red).
+
+type Pair {
+    left int
+    right int
+}
+
+fn fan(p Pair) int {
+    return p.left * 101 + p.right
+}
+
+fn main() int {
+    return fan(Pair { right: mark_b(), left: mark_a() })
+}

@@ -1,0 +1,26 @@
+// PLAN-914 E01 (legacy paths: avm + a2r). The legacy engines have no
+// capability-gated mark intrinsics, so the frozen scenario side effect is
+// carried by ordinary Auto functions writing exactly one byte each on the
+// captured stdout channel (`write` does not append a newline; `print` does).
+// Frozen oracle: value 7, stdout trace bytes "ba". The legacy engines must
+// evaluate the named arguments in SOURCE order and then bind by name.
+// Discriminators: positional binding -> 2*3+1*2 = 8 (value red); parameter
+// order evaluation -> trace "ab" (trace red).
+
+fn mark_b() int {
+    write("b")
+    return 2
+}
+
+fn mark_a() int {
+    write("a")
+    return 1
+}
+
+fn sub(a int, b int) int {
+    return a * 3 + b * 2
+}
+
+fn main() int {
+    return sub(b: mark_b(), a: mark_a())
+}

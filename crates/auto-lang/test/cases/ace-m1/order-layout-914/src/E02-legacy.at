@@ -1,0 +1,28 @@
+// PLAN-914 E02 (legacy paths: avm + a2r). Declaration order is (left,right)
+// while the constructor writes right first, so a declaration-order evaluation
+// is observable as trace "a","b". Frozen oracle: value 103, stdout trace "ba".
+// Discriminators: declaration-order evaluation -> trace "a","b"; positional
+// field binding -> left=2,right=1 -> 2*101+1 = 203 (value red).
+
+type Pair {
+    left int
+    right int
+}
+
+fn mark_b() int {
+    write("b")
+    return 2
+}
+
+fn mark_a() int {
+    write("a")
+    return 1
+}
+
+fn fan(p Pair) int {
+    return p.left * 101 + p.right
+}
+
+fn main() int {
+    return fan(Pair { right: mark_b(), left: mark_a() })
+}
