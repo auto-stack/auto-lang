@@ -198,6 +198,10 @@ T-04 收尾证据：形式 suite 一次运行的逐操作 receipt 1.0-2.2 KiB（
 2026-11-02 | stage:goal | PLAN-914 r2 | round 10 | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: d98b09e4c | next: work
 SD-01..07 规范增量已在 worktree 拟好并提交（新文件 `docs/specs/auto-test-case/m1-order-layout-observations.md`；conformance/gap-audit/scenario-oracles/a2r-golden-certification/function-incremental-source/cache-and-conformance 各追加 PLAN-914 段），merge 时发布。T-06 阶段一仍绿（case-ace-m1-base、新场景组、治理 23、contract PASS）；ace-native/ace-av 组在本机多会话（913/916 等）并发 cargo 构建/测试的锁与 CPU 竞争下挂起（nextest 驱动 idle >1.5h，定向 conformance 与 adapter 单测亦排队），已取消并如实记录为环境限制而非测试失败——变更的 collections/dava worker 代码已由正式场景 suite 端到端跑通（I04 ac declaration 轮、I04/I09 av 三检查）。T-06 的冻结受影响组并集待机器空闲时补跑；计划保持 executing。
 
+
+2026-11-02 | stage:goal | PLAN-914 r2 | round 10b | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: cad87b1ad | next: work
+T-06 发现并修复一处真实回归：`StepOut` 新增 rebuilt_defs/identities/refusal 后，auto-lang-core 的 3 个测试构造器未补字段，导致 `cargo test -p auto-lang-core --lib` 编译失败（此前 epXX 组用的是 auto-case 二进制，未暴露）。已补全并验证：`cargo test -p auto-lang-core --lib -- test_cases::ac` → 34 passed / 0 failed；适配器单元面恢复绿。此项证明 T-06 的受影响组并集不可省略；ace 组仍待机器空闲补跑。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
