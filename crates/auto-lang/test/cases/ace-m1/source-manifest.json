@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "aeac93075df82b565547271dc77c7e3e071d32d4c1122eb790f754aa76b855de"
+  "sha256": "d5044bccf3777d1b1b79c91e7881b484f7e3236e5eb147d419555c0c75a63b1a"
  },
  "corpus_src": {
   "dir": "src",

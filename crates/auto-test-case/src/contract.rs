@@ -1116,6 +1116,26 @@ fn decode_check(
         trace_recipe,
     )?;
     if adapter == Adapter::Probe {
+        // PLAN-914 (I04): the declaration oracle and the declaration round
+        // are two halves of one observation — never execute an invalidation
+        // nobody judges, never declare an oracle no round produces.
+        if let (Some(mn), Some(steps)) = (options.probe_mn.as_ref(), options.probe_steps.as_deref()) {
+            let has_decl_step = steps
+                .iter()
+                .any(|s| matches!(s, ProbeStep::DeclarationInvalidate { .. }));
+            if has_decl_step && mn.declaration.is_none() {
+                return Err(err(
+                    &f.path_of("options"),
+                    "a declaration-invalidate step requires the mn.declaration oracle (the invalidation is judged, never merely executed)",
+                ));
+            }
+            if mn.declaration.is_some() && !has_decl_step {
+                return Err(err(
+                    &f.path_of("options"),
+                    "mn.declaration is declared without a declaration-invalidate step",
+                ));
+            }
+        }
         if console_recipe {
             if expect.probe.is_some() {
                 return Err(err(
@@ -1535,6 +1555,7 @@ fn decode_options(
                         op.as_str(),
                         "query"
                             | "edit-source"
+                            | "declaration-invalidate"
                             | "restart"
                             | "run"
                             | "resident-slice"
@@ -1544,7 +1565,7 @@ fn decode_options(
                     if !known_op {
                         return Err(err(
                             &sf.path_of("op"),
-                            format!("unknown probe op {:?} (supported: query, edit-source, restart, run, resident-slice, resident-apply, resident-finish)", op),
+                            format!("unknown probe op {:?} (supported: query, edit-source, declaration-invalidate, restart, run, resident-slice, resident-apply, resident-finish)", op),
                         ));
                     }
                     let allowed = match recipe.as_str() {
@@ -1602,9 +1623,17 @@ fn decode_options(
                         // PLAN-818 T-06: runs + discriminating edits +
                         // restart session boundaries (`query` stays a
                         // sema/abi op — recipes never borrow ops).
-                        "ac/mir-native-scalar-v1" | "ac/mir-native-collections-v1" => {
+                        "ac/mir-native-scalar-v1" => {
                             matches!(op.as_str(), "run" | "edit-source" | "restart")
                         }
+                        // PLAN-914 (I04): only the collections incremental
+                        // session implements the explicit DECLARATION/layout
+                        // invalidation round; the scalar profile has no
+                        // declaration surface (types are not part of it).
+                        "ac/mir-native-collections-v1" => matches!(
+                            op.as_str(),
+                            "run" | "edit-source" | "declaration-invalidate" | "restart"
+                        ),
                         // PLAN-891: the typed recipe consumes exactly a
                         // single run step in the formal case form.
                         "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
@@ -1662,6 +1691,29 @@ fn decode_options(
                             ProbeStep::EditSource { from, to }
                         }
                         "restart" => ProbeStep::Restart,
+                        "declaration-invalidate" => {
+                            // PLAN-914 (I04): an explicit declaration/layout
+                            // invalidation round — the same exactly-once
+                            // literal replacement shape as edit-source, but the
+                            // session routes it through the cold declaration
+                            // frontend + dependency-precise rebuild instead of
+                            // the single-body fast path.
+                            let from = req_str(&sf, "from")?;
+                            let to = req_str(&sf, "to")?;
+                            if from.is_empty() || from == to {
+                                return Err(err(
+                                    &sf.path_of("from"),
+                                    "declaration-invalidate needs a non-empty `from` distinct from `to` (a discriminating declaration oracle)",
+                                ));
+                            }
+                            if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
+                                return Err(err(
+                                    &sf.path_of("to"),
+                                    "declaration-invalidate literals exceed the 64KiB step cap",
+                                ));
+                            }
+                            ProbeStep::DeclarationInvalidate { from, to }
+                        }
                         other => {
                             return Err(err(
                                 &sf.path_of("op"),
@@ -2041,7 +2093,14 @@ fn decode_options(
                 let mf = Fields::new(
                     &mpath,
                     pairs,
-                    &["entry", "caps", "session", "typed", "diagnostics"],
+                    &[
+                        "entry",
+                        "caps",
+                        "session",
+                        "typed",
+                        "diagnostics",
+                        "declaration",
+                    ],
                 )?;
                 let entry = req_str(&mf, "entry")?;
                 let caps = match mf.sub("caps") {
@@ -2125,12 +2184,84 @@ fn decode_options(
                         Some(dv.to_string())
                     }
                 };
+                let declaration = match mf.sub("declaration") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-collections-v1" {
+                            return Err(err(
+                                &mf.path_of("declaration"),
+                                "the declaration oracle belongs to ac/mir-native-collections-v1 only (the scalar profile has no declaration surface)",
+                            ));
+                        }
+                        let dpath = mf.path_of("declaration");
+                        let dpairs = as_obj(v, &dpath)?;
+                        let df = Fields::new(
+                            &dpath,
+                            dpairs,
+                            &[
+                                "min_frontend_invalidations",
+                                "max_codegen_units",
+                                "stable_defs",
+                            ],
+                        )?;
+                        let min_frontend_invalidations =
+                            match df.sub("min_frontend_invalidations") {
+                                None => 1,
+                                Some(mv) => match mv {
+                                    CVal::Int(n) if *n >= 1 && *n <= 64 => *n as u64,
+                                    _ => {
+                                        return Err(err(
+                                            &df.path_of("min_frontend_invalidations"),
+                                            "min_frontend_invalidations must be an integer 1..=64",
+                                        ))
+                                    }
+                                },
+                            };
+                        let max_codegen_units = match df.sub("max_codegen_units") {
+                            None => None,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 0 && *n <= 1024 => Some(*n as u64),
+                                _ => {
+                                    return Err(err(
+                                        &df.path_of("max_codegen_units"),
+                                        "max_codegen_units must be an integer 0..=1024",
+                                    ))
+                                }
+                            },
+                        };
+                        let stable_defs = match df.sub("stable_defs") {
+                            None => Vec::new(),
+                            Some(lv) => {
+                                let list = as_list(lv, &df.path_of("stable_defs"))?;
+                                let mut out = Vec::new();
+                                for (i, item) in list.iter().enumerate() {
+                                    let ipath = format!("{}.stable_defs[{}]", dpath, i);
+                                    let name = as_str(item, &ipath)?.to_string();
+                                    if name.is_empty() {
+                                        return Err(err(
+                                            &ipath,
+                                            "empty stable_defs entry identifies nothing",
+                                        ));
+                                    }
+                                    out.push(name);
+                                }
+                                out
+                            }
+                        };
+                        Some(ProbeMnDeclarationSpec {
+                            min_frontend_invalidations,
+                            max_codegen_units,
+                            stable_defs,
+                        })
+                    }
+                };
                 Some(ProbeMnSpec {
                     entry,
                     caps,
                     session,
                     typed,
                     diagnostics,
+                    declaration,
                 })
             }
         };
@@ -2315,6 +2446,16 @@ pub enum ProbeStep {
         from: String,
         to: String,
     },
+    /// PLAN-914 (I04): an explicit DECLARATION/layout invalidation round
+    /// (collections incremental session only). The same exactly-once literal
+    /// replacement shape as `EditSource`, but the session runs the cold
+    /// declaration frontend and re-produces only the dependency-affected
+    /// units; the parent judges the declaration counters and the identity
+    /// carry-over of the unaffected units.
+    DeclarationInvalidate {
+        from: String,
+        to: String,
+    },
     Restart,
     /// PLAN-798 ac-av/core-run-v1: run the case source through the full
     /// AV pipeline once and report the observed outcome (value / trap /
@@ -2387,6 +2528,25 @@ pub struct ProbeMnSpec {
     /// legal value is "source-v1" (mn.source-diagnostic/1); only the
     /// scalar recipe accepts it; omitted keeps the pre-911 behavior.
     pub diagnostics: Option<String>,
+    /// PLAN-914 (I04): the declaration/layout invalidation oracle of the
+    /// collections recipe — the minimum cold-frontend invalidations, the
+    /// maximum object-producer units and the defs whose identity must be
+    /// CARRIED (the unaffected units). Declared expectations never reach
+    /// the worker.
+    pub declaration: Option<ProbeMnDeclarationSpec>,
+}
+
+/// PLAN-914 ac/mir-native-collections-v1 declaration-invalidation oracle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnDeclarationSpec {
+    /// The recorded cold declaration-frontend invalidations (>= this).
+    pub min_frontend_invalidations: u64,
+    /// Upper bound on the object-producer units of the invalidation round
+    /// (`codegen_emit_units`); None = only the carry-over is judged.
+    pub max_codegen_units: Option<u64>,
+    /// Unit keys (e.g. `d_unrelated`) whose object identity must be
+    /// UNCHANGED across the invalidation (the unaffected units).
+    pub stable_defs: Vec<String>,
 }
 
 /// PLAN-891 ac/mir-native-typed-v1 binding payload.

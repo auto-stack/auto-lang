@@ -402,6 +402,39 @@ fn serve() -> Result<(), String> {
                     out["identities_after"] = json!(after);
                     Ok(out)
                 }
+                "declaration-invalidate" => {
+                    // PLAN-914 (I04): the explicit declaration/layout
+                    // invalidation round — cold declaration frontend, then a
+                    // dependency-precise rebuild (byte-identical units keep
+                    // their resident objects).
+                    let from = str_field(&step, "from")?;
+                    let to = step.get("to").and_then(Value::as_str).ok_or("missing to")?;
+                    if session.source().matches(from).count() != 1 {
+                        return Err("declaration edit must match exactly once".into());
+                    }
+                    let source = session.source().replacen(from, to, 1);
+                    let candidate = session.prepare_declaration_change(&source).map_err(|e| {
+                        format!(
+                            "{}; actual counters={:?}",
+                            e.message(),
+                            session.last_work().obs.counters
+                        )
+                    })?;
+                    let run = session
+                        .commit_prepared(candidate)
+                        .map_err(|e| e.message())?;
+                    let mut out = run_json(
+                        run,
+                        op,
+                        None,
+                        session.runtime_identity(),
+                        session.link_identity(),
+                    );
+                    let after = session.identities();
+                    out["identities_before"] = json!(before);
+                    out["identities_after"] = json!(after);
+                    Ok(out)
+                }
                 "run" => {
                     let source = session.source().to_owned();
                     let run = session.apply_source(&source).map_err(|e| e.message())?;

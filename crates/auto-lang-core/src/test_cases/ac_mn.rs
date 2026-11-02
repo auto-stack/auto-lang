@@ -1670,9 +1670,13 @@ pub fn run_check(
     // Restart-mixed sequences stay on the whole-request session model
     // (cross-process = the cold scenario; its warm edits are not
     // incremental and are not labeled so).
-    let has_edit_step = steps
-        .iter()
-        .any(|s| matches!(s, auto_test_case::contract::ProbeStep::EditSource { .. }));
+    let has_edit_step = steps.iter().any(|s| {
+        matches!(
+            s,
+            auto_test_case::contract::ProbeStep::EditSource { .. }
+                | auto_test_case::contract::ProbeStep::DeclarationInvalidate { .. }
+        )
+    });
     let has_restart = steps
         .iter()
         .any(|s| matches!(s, auto_test_case::contract::ProbeStep::Restart));
@@ -1725,6 +1729,13 @@ pub fn run_check(
                 auto_test_case::contract::ProbeStep::Query => {
                     return Err(format!(
                         "{recipe} does not take query steps (decode contract violation)"
+                    ));
+                }
+                // PLAN-914 (I04): declaration rounds belong to the
+                // incremental rounds path, never the restart-session path.
+                auto_test_case::contract::ProbeStep::DeclarationInvalidate { .. } => {
+                    return Err(format!(
+                        "{recipe} does not take declaration rounds in the restart-session path"
                     ));
                 }
             }
@@ -2304,6 +2315,9 @@ fn run_incremental(
         .ok_or("missing native recipe")?;
 
     let started = Instant::now();
+    // PLAN-914 (I04): declaration-oracle mismatches collected inside the
+    // rounds window and merged into the final verdict after the loop.
+    let mut decl_mismatches: Vec<Mismatch> = Vec::new();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
             "{recipe} consumes .at sources; syntax {:?} is not accepted",
@@ -2497,6 +2511,8 @@ fn run_incremental(
         // their slot — the comparison there is null, the case oracle owns
         // the judged value).
         let mut expect_idx = 0usize;
+        // PLAN-914 (I04): declaration-oracle mismatches collected inside the
+        // rounds window and merged into the final verdict after the loop.
         for (i, st) in steps.iter().enumerate() {
             // The parent-observed window opens at the parent's OWN
             // preparation for this round (F-818-R1-01): the exactly-once
@@ -2531,6 +2547,35 @@ fn run_incremental(
                         })
                         .to_string(),
                         step_expect,
+                        Some((base_source, candidate_source)),
+                    )
+                }
+                auto_test_case::contract::ProbeStep::DeclarationInvalidate { from, to } => {
+                    // PLAN-914 (I04): the explicit declaration/layout
+                    // invalidation round. The parent materializes the
+                    // candidate exactly once (the same discriminating
+                    // replacement shape as a body edit); the worker runs the
+                    // cold declaration frontend + dependency-precise rebuild.
+                    let base_source = source.clone();
+                    let next = match replace_once(&source, from, to) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            infra_detail = Some(e);
+                            break 'admit;
+                        }
+                    };
+                    source = next;
+                    let candidate_source = source.clone();
+                    (
+                        "declaration-invalidate",
+                        serde_json::json!({
+                            "op": "declaration-invalidate",
+                            "from": from,
+                            "to": to,
+                            "nonce": round_nonce,
+                        })
+                        .to_string(),
+                        None,
                         Some((base_source, candidate_source)),
                     )
                 }
@@ -2755,6 +2800,47 @@ fn run_incremental(
                 rec["parent_window_ms"] = serde_json::json!(window_ms);
                 parent_windows_ms.push(window_ms);
                 step_records.push(rec);
+            } else if matches!(
+                st,
+                auto_test_case::contract::ProbeStep::DeclarationInvalidate { .. }
+            ) {
+                // PLAN-914 (I04, D-05 criterion): the declaration round's
+                // engine policy is a cold declaration frontend followed by a
+                // dependency-precise rebuild — the body-edit zero-production
+                // gate does NOT apply. Judge the declared declaration oracle:
+                // the real cold-frontend invalidations, the object-producer
+                // bound and the identity carry-over of the unaffected units.
+                let Some(spec) = mn.declaration.as_ref() else {
+                    infra_detail =
+                        Some("declaration round without a declaration oracle".to_string());
+                    break 'admit;
+                };
+                decl_mismatches.extend(judge_declaration_invalidation(&ok, spec));
+                let round_exit = ok
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
+                let Some(round_exit) = round_exit else {
+                    infra_detail =
+                        Some(format!("declaration round {i} without a real PE exit"));
+                    break 'admit;
+                };
+                exit_code = Some(round_exit);
+                stderr_hex = ok
+                    .get("stderr_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                stdout_hex = ok
+                    .get("stdout_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let mut rec = ok;
+                rec["parent_window_ms"] =
+                    serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                step_records.push(rec);
+                continue;
             } else {
                 // A run round: either the judged incremental re-link/run or
                 // the whole-request leg after a syntax fallback.
@@ -2920,6 +3006,7 @@ fn run_incremental(
     // ---- parent-side judgement (the same faces as the whole-request
     // path; the judged value is the LAST step's PE exit).
     let mut mismatches: Vec<Mismatch> = Vec::new();
+    mismatches.extend(decl_mismatches);
     if let Some((code, message)) = &diag {
         let stage = if let Some(fact) = &source_fact {
             // PLAN-911 strict: the RAW producer stage decides.
@@ -3519,3 +3606,77 @@ mod source_diag_tests {
     }
 }
 
+
+/// PLAN-914 (I04, D-05 criterion): judge the declaration-invalidation round
+/// against the declared oracle — the cold-frontend invalidations actually
+/// recorded, the object-producer unit bound, and the resident MIR/COFF
+/// identity carry-over of the units the case names as UNAFFECTED.
+fn judge_declaration_invalidation(
+    ok: &serde_json::Value,
+    spec: &auto_test_case::contract::ProbeMnDeclarationSpec,
+) -> Vec<Mismatch> {
+    let mut out = Vec::new();
+    let invalidations = ok
+        .get("counters")
+        .and_then(|c| c.get("declaration_frontend_invalidations"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if invalidations < spec.min_frontend_invalidations {
+        out.push(Mismatch {
+            observation: "declaration_frontend_invalidations".into(),
+            kind: "counter".into(),
+            expected: format!(">= {}", spec.min_frontend_invalidations),
+            actual: format!("{invalidations}"),
+            first_diff: None,
+        });
+    }
+    if let Some(max) = spec.max_codegen_units {
+        let emitted = ok
+            .get("codegen_units")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if emitted > max {
+            out.push(Mismatch {
+                observation: "codegen_units".into(),
+                kind: "counter".into(),
+                expected: format!("<= {max} (only dependency-affected units enter the producer)"),
+                actual: format!("{emitted}"),
+                first_diff: None,
+            });
+        }
+    }
+    // The carried object identity is the resident MIR and COFF allocation
+    // (the tuple's last two components); the leading body identity is
+    // reminted by the cold declaration frontend and is not an object axis.
+    let carried = |v: &serde_json::Value| -> Option<(u64, u64)> {
+        let arr = v.as_array()?;
+        if arr.len() < 3 {
+            return None;
+        }
+        Some((arr[1].as_u64()?, arr[2].as_u64()?))
+    };
+    let before = ok.get("identities_before").and_then(|v| v.as_object());
+    let after = ok.get("identities_after").and_then(|v| v.as_object());
+    for def in &spec.stable_defs {
+        let b = before.and_then(|m| m.get(def)).and_then(carried);
+        let a = after.and_then(|m| m.get(def)).and_then(carried);
+        match (b, a) {
+            (Some(b), Some(a)) if b == a => {}
+            (Some(b), Some(a)) => out.push(Mismatch {
+                observation: format!("identities[{def}]"),
+                kind: "identity".into(),
+                expected: format!("resident mir/coff {b:?}"),
+                actual: format!("resident mir/coff {a:?}"),
+                first_diff: None,
+            }),
+            _ => out.push(Mismatch {
+                observation: format!("identities[{def}]"),
+                kind: "missing".into(),
+                expected: "a carried resident mir/coff identity".into(),
+                actual: "absent".into(),
+                first_diff: None,
+            }),
+        }
+    }
+    out
+}

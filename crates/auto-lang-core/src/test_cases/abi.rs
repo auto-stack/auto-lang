@@ -869,7 +869,9 @@ pub fn run_check(
             // SAFETY: edit-source continues above; restart is the only
             // other valid ABI step kind (AV run was rejected above)
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
-            ProbeStep::Restart => serde_json::json!({"op": "restart"}),
+            ProbeStep::DeclarationInvalidate { .. } => {
+                return Err("abi/interop-v1 does not accept declaration-invalidate steps".into())
+            }            ProbeStep::Restart => serde_json::json!({"op": "restart"}),
         };
         let step_tag = match st {
             ProbeStep::Query => "query",
@@ -880,7 +882,9 @@ pub fn run_check(
                 return Err("abi/interop-v1 does not accept resident steps".into())
             }
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
-            ProbeStep::Restart => "restart",
+            ProbeStep::DeclarationInvalidate { .. } => {
+                return Err("abi/interop-v1 does not accept declaration-invalidate steps".into())
+            }            ProbeStep::Restart => "restart",
         };
         let t_step = Instant::now();
         let nonce = hex(&sha256(
@@ -1288,3 +1292,4 @@ pub fn run_check(
         }),
     })
 }
+

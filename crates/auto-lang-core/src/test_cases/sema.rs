@@ -919,6 +919,12 @@ pub fn run_check(
                     serde_json::json!({"op": "edit-source", "from": from, "to": to})
                 }
                 ProbeStep::Restart => serde_json::json!({"op": "restart"}),
+                // PLAN-914: declaration invalidation is the collections
+                // incremental recipe's op (defensive explicit arm; decode
+                // rejects it for sema).
+                ProbeStep::DeclarationInvalidate { from, to } => {
+                    serde_json::json!({"op": "declaration-invalidate", "from": from, "to": to})
+                }
                 // Decode restricts `run` to the ac-av recipe; the sema
                 // adapter never receives it (defensive explicit arm).
                 ProbeStep::Run => serde_json::json!({"op": "run"}),
@@ -1394,3 +1400,4 @@ fn compare_bindings(oracle_bytes: &[u8], got: &[BindingOut]) -> Result<(), Diff>
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
+

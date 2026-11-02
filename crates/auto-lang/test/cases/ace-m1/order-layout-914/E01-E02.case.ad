@@ -106,3 +106,23 @@ case {
   ]
 }
 ```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.i04.ace"
+  tags: ["ace-m1", "scenario", "order-914", "layout"]
+  links: ["PLAN-914"]
+  source: { file: "src/I04-ace.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "declaration", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", declaration: { min_frontend_invalidations: 1, max_codegen_units: 2, stable_defs: ["unrelated"] } }, steps: [
+        { op: "run" },
+        { op: "declaration-invalidate", from: "left int\n    right int", to: "right int\n    left int" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 103 } }
+  ]
+}
+```
