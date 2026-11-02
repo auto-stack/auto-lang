@@ -746,7 +746,12 @@ pub(crate) fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
 }
 
 /// Compile one file under containment with the frozen flags and wall.
-pub(crate) fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &str) -> Result<(), String> {
+pub(crate) fn compile(
+    rustc: &str,
+    input: &Path,
+    out_exe: &Path,
+    crate_name: &str,
+) -> Result<(), String> {
     let mut cmd = Command::new(rustc);
     cmd.args(RUSTC_FLAG_TOKENS)
         .arg("--crate-name")
@@ -766,7 +771,11 @@ pub(crate) fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &st
 /// exceeds STREAM_CAP the WHOLE job tree is killed and a parent-visible
 /// overflow error is returned — output is never silently truncated. The
 /// wall overrun kills the tree the same way.
-pub(crate) fn run_bounded(mut cmd: Command, wall: Duration, what: &str) -> Result<RunOutcome, String> {
+pub(crate) fn run_bounded(
+    mut cmd: Command,
+    wall: Duration,
+    what: &str,
+) -> Result<RunOutcome, String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

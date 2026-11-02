@@ -172,14 +172,17 @@ pub struct CaseSummary {
 }
 
 fn sha_file(path: &Path) -> Result<String, String> {
-    let bytes =
-        std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     Ok(hex(&sha256(&bytes)))
 }
 
 /// Emit the fresh actual artifact map for one case through the production
 /// entries. `project == false` yields the single-file map `{<id>.rs: bytes}`.
-fn emit_actuals(source: &Path, id: &str, project: bool) -> Result<BTreeMap<String, Vec<u8>>, String> {
+fn emit_actuals(
+    source: &Path,
+    id: &str,
+    project: bool,
+) -> Result<BTreeMap<String, Vec<u8>>, String> {
     let src = std::fs::read_to_string(source)
         .map_err(|e| format!("read source {}: {e}", source.display()))?;
     let handle = std::thread::Builder::new()
@@ -190,10 +193,9 @@ fn emit_actuals(source: &Path, id: &str, project: bool) -> Result<BTreeMap<Strin
             let src = src.clone();
             move || -> Result<BTreeMap<String, Vec<u8>>, String> {
                 if project {
-                    let map = crate::trans::rust::transpile_rust_project(
-                        source.to_str().unwrap_or(""),
-                    )
-                    .map_err(|e| format!("project emit: {e}"))?;
+                    let map =
+                        crate::trans::rust::transpile_rust_project(source.to_str().unwrap_or(""))
+                            .map_err(|e| format!("project emit: {e}"))?;
                     Ok(map
                         .into_iter()
                         .map(|(k, (bytes, _maps))| (format!("project:{k}"), bytes))
@@ -206,10 +208,7 @@ fn emit_actuals(source: &Path, id: &str, project: bool) -> Result<BTreeMap<Strin
                     )
                     .map_err(|e| format!("single emit: {e}"))?;
                     let bytes = sink.done().map_err(|e| format!("sink done: {e}"))?;
-                    Ok(BTreeMap::from([(
-                        format!("single:{id}.rs"),
-                        bytes.clone(),
-                    )]))
+                    Ok(BTreeMap::from([(format!("single:{id}.rs"), bytes.clone())]))
                 }
             }
         })
@@ -231,10 +230,7 @@ fn judge_run(outcome: &RunOutcome, oracle: &Oracle) -> Result<String, String> {
             }
             let stdout = String::from_utf8_lossy(&outcome.stdout).to_string();
             if stdout != *want_stdout {
-                return Err(format!(
-                    "stdout {:?} != oracle {:?}",
-                    stdout, want_stdout
-                ));
+                return Err(format!("stdout {:?} != oracle {:?}", stdout, want_stdout));
             }
             Ok(stdout.trim().to_string())
         }
@@ -296,9 +292,7 @@ fn exact_keys(v: &serde_json::Value, want: &[&str], ctx: &str) -> Result<(), Str
         .ok_or_else(|| format!("{ctx}: not an object"))?;
     let got: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
     if got.len() != want.len() || !want.iter().all(|w| obj.contains_key(*w)) {
-        return Err(format!(
-            "{ctx}: keys {got:?} != expected {want:?}"
-        ));
+        return Err(format!("{ctx}: keys {got:?} != expected {want:?}"));
     }
     Ok(())
 }
@@ -358,7 +352,9 @@ pub fn validate_receipt(receipt: &serde_json::Value) -> Result<(), ReceiptProble
     if !is_hash64(&axes["wrapper"]) || !is_hash64(&axes["reference"]) {
         return bad("axes.wrapper / axes.reference is not a sha256 hex".to_string());
     }
-    let identity = receipt.get("identity").ok_or_else(|| "identity".to_string())?;
+    let identity = receipt
+        .get("identity")
+        .ok_or_else(|| "identity".to_string())?;
     exact_keys(
         identity,
         &[
@@ -581,11 +577,11 @@ fn certify_one(
     if let Err(e) = std::fs::write(ref_sub.join("generated.rs"), &reference_bytes) {
         return fail(format!("write reference generated.rs: {e}"));
     }
-    let observed_reference = match compile_run_wrapped(rustc, &ref_sub, "p917_reference", &case.oracle)
-    {
-        Ok(observed) => observed,
-        Err(e) => return fail(format!("reference run: {e}")),
-    };
+    let observed_reference =
+        match compile_run_wrapped(rustc, &ref_sub, "p917_reference", &case.oracle) {
+            Ok(observed) => observed,
+            Err(e) => return fail(format!("reference run: {e}")),
+        };
 
     // --- 5. Persist the receipt.
     let receipt = serde_json::json!({

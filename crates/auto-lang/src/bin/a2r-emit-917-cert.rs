@@ -51,13 +51,10 @@ fn main() {
         // Default: the in-repo case dir, resolved from the workspace root that
         // contains this binary's manifest.
         let manifest = env!("CARGO_MANIFEST_DIR");
-        args.case_dir = std::path::PathBuf::from(manifest)
-            .join("test/cases/ace-m1/a2r-emit-917");
+        args.case_dir = std::path::PathBuf::from(manifest).join("test/cases/ace-m1/a2r-emit-917");
     }
     if !have_certs_dir {
         args.certs_dir = args.case_dir.join("certs");
     }
-    std::process::exit(
-        auto_lang::test_cases::a2r_emit_917_cert::certify_and_report(&args),
-    );
+    std::process::exit(auto_lang::test_cases::a2r_emit_917_cert::certify_and_report(&args));
 }

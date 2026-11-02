@@ -173,6 +173,7 @@ mod plan446_batch2_tests;
 // PLAN-667: 内存安全底线探针矩阵（捕获/RC/a2r，VM 生产路径）。
 #[cfg(test)]
 mod plan667_memory_safety_tests;
+mod plan917_turnaround;
 // Plan 442 A3: `use.web` ext link regression corpus.
 // PLAN-732: autodown 编辑壳 wikilink 激活供给六环贯通 corpus。
 // PLAN-739: 编辑回声→换页视面跟随回归（F-037-R1——input_values 键入条目
