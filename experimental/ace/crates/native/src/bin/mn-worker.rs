@@ -881,8 +881,10 @@ mod case_run {
         // mode each materialized candidate is gated by one real frontend
         // compile; a rejected candidate keeps the accepted prefix.
         let mut fallback_src: Option<String> = None;
-        let mut gate_driver =
-            ace_native::driver::MnDriver::with_store(&PathBuf::from(&store_root), "mn-case");
+        // The strict-mode gate driver opens lazily on first use: the
+        // default path never opens an extra store for this session.
+        let mut gate_driver: Option<Result<ace_native::driver::MnDriver, ace_native::MnError>> =
+            None;
         let stdin = std::io::stdin();
         let mut lock = stdin.lock();
         let mut line = String::new();
@@ -945,7 +947,12 @@ mod case_run {
                         if mode == DiagMode::SourceV1 {
                             // Strict gate: one real frontend compile of THIS
                             // candidate; a failure keeps the accepted prefix.
-                            let driver = match gate_driver.as_mut() {
+                            let driver = match gate_driver.get_or_insert_with(|| {
+                                ace_native::driver::MnDriver::with_store(
+                                    &PathBuf::from(&store_root),
+                                    "mn-case",
+                                )
+                            }) {
                                 Ok(d) => d,
                                 Err(e) => {
                                     return fail_round(&nonce, "mn.worker.store", e.message());
@@ -1005,7 +1012,12 @@ mod case_run {
                             // gated too (a legal edit that cannot converge
                             // may still be semantically illegal).
                             if mode == DiagMode::SourceV1 {
-                                let driver = match gate_driver.as_mut() {
+                                let driver = match gate_driver.get_or_insert_with(|| {
+                                    ace_native::driver::MnDriver::with_store(
+                                        &PathBuf::from(&store_root),
+                                        "mn-case",
+                                    )
+                                }) {
                                     Ok(d) => d,
                                     Err(e) => {
                                         return fail_round(&nonce, "mn.worker.store", e.message());
