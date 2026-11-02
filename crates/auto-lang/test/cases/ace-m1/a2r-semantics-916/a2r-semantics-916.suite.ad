@@ -1,0 +1,10 @@
+# PLAN-916 legacy A2R semantic admission: 14 negative checks, 3 legal emit references.
+
+```test-suite
+suite {
+  schema: "autolang.suite/2"
+  id: "case-ace-m1-a2r-semantics-916"
+  fixture_root: ".."
+  include: ["a2r-semantics-916.case.ad"]
+}
+```

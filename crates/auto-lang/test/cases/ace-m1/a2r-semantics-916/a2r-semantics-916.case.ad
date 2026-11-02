@@ -1,0 +1,212 @@
+# Original sources stay in ../src; negative cases never declare Rust artifacts.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b16.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B16.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_b16" }, expect: { completion: { stage: "type", code: "auto_name_E0204" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b16.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B16.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_name_E0204" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b17.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_b17" }, expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b17.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b18.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_b18" }, expect: { completion: { stage: "type", code: "auto_name_E0203" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b18.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B18.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_name_E0203" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b19.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_b19" }, expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.b19.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/B19.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.t06.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/T06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_t06" }, expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.t06.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/T06.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.r09.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/R09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_r09" }, expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.r09.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/R09.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_type_E0101" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.r10.single"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/R10.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "a2r916_r10" }, expect: { completion: { stage: "type", code: "auto_type_E0102" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.r10.project"
+  tags: ["ace-m1", "a2r", "diagnostic"]
+  links: ["PLAN-916"]
+  source: { file: "src/R10.at", syntax: "auto", path: "main.at" }
+  files: [{ path: "helper.at", file: "a2r-semantics-916/src/helper.at" }]
+  entry: { mode: "module" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: { stage: "type", code: "auto_type_E0102" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.nb17"
+  tags: ["ace-m1", "a2r", "legal-neighbor"]
+  links: ["PLAN-916"]
+  source: { file: "src/NB17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb17" }, expect: { completion: "success", artifacts: [{ path: "nb17.rs", file: "a2r-semantics-916/reference/nb17.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.nb18"
+  tags: ["ace-m1", "a2r", "legal-neighbor"]
+  links: ["PLAN-916"]
+  source: { file: "src/NB18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb18" }, expect: { completion: "success", artifacts: [{ path: "nb18.rs", file: "a2r-semantics-916/reference/nb18.rs", compare: "bytes" }] } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2r916.nb19"
+  tags: ["ace-m1", "a2r", "legal-neighbor"]
+  links: ["PLAN-916"]
+  source: { file: "src/NB19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [{ id: "emit", adapter: "a2r", action: "emit", options: { module_name: "nb19" }, expect: { completion: "success", artifacts: [{ path: "nb19.rs", file: "a2r-semantics-916/reference/nb19.rs", compare: "bytes" }] } }]
+}
+```

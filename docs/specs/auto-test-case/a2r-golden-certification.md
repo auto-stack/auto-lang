@@ -72,12 +72,14 @@ scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径
   `missing-return`、T06 `borrow-escape`、R09 `nominal-type`、R10 `use-after-move`），
   **不生成可执行金样**——与"诊断负例不生成可执行金样"的本规范一致；也不得以
   rustc 编译失败、任意非零或统一 unsupported 冒充拒绝。
-- **现状（908 T-04 探针，2026-11-01）**：a2r 对 B17 仍 **emit 成功**（1 产物），
-  六负例 face 均为 `gap:a2r-golden`（emit 面）下登记的**真实诊断缺口**，owner=
-  旧 a2r 能力线（242 在册）；B16/E03 的名解析（R-E，不接受）为独立真缺口
-  `gap:a2r-resolve`。G-DEC-2 裁定语义族映射（保 raw stage/code/message 及可辨识
+- **PLAN-916 已关闭旧 A2R 八格（2026-11-02）**：B16/B17/B18/B19/T06/R09/R10 与 E03
+  的 a2r 列均为 `ok:P916`。生产 single/project 入口在 CTE/发射前返回可辨识 typed
+  `NameError`/`TypeError`；14 项 adapter 负例检查零 accepted artifact，NB17/18/19 另有
+  三个独立 emit reference。R07/T08 与其他后端差异不在本次关闭范围。
+- **历史（908 T-04 探针，2026-11-01）**：a2r 对 B17 仍 emit 成功，六负例与 B16/E03
+  名解析曾为真实缺口。G-DEC-2 裁定语义族映射（保 raw stage/code/message 及可辨识
   原因），不要求后端错误码字面相同；B17–19 ac 侧 `mn.unsupported.frontend` 为
-  泛化码，不满足可辨识原因，保持 `diff:pending`。
+  泛化码，不满足可辨识原因，保持 `diff:pending`（后由 PLAN-911 关闭）。
 - **双轴不降格**：金样/emit 轴绿 + 认证缺 ≠ 未认证冒进，坏证书也不能降成"未认证"
   绕过 strict 防伪（REJECTED→不复用/不覆盖）；acceptance scope（`ace.m1.acceptance/2`）
   分轴报告 38 个 required a2r 格的 cert-gap，日常零编译（rustc/cargo/目标 Rust

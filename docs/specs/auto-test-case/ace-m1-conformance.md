@@ -279,3 +279,9 @@ current查询重算stale；query不冒语言verdict。私有源/库镜像承担�
   `mn-source-diagnostic.json`（`execution_key` 绑定、raw verify、profile scalar、worker mnworker/1.0）。
 - 近邻 NB17/18/19 在严格模式亦 2/2/0 并 echo 能力；默认 908 近邻套件 9/9 不变。
 - **M1 不据此签章**：K06（909）、旧 a2r 认证、B18 avm infra、scenario 等账保持。
+
+## PLAN-916：旧 A2R 七族静态准入与八格重绑（2026-11-02）
+
+- 新 `a2r-semantics-916` suite（17 checks，固定组 `case-ace-m1-a2r-semantics-916`）直接引用原七源，single/project 各 7 个负例，另含 NB17/18/19 三个独立 emit reference。父判精确检查 `auto_name_E0204`、`auto_name_E0203`、`auto_type_E0101`、`auto_type_E0102`；emit 成功、普通 `Msg`、infra/panic 或 Rust 编译错误均不能满足负例。
+- binding 的 B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 列回填 `ok:P916`；E03 继续复用 B16/B04/B20，不新增虚构 scenario 源。其他路径单元、131 行分母、原 negative source、24 金样与证书不变；manifest 仅更新 binding hash 并追加 `plan_916_update`。
+- 生产准入与兼容边界见 [旧 A2R 静态语义准入](../auto-lang/trans/rust-semantic-admission.md)。完整 a2r 组、base97、NB 908 与 infra 23 控制共同防止误拒/登记漂移；R07/T08、38 格复合认证及 M1 总签章不由本包关闭。

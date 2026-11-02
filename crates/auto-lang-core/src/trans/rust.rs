@@ -56,6 +56,8 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+mod semantics;
+
 pub enum RustEdition {
     E2021,
     E2024,
@@ -2357,6 +2359,10 @@ pub fn transpile_rust_full_with_options(
     // `Msg`, which the stage classifier must then treat as infrastructure.
     // Display text is unchanged (the old `Msg` wrapped the same string).
     let mut ast = parser.parse()?;
+    let semantic_store = sibling_store
+        .clone()
+        .unwrap_or_else(|| parser.type_store.clone());
+    semantics::check(&ast, Some(semantic_store))?;
 
     // Plan 095: Run CTEE to transform compile-time constructs
     let mut ctee = crate::comptime::CTEE::new();
@@ -2765,14 +2771,11 @@ pub fn transpile_rust_project(
         let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
         parser.set_dest(crate::parser::CompileDest::TransRust);
         parser.skip_check = true; // Plan 167: skip type checking for multi-file mode
-        let ast = parser.parse().map_err(|e| {
-            AutoError::Msg(format!(
-                "Parse error in {}: {}",
-                module.source_path.display(),
-                e.to_string()
-            ))
-        })?;
+        let ast = parser.parse()?;
         parsed_modules.push((module, ast));
+    }
+    for (_, ast) in &parsed_modules {
+        semantics::check(ast, Some(shared_type_store.clone()))?;
     }
 
     // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking
@@ -3642,14 +3645,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
         parser.set_dest(crate::parser::CompileDest::TransRust);
         parser.skip_check = true;
-        let ast = parser.parse().map_err(|e| {
-            AutoError::Msg(format!(
-                "Parse error in {}: {}",
-                module.source_path.display(),
-                e.to_string()
-            ))
-        })?;
+        let ast = parser.parse()?;
         parsed_modules.push((module, ast));
+    }
+    for (_, ast) in &parsed_modules {
+        semantics::check(ast, Some(shared_type_store.clone()))?;
     }
 
     // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking

@@ -5,7 +5,7 @@
  "binding": {
   "path": "binding.tsv",
   "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-  "sha256": "67bf520d26e7d541f8fd5f44b8c218da9d40b67d3fd808b4b3e801b89ec47fb9"
+  "sha256": "d173d8ad95c020e186ed500086caa4eab6ec24da5690281cddbfd27352d81c9c"
  },
  "corpus_src": {
   "dir": "src",
@@ -379,5 +379,9 @@
  "plan_911_update": {
   "date": "2026-11-02",
   "summary": "PLAN-911 T-04: b-diags.case.ad B17-19 ac legs migrated to the strict source-v1 fact channel; new suite native-diags-911 (12 cases: negatives/neighbors/same-family variants/multi-cause/other-stage) + nd911-src variant fixtures; binding.tsv B17-19 ac cells diff:pending -> ok on formal parent-report fact artifacts. T-05: +multibyte-comment positive (nd911-src/MB17.at) and 3 registered RED controls (wrong-family/wrong-stage/generic-shell, case-control-oracles.json expected FAIL) — 16 cases. + warm rounds strict leg (nd911-src/WARM.at, A->B->C stop) — 17 cases."
+ },
+ "plan_916_update": {
+  "date": "2026-11-02",
+  "summary": "PLAN-916 T-05: legacy A2R semantic admission closes B16/B17/B18/B19/T06/R09/R10 plus scenario E03's a2r cells. New 17-check suite proves typed single/project rejection without accepted artifacts and three independent NB17/18/19 emit references; original negative sources and all other backend cells are unchanged."
  }
 }

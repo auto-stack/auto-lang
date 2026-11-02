@@ -40,6 +40,10 @@ view/mut/move 三模式、`ParamMode`、borrow checker、生命周期、last-use
 > `docs/specs/auto-lang/trans/design/escape-analysis-tiers.md`（a2r）。
 > 运行期 `.mut` 独占执法=VM `auto.rc.assert_unique`（RC>1 拒绝），非本模块。
 
+### 旧 A2R borrow/move 准入（PLAN-916）
+
+`trans/rust/semantics.rs` 在 CTE 前补充两项生产拒绝：局部 owned `Str` 转 `str`/局部 view 返回逃逸，以及显式 move 后读取旧 owner。分支 move 保守合并，新 owner 和 owned 返回合法；诊断分别为 `auto_type_E0101` 与 `auto_type_E0102`。原 T06/R10 经 single/project/adapter 拒绝，合法近邻继续发射。该入口事实不改变 ownership/ 三件套“未接入”的状态，也不宣称通用 NLL 已完成。详见 [旧 A2R 静态语义准入](../../trans/rust-semantic-admission.md)。
+
 ### 参数传递实现（ABO-01，plan-088）
 
 语义一律 view；转译器对平凡类型（int/float/bool/char/byte）生成寄存器值传递，

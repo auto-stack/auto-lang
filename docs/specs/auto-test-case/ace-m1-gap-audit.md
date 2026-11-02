@@ -215,3 +215,9 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   future 45、cert 轴——本包不触。
 - 新具名边界（非阻塞，owner 已记）：`syntax-not-converged` 严格 fallback 无端到端触发形状；
   `OwnedSourceMnSession` 暖 API 未接 typed 通道。
+
+## PLAN-916 后状态（2026-11-02；§11 与 911 节为历史）
+
+- **F-A2R-1 名解析与 F-REG-3 六负例**：旧 A2R 生产 single/project/adapter 已交付 typed 前端拒绝，B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 列均为 `ok:P916`，八格 owner 关闭；不再保留 `diff-no-name-check`/`gap:a2r-golden` 作为这些格的当前状态。
+- 新 17-check suite 与三份 NB emit reference 已接固定组；完整 a2r 391/391、base97、NB 908、infra 23 通过。原始 negative source 与其他后端差异不改，manifest 只更新 binding hash 与追加 916 说明。
+- 不变：R07 a2r 未定型发射、T08、38 格复合认证、B18 avm infra、scenario/native/console 其余 owner、future/cert 账及 `can_claim_m1=false`。本包关闭八个 a2r 格，不重开 242/908，也不签 M1。
