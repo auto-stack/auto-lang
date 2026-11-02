@@ -111,6 +111,10 @@ pub struct ClosuresFunctionSession {
     front: Option<ClosuresFunctionFrontend>,
     current_wires: BTreeMap<String, Vec<u8>>,
     source_path: String,
+    /// PLAN-912 V-06 forced-red control: when set, every lowered unit is
+    /// resubmitted even if its wire is unchanged — the "same hash, new
+    /// object" degradation the session's structural gate must refuse.
+    degrade_resubmit_unchanged: bool,
 }
 
 impl ClosuresFunctionSession {
@@ -120,7 +124,16 @@ impl ClosuresFunctionSession {
             front: None,
             current_wires: BTreeMap::new(),
             source_path: source_path.to_string(),
+            degrade_resubmit_unchanged: false,
         }
+    }
+
+    /// PLAN-912 V-06: the "same hash, new object" degradation control for
+    /// tests. It is NOT a feature — it exists so a test can prove the
+    /// structural gate refuses a revision that re-mints unchanged units.
+    #[doc(hidden)]
+    pub fn set_degrade_resubmit_unchanged(&mut self, on: bool) {
+        self.degrade_resubmit_unchanged = on;
     }
 
     pub fn unit(&self, name: &str) -> Option<&std::sync::Arc<ace_av_core::function_code::FunctionCode>> {
@@ -269,11 +282,30 @@ impl ClosuresFunctionSession {
                 .to_flat();
             lowered.push((wire_name, mir, bytes));
         }
-        let submitted: Vec<(&str, MirModule)> = lowered
+        let mut submitted: Vec<(&str, MirModule)> = lowered
             .iter()
             .filter(|(name, _, bytes)| self.current_wires.get(name) != Some(bytes))
             .map(|(name, mir, _)| (name.as_str(), mir.clone()))
             .collect();
+        // V-06 forced-red control: re-mint every INSTALLED unit this edit did
+        // not touch from its resident MIR (identical wire, fresh object) —
+        // the degradation the session's structural gate must refuse.
+        let degraded_resubmits: Vec<(String, MirModule)> = if self.degrade_resubmit_unchanged {
+            self.current_wires
+                .keys()
+                .filter(|name| !lowered.iter().any(|(n, _, _)| n == *name))
+                .filter_map(|name| {
+                    self.update
+                        .unit(name)
+                        .map(|code| (name.clone(), code.unit().module().clone()))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for (name, mir) in &degraded_resubmits {
+            submitted.push((name.as_str(), mir.clone()));
+        }
         let submitted_names: Vec<String> = submitted.iter().map(|(n, _)| n.to_string()).collect();
         let outcome = self
             .update
@@ -506,7 +538,21 @@ fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) 
 /// units AND exactly-one work for the changed unit — a missing counter is a
 /// violation, not a pass.
 fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
-    let changed_units: Vec<String> = match &run.route {
+    warm_gate_report(&run.route, &run.body, &run.stages, &run.submitted_unit_names)
+}
+
+/// PLAN-912 §5.4: the warm structural gate over an OBSERVATION (route +
+/// per-unit body work + stage attempts + submitted units). Public so the
+/// forced-red controls can feed it synthetic observations (a missing
+/// counter, a hidden sibling walk, a whole-axis attempt) and prove each is
+/// a violation — the gate never passes on a zero nobody recorded.
+pub fn warm_gate_report(
+    route: &RouteReport,
+    body: &BTreeMap<String, BodyWork>,
+    stages: &StageAttempts,
+    submitted_unit_names: &[String],
+) -> WarmGateReport {
+    let changed_units: Vec<String> = match route {
         RouteReport::FastUnit { unit } => vec![unit.clone()],
         RouteReport::FastOwner { owner, changed, .. } => {
             let mut v = vec![owner.clone()];
@@ -519,13 +565,13 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
         changed_units: changed_units.clone(),
         violations: Vec::new(),
     };
-    if run.stages.whole_total() > 0 {
+    if stages.whole_total() > 0 {
         report
             .violations
-            .push(format!("whole-axis attempts non-zero: {}", run.stages.whole_total()));
+            .push(format!("whole-axis attempts non-zero: {}", stages.whole_total()));
     }
     let is_changed = |unit: &str| changed_units.iter().any(|c| c == unit);
-    for ((unit, stage), n) in &run.stages.by_unit {
+    for ((unit, stage), n) in &stages.by_unit {
         if !stage.is_production() || unit == "*" {
             continue;
         }
@@ -546,7 +592,7 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
             ));
         }
     }
-    for (unit, work) in &run.body {
+    for (unit, work) in body {
         let wire = format!("d_{unit}");
         let expected: u64 = if is_changed(&wire) { 1 } else { 0 };
         for (name, value) in [
@@ -568,7 +614,7 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
     // legitimately absent for it.
     for changed in &changed_units {
         let plain = changed.strip_prefix("d_").unwrap_or(changed).to_string();
-        let work = run.body.get(&plain).cloned().unwrap_or_default();
+        let work = body.get(&plain).cloned().unwrap_or_default();
         for (name, value) in [
             ("resolve", work.resolve),
             ("typecheck", work.typecheck),
@@ -584,8 +630,8 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
         // The owner's parse_project attempt is recorded once for the owner
         // batch (its lambdas' text is part of the owner item): re-resolved
         // lambdas inside an owner batch have no separate parse attempt.
-        let produced = run.submitted_unit_names.iter().any(|u| u == changed);
-        let owner_batch_lambda = matches!(&run.route, RouteReport::FastOwner { owner, .. } if owner != changed);
+        let produced = submitted_unit_names.iter().any(|u| u == changed);
+        let owner_batch_lambda = matches!(route, RouteReport::FastOwner { owner, .. } if owner != changed);
         let mut required = vec![Stage::HirVerify, Stage::MirLower];
         if !owner_batch_lambda {
             required.push(Stage::ParseProject);
@@ -594,7 +640,7 @@ fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
             required.push(Stage::MirVerify);
         }
         for stage in required {
-            if run.stages.of(changed, stage) < 1 {
+            if stages.of(changed, stage) < 1 {
                 report
                     .violations
                     .push(format!("unit {changed}: missing {} attempt", stage.as_str()));

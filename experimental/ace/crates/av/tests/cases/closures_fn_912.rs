@@ -366,3 +366,187 @@ fn lambda_ids(session: &ClosuresFunctionSession) -> Vec<(String, u64)> {
         })
         .collect()
 }
+
+#[test]
+fn av_closures_fn_912_same_hash_new_object_degradation_is_refused() {
+    // V-06 forced red: resubmitting UNCHANGED units (same wire, new object)
+    // must trip the session's structural gate — the revision is refused and
+    // the installed state is untouched; with the control off the identical
+    // edit succeeds.
+    let store = temp_store("degrade");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
+    let f_obj = session.unit("d___closure_main_0").unwrap().clone();
+    session.set_degrade_resubmit_unchanged(true);
+    // A whitespace-only lambda edit lowers a unit whose wire is IDENTICAL to
+    // the installed one; degraded resubmission mints a fresh object for the
+    // same fingerprint — exactly what the structural gate must refuse.
+    let edited = SRC.replace("return x - n }", "return  x - n  }");
+    match session.apply_source(&edited) {
+        Err(ace_av::closures_865_support::CompileAndRunError::Pipeline(msg)) => {
+            assert!(msg.contains("structural gate"), "{msg}");
+        }
+        Err(other) => panic!("expected the structural gate, got {other:?}"),
+        Ok(run) => panic!("degraded revision must be refused, got value {}", run.value),
+    }
+    // The 823 session's structural gate is a POST-INSTALL observation (the
+    // revision links, executes and commits, then reports
+    // `unchanged_degraded`): the re-minted `f` object IS the degradation the
+    // control proves the gate sees. The FRONTEND, however, published nothing
+    // (generation unchanged; identical re-apply of the accepted source is a
+    // zero hit) and the session keeps working.
+    assert!(
+        !Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_obj),
+        "the degradation control re-minted the unchanged unit (that is what the gate caught)"
+    );
+    assert_eq!(session.frontend().unwrap().generation(), 0);
+    session.set_degrade_resubmit_unchanged(false);
+    let hit = session.apply_source(SRC).expect("zero hit after refusal");
+    assert_eq!(hit.route, RouteReport::ZeroHit);
+    assert_eq!(hit.value, 51);
+    // Without degradation the same whitespace edit is a same-wire fast unit
+    // with zero submissions and every object carried.
+    let f_now = session.unit("d___closure_main_0").unwrap().clone();
+    let run = session.apply_source(&edited).expect("same-wire edit");
+    assert_eq!(run.value, 51);
+    assert!(matches!(run.route, RouteReport::FastUnit { .. }));
+    assert_eq!(run.submitted_units, 0);
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_now));
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_gate_rejects_synthetic_default_zero_and_hidden_walks() {
+    // V-06 forced red at the gate: a synthesized observation that lacks the
+    // changed unit's counters (Default 0), carries a hidden sibling walk, or
+    // a whole-axis attempt must each be a violation; a clean one passes.
+    use ace_av::closures_fn_session::warm_gate_report;
+    use ace_core::body_work::{BodyWork, StageAttempts};
+    use std::collections::BTreeMap;
+    let route = RouteReport::FastUnit {
+        unit: "d___closure_main_1".to_string(),
+    };
+    let one = BodyWork {
+        resolve: 1,
+        typecheck: 1,
+        plan: 1,
+        bind: 1,
+    };
+    let mut clean_body = BTreeMap::new();
+    clean_body.insert("__closure_main_1".to_string(), one);
+    let mut clean_stages = StageAttempts::default();
+    for stage in [
+        Stage::ParseProject,
+        Stage::HirVerify,
+        Stage::MirLower,
+        Stage::MirVerify,
+        Stage::AbcEncode,
+        Stage::DecodeAdmit,
+    ] {
+        clean_stages
+            .by_unit
+            .insert(("d___closure_main_1".to_string(), stage), 1);
+    }
+    let submitted = vec!["d___closure_main_1".to_string()];
+    assert!(warm_gate_report(&route, &clean_body, &clean_stages, &submitted).pass());
+
+    // Default 0: the changed unit recorded nothing.
+    let empty_body = BTreeMap::new();
+    let report = warm_gate_report(&route, &empty_body, &clean_stages, &submitted);
+    assert!(!report.pass());
+    assert!(report.violations.iter().any(|v| v.contains("missing resolve walk")));
+
+    // Hidden sibling walk.
+    let mut sibling_body = clean_body.clone();
+    sibling_body.insert("__closure_main_0".to_string(), one);
+    let report = warm_gate_report(&route, &sibling_body, &clean_stages, &submitted);
+    assert!(!report.pass());
+    assert!(report.violations.iter().any(|v| v.contains("__closure_main_0")));
+
+    // Whole-axis attempt (whole-then-filter).
+    let mut whole_stages = clean_stages.clone();
+    whole_stages.by_unit.insert(("*".to_string(), Stage::WholePlan), 1);
+    let report = warm_gate_report(&route, &clean_body, &whole_stages, &submitted);
+    assert!(!report.pass());
+    assert!(report.violations.iter().any(|v| v.contains("whole-axis")));
+
+    // A sibling's production attempt (e.g. lowered anyway).
+    let mut leak_stages = clean_stages.clone();
+    leak_stages
+        .by_unit
+        .insert(("d_helper".to_string(), Stage::MirLower), 1);
+    let report = warm_gate_report(&route, &clean_body, &leak_stages, &submitted);
+    assert!(!report.pass());
+    assert!(report.violations.iter().any(|v| v.contains("d_helper")));
+
+    // Missing HIR verify for the changed unit.
+    let mut no_verify = clean_stages.clone();
+    no_verify
+        .by_unit
+        .remove(&("d___closure_main_1".to_string(), Stage::HirVerify));
+    let report = warm_gate_report(&route, &clean_body, &no_verify, &submitted);
+    assert!(!report.pass());
+    assert!(report.violations.iter().any(|v| v.contains("hir_verify")));
+}
+
+#[test]
+fn av_closures_fn_912_guest_trap_edit_is_refused_before_commit() {
+    // V-07: a body edit whose guest execution traps is rejected by the
+    // session BEFORE any commit (execution is part of candidate validation);
+    // source/wires/objects stay; the next valid edit works.
+    let store = temp_store("trap");
+    let mut session = ClosuresFunctionSession::new(&store, "main.at");
+    assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
+    let g_obj = session.unit("d___closure_main_1").unwrap().clone();
+    // g(3) = x / (n - 3) → division by zero at run time.
+    let trapping = SRC.replace("return x - n }", "return x / (n - 3) }");
+    match session.apply_source(&trapping) {
+        Err(ace_av::closures_865_support::CompileAndRunError::Pipeline(msg)) => {
+            assert!(msg.contains("did not execute") || msg.contains("trap") || msg.contains("Trap"), "{msg}");
+        }
+        Err(other) => panic!("expected a pipeline refusal, got {other:?}"),
+        Ok(run) => panic!("a trapping revision must not commit, got value {}", run.value),
+    }
+    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    let hit = session.apply_source(SRC).expect("zero hit after refusal");
+    assert_eq!(hit.route, RouteReport::ZeroHit);
+    let next = session
+        .apply_source(&SRC.replace("return x - n }", "return x - n * 2 }"))
+        .expect("valid edit after trap");
+    assert_eq!(next.value, 48);
+    assert!(matches!(next.route, RouteReport::FastUnit { .. }));
+    session.close().expect("close");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn av_closures_fn_912_stale_and_foreign_candidates_cannot_commit() {
+    // V-07 at the frontend seam: two candidates prepared on one base — the
+    // second cannot overwrite the first's publication (`source.stale`); a
+    // candidate from another environment is `source.foreign`.
+    use ace_core::source::closures_fn::ClosuresFunctionFrontend;
+    let (mut a, _p, _c) = ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
+    let (mut b, _p2, _c2) = ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
+    let g = a.units().iter().position(|u| u.name == "__closure_main_1").unwrap();
+    let span = a.units()[g].span;
+    let sha = a.source_sha().to_string();
+    let first = match a.edit_body(&sha, span.start..span.end, "(n int) => { return x - n * 2 }") {
+        Ok(Ok(c)) => c,
+        _ => panic!("fast"),
+    };
+    let second = match a.edit_body(&sha, span.start..span.end, "(n int) => { return x - n * 3 }") {
+        Ok(Ok(c)) => c,
+        _ => panic!("fast"),
+    };
+    let foreign = match b.edit_body(&b.source_sha().to_string(), span.start..span.end, "(n int) => { return x }") {
+        Ok(Ok(c)) => c,
+        _ => panic!("fast"),
+    };
+    a.commit_candidate(first, None).expect("first commit");
+    let err = a.commit_candidate(second, None).unwrap_err();
+    assert!(err.starts_with("source.stale"), "{err}");
+    let err = a.commit_candidate(foreign, None).unwrap_err();
+    assert!(err.starts_with("source.foreign"), "{err}");
+    assert_eq!(a.generation(), 1);
+}

@@ -344,3 +344,100 @@ fn closures_fn_912_whole_path_axis_counts_the_module_stages() {
     assert!(stages.total(Stage::WholePlan) >= 1);
     assert!(stages.total(Stage::WholeVerify) >= 1);
 }
+
+#[test]
+fn closures_fn_912_direct_lambda_call_and_duplicate_site_rejected_at_hir() {
+    // V-04: the two module-wide closure obligations that were MIR-only
+    // (direct call of a lambda body; a second creation site) are now HIR
+    // rejections against the registry — a single-function creator document
+    // cannot smuggle either past the credential.
+    let (mut front, _parts, _checked) =
+        ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
+    // An owner-route candidate: main's body is REAL in the document.
+    let u = unit_of(&front, "main");
+    let body_span = front.units()[u].body_span;
+    let sha = front.source_sha().to_string();
+    let edit_at = SRC[body_span.start..body_span.end]
+        .find("var x int = 10")
+        .map(|o| body_span.start + o)
+        .unwrap();
+    let candidate = fast(front.edit_body(&sha, edit_at..edit_at + "var x int = 10".len(), "var x int = 20"));
+    assert!(candidate.owner.is_some());
+    let bundle = candidate.parts.bundle.clone();
+    let main_idx = candidate.def_index();
+    let m = &bundle.modules[0];
+    let helper_def = m.defs.iter().position(|d| d.id_text == "d_helper").unwrap() as u32;
+    let g_def = m.defs.iter().position(|d| d.id_text == "d___closure_main_1").unwrap() as u32;
+    let f_def = m.defs.iter().position(|d| d.id_text == "d___closure_main_0").unwrap() as u32;
+    let main_body = match &m.defs[main_idx].kind {
+        ace_core::hir::DefKind::Function { body, .. } => body.0 as usize,
+        _ => panic!(),
+    };
+    // Positive control: the untouched creator verifies.
+    verify_closures_function(&bundle, main_idx, front.registry()).expect("creator credential");
+
+    // (a) Direct call: retarget `helper(1)` → the lambda `g` (same `(int) int`
+    // signature, so only the closure rule can object).
+    let mut direct = bundle.clone();
+    for e in &mut direct.modules[0].bodies[main_body].exprs {
+        if let ace_core::hir::ExprKind::Call { callee, .. } = &mut e.kind {
+            if callee.0 == helper_def {
+                callee.0 = g_def;
+            }
+        }
+    }
+    let err = verify_closures_function(&direct, main_idx, front.registry()).unwrap_err();
+    assert!(
+        err.iter().any(|d| d.code == "verify.closure-body-direct-call"),
+        "direct lambda call must be rejected: {err:?}"
+    );
+
+    // (b) Duplicate site: point g's creation site at f as well (two sites
+    // for f; f's own site comes first in body order) — the registry overlay
+    // refuses before any credential.
+    let mut dup = bundle.clone();
+    for e in &mut dup.modules[0].bodies[main_body].exprs {
+        if let ace_core::hir::ExprKind::CreateClosure { callee, .. } = &mut e.kind {
+            if callee.0 == g_def {
+                callee.0 = f_def;
+            }
+        }
+    }
+    let err = front
+        .registry()
+        .overlay_from_batch(&dup, &["d_main".to_string()])
+        .unwrap_err();
+    assert!(
+        err.iter().any(|d| d.code == "verify.closure-site-duplicate"),
+        "duplicate creation site must be rejected: {err:?}"
+    );
+    // And the per-function check sees the same body as a mis-associated /
+    // duplicate site under the retained registry.
+    let err = verify_closures_function(&dup, main_idx, front.registry()).unwrap_err();
+    assert!(
+        err.iter()
+            .any(|d| d.code == "verify.closure-site-duplicate" || d.code == "verify.closure-site" || d.code == "verify.closure-env-mismatch"),
+        "{err:?}"
+    );
+
+    // (c) A reused scaffold whose creation-site MODE changed in the creator
+    // body: the overlay refuses (reuse guaranteed unchanged site facts).
+    let mut mode = bundle.clone();
+    for e in &mut mode.modules[0].bodies[main_body].exprs {
+        if let ace_core::hir::ExprKind::CreateClosure { callee, captures } = &mut e.kind {
+            if callee.0 == g_def {
+                for c in captures.iter_mut() {
+                    c.mode = ace_core::hir::CaptureMode::Shared;
+                }
+            }
+        }
+    }
+    let err = front
+        .registry()
+        .overlay_from_batch(&mode, &["d_main".to_string()])
+        .unwrap_err();
+    assert!(
+        err.iter().any(|d| d.code == "verify.closure-env-mismatch"),
+        "changed site modes on a reused scaffold must be rejected: {err:?}"
+    );
+}
