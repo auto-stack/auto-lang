@@ -206,6 +206,10 @@ T-06 发现并修复一处真实回归：`StepOut` 新增 rebuilt_defs/identitie
 2026-11-02 | stage:goal | PLAN-914 r2 | round 10c | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: cad87b1ad | next: work
 T-06 案例组并集补跑完成：base/nb-diags-908/native-diags-911/collections-864/native-collections-889/order-layout-914 全 PASS；closures-fn-912 首跑红的原因定位为 %TEMP%/av798-session-av_closures_912_* 陈旧会话存储（早前一次运行留下，fresh 检查因此命中缓存）——清除后 PASS（环境问题，非代码回归），merge 时须清洁 temp 会话根或换 session id。ace-native/ace-av 组在机器空闲后重试中。
 
+
+2026-11-02 | stage:goal | PLAN-914 r2 | round 10d | from: executing | to: executing | outcome: progress | worktree: plan-914-dev | commit: (manifest rebind) | next: work
+T-06 基础设施组：`cargo t infra-ace-m1` 首跑红（5 个 mutation/registry 失败），根因是 source-manifest 钉住的 scenario-oracles spec sha256 因 SD-04 段落变更而漂移；按既有身份登记方式重绑后 **PASS**（23 项）；`cargo t infra-fixed` PASS。ace-native 的 collections conformance 用预建二进制直跑 **53 passed**（nextest 在本工作树因 ace target 锁/多会话负载挂起，已记录环境限制）。T-06 目前：全部 case-* 组、infra-ace-m1、infra-fixed、adapter 单测 34 项、native collections 53 项、AV data 49 项、a2r/vm 既有绿；余 merge 时在空闲主机上跑完整固定组并集。
+
 ## 10. 待澄清事项
 
 | D | owner / bounded closing condition |
