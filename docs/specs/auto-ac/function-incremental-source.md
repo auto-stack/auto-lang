@@ -67,8 +67,10 @@
   签名表快照（`VT::Function` 索引稳定——暖路径先播种旧表，intern 值去重只追加）。
   未改 owner **零 resolve/typecheck walk**（`body_work` 真实计数观测），其单元跳过
   lower/encode；提交仍由 wire 身份经 ClosuresUpdateSession 结构门决定。
-- 边界（具名残余，如实计数非零）：atom 发射（plan）与描述符绑定（bind）为模块级
-  步骤；同 owner 的兄弟 lambda 随 owner 重走（粒度=owner）；restart 在内容键可算前
-  重 lower/encode（read/decode/重验零写入已证）。全复用应用=零产命中；失败候选不
-  损缓存与已装线；hit/restart/body-edit 的调度计数经 `ClosuresSourceRun.frontend/
-  lowered_units` 可观测。
+- PLAN-912 后继：closures 域暖路径已收口为**单函数生产**——见
+  [闭包单函数前端生产](closures-function-production.md)。lambda 单 body 改经保留
+  创建点事实只重解析/发射/验证/lower 该单元；owner body 改经 retained-lambda 复用
+  oracle（兄弟 lambda 不重走，`resolve_walks` 对真实走过的 lambda 逐单元可见）；
+  签名/拓扑/跨单元编辑具名非快路径走整模块 truth；未改单元全阶段 P=0 且同对象/
+  代际，whole 轴在暖路径必须为 0。残余如实：restart 仍先重 lower/encode（R3，属
+  913）；`ClosuresOwnerCache` 路径保留为 865 recipe 的观测基线。

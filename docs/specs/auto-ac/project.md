@@ -236,6 +236,15 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 - 既有生产入口（ac-core 前端/旧 CLI/旧 native emitter）保持不动；旧
   HIR→native 参照路径保留。
 
+## 闭包单函数前端生产（PLAN-912）
+
+闭包源码暖编辑按单函数粒度生产：驻留前端（函数/lambda 目录 + 创建点事实 + 受检
+registry）之上，lambda 单 body 快路径与 owner body 复用路由使未改单元（含同 owner 兄弟
+lambda）全阶段零生产、同对象/代际；整模块 truth 路径保留为冷/非快路径，whole 轴在暖
+路径必须为 0。单函数闭包凭证（`verify_closures_function` + `ClosureBodyFacts`）供
+lowering 直接消费；`AcceptedSourceState` 只读导出交 PLAN-913 的来源绑定恢复（R3 未闭）。
+详见[closures-function-production.md](closures-function-production.md)。
+
 ## 源码闭包域（PLAN-865）
 
 auto.source.closures.draft 是显式选择的实验性源码 profile，使用独立 HIR 域和 descriptor。它基于集合与入口/Unit 源码面，增加函数类型、lambda、有序捕获分析和间接调用。源码编译经既有 HIR→MIR 路径，进入 av.closures/1 session；不增加 native closure ABI，也不改变默认源码 profile。详见[source-closures.md](source-closures.md)。

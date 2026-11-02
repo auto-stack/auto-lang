@@ -17,6 +17,11 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 - `lower_function_owned_unit` / `lower_function_owned_unit_with_modes`
 - `owned_entry_ok`
 - `MIR_LOWERING_VERSION`（PLAN-868 新增，见下）
+- PLAN-912 追加（纯增量，未改名/未重构既有面）：`lower_function_closures_unit_checked`、
+  `lower_function_closures_unit_with`、`ClosureFacts`/`EnvFieldFact`/
+  `ModuleScanFacts`/`CheckedClosureFacts` —— 单函数闭包单元从验证器凭证事实
+  （env 布局/cell 位）lower，同一映射与整模块推导字节等价，故
+  `MIR_LOWERING_VERSION` 不升版（映射规则未变，事实来源受检化）
 
 模块内另有根级 `pub use hir_adapter::*`（本 crate 自身的路径展平，非跨 crate shim）。
 

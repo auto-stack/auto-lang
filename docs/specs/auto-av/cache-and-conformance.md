@@ -47,6 +47,15 @@ supersession 退役/回访重挂/restore 按行存在置归属追踪器——与
 
 798 r7用户交付裁定：六场景warm结果及所有失败如实计量保存，已有正式PASS证据持久保存；整模块重查的完整增量优化归优先828，不再以warm测量超1秒单独阻断798。798当时冻结的30样本两路径 P95<1000ms 是历史技术门；PLAN-858 将当前 ACE 开发期门改为 P90≤2000ms，原正确性/双线内存/K14和生命周期门继续必需。原bench及Scope turnaround仍可作为严格诊断工具返回目标未达，不能把诊断退出码单独冒充r7合入结论，也不能将资源/正确性失败归为时延例外。
 
+## 闭包单函数会话的缓存与恢复（PLAN-912）
+
+`ac-av/closures-fn-run-v1`（`ClosuresFunctionSession`）复用同一闭包 unit store 键/信封
+与准入门。暖编辑只 put 被改单元；zero-hit 零 IO。restart（新进程同 store）：全命中、
+零写入、真实 decode/深重验后 admit——但 session 的持久 wire 含 span，编辑源重启时
+span 后移单元的内容键不同而真实 re-admit（与 909 `writes≤1` 同构，如实计数）；
+恢复前置 lower/encode 未消（R3，PLAN-913）。会话层新增 4MiB 源前门与驻留前端池
+≤16MiB（目录/创建点事实/registry/保留 resolved），parent 判决同门。
+
 ## av.data/1 持久与恢复（PLAN-820）
 
 新 producer `plan820/av-data` + A20 层（schema `ac820/a20-data-abc/v1`，键轴

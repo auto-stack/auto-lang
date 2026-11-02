@@ -147,6 +147,14 @@ L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 pr
 
 V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot set 4,483 bytes，符合现行 P90 ≤ 2000 ms 门和继承资源预算。fresh/restart/body-edit 明细留在 PLAN-865 review receipt；本地测量源及其 hash 继续仅保存在 Plan 收据，不复制进规范。
 
+PLAN-912 追加 `closures-fn-912` suite（`case-ace-m1-closures-fn-912` 组，recipe
+`ac-av/closures-fn-run-v1`）：F01/F02（双兄弟 lambda + 自由函数，fresh/restart/
+body-edit/hit 四态）与 K01/K06/S02 原语料的同字节副本经**单函数会话**重跑。父侧
+`judge_closures_fn` 独立判值（51/48/61 等）并判决 zero 轴：body-edit 必须走 fast
+路由且 warm gate pass、whole 轴 0、submitted 严格小于全量；hit 全零；restart 全命中
+且 `mir_lower==N` 如实上报（R3 开放不隐藏）+ 驻留池 ≤16MiB。原 865/909 suite 与
+oracle 不变；binding/applicability/manifest 零改动（纯新增子树）。
+
 ## PLAN-870：T*/R* 行 ac-native 实测绑定
 
 - 新增独立 suite `ace-m1-tr-native.suite.ad`（17 case/31 检查；**852 base

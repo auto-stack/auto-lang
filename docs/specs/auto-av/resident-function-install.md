@@ -187,6 +187,18 @@ r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常�
 - compact 行落 codec 维度命名空间：同策略温重启 `restore_units_admitted`=全量，跨代冷回退确定性 miss。
 - 未改函数零生产工作/对象/代际恒等在 compact wire 下保持（V-12 四子例实测：builds=1/reuses=2、六阶段计数全零、签名变更精确失效、强制整备无法冒领 reuse）。
 
+## 闭包单函数生产安装（PLAN-912）
+
+`ClosuresFunctionSession` 在 823 会话之上承载闭包源码的**单函数**生产：冷路径整模块
+truth 构建驻留前端（目录/创建点事实/受检 registry），暖路径按编辑形状路由（lambda 单
+body 快路径 / owner body 复用路由 / 具名非快路径整模块），每候选最多提交被改单元；
+未改单元由会话携带同 `Arc` 对象与代际，全阶段生产/工件 IO=0（`WarmGateReport` 结构门 +
+P/M/R attempt 轴，whole 轴暖路径必须 0；同 wire 重提交被 823 结构门拒）。候选
+`commit_candidate` 唯一安装（stale/foreign 拒）；registry overlay 仅在安装成功后落位。
+4MiB 源前门与驻留前端池 ≤16MiB 在会话层执行；A→B `AcceptedSourceState` 只读导出见
+[闭包单函数前端生产](../auto-ac/closures-function-production.md)。R3（新进程恢复前置
+lower/encode）仍开放，属 913。
+
 ## 方法单体前端与会话（PLAN-881）
 
 - 方法为 data/owned 会话一级单元公民：outline 方法条目 + 类型壳/方法轴分离

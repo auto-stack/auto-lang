@@ -33,7 +33,7 @@ cell 的物理表示是**单元素 typed `List<T>` 句柄**（`T∈{i32,bool,cha
 
 ## 函数增量（源码入口）
 
-lambda 稳定身份 `__closure_<owner>_<k>`（owner 内序号；resolved IR 按名引用 callee），无关 lambda 插入/删除不改其他单元身份。owner 粒度前端缓存（条目文本指纹 + 声明区上下文指纹 + 闭包签名表快照播种）：body-only 暖编辑对未改 owner 的 resolve/typecheck walk = 0（body_work 实测），其单元跳过 lower/encode，未改生产 = 0；wire 身份仍经结构门决提交。atom 发射与描述符绑定保持模块级并如实计数（具名残余）。全复用应用 = 零产命中；失败候选不损缓存/已装线。restart 经 store read/decode/重验（零写盘、全命中）。
+lambda 显示身份 `__closure_<owner>_<k>`（owner 内序号；resolved IR 按名引用 callee）；PLAN-912 为每个 lambda 另驻留**逻辑 ID**（冷init铸造、跨重建按 (owner, 文本) 唯一匹配保持，拓扑变化的存活单元不串、歧义不误命中）。PLAN-912 暖路径为单函数粒度：lambda body 暖编辑在保留创建点事实上仅重解析该 body（raw 捕获 uses/参数/move/结果任一变化＝具名转 owner 路由）；owner body 暖编辑经 retained-lambda 复用 oracle——文本同且每个保留捕获按当前创建点 locals 经唯一决策表重推全等的 lambda 原样复用（嵌套 span 平移），真读者（捕获 mode/cell 变化的兄弟）精确失效重走。未改单元全阶段生产 0、同对象/代际；whole 轴暖路径必须 0（结构门）。全复用应用 = 零产命中；失败候选不损缓存/已装线。restart 经 store read/decode/重验（零写盘、全命中；重 lower/encode 如实非零＝R3，属 913）。详见[闭包单函数前端生产](closures-function-production.md)。
 
 ## 语料与验收
 

@@ -33,7 +33,7 @@ lambda 支持零参、多参、表达式体和语句块体：
 
 本 profile 将函数签名和值降到已有函数/闭包类型，lambda 降到 823 的 `CREATE_CLOSURE`、`CALL_CLOSURE` 及 env 布局；没有新增闭包 wire 身份或执行指令。闭包 body 的 `env` 声明和创建点捕获字段必须逐位一致，`fn:` 绑定的环境声明在链接阶段精确比较。env 漂移在发布候选前拒绝，已安装的有效版本保持可调用。
 
-源码编译进入现有 `ClosuresUpdateSession` 候选路径。函数体编辑、捕获集合变化和签名变化按函数单元失效；未变化函数不应重新生产（PLAN-909：owner 粒度前端缓存使未改 owner 的 resolve/typecheck/lower/encode 生产为零，lambda 身份 owner 稳定——详见[共享可变捕获](shared-mutable-captures.md)§函数增量）。源码诊断、MIR/链接拒绝和运行时结果保持分态。
+源码编译进入现有 `ClosuresUpdateSession` 候选路径。PLAN-912 起未变化函数不应重新生产为**逐单元**事实：lambda/owner 纯 body 暖编辑只生产被改单元及其真实依赖者（捕获事实变化的"真读者"），未改单元（含同 owner 兄弟 lambda）全阶段生产/工件 IO 为零且同对象/代际；签名、声明集、lambda 拓扑与跨单元编辑是具名非快路径（详见[闭包单函数前端生产](closures-function-production.md)与[共享可变捕获](shared-mutable-captures.md)§函数增量）。源码诊断、MIR/链接拒绝和运行时结果保持分态。
 
 ## 诊断与边界
 
