@@ -27,4 +27,3 @@ auto-tool-execution = { path = "../auto-tool-execution" }
 
 [dev-dependencies]
 tempfile = "3"
-# plan-918 staleness probe: manifest change after anchor
