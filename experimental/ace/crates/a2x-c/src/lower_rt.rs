@@ -624,13 +624,13 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 // owned promotion context (AP-4): an allocation
                 Ty::StrOwned => {
                     let t = self.fresh_temp();
-                    self.drain_frees();
                     self.out.push(format!(
                         "a2x_stro_result {} = a2x_str_from_lit({});",
                         t,
                         Self::str_view_lit(value)
                     ));
                     self.check_trap(&t);
+                    self.drain_frees();
                     Ok((format!("{}.value", t), Ty::StrOwned))
                 }
                 Ty::Str => Ok((Self::str_view_lit(value), Ty::Str)),
@@ -680,10 +680,12 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                             _ => "a2x_rem",
                         };
                         let t = self.fresh_temp();
-                        self.drain_frees();
                         self.out
                             .push(format!("a2x_result {} = {}({}, {});", t, func, l, r));
                         self.check_trap(&t);
+                        // immediate-after-consumer: earlier view-consumed
+                        // temps free only AFTER this consuming pin
+                        self.drain_frees();
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::BinOp::LtI32
@@ -709,9 +711,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 match op {
                     hir::UnaryOp::NegI32 => {
                         let t = self.fresh_temp();
-                        self.drain_frees();
                         self.out.push(format!("a2x_result {} = a2x_neg({});", t, o));
                         self.check_trap(&t);
+                        self.drain_frees();
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::UnaryOp::NotBool => Ok((format!("(!({}))", o), Ty::Bool)),
@@ -876,7 +878,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 let args = args.join(", ");
                 let callee_ret = ret_kind_of(self.view, result_ty)?;
                 let t = self.fresh_temp();
-                self.drain_frees();
                 self.out.push(format!(
                     "{} {} = {}({});",
                     callee_ret.c_ret_ty(),
@@ -885,6 +886,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     args
                 ));
                 self.check_trap(&t);
+                self.drain_frees();
                 Ok((format!("{}.value", t), result_ty))
             }
             // ---- text operations (fallible roots pin) ----
@@ -1090,7 +1092,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         wrapper: &str,
     ) -> Result<(String, Ty), A2xReject> {
         let t = self.fresh_temp();
-        self.drain_frees();
         self.out.push(format!(
             "{} {} = {}({});",
             wrapper,
@@ -1099,6 +1100,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             args.join(", ")
         ));
         self.check_trap(&t);
+        self.drain_frees();
         Ok((format!("{}.value", t), ty))
     }
 
@@ -1132,10 +1134,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
     fn lower_pure(&mut self, id: hir::ExprId) -> Result<(String, Ty), A2xReject> {
         let (v, ty) = self.lower_expr(id)?;
         if self.needs_pin(&v) {
-            self.drain_frees();
             let t = self.fresh_temp();
             let cty = self.pinned_decl_ty(ty)?;
             self.out.push(format!("{} {} = {};", cty, t, v));
+            self.drain_frees();
             Ok((t, ty))
         } else {
             Ok((v, ty))
@@ -1155,10 +1157,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
     fn lower_view_value(&mut self, id: hir::ExprId) -> Result<(String, Ty), A2xReject> {
         let (v, ty) = self.lower_expr(id)?;
         if self.needs_pin(&v) {
-            self.drain_frees();
             let t = self.fresh_temp();
             let cty = self.pinned_decl_ty(ty)?;
             self.out.push(format!("{} {} = {};", cty, t, v));
+            self.drain_frees();
             if matches!(ty, Ty::StrOwned) {
                 self.pending_frees.push(t.clone());
             }

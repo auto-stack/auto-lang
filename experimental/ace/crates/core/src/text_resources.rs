@@ -1817,8 +1817,12 @@ impl<'a> ResourceWalk<'a> {
                                             }],
                                         );
                                     }
-                                    reown_root = Some(target);
-                                    reown_block = was_live_block;
+                                    // PLAN-925: re-own only roots this frame
+                                    // owns (see the assign twin below)
+                                    if self.plan.owned.contains(&target) {
+                                        reown_root = Some(target);
+                                        reown_block = was_live_block;
+                                    }
                                 }
                                 ValueType::StrOwned => {
                                     // PLAN-894 §5.1: full-root replacement of
@@ -1942,8 +1946,12 @@ impl<'a> ResourceWalk<'a> {
                                             path: Vec::new(),
                                         }],
                                     );
-                                    reown_root = Some(target);
-                                    reown_block = was_live_block;
+                                    // PLAN-925: re-own only roots this frame
+                                    // owns (see the assign twin below)
+                                    if self.plan.owned.contains(&target) {
+                                        reown_root = Some(target);
+                                        reown_block = was_live_block;
+                                    }
                                 }
                                 ValueType::Str => {
                                     if scan.has_owned_producing {
@@ -2009,8 +2017,18 @@ impl<'a> ResourceWalk<'a> {
                                     if !bufs.is_empty() {
                                         self.plan.replace_frees.insert((bid, idx), bufs);
                                     }
-                                    reown_root = Some(target);
-                                    reown_block = was_live_block;
+                                    // PLAN-925: only a root this frame OWNS is
+                                    // re-owned into the exit live set. A mut-
+                                    // BORROW root (a `mut` record param) just
+                                    // received fresh content through the
+                                    // write-back — its buffers remain the
+                                    // CALLER's responsibility; scheduling exit
+                                    // frees through the borrow would release
+                                    // the caller's live record.
+                                    if self.plan.owned.contains(&target) {
+                                        reown_root = Some(target);
+                                        reown_block = was_live_block;
+                                    }
                                 }
                                 _ => {}
                             }
