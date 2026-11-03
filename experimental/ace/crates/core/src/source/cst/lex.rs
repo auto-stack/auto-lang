@@ -29,17 +29,21 @@ pub(crate) struct LeafInfo {
 /// 文档序收集全部非 trivia 叶（含 error 叶）。
 pub(crate) fn collect_leaves(tree: &CstTree) -> Vec<LeafInfo> {
     let mut out = Vec::new();
-    let mut stack = vec![tree.root];
+    // 根的孩子在树级 root_edges 目录（根节点 child_count==0）——从根的孩子
+    // 起种（children() 已处理跨块目录）。
+    let mut stack = tree.children(tree.root);
     while let Some(n) = stack.pop() {
         let nd = tree.node(n);
         if nd.flags & FLAG_TRIVIA != 0 {
             continue;
         }
         if nd.child_count == 0 {
+            // CstNode.start 是声明相对坐标——一律经 abs_range 换绝对。
+            let (s0, e0) = tree.abs_range(n);
             out.push(LeafInfo {
                 kind: nd.kind,
-                start: nd.start as u64,
-                end: nd.start as u64 + nd.len as u64,
+                start: s0,
+                end: e0,
                 error: nd.flags & FLAG_ERROR != 0,
             });
             continue;

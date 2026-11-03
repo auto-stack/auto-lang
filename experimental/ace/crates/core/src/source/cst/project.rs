@@ -223,10 +223,15 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
     };
     let at_root = path.iter().any(|&g| g == cx.k.item)
         && !path.iter().any(|&g| g == cx.k.script_item.unwrap_or(u32::MAX));
-    let in_stmt = path.iter().any(|&g| {
+    let mut in_stmt = path.iter().any(|&g| {
         g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX)
     });
     let in_expr = path.iter().any(|&g| g == cx.k.expr || g == cx.k.unary_expr);
+    if cx.profile.is_entry_unit() && !in_expr {
+        // entry 面：items() 把一切非 `fn` 顶层 token 路由进脚本语句序列
+        // （旧 script_item → parse_stmt_head）——顶层错误即语句位。
+        in_stmt = true;
+    }
     if let Some(g) = kind {
         if g == cx.k.tok_while && cx.profile.surface_is_scalar_or_wider() && in_stmt {
             return Some(Diagnostic::new(
@@ -257,8 +262,21 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
             Span { start: span.start, end },
         ));
     }
+    // 关键字：item 位 = "`X` is not part..."；stmt/script 位 = "expected
+    // statement, found X"（旧 parse_stmt_head 只有 Reserved 走 unsupported）。
     if is_kw || text == "fn" {
-        return Some(word_msg(&text));
+        if in_stmt {
+            let found = describe_leaf_text(cx, tree, leaf);
+            return Some(Diagnostic::new(
+                Stage::Text,
+                "source.syntax",
+                format!("expected statement, found {}", found),
+                span,
+            ));
+        }
+        if !in_expr {
+            return Some(word_msg(&text));
+        }
     }
     if kind == Some(cx.k.tok_r_move) || kind == Some(cx.k.tok_r_to) {
         if !in_expr {

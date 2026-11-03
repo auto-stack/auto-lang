@@ -259,3 +259,10 @@ fn differential_edge_rejects() {
         );
     }
 }
+
+#[test]
+fn t07_direct() {
+    let src = r#"fn main() int { let c char = '\u{D800}'; return 0 }"#;
+    eprintln!("old={:?}", ace_core::source::parse_program_with(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
+    eprintln!("new={:?}", cst::parse_program_via_cst(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
+}

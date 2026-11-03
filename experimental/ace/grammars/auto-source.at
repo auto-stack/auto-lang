@@ -311,6 +311,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // 投影按旧 unsupported/语法错误合同映射）。
         postfix-step(profiles: [record, text-record, text, host-console]) {
             alt(profiles: [record, text-record]) { dot(same-line: true) ident(field: "member") }
+            alt(profiles: [text, host-console]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, text-record]) { dot(same-line: true) mut(field: "member") }
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
