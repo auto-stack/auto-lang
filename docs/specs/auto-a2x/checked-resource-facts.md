@@ -62,3 +62,9 @@
   掩蔽的存量缺口；902 冻结语料无此形状）。replace_frees 经借用照旧。
 - 恢复后所需的只读事实经 AXP2 锚+prelude seed（record 表）与逐函数 slice/凭证
   重验重建，不 deserialize Checked/PASS/宿主地址。
+- **C 消费（PLAN-926）**：C 集合降低以同一 `CollectionsBodyFacts` 为唯一清理
+  权威（owned/exit/replace/err/loop_survivors + body digest 凭证），不重推
+  ownership；包装临时（a2x_stro_result/a2x_res_*）被调度引用时释放 `.value`；
+  释放幂等（take 置空/memset）使回边 poll 错误路径重列安全。S 面 join 修复
+  （终止分支不约束 join）对两目标同时生效（golden-L03 最小重冻结）。
+

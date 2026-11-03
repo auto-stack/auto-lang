@@ -90,3 +90,11 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
 - CA-D 交接：本包交付稳定资源/mode/符号/来源出口；内部 C struct 布局私有，
   不冒公开 AutoABI。未支持域（显式）：List/Variant（CA-C）、闭包/HOF、mut
   实例方法/ext/trait、Unit/script 入口、公开 wrapper/FFI。
+- **PLAN-926 CA-C（collections C 通道）**：Family::Collections 在 C 目标服务
+  （AXC3/AXP3/auto.a2x.c.collections.fileset/1/ace.a2c-hir.collections.cert/1，
+  `certify-c`/`daily-emit-c` 按 profile 三分派）、`auto-lang-core` 适配器
+  （`ac_a2c_hir` 三 recipe 分派+collections profile 校验）、`auto-test-case`
+  （contract 注册 `ac-a2c/hir-collections-emit-v1`，五点）。Rust 集合目标行为
+  不变；三 C 通道与全部 Rust 通道身份严格互斥。CA-D/CA-E 边界：内部 List/
+  Variant C 表示私有、不冒公开 AutoABI；CA-E 只组合必需门不承担延期测试。
+

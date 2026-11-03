@@ -47,3 +47,8 @@ Managed working set 48MiB along 902; store namespace ≤128MiB; certify scratch 
 - Unit-arm qualified construction (`E.A` without payload in expression position) is not in the frozen surface; unit arms are matched but not constructed qualified.
 - Call results are not fresh rvalues for owned pushes — bind to a local and `.move`.
 - Fused `.len()` views over `List<Str>` preserve their own indices (resolve task-ordering fix, PLAN-904; counterexample `v02_fused_view_indices_preserved`).
+
+- **join 语义（PLAN-926 S 面修复）**：终止分支（return/break/continue 后无
+  fall-through 端点）不约束 if 汇合的存活交集——无 else 早返回形状的隐式
+  else 存活集由汇合承接并在后续出口释放（旧实现 common=∅ 孤儿化该集合，
+  L03 形状泄漏；两目标同时生效，golden-L03 最小重冻结，oracle 不变）。

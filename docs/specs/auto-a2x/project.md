@@ -8,11 +8,12 @@
 共享 A2X 骨架：已验证 Checked HIR 之上的**目标中立语义视图**、结构化
 准备摘要与分层 cache 会话。PLAN-921 起 emit 目标经共享
 `TargetProvider` 接缝接入：**Rust**（三通道，见
-[auto-a2r](../auto-a2r/project.md)）与 **C**（标量通道，见
-[auto-a2c](../auto-a2c/project.md)）是两个已实证的真实目标——同一会话与
-同一 store 可混合服务两目标（`set_target`），语义层 AXS1..3 共享、
-片段/文件集/证书身份按目标完全隔离（AXR1..3 vs AXC1）。会话层
-（a2x-store）不静态依赖任何目标 crate。
+[auto-a2r](../auto-a2r/project.md)）与 **C**（三通道：标量/record-text/
+collections，见 [auto-a2c](../auto-a2c/project.md)）是两个已实证的真实
+目标——同一会话与同一 store 可混合服务两目标（`set_target`），语义层
+AXS1..3 共享、片段/文件集/证书身份按目标完全隔离（AXR1..3 vs
+AXC1..3，集合另有锚 AXP1..3）。会话层（a2x-store）不静态依赖任何目标
+crate。
 
 ## 目标与范围
 

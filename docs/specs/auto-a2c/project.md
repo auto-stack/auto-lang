@@ -13,15 +13,22 @@
 [scalar-hir-backend](scalar-hir-backend.md)）与 **record-text**（CA-B，
 PLAN-925：层 AXC2/AXP2、fileset `auto.a2x.c.record-text.fileset/1`、recipe
 `ac-a2c/hir-record-text-emit-v1`、cert `ace.a2c-hir.record-text.cert/1`，
-合同见 [record-text-hir-backend](record-text-hir-backend.md)）。
+合同见 [record-text-hir-backend](record-text-hir-backend.md)）与
+**collections**（CA-C，PLAN-926：层 AXC3/AXP3、fileset
+`auto.a2x.c.collections.fileset/1`、recipe
+`ac-a2c/hir-collections-emit-v1`、cert
+`ace.a2c-hir.collections.cert/1`（执行配置为键材），合同见
+[collections-hir-backend](collections-hir-backend.md)）。
 
 ## 目标与范围
 
 - **支持域**：scalar 通道=原 core/scalar profile 的 i32/bool 计算面；
   record-text 通道（CA-B）=record/text/text-record 三 profile（C 值/借用
   表示、模式/方法/资源出口、prelude seed 恢复，详见
-  [record-text-hir-backend](record-text-hir-backend.md)）。Collections 经
-  C 目标仍是命名拒绝（`a2x.domain`，后继 CA-C 不因易表达而放宽）。
+  [record-text-hir-backend](record-text-hir-backend.md)）；collections
+  通道（CA-C）=collections profile 的 904 冻结集合域（List/Variant/受检
+  view/facts 清理/预算取消故障，详见
+  [collections-hir-backend](collections-hir-backend.md)）。
 - **受管编译**（`a2x-worker::crun`）：cl 定位复用 PLAN-797 冻结序
   （env→vswhere→最高版本；缺工具=infra 非 skip）；vcvars64 从 cl 路径
   推导（无硬编码版本/edition）；冻结 flags

@@ -111,3 +111,21 @@
   A2X 工作集合计 ~10MiB/48MiB；子进程证人恢复 P0（lower=0）+ranged 方法
   编辑 env_rebuilds+1。CA-D 交接身份：seed/schema/recipe/fileset/cert 全部
   版本化字面量，漂移=STALE/拒，不静默覆盖。
+
+## AXC3/AXP3：C 集合通道的增量与纯恢复（PLAN-926）
+
+- 片段层 **AXC3**（`a2926/axc-c-coll-fn/v1`）：C 集合片段自有命名空间（与
+  AXR3 Rust 集合及 AXC1/2 互斥；runtime_sha256 区分）。元素名义身份、variant
+  名/臂序/payload 图、param mode/callee 接口入 AXS3 语义键；声明（record 布局/
+  臂序/mode）变更冷再入重建**真实读者**、非读者 store 命中、等价表内容全命中。
+- 锚 **AXP3**（`a2926/axp-coll-source-anchor/v1`）：seed 携带（名义类型表
+  records+variants+lists），C 后端集合族恢复（Rust 集合目标保持冻结无锚）。
+  纯恢复 P0（无 parse/lower/print/persist）+R>0（lookup/binding/payload/fileset
+  验证）盲重装配字节恒等；恢复后下一 body 编辑 env_rebuilds+1、编辑单元恰
+  lower/print+1、锚重绑；坏编辑不发布（旧锚可恢复）；readonly 拒锚；lease+GC
+  存活；C 标量锚不服务集合恢复（profile 键隔离）。
+- 暖授权：`warm_edit_ranged` base=会话当前全源、range 恰单声明、fragment 同名；
+  manifest 绑定被替换**全源** sha256。A→B→A 历史字节复用（store 命中、零生产）。
+- 正式采样（实测 2026-11-04）：904 冻结负载四态×30、512 修订（256 left_pad+
+  256 right_pad）逐修订 cl 预认证对闭式 oracle；数据见 PLAN-926 §9 T-10 收据。
+

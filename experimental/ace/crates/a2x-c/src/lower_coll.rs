@@ -265,6 +265,7 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
         passes,
         out: Vec::new(),
         temp_counter: 0,
+        wrapper_temps: std::collections::BTreeSet::new(),
     };
     // callee-frame work charge (4 WU per call frame); its failure path
     // frees nothing (the frame is empty at entry)
@@ -294,6 +295,10 @@ struct CollLowerC<'a, 'v> {
     passes: std::collections::HashMap<u32, ParamPass>,
     out: Vec<String>,
     temp_counter: usize,
+    /// expr ids whose `e<id>` temp is a RESULT-WRAPPER struct
+    /// (`a2x_stro_result` / `a2x_res_*` from fallible calls): their free
+    /// schedule addresses `.value`, not the wrapper.
+    wrapper_temps: std::collections::BTreeSet<u32>,
 }
 
 impl<'a, 'v> CollLowerC<'a, 'v> {
@@ -398,7 +403,14 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     self.local_name_of(hir::LocalId(*l))
                 ))
             }
-            FreeRef::Temp(e, kind) => Some(format!("{}(&e{});", self.free_call(*kind, None), e)),
+            FreeRef::Temp(e, kind) => {
+                let slot = if self.wrapper_temps.contains(e) {
+                    format!("e{}.value", e)
+                } else {
+                    format!("e{}", e)
+                };
+                Some(format!("{}(&{});", self.free_call(*kind, None), slot))
+            }
         }
     }
 
@@ -452,6 +464,9 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
     /// Returns the `.value` reading expression.
     fn fall_res(&mut self, id: hir::ExprId, rty: &str, call: String) -> Result<String, A2xReject> {
         let name = format!("e{}", id.0);
+        // a free schedule referencing this temp frees the VALUE inside
+        // the wrapper, never the wrapper itself
+        self.wrapper_temps.insert(id.0);
         let frees = self.err_frees_of(id.0, None);
         let frees = if frees.is_empty() {
             String::new()
