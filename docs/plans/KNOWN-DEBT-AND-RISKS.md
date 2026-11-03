@@ -1,4 +1,8 @@
-### Plan 911（2026-11-02，work T-06 自查登记；均非本包合同内阻塞）
+### Plan 925（2026-11-03，work T-04 门禁登记；非本包合同内阻塞）
+
+- **D-925-2（Rust 侧同形潜伏缺陷，owner=902 Rust record-text lowering）**：C 侧 oracle 发现"多实参调用中，后一实参的分配 pin 会把前一实参的 view-consumed owned temp 在消费者（调用）之前 free"（`mk("ab","cde")` 两个 owned 字面量作 view 实参 → head 空串）。C 侧已修（scoped drain_since）；**Rust 侧 lower.rs 的 lower_pure 在每个新 pin 前 drain_frees，同形状会先 free 后用**（Rust 的 take()-free 使其表现为静默空串而非崩溃）。902 冻结语料无此形状故未暴露。后继补 Rust 侧同修+用例（owner=902 线/a2x-rust）。
+- **D-925-1（存量测试依赖 git 忽略文件，owner=796/sema-boundary / ace-semantics-store）**：`cargo t ace-semantics` 在任何**新鲜 worktree** 必红 2 例：`sema_boundary_audit::sema_boundary_description_surface_frozen` 与 `sema_boundary_frozen_versions_have_provenance`（`crates/semantics-store/tests/cases/sema_boundary_audit.rs:278` 读 `docs/plans/attachments/796/contract-decision.md`，Os NotFound）。该路径按 2026-10-31 裁定已整目录去跟踪，仅主检出磁盘残留该文件故主检出绿、worktree 红。925 gate 实测：ace-source 307/307、ace-semantics 104/106（2 红即此）、ace-a2x 119/119；与 925 diff（a2x-c/a2x-store/worker tests）无耦合。修复方向：测试内联所需 token 或改读跟踪文件；本包不代改他方测试，merge 复跑该组时按环境归因记录。
+
 
 - **D-911-1（环境脆弱性，owner=909 套件/closures-source）**：`case-ace-m1-shared-mutable-909` 的 `av-s02-closures-source-fresh` 断言 fresh=misses/writes，但 `ac_av.rs` 会话 store 根为 `%TEMP%/av798-session-{session_id}`（固定名、无清理代码），任何先前运行遗留即令"fresh"命中 → 首跑红；删除 `%TEMP%/av798-session-av_closures_909_*` 后重放绿（本包实证：2026-11-02 首红→清理→PASS，且该运行又重建了目录）。套件跨运行非幂等；merge 复跑该组前需先清该 %TEMP% 前缀。与本包 diff 无耦合（closures-source session 未触）。
 - **D-911-2（既有仓内写入，owner=AV 源码增量性能腿）**：`experimental/ace/crates/av/tests/cases/av_source_incremental.rs` 把 `incremental-raw*.json` 写入仓内 `docs/reports/plan827/`（跟踪文件被改 + 新未跟踪文件，主检出自检同见）。非本包引入；正式收尾对账时需甄别处置，长期应由该测试改写 plan-artifacts/临时目录。
@@ -3899,3 +3903,27 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
   缺陷类登记豁免+入库 manifest goldens。
 - 关闭条件：904 owner 冻结其 worker 实发 manifest 并补豁免+入库，或修订
   其 case.ad 声明。
+
+## PLAN-924 work-stage records (2026-11-03)
+
+- **M1 claim guard cites the cert axis** (1b789cc28): G-DEC-5's "fully
+  green with valid evidence" is now enforced literally — a required cell
+  with snapshot-only-cert-gap blocks `can_claim_m1` (16 such cells today).
+  Strict strengthening; the R02/R05 ac backfill cannot sign M1. Review
+  should confirm no verdict weakened (infra-ace-m1 mutation tests green).
+- **923 seam-retry probe was vacuous** (fixed in ec2094c48): the runtime
+  probe fixture's default body ended in ExitProcess(42) BEFORE the
+  923 seam-retry/closure-state branches (dead code) — the 923 test
+  `runtime_seam_snapshot_and_inprocess_retry_keep_atomicity` passed
+  vacuously since its landing; also its frame count (1) leaked both place
+  tokens' charges. Both repaired and re-verified green on this tree; the
+  923 plan's historical receipts for that one test overstate — rerun
+  evidence lives in PLAN-924 T-04.
+- **mn_coll_abort missed idle text-metadata release** (fixed in f62a2da12):
+  a trap after StrLen leaked 288 arena bytes (the normal last
+  frame_leave releases it). 919's r06-style tests trapped before any
+  StrLen, so the leak was invisible until the 924 V-12 leg.
+- **Pre-existing compiler warnings (NOT 924's touch)**: ace-av 3
+  (closures_fn_session env_layout/mix_u64, owned_session shell fields —
+  913/896 era) and auto-lang-core 2 unused-doc-comments. Owners: their
+  originating plans or the next health pass.
