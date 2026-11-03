@@ -912,10 +912,15 @@ switch ($Scope) {
             elseif ($certGapCells.Count -gt 0) { "gap($($certGapCells.Count) required a2r cells carry cert-gap; validation via snapshot/receipts scope)" }
             else { 'not-validated(supply -BuildIdentity or run snapshot/receipts)' }
         # G-DEC-5: M1 may be claimed only when the core obligation AND the
-        # committed extension profile are fully green with valid evidence,
+        # committed extension profile are fully green WITH VALID EVIDENCE,
         # while the full 131/524 registry still displays its remaining gaps
-        # (including the 45 future console cells).
-        $canClaimM1 = ($coreVerdict -eq 'pass') -and ($extVerdict -eq 'pass') -and ($futureGaps.Count -eq 45)
+        # (including the 45 future console cells). PLAN-924: a required
+        # cell still carrying a cert gap (snapshot-only / cert-diff) is NOT
+        # valid evidence — the R02/R05 ac backfill must not turn the claim
+        # on while the cert axis is open, so the claim now cites the cert
+        # axis explicitly (a strict strengthening: no historical verdict
+        # flips to claimable).
+        $canClaimM1 = ($coreVerdict -eq 'pass') -and ($extVerdict -eq 'pass') -and ($futureGaps.Count -eq 45) -and ($certGapCells.Count -eq 0)
 
         $classCount = @{}
         foreach ($l in $ledger) {
