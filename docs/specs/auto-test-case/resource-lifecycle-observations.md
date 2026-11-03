@@ -74,7 +74,21 @@
 - 观察 OFF 的既有 recipe 行为逐字节不变（`resource-events` 是新 recipe，不覆写
   旧通道）；暖路径/恢复（913/889）零额外重编或重装（组级复跑绿）。
 
-## 6. 证据锚点
+## 6. PLAN-923 增量：逐 seam 故障事实与 Place 代际
+
+- 新事实面与 MN-EVT 并存：`MN-COLL-INJECT seam=<N>`+`nth=<N>`（成对严格解码，
+  seam 0..=8；无 seam 的 nth / 无 nth 的 seam 是坏事实）、`MN-COLL-TRAP code=`
+  （白名单扩至 27 = STALE）、`MN-COLL live=/bytes=/invalid=/arena_live=`。
+  recipe `ac/mir-native-resource-guards-v1`（固定组 case-ace-m1-native-resource-923；
+  父侧冻结表 ac_mn/resource_guards.rs：trap 码 + seam/nth 对 + zero-live 清理）。
+- Place 代际：结构变更 bump node.epoch（退役全部旧 token）、in-place set/
+  PlaceSet bump 目标元素 gen（废本 place 与兄弟）；stale 在 buffer 读写前
+  trap STALE(27)；预算/注入失败未 commit 时 epoch/gen/有效 token 不变。
+- 旧 919/915 边界：919 的 MN-EVT 通道与 R06 旋钮不因 923 变化；915 的
+  av `resource-run-v1` 通道与冻结表不变；R03 ac 现由 923 关闭、R02（K02/env）
+  与 R05 完整闭包唯一 owner = 924（本包只关 R03，不拿部分证据勾 R02）。
+
+## 7. 证据锚点
 
 - `experimental/ace/crates/av-core/src/lifecycle.rs`（通道）+
   `av.rs` 钩子（commit_slot_write/owned_kill_slot/两 sweep/call 转移/orphan env/

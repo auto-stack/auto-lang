@@ -126,6 +126,7 @@ avm `diff-legacy-*` 不翻绿；任意非零 exit 不当负例成功（L06 必�
 | F-NAT-2 native 闭包/Dyn ABI | K01–06/D01–09 ac（NA-3 候选 15 格） | ⑥+③（M1 na；能力线未立项） | native 闭包/Dyn ABI 包（823/824 显式排除；Design49 §7） | 同左 | 否 | ABI 冻结 | 裁定重进入条件：ABI 冻结后逐行改回 `gap:<plan>` | 暂无；NA-3 屏蔽下不阻 M1 |
 | F-NAT-3 native 常驻会话 | H01–03 ac（3 格）+avm/a2r bare n/a（6 格） | ⑦（裁定后置 H 行未覆盖） | 同 F-NAT-1 loader 线 | 同左 | 否 | — | H01–H03 AV 侧已关（866 真实 worker 父侧判定）；native 侧同 I08 oracle | G-DEC-4 裁定适用性 |
 | F-NAT-4 mn composite 场景面 | E02、R01–R05 scn、I04、G01 ac（8 格） | ②/③（复合执行已交付 870/889，场景观测面缺） | scenario 工具包 + mn 复合 | 同左 | 否 | E/R/I 场景 harness 接 mn 复合 recipe | 逐行 SCENARIOS oracle 于 mn 通道 | 随 F-SCN-1/F-AV-1/2 立项 |
+| F-NAT-4a R03 ac 已由 923 关闭 | scenario R03 ac（F-NAT-4 内一格） | ①（PLAN-923 交付） | 923 已交付 | 同左 | 是 | `ac/mir-native-resource-guards-v1` 父侧冻结表（case-ace-m1-native-resource-923 + collections_place_tier）；R02/R05 完整闭包仍属 924 | 同左（R02/R05 欠项 924） | 924 唯一回填 R02/R05；本行不改其他格 |
 | F-REG-1 五态词表回填 | ~136 格 raw token≠裁定五态 | ④ | 重绑定计划（未立项） | 同左 | 否 | **前置=G-DEC-1/2/3 用户裁定** | binding.tsv 迁移后 acceptance 分轴计数可复算（862 实测口径 20/73 只在 corpus，不冒全表） | 用户裁定→立项重绑定 |
 | F-REG-2 B16 vs B17–19 ac 面不一致 | B17–19 ac | ④（+⑦ 裁定） | mn 诊断面（870 已交付族面+crate 内强 oracle） | 语言语义 owner | 否（870 已交付面，裁定未跟） | 裁定：族面（parse+`mn.unsupported.frontend`）是否满足冻结诊断行（B16 已 ok 的先例） | B16/B17–19 同一映射口径复判 | G-DEC-2 裁定后随 F-REG-1 回填 |
 | F-REG-3 诊断行 a2r face 语义 | B17–19/T06/R09/R10 a2r（`gap:a2r-golden`） | ④（+③ 候选） | a2r 线（242） | 同左 | 242 在册 | 诊断负例判面=前端拒绝，**非金样**（认证 spec：负例不生成可执行金样） | a2r 前端拒绝通道给出各冻结诊断 | 随 F-A2R-1 扩展或重绑定时改 owner token |

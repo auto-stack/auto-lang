@@ -107,3 +107,15 @@ LIFO 释放，summary/事件流父侧严格解码判伪。观察 OFF 的既有 c
 行为逐字节不变。**不宣称**：闭包/Dyn ABI、console profile、在线 loader、record
 字段赋值（`place.field_path` 现仍前端拒绝，属既有能力边界）。规范正文见
 [resource-lifecycle-observations.md](../auto-test-case/resource-lifecycle-observations.md)。
+
+## PLAN-923 附录：逐 seam 故障注入与 typed Place 边界（2026-11-03）
+
+源码语义与全部既有配方不变。native 面补 per-seam 分配故障注入
+（`mn_coll_fail_nth_seam`，S1..S8 独立计数，`MN-COLL-INJECT seam=/nth=` 具名
+事实，注入与真实预算拒绝分态）与受检 Copy List-Place 机器链（ListPlace/
+PlaceGet/PlaceSet，token 注册表 + 访问前代际校验，stale trap 27 先于 buffer
+读写）。**源码不能 mint Place**：受检 typed 入口（verify_mir→admit→native）是
+唯一 Place 通道，不开放源码跨变更 view 逃逸或 List 参数/返回/嵌套等既有排除；
+List<Str>/owned record 的 Place 类型在 native 准入具名拒绝。恢复→续编辑
+（`restore_collections_session`）复用校验链但不恢复活 Place/guest 值。规范正文见
+[native-fault-and-place-conformance.md](../auto-mir/native-fault-and-place-conformance.md)。

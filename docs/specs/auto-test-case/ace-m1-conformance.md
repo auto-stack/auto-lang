@@ -394,3 +394,25 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
 - **边界**：avm/a2r 两列 NA-6；R02/R03/R05 仍属 915/921 线；观察 OFF 的既有 recipe
   逐字节不变；暖路径/恢复零额外重编（913/889 组复跑绿）。本段不签整个 M1
   （`can_claim_m1=false` 不变）。manifest `plan_919_update`。
+
+## PLAN-923：scenario R03 的 native ac 正式证据（2026-11-03）
+
+- **材料**：`test/cases/ace-m1/native-resource-923/`（case/suite + L04/LSTR/grow
+  语料字节拷贝源）；固定组 `case-ace-m1-native-resource-923`（8 checks：三个 base
+  正控 42/24/51 + S1/S2/S3/S4/S6/S7 注入）。
+- **配方/父判**：`ac/mir-native-resource-guards-v1`（collections PE，wrapper 预置
+  per-seam 注入）；父侧冻结表 `ac_mn/resource_guards.rs`（trap 码 + seam/nth
+  事实对 + zero-live 清理）；请求只带 操作/seam/index/预算，期望不经请求下发。
+  `MN-COLL-INJECT seam=/nth=` 成对严格解码（seam 0..=8、无 seam 的 nth 拒）；
+  S6/S7 走 text-runtime 通道（trap 22、无 INJECT 对）。
+- **判据**：注入命中 trap INJECTED(25)（S4/S6/S7 → RESOURCE(22)）且
+  live/bytes/invalid/arena_live 全 0；N+1 与 base 同退出码；坏来源/工具/产物/
+  词表/重复 key/旧操作/截断/重放全非绿。受检 Copy List-Place 机器链
+  （ListPlace/PlaceGet/PlaceSet：stale 在 buffer 读写前 trap STALE(27)、同元素
+  set 废本 place+兄弟、异元素兄弟/新 token 合法、失败扩容保 token、verify 静态
+  拒非法使用）由 ace-native `collections_place_tier` 常驻（V-04/05）。
+- **格位**：binding.tsv 的 `scenario:R03` mn 列 `gap:ac-composite-native →
+  ok:P923-guards`（av 列保持 `ok:av-resource-915`；源/expected/NA/分母不变）；
+  R02 mn 保持 gap（非闭包覆盖摘要记注释，K02/env 归 924）、R05 归 924。
+- **边界**：本段只关 R03 的 ac 格；R02/R05 完整闭包是 924 义务；不签整个 M1
+  （`can_claim_m1=false` 不变）。manifest `plan_923_update`、`scenario_assets_923`。

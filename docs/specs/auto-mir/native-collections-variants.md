@@ -14,7 +14,7 @@
 |---|---|
 | 原864源码 | 局部List<int/bool/Str/无环record/Variant>，Option/Result/有限enum，无环嵌套Variant、owned载荷与允许的函数结果、for-in/只读投影、Str.clone |
 | 源码拒绝 | List/Variant.clone、List参数/返回/record字段、嵌List、Variant参数/record字段、str/char、宽typed entry、闭包/Dyn/Unit入口等保持原具名排除 |
-| 受检typed MIR | 独立List/Variant Clone机器链见证；不据此开放源码方法或全部profile4指令/Place/参数域 |
+| 受检typed MIR | 独立List/Variant Clone机器链见证；PLAN-923 补受检 Copy List-Place 机器链（ListPlace/PlaceGet/PlaceSet，token 注册表 + 访问前代际校验，stale trap STALE(27) 先于 buffer 读写）；List<Str>/owned record 的 Place 类型在 native 准入具名拒绝；不据此开放源码方法或全部profile4指令/Place/参数域 |
 | 入口 | 零参数，i32或bool结果；宽位宽/带参数typed entry另属891规划 |
 
 原L01..L07/V01..V07及Str变体/for-in源码不改字节或oracle。L04/L05=42，
@@ -24,8 +24,8 @@ AV profile4/opcode/wire/执行语义不变。
 
 ## 机器布局、所有权与资源
 
-- `mn.collections.cell/2`：Cell16B（值bits/node地址与64位析构责任标志）、Frame32B；Win64内部call/return ABI。
-- `mn.collections.runtime/2`，layout/source/codegen世代各`/1`；codegen实际内容另有build指纹。
+- `mn.collections.cell/3`：Cell16B（PLAN-923 起含 Place 三指令发射）；`mn.collections.cell/2` 旧工件正确 STALE（值bits/node地址与64位析构责任标志）、Frame32B；Win64内部call/return ABI。
+- `mn.collections.runtime/3`（PLAN-923 起含 per-seam 注入与 Place token 注册表），layout/source/codegen世代各`/1`；codegen实际内容另有build指纹。
 - 名义描述符用canonical BLAKE3绑定owner、声明序字段/臂及传递载荷形状，忽略span/table编号；签名还绑定borrow/own模式。
 - 节点登记先于其指针被解引用。每次受控资源读取核registry/kind/layout；callee接口与名义布局在链接前受检。
 - owned转移清掉旧析构责任；只读view不分配或隐藏clone。push/insert/set/switch先完整准备再commit，失败保旧目标及未提交输入责任。
@@ -75,6 +75,15 @@ live immutable checked MIR/layout凭据只在进程内，不可序列化。重�
 共享MIR深验、坐标/owner/类型/interface/entry/COFF结构/content与runtime/tool当前身份重验后才link/run，
 restore消费者禁止unit codegen。reuse/fresh/read-only三模式保留；只读miss真重算、零store发布。
 故意省free的灵敏度控制只能ephemeral生产，不能污染持久cache。
+
+### PLAN-923 恢复 → 续编辑
+
+`restore_collections_session` 复用上述 manifest/source/runtime/link/逐 unit
+MIR+COFF 校验链，随后从恢复 source 经有界冷前端重建 env/regions（不 cold
+全源求 key），装配 `CollectionsIncrementalSession` 支持下一 body 编辑（真实
+差额、暖未改 P0）；不恢复任何活 Place/guest 值，运行结果永不缓存。per-seam
+故障注入与受检 List-Place 机器链见
+[native-fault-and-place-conformance.md](native-fault-and-place-conformance.md)。
 
 ## 验证与长期口径
 
