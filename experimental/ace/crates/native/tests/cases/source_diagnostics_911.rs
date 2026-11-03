@@ -321,7 +321,7 @@ fn mn_sd911_raw_cause_projection_shape() {
 use serde_json::{json, Value};
 
 fn spawn_worker(req: &Value) -> (Value, Option<i32>) {
-    use std::io::{BufRead, Write};
+    use std::io::Write;
     use std::process::{Command, Stdio};
     let mut child = Command::new(env!("CARGO_BIN_EXE_mn-worker"))
         .arg("case-run")

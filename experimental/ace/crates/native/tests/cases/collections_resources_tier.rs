@@ -341,3 +341,33 @@ fn runtime_seam_snapshot_and_inprocess_retry_keep_atomicity() {
     zero_live(&run.stderr);
 }
 
+
+/// PLAN-924 V-03/V-04/V-12: the closure state probe over the same runtime —
+/// the staged env transaction's rollback on a LATER-field clone failure
+/// (sources and bytes intact), the in-process retry, the pre-dispatch
+/// admission matrix (legal non-zero ids accepted twice; wrong signature /
+/// foreign bits / finalized handles refused with named codes), the deep
+/// clone's independence past the original's death, and the pin/unpin park
+/// lifecycle. The full cleanup invariant (live nodes/bytes 0) is the
+/// balance gate.
+#[test]
+fn runtime_closure_state_probe_rollback_admission_clone_and_park() {
+    let run = runtime_probe("closure-state", Some("mn_probe_closure_state"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+    let text = String::from_utf8_lossy(&run.stderr);
+    // The two named refusal faces of the pre-dispatch admission.
+    assert!(
+        text.contains("MN-COLL-CLOSURE refusal=2\n"),
+        "missing signature refusal: {text}"
+    );
+    assert!(
+        text.contains("MN-COLL-CLOSURE refusal=1\n"),
+        "missing registry refusal: {text}"
+    );
+}

@@ -149,6 +149,54 @@ fn k06_shared_cell_capture_is_a_named_native_rejection() {
     );
 }
 
+// ---- V-01 (R05): creator-exit env lifetime on the MN-EVT channel ---------
+
+#[test]
+fn k02_env_lifecycle_events_show_creator_exit_and_final_release() {
+    // The observation switch decodes strictly; the env node appears as a
+    // `closure` kind owner created in make's frame, still LIVE after the
+    // creator frame leaves (the indirect call in main), and freed exactly
+    // once at the program's final sweep (live=0).
+    let res = closures_run(
+        &corpus("K02"),
+        "k02evt",
+        WrapperKnobs {
+            observe: true,
+            ..Default::default()
+        },
+    );
+    assert_exit(&res, 42);
+    let text = String::from_utf8_lossy(&res.stderr);
+    let own_closure = text
+        .lines()
+        .filter(|l| l.contains("act=own kind=closure"))
+        .count();
+    let free_closure = text
+        .lines()
+        .filter(|l| l.contains("act=free"))
+        .count();
+    assert!(own_closure >= 1, "no closure own event:
+{text}");
+    assert!(text.contains("MN-EVTEND total="), "missing event end marker");
+    assert!(text.contains("MN-COLL live=0
+"), "env not fully released:
+{text}");
+    assert!(free_closure >= 2, "expected env + text frees:
+{text}");
+    // R05's discriminating fact: the creator frame LEAVES before the call —
+    // frame-leave events must precede the call's continued liveness; the
+    // closure free comes after main's frame-enter (not with make's sweep).
+    let make_leave = text
+        .lines()
+        .position(|l| l.contains("act=frame-leave"))
+        .expect("frame-leave event");
+    let closure_own = text
+        .lines()
+        .position(|l| l.contains("act=own kind=closure"))
+        .expect("closure own event");
+    assert!(closure_own < make_leave, "env created after creator exit?");
+}
+
 // ---- V-04 core: the S9 env-node fault sweep with N+1 controls ------------
 
 #[test]
@@ -208,4 +256,83 @@ fn k05_env_clone_seam_sweeps_two_allocations() {
         },
     );
     assert_exit(&res, 42);
+}
+
+// ---- T-07: the warm native session (single-unit/owner edits, hit) --------
+
+#[test]
+fn warm_session_lambda_edit_relinks_one_unit_and_hit_is_zero_production() {
+    assert!(common::tools_available());
+    let source = corpus("K02");
+    let dir = std::env::temp_dir().join(format!("plan924-sess-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let driver = ace_native::driver::MnDriver::ephemeral();
+    let (mut session, cold) =
+        ace_native::closures_incremental::ClosuresNativeSession::new(
+            &source,
+            "main",
+            driver,
+            &dir,
+            None,
+        )
+        .expect("cold session");
+    assert_eq!(cold.exit_code, Some(42), "cold run: {}", String::from_utf8_lossy(&cold.stderr));
+    assert_eq!(cold.work.codegen_units.len(), 3, "K02 has three units");
+
+    // Lambda body edit: s.len() + n -> s.len() + n + 1 (42 -> 43). Exactly
+    // the closure body unit re-codegens; make/main keep their objects.
+    let edited = source.replace("+ n }", "+ n + 1 }");
+    let warm = session.apply_source(&edited).expect("warm edit");
+    assert_eq!(warm.exit_code, Some(43), "warm run: {}", String::from_utf8_lossy(&warm.stderr));
+    assert_eq!(warm.work.codegen_units, vec!["d___closure_make_0".to_string()],
+        "expected exactly the closure body unit re-codegen: {:?} route={}",
+        warm.work.codegen_units, warm.work.route);
+    assert!(warm.work.route.starts_with("fast-unit"), "route: {}", warm.work.route);
+
+    // Hit: identical source re-runs with ZERO codegen (the installed PE).
+    let hit = session.apply_source(&edited).expect("hit");
+    assert_eq!(hit.exit_code, Some(43));
+    assert!(hit.work.codegen_units.is_empty(), "hit must not codegen: {:?}", hit.work.codegen_units);
+    assert_eq!(hit.work.route, "hit");
+
+    // Owner body edit in main: f(37) -> f(38) (43 -> 44). Only d_main
+    // re-codegens.
+    let edited2 = edited.replace("f(37)", "f(38)");
+    let owner = session.apply_source(&edited2).expect("owner edit");
+    assert_eq!(owner.exit_code, Some(44), "owner run: {}", String::from_utf8_lossy(&owner.stderr));
+    assert_eq!(owner.work.codegen_units, vec!["d_main".to_string()],
+        "owner edit codegen: {:?} route={}", owner.work.codegen_units, owner.work.route);
+
+    session.close().expect("close");
+}
+
+// ---- V-11: the front-door rejections on the source ride -----------------
+
+#[test]
+fn k04_borrow_escape_is_rejected_at_the_front_door() {
+    // K04's lambda escapes its creator while capturing a non-move local —
+    // the SHARED source/verify front door refuses it before any native
+    // admission (the native domain never sees borrow-escape input).
+    let res = closures_run(&corpus("K04"), "k04", Default::default());
+    let error = res.error.expect("borrow escape must be refused at the front door");
+    assert_eq!(error.code(), "mn.unsupported.frontend");
+}
+
+#[test]
+fn closures_entry_must_be_an_ordinary_zero_argument_int_function() {
+    // The K02 closure BODY unit exists and links, but naming it as the
+    // entry is a NAMED driver rejection: env bodies are invoked through
+    // their closure values, never as program entries.
+    assert!(common::tools_available());
+    let dir = std::env::temp_dir().join(format!("plan924-entry-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let res = driver.request_closures(&corpus("K02"), "d___closure_make_0", &dir, None);
+    let error = res.error.expect("a closure body entry must be refused");
+    assert!(
+        error.message().contains("ordinary zero-argument int function"),
+        "named entry rejection: {}",
+        error.message()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

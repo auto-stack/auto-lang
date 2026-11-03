@@ -35,6 +35,16 @@ extern "system" {
     fn mn_coll_place_mint(dst: *mut Cell, list: u64, index: i32) -> i32;
     fn mn_coll_place_get(dst: *mut Cell, place: u64) -> i32;
     fn mn_coll_place_set(place: *mut Cell, value: *mut Cell) -> i32;
+    // PLAN-924: the closure environment surface.
+    fn mn_coll_env_prepare(out_prep: *mut u64, len: u64, code: u64, sig: u64, owner: u64) -> i32;
+    fn mn_coll_env_stage_move(prep: u64, index: u64, src: *const Cell) -> i32;
+    fn mn_coll_env_stage_clone(prep: u64, index: u64, src: *const Cell) -> i32;
+    fn mn_coll_env_discard(prep: u64);
+    fn mn_coll_env_commit(dst: *mut Cell, prep: u64) -> i32;
+    fn mn_coll_env_get(dst: *mut Cell, bits: u64, field: u64) -> i32;
+    fn mn_coll_closure_target(bits: u64, sig: u64) -> u64;
+    fn mn_coll_env_pin(bits: u64) -> i32;
+    fn mn_coll_env_unpin(bits: u64) -> i32;
     fn ac_rt_fail_nth_alloc(n: i32);
     fn mn_coll_set_budget(n: u64);
     fn mn_coll_arena_limit(n: u64) -> i32;
@@ -439,6 +449,141 @@ pub unsafe extern "system" fn ac_start() -> ! {
         CloseHandle(thread);
         ExitProcess(42);
     }
+    // PLAN-923: V-02/V-05 — the same-runtime-原语 probe: a failed growth
+    // must leave the list, its epoch and a minted place untouched (snapshot
+    // before == after), then clearing the fault retries the SAME operation
+    // in-process to the correct result.
+    if cfg!(mn_probe_seam_retry) {
+        const SEAM_GROW: u32 = 3;
+        const INJECTED: i32 = -25;
+        const STALE: i32 = -27;
+        let mut cells = [EMPTY; 8];
+        let mut frame = [0u64; 8];
+        // The frame must track every slot: the sweep releases the two
+        // minted place tokens too (a count of 1 leaked both charges).
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            8,
+        ));
+        // [10, 20] with cap=1: the second insert grows (seam 3).
+        ok(mn_coll_list_new(&mut cells[0], 1));
+        cells[1].bits = 10;
+        ok(mn_coll_list_insert(cells[0].bits, 0, &mut cells[1]));
+        cells[2].bits = 20;
+        ok(mn_coll_list_insert(cells[0].bits, 1, &mut cells[2]));
+        // A minted place on elem[1] (=20) before the failure.
+        ok(mn_coll_place_mint(&mut cells[3], cells[0].bits, 1));
+        // Inject on the NEXT growth; the insert must fail WITHOUT committing.
+        mn_coll_fail_nth_seam(SEAM_GROW, 1);
+        cells[4].bits = 30;
+        let failed = mn_coll_list_insert(cells[0].bits, 2, &mut cells[4]);
+        check(failed == INJECTED, 171);
+        mn_coll_fail_nth_seam(SEAM_GROW, 0);
+        // Snapshot invariant: length and the place are untouched, the place
+        // still reads the old element (epoch/gen did not advance).
+        check(mn_coll_list_len(cells[0].bits) == 2, 172);
+        ok(mn_coll_place_get(&mut cells[5], cells[3].bits));
+        check(cells[5].bits == 20, 173);
+        // The SAME operation retries cleanly after the fault is cleared.
+        cells[6].bits = 30;
+        ok(mn_coll_list_insert(cells[0].bits, 2, &mut cells[6]));
+        check(mn_coll_list_len(cells[0].bits) == 3, 174);
+        // The structural change retired the old place before any buffer read.
+        check(mn_coll_place_get(&mut cells[5], cells[3].bits) == STALE, 175);
+        // A fresh place on the new element is legal.
+        ok(mn_coll_place_mint(&mut cells[7], cells[0].bits, 2));
+        ok(mn_coll_place_get(&mut cells[5], cells[7].bits));
+        check(cells[5].bits == 30, 176);
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    } else if cfg!(mn_probe_closure_state) {
+        // PLAN-924 V-03/V-04/V-12: the same-runtime closure-state probe.
+        // (a) a staged CreateClosure whose CLONE field fails on an injected
+        //     allocation rolls back completely — bytes back to baseline, the
+        //     MOVE source and the CLONE source both intact (the failure
+        //     lands on the LATER field, never masked by an early move);
+        // (b) clearing the fault retries the SAME transaction in-process;
+        // (c) pre-dispatch admission: legal non-zero ids dispatch (twice),
+        //     a wrong signature / foreign bits / a finalized (stale) handle
+        //     refuse with named refusal codes and never corrupt the env;
+        // (d) Closure.clone deep-copies the env — independent fields, both
+        //     dispatch, and the clone survives the original's death;
+        // (e) the call pin parks a last-owner-less env alive; the final
+        //     unpin (and only it) finalizes the env.
+        const SIG_A: u64 = 0x5142_42A;
+        const SIG_B: u64 = 0x9249_249;
+        const CODE_A: u64 = 0x1122_3344_55;
+        const CODE_B: u64 = 0x6677_8899_AA;
+        const OWNER: u64 = 0xC105;
+        const INJECTED: i32 = -25;
+        const INVALID: i32 = -23;
+        let mut cells = [EMPTY; 10];
+        let mut frame = [0u64; 8];
+        ok(mn_coll_frame_enter(frame.as_mut_ptr(), cells.as_mut_ptr(), 10));
+        ok(mn_coll_literal(&mut cells[0], b"hello".as_ptr(), 5));
+        ok(mn_coll_literal(&mut cells[1], b"hi!".as_ptr(), 3));
+        let base = mn_coll_live_bytes();
+        let mut prep: u64 = 0;
+        // (a) the staged two-field transaction: MOVE field first, the
+        // fallible CLONE field second. The knob resets the per-seam
+        // counters, so the clone's fresh node is the FIRST S1 allocation
+        // after the knob is set.
+        ok(mn_coll_env_prepare(&mut prep, 2, CODE_A, SIG_A, OWNER));
+        check(prep != 0, 200);
+        check(mn_coll_live_bytes() > base, 201);
+        ok(mn_coll_env_stage_move(prep, 0, &cells[0]));
+        mn_coll_fail_nth_seam(1, 1);
+        check(mn_coll_env_stage_clone(prep, 1, &cells[1]) == INJECTED, 202);
+        mn_coll_env_discard(prep); // the caller's rollback, like the emitter
+        check(mn_coll_live_bytes() == base, 203);
+        check(cells[0].owned == 1 && mn_coll_str_len(cells[0].bits) == 5, 204);
+        check(cells[1].owned == 1 && mn_coll_str_len(cells[1].bits) == 3, 205);
+        // (b) the same transaction retries cleanly once the fault clears.
+        mn_coll_fail_nth_seam(1, 0);
+        ok(mn_coll_env_prepare(&mut prep, 2, CODE_A, SIG_A, OWNER));
+        ok(mn_coll_env_stage_move(prep, 0, &cells[0]));
+        ok(mn_coll_env_stage_clone(prep, 1, &cells[1]));
+        ok(mn_coll_env_commit(&mut cells[4], prep));
+        // (c) pre-dispatch admission over the live env.
+        check(mn_coll_closure_target(cells[4].bits, SIG_A) == CODE_A, 206);
+        check(mn_coll_closure_target(cells[4].bits, SIG_A) == CODE_A, 207);
+        check(mn_coll_closure_target(cells[4].bits, SIG_B) == 0, 208);
+        check(mn_coll_closure_target(0xDEAD_BEEF, SIG_A) == 0, 209);
+        ok(mn_coll_env_get(&mut cells[6], cells[4].bits, 0));
+        check(mn_coll_str_len(cells[6].bits) == 5, 210);
+        ok(mn_coll_env_get(&mut cells[6], cells[4].bits, 1));
+        check(mn_coll_str_len(cells[6].bits) == 3, 211);
+        check(mn_coll_env_get(&mut cells[6], cells[4].bits, 2) == INVALID, 212);
+        check(mn_coll_env_unpin(cells[4].bits) == INVALID, 213);
+        // (d) the deep clone: a fresh env (bytes grow), independent
+        // fields, and the clone alone after the original dies.
+        let one_env = mn_coll_live_bytes();
+        ok(mn_coll_clone(&mut cells[7], &cells[4]));
+        check(mn_coll_live_bytes() > one_env, 214);
+        check(mn_coll_closure_target(cells[7].bits, SIG_A) == CODE_A, 215);
+        mn_coll_drop(&mut cells[4]);
+        check(mn_coll_closure_target(cells[7].bits, SIG_A) == CODE_A, 216);
+        ok(mn_coll_env_get(&mut cells[6], cells[7].bits, 1));
+        check(mn_coll_str_len(cells[6].bits) == 3, 217);
+        // (e) the pin parks the env past its last closure owner.
+        ok(mn_coll_env_prepare(&mut prep, 1, CODE_B, SIG_B, OWNER));
+        ok(mn_coll_env_stage_move(prep, 0, &cells[0]));
+        ok(mn_coll_env_commit(&mut cells[5], prep));
+        let before_park = mn_coll_live_bytes();
+        let parked = cells[5].bits;
+        ok(mn_coll_env_pin(parked));
+        mn_coll_drop(&mut cells[5]);
+        check(mn_coll_live_bytes() == before_park, 218); // parked, not freed
+        check(mn_coll_closure_target(parked, SIG_B) == CODE_B, 219);
+        ok(mn_coll_env_unpin(parked));
+        check(mn_coll_closure_target(parked, SIG_B) == 0, 220); // finalized
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        check(mn_coll_live_nodes() == 0 && mn_coll_live_bytes() == 0, 221);
+        mn_coll_summary();
+        ExitProcess(42);
+    }
     let mut cells = [EMPTY; 12];
     let mut frame = [0u64; 4];
     ok(mn_coll_frame_enter(
@@ -537,55 +682,5 @@ pub unsafe extern "system" fn ac_start() -> ! {
         {
             ExitProcess(42);
         }
-    }
-    // PLAN-923: V-02/V-05 — the same-runtime-原语 probe: a failed growth
-    // must leave the list, its epoch and a minted place untouched (snapshot
-    // before == after), then clearing the fault retries the SAME operation
-    // in-process to the correct result.
-    if cfg!(mn_probe_seam_retry) {
-        const SEAM_GROW: u32 = 3;
-        const INJECTED: i32 = -25;
-        const STALE: i32 = -27;
-        let mut cells = [EMPTY; 8];
-        let mut frame = [0u64; 4];
-        ok(mn_coll_frame_enter(
-            frame.as_mut_ptr(),
-            cells.as_mut_ptr(),
-            1,
-        ));
-        // [10, 20] with cap=1: the second insert grows (seam 3).
-        ok(mn_coll_list_new(&mut cells[0], 1));
-        cells[1].bits = 10;
-        ok(mn_coll_list_insert(cells[0].bits, 0, &mut cells[1]));
-        cells[2].bits = 20;
-        ok(mn_coll_list_insert(cells[0].bits, 1, &mut cells[2]));
-        // A minted place on elem[1] (=20) before the failure.
-        ok(mn_coll_place_mint(&mut cells[3], cells[0].bits, 1));
-        // Inject on the NEXT growth; the insert must fail WITHOUT committing.
-        mn_coll_fail_nth_seam(SEAM_GROW, 1);
-        cells[4].bits = 30;
-        let failed = mn_coll_list_insert(cells[0].bits, 2, &mut cells[4]);
-        check(failed == INJECTED, 171);
-        mn_coll_fail_nth_seam(SEAM_GROW, 0);
-        // Snapshot invariant: length and the place are untouched, the place
-        // still reads the old element (epoch/gen did not advance).
-        check(mn_coll_list_len(cells[0].bits) == 2, 172);
-        ok(mn_coll_place_get(&mut cells[5], cells[3].bits));
-        check(cells[5].bits == 20, 173);
-        // The SAME operation retries cleanly after the fault is cleared.
-        cells[6].bits = 30;
-        ok(mn_coll_list_insert(cells[0].bits, 2, &mut cells[6]));
-        check(mn_coll_list_len(cells[0].bits) == 3, 174);
-        // The structural change retired the old place before any buffer read.
-        check(mn_coll_place_get(&mut cells[5], cells[3].bits) == STALE, 175);
-        // A fresh place on the new element is legal.
-        ok(mn_coll_place_mint(&mut cells[7], cells[0].bits, 2));
-        ok(mn_coll_place_get(&mut cells[5], cells[7].bits));
-        check(cells[5].bits == 30, 176);
-        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
-        mn_coll_summary();
-        ExitProcess(42);
-    } else {
-        unreachable!("mn_probe_seam_retry is the only cfg in this run");
     }
 }
