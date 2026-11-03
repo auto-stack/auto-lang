@@ -3823,11 +3823,11 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 
 - **D-906-1 发行分布门既有破损（owner: Web，Plan 901 谱系）**：`auto-web/scripts/web-repository-distribution.py` 的源暂存腿 `web-install.py source` 在 web 解析图含 `vendor/autodown-test-parser`（PLAN-901 起 auto-test-case 常驻→lang 仓 vendor 路径依赖）时报 "unexpected local package layout"——自 901 起未再整跑过该门；另 master web 检出 `cargo metadata --locked` 本身红（锁/清单漂移）。PLAN-906 复核中在 worktree 组内复现（log: plan-artifacts/plan-906/lang/distribution-gate.log，master 复现于 /tmp/p906-dist-master 尝试）。906 自身的发行面改动（web-install.py validate_packages owner 翻转、stage_source 位置派生 owner）为代码级验证，端到端待该门修复后由 Web owner 重验。关闭条件：Web owner 修复 stage_source 的 vendor 树处理与 web 锁漂移后整跑 distribution 门并出收据。
 - **D-906-2 ui-full 3 项 iced layout 既有红（owner: UI）**：`auto-ui-runtime::ui::iced::layout_tests::{desktop_surface_z_slot_window_covers_icons,p625_uigallery_sidebar_pills_visible,popover_modal_centers_within_clipped_host}` 在 UI master a3df9e8 同命令确定性复现（PLAN-906 四仓门跑8 与隔离重放双证）。关闭条件：UI owner 修复后四仓门 ui-full 腿恢复 exit 0。
-- **D-906-3 modularity-audit strict 既有红（治理）**：master 与 906 分支同判 fail 2 违例（auto-cache→auto-tool-execution 新增禁向边 + stale_baseline）。基线重采样属维护任务。
+- **D-906-3 modularity-audit strict 既有红（治理）**：master 与 906 分支同判 fail 2 违例（auto-cache→auto-tool-execution 新增禁向边 + stale_baseline）。基线重采样属维护任务。 → **已关闭（PLAN-918 T-03/T-04，2026-11-03，见 PLAN-918 交付记录）**
 
 ## PLAN-910 登记（2026-11-02）
 
-- **D-910-1 web-delivery-controls 既有 ERROR（owner: lang test-governance，Plan 890 谱系）**：`scripts/test-governance/web_delivery.py:129` 引用的 `execution_ids` 全仓无定义，`test_four_repository_fixed.FourOwnerControls.test_distribution_consumer_source_and_closure_controls` 走到 reused-execution 分支即 `NameError`；master 主检出 `python -I -m unittest scripts.test_four_repository_fixed.FourOwnerControls.test_distribution_consumer_source_and_closure_controls` 同判复现（PLAN-910 T-06）。本包未触碰该文件，固定组其余 12/13 过。关闭条件：实现 `execution_ids(raw)`（nextest 日志实际执行 ID 集）并与 `web-independent-tests/1` 收据口径核对后固定组绿。
+- **D-910-1 web-delivery-controls 既有 ERROR（owner: lang test-governance，Plan 890 谱系）**：`scripts/test-governance/web_delivery.py:129` 引用的 `execution_ids` 全仓无定义，`test_four_repository_fixed.FourOwnerControls.test_distribution_consumer_source_and_closure_controls` 走到 reused-execution 分支即 `NameError`；master 主检出 `python -I -m unittest scripts.test_four_repository_fixed.FourOwnerControls.test_distribution_consumer_source_and_closure_controls` 同判复现（PLAN-910 T-06）。本包未触碰该文件，固定组其余 12/13 过。关闭条件：实现 `execution_ids(raw)`（nextest 日志实际执行 ID 集）并与 `web-independent-tests/1` 收据口径核对后固定组绿。 → **已关闭（PLAN-918 T-02，2026-11-03，见 PLAN-918 交付记录）**
 - **D-910-2 `auto build -d <dir> -r rust` 派发缺陷（owner: Man CLI）**：build 的 rust 分支以 `std::env::current_dir()` 判定 `src/front` 存在，`-d` 指向他处时静默走 pac/ninja 转译分支（"ninja: no work to do" exit 0），不进 rust_ui 生成（PLAN-910 V-01 实录）。关闭条件：rust 分支改用解析后的项目目录，并补 `-d` 的 UI 工程回归用例。
 - **D-906-1 补记**：man-install 腿的同根因（PLAN-901 vendor 快照 crate 进 metadata 图）已由 PLAN-910 d823fdd 精确修复并实证（full --skip-build 安装 + 安装版 SDK 模式构建）；Web 发行门腿（web-repository-distribution / web 锁漂移）维持 Web owner 关闭条件，可复用同一映射/排除做法。
 
@@ -3838,6 +3838,24 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **D-910-1**：只读确认直接与reused receipt两路径均汇入未定义`execution_ids`；由[918](918-cross-repository-admission-and-boundary-closure.md)收口日志ID/原分母/源配置哈希准入及原控制。当前未修、未重跑门，不标closed。
 - **D-906-3**：`auto-cache`按896规范使用std-only owned设施有据；旧域禁向规则需精确表达。baseline base_revision `9d96d0f7602aad96231b875d812b81683da04d10`本机不可解析（git对象检查exit128），config hash仍与记录相同，旧集合无该设施边。918先核全边/owner决策和窄设施准入，再干净提交重冻；本轮未运行strict/改基线，不把旧“2违例”当当前全量结论。
 - Web **D-906-1**仍归Web，Man **D-910-2**仍归Man，UI布局/013-todo及真实OS事件沿各自合同；918控制门的绿不替代外仓产品/发行实际执行。031必要生成输入接线由031负责，双方按正式来源协调，不互等整线。
+
+## PLAN-918 交付记录（2026-11-03）
+
+- **D-910-1 已关闭（PLAN-918 T-02）**：`scripts/test-governance/web_delivery.py` 恢复并加固
+  `execution_ids`（890 谱系公共解析点：冻结 nextest PASS 行 → 唯一 binary+test 身份；重复/FAIL/
+  未终态/畸形/ANSI 行与 summary 不符精确拒绝，不 set 去重、不 summary 冒绿）。`cargo t
+  web-delivery-controls` 13/13 PASS（原 12/13 + NameError）；直接与 reused 两路径均达真实
+  ID/summary/源/config/log 哈希校验（V-01..V-03）。落地候选 5a40437a5。
+- **D-906-3 已关闭（PLAN-918 T-03/T-04）**：新增 `[[rules.facility_admission]]` 逐边精确设施
+  准入（auto-cache→auto-tool-execution，normal/非 optional/member，require_std_only_closure），
+  不是域重分类或 grandfather；旧锚 `9d96d0f7` 不可解析事实保留（git 对象检查 exit128，旧基线
+  SHA256 4dccbb93… 记录在案），干净提交树重冻新锚 `87b02e2ea`（66 边，config_sha256 绑定）；
+  strict 全绿且设施边具名 admitted，metadata --locked 66/66 无差异、双 observe payload 字节一致、
+  提交 manifest 变更→stale_baseline 判红→revert→复绿。self-test 16/16（新增 v13 设施正反控）。
+- Web **D-906-1**（vendor 暂存/锁漂移）仍归 Web，Man **D-910-2**（`-d` rust 派发）仍归 Man；
+  UI 布局/013-todo 及真实 OS 事件沿各自合同。语言 consumer 与现 Web producer 的 ID 级对账差额
+  （`web-independent-tests/1` 收据不携带执行 ID 集）已在 PLAN-918 §5.2/§10 记录，归 Web schema
+  决定，本包未擅改 Web schema；031 必要生成输入接线由 031 负责，双方按正式来源协调，不互等整线。
 
 ## PLAN-916 final review repair candidates（2026-11-02）
 
