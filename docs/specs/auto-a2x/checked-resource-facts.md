@@ -50,3 +50,15 @@
   （V-13）。
 - resolve `.len()` 视图融合的延迟索引任务已修正入节点 subtask 序（修复前第二个融合视图
   恒渲染索引 0）；反例 `v02_fused_view_indices_preserved` 常驻。
+
+## C 后端消费边界（PLAN-925 CA-B）
+
+- C lowering 与 scalar 通道一样**只消费**本文件单源事实：param 模式/`FnKind`/
+  `BodyResourcePlan` 逐出口清理计划原样入 C；C 端不因"编译器没借用检查"放松——
+  同根排他/mut 冲突在 session 入口具名拒（`verify.mut-conflict`）。
+- **S 窗守卫（T-05 修复，验证器侧）**：mut 借用根不得进入 exit live 集——三处
+  reown 点以 `plan.owned` 为守卫（`text_resources.rs:1822/1951/2028`）；由此
+  mut 资源 record 参数由 **callee** 排出口 free（此前 Rust 侧被幂等 take-free
+  掩蔽的存量缺口；902 冻结语料无此形状）。replace_frees 经借用照旧。
+- 恢复后所需的只读事实经 AXP2 锚+prelude seed（record 表）与逐函数 slice/凭证
+  重验重建，不 deserialize Checked/PASS/宿主地址。

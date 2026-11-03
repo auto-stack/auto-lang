@@ -70,5 +70,23 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
   （store_cache/incremental/902/904）是该迁移的字节同一 oracle。
 - 语义层（AXS1..3）键不含目标字段；AXS1 consumers 注册增列
   `auto-a2x-c`（registry 元数据，键/字节不动）。
-- 不支持族是命名拒绝：cold 入口 `ensure_target_supports`（C 仅
-  Family::Scalar；RecordText/Collections 经 C 目标为 `a2x.domain`）。
+- 不支持族是命名拒绝：cold 入口 `ensure_target_supports`（C 支持
+  Family::Scalar 与 Family::RecordText——record/text/text-record 三 profile
+  按 source profile 分派（PLAN-925 CA-B）；Collections 经 C 目标仍为 `a2x.domain`）。
+
+## PLAN-925：C record-text 目标与类型 prelude（CA-B）
+
+- C provider 增 RT 通道：C 私有类型/模式/资源 runtime lowering（详见
+  [auto-a2c/record-text-hir-backend](../auto-a2c/record-text-hir-backend.md)）；
+  类型 prelude（record 表）以 provider-opaque **seed**（`a2xc-rt-seed/1`）随锚
+  持久化、恢复时盲装配（view=None）——纯恢复不依赖活视图。
+- consumer 面：`a2x-store`（锚发布/重绑/恢复经 `Box<dyn TargetProvider>` 委托，
+  无 C 类型泄漏）、`a2x-c`（RT lowering/provider）、worker（`daily-emit-c`/
+  `certify-c` 按 profile 分派两 C recipe）、`auto-lang-core` 适配器
+  （`ac_a2c_hir` 双 recipe 分派）、`auto-test-case`（contract 注册
+  `ac-a2c/hir-record-text-emit-v1`）、`boundaries` 依赖方向不变。
+- 与 Rust record-text 目标边界：Rust 侧保持现状（恢复/锚不 widen，具名拒绝）；
+  两通道 recipe/fileset/cert/runtime 身份严格互斥，跨通道配对=REJECTED。
+- CA-D 交接：本包交付稳定资源/mode/符号/来源出口；内部 C struct 布局私有，
+  不冒公开 AutoABI。未支持域（显式）：List/Variant（CA-C）、闭包/HOF、mut
+  实例方法/ext/trait、Unit/script 入口、公开 wrapper/FFI。

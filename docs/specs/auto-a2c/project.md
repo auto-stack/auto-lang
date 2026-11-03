@@ -5,16 +5,23 @@
 > `ace-a2x-core`+`ace-core`） | 依据：PLAN-921（CA-A）；C 路线
 > [shared-a2x-and-hir-to-c-roadmap](../../design/strategy/shared-a2x-and-hir-to-c-roadmap.md)
 
-受检 HIR → C11 的**标量通道**目标 provider（`CTargetProvider`）：与 Rust
-目标共享同一语义事实（AXS1 键/语义指纹）与同一 session/store 服务，片段/
-文件集/证书身份完全按 C 目标隔离（层 AXC1、schema `auto.a2x.c.fileset/1`、
-recipe `ac-a2c/hir-scalar-emit-v1`、cert `ace.a2c-hir.scalar.cert/1`）。
+受检 HIR → C11 的目标 provider（`CTargetProvider`）：与 Rust
+目标共享同一语义事实（AXS 键/语义指纹）与同一 session/store 服务，片段/
+文件集/证书身份完全按 C 目标隔离。两通道：**scalar**（层 AXC1、schema
+`auto.a2x.c.fileset/1`、recipe `ac-a2c/hir-scalar-emit-v1`、cert
+`ace.a2c-hir.scalar.cert/1`，合同见
+[scalar-hir-backend](scalar-hir-backend.md)）与 **record-text**（CA-B，
+PLAN-925：层 AXC2/AXP2、fileset `auto.a2x.c.record-text.fileset/1`、recipe
+`ac-a2c/hir-record-text-emit-v1`、cert `ace.a2c-hir.record-text.cert/1`，
+合同见 [record-text-hir-backend](record-text-hir-backend.md)）。
 
 ## 目标与范围
 
-- **支持域**：仅原 core/scalar profile 的 i32/bool 计算面（与 Rust 标量
-  通道同准入）；RecordText/Collections 经 C 目标是命名拒绝
-  （`a2x.domain`，后继 CA-B/CA-C 不因易表达而放宽）。
+- **支持域**：scalar 通道=原 core/scalar profile 的 i32/bool 计算面；
+  record-text 通道（CA-B）=record/text/text-record 三 profile（C 值/借用
+  表示、模式/方法/资源出口、prelude seed 恢复，详见
+  [record-text-hir-backend](record-text-hir-backend.md)）。Collections 经
+  C 目标仍是命名拒绝（`a2x.domain`，后继 CA-C 不因易表达而放宽）。
 - **受管编译**（`a2x-worker::crun`）：cl 定位复用 PLAN-797 冻结序
   （env→vswhere→最高版本；缺工具=infra 非 skip）；vcvars64 从 cl 路径
   推导（无硬编码版本/edition）；冻结 flags
@@ -37,5 +44,8 @@ recipe `ac-a2c/hir-scalar-emit-v1`、cert `ace.a2c-hir.scalar.cert/1`）。
 - 形式采样（`a2c-formal`）：load256 原样 30 样本 P90 全暖门≤2000ms
   （hit/restart/body-edit/restore；restore≈150ms 级）；子进程纯恢复
   见证（P0 计数断言+恢复后编辑可用）。
-- 非目标（后继包）：CA-B record/text、CA-C 集合/变体、CA-D 有限 public
-  ABI、CA-E 四端/M1 总签章。
+- CA-B 现状（PLAN-925）：首例套件 `a2c-hir-record-text-925`（5 例 golden
+  字节判+手写 reference；固定组同名）；512 修订正式采样全暖门 P90≤34ms；
+  纯恢复 P0+方法暖编辑（AXP2 seed 锚）。
+- 非目标（后继包）：CA-C 集合/变体、CA-D 有限 public ABI、CA-E 四端/M1
+  总签章。

@@ -85,3 +85,29 @@
 - **计数器**：restore_lookup/binding_checks/payload_verifies/
   fileset_verifies/anchors_published/env_rebuilds；恢复绝不触碰生产
   计数器——"cold 算 key 冒 P0"由计数器断言机械反控。
+## PLAN-925：C record-text 片段层 AXC2、来源锚 AXP2 与方法暖编辑（CA-B）
+
+- **AXC2**（`a2925/axc-c-rt-fn/v1`，producer `auto-a2x-c`）：C RT 片段键沿
+  AXC1 形 + RT runtime/print 身份；与 AXR1..3/AXC1 互不可命中。
+- **AXP2**（`a2925/axp-rt-source-anchor/v1`）：v1 字节不动、新增**携带 prelude
+  seed 行**（`a2xc-rt-seed/1`，与 AXP1 严格配对按 family 分层）；RT 锚仅 C
+  目标发布（Rust rt 保持无锚现状）。冷发布/ranged 重绑带 schema+seed；按
+  owner 限定 decl 重绑（裸名会致方法条目漏绑+错位切片 sha 自洽——已修）。
+- **纯恢复放宽至 RecordText+C**：AXP2 查找→切片/语义/片段/文件集逐项重验→
+  view=None+seed 盲装配→装 residents、env=None；P0 计数器断言同 AXP1。
+  下一编辑经 `ensure_env` 整源重建（M 类，env_rebuilds 计数）后走函数/
+  **方法**暖路——restore→next **method** edit 用 ranged 授权
+  （`warm_edit_ranged_method`；非 ranged 方法编辑需活 env，具名拒）。
+- **方法暖编辑**：窄方法片段（`parse_method_fragment`，Receiver Static|View）+
+  owner 限定 env 槽位（裸名 fn 表 vs 方法 `d_f{slot}_{name}` 分叉）+脚手架
+  方法 span inert（904 规则补齐）。签名/mode/名义字段/borrow/实际 body 读取
+  依赖精确失效；未改兄弟方法/同名自由函数/caller resident 字节恒等；
+  whole_fallback 恒 0（机械断言）。
+- **事务/失败**：失败编辑回滚源绑定（manifest 仍绑 next：预设+失败还原）；
+  readonly 零发布；reader lease 保活到最后 owner 后物理 GC。
+- **P/R/M 分账（实测 2026-11-03）**：512 真实不同修订（256 body+256 method）
+  全 cl 预认证；hit P90=7ms/restart=11/body=22/**method=34**/restore=13；
+  fresh 440 单列；未改单位账本（编辑态 lower/print=30、persist=60）；
+  A2X 工作集合计 ~10MiB/48MiB；子进程证人恢复 P0（lower=0）+ranged 方法
+  编辑 env_rebuilds+1。CA-D 交接身份：seed/schema/recipe/fileset/cert 全部
+  版本化字面量，漂移=STALE/拒，不静默覆盖。

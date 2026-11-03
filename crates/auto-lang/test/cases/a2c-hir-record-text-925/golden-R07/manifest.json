@@ -1,0 +1,14 @@
+{
+  "schema": "auto.a2x.c.record-text.fileset/1",
+  "input_hash": "f9b1134e0b090634",
+  "entry": "main",
+  "functions": [
+    { "decl": "bump", "sem_fp": "3b817a29e4f1719773483d3c4d8c6909cee420f870ca682d0cda2ae2ef28260c", "origin": [27, 117] },
+    { "decl": "main", "sem_fp": "52d25ea2a78a37e1bc348568244343fda5c9b980424acd813e7f5b548d296b9c", "origin": [118, 225] }
+  ],
+  "files": [
+    { "path": "main.c", "sha256": "fd8fa991574059cd6f2df8286cd92e3d8b4be6ce500811ef8597e34e17d29a11" },
+    { "path": "a2x_c_rt_runtime.h", "sha256": "3792b3df726340977e273af4b0cc557555a343a337704aad95ee613d51987c75" },
+    { "path": "generated.c", "sha256": "c192ace4f63db0bfd9d46f09e5e49d173579c0011d9e59544b909fe06e3150fb" }
+  ]
+}
