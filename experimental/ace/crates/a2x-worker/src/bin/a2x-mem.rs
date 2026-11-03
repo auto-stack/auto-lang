@@ -92,8 +92,14 @@ fn main() {
     std::fs::create_dir_all(&out_dir).unwrap();
 
     let bytes = generate_source(0).len();
-    let mut session =
-        A2xSession::open(&out_dir, "a2x-mem", "mem-probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut session = A2xSession::open(
+        &out_dir,
+        "a2x-mem",
+        "mem-probe",
+        128 * 1024 * 1024,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     // ---- COLD phase (upstream frontend cost, informational) ----
     let cold = session
         .cold_assemble(&generate_source(0), false, &[], "main", false)
@@ -120,6 +126,26 @@ fn main() {
             .unwrap_or_else(|e| panic!("warm edit r{} failed: {:?}", r, e));
         warm_max_current = warm_max_current.max(current_working_set_bytes());
     }
+
+    // ---- PLAN-921: MIXED-TARGET phase — same session, same store, the C
+    // target's residents beside the Rust ones; the COMBINED management
+    // budget (both backends' residents + bookkeeping together) is what
+    // §5.4 caps at 48 MiB ----
+    session.set_target(ace_a2x_c::CTargetProvider::v1());
+    session
+        .cold_assemble(&generate_source(0), false, &[], "main", false)
+        .expect("mixed-target cold C assembly");
+    let mut mixed_max = current_working_set_bytes();
+    for r in 1..=30u32 {
+        session
+            .warm_edit("fn_037", &generate_fragment(r), "main", false)
+            .unwrap_or_else(|e| panic!("mixed warm edit r{} failed: {:?}", r, e));
+        mixed_max = mixed_max.max(current_working_set_bytes());
+    }
+    println!(
+        "mixed_target_warm_max_current_working_set_bytes={}",
+        mixed_max
+    );
 
     let stats = session.stats().clone();
     let peak = peak_working_set_bytes();

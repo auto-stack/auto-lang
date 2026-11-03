@@ -1,0 +1,2 @@
+fn helper(a int) int { return a * 2 }
+fn main() int { return helper(21) }

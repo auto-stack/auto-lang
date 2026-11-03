@@ -143,6 +143,52 @@ fn run_via_vcvars(
     .map_err(|e| CToolError(format!("contained spawn: {e:?}")))
 }
 
+/// The C toolchain identity for certification binding (cl banner + hash
+/// + vcvars content hash + frozen flags).
+pub fn toolchain_identity() -> Result<ace_a2x_c::cert::CToolchainIdentity, CToolError> {
+    let tc = resolve_toolchain()?;
+    let vcvars_bytes =
+        std::fs::read(&tc.vcvars64).map_err(|e| CToolError(format!("read vcvars: {e}")))?;
+    Ok(ace_a2x_c::cert::CToolchainIdentity {
+        cl_version: tc.cl_version.clone(),
+        cl_hash: tc.cl_hash.clone(),
+        vcvars_sha256: ace_a2x_core::sha256::sha256_hex(&vcvars_bytes),
+        flags: C_FLAGS.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Compile ONE standalone C source (the hand-written certification
+/// reference) into an exe with the same frozen flags + contained
+/// executor — its own translation unit, no generated inputs.
+pub fn compile_c_standalone(src: &Path, exe: &Path) -> Result<(), CToolError> {
+    let tc = resolve_toolchain()?;
+    let mut argv: Vec<String> = C_FLAGS.iter().map(|s| s.to_string()).collect();
+    argv.push(format!("-Fe:{}", exe.display()));
+    argv.push(src.display().to_string());
+    let cwd = src
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let run = run_via_vcvars(&tc, &argv, &cwd, C_COMPILE_DEADLINE)?;
+    let out = String::from_utf8_lossy(&run.stdout).into_owned();
+    let err = String::from_utf8_lossy(&run.stderr).into_owned();
+    if run.exit_code != Some(0) {
+        return Err(CToolError(format!(
+            "cl exited {:?}:\n{}\n{}",
+            run.exit_code,
+            out.trim(),
+            err.trim()
+        )));
+    }
+    if !exe.is_file() {
+        return Err(CToolError(format!(
+            "cl reported success but exe missing: {}",
+            exe.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Compile the C file set (main.c + generated.c, runtime header beside
 /// them) into `exe` with the frozen flags. A nonzero exit is an infra
 /// error carrying the diagnostics.

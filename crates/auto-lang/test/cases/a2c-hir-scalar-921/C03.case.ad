@@ -1,0 +1,28 @@
+# PLAN-921 a2c-hir scalar — C03 (two-level call chain): leaf triples its
+# argument, mid adds one, main returns mid(20) = leaf(20) + 1 = 61. Three
+# fragments in one session assembly. Same four-file C set shape as C01.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2c-hir-scalar-921.c03"
+  tags: ["a2c-hir", "scalar", "call-chain"]
+  links: ["PLAN-921"]
+  source: { file: "src/C03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2c/hir-scalar-emit-v1",
+        a2x_hir: { profile: "scalar", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-C03/main.c", compare: "bytes" },
+        { path: "a2x_c_runtime.h", file: "golden-C03/a2x_c_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-C03/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-C03/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

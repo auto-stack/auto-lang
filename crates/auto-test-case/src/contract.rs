@@ -1090,6 +1090,7 @@ fn decode_check(
         Some("ac-a2r/hir-scalar-emit-v1")
             | Some("ac-a2r/hir-record-text-emit-v1")
             | Some("ac-a2r/hir-collections-emit-v1")
+            | Some("ac-a2c/hir-scalar-emit-v1")
     );
     // PLAN-914: the AV recipes are the only probe recipes whose run steps
     // report `step.trace`; the mark-trace oracle is admitted there only.
@@ -1690,6 +1691,10 @@ fn decode_options(
                         "ac-a2r/hir-scalar-emit-v1"
                         | "ac-a2r/hir-record-text-emit-v1"
                         | "ac-a2r/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-921: the C scalar emit recipe takes exactly
+                        // one judged run step (the daily `daily-emit-c`);
+                        // certify/edit faces arrive with their own contract.
+                        "ac-a2c/hir-scalar-emit-v1" => matches!(op.as_str(), "run"),
                         _ => op != "run",
                     };
                     if !allowed {
@@ -2542,12 +2547,14 @@ fn decode_options(
         // PLAN-892/902: the a2x_hir binding (same seam contract as mn —
         // required for its recipe, invalid elsewhere). The scalar recipe
         // keeps its core/scalar profiles; the record-text recipe admits
-        // record/text/text-record (strictly disjoint).
+        // record/text/text-record (strictly disjoint). PLAN-921: the C
+        // scalar recipe keeps its own core/scalar profile set.
         let is_a2x_recipe = matches!(
             recipe.as_str(),
             "ac-a2r/hir-scalar-emit-v1"
                 | "ac-a2r/hir-record-text-emit-v1"
                 | "ac-a2r/hir-collections-emit-v1"
+                | "ac-a2c/hir-scalar-emit-v1"
         );
         let a2x_hir = match f.sub("a2x_hir") {
             None => {
@@ -2578,6 +2585,11 @@ fn decode_options(
                         matches!(profile.as_str(), "core" | "scalar")
                     }
                     "ac-a2r/hir-collections-emit-v1" => profile == "collections",
+                    // PLAN-921: the C scalar channel mirrors the a2r
+                    // scalar profile set (core/scalar only).
+                    "ac-a2c/hir-scalar-emit-v1" => {
+                        matches!(profile.as_str(), "core" | "scalar")
+                    }
                     _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
                 };
                 if !profile_ok {
@@ -2669,6 +2681,11 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // prebuilt worker and seam contract, riding the collections fileset
     // (strictly disjoint recipe/profile/fileset/cert identities).
     "ac-a2r/hir-collections-emit-v1",
+    // PLAN-921: the C scalar A2X emit recipe (HIR→C11) — the same prebuilt
+    // worker (its `daily-emit-c` op) and seam contract, riding the C
+    // fileset (main.c/a2x_c_runtime.h/generated.c + manifest.json sidecar;
+    // strictly disjoint recipe/fileset/cert identity from every a2r one).
+    "ac-a2c/hir-scalar-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.

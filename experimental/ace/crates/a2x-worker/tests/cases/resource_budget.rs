@@ -57,3 +57,29 @@ fn warm_steady_state_within_48mib() {
         source_bytes, cold_peak, warm, MANAGEMENT_BUDGET_BYTES
     );
 }
+
+/// PLAN-921: the MIXED-TARGET management budget — Rust and C residents in
+/// ONE session/store together stay within the 48 MiB warm budget (the
+/// combined-WS reading of §5.4; load256 scale preserved).
+#[test]
+fn mixed_target_warm_within_48mib() {
+    let bin = env!("CARGO_BIN_EXE_a2x-mem");
+    let out = Command::new(bin).output().expect("spawn a2x-mem");
+    assert!(
+        out.status.success(),
+        "a2x-mem failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mixed: u64 = text
+        .lines()
+        .find_map(|l| l.strip_prefix("mixed_target_warm_max_current_working_set_bytes="))
+        .and_then(|v| v.parse().ok())
+        .expect("mixed budget line");
+    assert!(
+        mixed <= MANAGEMENT_BUDGET_BYTES,
+        "mixed-target warm working set {}B exceeds the {}B budget",
+        mixed,
+        MANAGEMENT_BUDGET_BYTES
+    );
+}

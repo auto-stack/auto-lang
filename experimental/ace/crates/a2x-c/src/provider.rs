@@ -17,6 +17,9 @@ use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::target::{Family, FileSet, FilesetRequest, TargetDescriptor, TargetProvider};
 use ace_a2x_core::{A2xReject, FnFacts};
 
+/// The C backend version constant (cert/manifest identity source).
+pub const C_BACKEND_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// The C print-pass version (fragment key input).
 pub const C_PRINT_VERSION: &str = "a2x-c-print/1";
 /// The C language standard bound into target identities.

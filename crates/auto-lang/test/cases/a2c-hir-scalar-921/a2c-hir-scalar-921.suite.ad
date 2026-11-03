@@ -1,0 +1,17 @@
+# PLAN-921 a2c-hir scalar suite — the FIRST C channel's evidence set
+# (ac-a2c/hir-scalar-emit-v1, HIR→C11): three frozen scalar sources through
+# the real A2X C chain — C01 cross-function call (helper(21) = 42), C02 the
+# DivOverflow trap source (INT_MIN / -1; the DAILY check is emit-only golden
+# compare — no execution, the runtime trap is a certification-leg axis),
+# C03 a two-level call chain (leaf/mid/main = 61). Every included case is
+# green by real emission on the current tree; the scalar a2r-hir-892 /
+# record-text-902 / collections-904 suites are untouched (parallel
+# channels, mutually untrusted).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2c-hir-scalar-921", include: [
+  "C01.case.ad",
+  "C02.case.ad",
+  "C03.case.ad",
+] }
+```

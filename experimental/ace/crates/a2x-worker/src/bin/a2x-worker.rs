@@ -44,6 +44,11 @@ const RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
 /// PLAN-904: the collections channel (List/Variant) — parallel to (and
 /// mutually untrusted with) both recipes above.
 const COLL_RECIPE: &str = "ac-a2r/hir-collections-emit-v1";
+/// PLAN-921 CA-A: the C scalar channel (HIR→C11) — its own recipe,
+/// fileset schema and cert; parallel to and mutually untrusted with every
+/// Rust recipe above. Served by the same worker binary (one tool
+/// identity), dispatched by the `daily-emit-c`/`certify-c` ops.
+const C_RECIPE: &str = ace_a2x_c::C_RECIPE;
 
 fn main() {
     let mut req = String::new();
@@ -62,6 +67,8 @@ fn main() {
         "identity" => identity(),
         "daily-emit" => daily_emit(&v),
         "certify" => certify(&v),
+        "daily-emit-c" => daily_emit_c(&v),
+        "certify-c" => certify_c(&v),
         other => fail(&format!("unknown op `{}`", other)),
     };
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -91,10 +98,13 @@ fn identity() -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
-        "recipes": [RECIPE, RT_RECIPE],
+        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
+        "targets": ["rust", "c"],
+        "c_backend": "auto-a2x-c",
+        "c_standard": ace_a2x_c::C_STANDARD,
     })
 }
 
@@ -285,6 +295,273 @@ fn daily_emit(v: &serde_json::Value) -> serde_json::Value {
     r["entry_fn"] = out.entry_fn.clone().into();
     r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
     r["files"] = file_records(&out.files).into();
+    r["spawned_rustc"] = 0.into();
+    r
+}
+
+/// PLAN-921: the C scalar emit — the SAME provider path the session uses
+/// (pure functions: byte-identical to a session cold assembly), without
+/// a store. Serves `core`/`scalar` only; other profiles are named
+/// rejections (the C channel never widens silently).
+fn emit_c(v: &serde_json::Value) -> EmitOutcome {
+    use ace_a2x_core::target::{Family, FilesetRequest, FragmentText, TargetProvider};
+    let (src, source_sha256) = read_source(v);
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let entry = v["entry"].as_str().unwrap_or("main").to_string();
+    let caps: Vec<String> = v["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let compiled = match profile.as_str() {
+        "core" => compile_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_source(&src, "a2x-worker", &caps),
+        other => fail(&format!(
+            "a2x.domain: the C scalar channel serves core/scalar only, not `{}`",
+            other
+        )),
+    };
+    let compiled = match compiled {
+        Ok(c) => c,
+        Err(ds) => {
+            let detail = ds
+                .iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            fail(&format!("a2x.compile: {detail}"))
+        }
+    };
+    let view = match SemanticView::from_checked(&compiled.checked) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let provider = ace_a2x_c::CTargetProvider::v1();
+    let family = Family::Scalar;
+    let runtime = match provider.runtime_source(&view, family) {
+        Ok(r) => r,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let texts = match provider.produce_fragments(&view, &fns, family) {
+        Ok(t) => t,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let mut sem_fps = Vec::with_capacity(fns.len());
+    for f in &fns {
+        match ace_a2x_core::semantic_fingerprint(&view, f) {
+            Ok(fp) => sem_fps.push(fp),
+            Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+        }
+    }
+    let frags: Vec<FragmentText<'_>> = fns
+        .iter()
+        .zip(texts.iter())
+        .zip(sem_fps.iter())
+        .map(|((f, text), fp)| FragmentText {
+            def_index: f.def_index,
+            source_name: f.source_name,
+            sem_fp: fp.as_str(),
+            text: text.as_str(),
+        })
+        .collect();
+    let fileset = match provider.assemble_fileset(FilesetRequest {
+        entry: &entry,
+        input_hash: &compiled.input_hash,
+        family,
+        fragments: &frags,
+        view: Some(&view),
+        runtime: &runtime,
+        prelude_seed: None,
+        origins: None,
+        source_sha256: None,
+    }) {
+        Ok(fs) => fs,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    EmitOutcome {
+        files: fileset.files,
+        manifest: fileset.manifest,
+        input_hash: compiled.input_hash.clone(),
+        entry_fn: ace_a2x_c::c_fn_name(&entry),
+        profile,
+        source_sha256,
+    }
+}
+
+/// PLAN-921: the daily spawn-zero C emit (no cl, no rustc, no target
+/// program) — the parent judges the emitted set against its goldens.
+fn daily_emit_c(v: &serde_json::Value) -> serde_json::Value {
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let out = emit_c(v);
+    write_out_dir(out_dir, &out);
+    let mut r = ok_base(C_RECIPE);
+    r["mode"] = "daily-emit-c".into();
+    r["target"] = "c".into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r
+}
+
+/// PLAN-921 T-10: the C scalar CERTIFICATION leg - the actual set and
+/// the caller-supplied HAND-WRITTEN reference compile and run
+/// INDEPENDENTLY under the real MSVC cl, both against the same
+/// closed-form oracle; the strict certificate binds the full
+/// path/tool/dependency identity. Spawns are EXPECTED here (the
+/// certification channel; the daily channel stays spawn-zero).
+fn certify_c(v: &serde_json::Value) -> serde_json::Value {
+    use ace_a2x_c::cert::{BoundFile, CCertDraft, C_CERT_SCHEMA};
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let reference_path = v["reference_path"]
+        .as_str()
+        .unwrap_or_else(|| fail("reference_path required (hand-written C reference)"));
+    let oracle_kind = v["oracle_kind"].as_str().unwrap_or("value");
+    let oracle_value = match oracle_kind {
+        "value" => v["oracle_value"]
+            .as_i64()
+            .map(|x| x.to_string())
+            .unwrap_or_else(|| fail("oracle_value required for kind=value")),
+        "trap" => v["oracle_trap"]
+            .as_str()
+            .unwrap_or_else(|| fail("oracle_trap required for kind=trap"))
+            .to_string(),
+        other => fail(&format!("oracle_kind must be value|trap, not `{}`", other)),
+    };
+    let case_id = v["case_id"].as_str().unwrap_or("case");
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let expected_line = format!("{}:{}\n", oracle_kind, oracle_value);
+
+    // 1) emit + materialize the actual set
+    let out = emit_c(v);
+    write_out_dir(out_dir, &out);
+
+    // 2) ACTUAL: real cl compile + run under the contained executor
+    let actual_dir = PathBuf::from(out_dir);
+    let (actual_stdout, _) = ace_a2x_worker::crun::compile_and_run_c(&actual_dir, "actual.exe")
+        .unwrap_or_else(|e| fail(&format!("actual compile/run: {}", e)));
+    if actual_stdout != expected_line {
+        fail(&format!(
+            "a2x.oracle: actual observed `{}` != oracle `{}`",
+            actual_stdout.trim(),
+            expected_line.trim()
+        ));
+    }
+
+    // 3) REFERENCE: the hand-written C file compiles and runs
+    // INDEPENDENTLY (its own translation unit, same contained executor)
+    let ref_dir = actual_dir.join("_reference");
+    if let Err(e) = std::fs::create_dir_all(&ref_dir) {
+        fail(&format!("create reference dir: {e}"));
+    }
+    let ref_src = std::fs::read_to_string(reference_path)
+        .unwrap_or_else(|e| fail(&format!("read reference: {e}")));
+    let ref_file = ref_dir.join("reference.c");
+    std::fs::write(&ref_file, &ref_src).unwrap_or_else(|e| fail(&format!("write reference: {e}")));
+    let ref_exe = ref_dir.join("reference.exe");
+    ace_a2x_worker::crun::compile_c_standalone(&ref_file, &ref_exe)
+        .unwrap_or_else(|e| fail(&format!("reference compile: {}", e)));
+    let ref_run = ace_a2x_worker::crun::run_exe(&ref_exe)
+        .unwrap_or_else(|e| fail(&format!("reference run: {}", e)));
+    let ref_stdout = String::from_utf8_lossy(&ref_run.stdout).into_owned();
+    if ref_stdout != expected_line {
+        fail(&format!(
+            "a2x.oracle: reference observed `{}` != oracle `{}`",
+            ref_stdout.trim(),
+            expected_line.trim()
+        ));
+    }
+    let reference_sha256 = sha256_hex(ref_src.as_bytes());
+
+    // 4) the strict certificate
+    let toolchain = ace_a2x_worker::crun::toolchain_identity()
+        .unwrap_or_else(|e| fail(&format!("toolchain identity: {}", e)));
+    let mut actual_files = Vec::new();
+    for (p, c) in &out.files {
+        actual_files.push(BoundFile {
+            path: p.clone(),
+            sha256: sha256_hex(c.as_bytes()),
+        });
+    }
+    let wrapper_sha256 = out
+        .files
+        .iter()
+        .find(|(p, _)| p == "main.c")
+        .map(|(_, c)| sha256_hex(c.as_bytes()))
+        .unwrap_or_default();
+    let golden = v["golden_path"]
+        .as_str()
+        .and_then(|g| std::fs::read_to_string(g).ok());
+    let caps: Vec<String> = v["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let draft = CCertDraft {
+        schema: C_CERT_SCHEMA.to_string(),
+        recipe: C_RECIPE.to_string(),
+        case: format!("a2c-hir-921/{}", case_id),
+        profile: out.profile.clone(),
+        hir_domain: "auto.hir.scalar".to_string(),
+        entry: v["entry"].as_str().unwrap_or("main").to_string(),
+        verdict: "PASS".to_string(),
+        oracle_kind: oracle_kind.to_string(),
+        oracle_value: oracle_value.clone(),
+        input_hash: out.input_hash.clone(),
+        source_sha256: out.source_sha256.clone(),
+        actual_files,
+        golden_sha256: golden.map(|g| sha256_hex(g.as_bytes())),
+        wrapper_sha256,
+        reference_sha256,
+        backend: "auto-a2x-c".to_string(),
+        backend_version: ace_a2x_c::C_BACKEND_VERSION.to_string(),
+        standard: ace_a2x_c::C_STANDARD.to_string(),
+        shared_view_version: "0.1.0".to_string(),
+        protocol: "a2x-observation/1".to_string(),
+        toolchain,
+        capabilities: caps,
+    };
+    if let Err(e) = draft.validate() {
+        fail(&format!(
+            "a2x.cert: strict validation rejected the draft: {e}"
+        ));
+    }
+    let cert_json = draft.to_json();
+    let cert_path = actual_dir.join("case.cert.json");
+    if let Err(e) = std::fs::write(&cert_path, &cert_json) {
+        fail(&format!("write cert: {e}"));
+    }
+
+    let mut r = ok_base(C_RECIPE);
+    r["mode"] = "certify-c".into();
+    r["target"] = "c".into();
+    r["nonce"] = nonce.into();
+    r["case"] = format!("a2c-hir-921/{}", case_id).into();
+    r["verdict"] = "PASS".into();
+    r["oracle_kind"] = oracle_kind.into();
+    r["oracle_value"] = oracle_value.into();
+    r["actual_stdout"] = actual_stdout.trim().into();
+    r["reference_stdout"] = ref_stdout.trim().into();
+    r["cert_path"] = cert_path.display().to_string().into();
+    r["cert_sha256"] = sha256_hex(cert_json.as_bytes()).into();
+    r["spawned_cl"] = 2.into(); // actual + reference compiles
     r["spawned_rustc"] = 0.into();
     r
 }

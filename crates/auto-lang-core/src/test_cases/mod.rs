@@ -40,6 +40,7 @@ use auto_test_case::suite::apply_defaults;
 pub mod a2r;
 pub mod abi;
 pub mod ac;
+pub mod ac_a2c_hir;
 pub mod ac_a2r_hir;
 pub mod ac_av;
 pub mod ac_cte;
@@ -790,6 +791,23 @@ fn dispatch_check(
                 || check.options.probe_recipe.as_deref() == Some(ac_a2r_hir::A2R_COLL_RECIPE) =>
         {
             ac_a2r_hir::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-921 CA-A: the A2X Checked-HIR -> C11 scalar emit recipe
+        // (same prebuilt worker via its `daily-emit-c` op, daily
+        // spawn-zero incl. `spawned_cl == 0`, parent-side golden judging
+        // over the C fileset; append-only registration — the a2r recipe
+        // contracts above are untouched).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_HIR_RECIPE) =>
+        {
+            ac_a2c_hir::run_check(
                 resolved,
                 check,
                 oracle,

@@ -1326,6 +1326,18 @@ suite = "crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections
 all = false
 
 [[group]]
+name = "case-a2c-hir-scalar-921"
+title = "TestCase case-a2c-hir-scalar-921（PLAN-921 CA-A HIR→C11 标量首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2c-hir-scalar-921/a2c-hir-scalar-921.suite.ad"
+all = false
+
+[[group]]
 name = "auto-generation-core"
 title = "共享生成核心完整包（Web与非HTTP消费者）"
 runner = "nextest"

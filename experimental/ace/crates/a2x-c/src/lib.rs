@@ -14,10 +14,14 @@
 //! versa. The semantic facts (AXS1 keys, fingerprints) are SHARED with the
 //! Rust target; only the fragment layer is C-private.
 
+pub mod cert;
 pub mod lower;
 pub mod provider;
 pub mod runtime;
 
+pub use cert::{BoundFile, CCertDraft, CToolchainIdentity, C_CERT_SCHEMA};
 pub use lower::{c_fn_name, c_method_name, lower_functions_c, CFn};
-pub use provider::{CTargetProvider, C_FILESET_SCHEMA, C_PRINT_VERSION, C_RECIPE, C_STANDARD};
+pub use provider::{
+    CTargetProvider, C_BACKEND_VERSION, C_FILESET_SCHEMA, C_PRINT_VERSION, C_RECIPE, C_STANDARD,
+};
 pub use runtime::runtime_source;
