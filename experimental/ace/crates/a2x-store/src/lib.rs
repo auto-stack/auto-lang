@@ -306,6 +306,26 @@ pub const LAYER_SOURCE_ANCHOR: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-925: the RECORD-TEXT source-bound anchor layer (the C record-text
+/// channel's pure-restore commit point). Beside AXP1 (scalar): the anchor
+/// carries the provider-opaque prelude seed the blind re-assembly needs,
+/// under its own schema — a scalar anchor never serves a record-text
+/// restore or vice versa.
+pub const LAYER_SOURCE_ANCHOR_RT: LayerSpec = LayerSpec {
+    id: "AXP2",
+    name: "a2x-rt-source-anchor",
+    schema_id: "a2925/axp-rt-source-anchor/v1",
+    producer: "a2x session",
+    consumers: &["a2x session restore"],
+    key_inputs: &["owner", "profile", "source_sha256", "backend"],
+    ref_kinds: &["required"],
+    storage: "one source-bound anchor artifact per record-text assembly state",
+    residency:
+        "restored artifacts are re-verified against the caller's source, never trusted blind",
+    regeneration: ace_artifacts::schema::Regeneration::FromUserInputs,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// Pass-version constants of THIS build (key inputs; §5.4 "pass版本").
 pub const PASS_PREPARE: &str = "a2x-prepare/1";
 pub const PRINT_VERSION: &str = "a2x-print/1";
@@ -518,6 +538,46 @@ impl A2xSession {
     /// channels).
     fn ensure_target_supports(&self) -> Result<(), A2xReject> {
         self.provider.fragment_layer_id(self.family()).map(|_| ())
+    }
+
+    /// Family-explicit twins of the layer selectors (a pure restore runs
+    /// BEFORE the session's profile is installed, so it names the family
+    /// from the caller's declaration context rather than session state).
+    fn layer_semantic_for(family: Family) -> &'static LayerSpec {
+        match family {
+            Family::Scalar => &LAYER_SEMANTIC,
+            Family::RecordText => &LAYER_SEMANTIC_RT,
+            Family::Collections => &LAYER_SEMANTIC_COLL,
+        }
+    }
+    fn layer_fragment_for(&self, family: Family) -> &'static LayerSpec {
+        match self.provider.fragment_layer_id(family) {
+            Ok("AXR1") => &LAYER_FRAGMENT,
+            Ok("AXR2") => &LAYER_FRAGMENT_RT,
+            Ok("AXR3") => &LAYER_FRAGMENT_COLL,
+            Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
+            other => panic!("provider returned unregistered fragment layer {:?}", other),
+        }
+    }
+
+    /// PLAN-921/925: whether `family` on the current backend publishes a
+    /// source-bound anchor (and therefore restores purely): the scalar
+    /// family on every target (PLAN-921), the record-text family on the C
+    /// target (PLAN-925 — its seed-carrying anchor re-assembles blind). The
+    /// Rust record-text target keeps its frozen no-anchor behavior.
+    fn anchors_family(&self, family: Family) -> bool {
+        match family {
+            Family::Scalar => true,
+            Family::RecordText => self.current_backend() == "auto-a2x-c",
+            Family::Collections => false,
+        }
+    }
+    fn anchor_schema_for(family: Family) -> &'static str {
+        match family {
+            Family::RecordText => anchor::ANCHOR_SCHEMA_RT,
+            _ => anchor::ANCHOR_SCHEMA,
+        }
     }
 
     fn pass_version(&self) -> &'static str {
@@ -864,7 +924,7 @@ impl A2xSession {
         // required edges keep every fragment alive and are
         // liveness-checked atomically at this put - a crash before it
         // leaves a store restore rejects, never a half-restorable one.
-        if family == Family::Scalar && !read_only {
+        if self.anchors_family(family) && !read_only {
             let src_sha = self
                 .source_sha256
                 .clone()
@@ -897,7 +957,7 @@ impl A2xSession {
                 .map(|(p, c)| (p.clone(), sha256_hex(c.as_bytes())))
                 .collect();
             let a = anchor::Anchor {
-                schema: anchor::ANCHOR_SCHEMA.to_string(),
+                schema: Self::anchor_schema_for(family).to_string(),
                 owner: self.owner.clone(),
                 profile: self.profile_label().to_string(),
                 backend: self.current_backend().to_string(),
@@ -910,6 +970,13 @@ impl A2xSession {
                 runtime_text: runtime,
                 functions: fns,
                 fileset: fileset_receipt,
+                // PLAN-925: the record-text anchor carries the seed the
+                // blind re-assembly needs (scalar: none)
+                prelude_seed: if family == Family::RecordText {
+                    prelude_seed.clone()
+                } else {
+                    None
+                },
             };
             let edges: Vec<(String, RefKind)> = fragments
                 .iter()
@@ -935,9 +1002,14 @@ impl A2xSession {
         a: &anchor::Anchor,
         edges: Vec<(String, RefKind)>,
     ) -> Result<String, A2xRejectOrResource> {
-        let key = self.anchor_key(&a.source_sha256, &a.entry);
+        let layer = if a.schema == anchor::ANCHOR_SCHEMA_RT {
+            &LAYER_SOURCE_ANCHOR_RT
+        } else {
+            &LAYER_SOURCE_ANCHOR
+        };
+        let key = self.anchor_key(layer, &a.source_sha256, &a.entry);
         let encoded = a.encode();
-        if let Ok(Some(hit)) = self.store.get_artifact(LAYER_SOURCE_ANCHOR.id, &key) {
+        if let Ok(Some(hit)) = self.store.get_artifact(layer.id, &key) {
             if hit.payload == encoded.as_bytes() {
                 return Ok(hit.artifact_id);
             }
@@ -945,7 +1017,7 @@ impl A2xSession {
             // a re-derived anchor for the same state must be byte-stable
         }
         let id = self.quota_put(
-            LAYER_SOURCE_ANCHOR.id,
+            layer.id,
             key,
             ChunkKind::ObjectManifest,
             encoded.as_bytes(),
@@ -956,9 +1028,9 @@ impl A2xSession {
     }
 
     /// PLAN-921 T-06: the anchor-layer key of one assembly state.
-    fn anchor_key(&self, source_sha256: &str, entry: &str) -> QueryKey {
+    fn anchor_key(&self, layer: &'static LayerSpec, source_sha256: &str, entry: &str) -> QueryKey {
         QueryKey::new(
-            &LAYER_SOURCE_ANCHOR,
+            layer,
             vec![
                 ("owner".into(), self.owner.clone()),
                 ("profile".into(), self.profile_label().into()),
@@ -1041,16 +1113,69 @@ impl A2xSession {
         entry: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
+        self.warm_edit_ranged_targeted(
+            &WarmTarget::Free { name: fn_name },
+            base_src,
+            range,
+            fragment,
+            entry,
+            read_only,
+        )
+    }
+
+    /// PLAN-925 (§5.4): the ranged authorization for a METHOD body edit —
+    /// the range covers exactly the method declaration inside its `type`
+    /// block; the fragment is the narrow method declaration with the
+    /// caller-provided owner binding. Same contract as the free-function
+    /// twin (base binding, single-decl validation, anchor rebind).
+    pub fn warm_edit_ranged_method(
+        &mut self,
+        owner: &str,
+        fn_name: &str,
+        base_src: &str,
+        range: (usize, usize),
+        fragment: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        self.warm_edit_ranged_targeted(
+            &WarmTarget::Method {
+                owner,
+                name: fn_name,
+            },
+            base_src,
+            range,
+            fragment,
+            entry,
+            read_only,
+        )
+    }
+
+    fn warm_edit_ranged_targeted(
+        &mut self,
+        target: &WarmTarget<'_>,
+        base_src: &str,
+        range: (usize, usize),
+        fragment: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        let fn_name = target.name();
         // PLAN-921: the scalar family ALSO takes the ranged
         // authorization — it is a strict superset of the fragment-only
         // path (base + range + single-decl validated) and it is what the
         // source-bound anchor chain rebinding needs (the C channel rides
         // it exclusively). The record-text family keeps its frozen
         // fragment path.
-        if !matches!(self.family(), Family::Collections | Family::Scalar) {
+        // PLAN-925: the record-text family on the C target takes the
+        // ranged authorization too (its anchor chain rebinds through it);
+        // the Rust record-text target keeps its frozen fragment path.
+        let ranged_ok = matches!(self.family(), Family::Collections | Family::Scalar)
+            || (self.family() == Family::RecordText && self.anchors_family(Family::RecordText));
+        if !ranged_ok {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.range",
-                "ranged authorization is the collections/scalar warm contract; the record-text family keeps its frozen fragment path",
+                "ranged authorization is the collections/scalar warm contract (and the C record-text channel); the Rust record-text family keeps its frozen fragment path",
             )));
         }
         // the 828 close contract FIRST: a closed environment rejects every
@@ -1103,16 +1228,23 @@ impl A2xSession {
             )));
         }
         let replaced = &base_src[start..end];
-        let old_item =
-            parse_function_fragment(replaced, 0..replaced.len(), self.profile).map_err(|d| {
-                A2xRejectOrResource::Reject(A2xReject::new(
-                    "a2x.range",
-                    format!(
-                        "range does not cover exactly one function declaration: {}",
-                        d.message
-                    ),
-                ))
-            })?;
+        let old_item = match target {
+            WarmTarget::Free { .. } => {
+                parse_function_fragment(replaced, 0..replaced.len(), self.profile)
+            }
+            WarmTarget::Method { owner, .. } => {
+                parse_method_fragment(replaced, 0..replaced.len(), self.profile, owner)
+            }
+        }
+        .map_err(|d| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                format!(
+                    "range does not cover exactly one function declaration: {}",
+                    d.message
+                ),
+            ))
+        })?;
         if old_item.name.name != fn_name {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.range",
@@ -1123,13 +1255,20 @@ impl A2xSession {
             )));
         }
         // 3) the candidate fragment is a single same-named declaration
-        let frag_item = parse_function_fragment(fragment, 0..fragment.len(), self.profile)
-            .map_err(|d| {
-                A2xRejectOrResource::Reject(A2xReject::new(
-                    "a2x.parse",
-                    format!("fragment: {}", d.message),
-                ))
-            })?;
+        let frag_item = match target {
+            WarmTarget::Free { .. } => {
+                parse_function_fragment(fragment, 0..fragment.len(), self.profile)
+            }
+            WarmTarget::Method { owner, .. } => {
+                parse_method_fragment(fragment, 0..fragment.len(), self.profile, owner)
+            }
+        }
+        .map_err(|d| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.parse",
+                format!("fragment: {}", d.message),
+            ))
+        })?;
         if frag_item.name.name != fn_name {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.parse",
@@ -1139,28 +1278,46 @@ impl A2xSession {
                 ),
             )));
         }
-        // 4) the replaced full source identity binds the NEXT manifest
+        // 4) the replaced full source identity binds the NEXT manifest —
+        //    but only AFTER the edit succeeds: a failed/cancelled edit
+        //    keeps the OLD binding (§5.4 失败保旧 source)
         let full_after = format!("{}{}{}", &base_src[..start], fragment, &base_src[end..]);
         let next_sha = sha256_hex(full_after.as_bytes());
-        self.source_sha256 = Some(next_sha.clone());
         // 5) the ordinary warm machinery (prepare → verify → produce →
         //    swap → assemble) runs on the fragment; the manifest built
-        //    under it carries the replaced-full-source identity
+        //    under it carries the replaced-full-source identity. A FAILED
+        //    edit restores the OLD binding (§5.4 失败保旧 source).
         // PLAN-921: a session restored without an env rebuilds it from
         // the bound base now (the ranged path carries the base source)
-        let assembly = self.warm_edit_core(fn_name, fragment, entry, read_only)?;
+        let prev_sha = self.source_sha256.clone();
+        self.source_sha256 = Some(next_sha.clone());
+        let assembly = match self.warm_edit_targeted(target, fragment, entry, read_only) {
+            Ok(a) => a,
+            Err(e) => {
+                self.source_sha256 = prev_sha;
+                return Err(e);
+            }
+        };
         // PLAN-921 T-06: rebind the source-bound anchor to the NEXT full
         // source (per-function origins shift past the edit; the edited
         // function re-binds its slice sha + sem_fp). The anchor publishes
-        // only on scalar (the anchored channel) and non-read-only edits.
-        if self.family() == Family::Scalar && !read_only {
+        // on the anchored channels (scalar; record-text on C) for
+        // non-read-only edits.
+        // PLAN-925: the edited entry matches by its ANCHOR decl identity —
+        // for a method that is the owner-qualified source name
+        // (), never the bare method name.
+        let edited_decl = match target {
+            WarmTarget::Free { name } => name.to_string(),
+            WarmTarget::Method { owner, name } => format!("{}_{}", owner, name),
+        };
+        if self.anchors_family(self.family()) && !read_only {
             let full_after = format!("{}{}{}", &base_src[..start], fragment, &base_src[end..]);
             let delta = fragment.len() as i64 - (end - start) as i64;
             let prev = self.last_anchor.clone();
             if let Some(prev) = prev {
                 let mut fns: Vec<anchor::AnchorFn> = Vec::with_capacity(prev.functions.len());
                 for mut af in prev.functions {
-                    if af.decl == fn_name {
+                    if af.decl == edited_decl {
                         af.origin = (start as u32, (start + fragment.len()) as u32);
                         af.slice_sha256 = sha256_hex(fragment.as_bytes());
                     } else if af.origin.0 as i64 >= end as i64 {
@@ -1181,7 +1338,7 @@ impl A2xSession {
                     af.slice_sha256 = sha256_hex(slice.as_bytes());
                     // the edited function's NEW sem_fp rides the resident
                     // set (the unchanged keep theirs)
-                    if af.decl == fn_name {
+                    if af.decl == edited_decl {
                         if let Some(r) = self
                             .resident
                             .get(&(self.current_backend().to_string(), af.decl.clone()))
@@ -1197,7 +1354,9 @@ impl A2xSession {
                     .map(|(p, c)| (p.clone(), sha256_hex(c.as_bytes())))
                     .collect();
                 let a = anchor::Anchor {
-                    schema: anchor::ANCHOR_SCHEMA.to_string(),
+                    // the rebound anchor keeps the FAMILY schema (the RT
+                    // channel's AXP2 anchor carries its seed onward)
+                    schema: Self::anchor_schema_for(self.family()).to_string(),
                     owner: self.owner.clone(),
                     profile: self.profile_label().to_string(),
                     backend: self.current_backend().to_string(),
@@ -1210,6 +1369,8 @@ impl A2xSession {
                     runtime_text: prev.runtime_text.clone(),
                     functions: fns,
                     fileset: fileset_receipt,
+                    // a body edit never changes the record table
+                    prelude_seed: prev.prelude_seed.clone(),
                 };
                 let backend = self.current_backend().to_string();
                 let edges: Vec<(String, RefKind)> = a
@@ -1259,27 +1420,36 @@ impl A2xSession {
             SourceProfile::Collections => Family::Collections,
             _ => Family::Scalar,
         };
-        if family != Family::Scalar {
+        // PLAN-925: the record-text family restores purely on the C target
+        // (its seed-carrying anchor re-assembles blind); the Rust
+        // record-text target keeps its frozen scalar-only behavior (its
+        // file set needs view-derived prelude inputs)
+        if !self.anchors_family(family) {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.restore",
-                "pure restore serves the scalar channel only (view-derived file sets cannot re-assemble blind)",
+                "pure restore serves the anchored channels (scalar; record-text on the C target)",
             )));
         }
         let src_sha = sha256_hex(src.as_bytes());
         self.stats.restore_lookup += 1;
+        let anchor_layer = if family == Family::RecordText {
+            &LAYER_SOURCE_ANCHOR_RT
+        } else {
+            &LAYER_SOURCE_ANCHOR
+        };
         let key = QueryKey::new(
-            &LAYER_SOURCE_ANCHOR,
+            anchor_layer,
             vec![
                 ("owner".into(), self.owner.clone()),
                 ("profile".into(), profile_label_of(profile).into()),
                 ("source_sha256".into(), src_sha.clone()),
                 ("backend".into(), self.current_backend().to_string()),
-                ("entry".into(), entry.to_string()),
+                ("entry".into(), entry.into()),
             ],
         );
         let hit = self
             .store
-            .get_artifact(LAYER_SOURCE_ANCHOR.id, &key)
+            .get_artifact(anchor_layer.id, &key)
             .map_err(|e| {
                 A2xRejectOrResource::Resource(ResourceReject {
                     code: "a2x.resource",
@@ -1308,6 +1478,15 @@ impl A2xSession {
                 "anchor failed strict decode (schema/fields/counts)",
             ))
         })?;
+        // the layer keys the lookup, but the SCHEMA is the pairing proof —
+        // a scalar anchor must never serve a record-text restore or vice
+        // versa even under a forged layer id
+        if a.schema != Self::anchor_schema_for(family) {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.restore.bad-anchor",
+                "anchor schema does not pair with the requested family",
+            )));
+        }
         // caller context must match the anchored context exactly
         if a.profile != profile_label_of(profile)
             || a.caps != caps
@@ -1357,7 +1536,7 @@ impl A2xSession {
         for f in &a.functions {
             // semantic layer: key reconstructed from ANCHOR data only
             let sem_key = QueryKey::new(
-                self.layer_semantic(),
+                Self::layer_semantic_for(family),
                 vec![
                     ("owner".into(), self.owner.clone()),
                     ("decl".into(), f.decl.clone()),
@@ -1369,10 +1548,10 @@ impl A2xSession {
                     ("pass".into(), pass_version_of(family).into()),
                 ],
             );
-            if let Ok(Some(sem)) = self.store.get_artifact(self.layer_semantic().id, &sem_key) {
+            if let Ok(Some(sem)) = self.store.get_artifact(Self::layer_semantic_for(family).id, &sem_key) {
                 self.stats.restore_payload_verifies += 1;
                 let text = String::from_utf8_lossy(&sem.payload).into_owned();
-                let want_schema = format!("\"schema\":\"{}\"", self.layer_semantic().schema_id);
+                let want_schema = format!("\"schema\":\"{}\"", Self::layer_semantic_for(family).schema_id);
                 let want_decl = format!("\"decl\":\"{}\"", f.decl);
                 let want_fp = format!("\"sem_fp\":\"{}\"", f.sem_fp);
                 if !text.contains(&want_schema)
@@ -1395,10 +1574,10 @@ impl A2xSession {
                 ("sem_fp".into(), f.sem_fp.clone()),
             ];
             inputs.extend(self.provider.fragment_key_inputs(&a.runtime_sha256));
-            let frag_key = QueryKey::new(self.layer_fragment(), inputs);
+            let frag_key = QueryKey::new(self.layer_fragment_for(family), inputs);
             let fh = self
                 .store
-                .get_artifact(self.layer_fragment().id, &frag_key)
+                .get_artifact(self.layer_fragment_for(family).id, &frag_key)
                 .map_err(|e| {
                     A2xRejectOrResource::Resource(ResourceReject {
                         code: "a2x.resource",
@@ -1474,7 +1653,9 @@ impl A2xSession {
                 fragments: &frags,
                 view: None,
                 runtime: &runtime,
-                prelude_seed: None,
+                // PLAN-925: the record-table seed rides the anchor (the C
+                // record-text re-assembly has no view to re-derive it)
+                prelude_seed: a.prelude_seed.as_deref(),
                 origins: Some(&anchor_origins),
                 source_sha256: Some(&a.source_sha256),
             })
@@ -2031,6 +2212,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXC1" => LAYER_FRAGMENT_C.id,
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
+        "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         other => panic!("unknown layer {}", other),
     }
 }

@@ -249,11 +249,21 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         ));
     }
 
-    /// Emit the pending view-consumer frees now (the immediate-after-
-    /// consumer anchor: earlier temps free before the next allocation
-    /// point).
+    /// Emit EVERY pending view-consumer free now (statement boundaries).
     fn drain_frees(&mut self) {
         for name in std::mem::take(&mut self.pending_frees) {
+            self.out.push(format!("a2x_str_free(&{});", name));
+        }
+    }
+
+    /// Emit the pending frees registered SINCE `mark` — the operands of
+    /// the consumer that just pinned. Temps pending before the mark
+    /// belong to an OUTER consumer that has not run yet (e.g. the first
+    /// argument of a call while a later argument allocates) and must
+    /// stay alive until it does (immediate-after-consumer, scoped).
+    fn drain_since(&mut self, mark: usize) {
+        let tail: Vec<String> = self.pending_frees.drain(mark..).collect();
+        for name in tail {
             self.out.push(format!("a2x_str_free(&{});", name));
         }
     }
@@ -630,7 +640,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         Self::str_view_lit(value)
                     ));
                     self.check_trap(&t);
-                    self.drain_frees();
                     Ok((format!("{}.value", t), Ty::StrOwned))
                 }
                 Ty::Str => Ok((Self::str_view_lit(value), Ty::Str)),
@@ -647,6 +656,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 // text equality: full bytes, no normalization (pure; the
                 // verifier admits only same-family text operands)
                 if matches!(op, hir::BinOp::Eq | hir::BinOp::Ne) && lt.is_text() {
+                    // the comparison is the CONSUMER of its view operands:
+                    // materialize it, then free the operand temps
+                    let mark = self.pending_frees.len();
                     let (l, lvt) = self.lower_view_value(*lhs)?;
                     let (r, rvt) = self.lower_view_value(*rhs)?;
                     let func = if matches!(op, hir::BinOp::Eq) {
@@ -654,15 +666,16 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     } else {
                         "a2x_str_ne"
                     };
-                    return Ok((
-                        format!(
-                            "{}({}, {})",
-                            func,
-                            self.as_view_form(l, lvt),
-                            self.as_view_form(r, rvt)
-                        ),
-                        Ty::Bool,
+                    let t = self.fresh_temp();
+                    self.out.push(format!(
+                        "bool {} = {}({}, {});",
+                        t,
+                        func,
+                        self.as_view_form(l, lvt),
+                        self.as_view_form(r, rvt)
                     ));
+                    self.drain_since(mark);
+                    return Ok((t, Ty::Bool));
                 }
                 let (l, _) = self.lower_pure(*lhs)?;
                 let (r, _) = self.lower_pure(*rhs)?;
@@ -683,9 +696,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         self.out
                             .push(format!("a2x_result {} = {}({}, {});", t, func, l, r));
                         self.check_trap(&t);
-                        // immediate-after-consumer: earlier view-consumed
-                        // temps free only AFTER this consuming pin
-                        self.drain_frees();
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::BinOp::LtI32
@@ -713,7 +723,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         let t = self.fresh_temp();
                         self.out.push(format!("a2x_result {} = a2x_neg({});", t, o));
                         self.check_trap(&t);
-                        self.drain_frees();
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::UnaryOp::NotBool => Ok((format!("(!({}))", o), Ty::Bool)),
@@ -808,7 +817,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                             target_id
                         )));
                     };
-                // source-order pinning of EVERY argument, mode-aware
+                // source-order pinning of EVERY argument, mode-aware; the
+                // view-consumed owned temps of THESE arguments free right
+                // after this call (scoped: outer pending temps stay)
+                let mark = self.pending_frees.len();
                 let n = target_params.len();
                 let mode_of_arg = |arg_idx: u32| -> hir::ParamMode {
                     bindings
@@ -886,13 +898,14 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     args
                 ));
                 self.check_trap(&t);
-                self.drain_frees();
+                self.drain_since(mark);
                 Ok((format!("{}.value", t), result_ty))
             }
             // ---- text operations (fallible roots pin) ----
             hir::ExprKind::TextLen { operand } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_len",
                     &[self.as_view_form(v, vt)],
                     Ty::I32,
@@ -900,8 +913,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             hir::ExprKind::TextLenBytes { operand } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_len_bytes",
                     &[self.as_view_form(v, vt)],
                     Ty::I32,
@@ -909,9 +923,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             hir::ExprKind::TextCharAt { operand, index } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
                 let (i, _) = self.lower_pure(*index)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_char_at",
                     &[self.as_view_form(v, vt), i],
                     Ty::Char,
@@ -923,10 +938,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 start,
                 end,
             } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
                 let (s, _) = self.lower_pure(*start)?;
                 let (e, _) = self.lower_pure(*end)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_slice",
                     &[self.as_view_form(v, vt), s, e],
                     Ty::Str,
@@ -934,9 +950,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             hir::ExprKind::TextConcat { lhs, rhs } => {
+                let mark = self.pending_frees.len();
                 let (l, lt) = self.lower_view_value(*lhs)?;
                 let (r, rt) = self.lower_view_value(*rhs)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_concat",
                     &[self.as_view_form(l, lt), self.as_view_form(r, rt)],
                     Ty::StrOwned,
@@ -944,8 +961,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             hir::ExprKind::TextClone { operand } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_clone",
                     &[self.as_view_form(v, vt)],
                     Ty::StrOwned,
@@ -953,8 +971,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             hir::ExprKind::TextToOwned { operand } => {
+                let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(
+                self.one_arg_result(mark, 
                     "a2x_str_to_owned",
                     &[self.as_view_form(v, vt)],
                     Ty::StrOwned,
@@ -970,8 +989,9 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 Ok((format!("a2x_char_to_codepoint({})", v), Ty::I32))
             }
             hir::ExprKind::CharFromCodepoint { operand } => {
+                let mark = self.pending_frees.len();
                 let (v, _) = self.lower_pure(*operand)?;
-                self.one_arg_result("a2x_char_from_codepoint", &[v], Ty::Char, "a2x_char_result")
+                self.one_arg_result(mark, "a2x_char_from_codepoint", &[v], Ty::Char, "a2x_char_result")
             }
             // ---- record operations ----
             hir::ExprKind::RecordCtor {
@@ -1062,10 +1082,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 let rec = self.view.record(record.0).ok_or_else(|| {
                     A2xReject::new("a2x.internal", "unknown record type in RecordClone")
                 })?;
+                let mark = self.pending_frees.len();
                 let (b, _) = self.lower_view_value(*base)?;
                 let helper = format!("a2x_rt_clone_{}", c_record_name(&rec.name));
                 let t = self.fresh_temp();
-                self.drain_frees();
                 self.out.push(format!(
                     "a2x_res_{} {} = {}(&({}));",
                     c_record_name(&rec.name),
@@ -1074,6 +1094,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     b
                 ));
                 self.check_trap(&t);
+                self.drain_since(mark);
                 Ok((format!("{}.value", t), Ty::Record(record.0)))
             }
             other => Err(A2xReject::unsupported_expr(format!(
@@ -1083,9 +1104,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         }
     }
 
-    /// Pin a fresh `<wrapper> t = <func>(<args>);` + trap check.
+    /// Pin a fresh `<wrapper> t = <func>(<args>);` + trap check, then
+    /// free the view-consumed operand temps registered since `mark`.
     fn one_arg_result(
         &mut self,
+        mark: usize,
         func: &str,
         args: &[String],
         ty: Ty,
@@ -1100,7 +1123,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             args.join(", ")
         ));
         self.check_trap(&t);
-        self.drain_frees();
+        self.drain_since(mark);
         Ok((format!("{}.value", t), ty))
     }
 
@@ -1137,7 +1160,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             let t = self.fresh_temp();
             let cty = self.pinned_decl_ty(ty)?;
             self.out.push(format!("{} {} = {};", cty, t, v));
-            self.drain_frees();
             Ok((t, ty))
         } else {
             Ok((v, ty))
@@ -1160,7 +1182,6 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             let t = self.fresh_temp();
             let cty = self.pinned_decl_ty(ty)?;
             self.out.push(format!("{} {} = {};", cty, t, v));
-            self.drain_frees();
             if matches!(ty, Ty::StrOwned) {
                 self.pending_frees.push(t.clone());
             }

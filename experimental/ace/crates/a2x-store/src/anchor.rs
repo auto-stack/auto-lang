@@ -18,6 +18,11 @@
 
 /// The anchor schema id (also the LAYER_SOURCE_ANCHOR schema).
 pub const ANCHOR_SCHEMA: &str = "a2921/axp-source-anchor/v1";
+/// PLAN-925: the RECORD-TEXT anchor schema (layer AXP2) — the scalar
+/// shape plus the provider-opaque prelude seed the blind re-assembly
+/// needs (the record table). Byte-disjoint from v1: a v1 anchor never
+/// decodes as an RT one or vice versa.
+pub const ANCHOR_SCHEMA_RT: &str = "a2925/axp-rt-source-anchor/v1";
 
 /// One function's source binding inside an anchor.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,6 +62,10 @@ pub struct Anchor {
     pub functions: Vec<AnchorFn>,
     /// The assembly receipt: (path, sha256) of every emitted file.
     pub fileset: Vec<(String, String)>,
+    /// PLAN-925: the provider-opaque prelude seed (record table) of the
+    /// RT schema; `None` on the scalar schema (encode/decode enforce the
+    /// pairing strictly).
+    pub prelude_seed: Option<String>,
 }
 
 fn esc(s: &str) -> String {
@@ -114,6 +123,15 @@ impl Anchor {
             ));
         }
         s.push_str(&format!("T\t{}\n", esc(&self.runtime_text)));
+        if self.schema == ANCHOR_SCHEMA_RT {
+            // the RT schema REQUIRES the seed line (an absent seed is an
+            // internal wiring error, never an empty record table — an
+            // empty table still carries its schema line)
+            s.push_str(&format!(
+                "S\t{}\n",
+                esc(self.prelude_seed.as_deref().unwrap_or(""))
+            ));
+        }
         s.push_str(&format!("W\t{}\n", self.fileset.len()));
         for (path, sha) in &self.fileset {
             s.push_str(&format!("w\t{}\t{}\n", esc(path), sha));
@@ -134,7 +152,7 @@ impl Anchor {
             return None;
         }
         let schema = h[1].to_string();
-        if schema != ANCHOR_SCHEMA {
+        if schema != ANCHOR_SCHEMA && schema != ANCHOR_SCHEMA_RT {
             return None;
         }
         let owner = unesc(h[2])?;
@@ -208,6 +226,23 @@ impl Anchor {
             return None;
         }
 
+        // PLAN-925: the RT schema carries exactly one seed line here; the
+        // scalar schema carries none (strict pairing both ways)
+        let prelude_seed = if schema == ANCHOR_SCHEMA_RT {
+            let sline = lines.next()?;
+            let mut sp = sline.split('\t');
+            if sp.next()? != "S" {
+                return None;
+            }
+            let seed = unesc(sp.next()?)?;
+            if sp.next().is_some() || seed.is_empty() {
+                return None;
+            }
+            Some(seed)
+        } else {
+            None
+        };
+
         let wline = lines.next()?;
         let mut w = wline.split('\t');
         if w.next()? != "W" {
@@ -248,6 +283,7 @@ impl Anchor {
             runtime_text,
             functions,
             fileset,
+            prelude_seed,
         })
     }
 }
@@ -280,6 +316,7 @@ mod tests {
 line2
 "
             .into(),
+            prelude_seed: None,
             functions: vec![AnchorFn {
                 decl: "main".into(),
                 def_index: 0,
