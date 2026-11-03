@@ -227,6 +227,12 @@ struct Save {
     last_line: u32,
     bracket: u32,
     decls: usize,
+    /// 未括号 primary 锚行（restore 保锚：alt 回退不得丢行纪律——e18 差分：
+    /// `a ||` 后行操作数经 alt 回退后仍须拒绝）。
+    expr_anchor: Option<u32>,
+    /// 规则步 same-line：子规则首个 token 须与前一消费 token 同行（旧
+    /// anchored(Unary)——一元操作数跨行拒绝）。
+    same_line_pending: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -323,6 +329,9 @@ struct Machine<'p, 'a> {
     last_line: u32,
     bracket: u32,
     expr_anchor: Option<u32>,
+    /// 规则步 same-line：子规则首个 token 须与前一消费 token 同行（旧
+    /// anchored(Unary)——一元操作数跨行拒绝）。
+    same_line_pending: bool,
     // ---- 分块 arena（F787-R1-04：不可变共享内容块 + 长度目录）----
     /// 已封块（新建或从旧树采纳共享的 `Rc`）。
     blocks: Vec<Rc<CstBlock>>,
@@ -411,6 +420,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             last_line: 1,
             bracket: 0,
             expr_anchor: None,
+            same_line_pending: false,
             blocks: Vec::new(),
             bases: Vec::new(),
             block_decl: Vec::new(),
@@ -560,6 +570,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             last_line: self.last_line,
             bracket: self.bracket,
             decls: self.decls.len(),
+            expr_anchor: self.expr_anchor,
+            same_line_pending: self.same_line_pending,
         }
     }
 
@@ -569,7 +581,8 @@ impl<'p, 'a> Machine<'p, 'a> {
         self.last_line = s.last_line;
         self.bracket = s.bracket;
         self.decls.truncate(s.decls);
-        self.expr_anchor = None;
+        self.expr_anchor = s.expr_anchor;
+        self.same_line_pending = s.same_line_pending;
     }
 
     fn push_rule(&mut self, rule: RuleId, field: u32, force_sentinel: bool) {
@@ -735,6 +748,12 @@ impl<'p, 'a> Machine<'p, 'a> {
                 return Err(());
             }
             self.expr_anchor = None;
+        }
+        if self.same_line_pending {
+            if self.p.newline.significant && self.bracket == 0 && t.line != self.last_line {
+                return Err(());
+            }
+            self.same_line_pending = false;
         }
         if !self.pending.is_empty() {
             let trivia: Vec<u32> = self.pending.drain(..).collect();
@@ -1017,6 +1036,9 @@ impl<'p, 'a> Machine<'p, 'a> {
                         self.diag(format!("unknown rule #{r}"), 0, 0);
                         self.fail_alt();
                         return Ok(());
+                    }
+                    if step.same_line {
+                        self.same_line_pending = true;
                     }
                     self.stack.last_mut().unwrap().wait = Wait::OnceStep;
                     self.push_rule(r, field, false);

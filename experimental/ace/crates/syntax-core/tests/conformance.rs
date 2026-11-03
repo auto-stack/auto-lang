@@ -1,3 +1,5 @@
+#[path = "cases/frontdoor_reexport_927.rs"]
+mod frontdoor_reexport_927;
 #[path = "cases/compatibility.rs"]
 mod compatibility;
 #[path = "cases/core_projection.rs"]

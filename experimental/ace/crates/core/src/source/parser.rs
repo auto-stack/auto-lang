@@ -114,6 +114,39 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
     // PLAN-912 §5.4 whole-axis observation: every whole-source parse is a
     // module-axis attempt (the warm closures path must never reach here).
     crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    // PLAN-927 T-08：七 profile 冷前门切统一 CST 链（共享 scanner/规则程序
+    // → 严格投影；差分 567/567+70 edge 与旧逐字节全等）。Collections/
+    // Closures 是显式登记的迁移分支（928 接管），仍走旧手写 parser。
+    match profile {
+        SourceProfile::Core
+        | SourceProfile::Scalar
+        | SourceProfile::Text
+        | SourceProfile::Record
+        | SourceProfile::TextRecord
+        | SourceProfile::EntryUnit
+        | SourceProfile::HostConsole => {
+            let program = super::cst::parse_program_via_cst(src, profile)?;
+            // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
+            // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
+            for item in &program.items {
+                if let super::ast::Item::Fn(f) = item {
+                    note_parse(&f.name.name);
+                }
+            }
+            Ok(program)
+        }
+        SourceProfile::Collections | SourceProfile::Closures => {
+            parse_program_with_handwritten(src, profile)
+        }
+    }
+}
+
+/// 旧手写 parser 的未切链入口（Collections/Closures 迁移分支 + 927 差分
+/// harness 的 oracle 列——`parse_program_with` 七 profile 已切统一 CST）。
+pub fn parse_program_with_handwritten(
+    src: &str,
+    profile: SourceProfile,
+) -> Result<Program, Diagnostic> {
     let toks = super::lexer::tokenize_with(src, profile.admits_text_literals())?;
     let mut p = Parser {
         src,

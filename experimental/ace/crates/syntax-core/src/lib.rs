@@ -7,6 +7,17 @@
 //! - 有符号字面量折叠与 i32 域检查在投影层（source.literal-range 语义拒绝）；
 //! - 本投影仅用于对照与未来接口验证，不替换 ac-core 编译入口。
 
+
+// ---------------------------------------------------------------------------
+// PLAN-927 T-03：薄重导出接缝。七 profile 统一源码前门（共享 CST/规则程序
+// → 严格 AST 投影）住在 `ace-core::source::cst`；本 crate 仅重导出，保持
+// `runtime ← grammar ← core ← syntax-core/消费者` 的无环依赖序（V-02）。
+// 旧 787 对照投影（下方 `projection_engine`）保留为测试层 oracle 材料。
+pub use ace_core::source::cst::{
+    parse_front, parse_program_via_cst, profile_grammar, FrontBudget, FrontKind, FrontOk,
+    FrontOutcome, FrontRequest, FRONT_CAPS_VERSION,
+};
+
 use ace_core::atom_text::Span;
 use ace_core::source::ast::*;
 use ace_syntax_runtime::cst::CstTree;

@@ -3,7 +3,7 @@
 use super::kinds::SourceKinds;
 use super::project;
 use crate::atom_text::Diagnostic;
-use crate::source::ast::Program;
+use crate::source::ast::{FnItem, Program, Receiver};
 use crate::source::SourceProfile;
 use ace_syntax_runtime::cst::CstTree;
 use ace_syntax_runtime::lexer::CompiledScanner;
@@ -47,10 +47,22 @@ impl From<FrontBudget> for Budget {
 }
 
 /// 入口种类（§5.4：完整模块、free fn、方法等 kind 不是四套语法实现）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FrontKind {
     /// 整个源码模块（冷编译前门）。
     WholeModule,
+    /// 授权区间内的单个**自由函数**片段（旧 `parse_function_fragment`
+    /// 合同：free-only、完整消耗、绝对 span；区间须有序/在界/UTF-8 边界）。
+    FreeFnFragment {
+        range: std::ops::Range<usize>,
+    },
+    /// 方法片段：owner/receiver 来自请求上下文（不拼假 free fn——receiver
+    /// 与求值序由真实 owner 决定；旧调用方在 929 迁移到此入口）。
+    MethodFragment {
+        range: std::ops::Range<usize>,
+        owner: String,
+        receiver: Receiver,
+    },
 }
 
 /// 逻辑结果（§5.4 typed 接缝：成功/源码诊断/资源耗尽/stale-foreign/基础设施）。
@@ -182,13 +194,31 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
 }
 
 /// 统一入口：共享 scanner/规则程序产无损 CST → 严格投影 → typed 结果。
+/// 片段 kind 走 [`parse_fragment_front`]（同语法/同投影/同预算，区间授权
+/// 与绝对 span 平移）。
 pub fn parse_front(req: FrontRequest) -> FrontOutcome {
     let FrontRequest {
         src,
         profile,
-        kind: _,
+        kind,
         budget,
     } = req;
+    match kind {
+        FrontKind::WholeModule => parse_whole_module(src, profile, budget),
+        FrontKind::FreeFnFragment { range } => {
+            parse_fragment_front(src, profile, budget, &range, None, Receiver::Free)
+        }
+        FrontKind::MethodFragment { range, owner, receiver } => {
+            parse_fragment_front(src, profile, budget, &range, Some((owner, receiver)), receiver)
+        }
+    }
+}
+
+fn parse_whole_module(
+    src: &str,
+    profile: SourceProfile,
+    budget: FrontBudget,
+) -> FrontOutcome {
     let cached = match profile_grammar(profile) {
         Ok(c) => c,
         Err(e) => return FrontOutcome::Infra(e),
@@ -235,6 +265,164 @@ pub fn parse_program_via_cst(src: &str, profile: SourceProfile) -> Result<Progra
     }) {
         FrontOutcome::Ok(ok) => Ok(ok.program),
         FrontOutcome::Diag(diags) => Err(super::first_diag(&diags)),
+        FrontOutcome::ResourceExhausted { what, limit } => Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.resource",
+            format!("resource exhausted: {what} (limit {limit})"),
+            crate::atom_text::Span { start: 0, end: 0 },
+        )),
+        FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.infra",
+            m,
+            crate::atom_text::Span { start: 0, end: 0 },
+        )),
+    }
+}
+
+
+/// 片段统一入口（T-07）：授权区间上的 free fn / 方法片段。同一 profile
+/// 语法程序与严格投影（不是第二套语法）；区间校验/单函数/完整消耗/
+/// receiver-owner 上下文按旧 `parse_function_fragment` 合同与 §5.1 方法
+/// 扩展；全部 span 平移回原源绝对 UTF-8 byte 坐标。
+pub fn parse_fragment_front(
+    src: &str,
+    profile: SourceProfile,
+    budget: FrontBudget,
+    range: &std::ops::Range<usize>,
+    method_ctx: Option<(String, Receiver)>,
+    receiver: Receiver,
+) -> FrontOutcome {
+    use crate::atom_text::Stage;
+    let frag_src = match src.get(range.clone()) {
+        Some(f) => f,
+        None => {
+            return FrontOutcome::Diag(vec![Diagnostic::new(
+                Stage::Text,
+                "source.incremental-fragment",
+                "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+                crate::atom_text::Span { start: 0, end: 0 },
+            )])
+        }
+    };
+    let cached = match profile_grammar(profile) {
+        Ok(c) => c,
+        Err(e) => return FrontOutcome::Infra(e),
+    };
+    let store = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, frag_src);
+    let ParseOutput {
+        tree,
+        tokens: _,
+        lex_diags: _,
+        grafted_decls: _,
+    } = match parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    ) {
+        Ok(o) => o,
+        Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
+            return FrontOutcome::ResourceExhausted { what, limit }
+        }
+        Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
+    };
+    let mut program = match project::project_program(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        profile,
+    ) {
+        Ok(p) => p,
+        Err(mut ds) => {
+            for d in ds.iter_mut() {
+                super::shift::shift_diag(d, range.start);
+            }
+            return FrontOutcome::Diag(ds);
+        }
+    };
+    let span = crate::atom_text::Span {
+        start: range.start,
+        end: range.end,
+    };
+    if program.items.len() != 1 {
+        return FrontOutcome::Diag(vec![Diagnostic::new(
+            Stage::Text,
+            "source.incremental-fragment",
+            "a fragment must contain exactly one free function",
+            span,
+        )]);
+    }
+    let item = program.items.remove(0);
+    let mut function = match item {
+        crate::source::ast::Item::Fn(f) if !f.script => f,
+        _ => {
+            return FrontOutcome::Diag(vec![Diagnostic::new(
+                Stage::Text,
+                "source.incremental-fragment",
+                "a fragment must contain one declared free function",
+                span,
+            )])
+        }
+    };
+    match method_ctx {
+        None => {
+            // free-fn 合同：不得是方法形状（receiver 由请求给出——free）。
+            if function.receiver != Receiver::Free {
+                return FrontOutcome::Diag(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.incremental-fragment",
+                    "a fragment must contain one declared free function",
+                    span,
+                )]);
+            }
+        }
+        Some((owner, _recv)) => {
+            // 方法片段：owner/receiver 由请求上下文恢复（同一语法规则；
+            // 区间内就是一个 `fn` 形状，receiver 不从内容猜）。
+            function.receiver = receiver;
+            function.owner = Some(crate::source::ast::Ident {
+                name: owner,
+                span: crate::atom_text::Span { start: 0, end: 0 },
+            });
+        }
+    }
+    super::shift::shift_fn_item(&mut function, range.start);
+    FrontOutcome::Ok(FrontOk {
+        program: Program {
+            items: vec![crate::source::ast::Item::Fn(function)],
+        },
+        grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+        caps_version: FRONT_CAPS_VERSION,
+        snapshot_len: src.len(),
+        cst: tree,
+    })
+}
+
+/// 旧签名兼容桥：free fn 片段（`parse_function_fragment` 的统一前门版）。
+pub fn parse_function_fragment_via_cst(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+) -> Result<FnItem, Diagnostic> {
+    match parse_front(FrontRequest {
+        src,
+        profile,
+        kind: FrontKind::FreeFnFragment { range },
+        budget: FrontBudget::WORK_OWNED_64MIB,
+    }) {
+        FrontOutcome::Ok(mut ok) => match ok.program.items.remove(0) {
+            crate::source::ast::Item::Fn(f) => Ok(f),
+            _ => Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.infra",
+                "fragment outcome carried no function".to_string(),
+                crate::atom_text::Span { start: 0, end: 0 },
+            )),
+        },
+        FrontOutcome::Diag(ds) => Err(super::first_diag(&ds)),
         FrontOutcome::ResourceExhausted { what, limit } => Err(Diagnostic::new(
             crate::atom_text::Stage::Text,
             "source.resource",

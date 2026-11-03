@@ -119,6 +119,10 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         question { literal: "?" }
         arrow { literal: "->" }
         fat-arrow { literal: "=>" }
+        // 旧 lexer 的完整标点面（含 927 语法不消费的 `[]`——规则不引用 =
+        // error 叶，投影按旧使用位合同映射；不提前成词法错误）。
+        lbracket { literal: "[" }
+        rbracket { literal: "]" }
         // 文本字面量（所有 profile 都扫描成单 token；非 text 族不被规则引用
         // → error 叶 → 投影按旧 raw-token 合同映射"not part of"拒绝）
         str-lit { quote: "\"", escape: true }
@@ -134,7 +138,9 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         ident { charset: "a-zA-Z_", cont: "a-zA-Z0-9_" }
     }
     rules {
-        program { list-nl { item() {} } }
+        // 旧 items() 顶层无行纪律（同线相邻声明合法，c05 差分）——ListPlain；
+        // 块内语句序列才用 list-nl 的换行/`;` 分隔纪律。
+        program { list { item() {} } }
         item {
             alt { fn-item() {} }
             alt(profiles: [record, text-record]) { type-item() {} }
@@ -297,8 +303,9 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // 仅 wide 族；core 面经投影保真旧"仅字面量前一元减"拒绝
         unary-expr {
             alt { int-literal() {} }
-            alt(profiles: [scalar, text, record, text-record, entry-unit, host-console]) { minus() {} unary-expr(field: "operand") }
-            alt(profiles: [scalar, text, record, text-record, entry-unit, host-console]) { bang() {} unary-expr(field: "operand") }
+            // 一元 -/! 操作数锚定同行（旧 anchored(Unary)；负号换行的 e19 拒绝）。
+            alt(profiles: [scalar, text, record, text-record, entry-unit, host-console]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, text, record, text-record, entry-unit, host-console]) { bang() {} unary-expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {
@@ -363,10 +370,10 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             colon() {}
             expr(field: "value")
         }
-        // 带符号字面量折叠（负号与数字须同行）
+        // 带符号字面量折叠（same-line 只绑定负号分支——无符号整数字面量可跨行起始，e19 的负号换行拒绝由负号分支保持）。
         int-literal {
-            minus(repeat: "opt", field: "sign")
-            int-lit(field: "value", same-line: true)
+            alt { minus() int-lit(field: "value", same-line: true) }
+            alt { int-lit(field: "value") }
         }
         args { arg(repeat: "opt") many { arg-tail() {} } }
         arg-tail { comma() {} arg() {} }

@@ -332,6 +332,21 @@ fn utf8_len(b: u8) -> usize {
     }
 }
 
+
+/// 旧 Raw(NonAscii) 合同：`non-ASCII character `X` is not part of this
+/// source profile`（source.unsupported，span = 完整 UTF-8 标量）。
+fn non_ascii_diag(snap: &Snapshot, start: u64) -> Diagnostic {
+    let text = snap.read_str(start, (start + 4).min(snap.len() as u64)).unwrap_or_default();
+    let ch = text.chars().next().unwrap_or('?');
+    let len = ch.len_utf8() as u64;
+    Diagnostic::new(
+        Stage::Text,
+        "source.unsupported",
+        format!("non-ASCII character `{ch}` is not part of this source profile"),
+        sp(start, start + len),
+    )
+}
+
 fn unknown_char_diag(snap: &Snapshot, start: u64) -> Diagnostic {
     let byte = snap
         .read_str(start, start + 1)
@@ -362,8 +377,21 @@ pub(crate) fn first_lex_fact(
                 facts.push((leaf.start, d));
             }
         } else if leaf.kind == KIND_ERROR && leaf.error && leaf.end == leaf.start + 1 {
-            // 扫描器无匹配的单字节 error 叶 = 旧 unknown character。
-            facts.push((leaf.start, unknown_char_diag(snap, leaf.start)));
+            // 扫描器无匹配的单字节 error 叶：ASCII = 旧 unknown character
+            // （source.lex）；非 ASCII = 旧 Raw(NonAscii) 使用位拒绝面
+            //（source.unsupported——n49 差分；span = 完整标量）。
+            // 注意读**字节**：半标量（多字节 UTF-8 的首字节）不是合法 str，
+            // read_str 会失败回落——必须按原始字节分支。
+            let byte = snap
+                .read_bytes(leaf.start, leaf.start + 1)
+                .ok()
+                .and_then(|x| x.first().copied())
+                .unwrap_or(b'?');
+            if byte < 0x80 {
+                facts.push((leaf.start, unknown_char_diag(snap, leaf.start)));
+            } else {
+                facts.push((leaf.start, non_ascii_diag(snap, leaf.start)));
+            }
         }
     }
     facts.sort_by_key(|(s, _)| *s);

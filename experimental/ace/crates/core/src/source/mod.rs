@@ -35,7 +35,10 @@ pub use adapter::{
     emit_function_body, prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt,
     ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
-pub use parser::{parse_function_fragment, parse_method_fragment, parse_program, parse_program_with};
+pub use parser::{
+    parse_function_fragment, parse_method_fragment, parse_program, parse_program_with,
+    parse_program_with_handwritten,
+};
 pub use resolve::{
     env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index, env_method_index,
     env_note_cold_walks,

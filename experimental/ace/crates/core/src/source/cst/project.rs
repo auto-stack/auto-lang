@@ -2528,7 +2528,36 @@ impl<'a> Engine<'a> {
             self.enter_block(body_n);
         } else if kind == self.cx.k.expr_stmt {
             let value_n = self.cx.field_child(inner, "value").expect("expr stmt value");
-            if self.cx.profile != SourceProfile::EntryUnit {
+            // 旧门 = surface.is_entry_unit()（含 HostConsole——控制台脚本面）。
+            // 旧 stmt head 的表达式候选只从 ident/true/false/int 起始——其余
+            // 起始（如 `(`）是"expected statement, found X"（c03 差分）。
+            if !self.cx.profile.is_entry_unit() {
+                let first_leaf = lex::collect_leaves(&self.cx.tree)
+                    .into_iter()
+                    .filter(|l| l.start >= self.cx.tree.abs_range(value_n).0)
+                    .min_by_key(|l| l.start);
+                if let Some(l) = first_leaf {
+                    let k = &self.cx.k;
+                    let cand = l.kind == k.tok_ident
+                        || l.kind == k.tok_true
+                        || l.kind == k.tok_false
+                        || l.kind == k.tok_int_lit;
+                    if !cand {
+                        let span = Span { start: l.start as usize, end: l.end as usize };
+                        let text = self.cx.spelling_by_range(l.start, l.end);
+                        let found = describe_g(l.kind, &text, k);
+                        self.cx.reject(span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.syntax",
+                                format!("expected statement, found {found}"),
+                                span,
+                            )
+                        });
+                    }
+                }
+            }
+            if !self.cx.profile.is_entry_unit() {
                 let span = self.cx.span_of(value_n);
                 self.cx.reject(span, || {
                     Diagnostic::new(
@@ -3170,15 +3199,40 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// callee 链（expr/unary/postfix/call 包装）的 base atom 是否
-    /// leading-dot：沿首非 trivia 孩子的 spine 下钻，路上出现 leading-dot
-    /// 节点即真（`.new()` 的 base 即 leading-dot atom）。
+    /// callee 链的 base atom 是否**裸 leading-dot**（`.m()` 的调用本体）。
+    /// 有后缀步（`.text.len()`——调用挂在最后一步成员上）= false：
+    /// 旧怪癖只覆盖 leading-dot 空 call 本体（p01 差分）。
     fn callee_base_leading_dot(&self, callee_n: u32) -> bool {
         let mut n = callee_n;
-        let ld = self.cx.k.leading_dot.unwrap_or(u32::MAX);
         for _ in 0..10 {
-            if self.cx.tree.kind(n) == ld {
-                return true;
+            let kind = self.cx.tree.kind(n);
+            if kind == self.cx.k.postfix_expr || kind == KIND_POSTFIX {
+                let (base, steps) = self.split_postfix(n);
+                if !steps.is_empty() {
+                    return false;
+                }
+                n = base;
+                continue;
+            }
+            if kind == KIND_CALL {
+                match self
+                    .cx
+                    .children(n)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.kind(c) != self.cx.k.args)
+                {
+                    Some(c) => {
+                        n = c;
+                        continue;
+                    }
+                    None => return false,
+                }
+            }
+            if kind == self.cx.k.atom_expr {
+                return self
+                    .cx
+                    .child_of_kind(n, self.cx.k.leading_dot.unwrap_or(u32::MAX))
+                    .is_some();
             }
             match self
                 .cx

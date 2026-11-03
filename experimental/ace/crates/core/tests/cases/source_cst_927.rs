@@ -20,7 +20,7 @@ const SEVEN: [SourceProfile; 7] = [
 ];
 
 fn assert_same(src: &str, profile: SourceProfile, what: &str) {
-    let old = parse_program_with(src, profile);
+    let old = ace_core::source::parse_program_with_handwritten(src, profile);
     let new = cst::parse_program_via_cst(src, profile);
     match (&old, &new) {
         (Ok(a), Ok(b)) => {
@@ -274,9 +274,7 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("struct x", SourceProfile::Scalar),
-        ("static x", SourceProfile::Scalar),
-        ("enum E { A }", SourceProfile::Scalar),
+        ("fn main() int { let 数 = 1; return 0 }", SourceProfile::Text),
     ];
     for (i, (src, profile)) in snips.iter().enumerate() {
         let old = parse_program_with(src, *profile);
@@ -340,4 +338,81 @@ fn zz_debug_first_diff() {
 {}
 --new--
 {}", &o[s..(pos + ctx).min(o.len())], &n[s..(pos + ctx).min(n.len())]);
+}
+
+// ---------------------------------------------------------------- T-07 片段
+
+/// V-04：free fn 片段差分（旧 parse_function_fragment 合同——free-only、
+/// 完整消耗、绝对 span）。
+#[test]
+fn fragment_free_fn_differential() {
+    let src = "fn before() int { return 0 }
+fn mid(a int, b int) int { return a + b }
+fn after() bool { return true }
+";
+    // mid 的区间（绝对字节坐标）。
+    let start = src.find("fn mid").unwrap();
+    let end = src.find("fn after").unwrap();
+    let old = ace_core::source::parse_function_fragment(src, start..end, SourceProfile::Scalar);
+    let new = cst::parse_function_fragment_via_cst(src, start..end, SourceProfile::Scalar);
+    match (&old, &new) {
+        (Ok(a), Ok(b)) => {
+            assert_eq!(format!("{a:?}"), format!("{b:?}"), "fragment AST mismatch");
+            // 绝对 span：name 在 mid 位置（非 0 基）。
+            assert_eq!(b.name.span.start, src.find("mid").unwrap());
+        }
+        (Err(d), Err(e)) => {
+            assert_eq!(
+                (d.code.as_str(), d.message.as_str(), d.span.start, d.span.end),
+                (e.code.as_str(), e.message.as_str(), e.span.start, e.span.end)
+            );
+        }
+        _ => panic!("outcome mismatch: old={old:?} new={new:?}"),
+    }
+    // 反控：区间含两个函数 → 旧"exactly one"拒绝。
+    let start2 = src.find("fn mid").unwrap();
+    let r = cst::parse_function_fragment_via_cst(src, start2..src.len(), SourceProfile::Scalar);
+    let rold = ace_core::source::parse_function_fragment(src, start2..src.len(), SourceProfile::Scalar);
+    assert!(rold.is_err());
+    assert!(r.is_err());
+    // 坏区间：无序/越界 → 同名拒绝。
+    assert!(cst::parse_function_fragment_via_cst(src, 10..5, SourceProfile::Scalar).is_err());
+    assert!(cst::parse_function_fragment_via_cst(src, 0..9999, SourceProfile::Scalar).is_err());
+}
+
+/// V-04：方法片段（owner/receiver 上下文恢复；不拼假 free fn）。
+#[test]
+fn fragment_method_context() {
+    let src = "type P { v int
+    fn get(x int) int { return .v + x }
+}
+";
+    let start = src.find("fn get").unwrap();
+    let end = src[start..].find("}
+}").map(|i| i + start + 1).unwrap();
+    let out = cst::parse_front(cst::FrontRequest {
+        src,
+        profile: SourceProfile::Record,
+        kind: cst::FrontKind::MethodFragment {
+            range: start..end,
+            owner: "P".to_string(),
+            receiver: ace_core::source::ast::Receiver::View,
+        },
+        budget: cst::FrontBudget::WORK_OWNED_64MIB,
+    });
+    match out {
+        cst::FrontOutcome::Ok(ok) => {
+            assert_eq!(ok.program.items.len(), 1);
+            match &ok.program.items[0] {
+                ace_core::source::ast::Item::Fn(f) => {
+                    assert_eq!(f.receiver, ace_core::source::ast::Receiver::View);
+                    assert_eq!(f.owner.as_ref().unwrap().name, "P");
+                    assert_eq!(f.name.name, "get");
+                    assert_eq!(f.name.span.start, src.find("get").unwrap());
+                }
+                other => panic!("expected fn, got {other:?}"),
+            }
+        }
+        other => panic!("expected Ok, got {other:?}"),
+    }
 }
