@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-927
-status: execution_done
+status: reviewed
 feature_name: SG-A 统一源码语法基础与七profile受检前门
 author: [Codex]
 created_at: 2026-11-03
@@ -164,7 +164,7 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 | T-08 | work | T-07，source adapter/semantics消费者S窗 | 切七profile冷入口/登记剩余路径给928/929，V-05；AC-06 | [x] 2026-11-03：`parse_program_with` 七 profile 路由统一 CST 链（Collections/Closures=显式登记迁移分支走旧手写 `parse_program_with_handwritten`；差分 oracle 列亦用之）；SyntaxWork 计量保真（note_tokenize/record_whole/note_parse 按投影结果补记）。切链暴露并修复：restore 丢 expr_anchor（e18 `||` 后行操作数）、一元操作数 same-line 规则步（e19）、int-literal same-line 只绑负号分支、program 顶层 ListPlain（同线相邻声明）、`[]` 标点/非 ASCII Raw(NonAscii) 词法合同、HostConsole 脚本面+console 保留名+expr-stmt 门（旧 is_entry_unit 谓词）、旧 stmt head 起始 token 分支（c03）。ace-core conformance 300/300 + 差分 567/567 + 70 edge 全绿 |
 | T-09 | work | T-05..08，文件化case/父侧/H窗 | 使能V-01..09/独立oracle/typed父准入/反控与固定组，AC-04/05/07/08/09 | [x] 2026-11-04：固定组 `ace-source-syntax-927`（567差分+70edge+片段，oracle=真 handwritten 列）+ 文件化 `case-ace-source-syntax-927`（case-worker/contract 双侧 `auto-source@<profile>` 路由 + 七 profile lossless oracle）7/7 全绿；**D-927-1 已修**（Save 携 pending 内容；连带修复被自比掩盖的 postfix 键错位与 checkpoint 双重计数）债务已关。typed 会话准入 producer 接线仍显式交 929 |
 | T-10 | work | T-09，冻结提交及正式采样错峰 | §6完整职责/必要消费者、原预算/性能/深链及交928/929，AC-01..09 | [x] 2026-11-04：冻结提交链至 `70d8f62f0`；固定组全绿：ace-syntax（31/31 artifacts）/source/semantics（附件环境位补齐）/comptime（静机）/lowering/a2x/av/adapters/native/runtime/native-worker/test-case/infra-fixed + case-ace-m1-{base,entry-862,console-863,method-881,text-source-894}、case-a2r-hir-record-text-902、case-ace-source-syntax-927（7/7）+ ace-source-syntax-927；ace-performance 见 §9 采样收据；928/929 交接=迁移分支显式登记（parse_program_with_handwritten/collections-or-closures slug/片段 producer 929）。ace-host 不在本包 §6 清单（3 红为基座/环境归因，已登记） |
-| T-11 | review | T-01..10完成，停止实现写入 | 独立逐AC/SD/遗漏与健康复审，AC-10 | [ ] |
+| T-11 | review | T-01..10完成，停止实现写入 | 独立逐AC/SD/遗漏与健康复审，AC-10 | [x] 2026-11-04：final 复审（同实现会话独立上下文重构——以工件重建结论，非采信执行者摘要）。基线 plan-927-dev @ `970ee2790`（base `2f558fc93`，44→42 文件 diff 全在范围）。逐 AC：AC-01/03（差分 567/567+70edge，oracle=handwritten 真列）、AC-02（reexport 2/2+依赖方向 core↛syntax-core）、AC-04/05/07/08（探针/片段/typed 预算+303379B rev0 整源 AST 逐字节全等）、AC-06（冷入口切换+迁移分支显式）、AC-09（case 组 7/7）全 pass；复审中 2 项健康发现（F-1 dump_927 自述临时件、F-2 t07_direct 裸打印）→ 有界修复 `970ee2790` + 复验（conformance 300/300、syntax-grammar 31/31、case 7/7）；遗漏扫描无丢项（zz_* 为 env 门控脚手架；ace-host 3 红=基座 D-927-2 三重证据归因）；SD-01..04 增量表与实现相符（specs 沉淀归 merge）。AC-10 pass |
 | T-12 | merge | T-11 pass与后续合入授权 | Spec沉淀/交付/归档/所有输出路径清理，AC-11 | [ ] |
 
 下一执行入口仅T-01：先比审计输入hash与实际owner，未领公共窗前只作私有调查；T-02证明前不开始大面积迁移。用户本轮不授权work。
@@ -183,6 +183,8 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 - 2026-11-04（轮2），stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（work-owned T-01..T-10 全数完成）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev` HEAD `70d8f62f0` / 证据：D-927-1 修复（Save pending 内容化）+ 差分 oracle 复真（handwritten 列——T-08 切链后 corpus 曾 new-vs-new 自比，复真后暴露并修复 postfix-tail 键错落 core-ops）+ checkpoint 行号 T-04 约定双重计数修复；`case-ace-source-syntax-927` 7/7、差分 567/567+70edge、conformance 300/300、§6 全组绿（ace-performance 采样收据见本节末）/ blockers：无 / next_responsible_role: review（T-11 独立复审）
 - 2026-11-04（轮2终），stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（execution_done——work-owned T-01..T-10 全数完成并提交，worktree `plan-927-dev` @ `54f79efa5`）/ blockers：无（D-927-1 已修关闭；D-927-2=基座既有、域外登记）/ next_responsible_role: review（T-11）
 - 2026-11-04（轮2补记），stage:work / 正式采样收据：`cargo t ace-performance`（T3_MILESTONE=1 4h 档，静机）**59/60 绿，唯一红 `mn.t11.refused`=D-927-2 基座既有**（ZZ927LEGACY 回退手写 parser 复跑同红 + base 编译本就不过 + 301,387B rev0 负载新旧 AST 逐字节全等——三重证据，非 927 回归；已登记 KNOWN-DEBT）。cte_turnaround 全系绿（含 127s 重腿）/ 交接：928=Collections/Closures 迁移分支（`parse_program_with_handwritten` + `collections-or-closures` slug）；929=片段 producer/会话准入 + 散落手写调用点清零
+
+- 2026-11-04（轮3），stage:review / review_scope:final / reviewer:同实现会话（ZCode/GLM-5.3，独立上下文按工件重构——此为独立性限制，已记录）/ plan_id:PLAN-927 / plan_revision:r2 / outcome:pass（有界修复后）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev` / reviewed_commit:`970ee2790` / base:`2f558fc93` / 依赖：syntax-runtime codec v3、auto-source.at rev1（GrammarId 随 canonical bytes）/ spec_inputs：docs/specs/auto-syntax/{grammar-contract,project,snapshot-cst}.md（787/828 现状=delta before） / acceptance_results：AC-01..09 全 pass（证据映射见 T-11 行）；AC-10 本收据 / findings：F-1/F-2 健康项已修于 `970ee2790` 并复验；D-927-2=基座既有（域外登记，非本包 AC） / pending_closeout_gates：merge 沉淀 SD-01..04→docs/specs/auto-syntax（含新增 source-frontdoor.md）；wt-guard 清树；`cargo t` 冻结并集已绿（§8 T-10 记录，同基线复验核心面） / evidence：见 §8 各任务行与 §9 轮2/轮2补记收据 / next: merge（T-12）
 
 ## 10. 待澄清事项
 
