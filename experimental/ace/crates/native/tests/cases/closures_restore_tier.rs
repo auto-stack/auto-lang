@@ -132,7 +132,7 @@ fn closures_restore_session_takes_next_lambda_edit_with_zero_first_production() 
     assert_eq!(hit.exit_code, Some(43));
     assert!(hit.work.codegen_units.is_empty());
     assert_eq!(hit.work.route, "hit");
-    session.close();
+    let _ = session.close();
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -251,6 +251,6 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
         .apply_source(&source.replace("+ n }", "+ n + 1 }"))
         .expect("recovery warm edit");
     assert_eq!(edit.exit_code, Some(43));
-    recovered.close();
+    let _ = recovered.close();
     let _ = std::fs::remove_dir_all(&dir);
 }
