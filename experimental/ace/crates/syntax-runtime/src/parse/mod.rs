@@ -260,6 +260,10 @@ struct Frame {
     save: Save,       // alt 入口（回溯）
     frame_save: Save, // frame 入口
     consumed_any: bool,
+    /// PLAN-927 cut：本 alt 已消费 cut 步 token——失败不再回退备选。
+    committed: bool,
+    /// 本帧消费过 cut（供成功路径向机级闩锁传播）。
+    cut_here: bool,
     wait: Wait,
     list_started: bool,
     /// RepItem 迭代起点完整状态：item 失败回滚到迭代起点（非 alt 入口！）；
@@ -343,6 +347,11 @@ struct Machine<'p, 'a> {
     op_binding: Vec<i8>,
     first: FirstSets,
     budget: Budget,
+    /// PLAN-927 cut 提交深度：cut 步消费时记录当前栈深。深度 ≤ 该值的
+    /// 帧（cut 时刻已在解析中的选择点）失败时**不换备选**——复刻旧手写
+    /// parser 在 `ident {` 后的无回溯提交；之后新开的帧（提交域内的子
+    /// 构造，如字段值里的 ctor-vs-ident 选择）照常回退。cut 帧成功时清零。
+    cut_depth: usize,
     stack: Vec<Frame>,
     active_rules: Vec<(RuleId, usize)>,
 }
@@ -388,6 +397,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             }
         }
         let mut m = Machine {
+            cut_depth: 0,
             p,
             graft,
             toks,
@@ -585,6 +595,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                 save,
                 frame_save: save,
                 consumed_any: false,
+            committed: false,
+            cut_here: false,
                 wait: Wait::None,
                 list_started: false,
                 rep_save: None,
@@ -636,6 +648,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             save,
             frame_save: save,
             consumed_any: false,
+            committed: false,
+            cut_here: false,
             wait: Wait::None,
             list_started: false,
             rep_save: None,
@@ -663,6 +677,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             save,
             frame_save: save,
             consumed_any: false,
+            committed: false,
+            cut_here: false,
             wait: Wait::None,
             list_started: false,
             rep_save: None,
@@ -973,7 +989,15 @@ impl<'p, 'a> Machine<'p, 'a> {
                             let f = self.stack.last_mut().unwrap();
                             let n = f.children.len();
                             f.children[n - 1].1 = field;
+                            if step.cut {
+                                f.committed = true;
+                                f.cut_here = true;
+                            }
                             f.step += 1;
+                            if step.cut {
+                                // 提交深度 = 当前栈深（含本帧）。
+                                self.cut_depth = self.stack.len();
+                            }
                         }
                         Err(()) => self.fail_alt(),
                     }
@@ -1240,11 +1264,17 @@ impl<'p, 'a> Machine<'p, 'a> {
     }
 
     fn fail_alt(&mut self) {
-        let has_next = {
+        // PLAN-927 cut：已消费 cut 步的 alt 失败 = 提交点已过——不回退到
+        // 后续备选（复刻旧手写 parser 的无回溯提交；恢复/上抛走失败路径）。
+        let (has_next, committed) = {
             let f = self.stack.last().unwrap();
-            f.alt + 1 < self.p.rules[f.rule as usize].alts.len()
+            (
+                f.alt + 1 < self.p.rules[f.rule as usize].alts.len(),
+                f.committed,
+            )
         };
-        if has_next {
+        let frozen = self.cut_depth > 0 && self.stack.len() <= self.cut_depth;
+        if has_next && !committed && !frozen {
             self.advance_alt();
         } else {
             self.handle_frame_failure();
@@ -1452,7 +1482,7 @@ impl<'p, 'a> Machine<'p, 'a> {
     }
 
     fn handle_frame_success(&mut self) {
-        let (rule, children, field, node_start, is_decl) = {
+        let (rule, children, field, node_start, is_decl, cut_here) = {
             let f = self.stack.last_mut().unwrap();
             (
                 f.rule,
@@ -1460,11 +1490,18 @@ impl<'p, 'a> Machine<'p, 'a> {
                 f.pratt_field,
                 f.node_start,
                 f.is_decl_frame,
+                f.cut_here,
             )
         };
+        if cut_here {
+            // cut 帧自身成功：提交域结束，深度清零（后续构造恢复正常回退）。
+            self.cut_depth = 0;
+        }
         let kind = self.p.rule_kind(rule);
         let node = self.alloc_node(kind, children, None, false);
         if is_decl {
+            // 声明边界成功：提交域止于本声明。
+            self.cut_depth = 0;
             // 声明单元登记：相对化 [node_start..]（开放块局部区间——封块只在
             // 声明边界，声明子树必在同一块内），写块内声明序号。
             // origin 取 cover_from（**含前导 trivia**——语义 span 已排除

@@ -139,32 +139,32 @@ pub fn mini_program() -> GrammarProgram {
         atom,
         field: None,
         repeat: Repeat::Once,
-        same_line: false,
+        same_line: false, cut: false,
     };
     let stepf = |atom: Atom, f: u32| Step {
         atom,
         field: Some(f),
         repeat: Repeat::Once,
-        same_line: false,
+        same_line: false, cut: false,
     };
     let rep = |atom: Atom| Step {
         atom,
         field: None,
         repeat: Repeat::ZeroOrMore,
-        same_line: false,
+        same_line: false, cut: false,
     };
     #[allow(unused_variables)]
     let opt = |atom: Atom| Step {
         atom,
         field: None,
         repeat: Repeat::Optional,
-        same_line: false,
+        same_line: false, cut: false,
     };
     let listp = |atom: Atom| Step {
         atom,
         field: None,
         repeat: Repeat::ListPlain,
-        same_line: false,
+        same_line: false, cut: false,
     };
 
     let rs = |name: &str, alts: Vec<Alt>, recover: bool| RuleSpec {
@@ -206,7 +206,7 @@ pub fn mini_program() -> GrammarProgram {
                         atom: Atom::Rule(rules::PARAMS),
                         field: Some(2),
                         repeat: Repeat::Optional,
-                        same_line: false,
+                        same_line: false, cut: false,
                     },
                     step(Atom::Tok(toks::RPAREN)),
                     step(Atom::Tok(toks::ARROW)),

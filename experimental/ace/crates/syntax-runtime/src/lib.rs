@@ -30,7 +30,7 @@ pub const GRAMMAR_SCHEMA_VERSION_STR: &str = "ac787/grammar-schema/1";
 pub const RUNTIME_VERSION: &str = "ac-syntax-rt/1";
 
 /// 词法 scanner ABI 版本（checkpoint 布局语义），参与 A02 key。
-pub const SCANNER_ABI_VERSION: &str = "ac-syntax-scanner/1";
+pub const SCANNER_ABI_VERSION: &str = "ac-syntax-scanner/2";
 
 /// 解析器 ABI 版本（规则程序语义），参与 A03 key。
-pub const PARSER_ABI_VERSION: &str = "ac-syntax-parser/1";
+pub const PARSER_ABI_VERSION: &str = "ac-syntax-parser/2";

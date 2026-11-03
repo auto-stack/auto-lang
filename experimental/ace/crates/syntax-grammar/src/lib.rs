@@ -29,6 +29,13 @@
 //! 左递归（经可空前缀的环）、可空 repeat、非前进 scanner 规则、Pratt binding
 //! 越界。步骤简写：`lit(of)`/`tok(of)`/`ref(of)`/`pratt(of)`，或直写规则名/
 //! token 名；`list`/`list-nl` 子节点包装列表步。
+//!
+//! PLAN-927 profile 裁剪：`profiles(version: N) { profile(name: "core") {...} }`
+//! 声明能力清单名集；rule/alt/pratt 表/pratt op 可带 `profiles: [a, b]` 属性。
+//! [`compile_profile`] 以共享源裁剪出**该 profile 自己的语法程序**——不同
+//! profile 的上下文提交启发（如 record ctor `Ty {` 与 `if p {` 的竞争）必须在
+//! 语法形状层区分，不能一份全接收语法配后端猜 profile。裁剪后 canonical
+//! bytes 不同 → GrammarId 自然隔离；存活步引用被裁规则 = 编译期错误。
 
 use ace_syntax_runtime::program::*;
 use ace_syntax_runtime::{
@@ -45,14 +52,59 @@ pub struct CompileDiag {
 
 /// 编译入口：Atom 文本 → 可执行语法程序（身份已绑定）。
 pub fn compile(source: &str) -> Result<GrammarProgram, Vec<CompileDiag>> {
+    compile_inner(source, None)
+}
+
+/// PLAN-927：按 `profiles` 段声明的能力清单名裁剪共享源，产出该 profile
+/// 专属语法程序。程序名 = `{grammar name}/{profile}`；被裁剪命中的
+/// alt/rule/pratt 表/op 不进入 canonical bytes。
+pub fn compile_profile(source: &str, profile: &str) -> Result<GrammarProgram, Vec<CompileDiag>> {
+    compile_inner(source, Some(profile))
+}
+
+/// 声明的 profile 能力清单名集（`profiles` 段；无该段 = 空集，任何
+/// `profiles:` 门控属性都是编译错误——防止静默全保留）。
+pub fn declared_profiles(source: &str) -> Result<Vec<String>, Vec<CompileDiag>> {
     let atom = AtomParser::parse(source).map_err(|e| {
         vec![CompileDiag {
             message: format!("atom parse error: {e:?}"),
             path: "<document>".into(),
         }]
     })?;
-    let mut c = Ctx { diags: Vec::new() };
-    let program = c.build(atom)?;
+    let AtomDoc::Node(root) = atom else {
+        return Err(vec![CompileDiag {
+            message: "grammar document must be a `grammar(...)` node".into(),
+            path: "<document>".into(),
+        }]);
+    };
+    let mut c = Ctx {
+        diags: Vec::new(),
+        profile: None,
+        profile_names: Vec::new(),
+    };
+    c.collect_profiles(&root);
+    if !c.diags.is_empty() {
+        return Err(c.diags);
+    }
+    Ok(c.profile_names)
+}
+
+fn compile_inner(
+    source: &str,
+    profile: Option<&str>,
+) -> Result<GrammarProgram, Vec<CompileDiag>> {
+    let atom = AtomParser::parse(source).map_err(|e| {
+        vec![CompileDiag {
+            message: format!("atom parse error: {e:?}"),
+            path: "<document>".into(),
+        }]
+    })?;
+    let mut c = Ctx {
+        diags: Vec::new(),
+        profile: None,
+        profile_names: Vec::new(),
+    };
+    let program = c.build(atom, profile)?;
     if !c.diags.is_empty() {
         return Err(c.diags);
     }
@@ -61,6 +113,8 @@ pub fn compile(source: &str) -> Result<GrammarProgram, Vec<CompileDiag>> {
 
 struct Ctx {
     diags: Vec<CompileDiag>,
+    profile: Option<String>,
+    profile_names: Vec<String>,
 }
 
 impl Ctx {
@@ -71,7 +125,91 @@ impl Ctx {
         });
     }
 
-    fn build(&mut self, atom: AtomDoc) -> Result<GrammarProgram, Vec<CompileDiag>> {
+    /// `profiles` 段收集 + 与当前编译模式的核对。
+    fn collect_profiles(&mut self, root: &auto_val::Node) {
+        let mut section = None;
+        for (_k, kid) in root.kids_iter() {
+            let auto_val::Kid::Node(n) = kid else {
+                continue;
+            };
+            match n.name.as_str() {
+                "profiles" => {
+                    if section.is_some() {
+                        self.err("profiles", "duplicate `profiles` section".into());
+                    }
+                    section = Some(n.clone());
+                }
+                _ => {}
+            }
+        }
+        let Some(sec) = section else {
+            return;
+        };
+        let version = pint(&sec, "version").unwrap_or(1) as u64;
+        if version != 1 {
+            self.err("profiles", format!("unsupported profiles version {version}"));
+        }
+        for (_k, kid) in sec.kids_iter() {
+            let auto_val::Kid::Node(p) = kid else {
+                continue;
+            };
+            if p.name.as_str() != "profile" {
+                self.err("profiles", format!("unknown node `{}`", p.name));
+                continue;
+            }
+            let name = pstr(p, "name").unwrap_or_default();
+            if name.is_empty() {
+                self.err("profiles.profile", "missing `name`".into());
+                continue;
+            }
+            if self.profile_names.contains(&name) {
+                self.err(
+                    &format!("profiles.profile.{name}"),
+                    format!("duplicate profile `{name}`"),
+                );
+            }
+            self.profile_names.push(name);
+        }
+        if let Some(active) = &self.profile {
+            if !self.profile_names.iter().any(|n| n == active) {
+                self.err(
+                    "profiles",
+                    format!("profile `{active}` is not declared in the `profiles` section"),
+                );
+            }
+        }
+    }
+
+    /// 门控属性 `profiles: [a, b]` 是否放行当前编译（无属性 = 全 profile 放行）。
+    fn gate_allows(&mut self, node: &auto_val::Node, path: &str) -> bool {
+        let Some(list) = plist(node, "profiles") else {
+            return true;
+        };
+        if self.profile_names.is_empty() {
+            self.err(
+                path,
+                "`profiles:` gate requires a declared `profiles` section".into(),
+            );
+            return true;
+        }
+        let Some(active) = self.profile.clone() else {
+            // plain `compile`（无 profile 模式）：声明了 profiles 段的共享源
+            // 必须显式经 compile_profile——静默裁剪会产出一个形状错误的
+            // "半语法"，这是编译错误，不是隐式降级。
+            self.err(
+                path,
+                "gated node requires compile_profile (plain compile of a profiles grammar is refused)".into(),
+            );
+            return false;
+        };
+        list.iter().any(|p| p == &active)
+    }
+
+    fn build(
+        &mut self,
+        atom: AtomDoc,
+        profile: Option<&str>,
+    ) -> Result<GrammarProgram, Vec<CompileDiag>> {
         let AtomDoc::Node(root) = atom else {
             return Err(vec![CompileDiag {
                 message: "grammar document must be a `grammar(...)` node".into(),
@@ -83,7 +221,9 @@ impl Ctx {
                 message: format!("root node must be `grammar`, found `{}`", root.name),
                 path: "<document>".into(),
             }]);
-        }
+        };
+        self.profile = profile.map(|s| s.to_string());
+        self.collect_profiles(&root);
         let name = pstr(&root, "name").unwrap_or_else(|| {
             self.err("grammar", "missing `name`".into());
             "unnamed".into()
@@ -112,6 +252,7 @@ impl Ctx {
                 "tokens" => tokens_node = Some(node.clone()),
                 "rules" => rules_node = Some(node.clone()),
                 "pratt" => pratt_nodes.push(node.clone()),
+                "profiles" => {}
                 "outline" => {
                     has_outline = true;
                     outline.decl_rule = pstr(node, "decl-rule").unwrap_or_default();
@@ -215,9 +356,16 @@ impl Ctx {
             |n: &str| -> Option<u32> { token_names.iter().position(|t| t == n).map(|i| i as u32) };
 
         // ---- rules（两遍：名字先行，允许前向引用）----
-        let mut rule_names: Vec<String> = Vec::new();
-        let mut rule_recover: Vec<bool> = Vec::new();
-        let mut raw_rules: Vec<auto_val::Node> = Vec::new();
+        // PLAN-927 裁剪：pass1 记录每个规则的 `profiles:` 门；pass2 解析步骤
+        // 时跳过被裁 alt；随后压缩规则表并重映射 Rule 引用——存活步引用被裁
+        // 规则 = 编译错误（防静默错形状）。
+        struct RawRule {
+            name: String,
+            recover: bool,
+            node: auto_val::Node,
+            enabled: bool,
+        }
+        let mut raw_rules: Vec<RawRule> = Vec::new();
         if let Some(rn) = &rules_node {
             for (_k, kid) in rn.kids_iter() {
                 let auto_val::Kid::Node(r) = kid else {
@@ -225,19 +373,38 @@ impl Ctx {
                 };
                 let r = r.as_ref();
                 let rname = r.name.to_string();
-                if rule_names.contains(&rname) {
+                if raw_rules.iter().any(|x| x.name == rname) {
                     self.err(
                         &format!("rules.{rname}"),
                         format!("duplicate rule `{rname}`"),
                     );
                 }
-                rule_recover.push(pbool(r, "recover").unwrap_or(false));
-                rule_names.push(rname);
-                raw_rules.push(r.clone());
+                let enabled = self.gate_allows(r, &format!("rules.{rname}"));
+                raw_rules.push(RawRule {
+                    name: rname,
+                    recover: pbool(r, "recover").unwrap_or(false),
+                    node: r.clone(),
+                    enabled,
+                });
             }
         }
-        let rule_of =
-            |n: &str| -> Option<u32> { rule_names.iter().position(|r| r == n).map(|i| i as u32) };
+        // 全名索引（未压缩 id 空间；压缩后重映射）。
+        let full_rule_names: Vec<String> = raw_rules.iter().map(|r| r.name.clone()).collect();
+        let rule_of_full =
+            |n: &str| -> Option<u32> { full_rule_names.iter().position(|r| r == n).map(|i| i as u32) };
+        // 压缩映射：full id -> Option<compact id>（被裁 = None）。
+        let mut compact_of: Vec<Option<u32>> = Vec::with_capacity(raw_rules.len());
+        {
+            let mut next = 0u32;
+            for r in &raw_rules {
+                if r.enabled {
+                    compact_of.push(Some(next));
+                    next += 1;
+                } else {
+                    compact_of.push(None);
+                }
+            }
+        }
 
         let mut field_names: Vec<String> = Vec::new();
         let mut field_of = |n: &str| -> u32 {
@@ -250,6 +417,35 @@ impl Ctx {
             }
         };
 
+        // pratt 表门控：被裁表不进入编译产物；存活表按启用序**压缩重映射**
+        // （Atom::Pratt 索引 = 压缩后下标，与规则表同一纪律）。
+        let mut pratt_enabled: Vec<bool> = Vec::new();
+        for pn in &pratt_nodes {
+            let path = format!("pratt.{}", pn.name);
+            pratt_enabled.push(self.gate_allows(pn, &path));
+        }
+        let pratt_compact: Vec<Option<u32>> = {
+            let mut next = 0u32;
+            pratt_enabled
+                .iter()
+                .map(|&e| {
+                    if e {
+                        let c = next;
+                        next += 1;
+                        Some(c)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+        let pratt_of_name = |n: &str| -> Option<u32> {
+            pratt_nodes
+                .iter()
+                .position(|p| pos_name(p).as_deref() == Some(n))
+                .and_then(|i| pratt_compact[i])
+        };
+
         let mut parse_steps = |ctx: &mut Ctx,
                                node: &auto_val::Node,
                                rule_path: &str|
@@ -260,6 +456,11 @@ impl Ctx {
                     continue;
                 };
                 let s = s.as_ref();
+                // 步骤级门控（含包装步骤 `opt(profiles: [...]) { ... }`）：
+                // 被裁步骤整个跳过（可选步骤=缺席，列表步骤=无此项）。
+                if !ctx.gate_allows(s, rule_path) {
+                    continue;
+                }
                 let sname = s.name.to_string();
                 // `list(...)`/`list-nl(...)`/`many(...)` 包装：把被包装步骤升级为列表步。
                 let (wrapper, inner): (Option<&str>, Option<&auto_val::Node>) = match sname.as_str()
@@ -305,6 +506,25 @@ impl Ctx {
                 let src_props = if inner.is_some() { target } else { s };
                 let field = pstr(src_props, "field").map(|f| field_of(&f));
                 let same_line = pbool(src_props, "same-line").unwrap_or(false);
+                let cut = pbool(src_props, "cut").unwrap_or(false);
+                let remap_rule = |ctx: &mut Ctx,
+                                  full: u32,
+                                  rule_path: &str|
+                 -> u32 {
+                    match compact_of[full as usize] {
+                        Some(c) => c,
+                        None => {
+                            ctx.err(
+                                rule_path,
+                                format!(
+                                    "step references rule `{}` which is trimmed for this profile",
+                                    full_rule_names[full as usize]
+                                ),
+                            );
+                            0
+                        }
+                    }
+                };
                 let atom = match sname2.as_str() {
                     "lit" => {
                         let litv = pstr(src_props, "of").unwrap_or_default();
@@ -331,8 +551,8 @@ impl Ctx {
                     }
                     "ref" => {
                         let rn = pstr(src_props, "of").unwrap_or_default();
-                        match rule_of(&rn) {
-                            Some(r) => Atom::Rule(r),
+                        match rule_of_full(&rn) {
+                            Some(r) => Atom::Rule(remap_rule(ctx, r, rule_path)),
                             None => {
                                 ctx.err(rule_path, format!("ref `{rn}` unknown"));
                                 Atom::Rule(0)
@@ -341,20 +561,20 @@ impl Ctx {
                     }
                     "pratt" => {
                         let pn = pstr(src_props, "of").unwrap_or_default();
-                        match pratt_nodes
-                            .iter()
-                            .position(|p| pos_name(p).as_deref() == Some(pn.as_str()))
-                        {
-                            Some(i) => Atom::Pratt(i as u32),
+                        match pratt_of_name(&pn) {
+                            Some(i) => Atom::Pratt(i),
                             None => {
-                                ctx.err(rule_path, format!("pratt `{pn}` unknown"));
+                                ctx.err(
+                                    rule_path,
+                                    format!("pratt `{pn}` unknown or trimmed for this profile"),
+                                );
                                 Atom::Pratt(0)
                             }
                         }
                     }
                     other => {
-                        if let Some(r) = rule_of(other) {
-                            Atom::Rule(r)
+                        if let Some(r) = rule_of_full(other) {
+                            Atom::Rule(remap_rule(ctx, r, rule_path))
                         } else if let Some(t) = tok_of_name(other) {
                             Atom::Tok(t)
                         } else {
@@ -371,21 +591,26 @@ impl Ctx {
                     field,
                     repeat,
                     same_line,
+                    cut,
                 });
             }
             steps
         };
 
         let mut rules: Vec<RuleSpec> = Vec::new();
-        for (i, r) in raw_rules.iter().enumerate() {
-            let rname = &rule_names[i];
+        for r in &raw_rules {
+            if !r.enabled {
+                continue;
+            }
+            let rname = &r.name;
             let path = format!("rules.{rname}");
             let mut alts: Vec<Alt> = Vec::new();
             let has_alt_children = r
+                .node
                 .kids_iter()
                 .any(|(_k, kid)| matches!(kid, auto_val::Kid::Node(n) if n.name.as_str() == "alt"));
             if has_alt_children {
-                for (_k, kid) in r.kids_iter() {
+                for (_k, kid) in r.node.kids_iter() {
                     let auto_val::Kid::Node(a) = kid else {
                         continue;
                     };
@@ -397,13 +622,16 @@ impl Ctx {
                         );
                         continue;
                     }
+                    if !self.gate_allows(a, &format!("{path}.alt")) {
+                        continue;
+                    }
                     alts.push(Alt {
                         steps: parse_steps(self, a, &path),
                     });
                 }
             } else {
                 alts.push(Alt {
-                    steps: parse_steps(self, r, &path),
+                    steps: parse_steps(self, &r.node, &path),
                 });
             }
             if alts.is_empty() {
@@ -412,13 +640,19 @@ impl Ctx {
             rules.push(RuleSpec {
                 name: rname.clone(),
                 alts,
-                recover: rule_recover[i],
+                recover: r.recover,
             });
         }
+        let rule_of = |n: &str| -> Option<u32> {
+            rules.iter().position(|r| r.name == n).map(|i| i as u32)
+        };
 
         // ---- pratt 表体 ----
         let mut pratt: Vec<PrattSpec> = Vec::new();
-        for pn in &pratt_nodes {
+        for (pi, pn) in pratt_nodes.iter().enumerate() {
+            if !pratt_enabled[pi] {
+                continue;
+            }
             let path = format!("pratt.{}", pn.name);
             let primary = pstr(pn, "primary")
                 .and_then(|n| rule_of(&n))
@@ -433,6 +667,9 @@ impl Ctx {
                 };
                 let o = o.as_ref();
                 if o.name.as_str() != "op" {
+                    continue;
+                }
+                if !self.gate_allows(o, &format!("{path}.op")) {
                     continue;
                 }
                 let binding = pint(o, "binding").unwrap_or(0) as u8;
@@ -549,8 +786,12 @@ impl Ctx {
             0
         });
 
+        let prog_name = match &self.profile {
+            Some(p) => format!("{name}/{p}"),
+            None => name,
+        };
         let mut p = GrammarProgram {
-            name,
+            name: prog_name,
             revision,
             schema_version: GRAMMAR_SCHEMA_VERSION,
             scanner: ScannerProgram {
@@ -699,7 +940,7 @@ impl Ctx {
         }
         let mut path = Vec::new();
         for i in 0..n {
-            dfs(i, rules, &nullable, &mut state, &mut self.diags, &mut path);
+            dfs(i, &rules, &nullable, &mut state, &mut self.diags, &mut path);
         }
         Ok(())
     }

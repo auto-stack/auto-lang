@@ -64,6 +64,7 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
                     Repeat::ListNewline => 4,
                 });
                 w.push(s.same_line as u8);
+                w.push(s.cut as u8);
                 match s.field {
                     None => w.push(0),
                     Some(f) => {
@@ -211,12 +212,14 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
                     t => return Err(format!("bad repeat tag {t}")),
                 };
                 let same_line = r.u8()? != 0;
+                let cut = r.u8()? != 0;
                 let field = if r.u8()? != 0 { Some(r.u32()?) } else { None };
                 steps.push(Step {
                     atom,
                     field,
                     repeat,
                     same_line,
+                    cut,
                 });
             }
             alts.push(Alt { steps });

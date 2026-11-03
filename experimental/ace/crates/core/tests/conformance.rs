@@ -47,3 +47,5 @@ mod text_source;
 
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
+#[path = "cases/source_cst_927.rs"]
+mod source_cst_927;

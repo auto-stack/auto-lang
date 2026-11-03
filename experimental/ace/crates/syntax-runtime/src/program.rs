@@ -12,9 +12,9 @@
 use crate::identity::{GrammarId, PackageIdentity};
 
 /// 语法程序 schema 版本（.at 配置的可读面）。
-pub const GRAMMAR_SCHEMA_VERSION: u32 = 1;
+pub const GRAMMAR_SCHEMA_VERSION: u32 = 2;
 /// 程序规范二进制序列化格式版本（语言包装载格式，实验 Schema，非正式 Batom）。
-pub const PROGRAM_CODEC_VERSION: u16 = 1;
+pub const PROGRAM_CODEC_VERSION: u16 = 2;
 
 pub type RuleId = u32;
 pub type TokenId = u32;
@@ -142,6 +142,10 @@ pub struct Step {
     /// 换行敏感（core）：序列内该 token 必须与前一消费 token 同行
     /// （仅未括号表达式上下文强制；用于 `-`/字面量同行的有符号字面量规则）。
     pub same_line: bool,
+    /// PLAN-927 cut 步：该 token 消费后，本 alt 失败**不再回退到后续备选**
+    /// （配合 rule.recover 走恢复，或无 recover 时硬失败上抛）。复刻被替代
+    /// 手写 parser 的"提交点"语义（如 record ctor `ident {` 之后不回溯）。
+    pub cut: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -310,11 +310,16 @@ impl<'p, 's> Scanner<'p, 's> {
         self.mode = rule.next_mode;
         self.mid = None;
         self.advance_past(end)?;
+        // PLAN-927：跨行 token（多行字符串）的行 = **结束行**——与被替代的
+        // 手写 lexer 一致（其在 push 时已计入 token 内换行），使行敏感决策
+        // （锚定 primary/运算符续行/列表门）与旧 parser 逐字节对齐。单行
+        // token 起始行==结束行，行为不变。mid 恢复路径保持 F787-R3-04 的
+        // 原始起始行合同（checkpoint 恢复是 929 域）。
         Ok(Some(Token {
             token: rule.token,
             start,
             end,
-            line,
+            line: self.w.line,
             error: err,
         }))
     }

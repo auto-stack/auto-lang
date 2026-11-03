@@ -17,6 +17,7 @@
 
 pub mod adapter;
 pub mod ast;
+pub mod cst;
 pub(crate) mod closure_capture;
 pub mod closures_context;
 pub mod closures_fn;

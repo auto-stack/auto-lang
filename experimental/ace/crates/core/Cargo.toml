@@ -10,6 +10,13 @@ publish = false
 # PLAN-871 T-06: the Cranelift lowering stack is GONE with `native.rs` (the
 # backend now lives in ac-mn); this crate is frontend/HIR/verify/link only.
 anyhow = "1"
+# PLAN-927 T-03: the unified source front door consumes the shared CST
+# machinery (scanner/rule program/snapshot) and the .at profile compiler.
+# Direction: core → syntax-{runtime,grammar}; both are leaves over core
+# (auto-atom/auto-val are neutral data deps) — the graph stays acyclic and
+# ace-syntax-core keeps its thin re-export seam ABOVE core.
+ace-syntax-runtime = { path = "../syntax-runtime" }
+ace-syntax-grammar = { path = "../syntax-grammar" }
 # PLAN-913 T-03: the portable closures DECLARATION context is serialized as
 # untrusted data (serde derive on the context module's own mirror types only —
 # no core AST/HIR/resolver type gains a serialized form).
