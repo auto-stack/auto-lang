@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/source-frontdoor.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-test-case]
 depends_on: [PLAN-787, PLAN-828, PLAN-881, PLAN-894]
-current_step: 9
+current_step: 10
 total_steps: 12
 ---
 
@@ -162,8 +162,8 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 | T-06 | work | T-03..05，core新cst模块 | 严格AST/诊断/typed资源分类/来源投影，V-03/04/09；AC-04/08 | [x] 2026-11-03：迭代帧机投影（调用栈序修正：receiver 值在实参下；path-assign path-seg 收集）；classify_word ret 位 record 收任意 ident（旧 fn_item_tail 名义分支）；type-item 成员序列全镜像（field/member_type/duplicate/空 record）；期望游走=区域首叶起的全树后缀叶列（跨恢复区域边界）；旧 continue-'outer 怪癖保真（leading-dot 空调用/空 ctor）；EOF 期望错误（function name/`{` 等）；保留 token/尾随叶分类。差分+edge 全绿 |
 | T-07 | work | T-06，parser薄门面/片段新接口 | 同规则完整源/free fn/方法片段、上下文授权与计数/identity；V-04/07/08；AC-05/07 | [x] 2026-11-03：FrontKind::{FreeFnFragment, MethodFragment}（range/owner/receiver 上下文）+ parse_fragment_front + parse_function_fragment_via_cst 旧签名桥 + shift.rs 全 AST 绝对坐标平移；free-fn 片段差分（AST 全等+绝对 span+多函数/坏区间反控）与方法 owner/receiver 恢复测试绿。旧 `parse_function_fragment` 保持 free-only 原合同不动（调用方 929 迁移）；会话编辑准入（V-08 的 revision/checkpoint 授权）由 T-09 接实际 producer |
 | T-08 | work | T-07，source adapter/semantics消费者S窗 | 切七profile冷入口/登记剩余路径给928/929，V-05；AC-06 | [x] 2026-11-03：`parse_program_with` 七 profile 路由统一 CST 链（Collections/Closures=显式登记迁移分支走旧手写 `parse_program_with_handwritten`；差分 oracle 列亦用之）；SyntaxWork 计量保真（note_tokenize/record_whole/note_parse 按投影结果补记）。切链暴露并修复：restore 丢 expr_anchor（e18 `||` 后行操作数）、一元操作数 same-line 规则步（e19）、int-literal same-line 只绑负号分支、program 顶层 ListPlain（同线相邻声明）、`[]` 标点/非 ASCII Raw(NonAscii) 词法合同、HostConsole 脚本面+console 保留名+expr-stmt 门（旧 is_entry_unit 谓词）、旧 stmt head 起始 token 分支（c03）。ace-core conformance 300/300 + 差分 567/567 + 70 edge 全绿 |
-| T-09 | work | T-05..08，文件化case/父侧/H窗 | 使能V-01..09/独立oracle/typed父准入/反控与固定组，AC-04/05/07/08/09 | [~] 2026-11-04：固定组 `ace-source-syntax-927`（567差分+70edge+片段）与 `case-ace-source-syntax-927`（文件化）已注册；case-worker/contract 双侧 `auto-source@<profile>` 路由落地；七 profile lossless case 文件化（4 PASS / 3 SKIP=**D-927-1**：record/entry-unit/host-console 重建丢语句分隔换行——基线 f827c8e65 同样复现的列表机 restore/trivia 既有缺口，已登记 KNOWN-DEBT-AND-RISKS，runner 政策 skip≠绿 → 修复后去 skip 复验）。typed 会话准入 producer 接线仍归 929 |
-| T-10 | work | T-09，冻结提交及正式采样错峰 | §6完整职责/必要消费者、原预算/性能/深链及交928/929，AC-01..09 | [~] 2026-11-04（更新）：冻结提交链 `5eaabff42`→`perf/profile`→`unary-callee`（plan-927-dev）；固定组绿：ace-syntax（修 T-04 结束行双计+mid 起始行）、ace-source、ace-semantics、ace-lowering、ace-a2x（修 `!call` 一元丢失）、ace-av、ace-adapters、ace-artifacts、auto-test-case、infra-fixed、ace-native-worker、ace-source-syntax-927（新注册）；ace-comptime deadline 修复（test 档 syntax-runtime O2 + CteDriver 预热）隔离绿，并行余红=lang-924 同机会话负载归因（隔离重放绿）；ace-native/ace-runtime PASS；case-ace-m1-base/entry-862/console-863/method-881/text-source-894、case-a2r-hir-record-text-902 全 PASS；case-ace-source-syntax-927=4绿/3skip(D-927-1)；ace-comptime 静机 PASS；ace-host 3红=基座编译破损（已修2行）+跨仓文件缺位+refused-edit 分类（组不在本包§6清单，登记） |
+| T-09 | work | T-05..08，文件化case/父侧/H窗 | 使能V-01..09/独立oracle/typed父准入/反控与固定组，AC-04/05/07/08/09 | [x] 2026-11-04：固定组 `ace-source-syntax-927`（567差分+70edge+片段，oracle=真 handwritten 列）+ 文件化 `case-ace-source-syntax-927`（case-worker/contract 双侧 `auto-source@<profile>` 路由 + 七 profile lossless oracle）7/7 全绿；**D-927-1 已修**（Save 携 pending 内容；连带修复被自比掩盖的 postfix 键错位与 checkpoint 双重计数）债务已关。typed 会话准入 producer 接线仍显式交 929 |
+| T-10 | work | T-09，冻结提交及正式采样错峰 | §6完整职责/必要消费者、原预算/性能/深链及交928/929，AC-01..09 | [x] 2026-11-04：冻结提交链至 `70d8f62f0`；固定组全绿：ace-syntax（31/31 artifacts）/source/semantics（附件环境位补齐）/comptime（静机）/lowering/a2x/av/adapters/native/runtime/native-worker/test-case/infra-fixed + case-ace-m1-{base,entry-862,console-863,method-881,text-source-894}、case-a2r-hir-record-text-902、case-ace-source-syntax-927（7/7）+ ace-source-syntax-927；ace-performance 见 §9 采样收据；928/929 交接=迁移分支显式登记（parse_program_with_handwritten/collections-or-closures slug/片段 producer 929）。ace-host 不在本包 §6 清单（3 红为基座/环境归因，已登记） |
 | T-11 | review | T-01..10完成，停止实现写入 | 独立逐AC/SD/遗漏与健康复审，AC-10 | [ ] |
 | T-12 | merge | T-11 pass与后续合入授权 | Spec沉淀/交付/归档/所有输出路径清理，AC-11 | [ ] |
 
@@ -179,6 +179,8 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 - 2026-11-04，stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（work-owned T-01..T-10 主体完成，T-09 case-worker 路由与 T-10 集成组收尾在途）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev`（base `2f558fc93`，HEAD 见 §8 T-10）/ 证据：差分 567/567+70 edge+片段差分（ace-core conformance 300/300，`cargo t ace-source-syntax-927`）；固定组绿名单见 T-10 行；墙钟发现与处置：CST 规则机 debug 档大源慢一个量级→test 档 O2+CteDriver 预热（cte 300ms deadline 合同恢复）；`!call` 一元算子经 callee 分析丢失→修复（is-digit C 链回归清零）。/ blockers：无阻塞用户决策；余项=case-worker 七 profile 路由+.case.ad 文件化（T-09 尾）、case-* 集成组跑齐（T-10 尾）、comptime 并行负载归因复跑。/ next_responsible_role: work（收尾后 review）
 
 - stage: goal | plan_id: PLAN-927 | plan_revision: r2 | round: 1 | from: work | to: work | status: executing | outcome: in-progress | worktree: D:/autostack/.wt/lang-927/auto-lang @ plan-927-dev (HEAD 39dcdc64f) | commit: 39dcdc64f | next: work（唯一入口=D-927-1：列表机 restore/trivia 修复→去3 skip 复验→T-09 勾→T-11 review）
+
+- 2026-11-04（轮2），stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（work-owned T-01..T-10 全数完成）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev` HEAD `70d8f62f0` / 证据：D-927-1 修复（Save pending 内容化）+ 差分 oracle 复真（handwritten 列——T-08 切链后 corpus 曾 new-vs-new 自比，复真后暴露并修复 postfix-tail 键错落 core-ops）+ checkpoint 行号 T-04 约定双重计数修复；`case-ace-source-syntax-927` 7/7、差分 567/567+70edge、conformance 300/300、§6 全组绿（ace-performance 采样收据见本节末）/ blockers：无 / next_responsible_role: review（T-11 独立复审）
 
 ## 10. 待澄清事项
 

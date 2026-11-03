@@ -1,4 +1,12 @@
-### D-927-1 — 统一 CST 列表机 restore 纪律丢语句分隔换行（无损重建红）
+### D-927-1 — 统一 CST 列表机 restore 纪律丢语句分隔换行（无损重建红）【已关闭 2026-11-04】
+
+- **修复**：`Save` 携带 pending trivia **内容**（Vec）而非长度——长度截断在 drain/重填后
+  恢复的是过期前缀（`i=18 + pending=[19]` 非法态：换行叶随回退帧丢失、空格叶重复挂载）。
+  修复中连带复真差分 harness 的旧列（T-08 切链后 corpus 一直 new-vs-new 自比，曾掩盖
+  postfix-tail 键误落 core-ops 块——已归位 wide-ops）与 checkpoint 行号在 T-04 结束行
+  约定下的双重计数（EOF 行/未闭合 mid 窗口行）。关闭条件全数达成：
+  `case-ace-source-syntax-927` 7/7 PASS（3 skip 已移除）、差分 567/567+70 edge（真
+  handwritten oracle）、conformance 300/300、受影响固定组全绿。
 
 - **发现**：2026-11-04，PLAN-927 T-09 文件化 lossless oracle（`case-ace-source-syntax-927`）。
 - **现象**：record / entry-unit / host-console 三 profile 的 `reconstruct` 丢语句间换行——最小复现 `"let total = 0
