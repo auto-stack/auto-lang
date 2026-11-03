@@ -139,7 +139,7 @@
 - **ac（native）列**：`gap:ac-composite-native` 12 + `gap:ac-console-profile` 15 + `gap:mn-scalar-only` 6 = **33 gap 格**（native composite/collections、console ABI、宽域）；
 - **avm（legacy）列**：16 `diff-legacy-value` + 5 `no-typed-entry` + 9 `no-dyn-api` + 4 accepts + grammar/runtime 差异——legacy 分账已登记（差异行非绿）；
 - **a2r 列**：`emit-ok-run-unverified`/`snapshot-only-cert-gap` 多格（golden 冻结但伪 Rust 不可编译——cert 缺口，917 在途）；
-- B18 avm 格 ok:P920；旧 required 静态 14 格中 11 格已闭，余 **native R02/R03/R05 三格 open**。
+- B18 avm 格 ok:P920；旧 required 静态 14 格中 11 格已闭，余 **native R02/R03/R05 三格 open**——2026-11-03 另一会话已立 923 NF（0/12，fault/Place，关 R03+版本化 R02 部分）与 924 NC（0/14，有限 native 闭包，回填 R02/R05）认领，均 drafting 仅规划（merge 漂移刷新，见 §9）。
 
 ### 2.2 ACE 能力 × 产品场景映射（关键结论）
 
@@ -156,11 +156,12 @@
 | native composite/collections、console ABI | ac 列 33 gap；native 明示拒 console（host-import-and-console.md "native console ABI is added=无"） | M1 native 格 + 未来 AC 产品面 | **capability-missing** |
 | stdlib/host FFI 面 | 有限（M2 合同 §3"只补替换所需"） | A-10 natives 30+、C-07 | 逐项切片（M2-HOST 内） |
 
-### 2.3 native 三格边界（V-05/D-02）
+### 2.3 native 三格边界（V-05/D-02；2026-11-03 刷新：已由 923/924 认领）
 
-- **R02（构造/clone 失败注入）**：av 列 ok:av-resource-915（915 交付 fault/Place 事实）；native 列 gap:ac-composite-native——915 的 fault 注入通道 owner=852 T-05 登记，native 侧需把 915 设施映射到 mn 配方（**有界包可行**，证据：915 spec + collections_driver MnError::Admit 通道 collections_driver.rs:11/46）。
-- **R03（活借用/旧 buffer）**：av ok:av-resource-915；native gap:ac-composite-native；avm 列 diff-legacy-value 已登记。同 R02 通道。
-- **R05（closure 创建者退出）**：av 列 ok:av-closures-823；**native 不支持闭包环境**——`collections_driver.rs:46` "collection function imports cannot carry closure environments" + `check_closure`:109 拒绝。**capability-missing**：需 native 闭包 ABI/lowering 设计（源码/typed/MIR/执行 ABI 边界调查包），不可从 collections 推定，也不自动 NA。依据 §20.1 拆包：N-CLOSURE 调查/设计包先行。
+- **认领状态**：本报告成稿时三格无立项；merge 漂移核对发现 2026-11-03 另一会话已立 **923 NF**（native 分配故障原子性与 Place 代际，drafting 0/12，独立关 R03+交版本化 R02 部分）与 **924 NC**（有限 native 闭包源码+R05+完整 R02，drafting 0/14，依赖 923）。本节证据与边界结论不变，仅后继归属从拟议标签刷新为实际计划。
+- **R02（构造/clone 失败注入）**：av 列 ok:av-resource-915（915 交付 fault/Place 事实）；native 列 gap:ac-composite-native——915 的 fault 注入通道 owner=852 T-05 登记，native 侧需把 915 设施映射到 mn 配方（证据：915 spec + collections_driver MnError::Admit 通道 collections_driver.rs:11/46）。→ 923（部分）/924（完整回填）。
+- **R03（活借用/旧 buffer）**：av ok:av-resource-915；native gap:ac-composite-native；avm 列 diff-legacy-value 已登记。同 R02 通道。→ 923。
+- **R05（closure 创建者退出）**：av 列 ok:av-closures-823；**native 不支持闭包环境**——`collections_driver.rs:46` "collection function imports cannot carry closure environments" + `check_closure`:109 拒绝。**capability-missing**（本报告独立实证，与 924 立项依据一致）：需 native 闭包 ABI/lowering（源码/typed/MIR/执行 ABI 边界），不可从 collections 推定，也不自动 NA。→ 924。
 
 ### 2.4 C 后继（沿 921 接缝）
 
@@ -208,8 +209,8 @@ V06-ACE-01..05 分别由：01=M1 收尾+本表 REP 全闭总复审；02=REP-01/0
 | **M2-WEB** | Web 宿主切 ACE 会话（serve/dispatch/parked/blocking 档位/serve_owned 嵌入面 UK 处置） | M2-HOST | http_e2e 73 用例+请求生命周期/取消/SSE 原例 | 跨仓/auto-web |
 | **M2-GEN** | 模板求值归属：AutoInterpreter 替代（ACE）或中立裁定；含 auto-gen 复活/归档决策（F-06 用户裁定项） | M2-EXEC | 模板输出原例对账 | P+跨仓/auto-man(+用户) |
 | **M2-OS** | OS host/desktop、apps 子模块构建轨、auto-term/at-gen/os-config-back、jade-garden、musk vm 轨迁移；旧 ui 面可编译性先行修复裁定 | M2-HOST/UI/MAN | 各应用真实启动/交互/健康检查原例 | 跨仓/auto-os(+auto-down/musk) |
-| **N-CLOSURE** | native 闭包 ABI/lowering 能力调查与设计（R05）；输出=有界实现包或拆包依据 | 无（独立调查） | 源码/typed/MIR/执行 ABI 边界证据链 | P(ace workspace)/语言 |
-| **N-RESOURCE** | native R02/R03：915 fault/Place 设施映射到 mn 配方 | 915 交付 | 事件序 oracle（同 915 判据 native 臂） | P(ace workspace)/语言 |
+| **N-CLOSURE** |（已立项为 [924 NC](../924-native-closures-source-and-resource-closure.md)，2026-11-03 drafting——本标签退役，R02/R05 归其回填） | 923 | 924 合同自带 | P(ace workspace)/语言 |
+| **N-RESOURCE** |（已立项为 [923 NF](../923-native-allocation-fault-and-place-conformance.md)，2026-11-03 drafting——本标签退役，R03+R02 部分归其） | 915 交付 | 923 合同自带 | P(ace workspace)/语言 |
 | **CA-B/C/D/E** | C 线后继（record/text → 集合/变体 → 有限 public ABI → 四端/签章），沿 921 接缝各保资源/ABI 门 | CA-A merge | 每域冻结语料真 MSVC 编译运行独立 reference | P(ace workspace)/语言 |
 | **M2-RETIRE-1..n** | 退役序执行（§5）；非目标：不提前于接管完成 | 各域包收据 | REP-10 判据（依赖图/dispatch/构建单元/发行 0+负控） | P/语言 |
 | **M2-REL** | 发行/安装切换：man-install/web-install 载荷、frozen 副本 ×2 清理、auto-lsp、launch 脚本、stdlib 解析序、独立回滚物 | 域包+RETIRE 大部 | REP-08/11 安装收据（clean/仓外/重定位/升级/回滚） | 跨仓/各 owner |
@@ -259,5 +260,5 @@ V06-ACE-01..05 分别由：01=M1 收尾+本表 REP 全闭总复审；02=REP-01/0
 ## 9. 与现行文档的关系
 
 - 本报告是审计快照，**不是**第二测试 registry/规则引擎；M1 binding/applicability 未重写（§5.4 边界）。
-- 共同 ACE 战略/交接文档（docs/design/strategy/ace-implementation-handoff.md）在本包交付短窗内同步登记本报告入口（全文件短窗规则）。
-- 后续正式 SHA（919/921 合并等）到来时按 M2-DEN 规程只刷新受影响行，不复制成永恒状态源。
+- 共同 ACE 战略/交接文档（docs/design/strategy/ace-implementation-handoff.md）在本包交付短窗内同步登记本报告入口（全文件短窗规则）；调和时并入该文件主检出未提交的各会话交接块，未丢弃任何内容。
+- 后续正式 SHA（919/921/923/924 合并等）到来时按 M2-DEN 规程只刷新受影响行，不复制成永恒状态源。**首次刷新已于 merge 时执行**：native 三格归属更新为 923/924（§2.3/§4）。
