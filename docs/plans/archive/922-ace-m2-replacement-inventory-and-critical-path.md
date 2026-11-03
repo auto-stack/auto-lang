@@ -169,6 +169,14 @@ stage: goal | plan_id: PLAN-922 | plan_revision: r1 | round: 2 | from: review | 
 
 stage: goal | plan_id: PLAN-922 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: d66fdef04 | next: done
 
+2026-11-03 | stage: goal（归档态交付核实，无新写入） | PLAN-922 r1 | outcome: pass | verified-on-disk: master tip=593c33480（=archive 提交），交付链 1bba0ef73→d66fdef04→593c33480 线性 ff 无 merge 提交；canonical Spec docs/specs/ace-migration/replacement-scope-and-evidence.md committed @1bba0ef73、archive 文件 committed @593c33480（frontmatter status: archived）；无 plan-922 分支（git branch -a 零命中）、git worktree list 无 lang-922 树、组目录 D:/autostack/.wt/lang-922 已删；landing checks 已记录（T-09：纯 docs 无重建重启需求、target/debug 早于本合并）。主检出现存的 design/roadmap/918/921/923/924 等修改与未跟踪文件为他方在途会话工作，非本计划输出（922 自身三件交付均已提交），不阻断归档态核实 | next: done
+
+stage: goal | plan_id: PLAN-922 | plan_revision: r1 | round: 4 | from: done | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: 593c33480 | next: done
+
+2026-11-03 | stage: goal（归档态交付复核，独立重验，无实现写入） | PLAN-922 r1 | outcome: pass | verified-on-disk: master tip=fe0b1e45f（593c33480 之后 921 等他方计划正常落地，不触及 922 交付）；merge-base --is-ancestor 三证 OK（1bba0ef73/d66fdef04/593c33480 均为 master 祖先），git log --merges 1bba0ef73~1..593c33480=0（线性 ff 完好）；canonical Spec docs/specs/ace-migration/replacement-scope-and-evidence.md git ls-files 已跟踪、@1bba0ef73 提交、磁盘存在；archive 文件提交版 frontmatter 第3行 status: archived；git branch -a 无 922 分支、worktree list 无 lang-922、D:/autostack/.wt/ 无 lang-922 组目录、plan-artifacts 无 922 scope（scope 整删核实）；工作树对 archive 文件的全部差异=round-4 两条核实收据（+4 行），随本收据一并簿记提交；主检出其余 design/roadmap/923/924 等脏块为他方在途会话工作，非本计划输出 | next: done
+
+stage: goal | plan_id: PLAN-922 | plan_revision: r1 | round: 5 | from: done | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: fe0b1e45f+簿记 | next: done
+
 ## 10. 待澄清事项
 
 | D | owner / 有界关闭 |
