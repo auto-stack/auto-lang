@@ -3887,3 +3887,15 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **PLAN-919 遗留A（owner: 源前端/fix-forward，探针实证）**：text/owned profile 的多参数函数中 \`move\` 参数核对错位一位——\`fn pick(move s Str, flag int)\` 被判 "parameter 1 does not declare move"（919 R01 源被迫用单参数 move 形）。关闭条件：修正 verify 的 arg/param 索引并加多参数 move 正反例；919 源不因本项改写。
 - **PLAN-919 遗留B（owner: mn 复合前端，既有能力边界如实登记）**：collections source profile 不支持 record 字段赋值（\`place.field_path\` 前端拒绝）与 record \`.clone()\`；919 的 ac R01 源按支持域书写，不宣称该面。关闭条件：随 mn 复合前端扩面计划交付。
 - **PLAN-919 顺带修复记录**：\`verify-ace-m1-852.ps1\` 构建行引用 901/896 已退役 \`test-cases\` feature（master 即红）与 \`scenario_assets\` 单对象限制——已在 919 修正（feature 移除、资产清单化），contract/source/acceptance 三 scope 复跑 PASS。
+
+
+## 2026-11-03 PLAN-921 观察项（非本包写面）：904 套件 golden manifest 缺失
+
+- 事实：a2r-hir-collections-904 全部 20 个 case.ad 声明 golden-*/manifest.json
+  字节判 artifact，但磁盘与 git 均无这些文件（*.json 母规则吞没，892/902
+  有豁免、904 无）。fresh clone 上 cargo t case-a2r-hir-collections-904
+  必红（oracle 侧档缺失）。
+- 归属：PLAN-904 域（921 侧未动其写面）；PLAN-921 的 921 套件已按同
+  缺陷类登记豁免+入库 manifest goldens。
+- 关闭条件：904 owner 冻结其 worker 实发 manifest 并补豁免+入库，或修订
+  其 case.ad 声明。
