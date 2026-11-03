@@ -2,10 +2,12 @@
 
 > PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-syntax-runtime、ace-syntax-grammar、ace-syntax-core与ace-syntax-artifacts位于crates/syntax-*；语法资产位于grammars。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
 
-> **Status**: experimental（PLAN-787/828已交付有限语法机制；scalar常驻AV暖编辑已有真实消费，尚未统一所有源码入口）
+> **Status**: experimental（PLAN-787/828已交付有限语法机制；PLAN-927 起七 profile 统一源码前门已接入；scalar常驻AV暖编辑已有真实消费，尚未统一所有源码入口）
 > 路径：`experimental/ace/`（独立 Cargo workspace：runtime/grammar/双 adapter）
-> 来源：PLAN-787（[归档计划](../../plans/archive/787-ac-grammar-incremental-cst.md)）；
-> 关联 [grammar-contract.md](grammar-contract.md)、[snapshot-cst.md](snapshot-cst.md)，
+> 来源：PLAN-787（[归档计划](../../plans/archive/787-ac-grammar-incremental-cst.md)）、
+> PLAN-927（[归档计划](../../plans/archive/927-unified-source-syntax-foundation.md)）；
+> 关联 [grammar-contract.md](grammar-contract.md)、[snapshot-cst.md](snapshot-cst.md)、
+> [source-frontdoor.md](source-frontdoor.md)（PLAN-927 七 profile 统一前门），
 > A01/A02/A03 产物接入见 [../auto-ac/artifact-contract.md](../auto-ac/artifact-contract.md)。
 
 ## 定位与依赖方向
@@ -15,12 +17,22 @@
 运行时不依赖 ac-core/Cranelift/auto-cache/Auto 语义环境；Atom 配置为唯一规则源
 （经 auto-atom 静态读取编译，无宿主代码执行）。
 
+## 迁移实况（PLAN-927 后）
+
+- **已接统一前门**：Core/Scalar/Text/Record/TextRecord/EntryUnit/HostConsole
+  七 profile 冷编译（`parse_program_with` 路由共享 CST 链）与 free fn/方法
+  片段（owner/receiver 上下文）——见 [source-frontdoor.md](source-frontdoor.md)。
+- **显式登记的迁移残余**：Collections/Closures 走
+  `parse_program_with_handwritten`（PLAN-928 接管语法面）；散落手写片段
+  调用点清零、会话编辑准入 producer（revision/checkpoint）、911 profile
+  升级消费迁移归 PLAN-929。不冒全面统一。
+
 ## 实验边界（不冒称的部分）
 
 - 非完整 Auto 版 tree-sitter、非任意 CFG/GLR/regex、非动态 scanner 插件、
-  非 LSP 服务、非正式 Batom 格式，也未全面替换所有源码parser入口。PLAN-787的
-  “投影仅对照”是早期边界；PLAN-828 scalar常驻AV暖编辑已调用
-  `incremental_reparse` + `project_decl_strict`，见[snapshot-cst.md](snapshot-cst.md)
+  非 LSP 服务、非正式 Batom 格式。PLAN-927 起七 profile 生产冷入口已切
+  CST 链（787 投影 adapter 仍是对照材料）；PLAN-828 scalar常驻AV暖编辑
+  已调用 `incremental_reparse` + `project_decl_strict`，见[snapshot-cst.md](snapshot-cst.md)
   与[函数增量源前端](../auto-ac/function-incremental-source.md)。
 - 规则程序限定 ordered-choice + Pratt（编译期拒绝左递归/可空 repeat/未知
   引用/非前进 scanner，定位到节点路径）；其它 profile 的合法语法不得称为

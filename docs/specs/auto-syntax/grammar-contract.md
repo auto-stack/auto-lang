@@ -11,6 +11,11 @@
   /rule/field/terminal/Pratt；same-line 换行约束步属性。
 - Pratt 表 + 调用后缀配置（binding power/assoc/call_paren/callee_same_line）；
   newline/sep/sync 旋钮由语法包配置驱动（无语言分支代码）。
+- PLAN-927：pratt 表新增 `postfix: <rule>` 点后缀续读引用（调用收尾后
+  `.name` 步，如 `f().len()`——运行时包装 KIND_POSTFIX）；规则步级
+  `same-line` 属性（一元操作数同行锚定）；`profiles:` 裁剪可标注任意
+  规则/alt/pratt 键（七 profile 单规则源 `grammars/auto-source.at`，
+  compile_profile 按 slug 裁剪，被裁 pratt 引用=None 合法、未知规则=编译错）。
 - 最长匹配/同长优先级显式声明；规则非前进/歧义无法裁定即编译期拒绝
   （定位错误，不静默改语法，不留半成品）。
 
@@ -20,7 +25,8 @@
   四版本参与产物键；同名不同内容包隔离（跨 grammar 真读=miss，不串用）。
 - canonical 二进制 codec 往返身份绑定：装载后重验（内容 hash 与键的
   grammar-id 不符=受控 miss/错误）；可按（grammar-id, revision）从 store
-  装载——跨进程恢复不编译 .at 源。
+  装载——跨进程恢复不编译 .at 源。codec v3（PLAN-927：pratt postfix_tail
+  字段）。
 - 关键字拼写与运算优先级两个配置反控：不改 runtime 也必须改变实际解析
   结果（排除"Atom 仅包装硬编码 parser"）。
 

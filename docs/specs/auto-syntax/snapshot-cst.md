@@ -17,6 +17,15 @@
 - checkpoint = scanner **实际状态**（offset/mode/未闭合 mid token 含其**原始
   起始行**/line），不是 EOF 位置形状；恢复续扫与 fresh 词法尾部逐 token 全等。
 - 持久化终态按末 token 拼写重放还原（嵌套注释真实深度/字符串转义挂起/mode）。
+- PLAN-927（T-04 起 token.line=**结束行**——跨行 token 已计入内部换行）：
+  checkpoint 终态推导——EOF 行=末 token 行（不加算 token 内换行）；未闭合
+  mid 的窗口初始行=offset 处行（EOF 未闭合 token 的 offset==t.end 即结束行），
+  `MidToken.start_line` 保起始行（F787-R3-04 错误叶路径）。
+- **机器回退纪律（D-927-1 修复）**：`Save` 携带 pending trivia **内容**
+  （Vec）而非长度——长度截断在 drain/重填后恢复过期前缀（丢语句分隔换行/
+  重复 trivia 叶）；`expr_anchor`/`same_line_pending` 一并入 Save 随回退
+  恢复（否则 alt 回退丢行纪律）。尾随未解析 token=ERROR 叶（非 trivia 保
+  trivia 标志），不被投影当干净内容静默丢弃。
 - 增量重扫 scanner 硬限窗口 + 流式收敛即停（成功路径真实读取有界，
   计量=实际扫描位置）。
 
