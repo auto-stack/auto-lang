@@ -1,0 +1,15 @@
+{
+  "schema": "auto.a2x.c.collections.fileset/1",
+  "input_hash": "cccc6515506d54a3",
+  "source_sha256": "99bc231454ba7426c61828525e58dfd2514c6be54249ccbcab43d9c1e0ebf532",
+  "entry": "main",
+  "functions": [
+    { "decl": "fail", "sem_fp": "7f8e3a33867d946cb051f5518e5195373e2c227841c27a35d00e6fb93a3c03d9", "origin": [0, 48] },
+    { "decl": "main", "sem_fp": "8b19f85c3912925bdc7ebb87be4b48da456ded64fcbb8105b6798a72f48a101b", "origin": [49, 169] }
+  ],
+  "files": [
+    { "path": "main.c", "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9" },
+    { "path": "a2x_c_coll_runtime.h", "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8" },
+    { "path": "generated.c", "sha256": "4ccdfb9480bf32c192021bfcef818dbbe2479d1673ffe1d1c314bca4ccf1d3dc" }
+  ]
+}

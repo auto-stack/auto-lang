@@ -175,6 +175,8 @@ test_temp.txt
 # PLAN-925：C record-text 首例五例 golden 的 manifest 同为逐字节比较目标（同上
 # 豁免；merge 阶段抓出未跟踪——不补即复现 PLAN-904 collections 的 master 红）
 !crates/auto-lang/test/cases/a2c-hir-record-text-925/golden-*/manifest.json
+# PLAN-926：C 集合通道 20 例 golden 的 manifest 同为逐字节比较目标（同上豁免）
+!crates/auto-lang/test/cases/a2c-hir-collections-926/golden-*/manifest.json
 # PLAN-901：VM/语料包装只读身份合同（wrapper_bindings.py 消费；898 恢复提交
 # 被 *.json 母规则静默吞掉致 master 执行链断——同 F-793-R1-01 缺陷类，自
 # 736064ce7^ 内容恢复并加豁免防复发）
