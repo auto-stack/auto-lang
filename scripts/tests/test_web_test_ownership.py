@@ -21,6 +21,11 @@ class WebOwnershipTests(unittest.TestCase):
         counter_form = (''.join(f'PASS [   0.136s] ( {i + 1:3d}/217) sdk-binary sdk_case_{i}\n' for i in range(217))
                         + 'Summary [ 265.241s] 217 tests run: 217 passed (1 slow), 2 skipped\n').encode()
         self.assertEqual(len(execution_ids(counter_form)), 217)
+        # 正式非 TTY 输出：PASS/FAIL 行 8 空格缩进、Summary 行 5 空格缩进（F-918-01 正例）。
+        real_form = (''.join(f'        PASS [   0.136s] ({i + 1:3d}/217) sdk-binary sdk_case_{i}\n' for i in range(217))
+                     + '     Summary [ 265.241s] 217 tests run: 217 passed, 2 skipped\n').encode()
+        self.assertEqual(len(execution_ids(real_form)), 217)
+        self.assertIn('sdk-binary\tsdk_case_216', execution_ids(real_form))
         # 同名跨 binary 是合法不同身份（binary+test 全名）。
         cross = (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(109))
                  + ''.join(f'PASS [ 0.2s] sdk-binary-2 sdk_case_{i}\n' for i in range(108))
@@ -44,6 +49,12 @@ class WebOwnershipTests(unittest.TestCase):
                                + 'PASS [ 0.1s] sdk-binary\n'
                                + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
             'empty-log': b'',
+            'indented-fail-laundered': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(217))
+                                        + '        FAIL [   0.154s] (216/217) sdk-binary sdk_case_0\n'
+                                        + '     Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
+            'invalid-utf8-name': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216)).encode()
+                                  + b'PASS [ 0.1s] sdk-binary sdk_ca\xff\xfese_216\n'
+                                  + b'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n'),
         }.items():
             with self.subTest(log=label), self.assertRaises(ValueError):
                 execution_ids(bad)

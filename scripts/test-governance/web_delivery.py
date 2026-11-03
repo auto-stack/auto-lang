@@ -34,16 +34,17 @@ def read_proof(proof):
     return raw
 
 
-# 冻结的正式 nextest 人读运行输出（非 TTY 重定向，无 ANSI 控制字符；时长可为
-# s/ms，可选 ( n/m) 进度前缀；binary 与 test 全名之间以空白分隔，test 名可含
-# :: 与参数化后缀，不含空白）。格式漂移（含 ANSI/控制字符、FAIL/SKIP/LEAK/
-# RETRY/未终态行、缺 binary 或 test 的畸形行）不得被清洗成 PASS（D-910-1/918）。
+# 冻结的正式 nextest 人读运行输出（非 TTY 重定向，无 ANSI 控制字符；PASS/FAIL 行带
+# 8 空格缩进、Summary 行 5 空格缩进，时长可为 s/ms，可选 ( n/m) 进度前缀；binary 与
+# test 全名之间以空白分隔，test 名可含 :: 与参数化后缀，不含空白）。格式漂移（含
+# ANSI/控制字符/非法 UTF-8、FAIL/SKIP/LEAK/RETRY/未终态行、缺 binary 或 test 的畸形
+# 行）不得被清洗成 PASS（D-910-1/918，独立复审 F-918-01/02/06）。
 _PASS_LINE = re.compile(
-    r'^PASS(?:\s*\+\s*LEAK)?\s+\[[^\]]*\]'
+    r'^\s*PASS(?:\s*\+\s*LEAK)?\s+\[[^\]]*\]'
     r'(?:\s+\(\s*\d+\s*/\s*\d+\))?\s+(\S+)\s+(\S+)\s*$'
 )
 _TERMINAL_LINE = re.compile(
-    r'^(?:PASS(?:\s*\+\s*LEAK)?|FAIL|SKIP|LEAK|RETRY|running)\b'
+    r'^\s*(?:PASS(?:\s*\+\s*LEAK)?|FAIL|SKIP|LEAK|RETRY|running)\b'
 )
 _CONTROL_CHAR = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 
@@ -60,8 +61,8 @@ def execution_ids(raw):
     text = raw.decode('utf-8', errors='replace')
     ids = []
     for line in text.splitlines():
-        if _CONTROL_CHAR.search(line):
-            raise ValueError('ANSI/control characters in test execution output')
+        if _CONTROL_CHAR.search(line) or '\ufffd' in line:
+            raise ValueError('ANSI/control/invalid-UTF8 characters in test execution output')
         match = _PASS_LINE.match(line)
         if match:
             ids.append(match.group(1) + '\t' + match.group(2))

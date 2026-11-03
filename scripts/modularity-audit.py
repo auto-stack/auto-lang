@@ -883,9 +883,10 @@ def load_config(path: Path) -> dict:
         if not rule.get("id") or not rule.get("from") or not rule.get("to"):
             raise ConfigError("facility_admission 规则缺 id/from/to（精确逐边准入）")
         kinds = rule.get("kinds") or ["normal"]
-        if not kinds or not set(kinds) <= {"normal", "build", "dev"}:
+        if not kinds or set(kinds) - {"normal"}:
             raise ConfigError(
-                f"facility_admission {rule.get('id')!r} kinds 非法：{kinds}（只支持 normal/build/dev）"
+                f"facility_admission {rule.get('id')!r} kinds 只准 normal：{kinds}"
+                "（精确设施准入合同不允许 build/dev/其他形态伪装）"
             )
     return data
 
@@ -2345,8 +2346,23 @@ def scenario_v13(script: Path) -> str:
              "[v13/substitute] 替身不被准入具名",
              json.dumps(rep["strict"].get("admitted_facility_edges", []))[:200])
     shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("kinds-invalid")
+    cfg = repo / DEFAULT_CONFIG_RELPATH
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'kinds = ["normal"]\nrequire_std_only_closure = true',
+            'kinds = ["build", "dev"]\nrequire_std_only_closure = true'),
+        encoding="utf-8", newline="\n",
+    )
+    st_check('kinds = ["build", "dev"]' in cfg.read_text(encoding="utf-8"),
+             "[v13/kinds-invalid] kinds 变更落盘证明")
+    code, _, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_CONFIG_INVALID, "[v13/kinds-invalid] 非 normal kinds 配置被拒绝",
+             f"exit={code} {err[:200]}")
+    shutil.rmtree(repo.parent, ignore_errors=True)
     return ("V-13 精确设施准入：合法 std-only 设施边准入且具名；"
-            "邻居/build/闭包破坏/optional 伪装/外置替身负控判红")
+            "邻居/build/闭包破坏/optional 伪装/外置替身负控判红；非 normal kinds 配置拒绝")
 
 
 def run_self_test() -> int:
