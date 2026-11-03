@@ -374,7 +374,7 @@
     },
     "scenario_oracles": {
         "path": "docs/specs/auto-test-case/ace-m1-scenario-oracles.md",
-        "sha256": "3ed6ca2ad2ab1b97a506b5e46b53fd4d86e7535d6806a5d6805746cfb3fd2458"
+        "sha256": "6179f473f6ef7f5568b7acdf1fcc2dc3367ace36bfe6a35b0fffe7aa908ea24d"
     },
     "typed_scenario_note": "typed entries (W01-W05) ride the typed-native-891 suite channel; scenario rows (D/E/C/R/I/G) have no corpus source by design; missing sources are never fabricated (no src/D*.at)",
     "decision_doc": {
