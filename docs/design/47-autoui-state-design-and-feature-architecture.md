@@ -1,10 +1,12 @@
 # 47 — AutoUI 应用架构：状态、热重载、设计体系与功能复用
 
+> 2026-11-02 重审入口：910 Cargo有限治理与auto-ui/007主题试点/示例归位已交付，见UI仓[拆分后架构与主题收口设计](../../../auto-ui/docs/design/autoui/post-extraction-architecture-and-theme-closure.md)。该页按当前独立仓源码区分主题/实例/Feature/HMR差额，明确能力→示例批次及AutoOS承接顺序；本页v0.5证据/语法仍是历史研究输入，不据此称整套新架构已实现或获准实施。
+
 > 状态：Draft RFC，研究与讨论稿，2026-10-22；未冻结语法、接口或实施范围。
 > 代码基线：`v0.5.0`，解引用提交 `e05e2d3d7832c7f1d7e29a09a371648b5a53f692`（2026-10-12）。
 > 标签对象：`73a24f29160631deb7c3b754826bfd371af5301f`，与上述 commit 区分。
 > 本轮工作：只读源码调研、官方资料调研、架构提案；不实现、不创建执行 Plan、不运行构建或测试。
-> 2026-10-29 后续规划及范围补充：用户同意先约定并做小样，进一步明确从 examples/ui 逐 app 改新主题、提供未来供 AutoOS 默认使用的官方系列。当前[主题设计](../../../auto-ui/docs/design/autoui/theme-conventions-and-pilot.md)、[逐目录清单](../../../auto-ui/docs/design/autoui/theme-migration-inventory.md)与唯一 [auto-ui/PLAN-007 r3](../../../auto-ui/docs/plans/007-autoui-tree-theme-and-examples.md)已归UI仓；同计划纳入全部示例源码归位auto-ui/examples/ui、实际路径回接和002/005首批主题接入，不新建ui-examples。其余应用主题分批交付。v0.6目标见roadmap§2.3，实际实施仍按既定结构收口门；本轮只迁设计/计划、语言源号已释放，未改应用。上行“本轮”保留原研究阶段边界。
+> 2026-10-29 后续规划及范围补充：用户同意先约定并做小样，进一步明确从 examples/ui 逐 app 改新主题、提供未来供 AutoOS 默认使用的官方系列。当前[主题设计](../../../auto-ui/docs/design/autoui/theme-conventions-and-pilot.md)、[逐目录清单](../../../auto-ui/docs/design/autoui/theme-migration-inventory.md)与唯一 [auto-ui/PLAN-007 r3](../../../auto-ui/docs/plans/archived/007-autoui-tree-theme-and-examples.md)已归UI仓；同计划纳入全部示例源码归位auto-ui/examples/ui、实际路径回接和002/005首批主题接入，不新建ui-examples。其余应用主题分批交付。v0.6目标见roadmap§2.3，实际实施仍按既定结构收口门；本轮只迁设计/计划、语言源号已释放，未改应用。上行“本轮”保留原研究阶段边界。
 > 排程更新（2026-10-28 用户决定）：先完成近期拆分治理与语言/UI/Man 结构收口里程碑，再恢复本架构的深化设计和实施规划；独立仓迁移完成或 U867 单项成立均不足以提前启动。完整有限范围见[当前战略](strategy/modularization-and-refactoring-strategy.md#autoui-架构重设计的切换点2026-10-28-用户决定)及[总路线§2](../plans/reports/v06-extraction-execution-roadmap.md#2-交付里程碑与有限出口)。本文及相关语法草案保留为候选输入，届时按独立仓冻结版本重核，不向近期结构包追加新语义。
 > 关联：[Design 29](29-autoui-style-theme-system.md)、[Design 32](32-autoui-repo-extraction.md)、[Design 34](34-vm-store-ownership-and-handler-discipline.md)、[Design 38](38-autoui-features-and-system-services.md)、[App Presentation Host](autoui/app-presentation-host.md)、[Blueprint 契约](../specs/blueprint/contract.md)。
 > 使用方式细化：[Editing Feature 嵌入语法草案](autoui/editing-feature-syntax.md)（Draft v0.2，2026-10-28）：open/bind/split 默认组合、两个实例与 bound UI/action、菜单及快捷键；显式层仍保留，未实施。

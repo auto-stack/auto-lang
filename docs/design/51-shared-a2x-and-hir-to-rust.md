@@ -1,6 +1,14 @@
-# 51 — 共享A2X架构与Checked HIR→Rust路线
+# 51 — 共享A2X架构与Checked HIR→Rust/C路线
 
-> 状态：target-state设计r1，2026-10-30；本轮用户授权设计/规划，不是实现或Spec交付证明。首期拆三个实施切片；AX-A现已正式立项[PLAN-892](../plans/892-shared-a2x-hir-to-rust-scalar.md)，drafting r1/0-of-11，AX-B/C仍未编号；本轮只规划。统一入口：[ACE战略](strategy/auto-native-backend-evolution.md)；执行路线与写面：[A2X战略](strategy/shared-a2x-and-hir-to-rust-roadmap.md)。
+> **2026-11-03 CA-C正式立项与顺序更新**：[926 CA-C](../plans/926-a2c-collections-variants-resource-closure.md)合包List/Variant/owned view/is/for-in/资源与独立C认证，drafting r1、0/14，见§15；20原源/完整helper补例/函数P0/恢复后下一编辑和原预算时间门不缩。当前921 execution_done11/14待review，native923实施（收口读头2/12）；主序为921正式合入→925→926，与923→924主体并行。CA-D有限ABI桥取得A/B稳定接口后可与926分窗，CA-E最终待全部必需门；D/E未取号。922已交付盘点，M2执行/宿主/TS/产品迁移仍另行规划；本轮只文档/取号不施工，不改在途进度。
+
+> **2026-11-03最新规划**：921 CA-A实际在途、分支已有C scalar/provider/来源恢复而未交付；CA-B正式为[PLAN-925](../plans/925-a2c-record-text-resource-closure.md)，drafting r1、0/14，见§14。C资源/static-view方法、参数模式、真方法暖编辑/恢复后下一编辑/独立认证均同包；CA-C/D/E仍未取号。统一ABI/FFI结构补于[Design41 §11](41-interface-metadata-and-foreign-abi.md#11-a2c统一abi与ffi的近期结构2026-11-03target-state)，内部C表示不等于公开AutoABI，797候选不擅升版。922盘点已交付，923实施/924等待按用户状态，所有公共S/H逐符号/全文件单写，本轮只规划不改在途合同或源。
+
+> **2026-11-02实施合同映射更新**：CA-A已正式立[PLAN-921](../plans/921-shared-a2x-c-scalar-target.md)，drafting r1、0/14，只规划。共享目标/session去Rust耦合、真实C标量及首例/独立认证/函数P0/来源恢复同包；当前restart仍cold的差额必须实修，不冒已交付。CA-B/C/D/E仍未取号，921不签扩大后M1。915/917实际实施中；A2X主体可并行，公共前端/worker/SDK/注册与919/920逐文件短窗，正式采样错峰。[Design43 §20](43-ac-av-typed-mir-and-abc.md#20-915917在途时的下一波2026-11-02target-state)为下一波边界；下文早期“CA-A未立项”保历史。
+
+> **2026-11-02 M2全替换目标**：[M2合同r2](../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)要求补全ACE并接管旧AutoVM/A2X全部现有应用/目标/入口，M2结束时旧实现disable；M3/M4未来新增扩展暂不规划，旧M4退役义务已并入M2。C是M1第二验证目标，但Python/JS/TS/Godot等现有目标的接管仍属M2，不能借“后继目标”延到M2之后；新provider消费受检HIR/共享事实，可复用中立打印工具，不能继续委托旧AST emitter。默认Auto开发不经每次生成Rust/C再编译宿主，各目标发布/独立认证保留，M1批准不变。
+
+> 状态：target-state设计r5，2026-11-02。用户已批准A2C作为第二目标加入M1，见[范围增补](../plans/reports/ace-m1-a2c-scope-addendum-2026-11-02.md)与§13；首期C路线预计CA-A..E五包，仅工作标签、不取Plan号。Rust AX-A892/AX-B902/AX-C904均已归档，旧r4/§5.4的仅规划状态按历史读取；current能力以Spec/实际交付收据为准。统一入口：[ACE战略](strategy/auto-native-backend-evolution.md)，实施路线：[Rust/A2X路线](strategy/shared-a2x-and-hir-to-rust-roadmap.md)、[C目标路线](strategy/shared-a2x-and-hir-to-c-roadmap.md)。本轮只设计/规划，无代码、current Spec或913–917合同变更。
 
 ## 0. 决策与事实基线
 
@@ -30,9 +38,11 @@ flowchart TD
   M --> AV[ABC与AV]
   M --> N[Cranelift与native]
   P --> R[Rust目标适配与Target AST]
-  P --> PY[Python目标适配与Target AST]
-  P --> O[C / TS等目标适配]
+  P --> C[C目标适配与Target AST / M1必需]
+  P --> PY[Python目标适配 / 后继]
+  P --> O[TS等目标适配 / 后继]
   R --> OUT[各目标打印与文件集]
+  C --> OUT
   PY --> OUT
   O --> OUT
   S[查询 / cache / 诊断 / 来源 / 产物服务] -.-> P
@@ -71,7 +81,7 @@ flowchart TD
 
 公共walker、rewriter、source-origin工具与通用名称分配器采用组合方式。目标树不必统一为“万能语言AST”；小型Rust目标树或有结构的Doc均可，Python/C按其语法独立。缩进/布局工具可共享，字符串转义和运算符优先级必须以目标规则实现/验证。
 
-共享实现以真实消费者证明：首包必须有Rust真实闭环；第二语言（建议Python的scalar实切片）再验证公共接口与pass复用。该后续验证未交付前只称“为多目标设计、已验证Rust”，不能称跨目标复用已实证。
+共享实现以真实消费者证明：Rust已有有限闭环；2026-11-02用户批准C为第二目标并加入M1，先标量、再资源/集合及有限ABI桥，见§13。Python改后继而非本次M1前置。C交付前仍只称“为多目标设计、已验证Rust”，不能以接口已中立推定跨目标复用已实证。
 
 ## 4. 转换pass的分工与合法性
 
@@ -101,15 +111,53 @@ text/record阶段可用String、&str、struct等自然表示，但view/mut/move/
 
 能力合同/操作语义ID可共享，实现按目标分开；helper内容及ABI、依赖版本计入产物身份。异常、GC语言的最终回收与Auto可观察资源清理区分；未来Python/C后端对外资源也须显式清理，不因目标有GC省略。
 
+### 5.3 AX-B正式合同（2026-10-31，PLAN-902）
+
+[PLAN-902](../plans/archive/902-hir-to-rust-record-text-resources.md)承接892/881/894正式交付，扩展当前`experimental/ace/crates/a2x-{core,rust,store,worker}`，不新增独立workspace或第二前端。AX-A core/scalar身份与拒绝面保持；AX-B以显式新目标profile/recipe准入source record/text/text-record，main仍零参i32结果。内部支持i32/bool/char、Str/str、非递归具名record、static/view方法及已合法的view/mut/move/clone/拥有返回；List/Variant、闭包、mut实例方法、宽源码、Unit入口、泛型/模块/FFI/console及旧A2X默认切换不在本包。
+
+共享view/prepare补稳定owner/type/field/method身份、receiver/参数模式、源码序求值/落位、借用来源及验证器产生的资源计划；Rust表示、生命周期合法化、typed helper与printer仍属Rust provider。`CheckedModule::text_resources()`现有，但当前`CheckedFunction`没有资源计划出口，且AX-A的Ty只含i32/bool、ParamFacts不含mode；902须先核并补最小S受检事实出口，绑定同一body/owner/context，不能由A2X重新推导所有权或相信任意序列化facts。单体方法身份按owner/name/签名，不能用漂移的def/body索引当持久键。
+
+Rust实现必须保名义record、Copy值捕获、receiver先求值一次、实参按源码序各一次再落位，以及显式clone/move、局部Str重赋与field替换。借用可用Rust引用/生命周期或等价typed表示，但不得放宽源前门拒绝，不能用rustc报错代替Auto诊断。mut使用直接引用或显式回写临时须在最小真链按现行source合同验证；不机械复制MIR的私有MutRet ABI。
+
+文本len/char_at/slice按Unicode标量，len_bytes显式字节，eq/ne含NUL且不归一化；不能把Rust String.len/字节切片直接当Auto操作。资源清理消费验证器事实：RHS准备成功后替换、旧/新恰一次释放、创建序/出口/分支/循环/短路临时和失败部分输出均有真实事件oracle。Rust词法Drop顺序不等于Auto动态创建/重赋后的LIFO，RAII本身不是保持性证明；目标typed runtime/生成cleanup须闭合该差异，不能引入GC/第二VM。未知资源表示由T-02最小真链先冻结。
+
+原R07/R08=42、T03=23/T05=42是required源码，另补具名同布局异类型、各参数模式、Unicode、资源/故障及函数级增量反例。新emit/金样腿不启动rustc或生成程序；显式认证对现场完整actual和手写独立reference分别编译运行对oracle，资源事件/陷阱分态，旧892与旧a2r证书互不冒认。共享声明产物/资源facts须入依赖键与required闭包；body编辑未改函数真实parse/check/prepare/lower/print/persist为0，声明装配/坐标重基另计。
+
+899的工具改名/profile影响来源和性能，901改语言测试features/工具/SDK，902分别按具体文件/源锁交接。P-Rust及只读S准备可以并行，不因append-only注册声称零H交集；正式采样需稳定配置窗口。计划材料只在plan-artifacts，摘要回计划、merge清理；不恢复tm/叶目录或写legacy specs.json。本节与902均为规划，current Spec不据此冒称record/text Rust后端已实现。
+
+### 5.4 AX-C正式合同与type片段拆分决定（2026-11-01，PLAN-904 r2）
+
+[904](../plans/904-hir-to-rust-collections-variants.md)承902正式delivery4303c4457050（archived14/14）、864/889合法source Collections和名义图。20个required源=原L/V14+List<Str>/两种for-in3+拥有List<Variant>/嵌套Variant/Option补源3；原L04/L05=42、V03=3、L06具名ListIndex、补源51/42/53与三个42按实际源/hash，手写独立reference，不以AV/native输出生成oracle。首期入口仍零参i32，拒绝集沿原Collections，不顺带打开List/Variant源码clone、参数/字段/嵌List、str/char、宽源码、闭包/HOF/host或用户泛型。
+
+**type声明片段修复纳同包，不另拆小包。** core source保留声明与候选fragment存在同一单模块坐标/来源缝；目前scoped Collections已将声明作inert元数据，Record/TextRecord尚有原声明span对短fragment越界风险。S修复须保留声明来源和候选body来源各自的权威快照/投影，内部inert span不能冒对外当前位置；不删除UTF8/越界检查、不把全span清零、不改走whole后宣称前端0。T-02最小含type/enum真链先验证，T-03关闭有界共享修复，再扩P主体；需通用多文件坐标/平台重写则needs_replan，不削增量门。
+
+共享修复为902含type的自由函数编辑提供warm片段见证，原902方法声明上下文冷路径不暗扩；Collections函数body编辑需目标生产一次、未改AST/HIR/片段身份保持且实际parse/check/prepare/lower/print/persist为0。类型/臂/字段/签名/权限/runtime改变依实际依赖失效，冷路径具名计账；外部source map定位当前源，声明/目录装配单列，不拿后端片段命中冒完整源增量。
+
+Collections凭证无TextResourcePlan是帧拥有LIFO合同，不能理解成无清理。904须消费core权威受检的类型/guard/消费/拥有/帧出口事实，若缺出口就在S补，不让A2X重做ownership或从MIR/AV取语义。Rust只实现typed容器/变体/helper及显式清理：new逻辑cap4、view零隐藏clone、remove/move责任转移、活动臂一次投影/switch、precheck→commit失败保旧和部分输出回收，List逆序元素/buffer最后。无环深链用显式有界遍历，不以宿主栈或新语法深度上限兜底；typed资源探针不扩源码方法。
+
+新recipe拟ac-a2r/hir-collections-emit-v1，fileset/cert独立Collections身份，与892/902/旧a2r互拒；日常真实目标工具spawn0，显式现场actual与独立reference两腿认证。含声明代表资源负载四状态各30有效样本P90≤2000ms及compiler48MiB/guest8MiB值数据等原预算/实际backing峰同过；源/IPC、文件集、store/scratch和认证deadline沿904冻结，不能套902 type-free或历史cold豁免。候选source/env/坐标/resident/fileset/receipt同代发布，失败保旧，修复后再restart真hit，close/pin最后owner分别验证。
+
+893负责13慢测/未来接入，903负责M1逐格适用/净缺口；904新增producer不改其合同、binding/expected/NA或M1分母。私有P可并行，source/verify/测试观测和H注册/current身份按具体符号接受正式版本，903只读审计不挡S写；正式慢采样/认证/窄重验错峰，不设D893/D903整包依赖。后继第二目标、闭包/host、数值/多模块和产品迁移仍独立规划，不预占号。
+
+r2复核补充（只规划）：source候选须绑定完整SourceSnapshot/hash、授予UTF8替换range与稳定函数身份；fragment只作解析工作单元，manifest/cert必须指替换后的完整源。保留声明mint来源与当前投影分列，连续两个不同函数变长编辑A→B→C、restart后继续编辑及错误base/range控制，证明env generation/source/map/resident/fileset同代发布，不只用单函数A→B→A值证明。
+
+CheckedFunction准入不能只核context/def_id：同owner同声明上下文、A凭证+B body/资源事实必须拒，B自身合法凭证及等价坐标重基必须过。Collections全部名义图/未使用类型项仍按权威门受检；共享修复不把type语义猜测移到Rust provider。
+
+资源补充操作计费/取消轮询表和无余量清理保证：真实循环/递归/clone/构造工作点耗尽或取消后，必要清理不依赖再次分配/剩余fuel，也不因取消再次中断；precheck失败前后原内容/责任及实际live/backing可核。3072小栈见证含构造/失败回滚/末主释放，typed helper资源探针与源码支持分账。
+
+新证书绑定execution_config/mode（debug/release、预算/故障/观察配置），不能互用或覆盖必需认证腿；原14双mode、补6真实认证及各正式采样修订都按完整源/文件集预认证。父侧核实际磁盘required集合和路径域、独立reference不链接生成helper，错配置/旧凭证拒或STALE。真实producer/payload而非wrapper身份和会话自增计数支撑零生产，工具/配置变化按语义/目标/认证层分别失效。
+
+893/903交接按904 §5.8的source/verify、contract/adapter、tools/固定组及903审计Spec候选精确路径取窗；903当前WIP不作为本包已发布规则。新正式来源只令受影响的893成本或903审计项待重核，不擅自扩大其门或修改分母。上述V-13..17/原V映射/14任务都由后续work关闭，不构成本轮实现、认证或性能PASS。
+
 ## 6. 函数级增量、分层cache和事务
 
 | 层 | 最小身份/依赖 | 复用与准入 |
 |---|---|---|
 | 已验证HIR/事实 | producer/schema/profile/owner、真实类型/签名/模式、实例/meta/CTE及其传递依赖、配置/授权 | 活快照内只读共享；持久恢复由producer重验，不序列化Rust指针/Checked标志当信任 |
 | 目标无关准备 | 每函数语义内容、实际读取事实、共享pass及语义版本；表索引/绝对span不作语义 | 可多目标共享；若pass实际读取目标能力，该结果立即归目标相关层，不能放入全局无目标key |
-| 目标适配/片段 | 上层依赖+target/edition/能力配置/类型表示/后端版本/runtime helper闭包 | Rust/Python等互不误命中；完整位型、名义类型与参数模式在规范内容中区分，不能只hash调用点源码 |
+| 目标适配/片段 | 上层依赖+target/edition或C标准/能力配置/类型表示/后端版本/runtime helper闭包 | Rust/C及后继Python等互不误命中；完整位型、名义类型与参数模式在规范内容中区分，不能只hash调用点源码 |
 | 文件集装配 | 片段ID/hash、导入/helper并集、模块布局与相对来源映射、格式器版本/开关 | 片段复用、装配可以更新；不为一次导入变化重产每函数；format不得事后改语义 |
-| 目标编译与认证 | 真实生成全文件集hash、wrapper、rustc身份/target/flags、完整依赖锁与oracle/reference | 是独立工具链阶段；Rust可能重编较大crate，不冒称A2X函数复用=rustc只编一个函数；PASS不缓存 |
+| 目标编译与认证 | 真实生成全文件集hash、wrapper、实际Rust/C编译器/链接器/target/flags/SDK、完整头库依赖与oracle/reference | 独立工具链阶段，目标工具可能重编更大单元，不冒称A2X函数复用=编译器只编一个函数；允许身份未变的认证收据严格复用，不缓存TestCase PASS替当前emit/父判 |
 
 暖单body编辑必须经现有CheckedEnv/候选单体接口，仅改变函数真实parse/resolve/typecheck/HIR生产、共同prepare、target-lower、print和工件写入推进；未改函数上述生产=0，resident token/Arc及mint代际、片段payload身份保持。源hash/时间更快或末端片段同字节不证明结构增量；强制whole前端/prepare、重造resident伪保代际的反控必须红。为装配/输出做的必要有界暂存不等resident替换，单列计量。
 
@@ -137,7 +185,7 @@ text/record阶段可用String、&str、struct等自然表示，但view/mut/move/
 
 ## 9. 首期拆分决定
 
-**首期三个有界实施切片，AX-A已立[PLAN-892](../plans/892-shared-a2x-hir-to-rust-scalar.md)，AX-B/C按需逐个立项，不预占号**：
+**Rust首期三个有界切片AX-A892/AX-B902/AX-C904均已交付；下表保留其拆分理由。C第二目标的M1首期另拆CA-A..E五包，见§13，不把AX-C误读为C目标包。** 当前执行合同以各Plan/Spec为准，不用旧在途快照覆盖新交付。
 
 | 切片标签（不是Plan ID） | 必须交付的真实闭环 | 可先并行的准备 | 硬关闭边界 |
 |---|---|---|---|
@@ -147,7 +195,7 @@ text/record阶段可用String、&str、struct等自然表示，但view/mut/move/
 
 不单独立一个“共享大平台、无真实Rust消费者”的基础包，也不把增量/cache/AutoDown延后成第四个收口包。AX-B与AX-C有明确资源基础依赖，整包默认AX-A→AX-B→AX-C；无同文件/合同写入的私有参考准备可并行，真正共享core扩展顺序交接。
 
-后继另择包：第二目标Python scalar验证共享抽象、闭包/HOF与host-console、多模块/stdlib/泛型-meta/CTE、wide源码与多平台、旧产品迁移。891的typed MIR wide不等A2X有宽源码HIR；新typed起点如需要另定义，不把W fixture强行塞入首期源码包。每目标依原有对应示例矩阵认证，不要求所有源×所有目标的虚假全交叉积。
+C第二目标现为M1必需，按§13及新路线实施。其他后继仍为Python验证动态表示/GC差异、闭包/HOF与host-console、多模块/stdlib/泛型-meta/CTE、wide源码与多平台、旧产品迁移。891的typed MIR wide不等A2X有宽源码HIR；新typed起点如需要另定义，不把W fixture强行塞入首期源码包。每目标依原有对应示例矩阵认证，不要求所有源×所有目标的虚假全交叉积。
 
 ## 10. 必需验收矩阵（正式Plan展开为AC/V/T）
 
@@ -162,7 +210,7 @@ text/record阶段可用String、&str、struct等自然表示，但view/mut/move/
 | AXV-07 | AX-C collections/variant | 原L04/L05=42、V03=3、L06 list-index trap；List<Str>=51、copy/owned for-in=42/53、拥有List<Variant>独立42；活动臂/clone资源probe与源码拒绝分列 |
 | AXV-08 | 每包资源/周转 | bounded prepare/print/IPC、分配/取消/超限/写盘失败、进程树和reader收尾、close/GC；真实内存与磁盘配额、正式源规模/样本、P90≤2000ms日常面；编译运行单列预算与结论 |
 | AXV-09 | 每包交接/兼容 | S/P/H真实释放接受、SDK/recipe/worker/current身份与stale同步，新case进当时正式治理清单/模块并集；不自动纳888 B/C，不污染旧a2r/native报告/expected |
-| AXV-10 | 后继第二目标 | 同一checked事实/公共pass由Rust与Python实际消费，各自目标生成/运行对独立oracle，捕获公共pass错误；此未实施前不宣称多目标共享已验证 |
+| AXV-10 | M1第二目标C | 同一checked事实/公共pass由Rust与C实际消费，各自生成/运行对独立oracle，语义复用/目标片段与证书隔离；C未交付前不宣称多目标已实证。Python动态表示/GC验证改后继，不是本次M1门 |
 
 ## 11. 尚需在立项/feasibility关闭的机制选择
 
@@ -178,3 +226,89 @@ text/record阶段可用String、&str、struct等自然表示，但view/mut/move/
 Fable展示了共享中间AST/转换工具、分目标AST/打印器及运行库映射的组合；其Compiler上下文还提供声明查询、诊断和依赖记录。参考[项目架构](https://github.com/fable-compiler/Fable/blob/main/AGENTS.md)、[共同转换](https://github.com/fable-compiler/Fable/blob/main/src/Fable.Transforms/FableTransforms.fs)、[Compiler接口](https://github.com/fable-compiler/Fable/blob/main/src/Fable.Transforms/Global/Compiler.fs)。采用层次/复用原则，不复制其项目特有全局配置或全部F#语义。
 
 J2CL在共同AST/pass框架上组织不同目标的desugaring、normalization、restrictions及输出，说明共享pass实现不要求所有目标同一pass序列。参考[Backend实现](https://github.com/google/j2cl/blob/master/transpiler/java/com/google/j2cl/transpiler/backend/Backend.java)。以上是架构参考，不能替代Auto自身副作用/所有权/失败语义的独立验证。
+
+## 13. A2C第二目标与M1范围增补（2026-11-02，target-state）
+
+本轮用户明确“A2C目标也加入M1”，取代先Python/只做可选scalar的建议。正式批准、原范围继承和新签章见[M1增补决策](../plans/reports/ace-m1-a2c-scope-addendum-2026-11-02.md)；输入矩阵、case、预算、拆包及913–917窗见[C目标实施路线](strategy/shared-a2x-and-hir-to-c-roadmap.md)。本节为新设计合同，不声明C实现或认证已通过，不取号/施工。
+
+### 13.1 新增的能力闭环
+
+C以892/902/904已交付的共同源域为基线：core/scalar→record/text/text-record/已有static-view方法与模式资源→有限List/Variant/for-in/is；首平台Windows x64、C11子集。首个C样例必须真实共享SemanticView/prepare/依赖/产物服务，有独立C编译运行和reference。C语言标准、工具、helper与完整依赖进入身份；C私有数据表示不等于公开AutoABI。Unit/console/闭包/Dyn/宽源码运算/泛型模块等未认领域保后继，不能把“C已纳M1”解释为所有旧产品/所有C ABI形态立即承诺。
+
+已有a2x-core是真正的中立视图/计划，但a2x-store当前直接依赖ace-a2x-rust的TargetProfile/lower_functions、目标文件集与worker亦默认Rust。CA-A必须带C消费者做最小去耦，不只改lang字符串、不复制session/store。共同checked事实/资源计划、源码序临时和元数据归共享层；C类型/语法/清理/工具映射归provider，helper实现按目标私有，操作语义共享。读取target能力/layout的派生结果不得进入无target键，未修改Rust输出/命中/证书应保兼容，真实变更显式版本化。
+
+C要显式实现checked i32、Unicode scalar索引、源序/单求值、短路、nominal/mode、clone/move/清理和typed trap；不能继承C未定义行为、浅拷贝/参数求值或locale默认。资源失败先于commit，部分结果恰释放一次，清理显式有界；原深链/小栈/512负载、readonly/lease/close和最后owner不因换语言放宽。
+
+### 13.2 增量、认证与四端一致性
+
+新增Q4目标=AC-native、AV、ACE-A2R-HIR、ACE-A2C-HIR。旧AVM/旧A2R/旧A2C分别保参考或已有义务；不能以其中一个替新producer。先冻结共同源域及扩展行，四端各自对独立oracle，不动态缩交集、不用四端相等互证。语义族诊断保raw事实，资源/trap/infra分态；ABI/缓存/在线能力按执行模型单验，不要求所有目标同样暂停/HMR。
+
+每包含自己的文件化首例/反控/显式双腿认证、fresh/hit/restart/body-edit与失败修复再恢复。受支持暖编辑未改函数在真实前端/prepare/目标lower/print/IO均0，保resident/代际；纯恢复P0但R真实非零，不能先lower求键再报hit。C编译器重编单元与A2X生成粒度分账；原Rust方法冷限制不得被新C暖门继承成PASS，需要有界修复或正式replan。
+
+日常Rust/C是emit+已审golden/严格证书，编译器/链接器/目标程序spawn0；新增C M1基线必须有完整现场actual和独立reference的真实编译运行证据，旧A2R批准的cert-gap不自动免除它。source/target/helper/flags/toolchain/header/SDK/deps/oracle变化按身份STALE，坏证书拒绝，不能自动改golden。沿P90≤2000ms/原样本和资源预算，C生成周转与显式编译认证分别计量；实际源→C→运行总延迟必须展示，不拿emit时间冒运行周转。
+
+### 13.3 五包与ABI/FFI边界
+
+CA-A共享目标接缝+C标量→CA-B record/text资源→CA-C集合变体；CA-D有限C/AutoABI桥消费A/B稳定接口并可分窗并行；CA-E新增target ledger/Q4/总M1签章。CA-E的数据设计随A开始，每包含正式测试，不能把必需验收都押到最后一包。CA-*只是能力标签，未分配正式Plan号；不把CA-C与Rust AX-C混同。
+
+797已交付有限候选，不重做AutoABI规范；C生成函数必须有独立wrapper/header/descriptor/layout/ownership准入才可声称该域兼容。只纳既有Win-x64 profile下真实双向三腿、原方释放、同步per-call callback及context/status/out；typed foreign声明fixture与Auto源码FFI入口分别报告。完整header importer、Rust shim/Python生态、跨线程/持久回调、loader/热卸载仍属通用FFI后继，不随A2C认证自动完成。
+
+### 13.4 M1签章与在途交接
+
+新M1=原M1-base-908全部门 AND C核心/资源 AND C增量/恢复 AND 有限ABI桥 AND Q4独立语义证据 AND 扩展登记有效。旧acceptance/2的can_claim_m1仅证明旧基面；未落地新增总门时新M1保持不可签。CA-E用独立版本target ledger/组合报告，不直接给原12列binding插第五列、不改旧批准件SHA，不令913–917因此失效；原NA/accepted和旧A2R义务保持，新C认证不套旧cert-gap豁免。
+
+913主closures恢复/manifest/root/lease/accepted-context；914主场景/布局观察；915主AV资源；916/917主旧A2R准入/发射。C私有实现/参考可并行，共用core资源事实、ManagedStore、A2X worker/store与public contract/SDK/固定组/M1登记按owner+实际SHA/版本/全consumer收据单写；稳定阶段可交接具体符号，不设D913–917整波前置，正式采样/认证错峰。全部未来实现、Spec delta与运行证据由正式Plan认领，当前只沉淀设计。
+
+## 14. CA-B：C record/text资源与后继ABI接缝（2026-11-03，target-state）
+
+921 CA-A已实际实施；读取分支fff3c124d已有TargetProvider/C标量/AXP1来源恢复代码，尚未主线交付，不能把分支功能或头1/14当完整D921。922盘点已交付d66fdef04；用户确认923在实施、924等待，未因本轮核查代改头/进度。本轮CA-B正式为[PLAN-925](../plans/925-a2c-record-text-resource-closure.md)，drafting r1、0/14，CA-C/D/E仍后继工作标签，不为完整通用FFI预占号。
+
+### 14.1 C资源代码生成的权威输入
+
+源profile沿902/904的record/text/text-record：i32/bool/char、str/Str、非递归名义record/资源字段、static/view方法、view/mut/move参数与已支持返回/控制流。不扩mut实例方法、List/Variant、闭包/泛型/模块、Unit/宽源码或host/FFI。共享SemanticView/ParamFacts/FnKind/ExternalFn modes及验证器BodyResourcePlan/排他fixpoint为权威；C只做表示/控制流/显式清理合法化，不能复制资源/借用分析或用C编译成功补Auto合法性。
+
+C私有Str/view/record不等于AutoABI公开对象。Copy record在求值点快照；命名构造/调用按源序钉临时再bindings落位；view record只读、mut record真实写回，move被调方取得析构责任。mut文本沿现域只有排他读/转发而无新运行时文本变异，不虚构完整可变Str API。receiver=params[0]且只求一次，方法owner限定，borrow/exclusion事实变化进入依赖。借用返回只允许已验view参数/static literal，不从被释放owned局部、mut参数或临时返回悬空ptr；缺可消费事实需从原验证器补有界出口，不在C端重推。
+
+Str显式UTF-8 ptr+byte length，长度/索引另按Unicode scalar；内嵌NUL不可用strlen截断，Auto char不是C char，非法码点/索引在访问前具名trap。move/clone/深record clone/拥有返回按资源计划调度；所有fallible准备成功后才替换目标/释放旧值，失败回收已准备部分、保源/旧值。break/continue/early return/短路/trap/取消各出口恰清理一次，借用不析构backing，拥有返回不在callee末尾提前free。清理不能因预算/取消再次失败中断；观察默认关闭且不持有Value/改语言结果。
+
+### 14.2 方法暖编辑与来源恢复必须真计量
+
+904只解除含type的**自由函数**片段限制；static/view方法body当前仍按冷声明上下文路径。CA-B承诺的支持编辑包括含type源的自由函数与static/view方法，必须有窄方法fragment/单体凭证/owner目录接线，body未改函数真实parse/resolve/typecheck/plan/bind/HIR verify/prepare/C lower/print/每函数工件IO0，resident对象/代际保持；不能把cold whole→字节相同命中当暖增量。声明/layout/mode改动按真实依赖失效，914 D-05的冷声明例外不扩大到body编辑。
+
+921当前分支ensure_env在restore后调用parse_program_with/resolve_env，注释称M-class也不改变实际前端生产性质。CA-B开工以D921最终内容/收据重核；纯恢复P0/R>0与恢复后下一body/method编辑是两道门，整源parse/resolve不能藏入R/M。所需来源/声明/方法/资源事实数据重建必须有界、未授信重验，不反序列化Checked/PASS/活owner；必要有界修复归CA-B，若需新共享前端大平台应修订/拆包，不静默延到CA-E。只读/坏件→修复→下一恢复、失败候选保旧/历史lease/GC均首例进入。
+
+### 14.3 验收、交接和后继顺序
+
+以902四源R07/R08/T03/T05及全部modes/method/资源正反例、881/894实际相关原源为基线；新C reference独立手写，actual/reference各以真实cl编译运行对独立oracle，原源/expected/旧Rust金样不改。所有真实allocation域逐故障点与资源事件，C signed overflow/UTF8边界/别名/对齐均不能依赖UB。C record-text独立recipe/fileset/cert/runtime/片段层与scalar/Rust互拒，语义AXS共享；日常emit+bytes+严格证书身份核查，目标编译/运行spawn0，正式认证另列。
+
+CA-B主体在a2x-c，session/TargetProvider接口由921稳定SHA交接；最终合入含D921，私有runtime/参考/fixture研究可先。共同core资源事实/方法片段出口与923/924取S短窗，A2X主体不占native N。H为worker/父adapter/SDK/auto-test-case/fixed/workspace manifest-lock/新登记与来源清单，全文件单写、全部construct-match/consumer核齐，正式采样错峰。922是已交付盘点，作为M2输入消费，不改其历史验收或现有原source分母。
+
+顺序CA-A→CA-B→CA-C；CA-D沿[Design41 §11](41-interface-metadata-and-foreign-abi.md#11-a2c统一abi与ffi的近期结构2026-11-03target-state)消费A/B稳定接口，可在不依赖集合的有限scalar/record/buffer上与CA-C分窗；CA-E登记规则自首例准备，最终签章须全部C域/有限桥/Q4与旧门AND。M2-EXEC/HOST/TS等922后继仍需另立，不因C路线继续就算产品替换已完成。
+
+## 15. CA-C：C集合/变体与近期实施顺序（2026-11-03，target-state）
+
+用户要求正式规划925后继集合包并明确实施顺序，本轮只设计/立项不施工。main取材8717bd5d3、收口推进003e1babe（921工作记录）；921已execution_done11/14待review、仍无D921；923 executing从1/12推进2/12，924/925 drafting0/14，922已交付。集合与变体合一个[CA-C / PLAN-926](../plans/926-a2c-collections-variants-resource-closure.md)，drafting r1、0/14：List<Variant>、owned view、活动臂/逐出口清理、错误/预算共用同一CollectionsBodyFacts；拆成两个会重复fact/文件集/认证接线。不附带新源码集合语法、公有ABI或闭包。
+
+### 15.1 输入/支持与资源合同
+
+承904的20源：L01..07、V01..07、LSTR864、FIN864A/B、N889-list-variant/nested-variant/optional-variant及原补例/拒绝。必须List<Str>和List<owned record>、List<Variant>，L04/L05原源得42，L06仅具名ListIndex，不能正常返回70/任意crash充陷阱。原集合域只有int/bool/受限Str/非递归record、函数局部List、有限无环enum/Option/Result；List参数/返回/字段/Variant payload/嵌List、str/char/宽源码、Closure/HOF、源码List/Variant.clone等原具名排除保持。
+
+private C List/Variant及helper复用925 Str/record资源边界，普通Auto语义仍由受检HIR/单函数凭证/CollectionsBodyFacts给出；C不能另推ownership或靠cl通过补合法性。列表元素类型/variant owner及有序臂/载荷传递图入canonical identity；C tag+payload只访问活臂，不能无guard读union、memcpy出第二份析构权或靠C布局冒AutoABI。get owned元素为受检只读投影，不能物化/隐式clone；for-in len只读一次，结构变更静态拒绝、set合法，两个不同索引的融合len不能串。
+
+push/insert/set/remove/clear按源码序各求值一次、先界/预算/分配检查再commit；移出责任准确，旧目标失败不变。对齐904：helper收到已求值owned输入后失败时，未提交输入由helper或caller唯一清理；不能两边都free，也不能错误要求已在语言层move的局部继续可读。variant switch旧活臂一次释放、载荷投影move后不再析构；frame exit/pending temp/错误点/loop survivor消费原facts，最后owner清理，借用不freebacking。逆序元素释放、buffer最后，cleanup零分配/零计费/零poll。
+
+源码全链与同一生成runtime的手写helper probe分账：深clone/3072层256KiB小栈、逐allocation fault/中段rollback/同进程retry在实际C helper验证，不据helper开放List.clone源语法，不改HIR→C为MIR→C或运行AV取结果。预算/取消沿904既有2WU/list slot、每8 Str byte1WU、ctor1/call4/loop1，默认2^24；预算/取消/fault/索引/错臂/infra分态，不能拿父kill冒合作式清理。原fault点、合法邻居、失败原子与逐owner事件/真实live计数双证据。
+
+### 15.2 函数增量、来源恢复和认证
+
+源码body编辑沿904 base SHA+UTF8 range授权单声明和next完整source SHA；有type/enum的自由函数只重被改body及真实读依赖者，未改parse/resolve/typecheck/plan/bind/HIR verify/prepare/C lower/print/每函数IO0、payload/代际同对象。元素/臂序/载荷/mode/layout/被读取body变化精确失效；纯表序/span漂移不重产无关单位。声明变更沿914 D-05冷声明前端+精确rebuild，不把cold全源后筛同hash冒暖。恢复caller来源→有界重验P0/R>0，下一body编辑真暖；失败编辑/坏件→修复→下一restore、readonly/foreign/closed/历史lease与最后pin回收均必验，不存Checked/PASS/活指针。
+
+独立C collections recipe/fileset/runtime/fragment/cert及execution_config，与C scalar/record-text和Rust三族互拒；AXS3中立语义可复用。actual完整C与独立手写C reference分别真实cl编译运行对固定oracle，新C不套旧cert-gap豁免。预算/fault/events/cancel/debug-release配置在认证身份内，坏证据非绿；日常现场emit/bytes/strict证书核查，编译器/link/目标程序spawn0，漂移只proposal/STALE。
+
+保904完整formal build_load源码（不能按注释删data helpers；实际至少40函数、32未改caller、非注释≥16KiB/数据≥4KiB）和原四态各30样本，新增512不同修订与原压力；暖P90≤2000ms，cold/认证/prepare分列。A2X48MiB合计/store128MiB/scratch512MiB/guest8MiB/managed32MiB/list65536/父private128MiB/source-metadata4MiB/每流1MiB及原更严门保持，先限额后物化，不给合法小图增永久语法深度限制。C目标编译可大于单函数，不能把生成P0冒cl单函数增量。
+
+### 15.3 两条主线与共同写窗
+
+native：923资源/Place→924有限native闭包及完整R02/R05；A2C：921复审合入→925 record/text→CA-C集合/变体。两条主体N/P可以并行，共用core/受检facts/共享lowering只按真实缺出口取S短窗，worker/父adapter/SDK/auto-test-case/fixed/workspace manifest-lock/登记与source-manifest取H全文件单写，所有construct-match/consumer与SHA/版本/已验/pending/释放齐，漂移STALE影响证据，正式采样错峰。925 A2X私有runtime/provider接缝稳定后可先交具体符号，CA-C最终基面含D925/D921，不能并写它们的store/provider或消费未提交WIP；无D923/D924整包前置。
+
+CA-D有限ABI桥仍未取号：A/B正式target/资源/模式/来源接缝稳定后可立项并与CA-C分窗，不强等集合包；本包内部C List/Variant不冒public ABI。CA-E规则/登记/独立oracle准备随首例，最终签章在native旧三格、C A/B/C/D全部必需门及Q4组合后；各包资源/恢复/认证不延期给总验收。922已有M2盘点，M2-EXEC/HOST/TS及域迁移可另行规划，与A2C并行，不能把M1或C线交付冒v0.6全替换/disable。

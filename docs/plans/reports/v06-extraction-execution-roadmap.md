@@ -1,4 +1,182 @@
-# v0.6 剩余迁移总路线图：按完整模块交付
+# v0.6 拆分与重构总路线图：按完整模块交付
+
+更新：2026-11-03；**当前路线v24**。本节为当前调度；下方v20/v9全文保留为折叠历史，旧waiting/入口/证据政策不再是执行指令。状态以各唯一合同及最终收据为准；本轮只核查/规划/刷新文档，暂不实施、不建树或运行项目门。
+
+## 1. 已交付基面
+
+| 范围 | 当前接受 | 有限边界 |
+|---|---|---|
+| 831/832、841–844；867/869/872/873；876/884/887 | 已归档的仓界、等价/清单/语义/结构与入口交付；873暂不进一步细拆crate | 不重开旧搬仓，不外推所有应用/平台/测试全绿 |
+| [888](../archive/888-module-test-selection-and-ace-batch-pilot.md)、[896](../archive/896-merged-invocations-and-consumer-closure-audit.md)、[898](../archive/898-tm-tier-retirement.md) | 已归档；现正式入口`cargo t <固定组>`，tm/旧tier入口已退役 | 888旧选测设计不作为未来方向，保原义务/平台/资源条件 |
+| [890 Web](../archive/890-auto-web-independent-repository-delivery.md) | 独立仓完整搬迁有限交付已归档 | 现具名发行债不因归档消失，也不重开整个890 |
+| [900](../archive/900-de-ui-dependency-inversion.md)、[901](../archive/901-test-feature-flattening.md)、[906](../archive/906-standalone-language-web-boundary.md) | 语言零UI实现依赖、测试feature拍平、语言L1/L2无Web兄弟检出；900-N7由906关闭 | 单源轻合同在语言仓，Web实现由显式consumer装配，不恢复旧边 |
+| [UI018](../../../../auto-ui/docs/plans/archived/018-ui-build-configuration-closure.md)、[UI014](../../../../auto-ui/docs/plans/archived/014-ui-man-structure-closure.md) | UI编译/测试选择及CLI/Vue/Aura/renderer结构均已交付 | 真实可选能力/资源owner保持；不是全部新架构已实现 |
+| [905](../archive/905-generated-cargo-artifact-governance-research.md)、[910](../archive/910-generated-cargo-build-governance.md) | 研究及有限Cargo治理实施已归档；生成context/member/receipt/回收与实际同义UI/Web收益交付 | 不冒全机缓存治理；910具名缓存持有、D-910-1已由918有限关闭，D-910-2仍归Man，缓存持有另核 |
+| [UI007](../../../../auto-ui/docs/plans/archived/007-autoui-tree-theme-and-examples.md) | 示例来源归UI、Theme Lab/002/005首批与受限主题能力已交付 | 非全量主题化，多App/子树scope等由031；真实OS事件腿尚须后继闭合 |
+
+## 2. 当前合同与启动门
+
+| 主责/合同 | 本轮快照 | 范围与交接 |
+|---|---|---|
+| [UI031](../../../../auto-ui/docs/plans/archived/031-theme-scope-publication-and-package-closure.md) | archived r1，11/11 | b6c26186已在主线；scope/原子发布/正式包/基础控件＋003/010已交付；F-05渠道及VM/Rust receipt边界接036 |
+| [UI033](../../../../auto-ui/docs/plans/archived/033-basic-examples-theme-migration.md) | archived r1，9/9 | d734f1fe已在主线；六例迁移，B1累计10例，余B2/B3共24应用及验证/共享资产义务 |
+| [OS053](../../../../auto-os/docs/plans/archive/053-host-theme-chain-and-calculator-adoption.md) | archived r1，10/10 | 宿主/calc落地并清理；G-1真实系统事件hold、G-2真实outproc载体闭环交055，不冒这两腿已PASS |
+| [语言918](../archive/918-cross-repository-admission-and-boundary-closure.md) | archived r1，9/9 | ca9bcafb9交付、独立复审/规范/归档清理齐；D-910-1/D-906-3有限关闭，Web schema级ID集合对账仍归Web |
+| [UI036](../../../../auto-ui/docs/plans/036-official-theme-distribution-and-input-closure.md) | executing r1，最新4/10 | 已经execution_done后final review needs_fix返work，修R-01..03；未正式交付，不消费其WIP |
+| [UI037](../../../../auto-ui/docs/plans/037-business-examples-theme-migration.md) | drafting r1，0/11 | B2十二例保业务主题迁移，path基线/源码可先核；采用036新渠道的最终门接U036；本轮不实施 |
+| [UI038](../../../../auto-ui/docs/plans/038-specialized-examples-theme-readiness.md) | drafting r1，0/8 | B3十二例/六类代表整链支持研究，产逐例结论/owner/后继分包，研究不等迁移；本轮不实施 |
+| [OS055](../../../../auto-os/docs/plans/055-clock-theme-and-host-evidence-closure.md) | drafting r1，0/11 | 真实auto-clock＋G-1系统事件/G-2载体闭环；正式包接U036，先核真实载体可行性；本轮不实施 |
+| [OS056](../../../../auto-os/docs/plans/056-productivity-products-theme-adoption.md) | drafting r1，0/9 | 八个生产力/内容产品主题；产品接U036，最终OS pin/组合主题门等U054 |
+| [OS057](../../../../auto-os/docs/plans/057-desktop-utilities-theme-adoption.md) | drafting r1，0/9 | Weather/Launcher/Monitor/Explorer/os-config/syslog六入口；设置接053唯一policy |
+| [OS058](../../../../auto-os/docs/plans/058-media-products-theme-adoption.md) | drafting r1，0/9 | Music/Video/Photos三产品；保真实媒体链，不等Reader/教学038 |
+| [OS059](../../../../auto-os/docs/plans/059-reader-product-theme-adoption.md) | drafting r1，0/9 | 正式Reader主题，接U036与READER-007正式阅读/Locator源，不借在途WIP |
+| [OS060](../../../../auto-os/docs/plans/060-desktop-games-theme-adoption.md) | drafting r1，0/9 | Solitaire/Tetris/Minesweeper三产品，保规则/盘面/输入与内容身份 |
+| [OS061](../../../../auto-os/docs/plans/061-external-workspaces-theme-adoption.md) | drafting r1，0/9 | Kanban/Musk/Jade Garden/Term/jade-edit五产品；外部/嵌套真实source，所需载体能力才接055 |
+
+```mermaid
+flowchart LR
+    A[031/033已交付] --> P[036发行与输入 实施修复]
+    A --> D[037教学B2迁移 草案]
+    A --> R[038教学B3研究 草案]
+    R --> DL[后续教学B3实施包]
+    P --> DF[教学新渠道验收]
+    D --> DF
+    H[053宿主与calc已交] --> C[055真实clock与G1/G2 草案]
+    P --> C
+    P --> Products[056至061 实际产品26 草案]
+    F[054八产品业务装配] --> F1[056最终OS组合门]
+    Products --> F1
+    E[READER007正式阅读交付] --> Reader[059阅读产品主题]
+    C -. 仅所需载体能力 .-> Products
+```
+
+
+
+**教学与产品分两条独立演进线**：auto-ui/examples/ui已迁10、B2十二由037、B3十二先038研究；产品从AutoOS apps.manifest逐个核真实仓，28 active入口=053/calc已有1+055/clock合同1+056–061新增26。源码/数据/测试分别持有，Demo通过不折算产品完成，不以相同编号互相覆盖。
+
+产品全量盘点/精确HEAD与pin差额、批次与共同验收见[AutoOS Design03](../../../../auto-os/docs/design/03-product-theme-rollout.md)。包括外部Musk/Jade及OS local syslog；references旧来源不重复计活跃产品。036尚未交付，六新批均只立约；056最终OS pin/组合门等054正式业务组合，059接Reader007正式表面，其他批不整体等它们。仅真实需要055新增outproc能力的腿等该能力，不能把用户系统事件窗口等待变成所有迁移前置。
+
+共享包/manifest/锁/renderer/输入按真实文件短窗单写，不借WIP。普通产品独立clone main一写入者，Musk/auto-down等基础owner按本仓专属树规则；实际启动/测试到交付pin逐个验。State/Feature/Reload、ACE/AG/其他业务路线不是全局前置。
+
+## 3. 已交付治理与保留差额
+
+- 918已修D-910-1执行ID解析/真实nextest缩进等正负控制，现schema内校验交付；未由consumer绿推定Web发行全绿。
+- 918已交D-906-3精确std-only设施准入/干净可解析基线与反控，真实后继manifest变更仍按owner审计，不给永久豁免。
+- Web现收据schema未携预期执行ID集合，等计数替换ID的schema级对账归Web producer后继；Web D-906-1源暂存/vendor/锁、Man D-910-2派发仍各归owner，不纳本主题批。
+- OS053真实系统事件G-1与真实outproc载体G-2由055认领；UI013原生成、015编辑依赖及B3媒体/专用表面须在037/038真实重核，不凭旧红文字预填当前结果。
+
+## 4. 近期出口和证据纪律
+
+历史M1/M2有限交付保留；本轮结构/独立边界与910有限Cargo治理已有实际交付，今后转向框架/应用接入及具名守门收口，不再等890/014/007“开工”。研究文本/归档数量不替代真实原子义务，007实际OS事件pending、910持有/观察、各owner既有红仍显式跟踪。
+
+work/review定向反控与完整受影响职责，独立final review后merge冻结并集，保原oracle/平台/ignore/资源条件。语言固定cargo t组、UI/Man/Web各owner入口；批量回归到期user-pending沿既有用户裁定，未执行不写PASS，不由本轮启动全目录构建。
+
+计划材料仅plan-artifacts/plan-NNN按repo身份登记；merge摘要折Plan后删整scope/自有树产物，仅具名未闭持有可留。禁止worktree链接，移除前wt-guard clean；canonical docs/specs，legacy specs.json只读。此规则取代下方历史attachments/tm/ledger写入等旧文，不改历史原貌。
+
+## 5. 下一步
+
+本轮完成28个actual manifest入口的源码/基线/主题差额盘点，新增OS056–061六完整产品合同（8+6+3+1+3+5=26），**全部暂不实施**。036继续原会话返修/复审/落地；055仍独占clock/真实系统事件与载体；教学037/038单独推进，不抵产品数量。
+
+各批授权后T-01先核业务交付/写窗/实际工具与资源，后续按U036、限定054/Reader/载体能力门执行；不自动接管其他会话的未完成业务。B3教学实施包仍待038真实支持结论后取号。只有每批全部产品实际验收/独立review/落地清理后才计入主题已迁，计划覆盖不当运行完成。
+
+来源：[重审设计](../../../../auto-ui/docs/design/autoui/post-extraction-architecture-and-theme-closure.md)、上述归档/活动合同和实际脚本/清单/边界配置；本次仅只读核查，未重跑历史验收或修改实现/配置/基线。
+
+<details>
+<summary>v20及更早正文原貌（历史快照；不作为当前调度、命令或证据政策）</summary>
+
+# v0.6 拆分与重构总路线图：按完整模块交付
+
+更新：2026-10-30；**当前路线v20**。本节及以下§1–8为当前调度；本轮新增当前批次之后的Cargo产物调研/设计与近期M1治理出口，详[后继交接](cargo-artifact-sharing-research-handoff-2026-10-30.md)。文末v9及旧v16–v19仅历史，不复活已归档计划。
+
+本轮用户要求提前规划UI/Man结构收口，已在主责任仓建立[auto-ui/014](../../../../auto-ui/docs/plans/014-ui-man-structure-closure.md) drafting r1、0/11，明确890→UI014→UI007的职责与验收；语言仓不另取同一工作包编号。**本会话仍只规划**，不建仓/实施树/agent，不跑项目测试，不改他方执行合同/产品/canonical或ledger、不联系其他会话。890已有其他会话的实施授权，状态按其真实合同/收据读回，不能以本轮规划限制覆盖该授权。
+
+## 1. 当前交付锚与限制
+
+| 范围 | 当前可核交付/状态 | 后续约束 |
+|---|---|---|
+| 831/832、841–844 | 已归档的UI/Man独立仓与领域/兼容/结构/减法有限交付 | 不重开搬仓，不改写成测试全集或全应用绿；UI/Man沿用原仓身份/历史 |
+| [867](../archive/867-split-equivalence-test-closure.md)、[869](../archive/869-crate-inventory-and-subtraction-batch-2.md)、[872](../archive/872-builtin-semantics-dual-track-ruling.md)、[873](../archive/873-build-cost-and-member-split-decision.md) | 均已归档；873结论暂不进一步细拆member | 完整义务/逐ID账、减法双口径、六族DISTINGUISH及测量适用范围保留；A1调整默认UI特性另签核，不承诺拆crate收益 |
+| [876](../archive/876-autos-desktop-entry-and-launch-health.md) | 已归档，桌面入口归auto-os及启动健康面已交付 | OS计划/债独立管理，语言只留指针；保留051新脚本能力和UI栈策略，旧example命令仅历史证据 |
+| [884](../archive/884-language-structure-closure-without-crate-split.md) | archived10/10；delivery `fa0282c85`，guard清理有收据 | 语言结构包有限关闭；不等于已广泛审查优化旧VM/A2R全部算法 |
+| [885](../archive/885-blog-generated-rust-backend-parity.md) | archived7/7；delivery `dacd00184`，Spec/ledger已落；原始移除前guard日志未恢复 | 890最新合同记录用户明确确认885收尾、关闭该历史证据启动缺口；不伪造guard、不复活已处置阻塞，仍保原证据限制 |
+| [887](../archive/887-test-governance-and-ace-first-corpus.md) | archived r2、10/10；delivery `dd916c184`，有清理收据 | 治理清单/守恒/首批ACE消费已交付；提速项以用户批准机制级负结果关闭，不能称已显著加速；语义/生命周期/手工限制具名保留 |
+| [888模块选测与ACE成组试点](../888-module-test-selection-and-ace-batch-pilot.md) | 本轮读取executing r2、5/10，实时进度以其合同为准 | 语言仓细模块/影响并集与ACE批处理质量线；不是Web/UI014的全局U门。新Cargo研究等其完整交付，不能抢当前测量窗 |
+| [890 Web完整搬迁](../890-auto-web-independent-repository-delivery.md) | 本轮读取executing r2、1/12；已有全链授权，885历史启动缺口已处置 | 按其真实合同/版本继续，尚非U890；后继Cargo研究与UI014均接受其完整交付，不追加入本Plan验收 |
+| [auto-ui/014 UI/Man结构收口](../../../../auto-ui/docs/plans/014-ui-man-structure-closure.md) | 新立drafting r1、0/11；11任务/12AC/14V/6SD，唯一正文在UI仓 | 现在只立约，全部实施含建树/探针等U890及后续明确UI014实施授权；CLI→Vue→Aura→renderer四面，保行为/类型/测试/资源 |
+| [auto-ui/007主题与示例](../../../../auto-ui/docs/plans/007-autoui-tree-theme-and-examples.md) | drafting r3、0/10；独立主题/示例合同 | 结构出口明确为U014，再按007原合同确认及基线重核推进；整棵examples归位、新主题树/.Design/官方包/两demo不并入014 |
+| [Cargo产物共享与治理研究](cargo-artifact-sharing-research-handoff-2026-10-30.md) | 新登记后继需求，未编号、未调研/设计/实施 | U888且U890后开始有界研究/设计，之后按结果立有限实施包；治理结果纳入本轮近期M1，不能仅以研究文档放行 |
+
+这些是只读来源核对，不是本轮重新执行验收。特别是状态archived不自动替代完整收尾、测试执行和应用消费证据。
+
+## 2. 当前顺序与可并行边界
+
+**主治理线：已交付867→869→872→873测量结论→已交付884→已交付887→890 Web完整搬迁→auto-ui/014 UI/Man结构收口→核近期有限收口→按原门推进UI-007。** 873是测量支线，不将“暂不细拆”解读为禁止必要领域边界。
+
+2026-10-30用户新增：当前888/890这批完整交付后，补Cargo生成/构建产物共享的调研与设计；经研究确定有限治理方案/实施/实测出口，与U014一起满足本轮近期M1。研究与UI014无交集部分可协调并行，正式构建/磁盘实验另排窗口；不把研究塞入888/890或改变它们当前验收。UI007的后续启动沿结构/里程碑后的排程核门，本轮不改其任务或AC。
+
+888是U887后的有限测试质量支线，已按修订合同推进；**U888不是890或UI014的无关全局前置**。890无交集范围按其G/X推进；UI014严格等U890，本轮立项不开放实施。共享runner、清单/schema、注册、SDK接口、锁与最终合入窗口逐文件/符号短串行，不借ACE/888 WIP，不凭不同工作树宣称无语义冲突。
+
+```mermaid
+flowchart LR
+    A[884已交付] --> B[887已交付]
+    B --> W[890 Web完整搬迁]
+    W --> U[auto-ui/014 UI/Man结构收口草案]
+    U --> M[近期有限收口核查]
+    M --> T[按UI-007原门推进主题与示例]
+    B --> Q[888模块选测与ACE成组支线]
+    C[865实际共享入口释放] --> Q
+    Q --> R[后继Cargo产物调研与设计]
+    W --> R
+    R --> P[按研究结果完成有限治理与实测验收]
+    P --> M
+```
+
+865/889等ACE工作、BLOG-004与业务应用按原合同继续，只按实际共享面交接；Web不成为它们的新硬前置。当前不启动UI架构重设计、ACE替换全线、数据/runtime另建仓或无编号的其他实施工作。
+
+## 3. 890范围和执行门
+
+890包含服务契约/路由/绑定/错误、既有部署安全/预算/健康/观测/关闭、VM/Rust服务适配、HTTP生成与客户端、测试owner/四仓执行、独立发行和真实消费、旧原件退出及恢复。不是整包搬auto-api-gen；Tauri/sidecar/shared workspace/语言语义按真实consumer保唯一owner。首期不实现新增浏览器/沙箱/认证平台/OpenAPI产品或扩大公网支持等级。
+
+890已有明确全链授权，其885历史证据缺口也已有合同记录的用户处置；沿原G/X和任务依赖继续，其他未核写面不自动放行。U(N)始终含完整验收、独立终审、冻结门、真实合入、规范/账本、归档和guard收尾，不以阶段pass替代。UI014的G=后续明确该Plan实施授权∧U890；相关X另核，全部T-01/02/建树/探针均等G，不借“无关准备”提前实施。
+
+既有Web仓如存在，沿用身份/refs/历史并保全；本地未见目录不能当远端不存在。未来组为`.wt/lang-890/{auto-lang,auto-web,auto-ui,auto-man}`，一仓一权威树，不建junction/symlink，不reset/stash覆盖WIP。远端建仓/push/改默认分支/公共registry不在本轮授权内。
+
+## 4. 测试和发行退出
+
+复用887逐ID与原子义务清单、867等价性规则，Web自己扩独立测试与明确四仓required执行模式；旧三仓历史pass/仅list/减少floor均不能认证新四仓。真实VM/Rust HTTP对拍与Blog双UI消费分开证明。fresh/locked、独立检出/外部生成工程、A→B重定位与失败恢复后真实再消费均属890合同。
+
+work/review只做定向验证和必要check；final pass后merge在冻结提交按实际修改仓统一门，完整四仓批次单实例，不多树重复整档。tf到期仍沿主检出批量规则。原始证据本地，摘要记命令/退出码/选择与执行ID/版本/路径+hash。全绿结论不得超出实际执行支持面。
+
+## 5. 里程碑口径
+
+原三仓M1/M2历史有限交付继续成立；Web是新增独立交付，不把历史改写为尚未搬仓。当前近期收口须到U890与U(auto-ui/014)有限出口闭合再核；014完整验收M1/U1/U2/U3、真实消费/资源、测试与独立合入收尾，不能只凭文件变短。888质量包独立跟踪，不无限追加全部测试改写或性能目标。UI007主题/示例是其后独立交付，不成为014反向前置。
+
+用户本轮所称的近期“M1”新增**Cargo产物有限治理出口**：U888/U890后先研究/设计，确认可验证的有限目标，再实际交付或实证现有机制已满足。不能把全局workspace当预定答案、把“约20GB”当已测分母，或只靠设计稿/候选否定宣布问题解决。历史三仓M1/M2不回退；不由本次登记给UI014/007追加Cargo实现任务，具体门与验收在后续设计/计划明确。
+
+80万目标、全部旧债清零、ACE/AutoGraphics全线、未来Web新产品、所有应用全绿不属于这里的自动出口。UI新架构设计/实施在近期有限收口后另行评估，不能混进结构搬迁。
+
+## 6. 应用与OS
+
+业务应用可以固定已交付公开版本继续，不必等待全部质量治理。BLOG-004不等待Web，Web验收不改其业务WIP/合同；新组合只重放受影响消费。OS/桌面计划和视频解析、Music/Photos扫描404等债在auto-os独立管理，不能称全应用通过。876后现行桌面入口为OS的`ui-desktop`，051旧example命令仅历史收据。
+
+## 7. 下一步
+
+890由其原执行会话按当前授权/合同推进，888由其owner继续，不在本会话认领。现在审阅UI014及[结构边界设计](../../../../auto-ui/docs/design/autoui/ui-man-structure-closure.md)，等U890和后续UI014实施指令后，才在唯一ui-014组按CLI→Vue→Aura→renderer执行。U014后给007精确版本/后继模块/状态owner/测试回交，再按007原门推进；不提前迁整棵examples或实现新主题。
+
+888/890完整交付后另接[Cargo研究交接](cargo-artifact-sharing-research-handoff-2026-10-30.md)：先核真实生成/缓存/磁盘与复用，再设计/立实施包；本轮仅登记，不提前测量/建树/清target或共享cache，不创建新Plan/agent或自动唤醒执行。
+
+## 8. 本轮来源与文档操作
+
+v20已读取Cargo来源对话全部2轮，新增研究交接、里程碑出口与后继顺序；不取号，不启动调研/设计或实验，不改任何在途Plan的AC/任务/授权，不清产物/cache。下条v19取号与规划记录保留为历史；当前真实进度仍读各Plan。
+
+本轮v19只在UI主责任仓取014→015，语言号源不动；不修改890/007/888/ACE/AG合同或状态。来源为当前Spec/四面源码、890最新授权/885历史缺口处置记录、007 r3与[UI014](../../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)/本仓设计索引和[战略](../../design/strategy/modularization-and-refactoring-strategy.md)。v18取890及早期状态仍在Git/历史快照，不覆盖现在真实进度。
+
+本轮只改规划文档/号源，无实施测试、建仓/树/agent、其他聊天写入、canonical/ledger沉淀或提交/push。文档预检只证明合同内部一致，不是搬迁交付证据。
+
+<details>
+<summary>v9历史正文（含旧§11 Web后置评估；不作为当前调度）</summary>
+
+# v0.6 剩余迁移总路线图：按完整模块交付（v9历史）
 
 更新：2026-10-24；路线版本：9。815 r3已归档17/17、816 r2已归档14/14；831 r2 executing 3/12，832 r2 drafting 0/12。新增841–844四份M2大模块合同，全部实际实施等831/832完整交付，再按841→842→843→844整Plan串行。来源与假设见[本轮输入](../attachments/m2-governance-batch-20261024/inputs.json)，历史快照不覆盖当前状态。
 
@@ -202,3 +380,7 @@ work先完成全部实现/修复及相关定向反例、模块测试、必要che
 - [BLOG-004](../../../../auto-blog/docs/plans/004-dual-runtime-acceptance.md)、[语言885](../885-blog-generated-rust-backend-parity.md)及[auto-ui/003](../../../../auto-ui/docs/plans/003-blog-native-vm-run-and-acceptance.md)按其已有运行/验收与最小缺陷修复合同继续，不新增auto-web或整个结构里程碑的全局等待；涉及884等共享路径时按实际交集协调写入/交付顺序。
 
 本轮只记录排程决定，并与[AutoOS应用总表](../../../../auto-os/docs/plans/b-apps-basic-capabilities.md)同步；不修改任何在途Plan的合同/任务/验收，不创建仓库、Plan、worktree或agent，不改变产品代码、canonical Spec或ledger，不运行构建/GUI/功能测试。
+
+</details>
+
+</details>

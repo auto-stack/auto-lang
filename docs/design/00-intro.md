@@ -153,16 +153,16 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 有限文件化基础788/852已交付；a2r日常金样/独立认证分轴，完整消费者覆盖待扩 |
 | [模块选测与ACE成组执行](testing/module-selection-and-ace-batching.md) | 复用887义务清单建立模块/影响闭包、ACE独立与成组/组合表达式对照、逐项定位与实测推广 | target-state r1，PLAN-888草案；建议U887后优先质量支线，未实施，不取消全局冻结门 |
 | [Cargo包与Rust模块固定测试分组](testing/crate-and-rust-module-tests.md) | 替换tm动态叶/顶级/自动闭包体系，固定源码职责组、原生并行、必要构建与存储生命周期 | target-state r1（2026-10-31），PLAN-896 r4吸收897；待确认，尚未实施 |
-| [ACE测试框架与慢例归因](testing/ace-test-framework-and-cost-attribution.md) | 复用888唯一叶/计量建立ACE接入策略、13慢原子分相归因与独立执行导航 | target-state r2，PLAN-893仅规划；保原义务/规模/正式门，不建第二runner |
+| [ACE测试框架与慢例归因](testing/ace-test-framework-and-cost-attribution.md) | 复用固定Cargo组/原生身份/现有计量的ACE接入与13项成本归因；M1净缺口归903 | target-state r3（2026-11-01），PLAN-893仅规划；不恢复tm/动态目录，不建第二runner |
 | [共享文本源码与资源收口](strategy/shared-text-source-resource-contract.md) | T03局部Str替换、T05完整字节比较及AV/native真函数增量、资源/恢复与交接 | target-state r1，PLAN-894仅规划；复用现有profile/recipe，必要版本镜像同步，不依赖888/891/892整包 |
 | [UI/Man结构收口边界](../../../auto-ui/docs/design/autoui/ui-man-structure-closure.md) | 主改面UI，Man CLI/Vue/Aura/renderer四面收口；890拥有Web、007拥有新主题/示例 | target-state r1，auto-ui/014 drafting0/11；U890→U014→按007原门推进；本轮只规划 |
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 774/770/771/782有限合同已归档；本篇为历史共同设计，现状查Spec |
 | [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 模块/仓界、宿主与项目模型解耦、结构/减法及交付门 | 831/832与841–844已归档；867等价出口在途，869/872/873及两个未编号结构包见[总路线v11](../plans/reports/v06-extraction-execution-roadmap.md) |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | Auto语言工具基础设施：Auto/Atom Grammar、CST/AST/HIR分层、ACE编译部署与插件、auto-edit/编码工具及可选语义LSP；复用增量/cache/有界工作集 | 📝 2026-10-22补长期定位与P1–P4路线；787有限实验已交付，完整通用产品未交付；本次仅设计 |
 | [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、HIR/MIR/ABC等查询/产物/页/装载四种粒度、持久格式与依赖验收；共享store/lease/预算及自动GC | 📝 目标态合同草案（2026-10-20补§3.2–3.6决策基线；参数/codec迁移待Plan冻结，现状查producer Spec） |
-| [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI与C/Rust等foreign ABI分层；共用接口元信息/Foreign IR、use.c自动绑定与resolver、双向插件、target语义与cache/lease接线 | 797已有Windows x64 AutoABI v0.1候选及有限Auto/C互调；完整foreign生态仍为目标 |
+| [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI/Foreign IR/FFI分层；§10有限桥、§11共享逻辑事实/分域物理ABI/adapter与M2 host顺序 | 797仍candidate/descriptor3；CA-B内部表示不冒公开ABI，CA-D带真实双consumer后立项，完整FFI按现有应用需求分包 |
 | [42-semantic-metadata-inference-and-comptime](42-semantic-metadata-inference-and-comptime.md) | v0.6语义meta/类型推导/泛型与AV驱动CTE；双期反射、runtime保留、统一查询/依赖及可缓存冻结结果 | 796/817有限语义与AV标量CTE已交付；完整泛型/meta/双期反射待扩面 |
-| [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | ACE的AC/AV/AJ、Typed MIR/ABC/CTE与函数增量 | 📝 §6.4/6.5：798完成后优先828；817/818、820–827扩展须保持全链路函数增量 |
+| [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | ACE Typed MIR/ABC/CTE与增量；§18 A2C/Q4、§19 M2替换、§20 919–922、§21 native R02/R03/R05分包 | 📝 915/917/919/920已交付；921实施、922已有树；923故障/Place与924有限native闭包仅规划，三格分层关闭；M1含C、M2全替换为v0.6硬门 |
 | [44-av-data-layout-place-and-ownership](44-av-data-layout-place-and-ownership.md) | AV布局、Place/owned、集合/闭包/Dyn；820–824扩面与825/826性能分工 | 📝 先798交付→优先828→其余ACE扩展；各Plan强制保留全链路增量，实际能力查Spec |
 | [45-autographics-wgpu-engine-and-game-prototypes](45-autographics-wgpu-engine-and-game-prototypes.md) | wgpu 共同图形基础、2D/3D 游戏原型与生产集成边界；§13为M2有界运行对象/触发/新局事务拟议合同（882→883） | M1已交付；M2角色/相机与879纯迁仓已交付、源码权威auto-ui；880在途、882→883规划，生产AutoUI/HIR/ACE仍待相应成熟度门 |
 | [autographics/m2-editor-and-public-game-prototypes](autographics/m2-editor-and-public-game-prototypes.md) | M2：编辑视口/游戏/Gallery、跨端与归仓门 | 设计v8；874/877有现场在途变化，875/878待交付，先核交接快照 |
@@ -173,7 +173,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [autographics/repository-move-and-integration-gates](autographics/repository-move-and-integration-gates.md) | auto-ui承接AG实验源码与生产UI/ACE融合的分离门、时机和切源要求 | 候选建议：875实际交付后纯归仓可早于ACE；878只读评估，不启动迁仓 |
 | [48-ui-domain-ast-and-lowering](48-ui-domain-ast-and-lowering.md) | UI owned领域模型、泛型领域解析、受检lowering与Core准入 | PLAN-841 架构合同 |
 | [49-native-single-mir-lowering](49-native-single-mir-lowering.md) | 共享HIR→Typed MIR→native收敛、五旧profile覆盖/删除门、布局/身份/cache交接 | 868已交付；870/871待实施，不提前删除旧能力；保留verify资源分析 |
-| [51-shared-a2x-and-hir-to-rust](51-shared-a2x-and-hir-to-rust.md) | 共享Checked HIR事实/结构化准备/编译服务，各目标合法化/AST/runtime；Rust首期三包与增量、认证、889/891/888交接 | target-state r1（2026-10-30）；仅规划；AX-A已立892草案，AX-B/C未编号、不施工 |
+| [51-shared-a2x-and-hir-to-rust](51-shared-a2x-and-hir-to-rust.md) | 共享Checked HIR→Rust/C；§13 M1增补、§14 CA-B、§15 CA-C及双线实施顺序 | 921待review；925 record/text→926集合/变体均drafting；native923→924并行，CA-D/E未取号，分支代码不冒主线交付 |
 | [52-single-compile-profile-consolidation](52-single-compile-profile-consolidation.md) | 单一编译profile：auto-lang去UI依赖反转、测试feature拍平（编译恒定+运行期选择）、tm/tier清退 | target-state r1（2026-10-31）；实施中，四计划 C→A→B（本仓）+D（auto-ui） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
@@ -208,7 +208,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；Cranelift/自举分期已确认，具体子集待验收） |
 | [auto-native-backend-evolution](strategy/auto-native-backend-evolution.md) | **ACE架构及AAC/AAV规划总入口**（原AC/AV/AJ总路线）；§0汇总Design39–44、增量/cache/热重载和block演进、AV程序/替换路线与Plan核验流程 | 路线方向已确认；2026-10-20补ACE称谓与导航，技术合同与交付证据按专题/Spec/Plan核实 |
 | [ace-implementation-handoff](strategy/ace-implementation-handoff.md) | ACE长会话决策、有限交付基线、862–866/870/871任务及S/N/H交接 | 2026-10-28续接快照；current Spec与revision绑定交付收据为准，附新会话prompt |
-| [shared-a2x-and-hir-to-rust-roadmap](strategy/shared-a2x-and-hir-to-rust-roadmap.md) | Design51实施战略：共享骨架＋Rust标量、record/text资源、集合/变体三个首期包；S/P/H与native线分窗 | 规划r1（2026-10-30）；AX-A已立892草案，AX-B/C未编号，均未实施；第二目标与旧A2X迁移另验 |
+| [shared-a2x-and-hir-to-rust-roadmap](strategy/shared-a2x-and-hir-to-rust-roadmap.md) | 892标量→902 record/text→904集合/变体；type片段修复同包与S/P/H | 规划r4（2026-11-01）；904 drafting r2/0-of-14，与893/903分窗，其他后继未编号 |
 | [auto-acc-bootstrap-contract](strategy/auto-acc-bootstrap-contract.md) | ACC 自举主体与公共 HIR 阶段契约：S0–S6 阶段表、pass 合同模板与非法变换反例、后端桥候选矩阵、Gen1–3 代际判据（PLAN-743 T-04） | 📝 Draft（2026-10-04；契约未冻结，实施计划按节认领） |
 | [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-898
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: tm-tier-retirement
 author: [zcode-session 2026-10-31]
 created_at: 2026-10-31
@@ -240,3 +240,14 @@ python acc_inventory 分类红 1。详见 KNOWN-DEBT 898-N5。
   固定组"表述对齐；test_fixed_groups all 断言改语言侧语义。T-04 的 76 组口径
   以此为准更新，T-07 冻结门按 37 组重跑（首跑含 ace 的证据作废——ace 冷编译
   成本不再属门义务）。
+
+## 完成摘要（2026-10-31 归档）
+
+交付：tm/tier 概念全退役（别名/引擎 14 脚本/冻结目录/tier 基线/治理测试）；
+`cargo t all` 改纯语言侧 37 组（用户裁定，ace 域 39 组 all=false）；周期批量门
+=主检出单实例 `cargo t all`；governance_io/machine_gate/legacy-wrapper-contract
+三处存活件抢救性保留；AGENTS/README×2/specs/设计文档/技能三副本对齐。验证：
+选择面守恒（79→76→37 组口径演进均有证明）、冻结门三轮迭代至 24 PASS/7 FAIL/
+6 NA 且 7 红 100% 主检出复现（零新增红）、治理 python 176 绿/1 预存。预存红
+登记 KNOWN-DEBT 898-N5（编译红×4 走 L0，UI 集成红随计划 A 处置）。
+本计划证据按 2026-10-31 裁定折叠于本文，attachments/898 已删除。

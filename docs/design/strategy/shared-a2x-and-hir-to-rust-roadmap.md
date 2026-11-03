@@ -1,14 +1,20 @@
 # 共享A2X与HIR→Rust实施战略
 
-> 2026-10-30，规划r1；技术合同：[Design51](../51-shared-a2x-and-hir-to-rust.md)，统一入口：[ACE总路线](auto-native-backend-evolution.md)。初订轮只授权设计/规划。后续用户已授权AX-A正式立项：[PLAN-892](../../plans/892-shared-a2x-hir-to-rust-scalar.md)，drafting r1/0-of-11；仍不建树、不施工、不改889/891/888合同或current Spec/ledger。
+> **2026-11-02最新M2目标**：[M2合同r2](../../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)要求补全ACE并接管旧AutoVM/A2X所有现有应用、目标和入口，M2结束完成旧实现disable。C为M1第二验证目标；旧Python/JS/TS/Godot等实际目标仍须在M2由新provider接管，不能调用旧AST emitter兜底或只Rust/C绿就收口。旧M4产品迁移/退役义务并入M2，M3/M4未来新增扩展暂不规划；既有M1及在途合同保持。
+
+> **2026-11-02当前r5：C第二目标纳入M1。** 用户已明确批准，见[M1增补决策](../../plans/reports/ace-m1-a2c-scope-addendum-2026-11-02.md)、[Design51 §13](../51-shared-a2x-and-hir-to-rust.md#13-a2c第二目标与m1范围增补2026-11-02target-state)、[C实施路线](shared-a2x-and-hir-to-c-roadmap.md)。892/902/904的Rust首期均已交付；新增C预计CA-A共享接缝+scalar、CA-B record/text资源、CA-C集合/变体、CA-D有限ABI桥、CA-E新增登记/Q4总验收五包（工作标签，尚未取号）。C替Python成为M1第二目标，不能只交标量演示；Q4=AC/AV/新A2R-HIR/新A2C-HIR，各对独立oracle，旧A2R身份/313门不被替代。新M1为旧门AND新增C/ABI/Q4门，未接新总门不得凭旧acceptance/2签章。913/914/916已实际在途，915/917仍drafting，shared store/worker/H按具体SHA/全consumer单写交接，不新增整波前置。下方r4与893/903/904在途描述保为历史；本轮只有设计/规划，不改current Spec/source/expected/binding或913–917合同/进度，不取新Plan号、不建树材料或施工。
+
+> **2026-11-01当前治理交接**：[908](../../plans/908-ace-m1-rules-registry-and-acceptance.md)drafting r2、0/12，G-DEC-1..5已全部按推荐批准，已有批准直接继承，详见[决策件§13](../../plans/reports/ace-m1-scope-decision-2026-10-28.md#13-补充裁定g-dec-15plan-9082026-11-01)。AX-C904已archived r2、14/14，delivery12f9adf18在main，含type/enum片段与collections资源/增量/认证正式接口；AX-A892/AX-B902也已交付，旧“等待S修复/904占窗”不再适用。893/903均已归档；新组case-a2r-hir-collections-904及显式a2x-coll-formal只影响对应成本/审计输入，不重做整包。908新旧a2r身份严格分列，collections cert必须绑定execution_config、旧schema不得夹带、互不授信；不以新producer替旧M1能力/证据。908私有规则/来源可先实施，公共固定组/宿主注册与906当前WIP逐符号交接；顺序见908 §5.8，批准适用不冒执行PASS。本轮只修文档，binding/expected/规则实现未迁移；下方r4等保为历史规划，当前状态以本条/交付Spec为准。
+
+> 2026-11-01，规划r4；[Design51 §5.4](../51-shared-a2x-and-hir-to-rust.md)，[ACE总路线](auto-native-backend-evolution.md)。AX-A892、AX-B902已交付；AX-C正式立[904](../../plans/904-hir-to-rust-collections-variants.md) drafting r2、0/14，type/enum片段缺口同包有界S前置。893/903由用户确认实施中，按实际符号/机器窗交接，不设整包前置。本轮只规划，无实施/测试/当前Spec修改；旧立项状态由此和实际收据取代。
 
 ## 1. 定位与本轮结论
 
 v0.6 Rust版ACE包含A2X；AACE的Auto主体仍延后v0.7。新增ACE-A2R先消费共享Checked HIR，不依赖native的COFF/私有ABI，也不把所有转译后端强制改为MIR输入。v0.6全现有AutoVM/A2X对应示例仍是版本成熟度方向，首期下面三包只交付有限source profile，不自动完成M2/M4或旧转译器替换。
 
-**首期拟拆三个Plan：AX-A共享骨架＋Rust标量闭环，AX-B Rust record/text与资源，AX-C Rust集合/变体。** 标签是设计工作包标识；AX-A现对应[PLAN-892](../../plans/892-shared-a2x-hir-to-rust-scalar.md)，AX-B/C尚未取号，仍不一次预占后两号。892合同冻结本包scope/AC/V/T/SD和S/P/H交接，取号892→893只属计划簿记，未授权施工。
+**Rust首期三个Plan已交付：AX-A892、AX-B902、AX-C904。** C作为M1第二目标新增五包CA-A..E，详见当前r5与C路线；Rust原语义/资源/增量/认证合同保持，不重开归档，也不沿历史“号源905”预占C计划号。
 
-不另立无真实消费者的通用A2X基础平台包；每包含自己的正式文件化、独立oracle、增量/cache、资源/周转、消费者与交付门。第二目标Python scalar用后继实切片验证共享抽象，当前不为追求接口共用率而重写所有目标。
+不另立无真实消费者的通用A2X基础平台包；CA-A以C真实消费者带动a2x-store/Rust TargetProfile接缝去耦，每包含自己的文件化、独立oracle、增量/cache、资源/周转、消费者与交付门。C验证静态表示/显式清理与有限ABI，Python后继再验证动态整数/GC差异，不为接口共用率重写所有目标。
 
 ## 2. 共享层与目标后端合同
 
@@ -19,65 +25,56 @@ v0.6 Rust版ACE包含A2X；AACE的Auto主体仍延后v0.7。新增ACE-A2R先消�
 | 操作合同 | 溢出/索引/字符单位/move/clone/drop/失败原子性及helper需求 | 目标原语/typed helper具体实现、Target AST、字符串转义和打印 |
 | 编译服务 | 函数/声明依赖、source map、分层cache与resident、完整文件集装配、原子发布/GC、独立认证框架 | 目标edition/flags/runtime身份、imports/模块组织、真实编译器调用 |
 
-目标后端应按能力组合公共服务，不扩展为每节点几十个必实现hook。共享core不能重新维护推导/ownership权威，也不能依赖旧AST/Database、AV执行器、Cranelift或UI/Man。拟新实验workspace为experimental/auto-a2x，core/rust/probe角色及crate划分由AX-A最小可行性任务冻结，根产品workspace零新增实验依赖。
+目标后端应按能力组合公共服务，不扩展为每节点几十个必实现hook。共享core不能重新维护推导/ownership权威，也不能依赖旧AST/Database、AV执行器、Cranelift或UI/Man。当前实现统一位于experimental/ace/crates/a2x-{core,rust,store,worker}，904扩既有四crate，不新增workspace/member或根产品实验依赖。
 
 ## 3. 首期三个交付包的规模与验收
 
 | 工作包 | 目标与实际闭环 | 非目标 | 主要写面/前置 | 必须关闭的设计case |
 |---|---|---|---|---|
-| AX-A [PLAN-892](../../plans/892-shared-a2x-hir-to-rust-scalar.md) 共享骨架＋Rust标量 | .at→已交付core/scalar前端→Checked HIR→共享最小prepare→Rust→真实rustc认证；i32/bool、函数、递归/控制流/短路/已支持调用、精确算术trap与诊断；新显式入口/金样/recipe、单体编辑/恢复/预算首例齐全 | record/text/集合/闭包/console/wide源码、多模块/FFI、旧a2r默认切换；不要求先完整meta/query平台 | 新P-A2X私有实现；必要S前端/受检函数出口与H SDK/certify窗口；不依赖D889/D891语义 | AXV-01..05/08/09；第一条source真实生成+编译+运行，不仅文本快照 |
-| AX-B Rust record/text与资源 | 名义record、str/Str/char、字段/构造、静态/view方法及已支持view/mut/move/显式clone、owned返回；source顺序/borrow/资源事实→Rust表示/typed helper→独立认证，真实source增量 | List/Variant、容器clone新语法、闭包/HOF、console、全泛型/stdlib、全既有a2r生态 | 正式D(AX-A)共享接口；新增P-Rust资源实现、受检resource事实缺口归S、公共H交接；语义依据770/771/774/881等已交付合同 | AXV-02..06/08/09；Unicode/NUL、参数模式、重赋/多move、clone独立、失败清理/一次释放与借用生存 |
-| AX-C Rust集合/变体 | 864原14 L/V源及Str/拥有record/Variant List，有限for-in/is受检结构；索引trap、活动臂、转移/view/失败原子性与清理→真实Rust认证；复合source精确增量 | 嵌List/List参数/返回/字段、源码List/Variant.clone、wide集合、闭包/host输出、多平台 | 正式D(AX-B)资源与共享接口；864 source合同，命名enum等具体S修复需owner正式交付；不依赖889的native runtime/ABI或891 wide entry | AXV-02..05/07..09；原L04/L05=42、L06具名trap、V03=3与独立复合补例；source/typed辅助资源分账 |
+| AX-A [892](../../plans/archive/892-shared-a2x-hir-to-rust-scalar.md) 已交付 | core/scalar HIR→共享prepare→Rust、真认证及增量cache/资源基础；current实现见auto-a2x/auto-a2r Spec | 非record/text、第二目标或旧产品切换 | 当前experimental/ace四A2X crate；最终11/11收据，不按header旧6/11误判 | 已交付有限合同，后继域各自独立认证 |
+| AX-B [902](../../plans/archive/902-hir-to-rust-record-text-resources.md) 已交付14/14 | record/text/text-record、参数模式/资源、真Rust认证与缓存基础；实际接口见current Spec | 非List/Variant，含type暖片段仍留前端项，方法编辑仍冷路径 | delivery4303c4457050在main，已清树/材料；不重开历史Plan | 904补type自由函数片段，不能沿902 type-free证据冒含声明增量 |
+| AX-C [904](../../plans/archive/904-hir-to-rust-collections-variants.md) 已交付14/14 | 原14 L/V+6补源、拥有List/Variant、is/for-in、资源/失败/真函数增量/认证 | 保原源码边界，typed不扩任意参数/字段域 | D12f9adf18在main；type/enum片段与资源事实已交付 | 20原源+独立reference/正式增量与认证收据，见current Spec；不是C目标CA-C |
 
 每包先最小全链feasibility，再扩实现、完成work-owned验收、独立final review、冻结门禁与真实交付/Spec沉淀/归档guard。需要新语义/预算/支持集时修正式Plan，不靠“后续再做”关闭既定AC。AX-B/C正式立项必须逐条列源/类型/参数模式/操作闭包，当前Spec支持与实际source缺口不一致者明确S owner及前置；必需输入未闭合不能仅登记gap后把包判交付。
 
-AX-B明确把原R07/R08=42、T03=23/T05=42列required关闭目标；其中T03/T05当前不是可直接消费的全绿source基线。先核源门/Checked HIR/MIR消费者各自拒绝阶段，已有合法语义的源门缺口由AX-B接受S-text有界修复或消费其正式前置；若仅MIR lowering不支持，A2R直接消费合法HIR，无需修整个AV/native消费者。缺口过大时在正式立项前进一步拆共享前置，不能用“新后端只做typed”削掉原源目标。此范围判断不自动授权重开/修改他方Plan。
+902已交付R07/R08=42、T03=23/T05=42及受检text资源出口，但记录含type暖片段和方法编辑冷路径的明确限制；source Collections已由864/889交付，不等Rust新域已过。904不重开902/881/894，补共享source声明/fragment来源和Collections帧拥有事实，用新实际证据更新限制。
 
-默认串行交付依赖为AX-A→AX-B→AX-C，原因是同一个共享core及Rust语义/资源基面。没有共享写入的oracle、runtime参考材料及后端私有可行性调查可并行；不消费前包WIP、不复制暂定core接口。首期不把增量/认证/资源独立排为末尾“收口包”。
+整包能力默认AX-A→AX-B→AX-C；前两包已经交付。当前type片段缺口与AX-C source候选/名义图共用同一S缝，直接纳904 T-02最小真链/T-03修复，不再取一个无新消费者的前置包号。若有界机制不成立则正式replan，不以whole重编或全span0放行。独立reference和P准备可与893/903并行，不消费他方WIP。
 
-## 4. 首个Plan的可执行准备入口
+904 r2规划复核补齐V-13..17：同context异body凭证拒、完整source snapshot/range与连续两函数编辑/恢复、操作计费/取消和无余量清理、证书config/mode/每修订两腿证据、893903精确文件符号与受影响来源回交。20源/14任务及原数值门不减。type片段仍同包有界S前置，当前未施工，next仍T-01/T-02。
 
-AX-A已由[892合同](../../plans/892-shared-a2x-hir-to-rust-scalar.md)冻结scope/revision、基面、拟实施树和SD；本节保留设计入场要求，执行任务/验收以正式Plan为准。
+## 4. AX-C立项时的执行入口（历史）
 
-1. 核ac-core::verify::{CheckedModule,CheckedFunction}、source::{CheckedEnv,prepare_candidate_document/FnCandidate}以及body_work（在lib.rs内联模块）实际API。读入成功不等后端已经有所有facts；source候选受检证据、decl/signature/param-mode/context与span投影若不足先做最小S出口，不从AV执行结果推导Rust代码。
-2. 冻结core/scalar最小支持矩阵、TargetProfile/语义和pass版本、新Rust入口/结果/trap wrapper、输入/target身份、typed helper及受控rustc复用边界；用源码→HIR→Rust→真实程序先证短路/溢出/参数顺序，再扩普通发射。原旧int=i64发射经验不覆盖新i32 profile。
-3. 冻结函数/准备/目标片段/装配/认证五层key、实际依赖清单、fresh/hit/read-only/restart/body-edit和候选发布/close规则。必须有真实生产点计数与resident identity反控，不能整module编译后筛hash。
-4. 第一例接文件化AutoDown/独立oracle和新金样/证书轴。日常emit+snapshot spawn0，独立认证消费现场actual经真实rustc和独立reference各自对oracle。新recipe/profile/wrapper注册需H接受，不复用旧a2r/emit身份冒认。
-5. 核当时有效测试门/模块与源锁，冻结样本源/规模/数量、P90≤2000ms日常面及单列认证预算；按Design51先核48MiB拟议管理工作集、4MiB源/IPC与产物cap及更严上游约束，给项目cache/磁盘配额与测量方法。缺预算/窗口/调用事实不进入广铺实现。
+以下为904立项时的执行顺序历史；904已归档交付，不再按此启动实施。当前C工作入口见C路线§7/§10：
 
-AX-A输出拟增加current Spec：auto-a2x架构/准备/能力与cache合同、auto-a2r受检scalar后端、TestCase新profile/认证面；实际docs/specs路径在正式Plan核目录后确定。本轮不创建Spec来声称实现。AX-B/C沿同一Spec扩支持矩阵与资源/集合规则，不另建平行后端语义体系。
+1. T-01核902 delivery/Spec限制、864889原20源hash/独立值、唯一树、893/903实际符号/预算/组。
+2. T-02含type/enum短fragment+L04/L05/L06/V03/拥有Variant最小source→Rust→认证和正式首例，冻结资源事实/typed表示/深链清理/新身份/负载预算。
+3. T-03关闭共享type片段S修复，含902自由函数兼容见证；T-04再扩Collections受检事实/view/依赖，T-05目标runtime。
+4. T-06真函数候选/source/env/居民/坐标/fileset同代发布、失败保旧/历史/restart/只读/lease/close；T-07新recipe/cert/20源TestCase与H接线。
+5. T-08正式AC/V/四状态30样本及物理/受管预算与反控；其后独立review、冻结职责门、真实沉淀/归档/guard清理，不把计划表当通过证据。
 
-## 5. 与889、891、888的真实交接
+## 5. AX-C与893、903的写面（历史）
 
-读取状态：master=4ea7780aa；889 r2执行5/10（T-06仍有fresh/restart性能修复及S复验，未交付），888 r2执行5/10（T-06/07/08成本/入口/验收未关闭），891 r2草案0/10。此为读取快照，不据该数字占有或释放任何窗口。
+本节保留904实施时与893/903的交接理由，两者现已归档。新C实际交接913–917见C路线§9，仍按实际合同/diff与稳定SHA，不延用旧owner/工作树/等待状态。
 
-| 写面 | 当前归属/交集 | A2X接入原则 |
+| 面 | 904范围 | 接受/回交 |
 |---|---|---|
-| P-A2X / P-Rust拟新私有目录 | 新实验共享core、Rust provider、私有测试/新helper；当前无实现 | 用户未来授权实施后，确认新路径独占，可与889 N及891 N并行准备；只读复用主线已交付HIR/源接口，不编译链接他方候选来证明前置 |
-| S：ac-core/source/adapter/resolve、HIR/verify/schema/资源facts、单体候选 | 889 T-05/06正在使用/修复；包括冷绑定批处理和ownership相关优化，不因功能已提交就默认释放 | AX-A所需受检函数出口、AX-B resource投影、AX-C命名enum或单体修复逐文件/符号取窗。默认889该S稳定交付后接，或正式阶段收据交接；不复制shared lower/前端，也不把修复所有source gap塞进AX-A |
-| N：ac-mir-native emit/lower/layout/fingerprint/config/cache/runtime | 889先行；891后续按其r2接N | A2X不写这些文件，不依赖MN_ABI/COFF/private wrapper；不要求等D891。即使A2R由Rust输出机器码，也仍是独立目标工具链合同 |
-| H：test_cases dispatcher/ac_mn/ac_av、contract、report/stale、certify、worker/helper执行器 | 888的模块/批量工具，889的collections正式SDK和891拟typed入口均可能相交 | 新A2R adapter/recipe注册、共用certificate/exec helper按真实diff交接，跨P/S/H同时取需要的子窗；独立目录或append-only不等无冲突。旧ac_av/av_probe_worker、native worker没有具体必要则只读 |
-| H治理：测试发现/模块、消费者边、源锁、Cargo/nextest、正式采样 | 888仍在冻结和成本收口；其获批规则非所有工具代码均已交付 | 新义务进当时有效治理清单；888已交付则接其叶模块/affected并集，否则沿现行入口并登记待映射，不读写888 WIP配置/冻结报告，不强迫采样中rebase，不默认把新recipe加入B/C |
-| R旧A2X/SDK：trans.rs/Sink、旧Rust/Python发射、a2r-std、legacy golden/cert入口 | 已交付884/885等为基面，仍可能被Web/UI等真实owner占用 | 仅审计复用中立工具/adapter，涉及修改拿实际R/H窗口；不顺手重构旧后端/改变金样或产品默认，不改外仓Web/UI/Man |
-| 机器计量/重型门 | 889及888均有正式性能/成本样本 | 设计/只读与不争载材料可并行；未来构建与认证会占CPU/磁盘，正式采样明确错峰，不能凭空闲或静默当交接授权，不主动跨聊天发消息 |
+| P-A2X/Rust | 四crate的Collections语义扩展、typed runtime/私有测试/独立reference | 可并行，不新建workspace/worker体系，不碰native/旧Trans |
+| S | core source声明/fragment来源、Collections verified facts与A2X中立view/依赖 | 893若写同测试/观测符号则单写；903只读审计不占写权；必要AV/native/CTE消费者验证 |
+| H | 新recipe/contract/dispatcher/ac_a2r_hir/cert/current身份、suite/固定组/tools | 893接入/工具注册按具体符号交接，append-only不等无冲突；903不被动承担新producer迁移或新M1范围 |
+| 正式运行 | 904资源/认证/性能 | 与893慢采样、903必要窄重验错峰，不停止他方进程、不持H等机器窗 |
 
-D889不是A2R全部工作的语义前置；**具体未交付S事实才是对应任务的前置**。D891也不是A2R源码后端前置；wide typed MIR与宽源码HIR分开。U888不是整包前置，但公共H写权、模块/源锁和计量窗口不能越过。
-
-正式交接收据至少含：前owner/Plan revision、文件/符号、真实主线/阶段delivery SHA、schema/profile/语义/pass/target/helper/ABI与缓存版本、依赖/限制、已跑与pending门、后owner接受及回交。稳定阶段若作为新输入，必须经过适用review/gate并合入主线；仅commit/scoped绿不消费。若只是释放主线既有未变符号，记录正式基面/停止并写即可，不新增整项依赖。不可持有一窗等待另一窗；窗口不可用先推进已释放独立工作。
+无D893/D903整包前置；新能力只消费review/gate合入的正式版本，既有不变主线符号明确停止并写可释放。收据含owner/revision、文件符号、delivery、schema/profile/pass/helper/tool/flags身份、已跑/pending及回交。不从902继承缺失的集合资源事实或type-free性能结论。
 
 ## 6. 首期之后的扩面与里程碑
 
-- 后继第二目标Python scalar：真实复用core语义view/pass/依赖与artifact服务，Python自己的整数/失败/引用行为由目标适配保证；各目标独立oracle，公共bug不能以Rust=Python相等掩盖。范围验证后再决定更多接口提取，未验证前不宣传通用多目标平台已成熟。
+- 第二目标C现为M1必需，按CA-A..E及Q4/有限ABI门执行；Python改后继，验证其整数/失败/GC差异。各目标独立oracle，公共bug不能以目标间相等掩盖，C未交付前不宣传多目标复用已实证。
 - 闭包/环境/高阶调用、host-import/console输出：消费865/863已交付source事实，各自适配Rust表示、授权和精确输出/失败，分包是否可合并在真实模式/资源矩阵后定，不顺带加入AX-C。
 - 多模块/stdlib/泛型/meta/反射/复合CTE/FFI、wide源码、多平台：按真实producer和对应目标需求推进。实例/类型/CT结果必须追全实际依赖，source相同不能作为命中依据；缺前端支持不由生成器猜类型兜底。
-- 旧产品迁移/退役：新增ACE-A2R覆盖先并列记录，按原示例/后端/平台/依赖矩阵真实编译运行；不要求全部交叉积，也不减原分母。切默认与删除旧生成器另需覆盖/消费者/恢复门，不凭前三包结束宣布M1/M2/M4完成。
+- 旧产品迁移/退役已纳M2：新增ACE各目标覆盖先并列记录，按原示例/后端/平台/依赖矩阵真实编译运行，不要求原不支持跨积、不减分母。M2需全目标/全consumer接管、实际部署切换及旧生成器退出构建/发行/调用，不能只Rust三包或C目标通过就签M2，不再等未来M4退役。
 
 现有M1 a2r缺口（名称解析/未定型发射/缺金样等）仍以原source和oracle对账；新producer成功可以提供新证据，但是否替换原路径及认证profile须正式迁移/审计决定，不把旧accepted-diff或旧认证缺口抹掉。完整AJ/发布器/block级增量及AACE不作本线首期统一前置。
 
 ## 7. 本轮交付与下一步
 
-初订交付Design51及本战略、设计索引/Design43与旧生成设计的导航、ACE路线/交接更新；随后按用户授权正式立892，仅规划。所有未来probe/测试/编译运行/资源和性能门未执行；未建树/agent，未改implementation/canonical Spec/ledger，未联系或接管其他会话。
-
-初订历史静态收据（892立项前）：Design51编号唯一、设计索引/路线回链、本地文件引用及已读source hash一致；Design51的13个编号章、战略7章、三个当时未编号包与AXV-01..10映射齐全，变更范围diff-check通过。Plan号源当时892；这些检查只证明文档结构/引用一致，不证明目标架构或任何实现已验收。
-
-下一步用户指定执行892时从其T-01核真实D门/树和写面，T-02首例需P/H最小窗及必要S。AX-B/C保持未编号建议，待前包正式接口/资源证据与实际工作量再立项。旧“未取号/号源892”静态收据是初订历史，正式取号后为893；本文不自动授权施工。
+2026-11-01正式立904（drafting r2、0/14），同步Design51 §5.4/本战略r3及ACE入口/交接；type声明片段修复同包有界前置，原20源/资源/函数增量/认证和893903边界按904。所有实施/测试/性能门待执行，本轮不建树/agent、不改current Spec/原源/expected/binding或他方计划。下一号905，其他后继不预占号。

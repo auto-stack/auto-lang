@@ -1,5 +1,23 @@
 # ACE架构总路线：统一编译、解释、JIT、转译与增量热重载
 
+> **2026-11-03 M1架构机制审计与语法正式拆包（本条优先）**：已按源码/Spec/收据完成[剩余机制调查](../../plans/reports/ace-m1-architecture-gap-audit-2026-11-03.md)，真实语法链拆为[927基础七profile](../../plans/927-unified-source-syntax-foundation.md)→[928集合/闭包与嵌套单元](../../plans/928-unified-source-collections-closures-syntax.md)→[929全入口增量/恢复/重复parser退役](../../plans/929-unified-source-entry-incremental-retirement.md)，均drafting r2、0步，仅规划。已有scalar AV热CST、真实CTE、cache/HMR机制不重做；普通源码语义查询/实例/CT接线、CA-D有限ABI桥及最终ARCH组合验收仍待立项，不因三包完成签M1。923 executing3/12、925头drafting但2/14且有实际树，按在途对待；924/926draft。语法私有研究可并行，公共S/H按稳定SHA/完整consumer取窗，native923→924、C925→926语义顺序不变。新M1仍需原门+C门+SYN/ARCH门，M2全覆盖/替换disable与v0.6硬门保持；不改原计划进度/实现或批准。 本轮r2补实片段上下文/typed资源态、同文lambda身份与payload复用、无预热恢复首编辑/原子来源发布及预算适用域；[完整复核、近期状态与安排](../../plans/reports/ace-927-929-plan-review-and-schedule-2026-11-03.md)列全部七个未交付包与908–922已交付基线。
+
+> **2026-11-03当前执行序（926新规划）**：921 execution_done11/14待独立review/合入→[925 CA-B](../../plans/925-a2c-record-text-resource-closure.md)→新立[926 CA-C集合/变体](../../plans/926-a2c-collections-variants-resource-closure.md)，后两包drafting r1/0-of-14，只规划；native923 executing2/12→924 drafting0/14独立主线并行。公共S/H具体符号/全文件单写、实际SHA与全部consumer交接、正式采样错峰，无D923/D924整包挡A2X。CA-D有限ABI桥得A/B稳定接口后可与926分窗，CA-E准备随首例、最终在旧M1/native三格及C A/B/C/D/Q4全部门后，D/E未取号。见[Design51 §15](../51-shared-a2x-and-hir-to-rust.md#15-ca-cc集合变体与近期实施顺序2026-11-03target-state)。922盘点已交付，M2执行/宿主/TS/应用与发行/disable仍需独立计划，不以C线完成代v0.6全替换。取材main8717bd5d3、收口003e1babe；本轮只设计/取号，不改在途进度/源/规则或运行测试。
+
+> **2026-11-03后继A2C与ABI/FFI规划**：921 CA-A在开发，分支已有scalar C真生成/共享target/来源恢复但未交付；923实施/924等待沿用户状态，922盘点已归档9/9。新立[925 CA-B](../../plans/925-a2c-record-text-resource-closure.md) C record/text/参数模式/static-view方法/资源，drafting r1仅规划，见[Design51 §14](../51-shared-a2x-and-hir-to-rust.md#14-ca-bc-recordtext资源与后继abi接缝2026-11-03target-state)。统一接口metadata/分域ABI/FFI adapter与module生命周期见[Design41 §11](../41-interface-metadata-and-foreign-abi.md#11-a2c统一abi与ffi的近期结构2026-11-03target-state)：CA-B不冒公开ABI，CA-D仍M1必需，待A/B稳定接缝与双真实consumer可行性后正式立项，可与CA-C分窗，不预占C/D/E号。922还列M2-EXEC/HOST/SESSION/TEST与TS provider/产品迁移等未立项后继，不能从native三格收口推断整条路线结束；M2/disable仍v0.6硬门，未使用新生态不加前置。本轮只文档/取号，921/923/924进度与WIP不动。
+
+> **2026-11-03 native剩余三格正式分包（本条优先）**：D915=5ba5d4cd2、D919=4ea3daddf已主线交付，917/920亦归档；旧required静态仅R02/R03/R05 ac三格。新立[923故障/Place基础](../../plans/923-native-allocation-fault-and-place-conformance.md)与[924有限native闭包](../../plans/924-native-closures-source-and-resource-closure.md)，均drafting r1未实施，设计见[§21](../43-ac-av-typed-mir-and-abc.md#21-native-r02r03r05故障与place基础有限闭包分包2026-11-03target-state)。native今天只有profile4，拒env导入/闭包指令，不能从919事件观察推定闭包已支持。923独占关闭R03，交R02非闭包事实但保持R02 gap；924补原K02 creator退出/真间接调用/最后env清理与逐fault，再按最终runtime重验923全域，唯一关闭R05和完整R02。N先923→924稳定短窗，私有研究可先；921 A2X主体独立，公共S/H逐文件/符号单写且核所有consumer，922已有实际树按在途对待，不改其合同/进度。无D921/D922整包前置，正式采样错峰。两包后旧三格全闭仍不签含C的新M1/M2/v0.6；AACE v0.7/旧批准/expected/分母保持。本轮只设计/立项，以下早期“native三格未立项”保历史。
+
+> **本轮收口状态校正**：main随后推进c3304ed73（915实施记录），915头已execution_done6/10、待独立review，仍无主线D915；917继续实施。下条5a0ef7609为本波取材快照，不能据915工作完成推定共享接口已合入或整包已交付。919–922仍只规划。
+
+> **2026-11-02下一波正式规划（main5a0ef7609快照）**：913/914/916已交付归档；用户确认915/917实际实施中，头状态滞后不代改。新立[919资源事件六格](../../plans/919-ace-resource-lifecycle-event-conformance.md)、[920旧AVM B18一格](../../plans/920-legacy-avm-immutable-diagnostic-closure.md)、[921 CA-A共享目标+C标量](../../plans/921-shared-a2x-c-scalar-target.md)、[922 M2全场景替换盘点/关键路径](../../plans/922-ace-m2-replacement-inventory-and-critical-path.md)，均drafting r1未实施。见[Design43 §20](../43-ac-av-typed-mir-and-abc.md#20-915917在途时的下一波2026-11-02target-state)。先可并行921/922私有写面与920旧codegen；919 native/fixture先行、AV与915按实际符号取窗，公共H全文件单写/认证错峰。旧required静态14格中915/917各2、919六、920一，native R02/R03/R05三格仍具名open，由922核能力/拆包，不自动NA；C后继B..E与M2工程/应用迁移继续另立，不由本波签M1/M2/v0.6。以下旧状态由此更新，本轮只规划/取号，无代码/current Spec/原批准/expected/登记变更。
+
+> **2026-11-02最新版本约束：M2全替换是v0.6正式发布硬门。** 见[v0.6发布门V06-ACE-01..05](../../plans/reports/ace-v06-m2-release-gate-2026-11-02.md)。M1含A2C及M2 REP-01..11全部完成，旧AutoVM/A2X实现退出构建/调用/发行后才发布；不是只切默认或保留隐藏legacy。用户接受为此调整进度（如晚一周），一周并非实测工期，须核全场景关键路径再冻结日期。M3/M4新增扩展暂不规划，AACE仍v0.7；下方早期迁移非发布前置/可延期表述由本裁定取代。本轮仅规划，不改变在途Plan或实际引擎状态。
+
+> **2026-11-02当前主线：M2补全ACE能力，并彻底替换AutoVM/A2X。** 见[M2合同r2](../../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)与[版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)。M2须接管AutoUI/AutoMan等全部现有应用、所有在用转译目标/CLI/SDK/嵌入与工具入口，完成工程增量/在线更新/资源/周转、实际部署切换及旧执行/AST转译实现disable；不是只到“可替换”。旧M4迁移/退役职责全部并入M2，未来M3/M4新增扩展暂不考虑，不接收M2遗留。默认开发快路径预构建ACE/宿主→Auto增量→AV或支持入口AC，稳定宿主Auto编辑rustc/cargo0；现有各A2X目标仍由新provider提供发布/转译，不取消模式或留旧emitter兜底。M1含A2C、原批准/矩阵/独立oracle/资源/P90≤2000ms与AACE v0.7保持；本轮只规划，不取号/施工/切默认。下方较早里程碑表述按本r2解释。
+
+> **2026-11-02新增用户裁定：A2C第二目标加入M1。** 见[范围增补](../../plans/reports/ace-m1-a2c-scope-addendum-2026-11-02.md)、[Design51 §13](../51-shared-a2x-and-hir-to-rust.md#13-a2c第二目标与m1范围增补2026-11-02target-state)及[C实施路线](shared-a2x-and-hir-to-c-roadmap.md)。首期预计CA-A目标合同/去Rust耦合+C标量→CA-B record/text资源→CA-C集合/变体，CA-D有限797 ABI桥按A/B稳定接口分窗，CA-E自首例接新增登记/Q4并在全部门后收口；五个工作标签均未分配Plan号。Q4=AC-native/AV/新A2R-HIR/新A2C-HIR，各对独立oracle；旧A2R、AVM、旧A2C不替新身份。新M1必须原313门AND新增C核心/资源/增量/恢复/有限ABI/Q4认证及登记门，旧acceptance/2只能报告旧基面，不能单独签扩大后M1。通用FFI/header importer/Rust shim/Python/跨线程callback/loader不随C加入自动承诺，AACE仍延后v0.7。main44a774998读取时913恢复3/12、914场景在途、916已有树，915/917仍drafting；头滞后不代改，共用S/H取具体SHA/全部consumer窗，无D913–917整波前置。旧34阻塞/剩余10格估算只计旧M1，须另列新增C门。本轮仅设计/规划，不改current Spec/源/expected/binding/旧批准hash或在途合同，不取号/建树/施工；以下早期“第二目标Python/可选C/M1旧门”由本增补取代。
+
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../../specs/auto-test-case/profile-v2-native.md)。
 
 > 2026-10-24用户裁定：v0.6先完善Rust版ACE语言引擎，按M1–M4推进并复刻现有AutoVM/A2X全部示例；Auto版AACE实施延后到v0.7。本文旧“本版AAC自举/小子集满足即可提前自举”排期由[新版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)取代，技术验证与既有Plan范围保持。
@@ -8,11 +26,32 @@
 
 ## 0. 总入口与后续规划导航（2026-10-20）
 
+**2026-11-02下一阶段正式规划（以本条优先）**：911 archived10/10（Dca4848f5d）、912 archived12/12（D13a465336）已在main；913已开工T-01/1-of-12，计划头drafting滞后不代改。当前main0e93e3cc9，binding/applicability静态复算34阻塞，非新正式验收报告。正式立[914命名求值顺序/布局观察](../../plans/914-m1-evaluation-order-and-layout-observations.md)12格、[915 AV故障/Place防护](../../plans/915-av-resource-fault-and-stale-place-conformance.md)2格、[916旧A2R静态合法性](../../plans/916-legacy-a2r-semantic-admission.md)8格、[917旧A2R mut-record/文本证据](../../plans/917-legacy-a2r-mut-record-and-text-evidence.md)2格，均drafting r1、0/10。设计见[Design43 §17](../43-ac-av-typed-mir-and-abc.md#17-m1下一阶段场景观察av资源与旧a2r2026-11-02target-state)；先916私有准入/914私有fixture可与913并行，915主av-core资源面取913实际S短窗，917取916已提交稳定公共入口后接发射，不互设整包前置。H按可合入任务逐文件单写，正式采样/认证错峰。四包24格互斥，全部交付仍预计余10格（资源事件6、native R02/R03/R05三、B18 avm一）及M1独立验收；native R05闭包适用边界先核真实规则/能力，禁止自动扩NA。新HIR-A2R不替旧身份、38 cert-gap/future45及具名旧红保留；日常零Rust编译、原source/expected/分母与P90≤2000ms/资源/恢复/零生产合同不降格。本轮只有设计/计划/路线文档，无实施/测试/建树材料或当前Spec变更，下方较早状态按历史读取。
+
+**2026-11-02当前后继立项**：[912闭包源码单函数生产](../../plans/912-closures-function-production-closure.md)与[913来源绑定恢复](../../plans/913-closures-source-bound-recovery.md)均drafting r1、0/12，设计见[§16](../43-ac-av-typed-mir-and-abc.md#16-909后继闭包源码生产粒度与恢复入口2026-11-02target-state)。909 archived12/12、delivery59b8107eb已在main；其语义/K06/owner cache交付保持，R1模块plan/bind、R2整HIR verify、R4兄弟lambda重走及整源body parse由912收口，R3先lower/encode求key由913收口，不重开909。已有verify_function_ref不准Closures，912须补真单函数授信/事实及scoped消费而非仅改域match；913从parent已授权root强摘要进入，所有持久数据深验、无P源生产后实际执行并能继续下一单body编辑，source-only自报hash不可授信。顺序912→913，911 N/parent在实施可并行，S计量/失败快照/公共H取具体稳定符号窗，不设D911整包依赖。新增front16MiB、恢复manifest4MiB/自有namespace128MiB及原8MiB code/value等预算和四状态30样本P90≤2000ms同验；至少64顶层函数/每被测owner3兄弟lambda的真实规模与原样本保留。D-909-1 native旧红、完整C-19/旧a2r/scenario等另具名，不因A/B规划或交付签M1。当前只规划，无源/expected/binding/current Spec或施工变更；以下较早状态按历史快照读。
+
+**2026-11-01当前下一包**：[911 native源码诊断事实与B17–B19收口](../../plans/911-native-source-diagnostics-and-m1-b17-b19.md)drafting r2、0/10，[Design43 §15](../43-ac-av-typed-mir-and-abc.md#15-native源码诊断事实通道与m1-b17b192026-11-01target-state)。908已归档12/12、delivery dc8eca3ae在主线；其冻结核算core247/285、38阻塞、extension28/28、future45、cert38 gap，不能冒M1。909由用户确认在实施，共享捕获/K06归该包；911选现有compiler原因被mn.unsupported.frontend有损包装的三格，新增显式严格观察模式保raw stage/code/span/候选身份，默认兼容、近邻2/2/0与错族/infra/旧worker反控、真函数增量及失败后恢复，不新增语言checker或按expected猜原因。N/parent主体可与909并行，AV通用session只读诊断事实出口、contract/M1登记/manifest/固定组H逐符号短窗，不改909捕获/资源生命周期；910另属生成Cargo治理规划，非语义前置。路线顺序是909+911分窗→按真实required结果立场景观察/旧a2r合法性等净缺口包，AV资源先核已有profile机制→适用门全闭再M1签章。911本轮只规划无施工/当前Spec/原源/expected/binding变更，下方未刷新的状态作历史读取。 911 r2规划复核补齐操作级快照/真实终止profile与context、原始JSON互斥结果、typed拒绝与首失败停、失败全出口attempt、正式父事实重读及W-S1/2/H/M1稳定接口；明确标量worker与独立owned暖API，V扩至20，任务仍0/10，仅规划。
+
+**2026-11-01 C-19源码切片正式立项**：[909共享可变捕获／K06](../../plans/909-shared-mutable-captures-source-closure.md)drafting r1、0/12；[Design43 §14](../43-ac-av-typed-mir-and-abc.md#14-c-19k06共享可变捕获源码切片2026-11-01target-state)为拟实施合同。先区分原K06 move私有环境跨调用写入（原源42、外部不写回）与真正非move标量var共享cell（外部/兄弟闭包写回、拥有逃逸、clone独立/内部别名、最后owner清理）；原owned move/clone/Str借用兼容，循环图/共享owned值等C-19大类仍后继。909须修现有closures source先整编译/lower/encode再比wire的真实增量缺口，不用submitted单元数冒未改生产0。865/823已归档，当前唯一lowering路径为experimental/ace/crates/lowering，旧路径按历史；865历史SHA非当前祖先时以现行Spec沉淀/代码身份核，不重开旧包。908已真实实施（树有WIP，header滞后不改其状态）；909 S/P可并行，binding/规则/852/40场景由908，K06 AV check/token、recipe/worker/固定组H逐符号短窗。下一步是909 T-01/02最小全链，待后续实施指令；本轮只规划，无生产/current Spec/原源/expected/binding更改，不冒M1或完整C-19交付。
+
+**2026-11-01当前收口入口**：[908](../../plans/908-ace-m1-rules-registry-and-acceptance.md)已修订drafting r2、0/12，用户将G-DEC-1..5全部按推荐裁定、已有批准直接继承（[决策件§13](../../plans/reports/ace-m1-scope-decision-2026-10-28.md#13-补充裁定g-dec-15plan-9082026-11-01)）。61唯一适用映射=2旧批准+59本次批准；131/524全登记保留，原103核心+扩28已承诺AV双层required，O非AV45列future仍保gap/owner，a2r金样/认证继续分轴，不冒执行PASS。90310/10（18bac254b）、89312/12（b71b7343e）、904 r2 14/14（12f9adf18）均已归档且交付在主线；904 type/enum片段、资源事实及新recipe/fileset/cert已可消费，不再等待D904或旧S/H窗，新HIR producer仍不替旧M1 a2r身份。908后续实施从T-01冻结批准/正式基面，先最小strict链与tracked来源/窄诊断，再按批准迁移候选→原852入口/公共注册→消费者/独立复审→沉淀清理；P面可先行，906当前test-groups/宿主构建WIP按具体符号取短窗，905研究不设整包前置。908交付后按真实required结果先分证据/观察/infra与能力，再给旧a2r检查/发射、AV资源等后继；门全闭才签M1，console45/native loader等保产品/M2队列。当前binding/源/expected/golden/证书均未迁移，本轮只修规划与决策；以下旧状态按历史快照读取，822实际已归档的勘误不改903冻结数。
+
+2026-11-01 AX-C规划复核：[904 r2](../../plans/904-hir-to-rust-collections-variants.md)仍drafting0/14，20源及原预算不减，新增V-13..17明确同context异body凭证拒、完整snapshot/range连续编辑来源、真实payload/producer、无余量清理/工作取消、证书execution_config/mode与每采样修订独立认证，以及893903精确路径/符号/受影响来源回交。[Design51 §5.4](../51-shared-a2x-and-hir-to-rust.md)与[A2X战略r4](shared-a2x-and-hir-to-rust-roadmap.md)同步。type片段修复仍同包有界S前置，本轮只规划、无实施/测试/新号或其他Plan修改。
+
+2026-11-01 AX-C正式立[904](../../plans/904-hir-to-rust-collections-variants.md)，drafting r1、0/14：[Design51 §5.4](../51-shared-a2x-and-hir-to-rust.md)和[A2X战略r3](shared-a2x-and-hir-to-rust-roadmap.md)明确原20源、集合/变体/资源/真函数增量与strict认证。902已archived14/14、delivery4303c4457050在main；含type片段缺口纳904同包有界S前置，先最小真链再扩面，不另拆号。893/903用户确认实施中，按实际source/观测/H注册符号与正式运行窗交接，不互设整包等待、不消费WIP/改M1分母；本轮只规划，current Spec不据此冒实现。
+
+2026-11-01近期规划刷新：891已归档实交（最终10/10，旧header5/10非当前完成数），889/892/894及901均已交付；899 executing2/7且已接U901，902用户确认已开始、lang-902树存在（计划头可能尚未同步，不代改其合同）。[893 r3](../../plans/893-ace-test-framework-and-slow-case-attribution.md)仍drafting0/12，本次改为固定cargo t/原生命名导航与只读归因，不恢复tm/动态目录；[903](../../plans/903-ace-m1-net-gap-audit.md)新立drafting0/10，负责当前M1登记/批准适用性/能力与证据净缺口、owner和后继顺序，不改binding/规则或签M1全绿。原登记现131行/524格只是raw范围，新增义务适用须按原批准合同核。两包静态规划/只读工作可与902并行，S/H符号和正式慢采样/认证错峰；899/902/893/903不互设整包前置。AX-C等D902资源/共享接口后立项；数值源码/多模块保未编号候选，不预占号。本轮只规划，不施工；下方旧状态按历史快照读取。
+
+2026-10-31 AX-B已正式立[PLAN-902](../../plans/archive/902-hir-to-rust-record-text-resources.md)，drafting r1、0/14：[Design51 §5.3](../51-shared-a2x-and-hir-to-rust.md)与[A2X战略r2](shared-a2x-and-hir-to-rust-roadmap.md)明确record/text、参数模式/受检资源事实、Rust合法化/清理、真函数增量与独立认证。892/881/894交付基线已核；899/901分S/P/H微窗、不设整包依赖；旧core/scalar与旧A2X保持，AX-C仍未编号。仅立项，无实施/测试结论，旧状态导航以本次及实际Plan/Spec收据为准。
+
+2026-10-30状态补充：888已归档10/10（delivery `5a6c23afa`、cleanup `129ef6057`均在main），原公共写面/测量窗释放；894共享文本T03/T05包已立draft r1、0/13，见§7.10。旧888等待快照不再表示当前前置；其他计划按实际新owner/符号交接，不自动开工。
+
 **本文是ACE（Auto Compile & Execution）架构及AAC/AAV后续规划的统一阅读入口。** ACE统一编译、解释、JIT、源码转译与增量/cache/热重载，AC/AV/AJ保留组件职责。历史“AC/AV/AJ总路线”即本入口，文件路径保持。技术合同按主题落在下列设计中；本文维护职责、阶段和引用，不复制各篇的完整合同，也不作为已实现能力清单。
 
 | 要回答的问题 | 继续阅读 | 使用边界 |
 |---|---|---|
 | AC/AV/AJ如何共用语义、MIR、ABC、CTE和增量发布？ | [Design43统一架构](../43-ac-av-typed-mir-and-abc.md) | 架构合同及近期/后续边界；完整AJ并非798或AVM退役的自动前置 |
+| A2R/A2Python等怎样共享HIR与转换，HIR→Rust先做几包？ | [Design51共享A2X](../51-shared-a2x-and-hir-to-rust.md)、[首期实施战略](shared-a2x-and-hir-to-rust-roadmap.md) | HIR语义/结构化准备/编译服务共用，目标表示/AST/runtime分开；首期AX-A=892 drafting、AX-B/C未编号，S/P/H按889/891/888实际交接，未施工 |
 | AV怎样表示数据、读写Place、管理move/borrow/drop和Dyn？ | [Design44数据与所有权](../44-av-data-layout-place-and-ownership.md) | 数据合同及820–824安全扩面、825/826性能分工 |
 | 当前这一波完成后能运行多少语言、还缺什么？ | [AV能力矩阵](av-language-capability-matrix.md) | 区分源码/内核/库/产品层，记录语义迁移差异；目标表不等于已通过 |
 | 下一阶段先做什么、怎样运行真实程序并替换旧AVM？ | [AV源码与替换路线](av-source-programs-and-avm-replacement-roadmap.md) | G0–G8、优先级、候选工作包、产品入口和验收；G7按入口切默认，G8才是全部退役 |
@@ -25,9 +64,11 @@
 | 现在实际已交付什么？ | [Spec总览](../../specs/overview.md)、[Spec索引](../../specs/INDEX.md)，按任务进入auto-ac/auto-hir/auto-semantics/auto-lang/vm/stdlib等模块 | current Spec为现状知识；代码/测试核实观察，Plan与收据确认具体交付。auto-av等拟议Spec必须先确认存在，不把计划中的路径当已交付 |
 | M1还缺什么、哪些M2能力已推进、865/863之后怎样收口？ | [2026-10-29 M1/M2收口对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md) | 按缺口族列能力/判定owner、已立项/待立项与关闭条件；当前登记116行，旧gap不等净能力缺口；不是新验收通过记录 |
 
-**当前续接（2026-10-29）**：先读[ACE决策与实现续接基线](ace-implementation-handoff.md)和[M1/M2缺口/收口表](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，再核[公共写面合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)。862/864/866/868/870/871/881已交付；865 executing r2、2/9，863 drafting r2，889新立draft r1。当前处于M1共同子集收口与M2源码扩面交叉阶段；865/863完成只结束这一批，不自动等于M1全绿或M2完整。可复制[续接prompt](../../plans/reports/ace-next-session-prompt-2026-10-28.md)恢复上下文，状态/实际D门须执行时刷新，不自动授权施工。
+**当前续接（2026-10-30）**：先读[ACE决策与实现续接基线](ace-implementation-handoff.md)和[M1/M2缺口/收口表](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，再核[公共写面合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)。862/864/866/868/870/871/881及865、863已交付；889 executing r2、888 executing r2，891 drafting r2。当前处于M1共同子集收口与M2源码扩面交叉阶段；865/863完成不自动等于M1全绿或M2完整。可复制[续接prompt](../../plans/reports/ace-next-session-prompt-2026-10-28.md)恢复上下文，状态/实际D门须执行时刷新，不自动授权施工。
 
-**D871后更新**：871已交付87dd2b6ad并清理（5af8e0cbe）；native第二阶段按[拆包决定](../../plans/reports/ace-native-phase2-split-decision-2026-10-29.md)分为[889集合/变体源码闭环](../../plans/889-native-collections-variants-source-closure.md)和未编号typed-entry后继包。889 N主体可与865准备并行，集合真单体前端须取S，公共SDK/注册/binding取H，不以原下层carry证明全链增量。当前仅规划，未创建889实施树；新包不把宽位型算术、native闭包/Dyn/loader或整个M1收口塞入本期。
+**native第二阶段更新（2026-10-30）**：按[拆包决定](../../plans/reports/ace-native-phase2-split-decision-2026-10-29.md)，[889集合/变体源码闭环](../../plans/889-native-collections-variants-source-closure.md)正在实施；[891宽标量typed入口](../../plans/891-native-wide-scalar-typed-entry.md)已复核为r2、未实施；[规划复核](../../plans/reports/ace-891-plan-review-2026-10-30.md)补全物理ABI、精确指纹、实际PE结果绑定与暖/冷增量分账。N默认889→891单写，稳定阶段可按实际commit/符号交接；H与888/889分窗，正式采样错峰。891新增内部bit-carrier ABI、独立精确结果通道及W01–05机器证据，不包含宽算术/源码推导、wide拥有集合组合、公开AutoABI/FFI或整个M1收口。
+
+**A2X设计更新（2026-10-30）**：[共享A2X与HIR→Rust路线](shared-a2x-and-hir-to-rust-roadmap.md)已建立，首期拟AX-A共享骨架＋Rust标量闭环、AX-B record/text资源、AX-C集合/变体三包；AX-A已立[892](../../plans/892-shared-a2x-hir-to-rust-scalar.md) drafting r1/0-of-11，AX-B/C未编号。新P-A2X/Rust主体无需等待native私有ABI；S受检事实/单体前端、H SDK/认证/测试治理须与889/891/888逐符号交接，不消费WIP。日常emit/金样与独立rustc认证分轴，首例具备结构增量/cache/恢复/预算；旧A2X产品迁移及第二目标共享实证另验。本轮不自动启动任何包。
 
 ### 后续Agent的规划读取步骤
 
@@ -79,7 +120,7 @@ block级编译复用、后续入口采用新版与活帧中途迁移分别验收
 
 #### 0.4.1 2026-10-29后继波次、M1收口与M2扩面（当前交接）
 
-862入口/Unit、864集合变体原源、866真实AV在线更新、868单源lowering、870 mn data/owned、871旧native迁移退役及881 static/view方法与真方法增量已交付，均只认各自有限合同。S公共队列由**865闭包源码→863宿主输出**接续；新889真实集合函数增量拟在865释放后取S短窗，未就绪让863先行，不新增语义依赖。889的N主体可与865/863准备并行，带位宽typed entry另包未取号；H的SDK/driver/注册/binding必须与实际owner短窗串行。实际owner/立项状态见[当前对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，[旧波次合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)保留单写/交接纪律，不据历史快照重复启动。
+862入口/Unit、864集合变体原源、866真实AV在线更新、868单源lowering、870 mn data/owned、871旧native迁移退役、881 static/view方法与真方法增量、865闭包源码及863宿主输出已交付，均只认各自有限合同。889接集合native与真函数增量S/N，891后接typed数据N；H的SDK/driver/注册/binding与888及实际owner短窗串行，不因独立worktree视为无冲突。实际owner/立项状态见[当前对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，[旧波次合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)保留单写/交接纪律，不据历史快照重复启动。
 
 864原L04/L05及List<Str>/拥有型type为实际交付范围；881方法producer已实交，不再记“待立项”。871已按旧core/scalar/text/record/text-record的G-COV/G-DELETE及消费者/cache合同交付，保留text_resources.rs的verify分析；不是旧AutoVM/A2X产品退役。未由方法包覆盖的文本/资源/诊断缺口不随D881或D871自动归绿。
 
@@ -88,6 +129,12 @@ block级编译复用、后续入口采用新版与活帧中途迁移分别验收
 M2已推进入口、集合/变体/is/有限for-in、record/text方法与拥有值源码；闭包/host-import由865/863继续推进。宽数值源码/算术、模块/全局/stdlib/HOF、泛型/meta/反射、复合CTE与必要FFI仍须按真实缺口另立包；不是typed能力自动扩面。M1收口与M2/M3扩面可交叉，完整AJ/发布器/block增量不成为全部旧能力兼容的自动前置；M4产品全示例/入口切换另验。
 
 各阶段从首例接文件化AutoDown、cache恢复重验/增量结构、现行P90≤2000ms和内存/资源预算；亚秒长期目标不伪称已达标。SDK/公共测试写面需拆分owner实际交接；旧产品默认、M1已批准NA/accepted-diff和a2r金样/cert双轴不因排波而变化。Rust版ACE v0.6成熟度、AACE v0.7边界保持。
+
+#### 0.4.2 共享A2X与HIR→Rust并行线（2026-10-30，仅设计）
+
+新A2X按[Design51](../51-shared-a2x-and-hir-to-rust.md)共享受检语义view、必要结构化准备及查询/依赖/cache/来源/产物服务，各目标负责合法化、类型/资源表示、runtime映射与Target AST/打印；不把共有实现简化为一个Trans接口，也不重建前端或共享万能目标树。共同pass保持求值/短路/资源合同，能力和依赖按实际查询进入key；Rust/Python等不能因同源误命中目标产物。
+
+首期三包各有真实闭环，默认AX-A→AX-B→AX-C，随后以第二目标Python scalar验证共享抽象，再择闭包/console、模块/库/泛型/复合CTE/FFI等实际缺口。包拆分、前置、首例必验及后继边界详见[战略§3–6](shared-a2x-and-hir-to-rust-roadmap.md)。新A2R不依赖D889/D891整项，但消费的未交付S修复需正式收据；H与888/889/891按实际owner分窗，计量错峰。不得因新backend首例通过把M1旧a2r列改绿或宣布全A2X产品退役。
 
 ### 0.5 基础图形之后的跨生态 CAP（2026-10-22）
 
@@ -439,6 +486,16 @@ C headers/SDK/GIR等元信息与Rust构建的C兼容shim汇入共享Interface Me
 2026-10-16后续优先级更新：796继续共同语义/CT模型合同，797继续有限native ABI/C双向探针，不追加VM/MIR验收。下一步先规划“Typed MIR与ABC/AV执行合同及首个全路径探针”，纳入AC/AV/AJ共同服务、单元身份/profile/代际/可重定位产物合同和有限cache对照，但不实现完整AJ/发布器。再规划“AV驱动CTE查询与冻结缓存闭环”；native共享MIR接线与有限增量发布另立有界计划，完整分层AJ随后实施。ABC/AV设计可与796/797并行研究，最终真实绑定等其合入，不能复制权威模型。影响和依赖见[评估收据](../../plans/attachments/ac-foundations-20261016/ac-av-mir-impact.md)。
 
 以上是工作包优先级，不分配新号、不启动代理或实施；787影响记录见docs/plans/attachments/787/strategy-impact-20261016.md，不替换其r1执行合同。
+
+### 7.9 ACE慢测后续归属（2026-10-30，888 r3）
+
+用户已授权将13项现有长原子测试归入ACE专属慢测组并交ACE路线处理：syntax 1、semantics 1、AV 4、native 3、CTE 4。它们来自787/796/798/817/818/828，不全是最近新增；保留原13叶及独立选择、启用、oracle、样本、真实规模与资源负控，不产生重复义务，不因归组自动免除既有门禁。随后用户授权正式立[893](../../plans/893-ace-test-framework-and-slow-case-attribution.md)，drafting r2、0/12；按[共同测试设计](../testing/ace-test-framework-and-cost-attribution.md)复用888模块/执行/计量，交付ACE接入策略、成本关联与13例当前归因，不新造runner/裁判/meter。888负责归组/模块清单与证据交接；产品算法/协议修复据证据后继拆包，不预占后继号；暂关须用户逐项明确决定。清单及日志hash见[后续处理登记](../../plans/reports/ace-slow-tests-followup-2026-10-30.md)。本轮只规划。
+
+历史单例85–526秒包括规模构建、512修订/GC或多轮正式周转/反控，不能据此推断单次编辑超门，也不是当前候选验收数据。888 r3现按模块单轮测墙钟/CPU/内存，取消全目录三轮/P90和新A/B/C矩阵前置；ACE能力原有正式样本、P90≤2000ms及资源/结构门保持。888其余模块采样结束前只读分析/写规划，之后逐文件交接S/N/H与测量窗口再实施，不改共享worker/helper/注册或启动重型验证干扰现场。
+
+### 7.10 共享文本源码与资源收口（2026-10-30）
+
+已正式立[894](../../plans/894-shared-text-source-and-resource-closure.md)，drafting r1、0/13；[专题设计](shared-text-source-resource-contract.md)负责原T03=23/T05=42的共享source/HIR/MIR→AV/native、局部Str替换与真实函数级增量。当前已观察T03受限域明确拒绝、T05已有StrCmp分支，后者先跑原源再判需修或仅补证；本轮无执行结论。复用现有recipe/worker，不新增dispatcher/wire，版本变化的三消费者镜像及stale最小同步不能省。S与私有测试可独立，N必要owned-source桥和H微窗按真实owner交接，不等888/891/892整包；不改891 typed ABI，不扩892标量，AX-B以后消费正式资源事实。原source/expected/分母保持，旧T03限制断言迁移有批准扩面与历史依据，不冒M1全绿。本轮仅规划。
 
 ## 8. 官方参考与核查范围
 

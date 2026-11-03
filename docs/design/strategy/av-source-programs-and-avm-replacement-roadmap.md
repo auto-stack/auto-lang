@@ -2,7 +2,7 @@
 status: accepted-direction
 describes: target-state-roadmap
 created_at: 2026-10-20
-updated_at: 2026-10-28
+updated_at: 2026-11-02
 implemented_by_plans: []
 first_followup_plan: PLAN-827
 ---
@@ -10,6 +10,8 @@ first_followup_plan: PLAN-827
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../../specs/auto-test-case/profile-v2-native.md)。
 
 # AV真实源码运行与旧AVM替换路线
+
+> **2026-11-02最新完成边界**：[M2合同r2/REP-01..11](../../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)明确M2补全ACE并替换旧AutoVM/A2X。G0–G8仍是取证/实施逻辑，不是延到M4才退役：AutoUI各现有模式、AutoMan及全部CLI/SDK/嵌入/服务场景、全在用A2X目标须接管，旧执行/AST发射实现退出default/all-features构建、注册、链接、发行、工具和日常测试。可分批切换但全部接管+disable才签M2；未知/未执行不减分母、不留legacy fallback。M3/M4新增扩展当前不规划，原M1含C/现有Plan合同与AACE v0.7保持，本轮不实施。
 
 上层入口：[ACE总路线 §0](auto-native-backend-evolution.md)（原称AC/AV/AJ总路线）。后续规划先按其步骤核实现状与依赖，再由本路线选择G阶段/工作包，已有匹配Plan优先复用，不因候选排序自动新建或执行计划。
 

@@ -1,0 +1,788 @@
+{
+  "date": "2026-10-26 Asia/Shanghai",
+  "review_kind": "Historical milestone evidence audit; not a reopened Plan final review",
+  "source_ref": "11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "main_ref": "7a3eae81ea6112fc3a208f3a076d7782af663e98",
+  "plans": [
+    {
+      "plan": 829,
+      "path": "docs/plans/archive/829-autographics-independent-research-and-game-prototypes.md",
+      "sha256": "903d350cb26b742f6eb851c61a6765d02d4ade0e0728f05c7905ab923d23d007",
+      "status": "archived",
+      "revision": "1",
+      "current_step": "11",
+      "total_steps": "11",
+      "completion_kind": null
+    },
+    {
+      "plan": 830,
+      "path": "docs/plans/archive/830-autographics-surface-portal-composition-and-input.md",
+      "sha256": "92a6e3cb2e0c6cc088220efeabc86aaf8526daa5109782d1f5bb3e43e739ec20",
+      "status": "archived",
+      "revision": "3",
+      "current_step": "10",
+      "total_steps": "10",
+      "completion_kind": "delivered"
+    },
+    {
+      "plan": 833,
+      "path": "docs/plans/archive/833-autographics-auto-source-minimal-loop.md",
+      "sha256": "11b3c618f5eac2dbaca08e074001b762230b2f311d53cec263449f6c968b7b11",
+      "status": "archived\r",
+      "revision": "2\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 834,
+      "path": "docs/plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md",
+      "sha256": "d322124b0c50b28afff84c07539b7a4d36671f175acf19b21403ac71aee50393",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 835,
+      "path": "docs/plans/archive/835-autographics-scene-authoring-save-and-undo.md",
+      "sha256": "91bcc9746eaa3512e0ebeeb4f6b7ebfff5b452c2f46d0ccddddbf5b85c15588b",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 836,
+      "path": "docs/plans/archive/836-autographics-viewport-picking-and-translation.md",
+      "sha256": "289b9f33294be130f89230cf7894b5d97db4b50a759c5d16c873c22fb539f208",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 837,
+      "path": "docs/plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md",
+      "sha256": "1e23009fc13b1754ebef3c5663fe1d3736439d0983fd3f81ae9c9a6f4119105f",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 838,
+      "path": "docs/plans/archive/838-autographics-glb-import-and-portable-scene-assets.md",
+      "sha256": "408c0493065033c378aaa3aa743aad05cb1af1d27ab063fca950709ca4f91a63",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 839,
+      "path": "docs/plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md",
+      "sha256": "cfa2821fa79e9a981d1ec227b94f691df98ace366b3338dbbd6d671d30c90878",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 840,
+      "path": "docs/plans/archive/840-autographics-public-behavior-api-and-user-scripts.md",
+      "sha256": "a19c0870de82b35ce92340e4a39a79456cb9d240893695ce723688f42c6ab3b8",
+      "status": "archived",
+      "revision": "8",
+      "current_step": "26",
+      "total_steps": "26",
+      "completion_kind": "delivered"
+    },
+    {
+      "plan": 845,
+      "path": "docs/plans/archive/845-autographics-bound-behavior-and-portable-projects.md",
+      "sha256": "00be2d934f4da078cb8a52b11715ba016a1a155988513f09dbf778586a391f61",
+      "status": "archived",
+      "revision": "2",
+      "current_step": "10",
+      "total_steps": "10",
+      "completion_kind": "delivered"
+    },
+    {
+      "plan": 846,
+      "path": "docs/plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md",
+      "sha256": "a8c7d154de57050f81368b198b9706be83afe8173b2dfe5861271a02c1533d12",
+      "status": "archived\r",
+      "revision": "3\r",
+      "current_step": "11\r",
+      "total_steps": "11\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 848,
+      "path": "docs/plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md",
+      "sha256": "6845a60097496193e347994e16a74d4b1ef72545c03cd7e4454f9893d0661691",
+      "status": "archived\r",
+      "revision": "3\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 849,
+      "path": "docs/plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md",
+      "sha256": "df0f36eca1520e0a91939b1697edd11d5dc43e2db6c99498b7362131a0accfac",
+      "status": "archived\r",
+      "revision": "1\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    },
+    {
+      "plan": 851,
+      "path": "docs/plans/archive/851-autographics-bounded-move-and-slide.md",
+      "sha256": "d4129af20c370821ac47a2b0e8ae07058b181c0982b4bd94ae9e9208f3d07450",
+      "status": "archived\r",
+      "revision": "4\r",
+      "current_step": "10\r",
+      "total_steps": "10\r",
+      "completion_kind": "delivered\r"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "docs/design/45-autographics-wgpu-engine-and-game-prototypes.md",
+      "sha256": "78c2c8acf4381023217fbdb3ffb171001070dab09b1c1a907fd7b2954e866691"
+    },
+    {
+      "path": "docs/design/strategy/autographics-forge-v06.md",
+      "sha256": "62e8a25e8bd423cff9b4f1a4f27d39fdb49e76b5ba12b8fa64c9afeb06619d4a"
+    },
+    {
+      "path": "docs/roadmap.md",
+      "sha256": "e05b5196a8cb7a7d73534e38fdd036e41ce9fb4c47998064aba0af373a63315f"
+    },
+    {
+      "path": "docs/roadmap-v0.6.md",
+      "sha256": "886114fa7e42c15ac038976e2f4d3dfec912f251090968a007993e63aa13489a"
+    },
+    {
+      "path": "docs/roadmap-future.md",
+      "sha256": "c2b06c028bfb244df42bf6eb88767e8849c385829e9adbaf660c11aff57fc799"
+    },
+    {
+      "path": "docs/specs/auto-graphics/overview.md",
+      "sha256": "3b3d25265a62fb4af6e2421faac4cc18954b19d30b2f5c8aca775da7b38dddc0"
+    },
+    {
+      "path": "docs/specs/auto-graphics/bounded-motion-profile.md",
+      "sha256": "5384e34fc328f9c2fe928bb3eae2d081ec3d06ed74a7d4f117cef52404edfa78"
+    },
+    {
+      "path": "docs/specs/auto-graphics/auto-source-driver.md",
+      "sha256": "d41b43087279ee4d804157aded8584476921cbf29bcf25d3428b4f0069811ca7"
+    },
+    {
+      "path": "docs/specs/auto-graphics/auto-3d-game-profile.md",
+      "sha256": "d2153f471c353f4da475631e7724015136f9597ad9973eafacd72d3b1dedc4be"
+    },
+    {
+      "path": "docs/specs/auto-graphics/scene-assets.md",
+      "sha256": "fd78e5506207120c0d1c9116c5c714bbb1aedf776f690b7d34eb50ecf655de76"
+    },
+    {
+      "path": "docs/specs/auto-graphics/scene-document.md",
+      "sha256": "280b861e4c0bf48625108b73d96b606ed5db56df0b6ac187793634bc0d1fdfc3"
+    },
+    {
+      "path": "docs/specs/auto-graphics/behavior-api.md",
+      "sha256": "f5985a7bd3ab8bfe014cd3939e87bc09f75c598589f9b869a60ffcb9b8a7612c"
+    }
+  ],
+  "source_identity": {
+    "manifest": "experimental/autographics-auto-driver/research/plan851-identity.json",
+    "entries": 430,
+    "mismatches": [],
+    "folder_mismatches": []
+  },
+  "sdk_reconstruction": {
+    "commit": "7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467",
+    "files": 681,
+    "root_manifest_newline_variants_matching": [
+      "CRLF"
+    ],
+    "mismatches": []
+  },
+  "projects": [
+    {
+      "scene": "experimental/autographics-auto-driver/samples/behavior_projects/move/scene.agscene",
+      "api": "autographics.behavior/1",
+      "source_bytes": 657,
+      "source_sha256": "f1ea64d9e7ebe72bab8a69337888fe03787379a610c5f7a845caf7750c834da7",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/behavior_projects/patrol/scene.agscene",
+      "api": "autographics.behavior/1",
+      "source_bytes": 959,
+      "source_sha256": "d92b4bfbfb1b1c2a70f46ecaf99c547aebe8646928a4076ab8720cde62e55765",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/motion_projects/corridor3d/scene.agscene",
+      "api": "autographics.behavior/5",
+      "source_bytes": 1036,
+      "source_sha256": "7c22cb93d61bca7e9cde7b8dec79db370d9a936ed294b1f3418e319ee47f34e1",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/motion_projects/maze2d/scene.agscene",
+      "api": "autographics.behavior/5",
+      "source_bytes": 1035,
+      "source_sha256": "1fb2707271b3e46dfe3bb76b3331acea3360d89906dd334cba4bd0e809fcaf02",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/segment_projects/beam2d/scene.agscene",
+      "api": "autographics.behavior/3",
+      "source_bytes": 868,
+      "source_sha256": "17f3324a566b245f84f608fe3502a1746e65532c65e323b14cc4cf2d53d25cac",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/segment_projects/sight3d/scene.agscene",
+      "api": "autographics.behavior/3",
+      "source_bytes": 1167,
+      "source_sha256": "9f624845b9a0526fd1b32f17401641c6ae26bbcf2f5ac54218c28094e0fc600d",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/spatial_projects/zone2d/scene.agscene",
+      "api": "autographics.behavior/2",
+      "source_bytes": 973,
+      "source_sha256": "1b15ab5d7380ae16a13a014310bf11204195366ec21e170416c774cdff2c2ec0",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/spatial_projects/zone3d/scene.agscene",
+      "api": "autographics.behavior/2",
+      "source_bytes": 795,
+      "source_sha256": "c6365a21faa55f4f66f7ce11745d82e6e9fd15b608300b31cd54d5dc1f79f6a9",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/sweep_projects/dash2d/scene.agscene",
+      "api": "autographics.behavior/4",
+      "source_bytes": 1054,
+      "source_sha256": "fc50cde034d8b76e225835b1678a1f3bfc33c76673fa09caa1951fb79c121b1f",
+      "source_ok": true
+    },
+    {
+      "scene": "experimental/autographics-auto-driver/samples/sweep_projects/dash3d/scene.agscene",
+      "api": "autographics.behavior/4",
+      "source_bytes": 1125,
+      "source_sha256": "f1d4d01a1640a11d2ae4cfa7da072d626f34822f3452aa8dca56cd90c2ca4711",
+      "source_ok": true
+    }
+  ],
+  "gate_receipts": {
+    "attempts": 87,
+    "latest_groups": 85,
+    "failed_latest": [],
+    "missing_logs": []
+  },
+  "test_log_totals": {
+    "producer-test": {
+      "totals": [
+        280,
+        0,
+        0
+      ],
+      "completed_binaries": 76,
+      "log": "producer-test-attempt2.log.txt",
+      "nested_summary_policy": "Last outer libtest summary in each Cargo binary block; asset_feasibility spawns portable_child, which is not another unique suite test."
+    },
+    "consumer-test": {
+      "totals": [
+        280,
+        0,
+        0
+      ],
+      "completed_binaries": 76,
+      "log": "consumer-test-attempt2.log.txt",
+      "nested_summary_policy": "Last outer libtest summary in each Cargo binary block; asset_feasibility spawns portable_child, which is not another unique suite test."
+    }
+  },
+  "agp_reuse": {
+    "slots": 23,
+    "formal849_to851_unchanged": true,
+    "origin_differences": []
+  },
+  "raw_receipts": {
+    "entries": 2463,
+    "verified_modes": {
+      "git": 2463,
+      "working-copy": 0,
+      "LF-normalized": 0
+    },
+    "mismatches": []
+  },
+  "retained_motion_binaries": [
+    {
+      "family": "producer",
+      "path": "D:/autostack/plan-artifacts/plan-851/merge-r4-frozen/producer/motion-34b83e50a626b76cf93f8abfbd160d803d0045be84b5b144b2a257d52ab9a246.exe",
+      "expected_sha256": "34b83e50a626b76cf93f8abfbd160d803d0045be84b5b144b2a257d52ab9a246",
+      "exists": true,
+      "hash_ok": true
+    },
+    {
+      "family": "consumer-",
+      "path": "D:/autostack/plan-artifacts/plan-851/merge-r4-frozen/consumer/motion-337a5162d47f9a2f22478832f84a44c820c9405de4c16ccb9c64278e87ddd71d.exe",
+      "expected_sha256": "337a5162d47f9a2f22478832f84a44c820c9405de4c16ccb9c64278e87ddd71d",
+      "exists": true,
+      "hash_ok": true
+    }
+  ],
+  "motion_native_reports": [
+    {
+      "family": "producer",
+      "cases": [
+        {
+          "case": "maze2d",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": null
+        },
+        {
+          "case": "corridor3d",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": null
+        },
+        {
+          "case": "maze2d-short",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "corridor3d-short",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "maze2d-bind",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "corridor3d-bind",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "partial",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "native spatial check incomplete at phase 0 after 1 frames"
+        },
+        {
+          "case": "transparent",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "missing-part",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "wrong-asset",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "missing-code",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "io: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\motion\\missing-code\\moved\\scripts\\7c22cb93d61bca7e9cde7b8dec79db370d9a936ed294b1f3418e319ee47f34e1.at: 系统找不到指定的文件。 (os error 2)"
+        },
+        {
+          "case": "bad-code",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "behavior source closure identity: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\motion\\bad-code\\moved\\scripts\\7c22cb93d61bca7e9cde7b8dec79db370d9a936ed294b1f3418e319ee47f34e1.at"
+        },
+        {
+          "case": "bad-api",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "unsupported behavior API"
+        },
+        {
+          "case": "missing-glb",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "io: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\motion\\missing-glb\\moved\\assets\\42c9da673fc67ccb0c65d4b337608834efd28a499f7e460866dcfc5ff2a0c671.glb: 系统找不到指定的文件。 (os error 2)"
+        }
+      ],
+      "all_ok": true
+    },
+    {
+      "family": "consumer-",
+      "cases": [
+        {
+          "case": "maze2d",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": null
+        },
+        {
+          "case": "corridor3d",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": null
+        },
+        {
+          "case": "maze2d-short",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "corridor3d-short",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "maze2d-bind",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "corridor3d-bind",
+          "positive": true,
+          "passed": true,
+          "phase": 14,
+          "exit": 0,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": true,
+          "error": null
+        },
+        {
+          "case": "partial",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "native spatial check incomplete at phase 0 after 1 frames"
+        },
+        {
+          "case": "transparent",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "missing-part",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "wrong-asset",
+          "positive": false,
+          "passed": false,
+          "phase": 5,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "spatial pixels final-content failure"
+        },
+        {
+          "case": "missing-code",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "io: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\consumer-motion-final\\missing-code\\moved\\scripts\\7c22cb93d61bca7e9cde7b8dec79db370d9a936ed294b1f3418e319ee47f34e1.at: 系统找不到指定的文件。 (os error 2)"
+        },
+        {
+          "case": "bad-code",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "behavior source closure identity: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\consumer-motion-final\\bad-code\\moved\\scripts\\7c22cb93d61bca7e9cde7b8dec79db370d9a936ed294b1f3418e319ee47f34e1.at"
+        },
+        {
+          "case": "bad-api",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "unsupported behavior API"
+        },
+        {
+          "case": "missing-glb",
+          "positive": false,
+          "passed": false,
+          "phase": 0,
+          "exit": 1,
+          "binding_and_assertions_ok": true,
+          "reopen_ok": null,
+          "error": "io: \\\\?\\D:\\autostack\\auto-lang\\docs\\plans\\attachments\\851\\merge-r4\\consumer-motion-final\\missing-glb\\moved\\assets\\42c9da673fc67ccb0c65d4b337608834efd28a499f7e460866dcfc5ff2a0c671.glb: 系统找不到指定的文件。 (os error 2)"
+        }
+      ],
+      "all_ok": true
+    }
+  ],
+  "motion_owner_controls": [
+    {
+      "family": "motion-owners",
+      "cases": 7,
+      "all_ok": true
+    },
+    {
+      "family": "consumer-motion-owners",
+      "cases": 7,
+      "all_ok": true
+    }
+  ],
+  "source_ancestry": [
+    {
+      "commit": "ddbde3e62857e6bbfc8b780c6182ee1bb7d4ef74",
+      "is_ancestor": true
+    },
+    {
+      "commit": "764e87559cff016d9e0d6b2141e5f1f9903398c5",
+      "is_ancestor": true
+    },
+    {
+      "commit": "77302d8552f074ebedd53e757acfcf3db0bde230",
+      "is_ancestor": true
+    },
+    {
+      "commit": "ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+      "is_ancestor": true
+    },
+    {
+      "commit": "8b62db5cba54b9bfe7f759f4920b22ccb9b75e88",
+      "is_ancestor": true
+    },
+    {
+      "commit": "c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f",
+      "is_ancestor": true
+    },
+    {
+      "commit": "bf22db3465203f3babd649494f4b37aa2a012027",
+      "is_ancestor": true
+    },
+    {
+      "commit": "dd7076a7f40b35ffda6b876c36f826af3443fb97",
+      "is_ancestor": true
+    },
+    {
+      "commit": "6bb85f354e718f6541256f4b3d75ca97af75b8c4",
+      "is_ancestor": true
+    },
+    {
+      "commit": "11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+      "is_ancestor": true
+    }
+  ],
+  "route_broken_links": [],
+  "large_source_files": [
+    {
+      "path": "experimental/autographics-auto-driver/src/authoring/assets.rs",
+      "lines": 778
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/authoring/behavior.rs",
+      "lines": 1214
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/authoring/host.rs",
+      "lines": 2584
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/authoring/play.rs",
+      "lines": 1126
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/authoring/storage.rs",
+      "lines": 766
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/bin/authoring_probe/play.rs",
+      "lines": 793
+    },
+    {
+      "path": "experimental/autographics-auto-driver/src/bin/autographics-authoring.rs",
+      "lines": 1054
+    },
+    {
+      "path": "experimental/autographics-prototype/src/core/composition/mod.rs",
+      "lines": 1060
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/breakout.rs",
+      "lines": 1225
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/gpu_foundation.rs",
+      "lines": 989
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/squash_game.rs",
+      "lines": 1364
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/surface_compose.rs",
+      "lines": 1175
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/surface_ime_os.rs",
+      "lines": 1175
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/surface_input.rs",
+      "lines": 1315
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/surface_lifecycle.rs",
+      "lines": 1182
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/cases/surface_scenarios.rs",
+      "lines": 1201
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/iced_spike.rs",
+      "lines": 1756
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/iced_surface_probe.rs",
+      "lines": 1073
+    },
+    {
+      "path": "experimental/autographics-prototype/src/host/surface_runtime.rs",
+      "lines": 1348
+    },
+    {
+      "path": "experimental/autographics-prototype/src/render3d/pipeline.rs",
+      "lines": 845
+    }
+  ],
+  "limitations": [
+    "No new Cargo/build/native/GPU or performance runs. Source and existing bound evidence inspected.",
+    "Checksums/log assertions do not independently certify fresh runtime behavior; historical review and frozen merge evidence reused at stated identities.",
+    "No archived Plan reopened; no source, dependency, canonical Spec or ledger changed."
+  ]
+}

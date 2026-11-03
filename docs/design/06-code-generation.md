@@ -1,5 +1,7 @@
 # 06 - Code Generation
 
+> **ACE新路径设计（2026-10-30）**：[Design51](51-shared-a2x-and-hir-to-rust.md)规定Checked HIR→共享结构化准备→各目标合法化/Target AST与打印，及[HIR→Rust首期路线](strategy/shared-a2x-and-hir-to-rust-roadmap.md)。本篇下方主要描述旧AST转译器的实现与历史；新设计尚未实施，不据其替换旧Trans/Sink/产品默认或修改既有金样。
+
 ## Status
 
 Code generation is substantially implemented across multiple backends:

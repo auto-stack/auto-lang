@@ -2,12 +2,14 @@
 status: accepted-direction
 describes: target-state-and-gap-matrix
 created_at: 2026-10-20
-updated_at: 2026-10-28
+updated_at: 2026-11-02
 implemented_by_plans: []
-planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-826, PLAN-827, PLAN-862, PLAN-863, PLAN-864, PLAN-865, PLAN-866, PLAN-868, PLAN-870, PLAN-871]
+planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-826, PLAN-827, PLAN-862, PLAN-863, PLAN-864, PLAN-865, PLAN-866, PLAN-868, PLAN-870, PLAN-871, PLAN-909]
 ---
 
 # AV语言能力矩阵：源码、内核与替换差距
+
+> **2026-11-02最新M2范围**：[M2合同r2](../../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)要求补全ACE并替换旧AutoVM/A2X，AutoUI/AutoMan等所有现有场景、在用A2X目标/公开入口的能力/host/产品部署/测试迁移及旧实现disable均须M2完成。下表历史M2–M4标签不能把已有义务延到未来；M3/M4新增扩展当前不规划。单源/typed/部分profile仍不冒全产品支持，实际状态以current Spec/收据为准，不回开在途Plan。
 
 整体定位与后续规划读取步骤见[ACE总入口 §0](auto-native-backend-evolution.md)（原称AC/AV/AJ总入口）；本表负责AV能力缺口与迁移证据，不代替整体路线或current Spec。
 
@@ -59,7 +61,7 @@ planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-82
 | C-16 | Option/Result/有限enum载荷 | ✅ 864（?T/Result<T,E>/enum 声明+构造+推断；V01–V07 真源绿；完整error propagation另验） | T：822具名typed合同 | — | 822执行；864源码 | AV原源已交付；native变体和完整error propagation另验 | G2 / R2-L | P0 |
 | C-17 | is/match、guard与载荷解构 | ✅ 864（is 语句穷尽分发+载荷绑定，guard/投影降为受检分支链；穷尽/重复/未知臂具名诊断；V01–V07 真源绿；guard 表达式与通配超集仍后续切片） | T：受检分支投影 | — | 822执行；864源码 | 非完整guard表达式/通配/复杂解构；native投影随后继变体包验证 | G2 / R2-L | P0 |
 | C-18 | owned闭包、捕获、间接调用 | ✅ 865有限源码profile（K01/K02/K03/K05执行；K04具名拒绝；K06保留R5-O） | 823 av.closures/1；865 source→existing MIR/ABC/AV | — | 823执行；865源码 | 共享可变捕获/循环环境、闭包字段/List元素、async/线程/native ABI；map/filter/reduce另属库与方法能力包 | G2 / R2-L | P0 |
-| C-19 | 共享可变捕获、循环对象图、跨挂起借用 | — | 明确拒绝或尚无owner | — | 821–824首批排除 | 若旧消费者依赖则不能永久排除；须专门共享/生命周期设计 | G0/G5 / R5-O | P1 |
+| C-19 | 共享可变捕获、循环对象图、跨挂起借用 | 当前源码仍拒绝；[909](../../plans/909-shared-mutable-captures-source-closure.md)仅规划0/12 | 909拟交K06私有环境可写+非move标量var共享写/逃逸/clone/清理/真函数增量；非现状 | — | 865/823交付基线，909后继 | 共享owned、循环图、跨挂起/线程仍属R5-O后继；K06源码42与真实共享分验，不能整行关绿；详Design43 §14 | G0/G5 / R5-O→909有限源码切片 | P1 |
 | C-20 | 匿名对象、动态字段、Map/Set | — | Dyn不是Map/对象实现 | — | 824不交付Map/Set | AP-19/JSON对象读写、键相等/迭代顺序/缺字段语义 | G2/G3 / R3-C | P0 |
 | C-21 | 模块全局变量与初始化顺序 | — | 未交付global Place | — | Design44仅模型 | 多模块初始化/一次性/环、状态寿命与隔离 | G3 / R3-M | P0 |
 | C-22 | use/pub/re-export、pac/包/模块解析 | — | 798有限函数闭包非完整模块系统 | — | 796仅语义身份 | AP-07依赖闭包/名称冲突/缓存/stdlib选层，复用resolver与783 | G3 / R3-M | P0 |

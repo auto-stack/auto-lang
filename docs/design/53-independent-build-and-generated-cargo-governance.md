@@ -1,6 +1,6 @@
 # 53 · 独立构建边界与生成Cargo产物治理
 
-状态：target-state r1；2026-11-01。当前只规划，未执行探针/测量/构建/清理或修改生产依赖。
+状态：目标设计与交付记录；2026-11-02。905研究、906独立边界与[910有限Cargo治理](../plans/archive/910-generated-cargo-build-governance.md)均已归档；治理后继[918](../plans/918-cross-repository-admission-and-boundary-closure.md)仅drafting r1、暂不实施。下文旧目标/研究结论按各自来源保留，不能把研究完成当生产治理已完成。
 
 承接[Design40](40-compiler-artifacts-and-cache-lifecycle.md)、[Design50](50-autoweb-service-framework-and-repo-boundaries.md)、[Design52](52-single-compile-profile-consolidation.md)。统一的是来源、依赖与构建生命周期的可验证边界，不预定全局共享可写target，也不把源码分仓当独立构建已完成。
 
@@ -8,8 +8,8 @@
 
 | 目标 | 主责/计划 | 完成边界 |
 |---|---|---|
-| 生成Rust工程/Cargo产物治理 | 语言侧持[PLAN-905](../plans/905-generated-cargo-artifact-governance-research.md)，Man/UI/Web按实际producer/consumer参与调查 | 本期有界实测、方案选择、有限验收及可执行后继合同输入；研究完成不自动代表Cargo问题/M1已闭 |
-| 语言仓不依赖Web兄弟检出 | 语言侧持[PLAN-906](../plans/906-standalone-language-web-boundary.md)，Web/UI/Man参与必要接收 | Core独立消费和完整语言workspace分别证明；不能只改Core的轻合同path就冒全仓独立 |
+| 生成Rust工程/Cargo产物治理 | 语言侧持[PLAN-905](../plans/archive/905-generated-cargo-artifact-governance-research.md)，Man/UI/Web按实际producer/consumer参与调查 | 本期有界实测、方案选择、有限验收及可执行后继合同输入；研究完成不自动代表Cargo问题/M1已闭 |
+| 语言仓不依赖Web兄弟检出 | 语言侧持[PLAN-906](../plans/archive/906-standalone-language-web-boundary.md)，Web/UI/Man参与必要接收 | Core独立消费和完整语言workspace分别证明；不能只改Core的轻合同path就冒全仓独立 |
 
 二者没有无关全局先后；共享source_owner/rust_workspace/SDK投影/锁/发行入口改动须短窗单写。906改变依赖身份时，905沿新SHA更新对应观测，不混算收益；UI014结构/AG020产品在各自合同执行，不追加全线前置。
 
@@ -23,7 +23,7 @@
 
 ## 3. Web依赖边界：必须先冻结完整闭包
 
-当前至少三条活跃边：Core→auto-web-contract、facade auto-lang→auto-web、auto-api-gen→auto-web；Core的http_service_config.rs整包再导出轻合同，该合同同时含严格解析、hash、CORS/Host/可信代理等Web政策，不能未经分类全搬回语言。
+906立项时观察至少三条活跃边（现已按906收口）：Core→auto-web-contract、facade auto-lang→auto-web、auto-api-gen→auto-web；Core的http_service_config.rs整包再导出轻合同，该合同同时含严格解析、hash、CORS/Host/可信代理等Web政策，不能未经分类全搬回语言。
 
 906先冻结L1（Core/API独立消费）与L2（语言workspace完整普通构建）清单、直接/传递/optional/build/dev依赖和当前SDK/生成/测试调用。候选：
 
@@ -33,7 +33,7 @@
 
 以上仅候选，不承诺复制整Web实现、搬全部政策、改ABI或另建仓。方案涉及破坏公开API/跨owner归属/删除兼容承诺/需要远端发布时，906 T-02给具体迁移合同供用户确认，未确认不进入依赖实施。保留一个真实类型owner；不复制同名Rust类型/政策，也不删除links冲突守卫来容忍同名双source。
 
-**T-02 冻结（2026-11-01，探针 P-A/P-B/P-C 全绿）**：906 选中候选1+3组合（C1）——`auto-web-contract` 包逐字迁语言仓（Web workspace 去成员、auto-web path 翻转回指语言单源；links/类型身份/hash/严格策略随包不变）；facade 与 auto-api-gen 的 auto-web 边清零（facade 公开 Web 再导出面四仓零外部消费者、Man/UI/生成代码均 auto_web 直连；`auto_lang::http_service_config` 改指 core 再导出，RateLimiter/ServiceRuntime 留 Web）；http e2e 家族迁组内独立探针工程显式装配 Web host；source_owner/交付投影/安装脚本按新源身份接线。C2（合同留 Web+固定渠道）有据否决：registry 未发布、无 git remote、vendor 复制=第二套实现且不解决实现边。负控实证：未打补丁清单树 metadata 红于 `auto-web\crates\auto-web-contract\Cargo.toml` 缺失；C1 正控全 workspace 无 Web 兄弟 `cargo metadata --offline` 绿。完整设计/兼容差额/回退见 [PLAN-906 §5.5](../plans/906-standalone-language-web-boundary.md)。
+**T-02 冻结（2026-11-01，探针 P-A/P-B/P-C 全绿）**：906 选中候选1+3组合（C1）——`auto-web-contract` 包逐字迁语言仓（Web workspace 去成员、auto-web path 翻转回指语言单源；links/类型身份/hash/严格策略随包不变）；facade 与 auto-api-gen 的 auto-web 边清零（facade 公开 Web 再导出面四仓零外部消费者、Man/UI/生成代码均 auto_web 直连；`auto_lang::http_service_config` 改指 core 再导出，RateLimiter/ServiceRuntime 留 Web）；http e2e 家族迁组内独立探针工程显式装配 Web host；source_owner/交付投影/安装脚本按新源身份接线。C2（合同留 Web+固定渠道）有据否决：registry 未发布、无 git remote、vendor 复制=第二套实现且不解决实现边。负控实证：未打补丁清单树 metadata 红于 `auto-web\crates\auto-web-contract\Cargo.toml` 缺失；C1 正控全 workspace 无 Web 兄弟 `cargo metadata --offline` 绿。完整设计/兼容差额/回退见 [PLAN-906 §5.5](../plans/archive/906-standalone-language-web-boundary.md)。
 
 ## 4. 验证和退出
 
@@ -45,9 +45,17 @@
 
 ## 5. PLAN-905 有界实测结论（2026-11-01 交付，研究非实施）
 
-基线与全部实验证据折[PLAN-905](../plans/905-generated-cargo-artifact-governance-research.md) §9；要点：
+基线与全部实验证据折[PLAN-905](../plans/archive/905-generated-cargo-artifact-governance-research.md) §9；要点：
 
 1. **现状判定**：Web 消费者路径（serve_rust/仓外 app）逐 app 本地 target 整编 auto-lang 闭包（生产 auto-chat 17.93G、auto-blog 8.48G，与 auto-lang/target 14.74G 三份同源 deps 互不复用）；rustflags 三源分裂（语言仓 config=lld+32MB、生成 ws config=256MB-STACK、裸默认）使共享 target 内部再裂双命名空间（实测 659 单元全量重编，census 落盘；单命名空间规模以 E2-S1 9.77GiB unique 佐证）。UI 路径 env 钉共享 target 但与语言仓自身构建混用同一目录（owner 混合）。
 2. **复用成立的条件（实证）**：同 profile 同 flags 下，第二 UI 工程 22s/+1.11G（10x 时间）、Web release 跨消费者入共享 target +0G/6.8s 仅编译成员；取消/缺件/坏件均可恢复（fail-loud 或增量自愈，坏件需按单元 fingerprint 定位清除）；跨仓混合锚定 cargo fail-closed（好性质）。
 3. **选定方向**：生成消费者统一共享 target + flags 单源化（§2 候选 B，按 profile 自然分 namespace）；不取内容寻址重建、不动 sccache、不合并多 worktree 可写增量。有限 M1 验收出口与后继实施合同输入见 PLAN-905 §9 T-05 记录（**后继实施不自动获权**）。
 4. **移交缺口（不属本研究修复）**：生成成员键=项目 basename+mtime 判定 regen → 同名工程互劫持（双向实证）；needs_regeneration 无内容 hash；examples/ui/013-todo rust 轨生成编译失败（owner=auto-ui/UI014）。
+
+## 6. Cargo有限治理交付接受（PLAN-910 archived9/9；2026-11-02）
+
+[910实施合同](../plans/archive/910-generated-cargo-build-governance.md)接受906交付后的lang4571f55e9/Web847527e/UI98cbcd2/Man7f30eb8来源组合，开工再冻结当前版本。有限范围：生成构建上下文/flags单源与受管target归属、同basename成员及内容失效修复、并发/取消/恢复、精确闲置缓存预览回收。语言根工具target、跨worktree可写状态、只读SDK/独立delivery分界；不承诺不同feature/profile的合法变体消失，不改debug/incremental凑收益。
+
+有限出口为真实UI/Web两类同义A/B消费者的正确隔离/复用、共享稳态unique字节严格低于独立总和、完整物理误差/迁移峰值/周转账及可回滚清理，再经独立review/实际合入。不是固定百分比或全盘历史清仓。906具名发行/布局/审计红按是否阻塞实际必需oracle判定，不以既有归因代替门通过。
+
+UI007已完成整棵示例归位与首批主题，并接受910四仓版本、target/成员/receipt/配置合同和移根规则；910本身没有搬权威示例/改主题。后继031/033的新来源仍按910重新生成和验证独立消费，不恢复旧basename或mtime准入。910已实际交付（lang f665ce113/UI01f99fd/Web3de5524/Man67add3c），现知识以[生成生命周期](../specs/repository-boundaries/generated-cargo-build-lifecycle.md)为准；UI007亦已归档完成移根和首批，后继031/033及OS053按各自合同接受。D-910-1准入与D-906-3审计差额交918，Web/Man具名债及910缓存持有分owner保留；这些限制不抹成全产品已绿。

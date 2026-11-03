@@ -1,0 +1,44 @@
+[
+  {
+    "file": "docs/design/45-autographics-wgpu-engine-and-game-prototypes.md",
+    "old": "../plans/829-autographics-independent-research-and-game-prototypes.md",
+    "new": "../plans/archive/829-autographics-independent-research-and-game-prototypes.md",
+    "replacements": 1
+  },
+  {
+    "file": "docs/design/45-autographics-wgpu-engine-and-game-prototypes.md",
+    "old": "../plans/830-autographics-surface-portal-composition-and-input.md",
+    "new": "../plans/archive/830-autographics-surface-portal-composition-and-input.md",
+    "replacements": 2
+  },
+  {
+    "file": "docs/design/45-autographics-wgpu-engine-and-game-prototypes.md",
+    "old": "../plans/851-autographics-bounded-move-and-slide.md",
+    "new": "../plans/archive/851-autographics-bounded-move-and-slide.md",
+    "replacements": 1
+  },
+  {
+    "file": "docs/design/strategy/autographics-forge-v06.md",
+    "old": "../../plans/851-autographics-bounded-move-and-slide.md",
+    "new": "../../plans/archive/851-autographics-bounded-move-and-slide.md",
+    "replacements": 1
+  },
+  {
+    "file": "docs/design/strategy/autographics-forge-v06.md",
+    "old": "../../plans/829-autographics-independent-research-and-game-prototypes.md",
+    "new": "../../plans/archive/829-autographics-independent-research-and-game-prototypes.md",
+    "replacements": 1
+  },
+  {
+    "file": "docs/design/strategy/autographics-forge-v06.md",
+    "old": "../../plans/830-autographics-surface-portal-composition-and-input.md",
+    "new": "../../plans/archive/830-autographics-surface-portal-composition-and-input.md",
+    "replacements": 1
+  },
+  {
+    "file": "docs/roadmap-v0.6.md",
+    "old": "plans/851-autographics-bounded-move-and-slide.md",
+    "new": "plans/archive/851-autographics-bounded-move-and-slide.md",
+    "replacements": 1
+  }
+]

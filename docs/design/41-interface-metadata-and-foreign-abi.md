@@ -2,11 +2,15 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-10-28
+updated_at: 2026-11-03
 implemented_by_plans: []
 ---
 
 # Design 41：统一接口元数据、Foreign Interface IR 与跨 ABI 架构
+
+> **2026-11-02 M2全场景替换约束**：[M2合同r2](../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)要求AutoUI/AutoMan及全部现有应用所用host/FFI在M2真实接通，并完成产品切换/旧实现disable；不能归类未来M3/M4而免验。优先明确typed import/有限已验shim/预编译库，不为未使用的新通用生态扩容；未来M3/M4暂不规划。M1有限797/C桥保持，不扩大在途ABI合同或假称桥接已实现。
+
+> **2026-11-02范围增补**：用户已将共享HIR→C第二目标加入M1，见[独立批准件](../plans/reports/ace-m1-a2c-scope-addendum-2026-11-02.md)、[Design51 §13](51-shared-a2x-and-hir-to-rust.md#13-a2c第二目标与m1范围增补2026-11-02target-state)及本文§10。新增有限C/AutoABI桥为M1必需；完整通用FFI仍是独立能力线。本轮只设计/规划，797候选支持面/旧批准哈希/913–917合同与current实现均未改变。
 
 > **2026-10-28续接基线**：797已交付Windows x64的autoabi.win-x64.v0.1-candidate及Auto/C有限双向互调，现状见[auto-abi](../specs/auto-abi/project.md)。这不是全类型/跨平台ABI定稿，也不含完整C importer、Rust shim/Python生态、动态loader和回调热卸载；必要FFI可与语言扩面交叉推进。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
@@ -150,3 +154,73 @@ IR/hash来源记录不强pin所有header AST/中间shim；实际装载的库/rea
 - [Libclang](https://clang.llvm.org/docs/LibClang.html)：可提供C接口语义/位置等摄入基础，工具可用不等于本仓已集成或完整C安全信息已获取。
 
 待冻结：接口Schema/identity、raw/safe标注与诊断、import/provider/pac语法、clang/SDK来源及支持子集、varargs/bitfield/inline边界、Rust shim生成与句柄规则、C bootstrap、AutoABI跨域adapter、host/freestanding服务裁剪、双向callback/线程/重载和cache预算。现行Spec维持已实现事实；设计与讨论中的v1/v2、函数名等都是例子，不是发布新ABI版本。
+
+## 10. A2C第二目标的有限ABI桥（2026-11-02，target-state）
+
+用户批准A2C加入M1后，首期C路线中的CA-D负责有限桥接，不能再仅作为可选后继；详见[C路线§6–§9](strategy/shared-a2x-and-hir-to-c-roadmap.md#6-有限autoabi桥与通用ffi边界)。它与CA-A/B/C的语义/资源代码生成、CA-E的Q4与M1总验收分别关闭，不把A2C源转译成功等同ABI/FFI通过。
+
+### 10.1 三层独立合同
+
+| 层 | 本次必须成立 | 不得推断 |
+|---|---|---|
+| A2X/C语义生成 | 受检HIR/资源事实→C内部表示/typed helper→真认证，独立oracle | 普通C函数天然满足AutoABI；C内部record布局等于公开对象布局 |
+| 有限C/AutoABI桥 | 独立wrapper/descriptor/header、target/layout/调用/ownership/runtime准入，实际双向三腿 | 历史声明IR probe已证明任意Auto源码FFI；repr(C)或同版本工具足够证明互调 |
+| 通用FFI平台 | 仍按Interface Metadata/Foreign IR/adapter/provider/模块运行时分层推进 | 加C目标便自动拥有任意header导入、Rust/Python生态或安全热卸载 |
+
+M1桥沿autoabi.win-x64.v0.1-candidate与descriptor/3：pure scalar和fallible context/status/out、UTF-8/数组buffer view、record const/mut/out、opaque handle原方destroy、同步per-call callback+ctx。沿797原bool/char合法性/长度单位/错误provider/代际和失败out逐字节不变；不扩大f32公开ABI、按值聚合、varargs/bitfield/union、跨线程/保存callback、unwind或loader能力。A2C源域宽度和797声明类型域不同：typed i64/u64/f64互调证据不冒C前端完整宽源码运算。
+
+### 10.2 实际调用和来源
+
+CA-D必须分别证明Auto源→生成C实现→公开wrapper→独立C caller、受检有限foreign声明→生成目标call→独立C callee，以及同域AutoABI peer互调。仅wrapper外壳调用C而Auto业务从未经过受检foreign边界，不算Auto→C闭环；typed import/手工声明与Auto use.c源语法支持分别列证。声明/头/schema只为候选来源，准入必须校验实际符号/物理形态/工具target/依赖和权限。
+
+公共Interface Metadata/Foreign IR只补本桥真实需要的受控投影：逻辑签名/名义身份、param mode/ownership/borrow/effect、ABI physical lowering、provider与真实deps。不能复制一套与HIR推导并列的类型系统或独立FFI缓存DB；sourcemap/元数据/库依赖接统一产物与lease。受限源profile尚无外部语法时，可从受检声明桥接，但不得报成任意源FFI支持。
+
+独立C工具实际编译header/provider/caller，用sizeof/alignof/offsetof和异质非零实参/ctx/多out/handle观察；相同生成器双方自洽不算独立oracle。错域/target/packing/signature/runtime/权限在调用前拒，native调用0，已知不兼容不能盲调用制造UB。C/Rust生成文件编译成功也不替调用准入；资源由原方释放、callback/deleter按真实最后owner保活。
+
+### 10.3 当前基线与交接
+
+797归档9/9的历史merge1799f86ca不是当前主线祖先；当前canonical Spec及abi代码经过896迁移，集成以现行内容/SHA与真实三腿复验为准，不能复制历史PASS。旧profile维持candidate，本增补不发布完整AutoABI版本。C与Rust provider同读语义事实、各自生成适配，普通native调用C仍无需先转C源码。
+
+CA-D私有wrapper/参考可先设计；a2x-core/store/worker接缝取CA-A正式接口、资源方式取CA-B稳定提交，ABI descriptor/ctool/worker、ac_protocol/测试/SDK注册全文件单写并核所有consumer。913主来源恢复/lease，914场景/布局，915资源，916/917旧A2R；只在实际共用符号交接，不新增整波依赖。既有797原限额/负依赖/key/退役语义不放宽。M2所有现有场景用到的foreign callback/线程/GIL/shim等必须接管；未使用的新通用importer/任意库/热卸载扩展暂不排未来计划，不能借旧M3分类免除当前产品所需。
+
+## 11. A2C、统一ABI与FFI的近期结构（2026-11-03，target-state）
+
+本轮只规划：921 CA-A实际在途，CA-B按Design51 §14正式立约；797仍是Windows x64 candidate/descriptor3，未发布新ABI版本，也未实现任意header importer/Rust shim/动态卸载。922实际盘点说明产品入口/宿主接线仍缺，不能把A2C能编译当全M2或通用FFI完成。本节将既有四份合同落实到可交接边界，不现在新增四套框架/数据库或复制类型系统。
+
+### 11.1 三种表示和五个责任层
+
+| 责任层 / owner | 权威输入→输出 | AC/AV/A2X的消费与限制 |
+|---|---|---|
+| 内部语义/资源（core verifier + semantics-contract） | Checked HIR/函数凭证、796名义声明/版本、模式/借用/能力/CT依赖→只读接口事实 | 所有后端同源，不由ABI或C helper重新推导类型/ownership |
+| Interface Metadata / Foreign IR（中立投影） | Auto受检事实或foreign候选声明+来源/人工约束→逻辑接口描述；候选与已验证事实分开 | 不含宿主函数指针，不假定源已支持use.c；不把target布局回写Auto逻辑类型 |
+| ABI physical plan（各域adapter） | 逻辑签名+domain/profile/target/layout/错误/ownership→物理lane、wrapper/调用转换及布局校验 | native内部ABI、AutoABI公开边界、平台C ABI三域分开；物理相同仍不自动兼容 |
+| FFI binding/provider（工具与边界消费） | 已验证interface+符号/库/工具/权限/runtime依赖→受控绑定/adapter | AC直接机器调用、AV typed host stub、A2R/A2C发薄目标wrapper；不用Value/JSON统一普通标量调用 |
+| module/runtime lifecycle（host owner） | 实际image/provider/版本、handle/callback/deleter/在途pin→可用调用与最后释放 | ABI相容不等于可卸载；静态链接/同步per-call与未来动态/跨线程分别授信 |
+
+三种表示分别是Auto内部值、A2C私有生成表示、公开AutoABI/C wire对象。CA-B C struct/Str runtime只属于第二种；CA-D显式转换/布局证明后才跨公开边界。不能为省wrapper直接把内部record/字符串或Rust String/Vec私有布局暴露，也不能要求native调用C先转译成C源码。
+
+### 11.2 最小共享接口事实与调用准入
+
+逻辑事实至少有DeclRef/owner/名义content版本、source/profile/凭证来源、函数参数/结果/receiver mode、borrow-return来源约束/alias排他要求、error/effect/capabilities；foreign侧补provider/package与解析版本、真实符号、raw/safe状态及人工ownership/长度/编码/callback约束。ABI投影另绑domain/version/target/calling convention、record size/align/offset/packing、参数/多out物理形态、bool/Unicode char合法域、buffer长度单位、runtime服务版本与实际库身份。并非所有字段来自一个已存在Schema，具体有限投影须CA-D feasibility冻结，不能以缺字段默认安全。
+
+数据流：候选metadata→名义/shape/owner/版本/来源验证→ABI/target/工具/provider/权限/runtime匹配→process-local可调用binding→真实call。持久数据即使hash正确仍需重验，不序列化SafeCallable/Checked/PASS/函数地址。错域/target/packing/签名/env/provider/代际/权限在调用前拒，被调计数0；合法非零ctx/handle及混合异质参数不能被全拒。已知不兼容不实际盲调制造UB，负控验证真实拒绝点。
+
+所有权模型从共同事实投影：view借到声明的调用/owner期限，mut排他且writeback规则明确；owned handle由原provider destroy，跨allocator free禁用；fallible out只在success commit，失败保原out字节；borrow return不能指向已死临时。同步callback显式ctx、不可保存；调用中callback与deleter的实际最后owner保活其provider，退出路径顺序可核。跨线程/保存callback/GIL/动态重载只在已有应用确需时由M2-HOST对应包明确实现，不由本有限桥默认放行。
+
+### 11.3 首个有限落地包仍是CA-D
+
+CA-D须带真实消费者再固化共享接口：797 native ABI validate/emit与A2C wrapper/import至少两个实际消费，不先交一套无人用的统一trait。可将abi中纯模型投影复用现semantics-contract或中立窄模块，具体crate边界由有界探针确定；A2X不得为了借descriptor直接依赖Cranelift/AV/旧AST栈，物理ABI实现留各adapter。796/797现有canonical格式/候选身份可兼容则保，确需变更显式版本和所有读者迁移，不能偷改descriptor3。
+
+有限端到端验收分三腿：Auto source经新A2C生成实现→公开wrapper→独立C caller；受检finite foreign声明→真实目标调用→独立C callee；同域AutoABI peer互调/797当前原三腿回归。只有typed import则明确typed，不冒任意use.c语法；只外wrapper调用C且Auto语义链未消费foreign事实不算Auto→C。真实header/sizeof/alignof/offsetof、异质参数/ctx/多out、句柄provider/原方destroy与callback为独立oracle，不能相同生成器双方自洽充认证。
+
+CA-D所需A/B接口包括：TargetDescriptor/provider/完整fileset身份与source anchor；CheckedFunction与资源/排他/borrow事实出口；C owned/view表示的受控转换及清理调用点；decl→symbol/source map、target配置/工具/头/库依赖closure。CA-B先把这些边界写清，不实现foreign语法/public wrapper，不把自己的internal helper当公开ABI。CA-D可先私有header/reference/797投影研究，资源桥集成等CA-B稳定版本；无需等CA-C整个集合包。当前不分CA-D号，接口和独立oracle齐后正式立项，完整桥仍为M1必需，不能延期到M2之后。
+
+### 11.4 增量、cache与资源约束
+
+逻辑metadata按名义/签名/mode/实际body读取/CT/meta/负依赖失效；物理plan再含target/ABI/layout/runtime/effect/权限，binding再含实际header/宏/搜索候选集/SDK/CRT/库/工具flags与provider代际。callee只改不被读取的body不重编普通调用者；布局/头搜索解析变化/新增更高优先级头不能因调用点源码相同盲命中。接口提取/adapter生成/工具编译的真实P逐项计，未改函数/绑定生产IO0与resident身份；restore未授信元数据有界重验R，原CALL/ABI失配不得被cache PASS绕过。失败后保旧adapter/artifact集合且修复后下一restore复验；活callback/deleter/handle引用的产物有lease，最后owner才可GC，独立安装SDK不是任意缓存清理对象。
+
+沿统一ManagedStore/Design40 namespaces，不复制FFI DB/runner。CA-D保797原build60s/run5s/total70s、IPC4MiB/每流1MiB、热点8MiB/暂存索引8MiB、单产物64MiB/请求128MiB及原更严边界；新域预算必须先正式冻结，不能拿CA-B更宽认证门覆盖797。日常emit/metadata/证书核查不隐式编译，显式认证工具单列；保P90≤2000ms和原正确性/结构/资源条件。
+
+### 11.5 与M2产品替换的顺序
+
+922已明确M2-EXEC/HOST/SESSION/TEST、UI/Man/Web迁移和TS provider等尚需正式包。M2-HOST可复用有限typed import与已验证手工shim接现有Rust库，原源码/库/ABI变化才低频构建；不等通用header importer/Rust自动shim平台全部完成才迁已有应用，也不能因其属host而免验。通用FFI扩展按真实缺口分包，无消费者的新生态不抢M2关键路径；CA-D/Q4不替全部产品/所有A2X目标和旧实现disable。

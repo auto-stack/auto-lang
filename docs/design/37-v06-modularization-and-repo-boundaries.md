@@ -1,6 +1,6 @@
 # Design 37：v0.6 模块边界、独立仓与减法路线
 
-> 状态：拆分设计与历史依据；2026-10-28交接更新。M1/M2已有归档交付，后续质量治理仍按各Plan启动门。
+> 状态：拆分设计与历史依据；2026-10-30更新。当前入口[路线v19](../plans/reports/v06-extraction-execution-roadmap.md)：884/887已交付→auto-lang/890→[auto-ui/014 UI/Man结构收口](../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)→按UI007原门推进主题/示例。UI014本轮仅立约，实施等U890，888不设无关全局门；下文旧时点不覆盖此入口。
 > 背景证据：[调研报告](../plans/reports/v06-modularization-research.md)与[静态基线](../plans/reports/v06-modularization-baseline.jsonl)。代码快照 `5e21561d2c30`。
 > 继承：[Design 32](32-autoui-repo-extraction.md) 的双缝方向；本提案补充真实反向类型依赖、auto-man 独立交付、语言内部拆分与实际删减。历史裁定不在原文中抹除。
 > 当前行为以 [Specs overview](../specs/overview.md)、各模块 Specs 与交付代码为准；本文方案/历史讨论不自行升级为现行Spec。
@@ -358,7 +358,7 @@ A必须完成明确scope的work正反例/独立审查/冻结合入门、实际ma
 
 831/832及841–844均已归档。UI/Man已迁入各自原仓，领域模型/兼容退出/内部结构及首批净减法按各自有限合同交付；不能继续称“尚未正式搬仓”，也不能推导测试全集、所有平台和所有应用已全绿。
 
-截至2026-10-29，867/869/872/873均完整归档，873不细拆crate结论及ledger v127/guard收据保留。[884](../plans/884-language-structure-closure-without-crate-split.md)已实际开工，继续原运行桥/stdlib/call_inner/trans合同，不按滞后drafting头判未实施。[887](../plans/887-test-governance-and-ace-first-corpus.md)已立约，整体实施等U884与明确指令。本轮用户确认后续排程为884→887→auto-web有限迁移→UI/Man结构；[Design50](50-autoweb-service-framework-and-repo-boundaries.md)明确首期Web/语言/Man/UI边界、验收及885/887交接，887结束后才取号冻结正式迁移Plan，Web/UI-Man均未编号。885和应用可继续，不把Web作为它们的新前置；仅真实R/H/I与ACE共享写面交接，不接管S/N或设置无关全局U门。原三仓有限出口和新增Web交付分列，当前排程可能后移总体到点，不改历史交付。A1另签核，867限制保留；详[总路线v16](../plans/reports/v06-extraction-execution-roadmap.md)、[战略](strategy/modularization-and-refactoring-strategy.md)与[范围](../plans/reports/post-873-structural-work-packages-2026-10-29.md)。
+867/869/872/873/884/887有限交付事实保留，887机制级负结果不等已加速。2026-10-30已建立主改面UI仓的[014结构合同](../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)，实施整项等U890；890已有执行授权并记录用户对885历史证据缺口的处置，完整Web交付尚未成立。014负责CLI/Vue/Aura/renderer的职责与状态/资源、真实消费和测试守恒，007负责examples归位及新主题；**U890→U014→按007原门推进**，不重复搬Web算法，不借结构整理启动新语义。当前范围以[UI结构设计](../../../auto-ui/docs/design/autoui/ui-man-structure-closure.md)、[路线v19](../plans/reports/v06-extraction-execution-roadmap.md)与[战略](strategy/modularization-and-refactoring-strategy.md)为准；888不设无关全局U门，A1另签核，原三仓出口与新增Web交付分列。
 
 业务应用可以固定迁后三仓公开接口并行继续，不必等全部治理。OS051真实运行及UI独立VM主栈修复有历史收据，视频解析与媒体404仍按OS债表跟踪。876入口归OS/健康面已合入三仓并归档，051脚本已转新ui-desktop bin，UI栈策略保留；OS计划/债在OS仓维护。后继重新冻结包含这些交付的版本，不把旧组合测试收据外推到当前HEAD。消费验证与相关基面交接见[战略§5](strategy/modularization-and-refactoring-strategy.md#5-autoos-与应用可以如何独立继续)。
 
@@ -375,7 +375,7 @@ A必须完成明确scope的work正反例/独立审查/冻结合入门、实际ma
 | 静态 pac 优先，但执行型配置不静默破坏 | 780对拍pilot及786有限展示读取已交付，全面默认切换仍须另立Plan |
 | 具体 UiAst 承载、完整 native 生命周期接口 | 已按对应841/宿主模块Spec及有限交付确定；新增差额按owner核验，不重开早期原型题 |
 | 数据/runtime 独立仓名称、版本发布渠道、切换窗口 | 拆仓前决定；不阻止首批仓内边界工作 |
-| auto-web独立服务框架仓首期 | 2026-10-29确认边界设计及884→887→Web→UI/Man排程；Design50为目标态，887后正式立迁移Plan，未建仓/实施；原三仓出口与新增Web交付分别记录 |
+| auto-web独立服务框架仓首期及后继结构 | 2026-10-30当前顺序U890→U(auto-ui/014)→按UI007原门推进；890执行授权/885历史缺口处置记录保留，014仅新立草案、未实施，原三仓出口与新增Web交付分别记录 |
 
 本设计只登记目标态。merge 各已验收 Plan 时再逐条沉淀到 Specs，不能一次把全部目标写成现状。
 

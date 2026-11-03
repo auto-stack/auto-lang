@@ -1,10 +1,11 @@
 # 52 · 单一编译 profile 整改（auto-lang 去 UI / feature 拍平 / tm 清退）
 
 状态：target-state r1（2026-10-31 用户六问裁定驱动；实施经四计划 C→A→B（本仓）+ D（auto-ui 仓））
-进度：**计划 A（PLAN-900）已实施待复审**（2026-10-31）——§2.1 依赖方向反转落地
+进度（2026-10-31）：C（PLAN-898）已归档；**计划 A（PLAN-900）已交付、复审记录/合入/归档/清理完成，10/10**——§2.1 依赖方向反转落地
 （facade default=[]、零 auto-ui 包、ui_build 族/install 单点/测试/examples/cosmic/
 auto-lsp 迁 auto-ui 仓；auto-ui 兄弟仓依赖解除实证）。注：单仓完整不变量尚余
 auto-web-contract path 边（900-N7，另行计划）。
+**计划 B 为语言仓 [PLAN-901](../plans/901-test-feature-flattening.md)，当前读回 executing 1/8，实时以合同为准。** D 已在主责任仓立为 [auto-ui/PLAN-018](../../../auto-ui/docs/plans/018-ui-build-configuration-closure.md)，drafting r1、0/8，仅规划；实施须明确授权并接受901正式交付。B 包含语言测试门退出所必需的 UI SDK 发行投影与 Web 测试消费者接线；D 负责 UI 自身的默认 runtime 编译闭包、测试编译/运行分离及相应生成/发行消费，真实可选产品能力保持。B→D→014/007交接分别按合同，不重复迁移。
 性质：架构（L2）——依赖方向反转 + feature 面退役 + 测试设施概念清退
 
 ## 1. 背景与动机
@@ -70,6 +71,8 @@ clean 后 `cargo build` 记录 deps 单元集 → `cargo t all` → **零新增 
 | A | auto-lang | 去 UI 依赖反转（facade 管线迁移、auto-lsp/examples/测试/cosmic 迁出、api-gen 模板、删 UI feature 族与 with-file-history/use-evaluator） | 最大收益；独立于 C |
 | B | auto-lang | 测试 feature 拍平（删 test-* 门 ~115 处、test-groups 去 --features、bins 恒编译） | 在 A 后：UI 测试已迁出，拍平面最小 |
 | D | auto-ui | ui-iced 拍平为无条件依赖；承接 A 迁入件 | 依赖 A 的迁移落位 |
+
+900 后 B 立项只读盘点：100 固定组中 30 组传 `--features`，其中 26 根语言工作区、4 独立 ACE 工作区；`crates` 下 26 个 Rust 文件有 124 处包含 `test-*` 的 cfg/cfg_attr 行。前文背景数量是历史基线，不作为 B 的完成分母。独立 ACE 的 batch feature 与 `code-editor` 等真实能力差异不得混删；§2.4 的全局目标需区分 test/dev 新增单元与测试 feature 分叉，901 T-01负责实物核清，不据 B 单独交付宣称整个单一 profile 目标完成。
 
 auto-man 仓自身的 rustyline 声明与 `core --no-default-features` 面不在本设计范围（另案）。
 
