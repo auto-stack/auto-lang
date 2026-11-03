@@ -196,6 +196,8 @@ stage: goal | plan_id: PLAN-924 | plan_revision: r1 | round: 1 | from: work | to
 
 2026-11-03 | stage: review | review_scope: final | reviewer: 同实施会话/上下文（局限已声明；判定由冻结树工件重建：重跑+diff+守恒核验，非采信自述） | plan_id: PLAN-924 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-924/auto-lang | branch: plan-924-dev | reviewed_commit: 1b789cc28e82e82651f97ca78a32b0f800ff9d18 | base_commit: 59ef759f7 | dependency_revisions: 923 reviewed头钉基（D923主线落地为merge前置） | spec_inputs: SD-01..06目标7路径存在；SD-01/02树内预备稿与实现一致（native-closures-source.md/native-closures-resource-abi.md） | acceptance_results: AC-01..08 pass（closures族23测+双探针+AutoDown 9/9+infra-ace-m1 23/23本轮重验；perf/全组证据身份未变复用）；AC-09本review；AC-10归merge | pending_closeout_gates: D923先落主线；冻结职责组并集+统一回归（merge所有）；plan-artifacts scope清理（merge所有） | findings: 无阻断项；3条非阻断观察已记KNOWN-DEBT（abort元数据泄漏修复、923探针空转修复、claim守卫收紧；另基面既有警告归属原计划） | evidence: 见T-12行与本收据（全部为计划文件内摘要，无附件依赖） | next: merge
 
+stage: goal | plan_id: PLAN-924 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-924/auto-lang | commit: 1b789cc28 (reviewed) / fa03d7e6f (bookkeeping) | next: merge
+
 ## 10. 待澄清事项
 
 | D | owner / 有界关闭 |
