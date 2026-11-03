@@ -1,0 +1,18 @@
+# PLAN-924 native closures-resource scenario suite — the R02 (closure
+# domain) and R05 ac cells of the M1 grid, closed by REAL source rides
+# through the native closures pipeline (shared closures MIR → native
+# admit/CLIF/COFF → the same no_std runtime/4 with the closure env
+# surface → PE), with the per-seam injection knobs (S1/S4/S9) baked into
+# the entry wrapper. The parent freezes the exit values, the trap/seam
+# facts and the R05 env-lifecycle event shape in its own table (never the
+# worker's word); the base runs freeze the creator-exit indirect-call
+# results. The full R02 aggregate additionally requires the 923
+# non-closure domain (L04/L05/V05/LSTR/typed clone) re-verified under this
+# final runtime — that is the 923 suite's own group on this tree, plus
+# this suite for the closure domain.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-native-closures-924", include: [
+  "native-closures-924.case.ad",
+] }
+```

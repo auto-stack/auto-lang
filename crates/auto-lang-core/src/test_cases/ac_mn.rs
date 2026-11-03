@@ -117,6 +117,7 @@ pub const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
 pub const CLOSURES_RESOURCE_RECIPE: &str = "ac/mir-native-closures-resource-v1";
 mod collections;
 mod resource_events;
+mod native_closures;
 mod resource_guards;
 mod typed;
 pub use collections::campaign::{
@@ -1805,7 +1806,10 @@ pub fn run_check(
         // PLAN-919/923: the lifecycle and resource-guards recipes' exit
         // knobs (operations and budgets only; the observation switch is
         // implied by the recipe). Guards adds the per-seam injection knob.
-        if recipe == RESOURCE_EVENTS_RECIPE || recipe == RESOURCE_GUARDS_RECIPE {
+        if recipe == RESOURCE_EVENTS_RECIPE
+            || recipe == RESOURCE_GUARDS_RECIPE
+            || recipe == CLOSURES_RESOURCE_RECIPE
+        {
             let res = mn
                 .resource
                 .as_ref()
@@ -2197,6 +2201,44 @@ pub fn run_check(
             }
         }
     }
+    // PLAN-924: the closures-resource recipe's parent-side judge — strict
+    // decode of the S1..S9 injection facts, the trap/cleanup face and the
+    // R05 env-lifecycle event shape against the frozen per-case table.
+    if recipe == CLOSURES_RESOURCE_RECIPE {
+        match native_closures::decode_facts_hex(&stderr_hex) {
+            Ok(facts) => {
+                if diag.is_none() {
+                    if let Some(t) = facts.trap {
+                        if let Some(code) = resource_events::completion_code(t) {
+                            diag = Some((code.to_string(), format!("native closure trap {t}")));
+                        }
+                    }
+                }
+                let oracle_key = format!("{}/{}", case.spec.id, check.id);
+                match native_closures::oracle_for(&oracle_key) {
+                    Some(o) => {
+                        native_closures::judge_native(o, exit_code, &facts, &mut mismatches)
+                    }
+                    None => mismatches.push(Mismatch {
+                        observation: "native-closures".into(),
+                        kind: "case-registration".into(),
+                        expected: "a frozen native closures oracle row".into(),
+                        actual: format!("check {oracle_key} is not in the parent table"),
+                        first_diff: None,
+                    }),
+                }
+            }
+            Err(detail) => {
+                mismatches.push(Mismatch {
+                    observation: "native-closures".into(),
+                    kind: "admission".into(),
+                    expected: "a strictly decodable MN-COLL-INJECT/trap/MN-EVT stream".into(),
+                    actual: detail,
+                    first_diff: None,
+                });
+            }
+        }
+    }
     // ---- parent-side judgement -----------------------------------------
     let observed = if let Some((code, message)) = &diag {
         // Map the mn.* / mir.* diagnostic onto the contract stages:
@@ -2212,7 +2254,9 @@ pub fn run_check(
             fact.mapped_stage
         } else if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
             Stage::Run
-        } else if (recipe == RESOURCE_EVENTS_RECIPE || recipe == RESOURCE_GUARDS_RECIPE)
+        } else if (recipe == RESOURCE_EVENTS_RECIPE
+            || recipe == RESOURCE_GUARDS_RECIPE
+            || recipe == CLOSURES_RESOURCE_RECIPE)
             && (code.starts_with("mn.trap.") || code.starts_with("mn.resource."))
         {
             Stage::Run

@@ -58,6 +58,7 @@ pub struct ClosuresNativeSession {
     workdir: PathBuf,
     exe: Option<PathBuf>,
     knobs: crate::collections_lower::WrapperKnobs,
+    manifest_id: Option<String>,
     closed: bool,
 }
 fn bad(message: impl Into<String>) -> MnError {
@@ -118,6 +119,7 @@ impl ClosuresNativeSession {
             imports: BTreeMap::new(),
             exe: None,
             knobs: Default::default(),
+            manifest_id: None,
             closed: false,
         };
         let mut names = Vec::new();
@@ -156,6 +158,91 @@ impl ClosuresNativeSession {
             units.push(unit);
         }
         Ok(units)
+    }
+
+    /// PLAN-924 V-08: assemble a warm session from VERIFIED restored
+    /// material (the driver already re-admitted every MIR wire and matched
+    /// every COFF hash/length/pages). The retained frontend is rebuilt from
+    /// the restored source through the bounded 913 chain; the wire
+    /// identities come from the restored bytes themselves; the first run
+    /// links the restored objects with ZERO codegen (P0) over R>0 restored
+    /// bytes. The next `apply_source` rides the ordinary warm routes — no
+    /// live env, cell or code pointer is ever restored.
+    pub fn from_restored(
+        source: &str,
+        entry: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+        restored: Vec<(MirModule, Vec<u8>)>,
+        manifest_id: Option<String>,
+    ) -> Result<(Self, ClosuresRun), MnError> {
+        let started = std::time::Instant::now();
+        let mut obs = Obs::default();
+        let runtime = obs.span("runtime_prepare", |_| runtime::prepare(support))?;
+        let cold =
+            body_work::capture_body_work(|| ClosuresFunctionFrontend::cold(source, "mn.at", &[]));
+        let (frontend, _parts, checked) = cold.0.map_err(frontend)?;
+        let mut session = ClosuresNativeSession {
+            frontend: Some(frontend),
+            source_path: "mn.at".into(),
+            entry: entry.into(),
+            wires: BTreeMap::new(),
+            objects: BTreeMap::new(),
+            symbols: BTreeMap::new(),
+            imports: BTreeMap::new(),
+            runtime,
+            workdir: workdir.to_path_buf(),
+            exe: None,
+            knobs: Default::default(),
+            manifest_id,
+            closed: false,
+        };
+        let bundle = checked.bundle();
+        let module = bundle
+            .modules
+            .first()
+            .ok_or_else(|| bad("closures bundle carries no module"))?;
+        let declared: Vec<&str> = module
+            .defs
+            .iter()
+            .filter(|def| matches!(def.kind, DefKind::Function { .. }))
+            .map(|def| def.id_text.as_str())
+            .collect();
+        let entry_name = format!("d_{entry}");
+        if !declared.iter().any(|n| *n == entry || *n == entry_name) {
+            return Err(bad("entry is missing"));
+        }
+        let mut names = Vec::with_capacity(restored.len());
+        for (unit, coff) in restored {
+            let name = unit.funcs[0].name.clone();
+            if !declared.contains(&name.as_str()) {
+                return Err(bad(format!(
+                    "restored unit {name} is not in the rebuilt source"
+                )));
+            }
+            let wire = crate::closures_layout::unit_wire_bytes(&unit)?;
+            session.wires.insert(name.clone(), wire);
+            session
+                .symbols
+                .insert(name.clone(), crate::symbols::function_symbol(&unit.owner, &name));
+            let mut imports = Vec::new();
+            for import in &unit.imports {
+                imports.push((
+                    import.symbol.clone(),
+                    crate::symbols::import_symbol(&unit.owner, &import.symbol)?,
+                ));
+            }
+            session.imports.insert(name.clone(), imports);
+            obs.counter("restored_coff_bytes_read", coff.len() as u64);
+            obs.counter("cache_hit_coff", 1);
+            session.objects.insert(name.clone(), coff);
+            names.push((name, unit));
+        }
+        if names.len() != declared.len() {
+            return Err(bad("restored units do not match the rebuilt function set"));
+        }
+        let run = session.link_and_run(Vec::new(), "restore", &mut obs, cold.1, started)?;
+        Ok((session, run))
     }
 
     /// Apply a new full source: identical source is a ZERO-production hit
@@ -537,6 +624,12 @@ impl ClosuresNativeSession {
         }
         self.closed = true;
         Ok(())
+    }
+
+    /// The persisted manifest this session was restored from (None in
+    /// readonly mode or for a purely ephemeral session).
+    pub fn manifest_id(&self) -> Option<&str> {
+        self.manifest_id.as_deref()
     }
 
     /// SHA-256 of every resident unit object — the codegen identity a

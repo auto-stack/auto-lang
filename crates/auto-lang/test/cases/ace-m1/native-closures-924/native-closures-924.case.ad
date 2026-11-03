@@ -1,0 +1,69 @@
+# PLAN-924 R02(closure domain)/R05 native closures scenario case.
+#
+# The frozen corpus programs (byte-copies of `src/K02-924.at` /
+# `src/K05-924.at`) run through the real closures frontend → shared
+# closures MIR → native admit/CLIF/COFF → the same no_std runtime (ABI
+# mn.collections.runtime/4 with the env surface) → PE, under the closures
+# recipe with observation implied. The base runs freeze the creator-exit
+# indirect-call results (42); the fault legs inject ONE allocation failure
+# per run (S9 = the env node — the closure family's own seam; S1 = the
+# captured literal's node; S4 = a frame, which the delivered shim maps to
+# its null path, trap 22, keeping the INJECT fact). The parent judges the
+# trap code, the seam/nth fact pair, the zero-live/zero-bytes cleanup and
+# — on the base rides — R05's env-lifecycle event shape (the env is owned
+# inside the creator's frame, the creator leaves while it is alive, and
+# the frees happen at the final sweep) from the observed stream, never
+# from the worker's own claims.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02r05.k02"
+  tags: ["ace-m1", "scenario", "native-closures-924", "r02", "r05"]
+  links: ["PLAN-924"]
+  source: { file: "src/K02-924.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "base", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "fault-s9", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [9, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s9-n2", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [9, 2] } }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "fault-s1", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [1, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s4", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [4, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.execution-budget" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02r05.k05"
+  tags: ["ace-m1", "scenario", "native-closures-924", "r02"]
+  links: ["PLAN-924"]
+  source: { file: "src/K05-924.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "base", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "fault-s9a", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [9, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s9b", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [9, 2] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s9-n3", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-closures-resource-v1", mn: { entry: "d_main", resource: { fail_seam: [9, 3] } }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```

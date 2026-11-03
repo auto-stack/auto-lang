@@ -6,6 +6,8 @@ mod cli;
 mod closures_compat;
 #[path = "cases/closures_native_tier.rs"]
 mod closures_native_tier;
+#[path = "cases/closures_restore_tier.rs"]
+mod closures_restore_tier;
 #[path = "cases/closures_typed_tier.rs"]
 mod closures_typed_tier;
 #[path = "cases/codegen_tier.rs"]

@@ -522,3 +522,59 @@ fn main() int {
     assert_eq!(res.exit_code, Some(70), "stderr:\n{}", String::from_utf8_lossy(&res.stderr));
     assert_clean_after_trap(&res);
 }
+
+// ---- V-04/T-09: the full seam sweep over the closure program ------------
+
+#[test]
+fn k02_full_seam_sweep_every_injection_traps_clean_or_completes() {
+    // Every seam of the closure program (node/data/grow/frame/clonework/
+    // text/textmeta/token/envnode), at every early ordinal: an injection
+    // that fires traps INJECTED(25) with the full cleanup baseline; an
+    // ordinal beyond what the program allocates on that seam simply runs
+    // to the true 42. Both faces are honest — no silent third state.
+    assert!(common::tools_available());
+    let source = corpus("K02");
+    for seam in 1u32..=9 {
+        for nth in 1u64..=4 {
+            let res = closures_run(
+                &source,
+                &format!("sweep{seam}_{nth}"),
+                WrapperKnobs {
+                    fail_seam: Some((seam, nth)),
+                    ..Default::default()
+                },
+            );
+            let text = String::from_utf8_lossy(&res.stderr);
+            if res.exit_code == Some(70) {
+                assert!(
+                    text.contains("MN-COLL-INJECT seam="),
+                    "trap without injection fact (seam {seam} nth {nth}): {text}"
+                );
+                assert!(
+                    text.contains(&format!("MN-COLL-INJECT seam={seam}\n")),
+                    "wrong seam fired: {text}"
+                );
+                let code = text
+                    .lines()
+                    .find_map(|line| line.strip_prefix("MN-COLL-TRAP code=")?.parse::<i64>().ok());
+                // The delivered frame-open shim collapses an injected
+                // failure into its null path (trap 22) while keeping the
+                // INJECT fact line — the 923 error taxonomy, frozen in the
+                // 923 case.ad fault-s4 expectation. Every other seam traps
+                // the named INJECTED(25).
+                let expected = if seam == 4 { 22 } else { 25 };
+                assert_eq!(code, Some(expected), "seam {seam} nth {nth}: {text}");
+                assert_clean_after_trap(&res);
+            } else {
+                assert_eq!(
+                    res.exit_code,
+                    Some(42),
+                    "seam {seam} nth {nth}: err={:?} {}",
+                    res.error.as_ref().map(|e| (e.code().to_string(), e.message().to_string())),
+                    text
+                );
+                assert!(res.error.is_none(), "{:?}", res.error.map(|e| e.message().to_string()));
+            }
+        }
+    }
+}

@@ -11,8 +11,22 @@ use crate::{closures_layout as layout, closures_lower as lower};
 use crate::{collections_artifacts as art, collections_runtime as runtime};
 use crate::cache::CoffMeta;
 use super::collections::Entry;
-use ace_av_core::mir::{MirModule, MirType};
+use ace_av_core::mir::{MirFunction, MirModule, MirType};
 use std::path::Path;
+
+/// PLAN-924 V-08: the verified restore material for one closures
+/// manifest. The chain mirrors the collections family (manifest ->
+/// runtime/content identity -> source/coordinates -> per-unit MIR wire
+/// re-admission + COFF hash/length/pages -> entry identity), with the
+/// closures family's own profile/ABI/admission faces. No live env, cell
+/// or code pointer is ever carried - only bounded MIR/COFF bytes and
+/// declarations.
+struct RestoredClosures {
+    source: String,
+    units: Vec<MirModule>,
+    objects: Vec<(String, Vec<u8>)>,
+    entry: String,
+}
 
 fn bad(message: impl Into<String>) -> crate::MnError {
     crate::MnError::Admit("closures", message.into())
@@ -113,6 +127,34 @@ fn check_closures_interfaces(
         owner: entry.owner.clone(),
         unit: entry.name.clone(),
         symbol: crate::symbols::function_symbol(&entry.owner, &entry.name),
+    })
+}
+
+
+/// The entry face shared by the restore chain (one eligible entry).
+fn check_closures_entry(units: &[MirModule], entry: &str) -> Result<Entry, MnError> {
+    let by_name = format!("d_{entry}");
+    let hits: Vec<&MirFunction> = units
+        .iter()
+        .filter(|u| u.funcs[0].name == entry || u.funcs[0].name == by_name)
+        .map(|u| &u.funcs[0])
+        .collect();
+    if hits.len() != 1 {
+        return Err(bad("entry is missing or ambiguous"));
+    }
+    let f = hits[0];
+    let sig = units[0]
+        .sig_of(f.sig)
+        .ok_or_else(|| bad("missing entry signature"))?;
+    if !sig.params.is_empty() || f.env.is_some() {
+        return Err(bad(
+            "the closures entry must be an ordinary zero-argument int function",
+        ));
+    }
+    Ok(Entry {
+        owner: f.owner.clone(),
+        unit: f.name.clone(),
+        symbol: crate::symbols::function_symbol(&f.owner, &f.name),
     })
 }
 
@@ -347,6 +389,220 @@ impl MnDriver {
             obs,
             execute,
         )
+    }
+
+
+    /// The shared closures restore chain (see `RestoredClosures`).
+    fn restore_closures_material(
+        &mut self,
+        id: &str,
+        support: Option<&Path>,
+        obs: &mut Obs,
+    ) -> Result<RestoredClosures, MnError> {
+        let store = self
+            .store
+            .as_ref()
+            .ok_or_else(|| bad("restore requires an existing store"))?;
+        let manifest = obs.span("manifest_restore", |_| art::get_manifest(store, id))?;
+        if manifest.schema != art::MANIFEST_LAYER.schema_id
+            || manifest.profile != layout::PROFILE
+            || manifest.abi != lower::ABI
+            || manifest.target != MN_TARGET
+            || manifest.codegen_build != layout::codegen_build()
+            || manifest.units.is_empty()
+            || manifest.source_hash.len() != 64
+            || !manifest.source_hash.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err(bad(
+                "manifest schema/profile/ABI/target/producer/source identity",
+            ));
+        }
+        let runtime = obs.span("runtime_prepare", |_| runtime::prepare(support))?;
+        obs.counter("runtime_cargo_invocations", runtime.cargo_invocations);
+        if runtime.identity != manifest.runtime
+            || manifest.runtime_blob.hash != runtime.identity.content_hash
+        {
+            return Err(bad("runtime build/content identity changed"));
+        }
+        if manifest.source.hash != manifest.source_hash
+            || manifest.coordinates.len() != manifest.units.len()
+        {
+            return Err(bad("source/coordinate closure mismatch"));
+        }
+        let source = obs.span("source_restore", |_| {
+            art::get_blob(store, &manifest.source, "source")
+        })?;
+        let source = String::from_utf8(source).map_err(|_| bad("source artifact is not UTF8"))?;
+        obs.ledger.charge(Partition::Io, source.capacity() as u64);
+        let mut coordinates = std::collections::HashMap::new();
+        for coordinate in &manifest.coordinates {
+            if coordinates
+                .insert(coordinate.unit.as_str(), coordinate)
+                .is_some()
+            {
+                return Err(bad("duplicate source coordinate unit"));
+            }
+        }
+        obs.span("runtime_restore", |_| {
+            art::verify_runtime_blob(store, &manifest.runtime_blob)
+        })?;
+        let current_tools = obs.span("link_identity", |_| {
+            link_driver::collections_link_identities()
+        })?;
+        if current_tools
+            != (
+                manifest.lld.clone(),
+                manifest.sdk.clone(),
+                manifest.kernel32.clone(),
+            )
+        {
+            return Err(bad("linker/SDK identity changed"));
+        }
+        let mut units = Vec::with_capacity(manifest.units.len());
+        let mut objects = Vec::with_capacity(manifest.units.len());
+        for row in &manifest.units {
+            let wire = obs.span("mir_restore", |_| art::get_blob(store, &row.mir, "mir"))?;
+            obs.ledger.charge(Partition::Io, wire.len() as u64);
+            if row.meta.owner_schema != ace_av_core::contract::MIR_CLOSURES_SCHEMA {
+                return Err(bad("unexpected MIR owner schema"));
+            }
+            let unit = crate::collections_memory::scoped(Partition::MirSymbol, || {
+                ace_av_core::verify_abc_bytes(&wire, &row.meta.to_meta().owner)
+                    .map(|checked| checked.module().clone())
+                    .map_err(|e| bad(format!("MIR wire admission: {e:?}")))
+            })?;
+            coordinates
+                .get(unit.funcs[0].name.as_str())
+                .ok_or_else(|| bad("missing unit source coordinates"))?
+                .validate_and_map(&unit, &source)?;
+            obs.counter("restored_source_coordinates", 1);
+            obs.ledger.discharge(Partition::Io, wire.len() as u64);
+            drop(wire);
+            lower::admit_layouts(&unit)?;
+            obs.counter("restored_mir_units_readmitted", 1);
+            let meta = CoffMeta::for_closures_unit(
+                &unit,
+                crate::closures_layout::unit_fp(&unit)?,
+                &runtime.identity,
+            )?;
+            if meta != row.meta.to_meta() || meta.owner.module != manifest.owner_module {
+                return Err(bad("restored MIR does not match full claimed COFF identity"));
+            }
+            let bytes = obs.span("coff_restore", |_| {
+                cache::get_unit_coff_by_id(store, &meta, &row.coff_id)
+            })?;
+            if bytes.len() != row.coff_len
+                || cache::content_hash(&bytes) != row.coff_hash
+                || cache::unit_coff_page_ids(store, &meta, bytes.len())? != row.extra_coff_pages
+            {
+                return Err(bad("COFF hash/length/required page mismatch"));
+            }
+            obs.counter("cache_hit_coff", 1);
+            obs.ledger.charge(Partition::Io, bytes.len() as u64);
+            obs.ledger
+                .charge(Partition::MirSymbol, unit.heap_estimate() as u64);
+            if !obs.ledger.violations().is_empty() {
+                return Err(MnError::Resource(
+                    "managed-memory",
+                    obs.ledger.violations().join("; "),
+                ));
+            }
+            let name = unit.funcs[0].name.clone();
+            objects.push((name, bytes.clone()));
+            units.push(unit);
+        }
+        let by_name = format!("d_{}", manifest.entry);
+        let hits: Vec<_> = units
+            .iter()
+            .filter(|u| u.funcs[0].name == manifest.entry || u.funcs[0].name == by_name)
+            .collect();
+        if hits.len() != 1 {
+            return Err(bad("entry is missing or ambiguous"));
+        }
+        if crate::symbols::function_symbol(&hits[0].owner, &hits[0].funcs[0].name)
+            != manifest.entry_symbol
+        {
+            return Err(bad("entry identity/symbol mismatch"));
+        }
+        Ok(RestoredClosures {
+            source,
+            units,
+            objects,
+            entry: manifest.entry.clone(),
+        })
+    }
+
+    /// PLAN-924 V-08: the restore -> next-lambda-edit closures session. The
+    /// verified material (see `restore_closures_material`) assembles a
+    /// `ClosuresNativeSession` whose first run links the restored objects
+    /// with ZERO codegen (P0) over R>0 restored bytes; the next
+    /// `apply_source` takes a real warm lambda edit. In ReadOnly cache mode
+    /// nothing is republished (writes 0).
+    pub fn restore_closures_session(
+        &mut self,
+        id: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+    ) -> Result<
+        (
+            crate::closures_incremental::ClosuresNativeSession,
+            crate::closures_incremental::ClosuresRun,
+        ),
+        MnError,
+    > {
+        self.last_closures_run = None;
+        let mut obs = Obs::default();
+        let material = self.restore_closures_material(id, support, &mut obs)?;
+        let restored: Vec<(MirModule, Vec<u8>)> = material
+            .units
+            .into_iter()
+            .zip(material.objects.into_iter().map(|(_, bytes)| bytes))
+            .collect();
+        let manifest_id = (self.cache_mode != CacheMode::ReadOnly).then(|| id.to_string());
+        crate::closures_incremental::ClosuresNativeSession::from_restored(
+            &material.source,
+            &material.entry,
+            workdir,
+            support,
+            restored,
+            manifest_id,
+        )
+    }
+
+    /// PLAN-924 V-08: the bare verified restore (no session) - the
+    /// bad-artifact refusal face for the tier legs.
+    pub fn restore_closures(
+        &mut self,
+        id: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+    ) -> Result<MnBuild, MnError> {
+        self.last_closures_run = None;
+        let mut obs = Obs::default();
+        let material = self.restore_closures_material(id, support, &mut obs)?;
+        let entry_meta = check_closures_entry(&material.units, &material.entry)?;
+        let runtime = obs.span("runtime_prepare", |_| runtime::prepare(support))?;
+        let objects: Vec<link_driver::ObjectInput> = material
+            .objects
+            .iter()
+            .map(|(name, bytes)| link_driver::ObjectInput {
+                name: name.clone(),
+                bytes: bytes.clone(),
+            })
+            .collect();
+        self.finish_closures(
+            objects,
+            &entry_meta.symbol,
+            &material.units[0].owner.module,
+            &entry_meta.unit,
+            &runtime.library,
+            workdir,
+            format!("restore {id}"),
+            None,
+            &mut obs,
+            true,
+        )
+        .map(|r| r.0)
     }
 
     fn finish_closures(
