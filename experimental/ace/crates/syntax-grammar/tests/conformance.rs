@@ -10,5 +10,3 @@ mod lossless;
 mod recovery;
 #[path = "cases/profiles_927.rs"]
 mod profiles_927;
-#[path = "cases/dump_927.rs"]
-mod dump_927;

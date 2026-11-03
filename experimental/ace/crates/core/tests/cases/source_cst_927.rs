@@ -262,9 +262,17 @@ fn differential_edge_rejects() {
 
 #[test]
 fn t07_direct() {
+    // T07 代理对：旧/新首诊断全等（stage/code/message/span 逐字段）。
     let src = r#"fn main() int { let c char = '\u{D800}'; return 0 }"#;
-    eprintln!("old={:?}", ace_core::source::parse_program_with(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
-    eprintln!("new={:?}", cst::parse_program_via_cst(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
+    let old = parse_program_with(src, SourceProfile::Text);
+    let new = cst::parse_program_via_cst(src, SourceProfile::Text);
+    match (&old, &new) {
+        (Err(d), Err(e)) => assert_eq!(
+            (d.stage.as_str(), &d.code, &d.message, d.span.start, d.span.end),
+            (e.stage.as_str(), &e.code, &e.message, e.span.start, e.span.end)
+        ),
+        _ => panic!("T07 surrogate must diagnose on both chains: old={old:?} new={new:?}"),
+    }
 }
 
 /// 临时调试：小片段 old/new 对照（ZZ927S=1 启用）。
