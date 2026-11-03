@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-921
-status: reviewed
+status: archived
 feature_name: CA-A共享A2X目标合同与HIR到C标量闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-a2c/project.md, docs/specs/auto-a2c/scalar
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-a2c, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904, PLAN-913]
-current_step: 11
+current_step: 13
 total_steps: 14
 ---
 
@@ -159,8 +159,8 @@ H=workspace manifests/lock、test_cases/{mod,ac_protocol,ac_a2r_hir}.rs、新C a
 | T-10 | work | T-09，错峰认证 | C实际/独立reference真认证、golden审阅/strict坏证据控制V-02/08，不覆盖原expected | AC-02/06 | [x] 已完成（提交 10c3b33：certify-c op=actual+手写 reference 双腿真 cl（同受管执行器/冻结 flags）对同一闭式 oracle；CCertDraft strict（ace.a2c-hir.scalar.cert/1：cl banner/hash+vcvars 内容 hash+flags+全文件绑定+reference hash；字节稳定序列化）；worker crun 增 toolchain_identity+compile_c_standalone。a2c_cert 3 测试绿：双腿通过+字节稳定、错 oracle 双腿拒、11 项坏证据控制（旧 schema/recipe 冒充、裁剪、verdict/oracle_kind/backend/standard/工具身份/文件绑定全拒）；原 expected/golden 未覆盖（golden_sha256 为可选绑定）） |
 | T-11 | work | T-01..10，错峰 | V-09..12/正式暖30样本/load256/完整职责自查与SD提案，记录所有残余 | AC-05..08 | [x] 已完成（提交 10c3b33+9c15e6f：a2c-formal 形式采样（load256 原样 273,575B/115 函数；31 版本全部真 cl 预认证对独立闭式 oracle；5 态×30 样本最近秩：hit p90=1499ms/restart=1593ms/body-edit=457ms/restore=150ms 全≤2000ms，fresh p90=8644ms 另列；子进程恢复见证 P0+恢复后编辑真 cl oracle 通过；收据 plan-artifacts/plan-921/a2c-formal-receipt.json，exit0）；V-10 预算：a2x-mem 混合目标相（Rust+C 同 session/store resident 并存 30 暖编辑）+ resource_budget 双测试绿（warm 48MiB+mixed 48MiB@load256 规模）；V-09 日常零编译=适配器 spawn0 断言；SD-01..06 六份 spec 已写（auto-a2x 三改+auto-a2c 两新+认证合同一新）；残余：904 golden-manifest 既有缺口（非本包，见 KNOWN-DEBT）、ACE 里程碑档全量/ace-performance 错峰档按原治理不变） |
 | T-12 | review | work完成，冻结SHA | 独立全AC/mandatory cases与SD复审，未批延期不得pass | AC-09 | [ ] |
-| T-13 | merge | review pass | 冻结职责/消费者并集与漂移重验、合入/SD-01..06读回/archive | AC-10 | [ ] |
-| T-14 | merge | T-13 | 全输出目录对账/摘要折计划，guard后删树分支组与整个scope、刷新登记 | AC-10 | [ ] |
+| T-13 | merge | review pass | 冻结职责/消费者并集与漂移重验、合入/SD-01..06读回/archive | AC-10 | [x] 已完成（rebase 无冲突+range-diff 全等价；冻结并集 rebased tip 全 PASS；ff-only 合入 master=3c760865c；SD 六文件 landed 读回；archive 见 §9 merge 收据） |
+| T-14 | merge | T-13 | 全输出目录对账/摘要折计划，guard后删树分支组与整个scope、刷新登记 | AC-10 | [x] 已完成（输出对账：探针/emit/cert/receipt 均在 plan-artifacts/plan-921（唯一暂存区，无仓内散落/无第二证据区/无链接）；摘要+关键数字折叠入本文件 §9；wt-guard clean 后双 worktree+分支+组目录删除；plan-artifacts/plan-921 整目录删除；.retention/policy.json 登记） |
 
 拟唯一树D:/autostack/.wt/lang-921/auto-lang、分支plan-921-dev，本轮未建。所有探针/生成C/对象/exe/日志/认证SDK副本/外置target只放D:/autostack/plan-artifacts/plan-921/，开工登记owner/用途/在途；通常构建target在专属树。禁止attachments/散落安装根/第二证据区/链接；merge全删，具名未解决hold才保留，不清他方产物。
 
@@ -172,11 +172,15 @@ H=workspace manifests/lock、test_cases/{mod,ac_protocol,ac_a2r_hir}.rs、新C a
 
 2026-11-03 | stage: work | PLAN-921 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | branch: plan-921-dev | base_commit: 9c81ee6d7 | code_commit: 9c15e6fa3（b983607d→56ba586f→a47cc7f5→fff3c124→10c3b33c→9c15e6fa3） | dependency_revisions: auto-down 组内 detached 7c4d5cb（未消费）；并发会话完成 920 合并归档/919 merge 航班（重叠仅 append-only 文件，基面 9c81ee6d，merge 时按漂移重验） | task_ids: T-01..T-11 | evidence: cargo t ace-a2x 全组 PASS（105 测试：原 95 字节同一全绿+C 语料 61/61 真cl+C 恢复/暖编辑/混合目标/预算/证书全绿）；cargo t case-a2c-hir-scalar-921 PASS 3/3（首例 golden 字节判+spawn0）；auto-test-case 111/ace-adapters 48 PASS；a2c-formal exit0（5 态×30 样本全暖门 P90≤2000ms，restore p90=150ms，31 版本真 cl 预认证，子进程 P0 见证）；a2x-c/a2x-store/a2x-worker 零警告；rustfmt 本包文件 clean；SD-01..06 六份 spec 已入 worktree 提交 | blockers: 无合同内未决；KNOWN-DEBT 新登记 904 golden-manifest 既有缺口（观察项，非本包写面）；里程碑档（ACE 全量/ace-performance）按原治理错峰 pending，非本包每轮门 | next_responsible_role: review（T-12 独立冻结复审）
 
-stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 3 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: review
+stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 3 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: review
 
 2026-11-03 | stage: review | review_scope: final | reviewer: 同会话独立复审（自冻结 9c15e6fa3 重跑重建判定，未采信执行摘要；实施会话内复审的既有限制如实声明） | PLAN-921 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | branch: plan-921-dev | reviewed_commit: 9c15e6fa3 | base_commit: 9c81ee6d7 | dependency_revisions: auto-down detached 7c4d5cb 未消费；master 并发前进（920 已归档、919 merge 航班中，重叠仅 append-only） | spec_inputs: SD-01..06 六份全文本 vs 代码核对（层 schema a2921/axc-c-fn/v1、a2921/axp-source-anchor/v1、fileset/recipe/cert 常量、flags 冻结表、路径/边界声明逐一 grep 对码；范围审计 71 文件无计划外改动、required313/binding/applicability 零 diff） | acceptance_results: AC-01..08 全 pass（独立重跑于 9c15e6fa3：cargo t ace-a2x 105 全绿[61 语料真 cl+恢复/暖编辑/混合目标/证书/预算/边界]、case-a2c-hir-scalar-921 3/3、auto-test-case/ace-adapters/infra-ace-m1 PASS、a2c-formal exit0[hit 1527/restart 1655/body-edit 951/restore 219ms P90 全≤2000，31 版本真 cl 预认证，子进程恢复见证 lower=0]、500 深度源经 C 路径实证 a2x.too-deep 命名拒绝、健康 0 警告 0 fmt 漂移） | pending_closeout_gates: merge 拥有的冻结受影响并集（ace-a2x+case-a2c-hir-scalar-921+auto-test-case+ace-adapters+infra-ace-m1，按真实漂移重验）、SD 读回、archive、树/分支/组/scope 清理 | findings: 无阻断。观察项：O-1 904 golden-manifest 既有缺口（已记 KNOWN-DEBT，非本包写面）；O-2 cert-scratch 512MiB 由构造满足（1MiB 流帽+KB 级产出，未放宽未单列断言）；O-3 C 冷 fresh p90≈11.4s 按合同另列非门 | evidence: 本 §9 记录即持久证据（命令+数字如上）；formal 收据 plan-artifacts/plan-921/a2c-formal-receipt-head.json（exit0） | next: merge
 
-stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: merge
+stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 4 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: merge
+
+2026-11-03 | stage: merge | PLAN-921 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | branch: plan-921-dev | base: 9c81ee6d7 | reviewed_commit: 9c15e6fa3 | delivery_commit: 3c760865c | checkpoints: prepared（reviewed 基线+SD 冻结+worktree 内 canonical 编辑）→ landed（master 前进[918/920 并发归档]后 rebase 6/6 无冲突，git range-diff 全 `=` 补丁等价，**ff-only 合入 master=3c760865c 线性历史**）→ canonical_verified（landed 提交含 SD-01..06：docs/specs/auto-a2x/{project,architecture,incremental-and-cache}.md 修改+auto-a2c/{project,scalar-hir-backend}.md+auto-test-case/a2c-hir-scalar-certification.md 新建；范围审计 71 文件零计划外改动、required313/binding 零 diff）→ archived（本文件 git mv 至 docs/plans/archive/，status: archived，簿记随收据提交默认分支）→ cleaned（见下） | merge_gate: 冻结受影响并集在 rebased tip 3c760865c 全 PASS——cargo t ace-a2x（105：61 语料真cl/恢复P0/暖编辑/混合目标/证书/预算/边界）+ case-a2c-hir-scalar-921（3/3 golden 字节判）+ auto-test-case + ace-adapters + infra-ace-m1；formal 采样在 reviewed HEAD exit0（hit 1527/restart 1655/body-edit 951/restore 219ms P90≤2000，31 版本真 cl 预认证，子进程恢复见证 lower=0；收据已折叠上文） | cleanup: wt-guard 双树 clean（auto-lang+auto-down 兄弟）→ worktree remove×2 + 分支删除 + 组目录删除；plan-artifacts/plan-921 全删（2026-10-31 裁定；无具名持有）；.retention/policy.json 登记刷新 | observations: 生产面产物检查——本包为 experimental/ace 语言仓内交付，无后端二进制/web bundle/守护进程部署面；主检出 experimental/ace/target/release/a2x-worker.exe 为陈旧基（merged 后需重构建，非部署阻塞）；batch regression 到期核查：921%5=1 非号到期 | evidence: 本 §9 即持久证据（命令+退出码+关键数字全部内联） | next: done
+
+stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 3c760865c | next: done
 
 ## 10. 待澄清事项
 
