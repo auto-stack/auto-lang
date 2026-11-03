@@ -150,6 +150,19 @@ fn place_fixture(kind: &str) -> MirModule {
             ]);
             v
         }
+        // V-05 foreign-token defense: after a PlaceSet retires its own
+        // token the slot holds EMPTY bits; a later PlaceGet of those bits
+        // must refuse INVALID before any dereference (never a dangling
+        // pointer read).
+        "foreign-token-get" => {
+            let mut v = base;
+            v.extend([
+                ListPlace { dst: 5, base: 0, index: 4 },
+                PlaceSet { place: 5, value: 2 },
+                PlaceGet { dst: 6, src: 5 },
+            ]);
+            v
+        }
         // V-05: an injected growth failure (seam 3, second grow after the
         // base's own grow) traps INJECTED with the list and minted place
         // uncommitted; the sweep cleans every token (no leak). The
@@ -450,6 +463,32 @@ fn place_cross_slot_siblings_stay_independent() {
         String::from_utf8_lossy(&run.stderr)
     );
     common::collections::assert_balanced(&run);
+}
+
+#[test]
+fn place_foreign_token_is_refused_before_any_dereference() {
+    // A slot whose place was retired by PlaceSet holds EMPTY bits — not a
+    // registry token. Reading it must trap INVALID(23) (find_place miss),
+    // never dereference a dangling pointer; the sweep stays clean.
+    let run = run_place("foreign-token-get");
+    assert_eq!(
+        trap_code(&run),
+        Some(23),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let text = String::from_utf8_lossy(&run.stderr);
+    for field in [
+        "MN-COLL live=0",
+        "MN-COLL bytes=0",
+        "MN-COLL invalid=0",
+        "MN-COLL arena_live=0",
+    ] {
+        assert!(
+            text.contains(&format!("{field}\n")),
+            "missing {field}: {text}"
+        );
+    }
 }
 
 #[test]
