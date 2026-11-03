@@ -126,3 +126,14 @@ I04 依赖精确失效/无关零生产；I09 按实际策略拒绝且旧状态�
   是 verdict；拒绝后旧环境/旧快照仍执行。
 
 细节与预算边界见 [m1-order-layout-observations.md](m1-order-layout-observations.md)。
+
+## PLAN-924：R02/R05 oracle 冻结
+
+- R02/R05 scenario ac 的判定源为本归档计划 §5.4 冻结的父表与事件形状：
+  exit（K02/K05 base 42）、注入腿（S9/S1 trap 25、S4 trap 22 + INJECT
+  事实）、N+1 正控、全零清理、R05 的 own-in-creator-frame /
+  creator-leave-with-env-alive / final-sweep-free / live=0。corpus 行
+  oracle（9/42 等）不变。
+- 判定实现：`ac_mn/native_closures.rs`（父侧从严解码，不信 worker 自述）；
+  suite 资产 `native-closures-924/`。坏身份/坏载荷沿既有拒绝面（forge/
+  字节翻转 store/open 或链条具名拒）。

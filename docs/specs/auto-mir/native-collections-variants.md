@@ -101,3 +101,19 @@ wrong oracle/type、漏free、whole frontend/lower与同内容新COFF对象反�
 来源：[PLAN-889](../../plans/archive/889-native-collections-variants-source-closure.md)；
 实现合同：`experimental/ace/crates/collections-runtime/CONTRACT.md`。
 891只接收已释放N接口清单，未由本交付自动实施typed/wide或关闭W01..W05/native在线帧等gap。
+
+### PLAN-924：runtime/4 闭包 env 面
+
+- `mn.collections.runtime/3` → **`/4`**：新增闭包环境原语
+  `mn_coll_env_prepare/stage_move/stage_clone/discard/commit/get`、
+  `mn_coll_closure_target`（前置 registry+签名准入）、`mn_coll_env_pin/unpin`；
+  seam 域扩至 **S9**（env 节点，header+capture 序字段单块），
+  `SEAM_COUNT=10`。非闭包分配不触碰 S9 计数，923 的 S1..S8 语义与
+  `mn.collections.cell/3` 不变。
+- env 事务两段式：staging 期间所有 fallible clone/metadata/容量先备好再
+  commit；任一失败逆序无分配回滚，源/旧 Closure/代际保持有效。Closure 深
+  clone = 独立 env+逐字段独立 owner（非同 env 加引用）。
+- 调用 pin：body prologue pin/epilogue unpin；最后 owner 离开而 pin 在时
+  env **parked**，最终 unpin 或 abort 清扫 finalize；`mn_coll_abort` 在帧
+  链清空并清扫 parked env 后调用 `ac_rt_release_idle_metadata`（与正常
+  最后 frame_leave 同基线——trap 前已跑 StrLen 的程序不再泄漏文本元数据）。

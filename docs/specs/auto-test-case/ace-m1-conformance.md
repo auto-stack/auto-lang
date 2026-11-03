@@ -416,3 +416,10 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
   R02 mn 保持 gap（非闭包覆盖摘要记注释，K02/env 归 924）、R05 归 924。
 - **边界**：本段只关 R03 的 ac 格；R02/R05 完整闭包是 924 义务；不签整个 M1
   （`can_claim_m1=false` 不变）。manifest `plan_923_update`、`scenario_assets_923`。
+### PLAN-924
+
+R02/R05 scenario **ac** 格由 `ok:P924-closures` 关闭：闭包域
+（native-closures-924 套件 + 同进程状态探针 + trap 全零基线）与非闭包域
+（923 套件 + ace-native 组在 runtime/4 下复验）双父门先绿后回填。av/a2r/
+avm/cert 各格与 corpus 行不变；cert 轴仍 `snapshot-only-cert-gap`，M1 claim
+守卫已显式引用 cert 轴，本交付不签含 C 的新 M1。

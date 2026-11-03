@@ -100,3 +100,14 @@
   `native/tests/cases/collections_resource_events_919.rs`（8）。
 - 套件 `crates/auto-lang/test/cases/ace-m1/resource-events-919/`（10 checks，
   固定组 `case-ace-m1-resource-events-919`）；binding 六格 `ok:P919-events`。
+
+## PLAN-924：闭包 env 生命周期观测
+
+- MN-EVT 通道上闭包 env 的 `act=own kind=closure` 出现在 creator 帧内；
+  creator `frame-leave` 后 env 仍活（间接调用读得到）；最后一次 pin/owner
+  释放后 `act=free`，终态 live=0/bytes=0/arena_live=0。
+- 错误退出：body 内陷阱经 abort 清扫 parked env + 空闲文本元数据后同样达
+  全零基线（修复前 trap 前已 StrLen 的程序泄漏 288B arena——见 924 归档
+  计划 T-04/V-12 证据）。
+- 注入分类学不变：S9 env 节点注入 trap INJECTED(25)；S4 帧注入沿 923 冻结
+  的 frame-open 空路径（trap 22 + INJECT 事实行）。

@@ -288,3 +288,14 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   （914 单对象原样包裹）。
 - **不关闭**：R02 av（F-AV-1，915）、R03 av（F-AV-2）、native loader/console、
   a2r 复合认证、B18 avm、M1 总签章。`can_claim_m1=false` 不变。
+### PLAN-924（R02/R05 ac 闭合余账）
+
+- **关闭**：R02/R05 scenario **ac** 格（原 `gap:ac-composite-native`）→
+  `ok:P924-closures`；关闭证据 = native-closures-924 套件（闭包域）+ 923
+  套件与 ace-native 组在 runtime/4 最终库复验（非闭包域）双父门，先绿后
+  回填。F-NAT 域内 K06/shared-cell、容器捕获、native loader/HMR、FFI 仍
+  具名余项（owner：后续包）。
+- **不关闭/不变**：F-REG-3（a2r cert）、R02/R05 的 av/a2r/avm/cert 各格、
+  corpus 行、future 45、313 required、32 ruled-accepted。M1 claim 守卫新增
+  cert 轴显式条件（严格强化，无弱化——突变控制绿），`can_claim_m1=false`
+  仍冻结。

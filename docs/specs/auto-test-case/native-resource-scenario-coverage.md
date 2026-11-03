@@ -39,3 +39,23 @@ R05。923 交付不等待 924；本包只关 R03，不存在循环依赖。
 - R02 欠项（K02/env）：native 闭包环境/K02 源场景、env 维度故障注入。
 - 观测：`MN-COLL-INJECT seam=/nth=`、`MN-COLL-TRAP code=`（21..=27/30/31）、
   `MN-COLL live=/bytes=/invalid=/arena_live=` 与 MN-EVT（919）并存。
+
+## PLAN-924：完整 R02 与 R05 的最终闭合
+
+- **闭包域**（924 独有）：suite `case-ace-m1-native-closures-924`
+  （`crates/auto-lang/test/cases/ace-m1/native-closures-924/`，source-manifest
+  `scenario_assets_924`）；recipe `ac/mir-native-closures-resource-v1`，
+  父表 `ac_mn/native_closures.rs`（S1..S9 分类学 + trap/清理 + R05 env
+  生命周期事件形状从严判）。K02（S9 单块 1..2/N+1、S1、S4）与 K05（S9
+  两块 1..2/3）全腿；runtime 侧另有同进程原语状态探针（staged 事务回滚/
+  同进程重试/准入矩阵/深 clone 独立/pin-park-finalize）与
+  trap-in-pinned-call 全零基线。
+- **非闭包域复验**：923 套件（R03/`native-resource-923`）与 ace-native
+  全组在 924 最终库（runtime/4，含 abort 空闲元数据修复）下重跑 PASS——
+  完整 R02 = 本节闭包域 + 923 非闭包域在此同一最终库版本下的并集，不拼
+  历史版本 PASS。
+- **回填与守恒**：binding.tsv 仅 R02/R05 scenario **ac** 格
+  `gap:ac-composite-native → ok:P924-closures`；corpus 行/source/expected/
+  313 required/45 future gaps/32 ruled-accepted 不变；M1 claim 守卫显式
+  引用 cert 轴（G-DEC-5 "with valid evidence" 落码），本轮交付不签新
+  M1/M2/v0.6。K06/shared-cell、容器捕获、loader/HMR 等余项仍归后续包。

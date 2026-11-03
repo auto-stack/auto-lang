@@ -63,3 +63,27 @@ lambda 支持零参、多参、表达式体和语句块体：
 PLAN-865 将原 K01–K06 `.at` 语料绑定到真实源码编译和 823 执行会话，recipe 为 `ac-av/closures-source-run-v1`。K01、K02、K03、K05 经源码到 AV 执行；K04 在源码编译期以 `source.closure-borrow-escape` 拒绝；K06 由 PLAN-909 迁移为真实执行返回 42（av 格 `ok:av-closures-source-865`），不支持域负控移至 `shared-mutable-909` suite（S07/S08）。K05 的独立性反例返回 11；若 clone 与原环境别名则为 12。旧 AVM/a2r 对 K02、K05 的 `diff-legacy-grammar(parse)` 保持原样，不因 AV 源码路径交付而改写。
 
 详见[闭包环境与执行合同](../auto-av/closure-environments.md)、[闭包捕获 MIR](../auto-mir/closure-capture-profile.md)和[ACE M1 一致性语料](../auto-test-case/ace-m1-conformance.md)中的 PLAN-865 绑定。
+
+## PLAN-924：native 消费与支持边界
+
+公共源码/typed 语义不变；本节记录**native 侧的消费**与有限支持域（实现：
+`experimental/ace/crates/native` closures 族，身份 `mn.closures.cell/1`、
+`mn.closures.layout/1`、`mn.closures.codegen/1`、`mn.closures.source/1`、
+recipe `ac/mir-native-closures-resource-v1`）。
+
+- **支持域**：i32/bool 按值 Copy 捕获；显式 `move` 的 Str 与非递归 owned
+  record（字段 i32/bool/Str）；typed-only 深克隆捕获（`CaptureKind::Clone`，
+  源码无合法 clone 捕获语法，仅 typed 面）；lambda i32 参数/i32 结果；普通
+  factory 接 move 资源参数返回 Closure；Closure 局部 move/显式深 clone/
+  真实间接调用。entry 恒为零参普通 int 函数，闭包 body 不能作 entry。
+- **具名拒绝**（native admission，非全语言语义）：Borrow/MoveFromEnv/Shared
+  捕获、容器捕获（List/…在 type 面具名）、直接调用闭包 body import、错
+  entry、宽标量与未列类型。共享前端与 AV 合同保持原支持面，不因 native
+  有限域退化。
+- **生产/恢复**：912 前端暖路径原样消费（单 lambda/owner body 编辑精确
+  失效、hit 零生产）；持久工件为有界 MIR wire/COFF/声明与捕获上下文，
+  `restore_closures_session` 有界读→深验→准入→link/run（P0 首跑、R>0），
+  下一编辑沿暖路径；不序列化 Checked/PASS/活 env/code pointer。
+
+实现证据与逐门验证见
+[归档计划 924](../../plans/archive/924-native-closures-source-and-resource-closure.md)。
