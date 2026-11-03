@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-919
-status: reviewed
+status: archived
 feature_name: AC与AV资源生命周期事件正式闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/resource-lifecycle-observations.
 touched_goals: [GOAL-002]
 affects: [auto-av, auto-ac, auto-test-case]
 depends_on: [PLAN-864, PLAN-889, PLAN-912, PLAN-913, PLAN-914]
-current_step: 7
+current_step: 10
 total_steps: 10
 ---
 
@@ -131,9 +131,9 @@ P私有fixture/观察codec/native探针可先做；AV S=av-core/av arena/结果�
 | T-05 | work | T-03/04，H窗 | AutoDown/严格父判/负控/拟新组/六格回填，V-05/09；cargo t ace-adapters auto-test-case infra-ace-m1及新组 | AC-03 | [x] 已完成（套件 10 checks 一次全绿 run-cff9f6ld：六格经真实 worker+父侧冻结表+19+7 反控；binding 三行六格 ok:P919-events；manifest scenario_assets 清单化+plan_919_update+oracles hash 刷新；ps1 修退役 feature 与清单化；contract/source/acceptance 三 scope PASS，acceptance core 红 -6） |
 | T-06 | work | T-03..05，错峰 | V-06..08真实暖编辑/恢复/资源/计量，必要原ace-performance命名门 | AC-04/05 | [x] 已完成（观察 OFF 一致性双侧常驻对照；913 closures-recovery 与 889 native-collections 暖/恢复组复跑 PASS＝零额外重编/重装；t06 预算界测试：事件流 ≤4MiB 断言+wall<2s；P90 正式采样属 ace-performance 里程碑档，与 915/917/921 错峰 pending） |
 | T-07 | work | T-01..06 | 完整受影响固定组自查/SD提案/差额清单，保未执行和旧红，不签总M1 | AC-01..05 | [x] 已完成（修复提交 735aa75b0：R1 rustfmt×5、R2 死码移除、R3 pub(super)；连坐复放全绿——cargo check 零 919 警告、rustfmt 六文件净、父判 19/19、av 8/8、native 8/8、套件 PASS run-eubocovi；SD/并集证据沿 82208b51a 有效，identity 变更仅限三健康修复不改行为） |
-| T-08 | review | work任务完成，冻结SHA | 独立验每AC/负控及Spec delta；pass才reviewed，修复回同树 | AC-06 | [ ] |
-| T-09 | merge | review pass | 冻结职责并集/漂移重验、主线落地、SD-01..06读回与归档 | AC-07 | [ ] |
-| T-10 | merge | T-09 | 全输出对账/摘要折计划，guard后删树/分支/组及整个scope、刷新登记 | AC-07 | [ ] |
+| T-08 | review | work任务完成，冻结SHA | 独立验每AC/负控及Spec delta；pass才reviewed，修复回同树 | AC-06 | [x] 已完成（独立复审两轮+受影响重审 pass（needs_fix R1..R3 修复后重审；rebase 并置重审 @07e14a4dd）） |
+| T-09 | merge | review pass | 冻结职责并集/漂移重验、主线落地、SD-01..06读回与归档 | AC-07 | [x] 已完成（ff-only 落地 4ea3daddf（映射 07e14a4dd→4ea3daddf 仅簿记基移）；canonical 六规范读回逐字节一致；SD 沉淀完成） |
+| T-10 | merge | T-09 | 全输出对账/摘要折计划，guard后删树/分支/组及整个scope、刷新登记 | AC-07 | [x] 已完成（guard 双树 clean；worktree/分支/组目录移除；plan-artifacts/plan-919 全删+登记表刷新；批量回归 due-check 与陈旧产物观察见收尾回执） |
 
 拟唯一树D:/autostack/.wt/lang-919/auto-lang，分支plan-919-dev，本轮未建。实施材料唯一D:/autostack/plan-artifacts/plan-919/，开工登记owner/用途/在途；禁attachments/仓内证据目录/散落副本。merge全删，仅具名未解决hold可留；不清他方文件、不建链接。
 
@@ -177,3 +177,5 @@ stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 5 | from: merge | t
 2026-11-03 | stage: review | review_scope: final（受影响重审：rebase 解并置） | reviewer: 同会话独立复审（工件重建；限制同前） | plan_id: PLAN-919 | plan_revision: r1 | outcome: pass | reviewed_commit: 07e14a4dd（基 e583d9b34） | 验证：①StepOut 双面并存（915 resource:Value / 919 exit_kind:String+lifecycle；worker 只发 exit_kind；lifecycle_on_non_resource 覆盖两字段）②finish_trace+push_end 在 observed 路径共存，execute_program_impl 路径不启用 lifecycle（无 push_end 语义正确）③lifecycle 仅在 ExecTrace ④binding 915 行 ok:av-resource-915 原样、corpus 行未触、919 六格在位（infra 变异控制 PASS 复证形态）⑤specs 915/917/919/920 各段共存无覆写⑥ps1 退役 feature 零引用⑦全量电池绑定本树：10 组并集+852 三 scope+双侧控制（19/19、915 10/10）全绿 | findings: 无新发现 | next: merge（落地+归档+清理）
 
 stage: goal | plan_id: PLAN-919 | plan_revision: r1 | round: 6 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-919/auto-lang | commit: 07e14a4dd | next: merge
+
+2026-11-03 | stage: merge | PLAN-919:r1 | outcome: pass | completion_kind: delivered | 检查点：prepared（审订基线 07e14a4dd + 冻结 Spec 差异）→ landed（master ff-only = 4ea3daddf；映射 07e14a4dd→4ea3daddf 仅含主检出簿记基移，代码零变更）→ canonical_verified（SD-01 resource-lifecycle-observations.md sha 93bf6ea1… 与审订版逐字节一致；SD-02..06 落点 oracles 3ed6ca2a…/place-ownership/conformance/gap-audit/source-collections-variants 均在 landed 提交）→ archived（本文件 archive/ + status: archived + T-09/T-10 勾选 + 本收据提交）→ cleaned（见下） | 冻结门（绑定交付树）：并集 10 组全 PASS（ace-av 996/ace-native 183/worker 39/runtime 84/auto-test-case 111/infra 23/919=10/915=12/913=5/889=40）+852 三 scope PASS+双侧控制 | 收尾观察：①生产陈旧产物——本包为语言/测试面，无 daemon/web 产物消费；主检出 target/debug 二进制将随下次构建自然重建（非部署面）②批量回归 due-check：.last-batch-regression 收据已被 920 收尾刷新（last_covered≥920>916，919%5≠0，收据 <48h）→ 不到期 | cleaned：wt-guard 双树 clean→worktree lang-919/auto-lang+auto-down 移除、分支 plan-919-dev 删除、组目录删除；plan-artifacts/plan-919 整删（残留仅补丁脚本与 scope 转储，全部随删）；.retention/policy.json 刷新 | 无具名未解决 hold
