@@ -252,7 +252,10 @@ fn emit_admitted(
         fb.append_block_params_for_function_params(entry);
         let params = fb.block_params(entry).to_vec();
         let frame_slot =
-            fb.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 3));
+            // size_of::<runtime Frame>() = 5 × u64 (prev/cells/count/
+            // charge + the PLAN-919 activation `seq`) — keep in lockstep
+            // with collections-runtime's `Frame`.
+            fb.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 40, 3));
         let frame = fb.ins().stack_addr(types::I64, frame_slot, 0);
         let zero = fb.ins().iconst(types::I64, 0);
         let trap = fb.create_block();
@@ -866,9 +869,22 @@ impl Lower<'_, '_> {
     }
 }
 
+/// PLAN-919: the R06 exit knobs + observation switch baked into the entry
+/// wrapper — `mn_coll_observe_enable` / `mn_coll_set_budget` /
+/// `mn_coll_cancel_after_work` / `mn_coll_fail_nth` run BEFORE the entry.
+/// All-off is the historical wrapper (no extra instructions, no behavior
+/// change); expectations never ride here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WrapperKnobs {
+    pub observe: bool,
+    pub budget_bytes: Option<u64>,
+    pub cancel_after_work: Option<u64>,
+    pub fail_nth: Option<u64>,
+}
+
 /// Adapt the collection internal out-cell ABI to the unchanged zero-argument
 /// i32 process result. No expected value is supplied to the child.
-pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
+pub fn emit_wrapper_coff(entry_symbol: &str, knobs: &WrapperKnobs) -> Result<Vec<u8>, MnError> {
     let mut om = ObjectModule::new(
         ObjectBuilder::new(emit::make_isa()?, "mn-coll-start", default_libcall_names())
             .map_err(backend)?,
@@ -897,6 +913,50 @@ pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
         let zero = fb.ins().iconst(types::I64, 0);
         fb.ins().store(MemFlags::new(), zero, out, 0);
         fb.ins().store(MemFlags::new(), zero, out, 8);
+        // PLAN-919: install the observation switch / exit knobs before the
+        // entry runs (plain u64-arg void calls; emitted only when set).
+        {
+            fn knob_u64(
+                om: &mut ObjectModule,
+                fb: &mut FunctionBuilder,
+                name: &str,
+                value: u64,
+            ) -> Result<(), MnError> {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![AbiParam::new(types::I64)],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function(name, Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                let v = fb.ins().iconst(types::I64, value as i64);
+                fb.ins().call(r, &[v]);
+                Ok(())
+            }
+            if knobs.observe {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function("mn_coll_observe_enable", Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                fb.ins().call(r, &[]);
+            }
+            if let Some(b) = knobs.budget_bytes {
+                knob_u64(&mut om, &mut fb, "mn_coll_set_budget", b)?;
+            }
+            if let Some(w) = knobs.cancel_after_work {
+                knob_u64(&mut om, &mut fb, "mn_coll_cancel_after_work", w)?;
+            }
+            if let Some(n) = knobs.fail_nth {
+                knob_u64(&mut om, &mut fb, "mn_coll_fail_nth", n)?;
+            }
+        }
         let r = om.declare_func_in_func(entry, fb.func);
         fb.ins().call(r, &[out]);
         let result = fb.ins().load(types::I32, MemFlags::new(), out, 0);

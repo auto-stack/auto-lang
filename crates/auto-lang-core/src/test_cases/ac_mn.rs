@@ -102,7 +102,13 @@ fn refusal_verdict(ok: &serde_json::Value) -> Option<(String, String)> {
 }
 
 pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
+/// PLAN-919: the per-owner lifecycle recipe (scenario R01/R04/R06 ac
+/// cells) — real collections-profile sources with the bounded `MN-EVT`
+/// observation stream on stderr and the R06 exit knobs driven by the
+/// generated entry wrapper; parent-side judgement is independent.
+pub const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
 mod collections;
+mod resource_events;
 mod typed;
 pub use collections::campaign::{
     run as run_collections_campaign, run_cold_repair as run_collections_cold_repair_campaign,
@@ -1008,12 +1014,14 @@ fn build_worker_named(manifest: &Path, bin: &str) -> Result<PathBuf, String> {
 }
 
 fn request_recipe(request: &str) -> &'static str {
+    // The collections WORKER serves both collections recipes (the lifecycle
+    // recipe rides the same runtime/ABI/observe channel — PLAN-919).
     if serde_json::from_str::<serde_json::Value>(request)
         .ok()
         .and_then(|v| {
-            v.get("recipe")
-                .and_then(|r| r.as_str())
-                .map(|r| r == COLLECTIONS_RECIPE)
+            v.get("recipe").and_then(|r| r.as_str()).map(|r| {
+                r == COLLECTIONS_RECIPE || r == RESOURCE_EVENTS_RECIPE
+            })
         })
         .unwrap_or(false)
     {
@@ -1029,7 +1037,9 @@ fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
                 .into(),
         );
     }
-    if recipe != COLLECTIONS_RECIPE {
+    // PLAN-919: the lifecycle recipe rides the collections worker (same
+    // runtime/ABI/observe channel).
+    if recipe != COLLECTIONS_RECIPE && recipe != RESOURCE_EVENTS_RECIPE {
         return worker_binary();
     }
     if let Ok(path) = std::env::var("AC_MN_COLLECTIONS_CASE_WORKER") {
@@ -1775,6 +1785,25 @@ pub fn run_check(
         if strict {
             request["diagnostics"] = serde_json::json!(source_diag::MODE);
         }
+        // PLAN-919: the lifecycle recipe's exit knobs (operations and
+        // budgets only; the observation switch is implied by the recipe).
+        if recipe == RESOURCE_EVENTS_RECIPE {
+            let res = mn
+                .resource
+                .as_ref()
+                .ok_or_else(|| "resource-events requires mn.resource".to_string())?;
+            let mut o = serde_json::Map::new();
+            if let Some(v) = res.budget_bytes {
+                o.insert("budget_bytes".into(), serde_json::json!(v));
+            }
+            if let Some(v) = res.cancel_after_work {
+                o.insert("cancel_after_work".into(), serde_json::json!(v));
+            }
+            if let Some(v) = res.fail_nth {
+                o.insert("fail_nth".into(), serde_json::json!(v));
+            }
+            request["resource"] = serde_json::Value::Object(o);
+        }
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
 
@@ -1975,7 +2004,16 @@ pub fn run_check(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            if fp.is_empty() {
+            // PLAN-919: a lifecycle run that ENDED in the abort sweep
+            // (budget/cancel/trap) never publishes its candidate — the
+            // manifest identity chain applies to the published faces.
+            let trap_face = recipe == RESOURCE_EVENTS_RECIPE
+                && hex_stream(&session_stderr)
+                    .ok()
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .map(|t| t.contains("MN-COLL-TRAP"))
+                    .unwrap_or(false);
+            if fp.is_empty() && !trap_face {
                 infra_detail = Some("mn worker success without a manifest fingerprint".to_string());
                 break 'admit;
             }
@@ -2044,6 +2082,53 @@ pub fn run_check(
             ));
         }
     }
+    // PLAN-919: the lifecycle recipe's parent-side judge — strict decode
+    // of the MN-EVT stream, the trap face mapping, and the frozen per-case
+    // table (independent of anything the worker self-reports).
+    if recipe == RESOURCE_EVENTS_RECIPE {
+        match resource_events::decode_events_hex(&stderr_hex) {
+            Ok(Some(facts)) => {
+                if diag.is_none() {
+                    if let Some(t) = facts.trap {
+                        if let Some(code) = resource_events::completion_code(t) {
+                            diag = Some((code.to_string(), format!("native collection trap {t}")));
+                        }
+                    }
+                }
+                let oracle_key = format!("{}/{}", case.spec.id, check.id);
+                match resource_events::oracle_for(&oracle_key) {
+                    Some(o) => {
+                        resource_events::judge_native(o, exit_code, &facts, &mut mismatches)
+                    }
+                    None => mismatches.push(Mismatch {
+                        observation: "native-lifecycle".into(),
+                        kind: "case-registration".into(),
+                        expected: "a frozen native resource-events oracle row".into(),
+                        actual: format!("check {oracle_key} is not in the parent table"),
+                        first_diff: None,
+                    }),
+                }
+            }
+            Ok(None) => {
+                mismatches.push(Mismatch {
+                    observation: "native-lifecycle".into(),
+                    kind: "events-missing".into(),
+                    expected: "the MN-EVT stream of an observed run".into(),
+                    actual: "no event lines".into(),
+                    first_diff: None,
+                });
+            }
+            Err(detail) => {
+                mismatches.push(Mismatch {
+                    observation: "native-lifecycle".into(),
+                    kind: "admission".into(),
+                    expected: "a strictly decodable MN-EVT stream".into(),
+                    actual: detail,
+                    first_diff: None,
+                });
+            }
+        }
+    }
     // ---- parent-side judgement -----------------------------------------
     let observed = if let Some((code, message)) = &diag {
         // Map the mn.* / mir.* diagnostic onto the contract stages:
@@ -2058,6 +2143,10 @@ pub fn run_check(
             // rejected every non-language stage, so this never defaults.
             fact.mapped_stage
         } else if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
+            Stage::Run
+        } else if recipe == RESOURCE_EVENTS_RECIPE
+            && (code.starts_with("mn.trap.") || code.starts_with("mn.resource."))
+        {
             Stage::Run
         } else if code.starts_with("mn.unsupported.frontend")
             || code.starts_with("mn.unsupported.input")

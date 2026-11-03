@@ -272,4 +272,18 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   历史行（含 908T04 重探针 infra 实录）原样保留为时间线。
 - 诊断语义契约与反控清单沉淀：[legacy-immutable-diagnostic.md](legacy-immutable-diagnostic.md)。
 - 不变：F-REG-3、F-NAT-4、其余 ⑦/⑤ 项、future 45、cert 轴——本包只闭 F-INFRA-3 一格，
-  不重开 911/916，不签 M1。
+  不重开 911/916，不签 M1。## PLAN-919 后状态（2026-11-03，SD-04；此前各节为冻结历史）
+
+- **F-SCN-1 剩余格关闭**：R01/R04/R06 的 ac/av 六格由 `resource-events-919` 真实
+  父报告关闭（binding token `ok:P919-events`，status `source-bound`，
+  enabling `T-05(919)`）。E01/E02/I04/I09 已由 914 关闭——**scenario 观察通道族
+  至此清零**（除 915/921 线的 R02/R03 av 仍属 F-AV-1/2 owner，另有 NA 列）。
+- **native 侧事实**：R06 的预算/取消旋钮首次由生产路径驱动（wrapper 预置
+  `mn_coll_set_budget`/`mn_coll_cancel_after_work`，此前两接缝无任何驱动者）；
+  abort sweep 逐帧释放以 MN-EVT 可判。`Frame` 结构加 `seq` 字段同步修正 codegen
+  栈槽 32→40（原硬编码为潜伏损坏面）。
+- **修入的既有 infra 腐化**：`verify-ace-m1-852.ps1` 构建行仍引用 901/896 已退役的
+  `test-cases` feature（master 上即红）——一并修正；`scenario_assets` 泛化为清单
+  （914 单对象原样包裹）。
+- **不关闭**：R02 av（F-AV-1，915）、R03 av（F-AV-2）、native loader/console、
+  a2r 复合认证、B18 avm、M1 总签章。`can_claim_m1=false` 不变。

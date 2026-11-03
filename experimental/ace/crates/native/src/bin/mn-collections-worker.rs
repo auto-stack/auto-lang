@@ -16,6 +16,9 @@ use std::{
 static ALLOCATOR: ace_native::collections_memory::CollectionsAllocator =
     ace_native::collections_memory::CollectionsAllocator;
 const RECIPE: &str = ace_native::collections_layout::RECIPE;
+/// PLAN-919: the lifecycle recipe rides this worker (same runtime/ABI and
+/// observe channel; only the wrapper knobs and the request face differ).
+const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
 const LINE_CAP: usize = (4 << 20) * 4 / 3 + (64 << 10);
 static PRIVATE_BASE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn process_memory() -> (u64, u64, bool) {
@@ -192,7 +195,8 @@ fn serve() -> Result<(), String> {
     let mut request = read_line(&mut input)?.ok_or("missing request")?;
     let echo = json!({"schema":"mnworker/1","nonce":request["nonce"],"request_hash":request["request_hash"]});
     let mut execute = || -> Result<(Option<CollectionsIncrementalSession>, Value), String> {
-        if str_field(&request, "recipe")? != RECIPE {
+        let recipe_field = str_field(&request, "recipe")?.to_string();
+        if recipe_field != RECIPE && recipe_field != RESOURCE_EVENTS_RECIPE {
             return Err("wrong collections recipe".into());
         }
         // Binding is recomputed from the actual request, not merely echoed.
@@ -267,6 +271,61 @@ fn serve() -> Result<(), String> {
             out["counters"] = json!(run.obs.counters);
             out["spans"] = json!(run.obs.spans);
             out["omitted_native_returns"] = json!(omitted);
+            return Ok((None, out));
+        }
+        // PLAN-919: the lifecycle request — the SAME collections pipeline
+        // and the SAME managed publication (manifest identity chain), with
+        // the observation switch on and the R06 exit knobs baked into the
+        // wrapper. Operations and budgets only; the parent judges stderr.
+        if recipe_field == RESOURCE_EVENTS_RECIPE {
+            let res = request
+                .get("resource")
+                .ok_or("resource-events requires a resource object")?;
+            let knob = |k: &str| -> Result<Option<u64>, String> {
+                match res.get(k) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(v) => v
+                        .as_u64()
+                        .filter(|n| *n >= 1)
+                        .map(Some)
+                        .ok_or_else(|| format!("resource.{k} must be an integer >= 1")),
+                }
+            };
+            let knobs = ace_native::collections_lower::WrapperKnobs {
+                observe: true,
+                budget_bytes: knob("budget_bytes")?,
+                cancel_after_work: knob("cancel_after_work")?,
+                fail_nth: knob("fail_nth")?,
+            };
+            let mut driver =
+                MnDriver::with_store(store, "mn-collections-case").map_err(|e| e.message())?;
+            let run = driver.request_resource_events(&source, entry, workdir, None, knobs);
+            // A trap/budget/cancel exit is a REAL run whose facts (exit +
+            // stderr with the event stream) were retained — report them;
+            // only a run with no facts at all is a worker error.
+            if run.exit_code.is_none() {
+                return Err(run
+                    .error
+                    .map(|e| e.message())
+                    .unwrap_or("resource-events run failed".into()));
+            }
+            let runtime =
+                ace_native::collections_runtime::prepare(None).map_err(|e| e.message())?;
+            let (lld, sdk, kernel) =
+                ace_native::link_driver::collections_link_identities().map_err(|e| e.message())?;
+            let mut out = identity();
+            // The recipe echo follows the REQUEST identity (the lifecycle
+            // recipe is this worker's second admitted face).
+            out["recipe"] = json!(recipe_field);
+            out["allocation_meter"] = json!(ace_native::collections_memory::snapshot());
+            out["exit_code"] = json!(run.exit_code);
+            out["stderr_hex"] = json!(hex(&run.stderr));
+            out["stdout_hex"] = json!(hex(&run.stdout));
+            out["manifest_fp"] = json!(run.manifest_fp);
+            out["runtime_identity"] = json!(runtime.identity);
+            out["link_identity"] = json!([lld, sdk, kernel]);
+            out["counters"] = json!(run.obs.counters);
+            out["spans"] = json!(run.obs.spans);
             return Ok((None, out));
         }
         let mut driver =

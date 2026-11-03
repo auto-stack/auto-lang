@@ -948,6 +948,33 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // PLAN-821 T-02: the owned-profile recipe (`avworker/1` envelope domain
     // — the recipe id itself is the discriminator, no field grows).
     let owned_recipe = recipe == "ac-av/owned-run-v1";
+    // PLAN-919: the per-owner lifecycle recipe — a REAL source program on
+    // one of the two admitted production profiles (`profile`: owned |
+    // collections) with the lifecycle channel on and the R06 exit knobs
+    // (`limits.max_steps` / `limits.wall_ms` / `cancel_after_ms`). The
+    // request carries operations and budgets only — never expectations.
+    let resource_events_recipe = recipe == "ac-av/resource-events-v1";
+    let resource_events_profile: Option<ace_av::resource_events::SourceProfile> =
+        if resource_events_recipe {
+            match req["profile"]
+                .as_str()
+                .and_then(ace_av::resource_events::SourceProfile::from_wire)
+            {
+                Some(p) => Some(p),
+                None => {
+                    eprintln!("resource-events: profile must be owned|collections");
+                    exit(2);
+                }
+            }
+        } else {
+            None
+        };
+    let resource_events_core: Option<&'static str> = resource_events_profile.map(|p| match p {
+        ace_av::resource_events::SourceProfile::Owned => ace_av_core::contract::AV_OWNED_PROFILE,
+        ace_av::resource_events::SourceProfile::Collections => {
+            ace_av_core::contract::AV_COLLECTIONS_PROFILE
+        }
+    });
     // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
     // domain; the recipe id is the discriminator).
     let collections_recipe = recipe == "ac-av/collections-run-v1";
@@ -993,6 +1020,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     if recipe != "ac-av/core-run-v1"
         && !data_recipe
         && !owned_recipe
+        && !resource_events_recipe
         && !collections_recipe
         && !collections_source_recipe
         && !closures_source_recipe
@@ -1101,6 +1129,9 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             }
             true
         }
+        // PLAN-919: the lifecycle recipe's profile selector (owned |
+        // collections) is validated by the recipe's own gate below.
+        Some("owned") | Some("collections") if recipe == "ac-av/resource-events-v1" => false,
         Some(other) => {
             eprintln!("unknown request profile {other:?}");
             exit(2);
@@ -2075,6 +2106,96 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     }
                     continue;
                 }
+                if resource_events_recipe {
+                    // PLAN-919: the observed run. Knobs are plain numbers;
+                    // anything else is a protocol error (exit 2), never a
+                    // language face.
+                    let knob_u64 = |v: &serde_json::Value, name: &str| -> Option<u64> {
+                        if v.is_null() {
+                            None
+                        } else if let Some(n) = v.as_u64() {
+                            Some(n)
+                        } else {
+                            eprintln!("resource-events: {name} must be a non-negative integer");
+                            exit(2);
+                        }
+                    };
+                    let knobs = ace_av::resource_events::ResourceEventsKnobs {
+                        max_steps: knob_u64(&req["limits"]["max_steps"], "limits.max_steps"),
+                        wall_ms: knob_u64(&req["limits"]["wall_ms"], "limits.wall_ms"),
+                        cancel_after_ms: knob_u64(&req["cancel_after_ms"], "cancel_after_ms"),
+                    };
+                    let profile = resource_events_profile.expect("recipe-gated");
+                    let source_hex = format!(
+                        "{:016x}",
+                        ace_av_core::contract::fnv1a64(current_source.as_bytes())
+                    );
+                    match ace_av::resource_events::compile_and_execute_observed(
+                        &current_source,
+                        &entry,
+                        profile,
+                        knobs,
+                    ) {
+                        Ok(r) => {
+                            let events: Vec<serde_json::Value> =
+                                r.events.iter().map(ace_av::resource_events::event_json).collect();
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": r.outcome,
+                                "value": r.value,
+                                "trap": r.trap,
+                                "exit_kind": r.resource,
+                                "diag": r.infra.as_ref().map(|m| serde_json::json!({ "detail": m })),
+                                "lifecycle": {
+                                    "schema": ace_av_core::lifecycle::SCHEMA,
+                                    "profile": profile.wire(),
+                                    "overflowed": r.overflowed,
+                                    "events": events,
+                                    "allocs": r.allocs.iter().map(|(id, b)| serde_json::json!({ "id": id, "bytes": b })).collect::<Vec<_>>(),
+                                    "frees": r.frees.iter().map(|(id, b)| serde_json::json!({ "id": id, "bytes": b })).collect::<Vec<_>>(),
+                                    "live_at_end": r.live_at_end,
+                                    "live_after_result_drop": r.live_after_result_drop,
+                                    "steps": r.steps,
+                                },
+                                "source_hash": source_hex,
+                                "wall_ms": r.wall_ms,
+                            }));
+                        }
+                        Err(e) => {
+                            let stage = if e.starts_with("lower") || e.contains("error[") {
+                                "frontend"
+                            } else if e.starts_with("verify_mir")
+                                || e.starts_with("encode")
+                                || e.starts_with("abc admit")
+                            {
+                                "verify"
+                            } else {
+                                eprintln!("resource-events pipeline: {e}");
+                                exit(2);
+                            };
+                            // Rendered frontend diagnostics carry
+                            // `error[<code>]:`; surface the code for the
+                            // parent-side judgement.
+                            let code = e
+                                .split("error[")
+                                .nth(1)
+                                .and_then(|rest| rest.split(']').next())
+                                .unwrap_or("");
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "trap": null,
+                                "exit_kind": null,
+                                "diag": { "stage": stage, "code": code, "message": e },
+                                "lifecycle": null,
+                                "source_hash": source_hex,
+                                "wall_ms": 0.0,
+                            }));
+                        }
+                    }
+                    continue;
+                }
                 if owned_recipe {
                     // PLAN-821 T-02: the owned-profile pipeline. A frozen
                     // `owned:<id>` fixture carries its own face (result +
@@ -2495,7 +2616,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                         "recipe": recipe,
                         "steps": step_outs,
                         "worker_version": EXPECTED_WORKER_VERSION,
-                        "av_core_version": if entry_unit_profile { ace_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
+                        "av_core_version": if let Some(p) = resource_events_core { p } else if entry_unit_profile { ace_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
                     },
                 });
                 let mut line = serde_json::to_string(&ok_out).unwrap_or_default();
@@ -2524,7 +2645,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         "recipe": recipe,
         "steps": step_outs,
         "worker_version": EXPECTED_WORKER_VERSION,
-        "av_core_version": if std::env::var("AV798_FAULT").as_deref() == Ok("wrong-core-version") { "invalid.profile/1" } else if entry_unit_profile { ace_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
+        "av_core_version": if std::env::var("AV798_FAULT").as_deref() == Ok("wrong-core-version") { "invalid.profile/1" } else if let Some(p) = resource_events_core { p } else if entry_unit_profile { ace_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
     }))
 }
 

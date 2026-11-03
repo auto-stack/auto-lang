@@ -330,7 +330,7 @@ function Find-Prebuilt([string]$name) {
     if ($env:AUTO_CASE_BIN -and $name -eq 'auto-case') { return $env:AUTO_CASE_BIN }
     $exe = Join-Path $RepoRoot "target/debug/$name.exe"
     if (Test-Path $exe) { return $exe }
-    Fail "$name.exe not prebuilt at $exe — build it first (cargo build -p auto-lang --features test-cases --bin $name); this scope never builds (G02)."
+    Fail "$name.exe not prebuilt at $exe — build it first (cargo build -p auto-lang --bin $name); this scope never builds (G02)."
 }
 
 # ---- STRICT receipt validation (shared by the snapshot scope and the
@@ -538,7 +538,7 @@ switch ($Scope) {
         if (-not $OutDir) { Write-Host "usage: -Scope source requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
         $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
             $ErrorActionPreference = 'Continue'
-            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
+            & cargo @('build', '-p', 'auto-lang', '--bin', 'auto-case', '--quiet') 2>$null
             $code = $LASTEXITCODE
             $ErrorActionPreference = 'Stop'
             if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
@@ -695,7 +695,7 @@ switch ($Scope) {
         # never triggered implicitly by any other scope (G08 / F-852-R1-02).
         $bin = if ($env:AUTO_CERTIFY_BIN) { $env:AUTO_CERTIFY_BIN } else {
             $ErrorActionPreference = 'Continue'
-            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'ace-certify', '--quiet') 2>$null
+            & cargo @('build', '-p', 'auto-lang', '--bin', 'ace-certify', '--quiet') 2>$null
             $code = $LASTEXITCODE
             $ErrorActionPreference = 'Stop'
             if ($code -ne 0) { Fail "ace-certify build failed (exit $code)" }
@@ -712,7 +712,7 @@ switch ($Scope) {
         # per-stream overflow kill, and the wall kill. Full test paths +
         # --ignored so a typo can never silently match zero tests.
         $ErrorActionPreference = 'Continue'
-        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases,test-ace', '--lib', '--',
+        & cargo @('test', '-p', 'auto-lang-core', '--lib', '--',
                   '--ignored', '--exact', '--nocapture',
                   'test_cases::ace_certify::tests::stream_governance_no_deadlock_on_any_pipe_order',
                   'test_cases::ace_certify::tests::stream_overflow_kills_and_surfaces',
@@ -732,7 +732,7 @@ switch ($Scope) {
         if (-not $OutDir) { Write-Host "usage: -Scope lifecycle requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
         $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
             $ErrorActionPreference = 'Continue'
-            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
+            & cargo @('build', '-p', 'auto-lang', '--bin', 'auto-case', '--quiet') 2>$null
             $code = $LASTEXITCODE
             $ErrorActionPreference = 'Stop'
             if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }

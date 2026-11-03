@@ -50,6 +50,7 @@ pub fn with_module_private_sessions<T>(run: impl FnOnce() -> T) -> T {
 }
 
 pub mod parent_observations;
+pub mod resource_events;
 pub mod test_batch;
 
 const READ_CAP: usize = (4 << 20) + (64 << 10);
@@ -80,6 +81,12 @@ pub const EXPECTED_AV_DATA_CORE_VERSION: &str = "av.data/1";
 /// live=0 + alloc/free order), never the worker's word.
 pub const AV_OWNED_RECIPE: &str = "ac-av/owned-run-v1";
 pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
+/// PLAN-919: the per-owner lifecycle recipe (scenario R01/R04/R06 av cells)
+/// — a real source on the `owned` or `collections` production profile with
+/// the bounded `av.lifecycle/1` channel on; the core version follows the
+/// requested profile (owned → `av.owned/1`, collections →
+/// `av.collections/1`).
+pub const AV_RESOURCE_EVENTS_RECIPE: &str = "ac-av/resource-events-v1";
 /// PLAN-822: the collections-profile recipe (`av.collections/1`, profile
 /// id 4) — programmatic typed fixture -> collections Typed MIR -> AVAD v3
 /// -> AV with the arena-ledger face. Same append-only registration rules;
@@ -174,6 +181,8 @@ pub enum RecipeFamily {
     Closures,
     Dynamic,
     Compact,
+    /// PLAN-919: the per-owner lifecycle recipe (`av.lifecycle/1`).
+    ResourceEvents,
 }
 
 impl RecipeFamily {
@@ -195,6 +204,7 @@ impl RecipeFamily {
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
             RecipeFamily::Compact => AV_COMPACT_RECIPE,
+            RecipeFamily::ResourceEvents => AV_RESOURCE_EVENTS_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
@@ -222,6 +232,9 @@ impl RecipeFamily {
             // PLAN-826: the compact wire is a WIRE generation of the same
             // scalar profile — the core identity is unchanged.
             RecipeFamily::Compact => EXPECTED_AV_CORE_VERSION,
+            // PLAN-919: profile-dependent — see the special case at the
+            // admission site (owned vs collections).
+            RecipeFamily::ResourceEvents => EXPECTED_AV_CORE_VERSION,
         }
     }
 }
@@ -727,6 +740,15 @@ struct StepOut {
     /// only.
     #[serde(default)]
     capture: Option<serde_json::Value>,
+    /// PLAN-919: the resource face of a lifecycle run step
+    /// (`av.resource.instr-steps` & co); a resource-events increment only.
+    #[serde(default)]
+    exit_kind: Option<String>,
+    /// PLAN-919: the `av.lifecycle/1` facts object; a resource-events
+    /// increment only — its presence on any other recipe is an admission
+    /// violation, and its absence on a non-diag resource-events step too.
+    #[serde(default)]
+    lifecycle: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -1720,6 +1742,27 @@ pub fn run_resource_check(
     )
 }
 
+/// PLAN-919: the per-owner lifecycle recipe's parent entry.
+#[allow(clippy::too_many_arguments)]
+pub fn run_resource_events_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::ResourceEvents,
+    )
+}
+
 fn run_check_impl(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -1820,7 +1863,19 @@ fn run_check_with_transport(
             ))
         }
     };
-    let expected_core_version = if entry_unit_profile {
+    // PLAN-919: the lifecycle recipe's core version follows the requested
+    // source profile (both are admitted production identities).
+    let expected_core_version = if family == RecipeFamily::ResourceEvents {
+        match av.resource.as_ref().map(|r| r.profile.as_str()) {
+            Some("owned") => EXPECTED_AV_OWNED_CORE_VERSION,
+            Some("collections") => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            other => {
+                return Err(format!(
+                    "resource-events requires av.resource profile owned|collections (got {other:?})"
+                ))
+            }
+        }
+    } else if entry_unit_profile {
         EXPECTED_AV_ENTRY_UNIT_CORE_VERSION
     } else {
         family.expected_core_version()
@@ -2137,6 +2192,29 @@ fn run_check_with_transport(
     if entry_unit_profile {
         request["profile"] = serde_json::json!("entry-unit");
     }
+    // PLAN-919: the lifecycle recipe's profile + exit knobs (operations
+    // and budgets only — expectations never reach the worker).
+    if family == RecipeFamily::ResourceEvents {
+        let res = av
+            .resource
+            .as_ref()
+            .ok_or_else(|| "resource-events requires av.resource".to_string())?;
+        if av.profile.is_some() {
+            return Err("resource-events does not take av.profile (use av.resource.profile)".into());
+        }
+        request["profile"] = serde_json::json!(res.profile);
+        let mut limits = serde_json::Map::new();
+        if let Some(n) = res.max_steps {
+            limits.insert("max_steps".into(), serde_json::json!(n));
+        }
+        if let Some(n) = res.wall_ms {
+            limits.insert("wall_ms".into(), serde_json::json!(n));
+        }
+        request["limits"] = serde_json::Value::Object(limits);
+        if let Some(n) = res.cancel_after_ms {
+            request["cancel_after_ms"] = serde_json::json!(n);
+        }
+    }
     let request_hash = hex(&sha256(request.to_string().as_bytes()));
     request["request_hash"] = serde_json::json!(request_hash);
 
@@ -2228,6 +2306,16 @@ fn run_check_with_transport(
         // {result: object, live_after_release: u64, allocs: [{id,bytes}],
         // frees: [{id}]}), so no oracle choice can let a malformed ledger
         // face through.
+        if lifecycle_on_non_resource(family, &ok.steps) {
+            infra_detail = Some("lifecycle facts on a non-resource-events recipe".to_string());
+            break 'admit;
+        }
+        if family == RecipeFamily::ResourceEvents {
+            if let Some(v) = malformed_resource_events(&ok.steps) {
+                infra_detail = Some(v);
+                break 'admit;
+            }
+        }
         if owned_on_non_owned(family, &ok.steps) {
             infra_detail =
                 Some("owned report on a non-owned recipe (protocol violation)".to_string());
@@ -2562,6 +2650,25 @@ fn run_check_with_transport(
         // plus the case's own declared completion face.
         judge_resource(&av.entry, &step, &mut mismatches);
         judge_expectation(family, &step, oracle, &mut mismatches);
+    } else if family == RecipeFamily::ResourceEvents {
+        // PLAN-919: the frozen per-case table lookup + generic invariants
+        // (admission already ran `admit_lifecycle` — a red there is infra).
+        let oracle_key = format!("{}/{}", case.spec.id, check.id);
+        match resource_events::oracle_for(&oracle_key) {
+            Some(o) => {
+                resource_events::judge_resource_events(o, &step, &mut mismatches);
+                judge_expectation(family, &step, oracle, &mut mismatches);
+            }
+            None => {
+                mismatches.push(Mismatch {
+                    observation: "lifecycle".into(),
+                    kind: "case-registration".into(),
+                    expected: "a frozen resource-events oracle row".into(),
+                    actual: format!("check {oracle_key} is not in the parent table"),
+                    first_diff: None,
+                });
+            }
+        }
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
         if family == RecipeFamily::Loaded {
@@ -2716,6 +2823,25 @@ fn typed_on_non_data(family: RecipeFamily, steps: &[StepOut]) -> bool {
 /// Admission rule (PLAN-821): any owned report on a non-owned recipe.
 fn owned_on_non_owned(family: RecipeFamily, steps: &[StepOut]) -> bool {
     family != RecipeFamily::Owned && steps.iter().any(|s| s.owned.is_some())
+}
+
+/// PLAN-919: the lifecycle face belongs ONLY to the resource-events recipe.
+fn lifecycle_on_non_resource(family: RecipeFamily, steps: &[StepOut]) -> bool {
+    family != RecipeFamily::ResourceEvents && steps.iter().any(|s| s.lifecycle.is_some())
+}
+
+/// PLAN-919: a resource-events RUN step must carry the lifecycle facts
+/// (except frontend/verify diag outcomes, which never executed).
+fn malformed_resource_events(steps: &[StepOut]) -> Option<String> {
+    steps.iter().find_map(|step| {
+        if step.op != "run" || step.outcome == "diag" {
+            return None;
+        }
+        match &step.lifecycle {
+            None => Some("resource-events run step carries no lifecycle facts".into()),
+            Some(v) => super::ac_av::resource_events::admit_lifecycle(v).err(),
+        }
+    })
 }
 
 /// PLAN-865: the source-session face belongs only to the source closures
@@ -4706,6 +4832,53 @@ fn judge_expectation(
             code,
             message,
         } => match step.outcome.as_str() {
+            // PLAN-919: the lifecycle recipe's exit faces — a resource
+            // refusal reports its kind code, a cancellation its fixed
+            // code, both at the run stage.
+            "resource" => {
+                if *stage != Stage::Run {
+                    mismatches.push(Mismatch {
+                        observation: "stage".into(),
+                        kind: "stage".into(),
+                        expected: format!("{stage:?}"),
+                        actual: "run (resource)".into(),
+                        first_diff: None,
+                    });
+                }
+                if let Some(want_code) = code {
+                    if step.exit_kind.as_deref() != Some(want_code.as_str()) {
+                        mismatches.push(Mismatch {
+                            observation: "code".into(),
+                            kind: "code".into(),
+                            expected: want_code.clone(),
+                            actual: step.exit_kind.clone().unwrap_or_default(),
+                            first_diff: None,
+                        });
+                    }
+                }
+            }
+            "cancelled" => {
+                if *stage != Stage::Run {
+                    mismatches.push(Mismatch {
+                        observation: "stage".into(),
+                        kind: "stage".into(),
+                        expected: format!("{stage:?}"),
+                        actual: "run (cancelled)".into(),
+                        first_diff: None,
+                    });
+                }
+                if let Some(want_code) = code {
+                    if want_code != "av.cancelled" {
+                        mismatches.push(Mismatch {
+                            observation: "code".into(),
+                            kind: "code".into(),
+                            expected: want_code.clone(),
+                            actual: "av.cancelled".into(),
+                            first_diff: None,
+                        });
+                    }
+                }
+            }
             "trap" => {
                 if *stage != Stage::Run {
                     mismatches.push(Mismatch {
@@ -4881,6 +5054,8 @@ mod judge_tests {
             resource: None,
             place: None,
             capture: None,
+            exit_kind: None,
+            lifecycle: None,
         }
     }
 
@@ -5189,6 +5364,8 @@ mod closures_judge_tests {
             resource: None,
             place: None,
             capture: None,
+            exit_kind: None,
+            lifecycle: None,
         }
     }
 
@@ -5271,6 +5448,8 @@ mod closures_source_judge_tests {
             resource: None,
             place: None,
             capture: None,
+            exit_kind: None,
+            lifecycle: None,
         }
     }
 
@@ -5909,6 +6088,8 @@ mod resource_915_tests {
             console: None,
             resource,
             place,
+            exit_kind: None,
+            lifecycle: None,
             capture: None,
         }
     }

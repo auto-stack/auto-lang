@@ -1,0 +1,171 @@
+# PLAN-919 resource-events scenario suite — the R01/R04/R06 ac/av cells of
+# the M1 scenario grid, closed by REAL per-owner lifecycle events through
+# the existing execution paths (AV: av.lifecycle/1 on the owned/collections
+# profiles; native: MN-EVT on the collections PE stderr) with parent-side
+# independent judging (frozen invariants + per-case tables; the requests
+# carry only operations and budgets).
+#
+# Case/check ids are the parent's frozen table keys. The R06 knobs:
+# - av budget: instruction fuel 5000 (bites in the scalar spin, after the
+#   64-payload build); av cancel: host flag after 20 ms (same window);
+# - native budget: guest bytes 128; native cancel: after 3 work units.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r01.av"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R01-owned.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-owned", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "owned" } }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 732 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r01.mn"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R01-mn.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-events-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 969 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r04.av"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R04-919.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "collections" } }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r04.mn"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R04-919.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-events-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-budget.av"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-deep.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "collections", max_steps: 5000 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "av.resource.instr-steps" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-budget.mn"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-deep.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-events-v1", mn: { entry: "d_main", resource: { budget_bytes: 128 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.execution-budget" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-cancel.av"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-deep.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "collections", cancel_after_ms: 20 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "av.cancelled" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-cancel.mn"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-deep.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-events-v1", mn: { entry: "d_main", resource: { cancel_after_work: 3 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.cancelled" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-trap.av"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "collections" } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "av.trap.div-by-zero" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06-trap.mn"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-events-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.trap.overflow" } } }
+  ]
+}
+```

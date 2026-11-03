@@ -131,9 +131,12 @@ fn runtime_managed_pages_and_actual_frame_storage_share_one_ceiling() {
     );
     zero_live(&run.stderr);
     let observation = ace_native::collections_observe::decode(run.exit_code, &run.stderr).unwrap();
+    // The frozen peak encodes the runtime Frame layout: 2 frames ×
+    // size_of::<Frame>() (40 B since PLAN-919 added the activation `seq`;
+    // was 32 B / +80 before).
     assert_eq!(
         observation.resources["managed_commit_peak"],
-        (32 << 20) - 4096 + 80
+        (32 << 20) - 4096 + 96
     );
 }
 

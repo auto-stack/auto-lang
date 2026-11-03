@@ -30,6 +30,7 @@ pub mod dynamic;
 pub mod function_code;
 pub mod instr_spec;
 pub mod layout;
+pub mod lifecycle;
 pub mod loaded_program;
 pub mod mir;
 pub mod mir_verify;

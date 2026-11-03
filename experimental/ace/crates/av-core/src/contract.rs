@@ -445,6 +445,12 @@ impl StrHandle {
     pub fn bytes(&self) -> &[u8] {
         &self.rc.bytes
     }
+    /// PLAN-919: a LEDGERED handle (minted by the arena) vs a detached
+    /// placeholder / out-of-execution value. Only attached handles are
+    /// lifecycle owners.
+    pub fn is_attached(&self) -> bool {
+        self.hook.is_some()
+    }
 }
 
 impl Clone for StrHandle {
@@ -590,6 +596,11 @@ impl ListHandle {
     /// the copy, preserving the original graph's internal sharing shape.
     pub fn buf_id(&self) -> u64 {
         self.rc.borrow().id
+    }
+    /// PLAN-919: a LEDGERED handle vs a detached placeholder (see
+    /// [`StrHandle::is_attached`]).
+    pub fn is_attached(&self) -> bool {
+        self.hook.is_some()
     }
 }
 
@@ -918,6 +929,9 @@ pub enum ResourceKind {
     /// frozen dyn node ceiling (`av.resource.dyn-nodes` — the same stop
     /// family as the value-tree node budgets in `dynamic`/`portable`).
     DynTypeNodes,
+    /// PLAN-919: the bounded lifecycle observation log reached its cap —
+    /// a named refusal, never a silently truncated event stream.
+    LifecycleEvents,
 }
 
 impl ResourceKind {
@@ -938,6 +952,7 @@ impl ResourceKind {
             ResourceKind::DecodeMemory => "av.resource.decode-memory",
             ResourceKind::ListElems => "av.resource.list-elems",
             ResourceKind::DynTypeNodes => "av.resource.dyn-nodes",
+            ResourceKind::LifecycleEvents => "av.resource.lifecycle-events",
         }
     }
 }

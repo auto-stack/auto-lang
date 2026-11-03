@@ -58,12 +58,12 @@ Auto 源 API。源 API 未冻结 → 不造 `src/D*.at`，typed/probe 证据不�
 
 | ID | 不变量 | 输入 | 必需观察 | 起点 / 适用 |
 |---|---|---|---|---|
-| R01(scn) | owned 作用域 LIFO | T03/R04/R05 正常返回、break/continue、分支及临时 | 创建/转移/释放逐事件；每 owner 恰释放一次；只看返回值不够 | avm=diff-legacy-value；a2r=emit 面；ac/av=`gap:scenario-tooling`（逐 owner 事件通道未交付） |
+| R01(scn) | owned 作用域 LIFO | T03/R04/R05 正常返回、break/continue、分支及临时 | 创建/转移/释放逐事件；每 owner 恰释放一次；只看返回值不够 | avm=diff-legacy-value；a2r=emit 面；ac/av=ok:P919-events（`resource-events-919`：owned/collections 源→`av.lifecycle/1`/`MN-EVT`，父判冻结不变式；PLAN-919） |
 | R02(scn) | 构造/clone/扩容失败注入 | L04/L05/V05/K02 逐分配点注入 + 合法正控 | 未提交旧值/源保持；已构造部分回收；错误分类不伪装语言错误 | av=`gap:av-alloc-fault`（AV 资源故障线）；a2r 快照轴 ok+cert-gap |
 | R03(scn) | 活借用/旧 buffer | List 扩容前拿 view 再扩容 + 有效借用正控 | 合同阶段受控拒绝；危险访问=0；821 gen 字段 ≠ 运行期校验 | av=`gap:av-821-gen`；avm=diff；a2r=emit 面；ac=`gap:ac-composite-native` |
-| R04(scn) | variant 切换释放 | V06 `Err("old")`→`Ok(42)` | old 释放恰一次；不读 inactive payload；结果 42 | 同 R01 形态 |
+| R04(scn) | variant 切换释放 | V06 `Err("old")`→`Ok(42)` | old 释放恰一次；不读 inactive payload；结果 42 | 同 R01 形态；ac/av=ok:P919-events（PLAN-919，同上通道） |
 | R05(scn) | closure 创建者退出 | K02 创建/返回/调用/drop | 捕获 Str 有效、结果 42、env/buffer 最后释放；可重复建销 | av=ok:av-closures-823（typed 证据）；avm ok；a2r ok+cert-gap；ac 复合面 |
-| R06(scn) | budget/cancel/trap 退出 | 深 owned 树/集合/闭包真实执行态 | 当前 profile 承诺的释放/截止/错误；OS 进程回收 ≠ 逐 owner 清理 | ac/av=`gap:scenario-tooling`；avm ok；a2r ok+cert-gap |
+| R06(scn) | budget/cancel/trap 退出 | 深 owned 树/集合/闭包真实执行态 | 当前 profile 承诺的释放/截止/错误；OS 进程回收 ≠ 逐 owner 清理 | ac/av=ok:P919-events（PLAN-919：av fuel/cancel-flag、mn wrapper 驱动 set_budget/cancel_after_work，typed exit faces）；avm ok；a2r ok+cert-gap |
 
 ### I：增量 cache 与在线热重载（会话族；fixture 描述 edit，既有 runner 驱动真实引擎）
 

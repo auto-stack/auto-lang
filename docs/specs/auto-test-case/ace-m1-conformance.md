@@ -377,4 +377,20 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
   span 精度/伪造 Msg·异族 typed·run-trap 反控/负→修复→负循环）；`cargo t vm` 整组绿。
 - **M1 不据此签章**：scenario 观察通道、AV 故障/代际/共享可变、mn 复合场景面、
   R07 a2r 未定型等其余 blocker 账保持；本包只闭 B18 avm 一格。
-- 语义契约沉淀：[legacy-immutable-diagnostic.md](legacy-immutable-diagnostic.md)。
+- 语义契约沉淀：[legacy-immutable-diagnostic.md](legacy-immutable-diagnostic.md)。---
+
+## PLAN-919：资源生命周期事件六格（2026-11-03）
+
+- **绿的定义**：格位只在正式父侧报告（固定组 `case-ace-m1-resource-events-919` 的
+  run report）后改 token；worker 自报、只看返回值或声明不可观察通道不得变绿。
+- **本轮实证（6 格）**：R01/R04/R06 的 ac 与 av——av 走 `ac-av/resource-events-v1`
+  （owned text-record 与 collections 两个既有生产前端，`av.lifecycle/1` 事件流），
+  ac 走 `ac/mir-native-resource-events-v1`（collections PE stderr `MN-EVT` 流，
+  wrapper 预置 set_budget/cancel_after_work）。R06 三退出面（预算/取消/陷阱）在两引擎
+  各自有 typed code；清理经引擎 sweep（非 OS 回收）。
+- **判别性反控常驻**：缺事件流（只报总数）、缺 end 标记、双 free/双 disown、泄漏、
+  sweep 键升序（LIFO 破坏）、伪造词表、行重放、观察 cap 截断、drop 后非零 live——
+  19 条父侧 admission 控制 + native 7 条事实测试，任一必须红。
+- **边界**：avm/a2r 两列 NA-6；R02/R03/R05 仍属 915/921 线；观察 OFF 的既有 recipe
+  逐字节不变；暖路径/恢复零额外重编（913/889 组复跑绿）。本段不签整个 M1
+  （`can_claim_m1=false` 不变）。manifest `plan_919_update`。

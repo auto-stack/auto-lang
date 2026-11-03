@@ -1032,6 +1032,20 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-919: the per-owner lifecycle recipe (R01/R04/R06 av cells).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_RESOURCE_EVENTS_RECIPE) =>
+        {
+            ac_av::run_resource_events_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-818 T-02: the MIR-native recipe appends under the same
         // contract (single writer per window; never a second runner).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
@@ -1040,6 +1054,7 @@ fn dispatch_check(
                 Some(ac_mn::MN_RECIPE)
                     | Some(ac_mn::COLLECTIONS_RECIPE)
                     | Some(ac_mn::TYPED_RECIPE)
+                    | Some(ac_mn::RESOURCE_EVENTS_RECIPE)
             ) =>
         {
             ac_mn::run_check(

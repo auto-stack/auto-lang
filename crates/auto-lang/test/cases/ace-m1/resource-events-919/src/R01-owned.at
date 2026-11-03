@@ -1,0 +1,29 @@
+// PLAN-919 scenario R01 (av cell, owned profile): the T03/R04/R05 resource
+// shapes in one program — clone/move/concat (T03), record construction with
+// owned fields (R04), a `move` parameter relay across frames (R05) — plus
+// an early-return branch whose temporary dies with the callee frame.
+// Frozen oracle: value 732; 4 frames; per-owner LIFO releases.
+type Item { name Str; code int }
+fn relay(move x Item) Item { return x.move }
+fn pick(move s Str) int {
+    let t Str = "tail"
+    if s.len() > 2 {
+        return s.len() + t.len()
+    }
+    let u Str = "u"
+    return s.len() + u.len()
+}
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "中"
+    var it Item = Item("hello", 1)
+    let keep Item = it.clone()
+    it.name = "x"
+    let got Item = relay(keep.move)
+    let early = pick(c.move)
+    let d Str = a.clone()
+    let late = pick(d.move)
+    return early * 100 + late * 10 + got.code + it.name.len()
+}

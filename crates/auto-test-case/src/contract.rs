@@ -1611,6 +1611,11 @@ fn decode_options(
                         "ac-av/owned-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-919: the lifecycle recipes share the run/edit
+                        // vocabulary (the judged step is the run).
+                        "ac-av/resource-events-v1" | "ac/mir-native-resource-events-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
                         // PLAN-822: the collections recipe shares the av
                         // step vocabulary (runs + discriminating edits).
                         "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
@@ -1806,6 +1811,7 @@ fn decode_options(
                     || recipe == "ac-av/data-run-v1"
                     || recipe == "ac-av/data-incremental-v1"
                     || recipe == "ac-av/owned-run-v1"
+                    || recipe == "ac-av/resource-events-v1"
                     || recipe == "ac-av/collections-run-v1"
                     || recipe == "ac-av/collections-source-run-v1"
                     || recipe == "ac-av/loaded-run-v1"
@@ -1956,6 +1962,7 @@ fn decode_options(
                         || recipe == "ac-av/data-run-v1"
                     || recipe == "ac-av/data-incremental-v1"
                         || recipe == "ac-av/owned-run-v1"
+                        || recipe == "ac-av/resource-events-v1"
                         || recipe == "ac-av/collections-run-v1"
                         || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
@@ -1981,6 +1988,7 @@ fn decode_options(
                         && recipe != "ac-av/console-run-v1"
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
+                        && recipe != "ac-av/resource-events-v1"
                         && recipe != "ac-av/collections-run-v1"
                         && recipe != "ac-av/collections-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
@@ -2010,7 +2018,11 @@ fn decode_options(
                 }
                 let apath = f.path_of("av");
                 let pairs = as_obj(v, &apath)?;
-                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile", "invalidation"])?;
+                let sf = Fields::new(
+                    &apath,
+                    pairs,
+                    &["entry", "caps", "session", "profile", "invalidation", "resource"],
+                )?;
                 let entry = req_str(&sf, "entry")?;
                 // PLAN-862: the SOURCE-profile selector (append-only). A
                 // check that omits it keeps the historical scalar path
@@ -2135,12 +2147,71 @@ fn decode_options(
                         })
                     }
                 };
+                // PLAN-919: the lifecycle recipe's binding — the source
+                // PROFILE (one of the two admitted production profiles)
+                // and the R06 exit knobs. Operations and budgets only.
+                let resource = match sf.sub("resource") {
+                    None => {
+                        if recipe == "ac-av/resource-events-v1" {
+                            return Err(err(
+                                &sf.path_of("resource"),
+                                "ac-av/resource-events-v1 requires av.resource { profile, .. }",
+                            ));
+                        }
+                        None
+                    }
+                    Some(rv) => {
+                        if recipe != "ac-av/resource-events-v1" {
+                            return Err(err(
+                                &sf.path_of("resource"),
+                                format!(
+                                    "av.resource belongs to ac-av/resource-events-v1, not {recipe:?}"
+                                ),
+                            ));
+                        }
+                        let rpath = sf.path_of("resource");
+                        let rpairs = as_obj(rv, &rpath)?;
+                        let rf = Fields::new(
+                            &rpath,
+                            rpairs,
+                            &["profile", "max_steps", "wall_ms", "cancel_after_ms"],
+                        )?;
+                        let rprofile = req_str(&rf, "profile")?;
+                        if rprofile != "owned" && rprofile != "collections" {
+                            return Err(err(
+                                &rf.path_of("profile"),
+                                format!(
+                                    "unknown resource profile {rprofile:?} (owned | collections)"
+                                ),
+                            ));
+                        }
+                        let knob = |k: &str| -> Result<Option<u64>, ContractError> {
+                            match rf.sub(k) {
+                                None => Ok(None),
+                                Some(kv) => match kv {
+                                    CVal::Int(n) if *n >= 1 => Ok(Some(*n as u64)),
+                                    _ => Err(err(
+                                        &rf.path_of(k),
+                                        format!("{k} must be an integer >= 1 (a zero budget judges nothing)"),
+                                    )),
+                                },
+                            }
+                        };
+                        Some(ProbeAvResourceSpec {
+                            profile: rprofile,
+                            max_steps: knob("max_steps")?,
+                            wall_ms: knob("wall_ms")?,
+                            cancel_after_ms: knob("cancel_after_ms")?,
+                        })
+                    }
+                };
                 Some(ProbeAvSpec {
                     entry,
                     caps,
                     session,
                     profile,
                     invalidation,
+                    resource,
                 })
             }
         };
@@ -2214,6 +2285,7 @@ fn decode_options(
                     "ac/mir-native-scalar-v1"
                         | "ac/mir-native-collections-v1"
                         | "ac/mir-native-typed-v1"
+                        | "ac/mir-native-resource-events-v1"
                 ) {
                     return Err(err(
                         &f.path_of("mn"),
@@ -2228,6 +2300,7 @@ fn decode_options(
                     "ac/mir-native-scalar-v1"
                         | "ac/mir-native-collections-v1"
                         | "ac/mir-native-typed-v1"
+                        | "ac/mir-native-resource-events-v1"
                 ) {
                     return Err(err(
                             &f.path_of("mn"),
@@ -2249,6 +2322,7 @@ fn decode_options(
                         "typed",
                         "diagnostics",
                         "declaration",
+                        "resource",
                     ],
                 )?;
                 let entry = req_str(&mf, "entry")?;
@@ -2404,6 +2478,55 @@ fn decode_options(
                         })
                     }
                 };
+                // PLAN-919: the native lifecycle recipe's exit knobs
+                // (guest byte budget, cancellation after N work units,
+                // the Nth-allocation fault) — driven by the generated
+                // entry wrapper, never by a parent-side kill.
+                let resource = match mf.sub("resource") {
+                    None => {
+                        if recipe == "ac/mir-native-resource-events-v1" {
+                            return Err(err(
+                                &mf.path_of("resource"),
+                                "ac/mir-native-resource-events-v1 requires mn.resource { .. }",
+                            ));
+                        }
+                        None
+                    }
+                    Some(rv) => {
+                        if recipe != "ac/mir-native-resource-events-v1" {
+                            return Err(err(
+                                &mf.path_of("resource"),
+                                format!(
+                                    "mn.resource belongs to ac/mir-native-resource-events-v1, not {recipe:?}"
+                                ),
+                            ));
+                        }
+                        let rpath = mf.path_of("resource");
+                        let rpairs = as_obj(rv, &rpath)?;
+                        let rf = Fields::new(
+                            &rpath,
+                            rpairs,
+                            &["budget_bytes", "cancel_after_work", "fail_nth"],
+                        )?;
+                        let knob = |k: &str| -> Result<Option<u64>, ContractError> {
+                            match rf.sub(k) {
+                                None => Ok(None),
+                                Some(kv) => match kv {
+                                    CVal::Int(n) if *n >= 1 => Ok(Some(*n as u64)),
+                                    _ => Err(err(
+                                        &rf.path_of(k),
+                                        format!("{k} must be an integer >= 1 (a zero budget judges nothing)"),
+                                    )),
+                                },
+                            }
+                        };
+                        Some(ProbeMnResourceSpec {
+                            budget_bytes: knob("budget_bytes")?,
+                            cancel_after_work: knob("cancel_after_work")?,
+                            fail_nth: knob("fail_nth")?,
+                        })
+                    }
+                };
                 Some(ProbeMnSpec {
                     entry,
                     caps,
@@ -2411,6 +2534,7 @@ fn decode_options(
                     typed,
                     diagnostics,
                     declaration,
+                    resource,
                 })
             }
         };
@@ -2590,6 +2714,12 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // recipe — frozen corpus sources and typed place witnesses through the
     // real AV executor; the parent judges the frozen attempt counts.
     "ac-av/resource-run-v1",
+    // PLAN-919: the per-owner lifecycle recipes (scenario R01/R04/R06 av/ac
+    // cells) — real sources on the admitted production profiles with the
+    // bounded observation channel on and the budget/cancel exit knobs;
+    // parent-side judgement against frozen invariants and per-case tables.
+    "ac-av/resource-events-v1",
+    "ac/mir-native-resource-events-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
@@ -2669,6 +2799,20 @@ pub struct ProbeAvSpec {
     /// whose resident code identity must be CARRIED across an edit and the
     /// defs the dependency-precise rebuild must actually contain.
     pub invalidation: Option<ProbeAvInvalidationSpec>,
+    /// PLAN-919: the lifecycle recipe's source profile and exit knobs.
+    pub resource: Option<ProbeAvResourceSpec>,
+}
+
+/// PLAN-919 ac-av/resource-events-v1 binding: the admitted production
+/// source profile the program runs on (`owned` | `collections`) and the
+/// optional R06 exit knobs (instruction budget, wall budget, host
+/// cancellation delay). Expectations never ride here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeAvResourceSpec {
+    pub profile: String,
+    pub max_steps: Option<u64>,
+    pub wall_ms: Option<u64>,
+    pub cancel_after_ms: Option<u64>,
 }
 
 /// PLAN-914 ac-av/data-incremental-v1 invalidation oracle.
@@ -2718,6 +2862,19 @@ pub struct ProbeMnSpec {
     /// CARRIED (the unaffected units). Declared expectations never reach
     /// the worker.
     pub declaration: Option<ProbeMnDeclarationSpec>,
+    /// PLAN-919: the native lifecycle recipe's exit knobs.
+    pub resource: Option<ProbeMnResourceSpec>,
+}
+
+/// PLAN-919 ac/mir-native-resource-events-v1 binding: the R06 exit knobs
+/// the generated entry wrapper installs into the collections runtime
+/// before the entry runs (`mn_coll_set_budget` / `mn_coll_cancel_after_work`
+/// / `mn_coll_fail_nth`). Expectations never ride here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnResourceSpec {
+    pub budget_bytes: Option<u64>,
+    pub cancel_after_work: Option<u64>,
+    pub fail_nth: Option<u64>,
 }
 
 /// PLAN-914 ac/mir-native-collections-v1 declaration-invalidation oracle.

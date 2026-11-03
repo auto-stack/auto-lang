@@ -17,6 +17,8 @@ pub mod closures_source_recovery;
 pub mod coff_admission;
 pub mod collections_864_session;
 pub mod collections_864_support;
+// PLAN-919: the observed (lifecycle-channel) source→AV seam.
+pub mod resource_events;
 pub mod collections_fixture;
 pub mod collections_session;
 pub mod data_driver;

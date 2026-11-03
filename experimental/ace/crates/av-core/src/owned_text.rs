@@ -41,15 +41,38 @@ pub struct ArenaCore {
     /// buffer exists — attempt recorded, successful_alloc unchanged.
     pub attempts: u64,
     pub fault_at: Option<u64>,
+    /// PLAN-919: optional observer of every free report (the lifecycle
+    /// channel orders buffer frees against slot events). `None` in every
+    /// path that did not enable observation — zero behavior change.
+    pub free_hook: Option<FreeHook>,
+}
+
+/// A cloneable free-report observer (`(id, bytes)`); the arena never
+/// reads anything back from it.
+#[derive(Clone)]
+pub struct FreeHook(pub std::rc::Rc<dyn Fn(u64, usize)>);
+
+impl std::fmt::Debug for FreeHook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FreeHook(..)")
+    }
 }
 
 impl ArenaCore {
     /// Report the final release of buffer `id` (called from
     /// `StrHandle::drop` while the payload is still readable).
     pub fn report_free(core: &std::rc::Rc<std::cell::RefCell<Self>>, id: u64, bytes: usize) {
-        let mut g = core.borrow_mut();
-        g.frees.push(FreeEvent { id, bytes });
-        g.live_ids.remove(&id);
+        let hook = {
+            let mut g = core.borrow_mut();
+            g.frees.push(FreeEvent { id, bytes });
+            g.live_ids.remove(&id);
+            g.free_hook.clone()
+        };
+        // The hook runs OUTSIDE the ledger borrow: it only appends to the
+        // (separate) lifecycle log, never touches the arena.
+        if let Some(h) = hook {
+            (h.0)(id, bytes);
+        }
     }
 }
 
@@ -77,6 +100,11 @@ impl StrArena {
     /// Number of owned buffers currently alive.
     pub fn live(&self) -> usize {
         self.core.borrow().live_ids.len()
+    }
+
+    /// PLAN-919: install the free-report observer (lifecycle channel).
+    pub fn set_free_hook(&self, hook: FreeHook) {
+        self.core.borrow_mut().free_hook = Some(hook);
     }
 
     /// Test-only fault seam (V-03/V-07): fail the Nth allocation ATTEMPT.

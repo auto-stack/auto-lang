@@ -126,6 +126,11 @@ pub struct ExecTrace {
     /// PLAN-915: gated place facts (`observe_places`); `None` in every
     /// production path.
     pub place_facts: Option<PlaceFacts>,
+    /// PLAN-919: the bounded per-owner lifecycle event log (disabled and
+    /// empty unless the execution was started through
+    /// [`execute_observed`]; shares its storage with the arena free hook
+    /// so post-execution result drops keep appending `free` facts).
+    pub lifecycle: crate::lifecycle::LifecycleLog,
 }
 
 /// PLAN-915 R03 observation: what the List-Place path actually did.
@@ -292,7 +297,31 @@ fn execute_module_impl(
     arena: crate::owned_text::StrArena,
     optimize: bool,
 ) -> (ExecOutcome, ExecTrace) {
-    execute_module_impl_with_host(module, limits, cancel, args, arena, optimize, None)
+    execute_module_impl_with_host(module, limits, cancel, args, arena, optimize, None, None)
+}
+
+/// PLAN-919: execute the zero-arg entry with the per-owner lifecycle
+/// channel ENABLED (`av.lifecycle/1`). Identical language semantics to
+/// [`execute`]; the returned trace's `lifecycle` log carries every frame /
+/// own / disown / free / end event of the run, and keeps receiving `free`
+/// facts while the caller still holds the result value.
+pub fn execute_observed(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    let log = crate::lifecycle::LifecycleLog::default();
+    log.enable();
+    execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        true,
+        None,
+        Some(log),
+    )
 }
 
 /// PLAN-863: structural credentials carry no authority; current grants are checked per run.
@@ -312,6 +341,7 @@ pub fn execute_console(
         crate::owned_text::StrArena::new(),
         false,
         Some(provider),
+        None,
     ))
 }
 
@@ -337,6 +367,7 @@ fn execute_module_impl_with_host(
     arena: crate::owned_text::StrArena,
     optimize: bool,
     host: Option<&mut dyn crate::host::ConsoleHost>,
+    observed: Option<crate::lifecycle::LifecycleLog>,
 ) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
     if !m.host_imports.is_empty() && host.is_none() {
@@ -409,6 +440,19 @@ fn execute_module_impl_with_host(
         ..Default::default()
     };
     st.trace.arena = Some(st.arena.clone());
+    // PLAN-919: wire the lifecycle channel BEFORE the first frame commits
+    // so the root frame's `frame-enter` is the first event; the arena free
+    // hook routes every buffer free (during AND after the run) into the
+    // same seq-ordered log.
+    if let Some(log) = observed {
+        st.lifecycle_on = true;
+        st.trace.lifecycle = log.clone();
+        let hook_log = log;
+        st.arena
+            .set_free_hook(crate::owned_text::FreeHook(std::rc::Rc::new(
+                move |id, bytes| hook_log.push_free(id, bytes),
+            )));
+    }
     let index_bytes = loaded.as_ref().map_or(0, |loaded| loaded.usage().0);
     let limits = match limits_with_loaded_index(limits, index_bytes) {
         Ok(limits) => limits,
@@ -445,7 +489,123 @@ fn execute_module_impl_with_host(
         cleanup_owned_frames(&mut st);
     }
     finish_trace(&mut st, &limits);
+    // PLAN-919: seal the lifecycle log AFTER the shared trace finisher.
+    if st.lifecycle_on {
+        st.trace.lifecycle.push_end(lifecycle_end_info(&out, st.steps));
+    }
     (out, st.trace)
+}
+
+/// PLAN-919: the `end` marker's pure-data view of an execution outcome.
+fn lifecycle_end_info(out: &ExecOutcome, steps: u64) -> crate::lifecycle::EndInfo {
+    use crate::lifecycle::EndInfo;
+    match out {
+        ExecOutcome::Success { value, .. } => EndInfo {
+            outcome: "success",
+            value: match value {
+                Value::I32(v) => Some(*v),
+                _ => None,
+            },
+            trap: None,
+            resource: None,
+            steps,
+        },
+        ExecOutcome::Trap { kind, .. } => EndInfo {
+            outcome: "trap",
+            value: None,
+            trap: Some(kind.code().to_string()),
+            resource: None,
+            steps,
+        },
+        ExecOutcome::Resource { kind, .. } => EndInfo {
+            outcome: "resource",
+            value: None,
+            trap: None,
+            resource: Some(kind.code().to_string()),
+            steps,
+        },
+        ExecOutcome::Cancelled => EndInfo {
+            outcome: "cancelled",
+            value: None,
+            trap: None,
+            resource: None,
+            steps,
+        },
+        ExecOutcome::Infra(_) => EndInfo {
+            outcome: "infra",
+            value: None,
+            trap: None,
+            resource: None,
+            steps,
+        },
+    }
+}
+
+/// PLAN-919: the owner identity of a slot value — `(kind, id, order key)`;
+/// `None` for scalars/views/placeholders (not owners). Buffer kinds carry
+/// the arena id; composites carry `id 0` and the sweep ordering key.
+fn owned_identity(val: &Value) -> Option<(crate::lifecycle::OwnerKind, u64, u64)> {
+    use crate::lifecycle::OwnerKind;
+    match val {
+        // Detached handles (typed placeholders) and `ty == u32::MAX`
+        // composites are never-observed placeholders, not owners.
+        Value::Str(h) if h.is_attached() => Some((OwnerKind::Str, h.rc.id, h.rc.id)),
+        Value::List(h) if h.is_attached() => {
+            let id = h.buf_id();
+            Some((OwnerKind::List, id, id))
+        }
+        Value::Record(r) if r.ty != u32::MAX => Some((OwnerKind::Record, 0, min_buffer_id(val))),
+        // A variant written by VariantSwitch inherits the placeholder's
+        // `ty == u32::MAX` (the switch carries no nominal type), so the
+        // placeholder test is "no nominal type AND no payload": a
+        // payload-less shell owns nothing; any payload makes it an owner.
+        Value::Variant(v) if v.ty != u32::MAX || v.payload.is_some() => {
+            Some((OwnerKind::Variant, 0, min_buffer_id(val)))
+        }
+        Value::Closure(cref) => Some((OwnerKind::ClosureEnv, cref.env, cref.env)),
+        _ => None,
+    }
+}
+
+/// PLAN-919: emit `own` for the value now held by `(frame, slot)` of the
+/// CURRENT frame (after the write landed and the generation bumped).
+fn lifecycle_own_current(st: &LoopState, slot: usize) {
+    if !st.lifecycle_on {
+        return;
+    }
+    let fr = st.frames.last().expect("frame present");
+    if let Some((kind, id, key)) = owned_identity(&fr.slots[slot]) {
+        st.trace
+            .lifecycle
+            .push_own(kind, id, key, fr.seq, slot as u32, fr.gens[slot]);
+    }
+}
+
+/// PLAN-919: emit `disown` for a value about to leave `(frame, slot)` of
+/// the CURRENT frame, `gen_back` generations before the slot's current
+/// one (callers that already bumped the generation pass 1).
+fn lifecycle_disown_at(
+    st: &LoopState,
+    slot: usize,
+    val: &Value,
+    via: crate::lifecycle::DisownVia,
+    gen_back: u64,
+) {
+    if !st.lifecycle_on {
+        return;
+    }
+    let fr = st.frames.last().expect("frame present");
+    if let Some((kind, id, key)) = owned_identity(val) {
+        st.trace.lifecycle.push_disown(
+            kind,
+            id,
+            key,
+            via,
+            fr.seq,
+            slot as u32,
+            fr.gens[slot].wrapping_sub(gen_back),
+        );
+    }
 }
 
 fn limits_with_loaded_index(
@@ -798,6 +958,9 @@ struct LoopState {
     /// store outlives frames (a closure escapes its creator's frame); env
     /// bytes count toward `slot_bytes` (the one value-data line).
     closure_envs: std::collections::HashMap<u64, ClosureEntry>,
+    /// PLAN-919: fast gate for the lifecycle channel (one bool check per
+    /// hook site; the RefCell is only touched when enabled).
+    lifecycle_on: bool,
 }
 
 struct ClosureEntry {
@@ -1453,7 +1616,13 @@ fn commit_slot_write(
     // reverse cleanup — VariantSwitch's old live-arm payload, FieldSet's
     // old field chain, re-assignments over owned slots — never the host
     // drop glue, which recurses through arbitrarily deep chains.
+    // PLAN-919: the slot's responsibility for the dying value ends HERE
+    // (a terminal `replaced` disown at the PRE-bump generation — the one
+    // its `own` was recorded under — before its release walk).
+    lifecycle_disown_at(st, slot, &dying, crate::lifecycle::DisownVia::Replaced, 1);
     drop_owned_reverse(st, dying);
+    // PLAN-919: the slot now owns the freshly written value.
+    lifecycle_own_current(st, slot);
     Ok(())
 }
 
@@ -1762,16 +1931,21 @@ fn resolve_view_bytes<V: ModuleView>(
 /// Release one frame's owned values in descending creation order
 /// (shared by the RETURN path and the unwind path).
 fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
-    let mut owned: Vec<(u64, Value)> = Vec::new();
-    for slot_val in frame.slots.iter_mut() {
+    let frame_seq = frame.seq;
+    // (order key, value, slot index, slot generation) — the slot
+    // attribution is captured in the collection pass because the slots
+    // are zeroed as they are collected (PLAN-919 slot-level disowns).
+    let mut owned: Vec<(u64, Value, u32, u64)> = Vec::new();
+    for (idx, slot_val) in frame.slots.iter_mut().enumerate() {
+        let gen = frame.gens[idx];
         match slot_val {
             Value::Str(h) => {
-                owned.push((h.rc.id, Value::Str(h.clone())));
+                owned.push((h.rc.id, Value::Str(h.clone()), idx as u32, gen));
                 *slot_val = Value::I32(0);
             }
             Value::Record(_) => {
                 let min_id = min_buffer_id(slot_val);
-                owned.push((min_id, slot_val.clone()));
+                owned.push((min_id, slot_val.clone(), idx as u32, gen));
                 *slot_val = Value::I32(0);
             }
             // F822-R2-03: lists join the LIFO sweep by their creation-
@@ -1779,12 +1953,12 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
             // drop_owned_reverse (contract §4 / V-06).
             Value::List(_) => {
                 let min_id = min_buffer_id(slot_val);
-                owned.push((min_id, slot_val.clone()));
+                owned.push((min_id, slot_val.clone(), idx as u32, gen));
                 *slot_val = Value::I32(0);
             }
             Value::Variant(_) => {
                 let min_id = min_buffer_id(slot_val);
-                owned.push((min_id, slot_val.clone()));
+                owned.push((min_id, slot_val.clone(), idx as u32, gen));
                 *slot_val = Value::I32(0);
             }
             // PLAN-823: a closure slot's env payload lives in the STORE —
@@ -1794,6 +1968,19 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
             // Return arm zeroes the returning slot first (responsibility
             // transferred OUT in `rv`).
             Value::Closure(cref) => {
+                // PLAN-919: closure slot identities release during the
+                // collection pass (the actual order of the sweep).
+                if st.lifecycle_on {
+                    st.trace.lifecycle.push_disown(
+                        crate::lifecycle::OwnerKind::ClosureEnv,
+                        cref.env,
+                        cref.env,
+                        crate::lifecycle::DisownVia::Swept,
+                        frame_seq,
+                        idx as u32,
+                        gen,
+                    );
+                }
                 // A stale reference must not release another live owner.
                 if closure_ref_valid(st, *cref) {
                     release_closure_env(st, cref.env);
@@ -1804,7 +1991,22 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
         }
     }
     owned.sort_by(|a, b| b.0.cmp(&a.0));
-    for (_, val) in owned {
+    // PLAN-919: the sweep's disowns record the ACTUAL release order —
+    // descending creation key, the frozen LIFO cross-type rule.
+    for (_, val, slot_of, gen_of) in owned {
+        if st.lifecycle_on {
+            if let Some((kind, id, key)) = owned_identity(&val) {
+                st.trace.lifecycle.push_disown(
+                    kind,
+                    id,
+                    key,
+                    crate::lifecycle::DisownVia::Swept,
+                    frame_seq,
+                    slot_of,
+                    gen_of,
+                );
+            }
+        }
         st.steps += 1; // reserved cleanup fuel
         drop_owned_reverse(st, val);
     }
@@ -1829,7 +2031,14 @@ fn release_closure_env(st: &mut LoopState, handle: u64) {
 
 fn cleanup_owned_frames(st: &mut LoopState) {
     while let Some(mut frame) = st.frames.pop() {
+        let frame_seq = frame.seq;
         release_frame_owned_lifo(st, &mut frame);
+        // PLAN-919: unwind-path frame leaves (trap / budget / cancel).
+        if st.lifecycle_on {
+            st.trace
+                .lifecycle
+                .push_frame_leave(frame_seq, true);
+        }
         drop(frame);
     }
     // A rejected stale reference cannot release a different environment.
@@ -1838,6 +2047,18 @@ fn cleanup_owned_frames(st: &mut LoopState) {
     let mut remaining: Vec<u64> = st.closure_envs.keys().copied().collect();
     remaining.sort_unstable_by(|a, b| b.cmp(a));
     for handle in remaining {
+        // PLAN-919: orphaned envs terminal-disown before their release.
+        if st.lifecycle_on {
+            st.trace.lifecycle.push_disown(
+                crate::lifecycle::OwnerKind::ClosureEnv,
+                handle,
+                handle,
+                crate::lifecycle::DisownVia::Orphan,
+                0,
+                crate::lifecycle::NO_SLOT,
+                0,
+            );
+        }
         release_closure_env(st, handle);
     }
 }
@@ -1985,6 +2206,22 @@ fn owned_kill_slot(st: &mut LoopState, slot: usize, zero: Value) {
         // whatever drop order the assignment would choose.
         let dying = std::mem::replace(&mut fr.slots[slot], zero);
         fr.gens[slot] = fr.gens[slot].wrapping_add(1);
+        // PLAN-919: a kill ends the slot's responsibility with the value
+        // ALIVE (call argument / aggregate operand / payload move): a
+        // non-terminal `moved-out` disown at the pre-bump generation.
+        if st.lifecycle_on {
+            if let Some((kind, id, key)) = owned_identity(&dying) {
+                st.trace.lifecycle.push_disown(
+                    kind,
+                    id,
+                    key,
+                    crate::lifecycle::DisownVia::MovedOut,
+                    fr.seq,
+                    slot as u32,
+                    fr.gens[slot].wrapping_sub(1),
+                );
+            }
+        }
         drop_owned_reverse(st, dying);
     }
 }
@@ -2365,6 +2602,10 @@ fn dispatch_with_host<V: ModuleView>(
         st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
         st.frames.push(frame);
         st.trace.root_frame_commits += 1;
+        // PLAN-919: the root activation is the first lifecycle event.
+        if st.lifecycle_on {
+            st.trace.lifecycle.push_frame_enter(st.frame_seq);
+        }
     }
 
     loop {
@@ -2378,6 +2619,17 @@ fn dispatch_with_host<V: ModuleView>(
             return Some(ExecOutcome::Resource {
                 kind: ResourceKind::InstrSteps,
                 message: format!("execution exceeded {} instruction steps", limits.max_steps),
+            });
+        }
+        // PLAN-919: a full lifecycle log is a NAMED refusal at the next
+        // step boundary — never a silently truncated event stream.
+        if st.lifecycle_on && st.trace.lifecycle.overflowed() {
+            return Some(ExecOutcome::Resource {
+                kind: ResourceKind::LifecycleEvents,
+                message: format!(
+                    "lifecycle observation exceeded {} events",
+                    crate::lifecycle::MAX_EVENTS
+                ),
             });
         }
         // Poll at ≥INTERVAL steps since the LAST poll (data-profile writes
@@ -2665,6 +2917,12 @@ fn dispatch_with_host<V: ModuleView>(
                     // generation both move on). R1-F08: the kill is
                     // SIG-DRIVEN — a borrowed (view-kind) callee param
                     // keeps the caller's ownership (782 ABI-D `*const`).
+                    // PLAN-919: the callee activation enters BEFORE its
+                    // parameters' transfer events (moved-out → received).
+                    if st.lifecycle_on {
+                        st.trace.lifecycle.push_frame_enter(seq);
+                    }
+                    let mut moved_params: Vec<usize> = Vec::new();
                     {
                         let callee_sig_ty = v.mir_type_of(target, callee_fn.sig);
                         for (ai, a) in args.iter().enumerate() {
@@ -2679,6 +2937,32 @@ fn dispatch_with_host<V: ModuleView>(
                             if v.type_is_owned(func_idx, ty) && !param_borrows {
                                 let zero = v.zero_of(func_idx, ty);
                                 owned_kill_slot(st, *a as usize, zero);
+                                moved_params.push(ai);
+                            }
+                        }
+                    }
+                    // PLAN-919: the callee's owned parameter slots receive
+                    // the moved identities (slot-level `own(received)`).
+                    if st.lifecycle_on {
+                        let param_slots: Vec<usize> = callee_fn
+                            .slots
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, s)| s.kind == crate::mir::SlotKind::Param)
+                            .map(|(i, _)| i)
+                            .collect();
+                        for ai in moved_params {
+                            if let Some(&slot_idx) = param_slots.get(ai) {
+                                if let Some((kind, id, key)) = owned_identity(&nf.slots[slot_idx]) {
+                                    st.trace.lifecycle.push_own(
+                                        kind,
+                                        id,
+                                        key,
+                                        seq,
+                                        slot_idx as u32,
+                                        nf.gens[slot_idx],
+                                    );
+                                }
                             }
                         }
                     }
@@ -3172,6 +3456,11 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     // Sig-driven move-in kills (mirror CALL; the signature
                     // comes from the Closure type, never an Fn slot).
+                    // PLAN-919: mirror CALL's lifecycle events too.
+                    if st.lifecycle_on {
+                        st.trace.lifecycle.push_frame_enter(nf.seq);
+                    }
+                    let mut moved_params: Vec<usize> = Vec::new();
                     {
                         let callee_sig_ty = v.mir_type_of(cref.func, callee_fn.sig);
                         for (ai, a) in args.iter().enumerate() {
@@ -3188,6 +3477,30 @@ fn dispatch_with_host<V: ModuleView>(
                             if v.type_is_owned(func_idx, ty) && !param_borrows {
                                 let zero = v.zero_of(func_idx, ty);
                                 owned_kill_slot(st, *a as usize, zero);
+                                moved_params.push(ai);
+                            }
+                        }
+                    }
+                    if st.lifecycle_on {
+                        let param_slots: Vec<usize> = callee_fn
+                            .slots
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, s)| s.kind == crate::mir::SlotKind::Param)
+                            .map(|(i, _)| i)
+                            .collect();
+                        for ai in moved_params {
+                            if let Some(&slot_idx) = param_slots.get(ai) {
+                                if let Some((kind, id, key)) = owned_identity(&nf.slots[slot_idx]) {
+                                    st.trace.lifecycle.push_own(
+                                        kind,
+                                        id,
+                                        key,
+                                        nf.seq,
+                                        slot_idx as u32,
+                                        nf.gens[slot_idx],
+                                    );
+                                }
                             }
                         }
                     }
@@ -5186,8 +5499,13 @@ fn dispatch_with_host<V: ModuleView>(
                 // release in reverse creation order (result responsibility
                 // already transferred OUT in `rv`).
                 let mut frame = st.frames.pop().expect("frame present");
+                let left_seq = frame.seq;
                 release_frame_owned_lifo(st, &mut frame);
                 drop(frame);
+                // PLAN-919: the Return-path frame leave (after its sweep).
+                if st.lifecycle_on {
+                    st.trace.lifecycle.push_frame_leave(left_seq, false);
+                }
                 match (st.frames.last_mut(), ret_dst) {
                     (Some(_), Some(dst)) => {
                         if let Err(out) = commit_slot_write(st, dst as usize, rv, limits) {

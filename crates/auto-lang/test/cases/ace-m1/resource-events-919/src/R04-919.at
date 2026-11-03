@@ -1,0 +1,11 @@
+// PLAN-919 scenario R04 (both cells): variant switch V06 — Err("old") is
+// replaced by Ok(42); the old payload releases EXACTLY once at the switch,
+// the inactive payload is never read, the result is 42.
+fn main() int {
+    var r Result<int, Str> = Err("old")
+    r = Ok(42)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}

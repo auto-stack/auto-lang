@@ -165,3 +165,7 @@ mod owned_text_incremental;
 
 #[path = "cases/text_semantics.rs"]
 mod text_semantics;
+
+// PLAN-919: per-owner lifecycle events (R01/R04/R06 av cells).
+#[path = "cases/resource_events_919.rs"]
+mod resource_events_919;

@@ -90,4 +90,14 @@ frame/slot/buf_id/epoch/index/elem_gen 六元组）在 scenario R03 上的正式
   "Snapshot 语义下旧 view 读旧字节"与"List 结构变更后旧 token 失效"是两条不同规则，
   不把全部旧 view 判无效。
 - 证据入口：`case-ace-m1-resource-915`；合同见
-  [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。
+  [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。---
+
+## PLAN-919 附录：动作观察与最后 owner（2026-11-03）
+
+资源/借用语言面不变；本节冻结**观察面**：`av.lifecycle/1` 在既有执行路径上记录
+逐 owner 的 own(created|received)/disown(moved-out|replaced|swept|orphan) 与
+buffer free 事实（seq 连续，arena free 钩子覆盖 host drop）。转移≠释放：moved-out
+之后同一 buffer id 在接收槽 received；共享 view 下 buffer 只在最后 owner 释放
+（槽级 disown 早于 free 事件是合法序）。sweep 按 min buffer id 降序（跨类型 LIFO）
+可父侧判伪。观察关闭＝零事件且结果逐字节一致。规范正文见
+[resource-lifecycle-observations.md](../auto-test-case/resource-lifecycle-observations.md)。

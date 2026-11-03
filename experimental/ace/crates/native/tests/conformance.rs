@@ -54,3 +54,7 @@ mod owned_text_incremental;
 
 #[path = "cases/owned_text_performance.rs"]
 mod owned_text_performance;
+
+// PLAN-919: per-owner lifecycle events (R01/R04/R06 ac cells).
+#[path = "cases/collections_resource_events_919.rs"]
+mod collections_resource_events_919;

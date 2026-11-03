@@ -782,6 +782,20 @@ suite = "crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suit
 domain = "ace"
 all = false
 
+# PLAN-919: the per-owner lifecycle scenario suite (R01/R04/R06 on the
+# av/owned + native collections production paths; budget/cancel/trap exits).
+[[group]]
+name = "case-ace-m1-resource-events-919"
+title = "ACE M1 resource lifecycle scenario 919 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/resource-events-919/resource-events-919.suite.ad"
+all = false
+
 # PLAN-914: the named evaluation-order scenario suite (E01/E02 on the four
 # real production paths; I04/I09 join in T-04).
 [[group]]

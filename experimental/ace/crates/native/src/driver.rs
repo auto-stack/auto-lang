@@ -147,6 +147,10 @@ pub enum CacheMode {
 pub struct MnDriver {
     store: Option<ManagedStore>,
     project: Option<String>,
+    /// PLAN-919: the R06 exit knobs + observation switch for the NEXT
+    /// collections wrapper emission (resource-events requests only; the
+    /// default is the historical all-off wrapper).
+    pub resource_knobs: crate::collections_lower::WrapperKnobs,
     /// Fault seam for the hit-path counter control: when set, ANY attempt
     /// to lower a unit aborts — a "hit" that secretly recompiled cannot
     /// pass as a hit.
@@ -221,6 +225,7 @@ impl MnDriver {
             project: None,
             forbid_codegen: false,
             test_omit_collections_runtime: false,
+            resource_knobs: Default::default(),
             last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
@@ -235,6 +240,7 @@ impl MnDriver {
             project: Some(project.to_string()),
             forbid_codegen: false,
             test_omit_collections_runtime: false,
+            resource_knobs: Default::default(),
             last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
@@ -250,6 +256,7 @@ impl MnDriver {
             project: Some(project.to_string()),
             forbid_codegen: false,
             test_omit_collections_runtime: false,
+            resource_knobs: Default::default(),
             last_collections_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),

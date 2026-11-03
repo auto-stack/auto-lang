@@ -106,6 +106,8 @@ pub struct Frame {
     cells: *mut Cell,
     count: usize,
     charge: usize,
+    /// PLAN-919: activation identity (frame nesting events).
+    seq: u64,
 }
 
 const TEXT: u32 = 1;
@@ -129,6 +131,8 @@ struct Node {
     payload: Cell,
     bytes: usize,
     guest: usize,
+    /// PLAN-919: creation-order owner identity (the LIFO order key).
+    id: u64,
 }
 
 struct State {
@@ -144,6 +148,13 @@ struct State {
     attempts: u64,
     fail_nth: u64,
     budget: usize,
+    /// PLAN-919: the bounded per-owner observation channel (off by
+    /// default — zero behavior change until `mn_coll_observe_enable`).
+    observe: bool,
+    events: u64,
+    ev_capped: bool,
+    next_node_id: u64,
+    frame_seq: u64,
 }
 static mut STATE: State = State {
     head: null_mut(),
@@ -158,6 +169,11 @@ static mut STATE: State = State {
     attempts: 0,
     fail_nth: 0,
     budget: GUEST_CAP,
+    observe: false,
+    events: 0,
+    ev_capped: false,
+    next_node_id: 0,
+    frame_seq: 0,
 };
 fn state() -> &'static mut State {
     unsafe { &mut *core::ptr::addr_of_mut!(STATE) }
@@ -210,6 +226,207 @@ unsafe fn free(p: *mut u8) -> bool {
         }
     }
     true
+}
+
+// ---- PLAN-919: the bounded per-owner observation channel ------------------
+//
+// Pure data on stderr: one `MN-EVT ...` line per event, a `MN-EVTEND
+// total=` marker at the summary, and a HARD cap (`MN-COLL-EVT cap=` +
+// abort 22) — a full log is a named refusal, never silent truncation.
+// The channel is OFF until `mn_coll_observe_enable`; with it off no line
+// is written and the execution is byte-identical.
+
+const EVT_CAP: u64 = 8192;
+
+#[no_mangle]
+pub extern "system" fn mn_coll_observe_enable() {
+    state().observe = true;
+}
+
+enum Seg {
+    B(&'static [u8]),
+    N(u64),
+}
+
+fn buf_put(buf: &mut [u8], n: &mut usize, b: &[u8]) {
+    for &x in b {
+        if *n < buf.len() {
+            unsafe {
+                write(buf.as_mut_ptr().add(*n), x);
+            }
+        }
+        *n += 1;
+    }
+}
+
+fn buf_put_num(buf: &mut [u8], n: &mut usize, v: u64) {
+    let mut digits = [0u8; 20];
+    let mut k = 0;
+    let mut v = v;
+    loop {
+        unsafe {
+            write(digits.as_mut_ptr().add(k), b'0' + (v % 10) as u8);
+        }
+        k += 1;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    while k > 0 {
+        k -= 1;
+        unsafe {
+            write(buf.as_mut_ptr().add(*n), read(digits.as_ptr().add(k)));
+        }
+        *n += 1;
+    }
+}
+
+fn write_out(buf: &[u8]) {
+    let mut done = 0;
+    unsafe {
+        WriteFile(
+            GetStdHandle(-12),
+            buf.as_ptr(),
+            buf.len() as u32,
+            &mut done,
+            null_mut(),
+        );
+    }
+}
+
+fn evt(segs: &[Seg]) -> bool {
+    let s = state();
+    if !s.observe || s.ev_capped {
+        return true;
+    }
+    if s.events >= EVT_CAP {
+        // Bounded observation: refuse, never truncate.
+        s.ev_capped = true;
+        line(b"MN-COLL-EVT cap=", EVT_CAP);
+        return false;
+    }
+    s.events += 1;
+    let seq = s.events;
+    let mut buf = [0u8; 256];
+    let mut n = 0;
+    buf_put(&mut buf, &mut n, b"MN-EVT seq=");
+    buf_put_num(&mut buf, &mut n, seq);
+    for seg in segs {
+        match seg {
+            Seg::B(b) => buf_put(&mut buf, &mut n, b),
+            Seg::N(v) => buf_put_num(&mut buf, &mut n, *v),
+        }
+    }
+    buf_put(&mut buf, &mut n, b"\n");
+    write_out(&buf[..n.min(buf.len())]);
+    true
+}
+
+/// The frame/slot a cell lives in (NO_SLOT when node-internal).
+unsafe fn locate(c: *const Cell) -> (u64, u32) {
+    let heap_flag = 1usize << (usize::BITS - 1);
+    let mut f = state().frame;
+    while !f.is_null() {
+        let base = (*f).cells;
+        let count = (*f).count & !heap_flag;
+        let off = (c as usize).saturating_sub(base as usize) / core::mem::size_of::<Cell>();
+        if (c as usize) >= base as usize && off < count {
+            return ((*f).seq, off as u32);
+        }
+        f = (*f).prev;
+    }
+    (0, u32::MAX)
+}
+
+fn kind_word(kind: u32) -> &'static [u8] {
+    match kind {
+        TEXT => b"text",
+        RECORD => b"record",
+        LIST => b"list",
+        TAGGED => b"tagged",
+        _ => b"?",
+    }
+}
+
+unsafe fn cell_owner_id(cell: Cell) -> Option<(*mut Node, u64)> {
+    if cell.owned != 1 || cell.bits == 0 {
+        return None;
+    }
+    node(cell.bits).ok().map(|p| (p, (*p).id))
+}
+
+/// own event for the value now held by cell `c`.
+unsafe fn ev_own(c: *const Cell, received: bool) {
+    let s = state();
+    if !s.observe {
+        return;
+    }
+    let Some((p, id)) = cell_owner_id(read(c as *mut Cell)) else {
+        return;
+    };
+    let (fr, slot) = locate(c);
+    let via: &'static [u8] = if received { b"received" } else { b"created" };
+    if !evt(&[
+        Seg::B(b" act=own kind="),
+        Seg::B(kind_word((*p).kind)),
+        Seg::B(b" id="),
+        Seg::N(id),
+        Seg::B(b" key="),
+        Seg::N(id),
+        Seg::B(b" via="),
+        Seg::B(via),
+        Seg::B(b" frame="),
+        Seg::N(fr),
+        Seg::B(b" slot="),
+        Seg::N(slot as u64),
+    ]) {
+        mn_coll_abort(RESOURCE);
+    }
+}
+
+/// disown event for the value leaving cell `c`.
+unsafe fn ev_disown(c: *const Cell, via: &'static [u8]) {
+    let s = state();
+    if !s.observe {
+        return;
+    }
+    let Some((p, id)) = cell_owner_id(read(c as *mut Cell)) else {
+        return;
+    };
+    let (fr, slot) = locate(c);
+    if !evt(&[
+        Seg::B(b" act=disown kind="),
+        Seg::B(kind_word((*p).kind)),
+        Seg::B(b" id="),
+        Seg::N(id),
+        Seg::B(b" key="),
+        Seg::N(id),
+        Seg::B(b" via="),
+        Seg::B(via),
+        Seg::B(b" frame="),
+        Seg::N(fr),
+        Seg::B(b" slot="),
+        Seg::N(slot as u64),
+    ]) {
+        mn_coll_abort(RESOURCE);
+    }
+}
+
+/// free fact for a destroyed node (the destruction order IS the free order).
+unsafe fn ev_free(id: u64, bytes: usize) {
+    let s = state();
+    if !s.observe {
+        return;
+    }
+    if !evt(&[
+        Seg::B(b" act=free id="),
+        Seg::N(id),
+        Seg::B(b" bytes="),
+        Seg::N(bytes as u64),
+    ]) {
+        mn_coll_abort(RESOURCE);
+    }
 }
 
 /// Registry lookup precedes any dereference of a claimed node handle.
@@ -355,25 +572,33 @@ fn release(c: Cell) {
                     state().invalid += 1;
                 }
             }
+            let gone_id = (*p).id;
+            let gone_bytes = (*p).bytes;
             uncharge((*p).bytes, (*p).guest);
             free(p.cast());
             state().nodes -= 1;
             state().frees += 1;
+            ev_free(gone_id, gone_bytes);
         }
     }
 }
 unsafe fn clear(c: *mut Cell) {
+    clear_via(c, b"dropped");
+}
+unsafe fn clear_via(c: *mut Cell, via: &'static [u8]) {
+    ev_disown(c, via);
     let old = read(c);
     write(c, EMPTY);
     release(old);
 }
 unsafe fn commit(dst: *mut Cell, c: Cell) {
-    clear(dst);
+    clear_via(dst, b"replaced");
     write(dst, c);
 }
 unsafe fn take(c: *mut Cell) -> Cell {
     let value = read(c);
     if value.owned != 0 {
+        ev_disown(c, b"moved-out");
         write(c, EMPTY);
     }
     value
@@ -405,6 +630,11 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
             }
         }
     };
+    let id = {
+        let s = state();
+        s.next_node_id += 1;
+        s.next_node_id
+    };
     unsafe {
         write(
             p,
@@ -424,6 +654,7 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
                 payload: EMPTY,
                 bytes,
                 guest,
+                id,
             },
         );
         if !state().head.is_null() {
@@ -465,6 +696,11 @@ unsafe fn enter_frame(f: *mut Frame, cells: *mut Cell, count: u64, heap_reserved
         if !heap_reserved && !arena::hold_external(bytes) {
             return Err(RESOURCE);
         }
+        let seq = {
+            let s = state();
+            s.frame_seq += 1;
+            s.frame_seq
+        };
         write(
             f,
             Frame {
@@ -477,10 +713,17 @@ unsafe fn enter_frame(f: *mut Frame, cells: *mut Cell, count: u64, heap_reserved
                         0
                     },
                 charge: bytes,
+                seq,
             },
         );
         state().frame = f;
         charge(bytes, 0);
+        if !evt(&[
+            Seg::B(b" act=frame-enter frame="),
+            Seg::N(seq),
+        ]) {
+            return Err(RESOURCE);
+        }
         Ok(())
     })())
 }
@@ -491,8 +734,18 @@ pub unsafe extern "system" fn mn_coll_frame_leave(f: *mut Frame) -> i32 {
     }
     let heap_flag = 1usize << (usize::BITS - 1);
     let count = (*f).count & !heap_flag;
+    // PLAN-919: the sweep releases each owned slot in REVERSE slot order
+    // (the emitted disowns carry the actual order); the frame-leave event
+    // closes the activation.
     for i in (0..count).rev() {
-        clear((*f).cells.add(i));
+        clear_via((*f).cells.add(i), b"swept");
+    }
+    let left_seq = (*f).seq;
+    if !evt(&[
+        Seg::B(b" act=frame-leave frame="),
+        Seg::N(left_seq),
+    ]) {
+        mn_coll_abort(RESOURCE);
     }
     if (*f).count & heap_flag != 0 {
         free((*f).cells.cast());
@@ -548,6 +801,7 @@ pub unsafe extern "system" fn mn_coll_move(dst: *mut Cell, src: *mut Cell) -> i3
         return e;
     }
     commit(dst, take(src));
+    ev_own(dst, true);
     0
 }
 #[no_mangle]
@@ -560,6 +814,7 @@ pub unsafe extern "system" fn mn_coll_share(dst: *mut Cell, src: *const Cell) ->
         return e;
     }
     commit(dst, c);
+    ev_own(dst, true);
     0
 }
 #[no_mangle]
@@ -587,6 +842,7 @@ pub unsafe extern "system" fn mn_coll_literal(dst: *mut Cell, bytes: *const u8, 
         (*p).data = data;
         (*p).len = actual as usize;
         commit(dst, owner(p));
+        ev_own(dst, false);
         Ok(())
     })())
 }
@@ -608,6 +864,7 @@ pub unsafe extern "system" fn mn_coll_record_new(dst: *mut Cell, count: u64) -> 
         )?;
         (*p).len = count as usize;
         commit(dst, owner(p));
+        ev_own(dst, false);
         Ok(())
     })())
 }
@@ -633,6 +890,7 @@ pub unsafe extern "system" fn mn_coll_field_get(dst: *mut Cell, bits: u64, index
         let c = read((*p).data.cast::<Cell>().add(index as usize));
         retain(c)?;
         commit(dst, c);
+        ev_own(dst, true);
         Ok(())
     })())
 }
@@ -649,6 +907,7 @@ pub unsafe extern "system" fn mn_coll_list_new(dst: *mut Cell, cap: u64) -> i32 
             (cap as usize).checked_mul(16).ok_or(RESOURCE)?,
         )?;
         commit(dst, owner(p));
+        ev_own(dst, false);
         Ok(())
     })())
 }
@@ -769,6 +1028,7 @@ pub unsafe extern "system" fn mn_coll_list_remove(dst: *mut Cell, bits: u64, ind
         (*p).len -= 1;
         write(data.add((*p).len), EMPTY);
         commit(dst, c);
+        ev_own(dst, true);
         Ok(())
     })())
 }
@@ -805,6 +1065,7 @@ pub unsafe extern "system" fn mn_coll_variant_pack(
             (*p).payload = take(payload);
         }
         commit(dst, owner(p));
+        ev_own(dst, false);
         Ok(())
     })())
 }
@@ -936,6 +1197,7 @@ pub unsafe extern "system" fn mn_coll_clone(dst: *mut Cell, src: *const Cell) ->
             return Err(e);
         }
         commit(dst, owner(output));
+        ev_own(dst, false);
         Ok(())
     })())
 }
@@ -966,6 +1228,7 @@ pub unsafe extern "system" fn mn_coll_variant_project(
             retain(c)?;
         }
         commit(dst, c);
+        ev_own(dst, true);
         Ok(())
     })())
 }
@@ -1062,6 +1325,9 @@ pub extern "system" fn mn_coll_summary() {
         b"MN-COLL text_metadata=",
         ac_text_runtime::ac_rt_metadata_bytes() as u64,
     );
+    if state().observe {
+        line(b"MN-EVTEND total=", state().events);
+    }
     unsafe {
         ac_rt_summary();
     }

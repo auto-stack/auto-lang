@@ -1,0 +1,25 @@
+// PLAN-919 scenario R01 (ac cell, collections profile): nested scopes,
+// early return, temporaries, an owned record construction, and the
+// list-transfer of an owned payload — per-owner LIFO on both engines.
+// Frozen oracle: value 969; 3 frames; slot own/disown alternation.
+type Item { name Str; code int }
+fn pick(s Str, flag int) int {
+    let t Str = "tail"
+    if flag > 0 {
+        return s.len() + t.len()
+    }
+    let u Str = "u"
+    return s.len() + u.len()
+}
+fn main() int {
+    let a Str = "alpha"
+    var xs = List<Str>.new()
+    xs.push("one")
+    xs.push("two")
+    var it Item = Item("hello", 1)
+    let code = it.code
+    let got Str = xs.remove(1)
+    let early = pick(a.clone(), 1)
+    let late = pick(a.move, 0)
+    return early * 100 + late * 10 + got.len() + code + it.name.len()
+}

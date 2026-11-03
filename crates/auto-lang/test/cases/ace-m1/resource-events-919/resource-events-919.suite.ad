@@ -1,0 +1,8 @@
+# PLAN-919 resource-events scenario suite — the R01/R04/R06 ac/av cells of
+# the M1 scenario grid closed by real per-owner lifecycle events (10 checks).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-resource-events-919", include: [
+  "resource-events.case.ad",
+] }
+```

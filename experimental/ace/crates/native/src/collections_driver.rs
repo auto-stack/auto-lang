@@ -418,6 +418,24 @@ impl MnDriver {
 
     /// Run candidates before publishing either their manifest root or PE. An
     /// allocation/cancellation/runtime invariant failure retains the old product.
+    /// PLAN-919: the lifecycle request — the SAME collections pipeline
+    /// with the observation switch on and the R06 exit knobs installed by
+    /// the entry wrapper (budget bytes / cancel-after-work / fail-Nth).
+    /// Operations and budgets only; the parent judges the stderr facts.
+    pub fn request_resource_events(
+        &mut self,
+        source: &str,
+        entry: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+        knobs: crate::collections_lower::WrapperKnobs,
+    ) -> MnRequest {
+        self.resource_knobs = knobs;
+        let r = self.request_collections(source, entry, workdir, support);
+        self.resource_knobs = Default::default();
+        r
+    }
+
     pub fn request_collections(
         &mut self,
         source: &str,
@@ -815,9 +833,10 @@ impl MnDriver {
         execute: bool,
     ) -> Result<(MnBuild, Option<link_driver::PeRun>), MnError> {
         self.last_collections_run = None;
+        let knobs = self.resource_knobs;
         let wrapper = obs.span("codegen", |o| {
             o.counter("codegen_emit_wrappers", 1);
-            lower::emit_wrapper_coff(symbol)
+            lower::emit_wrapper_coff(symbol, &knobs)
         })?;
         obs.ledger.charge(Partition::Staging, wrapper.len() as u64);
         if !obs.ledger.violations().is_empty() {

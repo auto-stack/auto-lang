@@ -94,3 +94,16 @@ touched_goals 为空（有限实验扩面）。
 未改AST/MIR/COFF分配身份保持。旧AV CollectionSourceSession仍为whole-source重编，
 不能据native交付冒称其前端0工作或native在线HMR。见
 [原生合同](../auto-mir/native-collections-variants.md)与[驻留消费](../auto-av/resident-function-install.md)。
+
+---
+
+## PLAN-919 附录：真实事件与失败清理（2026-11-03）
+
+native collections 增 `MN-EVT` 逐 owner 流（frame enter/leave、own/disown、free；
+8192 行上限→`MN-COLL-EVT`+abort 22 具名拒绝）与 wrapper 预置退出旋钮
+（`mn.resource { budget_bytes, cancel_after_work, fail_nth }`）：预算耗尽＝abort 22、
+取消＝poll 在变更前拒绝（abort 26，原子回滚）、注入＝abort 25；abort sweep 逐帧
+LIFO 释放，summary/事件流父侧严格解码判伪。观察 OFF 的既有 collections recipe
+行为逐字节不变。**不宣称**：闭包/Dyn ABI、console profile、在线 loader、record
+字段赋值（`place.field_path` 现仍前端拒绝，属既有能力边界）。规范正文见
+[resource-lifecycle-observations.md](../auto-test-case/resource-lifecycle-observations.md)。
