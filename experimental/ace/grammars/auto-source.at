@@ -400,7 +400,6 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             same-line: true
             nl-free: true
         }
-        postfix: "postfix-tail"
     }
     pratt(wide-ops, profiles: [scalar, text, record, text-record, entry-unit, host-console]) {
         primary: "unary-expr"
@@ -417,6 +416,8 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         op(binding: 6, assoc: "left") { of: "*" }
         op(binding: 6, assoc: "left") { of: "/" }
         op(binding: 6, assoc: "left") { of: "%" }
+        // PLAN-927：调用收尾后的点后缀续读（`f().len()`——KIND_POSTFIX）。
+        postfix: "postfix-tail"
         group: ["(", ")"]
         call {
             open: "("

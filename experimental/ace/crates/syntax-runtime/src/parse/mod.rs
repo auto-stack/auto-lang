@@ -220,10 +220,14 @@ impl FirstSets {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Save {
     i: usize,
-    pending: usize,
+    /// pending trivia 的**内容**（D-927-1：仅存长度会在 drain/重填后错位
+    /// ——restore 截断保留的是当前前缀；而按位置重算又混淆 (i,∅) 与
+    /// (i,pending) 两个合法态——EOF 尾随 trivia 双挂。内容通常 0-2 项，
+    /// clone 零分配）。
+    pending: Vec<u32>,
     last_line: u32,
     bracket: u32,
     decls: usize,
@@ -566,7 +570,7 @@ impl<'p, 'a> Machine<'p, 'a> {
     fn save(&self) -> Save {
         Save {
             i: self.i,
-            pending: self.pending.len(),
+            pending: self.pending.clone(),
             last_line: self.last_line,
             bracket: self.bracket,
             decls: self.decls.len(),
@@ -577,7 +581,9 @@ impl<'p, 'a> Machine<'p, 'a> {
 
     fn restore(&mut self, s: Save) {
         self.i = s.i;
-        self.pending.truncate(s.pending);
+        // D-927-1 修复：精确恢复 pending 内容（旧长度截断错位；位置重算
+        // 混淆合法的空/非空两态）。
+        self.pending = s.pending.clone();
         self.last_line = s.last_line;
         self.bracket = s.bracket;
         self.decls.truncate(s.decls);
@@ -609,7 +615,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 alt: usize::MAX,
                 step: 0,
                 children: Vec::new(),
-                save,
+                save: save.clone(),
                 frame_save: save,
                 consumed_any: false,
             committed: false,
@@ -664,7 +670,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             alt: 0,
             step: 0,
             children: Vec::new(),
-            save,
+            save: save.clone(),
             frame_save: save,
             consumed_any: false,
             committed: false,
@@ -695,7 +701,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             alt: 0,
             step: 0,
             children: Vec::new(),
-            save,
+            save: save.clone(),
             frame_save: save,
             consumed_any: false,
             committed: false,
@@ -1347,7 +1353,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                     .last()
                     .unwrap()
                     .opt_save
-                    .unwrap_or_else(|| self.stack.last().unwrap().save);
+                    .clone()
+                    .unwrap_or_else(|| self.stack.last().unwrap().save.clone());
                 self.restore(s);
                 self.stack.last_mut().unwrap().step += 1;
                 false
@@ -1359,7 +1366,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                     .last()
                     .unwrap()
                     .rep_save
-                    .unwrap_or(self.stack.last().unwrap().save);
+                    .clone()
+                    .unwrap_or_else(|| self.stack.last().unwrap().save.clone());
                 self.restore(s);
                 self.end_list_step();
                 false
@@ -1369,7 +1377,7 @@ impl<'p, 'a> Machine<'p, 'a> {
 
     /// alt 推进（原 fail_alt 的有下一 alt 分支）。
     fn advance_alt(&mut self) {
-        let s = self.stack.last().unwrap().save;
+        let s = self.stack.last().unwrap().save.clone();
         self.restore(s);
         let now = self.save();
         let f = self.stack.last_mut().unwrap();
@@ -1387,7 +1395,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 let f = self.stack.last().unwrap();
                 (
                     f.rule,
-                    f.frame_save,
+                    f.frame_save.clone(),
                     f.consumed_any,
                     if f.is_pratt() {
                         false
@@ -1399,6 +1407,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                     f.is_pratt(),
                 )
             };
+            let recover_base = frame_save.clone();
             self.restore(frame_save);
             if recover && consumed {
                 // 覆盖语义：restore 把光标放回规则入口，恢复循环从入口**重新消费**
@@ -1408,7 +1417,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 self.pending.clear();
                 let mut err_leaves: Vec<(u32, u32)> = Vec::new();
                 {
-                    let mut t = frame_save.i;
+                    let mut t = recover_base.i;
                     let mut lead: Vec<usize> = Vec::new();
                     while t > 0 {
                         let prev = &self.toks[t - 1];
@@ -1585,7 +1594,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                     }
                     Wait::RepItem { .. } => {
                         let f = self.stack.last_mut().unwrap();
-                        let mark = f.rep_save;
+                        let mark = f.rep_save.clone();
                         let no_progress = mark.map(|m| m.i == self.i).unwrap_or(true);
                         if no_progress {
                             f.step += 1;
@@ -1977,7 +1986,7 @@ impl<'p, 'a> Machine<'p, 'a> {
 
     /// pratt 帧失败：恢复光标、pop、并入统一迭代 unwind。
     fn fail_pratt(&mut self) {
-        let frame_save = self.stack.last().unwrap().frame_save;
+        let frame_save = self.stack.last().unwrap().frame_save.clone();
         self.restore(frame_save);
         self.stack.pop();
         loop {
@@ -1990,7 +1999,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                     if self.dispatch_child_failure(true) {
                         // 父帧也失败：pop 它并继续（与 handle_frame_failure 同一纪律）。
                         let pushed_active = self.stack.last().unwrap().pushed_active;
-                        let fs = self.stack.last().unwrap().frame_save;
+                        let fs = self.stack.last().unwrap().frame_save.clone();
                         self.restore(fs);
                         if pushed_active {
                             self.active_rules.pop();

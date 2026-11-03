@@ -126,7 +126,7 @@ fn differential_corpus_all_profiles() {
         let name = f.file_name().unwrap().to_string_lossy().to_string();
         for profile in SEVEN {
             checked += 1;
-            let old = parse_program_with(&src, profile);
+            let old = ace_core::source::parse_program_with_handwritten(&src, profile);
             let new = cst::parse_program_via_cst(&src, profile);
             let agree = match (&old, &new) {
                 (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
@@ -274,10 +274,11 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("let total = 0
-total = total + 1
-total + 41
-", SourceProfile::EntryUnit),
+        ("fn bad() str { return \"x\" }
+fn main() int { return bad().len() }", SourceProfile::Text),
+        ("fn main() int { return bad().len() }", SourceProfile::Text),
+        ("fn main() int { let s str = \"a\"
+ return s.clone().len() }", SourceProfile::Text),
     ];
     for (i, (src, profile)) in snips.iter().enumerate() {
         let old = ace_core::source::parse_program_with_handwritten(src, *profile);
