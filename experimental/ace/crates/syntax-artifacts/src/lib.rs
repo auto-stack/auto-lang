@@ -845,7 +845,14 @@ fn derive_final_checkpoint(
     if let Some(t) = tokens.last() {
         let spelling = snap.read_bytes(t.start, t.end).unwrap_or_default();
         let in_tok_newlines = spelling.iter().filter(|&&b| b == b'\n').count() as u32;
-        line = t.line + in_tok_newlines;
+        // PLAN-927 T-04 起 token.line = **结束行**（跨行 token 已计入内部换行）：
+        // - 正常收尾：EOF 行 = 末 token 行（旧加算 token 内换行是双重计数）。
+        // - mid（未闭合）：cp.offset = snap.len() = t.end（EOF 未闭合 token 必然
+        //   到 EOF）——恢复窗口初始行 = offset 处的行 = 结束行 = t.line；重放
+        //   advance 从 offset 起不再重数 token 内换行，行号与 fresh 全等。
+        //   F787-R3-04 的**起始行**归 MidToken.start_line（错误叶路径用）。
+        line = t.line;
+        let mid_start_line = t.line.saturating_sub(in_tok_newlines);
         if t.error {
             // 未闭合：按语法包的 matcher 族重放拼写，还原真实 mid 状态。
             let block_rules: Vec<&ace_syntax_runtime::program::ScanRule> = p
@@ -897,7 +904,7 @@ fn derive_final_checkpoint(
                         let _ = nested;
                         mid = Some(MidToken::Block {
                             start: t.start,
-                            start_line: t.line,
+                            start_line: mid_start_line,
                             depth: depth.max(1),
                         });
                         mode = block_rules[0].mode;
@@ -928,7 +935,7 @@ fn derive_final_checkpoint(
                         }
                         mid = Some(MidToken::Str {
                             start: t.start,
-                            start_line: t.line,
+                            start_line: mid_start_line,
                             quote: *quote,
                             escape_pending: pending,
                         });
