@@ -9,6 +9,45 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
 
 class WebOwnershipTests(unittest.TestCase):
+    def test_sdk_execution_ids_precise_admission(self):
+        from web_delivery import execution_ids
+        good = (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(217))
+                + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode()
+        ids = execution_ids(good)
+        self.assertEqual(len(ids), 217)
+        self.assertIn('sdk-binary\tsdk_case_0', ids)
+        self.assertIn('sdk-binary\tsdk_case_216', ids)
+        # 冻结的正式 nextest 形态：可选 ( n/m) 进度前缀、s/ms 时长、参数化全名。
+        counter_form = (''.join(f'PASS [   0.136s] ( {i + 1:3d}/217) sdk-binary sdk_case_{i}\n' for i in range(217))
+                        + 'Summary [ 265.241s] 217 tests run: 217 passed (1 slow), 2 skipped\n').encode()
+        self.assertEqual(len(execution_ids(counter_form)), 217)
+        # 同名跨 binary 是合法不同身份（binary+test 全名）。
+        cross = (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(109))
+                 + ''.join(f'PASS [ 0.2s] sdk-binary-2 sdk_case_{i}\n' for i in range(108))
+                 + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode()
+        ids2 = execution_ids(cross)
+        self.assertEqual(len(ids2), 217)
+        self.assertIn('sdk-binary-2\tsdk_case_0', ids2)
+        for label, bad in {
+            'duplicate-execution': b'PASS [ 0.1s] sdk-binary sdk_case_0\n' * 217
+                                   + b'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n',
+            'failed-execution': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                                 + 'FAIL [ 0.1s] sdk-binary sdk_case_216\n'
+                                 + 'Summary [ 1s] 217 tests run: 216 passed, 2 skipped\n').encode(),
+            'fake-summary': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                             + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
+            'missing-terminal': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                                 + 'running [ 0.1s] sdk-binary sdk_case_216\n').encode(),
+            'ansi-laundered': (b'\x1b[32mPASS [ 0.1s]\x1b[0m sdk-binary sdk_case_0\n' * 217
+                               + b'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n'),
+            'malformed-line': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                               + 'PASS [ 0.1s] sdk-binary\n'
+                               + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
+            'empty-log': b'',
+        }.items():
+            with self.subTest(log=label), self.assertRaises(ValueError):
+                execution_ids(bad)
+
     def test_distribution_rejects_partial_missing_steps_changed_sources_and_unexecuted_commands(self):
         from web_delivery import validate_distribution_receipt, DISTRIBUTION_IDS
         import hashlib
@@ -88,6 +127,30 @@ class WebOwnershipTests(unittest.TestCase):
                 elif mutation == 'missing-output': next(r for r in bad['checks'] if r['id']=='successful-upgrade').pop('log')
                 else: next(r for r in bad['checks'] if 'command' in r)['log_sha256'] = '0'*64
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError): validate_distribution_receipt(bad, path)
+            # D-910-1/918：独立 SDK 日志内容被清洗/伪造不得冒 PASS（V-02 全路径）。
+            sdk_row = next(r for r in receipt['checks'] if r['id'] == 'independent-sdk-tests')
+            sdk_log = Path(sdk_row['log'])
+            original_log = sdk_log.read_bytes()
+            for label, bad_log in {
+                'duplicate-execution': b'PASS [ 0.1s] sdk-binary sdk_case_0\n' * 217
+                                       + b'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n',
+                'failed-execution': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                                     + 'FAIL [ 0.1s] sdk-binary sdk_case_216\n'
+                                     + 'Summary [ 1s] 217 tests run: 216 passed, 2 skipped\n').encode(),
+                'fake-summary': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                                 + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
+                'ansi-laundered': (b'\x1b[32mPASS [ 0.1s]\x1b[0m sdk-binary sdk_case_0\n' * 217
+                                   + b'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n'),
+                'malformed-line': (''.join(f'PASS [ 0.1s] sdk-binary sdk_case_{i}\n' for i in range(216))
+                                   + 'PASS [ 0.1s] sdk-binary\n'
+                                   + 'Summary [ 1s] 217 tests run: 217 passed, 2 skipped\n').encode(),
+            }.items():
+                sdk_log.write_bytes(bad_log)
+                bad = copy.deepcopy(receipt)
+                next(r for r in bad['checks'] if r['id'] == 'independent-sdk-tests')['log_sha256'] = h(sdk_log)
+                with self.subTest(log_mutation=label), self.assertRaises(ValueError):
+                    validate_distribution_receipt(bad, path)
+            sdk_log.write_bytes(original_log)
             with patch('subprocess.check_output',return_value=b'') as git:
                 self.assertTrue(validate_distribution_receipt(receipt,path,{'auto-lang':root/'lang','auto-web':root/'web','auto-man':root/'man'}))
                 self.assertEqual(git.call_count,6)

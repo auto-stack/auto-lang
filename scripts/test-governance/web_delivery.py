@@ -34,6 +34,50 @@ def read_proof(proof):
     return raw
 
 
+# 冻结的正式 nextest 人读运行输出（非 TTY 重定向，无 ANSI 控制字符；时长可为
+# s/ms，可选 ( n/m) 进度前缀；binary 与 test 全名之间以空白分隔，test 名可含
+# :: 与参数化后缀，不含空白）。格式漂移（含 ANSI/控制字符、FAIL/SKIP/LEAK/
+# RETRY/未终态行、缺 binary 或 test 的畸形行）不得被清洗成 PASS（D-910-1/918）。
+_PASS_LINE = re.compile(
+    r'^PASS(?:\s*\+\s*LEAK)?\s+\[[^\]]*\]'
+    r'(?:\s+\(\s*\d+\s*/\s*\d+\))?\s+(\S+)\s+(\S+)\s*$'
+)
+_TERMINAL_LINE = re.compile(
+    r'^(?:PASS(?:\s*\+\s*LEAK)?|FAIL|SKIP|LEAK|RETRY|running)\b'
+)
+_CONTROL_CHAR = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
+
+
+def execution_ids(raw):
+    """解析冻结 nextest 输出为唯一 (binary, test) 执行身份集。
+
+    与原 890 谱系公共解析点同源，按 918 合同加固：重复/畸形/FAIL/未终态/
+    summary 不符均精确拒绝，不能以 set 去重或只按 summary 冒绿；同名跨
+    binary 是合法不同身份（binary+test 全名）。返回身份集合供调用方按
+    独立冻结的 required 集合对账（现 web-independent-tests/1 schema 不携带
+    身份集，ID 级对账的 producer/consumer 差额见 PLAN-918 §5.2/§10）。
+    """
+    text = raw.decode('utf-8', errors='replace')
+    ids = []
+    for line in text.splitlines():
+        if _CONTROL_CHAR.search(line):
+            raise ValueError('ANSI/control characters in test execution output')
+        match = _PASS_LINE.match(line)
+        if match:
+            ids.append(match.group(1) + '\t' + match.group(2))
+            continue
+        if line and _TERMINAL_LINE.match(line):
+            raise ValueError('malformed/ambiguous test execution line: ' + line[:120])
+    if not ids:
+        raise ValueError('no actual test executions in log')
+    if len(ids) != len(set(ids)):
+        raise ValueError('duplicate actual test execution identity')
+    summaries = re.findall(r'Summary\s+\[[^\]]+\]\s+(\d+) tests? run:\s+(\d+) passed', text)
+    if not any(int(run) == int(passed) == len(ids) for run, passed in summaries):
+        raise ValueError('summary executed/passed totals differ from actual unique executions')
+    return set(ids)
+
+
 def validate_distribution_receipt(receipt, path, source_roots=None):
     """A banner alone cannot certify fresh/locked/relocation/recovery delivery."""
     path = Path(path).resolve()
