@@ -193,6 +193,12 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
     Ok(slot.get().expect("just set"))
 }
 
+/// 预热某 profile 的语法程序缓存（进程级一次编译——调用方在**请求时钟
+/// 之外**先行预热，首请求不为编译付预算；幂等）。
+pub fn warm_profile(profile: SourceProfile) {
+    let _ = profile_grammar(profile);
+}
+
 /// 统一入口：共享 scanner/规则程序产无损 CST → 严格投影 → typed 结果。
 /// 片段 kind 走 [`parse_fragment_front`]（同语法/同投影/同预算，区间授权
 /// 与绝对 span 平移）。

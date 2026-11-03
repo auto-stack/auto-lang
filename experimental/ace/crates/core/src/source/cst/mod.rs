@@ -23,7 +23,7 @@ mod shift;
 
 pub use frontdoor::{
     parse_fragment_front, parse_front, parse_function_fragment_via_cst, parse_program_via_cst,
-    profile_grammar, FrontBudget, FrontKind, FrontOk, FrontOutcome, FrontRequest,
+    profile_grammar, warm_profile, FrontBudget, FrontKind, FrontOk, FrontOutcome, FrontRequest,
     FRONT_CAPS_VERSION,
 };
 pub use kinds::SourceKinds;

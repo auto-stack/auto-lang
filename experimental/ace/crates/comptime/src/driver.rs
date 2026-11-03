@@ -268,6 +268,11 @@ impl CteDriver {
     }
 
     pub fn with_store(root: &Path, project: &str) -> Result<Self, String> {
+        // PLAN-927：冷前门切统一 CST 后，七 profile 语法程序进程级一次编译。
+        // 预热放在驱动构造（请求时钟之外）——首请求不为编译付 deadline 预算
+        // （cte_resources_request_deadline_fast_control 计数执行事实的合同）。
+        ace_core::source::cst::warm_profile(SourceProfile::Core);
+        ace_core::source::cst::warm_profile(SourceProfile::Record);
         Ok(CteDriver {
             store: Some(CteStore::open(root, project)?),
             forbid_av: false,

@@ -477,6 +477,17 @@ domain = "legacy"
 all = true
 
 [[group]]
+name = "ace-source-syntax-927"
+title = "PLAN-927 统一源码语法差分/oracle（七 profile × 冻结语料+edge+片段）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-core", "--test", "conformance", "source_cst_927::"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-source"
 title = "ACE包 experimental/ace/crates/core"
 runner = "nextest"

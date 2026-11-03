@@ -50,6 +50,13 @@ debug = "line-tables-only"
 [profile.test.package."*"]
 debug = false
 
+# PLAN-927：统一 CST 规则机是热路径（Frame 栈步进），debug 无优化下大源
+# 墙钟差一个量级（267KB deck：release 74ms / debug ~400ms——cte 300ms
+# deadline 合同穿底）。测试档对语法运行时开 O2（不改变语义，只补回被
+# debug 抹掉的数量级）。
+[profile.test.package.ace-syntax-runtime]
+opt-level = 2
+
 [profile.release]
 debug = false
 
