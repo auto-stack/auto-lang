@@ -274,12 +274,51 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("fn bad() str { return \"x\" }
-fn main() int { return bad().len() }", SourceProfile::Text),
-        ("fn main() int { return bad().len() }", SourceProfile::Text),
-        ("fn main() int { let s str = \"a\"
- return s.clone().len() }", SourceProfile::Text),
+        ("fn fn_leaf_1(v int) int {
+    if v < 0 {
+        return 0 - v
+    }
+    return v + 1
+}
+
+fn fn_000(x int) int {
+    var acc = x * 3
+    acc = acc + fn_leaf_1(x)
+    return acc
+}
+
+fn main() int {
+    return fn_000(5)
+}
+", SourceProfile::Scalar),
     ];
+    // ZZ927F=<path>：整文件差分（大负载用）。
+    if let Ok(path) = std::env::var("ZZ927F") {
+        let src = std::fs::read_to_string(&path).expect("read ZZ927F");
+        let profile = SourceProfile::Scalar;
+        let old = ace_core::source::parse_program_with_handwritten(&src, profile);
+        let new = cst::parse_program_via_cst(&src, profile);
+        match (&old, &new) {
+            (Ok(a), Ok(b)) => {
+                let o = format!("{a:?}");
+                let n = format!("{b:?}");
+                if o == n {
+                    eprintln!("FILE-IDENTICAL len={}", src.len());
+                } else {
+                    let pos = o.bytes().zip(n.bytes()).position(|(x, y)| x != y).unwrap_or(o.len().min(n.len()));
+                    let st = pos.saturating_sub(120);
+                    eprintln!("FILE-DIFF@{pos}
+--old--
+{}
+--new--
+{}", &o[st..(pos + 160).min(o.len())], &n[st..(pos + 160).min(n.len())]);
+                }
+            }
+            (Err(d), Err(e)) => eprintln!("FILE-BOTH-ERR old={d:?} new={e:?}"),
+            _ => eprintln!("FILE-OUTCOME-MISMATCH old={:?} new={:?}", old.is_ok(), new.is_ok()),
+        }
+        return;
+    }
     for (i, (src, profile)) in snips.iter().enumerate() {
         let old = ace_core::source::parse_program_with_handwritten(src, *profile);
         let new = cst::parse_program_via_cst(src, *profile);
