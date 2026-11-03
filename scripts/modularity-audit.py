@@ -879,6 +879,14 @@ def load_config(path: Path) -> dict:
             raise ConfigError(
                 f"拒绝宽豁免：edge_note 含越界键 {bad}（note 必须逐边绑定，不允许目录/前缀作用域）"
             )
+    for rule in data.get("rules", {}).get("facility_admission", []):
+        if not rule.get("id") or not rule.get("from") or not rule.get("to"):
+            raise ConfigError("facility_admission 规则缺 id/from/to（精确逐边准入）")
+        kinds = rule.get("kinds") or ["normal"]
+        if not kinds or not set(kinds) <= {"normal", "build", "dev"}:
+            raise ConfigError(
+                f"facility_admission {rule.get('id')!r} kinds 非法：{kinds}（只支持 normal/build/dev）"
+            )
     return data
 
 
@@ -1080,6 +1088,24 @@ def violating_rule(edge: dict, rules: list[dict], domains_cfg: dict) -> dict | N
     return None
 
 
+def facility_admission_match(rule: dict, edge: dict) -> bool:
+    """精确设施准入：同仓 member、normal、非 optional、无 target 的 from/to 精确边。"""
+    if rule.get("from") != edge["from"] or rule.get("to") != edge["to"]:
+        return False
+    kinds = rule.get("kinds") or ["normal"]
+    if edge["kind"] not in kinds:
+        return False
+    if edge["optional"] or edge["to_scope"] != "member" or edge["target"] is not None:
+        return False
+    return True
+
+
+def facility_closure_edges(to_pkg: str, declared_edges: list[dict]) -> list[dict]:
+    """设施包自身的 normal/build（非 optional）声明闭包；dev/bin 测试条件如实分开。"""
+    return [e for e in declared_edges
+            if e["from"] == to_pkg and e["kind"] in ("normal", "build") and not e["optional"]]
+
+
 def inert_rules(rules: list[dict]) -> list[dict]:
     return [
         {"id": r.get("id", "unnamed"),
@@ -1108,6 +1134,7 @@ def evaluate_strict(
 ) -> dict:
     domains_cfg = config.get("domains", {}).get("members", {})
     rules = config.get("rules", {}).get("forbidden_declared", [])
+    facility_rules = config.get("rules", {}).get("facility_admission", [])
     notes = {}
     for note in config.get("baseline", {}).get("edge_notes", []):
         notes[(note.get("from"), note.get("to"), note.get("kind"))] = note
@@ -1116,6 +1143,7 @@ def evaluate_strict(
     warnings: list[str] = []
     grandfathered: list[dict] = []
     new_allowed: list[dict] = []
+    admitted_facility_edges: list[dict] = []
 
     # strict 判的是当前工作树的边集（未提交的变更也在被判定面内）：
     # 新增禁向边无论是否已提交都会点名，不存在脏树静默通过的漏洞；
@@ -1125,8 +1153,35 @@ def evaluate_strict(
 
     base_keys = baseline_edge_keys(baseline)
     for edge in declared_edges:
+        admitted = next((r for r in facility_rules if facility_admission_match(r, edge)), None)
+        if admitted is not None:
+            if admitted.get("require_std_only_closure") and facility_closure_edges(edge["to"], declared_edges):
+                violations.append({
+                    "type": "facility_std_only_closure_broken",
+                    "rule": admitted.get("id"),
+                    "edge": edge,
+                    "detail": "设施 normal/build 闭包不再为空（仅 std）: " + "; ".join(
+                        f"{e['from']} -> {e['to']} ({e['kind']})"
+                        for e in facility_closure_edges(edge["to"], declared_edges)),
+                })
+            else:
+                admitted_facility_edges.append({
+                    "edge": edge, "rule": admitted.get("id"),
+                    "note": admitted.get("note", ""),
+                })
+            continue
         rule = violating_rule(edge, rules, domains_cfg)
         if rule is None:
+            masked = next((r for r in facility_rules
+                           if r.get("from") == edge["from"] and r.get("to") == edge["to"]), None)
+            if masked is not None and edge["kind"] != "dev":
+                violations.append({
+                    "type": "facility_form_masked",
+                    "rule": masked.get("id"),
+                    "edge": edge,
+                    "detail": "设施边以 optional/build/target/外置替身形态出现且未被任何禁向规则点名"
+                              "——不能冒充精确设施准入",
+                })
             continue
         key = current_edge_key(edge)
         note = notes.get((edge["from"], edge["to"], edge["kind"]))
@@ -1231,6 +1286,7 @@ def evaluate_strict(
         "warnings": warnings,
         "grandfathered": grandfathered,
         "new_allowed_edges": new_allowed,
+        "admitted_facility_edges": admitted_facility_edges,
         "resolved_edges": resolved,
         "ownership_coverage": coverage,
     }
@@ -1269,7 +1325,11 @@ METHOD = {
               "方可 grandfather；optional 激活等新禁向性质不得冒充存量豁免；revoked 边再现判红；"
               "基线锚定 base_revision 的 manifest/配置锚定面（基线文件自身落库除外）；"
               "scope-only 无方向约束的规则惰性（不构成方向判定）；"
-              "ownership 覆盖缺组判红；宽豁免在配置加载即拒绝",
+              "ownership 覆盖缺组判红；宽豁免在配置加载即拒绝；"
+              "PLAN-896/918 精确设施准入：[[rules.facility_admission]] 逐边（同仓 member、normal、"
+              "非 optional、无 target）准入 std-only 设施消费，输出 admitted_facility_edges 具名；"
+              "设施 normal/build 闭包被破坏判 facility_std_only_closure_broken，"
+              "optional/build/target/外置替身形态判 facility_form_masked",
 }
 
 
@@ -1404,6 +1464,7 @@ def audit(root: Path, args) -> tuple[dict, int, dict]:
         "extraction_gaps": gaps,
         "cross_check": cross_check,
         "forbidden_rules": config.get("rules", {}).get("forbidden_declared", []),
+        "facility_rules": config.get("rules", {}).get("facility_admission", []),
         "inert_rules": inert_rules(config.get("rules", {}).get("forbidden_declared", [])),
     }
 
@@ -2118,6 +2179,176 @@ def scenario_v12(script: Path) -> str:
     return "V-12 身份矩阵：根外硬链接→受管源码/实读锁拒绝且字节不变，根外新路径另存可用"
 
 
+def scenario_v13(script: Path) -> str:
+    """PLAN-896/918：精确设施准入——逐边 std-only 设施合法通过且输出具名；
+    邻居/闭包破坏/optional 伪装/build 形态/外置替身负控判红；不重标域、
+    不扩大 from/to、无宽豁免。"""
+    def setup_facility_repo(tag: str) -> Path:
+        repo = make_fixture_repo("v13-" + tag)
+        for crate, name in (("fixture-tool-exec", "fixture-tool-exec"),
+                            ("fixture-tool-exec-2", "fixture-tool-exec-2"),
+                            ("fixture-cache", "fixture-cache")):
+            target = repo / "crates" / crate
+            shutil.copytree(SCRIPT_ROOT / FIXTURE_RELPATH / "crates/fixture-lang-sdk", target)
+            manifest = target / "Cargo.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace(
+                    'name = "fixture-lang-sdk"', f'name = "{name}"'),
+                encoding="utf-8", newline="\n",
+            )
+        root_toml = repo / "Cargo.toml"
+        st_check('    "crates/fixture-app",' in root_toml.read_text(encoding="utf-8"),
+                 f"[v13/{tag}] 前态根 members 含 fixture-app")
+        root_toml.write_text(
+            root_toml.read_text(encoding="utf-8").replace(
+                '    "crates/fixture-app",',
+                '    "crates/fixture-app",\n    "crates/fixture-cache",\n'
+                '    "crates/fixture-tool-exec",\n    "crates/fixture-tool-exec-2",'),
+            encoding="utf-8", newline="\n",
+        )
+        cache_manifest = repo / "crates/fixture-cache/Cargo.toml"
+        cache_manifest.write_text(
+            cache_manifest.read_text(encoding="utf-8")
+            + '\n[dependencies]\nfixture-tool-exec = { path = "../fixture-tool-exec" }\n',
+            encoding="utf-8", newline="\n",
+        )
+        cfg = repo / DEFAULT_CONFIG_RELPATH
+        text = cfg.read_text(encoding="utf-8")
+        st_check('[domains.members]' in text and 'id = "lang-core-no-ui"' in text,
+                 f"[v13/{tag}] 前态含域映射与既有规则")
+        text = text.replace(
+            '[domains.members]\n',
+            '[domains.members]\n"fixture-cache" = "lang-infra"\n'
+            '"fixture-tool-exec" = "man-ecosystem"\n"fixture-tool-exec-2" = "man-ecosystem"\n',
+            1,
+        )
+        text = text.replace(
+            '[[rules.forbidden_declared]]\nid = "lang-core-no-ui"',
+            '[[rules.forbidden_declared]]\nid = "lang-infra-no-upward"\n'
+            'from_domains = ["lang-infra"]\nto_domains = ["man-ecosystem"]\n'
+            'kinds = ["normal", "build"]\n\n'
+            '[[rules.forbidden_declared]]\nid = "lang-core-no-ui"',
+            1,
+        )
+        text += ('\n[[rules.facility_admission]]\nid = "std-only-facility"\n'
+                 'from = "fixture-cache"\nto = "fixture-tool-exec"\n'
+                 'kinds = ["normal"]\nrequire_std_only_closure = true\n'
+                 'note = "fixture: std-only facility"\n')
+        cfg.write_text(text, encoding="utf-8", newline="\n")
+        commit_fixture(repo, "facility admission setup", f"v13/{tag}")
+        return repo
+
+    repo = setup_facility_repo("legal")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/legal] 基线刷新成功", err[:300])
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_OK, "[v13/legal] 合法设施边准入通过", f"exit={code} {err[:200]}")
+    admitted = rep["strict"].get("admitted_facility_edges", [])
+    st_check(any(a["edge"]["from"] == "fixture-cache" and a["edge"]["to"] == "fixture-tool-exec"
+                 and a["rule"] == "std-only-facility" for a in admitted),
+             "[v13/legal] 判定输出具名合法设施边", json.dumps(admitted)[:300])
+    st_check(not rep["strict"]["violations"], "[v13/legal] 无违规",
+             json.dumps(rep["strict"]["violations"])[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("neighbor")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/neighbor] 基线刷新成功", err[:300])
+    cache_manifest = repo / "crates/fixture-cache/Cargo.toml"
+    cache_manifest.write_text(
+        cache_manifest.read_text(encoding="utf-8")
+        + '\nfixture-tool-exec-2 = { path = "../fixture-tool-exec-2" }\n',
+        encoding="utf-8", newline="\n",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v13/neighbor] 同域邻居边判红", f"exit={code}")
+    st_check(any(v["type"] == "new_forbidden_edge" and v["edge"]["to"] == "fixture-tool-exec-2"
+                 for v in rep["strict"]["violations"]),
+             "[v13/neighbor] 判红类型=new_forbidden_edge",
+             json.dumps(rep["strict"]["violations"])[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("closure")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/closure] 基线刷新成功", err[:300])
+    exec_manifest = repo / "crates/fixture-tool-exec/Cargo.toml"
+    exec_manifest.write_text(
+        exec_manifest.read_text(encoding="utf-8")
+        + '\n[dependencies]\nfixture-lang-sdk = { path = "../fixture-lang-sdk" }\n',
+        encoding="utf-8", newline="\n",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v13/closure] 设施闭包破坏判红", f"exit={code}")
+    st_check(any(v["type"] == "facility_std_only_closure_broken"
+                 and v["edge"]["from"] == "fixture-cache" and v["edge"]["to"] == "fixture-tool-exec"
+                 and "fixture-tool-exec -> fixture-lang-sdk" in v.get("detail", "")
+                 for v in rep["strict"]["violations"]),
+             "[v13/closure] 判红类型=facility_std_only_closure_broken 且点名闭包边",
+             json.dumps(rep["strict"]["violations"])[:400])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("optional-mask")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/optional-mask] 基线刷新成功", err[:300])
+    cache_manifest = repo / "crates/fixture-cache/Cargo.toml"
+    text = cache_manifest.read_text(encoding="utf-8")
+    st_check('fixture-tool-exec = { path = "../fixture-tool-exec" }' in text,
+             "[v13/optional-mask] 前态含 normal 设施边")
+    cache_manifest.write_text(
+        text.replace('fixture-tool-exec = { path = "../fixture-tool-exec" }',
+                     'fixture-tool-exec = { path = "../fixture-tool-exec", optional = true }'),
+        encoding="utf-8", newline="\n",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v13/optional-mask] optional 伪装判红", f"exit={code}")
+    st_check(any(v["type"] == "facility_form_masked" and v["edge"]["from"] == "fixture-cache"
+                 and v["edge"]["optional"] is True for v in rep["strict"]["violations"]),
+             "[v13/optional-mask] 判红类型=facility_form_masked",
+             json.dumps(rep["strict"]["violations"])[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("build-form")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/build-form] 基线刷新成功", err[:300])
+    cache_manifest = repo / "crates/fixture-cache/Cargo.toml"
+    cache_manifest.write_text(
+        cache_manifest.read_text(encoding="utf-8")
+        + '\n[build-dependencies]\nfixture-tool-exec = { path = "../fixture-tool-exec" }\n',
+        encoding="utf-8", newline="\n",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v13/build-form] build 形态判红", f"exit={code}")
+    st_check(any(v["type"] == "new_forbidden_edge" and v["edge"]["kind"] == "build"
+                 and v["edge"]["to"] == "fixture-tool-exec" for v in rep["strict"]["violations"]),
+             "[v13/build-form] 判红类型=new_forbidden_edge(build)",
+             json.dumps(rep["strict"]["violations"])[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+
+    repo = setup_facility_repo("substitute")
+    make_external_crate(repo.parent, "fixture-tool-exec")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v13/substitute] 基线刷新成功", err[:300])
+    cache_manifest = repo / "crates/fixture-cache/Cargo.toml"
+    cache_manifest.write_text(
+        cache_manifest.read_text(encoding="utf-8").replace(
+            'fixture-tool-exec = { path = "../fixture-tool-exec" }',
+            'fixture-tool-exec = { path = "../../../fixture-tool-exec" }'),
+        encoding="utf-8", newline="\n",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v13/substitute] 外置替身判红", f"exit={code}")
+    st_check(any(v["type"] == "new_forbidden_edge" and v["edge"]["to"] == "fixture-tool-exec"
+                 and v["edge"]["to_scope"] == "external" for v in rep["strict"]["violations"]),
+             "[v13/substitute] 判红点名外置替身边",
+             json.dumps(rep["strict"]["violations"])[:300])
+    st_check(not rep["strict"].get("admitted_facility_edges"),
+             "[v13/substitute] 替身不被准入具名",
+             json.dumps(rep["strict"].get("admitted_facility_edges", []))[:200])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return ("V-13 精确设施准入：合法 std-only 设施边准入且具名；"
+            "邻居/build/闭包破坏/optional 伪装/外置替身负控判红")
+
+
 def run_self_test() -> int:
     script = SCRIPT_PATH
     scenarios = [
@@ -2127,6 +2358,7 @@ def run_self_test() -> int:
         ("v05", scenario_v05), ("v06", scenario_v06), ("v07", scenario_v07),
         ("v08", scenario_v08), ("v09", scenario_v09),
         ("v10", scenario_v10), ("v11", scenario_v11), ("v12", scenario_v12),
+        ("v13", scenario_v13),
     ]
     failures = 0
     for name, fn in scenarios:

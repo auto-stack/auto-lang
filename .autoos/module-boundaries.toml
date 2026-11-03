@@ -227,6 +227,26 @@ to_scopes = ["external"]
 kinds = ["normal", "build"]
 
 # ---------------------------------------------------------------------------
+# 精确设施准入（PLAN-896/918）：逐边、带设施身份与 std-only 约束的合法设施消费
+# 规则。与 [[baseline.edge_notes]] 不同——这是**准入规则**（无退出阶段、无 owner 债），
+# 不是有退出阶段的 grandfather；不重标包域、不扩大 from/to 域、无目录/前缀豁免。
+#
+# 语义（T-01 冻结，见 docs/specs/repository-boundaries/delivery-admission-and-boundary-policy.md）：
+# - from/to 为精确包名（同仓 package identity）；kinds 只准 normal；
+# - 只准入 member 内、非 optional、无 target 的声明边（optional/build/target/
+#   外置替身形态不构成合法设施消费，按禁向规则或 facility_form_masked 判红）；
+# - require_std_only_closure=true 时，设施包自身的 normal/build（非 optional）
+#   依赖闭包必须为空（仅 std）；闭包被破坏则准入失效并判红。
+# ---------------------------------------------------------------------------
+[[rules.facility_admission]]
+id = "std-only-facility-consumption"
+from = "auto-cache"
+to = "auto-tool-execution"
+kinds = ["normal"]
+require_std_only_closure = true
+note = "PLAN-896：FFI sandbox/methods pack 的 cargo build 与 nightly rustdoc 使用 std-only auto-tool-execution 持有/捕获/等待/回收编译树；设施 normal/build 闭包保持为空（仅 std），上层/替身/反向/闭包变化仍拒绝"
+
+# ---------------------------------------------------------------------------
 # 文本候选扫描（观察层；候选不是语义边；盲区见 scanner_limitations）
 # 口径与调研报告 §2/§4.3 对齐，计数可跨基线比较。
 # ---------------------------------------------------------------------------
