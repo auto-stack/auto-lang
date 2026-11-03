@@ -24,7 +24,7 @@ extern "system" {
     fn ac_rt_summary();
 }
 
-pub const ABI: &str = "mn.collections.runtime/3";
+pub const ABI: &str = "mn.collections.runtime/4";
 pub const GUEST_CAP: usize = 8 << 20;
 pub const MANAGED_CAP: usize = 32 << 20;
 pub const LIST_CAP: usize = 65536;
@@ -51,7 +51,12 @@ pub const SEAM_CLONEWORK: u32 = 5;
 pub const SEAM_TEXT: u32 = 6;
 pub const SEAM_TEXTMETA: u32 = 7;
 pub const SEAM_TOKEN: u32 = 8;
-pub const SEAM_COUNT: usize = 9;
+/// PLAN-924: the closure-environment node (header + capture-order fields in
+/// one block). Field deep clones charge the SAME seams any deep clone
+/// charges (S2 data / S5 clone-work / S6-S7 text); S9 is env storage only,
+/// so the 923 seam counters are untouched by non-closure allocations.
+pub const SEAM_ENVNODE: u32 = 9;
+pub const SEAM_COUNT: usize = 10;
 static mut INSTALLED: bool = false;
 static mut WORK: u64 = 0;
 static mut CANCEL_AFTER: u64 = u64::MAX;
@@ -132,6 +137,13 @@ const TEXT: u32 = 1;
 const RECORD: u32 = 2;
 const LIST: u32 = 3;
 const TAGGED: u32 = 4;
+/// PLAN-924: a closure environment. `data` = `[Cell; len]` capture-order
+/// fields; `type_fp[0]` = callee code pointer (bound into THIS linked image
+/// by the CreateClosure emission's relocation — persisted artifacts never
+/// store host addresses), `type_fp[1]` = signature hash, `type_fp[2]` =
+/// nominal owner hash; `disc` = live call pins, `epoch` = accepted dispatch
+/// count, `moved` = parked-for-free (last owner left while pinned).
+const CLOSURE: u32 = 5;
 #[repr(C)]
 struct Node {
     type_fp: [u64; 4],
@@ -410,6 +422,7 @@ fn kind_word(kind: u32) -> &'static [u8] {
         RECORD => b"record",
         LIST => b"list",
         TAGGED => b"tagged",
+        CLOSURE => b"closure",
         _ => b"?",
     }
 }
@@ -592,64 +605,90 @@ fn release(c: Cell) {
         release_place(c.bits as *mut PlaceToken);
         return;
     }
-    unsafe fn enqueue(c: Cell, stack: &mut *mut Node) {
-        if c.owned == 0 || c.bits == 0 {
-            return;
-        }
-        let Ok(p) = node(c.bits) else {
-            state().invalid += 1;
-            return;
-        };
-        if c.owned != 1 || (*p).refs == 0 {
-            state().invalid += 1;
-            return;
-        }
-        (*p).refs -= 1;
-        if (*p).refs != 0 {
-            return;
-        }
-        if (*p).prev.is_null() {
-            state().head = (*p).next;
-        } else {
-            (*(*p).prev).next = (*p).next;
-        }
-        if !(*p).next.is_null() {
-            (*(*p).next).prev = (*p).prev;
-        }
-        (*p).drop_next = *stack;
-        *stack = p;
-    }
     let mut stack = null_mut();
     unsafe {
         enqueue(c, &mut stack);
-        while !stack.is_null() {
-            let p = stack;
-            stack = (*p).drop_next;
-            match (*p).kind {
-                TEXT => ac_rt_own_free((*p).data),
-                RECORD | LIST => {
-                    for i in 0..(*p).len {
-                        enqueue(read((*p).data.cast::<Cell>().add(i)), &mut stack);
-                    }
-                    free((*p).data);
+        drain_drop_stack(&mut stack);
+    }
+}
+/// Unlink a zero-ref node from the live list (it stays arena-valid until
+/// freed, so the intrusive drop walk can still reach it).
+unsafe fn detach(p: *mut Node) {
+    if (*p).prev.is_null() {
+        state().head = (*p).next;
+    } else {
+        (*(*p).prev).next = (*p).next;
+    }
+    if !(*p).next.is_null() {
+        (*(*p).next).prev = (*p).prev;
+    }
+}
+unsafe fn enqueue(c: Cell, stack: &mut *mut Node) {
+    if c.owned == 0 || c.bits == 0 {
+        return;
+    }
+    let Ok(p) = node(c.bits) else {
+        state().invalid += 1;
+        return;
+    };
+    if c.owned != 1 || (*p).refs == 0 {
+        state().invalid += 1;
+        return;
+    }
+    (*p).refs -= 1;
+    if (*p).refs != 0 {
+        return;
+    }
+    // PLAN-924: an environment whose last closure owner left while a call
+    // is pinned parks instead of dying — the in-flight call still reads the
+    // env; the final unpin (or the abort sweep) finalizes it.
+    if (*p).kind == CLOSURE && (*p).disc > 0 {
+        (*p).moved = true;
+        return;
+    }
+    detach(p);
+    (*p).drop_next = *stack;
+    *stack = p;
+}
+/// The intrusive destruction walk: never recurses or allocates. Children of
+/// one node enqueue onto the SAME stack before the node itself is freed.
+unsafe fn drain_drop_stack(stack: &mut *mut Node) {
+    while !stack.is_null() {
+        let p = *stack;
+        *stack = (*p).drop_next;
+        match (*p).kind {
+            TEXT => ac_rt_own_free((*p).data),
+            RECORD | LIST => {
+                for i in 0..(*p).len {
+                    enqueue(read((*p).data.cast::<Cell>().add(i)), stack);
                 }
-                TAGGED => {
-                    if !(*p).moved {
-                        enqueue((*p).payload, &mut stack);
-                    }
-                }
-                _ => {
-                    state().invalid += 1;
+                free((*p).data);
+            }
+            // PLAN-924: environment fields follow capture order; the env's
+            // own destructor right is the closure value, fields own theirs.
+            // The fields ride the SAME arena block as the header (one S9
+            // allocation) — no separate data free.
+            CLOSURE => {
+                for i in 0..(*p).len {
+                    enqueue(read((*p).data.cast::<Cell>().add(i)), stack);
                 }
             }
-            let gone_id = (*p).id;
-            let gone_bytes = (*p).bytes;
-            uncharge((*p).bytes, (*p).guest);
-            free(p.cast());
-            state().nodes -= 1;
-            state().frees += 1;
-            ev_free(gone_id, gone_bytes);
+            TAGGED => {
+                if !(*p).moved {
+                    enqueue((*p).payload, stack);
+                }
+            }
+            _ => {
+                state().invalid += 1;
+            }
         }
+        let gone_id = (*p).id;
+        let gone_bytes = (*p).bytes;
+        uncharge((*p).bytes, (*p).guest);
+        free(p.cast());
+        state().nodes -= 1;
+        state().frees += 1;
+        ev_free(gone_id, gone_bytes);
     }
 }
 unsafe fn clear(c: *mut Cell) {
@@ -1351,6 +1390,248 @@ unsafe fn clone_shallow(source: *mut Node) -> Result<*mut Node, i32> {
     Ok(dest)
 }
 
+// ---- PLAN-924: closure environments --------------------------------------
+//
+// CreateClosure is a two-phase transaction over an UNPUBLISHED staging
+// node: prepare (S9 block), stage every fallible capture (retained share
+// for moves — the source keeps its destructor right until the emitted
+// post-commit drop; deep clone for clones), then an infallible commit that
+// links the env into the registry and publishes the closure value. Any
+// staging failure discards in reverse order with zero allocation; sources,
+// old closures and generations stay valid.
+
+unsafe fn env_fields(p: *mut Node) -> *mut Cell {
+    (*p).data.cast::<Cell>()
+}
+unsafe fn env_prepare_inner(
+    len: usize,
+    code_ptr: u64,
+    sig_id: u64,
+    owner_id: u64,
+) -> Result<*mut Node, i32> {
+    if len > 4096 {
+        return Err(INVALID);
+    }
+    let cell_bytes = len
+        .checked_mul(core::mem::size_of::<Cell>())
+        .ok_or(RESOURCE)?;
+    let bytes = core::mem::size_of::<Node>()
+        .checked_add(cell_bytes)
+        .ok_or(RESOURCE)?;
+    precheck(bytes, 0)?;
+    let p = allocate(bytes, SEAM_ENVNODE)?.cast::<Node>();
+    write(
+        p,
+        Node {
+            type_fp: [code_ptr, sig_id, owner_id, 0],
+            type_bound: false,
+            prev: null_mut(),
+            next: null_mut(),
+            drop_next: null_mut(),
+            refs: 0,
+            kind: CLOSURE,
+            disc: 0,
+            moved: false,
+            len,
+            cap: len,
+            data: p.add(1).cast(),
+            payload: EMPTY,
+            bytes,
+            guest: 0,
+            id: 0,
+            epoch: 0,
+            gens: null_mut(),
+        },
+    );
+    for i in 0..len {
+        write(env_fields(p).add(i), EMPTY);
+    }
+    charge(bytes, 0);
+    Ok(p)
+}
+/// Staged move capture: the field takes a RETAINED share; the source's
+/// destructor right survives until the emitted post-commit `mn_coll_drop`
+/// kills it, so a failed transaction leaves the source fully intact.
+unsafe fn env_stage_move(prep: *mut Node, index: usize, src: *const Cell) -> Result<(), i32> {
+    if index >= (*prep).len {
+        return Err(INVALID);
+    }
+    let c = read(src);
+    validate(c)?;
+    if c.owned == 1 {
+        retain(c)?;
+    }
+    write(env_fields(prep).add(index), c);
+    Ok(())
+}
+/// Staged clone capture: a fresh independent owner lands in the field; every
+/// fallible allocation happens here, before any commit.
+unsafe fn env_stage_clone(prep: *mut Node, index: usize, src: *const Cell) -> Result<(), i32> {
+    if index >= (*prep).len {
+        return Err(INVALID);
+    }
+    let c = read(src);
+    validate(c)?;
+    let fresh = clone_value(c)?;
+    write(env_fields(prep).add(index), fresh);
+    Ok(())
+}
+/// Reverse-order, allocation-free rollback of a failed staging.
+unsafe fn env_discard_inner(prep: *mut Node) {
+    for i in (0..(*prep).len).rev() {
+        release(read(env_fields(prep).add(i)));
+    }
+    uncharge((*prep).bytes, 0);
+    free(prep.cast());
+}
+/// Publish a fully staged env as the closure value: link into the registry,
+/// own with refs=1. Infallible by construction.
+unsafe fn env_publish(prep: *mut Node) -> Result<Cell, i32> {
+    let s = state();
+    (*prep).next = s.head;
+    if !s.head.is_null() {
+        (*s.head).prev = prep;
+    }
+    s.head = prep;
+    (*prep).refs = 1;
+    s.next_node_id += 1;
+    (*prep).id = s.next_node_id;
+    s.nodes += 1;
+    s.allocs += 1;
+    Ok(owner(prep))
+}
+/// Deep-copy one environment (explicit `Closure.clone`): fresh node, every
+/// owned field deep-cloned two-phase; never a second handle over one env.
+unsafe fn clone_env(root: *mut Node) -> Result<Cell, i32> {
+    let prep = env_prepare_inner(
+        (*root).len,
+        (*root).type_fp[0],
+        (*root).type_fp[1],
+        (*root).type_fp[2],
+    )?;
+    for i in 0..(*root).len {
+        if let Err(e) = env_stage_clone(prep, i, env_fields(root).add(i)) {
+            env_discard_inner(prep);
+            return Err(e);
+        }
+    }
+    env_publish(prep)
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_prepare(
+    out_prep: *mut u64,
+    len: u64,
+    code_ptr: u64,
+    sig_id: u64,
+    owner_id: u64,
+) -> i32 {
+    match env_prepare_inner(len as usize, code_ptr, sig_id, owner_id) {
+        Ok(p) => {
+            write(out_prep, p as u64);
+            0
+        }
+        // The named error code flows to the caller's guard — an injected
+        // S9 failure traps INJECTED(25), a real budget refusal 22; neither
+        // collapses into the generic null path.
+        Err(e) => e,
+    }
+}
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_stage_move(
+    prep: u64,
+    index: u64,
+    src: *const Cell,
+) -> i32 {
+    status(env_stage_move(prep as *mut Node, index as usize, src))
+}
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_stage_clone(
+    prep: u64,
+    index: u64,
+    src: *const Cell,
+) -> i32 {
+    status(env_stage_clone(prep as *mut Node, index as usize, src))
+}
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_discard(prep: u64) {
+    env_discard_inner(prep as *mut Node)
+}
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_commit(dst: *mut Cell, prep: u64) -> i32 {
+    status((|| {
+        let value = env_publish(prep as *mut Node)?;
+        commit(dst, value);
+        ev_own(dst, false);
+        Ok(())
+    })())
+}
+/// ENV_GET: one capture-order field as a handle share — the env retains
+/// ownership; Copy fields (owned=0) copy their bits.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_get(dst: *mut Cell, bits: u64, field: u64) -> i32 {
+    status((|| {
+        let p = of_kind(bits, CLOSURE)?;
+        let i = field as usize;
+        if i >= (*p).len {
+            return Err(INVALID);
+        }
+        let c = read(env_fields(p).add(i));
+        if c.owned == 1 {
+            retain(c)?;
+        }
+        commit(dst, c);
+        ev_own(dst, true);
+        Ok(())
+    })())
+}
+/// Pre-dispatch admission for CALL_CLOSURE: registry lookup precedes any
+/// dereference (foreign/stale handles refuse), then the static signature
+/// identity must match the call site's expectation. A refused target never
+/// reaches the machine call, so the accepted-dispatch count stays 0. The
+/// returned pointer is the callee bound into THIS linked image.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_closure_target(bits: u64, sig_id: u64) -> u64 {
+    let Ok(p) = of_kind(bits, CLOSURE) else {
+        line(b"MN-COLL-CLOSURE refusal=", 1);
+        return 0;
+    };
+    if (*p).type_fp[1] != sig_id {
+        line(b"MN-COLL-CLOSURE refusal=", 2);
+        return 0;
+    }
+    (*p).epoch += 1;
+    (*p).type_fp[0]
+}
+/// Body-prologue pin: the environment outlives its last closure owner for
+/// the duration of an in-flight call; the matching unpin finalizes a parked
+/// env.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_pin(bits: u64) -> i32 {
+    status((|| {
+        let p = of_kind(bits, CLOSURE)?;
+        (*p).disc = (*p).disc.checked_add(1).ok_or(RESOURCE)? as u32;
+        Ok(())
+    })())
+}
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_env_unpin(bits: u64) -> i32 {
+    status((|| {
+        let p = of_kind(bits, CLOSURE)?;
+        if (*p).disc == 0 {
+            return Err(INVALID);
+        }
+        (*p).disc -= 1;
+        if (*p).disc == 0 && (*p).moved && (*p).refs == 0 {
+            detach(p);
+            let mut stack = p;
+            (*p).drop_next = null_mut();
+            drain_drop_stack(&mut stack);
+        }
+        Ok(())
+    })())
+}
+
 #[repr(C)]
 struct CloneWork {
     next: *mut CloneWork,
@@ -1404,6 +1685,53 @@ unsafe fn pop_clone_work(stack: &mut *mut CloneWork) {
     uncharge(core::mem::size_of::<CloneWork>(), 0);
 }
 
+/// PLAN-924: the deep-clone core shared by `mn_coll_clone` (record/list/
+/// variant/text owners), staged clone captures and environment clones:
+/// shallow copy + explicit work stack, cancellation polled, partial trees
+/// released on failure.
+unsafe fn clone_value(input: Cell) -> Result<Cell, i32> {
+    if input.owned == 0 {
+        return Ok(input);
+    }
+    let root = node(input.bits)?;
+    let output = clone_shallow(root)?;
+    let mut stack = null_mut();
+    let result = (|| {
+        push_clone_work(&mut stack, root, output)?;
+        while !stack.is_null() {
+            if poll(1) != 0 {
+                return Err(CANCELLED);
+            }
+            let w = stack;
+            if (*w).index == child_count((*w).source) {
+                pop_clone_work(&mut stack);
+                continue;
+            }
+            let index = (*w).index;
+            (*w).index += 1;
+            let child = read(clone_child((*w).source, index));
+            validate(child)?;
+            if child.owned == 0 {
+                write(clone_child((*w).dest, index), child);
+            } else {
+                let source = node(child.bits)?;
+                let dest = clone_shallow(source)?;
+                write(clone_child((*w).dest, index), owner(dest));
+                push_clone_work(&mut stack, source, dest)?;
+            }
+        }
+        Ok(())
+    })();
+    while !stack.is_null() {
+        pop_clone_work(&mut stack);
+    }
+    if let Err(e) = result {
+        release(owner(output));
+        return Err(e);
+    }
+    Ok(owner(output))
+}
+
 #[no_mangle]
 pub unsafe extern "system" fn mn_coll_clone(dst: *mut Cell, src: *const Cell) -> i32 {
     status((|| {
@@ -1413,43 +1741,16 @@ pub unsafe extern "system" fn mn_coll_clone(dst: *mut Cell, src: *const Cell) ->
             commit(dst, input);
             return Ok(());
         }
+        // PLAN-924: cloning a Closure value deep-copies the environment
+        // (fresh node + independent field owners) — never a second handle
+        // over one env masquerading as a deep clone.
         let root = node(input.bits)?;
-        let output = clone_shallow(root)?;
-        let mut stack = null_mut();
-        let result = (|| {
-            push_clone_work(&mut stack, root, output)?;
-            while !stack.is_null() {
-                if poll(1) != 0 {
-                    return Err(CANCELLED);
-                }
-                let w = stack;
-                if (*w).index == child_count((*w).source) {
-                    pop_clone_work(&mut stack);
-                    continue;
-                }
-                let index = (*w).index;
-                (*w).index += 1;
-                let child = read(clone_child((*w).source, index));
-                validate(child)?;
-                if child.owned == 0 {
-                    write(clone_child((*w).dest, index), child);
-                } else {
-                    let source = node(child.bits)?;
-                    let dest = clone_shallow(source)?;
-                    write(clone_child((*w).dest, index), owner(dest));
-                    push_clone_work(&mut stack, source, dest)?;
-                }
-            }
-            Ok(())
-        })();
-        while !stack.is_null() {
-            pop_clone_work(&mut stack);
-        }
-        if let Err(e) = result {
-            release(owner(output));
-            return Err(e);
-        }
-        commit(dst, owner(output));
+        let output = if (*root).kind == CLOSURE {
+            clone_env(root)?
+        } else {
+            clone_value(input)?
+        };
+        commit(dst, output);
         ev_own(dst, false);
         Ok(())
     })())
@@ -1602,6 +1903,20 @@ pub extern "system" fn mn_coll_summary() {
 pub unsafe extern "system" fn mn_coll_abort(code: i32) -> ! {
     while !state().frame.is_null() {
         mn_coll_frame_leave(state().frame);
+    }
+    // PLAN-924: a trap inside a pinned call leaves parked environments
+    // behind the swept frames; the post-trap cleanup invariant (zero live
+    // nodes/bytes) must still hold, so finalize them before the summary.
+    let mut p = state().head;
+    while !p.is_null() {
+        let next = (*p).next;
+        if (*p).kind == CLOSURE && (*p).refs == 0 {
+            detach(p);
+            let mut stack = p;
+            (*p).drop_next = null_mut();
+            drain_drop_stack(&mut stack);
+        }
+        p = next;
     }
     line(b"MN-COLL-TRAP code=", code.unsigned_abs() as u64);
     mn_coll_summary();

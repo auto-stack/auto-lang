@@ -128,7 +128,7 @@ pub fn decode_events(text: &str) -> Result<Option<NativeFacts>, String> {
             "frame-enter" | "frame-leave" => ev.frame = num(kv["frame"])?,
             "own" | "disown" => {
                 let kind = kv["kind"];
-                if !matches!(kind, "text" | "record" | "list" | "tagged") {
+                if !matches!(kind, "text" | "record" | "list" | "tagged" | "closure") {
                     return Err(bad("event kind not in vocabulary"));
                 }
                 let via = kv["via"];

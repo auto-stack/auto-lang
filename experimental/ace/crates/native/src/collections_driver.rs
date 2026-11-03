@@ -14,10 +14,10 @@ use std::rc::Rc;
 fn bad(message: impl Into<String>) -> MnError {
     MnError::Admit("collections-closure", message.into())
 }
-struct Entry {
-    owner: ace_av_core::mir::OwnerScope,
-    unit: String,
-    symbol: String,
+pub(crate) struct Entry {
+    pub(crate) owner: ace_av_core::mir::OwnerScope,
+    pub(crate) unit: String,
+    pub(crate) symbol: String,
 }
 /// Immutable declaration projection of an admitted unit. A resident link only
 /// reads these interfaces; it never walks an unchanged unit's MIR body again.
@@ -1151,14 +1151,14 @@ impl MnDriver {
         result
     }
 }
-fn reclaim_candidate(path: &Path) -> Option<String> {
+pub(crate) fn reclaim_candidate(path: &Path) -> Option<String> {
     match std::fs::remove_file(path) {
         Ok(()) => None,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => Some(format!("{}: {e}", path.display())),
     }
 }
-fn next_candidate() -> u64 {
+pub(crate) fn next_candidate() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }

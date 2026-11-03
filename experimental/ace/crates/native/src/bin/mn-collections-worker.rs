@@ -22,6 +22,10 @@ const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
 /// PLAN-923: the resource-guards recipe rides the same worker with the
 /// per-seam injection knobs (fail_seam / fail_text_nth / fail_ledger_nth).
 const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
+/// PLAN-924: the native closures-resource recipe rides the same worker and
+/// runtime library (mn.collections.runtime/4 with the closure env surface);
+/// the seam domain extends to S9 (the env node allocation).
+const CLOSURES_RESOURCE_RECIPE: &str = "ac/mir-native-closures-resource-v1";
 const LINE_CAP: usize = (4 << 20) * 4 / 3 + (64 << 10);
 static PRIVATE_BASE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn process_memory() -> (u64, u64, bool) {
@@ -202,6 +206,7 @@ fn serve() -> Result<(), String> {
         if recipe_field != RECIPE
             && recipe_field != RESOURCE_EVENTS_RECIPE
             && recipe_field != RESOURCE_GUARDS_RECIPE
+            && recipe_field != CLOSURES_RESOURCE_RECIPE
         {
             return Err("wrong collections recipe".into());
         }
@@ -286,7 +291,10 @@ fn serve() -> Result<(), String> {
         // budgets only; the parent judges stderr. Guards adds the per-seam
         // injection knob (fail_seam [seam, nth]) and the embedded text
         // runtime's own seam channels (fail_text_nth / fail_ledger_nth).
-        if recipe_field == RESOURCE_EVENTS_RECIPE || recipe_field == RESOURCE_GUARDS_RECIPE {
+        if recipe_field == RESOURCE_EVENTS_RECIPE
+            || recipe_field == RESOURCE_GUARDS_RECIPE
+            || recipe_field == CLOSURES_RESOURCE_RECIPE
+        {
             let res = request
                 .get("resource")
                 .ok_or("resource recipes require a resource object")?;
@@ -309,10 +317,15 @@ fn serve() -> Result<(), String> {
                     if arr.len() != 2 {
                         return Err("resource.fail_seam must be a [seam, nth] pair".into());
                     }
+                    let seam_max = if recipe_field == CLOSURES_RESOURCE_RECIPE {
+                        9
+                    } else {
+                        8
+                    };
                     let seam = arr[0]
                         .as_u64()
-                        .filter(|n| (1..=8).contains(n))
-                        .ok_or("resource.fail_seam seam must be 1..=8")?;
+                        .filter(|n| (1..=seam_max).contains(n))
+                        .ok_or("resource.fail_seam seam must be 1..=8 (1..=9 for closures)")?;
                     let nth = arr[1]
                         .as_u64()
                         .filter(|n| *n >= 1)
@@ -331,7 +344,11 @@ fn serve() -> Result<(), String> {
             };
             let mut driver =
                 MnDriver::with_store(store, "mn-collections-case").map_err(|e| e.message())?;
-            let run = driver.request_resource_events(&source, entry, workdir, None, knobs);
+            let run = if recipe_field == CLOSURES_RESOURCE_RECIPE {
+                driver.request_closures_resource(&source, entry, workdir, None, knobs)
+            } else {
+                driver.request_resource_events(&source, entry, workdir, None, knobs)
+            };
             // A trap/budget/cancel exit is a REAL run whose facts (exit +
             // stderr with the event stream) were retained — report them;
             // only a run with no facts at all is a worker error.

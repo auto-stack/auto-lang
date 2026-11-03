@@ -19,6 +19,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "collections_driver.rs"]
 pub(crate) mod collections;
+#[path = "closures_driver.rs"]
+pub(crate) mod closures;
 
 /// The narrowest source domain that admits a request (PLAN-870 freeze §4):
 /// scalar → record → text-record escalation picks the narrowest compiling
@@ -159,6 +161,9 @@ pub struct MnDriver {
     /// runtime. Never set by the source language or ordinary request protocol.
     pub test_omit_collections_runtime: bool,
     last_collections_run: Option<link_driver::PeRun>,
+    /// PLAN-924: the retained failed-run evidence for the closures family
+    /// (same contract as `last_collections_run`).
+    pub(crate) last_closures_run: Option<link_driver::PeRun>,
     /// Read/publish discipline of the store for this request (T-05).
     pub cache_mode: CacheMode,
     /// Current publication per (project, owner, entry): publishing a new
@@ -227,6 +232,7 @@ impl MnDriver {
             test_omit_collections_runtime: false,
             resource_knobs: Default::default(),
             last_collections_run: None,
+            last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         }
@@ -242,6 +248,7 @@ impl MnDriver {
             test_omit_collections_runtime: false,
             resource_knobs: Default::default(),
             last_collections_run: None,
+            last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         })
@@ -258,6 +265,7 @@ impl MnDriver {
             test_omit_collections_runtime: false,
             resource_knobs: Default::default(),
             last_collections_run: None,
+            last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
         }
@@ -617,7 +625,7 @@ impl MnDriver {
     }
 
     /// Shared A09 lookup/admit/emit discipline for every native source family.
-    fn collect_objects(
+    pub(crate) fn collect_objects(
         &mut self,
         units: &[ace_av_core::mir::MirModule],
         meta_for: &dyn Fn(&ace_av_core::mir::MirModule, String) -> Result<CoffMeta, MnError>,
@@ -660,6 +668,17 @@ impl MnDriver {
                     o.ledger
                         .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit))
                 })
+            } else if unit.profile == ace_av_core::contract::AV_CLOSURES_PROFILE {
+                // PLAN-924: the closures family's unit identity is the
+                // spans-cleared ABC wire bytes (the same identity the AV
+                // closures sessions compare) — the scalar render never
+                // widens to closure instructions.
+                obs.span("unit_fp_render", |o| {
+                    o.ledger.with_charge(Partition::Staging, 4096, |_| {
+                        crate::closures_layout::unit_fp(unit)
+                            .expect("verified closures unit encodes")
+                    })
+                })
             } else {
                 obs.ledger
                     .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit))
@@ -684,7 +703,10 @@ impl MnDriver {
                             obs.ledger.charge(Partition::Io, b.len() as u64);
                             // The manifest binds the concrete artifact id.
                             let extra_page_ids =
-                                if unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE {
+                                if unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE
+                                    || unit.profile
+                                        == ace_av_core::contract::AV_CLOSURES_PROFILE
+                                {
                                     cache::unit_coff_page_ids(store, &meta, b.len())?
                                 } else {
                                     vec![]

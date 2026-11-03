@@ -11,6 +11,9 @@
 
 pub mod backend;
 pub mod cache;
+pub mod closures_frontend;
+pub mod closures_layout;
+pub mod closures_lower;
 pub mod collections_artifacts;
 pub mod collections_frontend;
 pub mod collections_incremental;

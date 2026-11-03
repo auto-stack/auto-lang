@@ -111,6 +111,10 @@ pub const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
 /// per-seam fault injection (seam/nth/budget requests only) plus the
 /// checked List-place machine chain on the same collections PE.
 pub const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
+/// PLAN-924: the native closures-resource recipe (scenario R02/R05 ac
+/// cells) — the limited native closure domain on the same runtime library,
+/// with the env-node seam (S9) added to the injection domain.
+pub const CLOSURES_RESOURCE_RECIPE: &str = "ac/mir-native-closures-resource-v1";
 mod collections;
 mod resource_events;
 mod resource_guards;
@@ -1029,6 +1033,7 @@ fn request_recipe(request: &str) -> &'static str {
                 r == COLLECTIONS_RECIPE
                     || r == RESOURCE_EVENTS_RECIPE
                     || r == RESOURCE_GUARDS_RECIPE
+                    || r == CLOSURES_RESOURCE_RECIPE
             })
         })
         .unwrap_or(false)
@@ -1050,6 +1055,7 @@ fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
     if recipe != COLLECTIONS_RECIPE
         && recipe != RESOURCE_EVENTS_RECIPE
         && recipe != RESOURCE_GUARDS_RECIPE
+        && recipe != CLOSURES_RESOURCE_RECIPE
     {
         return worker_binary();
     }

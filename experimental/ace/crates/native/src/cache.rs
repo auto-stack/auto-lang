@@ -116,6 +116,36 @@ impl CoffMeta {
         })
     }
 
+    /// PLAN-924: a closures unit's meta — the SEPARATE closure-family
+    /// cell/codegen identities over the shared runtime library identity
+    /// (mn.collections.runtime/4, whose content hash covers the embedded
+    /// closure-environment surface). Cache keys and restore admission are
+    /// isolated from both the collections and typed generations.
+    pub fn for_closures_unit(
+        unit: &MirModule,
+        fp: String,
+        runtime: &crate::collections_runtime::Identity,
+    ) -> Result<Self, MnError> {
+        if runtime.abi != crate::collections_runtime::ABI {
+            return Err(MnError::Admit(
+                "runtime-abi",
+                "closures runtime ABI mismatch".into(),
+            ));
+        }
+        let layouts = crate::closures_lower::admit_layouts(unit)?;
+        let mut meta = Self::base(unit, fp)?;
+        meta.abi = crate::closures_lower::ABI.into();
+        meta.backend = format!(
+            "{};{};build={}",
+            MN_BACKEND_TAG,
+            crate::closures_layout::CODEGEN,
+            crate::closures_layout::codegen_build()
+        );
+        meta.runtime = runtime.tag(&crate::closures_layout::closure_fingerprint(&layouts));
+        meta.mir_schema = ace_av_core::contract::MIR_CLOSURES_SCHEMA.into();
+        Ok(meta)
+    }
+
     pub fn for_unit(unit: &MirModule, fp: String) -> Result<Self, MnError> {
         if unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE {
             return Err(MnError::Unsupported(

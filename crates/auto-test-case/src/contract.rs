@@ -1622,6 +1622,11 @@ fn decode_options(
                         | "ac/mir-native-resource-guards-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-924: the native closures-resource recipe —
+                        // run/edit vocabulary, S1..S9 seam injection.
+                        "ac/mir-native-closures-resource-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
                         // PLAN-822: the collections recipe shares the av
                         // step vocabulary (runs + discriminating edits).
                         "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
@@ -2300,6 +2305,7 @@ fn decode_options(
                         | "ac/mir-native-typed-v1"
                         | "ac/mir-native-resource-events-v1"
                         | "ac/mir-native-resource-guards-v1"
+                        | "ac/mir-native-closures-resource-v1"
                 ) {
                     return Err(err(
                         &f.path_of("mn"),
@@ -2316,6 +2322,7 @@ fn decode_options(
                         | "ac/mir-native-typed-v1"
                         | "ac/mir-native-resource-events-v1"
                         | "ac/mir-native-resource-guards-v1"
+                        | "ac/mir-native-closures-resource-v1"
                 ) {
                     return Err(err(
                             &f.path_of("mn"),
@@ -2506,6 +2513,7 @@ fn decode_options(
                     None => {
                         if recipe == "ac/mir-native-resource-events-v1"
                             || recipe == "ac/mir-native-resource-guards-v1"
+                            || recipe == "ac/mir-native-closures-resource-v1"
                         {
                             return Err(err(
                                 &mf.path_of("resource"),
@@ -2561,16 +2569,24 @@ fn decode_options(
                                         "fail_seam is a [seam, nth] pair",
                                     ));
                                 }
+                                // PLAN-924: the closures recipe extends the
+                                // seam domain with S9 (the closure env node);
+                                // the collections recipes stay 1..=8.
+                                let seam_max = if recipe == "ac/mir-native-closures-resource-v1" {
+                                    9
+                                } else {
+                                    8
+                                };
                                 let (seam, nth) = match (&list[0], &list[1]) {
                                     (CVal::Int(s), CVal::Int(n))
-                                        if *s >= 1 && *s <= 8 && *n >= 1 =>
+                                        if *s >= 1 && *s <= seam_max && *n >= 1 =>
                                     {
                                         (*s as u32, *n as u64)
                                     }
                                     _ => {
                                         return Err(err(
                                             &rf.path_of("fail_seam"),
-                                            "fail_seam is [seam 1..=8, nth >= 1]",
+                                            "fail_seam is [seam 1..=8, nth >= 1] (1..=9 for the closures recipe)",
                                         ))
                                     }
                                 };
