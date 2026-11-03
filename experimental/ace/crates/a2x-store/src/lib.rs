@@ -256,6 +256,35 @@ pub const LAYER_FRAGMENT_C: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-925 CA-B: the C (HIR→C11 record-text) fragment layer — its own
+/// namespace beside the Rust record-text layer (AXR2) and the C scalar
+/// one (AXC1). The runtime content input is the C typed resource
+/// runtime, so neither a Rust hit nor a C scalar hit can satisfy an AXC2
+/// key or vice versa (the runtime hash differs besides).
+pub const LAYER_FRAGMENT_C_RT: LayerSpec = LayerSpec {
+    id: "AXC2",
+    name: "a2x-c-rt-fragment",
+    schema_id: "a2925/axc-c-rt-fn/v1",
+    producer: "auto-a2x-c",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed C record-text fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// PLAN-921 T-06: the source-bound anchor layer — the per-function source
 /// binding (full-source sha256 → per-function origins/slice hashes/sem_fps
 /// + the assembly file-set receipt) that makes NEW-PROCESS pure restore
@@ -478,12 +507,14 @@ impl A2xSession {
             Ok("AXR2") => &LAYER_FRAGMENT_RT,
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
 
-    /// PLAN-921: named rejection when the current target does not serve
-    /// the session's family (C serves the scalar channel only).
+    /// PLAN-921/925: named rejection when the current target does not
+    /// serve the session's family (C serves the scalar/record-text
+    /// channels).
     fn ensure_target_supports(&self) -> Result<(), A2xReject> {
         self.provider.fragment_layer_id(self.family()).map(|_| ())
     }
@@ -1913,6 +1944,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXS3" => LAYER_SEMANTIC_COLL.id,
         "AXR3" => LAYER_FRAGMENT_COLL.id,
         "AXC1" => LAYER_FRAGMENT_C.id,
+        "AXC2" => LAYER_FRAGMENT_C_RT.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         other => panic!("unknown layer {}", other),
     }

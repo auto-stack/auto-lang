@@ -155,11 +155,11 @@ fn two_target_identities_and_neutral_store_seam() {
             .unwrap(),
         "AXR1"
     );
-    // the C target rejects the non-scalar families by NAME
-    for family in [Family::RecordText, Family::Collections] {
-        let err = c.fragment_layer_id(family).unwrap_err();
-        assert!(err.detail.contains("scalar"), "{}", err.detail);
-    }
+    // PLAN-925: the C target serves scalar + record-text (AXC1/AXC2);
+    // collections stays a named successor-package rejection (CA-C)
+    assert_eq!(c.fragment_layer_id(Family::RecordText).unwrap(), "AXC2");
+    let err = c.fragment_layer_id(Family::Collections).unwrap_err();
+    assert!(err.detail.contains("scalar/record-text"), "{}", err.detail);
     // the shared session layer is target-neutral: a2x-store carries no
     // target-crate dependency
     let store_manifest =

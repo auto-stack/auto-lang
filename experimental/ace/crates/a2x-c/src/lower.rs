@@ -31,7 +31,7 @@ use std::collections::HashMap;
 
 /// Hygiene: ASCII letters/digits/`_` only, everything else → `_` (same
 /// sanitizer as the Rust target).
-fn sanitize(name: &str) -> String {
+pub(crate) fn sanitize(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for c in name.chars() {
         if c.is_ascii_alphanumeric() || c == '_' {

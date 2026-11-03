@@ -116,6 +116,8 @@ fn c_named_family_and_source_rejections() {
     let mut s =
         A2xSession::open(&root, "a2c-neg", "probe", 8 << 20, CTargetProvider::v1()).unwrap();
     // collections source through the C provider → named domain rejection
+    // (PLAN-925: the C target now serves scalar + record-text; the
+    // successor-package surface is collections — CA-C)
     let src =
         "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    return xs.get(0)\n}";
     let compiled = compile_collections_source(src, "neg", &[]).unwrap();
@@ -126,7 +128,7 @@ fn c_named_family_and_source_rejections() {
     match err {
         ace_a2x_store::A2xRejectOrResource::Reject(r) => {
             assert_eq!(r.code, "a2x.domain", "got: {}", r);
-            assert!(r.detail.contains("scalar"), "got: {}", r);
+            assert!(r.detail.contains("scalar/record-text"), "got: {}", r);
         }
         other => panic!("expected Reject, got {:?}", other),
     }
