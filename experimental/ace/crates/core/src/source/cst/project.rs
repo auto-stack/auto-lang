@@ -361,7 +361,7 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
 }
 
 /// 错误区域之后首个 token 的终点（旧 `span.join(end)` 形态的近似）。
-fn leaf_end(cx: &Cx, tree: &CstTree, node: u32) -> usize {
+fn leaf_end(_cx: &Cx, tree: &CstTree, node: u32) -> usize {
     let leaves = lex::collect_leaves(tree);
     let (s, _) = tree.abs_range(node);
     let mut best: Option<usize> = None;
@@ -772,7 +772,7 @@ fn eof_expected(cx: &Cx, what: &str) -> Diagnostic {
 /// 与其他关键字拒绝、空 record 拒绝。
 fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
     let k = cx.k;
-    let mut w = Walker::new(cx, leaves);
+    let w = Walker::new(cx, leaves);
     let at = |idx: usize| -> (Span, u32, &str) {
         let (n, g, s) = &leaves[idx.min(leaves.len() - 1)];
         (leaf_span(cx, *n), *g, s.as_str())
@@ -817,7 +817,7 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
     let mut any_field = false;
     let mut close_span = None;
     while i < leaves.len() {
-        let (_, g, text) = at(i);
+        let (_, _g, text) = at(i);
         if text == ";" {
             i += 1;
             continue;
@@ -956,13 +956,6 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
     None
 }
 
-fn is_ident_text(text: &str) -> bool {
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => chars.all(|c| c.is_ascii_alphanumeric() || c == '_'),
-        _ => false,
-    }
-}
 
 // ---------------------------------------------------------------- 叶序列游走器
 //
@@ -1884,7 +1877,7 @@ fn describe_leaf_text(cx: &Cx, tree: &CstTree, leaf: Option<u32>) -> String {
     }
 }
 
-fn first_meaningful_leaf(cx: &Cx, tree: &CstTree, node: u32) -> Option<u32> {
+fn first_meaningful_leaf(_cx: &Cx, tree: &CstTree, node: u32) -> Option<u32> {
     let mut stack = vec![node];
     while let Some(n) = stack.pop() {
         let nd = tree.node(n);
