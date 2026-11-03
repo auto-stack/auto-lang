@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-921
-status: execution_done
+status: reviewed
 feature_name: CA-A共享A2X目标合同与HIR到C标量闭环
 author: [Codex]
 created_at: 2026-11-02
@@ -172,7 +172,11 @@ H=workspace manifests/lock、test_cases/{mod,ac_protocol,ac_a2r_hir}.rs、新C a
 
 2026-11-03 | stage: work | PLAN-921 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | branch: plan-921-dev | base_commit: 9c81ee6d7 | code_commit: 9c15e6fa3（b983607d→56ba586f→a47cc7f5→fff3c124→10c3b33c→9c15e6fa3） | dependency_revisions: auto-down 组内 detached 7c4d5cb（未消费）；并发会话完成 920 合并归档/919 merge 航班（重叠仅 append-only 文件，基面 9c81ee6d，merge 时按漂移重验） | task_ids: T-01..T-11 | evidence: cargo t ace-a2x 全组 PASS（105 测试：原 95 字节同一全绿+C 语料 61/61 真cl+C 恢复/暖编辑/混合目标/预算/证书全绿）；cargo t case-a2c-hir-scalar-921 PASS 3/3（首例 golden 字节判+spawn0）；auto-test-case 111/ace-adapters 48 PASS；a2c-formal exit0（5 态×30 样本全暖门 P90≤2000ms，restore p90=150ms，31 版本真 cl 预认证，子进程 P0 见证）；a2x-c/a2x-store/a2x-worker 零警告；rustfmt 本包文件 clean；SD-01..06 六份 spec 已入 worktree 提交 | blockers: 无合同内未决；KNOWN-DEBT 新登记 904 golden-manifest 既有缺口（观察项，非本包写面）；里程碑档（ACE 全量/ace-performance）按原治理错峰 pending，非本包每轮门 | next_responsible_role: review（T-12 独立冻结复审）
 
-stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: review
+stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 3 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: review
+
+2026-11-03 | stage: review | review_scope: final | reviewer: 同会话独立复审（自冻结 9c15e6fa3 重跑重建判定，未采信执行摘要；实施会话内复审的既有限制如实声明） | PLAN-921 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | branch: plan-921-dev | reviewed_commit: 9c15e6fa3 | base_commit: 9c81ee6d7 | dependency_revisions: auto-down detached 7c4d5cb 未消费；master 并发前进（920 已归档、919 merge 航班中，重叠仅 append-only） | spec_inputs: SD-01..06 六份全文本 vs 代码核对（层 schema a2921/axc-c-fn/v1、a2921/axp-source-anchor/v1、fileset/recipe/cert 常量、flags 冻结表、路径/边界声明逐一 grep 对码；范围审计 71 文件无计划外改动、required313/binding/applicability 零 diff） | acceptance_results: AC-01..08 全 pass（独立重跑于 9c15e6fa3：cargo t ace-a2x 105 全绿[61 语料真 cl+恢复/暖编辑/混合目标/证书/预算/边界]、case-a2c-hir-scalar-921 3/3、auto-test-case/ace-adapters/infra-ace-m1 PASS、a2c-formal exit0[hit 1527/restart 1655/body-edit 951/restore 219ms P90 全≤2000，31 版本真 cl 预认证，子进程恢复见证 lower=0]、500 深度源经 C 路径实证 a2x.too-deep 命名拒绝、健康 0 警告 0 fmt 漂移） | pending_closeout_gates: merge 拥有的冻结受影响并集（ace-a2x+case-a2c-hir-scalar-921+auto-test-case+ace-adapters+infra-ace-m1，按真实漂移重验）、SD 读回、archive、树/分支/组/scope 清理 | findings: 无阻断。观察项：O-1 904 golden-manifest 既有缺口（已记 KNOWN-DEBT，非本包写面）；O-2 cert-scratch 512MiB 由构造满足（1MiB 流帽+KB 级产出，未放宽未单列断言）；O-3 C 冷 fresh p90≈11.4s 按合同另列非门 | evidence: 本 §9 记录即持久证据（命令+数字如上）；formal 收据 plan-artifacts/plan-921/a2c-formal-receipt-head.json（exit0） | next: merge
+
+stage: goal | plan_id: PLAN-921 | plan_revision: r1 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-921/auto-lang | commit: 9c15e6fa3 | next: merge
 
 ## 10. 待澄清事项
 
