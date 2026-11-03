@@ -3841,11 +3841,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 
 ## PLAN-918 交付记录（2026-11-03）
 
-- **D-910-1 已关闭（PLAN-918 T-02）**：`scripts/test-governance/web_delivery.py` 恢复并加固
+- **D-910-1 已关闭（PLAN-918 T-02 + R1 修复）**：`scripts/test-governance/web_delivery.py` 恢复并加固
   `execution_ids`（890 谱系公共解析点：冻结 nextest PASS 行 → 唯一 binary+test 身份；重复/FAIL/
-  未终态/畸形/ANSI 行与 summary 不符精确拒绝，不 set 去重、不 summary 冒绿）。`cargo t
-  web-delivery-controls` 13/13 PASS（原 12/13 + NameError）；直接与 reused 两路径均达真实
-  ID/summary/源/config/log 哈希校验（V-01..V-03）。落地候选 5a40437a5。
+  未终态/畸形/ANSI/非法 UTF-8 行与 summary 不符精确拒绝，不 set 去重、不 summary 冒绿；PASS/FAIL
+  行 8 空格缩进、Summary 5 空格缩进均容前导空白——独立复审 F-918-01/02 实证修正，真实缩进日志
+  正反例入测试）。`cargo t web-delivery-controls` 13/13 PASS（原 12/13 + NameError）；直接与 reused
+  两路径均达真实 ID/summary/源/config/log 哈希校验（V-01..V-03，真实格式 217 正例 accepted、
+  失败运行正确拒绝）。落地候选 5a40437a5 + cff7e6182。
 - **D-906-3 已关闭（PLAN-918 T-03/T-04）**：新增 `[[rules.facility_admission]]` 逐边精确设施
   准入（auto-cache→auto-tool-execution，normal/非 optional/member，require_std_only_closure），
   不是域重分类或 grandfather；旧锚 `9d96d0f7` 不可解析事实保留（git 对象检查 exit128，旧基线
