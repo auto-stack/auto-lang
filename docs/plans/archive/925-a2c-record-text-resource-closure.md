@@ -195,6 +195,10 @@ A2X合计工作集≤48MiB（共享+Rust/C resident+暂存一起计），同owne
 
 ## 9. 复审记录
 
+stage: goal | plan_id: PLAN-925 | plan_revision: r1 | round: 4 | from: regress | to: done | status: archived | outcome: pass | commit: 1359ab1da | next: done
+
+2026-11-03 | stage:regress（merge 步6到期移交执行） | 单实例主检出（等待并行会话重负载结束后 22:10 启动） | cargo t all @ 1359ab1da | verdict=known_reds_only、new_reds=0：全部失败逐条映射既有基线（PLAN-007 media-core fixture_manifest/PLAN-900 lsp/PLAN-901 auto-lang-core+infra-pilot-cli/auto-macros/P707-R1 spike/sys_natives_vm；aavm/a2r-actor/auto-vm NOT_APPLICABLE 沿原条件）；**925 全部触面组在全量并集中绿**（ace-a2x/source/adapters/auto-test-case/infra-fixed/infra-ace-m1/ace-artifacts/case-925/case-921/case-902/881/894）；case-a2r-hir-collections-904 存量红注记随收据登记（非 all 并集成员，显式 ace 组才触达，归 PLAN-904 修复）。收据 docs/plans/.last-batch-regression.json（last_covered_plan_id=925）已提交主线 |
+
 stage: goal | plan_id: PLAN-925 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed; group dir gone) | commit: a37245cd6 | next: done
 
 2026-11-03 | stage:merge | PLAN-925 r1 | cleaned：wt-guard clean→树/分支（was a37245cd6）/组目录（含 prunable auto-down 死登记经属仓清）全删；plan-artifacts/plan-925 整删（折叠于 §5.7/§8/§9）；登记 merge_closeouts 刷新；无具名 hold。落点核查：主线冒烟 case-925+ace-a2x PASS（瞬态分诊见 T-13）；本仓无 backend release/web bundle 生产件——TestCase 工具链按组自建（tools 步 cargo build --locked --offline），无部署面。批量回归 due：925%5=0 → due，交 auto-plan-regress（主线单实例） |
