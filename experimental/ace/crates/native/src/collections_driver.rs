@@ -712,7 +712,7 @@ impl MnDriver {
     ) -> Result<(CollectionsIncrementalSession, CollectionRun), MnError> {
         self.last_collections_run = None;
         let mut obs = Obs::default();
-        let material = self.restore_collections_material(id, workdir, support, &mut obs)?;
+        let material = self.restore_collections_material(id, support, &mut obs)?;
         let cold = obs.span("frontend_restore", |_| {
             crate::collections_frontend::cold(&material.source, "mn.at")
                 .map_err(|e| MnError::Unsupported("frontend", format!("{e:?}")))
@@ -797,7 +797,8 @@ impl MnDriver {
         obs: &mut Obs,
         execute: bool,
     ) -> Result<(MnBuild, Option<link_driver::PeRun>), MnError> {
-        let material = self.restore_collections_material(id, workdir, support, obs)?;        let manifest_id = if self.cache_mode == CacheMode::ReadOnly {
+        let material = self.restore_collections_material(id, support, obs)?;
+        let manifest_id = if self.cache_mode == CacheMode::ReadOnly {
             None
         } else {
             Some(id.to_string())
@@ -823,7 +824,6 @@ impl MnDriver {
     fn restore_collections_material(
         &mut self,
         id: &str,
-        workdir: &Path,
         support: Option<&Path>,
         obs: &mut Obs,
     ) -> Result<RestoredCollections, MnError> {
