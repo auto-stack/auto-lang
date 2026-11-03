@@ -1,6 +1,6 @@
 # ACE实现路线：决策与续接基线
 
-更新时间：2026-10-29。用于长会话结束后的上下文恢复；[ACE总路线](auto-native-backend-evolution.md)仍为统一入口，current Spec为现状知识，具体Plan和revision绑定的review/merge收据决定交付。当前M1缺口owner/立项状态、M2已推进能力及865/863后的收口队列见[收口路线对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)。下列状态是读取时快照，接手时须重新核对活动目录与`docs/plans/archive/`，不据本文替代验收或重开已归档计划。
+更新时间：2026-11-03（PLAN-922 交付短窗）。用于长会话结束后的上下文恢复；[ACE总路线](auto-native-backend-evolution.md)仍为统一入口，current Spec为现状知识，具体Plan和revision绑定的review/merge收据决定交付。**当前最高优先线是 M2 全替换（v0.6 硬门）**：合同见[M2 r2](../../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)与[发布门增补](../../plans/reports/ace-v06-m2-release-gate-2026-11-02.md)，全场景分母/能力分账/后继拆包/关键路径见[M2 替换盘点](../../plans/reports/ace-m2-replacement-inventory-2026-11-02.md)，盘点口径见[replacement-scope-and-evidence](../../specs/ace-migration/replacement-scope-and-evidence.md)。下列状态是读取时快照，接手时须重新核对活动目录与`docs/plans/archive/`，不据本文替代验收或重开已归档计划。
 
 **D871后规划更新**：871已交付87dd2b6ad、清理收据5af8e0cbe。native第二阶段已决定拆两包：[889集合/变体源码闭环](../../plans/889-native-collections-variants-source-closure.md)已立draft r1，typed entry另包未取号。889 N主体可与865准备并行，但集合现有源码会话整源重编后才carry，本包真单体前端必须取S；默认865释放后给889短窗，未就绪让863先行，H另交887/888。不得据下方较早快照再立同名包或认定889整项纯N。
 
@@ -23,9 +23,9 @@ CTE缓存命中要求**完整实际依赖**不变：除调用点源码外还包�
 
 ## 2. 成熟度与迁移边界
 
-M1为有限共同子集/核心链路与可审计对等基线；M2覆盖决定保留的现有语言；M3为Auto/C/Rust/Python混合生态；M4为产品消费者迁移和旧AutoVM/A2X框架替换。M2与必要FFI/宿主服务交叉推进，M4按成熟入口逐步验证。v0.6先Rust版ACE成熟，AACE实施v0.7；完整AJ不是旧引擎替换的自动前置。
+M1为有限共同子集/核心链路与可审计对等基线（含新增C组合门）。**M2 定义已被 2026-11-02 合同 r2 取代：补全 ACE 能力并替换旧引擎（AutoVM/A2X），覆盖 AutoUI/AutoMan 等全部现有应用场景，旧实现彻底 disable/退役；原 M4 的迁移/部署/回退/退役职责完整并入 M2，不再有"等 M4 才 disable"的后门**；M3/M4 如续用编号范围另行确定，未来新增扩展当前不规划、不作为 M2/v0.6 前置。v0.6 发布谓词=既有版本门 AND V06-ACE-01..05（M1+M2 全闭）；AACE 仍 v0.7，完整AJ不是旧引擎替换的自动前置。
 
-“骨架成型”“四路径M1收口”“全语言”“产品默认切换/退役”“自举”分别验收。当前是M1共同子集收口与M2源码扩面交叉阶段，**863完成不自动签M1或M2**。M1适用规则沿[2026-10-28决策](../../plans/reports/ace-m1-scope-decision-2026-10-28.md)及862现行Spec的NA-4；accepted-diff保留旧差异证据，a2r金样/独立认证分轴。原始登记现为116行（76 corpus+40 scenario），仍有旧token/无规则n/a与能力/接线缺口混记；50/103、20/73均为历史快照，不当当前clean数。先按[逐组对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)核实际证据/owner，完整复算后才签M1。native闭包/Dyn/loader的已批准NA不变，a2r名解析真缺口不豁免。
+“骨架成型”“四路径M1收口”“全语言”“产品默认切换/退役”“自举”分别验收。当前是M1共同子集收口与M2源码扩面交叉阶段，**863完成不自动签M1或M2**。M1适用规则沿[2026-10-28决策](../../plans/reports/ace-m1-scope-decision-2026-10-28.md)及862现行Spec的NA-4；accepted-diff保留旧差异证据，a2r金样/独立认证分轴。原始登记现为131数据行（corpus+scenario+console O 族；920 后 B18 avm 格已闭），仍有能力/接线缺口混记；50/103、20/73均为历史快照，不当当前clean数。先按[逐组对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)核实际证据/owner，完整复算后才签M1。native闭包/Dyn/loader的已批准NA不变，a2r名解析真缺口不豁免。
 
 新引擎实验代码进入仓库、接入可选adapter、产品切默认是不同动作。旧引擎可继续承担生产；不要求把每项ACE新增能力再复制到旧引擎。共用语言/stdlib/UI接口与数据合同，后端适配按真实消费者另验，分支/仓库归并按实际owner与迁移Plan办理，不在此新冻结永久分支策略。G7按入口/SKU切默认，G8在所有保留消费者、旧会话/回调/lease清空后才退役；不得遇unsupported就静默回退旧引擎。旧A2X源码转译职责不能以AV替换为理由取消。
 
@@ -49,18 +49,16 @@ AutoUI/AutoGraphics与ACE按受检语言/宿主接口集成；初版旧VM适配�
 
 上述为各有限合同的交付/现状归纳，不把“归档”单独作为全部收尾已完成的证明。824归档文件仍有T-08未勾选、最近merge条目记录已landed但清理/批回归待办；825亦有计数与delivered收据不齐的簿记现象。若新任务依赖其最终收尾，先核实际Spec/合入及遗漏收据，不篡改历史、不自动重开或重做旧实现。
 
-## 4. 当前主任务、剩余缺口与开工边界（2026-10-29）
+## 4. 当前主任务、剩余缺口与开工边界（2026-11-03 刷新）
 
-| Plan | 读取时状态 | 工作及下一步 |
+| 线 | 读取时状态 | 工作及下一步 |
 |---|---|---|
-| [881](../../plans/archive/881-shared-record-method-lowering.md) | archived r2，9/9 | 方法producer已交付db0773130；方法/模式/资源/增量证据交871接受，不能再写“待立项”或重做搬移 |
-| [871](../../plans/archive/871-ac-native-switch-and-old-lowering-retirement.md) | archived r4，9/9 | delivery 87dd2b6ad、清理5af8e0cbe；共享MIR唯一native源，原五profile迁移/旧HIR→CLIF退役完成，非旧AutoVM/A2X产品退役 |
-| [865](../../plans/865-av-source-closures-and-hof.md) | executing r2，2/9 | 正在实施闭包源码、捕获/逃逸/间接调用及增量会话；公共S按实际owner交接，不含map/filter/reduce库能力 |
-| [863](../../plans/863-av-console-host-import-and-print.md) | drafting r2，0/8 | 类型化host-import、print/eprint与精确stdout/stderr父侧断言；S默认865后接线，可先做独立provider准备。实际还改前端/lowering/MIR/ABC/AV及SDK，绝非只协议面 |
-| [889](../../plans/889-native-collections-variants-source-closure.md) | drafting r1，0/10 | native集合/变体原源与真函数增量；N可先准备，S/H各待实际释放，不含typed entry |
-| [884](../../plans/archive/884-language-structure-closure-without-crate-split.md) / [887](../../plans/887-test-governance-and-ace-first-corpus.md) / [888](../../plans/888-module-test-selection-and-ace-batch-pilot.md) | 884 archived 10/10；887 reviewed r2、9/10；888 drafting r1 | U887尚未确认，888依其合同等待；测试治理/首批消费不认领全部M1能力，R/H按实际owner交接 |
+| 862–920 已交付线 | 全 archived（865 闭包源码、863 console、887/888 测试治理、889 native 集合/变体、913 恢复、914 编辑承诺、916/917 a2r 语义/证据、915 资源 fault/Place、919 资源事件六格、920 B18） | 不重做；M1 corpus av 列基本闭合，legacy 差异行已登记（binding.tsv 分账见 M2 盘点 §2.1） |
+| [921 CA-A](../../plans/921-shared-a2x-c-scalar-target.md) | executing r1，1/14（身份已冻结：a2x-c/auto-a2x-c/ac-a2c recipe） | HIR→C scalar 闭环；CA-B..E 后继沿其接缝；与 M2 线 H 面漂移按其 merge 规程处理 |
+| [922 M2 盘点](../../plans/922-ace-m2-replacement-inventory-and-critical-path.md)（本短窗） | executing | 交付本报告+SD-01/02；后继拆包标签（M2-DEN/EXEC/HOST/A2X-*/UI/MAN/WEB/OS/RETIRE/REL 等）见盘点 §4，未取号 |
+| 919 merge | 在途（reviewed→merge，lang-919 树） | 非本包事务；其合并后按 M2-DEN 规程刷新受影响行 |
 
-S=共享语义/IR/runtime/session，N=ac-mn，H=公共driver/SDK/测试/binding，P=登记私有模块。已交付862/864/866/868/870/871/881不再排重复实施。当前S由 **865→863**接续；889的S增量短窗拟插在865释放后，未就绪让863先走，不持N等待S，也不新增D865/D863语义依赖。889 N主体可并行准备，H与865/863/887/888逐文件交接；typed entry另包未取号。完整顺序/立项表以[2026-10-29对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)为当前规划，旧[波次合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)保留公共单写规则。
+S=共享语义/IR/runtime/session，N=ac-mn，H=公共driver/SDK/测试/binding，P=登记私有模块。已交付各线不再排重复实施。**当前开工顺序以 M2 盘点 §4/§6 为准**：M2-DEN ∥ M2-EXEC 可即启，M2-HOST 是 UI/WEB/OS 串行根，A2X-R/T1 并行，RETIRE/REL 汇尾；旧 2026-10-29 对账与[波次合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)保留公共单写规则，顺序部分由 M2 盘点取代。
 
 D门要求真实交付，不消费review/repair中的WIP，不提前合入未过审代码换取并行。前owner交接合入revision、Spec/API/profile/lowering版本、兼容结果、cache失效和限制，后owner记录接受；跨S/N/H同时取窗，不持一个窗口等另一个。新增公开枚举/签名需同步全部实际消费者的穷尽匹配，不把兼容编译失败留作他方债务。
 
