@@ -437,7 +437,7 @@ mod controls {
             wire.push_str(&format!("MN-COLL {key}={value}\n"));
         }
         wire.push_str("SUMMARY attempts=1 allocs=1 frees=1 live=0 live_bytes=0 peak=5\nFREESTAT free_attempts=1 frees_ok=1 invalid=0\n");
-        serde_json::json!({"collections_abi":"mn.collections.cell/2","collections_codegen":"a".repeat(64),"allocation_meter":{"enabled":true,"current":[0,0,0],"peak":[1024,2048,512],"total_peak":2304},"worker_memory":{"base":1024,"current":1024,"peak":2048,"delta":1024,"ok":1},"exit_code":42,"stderr_hex":super::super::hex(wire.as_bytes()),"counters":{"link_invocations":1,"run_invocations":1},"runtime_identity":{"abi":"mn.collections.runtime/3","build_key":"b".repeat(64),"content_hash":"c".repeat(64)},"link_identity":["d".repeat(64),"10.0.fixture","e".repeat(64)]})
+        serde_json::json!({"collections_abi":"mn.collections.cell/3","collections_codegen":"a".repeat(64),"allocation_meter":{"enabled":true,"current":[0,0,0],"peak":[1024,2048,512],"total_peak":2304},"worker_memory":{"base":1024,"current":1024,"peak":2048,"delta":1024,"ok":1},"exit_code":42,"stderr_hex":super::super::hex(wire.as_bytes()),"counters":{"link_invocations":1,"run_invocations":1},"runtime_identity":{"abi":"mn.collections.runtime/3","build_key":"b".repeat(64),"content_hash":"c".repeat(64)},"link_identity":["d".repeat(64),"10.0.fixture","e".repeat(64)]})
     }
     #[test]
     fn native_collections_parent_raw_and_actual_stage_controls() {

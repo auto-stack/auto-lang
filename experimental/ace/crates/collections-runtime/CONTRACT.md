@@ -20,8 +20,8 @@ source methods. List parameters/results/record fields, nested lists, Variant
 parameters/record fields, wide typed entry, closures/Dyn/Unit entry stay excluded.
 AV profile4/opcodes/wire and runtime semantics are unchanged.
 
-The Win64 ABI is `mn.collections.cell/2`: Cell16B (scalar/node address plus
-64-bit destructor-right), Frame32B. Runtime identity `mn.collections.runtime/2`,
+The Win64 ABI is `mn.collections.cell/3`: Cell16B (scalar/node address plus
+64-bit destructor-right), Frame32B. Runtime identity `mn.collections.runtime/3`,
 layout `mn.collections.layout/1`, codegen `mn.collections.codegen/1`, source
 `mn.collections.source/1`. Canonical BLAKE3 nominal descriptors bind owners,
 ordered fields/arms and transitive payload shapes, independently of table index

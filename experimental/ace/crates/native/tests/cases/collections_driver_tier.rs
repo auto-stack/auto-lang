@@ -376,7 +376,7 @@ fn collections_cli_builds_new_profile_and_preserves_output_on_refusal() {
     );
     let exe = std::fs::read(&output).unwrap();
     let receipt = std::fs::read(dir.join("case.ac-link.txt")).unwrap();
-    assert!(String::from_utf8_lossy(&receipt).contains("mn.collections.cell/2"));
+    assert!(String::from_utf8_lossy(&receipt).contains("mn.collections.cell/3"));
     for backend in ["legacy", "collections=legacy", "collections=typo"] {
         assert_ne!(invoke(backend).exit_code, Some(0));
         assert_eq!(std::fs::read(&output).unwrap(), exe);
