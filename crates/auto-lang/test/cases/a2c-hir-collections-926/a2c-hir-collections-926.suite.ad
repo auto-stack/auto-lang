@@ -1,0 +1,37 @@
+# PLAN-926 a2c-hir collections suite - the C collections channel's first
+# evidence set (ac-a2c/hir-collections-emit-v1, HIR to C11 with the nominal
+# type table + collections runtime): the TWENTY frozen 904 originals
+# (byte-exact L01..L07 / V01..V07 / LSTR864 / FIN864A/B / N889 x3) through
+# the real A2X C chain. The DAILY check is the emit-only golden compare
+# (spawn-zero); the certification leg (real cl compile+run of the actual
+# set AND the independent hand-written reference-<case>.c against the
+# frozen oracle, strict ace.a2c-hir.collections.cert/1 carrying the
+# execution-config identity) is the explicit certify axis owned by the
+# worker conformance tests. Every included case is green by real emission
+# on the current tree; the a2r 904 suite and the C scalar/record-text 921/
+# 925 suites are untouched (parallel channels, mutually untrusted).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2c-hir-collections-926", include: [
+    "L01.case.ad",
+    "L02.case.ad",
+    "L03.case.ad",
+    "L04.case.ad",
+    "L05.case.ad",
+    "L06.case.ad",
+    "L07.case.ad",
+    "V01.case.ad",
+    "V02.case.ad",
+    "V03.case.ad",
+    "V04.case.ad",
+    "V05.case.ad",
+    "V06.case.ad",
+    "V07.case.ad",
+    "LSTR864.case.ad",
+    "FIN864A.case.ad",
+    "FIN864B.case.ad",
+    "N889-list-variant.case.ad",
+    "N889-nested-variant.case.ad",
+    "N889-optional-variant.case.ad",
+] }
+```

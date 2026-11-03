@@ -2,6 +2,8 @@
 mod a2c_cert;
 #[path = "cases/a2c_coll.rs"]
 mod a2c_coll;
+#[path = "cases/a2c_coll_cert.rs"]
+mod a2c_coll_cert;
 #[path = "cases/a2c_coll_restore.rs"]
 mod a2c_coll_restore;
 #[path = "cases/a2c_restore.rs"]

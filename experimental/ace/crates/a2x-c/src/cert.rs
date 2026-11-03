@@ -9,7 +9,7 @@
 //! every `ace.a2r-hir.*` schema are mutually untrusted with this one —
 //! cross-schema impersonation is a REJECTED tamper control.
 
-use crate::{C_RECIPE, C_RT_RECIPE};
+use crate::{C_COLL_RECIPE, C_RECIPE, C_RT_RECIPE};
 
 /// The C scalar channel's certificate schema.
 pub const C_CERT_SCHEMA: &str = "ace.a2c-hir.scalar.cert/1";
@@ -17,6 +17,11 @@ pub const C_CERT_SCHEMA: &str = "ace.a2c-hir.scalar.cert/1";
 /// literal, paired strictly with the record-text recipe (a scalar cert
 /// recipe under the RT schema, or the reverse, is a REJECTED tamper).
 pub const C_RT_CERT_SCHEMA: &str = "ace.a2c-hir.record-text.cert/1";
+/// PLAN-926: the C collections channel's certificate schema — its own
+/// literal, paired strictly with the collections recipe AND carrying the
+/// canonical execution-config identity (mode/budget/fault/events/cancel
+/// are key material, mirroring the PLAN-904 Rust collections cert).
+pub const C_COLL_CERT_SCHEMA: &str = "ace.a2c-hir.collections.cert/1";
 
 /// One bound actual file (path + content sha256).
 #[derive(Clone, Debug)]
@@ -62,6 +67,9 @@ pub struct CCertDraft {
     pub protocol: String,
     pub toolchain: CToolchainIdentity,
     pub capabilities: Vec<String>,
+    /// PLAN-926: the collections channel's canonical execution-config
+    /// identity (required for the collections schema; None elsewhere).
+    pub execution_config: Option<String>,
 }
 
 fn kv(out: &mut String, k: &str, v: &str) {
@@ -97,6 +105,10 @@ impl CCertDraft {
         kv(&mut out, "standard", &self.standard);
         kv(&mut out, "shared_view_version", &self.shared_view_version);
         kv(&mut out, "protocol", &self.protocol);
+        if let Some(ec) = &self.execution_config {
+            // embedded raw: the canonical config is already strict JSON
+            out.push_str(&format!("  \"execution_config\": {},\n", ec));
+        }
         out.push_str("  \"toolchain\": {\n");
         kv(&mut out, "kind", "cl");
         kv(&mut out, "version", &self.toolchain.cl_version);
@@ -137,7 +149,17 @@ impl CCertDraft {
         // impersonation (a scalar recipe under the record-text schema or
         // the reverse) is rejected
         let pair_ok = (self.schema == C_CERT_SCHEMA && self.recipe == C_RECIPE)
-            || (self.schema == C_RT_CERT_SCHEMA && self.recipe == C_RT_RECIPE);
+            || (self.schema == C_RT_CERT_SCHEMA && self.recipe == C_RT_RECIPE)
+            || (self.schema == C_COLL_CERT_SCHEMA && self.recipe == C_COLL_RECIPE);
+        // the collections cert REQUIRES its execution-config identity
+        if self.schema == C_COLL_CERT_SCHEMA
+            && self.execution_config.as_deref().unwrap_or("").is_empty()
+        {
+            return Err("the collections cert requires the execution-config identity".into());
+        }
+        if self.schema != C_COLL_CERT_SCHEMA && self.execution_config.is_some() {
+            return Err("only the collections cert carries an execution config".into());
+        }
         if !pair_ok {
             return Err(format!(
                 "schema `{}` / recipe `{}` is not a known channel pairing",

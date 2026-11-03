@@ -142,6 +142,7 @@ fn c_cert_draft_strict_controls() {
                 vcvars_sha256: "f".repeat(64),
                 flags: vec!["-nologo".into(), "-std:c11".into()],
             },
+            execution_config: None,
             capabilities: vec![],
         }
     }

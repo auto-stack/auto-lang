@@ -1359,6 +1359,18 @@ suite = "crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections
 all = false
 
 [[group]]
+name = "case-a2c-hir-collections-926"
+title = "TestCase case-a2c-hir-collections-926（PLAN-926 CA-C HIR→C11 集合/变体首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2c-hir-collections-926/a2c-hir-collections-926.suite.ad"
+all = false
+
+[[group]]
 name = "case-a2c-hir-record-text-925"
 title = "TestCase case-a2c-hir-record-text-925（PLAN-925 CA-B HIR→C11 record/text 首例）"
 runner = "case"

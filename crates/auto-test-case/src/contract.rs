@@ -1092,6 +1092,7 @@ fn decode_check(
             | Some("ac-a2r/hir-collections-emit-v1")
             | Some("ac-a2c/hir-scalar-emit-v1")
             | Some("ac-a2c/hir-record-text-emit-v1")
+            | Some("ac-a2c/hir-collections-emit-v1")
     );
     // PLAN-914: the AV recipes are the only probe recipes whose run steps
     // report `step.trace`; the mark-trace oracle is admitted there only.
@@ -1121,7 +1122,8 @@ fn decode_check(
         // PLAN-914 (I04): the declaration oracle and the declaration round
         // are two halves of one observation — never execute an invalidation
         // nobody judges, never declare an oracle no round produces.
-        if let (Some(mn), Some(steps)) = (options.probe_mn.as_ref(), options.probe_steps.as_deref()) {
+        if let (Some(mn), Some(steps)) = (options.probe_mn.as_ref(), options.probe_steps.as_deref())
+        {
             let has_decl_step = steps
                 .iter()
                 .any(|s| matches!(s, ProbeStep::DeclarationInvalidate { .. }));
@@ -1141,13 +1143,18 @@ fn decode_check(
         // PLAN-914 (I04): the same two-way rule for the AV data-incremental
         // recipe — an edit is judged through the invalidation oracle, and the
         // oracle never dangles.
-        if let Some(av) = options.probe_av.as_ref().filter(|_| {
-            options.probe_recipe.as_deref() == Some("ac-av/data-incremental-v1")
-        }) {
+        if let Some(av) = options
+            .probe_av
+            .as_ref()
+            .filter(|_| options.probe_recipe.as_deref() == Some("ac-av/data-incremental-v1"))
+        {
             let has_edit = options
                 .probe_steps
                 .as_deref()
-                .map(|s| s.iter().any(|st| matches!(st, ProbeStep::EditSource { .. })))
+                .map(|s| {
+                    s.iter()
+                        .any(|st| matches!(st, ProbeStep::EditSource { .. }))
+                })
                 .unwrap_or(false);
             if has_edit && av.invalidation.is_none() {
                 return Err(err(
@@ -1604,10 +1611,9 @@ fn decode_options(
                         "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
                         // PLAN-914: the data INCREMENTAL session recipe shares the same
                         // run/edit vocabulary (the parent judges the invalidation facts).
-                        "ac-av/data-incremental-v1" => matches!(
-                            op.as_str(),
-                            "run" | "edit-source" | "partial-rebuild"
-                        ),
+                        "ac-av/data-incremental-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source" | "partial-rebuild")
+                        }
                         // PLAN-821: the owned recipe shares the av step
                         // vocabulary (runs + discriminating edits).
                         "ac-av/owned-run-v1" => {
@@ -1708,6 +1714,9 @@ fn decode_options(
                         // PLAN-925: the C record-text emit recipe takes
                         // exactly one judged run step (the daily emit).
                         "ac-a2c/hir-record-text-emit-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-926: the C collections emit recipe takes
+                        // exactly one judged run step (the daily emit).
+                        "ac-a2c/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
                         _ => op != "run",
                     };
                     if !allowed {
@@ -2039,7 +2048,14 @@ fn decode_options(
                 let sf = Fields::new(
                     &apath,
                     pairs,
-                    &["entry", "caps", "session", "profile", "invalidation", "resource"],
+                    &[
+                        "entry",
+                        "caps",
+                        "session",
+                        "profile",
+                        "invalidation",
+                        "resource",
+                    ],
                 )?;
                 let entry = req_str(&sf, "entry")?;
                 // PLAN-862: the SOURCE-profile selector (append-only). A
@@ -2114,11 +2130,7 @@ fn decode_options(
                         }
                         let ipath = sf.path_of("invalidation");
                         let ipairs = as_obj(v, &ipath)?;
-                        let inf = Fields::new(
-                            &ipath,
-                            ipairs,
-                            &["stable_defs", "rebuilt_defs"],
-                        )?;
+                        let inf = Fields::new(&ipath, ipairs, &["stable_defs", "rebuilt_defs"])?;
                         let read_defs = |key: &str| -> Result<Vec<String>, ContractError> {
                             match inf.sub(key) {
                                 None => Ok(Vec::new()),
@@ -2449,19 +2461,19 @@ fn decode_options(
                                 "stable_defs",
                             ],
                         )?;
-                        let min_frontend_invalidations =
-                            match df.sub("min_frontend_invalidations") {
-                                None => 1,
-                                Some(mv) => match mv {
-                                    CVal::Int(n) if *n >= 1 && *n <= 64 => *n as u64,
-                                    _ => {
-                                        return Err(err(
-                                            &df.path_of("min_frontend_invalidations"),
-                                            "min_frontend_invalidations must be an integer 1..=64",
-                                        ))
-                                    }
-                                },
-                            };
+                        let min_frontend_invalidations = match df.sub("min_frontend_invalidations")
+                        {
+                            None => 1,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 1 && *n <= 64 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &df.path_of("min_frontend_invalidations"),
+                                        "min_frontend_invalidations must be an integer 1..=64",
+                                    ))
+                                }
+                            },
+                        };
                         let max_codegen_units = match df.sub("max_codegen_units") {
                             None => None,
                             Some(mv) => match mv {
@@ -2628,6 +2640,7 @@ fn decode_options(
                 | "ac-a2r/hir-collections-emit-v1"
                 | "ac-a2c/hir-scalar-emit-v1"
                 | "ac-a2c/hir-record-text-emit-v1"
+                | "ac-a2c/hir-collections-emit-v1"
         );
         let a2x_hir = match f.sub("a2x_hir") {
             None => {
@@ -2667,6 +2680,11 @@ fn decode_options(
                     // record-text profile set.
                     "ac-a2c/hir-record-text-emit-v1" => {
                         matches!(profile.as_str(), "record" | "text" | "text-record")
+                    }
+                    // PLAN-926: the C collections channel takes the
+                    // collections profile only.
+                    "ac-a2c/hir-collections-emit-v1" => {
+                        matches!(profile.as_str(), "collections")
                     }
                     _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
                 };
@@ -2770,6 +2788,12 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // table + manifest.json sidecar; strictly disjoint from every other
     // recipe/fileset/cert identity).
     "ac-a2c/hir-record-text-emit-v1",
+    // PLAN-926: the C collections A2X emit recipe - the same prebuilt
+    // worker/seam contract, riding the collections C fileset
+    // (main.c/a2x_c_coll_runtime.h/generated.c with the seed-derived
+    // nominal type table + manifest.json sidecar; strictly disjoint from
+    // every other recipe/fileset/cert identity).
+    "ac-a2c/hir-collections-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.
@@ -3743,4 +3767,3 @@ pub fn validate_console_oracle(
         _ => Ok(()),
     }
 }
-

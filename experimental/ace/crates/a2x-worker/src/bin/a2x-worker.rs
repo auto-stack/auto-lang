@@ -53,6 +53,10 @@ const C_RECIPE: &str = ace_a2x_c::C_RECIPE;
 /// mutually untrusted with every recipe above; dispatched by the same
 /// `daily-emit-c`/`certify-c` ops through the source profile.
 const C_RT_RECIPE: &str = ace_a2x_c::C_RT_RECIPE;
+/// PLAN-926 CA-C: the C collections channel (HIR→C11) — parallel to and
+/// mutually untrusted with every recipe above; dispatched by the same
+/// `daily-emit-c`/`certify-c` ops through the source profile.
+const C_COLL_RECIPE: &str = ace_a2x_c::C_COLL_RECIPE;
 
 fn main() {
     let mut req = String::new();
@@ -334,8 +338,11 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         "record" => compile_record_source(&src, "a2x-worker", &caps),
         "text" => compile_text_source(&src, "a2x-worker", &caps),
         "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
+        // PLAN-926: the collections source domain rides the C collections
+        // channel
+        "collections" => compile_collections_source(&src, "a2x-worker", &caps),
         other => fail(&format!(
-            "a2x.domain: the C channel serves core/scalar/record/text/text-record, not `{}`",
+            "a2x.domain: the C channel serves core/scalar/record/text/text-record/collections, not `{}`",
             other
         )),
     };
@@ -357,12 +364,13 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
     let provider = ace_a2x_c::CTargetProvider::v1();
     let family = match profile.as_str() {
         "record" | "text" | "text-record" => Family::RecordText,
+        "collections" => Family::Collections,
         _ => Family::Scalar,
     };
-    let recipe = if family == Family::RecordText {
-        C_RT_RECIPE
-    } else {
-        C_RECIPE
+    let recipe = match family {
+        Family::RecordText => C_RT_RECIPE,
+        Family::Collections => C_COLL_RECIPE,
+        Family::Scalar => C_RECIPE,
     };
     let runtime = match provider.runtime_source(&view, family) {
         Ok(r) => r,
@@ -454,7 +462,9 @@ fn daily_emit_c(v: &serde_json::Value) -> serde_json::Value {
 /// path/tool/dependency identity. Spawns are EXPECTED here (the
 /// certification channel; the daily channel stays spawn-zero).
 fn certify_c(v: &serde_json::Value) -> serde_json::Value {
-    use ace_a2x_c::cert::{BoundFile, CCertDraft, C_CERT_SCHEMA, C_RT_CERT_SCHEMA};
+    use ace_a2x_c::cert::{
+        BoundFile, CCertDraft, C_CERT_SCHEMA, C_COLL_CERT_SCHEMA, C_RT_CERT_SCHEMA,
+    };
     let out_dir = v["out_dir"]
         .as_str()
         .unwrap_or_else(|| fail("out_dir required"));
@@ -547,10 +557,28 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
         .unwrap_or_default();
     // PLAN-925: the cert identities pair by CHANNEL (scalar vs
     // record-text); the case prefix and HIR domain follow the family
-    let (schema, recipe_lit, case_prefix) = if out.recipe == C_RT_RECIPE {
-        (C_RT_CERT_SCHEMA, C_RT_RECIPE, "a2c-hir-925")
+    let (schema, recipe_lit, case_prefix, execution_config) = if out.recipe == C_RT_RECIPE {
+        (C_RT_CERT_SCHEMA, C_RT_RECIPE, "a2c-hir-925", None)
+    } else if out.recipe == C_COLL_RECIPE {
+        // PLAN-926: the collections cert carries the canonical
+        // execution-config identity (mode/budget/fault/events/cancel
+        // are key material — byte-parity with the PLAN-904 Rust
+        // collections cert's canonical rendering)
+        let mode = v["mode"].as_str().unwrap_or("debug").to_string();
+        let budget = v["budget"].as_u64().unwrap_or(16_777_216);
+        let fault = v["fault_alloc"].as_u64();
+        let events = v["events"].as_bool().unwrap_or(false);
+        let cancel = v["cancel"].as_bool().unwrap_or(false);
+        (
+            C_COLL_CERT_SCHEMA,
+            C_COLL_RECIPE,
+            "a2c-hir-926",
+            Some(ace_a2x_rust::coll::canonical_execution_config(
+                &mode, budget, fault, events, cancel,
+            )),
+        )
     } else {
-        (C_CERT_SCHEMA, C_RECIPE, "a2c-hir-921")
+        (C_CERT_SCHEMA, C_RECIPE, "a2c-hir-921", None)
     };
     let draft = CCertDraft {
         schema: schema.to_string(),
@@ -575,6 +603,7 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
         protocol: "a2x-observation/1".to_string(),
         toolchain,
         capabilities: caps,
+        execution_config,
     };
     if let Err(e) = draft.validate() {
         fail(&format!(

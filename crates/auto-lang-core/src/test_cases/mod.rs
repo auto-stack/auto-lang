@@ -38,6 +38,7 @@ use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
+pub mod a2r_emit_917_cert;
 pub mod abi;
 pub mod ac;
 pub mod ac_a2c_hir;
@@ -49,7 +50,6 @@ mod ac_protocol;
 /// PLAN-852 T-04: the explicit independent a2r certification entry. Never
 /// invoked by the suite runner or any daily scope.
 pub mod ace_certify;
-pub mod a2r_emit_917_cert;
 pub mod avm;
 pub mod execution_trace;
 pub mod inventory;
@@ -806,7 +806,9 @@ fn dispatch_check(
         // contracts above are untouched).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_HIR_RECIPE)
-                || check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_RT_HIR_RECIPE) =>
+                || check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_RT_HIR_RECIPE)
+                || check.options.probe_recipe.as_deref()
+                    == Some(ac_a2c_hir::A2C_COLL_HIR_RECIPE) =>
         {
             ac_a2c_hir::run_check(
                 resolved,
@@ -976,8 +978,7 @@ fn dispatch_check(
         // retained DataIncrementalSession; the parent judges the rebuild set
         // and the resident code identity carry-over.
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref()
-                == Some(ac_av::AV_DATA_INCREMENTAL_RECIPE) =>
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_DATA_INCREMENTAL_RECIPE) =>
         {
             ac_av::run_data_incremental_check(
                 resolved,
@@ -1053,8 +1054,7 @@ fn dispatch_check(
         }
         // PLAN-919: the per-owner lifecycle recipe (R01/R04/R06 av cells).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref()
-                == Some(ac_av::AV_RESOURCE_EVENTS_RECIPE) =>
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_RESOURCE_EVENTS_RECIPE) =>
         {
             ac_av::run_resource_events_check(
                 resolved,

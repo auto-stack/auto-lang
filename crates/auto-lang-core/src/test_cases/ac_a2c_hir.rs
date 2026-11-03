@@ -47,6 +47,11 @@ pub const A2C_HIR_RECIPE: &str = "ac-a2c/hir-scalar-emit-v1";
 /// beside the scalar one; the same worker binary and `daily-emit-c` op,
 /// dispatched by the source profile.
 pub const A2C_RT_HIR_RECIPE: &str = "ac-a2c/hir-record-text-emit-v1";
+/// PLAN-926 CA-C: the C collections channel — its own recipe/fileset/cert
+/// (main.c / a2x_c_coll_runtime.h / generated.c + manifest.json sidecar);
+/// the same worker binary and `daily-emit-c` op, dispatched by the
+/// collections source profile.
+pub const A2C_COLL_HIR_RECIPE: &str = "ac-a2c/hir-collections-emit-v1";
 // The C channel is served by the SAME prebuilt worker binary as the a2r
 // channels (one tool identity, `daily-emit-c` op), so the protocol/env/
 // pin constants are reused verbatim from the a2r adapter.
@@ -133,7 +138,8 @@ pub fn run_check(
     // record-text recipe (record/text/text-record); the worker must echo
     // exactly the bound recipe back.
     let rt_channel = recipe == A2C_RT_HIR_RECIPE;
-    if !rt_channel && recipe != A2C_HIR_RECIPE {
+    let coll_channel = recipe == A2C_COLL_HIR_RECIPE;
+    if !rt_channel && !coll_channel && recipe != A2C_HIR_RECIPE {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     let binding = check
@@ -142,10 +148,9 @@ pub fn run_check(
         .as_ref()
         .ok_or("probe check without an a2x_hir binding (contract violation)")?;
     let profile_ok = if rt_channel {
-        matches!(
-            binding.profile.as_str(),
-            "record" | "text" | "text-record"
-        )
+        matches!(binding.profile.as_str(), "record" | "text" | "text-record")
+    } else if coll_channel {
+        matches!(binding.profile.as_str(), "collections")
     } else {
         matches!(binding.profile.as_str(), "core" | "scalar")
     };
@@ -155,6 +160,8 @@ pub fn run_check(
             recipe,
             if rt_channel {
                 "record/text/text-record"
+            } else if coll_channel {
+                "collections"
             } else {
                 "core/scalar"
             },
