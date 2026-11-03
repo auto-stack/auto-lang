@@ -56,13 +56,16 @@ const CASES: &[(&str, &str, &str)] = &[
 ];
 
 fn certify(
+    tag: &str,
     case: &str,
     oracle_kind: &str,
     oracle_value: &str,
     reference_override: Option<&str>,
     mode: &str,
 ) -> serde_json::Value {
-    let dir = out_base().join(case);
+    // per-TEST-FN bucket: parallel test functions must never share a
+    // case dir (the remove_dir_all below would race their workers)
+    let dir = out_base().join(tag).join(case);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     // NOTE: no canonicalize — its \?\ extended-length prefix breaks cl's
@@ -126,14 +129,14 @@ fn certify(
 #[test]
 fn a2c_coll_certify_all_suite_cases() {
     for (case, kind, value) in CASES {
-        let r = certify(case, kind, value, None, "debug");
+        let r = certify("all", case, kind, value, None, "debug");
         assert_eq!(r["verdict"], "PASS", "{case}: {r}");
         assert_eq!(r["recipe"], "ac-a2c/hir-collections-emit-v1", "{case}");
         assert_eq!(r["case"], format!("a2c-hir-926/{case}"));
         assert_eq!(r["spawned_cl"], 2, "{case}: both legs compile");
         assert_eq!(r["spawned_rustc"], 0, "{case}");
         // the strict cert on disk
-        let cert = std::fs::read_to_string(out_base().join(case).join("case.cert.json"))
+        let cert = std::fs::read_to_string(out_base().join("all").join(case).join("case.cert.json"))
             .unwrap_or_else(|e| panic!("{case}: {e}"));
         assert!(
             cert.contains("\"schema\": \"ace.a2c-hir.collections.cert/1\""),
@@ -153,7 +156,7 @@ fn a2c_coll_certify_all_suite_cases() {
 fn a2c_coll_certify_wrong_legs_rejected() {
     // wrong oracle: the ACTUAL leg disagrees -> controlled failure
     // (certify-c rejects by error status, never a wrong verdict)
-    let r = certify("L01", "value", "70", None, "debug");
+    let r = certify("wrong", "L01", "value", "70", None, "debug");
     assert_eq!(r["status"], "error", "{r}");
     assert!(
         r["detail"]
@@ -166,7 +169,7 @@ fn a2c_coll_certify_wrong_legs_rejected() {
     let bad_ref = std::fs::read_to_string(suite_dir().join("reference-L01.c"))
         .unwrap()
         .replace("xs[0] + xs[1]", "xs[0] + xs[1] + 1");
-    let r = certify("L01", "value", "42", Some(&bad_ref), "debug");
+    let r = certify("wrong", "L01", "value", "42", Some(&bad_ref), "debug");
     assert_eq!(r["status"], "error", "{r}");
     assert!(
         r["detail"]
@@ -176,9 +179,9 @@ fn a2c_coll_certify_wrong_legs_rejected() {
         "{r}"
     );
     // the release-mode config identity differs from debug (key material)
-    let r = certify("L01", "value", "42", None, "release");
+    let r = certify("wrong", "L01", "value", "42", None, "release");
     assert_eq!(r["verdict"], "PASS", "{r}");
-    let cert = std::fs::read_to_string(out_base().join("L01").join("case.cert.json")).unwrap();
+    let cert = std::fs::read_to_string(out_base().join("wrong").join("L01").join("case.cert.json")).unwrap();
     assert!(
         cert.contains("\"mode\":\"release\""),
         "mode is cert key material"
