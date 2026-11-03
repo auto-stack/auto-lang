@@ -58,3 +58,30 @@
 - 暖合同 `warm_edit_ranged`：base 完整源 sha 绑定/UTF-8 range 精确单声明/同名片段；
   替换后完整源 sha + execution_config 入 manifest。restore/restart 逐内容重验再命中，
   只读写 0，close 先于一切查找。
+
+## PLAN-921：C 片段层 AXC1、来源绑定锚 AXP1 与纯恢复
+
+- **AXC1**（`a2921/axc-c-fn/v1`，producer `auto-a2x-c`）：C 片段键 =
+  owner/decl/sem_fp + lang=c/standard=c11/backend=auto-a2x-c/
+  backend_version/runtime_sha256/print_version(a2x-c-print/1)。与
+  AXR1..3 互不可命中（backend/standard/runtime/print 全异）。
+- **AXP1**（`a2921/axp-source-anchor/v1`，producer `a2x session`）：键
+  owner/profile/source_sha256/backend/entry；载荷为行式严格编解码的锚
+  （每函数 origin/slice sha/sem_fp/signature + runtime 文本 + 全文件集
+  sha 回执）。**发布即提交点**：锚的 RequiredData 边在 put 时活性检查
+  ——锚落地 ⇒ 其片段集完整存活；崩溃于锚前=store 无锚可恢复（恢复拒绝，
+  绝无半可恢复态）。同 key 异内容=store 冲突（内容寻址不可变）；
+  字节同一再发布幂等且不耗 quota。
+- **纯恢复**（`restore_source_bound`，新进程入口）：caller 供完整源+
+  声明上下文/目标/工具身份；按源 sha 查锚→严格解码→逐函数 slice 绑定
+  重验（R）→语义/片段载荷字段重验（R）→provider 重装配并逐文件对回执
+  （R）。**P0**（lower/print/persist/parse 零增量）；任何失配=命名拒绝
+  且**什么都不安装**；无锚=拒绝（冷 fallback 违反 P0 契约）；非标量族
+  拒绝（view 衍生 prelude 无法盲装配）。恢复后暖编辑经 `ensure_env`
+  整源重建（M 类，env_rebuilds 计数；此后仅被编辑函数生产）。
+- **ranged 暖编辑扩展到标量族**：C 链的暖编辑走 base+range+fragment 授权
+  （严格超集）；成功后按 next_sha 重绑锚（origin 平移+edited 函数
+  slice/sem_fp 重绑+全文件集回执刷新）。
+- **计数器**：restore_lookup/binding_checks/payload_verifies/
+  fileset_verifies/anchors_published/env_rebuilds；恢复绝不触碰生产
+  计数器——"cold 算 key 冒 P0"由计数器断言机械反控。

@@ -5,9 +5,14 @@
 > **Status**: experimental
 > 路径：`experimental/ace`（独立 Cargo workspace：`a2x-core` / `a2x-rust` / `a2x-store` / `a2x-probe`） | 依据：Design 51（AX-A，PLAN-892 交付）
 
-共享 A2X 骨架：已验证 core/scalar Checked HIR 之上的**目标中立语义视图**、
-结构化准备摘要与分层 cache 会话；Rust 是首个真实目标 provider（见
-[auto-a2r](../auto-a2r/project.md)）。第二目标未实现、明确不宣称多目标共享已实证。
+共享 A2X 骨架：已验证 Checked HIR 之上的**目标中立语义视图**、结构化
+准备摘要与分层 cache 会话。PLAN-921 起 emit 目标经共享
+`TargetProvider` 接缝接入：**Rust**（三通道，见
+[auto-a2r](../auto-a2r/project.md)）与 **C**（标量通道，见
+[auto-a2c](../auto-a2c/project.md)）是两个已实证的真实目标——同一会话与
+同一 store 可混合服务两目标（`set_target`），语义层 AXS1..3 共享、
+片段/文件集/证书身份按目标完全隔离（AXR1..3 vs AXC1）。会话层
+（a2x-store）不静态依赖任何目标 crate。
 
 ## 目标与范围
 
@@ -45,3 +50,21 @@
 `ac-a2r/hir-collections-emit-v1`、fileset/cert/store 层 AXS3/AXR3 严格互拒；typed
 List/Variant 通道合同见 [collections-hir-backend](../auto-a2r/collections-hir-backend.md)。
 本仓仍不含 M1 全量完成或全部 A2X 面。
+
+## PLAN-921 增补（目标接缝与来源绑定恢复）
+
+- **TargetProvider 契约**（`a2x-core::target`）：目标身份
+  （lang/standard/backend/backend_version）、片段键输入（含 runtime 内容
+  hash 与 print 版本）、片段层选择（AXR1/2/3、AXC1）、runtime 文本、批量
+  片段生产（整视图一次 lower 摊销）、fileset 装配。provider 纯函数、无
+  进程/store/时钟副作用——内容寻址复用的前提。
+- **混合目标**：同一 `A2xSession`/store 经 `set_target` 切换目标；
+  resident 键 (backend, source_name)，restart 只清当前目标。
+- **来源绑定锚（AXP1）与纯恢复**：见
+  [incremental-and-cache](incremental-and-cache.md) §AXP1——冷发布与
+  ranged 暖编辑发布 source-bound anchor（提交点：RequiredData 边在
+  publication 时活性检查）；新进程 `restore_source_bound` P0/R>0，
+  锚不可变（同 key 异内容=store 冲突）。
+- **边界控制更新**：boundaries 白名单/members/dirs 精确扩
+  `ace-a2x-c`；"单目标钉住"测试改双目标真实断言（层隔离+非标量族
+  命名拒绝+store 无目标 crate 依赖）。

@@ -57,3 +57,18 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
   元素/臂序/mode/被调事实变化失效，等价表序稳定。
 - 配置分层失效：语义层 target 中立；目标 runtime/printer 变化→目标片段/manifest 失效；
   工具/认证配置变化→证书 STALE（execution_config 为证书键材）。
+
+## PLAN-921：目标 provider 接缝（session 去目标耦合）
+
+- `a2x-store` 不再 import 任何 `ace-a2x-rust`/`ace-a2x-c` 项：fragment
+  key 目标尾字段、片段生产（miss 批量、miss_slots 保 loop 位序=冻结字节
+  序）、runtime 文本选择、prelude seed（RT/COLL 记录表无损行式编解码）与
+  fileset 装配全部经 `Box<dyn TargetProvider>` 委托。
+- Rust 侧迁移是**字节同一**的（AXR1..3 键字段序 lang/edition/backend/
+  backend_version/runtime_sha256/print_version 逐字保留；wrapper/manifest
+  格式串原样迁移；RT/COLL prelude 经 seed 往返）；既有 Rust 全套
+  （store_cache/incremental/902/904）是该迁移的字节同一 oracle。
+- 语义层（AXS1..3）键不含目标字段；AXS1 consumers 注册增列
+  `auto-a2x-c`（registry 元数据，键/字节不动）。
+- 不支持族是命名拒绝：cold 入口 `ensure_target_supports`（C 仅
+  Family::Scalar；RecordText/Collections 经 C 目标为 `a2x.domain`）。
