@@ -43,6 +43,10 @@ use auto_test_case::report::Status;
 /// and certification leg; parallel to and mutually untrusted with every
 /// `ac-a2r/*` recipe.
 pub const A2C_HIR_RECIPE: &str = "ac-a2c/hir-scalar-emit-v1";
+/// PLAN-925 CA-B: the C record-text channel — its own recipe/fileset/cert
+/// beside the scalar one; the same worker binary and `daily-emit-c` op,
+/// dispatched by the source profile.
+pub const A2C_RT_HIR_RECIPE: &str = "ac-a2c/hir-record-text-emit-v1";
 // The C channel is served by the SAME prebuilt worker binary as the a2r
 // channels (one tool identity, `daily-emit-c` op), so the protocol/env/
 // pin constants are reused verbatim from the a2r adapter.
@@ -125,7 +129,11 @@ pub fn run_check(
         .probe_recipe
         .as_deref()
         .ok_or("probe check without a recipe (contract violation)")?;
-    if recipe != A2C_HIR_RECIPE {
+    // PLAN-925: two C channels — the scalar recipe (core/scalar) and the
+    // record-text recipe (record/text/text-record); the worker must echo
+    // exactly the bound recipe back.
+    let rt_channel = recipe == A2C_RT_HIR_RECIPE;
+    if !rt_channel && recipe != A2C_HIR_RECIPE {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     let binding = check
@@ -133,10 +141,24 @@ pub fn run_check(
         .probe_a2x_hir
         .as_ref()
         .ok_or("probe check without an a2x_hir binding (contract violation)")?;
-    if !matches!(binding.profile.as_str(), "core" | "scalar") {
+    let profile_ok = if rt_channel {
+        matches!(
+            binding.profile.as_str(),
+            "record" | "text" | "text-record"
+        )
+    } else {
+        matches!(binding.profile.as_str(), "core" | "scalar")
+    };
+    if !profile_ok {
         return Err(format!(
-            "{} takes the core/scalar profiles only (got {:?})",
-            A2C_HIR_RECIPE, binding.profile
+            "{} takes the {} profiles only (got {:?})",
+            recipe,
+            if rt_channel {
+                "record/text/text-record"
+            } else {
+                "core/scalar"
+            },
+            binding.profile
         ));
     }
     let steps = check

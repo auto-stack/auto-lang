@@ -1091,6 +1091,7 @@ fn decode_check(
             | Some("ac-a2r/hir-record-text-emit-v1")
             | Some("ac-a2r/hir-collections-emit-v1")
             | Some("ac-a2c/hir-scalar-emit-v1")
+            | Some("ac-a2c/hir-record-text-emit-v1")
     );
     // PLAN-914: the AV recipes are the only probe recipes whose run steps
     // report `step.trace`; the mark-trace oracle is admitted there only.
@@ -1695,6 +1696,9 @@ fn decode_options(
                         // one judged run step (the daily `daily-emit-c`);
                         // certify/edit faces arrive with their own contract.
                         "ac-a2c/hir-scalar-emit-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-925: the C record-text emit recipe takes
+                        // exactly one judged run step (the daily emit).
+                        "ac-a2c/hir-record-text-emit-v1" => matches!(op.as_str(), "run"),
                         _ => op != "run",
                     };
                     if !allowed {
@@ -2555,6 +2559,7 @@ fn decode_options(
                 | "ac-a2r/hir-record-text-emit-v1"
                 | "ac-a2r/hir-collections-emit-v1"
                 | "ac-a2c/hir-scalar-emit-v1"
+                | "ac-a2c/hir-record-text-emit-v1"
         );
         let a2x_hir = match f.sub("a2x_hir") {
             None => {
@@ -2589,6 +2594,11 @@ fn decode_options(
                     // scalar profile set (core/scalar only).
                     "ac-a2c/hir-scalar-emit-v1" => {
                         matches!(profile.as_str(), "core" | "scalar")
+                    }
+                    // PLAN-925: the C record-text channel mirrors the a2r
+                    // record-text profile set.
+                    "ac-a2c/hir-record-text-emit-v1" => {
+                        matches!(profile.as_str(), "record" | "text" | "text-record")
                     }
                     _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
                 };
@@ -2686,6 +2696,12 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // fileset (main.c/a2x_c_runtime.h/generated.c + manifest.json sidecar;
     // strictly disjoint recipe/fileset/cert identity from every a2r one).
     "ac-a2c/hir-scalar-emit-v1",
+    // PLAN-925: the C record-text A2X emit recipe - the same prebuilt
+    // worker/seam contract, riding the record-text C fileset
+    // (main.c/a2x_c_rt_runtime.h/generated.c with the seed-derived record
+    // table + manifest.json sidecar; strictly disjoint from every other
+    // recipe/fileset/cert identity).
+    "ac-a2c/hir-record-text-emit-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.

@@ -905,7 +905,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             hir::ExprKind::TextLen { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_len",
                     &[self.as_view_form(v, vt)],
                     Ty::I32,
@@ -915,7 +916,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             hir::ExprKind::TextLenBytes { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_len_bytes",
                     &[self.as_view_form(v, vt)],
                     Ty::I32,
@@ -926,7 +928,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
                 let (i, _) = self.lower_pure(*index)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_char_at",
                     &[self.as_view_form(v, vt), i],
                     Ty::Char,
@@ -942,7 +945,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 let (v, vt) = self.lower_view_value(*operand)?;
                 let (s, _) = self.lower_pure(*start)?;
                 let (e, _) = self.lower_pure(*end)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_slice",
                     &[self.as_view_form(v, vt), s, e],
                     Ty::Str,
@@ -953,7 +957,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 let mark = self.pending_frees.len();
                 let (l, lt) = self.lower_view_value(*lhs)?;
                 let (r, rt) = self.lower_view_value(*rhs)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_concat",
                     &[self.as_view_form(l, lt), self.as_view_form(r, rt)],
                     Ty::StrOwned,
@@ -963,7 +968,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             hir::ExprKind::TextClone { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_clone",
                     &[self.as_view_form(v, vt)],
                     Ty::StrOwned,
@@ -973,7 +979,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             hir::ExprKind::TextToOwned { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;
-                self.one_arg_result(mark, 
+                self.one_arg_result(
+                    mark,
                     "a2x_str_to_owned",
                     &[self.as_view_form(v, vt)],
                     Ty::StrOwned,
@@ -991,7 +998,13 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             hir::ExprKind::CharFromCodepoint { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, _) = self.lower_pure(*operand)?;
-                self.one_arg_result(mark, "a2x_char_from_codepoint", &[v], Ty::Char, "a2x_char_result")
+                self.one_arg_result(
+                    mark,
+                    "a2x_char_from_codepoint",
+                    &[v],
+                    Ty::Char,
+                    "a2x_char_result",
+                )
             }
             // ---- record operations ----
             hir::ExprKind::RecordCtor {

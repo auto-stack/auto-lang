@@ -1,0 +1,10 @@
+type Counter { value int }
+fn bump(mut x Counter, delta int) int {
+    x.value = x.value + delta
+    return x.value
+}
+fn main() int {
+    var x Counter = Counter(20)
+    let now int = bump(x.mut, 1)
+    return now + x.value
+}

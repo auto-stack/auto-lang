@@ -2,7 +2,7 @@
 //!
 //! The C record-text file set is not re-assemblable from fragments alone:
 //! `generated.c` needs the module's record type table (struct definitions
-//! + the per-record deep-clone helpers reference field types). On the cold
+//! and the per-record deep-clone helpers reference field types). On the cold
 //! path the provider captures the seed from the live view
 //! ([`TargetProvider::capture_prelude_seed`]); the session stores it
 //! provider-opaque and feeds it back on the pure-restore re-assembly

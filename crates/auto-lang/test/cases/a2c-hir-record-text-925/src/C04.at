@@ -1,0 +1,10 @@
+type Counter {
+    value int
+    static fn new(n int) Counter { return Counter(n) }
+    fn read() int { return .value }
+}
+fn main() int {
+    let c Counter = Counter.new(40)
+    let s Str = "x"
+    return c.read() + s.len() + 1
+}

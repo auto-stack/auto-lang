@@ -49,6 +49,10 @@ const COLL_RECIPE: &str = "ac-a2r/hir-collections-emit-v1";
 /// Rust recipe above. Served by the same worker binary (one tool
 /// identity), dispatched by the `daily-emit-c`/`certify-c` ops.
 const C_RECIPE: &str = ace_a2x_c::C_RECIPE;
+/// PLAN-925 CA-B: the C record-text channel (HIR→C11) — parallel to and
+/// mutually untrusted with every recipe above; dispatched by the same
+/// `daily-emit-c`/`certify-c` ops through the source profile.
+const C_RT_RECIPE: &str = ace_a2x_c::C_RT_RECIPE;
 
 fn main() {
     let mut req = String::new();
@@ -98,7 +102,7 @@ fn identity() -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
-        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE],
+        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
@@ -115,6 +119,10 @@ struct EmitOutcome {
     entry_fn: String,
     profile: String,
     source_sha256: String,
+    /// PLAN-925: the channel's recipe (scalar vs record-text by family).
+    recipe: String,
+    /// The compiled bundle's HIR domain string (cert identity).
+    hir_domain: String,
 }
 
 fn read_source(v: &serde_json::Value) -> (String, String) {
@@ -217,6 +225,8 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         entry_fn,
         profile: view.profile.to_string(),
         source_sha256,
+        recipe: RECIPE.to_string(),
+        hir_domain: view.domain.as_str().to_string(),
     }
 }
 
@@ -319,8 +329,13 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
     let compiled = match profile.as_str() {
         "core" => compile_source(&src, "a2x-worker", &caps),
         "scalar" => compile_scalar_source(&src, "a2x-worker", &caps),
+        // PLAN-925: the record/text/text-record source domains ride the
+        // C record-text channel
+        "record" => compile_record_source(&src, "a2x-worker", &caps),
+        "text" => compile_text_source(&src, "a2x-worker", &caps),
+        "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
         other => fail(&format!(
-            "a2x.domain: the C scalar channel serves core/scalar only, not `{}`",
+            "a2x.domain: the C channel serves core/scalar/record/text/text-record, not `{}`",
             other
         )),
     };
@@ -340,7 +355,15 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
     };
     let provider = ace_a2x_c::CTargetProvider::v1();
-    let family = Family::Scalar;
+    let family = match profile.as_str() {
+        "record" | "text" | "text-record" => Family::RecordText,
+        _ => Family::Scalar,
+    };
+    let recipe = if family == Family::RecordText {
+        C_RT_RECIPE
+    } else {
+        C_RECIPE
+    };
     let runtime = match provider.runtime_source(&view, family) {
         Ok(r) => r,
         Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
@@ -368,6 +391,12 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
             text: text.as_str(),
         })
         .collect();
+    // PLAN-925: the record-text assembly needs the record-table seed
+    // (captured from the live view)
+    let prelude_seed = match provider.capture_prelude_seed(&view, family) {
+        Ok(s) => s,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
     let fileset = match provider.assemble_fileset(FilesetRequest {
         entry: &entry,
         input_hash: &compiled.input_hash,
@@ -375,9 +404,9 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         fragments: &frags,
         view: Some(&view),
         runtime: &runtime,
-        prelude_seed: None,
+        prelude_seed: prelude_seed.as_deref(),
         origins: None,
-        source_sha256: None,
+        source_sha256: Some(&source_sha256),
     }) {
         Ok(fs) => fs,
         Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
@@ -389,6 +418,8 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         entry_fn: ace_a2x_c::c_fn_name(&entry),
         profile,
         source_sha256,
+        recipe: recipe.to_string(),
+        hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
     }
 }
 
@@ -401,7 +432,7 @@ fn daily_emit_c(v: &serde_json::Value) -> serde_json::Value {
     let nonce = v["nonce"].as_str().unwrap_or("");
     let out = emit_c(v);
     write_out_dir(out_dir, &out);
-    let mut r = ok_base(C_RECIPE);
+    let mut r = ok_base(&out.recipe);
     r["mode"] = "daily-emit-c".into();
     r["target"] = "c".into();
     r["nonce"] = nonce.into();
@@ -423,7 +454,7 @@ fn daily_emit_c(v: &serde_json::Value) -> serde_json::Value {
 /// path/tool/dependency identity. Spawns are EXPECTED here (the
 /// certification channel; the daily channel stays spawn-zero).
 fn certify_c(v: &serde_json::Value) -> serde_json::Value {
-    use ace_a2x_c::cert::{BoundFile, CCertDraft, C_CERT_SCHEMA};
+    use ace_a2x_c::cert::{BoundFile, CCertDraft, C_CERT_SCHEMA, C_RT_CERT_SCHEMA};
     let out_dir = v["out_dir"]
         .as_str()
         .unwrap_or_else(|| fail("out_dir required"));
@@ -514,12 +545,19 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
                 .collect()
         })
         .unwrap_or_default();
+    // PLAN-925: the cert identities pair by CHANNEL (scalar vs
+    // record-text); the case prefix and HIR domain follow the family
+    let (schema, recipe_lit, case_prefix) = if out.recipe == C_RT_RECIPE {
+        (C_RT_CERT_SCHEMA, C_RT_RECIPE, "a2c-hir-925")
+    } else {
+        (C_CERT_SCHEMA, C_RECIPE, "a2c-hir-921")
+    };
     let draft = CCertDraft {
-        schema: C_CERT_SCHEMA.to_string(),
-        recipe: C_RECIPE.to_string(),
-        case: format!("a2c-hir-921/{}", case_id),
+        schema: schema.to_string(),
+        recipe: recipe_lit.to_string(),
+        case: format!("{}/{}", case_prefix, case_id),
         profile: out.profile.clone(),
-        hir_domain: "auto.hir.scalar".to_string(),
+        hir_domain: out.hir_domain.clone(),
         entry: v["entry"].as_str().unwrap_or("main").to_string(),
         verdict: "PASS".to_string(),
         oracle_kind: oracle_kind.to_string(),
@@ -549,11 +587,11 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
         fail(&format!("write cert: {e}"));
     }
 
-    let mut r = ok_base(C_RECIPE);
+    let mut r = ok_base(recipe_lit);
     r["mode"] = "certify-c".into();
     r["target"] = "c".into();
     r["nonce"] = nonce.into();
-    r["case"] = format!("a2c-hir-921/{}", case_id).into();
+    r["case"] = format!("{}/{}", case_prefix, case_id).into();
     r["verdict"] = "PASS".into();
     r["oracle_kind"] = oracle_kind.into();
     r["oracle_value"] = oracle_value.into();

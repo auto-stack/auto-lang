@@ -805,7 +805,8 @@ fn dispatch_check(
         // over the C fileset; append-only registration — the a2r recipe
         // contracts above are untouched).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_HIR_RECIPE) =>
+            if check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_HIR_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(ac_a2c_hir::A2C_RT_HIR_RECIPE) =>
         {
             ac_a2c_hir::run_check(
                 resolved,

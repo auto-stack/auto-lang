@@ -42,7 +42,9 @@ fn build_load(left: &str) -> String {
     for b in 0..16 {
         let unit = "数据-载荷-字符串-区块-abcdefgh-";
         let lit: String = std::iter::repeat(unit).take(10).collect();
-        src.push_str(&format!("fn data_block_{b}() Str {{ return \"{lit}-{b}\" }}\n"));
+        src.push_str(&format!(
+            "fn data_block_{b}() Str {{ return \"{lit}-{b}\" }}\n"
+        ));
         let _ = b;
     }
     // 32 unchanged callers over the collections surface (owned pushes go
@@ -54,7 +56,10 @@ fn build_load(left: &str) -> String {
     }
     // 5 disjoint scalar helpers (unchanged across revisions)
     for i in 0..5 {
-        src.push_str(&format!("fn scalar_{i}(v int) int {{ return v * {} + {i} }}\n", i + 2));
+        src.push_str(&format!(
+            "fn scalar_{i}(v int) int {{ return v * {} + {i} }}\n",
+            i + 2
+        ));
     }
     // main fans the callers out and folds with the disjoint helpers
     src.push_str("fn main() int {\n    var total = 0\n");
@@ -98,8 +103,12 @@ fn run_assembly(dir: &PathBuf, asm: &ace_a2x_store::Assembly) -> i64 {
     let exe = dir.join("case.exe");
     let compile = auto_tool_execution::run_command_capture(
         {
-            let mut c = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
-            c.args(["--edition", "2021", "-o"]).arg(&exe).arg("main.rs").current_dir(dir);
+            let mut c =
+                Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+            c.args(["--edition", "2021", "-o"])
+                .arg(&exe)
+                .arg("main.rs")
+                .current_dir(dir);
             c
         },
         auto_tool_execution::TreeScope::ProcessTree,
@@ -113,7 +122,11 @@ fn run_assembly(dir: &PathBuf, asm: &ace_a2x_store::Assembly) -> i64 {
         String::from_utf8_lossy(compile.stderr.as_ref().unwrap())
     );
     let run = auto_tool_execution::run_command_capture(
-        { let mut c = Command::new(&exe); c.current_dir(dir); c },
+        {
+            let mut c = Command::new(&exe);
+            c.current_dir(dir);
+            c
+        },
         auto_tool_execution::TreeScope::ProcessTree,
         None,
     )
@@ -135,7 +148,10 @@ fn p90(xs: Vec<u128>) -> u128 {
 fn fn_line_range(src: &str, name: &str) -> (usize, usize) {
     let needle = format!("fn {name}(");
     let start = src.find(&needle).expect("fn");
-    let end = src[start..].find('\n').map(|i| start + i).unwrap_or(src.len());
+    let end = src[start..]
+        .find('\n')
+        .map(|i| start + i)
+        .unwrap_or(src.len());
     (start, end)
 }
 
@@ -151,7 +167,11 @@ fn main() {
         .map(|l| l.len() + 1)
         .sum();
     assert!(non_comment >= 16 * 1024, "load too small: {non_comment}");
-    let str_bytes: usize = [src_a.match_indices("\"").count() / 2, 0].iter().next().copied().unwrap()
+    let str_bytes: usize = [src_a.match_indices("\"").count() / 2, 0]
+        .iter()
+        .next()
+        .copied()
+        .unwrap()
         .max(0);
     let _ = str_bytes;
     let str_bytes = src_a.bytes().filter(|b| *b > 0x7f).count()
@@ -165,7 +185,14 @@ fn main() {
     let oracle_a = oracle_of(20);
     let oracle_b = oracle_of(21);
     let store_root = base.join("store");
-    let mut certify_session = A2xSession::open(&store_root, "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut certify_session = A2xSession::open(
+        &store_root,
+        "p904-formal",
+        "owner",
+        64 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     let t_prepare = Instant::now();
     let a_asm = certify_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
@@ -187,7 +214,6 @@ fn main() {
     let certify_secs = t_prepare.elapsed().as_secs_f64();
     eprintln!("pre-certified A={oracle_a} B={oracle_b}");
 
-
     let mut report = serde_json::json!({
         "schema": "a2904/coll-formal/1",
         "prepare_compile_certify_secs": (certify_secs as u64),
@@ -201,7 +227,14 @@ fn main() {
     let mut fresh_ms = Vec::new();
     for i in 0..SAMPLES {
         let root = base.join(format!("fresh-{i}"));
-        let mut s = A2xSession::open(&root, "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+        let mut s = A2xSession::open(
+            &root,
+            "p904-formal",
+            "owner",
+            64 << 20,
+            ace_a2x_rust::RustTargetProvider::v1(),
+        )
+        .unwrap();
         let t = Instant::now();
         let asm = s
             .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
@@ -211,7 +244,14 @@ fn main() {
     }
 
     // ---- state: hit (same session, same source: pure store hits) --------
-    let mut hit_session = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut hit_session = A2xSession::open(
+        &base.join("hit"),
+        "p904-formal",
+        "owner",
+        64 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     hit_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
         .expect("hit cold");
@@ -233,7 +273,14 @@ fn main() {
     // ---- state: restart (fresh session over the populated store) --------
     let mut restart_ms = Vec::new();
     for _ in 0..SAMPLES {
-        let mut s = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+        let mut s = A2xSession::open(
+            &base.join("hit"),
+            "p904-formal",
+            "owner",
+            64 << 20,
+            ace_a2x_rust::RustTargetProvider::v1(),
+        )
+        .unwrap();
         let t = Instant::now();
         s.cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
             .expect("restart");
@@ -242,7 +289,14 @@ fn main() {
     }
 
     // ---- state: body-edit (alternating ranged warm edits) ----------------
-    let mut edit_session = A2xSession::open(&base.join("edit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut edit_session = A2xSession::open(
+        &base.join("edit"),
+        "p904-formal",
+        "owner",
+        64 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     edit_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
         .expect("edit cold");
@@ -265,7 +319,14 @@ fn main() {
             )
         };
         let asm = edit_session
-            .warm_edit_ranged("left_pad", &base_src, fn_line_range(&base_src, "left_pad"), &frag, "main", false)
+            .warm_edit_ranged(
+                "left_pad",
+                &base_src,
+                fn_line_range(&base_src, "left_pad"),
+                &frag,
+                "main",
+                false,
+            )
             .expect("body edit");
         edit_ms.push(t.elapsed().as_millis());
         cur = next;
@@ -275,7 +336,12 @@ fn main() {
     let _ = cur;
 
     // gates: P90 per state + structural invariants asserted inline above
-    let gates = [("fresh", fresh_ms), ("hit", hit_ms), ("restart", restart_ms), ("body-edit", edit_ms)];
+    let gates = [
+        ("fresh", fresh_ms),
+        ("hit", hit_ms),
+        ("restart", restart_ms),
+        ("body-edit", edit_ms),
+    ];
     let mut all_ok = true;
     // §5.7: P50/P90/P95/P99 and the prepared/compile/certify split are
     // listed separately from the P90 gate
@@ -283,7 +349,10 @@ fn main() {
         let p = p90(ms.clone());
         let ok = p <= P90_LIMIT_MS;
         all_ok &= ok;
-        eprintln!("{name}: P90={p}ms (limit {P90_LIMIT_MS}) {}", if ok { "PASS" } else { "FAIL" });
+        eprintln!(
+            "{name}: P90={p}ms (limit {P90_LIMIT_MS}) {}",
+            if ok { "PASS" } else { "FAIL" }
+        );
         let key = name.replace('-', "_");
         for (tag, pv) in [("p50", 0.5), ("p90", 0.9), ("p95", 0.95), ("p99", 0.99)] {
             report[format!("{key}_{tag}_ms")] = (percentile(ms.clone(), pv) as u64).into();

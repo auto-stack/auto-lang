@@ -9,10 +9,14 @@
 //! every `ace.a2r-hir.*` schema are mutually untrusted with this one —
 //! cross-schema impersonation is a REJECTED tamper control.
 
-use crate::C_RECIPE;
+use crate::{C_RECIPE, C_RT_RECIPE};
 
 /// The C scalar channel's certificate schema.
 pub const C_CERT_SCHEMA: &str = "ace.a2c-hir.scalar.cert/1";
+/// PLAN-925: the C record-text channel's certificate schema — its own
+/// literal, paired strictly with the record-text recipe (a scalar cert
+/// recipe under the RT schema, or the reverse, is a REJECTED tamper).
+pub const C_RT_CERT_SCHEMA: &str = "ace.a2c-hir.record-text.cert/1";
 
 /// One bound actual file (path + content sha256).
 #[derive(Clone, Debug)]
@@ -129,11 +133,16 @@ impl CCertDraft {
     /// STRICT validation: exact schema/recipe literals, complete
     /// identities, well-formed files. `None` on any deviation.
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != C_CERT_SCHEMA {
-            return Err(format!("schema `{}` is not {}", self.schema, C_CERT_SCHEMA));
-        }
-        if self.recipe != C_RECIPE {
-            return Err(format!("recipe `{}` is not {}", self.recipe, C_RECIPE));
+        // the schema/recipe pair is exact per CHANNEL — cross-channel
+        // impersonation (a scalar recipe under the record-text schema or
+        // the reverse) is rejected
+        let pair_ok = (self.schema == C_CERT_SCHEMA && self.recipe == C_RECIPE)
+            || (self.schema == C_RT_CERT_SCHEMA && self.recipe == C_RT_RECIPE);
+        if !pair_ok {
+            return Err(format!(
+                "schema `{}` / recipe `{}` is not a known channel pairing",
+                self.schema, self.recipe
+            ));
         }
         for f in [
             &self.case,

@@ -319,7 +319,7 @@ fn record_table_block(recs: &[seed::SeedRecord]) -> Result<String, A2xReject> {
     // 1) struct definitions (seed order == declaration order, which is
     //    topological for the non-recursive nesting domain)
     for r in recs {
-        out.push_str(&format!("typedef struct {{\n"));
+        out.push_str("typedef struct {\n");
         for (name, ty) in &r.fields {
             out.push_str(&format!(
                 "    {} f_{};\n",

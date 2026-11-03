@@ -134,7 +134,11 @@ fn run_c_chain_caps(
 }
 
 fn assert_value(name: &str, out: &str, expected: i32) {
-    assert_eq!(out, format!("value:{expected}\n"), "stdout mismatch for {name}");
+    assert_eq!(
+        out,
+        format!("value:{expected}\n"),
+        "stdout mismatch for {name}"
+    );
 }
 
 fn assert_trap(name: &str, out: &str, trap: &str) {
@@ -264,7 +268,13 @@ fn a2c_rt_text_char_surface() {
 #[test]
 fn a2c_rt_cleanup_counterexample_events() {
     let mut s = open_session("cleanup_events");
-    let (out, err) = run_c_chain(&mut s, "CLEANUP", CLEANUP, "text", &[("A2X_RT_EVENTS", "1")]);
+    let (out, err) = run_c_chain(
+        &mut s,
+        "CLEANUP",
+        CLEANUP,
+        "text",
+        &[("A2X_RT_EVENTS", "1")],
+    );
     assert_value("CLEANUP", &out, 42);
     let events: Vec<&str> = err.lines().filter(|l| l.starts_with("rt:")).collect();
     assert_eq!(
@@ -288,11 +298,23 @@ fn a2c_rt_cleanup_counterexample_events() {
 fn a2c_rt_fault_alloc_resource() {
     // a="aa"(1) b=clone(2) concat(3): fault the concat → Resource
     let mut s = open_session("fault3");
-    let (out, _) = run_c_chain(&mut s, "FAULT3", CLEANUP, "text", &[("A2X_RT_FAULT_ALLOC", "3")]);
+    let (out, _) = run_c_chain(
+        &mut s,
+        "FAULT3",
+        CLEANUP,
+        "text",
+        &[("A2X_RT_FAULT_ALLOC", "3")],
+    );
     assert_trap("FAULT3", &out, "Resource");
     // faulting past the last allocation changes nothing
     let mut s9 = open_session("fault9");
-    let (out, _) = run_c_chain(&mut s9, "FAULT9", CLEANUP, "text", &[("A2X_RT_FAULT_ALLOC", "9")]);
+    let (out, _) = run_c_chain(
+        &mut s9,
+        "FAULT9",
+        CLEANUP,
+        "text",
+        &[("A2X_RT_FAULT_ALLOC", "9")],
+    );
     assert_value("FAULT9", &out, 42);
 }
 
@@ -303,8 +325,8 @@ fn a2c_rt_fault_alloc_resource() {
 fn a2c_rt_fileset_identity_and_determinism() {
     let src = "fn main() int {\n    let s Str = \"abc\"\n    return s.len()\n}";
     let assemble = |root: &std::path::Path| {
-        let mut s = A2xSession::open(root, "a2c-rt-det", "probe", 8 << 20, CTargetProvider::v1())
-            .unwrap();
+        let mut s =
+            A2xSession::open(root, "a2c-rt-det", "probe", 8 << 20, CTargetProvider::v1()).unwrap();
         let asm = s
             .cold_assemble_profile(src, SourceProfile::Text, &[], "main", false)
             .unwrap();
@@ -512,8 +534,16 @@ fn main() int { return work(21) }";
         .warm_edit("work", edited, "main", false)
         .expect("warm edit");
     let stats = s.stats();
-    assert_eq!(stats.lower - before.lower, 1, "exactly the edited function lowers");
-    assert_eq!(stats.print - before.print, 1, "exactly the edited function prints");
+    assert_eq!(
+        stats.lower - before.lower,
+        1,
+        "exactly the edited function lowers"
+    );
+    assert_eq!(
+        stats.print - before.print,
+        1,
+        "exactly the edited function prints"
+    );
     assert_eq!(
         stats.persist - before.persist,
         2,
@@ -527,8 +557,7 @@ fn main() int { return work(21) }";
         std::fs::write(dir.join(path), content).unwrap();
     }
     let exe = dir.join("warm.exe");
-    ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)
-        .unwrap_or_else(|e| panic!("cl: {e}"));
+    ace_a2x_worker::crun::compile_c_fileset(&dir, &exe).unwrap_or_else(|e| panic!("cl: {e}"));
     let run = auto_tool_execution::run_command_capture(
         {
             let mut c = std::process::Command::new(&exe);

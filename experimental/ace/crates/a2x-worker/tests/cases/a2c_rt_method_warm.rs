@@ -21,7 +21,9 @@ fn out_root() -> PathBuf {
 
 fn open_session(test: &str) -> A2xSession {
     A2xSession::open(
-        &out_root().join(format!("store-{}", std::process::id())).join(test),
+        &out_root()
+            .join(format!("store-{}", std::process::id()))
+            .join(test),
         "a2c-rt-method",
         "probe",
         128 * 1024 * 1024,
@@ -53,8 +55,10 @@ fn fragment_of<'a>(generated: &'a str, c_name: &str) -> &'a str {
     // indented and never end a line with `) {`)
     let header = format!(" {}(", c_name);
     generated
-        .split("
-// origin:")
+        .split(
+            "
+// origin:",
+        )
         .find(|b| {
             b.lines()
                 .any(|l| !l.starts_with(' ') && l.contains(&header) && l.ends_with(") {"))
@@ -103,7 +107,10 @@ fn a2c_rt_view_method_body_warm_edit_phases() {
         .expect("method warm edit");
     let after = s.stats().clone();
     let (parse, prep, verify, lower, print, persist, whole) = delta(&after, &before);
-    assert_eq!(parse, 1, "exactly ONE fragment parse (no whole-source parse)");
+    assert_eq!(
+        parse, 1,
+        "exactly ONE fragment parse (no whole-source parse)"
+    );
     assert_eq!(prep, 1, "one prepare");
     assert_eq!(verify, 1, "one single-body verify");
     assert_eq!(lower, 1, "exactly the edited method lowers");
@@ -168,7 +175,12 @@ fn a2c_rt_static_method_body_warm_edit() {
         .map(|(_, c)| c.clone())
         .unwrap();
     for c_name in ["mt_Counter_read", "mt_Counter_add", "fn_read", "fn_main"] {
-        assert_eq!(fragment_of(&gen0, c_name), fragment_of(&gen1, c_name), "{}", c_name);
+        assert_eq!(
+            fragment_of(&gen0, c_name),
+            fragment_of(&gen1, c_name),
+            "{}",
+            c_name
+        );
     }
     // 21*100 + 22*10 + 7 = 2327
     let out = compile_run(&out_root().join("STATIC_METHOD_1"), &warm.files);
@@ -238,7 +250,13 @@ fn a2c_rt_method_decl_change_and_owner_rejections() {
         .map(|(_, c)| c.clone())
         .unwrap();
     let warm = s2
-        .warm_edit_method("Gauge", "read", "fn read() int { return .value + 5 }", "main", false)
+        .warm_edit_method(
+            "Gauge",
+            "read",
+            "fn read() int { return .value + 5 }",
+            "main",
+            false,
+        )
         .expect("gauge edit");
     let gen1 = warm
         .files
@@ -246,8 +264,14 @@ fn a2c_rt_method_decl_change_and_owner_rejections() {
         .find(|(p, _)| p == "generated.c")
         .map(|(_, c)| c.clone())
         .unwrap();
-    assert_eq!(fragment_of(&gen0, "mt_Counter_read"), fragment_of(&gen1, "mt_Counter_read"));
-    assert_ne!(fragment_of(&gen0, "mt_Gauge_read"), fragment_of(&gen1, "mt_Gauge_read"));
+    assert_eq!(
+        fragment_of(&gen0, "mt_Counter_read"),
+        fragment_of(&gen1, "mt_Counter_read")
+    );
+    assert_ne!(
+        fragment_of(&gen0, "mt_Gauge_read"),
+        fragment_of(&gen1, "mt_Gauge_read")
+    );
     // 1*10 + 7 = 17
     let out = compile_run(&out_root().join("TWO_OWNERS_1"), &warm.files);
     assert_eq!(out, "value:17\n");
@@ -296,4 +320,3 @@ fn a2c_rt_free_fn_in_type_source_warm_edit() {
     let out = compile_run(&out_root().join("FREE_IN_TYPE_1"), &warm.files);
     assert_eq!(out, "value:2219\n");
 }
-

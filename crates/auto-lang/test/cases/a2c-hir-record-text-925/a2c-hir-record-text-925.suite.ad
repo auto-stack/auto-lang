@@ -1,0 +1,23 @@
+# PLAN-925 a2c-hir record-text suite - the C record-text channel's first
+# evidence set (ac-a2c/hir-record-text-emit-v1, HIR to C11 with the record
+# table/typed resource runtime): five frozen sources through the real A2X C
+# chain - R07/R08 the 902 frozen record sources (mut writeback = 42; static
+# ctor + view method = 42), T03/T05 the frozen text-record/text sources
+# (clone/move/CJK concat = 23; NUL-bearing full-byte equality = 42), C04 the
+# method+resource composite (40+1+1 = 42). The DAILY check is the emit-only
+# golden compare (spawn-zero); the certification leg (real cl compile+run of
+# the actual set AND the independent hand-written reference-<case>.c against
+# the frozen oracle, strict ace.a2c-hir.record-text.cert/1) is the explicit
+# certify axis owned by the worker conformance tests. Every included case is
+# green by real emission on the current tree; the a2r 902/904 and C scalar
+# 921 suites are untouched (parallel channels, mutually untrusted).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2c-hir-record-text-925", include: [
+  "R07.case.ad",
+  "R08.case.ad",
+  "T03.case.ad",
+  "T05.case.ad",
+  "C04.case.ad",
+] }
+```

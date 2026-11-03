@@ -10,7 +10,7 @@ use ace_a2x_c::CTargetProvider;
 use ace_a2x_rust::RustTargetProvider;
 use ace_a2x_store::A2xSession;
 use ace_core::source::SourceProfile;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn root(tag: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -23,7 +23,7 @@ fn caps() -> Vec<String> {
     vec!["ac.runtime.text.v1".to_string()]
 }
 
-fn open_c(root: &PathBuf) -> A2xSession {
+fn open_c(root: &Path) -> A2xSession {
     A2xSession::open(
         root,
         "a2c-rt-restore",
@@ -34,7 +34,7 @@ fn open_c(root: &PathBuf) -> A2xSession {
     .unwrap()
 }
 
-fn compile_run(dir: &PathBuf, files: &[(String, String)]) -> String {
+fn compile_run(dir: &Path, files: &[(String, String)]) -> String {
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).unwrap();
     for (path, content) in files {
@@ -58,10 +58,7 @@ fn rt_restore_pure_p0_then_method_edit_then_restore_again() {
         .cold_assemble_profile(SRC, SourceProfile::TextRecord, &caps(), "main", false)
         .unwrap();
     assert!(w.last_anchor().is_some(), "cold publishes the AXP2 anchor");
-    assert_eq!(
-        compile_run(&root.join("cold"), &cold.files),
-        "value:5\n"
-    );
+    assert_eq!(compile_run(&root.join("cold"), &cold.files), "value:5\n");
 
     // restorer: fresh session, pure restore
     let mut r = open_c(&root);
@@ -79,7 +76,10 @@ fn rt_restore_pure_p0_then_method_edit_then_restore_again() {
     assert!(after.restore_binding_checks >= before.restore_binding_checks + 3);
     assert!(after.restore_payload_verifies > before.restore_payload_verifies);
     assert!(after.restore_fileset_verifies >= before.restore_fileset_verifies + 3);
-    assert_eq!(restored.files, cold.files, "blind re-assembly == cold bytes");
+    assert_eq!(
+        restored.files, cold.files,
+        "blind re-assembly == cold bytes"
+    );
     assert_eq!(restored.manifest, cold.manifest);
     assert_eq!(
         compile_run(&root.join("restored"), &restored.files),
@@ -90,7 +90,10 @@ fn rt_restore_pure_p0_then_method_edit_then_restore_again() {
     // (the anchor rebinds; the env rebuild is M-class, counted)
     let old_span = "fn span() int { return .head.len() + .tail.len() }";
     let new_span = "fn span() int { return .head.len() * 10 + .tail.len() }";
-    let (start, end) = (SRC.find(old_span).unwrap(), SRC.find(old_span).unwrap() + old_span.len());
+    let (start, end) = (
+        SRC.find(old_span).unwrap(),
+        SRC.find(old_span).unwrap() + old_span.len(),
+    );
     let edited_src = format!("{}{}{}", &SRC[..start], new_span, &SRC[end..]);
     let before_edit = r.stats().clone();
     let asm = r
@@ -98,7 +101,11 @@ fn rt_restore_pure_p0_then_method_edit_then_restore_again() {
         .expect("method edit after restore");
     let after_edit = r.stats().clone();
     assert_eq!(after_edit.env_rebuilds, before_edit.env_rebuilds + 1);
-    assert_eq!(after_edit.lower, before_edit.lower + 1, "edited method only");
+    assert_eq!(
+        after_edit.lower,
+        before_edit.lower + 1,
+        "edited method only"
+    );
     assert_eq!(after_edit.print, before_edit.print + 1);
     assert_eq!(
         after_edit.persist,
@@ -162,7 +169,10 @@ fn rt_restore_rejects_and_repairs() {
     e.restore_source_bound(SRC, SourceProfile::TextRecord, &caps(), "main")
         .expect("restore");
     let old_span = "fn span() int { return .head.len() + .tail.len() }";
-    let (start, end) = (SRC.find(old_span).unwrap(), SRC.find(old_span).unwrap() + old_span.len());
+    let (start, end) = (
+        SRC.find(old_span).unwrap(),
+        SRC.find(old_span).unwrap() + old_span.len(),
+    );
     let bad_edit = "fn span() int { return .head.len() + unknown_name }";
     assert!(
         e.warm_edit_ranged_method("Wrap", "span", SRC, (start, end), bad_edit, "main", false)
@@ -270,6 +280,3 @@ fn rt_restore_cross_target_and_family_isolation() {
         ace_a2x_store::A2xRejectOrResource::Reject(ref j) if j.code == "a2x.restore.no-anchor"
     ));
 }
-
-
-

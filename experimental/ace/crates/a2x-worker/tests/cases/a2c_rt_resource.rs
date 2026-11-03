@@ -23,7 +23,9 @@ fn out_root() -> PathBuf {
 
 fn open_session(test: &str) -> A2xSession {
     A2xSession::open(
-        &out_root().join(format!("store-{}", std::process::id())).join(test),
+        &out_root()
+            .join(format!("store-{}", std::process::id()))
+            .join(test),
         "a2c-rt-res",
         "probe",
         128 * 1024 * 1024,
@@ -225,7 +227,11 @@ fn a2c_rt_exit_paths_ledger_balanced() {
     );
     assert_eq!(out, "value:64\n", "EXIT_LOOP");
     let (a, f) = ledger(&err);
-    assert_eq!((a, f), (4, 4), "every iteration buffer freed on continue/fall-through/break");
+    assert_eq!(
+        (a, f),
+        (4, 4),
+        "every iteration buffer freed on continue/fall-through/break"
+    );
     let (out, err) = run_program(
         &mut s,
         "EXIT_BRANCH_RETURN",
@@ -243,6 +249,9 @@ fn a2c_rt_exit_paths_ledger_balanced() {
     );
     assert_eq!(out, "value:1\n", "EXIT_SHORT_CIRCUIT");
     let (a, f) = ledger(&err);
-    assert_eq!((a, f), (2, 2), "the short-circuit side's owned temp freed with its side");
+    assert_eq!(
+        (a, f),
+        (2, 2),
+        "the short-circuit side's owned temp freed with its side"
+    );
 }
-

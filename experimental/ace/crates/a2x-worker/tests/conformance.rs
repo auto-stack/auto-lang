@@ -4,12 +4,14 @@ mod a2c_cert;
 mod a2c_restore;
 #[path = "cases/a2c_rt.rs"]
 mod a2c_rt;
+#[path = "cases/a2c_rt_cert.rs"]
+mod a2c_rt_cert;
 #[path = "cases/a2c_rt_method_warm.rs"]
 mod a2c_rt_method_warm;
-#[path = "cases/a2c_rt_restore.rs"]
-mod a2c_rt_restore;
 #[path = "cases/a2c_rt_resource.rs"]
 mod a2c_rt_resource;
+#[path = "cases/a2c_rt_restore.rs"]
+mod a2c_rt_restore;
 #[path = "cases/a2c_scalar_semantics.rs"]
 mod a2c_scalar_semantics;
 #[path = "cases/boundaries.rs"]
