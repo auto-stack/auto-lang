@@ -327,3 +327,329 @@ fn a2c_coll_fileset_identity() {
     assert_eq!(asm.files, asm2.files);
     assert_eq!(asm.manifest, asm2.manifest);
 }
+
+/// V-04 (fault atomicity matrix): EVERY allocation ordinal of a
+/// multi-site case (list base + literal promotions + clone + growth) —
+/// faulting each one yields the typed `Resource` trap with a BALANCED
+/// event ledger (every real allocated BYTE released exactly once; a leak
+/// or double free would unbalance it — counts may legitimately differ
+/// when a growth `realloc` merges the base and the delta into one
+/// release); N+1 and the no-knob control complete with the oracle value.
+/// The allocation count is SELF-CALIBRATED from the event ledger of the
+/// clean run (no brittle hand-counted ordinals).
+#[test]
+fn a2c_coll_fault_matrix_every_allocation() {
+    // allocation sites: list base, literal promotions, clone, growth
+    // (cap 4 -> 8 at the 5th push)
+    const SRC: &str = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"alpha\", 1))\n    var s Str = \"beta\"\n    xs.push(Item(s.clone(), 2))\n    xs.push(Item(\"gamma\", 3))\n    xs.push(Item(\"delta\", 4))\n    xs.push(Item(\"eps\", 5))\n    return xs.get(0).code + xs.get(4).code + xs.len()\n}";
+    let mut s = open_session("fault_matrix");
+    // clean run: oracle + ledger closes (also calibrates N)
+    let (out, err) = run_c_chain(&mut s, "FAULT_MATRIX-clean", SRC, &[("A2X_RT_EVENTS", "1")]);
+    assert_value("FAULT_MATRIX-clean", &out, 1 + 5 + 5);
+    let (allocs, alloc_bytes, frees, free_bytes) = ledger(&err);
+    assert_eq!(alloc_bytes, free_bytes, "clean-run ledger bytes must close");
+    let _ = frees;
+    let n = allocs;
+    assert!(n >= 5, "expected several allocation sites, ledger says {n}");
+    // every ordinal faults cleanly
+    for k in 1..=n {
+        let (out, err) = run_c_chain(
+            &mut s,
+            &format!("FAULT_MATRIX-f{k}"),
+            SRC,
+            &[
+                ("A2X_RT_FAULT_ALLOC", &k.to_string()),
+                ("A2X_RT_EVENTS", "1"),
+            ],
+        );
+        assert_trap(&format!("FAULT_MATRIX-f{k}"), &out, "Resource");
+        let (a, ab, f, fb) = ledger(&err);
+        assert_eq!(
+            ab, fb,
+            "ledger unbalanced at fault {k}/{n}: allocs {a}/{ab}B frees {f}/{fb}B"
+        );
+    }
+    // N+1: no allocation to fail — completes
+    let (out, err) = run_c_chain(
+        &mut s,
+        "FAULT_MATRIX-n1",
+        SRC,
+        &[
+            ("A2X_RT_FAULT_ALLOC", &(n + 1).to_string()),
+            ("A2X_RT_EVENTS", "1"),
+        ],
+    );
+    assert_value("FAULT_MATRIX-n1", &out, 11);
+    let (_a, ab, _f, fb) = ledger(&err);
+    assert_eq!(ab, fb);
+}
+
+/// V-05 (exit/cleanup matrix): every exit path — normal return, an
+/// early return in each if arm, a loop with a survivor list read inside
+/// and used after — frees its live set exactly (ledger balance), and the
+/// cancel/budget knobs trap at the poll/charge with the SAME balance
+/// (cleanup is zero-charge: the frees after a Budget/Cancelled trap
+/// never bill, never poll, never allocate).
+#[test]
+fn a2c_coll_exit_cleanup_matrix() {
+    // survivor `ys` lives across the loop (read inside, after the loop);
+    // `zs` dies inside the iteration (scoped per-iteration death at the
+    // back-edge); both arms of the match-style if return early
+    const SRC: &str = "fn main() int {\n    var ys = List<int>.new()\n    ys.push(10)\n    var xs = List<int>.new()\n    xs.push(1)\n    xs.push(2)\n    var t int = 0\n    for x in xs {\n        var zs = List<int>.new()\n        zs.push(x)\n        t = t + x + zs.get(0) + ys.get(0)\n    }\n    if t > 100 { return t }\n    return t + ys.len()\n}";
+    let mut s = open_session("exit_cleanup");
+    // clean: 3 iterations of (1,2) each adding 2x + 10 => t = (2+10)*... x=1: 1+1+10=12; x=2: 2+2+10=14; t=26; +1 = 27
+    let (out, err) = run_c_chain(&mut s, "EXIT_MATRIX-clean", SRC, &[("A2X_RT_EVENTS", "1")]);
+    assert_value("EXIT_MATRIX-clean", &out, 27);
+    let (a, ab, f, fb) = ledger(&err);
+    assert_eq!((a, ab), (f, fb), "clean-run ledger must close");
+    // cancel at the FIRST poll: the poll's error path frees the
+    // per-iteration scoped deaths AND the survivors — balance proves it
+    let (out, err) = run_c_chain(
+        &mut s,
+        "EXIT_MATRIX-cancel",
+        SRC,
+        &[("A2X_RT_CANCEL", "1"), ("A2X_RT_EVENTS", "1")],
+    );
+    assert_trap("EXIT_MATRIX-cancel", &out, "Cancelled");
+    let (a, ab, f, fb) = ledger(&err);
+    assert_eq!((a, ab), (f, fb), "cancel-run ledger must close");
+    // budget exhaustion at the first charge: same cleanup discipline
+    let (out, err) = run_c_chain(
+        &mut s,
+        "EXIT_MATRIX-budget",
+        SRC,
+        &[("A2X_RT_BUDGET", "3"), ("A2X_RT_EVENTS", "1")],
+    );
+    assert_trap("EXIT_MATRIX-budget", &out, "Budget");
+    let (a, ab, f, fb) = ledger(&err);
+    assert_eq!((a, ab), (f, fb), "budget-run ledger must close");
+}
+
+/// V-05 (multi-exit arms): both if arms return early with different
+/// live sets; each path closes (clean run only needs value + balance —
+/// the fault legs above already cover trapped paths).
+#[test]
+fn a2c_coll_branch_exit_frees() {
+    const SRC: &str = "fn pick(k int) int {\n    var a = List<int>.new()\n    a.push(k)\n    var b = List<Str>.new()\n    b.push(\"xy\")\n    if k > 0 { return a.get(0) }\n    return b.get(0).len()\n}\nfn main() int {\n    return pick(4) + pick(0)\n}";
+    let mut s = open_session("branch_exit");
+    let (out, err) = run_c_chain(&mut s, "BRANCH_EXIT", SRC, &[("A2X_RT_EVENTS", "1")]);
+    assert_value("BRANCH_EXIT", &out, 6);
+    let (a, ab, f, fb) = ledger(&err);
+    assert_eq!((a, ab), (f, fb));
+}
+
+/// V-06 (helper resource probes): a HAND-WRITTEN C probe compiled against
+/// the SAME generated runtime + typed helpers of a real session assembly
+/// (`#include "generated.c"` — same TU, direct access to the runtime
+/// statics). The probe is scaffolding by contract: it drives the runtime
+/// primitives directly (never the lowered entry, never MIR/ABC, never
+/// source List/Variant.clone semantics) and witnesses, on a 256 KiB
+/// stack thread: the 3072-link iterative deep chain; mid-fault deep-clone
+/// ROLLBACK with same-process retry; mid-fault push completion;
+/// cooperative cancel at the probe's own poll; budget exhaustion with
+/// zero-charge cleanup; typed list op atomicity (faulted growth push
+/// leaves len/content intact, retry completes; a charge-failed set frees
+/// only its uncommitted input).
+#[test]
+fn a2c_coll_helper_probe_same_runtime() {
+    let mut s = open_session("helper_probe");
+    let asm = s
+        .cold_assemble_profile(L01, SourceProfile::Collections, &[], "main", false)
+        .expect("assembly");
+    let dir = out_root().join("HELPER_PROBE");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &asm.files {
+        if path == "main.c" {
+            continue; // the probe carries its own main
+        }
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("probe.c"), HELPER_PROBE_C).unwrap();
+    let exe = dir.join("probe.exe");
+    ace_a2x_worker::crun::compile_c_standalone(&dir.join("probe.c"), &exe)
+        .unwrap_or_else(|e| panic!("probe cl failed: {e}"));
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run probe");
+    assert_eq!(run.kind, auto_tool_execution::ExitKind::Success);
+    let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
+    assert_eq!(
+        out, "P6:ok\nP1:ok\nP2:ok\nP3:ok\nP4:ok\nP5:ok\n",
+        "probe scenarios"
+    );
+}
+
+/// The hand-written helper probe source (test scaffolding against the
+/// generated runtime; not lowered code, not source semantics).
+const HELPER_PROBE_C: &str = r#"#include <fcntl.h>
+#include <io.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include "a2x_c_coll_runtime.h"
+#include "generated.c"
+
+static int g_fail = 0;
+
+/* the deep-chain scenarios run on a 256 KiB stack thread */
+static void deep_scenario(void *unused) {
+    a2x_deep_link *chain = NULL;
+    a2x_deep_link *clone = NULL;
+    a2x_trap_code t;
+    long i;
+    (void)unused;
+    /* P1: 3072-link iterative chain */
+    for (i = 0; i < 3072; i++) {
+        t = a2x_deep_push(&chain, (const uint8_t *)"n", 1);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+    }
+    if (a2x_deep_len(chain) != 3072) { g_fail = 1; return; }
+    t = a2x_deep_clone(chain, &clone);
+    if (t != A2X_TRAP_NONE || a2x_deep_len(clone) != 3072) { g_fail = 1; return; }
+    a2x_deep_free(&clone);
+    a2x_deep_free(&chain);
+    if (a2x_coll_live_str_bytes() != 0 || a2x_coll_live_backing_bytes() != 0) { g_fail = 1; return; }
+    printf("P1:ok\n");
+
+    /* P2: mid-fault deep-clone rollback + same-process retry */
+    for (i = 0; i < 3072; i++) {
+        t = a2x_deep_push(&chain, (const uint8_t *)"n", 1);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+    }
+    {
+        long before_bytes = a2x_coll_live_backing_bytes();
+        a2x_coll_cfg_fault = a2x_coll_alloc_count() + 100; /* fires inside the clone prefix */
+        t = a2x_deep_clone(chain, &clone);
+        if (t != A2X_TRAP_RESOURCE) { g_fail = 1; return; }
+        /* the partial clone was freed; the original is intact */
+        if (a2x_deep_len(chain) != 3072) { g_fail = 1; return; }
+        if (a2x_coll_live_backing_bytes() != before_bytes) { g_fail = 1; return; }
+        a2x_coll_cfg_fault = 0; /* clear -> SAME-PROCESS retry completes */
+        t = a2x_deep_clone(chain, &clone);
+        if (t != A2X_TRAP_NONE || a2x_deep_len(clone) != 3072) { g_fail = 1; return; }
+        a2x_deep_free(&clone);
+        a2x_deep_free(&chain);
+        if (a2x_coll_live_str_bytes() != 0) { g_fail = 1; return; }
+    }
+    printf("P2:ok\n");
+
+    /* P3: mid-fault push (partial chain intact, then completed) */
+    a2x_coll_cfg_fault = a2x_coll_alloc_count() + 300;
+    for (i = 0; i < 3072; i++) {
+        t = a2x_deep_push(&chain, (const uint8_t *)"n", 1);
+        if (t == A2X_TRAP_RESOURCE) break;
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+    }
+    if (i != 299 || a2x_deep_len(chain) != 299) { g_fail = 1; return; }
+    a2x_coll_cfg_fault = 0;
+    for (; i < 3072; i++) {
+        t = a2x_deep_push(&chain, (const uint8_t *)"n", 1);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+    }
+    if (a2x_deep_len(chain) != 3072) { g_fail = 1; return; }
+    a2x_deep_free(&chain);
+    if (a2x_coll_live_str_bytes() != 0) { g_fail = 1; return; }
+    printf("P3:ok\n");
+
+    /* P4: cooperative cancel observed at the probe's own poll loop
+     * (the poll is a lowered back-edge's observation point) */
+    {
+        int polls = 0;
+        a2x_coll_cfg_cancel = 1;
+        for (;;) {
+            t = a2x_coll_poll();
+            if (t != A2X_TRAP_NONE) break;
+            polls++;
+        }
+        if (t != A2X_TRAP_CANCELLED || polls != 0) { g_fail = 1; return; }
+        a2x_coll_cfg_cancel = 0;
+    }
+    /* a loop iteration shape: push + poll; cancel at the 2nd poll */
+    for (i = 0; i < 3; i++) {
+        t = a2x_deep_push(&chain, (const uint8_t *)"n", 1);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+        if (i == 1) a2x_coll_cfg_cancel = 1;
+        t = a2x_coll_poll();
+        if (t == A2X_TRAP_CANCELLED) break;
+        if (t != A2X_TRAP_NONE) { g_fail = 1; return; }
+    }
+    if (t != A2X_TRAP_CANCELLED || a2x_deep_len(chain) != 2) { g_fail = 1; return; }
+    a2x_coll_cfg_cancel = 0;
+    a2x_deep_free(&chain);
+    if (a2x_coll_live_str_bytes() != 0) { g_fail = 1; return; }
+    printf("P4:ok\n");
+
+    /* P5: budget exhaustion; cleanup stays zero-charge (frees still run) */
+    a2x_coll_work = -1; /* next charge (2 WU for 10 bytes) exhausts */
+    t = a2x_deep_push(&chain, (const uint8_t *)"nnnnnnnnnn", 10);
+    if (t != A2X_TRAP_BUDGET) { g_fail = 1; return; }
+    a2x_deep_free(&chain); /* must not charge/poll/allocate */
+    if (a2x_coll_live_str_bytes() != 0 || a2x_coll_live_backing_bytes() != 0) { g_fail = 1; return; }
+    printf("P5:ok\n");
+}
+
+int main(void) {
+    HANDLE th;
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+    /* P6: typed list op atomicity from the generated table (main thread) */
+    {
+        a2x_list_i32 l;
+        a2x_trap_code t;
+        int32_t v = 0;
+        long i;
+        long nodes_before;
+        t = a2x_coll_list_i32_new(&l);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; }
+        for (i = 0; i < 4 && !g_fail; i++) {
+            t = a2x_coll_list_i32_push(&l, (int32_t)(i + 10));
+            if (t != A2X_TRAP_NONE) { g_fail = 1; }
+        }
+        /* fault the 5th push's GROWTH allocation: old target intact */
+        a2x_coll_cfg_fault = (long)(a2x_coll_alloc_count() + 1);
+        t = a2x_coll_list_i32_push(&l, 50);
+        if (t != A2X_TRAP_RESOURCE) { g_fail = 1; }
+        if (a2x_coll_list_i32_len(&l) != 4) { g_fail = 1; }
+        t = a2x_coll_list_i32_get(&l, 3, &v);
+        if (t != A2X_TRAP_NONE || v != 13) { g_fail = 1; } /* content intact */
+        a2x_coll_cfg_fault = 0; /* same-process retry completes */
+        t = a2x_coll_list_i32_push(&l, 50);
+        if (t != A2X_TRAP_NONE || a2x_coll_list_i32_len(&l) != 5) { g_fail = 1; }
+        /* a charge-failed set frees only its uncommitted input */
+        nodes_before = a2x_coll_live_nodes();
+        a2x_coll_work = -1; /* next charge fails -> set frees its input */
+        t = a2x_coll_list_i32_set(&l, 0, 99);
+        if (t != A2X_TRAP_BUDGET) { g_fail = 1; }
+        if (a2x_coll_live_nodes() != nodes_before) { g_fail = 1; }
+        t = a2x_coll_list_i32_get(&l, 0, &v);
+        if (t != A2X_TRAP_NONE || v != 10) { g_fail = 1; } /* old element kept */
+        a2x_coll_work = -1000000;
+        t = a2x_coll_list_i32_set(&l, 0, 99);
+        if (t != A2X_TRAP_NONE) { g_fail = 1; }
+        t = a2x_coll_list_i32_get(&l, 0, &v);
+        if (t != A2X_TRAP_NONE || v != 99) { g_fail = 1; }
+        if (a2x_coll_live_nodes() != nodes_before) { g_fail = 1; } /* swap, not growth */
+        a2x_coll_list_i32_free(&l);
+        if (a2x_coll_live_nodes() != 0) { g_fail = 1; }
+        if (!g_fail) printf("P6:ok\n");
+    }
+    th = CreateThread(NULL, 256 * 1024, (LPTHREAD_START_ROUTINE)deep_scenario, NULL, 0, NULL);
+    if (th == NULL) return 2;
+    WaitForSingleObject(th, INFINITE);
+    CloseHandle(th);
+    return g_fail ? 1 : 0;
+}
+"#;

@@ -474,6 +474,22 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         for (si, stmt) in stmts.iter().enumerate() {
             self.stmt(block.0, si, stmt)?;
         }
+        // fall-through end: the scoped deaths of locals defined in this
+        // block (exit_frees[(block, None)]) — a trailing terminator
+        // carries its own exit key and leaves nothing fall-through-live
+        let terminated = matches!(
+            stmts.last(),
+            Some(hir::Stmt::Return { .. })
+                | Some(hir::Stmt::Break { .. })
+                | Some(hir::Stmt::Continue { .. })
+        );
+        if !terminated {
+            if let Some(frees) = self.facts.exit_frees.get(&(block.0, None)) {
+                for line in self.free_stmts(frees) {
+                    self.out.push(line);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -554,17 +570,14 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             hir::Stmt::Loop { body: lb, .. } => {
                 self.out.push("for (;;) {".to_string());
                 self.block(*lb)?;
-                // back-edge: per-iteration scoped frees (the body block's
-                // fall-through set), then the cooperative poll whose
-                // error path frees the per-iteration OWNED locals and
-                // the loop survivors (idempotent frees make the overlap
-                // safe — the T-02 freeze)
+                // back-edge: the body block's fall-through scoped deaths
+                // were already emitted by `block()`; the cooperative
+                // poll's error path re-lists them plus the loop
+                // survivors (idempotent frees make the overlap safe —
+                // the T-02 freeze)
                 let mut poll_frees: Vec<String> = Vec::new();
                 if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
-                    for line in self.free_stmts(frees) {
-                        self.out.push(line.clone());
-                        poll_frees.push(line);
-                    }
+                    poll_frees.extend(self.free_stmts(frees));
                 }
                 if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
                     for l in surv {
