@@ -761,7 +761,14 @@ pub fn prepare_function_candidate(
     module_path: &str,
 ) -> Result<FnCandidate, Vec<Diagnostic>> {
     let candidate = prepare_candidate_document(env, item, fn_index, src, module_path)?;
-    let def = format!("d_{}", item.name.name);
+    // the planned def: a free function is `d_{name}`; a METHOD of the
+    // single-method document is `d_f{slot}_{name}` (PLAN-925 — the bare
+    // name never finds it, and the slot index is not a def index)
+    let def = if item.receiver == super::ast::Receiver::Free {
+        format!("d_{}", item.name.name)
+    } else {
+        format!("d_f{}_{}", fn_index, item.name.name)
+    };
     let def_idx = candidate.parts().bundle.modules[0]
         .defs
         .iter()
@@ -3347,6 +3354,16 @@ impl<'p> Emitter<'p> {
             } else {
                 format!("; body: \"b_f{}_{}\"", fi, f.name)
             };
+            // PLAN-925: a SCAFFOLD method's span is inert metadata too
+            // (the free-function rule above, T-02/904) — its retained
+            // item_span belongs to the environment's source, never to the
+            // method fragment being emitted (the warm METHOD edit path
+            // projects spans onto the fragment).
+            let m_span = if scaffold {
+                Span { start: 0, end: 0 }
+            } else {
+                f.item_span
+            };
             frag!(
                 &format!(
                     "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"{}; record: t_rec_{}; receiver: {} }}",
@@ -3360,9 +3377,9 @@ impl<'p> Emitter<'p> {
                     rec_name,
                     recv_word
                 ),
-                f.item_span
+                m_span
             );
-            spans.defs.push(f.item_span);
+            spans.defs.push(m_span);
             nl!(12);
         }
         for sym in &use_intrinsics {

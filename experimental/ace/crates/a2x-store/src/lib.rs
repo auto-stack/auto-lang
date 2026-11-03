@@ -31,8 +31,9 @@ use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{gc_config_default, run_gc, ManagedStore, PutRequest, SpaceReport};
 use ace_core::source::{
     compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
-    compile_text_record_source, compile_text_source, parse_function_fragment, parse_program_with,
-    prepare_function_candidate, resolve_env, SourceProfile,
+    compile_text_record_source, compile_text_source, parse_function_fragment,
+    parse_method_fragment, parse_program_with, prepare_function_candidate, resolve_env,
+    SourceProfile,
 };
 use ace_core::text_resources::{param_exclusions_fixpoint, ParamExclusions};
 use ace_core::verify::{verify_function_ref, verify_text_function};
@@ -1567,6 +1568,47 @@ impl A2xSession {
         entry: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
+        self.warm_edit_targeted(&WarmTarget::Free { name: fn_name }, edited_src, entry, read_only)
+    }
+
+    /// PLAN-925 (§5.4): WARM body edit of ONE method — the narrow method
+    /// fragment (`static fn ..` / `fn ..` with caller-provided owner
+    /// binding) through the same single-body credential chain. The graft
+    /// keeps the retained receiver/owner shape (PLAN-881); the method def
+    /// of the single-method document is `d_f{slot}_{name}`.
+    pub fn warm_edit_method(
+        &mut self,
+        owner: &str,
+        fn_name: &str,
+        edited_src: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        if self.family() == Family::Collections {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.range",
+                "collections warm edits take the ranged authorization (warm_edit_ranged)",
+            )));
+        }
+        self.warm_edit_targeted(
+            &WarmTarget::Method {
+                owner,
+                name: fn_name,
+            },
+            edited_src,
+            entry,
+            read_only,
+        )
+    }
+
+    fn warm_edit_targeted(
+        &mut self,
+        target: &WarmTarget<'_>,
+        edited_src: &str,
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        let fn_name = target.name();
         let profile = self.profile;
         let backend = self.current_backend().to_string();
         // produce the candidate fragment text + identity while the
@@ -1582,8 +1624,17 @@ impl A2xSession {
             // FRAGMENT parse only (§5.4: a warm pure body edit parses just
             // the changed declaration — never the whole source; whole
             // parses are the cold path's business and its cost).
-            let item = parse_function_fragment(edited_src, 0..edited_src.len(), profile)
-                .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
+            // PLAN-925: method edits take the narrow method fragment with
+            // the caller-provided owner binding context.
+            let item = match target {
+                WarmTarget::Free { .. } => {
+                    parse_function_fragment(edited_src, 0..edited_src.len(), profile)
+                }
+                WarmTarget::Method { owner, .. } => {
+                    parse_method_fragment(edited_src, 0..edited_src.len(), profile, owner)
+                }
+            }
+            .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
             if item.name.name != fn_name {
                 return Err(A2xRejectOrResource::Reject(A2xReject::entry(format!(
                     "edited fragment is `{}`, expected `{}`",
@@ -1599,7 +1650,13 @@ impl A2xSession {
                     "source.closed: the checked environment is closed; warm edits are a rejection",
                 )));
             }
-            let slot = env_slot(env, fn_name).ok_or_else(|| {
+            let slot = match target {
+                WarmTarget::Free { .. } => env_slot(env, fn_name),
+                WarmTarget::Method { owner, .. } => {
+                    ace_core::source::env_method_index(env, owner, fn_name)
+                }
+            }
+            .ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::entry(format!(
                     "fn `{}` not resident in env",
                     fn_name
@@ -1621,9 +1678,13 @@ impl A2xSession {
                         .retained_excl
                         .clone()
                         .unwrap_or_else(|| param_exclusions_fixpoint(&parts.bundle));
-                    verify_text_function(&parts.bundle, def_index_of(&parts.bundle, fn_name), &seed)
+                    verify_text_function(
+                        &parts.bundle,
+                        def_index_in(&parts.bundle, target, slot),
+                        &seed,
+                    )
                 }
-                _ => verify_function_ref(&parts.bundle, def_index_of(&parts.bundle, fn_name)),
+                _ => verify_function_ref(&parts.bundle, def_index_in(&parts.bundle, target, slot)),
             }
             .map_err(|ds| {
                 A2xRejectOrResource::Reject(A2xReject::new("a2x.verify", render_diag(&ds)))
@@ -1902,17 +1963,41 @@ fn render_diag(ds: &[ace_core::atom_text::Diagnostic]) -> String {
 }
 
 fn env_slot(env: &ace_core::source::resolve::CheckedEnv, name: &str) -> Option<usize> {
-    ace_core::source::env_fn_names(env)
-        .iter()
-        .position(|n| *n == name)
+    // PLAN-925: the FREE entry — a same-named method (which shares the
+    // fn table) must never be grafted as the free function (the 881
+    // receiver/owner guard would reject it, but the lookup must not even
+    // aim there)
+    ace_core::source::env_free_fn_index(env, name)
 }
 
-fn def_index_of(bundle: &ace_core::hir::Bundle, fn_name: &str) -> usize {
+/// Def lookup of a single-body document by TARGET SHAPE: a free function
+/// is `d_{name}`; a METHOD (PLAN-925) is `d_f{slot}_{name}`. The shapes
+/// are never tried in sequence — a same-named free-function scaffold must
+/// not be verified in a method's place (or vice versa).
+fn def_index_in(bundle: &ace_core::hir::Bundle, target: &WarmTarget<'_>, slot: usize) -> usize {
+    let want = match target {
+        WarmTarget::Free { name } => format!("d_{}", name),
+        WarmTarget::Method { name, .. } => format!("d_f{}_{}", slot, name),
+    };
     bundle.modules[0]
         .defs
         .iter()
-        .position(|d| d.id_text == format!("d_{}", fn_name))
-        .unwrap_or_else(|| panic!("def d_{} missing", fn_name))
+        .position(|d| d.id_text == want)
+        .unwrap_or_else(|| panic!("def {} missing", want))
+}
+
+/// PLAN-925: the warm edit's target shape.
+enum WarmTarget<'a> {
+    Free { name: &'a str },
+    Method { owner: &'a str, name: &'a str },
+}
+
+impl WarmTarget<'_> {
+    fn name(&self) -> &str {
+        match self {
+            WarmTarget::Free { name } | WarmTarget::Method { name, .. } => name,
+        }
+    }
 }
 
 fn profile_label_of(profile: SourceProfile) -> &'static str {

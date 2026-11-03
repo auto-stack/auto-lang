@@ -2015,6 +2015,30 @@ pub fn env_fn_names(env: &CheckedEnv) -> Vec<&str> {
     env.program.fns.iter().map(|f| f.name.as_str()).collect()
 }
 
+/// PLAN-925: the slot of ONE FREE function — the `program.fns` entry with
+/// that name and NO owner record (a same-named method of some type never
+/// cross-wires into the free function's slot; PLAN-881 keeps them in one
+/// table under distinct identities).
+pub fn env_free_fn_index(env: &CheckedEnv, name: &str) -> Option<usize> {
+    env.program
+        .fns
+        .iter()
+        .position(|f| f.name == name && f.owner_rec.is_none())
+}
+
+/// PLAN-925 (§5.4): the slot of ONE method — the entry in `program.fns`
+/// whose bare name matches AND whose owner record is `owner` (methods and
+/// same-named free functions never cross-wire; the receiver shape is
+/// revalidated by the graft itself). `None` when the owner record or the
+/// method does not exist.
+pub fn env_method_index(env: &CheckedEnv, owner: &str, name: &str) -> Option<usize> {
+    let ri = env.rec_index.get(owner).copied()?;
+    env.program
+        .fns
+        .iter()
+        .position(|f| f.name == name && f.owner_rec == Some(ri))
+}
+
 /// Cold directory for a retained source consumer. Later body edits update the
 /// consumer's byte ranges without walking unchanged resolved bodies.
 #[derive(Clone, Debug, PartialEq, Eq)]

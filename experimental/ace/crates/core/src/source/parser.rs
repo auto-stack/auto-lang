@@ -194,6 +194,104 @@ pub fn parse_function_fragment(
     }
 }
 
+/// PLAN-925 (§5.4): parse exactly one METHOD fragment — `static fn ..` or
+/// the readonly-view `fn ..` of owner record `owner` — with the same
+/// lexer/parser and absolute source spans. The owner qualification is
+/// CALLER-PROVIDED binding context (inside the real source the method
+/// declaration lives in its `type` block; a standalone fragment cannot
+/// carry it). Only the granted range is tokenized; the owner type and
+/// every other function are never lexed or parsed. The receiver shape
+/// comes from the SYNTAX (`static fn` = Static, `fn` = View) exactly as
+/// the type-block member parser assigns it.
+pub fn parse_method_fragment(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+    owner: &str,
+) -> Result<FnItem, Diagnostic> {
+    let fragment = src.get(range.clone()).ok_or_else(|| {
+        Diagnostic::new(
+            Stage::Text,
+            "source.incremental-fragment",
+            "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+            Span { start: 0, end: 0 },
+        )
+    })?;
+    note_tokenize(Span {
+        start: range.start,
+        end: range.end,
+    });
+    let mut toks = super::lexer::tokenize_with(fragment, profile.admits_text_literals()).map_err(
+        |mut error| {
+            error.span.start += range.start;
+            error.span.end += range.start;
+            error
+        },
+    )?;
+    for token in &mut toks {
+        token.span.start += range.start;
+        token.span.end += range.start;
+    }
+    let owner_ident = Ident {
+        name: owner.to_string(),
+        span: Span { start: range.start, end: range.start },
+    };
+    let mut parser = Parser {
+        src,
+        end: range.end,
+        toks,
+        pos: 0,
+        last_line: 1,
+        surface: profile,
+        pending_is: Vec::new(),
+    };
+    // receiver shape from the syntax, mirroring the type-block member
+    // parser: `static fn` spans FROM `static` (PLAN-881), `fn` from `fn`
+    let (receiver, lead) = match parser.peek().map(|t| t.tok.clone()) {
+        Some(Tok::Kw(Kw::Static)) => {
+            let sp = parser.peek().unwrap().span;
+            parser.pos += 1;
+            parser.expect_kw(Kw::Fn, "`fn` after `static`").map_err(|_| {
+                parser.syntax("expected `fn` after `static`")
+            })?;
+            (Receiver::Static, Some(sp))
+        }
+        Some(Tok::Kw(Kw::Fn)) => {
+            parser.pos += 1;
+            (Receiver::View, None)
+        }
+        _ => {
+            return Err(parser.err(
+                "source.incremental-fragment",
+                "a method fragment must start with `static fn` or `fn`",
+                Span {
+                    start: range.start,
+                    end: range.end,
+                },
+            ));
+        }
+    };
+    let fn_span = parser.toks[parser.pos - 1].span;
+    let span = match lead {
+        Some(l) => fn_span.join(l),
+        None => fn_span,
+    };
+    let mut item = parser.fn_item_tail(span, receiver)?;
+    item.owner = Some(owner_ident);
+    // the fragment must be consumed completely
+    if parser.pos != parser.toks.len() {
+        return Err(parser.err(
+            "source.incremental-fragment",
+            "a method fragment must contain exactly one method declaration",
+            Span {
+                start: range.start,
+                end: range.end,
+            },
+        ));
+    }
+    Ok(item)
+}
+
 /// PLAN-912 §5.1: parse exactly one lambda EXPRESSION fragment (`(..) => ..`,
 /// optionally `move`-prefixed) with the same lexer/parser and absolute source
 /// spans. Only the granted range is tokenized; the owner body around it and
