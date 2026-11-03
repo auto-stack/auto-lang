@@ -359,6 +359,7 @@ pub fn mini_program() -> GrammarProgram {
             group_close: Some(toks::RPAREN),
             call_paren: None,
             call_args: None,
+            postfix_tail: None,
         }],
         start: rules::PROGRAM,
         newline: NewlinePolicy {

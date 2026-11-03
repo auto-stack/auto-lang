@@ -721,6 +721,21 @@ impl Ctx {
                     }
                 }
             }
+            let mut postfix_tail = None;
+            if let Some(rn) = pstr(pn, "postfix") {
+                // 规则存在但被本 profile 裁剪 = 无点后缀面（None 合法）；
+                // 规则完全不存在才是配置错误。
+                match rule_of(&rn) {
+                    Some(r) => postfix_tail = Some(r),
+                    None => {
+                        if rule_of_full(&rn).is_some() {
+                            postfix_tail = None;
+                        } else {
+                            self.err(&path, format!("postfix rule `{rn}` unknown"));
+                        }
+                    }
+                }
+            }
             pratt.push(PrattSpec {
                 primary,
                 ops,
@@ -728,6 +743,7 @@ impl Ctx {
                 group_close,
                 call_paren,
                 call_args,
+                postfix_tail,
             });
         }
 

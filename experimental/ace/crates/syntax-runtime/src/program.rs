@@ -14,7 +14,7 @@ use crate::identity::{GrammarId, PackageIdentity};
 /// 语法程序 schema 版本（.at 配置的可读面）。
 pub const GRAMMAR_SCHEMA_VERSION: u32 = 2;
 /// 程序规范二进制序列化格式版本（语言包装载格式，实验 Schema，非正式 Batom）。
-pub const PROGRAM_CODEC_VERSION: u16 = 2;
+pub const PROGRAM_CODEC_VERSION: u16 = 3;
 
 pub type RuleId = u32;
 pub type TokenId = u32;
@@ -182,6 +182,9 @@ pub struct PrattSpec {
     pub call_paren: Option<CallParenRule>,
     /// 调用实参列表规则（call `(` args `)`）。
     pub call_args: Option<RuleId>,
+    /// 点后缀续读规则（如 `postfix-tail { many { postfix-step } }`）：调用
+    /// 收尾后操作数还可继续消费 `.name` 步（`f().len()`）；None = 无续读。
+    pub postfix_tail: Option<RuleId>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -246,6 +249,9 @@ pub const KIND_ERROR: u32 = u32::MAX - 1;
 pub const KIND_MISSING: u32 = u32::MAX - 2;
 /// 调用后缀节点（Pratt 引擎构造；孩子 = callee/`(`/args/`)`）。
 pub const KIND_CALL: u32 = u32::MAX - 3;
+/// 调用后点后缀包装节点（Pratt 引擎构造；孩子 = 操作数 + postfix-tail 规则节点，
+/// 如 `f().len()` 调用收尾后再接 `.name` 步——旧 parser 的后缀链语义）。
+pub const KIND_POSTFIX: u32 = u32::MAX - 4;
 
 impl GrammarProgram {
     pub fn token_kind(&self, t: TokenId) -> u32 {

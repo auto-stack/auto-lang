@@ -102,6 +102,7 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
             }
         }
         put_opt_tok(&mut w, t.call_args);
+        put_opt_tok(&mut w, t.postfix_tail);
     }
 
     w.extend_from_slice(&p.start.to_le_bytes());
@@ -264,6 +265,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
             None
         };
         let call_args = opt_tok(&mut r)?;
+        let postfix_tail = opt_tok(&mut r)?;
         pratt.push(PrattSpec {
             primary,
             ops,
@@ -271,6 +273,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
             group_close,
             call_paren,
             call_args,
+            postfix_tail,
         });
     }
 

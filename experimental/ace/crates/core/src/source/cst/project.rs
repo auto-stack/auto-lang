@@ -15,7 +15,7 @@ use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::source::ast::*;
 use crate::source::SourceProfile;
 use ace_syntax_runtime::cst::{CstTree, FLAG_TRIVIA};
-use ace_syntax_runtime::program::{GrammarProgram, KIND_CALL};
+use ace_syntax_runtime::program::{GrammarProgram, KIND_CALL, KIND_POSTFIX};
 use ace_syntax_runtime::snapshot::Snapshot;
 
 const I32_MIN_MAG: u128 = 2147483648;
@@ -140,6 +140,21 @@ const TOPLEVEL_IDENT_WORDS: &[&str] = &[
 
 /// 结构层首错映射：文档序最早的 error/missing 位置 → 旧诊断（首切上下文
 /// 分类：item 位 / stmt 位 / expr 位；profile 特定消息由能力事实驱动）。
+/// 旧 expect_ident 的 host-console 保留名拒绝（print/eprint）。
+fn console_name_check(cx: &mut Cx, name: &Ident) {
+    if cx.profile == SourceProfile::HostConsole && matches!(name.name.as_str(), "print" | "eprint") {
+        let span = name.span;
+        cx.reject(span, move || {
+            Diagnostic::new(
+                Stage::Text,
+                "source.console-reserved",
+                "console names cannot be bound in the host-console profile",
+                span,
+            )
+        });
+    }
+}
+
 fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
     use ace_syntax_runtime::cst::{FLAG_ERROR, FLAG_MISSING};
     // 候选：带内容（len>0）的 ERROR 节点优先（恢复路径在区域起点插入的
@@ -221,8 +236,9 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
             span,
         )
     };
-    let at_root = path.iter().any(|&g| g == cx.k.item)
-        && !path.iter().any(|&g| g == cx.k.script_item.unwrap_or(u32::MAX));
+    let at_root = (path.iter().any(|&g| g == cx.k.item)
+        && !path.iter().any(|&g| g == cx.k.script_item.unwrap_or(u32::MAX)))
+        || path.len() <= 1; // 根直挂尾随 ERROR 叶（路径仅含 program kind）
     let mut in_stmt = path.iter().any(|&g| {
         g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX)
     });
@@ -288,6 +304,12 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
             format!("keyword `{}` cannot be used as a name", text),
             span,
         ));
+    }
+    // 其余保留 token（use/enum/view/...）：item 位 = "`X` is not part..."
+    //（旧 items() 对 Reserved 的拒绝面）；stmt/expr 位由上方 keyword 分支
+    // 与表达式游走按各自消息处理。
+    if kind.is_some_and(|g| cx.k.reserved_toks.contains(&g)) && !in_stmt && !in_expr {
+        return Some(word_msg(&text));
     }
     if let Some(g) = kind {
         let describe = if g == cx.k.tok_affix_num {
@@ -389,22 +411,82 @@ fn region_leaves(cx: &Cx, tree: &CstTree, node: u32) -> Vec<(u32, u32, String)> 
     out
 }
 
+/// 全树非 trivia 叶（根的孩子经树级 root_edges 目录起种）。
+fn tree_leaves(cx: &Cx, tree: &CstTree) -> Vec<(u32, u32, String)> {
+    let mut out = Vec::new();
+    let mut stack = tree.children(tree.root);
+    let mut all: Vec<u32> = Vec::new();
+    while let Some(n) = stack.pop() {
+        let nd = tree.node(n);
+        if nd.flags & FLAG_TRIVIA != 0 {
+            continue;
+        }
+        if nd.child_count == 0 {
+            let (s, e) = tree.abs_range(n);
+            if e > s {
+                all.push(n);
+            }
+            continue;
+        }
+        let kids = tree.children(n);
+        for c in kids.into_iter().rev() {
+            stack.push(c);
+        }
+    }
+    all.sort_by_key(|&n| tree.abs_range(n).0);
+    for n in all {
+        out.push((n, tree.kind(n), cx.spelling(n)));
+    }
+    out
+}
+
 fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
-    let leaves = region_leaves(cx, tree, node);
-    if leaves.is_empty() {
+    let region = region_leaves(cx, tree, node);
+    if region.is_empty() {
         return None;
     }
+    // 旧 parser 无"区域"概念——线性走到文件尾。恢复截断（sync 停在 `}`）
+    // 会把区域外的 token 丢出叶列，导致多级嵌套块在区域边界误判 EOF。
+    // 因此游走叶列 = 从区域首叶起的全树后缀（文档序），跨区域边界继续。
+    let first_start = tree.abs_range(region[0].0).0;
+    let mut leaves = tree_leaves(cx, tree);
+    assert!(!leaves.is_empty(), "tree leaves empty but region had leaves");
+    leaves.retain(|(n, _, _)| tree.abs_range(*n).0 >= first_start);
+    // 区域截断（恢复停在 sync）时，其后的首 token 供 fn-tail 期望游走使用
+    //（旧 parser 在区域后第一个 token 上报"expected return type"等）。
+    let region_end = tree.abs_range(node).1;
+    let beyond: Option<(u32, u64, u64, String)> = lex::collect_leaves(tree)
+        .into_iter()
+        .filter(|l| l.start >= region_end && !cx.spelling_by_range(l.start, l.end).trim().is_empty())
+        .min_by_key(|l| l.start)
+        .map(|l| (l.kind, l.start, l.end, cx.spelling_by_range(l.start, l.end)));
     let first = &leaves[0];
     // item 形态：`fn ...` / `type ...`。
     if first.2 == "fn" {
-        return walk_fn_item(cx, &leaves);
+        return walk_fn_item(
+            cx,
+            &leaves,
+            beyond
+                .as_ref()
+                .map(|b| (b.0, b.3.as_str(), Span { start: b.1 as usize, end: b.2 as usize })),
+        );
     }
     if first.2 == "type" && cx.profile.is_record() {
         return walk_type_item(cx, &leaves);
     }
-    // stmt 形态（块内错误区域）。
-    if leaves.len() >= 1 {
-        if let Some(d) = walk_stmt(cx, &leaves) {
+    // stmt 形态（块内错误区域）：完整语句期望游走（与旧 parse_stmt_head
+    // 同序——return/if/for/赋值/表达式语句各自镜像）。仅语句位区域——
+    // item 位（块/脚本外）由叶层分类器按旧 items() 消息处理。
+    let mut path_kinds: Vec<u32> = Vec::new();
+    let _ = path_to(tree, tree.root, node, &mut path_kinds);
+    let in_stmt_ctx = path_kinds.iter().any(|&g| {
+        g == cx.k.stmt
+            || g == cx.k.block
+            || g == cx.k.script_item.unwrap_or(u32::MAX)
+    }) || cx.profile.is_entry_unit();
+    if in_stmt_ctx && leaves.len() >= 1 {
+        let mut w = Walker::new(cx, &leaves);
+        if let Some(d) = w.walk_stmt_head(false) {
             return Some(d);
         }
     }
@@ -415,8 +497,23 @@ fn leaf_span(cx: &Cx, l: u32) -> Span {
     cx.span_of(l)
 }
 
-/// 旧 fn_item_tail 期望序列（fn 关键字已匹配）。
-fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
+/// 旧 fn_item_tail 期望序列（fn 关键字已匹配）。`beyond` = 区域后首 token
+/// (kind, spelling)——恢复截断在 `)` 时，结果位错误在该 token 上。
+fn walk_fn_item(
+    cx: &Cx,
+    leaves: &[(u32, u32, String)],
+    beyond: Option<(u32, &str, Span)>,
+) -> Option<Diagnostic> {
+    walk_fn_item_ex(cx, leaves, beyond).1
+}
+
+/// 同 [`walk_fn_item`]，但成功走完时返回结束游标（`}` 后一位；相对
+/// `leaves` 下标）——type-item 成员序列游走续位用。
+fn walk_fn_item_ex(
+    cx: &Cx,
+    leaves: &[(u32, u32, String)],
+    beyond: Option<(u32, &str, Span)>,
+) -> (usize, Option<Diagnostic>) {
     let k = cx.k;
     let mut i = 1usize; // 0 = `fn`
     let at = |idx: usize| -> (Span, u32, &str) {
@@ -425,49 +522,49 @@ fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
     };
     // 1) 函数名。
     if i >= leaves.len() {
-        return None;
+        return (i, Some(eof_expected(cx, "function name")));
     }
     {
         let (sp, g, text) = at(i);
         if g != k.tok_ident {
             if g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open {
-                return Some(Diagnostic::new(
+                return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     format!("{} cannot be used as a name in this source profile", raw_describe(g, text, &k)),
                     sp,
-                ));
+                )));
             }
             if g == k.tok_r_move || g == k.tok_r_to || is_kw_leaf(g, &k) || text == "fn" {
-                return Some(Diagnostic::new(
+                return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     format!("keyword `{}` cannot be used as a name", text),
                     sp,
-                ));
+                )));
             }
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected function name, found {}", describe_g(g, text, &k)),
                 sp,
-            ));
+            )));
         }
         i += 1;
     }
     // 2) `(`。
     if i >= leaves.len() {
-        return None;
+        return (i, Some(eof_expected(cx, "`(`")));
     }
     {
         let (sp, g, text) = at(i);
         if text != "(" {
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected `(`, found {}", describe_g(g, text, &k)),
                 sp,
-            ));
+            )));
         }
         i += 1;
     }
@@ -487,43 +584,43 @@ fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
             }
             // 参数名。
             if i >= leaves.len() {
-                return None;
+                return (i, Some(eof_expected(cx, "parameter name")));
             }
             {
                 let (sp, g, text) = at(i);
                 if g != k.tok_ident {
                     if g == k.tok_r_move || g == k.tok_r_to || is_kw_leaf(g, &k) || text == "fn" {
-                        return Some(Diagnostic::new(
+                        return (i, Some(Diagnostic::new(
                             Stage::Text,
                             "source.unsupported",
                             format!("keyword `{}` cannot be used as a name", text),
                             sp,
-                        ));
+                        )));
                     }
                     if g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open {
-                        return Some(Diagnostic::new(
+                        return (i, Some(Diagnostic::new(
                             Stage::Text,
                             "source.unsupported",
                             format!("{} cannot be used as a name in this source profile", raw_describe(g, text, &k)),
                             sp,
-                        ));
+                        )));
                     }
-                    return Some(Diagnostic::new(
+                    return (i, Some(Diagnostic::new(
                         Stage::Text,
                         "source.syntax",
                         format!("expected parameter name, found {}", describe_g(g, text, &k)),
                         sp,
-                    ));
+                    )));
                 }
                 i += 1;
             }
             // 参数类型词。
             if let Some(d) = walk_type_word(cx, leaves, &mut i, "parameter type annotation (`int`/`i32`/`bool`) is required") {
-                return Some(d);
+                return (i, Some(d));
             }
             // `,` 或 `)`。
             if i >= leaves.len() {
-                return None;
+                return (i, Some(eof_expected(cx, "`,` or `)`")));
             }
             let (sp, g, text) = at(i);
             if text == "," {
@@ -536,27 +633,27 @@ fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
             if text == ")" {
                 break;
             }
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected `,` or `)`, found {}", describe_g(g, text, &k)),
                 sp,
-            ));
+            )));
         }
     }
     // 4) `)`。
     if i >= leaves.len() {
-        return None;
+        return (i, Some(eof_expected(cx, "`)`")));
     }
     {
         let (sp, _g, text) = at(i);
         if text != ")" {
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected `)`, found {}", text),
                 sp,
-            ));
+            )));
         }
         i += 1;
     }
@@ -564,7 +661,39 @@ fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
     let rparen_span = leaf_span(cx, leaves[i - 1].0);
     // 5) 结果类型。
     if i >= leaves.len() {
-        return None;
+        let Some((bg, btext, bspan)) = beyond else {
+            return (i, Some(eof_expected(cx, "return type")));
+        };
+        let sp = bspan;
+        let builtin = btext == "int" || btext == "i32" || btext == "bool";
+        let text_word = bg == cx.k.tok_ident && cx.profile.is_text() && matches!(btext, "str" | "Str" | "char");
+        let entry_void = bg == cx.k.tok_ident && cx.profile.is_entry_unit() && btext == "void";
+        let record_name = bg == cx.k.tok_ident && cx.profile.is_record();
+        if !builtin && !text_word && !entry_void && !record_name {
+            if btext == "{" {
+                return (i, Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
+                    name_span.join(rparen_span),
+                )));
+            }
+            if bg == cx.k.tok_ident || bg == cx.k.tok_r_move || bg == cx.k.tok_r_to {
+                return (i, Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("type `{}` is not part of this source profile", btext),
+                    sp,
+                )));
+            }
+            return (i, Some(Diagnostic::new(
+                Stage::Text,
+                "source.syntax",
+                format!("expected return type, found `{}`", btext),
+                sp,
+            )));
+        }
+        return (i, Some(eof_expected(cx, "return type")));
     }
     {
         let (sp, g, text) = at(i);
@@ -577,55 +706,73 @@ fn walk_fn_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
         let record_name = g == k.tok_ident && cx.profile.is_record();
         if !builtin && !text_word && !entry_void && !record_name {
             if text == "{" {
-                return Some(Diagnostic::new(
+                return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
-                ));
+                )));
             }
             if g == k.tok_ident || g == k.tok_r_move || g == k.tok_r_to {
-                return Some(Diagnostic::new(
+                return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     format!("type `{}` is not part of this source profile", text),
                     sp,
-                ));
+                )));
             }
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected return type, found {}", describe_g(g, text, &k)),
                 sp,
-            ));
+            )));
         }
         i += 1;
     }
     // 6) `{`（体）→ 语句序列游走。
     if i >= leaves.len() {
-        return None;
+        return (i, Some(eof_expected(cx, "`{`")));
     }
     {
         let (sp, g, text) = at(i);
         if text != "{" {
-            return Some(Diagnostic::new(
+            return (i, Some(Diagnostic::new(
                 Stage::Text,
                 "source.syntax",
                 format!("expected `{{`, found {}", describe_g(g, text, &k)),
                 sp,
-            ));
+            )));
         }
         i += 1;
     }
     let mut w = Walker::new(cx, leaves);
     w.i = i;
-    w.walk_block_body(false)
+    match w.walk_block_body(false) {
+        Some(d) => (w.i, Some(d)),
+        None => (w.i, None),
+    }
 }
 
-/// 旧 type_item 期望序列（type 关键字已匹配；record 族）。
+
+/// 旧 EOF 期望：`expected X, found end of file` @ snap.len()（旧 eof_span）。
+fn eof_expected(cx: &Cx, what: &str) -> Diagnostic {
+    let e = cx.snap.len() as usize;
+    Diagnostic::new(
+        Stage::Text,
+        "source.syntax",
+        format!("expected {what}, found end of file"),
+        Span { start: e, end: e },
+    )
+}
+
+/// 旧 type_item 期望序列（type 关键字已匹配；record 族）——镜像旧
+/// type_item() 成员循环：分隔纪律、field（self/可选 `:`/member_type
+/// 分类/duplicate）、static fn / fn 方法（fn_item_tail 镜像）、`mut fn`
+/// 与其他关键字拒绝、空 record 拒绝。
 fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
     let k = cx.k;
-    let mut i = 1usize;
+    let mut w = Walker::new(cx, leaves);
     let at = |idx: usize| -> (Span, u32, &str) {
         let (n, g, s) = &leaves[idx.min(leaves.len() - 1)];
         (leaf_span(cx, *n), *g, s.as_str())
@@ -643,13 +790,17 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
                 sp,
             ));
         }
-        i = 2;
     }
-    if leaves.len() <= i {
-        return None;
+    if leaves.len() <= 2 {
+        return Some(Diagnostic::new(
+            Stage::Text,
+            "source.syntax",
+            "expected `{`, found end of file".to_string(),
+            at(1).0,
+        ));
     }
     {
-        let (sp, _g, text) = at(i);
+        let (sp, _g, text) = at(2);
         if text != "{" {
             return Some(Diagnostic::new(
                 Stage::Text,
@@ -659,61 +810,148 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
             ));
         }
     }
-    None
-}
-
-/// 旧 parse_stmt_head 期望序列（首切：声明缺 `=` / 类型词拒绝）。
-fn walk_stmt(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> {
-    let k = cx.k;
-    if leaves.is_empty() {
-        return None;
-    }
-    let (sp0, g0, t0) = (leaf_span(cx, leaves[0].0), leaves[0].1, leaves[0].2.as_str());
-    if t0 == "let" || t0 == "var" {
-        if leaves.len() < 2 {
-            return None;
+    let type_kw_span = at(0).0;
+    let mut i = 3usize;
+    let mut seen_fields: Vec<String> = Vec::new();
+    let mut any_member = false;
+    let mut any_field = false;
+    let mut close_span = None;
+    while i < leaves.len() {
+        let (_, g, text) = at(i);
+        if text == ";" {
+            i += 1;
+            continue;
         }
-        let mut i = 1usize;
-        let (_, g, text) = (leaf_span(cx, leaves[i].0), leaves[i].1, leaves[i].2.as_str());
-        let _ = g;
-        if !is_ident_text(text) {
-            return None; // 名字位消息由叶层兜底
+        if text == "}" {
+            close_span = Some(at(i).0);
+            break;
         }
-        i += 1;
-        // 可选注解（类型词）。
-        if i < leaves.len() {
-            let (_, g2, text2) = (leaf_span(cx, leaves[i].0), leaves[i].1, leaves[i].2.as_str());
-            let starts_type = text2 == "int" || text2 == "i32" || text2 == "bool"
-                || (g2 == k.tok_ident && (cx.profile.is_text() || cx.profile.is_record() || cx.profile.is_entry_unit()));
-            if starts_type {
-                if let Some(d) = walk_type_word(cx, leaves, &mut i, "locals must be initialized") {
+        // 分隔纪律（旧 733-764）：首成员可同行；此后须 `;` 后或换行后。
+        if any_member {
+            let prev_semi = at(i - 1).2 == ";";
+            let cur_line = w.at(i).map(|c| c.3).unwrap_or(0);
+            let prev_line = w.at(i - 1).map(|c| c.3).unwrap_or(0);
+            if !prev_semi && cur_line <= prev_line {
+                let (sp, gg, tt) = at(i);
+                return Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected `;`, newline or `}}`, found {}", describe_g(gg, tt, &k)),
+                    sp,
+                ));
+            }
+        }
+        any_member = true;
+        match text {
+            "static" => {
+                if i + 1 >= leaves.len() || at(i + 1).2 != "fn" {
+                    let sp = at((i + 1).min(leaves.len() - 1)).0;
+                    return Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        "expected `fn` after `static`".to_string(),
+                        sp,
+                    ));
+                }
+                let (end, d) = walk_fn_item_ex(cx, &leaves[i + 1..], None);
+                if let Some(d) = d {
                     return Some(d);
                 }
-            } else if g2 == k.tok_ident && !cx.profile.is_text() && !cx.profile.is_record() && !cx.profile.is_entry_unit() && matches!(text2, "str" | "Str" | "char") {
+                i += 1 + end;
+            }
+            "fn" => {
+                let (end, d) = walk_fn_item_ex(cx, &leaves[i..], None);
+                if let Some(d) = d {
+                    return Some(d);
+                }
+                i += end;
+            }
+            "mut" => {
                 return Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
-                    format!("type `{}` is not part of this source profile", text2),
-                    leaf_span(cx, leaves[i].0),
+                    "`mut fn` (mutable instance methods) is not part of this profile; methods are readonly views".to_string(),
+                    at(i).0,
                 ));
             }
-        }
-        // `=`。
-        if i < leaves.len() {
-            let (sp, _g, text) = (leaf_span(cx, leaves[i].0), leaves[i].1, leaves[i].2.as_str());
-            if text != "=" {
-                // 旧：locals must be initialized（span = kw..最后已消费 token）。
-                let kw = sp0;
-                let last_end = leaf_span(cx, leaves[i - 1].0).end;
-                return Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    "locals must be initialized at declaration in this source profile",
-                    Span { start: kw.start, end: last_end },
-                ));
+            _ => {
+                let (sp, gg, tt) = at(i);
+                if gg == k.tok_ident {
+                    if tt == "self" {
+                        return Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "`self` cannot be a field name".to_string(),
+                            sp,
+                        ));
+                    }
+                    let mut j = i + 1;
+                    if j < leaves.len() && at(j).2 == ":" {
+                        j += 1;
+                    }
+                    if j >= leaves.len() {
+                        return None;
+                    }
+                    let (tsp, tg, ttext) = at(j);
+                    let is_text = cx.profile.is_text();
+                    if tg == k.tok_ident && !is_text && matches!(ttext, "str" | "Str" | "char") {
+                        return Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!("type `{}` is not part of this source profile", ttext),
+                            tsp,
+                        ));
+                    }
+                    let builtin = tg == k.tok_int_kw || tg == k.tok_i32 || tg == k.tok_bool;
+                    if !(builtin || (tg == k.tok_ident && cx.profile.is_record())) {
+                        return Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "field type annotation (`int`/`i32`/`bool` or a record type) is required".to_string(),
+                            sp,
+                        ));
+                    }
+                    if seen_fields.contains(&tt.to_string()) {
+                        return Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.duplicate",
+                            format!("field `{}` is declared more than once", tt),
+                            sp,
+                        ));
+                    }
+                    seen_fields.push(tt.to_string());
+                    any_field = true;
+                    i = j + 1;
+                } else if is_kw_leaf(gg, &k) {
+                    return Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!("`{}` is not a valid type member here", tt),
+                        sp,
+                    ));
+                } else {
+                    return Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        format!("expected field or method, found {}", describe_g(gg, tt, &k)),
+                        sp,
+                    ));
+                }
             }
         }
-        return None;
+    }
+    if !any_field {
+        // 空 record：kw..`}`（区域截断时以区域末叶代 `}`）。
+        let end = close_span
+            .or_else(|| leaves.last().map(|(n, _, _)| leaf_span(cx, *n)))
+            .unwrap_or(type_kw_span);
+        let span = type_kw_span.join(end);
+        return Some(Diagnostic::new(
+            Stage::Text,
+            "source.unsupported",
+            "empty records are not part of this profile; a record must declare at least one field".to_string(),
+            span,
+        ));
     }
     None
 }
@@ -747,23 +985,23 @@ enum Br {
 
 impl<'c, 'a> Walker<'c, 'a> {
     fn new(cx: &'c Cx<'a>, leaves: &'c [(u32, u32, String)]) -> Self {
-        // 行号：按快照前缀换行计数（仅错误路径使用）。
+        // 行号：换行位置一次扫描 + 二分（后缀叶列可达全树——逐叶前缀计数
+        // 是 O(n²)，567 语料差分会到分钟级）。
         let total = cx.snap.len();
         let text = cx.snap.read_str(0, total).unwrap_or_default();
         let bytes = text.as_bytes();
+        let nl: Vec<u64> = bytes
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b == b'\n')
+            .map(|(i, _)| i as u64)
+            .collect();
         let mut lines = Vec::with_capacity(leaves.len());
         for (n, _, _) in leaves {
             let (s, e) = cx.tree.abs_range(*n);
             // 旧 lexer：多行 token 记结束行。
-            let upto = (e as usize).min(bytes.len());
-            let mut line = 1u32;
-            for &b in &bytes[..upto] {
-                if b == b'\n' {
-                    line += 1;
-                }
-            }
             let _ = s;
-            lines.push(line);
+            lines.push(1 + nl.partition_point(|&x| x < e.min(total)) as u32);
         }
         Walker { cx, leaves, i: 0, lines }
     }
@@ -824,6 +1062,44 @@ impl<'c, 'a> Walker<'c, 'a> {
                 None => {
                     if script_top {
                         return None;
+                    }
+                    // 区域截断（恢复 sync 停在 `}`）：区域后首 token 代 cur——
+                    // 旧语义是分隔纪律/块闭合检查，不是文件 EOF。
+                    let region_end = self
+                        .leaves
+                        .last()
+                        .map(|(n, _, _)| self.cx.tree.abs_range(*n).1)
+                        .unwrap_or(0);
+                    if let Some((g, text, span)) = self.cx.leaf_after(region_end) {
+                        let k = self.k();
+                        if text == "}" {
+                            return None;
+                        }
+                        let cur_line = self.cx.line_of_pos(span.start as u64);
+                        let prev_line = self
+                            .leaves
+                            .last()
+                            .map(|(n, _, _)| {
+                                self.cx.line_of_pos(self.cx.tree.abs_range(*n).0)
+                            })
+                            .unwrap_or(0);
+                        if text != ";" && cur_line <= prev_line {
+                            return Some(Diagnostic::new(
+                                Stage::Text,
+                                "source.syntax",
+                                format!(
+                                    "expected `;`, newline or `}}`, found {}",
+                                    describe_g(g, &text, k)
+                                ),
+                                span,
+                            ));
+                        }
+                        return Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.syntax",
+                            format!("expected statement or `}}`, found {}", describe_g(g, &text, k)),
+                            span,
+                        ));
                     }
                     return Some(self.syntax("expected statement or `}`, found end of file".into()));
                 }
@@ -1235,6 +1511,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                             self.i += 1;
                             if matches!(self.cur(), Some((_, _, ")", _))) {
                                 self.i += 1;
+                                // 旧怪癖保真：空实参 leading-dot 调用后旧 parser
+                                // continue-'outer 重入 primary（不落回算子循环）——
+                                // 下一 token 须能起始 primary；anchored 保持，未
+                                // 括号待归约时锚定调用行（L04/L05/FIN864B 差分）。
+                                continue;
                             } else {
                                 frames.push(Br::Call);
                                 anchored = false;
@@ -1257,6 +1538,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                             self.i += 2;
                             if matches!(self.cur(), Some((_, _, "}", _))) {
                                 self.i += 1;
+                                // 旧怪癖保真：空 ctor `Ty { }` 同样走 continue-
+                                // 'outer 重入 primary（edge#47 差分）。
+                                continue;
                             } else {
                                 frames.push(Br::Ctor);
                                 // label?
@@ -1264,11 +1548,6 @@ impl<'c, 'a> Walker<'c, 'a> {
                                 anchored = false;
                                 continue;
                             }
-                            // value complete
-                            if let Some(d) = self.after_value(&mut frames, &mut anchored) {
-                                return d;
-                            }
-                            continue;
                         }
                     }
                 }
@@ -1731,6 +2010,28 @@ impl<'a> Cx<'a> {
         let (s, e) = self.tree.abs_range(n);
         self.snap.read_str(s, e).unwrap_or_default()
     }
+    fn spelling_by_range(&self, s: u64, e: u64) -> String {
+        self.snap.read_str(s, e).unwrap_or_default()
+    }
+    /// `pos` 之后的首个非 trivia 叶（错误叶也算——保真旧 describe_cur）。
+    fn leaf_after(&self, pos: u64) -> Option<(u32, String, Span)> {
+        lex::collect_leaves(&self.tree)
+            .into_iter()
+            .filter(|l| l.start >= pos)
+            .min_by_key(|l| l.start)
+            .map(|l| {
+                (
+                    l.kind,
+                    self.spelling_by_range(l.start, l.end),
+                    Span { start: l.start as usize, end: l.end as usize },
+                )
+            })
+    }
+    /// 叶起始行（快照换行计数）。
+    fn line_of_pos(&self, pos: u64) -> u32 {
+        let text = self.snap.read_str(0, pos.min(self.snap.len() as u64)).unwrap_or_default();
+        1 + text.bytes().filter(|&b| b == b'\n').count() as u32
+    }
     fn children(&self, n: u32) -> Vec<u32> {
         self.tree.children(n)
     }
@@ -1880,9 +2181,7 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        let ret = self.classify_word(
-            self.cx.field_child(tail, "ty").expect("fn ret"),
-        );
+        let ret = self.classify_word(self.cx.field_child(tail, "ty").expect("fn ret"), true);
         let body_n = self.cx.field_child(tail, "body").expect("fn body");
         let owner_for_frame = owner.clone();
         self.stack.push(Frame::FnBodyFinish {
@@ -1919,11 +2218,37 @@ impl<'a> Engine<'a> {
             let name = ident_of(&mut self.cx, name_leaf);
             let mode_leaf = self.cx.field_child(param_n, "mode");
             let mode = match mode_leaf.map(|m| self.cx.tree.kind(m)) {
-                Some(mk) if mk == self.cx.k.tok_r_move => ParamMode::Move,
-                Some(mk) if mk == self.cx.k.tok_mut => ParamMode::Mut,
+                Some(mk) if mk == self.cx.k.tok_r_move => {
+                    if !self.cx.profile.is_text() {
+                        let mspan = self.cx.span_of(mode_leaf.unwrap());
+                        self.cx.reject(mspan, || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                "keyword `move` cannot be used as a name",
+                                mspan,
+                            )
+                        });
+                    }
+                    ParamMode::Move
+                }
+                Some(mk) if mk == self.cx.k.tok_mut => {
+                    if !self.cx.profile.is_text() && !self.cx.profile.is_record() {
+                        let mspan = self.cx.span_of(mode_leaf.unwrap());
+                        self.cx.reject(mspan, || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                "keyword `mut` cannot be used as a name",
+                                mspan,
+                            )
+                        });
+                    }
+                    ParamMode::Mut
+                }
                 _ => ParamMode::Default,
             };
-            let ty = self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"));
+            let ty = self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"), false);
             let span = match mode_leaf {
                 Some(m) => self.cx.span_of(m).join(ty.span),
                 None => name.span.join(ty.span),
@@ -1934,7 +2259,9 @@ impl<'a> Engine<'a> {
     }
 
     /// ret-ty/ann-ty → TypeAnn（词法分类 + profile 拒绝；非递归）。
-    fn classify_word(&mut self, node: u32) -> TypeAnn {
+    /// `pos`：Ret 位在 record 面收**任意** ident（含 str/Str/char——旧
+    /// fn_item_tail 的名义分支）；param/field/let 注解位先做文本词拒绝。
+    fn classify_word(&mut self, node: u32, ret_pos: bool) -> TypeAnn {
         let word_leaf = self
             .cx
             .children(node)
@@ -1965,7 +2292,7 @@ impl<'a> Engine<'a> {
             };
             return int(tw);
         }
-        if !is_text && matches!(word.as_str(), "str" | "Str" | "char") {
+        if !ret_pos && !is_text && matches!(word.as_str(), "str" | "Str" | "char") {
             self.cx.reject(span, move || unsupported_ty(&word, span));
             return int(TypeWord::Int);
         }
@@ -2008,7 +2335,7 @@ impl<'a> Engine<'a> {
                         )
                     });
                 }
-                let ty = self.classify_word(self.cx.field_child(c, "ty").expect("field ty"));
+                let ty = self.classify_word(self.cx.field_child(c, "ty").expect("field ty"), false);
                 let span = fname.span.join(ty.span);
                 if seen.contains(&fname.name) {
                     let (f, t) = (fname.name.clone(), name.name.clone());
@@ -2132,7 +2459,8 @@ impl<'a> Engine<'a> {
             let kw = self.cx.child_of_kind(inner, kw_kind).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
             let name_leaf = self.cx.field_child(inner, "name").expect("let name");
             let name = ident_of(&mut self.cx, name_leaf);
-            let ann = self.cx.field_child(inner, "ann").map(|n| self.classify_word(n));
+            console_name_check(&mut self.cx, &name);
+            let ann = self.cx.field_child(inner, "ann").map(|n| self.classify_word(n, false));
             let mutable = kind == self.cx.k.var_stmt;
             let value_n = self.cx.field_child(inner, "value").expect("let value");
             self.stack.push(Frame::LetFinish { node: inner, kw, name, ann, mutable });
@@ -2140,24 +2468,22 @@ impl<'a> Engine<'a> {
         } else if kind == self.cx.k.assign_stmt || kind == self.cx.k.path_assign_stmt.unwrap_or(u32::MAX) {
             let name_leaf = self.cx.field_child(inner, "name").expect("assign name");
             let name = ident_of(&mut self.cx, name_leaf);
-            let assign_leaf = self.cx.child_of_kind(inner, self.cx.k.tok_assign);
             let mut path = Vec::new();
             if kind == self.cx.k.path_assign_stmt.unwrap_or(u32::MAX) {
-                let name_start = self.cx.tree.abs_range(name_leaf).0;
-                let assign_start = assign_leaf.map(|a| self.cx.tree.abs_range(a).0).unwrap_or(u64::MAX);
-                let mut path_leaves: Vec<u32> = self
+                // 路径段标识符住在 `path-seg` 子节点内（`many { path-seg }`
+                // 直接平铺），不在语句节点的直接 ident 孩子里。
+                let seg_kind = self.cx.k.path_seg.unwrap_or(u32::MAX);
+                let mut seg_nodes: Vec<u32> = self
                     .cx
                     .children(inner)
                     .into_iter()
-                    .filter(|&c| {
-                        self.cx.tree.kind(c) == self.cx.k.tok_ident
-                            && self.cx.tree.abs_range(c).0 > name_start
-                            && self.cx.tree.abs_range(c).0 < assign_start
-                    })
+                    .filter(|&c| self.cx.tree.kind(c) == seg_kind)
                     .collect();
-                path_leaves.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
-                for pl in path_leaves {
-                    path.push(ident_of(&mut self.cx, pl));
+                seg_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+                for seg in seg_nodes {
+                    if let Some(pl) = self.cx.field_child(seg, "path") {
+                        path.push(ident_of(&mut self.cx, pl));
+                    }
                 }
             }
             let value_n = self.cx.field_child(inner, "value").expect("assign value");
@@ -2300,7 +2626,7 @@ impl<'a> Engine<'a> {
             self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
             return;
         }
-        if kind == self.cx.k.postfix_expr {
+        if kind == self.cx.k.postfix_expr || kind == KIND_POSTFIX {
             let (base, steps) = self.split_postfix(node);
             if steps.is_empty() {
                 self.stack.push(Frame::ExprEnter(base));
@@ -2369,6 +2695,10 @@ impl<'a> Engine<'a> {
                     .map(|fl| collect_seq(&self.cx, fl, self.cx.k.ctor_field.unwrap_or(u32::MAX), "ctor-tail"))
                     .unwrap_or_default();
                 let count = field_nodes.len();
+                if count == 0 {
+                    // 旧怪癖：空 ctor `Ty { }` 重入 primary（同 leading-dot 空调用）。
+                    self.empty_value_quirk(self.cx.span_of(c).end);
+                }
                 self.stack.push(Frame::CtorFinish { node: c, ty, count });
                 for f in field_nodes.into_iter().rev() {
                     let label_leaf = self.cx.field_child(f, "label").expect("ctor label");
@@ -2382,6 +2712,19 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.tok_str_lit {
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
+                if !self.cx.profile.is_text() {
+                    // 旧合同：非 text 面 lexer 产 Raw(StrLit)、primary 拒绝。
+                    self.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!("string literal `{raw}` is not part of this source profile"),
+                            span,
+                        )
+                    });
+                    self.vals.push(Val::E(Expr { kind: ExprKind::StrLit(String::new()), span }));
+                    return;
+                }
                 let inner = &raw.as_bytes()[1..raw.len() - 1];
                 let value = lex::decode_str_value(inner);
                 self.vals.push(Val::E(Expr { kind: ExprKind::StrLit(value), span }));
@@ -2390,9 +2733,38 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.tok_char_lit {
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
+                if !self.cx.profile.is_text() {
+                    self.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!("char literal `{raw}` is not part of this source profile"),
+                            span,
+                        )
+                    });
+                    self.vals.push(Val::E(Expr { kind: ExprKind::CharLit(0), span }));
+                    return;
+                }
                 let inner = &raw.as_bytes()[1..raw.len() - 1];
                 let scalar = lex::decode_char_value(inner);
                 self.vals.push(Val::E(Expr { kind: ExprKind::CharLit(scalar), span }));
+                return;
+            }
+            if ck == self.cx.k.tok_affix_num {
+                // 带缀/进制/浮点数字面量：所有面都是 Raw 排除面（旧 Raw 臂）。
+                let span = self.cx.span_of(c);
+                let raw = self.cx.spelling(c);
+                self.cx.reject(span, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!(
+                            "suffixed/radix/float numeric literal `{raw}` is not part of this source profile"
+                        ),
+                        span,
+                    )
+                });
+                self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
                 return;
             }
             if ck == self.cx.k.tok_true || ck == self.cx.k.tok_false {
@@ -2484,6 +2856,21 @@ impl<'a> Engine<'a> {
     }
 
     fn split_postfix(&self, node: u32) -> (u32, Vec<u32>) {
+        // KIND_POSTFIX（调用收尾续读）：孩子 = [操作数, postfix-tail 规则节点]。
+        if self.cx.tree.kind(node) == KIND_POSTFIX {
+            let kids = self.cx.children(node);
+            let base = *kids.first().expect("postfix wrap operand");
+            let mut steps: Vec<u32> = Vec::new();
+            if let Some(&tail) = kids.get(1) {
+                let step_kind = self.cx.k.postfix_step.unwrap_or(u32::MAX);
+                for c in self.cx.children(tail) {
+                    if self.cx.tree.kind(c) == step_kind {
+                        steps.push(c);
+                    }
+                }
+            }
+            return (base, steps);
+        }
         let mut base = None;
         let mut steps: Vec<u32> = Vec::new();
         for c in self.cx.children(node) {
@@ -2636,10 +3023,25 @@ impl<'a> Engine<'a> {
             .map(|an| collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail"))
             .unwrap_or_default();
         let argc = arg_nodes.len();
-        // callee 静态分析：expr 分派 → 一元链 → postfix/atom。
+        // 旧 parser 怪癖保真（L04/L05/LSTR864/FIN864B 差分）：leading-dot
+        // 空实参调用 `.m()` 走 continue-'outer 重入 primary——下一 token
+        // 必须能起始 primary；且存在未括号待归约运算时锚定调用行（跨行
+        // → unbracketed-newline；同行非 primary → expected expression）。
+        if argc == 0 && self.callee_base_leading_dot(callee_n) {
+            self.empty_value_quirk(close_end);
+        }
+        // callee 静态分析：expr 分派 → 一元链 → postfix/atom。KIND_POSTFIX
+        // 包装节点本身承载步结构，直接作为 wrap（不再下钻首个非空孩子）。
         let plan = {
-            let inner = self.cx.children(callee_n).into_iter().find(|&c| self.cx.tree.child_count(c) > 0);
-            let mut wrap = inner.unwrap_or(callee_n);
+            let mut wrap = if self.cx.tree.kind(callee_n) == KIND_POSTFIX {
+                callee_n
+            } else {
+                self.cx
+                    .children(callee_n)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.child_count(c) > 0)
+                    .unwrap_or(callee_n)
+            };
             let mut unary_ops: Vec<UnaryOp> = Vec::new();
             loop {
                 if self.cx.tree.kind(wrap) == self.cx.k.unary_expr {
@@ -2661,7 +3063,9 @@ impl<'a> Engine<'a> {
                     break;
                 }
             }
-            if self.cx.tree.kind(wrap) == self.cx.k.postfix_expr {
+            if self.cx.tree.kind(wrap) == self.cx.k.postfix_expr
+                || self.cx.tree.kind(wrap) == KIND_POSTFIX
+            {
                 let (base, steps) = self.split_postfix(wrap);
                 match steps.split_last() {
                     Some((last, mids)) => CalleePlan::Method {
@@ -2676,7 +3080,22 @@ impl<'a> Engine<'a> {
                 CalleePlan::Plain { ident: self.first_ident(wrap), unary_ops }
             }
         };
-        // 压帧序（后压先弹）：实参任务 … 接收者折叠 … 接收者 base … 汇总帧。
+        // 压帧序（后压先弹）：接收者 base … 接收者折叠 … 实参任务 … 汇总帧。
+        // 值栈布局：接收者值在实参值**之下**（assemble_call 先弹实参再弹接收者）。
+        let push_args = |this: &mut Self, arg_nodes: Vec<u32>| {
+            for a in arg_nodes.into_iter().rev() {
+                if let Some(named) = this.cx.child_of_kind(a, this.cx.k.named_arg) {
+                    let label_leaf = this.cx.field_child(named, "label").expect("arg label");
+                    let label = ident_of(&mut this.cx, label_leaf);
+                    let value_n = this.cx.field_child(named, "value").expect("arg value");
+                    this.stack.push(Frame::ArgBuild { named: Some(label) });
+                    this.stack.push(Frame::ExprEnter(value_n));
+                } else if let Some(value_n) = this.cx.child_of_kind(a, this.cx.k.expr) {
+                    this.stack.push(Frame::ArgBuild { named: None });
+                    this.stack.push(Frame::ExprEnter(value_n));
+                }
+            }
+        };
         match plan {
             CalleePlan::Method { base, member, mids, unary_ops } => {
                 let fold_mids = mids.clone();
@@ -2685,6 +3104,7 @@ impl<'a> Engine<'a> {
                     argc,
                     close_end,
                 });
+                push_args(self, arg_nodes);
                 if !fold_mids.is_empty() {
                     self.stack.push(Frame::PostfixFoldAll { steps: fold_mids });
                 }
@@ -2696,20 +3116,94 @@ impl<'a> Engine<'a> {
                     argc,
                     close_end,
                 });
+                push_args(self, arg_nodes);
             }
         }
-        for a in arg_nodes.into_iter().rev() {
-            if let Some(named) = self.cx.child_of_kind(a, self.cx.k.named_arg) {
-                let label_leaf = self.cx.field_child(named, "label").expect("arg label");
-                let label = ident_of(&mut self.cx, label_leaf);
-                let value_n = self.cx.field_child(named, "value").expect("arg value");
-                self.stack.push(Frame::ArgBuild { named: Some(label) });
-                self.stack.push(Frame::ExprEnter(value_n));
-            } else if let Some(value_n) = self.cx.child_of_kind(a, self.cx.k.expr) {
-                self.stack.push(Frame::ArgBuild { named: None });
-                self.stack.push(Frame::ExprEnter(value_n));
+    }
+
+    /// 旧 parser continue-'outer 怪癖（空实参 leading-dot 调用 / 空 ctor）：
+    /// 值完成后重入 primary——下一 token 须能起始 primary；存在未括号待归约
+    /// 运算时锚定值行（跨行 → unbracketed-newline；非 primary → expected
+    /// expression）。L04/L05/LSTR864/FIN864B/edge47 差分。
+    fn empty_value_quirk(&mut self, close_end: usize) {
+        let close_end_u64 = close_end as u64;
+        if let Some((g, text, span)) = self.cx.leaf_after(close_end_u64) {
+            let pending_unbracketed = self.pending_unbracketed_op();
+            let call_line = self.cx.line_of_pos(close_end_u64.saturating_sub(1));
+            let next_line = self.cx.line_of_pos(span.start as u64);
+            if pending_unbracketed && next_line > call_line {
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        "unbracketed expression cannot continue across a newline",
+                        span,
+                    )
+                });
+            } else {
+                let k = &self.cx.k;
+                let primary_start = matches!(
+                    g,
+                    x if x == k.tok_ident
+                        || x == k.tok_int_lit
+                        || x == k.tok_str_lit
+                        || x == k.tok_char_lit
+                        || x == k.tok_true
+                        || x == k.tok_false
+                        || x == k.tok_lparen
+                        || x == k.tok_minus
+                        || x == k.tok_bang
+                        || (x == k.tok_dot && self.cx.profile.is_record())
+                );
+                if !primary_start {
+                    let found = describe_g(g, &text, k);
+                    self.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.syntax",
+                            format!("expected expression, found {found}"),
+                            span,
+                        )
+                    });
+                }
             }
         }
+    }
+
+    /// callee 链（expr/unary/postfix/call 包装）的 base atom 是否
+    /// leading-dot：沿首非 trivia 孩子的 spine 下钻，路上出现 leading-dot
+    /// 节点即真（`.new()` 的 base 即 leading-dot atom）。
+    fn callee_base_leading_dot(&self, callee_n: u32) -> bool {
+        let mut n = callee_n;
+        let ld = self.cx.k.leading_dot.unwrap_or(u32::MAX);
+        for _ in 0..10 {
+            if self.cx.tree.kind(n) == ld {
+                return true;
+            }
+            match self
+                .cx
+                .children(n)
+                .into_iter()
+                .find(|&c| self.cx.tree.child_count(c) > 0)
+            {
+                Some(c) => n = c,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// 栈顶向下首个标记帧：OpPost/UnaryPost = 未括号待归约；ArgBuild/
+    /// CtorFieldBuild = 括号内（实参/构造字段——旷新行为空白）。
+    fn pending_unbracketed_op(&self) -> bool {
+        for f in self.stack.iter().rev() {
+            match f {
+                Frame::OpPost { .. } | Frame::UnaryPost { .. } => return true,
+                Frame::ArgBuild { .. } | Frame::CtorFieldBuild { .. } => return false,
+                _ => {}
+            }
+        }
+        false
     }
 
     fn first_ident(&self, node: u32) -> Ident {

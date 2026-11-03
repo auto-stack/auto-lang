@@ -282,6 +282,10 @@ struct Frame {
     pratt_field: u32,
     /// 调用后缀 open 括号前导 trivia（close 时并入 Call 孩子）。
     pratt_extra: Vec<u32>,
+    /// postfix-tail 规则已压出、等待交付（WantOp 入口拦截包装）。
+    pratt_tail_wait: bool,
+    /// 本操作数的 postfix-tail 已耗尽（零步交付）——防重入循环。
+    pratt_tail_done: bool,
     node_start: usize,
 }
 
@@ -609,6 +613,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                 pratt_stage: PrattStage::WantPrimary { anchor: None },
                 pratt_field: field,
                 pratt_extra: Vec::new(),
+                pratt_tail_wait: false,
+                pratt_tail_done: false,
                 node_start: self.open.nodes.len(),
             });
             return;
@@ -662,6 +668,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
             pratt_extra: Vec::new(),
+            pratt_tail_wait: false,
+            pratt_tail_done: false,
             node_start: self.open.nodes.len(),
         });
     }
@@ -691,6 +699,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
             pratt_extra: Vec::new(),
+            pratt_tail_wait: false,
+            pratt_tail_done: false,
             node_start: self.open.nodes.len(),
         });
     }
@@ -931,7 +941,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             if trace && steps > cap {
                 return Err(RtError::InvalidProgram("trace cap".into()));
             }
-            if steps & 0xFFFF == 0 && self.mem_estimate() > self.budget.work_bytes {
+            if (steps == 1 || steps & 0xFFFF == 0) && self.mem_estimate() > self.budget.work_bytes {
                 return Err(RtError::ResourceExhausted {
                     what: "parse work bytes",
                     limit: self.budget.work_bytes,
@@ -1632,12 +1642,47 @@ impl<'p, 'a> Machine<'p, 'a> {
                     let f = self.stack.last_mut().unwrap();
                     f.wait = Wait::OnceStep;
                     f.pratt_stage = PrattStage::WantOp;
+                    f.pratt_tail_done = false;
                 }
                 let prim = table.primary;
                 self.push_rule(prim, NO_FIELD, false);
                 Ok(())
             }
             PrattStage::WantOp => {
+                // postfix-tail 交付拦截：包装栈顶操作数（调用收尾后的 `.name`
+                // 续读，如 `f().len()`）。零步交付 → 操作数原样弹回并标记
+                // 本操作数 tail 已耗尽（防 `f()\n.len()` 的重入循环）。
+                if self.stack.last().unwrap().pratt_tail_wait {
+                    let kids = {
+                        let f = self.stack.last_mut().unwrap();
+                        f.pratt_tail_wait = false;
+                        std::mem::take(&mut f.children)
+                    };
+                    let operand = self.stack.last_mut().unwrap().pratt_vals.pop();
+                    match (kids.first().copied(), operand) {
+                        (Some((tail, _)), Some(op)) => {
+                            let has_steps = self.m_node(tail).child_count > 0;
+                            if has_steps {
+                                let node = self.alloc_node(
+                                    KIND_POSTFIX,
+                                    vec![(op, NO_FIELD), (tail, NO_FIELD)],
+                                    None,
+                                    false,
+                                );
+                                self.stack.last_mut().unwrap().pratt_vals.push(node);
+                            } else {
+                                let f = self.stack.last_mut().unwrap();
+                                f.pratt_vals.push(op);
+                                f.pratt_tail_done = true;
+                            }
+                        }
+                        (_, Some(op)) => {
+                            self.stack.last_mut().unwrap().pratt_vals.push(op);
+                            self.stack.last_mut().unwrap().pratt_tail_done = true;
+                        }
+                        _ => {}
+                    }
+                }
                 // bootstrap：primary 交付的孩子 → vals（无条件搬移：
                 // 每次 WantOp 进入时 children 应为空，滞留即丢失操作数）。
                 {
@@ -1695,6 +1740,20 @@ impl<'p, 'a> Machine<'p, 'a> {
                         }
                         // callee 不同行：表达式结束（不取调用后缀）。
                         self.finish_pratt();
+                        return Ok(());
+                    }
+                }
+                // postfix 续读：操作数（含调用收尾）之后仍可消费点后缀步
+                //（`f().len()`——primary 的 postfix-expr 只覆盖 atom 起始链）。
+                // 新操作数到达时清除耗尽标记（WantPrimary/close_call 各自清）。
+                if let Some(tail_rule) = table.postfix_tail {
+                    if !self.stack.last().unwrap().pratt_tail_done
+                        && self.first.starts(tail_rule, pk.token)
+                    {
+                        let f = self.stack.last_mut().unwrap();
+                        f.pratt_tail_wait = true;
+                        f.wait = Wait::OnceStep;
+                        self.push_rule(tail_rule, NO_FIELD, false);
                         return Ok(());
                     }
                 }
@@ -1824,6 +1883,7 @@ impl<'p, 'a> Machine<'p, 'a> {
         }
         kids.push((close_leaf, NO_FIELD));
         let node = self.alloc_node(KIND_CALL, kids, None, false);
+        self.stack.last_mut().unwrap().pratt_tail_done = false;
         let f = self.stack.last_mut().unwrap();
         // 调用是**后缀**：仅弹出栈顶操作数（callee）替换为 call 节点；
         // clear 全部会丢掉已归约的 lhs（d07：`ac_start() + sf_ac_start()`）。
@@ -1932,7 +1992,16 @@ impl<'p, 'a> Machine<'p, 'a> {
         if self.i < self.toks.len() {
             for k in self.i..self.toks.len() {
                 let t = self.toks[k];
-                let n = self.alloc_leaf(&t, 0);
+                // 尾随未解析 token：非 trivia 标 ERROR 叶（裸叶会被投影当干净
+                // 内容静默丢弃——edge#15 差分：旧 parser 在其上报告期望错误）；
+                // trivia 保持 trivia 标志（无损且不进期望游走叶列）。
+                let is_trivia = t.token != u32::MAX
+                    && self
+                        .trivia_tok
+                        .get(t.token as usize)
+                        .copied()
+                        .unwrap_or(false);
+                let n = self.alloc_leaf(&t, if is_trivia { FLAG_TRIVIA } else { FLAG_ERROR });
                 tail_edges.push((n, NO_FIELD));
             }
             if !tail_edges.is_empty() {

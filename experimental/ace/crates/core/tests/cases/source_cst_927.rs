@@ -266,3 +266,78 @@ fn t07_direct() {
     eprintln!("old={:?}", ace_core::source::parse_program_with(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
     eprintln!("new={:?}", cst::parse_program_via_cst(src, SourceProfile::Text).map_err(|d| (d.code.clone(), d.span.start, d.span.end)));
 }
+
+/// 临时调试：小片段 old/new 对照（ZZ927S=1 启用）。
+#[test]
+fn zz_snippets() {
+    if std::env::var("ZZ927S").unwrap_or_default().is_empty() {
+        return;
+    }
+    let snips: &[(&str, SourceProfile)] = &[
+        ("struct x", SourceProfile::Scalar),
+        ("static x", SourceProfile::Scalar),
+        ("enum E { A }", SourceProfile::Scalar),
+    ];
+    for (i, (src, profile)) in snips.iter().enumerate() {
+        let old = parse_program_with(src, *profile);
+        let new = cst::parse_program_via_cst(src, *profile);
+        let agree = match (&old, &new) {
+            (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
+            (Err(d), Err(e)) => {
+                d.stage.as_str() == e.stage.as_str() && d.code == e.code && d.message == e.message
+                    && d.span.start == e.span.start && d.span.end == e.span.end
+            }
+            _ => false,
+        };
+        eprintln!(
+            "SNIP#{i} {agree} {:#?} src={src:?}
+  old={:?}
+  new={:?}",
+            profile,
+            old.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
+            new.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
+        );
+    }
+}
+
+/// 临时调试：对指定 (语料文件, profile) 打印 old/new 首差上下文（ZZ927=文件名,profile）。
+#[test]
+fn zz_debug_first_diff() {
+    let args = std::env::var("ZZ927").unwrap_or_default();
+    if args.is_empty() {
+        return;
+    }
+    let mut it = args.split(',');
+    let fname = it.next().unwrap();
+    let pname = it.next().unwrap();
+    let profile = match pname {
+        "Core" => SourceProfile::Core,
+        "Scalar" => SourceProfile::Scalar,
+        "Text" => SourceProfile::Text,
+        "Record" => SourceProfile::Record,
+        "TextRecord" => SourceProfile::TextRecord,
+        "EntryUnit" => SourceProfile::EntryUnit,
+        _ => SourceProfile::HostConsole,
+    };
+    let corpus_dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../crates/auto-lang/test/cases/ace-m1/src"
+    );
+    let src = std::fs::read_to_string(format!("{corpus_dir}/{fname}")).expect("read");
+    let old = parse_program_with(&src, profile);
+    let new = cst::parse_program_via_cst(&src, profile);
+    let o = format!("{old:?}");
+    let n = format!("{new:?}");
+    if o == n {
+        eprintln!("IDENTICAL");
+        return;
+    }
+    let pos = o.bytes().zip(n.bytes()).position(|(a, b)| a != b).unwrap_or(o.len().min(n.len()));
+    let ctx = 160;
+    let s = pos.saturating_sub(ctx);
+    eprintln!("FIRST DIFF at byte {pos}:
+--old--
+{}
+--new--
+{}", &o[s..(pos + ctx).min(o.len())], &n[s..(pos + ctx).min(n.len())]);
+}

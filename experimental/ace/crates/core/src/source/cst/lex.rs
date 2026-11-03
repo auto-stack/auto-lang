@@ -115,7 +115,17 @@ fn string_token_fact(
         }
     }
     if bytes.len() < 2 || bytes.last() != Some(&(if is_char { b'\'' } else { b'"' })) {
-        // EOF 未闭合（扫描器 error token 覆盖 [start, len)）。
+        // EOF 未闭合（扫描器 error token 覆盖 [start, len)）。char 的 text 面
+        // 旧词法是"读一个标量即查闭引号"——截断 token 交解码层按旧分类
+        //（char-multi/unterminated），不走整 token 未闭合。
+        if is_char && admits_text {
+            let inner = &bytes[1..];
+            if inner.is_empty() {
+                // 旧：体 None → unterminated [start, pos)。
+                return Some(unterminated(start, start + 1, true));
+            }
+            return decode_text_fact(start, inner, true);
+        }
         return Some(unterminated(start, end, is_char));
     }
     if !admits_text {
@@ -183,12 +193,12 @@ fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool) -> Option<Diagn
                         let hex = std::str::from_utf8(&inner[hex_start..i]).ok()?;
                         let cp = u32::from_str_radix(hex, 16).ok()?;
                         if char::from_u32(cp).is_none() {
-                            // 旧：已过 `}` → end = pos(i)（i 未再进）。
+                            // 旧：校验 `}` 后 lx.pos 已越过 `}` → end = pos(i+1)。
                             return Some(Diagnostic::new(
                                 Stage::Text,
                                 "text.invalid-scalar",
                                 format!("\\u{{{}}} is not a Unicode scalar value", hex),
-                                sp(esc, pos(i)),
+                                sp(esc, pos(i + 1)),
                             ));
                         }
                         i += 1; // `}`
@@ -204,7 +214,7 @@ fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool) -> Option<Diagn
                     }
                 }
                 let scalar_len = i;
-                if i + 1 < inner.len() {
+                if i < inner.len() {
                     let scalar_text = String::from_utf8_lossy(&inner[..scalar_len]).to_string();
                     return Some(Diagnostic::new(
                         Stage::Text,
@@ -221,7 +231,7 @@ fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool) -> Option<Diagn
             }
             _ => {
                 let len = utf8_len(inner[0]);
-                if 1 + len < inner.len() {
+                if len < inner.len() {
                     let scalar_text = String::from_utf8_lossy(&inner[..len]).to_string();
                     return Some(Diagnostic::new(
                         Stage::Text,

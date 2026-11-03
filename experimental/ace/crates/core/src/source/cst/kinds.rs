@@ -6,6 +6,8 @@
 use ace_syntax_runtime::program::{GrammarProgram, KIND_CALL, RULE_KIND_BASE, TOKEN_KIND_BASE};
 
 pub struct SourceKinds {
+    /// 保留 token（旧 RESERVED_KEYWORDS 镜像——grammar r-* 名）kind 集。
+    pub reserved_toks: Vec<u32>,
     // items
     pub item: u32,
     pub fn_item: u32,
@@ -29,6 +31,7 @@ pub struct SourceKinds {
     pub var_stmt: u32,
     pub assign_stmt: u32,
     pub path_assign_stmt: Option<u32>,
+    pub path_seg: Option<u32>,
     pub return_stmt: u32,
     pub if_stmt: u32,
     pub else_block: u32,
@@ -188,7 +191,15 @@ impl SourceKinds {
         }
         let rk = |n: &str| rule_kind(p, n).expect("checked");
         let tk = |n: &str| token_kind(p, n).expect("checked");
+        let reserved_toks: Vec<u32> = p
+            .tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.name.starts_with("r-"))
+            .map(|(i, _)| TOKEN_KIND_BASE + i as u32)
+            .collect();
         Ok(SourceKinds {
+            reserved_toks,
             item: rk("item"),
             fn_item: rk("fn-item"),
             type_item: rk_opt(p, "type-item"),
@@ -208,6 +219,7 @@ impl SourceKinds {
             var_stmt: rk("var-stmt"),
             assign_stmt: rk("assign-stmt"),
             path_assign_stmt: rk_opt(p, "path-assign-stmt"),
+            path_seg: rk_opt(p, "path-seg"),
             return_stmt: rk("return-stmt"),
             if_stmt: rk("if-stmt"),
             else_block: rk("else-block"),

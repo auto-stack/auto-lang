@@ -138,7 +138,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         item {
             alt { fn-item() {} }
             alt(profiles: [record, text-record]) { type-item() {} }
-            alt(profiles: [entry-unit]) { script-item() {} }
+            alt(profiles: [entry-unit, host-console]) { script-item() {} }
         }
         // ---- 声明 ----
         fn-item(recover: true) {
@@ -158,9 +158,10 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {
-            // mode 词：text 族 Reserved move + Kw mut；纯 record 面 Kw mut
-            opt(profiles: [text, text-record, host-console]) { r-move(field: "mode") }
-            opt(profiles: [text, text-record, host-console, record]) { mut(field: "mode") }
+            // mode 词全域结构化（旧 parser 对非可用面在 expect_ident 上以
+            // "keyword `X` cannot be used as a name" 拒绝——由投影层复刻）
+            opt { r-move(field: "mode") }
+            opt { mut(field: "mode") }
             ident(field: "name")
             ann-ty(field: "ty")
         }
@@ -209,7 +210,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // ---- 脚本形态（entry-unit：顶层语句序列到 EOF；首语句必需——
         // 空/仅分隔符文件由投影按旧合同区分"expected fn"与 Ok(empty)；
         // 声明先行的 entry-order 检查在投影保真）----
-        script-item(profiles: [entry-unit]) {
+        script-item(profiles: [entry-unit, host-console]) {
             stmt() {}
             list-nl { stmt() {} }
         }
@@ -316,11 +317,18 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
         }
+        // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
+        // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，
+        // 调用节点之后再接 `.name` 步由本规则承载（运行时包装 KIND_POSTFIX）。
+        postfix-tail(profiles: [record, text-record, text, host-console]) {
+            many { postfix-step() {} }
+        }
         atom-expr {
             alt(profiles: [record, text-record]) { leading-dot() {} }
             alt(profiles: [record, text-record]) { ctor-expr() {} }
-            alt(profiles: [text, text-record, host-console]) { str-lit(field: "lit") }
-            alt(profiles: [text, text-record, host-console]) { char-lit(field: "lit") }
+            alt { str-lit(field: "lit") }
+            alt { char-lit(field: "lit") }
+            alt { affix-num(field: "lit") }
             alt { true-kw(field: "kw") }
             alt { false-kw(field: "kw") }
             alt { ident() {} }
@@ -409,6 +417,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             same-line: true
             nl-free: true
         }
+        postfix: "postfix-tail"
     }
     outline {
         decl-rule: "fn-item"
