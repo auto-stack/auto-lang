@@ -1,4 +1,15 @@
-### Plan 925（2026-11-03，work T-04 门禁登记；非本包合同内阻塞）
+### D-927-1 — 统一 CST 列表机 restore 纪律丢语句分隔换行（无损重建红）
+
+- **发现**：2026-11-04，PLAN-927 T-09 文件化 lossless oracle（`case-ace-source-syntax-927`）。
+- **现象**：record / entry-unit / host-console 三 profile 的 `reconstruct` 丢语句间换行——最小复现 `"let total = 0
+total = total + 1
+total + 41
+"`（entry-unit）重建出 `... + 1 total + 41`（[31,32) 换行叶丢失、[37,38) 空格叶重复挂载）。core/scalar/text/text-record 四面无损绿。
+- **归属**：`ace-syntax-runtime` 列表项 save/restore 与 pending trivia 的交互（失败 alt 回退后 trivia 叶坐标/挂载错位）。**基线 `f827c8e65` 语法同样复现**——T-04/T-05 期既有缺口，非后续会话引入；927 差分（AST/诊断等价）不检查字节重建故未暴露。
+- **owner / 关闭条件**：PLAN-927（T-09 收尾）。修复列表机回退的 trivia 纪律后：去 `source-syntax-927.case.ad` 三 case 的 `status.skip` 复验，`cargo t case-ace-source-syntax-927` 全绿 + 全套差分/edge 复跑。
+- **复现器**：`cargo t case-ace-source-syntax-927`（3 SKIP 带因）；或 ace-core 内编译 `auto-source@entry-unit` 解析该最小源后 `cst::reconstruct` 对照。
+
+## Plan 925（2026-11-03，work T-04 门禁登记；非本包合同内阻塞）
 
 - **D-925-2（Rust 侧同形潜伏缺陷，owner=902 Rust record-text lowering）**：C 侧 oracle 发现"多实参调用中，后一实参的分配 pin 会把前一实参的 view-consumed owned temp 在消费者（调用）之前 free"（`mk("ab","cde")` 两个 owned 字面量作 view 实参 → head 空串）。C 侧已修（scoped drain_since）；**Rust 侧 lower.rs 的 lower_pure 在每个新 pin 前 drain_frees，同形状会先 free 后用**（Rust 的 take()-free 使其表现为静默空串而非崩溃）。902 冻结语料无此形状故未暴露。后继补 Rust 侧同修+用例（owner=902 线/a2x-rust）。
 - **D-925-1（存量测试依赖 git 忽略文件，owner=796/sema-boundary / ace-semantics-store）**：`cargo t ace-semantics` 在任何**新鲜 worktree** 必红 2 例：`sema_boundary_audit::sema_boundary_description_surface_frozen` 与 `sema_boundary_frozen_versions_have_provenance`（`crates/semantics-store/tests/cases/sema_boundary_audit.rs:278` 读 `docs/plans/attachments/796/contract-decision.md`，Os NotFound）。该路径按 2026-10-31 裁定已整目录去跟踪，仅主检出磁盘残留该文件故主检出绿、worktree 红。925 gate 实测：ace-source 307/307、ace-semantics 104/106（2 红即此）、ace-a2x 119/119；与 925 diff（a2x-c/a2x-store/worker tests）无耦合。修复方向：测试内联所需 token 或改读跟踪文件；本包不代改他方测试，merge 复跑该组时按环境归因记录。
