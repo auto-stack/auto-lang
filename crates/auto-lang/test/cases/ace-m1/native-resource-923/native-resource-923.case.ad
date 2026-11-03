@@ -1,0 +1,83 @@
+# PLAN-923 R03 native resource-guards scenario suite — the ac/av cell the
+# plan owns (binding.tsv:114), NOT the same-named corpus row R03.
+#
+# The frozen corpus programs L04/LSTR (byte-copies of `src/L04.at` /
+# `src/LSTR864.at`) and the grow program (five pushes over the cap-4
+# `List<int>`) run through the real frontend → checked HIR → shared MIR →
+# native admit/CLIF/COFF → the same no_std runtime, with ONE injected
+# allocation failure per run (seam 1/2/4 = node/data/frame on L04; seam 3
+# = grow on the grow program; S6/S7 = the embedded text runtime's own
+# backing/ledger channels on LSTR). The parent freezes the trap code, the
+# seam/nth fact pair and the zero-live/zero-bytes cleanup in its own
+# table (never the worker's word); the base runs freeze the exit values.
+#
+# Injection is not a normal language negative case: the failure is a
+# NAMED fact (MN-COLL-INJECT seam=/nth=), distinct from a real budget
+# refusal on the same seam; a run that actually committed the mutation
+# must not report a clean pre-commit state.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03.l04"
+  tags: ["ace-m1", "scenario", "native-resource-923", "r03"]
+  links: ["PLAN-923"]
+  source: { file: "src/L04-923.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "base", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "fault-s1", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_seam: [1, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s2", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_seam: [2, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } },
+    { id: "fault-s4", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_seam: [4, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.execution-budget" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03.grow"
+  tags: ["ace-m1", "scenario", "native-resource-923", "r03"]
+  links: ["PLAN-923"]
+  source: { file: "src/grow-923.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "base", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 24 } },
+    { id: "fault-s3", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_seam: [3, 1] } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.allocation-injected" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03.lstr"
+  tags: ["ace-m1", "scenario", "native-resource-923", "r03"]
+  links: ["PLAN-923"]
+  source: { file: "src/LSTR-923.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "base", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: {} }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "fault-s6", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_text_nth: 1 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.execution-budget" } } },
+    { id: "fault-s7", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-resource-guards-v1", mn: { entry: "d_main", resource: { fail_ledger_nth: 1 } }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "run", code: "mn.resource.execution-budget" } } }
+  ]
+}
+```

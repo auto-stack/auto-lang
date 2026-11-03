@@ -105,6 +105,18 @@ pub fn run_units(
     tag: &str,
     source: Option<&str>,
 ) -> ace_native::link_driver::PeRun {
+    run_units_with_knobs(units, entry, tag, source, &Default::default())
+}
+
+/// PLAN-923: `run_units` with explicit entry-wrapper knobs (per-seam fault
+/// injection / text seams), for the V-01/V-03 sweep over real native PEs.
+pub fn run_units_with_knobs(
+    units: &[ace_av_core::mir::MirModule],
+    entry: &str,
+    tag: &str,
+    source: Option<&str>,
+    knobs: &ace_native::collections_lower::WrapperKnobs,
+) -> ace_native::link_driver::PeRun {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -130,7 +142,8 @@ pub fn run_units(
     }
     memory_stage(tag, "emit");
     let symbol = ace_native::symbols::function_symbol(&units[0].owner, entry);
-    let wrapper = ace_native::collections_lower::emit_wrapper_coff(&symbol, &Default::default()).unwrap();
+    let wrapper =
+        ace_native::collections_lower::emit_wrapper_coff(&symbol, knobs).unwrap();
     let run = ace_native::link_driver::link_and_run(
         &objects,
         &wrapper,

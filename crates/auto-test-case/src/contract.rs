@@ -1614,8 +1614,12 @@ fn decode_options(
                             matches!(op.as_str(), "run" | "edit-source")
                         }
                         // PLAN-919: the lifecycle recipes share the run/edit
-                        // vocabulary (the judged step is the run).
-                        "ac-av/resource-events-v1" | "ac/mir-native-resource-events-v1" => {
+                        // vocabulary (the judged step is the run). PLAN-923:
+                        // the native resource-guards recipe (per-seam fault
+                        // injection + stale-place) rides the same vocabulary.
+                        "ac-av/resource-events-v1"
+                        | "ac/mir-native-resource-events-v1"
+                        | "ac/mir-native-resource-guards-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
                         // PLAN-822: the collections recipe shares the av
@@ -2295,6 +2299,7 @@ fn decode_options(
                         | "ac/mir-native-collections-v1"
                         | "ac/mir-native-typed-v1"
                         | "ac/mir-native-resource-events-v1"
+                        | "ac/mir-native-resource-guards-v1"
                 ) {
                     return Err(err(
                         &f.path_of("mn"),
@@ -2310,6 +2315,7 @@ fn decode_options(
                         | "ac/mir-native-collections-v1"
                         | "ac/mir-native-typed-v1"
                         | "ac/mir-native-resource-events-v1"
+                        | "ac/mir-native-resource-guards-v1"
                 ) {
                     return Err(err(
                             &f.path_of("mn"),
@@ -2490,23 +2496,32 @@ fn decode_options(
                 // PLAN-919: the native lifecycle recipe's exit knobs
                 // (guest byte budget, cancellation after N work units,
                 // the Nth-allocation fault) — driven by the generated
-                // entry wrapper, never by a parent-side kill.
+                // entry wrapper, never by a parent-side kill. PLAN-923:
+                // the resource-guards recipe adds the per-seam injection
+                // knob `fail_seam` ([seam 1..=8, nth >= 1]) and the text
+                // seam channels `fail_text_nth` / `fail_ledger_nth` (the
+                // embedded text runtime owns its backing/ledger injection;
+                // ERR_ENV_OOM surfaces as trap 22).
                 let resource = match mf.sub("resource") {
                     None => {
-                        if recipe == "ac/mir-native-resource-events-v1" {
+                        if recipe == "ac/mir-native-resource-events-v1"
+                            || recipe == "ac/mir-native-resource-guards-v1"
+                        {
                             return Err(err(
                                 &mf.path_of("resource"),
-                                "ac/mir-native-resource-events-v1 requires mn.resource { .. }",
+                                format!("{recipe} requires mn.resource {{ .. }}"),
                             ));
                         }
                         None
                     }
                     Some(rv) => {
-                        if recipe != "ac/mir-native-resource-events-v1" {
+                        if recipe != "ac/mir-native-resource-events-v1"
+                            && recipe != "ac/mir-native-resource-guards-v1"
+                        {
                             return Err(err(
                                 &mf.path_of("resource"),
                                 format!(
-                                    "mn.resource belongs to ac/mir-native-resource-events-v1, not {recipe:?}"
+                                    "mn.resource belongs to the resource recipes, not {recipe:?}"
                                 ),
                             ));
                         }
@@ -2515,7 +2530,14 @@ fn decode_options(
                         let rf = Fields::new(
                             &rpath,
                             rpairs,
-                            &["budget_bytes", "cancel_after_work", "fail_nth"],
+                            &[
+                                "budget_bytes",
+                                "cancel_after_work",
+                                "fail_nth",
+                                "fail_seam",
+                                "fail_text_nth",
+                                "fail_ledger_nth",
+                            ],
                         )?;
                         let knob = |k: &str| -> Result<Option<u64>, ContractError> {
                             match rf.sub(k) {
@@ -2529,10 +2551,39 @@ fn decode_options(
                                 },
                             }
                         };
+                        let fail_seam = match rf.sub("fail_seam") {
+                            None => Ok(None),
+                            Some(fv) => {
+                                let list = as_list(fv, &rf.path_of("fail_seam"))?;
+                                if list.len() != 2 {
+                                    return Err(err(
+                                        &rf.path_of("fail_seam"),
+                                        "fail_seam is a [seam, nth] pair",
+                                    ));
+                                }
+                                let (seam, nth) = match (&list[0], &list[1]) {
+                                    (CVal::Int(s), CVal::Int(n))
+                                        if *s >= 1 && *s <= 8 && *n >= 1 =>
+                                    {
+                                        (*s as u32, *n as u64)
+                                    }
+                                    _ => {
+                                        return Err(err(
+                                            &rf.path_of("fail_seam"),
+                                            "fail_seam is [seam 1..=8, nth >= 1]",
+                                        ))
+                                    }
+                                };
+                                Ok(Some((seam, nth)))
+                            }
+                        }?;
                         Some(ProbeMnResourceSpec {
                             budget_bytes: knob("budget_bytes")?,
                             cancel_after_work: knob("cancel_after_work")?,
                             fail_nth: knob("fail_nth")?,
+                            fail_seam,
+                            fail_text_nth: knob("fail_text_nth")?,
+                            fail_ledger_nth: knob("fail_ledger_nth")?,
                         })
                     }
                 };
@@ -2753,6 +2804,11 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // parent-side judgement against frozen invariants and per-case tables.
     "ac-av/resource-events-v1",
     "ac/mir-native-resource-events-v1",
+    // PLAN-923: the native resource-guards recipe (scenario R03 ac cell) —
+    // per-seam fault injection on the real collections PE (seam/nth/budget
+    // requests only) plus the checked List-place machine chain; the parent
+    // judges the frozen seam/trap/cleanup facts.
+    "ac/mir-native-resource-guards-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
@@ -2903,11 +2959,18 @@ pub struct ProbeMnSpec {
 /// the generated entry wrapper installs into the collections runtime
 /// before the entry runs (`mn_coll_set_budget` / `mn_coll_cancel_after_work`
 /// / `mn_coll_fail_nth`). Expectations never ride here.
+/// PLAN-923: `fail_seam` is the per-seam injection knob
+/// (`mn_coll_fail_nth_seam(seam, nth)`); the text seams (S6/S7) ride the
+/// embedded text runtime's own channels. The parent request carries only
+/// the operation/seam/index/budget — never the expected outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeMnResourceSpec {
     pub budget_bytes: Option<u64>,
     pub cancel_after_work: Option<u64>,
     pub fail_nth: Option<u64>,
+    pub fail_seam: Option<(u32, u64)>,
+    pub fail_text_nth: Option<u64>,
+    pub fail_ledger_nth: Option<u64>,
 }
 
 /// PLAN-914 ac/mir-native-collections-v1 declaration-invalidation oracle.

@@ -5,7 +5,7 @@
   "binding": {
     "path": "binding.tsv",
     "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-    "sha256": "f695fdbd15a441830068b62a2327eb6d7d950769b6c30517d34316b7cda29c62"
+    "sha256": "5fe87b01053db43bfe5f9d8b0d96edc0cbf8810bcd1500e29a69884005ea7b12"
   },
   "corpus_src": {
     "dir": "src",
@@ -451,5 +451,20 @@
   "plan_919_update": {
     "date": "2026-11-03",
     "summary": "resource-events-919 suite (R01/R04/R06 av+mn): binding 6 cells ok:P919-events; scenario_assets_919 registered per the per-plan asset convention"
+  },
+  "scenario_assets_923": {
+    "dir": "native-resource-923",
+    "expected_count": 5,
+    "files": {
+      "native-resource-923.suite.ad": "f5c17dd21c05bc08d5944c8fb5a3473776c66915af5a15fab90d7c9dba760be3",
+      "native-resource-923.case.ad": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+      "src/L04-923.at": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",
+      "src/LSTR-923.at": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff",
+      "src/grow-923.at": "a7f995d31097d873df0c5c3766abf472cf82abdd73e1b9b759ce943d52ebaae7"
+    }
+  },
+  "plan_923_update": {
+    "date": "2026-11-03",
+    "summary": "PLAN-923: native resource-guards suite case-ace-m1-native-resource-923 (R03 ac cell; real source PEs with one injected per-seam allocation failure per run: S1/S2/S4 on L04, S3 grow, S6/S7 text backing/ledger on LSTR; frozen trap/seam/cleanup facts + base exits 42/24/51; parent table in ac_mn/resource_guards). binding R03 mn cell -> ok:P923-guards; R02 mn stays gap with the non-closure coverage noted (owner PLAN-924). scenario_assets_923 registered per the per-plan asset convention."
   }
 }

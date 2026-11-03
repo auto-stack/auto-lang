@@ -323,3 +323,21 @@ fn runtime_missing_text_owner_is_rejected_even_when_container_balance_is_zero() 
         "text buffers not balanced"
     );
 }
+
+/// PLAN-923 V-02/V-05: the same-runtime-primitive probe — a failed growth
+/// (per-seam injection) leaves the list length, the minted place and its
+/// element untouched; clearing the fault retries the same operation in the
+/// same process; the structural change then retires the old place before
+/// any buffer read.
+#[test]
+fn runtime_seam_snapshot_and_inprocess_retry_keep_atomicity() {
+    let run = runtime_probe("seam-retry", Some("mn_probe_seam_retry"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+}
+

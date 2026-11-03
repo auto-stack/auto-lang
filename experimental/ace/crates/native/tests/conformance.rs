@@ -18,6 +18,10 @@ mod collections_layout_tier;
 mod collections_observation_tier;
 #[path = "cases/collections_resources_tier.rs"]
 mod collections_resources_tier;
+#[path = "cases/collections_seam_tier.rs"]
+mod collections_seam_tier;
+#[path = "cases/collections_place_tier.rs"]
+mod collections_place_tier;
 #[path = "cases/collections_source_tier.rs"]
 mod collections_source_tier;
 #[path = "cases/collections_typed_tier.rs"]

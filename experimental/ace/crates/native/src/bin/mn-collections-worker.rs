@@ -19,6 +19,9 @@ const RECIPE: &str = ace_native::collections_layout::RECIPE;
 /// PLAN-919: the lifecycle recipe rides this worker (same runtime/ABI and
 /// observe channel; only the wrapper knobs and the request face differ).
 const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
+/// PLAN-923: the resource-guards recipe rides the same worker with the
+/// per-seam injection knobs (fail_seam / fail_text_nth / fail_ledger_nth).
+const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
 const LINE_CAP: usize = (4 << 20) * 4 / 3 + (64 << 10);
 static PRIVATE_BASE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn process_memory() -> (u64, u64, bool) {
@@ -196,7 +199,10 @@ fn serve() -> Result<(), String> {
     let echo = json!({"schema":"mnworker/1","nonce":request["nonce"],"request_hash":request["request_hash"]});
     let mut execute = || -> Result<(Option<CollectionsIncrementalSession>, Value), String> {
         let recipe_field = str_field(&request, "recipe")?.to_string();
-        if recipe_field != RECIPE && recipe_field != RESOURCE_EVENTS_RECIPE {
+        if recipe_field != RECIPE
+            && recipe_field != RESOURCE_EVENTS_RECIPE
+            && recipe_field != RESOURCE_GUARDS_RECIPE
+        {
             return Err("wrong collections recipe".into());
         }
         // Binding is recomputed from the actual request, not merely echoed.
@@ -273,14 +279,17 @@ fn serve() -> Result<(), String> {
             out["omitted_native_returns"] = json!(omitted);
             return Ok((None, out));
         }
-        // PLAN-919: the lifecycle request — the SAME collections pipeline
-        // and the SAME managed publication (manifest identity chain), with
-        // the observation switch on and the R06 exit knobs baked into the
-        // wrapper. Operations and budgets only; the parent judges stderr.
-        if recipe_field == RESOURCE_EVENTS_RECIPE {
+        // PLAN-919/923: the lifecycle and resource-guards requests — the
+        // SAME collections pipeline and the SAME managed publication
+        // (manifest identity chain), with the observation switch on and
+        // the exit/injection knobs baked into the wrapper. Operations and
+        // budgets only; the parent judges stderr. Guards adds the per-seam
+        // injection knob (fail_seam [seam, nth]) and the embedded text
+        // runtime's own seam channels (fail_text_nth / fail_ledger_nth).
+        if recipe_field == RESOURCE_EVENTS_RECIPE || recipe_field == RESOURCE_GUARDS_RECIPE {
             let res = request
                 .get("resource")
-                .ok_or("resource-events requires a resource object")?;
+                .ok_or("resource recipes require a resource object")?;
             let knob = |k: &str| -> Result<Option<u64>, String> {
                 match res.get(k) {
                     None | Some(Value::Null) => Ok(None),
@@ -291,11 +300,34 @@ fn serve() -> Result<(), String> {
                         .ok_or_else(|| format!("resource.{k} must be an integer >= 1")),
                 }
             };
+            let fail_seam = match res.get("fail_seam") {
+                None | Some(Value::Null) => None,
+                Some(v) => {
+                    let arr = v
+                        .as_array()
+                        .ok_or("resource.fail_seam must be a [seam, nth] pair")?;
+                    if arr.len() != 2 {
+                        return Err("resource.fail_seam must be a [seam, nth] pair".into());
+                    }
+                    let seam = arr[0]
+                        .as_u64()
+                        .filter(|n| (1..=8).contains(n))
+                        .ok_or("resource.fail_seam seam must be 1..=8")?;
+                    let nth = arr[1]
+                        .as_u64()
+                        .filter(|n| *n >= 1)
+                        .ok_or("resource.fail_seam nth must be >= 1")?;
+                    Some((seam as u32, nth))
+                }
+            };
             let knobs = ace_native::collections_lower::WrapperKnobs {
                 observe: true,
                 budget_bytes: knob("budget_bytes")?,
                 cancel_after_work: knob("cancel_after_work")?,
                 fail_nth: knob("fail_nth")?,
+                fail_seam,
+                fail_text_nth: knob("fail_text_nth")?,
+                fail_ledger_nth: knob("fail_ledger_nth")?,
             };
             let mut driver =
                 MnDriver::with_store(store, "mn-collections-case").map_err(|e| e.message())?;
@@ -307,7 +339,7 @@ fn serve() -> Result<(), String> {
                 return Err(run
                     .error
                     .map(|e| e.message())
-                    .unwrap_or("resource-events run failed".into()));
+                    .unwrap_or("resource run failed".into()));
             }
             let runtime =
                 ace_native::collections_runtime::prepare(None).map_err(|e| e.message())?;
@@ -315,7 +347,7 @@ fn serve() -> Result<(), String> {
                 ace_native::link_driver::collections_link_identities().map_err(|e| e.message())?;
             let mut out = identity();
             // The recipe echo follows the REQUEST identity (the lifecycle
-            // recipe is this worker's second admitted face).
+            // and guards recipes are this worker's admitted faces).
             out["recipe"] = json!(recipe_field);
             out["allocation_meter"] = json!(ace_native::collections_memory::snapshot());
             out["exit_code"] = json!(run.exit_code);

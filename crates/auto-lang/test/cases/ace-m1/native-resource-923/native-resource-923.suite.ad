@@ -1,0 +1,14 @@
+# PLAN-923 native-resource-guards scenario suite — the R03 ac/av scenario
+# cell of the M1 grid, closed by REAL per-seam allocation-fault injections
+# on the native collections PE (the request carries only the
+# operation/seam/index/budget; the parent judges the frozen trap/seam/
+# cleanup facts) plus the base positive controls. The checked List-place
+# machine chain (V-04/V-05) lives in the ace-native unit tier
+# (collections_place_tier) — source cannot mint a place, so the AutoDown
+# face covers the source-fault machine path this recipe owns.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-native-resource-923", include: [
+  "native-resource-923.case.ad",
+] }
+```

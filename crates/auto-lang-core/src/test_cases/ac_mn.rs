@@ -107,8 +107,13 @@ pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
 /// observation stream on stderr and the R06 exit knobs driven by the
 /// generated entry wrapper; parent-side judgement is independent.
 pub const RESOURCE_EVENTS_RECIPE: &str = "ac/mir-native-resource-events-v1";
+/// PLAN-923: the native resource-guards recipe (scenario R03 ac cell) —
+/// per-seam fault injection (seam/nth/budget requests only) plus the
+/// checked List-place machine chain on the same collections PE.
+pub const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
 mod collections;
 mod resource_events;
+mod resource_guards;
 mod typed;
 pub use collections::campaign::{
     run as run_collections_campaign, run_cold_repair as run_collections_cold_repair_campaign,
@@ -1014,13 +1019,16 @@ fn build_worker_named(manifest: &Path, bin: &str) -> Result<PathBuf, String> {
 }
 
 fn request_recipe(request: &str) -> &'static str {
-    // The collections WORKER serves both collections recipes (the lifecycle
-    // recipe rides the same runtime/ABI/observe channel — PLAN-919).
+    // The collections WORKER serves the collections recipes (the lifecycle
+    // and resource-guards recipes ride the same runtime/ABI/observe
+    // channel — PLAN-919/923).
     if serde_json::from_str::<serde_json::Value>(request)
         .ok()
         .and_then(|v| {
             v.get("recipe").and_then(|r| r.as_str()).map(|r| {
-                r == COLLECTIONS_RECIPE || r == RESOURCE_EVENTS_RECIPE
+                r == COLLECTIONS_RECIPE
+                    || r == RESOURCE_EVENTS_RECIPE
+                    || r == RESOURCE_GUARDS_RECIPE
             })
         })
         .unwrap_or(false)
@@ -1037,9 +1045,12 @@ fn worker_binary_for(recipe: &str) -> Result<PathBuf, String> {
                 .into(),
         );
     }
-    // PLAN-919: the lifecycle recipe rides the collections worker (same
-    // runtime/ABI/observe channel).
-    if recipe != COLLECTIONS_RECIPE && recipe != RESOURCE_EVENTS_RECIPE {
+    // PLAN-919/923: the lifecycle and resource-guards recipes ride the
+    // collections worker (same runtime/ABI/observe channel).
+    if recipe != COLLECTIONS_RECIPE
+        && recipe != RESOURCE_EVENTS_RECIPE
+        && recipe != RESOURCE_GUARDS_RECIPE
+    {
         return worker_binary();
     }
     if let Ok(path) = std::env::var("AC_MN_COLLECTIONS_CASE_WORKER") {
@@ -1785,13 +1796,14 @@ pub fn run_check(
         if strict {
             request["diagnostics"] = serde_json::json!(source_diag::MODE);
         }
-        // PLAN-919: the lifecycle recipe's exit knobs (operations and
-        // budgets only; the observation switch is implied by the recipe).
-        if recipe == RESOURCE_EVENTS_RECIPE {
+        // PLAN-919/923: the lifecycle and resource-guards recipes' exit
+        // knobs (operations and budgets only; the observation switch is
+        // implied by the recipe). Guards adds the per-seam injection knob.
+        if recipe == RESOURCE_EVENTS_RECIPE || recipe == RESOURCE_GUARDS_RECIPE {
             let res = mn
                 .resource
                 .as_ref()
-                .ok_or_else(|| "resource-events requires mn.resource".to_string())?;
+                .ok_or_else(|| "resource recipes require mn.resource".to_string())?;
             let mut o = serde_json::Map::new();
             if let Some(v) = res.budget_bytes {
                 o.insert("budget_bytes".into(), serde_json::json!(v));
@@ -1801,6 +1813,15 @@ pub fn run_check(
             }
             if let Some(v) = res.fail_nth {
                 o.insert("fail_nth".into(), serde_json::json!(v));
+            }
+            if let Some((seam, nth)) = res.fail_seam {
+                o.insert("fail_seam".into(), serde_json::json!([seam, nth]));
+            }
+            if let Some(v) = res.fail_text_nth {
+                o.insert("fail_text_nth".into(), serde_json::json!(v));
+            }
+            if let Some(v) = res.fail_ledger_nth {
+                o.insert("fail_ledger_nth".into(), serde_json::json!(v));
             }
             request["resource"] = serde_json::Value::Object(o);
         }
@@ -2004,10 +2025,11 @@ pub fn run_check(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            // PLAN-919: a lifecycle run that ENDED in the abort sweep
-            // (budget/cancel/trap) never publishes its candidate — the
-            // manifest identity chain applies to the published faces.
-            let trap_face = recipe == RESOURCE_EVENTS_RECIPE
+            // PLAN-919/923: a lifecycle/guards run that ENDED in the abort
+            // sweep (budget/cancel/trap) never publishes its candidate —
+            // the manifest identity chain applies to the published faces.
+            let trap_face = (recipe == RESOURCE_EVENTS_RECIPE
+                || recipe == RESOURCE_GUARDS_RECIPE)
                 && hex_stream(&session_stderr)
                     .ok()
                     .and_then(|b| String::from_utf8(b).ok())
@@ -2129,6 +2151,46 @@ pub fn run_check(
             }
         }
     }
+    // PLAN-923: the resource-guards recipe's parent-side judge — strict
+    // decode of the MN-COLL-INJECT seam/nth facts and the trap/cleanup
+    // face against the frozen per-case table (independent of anything the
+    // worker self-reports; the request carried only operation/seam/index/
+    // budget).
+    if recipe == RESOURCE_GUARDS_RECIPE {
+        match resource_guards::decode_facts_hex(&stderr_hex) {
+            Ok(facts) => {
+                if diag.is_none() {
+                    if let Some(t) = facts.trap {
+                        if let Some(code) = resource_events::completion_code(t) {
+                            diag = Some((code.to_string(), format!("native collection trap {t}")));
+                        }
+                    }
+                }
+                let oracle_key = format!("{}/{}", case.spec.id, check.id);
+                match resource_guards::oracle_for(&oracle_key) {
+                    Some(o) => {
+                        resource_guards::judge_native(o, exit_code, &facts, &mut mismatches)
+                    }
+                    None => mismatches.push(Mismatch {
+                        observation: "native-guards".into(),
+                        kind: "case-registration".into(),
+                        expected: "a frozen native resource-guards oracle row".into(),
+                        actual: format!("check {oracle_key} is not in the parent table"),
+                        first_diff: None,
+                    }),
+                }
+            }
+            Err(detail) => {
+                mismatches.push(Mismatch {
+                    observation: "native-guards".into(),
+                    kind: "admission".into(),
+                    expected: "a strictly decodable MN-COLL-INJECT/trap stream".into(),
+                    actual: detail,
+                    first_diff: None,
+                });
+            }
+        }
+    }
     // ---- parent-side judgement -----------------------------------------
     let observed = if let Some((code, message)) = &diag {
         // Map the mn.* / mir.* diagnostic onto the contract stages:
@@ -2144,7 +2206,7 @@ pub fn run_check(
             fact.mapped_stage
         } else if recipe == COLLECTIONS_RECIPE && code.starts_with("mn.trap.") {
             Stage::Run
-        } else if recipe == RESOURCE_EVENTS_RECIPE
+        } else if (recipe == RESOURCE_EVENTS_RECIPE || recipe == RESOURCE_GUARDS_RECIPE)
             && (code.starts_with("mn.trap.") || code.starts_with("mn.resource."))
         {
             Stage::Run

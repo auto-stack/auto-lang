@@ -1,9 +1,13 @@
 //! Explicit collections requests share the driver's A09 machinery and native
 //! linker. Persisted MIR is data, never a restored verification credential.
 use super::*;
+use crate::collections_incremental::{
+    CollectionRun, CollectionWork, CollectionsIncrementalSession,
+};
 use crate::{collections_artifacts as art, collections_layout as layout};
 use crate::{collections_lower as lower, collections_runtime as runtime};
 use ace_av_core::mir::MirModule;
+use ace_core::source as ac;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -129,6 +133,23 @@ pub(crate) fn check_resident_interfaces<'a>(
     entry: &str,
 ) -> Result<(), MnError> {
     check_interfaces(interfaces, entry).map(|_| ())
+}
+
+/// PLAN-923 V-08: the shared restore verification chain's output — the
+/// frozen manifest plus the re-admitted units/COFF objects, ready either to
+/// finish a restore run or to assemble the restore->session continuation.
+struct RestoredCollections {
+    manifest: art::Manifest,
+    source: String,
+    units: Vec<MirModule>,
+    objects: Vec<ObjectInput>,
+    metas: Vec<CoffMeta>,
+    mir_bytes: Vec<usize>,
+    runtime_identity: runtime::Identity,
+    runtime_library: PathBuf,
+    runtime_blob: art::Blob,
+    link_identity: [String; 3],
+    entry_symbol: String,
 }
 
 impl MnDriver {
@@ -674,6 +695,100 @@ impl MnDriver {
         }
         response
     }
+    /// PLAN-923 V-08: the restore -> next-body-edit session. The SAME
+    /// manifest/source/runtime/link/per-unit MIR+COFF verification chain as
+    /// `restore_collections_inner` runs; the restored source then rebuilds the
+    /// retained CheckedEnv/regions through the bounded cold frontend (never a
+    /// whole-tree key hunt), and the verified units assemble a
+    /// `CollectionsIncrementalSession` whose `prepare_source` can take the
+    /// NEXT body edit with real incremental differential work. The returned
+    /// `CollectionRun` is the restored program's own execution (frozen
+    /// manifest identity chain; no live place/guest value is ever restored).
+    pub fn restore_collections_session(
+        &mut self,
+        id: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+    ) -> Result<(CollectionsIncrementalSession, CollectionRun), MnError> {
+        self.last_collections_run = None;
+        let mut obs = Obs::default();
+        let material = self.restore_collections_material(id, workdir, support, &mut obs)?;
+        let cold = obs.span("frontend_restore", |_| {
+            crate::collections_frontend::cold(&material.source, "mn.at")
+                .map_err(|e| MnError::Unsupported("frontend", format!("{e:?}")))
+        })?;
+        let regions = ac::env_fn_regions(&cold.env);
+        if regions.len() != material.units.len() {
+            return Err(bad("restored units do not match the rebuilt function set"));
+        }
+        let mut resident = Vec::with_capacity(material.units.len());
+        for (i, unit) in material.units.into_iter().enumerate() {
+            let interface = collection_interface(&unit)?;
+            let meta = material.metas[i].clone();
+            resident.push(std::rc::Rc::new(ResidentCollectionUnit {
+                mir: std::rc::Rc::new(unit),
+                coff: std::rc::Rc::new(material.objects[i].bytes.clone()),
+                meta,
+                record: material.manifest.units[i].clone(),
+                interface,
+                mir_bytes: material.mir_bytes[i],
+                pending_mir: None,
+            }));
+        }
+        let manifest_id = if self.cache_mode == CacheMode::ReadOnly {
+            None
+        } else {
+            Some(id.to_string())
+        };
+        let (build, run) = self.finish_collections(
+            material.objects,
+            &material.entry_symbol,
+            &material.manifest.owner_module,
+            &material.manifest.entry,
+            &material.runtime_library,
+            workdir,
+            material.manifest.fingerprint()?,
+            manifest_id.clone(),
+            &mut obs,
+            true,
+        )?;
+        let run = run.ok_or_else(|| bad("missing restored execution"))?;
+        let mint_origins: Vec<_> = regions.iter().map(|region| region.item.start).collect();
+        let entry = material.manifest.entry.clone();
+        let mut session_driver = match &self.store {
+            Some(store) => MnDriver::with_store(&store.root, "mn-collections-case")
+                .map_err(|e| MnError::Infra(format!("store reopen: {e}")))?,
+            None => MnDriver::ephemeral(),
+        };
+        session_driver.cache_mode = self.cache_mode;
+        let session = CollectionsIncrementalSession::from_restored(
+            cold.env,
+            material.source.clone(),
+            regions,
+            mint_origins,
+            resident,
+            session_driver,
+            material.runtime_identity,
+            Some(material.runtime_blob),
+            material.link_identity,
+            entry,
+            workdir.to_path_buf(),
+            support.map(Path::to_path_buf),
+            manifest_id,
+            build.manifest_fp.clone(),
+            obs,
+        );
+        Ok((
+            session,
+            CollectionRun {
+                build,
+                exit_code: run.exit_code,
+                stdout: run.stdout,
+                stderr: run.stderr,
+                work: CollectionWork::default(),
+            },
+        ))
+    }
     fn restore_collections_inner(
         &mut self,
         id: &str,
@@ -682,6 +797,36 @@ impl MnDriver {
         obs: &mut Obs,
         execute: bool,
     ) -> Result<(MnBuild, Option<link_driver::PeRun>), MnError> {
+        let material = self.restore_collections_material(id, workdir, support, obs)?;        let manifest_id = if self.cache_mode == CacheMode::ReadOnly {
+            None
+        } else {
+            Some(id.to_string())
+        };
+        self.finish_collections(
+            material.objects,
+            &material.entry_symbol,
+            &material.manifest.owner_module,
+            &material.manifest.entry,
+            &material.runtime_library,
+            workdir,
+            material.manifest.fingerprint()?,
+            manifest_id,
+            obs,
+            execute,
+        )
+    }
+    /// The shared restore verification chain: manifest identity, runtime
+    /// build/content, source blob + coordinates, link tools, and per-unit
+    /// MIR deep re-verification + COFF hash/length/page identity. Returns the
+    /// material needed to either finish a restore run or assemble the
+    /// restore->session continuation.
+    fn restore_collections_material(
+        &mut self,
+        id: &str,
+        workdir: &Path,
+        support: Option<&Path>,
+        obs: &mut Obs,
+    ) -> Result<RestoredCollections, MnError> {
         let store = self
             .store
             .as_ref()
@@ -743,6 +888,8 @@ impl MnDriver {
         }
         let mut units = Vec::with_capacity(manifest.units.len());
         let mut objects = Vec::with_capacity(manifest.units.len());
+        let mut metas = Vec::with_capacity(manifest.units.len());
+        let mut mir_bytes = Vec::with_capacity(manifest.units.len());
         for row in &manifest.units {
             let wire = obs.span("mir_restore", |_| art::get_blob(store, &row.mir, "mir"))?;
             obs.ledger.charge(Partition::Io, wire.len() as u64);
@@ -789,34 +936,38 @@ impl MnDriver {
                     obs.ledger.violations().join("; "),
                 ));
             }
+            let name = meta.unit.clone();
             objects.push(ObjectInput {
-                name: meta.unit,
-                bytes,
+                name,
+                bytes: bytes.clone(),
             });
+            metas.push(meta);
+            mir_bytes.push(unit.heap_estimate());
             units.push(unit);
         }
         let entry = check_closure(&units, &manifest.entry)?;
         if entry.symbol != manifest.entry_symbol || entry.unit != manifest.entry {
             return Err(bad("entry identity/symbol mismatch"));
         }
-        let fp = manifest.fingerprint()?;
-        let manifest_id = if self.cache_mode == CacheMode::ReadOnly {
-            None
-        } else {
-            Some(id.to_string())
-        };
-        self.finish_collections(
+        let runtime_blob = manifest.runtime_blob.clone();
+        let link_identity = [
+            current_tools.0.clone(),
+            current_tools.1.clone(),
+            current_tools.2.clone(),
+        ];
+        Ok(RestoredCollections {
+            manifest,
+            source,
+            units,
             objects,
-            &entry.symbol,
-            &manifest.owner_module,
-            &manifest.entry,
-            &runtime.library,
-            workdir,
-            fp,
-            manifest_id,
-            obs,
-            execute,
-        )
+            metas,
+            mir_bytes,
+            runtime_identity: runtime.identity,
+            runtime_library: runtime.library,
+            runtime_blob,
+            link_identity,
+            entry_symbol: entry.symbol,
+        })
     }
 
     fn finish_collections(

@@ -94,7 +94,7 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
                 .ok_or_else(|| bad("forged trap prefix"))?;
             let reason: u32 = value.parse().map_err(|_| bad("malformed trap reason"))?;
             if value != reason.to_string()
-                || !matches!(reason, 21..=26 | 30 | 31)
+                || !matches!(reason, 21..=27 | 30 | 31)
                 || trap.replace(reason).is_some()
             {
                 return Err(bad("unknown/duplicate trap reason"));

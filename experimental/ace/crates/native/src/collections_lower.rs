@@ -15,7 +15,19 @@ use cranelift_module::{default_libcall_names, DataDescription, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::BTreeMap;
 
-pub const ABI: &str = "mn.collections.cell/2";
+pub const ABI: &str = "mn.collections.cell/3";
+
+/// PLAN-923 seam ids — keep in lockstep with
+/// `collections-runtime/src/lib.rs` (the embedded runtime's own constants).
+pub const SEAM_GLOBAL: u32 = 0;
+pub const SEAM_NODE: u32 = 1;
+pub const SEAM_DATA: u32 = 2;
+pub const SEAM_GROW: u32 = 3;
+pub const SEAM_FRAME: u32 = 4;
+pub const SEAM_CLONEWORK: u32 = 5;
+pub const SEAM_TEXT: u32 = 6;
+pub const SEAM_TEXTMETA: u32 = 7;
+pub const SEAM_TOKEN: u32 = 8;
 
 thread_local! {
     static TEST_OMIT_FRAME_FREE: std::cell::Cell<bool> = const {std::cell::Cell::new(false)};
@@ -98,6 +110,18 @@ pub(crate) fn admit_layouts(
             | MirType::RecordView(_)
             | MirType::List(_)
             | MirType::Variant(_) => {}
+            // PLAN-923: the checked place is a Copy element witness over a
+            // List — frozen to i32/bool this revision; List<Str>/owned
+            // record read-only views stay out of the native place surface
+            // (named rejection, never silent widening).
+            MirType::Place(p) => {
+                if !matches!(m.types[p.elem as usize], MirType::I32 | MirType::Bool) {
+                    return Err(unsupported(
+                        "place",
+                        "place element must be Copy (i32/bool)",
+                    ));
+                }
+            }
             MirType::Fn(sig) => {
                 if sig
                     .params
@@ -161,6 +185,9 @@ pub(crate) fn admit_layouts(
                     | MirInstr::ListSet { .. }
                     | MirInstr::ListRemove { .. }
                     | MirInstr::ListFieldGet { .. }
+                    | MirInstr::ListPlace { .. }
+                    | MirInstr::PlaceGet { .. }
+                    | MirInstr::PlaceSet { .. }
                     | MirInstr::VariantPack { .. }
                     | MirInstr::VariantSwitch { .. }
                     | MirInstr::VariantGuard { .. }
@@ -529,6 +556,11 @@ impl Lower<'_, '_> {
             | View { src, .. }
             | ListLen { src, .. }
             | VariantGuard { src, .. } => vec![*src],
+            // PLAN-923: a place access re-validates the token before the
+            // runtime touches the buffer; the base list + index are reads.
+            ListPlace { base, index, .. } => vec![*base, *index],
+            PlaceGet { src, .. } => vec![*src],
+            PlaceSet { place, value } => vec![*place, *value],
             // Shared MIR permits an already-ended initialized token to end
             // again. This only clears the token; it must not dereference it.
             BorrowEnd { .. } => vec![],
@@ -562,6 +594,8 @@ impl Lower<'_, '_> {
             | ListGet { dst, .. }
             | ListRemove { dst, .. }
             | ListFieldGet { dst, .. }
+            | ListPlace { dst, .. }
+            | PlaceGet { dst, .. }
             | VariantPack { dst, .. }
             | VariantProject { dst, .. }
             | Call { dst, .. } => Some(*dst),
@@ -743,6 +777,32 @@ impl Lower<'_, '_> {
                 };
                 self.field(*dst, self.scratch, l.elem, path)?;
             }
+            // PLAN-923: the checked List-place machine chain.
+            ListPlace { dst, base, index } => {
+                let bits = self.bits(*base);
+                let i = self.scalar(*index);
+                let dst = self.addr(*dst);
+                self.checked(
+                    "mn_coll_place_mint",
+                    &[(dst, types::I64), (bits, types::I64), (i, types::I32)],
+                )?;
+            }
+            PlaceGet { dst, src } => {
+                let bits = self.bits(*src);
+                let dst = self.addr(*dst);
+                self.checked(
+                    "mn_coll_place_get",
+                    &[(dst, types::I64), (bits, types::I64)],
+                )?;
+            }
+            PlaceSet { place, value } => {
+                let p = self.addr(*place);
+                let v = self.addr(*value);
+                self.checked(
+                    "mn_coll_place_set",
+                    &[(p, types::I64), (v, types::I64)],
+                )?;
+            }
             VariantPack {
                 dst, disc, payload, ..
             }
@@ -874,12 +934,19 @@ impl Lower<'_, '_> {
 /// `mn_coll_cancel_after_work` / `mn_coll_fail_nth` run BEFORE the entry.
 /// All-off is the historical wrapper (no extra instructions, no behavior
 /// change); expectations never ride here.
+/// PLAN-923: `fail_seam` is the per-seam injection knob
+/// (`mn_coll_fail_nth_seam(seam, n)`); `fail_text_nth` / `fail_ledger_nth`
+/// forward to the embedded text runtime's own seams (`ac_rt_fail_nth_alloc`
+/// / `ac_rt_fail_ledger_nth`). The legacy global `fail_nth` remains.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WrapperKnobs {
     pub observe: bool,
     pub budget_bytes: Option<u64>,
     pub cancel_after_work: Option<u64>,
     pub fail_nth: Option<u64>,
+    pub fail_seam: Option<(u32, u64)>,
+    pub fail_text_nth: Option<u64>,
+    pub fail_ledger_nth: Option<u64>,
 }
 
 /// Adapt the collection internal out-cell ABI to the unchanged zero-argument
@@ -955,6 +1022,48 @@ pub fn emit_wrapper_coff(entry_symbol: &str, knobs: &WrapperKnobs) -> Result<Vec
             }
             if let Some(n) = knobs.fail_nth {
                 knob_u64(&mut om, &mut fb, "mn_coll_fail_nth", n)?;
+            }
+            if let Some((seam, n)) = knobs.fail_seam {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![AbiParam::new(types::I32), AbiParam::new(types::I64)],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function("mn_coll_fail_nth_seam", Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                let s = fb.ins().iconst(types::I32, seam as i64);
+                let v = fb.ins().iconst(types::I64, n as i64);
+                fb.ins().call(r, &[s, v]);
+            }
+            // PLAN-923 S6/S7: the embedded text runtime owns its backing and
+            // ledger-metadata injection (i32 channels).
+            if let Some(n) = knobs.fail_text_nth {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![AbiParam::new(types::I32)],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function("ac_rt_fail_nth_alloc", Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                let v = fb.ins().iconst(types::I32, n as i64);
+                fb.ins().call(r, &[v]);
+            }
+            if let Some(n) = knobs.fail_ledger_nth {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![AbiParam::new(types::I32)],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function("ac_rt_fail_ledger_nth", Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                let v = fb.ins().iconst(types::I32, n as i64);
+                fb.ins().call(r, &[v]);
             }
         }
         let r = om.declare_func_in_func(entry, fb.func);

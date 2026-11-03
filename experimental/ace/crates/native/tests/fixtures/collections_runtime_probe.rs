@@ -30,6 +30,11 @@ extern "system" {
     fn mn_coll_str_len(text: u64) -> i32;
     fn mn_coll_clone(dst: *mut Cell, src: *const Cell) -> i32;
     fn mn_coll_fail_nth(n: u64);
+    // PLAN-923: per-seam injection and the checked place machine.
+    fn mn_coll_fail_nth_seam(seam: u32, n: u64);
+    fn mn_coll_place_mint(dst: *mut Cell, list: u64, index: i32) -> i32;
+    fn mn_coll_place_get(dst: *mut Cell, place: u64) -> i32;
+    fn mn_coll_place_set(place: *mut Cell, value: *mut Cell) -> i32;
     fn ac_rt_fail_nth_alloc(n: i32);
     fn mn_coll_set_budget(n: u64);
     fn mn_coll_arena_limit(n: u64) -> i32;
@@ -290,9 +295,15 @@ pub unsafe extern "system" fn ac_start() -> ! {
         ));
         ok(mn_coll_arena_limit(4096));
         check(mn_coll_arena_limit(8192) == -23, 143); // cannot reopen a tightened ceiling
-        ok(mn_coll_list_new(&mut cells[0], 80));
-        ok(mn_coll_list_new(&mut cells[1], 80));
-        ok(mn_coll_list_new(&mut cells[2], 16));
+        // PLAN-923 layout: a List now also carries a per-element generation
+        // array (cap * 8) with the data buffer, so a cap70 list = node
+        // (168 -> 208 with the 32B header) + 70*24 data (-> 1712) = 1920;
+        // two cap70 lists + one cap0 list (208 + 48) fill the 4096 page
+        // exactly, keeping the reuse (70 over a dropped 70) and coalesce
+        // (130 needs both 1712 fragments) ratios of the probe.
+        ok(mn_coll_list_new(&mut cells[0], 70));
+        ok(mn_coll_list_new(&mut cells[1], 70));
+        ok(mn_coll_list_new(&mut cells[2], 0));
         check(mn_coll_arena_limit(0) == -23, 144); // cannot erase live committed charge
         let before = mn_coll_live_bytes();
         check(mn_coll_list_new(&mut cells[3], 256) == -22, 120);
@@ -306,7 +317,7 @@ pub unsafe extern "system" fn ac_start() -> ! {
         ok(mn_coll_list_new(&mut cells[3], 70)); // reuse a non-tail fragment
         mn_coll_drop(&mut cells[1]);
         mn_coll_drop(&mut cells[3]); // coalesce preceding and following blocks
-        ok(mn_coll_list_new(&mut cells[4], 150));
+        ok(mn_coll_list_new(&mut cells[4], 130));
         ok(mn_coll_frame_leave(frame.as_mut_ptr()));
         check(mn_coll_arena_committed() == 0, 122);
         mn_coll_summary();
@@ -526,5 +537,55 @@ pub unsafe extern "system" fn ac_start() -> ! {
         {
             ExitProcess(42);
         }
+    }
+    // PLAN-923: V-02/V-05 — the same-runtime-原语 probe: a failed growth
+    // must leave the list, its epoch and a minted place untouched (snapshot
+    // before == after), then clearing the fault retries the SAME operation
+    // in-process to the correct result.
+    if cfg!(mn_probe_seam_retry) {
+        const SEAM_GROW: u32 = 3;
+        const INJECTED: i32 = -25;
+        const STALE: i32 = -27;
+        let mut cells = [EMPTY; 8];
+        let mut frame = [0u64; 4];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            1,
+        ));
+        // [10, 20] with cap=1: the second insert grows (seam 3).
+        ok(mn_coll_list_new(&mut cells[0], 1));
+        cells[1].bits = 10;
+        ok(mn_coll_list_insert(cells[0].bits, 0, &mut cells[1]));
+        cells[2].bits = 20;
+        ok(mn_coll_list_insert(cells[0].bits, 1, &mut cells[2]));
+        // A minted place on elem[1] (=20) before the failure.
+        ok(mn_coll_place_mint(&mut cells[3], cells[0].bits, 1));
+        // Inject on the NEXT growth; the insert must fail WITHOUT committing.
+        mn_coll_fail_nth_seam(SEAM_GROW, 1);
+        cells[4].bits = 30;
+        let failed = mn_coll_list_insert(cells[0].bits, 2, &mut cells[4]);
+        check(failed == INJECTED, 171);
+        mn_coll_fail_nth_seam(SEAM_GROW, 0);
+        // Snapshot invariant: length and the place are untouched, the place
+        // still reads the old element (epoch/gen did not advance).
+        check(mn_coll_list_len(cells[0].bits) == 2, 172);
+        ok(mn_coll_place_get(&mut cells[5], cells[3].bits));
+        check(cells[5].bits == 20, 173);
+        // The SAME operation retries cleanly after the fault is cleared.
+        cells[6].bits = 30;
+        ok(mn_coll_list_insert(cells[0].bits, 2, &mut cells[6]));
+        check(mn_coll_list_len(cells[0].bits) == 3, 174);
+        // The structural change retired the old place before any buffer read.
+        check(mn_coll_place_get(&mut cells[5], cells[3].bits) == STALE, 175);
+        // A fresh place on the new element is legal.
+        ok(mn_coll_place_mint(&mut cells[7], cells[0].bits, 2));
+        ok(mn_coll_place_get(&mut cells[5], cells[7].bits));
+        check(cells[5].bits == 30, 176);
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    } else {
+        unreachable!("mn_probe_seam_retry is the only cfg in this run");
     }
 }

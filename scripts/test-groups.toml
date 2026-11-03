@@ -824,6 +824,22 @@ suite = "crates/auto-lang/test/cases/ace-m1/resource-915/resource-915.suite.ad"
 domain = "ace"
 all = false
 
+# PLAN-923: the native resource-guards scenario suite (the R03 ac/av cell) —
+# real source PEs with ONE injected per-seam allocation failure per run
+# (seam 1/2/4 node/data/frame, seam 3 grow, S6/S7 text backing/ledger);
+# the parent judges the frozen trap/seam/cleanup facts and the base exits.
+[[group]]
+name = "case-ace-m1-native-resource-923"
+title = "ACE M1 native resource-guards scenario 923 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-913: the source-bound recovery suite (publish -> fresh-process
 # restore with zero source production -> the next warm single-unit edit).
 [[group]]

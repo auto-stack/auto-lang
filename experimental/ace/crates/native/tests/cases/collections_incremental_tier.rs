@@ -514,3 +514,117 @@ fn collections_prepared_runtime_drift_refuses_before_publication() {
     assert_eq!(std::fs::read(&shared).unwrap(), shared_bytes);
     session.close();
 }
+#[test]
+fn collections_restore_session_takes_next_body_edit_with_real_differential_work() {
+    // PLAN-923 V-07/V-08: the restore -> next-body-edit session. Three
+    // functions (callee/helper/main); a fresh driver re-verifies the full
+    // manifest identity chain, rebuilds the retained env from the restored
+    // source, and the SAME session machinery takes the next body edit with
+    // real differential work (only the edited function re-produces; the
+    // untouched functions keep their AST/MIR/COFF identities and zero IO).
+    let old = "fn callee() int { return 7 }\nfn helper() int { var xs=List<int>.new()\n xs.push(42)\n return xs.get(0) }\nfn main() int { return helper()+callee() }";
+    let new_helper = old.replace("push(42)", "push(43)");
+    let new_callee = new_helper.replace("return 7", "return 8");
+    let dir = directory("restore-session");
+    let cache = dir.join("store");
+    let output = dir.join("output");
+    let (mut first, run) = CollectionsIncrementalSession::new(
+        old,
+        "main",
+        MnDriver::with_store(&cache, "p889").unwrap(),
+        &output,
+        None,
+    )
+    .unwrap();
+    assert_eq!(run.exit_code, Some(49));
+    let fp = first.unit_fingerprints();
+    let manifest = first.manifest_id().unwrap().to_string();
+    let mut fresh = MnDriver::with_store(&cache, "p889-restore").unwrap();
+    fresh.forbid_codegen = true;
+    let (mut restored, run) = fresh
+        .restore_collections_session(&manifest, &dir.join("restored-output"), None)
+        .unwrap();
+    assert_eq!(run.exit_code, Some(49), "{}", String::from_utf8_lossy(&run.stderr));
+    assert_eq!(restored.manifest_id(), Some(manifest.as_str()));
+    assert_eq!(restored.unit_fingerprints(), fp);
+    // The next BODY edit re-produces exactly the edited function.
+    let edit = restored.apply_source(&new_helper).unwrap();
+    assert_eq!(edit.exit_code, Some(50));
+    assert_eq!(edit.work.bodies.keys().cloned().collect::<Vec<_>>(), vec!["helper"]);
+    assert_eq!(
+        edit.work.obs.counters.get("codegen_emit_units").copied().unwrap_or(0),
+        1
+    );
+    assert_eq!(edit.work.obs.counters.get("mir_lower:d_helper"), Some(&1));
+    assert!(!edit.work.obs.counters.contains_key("mir_lower:d_callee"));
+    assert!(!edit.work.obs.counters.contains_key("mir_lower:d_main"));
+    let after = restored.unit_fingerprints();
+    assert_eq!(after["d_callee"], fp["d_callee"]);
+    assert_eq!(after["d_main"], fp["d_main"]);
+    assert_ne!(after["d_helper"], fp["d_helper"]);
+    // A second edit re-produces only its own function (history works too).
+    let edit2 = restored.apply_source(&new_callee).unwrap();
+    assert_eq!(edit2.exit_code, Some(51));
+    assert_eq!(edit2.work.bodies.keys().cloned().collect::<Vec<_>>(), vec!["callee"]);
+    assert!(!edit2.work.obs.counters.contains_key("mir_lower:d_helper"));
+    let back = restored.apply_source(&new_callee.replace("push(43)", "push(42)")).unwrap();
+    assert_eq!(back.exit_code, Some(50));
+    assert_eq!(back.work.obs.counters.get("mir_lower:d_helper"), Some(&1));
+    assert!(!back.work.obs.counters.contains_key("mir_lower:d_callee"));
+    restored.close();
+    first.close();
+}
+
+#[test]
+fn collections_restore_session_rejects_bad_identity_and_readonly_then_recovers() {
+    // PLAN-923 V-08: a forged/unknown manifest id refuses BEFORE any link or
+    // codegen; a readonly driver still assembles a usable session (no
+    // publication, no live-place persistence); the good manifest then
+    // restores and the next body edit runs.
+    let old = "fn helper() int { var xs=List<int>.new()\n xs.push(42)\n return xs.get(0) }\nfn main() int { return helper() }";
+    let new = old.replace("push(42)", "push(43)");
+    let dir = directory("restore-reject");
+    let cache = dir.join("store");
+    let output = dir.join("output");
+    let (mut first, run) = CollectionsIncrementalSession::new(
+        old,
+        "main",
+        MnDriver::with_store(&cache, "p889").unwrap(),
+        &output,
+        None,
+    )
+    .unwrap();
+    assert_eq!(run.exit_code, Some(42));
+    let manifest = first.manifest_id().unwrap().to_string();
+    // Forged identity: an unknown manifest id refuses the whole chain.
+    let mut forged = MnDriver::with_store(&cache, "p889-forged").unwrap();
+    let error = match forged.restore_collections_session("forged-id", &dir.join("forged-out"), None) {
+        Err(e) => e,
+        Ok(_) => panic!("forged manifest id must refuse the restore chain"),
+    };
+    assert!(error.code().contains("artifact"), "{error:?}");
+    // Readonly: the restored session works but never publishes.
+    let mut readonly = MnDriver::with_store(&cache, "p889-readonly").unwrap();
+    readonly.cache_mode = ace_native::driver::CacheMode::ReadOnly;
+    let (mut session, run) = readonly
+        .restore_collections_session(&manifest, &dir.join("readonly-out"), None)
+        .unwrap();
+    assert_eq!(run.exit_code, Some(42));
+    assert_eq!(session.manifest_id(), None);
+    let edit = session.apply_source(&new).unwrap();
+    assert_eq!(edit.exit_code, Some(43));
+    assert_eq!(session.manifest_id(), None);
+    // Recovery: the same good manifest restores on a fresh writable driver
+    // and the next body edit produces the same value.
+    let mut fresh = MnDriver::with_store(&cache, "p889-recover").unwrap();
+    fresh.forbid_codegen = true;
+    let (mut recovered, run) = fresh
+        .restore_collections_session(&manifest, &dir.join("recover-out"), None)
+        .unwrap();
+    assert_eq!(run.exit_code, Some(42));
+    let edit2 = recovered.apply_source(&new).unwrap();
+    assert_eq!(edit2.exit_code, Some(43));
+    recovered.close();
+    session.close();
+    first.close();
+}

@@ -9,7 +9,7 @@ use std::{
     process::Command,
     sync::Mutex,
 };
-pub const ABI: &str = "mn.collections.runtime/2";
+pub const ABI: &str = "mn.collections.runtime/3";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {

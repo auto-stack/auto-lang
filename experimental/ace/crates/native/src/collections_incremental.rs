@@ -200,6 +200,61 @@ impl CollectionsIncrementalSession {
     pub fn source(&self) -> &str {
         &self.source
     }
+    /// PLAN-923 V-08: assemble a live incremental session from a VERIFIED
+    /// restore. The driver has already run the manifest/source/runtime/link
+    /// and per-unit MIR+COFF identity chain and re-admitted every unit; the
+    /// retained env/regions are rebuilt from the restored source through the
+    /// bounded cold frontend (never a whole-tree key hunt), so
+    /// `prepare_source` can take the NEXT body edit with real differential
+    /// work. No live place/guest value is restored; run results are never
+    /// cached.
+    pub(crate) fn from_restored(
+        env: ac::CheckedEnv,
+        source: String,
+        regions: Vec<ac::resolve::FunctionRegion>,
+        mint_origins: Vec<usize>,
+        units: Vec<Rc<ResidentCollectionUnit>>,
+        driver: MnDriver,
+        runtime: runtime::Identity,
+        runtime_blob: Option<art::Blob>,
+        link_identity: [String; 3],
+        entry: String,
+        workdir: PathBuf,
+        support: Option<PathBuf>,
+        manifest_id: Option<String>,
+        manifest_fp: String,
+        obs: Obs,
+    ) -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let work = CollectionWork {
+            syntax: Default::default(),
+            bodies: Default::default(),
+            obs,
+            elapsed_ms: 0,
+        };
+        Self {
+            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            revision: 0,
+            env,
+            source,
+            mint_origins,
+            regions,
+            units,
+            driver,
+            runtime: Some(runtime),
+            runtime_blob,
+            link_identity: Some(link_identity),
+            support,
+            entry,
+            workdir,
+            manifest_id,
+            manifest_fp,
+            last_work: work,
+            last_failure_run: None,
+            closed: false,
+            negative_controls: CollectionNegativeControls::default(),
+        }
+    }
     pub fn revision(&self) -> u64 {
         self.revision
     }

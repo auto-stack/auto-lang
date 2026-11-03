@@ -520,10 +520,9 @@ fn typed_container_signatures_and_places_remain_outside_source_native_abi() {
     let mut place = legal;
     place.types.push(MirType::Place(ListTypeRef { elem: 0 }));
     ace_av_core::verify_mir(&place).unwrap();
-    assert_eq!(
-        ace_native::collections_lower::emit_unit_coff(&place)
-            .unwrap_err()
-            .code(),
-        "mn.unsupported.type"
-    );
+    // PLAN-923: a Copy-element place is now part of the typed native
+    // surface (source ABI stays unchanged — source still cannot mint a
+    // place); non-Copy element places are named-rejected by the admission
+    // whitelist (collections_place_tier).
+    ace_native::collections_lower::emit_unit_coff(&place).unwrap();
 }

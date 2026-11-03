@@ -117,6 +117,13 @@ pub fn descriptors(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
                 h.update(&result[l.elem as usize].fingerprint);
                 (3, 1)
             }
+            MirType::Place(_) => {
+                // PLAN-923: a place is an opaque Copy token (Cell.bits =
+                // registry id); the runtime re-validates it per access, so
+                // no static type binding rides here.
+                text(&mut h, "place/token");
+                (0, 0)
+            }
             MirType::Variant(v) => {
                 text(&mut h, "variant/active-cell16");
                 text(&mut h, &v.owner_module);

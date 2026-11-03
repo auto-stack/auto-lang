@@ -24,7 +24,7 @@ extern "system" {
     fn ac_rt_summary();
 }
 
-pub const ABI: &str = "mn.collections.runtime/2";
+pub const ABI: &str = "mn.collections.runtime/3";
 pub const GUEST_CAP: usize = 8 << 20;
 pub const MANAGED_CAP: usize = 32 << 20;
 pub const LIST_CAP: usize = 65536;
@@ -34,6 +34,24 @@ pub const INVALID: i32 = -23;
 pub const VARIANT: i32 = -24;
 pub const INJECTED: i32 = -25;
 pub const CANCELLED: i32 = -26;
+/// PLAN-923: a place token's list/epoch/element-generation no longer matches
+/// (structural change after mint, or the target element was replaced).
+pub const STALE: i32 = -27;
+/// PLAN-923: a frame slot holding a place token (Cell.bits = token address).
+/// Distinct from owned(0/1) so the frame sweep can retire the token.
+pub const PLACE_MARK: u64 = 2;
+// PLAN-923 seam ids (t02-design.md §2). 0 = legacy global seam (all
+// allocations share one counter); S1..S8 count and inject per seam.
+pub const SEAM_GLOBAL: u32 = 0;
+pub const SEAM_NODE: u32 = 1;
+pub const SEAM_DATA: u32 = 2;
+pub const SEAM_GROW: u32 = 3;
+pub const SEAM_FRAME: u32 = 4;
+pub const SEAM_CLONEWORK: u32 = 5;
+pub const SEAM_TEXT: u32 = 6;
+pub const SEAM_TEXTMETA: u32 = 7;
+pub const SEAM_TOKEN: u32 = 8;
+pub const SEAM_COUNT: usize = 9;
 static mut INSTALLED: bool = false;
 static mut WORK: u64 = 0;
 static mut CANCEL_AFTER: u64 = u64::MAX;
@@ -133,6 +151,27 @@ struct Node {
     guest: usize,
     /// PLAN-919: creation-order owner identity (the LIFO order key).
     id: u64,
+    /// PLAN-923: structural epoch — push/insert/remove bump it; every place
+    /// minted against an older epoch is stale before any buffer access.
+    epoch: u64,
+    /// PLAN-923: per-element generation array (cap entries, allocated with
+    /// the data buffer). An in-place set/PlaceSet bumps the target element.
+    gens: *mut u64,
+}
+
+/// PLAN-923: a minted place token lives in the arena registry (S8 seam).
+/// It stores the list handle and the mint-time buffer/epoch/index/generation
+/// snapshot; the buffer pointer is only dereferenced AFTER the registry
+/// re-validation below (never a dangling frame/list/buffer pointer).
+#[repr(C)]
+struct PlaceToken {
+    next: *mut PlaceToken,
+    id: u64,
+    list: *mut Node,
+    data: *mut u8,
+    epoch: u64,
+    index: usize,
+    elem_gen: u64,
 }
 
 struct State {
@@ -148,6 +187,11 @@ struct State {
     attempts: u64,
     fail_nth: u64,
     budget: usize,
+    /// PLAN-923: per-seam injection. `fail_seam` 0 keeps the legacy global
+    /// counter; S1..S8 use their own counters so a fault in one seam never
+    /// consumes another seam's attempts (t02-design.md §2).
+    fail_seam: u32,
+    seam_attempts: [u64; SEAM_COUNT],
     /// PLAN-919: the bounded per-owner observation channel (off by
     /// default — zero behavior change until `mn_coll_observe_enable`).
     observe: bool,
@@ -155,6 +199,9 @@ struct State {
     ev_capped: bool,
     next_node_id: u64,
     frame_seq: u64,
+    /// PLAN-923: the place-token registry (arena-backed, S8 seam).
+    place_head: *mut PlaceToken,
+    next_place_id: u64,
 }
 static mut STATE: State = State {
     head: null_mut(),
@@ -169,11 +216,15 @@ static mut STATE: State = State {
     attempts: 0,
     fail_nth: 0,
     budget: GUEST_CAP,
+    fail_seam: 0,
+    seam_attempts: [0; SEAM_COUNT],
     observe: false,
     events: 0,
     ev_capped: false,
     next_node_id: 0,
     frame_seq: 0,
+    place_head: null_mut(),
+    next_place_id: 0,
 };
 fn state() -> &'static mut State {
     unsafe { &mut *core::ptr::addr_of_mut!(STATE) }
@@ -205,10 +256,24 @@ fn uncharge(bytes: usize, guest: usize) {
     s.managed -= bytes;
     s.guest -= guest;
 }
-fn allocate(bytes: usize) -> Result<*mut u8, i32> {
+fn allocate(bytes: usize, seam: u32) -> Result<*mut u8, i32> {
     ensure_allocator()?;
-    state().attempts += 1;
-    if state().fail_nth != 0 && state().attempts == state().fail_nth {
+    let s = state();
+    s.attempts += 1;
+    let injected = if s.fail_seam == SEAM_GLOBAL {
+        s.fail_nth != 0 && s.attempts == s.fail_nth
+    } else {
+        let counter = &mut s.seam_attempts[seam as usize];
+        *counter += 1;
+        s.fail_seam == seam && *counter == s.fail_nth
+    };
+    if injected {
+        // PLAN-923: the injection is a named fact, not a silent OOM — even
+        // where the caller collapses into a generic null path (frame-open),
+        // the parent can still distinguish injection from a real budget
+        // refusal (t02-design.md §2 error taxonomy).
+        line(b"MN-COLL-INJECT seam=", seam as u64);
+        line(b"MN-COLL-INJECT nth=", s.fail_nth);
         return Err(INJECTED);
     }
     let p = unsafe { arena::allocate(bytes) };
@@ -522,6 +587,11 @@ fn release(c: Cell) {
     if c.owned == 0 || c.bits == 0 {
         return;
     }
+    // PLAN-923: a place-token slot retires its token (never a node).
+    if c.owned == PLACE_MARK {
+        release_place(c.bits as *mut PlaceToken);
+        return;
+    }
     unsafe fn enqueue(c: Cell, stack: &mut *mut Node) {
         if c.owned == 0 || c.bits == 0 {
             return;
@@ -605,23 +675,39 @@ unsafe fn take(c: *mut Cell) -> Cell {
 }
 
 fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
-    let data_bytes = if kind == LIST || kind == RECORD {
+    let cell_bytes = if kind == LIST || kind == RECORD {
         cap.checked_mul(core::mem::size_of::<Cell>())
             .ok_or(RESOURCE)?
     } else {
         0
     };
+    // PLAN-923: the per-element generation array rides the data buffer
+    // (one allocation, same lifecycle; counted in managed bytes).
+    let gens_bytes = if kind == LIST || kind == RECORD {
+        cap.checked_mul(core::mem::size_of::<u64>())
+            .ok_or(RESOURCE)?
+    } else {
+        0
+    };
     let bytes = core::mem::size_of::<Node>()
-        .checked_add(data_bytes)
+        .checked_add(cell_bytes)
+        .and_then(|n| n.checked_add(gens_bytes))
         .and_then(|n| n.checked_add(if kind == TEXT { guest } else { 0 }))
         .ok_or(RESOURCE)?;
     precheck(bytes, guest)?;
-    let p = allocate(core::mem::size_of::<Node>())?.cast::<Node>();
-    let data = if data_bytes == 0 {
-        null_mut()
+    let p = allocate(core::mem::size_of::<Node>(), SEAM_NODE)?.cast::<Node>();
+    let (data, gens) = if cell_bytes + gens_bytes == 0 {
+        (null_mut(), null_mut())
     } else {
-        match allocate(data_bytes) {
-            Ok(data) => data,
+        match allocate(cell_bytes + gens_bytes, SEAM_DATA) {
+            Ok(buf) => {
+                let gens = if gens_bytes == 0 {
+                    null_mut()
+                } else {
+                    unsafe { buf.add(cell_bytes).cast() }
+                };
+                (buf, gens)
+            }
             Err(e) => {
                 unsafe {
                     free(p.cast());
@@ -655,6 +741,8 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
                 bytes,
                 guest,
                 id,
+                epoch: 0,
+                gens,
             },
         );
         if !state().head.is_null() {
@@ -781,7 +869,10 @@ pub unsafe extern "system" fn mn_coll_frame_open(f: *mut Frame, count: u64) -> *
     if !arena::hold_external(header) {
         return null_mut();
     }
-    let Ok(cells) = allocate(bytes) else {
+    // An injected failure returns null here too — the emitted guard traps
+    // RESOURCE — but the INJECT fact line above still distinguishes it from
+    // a real budget refusal (PLAN-923 error taxonomy).
+    let Ok(cells) = allocate(bytes, SEAM_FRAME) else {
         arena::release_external(header);
         return null_mut();
     };
@@ -947,31 +1038,42 @@ pub unsafe extern "system" fn mn_coll_list_insert(bits: u64, index: i32, src: *m
                 .checked_mul(2)
                 .ok_or(RESOURCE)?
                 .min(LIST_CAP);
-            let new_bytes = cap.checked_mul(16).ok_or(RESOURCE)?;
-            let old_bytes = (*p).cap * 16;
+            let new_cells = cap.checked_mul(16).ok_or(RESOURCE)?;
+            let new_gens = cap.checked_mul(8).ok_or(RESOURCE)?;
+            let old_cells = (*p).cap * 16;
+            let old_gens = (*p).cap * 8;
             // Charge the real simultaneous old + new allocation, not just its delta.
-            precheck(new_bytes, new_bytes)?;
-            let buffer = allocate(new_bytes)?;
-            charge(new_bytes, new_bytes);
+            precheck(new_cells + new_gens, new_cells + new_gens)?;
+            let buffer = allocate(new_cells + new_gens, SEAM_GROW)?;
+            charge(new_cells + new_gens, new_cells + new_gens);
             for i in 0..(*p).len {
                 write(
                     buffer.cast::<Cell>().add(i),
                     read((*p).data.cast::<Cell>().add(i)),
                 );
+                write(
+                    buffer.add(new_cells).cast::<u64>().add(i),
+                    read((*p).gens.add(i)),
+                );
             }
             free((*p).data);
-            uncharge(old_bytes, old_bytes);
+            uncharge(old_cells + old_gens, old_cells + old_gens);
             (*p).data = buffer;
+            (*p).gens = buffer.add(new_cells).cast();
             (*p).cap = cap;
-            (*p).bytes += new_bytes - old_bytes;
-            (*p).guest += new_bytes - old_bytes;
+            (*p).bytes += new_cells + new_gens - old_cells - old_gens;
+            (*p).guest += new_cells + new_gens - old_cells - old_gens;
         }
         let data = (*p).data.cast::<Cell>();
         for i in (index as usize..(*p).len).rev() {
             write(data.add(i + 1), read(data.add(i)));
+            write((*p).gens.add(i + 1), read((*p).gens.add(i)));
         }
         write(data.add(index as usize), take(src));
+        write((*p).gens.add(index as usize), 0);
         (*p).len += 1;
+        // PLAN-923: a structural change retires every minted place.
+        (*p).epoch = (*p).epoch.wrapping_add(1);
         Ok(())
     })())
 }
@@ -1024,11 +1126,15 @@ pub unsafe extern "system" fn mn_coll_list_remove(dst: *mut Cell, bits: u64, ind
         let c = read(data.add(index as usize));
         for i in index as usize + 1..(*p).len {
             write(data.add(i - 1), read(data.add(i)));
+            write((*p).gens.add(i - 1), read((*p).gens.add(i)));
         }
         (*p).len -= 1;
         write(data.add((*p).len), EMPTY);
+        write((*p).gens.add((*p).len), 0);
         commit(dst, c);
         ev_own(dst, true);
+        // PLAN-923: a structural change retires every minted place.
+        (*p).epoch = (*p).epoch.wrapping_add(1);
         Ok(())
     })())
 }
@@ -1045,6 +1151,153 @@ pub unsafe extern "system" fn mn_coll_list_set(bits: u64, index: i32, src: *mut 
             return Err(INVALID);
         }
         commit((*p).data.cast::<Cell>().add(index as usize), take(src));
+        // PLAN-923: an in-place replacement bumps the element generation —
+        // the element's own places (and every sibling minted before the
+        // replacement) go stale; other elements stay legal.
+        (*p).gens.add(index as usize).write(read((*p).gens.add(index as usize)) + 1);
+        Ok(())
+    })())
+}
+
+// ---- PLAN-923: checked List places (V-04/V-05) -----------------------------
+//
+// A place token is a registered snapshot (list handle + buffer identity +
+// structural epoch + element index + element generation). Every access
+// re-validates against the live node registry BEFORE touching the buffer:
+// a stale token traps `STALE` with zero buffer reads, never a dangling
+// dereference.
+
+fn find_place(bits: u64) -> Result<*mut PlaceToken, i32> {
+    let mut p = state().place_head;
+    while !p.is_null() {
+        if p as u64 == bits {
+            return Ok(p);
+        }
+        p = unsafe { (*p).next };
+    }
+    Err(INVALID)
+}
+
+fn release_place(t: *mut PlaceToken) {
+    if t.is_null() {
+        return;
+    }
+    let mut p = state().place_head;
+    let mut prev: *mut PlaceToken = null_mut();
+    while !p.is_null() {
+        if p == t {
+            if prev.is_null() {
+                state().place_head = unsafe { (*p).next };
+            } else {
+                unsafe {
+                    (*prev).next = (*p).next;
+                }
+            }
+            unsafe {
+                free(p.cast());
+            }
+            uncharge(core::mem::size_of::<PlaceToken>(), 0);
+            return;
+        }
+        prev = p;
+        p = unsafe { (*p).next };
+    }
+}
+
+/// Registry re-validation precedes ANY buffer dereference. A dead list, a
+/// replaced buffer, a structural epoch change or an element replacement all
+/// refuse with STALE before any element read/write.
+unsafe fn validate_place(t: *mut PlaceToken) -> Result<(), i32> {
+    let list = node((*t).list as u64).map_err(|_| STALE)?;
+    if (*list).kind != LIST {
+        return Err(INVALID);
+    }
+    if (*list).data != (*t).data || (*list).epoch != (*t).epoch {
+        return Err(STALE);
+    }
+    if (*t).index >= (*list).len {
+        return Err(STALE);
+    }
+    if read((*list).gens.add((*t).index)) != (*t).elem_gen {
+        return Err(STALE);
+    }
+    Ok(())
+}
+
+/// MINT_LIST_PLACE: snapshot `list[index]` into the place slot `dst`.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_place_mint(dst: *mut Cell, list_bits: u64, index: i32) -> i32 {
+    status((|| {
+        let p = of_kind(list_bits, LIST)?;
+        if index < 0 || index as usize >= (*p).len {
+            return Err(INDEX);
+        }
+        let size = core::mem::size_of::<PlaceToken>();
+        precheck(size, 0)?;
+        let t = allocate(size, SEAM_TOKEN)?.cast::<PlaceToken>();
+        charge(size, 0);
+        let id = {
+            let s = state();
+            s.next_place_id += 1;
+            s.next_place_id
+        };
+        write(
+            t,
+            PlaceToken {
+                next: state().place_head,
+                id,
+                list: p,
+                data: (*p).data,
+                epoch: (*p).epoch,
+                index: index as usize,
+                elem_gen: read((*p).gens.add(index as usize)),
+            },
+        );
+        state().place_head = t;
+        commit(
+            dst,
+            Cell {
+                bits: t as u64,
+                owned: PLACE_MARK,
+            },
+        );
+        Ok(())
+    })())
+}
+
+/// PLACE_GET: read the Copy element a place refers to (verified caller
+/// guarantees the element type is Copy-only).
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_place_get(dst: *mut Cell, place_bits: u64) -> i32 {
+    status((|| {
+        let t = find_place(place_bits)?;
+        validate_place(t)?;
+        let c = read((*t).list.as_ref().unwrap().data.cast::<Cell>().add((*t).index));
+        commit(dst, c);
+        Ok(())
+    })())
+}
+
+/// PLACE_SET: replace the element a place refers to; the replacement bumps
+/// the element generation (retiring this place and every sibling minted
+/// before it) and retires this token.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_place_set(place: *mut Cell, value: *mut Cell) -> i32 {
+    status((|| {
+        let t = find_place((*place).bits)?;
+        validate_place(t)?;
+        let p = (*t).list;
+        let v = read(value);
+        if v.owned == 1 {
+            node(v.bits)?;
+        } else if v.owned != 0 {
+            return Err(INVALID);
+        }
+        commit(p.as_ref().unwrap().data.cast::<Cell>().add((*t).index), v);
+        let gen = read((*p).gens.add((*t).index)) + 1;
+        write((*p).gens.add((*t).index), gen);
+        release_place(t);
+        write(place, EMPTY);
         Ok(())
     })())
 }
@@ -1130,7 +1383,7 @@ unsafe fn push_clone_work(
     }
     let size = core::mem::size_of::<CloneWork>();
     precheck(size, 0)?;
-    let work = allocate(size)?.cast::<CloneWork>();
+    let work = allocate(size, SEAM_CLONEWORK)?.cast::<CloneWork>();
     charge(size, 0);
     write(
         work,
@@ -1235,8 +1488,21 @@ pub unsafe extern "system" fn mn_coll_variant_project(
 
 #[no_mangle]
 pub extern "system" fn mn_coll_fail_nth(n: u64) {
-    state().attempts = 0;
-    state().fail_nth = n;
+    let s = state();
+    s.attempts = 0;
+    s.fail_seam = SEAM_GLOBAL;
+    s.fail_nth = n;
+    s.seam_attempts = [0; SEAM_COUNT];
+}
+/// PLAN-923: inject on exactly one seam's own attempt counter. S1..S8 are
+/// independent, so a fault on one seam never consumes another's attempts.
+#[no_mangle]
+pub extern "system" fn mn_coll_fail_nth_seam(seam: u32, n: u64) {
+    let s = state();
+    s.attempts = 0;
+    s.fail_seam = seam;
+    s.fail_nth = n;
+    s.seam_attempts = [0; SEAM_COUNT];
 }
 #[no_mangle]
 pub extern "system" fn mn_coll_set_budget(bytes: u64) {

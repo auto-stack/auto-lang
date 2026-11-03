@@ -1,0 +1,7 @@
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    return xs.get(0).name.len() + xs.get(0).code
+}
