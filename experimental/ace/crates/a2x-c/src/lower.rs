@@ -150,16 +150,6 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             .ok_or_else(|| A2xReject::new("a2x.internal", "unknown local index"))
     }
 
-    fn local_ty(&self, id: u32) -> Result<Ty, A2xReject> {
-        let l = self
-            .facts
-            .body
-            .locals
-            .get(id as usize)
-            .ok_or_else(|| A2xReject::new("a2x.internal", "local index out of range"))?;
-        self.view.resolve_use_ty(l.ty)
-    }
-
     fn fresh_temp(&mut self) -> String {
         let t = format!("t{}", self.temp_counter);
         self.temp_counter += 1;

@@ -97,14 +97,13 @@ fn c_full_corpus_true_chain() {
 /// One-case smoke (fast feedback leg; the full corpus is the gate).
 #[test]
 fn c_smoke_b01() {
-    let mut cs = cases();
+    let cs = cases();
     let case = cs
         .iter()
         .find(|c| c.name == "ace-B01")
         .or_else(|| cs.first())
-        .expect("at least one corpus case")
-        .clone();
-    run_case_c(&case);
+        .expect("at least one corpus case");
+    run_case_c(case);
 }
 
 /// PLAN-921 §5.1/V-04: the C target REJECTS the non-scalar families by

@@ -91,14 +91,6 @@ fn decl_with(left: &str, right: &str) -> String {
         .replace("return 22 }", &format!("return {right} }}"))
 }
 
-fn frag_of(src: &str, fn_name: &str, replacement: &str) -> (String, String) {
-    // returns (full_after, fragment) where the target fn's body is replaced
-    let (s, e) = fn_range(src, fn_name);
-    let frag = replacement.to_string();
-    let full = format!("{}{}{}", &src[..s], frag, &src[e..]);
-    (full, frag)
-}
-
 #[test]
 fn store_coll_cold_and_true_ranged_increment() {
     let root = scratch("aba");
@@ -354,7 +346,6 @@ fn store_coll_readonly_close_quota() {
         .expect("cold");
 
     // read-only ranged edit: zero persistence, assembly still served
-    let src_b = decl_with("20+1", "22");
     let before = s.stats.bytes_persisted;
     let b = s
         .warm_edit_ranged(
