@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-927
-status: executing
+status: execution_done
 feature_name: SG-A 统一源码语法基础与七profile受检前门
 author: [Codex]
 created_at: 2026-11-03
@@ -181,6 +181,7 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 - stage: goal | plan_id: PLAN-927 | plan_revision: r2 | round: 1 | from: work | to: work | status: executing | outcome: in-progress | worktree: D:/autostack/.wt/lang-927/auto-lang @ plan-927-dev (HEAD 39dcdc64f) | commit: 39dcdc64f | next: work（唯一入口=D-927-1：列表机 restore/trivia 修复→去3 skip 复验→T-09 勾→T-11 review）
 
 - 2026-11-04（轮2），stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（work-owned T-01..T-10 全数完成）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev` HEAD `70d8f62f0` / 证据：D-927-1 修复（Save pending 内容化）+ 差分 oracle 复真（handwritten 列——T-08 切链后 corpus 曾 new-vs-new 自比，复真后暴露并修复 postfix-tail 键错落 core-ops）+ checkpoint 行号 T-04 约定双重计数修复；`case-ace-source-syntax-927` 7/7、差分 567/567+70edge、conformance 300/300、§6 全组绿（ace-performance 采样收据见本节末）/ blockers：无 / next_responsible_role: review（T-11 独立复审）
+- 2026-11-04（轮2终），stage:work / plan_id:PLAN-927 / revision:r2 / outcome:pass（execution_done——work-owned T-01..T-10 全数完成并提交，worktree `plan-927-dev` @ `54f79efa5`）/ blockers：无（D-927-1 已修关闭；D-927-2=基座既有、域外登记）/ next_responsible_role: review（T-11）
 - 2026-11-04（轮2补记），stage:work / 正式采样收据：`cargo t ace-performance`（T3_MILESTONE=1 4h 档，静机）**59/60 绿，唯一红 `mn.t11.refused`=D-927-2 基座既有**（ZZ927LEGACY 回退手写 parser 复跑同红 + base 编译本就不过 + 301,387B rev0 负载新旧 AST 逐字节全等——三重证据，非 927 回归；已登记 KNOWN-DEBT）。cte_turnaround 全系绿（含 127s 重腿）/ 交接：928=Collections/Closures 迁移分支（`parse_program_with_handwritten` + `collections-or-closures` slug）；929=片段 producer/会话准入 + 散落手写调用点清零
 
 ## 10. 待澄清事项
