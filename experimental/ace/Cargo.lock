@@ -37,7 +37,6 @@ name = "ace-a2x-store"
 version = "0.1.0"
 dependencies = [
  "ace-a2x-core",
- "ace-a2x-rust",
  "ace-artifacts",
  "ace-core",
 ]

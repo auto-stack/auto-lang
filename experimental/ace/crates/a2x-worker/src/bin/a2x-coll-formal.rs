@@ -165,7 +165,7 @@ fn main() {
     let oracle_a = oracle_of(20);
     let oracle_b = oracle_of(21);
     let store_root = base.join("store");
-    let mut certify_session = A2xSession::open(&store_root, "p904-formal", "owner", 64 << 20).unwrap();
+    let mut certify_session = A2xSession::open(&store_root, "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let t_prepare = Instant::now();
     let a_asm = certify_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
@@ -201,7 +201,7 @@ fn main() {
     let mut fresh_ms = Vec::new();
     for i in 0..SAMPLES {
         let root = base.join(format!("fresh-{i}"));
-        let mut s = A2xSession::open(&root, "p904-formal", "owner", 64 << 20).unwrap();
+        let mut s = A2xSession::open(&root, "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         let t = Instant::now();
         let asm = s
             .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
@@ -211,7 +211,7 @@ fn main() {
     }
 
     // ---- state: hit (same session, same source: pure store hits) --------
-    let mut hit_session = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20).unwrap();
+    let mut hit_session = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     hit_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
         .expect("hit cold");
@@ -233,7 +233,7 @@ fn main() {
     // ---- state: restart (fresh session over the populated store) --------
     let mut restart_ms = Vec::new();
     for _ in 0..SAMPLES {
-        let mut s = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20).unwrap();
+        let mut s = A2xSession::open(&base.join("hit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         let t = Instant::now();
         s.cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
             .expect("restart");
@@ -242,7 +242,7 @@ fn main() {
     }
 
     // ---- state: body-edit (alternating ranged warm edits) ----------------
-    let mut edit_session = A2xSession::open(&base.join("edit"), "p904-formal", "owner", 64 << 20).unwrap();
+    let mut edit_session = A2xSession::open(&base.join("edit"), "p904-formal", "owner", 64 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     edit_session
         .cold_assemble_profile(&src_a, SourceProfile::Collections, &[], "main", false)
         .expect("edit cold");

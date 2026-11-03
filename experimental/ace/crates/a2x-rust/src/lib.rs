@@ -23,6 +23,10 @@ pub mod cert;
 pub mod coll;
 pub mod lower;
 pub mod lower_coll;
+/// PLAN-921: the Rust [`ace_a2x_core::target::TargetProvider`]
+/// implementation (byte-identical relocation of the session's former
+/// Rust-coupled produce/fileset logic).
+pub mod provider;
 pub mod print;
 pub mod rt;
 pub mod target;
@@ -44,4 +48,5 @@ pub use coll::{
     CollFileSet, COLL_CERT_SCHEMA, COLL_FILESET_SCHEMA, COLL_RECIPE,
 };
 pub use lower_coll::{lower_collections_program, rust_ty_str};
+pub use provider::{RustTargetProvider, RUST_PRINT_VERSION};
 pub use target::TargetProfile;

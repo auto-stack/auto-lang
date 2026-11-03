@@ -20,6 +20,9 @@ pub mod prepare;
 pub mod reject;
 pub mod semantic_view;
 pub mod sha256;
+/// PLAN-921: the shared emit-target contract (providers live in the
+/// target crates; the store consumes [`target::TargetProvider`] only).
+pub mod target;
 
 pub use prepare::{
     canonical_signature, plan_function, semantic_fingerprint, FunctionPlan, MAX_STRUCTURE_DEPTH,
@@ -29,3 +32,4 @@ pub use semantic_view::{
     ExternalFn, FieldFacts, FnFacts, FnKind, ParamFacts, RecordFacts, SemanticView, Ty,
     VariantArmFacts, VariantFacts,
 };
+pub use target::{Family, FileSet, FilesetRequest, FragmentText, TargetDescriptor, TargetProvider};

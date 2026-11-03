@@ -110,7 +110,7 @@ fn main() {
     let root = tmp("store");
     let mut cert_ok = 0u32;
     {
-        let mut s = A2xSession::open(&root, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+        let mut s = A2xSession::open(&root, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         let asm = s
             .cold_assemble(&base.source, true, &[], "main", false)
             .unwrap();
@@ -142,7 +142,7 @@ fn main() {
     // ---- warmup (untimed) ----
     {
         let w = tmp("warmup");
-        let mut s = A2xSession::open(&w, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+        let mut s = A2xSession::open(&w, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         s.cold_assemble(&base.source, true, &[], "main", false)
             .unwrap();
         s.restart_assemble(&base.source, true, &[], "main").unwrap();
@@ -153,7 +153,7 @@ fn main() {
     let mut fresh: Vec<u64> = Vec::new();
     for i in 0..SAMPLES {
         let dir = tmp(&format!("fresh-{i}"));
-        let mut s = A2xSession::open(&dir, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+        let mut s = A2xSession::open(&dir, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         let t = Instant::now();
         s.cold_assemble(&base.source, true, &[], "main", false)
             .unwrap_or_else(|e| panic!("fresh {i}: {e:?}"));
@@ -163,7 +163,7 @@ fn main() {
 
     // ---- hit x30: SAME session re-request (resident reuse, 0 production) ----
     let hit_root = tmp("hit");
-    let mut s = A2xSession::open(&hit_root, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&hit_root, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble(&base.source, true, &[], "main", false)
         .unwrap();
     let mut hit: Vec<u64> = Vec::new();
@@ -179,13 +179,13 @@ fn main() {
     // ---- restart x30: NEW session, SAME store (store hits only) ----
     let rs_root = tmp("restart");
     {
-        let mut s = A2xSession::open(&rs_root, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+        let mut s = A2xSession::open(&rs_root, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         s.cold_assemble(&base.source, true, &[], "main", false)
             .unwrap();
     }
     let mut restart: Vec<u64> = Vec::new();
     for _ in 0..SAMPLES {
-        let mut s = A2xSession::open(&rs_root, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+        let mut s = A2xSession::open(&rs_root, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         let t = Instant::now();
         s.restart_assemble(&base.source, true, &[], "main").unwrap();
         restart.push(t.elapsed().as_millis() as u64);
@@ -194,7 +194,7 @@ fn main() {
 
     // ---- body-edit x30 distinct revisions (warm fragment path) ----
     let ed_root = tmp("edit");
-    let mut s = A2xSession::open(&ed_root, "a2x-formal", "formal", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&ed_root, "a2x-formal", "formal", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble(&base.source, true, &[], "main", false)
         .unwrap();
     let mut edits: Vec<u64> = Vec::new();

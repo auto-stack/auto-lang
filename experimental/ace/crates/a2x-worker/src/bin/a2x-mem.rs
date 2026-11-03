@@ -93,7 +93,7 @@ fn main() {
 
     let bytes = generate_source(0).len();
     let mut session =
-        A2xSession::open(&out_dir, "a2x-mem", "mem-probe", 128 * 1024 * 1024).unwrap();
+        A2xSession::open(&out_dir, "a2x-mem", "mem-probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     // ---- COLD phase (upstream frontend cost, informational) ----
     let cold = session
         .cold_assemble(&generate_source(0), false, &[], "main", false)

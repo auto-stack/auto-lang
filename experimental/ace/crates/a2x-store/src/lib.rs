@@ -23,13 +23,12 @@
 //! declared identities do.
 
 use ace_a2x_core::sha256::sha256_hex;
+use ace_a2x_core::target::{FilesetRequest, FragmentText, TargetProvider};
 use ace_a2x_core::{semantic_fingerprint, A2xReject, FnFacts, SemanticView};
-use ace_a2x_rust::{lower_functions, TargetProfile};
 use ace_artifacts::codec::ChunkKind;
 use ace_artifacts::identity::{QueryKey, RefKind};
 use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{gc_config_default, run_gc, ManagedStore, PutRequest, SpaceReport};
-use ace_core::hir::HirDomain;
 use ace_core::source::{
     compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
     compile_text_record_source, compile_text_source, parse_function_fragment, parse_program_with,
@@ -40,12 +39,21 @@ use ace_core::verify::{verify_function_ref, verify_text_function};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+// PLAN-921: the shared session layer no longer statically owns Rust-private
+// lowering/profile items — every target-specific operation (fragment key
+// identity, production, runtime source, prelude inputs, file-set assembly)
+// is delegated to the [`TargetProvider`] the session is opened with. The
+// Rust provider lives in `a2x-rust` (`RustTargetProvider`), the C provider
+// in `a2x-c`; the semantic layers stay shared and target-neutral.
+
 pub const LAYER_SEMANTIC: LayerSpec = LayerSpec {
     id: "AXS1",
     name: "a2x-function-semantic",
     schema_id: "a2892/axs-fn-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust"],
+    // PLAN-921: the C target consumes the SAME semantic facts (keys and
+    // bytes unchanged; additive consumer registration only).
+    consumers: &["auto-a2x-rust", "auto-a2x-c"],
     key_inputs: &[
         "owner",
         "decl",
@@ -216,6 +224,54 @@ pub const LAYER_FRAGMENT_COLL: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-921 T-04: the C (HIR→C11 scalar) fragment layer — its own
+/// namespace beside the Rust layers. The runtime content input is the C
+/// runtime, so a Rust hit can never satisfy a C key or vice versa (the
+/// backend/standard/print fields differ besides).
+pub const LAYER_FRAGMENT_C: LayerSpec = LayerSpec {
+    id: "AXC1",
+    name: "a2x-c-fragment",
+    schema_id: "a2921/axc-c-fn/v1",
+    producer: "auto-a2x-c",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed C fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-921 T-06: the source-bound anchor layer — the per-function source
+/// binding (full-source sha256 → per-function origins/slice hashes/sem_fps
+/// + the assembly file-set receipt) that makes NEW-PROCESS pure restore
+/// (P0/R>0) possible without re-running the whole-source frontend. One
+/// anchor artifact per published assembly state.
+pub const LAYER_SOURCE_ANCHOR: LayerSpec = LayerSpec {
+    id: "AXP1",
+    name: "a2x-source-anchor",
+    schema_id: "a2921/axp-source-anchor/v1",
+    producer: "a2x session",
+    consumers: &["a2x session restore"],
+    key_inputs: &["owner", "profile", "source_sha256", "backend"],
+    ref_kinds: &["required"],
+    storage: "one source-bound anchor artifact per assembly state",
+    residency:
+        "restored artifacts are re-verified against the caller's source, never trusted blind",
+    regeneration: ace_artifacts::schema::Regeneration::FromUserInputs,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// Pass-version constants of THIS build (key inputs; §5.4 "pass版本").
 pub const PASS_PREPARE: &str = "a2x-prepare/1";
 pub const PRINT_VERSION: &str = "a2x-print/1";
@@ -276,15 +332,10 @@ impl std::fmt::Display for ResourceReject {
     }
 }
 
-/// The channel family of the session's profile (layer-set selection).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Family {
-    Scalar,
-    RecordText,
-    /// PLAN-904: the collections (List/Variant) channel — AXS3/AXR3
-    /// namespaces, the collections runtime and fileset.
-    Collections,
-}
+/// The channel family of the session's profile (layer-set selection) —
+/// PLAN-921: shared via `ace_a2x_core::target::Family` (re-exported here
+/// for source compatibility).
+pub use ace_a2x_core::target::Family;
 
 /// The A2X session: cold init, warm per-function edits with RESIDENT reuse,
 /// layered persistence and quota gating over one `ManagedStore`.
@@ -294,11 +345,16 @@ pub struct A2xSession {
     owner: String,
     quota_bytes: u64,
     pub stats: ProducerStats,
-    /// source name → resident fragment (the last PUBLISHED semantics per
-    /// fn). Keyed by source name — def indices are NOT stable across
-    /// whole-module and single-body bundles (F-828-R1). Methods are
-    /// owner-qualified residents (`Counter_read`).
-    resident: BTreeMap<String, ResidentFragment>,
+    /// PLAN-921: the emit target this session produces through. Switching
+    /// targets on ONE session (and one store) is the mixed-target
+    /// contract — fragment identities isolate the namespaces, residents
+    /// are per-backend.
+    provider: Box<dyn TargetProvider>,
+    /// (backend, source name) → resident fragment (the last PUBLISHED
+    /// semantics per fn under that target). Keyed by source name — def
+    /// indices are NOT stable across whole-module and single-body bundles
+    /// (F-828-R1). Methods are owner-qualified residents (`Counter_read`).
+    resident: BTreeMap<(String, String), ResidentFragment>,
     /// The retained checked environment (None until cold init).
     env: Option<ace_core::source::resolve::CheckedEnv>,
     /// PLAN-902: the retained whole-module pairwise exclusivity map for
@@ -313,11 +369,19 @@ pub struct A2xSession {
 }
 
 impl A2xSession {
-    /// Open a session on a (new or existing) store root. `quota_bytes` caps
-    /// the NAMESPACE total (blocks+db+staging+trash+locks+logs) for puts
-    /// from THIS session — a put that would cross it is a controlled
+    /// Open a session on a (new or existing) store root with an explicit
+    /// emit target provider (PLAN-921: the Rust provider is
+    /// `ace_a2x_rust::RustTargetProvider::v1()`). `quota_bytes` caps the
+    /// NAMESPACE total (blocks+db+staging/trash/locks+logs) for puts from
+    /// THIS session — a put that would cross it is a controlled
     /// `a2x.resource` rejection leaving prior state intact.
-    pub fn open(root: &Path, project: &str, owner: &str, quota_bytes: u64) -> Result<Self, String> {
+    pub fn open<P: TargetProvider + 'static>(
+        root: &Path,
+        project: &str,
+        owner: &str,
+        quota_bytes: u64,
+        provider: P,
+    ) -> Result<Self, String> {
         let store = ManagedStore::open(root).map_err(|e| format!("open store: {:?}", e))?;
         Ok(A2xSession {
             store,
@@ -325,6 +389,7 @@ impl A2xSession {
             owner: owner.to_string(),
             quota_bytes,
             stats: ProducerStats::default(),
+            provider: Box::new(provider),
             resident: BTreeMap::new(),
             env: None,
             retained_excl: None,
@@ -332,6 +397,20 @@ impl A2xSession {
             caps: vec![],
             source_sha256: None,
         })
+    }
+
+    /// PLAN-921: switch the session's emit target (the mixed-target
+    /// contract — same session, same store; fragment keys/residents stay
+    /// isolated per backend). The retained environment and source binding
+    /// are target-neutral and keep serving the next target's cold/warm
+    /// ops.
+    pub fn set_target<P: TargetProvider + 'static>(&mut self, provider: P) {
+        self.provider = Box::new(provider);
+    }
+
+    /// PLAN-921: the current target's backend identity.
+    pub fn current_backend(&self) -> &str {
+        self.provider.descriptor().backend
     }
 
     pub fn space(&self) -> SpaceReport {
@@ -363,11 +442,23 @@ impl A2xSession {
     }
 
     fn layer_fragment(&self) -> &'static LayerSpec {
-        match self.family() {
-            Family::Scalar => &LAYER_FRAGMENT,
-            Family::RecordText => &LAYER_FRAGMENT_RT,
-            Family::Collections => &LAYER_FRAGMENT_COLL,
+        // PLAN-921: target-owned layer selection (AXR1/2/3 for Rust, AXC1
+        // for C). Unsupported families are NAMED rejections validated at
+        // cold/warm entry (`ensure_target_supports`); an id missing from
+        // the registry is an internal wiring error.
+        match self.provider.fragment_layer_id(self.family()) {
+            Ok("AXR1") => &LAYER_FRAGMENT,
+            Ok("AXR2") => &LAYER_FRAGMENT_RT,
+            Ok("AXR3") => &LAYER_FRAGMENT_COLL,
+            Ok("AXC1") => &LAYER_FRAGMENT_C,
+            other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
+    }
+
+    /// PLAN-921: named rejection when the current target does not serve
+    /// the session's family (C serves the scalar channel only).
+    fn ensure_target_supports(&self) -> Result<(), A2xReject> {
+        self.provider.fragment_layer_id(self.family()).map(|_| ())
     }
 
     fn pass_version(&self) -> &'static str {
@@ -413,23 +504,17 @@ impl A2xSession {
         }
     }
 
-    /// Target-layer key: semantic key inputs + target fields (§5.4).
+    /// Target-layer key: semantic key inputs + the provider's target
+    /// fields (§5.4). The Rust provider reproduces the frozen AXR1/2/3
+    /// field order byte-identically; other targets spell their own set.
     fn fragment_key(&self, f: &FnFacts<'_>, sem_fp: &str, runtime_sha: &str) -> QueryKey {
-        let t = TargetProfile::v1();
-        QueryKey::new(
-            self.layer_fragment(),
-            vec![
-                ("owner".into(), self.owner.clone()),
-                ("decl".into(), f.source_name.to_string()),
-                ("sem_fp".into(), sem_fp.to_string()),
-                ("lang".into(), t.lang.into()),
-                ("edition".into(), t.edition.into()),
-                ("backend".into(), t.backend.into()),
-                ("backend_version".into(), t.backend_version.into()),
-                ("runtime_sha256".into(), runtime_sha.into()),
-                ("print_version".into(), PRINT_VERSION.into()),
-            ],
-        )
+        let mut inputs = vec![
+            ("owner".into(), self.owner.clone()),
+            ("decl".into(), f.source_name.to_string()),
+            ("sem_fp".into(), sem_fp.to_string()),
+        ];
+        inputs.extend(self.provider.fragment_key_inputs(runtime_sha));
+        QueryKey::new(self.layer_fragment(), inputs)
     }
 
     fn profile_label(&self) -> &'static str {
@@ -494,6 +579,10 @@ impl A2xSession {
         self.profile = profile;
         self.caps = caps.to_vec();
         self.source_sha256 = Some(sha256_hex(src.as_bytes()));
+        // PLAN-921: the target must serve this family (a named rejection —
+        // e.g. the C target serves the scalar channel only)
+        self.ensure_target_supports()
+            .map_err(A2xRejectOrResource::Reject)?;
         self.stats.parse += 1;
         let compiled = match profile {
             SourceProfile::Core => compile_source(src, "a2x", caps),
@@ -551,20 +640,32 @@ impl A2xSession {
         _src: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
-        let runtime = fragment_runtime_source(view);
+        let family = self.family();
+        let backend = self.current_backend().to_string();
+        let runtime = self
+            .provider
+            .runtime_source(view, family)
+            .map_err(A2xRejectOrResource::Reject)?;
         let runtime_sha = sha256_hex(runtime.as_bytes());
         let mut fragments: Vec<(usize, ResidentFragment)> = Vec::new();
-        // ONE whole-module lowering pass memoized for all store misses —
-        // lowering per function would re-lower the module O(n) times at
-        // load scale (O(n^2) total).
-        let mut whole: Option<ace_a2x_rust::RustProgram> = None;
+        // store misses, collected for ONE batched whole-view production
+        // pass through the provider (per-function lowering would re-lower
+        // the module O(n) times at load scale). `miss_slots` preserves
+        // each miss's LOOP POSITION so the assembled fragment order (and
+        // therefore the generated-file bytes) is exactly the frozen one.
+        let mut misses: Vec<(&FnFacts<'_>, String)> = Vec::new();
+        let mut miss_slots: Vec<usize> = Vec::new();
 
         for f in view.functions() {
             self.stats.verify += 1;
             let sem_fp = semantic_fingerprint(view, f).map_err(A2xRejectOrResource::Reject)?;
 
-            // 1) resident reuse: unchanged function/method → ZERO production
-            if let Some(r) = self.resident.get(f.source_name) {
+            // 1) resident reuse (per-target): unchanged function/method →
+            //    ZERO production
+            if let Some(r) = self
+                .resident
+                .get(&(backend.clone(), f.source_name.to_string()))
+            {
                 if r.sem_fp == sem_fp {
                     self.stats.fragments_reused_resident += 1;
                     fragments.push((f.def_index, r.clone()));
@@ -595,244 +696,102 @@ impl A2xSession {
                 continue;
             }
 
-            // 3) produce: lower + print (+ persist)
-            self.stats.lower += 1;
-            self.stats.print += 1;
-            let text = if self.family() == Family::Collections {
-                let program = ace_a2x_rust::lower_coll::lower_coll_functions(view)
-                    .map_err(A2xRejectOrResource::Reject)?;
-                let rust_name = rust_fragment_name(f);
-                let rust_fn = program
-                    .functions
-                    .iter()
-                    .find(|rf| rf.name == rust_name)
-                    .cloned()
-                    .ok_or_else(|| {
-                        A2xRejectOrResource::Reject(A2xReject::new(
-                            "a2x.internal",
-                            format!("fragment for `{}` missing after lowering", f.source_name),
-                        ))
-                    })?;
-                print_coll_fragment_text(&program.records, &program.variants, &rust_fn)
-            } else {
-                if whole.is_none() {
-                    whole = Some(lower_functions(view).map_err(A2xRejectOrResource::Reject)?);
-                }
-                let program = whole.as_ref().unwrap();
-                let rust_name = rust_fragment_name(f);
-                let rust_fn = program
-                    .functions
-                    .iter()
-                    .find(|rf| rf.name == rust_name)
-                    .cloned()
-                    .ok_or_else(|| {
-                        A2xRejectOrResource::Reject(A2xReject::new(
-                            "a2x.internal",
-                            format!("fragment for `{}` missing after lowering", f.source_name),
-                        ))
-                    })?;
-                print_fragment_text(whole.as_ref().unwrap().records.as_slice(), &rust_fn)
-            };
-
-            if !read_only {
-                // semantic layer first
-                let sig_input = self.signature_input(view, f);
-                let sem_key = self.semantic_key(f, &sem_fp, view.domain.schema(), &sig_input);
-                let sem_payload = format!(
-                    "{{\"schema\":\"{}\",\"decl\":\"{}\",\"signature\":\"{}\",\"sem_fp\":\"{}\"}}",
-                    self.layer_semantic().schema_id,
-                    f.source_name,
-                    view.canonical_signature(f),
-                    sem_fp
-                );
-                let sem_id = self.quota_put(
-                    self.layer_semantic().id,
-                    sem_key,
-                    ChunkKind::Hir,
-                    sem_payload.as_bytes(),
-                    vec![],
-                )?;
-                // fragment layer (provenance edge to its semantic input)
-                let frag_id = self.quota_put(
-                    self.layer_fragment().id,
-                    frag_key,
-                    ChunkKind::Object,
-                    text.as_bytes(),
-                    vec![(sem_id, RefKind::Provenance)],
-                )?;
-                let _ = frag_id;
-            }
+            // 3) miss: reserve the slot now (order), produce in batch below
+            miss_slots.push(fragments.len());
+            misses.push((f, sem_fp.clone()));
             fragments.push((
                 f.def_index,
                 ResidentFragment {
                     source_name: f.source_name.to_string(),
                     def_index: f.def_index,
                     sem_fp,
-                    text,
+                    text: String::new(),
                 },
             ));
         }
 
-        // publish residents + assemble the file set
-        self.resident = fragments
-            .iter()
-            .map(|(_, r)| (r.source_name.clone(), r.clone()))
-            .collect();
-        let rt_records = if self.family() == Family::RecordText {
-            Some(ace_a2x_rust::lower::lower_records(view).map_err(A2xRejectOrResource::Reject)?)
+        if !misses.is_empty() {
+            // produce: lower + print (+ persist), ONE provider batch
+            self.stats.lower += misses.len() as u64;
+            self.stats.print += misses.len() as u64;
+            let fns: Vec<&FnFacts<'_>> = misses.iter().map(|(f, _)| *f).collect();
+            let texts = self
+                .provider
+                .produce_fragments(view, &fns, family)
+                .map_err(A2xRejectOrResource::Reject)?;
+            for (i, ((f, sem_fp), text)) in misses.iter().zip(texts).enumerate() {
+                if !read_only {
+                    // semantic layer first
+                    let sig_input = self.signature_input(view, f);
+                    let sem_key = self.semantic_key(f, sem_fp, view.domain.schema(), &sig_input);
+                    let sem_payload = format!(
+                        "{{\"schema\":\"{}\",\"decl\":\"{}\",\"signature\":\"{}\",\"sem_fp\":\"{}\"}}",
+                        self.layer_semantic().schema_id,
+                        f.source_name,
+                        view.canonical_signature(f),
+                        sem_fp
+                    );
+                    let sem_id = self.quota_put(
+                        self.layer_semantic().id,
+                        sem_key,
+                        ChunkKind::Hir,
+                        sem_payload.as_bytes(),
+                        vec![],
+                    )?;
+                    // fragment layer (provenance edge to its semantic input)
+                    let frag_key = self.fragment_key(f, sem_fp, &runtime_sha);
+                    self.quota_put(
+                        self.layer_fragment().id,
+                        frag_key,
+                        ChunkKind::Object,
+                        text.as_bytes(),
+                        vec![(sem_id, RefKind::Provenance)],
+                    )?;
+                }
+                fragments[miss_slots[i]].1.text = text;
+            }
+        }
+
+        // publish residents (current target's namespace) + assemble the
+        // file set through the provider
+        self.resident.retain(|(b, _), _| b != &backend);
+        for (_, r) in &fragments {
+            self.resident
+                .insert((backend.clone(), r.source_name.clone()), r.clone());
+        }
+        let prelude_seed = if family == Family::RecordText || family == Family::Collections {
+            self.provider
+                .capture_prelude_seed(view, family)
+                .map_err(A2xRejectOrResource::Reject)?
         } else {
             None
         };
-        self.build_fileset(
-            entry,
-            input_hash,
-            &fragments,
-            Some(view),
-            rt_records.as_deref(),
-            runtime,
-            None,
-        )
-    }
-
-    /// Build the full file set from resident fragments (the shared cold and
-    /// warm assembly tail). Scalar output is byte-identical to the frozen
-    /// 892 assembly; the record-text channel adds the nominal-record and
-    /// clone-helper prelude derived from the view + fragment texts.
-    #[allow(clippy::too_many_arguments)]
-    fn build_fileset(
-        &self,
-        entry: &str,
-        input_hash: &str,
-        fragments: &[(usize, ResidentFragment)],
-        view: Option<&SemanticView<'_>>,
-        rt_records: Option<&[ace_a2x_rust::RustRecord]>,
-        runtime: String,
-        coll_variants: Option<&[ace_a2x_rust::lower::RustVariant]>,
-    ) -> Result<Assembly, A2xRejectOrResource> {
-        let mut generated = String::new();
-        generated.push_str(&format!(
-            "// AUTO-GENERATED by auto-a2x-rust (PLAN-892 AX-A) — session assembly, entry `{}`\n\n",
-            entry
-        ));
-        generated.push_str("use crate::a2x_runtime::*;\n\n");
-        if self.family() == Family::RecordText {
-            let records = rt_records.ok_or_else(|| {
-                A2xRejectOrResource::Reject(A2xReject::new(
-                    "a2x.internal",
-                    "record-text assembly needs its record table",
-                ))
-            })?;
-            let texts: Vec<&str> = fragments.iter().map(|(_, r)| r.text.as_str()).collect();
-            generated.push_str(&ace_a2x_rust::print::print_rt_prelude_from(records, &texts));
-        }
-        if self.family() == Family::Collections {
-            // the type tables re-derive from the view (cold) or the
-            // session's fragment-view snapshot (warm); free/clone/take
-            // helpers and elem impls follow the same tables
-            let records = match rt_records {
-                Some(r) => r.to_vec(),
-                None => match view {
-                    Some(v) => ace_a2x_rust::lower::lower_records(v)
-                        .map_err(A2xRejectOrResource::Reject)?,
-                    None => {
-                        return Err(A2xRejectOrResource::Reject(A2xReject::new(
-                            "a2x.internal",
-                            "collections assembly needs its type tables",
-                        )))
-                    }
-                },
-            };
-            let variants = match coll_variants {
-                Some(vs) => vs.to_vec(),
-                None => match view {
-                    Some(v) => ace_a2x_rust::lower_coll::lower_coll_variants(v),
-                    None => Vec::new(),
-                },
-            };
-            generated.push_str(&ace_a2x_rust::print::print_coll_prelude_from(
-                &records, &variants,
-            ));
-        }
-        for (_, r) in fragments {
-            generated.push_str(&r.text);
-            generated.push('\n');
-        }
-        if !fragments.iter().any(|(_, r)| r.source_name == entry) {
-            return Err(A2xRejectOrResource::Reject(A2xReject::entry(
-                "entry missing",
-            )));
-        }
-        let entry_rust = entry_rust_name(entry, self.family());
-        let wrapper = format!(
-            "// AUTO-GENERATED (PLAN-892 AX-A) — DO NOT EDIT.\nmod a2x_runtime;\nmod generated;\n\nuse a2x_runtime::A2xResult;\n\nfn main() {{\n    let outcome: A2xResult<i32> = generated::{}();\n    match outcome {{\n        Ok(v) => println!(\"value:{{}}\", v),\n        Err(t) => println!(\"trap:{{}}\", t.name()),\n    }}\n}}\n",
-            entry_rust
-        );
-        let files = vec![
-            ("main.rs".to_string(), wrapper),
-            ("a2x_runtime.rs".to_string(), runtime),
-            ("generated.rs".to_string(), generated),
-        ];
-        let schema = match self.family() {
-            Family::Scalar => "auto.a2x.rust.fileset/1",
-            Family::RecordText => "auto.a2x.rust.record-text.fileset/1",
-            Family::Collections => ace_a2x_rust::COLL_FILESET_SCHEMA,
-        };
-        let mut manifest = String::new();
-        manifest.push_str(&format!("{{\n  \"schema\": \"{}\",\n", schema));
-        manifest.push_str(&format!("  \"input_hash\": \"{}\",\n", input_hash));
-        if self.family() == Family::Collections {
-            // PLAN-904: the manifest binds the REPLACED FULL SOURCE hash
-            // (never a fragment-only hash) and the execution-config
-            // identity
-            let sha = self.source_sha256.clone().unwrap_or_default();
-            manifest.push_str(&format!("  \"source_sha256\": \"{}\",
-", sha));
-            manifest.push_str(&format!(
-                "  \"execution_config\": {},
-",
-                ace_a2x_rust::coll::canonical_execution_config(
-                    "debug",
-                    16_777_216,
-                    None,
-                    false,
-                    false
-                )
-            ));
-        }
-        manifest.push_str(&format!(
-            "  \"entry\": \"{}\",\n  \"functions\": [\n",
-            entry
-        ));
-        for (i, (d, r)) in fragments.iter().enumerate() {
-            let comma = if i + 1 < fragments.len() { "," } else { "" };
-            // origins are included whenever the assembly carries its view
-            // (the cold path); warm assemblies list declarations only —
-            // frozen per-family behavior
-            if let Some(v) = view {
-                let origin = v.fn_by_def(*d).map(|f| f.origin).unwrap_or((0, 0));
-                manifest.push_str(&format!(
-                    "    {{ \"decl\": \"{}\", \"sem_fp\": \"{}\", \"origin\": [{}, {}] }}{}\n",
-                    r.source_name, r.sem_fp, origin.0, origin.1, comma
-                ));
-            } else {
-                manifest.push_str(&format!(
-                    "    {{ \"decl\": \"{}\", \"sem_fp\": \"{}\" }}{}\n",
-                    r.source_name, r.sem_fp, comma
-                ));
-            }
-        }
-        manifest.push_str("  ],\n  \"files\": [\n");
-        for (i, (path, content)) in files.iter().enumerate() {
-            let comma = if i + 1 < files.len() { "," } else { "" };
-            manifest.push_str(&format!(
-                "    {{ \"path\": \"{}\", \"sha256\": \"{}\" }}{}\n",
-                path,
-                sha256_hex(content.as_bytes()),
-                comma
-            ));
-        }
-        manifest.push_str("  ]\n}\n");
-        Ok(Assembly { files, manifest })
+        let frags: Vec<FragmentText<'_>> = fragments
+            .iter()
+            .map(|(_, r)| FragmentText {
+                def_index: r.def_index,
+                source_name: r.source_name.as_str(),
+                sem_fp: r.sem_fp.as_str(),
+                text: r.text.as_str(),
+            })
+            .collect();
+        let fileset = self
+            .provider
+            .assemble_fileset(FilesetRequest {
+                entry,
+                input_hash,
+                family,
+                fragments: &frags,
+                view: Some(view),
+                runtime: &runtime,
+                prelude_seed: prelude_seed.as_deref(),
+                source_sha256: self.source_sha256.as_deref(),
+            })
+            .map_err(A2xRejectOrResource::Reject)?;
+        Ok(Assembly {
+            files: fileset.files,
+            manifest: fileset.manifest,
+        })
     }
 
     fn quota_put(
@@ -946,7 +905,10 @@ impl A2xSession {
         if start > end || end > base_src.len() {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.range",
-                format!("range {start}..{end} escapes the base source (len {})", base_src.len()),
+                format!(
+                    "range {start}..{end} escapes the base source (len {})",
+                    base_src.len()
+                ),
             )));
         }
         if !base_src.is_char_boundary(start) || !base_src.is_char_boundary(end) {
@@ -956,8 +918,8 @@ impl A2xSession {
             )));
         }
         let replaced = &base_src[start..end];
-        let old_item = parse_function_fragment(replaced, 0..replaced.len(), self.profile).map_err(
-            |d| {
+        let old_item =
+            parse_function_fragment(replaced, 0..replaced.len(), self.profile).map_err(|d| {
                 A2xRejectOrResource::Reject(A2xReject::new(
                     "a2x.range",
                     format!(
@@ -965,8 +927,7 @@ impl A2xSession {
                         d.message
                     ),
                 ))
-            },
-        )?;
+            })?;
         if old_item.name.name != fn_name {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.range",
@@ -977,14 +938,13 @@ impl A2xSession {
             )));
         }
         // 3) the candidate fragment is a single same-named declaration
-        let frag_item = parse_function_fragment(fragment, 0..fragment.len(), self.profile).map_err(
-            |d| {
+        let frag_item = parse_function_fragment(fragment, 0..fragment.len(), self.profile)
+            .map_err(|d| {
                 A2xRejectOrResource::Reject(A2xReject::new(
                     "a2x.parse",
                     format!("fragment: {}", d.message),
                 ))
-            },
-        )?;
+            })?;
         if frag_item.name.name != fn_name {
             return Err(A2xRejectOrResource::Reject(A2xReject::new(
                 "a2x.parse",
@@ -1012,9 +972,10 @@ impl A2xSession {
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
         let profile = self.profile;
+        let backend = self.current_backend().to_string();
         // produce the candidate fragment text + identity while the
         // candidate is alive (SourceParts is not Clone — borrowed use only)
-        let (frag_def, frag_name, frag_sem_fp, frag_text, input_hash, runtime, frag_view_records, frag_view_variants) = {
+        let (frag_def, frag_name, frag_sem_fp, frag_text, input_hash, runtime, prelude_seed) = {
             let env = self.env.as_mut().ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::new(
                     "a2x.session",
@@ -1073,14 +1034,21 @@ impl A2xSession {
             })?;
             let view =
                 SemanticView::from_parts(parts, &cred).map_err(A2xRejectOrResource::Reject)?;
-            let runtime = fragment_runtime_source(&view);
+            let family = self.family();
+            let runtime = self
+                .provider
+                .runtime_source(&view, family)
+                .map_err(A2xRejectOrResource::Reject)?;
             let runtime_sha = sha256_hex(runtime.as_bytes());
             let f = view.functions().iter().next().ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::new("a2x.internal", "empty fragment view"))
             })?;
             let sem_fp = semantic_fingerprint(&view, f).map_err(A2xRejectOrResource::Reject)?;
             // reuse by store hit / resident; else produce now
-            let text = if let Some(r) = self.resident.get(f.source_name) {
+            let text = if let Some(r) = self
+                .resident
+                .get(&(backend.clone(), f.source_name.to_string()))
+            {
                 if r.sem_fp == sem_fp {
                     self.stats.fragments_reused_resident += 1;
                     r.text.clone()
@@ -1092,20 +1060,12 @@ impl A2xSession {
                 self.produce_fragment(&view, f, &sem_fp, &runtime_sha, read_only)?
                     .text
             };
-            // the rt prelude needs the (record-carrying) fragment view
-            // AFTER the borrow ends — snapshot the lowered record table
-            let records_snapshot = if self.family() == Family::RecordText
-                || self.family() == Family::Collections
-            {
-                Some(
-                    ace_a2x_rust::lower::lower_records(&view)
-                        .map_err(A2xRejectOrResource::Reject)?,
-                )
-            } else {
-                None
-            };
-            let variants_snapshot = if self.family() == Family::Collections {
-                Some(ace_a2x_rust::lower_coll::lower_coll_variants(&view))
+            // the rt/coll prelude needs the (record-carrying) fragment view
+            // AFTER the borrow ends — capture the provider-opaque seed now
+            let prelude_seed = if family == Family::RecordText || family == Family::Collections {
+                self.provider
+                    .capture_prelude_seed(&view, family)
+                    .map_err(A2xRejectOrResource::Reject)?
             } else {
                 None
             };
@@ -1116,8 +1076,7 @@ impl A2xSession {
                 text,
                 parts.input_hash.clone(),
                 runtime,
-                records_snapshot,
-                variants_snapshot,
+                prelude_seed,
             )
         };
         let def_index = frag_def;
@@ -1128,36 +1087,63 @@ impl A2xSession {
             text: frag_text,
         };
 
-        // swap the edited fragment into the resident set and assemble
-        let mut frags: Vec<ResidentFragment> = self.resident.values().cloned().collect();
+        // swap the edited fragment into the CURRENT target's resident set
+        // (other targets' residents are untouched) and assemble
+        let mut frags: Vec<ResidentFragment> = self
+            .resident
+            .iter()
+            .filter(|((b, _), _)| b == &backend)
+            .map(|(_, r)| r.clone())
+            .collect();
         frags.retain(|r| r.source_name != fragment.source_name);
         frags.push(fragment);
         frags.sort_by_key(|r| r.def_index);
-        self.resident = frags
-            .into_iter()
-            .map(|r| (r.source_name.clone(), r))
-            .collect();
+        self.resident.retain(|(b, _), _| b != &backend);
+        self.resident.extend(
+            frags
+                .into_iter()
+                .map(|r| ((backend.clone(), r.source_name.clone()), r)),
+        );
 
         // assemble from residents (no extra production; manifest built
-        // here) — the rt prelude re-derives from the snapshot record table
+        // here) — the prelude re-derives from the captured seed
         let mut residents: Vec<(usize, ResidentFragment)> = self
             .resident
-            .values()
-            .map(|r| (r.def_index, r.clone()))
+            .iter()
+            .filter(|((b, _), _)| b == &backend)
+            .map(|(_, r)| (r.def_index, r.clone()))
             .collect();
         // declaration order (BTreeMap iteration is name-alphabetical;
         // multi-function modules must assemble in def order — the cold
         // path's byte shape)
         residents.sort_by_key(|(d, _)| *d);
-        self.build_fileset(
-            entry,
-            &input_hash,
-            &residents,
-            None,
-            frag_view_records.as_deref(),
-            runtime,
-            frag_view_variants.as_deref(),
-        )
+        let family = self.family();
+        let frags: Vec<FragmentText<'_>> = residents
+            .iter()
+            .map(|(_, r)| FragmentText {
+                def_index: r.def_index,
+                source_name: r.source_name.as_str(),
+                sem_fp: r.sem_fp.as_str(),
+                text: r.text.as_str(),
+            })
+            .collect();
+        let fileset = self
+            .provider
+            .assemble_fileset(FilesetRequest {
+                entry,
+                input_hash: &input_hash,
+                family,
+                fragments: &frags,
+                view: None,
+                runtime: &runtime,
+                prelude_seed: prelude_seed.as_deref(),
+                source_sha256: self.source_sha256.as_deref(),
+            })
+            .map_err(A2xRejectOrResource::Reject)?;
+        Ok(Assembly {
+            files: fileset.files,
+            manifest: fileset.manifest,
+        })
     }
 
     fn produce_fragment(
@@ -1182,49 +1168,16 @@ impl A2xSession {
         }
         self.stats.lower += 1;
         self.stats.print += 1;
-        let text = if self.family() == Family::Collections {
-            let program = ace_a2x_rust::lower_coll::lower_coll_functions(view)
-                .map_err(A2xRejectOrResource::Reject)?;
-            let rust_name = rust_fragment_name(f);
-            let rust_fn = program
-                .functions
-                .iter()
-                .find(|rf| rf.name == rust_name)
-                .cloned()
-                .ok_or_else(|| {
-                    A2xRejectOrResource::Reject(A2xReject::new(
-                        "a2x.internal",
-                        format!("fragment for `{}` missing after lowering", f.source_name),
-                    ))
-                })?;
-            print_coll_fragment_text(&program.records, &program.variants, &rust_fn)
-        } else {
-            let program = lower_functions(view).map_err(A2xRejectOrResource::Reject)?;
-            let rust_name = rust_fragment_name(f);
-            let rust_fn = program
-                .functions
-                .iter()
-                .find(|rf| rf.name == rust_name)
-                .cloned()
-                .ok_or_else(|| {
-                    A2xRejectOrResource::Reject(A2xReject::new(
-                        "a2x.internal",
-                        format!("fragment for `{}` missing after lowering", f.source_name),
-                    ))
-                })?;
-            let rt_records = if self.family() == Family::RecordText {
-                Some(
-                    ace_a2x_rust::lower::lower_records(view)
-                        .map_err(A2xRejectOrResource::Reject)?,
-                )
-            } else {
-                None
-            };
-            match &rt_records {
-                Some(records) => print_fragment_text(records, &rust_fn),
-                None => ace_a2x_rust::print::print_fn(&rust_fn),
-            }
-        };
+        let texts = self
+            .provider
+            .produce_fragments(view, &[f], self.family())
+            .map_err(A2xRejectOrResource::Reject)?;
+        let text = texts.into_iter().next().ok_or_else(|| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.internal",
+                format!("fragment for `{}` missing after lowering", f.source_name),
+            ))
+        })?;
         if !read_only {
             let sig_input = self.signature_input(view, f);
             let sem_key = self.semantic_key(f, sem_fp, view.domain.schema(), &sig_input);
@@ -1267,8 +1220,10 @@ impl A2xSession {
         caps: &[String],
         entry: &str,
     ) -> Result<Assembly, A2xRejectOrResource> {
-        // a restart drops residents and rebuilds purely from store hits
-        self.resident.clear();
+        // a restart drops the CURRENT target's residents and rebuilds
+        // purely from store hits (other targets' residents stay valid)
+        let backend = self.current_backend().to_string();
+        self.resident.retain(|(b, _), _| b != &backend);
         self.cold_assemble(src, scalar, caps, entry, false)
     }
 
@@ -1281,7 +1236,8 @@ impl A2xSession {
         caps: &[String],
         entry: &str,
     ) -> Result<Assembly, A2xRejectOrResource> {
-        self.resident.clear();
+        let backend = self.current_backend().to_string();
+        self.resident.retain(|(b, _), _| b != &backend);
         self.cold_assemble_profile(src, profile, caps, entry, false)
     }
 
@@ -1354,59 +1310,6 @@ fn def_index_of(bundle: &ace_core::hir::Bundle, fn_name: &str) -> usize {
         .unwrap_or_else(|| panic!("def d_{} missing", fn_name))
 }
 
-/// Print one fragment: the record-text family renders against the module
-/// record table (nominal names); the scalar family keeps the frozen path.
-fn print_fragment_text(
-    records: &[ace_a2x_rust::RustRecord],
-    rust_fn: &ace_a2x_rust::RustFn,
-) -> String {
-    if records.is_empty() {
-        ace_a2x_rust::print::print_fn(rust_fn)
-    } else {
-        ace_a2x_rust::print::print_fn_records(records, rust_fn)
-    }
-}
-
-/// PLAN-904: the collections fragment text (types render through the
-/// record AND variant tables).
-fn print_coll_fragment_text(
-    records: &[ace_a2x_rust::RustRecord],
-    variants: &[ace_a2x_rust::lower::RustVariant],
-    rust_fn: &ace_a2x_rust::RustFn,
-) -> String {
-    ace_a2x_rust::print::print_coll_fn(records, variants, rust_fn)
-}
-
-/// The fragment's Rust function name (free functions and owner-qualified
-/// methods alike — the lowered `RustFn::name`).
-fn rust_fragment_name(f: &FnFacts<'_>) -> String {
-    match f.kind {
-        ace_a2x_core::FnKind::Free => ace_a2x_rust::lower::rust_fn_name(f.source_name),
-        ace_a2x_core::FnKind::Method { .. } => ace_a2x_rust::lower::rust_method_name(f.source_name),
-    }
-}
-
-fn entry_rust_name(entry: &str, family: Family) -> String {
-    // the entry is a free function in every admitted program
-    let _ = family;
-    ace_a2x_rust::lower::rust_fn_name(entry)
-}
-
-/// The minimal typed runtime text for a view (same frozen content as the
-/// artifacts.rs emission; marks come from the view). PLAN-902: the
-/// record-text family binds the RESOURCE runtime (its content hash keys
-/// the rt fragment layer).
-fn fragment_runtime_source(view: &SemanticView<'_>) -> String {
-    let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
-    match view.domain {
-        HirDomain::Text | HirDomain::Record | HirDomain::TextRecord => {
-            ace_a2x_rust::record_text_runtime_source(&marks)
-        }
-        HirDomain::Collections => ace_a2x_rust::collections_runtime_source(&marks),
-        _ => ace_a2x_rust::runtime_source(&marks),
-    }
-}
-
 fn static_layer(id: &str) -> &'static str {
     match id {
         "AXS1" => LAYER_SEMANTIC.id,
@@ -1416,6 +1319,8 @@ fn static_layer(id: &str) -> &'static str {
         "AXR2" => LAYER_FRAGMENT_RT.id,
         "AXS3" => LAYER_SEMANTIC_COLL.id,
         "AXR3" => LAYER_FRAGMENT_COLL.id,
+        "AXC1" => LAYER_FRAGMENT_C.id,
+        "AXP1" => LAYER_SOURCE_ANCHOR.id,
         other => panic!("unknown layer {}", other),
     }
 }

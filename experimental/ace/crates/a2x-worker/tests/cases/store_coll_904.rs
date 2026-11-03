@@ -101,7 +101,7 @@ fn frag_of(src: &str, fn_name: &str, replacement: &str) -> (String, String) {
 #[test]
 fn store_coll_cold_and_true_ranged_increment() {
     let root = scratch("aba");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let a = s
         .cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect("cold A");
@@ -149,7 +149,7 @@ fn store_coll_inc904_decl_sequence_with_restart() {
     // V-14: A=42 -> B(left+1)=43 -> C(right+1)=44 -> RESTART=44 -> D=43
     // -> A=42, each generation bound to its full-source identity
     let root = scratch("decl-seq");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect("cold");
 
@@ -168,7 +168,7 @@ fn store_coll_inc904_decl_sequence_with_restart() {
 
     // restart: a FRESH session re-admits from the store with zero
     // production and the same value (44)
-    let mut s2 = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s2 = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let c2 = s2
         .cold_assemble_profile(&src_c, SourceProfile::Collections, &[], "main", false)
         .expect("restart re-admission");
@@ -195,7 +195,7 @@ fn store_coll_inc904_decl_sequence_with_restart() {
 #[test]
 fn store_coll_ranged_authorization_rejections() {
     let root = scratch("auth");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect("cold");
 
@@ -236,7 +236,7 @@ fn store_coll_ranged_authorization_rejections() {
 #[test]
 fn store_coll_readonly_close_quota() {
     let root = scratch("ops");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect("cold");
 
@@ -258,7 +258,7 @@ fn store_coll_readonly_close_quota() {
 
     // quota: a tiny store refuses cold persistence with a2x.resource
     let root2 = scratch("quota");
-    let mut s2 = A2xSession::open(&root2, "p904", "owner", 1).unwrap();
+    let mut s2 = A2xSession::open(&root2, "p904", "owner", 1, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let err = s2
         .cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect_err("quota must refuse");
@@ -270,7 +270,7 @@ fn store_coll_family_isolation() {
     // AXS3/AXR3 keys never collide with the scalar or record-text
     // namespaces in the SAME store
     let root = scratch("mixed");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let scalar_src = "fn helper(a int) int { return a * 2 }\nfn main() int { return helper(21) }";
     s.cold_assemble(scalar_src, true, &[], "main", false)
         .expect("scalar cold");
@@ -309,7 +309,7 @@ fn store_coll_rv1_multibyte_variable_length_edit() {
     let a = "fn word() Str { return \"中\" }\nfn main() int {\n    let s Str = word()\n    return s.len() * 10 + 2\n}";
     let b_src = "fn word() Str { return \"中文\" }\nfn main() int {\n    let s Str = word()\n    return s.len() * 10 + 2\n}";
     let root = scratch("rv1-cjk");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let asm = s
         .cold_assemble_profile(a, SourceProfile::Collections, &[], "main", false)
         .expect("cold CJK");
@@ -330,7 +330,7 @@ fn store_coll_rv1_multibyte_variable_length_edit() {
 #[test]
 fn store_coll_rv1_span_zero_and_whole_impersonation_rejected() {
     let root = scratch("rv1-span0");
-    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(DECL_A, SourceProfile::Collections, &[], "main", false)
         .expect("cold");
 

@@ -110,7 +110,7 @@ const TEXT_A_FRAG: &str = "fn main() int {\n    let a Str = \"ab\"\n    let b St
 #[test]
 fn store_rt_a_b_a_true_increment() {
     let root = scratch("aba");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let a = s
         .cold_assemble_profile(RECORD_A, SourceProfile::Record, &[], "main", false)
         .expect("cold A");
@@ -143,7 +143,7 @@ fn store_rt_a_b_a_true_increment() {
 #[test]
 fn store_rt_callee_body_edit_isolation() {
     let root = scratch("units");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(RECORD_A, SourceProfile::Record, &[], "main", false)
         .expect("cold");
     let prints = s.stats.print;
@@ -161,7 +161,7 @@ fn store_rt_callee_body_edit_isolation() {
 #[test]
 fn store_rt_declaration_invalidation() {
     let root = scratch("deps");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(RECORD_A, SourceProfile::Record, &[], "main", false)
         .expect("cold");
     let prints = s.stats.print;
@@ -201,7 +201,7 @@ fn store_rt_declaration_invalidation() {
 #[test]
 fn store_rt_text_warm_edits() {
     let root = scratch("text");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let a = s
         .cold_assemble_profile(
             TEXT_A_FULL,
@@ -233,7 +233,7 @@ fn store_rt_text_warm_edits() {
 #[test]
 fn store_rt_readonly_quota_close() {
     let root = scratch("ops");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble_profile(
         TEXT_A_FULL,
         SourceProfile::TextRecord,
@@ -268,7 +268,7 @@ fn store_rt_readonly_quota_close() {
 
     // quota: a tiny store refuses cold persistence with a2x.resource
     let root2 = scratch("quota");
-    let mut s2 = A2xSession::open(&root2, "p902", "owner", 1).unwrap();
+    let mut s2 = A2xSession::open(&root2, "p902", "owner", 1, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let err = s2
         .cold_assemble_profile(
             TEXT_A_FULL,
@@ -289,7 +289,7 @@ fn store_rt_readonly_quota_close() {
 #[test]
 fn store_rt_family_isolation() {
     let root = scratch("mixed");
-    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20).unwrap();
+    let mut s = A2xSession::open(&root, "p902", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let scalar_src = "fn helper(a int) int { return a * 2 }\nfn main() int { return helper(21) }";
     s.cold_assemble(scalar_src, true, &[], "main", false)
         .expect("scalar cold");

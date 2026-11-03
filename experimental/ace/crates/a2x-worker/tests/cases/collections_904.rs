@@ -130,7 +130,7 @@ fn coll_904_nested_owned_variant() {
 #[test]
 fn coll_904_store_channel_green() {
     let root = scratch("store-green");
-    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let asm = s
         .cold_assemble_profile(L06, ace_core::source::SourceProfile::Collections, &[], "main", false)
         .expect("collections store family (T-06)");
@@ -241,7 +241,7 @@ const TR_TYPED_FRAG_B: &str = "fn main() int {\n    let w W = W(\"ab\")\n    ret
 #[test]
 fn coll_904_typed_record_warm_fragment_green() {
     let root = scratch("tr-warm-green");
-    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20).unwrap();
+    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let a = s
         .cold_assemble_profile(
             TR_TYPED_FULL,

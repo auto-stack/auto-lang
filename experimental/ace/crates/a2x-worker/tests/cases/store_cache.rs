@@ -81,7 +81,7 @@ fn fragment_text(generated: &str, marker: &str) -> String {
 #[test]
 fn layered_session_lifecycle() {
     let root = tmp_root("lifecycle");
-    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
 
     // ---- cold: 2 fragments produced + persisted; oracle through rustc ----
     let cold = s.cold_assemble(COLD, false, &[], "main", false).unwrap();
@@ -132,7 +132,7 @@ fn layered_session_lifecycle() {
     // ---- semantic equivalence: whitespace-only source keeps every fp ----
     let cold_fps: Vec<String> = extract_fps(&cold.manifest);
     let padded = {
-        let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+        let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
         s2.cold_assemble(PADDED, false, &[], "main", false).unwrap()
     };
     let padded_fps = extract_fps(&padded.manifest);
@@ -142,7 +142,7 @@ fn layered_session_lifecycle() {
     );
 
     // ---- restart: fresh session over the SAME store rebuilds from hits ----
-    let mut s3 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s3 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let restarted = s3.restart_assemble(COLD, false, &[], "main").unwrap();
     let st3 = s3.stats();
     assert_eq!(st3.lower, 0, "restart produces nothing new");
@@ -170,14 +170,14 @@ fn extract_fps(manifest: &str) -> Vec<String> {
 fn read_only_writes_nothing() {
     let root = tmp_root("readonly");
     // read-only session on an EMPTY namespace: misses recompute, writes 0
-    let mut ro = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut ro = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let asm = ro.cold_assemble(COLD, false, &[], "main", true).unwrap();
     let st = ro.stats();
     assert_eq!(st.lower, 2, "misses really recompute");
     assert_eq!(st.persist, 0, "read-only writes nothing");
     assert_eq!(run_assembly(&asm, "ro"), "value:41");
     // the store namespace still holds no A2X layers (nothing persisted)
-    let mut rw = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut rw = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let before = rw.space().total;
     let _ = rw.cold_assemble(COLD, false, &[], "main", false).unwrap();
     assert!(rw.space().total > before, "the write session does persist");
@@ -186,7 +186,7 @@ fn read_only_writes_nothing() {
 #[test]
 fn quota_gate_is_controlled_and_preserves_state() {
     let root = tmp_root("quota");
-    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     s.cold_assemble(COLD, false, &[], "main", false).unwrap();
 
     // shrink the quota below what a big helper edit would need
@@ -201,11 +201,11 @@ fn quota_gate_is_controlled_and_preserves_state() {
     drop(s);
     // measure the REOPENED namespace (WAL/trash settle across opens), then
     // open the gated session with only 64B of headroom
-    let probe = A2xSession::open(&root, "a2x-probe", "probe", u64::MAX / 2).unwrap();
+    let probe = A2xSession::open(&root, "a2x-probe", "probe", u64::MAX / 2, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let settled = probe.space().total;
     drop(probe);
     let tight = settled + 64;
-    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", tight).unwrap();
+    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", tight, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     // re-cold over the same store (hits) then a big edit must hit the gate
     let _ = s2.cold_assemble(COLD, false, &[], "main", false).unwrap();
     let err = s2.warm_edit("helper", &big_helper, "main", false);
@@ -224,7 +224,7 @@ fn quota_gate_is_controlled_and_preserves_state() {
         tight
     );
     drop(s2);
-    let mut s3 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s3 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let restarted = s3.restart_assemble(COLD, false, &[], "main").unwrap();
     assert_eq!(
         s3.stats().lower,
@@ -240,13 +240,13 @@ fn quota_gate_is_controlled_and_preserves_state() {
 #[test]
 fn lease_and_gc_smoke() {
     let root = tmp_root("gc");
-    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let _ = s.cold_assemble(COLD, false, &[], "main", false).unwrap();
     let _lease = s.lease_current("a2x-probe-current").unwrap();
     let receipt = s.gc().unwrap();
     assert!(!receipt.is_empty());
     // after GC the project-rooted artifacts still serve restarts
-    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let asm = s2.restart_assemble(COLD, false, &[], "main").unwrap();
     assert_eq!(s2.stats().lower, 0, "post-GC restart still hits everything");
     assert_eq!(run_assembly(&asm, "postgc"), "value:41");
@@ -266,7 +266,7 @@ fn lease_and_gc_smoke() {
 #[test]
 fn closed_environment_rejects_warm_edits_but_keeps_serving() {
     let root = tmp_root("closed");
-    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let cold = s.cold_assemble(COLD, false, &[], "main", false).unwrap();
     assert!(!s.env_closed());
     s.close_env();
@@ -294,7 +294,7 @@ fn closed_environment_rejects_warm_edits_but_keeps_serving() {
     // the published residents + store keep serving assemblies: a restart
     // over the same store rebuilds from hits with no production
     drop(s);
-    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024).unwrap();
+    let mut s2 = A2xSession::open(&root, "a2x-probe", "probe", 128 * 1024 * 1024, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
     let asm = s2.restart_assemble(COLD, false, &[], "main").unwrap();
     assert_eq!(s2.stats().lower, 0);
     assert_eq!(generated_of(&asm), generated_of(&cold));
