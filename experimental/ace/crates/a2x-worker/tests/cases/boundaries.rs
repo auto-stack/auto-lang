@@ -19,6 +19,9 @@ fn workspace_root() -> PathBuf {
 #[test]
 fn manifest_face_only_sanctioned_dependencies() {
     let sanctioned = [
+        "ace-a2x-c", // PLAN-921 CA-A: the C target provider (a2x-core + core HIR)
+        "ace-abi",   // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
+        // no second MSVC discovery path
         "ace-a2x-core",
         "ace-a2x-rust",
         "ace-a2x-store",
@@ -30,6 +33,7 @@ fn manifest_face_only_sanctioned_dependencies() {
                                // crate the 783 store already depends on)
     ];
     let members = [
+        "crates/a2x-c",
         "crates/a2x-core",
         "crates/a2x-rust",
         "crates/a2x-store",
@@ -84,6 +88,7 @@ fn source_face_no_forbidden_references() {
     ];
     let mut scanned = 0usize;
     let dirs = [
+        "crates/a2x-c/src",
         "crates/a2x-core/src",
         "crates/a2x-rust/src",
         "crates/a2x-store/src",
@@ -124,14 +129,47 @@ fn source_face_no_forbidden_references() {
     );
 }
 
-/// The single-target status: Rust is the only implemented provider; a
-/// second target is explicitly NOT claimed (plan non-goals). The frozen
-/// TargetProfile pins exactly one backend identity.
+/// PLAN-921 CA-A: the two-target status. Rust keeps its frozen single
+/// backend identity; the C target is a REAL second backend with its own
+/// identity, its own fragment namespace (AXC1) and a scalar-only family
+/// surface (every other family is a named rejection, never a fallback).
+/// The shared session layer must not statically depend on either target
+/// crate (the provider seam).
 #[test]
-fn single_target_profile_no_false_multi_target_claims() {
-    let t = ace_a2x_rust::TargetProfile::v1();
-    assert_eq!(t.lang, "rust");
-    assert_eq!(t.edition, "2021");
-    assert_eq!(t.backend, "auto-a2x-rust");
-    // one backend identity, one edition — nothing else is claimed
+fn two_target_identities_and_neutral_store_seam() {
+    let r = ace_a2x_rust::TargetProfile::v1();
+    assert_eq!(r.lang, "rust");
+    assert_eq!(r.edition, "2021");
+    assert_eq!(r.backend, "auto-a2x-rust");
+    let c = ace_a2x_c::CTargetProvider::v1();
+    let d = ace_a2x_core::target::TargetProvider::descriptor(&c);
+    assert_eq!(d.lang, "c");
+    assert_eq!(d.standard, "c11");
+    assert_eq!(d.backend, "auto-a2x-c");
+    // distinct namespaces: fragment layer ids never collide
+    use ace_a2x_core::target::{Family, TargetProvider};
+    assert_eq!(c.fragment_layer_id(Family::Scalar).unwrap(), "AXC1");
+    assert_eq!(
+        ace_a2x_rust::RustTargetProvider::v1()
+            .fragment_layer_id(Family::Scalar)
+            .unwrap(),
+        "AXR1"
+    );
+    // the C target rejects the non-scalar families by NAME
+    for family in [Family::RecordText, Family::Collections] {
+        let err = c.fragment_layer_id(family).unwrap_err();
+        assert!(err.detail.contains("scalar"), "{}", err.detail);
+    }
+    // the shared session layer is target-neutral: a2x-store carries no
+    // target-crate dependency
+    let store_manifest =
+        std::fs::read_to_string(workspace_root().join("crates/a2x-store/Cargo.toml")).unwrap();
+    assert!(
+        !store_manifest.contains("ace-a2x-rust ="),
+        "a2x-store must not depend on the Rust target crate (PLAN-921 seam)"
+    );
+    assert!(
+        !store_manifest.contains("ace-a2x-c ="),
+        "a2x-store must not depend on the C target crate (PLAN-921 seam; the `ace-a2x-core` prefix is a different crate)"
+    );
 }

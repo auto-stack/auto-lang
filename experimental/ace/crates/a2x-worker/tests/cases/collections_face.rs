@@ -72,12 +72,20 @@ fn v07_dependency_invalidation_boundary() {
     let fp = |src: &str, name: &str| {
         let compiled = compile_collections_source(src, "dep", &[]).unwrap();
         let view = SemanticView::from_checked(&compiled.checked).unwrap();
-        let f = view.functions().iter().find(|f| f.source_name == name).unwrap();
+        let f = view
+            .functions()
+            .iter()
+            .find(|f| f.source_name == name)
+            .unwrap();
         ace_a2x_core::semantic_fingerprint(&view, f).unwrap()
     };
     let fp_base = fp(base, "main");
     // pure declaration reorder: same semantic identity
-    assert_eq!(fp(reordered, "main"), fp_base, "table reorder must not move");
+    assert_eq!(
+        fp(reordered, "main"),
+        fp_base,
+        "table reorder must not move"
+    );
     // element/type change: different identity (nominal digest + list elem)
     assert_ne!(
         fp(elem_change, "main"),
@@ -89,16 +97,17 @@ fn v07_dependency_invalidation_boundary() {
     let compiled = compile_collections_source(base, "dep", &[]).unwrap();
     let view = SemanticView::from_checked(&compiled.checked).unwrap();
     assert_eq!(view.variants().len(), 0, "no variants in this module");
-    assert!(view
+    assert!(view.functions().iter().any(|f| f
+        .body
+        .exprs
+        .iter()
+        .any(|e| matches!(e.kind, ace_core::hir::ExprKind::ListGet { .. }))));
+    // the List element type resolves through the view
+    let main = view
         .functions()
         .iter()
-        .any(|f| f
-            .body
-            .exprs
-            .iter()
-            .any(|e| matches!(e.kind, ace_core::hir::ExprKind::ListGet { .. }))));
-    // the List element type resolves through the view
-    let main = view.functions().iter().find(|f| f.source_name == "main").unwrap();
+        .find(|f| f.source_name == "main")
+        .unwrap();
     let list_local = main
         .body
         .locals
@@ -124,18 +133,28 @@ fn v02_fused_view_indices_preserved() {
     )
     .expect("compile");
     let view = SemanticView::from_checked(&compiled.checked).unwrap();
-    let main = view.functions().iter().find(|f| f.source_name == "main").unwrap();
+    let main = view
+        .functions()
+        .iter()
+        .find(|f| f.source_name == "main")
+        .unwrap();
     let indices: Vec<i32> = main
         .body
         .exprs
         .iter()
         .filter_map(|e| match e.kind {
-            ace_core::hir::ExprKind::ListGet { index, .. } => match main.body.exprs[index.0 as usize].kind {
-                ace_core::hir::ExprKind::Constant { value } => Some(value),
-                _ => None,
-            },
+            ace_core::hir::ExprKind::ListGet { index, .. } => {
+                match main.body.exprs[index.0 as usize].kind {
+                    ace_core::hir::ExprKind::Constant { value } => Some(value),
+                    _ => None,
+                }
+            }
             _ => None,
         })
         .collect();
-    assert_eq!(indices, vec![0, 1], "fused views must keep their own indices");
+    assert_eq!(
+        indices,
+        vec![0, 1],
+        "fused views must keep their own indices"
+    );
 }

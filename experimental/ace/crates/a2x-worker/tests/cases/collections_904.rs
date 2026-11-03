@@ -12,10 +12,10 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use ace_a2x_rust::coll::{assemble_collections_file_set, COLL_FILESET_SCHEMA};
-use ace_a2x_rust::lower_coll::lower_collections_program;
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::SemanticView;
+use ace_a2x_rust::coll::{assemble_collections_file_set, COLL_FILESET_SCHEMA};
+use ace_a2x_rust::lower_coll::lower_collections_program;
 use ace_core::source::compile_collections_source;
 
 fn out_base() -> PathBuf {
@@ -38,7 +38,8 @@ fn run_fileset(name: &str, files: &[(String, String)]) -> String {
     let exe = dir.join("case.exe");
     let compile = auto_tool_execution::run_command_capture(
         {
-            let mut c = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+            let mut c =
+                Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
             c.args(["--edition", "2021", "-o"])
                 .arg(&exe)
                 .arg("main.rs")
@@ -69,7 +70,8 @@ fn run_fileset(name: &str, files: &[(String, String)]) -> String {
 }
 
 fn emit_files(src: &str) -> Vec<(String, String)> {
-    let compiled = compile_collections_source(src, "m.at", &[]).expect("compile collections source");
+    let compiled =
+        compile_collections_source(src, "m.at", &[]).expect("compile collections source");
     let view = SemanticView::from_checked(&compiled.checked).expect("view");
     let program = lower_collections_program(&view, "main").expect("lower");
     let config = "default";
@@ -90,7 +92,8 @@ const L04: &str = "type Item { name Str; code int }\nfn main() int {\n    var xs
 
 const L05: &str = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"hello\", 37))\n    let x Item = xs.remove(0)\n    return x.name.len() + x.code + xs.len()\n}";
 
-const L06: &str = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    return xs.get(1)\n}";
+const L06: &str =
+    "fn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    return xs.get(1)\n}";
 
 const V03: &str = "fn fail() Result<int, Str> { return Err(\"bad\") }\nfn main() int {\n    let r = fail()\n    is r {\n        Ok(v) -> { return v }\n        Err(e) -> { return e.len() }\n    }\n}";
 
@@ -130,9 +133,22 @@ fn coll_904_nested_owned_variant() {
 #[test]
 fn coll_904_store_channel_green() {
     let root = scratch("store-green");
-    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut s = ace_a2x_store::A2xSession::open(
+        &root,
+        "p904",
+        "owner",
+        8 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     let asm = s
-        .cold_assemble_profile(L06, ace_core::source::SourceProfile::Collections, &[], "main", false)
+        .cold_assemble_profile(
+            L06,
+            ace_core::source::SourceProfile::Collections,
+            &[],
+            "main",
+            false,
+        )
         .expect("collections store family (T-06)");
     assert!(asm.manifest.contains("auto.a2x.rust.collections.fileset/1"));
     let dir = out_base().join("store-green-L06");
@@ -145,8 +161,12 @@ fn coll_904_store_channel_green() {
     let exe = dir.join("case.exe");
     let compile = auto_tool_execution::run_command_capture(
         {
-            let mut c = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
-            c.args(["--edition", "2021", "-o"]).arg(&exe).arg("main.rs").current_dir(&dir);
+            let mut c =
+                Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+            c.args(["--edition", "2021", "-o"])
+                .arg(&exe)
+                .arg("main.rs")
+                .current_dir(&dir);
             c
         },
         auto_tool_execution::TreeScope::ProcessTree,
@@ -155,7 +175,11 @@ fn coll_904_store_channel_green() {
     .expect("rustc");
     assert_eq!(compile.kind, auto_tool_execution::ExitKind::Success);
     let run = auto_tool_execution::run_command_capture(
-        { let mut c = Command::new(&exe); c.current_dir(&dir); c },
+        {
+            let mut c = Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
         auto_tool_execution::TreeScope::ProcessTree,
         None,
     )
@@ -183,16 +207,20 @@ fn coll_904_v13_same_context_different_body_rejected() {
     let prog_b = parse_program_with(TYPED_B, SourceProfile::Collections).expect("parse B");
     let env_a = resolve_env(&prog_a, &caps, SourceProfile::Collections).expect("resolve A");
     let env_b = resolve_env(&prog_b, &caps, SourceProfile::Collections).expect("resolve B");
-    let main_idx_b = env_fn_names(&env_b).iter().position(|n| *n == "main").expect("main in B");
-    let main_idx_a = env_fn_names(&env_a).iter().position(|n| *n == "main").expect("main in A");
+    let main_idx_b = env_fn_names(&env_b)
+        .iter()
+        .position(|n| *n == "main")
+        .expect("main in B");
+    let main_idx_a = env_fn_names(&env_a)
+        .iter()
+        .position(|n| *n == "main")
+        .expect("main in A");
     let (parts_b, _receipt) =
         emit_function_body(&env_b, main_idx_b, TYPED_B, "m.at").expect("emit B fragment");
     let (parts_a, _receipt_a) =
         emit_function_body(&env_a, main_idx_a, TYPED_A, "m.at").expect("emit A fragment");
     // A's legitimate credential (same declaration context by construction)
-    let def_a = parts_a
-        .bundle
-        .modules[0]
+    let def_a = parts_a.bundle.modules[0]
         .defs
         .iter()
         .position(|d| d.id_text == "d_main")
@@ -207,9 +235,7 @@ fn coll_904_v13_same_context_different_body_rejected() {
         "expected body-digest rejection, got: {err}"
     );
     // B's own legitimate credential still admits (control)
-    let def_b = parts_b
-        .bundle
-        .modules[0]
+    let def_b = parts_b.bundle.modules[0]
         .defs
         .iter()
         .position(|d| d.id_text == "d_main")
@@ -232,7 +258,8 @@ fn coll_904_v13_same_context_different_body_rejected() {
 // identity gap the shared T-03 repair closes).
 const TR_TYPED_FULL: &str = "fn pad() int {\n    // a deliberately long padding body so the retained type span lands\n    // far beyond the length of a main-only fragment document\n    return 123456789\n}\ntype W { text Str }\nfn main() int {\n    let w W = W(\"ab\")\n    return w.text.len() * 10 + 2\n}";
 
-const TR_TYPED_FRAG_B: &str = "fn main() int {\n    let w W = W(\"ab\")\n    return w.text.len()\n}";
+const TR_TYPED_FRAG_B: &str =
+    "fn main() int {\n    let w W = W(\"ab\")\n    return w.text.len()\n}";
 
 /// T-03 S repair (green): the record/text-record family's TYPED sources
 /// take the real warm FRAGMENT path again — the retained type declaration
@@ -241,7 +268,14 @@ const TR_TYPED_FRAG_B: &str = "fn main() int {\n    let w W = W(\"ab\")\n    ret
 #[test]
 fn coll_904_typed_record_warm_fragment_green() {
     let root = scratch("tr-warm-green");
-    let mut s = ace_a2x_store::A2xSession::open(&root, "p904", "owner", 8 << 20, ace_a2x_rust::RustTargetProvider::v1()).unwrap();
+    let mut s = ace_a2x_store::A2xSession::open(
+        &root,
+        "p904",
+        "owner",
+        8 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
     let a = s
         .cold_assemble_profile(
             TR_TYPED_FULL,

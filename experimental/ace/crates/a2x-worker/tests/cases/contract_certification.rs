@@ -167,8 +167,8 @@ fn certify_dry_run_b01() {
         protocol: "a2x-observation/1",
         toolchain: ToolchainIdentity::observed(vv_text, vec!["--edition".into(), "2021".into()]),
         capabilities: vec![],
-            execution_config: None,
-};
+        execution_config: None,
+    };
     assert!(cert.validate().is_ok(), "cert draft must validate");
     let dir = out_root().join("cert-b01");
     std::fs::write(dir.join("b01.cert.json"), cert.to_json()).unwrap();

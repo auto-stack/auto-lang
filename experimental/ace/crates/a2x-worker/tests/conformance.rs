@@ -1,17 +1,17 @@
-#[path = "cases/collections_v15.rs"]
-mod collections_v15;
-#[path = "cases/store_coll_904.rs"]
-mod store_coll_904;
-#[path = "cases/cert_coll_904.rs"]
-mod cert_coll_904;
-#[path = "cases/collections_face.rs"]
-mod collections_face;
-#[path = "cases/collections_904.rs"]
-mod collections_904;
+#[path = "cases/a2c_scalar_semantics.rs"]
+mod a2c_scalar_semantics;
 #[path = "cases/boundaries.rs"]
 mod boundaries;
+#[path = "cases/cert_coll_904.rs"]
+mod cert_coll_904;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
+#[path = "cases/collections_904.rs"]
+mod collections_904;
+#[path = "cases/collections_face.rs"]
+mod collections_face;
+#[path = "cases/collections_v15.rs"]
+mod collections_v15;
 #[path = "cases/contract_certification.rs"]
 mod contract_certification;
 #[path = "cases/hir_shape.rs"]
@@ -32,5 +32,7 @@ mod rt_common;
 mod scalar_semantics;
 #[path = "cases/store_cache.rs"]
 mod store_cache;
+#[path = "cases/store_coll_904.rs"]
+mod store_coll_904;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;

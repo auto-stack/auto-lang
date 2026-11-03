@@ -21,19 +21,19 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug)]
-enum Expect {
+pub(crate) enum Expect {
     Value(i32),
     Trap(&'static str),
 }
 
-struct Case {
-    name: String,
-    profile: &'static str,
-    trace: bool,
-    src: String,
-    expect: Expect,
-    marks: Vec<&'static str>,
-    release_too: bool,
+pub(crate) struct Case {
+    pub(crate) name: String,
+    pub(crate) profile: &'static str,
+    pub(crate) trace: bool,
+    pub(crate) src: String,
+    pub(crate) expect: Expect,
+    pub(crate) marks: Vec<&'static str>,
+    pub(crate) release_too: bool,
 }
 
 fn fixture(rel: &str) -> String {
@@ -76,7 +76,9 @@ fn v(x: i32) -> Expect {
     Expect::Value(x)
 }
 
-fn cases() -> Vec<Case> {
+/// PLAN-921: the frozen corpus table, shared with the C channel leg
+/// () — same frozen inputs, independent oracle.
+pub(crate) fn cases() -> Vec<Case> {
     let mut cs = Vec::new();
     // ---- frozen 745 core corpus (valid/) ----
     let core = |f: &str| fixture(&format!("source/valid/{}", f));

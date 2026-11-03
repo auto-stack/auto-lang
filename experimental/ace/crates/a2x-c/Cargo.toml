@@ -1,0 +1,10 @@
+[package]
+name = "ace-a2x-c"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-921 CA-A: the HIR→C11 scalar emit target (checked i32 helpers, source-order single evaluation, short-circuit, hygienic naming) behind the shared TargetProvider seam"
+publish = false
+
+[dependencies]
+ace-a2x-core = { path = "../a2x-core" }
+ace-core = { path = "../core" }

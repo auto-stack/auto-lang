@@ -101,10 +101,7 @@ fn cert_coll_two_leg_pass_and_wrong_oracle_rejected() {
     assert_eq!(r["actual_observed"], "value:42");
     assert_eq!(r["reference_observed"], "value:42");
     // the collections certificate carries the execution-config identity
-    let cert = std::fs::read_to_string(
-        out_base().join("pass").join("case.cert.json"),
-    )
-    .unwrap();
+    let cert = std::fs::read_to_string(out_base().join("pass").join("case.cert.json")).unwrap();
     assert!(cert.contains("\"execution_config\": \"{\\\"budget_work_units\\\":16777216"));
     assert!(cert.contains("ace.a2r-hir.collections.cert/1"));
 
@@ -170,7 +167,12 @@ fn cert_coll_trap_case_named_identity() {
         .write_all(req.to_string().as_bytes())
         .expect("write request");
     let out = proc.wait_with_output().expect("worker complete");
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let r: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(r["verdict"], "PASS", "{r}");
     assert_eq!(r["actual_observed"], "trap:ListIndex");
@@ -186,10 +188,18 @@ fn cert_coll_mode_is_key_material() {
     assert_eq!(d["verdict"], "PASS");
     let r = certify("mode-release", "value", 42, REF_L01, "release");
     assert_eq!(r["verdict"], "PASS");
-    let cert_d = std::fs::read_to_string(out_base().join("mode-debug").join("case.cert.json")).unwrap();
-    let cert_r = std::fs::read_to_string(out_base().join("mode-release").join("case.cert.json")).unwrap();
-    assert!(cert_d.contains("mode\\\":\\\"debug"), "debug config: {cert_d}");
-    assert!(cert_r.contains("mode\\\":\\\"release"), "release config: {cert_r}");
+    let cert_d =
+        std::fs::read_to_string(out_base().join("mode-debug").join("case.cert.json")).unwrap();
+    let cert_r =
+        std::fs::read_to_string(out_base().join("mode-release").join("case.cert.json")).unwrap();
+    assert!(
+        cert_d.contains("mode\\\":\\\"debug"),
+        "debug config: {cert_d}"
+    );
+    assert!(
+        cert_r.contains("mode\\\":\\\"release"),
+        "release config: {cert_r}"
+    );
     assert_ne!(cert_d, cert_r, "configs never share one certificate");
 }
 
@@ -225,9 +235,9 @@ fn cert_coll_schema_isolation() {
             vec!["--edition".into(), "2021".into()],
         ),
         capabilities: vec![],
-        execution_config: Some(
-            ace_a2x_rust::coll::canonical_execution_config("debug", 16777216, None, false, false),
-        ),
+        execution_config: Some(ace_a2x_rust::coll::canonical_execution_config(
+            "debug", 16777216, None, false, false,
+        )),
     };
     assert!(draft
         .validate_as(

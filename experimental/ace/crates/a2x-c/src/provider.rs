@@ -1,0 +1,212 @@
+//! PLAN-921 CA-A: the C [`TargetProvider`] — HIR → C11, scalar channel
+//! only (the `core`/`scalar` source profiles; every other family is a
+//! NAMED rejection, never a fallback).
+//!
+//! Frozen identities: backend `auto-a2x-c`, standard `c11`, fragment
+//! layer `AXC1`, fileset schema `auto.a2x.c.fileset/1`, print pass
+//! `a2x-c-print/1`, recipe `ac-a2c/hir-scalar-emit-v1` (the worker/cert
+//! side binds the recipe; it is declared here as the channel's single
+//! identity source). The C file set is `main.c` (wrapper) +
+//! `a2x_c_runtime.h` (versioned runtime text) + `generated.c` (fragment
+//! definitions behind a forward-declaration block scanned from the
+//! fragment prototype lines) + `manifest.json`.
+
+use crate::lower::{c_fn_name, lower_fn_c, print_fragment};
+use crate::runtime;
+use ace_a2x_core::sha256::sha256_hex;
+use ace_a2x_core::target::{Family, FileSet, FilesetRequest, TargetDescriptor, TargetProvider};
+use ace_a2x_core::{A2xReject, FnFacts};
+
+/// The C print-pass version (fragment key input).
+pub const C_PRINT_VERSION: &str = "a2x-c-print/1";
+/// The C language standard bound into target identities.
+pub const C_STANDARD: &str = "c11";
+/// The C scalar channel's file-set schema.
+pub const C_FILESET_SCHEMA: &str = "auto.a2x.c.fileset/1";
+/// The C scalar channel's recipe identity (declared here; wired into the
+/// worker protocol and certification by PLAN-921 T-09/T-10).
+pub const C_RECIPE: &str = "ac-a2c/hir-scalar-emit-v1";
+
+/// The C target provider (stateless value type). Serves the SCALAR family
+/// only — record-text/collections are named rejections (CA-B/CA-C are
+/// successor packages; no silent widening).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CTargetProvider;
+
+impl CTargetProvider {
+    pub fn v1() -> Self {
+        CTargetProvider
+    }
+}
+
+impl TargetProvider for CTargetProvider {
+    fn descriptor(&self) -> TargetDescriptor {
+        TargetDescriptor {
+            lang: "c",
+            standard: C_STANDARD,
+            backend: "auto-a2x-c",
+            backend_version: env!("CARGO_PKG_VERSION"),
+        }
+    }
+
+    fn fragment_key_inputs(&self, runtime_sha256: &str) -> Vec<(String, String)> {
+        vec![
+            ("lang".into(), "c".into()),
+            ("standard".into(), C_STANDARD.into()),
+            ("backend".into(), "auto-a2x-c".into()),
+            ("backend_version".into(), env!("CARGO_PKG_VERSION").into()),
+            ("runtime_sha256".into(), runtime_sha256.into()),
+            ("print_version".into(), C_PRINT_VERSION.into()),
+        ]
+    }
+
+    fn fragment_layer_id(&self, family: Family) -> Result<&'static str, A2xReject> {
+        match family {
+            Family::Scalar => Ok("AXC1"),
+            other => Err(A2xReject::domain(format!(
+                "the C target serves the scalar channel only (PLAN-921 CA-A); \
+                 family `{:?}` is a successor package surface",
+                other
+            ))),
+        }
+    }
+
+    fn runtime_source(
+        &self,
+        view: &ace_a2x_core::SemanticView<'_>,
+        family: Family,
+    ) -> Result<String, A2xReject> {
+        if family != Family::Scalar {
+            return Err(A2xReject::domain(
+                "the C target serves the scalar channel only",
+            ));
+        }
+        let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
+        Ok(runtime::runtime_source(&marks))
+    }
+
+    fn produce_fragments(
+        &self,
+        view: &ace_a2x_core::SemanticView<'_>,
+        fns: &[&FnFacts<'_>],
+        family: Family,
+    ) -> Result<Vec<String>, A2xReject> {
+        if family != Family::Scalar {
+            return Err(A2xReject::domain(
+                "the C target serves the scalar channel only",
+            ));
+        }
+        let mut out = Vec::with_capacity(fns.len());
+        for f in fns {
+            let cfn = lower_fn_c(view, f)?;
+            out.push(print_fragment(&cfn));
+        }
+        Ok(out)
+    }
+
+    fn capture_prelude_seed(
+        &self,
+        _view: &ace_a2x_core::SemanticView<'_>,
+        _family: Family,
+    ) -> Result<Option<String>, A2xReject> {
+        // the scalar channel needs no module-level prelude inputs
+        Ok(None)
+    }
+
+    fn assemble_fileset(&self, req: FilesetRequest<'_>) -> Result<FileSet, A2xReject> {
+        let FilesetRequest {
+            entry,
+            input_hash,
+            family,
+            fragments,
+            view,
+            runtime,
+            ..
+        } = req;
+        if family != Family::Scalar {
+            return Err(A2xReject::domain(
+                "the C file set serves the scalar channel only",
+            ));
+        }
+        // generated.c: header comment + runtime include + the
+        // forward-declaration block (each fragment's prototype line,
+        // collected in fragment order) + the definitions
+        let mut generated = String::new();
+        generated.push_str(&format!(
+            "// AUTO-GENERATED by auto-a2x-c (PLAN-921 CA-A) — session assembly, entry `{}`\n\n",
+            entry
+        ));
+        generated.push_str("#include \"a2x_c_runtime.h\"\n\n");
+        for r in fragments {
+            let proto = prototype_line(r.text).ok_or_else(|| {
+                A2xReject::new(
+                    "a2x.internal",
+                    format!("fragment `{}` carries no prototype line", r.source_name),
+                )
+            })?;
+            generated.push_str(proto);
+            generated.push('\n');
+        }
+        generated.push('\n');
+        for r in fragments {
+            generated.push_str(r.text);
+            generated.push('\n');
+        }
+        if !fragments.iter().any(|r| r.source_name == entry) {
+            return Err(A2xReject::entry("entry missing"));
+        }
+        let entry_c = c_fn_name(entry);
+        let wrapper = format!(
+            "// AUTO-GENERATED (PLAN-921 CA-A) — DO NOT EDIT.\n#include <fcntl.h>\n#include <inttypes.h>\n#include <io.h>\n#include <stdint.h>\n#include <stdio.h>\n#include \"a2x_c_runtime.h\"\n\na2x_result {entry}(void);\n\nint main(void) {{\n    _setmode(_fileno(stdout), _O_BINARY);\n    _setmode(_fileno(stderr), _O_BINARY);\n    a2x_result outcome = {entry}();\n    if (outcome.trap == A2X_TRAP_NONE) {{\n        printf(\"value:%\" PRId32 \"\\n\", outcome.value);\n    }} else {{\n        printf(\"trap:%s\\n\", a2x_trap_name(outcome.trap));\n    }}\n    return 0;\n}}\n",
+            entry = entry_c
+        );
+        let files = vec![
+            ("main.c".to_string(), wrapper),
+            ("a2x_c_runtime.h".to_string(), runtime.to_string()),
+            ("generated.c".to_string(), generated),
+        ];
+        let mut manifest = String::new();
+        manifest.push_str(&format!("{{\n  \"schema\": \"{}\",\n", C_FILESET_SCHEMA));
+        manifest.push_str(&format!("  \"input_hash\": \"{}\",\n", input_hash));
+        manifest.push_str(&format!(
+            "  \"entry\": \"{}\",\n  \"functions\": [\n",
+            entry
+        ));
+        for (i, r) in fragments.iter().enumerate() {
+            let comma = if i + 1 < fragments.len() { "," } else { "" };
+            // origins are included whenever the assembly carries its view
+            // (the cold path); warm assemblies list declarations only —
+            // mirroring the frozen Rust manifest behavior
+            if let Some(v) = view {
+                let origin = v.fn_by_def(r.def_index).map(|f| f.origin).unwrap_or((0, 0));
+                manifest.push_str(&format!(
+                    "    {{ \"decl\": \"{}\", \"sem_fp\": \"{}\", \"origin\": [{}, {}] }}{}\n",
+                    r.source_name, r.sem_fp, origin.0, origin.1, comma
+                ));
+            } else {
+                manifest.push_str(&format!(
+                    "    {{ \"decl\": \"{}\", \"sem_fp\": \"{}\" }}{}\n",
+                    r.source_name, r.sem_fp, comma
+                ));
+            }
+        }
+        manifest.push_str("  ],\n  \"files\": [\n");
+        for (i, (path, content)) in files.iter().enumerate() {
+            let comma = if i + 1 < files.len() { "," } else { "" };
+            manifest.push_str(&format!(
+                "    {{ \"path\": \"{}\", \"sha256\": \"{}\" }}{}\n",
+                path,
+                sha256_hex(content.as_bytes()),
+                comma
+            ));
+        }
+        manifest.push_str("  ]\n}\n");
+        Ok(FileSet { files, manifest })
+    }
+}
+
+/// The fragment's prototype line (its second line — the shape contract of
+/// [`crate::lower::print_fragment`]).
+fn prototype_line(fragment_text: &str) -> Option<&str> {
+    fragment_text.lines().nth(1).filter(|l| l.ends_with(';'))
+}

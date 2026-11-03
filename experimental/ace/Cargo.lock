@@ -18,6 +18,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-a2x-c"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-core",
+]
+
+[[package]]
 name = "ace-a2x-core"
 version = "0.1.0"
 dependencies = [
@@ -45,9 +53,11 @@ dependencies = [
 name = "ace-a2x-worker"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-c",
  "ace-a2x-core",
  "ace-a2x-rust",
  "ace-a2x-store",
+ "ace-abi",
  "ace-core",
  "auto-tool-execution",
  "serde_json",

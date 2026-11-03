@@ -29,7 +29,8 @@ fn compile_probe(name: &str, main_rs: &str) -> PathBuf {
     let exe = dir.join("probe.exe");
     let compile = auto_tool_execution::run_command_capture(
         {
-            let mut c = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+            let mut c =
+                Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
             c.args(["--edition", "2021", "-o"])
                 .arg(&exe)
                 .arg("main.rs")
@@ -193,13 +194,19 @@ fn v15_fault_atomicity_and_live_fallback() {
     // no fault: both pushes commit (the growth at push #3 is a real alloc)
     let (out, _) = run_with(&exe, &[]);
     assert!(out.contains("value:2"), "no-fault control: {out}");
-    assert!(out.contains("nodes:3 str_bytes:6"), "live accounting: {out}");
+    assert!(
+        out.contains("nodes:3 str_bytes:6"),
+        "live accounting: {out}"
+    );
     // fault ordinal 3 = the list-growth request of push #3 (allocs:
     // new=1, str x2=2, then growth=3): old list intact (2 elems), the
     // uncommitted input freed by the runtime, the frame freed by the
     // caller — nothing leaks
     let (out, _) = run_with(&exe, &[("A2X_RT_FAULT_ALLOC", "3")]);
-    assert!(out.contains("trap:Resource"), "fault surfaces Resource: {out}");
+    assert!(
+        out.contains("trap:Resource"),
+        "fault surfaces Resource: {out}"
+    );
     assert!(
         out.contains("nodes:0 str_bytes:0"),
         "fault path must reclaim everything (old target + uncommitted input): {out}"
@@ -281,5 +288,8 @@ fn main() {
     // 3072-deep chain built, cloned, both freed under the small stack,
     // live accounting back to zero
     assert!(out.contains("value:6144"), "3072 + clone 3072: {out}");
-    assert!(out.contains("str_bytes:0"), "both chains fully reclaimed: {out}");
+    assert!(
+        out.contains("str_bytes:0"),
+        "both chains fully reclaimed: {out}"
+    );
 }
