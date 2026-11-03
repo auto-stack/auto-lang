@@ -286,6 +286,36 @@ pub const LAYER_FRAGMENT_C_RT: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-926 CA-C: the C (HIR→C11 collections) fragment layer — its own
+/// namespace beside the Rust collections layer (AXR3) and the C scalar /
+/// record-text ones (AXC1/AXC2). The runtime content input is the C
+/// collections runtime (budget/cancel/fault/live accounting), so neither
+/// a Rust hit nor another C channel hit can satisfy an AXC3 key or vice
+/// versa (the runtime hash differs besides).
+pub const LAYER_FRAGMENT_C_COLL: LayerSpec = LayerSpec {
+    id: "AXC3",
+    name: "a2x-c-coll-fragment",
+    schema_id: "a2926/axc-c-coll-fn/v1",
+    producer: "auto-a2x-c",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed C collections fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// PLAN-921 T-06: the source-bound anchor layer — the per-function source
 /// binding (full-source sha256 → per-function origins/slice hashes/sem_fps
 /// + the assembly file-set receipt) that makes NEW-PROCESS pure restore
@@ -529,6 +559,7 @@ impl A2xSession {
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
+            Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -557,6 +588,7 @@ impl A2xSession {
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
+            Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -2222,6 +2254,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXR3" => LAYER_FRAGMENT_COLL.id,
         "AXC1" => LAYER_FRAGMENT_C.id,
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
+        "AXC3" => LAYER_FRAGMENT_C_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         other => panic!("unknown layer {}", other),

@@ -399,6 +399,20 @@ impl<'a> SemanticView<'a> {
         }
     }
 
+    /// All list type-table entries, in table order (PLAN-926: the C
+    /// target's typed list instantiations are seed-derived; a read-only
+    /// projection — no policy, no analysis).
+    pub fn list_types(&self) -> Vec<u32> {
+        self.module
+            .types
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, t)| {
+                matches!(t.kind, hir::TypeKind::List { .. }).then_some(idx as u32)
+            })
+            .collect()
+    }
+
     /// The verifier-computed text resource plan, when this domain carries
     /// one (text/text-record). `None` for core/scalar/record.
     pub fn resource_plan(&self) -> Option<&TextResourcePlan> {

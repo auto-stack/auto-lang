@@ -117,7 +117,9 @@ impl TypeClassifier {
                         .iter()
                         .any(|f| owned_of_use(&kind, &f.ty).is_some()),
                     hir::TypeKind::Variant { arms } => arms.iter().any(|a| {
-                        a.payload.as_ref().is_some_and(|p| owned_of_use(&kind, p).is_some())
+                        a.payload
+                            .as_ref()
+                            .is_some_and(|p| owned_of_use(&kind, p).is_some())
                     }),
                     _ => false,
                 };
@@ -195,7 +197,7 @@ pub fn compute_body_facts(module: &hir::Module, body: &hir::Body) -> Collections
             w.facts.owned.insert(i as u32);
         }
     }
-    w.block(body.entry);
+    let _ = w.block(body.entry);
     w.facts
 }
 
@@ -254,7 +256,11 @@ impl<'a> Walker<'a> {
                 }
                 vec![*root]
             }
-            E::Call { eval_args, bindings, .. } => {
+            E::Call {
+                eval_args,
+                bindings,
+                ..
+            } => {
                 for b in bindings {
                     if b.moved {
                         if let Some(&aid) = eval_args.get(b.arg as usize) {
@@ -289,7 +295,11 @@ impl<'a> Walker<'a> {
             | E::ListClear { list: operand }
             | E::VariantGuardTest { root: operand, .. } => vec![*operand],
             E::TextCharAt { operand, index } => vec![*operand, *index],
-            E::TextSlice { operand, start, end } => vec![*operand, *start, *end],
+            E::TextSlice {
+                operand,
+                start,
+                end,
+            } => vec![*operand, *start, *end],
             E::TextConcat { lhs, rhs } => vec![*lhs, *rhs],
             E::RecordCtor { eval_args, .. } => eval_args.clone(),
             E::ListPush { list, value } => vec![*list, *value],
@@ -320,7 +330,11 @@ impl<'a> Walker<'a> {
             .map(|(_, after)| after.clone())
             .unwrap_or_default()
     }
-    fn block(&mut self, id: hir::BlockId) {
+    /// Walk one block; returns whether the block TERMINATED (a return/
+    /// break/continue made its tail unreachable — a terminated branch
+    /// contributes nothing to a join's intersection).
+    fn block(&mut self, id: hir::BlockId) -> bool {
+        let mut terminated = false;
         let stmts = self.body.blocks[id.0 as usize].stmts.clone();
         for (si, stmt) in stmts.iter().enumerate() {
             match stmt {
@@ -349,6 +363,7 @@ impl<'a> Walker<'a> {
                     self.facts.exit_frees.insert((id.0, Some(si)), frees);
                     // unreachable tail: nothing stays live on this path
                     self.live.clear();
+                    terminated = true;
                 }
                 Stmt::Assign { place, value } => {
                     let mark = self.pending.len();
@@ -365,46 +380,61 @@ impl<'a> Walker<'a> {
                 Stmt::If { cond, then, els } => {
                     self.expr(*cond);
                     let before = self.live.clone();
-                    self.block(*then);
+                    let then_term = self.block(*then);
                     let then_end = std::mem::take(&mut self.live);
-                    let els_end = match els {
+                    let (els_end, els_term) = match els {
                         Some(e) => {
                             self.live = before.clone();
-                            self.block(*e);
-                            std::mem::take(&mut self.live)
+                            let t = self.block(*e);
+                            (std::mem::take(&mut self.live), t)
                         }
-                        None => before.clone(),
+                        None => (before.clone(), false),
                     };
-                    // join = intersection; each branch's fall-through
-                    // frees what does not survive the join (path-exact:
-                    // scoped deaths were already freed inside; the
-                    // residual is branch-live-but-not-common values)
-                    let mut common: BTreeSet<u32> = then_end.clone();
-                    common.retain(|l| els_end.contains(l));
-                    let then_res: Vec<u32> =
-                        then_end.difference(&common).copied().collect();
+                    // join: a branch that TERMINATED (returned / broke /
+                    // continued) has no fall-through endpoint and does
+                    // not constrain the join — PLAN-926 fix of the
+                    // no-else early-return shape (a `common = ∅` from a
+                    // terminated then-arm used to orphan the implicit
+                    // else path's live set: no block ever freed it)
+                    let common: BTreeSet<u32> = match (then_term, els_term) {
+                        (true, true) => BTreeSet::new(),
+                        (true, false) => els_end.clone(),
+                        (false, true) => then_end.clone(),
+                        (false, false) => {
+                            let mut c: BTreeSet<u32> = then_end.clone();
+                            c.retain(|l| els_end.contains(l));
+                            c
+                        }
+                    };
+                    let then_res: Vec<u32> = then_end.difference(&common).copied().collect();
                     self.append_frees(then.0, &then_res);
                     if let Some(e) = els {
-                        let els_res: Vec<u32> =
-                            els_end.difference(&common).copied().collect();
+                        let els_res: Vec<u32> = els_end.difference(&common).copied().collect();
                         self.append_frees(e.0, &els_res);
                     }
                     self.live = common;
+                    if then_term && els_term {
+                        terminated = true;
+                    }
                 }
-                Stmt::Loop { id: loop_id, body: lb } => {
+                Stmt::Loop {
+                    id: loop_id,
+                    body: lb,
+                } => {
                     let before = self.live.clone();
                     // dry-scan the kill sites first: the frame's survivor
                     // set must be known BEFORE the body walk so nested
                     // break/continue statements can compute their frees
                     let mut killed = BTreeSet::new();
                     self.collect_kills(*lb, &mut killed);
-                    let after: BTreeSet<u32> =
-                        before.difference(&killed).copied().collect();
+                    let after: BTreeSet<u32> = before.difference(&killed).copied().collect();
                     self.loops.push((*loop_id, after.clone()));
                     self.facts
                         .loop_survivors
                         .insert(lb.0, after.iter().copied().collect());
-                    self.block(*lb);
+                    // a loop body's terminator never falls through to the
+                    // loop's continuation; the survivor set governs
+                    let _ = self.block(*lb);
                     self.loops.pop();
                     // the body block's fall-through (recorded inside)
                     // frees its scoped locals per iteration; the survivor
@@ -413,17 +443,21 @@ impl<'a> Walker<'a> {
                 }
                 Stmt::Break { target } => {
                     let after = self.loop_after(*target);
-                    let frees: Vec<u32> =
-                        self.live.difference(&after).copied().collect();
-                    self.facts.exit_frees.insert((id.0, Some(si)), self.lifo(&frees));
+                    let frees: Vec<u32> = self.live.difference(&after).copied().collect();
+                    self.facts
+                        .exit_frees
+                        .insert((id.0, Some(si)), self.lifo(&frees));
                     self.live.clear();
+                    terminated = true;
                 }
                 Stmt::Continue { target } => {
                     let after = self.loop_after(*target);
-                    let frees: Vec<u32> =
-                        self.live.difference(&after).copied().collect();
-                    self.facts.exit_frees.insert((id.0, Some(si)), self.lifo(&frees));
+                    let frees: Vec<u32> = self.live.difference(&after).copied().collect();
+                    self.facts
+                        .exit_frees
+                        .insert((id.0, Some(si)), self.lifo(&frees));
                     self.live.clear();
+                    terminated = true;
                 }
                 Stmt::Drop { local } => {
                     self.live.remove(&local.0);
@@ -448,6 +482,7 @@ impl<'a> Walker<'a> {
         for l in dying {
             self.live.remove(&l);
         }
+        terminated
     }
 
     fn append_frees(&mut self, block: u32, locals: &[u32]) {
@@ -455,7 +490,11 @@ impl<'a> Walker<'a> {
             return;
         }
         let frees = self.lifo(locals);
-        self.facts.exit_frees.entry((block, None)).or_default().extend(frees);
+        self.facts
+            .exit_frees
+            .entry((block, None))
+            .or_default()
+            .extend(frees);
     }
 
     fn lifo(&self, locals: &[u32]) -> Vec<FreeRef> {
@@ -524,7 +563,11 @@ impl<'a> Walker<'a> {
                 self.expr(lhs);
                 self.expr(rhs);
             }
-            E::Call { eval_args, bindings, .. } => {
+            E::Call {
+                eval_args,
+                bindings,
+                ..
+            } => {
                 for a in &eval_args {
                     self.expr(*a);
                 }
@@ -549,7 +592,11 @@ impl<'a> Walker<'a> {
                 self.expr(operand);
                 self.expr(index);
             }
-            E::TextSlice { operand, start, end } => {
+            E::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
                 self.expr(operand);
                 self.expr(start);
                 self.expr(end);
@@ -560,9 +607,7 @@ impl<'a> Walker<'a> {
             }
             E::TextClone { operand } | E::ClosureClone { operand } => self.expr(operand),
             E::TextToOwned { operand } | E::TextToBorrowed { operand } => self.expr(operand),
-            E::CharToCodepoint { operand } | E::CharFromCodepoint { operand } => {
-                self.expr(operand)
-            }
+            E::CharToCodepoint { operand } | E::CharFromCodepoint { operand } => self.expr(operand),
             E::RecordCtor { eval_args, .. } => {
                 for a in eval_args {
                     self.owned_value_child(a);
@@ -805,7 +850,12 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.u32(*value as u32);
         }
         E::Unit => h.str("unit"),
-        E::Binary { op, overflow, lhs, rhs } => {
+        E::Binary {
+            op,
+            overflow,
+            lhs,
+            rhs,
+        } => {
             h.str("bin");
             h.str(&format!("{op:?}"));
             h.str(&format!("{overflow:?}"));
@@ -823,7 +873,11 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.u32(lhs.0);
             h.u32(rhs.0);
         }
-        E::Call { callee, eval_args, bindings } => {
+        E::Call {
+            callee,
+            eval_args,
+            bindings,
+        } => {
             h.str("call");
             h.u32(callee.0);
             h.u32(eval_args.len() as u32);
@@ -872,7 +926,11 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.u32(operand.0);
             h.u32(index.0);
         }
-        E::TextSlice { operand, start, end } => {
+        E::TextSlice {
+            operand,
+            start,
+            end,
+        } => {
             h.str("tsl");
             h.u32(operand.0);
             h.u32(start.0);
@@ -907,7 +965,11 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.str("i2c");
             h.u32(operand.0);
         }
-        E::RecordCtor { record, eval_args, bindings } => {
+        E::RecordCtor {
+            record,
+            eval_args,
+            bindings,
+        } => {
             h.str("rct");
             h.u32(record.0);
             h.u32(eval_args.len() as u32);
@@ -979,7 +1041,11 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.str("lc");
             h.u32(list.0);
         }
-        E::VariantCtor { variant, disc, payload } => {
+        E::VariantCtor {
+            variant,
+            disc,
+            payload,
+        } => {
             h.str("vc");
             h.u32(variant.0);
             h.u32(*disc);

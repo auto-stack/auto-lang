@@ -1,5 +1,7 @@
 #[path = "cases/a2c_cert.rs"]
 mod a2c_cert;
+#[path = "cases/a2c_coll.rs"]
+mod a2c_coll;
 #[path = "cases/a2c_restore.rs"]
 mod a2c_restore;
 #[path = "cases/a2c_rt.rs"]

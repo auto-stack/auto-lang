@@ -115,23 +115,18 @@ fn c_named_family_and_source_rejections() {
     let root = store_root().join("neg");
     let mut s =
         A2xSession::open(&root, "a2c-neg", "probe", 8 << 20, CTargetProvider::v1()).unwrap();
-    // collections source through the C provider → named domain rejection
-    // (PLAN-925: the C target now serves scalar + record-text; the
-    // successor-package surface is collections — CA-C)
+    // collections source through the C provider now SERVES the channel
+    // (PLAN-926 CA-C: AXC3) — the frozen L01 shape assembles and carries
+    // the collections file-set schema (the true-chain corpus is
+    // `a2c_coll`); the old named rejection is retired with 926
     let src =
         "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    return xs.get(0)\n}";
     let compiled = compile_collections_source(src, "neg", &[]).unwrap();
     let _ = compiled;
-    let err = s
+    let asm = s
         .cold_assemble_profile(src, SourceProfile::Collections, &[], "main", false)
-        .expect_err("collections through C must reject");
-    match err {
-        ace_a2x_store::A2xRejectOrResource::Reject(r) => {
-            assert_eq!(r.code, "a2x.domain", "got: {}", r);
-            assert!(r.detail.contains("scalar/record-text"), "got: {}", r);
-        }
-        other => panic!("expected Reject, got {:?}", other),
-    }
+        .expect("collections through C now serves (PLAN-926)");
+    assert!(asm.manifest.contains("auto.a2x.c.collections.fileset/1"));
     // illegal source for the SCALAR channel → frontend rejection (named
     // a2x.compile), before any C work
     let mut s2 =

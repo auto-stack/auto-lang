@@ -15,8 +15,9 @@ pub fn fn_main() -> A2xResult<i32> {
         a2x_coll_list_free(&mut l0_xs);
         return Ok(1);
     }
-    a2x_coll_list_push((&mut l0_xs), 42)?;
+    match a2x_coll_list_push((&mut l0_xs), 42) { Ok(v) => v, Err(e) => { a2x_coll_list_free(&mut l0_xs); return Err(e) } };
     a2x_coll_list_clear((&mut l0_xs));
+    a2x_coll_list_free(&mut l0_xs);
     return Ok(a2x_coll_list_len((&l0_xs)));
 }
 

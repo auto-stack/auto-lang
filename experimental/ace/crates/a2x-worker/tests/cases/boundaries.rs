@@ -155,11 +155,11 @@ fn two_target_identities_and_neutral_store_seam() {
             .unwrap(),
         "AXR1"
     );
-    // PLAN-925: the C target serves scalar + record-text (AXC1/AXC2);
-    // collections stays a named successor-package rejection (CA-C)
+    // PLAN-925/926: the C target serves scalar + record-text +
+    // collections (AXC1/AXC2/AXC3); the three namespaces never collide
+    // with the Rust layers (AXR1/2/3)
     assert_eq!(c.fragment_layer_id(Family::RecordText).unwrap(), "AXC2");
-    let err = c.fragment_layer_id(Family::Collections).unwrap_err();
-    assert!(err.detail.contains("scalar/record-text"), "{}", err.detail);
+    assert_eq!(c.fragment_layer_id(Family::Collections).unwrap(), "AXC3");
     // the shared session layer is target-neutral: a2x-store carries no
     // target-crate dependency
     let store_manifest =
