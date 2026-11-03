@@ -1,29 +1,30 @@
 {
-  "last_covered_plan_id": 920,
-  "timestamp": "2026-11-03T01:01:11Z",
-  "covered_commit": "9c91a1b481005007a158a86cfb40047c56b5c543",
-  "command": "cargo t all",
-  "single_instance": true,
-  "results_path": "target/test-groups/run-ipc4pf6e/results.json",
-  "log_sha256": "49c15e08ba16dae4db53bb550881aa159c787f489d9b5866611ede09997a4661",
-  "elapsed_seconds": null,
-  "verdict": "known_reds_only",
-  "new_reds": [],
-  "known_reds_seen": [
-    "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent",
-    "PLAN-900 auto-lsp: package moved out of this workspace but fixed group still selects it",
-    "PLAN-901 auto-lang-core: ACE host tests leaked into legacy group",
-    "PLAN-901 infra-pilot-cli: legacy group requested ACE worker",
-    "auto-macros: Box<Obj> vs Obj compile errors in value_macro_tests (known)",
-    "D-910-1 web-delivery-controls: execution_ids not defined (existing governance debt)",
-    "P707-R1 auto-lang plan707_spike_cancel_gap_active_job_future_not_stopped: deliberate RED spike for the 705/707 cancel gap (KNOWN-DEBT in file; untouched in cf4694880..HEAD window)",
-    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: known red, untouched in window"
-  ],
-  "exclusions": [
-    "aavm NOT_APPLICABLE",
-    "a2r-actor-tests NOT_APPLICABLE",
-    "auto-vm NOT_APPLICABLE",
-    "865 nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved"
-  ],
-  "fix_forward": "No new reds attributable to the merged window (PLAN-917/919/920). All failing groups map to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md; no unrelated repair attempted by the batch runner."
+ "last_covered_plan_id": 925,
+ "timestamp": "2026-11-03T14:11:01Z",
+ "covered_commit": "1359ab1da7ca597e5181d1d0684f885c321828a8",
+ "command": "cargo t all",
+ "single_instance": true,
+ "results_path": "target/test-groups/run-moc3dcba/results.json",
+ "elapsed_seconds": 583,
+ "verdict": "known_reds_only",
+ "new_reds": [],
+ "known_reds_seen": [
+  "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent",
+  "PLAN-900 auto-lsp: package moved out of this workspace but fixed group still selects it",
+  "PLAN-901 auto-lang-core: ACE host tests leaked into legacy group",
+  "PLAN-901 infra-pilot-cli: legacy group requested ACE worker (5 failures+1 error, same shape)",
+  "auto-macros: Box<Obj> vs Obj compile errors in value_macro_tests (known)",
+  "P707-R1 auto-lang plan707_spike_cancel_gap_active_job_future_not_stopped: deliberate RED spike (KNOWN-DEBT)",
+  "auto-lang sys_natives_vm_tests::test_sys_natives_vm: known red"
+ ],
+ "exclusions": [
+  "aavm NOT_APPLICABLE",
+  "a2r-actor-tests NOT_APPLICABLE",
+  "auto-vm NOT_APPLICABLE",
+  "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
+  "D-910-1 web-delivery-controls execution_ids debt NOT triggered this run (group PASS)"
+ ],
+ "window": "9c91a1b48..1359ab1da (PLAN-921/922/925 merges + UI/docs commits); all 925-touched groups green in the full union (ace-a2x/source/adapters/auto-test-case/infra-fixed/infra-ace-m1/ace-artifacts/case-a2c-hir-record-text-925/case-a2c-hir-scalar-921/case-a2r-hir-record-text-902/881/894)",
+ "known_red_not_yet_in_baseline": "case-a2r-hir-collections-904: pre-existing master red (all 20 goldens missing manifest.json since PLAN-904 delivery 6049a3da6; same defect class PLAN-925 fixed for its own suite via gitignore exemption) - NOT in language cargo t all union (domain=ace, all=false), surfaced only in explicit ace-group runs; routed for a PLAN-904-owned fix task",
+ "fix_forward": "No new reds attributable to the merged window. Every failing group maps to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md (or the prior batch receipt baseline); no unrelated repair attempted by the batch runner."
 }
