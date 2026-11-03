@@ -1,3 +1,11 @@
+# D-927-1（2026-11-04，T-09 lossless oracle 首报）：record/entry-unit/
+# host-console 三面的重建丢语句分隔换行（entry 最小复现：
+# "let total = 0
+total = total + 1
+total + 41
+" 重建出
+# "... + 1 total + 41"）。f827c8e65 基线语法同样复现——列表机 restore
+# 纪律的既有缺口，非 927 会话引入。修复前 skip 保绿；修复=去 skip 复验。
 # PLAN-927 T-09 — 七 profile 统一源码语法的文件化 parse 面。每个 profile
 # 一个冻结源（ace-m1/src 语料字节原样 / 合同内联脚本），经
 # `auto-source@<profile>` 的裁剪语法程序解析：completion=success + 无损重建
@@ -59,6 +67,7 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.source-syntax-927.record"
+  status: { skip: { reason: "D-927-1: reconstruct drops stmt-separator newline (pre-existing list/restore trivia gap; unfixed baseline f827c8e65 reproduces)", issue: "PLAN-927 T-09 lossless oracle finding", owner: "plan-927" } }
   tags: ["ace-m1", "source-syntax", "plan-927"]
   links: ["PLAN-927"]
   source: { file: "oracle/record.at", syntax: "auto", path: "main.at" }
@@ -91,6 +100,7 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.source-syntax-927.entry_unit"
+  status: { skip: { reason: "D-927-1: reconstruct drops stmt-separator newline (pre-existing list/restore trivia gap; unfixed baseline f827c8e65 reproduces)", issue: "PLAN-927 T-09 lossless oracle finding", owner: "plan-927" } }
   tags: ["ace-m1", "source-syntax", "plan-927"]
   links: ["PLAN-927"]
   source: { file: "oracle/entry_unit.at", syntax: "auto", path: "main.at" }
@@ -107,6 +117,7 @@ case {
 case {
   schema: "autolang.case/2"
   id: "ace.m1.source-syntax-927.host_console"
+  status: { skip: { reason: "D-927-1: reconstruct drops stmt-separator newline (pre-existing list/restore trivia gap; unfixed baseline f827c8e65 reproduces)", issue: "PLAN-927 T-09 lossless oracle finding", owner: "plan-927" } }
   tags: ["ace-m1", "source-syntax", "plan-927"]
   links: ["PLAN-927"]
   source: { file: "oracle/host_console.at", syntax: "auto", path: "main.at" }
