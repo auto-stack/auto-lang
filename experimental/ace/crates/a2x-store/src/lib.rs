@@ -1548,10 +1548,16 @@ impl A2xSession {
                     ("pass".into(), pass_version_of(family).into()),
                 ],
             );
-            if let Ok(Some(sem)) = self.store.get_artifact(Self::layer_semantic_for(family).id, &sem_key) {
+            if let Ok(Some(sem)) = self
+                .store
+                .get_artifact(Self::layer_semantic_for(family).id, &sem_key)
+            {
                 self.stats.restore_payload_verifies += 1;
                 let text = String::from_utf8_lossy(&sem.payload).into_owned();
-                let want_schema = format!("\"schema\":\"{}\"", Self::layer_semantic_for(family).schema_id);
+                let want_schema = format!(
+                    "\"schema\":\"{}\"",
+                    Self::layer_semantic_for(family).schema_id
+                );
                 let want_decl = format!("\"decl\":\"{}\"", f.decl);
                 let want_fp = format!("\"sem_fp\":\"{}\"", f.sem_fp);
                 if !text.contains(&want_schema)
@@ -1749,7 +1755,12 @@ impl A2xSession {
         entry: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
-        self.warm_edit_targeted(&WarmTarget::Free { name: fn_name }, edited_src, entry, read_only)
+        self.warm_edit_targeted(
+            &WarmTarget::Free { name: fn_name },
+            edited_src,
+            entry,
+            read_only,
+        )
     }
 
     /// PLAN-925 (§5.4): WARM body edit of ONE method — the narrow method
