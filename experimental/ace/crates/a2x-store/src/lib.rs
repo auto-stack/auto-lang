@@ -356,6 +356,26 @@ pub const LAYER_SOURCE_ANCHOR_RT: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-926 CA-C: the collections source-bound anchor layer (AXP3) —
+/// the scalar shape plus the provider-opaque prelude seed the blind
+/// re-assembly needs (the nominal type table). Serves the C target's
+/// collections channel; the Rust collections target keeps its frozen
+/// no-anchor behavior.
+pub const LAYER_SOURCE_ANCHOR_COLL: LayerSpec = LayerSpec {
+    id: "AXP3",
+    name: "a2x-coll-source-anchor",
+    schema_id: "a2926/axp-coll-source-anchor/v1",
+    producer: "a2x session",
+    consumers: &["a2x session restore"],
+    key_inputs: &["owner", "profile", "source_sha256", "backend"],
+    ref_kinds: &["required"],
+    storage: "one source-bound anchor artifact per collections assembly state",
+    residency:
+        "restored artifacts are re-verified against the caller's source, never trusted blind",
+    regeneration: ace_artifacts::schema::Regeneration::FromUserInputs,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// Pass-version constants of THIS build (key inputs; §5.4 "pass版本").
 pub const PASS_PREPARE: &str = "a2x-prepare/1";
 pub const PRINT_VERSION: &str = "a2x-print/1";
@@ -602,12 +622,16 @@ impl A2xSession {
         match family {
             Family::Scalar => true,
             Family::RecordText => self.current_backend() == "auto-a2x-c",
-            Family::Collections => false,
+            // PLAN-926: the C target's collections channel anchors (its
+            // seed-carrying anchor re-assembles blind); the Rust
+            // collections target keeps its frozen no-anchor behavior
+            Family::Collections => self.current_backend() == "auto-a2x-c",
         }
     }
     fn anchor_schema_for(family: Family) -> &'static str {
         match family {
             Family::RecordText => anchor::ANCHOR_SCHEMA_RT,
+            Family::Collections => anchor::ANCHOR_SCHEMA_COLL,
             _ => anchor::ANCHOR_SCHEMA,
         }
     }
@@ -1002,9 +1026,10 @@ impl A2xSession {
                 runtime_text: runtime,
                 functions: fns,
                 fileset: fileset_receipt,
-                // PLAN-925: the record-text anchor carries the seed the
-                // blind re-assembly needs (scalar: none)
-                prelude_seed: if family == Family::RecordText {
+                // PLAN-925/926: the record-text/collections anchors
+                // carry the seed the blind re-assembly needs (scalar:
+                // none)
+                prelude_seed: if family == Family::RecordText || family == Family::Collections {
                     prelude_seed.clone()
                 } else {
                     None
@@ -1034,10 +1059,10 @@ impl A2xSession {
         a: &anchor::Anchor,
         edges: Vec<(String, RefKind)>,
     ) -> Result<String, A2xRejectOrResource> {
-        let layer = if a.schema == anchor::ANCHOR_SCHEMA_RT {
-            &LAYER_SOURCE_ANCHOR_RT
-        } else {
-            &LAYER_SOURCE_ANCHOR
+        let layer = match a.schema.as_str() {
+            anchor::ANCHOR_SCHEMA_RT => &LAYER_SOURCE_ANCHOR_RT,
+            anchor::ANCHOR_SCHEMA_COLL => &LAYER_SOURCE_ANCHOR_COLL,
+            _ => &LAYER_SOURCE_ANCHOR,
         };
         let key = self.anchor_key(layer, &a.source_sha256, &a.entry);
         let encoded = a.encode();
@@ -1464,10 +1489,10 @@ impl A2xSession {
         }
         let src_sha = sha256_hex(src.as_bytes());
         self.stats.restore_lookup += 1;
-        let anchor_layer = if family == Family::RecordText {
-            &LAYER_SOURCE_ANCHOR_RT
-        } else {
-            &LAYER_SOURCE_ANCHOR
+        let anchor_layer = match family {
+            Family::RecordText => &LAYER_SOURCE_ANCHOR_RT,
+            Family::Collections => &LAYER_SOURCE_ANCHOR_COLL,
+            Family::Scalar => &LAYER_SOURCE_ANCHOR,
         };
         let key = QueryKey::new(
             anchor_layer,
@@ -2257,6 +2282,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXC3" => LAYER_FRAGMENT_C_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
+        "AXP3" => LAYER_SOURCE_ANCHOR_COLL.id,
         other => panic!("unknown layer {}", other),
     }
 }
