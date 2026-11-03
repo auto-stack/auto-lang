@@ -995,6 +995,7 @@ fn consumer_check(id: &str, exit: i32) -> CheckSpec {
             probe: None,
             av_channel: None,
             typed: None,
+            trace: None,
         },
         product_from: Some("upstream".into()),
         skip: None,
