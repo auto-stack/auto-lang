@@ -348,6 +348,105 @@ def main() -> int:
         f"规模={manifest['disclosure']['total_bytes'] / 1048576:.1f}MiB",
     )
 
+    # ================= V06（PLAN-036）：官方主题包消费腿 =================
+    # 只扩本包消费面：vendor 一个官方主题包快照（publish 语义 = 清单+列件）进
+    # fixture 工程副本，声明 `dep themes` 后走**同一正式生成入口**——
+    # a) 交付生成成功且 delivery-manifest 带 theme_package 节，content digest
+    #    与 python 重算一致（算法与 UI/compiler 单源同构：sorted path\0bytes）；
+    # b) 随包 verify.py 对主题节具名校验（逐文件 sha256 + digest 重算）通过；
+    # c) 主题包 A→B 重定位后 cargo build --locked 仍绿（快照随包自洽）；
+    # d) 篡改 vendor 快照（等长字节翻转、清单不同步）→ 生成具名拒绝（准入）。
+    OFFICIAL_THEME_DIGEST = "9fa07742dc68aa5377ae06cb2d966386002063f184c515b6c5dddf8a6bef838e"
+
+    def _vendor_theme_snapshot(dst: Path) -> None:
+        src = UI_ROOT / "packages" / "themes"
+        doc = json.loads((src / "theme-package.json").read_text(encoding="utf-8"))
+        dst.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src / "theme-package.json", dst / "theme-package.json")
+        for entry in doc["files"]:
+            shutil.copy2(src / entry["path"], dst / entry["path"])
+
+    def _theme_content_digest(pkg: Path) -> str:
+        doc = json.loads((pkg / "theme-package.json").read_text(encoding="utf-8"))
+        entries = sorted((e["path"], (pkg / e["path"]).read_bytes()) for e in doc["files"])
+        h = hashlib.sha256()
+        for rel, data in entries:
+            h.update(rel.encode("utf-8"))
+            h.update(b"\x00")
+            h.update(data)
+        return h.hexdigest()
+
+    theme_proj = scratch / "generation-run-theme"
+    copytree_no_target(PROJ, theme_proj)
+    vendor = theme_proj / "vendor" / "themes"
+    _vendor_theme_snapshot(vendor)
+    pac = theme_proj / "pac.at"
+    pac.write_text(
+        pac.read_text(encoding="utf-8")
+        + f'dep themes {{\n    path: "vendor/themes"\n}}\n',
+        encoding="utf-8", newline="\n",
+    )
+    app_at = theme_proj / "src" / "front" / "app.at"
+    app_at.write_text(
+        "use themes.themes: Auto\n\n" + app_at.read_text(encoding="utf-8"),
+        encoding="utf-8", newline="\n",
+    )
+    bundle_theme = scratch / "consumer-theme"
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(bundle_theme)],
+        theme_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    if r.returncode != 0:
+        record("V06-theme-delivery", False, (r.stdout + r.stderr)[-1200:])
+        return 1
+    tmanifest = json.loads(
+        (bundle_theme / "delivery-manifest.json").read_text(encoding="utf-8"))
+    tsec = tmanifest.get("theme_package")
+    recomputed = _theme_content_digest(bundle_theme / "packages" / "themes")
+    record(
+        "V06-theme-delivery-manifest",
+        bool(tsec) and tsec.get("content_digest") == recomputed == OFFICIAL_THEME_DIGEST
+        and tsec.get("owner") == "auto-ui" and tsec.get("version") == "0.2.0",
+        f"theme_package={bool(tsec)}, digest={str(tsec.get('content_digest'))[:12]}"
+        f" 重算={recomputed[:12]}",
+    )
+    vok, vdetail = verify_delivery(bundle_theme)
+    record("V06-theme-verify-py", vok, f"随包verify.py含主题节: {vdetail}")
+    bundle_theme_b = scratch / "consumer-theme-b"
+    copytree_no_target(bundle_theme, bundle_theme_b)
+    # 交付根不自带 lock（与 V01 同口径）：fresh resolve 一次，再 --locked 重放。
+    r = run(["cargo", "generate-lockfile"], bundle_theme_b, consumer_env(), timeout=1800)
+    if r.returncode != 0:
+        record("V06-theme-relocated-locked-build", False,
+               f"generate-lockfile: {r.stderr[-500:]}")
+    else:
+        t0 = time.time()
+        r = run(["cargo", "build", "--locked"], bundle_theme_b, consumer_env(), timeout=3600)
+        record(
+        "V06-theme-relocated-locked-build",
+        r.returncode == 0,
+        f"B根locked构建({'ok' if r.returncode == 0 else r.stderr[-600:]}) {time.time() - t0:.0f}s",
+    )
+    # 负控：篡改 vendor 快照（等长翻转，清单不同步）→ 生成准入具名拒绝。
+    tamper_proj = scratch / "generation-run-theme-tampered"
+    copytree_no_target(theme_proj, tamper_proj)
+    tfile = tamper_proj / "vendor" / "themes" / "themes.at"
+    tbytes = bytearray(tfile.read_bytes())
+    tbytes[len(tbytes) // 2] ^= 0x01
+    tfile.write_bytes(bytes(tbytes))
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(scratch / "consumer-tampered")],
+        tamper_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    terr = (r.stdout + r.stderr)
+    record(
+        "V06-theme-tamper-named-red",
+        r.returncode != 0 and "主题包" in terr,
+        f"exit={r.returncode}, 具名={'主题包' in terr}",
+    )
+
     # ================= V01：全新解析 + 真实 build =================
     # 原失败（对照）：779/785 归档——独立 fixture 全新 UI 锁解析出
     # 双 windows-core 0.57.0/0.62.2 → wgpu-hal 宏边界 E0277，UI 外部证明

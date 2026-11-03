@@ -36,6 +36,8 @@
   crates/patches/iced_widget/  # 本地 patch 随包发行（PLAN-043 走查）
   stdlib/、docs/schema/ # 仓库根级编译期输入（include_str! 越界面）
   assets/               # 资源 allowlist（src/front 非 .at 文件 + SHA-256）
+  packages/themes/      # 官方主题包固定快照（PLAN-036：App 声明官方包时随包；
+                        # 清单+列件，theme_package 清单节含身份/双摘要，verify.py 重算校验）
   verify.py             # 随包受管资源校验入口（消费清单 hash，独立可执行）
   delivery-manifest.json # producer 身份/闭包规模/资源/pin/投影修剪记录
 ```

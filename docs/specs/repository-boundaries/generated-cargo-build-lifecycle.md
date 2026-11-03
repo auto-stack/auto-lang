@@ -40,7 +40,10 @@ flags 供手工 cargo 使用；**在受管根内运行未钉 flags 的手工 car
 ## 3. 内容收据与新鲜度
 
 - 前端成员 `generation.json`（`generated-front-receipt/v1`）：inputs=pac.at + front
-  目录 .at 集 + rust_sidecar 模块源的 sha256；generator=`auto-ui-tools@<ver>
+  目录 .at 集 + rust_sidecar 模块源的 sha256；**App 声明官方主题包时另含
+  `theme/content` + `theme/identity` 统一输入身份键（PLAN-036，UI owner
+  加法语义：键值由 UI compiler 单源算法计算；缺键=不新鲜=安全重建；必需
+  主题输入读/验失败=具名拒绝，不签 reduced 身份）**；generator=`auto-ui-tools@<ver>
   front-layout/v2 producer=<canonical>`；workspace_lock 三态（absent/空=811c9dc5/
   内容 hash；读错=不可核验）；context_id/target_root；artifact{exe, exe_sha256,
   bin_name, cargo_bin, profile}。
