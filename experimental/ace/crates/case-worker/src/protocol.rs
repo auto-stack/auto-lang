@@ -187,11 +187,21 @@ impl WorkerRequest {
             ));
         }
         if let Some(g) = &self.grammar {
-            if !matches!(g.as_str(), "auto-core" | "interface-mini-v1") {
+            // PLAN-927：auto-source@<slug>（七 profile 裁剪语法；slug 白名单与
+            // contract 侧一致，编译失败=受控 infra）。
+            let auto_source_slug = g.strip_prefix("auto-source@");
+            let slug_ok = auto_source_slug.is_some_and(|s| {
+                matches!(
+                    s,
+                    "core" | "scalar" | "text" | "record" | "text-record" | "entry-unit"
+                        | "host-console"
+                )
+            });
+            if !slug_ok && !matches!(g.as_str(), "auto-core" | "interface-mini-v1") {
                 return Err(WorkerError::admission(
                     "request.grammar",
                     format!(
-                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1)",
+                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1, auto-source@<profile>)",
                         g
                     ),
                 ));

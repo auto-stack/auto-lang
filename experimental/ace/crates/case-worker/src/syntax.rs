@@ -32,12 +32,19 @@ use std::time::Instant;
 
 const AUTO_CORE: &str = include_str!("../../../grammars/auto-core.at");
 const INTERFACE_MINI: &str = include_str!("../../../grammars/interface-mini-v1.at");
+/// PLAN-927：七 profile 统一源码语法（auto-source.at 的 profile 裁剪编译；
+/// grammar 名 = `auto-source@<profile-slug>`，slug 与 core::source::cst 的
+/// profile_slug 一致——身份 = 裁剪 canonical bytes 的 GrammarId）。
+const AUTO_SOURCE: &str = include_str!("../../../grammars/auto-source.at");
 
 thread_local! {
     static CORE: RefCell<(Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)> =
         RefCell::new(compile_pair(AUTO_CORE));
     static MINI: RefCell<(Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)> =
         RefCell::new(compile_pair(INTERFACE_MINI));
+    static AUTO_SOURCE_PROFILES:
+        RefCell<std::collections::HashMap<String, (Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)>> =
+        RefCell::new(std::collections::HashMap::new());
 }
 
 fn compile_pair(
@@ -57,6 +64,15 @@ fn with_grammar<R>(
     name: &str,
     f: impl FnOnce(&Rc<ace_syntax_runtime::program::GrammarProgram>, &CompiledScanner) -> R,
 ) -> R {
+    if let Some(slug) = name.strip_prefix("auto-source@") {
+        return AUTO_SOURCE_PROFILES.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let entry = cache
+                .entry(slug.to_string())
+                .or_insert_with(|| compile_pair_profile(AUTO_SOURCE, slug));
+            f(&entry.0, &entry.1)
+        });
+    }
     match name {
         "interface-mini-v1" => MINI.with(|c| {
             let c = c.borrow();
@@ -67,6 +83,20 @@ fn with_grammar<R>(
             f(&c.0, &c.1)
         }),
     }
+}
+
+/// auto-source 的 profile 裁剪编译（slug 非法 = 受控 infra，不静默回落）。
+fn compile_pair_profile(
+    src: &'static str,
+    slug: &str,
+) -> (
+    Rc<ace_syntax_runtime::program::GrammarProgram>,
+    CompiledScanner,
+) {
+    let p = ace_syntax_grammar::compile_profile(src, slug)
+        .unwrap_or_else(|d| panic!("auto-source profile `{slug}` must compile: {d:?}"));
+    let cs = CompiledScanner::compile(&p).expect("auto-source scanner must compile");
+    (Rc::new(p), cs)
 }
 
 pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {

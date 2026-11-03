@@ -1,0 +1,120 @@
+# PLAN-927 T-09 — 七 profile 统一源码语法的文件化 parse 面。每个 profile
+# 一个冻结源（ace-m1/src 语料字节原样 / 合同内联脚本），经
+# `auto-source@<profile>` 的裁剪语法程序解析：completion=success + 无损重建
+# oracle（reconstructed.at 与源逐字节相同）。拒绝/诊断保真面（stage/code/
+# span/message 逐字节）由固定组 `ace-source-syntax-927`（ace-core conformance
+# 差分 harness，567 组合+70 edge）承载——两个 oracle 相互独立（重建=字节
+# 事实；差分=冻结预期）。
+
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.core"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/core.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@core" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/core.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.scalar"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/scalar.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@scalar" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/scalar.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.text"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/text.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@text" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/text.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.record"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@record" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/record.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.text_record"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/text_record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@text-record" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/text_record.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.entry_unit"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/entry_unit.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@entry-unit" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/entry_unit.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-syntax-927.host_console"
+  tags: ["ace-m1", "source-syntax", "plan-927"]
+  links: ["PLAN-927"]
+  source: { file: "oracle/host_console.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@host-console" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/host_console.at" } ] } },
+  ]
+}
+```

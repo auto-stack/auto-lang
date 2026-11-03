@@ -1334,6 +1334,18 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "case-ace-source-syntax-927"
+title = "TestCase 七 profile 统一源码 parse/lossless 面"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/source-syntax-927/source-syntax-927.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-text-source-894"
 title = "TestCase shared text source dual oracle"
 runner = "case"

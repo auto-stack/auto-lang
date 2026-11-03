@@ -1,0 +1,7 @@
+# PLAN-927 T-09 — source-syntax-927 suite（七 profile parse/lossless 面）。
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-source-syntax-927", include: [
+  "source-syntax-927.case.ad",
+] }
+```

@@ -400,6 +400,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             same-line: true
             nl-free: true
         }
+        postfix: "postfix-tail"
     }
     pratt(wide-ops, profiles: [scalar, text, record, text-record, entry-unit, host-console]) {
         primary: "unary-expr"
@@ -424,7 +425,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             same-line: true
             nl-free: true
         }
-        postfix: "postfix-tail"
+
     }
     outline {
         decl-rule: "fn-item"

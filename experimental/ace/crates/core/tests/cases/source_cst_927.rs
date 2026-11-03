@@ -274,10 +274,10 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("fn is_digit(c int) bool { return c >= 48 && c <= 57 }
-fn main() int { let ok = is_digit(48) && is_digit(57) && !is_digit(47) && !is_digit(58)
- if ok { return 0 }
- return 1 }", SourceProfile::Scalar),
+        ("let total = 0
+total = total + 1
+total + 41
+", SourceProfile::EntryUnit),
     ];
     for (i, (src, profile)) in snips.iter().enumerate() {
         let old = ace_core::source::parse_program_with_handwritten(src, *profile);

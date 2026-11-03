@@ -1457,12 +1457,26 @@ fn decode_options(
     let (syntax_grammar, syntax_edits) = if adapter == Adapter::Syntax {
         let g = match f.sub("grammar") {
             None => Some("auto-core".to_string()),
-            Some(CVal::Str(s)) if s == "auto-core" || s == "interface-mini-v1" => Some(s.clone()),
+            // PLAN-927：`auto-source@<profile-slug>`（七 profile 裁剪语法；
+            // slug 集与 auto-source.at 的 profiles 声明一致——worker 侧
+            // compile_profile 受控拒绝未知 slug）。
+            Some(CVal::Str(s))
+                if s == "auto-core"
+                    || s == "interface-mini-v1"
+                    || (s.starts_with("auto-source@")
+                        && matches!(
+                            &s["auto-source@".len()..],
+                            "core" | "scalar" | "text" | "record" | "text-record"
+                                | "entry-unit" | "host-console"
+                        )) =>
+            {
+                Some(s.clone())
+            }
             Some(CVal::Str(s)) => {
                 return Err(err(
                     &f.path_of("grammar"),
                     format!(
-                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1)",
+                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1, auto-source@<profile>)",
                         s
                     ),
                 ))
