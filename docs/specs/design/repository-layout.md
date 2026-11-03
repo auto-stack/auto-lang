@@ -63,6 +63,13 @@ strict以当前工作树声明边对照冻结规则，未提交的新边同样�
 
 `--refresh-baseline` 仅在干净树执行，绑定实际revision与配置，不能当作批准新坏依赖的替代步骤；刷新后仍需strict核对逐边责任/退出阶段。保留历史报告和输入指纹，后续迁移按已批准Plan更新边界和存量退出记录。
 
+合法设施消费使用精确准入规则（PLAN-896/918）：`[[rules.facility_admission]]` 逐边声明
+（from/to 精确包名、kind 限 normal、非 optional、member 内、无 target）准入 std-only 执行
+设施边，输出以 `admitted_facility_edges` 具名；设施包自身 normal/build 闭包必须保持为空
+（仅 std），闭包被破坏或 optional/build/target/外置替身形态不得冒充合法设施准入。这是
+准入规则而非有退出阶段的 grandfather：不重标包域、不扩大 from/to 域、无目录/前缀豁免。
+详见 [发行准入与边界策略](../repository-boundaries/delivery-admission-and-boundary-policy.md)。
+
 报告生成必须只读审计输入。输出前保护配置、基线、实际读取的manifest（含外部path目标）、全部受管文件和读取的锁；路径大小写及硬链接文件身份不能绕过保护。合法独立报告可另存；基线刷新有独立目标守卫，不能覆盖配置/manifest/源码等输入。review/merge证据只绑定实际检查的提交和输入，后续修改须重新检查。
 
 该基线不表示AutoUI/AutoMan已拆仓；它只建立当前责任、存量债务和新增边界检查。后续ParserBridge、native provider、项目模型探针和实际迁移分别验收。

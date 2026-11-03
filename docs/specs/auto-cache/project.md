@@ -65,3 +65,9 @@
 ## PLAN-896：私有编译目标与owned寿命
 
 FFI sandbox/methods pack的cargo build及nightly rustdoc使用既有std-only auto-tool-execution持有、捕获、等待和回收编译树，保原编译参数/生成输入/退出失败与上层预算，不引入ACE依赖。原来未声明逐编译deadline的调用继续使用None，不新增短截止冒绿。显式--target-dir绑定build_dir/target并移除继承的CARGO_TARGET_DIR，保持实际产物与包内查找路径一致；指纹中的features/source与宽窄ABI门不减弱。正常元数据读取不承诺改变任意外部环境，必须以实际owner路径和原变体反例验收。
+
+该设施消费以逐边精确准入规则冻结（`[[rules.facility_admission]]`：auto-cache →
+auto-tool-execution，normal、非 optional、member、无 target，`require_std_only_closure=true`），
+不是域重分类或有退出阶段的 grandfather；auto-tool-execution 正常/build 闭包保持为空（仅
+std），上层/替身/反向/闭包变化仍禁。规则语义见
+[发行准入与边界策略](../repository-boundaries/delivery-admission-and-boundary-policy.md)。

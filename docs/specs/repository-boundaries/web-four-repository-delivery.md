@@ -36,6 +36,17 @@ UI/Man保留原owner命令和单进程ui_gen语义。只列举指定Cargo配置�
 公开`web-repository-fixture.py run --require-complete`核来源/闭包/资源/迁移/执行及发行恢复收据。
 list-only/过滤/缺腿/重复/零选择/未执行/错误hash/缺command-output/原始失败不能认证完整交付。
 
+发行收据消费者对独立 SDK 执行腿校验**实际唯一执行身份集**，不接受仅 summary 计数：
+`validate_distribution_receipt` 按冻结的 nextest 人读输出解析 PASS 行为唯一
+`binary\ttest` 身份（`execution_ids`，PASS/FAIL 行 8 空格缩进、Summary 5 空格缩进，解析容
+前导空白），重复/FAIL/未终态/畸形/ANSI/非法 UTF-8 行与 summary 不符精确拒绝，不 set 去重、
+不按行数或 summary 创造执行；合法同名跨 binary 为不同身份。直接腿与复用腿（`reused_receipt`）
+同等严格：复用收据仍须核对 `web-independent-tests/1` schema、217/2 计数、SDK 输入/config/
+日志哈希与文件身份。现收据 schema 不携带执行 ID 集，ID 对 ID 级对账归 Web schema 决定
+（consumer 侧差额与边界见
+[发行准入与边界策略](delivery-admission-and-boundary-policy.md)）；语言控制门绿不替代 Web
+producer 实际发行执行，producer 仍为 Web 域单源。
+
 执行端和收据消费端共享原baseline/retirement/migration/frozen-floor规则；清单/输出/ID/数量/hash彼此一致
 也不能删去原必需用例。迁移credit只来自原必需ID对应目标的实际PASS，不来自自报count或仅在清单出现。
 原ignored/platform/manual/milestone保持NOT_APPLICABLE，不算执行或通过；ui-tu使用同批ui-full原ignore身份
