@@ -85,8 +85,20 @@ fn run_c_chain(
     prof: &str,
     env: &[(&str, &str)],
 ) -> (String, String) {
+    run_c_chain_caps(s, name, src, prof, env, &[])
+}
+
+fn run_c_chain_caps(
+    s: &mut A2xSession,
+    name: &str,
+    src: &str,
+    prof: &str,
+    env: &[(&str, &str)],
+    caps: &[&str],
+) -> (String, String) {
+    let caps: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
     let asm = s
-        .cold_assemble_profile(src, profile_of(prof), &[], "main", false)
+        .cold_assemble_profile(src, profile_of(prof), &caps, "main", false)
         .unwrap_or_else(|e| panic!("C rt assembly failed for {}: {:?}", name, e));
     let dir = out_root().join(name);
     let _ = std::fs::remove_dir_all(&dir);
@@ -346,4 +358,201 @@ fn a2c_rt_seed_codec_strictness() {
     assert!(decode_seed(&format!("{}\nR A 0 1\nF x bogus\n", C_RT_SEED_SCHEMA)).is_err());
     // strict decode: digit-leading names rejected
     assert!(decode_seed(&format!("{}\nR 9A 0 0\n", C_RT_SEED_SCHEMA)).is_err());
+}
+
+/// V-02: the mode matrix through C — Copy snapshot before mut (no
+/// retroaction), multiple mut roots, view-record params, mut-text
+/// forwarding (exclusive read domain), borrow returns (a view param's
+/// slice), owned returns (clone/move), reversed named construction,
+/// same-name free function + two-owner methods (nominal identity).
+#[test]
+fn a2c_rt_modes_matrix() {
+    let mut s = open_session("modes_matrix");
+    // Copy snapshot taken BEFORE the mut call keeps its evaluation-point
+    // value — the later exclusive write-back cannot retroactively change it
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_COPY_SNAP",
+        "type Counter { value int }\nfn bump(mut x Counter, delta int) int {\n    x.value = x.value + delta\n    return x.value\n}\nfn main() int {\n    var x Counter = Counter(20)\n    let snap Counter = x\n    let now int = bump(x.mut, 1)\n    return snap.value * 10 + now\n}",
+        "record",
+        &[],
+    );
+    assert_value("MODE_COPY_SNAP", &out, 221);
+    // multiple mut roots + plain return
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_MULTI_MUT",
+        "type Cell { v int }\nfn pair(mut a Cell, mut b Cell) int {\n    a.v = 1\n    b.v = 2\n    return a.v * 10 + b.v\n}\nfn main() int {\n    var x Cell = Cell(0)\n    var y Cell = Cell(0)\n    return pair(x.mut, y.mut)\n}",
+        "record",
+        &[],
+    );
+    assert_value("MODE_MULTI_MUT", &out, 12);
+    // view record param (read-only borrow; no copy)
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_VIEW_RECORD",
+        "type Counter { value int }\nfn scale(x Counter, k int) int {\n    return x.value * k\n}\nfn main() int {\n    let x Counter = Counter(6)\n    return scale(x, 7)\n}",
+        "record",
+        &[],
+    );
+    assert_value("MODE_VIEW_RECORD", &out, 42);
+    // mut TEXT param: exclusive read/forward domain (no mutation surface)
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_MUT_TEXT",
+        "fn twice(mut s Str) int {\n    let t Str = s + s\n    return t.len()\n}\nfn main() int {\n    var a Str = \"ab\"\n    return twice(a)\n}",
+        "text-record",
+        &[],
+    );
+    assert_value("MODE_MUT_TEXT", &out, 4);
+    // borrow return: a slice view of a VIEW param (provenance-verified)
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_BORROW_RETURN",
+        "fn tail(s str) str {\n    return s.slice(1, 3)\n}\nfn main() int {\n    let a Str = \"wxyz\"\n    let t str = tail(a.to(str))\n    return t.len()\n}",
+        "text",
+        &[],
+    );
+    assert_value("MODE_BORROW_RETURN", &out, 2);
+    // owned return: callee returns its clone (caller owns the buffer)
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_OWNED_RETURN",
+        "fn dupe(s str) Str {\n    return s.clone()\n}\nfn main() int {\n    let a Str = \"ab\"\n    let b Str = dupe(a.to(str))\n    return b.len() * 10 + a.len()\n}",
+        "text",
+        &[],
+    );
+    assert_value("MODE_OWNED_RETURN", &out, 22);
+    // reversed named construction places by NAME, not written position
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_NAMED_CTOR",
+        "type P {\n    a int\n    b int\n}\nfn main() int {\n    let p P = P { b: 2, a: 1 }\n    return p.a * 10 + p.b\n}",
+        "record",
+        &[],
+    );
+    assert_value("MODE_NAMED_CTOR", &out, 12);
+    // same-named free function + two-owner methods coexist (nominal
+    // identity: owner-qualified method namespaces)
+    let (out, _) = run_c_chain(
+        &mut s,
+        "MODE_NAME_COLLISION",
+        "type Counter { value int\n  fn read() int { return .value } }\ntype Gauge { value int\n  fn read() int { return .value + 1 } }\nfn read() int { return 7 }\nfn main() int {\n    let c Counter = Counter(1)\n    let g Gauge = Gauge(2)\n    return c.read() * 100 + g.read() * 10 + read()\n}",
+        "record",
+        &[],
+    );
+    assert_value("MODE_NAME_COLLISION", &out, 137);
+}
+
+/// V-02: receiver evaluated exactly once, BEFORE the explicit args —
+/// observed through the C target's trace marks (stderr order).
+#[test]
+fn a2c_rt_receiver_once_before_args() {
+    let mut s = open_session("receiver_once");
+    let (out, err) = run_c_chain_caps(
+        &mut s,
+        "RECV_ONCE",
+        "type Counter { value int\n  fn add(delta int) int { return .value + delta } }\nfn main() int {\n    let c Counter = Counter(mark_b())\n    return c.add(mark_a())\n}",
+        "record",
+        &[],
+        &["hir.test.trace.v1"],
+    );
+    assert_value("RECV_ONCE", &out, 3);
+    let marks: Vec<&str> = err.lines().filter(|l| !l.starts_with("rt:")).collect();
+    assert_eq!(
+        marks,
+        vec!["mark_b", "mark_a"],
+        "receiver evaluated exactly once BEFORE the explicit args (C target)"
+    );
+}
+
+/// V-02 negative: same-root mut + view overlap in one statement is a
+/// NAMED verifier rejection surfaced through the C session entry — the C
+/// channel compiles only verifier-admitted exclusivity, never relaxes it.
+#[test]
+fn a2c_rt_same_root_mut_view_conflict_rejected() {
+    let mut s = open_session("same_root_neg");
+    let err = s
+        .cold_assemble_profile(
+            "type Counter { value int }\nfn bump(mut x Counter, peek Counter) int {\n    x.value = x.value + 1\n    return x.value + peek.value\n}\nfn main() int {\n    var x Counter = Counter(20)\n    return bump(x.mut, x)\n}",
+            SourceProfile::Record,
+            &[],
+            "main",
+            false,
+        )
+        .expect_err("same-root conflict must reject");
+    match err {
+        ace_a2x_store::A2xRejectOrResource::Reject(r) => {
+            assert!(
+                r.detail.contains("verify.mut-conflict"),
+                "expected verify.mut-conflict, got: {}",
+                r
+            );
+        }
+        other => panic!("expected Reject, got {:?}", other),
+    }
+}
+
+/// V-06 (facts consumption on the C channel): a warm fragment edit of a
+/// free function re-verifies through the single-body credential, produces
+/// exactly the edited fragment, and reuses the unchanged residents; a
+/// fragment naming a different function is a named rejection.
+#[test]
+fn a2c_rt_warm_fragment_edit_and_identity() {
+    let base = "fn work(n int) int { return n * 2 }
+fn main() int { return work(21) }";
+    let mut s = open_session("warm_fragment");
+    let _asm = s
+        .cold_assemble_profile(base, SourceProfile::Text, &[], "main", false)
+        .expect("cold");
+    let before = s.stats().clone();
+    // warm fragment edit: only `work` re-produces; `main` reuses
+    let edited = "fn work(n int) int { return n * 3 }";
+    let asm2 = s
+        .warm_edit("work", edited, "main", false)
+        .expect("warm edit");
+    let stats = s.stats();
+    assert_eq!(stats.lower - before.lower, 1, "exactly the edited function lowers");
+    assert_eq!(stats.print - before.print, 1, "exactly the edited function prints");
+    assert_eq!(
+        stats.persist - before.persist,
+        2,
+        "one semantic + one fragment put for the edited function only"
+    );
+    // the edited file set actually carries the NEW semantics (real cl)
+    let dir = out_root().join("WARM_EDIT");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &asm2.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let exe = dir.join("warm.exe");
+    ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)
+        .unwrap_or_else(|e| panic!("cl: {e}"));
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = std::process::Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run");
+    assert_eq!(
+        String::from_utf8_lossy(run.stdout.as_ref().unwrap()),
+        "value:63
+",
+        "21 * 3 after the warm edit"
+    );
+    // a fragment naming a DIFFERENT function is a named rejection
+    let err = s
+        .warm_edit("main", "fn work(n int) int { return n }", "main", false)
+        .expect_err("cross-name fragment must reject");
+    match err {
+        ace_a2x_store::A2xRejectOrResource::Reject(r) => {
+            assert!(r.code.starts_with("a2x."), "named rejection, got {}", r);
+        }
+        other => panic!("expected Reject, got {:?}", other),
+    }
 }
