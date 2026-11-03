@@ -1,3 +1,11 @@
+### D-927-2 — mn 暖编辑 refused 分类破损（ace-conformance host / ace-performance 唯一红；基座既有）
+
+- **发现**：2026-11-04，PLAN-927 T-10 正式采样（`cargo t ace-performance` T3_MILESTONE 档：59/60 绿，唯一红 `mn.t11.refused`）与 ace-host 组的 `mir_native_incremental_formal_runner_gate`（refused 控制期望 Error 得 Fail）。
+- **归属**：**基座既有，非 927 引入**——(a) base `2f558fc93` 的 ace-conformance 因 ExpectSpec 缺 `trace` 字段（Plan 891/914 交互）本就编译不过，该门在 base 从未执行（927 的 2 行编译修复才首次暴露）；(b) 在 927 worktree 用 `ZZ927LEGACY` 一行回退到手写 parser 复跑，**同样红**（ Fail≠Error / refused 同现），且 301,387 字节 rev0 工作负载的新旧链 AST 逐字节全等（含全部 span）。
+- **现象**：暖编辑被 retained 环境接口门拒绝（`mn.incremental.refused.untyped: non-fast-path: signature change refused`）而该编辑按测试合同应走快路径成功；refused 路径的 Error/Fail 分类也不符合同。
+- **owner / 关闭条件**：mn resident（ace-native/av session 增量机）域——建议独立 fix 计划；关闭=两处 t11 门绿 + `cargo t ace-performance` 60/60。
+- **不在 PLAN-927 §6 组清单内**（ace-host/ace-performance 的该腿）；927 的采样收据按 59/60+本条归因记录。
+
 ### D-927-1 — 统一 CST 列表机 restore 纪律丢语句分隔换行（无损重建红）【已关闭 2026-11-04】
 
 - **修复**：`Save` 携带 pending trivia **内容**（Vec）而非长度——长度截断在 drain/重填后
