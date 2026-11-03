@@ -1075,6 +1075,7 @@ fn dispatch_check(
                     | Some(ac_mn::TYPED_RECIPE)
                     | Some(ac_mn::RESOURCE_EVENTS_RECIPE)
                     | Some(ac_mn::RESOURCE_GUARDS_RECIPE)
+                    | Some(ac_mn::CLOSURES_RESOURCE_RECIPE)
             ) =>
         {
             ac_mn::run_check(

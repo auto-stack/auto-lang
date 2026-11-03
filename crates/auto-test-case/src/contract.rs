@@ -2525,6 +2525,7 @@ fn decode_options(
                     Some(rv) => {
                         if recipe != "ac/mir-native-resource-events-v1"
                             && recipe != "ac/mir-native-resource-guards-v1"
+                            && recipe != "ac/mir-native-closures-resource-v1"
                         {
                             return Err(err(
                                 &mf.path_of("resource"),
@@ -2825,6 +2826,11 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // requests only) plus the checked List-place machine chain; the parent
     // judges the frozen seam/trap/cleanup facts.
     "ac/mir-native-resource-guards-v1",
+    // PLAN-924: the native closures-resource recipe (scenario R02 closure
+    // domain + R05 ac cells) — the limited native closure domain on the
+    // same runtime library with the env-node seam (S9); the parent judges
+    // the frozen seam/trap/cleanup facts and R05's env-lifecycle events.
+    "ac/mir-native-closures-resource-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

@@ -840,6 +840,23 @@ suite = "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-
 domain = "ace"
 all = false
 
+# PLAN-924: the native closures-resource scenario suite (the R02 closure
+# domain + R05 ac cells) — real source PEs through the closures pipeline
+# with the env-node seam (S9) in the injection domain; the parent judges
+# the frozen trap/seam/cleanup facts, the base exits and R05's
+# env-lifecycle event shape from the observed stream.
+[[group]]
+name = "case-ace-m1-native-closures-924"
+title = "ACE M1 native closures scenario 924 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-913: the source-bound recovery suite (publish -> fresh-process
 # restore with zero source production -> the next warm single-unit edit).
 [[group]]

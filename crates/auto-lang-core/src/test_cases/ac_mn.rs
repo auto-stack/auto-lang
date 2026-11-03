@@ -2039,7 +2039,8 @@ pub fn run_check(
             // sweep (budget/cancel/trap) never publishes its candidate —
             // the manifest identity chain applies to the published faces.
             let trap_face = (recipe == RESOURCE_EVENTS_RECIPE
-                || recipe == RESOURCE_GUARDS_RECIPE)
+                || recipe == RESOURCE_GUARDS_RECIPE
+                || recipe == CLOSURES_RESOURCE_RECIPE)
                 && hex_stream(&session_stderr)
                     .ok()
                     .and_then(|b| String::from_utf8(b).ok())
