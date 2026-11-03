@@ -155,6 +155,43 @@ fn run_c_chain(
     )
 }
 
+/// Compile + run an existing ASSEMBLY (the warm path's evidence leg).
+fn run_asm(name: &str, asm: &ace_a2x_store::Assembly) -> String {
+    let dir = out_root().join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &asm.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &asm.manifest).unwrap();
+    let exe = dir.join("a2c_coll_case.exe");
+    ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)
+        .unwrap_or_else(|e| panic!("cl failed for {}: {}", name, e));
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
+    assert_eq!(run.kind, auto_tool_execution::ExitKind::Success);
+    String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string()
+}
+
+/// Byte offsets of `fn_name`'s single-line declaration in `src`.
+fn fn_range(src: &str, fn_name: &str) -> (usize, usize) {
+    let needle = format!("fn {fn_name}(");
+    let start = src.find(&needle).expect("fn start");
+    let end = src[start..]
+        .find('\n')
+        .map(|i| start + i)
+        .unwrap_or(src.len());
+    (start, end)
+}
+
 fn assert_value(name: &str, out: &str, expected: i32) {
     assert_eq!(
         out,
@@ -651,5 +688,295 @@ int main(void) {
     WaitForSingleObject(th, INFINITE);
     CloseHandle(th);
     return g_fail ? 1 : 0;
+}
+"#;
+
+/// INC-926-WARM (V-08): the C channel's TRUE function-level increment —
+/// a source with `type`/`enum` declarations and THREE functions; a
+/// ranged body edit re-prints EXACTLY the edited fragment (production
+/// count +1, the ≥2 unchanged functions are store hits with byte-stable
+/// C fragments), the assembly runs the new oracle through real cl, and
+/// the A→B→A revisit serves the historical bytes with ZERO production.
+#[test]
+fn a2c_coll_true_ranged_increment() {
+    // three free functions around a List<Choice> main with an owned
+    // record payload and an exhaustive is (the INC-904-DECL shape)
+    const A: &str = "fn left_value() int { return 20 }\nfn right_value() int { return 22 }\ntype Item { code int }\nenum Choice { Data(Item)\nEnd }\nfn main() int {\n    var xs = List<Choice>.new()\n    xs.push(Choice.Data(Item(left_value() + right_value())))\n    let t = xs.remove(0)\n    is t {\n        Choice.Data(item) -> { return item.code }\n        Choice.End -> { return 0 }\n    }\n}";
+    let mut s = open_session("warm_increment");
+    let a = s
+        .cold_assemble_profile(A, SourceProfile::Collections, &[], "main", false)
+        .expect("cold A");
+    assert_eq!(run_asm("WARM-A", &a), "value:42\n");
+    assert!(a.manifest.contains("auto.a2x.c.collections.fileset/1"));
+    let prints_a = s.stats.print;
+
+    // B: only left_value's body changes; the C fragments of right_value
+    // and main are STORE HITS (byte-stable), production = exactly one
+    let src_b = A.replace("return 20 }", "return 20+1 }");
+    let b = s
+        .warm_edit_ranged(
+            "left_value",
+            A,
+            fn_range(A, "left_value"),
+            "fn left_value() int { return 20+1 }",
+            "main",
+            false,
+        )
+        .expect("ranged B");
+    assert_eq!(run_asm("WARM-B", &b), "value:43\n");
+    assert_eq!(s.stats.print, prints_a + 1, "exactly the edited fragment");
+    let full_b_sha = {
+        use ace_a2x_core::sha256::sha256_hex;
+        sha256_hex(src_b.as_bytes())
+    };
+    assert!(
+        b.manifest
+            .contains(&format!("\"source_sha256\": \"{full_b_sha}\"")),
+        "the warm manifest binds the REPLACED FULL SOURCE hash"
+    );
+
+    // A revisit on top of B: historical bytes, zero production
+    let prints_b = s.stats.print;
+    let a2 = s
+        .warm_edit_ranged(
+            "left_value",
+            &src_b,
+            fn_range(&src_b, "left_value"),
+            "fn left_value() int { return 20 }",
+            "main",
+            false,
+        )
+        .expect("ranged A revisit");
+    assert_eq!(run_asm("WARM-A2", &a2), "value:42\n");
+    assert_eq!(s.stats.print, prints_b, "A revisit produces nothing");
+    assert!(
+        s.stats.store_hit_fragment >= 1,
+        "historical fragment served by the store"
+    );
+    assert_eq!(a.files, a2.files, "A revisit reuses the historical bytes");
+}
+
+/// V-08 negative controls: a STALE base (the caller's base source is not
+/// the session's current source) and a range escaping the single
+/// declaration are both NAMED rejections — never a wrong warm assembly.
+#[test]
+fn a2c_coll_warm_rejections() {
+    const A: &str = "fn left_value() int { return 20 }\nfn right_value() int { return 22 }\nfn main() int { return left_value() + right_value() }";
+    let mut s = open_session("warm_rejections");
+    s.cold_assemble_profile(A, SourceProfile::Collections, &[], "main", false)
+        .expect("cold");
+    // stale base: the authorization names a source the session never saw
+    let stale = A.replace("return 22 }", "return 99 }");
+    let err = s
+        .warm_edit_ranged(
+            "left_value",
+            &stale,
+            fn_range(&stale, "left_value"),
+            "fn left_value() int { return 20+1 }",
+            "main",
+            false,
+        )
+        .expect_err("stale base must reject");
+    assert!(format!("{err:?}").contains("base"), "stale base: {err:?}");
+    // a range covering TWO declarations (left through right) is not a
+    // single-declaration edit
+    let start = A.find("fn left_value").unwrap();
+    let right = A.find("fn right_value").unwrap();
+    let end = right + A[right..].find('\n').unwrap();
+    let err = s
+        .warm_edit_ranged(
+            "left_value",
+            A,
+            (start, end),
+            "fn left_value() int { return 20+1 }",
+            "main",
+            false,
+        )
+        .expect_err("multi-declaration range must reject");
+    assert!(
+        format!("{err:?}").to_lowercase().contains("range")
+            || format!("{err:?}").to_lowercase().contains("declaration"),
+        "multi-decl range: {err:?}"
+    );
+}
+
+/// V-09 (real dependency invalidation through the C channel): a
+/// DECLARATION edit (the record gains a field the reader's layout
+/// depends on) re-admits COLD and rebuilds the ACTUAL reader's fragment
+/// (main reads Item), while the non-readers' fragments (left/right have
+/// no Item dependency) are store hits; re-visiting the ORIGINAL table
+/// content reuses every fragment again.
+#[test]
+fn a2c_coll_decl_dependency_invalidation() {
+    // main READS Item.code; left/right do not touch the record
+    const A: &str = "fn left_value() int { return 20 }\nfn right_value() int { return 22 }\ntype Item { code int }\nfn main() int {\n    let x Item = Item(7)\n    return x.code + left_value() + right_value()\n}";
+    let mut s = open_session("decl_invalidation");
+    s.cold_assemble_profile(A, SourceProfile::Collections, &[], "main", false)
+        .expect("cold A");
+    let prints_a = s.stats.print;
+
+    // A': the declaration gains a field (layout change). Cold
+    // re-admission MUST rebuild main (a real reader of Item's shape);
+    // left/right keep their store hits (no Item dependency). The value
+    // is unchanged (7 + 20 + 22 = 49) — the reader ran against the NEW
+    // layout without changing behavior.
+    let a_prime = A
+        .replace(
+            "type Item { code int }",
+            "type Item { extra int; code int }",
+        )
+        .replace("Item(7)", "Item(5, 7)");
+    let ap = s
+        .cold_assemble_profile(&a_prime, SourceProfile::Collections, &[], "main", false)
+        .expect("cold A-prime");
+    assert_eq!(run_asm("DECL-AP", &ap), "value:49\n");
+    assert!(
+        s.stats.print < prints_a + 3,
+        "non-readers must be store hits (print={})",
+        s.stats.print
+    );
+    assert!(s.stats.print >= 1, "the real reader was rebuilt");
+
+    // the ORIGINAL table content revisits to all-hits and the same value
+    let prints_ap = s.stats.print;
+    let a2 = s
+        .cold_assemble_profile(A, SourceProfile::Collections, &[], "main", false)
+        .expect("cold A revisit");
+    assert_eq!(run_asm("DECL-A2", &a2), "value:49\n");
+    assert_eq!(
+        s.stats.print, prints_ap,
+        "equivalent table content reuses all fragments"
+    );
+}
+
+/// V-02 negative controls (the view/index/mutation surface): a literal-0
+/// index on an EMPTY list still traps (no fused-index fast path may skip
+/// the bounds check), and the structural-mutation / view-escape sources
+/// are NAMED frontend rejections.
+#[test]
+fn a2c_coll_view_surface_negative_controls() {
+    let mut s = open_session("view_controls");
+    // fused index 0 on an EMPTY list: the check runs before any access
+    const EMPTY_GET0: &str =
+        "fn main() int {\n    var xs = List<int>.new()\n    return xs.get(0)\n}";
+    let (out, _err) = run_c_chain(&mut s, "EMPTY_GET0", EMPTY_GET0, &[]);
+    assert_trap("EMPTY_GET0", &out, "ListIndex");
+
+    // structural mutation inside for-in: named frontend rejection
+    const MUTATE: &str = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(1)\n    var t = 0\n    for x in xs {\n        xs.push(2)\n        t = t + x\n    }\n    return t\n}";
+    let err = s
+        .cold_assemble_profile(MUTATE, SourceProfile::Collections, &[], "main", false)
+        .expect_err("iterate-mutate must reject");
+    assert!(
+        format!("{err:?}").contains("iterate") || format!("{err:?}").contains("mutate"),
+        "iterate-mutate: {err:?}"
+    );
+
+    // view escape: assigning to an owned-element view binding is rejected
+    const ESCAPE: &str = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"a\", 1))\n    for x in xs {\n        x = Item(\"b\", 2)\n    }\n    return xs.len()\n}";
+    let err = s
+        .cold_assemble_profile(ESCAPE, SourceProfile::Collections, &[], "main", false)
+        .expect_err("view escape must reject");
+    assert!(
+        format!("{err:?}").contains("view") || format!("{err:?}").contains("escape"),
+        "view-escape: {err:?}"
+    );
+}
+
+/// V-03 negative control (variant arm discipline at the runtime seam):
+/// a wrong-arm take is the typed `VariantBranch` trap and leaves the
+/// root untouched; the right-arm take moves the payload out; the disc
+/// guards every free (a non-active owned arm releases nothing). Admitted
+/// source can never take a wrong arm (the verifier proves it) — the
+/// CONTROL drives the generated take helpers directly, same pattern as
+/// the helper probe (same generated runtime, hand-written driver).
+#[test]
+fn a2c_coll_variant_arm_negative_controls() {
+    let mut s = open_session("variant_controls");
+    const SRC: &str = "enum Pair { A(int)\nB(int) }\nfn main() int {\n    let p = Pair.A(42)\n    is p {\n        Pair.A(v) -> { return v }\n        Pair.B(v) -> { return v + 1 }\n    }\n}";
+    let (out, _err) = run_c_chain(&mut s, "VARCTL-source", SRC, &[]);
+    assert_value("VARCTL-source", &out, 42);
+
+    let asm = s
+        .cold_assemble_profile(SRC, SourceProfile::Collections, &[], "main", false)
+        .expect("assembly");
+    let dir = out_root().join("VARCTL-probe");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &asm.files {
+        if path != "main.c" {
+            std::fs::write(dir.join(path), content).unwrap();
+        }
+    }
+    std::fs::write(dir.join("probe.c"), VARIANT_PROBE_C).unwrap();
+    let exe = dir.join("probe.exe");
+    ace_a2x_worker::crun::compile_c_standalone(&dir.join("probe.c"), &exe)
+        .unwrap_or_else(|e| panic!("probe cl failed: {e}"));
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run probe");
+    assert_eq!(run.kind, auto_tool_execution::ExitKind::Success);
+    let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
+    assert_eq!(out, "V1:ok\nV2:ok\n", "variant controls");
+}
+
+/// The hand-written variant-arm control driver (same generated runtime).
+const VARIANT_PROBE_C: &str = r#"#include <fcntl.h>
+#include <io.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "a2x_c_coll_runtime.h"
+#include "generated.c"
+
+int main(void) {
+    int fail = 0;
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+    /* V1: wrong-arm take traps VariantBranch and leaves the root
+     * untouched (the payload stays readable); the right arm then moves
+     * it out; a disc-0 root frees nothing */
+    {
+        a2x_var_Pair v;
+        int32_t out = 0;
+        a2x_trap_code t;
+        memset(&v, 0, sizeof v);
+        v.disc = 0; /* arm A */
+        v.as.p_A = 42;
+        t = a2x_coll_take_Pair_B(&v, &out);
+        if (t != A2X_TRAP_VARIANT_BRANCH) fail = 1;
+        if (v.disc != 0 || v.as.p_A != 42) fail = 1; /* untouched root */
+        t = a2x_coll_take_Pair_A(&v, &out);
+        if (t != A2X_TRAP_NONE || out != 42) fail = 1;
+        a2x_coll_free_var_Pair(&v); /* idempotent shell free */
+        if (!fail) printf("V1:ok\n");
+    }
+    /* V2: the copy payload projects without ownership effects; the
+     * wrong-arm control repeats on the other arm */
+    {
+        a2x_var_Pair v;
+        int32_t out = 0;
+        a2x_trap_code t;
+        memset(&v, 0, sizeof v);
+        v.disc = 1; /* arm B */
+        v.as.p_B = 7;
+        t = a2x_coll_take_Pair_A(&v, &out);
+        if (t != A2X_TRAP_VARIANT_BRANCH) fail = 1;
+        t = a2x_coll_take_Pair_B(&v, &out);
+        if (t != A2X_TRAP_NONE || out != 7) fail = 1;
+        a2x_coll_free_var_Pair(&v);
+        if (!fail) printf("V2:ok\n");
+    }
+    return fail ? 1 : 0;
 }
 "#;

@@ -589,6 +589,7 @@ fn assemble_collections_fileset(req: FilesetRequest<'_>) -> Result<FileSet, A2xR
         runtime,
         prelude_seed,
         origins,
+        source_sha256,
         ..
     } = req;
     // the nominal type table: the SEED is the assembly's single source
@@ -661,6 +662,13 @@ fn assemble_collections_fileset(req: FilesetRequest<'_>) -> Result<FileSet, A2xR
         C_COLL_FILESET_SCHEMA
     ));
     manifest.push_str(&format!("  \"input_hash\": \"{}\",\n", input_hash));
+    // PLAN-926 (mirrors PLAN-904): the manifest binds the REPLACED FULL
+    // SOURCE hash — the ranged warm authorization's identity (a
+    // fragment-only hash can never establish it)
+    manifest.push_str(&format!(
+        "  \"source_sha256\": \"{}\",\n",
+        source_sha256.unwrap_or_default()
+    ));
     manifest.push_str(&format!(
         "  \"entry\": \"{}\",\n  \"functions\": [\n",
         entry
