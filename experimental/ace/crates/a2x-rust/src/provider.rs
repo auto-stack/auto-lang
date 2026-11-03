@@ -183,6 +183,7 @@ impl TargetProvider for RustTargetProvider {
             view,
             runtime,
             prelude_seed,
+            origins,
             source_sha256,
         } = req;
         let mut generated = String::new();
@@ -251,8 +252,16 @@ impl TargetProvider for RustTargetProvider {
             // origins are included whenever the assembly carries its view
             // (the cold path); warm assemblies list declarations only —
             // frozen per-family behavior
-            if let Some(v) = view {
-                let origin = v.fn_by_def(r.def_index).map(|f| f.origin).unwrap_or((0, 0));
+            // PLAN-921: view origins first (cold); the anchor's origin
+            // map second (pure restore); declaration-only otherwise
+            let origin_opt = if let Some(v) = view {
+                Some(v.fn_by_def(r.def_index).map(|f| f.origin).unwrap_or((0, 0)))
+            } else {
+                origins
+                    .and_then(|m| m.iter().find(|(d, _)| *d == r.def_index))
+                    .map(|o| o.1)
+            };
+            if let Some(origin) = origin_opt {
                 manifest.push_str(&format!(
                     "    {{ \"decl\": \"{}\", \"sem_fp\": \"{}\", \"origin\": [{}, {}] }}{}\n",
                     r.source_name, r.sem_fp, origin.0, origin.1, comma

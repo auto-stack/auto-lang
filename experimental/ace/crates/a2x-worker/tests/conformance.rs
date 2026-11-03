@@ -1,3 +1,5 @@
+#[path = "cases/a2c_restore.rs"]
+mod a2c_restore;
 #[path = "cases/a2c_scalar_semantics.rs"]
 mod a2c_scalar_semantics;
 #[path = "cases/boundaries.rs"]

@@ -78,6 +78,10 @@ pub struct FilesetRequest<'a> {
     pub view: Option<&'a SemanticView<'a>>,
     pub runtime: &'a str,
     pub prelude_seed: Option<&'a str>,
+    /// PLAN-921: def-index -> source origin for view-less assemblies
+    /// (pure restore) — the manifest carries origins exactly like the
+    /// cold path's view-derived ones.
+    pub origins: Option<&'a [(usize, (u32, u32))]>,
     /// sha256 of the current full source when the family binds its
     /// manifest to the replaced source (collections); `None` otherwise.
     pub source_sha256: Option<&'a str>,

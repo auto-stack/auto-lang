@@ -58,6 +58,7 @@ dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
  "ace-abi",
+ "ace-artifacts",
  "ace-core",
  "auto-tool-execution",
  "serde_json",

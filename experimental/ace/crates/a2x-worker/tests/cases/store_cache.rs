@@ -95,7 +95,9 @@ fn layered_session_lifecycle() {
     let st = s.stats();
     assert_eq!(st.lower, 2, "two fragments lowered cold");
     assert_eq!(st.print, 2);
-    assert_eq!(st.persist, 4, "semantic+fragment per function");
+    // PLAN-921: +1 for the source-bound anchor (the scalar channel's
+    // restore commit point) — semantic+fragment per function, one anchor
+    assert_eq!(st.persist, 5, "semantic+fragment per function + anchor");
     assert_eq!(run_assembly(&cold, "cold"), "value:41", "helper(20)*2+1");
 
     let cold_generated = generated_of(&cold).to_string();
