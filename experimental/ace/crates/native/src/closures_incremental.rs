@@ -10,7 +10,6 @@
 
 use crate::closures_lower;
 use crate::collections_runtime as runtime;
-use crate::driver::MnDriver;
 use crate::driver::collections::next_candidate;
 use crate::link_driver;
 use crate::observe::Obs;
@@ -55,10 +54,8 @@ pub struct ClosuresNativeSession {
     objects: BTreeMap<String, Vec<u8>>,
     symbols: BTreeMap<String, String>,
     imports: BTreeMap<String, Vec<(String, String)>>,
-    driver: MnDriver,
     runtime: runtime::Prepared,
     workdir: PathBuf,
-    support: Option<PathBuf>,
     exe: Option<PathBuf>,
     knobs: crate::collections_lower::WrapperKnobs,
     closed: bool,
@@ -76,7 +73,6 @@ impl ClosuresNativeSession {
     pub fn new(
         source: &str,
         entry: &str,
-        driver: MnDriver,
         workdir: &Path,
         support: Option<&Path>,
     ) -> Result<(Self, ClosuresRun), MnError> {
@@ -117,10 +113,8 @@ impl ClosuresNativeSession {
             wires: BTreeMap::new(),
             objects: BTreeMap::new(),
             symbols: BTreeMap::new(),
-            driver,
             runtime,
             workdir: workdir.to_path_buf(),
-            support: support.map(Path::to_path_buf),
             imports: BTreeMap::new(),
             exe: None,
             knobs: Default::default(),
@@ -543,6 +537,15 @@ impl ClosuresNativeSession {
         }
         self.closed = true;
         Ok(())
+    }
+
+    /// SHA-256 of every resident unit object — the codegen identity a
+    /// consumer diffes to prove unchanged units kept their linked COFF.
+    pub fn object_hashes(&self) -> BTreeMap<String, String> {
+        self.objects
+            .iter()
+            .map(|(name, bytes)| (name.clone(), crate::cache::content_hash(bytes)))
+            .collect()
     }
 }
 

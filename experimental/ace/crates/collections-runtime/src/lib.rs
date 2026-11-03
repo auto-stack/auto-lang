@@ -1918,6 +1918,12 @@ pub unsafe extern "system" fn mn_coll_abort(code: i32) -> ! {
         }
         p = next;
     }
+    // PLAN-924 (V-12): the frame chain is empty and every parked env is
+    // finalized — the NORMAL path's last frame_leave releases the text
+    // runtime's idle scalar metadata here; the trap path must reach the
+    // SAME text/arena baseline or a program whose body already ran StrLen
+    // leaks its metadata (observed: arena_live=288 after the sweep).
+    ac_text_runtime::ac_rt_release_idle_metadata();
     line(b"MN-COLL-TRAP code=", code.unsigned_abs() as u64);
     mn_coll_summary();
     ExitProcess(70)

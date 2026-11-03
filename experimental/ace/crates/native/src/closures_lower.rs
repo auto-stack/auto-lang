@@ -249,31 +249,6 @@ pub fn admit_layouts(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
     crate::closures_layout::descriptors(m)
 }
 
-/// An admitted resident unit: process-local admission over shared MIR +
-/// descriptors (mirrors `CheckedCollectionUnit`; separate family identity).
-pub struct CheckedClosuresUnit {
-    module: std::rc::Rc<MirModule>,
-    layouts: std::rc::Rc<Vec<Descriptor>>,
-}
-impl CheckedClosuresUnit {
-    pub fn admit(m: MirModule) -> Result<Self, MnError> {
-        let layouts = std::rc::Rc::new(admit_layouts(&m)?);
-        Ok(Self {
-            module: std::rc::Rc::new(m),
-            layouts,
-        })
-    }
-    pub fn module(&self) -> &MirModule {
-        &self.module
-    }
-    pub fn module_rc(&self) -> std::rc::Rc<MirModule> {
-        self.module.clone()
-    }
-    pub fn layouts(&self) -> &[Descriptor] {
-        &self.layouts
-    }
-}
-
 fn signature(count: usize) -> Signature {
     Signature {
         call_conv: CallConv::WindowsFastcall,
@@ -288,9 +263,6 @@ fn signature(count: usize) -> Signature {
 pub fn emit_unit_coff(m: &MirModule) -> Result<emit::UnitObject, MnError> {
     let layouts = admit_layouts(m)?;
     emit_admitted(m, &layouts)
-}
-pub(crate) fn emit_checked(checked: &CheckedClosuresUnit) -> Result<emit::UnitObject, MnError> {
-    emit_admitted(checked.module(), checked.layouts())
 }
 fn emit_admitted(m: &MirModule, layouts: &[Descriptor]) -> Result<emit::UnitObject, MnError> {
     let mut om = ObjectModule::new(

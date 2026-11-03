@@ -16,14 +16,6 @@ pub struct ColdClosures<T = MirModule> {
     pub real_body_plans: usize,
     pub scaffold_declarations: usize,
 }
-fn backend(error: impl std::fmt::Display) -> Vec<Diagnostic> {
-    vec![Diagnostic::new(
-        Stage::Backend,
-        "native.closures-lower",
-        error.to_string(),
-        Span { start: 0, end: 0 },
-    )]
-}
 /// The cold-produce error faces: source diagnostics keep the shared
 /// frontend's report; native admission failures pass through UNMASKED so
 /// the named rejection (type/capture/instruction face) reaches the parent.
@@ -44,18 +36,6 @@ pub fn cold(source: &str, module_path: &str) -> Result<ColdClosures, ColdError> 
 enum ColdProduceError {
     Source(Vec<Diagnostic>),
     Admit(crate::MnError),
-}
-pub(crate) fn cold_admitted(
-    source: &str,
-    module_path: &str,
-) -> Result<ColdClosures<crate::closures_lower::CheckedClosuresUnit>, ColdError> {
-    cold_produce(source, module_path, |unit| {
-        crate::closures_lower::CheckedClosuresUnit::admit(unit).map_err(ColdError::Admit)
-    })
-    .map_err(|e| match e {
-        ColdProduceError::Source(ds) => ColdError::Source(ds),
-        ColdProduceError::Admit(e) => ColdError::Admit(e),
-    })
 }
 fn cold_produce<T>(
     source: &str,
