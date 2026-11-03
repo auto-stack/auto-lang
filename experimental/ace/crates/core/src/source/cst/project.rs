@@ -3052,19 +3052,37 @@ impl<'a> Engine<'a> {
         if argc == 0 && self.callee_base_leading_dot(callee_n) {
             self.empty_value_quirk(close_end);
         }
-        // callee 静态分析：expr 分派 → 一元链 → postfix/atom。KIND_POSTFIX
-        // 包装节点本身承载步结构，直接作为 wrap（不再下钻首个非空孩子）。
+        // callee 静态分析：expr 分派 → 一元链 → postfix/atom。callee 可能自身
+        // 就是 unary_expr（pratt 把 primary 的 unary 节点作 callee——`!f(x)`
+        // 的 Not/Neg 在此先收，is-digit 差分）；随后与原路径一致地下钻。
         let plan = {
-            let mut wrap = if self.cx.tree.kind(callee_n) == KIND_POSTFIX {
-                callee_n
-            } else {
-                self.cx
-                    .children(callee_n)
+            let mut unary_pre: Vec<UnaryOp> = Vec::new();
+            let mut wrap = callee_n;
+            while self.cx.tree.kind(wrap) == self.cx.k.unary_expr {
+                let hm = self.cx.child_of_kind(wrap, self.cx.k.tok_minus).is_some();
+                let hb = self.cx.child_of_kind(wrap, self.cx.k.tok_bang).is_some();
+                if !hm && !hb {
+                    break;
+                }
+                unary_pre.push(if hb { UnaryOp::Not } else { UnaryOp::Neg });
+                match self
+                    .cx
+                    .child_of_kind(wrap, self.cx.k.unary_expr)
+                    .or_else(|| self.cx.child_of_kind(wrap, self.cx.k.postfix_expr))
+                {
+                    Some(o) => wrap = o,
+                    None => break,
+                }
+            }
+            if self.cx.tree.kind(wrap) != KIND_POSTFIX && self.cx.tree.kind(wrap) != self.cx.k.postfix_expr {
+                wrap = self
+                    .cx
+                    .children(wrap)
                     .into_iter()
                     .find(|&c| self.cx.tree.child_count(c) > 0)
-                    .unwrap_or(callee_n)
-            };
-            let mut unary_ops: Vec<UnaryOp> = Vec::new();
+                    .unwrap_or(wrap);
+            }
+            let mut unary_ops: Vec<UnaryOp> = unary_pre;
             loop {
                 if self.cx.tree.kind(wrap) == self.cx.k.unary_expr {
                     let has_minus = self.cx.child_of_kind(wrap, self.cx.k.tok_minus).is_some();

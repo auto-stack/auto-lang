@@ -237,7 +237,7 @@ fn differential_edge_rejects() {
         ("let print = 1\n1", SourceProfile::HostConsole),
     ];
     for (i, (src, profile)) in cases.iter().enumerate() {
-        let old = parse_program_with(src, *profile);
+        let old = ace_core::source::parse_program_with_handwritten(src, *profile);
         let new = cst::parse_program_via_cst(src, *profile);
         let agree = match (&old, &new) {
             (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
@@ -274,10 +274,13 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("fn main() int { let 数 = 1; return 0 }", SourceProfile::Text),
+        ("fn is_digit(c int) bool { return c >= 48 && c <= 57 }
+fn main() int { let ok = is_digit(48) && is_digit(57) && !is_digit(47) && !is_digit(58)
+ if ok { return 0 }
+ return 1 }", SourceProfile::Scalar),
     ];
     for (i, (src, profile)) in snips.iter().enumerate() {
-        let old = parse_program_with(src, *profile);
+        let old = ace_core::source::parse_program_with_handwritten(src, *profile);
         let new = cst::parse_program_via_cst(src, *profile);
         let agree = match (&old, &new) {
             (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
@@ -295,6 +298,21 @@ fn zz_snippets() {
             old.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
             new.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
         );
+        if !agree {
+            let o = format!("{old:?}");
+            let n = format!("{new:?}");
+            let pos = o.bytes().zip(n.bytes()).position(|(a, b)| a != b).unwrap_or(o.len().min(n.len()));
+            let s0 = pos.saturating_sub(120);
+            eprintln!(
+                "FIRSTDIFF@{pos}
+--old--
+{}
+--new--
+{}",
+                &o[s0..(pos + 160).min(o.len())],
+                &n[s0..(pos + 160).min(n.len())]
+            );
+        }
     }
 }
 
