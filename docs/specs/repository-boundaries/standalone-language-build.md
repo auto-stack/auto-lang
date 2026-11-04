@@ -40,8 +40,9 @@
 
 ## PLAN-930 独立边界复验（SD-03，as-built）
 
-- 隔离快照=仅语言来源的冻结副本（无 UI/Web/Man/Down 兄弟检出、无 target/、
-  无 .git、清除 AUTO_* 覆盖），落 plan-artifacts 暂存区不移动用户真实仓。
+- 隔离快照=仅语言来源的冻结副本（无 UI/Web/Man/Down 兄弟检出、快照初始无
+  target/ 无 .git、清除 AUTO_* 覆盖），落 plan-artifacts 暂存区不移动用户
+  真实仓；L2 构建产物落快照内属允许范围（不借任何旧编译物）。
 - L1：`cargo test --manifest-path test/fixtures/modularity/language-sdk-consumer/
   Cargo.toml` 真实 API/VM/trans 消费 5/5；缺源负控（抽走 `auto-lang-core`
   源码模块→具名红、恢复→绿）。
