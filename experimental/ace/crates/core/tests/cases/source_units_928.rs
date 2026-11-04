@@ -220,3 +220,41 @@ fn t02_budget_typed_resource_exhausted() {
         other => panic!("edit must stay resource-typed, got {other:?}"),
     }
 }
+
+/// PLAN-928 T-03：collections 面差分（统一前门 vs 手写 oracle；字节全等）。
+/// 覆盖 L04/L05 全语法（type `;` 字段、List<T>.new、pos/named ctor、move
+/// 后缀、方法链）、enum/臂载荷/is 限定臂/for-in（裸 ident 迭代器，C7）、
+/// 参数化/可选/嵌套泛型、`<` 比较回退、Str/clone。
+#[test]
+fn t03_collections_differential() {
+    let cases: &[(&str, &str)] = &[
+        ("type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    let x Item = Item(\"hello\", 37)\n    xs.push(x.move)\n    return xs.get(0).name.len() + xs.get(0).code\n}\n", "L04"),
+        ("type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"hello\", 37))\n    let x Item = xs.remove(0)\n    return x.name.len() + x.code + xs.len()\n}\n", "L05"),
+        ("enum Shape { Dot Circle(int) Square(int) }\nfn main() int {\n    let s Shape = Circle(3)\n    is s {\n        Dot -> { return 0 }\n        Circle(r) -> { return r }\n        Square(w) -> { return w }\n    }\n}\n", "enum-is"),
+        ("fn main() int {\n    var xs = List<int>.new()\n    xs.push(1)\n    xs.push(2)\n    var total int = 0\n    for x in xs {\n        total = total + x\n    }\n    return total + xs.len()\n}\n", "for-in"),
+        ("fn f(a int, b int) bool {\n    return a < b\n}\n", "lt-compare-fallback"),
+        ("fn opt(x ?int) int {\n    return 1\n}\n", "optional-ty"),
+        ("fn r(x Result<int, Str>) int {\n    return 1\n}\n", "result-2args"),
+        ("fn r(x List<List<int>>) int {\n    return 1\n}\n", "nested-generic"),
+        ("type P { a int }\nfn main() int {\n    let p P = P { a: 1 }\n    return p.a\n}\n", "named-ctor"),
+        ("enum Shape { Dot }\nfn main() int {\n    let s Shape = Dot\n    is s {\n        Shape.Dot -> { return 0 }\n    }\n}\n", "is-qual-arm"),
+        ("fn main() int {\n    let s Str = \"hi\"\n    var t Str = s.clone()\n    return t.len()\n}\n", "str-clone"),
+    ];
+    for (src, what) in cases {
+        let old = parse_program_with_handwritten(src, SourceProfile::Collections);
+        let new = cst::parse_program_via_cst(src, SourceProfile::Collections);
+        match (&old, &new) {
+            (Ok(a), Ok(b)) => assert_eq!(
+                format!("{a:?}"),
+                format!("{b:?}"),
+                "{what}: collections AST mismatch\n--old--\n{a:#?}\n--new--\n{b:#?}"
+            ),
+            (Err(a), Err(b)) => assert_eq!(
+                (a.stage, a.code.as_str(), a.message.as_str(), a.span),
+                (b.stage, b.code.as_str(), b.message.as_str(), b.span),
+                "{what}: collections first-diag mismatch\n--old--\n{a:?}\n--new--\n{b:?}"
+            ),
+            _ => panic!("{what}: outcome mismatch old_ok={} new_ok={}", old.is_ok(), new.is_ok()),
+        }
+    }
+}

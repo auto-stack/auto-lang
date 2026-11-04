@@ -147,7 +147,8 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         program { list { item() {} } }
         item {
             alt { fn-item() {} }
-            alt(profiles: [record, text-record]) { type-item() {} }
+            alt(profiles: [record, text-record, collections, closures]) { type-item() {} }
+            alt(profiles: [collections, closures]) { enum-item() {} }
             alt(profiles: [entry-unit, host-console]) { script-item() {} }
         }
         // ---- 声明 ----
@@ -182,6 +183,8 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
+            alt(profiles: [collections, closures]) { generic-ty(field: "generic") }
+            alt(profiles: [collections, closures]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures]) { ident(field: "word") }
             alt(profiles: [closures]) { fn-type(field: "fn") }
         }
@@ -190,8 +193,40 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
+            alt(profiles: [collections, closures]) { generic-ty(field: "generic") }
+            alt(profiles: [collections, closures]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures]) { ident(field: "word") }
             alt(profiles: [closures]) { fn-type(field: "fn") }
+        }
+        // PLAN-928（T-03）：参数化名义类型 `List<T>` / `Result<T, E>`（类型位；
+        // 嵌套类型实参允许——`List<List<int>>` 域约束归 resolve）。
+        generic-ty(profiles: [collections, closures]) {
+            ident(field: "name")
+            lt() {}
+            type-args(field: "args")
+            gt() {}
+        }
+        type-args(profiles: [collections, closures]) { type-arg() {} many { type-arg-tail() {} } }
+        type-arg-tail(profiles: [collections, closures]) { comma() {} type-arg() {} }
+        type-arg(profiles: [collections, closures]) {
+            alt { int-kw(field: "word") }
+            alt { i32(field: "word") }
+            alt { bool(field: "word") }
+            alt { generic-ty(field: "generic") }
+            alt { optional-ty(field: "optional") }
+            alt { ident(field: "word") }
+        }
+        // PLAN-928（T-03）：`?T` 可选糖（Option<T> 名义变体）。
+        optional-ty(profiles: [collections, closures]) {
+            question(field: "q")
+            optional-inner(field: "inner")
+        }
+        optional-inner(profiles: [collections, closures]) {
+            alt { int-kw(field: "word") }
+            alt { i32(field: "word") }
+            alt { bool(field: "word") }
+            alt { generic-ty(field: "generic") }
+            alt { ident(field: "word") }
         }
         // PLAN-928：闭包函数类型 `fn(T0, ...) -> R`（`->` 可省 = K 语料
         // 相邻结果拼写兼容形，仅闭包面）。可嵌套（参数/结果位可再为 fn 型；
@@ -220,17 +255,30 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, text-record]) {
+        type-item(recover: true, profiles: [record, text-record, collections, closures]) {
             type-kw(field: "kw")
             ident(field: "name")
             lbrace() {}
             list-nl { member() {} }
             rbrace() {}
         }
+        // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
+        // `,` 容忍由差分冻结），至多单载荷。
+        enum-item(recover: true, profiles: [collections, closures]) {
+            enum(field: "kw")
+            ident(field: "name")
+            lbrace() {}
+            list { enum-arm() {} }
+            rbrace() {}
+        }
+        enum-arm(profiles: [collections, closures]) {
+            alt { ident(field: "name") lparen() {} ann-ty(field: "payload") rparen() {} }
+            alt { ident(field: "name") }
+        }
         member {
             alt { field-member() {} }
-            alt { static-method() {} }
-            alt { view-method() {} }
+            alt(profiles: [record, text-record]) { static-method() {} }
+            alt(profiles: [record, text-record]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
@@ -265,6 +313,8 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
             alt(profiles: [scalar, text, record, text-record, entry-unit, host-console]) { for-cond-stmt() {} }
+            alt(profiles: [collections, closures]) { for-in-stmt() {} }
+            alt(profiles: [collections, closures]) { is-stmt() {} }
             alt { loop-stmt() {} }
             alt { break() {} }
             alt { continue() {} }
@@ -321,6 +371,39 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             expr(field: "cond")
             block(field: "body")
         }
+        // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
+        for-in-stmt(profiles: [collections, closures]) {
+            for(field: "kw")
+            ident(field: "var")
+            in(field: "in")
+            ident(field: "iter")
+            block(field: "body")
+        }
+        // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；
+        // 限定形式 `Enum.Name`；载荷绑定 `(v)`）。
+        is-stmt(profiles: [collections, closures]) {
+            is(field: "kw")
+            ident(field: "scrutinee")
+            lbrace() {}
+            list { match-arm() {} }
+            rbrace() {}
+        }
+        match-arm(profiles: [collections, closures]) {
+            opt { arm-qual(field: "qual") }
+            ident(field: "pattern")
+            opt { arm-payload(field: "payload") }
+            arrow() {}
+            block(field: "body")
+        }
+        arm-qual(profiles: [collections, closures]) {
+            ident(field: "qual")
+            dot() {}
+        }
+        arm-payload(profiles: [collections, closures]) {
+            lparen() {}
+            ident(field: "binding")
+            rparen() {}
+        }
         loop-stmt {
             loop(field: "kw")
             block(field: "body")
@@ -343,7 +426,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { postfix-expr() {} }
         }
         postfix-expr {
-            alt(profiles: [record, text-record, text, host-console, closures]) { atom-expr() {} many { postfix-step() {} } }
+            alt(profiles: [record, text-record, text, host-console, collections, closures]) { atom-expr() {} many { postfix-step() {} } }
             alt { atom-expr() {} }
         }
         // 点后缀链。record 族：`.name`（字段；调用经 pratt call 收尾）、
@@ -351,27 +434,32 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // = `.name` 步 + pratt call）。token 区分自然实现旧 record 臂对
         // `to` 的 carve-out。core/scalar/entry 无点后缀（`.` 在这些面由
         // 投影按旧 unsupported/语法错误合同映射）。
-        postfix-step(profiles: [record, text-record, text, host-console, closures]) {
+        postfix-step(profiles: [record, text-record, text, host-console, collections, closures]) {
             alt(profiles: [record, text-record]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [text, host-console]) { dot(same-line: true) ident(field: "member") }
-            alt(profiles: [closures]) { dot(same-line: true) ident(field: "member") }
+            alt(profiles: [closures, collections]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, text-record]) { dot(same-line: true) mut(field: "member") }
-            alt(profiles: [text, text-record, host-console, closures]) { dot(same-line: true) r-move(same-line: true, field: "member") }
+            alt(profiles: [text, text-record, host-console, collections, closures]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，
         // 调用节点之后再接 `.name` 步由本规则承载（运行时包装 KIND_POSTFIX）。
-        postfix-tail(profiles: [record, text-record, text, host-console, closures]) {
+        postfix-tail(profiles: [record, text-record, text, host-console, collections, closures]) {
             many { postfix-step() {} }
         }
         atom-expr {
+            alt(profiles: [collections, closures]) { ctor-expr() {} }
+            alt(profiles: [record, text-record]) { ctor-expr() {} }
+            // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
+            // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
+            // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
+            alt(profiles: [collections, closures]) { generic-atom() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures]) { lambda-expr() {} }
             alt(profiles: [record, text-record]) { leading-dot() {} }
-            alt(profiles: [record, text-record]) { ctor-expr() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -379,6 +467,15 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { false-kw(field: "kw") }
             alt { ident() {} }
             alt { lparen() {} expr() {} rparen() {} }
+        }
+        // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
+        generic-atom(profiles: [collections, closures]) {
+            ident(field: "name")
+            lt() {}
+            type-args(field: "args")
+            gt() {}
+            dot(same-line: true)
+            ident(field: "member")
         }
         // PLAN-928（T-02 最小面，T-04 冻结诊断差分）：lambda 表达式——
         // `move? ( 参数? ) => 块 | 表达式`。块体复用语句纪律（list-nl）；
@@ -411,7 +508,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // `{` 是 cut 步：消费后 alt 失败不回退到后续备选——复刻旧 parser
         // 在 `ident {` 的无回溯提交（如 `if p { return 0 }` 拒绝在 return，
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
-        ctor-expr(profiles: [record, text-record]) {
+        ctor-expr(profiles: [record, text-record, collections, closures]) {
             ident(field: "ty")
             lbrace(same-line: true, cut: true) {}
             opt { ctor-fields() {} }

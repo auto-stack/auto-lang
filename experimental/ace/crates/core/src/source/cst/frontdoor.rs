@@ -131,11 +131,10 @@ fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::TextRecord => "text-record",
         SourceProfile::EntryUnit => "entry-unit",
         SourceProfile::HostConsole => "host-console",
-        // PLAN-928 T-02：闭包面经统一前门（lambda/fn-type 最小面；差分
-        // 全集与冷入口切换由 T-04/T-07 冻结）。
+        // PLAN-928 T-02/T-03：闭包/集合两面经统一前门（差分全集与冷入口
+        // 切换由 T-04/T-07 冻结）。
         SourceProfile::Closures => "closures",
-        // Collections 仍为显式登记的迁移分支（T-03 落集合面规则后切换）。
-        SourceProfile::Collections => "collections-or-closures",
+        SourceProfile::Collections => "collections",
     }
 }
 
@@ -145,7 +144,7 @@ pub struct CachedGrammar {
     kinds: SourceKinds,
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 8]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
 
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，
 /// 跨进程恢复按 grammar-id 从 store 装载，不重复编译）。
@@ -159,12 +158,7 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::EntryUnit => 5,
         SourceProfile::HostConsole => 6,
         SourceProfile::Closures => 7,
-        SourceProfile::Collections => {
-            return Err(format!(
-                "profile `{}` is the registered 928 migration branch (not served by the unified front door)",
-                profile.as_str()
-            ))
-        }
+        SourceProfile::Collections => 8,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。

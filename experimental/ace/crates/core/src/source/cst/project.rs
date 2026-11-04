@@ -57,7 +57,10 @@ pub(crate) fn project_program(
         if tree_has_errors && subtree_has_errors(tree, node) {
             continue;
         }
-        if kind == k.fn_item || kind == k.type_item.unwrap_or(u32::MAX) {
+        if kind == k.fn_item
+            || kind == k.type_item.unwrap_or(u32::MAX)
+            || kind == k.enum_item.unwrap_or(u32::MAX)
+        {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
                 eng.cx.reject(span, move || {
@@ -72,6 +75,8 @@ pub(crate) fn project_program(
             }
             if kind == k.fn_item {
                 items.push(Item::Fn(eng.run_fn_item(node, None, Receiver::Free)));
+            } else if kind == k.enum_item.unwrap_or(u32::MAX) {
+                items.push(Item::Enum(eng.run_enum_item(node)));
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -640,9 +645,33 @@ fn walk_fn_item_ex(
                 }
                 i += 1;
             }
+            // PLAN-928（T-03）：collections/collections 参数注解的可选糖 `?T`。
+            if cx.profile.is_collections() {
+                if i < leaves.len() && leaves[i].2 == "?" {
+                    i += 1;
+                }
+            }
             // 参数类型词。
             if let Some(d) = walk_type_word(cx, leaves, &mut i, "parameter type annotation (`int`/`i32`/`bool`) is required") {
                 return (i, Some(d));
+            }
+            // PLAN-928（T-03）：collections/closures 参数注解的参数化类型
+            // `List<T>` / `Result<T, E>`（平衡 `<...>` 跳跃；`>` 后无逗号
+            // 嵌套——type-arg 内嵌套泛型由同一深度计数覆盖）。
+            if cx.profile.is_collections() && i < leaves.len() && leaves[i].2 == "<" {
+                let mut depth = 0usize;
+                while i < leaves.len() {
+                    if leaves[i].2 == "<" {
+                        depth += 1;
+                    } else if leaves[i].2 == ">" {
+                        depth -= 1;
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
             }
             // `,` 或 `)`。
             if i >= leaves.len() {
@@ -1269,6 +1298,48 @@ impl<'c, 'a> Walker<'c, 'a> {
                 self.sep_check()
             }
             "for" => {
+                // PLAN-928（T-03）：collections/closures 面 `for x in <list>`。
+                if self.cx.profile.is_collections() {
+                    self.i += 1;
+                    match self.cur() {
+                        Some((_, ng, _, _)) if ng == k.tok_ident => {
+                            self.i += 1;
+                        }
+                        _ => {
+                            let (spn, gn, tn, _) = match self.cur() {
+                                Some(c) => c,
+                                None => return Some(self.syntax("expected iteration binding, found end of file".into())),
+                            };
+                            return Some(self.name_error(gn, tn, spn, "iteration binding"));
+                        }
+                    }
+                    match self.cur() {
+                        Some((_, _, "in", _)) => {
+                            self.i += 1;
+                        }
+                        _ => return Some(self.syntax("expected `in` after the iteration binding".into())),
+                    }
+                    // 合同 C7：迭代器是裸 List 局部名（非表达式）。
+                    match self.cur() {
+                        Some((_, ig, _, _)) if ig == k.tok_ident => {
+                            self.i += 1;
+                        }
+                        _ => {
+                            let (spn, gn, tn, _) = match self.cur() {
+                                Some(c) => c,
+                                None => return Some(self.syntax("expected for-in iterator (a List local), found end of file".into())),
+                            };
+                            return Some(self.name_error(gn, tn, spn, "for-in iterator (a List local)"));
+                        }
+                    }
+                    if let Some(d) = self.expect_text("{") {
+                        return Some(d);
+                    }
+                    if let Some(d) = self.walk_block_body(false) {
+                        return Some(d);
+                    }
+                    return self.sep_check();
+                }
                 if !wide {
                     return Some(self.unsupported("`for` is not part of this source profile".into(), sp));
                 }
@@ -1281,6 +1352,97 @@ impl<'c, 'a> Walker<'c, 'a> {
                 }
                 if let Some(d) = self.walk_block_body(false) {
                     return Some(d);
+                }
+                self.sep_check()
+            }
+            "is" if self.cx.profile.is_collections() => {
+                // PLAN-928（T-03）：`is <local> { Arm [(v)]? -> { .. } }`。
+                self.i += 1;
+                match self.cur() {
+                    Some((_, sg, _, _)) if sg == k.tok_ident => {
+                        self.i += 1;
+                    }
+                    _ => {
+                        let (spn, gn, tn, _) = match self.cur() {
+                            Some(c) => c,
+                            None => return Some(self.syntax("expected scrutinee, found end of file".into())),
+                        };
+                        return Some(self.name_error(gn, tn, spn, "scrutinee"));
+                    }
+                }
+                if let Some(d) = self.expect_text("{") {
+                    return Some(d);
+                }
+                loop {
+                    while matches!(self.cur(), Some((_, _, ";", _))) {
+                        self.i += 1;
+                    }
+                    match self.cur() {
+                        None => return Some(self.syntax("expected `}` before end of file".into())),
+                        Some((_, _, "}", _)) => {
+                            self.i += 1;
+                            break;
+                        }
+                        Some((_, ag, _, _)) if ag == k.tok_ident => {
+                            // 限定形式 `Enum.Name`
+                            self.i += 1;
+                            if let Some((_, _, ".", _)) = self.cur() {
+                                self.i += 1;
+                                match self.cur() {
+                                    Some((_, pg, _, _)) if pg == k.tok_ident => {
+                                        self.i += 1;
+                                    }
+                                    _ => {
+                                        let (spn, gn, tn, _) = match self.cur() {
+                                            Some(c) => c,
+                                            None => return Some(self.syntax("expected arm pattern, found end of file".into())),
+                                        };
+                                        return Some(self.name_error(gn, tn, spn, "arm pattern"));
+                                    }
+                                }
+                            }
+                            // 载荷绑定 `(v)`
+                            if let Some((_, _, "(", _)) = self.cur() {
+                                self.i += 1;
+                                match self.cur() {
+                                    Some((_, bg, _, _)) if bg == k.tok_ident => {
+                                        self.i += 1;
+                                    }
+                                    _ => {
+                                        let (spn, gn, tn, _) = match self.cur() {
+                                            Some(c) => c,
+                                            None => return Some(self.syntax("expected arm payload binding, found end of file".into())),
+                                        };
+                                        return Some(self.name_error(gn, tn, spn, "arm payload binding"));
+                                    }
+                                }
+                                match self.cur() {
+                                    Some((_, _, ")", _)) => {
+                                        self.i += 1;
+                                    }
+                                    _ => return Some(self.syntax("expected `)` after the arm payload binding".into())),
+                                }
+                            }
+                            match self.cur() {
+                                Some((_, _, "->", _)) => {
+                                    self.i += 1;
+                                }
+                                _ => return Some(self.syntax("expected `->` after the arm pattern".into())),
+                            }
+                            if let Some(d) = self.expect_text("{") {
+                                return Some(d);
+                            }
+                            if let Some(d) = self.walk_block_body(false) {
+                                return Some(d);
+                            }
+                        }
+                        Some((_, t2, _, _)) => {
+                            return Some(self.syntax(format!(
+                                "expected an arm pattern, found `{}`",
+                                t2
+                            )));
+                        }
+                    }
                 }
                 self.sep_check()
             }
@@ -1347,7 +1509,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                                     return Some(d);
                                 }
                                 let end = self.at(self.i - 1).map(|c| c.0.end).unwrap_or(start.end);
-                                if !self.cx.profile.is_entry_unit() {
+                                if !(self.cx.profile.is_entry_unit() || self.cx.profile.is_collections()) {
                                     return Some(self.unsupported(
                                         "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions".into(),
                                         Span { start: start.start, end },
@@ -1369,7 +1531,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                         return Some(d);
                     }
                     let end = self.at(self.i - 1).map(|c| c.0.end).unwrap_or(start.end);
-                    if !self.cx.profile.is_entry_unit() {
+                    if !(self.cx.profile.is_entry_unit() || self.cx.profile.is_collections()) {
                         return Some(self.unsupported(
                             "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions".into(),
                             Span { start: start.start, end },
@@ -1431,6 +1593,28 @@ impl<'c, 'a> Walker<'c, 'a> {
             return false;
         }
         matches!(text, "||" | "&&" | "==" | "!=" | ">" | "<=" | ">=" | "-" | "/" | "%")
+    }
+
+    /// PLAN-928（T-03）：`ident <` 位是否为泛型接收——平衡 `<...>` 后随
+    /// `.` 才提交（镜像旧 parser 的 generic_scan_commits）。
+    fn generic_scan_commits(&self, open_lt: usize) -> bool {
+        let k = self.k();
+        let mut depth = 0usize;
+        let mut j = open_lt;
+        while let Some((_, g, text, _)) = self.at(j) {
+            if text == "<" {
+                depth += 1;
+            } else if text == ">" {
+                depth -= 1;
+                if depth == 0 {
+                    return matches!(self.at(j + 1), Some((_, _, ".", _)));
+                }
+            } else if !(g == k.tok_ident || g == k.tok_int_kw || g == k.tok_i32 || g == k.tok_bool || text == "," || text == "?") {
+                return false;
+            }
+            j += 1;
+        }
+        false
     }
 
     /// 表达式游走：primary + 算子/关闭循环（括号帧跟踪，行纪律）。
@@ -1556,6 +1740,34 @@ impl<'c, 'a> Walker<'c, 'a> {
                     }
                 }
             } else if g == k.tok_ident {
+                // PLAN-928（T-03）：`List<T>` 接收位——平衡 `<...>` 后随 `.`
+                // 才提交（镜像旧 generic_scan_commits；普通 `a < b` 比较不受
+                // 影响——扫描失败即落回普通 ident + 二元 `<`）。
+                if self.cx.profile.is_collections() {
+                    if let Some((_, _, "<", _)) = self.at(self.i + 1) {
+                        if self.generic_scan_commits(self.i + 1) {
+                            self.i += 1;
+                            let mut depth = 0usize;
+                            loop {
+                                match self.cur() {
+                                    Some((_, _, "<", _)) => depth += 1,
+                                    Some((_, _, ">", _)) => depth -= 1,
+                                    Some(_) => {}
+                                    None => break,
+                                }
+                                self.i += 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            anchored = false;
+                            if let Some(d) = self.after_value(&mut frames, &mut anchored) {
+                                return d;
+                            }
+                            continue;
+                        }
+                    }
+                }
                 // ctor（record 面，`{` 同行或括号内）
                 if self.cx.profile.is_record() {
                     if let Some((_, _, "{", l2)) = self.at(self.i + 1) {
@@ -1648,7 +1860,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                     }
                     self.i += 1;
                     match self.cur() {
-                        Some((_, mg, _, _)) if mg == k.tok_r_move && (is_text) => {
+                        Some((_, mg, _, _)) if mg == k.tok_r_move && (is_text || self.cx.profile.is_collections()) => {
                             self.i += 1;
                             continue;
                         }
@@ -1971,6 +2183,11 @@ enum Frame {
     ExprStmtFinish,
     FnBodyFinish { node: u32, name: Ident, params: Vec<Param>, ret: TypeAnn, receiver: Receiver, owner: Option<Ident> },
     ScriptFinish { start_span: Span },
+    /// PLAN-928（T-03）：`for x in <List 局部> { .. }` 体收尾帧。
+    ForInBody { var: Ident, iter: Expr, node: u32 },
+    /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
+    IsArms(IsMatchCtx),
+    IsArmBlock { ctx: Box<IsMatchCtx>, qual: Option<Ident>, pattern: Ident, binding: Option<Ident>, kw: Span },
     // -- 表达式 --
     ExprEnter(u32),
     /// PLAN-928：lambda 体收尾（块体/表达式体两形；参数与 move 词已冻结）。
@@ -1997,6 +2214,14 @@ enum CalleePlan {
     Plain { ident: Ident, unary_ops: Vec<UnaryOp> },
     /// 方法链：base（接收者求值任务节点）+ 中间步 + 链尾成员叶。
     Method { base: u32, member: u32, mids: Vec<u32>, unary_ops: Vec<UnaryOp> },
+}
+
+/// PLAN-928（T-03）：is 分派的逐臂装配上下文。
+struct IsMatchCtx {
+    scrutinee: Ident,
+    arms: Vec<MatchArm>,
+    remaining: Vec<u32>,
+    node: u32,
 }
 
 /// 块帧：语句节点序列 + 组装 span。
@@ -2296,6 +2521,13 @@ impl<'a> Engine<'a> {
         if let Some(ft) = self.cx.field_child(node, "fn") {
             return self.project_fn_type(ft);
         }
+        // PLAN-928（T-03）：collections/closures 类型位参数化/可选糖。
+        if let Some(g) = self.cx.field_child(node, "generic") {
+            return self.project_generic_ty(g);
+        }
+        if let Some(o) = self.cx.field_child(node, "optional") {
+            return self.project_optional_ty(o);
+        }
         let word_leaf = self
             .cx
             .children(node)
@@ -2340,6 +2572,68 @@ impl<'a> Engine<'a> {
         }
         self.cx.reject(span, move || unsupported_ty(&word, span));
         int(TypeWord::Int)
+    }
+
+    /// PLAN-928（T-03）：PLAN-864 有限 enum 投影（臂声明序 = 判别序）。
+    fn run_enum_item(&mut self, node: u32) -> EnumItem {
+        let name_leaf = self.cx.field_child(node, "name").expect("enum name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let arm_kind = self.cx.k.enum_arm.unwrap_or(u32::MAX);
+        let mut arm_nodes: Vec<u32> = self
+            .cx
+            .children(node)
+            .into_iter()
+            .filter(|&c| self.cx.tree.kind(c) == arm_kind)
+            .collect();
+        arm_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+        let mut arms = Vec::new();
+        for a in arm_nodes {
+            let aname_leaf = self.cx.field_child(a, "name").expect("arm name");
+            let aname = ident_of(&mut self.cx, aname_leaf);
+            let payload = self
+                .cx
+                .field_child(a, "payload")
+                .map(|t| self.classify_word(t, false));
+            let span = match &payload {
+                Some(t) => aname.span.join(t.span),
+                None => aname.span,
+            };
+            arms.push(EnumArm { name: aname, payload, span });
+        }
+        EnumItem { name, arms, span: self.cx.span_of(node) }
+    }
+
+    /// PLAN-928（T-03）：类型位的参数化名义 `List<T>` / `Result<T, E>`。
+    fn project_generic_ty(&mut self, node: u32) -> TypeAnn {
+        let name_leaf = self.cx.field_child(node, "name").expect("generic type name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let mut args = Vec::new();
+        if let Some(an) = self.cx.field_child(node, "args") {
+            for a in collect_seq(&self.cx, an, self.cx.k.type_arg.unwrap_or(u32::MAX), "type-arg-tail") {
+                args.push(self.classify_ty_arg(a));
+            }
+        }
+        TypeAnn { span: self.cx.span_of(node), kind: TypeRef::Generic { name, args } }
+    }
+
+    /// PLAN-928（T-03）：`?T` 可选糖 → `TypeRef::Optional`。
+    fn project_optional_ty(&mut self, node: u32) -> TypeAnn {
+        let inner = match self.cx.field_child(node, "inner") {
+            Some(i) => self.classify_ty_arg(i),
+            None => self.classify_word(node, false),
+        };
+        TypeAnn { span: self.cx.span_of(node), kind: TypeRef::Optional(Box::new(inner)) }
+    }
+
+    /// PLAN-928（T-03）：类型实参（词/嵌套泛型/可选糖）。
+    fn classify_ty_arg(&mut self, n: u32) -> TypeAnn {
+        if let Some(g) = self.cx.field_child(n, "generic") {
+            return self.project_generic_ty(g);
+        }
+        if let Some(o) = self.cx.field_child(n, "optional") {
+            return self.project_optional_ty(o);
+        }
+        self.classify_word(n, false)
     }
 
     /// PLAN-928：函数类型 `fn(T0, ...) [->] R`（嵌套允许；`->` 缺席 = K 语料
@@ -2586,6 +2880,30 @@ impl<'a> Engine<'a> {
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
             self.stack.push(Frame::WhileCond { body_n, node: inner });
             self.stack.push(Frame::ExprEnter(cond_n));
+        } else if kind == self.cx.k.for_in_stmt.unwrap_or(u32::MAX) {
+            let var_leaf = self.cx.field_child(inner, "var").expect("for-in var");
+            let var = ident_of(&mut self.cx, var_leaf);
+            // 合同 C7：迭代器是裸 List 局部名（ident，非表达式——体块 `{`
+            // 不得被误读为具名 ctor）。
+            let iter_leaf = self.cx.field_child(inner, "iter").expect("for-in iter");
+            let iter_ident = ident_of(&mut self.cx, iter_leaf);
+            let iter_span = iter_ident.span;
+            let iter = Expr { span: iter_span, kind: ExprKind::Var(iter_ident) };
+            let body_n = self.cx.field_child(inner, "body").expect("for-in body");
+            self.stack.push(Frame::ForInBody { var, iter, node: inner });
+            self.enter_block(body_n);
+        } else if kind == self.cx.k.is_stmt.unwrap_or(u32::MAX) {
+            let scrutinee_leaf = self.cx.field_child(inner, "scrutinee").expect("is scrutinee");
+            let scrutinee = ident_of(&mut self.cx, scrutinee_leaf);
+            let arm_kind = self.cx.k.match_arm.unwrap_or(u32::MAX);
+            let mut arm_nodes: Vec<u32> = self
+                .cx
+                .children(inner)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == arm_kind)
+                .collect();
+            arm_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            self.stack.push(Frame::IsArms(IsMatchCtx { scrutinee, arms: Vec::new(), remaining: arm_nodes, node: inner }));
         } else if kind == self.cx.k.loop_stmt {
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
             self.stack.push(Frame::LoopBody { node: inner });
@@ -2621,7 +2939,7 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
-            if !self.cx.profile.is_entry_unit() {
+            if !(self.cx.profile.is_entry_unit() || self.cx.profile.is_collections()) {
                 let span = self.cx.span_of(value_n);
                 self.cx.reject(span, || {
                     Diagnostic::new(
@@ -2758,6 +3076,37 @@ impl<'a> Engine<'a> {
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
             let ck = self.cx.tree.kind(c);
+            // PLAN-928（T-03）：`List<T>.member` 接收原子。
+            if ck == self.cx.k.generic_atom.unwrap_or(u32::MAX) {
+                let name_leaf = self.cx.field_child(c, "name").expect("generic atom name");
+                let name = ident_of(&mut self.cx, name_leaf);
+                let mut args = Vec::new();
+                if let Some(an) = self.cx.field_child(c, "args") {
+                    for a in collect_seq(&self.cx, an, self.cx.k.type_arg.unwrap_or(u32::MAX), "type-arg-tail") {
+                        args.push(self.classify_ty_arg(a));
+                    }
+                }
+                let gt_leaf = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.op_gt)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or_else(|| self.cx.span_of(c));
+                let g_span = name.span.join(gt_leaf);
+                let g = Expr { span: g_span, kind: ExprKind::GenericType { name, args } };
+                let member_leaf = self.cx.field_child(c, "member").expect("generic atom member");
+                let mspan = self.cx.span_of(member_leaf);
+                let mname = self.cx.spelling(member_leaf);
+                self.vals.push(Val::E(Expr {
+                    span: g_span.join(mspan),
+                    kind: ExprKind::Field {
+                        base: Box::new(g),
+                        name: Ident { name: mname, span: mspan },
+                    },
+                }));
+                return;
+            }
             // PLAN-928：lambda 原子（closures 面）——先于其余原子形状。
             if ck == self.cx.k.lambda_expr.unwrap_or(u32::MAX) {
                 self.enter_lambda(c);
@@ -3248,7 +3597,19 @@ impl<'a> Engine<'a> {
                         mids: mids.to_vec(),
                         unary_ops,
                     },
-                    None => CalleePlan::Plain { ident: self.first_ident(base), unary_ops },
+                    None => {
+                        // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子自带
+                        // 尾随 dot 成员（generic-atom）。
+                        let ga = self
+                            .cx
+                            .children(base)
+                            .into_iter()
+                            .find(|&c| self.cx.tree.kind(c) == self.cx.k.generic_atom.unwrap_or(u32::MAX));
+                        match ga.and_then(|g| self.cx.field_child(g, "member")) {
+                            Some(member) => CalleePlan::Method { base, member, mids: Vec::new(), unary_ops },
+                            None => CalleePlan::Plain { ident: self.first_ident(base), unary_ops },
+                        }
+                    }
                 }
             } else {
                 CalleePlan::Plain { ident: self.first_ident(wrap), unary_ops }
@@ -3491,6 +3852,51 @@ impl<'a> Engine<'a> {
     fn step(&mut self, frame: Frame) {
         match frame {
             Frame::Block(bf) => self.step_block(bf),
+            Frame::ForInBody { var, iter, node } => {
+                let body = self.pop_b();
+                let kw = self.cx.child_of_kind(node, self.cx.k.tok_for).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                let span = kw.join(body.span);
+                self.vals.push(Val::S(Stmt::ForIn { var, iter, body, span }));
+            }
+            Frame::IsArms(ctx) => {
+                if let Some(&arm_n) = ctx.remaining.first() {
+                    let mut rest = ctx.remaining.clone();
+                    rest.remove(0);
+                    let qual = self
+                        .cx
+                        .field_child(arm_n, "qual")
+                        .and_then(|q| self.cx.field_child(q, "qual"))
+                        .map(|q| ident_of(&mut self.cx, q));
+                    let pattern_leaf = self.cx.field_child(arm_n, "pattern").expect("arm pattern");
+                    let pattern = ident_of(&mut self.cx, pattern_leaf);
+                    let binding = self
+                        .cx
+                        .field_child(arm_n, "payload")
+                        .and_then(|b| self.cx.field_child(b, "binding"))
+                        .map(|b| ident_of(&mut self.cx, b));
+                    let body_n = self.cx.field_child(arm_n, "body").expect("arm body");
+                    // 旧合同：臂 span 恒从模式词起（限定 `Enum.Name` 亦然）。
+                    let start = pattern.span;
+                    self.stack.push(Frame::IsArmBlock {
+                        ctx: Box::new(IsMatchCtx { remaining: rest, ..ctx }),
+                        qual,
+                        pattern,
+                        binding,
+                        kw: start,
+                    });
+                    self.enter_block(body_n);
+                } else {
+                    let span = self.cx.span_of(ctx.node);
+                    self.vals.push(Val::S(Stmt::IsMatch { scrutinee: ctx.scrutinee, arms: ctx.arms, span }));
+                }
+            }
+            Frame::IsArmBlock { ctx, qual, pattern, binding, kw } => {
+                let body = self.pop_b();
+                let span = kw.join(body.span);
+                let mut ctx = *ctx;
+                ctx.arms.push(MatchArm { qual, pattern, binding, body, span });
+                self.stack.push(Frame::IsArms(ctx));
+            }
             Frame::LambdaBlockBody { move_capture, params, start } => {
                 let body = self.pop_b();
                 let span = start.join(body.span);
@@ -3684,7 +4090,21 @@ impl<'a> Engine<'a> {
                 e
             }
             CalleePlan::Method { member, mids: _, unary_ops, .. } => {
-                let recv = self.pop_e();
+                let mut recv = self.pop_e();
+                // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子投影为
+                // Field{GenericType}，此处解包为直接 GenericType 接收者
+                // （镜像旧 postfix 折叠的 MethodCall 形状）。
+                {
+                    let want = self.cx.spelling(member).to_string();
+                    let unwrapped = match &recv.kind {
+                        ExprKind::Field { base, name }
+                            if matches!(base.kind, ExprKind::GenericType { .. }) && name.name == want => Some(*base.clone()),
+                        _ => None,
+                    };
+                    if let Some(r) = unwrapped {
+                        recv = r;
+                    }
+                }
                 let mk = self.cx.tree.kind(member);
                 let mspan = self.cx.span_of(member);
                 let mname = self.cx.spelling(member);
