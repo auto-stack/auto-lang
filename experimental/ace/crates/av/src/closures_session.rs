@@ -387,6 +387,7 @@ impl ClosuresUpdateSession {
                     .find(|entry| entry.wire == flat && entry.code.unit().module().owner == m.owner)
             }) {
                 self.counters.cache_hits += 1;
+                
                 return Ok((
                     entry.code.clone(),
                     entry.fingerprint.clone(),
@@ -423,6 +424,7 @@ impl ClosuresUpdateSession {
                     ace_core::body_work::record_attempt(ace_core::body_work::Stage::DecodeAdmit, &name);
                     self.counters.admitted += 1;
                     self.counters.cache_hits += 1;
+                    
                     return Ok((Arc::new(fc), body_fp, flat, Some(artifact.artifact_id)));
                 }
                 None => self.counters.cache_misses += 1,

@@ -1691,6 +1691,25 @@ impl<'c, 'a> Walker<'c, 'a> {
         matches!(text, "||" | "&&" | "==" | "!=" | ">" | "<=" | ">=" | "-" | "/" | "%")
     }
 
+    /// PLAN-928（T-07）：`( 参数? ) =>` 闭包头前瞻（token 级；镜像旧
+    /// closure_header_ahead 的匹配 `)` 后随 `=>` 判定）。
+    fn closure_header_ahead_tokens(&self, open: usize) -> bool {
+        let mut depth = 0usize;
+        let mut j = open;
+        while let Some((_, _, t, _)) = self.at(j) {
+            if t == "(" {
+                depth += 1;
+            } else if t == ")" {
+                depth -= 1;
+                if depth == 0 {
+                    return matches!(self.at(j + 1), Some((_, _, "=>", _)));
+                }
+            }
+            j += 1;
+        }
+        false
+    }
+
     /// PLAN-928（T-03）：`ident <` 位是否为泛型接收——平衡 `<...>` 后随
     /// `.` 才提交（镜像旧 parser 的 generic_scan_commits）。
     fn generic_scan_commits(&self, open_lt: usize) -> bool {
@@ -1835,6 +1854,20 @@ impl<'c, 'a> Walker<'c, 'a> {
                         )))
                     }
                 }
+
+            } else if g == k.tok_ident
+                && self.cx.profile.is_closures()
+                && text == "async"
+                && self.closure_header_ahead_tokens(self.i + 1)
+            {
+                // PLAN-928（T-07）：`async (参数) =>` —— 闭包面前缀保留名
+                // （镜像旧 parser 的 async 闭包拒绝；专用码）。
+                return Some(Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.closure-unsupported",
+                    "async closures are not supported by the closures source profile".to_string(),
+                    sp,
+                ));
             } else if g == k.tok_ident {
                 // PLAN-928（T-03）：`List<T>` 接收位——平衡 `<...>` 后随 `.`
                 // 才提交（镜像旧 generic_scan_commits；普通 `a < b` 比较不受
@@ -2323,6 +2356,9 @@ enum Frame {
 enum CalleePlan {
     /// 纯名字调用（ident 叶）+ 外→内一元链。
     Plain { ident: Ident, unary_ops: Vec<UnaryOp> },
+    /// PLAN-928（T-07）：表达式被调（括号组/λ 等值位 callee）→ 间接调用
+    /// `CallValue`（镜像旧 CallFrame callee_expr；callee 名 "<closure>"）。
+    Value { callee_n: u32, unary_ops: Vec<UnaryOp> },
     /// 方法链：base（接收者求值任务节点）+ 中间步 + 链尾成员叶。
     Method { base: u32, member: u32, mids: Vec<u32>, unary_ops: Vec<UnaryOp> },
 }
@@ -3682,13 +3718,59 @@ impl<'a> Engine<'a> {
                     None => break,
                 }
             }
-            if self.cx.tree.kind(wrap) != KIND_POSTFIX && self.cx.tree.kind(wrap) != self.cx.k.postfix_expr {
+            // PLAN-928（T-07）：括号组被调（paren-group callee）恒为间接调用
+            // CallValue（镜像旧 CallFrame callee_expr——含 (f)(3) 形）。
+            let mut paren_callee: Option<u32> = None;
+            if self.cx.tree.kind(wrap) == self.cx.k.expr {
+                paren_callee = Some(wrap);
+            }
+            if paren_callee.is_none()
+                && self.cx.tree.kind(wrap) != KIND_POSTFIX
+                && self.cx.tree.kind(wrap) != self.cx.k.postfix_expr
+            {
                 wrap = self
                     .cx
                     .children(wrap)
                     .into_iter()
                     .find(|&c| self.cx.tree.child_count(c) > 0)
                     .unwrap_or(wrap);
+            }
+            // 括号组 callee 在 atom 层显式探测（沿结构链降到 atom-expr，
+            // 其 k.expr 孩子即括号组值位）。
+            {
+                let mut a = wrap;
+                loop {
+                    let ka = self.cx.tree.kind(a);
+                    if ka == self.cx.k.atom_expr {
+                        break;
+                    }
+                    if ka == self.cx.k.unary_expr
+                        || ka == self.cx.k.postfix_expr
+                        || ka == KIND_POSTFIX
+                    {
+                        match self
+                            .cx
+                            .children(a)
+                            .into_iter()
+                            .find(|&c| self.cx.tree.child_count(c) > 0)
+                        {
+                            Some(c) => a = c,
+                            None => break,
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                if self.cx.tree.kind(a) == self.cx.k.atom_expr {
+                    if let Some(e) = self
+                        .cx
+                        .children(a)
+                        .into_iter()
+                        .find(|&c| self.cx.tree.kind(c) == self.cx.k.expr)
+                    {
+                        paren_callee = Some(e);
+                    }
+                }
             }
             let mut unary_ops: Vec<UnaryOp> = unary_pre;
             loop {
@@ -3715,6 +3797,10 @@ impl<'a> Engine<'a> {
                 || self.cx.tree.kind(wrap) == KIND_POSTFIX
             {
                 let (base, steps) = self.split_postfix(wrap);
+                // PLAN-928（T-07）：括号组 callee 优先于名字/方法分析。
+                if let Some(e) = paren_callee {
+                    CalleePlan::Value { callee_n: e, unary_ops }
+                } else {
                 match steps.split_last() {
                     Some((last, mids)) => CalleePlan::Method {
                         base,
@@ -3732,12 +3818,21 @@ impl<'a> Engine<'a> {
                             .find(|&c| self.cx.tree.kind(c) == self.cx.k.generic_atom.unwrap_or(u32::MAX));
                         match ga.and_then(|g| self.cx.field_child(g, "member")) {
                             Some(member) => CalleePlan::Method { base, member, mids: Vec::new(), unary_ops },
-                            None => CalleePlan::Plain { ident: self.first_ident(base), unary_ops },
+                            None => match self.first_ident_opt(base) {
+                                Some(ident) => CalleePlan::Plain { ident, unary_ops },
+                                None => CalleePlan::Value { callee_n: base, unary_ops },
+                            },
                         }
                     }
                 }
+                }
+            } else if let Some(e) = paren_callee {
+                CalleePlan::Value { callee_n: e, unary_ops }
             } else {
-                CalleePlan::Plain { ident: self.first_ident(wrap), unary_ops }
+                match self.first_ident_opt(wrap) {
+                    Some(ident) => CalleePlan::Plain { ident, unary_ops },
+                    None => CalleePlan::Value { callee_n: wrap, unary_ops },
+                }
             }
         };
         // 压帧序（后压先弹）：接收者 base … 接收者折叠 … 实参任务 … 汇总帧。
@@ -3757,6 +3852,15 @@ impl<'a> Engine<'a> {
             }
         };
         match plan {
+            CalleePlan::Value { callee_n, unary_ops } => {
+                self.stack.push(Frame::CallAssemble {
+                    callee: CalleePlan::Value { callee_n, unary_ops },
+                    argc,
+                    close_end,
+                });
+                push_args(self, arg_nodes);
+                self.stack.push(Frame::ExprEnter(callee_n));
+            }
             CalleePlan::Method { base, member, mids, unary_ops } => {
                 let fold_mids = mids.clone();
                 self.stack.push(Frame::CallAssemble {
@@ -3891,29 +3995,23 @@ impl<'a> Engine<'a> {
         false
     }
 
-    fn first_ident(&self, node: u32) -> Ident {
-        let mut work: Vec<(u32, u8)> = vec![(node, 0)];
-        let mut found: Option<u32> = None;
-        while let Some((n, depth)) = work.pop() {
-            if depth > 3 {
-                continue;
+    /// PLAN-928（T-07）：callee 无 ident 叶（括号组/λ 值位被调）→ None。
+    fn first_ident_opt(&self, node: u32) -> Option<Ident> {
+        // 复用 first_ident 的下降逻辑但返回 Option。
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            if self.cx.tree.kind(n) == self.cx.k.tok_ident {
+                let span = self.cx.span_of(n);
+                let name = self.cx.spelling(n);
+                return Some(Ident { name, span });
             }
-            for c in self.cx.children(n) {
-                if self.cx.tree.kind(c) == self.cx.k.tok_ident {
-                    found = Some(c);
-                } else {
-                    work.push((c, depth + 1));
-                }
-            }
-            if found.is_some() {
-                break;
+            let kids = self.cx.children(n);
+            for c in kids.into_iter().rev() {
+                stack.push(c);
             }
         }
-        let leaf = found.expect("callee ident");
-        Ident { name: self.cx.spelling(leaf), span: self.cx.span_of(leaf) }
+        None
     }
-
-    // ------------------------------------------------------------ describe
 
     fn describe_node(&self, node: u32) -> String {
         let mut n = node;
@@ -4204,6 +4302,21 @@ impl<'a> Engine<'a> {
                 let mut e = Expr {
                     span: Span { start: ident.span.start, end: close_end },
                     kind: ExprKind::Call { callee: ident, args },
+                };
+                for op in unary_ops.iter().rev() {
+                    let sp = e.span;
+                    e = Expr {
+                        span: sp,
+                        kind: ExprKind::Unary { op: *op, operand: Box::new(e) },
+                    };
+                }
+                e
+            }
+            CalleePlan::Value { unary_ops, .. } => {
+                let callee = self.pop_e();
+                let mut e = Expr {
+                    span: Span { start: callee.span.start, end: close_end },
+                    kind: ExprKind::CallValue { callee: Box::new(callee), args },
                 };
                 for op in unary_ops.iter().rev() {
                     let sp = e.span;

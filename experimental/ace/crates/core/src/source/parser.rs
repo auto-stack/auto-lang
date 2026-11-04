@@ -115,8 +115,10 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
     // module-axis attempt (the warm closures path must never reach here).
     crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
     // PLAN-927 T-08：七 profile 冷前门切统一 CST 链（共享 scanner/规则程序
-    // → 严格投影；差分 567/567+70 edge 与旧逐字节全等）。Collections/
-    // Closures 是显式登记的迁移分支（928 接管），仍走旧手写 parser。
+    // → 严格投影；差分 567/567+70 edge 与旧逐字节全等）。
+    // PLAN-928 T-07：Collections/Closures 冷前门切共享链（语料全集差分
+    // 162/162 字节全等——81 源 × 两 profile 正例 AST/反例首诊断四元组；
+    // 手写 parser 保留为差分 oracle 与迁移参照，929 清零散落调用点）。
     match profile {
         SourceProfile::Core
         | SourceProfile::Scalar
@@ -124,7 +126,9 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Record
         | SourceProfile::TextRecord
         | SourceProfile::EntryUnit
-        | SourceProfile::HostConsole => {
+        | SourceProfile::HostConsole
+        | SourceProfile::Collections
+        | SourceProfile::Closures => {
             let program = super::cst::parse_program_via_cst(src, profile)?;
             // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
             // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
@@ -134,9 +138,6 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
                 }
             }
             Ok(program)
-        }
-        SourceProfile::Collections | SourceProfile::Closures => {
-            parse_program_with_handwritten(src, profile)
         }
     }
 }
