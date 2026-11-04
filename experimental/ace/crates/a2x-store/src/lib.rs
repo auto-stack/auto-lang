@@ -336,6 +336,23 @@ pub const LAYER_SOURCE_ANCHOR: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// PLAN-929（T-08）：声明面环境清单层——冷装时发布的 CheckedEnv 声明面
+/// （签名/参数 mode/receiver/记录形状/VT 池；无 body、无指针、无 trusted
+/// 位）。恢复侧经它装配 stub-body env，首个暖编辑不再整源 parse/resolve。
+pub const LAYER_DECL_ENV: LayerSpec = LayerSpec {
+    id: "AXD1",
+    name: "a2x-decl-env",
+    schema_id: "core-decl-env/1",
+    producer: "a2x session cold init",
+    consumers: &["a2x session restore -> first warm edit"],
+    key_inputs: &["owner", "profile", "source_sha256", "backend", "entry"],
+    ref_kinds: &["required"],
+    storage: "one decl-env dump per cold assembly state",
+    residency: "dump is deep-verified against the bound source sha before use",
+    regeneration: ace_artifacts::schema::Regeneration::FromUserInputs,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
 /// PLAN-925: the RECORD-TEXT source-bound anchor layer (the C record-text
 /// channel's pure-restore commit point). Beside AXP1 (scalar): the anchor
 /// carries the provider-opaque prelude seed the blind re-assembly needs,
@@ -796,6 +813,17 @@ impl A2xSession {
         let env = resolve_env(&program, caps, profile).map_err(|ds| {
             A2xRejectOrResource::Reject(A2xReject::new("a2x.resolve", render_diag(&ds)))
         })?;
+        // PLAN-929（T-08）：声明面环境清单随冷装发布（版本化 required 边——
+        // 恢复后首个暖编辑经清单装配 stub-body env，不再整源 parse/resolve）。
+        // 只读冷装零发布（沿 anchor 合同——read-only 不落任何工件）。
+        if !read_only {
+            let dump = ace_core::source::decl_env::decl_env_dump(
+                &env,
+                ace_core::source::cst::FRONT_CAPS_VERSION,
+                self.source_sha256.as_deref().unwrap_or(""),
+            );
+            self.publish_decl_env(&ace_core::source::decl_env::encode_decl_env(&dump))?;
+        }
         self.env = Some(env);
 
         // warm-check the whole thing through the resident loop; the cold
@@ -1082,6 +1110,37 @@ impl A2xSession {
         )?;
         self.stats.restore_anchors_published += 1;
         Ok(id)
+    }
+
+    /// PLAN-929（T-08）：发布/装载声明面环境清单（内容寻址、幂等——同键
+    /// 同字节命中即返回；跨内容同键 = store 冲突面沿 anchor 纪律）。
+    fn publish_decl_env(&mut self, text: &str) -> Result<(), A2xRejectOrResource> {
+        let sha = self.source_sha256.clone().unwrap_or_default();
+        // 幂等（沿 anchor 纪律）：同键同字节已存在 ⇒ 不再 put——restart/
+        // 同 store 再冷装不重复计费（restart "produces nothing new" 保持）。
+        if let Some(hit) = self.load_decl_env(&sha) {
+            if hit == text {
+                return Ok(());
+            }
+        }
+        let key = self.anchor_key(&LAYER_DECL_ENV, &sha, "decl-env");
+        let id = self.quota_put(
+            LAYER_DECL_ENV.id,
+            key,
+            ChunkKind::ObjectManifest,
+            text.as_bytes(),
+            Vec::new(),
+        )?;
+        let _ = id;
+        Ok(())
+    }
+
+    fn load_decl_env(&mut self, source_sha256: &str) -> Option<String> {
+        let key = self.anchor_key(&LAYER_DECL_ENV, source_sha256, "decl-env");
+        match self.store.get_artifact(LAYER_DECL_ENV.id, &key) {
+            Ok(Some(hit)) => String::from_utf8(hit.payload).ok(),
+            _ => None,
+        }
     }
 
     /// PLAN-921 T-06: the anchor-layer key of one assembly state.
@@ -1792,13 +1851,29 @@ impl A2xSession {
                 "base source does not bind the session's restored source",
             )));
         }
-        let profile = self.profile;
-        self.stats.parse += 1;
-        let program = parse_program_with(base_src, profile)
-            .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
-        self.stats.parse += 1;
-        let env = resolve_env(&program, &self.caps.clone(), profile).map_err(|ds| {
-            A2xRejectOrResource::Reject(A2xReject::new("a2x.resolve", render_diag(&ds)))
+        // PLAN-929（T-08）：恢复侧 env 从**声明面清单**装配（stub-body；
+        // recheck 自带单体事务——未改函数 body 暖路径永不被读）。整源
+        // parse/resolve 路径就此退役（V-04/V-12：恢复后首编辑 whole=0）。
+        let text = self.load_decl_env(&bound).ok_or_else(|| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.decl-env",
+                "decl-env dump absent for the restored source: explicit cold re-init required",
+            ))
+        })?;
+        let dump = ace_core::source::decl_env::decode_decl_env(&text).map_err(|e| {
+            A2xRejectOrResource::Reject(A2xReject::new("a2x.decl-env", format!("dump decode: {e:?}")))
+        })?;
+        let env = ace_core::source::decl_env::decl_env_restore(
+            &dump,
+            self.profile,
+            ace_core::source::cst::FRONT_CAPS_VERSION,
+            &bound,
+        )
+        .map_err(|e| {
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.decl-env",
+                format!("decl-env restore rejected: {e:?}"),
+            ))
         })?;
         self.env = Some(env);
         self.stats.env_rebuilds += 1;
@@ -2283,6 +2358,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         "AXP3" => LAYER_SOURCE_ANCHOR_COLL.id,
+        "AXD1" => LAYER_DECL_ENV.id,
         other => panic!("unknown layer {}", other),
     }
 }

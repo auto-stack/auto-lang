@@ -13,8 +13,7 @@
 //! are all controlled rejections.
 
 use ace_core::source::closures_context::{
-    dump_context, restore_context, CaptureModeDump, ContextDump, UnitEvidence,
-    CONTEXT_DUMP_SCHEMA,
+    dump_context, restore_context, CaptureModeDump, ContextDump, UnitEvidence, CONTEXT_DUMP_SCHEMA,
 };
 use ace_core::source::closures_fn::ClosuresFunctionFrontend;
 
@@ -31,8 +30,8 @@ fn main() int {
 ";
 
 fn front() -> ClosuresFunctionFrontend {
-    let (front, _parts, _checked) = ClosuresFunctionFrontend::cold(SRC, "main.at", &[])
-        .expect("cold closures frontend");
+    let (front, _parts, _checked) =
+        ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).expect("cold closures frontend");
     front
 }
 
@@ -44,7 +43,10 @@ fn evidence(front: &ClosuresFunctionFrontend) -> Vec<UnitEvidence> {
     for u in front.units() {
         match &u.kind {
             ace_core::source::closures_fn::UnitKind::Lambda { .. } => {
-                let decl = front.registry().lambda(&format!("d_{}", u.name)).expect("decl");
+                let decl = front
+                    .registry()
+                    .lambda(&format!("d_{}", u.name))
+                    .expect("decl");
                 out.push(UnitEvidence {
                     unit: format!("d_{}", u.name),
                     env_arity: Some(decl.env.len()),
@@ -112,14 +114,8 @@ fn closures_context_913_dump_restore_emits_identical_document() {
     let json = serde_json::to_vec(&dump).expect("serialize dump");
     let decoded: ContextDump = serde_json::from_slice(&json).expect("deserialize dump");
     assert_eq!(decoded, dump);
-    let mut restored = restore_context(
-        decoded,
-        SRC,
-        "main.at",
-        &[],
-        &evidence(&cold),
-    )
-    .expect("restore context");
+    let mut restored =
+        restore_context(decoded, SRC, "main.at", &[], &evidence(&cold)).expect("restore context");
     // Catalog + registry + identity are restored exactly.
     assert!(restored.is_restored());
     assert_eq!(restored.source_sha(), cold.source_sha());
@@ -184,7 +180,8 @@ fn closures_context_913_rejects_evidence_that_disagrees_with_declarations() {
         .expect("creator evidence");
     owner.sites.clear();
     let err = restore_context(dump.clone(), SRC, "main.at", &[], &ev)
-        .err().expect("a creator with fewer decoded sites must be rejected");
+        .err()
+        .expect("a creator with fewer decoded sites must be rejected");
     assert!(
         err.iter().any(|d| d.code == "restored.context-mismatch"),
         "diagnostics: {err:?}"
@@ -197,7 +194,8 @@ fn closures_context_913_rejects_evidence_that_disagrees_with_declarations() {
         .expect("lambda evidence");
     lambda.env_arity = Some(99);
     let err = restore_context(dump, SRC, "main.at", &[], &ev)
-        .err().expect("an environment arity mismatch must be rejected");
+        .err()
+        .expect("an environment arity mismatch must be rejected");
     assert!(
         err.iter().any(|d| d.code == "restored.context-mismatch"),
         "diagnostics: {err:?}"
@@ -212,17 +210,20 @@ fn closures_context_913_rejects_source_module_schema_and_duplicates() {
     // A different source text (same shape) is a different accepted state.
     let other = SRC.replace("n + 1", "n + 2");
     let err = restore_context(dump.clone(), &other, "main.at", &[], &ev)
-        .err().expect("a different source must not restore");
+        .err()
+        .expect("a different source must not restore");
     assert!(err.iter().any(|d| d.code == "restored.source-mismatch"));
     // A different logical module is a foreign context.
     let err = restore_context(dump.clone(), SRC, "elsewhere.at", &[], &ev)
-        .err().expect("a foreign module must not restore");
+        .err()
+        .expect("a foreign module must not restore");
     assert!(err.iter().any(|d| d.code == "restored.context-mismatch"));
     // An unknown schema is STALE.
     let mut stale = dump.clone();
     stale.schema = "ace.closures.context-dump/0".to_string();
     let err = restore_context(stale, SRC, "main.at", &[], &ev)
-        .err().expect("a foreign schema must not restore");
+        .err()
+        .expect("a foreign schema must not restore");
     assert!(err.iter().any(|d| d.code == "restored.stale"));
     // Duplicate registry entries (two declarations for one lambda) are a
     // controlled rejection, never "last one wins".
@@ -230,11 +231,13 @@ fn closures_context_913_rejects_source_module_schema_and_duplicates() {
     let first = dup.registry[0].clone();
     dup.registry.push(first);
     let err = restore_context(dup, SRC, "main.at", &[], &ev)
-        .err().expect("a duplicate registry entry must be rejected");
+        .err()
+        .expect("a duplicate registry entry must be rejected");
     assert!(err.iter().any(|d| d.code == "restored.duplicate"));
     // A capability mismatch is the host's decision, not the dump's.
     let err = restore_context(dump.clone(), SRC, "main.at", &["trace".to_string()], &ev)
-        .err().expect("a capability mismatch must be rejected");
+        .err()
+        .expect("a capability mismatch must be rejected");
     assert!(err.iter().any(|d| d.code == "restored.capability"));
 }
 
@@ -248,8 +251,7 @@ fn closures_context_913_owner_route_needs_retained_body() {
     let mut cold = front();
     let dump = dump_context(&cold);
     let ev = evidence(&cold);
-    let mut restored =
-        restore_context(dump, SRC, "main.at", &[], &ev).expect("restore context");
+    let mut restored = restore_context(dump, SRC, "main.at", &[], &ev).expect("restore context");
     let sha = cold.source_sha().to_string();
     // Editing the OWNER body (main) is the owner route on a cold frontend.
     let at = SRC.find("return f(20)").expect("main tail");

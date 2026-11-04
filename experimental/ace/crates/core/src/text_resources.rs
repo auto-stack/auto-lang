@@ -2861,15 +2861,7 @@ pub fn param_exclusions_fixpoint(bundle: &hir::Bundle) -> ParamExclusions {
             };
             for (bi, body) in m.bodies.iter().enumerate() {
                 let mut diags = Vec::new();
-                let (_, adds) = check_body(
-                    body,
-                    m,
-                    mi,
-                    &type_map,
-                    &resource,
-                    &excl,
-                    &mut diags,
-                );
+                let (_, adds) = check_body(body, m, mi, &type_map, &resource, &excl, &mut diags);
                 if !adds.is_empty() {
                     next.entry((mi, bi as u32)).or_default().extend(adds);
                 }

@@ -17,11 +17,12 @@
 
 pub mod adapter;
 pub mod ast;
-pub mod cst;
 pub(crate) mod closure_capture;
 pub mod closures_context;
 pub mod closures_fn;
 pub mod console;
+pub mod cst;
+pub mod decl_env;
 pub mod lexer;
 pub mod parser;
 pub mod resolve;
@@ -40,10 +41,9 @@ pub use parser::{
     parse_program_with_handwritten,
 };
 pub use resolve::{
-    env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index, env_method_index,
-    env_note_cold_walks,
-    recheck_function, resolve_closures_cached, resolve_env, resolve_with, CachedOwner, CheckedEnv,
-    ClosuresOwnerCache, ResolvedFn, ResolvedProgram, VT,
+    env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index,
+    env_method_index, env_note_cold_walks, recheck_function, resolve_closures_cached, resolve_env,
+    resolve_with, CachedOwner, CheckedEnv, ClosuresOwnerCache, ResolvedFn, ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with, typecheck_with_skip};
 

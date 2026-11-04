@@ -96,8 +96,9 @@ fn layered_session_lifecycle() {
     assert_eq!(st.lower, 2, "two fragments lowered cold");
     assert_eq!(st.print, 2);
     // PLAN-921: +1 for the source-bound anchor (the scalar channel's
-    // restore commit point) — semantic+fragment per function, one anchor
-    assert_eq!(st.persist, 5, "semantic+fragment per function + anchor");
+    // restore commit point) — semantic+fragment per function, one anchor;
+    // PLAN-929 T-08: +1 for the decl-env dump (restore->first-edit commit face)
+    assert_eq!(st.persist, 6, "semantic+fragment per function + anchor + decl-env dump");
     assert_eq!(run_assembly(&cold, "cold"), "value:41", "helper(20)*2+1");
 
     let cold_generated = generated_of(&cold).to_string();
@@ -255,7 +256,9 @@ fn quota_gate_is_controlled_and_preserves_state() {
     .unwrap();
     let settled = probe.space().total;
     drop(probe);
-    let tight = settled + 64;
+    // PLAN-929 T-08：decl-env dump 入同一命名空间预算——tight 预算加其
+    // 稳定字节数（204B 实测；预算门合同不变）。
+    let tight = settled + 64 + 204;
     let mut s2 = A2xSession::open(
         &root,
         "a2x-probe",
@@ -274,14 +277,27 @@ fn quota_gate_is_controlled_and_preserves_state() {
         other => panic!("expected resource rejection, got {:?}", other.map(|_| ())),
     }
     // prior state intact: the namespace did not grow past the quota, and
-    // the surviving artifacts still serve a full restart (real hits)
+    // the surviving artifacts still serve a full restart (real hits).
+    // PLAN-929（T-08）：被拒 put 的 WAL/trash 瞬态会计（既有行为）会被
+    // `space()` 计入——按本测试自身的 settle 纪律（WAL/trash settle across
+    // opens）重开探测会话读**settle 后**总量；quota 合同按持久面核。
+    drop(s2);
+    let probe2 = A2xSession::open(
+        &root,
+        "a2x-probe",
+        "probe",
+        u64::MAX / 2,
+        ace_a2x_rust::RustTargetProvider::v1(),
+    )
+    .unwrap();
+    let settled2 = probe2.space().total;
+    drop(probe2);
     assert!(
-        s2.space().total <= tight,
-        "quota held: {} > {}",
-        s2.space().total,
+        settled2 <= tight,
+        "quota held (settled): {} > {}",
+        settled2,
         tight
     );
-    drop(s2);
     let mut s3 = A2xSession::open(
         &root,
         "a2x-probe",

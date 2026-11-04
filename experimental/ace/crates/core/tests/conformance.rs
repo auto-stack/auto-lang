@@ -1,7 +1,7 @@
-#[path = "cases/closures_fn_912.rs"]
-mod closures_fn_912;
 #[path = "cases/closures_context_913.rs"]
 mod closures_context_913;
+#[path = "cases/closures_fn_912.rs"]
+mod closures_fn_912;
 #[path = "cases/closures_surface.rs"]
 mod closures_surface;
 #[path = "cases/collections.rs"]
@@ -45,15 +45,17 @@ mod text_record_source;
 #[path = "cases/text_source.rs"]
 mod text_source;
 
-#[path = "cases/text_replacement.rs"]
-mod text_replacement;
+#[path = "cases/decl_env_roundtrip_929.rs"]
+mod decl_env_roundtrip_929;
+#[path = "cases/decl_events_929_t07.rs"]
+mod decl_events_929_t07;
 #[path = "cases/source_cst_927.rs"]
 mod source_cst_927;
+#[path = "cases/source_restore_929_t02.rs"]
+mod source_restore_929_t02;
 #[path = "cases/source_units_928.rs"]
 mod source_units_928;
 #[path = "cases/source_units_928_t09.rs"]
 mod source_units_928_t09;
-#[path = "cases/source_restore_929_t02.rs"]
-mod source_restore_929_t02;
-#[path = "cases/decl_events_929_t07.rs"]
-mod decl_events_929_t07;
+#[path = "cases/text_replacement.rs"]
+mod text_replacement;

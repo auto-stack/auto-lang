@@ -1968,9 +1968,40 @@ pub(crate) fn checked_env_from_parts(
     }
 }
 
+/// PLAN-929（T-08）：带 profile 的声明面环境装配（stub-body；恢复 R 轴——
+/// 与 913 的 checked_env_from_parts 同纪律，跳过全量 typecheck）。
+pub(crate) fn checked_env_from_parts_profile(
+    program: ResolvedProgram,
+    rec_index: BTreeMap<String, usize>,
+    sigs: BTreeMap<String, FnSig>,
+    trace_enabled: bool,
+    profile: SourceProfile,
+) -> CheckedEnv {
+    CheckedEnv {
+        program,
+        rec_index,
+        sigs,
+        trace_enabled,
+        profile,
+        resolve_walks: 0,
+        check_walks: 0,
+        id: next_env_id(),
+        generation: 0,
+        closed: false,
+    }
+}
+
 fn next_env_id() -> u64 {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// PLAN-929（T-08）：签名面公共访问（声明面恢复等价性的对账面——
+/// 参数 VT 序 + 结果 VT + 槽位）。
+pub fn env_sig_of(env: &CheckedEnv, name: &str) -> Option<(usize, Vec<VT>, VT)> {
+    env.sigs
+        .get(name)
+        .map(|s| (s.index, s.params.clone(), s.result.clone()))
 }
 
 /// PLAN-828 D-01: cold resolve that ALSO retains the checked environment

@@ -466,11 +466,7 @@ fn verify_function_impl(
     }
     v.check_profile_ops(m, body);
     v.check_body(m, body_id, body, &type_map, &sigs);
-    if matches!(
-        bundle.domain,
-        HirDomain::Collections | HirDomain::Closures
-    ) && v.diags.is_empty()
-    {
+    if matches!(bundle.domain, HirDomain::Collections | HirDomain::Closures) && v.diags.is_empty() {
         // Collections rules (view-escape / pattern-scrutinee / discarded
         // eval) and, for the closures domain, the borrow-closure non-escape
         // discipline this dispatch owns (`check_closure_borrow_rules`).
@@ -537,10 +533,7 @@ fn verify_function_impl(
             resource_plan: None,
             excl_adds: std::collections::BTreeSet::new(),
             body_digest: crate::collections_facts::body_content_digest(body),
-            coll_facts: if matches!(
-                bundle.domain,
-                HirDomain::Collections | HirDomain::Closures
-            ) {
+            coll_facts: if matches!(bundle.domain, HirDomain::Collections | HirDomain::Closures) {
                 Some(Box::new(crate::collections_facts::compute_body_facts(
                     m, body,
                 )))
@@ -867,7 +860,10 @@ impl ClosuresVerifyContext {
                     return Err(vec![Diagnostic::new(
                         Stage::Verify,
                         "verify.closure-site",
-                        format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                        format!(
+                            "expr `{}` creates a closure with an unknown callee",
+                            e.id_text
+                        ),
                         e.span,
                     )]);
                 };
@@ -1081,8 +1077,11 @@ impl ClosuresVerifyContext {
                 Span { start: 0, end: 0 },
             )]);
         };
-        let Some((creator_index, creator_def)) =
-            m.defs.iter().enumerate().find(|(_, d)| d.id_text == creator)
+        let Some((creator_index, creator_def)) = m
+            .defs
+            .iter()
+            .enumerate()
+            .find(|(_, d)| d.id_text == creator)
         else {
             return Err(vec![Diagnostic::new(
                 Stage::Verify,
@@ -1132,7 +1131,10 @@ impl ClosuresVerifyContext {
                 return Err(vec![Diagnostic::new(
                     Stage::Verify,
                     "verify.closure-site",
-                    format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                    format!(
+                        "expr `{}` creates a closure with an unknown callee",
+                        e.id_text
+                    ),
                     e.span,
                 )]);
             };
@@ -1321,7 +1323,10 @@ impl Verifier {
                     else {
                         self.error(
                             "verify.closure-site",
-                            format!("expr `{}` creates a closure with an unknown callee", e.id_text),
+                            format!(
+                                "expr `{}` creates a closure with an unknown callee",
+                                e.id_text
+                            ),
                             e.span,
                         );
                         continue;
@@ -1383,7 +1388,8 @@ impl Verifier {
                     });
                 }
                 hir::ExprKind::Call { callee, .. } => {
-                    if let Some(callee_id) = m.defs.get(callee.0 as usize).map(|d| d.id_text.as_str())
+                    if let Some(callee_id) =
+                        m.defs.get(callee.0 as usize).map(|d| d.id_text.as_str())
                     {
                         if ctx.is_lambda(callee_id) {
                             self.error(
@@ -4870,13 +4876,9 @@ impl Verifier {
                                 })
                                 .or_else(|| {
                                     let callee_id = callee.map(|d| d.id_text.as_str())?;
-                                    self.closures_ctx
-                                        .as_ref()?
-                                        .env
-                                        .get(callee_id)
-                                        .map(|env| {
-                                            env.iter().map(|f| (f.ty.clone(), f.mutable)).collect()
-                                        })
+                                    self.closures_ctx.as_ref()?.env.get(callee_id).map(|env| {
+                                        env.iter().map(|f| (f.ty.clone(), f.mutable)).collect()
+                                    })
                                 });
                             if capture_locals.is_none() && self.closures_ctx.is_some() {
                                 self.error(

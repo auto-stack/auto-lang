@@ -16,6 +16,8 @@ mod a2c_rt_cert;
 mod a2c_rt_method_warm;
 #[path = "cases/a2c_rt_resource.rs"]
 mod a2c_rt_resource;
+#[path = "cases/a2x_decl_env_929.rs"]
+mod a2x_decl_env_929;
 #[path = "cases/a2c_rt_restore.rs"]
 mod a2c_rt_restore;
 #[path = "cases/a2c_scalar_semantics.rs"]

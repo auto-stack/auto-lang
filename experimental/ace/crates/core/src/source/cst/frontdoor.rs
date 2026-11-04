@@ -53,9 +53,7 @@ pub enum FrontKind {
     WholeModule,
     /// 授权区间内的单个**自由函数**片段（旧 `parse_function_fragment`
     /// 合同：free-only、完整消耗、绝对 span；区间须有序/在界/UTF-8 边界）。
-    FreeFnFragment {
-        range: std::ops::Range<usize>,
-    },
+    FreeFnFragment { range: std::ops::Range<usize> },
     /// 方法片段：owner/receiver 来自请求上下文（不拼假 free fn——receiver
     /// 与求值序由真实 owner 决定；旧调用方在 929 迁移到此入口）。
     MethodFragment {
@@ -74,10 +72,7 @@ pub enum FrontOutcome {
     Diag(Vec<Diagnostic>),
     /// 资源耗尽（`RtError::ResourceExhausted` 穿过投影仍是资源态，不是
     /// `source.*` 语法拒绝；预算不足是资源态，不是语言不支持）。
-    ResourceExhausted {
-        what: &'static str,
-        limit: usize,
-    },
+    ResourceExhausted { what: &'static str, limit: usize },
     /// 请求与当前语法/快照身份不符（片段授权路径；T-07 接实际 producer）。
     StaleForeign(String),
     /// 基础设施失败（语法装载/裁剪失败、快照读写失败——不是源码问题）。
@@ -197,12 +192,12 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
     }
     let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, profile_slug(profile))
         .map_err(|diags| {
-            format!(
-                "auto-source grammar failed to compile for `{}`: {:?}",
-                profile_slug(profile),
-                diags
-            )
-        })?;
+        format!(
+            "auto-source grammar failed to compile for `{}`: {:?}",
+            profile_slug(profile),
+            diags
+        )
+    })?;
     let scanner =
         CompiledScanner::compile(&program).map_err(|e| format!("scanner compile: {e}"))?;
     let kinds = SourceKinds::from_program(&program).map_err(|missing| {
@@ -242,17 +237,22 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
         FrontKind::FreeFnFragment { range } => {
             parse_fragment_front(src, profile, budget, &range, None, Receiver::Free)
         }
-        FrontKind::MethodFragment { range, owner, receiver } => {
-            parse_fragment_front(src, profile, budget, &range, Some((owner, receiver)), receiver)
-        }
+        FrontKind::MethodFragment {
+            range,
+            owner,
+            receiver,
+        } => parse_fragment_front(
+            src,
+            profile,
+            budget,
+            &range,
+            Some((owner, receiver)),
+            receiver,
+        ),
     }
 }
 
-fn parse_whole_module(
-    src: &str,
-    profile: SourceProfile,
-    budget: FrontBudget,
-) -> FrontOutcome {
+fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) -> FrontOutcome {
     let cached = match profile_grammar(profile) {
         Ok(c) => c,
         Err(e) => return FrontOutcome::Infra(e),
@@ -272,7 +272,7 @@ fn parse_whole_module(
     ) {
         Ok(o) => o,
         Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
-            return FrontOutcome::ResourceExhausted { what, limit }
+            return FrontOutcome::ResourceExhausted { what, limit };
         }
         Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
     };
@@ -314,7 +314,6 @@ pub fn parse_program_via_cst(src: &str, profile: SourceProfile) -> Result<Progra
     }
 }
 
-
 /// 片段统一入口（T-07）：授权区间上的 free fn / 方法片段。同一 profile
 /// 语法程序与严格投影（不是第二套语法）；区间校验/单函数/完整消耗/
 /// receiver-owner 上下文按旧 `parse_function_fragment` 合同与 §5.1 方法
@@ -336,7 +335,7 @@ pub fn parse_fragment_front(
                 "source.incremental-fragment",
                 "fragment range must be ordered, in bounds and on UTF-8 boundaries",
                 crate::atom_text::Span { start: 0, end: 0 },
-            )])
+            )]);
         }
     };
     let cached = match profile_grammar(profile) {
@@ -358,25 +357,20 @@ pub fn parse_fragment_front(
     ) {
         Ok(o) => o,
         Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
-            return FrontOutcome::ResourceExhausted { what, limit }
+            return FrontOutcome::ResourceExhausted { what, limit };
         }
         Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
     };
-    let mut program = match project::project_program(
-        &cached.program,
-        &cached.kinds,
-        &tree,
-        &snap,
-        profile,
-    ) {
-        Ok(p) => p,
-        Err(mut ds) => {
-            for d in ds.iter_mut() {
-                super::shift::shift_diag(d, range.start as i64);
+    let mut program =
+        match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
+            Ok(p) => p,
+            Err(mut ds) => {
+                for d in ds.iter_mut() {
+                    super::shift::shift_diag(d, range.start as i64);
+                }
+                return FrontOutcome::Diag(ds);
             }
-            return FrontOutcome::Diag(ds);
-        }
-    };
+        };
     let span = crate::atom_text::Span {
         start: range.start,
         end: range.end,
@@ -398,7 +392,7 @@ pub fn parse_fragment_front(
                 "source.incremental-fragment",
                 "a fragment must contain one declared free function",
                 span,
-            )])
+            )]);
         }
     };
     match method_ctx {
@@ -499,7 +493,7 @@ pub fn parse_closure_fragment_via_cst(
                 "source.incremental-fragment",
                 "fragment range must be ordered, in bounds and on UTF-8 boundaries",
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
     };
     let prefix = "fn __closure_unit() int {\n    return ".len();
@@ -517,7 +511,10 @@ pub fn parse_closure_fragment_via_cst(
             if let Some(d) = ds.first_mut() {
                 let s = d.span.start.saturating_sub(prefix) + range.start;
                 let e = d.span.end.saturating_sub(prefix) + range.start;
-                d.span = crate::atom_text::Span { start: s.min(range.end), end: e.min(range.end) };
+                d.span = crate::atom_text::Span {
+                    start: s.min(range.end),
+                    end: e.min(range.end),
+                };
             }
             return Err(super::first_diag(&ds));
         }
@@ -527,7 +524,7 @@ pub fn parse_closure_fragment_via_cst(
                 "source.resource",
                 format!("resource exhausted: {what} (limit {limit})"),
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
         FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
             return Err(Diagnostic::new(
@@ -535,10 +532,13 @@ pub fn parse_closure_fragment_via_cst(
                 "source.infra",
                 m,
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
     };
-    let whole = crate::atom_text::Span { start: range.start, end: range.end };
+    let whole = crate::atom_text::Span {
+        start: range.start,
+        end: range.end,
+    };
     let Some(Item::Fn(mut f)) = program.items.pop() else {
         return Err(Diagnostic::new(
             crate::atom_text::Stage::Text,
@@ -601,7 +601,7 @@ pub fn parse_method_fragment_via_cst(
                 "source.incremental-fragment",
                 "fragment range must be ordered, in bounds and on UTF-8 boundaries",
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
     };
     // receiver 形状来自片段语法（镜像类型块成员 parser：`static fn` 从
@@ -615,18 +615,24 @@ pub fn parse_method_fragment_via_cst(
                 crate::atom_text::Stage::Text,
                 "source.incremental-fragment",
                 "a method fragment must start with `static fn` or `fn`",
-                crate::atom_text::Span { start: range.start, end: range.end },
-            ))
+                crate::atom_text::Span {
+                    start: range.start,
+                    end: range.end,
+                },
+            ));
         }
     };
     let prefix = "type __method_unit {
     __host_field int
-    ".len();
-    let wrapped = format!("type __method_unit {{
+    "
+    .len();
+    let wrapped = format!(
+        "type __method_unit {{
     __host_field int
     {fragment}
 }}
-");
+"
+    );
     let outcome = parse_front(FrontRequest {
         src: &wrapped,
         profile,
@@ -648,7 +654,7 @@ pub fn parse_method_fragment_via_cst(
                 "source.resource",
                 format!("resource exhausted: {what} (limit {limit})"),
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
         FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
             return Err(Diagnostic::new(
@@ -656,10 +662,13 @@ pub fn parse_method_fragment_via_cst(
                 "source.infra",
                 m,
                 crate::atom_text::Span { start: 0, end: 0 },
-            ))
+            ));
         }
     };
-    let whole = crate::atom_text::Span { start: range.start, end: range.end };
+    let whole = crate::atom_text::Span {
+        start: range.start,
+        end: range.end,
+    };
     let Some(crate::source::ast::Item::Type(ty)) = program.items.pop() else {
         return Err(Diagnostic::new(
             crate::atom_text::Stage::Text,
@@ -685,13 +694,19 @@ pub fn parse_method_fragment_via_cst(
         return Err(Diagnostic::new(
             crate::atom_text::Stage::Text,
             "source.infra",
-            format!("receiver mismatch: prefix says {receiver:?}, projection says {:?}", f.receiver),
+            format!(
+                "receiver mismatch: prefix says {receiver:?}, projection says {:?}",
+                f.receiver
+            ),
             crate::atom_text::Span { start: 0, end: 0 },
         ));
     }
     f.owner = Some(crate::source::ast::Ident {
         name: owner.to_string(),
-        span: crate::atom_text::Span { start: range.start, end: range.start },
+        span: crate::atom_text::Span {
+            start: range.start,
+            end: range.start,
+        },
     });
     // PLAN-929（T-05）：计量保真——按真实函数名补记解析（结构门对账）。
     crate::source::parser::note_parse(&f.name.name);
