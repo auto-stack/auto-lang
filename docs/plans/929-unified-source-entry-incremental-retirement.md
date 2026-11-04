@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-929
-status: drafting
+status: executing
 feature_name: SG-C 全源码入口增量恢复统一与重复parser退役
 author: [Codex]
 created_at: 2026-11-03
-updated_at: 2026-11-03
+updated_at: 2026-11-04
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-syntax/source-frontdoor.md, docs/specs/auto-ac/function-incremental-source.md, docs/specs/auto-ac/closures-function-production.md, docs/specs/auto-av/closures-source-recovery.md, docs/specs/auto-a2x/incremental-and-cache.md]
 new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 0
+current_step: 1
 total_steps: 14
 ---
 
@@ -54,7 +54,7 @@ r2复核main `f2214a65f`，本轮继续仅修订规划，不施工/建树/构建
 
 已读Spec：auto-syntax、auto-ac/function-incremental-source/closures-function-production/native-source-diagnostics、auto-av/closures-source-recovery/resident-online-reload、auto-a2x/incremental-and-cache及正式认证、auto-test-case适用规则/诊断/成本归因、ABI分域。早期AX-B type片段暂不可用已被904后续交付覆盖，不重开旧包。
 
-实施树未建：`D:/autostack/.wt/lang-929/auto-lang`，`plan-929-dev`。材料唯一`D:/autostack/plan-artifacts/plan-929/`，按当前政策登记/merge摘要入计划并全删，所有外部输出路径逐项对账；主检出只做簿记。
+实施树（2026-11-04 开工建组）：`D:/autostack/.wt/lang-929/auto-lang` @ `plan-929-dev`（基面 master `03e9869fb`，组内含 auto-down 兄弟 detached `7c4d5cb`）。材料唯一`D:/autostack/plan-artifacts/plan-929/`（已登记 `.retention/policy.json` in-flight），按当前政策登记/merge摘要入计划并全删，所有外部输出路径逐项对账；主检出只做簿记。**实施授权（2026-11-04 /goal "完成计划929"）**：授权整链 work→review→有界修复→merge（auto-plan-goal 范式），含建树；§8 末"用户本轮不授权work"仅指 2026-11-03 规划轮。开工时点事实：PLAN-928 由另一活跃会话在途执行（lang-928 worktree，本日 09:05 开工 T-01），D928 尚不存在——本包按 §5.7 分层推进：①T-01 调用清单/冻结可先行；②T-02 起公共实现需 D928 稳定接口（不把在途分支当D）。主检出未提交项均属其他会话（930-933 规划簿记、examples/ui/015-notes、test/fixtures/reader-import-budget、scripts/tools/native-fixture/Cargo.lock），已具名上报不入本包、待其 owner 路由。
 
 ## 5. 详细设计
 
@@ -195,7 +195,7 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 
 | T | owner_stage | 前置/真实写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 私有调查可先，927/928及923–926实际状态 | 调用清单/生命周期/版本/预算/所有写窗和原正式样本冻结，AC-01/11 | [ ] |
+| T-01 | work | 私有调查可先，927/928及923–926实际状态 | 调用清单/生命周期/版本/预算/所有写窗和原正式样本冻结，AC-01/11 | [x] 2026-11-04：五面只读盘点于冻结基面 `03e9869fb`；主件 `plan-artifacts/plan-929/t01-call-inventory-master-03e9869fb.md`（52 入口/全部生产+测试调用点/退役预分类/不同语言保留）+ 余项件 `t01-freeze-versions-budgets-windows-samples.md`（版本轴/六域预算原值/写窗实况/正式样本清单）。923-926/927 全部已归档交付、边界符号具名；**D928 写窗+稳定接口 SHA 具名 pending**（另一会话在途，按 §5.7②属 T-02 前置，不把在途分支当D） |
 | T-02 | work | T-01、927/928稳定接口，最小store/candidate整链 | 冷→restart→无预热首编辑/失败修复、嵌套单元/发布seam可行性；typed父schema/恢复数据/预算域/真实计数与I/O设计，失败needs_replan；AC-03/05/07 | [ ] |
 | T-03 | work | 927/928稳定接口，T-02，AV/core S窗 | scalar/closures候选与常驻session切统一语法；V-01/02/06/08，AC-02/03/06/08 | [ ] |
 | T-04 | work | T-02，native稳定923/924消费接口窗 | native cold/collections/闭包实际入口与source-v1诊断；V-01/02/06/07，AC-02/03/06/08 | [ ] |
@@ -214,10 +214,24 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 2 | from: work | to: user | status: executing | outcome: waiting（用户裁定挂起等 D928） | worktree: `D:/autostack/.wt/lang-929/auto-lang` @ `plan-929-dev` | commit: 03e9869fb（树无代码提交；T-01 两冻结件在 plan-artifacts） | next: user（D928 落地归档后 /goal resume，入口动作见 §10）
+  - T-01 完成（1/14，勾选+证据入 §8）。依赖墙复查：928 会话活跃推进至 2/12（worktree `3219cad1e`、master 簿记 `d0f67f75a`，其 T-02 可行性门已过——closures profile 走统一 frontdoor、sealed-body-handle 机制已定）。AskUserQuestion 三选一，用户选"挂起等 D928（推荐）"：不空转、不接管、不把在途分支当D；恢复条件与入口动作固化 §10。检查点保留（实施树/冻结件/retention）。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 2 | from: work | to: work | status: executing | outcome: in-progress（T-01 完成 1/14） | worktree: `D:/autostack/.wt/lang-929/auto-lang` @ `plan-929-dev` | commit: 03e9869fb（树尚无代码提交，纯盘点轮） | next: work（T-02 被 D928 阻塞 → 用户决策）
+  - T-01 勾选：余项件冻结版本轴/预算域（六域原值不放宽）/写窗实况（D923..927 全归档+边界符号，D928 在途具名）/正式样本清单。**T-02 依赖墙浮出**：公共实现链 T-02..T-11 全部需要 D928 稳定接口（§5.7②），928 会话活跃在途（当日 09:38 WIP）；本包自身无替代路径（计划明文"不把在途分支当D"）。按 auto-plan-goal 停止条件提交用户决策：等待 928 交付 / 授权另行路由 / 重新排期。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 1 | from: start | to: work | status: executing | outcome: in-progress | worktree: `D:/autostack/.wt/lang-929/auto-lang` @ `plan-929-dev`（基面 master `03e9869fb`，auto-down 兄弟 detached `7c4d5cb`） | commit: 03e9869fb | next: work（T-01 调用清单冻结）
+  - 2026-11-04 09:41 /goal 实施授权：用户指令"完成计划929"——授权整链 work→review→有界修复→merge（auto-plan-goal 范式），记录于 §4 与本收据，后续各 stage 继承。
+  - 依赖事实（具名）：PLAN-927 已交付归档（master `5d5054d5d`/`03e9869fb`）；**PLAN-928 由另一活跃会话在途执行**（lang-928 worktree 有当日 09:38 未提交 WIP，绝不并发触碰）→ D928 不存在，本包按 §5.7 分层：T-01 先行，T-02 起需 D928 稳定接口，届时不把在途分支当D。
+  - 簿记：plan-artifacts/plan-929/ 已建并登记 retention（in-flight）；顺带修复 plan-928 scope 登记被并发写覆盖丢失（按其 §9 收据补回），并具名上报 plan-927 空目录+陈旧 in-flight 条目待其会话收尾、主检出其他会话未提交项（见 §4）。
+  - T-01 进展（调用清单已冻结）：4 只读 agent 盘点五 consumer 面于冻结基面，主件 `plan-artifacts/plan-929/t01-call-inventory-master-03e9869fb.md`（52 入口 API 总账+生产/测试调用点+退役预分类+不同语言保留清单）。关键事实：7 profile 整源已 927 CST；**Collections/Closures 整源与全部 fragment 解析（parser.rs:167/239/335）仍 legacy，CST 替代入口零生产调用**；a2x-store `ensure_env`（lib.rs:1268→1779-1806，env_rebuilds 计数）=恢复后首编辑整源重建具名靶点；av `front_door_admit`（driver.rs:1627-1640）直连 lexer；两条裸语法栈（av/session.rs:552-567、case-worker/syntax.rs）待 T-02 判定共享机制。T-01 余项：版本轴/预算域/写窗（927 部分可冻，928 写窗 pending D928）/原正式样本冻结。
+
 - 2026-11-03，stage:new / revision:2 / outcome:pass（仅规划复核）/ next:work（待后续实施指令及实际写面就绪）。本轮按用户要求补实入口授权/typed资源态、同文lambda身份与真子体复用、首编辑禁止预热、恢复发布与预算适用性、923–926逐符号交接，详[复核及完整排期](reports/ace-927-929-plan-review-and-schedule-2026-11-03.md) PR-01..08。保留原AC/T编号、总步骤和0进度；新增V例均待使能执行，r1不是本r2实现证据。下列r1为初订历史。
 
 - 2026-11-03 stage:new / revision:1 / outcome:pass（规划可交接）/ next:work（待后续实施指令与实际稳定接口）。静态核对调用点/恢复隐藏工作/退役范围/V→AC→T及923–926窗口；实现/正式测试/独立实施复审未执行，全部任务未勾。927/928及适用C/native腿依赖仍待真实交付。
 
 ## 10. 待澄清事项
+
+**D928 依赖挂起（用户裁定，2026-11-04）**：T-02..T-11 公共实现链被 D928（PLAN-928 交付）阻塞；928 由另一活跃会话在途（本日开工，2/12）。用户裁定**挂起等 D928**，不空转、不接管、不把在途分支当D（未设期限）。**恢复条件**：master 出现 PLAN-928 merge 交付+归档提交（`docs/plans/archive/928-*.md` 且其 §9 merge pass）后 `/goal resume`——恢复入口动作：①worktree 基面 rebase 到 928 后 master 并读 D928 交接（其 §5.5/归档收据的 S 窗与稳定接口 SHA）；②按 §5.5"实际接口漂移使受影响证据STALE"刷新 T-01 冻结件（调用清单对 `cst/units.rs`/frontdoor 扩面做增量 diff）；③进入 T-02。检查点保留：实施树 `lang-929` @ `plan-929-dev`（无代码提交）、`plan-artifacts/plan-929/` 两冻结件、retention in-flight。
 
 无待用户重新批准的语义/资源放宽。T-02需证明持久化语法/声明环境能在原预算内支持恢复后局部编辑，不能把整源重建挪到M轴、source hash未改就跳依赖，或用cold冒restart。失败先needs_replan。最终ARCH组合门、SQ/实例/CT与CA-D另有具名待立项owner，本包只交SYN与受影响机制重验，不自动扩包或宣称新M1完成。
