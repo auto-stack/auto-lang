@@ -65,3 +65,14 @@ Web producer 如需 ID 级证明，须在收据 schema 增加版本化 ID 集/�
 - Web D-906-1（vendor 暂存/锁漂移）、Man D-910-2（`-d` rust 派发）、UI 旧红、真实 OS
   事件与批回归 user-pending 均保原 owner；语言控制门的绿不替代外仓产品/发行实际执行。
 - 后续无后继维护时，由变更 owner 触发本节与 §1.1/§3 流程。
+
+## 5. PLAN-930 交接（SD-04，as-built）
+
+- 本包**不触碰任何 Cargo manifest/依赖边**（lang 侧=driver/控制模块/规范；
+  UI 侧=rust_ui.rs 投影源码）→ modularity-audit 冻结基线不因本包 stale；
+  strict 复验 violations=0、self-test 16/16（V-06 负控）。
+- 三具名原红（036 V04×2/V05a）已闭合并登记长期守门；UI 既有 shell-pack
+  过期红（pack 改未 regen）与 jet/ark 环境门控、其他外仓债保原 owner，
+  不因本包绿自动关闭、不扩大准入。
+- 固定组 generated-delivery-controls 为 language 侧守门入口；跨仓真实
+  构建义务仍由原 driver/UI owner 门承载。

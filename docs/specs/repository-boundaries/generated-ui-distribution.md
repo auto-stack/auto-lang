@@ -56,8 +56,11 @@
   `auto-test-case` 转常驻依赖随包交付（不再剥除），`PROJECTION_AUTO_LANG`/`_CORE`
   收敛为恒等投影（仅跨仓 path 前缀改写 `../../../auto-ui|auto-web/crates/` →
   交付根包内兄弟）；runtime 仍剥 autodown-core 跨仓 optional path 行，feature 行剥
-  `dep:` 引用保留 feature 名；合法源码态、安装中间态和已投影态分别按结构准入，
-  不因合法零编辑或部分编辑判红；缺项或异常混态判为 producer 结构漂移。
+  `dep:` 引用保留 feature 名；PLAN-930 起 auto-ui-tools 依赖行改写剥除对 runtime 的
+  `features=["autodown"]` 请求（bundle 内 runtime 的 autodown 已投影为空 feature，
+  重开即复编 cfg 模块并 E0433；原形/投影形二选一校验、漂移判红）；合法源码态、
+  安装中间态和已投影态分别按结构准入，不因合法零编辑或部分编辑判红；缺项或异常
+  混态判为 producer 结构漂移。
 - **锁与 pin**：交付应用清单对历史漂移家族（wgpu/iced 家族，来源=生成时
   producer 根 Cargo.lock 已验证版本）精确钉扎；与基础依赖同名者（iced）
   并入基础行；多槽成员（windows/windows-core 三槽）TOML 单键不可重复声明
@@ -111,6 +114,22 @@
 - 生成器内容门（不跑 cargo）：`cargo test -p auto-man --lib delivery -- --test-threads=1`
 - 真实交付门（V01 fresh 解析+真实 build / V02 重定位 locked 重放 /
   V03 负控 / V04 开发模式保持）：`python test/fixtures/modularity/generated-ui-consumer/driver.py`
+
+## PLAN-930 交付回归收口（SD-02，as-built）
+
+- **V04 正确成员身份**：driver 定位成员**只消费受管 member.json 登记**
+  （schema/role/project_path，恰一匹配；缺失/错 owner/旧无身份/多候选具名
+  拒绝），不复刻 id8 哈希算法；dev/交付 main.rs 逐字节同源绑定实际选中
+  成员。同 basename 不同根由路径身份（`<basename>-<id8>`）隔离。
+- **V05 随包工具真实能力**：交付包 A/B 内 locked 构建 auto-ui-tools；
+  B 的 tool 以 framed I-TOOL v1 真实外部消费。**投影面闭合**：tools 对
+  runtime 的 `features=["autodown"]` 请求经依赖行改写剥除（bundle 内
+  runtime 的 autodown 已投影为空 feature，重开即复编 cfg 模块并 E0433——
+  036 V05a 根因）；原形/投影形二选一校验，漂移判红。
+- **负控守恒**：generated-delivery-controls 固定组承接便宜控制（身份/
+  产物比较/坏来源/子失败传播），原 V01..V06 执行/负控/来源/主题义务不减，
+  合成绿不替代真实构建。
+- 详见 [generated-delivery-regression](generated-delivery-regression.md)。
 
 ## M815-A:独立窄 tool/协议来源边界(PLAN-815 SD-06-A)
 

@@ -37,3 +37,16 @@
   receipt owner：`auto-web-contract`=`auto-lang`（`source_owner` lang 类别）。
 - 回退：跨仓提交组合逆序（lang manifest/源码/测试迁移 + web workspace/依赖行 +
   ui 投影类别），锁再生即回旧形态；无远端动作。
+
+## PLAN-930 独立边界复验（SD-03，as-built）
+
+- 隔离快照=仅语言来源的冻结副本（无 UI/Web/Man/Down 兄弟检出、无 target/、
+  无 .git、清除 AUTO_* 覆盖），落 plan-artifacts 暂存区不移动用户真实仓。
+- L1：`cargo test --manifest-path test/fixtures/modularity/language-sdk-consumer/
+  Cargo.toml` 真实 API/VM/trans 消费 5/5；缺源负控（抽走 `auto-lang-core`
+  源码模块→具名红、恢复→绿）。
+- L2：根 `cargo metadata --locked` 与 `cargo build --workspace --locked`
+  在隔离快照内真实完成（exit 0）；不删成员/optional/dev 依赖、不复制
+  UI/Web 实现、不借旧编译物。
+- 复用边界：输入与历史有效证据身份未变时按 PLAN-896 规则复用，否则重验；
+  L1 不冒 L2，metadata 不冒 build；registry 源可用条件如实记录。
