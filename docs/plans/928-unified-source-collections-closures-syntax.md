@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/composite-source-projection.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-927, PLAN-864, PLAN-865, PLAN-909, PLAN-912, PLAN-913]
-current_step: 7
+current_step: 8
 total_steps: 12
 ---
 
@@ -152,7 +152,7 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 | T-05 | work | T-04，CST单元/AST保留/候选短窗 | 目标lambda/owner保留子体、同文身份/creator映射与失败/pin事务，V-03/04/05/09/10；AC-03/04/07 | [x] 2026-11-04：units.rs 正式化——**候选事务**（`stage_owner_edit`：解析/投影/复用决策全在暂存面，目录/源/计量提交前零变异；坏候选=诊断零变异；`commit_staged` 推进+计量如实；语义重验义务按 λ 显式携带）+ **pin 生命周期**（`CatalogPin` 修订局部快照，多代共存、内容指纹可溯、跨修订不串用）。探针：候选全生命周期（坏/取消/提交）+ 两代 pin 共存；conformance **311/311**、固定组 PASS、零警告。同文身份在 T-02 探针证明；creator 操作数精度随 T-07 前端接线消费 `semantic_recheck` 通道落地（登记） |
 | T-06 | work | T-03..05，来源/单元目录与codec | type/enum/签名变更事件、稳定逻辑身份/关系与歧义准入，V-06/08/09；AC-05/07 | [x] 2026-11-04：声明单元（type/enum）入目录（含 `mint_span` 逻辑身份——跨 body/签名编辑携带不变，§5.3 纪律的语法面）；**typed 变更事件**（`OwnerSignatureChanged` 提交+直接双路径、`DeclChanged` 带语法面名字引用 dependents、`DeclSetChanged`、`LambdaTopologyChanged`）；**无指针清单** `CatalogManifest`（schema `ac-source-units/1`，确定性、caps/profile/内容指纹身份、无宿主指针/trusted 位——929 恢复消费面）。探针：签名事件必达/坐标漂移保 mint/清单确定性；结构层 coll_reject 前置修复；conformance **312/312**、固定组 PASS、零警告 |
 | T-07 | work | T-05/06，core片段/closures_fn兼容窗 | 复杂profile冷/片段切共享链，捕获原语义事实接线，V-02/04/06；AC-04/06/08 | [x] 2026-11-04：**冷入口切换**——`parse_program_with` 的 Collections/Closures 路由至统一 CST 链（手写保留为差分 oracle）；补切换暴露的两形状：括号组被调恒 `CallValue`（CalleePlan::Value + atom 层括号探测）与 `async (λ头)` 前缀拒绝（`source.closure-unsupported`）。消费者验证全绿（清环境后）：ace-source/ace-source-syntax-927/ace-av + case 864/865/909/912/913/889、conformance **312/312**、零警告。**865 类红三重证据归因环境**：跨运行持久 `%TEMP%\av798-session-*`（wire 键同 → 我方字节全等链命中 927 会话工件）；进程内新存储=oracle 精确值；清存储后全绿。该临时存储污染为既有 runner 行为，登记 929 侧处置（fresh 语义 vs 持久 session 存储的清理责任） |
-| T-08 | work | T-05..07，预算/资源probe | 深链/两代候选pin峰值/最后owner回收/读取/原200编辑及正式负载，V-07/10；AC-07/08 | [ ] |
+| T-08 | work | T-05..07，预算/资源probe | 深链/两代候选pin峰值/最后owner回收/读取/原200编辑及正式负载，V-07/10；AC-07/08 | [x] 2026-11-04：目录走查改**显式工作栈**（collect/extract 迭代——深链深度只受解析预算约束，不爆线程栈）；深链 typed 拒绝探针（收紧 `max_parse_depth` ⇒ `ResourceExhausted` 而非溢出）；**200 轮单 λ 编辑系列**（目标物化恰 200、兄弟每轮 Rc 共享 0 生产、`edit_lambda` 补真实复用计量）；**末主回收**（Rc 强计数观察：pin 释放/目录 drop 后归零——不以数组清空冒充）。两代候选 pin 峰值在 T-05 探针（共存活/指纹隔离）；typed 预算/64MiB 档在 T-02 探针。conformance **315/315**、ace-source+ace-source-syntax-927 PASS、零警告。正式性能采样（P90/ace-performance 错峰）归 T-10 |
 | T-09 | work | T-03..08，case/父侧/H窗 | 使能V-01..10正式目录/oracle/payload与身份反控/注册及全部适用腿；AC-09 | [ ] |
 | T-10 | work | T-09，冻结提交/采样错峰 | §6职责并集与全部消费者重验、交929来源/接口/余账，AC-01..09 | [ ] |
 | T-11 | review | T-01..10完成，暂停实现 | 独立逐AC/SD/遗漏及健康审查，AC-10 | [ ] |
