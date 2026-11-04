@@ -1,5 +1,7 @@
 # 第三代互联网战略（AutoGraphics 与产品创造入口）
 
+> **2026-11-04 AGE后续排期**：M2原合同不改；[M3图形/游戏增强](../../../../auto-ui/docs/design/autographics/m3-2d-3d-capability-roadmap.md)开始俯视角2D/2DHD国风种田可玩切片并以three.js矩阵扩复杂3D，整款商业游戏/战斗装备等范围仍待具体立约；[M4](../../../../auto-ui/docs/design/autographics/m4-autoui-integration-roadmap.md)承接原AutoUI/ACE正式融合并保Schema与编译器替换前置。以下旧月度/季度顺序保历史，本轮不取新号或实施。
+
 > **2026-10-21 当前方向**：首版 AutoGraphics 明确采用 **wgpu**，与 AutoUI/Iced 的 wgpu 路径共享图形基础；在其上建立自有场景/组合及图形、游戏能力。Godot/Bevy 是架构、功能和游戏示例的参照，不再作为首版整体引擎选型候选。技术与示例路线见[AutoGraphics/AutoForge 专题](autographics-forge-v06.md)。
 > 按[月度 v0.6 Roadmap](../../roadmap-v0.6.md)，本版目标包含真实 UI/2D/3D 组合、Forge 雏形与首批代表性游戏示例所需能力；具体样本由 Plan 冻结。自研国风承载游戏、完整引擎/游戏/XR 产品化留在[远期 TODO](../../roadmap-future.md)。下面 2026-09-06 的 Godot 发射/fork/静态缝合与季度排期均为历史论证，不是当前路线前置；旧资产继续保留。
 

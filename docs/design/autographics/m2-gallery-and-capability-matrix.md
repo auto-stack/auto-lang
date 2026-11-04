@@ -1,5 +1,7 @@
 # AGE M2 Demo Gallery与能力矩阵
 
+> **2026-11-04 M2后续阶段**：[M3](../../../../auto-ui/docs/design/autographics/m3-2d-3d-capability-roadmap.md)改为加强俯视角2D/2DHD与复杂3D：国风种田可玩切片＋three.js固定示例目录逐项能力覆盖，具体合同/分母待冻结，不把种植/背包或新增图形要求倒灌M2。原AutoUI/ACE正式融合顺延[M4](../../../../auto-ui/docs/design/autographics/m4-autoui-integration-roadmap.md)，Schema前置和001起Demo兼容路径保持。本轮只更新路线，无新Plan或实施。
+
 > **2026-11-04 当前M2补齐目标**：M2用户明确新增M2-10：新Auto语法下基础UI、2D、3D同应用组合。[能力核查与补齐设计](../../../../auto-ui/docs/design/autographics/m2-mixed-ui-2d-3d-composition.md)给出UI048基础UI→UI049混合引擎→AG021综合示例，均drafting/r1/0-10、暂不实施。019已delivery3daf2eb/归档清理，保原fc82061c候选及原九项/两游戏/Gallery12/22/47证据与holds，不重开或据此宣称扩展M2完成。完整生产UI/主题、ACE/跨端仍后置，但基础UI组合不再全部后置。020 r2更名默认019＋021及扩展M2必需门收口后维护窗口。引擎auto-ui/内容ag-examples分仓，预算/历史身份保持；当前见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文旧日期段落是历史快照。
 
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。

@@ -1,6 +1,6 @@
 # Auto Graphics Engine（AGE）、AutoForge与承载游戏：v0.6阶段设计
 
-> **2026-11-04 M3目标与进入门**：M3仍是AGE与现有AutoUI正式融合；用户进一步确认采用ACE一样的Schema方言体系，等待所需能力成熟并实际启动旧Auto编译器替换后，再统一设计接入。届时从examples/ui/001按能力依赖推进全部UI Demo的原行为/交互兼容，见[M3路线v2](../../../../auto-ui/docs/design/autographics/m3-autoui-integration-roadmap.md)。现有UI已按DomainDialect分离但具体语法仍为手写规则；AST Schema/codec不等语法Schema。M2有限研究链和既有Plan不改，等待期只盘点/需求准备，不提前扩旧parser做全量生产融合，不预取计划号或实施。
+> **2026-11-04 M3/M4排期调整**：考虑ACE集成耗时，用户将原AutoUI/ACE正式融合顺延[M4](../../../../auto-ui/docs/design/autographics/m4-autoui-integration-roadmap.md)，保Schema方言成熟与旧编译器替换实际启动前置及001起UI Demo兼容路径。[M3](../../../../auto-ui/docs/design/autographics/m3-2d-3d-capability-roadmap.md)优先增强2D/2DHD与复杂3D，以俯视角国风种田可玩切片、three.js固定目录逐项能力覆盖驱动公共能力。具体游戏/画面/规模和覆盖分母另立合同，不能宣称已覆盖全目录；M2合同/身份/预算与020既定窗口保持。本轮只更新设计路线，不取号/建树/实施；旧M3融合文件只作历史定位。
 
 > **2026-11-04 M2组合要求**：新语法基础UI＋2D＋3D同应用组合现为M2-10必需项，不能全部后置到完整生产UI/ACE融合；[核查与分仓补齐设计](../../../../auto-ui/docs/design/autographics/m2-mixed-ui-2d-3d-composition.md)立UI048→049→AG021，仅规划。019原合同候选已交付且保历史，020目录更名顺延扩展M2收口后。
 
@@ -40,7 +40,7 @@ AutoGraphics 提供 UI、2D、3D 的场景与组合能力；AutoForge 是以运�
 | 组合接缝 | 当前保留独立Iced/Surface/Portal实验，生产融合后议 | 保留UI→3D→UI等原实验分母；真实AutoUI、共同HIR方言和生产宿主接线等ACE完成后重新讨论，不能把现有实验标为融合完成 |
 | AutoForge | 独立场景作者工具的研究雏形 | 查看/选择→修改→预览→保存→撤销→重开及失败恢复按已批准实验Plan验收；生产组件、统一声明、产品化和Agent闭环等后续讨论，不追加当前里程碑 |
 | 阶段总结与优化 | M1总结已建立，M2/S0收敛后实施新增能力 | S0/S1及860/861已交付；874→875原范围保持，另规划Gallery/能力矩阵并行内容，详M2战略与[Gallery专题](../autographics/m2-gallery-and-capability-matrix.md) |
-| 承载游戏 | 远期待选，本版不承诺 | 国风种田/资源与战斗、装备/符箓的规则与内容方向保留；下一轮选择最小状态/资源闭环后再立项，不把规则原型或完整游戏加入本月发行门槛 |
+| 承载游戏 | M3开始俯视角2D/2DHD国风种田可玩切片 | 原国风种田/资源战斗/装备符箓方向保留，具体规则与素材另立合同；M3先证公共地图/移动交互/表现和种植收获闭环，不回填M2或认领完整商业游戏 |
 
 首个实施 Plan 需固定目标平台、库版本、场景规模、帧时/内存预算和输入序列；本轮不编造性能成绩。先做能淘汰错误方案的组合实验，之后再决定展示内容与生产引擎投入。
 

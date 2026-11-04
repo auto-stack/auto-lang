@@ -1,6 +1,6 @@
 # Design 45：Auto Graphics Engine（AGE）的wgpu引擎、游戏原型与AutoUI集成边界
 
-> **2026-11-04 M3目标与进入门**：M3仍是AGE与现有AutoUI正式融合；用户进一步确认采用ACE一样的Schema方言体系，等待所需能力成熟并实际启动旧Auto编译器替换后，再统一设计接入。届时从examples/ui/001按能力依赖推进全部UI Demo的原行为/交互兼容，见[M3路线v2](../../../auto-ui/docs/design/autographics/m3-autoui-integration-roadmap.md)。现有UI已按DomainDialect分离但具体语法仍为手写规则；AST Schema/codec不等语法Schema。M2有限研究链和既有Plan不改，等待期只盘点/需求准备，不提前扩旧parser做全量生产融合，不预取计划号或实施。
+> **2026-11-04 M3/M4排期调整**：考虑ACE集成耗时，用户将原AutoUI/ACE正式融合顺延[M4](../../../auto-ui/docs/design/autographics/m4-autoui-integration-roadmap.md)，保Schema方言成熟与旧编译器替换实际启动前置及001起UI Demo兼容路径。[M3](../../../auto-ui/docs/design/autographics/m3-2d-3d-capability-roadmap.md)优先增强2D/2DHD与复杂3D，以俯视角国风种田可玩切片、three.js固定目录逐项能力覆盖驱动公共能力。具体游戏/画面/规模和覆盖分母另立合同，不能宣称已覆盖全目录；M2合同/身份/预算与020既定窗口保持。本轮只更新设计路线，不取号/建树/实施；旧M3融合文件只作历史定位。
 
 > **2026-11-04 M2组合要求**：新语法基础UI＋2D＋3D同应用组合现为M2-10必需项，不能全部后置到完整生产UI/ACE融合；[核查与分仓补齐设计](../../../auto-ui/docs/design/autographics/m2-mixed-ui-2d-3d-composition.md)立UI048→049→AG021，仅规划。019原合同候选已交付且保历史，020目录更名顺延扩展M2收口后。
 
