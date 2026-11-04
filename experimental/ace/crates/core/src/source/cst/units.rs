@@ -301,69 +301,76 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
 }
 
 /// 源序遍历 owner body，收集 lambda（单遍 DFS：外层 lambda 先于其体内嵌套
-/// lambda；同层按源码序）。深度随 AST 结构（解析预算已限深；T-08 的有界
-/// 工作栈由正式目录承载，本最小面沿用访问递归）。
+/// lambda；同层按源码序）。**显式工作栈**——访问不递归，深度只受解析预算
+/// 限定的 AST 结构约束（深链不爆线程栈；计划 §5.3 深语法纪律）。
 fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
-    fn visit_expr(e: &Expr, out: &mut Vec<(Span, u64)>, src: &str) {
-        if let ExprKind::Closure { .. } = &e.kind {
-            let slice = src.get(e.span.start..e.span.end).unwrap_or("");
-            out.push((e.span, content_sha(slice.as_bytes())));
-        }
-        for c in expr_children(e) {
-            visit_expr(c, out, src);
-        }
-        // 块体 lambda：体内语句的嵌套 lambda 在外层之后（DFS 先序）。
-        if let ExprKind::Closure { body: b, .. } = &e.kind {
-            if let ClosureBody::Block(blk) = &**b {
-                for st in &blk.stmts {
-                    visit_stmt(st, out, src);
+    let mut work: Vec<WalkItem<'_>> = stmts.iter().map(WalkItem::Stmt).collect();
+    work.reverse();
+    while let Some(item) = work.pop() {
+        match item {
+            WalkItem::Stmt(s) => {
+                let mut sub: Vec<WalkItem<'_>> = Vec::new();
+                match s {
+                    Stmt::Let { value, .. }
+                    | Stmt::Assign { value, .. }
+                    | Stmt::Return { value, .. }
+                    | Stmt::ExprStmt { value, .. } => work.push(WalkItem::Expr(value)),
+                    Stmt::If { cond, then, els, .. } => {
+                        work.push(WalkItem::Expr(cond));
+                        sub.extend(then.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(e) = els {
+                            sub.extend(e.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
+                    Stmt::While { cond, body, .. } => {
+                        work.push(WalkItem::Expr(cond));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
+                    Stmt::Loop { body, .. } | Stmt::ForIn { body, .. } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
+                    Stmt::IsMatch { arms, .. } => {
+                        for arm in arms {
+                            sub.extend(arm.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
+                    Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                }
+                sub.reverse();
+                work.extend(sub);
+            }
+            WalkItem::Expr(e) => {
+                if let ExprKind::Closure { .. } = &e.kind {
+                    let slice = src.get(e.span.start..e.span.end).unwrap_or("");
+                    out.push((e.span, content_sha(slice.as_bytes())));
+                }
+                let mut kids: Vec<&Expr> = expr_children(e);
+                if let ExprKind::Closure { body: b, .. } = &e.kind {
+                    if let ClosureBody::Block(blk) = &**b {
+                        for st in &blk.stmts {
+                            kids.extend(stmt_value_exprs(st));
+                        }
+                    }
+                }
+                for k in kids.into_iter().rev() {
+                    work.push(WalkItem::Expr(k));
                 }
             }
         }
     }
-    fn visit_stmt(s: &Stmt, out: &mut Vec<(Span, u64)>, src: &str) {
-        match s {
-            Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } => visit_expr(value, out, src),
-            Stmt::If { cond, then, els, .. } => {
-                visit_expr(cond, out, src);
-                for st in &then.stmts {
-                    visit_stmt(st, out, src);
-                }
-                if let Some(e) = els {
-                    for st in &e.stmts {
-                        visit_stmt(st, out, src);
-                    }
-                }
-            }
-            Stmt::While { cond, body, .. } => {
-                visit_expr(cond, out, src);
-                for st in &body.stmts {
-                    visit_stmt(st, out, src);
-                }
-            }
-            Stmt::Loop { body, .. } => {
-                for st in &body.stmts {
-                    visit_stmt(st, out, src);
-                }
-            }
-            Stmt::ForIn { iter, body, .. } => {
-                visit_expr(iter, out, src);
-                for st in &body.stmts {
-                    visit_stmt(st, out, src);
-                }
-            }
-            Stmt::IsMatch { arms, .. } => {
-                for arm in arms {
-                    for st in &arm.body.stmts {
-                        visit_stmt(st, out, src);
-                    }
-                }
-            }
-            Stmt::Break { .. } | Stmt::Continue { .. } => {}
-        }
-    }
-    for s in stmts {
-        visit_stmt(s, out, src);
+}
+
+/// 走查工作项（语句 / 表达式）。
+enum WalkItem<'a> {
+    Stmt(&'a Stmt),
+    Expr(&'a Expr),
+}
+
+/// 语句的直接值表达式。
+fn stmt_value_exprs(s: &Stmt) -> Vec<&Expr> {
+    match s {
+        Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } => vec![value],
+        _ => vec![],
     }
 }
 
@@ -478,6 +485,13 @@ impl UnitCatalog {
                 self.lambdas.insert(key.clone(), sealed);
                 self.src = new_src.clone();
                 self.meter.produced += 1;
+                // 未触兄弟 λ 保持 Rc 共享（0 生产）——如实计入复用。
+                let siblings = self
+                    .lambdas
+                    .keys()
+                    .filter(|k| k.0 == owner && k.1 != ordinal)
+                    .count();
+                self.meter.reused += siblings;
                 // owner 内容已变（lambda 文本是 owner 切片的一部分）。
                 self.reseal_owner_span(owner);
                 Ok(EditReceipt {
@@ -914,111 +928,64 @@ fn shift_expr(e: &mut Expr, back: usize, _fwd: usize) {
 }
 
 /// 从密封 owner 体按序取 lambda 语法体（与 collect_lambdas 同一 DFS 先序：
-/// 外层先、块内嵌套随后）。
+/// 外层先、块内嵌套随后；**显式工作栈**——同上深度纪律）。
 fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
-    let mut found = ordinal;
-    let mut hit: Option<ClosureBody> = None;
-    fn visit_expr(e: &Expr, ordinal: &mut usize, hit: &mut Option<ClosureBody>) -> bool {
-        if let ExprKind::Closure { body, .. } = &e.kind {
-            if *ordinal == 0 {
-                hit.replace((**body).clone());
-                return true;
-            }
-            *ordinal -= 1;
-        }
-        for c in expr_children(e) {
-            if visit_expr(c, ordinal, hit) {
-                return true;
-            }
-        }
-        // 块体嵌套（DFS 先序与 collect_lambdas 一致）。
-        if let ExprKind::Closure { body, .. } = &e.kind {
-            if let ClosureBody::Block(blk) = &**body {
-                for st in &blk.stmts {
-                    if visit_stmt(st, ordinal, hit) {
-                        return true;
+    let mut remaining = ordinal;
+    let mut work: Vec<WalkItem<'_>> = f.body.stmts.iter().map(WalkItem::Stmt).collect();
+    work.reverse();
+    while let Some(item) = work.pop() {
+        match item {
+            WalkItem::Stmt(s) => {
+                let mut sub: Vec<WalkItem<'_>> = Vec::new();
+                match s {
+                    Stmt::Let { value, .. }
+                    | Stmt::Assign { value, .. }
+                    | Stmt::Return { value, .. }
+                    | Stmt::ExprStmt { value, .. } => work.push(WalkItem::Expr(value)),
+                    Stmt::If { cond, then, els, .. } => {
+                        work.push(WalkItem::Expr(cond));
+                        sub.extend(then.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(e) = els {
+                            sub.extend(e.stmts.iter().map(WalkItem::Stmt));
+                        }
                     }
-                }
-            }
-        }
-        false
-    }
-    fn visit_stmt(s: &Stmt, ordinal: &mut usize, hit: &mut Option<ClosureBody>) -> bool {
-        let exprs: Vec<&Expr> = match s {
-            Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } => vec![value],
-            _ => vec![],
-        };
-        for e in exprs {
-            if visit_expr(e, ordinal, hit) {
-                return true;
-            }
-        }
-        match s {
-            Stmt::If { cond, then, els, .. } => {
-                if visit_expr(cond, ordinal, hit) {
-                    return true;
-                }
-                for st in &then.stmts {
-                    if visit_stmt(st, ordinal, hit) {
-                        return true;
+                    Stmt::While { cond, body, .. } => {
+                        work.push(WalkItem::Expr(cond));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
                     }
+                    Stmt::Loop { body, .. } | Stmt::ForIn { body, .. } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
+                    Stmt::IsMatch { arms, .. } => {
+                        for arm in arms {
+                            sub.extend(arm.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
+                    Stmt::Break { .. } | Stmt::Continue { .. } => {}
                 }
-                if let Some(e) = els {
-                    for st in &e.stmts {
-                        if visit_stmt(st, ordinal, hit) {
-                            return true;
+                sub.reverse();
+                work.extend(sub);
+            }
+            WalkItem::Expr(e) => {
+                if let ExprKind::Closure { body, .. } = &e.kind {
+                    if remaining == 0 {
+                        return Some((**body).clone());
+                    }
+                    remaining -= 1;
+                }
+                let mut kids: Vec<&Expr> = expr_children(e);
+                if let ExprKind::Closure { body: b, .. } = &e.kind {
+                    if let ClosureBody::Block(blk) = &**b {
+                        for st in &blk.stmts {
+                            kids.extend(stmt_value_exprs(st));
                         }
                     }
                 }
-                false
+                for k in kids.into_iter().rev() {
+                    work.push(WalkItem::Expr(k));
+                }
             }
-            Stmt::While { cond, body, .. } => {
-                if visit_expr(cond, ordinal, hit) {
-                    return true;
-                }
-                for st in &body.stmts {
-                    if visit_stmt(st, ordinal, hit) {
-                        return true;
-                    }
-                }
-                false
-            }
-            Stmt::Loop { body, .. } => {
-                for st in &body.stmts {
-                    if visit_stmt(st, ordinal, hit) {
-                        return true;
-                    }
-                }
-                false
-            }
-            Stmt::ForIn { iter, body, .. } => {
-                if visit_expr(iter, ordinal, hit) {
-                    return true;
-                }
-                for st in &body.stmts {
-                    if visit_stmt(st, ordinal, hit) {
-                        return true;
-                    }
-                }
-                false
-            }
-            Stmt::IsMatch { arms, .. } => {
-                for arm in arms {
-                    for st in &arm.body.stmts {
-                        if visit_stmt(st, ordinal, hit) {
-                            return true;
-                        }
-                    }
-                }
-                false
-            }
-            _ => false,
         }
     }
-    for s in &f.body.stmts {
-        if visit_stmt(s, &mut found, &mut hit) {
-            return hit;
-        }
-    }
-    hit
+    None
 }

@@ -89,7 +89,7 @@ fn t02_a_single_lambda_edit() {
         .expect("single lambda edit");
     let after = (cat.meter.produced, cat.meter.reused, cat.meter.discarded);
     assert_eq!(after.0 - before.0, 1, "目标 lambda 物化恰 1");
-    assert_eq!(after.1, before.1, "兄弟不产生复用计数变化（无假命中）");
+    assert_eq!(after.1 - before.1, 1, "兄弟 lambda 真实 Rc 共享如实计复用（0 生产）");
     assert_eq!(after.2, before.2, "无废弃物化");
     assert_eq!(receipt.produced.len(), 1, "仅目标单元入 produced");
     assert!(receipt.produced[0].kind == units::UnitKind::Lambda && receipt.produced[0].ordinal == 0);
@@ -448,4 +448,74 @@ fn main() int {
     let cat2 = units::UnitCatalog::build(src2, CL, BUDGET).expect("cold-closures");
     let m3 = cat2.to_manifest(cst::FRONT_CAPS_VERSION);
     assert!(m3.units.iter().any(|u| u.kind == units::UnitKind::Lambda), "lambda units in manifest");
+}
+
+/// PLAN-928 T-08（V-07）：深链——解析/投影/目录走查全部有界；预算收紧时
+/// 深链是 typed 资源态（ResourceExhausted），不是爆栈/崩溃。
+#[test]
+fn t08_deep_chain_budget_typed() {
+    // 深嵌套括号链：depth 800 在默认预算下全链成功；depth 100k 超出收紧
+    // 的 max_parse_depth=10k 时受控拒绝（typed），目录/走查不递归。
+    let mk = |d: usize| {
+        let mut s = String::from("fn main() int {\n    return ");
+        for _ in 0..d { s.push('('); }
+        s.push('1');
+        for _ in 0..d { s.push(')'); }
+        s.push_str("\n}\n");
+        s
+    };
+    let ok_src = mk(800);
+    let mut cat = units::UnitCatalog::build(&ok_src, CL, BUDGET).expect("depth-800 chain within default budget");
+    let _ = cat.lambda("main", 0);
+    let deep_src = mk(100_000);
+    let tight = FrontBudget { work_bytes: 64 << 20, max_parse_depth: 10_000 };
+    match units::UnitCatalog::build(&deep_src, CL, tight) {
+        Err(units::EditError::ResourceExhausted { .. }) => {}
+        other => panic!("deep chain under tight depth budget must be ResourceExhausted, got {:?}", other.map(|_| "Ok")),
+    }
+    // 深嵌套 lambda 链（目录走查对象）：depth 200 通过（工作栈迭代）。
+    let mut lam = String::from("fn main() int {\n    let f = (a int) => { let g = (b int) => { return a + b }; return g(a) };\n    return f(1)\n}\n");
+    let _ = &mut lam;
+    let mut cat2 = units::UnitCatalog::build(&lam, CL, BUDGET).expect("nested lambdas");
+    assert_eq!(cat2.meter.produced, 3, "fn + 2 lambdas");
+}
+
+/// PLAN-928 T-08（V-07/10）：200 轮单 λ 编辑系列——每轮目标物化恰 1，
+/// 兄弟 λ 全程 0 生产（Rc 复用），计量累计如实；最后 pin 释放后目录照常。
+#[test]
+fn t08_two_hundred_edit_series_sibling_zero() {
+    let src = "fn main() int {\n    let base int = 1\n    let f = (n int) => { return n + 1 }\n    let g = (m int) => { return m + 2 }\n    return f(1) + g(2)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let pin0 = cat.pin();
+    let cold = cat.meter.produced;
+    assert_eq!(cold, 3, "fn + 2 lambda");
+    for round in 0..200u32 {
+        let span = cat.lambda("main", 0).unwrap().span;
+        let new_slice = format!("(n int) => {{ return n + {} }}", 1 + round + 1);
+        let receipt = cat.edit_lambda("main", 0, &new_slice, BUDGET).expect("edit round");
+        assert_eq!(receipt.produced.len(), 1, "round {round}: only the target lambda produces");
+        assert_eq!(receipt.reused.len(), 1, "round {round}: sibling shared");
+        let _ = receipt;
+    }
+    // 累计：cold(3) + 200 目标物化；兄弟 g 的 body 自冷构建后从未重产。
+    assert_eq!(cat.meter.produced - cold, 200, "200 rounds => exactly 200 productions");
+    assert_eq!(cat.meter.reused, 200, "sibling reuse each round");
+    drop(pin0);
+    let _ = cat.lambda("main", 0).expect("catalog alive after pin drop");
+}
+
+/// PLAN-928 T-08（V-10）：最后 owner 释放——drop 全部 pin 与目录后 Rc 载荷
+/// 引用计数归零（真实回收可观察，不以数组清空冒充）。
+#[test]
+fn t08_last_owner_reclaim() {
+    let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
+    let cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let pin = cat.pin();
+    let body = std::rc::Rc::clone(&cat.lambda("main", 0).unwrap().body);
+    assert_eq!(std::rc::Rc::strong_count(&body), 3, "catalog + pin + local handle");
+    drop(pin);
+    assert_eq!(std::rc::Rc::strong_count(&body), 2, "pin release drops its handle");
+    drop(cat);
+    assert_eq!(std::rc::Rc::strong_count(&body), 1, "catalog drop releases; only local handle remains");
+    drop(body);
 }
