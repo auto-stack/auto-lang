@@ -42,11 +42,14 @@ fn main() {
     let idle = sample_private_bytes();
     println!("idle={idle}");
 
-    // A: tokenize only
+    // A: tokenize only（PLAN-929 T-03：共享扫描器——手写 lexer 非生产依赖）
     let toks = stage("A-tokenize", || {
-        ace_core::source::lexer::tokenize(&load.source).unwrap()
+        let cached = ace_core::source::cst::profile_grammar(SourceProfile::Scalar).unwrap();
+        let store = std::rc::Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
+        let snap = ace_syntax_runtime::snapshot::Snapshot::from_text(&store, &load.source);
+        ace_syntax_runtime::lexer::lex_all(cached.program(), cached.scanner(), &snap).unwrap()
     });
-    println!("A: {} tokens", toks.len());
+    println!("A: {} tokens", toks.tokens.len());
     drop(toks);
 
     // B..D: public stage seams, values kept alive like the real pipeline.

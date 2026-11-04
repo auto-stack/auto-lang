@@ -1624,8 +1624,32 @@ impl LevelChain {
     }
 }
 
+/// PLAN-929（T-03）：准入 token 分类（共享扫描器产物的语法名+拼写分类——
+/// 拼写是语言面，不是第二套语法规则；类别面与旧手写 lexer 的 Tok 面一致）。
+enum FTok {
+    LParen,
+    LBracket,
+    RParen,
+    RBracket,
+    LBrace,
+    RBrace,
+    Semi,
+    Comma,
+    Colon,
+    Assign,
+    Bang,
+    Minus,
+    Bin(u8),
+    /// 其余关键字/保留字：子句边界（旧 Tok::Kw/Reserved 面）。
+    Word,
+    /// `true`/`false`：表达式操作数（F798-R7-02）。
+    TrueFalse,
+    Ident,
+    /// int/str/char 字面量与其余原始面：操作数。
+    Lit,
+}
+
 pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
-    use ace_core::source::lexer::{tokenize, Tok, P};
     if src.len() > MAX_INPUT_BYTES {
         return Err(StageDiag {
             stage: "admission".into(),
@@ -1637,34 +1661,86 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             ),
         });
     }
-    let tokens = tokenize(src).map_err(|d| StageDiag {
+    // PLAN-929（T-03）：token 供给切**共享扫描器**（与冷前门同一 profile
+    // grammar——手写 lexer 不再是生产依赖）。
+    let cached = ace_core::source::cst::profile_grammar(ace_core::source::SourceProfile::Scalar)
+        .map_err(|e| StageDiag {
+            stage: "admission".into(),
+            code: "source.infra".into(),
+            message: e,
+        })?;
+    let grammar = cached.program();
+    let scanner = cached.scanner();
+    let store = std::rc::Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
+    let snap = ace_syntax_runtime::snapshot::Snapshot::from_text(&store, src);
+    let lex = ace_syntax_runtime::lexer::lex_all(grammar, scanner, &snap).map_err(|e| StageDiag {
         stage: "admission".into(),
-        code: d.code.clone(),
-        message: d.message.clone(),
+        code: "source.infra".into(),
+        message: format!("{e:?}"),
     })?;
-    let (mut depth, mut max_depth) = (0u32, 0u32);
-    // Scalar binary-operator precedence (mirrors the real parser's
-    // `scalar_prec_of`: higher binds tighter; left-associative). This is
-    // what makes the depth evaluator follow the REAL association instead
-    // of summing branch-sibling depths (F798-R12-01).
-    let prec_of = |p: &P| -> Option<u8> {
-        match p {
-            P::PipePipe => Some(1),
-            P::AmpAmp => Some(2),
-            P::EqEq | P::NotEq => Some(3),
-            P::Lt | P::Gt | P::LeEq | P::GeEq => Some(4),
-            P::Plus | P::Minus => Some(5),
-            P::Star | P::Slash | P::Percent => Some(6),
-            _ => None,
+    if let Some(d) = lex.diags.first() {
+        return Err(StageDiag {
+            stage: "admission".into(),
+            code: "source.lex".into(),
+            message: d.message.clone(),
+        });
+    }
+    let mut fts: Vec<FTok> = Vec::with_capacity(lex.tokens.len());
+    for t in &lex.tokens {
+        let name = grammar.token_name(t.token);
+        if matches!(name, "ws" | "line-comment" | "block-comment") {
+            continue;
         }
-    };
+        let text = snap.read_str(t.start, t.end).unwrap_or_default();
+        let ft = if name == "ident" {
+            FTok::Ident
+        } else if name == "int-lit" {
+            FTok::Lit
+        } else if name == "true-kw" || name == "false-kw" {
+            FTok::TrueFalse
+        } else {
+            // Scalar binary-operator precedence (mirrors the real parser's
+            // `scalar_prec_of`: higher binds tighter; left-associative). This
+            // is what makes the depth evaluator follow the REAL association
+            // instead of summing branch-sibling depths (F798-R12-01).
+            match text.as_str() {
+                "(" => FTok::LParen,
+                "[" => FTok::LBracket,
+                ")" => FTok::RParen,
+                "]" => FTok::RBracket,
+                "{" => FTok::LBrace,
+                "}" => FTok::RBrace,
+                ";" => FTok::Semi,
+                "," => FTok::Comma,
+                ":" => FTok::Colon,
+                "=" => FTok::Assign,
+                "!" => FTok::Bang,
+                "-" => FTok::Minus,
+                "||" => FTok::Bin(1),
+                "&&" => FTok::Bin(2),
+                "==" | "!=" => FTok::Bin(3),
+                "<" | ">" | "<=" | ">=" => FTok::Bin(4),
+                "+" => FTok::Bin(5),
+                "*" | "/" | "%" => FTok::Bin(6),
+                _ => {
+                    if text.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+                        FTok::Word
+                    } else {
+                        FTok::Lit
+                    }
+                }
+            }
+        };
+        fts.push(ft);
+    }
+    let (mut depth, mut max_depth) = (0u32, 0u32);
     // The CURRENT bracket level's chain; `[`/`(` push a fresh one.
     let mut cur = LevelChain::default();
     let mut level_stack: Vec<LevelChain> = Vec::new();
     let mut peak = 0u32;
-    for t in &tokens {
-        match &t.tok {
-            Tok::Punct(p) if matches!(p, P::LParen | P::LBracket) => {
+    for ft in &fts {
+        match ft {
+            FTok::LParen | FTok::LBracket => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
                 // A callee identifier directly before `(` is a NAME, not
@@ -1682,7 +1758,7 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 }
                 level_stack.push(std::mem::take(&mut cur));
             }
-            Tok::Punct(p) if matches!(p, P::RParen | P::RBracket) => {
+            FTok::RParen | FTok::RBracket => {
                 depth = depth.saturating_sub(1);
                 // F798-R12-01: closing a level yields ITS OWN longest path
                 // (call level counted once); the closed group then joins
@@ -1698,28 +1774,28 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                     None => cur = LevelChain::default(),
                 }
             }
-            Tok::Punct(P::LBrace) => {
+            FTok::LBrace => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
                 // Block structure is a statement boundary, not an
                 // expression level (bracket depth covers it).
                 cur.clause_boundary(&mut peak);
             }
-            Tok::Punct(P::RBrace) => {
+            FTok::RBrace => {
                 depth = depth.saturating_sub(1);
                 cur.clause_boundary(&mut peak);
             }
             // Clause boundaries end the current statement's expression.
-            Tok::Punct(P::Semi) | Tok::Punct(P::Assign) => {
+            FTok::Semi | FTok::Assign => {
                 cur.clause_boundary(&mut peak);
             }
-            Tok::Punct(P::Comma) => {
+            FTok::Comma => {
                 // An argument comma ends the current sibling; its composed
                 // path folds by MAX into the siblings pool.
                 let v = cur.end_sibling();
                 peak = peak.max(v);
             }
-            Tok::Punct(P::Colon) => {
+            FTok::Colon => {
                 // Named-argument `name:` — the parameter NAME is not a
                 // construction level (retract it); the VALUE expression is
                 // this level's sibling. The value's own internal
@@ -1732,29 +1808,24 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             }
             // Prefix unary always nests one level; `-` after an operand is
             // the left-associative binary subtraction instead.
-            Tok::Punct(P::Bang) => cur.prefix_unary(),
-            Tok::Punct(P::Minus) => {
+            FTok::Bang => cur.prefix_unary(),
+            FTok::Minus => {
                 if cur.after_operand {
                     cur.binary(5);
                 } else {
                     cur.prefix_unary();
                 }
             }
-            Tok::Punct(p) => {
-                if let Some(prec) = prec_of(p) {
-                    cur.binary(prec);
-                }
-                // Other puncts (`.`) stay inside the current operand.
+            FTok::Bin(prec) => {
+                cur.binary(*prec);
             }
             // `true`/`false` are expression OPERANDS, not clause
             // boundaries (F798-R7-02); every other keyword starts a fresh
             // clause in this newline-terminated grammar.
-            Tok::Kw(ace_core::source::lexer::Kw::True)
-            | Tok::Kw(ace_core::source::lexer::Kw::False) => cur.operand(1),
-            Tok::Kw(_) | Tok::Reserved(_) => cur.clause_boundary(&mut peak),
-            Tok::Ident(_) => cur.ident_operand(),
-            Tok::Int(_) | Tok::Raw { .. } => cur.operand(1),
-            _ => {}
+            FTok::TrueFalse => cur.operand(1),
+            FTok::Word => cur.clause_boundary(&mut peak),
+            FTok::Ident => cur.ident_operand(),
+            FTok::Lit => cur.operand(1),
         }
     }
     // The final statement's path closes the metric.

@@ -46,11 +46,8 @@ use ace_core::source::{
 };
 use ace_core::verify::{verify_function, CheckedFunction};
 use ace_lowering::{lower_checked, lower_function_unit};
-use ace_syntax_core::{project_decl_strict, project_strict, CoreKinds};
-use ace_syntax_grammar::compile as compile_grammar;
 use ace_syntax_runtime::edit::incremental_reparse;
 use ace_syntax_runtime::lexer::CompiledScanner;
-use ace_syntax_runtime::outline::outline;
 use ace_syntax_runtime::parse::{parse_snapshot, ParseOutput};
 use ace_syntax_runtime::program::{Budget, GrammarProgram};
 use ace_syntax_runtime::snapshot::{Edit, EditRequest, PageStore, Snapshot};
@@ -432,9 +429,11 @@ pub struct FunctionIncrementalSession {
     entry_def_id: String,
     caps: Vec<String>,
     src: String,
-    grammar: GrammarProgram,
-    kinds: CoreKinds,
-    scanner: CompiledScanner,
+    /// PLAN-929（T-03）：常驻语法栈切共享 profile grammar（auto-source.at
+    /// 的 scalar 裁剪 + 进程级缓存；独立 `auto-scalar.at` 语法文件从生产
+    /// 依赖退役，只留差分参照——不再有第二语法源）。
+    grammar: &'static GrammarProgram,
+    scanner: &'static CompiledScanner,
     snap: Snapshot,
     parse: ParseOutput,
     fns: Vec<FnRecord>,
@@ -500,6 +499,42 @@ fn elapsed_us(t: std::time::Instant) -> u64 {
     t.elapsed().as_micros() as u64
 }
 
+
+/// PLAN-929（T-03）：顶层声明名序（文档序）——`tree.decls` 目录 + 子树内
+/// 先序找 `name` 字段（显式栈；镜像 outline.rs 的 find-field 面板，不依赖
+/// 语法 outline spec 的 decl-rule 命中）。
+fn decl_names(
+    grammar: &GrammarProgram,
+    tree: &ace_syntax_runtime::cst::CstTree,
+    snap: &Snapshot,
+) -> Result<Vec<String>, String> {
+    let name_field = grammar
+        .field_id("name")
+        .ok_or_else(|| "grammar lacks `name` field".to_string())?;
+    let mut out = Vec::with_capacity(tree.decls.len());
+    for d in &tree.decls {
+        let node = d.node;
+        let mut name = String::new();
+        let mut stack = vec![node];
+        while name.is_empty() {
+            let Some(n) = stack.pop() else { break };
+            if let Some(c) = tree.field_child(n, name_field) {
+                let (s, e) = tree.abs_range(c);
+                if e > s {
+                    name = snap.read_str(s, e).map_err(|e| format!("{e:?}"))?;
+                    break;
+                }
+            }
+            let kids: Vec<u32> = tree.children(n).to_vec();
+            for &k in kids.iter().rev() {
+                stack.push(k);
+            }
+        }
+        out.push(name);
+    }
+    Ok(out)
+}
+
 /// Warm-up: the one whole-module compile of the session's life (cold path;
 /// NOT part of any edit's hot-path counters). `entry` follows the pipeline's
 /// def-id convention (`"d_main"`), same as `Driver::request`.
@@ -547,21 +582,19 @@ pub fn warmup_with_codec(
         lower_checked(&checked, &entry_def_id, snapshot_hash).map_err(|e| format!("{e:?}"))?;
     let units = split_units(&mir).map_err(|e| e)?;
 
-    // ac-syntax resident state over the same source, under the versioned
-    // scalar grammar (PLAN-828 T-02). The projected AST is the session's
-    // name/declaration view (parity with the ac-core parser is pinned by the
-    // scalar_projection_ differential suite and the frozen-load check).
-    let grammar_src = std::fs::read_to_string(format!(
-        "{}/../../grammars/auto-scalar.at",
-        env!("CARGO_MANIFEST_DIR")
-    ))
-    .map_err(|e| format!("read auto-scalar grammar: {e}"))?;
-    let grammar = compile_grammar(&grammar_src).map_err(|e| format!("compile grammar: {e:?}"))?;
-    let kinds = CoreKinds::from_program(&grammar);
-    let scanner = CompiledScanner::compile(&grammar).map_err(|e| format!("scanner: {e:?}"))?;
+    // ac-syntax resident state over the same source. PLAN-929（T-03）：语法
+    // 栈切**共享 profile grammar**（`cst::profile_grammar(Scalar)`——同一
+    // auto-source.at 裁剪程序、进程级缓存、与冷前门同源）。The projected
+    // AST is the session's name/declaration view (parity with the ac-core
+    // parser is pinned by the scalar_projection_ differential suite and the
+    // frozen-load check).
+    let cached = ace_core::source::cst::profile_grammar(SourceProfile::Scalar)
+        .map_err(|e| format!("shared scalar grammar: {e}"))?;
+    let grammar: &'static GrammarProgram = cached.program();
+    let scanner: &'static CompiledScanner = cached.scanner();
     let store = Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&store, src);
-    let parse = parse_snapshot(&grammar, &scanner, &snap, &Budget::default())
+    let parse = parse_snapshot(grammar, scanner, &snap, &Budget::default())
         .map_err(|e| format!("syntax parse: {e:?}"))?;
     if !parse.tree.diags.is_empty() {
         return Err(format!("syntax diags: {:?}", parse.tree.diags));
@@ -587,13 +620,14 @@ pub fn warmup_with_codec(
         parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.render("probe.at", src))?;
     let env_core = resolve_env(&core_program, caps, SourceProfile::Scalar)
         .map_err(|ds| render_diags(src, &ds))?;
-    let projected = project_strict(&grammar, &kinds, &parse.tree, &snap)
-        .map_err(|e| format!("project: {e:?}"))?;
-    let ast_fns: Vec<(String, FnItem)> = projected
+    // PLAN-929（T-03）：暖建声明视图直接消费统一前门的 `core_program`
+    // （同一次冷解析的投影——不再有第二套语法投影面；常驻栈只保留
+    // 语法增量/outline 检测面）。
+    let ast_fns: Vec<(String, FnItem)> = core_program
         .items
-        .into_iter()
+        .iter()
         .filter_map(|i| match i {
-            Item::Fn(f) => Some((f.name.name.clone(), f)),
+            Item::Fn(f) => Some((f.name.name.clone(), f.clone())),
             _ => None,
         })
         .collect();
@@ -723,7 +757,6 @@ pub fn warmup_with_codec(
 
     let session_id = NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(FunctionIncrementalSession {
-        kinds,
         entry_def_id: entry_def_id.to_string(),
         caps: caps.to_vec(),
         src: src.to_string(),
@@ -2295,12 +2328,13 @@ impl FunctionIncrementalSession {
             )));
         }
         let changed_idx = changed[0];
-        let old_outline = outline(&self.grammar, &self.parse.tree, &self.snap)
-            .map_err(|e| format!("old outline: {e:?}"))?;
-        let new_outline = outline(&self.grammar, &inc.tree, &new_snap)
-            .map_err(|e| format!("new outline: {e:?}"))?;
-        let old_names: Vec<&str> = old_outline.iter().map(|o| o.name.as_str()).collect();
-        let new_names: Vec<&str> = new_outline.iter().map(|o| o.name.as_str()).collect();
+        // PLAN-929（T-03）：声明名序走 decls 目录 + name 字段（统一语法
+        // 的声明注册在顶层分派规则，outline 声明块的 decl-rule 命名面沿
+        // 828 语法——名序提取不再依赖该命中）。
+        let old_names = decl_names(self.grammar, &self.parse.tree, &self.snap)
+            .map_err(|e| format!("old outline: {e}"))?;
+        let new_names = decl_names(self.grammar, &inc.tree, &new_snap)
+            .map_err(|e| format!("new outline: {e}"))?;
         if old_names != new_names {
             return Ok(Err(EditOutcome::refused(
                 self.revision,
@@ -2321,7 +2355,7 @@ impl FunctionIncrementalSession {
                 Vec::new(),
             )));
         }
-        let changed_name = new_outline[changed_idx].name.clone();
+        let changed_name = new_names[changed_idx].clone();
         if changed_name != self.fns[changed_idx].name {
             return Err(format!(
                 "internal: decl {} name `{changed_name}` != record `{}`",
@@ -2338,23 +2372,27 @@ impl FunctionIncrementalSession {
         // cannot push the program past the frozen input budget).
         front_door_admit(&new_src).map_err(|d| d.message)?;
 
-        // Project ONLY the changed declaration (PLAN-828 T-02): the
-        // incremental CST is the source of truth and unchanged declarations
-        // are never re-projected. Spans come out in absolute new-source
-        // coordinates.
+        // Project ONLY the changed declaration (PLAN-828 T-02): unchanged
+        // declarations are never re-projected. PLAN-929（T-03）：变更 decl
+        // 的投影走**统一片段前门**（`FreeFnFragment`——同一 grammar/同投影/
+        // 同预算；增量树只承担变更检测/漂移判定）。Spans come out in
+        // absolute new-source coordinates.
         let t_project = std::time::Instant::now();
-        let projected_fn = match project_decl_strict(
-            &self.grammar,
-            &self.kinds,
-            &inc.tree,
-            &new_snap,
-            changed_idx,
+        let decl_span = {
+            let node = inc.tree.decls[changed_idx].node;
+            let (s, e) = inc.tree.abs_range(node);
+            s as usize..e as usize
+        };
+        let projected_fn = match ace_core::source::cst::parse_function_fragment_via_cst(
+            &new_src,
+            decl_span,
+            SourceProfile::Scalar,
         ) {
             Ok(f) => f,
-            Err(e) => {
+            Err(d) => {
                 return Ok(Err(EditOutcome::refused(
                     self.revision,
-                    format!("candidate rejected: projection `{e:?}`"),
+                    format!("candidate rejected: fragment `{}`", d.render("probe.at", &new_src)),
                     Vec::new(),
                     RefusalKind::InvalidEdit,
                     None,

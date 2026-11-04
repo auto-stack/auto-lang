@@ -1270,15 +1270,17 @@ fn parse_lambda_unit(slice: &str, profile: SourceProfile, budget: FrontBudget) -
     let Some(Stmt::Return { mut value, .. }) = stmts.pop() else {
         return Err(EditError::Infra("lambda wrapper carried no return".into()));
     };
-    shift_expr(&mut value, WRAP_PREFIX_LEN, 0);
+    shift_expr(&mut value, -(WRAP_PREFIX_LEN as i64));
     Ok((value, slice.len()))
 }
 
-/// 表达式全跨度平移（片内相对坐标；T-05 由正式 codec 承载）。
-fn shift_expr(e: &mut Expr, back: usize, _fwd: usize) {
+/// 表达式全跨度平移（有符号 delta；负=回退到片段相对坐标，正=提升到
+/// 原源绝对坐标；饱和到 0）。PLAN-929（T-03）：泛化为统一片段桥共用。
+pub(crate) fn shift_expr(e: &mut Expr, delta: i64) {
+    let sh = |v: usize| ((v as i64 + delta).max(0)) as usize;
     let mut work = vec![e];
     while let Some(cur) = work.pop() {
-        cur.span = Span { start: cur.span.start.saturating_sub(back), end: cur.span.end.saturating_sub(back) };
+        cur.span = Span { start: sh(cur.span.start), end: sh(cur.span.end) };
         let mut children: Vec<&mut Expr> = Vec::new();
         fn push_args<'a>(args: &'a mut [crate::source::ast::Arg], children: &mut Vec<&'a mut Expr>) {
             for a in args.iter_mut() {

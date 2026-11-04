@@ -161,6 +161,19 @@ pub struct CachedGrammar {
     kinds: SourceKinds,
 }
 
+impl CachedGrammar {
+    /// PLAN-929（T-03）：共享语法程序访问器——常驻/暖路径消费同一份
+    /// profile 裁剪编译产物（不另建第二语法栈）。经 `profile_grammar`
+    /// 取得的 `&'static CachedGrammar` 上借用即进程级存活。
+    pub fn program(&self) -> &GrammarProgram {
+        &self.program
+    }
+    /// PLAN-929（T-03）：共享扫描器访问器（同上）。
+    pub fn scanner(&self) -> &CompiledScanner {
+        &self.scanner
+    }
+}
+
 static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
 
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，
@@ -456,5 +469,105 @@ pub fn parse_function_fragment_via_cst(
             m,
             crate::atom_text::Span { start: 0, end: 0 },
         )),
+    }
+}
+
+/// 旧签名兼容桥：lambda 片段（`parse_closure_fragment` 的统一前门版；
+/// PLAN-929 T-03——closures_fn 暖编辑的片段生产者迁移入口）。
+///
+/// 合同同旧入口：授权区间内恰一个 lambda 表达式、完整消耗、span 平移回
+/// 原源绝对 UTF-8 byte 坐标；同一 profile 语法程序（合成宿主
+/// `fn __closure_unit() int { return <fragment> }` 走整模块请求，同
+/// grammar/同投影/同预算——不是第二套语法）。
+pub fn parse_closure_fragment_via_cst(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+) -> Result<crate::source::ast::Expr, Diagnostic> {
+    use crate::source::ast::{ExprKind, Item, Stmt};
+    let fragment = match src.get(range.clone()) {
+        Some(f) => f,
+        None => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.incremental-fragment",
+                "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+    };
+    let prefix = "fn __closure_unit() int {\n    return ".len();
+    let wrapped = format!("fn __closure_unit() int {{\n    return {fragment}\n}}\n");
+    let outcome = parse_front(FrontRequest {
+        src: &wrapped,
+        profile,
+        kind: FrontKind::WholeModule,
+        budget: FrontBudget::WORK_OWNED_64MIB,
+    });
+    let mut program = match outcome {
+        FrontOutcome::Ok(ok) => ok.program,
+        FrontOutcome::Diag(mut ds) => {
+            // 诊断坐标回原源（宿主前缀内 ⇒ 片内相对 0 起点）。
+            if let Some(d) = ds.first_mut() {
+                let s = d.span.start.saturating_sub(prefix) + range.start;
+                let e = d.span.end.saturating_sub(prefix) + range.start;
+                d.span = crate::atom_text::Span { start: s.min(range.end), end: e.min(range.end) };
+            }
+            return Err(super::first_diag(&ds));
+        }
+        FrontOutcome::ResourceExhausted { what, limit } => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.resource",
+                format!("resource exhausted: {what} (limit {limit})"),
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+        FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.infra",
+                m,
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+    };
+    let whole = crate::atom_text::Span { start: range.start, end: range.end };
+    let Some(Item::Fn(mut f)) = program.items.pop() else {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.infra",
+            "closure wrapper carried no fn".to_string(),
+            crate::atom_text::Span { start: 0, end: 0 },
+        ));
+    };
+    let mut stmts = std::mem::take(&mut f.body.stmts);
+    if stmts.len() != 1 || !matches!(stmts[0], Stmt::Return { .. }) {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.incremental-fragment",
+            "a lambda fragment must contain exactly one lambda expression",
+            whole,
+        ));
+    }
+    let Some(Stmt::Return { mut value, .. }) = stmts.pop() else {
+        unreachable!("checked Return above");
+    };
+    let is_closure = matches!(value.kind, ExprKind::Closure { .. });
+    // 宿主相对 → 片内相对（−prefix）→ 原源绝对（+range.start）。
+    super::units::shift_expr(&mut value, range.start as i64 - prefix as i64);
+    // 完整消耗合同：闭包表达式尾必须到达片段尾（return 语法保证单表达式，
+    // 但片段尾随垃圾会让投影失败——由上面的整模块诊断面覆盖）。
+    if !is_closure {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.incremental-fragment",
+            "a lambda fragment must be a lambda expression",
+            whole,
+        ));
+    }
+    match value.kind {
+        ExprKind::Closure { .. } => Ok(value),
+        _ => unreachable!("checked above"),
     }
 }

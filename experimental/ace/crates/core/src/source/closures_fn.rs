@@ -25,7 +25,8 @@ use super::adapter::{
     emit_closures_function_batch, emit_function_body, emit_whole_document, BodyEmitReceipt,
     SourceParts,
 };
-use super::parser::{parse_closure_fragment, parse_function_fragment};
+// PLAN-929 T-03：片段生产者切统一前门（旧手写 parser 保留为差分 oracle）。
+use super::cst::{parse_closure_fragment_via_cst, parse_function_fragment_via_cst};
 use super::resolve::{
     resolve_closures_env, resolve_lambda_in_context, resolve_owner_in_env, BodyState, CheckedEnv,
     LambdaNonFast, LambdaReResolve, LambdaSiteFacts, ReuseEntry,
@@ -571,7 +572,7 @@ impl ClosuresFunctionFrontend {
         };
         // P axis: one fragment parse for the changed unit only (wire-keyed).
         body_work::record_attempt(StageAxis::ParseProject, &format!("d_{unit_name}"));
-        let expr = parse_closure_fragment(
+        let expr = parse_closure_fragment_via_cst(
             &new_source,
             new_span.start..new_span.end,
             SourceProfile::Closures,
@@ -648,7 +649,7 @@ impl ClosuresFunctionFrontend {
         // P axis: one fragment parse — the owner ITEM (its nested lambda
         // text is part of the owner body; no lambda is resolved by this).
         body_work::record_attempt(StageAxis::ParseProject, &format!("d_{owner_name}"));
-        let item = parse_function_fragment(
+        let item = parse_function_fragment_via_cst(
             &new_source,
             new_span.start..new_span.end,
             SourceProfile::Closures,
