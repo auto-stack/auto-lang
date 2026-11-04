@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 3
+current_step: 6
 total_steps: 14
 ---
 
@@ -198,9 +198,9 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 | T-01 | work | 私有调查可先，927/928及923–926实际状态 | 调用清单/生命周期/版本/预算/所有写窗和原正式样本冻结，AC-01/11 | [x] 2026-11-04：五面只读盘点于冻结基面 `03e9869fb`；主件 `plan-artifacts/plan-929/t01-call-inventory-master-03e9869fb.md`（52 入口/全部生产+测试调用点/退役预分类/不同语言保留）+ 余项件 `t01-freeze-versions-budgets-windows-samples.md`（版本轴/六域预算原值/写窗实况/正式样本清单）。923-926/927 全部已归档交付、边界符号具名；**D928 写窗+稳定接口 SHA 具名 pending**（另一会话在途，按 §5.7②属 T-02 前置，不把在途分支当D） |
 | T-02 | work | T-01、927/928稳定接口，最小store/candidate整链 | 冷→restart→无预热首编辑/失败修复、嵌套单元/发布seam可行性；typed父schema/恢复数据/预算域/真实计数与I/O设计，失败needs_replan；AC-03/05/07 | [x] 2026-11-04：D928 落地（`6b429502f`，基面 ff 至 `37503a3f5`）；实现 `UnitCatalog::from_restored` **零生产惰性恢复**（身份-only headless 单元+字节级深重验+`RestoreError` 八类使用前拒+类型感知嵌套检查）+ Option 化惰性物化（未改单元跨恢复→首编辑 P=0 保持 headless）+修复 to_manifest module_sha 陈旧；8 用例套件 `source_restore_929_t02.rs` 全绿（零生产恢复/无预热首编辑恰目标物化/失败零变异修复/7 类伪造拒绝/foreign+stale+零编辑重放/跨编辑链续/嵌套 owner⊇λ）；`cargo t ace-source`+`case-ace-source-composite-928` PASS（worktree `1f029a4a4`）。**设计冻结**：SYN 报告 schema=`ac-source-syn-report/1`（身份/P-M-R-IO 四轴/预算域/认证终态，父 decoder 拒伪五规则，字段骨架见 plan-artifacts 草案，T-09 接线时终冻）；恢复数据=`ac-source-units/1` 清单+惰性 body+RestoreError 分类；真实计数=ProductionMeter（produced/reused/discarded 分账）+StageAttempts（whole/per-unit 双轴）；预算域六域原值不变。消费者 store/会话集成（ensure_env 消除的 a2x/AV/native 落地）归 T-03..T-08 |
 | T-03 | work | 927/928稳定接口，T-02，AV/core S窗 | scalar/closures候选与常驻session切统一语法；V-01/02/06/08，AC-02/03/06/08 | [x] 2026-11-04（worktree `404ccba21`）三面迁移：①closures 片段生产者→统一前门桥（新增 `parse_closure_fragment_via_cst` 合成宿主入口+`parse_function_fragment_via_cst`，closures_fn.rs edit_body 两处切接）；②常驻 scalar session 切共享 `profile_grammar` 缓存（**auto-scalar.at 退出生产依赖**；暖建 ast 视图复用统一 `core_program` 投影=零二次投影；暖编辑变更 decl 走 `FreeFnFragment` 统一片段前门；`decl_names` 本地名序替代 outline spec 命中——统一语法 decl 注册在顶层分派规则）；③`front_door_admit` 深度度量改共享扫描器供给（语法 token 名+拼写分类，LevelChain/F798 语义原样）+mem_stage_probe lex 面同迁。验证：`ace-av`/`ace-source`/`ace-syntax` 全组 PASS+闭包 912/913/865/909+composite-928 绿（清 `%TEMP%\av798-session-*` 后；**av798 跨运行污染处置余账→T-09**）；av crate 存 928 基线 fmt/警告漂移 6 文件（非本包触面，复审健康项具名） |
-| T-04 | work | T-02，native稳定923/924消费接口窗 | native cold/collections/闭包实际入口与source-v1诊断；V-01/02/06/07，AC-02/03/06/08 | [ ] |
-| T-05 | work | T-02，Rust与925/926稳定A2X接口窗 | A2xSession cold/method/type-enum/ranged统一与原provider不回退；V-01/02/07，AC-02/03/08 | [ ] |
-| T-06 | work | T-02，semantics/comptime/工具adapter窗 | 剩余Auto源码reader切共享门面，严分Atom/模型输入；V-01/02，AC-01/02/08 | [ ] |
+| T-04 | work | T-02，native稳定923/924消费接口窗 | native cold/collections/闭包实际入口与source-v1诊断；V-01/02/06/07，AC-02/03/06/08 | [x] 2026-11-05（worktree `8365fe856`）：native 唯一残留 legacy 调用点 collections 暖编辑片段→`parse_function_fragment_via_cst`；冷入口/closures 面 928 已统一（parse_program_with 九 profile 路由）、924 闭包前端经 T-03 核心侧统一；source-v1 诊断随 compile 链自动统一。**计量保真修复**：fn 片段桥补 `note_parse`（真实函数名）——统一前门不做 per-fn 计量，collections 结构门（改函恰 1、无关 0）初判红后修复归绿。ace-native+case-889/911 PASS；911 P90 body-edit 首红 2560ms→隔离复跑绿（环境页面文件归因，同 928 先例） |
+| T-05 | work | T-02，Rust与925/926稳定A2X接口窗 | A2xSession cold/method/type-enum/ranged统一与原provider不回退；V-01/02/07，AC-02/03/08 | [x] 2026-11-05（worktree `77eb17eae`）：a2x-store **六处 fragment 生产调用全部切统一桥**（ranged 旧片段身份校验 ×2、候选片段 ×2、暖 body/method 编辑 ×2）——新增 `parse_method_fragment_via_cst`（合成 type 宿主+占位字段满足 record 面最少字段约束、receiver 从语法/owner 从调用方、shift.rs i64 核带符号回绝对坐标）；a2c_rt 28/28、ace-a2x + case-902/921 全绿。925/926 provider/runtime 面零触碰（TargetProvider 之后全 SemanticView）。**ensure_env 消除归 T-08**（需持久化 env/目录设计，from_restored 已就绪） |
+| T-06 | work | T-02，semantics/comptime/工具adapter窗 | 剩余Auto源码reader切共享门面，严分Atom/模型输入；V-01/02，AC-01/02/08 | [x] 2026-11-05（worktree `b6edf15d9`）：case-worker `auto-source@<slug>` 语法臂切 `profile_grammar` 共享缓存（进程 OnceLock，消除线程本地第二份裁剪编译；`profile_from_slug` 导出）；auto-core.at/interface-mini-v1.at = **不同领域语法合法保留**（测试用例 DSL，具名登记）；semantics/comptime/core CLI 均经统一路由（928 后无独立分支）。auto-test-case 组绿。至此**生产依赖中重复 Auto 源码语法编译清零**（T-10 只剩 cfg 隔离+结构门） |
 | T-07 | work | T-03..06，来源目录/CheckedEnv/registry | type/enum/签名依赖、失败与迟到事务、完整诊断；V-03/06，AC-04/06 | [ ] |
 | T-08 | work | T-07，来源manifest/codec/store/会话S窗 | 语法/上下文原子required闭包/版本隔离与深准入，恢复后首编辑去整源重建；V-04/05/12..14，AC-05/07 | [ ] |
 | T-09 | work | T-03..08，case/父decoder/注册H窗 | 使能V-01..14文件化oracle/SYN报告严格准入及无预热/I/O/原子发布/Q4/资源/HMR/预算反控；V-07..10/12..14，AC-07/08/09/11 | [ ] |
@@ -213,6 +213,11 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 下一入口T-01私有清单，T-02最小恢复整链在迁移前完成；公共实现需927/928稳定接口与所有实际owner释放，不把在途分支当D。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 10 | from: work | to: work | status: executing | outcome: in-progress（T-04/05/06 完成 6/14） | worktree: `lang-929` @ `plan-929-dev`（代码至 `b6edf15d9`） | commit: b6edf15d9 | next: work（T-07 声明/签名依赖传播）
+  - 三面交付：T-04 native（`8365fe856`，collections 暖片段统一+计量保真 note_parse 修复）；T-05 a2x（`77eb17eae`，六处 fragment 统一+method 合成 type 宿主桥+shift i64 核）；T-06 工具（`b6edf15d9`，case-worker 共享 grammar 缓存）。**生产依赖重复 Auto 语法编译清零**。
+  - 过程修复三个真问题：①统一前门片段无 per-fn 计量→结构门红（补 note_parse）；②统一语法 `static fn` 仅 type 块合法→method 桥合成宿主；③record 面最少一字段→占位字段。911 P90 首红隔离绿=环境归因（同 928 页面文件先例）。
+  - 串行五组全 PASS：ace-native/ace-a2x/case-902/case-921/auto-test-case。
 
 - stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 9 | from: work | to: work | status: executing | outcome: in-progress（T-03 完成 3/14） | worktree: `lang-929` @ `plan-929-dev`（代码 `1f029a4a4`+`404ccba21`） | commit: 404ccba21 | next: work（T-04 native 面）
   - T-03 交付（用户"继续完成计划"指令恢复 goal）：closures 片段生产者统一前门桥；常驻 session 共享 profile grammar（auto-scalar.at 生产退役）；admit 探针/内存探针共享扫描器。过程发现并处置两个真差异：统一语法 decl 注册在顶层分派规则（outline spec decl-rule 不命中→decl_names 本地名序）；常驻面 CoreKinds 828 分类法依赖 type-ann 规则名（统一语法 param 直接绑 ann-ty）→暖建/暖编辑投影全部改走统一链（core_program/FreeFnFragment），kinds 面整体退役。
