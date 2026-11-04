@@ -161,6 +161,8 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 
 ## 9. 复审记录
 
+2026-11-04 stage:goal / plan_id:PLAN-932 / plan_revision:2 / round:2 / from:work / to:review / status:execution_done / outcome:pass / worktree:`D:/autostack/.wt/lang-932/auto-lang` | commit:`67c7ae61d` | next:review。
+
 2026-11-04 stage:work / plan_id:PLAN-932 / plan_revision:2 / outcome:pass / worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` / base_commit:`84c894b92` / code_commit:`67c7ae61d`（18文件+801/-130）/ dependency_revisions:无跨仓依赖（auto-down兄弟树仅作组内解析）/ task_ids:T-01..T-10 / evidence:见§8各任务行内联证据；冻结档`plan-artifacts/plan-932/{T-01-T-02-freeze.md,T-09-ace-performance-milestone-61.txt}` / blockers:无合同内阻塞；V-09恢复腿pending（929接缝，§10）/ next_responsible_role:review（T-11独立复审）。
 
 **旧断言与冲突依据（§5.1要求保留）**：宿主门leg(c)旧断言`assert_eq!(status, Error, "a refused warm edit is an infra non-verdict, never a green language result")`（mir_native_protocol.rs原1573-1577，pre-914信念"refused=infra非判面"）；冲突依据=914归档复审N3与m1-order-layout-observations §5/§7（typed refusal=diagnostic completion verdict，stage verify，覆盖全部增量mn recipe；缺字段/协议破损才是infra）+已绿I09先例（order-layout-914 declare source-v1+typed expect PASS）。本包按914最小修订：case声明`diagnostics:"source-v1"`，断言改为Fail并加精确typed码/阶段断言（c2）与untyped→Error负控（c3）——旧expect（success/exit exp0）与源保持不变，非改行为expected凑绿。
