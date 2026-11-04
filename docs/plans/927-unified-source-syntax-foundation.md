@@ -186,6 +186,8 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
 
 - 2026-11-04（轮3），stage:review / review_scope:final / reviewer:同实现会话（ZCode/GLM-5.3，独立上下文按工件重构——此为独立性限制，已记录）/ plan_id:PLAN-927 / plan_revision:r2 / outcome:pass（有界修复后）/ worktree:`D:/autostack/.wt/lang-927/auto-lang` @ `plan-927-dev` / reviewed_commit:`970ee2790` / base:`2f558fc93` / 依赖：syntax-runtime codec v3、auto-source.at rev1（GrammarId 随 canonical bytes）/ spec_inputs：docs/specs/auto-syntax/{grammar-contract,project,snapshot-cst}.md（787/828 现状=delta before） / acceptance_results：AC-01..09 全 pass（证据映射见 T-11 行）；AC-10 本收据 / findings：F-1/F-2 健康项已修于 `970ee2790` 并复验；D-927-2=基座既有（域外登记，非本包 AC） / pending_closeout_gates：merge 沉淀 SD-01..04→docs/specs/auto-syntax（含新增 source-frontdoor.md）；wt-guard 清树；`cargo t` 冻结并集已绿（§8 T-10 记录，同基线复验核心面） / evidence：见 §8 各任务行与 §9 轮2/轮2补记收据 / next: merge（T-12）
 
+- 2026-11-04（轮4·merge 期修复复审），stage:review / review_scope:final（修复复审）/ plan_id:PLAN-927 / plan_revision:r2 / outcome:pass（针对 `35ad072b2`）/ reviewed_commit:`35ad072b2`（基 `970ee2790` + rebase 解决 + decode 修复）/ 发现：rebase 引入 master 926 腿后暴露 `decode_str_value` 漏跳 `\u{...}` 开括号（hex 混入 `{` 解析失败→转义静默丢弃；`"a\u{0}b"`→`"ab"`）——冻结语料无字符串内 `\u` 转义样本故 T-11 未覆盖 / 修复验证：新增单测 `unicode_escapes_decode`（NUL+é 两形）绿；zz 差分两形 old==new；conformance 300/300；a2c_rt 10/10、a2c_scalar_semantics 4/4（原红腿）/ 影响面：仅文本值解码（AC-01/03 面复验通过；其余 AC 证据基线不变）/ next: merge 继续（land → archive → clean）
+
 ## 10. 待澄清事项
 
 无需要用户重新裁定的语义范围。本包沿已批准支持/拒绝、预算与P90门；具体通用scanner/Pratt扩展及兼容类型导出由T-02有界探针决策并记录，若不能满足则needs_replan，禁止自行延期或改门。语义查询/实例/CT接线与CA-D/最终ARCH总验收仍为独立待立项职责，详审计，不由927隐式承担。
