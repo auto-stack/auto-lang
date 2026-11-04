@@ -54,7 +54,10 @@ SCRATCH_ENV_KEYS = [
     "AUTO_LANG_ROOT",
     "AUTO_DELIVERY_SOURCE_ROOT",
     "CARGO_TARGET_DIR",
-    "RUSTC_WRAPPER",  # sccache 端口被 Windows 排除段阻挡（机器事实，收据记录）
+    # 机器级 sccache wrapper（PLAN-036 收据实证）：置为 sccache 时子进程
+    # cargo 的 rustc probe 0xc0000409；整键缺失时 0xc0000142；显式置空串
+    # 即正常。consumer_env 先剥离开发根覆盖，再显式置空串（非删除）。
+    "RUSTC_WRAPPER",
 ]
 
 RESULTS: list[dict] = []
@@ -71,8 +74,11 @@ def record(case: str, ok: bool, detail: str) -> bool:
 
 
 def consumer_env(extra: dict | None = None) -> dict:
-    """消费侧环境：剥离全部开发根覆盖（含 RUSTC_WRAPPER），无隐式回退。"""
+    """消费侧环境：剥离全部开发根覆盖，无隐式回退；RUSTC_WRAPPER 显式
+    置空串（PLAN-036 机器事实——缺失致 rustc probe 0xc0000142、置空即
+    正常；不改用户机器配置/共享缓存，仅本子进程 env 隔离并记录）。"""
     env = {k: v for k, v in os.environ.items() if k not in SCRATCH_ENV_KEYS}
+    env["RUSTC_WRAPPER"] = ""
     env["AUTO_UI_TOOL_BIN"] = str(TOOL_EXE)
     if extra:
         env.update(extra)
