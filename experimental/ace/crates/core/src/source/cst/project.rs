@@ -53,7 +53,38 @@ pub(crate) fn project_program(
         };
         let kind = tree.kind(node);
         // 错误子树跳过乐观投影（结构层映射负责其诊断；干净子树照常投影
-        // 以保真能力拒绝的位置序）。
+        // 以保真能力拒绝的位置序）。PLAN-928（T-04）：脚本区首 token 的
+        // 位置序拒绝先于跳过（R04 类：恢复区内部能力拒绝不得抢位）。
+        if kind == k.script_item.unwrap_or(u32::MAX) {
+            let mut n = node;
+            loop {
+                if eng.cx.tree.node(n).child_count == 0 {
+                    break;
+                }
+                match eng
+                    .cx
+                    .children(n)
+                    .into_iter()
+                    .find(|&c| eng.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                {
+                    Some(c) => n = c,
+                    None => break,
+                }
+            }
+            let head = eng.cx.spelling(n);
+            if matches!(head.as_str(), "type" | "enum" | "static") {
+                let span = eng.cx.span_of(n);
+                let h = head.clone();
+                eng.cx.reject(span, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        format!("expected statement, found `{h}`"),
+                        span,
+                    )
+                });
+            }
+        }
         if tree_has_errors && subtree_has_errors(tree, node) {
             continue;
         }
@@ -453,7 +484,31 @@ fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
     // 旧 parser 无"区域"概念——线性走到文件尾。恢复截断（sync 停在 `}`）
     // 会把区域外的 token 丢出叶列，导致多级嵌套块在区域边界误判 EOF。
     // 因此游走叶列 = 从区域首叶起的全树后缀（文档序），跨区域边界继续。
-    let first_start = tree.abs_range(region[0].0).0;
+    // PLAN-928（T-04）：区域含于 fn 声明内时自**该声明头**重根（旧解析
+    // 从声明头线性走——签名/前体能力拒绝先于体内错误按位置胜出）。
+    let mut first_start = tree.abs_range(region[0].0).0;
+    {
+        // path_to 收集的是 kind——这里需要**节点**路径找最近 fn-item 祖先。
+        let mut node_path: Vec<u32> = Vec::new();
+        if node_path_to(tree, tree.root, node, &mut node_path) {
+            let mut anc: Option<u32> = None;
+            for &a in node_path.iter().rev() {
+                if tree.kind(a) == cx.k.fn_item {
+                    anc = Some(a);
+                    break;
+                }
+            }
+            if let Some(a) = anc {
+                let ar = tree.abs_range(a);
+                if let Some(&(l, _, _)) = tree_leaves(cx, tree).iter().find(|&&(l, _, _)| {
+                    let r = tree.abs_range(l);
+                    r.0 >= ar.0 && r.1 <= ar.1
+                }) {
+                    first_start = first_start.min(tree.abs_range(l).0);
+                }
+            }
+        }
+    }
     let mut leaves = tree_leaves(cx, tree);
     assert!(!leaves.is_empty(), "tree leaves empty but region had leaves");
     leaves.retain(|(n, _, _)| tree.abs_range(*n).0 >= first_start);
@@ -476,7 +531,7 @@ fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
                 .map(|b| (b.0, b.3.as_str(), Span { start: b.1 as usize, end: b.2 as usize })),
         );
     }
-    if first.2 == "type" && cx.profile.is_record() {
+    if first.2 == "type" && cx.profile.is_record() && !cx.profile.is_closures() {
         return walk_type_item(cx, &leaves);
     }
     // stmt 形态（块内错误区域）：完整语句期望游走（与旧 parse_stmt_head
@@ -722,15 +777,31 @@ fn walk_fn_item_ex(
         let sp = bspan;
         let builtin = btext == "int" || btext == "i32" || btext == "bool";
         let text_word = bg == cx.k.tok_ident && cx.profile.is_text() && matches!(btext, "str" | "Str" | "char");
+        // PLAN-928（T-04）：collections 词域——`Str` 收（char 仅 closures），
+        // 小写 `str`/`char` 具名拒绝（镜像旧 collections_type）。
+        let coll_word = bg == cx.k.tok_ident
+            && cx.profile.is_collections()
+            && (btext == "Str" || (btext == "char" && cx.profile.is_closures()));
+        let coll_reject = bg == cx.k.tok_ident
+            && cx.profile.is_collections()
+            && (btext == "str" || (btext == "char" && !cx.profile.is_closures()));
         let entry_void = bg == cx.k.tok_ident && cx.profile.is_entry_unit() && btext == "void";
-        let record_name = bg == cx.k.tok_ident && cx.profile.is_record();
-        if !builtin && !text_word && !entry_void && !record_name {
+        let record_name = bg == cx.k.tok_ident && cx.profile.is_record() && !cx.profile.is_collections();
+        if !builtin && !text_word && !entry_void && !record_name && !coll_word {
             if btext == "{" {
                 return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
+                )));
+            }
+            if coll_reject {
+                return (i, Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("type `{}` is not part of this source profile", btext),
+                    sp,
                 )));
             }
             if bg == cx.k.tok_ident || bg == cx.k.tok_r_move || bg == cx.k.tok_r_to {
@@ -761,15 +832,30 @@ fn walk_fn_item_ex(
         let builtin = text == "int" || text == "i32" || text == "bool";
         let text_word =
             g == k.tok_ident && cx.profile.is_text() && matches!(text, "str" | "Str" | "char");
+        // PLAN-928（T-04）：collections 词域（同上）。
+        let coll_word = g == k.tok_ident
+            && cx.profile.is_collections()
+            && (text == "Str" || (text == "char" && cx.profile.is_closures()));
+        let coll_reject = g == k.tok_ident
+            && cx.profile.is_collections()
+            && (text == "str" || (text == "char" && !cx.profile.is_closures()));
         let entry_void = g == k.tok_ident && cx.profile.is_entry_unit() && text == "void";
-        let record_name = g == k.tok_ident && cx.profile.is_record();
-        if !builtin && !text_word && !entry_void && !record_name {
+        let record_name = g == k.tok_ident && cx.profile.is_record() && !cx.profile.is_collections();
+        if !builtin && !text_word && !entry_void && !record_name && !coll_word {
             if text == "{" {
                 return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
+                )));
+            }
+            if coll_reject {
+                return (i, Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("type `{}` is not part of this source profile", text),
+                    sp,
                 )));
             }
             if g == k.tok_ident || g == k.tok_r_move || g == k.tok_r_to {
@@ -1202,16 +1288,19 @@ impl<'c, 'a> Walker<'c, 'a> {
                 // 注解
                 if let Some((asp, ag, atext, _)) = self.cur() {
                     let is_type = atext == "int" || atext == "i32" || atext == "bool";
-                    // PLAN-928：collections/closures 面拥有 Str（元素域）。
-                    let admits_text = self.cx.profile.is_text() || self.cx.profile.is_collections();
-                    if ag == k.tok_ident && !admits_text && matches!(atext, "str" | "Str" | "char") {
+                    // PLAN-928（T-04）：collections 词域——Str/char(closures) 收，
+                    // 小写 str/char 拒；text 面三词全收。
+                    let coll_ok = self.cx.profile.is_collections()
+                        && (atext == "Str" || (atext == "char" && self.cx.profile.is_closures()));
+                    let admits_text = self.cx.profile.is_text();
+                    if ag == k.tok_ident && !admits_text && !coll_ok && matches!(atext, "str" | "Str" | "char") {
                         return Some(self.unsupported(
                             format!("type `{}` is not part of this source profile", atext),
                             asp,
                         ));
                     }
                     let ident_type = ag == k.tok_ident
-                        && (admits_text && matches!(atext, "str" | "Str" | "char")
+                        && ((admits_text && matches!(atext, "str" | "Str" | "char")) || coll_ok
                             || self.cx.profile.is_entry_unit() && atext == "void"
                             || self.cx.profile.is_record());
                     if is_type || ident_type {
@@ -1317,7 +1406,12 @@ impl<'c, 'a> Walker<'c, 'a> {
                         Some((_, _, "in", _)) => {
                             self.i += 1;
                         }
-                        _ => return Some(self.syntax("expected `in` after the iteration binding".into())),
+                        _ => {
+                            return Some(self.syntax(format!(
+                                "expected `in` after the `for` binding, found {}",
+                                self.describe_cur()
+                            )));
+                        }
                     }
                     // 合同 C7：迭代器是裸 List 局部名（非表达式）。
                     match self.cur() {
@@ -2143,6 +2237,21 @@ fn first_meaningful_leaf(_cx: &Cx, tree: &CstTree, node: u32) -> Option<u32> {
     None
 }
 
+/// 节点 id 路径（path_to 收集 kind；结构层重根需要真实祖先节点）。
+fn node_path_to(tree: &CstTree, from: u32, target: u32, path: &mut Vec<u32>) -> bool {
+    if from == target {
+        return true;
+    }
+    path.push(from);
+    for c in tree.children(from) {
+        if node_path_to(tree, c, target, path) {
+            return true;
+        }
+    }
+    path.pop();
+    false
+}
+
 fn path_to(tree: &CstTree, from: u32, target: u32, path: &mut Vec<u32>) -> bool {
     if from == target {
         return true;
@@ -2550,8 +2659,22 @@ impl<'a> Engine<'a> {
         }
         let word = self.cx.spelling(word_leaf);
         let is_text = self.cx.profile.is_text();
-        // PLAN-928：collections/closures 面拥有 Str（集合元素域含 Str）。
-        let admits_str = is_text || self.cx.profile.is_collections();
+        // PLAN-928（T-04，镜像旧 collections_type）：collections 面 `Str`
+        // → StrOwned；`char` 仅 closures（909 共享 cell 值域）→ Char；小写
+        // `str`/`char` 具名拒绝。text 面维持 str/Str/char 三词。
+        if self.cx.profile.is_collections() {
+            match word.as_str() {
+                "Str" => return int(TypeWord::StrOwned),
+                "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
+                "str" | "char" => {
+                    let w = word.clone();
+                    self.cx.reject(span, move || unsupported_ty(&w, span));
+                    return int(TypeWord::Int);
+                }
+                _ => {}
+            }
+        }
+        let admits_str = is_text;
         if admits_str && matches!(word.as_str(), "str" | "Str" | "char") {
             let tw = match word.as_str() {
                 "str" => TypeWord::Str,
@@ -2560,7 +2683,7 @@ impl<'a> Engine<'a> {
             };
             return int(tw);
         }
-        if !ret_pos && !admits_str && matches!(word.as_str(), "str" | "Str" | "char") {
+        if !ret_pos && !admits_str && !self.cx.profile.is_collections() && matches!(word.as_str(), "str" | "Str" | "char") {
             self.cx.reject(span, move || unsupported_ty(&word, span));
             return int(TypeWord::Int);
         }

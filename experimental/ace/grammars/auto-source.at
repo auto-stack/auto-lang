@@ -147,9 +147,9 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         program { list { item() {} } }
         item {
             alt { fn-item() {} }
-            alt(profiles: [record, text-record, collections, closures]) { type-item() {} }
-            alt(profiles: [collections, closures]) { enum-item() {} }
-            alt(profiles: [entry-unit, host-console]) { script-item() {} }
+            alt(profiles: [record, text-record, collections]) { type-item() {} }
+            alt(profiles: [collections]) { enum-item() {} }
+            alt(profiles: [entry-unit, host-console, closures]) { script-item() {} }
         }
         // ---- 声明 ----
         fn-item(recover: true) {
@@ -255,7 +255,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, text-record, collections, closures]) {
+        type-item(recover: true, profiles: [record, text-record, collections]) {
             type-kw(field: "kw")
             ident(field: "name")
             lbrace() {}
@@ -264,21 +264,21 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
         // `,` 容忍由差分冻结），至多单载荷。
-        enum-item(recover: true, profiles: [collections, closures]) {
+        enum-item(recover: true, profiles: [collections]) {
             enum(field: "kw")
             ident(field: "name")
             lbrace() {}
             list { enum-arm() {} }
             rbrace() {}
         }
-        enum-arm(profiles: [collections, closures]) {
+        enum-arm(profiles: [collections]) {
             alt { ident(field: "name") lparen() {} ann-ty(field: "payload") rparen() {} }
             alt { ident(field: "name") }
         }
         member {
             alt { field-member() {} }
-            alt(profiles: [record, text-record]) { static-method() {} }
-            alt(profiles: [record, text-record]) { view-method() {} }
+            alt(profiles: [record, text-record, collections]) { static-method() {} }
+            alt(profiles: [record, text-record, collections]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
@@ -298,7 +298,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
         // ---- 脚本形态（entry-unit：顶层语句序列到 EOF；首语句必需——
         // 空/仅分隔符文件由投影按旧合同区分"expected fn"与 Ok(empty)；
         // 声明先行的 entry-order 检查在投影保真）----
-        script-item(profiles: [entry-unit, host-console]) {
+        script-item(profiles: [entry-unit, host-console, closures]) {
             stmt() {}
             list-nl { stmt() {} }
         }
@@ -308,7 +308,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt { let-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
-            alt(profiles: [record, text-record]) { path-assign-stmt() {} }
+            alt(profiles: [record, text-record, collections, closures]) { path-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
@@ -438,7 +438,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [record, text-record]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [text, host-console]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [closures, collections]) { dot(same-line: true) ident(field: "member") }
-            alt(profiles: [record, text-record]) { dot(same-line: true) mut(field: "member") }
+            alt(profiles: [record, text-record, collections]) { dot(same-line: true) mut(field: "member") }
             alt(profiles: [text, text-record, host-console, collections, closures]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
         }
@@ -459,7 +459,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures]) { lambda-expr() {} }
-            alt(profiles: [record, text-record]) { leading-dot() {} }
+            alt(profiles: [record, text-record, collections]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -499,7 +499,7 @@ grammar(name: "auto-source", revision: 1, newline: true, stmt-end: ["semi", "rbr
             ann-ty(field: "ty")
         }
         // 隐式 self：`.name` / `.name(args)`（record 族）
-        leading-dot(profiles: [record, text-record]) {
+        leading-dot(profiles: [record, text-record, collections]) {
             dot() {}
             ident(field: "member")
         }

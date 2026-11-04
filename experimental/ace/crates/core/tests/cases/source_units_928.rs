@@ -258,3 +258,60 @@ fn t03_collections_differential() {
         }
     }
 }
+
+/// PLAN-928 T-04：语料全集差分扫描（ace-m1/src 全部 .at 源 × Collections/
+/// Closures 两 profile；正例=AST 字节全等，反例=首诊断四元组全等）。
+/// 这是 V-01 的 in-process 前身；文件化 case/oracle 由 T-09 注册。
+#[test]
+fn t04_corpus_sweep_both_profiles() {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../crates/auto-lang/test/cases/ace-m1/src"
+    );
+    let mut names: Vec<_> = std::fs::read_dir(dir)
+        .expect("corpus dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".at"))
+        .collect();
+    names.sort();
+    let mut fails: Vec<String> = Vec::new();
+    let mut ok_count = 0usize;
+    for name in &names {
+        let path = format!("{dir}/{name}");
+        let Ok(src) = std::fs::read_to_string(&path) else { continue };
+        for (profile, pname) in [
+            (SourceProfile::Collections, "collections"),
+            (SourceProfile::Closures, "closures"),
+        ] {
+            let old = parse_program_with_handwritten(&src, profile);
+            let new = cst::parse_program_via_cst(&src, profile);
+            let same = match (&old, &new) {
+                (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
+                (Err(a), Err(b)) => {
+                    (a.stage, a.code.as_str(), a.message.as_str(), a.span)
+                        == (b.stage, b.code.as_str(), b.message.as_str(), b.span)
+                }
+                _ => false,
+            };
+            if same {
+                ok_count += 1;
+            } else {
+                let detail = match (&old, &new) {
+                    (Ok(_), Err(b)) => format!("new rejects: {} {}-{} {}", b.code, b.span.start, b.span.end, b.message),
+                    (Err(a), Ok(_)) => format!("new accepts (old: {} {}-{} {})", a.code, a.span.start, a.span.end, a.message),
+                    (Err(a), Err(b)) => format!("diag differs:\n  old {} {}-{} {}\n  new {} {}-{} {}", a.code, a.span.start, a.span.end, a.message, b.code, b.span.start, b.span.end, b.message),
+                    (Ok(_), Ok(_)) => "AST differs".to_string(),
+                };
+                fails.push(format!("{name}/{pname}: {detail}"));
+            }
+        }
+    }
+    assert!(
+        fails.is_empty(),
+        "corpus sweep: {} ok, {} failing:\n{}",
+        ok_count,
+        fails.len(),
+        fails.join("\n")
+    );
+}
