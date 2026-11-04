@@ -25,9 +25,15 @@ total + 41
 - **owner / 关闭条件**：PLAN-927（T-09 收尾）。修复列表机回退的 trivia 纪律后：去 `source-syntax-927.case.ad` 三 case 的 `status.skip` 复验，`cargo t case-ace-source-syntax-927` 全绿 + 全套差分/edge 复跑。
 - **复现器**：`cargo t case-ace-source-syntax-927`（3 SKIP 带因）；或 ace-core 内编译 `auto-source@entry-unit` 解析该最小源后 `cst::reconstruct` 对照。
 
+## Plan 931（2026-11-04，work 交付登记）
+
+- **D-931-1（验收 pending，owner=929 恢复接缝）**：V-09（Rust record-text 纯 source-bound restore→首编辑无预热全链）因 Rust 侧无等价恢复锚（`restore_source_bound` 的 record-text family 仍 C-target only，PLAN-925 冻结注释原文）按计划 §10 记 acceptance pending，非豁免；待 PLAN-929 交付真实恢复接缝后在其上联验 AC-05/06。Rust 侧既有 restart/warm-edit 生命周期腿已真实验（坏编辑命名拒绝→修复编辑值正确、未改函数片段字节不变）。
+- **D-931-2（一次性较宽 miss 登记，owner=PLAN-931）**：`RUST_PRINT_VERSION` a2x-print/1→2 是全 Rust 家共享轴（scalar/record-text/collections 片段键同字段）：旧版本片段一次性 miss 重产（探针证实第三代全 hit）；collections 打印字节未变（20/20 金样三文件字节核对）但键随轴变化亦重产。按 931 §5.1"明确登记而非删缓存"处置，未删任何 store。
+- **D-931-3（预存缺口顺带关闭，owner=904 金样线）**：`a2r-hir-collections-904` 全部 20 个 golden manifest.json 被根 `.gitignore` 母规则 `*.json` 吞掉从未入库 → 任何新鲜检出（含主检出）该组必红。931 以同 daily-emit 通道再生补齐（tracked 三文件 20/20 字节一致后 `git add -f` manifest），组转 PASS，未改任何 904 期望/源。D-925-1（attachments 依赖）仍归 933/其 owner，本包未动。
+
 ## Plan 925（2026-11-03，work T-04 门禁登记；非本包合同内阻塞）
 
-- **D-925-2（Rust 侧同形潜伏缺陷，owner=902 Rust record-text lowering）**：C 侧 oracle 发现"多实参调用中，后一实参的分配 pin 会把前一实参的 view-consumed owned temp 在消费者（调用）之前 free"（`mk("ab","cde")` 两个 owned 字面量作 view 实参 → head 空串）。C 侧已修（scoped drain_since）；**Rust 侧 lower.rs 的 lower_pure 在每个新 pin 前 drain_frees，同形状会先 free 后用**（Rust 的 take()-free 使其表现为静默空串而非崩溃）。902 冻结语料无此形状故未暴露。后继补 Rust 侧同修+用例（owner=902 线/a2x-rust）。
+- **D-925-2（已关闭 2026-11-04，PLAN-931 work，树 plan-931-dev@b3a6a17c6+，merge 收尾）**：Rust 侧同形缺陷已修——`drain_since(mark)` 作用域机制：pin/语句根消费者锚点后释放、Logical 侧块自责（未执行分支零分配）、view 临时 pin mut、external 片段消费受检 modes、MoveOwn 文本实参按值转移（探针额外暴露的 E0308 一并修复）。红证据：修复前 E0596（pin 不可变+`&mut` free 编译红）+ 两处先 free 后用生成码（plan-artifacts/plan-931/t02-red-evidence.md）；绿证据：worker conformance 13 探针全绿 + 固定组 `case-a2r-owned-temporaries-931`（5 金样 + 独立 reference 实跑 5/22/5/22/43）+ 版本轴 a2x-print/1→2 旧片段永不命中（三代稳定性）。金样兼容：902/921/925/926/894 组原字节全 PASS（Rust 冻结语料无该形状，字节未变）。
 - **D-925-1（存量测试依赖 git 忽略文件，owner=796/sema-boundary / ace-semantics-store）**：`cargo t ace-semantics` 在任何**新鲜 worktree** 必红 2 例：`sema_boundary_audit::sema_boundary_description_surface_frozen` 与 `sema_boundary_frozen_versions_have_provenance`（`crates/semantics-store/tests/cases/sema_boundary_audit.rs:278` 读 `docs/plans/attachments/796/contract-decision.md`，Os NotFound）。该路径按 2026-10-31 裁定已整目录去跟踪，仅主检出磁盘残留该文件故主检出绿、worktree 红。925 gate 实测：ace-source 307/307、ace-semantics 104/106（2 红即此）、ace-a2x 119/119；与 925 diff（a2x-c/a2x-store/worker tests）无耦合。修复方向：测试内联所需 token 或改读跟踪文件；本包不代改他方测试，merge 复跑该组时按环境归因记录。
 
 
