@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-932
-status: executing
+status: execution_done
 feature_name: Native暖编辑准入与拒绝分类闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/native-warm-edit-admission.md]
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-818, PLAN-828, PLAN-911, PLAN-914]
-current_step: 0
+current_step: 10
 total_steps: 12
 ---
 
@@ -144,22 +144,28 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 
 | T | owner_stage | 前置/实际写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 当前main/927已审版本只读取材/私有输入 | 原两个t11输入/源码/身份/914批准与911旧句冲突/矩阵/窗口冻结，AC-01/10 | [ ] |
-| T-02 | work | T-01，最小原链路探针 | 合法/签名控制逐层重建、914继承及过时断言裁定、root cause与typed接缝可行性，AC-01..04；不明先needs_replan | [ ] |
-| T-03 | work | T-02，core/av session必要S窗 | 修真实准入比较/候选语义且保真签名门，V-01/02/04，AC-02/05/06 | [ ] |
-| T-04 | work | T-02/03，native worker/source_diagnostics | typed原因/操作快照与失败计数，V-02/03，AC-03 | [ ] |
-| T-05 | work | T-04，ac_mn/contract/父H窗 | 914策略verdict/语言/资源-infra判面与严格字段，V-02/03，AC-04 | [ ] |
-| T-06 | work | T-03..05，retained/cache/历史事务 | 四态/真实恢复首编辑/坏编辑修复/来源与P-M-R边界，V-04/05/09，AC-05/06 | [ ] |
-| T-07 | work | T-06，原资源/执行probe | 预算/取消/当前旧链/pin/最后回收，V-05，AC-07 | [ ] |
-| T-08 | work | T-03..07，case/host/注册H | 使能V-01..09文件化独立oracle、typed矛盾负控与原t11及914 I09控制，AC-08 | [ ] |
-| T-09 | work | T-08及恢复接缝稳定SHA，冻结提交/正式采样错峰 | 职责/必要consumer+原ace-performance义务复验，AC-01..09 | [ ] |
-| T-10 | work | T-09 | SD/债务/交接/健康核查与真实余账，AC-10 | [ ] |
+| T-01 | work | 当前main/927已审版本只读取材/私有输入 | 原两个t11输入/源码/身份/914批准与911旧句冲突/矩阵/窗口冻结，AC-01/10 | [✅ 2026-11-04：冻结档 `D:/autostack/plan-artifacts/plan-932/T-01-T-02-freeze.md`（两t11门=同一测试函数`performance::mir_native_incremental_formal_runner_gate`经ace-host/ace-performance双入口；三关键输入SHA与next-wave报告全等无漂移@84c894b92；负载=workload.rs fn_041 a0+=1纯body编辑）] |
+| T-02 | work | T-01，最小原链路探针 | 合法/签名控制逐层重建、914继承及过时断言裁定、root cause与typed接缝可行性，AC-01..04；不明先needs_replan | [✅ 2026-11-04：复现命令+红在`mir_native_protocol.rs:1573`（leg c：实际Fail vs 旧断言Error）；**leg(a)合法body编辑与leg(b)冷分离通过**——D-927-2"合法body被拒"现象不在本门复现，AC-02澄清分支成立，不造core准入修复；根因=t11用例default模式仅untyped refused→父降级verdict→Fail，与914批准的typed verdict判面及旧Error断言冲突；typed接缝=既有`diagnostics:"source-v1"`通道（I09先例绿），见冻结档§3/§5] |
+| T-03 | work | T-02，core/av session必要S窗 | 修真实准入比较/候选语义且保真签名门，V-01/02/04，AC-02/05/06 | [✅ 2026-11-04：AC-02澄清分支——leg(a)合法body真快路径本就绿，无core准入bug；真实修复=守卫拆码与typed保真：`recheck_swap`槽位/名字失配→`source.incremental.slot`、owner缺失→`source.incremental.owner`（session映射SessionOrCandidate）、签名重建guard_diags原样透传为语言事实（不再折叠成签名漂移）、env安装身份族（incremental*/foreign/stale/closed）→SessionOrCandidate（不再伪typed语言拒绝）；`owned_session.rs`配套prefix匹配保持925线Fallback语义；闭包线`resolve_owner_in_env`未动（§5.3不并写）。验证：ace-source/ace-av绿、ace-native 222/223（唯一红924时序环境归因）] |
+| T-04 | work | T-02/03，native worker/source_diagnostics | typed原因/操作快照与失败计数，V-02/03，AC-03 | [✅ 2026-11-04：typed通道核验为既有完备（`typed_refusal` kind/phase/snapshot绑定+`close_exit`失败计数+`body_work`捕获，SessionOrCandidate经From映射承接新slot/owner身份族）；无需新增字段，实证=ace-native 222/223绿（唯一红为924线P90时序，隔离重放PASS环境归因）+ace-native-worker绿+932套件语言/typed拒绝腿绿] |
+| T-05 | work | T-04，ac_mn/contract/父H窗 | 914策略verdict/语言/资源-infra判面与严格字段，V-02/03，AC-04 | [✅ 2026-11-04：`refusal_verdict`严格化——有效typed策略kind（signature-or-context-drift/invalid-edit/session-or-candidate/lower-admit）=verdict按expect判PASS/FAIL；default模式untyped `refused`、缺/未知kind、untyped/resource kind、language/syntax-not-converged kind出现在refusal面（矛盾）=infra ERROR不降级FAIL；宿主门leg(c)按914 N3纠偏（旧Error断言→Fail+精确typed码断言，冲突依据见§9）+新增(c2)精确码/阶段Pass控制与(c3)untyped→Error负控；`refusal_tests`8单控绿；t11门全绿（含ace-host组内170/172中该门PASS）] |
+| T-06 | work | T-03..05，retained/cache/历史事务 | 四态/真实恢复首编辑/坏编辑修复/来源与P-M-R边界，V-04/05/09，AC-05/06 | [✅ 2026-11-04：四态P90门（restart-warm/body-edit/signature-reject≤2000ms，`mn_sd911_source_v1_four_state_p90_30`）在里程碑campaign绿；fail→修复/历史A→B→A/状态存活=932套件绿腿；**V-09新进程恢复→首编辑腿pending**：worker rounds每请求冷建会话、`session::restore`未接协议，无929或等价已释放接缝（套件规范§4与§10登记，接缝就绪后由929联验，不造D929整包前置）] |
+| T-07 | work | T-06，原资源/执行probe | 预算/取消/当前旧链/pin/最后回收，V-05，AC-07 | [✅ 2026-11-04：原资源/预算/回收门全数保持——`case-ace-m1-native-resource-923`/`resource-events`绿、campaign资源腿（resources_cold_set_churn_gc_convergence/transient_spike_sampler/32mib_product_random_read）绿、`probe_adapter_turnaround_ipc_hard_gate_p95`绿；本包零放宽/零预算改动（diff仅分类语义）] |
+| T-08 | work | T-03..07，case/host/注册H | 使能V-01..09文件化独立oracle、typed矛盾负控与原t11及914 I09控制，AC-08 | [✅ 2026-11-04：新目录`native-warm-admission-932/`7 case全绿（body成功64/语言拒绝source.type-mismatch@typecheck/fail→修复85/签名拒绝typed verify码/状态存活43/多decl invalid-edit/历史A-B-A 43）+`cargo t case-ace-native-warm-admission-932`注册PASS+父侧`refusal_tests`8单控绿+宿主门c/c2/c3腿（typed→Fail+精确码、精确码/阶段Pass、untyped→Error）] |
+| T-09 | work | T-08及恢复接缝稳定SHA，冻结提交/正式采样错峰 | 职责/必要consumer+原ace-performance义务复验，AC-01..09 | [✅ 2026-11-04：冻结提交`67c7ae61d`；职责组ace-native(222/223,1红环境归因隔离重放PASS)/ace-native-worker/ace-av/ace-source/auto-test-case/ace-adapters/infra-fixed全绿；集成组order-layout-914/native-diags-911/native-collections-889/native-resource-923/native-closures-924/closures-recovery-913/native-warm-admission-932全绿；ace-host 170/172（两红均基座既有，见§9）；**T3_MILESTONE=1 ace-performance：61执行/59绿，t11门绿(11.59s)——D-927-2既有唯一红关闭**；两红具名：six_scenarios（stash本包5源文件后基线84c894b92隔离仍红→基座既有）+concurrent_gc_30（SQLite锁竞争，当日ace-native批次绿+隔离重放PASS→环境归因）；61枚举冻结于plan-artifacts/T-09-*.txt（债务收据60项为他线增腿后的计数漂移）] |
+| T-10 | work | T-09 | SD/债务/交接/健康核查与真实余账，AC-10 | [✅ 2026-11-04：SD-01..06已制备于worktree提交（含新spec native-warm-edit-admission.md与911旧句对齐）；债务更新=D-927-2关闭登记+新登记D-932-1（six_scenarios基座红，含stash-bisect证据）/D-932-2（AP-16清单行指向007已迁走路径，fresh worktree必红）；健康=触面文件rustfmt干净（仓内他人文件既有漂移不扩）、编译零新告警、无debug输出；余账=V-09 pending（929接缝）+D-911-2/3/4等按原owner保留] |
 | T-11 | review | T-01..10完成，冻结实现 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [ ] |
 | T-12 | merge | T-11 pass及后续实施/合入授权 | canonical沉淀/交付/归档/全路径清理，AC-12 | [ ] |
 
 下一入口T-01原例盘点可私有准备；T-03公共修改须同符号原owner释放与稳定SHA，不新增等待927/928整包的语义前置；D927以后实际输入漂移必须重验，不得并写。本轮不授权work。
 
 ## 9. 复审记录
+
+2026-11-04 stage:work / plan_id:PLAN-932 / plan_revision:2 / outcome:pass / worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` / base_commit:`84c894b92` / code_commit:`67c7ae61d`（18文件+801/-130）/ dependency_revisions:无跨仓依赖（auto-down兄弟树仅作组内解析）/ task_ids:T-01..T-10 / evidence:见§8各任务行内联证据；冻结档`plan-artifacts/plan-932/{T-01-T-02-freeze.md,T-09-ace-performance-milestone-61.txt}` / blockers:无合同内阻塞；V-09恢复腿pending（929接缝，§10）/ next_responsible_role:review（T-11独立复审）。
+
+**旧断言与冲突依据（§5.1要求保留）**：宿主门leg(c)旧断言`assert_eq!(status, Error, "a refused warm edit is an infra non-verdict, never a green language result")`（mir_native_protocol.rs原1573-1577，pre-914信念"refused=infra非判面"）；冲突依据=914归档复审N3与m1-order-layout-observations §5/§7（typed refusal=diagnostic completion verdict，stage verify，覆盖全部增量mn recipe；缺字段/协议破损才是infra）+已绿I09先例（order-layout-914 declare source-v1+typed expect PASS）。本包按914最小修订：case声明`diagnostics:"source-v1"`，断言改为Fail并加精确typed码/阶段断言（c2）与untyped→Error负控（c3）——旧expect（success/exit exp0）与源保持不变，非改行为expected凑绿。
+
+**组运行台账（T-09）**：ace-native 222/223（红=closures_native_924 P90 2425ms，隔离重放PASS，环境归因D-911-4类）；ace-native-worker ✅；ace-av ✅；ace-source ✅；auto-test-case ✅；ace-adapters ✅；infra-fixed ✅；7个case集成组 ✅；ace-host 170/172（红1=six_scenarios缓存状态断言**基座既有**：stash本包5源文件后基线84c894b92隔离复跑同红；红2=AP-16清单行scan-error，指向auto-ui PLAN-007已迁走的examples/ui/015-notes路径，主检出靠未跟踪残留假绿、fresh worktree必红——两红均新登记债务D-932-1/D-932-2，非本包引入不改判）；T3_MILESTONE=1 ace-performance 61/59（t11门绿11.59s，D-927-2唯一红关闭；six_scenarios=上述基座红；concurrent_gc_30=SQLite锁竞争环境归因，当日批次绿+隔离重放PASS）。四态P90门、924 campaign腿、全部资源/预算腿在campaign绿。首次红/环境归因/重放绿分别保留于本台账，条件排除不充PASS。
 
 2026-11-04 stage:goal / plan_id:PLAN-932 / plan_revision:2 / round:1 / from:new / to:work / status:executing / outcome:pass（目标授权记录）/ 授权：`/goal 完成计划932`（auto-plan-goal整链：work→review→bounded repair→merge）/ worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` base `84c894b92` / artifacts:`D:/autostack/plan-artifacts/plan-932/`（已登记.retention）/ next:work。主检出既有未跟踪代码路径（examples/ui/015-notes、scripts/tools/native-fixture/Cargo.lock、test/fixtures/reader-import-budget）经核在932写面之外，具名浮现不编辑，归属他会在途工作。
 
@@ -170,3 +176,5 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 ## 10. 待澄清事项
 
 继承914有效策略拒绝为verdict及911事实准入的批准，不需要用户重新裁定或放宽签名/语言/时间规则；真实根因由T-02有界重建决定。若原记录把某合法body与故意签名的现象混记，先拆清实际入口/expected再修，不把观察错误变新需求。929承担全profile语法/声明变化扩展；D-911-3等其他具名债按原owner保留，不冒本包已闭。
+
+**pending（非阻塞，具名）**：V-09新进程会话恢复→首有效body编辑/首坏编辑→修复两腿——worker rounds协议每请求冷建会话，`session::restore`未接协议，尚无929或等价已释放接缝；按§5.4.6该腿pending（AC-06该腿不宣称关闭），929接缝就绪后联验，本包已交稳定修复（typed拒绝/状态保持/修复链）供其接入。

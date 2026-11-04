@@ -2,12 +2,26 @@
 
 > **2026-11-04规划认领（尚未关闭）**：D-925-2由[PLAN-931](931-a2r-owned-temporary-consumer-lifetime.md)补Rust临时消费者生命周期；D-927-2由[PLAN-932](932-native-warm-edit-admission-and-refusal-closure.md)补native暖准入/真实父分类；D-925-1及904缺manifest oracle由[PLAN-933](archive/933-ace-tracked-oracle-and-fresh-checkout-closure.md)补跟踪来源与干净检出验收（**已关闭 2026-11-04，PLAN-933 交付 44d64c4ed**：sema 两测试改读跟踪 spec 冻结权威+突变负控，904 oracle 独立重建核验；904 manifest 文件缺件本身已由 931 于 1d3a21b49 补齐，见 D-931-3）。下列历史发现/归因保留，计划成立不算修复或PASS，均待work/review/交付真实关闭。
 
-### D-927-2 — mn 暖编辑 refused 分类破损（ace-conformance host / ace-performance 唯一红；基座既有）
+### D-927-2 — mn 暖编辑 refused 分类破损（ace-conformance host / ace-performance 唯一红；基座既有）【已关闭 2026-11-04，PLAN-932 交付 `67c7ae61d`】
+
+- **关闭记录**：T-02 逐层重建证实 leg(a)合法body真快路径与 leg(b)冷分离本就通过（历史"合法body被拒"观察为故 意签名控制混记，AC-02 澄清分支）；根因=t11 用例 default 模式仅 untyped `refused` + 宿主门 pre-914 旧断言（Error）与 914 批准的 typed verdict 判面冲突。修复=父侧 `refusal_verdict` 严格化（有效 typed kind=verdict 按 expect 判 PASS/FAIL；untyped/缺/未知/矛盾=ERROR 不降级 FAIL）+ 守卫拆码（slot/owner=SessionOrCandidate 身份族，签名重建 guard 诊断透传为语言事实）+ 宿主门按 914 N3 纠偏（Fail+精确码）+ 新套件 `case-ace-native-warm-admission-932`（7 case）+`refusal_tests` 8 单控 + SD-01..06（含 911 旧句对齐）。**两处 t11 门绿**（ace-host 170/172 中该门 PASS；T3_MILESTONE=1 ace-performance 该门 11.59s PASS）；campaign 61 执行/59 绿，余两红与本债无关且具名（six_scenarios=基座既有见 D-932-1；concurrent_gc_30=锁竞争环境归因，当日批次绿+隔离重放 PASS），按 932 r2 合同"既有唯一红关闭、其他新红具名"关闭本债。
 
 - **发现**：2026-11-04，PLAN-927 T-10 正式采样（`cargo t ace-performance` T3_MILESTONE 档：59/60 绿，唯一红 `mn.t11.refused`）与 ace-host 组的 `mir_native_incremental_formal_runner_gate`（refused 控制期望 Error 得 Fail）。
 - **归属**：**基座既有，非 927 引入**——(a) base `2f558fc93` 的 ace-conformance 因 ExpectSpec 缺 `trace` 字段（Plan 891/914 交互）本就编译不过，该门在 base 从未执行（927 的 2 行编译修复才首次暴露）；(b) 在 927 worktree 用 `ZZ927LEGACY` 一行回退到手写 parser 复跑，**同样红**（ Fail≠Error / refused 同现），且 301,387 字节 rev0 工作负载的新旧链 AST 逐字节全等（含全部 span）。
 - **现象**：暖编辑被 retained 环境接口门拒绝（`mn.incremental.refused.untyped: non-fast-path: signature change refused`）而该编辑按测试合同应走快路径成功；refused 路径的 Error/Fail 分类也不符合同。
 - **owner / 关闭条件**：mn resident（ace-native/av session 增量机）域——建议独立 fix 计划；关闭=两处 t11 门绿 + `cargo t ace-performance` 60/60。
+
+### D-932-1 — ac-run 六场景 body-edit 缓存对象状态断言基座红（发现于 PLAN-932 T-09，非 932 引入）
+
+- **发现**：2026-11-04，PLAN-932 fresh worktree 全量 ace-host 与隔离重放：`native_lifecycle::performance::turnaround_native_six_scenarios_p95_gates` 红——`body-edit 2 must not resume a cached object (left Some("hit") right Some("lowered"))`（native_lifecycle.rs:2212）。
+- **归属**：**基座既有**——PLAN-932 用 `git stash` 摘除本包全部 5 个源文件改动后，于基线 `84c894b92` 同测试隔离重放**仍红**（同一断言面）；非并行负载（单实例亦红、时序门全过）。927 T-10 采样（59/60）时该测试绿 → 回归窗口在 927 树与 `84c894b92` 之间的他方落地（928 源码前门/931 等为嫌疑面，未定位）。疑点：`p04_bound_edit` 每 idx 唯一 marker 仅存在于注释、bound 3↔4 交替——若内容身份按 canonical HIR（注释剥离）判，idx2 与 idx0 同体即合法 content hit，与断言冲突。
+- **owner / 关闭条件**：ac-run reuse/内容身份线（783/788/828 复用语义）独立定位；关闭=该测试隔离绿 + ace-performance campaign 该腿绿。
+
+### D-932-2 — 源码清单 AP-16 冻结行指向 auto-ui 已迁走路径，fresh worktree 必红（发现于 PLAN-932 T-09）
+
+- **发现**：2026-11-04，PLAN-932 worktree ace-host：`tests::source::av_source_inventory_denominators_replayable` 红——AP-16 行扫 `examples/ui/015-notes/src/front/app.at` 得 scan-error（source.rs:1329 断言 scan 失败必须为零）。
+- **归属**：auto-ui PLAN-007 T-02 已把 `examples/ui` 整体迁往 auto-ui 仓（`33c3f60a3` 留指针 README）；AP-16 冻结行（PLAN-896 期）未随之更新。主检出的**未跟踪**残留 `examples/ui/015-notes/` 使其假绿，任何干净 worktree 必红（D-925-1 同形：主检出绿/worktree 红）。主检出该残留目录的处置归其创建会话（2026-11-04 会话起点即具名浮现）。
+- **owner / 关闭条件**：清单测试行（896 线）改指迁移后路径（auto-ui 仓）或换小固定夹具并保清单语义；关闭=fresh worktree ace-host 该测试绿且主检出无未跟踪残留依赖。
 - **不在 PLAN-927 §6 组清单内**（ace-host/ace-performance 的该腿）；927 的采样收据按 59/60+本条归因记录。
 
 ### D-927-1 — 统一 CST 列表机 restore 纪律丢语句分隔换行（无损重建红）【已关闭 2026-11-04】
