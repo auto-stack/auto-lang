@@ -33,8 +33,20 @@ fn assert_same(src: &str, profile: SourceProfile, what: &str) {
         }
         (Err(d), Err(e)) => {
             assert_eq!(
-                (format!("{}", d.stage.as_str()), &d.code, &d.message, d.span.start, d.span.end),
-                (format!("{}", e.stage.as_str()), &e.code, &e.message, e.span.start, e.span.end),
+                (
+                    format!("{}", d.stage.as_str()),
+                    &d.code,
+                    &d.message,
+                    d.span.start,
+                    d.span.end
+                ),
+                (
+                    format!("{}", e.stage.as_str()),
+                    &e.code,
+                    &e.message,
+                    e.span.start,
+                    e.span.end
+                ),
                 "{what}: diagnostic mismatch under {:#?}\nsrc={src:?}\nold={d:?}\nnew={e:?}",
                 profile
             );
@@ -58,17 +70,41 @@ fn probe_whole_path_text_record() {
 
 #[test]
 fn probe_scalar_basics() {
-    assert_same("fn main() int { return 2 + 3 * 4 }", SourceProfile::Scalar, "scalar b01");
-    assert_same("fn main() int { return -2147483648 }", SourceProfile::Scalar, "i32 min");
+    assert_same(
+        "fn main() int { return 2 + 3 * 4 }",
+        SourceProfile::Scalar,
+        "scalar b01",
+    );
+    assert_same(
+        "fn main() int { return -2147483648 }",
+        SourceProfile::Scalar,
+        "i32 min",
+    );
     assert_same(
         "fn main() bool { let x bool = true && false\n return x || !false }",
         SourceProfile::Scalar,
         "scalar bool ops",
     );
-    assert_same("fn main() int { for x < 10 { break } return x }", SourceProfile::Scalar, "cond for");
-    assert_same("fn main() int { while x { } return 0 }", SourceProfile::Scalar, "scalar while reject");
-    assert_same("fn main() int { return 1 - 2 }", SourceProfile::Scalar, "scalar minus");
-    assert_same("fn main() int { return 1 - 2 }", SourceProfile::Core, "core minus reject");
+    assert_same(
+        "fn main() int { for x < 10 { break } return x }",
+        SourceProfile::Scalar,
+        "cond for",
+    );
+    assert_same(
+        "fn main() int { while x { } return 0 }",
+        SourceProfile::Scalar,
+        "scalar while reject",
+    );
+    assert_same(
+        "fn main() int { return 1 - 2 }",
+        SourceProfile::Scalar,
+        "scalar minus",
+    );
+    assert_same(
+        "fn main() int { return 1 - 2 }",
+        SourceProfile::Core,
+        "core minus reject",
+    );
 }
 
 #[test]
@@ -94,7 +130,10 @@ fn probe_typed_budget_outcome() {
         src,
         profile: SourceProfile::Scalar,
         kind: FrontKind::WholeModule,
-        budget: FrontBudget { work_bytes: 1, max_parse_depth: 1 << 20 },
+        budget: FrontBudget {
+            work_bytes: 1,
+            max_parse_depth: 1 << 20,
+        },
     });
     match out {
         FrontOutcome::ResourceExhausted { .. } => {}
@@ -173,14 +212,20 @@ fn differential_edge_rejects() {
         ("fn main() int { return 'ab' }", SourceProfile::Text),
         ("fn main() int { return 1i32 }", SourceProfile::Scalar),
         ("fn main() int { return 2147483648 }", SourceProfile::Scalar),
-        ("fn main() int { return -2147483649 }", SourceProfile::Scalar),
+        (
+            "fn main() int { return -2147483649 }",
+            SourceProfile::Scalar,
+        ),
         ("fn main() int { return /* c }", SourceProfile::Scalar),
         // 结构层
         ("", SourceProfile::Scalar),
         (";", SourceProfile::Scalar),
         ("// only comment", SourceProfile::Scalar),
         ("fn main() int { return 0 } fn", SourceProfile::Scalar),
-        ("fn main() int { return 0 } fn b() int", SourceProfile::Scalar),
+        (
+            "fn main() int { return 0 } fn b() int",
+            SourceProfile::Scalar,
+        ),
         ("use x", SourceProfile::Scalar),
         ("struct x", SourceProfile::Scalar),
         ("static x", SourceProfile::Scalar),
@@ -188,8 +233,14 @@ fn differential_edge_rejects() {
         ("enum E { A }", SourceProfile::Scalar),
         ("let x = 1", SourceProfile::Scalar),
         ("fn main() int { let x = }", SourceProfile::Scalar),
-        ("fn main() int { let x str = \"a\" return 0 }", SourceProfile::Scalar),
-        ("fn main() int { let x int = 1 return x }", SourceProfile::Scalar),
+        (
+            "fn main() int { let x str = \"a\" return 0 }",
+            SourceProfile::Scalar,
+        ),
+        (
+            "fn main() int { let x int = 1 return x }",
+            SourceProfile::Scalar,
+        ),
         ("fn main() int { return f(1 2) }", SourceProfile::Scalar),
         ("fn main() int { return f(x: ) }", SourceProfile::Scalar),
         ("fn main() int { return (1 }", SourceProfile::Scalar),
@@ -200,26 +251,62 @@ fn differential_edge_rejects() {
         ("fn main() int { return -x }", SourceProfile::Core),
         ("fn main() int { return !x }", SourceProfile::Core),
         ("fn main() int { return +x }", SourceProfile::Scalar),
-        ("fn main() int { for x in xs { } return 0 }", SourceProfile::Scalar),
+        (
+            "fn main() int { for x in xs { } return 0 }",
+            SourceProfile::Scalar,
+        ),
         ("fn main() int { return 0 }", SourceProfile::Core),
-        ("fn main() int { for x { break } return 0 }", SourceProfile::Core),
-        ("fn main() int { while x { } return 0 }", SourceProfile::Core),
+        (
+            "fn main() int { for x { break } return 0 }",
+            SourceProfile::Core,
+        ),
+        (
+            "fn main() int { while x { } return 0 }",
+            SourceProfile::Core,
+        ),
         // record 面
         ("type P { x int }", SourceProfile::Record),
         ("type P { }", SourceProfile::Record),
         ("type P { x int x bool }", SourceProfile::Record),
         ("type P { self int }", SourceProfile::Record),
-        ("type P { x int\n static fn f() int { return 0 } }", SourceProfile::Record),
-        ("type P { mut fn f() int { return 0 } }", SourceProfile::Record),
-        ("fn main() int { let p P = P { x: 1 } return p.x }", SourceProfile::Record),
-        ("fn main() int { let p P = P { } return 0 }", SourceProfile::Record),
+        (
+            "type P { x int\n static fn f() int { return 0 } }",
+            SourceProfile::Record,
+        ),
+        (
+            "type P { mut fn f() int { return 0 } }",
+            SourceProfile::Record,
+        ),
+        (
+            "fn main() int { let p P = P { x: 1 } return p.x }",
+            SourceProfile::Record,
+        ),
+        (
+            "fn main() int { let p P = P { } return 0 }",
+            SourceProfile::Record,
+        ),
         ("fn main() int { return p.mut }", SourceProfile::Record),
-        ("fn main() int { return P { x: 1 }.x }", SourceProfile::Record),
+        (
+            "fn main() int { return P { x: 1 }.x }",
+            SourceProfile::Record,
+        ),
         // text 面
-        ("fn main() int { let s str = \"a\" return 0 }", SourceProfile::Text),
-        ("fn main() int { let s Str = \"a\" return 0 }", SourceProfile::Text),
-        ("fn main() int { return \"a\".to(str) }", SourceProfile::Text),
-        ("fn main() int { return \"a\".to(bool) }", SourceProfile::Text),
+        (
+            "fn main() int { let s str = \"a\" return 0 }",
+            SourceProfile::Text,
+        ),
+        (
+            "fn main() int { let s Str = \"a\" return 0 }",
+            SourceProfile::Text,
+        ),
+        (
+            "fn main() int { return \"a\".to(str) }",
+            SourceProfile::Text,
+        ),
+        (
+            "fn main() int { return \"a\".to(bool) }",
+            SourceProfile::Text,
+        ),
         ("fn main() int { return \"a\".move }", SourceProfile::Text),
         ("fn main() int { return \"a\".len() }", SourceProfile::Text),
         ("fn main() int { return \"a\".len }", SourceProfile::Text),
@@ -231,7 +318,10 @@ fn differential_edge_rejects() {
         ("let x = 1\nx + 1", SourceProfile::EntryUnit),
         ("fn f() void { } ", SourceProfile::EntryUnit),
         ("return 1", SourceProfile::EntryUnit),
-        ("let x = 1\nfn f() int { return 0 }", SourceProfile::EntryUnit),
+        (
+            "let x = 1\nfn f() int { return 0 }",
+            SourceProfile::EntryUnit,
+        ),
         ("fn main() int { return 0 }", SourceProfile::HostConsole),
         ("fn print() int { return 0 }", SourceProfile::HostConsole),
         ("let print = 1\n1", SourceProfile::HostConsole),
@@ -268,8 +358,20 @@ fn t07_direct() {
     let new = cst::parse_program_via_cst(src, SourceProfile::Text);
     match (&old, &new) {
         (Err(d), Err(e)) => assert_eq!(
-            (d.stage.as_str(), &d.code, &d.message, d.span.start, d.span.end),
-            (e.stage.as_str(), &e.code, &e.message, e.span.start, e.span.end)
+            (
+                d.stage.as_str(),
+                &d.code,
+                &d.message,
+                d.span.start,
+                d.span.end
+            ),
+            (
+                e.stage.as_str(),
+                &e.code,
+                &e.message,
+                e.span.start,
+                e.span.end
+            )
         ),
         _ => panic!("T07 surrogate must diagnose on both chains: old={old:?} new={new:?}"),
     }
@@ -282,14 +384,20 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        (r#"fn main() int {
+        (
+            r#"fn main() int {
     let s Str = "a\u{0}b"
     return s.len() * 10 + s.len_bytes()
-}"#, SourceProfile::Text),
-        (r#"fn main() int {
+}"#,
+            SourceProfile::Text,
+        ),
+        (
+            r#"fn main() int {
     let s Str = "h\u{e9}llo"
     return s.len() * 100 + s.len_bytes()
-}"#, SourceProfile::Text),
+}"#,
+            SourceProfile::Text,
+        ),
     ];
     // ZZ927F=<path>：整文件差分（大负载用）。
     if let Ok(path) = std::env::var("ZZ927F") {
@@ -304,17 +412,29 @@ fn zz_snippets() {
                 if o == n {
                     eprintln!("FILE-IDENTICAL len={}", src.len());
                 } else {
-                    let pos = o.bytes().zip(n.bytes()).position(|(x, y)| x != y).unwrap_or(o.len().min(n.len()));
+                    let pos = o
+                        .bytes()
+                        .zip(n.bytes())
+                        .position(|(x, y)| x != y)
+                        .unwrap_or(o.len().min(n.len()));
                     let st = pos.saturating_sub(120);
-                    eprintln!("FILE-DIFF@{pos}
+                    eprintln!(
+                        "FILE-DIFF@{pos}
 --old--
 {}
 --new--
-{}", &o[st..(pos + 160).min(o.len())], &n[st..(pos + 160).min(n.len())]);
+{}",
+                        &o[st..(pos + 160).min(o.len())],
+                        &n[st..(pos + 160).min(n.len())]
+                    );
                 }
             }
             (Err(d), Err(e)) => eprintln!("FILE-BOTH-ERR old={d:?} new={e:?}"),
-            _ => eprintln!("FILE-OUTCOME-MISMATCH old={:?} new={:?}", old.is_ok(), new.is_ok()),
+            _ => eprintln!(
+                "FILE-OUTCOME-MISMATCH old={:?} new={:?}",
+                old.is_ok(),
+                new.is_ok()
+            ),
         }
         return;
     }
@@ -324,8 +444,11 @@ fn zz_snippets() {
         let agree = match (&old, &new) {
             (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
             (Err(d), Err(e)) => {
-                d.stage.as_str() == e.stage.as_str() && d.code == e.code && d.message == e.message
-                    && d.span.start == e.span.start && d.span.end == e.span.end
+                d.stage.as_str() == e.stage.as_str()
+                    && d.code == e.code
+                    && d.message == e.message
+                    && d.span.start == e.span.start
+                    && d.span.end == e.span.end
             }
             _ => false,
         };
@@ -334,13 +457,29 @@ fn zz_snippets() {
   old={:?}
   new={:?}",
             profile,
-            old.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
-            new.as_ref().map(|_| "..ok..").map_err(|d| (d.stage.as_str(), d.code.clone(), d.message.clone(), d.span.start, d.span.end)),
+            old.as_ref().map(|_| "..ok..").map_err(|d| (
+                d.stage.as_str(),
+                d.code.clone(),
+                d.message.clone(),
+                d.span.start,
+                d.span.end
+            )),
+            new.as_ref().map(|_| "..ok..").map_err(|d| (
+                d.stage.as_str(),
+                d.code.clone(),
+                d.message.clone(),
+                d.span.start,
+                d.span.end
+            )),
         );
         if !agree {
             let o = format!("{old:?}");
             let n = format!("{new:?}");
-            let pos = o.bytes().zip(n.bytes()).position(|(a, b)| a != b).unwrap_or(o.len().min(n.len()));
+            let pos = o
+                .bytes()
+                .zip(n.bytes())
+                .position(|(a, b)| a != b)
+                .unwrap_or(o.len().min(n.len()));
             let s0 = pos.saturating_sub(120);
             eprintln!(
                 "FIRSTDIFF@{pos}
@@ -387,14 +526,22 @@ fn zz_debug_first_diff() {
         eprintln!("IDENTICAL");
         return;
     }
-    let pos = o.bytes().zip(n.bytes()).position(|(a, b)| a != b).unwrap_or(o.len().min(n.len()));
+    let pos = o
+        .bytes()
+        .zip(n.bytes())
+        .position(|(a, b)| a != b)
+        .unwrap_or(o.len().min(n.len()));
     let ctx = 160;
     let s = pos.saturating_sub(ctx);
-    eprintln!("FIRST DIFF at byte {pos}:
+    eprintln!(
+        "FIRST DIFF at byte {pos}:
 --old--
 {}
 --new--
-{}", &o[s..(pos + ctx).min(o.len())], &n[s..(pos + ctx).min(n.len())]);
+{}",
+        &o[s..(pos + ctx).min(o.len())],
+        &n[s..(pos + ctx).min(n.len())]
+    );
 }
 
 // ---------------------------------------------------------------- T-07 片段
@@ -420,8 +567,18 @@ fn after() bool { return true }
         }
         (Err(d), Err(e)) => {
             assert_eq!(
-                (d.code.as_str(), d.message.as_str(), d.span.start, d.span.end),
-                (e.code.as_str(), e.message.as_str(), e.span.start, e.span.end)
+                (
+                    d.code.as_str(),
+                    d.message.as_str(),
+                    d.span.start,
+                    d.span.end
+                ),
+                (
+                    e.code.as_str(),
+                    e.message.as_str(),
+                    e.span.start,
+                    e.span.end
+                )
             );
         }
         _ => panic!("outcome mismatch: old={old:?} new={new:?}"),
@@ -429,7 +586,8 @@ fn after() bool { return true }
     // 反控：区间含两个函数 → 旧"exactly one"拒绝。
     let start2 = src.find("fn mid").unwrap();
     let r = cst::parse_function_fragment_via_cst(src, start2..src.len(), SourceProfile::Scalar);
-    let rold = ace_core::source::parse_function_fragment(src, start2..src.len(), SourceProfile::Scalar);
+    let rold =
+        ace_core::source::parse_function_fragment(src, start2..src.len(), SourceProfile::Scalar);
     assert!(rold.is_err());
     assert!(r.is_err());
     // 坏区间：无序/越界 → 同名拒绝。
@@ -445,8 +603,13 @@ fn fragment_method_context() {
 }
 ";
     let start = src.find("fn get").unwrap();
-    let end = src[start..].find("}
-}").map(|i| i + start + 1).unwrap();
+    let end = src[start..]
+        .find(
+            "}
+}",
+        )
+        .map(|i| i + start + 1)
+        .unwrap();
     let out = cst::parse_front(cst::FrontRequest {
         src,
         profile: SourceProfile::Record,

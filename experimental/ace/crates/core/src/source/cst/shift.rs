@@ -67,11 +67,13 @@ fn shift_named_ctor_field(f: &mut NamedCtorField, delta: i64) {
 fn shift_expr(e: &mut Expr, delta: i64) {
     shift_span(&mut e.span, delta);
     match &mut e.kind {
-        ExprKind::IntLit(_) | ExprKind::BoolLit(_) | ExprKind::StrLit(_)
-        | ExprKind::CharLit(_) | ExprKind::TypeWordArg(_) => {}
+        ExprKind::IntLit(_)
+        | ExprKind::BoolLit(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
+        | ExprKind::TypeWordArg(_) => {}
         ExprKind::Var(id) => shift_ident(id, delta),
-        ExprKind::Method { recv, name, args }
-        | ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
             shift_expr(recv, delta);
             shift_ident(name, delta);
             for a in args.iter_mut() {
@@ -142,7 +144,14 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(value, delta);
             shift_span(span, delta);
         }
-        Stmt::Let { kw, name, ann, value, span, .. } => {
+        Stmt::Let {
+            kw,
+            name,
+            ann,
+            value,
+            span,
+            ..
+        } => {
             shift_span(kw, delta);
             shift_ident(name, delta);
             if let Some(a) = ann {
@@ -151,7 +160,11 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(value, delta);
             shift_span(span, delta);
         }
-        Stmt::Assign { target, value, span } => {
+        Stmt::Assign {
+            target,
+            value,
+            span,
+        } => {
             shift_ident(&mut target.base, delta);
             for p in target.path.iter_mut() {
                 shift_ident(p, delta);
@@ -163,7 +176,12 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(value, delta);
             shift_span(span, delta);
         }
-        Stmt::If { cond, then, els, span } => {
+        Stmt::If {
+            cond,
+            then,
+            els,
+            span,
+        } => {
             shift_expr(cond, delta);
             shift_block(then, delta);
             if let Some(b) = els {
@@ -181,14 +199,23 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_span(span, delta);
         }
         Stmt::Break { span } | Stmt::Continue { span } => shift_span(span, delta),
-        Stmt::IsMatch { scrutinee, arms, span } => {
+        Stmt::IsMatch {
+            scrutinee,
+            arms,
+            span,
+        } => {
             shift_ident(scrutinee, delta);
             for a in arms.iter_mut() {
                 shift_match_arm(a, delta);
             }
             shift_span(span, delta);
         }
-        Stmt::ForIn { var, iter, body, span } => {
+        Stmt::ForIn {
+            var,
+            iter,
+            body,
+            span,
+        } => {
             shift_ident(var, delta);
             shift_expr(iter, delta);
             shift_block(body, delta);
@@ -221,4 +248,3 @@ pub(crate) fn shift_fn_item_signed(f: &mut FnItem, delta: i64) {
         shift_ident(o, delta);
     }
 }
-

@@ -11,7 +11,9 @@
 //! （`SealedFn::item`/`SealedLambda::body` 为 `None` = 未物化）。
 
 use ace_core::body_work::capture_stage_attempts;
-use ace_core::source::cst::units::{self, DecodedManifest, RestoreError, UnitCatalog, MANIFEST_SCHEMA};
+use ace_core::source::cst::units::{
+    self, DecodedManifest, RestoreError, UnitCatalog, MANIFEST_SCHEMA,
+};
 use ace_core::source::cst::{FrontBudget, FRONT_CAPS_VERSION};
 use ace_core::source::SourceProfile;
 
@@ -43,12 +45,27 @@ fn t02_restore_itself_is_zero_production() {
     assert!(cold.meter.produced > 0, "冷建有真实生产（对照面）");
     let manifest = cold.to_manifest(FRONT_CAPS_VERSION);
     let dm = decode_manifest(&encode_manifest(&manifest)).expect("decode");
-    let (cat, attempts) = capture_stage_attempts(|| UnitCatalog::from_restored(SRC, &dm, CL, FRONT_CAPS_VERSION).expect("restore"));
+    let (cat, attempts) = capture_stage_attempts(|| {
+        UnitCatalog::from_restored(SRC, &dm, CL, FRONT_CAPS_VERSION).expect("restore")
+    });
     assert_eq!(attempts.whole_total(), 0, "恢复窗口零整源 parse（P0）");
-    assert!(attempts.produced_units().is_empty(), "恢复窗口零 per-unit 生产");
-    assert_eq!(cat.meter, Default::default(), "恢复计量全 0（无 borrowed 生产）");
-    assert!(cat.fns.values().all(|f| f.item.is_none()), "全部 fn headless");
-    assert!(cat.lambdas.values().all(|l| l.body.is_none()), "全部 λ headless");
+    assert!(
+        attempts.produced_units().is_empty(),
+        "恢复窗口零 per-unit 生产"
+    );
+    assert_eq!(
+        cat.meter,
+        Default::default(),
+        "恢复计量全 0（无 borrowed 生产）"
+    );
+    assert!(
+        cat.fns.values().all(|f| f.item.is_none()),
+        "全部 fn headless"
+    );
+    assert!(
+        cat.lambdas.values().all(|l| l.body.is_none()),
+        "全部 λ headless"
+    );
     assert_eq!(cat.fns.len(), 2, "main+helper");
     assert_eq!(cat.lambdas.len(), 2, "main 的 2 个 λ");
     assert_eq!(cat.src(), SRC, "恢复源 = 调用方提供源");
@@ -62,26 +79,55 @@ fn t02_first_lambda_edit_after_restore_exact_production() {
     let (mut cat, _) = restored();
     let span = cat.lambda("main", 0).unwrap().span;
     let new_slice = "(n int) => { return base + n + 1 }";
-    let expected_src = format!("{}{}{}", &SRC[..span.start as usize], new_slice, &SRC[span.end as usize..]);
-    let (receipt, attempts) =
-        capture_stage_attempts(|| cat.edit_lambda("main", 0, new_slice, BUDGET).expect("first edit after restore"));
+    let expected_src = format!(
+        "{}{}{}",
+        &SRC[..span.start as usize],
+        new_slice,
+        &SRC[span.end as usize..]
+    );
+    let (receipt, attempts) = capture_stage_attempts(|| {
+        cat.edit_lambda("main", 0, new_slice, BUDGET)
+            .expect("first edit after restore")
+    });
     assert_eq!(receipt.produced.len(), 1, "恰目标 λ 生产");
     assert_eq!(receipt.produced[0].owner, "main");
     assert_eq!(receipt.produced[0].ordinal, 0);
     assert_eq!(receipt.reused.len(), 1, "兄弟 λ 复用（生产 0）");
-    assert!(receipt.semantic_recheck_required, "目标 λ 文本已变 ⇒ 语义重验信号");
-    assert!(attempts.whole_total() <= 1, "至多一次 λ 包装器片段解析，无整源重建");
-    assert!(attempts.produced_units().is_empty() || attempts.produced_units().iter().all(|u| u == "main"), "无其他单元生产 attempt");
+    assert!(
+        receipt.semantic_recheck_required,
+        "目标 λ 文本已变 ⇒ 语义重验信号"
+    );
+    assert!(
+        attempts.whole_total() <= 1,
+        "至多一次 λ 包装器片段解析，无整源重建"
+    );
+    assert!(
+        attempts.produced_units().is_empty()
+            || attempts.produced_units().iter().all(|u| u == "main"),
+        "无其他单元生产 attempt"
+    );
     assert_eq!(cat.meter.produced, 1, "恢复后首编辑：生产恰 1");
     assert_eq!(cat.meter.discarded, 0);
     assert_eq!(cat.src(), expected_src, "源恰目标切片替换");
     // 未改单元保持 headless（物化 0）且身份/坐标正确。
-    assert!(cat.lambda("main", 1).unwrap().body.is_none(), "兄弟 λ 未物化");
-    assert!(cat.lambda("main", 0).unwrap().body.is_some(), "目标 λ 已物化");
-    assert!(cat.fns["main"].item.is_none(), "owner 未重产（λ 编辑不物化 owner）");
+    assert!(
+        cat.lambda("main", 1).unwrap().body.is_none(),
+        "兄弟 λ 未物化"
+    );
+    assert!(
+        cat.lambda("main", 0).unwrap().body.is_some(),
+        "目标 λ 已物化"
+    );
+    assert!(
+        cat.fns["main"].item.is_none(),
+        "owner 未重产（λ 编辑不物化 owner）"
+    );
     assert!(cat.fns["helper"].item.is_none(), "无关函数 helper 未物化");
     let helper_span = cat.fns["helper"].span;
-    assert!(helper_span.start > span.start as usize, "helper 坐标随漂移维护");
+    assert!(
+        helper_span.start > span.start as usize,
+        "helper 坐标随漂移维护"
+    );
 }
 
 /// T-02c：restore 后首编辑**失败→修复**——坏片段 Diag 拒绝且目录零变异
@@ -90,11 +136,24 @@ fn t02_first_lambda_edit_after_restore_exact_production() {
 fn t02_first_edit_failure_zero_mutation_then_repair() {
     let (mut cat, _) = restored();
     let before_src = cat.src().to_string();
-    let before_fns: Vec<_> = cat.fns.iter().map(|(k, v)| (k.clone(), v.content_sha, v.span)).collect();
-    let before_lams: Vec<_> = cat.lambdas.iter().map(|(k, v)| (k.clone(), v.content_sha, v.span)).collect();
+    let before_fns: Vec<_> = cat
+        .fns
+        .iter()
+        .map(|(k, v)| (k.clone(), v.content_sha, v.span))
+        .collect();
+    let before_lams: Vec<_> = cat
+        .lambdas
+        .iter()
+        .map(|(k, v)| (k.clone(), v.content_sha, v.span))
+        .collect();
     let bad = "(n int) => { return base + n + }";
-    let err = cat.edit_lambda("main", 0, bad, BUDGET).expect_err("坏片段必须拒绝");
-    assert!(matches!(err, units::EditError::Diag(_)), "源码诊断分态：{err:?}");
+    let err = cat
+        .edit_lambda("main", 0, bad, BUDGET)
+        .expect_err("坏片段必须拒绝");
+    assert!(
+        matches!(err, units::EditError::Diag(_)),
+        "源码诊断分态：{err:?}"
+    );
     assert_eq!(cat.meter.produced, 0, "失败不产生已提交生产");
     assert_eq!(cat.meter.discarded, 1, "失败 attempt 如实计数（不默认 0）");
     assert_eq!(cat.src(), before_src, "源零变异");
@@ -110,7 +169,9 @@ fn t02_first_edit_failure_zero_mutation_then_repair() {
     }
     // 修复编辑（V-06/§5.6：失败后正常继续）。
     let ok = "(n int) => { return base + n + 2 }";
-    let receipt = cat.edit_lambda("main", 0, ok, BUDGET).expect("修复编辑成功");
+    let receipt = cat
+        .edit_lambda("main", 0, ok, BUDGET)
+        .expect("修复编辑成功");
     assert_eq!(receipt.produced.len(), 1, "修复恰目标生产");
     assert_eq!(cat.meter.produced, 1);
 }
@@ -125,16 +186,27 @@ fn t02_owner_edit_after_restore_same_text_lambda_zero_production() {
     let old_fn_span = cat.fns["main"].span;
     let old_fn = cat.src()[old_fn_span.start as usize..old_fn_span.end as usize].to_string();
     let new_fn = old_fn.replace("let base int = 40", "let base int = 41");
-    let (receipt, attempts) =
-        capture_stage_attempts(|| cat.edit_owner("main", &new_fn, BUDGET).expect("owner edit after restore"));
+    let (receipt, attempts) = capture_stage_attempts(|| {
+        cat.edit_owner("main", &new_fn, BUDGET)
+            .expect("owner edit after restore")
+    });
     assert_eq!(receipt.produced.len(), 1, "恰 owner 生产 1");
     assert_eq!(receipt.produced[0].kind, units::UnitKind::Fn);
     assert_eq!(receipt.reused.len(), 2, "两个同文 λ 复用（生产 0）");
-    assert!(receipt.semantic_recheck_required, "owner 内容已变 ⇒ 重验信号");
+    assert!(
+        receipt.semantic_recheck_required,
+        "owner 内容已变 ⇒ 重验信号"
+    );
     assert!(receipt.non_fast_path.is_none(), "同拓扑同文 λ 不走非快路径");
     assert!(attempts.whole_total() <= 1, "无整源重建");
-    assert!(cat.lambda("main", 0).unwrap().body.is_none(), "同文 λ 保持 headless（物化 0）");
-    assert!(cat.lambda("main", 1).unwrap().body.is_none(), "同文 λ 保持 headless（物化 0）");
+    assert!(
+        cat.lambda("main", 0).unwrap().body.is_none(),
+        "同文 λ 保持 headless（物化 0）"
+    );
+    assert!(
+        cat.lambda("main", 1).unwrap().body.is_none(),
+        "同文 λ 保持 headless（物化 0）"
+    );
     assert!(cat.fns["main"].item.is_some(), "owner 已物化");
     assert!(cat.fns["helper"].item.is_none(), "无关函数未物化");
 }
@@ -175,7 +247,11 @@ fn t02_restore_rejection_matrix() {
     ));
     // 单元内容指纹伪造。
     let mut m = good.clone();
-    if let Some(u) = m.units.iter_mut().find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper") {
+    if let Some(u) = m
+        .units
+        .iter_mut()
+        .find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper")
+    {
         u.content_sha ^= 1;
     }
     assert!(matches!(
@@ -184,7 +260,11 @@ fn t02_restore_rejection_matrix() {
     ));
     // span 越界。
     let mut m = good.clone();
-    if let Some(u) = m.units.iter_mut().find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper") {
+    if let Some(u) = m
+        .units
+        .iter_mut()
+        .find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper")
+    {
         u.current_span.1 = SRC.len() + 10;
     }
     assert!(matches!(
@@ -193,7 +273,11 @@ fn t02_restore_rejection_matrix() {
     ));
     // 单元重叠。
     let mut m = good.clone();
-    if let Some(u) = m.units.iter_mut().find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper") {
+    if let Some(u) = m
+        .units
+        .iter_mut()
+        .find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper")
+    {
         u.current_span.0 = 0;
         u.current_span.1 = SRC.len();
         // 重算指纹使该单元自身仍匹配（重叠检测不被指纹先行拒绝）。
@@ -205,7 +289,12 @@ fn t02_restore_rejection_matrix() {
     ));
     // 重复键。
     let mut m = good.clone();
-    let dup = m.units.iter().find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper").cloned().unwrap();
+    let dup = m
+        .units
+        .iter()
+        .find(|u| u.kind == units::UnitKind::Fn && u.owner == "helper")
+        .cloned()
+        .unwrap();
     m.units.push(dup);
     assert!(matches!(
         UnitCatalog::from_restored(SRC, &m, CL, FRONT_CAPS_VERSION),
@@ -225,21 +314,32 @@ fn t02_restore_foreign_stale_zero_edit_replay() {
     // 快路径（headless owner 不解析、候选 produced=0）。
     let ospan = a.fns["main"].span;
     let slice = a.src()[ospan.start as usize..ospan.end as usize].to_string();
-    let cand = a.stage_owner_edit("main", &slice, BUDGET).expect("zero-edit stage on restored");
+    let cand = a
+        .stage_owner_edit("main", &slice, BUDGET)
+        .expect("zero-edit stage on restored");
     assert_eq!(cand.produced(), 0, "零编辑候选零生产（headless 不解析）");
     assert!(cand.semantic_recheck().is_empty());
     let err = b.commit_staged(cand).expect_err("foreign candidate");
     assert!(matches!(err, units::EditError::StaleForeign(_)));
     // A 上零编辑提交：诚实回执（生产 0）。
-    let cand = a.stage_owner_edit("main", &slice, BUDGET).expect("re-stage");
+    let cand = a
+        .stage_owner_edit("main", &slice, BUDGET)
+        .expect("re-stage");
     let r = a.commit_staged(cand).expect("zero-edit commit on restored");
     assert!(r.produced.is_empty());
     // stale：暂存后推进目录再提交。
     let new_fn_src = "fn main() int {\n    let base int = 42\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 1 }\n    return f(2) + g(3)\n}\n";
-    let cand2 = a.stage_owner_edit("main", new_fn_src, BUDGET).expect("stage real edit");
-    let _ = a.edit_lambda("main", 1, "(m int) => { return f(m) + 2 }", BUDGET).expect("advance revision");
+    let cand2 = a
+        .stage_owner_edit("main", new_fn_src, BUDGET)
+        .expect("stage real edit");
+    let _ = a
+        .edit_lambda("main", 1, "(m int) => { return f(m) + 2 }", BUDGET)
+        .expect("advance revision");
     let err = a.commit_staged(cand2).expect_err("stale candidate");
-    assert!(matches!(err, units::EditError::StaleForeign(_)), "stale 拒绝：{err:?}");
+    assert!(
+        matches!(err, units::EditError::StaleForeign(_)),
+        "stale 拒绝：{err:?}"
+    );
 }
 
 /// T-02g：恢复目录跨编辑再导出——编辑后 `to_manifest` 反映新身份/坐标；
@@ -247,15 +347,21 @@ fn t02_restore_foreign_stale_zero_edit_replay() {
 #[test]
 fn t02_restore_chain_continues_across_edits() {
     let (mut cat, _) = restored();
-    let r = cat.edit_lambda("main", 0, "(n int) => { return base + n + 5 }", BUDGET).expect("edit");
+    let r = cat
+        .edit_lambda("main", 0, "(n int) => { return base + n + 5 }", BUDGET)
+        .expect("edit");
     let m2 = cat.to_manifest(FRONT_CAPS_VERSION);
     let dm2 = decode_manifest(&encode_manifest(&m2)).expect("re-encode/decode");
-    let (mut cat2, attempts) =
-        capture_stage_attempts(|| UnitCatalog::from_restored(&r.new_src, &dm2, CL, FRONT_CAPS_VERSION).expect("second restore"));
+    let (mut cat2, attempts) = capture_stage_attempts(|| {
+        UnitCatalog::from_restored(&r.new_src, &dm2, CL, FRONT_CAPS_VERSION)
+            .expect("second restore")
+    });
     assert_eq!(attempts.whole_total(), 0, "二次恢复同样零生产");
     assert_eq!(cat2.meter, Default::default());
     assert_eq!(cat2.src(), r.new_src);
-    let again = cat2.edit_lambda("main", 0, "(n int) => { return base + n + 6 }", BUDGET).expect("edit on second restore");
+    let again = cat2
+        .edit_lambda("main", 0, "(n int) => { return base + n + 6 }", BUDGET)
+        .expect("edit on second restore");
     assert_eq!(again.produced.len(), 1);
 }
 

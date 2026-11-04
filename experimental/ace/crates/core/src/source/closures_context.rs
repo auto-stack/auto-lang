@@ -37,7 +37,8 @@ use crate::source::ast::Receiver;
 use crate::source::closures_fn::{ClosuresFunctionFrontend, UnitEntry, UnitKind};
 use crate::source::resolve::{
     checked_env_from_parts, fn_sig_from_parts, ClosureFnType, LambdaSiteFacts, LocalRef, RBlock,
-    ResolvedField, ResolvedFn, ResolvedMethod, ResolvedProgram, ResolvedRecord, ResolvedVariant, VT,
+    ResolvedField, ResolvedFn, ResolvedMethod, ResolvedProgram, ResolvedRecord, ResolvedVariant,
+    VT,
 };
 use crate::verify::{ClosureEnvField, ClosuresVerifyContext, LambdaDecl};
 
@@ -179,8 +180,14 @@ pub struct SiteDump {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum UnitKindDump {
-    Owner { lambdas: Vec<usize> },
-    Lambda { logical_id: u64, owner: usize, site: SiteDump },
+    Owner {
+        lambdas: Vec<usize>,
+    },
+    Lambda {
+        logical_id: u64,
+        owner: usize,
+        site: SiteDump,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -319,7 +326,11 @@ fn site_dump(s: &LambdaSiteFacts) -> SiteDump {
         name: s.name.clone(),
         expr_span: pair(s.expr_span),
         move_capture: s.move_capture,
-        params: s.params.iter().map(|(n, v)| (n.clone(), vt_dump(*v))).collect(),
+        params: s
+            .params
+            .iter()
+            .map(|(n, v)| (n.clone(), vt_dump(*v)))
+            .collect(),
         capture_uses: s.capture_uses.clone(),
         capture_decls: s
             .capture_decls
@@ -342,7 +353,8 @@ pub fn dump_context(front: &ClosuresFunctionFrontend) -> ContextDump {
         .units()
         .iter()
         .map(|u| UnitDump {
-            name: format!("d_{}", u.name),            kind: match &u.kind {
+            name: format!("d_{}", u.name),
+            kind: match &u.kind {
                 UnitKind::Owner { lambdas } => UnitKindDump::Owner {
                     lambdas: lambdas.clone(),
                 },
@@ -546,7 +558,11 @@ fn site_in(d: &SiteDump) -> LambdaSiteFacts {
         name: d.name.clone(),
         expr_span: span(d.expr_span),
         move_capture: d.move_capture,
-        params: d.params.iter().map(|(n, v)| (n.clone(), vt_in(*v))).collect(),
+        params: d
+            .params
+            .iter()
+            .map(|(n, v)| (n.clone(), vt_in(*v)))
+            .collect(),
         capture_uses: d.capture_uses.clone(),
         capture_decls: d
             .capture_decls
@@ -565,7 +581,10 @@ fn check_dump_bounds(d: &ContextDump) -> Result<(), Vec<Diagnostic>> {
     if d.schema != CONTEXT_DUMP_SCHEMA {
         return Err(diag(
             "restored.stale",
-            format!("context dump schema {} is not {CONTEXT_DUMP_SCHEMA}", d.schema),
+            format!(
+                "context dump schema {} is not {CONTEXT_DUMP_SCHEMA}",
+                d.schema
+            ),
         ));
     }
     let bounded = |n: usize, cap: usize, what: &str| -> Result<(), Vec<Diagnostic>> {
@@ -634,15 +653,22 @@ fn check_evidence(d: &ContextDump, evidence: &[UnitEvidence]) -> Result<(), Vec<
                 let env_len = ev.env_arity.ok_or_else(|| {
                     diag(
                         "restored.context-mismatch",
-                        format!("unit {} is a lambda but its MIR declares no environment", u.name),
+                        format!(
+                            "unit {} is a lambda but its MIR declares no environment",
+                            u.name
+                        ),
                     )
                 })?;
-                let reg = d.registry.iter().find(|r| r.callee == u.name).ok_or_else(|| {
-                    diag(
-                        "restored.context-mismatch",
-                        format!("lambda unit {} has no registry declaration", u.name),
-                    )
-                })?;
+                let reg = d
+                    .registry
+                    .iter()
+                    .find(|r| r.callee == u.name)
+                    .ok_or_else(|| {
+                        diag(
+                            "restored.context-mismatch",
+                            format!("lambda unit {} has no registry declaration", u.name),
+                        )
+                    })?;
                 if reg.env.len() != env_len {
                     return Err(diag(
                         "restored.context-mismatch",
@@ -691,12 +717,16 @@ fn check_evidence(d: &ContextDump, evidence: &[UnitEvidence]) -> Result<(), Vec<
                             ),
                         ));
                     }
-                    let reg = d.registry.iter().find(|r| r.callee == *callee).ok_or_else(|| {
-                        diag(
-                            "restored.context-mismatch",
-                            format!("site callee {callee} has no registry declaration"),
-                        )
-                    })?;
+                    let reg = d
+                        .registry
+                        .iter()
+                        .find(|r| r.callee == *callee)
+                        .ok_or_else(|| {
+                            diag(
+                                "restored.context-mismatch",
+                                format!("site callee {callee} has no registry declaration"),
+                            )
+                        })?;
                     let declared_modes: Vec<CaptureModeDump> = reg.site_modes.clone();
                     if declared_modes != *modes {
                         return Err(diag(
@@ -824,7 +854,11 @@ pub fn restore_context(
         .map(|v| ResolvedVariant {
             name: v.name.clone(),
             name_span: span(v.name_span),
-            arms: v.arms.iter().map(|(n, p)| (n.clone(), p.map(vt_in))).collect(),
+            arms: v
+                .arms
+                .iter()
+                .map(|(n, p)| (n.clone(), p.map(vt_in)))
+                .collect(),
         })
         .collect();
     let function_types = dump

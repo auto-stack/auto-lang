@@ -332,11 +332,12 @@ fn utf8_len(b: u8) -> usize {
     }
 }
 
-
 /// 旧 Raw(NonAscii) 合同：`non-ASCII character `X` is not part of this
 /// source profile`（source.unsupported，span = 完整 UTF-8 标量）。
 fn non_ascii_diag(snap: &Snapshot, start: u64) -> Diagnostic {
-    let text = snap.read_str(start, (start + 4).min(snap.len() as u64)).unwrap_or_default();
+    let text = snap
+        .read_str(start, (start + 4).min(snap.len() as u64))
+        .unwrap_or_default();
     let ch = text.chars().next().unwrap_or('?');
     let len = ch.len_utf8() as u64;
     Diagnostic::new(
@@ -458,8 +459,8 @@ pub(crate) fn decode_str_value(inner: &[u8]) -> String {
                     }
                     b'u' => {
                         i += 1; // `u`
-                        // 跳过 `{`（进入臂时 i 停在 `u` 上——不跳则花括号进
-                        // hex，解析失败被静默丢转义：`"a\u{0}b"` 曾解码成 "ab"）。
+                                // 跳过 `{`（进入臂时 i 停在 `u` 上——不跳则花括号进
+                                // hex，解析失败被静默丢转义：`"a\u{0}b"` 曾解码成 "ab"）。
                         if i < inner.len() && inner[i] == b'{' {
                             i += 1;
                         }

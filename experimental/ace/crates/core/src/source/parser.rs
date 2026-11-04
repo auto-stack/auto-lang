@@ -268,7 +268,10 @@ pub fn parse_method_fragment(
     }
     let owner_ident = Ident {
         name: owner.to_string(),
-        span: Span { start: range.start, end: range.start },
+        span: Span {
+            start: range.start,
+            end: range.start,
+        },
     };
     let mut parser = Parser {
         src,
@@ -285,9 +288,9 @@ pub fn parse_method_fragment(
         Some(Tok::Kw(Kw::Static)) => {
             let sp = parser.peek().unwrap().span;
             parser.pos += 1;
-            parser.expect_kw(Kw::Fn, "`fn` after `static`").map_err(|_| {
-                parser.syntax("expected `fn` after `static`")
-            })?;
+            parser
+                .expect_kw(Kw::Fn, "`fn` after `static`")
+                .map_err(|_| parser.syntax("expected `fn` after `static`"))?;
             (Receiver::Static, Some(sp))
         }
         Some(Tok::Kw(Kw::Fn)) => {

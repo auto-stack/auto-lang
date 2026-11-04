@@ -29,25 +29,49 @@ fn t09_zero_edit_replay_zero_production() {
     // λ 面零编辑：同字节重放。
     let span = cat.lambda("main", 0).unwrap().span;
     let same = cat.src()[span.start as usize..span.end as usize].to_string();
-    let r = cat.edit_lambda("main", 0, &same, BUDGET).expect("zero-edit lambda replay");
+    let r = cat
+        .edit_lambda("main", 0, &same, BUDGET)
+        .expect("zero-edit lambda replay");
     assert!(r.produced.is_empty(), "零编辑：生产 0");
     assert_eq!(r.reused.len(), 2, "目标+兄弟都计复用");
     assert!(!r.semantic_recheck_required, "源未变 ⇒ 无语义重验义务");
     assert_eq!(cat.meter.produced, cold.produced, "生产计数不动");
     assert_eq!(cat.meter.reused, cold.reused + 2, "复用如实 +2");
-    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, f_ptr, "身份 Rc 同一");
-    assert_eq!(Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize, g_ptr, "兄弟不动");
-    assert_eq!(Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize, owner_ptr, "owner 不重产");
+    assert_eq!(
+        Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize,
+        f_ptr,
+        "身份 Rc 同一"
+    );
+    assert_eq!(
+        Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize,
+        g_ptr,
+        "兄弟不动"
+    );
+    assert_eq!(
+        Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize,
+        owner_ptr,
+        "owner 不重产"
+    );
     // owner 面零编辑。
     let ospan = cat.fns["main"].span;
     let same_fn = cat.src()[ospan.start as usize..ospan.end as usize].to_string();
-    let r2 = cat.edit_owner("main", &same_fn, BUDGET).expect("zero-edit owner replay");
-    assert!(r2.produced.is_empty() && r2.reused.len() == 3, "owner+2λ 全复用");
+    let r2 = cat
+        .edit_owner("main", &same_fn, BUDGET)
+        .expect("zero-edit owner replay");
+    assert!(
+        r2.produced.is_empty() && r2.reused.len() == 3,
+        "owner+2λ 全复用"
+    );
     assert!(!r2.semantic_recheck_required);
     // 暂存面零编辑 + 提交诚实回执。
-    let cand = cat.stage_owner_edit("main", &same_fn, BUDGET).expect("zero-edit stage");
+    let cand = cat
+        .stage_owner_edit("main", &same_fn, BUDGET)
+        .expect("zero-edit stage");
     assert_eq!(cand.produced(), 0);
-    assert!(cand.semantic_recheck().is_empty(), "零编辑候选不携带重验义务");
+    assert!(
+        cand.semantic_recheck().is_empty(),
+        "零编辑候选不携带重验义务"
+    );
     let r3 = cat.commit_staged(cand).expect("commit zero-edit");
     assert!(r3.produced.is_empty() && r3.reused.len() == 3);
     assert_eq!(cat.meter.produced, cold.produced, "全程生产 0");
@@ -62,20 +86,31 @@ fn t09_stale_candidate_rejected_zero_mutation() {
     // 对同一基修订暂存两个候选。
     let new_fn_a = "fn main() int {\n    let f = (n int) => { return n + 11 }\n    let g = (m int) => { return m + 2 }\n    return f(1) + g(2)\n}\n";
     let new_fn_b = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    let g = (m int) => { return m + 22 }\n    return f(1) + g(2)\n}\n";
-    let cand_a = cat.stage_owner_edit("main", new_fn_a, BUDGET).expect("stage a");
-    let cand_b = cat.stage_owner_edit("main", new_fn_b, BUDGET).expect("stage b");
+    let cand_a = cat
+        .stage_owner_edit("main", new_fn_a, BUDGET)
+        .expect("stage a");
+    let cand_b = cat
+        .stage_owner_edit("main", new_fn_b, BUDGET)
+        .expect("stage b");
     // 提交 a：推进修订。
     cat.commit_staged(cand_a).expect("commit a");
     let after_a = (cat.src().to_string(), cat.meter.clone());
     // 提交 b（基修订已过）：stale 拒绝，目录零变异。
     match cat.commit_staged(cand_b) {
-        Err(units::EditError::StaleForeign(msg)) => assert!(msg.contains("stale"), "stale 具名：{msg}"),
-        other => panic!("stale candidate must be rejected, got {:?}", other.map(|_| "Ok")),
+        Err(units::EditError::StaleForeign(msg)) => {
+            assert!(msg.contains("stale"), "stale 具名：{msg}")
+        }
+        other => panic!(
+            "stale candidate must be rejected, got {:?}",
+            other.map(|_| "Ok")
+        ),
     }
     assert_eq!(cat.src(), after_a.0, "stale 拒绝不改源");
     assert_eq!(cat.meter, after_a.1, "stale 拒绝不动计量");
     // 以当前修订重新暂存同内容 b：提交成功。
-    let cand_b2 = cat.stage_owner_edit("main", new_fn_b, BUDGET).expect("restage b");
+    let cand_b2 = cat
+        .stage_owner_edit("main", new_fn_b, BUDGET)
+        .expect("restage b");
     cat.commit_staged(cand_b2).expect("commit restaged b");
 }
 
@@ -86,14 +121,24 @@ fn t09_foreign_candidate_rejected_zero_mutation() {
     let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
     let mut cat_a = units::UnitCatalog::build(src, CL, BUDGET).expect("cold a");
     let cat_b = units::UnitCatalog::build(src, CL, BUDGET).expect("cold b");
-    assert_eq!(cat_a.module, cat_b.module, "同源文本 module 相同（这正是需要 instance 的原因）");
+    assert_eq!(
+        cat_a.module, cat_b.module,
+        "同源文本 module 相同（这正是需要 instance 的原因）"
+    );
     assert_ne!(cat_a.instance, cat_b.instance);
     let new_fn = "fn main() int {\n    let f = (n int) => { return n + 41 }\n    return f(1)\n}\n";
-    let foreign = cat_b.stage_owner_edit("main", new_fn, BUDGET).expect("stage in b");
+    let foreign = cat_b
+        .stage_owner_edit("main", new_fn, BUDGET)
+        .expect("stage in b");
     let before = (cat_a.src().to_string(), cat_a.meter.clone());
     match cat_a.commit_staged(foreign) {
-        Err(units::EditError::StaleForeign(msg)) => assert!(msg.contains("foreign"), "foreign 具名：{msg}"),
-        other => panic!("foreign candidate must be rejected, got {:?}", other.map(|_| "Ok")),
+        Err(units::EditError::StaleForeign(msg)) => {
+            assert!(msg.contains("foreign"), "foreign 具名：{msg}")
+        }
+        other => panic!(
+            "foreign candidate must be rejected, got {:?}",
+            other.map(|_| "Ok")
+        ),
     }
     assert_eq!(cat_a.src(), before.0);
     assert_eq!(cat_a.meter, before.1);
@@ -109,14 +154,20 @@ fn t09_collections_bad_candidate_half_token() {
     let broken = "fn main() int {\n    let a Item = Item(\"k, 41)\n    return make(a.move)\n}\n";
     match cat.stage_owner_edit("main", broken, BUDGET) {
         Err(units::EditError::Diag(_)) => {}
-        other => panic!("broken candidate must diagnose, got {:?}", other.map(|_| "Ok")),
+        other => panic!(
+            "broken candidate must diagnose, got {:?}",
+            other.map(|_| "Ok")
+        ),
     }
     assert_eq!(cat.src(), old.0, "坏候选不改源");
     assert_eq!(cat.meter, old.1, "坏候选不动计量");
     assert_eq!(cat.events, old.2, "坏候选不发事件");
     // 修复后提交。
-    let fixed = "fn main() int {\n    let a Item = Item(\"k\", 41)\n    return make(a.move) + 1\n}\n";
-    let cand = cat.stage_owner_edit("main", fixed, BUDGET).expect("stage fixed");
+    let fixed =
+        "fn main() int {\n    let a Item = Item(\"k\", 41)\n    return make(a.move) + 1\n}\n";
+    let cand = cat
+        .stage_owner_edit("main", fixed, BUDGET)
+        .expect("stage fixed");
     cat.commit_staged(cand).expect("commit fixed");
     assert!(cat.src().contains("+ 1"));
 }
@@ -129,13 +180,21 @@ fn t09_lambda_reorder_and_delete() {
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     // 重排：g 在前 f 在后（异文错位）。
     let reordered = "fn main() int {\n    let g = (m int) => { return m + 2 }\n    let f = (n int) => { return n + 1 }\n    return f(1) + g(2)\n}\n";
-    let cand = cat.stage_owner_edit("main", reordered, BUDGET).expect("stage reorder");
-    assert_eq!(cand.produced(), 1 + 2, "owner + 两个 λ 都重产（序-文错位，不假 0）");
+    let cand = cat
+        .stage_owner_edit("main", reordered, BUDGET)
+        .expect("stage reorder");
+    assert_eq!(
+        cand.produced(),
+        1 + 2,
+        "owner + 两个 λ 都重产（序-文错位，不假 0）"
+    );
     assert_eq!(cand.reused(), 0);
     cat.commit_staged(cand).expect("commit reorder");
     // 删除 g：拓扑变化。
     let deleted = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
-    let cand2 = cat.stage_owner_edit("main", deleted, BUDGET).expect("stage delete");
+    let cand2 = cat
+        .stage_owner_edit("main", deleted, BUDGET)
+        .expect("stage delete");
     // 拓扑变化：owner(1) + 剩余 λ 重产（直路 edit_owner 的非快路径合同在
     // t02_same_text_identity_rules 已证；此处为暂存提交面计数）。
     assert_eq!(cand2.produced(), 1 + 1, "拓扑变化：owner + 剩余 λ 重产");
@@ -143,7 +202,9 @@ fn t09_lambda_reorder_and_delete() {
     cat.commit_staged(cand2).expect("commit delete");
     let new_events: Vec<_> = cat.events.iter().skip(events_before.len()).collect();
     assert!(
-        new_events.iter().any(|e| matches!(e, units::CatalogEvent::LambdaTopologyChanged { owner } if owner == "main")),
+        new_events.iter().any(
+            |e| matches!(e, units::CatalogEvent::LambdaTopologyChanged { owner } if owner == "main")
+        ),
         "删除 λ 必发拓扑事件（暂存提交面）"
     );
     // λ 目录只剩 1 个。
@@ -171,8 +232,16 @@ fn t09_prefix_drift_identity_stable() {
     assert!(below2.span.start > old_span.start, "below 坐标后移");
     assert_eq!(below2.mint_span, old_mint, "mint 身份不随漂移变");
     assert_eq!(below2.content_sha, old_sha, "切片内容指纹不变");
-    assert_eq!(Rc::as_ptr(cat.fns["below"].item.as_ref().unwrap()) as usize, below_ptr, "below Rc 同一");
-    assert_eq!(Rc::as_ptr(cat.lambda("below", 0).unwrap().body.as_ref().unwrap()) as usize, lam_ptr, "below λ Rc 同一");
+    assert_eq!(
+        Rc::as_ptr(cat.fns["below"].item.as_ref().unwrap()) as usize,
+        below_ptr,
+        "below Rc 同一"
+    );
+    assert_eq!(
+        Rc::as_ptr(cat.lambda("below", 0).unwrap().body.as_ref().unwrap()) as usize,
+        lam_ptr,
+        "below λ Rc 同一"
+    );
     // λ 当前坐标随后移（span 更新），指纹不变。
     let lam2 = cat.lambda("below", 0).unwrap();
     assert!(lam2.span.start > lam_old_span.start, "λ 当前坐标漂移");
@@ -193,28 +262,45 @@ fn t09_manifest_codec_roundtrip_and_forgery() {
     assert_eq!(enc1, enc2, "编码确定");
     let dec = units::decode_manifest(&enc1).expect("roundtrip decode");
     assert!(dec.matches_manifest(&m), "读回与当次导出全等");
-    assert_eq!(dec.profile, "collections", "profile 用来源合同 slug（非 grammar id）");
+    assert_eq!(
+        dec.profile, "collections",
+        "profile 用来源合同 slug（非 grammar id）"
+    );
     // λ 单元的清单面：closures 目录。
     let cl_src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
     let cat_l = units::UnitCatalog::build(cl_src, CL, BUDGET).expect("cold-closures");
     let m_l = cat_l.to_manifest(cst::FRONT_CAPS_VERSION);
-    assert!(m_l.units.iter().any(|u| u.kind == units::UnitKind::Lambda), "λ 入清单");
+    assert!(
+        m_l.units.iter().any(|u| u.kind == units::UnitKind::Lambda),
+        "λ 入清单"
+    );
     let dec_l = units::decode_manifest(&units::encode_manifest(&m_l)).expect("decode closures");
     assert!(dec_l.matches_manifest(&m_l));
     assert_eq!(dec_l.profile, "closures");
     // 读回重验后继续单元编辑（V-08：目录仍可用）。
     let mut cat2 = cat;
     let main_span = cat2.fns["main"].span;
-    let new_main = cat2.src()[main_span.start..main_span.end].replace("make(a.move)", "make(a.move) + 1");
-    cat2.edit_owner("main", &new_main, BUDGET).expect("edit after readback");
+    let new_main =
+        cat2.src()[main_span.start..main_span.end].replace("make(a.move)", "make(a.move) + 1");
+    cat2.edit_owner("main", &new_main, BUDGET)
+        .expect("edit after readback");
     let m2 = cat2.to_manifest(cst::FRONT_CAPS_VERSION);
-    assert!(!dec.matches_manifest(&m2), "编辑后旧读回不再全等（身份面过时）");
+    assert!(
+        !dec.matches_manifest(&m2),
+        "编辑后旧读回不再全等（身份面过时）"
+    );
     // 伪造：坏 schema。
     let bad_schema = enc1.replacen("ac-source-units/1", "ac-source-units/9", 1);
-    assert!(units::decode_manifest(&bad_schema).is_err(), "坏 schema 拒绝");
+    assert!(
+        units::decode_manifest(&bad_schema).is_err(),
+        "坏 schema 拒绝"
+    );
     // 未知 profile。
     let bad_profile = enc1.replacen("profile collections", "profile mega-profile", 1);
-    assert!(units::decode_manifest(&bad_profile).is_err(), "未知 profile 拒绝");
+    assert!(
+        units::decode_manifest(&bad_profile).is_err(),
+        "未知 profile 拒绝"
+    );
     // 未知 unit kind。
     let bad_kind = enc1.replacen("unit fn ", "unit mystery ", 1);
     assert!(units::decode_manifest(&bad_kind).is_err(), "未知 kind 拒绝");
@@ -225,7 +311,11 @@ fn t09_manifest_codec_roundtrip_and_forgery() {
     let blank = enc1.replacen("\nunit", "\n\nunit", 1);
     assert!(units::decode_manifest(&blank).is_err(), "空行拒绝");
     // 数字合法但内容指纹被篡改：可解码，身份比对拒绝（不冒信任）。
-    let mut lines: Vec<String> = enc1.trim_end_matches('\n').split('\n').map(String::from).collect();
+    let mut lines: Vec<String> = enc1
+        .trim_end_matches('\n')
+        .split('\n')
+        .map(String::from)
+        .collect();
     for ln in lines.iter_mut() {
         if ln.starts_with("unit fn ") {
             let mut p: Vec<String> = ln.split(' ').map(String::from).collect();
@@ -236,11 +326,20 @@ fn t09_manifest_codec_roundtrip_and_forgery() {
     }
     let forged = lines.join("\n");
     let dec_forged = units::decode_manifest(&forged).expect("结构合法可解码");
-    assert!(!dec_forged.matches_manifest(&m), "篡改指纹必须被身份比对拒绝");
+    assert!(
+        !dec_forged.matches_manifest(&m),
+        "篡改指纹必须被身份比对拒绝"
+    );
     // 合法近邻：另一目录（不同源）解码成功但比对不等。
-    let other = units::UnitCatalog::build("fn main() int {\n    return 1\n}\n", SourceProfile::Collections, BUDGET).expect("cold other");
+    let other = units::UnitCatalog::build(
+        "fn main() int {\n    return 1\n}\n",
+        SourceProfile::Collections,
+        BUDGET,
+    )
+    .expect("cold other");
     let m_other = other.to_manifest(cst::FRONT_CAPS_VERSION);
-    let dec_other = units::decode_manifest(&units::encode_manifest(&m_other)).expect("neighbor decodes");
+    let dec_other =
+        units::decode_manifest(&units::encode_manifest(&m_other)).expect("neighbor decodes");
     assert!(!dec_other.matches_manifest(&m), "近邻不误判为本目录");
 }
 
@@ -253,16 +352,24 @@ fn t09_owner_locals_order_and_type_change_signal() {
     let lam_ptr = Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
     // 顺序变化：在 base 前插入新 local。
     let reordered = "fn main() int {\n    let pad Str = \"x\"\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
-    let cand = cat.stage_owner_edit("main", reordered, BUDGET).expect("stage order");
+    let cand = cat
+        .stage_owner_edit("main", reordered, BUDGET)
+        .expect("stage order");
     assert_eq!(cand.produced(), 1, "仅 owner 生产");
     assert_eq!(cand.reused(), 1, "同文 λ 语法共享");
     assert_eq!(cand.semantic_recheck(), &[0], "顺序变化仍携带重验义务");
     let receipt = cat.commit_staged(cand).expect("commit");
     assert!(receipt.semantic_recheck_required);
-    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, lam_ptr, "λ 体 Rc 同一");
+    assert_eq!(
+        Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize,
+        lam_ptr,
+        "λ 体 Rc 同一"
+    );
     // 类型变化（λ 未引用的独立 local）：语法共享照常，重验义务不精简。
     let typed = "fn main() int {\n    let pad Str = \"xy\"\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
-    let cand2 = cat.stage_owner_edit("main", typed, BUDGET).expect("stage type");
+    let cand2 = cat
+        .stage_owner_edit("main", typed, BUDGET)
+        .expect("stage type");
     assert_eq!(cand2.reused(), 1, "λ 文本未变仍共享");
     assert!(!cand2.semantic_recheck().is_empty(), "类型变化仍带重验义务");
 }
@@ -280,7 +387,9 @@ fn t09_large_source_catalog_bounded() {
     assert_eq!(cat.meter.produced, n, "每 fn 计产 1");
     let m = cat.to_manifest(cst::FRONT_CAPS_VERSION);
     assert_eq!(m.units.len(), n);
-    assert!(units::decode_manifest(&units::encode_manifest(&m)).unwrap().matches_manifest(&m));
+    assert!(units::decode_manifest(&units::encode_manifest(&m))
+        .unwrap()
+        .matches_manifest(&m));
 }
 
 /// T-10（真缺陷回归）：括号组后随点步 ⇒ Method 接收者基座，非间接调用。
@@ -301,22 +410,31 @@ fn t10_paren_group_receiver_vs_indirect_callee() {
 ";
     for (src, profile, what) in [
         (text_src, SourceProfile::Text, "text (group).method()"),
-        ("fn main() int {
+        (
+            "fn main() int {
     let f = (n int) => { return n + 1 }
     return (f)(3)
 }
-", CL, "closures (f)(3) indirect"),
-        ("fn main() int {
+",
+            CL,
+            "closures (f)(3) indirect",
+        ),
+        (
+            "fn main() int {
     let g = (n int) => { return n * 2 }
     return (g)(3) + (g)(1).max2(2)
 }
-", CL, "closures mixed"),
+",
+            CL,
+            "closures mixed",
+        ),
     ] {
         let old = parse_program_with_handwritten(src, profile);
         let new = parse_program_via_cst(src, profile);
         match (&old, &new) {
             (Ok(a), Ok(b)) => assert_eq!(
-                format!("{a:?}"), format!("{b:?}"),
+                format!("{a:?}"),
+                format!("{b:?}"),
                 "{what}: AST mismatch old(handwritten) vs new(CST)"
             ),
             (Err(a), Err(b)) => assert_eq!(

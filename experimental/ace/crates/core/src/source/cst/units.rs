@@ -108,7 +108,10 @@ pub enum CatalogEvent {
     OwnerSignatureChanged { owner: String },
     /// 声明内容变化（type/enum）——`dependents` 为目录内引用该声明名的
     /// owner 集合（名字引用由语法面提取；语义依赖归 resolve 裁决）。
-    DeclChanged { name: String, dependents: Vec<String> },
+    DeclChanged {
+        name: String,
+        dependents: Vec<String>,
+    },
     /// 声明集拓扑变化（新增/删除声明）。
     DeclSetChanged,
     /// λ 拓扑变化（具名非快路径路径）。
@@ -119,14 +122,44 @@ pub enum CatalogEvent {
 /// 拒绝，不产生半恢复态；不放宽 913/928 更严格的 miss/拒绝合同。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RestoreError {
-    SchemaMismatch { found: String },
-    CapsMismatch { manifest: String, expected: String },
-    ProfileMismatch { manifest: String, expected: String },
-    ModuleHashMismatch { manifest: u64, source: u64 },
-    UnitHashMismatch { owner: String, kind: &'static str, ordinal: u32, manifest: u64, source: u64 },
-    SpanOutOfBounds { owner: String, kind: &'static str, start: usize, end: usize, src_len: usize },
-    OverlappingUnits { a: String, b: String },
-    DuplicateUnit { owner: String, kind: &'static str, ordinal: u32 },
+    SchemaMismatch {
+        found: String,
+    },
+    CapsMismatch {
+        manifest: String,
+        expected: String,
+    },
+    ProfileMismatch {
+        manifest: String,
+        expected: String,
+    },
+    ModuleHashMismatch {
+        manifest: u64,
+        source: u64,
+    },
+    UnitHashMismatch {
+        owner: String,
+        kind: &'static str,
+        ordinal: u32,
+        manifest: u64,
+        source: u64,
+    },
+    SpanOutOfBounds {
+        owner: String,
+        kind: &'static str,
+        start: usize,
+        end: usize,
+        src_len: usize,
+    },
+    OverlappingUnits {
+        a: String,
+        b: String,
+    },
+    DuplicateUnit {
+        owner: String,
+        kind: &'static str,
+        ordinal: u32,
+    },
 }
 
 /// PLAN-928（T-06）：单元清单（929 消费的可恢复目录投影——版本化、
@@ -183,7 +216,10 @@ pub struct EditReceipt {
 #[derive(Debug)]
 pub enum EditError {
     Diag(Vec<crate::atom_text::Diagnostic>),
-    ResourceExhausted { what: &'static str, limit: usize },
+    ResourceExhausted {
+        what: &'static str,
+        limit: usize,
+    },
     Infra(String),
     /// PLAN-928（T-09，V-05）：stale/foreign 候选——候选不是针对当前修订
     /// （stale：staging 后目录已推进）或不是本目录的候选（foreign：另一
@@ -221,7 +257,10 @@ impl UnitCatalog {
     /// PLAN-929（T-02）：恢复目录未物化单元返回 `None`（签名面不可比——
     /// 消费方按保守重验处理，不得以 None 冒"签名未变"）。
     pub fn signature_snapshot(&self, owner: &str) -> Option<String> {
-        self.fns.get(owner).and_then(|s| s.item.as_deref()).map(signature_of)
+        self.fns
+            .get(owner)
+            .and_then(|s| s.item.as_deref())
+            .map(signature_of)
     }
 
     /// PLAN-928（T-06）：声明变更事件（外部声明编辑路径提交后调用）——
@@ -233,14 +272,27 @@ impl UnitCatalog {
         let dependents: Vec<String> = self
             .fns
             .iter()
-            .filter(|(_, sf)| sf.item.as_deref().map(|i| references_name(i, name)).unwrap_or(false))
+            .filter(|(_, sf)| {
+                sf.item
+                    .as_deref()
+                    .map(|i| references_name(i, name))
+                    .unwrap_or(false)
+            })
             .map(|(o, _)| o.clone())
             .collect();
         if let Some(d) = self.decls.get_mut(name) {
             d.span = new_span;
-            d.content_sha = content_sha(self.src.get(new_span.start..new_span.end).unwrap_or("").as_bytes());
+            d.content_sha = content_sha(
+                self.src
+                    .get(new_span.start..new_span.end)
+                    .unwrap_or("")
+                    .as_bytes(),
+            );
         }
-        self.events.push(CatalogEvent::DeclChanged { name: name.to_string(), dependents });
+        self.events.push(CatalogEvent::DeclChanged {
+            name: name.to_string(),
+            dependents,
+        });
         self.events.push(CatalogEvent::DeclSetChanged);
     }
 
@@ -261,14 +313,18 @@ impl UnitCatalog {
                 current_span: (sf.span.start, sf.span.end),
             })
             .collect();
-        units.extend(self.lambdas.iter().map(|((owner, ordinal), sl)| ManifestUnit {
-            kind: UnitKind::Lambda,
-            owner: owner.clone(),
-            ordinal: *ordinal,
-            content_sha: sl.content_sha,
-            mint_span: (sl.span.start, sl.span.end),
-            current_span: (sl.span.start, sl.span.end),
-        }));
+        units.extend(
+            self.lambdas
+                .iter()
+                .map(|((owner, ordinal), sl)| ManifestUnit {
+                    kind: UnitKind::Lambda,
+                    owner: owner.clone(),
+                    ordinal: *ordinal,
+                    content_sha: sl.content_sha,
+                    mint_span: (sl.span.start, sl.span.end),
+                    current_span: (sl.span.start, sl.span.end),
+                }),
+        );
         units.extend(self.decls.iter().map(|(name, d)| ManifestUnit {
             kind: d.kind,
             owner: name.clone(),
@@ -277,7 +333,11 @@ impl UnitCatalog {
             mint_span: (d.mint_span.start, d.mint_span.end),
             current_span: (d.span.start, d.span.end),
         }));
-        units.sort_by(|a, b| (&a.owner, a.ordinal, a.kind as u8).partial_cmp(&(&b.owner, b.ordinal, b.kind as u8)).unwrap_or(std::cmp::Ordering::Equal));
+        units.sort_by(|a, b| {
+            (&a.owner, a.ordinal, a.kind as u8)
+                .partial_cmp(&(&b.owner, b.ordinal, b.kind as u8))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         CatalogManifest {
             schema: MANIFEST_SCHEMA,
             module_sha: content_sha(self.src.as_bytes()),
@@ -351,7 +411,9 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     | crate::source::ast::Stmt::ExprStmt { value, .. } => {
                         sub.push(WalkItem::Expr(value));
                     }
-                    crate::source::ast::Stmt::If { cond, then, els, .. } => {
+                    crate::source::ast::Stmt::If {
+                        cond, then, els, ..
+                    } => {
                         sub.push(WalkItem::Expr(cond));
                         sub.extend(then.stmts.iter().map(WalkItem::Stmt));
                         if let Some(e) = els {
@@ -371,7 +433,8 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                             sub.extend(arm.body.stmts.iter().map(WalkItem::Stmt));
                         }
                     }
-                    crate::source::ast::Stmt::Break { .. } | crate::source::ast::Stmt::Continue { .. } => {}
+                    crate::source::ast::Stmt::Break { .. }
+                    | crate::source::ast::Stmt::Continue { .. } => {}
                 }
                 sub.reverse();
                 work.extend(sub);
@@ -474,7 +537,9 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }
                     | Stmt::ExprStmt { value, .. } => work.push(WalkItem::Expr(value)),
-                    Stmt::If { cond, then, els, .. } => {
+                    Stmt::If {
+                        cond, then, els, ..
+                    } => {
                         work.push(WalkItem::Expr(cond));
                         sub.extend(then.stmts.iter().map(WalkItem::Stmt));
                         if let Some(e) = els {
@@ -528,14 +593,21 @@ enum WalkItem<'a> {
 /// 语句的直接值表达式。
 fn stmt_value_exprs(s: &Stmt) -> Vec<&Expr> {
     match s {
-        Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } => vec![value],
+        Stmt::Let { value, .. }
+        | Stmt::Assign { value, .. }
+        | Stmt::Return { value, .. }
+        | Stmt::ExprStmt { value, .. } => vec![value],
         _ => vec![],
     }
 }
 
 impl UnitCatalog {
     /// 冷构建：整源解析 + 全单元首次密封（各计生产 1）。
-    pub fn build(src: &str, profile: SourceProfile, budget: FrontBudget) -> Result<UnitCatalog, EditError> {
+    pub fn build(
+        src: &str,
+        profile: SourceProfile,
+        budget: FrontBudget,
+    ) -> Result<UnitCatalog, EditError> {
         let program = parse_whole(src, profile, budget)?;
         let module = content_sha(src.as_bytes());
         let instance = INSTANCE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -554,18 +626,40 @@ impl UnitCatalog {
             // PLAN-928（T-06）：声明单元（type/enum）入目录（mint=冷坐标）。
             match item {
                 Item::Type(t) => {
-                    let sha = content_sha(cat.src.get(t.span.start..t.span.end).unwrap_or("").as_bytes());
+                    let sha = content_sha(
+                        cat.src
+                            .get(t.span.start..t.span.end)
+                            .unwrap_or("")
+                            .as_bytes(),
+                    );
                     cat.decls.insert(
                         t.name.name.clone(),
-                        SealedDecl { content_sha: sha, name: t.name.name.clone(), kind: UnitKind::TypeDecl, span: t.span, mint_span: t.span },
+                        SealedDecl {
+                            content_sha: sha,
+                            name: t.name.name.clone(),
+                            kind: UnitKind::TypeDecl,
+                            span: t.span,
+                            mint_span: t.span,
+                        },
                     );
                     cat.meter.produced += 1;
                 }
                 Item::Enum(e) => {
-                    let sha = content_sha(cat.src.get(e.span.start..e.span.end).unwrap_or("").as_bytes());
+                    let sha = content_sha(
+                        cat.src
+                            .get(e.span.start..e.span.end)
+                            .unwrap_or("")
+                            .as_bytes(),
+                    );
                     cat.decls.insert(
                         e.name.name.clone(),
-                        SealedDecl { content_sha: sha, name: e.name.name.clone(), kind: UnitKind::EnumDecl, span: e.span, mint_span: e.span },
+                        SealedDecl {
+                            content_sha: sha,
+                            name: e.name.name.clone(),
+                            kind: UnitKind::EnumDecl,
+                            span: e.span,
+                            mint_span: e.span,
+                        },
                     );
                     cat.meter.produced += 1;
                 }
@@ -576,18 +670,41 @@ impl UnitCatalog {
                     continue;
                 }
                 let owner = f.name.name.clone();
-                let sha = content_sha(cat.src.get(f.span.start..f.span.end).unwrap_or("").as_bytes());
-                cat.fns.insert(owner.clone(), SealedFn { content_sha: sha, item: Some(Rc::new(f.clone())), mint_span: f.span, span: f.span });
+                let sha = content_sha(
+                    cat.src
+                        .get(f.span.start..f.span.end)
+                        .unwrap_or("")
+                        .as_bytes(),
+                );
+                cat.fns.insert(
+                    owner.clone(),
+                    SealedFn {
+                        content_sha: sha,
+                        item: Some(Rc::new(f.clone())),
+                        mint_span: f.span,
+                        span: f.span,
+                    },
+                );
                 cat.meter.produced += 1;
                 let mut lambdas = Vec::new();
                 collect_lambdas(&f.body.stmts, &mut lambdas, &cat.src);
                 for (ordinal, (span, lsha)) in lambdas.into_iter().enumerate() {
                     // 从已密封 owner 体中取对应 lambda 语法体（同一次遍历序）。
-                    let body = extract_lambda_body(cat.fns[&owner].item.as_deref().expect("cold owner materialized"), ordinal)
-                        .expect("lambda ordinal matches collection order");
+                    let body = extract_lambda_body(
+                        cat.fns[&owner]
+                            .item
+                            .as_deref()
+                            .expect("cold owner materialized"),
+                        ordinal,
+                    )
+                    .expect("lambda ordinal matches collection order");
                     cat.lambdas.insert(
                         (owner.clone(), ordinal as u32),
-                        SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span },
+                        SealedLambda {
+                            content_sha: lsha,
+                            body: Some(Rc::new(body)),
+                            span,
+                        },
                     );
                     cat.meter.produced += 1;
                 }
@@ -618,7 +735,9 @@ impl UnitCatalog {
         caps_version: &str,
     ) -> Result<UnitCatalog, RestoreError> {
         if manifest.schema != MANIFEST_SCHEMA {
-            return Err(RestoreError::SchemaMismatch { found: manifest.schema.clone() });
+            return Err(RestoreError::SchemaMismatch {
+                found: manifest.schema.clone(),
+            });
         }
         if manifest.caps_version != caps_version {
             return Err(RestoreError::CapsMismatch {
@@ -635,7 +754,10 @@ impl UnitCatalog {
         }
         let module = content_sha(src.as_bytes());
         if manifest.module_sha != module {
-            return Err(RestoreError::ModuleHashMismatch { manifest: manifest.module_sha, source: module });
+            return Err(RestoreError::ModuleHashMismatch {
+                manifest: manifest.module_sha,
+                source: module,
+            });
         }
         let instance = INSTANCE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut cat = UnitCatalog {
@@ -673,7 +795,10 @@ impl UnitCatalog {
                 });
             }
             let span = Span { start: cs, end: ce };
-            let mint = Span { start: u.mint_span.0, end: u.mint_span.1 };
+            let mint = Span {
+                start: u.mint_span.0,
+                end: u.mint_span.1,
+            };
             let dup = |kind: &'static str| RestoreError::DuplicateUnit {
                 owner: u.owner.clone(),
                 kind,
@@ -681,25 +806,50 @@ impl UnitCatalog {
             };
             match u.kind {
                 UnitKind::Fn => {
-                    if cat.fns.insert(u.owner.clone(), SealedFn { content_sha: u.content_sha, item: None, mint_span: mint, span })
+                    if cat
+                        .fns
+                        .insert(
+                            u.owner.clone(),
+                            SealedFn {
+                                content_sha: u.content_sha,
+                                item: None,
+                                mint_span: mint,
+                                span,
+                            },
+                        )
                         .is_some()
                     {
                         return Err(dup("fn"));
                     }
                 }
                 UnitKind::Lambda => {
-                    if cat.lambdas
-                        .insert((u.owner.clone(), u.ordinal), SealedLambda { content_sha: u.content_sha, body: None, span })
+                    if cat
+                        .lambdas
+                        .insert(
+                            (u.owner.clone(), u.ordinal),
+                            SealedLambda {
+                                content_sha: u.content_sha,
+                                body: None,
+                                span,
+                            },
+                        )
                         .is_some()
                     {
                         return Err(dup("lambda"));
                     }
                 }
                 UnitKind::TypeDecl | UnitKind::EnumDecl => {
-                    if cat.decls
+                    if cat
+                        .decls
                         .insert(
                             u.owner.clone(),
-                            SealedDecl { content_sha: u.content_sha, name: u.owner.clone(), kind: u.kind, span, mint_span: mint },
+                            SealedDecl {
+                                content_sha: u.content_sha,
+                                name: u.owner.clone(),
+                                kind: u.kind,
+                                span,
+                                mint_span: mint,
+                            },
                         )
                         .is_some()
                     {
@@ -714,7 +864,11 @@ impl UnitCatalog {
         // 一律拒）。栈式扫描（start 升序/end 降序）：弹出已闭合单元后，
         // 若当前单元起点仍在栈顶内，则栈顶必须是 Fn 且当前必须是 Lambda，
         // 且不得越过栈顶 end（部分交叉）。
-        spans.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then((a.3 as u8).cmp(&(b.3 as u8))));
+        spans.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then(b.1.cmp(&a.1))
+                .then((a.3 as u8).cmp(&(b.3 as u8)))
+        });
         let mut open: Vec<(usize, usize, String, UnitKind)> = Vec::new();
         for (start, end, owner, kind) in spans {
             while let Some(top) = open.last() {
@@ -727,7 +881,10 @@ impl UnitCatalog {
             if let Some(top) = open.last() {
                 let nested = start < top.1 && end <= top.1;
                 if !nested || top.3 != UnitKind::Fn || kind != UnitKind::Lambda {
-                    return Err(RestoreError::OverlappingUnits { a: top.2.clone(), b: owner });
+                    return Err(RestoreError::OverlappingUnits {
+                        a: top.2.clone(),
+                        b: owner,
+                    });
                 }
             }
             open.push((start, end, owner, kind));
@@ -761,7 +918,12 @@ impl UnitCatalog {
                 .lambdas
                 .keys()
                 .filter(|k| k.0 == owner)
-                .map(|k| UnitKey { module: self.module, owner: k.0.clone(), kind: UnitKind::Lambda, ordinal: k.1 })
+                .map(|k| UnitKey {
+                    module: self.module,
+                    owner: k.0.clone(),
+                    kind: UnitKind::Lambda,
+                    ordinal: k.1,
+                })
                 .collect();
             self.meter.reused += keys.len();
             return Ok(EditReceipt {
@@ -814,7 +976,10 @@ impl UnitCatalog {
                 let sealed = SealedLambda {
                     content_sha: sha,
                     body: Some(Rc::new(body)),
-                    span: Span { start: new_start, end: new_start + new_slice.len() },
+                    span: Span {
+                        start: new_start,
+                        end: new_start + new_slice.len(),
+                    },
                 };
                 self.lambdas.insert(key.clone(), sealed);
                 self.src = new_src.clone();
@@ -830,12 +995,22 @@ impl UnitCatalog {
                 self.reseal_owner_span(owner);
                 Ok(EditReceipt {
                     new_src,
-                    produced: vec![UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal }],
+                    produced: vec![UnitKey {
+                        module: self.module,
+                        owner: owner.to_string(),
+                        kind: UnitKind::Lambda,
+                        ordinal,
+                    }],
                     reused: self
                         .lambdas
                         .keys()
                         .filter(|k| k.0 == owner && k.1 != ordinal)
-                        .map(|k| UnitKey { module: self.module, owner: k.0.clone(), kind: UnitKind::Lambda, ordinal: k.1 })
+                        .map(|k| UnitKey {
+                            module: self.module,
+                            owner: k.0.clone(),
+                            kind: UnitKind::Lambda,
+                            ordinal: k.1,
+                        })
                         .collect(),
                     semantic_recheck_required: true,
                     non_fast_path: None,
@@ -849,21 +1024,42 @@ impl UnitCatalog {
     }
 
     /// owner fn 编辑（§5.2(b)：同文 lambda 语法体共享；语义重验信号置位）。
-    pub fn edit_owner(&mut self, owner: &str, new_fn_src: &str, budget: FrontBudget) -> Result<EditReceipt, EditError> {
-        let old = self.fns.get(owner).ok_or_else(|| EditError::Infra(format!("unknown owner {owner}")))?;
+    pub fn edit_owner(
+        &mut self,
+        owner: &str,
+        new_fn_src: &str,
+        budget: FrontBudget,
+    ) -> Result<EditReceipt, EditError> {
+        let old = self
+            .fns
+            .get(owner)
+            .ok_or_else(|| EditError::Infra(format!("unknown owner {owner}")))?;
         let old_span = old.span;
         // PLAN-928（T-09，V-03）：零编辑重放——owner 切片字节全等 ⇒ 不重解
         // 析/不物化（owner 与全部子 λ 生产 0），身份不变，无语义重验义务。
         {
-            let old_slice = self.src.get(old_span.start as usize..old_span.end as usize).unwrap_or("");
+            let old_slice = self
+                .src
+                .get(old_span.start as usize..old_span.end as usize)
+                .unwrap_or("");
             if old_slice == new_fn_src {
-                let mut keys = vec![UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Fn, ordinal: 0 }];
-                keys.extend(self.lambdas.keys().filter(|k| k.0 == owner).map(|k| UnitKey {
+                let mut keys = vec![UnitKey {
                     module: self.module,
-                    owner: k.0.clone(),
-                    kind: UnitKind::Lambda,
-                    ordinal: k.1,
-                }));
+                    owner: owner.to_string(),
+                    kind: UnitKind::Fn,
+                    ordinal: 0,
+                }];
+                keys.extend(
+                    self.lambdas
+                        .keys()
+                        .filter(|k| k.0 == owner)
+                        .map(|k| UnitKey {
+                            module: self.module,
+                            owner: k.0.clone(),
+                            kind: UnitKind::Lambda,
+                            ordinal: k.1,
+                        }),
+                );
                 self.meter.reused += keys.len();
                 return Ok(EditReceipt {
                     new_src: self.src.clone(),
@@ -908,7 +1104,9 @@ impl UnitCatalog {
                         })
                         .unwrap_or(true);
                 if signature_changed {
-                    self.events.push(CatalogEvent::OwnerSignatureChanged { owner: owner.to_string() });
+                    self.events.push(CatalogEvent::OwnerSignatureChanged {
+                        owner: owner.to_string(),
+                    });
                 }
                 let prev_mint = self.fns.get(owner).map(|o| o.mint_span);
                 // T-09：漂移维护——编辑点之后单元当前坐标平移。
@@ -920,7 +1118,10 @@ impl UnitCatalog {
                         content_sha: owner_sha,
                         item: Some(Rc::new(item.clone())),
                         mint_span: prev_mint.unwrap_or(item.span),
-                        span: Span { start: old_span.start, end: old_span.start + new_fn_src.len() },
+                        span: Span {
+                            start: old_span.start,
+                            end: old_span.start + new_fn_src.len(),
+                        },
                     },
                 );
                 self.meter.produced += 1;
@@ -930,7 +1131,12 @@ impl UnitCatalog {
                 let mut lambdas = Vec::new();
                 collect_lambdas(&item.body.stmts, &mut lambdas, &new_src);
                 let old_count = self.lambdas.keys().filter(|k| k.0 == owner).count();
-                let mut produced = vec![UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Fn, ordinal: 0 }];
+                let mut produced = vec![UnitKey {
+                    module: self.module,
+                    owner: owner.to_string(),
+                    kind: UnitKind::Fn,
+                    ordinal: 0,
+                }];
                 let mut reused = Vec::new();
                 let mut non_fast: Option<&'static str> = None;
                 if lambdas.len() == old_count {
@@ -941,29 +1147,64 @@ impl UnitCatalog {
                             Some(prev) if prev.content_sha == lsha => {
                                 // 语法复用：共享 Rc（恢复目录 None 保持 None——
                                 // 未改单元物化 0，§5.6），仅坐标漂移（身份不变）。
-                                let mut updated = SealedLambda { content_sha: lsha, body: prev.body.clone(), span };
+                                let mut updated = SealedLambda {
+                                    content_sha: lsha,
+                                    body: prev.body.clone(),
+                                    span,
+                                };
                                 updated.span = span;
                                 self.lambdas.insert(key.clone(), updated);
                                 self.meter.reused += 1;
-                                reused.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
+                                reused.push(UnitKey {
+                                    module: self.module,
+                                    owner: owner.to_string(),
+                                    kind: UnitKind::Lambda,
+                                    ordinal: ordinal as u32,
+                                });
                             }
                             _ => {
-                                self.lambdas.insert(key.clone(), SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span });
+                                self.lambdas.insert(
+                                    key.clone(),
+                                    SealedLambda {
+                                        content_sha: lsha,
+                                        body: Some(Rc::new(body)),
+                                        span,
+                                    },
+                                );
                                 self.meter.produced += 1;
-                                produced.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
+                                produced.push(UnitKey {
+                                    module: self.module,
+                                    owner: owner.to_string(),
+                                    kind: UnitKind::Lambda,
+                                    ordinal: ordinal as u32,
+                                });
                             }
                         }
                     }
                 } else {
                     // 拓扑变化（数量不等）→ 具名非快路径：整 owner lambda 重产。
                     non_fast = Some("owner-lambda-topology-changed");
-                    self.events.push(CatalogEvent::LambdaTopologyChanged { owner: owner.to_string() });
+                    self.events.push(CatalogEvent::LambdaTopologyChanged {
+                        owner: owner.to_string(),
+                    });
                     self.lambdas.retain(|k, _| k.0 != owner);
                     for (ordinal, (span, lsha)) in lambdas.into_iter().enumerate() {
                         let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
-                        self.lambdas.insert((owner.to_string(), ordinal as u32), SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span });
+                        self.lambdas.insert(
+                            (owner.to_string(), ordinal as u32),
+                            SealedLambda {
+                                content_sha: lsha,
+                                body: Some(Rc::new(body)),
+                                span,
+                            },
+                        );
                         self.meter.produced += 1;
-                        produced.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
+                        produced.push(UnitKey {
+                            module: self.module,
+                            owner: owner.to_string(),
+                            kind: UnitKind::Lambda,
+                            ordinal: ordinal as u32,
+                        });
                     }
                 }
                 self.src = new_src.clone();
@@ -1049,13 +1290,25 @@ impl UnitCatalog {
         // PLAN-928（T-09，V-03）：零编辑重放（暂存面）——owner 切片字节全等
         // ⇒ 候选 produced=0、全部复用、无语义重验义务。
         {
-            let old_slice = self.src.get(old_span.start as usize..old_span.end as usize).unwrap_or("");
+            let old_slice = self
+                .src
+                .get(old_span.start as usize..old_span.end as usize)
+                .unwrap_or("");
             if old_slice == new_fn_src {
                 let lambdas: Vec<(u32, SealedLambda)> = self
                     .lambdas
                     .iter()
                     .filter(|(k, _)| k.0 == owner)
-                    .map(|(k, v)| (k.1, SealedLambda { content_sha: v.content_sha, body: v.body.clone(), span: v.span }))
+                    .map(|(k, v)| {
+                        (
+                            k.1,
+                            SealedLambda {
+                                content_sha: v.content_sha,
+                                body: v.body.clone(),
+                                span: v.span,
+                            },
+                        )
+                    })
                     .collect();
                 let n = lambdas.len();
                 return Ok(StagedCandidate {
@@ -1100,7 +1353,11 @@ impl UnitCatalog {
                         Some(prev) if prev.content_sha == *lsha => {
                             staged_lambdas.push((
                                 ordinal as u32,
-                                SealedLambda { content_sha: *lsha, body: prev.body.clone(), span: *span },
+                                SealedLambda {
+                                    content_sha: *lsha,
+                                    body: prev.body.clone(),
+                                    span: *span,
+                                },
                             ));
                             reused += 1;
                             semantic_recheck.push(ordinal as u32);
@@ -1109,7 +1366,11 @@ impl UnitCatalog {
                             let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
                             staged_lambdas.push((
                                 ordinal as u32,
-                                SealedLambda { content_sha: *lsha, body: Some(Rc::new(body)), span: *span },
+                                SealedLambda {
+                                    content_sha: *lsha,
+                                    body: Some(Rc::new(body)),
+                                    span: *span,
+                                },
                             ));
                             produced += 1;
                             semantic_recheck.push(ordinal as u32);
@@ -1133,7 +1394,9 @@ impl UnitCatalog {
                 })
             }
             FrontOutcome::Diag(ds) => Err(EditError::Diag(ds)),
-            FrontOutcome::ResourceExhausted { what, limit } => Err(EditError::ResourceExhausted { what, limit }),
+            FrontOutcome::ResourceExhausted { what, limit } => {
+                Err(EditError::ResourceExhausted { what, limit })
+            }
             FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => Err(EditError::Infra(m)),
         }
     }
@@ -1178,12 +1441,17 @@ impl UnitCatalog {
             kind: UnitKind::Fn,
             ordinal: 0,
         })
-        .chain(cand.lambdas.iter().filter(|(o, sl)| !is_reuse(self, &cand.owner, *o, sl)).map(|(o, _)| UnitKey {
-            module: self.module,
-            owner: cand.owner.clone(),
-            kind: UnitKind::Lambda,
-            ordinal: *o,
-        }))
+        .chain(
+            cand.lambdas
+                .iter()
+                .filter(|(o, sl)| !is_reuse(self, &cand.owner, *o, sl))
+                .map(|(o, _)| UnitKey {
+                    module: self.module,
+                    owner: cand.owner.clone(),
+                    kind: UnitKind::Lambda,
+                    ordinal: *o,
+                }),
+        )
         .collect();
         let reused_keys: Vec<UnitKey> = cand
             .lambdas
@@ -1201,7 +1469,12 @@ impl UnitCatalog {
         // 全部复用、无事件、无重验义务），目录内容不动。
         if !cand.changed {
             self.meter.reused += cand.reused;
-            let mut keys = vec![UnitKey { module: self.module, owner: cand.owner.clone(), kind: UnitKind::Fn, ordinal: 0 }];
+            let mut keys = vec![UnitKey {
+                module: self.module,
+                owner: cand.owner.clone(),
+                kind: UnitKind::Fn,
+                ordinal: 0,
+            }];
             keys.extend(cand.lambdas.iter().map(|(o, _)| UnitKey {
                 module: self.module,
                 owner: cand.owner.clone(),
@@ -1229,14 +1502,22 @@ impl UnitCatalog {
                 })
                 .unwrap_or(true);
             if changed {
-                self.events.push(CatalogEvent::OwnerSignatureChanged { owner: cand.owner.clone() });
+                self.events.push(CatalogEvent::OwnerSignatureChanged {
+                    owner: cand.owner.clone(),
+                });
             }
         }
         // T-09：提交面漂移维护 + λ 拓扑事件（与直路 edit_owner 同判定）。
-        let old_span = self.fns.get(&cand.owner).map(|o| o.span).unwrap_or(Span { start: 0, end: 0 });
+        let old_span = self
+            .fns
+            .get(&cand.owner)
+            .map(|o| o.span)
+            .unwrap_or(Span { start: 0, end: 0 });
         let old_count = self.lambdas.keys().filter(|k| k.0 == cand.owner).count();
         if cand.lambdas.len() != old_count {
-            self.events.push(CatalogEvent::LambdaTopologyChanged { owner: cand.owner.clone() });
+            self.events.push(CatalogEvent::LambdaTopologyChanged {
+                owner: cand.owner.clone(),
+            });
         }
         let delta = cand.new_fn_len as i64 - (old_span.end - old_span.start) as i64;
         self.shift_units_after(old_span.end, delta);
@@ -1246,7 +1527,10 @@ impl UnitCatalog {
                 content_sha: cand.owner_sha,
                 item: cand.owner_item,
                 mint_span: prev_mint.unwrap_or(Span { start: 0, end: 0 }),
-                span: Span { start: old_span.start, end: old_span.start + cand.new_fn_len },
+                span: Span {
+                    start: old_span.start,
+                    end: old_span.start + cand.new_fn_len,
+                },
             },
         );
         // 注：changed=true 候选恒 Some；上方零编辑分支已提前返回。
@@ -1359,11 +1643,22 @@ fn replace_range(src: &str, span: Span, new: &str) -> String {
 /// 包装前缀长度（lambda 单元域重解析的合成宿主）。
 const WRAP_PREFIX_LEN: usize = "fn __lambda_unit() int {\n    return ".len();
 
-fn parse_whole(src: &str, profile: SourceProfile, budget: FrontBudget) -> Result<Program, EditError> {
-    match parse_front(FrontRequest { src, profile, kind: FrontKind::WholeModule, budget }) {
+fn parse_whole(
+    src: &str,
+    profile: SourceProfile,
+    budget: FrontBudget,
+) -> Result<Program, EditError> {
+    match parse_front(FrontRequest {
+        src,
+        profile,
+        kind: FrontKind::WholeModule,
+        budget,
+    }) {
         FrontOutcome::Ok(ok) => Ok(ok.program),
         FrontOutcome::Diag(ds) => Err(EditError::Diag(ds)),
-        FrontOutcome::ResourceExhausted { what, limit } => Err(EditError::ResourceExhausted { what, limit }),
+        FrontOutcome::ResourceExhausted { what, limit } => {
+            Err(EditError::ResourceExhausted { what, limit })
+        }
         FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => Err(EditError::Infra(m)),
     }
 }
@@ -1371,7 +1666,11 @@ fn parse_whole(src: &str, profile: SourceProfile, budget: FrontBudget) -> Result
 /// 单 lambda 片段经共享链重解析：合成 `fn __lambda_unit() int { return <slice> }`
 /// 宿主走统一前门（同 grammar/同投影/同预算），取出 return 位表达式并平移
 /// 回片内坐标。返回 (expr, 消费长度)。
-fn parse_lambda_unit(slice: &str, profile: SourceProfile, budget: FrontBudget) -> Result<(Expr, usize), EditError> {
+fn parse_lambda_unit(
+    slice: &str,
+    profile: SourceProfile,
+    budget: FrontBudget,
+) -> Result<(Expr, usize), EditError> {
     let wrapped = format!("fn __lambda_unit() int {{\n    return {slice}\n}}\n");
     let program = parse_whole(&wrapped, profile, budget)?;
     let mut items = program.items;
@@ -1392,9 +1691,15 @@ pub(crate) fn shift_expr(e: &mut Expr, delta: i64) {
     let sh = |v: usize| ((v as i64 + delta).max(0)) as usize;
     let mut work = vec![e];
     while let Some(cur) = work.pop() {
-        cur.span = Span { start: sh(cur.span.start), end: sh(cur.span.end) };
+        cur.span = Span {
+            start: sh(cur.span.start),
+            end: sh(cur.span.end),
+        };
         let mut children: Vec<&mut Expr> = Vec::new();
-        fn push_args<'a>(args: &'a mut [crate::source::ast::Arg], children: &mut Vec<&'a mut Expr>) {
+        fn push_args<'a>(
+            args: &'a mut [crate::source::ast::Arg],
+            children: &mut Vec<&'a mut Expr>,
+        ) {
             for a in args.iter_mut() {
                 match a {
                     crate::source::ast::Arg::Pos(x) => children.push(x),
@@ -1447,7 +1752,9 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }
                     | Stmt::ExprStmt { value, .. } => work.push(WalkItem::Expr(value)),
-                    Stmt::If { cond, then, els, .. } => {
+                    Stmt::If {
+                        cond, then, els, ..
+                    } => {
                         work.push(WalkItem::Expr(cond));
                         sub.extend(then.stmts.iter().map(WalkItem::Stmt));
                         if let Some(e) = els {
@@ -1580,8 +1887,12 @@ pub fn decode_manifest(text: &str) -> Result<DecodedManifest, String> {
         return Err(format!("manifest line 1: unsupported schema {schema:?}"));
     }
     let mut header = |key: &str| -> Result<String, String> {
-        let ln = lines.next().ok_or_else(|| format!("manifest: truncated at {key}"))?;
-        let (k, v) = ln.split_once(' ').ok_or_else(|| format!("manifest: malformed {key} header"))?;
+        let ln = lines
+            .next()
+            .ok_or_else(|| format!("manifest: truncated at {key}"))?;
+        let (k, v) = ln
+            .split_once(' ')
+            .ok_or_else(|| format!("manifest: malformed {key} header"))?;
         if k != key || v.is_empty() || v.contains(' ') {
             return Err(format!("manifest: malformed {key} header"));
         }
@@ -1612,8 +1923,12 @@ pub fn decode_manifest(text: &str) -> Result<DecodedManifest, String> {
         if owner.is_empty() {
             return Err(bad(line_no, "empty owner"));
         }
-        let ordinal: u32 = parts[3].parse().map_err(|_| bad(line_no, "ordinal not u32"))?;
-        let content_sha: u64 = parts[4].parse().map_err(|_| bad(line_no, "content sha not u64"))?;
+        let ordinal: u32 = parts[3]
+            .parse()
+            .map_err(|_| bad(line_no, "ordinal not u32"))?;
+        let content_sha: u64 = parts[4]
+            .parse()
+            .map_err(|_| bad(line_no, "content sha not u64"))?;
         let nums: Vec<usize> = parts[5..9]
             .iter()
             .map(|p| p.parse::<usize>())
@@ -1632,5 +1947,11 @@ pub fn decode_manifest(text: &str) -> Result<DecodedManifest, String> {
             current_span: (cs, ce),
         });
     }
-    Ok(DecodedManifest { schema: schema.to_string(), module_sha, caps_version, profile, units })
+    Ok(DecodedManifest {
+        schema: schema.to_string(),
+        module_sha,
+        caps_version,
+        profile,
+        units,
+    })
 }

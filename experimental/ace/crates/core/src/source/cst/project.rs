@@ -178,7 +178,8 @@ const TOPLEVEL_IDENT_WORDS: &[&str] = &[
 /// 分类：item 位 / stmt 位 / expr 位；profile 特定消息由能力事实驱动）。
 /// 旧 expect_ident 的 host-console 保留名拒绝（print/eprint）。
 fn console_name_check(cx: &mut Cx, name: &Ident) {
-    if cx.profile == SourceProfile::HostConsole && matches!(name.name.as_str(), "print" | "eprint") {
+    if cx.profile == SourceProfile::HostConsole && matches!(name.name.as_str(), "print" | "eprint")
+    {
         let span = name.span;
         cx.reject(span, move || {
             Diagnostic::new(
@@ -239,7 +240,10 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
         Some(l) => cx.span_of(l),
         None => {
             let (s, e) = tree.abs_range(node);
-            Span { start: s as usize, end: e as usize }
+            Span {
+                start: s as usize,
+                end: e as usize,
+            }
         }
     };
     let mut path: Vec<u32> = Vec::new();
@@ -257,10 +261,27 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
     let k = cx.k;
     let is_kw = kind.is_some_and(|g| {
         [
-            k.tok_let, k.tok_var, k.tok_if, k.tok_else, k.tok_while, k.tok_loop, k.tok_break,
-            k.tok_continue, k.tok_return, k.tok_true, k.tok_false, k.tok_for, k.tok_int_kw,
-            k.tok_i32, k.tok_bool, k.tok_type_kw, k.tok_static, k.tok_mut, k.tok_enum_kw,
-            k.tok_is, k.tok_in,
+            k.tok_let,
+            k.tok_var,
+            k.tok_if,
+            k.tok_else,
+            k.tok_while,
+            k.tok_loop,
+            k.tok_break,
+            k.tok_continue,
+            k.tok_return,
+            k.tok_true,
+            k.tok_false,
+            k.tok_for,
+            k.tok_int_kw,
+            k.tok_i32,
+            k.tok_bool,
+            k.tok_type_kw,
+            k.tok_static,
+            k.tok_mut,
+            k.tok_enum_kw,
+            k.tok_is,
+            k.tok_in,
         ]
         .contains(&g)
     });
@@ -273,11 +294,13 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
         )
     };
     let at_root = (path.iter().any(|&g| g == cx.k.item)
-        && !path.iter().any(|&g| g == cx.k.script_item.unwrap_or(u32::MAX)))
+        && !path
+            .iter()
+            .any(|&g| g == cx.k.script_item.unwrap_or(u32::MAX)))
         || path.len() <= 1; // 根直挂尾随 ERROR 叶（路径仅含 program kind）
-    let mut in_stmt = path.iter().any(|&g| {
-        g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX)
-    });
+    let mut in_stmt = path
+        .iter()
+        .any(|&g| g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX));
     let in_expr = path.iter().any(|&g| g == cx.k.expr || g == cx.k.unary_expr);
     if cx.profile.is_entry_unit() && !in_expr {
         // entry 面：items() 把一切非 `fn` 顶层 token 路由进脚本语句序列
@@ -365,7 +388,12 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
             } else {
                 format!("{} `{}` is not part of this source profile", desc, text)
             };
-            return Some(Diagnostic::new(Stage::Text, "source.unsupported", quoted, span));
+            return Some(Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                quoted,
+                span,
+            ));
         }
     }
     if kind == Some(cx.k.tok_ident) && at_root {
@@ -510,14 +538,19 @@ fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
         }
     }
     let mut leaves = tree_leaves(cx, tree);
-    assert!(!leaves.is_empty(), "tree leaves empty but region had leaves");
+    assert!(
+        !leaves.is_empty(),
+        "tree leaves empty but region had leaves"
+    );
     leaves.retain(|(n, _, _)| tree.abs_range(*n).0 >= first_start);
     // 区域截断（恢复停在 sync）时，其后的首 token 供 fn-tail 期望游走使用
     //（旧 parser 在区域后第一个 token 上报"expected return type"等）。
     let region_end = tree.abs_range(node).1;
     let beyond: Option<(u32, u64, u64, String)> = lex::collect_leaves(tree)
         .into_iter()
-        .filter(|l| l.start >= region_end && !cx.spelling_by_range(l.start, l.end).trim().is_empty())
+        .filter(|l| {
+            l.start >= region_end && !cx.spelling_by_range(l.start, l.end).trim().is_empty()
+        })
         .min_by_key(|l| l.start)
         .map(|l| (l.kind, l.start, l.end, cx.spelling_by_range(l.start, l.end)));
     let first = &leaves[0];
@@ -526,9 +559,16 @@ fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
         return walk_fn_item(
             cx,
             &leaves,
-            beyond
-                .as_ref()
-                .map(|b| (b.0, b.3.as_str(), Span { start: b.1 as usize, end: b.2 as usize })),
+            beyond.as_ref().map(|b| {
+                (
+                    b.0,
+                    b.3.as_str(),
+                    Span {
+                        start: b.1 as usize,
+                        end: b.2 as usize,
+                    },
+                )
+            }),
         );
     }
     if first.2 == "type" && cx.profile.is_record() && !cx.profile.is_closures() {
@@ -539,11 +579,10 @@ fn walk_expectations(cx: &Cx, tree: &CstTree, node: u32) -> Option<Diagnostic> {
     // item 位（块/脚本外）由叶层分类器按旧 items() 消息处理。
     let mut path_kinds: Vec<u32> = Vec::new();
     let _ = path_to(tree, tree.root, node, &mut path_kinds);
-    let in_stmt_ctx = path_kinds.iter().any(|&g| {
-        g == cx.k.stmt
-            || g == cx.k.block
-            || g == cx.k.script_item.unwrap_or(u32::MAX)
-    }) || cx.profile.is_entry_unit();
+    let in_stmt_ctx = path_kinds
+        .iter()
+        .any(|&g| g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX))
+        || cx.profile.is_entry_unit();
     if in_stmt_ctx && leaves.len() >= 1 {
         let mut w = Walker::new(cx, &leaves);
         if let Some(d) = w.walk_stmt_head(false) {
@@ -612,28 +651,44 @@ fn walk_fn_item_ex(
     {
         let (sp, g, text) = at(i);
         if g != k.tok_ident {
-            if g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("{} cannot be used as a name in this source profile", raw_describe(g, text, &k)),
-                    sp,
-                )));
+            if g == k.tok_affix_num
+                || g == k.tok_str_lit
+                || g == k.tok_char_lit
+                || g == k.tok_block_open
+            {
+                return (
+                    i,
+                    Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!(
+                            "{} cannot be used as a name in this source profile",
+                            raw_describe(g, text, &k)
+                        ),
+                        sp,
+                    )),
+                );
             }
             if g == k.tok_r_move || g == k.tok_r_to || is_kw_leaf(g, &k) || text == "fn" {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("keyword `{}` cannot be used as a name", text),
-                    sp,
-                )));
+                return (
+                    i,
+                    Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!("keyword `{}` cannot be used as a name", text),
+                        sp,
+                    )),
+                );
             }
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected function name, found {}", describe_g(g, text, &k)),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected function name, found {}", describe_g(g, text, &k)),
+                    sp,
+                )),
+            );
         }
         i += 1;
     }
@@ -644,12 +699,15 @@ fn walk_fn_item_ex(
     {
         let (sp, g, text) = at(i);
         if text != "(" {
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected `(`, found {}", describe_g(g, text, &k)),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected `(`, found {}", describe_g(g, text, &k)),
+                    sp,
+                )),
+            );
         }
         i += 1;
     }
@@ -676,27 +734,43 @@ fn walk_fn_item_ex(
                 let (sp, g, text) = at(i);
                 if g != k.tok_ident {
                     if g == k.tok_r_move || g == k.tok_r_to || is_kw_leaf(g, &k) || text == "fn" {
-                        return (i, Some(Diagnostic::new(
-                            Stage::Text,
-                            "source.unsupported",
-                            format!("keyword `{}` cannot be used as a name", text),
-                            sp,
-                        )));
+                        return (
+                            i,
+                            Some(Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                format!("keyword `{}` cannot be used as a name", text),
+                                sp,
+                            )),
+                        );
                     }
-                    if g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open {
-                        return (i, Some(Diagnostic::new(
-                            Stage::Text,
-                            "source.unsupported",
-                            format!("{} cannot be used as a name in this source profile", raw_describe(g, text, &k)),
-                            sp,
-                        )));
+                    if g == k.tok_affix_num
+                        || g == k.tok_str_lit
+                        || g == k.tok_char_lit
+                        || g == k.tok_block_open
+                    {
+                        return (
+                            i,
+                            Some(Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                format!(
+                                    "{} cannot be used as a name in this source profile",
+                                    raw_describe(g, text, &k)
+                                ),
+                                sp,
+                            )),
+                        );
                     }
-                    return (i, Some(Diagnostic::new(
-                        Stage::Text,
-                        "source.syntax",
-                        format!("expected parameter name, found {}", describe_g(g, text, &k)),
-                        sp,
-                    )));
+                    return (
+                        i,
+                        Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.syntax",
+                            format!("expected parameter name, found {}", describe_g(g, text, &k)),
+                            sp,
+                        )),
+                    );
                 }
                 i += 1;
             }
@@ -707,7 +781,12 @@ fn walk_fn_item_ex(
                 }
             }
             // 参数类型词。
-            if let Some(d) = walk_type_word(cx, leaves, &mut i, "parameter type annotation (`int`/`i32`/`bool`) is required") {
+            if let Some(d) = walk_type_word(
+                cx,
+                leaves,
+                &mut i,
+                "parameter type annotation (`int`/`i32`/`bool`) is required",
+            ) {
                 return (i, Some(d));
             }
             // PLAN-928（T-03）：collections/closures 参数注解的参数化类型
@@ -743,12 +822,15 @@ fn walk_fn_item_ex(
             if text == ")" {
                 break;
             }
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected `,` or `)`, found {}", describe_g(g, text, &k)),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected `,` or `)`, found {}", describe_g(g, text, &k)),
+                    sp,
+                )),
+            );
         }
     }
     // 4) `)`。
@@ -758,12 +840,15 @@ fn walk_fn_item_ex(
     {
         let (sp, _g, text) = at(i);
         if text != ")" {
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected `)`, found {}", text),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected `)`, found {}", text),
+                    sp,
+                )),
+            );
         }
         i += 1;
     }
@@ -776,7 +861,8 @@ fn walk_fn_item_ex(
         };
         let sp = bspan;
         let builtin = btext == "int" || btext == "i32" || btext == "bool";
-        let text_word = bg == cx.k.tok_ident && cx.profile.is_text() && matches!(btext, "str" | "Str" | "char");
+        let text_word =
+            bg == cx.k.tok_ident && cx.profile.is_text() && matches!(btext, "str" | "Str" | "char");
         // PLAN-928（T-04）：collections 词域——`Str` 收（char 仅 closures），
         // 小写 `str`/`char` 具名拒绝（镜像旧 collections_type）。
         let coll_word = bg == cx.k.tok_ident
@@ -790,12 +876,15 @@ fn walk_fn_item_ex(
         // collections 词域拒绝先于名义接受门（str/char 命名拒绝不得被
         // record_name 的 ident 接受吞掉）。
         if coll_reject {
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.unsupported",
-                format!("type `{}` is not part of this source profile", btext),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("type `{}` is not part of this source profile", btext),
+                    sp,
+                )),
+            );
         }
         if !builtin && !text_word && !entry_void && !record_name && !coll_word {
             if btext == "{" {
@@ -807,19 +896,25 @@ fn walk_fn_item_ex(
                 )));
             }
             if bg == cx.k.tok_ident || bg == cx.k.tok_r_move || bg == cx.k.tok_r_to {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("type `{}` is not part of this source profile", btext),
-                    sp,
-                )));
+                return (
+                    i,
+                    Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!("type `{}` is not part of this source profile", btext),
+                        sp,
+                    )),
+                );
             }
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected return type, found `{}`", btext),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected return type, found `{}`", btext),
+                    sp,
+                )),
+            );
         }
         return (i, Some(eof_expected(cx, "return type")));
     }
@@ -829,53 +924,62 @@ fn walk_fn_item_ex(
         if cx.profile.is_closures() && text == "fn" {
             i = skip_fn_type_leaves(leaves, i);
         } else {
-        // 旧 fn_item_tail 结果位分类：int/i32/bool 全域；text 面 ident 仅
-        // str/Str/char；entry 面 ident 仅 void；record 面任意 ident（名义）。
-        let builtin = text == "int" || text == "i32" || text == "bool";
-        let text_word =
-            g == k.tok_ident && cx.profile.is_text() && matches!(text, "str" | "Str" | "char");
-        // PLAN-928（T-04）：collections 词域（同上）。
-        let coll_word = g == k.tok_ident
-            && cx.profile.is_collections()
-            && (text == "Str" || (text == "char" && cx.profile.is_closures()));
-        let coll_reject = g == k.tok_ident
-            && cx.profile.is_collections()
-            && (text == "str" || (text == "char" && !cx.profile.is_closures()));
-        let entry_void = g == k.tok_ident && cx.profile.is_entry_unit() && text == "void";
-        let record_name = g == k.tok_ident && cx.profile.is_record();
-        if coll_reject {
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.unsupported",
-                format!("type `{}` is not part of this source profile", text),
-                sp,
-            )));
-        }
-        if !builtin && !text_word && !entry_void && !record_name && !coll_word {
-            if text == "{" {
-                return (i, Some(Diagnostic::new(
+            // 旧 fn_item_tail 结果位分类：int/i32/bool 全域；text 面 ident 仅
+            // str/Str/char；entry 面 ident 仅 void；record 面任意 ident（名义）。
+            let builtin = text == "int" || text == "i32" || text == "bool";
+            let text_word =
+                g == k.tok_ident && cx.profile.is_text() && matches!(text, "str" | "Str" | "char");
+            // PLAN-928（T-04）：collections 词域（同上）。
+            let coll_word = g == k.tok_ident
+                && cx.profile.is_collections()
+                && (text == "Str" || (text == "char" && cx.profile.is_closures()));
+            let coll_reject = g == k.tok_ident
+                && cx.profile.is_collections()
+                && (text == "str" || (text == "char" && !cx.profile.is_closures()));
+            let entry_void = g == k.tok_ident && cx.profile.is_entry_unit() && text == "void";
+            let record_name = g == k.tok_ident && cx.profile.is_record();
+            if coll_reject {
+                return (
+                    i,
+                    Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!("type `{}` is not part of this source profile", text),
+                        sp,
+                    )),
+                );
+            }
+            if !builtin && !text_word && !entry_void && !record_name && !coll_word {
+                if text == "{" {
+                    return (i, Some(Diagnostic::new(
                     Stage::Text,
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
                 )));
+                }
+                if g == k.tok_ident || g == k.tok_r_move || g == k.tok_r_to {
+                    return (
+                        i,
+                        Some(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!("type `{}` is not part of this source profile", text),
+                            sp,
+                        )),
+                    );
+                }
+                return (
+                    i,
+                    Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        format!("expected return type, found {}", describe_g(g, text, &k)),
+                        sp,
+                    )),
+                );
             }
-            if g == k.tok_ident || g == k.tok_r_move || g == k.tok_r_to {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("type `{}` is not part of this source profile", text),
-                    sp,
-                )));
-            }
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected return type, found {}", describe_g(g, text, &k)),
-                sp,
-            )));
-        }
-        i += 1;
+            i += 1;
         }
     }
     // 6) `{`（体）→ 语句序列游走。
@@ -885,12 +989,15 @@ fn walk_fn_item_ex(
     {
         let (sp, g, text) = at(i);
         if text != "{" {
-            return (i, Some(Diagnostic::new(
-                Stage::Text,
-                "source.syntax",
-                format!("expected `{{`, found {}", describe_g(g, text, &k)),
-                sp,
-            )));
+            return (
+                i,
+                Some(Diagnostic::new(
+                    Stage::Text,
+                    "source.syntax",
+                    format!("expected `{{`, found {}", describe_g(g, text, &k)),
+                    sp,
+                )),
+            );
         }
         i += 1;
     }
@@ -901,7 +1008,6 @@ fn walk_fn_item_ex(
         None => (w.i, None),
     }
 }
-
 
 /// 旧 EOF 期望：`expected X, found end of file` @ snap.len()（旧 eof_span）。
 fn eof_expected(cx: &Cx, what: &str) -> Diagnostic {
@@ -984,7 +1090,10 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
                 return Some(Diagnostic::new(
                     Stage::Text,
                     "source.syntax",
-                    format!("expected `;`, newline or `}}`, found {}", describe_g(gg, tt, &k)),
+                    format!(
+                        "expected `;`, newline or `}}`, found {}",
+                        describe_g(gg, tt, &k)
+                    ),
                     sp,
                 ));
             }
@@ -1097,13 +1206,13 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
         return Some(Diagnostic::new(
             Stage::Text,
             "source.unsupported",
-            "empty records are not part of this profile; a record must declare at least one field".to_string(),
+            "empty records are not part of this profile; a record must declare at least one field"
+                .to_string(),
             span,
         ));
     }
     None
 }
-
 
 // ---------------------------------------------------------------- 叶序列游走器
 //
@@ -1144,7 +1253,12 @@ impl<'c, 'a> Walker<'c, 'a> {
             let _ = s;
             lines.push(1 + nl.partition_point(|&x| x < e.min(total)) as u32);
         }
-        Walker { cx, leaves, i: 0, lines }
+        Walker {
+            cx,
+            leaves,
+            i: 0,
+            lines,
+        }
     }
 
     fn k(&self) -> &'a super::kinds::SourceKinds {
@@ -1220,9 +1334,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                         let prev_line = self
                             .leaves
                             .last()
-                            .map(|(n, _, _)| {
-                                self.cx.line_of_pos(self.cx.tree.abs_range(*n).0)
-                            })
+                            .map(|(n, _, _)| self.cx.line_of_pos(self.cx.tree.abs_range(*n).0))
                             .unwrap_or(0);
                         if text != ";" && cur_line <= prev_line {
                             return Some(Diagnostic::new(
@@ -1238,11 +1350,16 @@ impl<'c, 'a> Walker<'c, 'a> {
                         return Some(Diagnostic::new(
                             Stage::Text,
                             "source.syntax",
-                            format!("expected statement or `}}`, found {}", describe_g(g, &text, k)),
+                            format!(
+                                "expected statement or `}}`, found {}",
+                                describe_g(g, &text, k)
+                            ),
                             span,
                         ));
                     }
-                    return Some(self.syntax("expected statement or `}`, found end of file".into()));
+                    return Some(
+                        self.syntax("expected statement or `}`, found end of file".into()),
+                    );
                 }
                 Some((_, _, "}", _)) => {
                     self.i += 1;
@@ -1281,7 +1398,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                 // name
                 let (nsp, ng, ntext, _) = match self.cur() {
                     Some(c) => c,
-                    None => return Some(self.syntax("expected local name, found end of file".into())),
+                    None => {
+                        return Some(self.syntax("expected local name, found end of file".into()))
+                    }
                 };
                 if ng != k.tok_ident {
                     return Some(self.name_error(ng, ntext, nsp, "local name"));
@@ -1295,14 +1414,19 @@ impl<'c, 'a> Walker<'c, 'a> {
                     let coll_ok = self.cx.profile.is_collections()
                         && (atext == "Str" || (atext == "char" && self.cx.profile.is_closures()));
                     let admits_text = self.cx.profile.is_text();
-                    if ag == k.tok_ident && !admits_text && !coll_ok && matches!(atext, "str" | "Str" | "char") {
+                    if ag == k.tok_ident
+                        && !admits_text
+                        && !coll_ok
+                        && matches!(atext, "str" | "Str" | "char")
+                    {
                         return Some(self.unsupported(
                             format!("type `{}` is not part of this source profile", atext),
                             asp,
                         ));
                     }
                     let ident_type = ag == k.tok_ident
-                        && ((admits_text && matches!(atext, "str" | "Str" | "char")) || coll_ok
+                        && ((admits_text && matches!(atext, "str" | "Str" | "char"))
+                            || coll_ok
                             || self.cx.profile.is_entry_unit() && atext == "void"
                             || self.cx.profile.is_record());
                     if is_type || ident_type {
@@ -1321,10 +1445,16 @@ impl<'c, 'a> Walker<'c, 'a> {
                     }
                     _ => {
                         let last_end = self.at(self.i - 1).map(|c| c.0.end).unwrap_or(kw.end);
-                        return Some(self.unsupported(
-                            "locals must be initialized at declaration in this source profile".into(),
-                            Span { start: kw.start, end: last_end },
-                        ));
+                        return Some(
+                            self.unsupported(
+                                "locals must be initialized at declaration in this source profile"
+                                    .into(),
+                                Span {
+                                    start: kw.start,
+                                    end: last_end,
+                                },
+                            ),
+                        );
                     }
                 }
                 if let Some(d) = self.walk_expr(false) {
@@ -1399,7 +1529,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                         _ => {
                             let (spn, gn, tn, _) = match self.cur() {
                                 Some(c) => c,
-                                None => return Some(self.syntax("expected iteration binding, found end of file".into())),
+                                None => {
+                                    return Some(self.syntax(
+                                        "expected iteration binding, found end of file".into(),
+                                    ))
+                                }
                             };
                             return Some(self.name_error(gn, tn, spn, "iteration binding"));
                         }
@@ -1425,7 +1559,12 @@ impl<'c, 'a> Walker<'c, 'a> {
                                 Some(c) => c,
                                 None => return Some(self.syntax("expected for-in iterator (a List local), found end of file".into())),
                             };
-                            return Some(self.name_error(gn, tn, spn, "for-in iterator (a List local)"));
+                            return Some(self.name_error(
+                                gn,
+                                tn,
+                                spn,
+                                "for-in iterator (a List local)",
+                            ));
                         }
                     }
                     if let Some(d) = self.expect_text("{") {
@@ -1437,7 +1576,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                     return self.sep_check();
                 }
                 if !wide {
-                    return Some(self.unsupported("`for` is not part of this source profile".into(), sp));
+                    return Some(
+                        self.unsupported("`for` is not part of this source profile".into(), sp),
+                    );
                 }
                 self.i += 1;
                 if let Some(d) = self.walk_expr(false) {
@@ -1461,7 +1602,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                     _ => {
                         let (spn, gn, tn, _) = match self.cur() {
                             Some(c) => c,
-                            None => return Some(self.syntax("expected scrutinee, found end of file".into())),
+                            None => {
+                                return Some(
+                                    self.syntax("expected scrutinee, found end of file".into()),
+                                )
+                            }
                         };
                         return Some(self.name_error(gn, tn, spn, "scrutinee"));
                     }
@@ -1489,10 +1634,16 @@ impl<'c, 'a> Walker<'c, 'a> {
                                         self.i += 1;
                                     }
                                     _ => {
-                                        let (spn, gn, tn, _) = match self.cur() {
-                                            Some(c) => c,
-                                            None => return Some(self.syntax("expected arm pattern, found end of file".into())),
-                                        };
+                                        let (spn, gn, tn, _) =
+                                            match self.cur() {
+                                                Some(c) => c,
+                                                None => return Some(
+                                                    self.syntax(
+                                                        "expected arm pattern, found end of file"
+                                                            .into(),
+                                                    ),
+                                                ),
+                                            };
                                         return Some(self.name_error(gn, tn, spn, "arm pattern"));
                                     }
                                 }
@@ -1509,21 +1660,34 @@ impl<'c, 'a> Walker<'c, 'a> {
                                             Some(c) => c,
                                             None => return Some(self.syntax("expected arm payload binding, found end of file".into())),
                                         };
-                                        return Some(self.name_error(gn, tn, spn, "arm payload binding"));
+                                        return Some(self.name_error(
+                                            gn,
+                                            tn,
+                                            spn,
+                                            "arm payload binding",
+                                        ));
                                     }
                                 }
                                 match self.cur() {
                                     Some((_, _, ")", _)) => {
                                         self.i += 1;
                                     }
-                                    _ => return Some(self.syntax("expected `)` after the arm payload binding".into())),
+                                    _ => {
+                                        return Some(self.syntax(
+                                            "expected `)` after the arm payload binding".into(),
+                                        ))
+                                    }
                                 }
                             }
                             match self.cur() {
                                 Some((_, _, "->", _)) => {
                                     self.i += 1;
                                 }
-                                _ => return Some(self.syntax("expected `->` after the arm pattern".into())),
+                                _ => {
+                                    return Some(
+                                        self.syntax("expected `->` after the arm pattern".into()),
+                                    )
+                                }
                             }
                             if let Some(d) = self.expect_text("{") {
                                 return Some(d);
@@ -1533,10 +1697,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                             }
                         }
                         Some((_, t2, _, _)) => {
-                            return Some(self.syntax(format!(
-                                "expected an arm pattern, found `{}`",
-                                t2
-                            )));
+                            return Some(
+                                self.syntax(format!("expected an arm pattern, found `{}`", t2)),
+                            );
                         }
                     }
                 }
@@ -1586,12 +1749,20 @@ impl<'c, 'a> Walker<'c, 'a> {
                                         self.i += 1;
                                     }
                                     Some((fsp, fg, ftext, _)) => {
-                                        return Some(self.name_error(fg, ftext, fsp, "field name after `.`"));
+                                        return Some(self.name_error(
+                                            fg,
+                                            ftext,
+                                            fsp,
+                                            "field name after `.`",
+                                        ));
                                     }
                                     None => {
-                                        return Some(self.syntax(
-                                            "expected field name after `.`, found end of file".into(),
-                                        ))
+                                        return Some(
+                                            self.syntax(
+                                                "expected field name after `.`, found end of file"
+                                                    .into(),
+                                            ),
+                                        )
                                     }
                                 }
                             }
@@ -1605,7 +1776,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                                     return Some(d);
                                 }
                                 let end = self.at(self.i - 1).map(|c| c.0.end).unwrap_or(start.end);
-                                if !(self.cx.profile.is_entry_unit() || self.cx.profile.is_collections()) {
+                                if !(self.cx.profile.is_entry_unit()
+                                    || self.cx.profile.is_collections())
+                                {
                                     return Some(self.unsupported(
                                         "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions".into(),
                                         Span { start: start.start, end },
@@ -1643,14 +1816,21 @@ impl<'c, 'a> Walker<'c, 'a> {
     fn name_error(&self, g: u32, text: &str, sp: Span, what: &str) -> Diagnostic {
         if self.is_raw(g) {
             return self.unsupported(
-                format!("{} cannot be used as a name in this source profile", raw_describe(g, text, self.k())),
+                format!(
+                    "{} cannot be used as a name in this source profile",
+                    raw_describe(g, text, self.k())
+                ),
                 sp,
             );
         }
         if self.is_kw(g, text) || self.is_reserved(g) {
             return self.unsupported(format!("keyword `{}` cannot be used as a name", text), sp);
         }
-        self.syntax(format!("expected {}, found {}", what, describe_g(g, text, self.k())))
+        self.syntax(format!(
+            "expected {}, found {}",
+            what,
+            describe_g(g, text, self.k())
+        ))
     }
 
     fn expect_text(&mut self, t: &str) -> Option<Diagnostic> {
@@ -1688,7 +1868,10 @@ impl<'c, 'a> Walker<'c, 'a> {
         if self.cx.profile.surface_is_scalar_or_wider() {
             return false;
         }
-        matches!(text, "||" | "&&" | "==" | "!=" | ">" | "<=" | ">=" | "-" | "/" | "%")
+        matches!(
+            text,
+            "||" | "&&" | "==" | "!=" | ">" | "<=" | ">=" | "-" | "/" | "%"
+        )
     }
 
     /// PLAN-928（T-07）：`( 参数? ) =>` 闭包头前瞻（token 级；镜像旧
@@ -1724,7 +1907,13 @@ impl<'c, 'a> Walker<'c, 'a> {
                 if depth == 0 {
                     return matches!(self.at(j + 1), Some((_, _, ".", _)));
                 }
-            } else if !(g == k.tok_ident || g == k.tok_int_kw || g == k.tok_i32 || g == k.tok_bool || text == "," || text == "?") {
+            } else if !(g == k.tok_ident
+                || g == k.tok_int_kw
+                || g == k.tok_i32
+                || g == k.tok_bool
+                || text == ","
+                || text == "?")
+            {
                 return false;
             }
             j += 1;
@@ -1758,7 +1947,10 @@ impl<'c, 'a> Walker<'c, 'a> {
                     Some(Br::Call) => Some(self.syntax("expected argument expression".into())),
                     Some(Br::Paren) => Some(self.syntax("expected `)`".into())),
                     Some(Br::Ctor) => Some(self.syntax("unterminated expression".into())),
-                    None => Some(self.syntax(format!("expected expression, found {}", self.describe_cur()))),
+                    None => Some(self.syntax(format!(
+                        "expected expression, found {}",
+                        self.describe_cur()
+                    ))),
                 };
             };
             if g == k.tok_int_lit {
@@ -1781,7 +1973,12 @@ impl<'c, 'a> Walker<'c, 'a> {
                         anchored = true;
                         continue;
                     }
-                    Some((esp, eg, etext, _)) if eg == k.tok_ident || etext == "true" || etext == "false" || etext == "(" => {
+                    Some((esp, eg, etext, _))
+                        if eg == k.tok_ident
+                            || etext == "true"
+                            || etext == "false"
+                            || etext == "(" =>
+                    {
                         return Some(self.unsupported(
                             "unary minus is only supported directly before an integer literal in this source profile".into(),
                             sp.join(esp),
@@ -1794,7 +1991,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                     self.i += 1;
                 } else {
                     return Some(self.unsupported(
-                        format!("{} `{}` is not part of this source profile", raw_describe(g, text, k), text),
+                        format!(
+                            "{} `{}` is not part of this source profile",
+                            raw_describe(g, text, k),
+                            text
+                        ),
                         sp,
                     ));
                 }
@@ -1806,18 +2007,36 @@ impl<'c, 'a> Walker<'c, 'a> {
                     anchored = true;
                     continue;
                 }
-                return Some(self.unsupported("unary `!` is not part of this source profile".into(), sp));
+                return Some(
+                    self.unsupported("unary `!` is not part of this source profile".into(), sp),
+                );
             } else if text == "+" && wide {
-                return Some(self.unsupported("unary `+` is not part of this source profile".into(), sp));
+                return Some(
+                    self.unsupported("unary `+` is not part of this source profile".into(), sp),
+                );
             } else if text == "type" || text == "static" || text == "mut" {
-                return Some(self.unsupported(format!("`{}` is not a value in this source profile", text), sp));
+                return Some(self.unsupported(
+                    format!("`{}` is not a value in this source profile", text),
+                    sp,
+                ));
             } else if self.is_reserved(g) {
-                return Some(self.unsupported(format!("keyword `{}` is not part of this source profile", text), sp));
+                return Some(self.unsupported(
+                    format!("keyword `{}` is not part of this source profile", text),
+                    sp,
+                ));
             } else if self.is_raw(g) {
                 let msg = if g == k.tok_affix_num || g == k.tok_block_open {
-                    format!("{} `{}` is not part of this source profile", raw_describe(g, text, k), text)
+                    format!(
+                        "{} `{}` is not part of this source profile",
+                        raw_describe(g, text, k),
+                        text
+                    )
                 } else {
-                    format!("{} `{}` is not part of this source profile", raw_describe(g, text, k), text)
+                    format!(
+                        "{} `{}` is not part of this source profile",
+                        raw_describe(g, text, k),
+                        text
+                    )
                 };
                 return Some(self.unsupported(msg, sp));
             } else if text == "(" {
@@ -1831,7 +2050,8 @@ impl<'c, 'a> Walker<'c, 'a> {
                 match self.cur() {
                     Some((_, mg, _, _)) if mg == k.tok_ident => {
                         self.i += 1;
-                        if matches!(self.cur(), Some((_, _, "(", l2)) if in_br || l2 == self.prev_line()) {
+                        if matches!(self.cur(), Some((_, _, "(", l2)) if in_br || l2 == self.prev_line())
+                        {
                             self.i += 1;
                             if matches!(self.cur(), Some((_, _, ")", _))) {
                                 self.i += 1;
@@ -1854,7 +2074,6 @@ impl<'c, 'a> Walker<'c, 'a> {
                         )))
                     }
                 }
-
             } else if g == k.tok_ident
                 && self.cx.profile.is_closures()
                 && text == "async"
@@ -1935,10 +2154,24 @@ impl<'c, 'a> Walker<'c, 'a> {
                 } else {
                     self.i += 1;
                 }
-            } else if self.is_kw(g, text) || text == ")" || text == "}" || text == "," || text == ";" || text == "{" || text == "=" || text == ":" || text == "]" || text == "[" {
+            } else if self.is_kw(g, text)
+                || text == ")"
+                || text == "}"
+                || text == ","
+                || text == ";"
+                || text == "{"
+                || text == "="
+                || text == ":"
+                || text == "]"
+                || text == "["
+            {
                 return Some(self.syntax(format!(
                     "expected expression, found {}",
-                    if g == k.tok_ident { "token".to_string() } else { format!("`{}`", text) }
+                    if g == k.tok_ident {
+                        "token".to_string()
+                    } else {
+                        format!("`{}`", text)
+                    }
                 )));
             } else {
                 return Some(self.syntax(format!("expected expression, found `{}`", text)));
@@ -1968,7 +2201,11 @@ impl<'c, 'a> Walker<'c, 'a> {
 
     /// 值完成后：算子/点后缀/关闭括号/逗号。返回 Some(Some(diag)) = 错误；
     /// Some(None) = 表达式结束；None = 继续（已消费算子，anchored 置位）。
-    fn after_value(&mut self, frames: &mut Vec<Br>, anchored: &mut bool) -> Option<Option<Diagnostic>> {
+    fn after_value(
+        &mut self,
+        frames: &mut Vec<Br>,
+        anchored: &mut bool,
+    ) -> Option<Option<Diagnostic>> {
         let k = self.k();
         loop {
             let in_br = !frames.is_empty();
@@ -1989,7 +2226,10 @@ impl<'c, 'a> Walker<'c, 'a> {
                     }
                     self.i += 1;
                     match self.cur() {
-                        Some((_, mg, _, _)) if mg == k.tok_r_move && (is_text || self.cx.profile.is_collections()) => {
+                        Some((_, mg, _, _))
+                            if mg == k.tok_r_move
+                                && (is_text || self.cx.profile.is_collections()) =>
+                        {
                             self.i += 1;
                             continue;
                         }
@@ -2040,10 +2280,16 @@ impl<'c, 'a> Walker<'c, 'a> {
                                 return Some(Some(d));
                             }
                             match self.cur() {
-                                Some((_, wg, w, _)) if wg == k.tok_ident && (w == "str" || w == "Str") => {
+                                Some((_, wg, w, _))
+                                    if wg == k.tok_ident && (w == "str" || w == "Str") =>
+                                {
                                     self.i += 1;
                                 }
-                                _ => return Some(Some(self.syntax("`.to` expects `str` or `Str`".into()))),
+                                _ => {
+                                    return Some(Some(
+                                        self.syntax("`.to` expects `str` or `Str`".into()),
+                                    ))
+                                }
                             }
                             if let Some(d) = self.expect_text(")") {
                                 return Some(Some(d));
@@ -2053,7 +2299,12 @@ impl<'c, 'a> Walker<'c, 'a> {
                         Some((_, mg, mname, mline)) if mg == k.tok_ident => {
                             let call = matches!(self.at(self.i + 2), Some((_, _, "(", l3)) if in_br || l3 == mline);
                             if !call {
-                                return Some(Some(self.syntax(format!("method `.{}` requires parentheses", mname))));
+                                return Some(Some(
+                                    self.syntax(format!(
+                                        "method `.{}` requires parentheses",
+                                        mname
+                                    )),
+                                ));
                             }
                             self.i += 3;
                             if matches!(self.cur(), Some((_, _, ")", _))) {
@@ -2065,11 +2316,18 @@ impl<'c, 'a> Walker<'c, 'a> {
                             *anchored = false;
                             return None;
                         }
-                        _ => return Some(Some(self.syntax("expected a method name after `.`".into()))),
+                        _ => {
+                            return Some(Some(
+                                self.syntax("expected a method name after `.`".into()),
+                            ))
+                        }
                     }
                 }
                 // 非 record/text：`.` 不是算子 → unsupported_op
-                return Some(Some(self.unsupported("operator `.` is not part of this source profile".into(), dsp)));
+                return Some(Some(self.unsupported(
+                    "operator `.` is not part of this source profile".into(),
+                    dsp,
+                )));
             }
             let Some((sp, _g, text, line)) = self.cur() else {
                 return Some(match frames.last() {
@@ -2093,10 +2351,18 @@ impl<'c, 'a> Walker<'c, 'a> {
                 return None;
             }
             if self.op_of_other_surface(text) {
-                return Some(Some(self.unsupported(format!("operator `{}` is not part of this source profile", text), sp)));
+                return Some(Some(self.unsupported(
+                    format!("operator `{}` is not part of this source profile", text),
+                    sp,
+                )));
             }
             match text {
-                "(" => return Some(Some(self.syntax(format!("expected operator, found {}", self.describe_cur())))),
+                "(" => {
+                    return Some(Some(self.syntax(format!(
+                        "expected operator, found {}",
+                        self.describe_cur()
+                    ))))
+                }
                 ")" => match frames.last() {
                     Some(Br::Paren) | Some(Br::Call) => {
                         frames.pop();
@@ -2159,7 +2425,11 @@ fn walk_type_word(
     if *i >= leaves.len() {
         return None;
     }
-    let (sp, g, text) = (leaf_span(cx, leaves[*i].0), leaves[*i].1, leaves[*i].2.as_str());
+    let (sp, g, text) = (
+        leaf_span(cx, leaves[*i].0),
+        leaves[*i].1,
+        leaves[*i].2.as_str(),
+    );
     let is_builtin = text == "int" || text == "i32" || text == "bool";
     let ident_ok = g == k.tok_ident
         && (cx.profile.is_text() || cx.profile.is_record() || cx.profile.is_entry_unit());
@@ -2191,10 +2461,27 @@ fn walk_type_word(
 
 fn is_kw_leaf(g: u32, k: &super::kinds::SourceKinds) -> bool {
     [
-        k.tok_let, k.tok_var, k.tok_if, k.tok_else, k.tok_while, k.tok_loop, k.tok_break,
-        k.tok_continue, k.tok_return, k.tok_true, k.tok_false, k.tok_for, k.tok_int_kw,
-        k.tok_i32, k.tok_bool, k.tok_type_kw, k.tok_static, k.tok_mut, k.tok_enum_kw,
-        k.tok_is, k.tok_in,
+        k.tok_let,
+        k.tok_var,
+        k.tok_if,
+        k.tok_else,
+        k.tok_while,
+        k.tok_loop,
+        k.tok_break,
+        k.tok_continue,
+        k.tok_return,
+        k.tok_true,
+        k.tok_false,
+        k.tok_for,
+        k.tok_int_kw,
+        k.tok_i32,
+        k.tok_bool,
+        k.tok_type_kw,
+        k.tok_static,
+        k.tok_mut,
+        k.tok_enum_kw,
+        k.tok_is,
+        k.tok_in,
     ]
     .contains(&g)
 }
@@ -2315,31 +2602,95 @@ enum Val {
 enum Frame {
     // -- 块/语句 --
     Block(BlockFrame),
-    LetFinish { node: u32, kw: Span, name: Ident, ann: Option<TypeAnn>, mutable: bool },
-    AssignFinish { name: Ident, path: Vec<Ident> },
-    ReturnFinish { kw: Span },
-    IfCond { then_n: u32, els_blk: Option<u32>, node: u32 },
-    IfThen { cond: Expr, els_blk: Option<u32>, node: u32 },
-    IfElse { cond: Expr, then: Block, node: u32 },
-    WhileCond { body_n: u32, node: u32 },
-    WhileBody { cond: Expr, node: u32 },
-    LoopBody { node: u32 },
+    LetFinish {
+        node: u32,
+        kw: Span,
+        name: Ident,
+        ann: Option<TypeAnn>,
+        mutable: bool,
+    },
+    AssignFinish {
+        name: Ident,
+        path: Vec<Ident>,
+    },
+    ReturnFinish {
+        kw: Span,
+    },
+    IfCond {
+        then_n: u32,
+        els_blk: Option<u32>,
+        node: u32,
+    },
+    IfThen {
+        cond: Expr,
+        els_blk: Option<u32>,
+        node: u32,
+    },
+    IfElse {
+        cond: Expr,
+        then: Block,
+        node: u32,
+    },
+    WhileCond {
+        body_n: u32,
+        node: u32,
+    },
+    WhileBody {
+        cond: Expr,
+        node: u32,
+    },
+    LoopBody {
+        node: u32,
+    },
     ExprStmtFinish,
-    FnBodyFinish { node: u32, name: Ident, params: Vec<Param>, ret: TypeAnn, receiver: Receiver, owner: Option<Ident> },
-    ScriptFinish { start_span: Span },
+    FnBodyFinish {
+        node: u32,
+        name: Ident,
+        params: Vec<Param>,
+        ret: TypeAnn,
+        receiver: Receiver,
+        owner: Option<Ident>,
+    },
+    ScriptFinish {
+        start_span: Span,
+    },
     /// PLAN-928（T-03）：`for x in <List 局部> { .. }` 体收尾帧。
-    ForInBody { var: Ident, iter: Expr, node: u32 },
+    ForInBody {
+        var: Ident,
+        iter: Expr,
+        node: u32,
+    },
     /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
     IsArms(IsMatchCtx),
-    IsArmBlock { ctx: Box<IsMatchCtx>, qual: Option<Ident>, pattern: Ident, binding: Option<Ident>, kw: Span },
+    IsArmBlock {
+        ctx: Box<IsMatchCtx>,
+        qual: Option<Ident>,
+        pattern: Ident,
+        binding: Option<Ident>,
+        kw: Span,
+    },
     // -- 表达式 --
     ExprEnter(u32),
     /// PLAN-928：lambda 体收尾（块体/表达式体两形；参数与 move 词已冻结）。
-    LambdaBlockBody { move_capture: bool, params: Vec<Param>, start: Span },
-    LambdaExprBody { move_capture: bool, params: Vec<Param>, start: Span },
-    OpPost { op: BinOp },
-    UnaryPost { op: UnaryOp },
-    PostfixFoldAll { steps: Vec<u32> },
+    LambdaBlockBody {
+        move_capture: bool,
+        params: Vec<Param>,
+        start: Span,
+    },
+    LambdaExprBody {
+        move_capture: bool,
+        params: Vec<Param>,
+        start: Span,
+    },
+    OpPost {
+        op: BinOp,
+    },
+    UnaryPost {
+        op: UnaryOp,
+    },
+    PostfixFoldAll {
+        steps: Vec<u32>,
+    },
     /// 调用收尾：callee 语义（纯名字 / 方法链尾步）+ 一元链 + 实参数 +
     /// 调用节点终点。接收者值（方法路径）在实参之下。
     CallAssemble {
@@ -2347,20 +2698,39 @@ enum Frame {
         argc: usize,
         close_end: usize,
     },
-    ArgBuild { named: Option<Ident> },
-    CtorFieldBuild { label: Ident },
-    CtorFinish { node: u32, ty: Ident, count: usize },
+    ArgBuild {
+        named: Option<Ident>,
+    },
+    CtorFieldBuild {
+        label: Ident,
+    },
+    CtorFinish {
+        node: u32,
+        ty: Ident,
+        count: usize,
+    },
 }
 
 /// 调用 callee 的静态分析结果（enter_call 时求出；组装时消费）。
 enum CalleePlan {
     /// 纯名字调用（ident 叶）+ 外→内一元链。
-    Plain { ident: Ident, unary_ops: Vec<UnaryOp> },
+    Plain {
+        ident: Ident,
+        unary_ops: Vec<UnaryOp>,
+    },
     /// PLAN-928（T-07）：表达式被调（括号组/λ 等值位 callee）→ 间接调用
     /// `CallValue`（镜像旧 CallFrame callee_expr；callee 名 "<closure>"）。
-    Value { callee_n: u32, unary_ops: Vec<UnaryOp> },
+    Value {
+        callee_n: u32,
+        unary_ops: Vec<UnaryOp>,
+    },
     /// 方法链：base（接收者求值任务节点）+ 中间步 + 链尾成员叶。
-    Method { base: u32, member: u32, mids: Vec<u32>, unary_ops: Vec<UnaryOp> },
+    Method {
+        base: u32,
+        member: u32,
+        mids: Vec<u32>,
+        unary_ops: Vec<UnaryOp>,
+    },
 }
 
 /// PLAN-928（T-03）：is 分派的逐臂装配上下文。
@@ -2404,7 +2774,10 @@ impl<'a> Cx<'a> {
     }
     fn span_of(&self, n: u32) -> Span {
         let (s, e) = self.tree.abs_range(n);
-        Span { start: s as usize, end: e as usize }
+        Span {
+            start: s as usize,
+            end: e as usize,
+        }
     }
     fn spelling(&self, n: u32) -> String {
         let (s, e) = self.tree.abs_range(n);
@@ -2423,13 +2796,19 @@ impl<'a> Cx<'a> {
                 (
                     l.kind,
                     self.spelling_by_range(l.start, l.end),
-                    Span { start: l.start as usize, end: l.end as usize },
+                    Span {
+                        start: l.start as usize,
+                        end: l.end as usize,
+                    },
                 )
             })
     }
     /// 叶起始行（快照换行计数）。
     fn line_of_pos(&self, pos: u64) -> u32 {
-        let text = self.snap.read_str(0, pos.min(self.snap.len() as u64)).unwrap_or_default();
+        let text = self
+            .snap
+            .read_str(0, pos.min(self.snap.len() as u64))
+            .unwrap_or_default();
         1 + text.bytes().filter(|&b| b == b'\n').count() as u32
     }
     fn children(&self, n: u32) -> Vec<u32> {
@@ -2440,7 +2819,9 @@ impl<'a> Cx<'a> {
         self.tree.field_child(n, f)
     }
     fn child_of_kind(&self, n: u32, kind: u32) -> Option<u32> {
-        self.children(n).into_iter().find(|&c| self.tree.kind(c) == kind)
+        self.children(n)
+            .into_iter()
+            .find(|&c| self.tree.kind(c) == kind)
     }
     fn check_name(&mut self, id: &Ident) {
         if self.profile == SourceProfile::HostConsole
@@ -2492,7 +2873,10 @@ fn first_leaf_span(cx: &Cx, node: u32) -> Span {
             break;
         }
         let kids = cx.tree.children(n);
-        match kids.iter().find(|&&c| cx.tree.node(c).flags & FLAG_TRIVIA == 0) {
+        match kids
+            .iter()
+            .find(|&&c| cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+        {
             Some(&c) => n = c,
             None => break,
         }
@@ -2510,7 +2894,13 @@ fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {
 }
 
 impl<'a> Engine<'a> {
-    fn new(p: &'a GrammarProgram, k: &'a SourceKinds, tree: &'a CstTree, snap: &'a Snapshot, profile: SourceProfile) -> Self {
+    fn new(
+        p: &'a GrammarProgram,
+        k: &'a SourceKinds,
+        tree: &'a CstTree,
+        snap: &'a Snapshot,
+        profile: SourceProfile,
+    ) -> Self {
         Engine {
             cx: Cx {
                 p,
@@ -2530,19 +2920,27 @@ impl<'a> Engine<'a> {
     fn pop_e(&mut self) -> Expr {
         match self.vals.pop() {
             Some(Val::E(e)) => e,
-            _ => Expr { kind: ExprKind::IntLit(0), span: Span { start: 0, end: 0 } },
+            _ => Expr {
+                kind: ExprKind::IntLit(0),
+                span: Span { start: 0, end: 0 },
+            },
         }
     }
     fn pop_b(&mut self) -> Block {
         match self.vals.pop() {
             Some(Val::B(b)) => b,
-            _ => Block { stmts: Vec::new(), span: Span { start: 0, end: 0 } },
+            _ => Block {
+                stmts: Vec::new(),
+                span: Span { start: 0, end: 0 },
+            },
         }
     }
     fn pop_s(&mut self) -> Stmt {
         match self.vals.pop() {
             Some(Val::S(s)) => s,
-            _ => Stmt::Break { span: Span { start: 0, end: 0 } },
+            _ => Stmt::Break {
+                span: Span { start: 0, end: 0 },
+            },
         }
     }
 
@@ -2597,10 +2995,19 @@ impl<'a> Engine<'a> {
         match self.vals.pop() {
             Some(Val::F(f)) => f,
             _ => FnItem {
-                name: Ident { name: String::new(), span: Span { start: 0, end: 0 } },
+                name: Ident {
+                    name: String::new(),
+                    span: Span { start: 0, end: 0 },
+                },
                 params: Vec::new(),
-                ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::Int), span: Span { start: 0, end: 0 } },
-                body: Block { stmts: Vec::new(), span: Span { start: 0, end: 0 } },
+                ret: TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Int),
+                    span: Span { start: 0, end: 0 },
+                },
+                body: Block {
+                    stmts: Vec::new(),
+                    span: Span { start: 0, end: 0 },
+                },
                 span: Span { start: 0, end: 0 },
                 receiver,
                 owner: owner.clone(),
@@ -2650,12 +3057,18 @@ impl<'a> Engine<'a> {
                 }
                 _ => ParamMode::Default,
             };
-            let ty = self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"), false);
+            let ty =
+                self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"), false);
             let span = match mode_leaf {
                 Some(m) => self.cx.span_of(m).join(ty.span),
                 None => name.span.join(ty.span),
             };
-            out.push(Param { span, name, ty, mode });
+            out.push(Param {
+                span,
+                name,
+                ty,
+                mode,
+            });
         }
         out
     }
@@ -2688,7 +3101,10 @@ impl<'a> Engine<'a> {
             })
             .expect("type word leaf");
         let span = self.cx.span_of(word_leaf);
-        let int = |tw: TypeWord| TypeAnn { kind: TypeRef::Builtin(tw), span };
+        let int = |tw: TypeWord| TypeAnn {
+            kind: TypeRef::Builtin(tw),
+            span,
+        };
         match self.cx.tree.kind(word_leaf) {
             x if x == self.cx.k.tok_int_kw => return int(TypeWord::Int),
             x if x == self.cx.k.tok_i32 => return int(TypeWord::I32),
@@ -2721,7 +3137,11 @@ impl<'a> Engine<'a> {
             };
             return int(tw);
         }
-        if !ret_pos && !admits_str && !self.cx.profile.is_collections() && matches!(word.as_str(), "str" | "Str" | "char") {
+        if !ret_pos
+            && !admits_str
+            && !self.cx.profile.is_collections()
+            && matches!(word.as_str(), "str" | "Str" | "char")
+        {
             self.cx.reject(span, move || unsupported_ty(&word, span));
             return int(TypeWord::Int);
         }
@@ -2729,7 +3149,10 @@ impl<'a> Engine<'a> {
             return int(TypeWord::Void);
         }
         if self.cx.profile.is_record() {
-            return TypeAnn { kind: TypeRef::Record(Ident { name: word, span }), span };
+            return TypeAnn {
+                kind: TypeRef::Record(Ident { name: word, span }),
+                span,
+            };
         }
         self.cx.reject(span, move || unsupported_ty(&word, span));
         int(TypeWord::Int)
@@ -2759,22 +3182,41 @@ impl<'a> Engine<'a> {
                 Some(t) => aname.span.join(t.span),
                 None => aname.span,
             };
-            arms.push(EnumArm { name: aname, payload, span });
+            arms.push(EnumArm {
+                name: aname,
+                payload,
+                span,
+            });
         }
-        EnumItem { name, arms, span: self.cx.span_of(node) }
+        EnumItem {
+            name,
+            arms,
+            span: self.cx.span_of(node),
+        }
     }
 
     /// PLAN-928（T-03）：类型位的参数化名义 `List<T>` / `Result<T, E>`。
     fn project_generic_ty(&mut self, node: u32) -> TypeAnn {
-        let name_leaf = self.cx.field_child(node, "name").expect("generic type name");
+        let name_leaf = self
+            .cx
+            .field_child(node, "name")
+            .expect("generic type name");
         let name = ident_of(&mut self.cx, name_leaf);
         let mut args = Vec::new();
         if let Some(an) = self.cx.field_child(node, "args") {
-            for a in collect_seq(&self.cx, an, self.cx.k.type_arg.unwrap_or(u32::MAX), "type-arg-tail") {
+            for a in collect_seq(
+                &self.cx,
+                an,
+                self.cx.k.type_arg.unwrap_or(u32::MAX),
+                "type-arg-tail",
+            ) {
                 args.push(self.classify_ty_arg(a));
             }
         }
-        TypeAnn { span: self.cx.span_of(node), kind: TypeRef::Generic { name, args } }
+        TypeAnn {
+            span: self.cx.span_of(node),
+            kind: TypeRef::Generic { name, args },
+        }
     }
 
     /// PLAN-928（T-03）：`?T` 可选糖 → `TypeRef::Optional`。
@@ -2783,7 +3225,10 @@ impl<'a> Engine<'a> {
             Some(i) => self.classify_ty_arg(i),
             None => self.classify_word(node, false),
         };
-        TypeAnn { span: self.cx.span_of(node), kind: TypeRef::Optional(Box::new(inner)) }
+        TypeAnn {
+            span: self.cx.span_of(node),
+            kind: TypeRef::Optional(Box::new(inner)),
+        }
     }
 
     /// PLAN-928（T-03）：类型实参（词/嵌套泛型/可选糖）。
@@ -2821,7 +3266,10 @@ impl<'a> Engine<'a> {
         };
         TypeAnn {
             span,
-            kind: TypeRef::Function { params, result: Box::new(result) },
+            kind: TypeRef::Function {
+                params,
+                result: Box::new(result),
+            },
         }
     }
 
@@ -2869,7 +3317,11 @@ impl<'a> Engine<'a> {
                     });
                 }
                 seen.push(fname.name.clone());
-                fields.push(FieldDecl { span, name: fname, ty });
+                fields.push(FieldDecl {
+                    span,
+                    name: fname,
+                    ty,
+                });
             } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
                 let receiver = if kind == self.cx.k.static_method {
                     Receiver::Static
@@ -2890,7 +3342,12 @@ impl<'a> Engine<'a> {
                 )
             });
         }
-        TypeItem { span: self.cx.span_of(node), name, fields, methods }
+        TypeItem {
+            span: self.cx.span_of(node),
+            name,
+            fields,
+            methods,
+        }
     }
 
     fn run_script_item(&mut self, node: u32) -> FnItem {
@@ -2914,10 +3371,19 @@ impl<'a> Engine<'a> {
         match self.vals.pop() {
             Some(Val::F(f)) => f,
             _ => FnItem {
-                name: Ident { name: "main".to_string(), span: start_span },
+                name: Ident {
+                    name: "main".to_string(),
+                    span: start_span,
+                },
                 params: Vec::new(),
-                ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::Void), span: start_span },
-                body: Block { stmts: Vec::new(), span: start_span },
+                ret: TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: start_span,
+                },
+                body: Block {
+                    stmts: Vec::new(),
+                    span: start_span,
+                },
                 span: start_span,
                 receiver: Receiver::Free,
                 owner: None,
@@ -2952,7 +3418,10 @@ impl<'a> Engine<'a> {
         }
         if frame.cursor >= frame.nodes.len() {
             let span = frame.span;
-            self.vals.push(Val::B(Block { stmts: frame.stmts, span }));
+            self.vals.push(Val::B(Block {
+                stmts: frame.stmts,
+                span,
+            }));
             return;
         }
         let stmt_n = frame.nodes[frame.cursor];
@@ -2974,17 +3443,36 @@ impl<'a> Engine<'a> {
             .unwrap_or(stmt_dispatch);
         let kind = self.cx.tree.kind(inner);
         if kind == self.cx.k.let_stmt || kind == self.cx.k.var_stmt {
-            let kw_kind = if kind == self.cx.k.let_stmt { self.cx.k.tok_let } else { self.cx.k.tok_var };
-            let kw = self.cx.child_of_kind(inner, kw_kind).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+            let kw_kind = if kind == self.cx.k.let_stmt {
+                self.cx.k.tok_let
+            } else {
+                self.cx.k.tok_var
+            };
+            let kw = self
+                .cx
+                .child_of_kind(inner, kw_kind)
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or(Span { start: 0, end: 0 });
             let name_leaf = self.cx.field_child(inner, "name").expect("let name");
             let name = ident_of(&mut self.cx, name_leaf);
             console_name_check(&mut self.cx, &name);
-            let ann = self.cx.field_child(inner, "ann").map(|n| self.classify_word(n, false));
+            let ann = self
+                .cx
+                .field_child(inner, "ann")
+                .map(|n| self.classify_word(n, false));
             let mutable = kind == self.cx.k.var_stmt;
             let value_n = self.cx.field_child(inner, "value").expect("let value");
-            self.stack.push(Frame::LetFinish { node: inner, kw, name, ann, mutable });
+            self.stack.push(Frame::LetFinish {
+                node: inner,
+                kw,
+                name,
+                ann,
+                mutable,
+            });
             self.stack.push(Frame::ExprEnter(value_n));
-        } else if kind == self.cx.k.assign_stmt || kind == self.cx.k.path_assign_stmt.unwrap_or(u32::MAX) {
+        } else if kind == self.cx.k.assign_stmt
+            || kind == self.cx.k.path_assign_stmt.unwrap_or(u32::MAX)
+        {
             let name_leaf = self.cx.field_child(inner, "name").expect("assign name");
             let name = ident_of(&mut self.cx, name_leaf);
             let mut path = Vec::new();
@@ -3009,7 +3497,11 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::AssignFinish { name, path });
             self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.return_stmt {
-            let kw = self.cx.child_of_kind(inner, self.cx.k.tok_return).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+            let kw = self
+                .cx
+                .child_of_kind(inner, self.cx.k.tok_return)
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or(Span { start: 0, end: 0 });
             if script_top {
                 self.cx.reject(kw, || {
                     Diagnostic::new(
@@ -3024,7 +3516,11 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::ReturnFinish { kw });
             self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.if_stmt {
-            let kw = self.cx.child_of_kind(inner, self.cx.k.tok_if).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+            let kw = self
+                .cx
+                .child_of_kind(inner, self.cx.k.tok_if)
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or(Span { start: 0, end: 0 });
             let _ = kw;
             let cond_n = self.cx.field_child(inner, "cond").expect("if cond");
             let then_n = self.cx.field_child(inner, "then").expect("if then");
@@ -3032,14 +3528,27 @@ impl<'a> Engine<'a> {
                 .cx
                 .child_of_kind(inner, self.cx.k.else_block)
                 .and_then(|eb| self.cx.child_of_kind(eb, self.cx.k.block));
-            self.stack.push(Frame::IfCond { then_n, els_blk, node: inner });
+            self.stack.push(Frame::IfCond {
+                then_n,
+                els_blk,
+                node: inner,
+            });
             self.stack.push(Frame::ExprEnter(cond_n));
-        } else if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX) || kind == self.cx.k.for_cond_stmt.unwrap_or(u32::MAX) {
-            let kw_kind = if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX) { self.cx.k.tok_while } else { self.cx.k.tok_for };
+        } else if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX)
+            || kind == self.cx.k.for_cond_stmt.unwrap_or(u32::MAX)
+        {
+            let kw_kind = if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX) {
+                self.cx.k.tok_while
+            } else {
+                self.cx.k.tok_for
+            };
             let _kw_leaf = self.cx.child_of_kind(inner, kw_kind);
             let cond_n = self.cx.field_child(inner, "cond").expect("loop cond");
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
-            self.stack.push(Frame::WhileCond { body_n, node: inner });
+            self.stack.push(Frame::WhileCond {
+                body_n,
+                node: inner,
+            });
             self.stack.push(Frame::ExprEnter(cond_n));
         } else if kind == self.cx.k.for_in_stmt.unwrap_or(u32::MAX) {
             let var_leaf = self.cx.field_child(inner, "var").expect("for-in var");
@@ -3049,12 +3558,22 @@ impl<'a> Engine<'a> {
             let iter_leaf = self.cx.field_child(inner, "iter").expect("for-in iter");
             let iter_ident = ident_of(&mut self.cx, iter_leaf);
             let iter_span = iter_ident.span;
-            let iter = Expr { span: iter_span, kind: ExprKind::Var(iter_ident) };
+            let iter = Expr {
+                span: iter_span,
+                kind: ExprKind::Var(iter_ident),
+            };
             let body_n = self.cx.field_child(inner, "body").expect("for-in body");
-            self.stack.push(Frame::ForInBody { var, iter, node: inner });
+            self.stack.push(Frame::ForInBody {
+                var,
+                iter,
+                node: inner,
+            });
             self.enter_block(body_n);
         } else if kind == self.cx.k.is_stmt.unwrap_or(u32::MAX) {
-            let scrutinee_leaf = self.cx.field_child(inner, "scrutinee").expect("is scrutinee");
+            let scrutinee_leaf = self
+                .cx
+                .field_child(inner, "scrutinee")
+                .expect("is scrutinee");
             let scrutinee = ident_of(&mut self.cx, scrutinee_leaf);
             let arm_kind = self.cx.k.match_arm.unwrap_or(u32::MAX);
             let mut arm_nodes: Vec<u32> = self
@@ -3064,13 +3583,21 @@ impl<'a> Engine<'a> {
                 .filter(|&c| self.cx.tree.kind(c) == arm_kind)
                 .collect();
             arm_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
-            self.stack.push(Frame::IsArms(IsMatchCtx { scrutinee, arms: Vec::new(), remaining: arm_nodes, node: inner }));
+            self.stack.push(Frame::IsArms(IsMatchCtx {
+                scrutinee,
+                arms: Vec::new(),
+                remaining: arm_nodes,
+                node: inner,
+            }));
         } else if kind == self.cx.k.loop_stmt {
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
             self.stack.push(Frame::LoopBody { node: inner });
             self.enter_block(body_n);
         } else if kind == self.cx.k.expr_stmt {
-            let value_n = self.cx.field_child(inner, "value").expect("expr stmt value");
+            let value_n = self
+                .cx
+                .field_child(inner, "value")
+                .expect("expr stmt value");
             // 旧门 = surface.is_entry_unit()（含 HostConsole——控制台脚本面）。
             // 旧 stmt head 的表达式候选只从 ident/true/false/int 起始——其余
             // 起始（如 `(`）是"expected statement, found X"（c03 差分）。
@@ -3086,7 +3613,10 @@ impl<'a> Engine<'a> {
                         || l.kind == k.tok_false
                         || l.kind == k.tok_int_lit;
                     if !cand {
-                        let span = Span { start: l.start as usize, end: l.end as usize };
+                        let span = Span {
+                            start: l.start as usize,
+                            end: l.end as usize,
+                        };
                         let text = self.cx.spelling_by_range(l.start, l.end);
                         let found = describe_g(l.kind, &text, k);
                         self.cx.reject(span, move || {
@@ -3143,7 +3673,11 @@ impl<'a> Engine<'a> {
         let kind = self.cx.tree.kind(node);
         if kind == self.cx.k.expr {
             // 分派节点 → 内层产物。
-            let inner = self.cx.children(node).into_iter().find(|&c| self.cx.tree.child_count(c) > 0);
+            let inner = self
+                .cx
+                .children(node)
+                .into_iter()
+                .find(|&c| self.cx.tree.child_count(c) > 0);
             match inner {
                 Some(c) => self.stack.push(Frame::ExprEnter(c)),
                 None => {
@@ -3157,7 +3691,10 @@ impl<'a> Engine<'a> {
                             span,
                         )
                     });
-                    self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                    self.vals.push(Val::E(Expr {
+                        kind: ExprKind::IntLit(0),
+                        span,
+                    }));
                 }
             }
             return;
@@ -3183,8 +3720,12 @@ impl<'a> Engine<'a> {
                     }
                     None => {
                         let span = first_leaf_span(&self.cx, node);
-                        self.cx.reject(span, || syntax_diag("expected expression", span));
-                        self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                        self.cx
+                            .reject(span, || syntax_diag("expected expression", span));
+                        self.vals.push(Val::E(Expr {
+                            kind: ExprKind::IntLit(0),
+                            span,
+                        }));
                     }
                 }
                 return;
@@ -3194,8 +3735,12 @@ impl<'a> Engine<'a> {
                 return;
             }
             let span = first_leaf_span(&self.cx, node);
-            self.cx.reject(span, || syntax_diag("expected expression", span));
-            self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+            self.cx
+                .reject(span, || syntax_diag("expected expression", span));
+            self.vals.push(Val::E(Expr {
+                kind: ExprKind::IntLit(0),
+                span,
+            }));
             return;
         }
         if kind == self.cx.k.postfix_expr || kind == KIND_POSTFIX {
@@ -3226,8 +3771,12 @@ impl<'a> Engine<'a> {
                 self.stack.push(Frame::ExprEnter(kids[0]));
             } else {
                 let span = first_leaf_span(&self.cx, node);
-                self.cx.reject(span, || syntax_diag("binary operands", span));
-                self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                self.cx
+                    .reject(span, || syntax_diag("binary operands", span));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::IntLit(0),
+                    span,
+                }));
             }
             return;
         }
@@ -3243,7 +3792,12 @@ impl<'a> Engine<'a> {
                 let name = ident_of(&mut self.cx, name_leaf);
                 let mut args = Vec::new();
                 if let Some(an) = self.cx.field_child(c, "args") {
-                    for a in collect_seq(&self.cx, an, self.cx.k.type_arg.unwrap_or(u32::MAX), "type-arg-tail") {
+                    for a in collect_seq(
+                        &self.cx,
+                        an,
+                        self.cx.k.type_arg.unwrap_or(u32::MAX),
+                        "type-arg-tail",
+                    ) {
                         args.push(self.classify_ty_arg(a));
                     }
                 }
@@ -3255,15 +3809,24 @@ impl<'a> Engine<'a> {
                     .map(|l| self.cx.span_of(l))
                     .unwrap_or_else(|| self.cx.span_of(c));
                 let g_span = name.span.join(gt_leaf);
-                let g = Expr { span: g_span, kind: ExprKind::GenericType { name, args } };
-                let member_leaf = self.cx.field_child(c, "member").expect("generic atom member");
+                let g = Expr {
+                    span: g_span,
+                    kind: ExprKind::GenericType { name, args },
+                };
+                let member_leaf = self
+                    .cx
+                    .field_child(c, "member")
+                    .expect("generic atom member");
                 let mspan = self.cx.span_of(member_leaf);
                 let mname = self.cx.spelling(member_leaf);
                 self.vals.push(Val::E(Expr {
                     span: g_span.join(mspan),
                     kind: ExprKind::Field {
                         base: Box::new(g),
-                        name: Ident { name: mname, span: mspan },
+                        name: Ident {
+                            name: mname,
+                            span: mspan,
+                        },
                     },
                 }));
                 return;
@@ -3274,14 +3837,28 @@ impl<'a> Engine<'a> {
                 return;
             }
             if ck == self.cx.k.leading_dot.unwrap_or(u32::MAX) {
-                let dot_leaf = self.cx.children(c).into_iter().find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_dot);
-                let dspan = dot_leaf.map(|l| self.cx.span_of(l)).unwrap_or_else(|| self.cx.span_of(c));
-                let member = self.cx.children(c).into_iter().find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_ident).expect("leading-dot member");
+                let dot_leaf = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_dot);
+                let dspan = dot_leaf
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or_else(|| self.cx.span_of(c));
+                let member = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_ident)
+                    .expect("leading-dot member");
                 let mspan = self.cx.span_of(member);
                 let mname = self.cx.spelling(member);
                 let recv = Expr {
                     span: dspan,
-                    kind: ExprKind::Var(Ident { name: "self".to_string(), span: dspan }),
+                    kind: ExprKind::Var(Ident {
+                        name: "self".to_string(),
+                        span: dspan,
+                    }),
                 };
                 let span = dspan.join(mspan);
                 // `.name(args)`：args 由 KIND_CALL 收尾（callee 含此后缀链）。
@@ -3289,7 +3866,10 @@ impl<'a> Engine<'a> {
                     span,
                     kind: ExprKind::Field {
                         base: Box::new(recv),
-                        name: Ident { name: mname, span: mspan },
+                        name: Ident {
+                            name: mname,
+                            span: mspan,
+                        },
                     },
                 }));
                 return;
@@ -3300,7 +3880,14 @@ impl<'a> Engine<'a> {
                 let field_nodes: Vec<u32> = self
                     .cx
                     .child_of_kind(c, self.cx.k.ctor_fields.unwrap_or(u32::MAX))
-                    .map(|fl| collect_seq(&self.cx, fl, self.cx.k.ctor_field.unwrap_or(u32::MAX), "ctor-tail"))
+                    .map(|fl| {
+                        collect_seq(
+                            &self.cx,
+                            fl,
+                            self.cx.k.ctor_field.unwrap_or(u32::MAX),
+                            "ctor-tail",
+                        )
+                    })
                     .unwrap_or_default();
                 let count = field_nodes.len();
                 if count == 0 {
@@ -3331,12 +3918,18 @@ impl<'a> Engine<'a> {
                             span,
                         )
                     });
-                    self.vals.push(Val::E(Expr { kind: ExprKind::StrLit(String::new()), span }));
+                    self.vals.push(Val::E(Expr {
+                        kind: ExprKind::StrLit(String::new()),
+                        span,
+                    }));
                     return;
                 }
                 let inner = &raw.as_bytes()[1..raw.len() - 1];
                 let value = lex::decode_str_value(inner);
-                self.vals.push(Val::E(Expr { kind: ExprKind::StrLit(value), span }));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::StrLit(value),
+                    span,
+                }));
                 return;
             }
             if ck == self.cx.k.tok_char_lit {
@@ -3352,12 +3945,18 @@ impl<'a> Engine<'a> {
                             span,
                         )
                     });
-                    self.vals.push(Val::E(Expr { kind: ExprKind::CharLit(0), span }));
+                    self.vals.push(Val::E(Expr {
+                        kind: ExprKind::CharLit(0),
+                        span,
+                    }));
                     return;
                 }
                 let inner = &raw.as_bytes()[1..raw.len() - 1];
                 let scalar = lex::decode_char_value(inner);
-                self.vals.push(Val::E(Expr { kind: ExprKind::CharLit(scalar), span }));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::CharLit(scalar),
+                    span,
+                }));
                 return;
             }
             if ck == self.cx.k.tok_affix_num {
@@ -3374,24 +3973,37 @@ impl<'a> Engine<'a> {
                         span,
                     )
                 });
-                self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::IntLit(0),
+                    span,
+                }));
                 return;
             }
             if ck == self.cx.k.tok_true || ck == self.cx.k.tok_false {
                 let span = self.cx.span_of(c);
                 let v = ck == self.cx.k.tok_true;
-                self.vals.push(Val::E(Expr { kind: ExprKind::BoolLit(v), span }));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::BoolLit(v),
+                    span,
+                }));
                 return;
             }
             if ck == self.cx.k.tok_ident {
                 let span = self.cx.span_of(c);
                 let name = self.cx.spelling(c);
-                self.vals.push(Val::E(Expr { kind: ExprKind::Var(Ident { name, span }), span }));
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::Var(Ident { name, span }),
+                    span,
+                }));
                 return;
             }
             if ck == self.cx.k.expr {
                 // 括号组：内层表达式（span 保持内层自身——旧合同）。
-                let inner = self.cx.children(c).into_iter().find(|&g| self.cx.tree.child_count(g) > 0);
+                let inner = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .find(|&g| self.cx.tree.child_count(g) > 0);
                 match inner {
                     Some(g) => self.stack.push(Frame::ExprEnter(g)),
                     None => {
@@ -3405,7 +4017,10 @@ impl<'a> Engine<'a> {
                                 span,
                             )
                         });
-                        self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                        self.vals.push(Val::E(Expr {
+                            kind: ExprKind::IntLit(0),
+                            span,
+                        }));
                     }
                 }
                 return;
@@ -3421,7 +4036,10 @@ impl<'a> Engine<'a> {
                 span,
             )
         });
-        self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+        self.vals.push(Val::E(Expr {
+            kind: ExprKind::IntLit(0),
+            span,
+        }));
     }
 
     /// PLAN-928 T-02：lambda 投影（closures 面）。`move? ( 参数? ) => 块|表达式`
@@ -3458,30 +4076,56 @@ impl<'a> Engine<'a> {
                         span: name.span,
                     });
                 let span = name.span.join(ty.span);
-                params.push(Param { span, name, ty, mode: ParamMode::Default });
+                params.push(Param {
+                    span,
+                    name,
+                    ty,
+                    mode: ParamMode::Default,
+                });
             }
         }
         if let Some(body_n) = self.cx.field_child(node, "body") {
             if let Some(bb) = self.cx.field_child(body_n, "block-body") {
-                self.stack.push(Frame::LambdaBlockBody { move_capture, params, start });
+                self.stack.push(Frame::LambdaBlockBody {
+                    move_capture,
+                    params,
+                    start,
+                });
                 self.enter_block(bb);
             } else if let Some(eb) = self.cx.field_child(body_n, "expr-body") {
-                self.stack.push(Frame::LambdaExprBody { move_capture, params, start });
+                self.stack.push(Frame::LambdaExprBody {
+                    move_capture,
+                    params,
+                    start,
+                });
                 self.stack.push(Frame::ExprEnter(eb));
             } else {
                 let span = self.cx.span_of(node);
-                self.cx.reject(span, || syntax_diag("expected lambda body after `=>`", span));
-                self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+                self.cx.reject(span, || {
+                    syntax_diag("expected lambda body after `=>`", span)
+                });
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::IntLit(0),
+                    span,
+                }));
             }
         } else {
             let span = self.cx.span_of(node);
-            self.cx.reject(span, || syntax_diag("expected lambda body after `=>`", span));
-            self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+            self.cx.reject(span, || {
+                syntax_diag("expected lambda body after `=>`", span)
+            });
+            self.vals.push(Val::E(Expr {
+                kind: ExprKind::IntLit(0),
+                span,
+            }));
         }
     }
 
     fn project_int_literal(&mut self, node: u32) -> Expr {
-        let int_leaf = self.cx.child_of_kind(node, self.cx.k.tok_int_lit).expect("int digits");
+        let int_leaf = self
+            .cx
+            .child_of_kind(node, self.cx.k.tok_int_lit)
+            .expect("int digits");
         let neg = self.cx.child_of_kind(node, self.cx.k.tok_minus).is_some();
         let digits = self.cx.spelling(int_leaf);
         let mag: u128 = digits.parse().unwrap_or(u128::MAX);
@@ -3501,7 +4145,10 @@ impl<'a> Engine<'a> {
                     )
                 });
             }
-            Expr { kind: ExprKind::IntLit((mag as i128 * -1) as i32), span }
+            Expr {
+                kind: ExprKind::IntLit((mag as i128 * -1) as i32),
+                span,
+            }
         } else {
             if mag > I32_MAX {
                 let digits2 = digits.clone();
@@ -3517,7 +4164,10 @@ impl<'a> Engine<'a> {
                     )
                 });
             }
-            Expr { kind: ExprKind::IntLit(mag as i32), span }
+            Expr {
+                kind: ExprKind::IntLit(mag as i32),
+                span,
+            }
         }
     }
 
@@ -3569,9 +4219,18 @@ impl<'a> Engine<'a> {
 
     fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
         // `.to(...)`：步自带括号与词。
-        let has_to = self.cx.children(step).into_iter().any(|c| self.cx.tree.kind(c) == self.cx.k.tok_r_to);
+        let has_to = self
+            .cx
+            .children(step)
+            .into_iter()
+            .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_r_to);
         if has_to {
-            let word_leaf = self.cx.children(step).into_iter().find(|&c| self.cx.tree.kind(c) == self.cx.k.tok_ident).expect(".to word");
+            let word_leaf = self
+                .cx
+                .children(step)
+                .into_iter()
+                .find(|&c| self.cx.tree.kind(c) == self.cx.k.tok_ident)
+                .expect(".to word");
             let word_span = self.cx.span_of(word_leaf);
             let word = self.cx.spelling(word_leaf);
             let tw = match word.as_str() {
@@ -3586,21 +4245,35 @@ impl<'a> Engine<'a> {
                         span,
                         kind: ExprKind::Method {
                             recv: Box::new(recv),
-                            name: Ident { name: "to".to_string(), span: word_span },
-                            args: vec![Arg::Pos(Expr { span: word_span, kind: ExprKind::TypeWordArg(tw) })],
+                            name: Ident {
+                                name: "to".to_string(),
+                                span: word_span,
+                            },
+                            args: vec![Arg::Pos(Expr {
+                                span: word_span,
+                                kind: ExprKind::TypeWordArg(tw),
+                            })],
                         },
                     }
                 }
                 None => {
                     self.cx.reject(word_span, || {
-                        Diagnostic::new(Stage::Text, "source.syntax", "`.to` expects `str` or `Str`", word_span)
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.syntax",
+                            "`.to` expects `str` or `Str`",
+                            word_span,
+                        )
                     });
                     let span = recv.span.join(word_span);
                     Expr {
                         span,
                         kind: ExprKind::Method {
                             recv: Box::new(recv),
-                            name: Ident { name: "to".to_string(), span: word_span },
+                            name: Ident {
+                                name: "to".to_string(),
+                                span: word_span,
+                            },
                             args: Vec::new(),
                         },
                     }
@@ -3618,13 +4291,24 @@ impl<'a> Engine<'a> {
                 _ => {
                     let span = recv.span.join(mspan);
                     self.cx.reject(span, || {
-                        Diagnostic::new(Stage::Text, "source.unsupported", "`.mut` applies to a local variable", span)
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "`.mut` applies to a local variable",
+                            span,
+                        )
                     });
-                    Ident { name: String::new(), span: mspan }
+                    Ident {
+                        name: String::new(),
+                        span: mspan,
+                    }
                 }
             };
             let span = name.span.join(mspan);
-            return Expr { kind: ExprKind::MutArg { name }, span };
+            return Expr {
+                kind: ExprKind::MutArg { name },
+                span,
+            };
         }
         if mk == self.cx.k.tok_r_move {
             let mspan = self.cx.span_of(member);
@@ -3633,7 +4317,10 @@ impl<'a> Engine<'a> {
                 span,
                 kind: ExprKind::Method {
                     recv: Box::new(recv),
-                    name: Ident { name: "move".to_string(), span: mspan },
+                    name: Ident {
+                        name: "move".to_string(),
+                        span: mspan,
+                    },
                     args: Vec::new(),
                 },
             };
@@ -3647,7 +4334,10 @@ impl<'a> Engine<'a> {
                 span,
                 kind: ExprKind::Field {
                     base: Box::new(recv),
-                    name: Ident { name: mname, span: mspan },
+                    name: Ident {
+                        name: mname,
+                        span: mspan,
+                    },
                 },
             }
         } else {
@@ -3672,7 +4362,10 @@ impl<'a> Engine<'a> {
                 span,
                 kind: ExprKind::Field {
                     base: Box::new(recv),
-                    name: Ident { name: mname, span: mspan },
+                    name: Ident {
+                        name: mname,
+                        span: mspan,
+                    },
                 },
             }
         }
@@ -3682,8 +4375,15 @@ impl<'a> Engine<'a> {
 
     fn enter_call(&mut self, node: u32) {
         let kids = self.cx.children(node);
-        let callee_n = kids.iter().copied().find(|&c| self.cx.tree.kind(c) != self.cx.k.args).expect("call callee");
-        let args_n = kids.iter().copied().find(|&c| self.cx.tree.kind(c) == self.cx.k.args);
+        let callee_n = kids
+            .iter()
+            .copied()
+            .find(|&c| self.cx.tree.kind(c) != self.cx.k.args)
+            .expect("call callee");
+        let args_n = kids
+            .iter()
+            .copied()
+            .find(|&c| self.cx.tree.kind(c) == self.cx.k.args);
         let close_end = self.cx.span_of(node).end;
         let arg_nodes: Vec<u32> = args_n
             .map(|an| collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail"))
@@ -3817,39 +4517,54 @@ impl<'a> Engine<'a> {
                 let (base, steps) = self.split_postfix(wrap);
                 // PLAN-928（T-07）：括号组 callee 优先于名字/方法分析。
                 if let Some(e) = paren_callee {
-                    CalleePlan::Value { callee_n: e, unary_ops }
-                } else {
-                match steps.split_last() {
-                    Some((last, mids)) => CalleePlan::Method {
-                        base,
-                        member: self.step_member(*last).unwrap_or(*last),
-                        mids: mids.to_vec(),
+                    CalleePlan::Value {
+                        callee_n: e,
                         unary_ops,
-                    },
-                    None => {
-                        // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子自带
-                        // 尾随 dot 成员（generic-atom）。
-                        let ga = self
-                            .cx
-                            .children(base)
-                            .into_iter()
-                            .find(|&c| self.cx.tree.kind(c) == self.cx.k.generic_atom.unwrap_or(u32::MAX));
-                        match ga.and_then(|g| self.cx.field_child(g, "member")) {
-                            Some(member) => CalleePlan::Method { base, member, mids: Vec::new(), unary_ops },
-                            None => match self.first_ident_opt(base) {
-                                Some(ident) => CalleePlan::Plain { ident, unary_ops },
-                                None => CalleePlan::Value { callee_n: base, unary_ops },
-                            },
+                    }
+                } else {
+                    match steps.split_last() {
+                        Some((last, mids)) => CalleePlan::Method {
+                            base,
+                            member: self.step_member(*last).unwrap_or(*last),
+                            mids: mids.to_vec(),
+                            unary_ops,
+                        },
+                        None => {
+                            // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子自带
+                            // 尾随 dot 成员（generic-atom）。
+                            let ga = self.cx.children(base).into_iter().find(|&c| {
+                                self.cx.tree.kind(c) == self.cx.k.generic_atom.unwrap_or(u32::MAX)
+                            });
+                            match ga.and_then(|g| self.cx.field_child(g, "member")) {
+                                Some(member) => CalleePlan::Method {
+                                    base,
+                                    member,
+                                    mids: Vec::new(),
+                                    unary_ops,
+                                },
+                                None => match self.first_ident_opt(base) {
+                                    Some(ident) => CalleePlan::Plain { ident, unary_ops },
+                                    None => CalleePlan::Value {
+                                        callee_n: base,
+                                        unary_ops,
+                                    },
+                                },
+                            }
                         }
                     }
                 }
-                }
             } else if let Some(e) = paren_callee {
-                CalleePlan::Value { callee_n: e, unary_ops }
+                CalleePlan::Value {
+                    callee_n: e,
+                    unary_ops,
+                }
             } else {
                 match self.first_ident_opt(wrap) {
                     Some(ident) => CalleePlan::Plain { ident, unary_ops },
-                    None => CalleePlan::Value { callee_n: wrap, unary_ops },
+                    None => CalleePlan::Value {
+                        callee_n: wrap,
+                        unary_ops,
+                    },
                 }
             }
         };
@@ -3870,19 +4585,35 @@ impl<'a> Engine<'a> {
             }
         };
         match plan {
-            CalleePlan::Value { callee_n, unary_ops } => {
+            CalleePlan::Value {
+                callee_n,
+                unary_ops,
+            } => {
                 self.stack.push(Frame::CallAssemble {
-                    callee: CalleePlan::Value { callee_n, unary_ops },
+                    callee: CalleePlan::Value {
+                        callee_n,
+                        unary_ops,
+                    },
                     argc,
                     close_end,
                 });
                 push_args(self, arg_nodes);
                 self.stack.push(Frame::ExprEnter(callee_n));
             }
-            CalleePlan::Method { base, member, mids, unary_ops } => {
+            CalleePlan::Method {
+                base,
+                member,
+                mids,
+                unary_ops,
+            } => {
                 let fold_mids = mids.clone();
                 self.stack.push(Frame::CallAssemble {
-                    callee: CalleePlan::Method { base, member, mids, unary_ops },
+                    callee: CalleePlan::Method {
+                        base,
+                        member,
+                        mids,
+                        unary_ops,
+                    },
                     argc,
                     close_end,
                 });
@@ -4038,7 +4769,10 @@ impl<'a> Engine<'a> {
                 break;
             }
             let kids = self.cx.children(n);
-            match kids.iter().find(|&&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0) {
+            match kids
+                .iter()
+                .find(|&&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+            {
                 Some(&c) => n = c,
                 None => break,
             }
@@ -4064,28 +4798,51 @@ impl<'a> Engine<'a> {
 
     fn is_op_token(&self, kind: u32) -> bool {
         [
-            self.cx.k.op_plus, self.cx.k.op_minus, self.cx.k.op_star, self.cx.k.op_slash,
-            self.cx.k.op_percent, self.cx.k.op_lt, self.cx.k.op_gt, self.cx.k.op_le,
-            self.cx.k.op_ge, self.cx.k.op_eq, self.cx.k.op_ne, self.cx.k.op_andand,
+            self.cx.k.op_plus,
+            self.cx.k.op_minus,
+            self.cx.k.op_star,
+            self.cx.k.op_slash,
+            self.cx.k.op_percent,
+            self.cx.k.op_lt,
+            self.cx.k.op_gt,
+            self.cx.k.op_le,
+            self.cx.k.op_ge,
+            self.cx.k.op_eq,
+            self.cx.k.op_ne,
+            self.cx.k.op_andand,
             self.cx.k.op_oror,
         ]
         .contains(&kind)
     }
 
     fn op_of_token(&self, kind: u32) -> BinOp {
-        if kind == self.cx.k.op_plus { BinOp::Add }
-        else if kind == self.cx.k.op_minus { BinOp::Sub }
-        else if kind == self.cx.k.op_star { BinOp::Mul }
-        else if kind == self.cx.k.op_slash { BinOp::Div }
-        else if kind == self.cx.k.op_percent { BinOp::Rem }
-        else if kind == self.cx.k.op_lt { BinOp::Lt }
-        else if kind == self.cx.k.op_gt { BinOp::Gt }
-        else if kind == self.cx.k.op_le { BinOp::Le }
-        else if kind == self.cx.k.op_ge { BinOp::Ge }
-        else if kind == self.cx.k.op_eq { BinOp::Eq }
-        else if kind == self.cx.k.op_ne { BinOp::Ne }
-        else if kind == self.cx.k.op_andand { BinOp::And }
-        else { BinOp::Or }
+        if kind == self.cx.k.op_plus {
+            BinOp::Add
+        } else if kind == self.cx.k.op_minus {
+            BinOp::Sub
+        } else if kind == self.cx.k.op_star {
+            BinOp::Mul
+        } else if kind == self.cx.k.op_slash {
+            BinOp::Div
+        } else if kind == self.cx.k.op_percent {
+            BinOp::Rem
+        } else if kind == self.cx.k.op_lt {
+            BinOp::Lt
+        } else if kind == self.cx.k.op_gt {
+            BinOp::Gt
+        } else if kind == self.cx.k.op_le {
+            BinOp::Le
+        } else if kind == self.cx.k.op_ge {
+            BinOp::Ge
+        } else if kind == self.cx.k.op_eq {
+            BinOp::Eq
+        } else if kind == self.cx.k.op_ne {
+            BinOp::Ne
+        } else if kind == self.cx.k.op_andand {
+            BinOp::And
+        } else {
+            BinOp::Or
+        }
     }
 
     // ------------------------------------------------------------ step
@@ -4095,9 +4852,18 @@ impl<'a> Engine<'a> {
             Frame::Block(bf) => self.step_block(bf),
             Frame::ForInBody { var, iter, node } => {
                 let body = self.pop_b();
-                let kw = self.cx.child_of_kind(node, self.cx.k.tok_for).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                let kw = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.tok_for)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
                 let span = kw.join(body.span);
-                self.vals.push(Val::S(Stmt::ForIn { var, iter, body, span }));
+                self.vals.push(Val::S(Stmt::ForIn {
+                    var,
+                    iter,
+                    body,
+                    span,
+                }));
             }
             Frame::IsArms(ctx) => {
                 if let Some(&arm_n) = ctx.remaining.first() {
@@ -4119,7 +4885,10 @@ impl<'a> Engine<'a> {
                     // 旧合同：臂 span 恒从模式词起（限定 `Enum.Name` 亦然）。
                     let start = pattern.span;
                     self.stack.push(Frame::IsArmBlock {
-                        ctx: Box::new(IsMatchCtx { remaining: rest, ..ctx }),
+                        ctx: Box::new(IsMatchCtx {
+                            remaining: rest,
+                            ..ctx
+                        }),
                         qual,
                         pattern,
                         binding,
@@ -4128,17 +4897,37 @@ impl<'a> Engine<'a> {
                     self.enter_block(body_n);
                 } else {
                     let span = self.cx.span_of(ctx.node);
-                    self.vals.push(Val::S(Stmt::IsMatch { scrutinee: ctx.scrutinee, arms: ctx.arms, span }));
+                    self.vals.push(Val::S(Stmt::IsMatch {
+                        scrutinee: ctx.scrutinee,
+                        arms: ctx.arms,
+                        span,
+                    }));
                 }
             }
-            Frame::IsArmBlock { ctx, qual, pattern, binding, kw } => {
+            Frame::IsArmBlock {
+                ctx,
+                qual,
+                pattern,
+                binding,
+                kw,
+            } => {
                 let body = self.pop_b();
                 let span = kw.join(body.span);
                 let mut ctx = *ctx;
-                ctx.arms.push(MatchArm { qual, pattern, binding, body, span });
+                ctx.arms.push(MatchArm {
+                    qual,
+                    pattern,
+                    binding,
+                    body,
+                    span,
+                });
                 self.stack.push(Frame::IsArms(ctx));
             }
-            Frame::LambdaBlockBody { move_capture, params, start } => {
+            Frame::LambdaBlockBody {
+                move_capture,
+                params,
+                start,
+            } => {
                 let body = self.pop_b();
                 let span = start.join(body.span);
                 self.vals.push(Val::E(Expr {
@@ -4150,7 +4939,11 @@ impl<'a> Engine<'a> {
                     },
                 }));
             }
-            Frame::LambdaExprBody { move_capture, params, start } => {
+            Frame::LambdaExprBody {
+                move_capture,
+                params,
+                start,
+            } => {
                 let value = self.pop_e();
                 let span = start.join(value.span);
                 self.vals.push(Val::E(Expr {
@@ -4162,27 +4955,62 @@ impl<'a> Engine<'a> {
                     },
                 }));
             }
-            Frame::LetFinish { node, kw, name, ann, mutable } => {
+            Frame::LetFinish {
+                node,
+                kw,
+                name,
+                ann,
+                mutable,
+            } => {
                 let value = self.pop_e();
-                let span = Span { start: self.cx.span_of(node).start, end: value.span.end };
-                self.vals.push(Val::S(Stmt::Let { kw, name, ann, mutable, value, span }));
+                let span = Span {
+                    start: self.cx.span_of(node).start,
+                    end: value.span.end,
+                };
+                self.vals.push(Val::S(Stmt::Let {
+                    kw,
+                    name,
+                    ann,
+                    mutable,
+                    value,
+                    span,
+                }));
             }
             Frame::AssignFinish { name, path } => {
                 let value = self.pop_e();
-                let span = Span { start: name.span.start, end: value.span.end };
-                self.vals.push(Val::S(Stmt::Assign { target: AssignTarget { base: name, path }, value, span }));
+                let span = Span {
+                    start: name.span.start,
+                    end: value.span.end,
+                };
+                self.vals.push(Val::S(Stmt::Assign {
+                    target: AssignTarget { base: name, path },
+                    value,
+                    span,
+                }));
             }
             Frame::ReturnFinish { kw } => {
                 let value = self.pop_e();
                 let span = kw.join(value.span);
                 self.vals.push(Val::S(Stmt::Return { value, span }));
             }
-            Frame::IfCond { then_n, els_blk, node } => {
+            Frame::IfCond {
+                then_n,
+                els_blk,
+                node,
+            } => {
                 let cond = self.pop_e();
-                self.stack.push(Frame::IfThen { cond, els_blk, node });
+                self.stack.push(Frame::IfThen {
+                    cond,
+                    els_blk,
+                    node,
+                });
                 self.enter_block(then_n);
             }
-            Frame::IfThen { cond, els_blk, node } => {
+            Frame::IfThen {
+                cond,
+                els_blk,
+                node,
+            } => {
                 let then = self.pop_b();
                 match els_blk {
                     Some(eb) => {
@@ -4190,17 +5018,35 @@ impl<'a> Engine<'a> {
                         self.enter_block(eb);
                     }
                     None => {
-                        let kw = self.cx.child_of_kind(node, self.cx.k.tok_if).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                        let kw = self
+                            .cx
+                            .child_of_kind(node, self.cx.k.tok_if)
+                            .map(|l| self.cx.span_of(l))
+                            .unwrap_or(Span { start: 0, end: 0 });
                         let span = kw.join(then.span);
-                        self.vals.push(Val::S(Stmt::If { cond, then, els: None, span }));
+                        self.vals.push(Val::S(Stmt::If {
+                            cond,
+                            then,
+                            els: None,
+                            span,
+                        }));
                     }
                 }
             }
             Frame::IfElse { cond, then, node } => {
                 let els = self.pop_b();
-                let kw = self.cx.child_of_kind(node, self.cx.k.tok_if).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                let kw = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.tok_if)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
                 let span = kw.join(then.span).join(els.span);
-                self.vals.push(Val::S(Stmt::If { cond, then, els: Some(els), span }));
+                self.vals.push(Val::S(Stmt::If {
+                    cond,
+                    then,
+                    els: Some(els),
+                    span,
+                }));
             }
             Frame::WhileCond { body_n, node } => {
                 let cond = self.pop_e();
@@ -4209,15 +5055,28 @@ impl<'a> Engine<'a> {
             }
             Frame::WhileBody { cond, node } => {
                 let body = self.pop_b();
-                let kw_kind = if self.cx.tree.kind(node) == self.cx.k.while_stmt.unwrap_or(u32::MAX) { self.cx.k.tok_while } else { self.cx.k.tok_for };
-                let kw = self.cx.child_of_kind(node, kw_kind).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                let kw_kind = if self.cx.tree.kind(node) == self.cx.k.while_stmt.unwrap_or(u32::MAX)
+                {
+                    self.cx.k.tok_while
+                } else {
+                    self.cx.k.tok_for
+                };
+                let kw = self
+                    .cx
+                    .child_of_kind(node, kw_kind)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
                 let span = kw.join(body.span);
                 // 条件 for 复用 While AST 形状（旧合同）。
                 self.vals.push(Val::S(Stmt::While { cond, body, span }));
             }
             Frame::LoopBody { node } => {
                 let body = self.pop_b();
-                let kw = self.cx.child_of_kind(node, self.cx.k.tok_loop).map(|l| self.cx.span_of(l)).unwrap_or(Span { start: 0, end: 0 });
+                let kw = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.tok_loop)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
                 let span = kw.join(body.span);
                 self.vals.push(Val::S(Stmt::Loop { body, span }));
             }
@@ -4226,11 +5085,25 @@ impl<'a> Engine<'a> {
                 let span = value.span;
                 self.vals.push(Val::S(Stmt::ExprStmt { value, span }));
             }
-            Frame::FnBodyFinish { node, name, params, ret, receiver, owner } => {
+            Frame::FnBodyFinish {
+                node,
+                name,
+                params,
+                ret,
+                receiver,
+                owner,
+            } => {
                 let body = self.pop_b();
                 let span = self.cx.span_of(node);
                 self.vals.push(Val::F(FnItem {
-                    span, name, params, ret, body, receiver, owner, script: false,
+                    span,
+                    name,
+                    params,
+                    ret,
+                    body,
+                    receiver,
+                    owner,
+                    script: false,
                 }));
             }
             Frame::ScriptFinish { start_span } => {
@@ -4238,9 +5111,15 @@ impl<'a> Engine<'a> {
                 let span = start_span.join(body.span);
                 body.span = span;
                 self.vals.push(Val::F(FnItem {
-                    name: Ident { name: "main".to_string(), span: start_span },
+                    name: Ident {
+                        name: "main".to_string(),
+                        span: start_span,
+                    },
                     params: Vec::new(),
-                    ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::Void), span: start_span },
+                    ret: TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::Void),
+                        span: start_span,
+                    },
                     body,
                     span,
                     receiver: Receiver::Free,
@@ -4255,7 +5134,11 @@ impl<'a> Engine<'a> {
                 let span = lhs.span.join(rhs.span);
                 self.vals.push(Val::E(Expr {
                     span,
-                    kind: ExprKind::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) },
+                    kind: ExprKind::Binary {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
                 }));
             }
             Frame::UnaryPost { op } => {
@@ -4263,7 +5146,10 @@ impl<'a> Engine<'a> {
                 let span = operand.span;
                 self.vals.push(Val::E(Expr {
                     span,
-                    kind: ExprKind::Unary { op, operand: Box::new(operand) },
+                    kind: ExprKind::Unary {
+                        op,
+                        operand: Box::new(operand),
+                    },
                 }));
             }
             Frame::PostfixFoldAll { steps } => {
@@ -4271,14 +5157,22 @@ impl<'a> Engine<'a> {
                 let e = self.fold_postfix(recv, steps);
                 self.vals.push(Val::E(e));
             }
-            Frame::CallAssemble { callee, argc, close_end } => {
+            Frame::CallAssemble {
+                callee,
+                argc,
+                close_end,
+            } => {
                 let e = self.assemble_call(callee, argc, close_end);
                 self.vals.push(Val::E(e));
             }
             Frame::ArgBuild { named } => {
                 let value = self.pop_e();
                 let arg = match named {
-                    Some(name) => Arg::Named { span: name.span.join(value.span), name, value },
+                    Some(name) => Arg::Named {
+                        span: name.span.join(value.span),
+                        name,
+                        value,
+                    },
                     None => Arg::Pos(value),
                 };
                 self.vals.push(Val::A(arg));
@@ -4286,7 +5180,11 @@ impl<'a> Engine<'a> {
             Frame::CtorFieldBuild { label } => {
                 let value = self.pop_e();
                 let span = label.span.join(value.span);
-                self.vals.push(Val::CF(NamedCtorField { name: label, value, span }));
+                self.vals.push(Val::CF(NamedCtorField {
+                    name: label,
+                    value,
+                    span,
+                }));
             }
             Frame::CtorFinish { node, ty, count } => {
                 let mut fields = Vec::with_capacity(count);
@@ -4298,7 +5196,10 @@ impl<'a> Engine<'a> {
                 }
                 fields.reverse();
                 let span = self.cx.span_of(node);
-                self.vals.push(Val::E(Expr { span, kind: ExprKind::CtorNamed { ty, fields } }));
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::CtorNamed { ty, fields },
+                }));
             }
         }
     }
@@ -4318,14 +5219,23 @@ impl<'a> Engine<'a> {
         let mut e = match callee {
             CalleePlan::Plain { ident, unary_ops } => {
                 let mut e = Expr {
-                    span: Span { start: ident.span.start, end: close_end },
-                    kind: ExprKind::Call { callee: ident, args },
+                    span: Span {
+                        start: ident.span.start,
+                        end: close_end,
+                    },
+                    kind: ExprKind::Call {
+                        callee: ident,
+                        args,
+                    },
                 };
                 for op in unary_ops.iter().rev() {
                     let sp = e.span;
                     e = Expr {
                         span: sp,
-                        kind: ExprKind::Unary { op: *op, operand: Box::new(e) },
+                        kind: ExprKind::Unary {
+                            op: *op,
+                            operand: Box::new(e),
+                        },
                     };
                 }
                 e
@@ -4333,19 +5243,33 @@ impl<'a> Engine<'a> {
             CalleePlan::Value { unary_ops, .. } => {
                 let callee = self.pop_e();
                 let mut e = Expr {
-                    span: Span { start: callee.span.start, end: close_end },
-                    kind: ExprKind::CallValue { callee: Box::new(callee), args },
+                    span: Span {
+                        start: callee.span.start,
+                        end: close_end,
+                    },
+                    kind: ExprKind::CallValue {
+                        callee: Box::new(callee),
+                        args,
+                    },
                 };
                 for op in unary_ops.iter().rev() {
                     let sp = e.span;
                     e = Expr {
                         span: sp,
-                        kind: ExprKind::Unary { op: *op, operand: Box::new(e) },
+                        kind: ExprKind::Unary {
+                            op: *op,
+                            operand: Box::new(e),
+                        },
                     };
                 }
                 e
             }
-            CalleePlan::Method { member, mids: _, unary_ops, .. } => {
+            CalleePlan::Method {
+                member,
+                mids: _,
+                unary_ops,
+                ..
+            } => {
                 let mut recv = self.pop_e();
                 // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子投影为
                 // Field{GenericType}，此处解包为直接 GenericType 接收者
@@ -4354,7 +5278,11 @@ impl<'a> Engine<'a> {
                     let want = self.cx.spelling(member).to_string();
                     let unwrapped = match &recv.kind {
                         ExprKind::Field { base, name }
-                            if matches!(base.kind, ExprKind::GenericType { .. }) && name.name == want => Some(*base.clone()),
+                            if matches!(base.kind, ExprKind::GenericType { .. })
+                                && name.name == want =>
+                        {
+                            Some(*base.clone())
+                        }
                         _ => None,
                     };
                     if let Some(r) = unwrapped {
@@ -4369,25 +5297,47 @@ impl<'a> Engine<'a> {
                     let mut r = recv;
                     if let ExprKind::Var(id) = &r.kind {
                         if id.name == "char" {
-                            r = Expr { span: id.span, kind: ExprKind::TypeWordArg(TypeWord::Char) };
+                            r = Expr {
+                                span: id.span,
+                                kind: ExprKind::TypeWordArg(TypeWord::Char),
+                            };
                         }
                     }
                     r
                 } else {
                     recv
                 };
-                let full = Span { start: recv.span.start, end: close_end };
+                let full = Span {
+                    start: recv.span.start,
+                    end: close_end,
+                };
                 let mut e = if mk == self.cx.k.tok_mut {
                     self.cx.reject(mspan, || {
-                        Diagnostic::new(Stage::Text, "source.unsupported", "`.mut` applies to a local variable", mspan)
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "`.mut` applies to a local variable",
+                            mspan,
+                        )
                     });
-                    Expr { span: full, kind: ExprKind::MutArg { name: Ident { name: mname, span: mspan } } }
+                    Expr {
+                        span: full,
+                        kind: ExprKind::MutArg {
+                            name: Ident {
+                                name: mname,
+                                span: mspan,
+                            },
+                        },
+                    }
                 } else if is_record {
                     Expr {
                         span: full,
                         kind: ExprKind::MethodCall {
                             recv: Box::new(recv),
-                            name: Ident { name: mname, span: mspan },
+                            name: Ident {
+                                name: mname,
+                                span: mspan,
+                            },
                             args,
                         },
                     }
@@ -4396,7 +5346,10 @@ impl<'a> Engine<'a> {
                         span: full,
                         kind: ExprKind::Method {
                             recv: Box::new(recv),
-                            name: Ident { name: mname, span: mspan },
+                            name: Ident {
+                                name: mname,
+                                span: mspan,
+                            },
                             args,
                         },
                     }
@@ -4405,7 +5358,10 @@ impl<'a> Engine<'a> {
                     let sp = e.span;
                     e = Expr {
                         span: sp,
-                        kind: ExprKind::Unary { op: *op, operand: Box::new(e) },
+                        kind: ExprKind::Unary {
+                            op: *op,
+                            operand: Box::new(e),
+                        },
                     };
                 }
                 e
@@ -4416,16 +5372,14 @@ impl<'a> Engine<'a> {
     }
 }
 
-
 /// 序列收集：列表节点直接孩子 + tail 包裹（`X many { X-tail { , X } }`）内
 /// 的项目节点，按文档序（参数/实参/构造字段共用）。
 fn collect_seq(cx: &Cx, list_node: u32, item_kind: u32, tail_name: &str) -> Vec<u32> {
-    let tail_kind = cx
-        .p
-        .rules
-        .iter()
-        .position(|r| r.name == tail_name)
-        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let tail_kind =
+        cx.p.rules
+            .iter()
+            .position(|r| r.name == tail_name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut out: Vec<u32> = Vec::new();
     for c in cx.children(list_node) {
         let ck = cx.tree.kind(c);

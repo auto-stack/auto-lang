@@ -293,8 +293,10 @@ impl ClosuresFunctionFrontend {
         let registry = ClosuresVerifyContext::from_checked(&checked)?;
         // Per-def verified body digests + the document's context revision.
         let module = &parts.bundle.modules[0];
-        let context_revision =
-            crate::verify::declaration_context_fingerprint_in(module, crate::hir::HirDomain::Closures);
+        let context_revision = crate::verify::declaration_context_fingerprint_in(
+            module,
+            crate::hir::HirDomain::Closures,
+        );
         let mut digests: BTreeMap<String, String> = BTreeMap::new();
         for d in &module.defs {
             if let crate::hir::DefKind::Function { body, .. } = &d.kind {
@@ -313,10 +315,15 @@ impl ClosuresFunctionFrontend {
         for (i, f) in env.program.fns.iter().enumerate() {
             units.push(UnitEntry {
                 name: f.name.clone(),
-                kind: UnitKind::Owner { lambdas: Vec::new() },
+                kind: UnitKind::Owner {
+                    lambdas: Vec::new(),
+                },
                 span: f.item_span,
                 body_span: f.body.span,
-                body_digest: digests.get(&format!("d_{}", f.name)).cloned().unwrap_or_default(),
+                body_digest: digests
+                    .get(&format!("d_{}", f.name))
+                    .cloned()
+                    .unwrap_or_default(),
                 mint_span: f.item_span,
             });
             owner_of.insert(f.name.clone(), i);
@@ -328,8 +335,14 @@ impl ClosuresFunctionFrontend {
         if let Some(prev) = previous {
             let mut seen: BTreeMap<(String, u64), usize> = BTreeMap::new();
             for u in &prev.units {
-                if let UnitKind::Lambda { logical_id, owner, .. } = &u.kind {
-                    let key = (prev.units[*owner].name.clone(), fnv64(prev.source[u.span.start..u.span.end].as_bytes()));
+                if let UnitKind::Lambda {
+                    logical_id, owner, ..
+                } = &u.kind
+                {
+                    let key = (
+                        prev.units[*owner].name.clone(),
+                        fnv64(prev.source[u.span.start..u.span.end].as_bytes()),
+                    );
                     *seen.entry(key.clone()).or_default() += 1;
                     carry.insert(key, (*logical_id, u.mint_span));
                 }
@@ -346,7 +359,10 @@ impl ClosuresFunctionFrontend {
         let mut new_counts: BTreeMap<(String, u64), usize> = BTreeMap::new();
         for (owner_name, owner) in &cache.owners {
             for lambda in &owner.lambdas {
-                let key = (owner_name.clone(), fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()));
+                let key = (
+                    owner_name.clone(),
+                    fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()),
+                );
                 *new_counts.entry(key).or_default() += 1;
             }
         }
@@ -387,7 +403,10 @@ impl ClosuresFunctionFrontend {
                             Span { start: 0, end: 0 },
                         )]
                     })?;
-                let key = (owner_name.clone(), fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()));
+                let key = (
+                    owner_name.clone(),
+                    fnv64(src[lambda.item_span.start..lambda.item_span.end].as_bytes()),
+                );
                 let (logical_id, mint_span) = match (carry.get(&key), new_counts.get(&key)) {
                     (Some((id, mint)), Some(1)) => (*id, *mint),
                     _ => {
@@ -405,7 +424,10 @@ impl ClosuresFunctionFrontend {
                     },
                     span: lambda.item_span,
                     body_span: lambda.item_span,
-                    body_digest: digests.get(&format!("d_{}", lambda.name)).cloned().unwrap_or_default(),
+                    body_digest: digests
+                        .get(&format!("d_{}", lambda.name))
+                        .cloned()
+                        .unwrap_or_default(),
                     mint_span,
                 };
                 lambda_indices.push(idx);
@@ -672,7 +694,8 @@ impl ClosuresFunctionFrontend {
             });
         }
         entries.sort_by_key(|e| e.site.ordinal);
-        let recheck = match resolve_owner_in_env(&self.env, &item, owner_idx, entries, &new_source) {
+        let recheck = match resolve_owner_in_env(&self.env, &item, owner_idx, entries, &new_source)
+        {
             Ok(r) => r,
             Err(ds) => {
                 if ds.iter().any(|d| d.code == "source.incremental") {
@@ -743,7 +766,8 @@ impl ClosuresFunctionFrontend {
         }
         let mut indices = vec![owner_idx];
         indices.extend(changed_lambda_slots.iter().copied());
-        let emit = emit_closures_function_batch(&self.env, &indices, &new_source, &self.module_path);
+        let emit =
+            emit_closures_function_batch(&self.env, &indices, &new_source, &self.module_path);
         let (parts, receipt) = match emit {
             Ok(ok) => ok,
             Err(ds) => {
@@ -921,7 +945,8 @@ fn innermost_lambda(units: &[UnitEntry], range: &Range<usize>) -> Option<usize> 
             && range.end <= u.span.end
         {
             match best {
-                Some(b) if units[b].span.end - units[b].span.start <= u.span.end - u.span.start => {}
+                Some(b) if units[b].span.end - units[b].span.start <= u.span.end - u.span.start => {
+                }
                 _ => best = Some(i),
             }
         }

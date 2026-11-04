@@ -6,11 +6,11 @@
 //! - 前缀/空白漂移 ⇒ 当前坐标漂移、mint 身份与内容指纹携带；
 //! - **fresh ≡ 增量**：编辑后的目录与对新源冷建的目录清单全等。
 
+use ace_core::atom_text::Span;
 use ace_core::source::cst::units::{self, UnitCatalog};
 use ace_core::source::cst::{FrontBudget, FRONT_CAPS_VERSION};
-use units::{decode_manifest, encode_manifest};
 use ace_core::source::SourceProfile;
-use ace_core::atom_text::Span;
+use units::{decode_manifest, encode_manifest};
 
 const CL: SourceProfile = SourceProfile::Closures;
 const B: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
@@ -28,12 +28,16 @@ fn t07_signature_change_event_reaches_dependents_surface() {
     let r = cat.edit_owner("base", &new_fn, B).expect("owner edit");
     assert!(r.semantic_recheck_required, "签名变化 ⇒ 重验信号");
     assert!(
-        cat.events.iter().any(|e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner } if owner == "base")),
+        cat.events.iter().any(
+            |e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner } if owner == "base")
+        ),
         "OwnerSignatureChanged 必达：{:?}",
         cat.events
     );
     assert!(
-        !cat.events.iter().any(|e| matches!(e, units::CatalogEvent::LambdaTopologyChanged { .. })),
+        !cat.events
+            .iter()
+            .any(|e| matches!(e, units::CatalogEvent::LambdaTopologyChanged { .. })),
         "base 无 λ ⇒ 无拓扑事件"
     );
     // main 的调用点文本未改——事件面不依赖调用点文本（不静默）。
@@ -58,13 +62,25 @@ fn t07_decl_change_dependents_materialized_only() {
             _ => None,
         })
         .expect("DeclChanged 必达");
-    assert!(dep.contains(&"use_it".to_string()), "名字引用者入 dependents：{dep:?}");
-    assert!(!dep.contains(&"unrelated".to_string()), "无关函数不入 dependents");
-    assert!(cat.events.iter().any(|e| matches!(e, units::CatalogEvent::DeclSetChanged)), "DeclSetChanged 必达");
+    assert!(
+        dep.contains(&"use_it".to_string()),
+        "名字引用者入 dependents：{dep:?}"
+    );
+    assert!(
+        !dep.contains(&"unrelated".to_string()),
+        "无关函数不入 dependents"
+    );
+    assert!(
+        cat.events
+            .iter()
+            .any(|e| matches!(e, units::CatalogEvent::DeclSetChanged)),
+        "DeclSetChanged 必达"
+    );
     // 恢复目录（headless）——dependents 扫描只在已物化单元上（不补扫）。
     let m = cat.to_manifest(FRONT_CAPS_VERSION);
     let dm = decode_manifest(&encode_manifest(&m)).expect("decode");
-    let mut restored = UnitCatalog::from_restored(cat.src(), &dm, col, FRONT_CAPS_VERSION).expect("restore");
+    let mut restored =
+        UnitCatalog::from_restored(cat.src(), &dm, col, FRONT_CAPS_VERSION).expect("restore");
     restored.note_decl_changed("Counter", new_span);
     let dep2 = restored
         .events
@@ -88,7 +104,11 @@ fn t07_prefix_drift_identity_carried() {
         let a = &cat.fns[owner];
         let b = &cat2.fns[owner];
         assert_eq!(a.content_sha, b.content_sha, "{owner} 内容指纹携带");
-        assert_eq!(a.mint_span.end - a.mint_span.start, b.mint_span.end - b.mint_span.start, "{owner} mint 跨度不变（等长前缀漂移）");
+        assert_eq!(
+            a.mint_span.end - a.mint_span.start,
+            b.mint_span.end - b.mint_span.start,
+            "{owner} mint 跨度不变（等长前缀漂移）"
+        );
         assert!(b.span.start > a.span.start, "{owner} 当前坐标已漂移");
     }
     // λ 同携带。
@@ -109,5 +129,9 @@ fn t07_fresh_equals_incremental_manifest() {
     let fresh = UnitCatalog::build(&r.new_src, CL, B).expect("fresh on edited source");
     let m_fresh = fresh.to_manifest(FRONT_CAPS_VERSION);
     // 排序确定性：to_manifest 内部按 (owner, ordinal, kind) 排序——两清单全等。
-    assert_eq!(encode_manifest(&m_inc), encode_manifest(&m_fresh), "fresh ≡ 增量（清单全等）");
+    assert_eq!(
+        encode_manifest(&m_inc),
+        encode_manifest(&m_fresh),
+        "fresh ≡ 增量（清单全等）"
+    );
 }
