@@ -1441,6 +1441,18 @@ file = "scripts/test_four_repository_fixed.py"
 all = true
 
 [[group]]
+name = "generated-delivery-controls"
+title = "生成工程交付回归便宜控制（PLAN-930：成员身份/产物比较/坏来源/子失败传播）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_generated_delivery_controls.py"
+all = true
+
+[[group]]
 name = "ace-rust-lowering"
 title = "ACE已迁移Rust lowering宿主完整命名空间"
 runner = "nextest"
