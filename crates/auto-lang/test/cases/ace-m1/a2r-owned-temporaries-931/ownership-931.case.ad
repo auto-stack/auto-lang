@@ -1,0 +1,31 @@
+# PLAN-931 ownership-931 — ownership-transfer responsibility: the moved
+# argument is freed exactly once BY THE CALLEE (eat's exit), the
+# returned owned value transfers to the caller (make's exit does not
+# free it; main's exit frees it once). Pre-931 shape could not compile
+# move calls at all. Oracle 43 = 4*10+3; the 1/1 alloc-free ledgers are
+# the worker probes' job (V-03).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-owned-temporaries-931.ownership"
+  tags: ["a2r-hir", "record-text", "ownership", "move-return"]
+  links: ["PLAN-931", "PLAN-902", "PLAN-782"]
+  source: { file: "src/ownership-931.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text-record", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-ownership-931/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-ownership-931/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-ownership-931/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-ownership-931/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

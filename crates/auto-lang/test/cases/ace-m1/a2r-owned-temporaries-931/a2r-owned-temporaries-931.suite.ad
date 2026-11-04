@@ -1,0 +1,22 @@
+# PLAN-931 a2r owned-temporaries suite — the D-925-2 Rust-side closure's
+# evidence set (ac-a2r/hir-record-text-emit-v1): five sources through the
+# real A2X record/text chain pinning the CORRECTED consumer-anchored
+# emission bytes — multi-arg view temps freed after the call (wrap),
+# statement-root consumers (derived-view), short-circuit side isolation
+# (short-circuit), verified move/mut param modes (modes), and
+# ownership-transfer responsibility (ownership). Every golden is a
+# first-time capture of the fixed emission (no pre-existing expectation
+# was overwritten); value/event/fault/peak/store oracles live in the
+# a2x-worker conformance probes. The runtime event ledgers, fault
+# atomicity, live-peak bound, print-version axis and warm-edit lifecycle
+# are asserted there, not here.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "a2r-owned-temporaries-931", include: [
+  "wrap-931.case.ad",
+  "derived-view-931.case.ad",
+  "short-circuit-931.case.ad",
+  "modes-931.case.ad",
+  "ownership-931.case.ad",
+] }
+```

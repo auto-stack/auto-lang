@@ -1,0 +1,30 @@
+# PLAN-931 short-circuit-931 — side-block isolation: the taken RHS block
+# pins AND frees its own temp inside itself; the outer LHS compare temp
+# survives into and past the side, freeing after its real consumer (the
+# `let ok` binding). The untaken side's block never runs (zero alloc at
+# runtime — the worker probe pins the event ledger). Oracle 5.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-owned-temporaries-931.short-circuit"
+  tags: ["a2r-hir", "text", "owned-temporaries", "short-circuit"]
+  links: ["PLAN-931", "PLAN-902"]
+  source: { file: "src/short-circuit-931.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-short-circuit-931/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-short-circuit-931/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-short-circuit-931/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-short-circuit-931/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

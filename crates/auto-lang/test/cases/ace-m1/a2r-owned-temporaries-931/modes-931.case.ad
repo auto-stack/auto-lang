@@ -1,0 +1,32 @@
+# PLAN-931 modes-931 — verified param modes at call sites: a `move Str`
+# callee takes the owned argument BY VALUE (the Rust move is the
+# transfer; the callee cleans at its exits) and a `mut Str` callee takes
+# the exclusive content view. Pre-931 the lowering forced every text arg
+# down to a content view (E0308 against the by-value param). Oracle
+# 22 = 2*10+2; the fragment-vs-whole byte equivalence is the worker
+# probe's job (V-08).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-owned-temporaries-931.modes"
+  tags: ["a2r-hir", "record-text", "param-modes", "move-transfer"]
+  links: ["PLAN-931", "PLAN-902", "PLAN-770"]
+  source: { file: "src/modes-931.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text-record", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-modes-931/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-modes-931/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-modes-931/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-modes-931/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

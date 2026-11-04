@@ -1,0 +1,16 @@
+{
+  "schema": "auto.a2x.rust.collections.fileset/1",
+  "source_profile": "auto.source.collections.draft",
+  "hir_domain": "collections-draft",
+  "input_hash": "ef7400120828e15c",
+  "source_sha256": "4b6433b03528d986ef67edf9d7420409f8e7d64ebccafceadf9fc4d23da6e61f",
+  "execution_config": {"budget_work_units":16777216,"cancel":false,"events":false,"fault_alloc":null,"mode":"debug"},
+  "entry": "main",
+  "entry_fn": "fn_main",
+  "target": { "lang": "rust", "edition": "2021", "backend": "auto-a2x-rust", "backend_version": "0.1.0", "resource_runtime": "a2x-coll/1" },
+  "files": [
+    { "path": "main.rs", "sha256": "3dc53825b17395563bd7b06ceefe0f92a2072fc919dd23eb5833109e561e6b26" },
+    { "path": "a2x_runtime.rs", "sha256": "48e4d7bc8eb80bbfdef96c8793890edea36e6e6e2cbc8cd4a702d1f1e399be58" },
+    { "path": "generated.rs", "sha256": "9dc2e0a4229bd4c0bad52e84a144587f56b48ade6b07714c1a1a1bd504c41c24" }
+  ]
+}

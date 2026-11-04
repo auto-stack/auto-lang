@@ -1,0 +1,9 @@
+fn own_len(move s Str) int { return s.len() }
+fn mut_peek(mut s Str) int { return s.len() }
+fn main() int {
+    let a Str = "ab"
+    var b Str = "xy"
+    let n1 int = own_len(a.move)
+    let n2 int = mut_peek(b)
+    return n1 * 10 + n2
+}

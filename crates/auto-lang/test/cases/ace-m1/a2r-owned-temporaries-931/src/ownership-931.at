@@ -1,0 +1,9 @@
+fn eat(move s Str) int { return s.len() }
+fn make() Str { let s Str = "abc"
+    return s }
+fn main() int {
+    let a Str = "abcd"
+    let n int = eat(a.move)
+    let b Str = make()
+    return n * 10 + b.len()
+}

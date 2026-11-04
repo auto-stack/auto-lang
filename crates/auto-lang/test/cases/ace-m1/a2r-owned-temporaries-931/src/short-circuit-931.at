@@ -1,0 +1,13 @@
+fn main() int {
+    let a Str = "ab"
+    let b Str = "cde"
+    let ok bool = a.clone() == a && b.clone() == b
+    let skip bool = false && b.clone() == b
+    if ok {
+        if skip {
+            return 0
+        }
+        return 5
+    }
+    return 0
+}

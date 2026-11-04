@@ -1418,6 +1418,18 @@ suite = "crates/auto-lang/test/cases/a2c-hir-record-text-925/a2c-hir-record-text
 all = false
 
 [[group]]
+name = "case-a2r-owned-temporaries-931"
+title = "TestCase a2r owned temporaries consumer lifetime (PLAN-931 D-925-2 closure)"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad"
+all = false
+
+[[group]]
 name = "case-a2c-hir-scalar-921"
 title = "TestCase case-a2c-hir-scalar-921（PLAN-921 CA-A HIR→C11 标量首例）"
 runner = "case"

@@ -1,0 +1,10 @@
+type Wrap {
+    head Str
+    tail Str
+    static fn mk(h Str, t Str) Wrap { return Wrap { head: h.clone(), tail: t.clone() } }
+    fn span() int { return .head.len() + .tail.len() }
+}
+fn main() int {
+    let w Wrap = Wrap.mk("ab", "cde")
+    return w.span()
+}

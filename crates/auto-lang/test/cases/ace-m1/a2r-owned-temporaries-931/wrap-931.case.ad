@@ -1,0 +1,31 @@
+# PLAN-931 wrap-931 — the byte-exact 925 Wrap source (provenance
+# a2c_rt_restore::SRC / D-925-2): two owned literals as view args of
+# `mk`. Pre-931 the Rust emission freed both operand temps BEFORE the
+# call (silent empty reads / E0596); the corrected emission frees them
+# right after the call consumed them, then the verifier-planned record
+# field cleanup runs at exit. Hand-audited oracle span=5 ("ab"+"cde").
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-owned-temporaries-931.wrap"
+  tags: ["a2r-hir", "record-text", "owned-temporaries", "multi-arg"]
+  links: ["PLAN-931", "PLAN-925", "PLAN-902"]
+  source: { file: "src/wrap-931.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text-record", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-wrap-931/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-wrap-931/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-wrap-931/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-wrap-931/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

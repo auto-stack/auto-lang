@@ -1,0 +1,7 @@
+fn main() int {
+    let a Str = "ab"
+    let n int = a.clone().len()
+    let ok bool = a.clone() == a
+    if ok { return n * 10 + n }
+    return 0
+}
