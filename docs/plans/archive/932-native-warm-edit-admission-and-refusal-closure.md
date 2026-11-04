@@ -159,6 +159,8 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 
 下一入口T-01原例盘点可私有准备；T-03公共修改须同符号原owner释放与稳定SHA，不新增等待927/928整包的语义前置；D927以后实际输入漂移必须重验，不得并写。本轮不授权work。
 
+## 9. 复审记录
+
 2026-11-04 stage:merge / plan_id:PLAN-932:r2 / outcome:pass / 检查点：
 - prepared：reviewed基线67c7ae61d（r2 final pass）、canonical Spec差分=SD-01..06已在提交内、源目标6文件、交付提交预期=rebase后tip
 - landed：rebase master（84c894b92..1234f8793无冲突）→ 67c7ae61d→**da4c98b51**，`git range-diff 84c894b92..67c7ae61d master..da4c98b51` = **1: 67c7ae61d = 1: da4c98b51**（全等）；主检出`git merge --ff-only plan-932-dev`成功、master尖=da4c98b51、无merge commit
@@ -253,6 +255,8 @@ ok      628.1388153  ace-syntax-artifacts::conformance$syntax_budget::performanc
 2026-11-04 stage:new / revision:2 / outcome:pass（规划合同静态复核，不是实现复审）/ next:work（后续实施指令及各任务实际写窗就绪）。修改见[复核报告](reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)；保全部T/AC编号、总步骤及0进度，r1记录保留为历史；新增V与收口前置未执行，旧调查/历史运行不能为r2新增断言背书。
 
 2026-11-04 stage:new / revision:1 / outcome:pass（规划静态核对）/ next:work（后续明确实施指令及公共窗释放）。未运行构建测试/性能/认证，任务全未勾，D-927-2仍open；现有59/60为历史收据，不是本轮实测。
+
+2026-11-04 stage:goal / plan_id:PLAN-932 / plan_revision:r2 / round:4 / from:merge / to:done / status:archived / outcome:pass（delivered）/ delivery_commit:`da4c98b51`（rebase等价自reviewed 67c7ae61d，range-diff全等，ff-only落master）/ Spec路径:docs/specs/auto-ac/{function-incremental-source,native-source-diagnostics,mir-native-cache}.md、docs/specs/auto-test-case/{profile-v2-native,m1-order-layout-observations,native-warm-edit-admission}.md（读回哈希见merge收据）/ archive:docs/plans/archive/932-native-warm-edit-admission-and-refusal-closure.md（12/12）/ cleanup:双树guard clean后worktree/分支/组目录移除、plan-artifacts scope删除、登记表刷新 / pending merge-owned gates:无（批量回归未到期；landing checks产物时效观察已记录）/ next:done。
 
 ## 10. 待澄清事项
 
