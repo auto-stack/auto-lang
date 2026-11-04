@@ -1,8 +1,8 @@
 # AGE M2：场景编辑视口与公共接口游戏原型
 
-> **2026-11-04 AGE命名与当前状态**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine，AG/AutoGraphics保历史别名。见[命名决议](../../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。AG016/017/018已交付（55c39a2/273b070/4cb297d），Gallery活Node源22/22；AG019同版M2联验已executing/r1/1-10。新[ag-examples/020](../../../../ag-examples/docs/plans/020-age-examples-repository-rename.md)仅规划同一仓更名age-examples，默认019/M2实际交付后维护窗口，不是M2前置；本轮不移动目录。Plan号/交付SHA/标签/schema/API/SDK锁与原预算验收保持；下文旧日期状态为历史快照，当前见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。
+> **2026-11-04 当前M2补齐目标**：M2用户明确新增M2-10：新Auto语法下基础UI、2D、3D同应用组合。[能力核查与补齐设计](../../../../auto-ui/docs/design/autographics/m2-mixed-ui-2d-3d-composition.md)给出UI048基础UI→UI049混合引擎→AG021综合示例，均drafting/r1/0-10、暂不实施。019已delivery3daf2eb/归档清理，保原fc82061c候选及原九项/两游戏/Gallery12/22/47证据与holds，不重开或据此宣称扩展M2完成。完整生产UI/主题、ACE/跨端仍后置，但基础UI组合不再全部后置。020 r2更名默认019＋021及扩展M2必需门收口后维护窗口。引擎auto-ui/内容ag-examples分仓，预算/历史身份保持；当前见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文旧日期段落是历史快照。
 
-> **2026-11-04 当前路线**：UI040已交付fc82061c/canonical/独立上下文final/清理，原OS层15项D-02仍pending；AG016完整G3现executing/r1/本次核验3-10、唯一ag-016树、固定035，AG017/018/019仍草案。当前Gallery19/22，M2内容线按原合同继续：018固定040实际交付，019候选040门已具备、完整联验仍等016/017/018及必需证据。本轮仅在auto-ui规划[UI043模型资源对象模板](../../../../auto-ui/docs/plans/043-autographics-node3d-model-object-templates.md)、[UI044 Node源码定位/分层诊断](../../../../auto-ui/docs/plans/044-autographics-node-source-diagnostics.md)，均drafting/r1/0-10、可独立推进；043复用底层Model实例补Node builtin-only缺口，044只提供可证源映射，固定SDK runtime无span不造精确行。两者不改在途内容基线、不新增当前M2前置/不自动升AG019候选；未来内容显式消费另约。041/042已属其它UI组件store/重载路线，不复用号。原预算/验收/SDK681/OS政策保持，本轮不实施/建树/构建/GPU/agent/发布。见[资源组件与诊断设计](../../../../auto-ui/docs/design/autographics/node-resource-components-and-source-diagnostics.md)及[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文旧日期快照保历史。
+> **2026-11-04 早先路线快照（页首更新取代）**：UI040已交付fc82061c/canonical/独立上下文final/清理，原OS层15项D-02仍pending；AG016完整G3现executing/r1/本次核验3-10、唯一ag-016树、固定035，AG017/018/019仍草案。当前Gallery19/22，M2内容线按原合同继续：018固定040实际交付，019候选040门已具备、完整联验仍等016/017/018及必需证据。本轮仅在auto-ui规划[UI043模型资源对象模板](../../../../auto-ui/docs/plans/043-autographics-node3d-model-object-templates.md)、[UI044 Node源码定位/分层诊断](../../../../auto-ui/docs/plans/044-autographics-node-source-diagnostics.md)，均drafting/r1/0-10、可独立推进；043复用底层Model实例补Node builtin-only缺口，044只提供可证源映射，固定SDK runtime无span不造精确行。两者不改在途内容基线、不新增当前M2前置/不自动升AG019候选；未来内容显式消费另约。041/042已属其它UI组件store/重载路线，不复用号。原预算/验收/SDK681/OS政策保持，本轮不实施/建树/构建/GPU/agent/发布。见[资源组件与诊断设计](../../../../auto-ui/docs/design/autographics/node-resource-components-and-source-diagnostics.md)及[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文旧日期快照保历史。
 
 > **2026-11-02 当前路线取代早期顺序快照**：优先推进“完整2D引擎组合＋独立完整2D游戏”，同时规划3D表现/声音/HUD接线；2D可玩、胜败重开、必要音画、编辑保存、离线搬迁及独立review/落主稳定后，再交付完整3D游戏。三条线按批次并行：**引擎auto-ui、ag-examples/games完整游戏、ag-examples/examples小Demo**；并行准备不越过上游实际交付门。当前三份合同为[UI032](../../../../auto-ui/docs/plans/archived/032-autographics-node2d-full-game-composition.md)、[AG014（原G2-001）](../../../../ag-examples/docs/plans/archived/014-autographics-complete-2d-platformer.md)、[AG013 r2](../../../../ag-examples/docs/plans/archived/013-autographics-gallery-g11-3d-node-migration.md)。游戏T-01..04可独立准备，T-05完整接线等032实际交付；Demo准备独立、完整迁移核030实际交付与独立review。正式设计/三维两个能力切片与边界见[游戏优先三线路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。本轮只规划/设计/导航，不启动实现、构建或发布。
 >
@@ -36,7 +36,7 @@ M1没有完整编辑视口：已有2D选择拖动、3D代理拾取与世界轴�
 | 独立工程交付 | 两个仓外游戏工程消费同一公共引擎版本；资源版本锁定，完整ZIP可离线搬迁运行 | 不要求用户下载全部示例或美术源文件 |
 | Demo Gallery | 轻量能力目录与首12个逻辑示例及其必需子入口，可查源码/操作/限制、单项下载运行，最终统一引擎基线 | 示例消费M2原定公共能力；编辑/研究分区明确，不承诺three.js全量或浏览器在线运行 |
 
-M2继续桌面独立研究路线。生产AutoUI完整组件/主题、统一Atom＋Schema HIR方言、ACE替换/增量/HMR、RQHost/发行及引擎归仓，均等ACE完成后重新讨论，M2不以前述工作为前置。Linux/Web/mobile实际交付、多窗口、联网、XR、全套物理/材质/骨骼动画与完整RPG不在本基线。跨端目标边界和可并行研究见[平台专题](platform-architecture-and-research.md)；研究不增加M2-01..09运行前置，不把11–15份估计扩成各端产品化总量。
+M2继续桌面独立研究路线；2026-11-04确认基础UI与2D/3D新语法同应用组合为新增M2-10必需项，首期row/column/text/button与绑定/事件/布局输入，按048→049→AG021交付。生产AutoUI完整组件/主题、统一Atom＋Schema HIR方言、ACE替换/增量/HMR、RQHost/发行及引擎归仓，均等ACE完成后重新讨论，M2不以前述工作为前置。Linux/Web/mobile实际交付、多窗口、联网、XR、全套物理/材质/骨骼动画与完整RPG不在本基线。跨端目标边界和可并行研究见[平台专题](platform-architecture-and-research.md)；研究不增加M2-01..09运行前置，不把11–15份估计扩成各端产品化总量。
 
 ## 3. 架构边界
 
@@ -159,6 +159,7 @@ Gallery另外使用轻量`ag-examples`仓（建议名），保存小示例/目�
 | M2-07 | 每项目独立下载；固定资源验证、完整ZIP离线运行、搬迁重开与缺失/损坏拒绝成立 | 仅下载成功或原机器能运行 |
 | M2-08 | 来源/身份、计数与实际像素内容、资源/声音/生命周期、复审和冻结合入门齐备 | 单独截图、计数或未绑定二进制的历史证据 |
 | M2-09 | Gallery轻量目录与首12项全部必需子入口，公共/编辑/研究分类真实、固定同一最终引擎/SDK，单项源码/资源包可独立离线搬迁运行；两游戏有固定索引 | 12张截图、重复页面、Blocked标Ready、测试私有入口或不同版本历史绿灯拼接 |
+| M2-10 | 新Auto Node/use/model/msg/on下，同一应用/原生窗口组合基础UI与2D/3D嵌入；双向事件绑定、实例状态/一次Tick、布局/焦点/裁剪、寿命及独立离线消费成立；见补齐设计048/049/AG021 | HUD冒充基础控件、Rust业务按钮、外部窗口/截图拼合，或仅旧原型合成 |
 
 用户体验与精确数值/owner/内容两类证据并列保留。所有“已完成”都需要可复查的实际结果；本文没有新增执行证据。M2最终标签名届时确认，不提前创建或把优化阶段标成M2交付。
 
