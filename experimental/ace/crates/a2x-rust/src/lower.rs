@@ -566,8 +566,12 @@ struct FnLowering<'v, 'a> {
     /// Resource-record type ids this function deep-clones (the generated
     /// per-record helper set is derived in the printer, transitively).
     clones: Vec<u32>,
-    /// View-consumed pinned owned temporaries pending a free (drained at
-    /// the next pin or the end of the current statement).
+    /// View-consumed pinned owned temporaries pending a free. A temp
+    /// registers when pinned for a view position; it frees right after
+    /// its REAL consumer (the enclosing pin Let / statement anchor that
+    /// reads it), never before — anchors drain by scope mark
+    /// (`drain_since`) so temps of OUTER consumers-in-flight stay alive
+    /// (PLAN-931, D-925-2 closure).
     pending_frees: Vec<String>,
     /// Current block id + statement index (plan exit keys).
     cur_block: u32,
@@ -689,11 +693,27 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         t
     }
 
-    /// Emit the pending view-consumer frees now (the immediate-after-
-    /// consumer anchor: called right before a NEW fallible pin so earlier
-    /// temps free before the next allocation point).
+    /// Emit the pending view-consumer frees now (statement/block exit
+    /// defensive use; with scoped anchors pending is empty between
+    /// statements).
     fn drain_frees(&mut self, out: &mut Vec<RStmt>) {
         for name in std::mem::take(&mut self.pending_frees) {
+            out.push(RStmt::Free {
+                name,
+                path: Vec::new(),
+            });
+        }
+    }
+
+    /// Emit the pending frees registered SINCE `mark` — the operand temps
+    /// of the consumer that just anchored (a pin Let or statement root).
+    /// Temps pending BEFORE the mark belong to an OUTER consumer that has
+    /// not run yet (e.g. the first call argument while a later argument
+    /// pins) and must stay alive until it does (immediate-after-consumer,
+    /// scoped — PLAN-931 / D-925-2).
+    fn drain_since(&mut self, mark: usize, out: &mut Vec<RStmt>) {
+        let tail: Vec<String> = self.pending_frees.drain(mark..).collect();
+        for name in tail {
             out.push(RStmt::Free {
                 name,
                 path: Vec::new(),
@@ -766,6 +786,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
     fn lower_stmt(&mut self, s: &hir::Stmt, out: &mut Vec<RStmt>) -> Result<(), A2xReject> {
         match s {
             hir::Stmt::Let { local, value } => {
+                let mark = self.pending_frees.len();
                 let (v, vty) = self.lower_expr(*value, out)?;
                 let name = self.local_name(local.0)?;
                 let ty = self.local_ty(local.0)?;
@@ -777,18 +798,22 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     v
                 };
                 let mutable = self.assigned.contains(&local.0);
-                self.drain_frees(out);
                 out.push(RStmt::Let {
                     name,
                     ty,
                     mutable,
                     init: v,
                 });
+                // the Let IS the consumer of the value's view temps: they
+                // free right after it, never before (PLAN-931)
+                self.drain_since(mark, out);
             }
             hir::Stmt::Return { value } => {
                 // the FROZEN scalar shape renders a fallible return root
                 // inline (`return Ok(a2x_add(..)?);`) — self-pinning is
-                // reserved for the plan-driven case below
+                // reserved for the plan-driven case below (and the
+                // view-temp case: frees must execute before the return)
+                let mark = self.pending_frees.len();
                 let (mut v, vty) = self.lower_expr(*value, out)?;
                 // a str result returning an owner-repr value (a Str field
                 // read) borrows it — provenance-verified
@@ -805,7 +830,8 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     .plan
                     .and_then(|bp| bp.buffer_frees.get(&key))
                     .is_some_and(|b| !b.is_empty());
-                if has_frees {
+                let temp_pending = self.pending_frees.len() > mark;
+                if has_frees || temp_pending {
                     let bare = matches!(value, RExpr::Local(_));
                     if !bare {
                         let t = self.fresh_temp();
@@ -818,18 +844,37 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         value = RExpr::Local(t);
                     }
                     self.emit_buffer_frees(key, out)?;
+                    // the materialized value consumed its view temps; their
+                    // frees must run before the (unreachable-after) return
+                    self.drain_since(mark, out);
                 }
-                self.drain_frees(out);
                 out.push(RStmt::Return { value });
             }
             hir::Stmt::If { cond, then, els } => {
-                let (c, _) = self.lower_expr(*cond, out)?;
+                // anchor the condition fully BEFORE the branches: a pure
+                // cond that consumed view temps (e.g. a text compare of
+                // pinned operands) materializes into a temp so its temps
+                // free before either branch runs (PLAN-931)
+                let mark = self.pending_frees.len();
+                let (mut c, cty) = self.lower_expr(*cond, out)?;
+                if self.pending_frees.len() > mark {
+                    if !matches!(c, RExpr::Local(_)) {
+                        let t = self.fresh_temp();
+                        out.push(RStmt::Let {
+                            name: t.clone(),
+                            ty: cty,
+                            mutable: false,
+                            init: c,
+                        });
+                        c = RExpr::Local(t);
+                    }
+                    self.drain_since(mark, out);
+                }
                 let t = self.lower_block(*then)?;
                 let e = match els {
                     Some(b) => Some(self.lower_block(*b)?),
                     None => None,
                 };
-                self.drain_frees(out);
                 out.push(RStmt::If {
                     cond: c,
                     then: t,
@@ -858,6 +903,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     .plan
                     .and_then(|bp| bp.replace_frees.get(&(self.cur_block, self.cur_stmt)))
                     .is_some_and(|b| !b.is_empty());
+                let mark = self.pending_frees.len();
                 let (v, vty) = if has_replace {
                     self.lower_move_value(*value, out)?
                 } else {
@@ -882,17 +928,18 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let name = self.local_name(place.local.0)?;
                 match &place.kind {
                     hir::PlaceKind::Local => {
-                        self.drain_frees(out);
                         out.push(RStmt::Assign { name, value: v });
+                        // the assignment consumed the RHS's view temps
+                        self.drain_since(mark, out);
                     }
                     hir::PlaceKind::FieldPath(path) => {
                         let path = self.resolve_field_names(place.local.0, path)?;
-                        self.drain_frees(out);
                         out.push(RStmt::AssignField {
                             name,
                             path,
                             value: v,
                         });
+                        self.drain_since(mark, out);
                     }
                 }
             }
@@ -1106,15 +1153,26 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // LHS always evaluates: its preludes go to the outer stream.
                 let (l, _) = self.lower_pure(*lhs, out)?;
-                // RHS is lazy: its preludes live inside the side block.
+                // RHS is lazy: its preludes AND its view-temp frees live
+                // inside the side block, scoped by the entry mark so the
+                // side never takes an OUTER consumer's temps and an
+                // untaken side allocates/frees nothing (PLAN-931).
+                let mark = self.pending_frees.len();
                 let mut side = Vec::new();
-                let (r, _) = self.lower_pure(*rhs, &mut side)?;
-                // drain the side's own view-consumer temps into it
-                for name in std::mem::take(&mut self.pending_frees) {
-                    side.push(RStmt::Free {
-                        name,
-                        path: Vec::new(),
+                let (mut r, rty) = self.lower_pure(*rhs, &mut side)?;
+                if self.pending_frees.len() > mark {
+                    // the side's value is the block tail expression: pin it
+                    // so its operand temps free INSIDE the block, after
+                    // their real consumer
+                    let t = self.fresh_temp();
+                    side.push(RStmt::Let {
+                        name: t.clone(),
+                        ty: rty,
+                        mutable: false,
+                        init: r,
                     });
+                    r = RExpr::Local(t);
+                    self.drain_since(mark, &mut side);
                 }
                 let block = RBlock {
                     stmts: side,
@@ -1161,6 +1219,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     if let Some(t) = self.view.fn_by_def(target_id) {
                         (rust_name_of(t), t.params.clone(), t.result)
                     } else if let Some(x) = self.view.external_by_def(target_id) {
+                        // PLAN-931: fragment externals carry their VERIFIED
+                        // param modes (a callee mode change is a dependency
+                        // change, not a rendering detail) — consume the
+                        // checked facts, never a default View
                         (
                             match x.kind {
                                 FnKind::Free => rust_fn_name(&x.source_name),
@@ -1168,10 +1230,11 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                             },
                             x.params
                                 .iter()
-                                .map(|ty| ace_a2x_core::ParamFacts {
+                                .zip(x.modes.iter())
+                                .map(|(ty, mode)| ace_a2x_core::ParamFacts {
                                     name: String::new(),
                                     ty: *ty,
-                                    mode: hir::ParamMode::View,
+                                    mode: *mode,
                                 })
                                 .collect(),
                             x.result,
@@ -1486,10 +1549,15 @@ impl<'v, 'a> FnLowering<'v, 'a> {
 
     /// Legalize a placed call argument against its target param's mode and
     /// the argument's own type. Text view/mut params take content views
-    /// (`&str`); record views borrow the place; record mut params take the
+    /// (`&str`); MOVE text params take the owned value itself — the Rust
+    /// move IS the ownership transfer (the callee cleans it at its exits;
+    /// PLAN-931: never force an owned move arg down to a content view);
+    /// record views borrow the place; record mut params take the
     /// exclusive borrow; move params take the value (Rust move).
     fn legalize_arg(&self, raw: RExpr, aty: Ty, mode: hir::ParamMode, pty: Ty) -> RExpr {
         match (mode, pty) {
+            // move text params: the owned argument transfers BY VALUE
+            (hir::ParamMode::MoveOwn, Ty::Str | Ty::StrOwned) => raw,
             // text view AND mut-text params borrow CONTENT: mut text is an
             // exclusive view whose exclusivity the verifier already proved
             // at the call sites (774 D-04) — no runtime mutation surface
@@ -1545,17 +1613,18 @@ impl<'v, 'a> FnLowering<'v, 'a> {
 
     /// Lower a subexpression and pin its effectful root into a temporary so
     /// the caller receives a side-effect-free value (source-order, exactly
-    /// once). Pure roots pass through unchanged.
+    /// once). Pure roots pass through unchanged. The pin Let is the REAL
+    /// consumer of any view temps this value's operands registered since
+    /// the entry mark: they free right after it; temps of outer
+    /// consumers-in-flight stay alive.
     fn lower_pure(
         &mut self,
         id: hir::ExprId,
         out: &mut Vec<RStmt>,
     ) -> Result<(RExpr, Ty), A2xReject> {
+        let mark = self.pending_frees.len();
         let (v, ty) = self.lower_expr(id, out)?;
         if v.needs_pin() {
-            // immediate-after-consumer anchor: earlier view-consumed temps
-            // free before this new allocation point
-            self.drain_frees(out);
             let t = self.fresh_temp();
             out.push(RStmt::Let {
                 name: t.clone(),
@@ -1563,6 +1632,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 mutable: false,
                 init: v,
             });
+            self.drain_since(mark, out);
             Ok((RExpr::Local(t), ty))
         } else {
             Ok((v, ty))
@@ -1571,15 +1641,16 @@ impl<'v, 'a> FnLowering<'v, 'a> {
 
     /// Like [`lower_pure`] for OWNING positions (let/assign/return/move
     /// args): an owned pinned temporary transfers its ownership onward, so
-    /// it is NOT registered for a free.
+    /// it is NOT registered for a free; its operand temps free right after
+    /// the pin like [`lower_pure`].
     fn lower_move_value(
         &mut self,
         id: hir::ExprId,
         out: &mut Vec<RStmt>,
     ) -> Result<(RExpr, Ty), A2xReject> {
+        let mark = self.pending_frees.len();
         let (v, ty) = self.lower_expr(id, out)?;
         if v.needs_pin() {
-            self.drain_frees(out);
             let t = self.fresh_temp();
             out.push(RStmt::Let {
                 name: t.clone(),
@@ -1587,6 +1658,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 mutable: false,
                 init: v,
             });
+            self.drain_since(mark, out);
             Ok((RExpr::Local(t), ty))
         } else {
             Ok((v, ty))
@@ -1595,23 +1667,29 @@ impl<'v, 'a> FnLowering<'v, 'a> {
 
     /// Like [`lower_pure`] for VIEW positions (len/concat/eq operands,
     /// view args): an owned pinned temporary is consumed as a view, so it
-    /// frees right after its consumer (next pin or statement end).
+    /// registers here and frees right after its REAL consumer — the
+    /// ENCLOSING anchor that reads it (outer pin Let or statement root),
+    /// never at a sibling operand's pin.
     fn lower_view_value(
         &mut self,
         id: hir::ExprId,
         out: &mut Vec<RStmt>,
     ) -> Result<(RExpr, Ty), A2xReject> {
+        let mark = self.pending_frees.len();
         let (v, ty) = self.lower_expr(id, out)?;
         if v.needs_pin() {
-            self.drain_frees(out);
             let t = self.fresh_temp();
+            // mut: an owned temp is later freed through `a2x_str_free(&mut ..)`
+            let owned_text = matches!(ty, Ty::StrOwned);
             out.push(RStmt::Let {
                 name: t.clone(),
                 ty,
-                mutable: false,
+                mutable: owned_text,
                 init: v,
             });
-            if matches!(ty, Ty::StrOwned) {
+            // the pin Let consumed this value's own operand temps
+            self.drain_since(mark, out);
+            if owned_text {
                 self.pending_frees.push(t.clone());
             }
             Ok((RExpr::Local(t), ty))
