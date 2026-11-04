@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-928
-status: drafting
+status: executing
 feature_name: SG-B 集合变体闭包语法与嵌套单元增量投影
 author: [Codex]
 created_at: 2026-11-03
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/composite-source-projection.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-927, PLAN-864, PLAN-865, PLAN-909, PLAN-912, PLAN-913]
-current_step: 0
+current_step: 1
 total_steps: 12
 ---
 
@@ -161,6 +161,9 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 下一入口T-01只可先私有盘点；T-03公共写须927稳定交接，T-05前必须T-02证明不会重建兄弟lambda。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 2 | from: start | to: work | status: executing | outcome: in-progress | worktree: `D:/autostack/.wt/lang-928/auto-lang` @ `plan-928-dev`（基面 master `54829a61b`，含 auto-down 兄弟 detached） | commit: 54829a61b | next: work（T-01 盘点）
+  - 2026-11-04 09:05 开工：PLAN-927 已由其原交付会话落地归档（master `5d5054d5d` 交付 + `54829a61b` 归档；含 merge 期真修复 `decode_str_value` \u{} 转义——r1 收据中"陈旧 exe 伪影"仅为部分归因，特此更正）。928 消费面确认：`core/source/cst/`（frontdoor/kinds/lex/project/shift）已随 927 在 master，`FrontKind::{WholeModule,FreeFnFragment,MethodFragment}` + 五态 `FrontOutcome` 为本包扩面基线。
 
 - stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 1 | from: start | to: work | status: drafting | outcome: waiting | worktree: 未建 | commit: master `85a6c0146`（928/929 规划簿记入库） | next: work（等 PLAN-927 落地后开工）
   - 2026-11-04 /goal 实施授权：用户指令"完成计划928"——授权整链 work→review→有界修复→merge（auto-plan-goal 范式），记录于本收据，后续各 stage 继承。
