@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-930
-status: execution_done
+status: reviewed
 feature_name: 生成工程交付回归与独立来源边界验收收口
 author: [Codex]
 created_at: 2026-11-04
 updated_at: 2026-11-05
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 9
-supersedes_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/repository-boundaries/standalone-language-build.md]
+supersedes_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/repository-boundaries/standalone-language-build.md, docs/specs/repository-boundaries/delivery-admission-and-boundary-policy.md]
 new_spec_components: [docs/specs/repository-boundaries/generated-delivery-regression.md]
 touched_goals: []
 affects: [generated-ui-consumer-driver, generated-delivery-controls, standalone-language-admission]
@@ -150,6 +150,8 @@ L2完整workspace build是本包独立边界门，不等于cargo t all；原批�
 2026-11-04 / stage:new / PLAN-930 r1 / outcome:blocked（仅规划，实施授权待给） / 已核036最终归档三原红、driver旧成员路径与真V05a入口、906/910/918规范及现固定组；全部未重跑。next：授权后T-01冻结三仓源、复现/owner/资源；不假定V05a只是测试漂移，不重开918或接管927–929。
 
 2026-11-05 / stage: work | plan_id: PLAN-930 | plan_revision: r1 | outcome: pass（T-01..T-06 全链，execution_done 6/9） | worktree: D:/autostack/.wt/lang-930/{auto-lang,auto-ui,auto-man,auto-web,auto-down} | branch: lang plan-930-dev / ui plan-930-ui-dev | base_commit: lang f4062cca6 / ui 2a830d6c | code_commit: lang 95d7ddfd8→41ccccc3b→2e2fe40a0→a627ce130；ui b76483aa | dependency_revisions: man 2bbd954 / web 3de5524 / down 7c4d5cb（detached） | task_ids: T-01..T-06 | evidence: 基线 driver 28 PASS/3 FAIL（三红复现）；fix driver 41/41 全绿含 receipt；generated-delivery-controls 15/15；audit self-test 16/16 + strict pass；L1 5/5 + 缺源具名红/恢复绿；L2 metadata+build exit0；SD-01..04 落树；plan-artifacts/plan-930/（t01-baseline-evidence.md + baseline-scratch + fix-scratch/driver-receipt.json + iso-lang） | blockers: 无 open in-contract finding；UI 既有 shell-pack 过期红 + jet/ark 环境门控 + 其他外仓债保原 owner，不阻塞 review | next_responsible_role: review（T-07 同组同树冻结 final review）
+
+2026-11-05 / stage: review | review_scope: final | reviewer: 独立子代理上下文（general-purpose agent，同冻结树独立会话线索；未重跑 driver 全量/L1/L2 重型腿——收据+代码+便宜只读实测复核） | plan_id: PLAN-930 | plan_revision: r1 | outcome: pass（2 low findings 不阻塞） | worktree: D:/autostack/.wt/lang-930/{auto-lang,auto-ui} | branch: plan-930-dev@a627ce130 / plan-930-ui-dev@b76483aa | base_commit: lang f4062cca6 / ui 2a830d6c | dependency_revisions: man/web/down detached | spec_inputs: SD-01..04 已核与实现逐条一致（SD-01 新 generated-delivery-regression.md；SD-02 generated-ui-distribution 收口+投影节；SD-03 standalone-language-build 复验节；SD-04 delivery-admission-and-boundary-policy §5） | acceptance_results: AC-01..06 pass（成员身份消费 member.json 恰一/不重算 id8、V05a 投影依赖行改写原形/投影形二选一、固定组 15/15 实测、L1/L2 快照证据对账、audit self-test 16/16+strict violations=0 实测、SD 一致、零 debug 打印、frontmatter 一致性） | findings: F1(low,健康) rust_ui.rs:5748 matches! rustfmt 可压单行——merge 前修；F2(low,frontmatter) supersedes 补 delivery-admission-and-boundary-policy.md（已随本收据更新）；F3(info,SD-03措辞) "无 target/"→快照初始态措辞微调 | pending_closeout_gates: 冻结职责并集验证、跨仓实际合入（ui b76483aa→auto-ui master）、canonical/路线/债务实证读回、guard clean+材料对账、archived 9/9 | next: merge（T-08/09）
 
 静态预检pass（2026-11-04）：0–10章节、9T/8AC/9V/4SD身份唯一连续，任务/AC的owner_stage与引用齐；本号跨活动/归档唯一、号源单调未回退，本地引用/尾空格检查通过。045–047三批恰覆盖B3十二例、无重复/漏项。仅文档一致性，不是新测试/探针或独立final review；全部实现/运行仍待授权work。
 
