@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 1
+current_step: 2
 total_steps: 14
 ---
 
@@ -196,7 +196,7 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 | T | owner_stage | 前置/真实写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 私有调查可先，927/928及923–926实际状态 | 调用清单/生命周期/版本/预算/所有写窗和原正式样本冻结，AC-01/11 | [x] 2026-11-04：五面只读盘点于冻结基面 `03e9869fb`；主件 `plan-artifacts/plan-929/t01-call-inventory-master-03e9869fb.md`（52 入口/全部生产+测试调用点/退役预分类/不同语言保留）+ 余项件 `t01-freeze-versions-budgets-windows-samples.md`（版本轴/六域预算原值/写窗实况/正式样本清单）。923-926/927 全部已归档交付、边界符号具名；**D928 写窗+稳定接口 SHA 具名 pending**（另一会话在途，按 §5.7②属 T-02 前置，不把在途分支当D） |
-| T-02 | work | T-01、927/928稳定接口，最小store/candidate整链 | 冷→restart→无预热首编辑/失败修复、嵌套单元/发布seam可行性；typed父schema/恢复数据/预算域/真实计数与I/O设计，失败needs_replan；AC-03/05/07 | [ ] |
+| T-02 | work | T-01、927/928稳定接口，最小store/candidate整链 | 冷→restart→无预热首编辑/失败修复、嵌套单元/发布seam可行性；typed父schema/恢复数据/预算域/真实计数与I/O设计，失败needs_replan；AC-03/05/07 | [x] 2026-11-04：D928 落地（`6b429502f`，基面 ff 至 `37503a3f5`）；实现 `UnitCatalog::from_restored` **零生产惰性恢复**（身份-only headless 单元+字节级深重验+`RestoreError` 八类使用前拒+类型感知嵌套检查）+ Option 化惰性物化（未改单元跨恢复→首编辑 P=0 保持 headless）+修复 to_manifest module_sha 陈旧；8 用例套件 `source_restore_929_t02.rs` 全绿（零生产恢复/无预热首编辑恰目标物化/失败零变异修复/7 类伪造拒绝/foreign+stale+零编辑重放/跨编辑链续/嵌套 owner⊇λ）；`cargo t ace-source`+`case-ace-source-composite-928` PASS（worktree `1f029a4a4`）。**设计冻结**：SYN 报告 schema=`ac-source-syn-report/1`（身份/P-M-R-IO 四轴/预算域/认证终态，父 decoder 拒伪五规则，字段骨架见 plan-artifacts 草案，T-09 接线时终冻）；恢复数据=`ac-source-units/1` 清单+惰性 body+RestoreError 分类；真实计数=ProductionMeter（produced/reused/discarded 分账）+StageAttempts（whole/per-unit 双轴）；预算域六域原值不变。消费者 store/会话集成（ensure_env 消除的 a2x/AV/native 落地）归 T-03..T-08 |
 | T-03 | work | 927/928稳定接口，T-02，AV/core S窗 | scalar/closures候选与常驻session切统一语法；V-01/02/06/08，AC-02/03/06/08 | [ ] |
 | T-04 | work | T-02，native稳定923/924消费接口窗 | native cold/collections/闭包实际入口与source-v1诊断；V-01/02/06/07，AC-02/03/06/08 | [ ] |
 | T-05 | work | T-02，Rust与925/926稳定A2X接口窗 | A2xSession cold/method/type-enum/ranged统一与原provider不回退；V-01/02/07，AC-02/03/08 | [ ] |
@@ -213,6 +213,27 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 下一入口T-01私有清单，T-02最小恢复整链在迁移前完成；公共实现需927/928稳定接口与所有实际owner释放，不把在途分支当D。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: in-progress（T-02 完成 2/14） | worktree: `lang-929` @ `plan-929-dev`（基面 ff `37503a3f5`，代码 `1f029a4a4`） | commit: 1f029a4a4 | next: work（T-03 AV/core 会话切统一语法）
+  - **D928 落地**（19:00：merge pass `4f7dc8c16`、交付 `6b429502f`、归档+清树收据齐全）→ §10 恢复入口执行完毕：基面 ff、交接面读取（冷入口九 profile 统一/清单 codec/UnitCatalog/候选事务移交 929 恢复消费）、T-01 STALE 增量件 `t01-delta-d928.md`（fragment 三 API 仍 legacy=本包迁移面；929 侧环境余账三项）。
+  - T-02 交付：`from_restored` 零生产惰性恢复整链+8 用例套件全绿+受影响组 PASS；设计冻结（SYN schema/恢复数据/计数轴/预算域）记入 §8 T-02 行。测试自证抓到并修复两处真问题：嵌套合法性（Fn⊇λ）初版误拒、to_manifest 陈旧 module_sha（928 遗留，编辑后导出即错）。
+  - 用户裁定沿袭"①层研究+定期复查"至 D928 落地后自动转入施工（四草案已作 T-02 输入消费）。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 7 | from: user | to: work | status: executing | outcome: in-progress（①层研究四草案完成；D928 仍未落地，继续定期复查） | worktree: `lang-929` @ `plan-929-dev` | commit: master `757b4aef1` | next: user→work（D928 落地即 §10 恢复入口）
+  - 用户裁定更新（17:02 AskUserQuestion）：由"纯等待"改"**①层研究+定期复查**"。产出四草案（plan-artifacts/plan-929/，均标注 DRAFT 待 T-02/T-09/T-10 真链冻结，不构成冻结决定）：`t02-draft-syn-report-schema.md`（SYN 报告 schema 提案 ac-source-syn-report/1：身份/P-M-R-IO 计数/预算域/认证终态/父 decoder 拒伪规则）、`t02-draft-restore-nextedit-options.md`（恢复→首编辑去整源重建：913式上下文持久化 vs 版本化CST/目录+惰性body 两选项+a2x/AV/native 各面建议+T-02 最小整链验证清单）、`t09-draft-v-case-skeletons.md`（V-01..14 逐 case 骨架：输入/断言/必红反控/依赖使能）、`t10-draft-retirement-negctl.md`（退役三道结构门：cfg 编译期不可达+调用图断言+负控自证，改名复制/缓存藏解析检测）。
+  - 928 观察：16:36-17:07 仍 9/12（T-09 formal V faces 已在 worktree `d8dbe56d3`，master 簿记待 T-10 段）。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 6 | from: user | to: user | status: executing | outcome: waiting（轮内长等待检查点：D928 未落地，928 健康推进） | worktree: 保留 `lang-929` @ `plan-929-dev` | commit: master `757b4aef1`（929 无变化） | next: user（继续等待循环至 D928 落地，然后按 §10 恢复）
+  - 10:09-14:28 轮内轮询（~10min 块）：928 会话持续活跃，进度 2/12→8/12（T-03 collections surface、T-04 语料 162/162、T-05 候选事务/pin、T-06 decl units/typed change events/CatalogManifest、T-07 冷入口统一切换 consumers green、T-08 迭代walker/深链/200编辑/末主回收；一致性 312→315/315；worktree 现 `5d7759586`）。master 另有第三方会话提交（`c7bf9aa1f` AGE 命名等）。预计 T-09..T-12+review+merge 还需 1.5-3h。无失速（未见 >90min 无活动）。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 5 | from: user | to: user | status: executing | outcome: **blocked**（三连续等待轮到期，D928 未落地） | worktree: 保留 `lang-929` @ `plan-929-dev` | commit: master `757b4aef1`（无变化） | next: user
+  - 10:09 第三次复查：928 仍 executing 2/12，archive 无 928。按 auto-plan-goal 等待轮上限转 blocked。**解除条件（=§10）**：master 出现 PLAN-928 merge 交付 + `docs/plans/archive/928-*.md` → `/goal resume`，恢复入口：rebase lang-929 基面 → 读 D928 交接 SHA → STALE 增量刷新 T-01 冻结件 → T-02。检查点全部保留可续。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 4 | from: user | to: user | status: executing | outcome: waiting（挂起轮 2/3：D928 未落地） | worktree: 保留 `lang-929` @ `plan-929-dev` | commit: master `757b4aef1`（无变化） | next: user（D928 落地归档后按 §10 恢复；连续第 3 个等待轮将按 caps 转 blocked 收据）
+  - 10:08 复查：928 仍 executing 2/12（距上轮 1 分钟，无变化）；archive 无 928。继续挂起。
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 3 | from: user | to: user | status: executing | outcome: waiting（挂起轮 1/3：D928 未落地） | worktree: 保留 `lang-929` @ `plan-929-dev` | commit: master `757b4aef1`（无变化） | next: user（D928 落地归档后按 §10 恢复）
+  - 10:07 复查：928 仍 executing 2/12，worktree `3219cad1e`+5 WIP 文件活跃推进中；archive 无 928。按用户裁定继续挂起，无工作无额外检查。
 
 - stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 2 | from: work | to: user | status: executing | outcome: waiting（用户裁定挂起等 D928） | worktree: `D:/autostack/.wt/lang-929/auto-lang` @ `plan-929-dev` | commit: 03e9869fb（树无代码提交；T-01 两冻结件在 plan-artifacts） | next: user（D928 落地归档后 /goal resume，入口动作见 §10）
   - T-01 完成（1/14，勾选+证据入 §8）。依赖墙复查：928 会话活跃推进至 2/12（worktree `3219cad1e`、master 簿记 `d0f67f75a`，其 T-02 可行性门已过——closures profile 走统一 frontdoor、sealed-body-handle 机制已定）。AskUserQuestion 三选一，用户选"挂起等 D928（推荐）"：不空转、不接管、不把在途分支当D；恢复条件与入口动作固化 §10。检查点保留（实施树/冻结件/retention）。
