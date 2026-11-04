@@ -51,6 +51,24 @@
   与坐标 delta）；`commit_candidate` 唯一安装（`source.stale`/`source.foreign` 拒）；
   M axis 目录坐标平移不触碰任何未改 resolved body。
 
+## 语法来源接缝（PLAN-928）
+
+- 本前端的**语法生产**（整源冷入口与片段解析）已接统一共享 CST 链
+  （`parse_program_with` 对 Closures/Collections profile 路由
+  `core::source::cst`；规则/裁剪见 auto-syntax 的
+  [grammar-contract](../auto-syntax/grammar-contract.md) 与
+  [source-frontdoor](../auto-syntax/source-frontdoor.md)）。捕获/凭证/
+  资源语义**不变**：`decide_capture`/`ClosuresVerifyContext`/verify 链仍是
+  语义事实唯一裁决，语法链不重做资源分析、不从 target 猜类型。
+- 语法单元目录（[composite-source-projection](../auto-syntax/composite-source-projection.md)）
+  的同文 lambda 语法复用**不免除**当前 capture 重验：目录对 owner 变化
+  （locals 顺序/类型/写性/mode/layout）显式携带 `semantic_recheck` 义务
+  信号，由本前端/resolve 的既有 oracle 消费；值绑定变化但 lambda 布局
+  可复用时，creator 创建点操作数仍须按当前事实更新，不得以"重编所有
+  lambda"替代精确依赖、也不得以"语法同文"跳过重验。
+- 逐轴不藏工作：语法目录的 produced/reused/discarded 计量与本规范的
+  P/whole/M/R 轴分账并存，互不吞并。
+
 ## 计量、预算与边界
 
 - P 轴（每逻辑函数真实 attempt，失败早退也计）：parse_project / resolve / typecheck /

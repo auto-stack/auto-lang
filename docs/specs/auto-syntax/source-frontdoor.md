@@ -1,19 +1,23 @@
-# auto-syntax source front door（七 profile 统一源码前门）
+# auto-syntax source front door（九 profile 统一源码前门）
 
-> **Status**: experimental（PLAN-927 交付；实现=`experimental/ace/crates/core/src/source/cst/`）
+> **Status**: experimental（PLAN-927 交付，PLAN-928 扩至九 profile；实现=`experimental/ace/crates/core/src/source/cst/`）
 > 来源：PLAN-927；上游 [project.md](project.md)；规则/身份见
 > [grammar-contract.md](grammar-contract.md)；树/预算不变量见 [snapshot-cst.md](snapshot-cst.md)。
 
 ## 定位
 
-七源码 profile（Core/Scalar/Text/Record/TextRecord/EntryUnit/HostConsole）的
-统一冷编译与片段前门：共享词法 + 单规则源（`grammars/auto-source.at`，profile
-裁剪编译）→ 无损 CST → 严格 AST 投影。方向无环：
-`syntax-runtime ← syntax-grammar ← core::source::cst ← syntax-core 重导出/消费者`；
-core 不依赖 syntax-core；runtime/grammar 不依赖语义/旧 VM。Auto 专属投影
-（CST→AST、字面量解码、诊断映射）住 core；`ace-syntax-core` 是薄重导出接缝
-（同类型断言，非第二份 AST）。Collections/Closures 是显式登记的迁移分支
-（走 `parse_program_with_handwritten`，928 接管），不经统一前门。
+九源码 profile（Core/Scalar/Text/Record/TextRecord/EntryUnit/HostConsole/
+Collections/Closures）的统一冷编译与片段前门：共享词法 + 单规则源
+（`grammars/auto-source.at`，profile 裁剪编译）→ 无损 CST → 严格 AST 投影。
+方向无环：`syntax-runtime ← syntax-grammar ← core::source::cst ←
+syntax-core 重导出/消费者`；core 不依赖 syntax-core；runtime/grammar 不依赖
+语义/旧 VM。Auto 专属投影（CST→AST、字面量解码、诊断映射）住 core；
+`ace-syntax-core` 是薄重导出接缝（同类型断言，非第二份 AST）。
+PLAN-928：Collections/Closures 已完成接管——`parse_program_with` 九 profile
+全部路由统一 CST 链；旧手写 parser **保留为差分 oracle**（语料全集
+正例 AST/反例首诊断四元组逐字节全等），不是第二实现。
+collections 顶层=type/enum 声明（T-04 合同：closures 顶层无 type/enum 项）；
+词域差异（`Str`→StrOwned、`char` 仅 closures）在投影镜像层冻结。
 
 ## 入口与 typed 结果
 
@@ -70,8 +74,19 @@ pratt `postfix: "postfix-tail"` 规则引用；运行时包装 `KIND_POSTFIX`
 
 ## 验证锚
 
-`source_cst_927` 差分族（567 组合×七 profile + 70 冻结 edge + 片段差分 +
+`source_cst_927` 差分族（567 组合×profile + 70 冻结 edge + 片段差分 +
 typed 预算/whole-path 探针；oracle=`parse_program_with_handwritten` 真旧列）；
-文件化 `case-ace-source-syntax-927`（七 profile parse+无损重建 oracle，经
-`auto-source@<profile>` 语法名路由 case-worker/contract）。固定组
-`ace-source-syntax-927`。预算/深链原档见 [snapshot-cst.md](snapshot-cst.md)。
+`source_units_928(_t09)`（collections/closures 语料全集差分 162/162 + 单元
+目录/增量面，见 [composite-source-projection.md](composite-source-projection.md)）。
+文件化 `case-ace-source-syntax-927` 与 `case-ace-source-composite-928`
+（parse+无损重建 oracle、profile 门负控 `syntax.parse`、值腿、同文 λ
+oracle，经 `auto-source@<profile>` 语法名路由 case-worker/contract——两
+侧语法门均九值）。固定组 `ace-source-syntax-927`。预算/深链原档见
+[snapshot-cst.md](snapshot-cst.md)。
+
+## 迁移余账（929）
+
+全会话/持久化/父侧门与重复 parser 退役归 929：`parse_function_fragment`
+旧合同保持至调用方迁移；`closures_fn` 的 `edit_body` 与单元目录
+`UnitCatalog` 的会话级统一、来源恢复 store 接线、`%TEMP%` av 会话存储
+清理责任由 929 裁定。
