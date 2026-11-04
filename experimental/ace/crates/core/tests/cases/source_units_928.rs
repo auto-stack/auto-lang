@@ -315,3 +315,79 @@ fn t04_corpus_sweep_both_profiles() {
         fails.join("\n")
     );
 }
+
+/// PLAN-928 T-05：候选事务——暂存不提交、坏候选诊断零变异、提交推进；
+/// 语义重验义务随候选显式携带（§5.2b 的候选面）。
+#[test]
+fn t05_candidate_transaction_lifecycle() {
+    let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 1 }\n    return f(2) + g(3)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let old_src = cat.src().to_string();
+    let old_meter = cat.meter.clone();
+    let f_before = std::rc::Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+
+    // 坏候选：诊断 + 目录/源/计量零变异（除废弃物化单列）。
+    let bad = cat
+        .stage_owner_edit("main", "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n\n}\n", BUDGET)
+        .map_or_else(|e| e, |_| panic!("broken candidate must diagnose"));
+    assert!(matches!(bad, units::EditError::Diag(_)));
+    assert_eq!(cat.src(), old_src);
+    assert_eq!(cat.meter.produced, old_meter.produced);
+    assert_eq!(cat.meter.discarded, old_meter.discarded, "stage 失败不计废弃物化（未到物化点）");
+
+    // 好候选：暂存面已决策（owner 1 产 + 兄弟同文 1 复用 + 目标文变 1 产）。
+    let new_fn = "fn main() int {\n    let base int = 41\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 2 }\n    return f(2) + g(3)\n}\n";
+    let cand = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage");
+    assert_eq!(cand.produced(), 2, "owner(1) + 文变 lambda g(1)");
+    assert_eq!(cand.reused(), 1, "同文 lambda f 复用");
+    assert_eq!(cand.semantic_recheck(), &[0u32, 1], "两个 lambda 语义重验义务都携带（owner 变化）");
+    // 暂存不提交：目录与源仍为旧态。
+    assert_eq!(cat.src(), old_src);
+    assert_eq!(cat.meter.produced, old_meter.produced);
+    // 取消 = 丢弃候选（无 API 侧效应）。
+    drop(cand);
+    assert_eq!(cat.src(), old_src);
+    assert_eq!(std::rc::Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, f_before);
+
+    // 重新暂存并提交：推进 + 计量如实。
+    let cand2 = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage2");
+    let receipt = cat.commit_staged(cand2);
+    assert_ne!(cat.src(), old_src);
+    assert_eq!(cat.meter.produced - old_meter.produced, 2);
+    assert_eq!(cat.meter.reused - old_meter.reused, 1);
+    assert_eq!(receipt.produced.len(), 2);
+    assert_eq!(receipt.reused.len(), 1);
+    // 差分冒烟：提交后的源仍可整源全等解析。
+    let old = parse_program_with_handwritten(cat.src(), CL);
+    let new = cst::parse_program_via_cst(cat.src(), CL);
+    assert_eq!(old.is_ok(), new.is_ok());
+}
+
+/// PLAN-928 T-05（V-10）：current + 多代 pin 同时存活——旧 pin 只读其原
+/// 修订视图；跨修订不串用；最后释放后目录照常。
+#[test]
+fn t05_pin_generations_coexist() {
+    let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let pin0 = cat.pin();
+    let sha0 = pin0.revision_sha();
+    assert_eq!(sha0, units::content_sha(src.as_bytes()));
+    // 编辑（owner 路径）后 pin1；pin0 仍是旧视图。
+    let new_fn = "fn main() int {\n    let f = (n int) => { return n + 2 }\n    return f(1)\n}\n";
+    let cand = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage");
+    cat.commit_staged(cand);
+    let pin1 = cat.pin();
+    assert_ne!(pin0.revision_sha(), pin1.revision_sha());
+    // 旧 pin 读取：owner 体为其原修订内容（return n + 1）。
+    let p0_main = pin0.owner_item("main").expect("pin0 main");
+    let p1_main = pin1.owner_item("main").expect("pin1 main");
+    assert_ne!(format!("{p0_main:?}"), format!("{p1_main:?}"), "两代 pin 的 owner 体不同代");
+    // current 与两代 pin 共存互不串用。
+    assert_ne!(cat.src(), pin0.revision_src);
+    assert_eq!(cat.src(), pin1.revision_src.as_str());
+    drop(pin0);
+    drop(pin1);
+    // 目录照常工作。
+    let _ = cat.lambda("main", 0).expect("catalog alive after pins dropped");
+}
+

@@ -429,6 +429,194 @@ impl UnitCatalog {
     pub fn lambda(&self, owner: &str, ordinal: u32) -> Option<&SealedLambda> {
         self.lambdas.get(&(owner.to_string(), ordinal))
     }
+
+    // ------------------------------------------------ T-05：候选事务与 pin
+
+    /// 暂存一次 owner 编辑为**候选**：解析/投影/复用决策全部执行，但目录
+    /// 与源不提交（V-05/V-10：失败/取消/多候选共存不改变 current）。
+    pub fn stage_owner_edit(
+        &self,
+        owner: &str,
+        new_fn_src: &str,
+        budget: FrontBudget,
+    ) -> Result<StagedCandidate, EditError> {
+        let Some(sealed) = self.fns.get(owner) else {
+            return Err(EditError::Infra(format!("unknown owner {owner}")));
+        };
+        let old_span = sealed.item.span;
+        let new_src = replace_range(&self.src, old_span, new_fn_src);
+        let outcome = parse_front(FrontRequest {
+            src: &new_src,
+            profile: self.profile,
+            kind: FrontKind::FreeFnFragment {
+                range: old_span.start..(old_span.start + new_fn_src.len()),
+            },
+            budget,
+        });
+        match outcome {
+            FrontOutcome::Ok(ok) => {
+                let Some(Item::Fn(item)) = ok.program.items.into_iter().next() else {
+                    return Err(EditError::Infra("owner fragment carried no fn".into()));
+                };
+                let mut lambdas = Vec::new();
+                collect_lambdas(&item.body.stmts, &mut lambdas, &new_src);
+                let mut staged_lambdas: Vec<(u32, SealedLambda)> = Vec::new();
+                let mut produced = 1usize;
+                let mut reused = 0usize;
+                let mut semantic_recheck: Vec<u32> = Vec::new();
+                for (ordinal, (span, lsha)) in lambdas.iter().enumerate() {
+                    let key = (owner.to_string(), ordinal as u32);
+                    match self.lambdas.get(&key) {
+                        Some(prev) if prev.content_sha == *lsha => {
+                            staged_lambdas.push((
+                                ordinal as u32,
+                                SealedLambda { content_sha: *lsha, body: Rc::clone(&prev.body), span: *span },
+                            ));
+                            reused += 1;
+                            semantic_recheck.push(ordinal as u32);
+                        }
+                        _ => {
+                            let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
+                            staged_lambdas.push((
+                                ordinal as u32,
+                                SealedLambda { content_sha: *lsha, body: Rc::new(body), span: *span },
+                            ));
+                            produced += 1;
+                            semantic_recheck.push(ordinal as u32);
+                        }
+                    }
+                }
+                let owner_sha = content_sha(new_fn_src.as_bytes());
+                Ok(StagedCandidate {
+                    owner: owner.to_string(),
+                    new_src,
+                    owner_sha,
+                    owner_item: Rc::new(item),
+                    lambdas: staged_lambdas,
+                    produced,
+                    reused,
+                    semantic_recheck,
+                })
+            }
+            FrontOutcome::Diag(ds) => Err(EditError::Diag(ds)),
+            FrontOutcome::ResourceExhausted { what, limit } => Err(EditError::ResourceExhausted { what, limit }),
+            FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => Err(EditError::Infra(m)),
+        }
+    }
+
+    /// 提交暂存候选（当前修订推进；计量按暂存面如实入账）。
+    pub fn commit_staged(&mut self, cand: StagedCandidate) -> EditReceipt {
+        let is_reuse = |cat: &Self, owner: &str, ordinal: u32, sl: &SealedLambda| {
+            cat.lambdas
+                .get(&(owner.to_string(), ordinal))
+                .map(|p| p.content_sha == sl.content_sha && Rc::ptr_eq(&p.body, &sl.body))
+                .unwrap_or(false)
+        };
+        let produced_keys: Vec<UnitKey> = std::iter::once(UnitKey {
+            module: self.module,
+            owner: cand.owner.clone(),
+            kind: UnitKind::Fn,
+            ordinal: 0,
+        })
+        .chain(cand.lambdas.iter().filter(|(o, sl)| !is_reuse(self, &cand.owner, *o, sl)).map(|(o, _)| UnitKey {
+            module: self.module,
+            owner: cand.owner.clone(),
+            kind: UnitKind::Lambda,
+            ordinal: *o,
+        }))
+        .collect();
+        let reused_keys: Vec<UnitKey> = cand
+            .lambdas
+            .iter()
+            .filter(|(o, sl)| is_reuse(self, &cand.owner, *o, sl))
+            .map(|(o, _)| UnitKey {
+                module: self.module,
+                owner: cand.owner.clone(),
+                kind: UnitKind::Lambda,
+                ordinal: *o,
+            })
+            .collect();
+        self.fns.insert(
+            cand.owner.clone(),
+            SealedFn { content_sha: cand.owner_sha, item: cand.owner_item },
+        );
+        self.lambdas.retain(|k, _| k.0 != cand.owner);
+        for (ordinal, sl) in cand.lambdas {
+            self.lambdas.insert((cand.owner.clone(), ordinal), sl);
+        }
+        self.meter.produced += cand.produced;
+        self.meter.reused += cand.reused;
+        self.src = cand.new_src.clone();
+        EditReceipt {
+            new_src: cand.new_src,
+            produced: produced_keys,
+            reused: reused_keys,
+            semantic_recheck_required: true,
+            non_fast_path: None,
+        }
+    }
+
+    /// 显式 pin：目录载荷的修订局部快照。旧 pin 只在其原修订视图读取；
+    /// 跨修订消费按内容指纹由消费方校验（V-10：current/history/pin 同时
+    /// 存活、互不串用）。
+    pub fn pin(&self) -> CatalogPin {
+        CatalogPin {
+            revision_src: self.src.clone(),
+            fns: self.fns.iter().map(|(k, v)| (k.clone(), Rc::clone(&v.item))).collect(),
+            lambdas: self.lambdas.iter().map(|(k, v)| (k.clone(), Rc::clone(&v.body))).collect(),
+        }
+    }
+}
+
+/// 暂存候选（未提交；目录/源不变）。
+pub struct StagedCandidate {
+    owner: String,
+    new_src: String,
+    owner_sha: u64,
+    owner_item: Rc<FnItem>,
+    lambdas: Vec<(u32, SealedLambda)>,
+    produced: usize,
+    reused: usize,
+    semantic_recheck: Vec<u32>,
+}
+
+impl StagedCandidate {
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+    pub fn produced(&self) -> usize {
+        self.produced
+    }
+    pub fn reused(&self) -> usize {
+        self.reused
+    }
+    /// 需语义重验的 lambda 序号（语法共享不免除 capture 重验——§5.2b）。
+    pub fn semantic_recheck(&self) -> &[u32] {
+        &self.semantic_recheck
+    }
+    /// 候选源（诊断/比对用；不落目录）。
+    pub fn new_src(&self) -> &str {
+        &self.new_src
+    }
+}
+
+/// 目录 pin：修订局部视图（旧 pin 句柄不跨修订冒用——`revision_sha` 由
+/// 消费方校验；跨树句柄按 §5.4 拒绝）。
+#[derive(Debug)]
+pub struct CatalogPin {
+    pub revision_src: String,
+    fns: std::collections::HashMap<String, Rc<FnItem>>,
+    #[allow(dead_code)]
+    lambdas: std::collections::HashMap<(String, u32), Rc<ClosureBody>>,
+}
+
+impl CatalogPin {
+    pub fn owner_item(&self, owner: &str) -> Option<&FnItem> {
+        self.fns.get(owner).map(|r| r.as_ref())
+    }
+    pub fn revision_sha(&self) -> u64 {
+        content_sha(self.revision_src.as_bytes())
+    }
 }
 
 fn replace_range(src: &str, span: Span, new: &str) -> String {
