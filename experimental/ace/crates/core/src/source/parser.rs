@@ -91,7 +91,7 @@ fn note_tokenize(span: Span) {
         }
     });
 }
-fn note_parse(name: &str) {
+pub(crate) fn note_parse(name: &str) {
     SYNTAX_WORK.with(|slot| {
         if let Some(work) = slot.borrow_mut().as_mut() {
             *work.parsed_functions.entry(name.into()).or_default() += 1;

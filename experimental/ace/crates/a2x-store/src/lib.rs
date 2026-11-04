@@ -31,9 +31,9 @@ use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{gc_config_default, run_gc, ManagedStore, PutRequest, SpaceReport};
 use ace_core::source::{
     compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
-    compile_text_record_source, compile_text_source, parse_function_fragment,
-    parse_method_fragment, parse_program_with, prepare_function_candidate, resolve_env,
-    SourceProfile,
+    compile_text_record_source, compile_text_source, cst::parse_function_fragment_via_cst,
+    cst::parse_method_fragment_via_cst, parse_program_with, prepare_function_candidate,
+    resolve_env, SourceProfile,
 };
 use ace_core::text_resources::{param_exclusions_fixpoint, ParamExclusions};
 use ace_core::verify::{verify_function_ref, verify_text_function};
@@ -1287,10 +1287,10 @@ impl A2xSession {
         let replaced = &base_src[start..end];
         let old_item = match target {
             WarmTarget::Free { .. } => {
-                parse_function_fragment(replaced, 0..replaced.len(), self.profile)
+                parse_function_fragment_via_cst(replaced, 0..replaced.len(), self.profile)
             }
             WarmTarget::Method { owner, .. } => {
-                parse_method_fragment(replaced, 0..replaced.len(), self.profile, owner)
+                parse_method_fragment_via_cst(replaced, 0..replaced.len(), self.profile, owner)
             }
         }
         .map_err(|d| {
@@ -1314,10 +1314,10 @@ impl A2xSession {
         // 3) the candidate fragment is a single same-named declaration
         let frag_item = match target {
             WarmTarget::Free { .. } => {
-                parse_function_fragment(fragment, 0..fragment.len(), self.profile)
+                parse_function_fragment_via_cst(fragment, 0..fragment.len(), self.profile)
             }
             WarmTarget::Method { owner, .. } => {
-                parse_method_fragment(fragment, 0..fragment.len(), self.profile, owner)
+                parse_method_fragment_via_cst(fragment, 0..fragment.len(), self.profile, owner)
             }
         }
         .map_err(|d| {
@@ -1877,10 +1877,10 @@ impl A2xSession {
             // the caller-provided owner binding context.
             let item = match target {
                 WarmTarget::Free { .. } => {
-                    parse_function_fragment(edited_src, 0..edited_src.len(), profile)
+                    parse_function_fragment_via_cst(edited_src, 0..edited_src.len(), profile)
                 }
                 WarmTarget::Method { owner, .. } => {
-                    parse_method_fragment(edited_src, 0..edited_src.len(), profile, owner)
+                    parse_method_fragment_via_cst(edited_src, 0..edited_src.len(), profile, owner)
                 }
             }
             .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;

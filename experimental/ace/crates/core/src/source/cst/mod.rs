@@ -24,8 +24,9 @@ pub mod units;
 
 pub use frontdoor::{
     parse_closure_fragment_via_cst, parse_fragment_front, parse_front, parse_function_fragment_via_cst,
-    parse_program_via_cst, profile_grammar, warm_profile, FrontBudget, FrontKind, FrontOk,
-    FrontOutcome, FrontRequest, FRONT_CAPS_VERSION,
+    parse_method_fragment_via_cst, parse_program_via_cst, profile_from_slug, profile_grammar,
+    warm_profile,
+    FrontBudget, FrontKind, FrontOk, FrontOutcome, FrontRequest, FRONT_CAPS_VERSION,
 };
 pub use kinds::SourceKinds;
 pub use units::{

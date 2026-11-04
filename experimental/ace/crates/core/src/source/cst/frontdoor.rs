@@ -372,7 +372,7 @@ pub fn parse_fragment_front(
         Ok(p) => p,
         Err(mut ds) => {
             for d in ds.iter_mut() {
-                super::shift::shift_diag(d, range.start);
+                super::shift::shift_diag(d, range.start as i64);
             }
             return FrontOutcome::Diag(ds);
         }
@@ -448,7 +448,13 @@ pub fn parse_function_fragment_via_cst(
         budget: FrontBudget::WORK_OWNED_64MIB,
     }) {
         FrontOutcome::Ok(mut ok) => match ok.program.items.remove(0) {
-            crate::source::ast::Item::Fn(f) => Ok(f),
+            crate::source::ast::Item::Fn(f) => {
+                // PLAN-929（T-04）：计量保真——旧 parser 的 fn 片段路径在
+                // fn_item_tail 内 note_parse；统一前门投影后按真实函数名
+                // 补记（结构门按此对账"改函恰 1 次解析"）。
+                crate::source::parser::note_parse(&f.name.name);
+                Ok(f)
+            }
             _ => Err(Diagnostic::new(
                 crate::atom_text::Stage::Text,
                 "source.infra",
@@ -570,4 +576,124 @@ pub fn parse_closure_fragment_via_cst(
         ExprKind::Closure { .. } => Ok(value),
         _ => unreachable!("checked above"),
     }
+}
+
+/// 旧签名兼容桥：方法片段（`parse_method_fragment` 的统一前门版；
+/// PLAN-929 T-05——a2x-store 方法/ranged 暖编辑的片段生产者迁移入口）。
+///
+/// 合同同旧入口：区间内恰一个方法声明（`static fn`/`fn` 前缀——receiver
+/// 由片段语法决定，owner 由调用方提供）、完整消耗、span 平移回原源绝对
+/// 坐标。统一语法中 `static fn` 仅在 type 块内合法——片段经合成宿主
+/// `type __method_unit { __host_field int <fragment> }` 走整模块请求（占位
+/// 字段满足 record 面最少一字段约束；同 grammar/同投影/
+/// 同预算），提取唯一方法成员后有符号平移回绝对坐标。
+pub fn parse_method_fragment_via_cst(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+    owner: &str,
+) -> Result<FnItem, Diagnostic> {
+    let fragment = match src.get(range.clone()) {
+        Some(f) => f,
+        None => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.incremental-fragment",
+                "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+    };
+    // receiver 形状来自片段语法（镜像类型块成员 parser：`static fn` 从
+    // `static` 起、`fn` 从 `fn` 起——首词判定与 token peek 等价）。
+    let mut words = fragment.split_whitespace();
+    let receiver = match (words.next(), words.next()) {
+        (Some("static"), Some("fn")) => Receiver::Static,
+        (Some("fn"), _) => Receiver::View,
+        _ => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.incremental-fragment",
+                "a method fragment must start with `static fn` or `fn`",
+                crate::atom_text::Span { start: range.start, end: range.end },
+            ))
+        }
+    };
+    let prefix = "type __method_unit {
+    __host_field int
+    ".len();
+    let wrapped = format!("type __method_unit {{
+    __host_field int
+    {fragment}
+}}
+");
+    let outcome = parse_front(FrontRequest {
+        src: &wrapped,
+        profile,
+        kind: FrontKind::WholeModule,
+        budget: FrontBudget::WORK_OWNED_64MIB,
+    });
+    let mut program = match outcome {
+        FrontOutcome::Ok(ok) => ok.program,
+        FrontOutcome::Diag(mut ds) => {
+            let delta = range.start as i64 - prefix as i64;
+            for d in ds.iter_mut() {
+                super::shift::shift_diag(d, delta);
+            }
+            return Err(super::first_diag(&ds));
+        }
+        FrontOutcome::ResourceExhausted { what, limit } => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.resource",
+                format!("resource exhausted: {what} (limit {limit})"),
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+        FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
+            return Err(Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.infra",
+                m,
+                crate::atom_text::Span { start: 0, end: 0 },
+            ))
+        }
+    };
+    let whole = crate::atom_text::Span { start: range.start, end: range.end };
+    let Some(crate::source::ast::Item::Type(ty)) = program.items.pop() else {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.infra",
+            "method wrapper carried no type block".to_string(),
+            crate::atom_text::Span { start: 0, end: 0 },
+        ));
+    };
+    let mut methods = ty.methods;
+    if methods.len() != 1 {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.incremental-fragment",
+            "a method fragment must contain exactly one method declaration",
+            whole,
+        ));
+    }
+    let mut f = methods.remove(0);
+    // 宿主相对 → 片内相对（−prefix）→ 原源绝对（+range.start）。
+    super::shift::shift_fn_item_signed(&mut f, range.start as i64 - prefix as i64);
+    // owner 由调用方提供（同旧合同）；receiver 校验：投影按语法给出。
+    if f.receiver != receiver {
+        return Err(Diagnostic::new(
+            crate::atom_text::Stage::Text,
+            "source.infra",
+            format!("receiver mismatch: prefix says {receiver:?}, projection says {:?}", f.receiver),
+            crate::atom_text::Span { start: 0, end: 0 },
+        ));
+    }
+    f.owner = Some(crate::source::ast::Ident {
+        name: owner.to_string(),
+        span: crate::atom_text::Span { start: range.start, end: range.start },
+    });
+    // PLAN-929（T-05）：计量保真——按真实函数名补记解析（结构门对账）。
+    crate::source::parser::note_parse(&f.name.name);
+    Ok(f)
 }
