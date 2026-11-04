@@ -29,8 +29,9 @@ pub use frontdoor::{
 };
 pub use kinds::SourceKinds;
 pub use units::{
-    content_sha, CatalogPin, EditError, EditReceipt, ProductionMeter, SealedFn, SealedLambda,
-    StagedCandidate, UnitCatalog, UnitKey, UnitKind,
+    content_sha, CatalogEvent, CatalogManifest, CatalogPin, EditError, EditReceipt, ManifestUnit,
+    ProductionMeter, SealedDecl, SealedFn, SealedLambda, StagedCandidate, UnitCatalog, UnitKey,
+    UnitKind,
 };
 
 use crate::atom_text::Diagnostic;

@@ -17,7 +17,7 @@
 //! 证明机制（whole-path 探针的载体，也是后续正式目录的基座）。
 
 use crate::atom_text::Span;
-use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, Program, Stmt};
+use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, ParamMode, Program, Stmt};
 use crate::source::SourceProfile;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -38,6 +38,10 @@ pub fn content_sha(bytes: &[u8]) -> u64 {
 pub enum UnitKind {
     Fn,
     Lambda,
+    /// PLAN-928（T-06）：`type` 声明单元（collections 面）。
+    TypeDecl,
+    /// PLAN-928（T-06）：`enum` 声明单元（collections 面）。
+    EnumDecl,
 }
 
 /// 逻辑单元键（§5.4：module/owner/kind/ordinal；非 CST 节点号/绝对 offset）。
@@ -60,10 +64,66 @@ pub struct SealedLambda {
 }
 
 /// 密封 owner fn 语法体（含整个 body；lambda 子体单列密封）。
+/// `mint_span` = 逻辑身份铸造时的坐标（跨编辑携带不变；§5.3 纪律的
+/// 语法面对应——当前坐标在 `item.span`，身份 = 键+content_sha+mint_span）。
 #[derive(Debug)]
 pub struct SealedFn {
     pub content_sha: u64,
     pub item: Rc<FnItem>,
+    pub mint_span: Span,
+}
+
+/// PLAN-928（T-06）：密封声明单元（type/enum；载荷以文本指纹承载——
+/// 声明的语法体以源切片为身份面）。
+#[derive(Debug)]
+pub struct SealedDecl {
+    pub content_sha: u64,
+    pub name: String,
+    /// TypeDecl / EnumDecl。
+    pub kind: UnitKind,
+    /// 声明首词（`type`/`enum`）起整段 span（当前坐标）。
+    pub span: Span,
+    /// 逻辑身份铸造时的坐标（跨编辑携带）。
+    pub mint_span: Span,
+}
+
+/// PLAN-928（T-06）：接口/声明集变更事件（§5.2：类型/enum/签名改变须
+/// 输出明确事件，不能因调用点文本未改而静默）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CatalogEvent {
+    /// owner 签名（参数/返回/mode）变化——依赖该接口的单元须重验。
+    OwnerSignatureChanged { owner: String },
+    /// 声明内容变化（type/enum）——`dependents` 为目录内引用该声明名的
+    /// owner 集合（名字引用由语法面提取；语义依赖归 resolve 裁决）。
+    DeclChanged { name: String, dependents: Vec<String> },
+    /// 声明集拓扑变化（新增/删除声明）。
+    DeclSetChanged,
+    /// λ 拓扑变化（具名非快路径路径）。
+    LambdaTopologyChanged { owner: String },
+}
+
+/// PLAN-928（T-06）：单元清单（929 消费的可恢复目录投影——版本化、
+/// 无宿主指针、无 trusted 位；身份 = SourceProfile+caps/grammar 版本+
+/// source/单元内容指纹）。
+#[derive(Clone, Debug)]
+pub struct CatalogManifest {
+    pub schema: &'static str,
+    pub module_sha: u64,
+    /// `FRONT_CAPS_VERSION`（调用方注入——目录不持有 caps 常量的引用）。
+    pub caps_version: String,
+    /// profile 名（来源合同，不从内容猜）。
+    pub profile: &'static str,
+    pub units: Vec<ManifestUnit>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManifestUnit {
+    pub kind: UnitKind,
+    pub owner: String,
+    pub ordinal: u32,
+    pub content_sha: u64,
+    pub mint_span: (usize, usize),
+    pub current_span: (usize, usize),
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
@@ -105,9 +165,105 @@ pub struct UnitCatalog {
     pub fns: HashMap<String, SealedFn>,
     /// (owner, ordinal) —— ordinal = owner 内 lambda 的源序创建序。
     pub lambdas: HashMap<(String, u32), SealedLambda>,
+    /// PLAN-928（T-06）：type/enum 声明单元（名 → 密封体）。
+    pub decls: HashMap<String, SealedDecl>,
+    /// 逐次提交累积的变更事件（消费方读取；目录不越权裁决语义）。
+    pub events: Vec<CatalogEvent>,
     pub meter: ProductionMeter,
     /// 目录内当前源文本（编辑的基；提交后更新）。
     src: String,
+}
+
+impl UnitCatalog {
+    /// PLAN-928（T-06）：接口签名摘要（名/参数表/返回/mode——签名变化
+    /// 判定面；不含 body）。
+    pub fn signature_snapshot(&self, owner: &str) -> Option<String> {
+        self.fns.get(owner).map(|s| signature_of(&s.item))
+    }
+
+    /// PLAN-928（T-06）：声明变更事件（外部声明编辑路径提交后调用）——
+    /// `dependents` = 目录内**名字引用**该声明的 owner（语法面；语义
+    /// 依赖归 resolve）。刷新声明指纹。
+    pub fn note_decl_changed(&mut self, name: &str, new_span: Span) {
+        let dependents: Vec<String> = self
+            .fns
+            .iter()
+            .filter(|(_, sf)| references_name(&sf.item, name))
+            .map(|(o, _)| o.clone())
+            .collect();
+        if let Some(d) = self.decls.get_mut(name) {
+            d.span = new_span;
+            d.content_sha = content_sha(self.src.get(new_span.start..new_span.end).unwrap_or("").as_bytes());
+        }
+        self.events.push(CatalogEvent::DeclChanged { name: name.to_string(), dependents });
+        self.events.push(CatalogEvent::DeclSetChanged);
+    }
+
+    /// PLAN-928（T-06）：无指针清单（929 恢复消费；版本+指纹身份，不含
+    /// 宿主指针/trusted 位；恢复深验归 929）。
+    pub fn to_manifest(&self, caps_version: &str) -> CatalogManifest {
+        let mut units: Vec<ManifestUnit> = self
+            .fns
+            .iter()
+            .map(|(owner, sf)| ManifestUnit {
+                kind: UnitKind::Fn,
+                owner: owner.clone(),
+                ordinal: 0,
+                content_sha: sf.content_sha,
+                mint_span: (sf.mint_span.start, sf.mint_span.end),
+                current_span: (sf.item.span.start, sf.item.span.end),
+            })
+            .collect();
+        units.extend(self.lambdas.iter().map(|((owner, ordinal), sl)| ManifestUnit {
+            kind: UnitKind::Lambda,
+            owner: owner.clone(),
+            ordinal: *ordinal,
+            content_sha: sl.content_sha,
+            mint_span: (sl.span.start, sl.span.end),
+            current_span: (sl.span.start, sl.span.end),
+        }));
+        units.extend(self.decls.iter().map(|(name, d)| ManifestUnit {
+            kind: d.kind,
+            owner: name.clone(),
+            ordinal: 0,
+            content_sha: d.content_sha,
+            mint_span: (d.mint_span.start, d.mint_span.end),
+            current_span: (d.span.start, d.span.end),
+        }));
+        units.sort_by(|a, b| (&a.owner, a.ordinal, a.kind as u8).partial_cmp(&(&b.owner, b.ordinal, b.kind as u8)).unwrap_or(std::cmp::Ordering::Equal));
+        CatalogManifest {
+            schema: "ac-source-units/1",
+            module_sha: self.module,
+            caps_version: caps_version.to_string(),
+            profile: self.profile.as_str(),
+            units,
+        }
+    }
+}
+
+/// 签名摘要（声明序：名(参数, ...) -> 返回；mode 词计入）。
+fn signature_of(f: &FnItem) -> String {
+    let params: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| {
+            let mode = match p.mode {
+                ParamMode::Move => "move ",
+                ParamMode::Mut => "mut ",
+                ParamMode::Default => "",
+            };
+            format!("{}{}: {:?}", mode, p.name.name, p.ty.kind)
+        })
+        .collect();
+    format!("{}({}) -> {:?}", f.name.name, params.join(", "), f.ret.kind)
+}
+
+/// 名字引用扫描（语法面：参数/返回/let 注解的类型词）。
+fn references_name(f: &FnItem, name: &str) -> bool {
+    if matches!(&f.ret.kind, crate::source::ast::TypeRef::Record(id) if id.name == name) {
+        return true;
+    }
+    f.params.iter().any(|p| matches!(&p.ty.kind, crate::source::ast::TypeRef::Record(id) if id.name == name))
 }
 
 /// 表达式直接子表达式（值位；Ident 型 callee/名字叶不构成子值）。
@@ -221,17 +377,39 @@ impl UnitCatalog {
             profile,
             fns: HashMap::new(),
             lambdas: HashMap::new(),
+            decls: HashMap::new(),
+            events: Vec::new(),
             meter: ProductionMeter::default(),
             src: src.to_string(),
         };
         for item in &program.items {
+            // PLAN-928（T-06）：声明单元（type/enum）入目录（mint=冷坐标）。
+            match item {
+                Item::Type(t) => {
+                    let sha = content_sha(cat.src.get(t.span.start..t.span.end).unwrap_or("").as_bytes());
+                    cat.decls.insert(
+                        t.name.name.clone(),
+                        SealedDecl { content_sha: sha, name: t.name.name.clone(), kind: UnitKind::TypeDecl, span: t.span, mint_span: t.span },
+                    );
+                    cat.meter.produced += 1;
+                }
+                Item::Enum(e) => {
+                    let sha = content_sha(cat.src.get(e.span.start..e.span.end).unwrap_or("").as_bytes());
+                    cat.decls.insert(
+                        e.name.name.clone(),
+                        SealedDecl { content_sha: sha, name: e.name.name.clone(), kind: UnitKind::EnumDecl, span: e.span, mint_span: e.span },
+                    );
+                    cat.meter.produced += 1;
+                }
+                _ => {}
+            }
             if let Item::Fn(f) = item {
                 if f.script {
                     continue;
                 }
                 let owner = f.name.name.clone();
-                let sha = content_sha(cat.src.get(f.span.start as usize..f.span.end as usize).unwrap_or("").as_bytes());
-                cat.fns.insert(owner.clone(), SealedFn { content_sha: sha, item: Rc::new(f.clone()) });
+                let sha = content_sha(cat.src.get(f.span.start..f.span.end).unwrap_or("").as_bytes());
+                cat.fns.insert(owner.clone(), SealedFn { content_sha: sha, item: Rc::new(f.clone()), mint_span: f.span });
                 cat.meter.produced += 1;
                 let mut lambdas = Vec::new();
                 collect_lambdas(&f.body.stmts, &mut lambdas, &cat.src);
@@ -346,7 +524,26 @@ impl UnitCatalog {
                 };
                 let owner_sha = content_sha(new_fn_src.as_bytes());
                 let owner_changed = self.fns.get(owner).map(|o| o.content_sha) != Some(owner_sha);
-                self.fns.insert(owner.to_string(), SealedFn { content_sha: owner_sha, item: Rc::new(item.clone()) });
+                // PLAN-928（T-06）：签名变化事件（参数/返回/mode 面变化——
+                // 不能因调用点文本未改而静默；§5.2）。
+                let signature_changed = owner_changed
+                    && self
+                        .fns
+                        .get(owner)
+                        .map(|old| signature_of(&old.item) != signature_of(&item))
+                        .unwrap_or(true);
+                if signature_changed {
+                    self.events.push(CatalogEvent::OwnerSignatureChanged { owner: owner.to_string() });
+                }
+                let prev_mint = self.fns.get(owner).map(|o| o.mint_span);
+                self.fns.insert(
+                    owner.to_string(),
+                    SealedFn {
+                        content_sha: owner_sha,
+                        item: Rc::new(item.clone()),
+                        mint_span: prev_mint.unwrap_or(item.span),
+                    },
+                );
                 self.meter.produced += 1;
                 // 遍历新 owner 的 lambda：同文（content sha 相等）=> 复用旧 Rc
                 // （生产 0）；文变 => 新密封（生产 1）。序漂移且文同 => 具名
@@ -380,6 +577,7 @@ impl UnitCatalog {
                 } else {
                     // 拓扑变化（数量不等）→ 具名非快路径：整 owner lambda 重产。
                     non_fast = Some("owner-lambda-topology-changed");
+                    self.events.push(CatalogEvent::LambdaTopologyChanged { owner: owner.to_string() });
                     self.lambdas.retain(|k, _| k.0 != owner);
                     for (ordinal, (span, lsha)) in lambdas.into_iter().enumerate() {
                         let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
@@ -536,9 +734,23 @@ impl UnitCatalog {
                 ordinal: *o,
             })
             .collect();
+        let prev_mint = self.fns.get(&cand.owner).map(|o| o.mint_span);
+        // PLAN-928（T-06）：签名变化事件（提交面；与直接路径同判定）。
+        if self
+            .fns
+            .get(&cand.owner)
+            .map(|old| signature_of(&old.item) != signature_of(&cand.owner_item))
+            .unwrap_or(false)
+        {
+            self.events.push(CatalogEvent::OwnerSignatureChanged { owner: cand.owner.clone() });
+        }
         self.fns.insert(
             cand.owner.clone(),
-            SealedFn { content_sha: cand.owner_sha, item: cand.owner_item },
+            SealedFn {
+                content_sha: cand.owner_sha,
+                item: cand.owner_item,
+                mint_span: prev_mint.unwrap_or(Span { start: 0, end: 0 }),
+            },
         );
         self.lambdas.retain(|k, _| k.0 != cand.owner);
         for (ordinal, sl) in cand.lambdas {

@@ -391,3 +391,61 @@ fn t05_pin_generations_coexist() {
     let _ = cat.lambda("main", 0).expect("catalog alive after pins dropped");
 }
 
+
+/// PLAN-928 T-06（V-06 面）：签名变化事件、坐标漂移不改 mint 身份、
+/// 清单无指针稳定。
+#[test]
+fn t06_events_identity_manifest() {
+    // 声明/签名面（collections：type 声明 + 签名，无 lambda）。
+    let src = "type Item { name Str; code int }
+fn make(x Item) int {
+    return x.code
+}
+fn main() int {
+    let a Item = Item(49, 41)
+    return make(a.move)
+}
+";
+    let mut cat = units::UnitCatalog::build(src, ace_core::source::SourceProfile::Collections, BUDGET).expect("cold");
+    assert!(cat.decls.contains_key("Item"), "type decl is a catalog unit");
+    assert_eq!(cat.meter.produced, 3, "decl(1)+fns(2)");
+    let make_mint = cat.fns["make"].mint_span;
+    // body-only 编辑：mint 保持、无签名事件。
+    let old_span = cat.fns["make"].item.span;
+    let new_fn = cat.src()[old_span.start..old_span.end].replace("x.code", "x.code + 1");
+    let cand = cat.stage_owner_edit("make", &new_fn, BUDGET).expect("stage");
+    cat.commit_staged(cand);
+    assert_eq!(cat.fns["make"].mint_span, make_mint, "body-only edit keeps mint span");
+    assert!(!cat.events.iter().any(|e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { .. })), "no signature event on body-only edit");
+    // 签名变化：事件必达，mint 携带不变。
+    let old_span = cat.fns["make"].item.span;
+    let new_fn = cat.src()[old_span.start..old_span.end].replace("fn make(x Item) int", "fn make(x Item, extra int) int");
+    let cand = cat.stage_owner_edit("make", &new_fn, BUDGET).expect("stage2");
+    cat.commit_staged(cand);
+    assert_eq!(cat.fns["make"].mint_span, make_mint, "mint carries across signature edit");
+    assert!(
+        cat.events.iter().any(|e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner } if owner == "make")),
+        "signature change must emit an explicit event"
+    );
+    // 声明变更事件：依赖 = 名字引用该声明的 owner。
+    cat.note_decl_changed("Item", cat.decls["Item"].span);
+    let has_decl_event = cat.events.iter().any(|e| matches!(e, units::CatalogEvent::DeclChanged { name, dependents } if name == "Item" && dependents.contains(&"make".to_string())));
+    assert!(has_decl_event, "decl change carries referencing owners");
+    // 清单：无指针、确定、含单元种类（collections：decl+fn）。
+    let m1 = cat.to_manifest(cst::FRONT_CAPS_VERSION);
+    let m2 = cat.to_manifest(cst::FRONT_CAPS_VERSION);
+    assert_eq!(format!("{m1:?}"), format!("{m2:?}"), "manifest deterministic");
+    assert!(m1.units.iter().any(|u| u.kind == units::UnitKind::TypeDecl));
+    assert!(m1.units.iter().any(|u| u.kind == units::UnitKind::Fn && u.owner == "make"));
+    assert_eq!(m1.schema, "ac-source-units/1");
+
+    // lambda 单元面（closures）。
+    let src2 = "fn main() int {
+    let f = (n int) => { return n + 1 }
+    return f(1)
+}
+";
+    let cat2 = units::UnitCatalog::build(src2, CL, BUDGET).expect("cold-closures");
+    let m3 = cat2.to_manifest(cst::FRONT_CAPS_VERSION);
+    assert!(m3.units.iter().any(|u| u.kind == units::UnitKind::Lambda), "lambda units in manifest");
+}

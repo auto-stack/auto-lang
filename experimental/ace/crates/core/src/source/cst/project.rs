@@ -786,7 +786,17 @@ fn walk_fn_item_ex(
             && cx.profile.is_collections()
             && (btext == "str" || (btext == "char" && !cx.profile.is_closures()));
         let entry_void = bg == cx.k.tok_ident && cx.profile.is_entry_unit() && btext == "void";
-        let record_name = bg == cx.k.tok_ident && cx.profile.is_record() && !cx.profile.is_collections();
+        let record_name = bg == cx.k.tok_ident && cx.profile.is_record();
+        // collections 词域拒绝先于名义接受门（str/char 命名拒绝不得被
+        // record_name 的 ident 接受吞掉）。
+        if coll_reject {
+            return (i, Some(Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                format!("type `{}` is not part of this source profile", btext),
+                sp,
+            )));
+        }
         if !builtin && !text_word && !entry_void && !record_name && !coll_word {
             if btext == "{" {
                 return (i, Some(Diagnostic::new(
@@ -794,14 +804,6 @@ fn walk_fn_item_ex(
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
-                )));
-            }
-            if coll_reject {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("type `{}` is not part of this source profile", btext),
-                    sp,
                 )));
             }
             if bg == cx.k.tok_ident || bg == cx.k.tok_r_move || bg == cx.k.tok_r_to {
@@ -840,7 +842,15 @@ fn walk_fn_item_ex(
             && cx.profile.is_collections()
             && (text == "str" || (text == "char" && !cx.profile.is_closures()));
         let entry_void = g == k.tok_ident && cx.profile.is_entry_unit() && text == "void";
-        let record_name = g == k.tok_ident && cx.profile.is_record() && !cx.profile.is_collections();
+        let record_name = g == k.tok_ident && cx.profile.is_record();
+        if coll_reject {
+            return (i, Some(Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                format!("type `{}` is not part of this source profile", text),
+                sp,
+            )));
+        }
         if !builtin && !text_word && !entry_void && !record_name && !coll_word {
             if text == "{" {
                 return (i, Some(Diagnostic::new(
@@ -848,14 +858,6 @@ fn walk_fn_item_ex(
                     "source.unsupported",
                     "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name_span.join(rparen_span),
-                )));
-            }
-            if coll_reject {
-                return (i, Some(Diagnostic::new(
-                    Stage::Text,
-                    "source.unsupported",
-                    format!("type `{}` is not part of this source profile", text),
-                    sp,
                 )));
             }
             if g == k.tok_ident || g == k.tok_r_move || g == k.tok_r_to {
