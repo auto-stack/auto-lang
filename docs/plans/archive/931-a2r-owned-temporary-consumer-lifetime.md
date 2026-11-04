@@ -154,6 +154,10 @@ T-06使能新文件化目录`crates/auto-lang/test/cases/ace-m1/a2r-owned-tempor
 
 ## 9. 复审记录
 
+2026-11-04 stage:merge / outcome:pass / delivery:84c894b92（master tip 前后 e79e4f4e4 簿记提交；ff-only 无 merge commit）/ Spec:docs/specs/auto-a2x/{temporary-consumer-lifetime,architecture,checked-resource-facts,incremental-and-cache}.md / archive:docs/plans/archive/931-a2r-owned-temporary-consumer-lifetime.md（10/10，status: archived）/ cleanup:双树 guard clean 移除、分支/组目录删、plan-artifacts/plan-931 整删、登记刷新、无具名持有 / landing:主检出 release worker 重建（Nov4 19:15）+ 931 case 组主检出复跑 PASS；批量回归未到期（925 后合入 927/928/931 均非 5 倍数、收据<48h） / pending:V-09 接缝联验归 929（D-931-1）；未冒 M1 总签章
+
+2026-11-04 stage:goal / plan_id:PLAN-931 / plan_revision:r2 / round:4 / from:merge / to:done / status:archived / outcome:pass / worktree:(已清) / commit:e79e4f4e4 / next:done
+
 2026-11-04 stage:merge / plan_id:PLAN-931:r2 / prepared:基线 d7d0aa22c（R2 pass）+SD-01..04 于 worktree 冻结为 a9220262e / landed:master 两次前移（37503a3f5=928合入、053cdb9b4=AGE docs）→ rebase×2，range-diff 5/5 全等（旧→新：ed4c53a26→75149c025、b3a6a17c6→b2e0581c9、0d162752d→6c4fc09d5、d7d0aa22c→d23393cd7、a9220262e→ca437dce5→84c894b92），`git merge --ff-only plan-931-dev` → master tip=84c894b92（无 merge commit）/ 冻结并集门禁：12/12 PASS 于 ca437dce5（职责 5+集成 7）；053cdb9b4 为纯 AGE docs/928归档簿记（ace 触面零重叠，证据复用）+ case-a2r-owned-temporaries-931 于 84c894b92 复跑 PASS / canonical_verified:docs/specs/auto-a2x/{temporary-consumer-lifetime(新增,sha16 8cfdc8e5833a2777),architecture,checked-resource-facts,incremental-and-cache}.md 均在 84c894b92 / archived:本提交（计划移入 archive/，status: archived；KNOWN-DEBT 外科暂存仅含 D-925-2 关闭+D-931-1/2/3 登记，其余会话 WIP 未携带） / cleaned:wt-guard 双树 clean→worktree auto-lang+auto-down 移除、分支 plan-931-dev 删除（was 84c894b92）、组目录 .wt/lang-931 移除；plan-artifacts/plan-931 整目录删除（证据摘要已折叠本计划；无具名持有，D-931-1 为债务记录非磁盘持有）；登记表 scope 移除 / merge outcome:pass
 
 2026-11-04 stage:goal / plan_id:PLAN-931 / plan_revision:r2 / round:3 / from:review / to:merge / status:reviewed / outcome:pass / worktree:D:/autostack/.wt/lang-931/auto-lang / commit:d7d0aa22c / next:merge
