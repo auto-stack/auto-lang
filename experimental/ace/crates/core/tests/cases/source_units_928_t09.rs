@@ -282,3 +282,49 @@ fn t09_large_source_catalog_bounded() {
     assert_eq!(m.units.len(), n);
     assert!(units::decode_manifest(&units::encode_manifest(&m)).unwrap().matches_manifest(&m));
 }
+
+/// T-10（真缺陷回归）：括号组后随点步 ⇒ Method 接收者基座，非间接调用。
+/// T-07 首版把 `(a + "z").len()` 误投 CallValue（Text profile a2c_rt
+/// ledger 面暴露）；`(f)(3)`（无点步）仍是间接调用。差分 vs 手写。
+#[test]
+fn t10_paren_group_receiver_vs_indirect_callee() {
+    use ace_core::source::cst::parse_program_via_cst;
+    use ace_core::source::parse_program_with_handwritten;
+    let text_src = "fn main() int {
+    let a Str = \"xy\"
+    let hit bool = a.to(str) == \"x\" || (a + \"z\").len() == 3
+    if hit {
+        return 1
+    }
+    return a.len()
+}
+";
+    for (src, profile, what) in [
+        (text_src, SourceProfile::Text, "text (group).method()"),
+        ("fn main() int {
+    let f = (n int) => { return n + 1 }
+    return (f)(3)
+}
+", CL, "closures (f)(3) indirect"),
+        ("fn main() int {
+    let g = (n int) => { return n * 2 }
+    return (g)(3) + (g)(1).max2(2)
+}
+", CL, "closures mixed"),
+    ] {
+        let old = parse_program_with_handwritten(src, profile);
+        let new = parse_program_via_cst(src, profile);
+        match (&old, &new) {
+            (Ok(a), Ok(b)) => assert_eq!(
+                format!("{a:?}"), format!("{b:?}"),
+                "{what}: AST mismatch old(handwritten) vs new(CST)"
+            ),
+            (Err(a), Err(b)) => assert_eq!(
+                (a.stage, a.code.as_str(), a.message.as_str(), a.span),
+                (b.stage, b.code.as_str(), b.message.as_str(), b.span),
+                "{what}: diag mismatch"
+            ),
+            _ => panic!("{what}: outcome mismatch"),
+        }
+    }
+}

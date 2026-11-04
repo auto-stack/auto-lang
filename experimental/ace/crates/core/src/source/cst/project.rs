@@ -3737,8 +3737,16 @@ impl<'a> Engine<'a> {
             }
             // 括号组 callee 在 atom 层显式探测（沿结构链降到 atom-expr，
             // 其 k.expr 孩子即括号组值位）。
+            // PLAN-928（T-10 修正）：括号组 callee 在 atom 层显式探测（沿
+            // 结构链降到 atom-expr，其 k.expr 孩子即括号组值位）。下降途中
+            // 若穿过 postfix-step（如 `(a + "z").len()` 的 `.len`），括号组
+            // 是**接收者基座**而非被调——不得强制 CallValue；仅当括号组是
+            // 整个 callee（`(f)(3)` 形，无点步）才是间接调用。T-07 首版漏
+            // 此区分，Text profile 的 `(组).方法()` 被误投 CallValue
+            // （a2c_rt ledger 面实测暴露）。
             {
                 let mut a = wrap;
+                let mut through_postfix_step = false;
                 loop {
                     let ka = self.cx.tree.kind(a);
                     if ka == self.cx.k.atom_expr {
@@ -3748,6 +3756,16 @@ impl<'a> Engine<'a> {
                         || ka == self.cx.k.postfix_expr
                         || ka == KIND_POSTFIX
                     {
+                        if let Some(step_kind) = self.cx.k.postfix_step {
+                            if self
+                                .cx
+                                .children(a)
+                                .into_iter()
+                                .any(|c| self.cx.tree.kind(c) == step_kind)
+                            {
+                                through_postfix_step = true;
+                            }
+                        }
                         match self
                             .cx
                             .children(a)
@@ -3761,7 +3779,7 @@ impl<'a> Engine<'a> {
                         break;
                     }
                 }
-                if self.cx.tree.kind(a) == self.cx.k.atom_expr {
+                if !through_postfix_step && self.cx.tree.kind(a) == self.cx.k.atom_expr {
                     if let Some(e) = self
                         .cx
                         .children(a)
