@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/composite-source-projection.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-927, PLAN-864, PLAN-865, PLAN-909, PLAN-912, PLAN-913]
-current_step: 1
+current_step: 2
 total_steps: 12
 ---
 
@@ -145,8 +145,8 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 
 | T | owner_stage | 前置/真实写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 927稳定接口；私有调查可先 | 对齐九profile/原语料/924–926窗口与输入hash，AC-01/09 | [ ] |
-| T-02 | work | T-01，私有最小整链 | 5.2四项及5.4同文单元/当前capture/候选pin可行性、预算/AST payload保留机制决策，失败needs_replan；AC-03/04/07/08 | [ ] |
+| T-01 | work | 927稳定接口；私有调查可先 | 对齐九profile/原语料/924–926窗口与输入hash，AC-01/09 | [x] 2026-11-04：基面 master `54829a61b`（927 交付+归档在库）。九profile 枚举在位（Collections/Closures 走 `parse_program_with_handwritten` 迁移分支）；**923/924/925/926 全部 archived**（起草期 WIP 交窗约束消解为消费已落地合同）；审计§6 输入 6 SAME/6 DRIFT 全可归因已落地计划、零异常（closures_fn.rs/ast.rs/lexer.rs 未动）；语料/固定组/规范/写面清单冻结于 `plan-artifacts/plan-928/t01-inventory-freeze.md` |
+| T-02 | work | T-01，私有最小整链 | 5.2四项及5.4同文单元/当前capture/候选pin可行性、预算/AST payload保留机制决策，失败needs_replan；AC-03/04/07/08 | [x] 2026-11-04：**机制决策=密封 body 句柄**（不可变 Rc 载荷+内容指纹，物化计1/复用计0/废弃物化单列；不改 AST 本体——resolve 可变写回保持）。closures profile 经统一前门：auto-source.at 增 lambda-expr/lambda-params/fn-type 族（全 `[closures]` 门控，七既有 profile GrammarId/行为字节稳定）；投影层 enter_lambda/Lambda 帧/project_fn_type/叶级 fn 型跳跃；`cst/units.rs` 最小单元目录。探针 7/7（worktree 提交 `wip T-02`）：(a)单λ编辑物化恰1·兄弟/owner Rc共享0生产 (b)owner变同文λ共享+semantic_recheck信号 (c)兄弟fn不重建 (d)坏编辑保旧态·修复正确；§5.4同文异owner不合并·同owner重复ordinal区分·拓扑变化具名非快路径如实重产；预算1B→typed ResourceExhausted。K01/K02/K06+表达式体/零参/多参/嵌套 差分 vs 手写**字节全等**；conformance **307/307**、`ace-source`+`ace-source-syntax-927` PASS。**登记 T-04**：负例诊断 parity（未闭合块旧EOF报 vs 新恢复位报） |
 | T-03 | work | T-02，grammar/core投影S窗 | type/enum/List/is/for-in/方法后缀与拒绝，V-01/02；AC-01/02 | [ ] |
 | T-04 | work | T-02/03，grammar函数类型/lambda | closures/嵌套/间接调用AST与诊断，V-01/02；AC-01/02 | [ ] |
 | T-05 | work | T-04，CST单元/AST保留/候选短窗 | 目标lambda/owner保留子体、同文身份/creator映射与失败/pin事务，V-03/04/05/09/10；AC-03/04/07 | [ ] |
