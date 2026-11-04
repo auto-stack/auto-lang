@@ -28,6 +28,8 @@ mod boundaries;
 mod cert_coll_904;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
+#[path = "cases/coll_manifest_oracle_933.rs"]
+mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]
 mod collections_904;
 #[path = "cases/collections_face.rs"]
@@ -56,5 +58,7 @@ mod scalar_semantics;
 mod store_cache;
 #[path = "cases/store_coll_904.rs"]
 mod store_coll_904;
+#[path = "cases/store_coll_933.rs"]
+mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;

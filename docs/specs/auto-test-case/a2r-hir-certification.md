@@ -64,3 +64,20 @@ body-edit P90=427/490/176ms≤2000ms，fresh 单列（828 先例）。
   schema 携带该字段=无效。两腿（actual+手写 std-only reference）真编译运行对独立
   oracle；父侧全文件重 hash+字节金样+未声明额外文件拒+路径域校验（相对/无 `..`/
   归一化唯一/大小写碰撞具名拒）。
+
+### 904 golden manifest 独立 oracle（PLAN-933 交付）
+
+- 20 个 `golden-*/manifest.json`（D-931-3 经日常 emit 通道补齐入库）由**独立
+  reference 逐字节重建核验**：oracle 测试（`a2x-worker/tests/cases/
+  coll_manifest_oracle_933.rs`）不 import 任何 `ace-*` 生产 crate，自含
+  FNV-1a-64/SHA-256（公开算法+公开测试向量自检），从跟踪 `src/*.at`、三份金样
+  字节与冻结合同字面量重建全部 16 字段+JSON 字节格式，20/20 与金样逐字节一致；
+  错输入哈希/错源/错 config/近邻 schema/错文件序/缺尾 LF/篡改金样副本在字节与
+  typed 双轴均被拒（V-07）。**分轴保持**：该 oracle 是 emit/oracle 轴的独立可审
+  计面，不替代日常 case 通道（真实 worker+父门逐字节判）与显式 rustc 认证腿；
+  actual emitter 永远不是 oracle 生成器。
+- store/session 四态轴（`store_coll_933.rs`）：20 源逐例 fresh（绑全源
+  sha256+冻结 config）/stale-base 具名拒/空白编辑（身份重绑、生产 0——
+  未改函数生产 0 门）/语义编辑（生产恰 1）/历史回访（store hit、生产 0）/
+  restart 重装配字节一致。恢复→首编辑 SYN 腿归 PLAN-929（D-931-1 pending），
+  本通道不冒充。

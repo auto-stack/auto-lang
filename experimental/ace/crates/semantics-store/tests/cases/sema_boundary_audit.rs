@@ -197,15 +197,20 @@ fn assert_sanctioned_paths(changed: &str) {
     }
 }
 
-/// V-09: every frozen interface version HAS a written provenance — the
-/// constants the code mints are exactly the ones the frozen decision
-/// document names (single source of truth check).
-#[test]
-fn sema_boundary_frozen_versions_have_provenance() {
-    let doc = std::fs::read_to_string(
-        repo_root().join("docs/plans/attachments/796/contract-decision.md"),
-    )
-    .expect("contract-decision.md present");
+/// The TRACKED frozen-authority document (PLAN-933 SD-01): the
+/// canonical spec section transcribing the PLAN-796 D2–D8 decisions.
+/// The original `docs/plans/attachments/796/contract-decision.md` is
+/// git-ignored by the 2026-10-31 evidence policy, so a fresh checkout
+/// must rely on THIS tracked source (D-925-1 closure).
+fn frozen_authority_doc() -> String {
+    std::fs::read_to_string(repo_root().join("docs/specs/auto-semantics/semantic-contract.md"))
+        .expect("semantic-contract.md (frozen D2–D8 provenance) present")
+}
+
+/// The frozen-version provenance assertions, factored so mutation
+/// controls can feed doctored copies through the SAME judging face
+/// (assertion strength is the original test's, path-swapped only).
+fn assert_frozen_versions_documented(doc: &str) {
     for (constant, value) in [
         ("SEMA_PRODUCER_ID", ace_semantics_contract::SEMA_PRODUCER_ID),
         (
@@ -227,7 +232,7 @@ fn sema_boundary_frozen_versions_have_provenance() {
     ] {
         assert!(
             doc.contains(value),
-            "{constant} = `{value}` must appear in contract-decision.md"
+            "{constant} = `{value}` must appear in the frozen provenance authority"
         );
     }
     assert!(
@@ -248,9 +253,37 @@ fn sema_boundary_frozen_versions_have_provenance() {
     assert_ne!(ace_semantics_store::SEMA_LAYER, "A06");
 }
 
-/// V-09: the 797-consumption surface is COMPLETE per the frozen
-/// description set (D6 / §5.1) — compile-time exhaustiveness plus a
-/// documented-set cross-check.
+/// The description-surface token assertions (D6), factored the same way.
+fn assert_description_surface_documented(doc: &str) {
+    for token in [
+        "U32",
+        "U64",
+        "F64",
+        "ByteBuffer",
+        "Opaque",
+        "view|mut|owned",
+        "间接",
+        "ac796/ct-seam/v1",
+    ] {
+        assert!(
+            doc.contains(token),
+            "D6 documents `{token}` for the 797 surface"
+        );
+    }
+}
+
+/// V-09 / PLAN-933 V-01: every frozen interface version HAS a written
+/// provenance — the constants the code mints are exactly the ones the
+/// frozen decision authority (the tracked spec section transcribing the
+/// 796 contract decision, SD-01) names. No git-ignored input.
+#[test]
+fn sema_boundary_frozen_versions_have_provenance() {
+    assert_frozen_versions_documented(&frozen_authority_doc());
+}
+
+/// V-09 / PLAN-933 V-01: the 797-consumption surface is COMPLETE per the
+/// frozen description set (D6 / §5.1) — compile-time exhaustiveness plus
+/// a documented-set cross-check against the tracked authority.
 #[test]
 fn sema_boundary_description_surface_frozen() {
     use ace_semantics_contract::TypeDesc::*;
@@ -272,29 +305,61 @@ fn sema_boundary_description_surface_frozen() {
         | Mode { .. } => 13usize,
     };
     assert_eq!(count(&ace_semantics_contract::TypeDesc::I32), 13);
-    let doc = std::fs::read_to_string(
-        repo_root().join("docs/plans/attachments/796/contract-decision.md"),
-    )
-    .unwrap();
-    for token in [
-        "U32",
-        "U64",
-        "F64",
-        "ByteBuffer",
-        "Opaque",
-        "view|mut|owned",
-        "间接",
-        "ac796/ct-seam/v1",
-    ] {
-        assert!(
-            doc.contains(token),
-            "D6 documents `{token}` for the 797 surface"
-        );
-    }
+    assert_description_surface_documented(&frozen_authority_doc());
     // modes are the three frozen ones
     assert_eq!(ace_semantics_contract::Mode::View.as_str(), "view");
     assert_eq!(ace_semantics_contract::Mode::Mut.as_str(), "mut");
     assert_eq!(ace_semantics_contract::Mode::Owned.as_str(), "owned");
+}
+
+/// PLAN-933 V-02: the frozen-authority assertions are REAL checks — a
+/// doctored authority copy (wrong producer/schema/algo/layer, dropped
+/// description or schema token, near-neighbor values) must be rejected
+/// by the same judging face the tracked spec goes through. The real
+/// tracked document is the accepted control (the two tests above).
+#[test]
+fn sema_boundary_frozen_authority_rejects_mutations() {
+    let doc = frozen_authority_doc();
+    let versions_muts: &[(&str, &str)] = &[
+        // wrong producer
+        ("ac796.sema-probe/1", "ac796.sema-probe/2"),
+        // dropped ref schema
+        ("ac796/semaref/v1", "ac796/semaref/REDACTED"),
+        // near-neighbor page schema (v3 for v2)
+        ("ac796/sema-page/v2", "ac796/sema-page/v3"),
+        // dropped logical domain
+        ("ac796/logical/v1", "ac796/logical/REDACTED"),
+        // near-neighbor algo id
+        ("ac796-bidir-worklist/1", "ac796-bidir-worklist/2"),
+        // dropped ct seam schema
+        ("ac796/ct-seam/v1", "ac796/ct-seam/REDACTED"),
+        // dropped carrier kind
+        ("SnapshotRecord", "CarrierRedacted"),
+        // near-neighbor store layer (S797 keeps the != A06 property, so
+        // only the documented-layer check can catch it)
+        ("`S796`", "`S797`"),
+    ];
+    for (from, to) in versions_muts {
+        let mutated = doc.replace(from, to);
+        assert_ne!(&mutated, &doc, "mutation `{from}` must change the doc");
+        assert!(
+            std::panic::catch_unwind(|| { assert_frozen_versions_documented(&mutated) }).is_err(),
+            "mutated authority (`{from}` -> `{to}`) must be rejected"
+        );
+    }
+    for (from, to) in [
+        ("ByteBuffer", "ByteBufRedacted"),
+        ("view|mut|owned", "view|mut|REDACTED"),
+        ("间接", "直接"),
+    ] {
+        let mutated = doc.replace(from, to);
+        assert_ne!(&mutated, &doc, "mutation `{from}` must change the doc");
+        assert!(
+            std::panic::catch_unwind(|| { assert_description_surface_documented(&mutated) })
+                .is_err(),
+            "mutated description surface (`{from}` -> `{to}`) must be rejected"
+        );
+    }
 }
 
 /// V-09 (T-06 landed): the corpus files carry the EXECUTED status and

@@ -63,6 +63,30 @@ ref 都须当前（包/模块/存在性/内容版本）；外属、外包、除�
 消费者的唯一登记源；`matrix_invariants` 强校验：无重复 id、Future 行有
 owner、页载体类别必须登记**当前**页 schema（v1/v2 漂移在库级拦截）。
 
+## 冻结身份/版本/描述面权威（PLAN-796 D2–D8 转写，PLAN-933 SD-01）
+
+以下值是 796 冻结决定的**唯一跟踪权威**（转写自原 contract-decision.md，
+sha256 `064adbd10cc827122d053e30c35f8bd249aa1d7b377662d382566533142c5f76`；
+该附件按 2026-10-31 证据政策不入库，本节取代其读入依赖地位）。生产常量
+（`semantics-contract/src/{identity,codec}.rs`、`semantics/src/{query,reflect}.rs`、
+`semantics-store/src/store.rs`）是被测值，必须与本节一致——两例边界测试
+（`semantics-store/tests/cases/sema_boundary_audit.rs`）逐项核对本节：
+
+- **D2/D3 身份与 ref envelope**：producer/owner `ac796.sema-probe/1`；
+  logical 域 `ac796/logical/v1`；ref schema `ac796/semaref/v1`（消费端
+  admit 校验 owner+schema，不匹配=受控 `RefError`）。
+- **D5 页 envelope schema**：首版 `ac796/sema-page/v1`（codec 1）；现行
+  `ac796/sema-page/v2`（进所有查询键与页头校验，旧 v1 页在新键下不可达，
+  无同键异值）。
+- **D6 描述 codec 闭包（797 表示支持，恰 13 项 TypeDesc）**：
+  Unit/I32/U32/I64/U64/F64/Bool/Char/ByteBuffer/Opaque(name)/Fn(params,ret)/
+  Record{DeclRef 间接}/Mode{view|mut|owned}。递归 record 一律经间接 DeclRef；
+  CT/实例/runtime 接缝 Schema `ac796/ct-seam/v1`。
+- **D7 查询键 algo**：`ac796-bidir-worklist/1`。
+- **D8 store 受管隔离 namespace**：layer `S796`（绝不写 `A06`——不冒充
+  783 Future 登记的旧 producer）；carrier ChunkKind `SnapshotRecord`（通用
+  版本化记录框，绝不用 `Hir`——不把 HIR kind 冒充语义值）。
+
 ## PLAN-817：真实执行域指针（只追加，模型合同不变）
 
 796 模型合同零修改（`CtResult::admit_as_model` 拒 vm_execute；`ModelCt`/模型计数
