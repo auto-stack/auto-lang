@@ -27,8 +27,12 @@ use ace_a2x_core::{A2xReject, FnFacts, FnKind, SemanticView, Ty};
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RustTargetProvider;
 
-/// The print-pass version bound into Rust fragment keys (frozen).
-pub const RUST_PRINT_VERSION: &str = "a2x-print/1";
+/// The print-pass version bound into Rust fragment keys. PLAN-931 bumped
+/// 1→2: the scoped consumer-anchored view-temp frees, verified external
+/// modes and MoveOwn arg transfer change the printed fragment bytes, so
+/// every pre-931 Rust fragment (all three families share this axis) must
+/// miss once and re-lower — never serve the old premature-free shape.
+pub const RUST_PRINT_VERSION: &str = "a2x-print/2";
 
 impl RustTargetProvider {
     pub fn v1() -> Self {
