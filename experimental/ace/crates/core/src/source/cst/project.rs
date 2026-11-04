@@ -497,6 +497,31 @@ fn leaf_span(cx: &Cx, l: u32) -> Span {
     cx.span_of(l)
 }
 
+/// PLAN-928：叶级 fn 型跳跃（closures 面 ret/ann 位；`fn ( 词, ... ) [->] 词|嵌套fn型`）。
+/// 入参 `i` 指向 `fn` 词；返回越过整个 fn 型后的下标。
+fn skip_fn_type_leaves(leaves: &[(u32, u32, String)], mut i: usize) -> usize {
+    i += 1; // `fn`
+    if i < leaves.len() && leaves[i].2 == "(" {
+        i += 1;
+        let mut depth = 1usize;
+        while i < leaves.len() && depth > 0 {
+            if leaves[i].2 == "(" {
+                depth += 1;
+            } else if leaves[i].2 == ")" {
+                depth -= 1;
+            }
+            i += 1;
+        }
+    }
+    if i < leaves.len() && leaves[i].2 == "->" {
+        i += 1;
+    }
+    if i < leaves.len() && leaves[i].2 == "fn" {
+        return skip_fn_type_leaves(leaves, i);
+    }
+    i + 1
+}
+
 /// 旧 fn_item_tail 期望序列（fn 关键字已匹配）。`beyond` = 区域后首 token
 /// (kind, spelling)——恢复截断在 `)` 时，结果位错误在该 token 上。
 fn walk_fn_item(
@@ -576,7 +601,8 @@ fn walk_fn_item_ex(
                 let (_, g, text) = at(i);
                 let is_move = g == k.tok_r_move;
                 let is_mut = text == "mut";
-                let admits_move = cx.profile.is_text();
+                // PLAN-928：closures 面的 move 参数（`fn make(move s Str)`）。
+                let admits_move = cx.profile.is_text() || cx.profile.is_closures();
                 let admits_mut = cx.profile.is_text() || cx.profile.is_record();
                 if (is_move && admits_move) || (is_mut && admits_mut) {
                     i += 1;
@@ -697,6 +723,10 @@ fn walk_fn_item_ex(
     }
     {
         let (sp, g, text) = at(i);
+        // PLAN-928：closures 面 ret 位 fn 型（`fn(T0, ...) [->] R`，可嵌套）。
+        if cx.profile.is_closures() && text == "fn" {
+            i = skip_fn_type_leaves(leaves, i);
+        } else {
         // 旧 fn_item_tail 结果位分类：int/i32/bool 全域；text 面 ident 仅
         // str/Str/char；entry 面 ident 仅 void；record 面任意 ident（名义）。
         let builtin = text == "int" || text == "i32" || text == "bool";
@@ -729,6 +759,7 @@ fn walk_fn_item_ex(
             )));
         }
         i += 1;
+        }
     }
     // 6) `{`（体）→ 语句序列游走。
     if i >= leaves.len() {
@@ -1142,15 +1173,16 @@ impl<'c, 'a> Walker<'c, 'a> {
                 // 注解
                 if let Some((asp, ag, atext, _)) = self.cur() {
                     let is_type = atext == "int" || atext == "i32" || atext == "bool";
-                    let is_text = self.cx.profile.is_text();
-                    if ag == k.tok_ident && !is_text && matches!(atext, "str" | "Str" | "char") {
+                    // PLAN-928：collections/closures 面拥有 Str（元素域）。
+                    let admits_text = self.cx.profile.is_text() || self.cx.profile.is_collections();
+                    if ag == k.tok_ident && !admits_text && matches!(atext, "str" | "Str" | "char") {
                         return Some(self.unsupported(
                             format!("type `{}` is not part of this source profile", atext),
                             asp,
                         ));
                     }
                     let ident_type = ag == k.tok_ident
-                        && (is_text && matches!(atext, "str" | "Str" | "char")
+                        && (admits_text && matches!(atext, "str" | "Str" | "char")
                             || self.cx.profile.is_entry_unit() && atext == "void"
                             || self.cx.profile.is_record());
                     if is_type || ident_type {
@@ -1941,6 +1973,9 @@ enum Frame {
     ScriptFinish { start_span: Span },
     // -- 表达式 --
     ExprEnter(u32),
+    /// PLAN-928：lambda 体收尾（块体/表达式体两形；参数与 move 词已冻结）。
+    LambdaBlockBody { move_capture: bool, params: Vec<Param>, start: Span },
+    LambdaExprBody { move_capture: bool, params: Vec<Param>, start: Span },
     OpPost { op: BinOp },
     UnaryPost { op: UnaryOp },
     PostfixFoldAll { steps: Vec<u32> },
@@ -2212,7 +2247,9 @@ impl<'a> Engine<'a> {
             let mode_leaf = self.cx.field_child(param_n, "mode");
             let mode = match mode_leaf.map(|m| self.cx.tree.kind(m)) {
                 Some(mk) if mk == self.cx.k.tok_r_move => {
-                    if !self.cx.profile.is_text() {
+                    // PLAN-928：closures 面的 move 参数（`fn make(move s Str)`）
+                    // 与 text 面同为合法 mode 词。
+                    if !(self.cx.profile.is_text() || self.cx.profile.is_closures()) {
                         let mspan = self.cx.span_of(mode_leaf.unwrap());
                         self.cx.reject(mspan, || {
                             Diagnostic::new(
@@ -2255,6 +2292,10 @@ impl<'a> Engine<'a> {
     /// `pos`：Ret 位在 record 面收**任意** ident（含 str/Str/char——旧
     /// fn_item_tail 的名义分支）；param/field/let 注解位先做文本词拒绝。
     fn classify_word(&mut self, node: u32, ret_pos: bool) -> TypeAnn {
+        // PLAN-928：closures 面函数类型（ret/ann 位的 fn-type 子节点承载）。
+        if let Some(ft) = self.cx.field_child(node, "fn") {
+            return self.project_fn_type(ft);
+        }
         let word_leaf = self
             .cx
             .children(node)
@@ -2277,7 +2318,9 @@ impl<'a> Engine<'a> {
         }
         let word = self.cx.spelling(word_leaf);
         let is_text = self.cx.profile.is_text();
-        if is_text && matches!(word.as_str(), "str" | "Str" | "char") {
+        // PLAN-928：collections/closures 面拥有 Str（集合元素域含 Str）。
+        let admits_str = is_text || self.cx.profile.is_collections();
+        if admits_str && matches!(word.as_str(), "str" | "Str" | "char") {
             let tw = match word.as_str() {
                 "str" => TypeWord::Str,
                 "Str" => TypeWord::StrOwned,
@@ -2285,7 +2328,7 @@ impl<'a> Engine<'a> {
             };
             return int(tw);
         }
-        if !ret_pos && !is_text && matches!(word.as_str(), "str" | "Str" | "char") {
+        if !ret_pos && !admits_str && matches!(word.as_str(), "str" | "Str" | "char") {
             self.cx.reject(span, move || unsupported_ty(&word, span));
             return int(TypeWord::Int);
         }
@@ -2297,6 +2340,34 @@ impl<'a> Engine<'a> {
         }
         self.cx.reject(span, move || unsupported_ty(&word, span));
         int(TypeWord::Int)
+    }
+
+    /// PLAN-928：函数类型 `fn(T0, ...) [->] R`（嵌套允许；`->` 缺席 = K 语料
+    /// 相邻结果拼写兼容形）。参数/结果经 classify_word（其 fn 分支承载嵌套）。
+    fn project_fn_type(&mut self, node: u32) -> TypeAnn {
+        let span = self.cx.span_of(node);
+        let mut params = Vec::new();
+        if let Some(pn) = self.cx.field_child(node, "params") {
+            let plist: Vec<u32> = collect_seq(
+                &self.cx,
+                pn,
+                self.cx.k.fn_type_param.unwrap_or(u32::MAX),
+                "fn-type-param-tail",
+            );
+            for p in plist {
+                params.push(self.classify_word(p, false));
+            }
+        }
+        // 结果：fn-type-result 节点（词或嵌套 fn 型——classify_word 的 fn
+        // 分支处理嵌套；词分支按拼写+profile 分类）。
+        let result = match self.cx.field_child(node, "result") {
+            Some(res) => self.classify_word(res, true),
+            None => self.classify_word(node, true),
+        };
+        TypeAnn {
+            span,
+            kind: TypeRef::Function { params, result: Box::new(result) },
+        }
     }
 
     fn run_type_item(&mut self, node: u32) -> TypeItem {
@@ -2687,6 +2758,11 @@ impl<'a> Engine<'a> {
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
             let ck = self.cx.tree.kind(c);
+            // PLAN-928：lambda 原子（closures 面）——先于其余原子形状。
+            if ck == self.cx.k.lambda_expr.unwrap_or(u32::MAX) {
+                self.enter_lambda(c);
+                return;
+            }
             if ck == self.cx.k.leading_dot.unwrap_or(u32::MAX) {
                 let dot_leaf = self.cx.children(c).into_iter().find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_dot);
                 let dspan = dot_leaf.map(|l| self.cx.span_of(l)).unwrap_or_else(|| self.cx.span_of(c));
@@ -2734,7 +2810,8 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.tok_str_lit {
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
-                if !self.cx.profile.is_text() {
+                // PLAN-928：collections/closures 面拥有 Str 字面量（元素域）。
+                if !self.cx.profile.admits_text_literals() {
                     // 旧合同：非 text 面 lexer 产 Raw(StrLit)、primary 拒绝。
                     self.cx.reject(span, move || {
                         Diagnostic::new(
@@ -2755,7 +2832,8 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.tok_char_lit {
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
-                if !self.cx.profile.is_text() {
+                // PLAN-928：collections/closures 面拥有 char 字面量。
+                if !self.cx.profile.admits_text_literals() {
                     self.cx.reject(span, move || {
                         Diagnostic::new(
                             Stage::Text,
@@ -2834,6 +2912,62 @@ impl<'a> Engine<'a> {
             )
         });
         self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+    }
+
+    /// PLAN-928 T-02：lambda 投影（closures 面）。`move? ( 参数? ) => 块|表达式`
+    /// ——参数 = ident + 类型（无 mode 词，旧 closure_expr 合同）；块体走既有
+    /// 语句帧机；span = move/`(` 起点join体终点。
+    fn enter_lambda(&mut self, node: u32) {
+        let mode_leaf = self.cx.child_of_kind(node, self.cx.k.tok_r_move);
+        let move_capture = mode_leaf.is_some();
+        let start = match mode_leaf {
+            Some(m) => self.cx.span_of(m),
+            None => self
+                .cx
+                .child_of_kind(node, self.cx.k.tok_lparen)
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or_else(|| self.cx.span_of(node)),
+        };
+        let mut params = Vec::new();
+        if let Some(pn) = self.cx.field_child(node, "params") {
+            let plist: Vec<u32> = collect_seq(
+                &self.cx,
+                pn,
+                self.cx.k.lambda_param.unwrap_or(u32::MAX),
+                "lambda-param-tail",
+            );
+            for p in plist {
+                let name_leaf = self.cx.field_child(p, "name").expect("lambda param name");
+                let name = ident_of(&mut self.cx, name_leaf);
+                let ty = self
+                    .cx
+                    .field_child(p, "ty")
+                    .map(|t| self.classify_word(t, false))
+                    .unwrap_or(TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::Int),
+                        span: name.span,
+                    });
+                let span = name.span.join(ty.span);
+                params.push(Param { span, name, ty, mode: ParamMode::Default });
+            }
+        }
+        if let Some(body_n) = self.cx.field_child(node, "body") {
+            if let Some(bb) = self.cx.field_child(body_n, "block-body") {
+                self.stack.push(Frame::LambdaBlockBody { move_capture, params, start });
+                self.enter_block(bb);
+            } else if let Some(eb) = self.cx.field_child(body_n, "expr-body") {
+                self.stack.push(Frame::LambdaExprBody { move_capture, params, start });
+                self.stack.push(Frame::ExprEnter(eb));
+            } else {
+                let span = self.cx.span_of(node);
+                self.cx.reject(span, || syntax_diag("expected lambda body after `=>`", span));
+                self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+            }
+        } else {
+            let span = self.cx.span_of(node);
+            self.cx.reject(span, || syntax_diag("expected lambda body after `=>`", span));
+            self.vals.push(Val::E(Expr { kind: ExprKind::IntLit(0), span }));
+        }
     }
 
     fn project_int_literal(&mut self, node: u32) -> Expr {
@@ -3357,6 +3491,30 @@ impl<'a> Engine<'a> {
     fn step(&mut self, frame: Frame) {
         match frame {
             Frame::Block(bf) => self.step_block(bf),
+            Frame::LambdaBlockBody { move_capture, params, start } => {
+                let body = self.pop_b();
+                let span = start.join(body.span);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::Closure {
+                        move_capture,
+                        params,
+                        body: Box::new(ClosureBody::Block(body)),
+                    },
+                }));
+            }
+            Frame::LambdaExprBody { move_capture, params, start } => {
+                let value = self.pop_e();
+                let span = start.join(value.span);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::Closure {
+                        move_capture,
+                        params,
+                        body: Box::new(ClosureBody::Expr(value)),
+                    },
+                }));
+            }
             Frame::LetFinish { node, kw, name, ann, mutable } => {
                 let value = self.pop_e();
                 let span = Span { start: self.cx.span_of(node).start, end: value.span.end };

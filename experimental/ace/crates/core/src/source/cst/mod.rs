@@ -20,6 +20,7 @@ mod kinds;
 mod lex;
 mod project;
 mod shift;
+pub mod units;
 
 pub use frontdoor::{
     parse_fragment_front, parse_front, parse_function_fragment_via_cst, parse_program_via_cst,
@@ -27,6 +28,10 @@ pub use frontdoor::{
     FRONT_CAPS_VERSION,
 };
 pub use kinds::SourceKinds;
+pub use units::{
+    content_sha, EditError, EditReceipt, ProductionMeter, SealedFn, SealedLambda, UnitCatalog,
+    UnitKey, UnitKind,
+};
 
 use crate::atom_text::Diagnostic;
 

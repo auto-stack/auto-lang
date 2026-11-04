@@ -1,0 +1,222 @@
+//! PLAN-928 T-02 探针：closures 面最小整链（统一前门 → 投影 → 单元目录）。
+//!
+//! - **差分冒烟**：K 语料（865 闭包集）旧手写 vs 新 CST 链全等（Program 全
+//!   字段/首诊断）——共享链语法正确性的即时 oracle；
+//! - **§5.2 四项**：(a) 单 lambda 编辑只物化目标体（兄弟/owner 生产 0）；
+//!   (b) owner 变化同文 lambda 语法共享 + semantic_recheck 信号；
+//!   (c) 兄弟 fn 声明不被片段重建（Rc 同一 + 生产 0）；
+//!   (d) 坏编辑诊断后目录/源保持旧态，修复后正确；
+//! - **§5.4**：同文异 owner 不合并；同 owner 重复同文拓扑变化 = 具名非快路径
+//!   （如实重产，不假 0）；
+//! - **预算**：1 字节 work 预算 → typed ResourceExhausted（资源态，非语法拒）。
+
+use ace_core::source::cst::{self, units, FrontBudget};
+use ace_core::source::{parse_program_with_handwritten, SourceProfile};
+use std::rc::Rc;
+
+const CL: SourceProfile = SourceProfile::Closures;
+const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
+
+fn assert_diff_same(src: &str, what: &str) {
+    let old = parse_program_with_handwritten(src, CL);
+    let new = cst::parse_program_via_cst(src, CL);
+    match (&old, &new) {
+        (Ok(a), Ok(b)) => {
+            assert_eq!(
+                format!("{a:?}"),
+                format!("{b:?}"),
+                "{what}: closures AST mismatch old(handwritten) vs new(CST)\n--old--\n{a:#?}\n--new--\n{b:#?}"
+            );
+        }
+        (Err(a), Err(b)) => {
+            assert_eq!(
+                (a.stage, a.code.as_str(), a.message.as_str(), a.span),
+                (b.stage, b.code.as_str(), b.message.as_str(), b.span),
+                "{what}: closures first-diag mismatch\n--old--\n{a:?}\n--new--\n{b:?}"
+            );
+        }
+        _ => panic!(
+            "{what}: outcome mismatch old={old:?} new={new:?} (src={src})",
+            old = parse_program_with_handwritten(src, CL).is_ok(),
+            new = cst::parse_program_via_cst(src, CL).is_ok(),
+        ),
+    }
+}
+
+/// K 语料原文（865 集；plan §5.1 L04/L05 的闭包对应面）。
+#[test]
+fn t02_diff_k_corpus_closures() {
+    let k01 = "fn main() int {\n    let base int = 40\n    let f = move (n int) => { return base + n }\n    return f(2)\n}\n";
+    let k02 = "fn make(move s Str) fn(int) int {\n    return move (n int) => { return s.len() + n }\n}\nfn main() int {\n    let s Str = \"hello\"\n    let f = make(s.move)\n    return f(37)\n}\n";
+    let k06 = "fn main() int {\n    var base int = 1\n    var f = move (n int) => {\n        base = base + n\n        return base\n    }\n    return f(20) + f(0)\n}\n";
+    for (src, what) in [(k01, "K01"), (k02, "K02-fn-type+postfix"), (k06, "K06-writeback")] {
+        assert_diff_same(src, what);
+    }
+    // 表达式体 + 零参 + 多参 + 嵌套 lambda（差分面扩展）。
+    assert_diff_same(
+        "fn main() int {\n    let a = () => 7\n    let b = (x int, y int) => { return x + y }\n    let c = (x int) => { let inner = (y int) => { return x + y }\n        return inner(x) }\n    return a() + b(1, 2) + c(3)\n}\n",
+        "expr-body+zero-params+nested",
+    );
+    // 负例（T-02 面）：坏 lambda 必须是 typed 源码诊断（不成功）——逐字节
+    // 诊断 parity（code/span/message：如未闭合块旧报 EOF 处"expected
+    // statement or `}`"、新链当前报恢复位"expected `)`"）由 T-04 的冻结
+    // 差分边集对齐；括号组回退的正向差分已在上例覆盖。
+    let bad = "fn main() int {\n    let f = (n int) => { return n\n}\n";
+    assert!(
+        cst::parse_program_via_cst(bad, CL).is_err(),
+        "unterminated lambda block must diagnose, not succeed"
+    );
+    assert_diff_same("fn main() int {\n    let x = (1 + 2) * 3\n    return x\n}\n", "paren-group-fallback");
+}
+
+/// §5.2(a)：owner 多 lambda，编辑其一——目标物化 1，兄弟与 owner 生产 0。
+#[test]
+fn t02_a_single_lambda_edit() {
+    let src = "fn helper() int {\n    return 1\n}\nfn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 1 }\n    return f(2) + g(3)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold build");
+    assert_eq!(cat.meter.produced, 4, "cold: helper + main + 2 lambda");
+    let helper_before = Rc::as_ptr(&cat.fns["helper"].item) as usize;
+    let main_before = Rc::as_ptr(&cat.fns["main"].item) as usize;
+    let g_before = Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize;
+
+    // 编辑 lambda#0（f）：正文加一。
+    let old_span = cat.lambda("main", 0).unwrap().span;
+    let old_slice = cat.src()[old_span.start..old_span.end].to_string();
+    let new_slice = old_slice.replace("base + n", "base + n + 1");
+    let before = (cat.meter.produced, cat.meter.reused, cat.meter.discarded);
+    let receipt = cat
+        .edit_lambda("main", 0, &new_slice, BUDGET)
+        .expect("single lambda edit");
+    let after = (cat.meter.produced, cat.meter.reused, cat.meter.discarded);
+    assert_eq!(after.0 - before.0, 1, "目标 lambda 物化恰 1");
+    assert_eq!(after.1, before.1, "兄弟不产生复用计数变化（无假命中）");
+    assert_eq!(after.2, before.2, "无废弃物化");
+    assert_eq!(receipt.produced.len(), 1, "仅目标单元入 produced");
+    assert!(receipt.produced[0].kind == units::UnitKind::Lambda && receipt.produced[0].ordinal == 0);
+    // 兄弟 g 与 owner/兄弟 fn 的密封体是同一 Rc（真复用，非重物化）。
+    assert_eq!(Rc::as_ptr(&cat.fns["helper"].item) as usize, helper_before, "helper fn 体未重建");
+    assert_eq!(Rc::as_ptr(&cat.fns["main"].item) as usize, main_before, "owner fn 体未重建（lambda 编辑不重产 owner）");
+    assert_eq!(Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize, g_before, "兄弟 lambda 体共享同一 Rc");
+    // 新源上重解析全等冒烟（目录源与整源解析一致）。
+    assert_diff_same(&receipt.new_src, "after-single-lambda-edit");
+}
+
+/// §5.2(b)：owner 创建点变化、lambda 文本不变——语法体共享 + 语义重验信号。
+#[test]
+fn t02_b_owner_edit_shares_unchanged_lambda_but_signals_recheck() {
+    let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let lam_before = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    let old_span = cat.fns["main"].item.span;
+    let old_fn = cat.src()[old_span.start..old_span.end].to_string();
+    // 创建点变化：let -> var（捕获写性变化 = 909 共享可写捕获面）。
+    let new_fn = old_fn.replace("let base int = 40", "var base int = 41");
+    assert_ne!(old_fn, new_fn);
+    let before = cat.meter.clone();
+    let receipt = cat.edit_owner("main", &new_fn, BUDGET).expect("owner edit");
+    assert_eq!(cat.meter.produced - before.produced, 1, "仅 owner fn 物化 1");
+    assert_eq!(cat.meter.reused - before.reused, 1, "同文 lambda 复用 1（生产 0）");
+    assert!(receipt.semantic_recheck_required, "owner 变化必须携带语义重验信号（语法共享不免 capture 重验）");
+    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, lam_before, "同文 lambda 语法体 Rc 同一");
+    assert_diff_same(&receipt.new_src, "after-owner-edit");
+}
+
+/// §5.2(c)：兄弟 fn 声明不被片段重建（Rc 同一 + 生产 0）。
+#[test]
+fn t02_c_sibling_decls_not_rebuilt() {
+    let src = "fn a() int {\n    return 1\n}\nfn b() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\nfn c() int {\n    return 3\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let a_ptr = Rc::as_ptr(&cat.fns["a"].item) as usize;
+    let c_ptr = Rc::as_ptr(&cat.fns["c"].item) as usize;
+    let old_span = cat.fns["b"].item.span;
+    let new_fn = cat.src()[old_span.start..old_span.end].replace("n + 1", "n + 2");
+    let before = cat.meter.clone();
+    let receipt = cat.edit_owner("b", &new_fn, BUDGET).expect("owner b edit");
+    assert_eq!(cat.meter.produced - before.produced, 2, "b(1) + 其 lambda 文变重产(1)；a/c 不计");
+    assert_eq!(Rc::as_ptr(&cat.fns["a"].item) as usize, a_ptr, "声明 a 未重建");
+    assert_eq!(Rc::as_ptr(&cat.fns["c"].item) as usize, c_ptr, "声明 c 未重建");
+    assert_diff_same(&receipt.new_src, "after-sibling-edit");
+}
+
+/// §5.2(d)：坏编辑诊断——目录/源保持旧态；修复后正确。
+#[test]
+fn t02_d_failed_edit_preserves_state_and_fix_recovers() {
+    let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let src_before = cat.src().to_string();
+    let meter_before = cat.meter.clone();
+    let body_before = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    // 坏编辑：块未闭合。
+    let err = cat
+        .edit_lambda("main", 0, "(n int) => { return n + 1", BUDGET)
+        .expect_err("broken lambda must diagnose");
+    match err {
+        units::EditError::Diag(ds) => assert!(!ds.is_empty(), "诊断非空"),
+        other => panic!("expected Diag, got {other:?}"),
+    }
+    assert_eq!(cat.src(), src_before, "失败编辑不改变源基线");
+    assert_eq!(cat.meter.produced, meter_before.produced, "失败编辑不提交生产");
+    assert_eq!(cat.meter.discarded, meter_before.discarded + 1, "废弃物化单列 +1");
+    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, body_before, "旧密封体仍可用");
+    // 修复编辑：成功且正确。
+    let receipt = cat
+        .edit_lambda("main", 0, "(n int) => { return n + 41 }", BUDGET)
+        .expect("fixed edit");
+    assert_diff_same(&receipt.new_src, "after-fix");
+}
+
+/// §5.4：同文异 owner 绝不合并；同 owner 重复同文 + 拓扑变化 = 具名非快路径。
+#[test]
+fn t02_same_text_identity_rules() {
+    // 同文 lambda 在两个 owner。
+    let src = "fn u1() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\nfn u2() int {\n    let f = (n int) => { return n + 1 }\n    return f(2)\n}\n";
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
+    let l0 = Rc::as_ptr(&cat.lambda("u1", 0).unwrap().body) as usize;
+    let l1 = Rc::as_ptr(&cat.lambda("u2", 0).unwrap().body) as usize;
+    assert_ne!(l0, l1, "同文异 owner 的 lambda 密封体必须独立（不跨 owner 合并）");
+    // 编辑 u1 的 lambda：u2 的同文 lambda 不被动（异 owner 无串扰）。
+    cat.edit_lambda("u1", 0, "(n int) => { return n + 2 }", BUDGET).expect("edit u1");
+    assert_eq!(
+        Rc::as_ptr(&cat.lambda("u2", 0).unwrap().body) as usize, l1,
+        "u1 编辑不得触碰 u2 的同文 lambda"
+    );
+    assert_diff_same(cat.src(), "after-cross-owner-edit");
+
+    // 同 owner 两个同文 lambda；编辑其一后保持独立；插入第三个（拓扑变化）
+    // = 具名非快路径，整 owner 如实重产。
+    let src2 = "fn w() int {\n    let a = (n int) => { return n + 1 }\n    let b = (n int) => { return n + 1 }\n    return a(1) + b(2)\n}\n";
+    let mut cat2 = units::UnitCatalog::build(src2, CL, BUDGET).expect("cold2");
+    let a0 = Rc::as_ptr(&cat2.lambda("w", 0).unwrap().body) as usize;
+    let b0 = Rc::as_ptr(&cat2.lambda("w", 1).unwrap().body) as usize;
+    assert_ne!(a0, b0, "同 owner 重复同文以 ordinal 区分，独立密封");
+    let old_span = cat2.fns["w"].item.span;
+    let with_third = cat2.src()[old_span.start..old_span.end]
+        .replace("    return a(1) + b(2)\n", "    let c = (n int) => { return n + 9 }\n    return a(1) + b(2) + c(3)\n");
+    let before = cat2.meter.clone();
+    let receipt = cat2.edit_owner("w", &with_third, BUDGET).expect("topology edit");
+    assert_eq!(
+        receipt.non_fast_path,
+        Some("owner-lambda-topology-changed"),
+        "拓扑变化必须具名非快路径"
+    );
+    // 如实重产：owner + 全部 lambda（3 个），无假 0。
+    assert_eq!(cat2.meter.produced - before.produced, 1 + 3, "owner(1) + 3 lambda 重产，不得假 0");
+    assert_eq!(cat2.meter.reused - before.reused, 0, "拓扑变化下无复用冒充");
+    assert_diff_same(&receipt.new_src, "after-topology-edit");
+}
+
+/// 预算：1 字节 work 预算 → typed ResourceExhausted（资源态非语法拒）。
+#[test]
+fn t02_budget_typed_resource_exhausted() {
+    let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
+    let tiny = FrontBudget { work_bytes: 1, max_parse_depth: 1 << 20 };
+    match units::UnitCatalog::build(src, CL, tiny) {
+        Err(units::EditError::ResourceExhausted { .. }) => {}
+        other => panic!("expected ResourceExhausted, got {other:?}"),
+    }
+    let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold ok");
+    match cat.edit_lambda("main", 0, "(n int) => { return n + 2 }", tiny) {
+        Err(units::EditError::ResourceExhausted { .. }) => {}
+        other => panic!("edit must stay resource-typed, got {other:?}"),
+    }
+}

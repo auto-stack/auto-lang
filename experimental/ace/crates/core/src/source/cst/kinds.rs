@@ -49,6 +49,14 @@ pub struct SourceKinds {
     pub ctor_expr: Option<u32>,
     pub ctor_fields: Option<u32>,
     pub ctor_field: Option<u32>,
+    /// PLAN-928：lambda 表达式（closures 面原子；其余 profile 无此规则）。
+    pub lambda_expr: Option<u32>,
+    /// PLAN-928：lambda 参数项（ident + 类型，无 mode 词）。
+    pub lambda_param: Option<u32>,
+    /// PLAN-928：闭包函数类型（closures 面 ret/ann 位）。
+    pub fn_type: Option<u32>,
+    /// PLAN-928：函数类型的参数项（词或嵌套 fn 型）。
+    pub fn_type_param: Option<u32>,
     pub int_literal: u32,
     pub args: u32,
     pub arg: u32,
@@ -236,6 +244,10 @@ impl SourceKinds {
             ctor_expr: rk_opt(p, "ctor-expr"),
             ctor_fields: rk_opt(p, "ctor-fields"),
             ctor_field: rk_opt(p, "ctor-field"),
+            lambda_expr: rk_opt(p, "lambda-expr"),
+            lambda_param: rk_opt(p, "lambda-param"),
+            fn_type: rk_opt(p, "fn-type"),
+            fn_type_param: rk_opt(p, "fn-type-param"),
             int_literal: rk("int-literal"),
             args: rk("args"),
             arg: rk("arg"),
