@@ -1,5 +1,7 @@
 # Design 45：Auto Graphics Engine（AGE）的wgpu引擎、游戏原型与AutoUI集成边界
 
+> **2026-11-04 M3方向确认**：M2之后，AGE的M3主目标是与现有AutoUI正式融合，见[M3路线](../../../auto-ui/docs/design/autographics/m3-autoui-integration-roadmap.md)。M2验证有限基础UI与2D/3D同应用组合，M3接通现有UI组件/主题/状态Store/事件及生产编译/宿主/资源/输入体系。源码同仓与内容根更名各保原合同，不能代替融合；具体ACE/HIR/SDK替换仍核相应成熟度并另立实施合同。本轮只定方向，不取号/实施，不改M2在途验收；下文“生产融合后议”的历史排期由本条明确阶段目标，未据此解除实际接线进入门。
+
 > **2026-11-04 M2组合要求**：新语法基础UI＋2D＋3D同应用组合现为M2-10必需项，不能全部后置到完整生产UI/ACE融合；[核查与分仓补齐设计](../../../auto-ui/docs/design/autographics/m2-mixed-ui-2d-3d-composition.md)立UI048→049→AG021，仅规划。019原合同候选已交付且保历史，020目录更名顺延扩展M2收口后。
 
 > **2026-11-04 命名决议**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine；AG/AutoGraphics为历史别名。见[命名与内容仓决议](../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。引擎仍归auto-ui，内容仓暂仍ag-examples；内容仓020仅规划更名age-examples，默认019＋021及扩展M2必需门收口后维护窗口。保历史计划号/交付SHA/标签/schema/API/旧SDK锁，不以名称变更触发实现或迁移；当前进度见[M2路线](../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文保历史快照。
