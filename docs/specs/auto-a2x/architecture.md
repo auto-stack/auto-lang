@@ -31,7 +31,11 @@
    名义类型（上下文指纹与语义指纹均按名义+形状混入）。
 3. **求值顺序是事实不是配置**：`Call.eval_args` 为源序（各求值一次），
    `bindings` 为落位图；目标按源序钉临时后按 binding 落位，不得反推。
-   短路 `Logical` 降为惰性 if 表达式（RHS 临时在分支内）。
+   短路 `Logical` 降为惰性 if 表达式（RHS 临时在分支内）。owned 临时
+   的释放同样锚定真实消费者（pin/语句根后作用域释放、侧块自责、move
+   按值转移）——细则见
+   [temporary-consumer-lifetime](temporary-consumer-lifetime.md)（PLAN-931
+   关闭 D-925-2；Rust 打印轴随之外移 `a2x-print/2`，旧片段永不命中）。
 4. **具名拒绝优先**：一切准入失败是 `A2xReject`（`a2x.*` 稳定码），与
    resource/infra 分列；防御深度预算具名 `a2x.too-deep`（400）。
 5. **span 是可观测非身份**：source map v1（def origin → 生成注释 + manifest
@@ -57,6 +61,10 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
   元素/臂序/mode/被调事实变化失效，等价表序稳定。
 - 配置分层失效：语义层 target 中立；目标 runtime/printer 变化→目标片段/manifest 失效；
   工具/认证配置变化→证书 STALE（execution_config 为证书键材）。
+- **恢复边界（PLAN-931 记录）**：`restore_source_bound` 的 record-text/
+  collections 纯恢复锚仍 C 目标 only；Rust record-text 无来源绑定锚，
+  其 restore→首编辑无预热链待增量恢复线（PLAN-929）交付接缝后联验，
+  现状不得宣称"Rust source-bound 纯恢复已证明"。
 
 ## PLAN-921：目标 provider 接缝（session 去目标耦合）
 

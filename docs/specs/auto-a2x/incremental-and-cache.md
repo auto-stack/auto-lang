@@ -112,6 +112,21 @@
   编辑 env_rebuilds+1。CA-D 交接身份：seed/schema/recipe/fileset/cert 全部
   版本化字面量，漂移=STALE/拒，不静默覆盖。
 
+## PLAN-931：Rust 打印轴 a2x-print/2 与 owned 临时责任入键
+
+- **AXR1..3 的 `print_version` 升 `a2x-print/2`**：owned 临时消费者锚定
+  释放（D-925-2 关闭）、external 受检 modes、MoveOwn 按值转移改变 Rust
+  片段字节。三族共享该字段——旧版本（/1）片段在任意族**永不命中**，一次性
+  miss 重产（三代实测：/1 铸 store→/2 重开全 miss 重产→第三代全 hit）；
+  按裁定登记而非清 store。collections 打印字节未变（20/20 金样三文件字节
+  核对）仅键随轴变化。
+- **external modes 依赖**：片段 external 调用消费 `ExternalFn.modes`（受检
+  事实），被调方 mode 变化经语义指纹失效调用方片段；同一程序整模块与单
+  函数片段发射字节等价（fn_main 段逐字节）。
+- **Rust 恢复首编辑边界**：Rust record-text 无 AXP 等价锚——`warm_edit`
+  /`warm_edit_method`（片段合同）为既有增量路（未改函数生产 0、片段字节
+  恒等）；restore→首编辑无预热链待 PLAN-929 接缝，未交则验收 pending。
+
 ## AXC3/AXP3：C 集合通道的增量与纯恢复（PLAN-926）
 
 - 片段层 **AXC3**（`a2926/axc-c-coll-fn/v1`）：C 集合片段自有命名空间（与

@@ -68,3 +68,11 @@
   释放幂等（take 置空/memset）使回边 poll 错误路径重列安全。S 面 join 修复
   （终止分支不约束 join）对两目标同时生效（golden-L03 最小重冻结）。
 
+## Rust 消费锚（PLAN-931）
+
+- Rust lowering 与 C 一样**只消费**本文件单源事实：`BodyResourcePlan`
+  逐出口清理与 `ExternalFn.modes` 原样入发射；owned 临时（view 消费的
+  pinned 值）的责任锚与释放作用域见
+  [temporary-consumer-lifetime](temporary-consumer-lifetime.md)——pin
+  Let/语句根为消费者，`drain_since(mark)` 作用域释放，短路侧块自责。
+  目标不重推导、不把 move 强转 view、不默认 View 片段模式。
