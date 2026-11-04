@@ -1,0 +1,12 @@
+fn main() int {
+    var x int = 1
+    var f = (n int) => {
+        x = x + n
+        return x
+    }
+    var g = (k int) => {
+        x = x + k
+        return x
+    }
+    return f(20) + g(0)
+}

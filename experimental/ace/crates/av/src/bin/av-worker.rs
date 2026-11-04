@@ -1994,6 +1994,8 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                             | "S06"
                             | "S07"
                             | "S08"
+                            // PLAN-928 V-09：同文 λ 异 owner（x=1/2）值面。
+                            | "U1"
                     ) {
                         eprintln!("unknown closures source id {source_id}");
                         exit(2);

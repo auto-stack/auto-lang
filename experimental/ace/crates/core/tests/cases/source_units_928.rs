@@ -107,7 +107,7 @@ fn t02_b_owner_edit_shares_unchanged_lambda_but_signals_recheck() {
     let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let lam_before = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
-    let old_span = cat.fns["main"].item.span;
+    let old_span = cat.fns["main"].span;
     let old_fn = cat.src()[old_span.start..old_span.end].to_string();
     // 创建点变化：let -> var（捕获写性变化 = 909 共享可写捕获面）。
     let new_fn = old_fn.replace("let base int = 40", "var base int = 41");
@@ -128,7 +128,7 @@ fn t02_c_sibling_decls_not_rebuilt() {
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let a_ptr = Rc::as_ptr(&cat.fns["a"].item) as usize;
     let c_ptr = Rc::as_ptr(&cat.fns["c"].item) as usize;
-    let old_span = cat.fns["b"].item.span;
+    let old_span = cat.fns["b"].span;
     let new_fn = cat.src()[old_span.start..old_span.end].replace("n + 1", "n + 2");
     let before = cat.meter.clone();
     let receipt = cat.edit_owner("b", &new_fn, BUDGET).expect("owner b edit");
@@ -189,7 +189,7 @@ fn t02_same_text_identity_rules() {
     let a0 = Rc::as_ptr(&cat2.lambda("w", 0).unwrap().body) as usize;
     let b0 = Rc::as_ptr(&cat2.lambda("w", 1).unwrap().body) as usize;
     assert_ne!(a0, b0, "同 owner 重复同文以 ordinal 区分，独立密封");
-    let old_span = cat2.fns["w"].item.span;
+    let old_span = cat2.fns["w"].span;
     let with_third = cat2.src()[old_span.start..old_span.end]
         .replace("    return a(1) + b(2)\n", "    let c = (n int) => { return n + 9 }\n    return a(1) + b(2) + c(3)\n");
     let before = cat2.meter.clone();
@@ -351,7 +351,7 @@ fn t05_candidate_transaction_lifecycle() {
 
     // 重新暂存并提交：推进 + 计量如实。
     let cand2 = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage2");
-    let receipt = cat.commit_staged(cand2);
+    let receipt = cat.commit_staged(cand2).expect("commit staged");
     assert_ne!(cat.src(), old_src);
     assert_eq!(cat.meter.produced - old_meter.produced, 2);
     assert_eq!(cat.meter.reused - old_meter.reused, 1);
@@ -375,7 +375,7 @@ fn t05_pin_generations_coexist() {
     // 编辑（owner 路径）后 pin1；pin0 仍是旧视图。
     let new_fn = "fn main() int {\n    let f = (n int) => { return n + 2 }\n    return f(1)\n}\n";
     let cand = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage");
-    cat.commit_staged(cand);
+    cat.commit_staged(cand).expect("commit staged");
     let pin1 = cat.pin();
     assert_ne!(pin0.revision_sha(), pin1.revision_sha());
     // 旧 pin 读取：owner 体为其原修订内容（return n + 1）。
@@ -411,17 +411,17 @@ fn main() int {
     assert_eq!(cat.meter.produced, 3, "decl(1)+fns(2)");
     let make_mint = cat.fns["make"].mint_span;
     // body-only 编辑：mint 保持、无签名事件。
-    let old_span = cat.fns["make"].item.span;
+    let old_span = cat.fns["make"].span;
     let new_fn = cat.src()[old_span.start..old_span.end].replace("x.code", "x.code + 1");
     let cand = cat.stage_owner_edit("make", &new_fn, BUDGET).expect("stage");
-    cat.commit_staged(cand);
+    cat.commit_staged(cand).expect("commit staged");
     assert_eq!(cat.fns["make"].mint_span, make_mint, "body-only edit keeps mint span");
     assert!(!cat.events.iter().any(|e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { .. })), "no signature event on body-only edit");
     // 签名变化：事件必达，mint 携带不变。
-    let old_span = cat.fns["make"].item.span;
+    let old_span = cat.fns["make"].span;
     let new_fn = cat.src()[old_span.start..old_span.end].replace("fn make(x Item) int", "fn make(x Item, extra int) int");
     let cand = cat.stage_owner_edit("make", &new_fn, BUDGET).expect("stage2");
-    cat.commit_staged(cand);
+    cat.commit_staged(cand).expect("commit staged");
     assert_eq!(cat.fns["make"].mint_span, make_mint, "mint carries across signature edit");
     assert!(
         cat.events.iter().any(|e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner } if owner == "make")),
@@ -465,7 +465,7 @@ fn t08_deep_chain_budget_typed() {
         s
     };
     let ok_src = mk(800);
-    let mut cat = units::UnitCatalog::build(&ok_src, CL, BUDGET).expect("depth-800 chain within default budget");
+    let cat = units::UnitCatalog::build(&ok_src, CL, BUDGET).expect("depth-800 chain within default budget");
     let _ = cat.lambda("main", 0);
     let deep_src = mk(100_000);
     let tight = FrontBudget { work_bytes: 64 << 20, max_parse_depth: 10_000 };
@@ -476,7 +476,7 @@ fn t08_deep_chain_budget_typed() {
     // 深嵌套 lambda 链（目录走查对象）：depth 200 通过（工作栈迭代）。
     let mut lam = String::from("fn main() int {\n    let f = (a int) => { let g = (b int) => { return a + b }; return g(a) };\n    return f(1)\n}\n");
     let _ = &mut lam;
-    let mut cat2 = units::UnitCatalog::build(&lam, CL, BUDGET).expect("nested lambdas");
+    let cat2 = units::UnitCatalog::build(&lam, CL, BUDGET).expect("nested lambdas");
     assert_eq!(cat2.meter.produced, 3, "fn + 2 lambdas");
 }
 
@@ -490,7 +490,6 @@ fn t08_two_hundred_edit_series_sibling_zero() {
     let cold = cat.meter.produced;
     assert_eq!(cold, 3, "fn + 2 lambda");
     for round in 0..200u32 {
-        let span = cat.lambda("main", 0).unwrap().span;
         let new_slice = format!("(n int) => {{ return n + {} }}", 1 + round + 1);
         let receipt = cat.edit_lambda("main", 0, &new_slice, BUDGET).expect("edit round");
         assert_eq!(receipt.produced.len(), 1, "round {round}: only the target lambda produces");
@@ -519,3 +518,4 @@ fn t08_last_owner_reclaim() {
     assert_eq!(std::rc::Rc::strong_count(&body), 1, "catalog drop releases; only local handle remains");
     drop(body);
 }
+

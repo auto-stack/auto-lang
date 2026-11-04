@@ -1,0 +1,8 @@
+# PLAN-928 T-09 — source-composite-syntax-928 suite（集合/闭包复合语法：
+# parse/无损重建 + profile 门反控 + 原适用值腿 + 同文 λ 异 owner oracle）。
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-source-composite-928", include: [
+  "source-composite-syntax-928.case.ad",
+] }
+```

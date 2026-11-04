@@ -1459,7 +1459,8 @@ fn decode_options(
             None => Some("auto-core".to_string()),
             // PLAN-927：`auto-source@<profile-slug>`（七 profile 裁剪语法；
             // slug 集与 auto-source.at 的 profiles 声明一致——worker 侧
-            // compile_profile 受控拒绝未知 slug）。
+            // compile_profile 受控拒绝未知 slug）。PLAN-928：扩至九 profile
+            //（collections/closures 与 core::source::cst::profile_slug 同集）。
             Some(CVal::Str(s))
                 if s == "auto-core"
                     || s == "interface-mini-v1"
@@ -1467,7 +1468,7 @@ fn decode_options(
                         && matches!(
                             &s["auto-source@".len()..],
                             "core" | "scalar" | "text" | "record" | "text-record"
-                                | "entry-unit" | "host-console"
+                                | "entry-unit" | "host-console" | "collections" | "closures"
                         )) =>
             {
                 Some(s.clone())

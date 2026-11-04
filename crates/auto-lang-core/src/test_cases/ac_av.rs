@@ -1465,6 +1465,11 @@ const CLOSURES_SOURCE_CASES: &[(&str, Option<i32>, Option<&str>, usize)] = &[
     ("S06", Some(84), None, 3),
     ("S07", None, Some("source.closure-shared-mutable"), 0),
     ("S08", None, Some("verify.immutable-write"), 0),
+    // PLAN-928 V-09: byte-identical lambda text in two owners, each
+    // capturing its OWN x (1/2). u1()=11, u2()=12, main = 11*100+12 = 1112;
+    // cross-owner capture wiring must visibly deviate (1212 / 212 ...).
+    // Units: 3 fns + 2 lambdas.
+    ("U1", Some(1112), None, 5),
 ];
 
 /// PLAN-909: the expected value of each source case's `body-edit` mode

@@ -51,3 +51,5 @@ mod text_replacement;
 mod source_cst_927;
 #[path = "cases/source_units_928.rs"]
 mod source_units_928;
+#[path = "cases/source_units_928_t09.rs"]
+mod source_units_928_t09;

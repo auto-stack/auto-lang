@@ -1,12 +1,13 @@
 //! PLAN-927 T-04/T-05：`profiles` 裁剪编译。共享 auto-source.at → 七个
 //! profile 专属语法程序；身份隔离（GrammarId 互异）、门控语义（被裁
 //! alt/rule/op 不在 canonical bytes）、误用（plain compile 门控语法）拒绝。
+//! PLAN-928（T-03/T-09）：集合扩至九（collections/closures）。
 
 use ace_syntax_grammar::{compile, compile_profile, declared_profiles};
 
 const SOURCE: &str = include_str!("../../../../grammars/auto-source.at");
 
-const SEVEN: &[&str] = &[
+const NINE: &[&str] = &[
     "core",
     "scalar",
     "text",
@@ -14,28 +15,31 @@ const SEVEN: &[&str] = &[
     "text-record",
     "entry-unit",
     "host-console",
+    // PLAN-928：集合/闭包两面。
+    "collections",
+    "closures",
 ];
 
 #[test]
 fn profiles_declared_set_is_the_seven() {
     let names = declared_profiles(SOURCE).expect("declared profiles");
-    assert_eq!(names, SEVEN);
+    assert_eq!(names, NINE);
 }
 
 #[test]
 fn profiles_compile_all_seven_and_ids_isolate() {
     let mut ids = Vec::new();
-    for p in SEVEN {
+    for p in NINE {
         let prog = compile_profile(SOURCE, p).expect(p);
         assert_eq!(prog.name, format!("auto-source/{p}"), "{p} program name");
         assert!(!prog.rules.is_empty(), "{p} rules");
         ids.push(format!("{}", prog.identity.grammar_id.0));
     }
-    // 身份隔离：七个 GrammarId 互异（canonical bytes 不同）。
+    // 身份隔离：九个 GrammarId 互异（canonical bytes 不同）。
     let mut sorted = ids.clone();
     sorted.sort();
     sorted.dedup();
-    assert_eq!(sorted.len(), SEVEN.len(), "grammar ids must be distinct");
+    assert_eq!(sorted.len(), NINE.len(), "grammar ids must be distinct");
 }
 
 #[test]
@@ -79,7 +83,9 @@ fn profiles_plain_compile_of_gated_grammar_is_refused() {
 
 #[test]
 fn profiles_unknown_profile_is_refused() {
-    let err = compile_profile(SOURCE, "collections").expect_err("undeclared profile");
+    // PLAN-928：`collections` 已是真声明 profile（T-03），本例改用仍非法的
+    // slug——前提与 auto-source.at 的 profiles 声明同步。
+    let err = compile_profile(SOURCE, "mega-profile").expect_err("undeclared profile");
     assert!(err
         .iter()
         .any(|d| d.message.contains("not declared")));

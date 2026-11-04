@@ -1379,6 +1379,11 @@ impl<'p, 'a> Machine<'p, 'a> {
     fn advance_alt(&mut self) {
         let s = self.stack.last().unwrap().save.clone();
         self.restore(s);
+        // PLAN-928（T-09）：失败 alt 的部分子女必须随回退丢弃——否则同首
+        // token 备选重消费后叶重复（无损重建破坏；collections 的 enum-arm
+        // plain 臂与 postfix `.mut`/`.move` 备选实测暴露）。光标 restore 与
+        // 子女清空合起来才是完整的有序选择回退语义。
+        self.stack.last_mut().unwrap().children.clear();
         let now = self.save();
         let f = self.stack.last_mut().unwrap();
         f.alt += 1;

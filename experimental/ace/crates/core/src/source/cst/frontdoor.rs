@@ -122,7 +122,7 @@ pub struct FrontRequest<'s> {
     pub budget: FrontBudget,
 }
 
-fn profile_slug(profile: SourceProfile) -> &'static str {
+pub fn profile_slug(profile: SourceProfile) -> &'static str {
     match profile {
         SourceProfile::Core => "core",
         SourceProfile::Scalar => "scalar",
@@ -136,6 +136,23 @@ fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Closures => "closures",
         SourceProfile::Collections => "collections",
     }
+}
+
+/// PLAN-928（T-09）：slug → profile 反向映射（清单解码侧的 profile 合法
+/// 性校验——未知 slug 在消费前拒绝，V-08）。
+pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
+    Some(match slug {
+        "core" => SourceProfile::Core,
+        "scalar" => SourceProfile::Scalar,
+        "text" => SourceProfile::Text,
+        "record" => SourceProfile::Record,
+        "text-record" => SourceProfile::TextRecord,
+        "entry-unit" => SourceProfile::EntryUnit,
+        "host-console" => SourceProfile::HostConsole,
+        "closures" => SourceProfile::Closures,
+        "collections" => SourceProfile::Collections,
+        _ => return None,
+    })
 }
 
 pub struct CachedGrammar {

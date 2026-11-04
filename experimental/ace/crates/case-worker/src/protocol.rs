@@ -188,13 +188,14 @@ impl WorkerRequest {
         }
         if let Some(g) = &self.grammar {
             // PLAN-927：auto-source@<slug>（七 profile 裁剪语法；slug 白名单与
-            // contract 侧一致，编译失败=受控 infra）。
+            // contract 侧一致，编译失败=受控 infra）。PLAN-928：扩至九 profile
+            //（collections/closures）。
             let auto_source_slug = g.strip_prefix("auto-source@");
             let slug_ok = auto_source_slug.is_some_and(|s| {
                 matches!(
                     s,
                     "core" | "scalar" | "text" | "record" | "text-record" | "entry-unit"
-                        | "host-console"
+                        | "host-console" | "collections" | "closures"
                 )
             });
             if !slug_ok && !matches!(g.as_str(), "auto-core" | "interface-mini-v1") {

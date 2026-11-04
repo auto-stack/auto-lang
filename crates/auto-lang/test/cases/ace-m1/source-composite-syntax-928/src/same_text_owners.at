@@ -1,0 +1,13 @@
+fn u1() int {
+    let x int = 1
+    let f = (n int) => { return x + n }
+    return f(10)
+}
+fn u2() int {
+    let x int = 2
+    let g = (n int) => { return x + n }
+    return g(10)
+}
+fn main() int {
+    return u1() * 100 + u2()
+}
