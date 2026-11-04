@@ -821,6 +821,21 @@ suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.su
 domain = "ace"
 all = false
 
+# PLAN-932: the native warm-edit admission suite — typed refusal verdicts
+# (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
+# state survival and history A→B→A on the real scalar worker (source-v1).
+[[group]]
+name = "case-ace-native-warm-admission-932"
+title = "ACE M1 native暖编辑准入与拒绝分类 932 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-warm-admission-932/native-warm-admission-932.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario suite
 # (the two ns=scenario AV cells; frozen corpus sources + typed place witness).
 [[group]]

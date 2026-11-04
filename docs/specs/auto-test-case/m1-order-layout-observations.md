@@ -82,7 +82,10 @@ import 签名**，因此使用中记录类型的 layout 变更按设计是**全 
   （后续 run 返回旧值）。父侧不推进已接受源码；不得把拒绝降级为 infra 或静默接受。
 - 拒绝 verdict 的适用范围：`ac_mn` 的严格（source-v1）refusal 判定对**所有增量 mn
   recipe** 生效（不只本场景的 I09 格）——策略上正确，但全量证据由 merge 的受影响组并集
-  承担；非本场景的旧用例如出现该路径变化，按同一 typed refusal 语义判定。
+  承担；非本场景的旧用例如出现该路径变化，按同一 typed refusal 语义判定。PLAN-932 已把
+  本判面的**精确有效性门**文件化（typed→verdict 按 expect 判 PASS/FAIL、untyped/缺坏
+  typed 事实→Error 的三态分判与反控锚点，含 t11 宿主门旧 Error 断言按 N3 纠偏），见
+  [native-warm-edit-admission.md](native-warm-edit-admission.md)。
 - 任何路径都不得隐式重解释旧值、不要求在线的 OSR/HMR。
 
 ## 6. a2r 双轴与显式认证（本场景域）

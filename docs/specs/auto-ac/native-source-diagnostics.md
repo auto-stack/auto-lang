@@ -47,7 +47,11 @@
 `body_work` 捕获窗口在失败路径上同样计量；拒绝携带 `EditRefusal{kind, phase, source_error, reason}`。
 `RefusalKind`：language-diagnostics（终态，不进 fallback）/ syntax-not-converged（唯一允许显式 fallback）/
 signature-or-context-drift / invalid-edit / session-or-candidate / lower-admit / untyped / resource。
-kind 由 Rust 枚举直接序列化，**禁止**由 rendered 文本解析。
+kind 由 Rust 枚举直接序列化，**禁止**由 rendered 文本解析。PLAN-932：`session-or-candidate` 同样承接
+保留环境守卫的槽位/owner 失配与 env 安装身份族（见
+[function-incremental-source.md](function-incremental-source.md) 来源与失效轴）；父侧三态分判
+（有效 typed 策略拒绝=verdict、真实语言诊断=raw stage/code 判面、缺/坏 typed 事实=Error）见
+[../auto-test-case/native-warm-edit-admission.md](../auto-test-case/native-warm-edit-admission.md)。
 
 ## worker 协议（外层 `mnworker/1`、`mnworker/1.0` 不变）
 

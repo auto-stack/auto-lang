@@ -1,0 +1,12 @@
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}

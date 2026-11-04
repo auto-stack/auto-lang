@@ -1548,9 +1548,17 @@ mod performance {
         );
 
         // (c) Failure control: a SIGNATURE edit inside the steps is refused
-        // by the session's interface gate — the parent-side incrementality
-        // admission treats the sequence as an infra non-verdict (a refused
-        // warm edit is never blessed as a language result).
+        // by the session's interface gate. PLAN-932 (per the PLAN-914
+        // archived-review N3 approval, which supersedes this gate's pre-914
+        // assertion): a complete valid TYPED refusal is the engine's
+        // declared diagnostic VERDICT (stage verify,
+        // `mn.incremental.refused.<kind>`), judged against the declared
+        // expectation — it does not satisfy `completion: "success"`, so the
+        // case FAILs (never blessed as a green language result, and never
+        // an infra non-verdict either). The case declares
+        // `diagnostics: "source-v1"` so the typed refusal fact is on the
+        // wire; the pre-914 `Status::Error` assertion is preserved with its
+        // conflict evidence in PLAN-932 §9.
         let sig_steps = r#"{ op: "edit-source", from: "fn fn_leaf_1(v int) int {", to: "fn fn_leaf_1(v int, w int) int {" }, { op: "run" }"#;
         let case_dir = root.join("inc-refused");
         let out_dir = root.join("inc-refused-out");
@@ -1559,7 +1567,7 @@ mod performance {
         std::fs::write(
         case_dir.join("c.case.ad"),
         format!(
-            "# t11 refused\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t11.refused\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\" }}, steps: [{sig_steps}] }},\n      expect: {{ completion: \"success\", exit: {exp0} }} }}\n  ]\n}}\n```\n"
+            "# t11 refused\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t11.refused\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\", diagnostics: \"source-v1\" }}, steps: [{sig_steps}] }},\n      expect: {{ completion: \"success\", exit: {exp0} }} }}\n  ]\n}}\n```\n"
         ),
     )
     .unwrap();
@@ -1572,8 +1580,82 @@ mod performance {
             .expect("suite runs");
         assert_eq!(
             status_of(&report, "run"),
+            auto_test_case::report::Status::Fail,
+            "a typed-refused warm edit is the declared diagnostic verdict and never satisfies a success expectation (PLAN-914 N3 / PLAN-932)"
+        );
+        let refused_actual = report
+            .results
+            .iter()
+            .find(|r| r.check_id == "run")
+            .and_then(|r| r.mismatches.first().map(|m| m.actual.clone()))
+            .unwrap_or_default();
+        assert!(
+            refused_actual.contains("mn.incremental.refused.signature-or-context-drift"),
+            "the refusal verdict carries the precise typed kind, got {refused_actual:?}"
+        );
+
+        // (c2) The exact-code positive control on the SAME workload: the
+        // identical signature edit declared with the exact typed diagnostic
+        // expectation (stage verify + kind) PASSES — the precise code and
+        // stage the verdict face must produce.
+        let case_dir_c2 = root.join("inc-refused-code");
+        let out_dir_c2 = root.join("inc-refused-code-out");
+        std::fs::create_dir_all(&case_dir_c2).unwrap();
+        std::fs::write(case_dir_c2.join("main.at"), &src0).unwrap();
+        std::fs::write(
+        case_dir_c2.join("c.case.ad"),
+        format!(
+            "# t11 refused exact code\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t11.refused.code\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\", diagnostics: \"source-v1\" }}, steps: [{sig_steps}] }},\n      expect: {{ completion: {{ stage: \"verify\", code: \"mn.incremental.refused.signature-or-context-drift\" }} }} }}\n  ]\n}}\n```\n"
+        ),
+    )
+    .unwrap();
+        std::fs::write(
+        case_dir_c2.join("s.suite.ad"),
+        "# t11\n```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"s_code\", include: [\"c.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+        let report_c2 = run_suite(
+            &case_dir_c2.join("s.suite.ad"),
+            &out_dir_c2,
+            &Limits::defaults(),
+        )
+        .expect("suite runs");
+        assert_eq!(
+            status_of(&report_c2, "run"),
+            auto_test_case::report::Status::Pass,
+            "the typed refusal verdict matches the exact stage+code expectation (PLAN-914 I09 face)"
+        );
+
+        // (c3) The untyped negative control: the SAME signature edit without
+        // `diagnostics` leaves only an untyped `refused` string on the wire
+        // — a typed-fact breach is an infra ERROR (PLAN-932), never a
+        // degraded verdict that masks the missing facts.
+        let case_dir_c3 = root.join("inc-refused-untyped");
+        let out_dir_c3 = root.join("inc-refused-untyped-out");
+        std::fs::create_dir_all(&case_dir_c3).unwrap();
+        std::fs::write(case_dir_c3.join("main.at"), &src0).unwrap();
+        std::fs::write(
+        case_dir_c3.join("c.case.ad"),
+        format!(
+            "# t11 refused untyped\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t11.refused.untyped\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\" }}, steps: [{sig_steps}] }},\n      expect: {{ completion: \"success\", exit: {exp0} }} }}\n  ]\n}}\n```\n"
+        ),
+    )
+    .unwrap();
+        std::fs::write(
+        case_dir_c3.join("s.suite.ad"),
+        "# t11\n```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"s_untyped\", include: [\"c.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+        let report_c3 = run_suite(
+            &case_dir_c3.join("s.suite.ad"),
+            &out_dir_c3,
+            &Limits::defaults(),
+        )
+        .expect("suite runs");
+        assert_eq!(
+            status_of(&report_c3, "run"),
             auto_test_case::report::Status::Error,
-            "a refused warm edit is an infra non-verdict, never a green language result"
+            "an untyped refusal carries no typed fact — infra ERROR, never a masked FAIL (PLAN-932)"
         );
 
         // (d) Bad-literal control: an edit-source step whose literal does not

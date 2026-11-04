@@ -72,12 +72,16 @@ pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
 /// PLAN-891: the native typed-entry recipe (real PE bitwise frame channel).
 
-/// PLAN-914 (I09): read the typed refusal of an incremental round. The
-/// kind comes from the worker's typed face (top-level `refusal`, or the last
-/// step record's `refusal` in the strict source-v1 shape); the reason is
-/// the rendered text. A bare `refused` string degrades to the `untyped`
-/// kind — never guessed from the text.
-fn refusal_verdict(ok: &serde_json::Value) -> Option<(String, String)> {
+/// PLAN-914 (I09) / PLAN-932: read the typed refusal of an incremental
+/// round. The kind comes from the worker's typed face (top-level `refusal`,
+/// or the last step record's `refusal` in the strict source-v1 shape); the
+/// reason is the rendered text. A refusal is a POLICY VERDICT only when its
+/// typed kind is present and is a declared engine-policy kind — a bare
+/// `refused` string (or a missing/unknown/untyped/resource kind) is a
+/// typed-fact breach the caller reports as an infra ERROR, never a verdict
+/// guessed from the text and never a plain FAIL that masks the missing
+/// facts.
+fn refusal_verdict(ok: &serde_json::Value) -> Option<Result<(String, String), String>> {
     let refusal = ok.get("refusal").or_else(|| {
         ok.get("steps")
             .and_then(|s| s.as_array())
@@ -88,17 +92,47 @@ fn refusal_verdict(ok: &serde_json::Value) -> Option<(String, String)> {
     if refusal.is_none() && refused.is_none() {
         return None;
     }
-    let kind = refusal
-        .and_then(|r| r.get("kind"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("untyped");
     let reason = refusal
         .and_then(|r| r.get("reason"))
         .and_then(|v| v.as_str())
         .or(refused)
         .unwrap_or("refused by the retained environment")
         .to_string();
-    Some((format!("mn.incremental.refused.{kind}"), reason))
+    let breach = |detail: &str| {
+        Some(Err(format!(
+            "refused warm edit without a valid typed refusal fact: {detail} (reason: {reason})"
+        )))
+    };
+    let Some(refusal) = refusal.filter(|r| r.is_object()) else {
+        return breach("no `refusal` object on the wire (untyped `refused` only)");
+    };
+    let kind = match refusal.get("kind").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return breach("`refusal.kind` is missing or not a string"),
+    };
+    // The declared engine-policy kinds (mirrors native `sd::RefusalKind`).
+    // `language-diagnostics` must arrive as an admitted `source_error` fact
+    // (never through this face) and `syntax-not-converged` through the
+    // fallback rounds — seeing either here is a typed-fact contradiction.
+    // `untyped`/`resource` are not policy verdicts (missing facts / a
+    // budget breach while capturing the fact → infra).
+    match kind {
+        "signature-or-context-drift" | "invalid-edit" | "session-or-candidate" | "lower-admit" => {}
+        "language-diagnostics" => {
+            return breach(
+                "kind `language-diagnostics` must be admitted as a source_error fact, not a refusal verdict",
+            )
+        }
+        "syntax-not-converged" => {
+            return breach(
+                "kind `syntax-not-converged` must arrive through the fallback rounds, not a refusal verdict",
+            )
+        }
+        "untyped" => return breach("kind `untyped` carries no typed facts"),
+        "resource" => return breach("kind `resource` is a fact-capture budget breach"),
+        other => return breach(&format!("unknown `refusal.kind` {other:?}")),
+    }
+    Some(Ok((format!("mn.incremental.refused.{kind}"), reason)))
 }
 
 pub const TYPED_RECIPE: &str = "ac/mir-native-typed-v1";
@@ -116,8 +150,8 @@ pub const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
 /// with the env-node seam (S9) added to the injection domain.
 pub const CLOSURES_RESOURCE_RECIPE: &str = "ac/mir-native-closures-resource-v1";
 mod collections;
-mod resource_events;
 mod native_closures;
+mod resource_events;
 mod resource_guards;
 mod typed;
 pub use collections::campaign::{
@@ -2130,9 +2164,7 @@ pub fn run_check(
                 }
                 let oracle_key = format!("{}/{}", case.spec.id, check.id);
                 match resource_events::oracle_for(&oracle_key) {
-                    Some(o) => {
-                        resource_events::judge_native(o, exit_code, &facts, &mut mismatches)
-                    }
+                    Some(o) => resource_events::judge_native(o, exit_code, &facts, &mut mismatches),
                     None => mismatches.push(Mismatch {
                         observation: "native-lifecycle".into(),
                         kind: "case-registration".into(),
@@ -2179,9 +2211,7 @@ pub fn run_check(
                 }
                 let oracle_key = format!("{}/{}", case.spec.id, check.id);
                 match resource_guards::oracle_for(&oracle_key) {
-                    Some(o) => {
-                        resource_guards::judge_native(o, exit_code, &facts, &mut mismatches)
-                    }
+                    Some(o) => resource_guards::judge_native(o, exit_code, &facts, &mut mismatches),
                     None => mismatches.push(Mismatch {
                         observation: "native-guards".into(),
                         kind: "case-registration".into(),
@@ -2217,9 +2247,7 @@ pub fn run_check(
                 }
                 let oracle_key = format!("{}/{}", case.spec.id, check.id);
                 match native_closures::oracle_for(&oracle_key) {
-                    Some(o) => {
-                        native_closures::judge_native(o, exit_code, &facts, &mut mismatches)
-                    }
+                    Some(o) => native_closures::judge_native(o, exit_code, &facts, &mut mismatches),
                     None => mismatches.push(Mismatch {
                         observation: "native-closures".into(),
                         kind: "case-registration".into(),
@@ -2336,12 +2364,9 @@ pub fn run_check(
                 if let Some(want) = &oracle.stderr {
                     match hex_stream(&stderr_hex) {
                         Ok(actual) => {
-                            if let Some(m) = compare_bytes(
-                                want.text.as_bytes(),
-                                &actual,
-                                want.compare,
-                                "stderr",
-                            ) {
+                            if let Some(m) =
+                                compare_bytes(want.text.as_bytes(), &actual, want.compare, "stderr")
+                            {
                                 mismatches.push(m);
                             }
                         }
@@ -2906,13 +2931,22 @@ fn run_incremental(
                     // infrastructure failure: judge it as the typed refusal
                     // verdict and stop the sequence. LanguageDiagnostics
                     // refusals carry a source_error and are admitted above.
-                    if let Some((code, reason)) = refusal_verdict(&ok) {
-                        diag = Some((code, reason));
-                        let mut rec = ok;
-                        rec["parent_window_ms"] =
-                            serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
-                        step_records.push(rec);
-                        break 'admit;
+                    // PLAN-932: a refusal whose typed fact is missing or
+                    // invalid is an infra ERROR, never a degraded verdict.
+                    match refusal_verdict(&ok) {
+                        Some(Ok((code, reason))) => {
+                            diag = Some((code, reason));
+                            let mut rec = ok;
+                            rec["parent_window_ms"] =
+                                serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                            step_records.push(rec);
+                            break 'admit;
+                        }
+                        Some(Err(detail)) => {
+                            infra_detail = Some(detail);
+                            break 'admit;
+                        }
+                        None => {}
                     }
                 }
                 if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
@@ -2939,18 +2973,23 @@ fn run_incremental(
                 // That refusal IS the live-state policy result the scenario
                 // judges — record it as the typed verdict and stop the
                 // sequence; the accepted prefix remains the session state.
-                if let Some((code, reason)) = refusal_verdict(&ok) {
-                    // PLAN-914 (I09): the retained environment REFUSED this
-                    // warm edit (the non-fast-path interface/declaration
-                    // gate). That refusal IS the live-state policy result the
-                    // scenario judges; record the typed verdict and stop. The
-                    // accepted prefix remains the session state.
-                    diag = Some((code, reason));
-                    let mut rec = ok;
-                    rec["parent_window_ms"] =
-                        serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
-                    step_records.push(rec);
-                    break 'admit;
+                // PLAN-932: only a complete valid typed refusal is a
+                // verdict; a default-mode untyped `refused` string is a
+                // typed-fact breach → infra ERROR (never a degraded FAIL).
+                match refusal_verdict(&ok) {
+                    Some(Ok((code, reason))) => {
+                        diag = Some((code, reason));
+                        let mut rec = ok;
+                        rec["parent_window_ms"] =
+                            serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                        step_records.push(rec);
+                        break 'admit;
+                    }
+                    Some(Err(detail)) => {
+                        infra_detail = Some(detail);
+                        break 'admit;
+                    }
+                    None => {}
                 }
                 let unaffected = ok
                     .get("unaffected_stage_delta")
@@ -3030,8 +3069,7 @@ fn run_incremental(
                     .and_then(|v| v.as_i64())
                     .map(|v| v as i32);
                 let Some(round_exit) = round_exit else {
-                    infra_detail =
-                        Some(format!("declaration round {i} without a real PE exit"));
+                    infra_detail = Some(format!("declaration round {i} without a real PE exit"));
                     break 'admit;
                 };
                 exit_code = Some(round_exit);
@@ -3294,12 +3332,9 @@ fn run_incremental(
                 if let Some(want) = &oracle.stderr {
                     match hex_stream(&stderr_hex) {
                         Ok(actual) => {
-                            if let Some(m) = compare_bytes(
-                                want.text.as_bytes(),
-                                &actual,
-                                want.compare,
-                                "stderr",
-                            ) {
+                            if let Some(m) =
+                                compare_bytes(want.text.as_bytes(), &actual, want.compare, "stderr")
+                            {
                                 mismatches.push(m);
                             }
                         }
@@ -3815,7 +3850,6 @@ mod source_diag_tests {
     }
 }
 
-
 /// PLAN-914 (I04, D-05 criterion): judge the declaration-invalidation round
 /// against the declared oracle — the cold-frontend invalidations actually
 /// recorded, the object-producer unit bound, and the resident MIR/COFF
@@ -3890,5 +3924,145 @@ fn judge_declaration_invalidation(
     out
 }
 
+/// PLAN-932 parent-side unit controls for the typed refusal face: a refusal
+/// is a POLICY VERDICT only when its typed kind is present and declared;
+/// missing/unknown/contradictory facts are breaches the rounds loop reports
+/// as infra ERRORs (never a degraded verdict masking the missing facts).
+#[cfg(test)]
+mod refusal_tests {
+    use serde_json::{json, Value};
 
+    fn round(refusal: Option<Value>, refused: Option<&str>) -> Value {
+        let mut ok = json!({ "op": "edit-source" });
+        if let Some(r) = refusal {
+            ok["refusal"] = r;
+        }
+        if let Some(s) = refused {
+            ok["refused"] = json!(s);
+        }
+        ok
+    }
 
+    fn verdict(ok: &Value) -> Option<Result<(String, String), String>> {
+        super::refusal_verdict(ok)
+    }
+
+    #[test]
+    fn nw932_no_refusal_is_not_a_verdict() {
+        assert!(verdict(&round(None, None)).is_none());
+        // A round without any refusal keys at all.
+        assert!(verdict(&json!({ "op": "run", "exit_code": 7 })).is_none());
+    }
+
+    #[test]
+    fn nw932_declared_policy_kinds_are_verdicts() {
+        for kind in [
+            "signature-or-context-drift",
+            "invalid-edit",
+            "session-or-candidate",
+            "lower-admit",
+        ] {
+            let ok = round(
+                Some(json!({ "kind": kind, "reason": "non-fast-path" })),
+                Some("non-fast-path"),
+            );
+            match verdict(&ok) {
+                Some(Ok((code, reason))) => {
+                    assert_eq!(code, format!("mn.incremental.refused.{kind}"));
+                    assert_eq!(reason, "non-fast-path");
+                }
+                other => panic!("kind {kind}: expected a typed verdict, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn nw932_untyped_refused_string_is_a_fact_breach() {
+        // The default-mode shape: only the legacy `refused` string.
+        let ok = round(None, Some("non-fast-path: signature change refused"));
+        match verdict(&ok) {
+            Some(Err(detail)) => {
+                assert!(detail.contains("no `refusal` object"), "{detail}");
+            }
+            other => panic!("expected a typed-fact breach, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nw932_missing_or_malformed_kind_is_a_fact_breach() {
+        // `refusal` present but `kind` absent / not a string.
+        for bad in [
+            json!({ "reason": "r" }),
+            json!({ "kind": 7, "reason": "r" }),
+            json!({ "kind": null, "reason": "r" }),
+        ] {
+            let ok = round(Some(bad), None);
+            match verdict(&ok) {
+                Some(Err(detail)) => {
+                    assert!(detail.contains("`refusal.kind`"), "{detail}");
+                }
+                other => panic!("expected a missing-kind breach, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn nw932_unknown_kind_is_a_fact_breach() {
+        let ok = round(
+            Some(json!({ "kind": "stale-range-drift", "reason": "r" })),
+            None,
+        );
+        match verdict(&ok) {
+            Some(Err(detail)) => {
+                assert!(detail.contains("unknown `refusal.kind`"), "{detail}");
+            }
+            other => panic!("expected an unknown-kind breach, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nw932_untyped_and_resource_kinds_are_breaches() {
+        for kind in ["untyped", "resource"] {
+            let ok = round(Some(json!({ "kind": kind, "reason": "r" })), None);
+            match verdict(&ok) {
+                Some(Err(_)) => {}
+                other => panic!("kind {kind}: expected a breach, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn nw932_contradictory_kinds_are_breaches() {
+        // A language refusal must arrive as an admitted source_error fact,
+        // and syntax-not-converged through the fallback rounds — seeing
+        // either on the refusal face is a typed-fact contradiction.
+        for kind in ["language-diagnostics", "syntax-not-converged"] {
+            let ok = round(Some(json!({ "kind": kind, "reason": "r" })), None);
+            match verdict(&ok) {
+                Some(Err(detail)) => {
+                    assert!(detail.contains(kind), "{detail}");
+                }
+                other => panic!("kind {kind}: expected a contradiction breach, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn nw932_last_step_refusal_is_read_in_the_strict_shape() {
+        // The strict single-request shape carries the refusal on the last
+        // step record; the top-level `ok` has only the steps array.
+        let ok = json!({
+            "op": "edit-source",
+            "steps": [
+                { "op": "warmup" },
+                { "op": "edit-source", "refusal": { "kind": "signature-or-context-drift", "reason": "non-fast-path" } },
+            ],
+        });
+        match verdict(&ok) {
+            Some(Ok((code, _))) => {
+                assert_eq!(code, "mn.incremental.refused.signature-or-context-drift")
+            }
+            other => panic!("expected the last-step typed verdict, got {other:?}"),
+        }
+    }
+}

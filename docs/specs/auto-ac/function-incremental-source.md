@@ -36,7 +36,14 @@
 - 跨修订函数身份=def id 文本（`d_<name>`）；body 长度/行号变化不使未改函数凭证
   按全局 source revision 失效（目录/词法边界/来源映射单列）。
 - 签名/声明集/配置/授权变化、跨函数编辑、词法不收敛=显式非快路径（记录
-  `non_fast_path_reason`），不静默降级。
+  `non_fast_path_reason`），不静默降级。守卫码分列（PLAN-932）：`recheck_swap` 的
+  槽位/名字失配=`source.incremental.slot`、method owner 缺失=`source.incremental.owner`
+  （两者是会话/保留环境完整性事实，session 侧 typed `session-or-candidate`）、
+  干净签名重建与保留签名差异=`source.incremental`（真签名漂移，typed
+  `signature-or-context-drift`）；签名重建内部产生的真实 bind 级诊断（重复参数名、
+  未知 record 注解）原样返回为语言事实，不折叠成签名漂移。env 侧候选安装守卫
+  （`source.incremental*`/`source.foreign`/`source.stale`/`source.closed`）=身份事实，
+  typed `session-or-candidate`，不 typed 成语言拒绝。
 - body 事实查询核心（`FnEnv::{set_body_fact,body_fact_of,body_fact_current}`）：
   凭据属具体受检产物（history 条目自带冻结 deps）；已读事实变化→消费者失效；
   重读返回新值不刷新旧凭据；未读不失效；只读接口 caller 零重编。

@@ -7,6 +7,7 @@
 //! ever reports what the real PE returned.
 
 use super::{call_worker, worker_binary, TYPED_RECIPE};
+use crate::test_cases::avm::Verdict;
 use auto_test_case::compare::Mismatch;
 use auto_test_case::contract::{CheckSpec, Completion, Stage};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
@@ -15,7 +16,6 @@ use auto_test_case::sha256::{hex, sha256};
 use base64::Engine as _;
 use std::path::Path;
 use std::time::Instant;
-use crate::test_cases::avm::Verdict;
 
 /// The frozen typed ABI tag the worker must echo (mirror of
 /// `ace_native::config::TYPED_ABI`).
@@ -176,17 +176,28 @@ pub fn run_check_typed(
 
     // ---- judgement (parent-side, independent oracle) --------------------
     let typed_frame = ok.get("typed").cloned().unwrap_or(serde_json::Value::Null);
-    let status = typed_frame.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let status = typed_frame
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let observed: String;
     match status {
         "value" => {
-            let kind = typed_frame.get("kind").and_then(|v| v.as_str()).unwrap_or("");
-            let bits = typed_frame.get("bits").and_then(|v| v.as_str()).unwrap_or("");
+            let kind = typed_frame
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let bits = typed_frame
+                .get("bits")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match &oracle.completion {
                 Completion::Success => {
                     if let Some(want) = &check.expect.typed {
                         if let Some(violation) =
-                            crate::test_cases::ac_av::typed_expect_shape_violation(&want.kind, &want.bits)
+                            crate::test_cases::ac_av::typed_expect_shape_violation(
+                                &want.kind, &want.bits,
+                            )
                         {
                             return Err(format!("typed expect is not canonical: {violation}"));
                         }
@@ -351,11 +362,17 @@ pub fn run_check_typed(
         "request_wall_ms": started.elapsed().as_secs_f64() * 1000.0,
     });
     let receipt_path = artifact_dir.join("mn-typed-receipt.json");
-    std::fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt).unwrap_or_default())
-        .map_err(|e| format!("write typed receipt: {e}"))?;
+    std::fs::write(
+        &receipt_path,
+        serde_json::to_vec_pretty(&receipt).unwrap_or_default(),
+    )
+    .map_err(|e| format!("write typed receipt: {e}"))?;
 
     let native = NativeRecord {
-        exit_code: ok.get("exit_code").and_then(|v| v.as_i64()).map(|v| v as i32),
+        exit_code: ok
+            .get("exit_code")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
         stage_spans: vec![(
             "request_wall_ms".to_string(),
             (started.elapsed().as_secs_f64() * 1000.0) as u64,
@@ -369,7 +386,10 @@ pub fn run_check_typed(
                 "mir-lowering".to_string(),
                 super::EXPECTED_MIR_LOWERING_VERSION.to_string(),
             ),
-            ("mn-worker-exe-sha256".to_string(), super::bound_worker_sha(TYPED_RECIPE)?),
+            (
+                "mn-worker-exe-sha256".to_string(),
+                super::bound_worker_sha(TYPED_RECIPE)?,
+            ),
             ("mn-typed-abi".to_string(), EXPECTED_TYPED_ABI.to_string()),
         ],
         gaps: vec![],

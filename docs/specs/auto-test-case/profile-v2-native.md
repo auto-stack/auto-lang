@@ -128,7 +128,11 @@ ace-m1 的收据（`ace.m1.cert/1`）、分母登记（`ace.m1.binding/1`）与 
 - 判面：raw stage `text→parse`、`bind→resolve`、`verify→typecheck`，code = 编译器 primary 原样；
   泛化壳 `mn.unsupported.frontend` 在严格模式不被授信（登记红控 `ace.m1.nd911.red.generic-shell`）。
 - rounds（增量）路径：语言拒绝回合被准入后父侧**停止后续 step**，父侧源回滚 accepted prefix；非语言
-  typed 拒绝 = Error。
+  typed 拒绝 = **declared diagnostic completion verdict**（stage `verify`、`mn.incremental.refused.<kind>`，
+  按 PLAN-914 归档复审 N3 与 [m1-order-layout-observations.md](m1-order-layout-observations.md) §5/§7，覆盖
+  全部增量 mn recipe；PLAN-932 起取代本文件 911 期"非语言 typed 拒绝 = Error"旧句）。缺 typed 事实
+  （default 模式仅有 untyped `refused` 字符串、缺/未知 `refusal.kind`）或与执行结果矛盾 = `Error`，
+  不降级为普通 FAIL 掩盖缺事实；详见 [native-warm-edit-admission.md](native-warm-edit-admission.md)。
 - 正式事实落点：`mn-source-diagnostic.json`（`mn-source-diagnostic-fact/1`，绑 `execution_key`，写后重读）
   经 `ArtifactRef` 发布，`NativeRecord` / `test-report/2` 键集不变。
 - 固定组：`case-ace-m1-native-diags-911`（套件 `native-diags-911.suite.ad`，17 case：B17–19 负例、

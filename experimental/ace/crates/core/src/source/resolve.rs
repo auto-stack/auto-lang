@@ -2163,7 +2163,7 @@ pub(crate) fn recheck_swap(
     if fn_index >= env.program.fns.len() || env.program.fns[fn_index].name != item.name.name {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
-            "source.incremental",
+            "source.incremental.slot",
             format!(
                 "function `{}` is not the retained entry at slot {fn_index}",
                 item.name.name
@@ -2190,7 +2190,7 @@ pub(crate) fn recheck_swap(
             None => {
                 return Err(vec![Diagnostic::new(
                     Stage::Bind,
-                    "source.incremental",
+                    "source.incremental.owner",
                     format!(
                         "method `{}` names owner record `{}` which does not exist",
                         item.name.name, owner_name
@@ -2249,8 +2249,15 @@ pub(crate) fn recheck_swap(
         )
     };
     let expected = &env.sigs[&sig_key];
-    if !guard_diags.is_empty()
-        || rebuilt.param_names != expected.param_names
+    // PLAN-932: the signature rebuild's OWN diagnostics are real bind-level
+    // language facts (duplicate parameters, unknown record annotations) —
+    // they pass through verbatim, never collapsed into the "changed its
+    // signature" policy code. Only a clean rebuild that DIFFERS from the
+    // retained signature is the true signature-drift non-fast path.
+    if !guard_diags.is_empty() {
+        return Err(guard_diags);
+    }
+    if rebuilt.param_names != expected.param_names
         || rebuilt.params != expected.params
         || rebuilt.result != expected.result
     {
@@ -2518,7 +2525,8 @@ pub(crate) fn resolve_owner_in_env(
             item.name.span,
         )]);
     }
-    if item.receiver != ast::Receiver::Free || env.program.fns[fn_index].receiver != ast::Receiver::Free
+    if item.receiver != ast::Receiver::Free
+        || env.program.fns[fn_index].receiver != ast::Receiver::Free
     {
         return Err(vec![Diagnostic::new(
             Stage::Bind,

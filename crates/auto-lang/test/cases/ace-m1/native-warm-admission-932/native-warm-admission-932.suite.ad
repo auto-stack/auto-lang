@@ -1,0 +1,4 @@
+# PLAN-932 native warm-edit admission suite (see the case file header).
+```test-suite
+suite { schema: "autolang.suite/2", id: "native-warm-admission-932", include: ["native-warm-admission-932.case.ad"] }
+```

@@ -50,9 +50,7 @@ pub fn decode_facts(text: &str) -> Result<ClosuresFacts, String> {
     let mut frees = 0usize;
     for (index, line) in text.split_terminator('\n').enumerate() {
         if let Some(rest) = line.strip_prefix("MN-COLL-INJECT seam=") {
-            let seam: u32 = rest
-                .parse()
-                .map_err(|_| bad("malformed injected seam"))?;
+            let seam: u32 = rest.parse().map_err(|_| bad("malformed injected seam"))?;
             if rest != seam.to_string() || !(0..=9).contains(&seam) {
                 return Err(bad("unknown injected seam"));
             }
@@ -62,9 +60,7 @@ pub fn decode_facts(text: &str) -> Result<ClosuresFacts, String> {
             continue;
         }
         if let Some(rest) = line.strip_prefix("MN-COLL-INJECT nth=") {
-            let nth: u64 = rest
-                .parse()
-                .map_err(|_| bad("malformed injected nth"))?;
+            let nth: u64 = rest.parse().map_err(|_| bad("malformed injected nth"))?;
             if rest != nth.to_string() {
                 return Err(bad("malformed injected nth"));
             }
@@ -181,7 +177,14 @@ pub fn oracle_for(key: &str) -> Option<&'static ClosuresOracle> {
                     true,
                     false
                 ),
-                oracle!("ace.m1.r02r05.k02/fault-s9-n2", Some(42), None, vec![], true, true),
+                oracle!(
+                    "ace.m1.r02r05.k02/fault-s9-n2",
+                    Some(42),
+                    None,
+                    vec![],
+                    true,
+                    true
+                ),
                 // The node seam (S1): the captured literal's fresh node.
                 oracle!(
                     "ace.m1.r02r05.k02/fault-s1",
@@ -222,7 +225,14 @@ pub fn oracle_for(key: &str) -> Option<&'static ClosuresOracle> {
                     true,
                     false
                 ),
-                oracle!("ace.m1.r02r05.k05/fault-s9-n3", Some(42), None, vec![], true, true),
+                oracle!(
+                    "ace.m1.r02r05.k05/fault-s9-n3",
+                    Some(42),
+                    None,
+                    vec![],
+                    true,
+                    true
+                ),
             ]
         })
         .iter()
@@ -236,12 +246,7 @@ pub fn judge_native(
     facts: &ClosuresFacts,
     mismatches: &mut Vec<Mismatch>,
 ) {
-    fn push(
-        mismatches: &mut Vec<Mismatch>,
-        kind: &'static str,
-        expected: String,
-        actual: String,
-    ) {
+    fn push(mismatches: &mut Vec<Mismatch>, kind: &'static str, expected: String, actual: String) {
         mismatches.push(Mismatch {
             observation: "native-closures".into(),
             kind,
@@ -252,10 +257,20 @@ pub fn judge_native(
     }
     if let Some(want) = oracle.exit {
         if exit != Some(want) {
-            push(mismatches, "exit", format!("PE exit {want}"), format!("{exit:?}"));
+            push(
+                mismatches,
+                "exit",
+                format!("PE exit {want}"),
+                format!("{exit:?}"),
+            );
         }
     } else if exit.is_none() {
-        push(mismatches, "exit", "a real PE exit code".into(), "none".into());
+        push(
+            mismatches,
+            "exit",
+            "a real PE exit code".into(),
+            "none".into(),
+        );
     }
     if let Some(want) = oracle.trap {
         if facts.trap != Some(want) {

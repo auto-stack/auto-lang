@@ -2400,10 +2400,34 @@ impl FunctionIncrementalSession {
         } {
             Ok(c) => c,
             Err(ds) => {
-                // The re-check's signature-drift guard (`source.incremental`)
-                // IS the session's explicit non-fast path — an interface
+                // The re-check's guard codes decide the typed kind from the
+                // real failure origin (PLAN-932): `source.incremental.slot` /
+                // `source.incremental.owner` are retained-environment
+                // identity facts (the projected item is not the entry this
+                // session holds at that slot / names an owner the retained
+                // environment does not), while a clean `source.incremental`
+                // is the true signature-drift non-fast path — an interface
                 // edit, never silently re-checked. Anything else is a
                 // candidate rejection carrying real diagnostics.
+                if ds.iter().any(|d| {
+                    d.code == "source.incremental.slot" || d.code == "source.incremental.owner"
+                }) {
+                    return Ok(Err(EditOutcome::refused(
+                        self.revision,
+                        format!(
+                            "non-fast-path: candidate does not match the retained environment ({})",
+                            ds.iter()
+                                .map(|d| d.render("probe.at", &new_src))
+                                .collect::<Vec<_>>()
+                                .join("; ")
+                        ),
+                        Vec::new(),
+                        RefusalKind::SessionOrCandidate,
+                        None,
+                        Vec::new(),
+                    )
+                    .attributed(&changed_name)));
+                }
                 if ds.iter().any(|d| d.code == "source.incremental") {
                     return Ok(Err(EditOutcome::refused(
                         self.revision,
@@ -2801,20 +2825,46 @@ impl FunctionIncrementalSession {
         // env's sole publisher and the base-revision guard above matches
         // the env base); surface it honestly rather than ignore.
         if let Err(ds) = candidate.commit(&mut self.env_core) {
-            return EditOutcome::refused(
-                self.revision,
-                format!(
-                    "env install refused: {}",
-                    ds.iter()
-                        .map(|d| d.render("probe.at", &self.src))
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                ),
-                Vec::new(),
-                RefusalKind::LanguageDiagnostics,
-                Some(RejectPhase::Commit),
-                ds,
+            // PLAN-932: the env install's guard codes are identity facts
+            // (closed/foreign/stale environment, slot drift — the
+            // `source.incremental*` family), never language diagnostics;
+            // typing them as a language rejection would forge a source
+            // snapshot for a session/candidate integrity refusal. Any other
+            // diagnostic (unreachable here by construction) keeps the
+            // commit-phase language face.
+            let identity = ds.iter().any(|d| {
+                d.code == "source.incremental"
+                    || d.code.starts_with("source.incremental.")
+                    || d.code == "source.foreign"
+                    || d.code == "source.stale"
+                    || d.code == "source.closed"
+            });
+            let reason = format!(
+                "env install refused: {}",
+                ds.iter()
+                    .map(|d| d.render("probe.at", &self.src))
+                    .collect::<Vec<_>>()
+                    .join("; ")
             );
+            return if identity {
+                EditOutcome::refused(
+                    self.revision,
+                    reason,
+                    Vec::new(),
+                    RefusalKind::SessionOrCandidate,
+                    None,
+                    Vec::new(),
+                )
+            } else {
+                EditOutcome::refused(
+                    self.revision,
+                    reason,
+                    Vec::new(),
+                    RefusalKind::LanguageDiagnostics,
+                    Some(RejectPhase::Commit),
+                    ds,
+                )
+            };
         }
         let changed_rec = &mut self.fns[changed_idx];
         // The deposited map is the POST-commit one (installed baseline

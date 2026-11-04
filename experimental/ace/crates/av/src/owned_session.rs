@@ -716,7 +716,11 @@ impl OwnedFunctionSession {
         let candidate =
             prepare_candidate_document(&mut self.env, &item, decl_idx, &parse_doc, "session.at")
                 .map_err(|ds| {
-                    if ds.iter().any(|d| d.code == "source.incremental") {
+                    // PLAN-932: the retained guard's whole family is
+                    // prefix-matched — signature drift plus the
+                    // `.slot`/`.owner` identity codes all stay the
+                    // single-body channel's non-fast Fallback.
+                    if ds.iter().any(|d| d.code.starts_with("source.incremental")) {
                         SingleBodyError::Fallback
                     } else {
                         SingleBodyError::Reject(

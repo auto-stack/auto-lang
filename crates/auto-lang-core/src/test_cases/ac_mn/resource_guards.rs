@@ -42,9 +42,7 @@ pub fn decode_facts(text: &str) -> Result<GuardsFacts, String> {
     let mut arena0 = false;
     for line in text.split_terminator('\n') {
         if let Some(rest) = line.strip_prefix("MN-COLL-INJECT seam=") {
-            let seam: u32 = rest
-                .parse()
-                .map_err(|_| bad("malformed injected seam"))?;
+            let seam: u32 = rest.parse().map_err(|_| bad("malformed injected seam"))?;
             if rest != seam.to_string() || !(0..=8).contains(&seam) {
                 return Err(bad("unknown injected seam"));
             }
@@ -54,9 +52,7 @@ pub fn decode_facts(text: &str) -> Result<GuardsFacts, String> {
             continue;
         }
         if let Some(rest) = line.strip_prefix("MN-COLL-INJECT nth=") {
-            let nth: u64 = rest
-                .parse()
-                .map_err(|_| bad("malformed injected nth"))?;
+            let nth: u64 = rest.parse().map_err(|_| bad("malformed injected nth"))?;
             if rest != nth.to_string() {
                 return Err(bad("malformed injected nth"));
             }
@@ -122,7 +118,15 @@ pub struct GuardsOracle {
 
 macro_rules! oracle {
     ($key:expr, $exit:expr, $trap:expr, $injects:expr, $cleanup:expr) => {
-        ($key, GuardsOracle { exit: $exit, trap: $trap, injects: $injects, cleanup: $cleanup })
+        (
+            $key,
+            GuardsOracle {
+                exit: $exit,
+                trap: $trap,
+                injects: $injects,
+                cleanup: $cleanup,
+            },
+        )
     };
 }
 
@@ -141,10 +145,34 @@ pub fn oracle_for(key: &str) -> Option<&'static GuardsOracle> {
                 // Per-seam fault sweep over real source PEs: the injected
                 // failure traps INJECTED (25) with the named seam/nth fact
                 // and a fully cleaned sweep (live/bytes/invalid/arena 0).
-                oracle!("ace.m1.r03.l04/fault-s1", None, Some(25), vec![(1, 1)], true),
-                oracle!("ace.m1.r03.l04/fault-s2", None, Some(25), vec![(2, 1)], true),
-                oracle!("ace.m1.r03.l04/fault-s4", None, Some(22), vec![(4, 1)], true),
-                oracle!("ace.m1.r03.grow/fault-s3", None, Some(25), vec![(3, 1)], true),
+                oracle!(
+                    "ace.m1.r03.l04/fault-s1",
+                    None,
+                    Some(25),
+                    vec![(1, 1)],
+                    true
+                ),
+                oracle!(
+                    "ace.m1.r03.l04/fault-s2",
+                    None,
+                    Some(25),
+                    vec![(2, 1)],
+                    true
+                ),
+                oracle!(
+                    "ace.m1.r03.l04/fault-s4",
+                    None,
+                    Some(22),
+                    vec![(4, 1)],
+                    true
+                ),
+                oracle!(
+                    "ace.m1.r03.grow/fault-s3",
+                    None,
+                    Some(25),
+                    vec![(3, 1)],
+                    true
+                ),
                 // The text seams surface through the embedded text
                 // runtime's own channels (ERR_ENV_OOM -> trap 22); they do
                 // not emit a MN-COLL-INJECT pair of this worker's channel.
@@ -163,12 +191,7 @@ pub fn judge_native(
     facts: &GuardsFacts,
     mismatches: &mut Vec<Mismatch>,
 ) {
-    fn push(
-        mismatches: &mut Vec<Mismatch>,
-        kind: &'static str,
-        expected: String,
-        actual: String,
-    ) {
+    fn push(mismatches: &mut Vec<Mismatch>, kind: &'static str, expected: String, actual: String) {
         mismatches.push(Mismatch {
             observation: "native-guards".into(),
             kind,
@@ -179,10 +202,20 @@ pub fn judge_native(
     }
     if let Some(want) = oracle.exit {
         if exit != Some(want) {
-            push(mismatches, "exit", format!("PE exit {want}"), format!("{exit:?}"));
+            push(
+                mismatches,
+                "exit",
+                format!("PE exit {want}"),
+                format!("{exit:?}"),
+            );
         }
     } else if exit.is_none() {
-        push(mismatches, "exit", "a real PE exit code".into(), "none".into());
+        push(
+            mismatches,
+            "exit",
+            "a real PE exit code".into(),
+            "none".into(),
+        );
     }
     if let Some(want) = oracle.trap {
         if facts.trap != Some(want) {
