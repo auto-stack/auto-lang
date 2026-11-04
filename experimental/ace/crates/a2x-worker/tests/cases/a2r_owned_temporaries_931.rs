@@ -186,7 +186,10 @@ fn p931_external_modes_fragment_equivalence() {
     // design (the whole emission also carries own_len/mut_peek bodies)
     let fn_bytes = |text: &str| -> String {
         let start = text.find("pub fn fn_main").expect("fn_main rendered");
-        let end = text[start..].find("}\n").map(|i| start + i + 2).expect("fn end");
+        let end = text[start..]
+            .find("}\n")
+            .map(|i| start + i + 2)
+            .expect("fn end");
         text[start..end].to_string()
     };
     assert_eq!(
@@ -333,11 +336,7 @@ impl TargetProvider for OldPrintProvider {
     fn fragment_layer_id(&self, family: Family) -> Result<&'static str, A2xReject> {
         self.0.fragment_layer_id(family)
     }
-    fn runtime_source(
-        &self,
-        view: &SemanticView<'_>,
-        family: Family,
-    ) -> Result<String, A2xReject> {
+    fn runtime_source(&self, view: &SemanticView<'_>, family: Family) -> Result<String, A2xReject> {
         self.0.runtime_source(view, family)
     }
     fn produce_fragments(
@@ -404,7 +403,8 @@ fn p931_old_print_version_fragments_never_hit() {
         .cold_assemble_profile(WRAP, SourceProfile::TextRecord, &caps, "main", false)
         .unwrap();
     assert_eq!(
-        s2.stats().lower, 3,
+        s2.stats().lower,
+        3,
         "print/1 fragments must never hit under print/2"
     );
     assert_eq!(run_generated(&asm2, "p931-v2"), "value:5");
@@ -456,7 +456,9 @@ fn p931_rust_session_warm_edit_lifecycle() {
     // the edited METHOD's declaration text, owner-qualified)
     let span_b = "fn span() int { return .head.len() * 10 + .tail.len() }";
     let before = s.stats().clone();
-    let warm = s.warm_edit_method("Wrap", "span", span_b, "main", false).unwrap();
+    let warm = s
+        .warm_edit_method("Wrap", "span", span_b, "main", false)
+        .unwrap();
     assert_eq!(run_generated(&warm, "p931-life-warm"), "value:23"); // 2*10+3
     let after = s.stats();
     assert_eq!(after.lower, before.lower + 1, "ONLY span re-lowered");
@@ -465,13 +467,17 @@ fn p931_rust_session_warm_edit_lifecycle() {
 
     // a broken edit is a NAMED rejection (session state intact)
     let bad = "fn span() int { return .head.len() + unknown_name }";
-    let err = s.warm_edit_method("Wrap", "span", bad, "main", false).unwrap_err();
+    let err = s
+        .warm_edit_method("Wrap", "span", bad, "main", false)
+        .unwrap_err();
     assert!(
         format!("{err:?}").contains("source.undefined"),
         "broken edit must be a named undefined-name rejection: {err:?}"
     );
     // and the fix edit (same span*10 shape) still assembles to its value
-    let fixed = s.warm_edit_method("Wrap", "span", span_b, "main", false).unwrap();
+    let fixed = s
+        .warm_edit_method("Wrap", "span", span_b, "main", false)
+        .unwrap();
     assert_eq!(run_generated(&fixed, "p931-life-fixed"), "value:23");
 }
 
@@ -510,7 +516,9 @@ fn run_generated(asm: &ace_a2x_store::Assembly, tag: &str) -> String {
         None,
     )
     .expect("run exe");
-    String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).trim().to_string()
+    String::from_utf8_lossy(run.stdout.as_ref().expect("stdout"))
+        .trim()
+        .to_string()
 }
 
 fn generated_text(asm: &ace_a2x_store::Assembly) -> &str {
