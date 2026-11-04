@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 2
+current_step: 3
 total_steps: 14
 ---
 
@@ -197,7 +197,7 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 |---|---|---|---|---|
 | T-01 | work | 私有调查可先，927/928及923–926实际状态 | 调用清单/生命周期/版本/预算/所有写窗和原正式样本冻结，AC-01/11 | [x] 2026-11-04：五面只读盘点于冻结基面 `03e9869fb`；主件 `plan-artifacts/plan-929/t01-call-inventory-master-03e9869fb.md`（52 入口/全部生产+测试调用点/退役预分类/不同语言保留）+ 余项件 `t01-freeze-versions-budgets-windows-samples.md`（版本轴/六域预算原值/写窗实况/正式样本清单）。923-926/927 全部已归档交付、边界符号具名；**D928 写窗+稳定接口 SHA 具名 pending**（另一会话在途，按 §5.7②属 T-02 前置，不把在途分支当D） |
 | T-02 | work | T-01、927/928稳定接口，最小store/candidate整链 | 冷→restart→无预热首编辑/失败修复、嵌套单元/发布seam可行性；typed父schema/恢复数据/预算域/真实计数与I/O设计，失败needs_replan；AC-03/05/07 | [x] 2026-11-04：D928 落地（`6b429502f`，基面 ff 至 `37503a3f5`）；实现 `UnitCatalog::from_restored` **零生产惰性恢复**（身份-only headless 单元+字节级深重验+`RestoreError` 八类使用前拒+类型感知嵌套检查）+ Option 化惰性物化（未改单元跨恢复→首编辑 P=0 保持 headless）+修复 to_manifest module_sha 陈旧；8 用例套件 `source_restore_929_t02.rs` 全绿（零生产恢复/无预热首编辑恰目标物化/失败零变异修复/7 类伪造拒绝/foreign+stale+零编辑重放/跨编辑链续/嵌套 owner⊇λ）；`cargo t ace-source`+`case-ace-source-composite-928` PASS（worktree `1f029a4a4`）。**设计冻结**：SYN 报告 schema=`ac-source-syn-report/1`（身份/P-M-R-IO 四轴/预算域/认证终态，父 decoder 拒伪五规则，字段骨架见 plan-artifacts 草案，T-09 接线时终冻）；恢复数据=`ac-source-units/1` 清单+惰性 body+RestoreError 分类；真实计数=ProductionMeter（produced/reused/discarded 分账）+StageAttempts（whole/per-unit 双轴）；预算域六域原值不变。消费者 store/会话集成（ensure_env 消除的 a2x/AV/native 落地）归 T-03..T-08 |
-| T-03 | work | 927/928稳定接口，T-02，AV/core S窗 | scalar/closures候选与常驻session切统一语法；V-01/02/06/08，AC-02/03/06/08 | [ ] |
+| T-03 | work | 927/928稳定接口，T-02，AV/core S窗 | scalar/closures候选与常驻session切统一语法；V-01/02/06/08，AC-02/03/06/08 | [x] 2026-11-04（worktree `404ccba21`）三面迁移：①closures 片段生产者→统一前门桥（新增 `parse_closure_fragment_via_cst` 合成宿主入口+`parse_function_fragment_via_cst`，closures_fn.rs edit_body 两处切接）；②常驻 scalar session 切共享 `profile_grammar` 缓存（**auto-scalar.at 退出生产依赖**；暖建 ast 视图复用统一 `core_program` 投影=零二次投影；暖编辑变更 decl 走 `FreeFnFragment` 统一片段前门；`decl_names` 本地名序替代 outline spec 命中——统一语法 decl 注册在顶层分派规则）；③`front_door_admit` 深度度量改共享扫描器供给（语法 token 名+拼写分类，LevelChain/F798 语义原样）+mem_stage_probe lex 面同迁。验证：`ace-av`/`ace-source`/`ace-syntax` 全组 PASS+闭包 912/913/865/909+composite-928 绿（清 `%TEMP%\av798-session-*` 后；**av798 跨运行污染处置余账→T-09**）；av crate 存 928 基线 fmt/警告漂移 6 文件（非本包触面，复审健康项具名） |
 | T-04 | work | T-02，native稳定923/924消费接口窗 | native cold/collections/闭包实际入口与source-v1诊断；V-01/02/06/07，AC-02/03/06/08 | [ ] |
 | T-05 | work | T-02，Rust与925/926稳定A2X接口窗 | A2xSession cold/method/type-enum/ranged统一与原provider不回退；V-01/02/07，AC-02/03/08 | [ ] |
 | T-06 | work | T-02，semantics/comptime/工具adapter窗 | 剩余Auto源码reader切共享门面，严分Atom/模型输入；V-01/02，AC-01/02/08 | [ ] |
@@ -213,6 +213,11 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 下一入口T-01私有清单，T-02最小恢复整链在迁移前完成；公共实现需927/928稳定接口与所有实际owner释放，不把在途分支当D。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 9 | from: work | to: work | status: executing | outcome: in-progress（T-03 完成 3/14） | worktree: `lang-929` @ `plan-929-dev`（代码 `1f029a4a4`+`404ccba21`） | commit: 404ccba21 | next: work（T-04 native 面）
+  - T-03 交付（用户"继续完成计划"指令恢复 goal）：closures 片段生产者统一前门桥；常驻 session 共享 profile grammar（auto-scalar.at 生产退役）；admit 探针/内存探针共享扫描器。过程发现并处置两个真差异：统一语法 decl 注册在顶层分派规则（outline spec decl-rule 不命中→decl_names 本地名序）；常驻面 CoreKinds 828 分类法依赖 type-ann 规则名（统一语法 param 直接绑 ann-ty）→暖建/暖编辑投影全部改走统一链（core_program/FreeFnFragment），kinds 面整体退役。
+  - 验证：ace-av/ace-source/ace-syntax 全 PASS+912/913/865/909+composite-928 绿；av798 污染清后复绿（处置归 T-09）；av crate 928 基线 fmt/警告漂移 6 文件具名（非本包触面）。
+  - 环境教训：固定组运行器单实例锁（`target/test-groups/active`）——并行两个 `cargo t` 会互斥失败，需串行。
 
 - stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: in-progress（T-02 完成 2/14） | worktree: `lang-929` @ `plan-929-dev`（基面 ff `37503a3f5`，代码 `1f029a4a4`） | commit: 1f029a4a4 | next: work（T-03 AV/core 会话切统一语法）
   - **D928 落地**（19:00：merge pass `4f7dc8c16`、交付 `6b429502f`、归档+清树收据齐全）→ §10 恢复入口执行完毕：基面 ff、交接面读取（冷入口九 profile 统一/清单 codec/UnitCatalog/候选事务移交 929 恢复消费）、T-01 STALE 增量件 `t01-delta-d928.md`（fragment 三 API 仍 legacy=本包迁移面；929 侧环境余账三项）。
