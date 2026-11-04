@@ -75,9 +75,9 @@ fn t02_a_single_lambda_edit() {
     let src = "fn helper() int {\n    return 1\n}\nfn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 1 }\n    return f(2) + g(3)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold build");
     assert_eq!(cat.meter.produced, 4, "cold: helper + main + 2 lambda");
-    let helper_before = Rc::as_ptr(&cat.fns["helper"].item) as usize;
-    let main_before = Rc::as_ptr(&cat.fns["main"].item) as usize;
-    let g_before = Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize;
+    let helper_before = Rc::as_ptr(cat.fns["helper"].item.as_ref().unwrap()) as usize;
+    let main_before = Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize;
+    let g_before = Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize;
 
     // 编辑 lambda#0（f）：正文加一。
     let old_span = cat.lambda("main", 0).unwrap().span;
@@ -94,9 +94,9 @@ fn t02_a_single_lambda_edit() {
     assert_eq!(receipt.produced.len(), 1, "仅目标单元入 produced");
     assert!(receipt.produced[0].kind == units::UnitKind::Lambda && receipt.produced[0].ordinal == 0);
     // 兄弟 g 与 owner/兄弟 fn 的密封体是同一 Rc（真复用，非重物化）。
-    assert_eq!(Rc::as_ptr(&cat.fns["helper"].item) as usize, helper_before, "helper fn 体未重建");
-    assert_eq!(Rc::as_ptr(&cat.fns["main"].item) as usize, main_before, "owner fn 体未重建（lambda 编辑不重产 owner）");
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize, g_before, "兄弟 lambda 体共享同一 Rc");
+    assert_eq!(Rc::as_ptr(cat.fns["helper"].item.as_ref().unwrap()) as usize, helper_before, "helper fn 体未重建");
+    assert_eq!(Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize, main_before, "owner fn 体未重建（lambda 编辑不重产 owner）");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize, g_before, "兄弟 lambda 体共享同一 Rc");
     // 新源上重解析全等冒烟（目录源与整源解析一致）。
     assert_diff_same(&receipt.new_src, "after-single-lambda-edit");
 }
@@ -106,7 +106,7 @@ fn t02_a_single_lambda_edit() {
 fn t02_b_owner_edit_shares_unchanged_lambda_but_signals_recheck() {
     let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
-    let lam_before = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    let lam_before = Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
     let old_span = cat.fns["main"].span;
     let old_fn = cat.src()[old_span.start..old_span.end].to_string();
     // 创建点变化：let -> var（捕获写性变化 = 909 共享可写捕获面）。
@@ -117,7 +117,7 @@ fn t02_b_owner_edit_shares_unchanged_lambda_but_signals_recheck() {
     assert_eq!(cat.meter.produced - before.produced, 1, "仅 owner fn 物化 1");
     assert_eq!(cat.meter.reused - before.reused, 1, "同文 lambda 复用 1（生产 0）");
     assert!(receipt.semantic_recheck_required, "owner 变化必须携带语义重验信号（语法共享不免 capture 重验）");
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, lam_before, "同文 lambda 语法体 Rc 同一");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, lam_before, "同文 lambda 语法体 Rc 同一");
     assert_diff_same(&receipt.new_src, "after-owner-edit");
 }
 
@@ -126,15 +126,15 @@ fn t02_b_owner_edit_shares_unchanged_lambda_but_signals_recheck() {
 fn t02_c_sibling_decls_not_rebuilt() {
     let src = "fn a() int {\n    return 1\n}\nfn b() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\nfn c() int {\n    return 3\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
-    let a_ptr = Rc::as_ptr(&cat.fns["a"].item) as usize;
-    let c_ptr = Rc::as_ptr(&cat.fns["c"].item) as usize;
+    let a_ptr = Rc::as_ptr(cat.fns["a"].item.as_ref().unwrap()) as usize;
+    let c_ptr = Rc::as_ptr(cat.fns["c"].item.as_ref().unwrap()) as usize;
     let old_span = cat.fns["b"].span;
     let new_fn = cat.src()[old_span.start..old_span.end].replace("n + 1", "n + 2");
     let before = cat.meter.clone();
     let receipt = cat.edit_owner("b", &new_fn, BUDGET).expect("owner b edit");
     assert_eq!(cat.meter.produced - before.produced, 2, "b(1) + 其 lambda 文变重产(1)；a/c 不计");
-    assert_eq!(Rc::as_ptr(&cat.fns["a"].item) as usize, a_ptr, "声明 a 未重建");
-    assert_eq!(Rc::as_ptr(&cat.fns["c"].item) as usize, c_ptr, "声明 c 未重建");
+    assert_eq!(Rc::as_ptr(cat.fns["a"].item.as_ref().unwrap()) as usize, a_ptr, "声明 a 未重建");
+    assert_eq!(Rc::as_ptr(cat.fns["c"].item.as_ref().unwrap()) as usize, c_ptr, "声明 c 未重建");
     assert_diff_same(&receipt.new_src, "after-sibling-edit");
 }
 
@@ -145,7 +145,7 @@ fn t02_d_failed_edit_preserves_state_and_fix_recovers() {
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let src_before = cat.src().to_string();
     let meter_before = cat.meter.clone();
-    let body_before = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    let body_before = Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
     // 坏编辑：块未闭合。
     let err = cat
         .edit_lambda("main", 0, "(n int) => { return n + 1", BUDGET)
@@ -157,7 +157,7 @@ fn t02_d_failed_edit_preserves_state_and_fix_recovers() {
     assert_eq!(cat.src(), src_before, "失败编辑不改变源基线");
     assert_eq!(cat.meter.produced, meter_before.produced, "失败编辑不提交生产");
     assert_eq!(cat.meter.discarded, meter_before.discarded + 1, "废弃物化单列 +1");
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, body_before, "旧密封体仍可用");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, body_before, "旧密封体仍可用");
     // 修复编辑：成功且正确。
     let receipt = cat
         .edit_lambda("main", 0, "(n int) => { return n + 41 }", BUDGET)
@@ -171,13 +171,13 @@ fn t02_same_text_identity_rules() {
     // 同文 lambda 在两个 owner。
     let src = "fn u1() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\nfn u2() int {\n    let f = (n int) => { return n + 1 }\n    return f(2)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
-    let l0 = Rc::as_ptr(&cat.lambda("u1", 0).unwrap().body) as usize;
-    let l1 = Rc::as_ptr(&cat.lambda("u2", 0).unwrap().body) as usize;
+    let l0 = Rc::as_ptr(cat.lambda("u1", 0).unwrap().body.as_ref().unwrap()) as usize;
+    let l1 = Rc::as_ptr(cat.lambda("u2", 0).unwrap().body.as_ref().unwrap()) as usize;
     assert_ne!(l0, l1, "同文异 owner 的 lambda 密封体必须独立（不跨 owner 合并）");
     // 编辑 u1 的 lambda：u2 的同文 lambda 不被动（异 owner 无串扰）。
     cat.edit_lambda("u1", 0, "(n int) => { return n + 2 }", BUDGET).expect("edit u1");
     assert_eq!(
-        Rc::as_ptr(&cat.lambda("u2", 0).unwrap().body) as usize, l1,
+        Rc::as_ptr(cat.lambda("u2", 0).unwrap().body.as_ref().unwrap()) as usize, l1,
         "u1 编辑不得触碰 u2 的同文 lambda"
     );
     assert_diff_same(cat.src(), "after-cross-owner-edit");
@@ -186,8 +186,8 @@ fn t02_same_text_identity_rules() {
     // = 具名非快路径，整 owner 如实重产。
     let src2 = "fn w() int {\n    let a = (n int) => { return n + 1 }\n    let b = (n int) => { return n + 1 }\n    return a(1) + b(2)\n}\n";
     let mut cat2 = units::UnitCatalog::build(src2, CL, BUDGET).expect("cold2");
-    let a0 = Rc::as_ptr(&cat2.lambda("w", 0).unwrap().body) as usize;
-    let b0 = Rc::as_ptr(&cat2.lambda("w", 1).unwrap().body) as usize;
+    let a0 = Rc::as_ptr(cat2.lambda("w", 0).unwrap().body.as_ref().unwrap()) as usize;
+    let b0 = Rc::as_ptr(cat2.lambda("w", 1).unwrap().body.as_ref().unwrap()) as usize;
     assert_ne!(a0, b0, "同 owner 重复同文以 ordinal 区分，独立密封");
     let old_span = cat2.fns["w"].span;
     let with_third = cat2.src()[old_span.start..old_span.end]
@@ -324,7 +324,7 @@ fn t05_candidate_transaction_lifecycle() {
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let old_src = cat.src().to_string();
     let old_meter = cat.meter.clone();
-    let f_before = std::rc::Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    let f_before = std::rc::Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
 
     // 坏候选：诊断 + 目录/源/计量零变异（除废弃物化单列）。
     let bad = cat
@@ -347,7 +347,7 @@ fn t05_candidate_transaction_lifecycle() {
     // 取消 = 丢弃候选（无 API 侧效应）。
     drop(cand);
     assert_eq!(cat.src(), old_src);
-    assert_eq!(std::rc::Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, f_before);
+    assert_eq!(std::rc::Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, f_before);
 
     // 重新暂存并提交：推进 + 计量如实。
     let cand2 = cat.stage_owner_edit("main", new_fn, BUDGET).expect("stage2");
@@ -510,7 +510,7 @@ fn t08_last_owner_reclaim() {
     let src = "fn main() int {\n    let f = (n int) => { return n + 1 }\n    return f(1)\n}\n";
     let cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let pin = cat.pin();
-    let body = std::rc::Rc::clone(&cat.lambda("main", 0).unwrap().body);
+    let body = std::rc::Rc::clone(cat.lambda("main", 0).unwrap().body.as_ref().unwrap());
     assert_eq!(std::rc::Rc::strong_count(&body), 3, "catalog + pin + local handle");
     drop(pin);
     assert_eq!(std::rc::Rc::strong_count(&body), 2, "pin release drops its handle");

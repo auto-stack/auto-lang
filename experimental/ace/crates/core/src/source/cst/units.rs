@@ -55,10 +55,15 @@ pub struct UnitKey {
 
 /// 密封 lambda 语法体。`span` 是**当前**源坐标（可漂移；身份由键+content_sha
 /// 承载，坐标漂移不换身份——§5.4）。
+///
+/// PLAN-929（T-02，§5.6 惰性 body）：`body` 在**恢复构造**的目录里为 `None`
+/// （身份-only，未物化——恢复不做源码生产）；冷构建/编辑/暂存路径恒 `Some`。
+/// 未改单元跨恢复后编辑保持 `None`（物化 0）；消费方需要语法体时按单元惰性
+/// 物化，不得为补上下文物化全部未改函数。
 #[derive(Debug)]
 pub struct SealedLambda {
     pub content_sha: u64,
-    pub body: Rc<ClosureBody>,
+    pub body: Option<Rc<ClosureBody>>,
     /// lambda 表达式整体（含参数表）的当前绝对跨度。
     pub span: Span,
 }
@@ -74,7 +79,8 @@ pub struct SealedLambda {
 #[derive(Debug)]
 pub struct SealedFn {
     pub content_sha: u64,
-    pub item: Rc<FnItem>,
+    /// PLAN-929（T-02）：恢复构造为 `None`（惰性 body，§5.6）；冷/编辑路径 `Some`。
+    pub item: Option<Rc<FnItem>>,
     pub mint_span: Span,
     /// 当前绝对跨度（漂移维护面；载荷内 span 不动）。
     pub span: Span,
@@ -109,9 +115,25 @@ pub enum CatalogEvent {
     LambdaTopologyChanged { owner: String },
 }
 
+/// PLAN-929（T-02，V-05）：恢复构造的受控拒绝分类——全部**在使用前**
+/// 拒绝，不产生半恢复态；不放宽 913/928 更严格的 miss/拒绝合同。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RestoreError {
+    SchemaMismatch { found: String },
+    CapsMismatch { manifest: String, expected: String },
+    ProfileMismatch { manifest: String, expected: String },
+    ModuleHashMismatch { manifest: u64, source: u64 },
+    UnitHashMismatch { owner: String, kind: &'static str, ordinal: u32, manifest: u64, source: u64 },
+    SpanOutOfBounds { owner: String, kind: &'static str, start: usize, end: usize, src_len: usize },
+    OverlappingUnits { a: String, b: String },
+    DuplicateUnit { owner: String, kind: &'static str, ordinal: u32 },
+}
+
 /// PLAN-928（T-06）：单元清单（929 消费的可恢复目录投影——版本化、
 /// 无宿主指针、无 trusted 位；身份 = SourceProfile+caps/grammar 版本+
 /// source/单元内容指纹）。
+pub const MANIFEST_SCHEMA: &str = "ac-source-units/1";
+
 #[derive(Clone, Debug)]
 pub struct CatalogManifest {
     pub schema: &'static str,
@@ -196,18 +218,22 @@ static INSTANCE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 impl UnitCatalog {
     /// PLAN-928（T-06）：接口签名摘要（名/参数表/返回/mode——签名变化
     /// 判定面；不含 body）。
+    /// PLAN-929（T-02）：恢复目录未物化单元返回 `None`（签名面不可比——
+    /// 消费方按保守重验处理，不得以 None 冒"签名未变"）。
     pub fn signature_snapshot(&self, owner: &str) -> Option<String> {
-        self.fns.get(owner).map(|s| signature_of(&s.item))
+        self.fns.get(owner).and_then(|s| s.item.as_deref()).map(signature_of)
     }
 
     /// PLAN-928（T-06）：声明变更事件（外部声明编辑路径提交后调用）——
     /// `dependents` = 目录内**名字引用**该声明的 owner（语法面；语义
     /// 依赖归 resolve）。刷新声明指纹。
+    /// PLAN-929（T-02）：dependents 只在**已物化** owner 上提取（恢复目录
+    /// 未物化单元不进入名字扫描——物化按需，不补扫全部未改函数，§5.6）。
     pub fn note_decl_changed(&mut self, name: &str, new_span: Span) {
         let dependents: Vec<String> = self
             .fns
             .iter()
-            .filter(|(_, sf)| references_name(&sf.item, name))
+            .filter(|(_, sf)| sf.item.as_deref().map(|i| references_name(i, name)).unwrap_or(false))
             .map(|(o, _)| o.clone())
             .collect();
         if let Some(d) = self.decls.get_mut(name) {
@@ -220,6 +246,8 @@ impl UnitCatalog {
 
     /// PLAN-928（T-06）：无指针清单（929 恢复消费；版本+指纹身份，不含
     /// 宿主指针/trusted 位；恢复深验归 929）。
+    /// PLAN-929（T-02，修复）：`module_sha` 取**当前源**指纹——编辑后导出
+    /// 不再携带冷建陈旧值（恢复侧 `from_restored` 以源指纹对账）。
     pub fn to_manifest(&self, caps_version: &str) -> CatalogManifest {
         let mut units: Vec<ManifestUnit> = self
             .fns
@@ -251,8 +279,8 @@ impl UnitCatalog {
         }));
         units.sort_by(|a, b| (&a.owner, a.ordinal, a.kind as u8).partial_cmp(&(&b.owner, b.ordinal, b.kind as u8)).unwrap_or(std::cmp::Ordering::Equal));
         CatalogManifest {
-            schema: "ac-source-units/1",
-            module_sha: self.module,
+            schema: MANIFEST_SCHEMA,
+            module_sha: content_sha(self.src.as_bytes()),
             caps_version: caps_version.to_string(),
             profile: super::frontdoor::profile_slug(self.profile),
             units,
@@ -437,21 +465,160 @@ impl UnitCatalog {
                 }
                 let owner = f.name.name.clone();
                 let sha = content_sha(cat.src.get(f.span.start..f.span.end).unwrap_or("").as_bytes());
-                cat.fns.insert(owner.clone(), SealedFn { content_sha: sha, item: Rc::new(f.clone()), mint_span: f.span, span: f.span });
+                cat.fns.insert(owner.clone(), SealedFn { content_sha: sha, item: Some(Rc::new(f.clone())), mint_span: f.span, span: f.span });
                 cat.meter.produced += 1;
                 let mut lambdas = Vec::new();
                 collect_lambdas(&f.body.stmts, &mut lambdas, &cat.src);
                 for (ordinal, (span, lsha)) in lambdas.into_iter().enumerate() {
                     // 从已密封 owner 体中取对应 lambda 语法体（同一次遍历序）。
-                    let body = extract_lambda_body(&cat.fns[&owner].item, ordinal)
+                    let body = extract_lambda_body(cat.fns[&owner].item.as_deref().expect("cold owner materialized"), ordinal)
                         .expect("lambda ordinal matches collection order");
                     cat.lambdas.insert(
                         (owner.clone(), ordinal as u32),
-                        SealedLambda { content_sha: lsha, body: Rc::new(body), span },
+                        SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span },
                     );
                     cat.meter.produced += 1;
                 }
             }
+        }
+        Ok(cat)
+    }
+
+    /// PLAN-929（T-02，§5.6）：**恢复构造**——从（调用方随恢复请求提供的）
+    /// 完整源文本 + 解码清单重建目录，**零源码生产**：
+    ///
+    /// - 深重验全部为字节/坐标面（R 轴，如实非零但不解析）：schema/caps/
+    ///   profile 合同、module 指纹、逐单元 `current_span` 切片指纹、span
+    ///   边界/重叠/重复键；
+    /// - 全部单元以**身份-only**（惰性 body，`None`）入目录——不物化任何
+    ///   语法体，不为补上下文扫描未改函数；
+    /// - 计量归零（本进程无生产）；`instance` 为新铸（跨目录 foreign 候选
+    ///   判别沿 928 合同）；
+    /// - 任何不匹配在使用前受控拒绝（`RestoreError`，V-05 分类面）；拒绝
+    ///   不产生半恢复态。
+    ///
+    /// 恢复后的第一次编辑按单元走片段入口（`edit_lambda`/`edit_owner`/
+    /// `stage_owner_edit`），恰目标物化；未改单元保持 `None`（生产 0）。
+    pub fn from_restored(
+        src: &str,
+        manifest: &DecodedManifest,
+        profile: SourceProfile,
+        caps_version: &str,
+    ) -> Result<UnitCatalog, RestoreError> {
+        if manifest.schema != MANIFEST_SCHEMA {
+            return Err(RestoreError::SchemaMismatch { found: manifest.schema.clone() });
+        }
+        if manifest.caps_version != caps_version {
+            return Err(RestoreError::CapsMismatch {
+                manifest: manifest.caps_version.clone(),
+                expected: caps_version.to_string(),
+            });
+        }
+        let expected_slug = super::frontdoor::profile_slug(profile);
+        if manifest.profile != expected_slug {
+            return Err(RestoreError::ProfileMismatch {
+                manifest: manifest.profile.clone(),
+                expected: expected_slug.to_string(),
+            });
+        }
+        let module = content_sha(src.as_bytes());
+        if manifest.module_sha != module {
+            return Err(RestoreError::ModuleHashMismatch { manifest: manifest.module_sha, source: module });
+        }
+        let instance = INSTANCE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut cat = UnitCatalog {
+            module,
+            instance,
+            profile,
+            fns: HashMap::new(),
+            lambdas: HashMap::new(),
+            decls: HashMap::new(),
+            events: Vec::new(),
+            meter: ProductionMeter::default(),
+            src: src.to_string(),
+        };
+        // 坐标结构健全性收集面（排序后查重叠）。
+        let mut spans: Vec<(usize, usize, String, UnitKind)> = Vec::new();
+        for u in &manifest.units {
+            let (cs, ce) = u.current_span;
+            if ce > src.len() {
+                return Err(RestoreError::SpanOutOfBounds {
+                    owner: u.owner.clone(),
+                    kind: kind_token(u.kind),
+                    start: cs,
+                    end: ce,
+                    src_len: src.len(),
+                });
+            }
+            let slice_sha = content_sha(src.get(cs..ce).unwrap_or("").as_bytes());
+            if slice_sha != u.content_sha {
+                return Err(RestoreError::UnitHashMismatch {
+                    owner: u.owner.clone(),
+                    kind: kind_token(u.kind),
+                    ordinal: u.ordinal,
+                    manifest: u.content_sha,
+                    source: slice_sha,
+                });
+            }
+            let span = Span { start: cs, end: ce };
+            let mint = Span { start: u.mint_span.0, end: u.mint_span.1 };
+            let dup = |kind: &'static str| RestoreError::DuplicateUnit {
+                owner: u.owner.clone(),
+                kind,
+                ordinal: u.ordinal,
+            };
+            match u.kind {
+                UnitKind::Fn => {
+                    if cat.fns.insert(u.owner.clone(), SealedFn { content_sha: u.content_sha, item: None, mint_span: mint, span })
+                        .is_some()
+                    {
+                        return Err(dup("fn"));
+                    }
+                }
+                UnitKind::Lambda => {
+                    if cat.lambdas
+                        .insert((u.owner.clone(), u.ordinal), SealedLambda { content_sha: u.content_sha, body: None, span })
+                        .is_some()
+                    {
+                        return Err(dup("lambda"));
+                    }
+                }
+                UnitKind::TypeDecl | UnitKind::EnumDecl => {
+                    if cat.decls
+                        .insert(
+                            u.owner.clone(),
+                            SealedDecl { content_sha: u.content_sha, name: u.owner.clone(), kind: u.kind, span, mint_span: mint },
+                        )
+                        .is_some()
+                    {
+                        return Err(dup(kind_token(u.kind)));
+                    }
+                }
+            }
+            spans.push((cs, ce, u.owner.clone(), u.kind));
+        }
+        // 坐标结构健全性（类型感知）：唯一合法嵌套 = Fn ⊇ 其 Lambda；
+        // Fn/Decl 顶层互斥（Fn 套 Fn、Decl 套任何、λ 包含任何 = 伪造/交叉，
+        // 一律拒）。栈式扫描（start 升序/end 降序）：弹出已闭合单元后，
+        // 若当前单元起点仍在栈顶内，则栈顶必须是 Fn 且当前必须是 Lambda，
+        // 且不得越过栈顶 end（部分交叉）。
+        spans.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then((a.3 as u8).cmp(&(b.3 as u8))));
+        let mut open: Vec<(usize, usize, String, UnitKind)> = Vec::new();
+        for (start, end, owner, kind) in spans {
+            while let Some(top) = open.last() {
+                if top.1 <= start {
+                    open.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some(top) = open.last() {
+                let nested = start < top.1 && end <= top.1;
+                if !nested || top.3 != UnitKind::Fn || kind != UnitKind::Lambda {
+                    return Err(RestoreError::OverlappingUnits { a: top.2.clone(), b: owner });
+                }
+            }
+            open.push((start, end, owner, kind));
         }
         Ok(cat)
     }
@@ -534,7 +701,7 @@ impl UnitCatalog {
                 }
                 let sealed = SealedLambda {
                     content_sha: sha,
-                    body: Rc::new(body),
+                    body: Some(Rc::new(body)),
                     span: Span { start: new_start, end: new_start + new_slice.len() },
                 };
                 self.lambdas.insert(key.clone(), sealed);
@@ -617,11 +784,16 @@ impl UnitCatalog {
                 let owner_changed = self.fns.get(owner).map(|o| o.content_sha) != Some(owner_sha);
                 // PLAN-928（T-06）：签名变化事件（参数/返回/mode 面变化——
                 // 不能因调用点文本未改而静默；§5.2）。
+                // PLAN-929（T-02）：恢复目录旧 owner 未物化（None）⇒ 签名面
+                // 不可比——保守置 true（事件必达，依赖者重验；§5.2 不静默）。
                 let signature_changed = owner_changed
                     && self
                         .fns
                         .get(owner)
-                        .map(|old| signature_of(&old.item) != signature_of(&item))
+                        .map(|old| match old.item.as_deref() {
+                            Some(old_item) => signature_of(old_item) != signature_of(&item),
+                            None => true,
+                        })
                         .unwrap_or(true);
                 if signature_changed {
                     self.events.push(CatalogEvent::OwnerSignatureChanged { owner: owner.to_string() });
@@ -634,7 +806,7 @@ impl UnitCatalog {
                     owner.to_string(),
                     SealedFn {
                         content_sha: owner_sha,
-                        item: Rc::new(item.clone()),
+                        item: Some(Rc::new(item.clone())),
                         mint_span: prev_mint.unwrap_or(item.span),
                         span: Span { start: old_span.start, end: old_span.start + new_fn_src.len() },
                     },
@@ -655,15 +827,16 @@ impl UnitCatalog {
                         let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
                         match self.lambdas.get(&key) {
                             Some(prev) if prev.content_sha == lsha => {
-                                // 语法复用：共享 Rc，仅坐标漂移（身份不变）。
-                                let mut updated = SealedLambda { content_sha: lsha, body: Rc::clone(&prev.body), span };
+                                // 语法复用：共享 Rc（恢复目录 None 保持 None——
+                                // 未改单元物化 0，§5.6），仅坐标漂移（身份不变）。
+                                let mut updated = SealedLambda { content_sha: lsha, body: prev.body.clone(), span };
                                 updated.span = span;
                                 self.lambdas.insert(key.clone(), updated);
                                 self.meter.reused += 1;
                                 reused.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
                             }
                             _ => {
-                                self.lambdas.insert(key.clone(), SealedLambda { content_sha: lsha, body: Rc::new(body), span });
+                                self.lambdas.insert(key.clone(), SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span });
                                 self.meter.produced += 1;
                                 produced.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
                             }
@@ -676,7 +849,7 @@ impl UnitCatalog {
                     self.lambdas.retain(|k, _| k.0 != owner);
                     for (ordinal, (span, lsha)) in lambdas.into_iter().enumerate() {
                         let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
-                        self.lambdas.insert((owner.to_string(), ordinal as u32), SealedLambda { content_sha: lsha, body: Rc::new(body), span });
+                        self.lambdas.insert((owner.to_string(), ordinal as u32), SealedLambda { content_sha: lsha, body: Some(Rc::new(body)), span });
                         self.meter.produced += 1;
                         produced.push(UnitKey { module: self.module, owner: owner.to_string(), kind: UnitKind::Lambda, ordinal: ordinal as u32 });
                     }
@@ -770,14 +943,14 @@ impl UnitCatalog {
                     .lambdas
                     .iter()
                     .filter(|(k, _)| k.0 == owner)
-                    .map(|(k, v)| (k.1, SealedLambda { content_sha: v.content_sha, body: Rc::clone(&v.body), span: v.span }))
+                    .map(|(k, v)| (k.1, SealedLambda { content_sha: v.content_sha, body: v.body.clone(), span: v.span }))
                     .collect();
                 let n = lambdas.len();
                 return Ok(StagedCandidate {
                     owner: owner.to_string(),
                     new_src: self.src.clone(),
                     owner_sha: sealed.content_sha,
-                    owner_item: Rc::clone(&sealed.item),
+                    owner_item: sealed.item.clone(),
                     lambdas,
                     produced: 0,
                     reused: 1 + n,
@@ -815,7 +988,7 @@ impl UnitCatalog {
                         Some(prev) if prev.content_sha == *lsha => {
                             staged_lambdas.push((
                                 ordinal as u32,
-                                SealedLambda { content_sha: *lsha, body: Rc::clone(&prev.body), span: *span },
+                                SealedLambda { content_sha: *lsha, body: prev.body.clone(), span: *span },
                             ));
                             reused += 1;
                             semantic_recheck.push(ordinal as u32);
@@ -824,7 +997,7 @@ impl UnitCatalog {
                             let body = extract_lambda_body(&item, ordinal).expect("ordinal order");
                             staged_lambdas.push((
                                 ordinal as u32,
-                                SealedLambda { content_sha: *lsha, body: Rc::new(body), span: *span },
+                                SealedLambda { content_sha: *lsha, body: Some(Rc::new(body)), span: *span },
                             ));
                             produced += 1;
                             semantic_recheck.push(ordinal as u32);
@@ -836,7 +1009,7 @@ impl UnitCatalog {
                     owner: owner.to_string(),
                     new_src,
                     owner_sha,
-                    owner_item: Rc::new(item),
+                    owner_item: Some(Rc::new(item)),
                     lambdas: staged_lambdas,
                     produced,
                     reused,
@@ -875,7 +1048,16 @@ impl UnitCatalog {
         let is_reuse = |cat: &Self, owner: &str, ordinal: u32, sl: &SealedLambda| {
             cat.lambdas
                 .get(&(owner.to_string(), ordinal))
-                .map(|p| p.content_sha == sl.content_sha && Rc::ptr_eq(&p.body, &sl.body))
+                .map(|p| {
+                    p.content_sha == sl.content_sha
+                        && match (&p.body, &sl.body) {
+                            // 冷建路径：Rc 同一（真实共享证明）。
+                            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                            // 恢复路径：两侧都未物化（同 sha 且零物化 ⇒ 复用成立）。
+                            (None, None) => true,
+                            _ => false,
+                        }
+                })
                 .unwrap_or(false)
         };
         let produced_keys: Vec<UnitKey> = std::iter::once(UnitKey {
@@ -923,13 +1105,20 @@ impl UnitCatalog {
             });
         }
         // PLAN-928（T-06）：签名变化事件（提交面；与直接路径同判定）。
-        if self
-            .fns
-            .get(&cand.owner)
-            .map(|old| signature_of(&old.item) != signature_of(&cand.owner_item))
-            .unwrap_or(false)
-        {
-            self.events.push(CatalogEvent::OwnerSignatureChanged { owner: cand.owner.clone() });
+        // PLAN-929（T-02）：旧 owner 未物化（恢复目录 None）⇒ 签名面不可比，
+        // 保守置"变"（事件必达；§5.2 不静默）。真实编辑候选恒携带 owner item。
+        if let Some(new_item) = cand.owner_item.as_deref() {
+            let changed = self
+                .fns
+                .get(&cand.owner)
+                .map(|old| match old.item.as_deref() {
+                    Some(old_item) => signature_of(old_item) != signature_of(new_item),
+                    None => true,
+                })
+                .unwrap_or(true);
+            if changed {
+                self.events.push(CatalogEvent::OwnerSignatureChanged { owner: cand.owner.clone() });
+            }
         }
         // T-09：提交面漂移维护 + λ 拓扑事件（与直路 edit_owner 同判定）。
         let old_span = self.fns.get(&cand.owner).map(|o| o.span).unwrap_or(Span { start: 0, end: 0 });
@@ -948,6 +1137,7 @@ impl UnitCatalog {
                 span: Span { start: old_span.start, end: old_span.start + cand.new_fn_len },
             },
         );
+        // 注：changed=true 候选恒 Some；上方零编辑分支已提前返回。
         self.lambdas.retain(|k, _| k.0 != cand.owner);
         for (ordinal, sl) in cand.lambdas {
             self.lambdas.insert((cand.owner.clone(), ordinal), sl);
@@ -967,11 +1157,21 @@ impl UnitCatalog {
     /// 显式 pin：目录载荷的修订局部快照。旧 pin 只在其原修订视图读取；
     /// 跨修订消费按内容指纹由消费方校验（V-10：current/history/pin 同时
     /// 存活、互不串用）。
+    /// PLAN-929（T-02）：仅含**已物化**载荷——恢复目录的未物化单元不进
+    /// pin（无语法体可共享；身份/坐标面由清单承载）。
     pub fn pin(&self) -> CatalogPin {
         CatalogPin {
             revision_src: self.src.clone(),
-            fns: self.fns.iter().map(|(k, v)| (k.clone(), Rc::clone(&v.item))).collect(),
-            lambdas: self.lambdas.iter().map(|(k, v)| (k.clone(), Rc::clone(&v.body))).collect(),
+            fns: self
+                .fns
+                .iter()
+                .filter_map(|(k, v)| v.item.as_ref().map(|r| (k.clone(), Rc::clone(r))))
+                .collect(),
+            lambdas: self
+                .lambdas
+                .iter()
+                .filter_map(|(k, v)| v.body.as_ref().map(|r| (k.clone(), Rc::clone(r))))
+                .collect(),
         }
     }
 }
@@ -981,7 +1181,9 @@ pub struct StagedCandidate {
     owner: String,
     new_src: String,
     owner_sha: u64,
-    owner_item: Rc<FnItem>,
+    /// PLAN-929（T-02）：`None` = 零编辑候选在恢复目录上暂存（owner 未物化，
+    /// 生产 0、无解析）；`Some` = 真实编辑候选（暂存面已解析/投影）。
+    owner_item: Option<Rc<FnItem>>,
     lambdas: Vec<(u32, SealedLambda)>,
     produced: usize,
     reused: usize,
@@ -1260,7 +1462,7 @@ pub fn decode_manifest(text: &str) -> Result<DecodedManifest, String> {
     }
     let mut lines = body.split('\n');
     let schema = lines.next().unwrap_or("");
-    if schema != "ac-source-units/1" {
+    if schema != MANIFEST_SCHEMA {
         return Err(format!("manifest line 1: unsupported schema {schema:?}"));
     }
     let mut header = |key: &str| -> Result<String, String> {

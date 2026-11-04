@@ -30,8 +30,8 @@ pub use frontdoor::{
 pub use kinds::SourceKinds;
 pub use units::{
     content_sha, CatalogEvent, CatalogManifest, CatalogPin, EditError, EditReceipt, ManifestUnit,
-    ProductionMeter, SealedDecl, SealedFn, SealedLambda, StagedCandidate, UnitCatalog, UnitKey,
-    UnitKind,
+    ProductionMeter, RestoreError, SealedDecl, SealedFn, SealedLambda, StagedCandidate,
+    UnitCatalog, UnitKey, UnitKind, MANIFEST_SCHEMA,
 };
 
 use crate::atom_text::Diagnostic;

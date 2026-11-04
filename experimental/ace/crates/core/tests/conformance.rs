@@ -53,3 +53,5 @@ mod source_cst_927;
 mod source_units_928;
 #[path = "cases/source_units_928_t09.rs"]
 mod source_units_928_t09;
+#[path = "cases/source_restore_929_t02.rs"]
+mod source_restore_929_t02;

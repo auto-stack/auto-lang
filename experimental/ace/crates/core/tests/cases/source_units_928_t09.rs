@@ -23,9 +23,9 @@ fn t09_zero_edit_replay_zero_production() {
     let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    let g = (m int) => { return f(m) + 1 }\n    return f(2) + g(3)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let cold = cat.meter.clone();
-    let f_ptr = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
-    let g_ptr = Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize;
-    let owner_ptr = Rc::as_ptr(&cat.fns["main"].item) as usize;
+    let f_ptr = Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
+    let g_ptr = Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize;
+    let owner_ptr = Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize;
     // λ 面零编辑：同字节重放。
     let span = cat.lambda("main", 0).unwrap().span;
     let same = cat.src()[span.start as usize..span.end as usize].to_string();
@@ -35,9 +35,9 @@ fn t09_zero_edit_replay_zero_production() {
     assert!(!r.semantic_recheck_required, "源未变 ⇒ 无语义重验义务");
     assert_eq!(cat.meter.produced, cold.produced, "生产计数不动");
     assert_eq!(cat.meter.reused, cold.reused + 2, "复用如实 +2");
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, f_ptr, "身份 Rc 同一");
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 1).unwrap().body) as usize, g_ptr, "兄弟不动");
-    assert_eq!(Rc::as_ptr(&cat.fns["main"].item) as usize, owner_ptr, "owner 不重产");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, f_ptr, "身份 Rc 同一");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 1).unwrap().body.as_ref().unwrap()) as usize, g_ptr, "兄弟不动");
+    assert_eq!(Rc::as_ptr(cat.fns["main"].item.as_ref().unwrap()) as usize, owner_ptr, "owner 不重产");
     // owner 面零编辑。
     let ospan = cat.fns["main"].span;
     let same_fn = cat.src()[ospan.start as usize..ospan.end as usize].to_string();
@@ -158,10 +158,10 @@ fn t09_prefix_drift_identity_stable() {
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
     let below = &cat.fns["below"];
     let (old_span, old_mint, old_sha) = (below.span, below.mint_span, below.content_sha);
-    let below_ptr = Rc::as_ptr(&cat.fns["below"].item) as usize;
+    let below_ptr = Rc::as_ptr(cat.fns["below"].item.as_ref().unwrap()) as usize;
     let lam = cat.lambda("below", 0).unwrap();
     let (lam_old_sha, lam_old_span) = (lam.content_sha, lam.span);
-    let lam_ptr = Rc::as_ptr(&lam.body) as usize;
+    let lam_ptr = Rc::as_ptr(lam.body.as_ref().unwrap()) as usize;
     // top 加一行（更长）⇒ below 整体后移。
     let top_span = cat.fns["top"].span;
     let new_top = cat.src()[top_span.start as usize..top_span.end as usize]
@@ -171,8 +171,8 @@ fn t09_prefix_drift_identity_stable() {
     assert!(below2.span.start > old_span.start, "below 坐标后移");
     assert_eq!(below2.mint_span, old_mint, "mint 身份不随漂移变");
     assert_eq!(below2.content_sha, old_sha, "切片内容指纹不变");
-    assert_eq!(Rc::as_ptr(&cat.fns["below"].item) as usize, below_ptr, "below Rc 同一");
-    assert_eq!(Rc::as_ptr(&cat.lambda("below", 0).unwrap().body) as usize, lam_ptr, "below λ Rc 同一");
+    assert_eq!(Rc::as_ptr(cat.fns["below"].item.as_ref().unwrap()) as usize, below_ptr, "below Rc 同一");
+    assert_eq!(Rc::as_ptr(cat.lambda("below", 0).unwrap().body.as_ref().unwrap()) as usize, lam_ptr, "below λ Rc 同一");
     // λ 当前坐标随后移（span 更新），指纹不变。
     let lam2 = cat.lambda("below", 0).unwrap();
     assert!(lam2.span.start > lam_old_span.start, "λ 当前坐标漂移");
@@ -250,7 +250,7 @@ fn t09_manifest_codec_roundtrip_and_forgery() {
 fn t09_owner_locals_order_and_type_change_signal() {
     let src = "fn main() int {\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
     let mut cat = units::UnitCatalog::build(src, CL, BUDGET).expect("cold");
-    let lam_ptr = Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize;
+    let lam_ptr = Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize;
     // 顺序变化：在 base 前插入新 local。
     let reordered = "fn main() int {\n    let pad Str = \"x\"\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
     let cand = cat.stage_owner_edit("main", reordered, BUDGET).expect("stage order");
@@ -259,7 +259,7 @@ fn t09_owner_locals_order_and_type_change_signal() {
     assert_eq!(cand.semantic_recheck(), &[0], "顺序变化仍携带重验义务");
     let receipt = cat.commit_staged(cand).expect("commit");
     assert!(receipt.semantic_recheck_required);
-    assert_eq!(Rc::as_ptr(&cat.lambda("main", 0).unwrap().body) as usize, lam_ptr, "λ 体 Rc 同一");
+    assert_eq!(Rc::as_ptr(cat.lambda("main", 0).unwrap().body.as_ref().unwrap()) as usize, lam_ptr, "λ 体 Rc 同一");
     // 类型变化（λ 未引用的独立 local）：语法共享照常，重验义务不精简。
     let typed = "fn main() int {\n    let pad Str = \"xy\"\n    let base int = 40\n    let f = (n int) => { return base + n }\n    return f(2)\n}\n";
     let cand2 = cat.stage_owner_edit("main", typed, BUDGET).expect("stage type");
