@@ -162,6 +162,12 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 1 | from: start | to: work | status: drafting | outcome: waiting | worktree: 未建 | commit: master `85a6c0146`（928/929 规划簿记入库） | next: work（等 PLAN-927 落地后开工）
+  - 2026-11-04 /goal 实施授权：用户指令"完成计划928"——授权整链 work→review→有界修复→merge（auto-plan-goal 范式），记录于本收据，后续各 stage 继承。
+  - 前置处理：master 规划簿记（24M+30?? docs 文件，含本计划 r2 文件）提交为 `85a6c0146`；plan-artifacts/plan-928 已建并登记 .retention/policy.json（in-flight）。
+  - **并发会话冲突（具名）**：927 的原交付会话仍存活，正在 lang-927 worktree 内执行其 merge 门禁（08:17 起 `cargo t ace-a2x` 定向复跑，进程链经另一 ZCode app-server shell-snapshot 确认非本会话）。本会话此前未察觉其为活会话，已于 07:39-07:41 对 plan-927-dev 完成了一次 rebase 至 `85a6c0146`（旧→新映射 `668c9c994→11a562b95`，range-diff 14/15 全等+1 处 project.md docs 冲突合并；该 rebase 可能干扰了其 07:39 门禁重试）。按 auto-plan-goal 冲突规则本会话已停止全部 927 写操作；927 merge 由其原会话完成，本会话挂落地守望（master 推进或 archive/927 出现即续），90 分钟无进展则重估接管。
+  - 观察证据：master 单独 ace-a2x PASS（主检出 run-g4lja0fm）；927 worktree 初跑 11 红经查为陈旧 release worker exe（旧 scalar-only 门消息文本只存在于 rebase 前基线）×新测试期望的伪影，新鲜 exe（07:40-07:41 重建）复跑裁决归 927 会话。
+
 - 2026-11-03，stage:new / revision:2 / outcome:pass（仅规划复核）/ next:work（待后续实施指令及实际写面就绪）。本轮按用户要求补实入口授权/typed资源态、同文lambda身份与真子体复用、首编辑禁止预热、恢复发布与预算适用性、923–926逐符号交接，详[复核及完整排期](reports/ace-927-929-plan-review-and-schedule-2026-11-03.md) PR-01..08。保留原AC/T编号、总步骤和0进度；新增V例均待使能执行，r1不是本r2实现证据。下列r1为初订历史。
 
 - 2026-11-03 stage:new / revision:1 / outcome:pass（规划可交接）/ next:work（待后续实施指令）。已做路径、机制范围、V/AC/T和跨计划交接静态核对；未执行实现/性能/认证，全部任务未勾，927依赖待交付。
