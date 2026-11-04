@@ -112,6 +112,54 @@ def path_within(child, base) -> bool:
     return len(c) >= len(b) and c[: len(b)] == b
 
 
+def canonical_key(path: Path) -> str:
+    """镜像 auto-generation-core::canonical_key（身份比较键，非显示路径）：
+    resolve→Windows verbatim 前缀剥除→正斜杠→UNC 归形→小写。仅用于与
+    member.json.project_path 的登记值比较，不复刻 id8 哈希算法。"""
+    try:
+        abs = path.resolve(strict=True)
+    except OSError:
+        abs = path
+        if not abs.is_absolute():
+            abs = Path.cwd() / abs
+    text = str(abs)
+    # Rust 顺序：先 trim `\\?\`，再 trim `\\?\UNC\`（后者仅对未剥形态）。
+    if text.startswith("\\\\?\\"):
+        text = text[len("\\\\?\\"):]
+    if text.startswith("\\\\?\\UNC\\\\"):
+        text = text[len("\\\\?\\UNC\\\\"):]
+    text = text.replace("\\", "/").replace("//?/", "")
+    if text.startswith("UNC/"):
+        text = "//" + text[4:]
+    return text.rstrip("/").lower()
+
+
+def resolve_front_member(ws_dir: Path, project_dir: Path) -> Path | None:
+    """910 身份合同：消费受管登记 member.json（schema/role/project_path）
+    定位 front 成员——项目锚/cwd 无关、同 basename 不同根不碰撞。恰一个
+    匹配才返回；缺失/错 owner/旧无身份目录/多候选一律 None（具名拒绝，
+    不按 basename/mtime 认领、不 glob 第一个）。"""
+    key = canonical_key(project_dir)
+    matches = []
+    for d in ws_dir.iterdir():
+        if not d.is_dir():
+            continue
+        rec = d / "member.json"
+        if not rec.is_file():
+            continue
+        try:
+            info = json.loads(rec.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (
+            info.get("schema") == "generated-member/v1"
+            and info.get("role") == "front"
+            and info.get("project_path") == key
+        ):
+            matches.append(d)
+    return matches[0] if len(matches) == 1 else None
+
+
 def run_verify_entry(bundle: Path) -> subprocess.CompletedProcess:
     """R1-F01：随包受管校验正式入口 verify.py（消费清单 sha256，独立可执行）。"""
     return subprocess.run(
@@ -831,13 +879,17 @@ def main() -> int:
     dev_proj = scratch / "dev-run"
     shutil.copytree(PROJ, dev_proj)
     r = run([str(auto_exe), "gen"], dev_proj, consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}), timeout=600)
-    member = dev_proj / "rust-workspace" / "dev-run"
-    member_cargo = member / "Cargo.toml"
-    ws_cargo = dev_proj / "rust-workspace" / "Cargo.toml"
+    ws_dir = dev_proj / "rust-workspace"
+    # PLAN-930 T-02：910 身份合同——成员目录为 <basename>-<id8>（路径身份、
+    # cwd 无关），不再按 basename 硬编码；恰一个受管 front 登记匹配才采信。
+    member = resolve_front_member(ws_dir, dev_proj)
+    member_cargo = member / "Cargo.toml" if member else dev_proj / "rust-workspace" / "MISSING"
+    ws_cargo = ws_dir / "Cargo.toml"
     # PLAN-814 T-05：canonical 双直依赖（import_policy.rs）——成员
     # runtime/core workspace 继承 + workspace path 注入。
     dev_shape = (
         r.returncode == 0
+        and member is not None
         and member_cargo.is_file()
         and "auto-ui-runtime.workspace = true" in member_cargo.read_text(encoding="utf-8")
         and "auto-lang-core.workspace = true" in member_cargo.read_text(encoding="utf-8")
@@ -848,10 +900,11 @@ def main() -> int:
     record(
         "V04-dev-mode-preserved",
         dev_shape,
+        f"成员身份={member.name if member else '拒绝(0/多候选/错owner)'}；"
         "仓外项目 → project-local rust-workspace + workspace 继承清单（路由不变）",
     )
     # main.rs 与交付产物同源（同一编译相位；模板输出保持）
-    dev_main = member / "src" / "main.rs"
+    dev_main = member / "src" / "main.rs" if member else ws_dir / "MISSING" / "src" / "main.rs"
     del_main = bundle_a / "app" / "src" / "main.rs"
     same = (
         dev_main.is_file()
