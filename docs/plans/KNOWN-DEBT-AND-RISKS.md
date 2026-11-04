@@ -1,3 +1,7 @@
+> **2026-11-04规划复核纠偏（仍未关闭）**：931–933升r2。[复核证据与窗口](reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)发现D-927-2历史归因与914批准存在判面冲突：有效typed策略拒绝是diagnostic verdict（按预期PASS/FAIL），不能一律ERROR；缺失/未知/矛盾typed才ERROR。932先重建合法body与故意签名两原输入，补有效性并最小纠正过时host/911旧句，不放宽签名或改case原success/exit预期。下列原始观察/59-of-60历史保留，不能据其断言914策略错误或合法body一定坏；最终按932 r2及真实重测关闭。931另核片段原modes/短路待清理责任，933逐字段独立来源；均未实施。
+
+> **2026-11-04规划认领（尚未关闭）**：D-925-2由[PLAN-931](931-a2r-owned-temporary-consumer-lifetime.md)补Rust临时消费者生命周期；D-927-2由[PLAN-932](932-native-warm-edit-admission-and-refusal-closure.md)补native暖准入/真实父分类；D-925-1及904缺manifest oracle由[PLAN-933](archive/933-ace-tracked-oracle-and-fresh-checkout-closure.md)补跟踪来源与干净检出验收（**已关闭 2026-11-04，PLAN-933 交付 44d64c4ed**：sema 两测试改读跟踪 spec 冻结权威+突变负控，904 oracle 独立重建核验；904 manifest 文件缺件本身已由 931 于 1d3a21b49 补齐，见 D-931-3）。下列历史发现/归因保留，计划成立不算修复或PASS，均待work/review/交付真实关闭。
+
 ### D-927-2 — mn 暖编辑 refused 分类破损（ace-conformance host / ace-performance 唯一红；基座既有）
 
 - **发现**：2026-11-04，PLAN-927 T-10 正式采样（`cargo t ace-performance` T3_MILESTONE 档：59/60 绿，唯一红 `mn.t11.refused`）与 ace-host 组的 `mir_native_incremental_formal_runner_gate`（refused 控制期望 Error 得 Fail）。
@@ -35,6 +39,7 @@ total + 41
 
 - **D-925-2（已关闭 2026-11-04，PLAN-931 work，树 plan-931-dev@b3a6a17c6+，merge 收尾）**：Rust 侧同形缺陷已修——`drain_since(mark)` 作用域机制：pin/语句根消费者锚点后释放、Logical 侧块自责（未执行分支零分配）、view 临时 pin mut、external 片段消费受检 modes、MoveOwn 文本实参按值转移（探针额外暴露的 E0308 一并修复）。红证据：修复前 E0596（pin 不可变+`&mut` free 编译红）+ 两处先 free 后用生成码（plan-artifacts/plan-931/t02-red-evidence.md）；绿证据：worker conformance 13 探针全绿 + 固定组 `case-a2r-owned-temporaries-931`（5 金样 + 独立 reference 实跑 5/22/5/22/43）+ 版本轴 a2x-print/1→2 旧片段永不命中（三代稳定性）。金样兼容：902/921/925/926/894 组原字节全 PASS（Rust 冻结语料无该形状，字节未变）。
 - **D-925-1（存量测试依赖 git 忽略文件，owner=796/sema-boundary / ace-semantics-store）**：`cargo t ace-semantics` 在任何**新鲜 worktree** 必红 2 例：`sema_boundary_audit::sema_boundary_description_surface_frozen` 与 `sema_boundary_frozen_versions_have_provenance`（`crates/semantics-store/tests/cases/sema_boundary_audit.rs:278` 读 `docs/plans/attachments/796/contract-decision.md`，Os NotFound）。该路径按 2026-10-31 裁定已整目录去跟踪，仅主检出磁盘残留该文件故主检出绿、worktree 红。925 gate 实测：ace-source 307/307、ace-semantics 104/106（2 红即此）、ace-a2x 119/119；与 925 diff（a2x-c/a2x-store/worker tests）无耦合。修复方向：测试内联所需 token 或改读跟踪文件；本包不代改他方测试，merge 复跑该组时按环境归因记录。
+- **D-925-1（已关闭 2026-11-04，PLAN-933 work/review/merge，交付 44d64c4ed）**：两测试改读 `docs/specs/auto-semantics/semantic-contract.md` 的 D2–D8 冻结转写节（SD-01，原忽略附件 sha256 `064adbd1…` 在节内留档），断言强度不变，另加 11 种突变负控（V-02）。新树证据：改前 `sema_boundary` 7 run/2 红（Os NotFound 附件）→改后 8/8 绿；主检出落地后 `cargo t ace-semantics` PASS（run-gfmo7tlz）。同包 904 manifest 独立 oracle（20/20 逐字节）与 20 源 store 四态 sweep 一并交付，929 恢复→首编辑 SYN 腿仍归 929（D-931-1）。
 
 
 - **D-911-1（环境脆弱性，owner=909 套件/closures-source）**：`case-ace-m1-shared-mutable-909` 的 `av-s02-closures-source-fresh` 断言 fresh=misses/writes，但 `ac_av.rs` 会话 store 根为 `%TEMP%/av798-session-{session_id}`（固定名、无清理代码），任何先前运行遗留即令"fresh"命中 → 首跑红；删除 `%TEMP%/av798-session-av_closures_909_*` 后重放绿（本包实证：2026-11-02 首红→清理→PASS，且该运行又重建了目录）。套件跨运行非幂等；merge 复跑该组前需先清该 %TEMP% 前缀。与本包 diff 无耦合（closures-source session 未触）。
@@ -3960,3 +3965,7 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
   (closures_fn_session env_layout/mix_u64, owned_session shell fields —
   913/896 era) and auto-lang-core 2 unused-doc-comments. Owners: their
   originating plans or the next health pass.
+
+## 2026-11-04 生成交付后继（PLAN-930，仅规划）
+
+UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静态确认driver V04仍硬编码dev-run/rust-workspace/dev-run，910真实成员已为basename-id8；由[930](930-generated-delivery-regression-and-source-boundary-closure.md)先实证当前输入/根因、保原main.rs同源/真实A-B tool义务，必要UI投影窄改归实际owner，不复制UI算法。另核当前语言L1/L2/正常审计与新固定控制；本轮未跑测试，不标closed。Tauri R-6、vue-render新渠道、Web D-906-1/ID集合schema、Man D-910-2及其他语法/ACE合同不纳自动关闭。
