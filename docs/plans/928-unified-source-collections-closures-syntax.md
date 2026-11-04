@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-928
-status: execution_done
+status: reviewed
 feature_name: SG-B 集合变体闭包语法与嵌套单元增量投影
 author: [Codex]
 created_at: 2026-11-03
@@ -161,6 +161,8 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 下一入口T-01只可先私有盘点；T-03公共写须927稳定交接，T-05前必须T-02证明不会重建兄弟lambda。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: review | review_scope: final | reviewer_identity: 同会话复审（与实施共上下文——已按技能要求从冻结工件独立重建：冻结提交上独立重放+代码检视，不采信执行者摘要） | plan_id: PLAN-928 | plan_revision: r2 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-928/auto-lang` | branch: plan-928-dev | reviewed_commit: `a40a620c4`（diff 基 `54829a61b`，28 文件 +3638/−90） | base_commit: 54829a61b | dependency_revisions: 无外仓改动 | spec_inputs: grammar-contract/source-frontdoor/closures-function-production 在位；composite-source-projection 为 add 由 merge 创建 | acceptance_results: AC-01..09 全 pass（AC-10 本记录闭合；AC-11 归 merge）——AC-01/02 conformance 325/325（含 t04 语料 162/162 与 927 九 profile 差分）+suite 12/12；AC-03 t02_a/t02_same_text/t08 200 轮/t09 零编辑（计量+Rc 身份反控可区分深 clone/整 owner 走查）；AC-04 t02_b/t05 生命周期/t09 stale-foreign 零变异+order/type 义务；AC-05 t06 事件/清单+t09 codec 伪造拒绝+前缀漂移；AC-06 T-07 冷入口+消费者组重放绿；AC-07 深链 typed/200 编辑/末主回收/1500 fn 大源；AC-08 864/865/909/912/913/889 绿+具名性能面 P90 门内；AC-09 文件化 oracle/固定组/父表+worker 注册/pending 全部如实（904 既有债务 PLAN-933、ace-performance 33 项未执行、环境归因三笔） | pending_closeout_gates: merge-owned 冻结并集重验（受影响模块并集）；spec 沉淀 SD-01..04（草稿未预置，merge 写入）；929 交接面已在 T-10 行 | findings: F-R1（low，观察）master 自基以来并行交付 PLAN-930（含 `scripts/test-groups.toml` 新组），merge 基已移、该文件两分支并改需合并解冲突（specs 面不相交）；F-R2（low，预存）`closures_context.rs:37` rustfmt 漂移为基线既有非本分支；F-R3（low，登记）plan827 `incremental-raw.json` 被 av runner 重写的已跟踪路径（运行即脏树）归其 owner | evidence: 独立重放 conformance 325/325 零跳过、case-ace-source-composite-928 PASS（run-56jpq8gf）；分支 diff 零调试残留；触及 crate fmt 干净；worktree 干净 @ a40a620c4 | next: merge（T-12）
 
 - stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: `D:/autostack/.wt/lang-928/auto-lang` @ `plan-928-dev`（冻结 `a40a620c4`） | commit: a40a620c4 | next: review（T-11）
   - 2026-11-04 /goal 续跑（会话续接 T-08 后状态）：T-09（`d8dbe56d3`）交付文件化 suite/注册/units 合同收口/无损重建修复；T-10（`be5494188`+`a40a620c4`）交付括号组接收者修正+职责并集重验+正式采样+929 交接。work-owned AC：AC-01..09 全部有当轮测试/组证据（见 T-09/T-10 行）；进行中阻塞=无；统一回归门（merge-owned 冻结并集）pending 归 review/merge。环境归因三笔与 904 既有债务均具名记录（T-10 行）。
