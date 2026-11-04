@@ -197,6 +197,8 @@ T-02必须先冻结**typed成功/源码诊断/资源耗尽/stale-foreign/基础�
   - landing checks: 批量回归 due 检查=927 非 5 倍数且 .last-batch-regression.json 记录 926 后无过期（未触发）；产物观察=语言仓无部署面（backend/daemon/web bundle 属 auto-musk 域），无 stale 产物
   - 交接：928=Collections/Closures 迁移分支；929=片段 producer/会话准入/散落调用点清零；D-927-2（mn refused 分类，基座既有）域外登记在 KNOWN-DEBT-AND-RISKS
 
+- 2026-11-04（轮4终·cleaned 实证），stage:merge | PLAN-927:r2 | cleaned 完成核验：wt-guard 二次 clean（删除前）→ worktree `D:/autostack/.wt/lang-927/auto-lang` 移除（--force 仅因测试残留 json 丢弃物，guard 无 reparse point）→ 分支 plan-927-dev 删除（was 5d5054d5d）→ 组目录 `.wt/lang-927/` 删除（含 auto-down 兄弟）→ `plan-artifacts/plan-927/` 整目录删除（mn-rev0.at 探针料随之）；.retention/policy.json 已记 scope-deleted-at-merge（无具名持有）。master 尾 `54829a61b`，git worktree list 无 927 残留。merge outcome: **pass（delivered）**
+
 ## 10. 待澄清事项
 
 无需要用户重新裁定的语义范围。本包沿已批准支持/拒绝、预算与P90门；具体通用scanner/Pratt扩展及兼容类型导出由T-02有界探针决策并记录，若不能满足则needs_replan，禁止自行延期或改门。语义查询/实例/CT接线与CA-D/最终ARCH总验收仍为独立待立项职责，详审计，不由927隐式承担。
