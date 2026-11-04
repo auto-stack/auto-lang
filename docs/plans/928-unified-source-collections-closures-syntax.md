@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-928
-status: executing
+status: execution_done
 feature_name: SG-B 集合变体闭包语法与嵌套单元增量投影
 author: [Codex]
 created_at: 2026-11-03
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/composite-source-projection.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-927, PLAN-864, PLAN-865, PLAN-909, PLAN-912, PLAN-913]
-current_step: 8
+current_step: 10
 total_steps: 12
 ---
 
@@ -153,14 +153,19 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 | T-06 | work | T-03..05，来源/单元目录与codec | type/enum/签名变更事件、稳定逻辑身份/关系与歧义准入，V-06/08/09；AC-05/07 | [x] 2026-11-04：声明单元（type/enum）入目录（含 `mint_span` 逻辑身份——跨 body/签名编辑携带不变，§5.3 纪律的语法面）；**typed 变更事件**（`OwnerSignatureChanged` 提交+直接双路径、`DeclChanged` 带语法面名字引用 dependents、`DeclSetChanged`、`LambdaTopologyChanged`）；**无指针清单** `CatalogManifest`（schema `ac-source-units/1`，确定性、caps/profile/内容指纹身份、无宿主指针/trusted 位——929 恢复消费面）。探针：签名事件必达/坐标漂移保 mint/清单确定性；结构层 coll_reject 前置修复；conformance **312/312**、固定组 PASS、零警告 |
 | T-07 | work | T-05/06，core片段/closures_fn兼容窗 | 复杂profile冷/片段切共享链，捕获原语义事实接线，V-02/04/06；AC-04/06/08 | [x] 2026-11-04：**冷入口切换**——`parse_program_with` 的 Collections/Closures 路由至统一 CST 链（手写保留为差分 oracle）；补切换暴露的两形状：括号组被调恒 `CallValue`（CalleePlan::Value + atom 层括号探测）与 `async (λ头)` 前缀拒绝（`source.closure-unsupported`）。消费者验证全绿（清环境后）：ace-source/ace-source-syntax-927/ace-av + case 864/865/909/912/913/889、conformance **312/312**、零警告。**865 类红三重证据归因环境**：跨运行持久 `%TEMP%\av798-session-*`（wire 键同 → 我方字节全等链命中 927 会话工件）；进程内新存储=oracle 精确值；清存储后全绿。该临时存储污染为既有 runner 行为，登记 929 侧处置（fresh 语义 vs 持久 session 存储的清理责任） |
 | T-08 | work | T-05..07，预算/资源probe | 深链/两代候选pin峰值/最后owner回收/读取/原200编辑及正式负载，V-07/10；AC-07/08 | [x] 2026-11-04：目录走查改**显式工作栈**（collect/extract 迭代——深链深度只受解析预算约束，不爆线程栈）；深链 typed 拒绝探针（收紧 `max_parse_depth` ⇒ `ResourceExhausted` 而非溢出）；**200 轮单 λ 编辑系列**（目标物化恰 200、兄弟每轮 Rc 共享 0 生产、`edit_lambda` 补真实复用计量）；**末主回收**（Rc 强计数观察：pin 释放/目录 drop 后归零——不以数组清空冒充）。两代候选 pin 峰值在 T-05 探针（共存活/指纹隔离）；typed 预算/64MiB 档在 T-02 探针。conformance **315/315**、ace-source+ace-source-syntax-927 PASS、零警告。正式性能采样（P90/ace-performance 错峰）归 T-10 |
-| T-09 | work | T-03..08，case/父侧/H窗 | 使能V-01..10正式目录/oracle/payload与身份反控/注册及全部适用腿；AC-09 | [ ] |
-| T-10 | work | T-09，冻结提交/采样错峰 | §6职责并集与全部消费者重验、交929来源/接口/余账，AC-01..09 | [ ] |
+| T-09 | work | T-03..08，case/父侧/H窗 | 使能V-01..10正式目录/oracle/payload与身份反控/注册及全部适用腿；AC-09 | [x] 2026-11-04（worktree `d8dbe56d3`）：文件化 suite `case-ace-source-composite-928`（12 检查全绿）——V-01 复合面 parse+无损重建字节全等 ×2 profile + 同文源；**profile 门负控**（collections 面@closures、closures 面@collections ⇒ `syntax.parse` 拒，配置真实改变语法）；V-02 值腿 L04/L05（av+mn）/K02/K06/S02（av，字节原样副本；Rust 归 904 组、C 归 926 golden/certify、native closures 归 924 组——各在相同冻结字节上承载，不复制 goldens/注册行）；V-09 `U1` 同文 λ 异 owner（u1 x=1/u2 x=2，exit 1112，父表+av-worker 双侧注册）。**无损重建真缺陷修复**（T-03 AST 差分不可见）：syntax-runtime `advance_alt` 回退不清失败 alt 子女 ⇒ 同首 token 备选重消费叶重复（enum-arm plain 臂 `Dot Dot`、postfix `.mut`/`.move` `x...move`）——children.clear() 补全有序选择回退语义；927 七 profile 面零回归（ace-source-syntax-927+case-ace-source-syntax-927 PASS）。**units.rs 合同收口**：stale/foreign 候选 typed 拒绝零变异（instance+base_revision；同源异目录也拒）；零编辑重放快路（三面生产 0、诚实回执、无重验义务）；**坐标漂移维护**（当前 span 提升为包装字段 `SealedFn.span`，Rc 载荷/pin 视图不动——修复兄弟单元坐标过期导致后续拼接错位的正确性缺陷）；`commit_staged` 补 λ 拓扑事件；manifest codec（encode/decode+消费前拒绝：schema/profile/kind/span/空行伪造全拒，profile 用合同 slug）。9 项 in-process V 面测试入 `source_units_928_t09.rs`。conformance **324/324** 零警告；组绿：ace-syntax ace-source ace-source-syntax-927 case-ace-source-syntax-927 auto-test-case 864 865 909 912 913 889（865/909/912 需清 `%TEMP%\av798-session-*` 后绿——T-07 已归因登记 929 处置）；profiles_927 过期前提更新（collections 已声明、集合为九）；grammar 门（contract/case-worker）扩九 profile |
+| T-10 | work | T-09，冻结提交/采样错峰 | §6职责并集与全部消费者重验、交929来源/接口/余账，AC-01..09 | [x] 2026-11-04（冻结 worktree `a40a620c4`）：**T-10 真修复**——T-07 括号组被调探测漏"后缀步"区分，Text profile `(a+"z").len()` 被误投 CallValue（a2c_rt ledger 面暴露；t04 语料差分只覆盖 Collections/Closures、927 边集无该形状）；修正=atom 层探测下降穿过 postfix-step ⇒ 接收者基座（`(f)(3)` 无点步仍间接调用），回归差分用例入 conformance **325/325**。**§6 职责并集**全绿：ace-syntax/ace-source/ace-source-syntax-927/ace-lowering/ace-av/ace-native/ace-a2x/ace-artifacts/ace-adapters/auto-test-case/infra-fixed（首轮 8 组并行联合跑中 av 1+native 12 红=页面文件/Containment 资源压力，隔离复跑全 PASS；ace-semantics 104/106+2 红=worktree 缺未跟踪 `docs/plans/attachments/796/`，主检出 7/7 绿——环境归因）。**集成组**：864/865/909/912/913/889/928-new 绿（865/909/912 需清 `%TEMP%\av798-session-*` 后绿，T-07 归因沿袭）；904 红=既有 KNOWN-DEBT（golden manifest 缺失，PLAN-933 认领）非本包触面，如实记不冒绿。**ace-performance 正式采样**（错峰隔离）：两轮一致在 1800s standing deadline 截断（28/61，exit 124，已完成 28/28 全 ok）；928 相关具名面全绿（909/912/913/闭包增量×3/集合增量/source-incremental P95/924 与 911 在隔离 ace-native 绿）；剩余 33 项记为本次未执行不充 PASS。**交 929**：①清单 codec `units::{encode_manifest,decode_manifest,DecodedManifest::matches_manifest}`（schema `ac-source-units/1`、profile=slug 合同名、伪造消费前拒绝；恢复深验/真实 store 归 929）；②候选事务 `stage_owner_edit/commit_staged`（stale/foreign typed 拒绝、零编辑候选、λ拓扑事件）+ `CatalogPin` 修订局部视图；③目录 API（`UnitCatalog::{build,edit_lambda,edit_owner,pin,to_manifest}`、当前 span 包装字段漂移维护、进程内 instance 身份）；④冷入口（`parse_program_with` Collections/Closures 统一链，手写留作差分 oracle；九 profile grammar 门 contract/case-worker）。**929 侧环境余账**：av798-session 跨运行污染 fresh 检查；attachments 未跟踪致 worktree 缺审计数据；plan827 `incremental-raw.json` 为 runner 重写的已跟踪路径（运行即脏树） |
 | T-11 | review | T-01..10完成，暂停实现 | 独立逐AC/SD/遗漏及健康审查，AC-10 | [ ] |
 | T-12 | merge | T-11 pass及后续授权 | Spec沉淀/交付/归档/所有输出路径清理，AC-11 | [ ] |
 
 下一入口T-01只可先私有盘点；T-03公共写须927稳定交接，T-05前必须T-02证明不会重建兄弟lambda。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: `D:/autostack/.wt/lang-928/auto-lang` @ `plan-928-dev`（冻结 `a40a620c4`） | commit: a40a620c4 | next: review（T-11）
+  - 2026-11-04 /goal 续跑（会话续接 T-08 后状态）：T-09（`d8dbe56d3`）交付文件化 suite/注册/units 合同收口/无损重建修复；T-10（`be5494188`+`a40a620c4`）交付括号组接收者修正+职责并集重验+正式采样+929 交接。work-owned AC：AC-01..09 全部有当轮测试/组证据（见 T-09/T-10 行）；进行中阻塞=无；统一回归门（merge-owned 冻结并集）pending 归 review/merge。环境归因三笔与 904 既有债务均具名记录（T-10 行）。
+
+- stage: work | plan_id: PLAN-928 | plan_revision: r2 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-928/auto-lang` | branch: plan-928-dev | base_commit: master `54829a61b` | code_commit: `a40a620c4`（d8dbe56d3→be5494188→a40a620c4） | dependency_revisions: 无外仓改动 | task_ids: T-09, T-10 | evidence: conformance 325/325 零警告；case-ace-source-composite-928 12/12；§6 职责组并集绿（av/native 隔离复跑绿、semantics 环境归因主检出 7/7）；集成 864/865/909/912/913/889/928 绿、904 既有债务；ace-performance 具名采样绿+33 项未执行如实记录 | blockers: 无 | next_responsible_role: review
 
 - stage: goal | plan_id: PLAN-928 | plan_revision: r2 | round: 2 | from: start | to: work | status: executing | outcome: in-progress | worktree: `D:/autostack/.wt/lang-928/auto-lang` @ `plan-928-dev`（基面 master `54829a61b`，含 auto-down 兄弟 detached） | commit: 54829a61b | next: work（T-01 盘点）
   - 2026-11-04 09:05 开工：PLAN-927 已由其原交付会话落地归档（master `5d5054d5d` 交付 + `54829a61b` 归档；含 merge 期真修复 `decode_str_value` \u{} 转义——r1 收据中"陈旧 exe 伪影"仅为部分归因，特此更正）。928 消费面确认：`core/source/cst/`（frontdoor/kinds/lex/project/shift）已随 927 在 master，`FrontKind::{WholeModule,FreeFnFragment,MethodFragment}` + 五态 `FrontOutcome` 为本包扩面基线。
