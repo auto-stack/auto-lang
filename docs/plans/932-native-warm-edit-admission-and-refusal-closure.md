@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-932
-status: execution_done
+status: reviewed
 feature_name: Native暖编辑准入与拒绝分类闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -160,6 +160,10 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 下一入口T-01原例盘点可私有准备；T-03公共修改须同符号原owner释放与稳定SHA，不新增等待927/928整包的语义前置；D927以后实际输入漂移必须重验，不得并写。本轮不授权work。
 
 ## 9. 复审记录
+
+2026-11-04 stage:review / review_scope:final / reviewer:同实施会话独立工件重建（无独立模型/会话——局限已声明；判定从diff/命令输出/冻结档重建，非执行者摘要）/ plan_id:PLAN-932 / plan_revision:2 / outcome:**pass** / worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` / reviewed_commit:`67c7ae61d`（基线核对：HEAD=67c7ae61d、树净除2个D-911-2类测试残留未跟踪json）/ base_commit:`84c894b92` / dependency_revisions:无跨仓 / spec_inputs:docs/specs/auto-ac/{function-incremental-source,native-source-diagnostics,mir-native-cache}.md、auto-test-case/{profile-v2-native,m1-order-layout-observations}.md@67c7ae61d / acceptance_results:AC-01..10全pass（逐AC工件映射：AC-01/02=T-01/02冻结档+复现日志leg(a)(b)绿+套件/宿主腿证明拒绝门未放宽；AC-03/04=diff核验码从发生处映射无message解析+refusal_tests 8/8+I09组绿；AC-05=四态门+t11腿1unit/114hit断言+结构准入；AC-06=套件survive/repair/history绿+V-09两腿按AC原文显式pending；AC-07=campaign资源/预算腿绿+diff零时序/预算改动；AC-08=两t11门绿+宿主c/c2/c3+旧断言纠偏有914批准证据；AC-09=61/59两红具名不冒绿；AC-10=债务三笔+SD-01..06+健康）/ pending_closeout_gates:merge拥有——冻结受影响模块并集已在此基线跑过（组证据在fmt前语义等价树上，冻结提交冒烟三绿补绑：refusal_tests 8/8+932套件+t11门73.6s@67c7ae61d）/ findings:0 in-contract；非阻塞注记2条——(a)campaign 61vs60差额无法从927收据精确具名（其未枚举；候选=924 perf腿ba96b7762@2026-11-04 00:22；无删除证据：全族在场+原唯一红在场且绿）；(b)rustfmt连带归一ac_mn三个子模块（纯格式、H窗内）/ evidence:冻结档plan-artifacts/plan-932/{T-01-T-02-freeze.md,T-09-ace-performance-milestone-61.txt}+§8任务行内联+§9组运行台账 / next:merge（T-12）。
+
+**SD增量复审**：SD-01..06全部核验与实现一致（守卫拆码/身份族映射/三态分判/缓存语义保持）；SD-04新规范native-warm-edit-admission.md准确描述现行为含pending边界（V-09/D-911-3）；SD-05消除911旧句与914冲突；frontmatter supersedes/new/touched_goals与SD表一致。规范文件已在67c7ae61d提交内（worktree制备、merge读回验证归merge）。
 
 2026-11-04 stage:goal / plan_id:PLAN-932 / plan_revision:2 / round:2 / from:work / to:review / status:execution_done / outcome:pass / worktree:`D:/autostack/.wt/lang-932/auto-lang` | commit:`67c7ae61d` | next:review。
 
