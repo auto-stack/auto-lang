@@ -400,6 +400,23 @@ pub(crate) fn first_lex_fact(
 
 /// 解码字符串字面量的【值】（投影用；事实层已保证无解码错误）。
 /// 旧合同：跨行换行按 LF 进值、CRLF 的 CR 按原字节进值、非 ASCII 原样。
+#[cfg(test)]
+mod decode_tests {
+    use super::decode_str_value;
+
+    #[test]
+    fn unicode_escapes_decode() {
+        // `a\0b`：NUL 转义（len 3）。
+        let nul_input: &[u8] = b"a\\u{0}b";
+        let nul_want: String = ['a', '\0', 'b'].iter().collect();
+        assert_eq!(decode_str_value(nul_input), nul_want);
+        // `héllo`：é = U+00E9（len 5 scalars）。
+        let e9_input: &[u8] = b"h\\u{e9}llo";
+        let e9_want: String = ['h', '\u{e9}', 'l', 'l', 'o'].iter().collect();
+        assert_eq!(decode_str_value(e9_input), e9_want);
+    }
+}
+
 pub(crate) fn decode_str_value(inner: &[u8]) -> String {
     let mut value = String::new();
     let mut i = 0usize;
@@ -440,7 +457,12 @@ pub(crate) fn decode_str_value(inner: &[u8]) -> String {
                         i += 1;
                     }
                     b'u' => {
-                        i += 1; // `{`
+                        i += 1; // `u`
+                        // 跳过 `{`（进入臂时 i 停在 `u` 上——不跳则花括号进
+                        // hex，解析失败被静默丢转义：`"a\u{0}b"` 曾解码成 "ab"）。
+                        if i < inner.len() && inner[i] == b'{' {
+                            i += 1;
+                        }
                         let mut hex = String::new();
                         while i < inner.len() && inner[i] != b'}' {
                             hex.push(inner[i] as char);

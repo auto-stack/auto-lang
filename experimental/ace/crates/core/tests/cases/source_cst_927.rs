@@ -282,23 +282,14 @@ fn zz_snippets() {
         return;
     }
     let snips: &[(&str, SourceProfile)] = &[
-        ("fn fn_leaf_1(v int) int {
-    if v < 0 {
-        return 0 - v
-    }
-    return v + 1
-}
-
-fn fn_000(x int) int {
-    var acc = x * 3
-    acc = acc + fn_leaf_1(x)
-    return acc
-}
-
-fn main() int {
-    return fn_000(5)
-}
-", SourceProfile::Scalar),
+        (r#"fn main() int {
+    let s Str = "a\u{0}b"
+    return s.len() * 10 + s.len_bytes()
+}"#, SourceProfile::Text),
+        (r#"fn main() int {
+    let s Str = "h\u{e9}llo"
+    return s.len() * 100 + s.len_bytes()
+}"#, SourceProfile::Text),
     ];
     // ZZ927F=<path>：整文件差分（大负载用）。
     if let Ok(path) = std::env::var("ZZ927F") {
