@@ -477,8 +477,11 @@ impl CollectionsIncrementalSession {
                     Ok::<_, MnError>(())
                 })?;
             }
+            // PLAN-929（T-04）：collections 暖编辑片段走统一前门桥（同一
+            // Collections profile grammar/投影；旧手写 parser 保留为差分
+            // oracle，不再是生产依赖）。
             let item = obs.span("syntax_fragment", |_| {
-                ac::parse_function_fragment(
+                ac::cst::parse_function_fragment_via_cst(
                     source,
                     regions[index].item.start..end,
                     ac::SourceProfile::Collections,
