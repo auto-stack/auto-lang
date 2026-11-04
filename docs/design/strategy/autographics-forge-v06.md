@@ -1,4 +1,6 @@
-# AutoGraphics、AutoForge 与承载游戏：v0.6 阶段设计
+# Auto Graphics Engine（AGE）、AutoForge与承载游戏：v0.6阶段设计
+
+> **2026-11-04 命名决议**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine；AG/AutoGraphics为历史别名。见[命名与内容仓决议](../../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。引擎仍归auto-ui，内容仓暂仍ag-examples；内容仓020仅规划更名age-examples，默认M2/AG019实际交付后维护窗口。保历史计划号/交付SHA/标签/schema/API/旧SDK锁，不以名称变更触发实现或迁移；当前进度见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文保历史快照。
 
 > **2026-10-30 总体要求纠偏**：AG用AutoUI式的声明、组件、绑定和事件表达图形应用；图形节点扩展共同作者模型，普通use复用代码/组件，复杂声明或逻辑可拆分。Godot/Bevy作为能力与样本参照，不决定作者API。当前JSON/单文件行为桥仅是独立原型接口，“可审计性”不构成禁use、单模块/单VM或单场景的产品要求。树状声明不固定运行存储，未来可选择数据导向/ECS执行；现阶段不实施该优化。详[目标要求与六项讨论草案](../../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)。本条修正总体方向，不重写历史交付、在途AC或既有ACE成熟度进入门。
 

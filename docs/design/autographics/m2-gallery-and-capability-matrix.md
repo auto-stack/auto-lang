@@ -1,4 +1,6 @@
-# AG M2 Demo Gallery与能力矩阵
+# AGE M2 Demo Gallery与能力矩阵
+
+> **2026-11-04 AGE命名与当前状态**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine，AG/AutoGraphics保历史别名。见[命名决议](../../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。AG016/017/018已交付（55c39a2/273b070/4cb297d），Gallery活Node源22/22；AG019同版M2联验已executing/r1/1-10。新[ag-examples/020](../../../../ag-examples/docs/plans/020-age-examples-repository-rename.md)仅规划同一仓更名age-examples，默认019/M2实际交付后维护窗口，不是M2前置；本轮不移动目录。Plan号/交付SHA/标签/schema/API/SDK锁与原预算验收保持；下文旧日期状态为历史快照，当前见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。
 
 > **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。
 

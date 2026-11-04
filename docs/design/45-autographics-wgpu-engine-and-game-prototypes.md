@@ -1,4 +1,6 @@
-# Design 45：AutoGraphics 的 wgpu 引擎、游戏原型与 AutoUI 集成边界
+# Design 45：Auto Graphics Engine（AGE）的wgpu引擎、游戏原型与AutoUI集成边界
+
+> **2026-11-04 命名决议**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine；AG/AutoGraphics为历史别名。见[命名与内容仓决议](../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。引擎仍归auto-ui，内容仓暂仍ag-examples；内容仓020仅规划更名age-examples，默认M2/AG019实际交付后维护窗口。保历史计划号/交付SHA/标签/schema/API/旧SDK锁，不以名称变更触发实现或迁移；当前进度见[M2路线](../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文保历史快照。
 
 > **作者模型回归（2026-10-30，用户确认）**：AG 的总体目标是用 **AutoUI 式的声明、组件、绑定和事件模型表达图形应用**，扩展到2D/3D节点；普通Auto模块与use承担复用，model/view/on可内聚也可拆分导入。JSON场景、单活动脚本、数字句柄及逐调用credits只描述已交付实验profile，不是长期作者要求。“可审计agent代码运行时”不作为产品定位；逻辑事务、故障隔离、渲染同步及诊断分别设计。一个最终呈现目标不要求单文件、单模块、单VM或单场景，双缓冲不推出游戏事务。作者树与运行存储分离，ECS是未来可选优化而非当前必做。目标要求与六项讨论建议集中在auto-ui的[声明与组件模型](../../../auto-ui/docs/design/autographics/declarative-authoring-model.md)；本文原型阶段记录与旧验收保留，不据此自动扩大在途合同或启动融合。
 

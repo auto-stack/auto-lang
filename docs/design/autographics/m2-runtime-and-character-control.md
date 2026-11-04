@@ -1,4 +1,6 @@
-# AG M2运行能力：从真实Auto探针到公共角色接口
+# AGE M2运行能力：从真实Auto探针到公共角色接口
+
+> **2026-11-04 AGE命名与当前状态**：正式名Auto Graphics Engine（AGE），品牌AutoGraphics Engine，AG/AutoGraphics保历史别名。见[命名决议](../../../../auto-ui/docs/design/autographics/age-naming-and-content-repository.md)。AG016/017/018已交付（55c39a2/273b070/4cb297d），Gallery活Node源22/22；AG019同版M2联验已executing/r1/1-10。新[ag-examples/020](../../../../ag-examples/docs/plans/020-age-examples-repository-rename.md)仅规划同一仓更名age-examples，默认019/M2实际交付后维护窗口，不是M2前置；本轮不移动目录。Plan号/交付SHA/标签/schema/API/SDK锁与原预算验收保持；下文旧日期状态为历史快照，当前见[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)。
 
 > **2026-11-04 当前路线**：UI040已交付fc82061c/canonical/独立上下文final/清理，原OS层15项D-02仍pending；AG016完整G3现executing/r1/本次核验3-10、唯一ag-016树、固定035，AG017/018/019仍草案。当前Gallery19/22，M2内容线按原合同继续：018固定040实际交付，019候选040门已具备、完整联验仍等016/017/018及必需证据。本轮仅在auto-ui规划[UI043模型资源对象模板](../../../../auto-ui/docs/plans/043-autographics-node3d-model-object-templates.md)、[UI044 Node源码定位/分层诊断](../../../../auto-ui/docs/plans/044-autographics-node-source-diagnostics.md)，均drafting/r1/0-10、可独立推进；043复用底层Model实例补Node builtin-only缺口，044只提供可证源映射，固定SDK runtime无span不造精确行。两者不改在途内容基线、不新增当前M2前置/不自动升AG019候选；未来内容显式消费另约。041/042已属其它UI组件store/重载路线，不复用号。原预算/验收/SDK681/OS政策保持，本轮不实施/建树/构建/GPU/agent/发布。见[资源组件与诊断设计](../../../../auto-ui/docs/design/autographics/node-resource-components-and-source-diagnostics.md)及[M2路线](../../../../auto-ui/docs/design/autographics/m2-game-first-three-lane-roadmap.md)，下文旧日期快照保历史。
 
