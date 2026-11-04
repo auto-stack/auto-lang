@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-932
-status: reviewed
+status: archived
 feature_name: Native暖编辑准入与拒绝分类闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/native-warm-edit-admission.md]
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-818, PLAN-828, PLAN-911, PLAN-914]
-current_step: 10
+current_step: 12
 total_steps: 12
 ---
 
@@ -154,12 +154,19 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 | T-08 | work | T-03..07，case/host/注册H | 使能V-01..09文件化独立oracle、typed矛盾负控与原t11及914 I09控制，AC-08 | [✅ 2026-11-04：新目录`native-warm-admission-932/`7 case全绿（body成功64/语言拒绝source.type-mismatch@typecheck/fail→修复85/签名拒绝typed verify码/状态存活43/多decl invalid-edit/历史A-B-A 43）+`cargo t case-ace-native-warm-admission-932`注册PASS+父侧`refusal_tests`8单控绿+宿主门c/c2/c3腿（typed→Fail+精确码、精确码/阶段Pass、untyped→Error）] |
 | T-09 | work | T-08及恢复接缝稳定SHA，冻结提交/正式采样错峰 | 职责/必要consumer+原ace-performance义务复验，AC-01..09 | [✅ 2026-11-04：冻结提交`67c7ae61d`；职责组ace-native(222/223,1红环境归因隔离重放PASS)/ace-native-worker/ace-av/ace-source/auto-test-case/ace-adapters/infra-fixed全绿；集成组order-layout-914/native-diags-911/native-collections-889/native-resource-923/native-closures-924/closures-recovery-913/native-warm-admission-932全绿；ace-host 170/172（两红均基座既有，见§9）；**T3_MILESTONE=1 ace-performance：61执行/59绿，t11门绿(11.59s)——D-927-2既有唯一红关闭**；两红具名：six_scenarios（stash本包5源文件后基线84c894b92隔离仍红→基座既有）+concurrent_gc_30（SQLite锁竞争，当日ace-native批次绿+隔离重放PASS→环境归因）；61枚举冻结于plan-artifacts/T-09-*.txt（债务收据60项为他线增腿后的计数漂移）] |
 | T-10 | work | T-09 | SD/债务/交接/健康核查与真实余账，AC-10 | [✅ 2026-11-04：SD-01..06已制备于worktree提交（含新spec native-warm-edit-admission.md与911旧句对齐）；债务更新=D-927-2关闭登记+新登记D-932-1（six_scenarios基座红，含stash-bisect证据）/D-932-2（AP-16清单行指向007已迁走路径，fresh worktree必红）；健康=触面文件rustfmt干净（仓内他人文件既有漂移不扩）、编译零新告警、无debug输出；余账=V-09 pending（929接缝）+D-911-2/3/4等按原owner保留] |
-| T-11 | review | T-01..10完成，冻结实现 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [ ] |
-| T-12 | merge | T-11 pass及后续实施/合入授权 | canonical沉淀/交付/归档/全路径清理，AC-12 | [ ] |
+| T-11 | review | T-01..10完成，冻结实现 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [✅ 2026-11-04 final pass @67c7ae61d（同会话工件重建，局限声明；逐AC映射/0 in-contract findings/冻结提交冒烟三绿；收据见§9）] |
+| T-12 | merge | T-11 pass及后续实施/合入授权 | canonical沉淀/交付/归档/全路径清理，AC-12 | [✅ 2026-11-04 merge pass（rebase da4c98b51 range-diff=等价、ff-only落地、canonical读回、归档、清树、plan-artifacts删除；收据见§9）] |
 
 下一入口T-01原例盘点可私有准备；T-03公共修改须同符号原owner释放与稳定SHA，不新增等待927/928整包的语义前置；D927以后实际输入漂移必须重验，不得并写。本轮不授权work。
 
-## 9. 复审记录
+2026-11-04 stage:merge / plan_id:PLAN-932:r2 / outcome:pass / 检查点：
+- prepared：reviewed基线67c7ae61d（r2 final pass）、canonical Spec差分=SD-01..06已在提交内、源目标6文件、交付提交预期=rebase后tip
+- landed：rebase master（84c894b92..1234f8793无冲突）→ 67c7ae61d→**da4c98b51**，`git range-diff 84c894b92..67c7ae61d master..da4c98b51` = **1: 67c7ae61d = 1: da4c98b51**（全等）；主检出`git merge --ff-only plan-932-dev`成功、master尖=da4c98b51、无merge commit
+- canonical_verified：main@da4c98b51六规范路径+SHA256（function-incremental-source f86134e25d62 / native-source-diagnostics ed558b1e33ed / mir-native-cache e0dbd77304c7 / profile-v2-native 2f6a83a510b6 / m1-order-layout-observations 03602b688ef8 / native-warm-edit-admission be54b3e397dd）+内容抽查（SD-05修订句/新规范标题/SD-01拆码）
+- merge门（冻结受影响组）：ace-source 343/343、ace-av 995/996（唯一红=912线fresh P90 2316ms>2000ms，隔离重放PASS 23.1s→环境归因：并行调度+外部构建负载；同代码批次1绿）均@67c7ae61d内容等价冻结提交；其余组按fmt-only等价依据复用T-09证据（ace-native 222/223+隔离重放、worker/auto-test-case/adapters/infra-fixed、7集成组、ace-host 170/172两具名基座红、T3_MILESTONE ace-performance 61/59 t11绿）+冻结提交冒烟三绿
+- archived：git mv至docs/plans/archive/932-native-warm-edit-admission-and-refusal-closure.md、status:archived、T-11/T-12勾选、current_step 12/12；本收据随归档提交
+- landing checks：代码合并后生产侧产物时效观察（沿927/928/931/933惯例记观察项）：backend release二进制与生成web bundle均早于本次落地，未重建——本包触面为测试/分类层与规范，不改运行时行为，stale影响为无；如需新鲜产物由统一发布动作承接
+- batch regression due check：读docs/plans/.last-batch-regression.json（见cleaned后记录）；932%5≠2非触发；按收据时间与合并活动核到期性
 
 2026-11-04 stage:review / review_scope:final / reviewer:同实施会话独立工件重建（无独立模型/会话——局限已声明；判定从diff/命令输出/冻结档重建，非执行者摘要）/ plan_id:PLAN-932 / plan_revision:2 / outcome:**pass** / worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` / reviewed_commit:`67c7ae61d`（基线核对：HEAD=67c7ae61d、树净除2个D-911-2类测试残留未跟踪json）/ base_commit:`84c894b92` / dependency_revisions:无跨仓 / spec_inputs:docs/specs/auto-ac/{function-incremental-source,native-source-diagnostics,mir-native-cache}.md、auto-test-case/{profile-v2-native,m1-order-layout-observations}.md@67c7ae61d / acceptance_results:AC-01..10全pass（逐AC工件映射：AC-01/02=T-01/02冻结档+复现日志leg(a)(b)绿+套件/宿主腿证明拒绝门未放宽；AC-03/04=diff核验码从发生处映射无message解析+refusal_tests 8/8+I09组绿；AC-05=四态门+t11腿1unit/114hit断言+结构准入；AC-06=套件survive/repair/history绿+V-09两腿按AC原文显式pending；AC-07=campaign资源/预算腿绿+diff零时序/预算改动；AC-08=两t11门绿+宿主c/c2/c3+旧断言纠偏有914批准证据；AC-09=61/59两红具名不冒绿；AC-10=债务三笔+SD-01..06+健康）/ pending_closeout_gates:merge拥有——冻结受影响模块并集已在此基线跑过（组证据在fmt前语义等价树上，冻结提交冒烟三绿补绑：refusal_tests 8/8+932套件+t11门73.6s@67c7ae61d）/ findings:0 in-contract；非阻塞注记2条——(a)campaign 61vs60差额无法从927收据精确具名（其未枚举；候选=924 perf腿ba96b7762@2026-11-04 00:22；无删除证据：全族在场+原唯一红在场且绿）；(b)rustfmt连带归一ac_mn三个子模块（纯格式、H窗内）/ evidence:冻结档plan-artifacts/plan-932/{T-01-T-02-freeze.md,T-09-ace-performance-milestone-61.txt}+§8任务行内联+§9组运行台账 / next:merge（T-12）。
 
