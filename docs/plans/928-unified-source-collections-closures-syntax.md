@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/composite-source-projection.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-test-case]
 depends_on: [PLAN-927, PLAN-864, PLAN-865, PLAN-909, PLAN-912, PLAN-913]
-current_step: 5
+current_step: 6
 total_steps: 12
 ---
 
@@ -150,7 +150,7 @@ S主要为`core/source/{ast,cst,closures_fn,closures_context,parser,resolve}.rs`
 | T-03 | work | T-02，grammar/core投影S窗 | type/enum/List/is/for-in/方法后缀与拒绝，V-01/02；AC-01/02 | [x] 2026-11-04：collections+closures 两面经统一前门（`548→9e67e5c14`）。type-item（`;` 字段分隔经 list-nl sep）/enum-item（ListPlain 臂、载荷备选前置）/泛型类型位（generic-ty 备选**前置**防 ident 先占不回溯；`?T` 糖子规则化）/generic-atom 接收位（平衡`<>`+尾随 dot 提交镜像 generic_scan_commits；MethodCall 解包=GenericType 直接收者）/is-stmt（arm-qual/arm-payload 子规则——DSL opt 仅包单步；臂 span 恒自模式词起）/for-in（**合同 C7：迭代器=裸 ident**，防体块 `{` 误读 ctor）/postfix `.move`/方法链/collections 调用语句/ctor 门。**差分 11/11 字节全等**（L04/L05 全语法+enum/is 三臂+限定臂+载荷+for-in+嵌套泛型+`<`比较回退+named ctor+Str clone）；conformance **308/308**、ace-source+ace-source-syntax-927 PASS、零警告。全语料负例扫描归 T-04/T-09 差分全集 |
 | T-04 | work | T-02/03，grammar函数类型/lambda | closures/嵌套/间接调用AST与诊断，V-01/02；AC-01/02 | [x] 2026-11-04：**语料全集扫描 162/162 字节全等**（ace-m1/src 全部 81 源 × Collections/Closures，正例 AST/反例首诊断四元组；`t04_corpus_sweep_both_profiles`）。关键合同发现：**closures 顶层=fn 声明+脚本尾**（旧 items() 脚本分派，无 type/enum 项——规范"closures=collections 超集"仅在语句/类型词域成立，声明集合以手写实现为准并登记）；collections 词域=`Str`→StrOwned、`char` 仅 closures（909）、小写 `str`/`char` 具名拒；脚本头位置序拒绝提升至错误子树跳过之前；结构层重根到最近 fn 声明头 + closures type-区走查排除。conformance **309/309**、ace-source+ace-source-syntax-927 PASS、零警告（`9e67e5c14`+`00e0a7508`）。lambda/fn 型差分在 T-02 探针（K 全例字节全等）|
 | T-05 | work | T-04，CST单元/AST保留/候选短窗 | 目标lambda/owner保留子体、同文身份/creator映射与失败/pin事务，V-03/04/05/09/10；AC-03/04/07 | [x] 2026-11-04：units.rs 正式化——**候选事务**（`stage_owner_edit`：解析/投影/复用决策全在暂存面，目录/源/计量提交前零变异；坏候选=诊断零变异；`commit_staged` 推进+计量如实；语义重验义务按 λ 显式携带）+ **pin 生命周期**（`CatalogPin` 修订局部快照，多代共存、内容指纹可溯、跨修订不串用）。探针：候选全生命周期（坏/取消/提交）+ 两代 pin 共存；conformance **311/311**、固定组 PASS、零警告。同文身份在 T-02 探针证明；creator 操作数精度随 T-07 前端接线消费 `semantic_recheck` 通道落地（登记） |
-| T-06 | work | T-03..05，来源/单元目录与codec | type/enum/签名变更事件、稳定逻辑身份/关系与歧义准入，V-06/08/09；AC-05/07 | [ ] |
+| T-06 | work | T-03..05，来源/单元目录与codec | type/enum/签名变更事件、稳定逻辑身份/关系与歧义准入，V-06/08/09；AC-05/07 | [x] 2026-11-04：声明单元（type/enum）入目录（含 `mint_span` 逻辑身份——跨 body/签名编辑携带不变，§5.3 纪律的语法面）；**typed 变更事件**（`OwnerSignatureChanged` 提交+直接双路径、`DeclChanged` 带语法面名字引用 dependents、`DeclSetChanged`、`LambdaTopologyChanged`）；**无指针清单** `CatalogManifest`（schema `ac-source-units/1`，确定性、caps/profile/内容指纹身份、无宿主指针/trusted 位——929 恢复消费面）。探针：签名事件必达/坐标漂移保 mint/清单确定性；结构层 coll_reject 前置修复；conformance **312/312**、固定组 PASS、零警告 |
 | T-07 | work | T-05/06，core片段/closures_fn兼容窗 | 复杂profile冷/片段切共享链，捕获原语义事实接线，V-02/04/06；AC-04/06/08 | [ ] |
 | T-08 | work | T-05..07，预算/资源probe | 深链/两代候选pin峰值/最后owner回收/读取/原200编辑及正式负载，V-07/10；AC-07/08 | [ ] |
 | T-09 | work | T-03..08，case/父侧/H窗 | 使能V-01..10正式目录/oracle/payload与身份反控/注册及全部适用腿；AC-09 | [ ] |
