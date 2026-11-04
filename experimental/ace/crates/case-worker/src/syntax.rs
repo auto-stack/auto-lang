@@ -18,6 +18,7 @@
 use crate::protocol::{
     ArtifactOut, DiagOut, OkOut, SpanOut, ToolchainOut, WorkerError, WorkerRequest,
 };
+use ace_core::source::cst::{profile_from_slug, profile_grammar};
 use ace_syntax_grammar;
 use ace_syntax_runtime::cst;
 use ace_syntax_runtime::edit::incremental_reparse;
@@ -32,19 +33,15 @@ use std::time::Instant;
 
 const AUTO_CORE: &str = include_str!("../../../grammars/auto-core.at");
 const INTERFACE_MINI: &str = include_str!("../../../grammars/interface-mini-v1.at");
-/// PLAN-927：七 profile 统一源码语法（auto-source.at 的 profile 裁剪编译；
-/// grammar 名 = `auto-source@<profile-slug>`，slug 与 core::source::cst 的
-/// profile_slug 一致——身份 = 裁剪 canonical bytes 的 GrammarId）。
-const AUTO_SOURCE: &str = include_str!("../../../grammars/auto-source.at");
+/// PLAN-927/929：`auto-source@<profile-slug>` 语法名经 `profile_grammar`
+/// 共享缓存解析（同一 auto-source.at 裁剪编译产物；本 crate 不再自持
+/// 裁剪编译或第二份缓存）。身份 = 裁剪 canonical bytes 的 GrammarId。
 
 thread_local! {
     static CORE: RefCell<(Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)> =
         RefCell::new(compile_pair(AUTO_CORE));
     static MINI: RefCell<(Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)> =
         RefCell::new(compile_pair(INTERFACE_MINI));
-    static AUTO_SOURCE_PROFILES:
-        RefCell<std::collections::HashMap<String, (Rc<ace_syntax_runtime::program::GrammarProgram>, CompiledScanner)>> =
-        RefCell::new(std::collections::HashMap::new());
 }
 
 fn compile_pair(
@@ -62,18 +59,20 @@ fn compile_pair(
 /// the worker's shape (single-threaded request handling).
 fn with_grammar<R>(
     name: &str,
-    f: impl FnOnce(&Rc<ace_syntax_runtime::program::GrammarProgram>, &CompiledScanner) -> R,
+    f: impl FnOnce(&ace_syntax_runtime::program::GrammarProgram, &CompiledScanner) -> R,
 ) -> R {
     if let Some(slug) = name.strip_prefix("auto-source@") {
-        return AUTO_SOURCE_PROFILES.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            let entry = cache
-                .entry(slug.to_string())
-                .or_insert_with(|| compile_pair_profile(AUTO_SOURCE, slug));
-            f(&entry.0, &entry.1)
-        });
+        // PLAN-929（T-06）：auto-source profile 裁剪走**共享前门缓存**
+        // （`profile_grammar`——同一编译产物、进程级 OnceLock；不再有
+        // 线程本地第二份裁剪编译）。slug 非法 = 受控 infra，不静默回落。
+        let profile = profile_from_slug(slug)
+            .unwrap_or_else(|| panic!("auto-source profile `{slug}` is not a known profile"));
+        let cached = profile_grammar(profile)
+            .unwrap_or_else(|e| panic!("auto-source profile `{slug}` must compile: {e}"));
+        return f(cached.program(), cached.scanner());
     }
     match name {
+        // 不同领域语法（测试用例 DSL 面）——原 owner 维护，不入统一源码前门。
         "interface-mini-v1" => MINI.with(|c| {
             let c = c.borrow();
             f(&c.0, &c.1)
@@ -84,21 +83,6 @@ fn with_grammar<R>(
         }),
     }
 }
-
-/// auto-source 的 profile 裁剪编译（slug 非法 = 受控 infra，不静默回落）。
-fn compile_pair_profile(
-    src: &'static str,
-    slug: &str,
-) -> (
-    Rc<ace_syntax_runtime::program::GrammarProgram>,
-    CompiledScanner,
-) {
-    let p = ace_syntax_grammar::compile_profile(src, slug)
-        .unwrap_or_else(|d| panic!("auto-source profile `{slug}` must compile: {d:?}"));
-    let cs = CompiledScanner::compile(&p).expect("auto-source scanner must compile");
-    (Rc::new(p), cs)
-}
-
 pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
     let started = Instant::now();
     let grammar = req.grammar.as_deref().unwrap_or("auto-core");
@@ -108,7 +92,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
 fn exec_inner(
     req: &WorkerRequest,
     grammar: &str,
-    p: &Rc<ace_syntax_runtime::program::GrammarProgram>,
+    p: &ace_syntax_runtime::program::GrammarProgram,
     cs: &CompiledScanner,
     started: Instant,
 ) -> Result<OkOut, WorkerError> {
