@@ -305,12 +305,124 @@ fn signature_of(f: &FnItem) -> String {
     format!("{}({}) -> {:?}", f.name.name, params.join(", "), f.ret.kind)
 }
 
-/// 名字引用扫描（语法面：参数/返回/let 注解的类型词）。
+/// PLAN-929（T-07）：名字引用扫描扩为**全语法引用面**——注解（参数/返回/
+/// let-var，含 Optional/Generic 嵌套）+ body 内全部名字叶（裸名、调用
+/// callee、构造 `Type(...)`/`Type{...}`、方法名/静态基座）。语义依赖裁决
+/// 仍归 resolve；本面只负责"谁提到这个名字"的语法事实（V-03 dependents）。
 fn references_name(f: &FnItem, name: &str) -> bool {
-    if matches!(&f.ret.kind, crate::source::ast::TypeRef::Record(id) if id.name == name) {
+    let ann = |t: &crate::source::ast::TypeAnn| -> bool {
+        let mut stack = vec![t];
+        while let Some(cur) = stack.pop() {
+            if matches!(&cur.kind, crate::source::ast::TypeRef::Record(id) if id.name == name) {
+                return true;
+            }
+            match &cur.kind {
+                crate::source::ast::TypeRef::Optional(inner) => stack.push(inner),
+                crate::source::ast::TypeRef::Generic { args, .. } => stack.extend(args.iter()),
+                _ => {}
+            }
+        }
+        false
+    };
+    if ann(&f.ret) {
         return true;
     }
-    f.params.iter().any(|p| matches!(&p.ty.kind, crate::source::ast::TypeRef::Record(id) if id.name == name))
+    if f.params.iter().any(|p| ann(&p.ty)) {
+        return true;
+    }
+    // 语句/表达式全走（显式栈——深链不爆栈；与 extract_lambda_body 同纪律）。
+    let mut work: Vec<WalkItem> = f.body.stmts.iter().map(WalkItem::Stmt).collect();
+    work.reverse();
+    while let Some(item) = work.pop() {
+        match item {
+            WalkItem::Stmt(s) => {
+                let mut sub: Vec<WalkItem> = Vec::new();
+                match s {
+                    crate::source::ast::Stmt::Let { ann: a, value, .. } => {
+                        if let Some(ty) = a {
+                            if ann(ty) {
+                                return true;
+                            }
+                        }
+                        sub.push(WalkItem::Expr(value));
+                    }
+                    crate::source::ast::Stmt::Assign { value, .. }
+                    | crate::source::ast::Stmt::Return { value, .. }
+                    | crate::source::ast::Stmt::ExprStmt { value, .. } => {
+                        sub.push(WalkItem::Expr(value));
+                    }
+                    crate::source::ast::Stmt::If { cond, then, els, .. } => {
+                        sub.push(WalkItem::Expr(cond));
+                        sub.extend(then.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(e) = els {
+                            sub.extend(e.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
+                    crate::source::ast::Stmt::While { cond, body, .. } => {
+                        sub.push(WalkItem::Expr(cond));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
+                    crate::source::ast::Stmt::Loop { body, .. }
+                    | crate::source::ast::Stmt::ForIn { body, .. } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
+                    crate::source::ast::Stmt::IsMatch { arms, .. } => {
+                        for arm in arms {
+                            sub.extend(arm.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
+                    crate::source::ast::Stmt::Break { .. } | crate::source::ast::Stmt::Continue { .. } => {}
+                }
+                sub.reverse();
+                work.extend(sub);
+            }
+            WalkItem::Expr(e) => {
+                // 名字叶：裸名 / 调用 callee / 构造类型词 / 方法名。
+                match &e.kind {
+                    ExprKind::Var(i) => {
+                        if i.name == name {
+                            return true;
+                        }
+                    }
+                    ExprKind::Call { callee, .. } => {
+                        if callee.name == name {
+                            return true;
+                        }
+                    }
+                    ExprKind::Method { name: n, .. } => {
+                        if n.name == name {
+                            return true;
+                        }
+                    }
+                    ExprKind::CtorNamed { ty, .. } => {
+                        if ty.name == name {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+                let mut kids: Vec<&Expr> = expr_children(e);
+                if let ExprKind::Closure { body: b, .. } = &e.kind {
+                    if let ClosureBody::Block(blk) = &**b {
+                        kids.extend(stmt_value_exprs_stmts(blk));
+                    }
+                }
+                for k in kids.into_iter().rev() {
+                    work.push(WalkItem::Expr(k));
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 块内语句的值表达式（闭包块走查用；复用 stmt_value_exprs 的判定面）。
+fn stmt_value_exprs_stmts(b: &crate::source::ast::Block) -> Vec<&Expr> {
+    let mut out = Vec::new();
+    for s in &b.stmts {
+        out.extend(stmt_value_exprs(s));
+    }
+    out
 }
 
 /// 表达式直接子表达式（值位；Ident 型 callee/名字叶不构成子值）。

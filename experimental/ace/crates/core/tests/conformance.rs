@@ -55,3 +55,5 @@ mod source_units_928;
 mod source_units_928_t09;
 #[path = "cases/source_restore_929_t02.rs"]
 mod source_restore_929_t02;
+#[path = "cases/decl_events_929_t07.rs"]
+mod decl_events_929_t07;
