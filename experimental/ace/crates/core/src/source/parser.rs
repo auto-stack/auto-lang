@@ -142,6 +142,12 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
     }
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
+/// PLAN-929（T-10）：oracle 面在位标记（差分 harness 依赖面；生产构建
+/// 零该 feature——调用它即要求 feature-on，退役门的负控自证锚）。
+pub fn parser_is_oracle_gated() {}
+
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// 旧手写 parser 的未切链入口（Collections/Closures 迁移分支 + 927 差分
 /// harness 的 oracle 列——`parse_program_with` 七 profile 已切统一 CST）。
 pub fn parse_program_with_handwritten(
@@ -161,6 +167,7 @@ pub fn parse_program_with_handwritten(
     p.items()
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// Parse exactly one free-function fragment with the same lexer/parser and
 /// absolute source spans. Only the granted range is tokenized; untouched
 /// functions and the prefix are never lexed or parsed. Relative token lines
@@ -228,6 +235,7 @@ pub fn parse_function_fragment(
     }
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// PLAN-925 (§5.4): parse exactly one METHOD fragment — `static fn ..` or
 /// the readonly-view `fn ..` of owner record `owner` — with the same
 /// lexer/parser and absolute source spans. The owner qualification is
@@ -329,6 +337,7 @@ pub fn parse_method_fragment(
     Ok(item)
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// PLAN-912 §5.1: parse exactly one lambda EXPRESSION fragment (`(..) => ..`,
 /// optionally `move`-prefixed) with the same lexer/parser and absolute source
 /// spans. Only the granted range is tokenized; the owner body around it and

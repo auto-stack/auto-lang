@@ -35,7 +35,14 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
 ] }
 
+[features]
+# PLAN-929（T-10）：旧手写源码 parser/lexer 的**差分 oracle** 面——生产
+# 构建默认不含（编译期不可达=退役门）；本 crate 自身的测试经 dev 自依赖
+# 开启（927/928 差分 harness 沿用）。
+legacy-syntax-oracle = []
+
 [dev-dependencies]
+ace-core = { path = ".", features = ["legacy-syntax-oracle"] }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # COFF symbol inspection for native_execution tests
 object = "0.37"

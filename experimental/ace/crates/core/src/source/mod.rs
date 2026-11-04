@@ -36,9 +36,13 @@ pub use adapter::{
     emit_function_body, prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt,
     ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
+pub use parser::{parse_program, parse_program_with};
+// PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——
+// 仅测试/`legacy-syntax-oracle` feature 可见（编译期不可达=退役门）。
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub use parser::{
-    parse_function_fragment, parse_method_fragment, parse_program, parse_program_with,
-    parse_program_with_handwritten,
+    parse_closure_fragment, parse_function_fragment, parse_method_fragment,
+    parse_program_with_handwritten, parser_is_oracle_gated,
 };
 pub use resolve::{
     env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index,

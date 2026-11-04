@@ -47,6 +47,8 @@ mod text_source;
 
 #[path = "cases/decl_env_roundtrip_929.rs"]
 mod decl_env_roundtrip_929;
+#[path = "cases/retirement_gate_929.rs"]
+mod retirement_gate_929;
 #[path = "cases/decl_events_929_t07.rs"]
 mod decl_events_929_t07;
 #[path = "cases/source_cst_927.rs"]
