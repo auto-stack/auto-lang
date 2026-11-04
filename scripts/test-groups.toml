@@ -1349,6 +1349,18 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "case-ace-unified-source-929"
+title = "TestCase 九 profile 统一源码共享前门 parse/门反控/AV 执行腿"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/unified-source-syntax-929.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-source-composite-928"
 title = "TestCase 集合/闭包复合语法 parse/门反控/值腿/同文λoracle"
 runner = "case"

@@ -1,0 +1,17 @@
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}

@@ -1,0 +1,11 @@
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}

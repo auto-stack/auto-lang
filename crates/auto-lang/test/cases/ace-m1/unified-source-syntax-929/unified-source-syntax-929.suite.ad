@@ -1,0 +1,9 @@
+# PLAN-929 T-09 — unified-source-syntax-929 suite（九 profile 单一语法事实：
+# 共享前门缓存 parse + profile 门负控 + AV 源执行腿；深恢复/无预热/清单
+# 准入 in-process 反控由 ace-source/ace-a2x 固定组承载）。
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-unified-source-929", include: [
+  "unified-source-syntax-929.case.ad",
+] }
+```

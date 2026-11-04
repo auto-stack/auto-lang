@@ -1,3 +1,4 @@
+mod syn_report_929;
 // Plan 289: Transpiler tests (a2c/a2r/a2ts) gated behind test-trans feature
 mod a2c_tests;
 mod env_restore;
