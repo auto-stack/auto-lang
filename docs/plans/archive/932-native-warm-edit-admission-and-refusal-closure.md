@@ -166,6 +166,73 @@ N/private：native incremental/source_diagnostics/worker与host协议反例；S�
 - merge门（冻结受影响组）：ace-source 343/343、ace-av 995/996（唯一红=912线fresh P90 2316ms>2000ms，隔离重放PASS 23.1s→环境归因：并行调度+外部构建负载；同代码批次1绿）均@67c7ae61d内容等价冻结提交；其余组按fmt-only等价依据复用T-09证据（ace-native 222/223+隔离重放、worker/auto-test-case/adapters/infra-fixed、7集成组、ace-host 170/172两具名基座红、T3_MILESTONE ace-performance 61/59 t11绿）+冻结提交冒烟三绿
 - archived：git mv至docs/plans/archive/932-native-warm-edit-admission-and-refusal-closure.md、status:archived、T-11/T-12勾选、current_step 12/12；本收据随归档提交
 - landing checks：代码合并后生产侧产物时效观察（沿927/928/931/933惯例记观察项）：backend release二进制与生成web bundle均早于本次落地，未重建——本包触面为测试/分类层与规范，不改运行时行为，stale影响为无；如需新鲜产物由统一发布动作承接
+
+**T3_MILESTONE=1 ace-performance 冻结枚举（61项，run-ja1g9oo5；59 ok / 2 failed已具名）**：
+
+```
+ok      16.6344625  ace-abi::conformance$binding::performance::abi_turnaround_formal_body_edit_hard_gate
+ok       2.3645874  ace-abi::conformance$binding::performance::abi_turnaround_formal_reject_hard_gate
+ok      11.4406553  ace-abi::conformance$cache_turnaround::performance::abi_cache_512_revision_churn_gc_convergence
+ok      64.2665708  ace-abi::conformance$cache_turnaround::performance::abi_turnaround_six_scenarios_30_samples
+ok      11.4791335  ace-av::conformance$av_closures_909_performance::performance::closures_shared_mutable_formal_states_and_churn
+ok        2.317107  ace-av::conformance$av_closures_incremental::performance::av_closures_incremental_baseline_campaign_replay
+ok       0.0726574  ace-av::conformance$av_closures_incremental::performance::av_closures_incremental_churn_512
+ok      10.2706684  ace-av::conformance$av_closures_incremental::performance::av_closures_incremental_store_512_revisions_gc_bounded
+ok      4.6177472999999996  ace-av::conformance$av_collections_incremental::performance::av_collections_incremental_baseline_campaign_replay
+ok        0.966151  ace-av::conformance$av_collections_resources::performance::av_collections_worker_memory_hard_gate_parent_sampled
+ok       4.7367117  ace-av::conformance$av_dynamic_incremental::performance::av_dynamic_incremental_baseline_campaign_replay
+ok       0.0601459  ace-av::conformance$av_dynamic_incremental::performance::av_dynamic_incremental_churn_512_bounded
+ok       4.8251169  ace-av::conformance$av_source_incremental::performance::av_source_incremental_baseline_30_structure_and_p95
+ok      33.5734128  ace-av::conformance$closures_fn_912_performance::performance::closures_fn_formal_states_scale_and_churn
+ok      28.3063067  ace-av::conformance$closures_recovery_913_performance::performance::closures_recovery_formal_states_scale
+ok      86.6774984  ace-av::conformance$function_incremental::performance::v07_512_revisions_bounded_history_stable_watermark
+ok      208.4657131  ace-av::conformance$function_incremental::performance::v07_full_storage_axis_512_edits_gc_restart_sentinel
+ok       4.5522363  ace-av::conformance$function_incremental::performance::v08_formal_and_structural_dual_gate
+ok       5.6655419  ace-av::conformance$function_protocol::performance::formal_campaign_v08_dual_gate_30_revisions
+ok      70.9619269  ace-av::conformance$resources_tier::performance::av_resources_32mib_product_random_read_and_churn
+ok      345.7476671  ace-comptime::conformance$cte_resources_tests::performance::resources_real_watermark_gc_physical_delete_and_converge
+ok      216.4306719  ace-comptime::conformance$cte_resources_tests::performance::resources_thirty_two_mib_pages_and_512_distinct_revisions
+ok       2.5033881  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_child_memory_spike_control_is_red
+ok      30.1423857  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_gate_ms_zero_control_is_red
+ok      327.705792  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_injected_spike_control_is_red
+ok       0.0303053  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_malformed_inputs_all_red
+ok       0.1201883  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_managed_budget_control_is_red
+ok      27.2602294  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_release_gate_2000_boundary_control
+ok      138.9020175  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_resident_degrade_gate_and_control
+ok       2.0440334  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_sampling_unavailable_control_is_red
+ok      42.1036219  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_six_scenarios_hard_gates_pass
+ok       3.9448308  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_stream_mutations_share_admission
+ok       1.7180618  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_tree_gate_aggregates_concurrent_children
+ok      26.9181926  ace-comptime::conformance$cte_turnaround_tests::performance::cte_turnaround_wire_mutations_rejected_no_panic
+failed  62.0901507  ace-conformance::conformance$native_lifecycle::performance::turnaround_native_six_scenarios_p95_gates
+ok       6.8912426  ace-conformance::conformance$native_lifecycle::performance::turnaround_syntax_gate_and_revision_stream
+ok      121.3312072  ace-conformance::conformance$tests::av_protocol::performance::ac_av_probe_formal_turnaround_gates
+ok       11.590394  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_incremental_formal_runner_gate
+ok      13.4121389  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_incremental_series_formal
+ok       0.9049433  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_incremental_trace_formal
+ok      96.7892293  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_turnaround_body_edit_gate
+ok      40.0970639  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_turnaround_fresh_cold_30
+ok      24.6798909  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_turnaround_restart_warm_30
+ok       7.4669319  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_turnaround_signature_conflict_gate
+ok      59.8399306  ace-conformance::conformance$tests::mir_native_protocol::performance::mir_native_turnaround_signature_rebuild_gate
+ok      29.3999228  ace-conformance::conformance$tests::semantics_protocol::performance::abi_recipe_formal_turnaround_hard_gates
+ok      52.7845261  ace-conformance::conformance$tests::turnaround::performance::probe_adapter_turnaround_ipc_hard_gate_p95
+ok      244.5015185  ace-native::conformance$closures_native_924_performance::performance::closures_native_formal_states_churn_and_refusals
+ok      12.1800093  ace-native::conformance$collections_frontend_tier::performance::bounded_cold_frozen_workload_real_peak_and_result
+ok      23.3090805  ace-native::conformance$incremental_tier::performance::mir_native_incremental_baseline_30_structure_and_p95
+ok      35.3282052  ace-native::conformance$owned_text_performance::performance::owned_v09_four_state_30_samples_p90_gate
+ok      704.4660064  ace-native::conformance$resources_tier::performance::mir_native_resources_cold_set_churn_gc_convergence
+ok       0.1310131  ace-native::conformance$resources_tier::performance::mir_native_resources_transient_spike_sampler_and_raw_gate
+ok      318.6646286  ace-native::conformance$source_diagnostics_911::performance::mn_sd911_source_v1_four_state_p90_30
+failed   71.383847  ace-native::conformance$turnaround_tier::performance::mir_native_turnaround_concurrent_gc_30
+ok      91.4306949  ace-native::conformance$turnaround_tier::performance::mir_native_turnaround_cross_project_30
+ok      73.2961578  ace-native::conformance$turnaround_tier::performance::mir_native_turnaround_same_process_hot_30
+ok       7.0037349  ace-semantics-store::conformance$sema_budget_pressure::performance::sema_budget_churn_512_gc_converges_sentinel_survives
+ok      404.5685346  ace-semantics-store::conformance$sema_budget_pressure::performance::sema_budget_deep_chain_4096_full_path
+ok      20.6376311  ace-semantics-store::conformance$sema_turnaround_scenarios::performance::sema_turnaround_six_scenarios_30_samples
+ok      628.1388153  ace-syntax-artifacts::conformance$syntax_budget::performance::syntax_budget_64mib_streaming_small_queries
+```
+
 - batch regression due check：读docs/plans/.last-batch-regression.json（见cleaned后记录）；932%5≠2非触发；按收据时间与合并活动核到期性
 
 2026-11-04 stage:review / review_scope:final / reviewer:同实施会话独立工件重建（无独立模型/会话——局限已声明；判定从diff/命令输出/冻结档重建，非执行者摘要）/ plan_id:PLAN-932 / plan_revision:2 / outcome:**pass** / worktree:`D:/autostack/.wt/lang-932/auto-lang` branch `plan-932-dev` / reviewed_commit:`67c7ae61d`（基线核对：HEAD=67c7ae61d、树净除2个D-911-2类测试残留未跟踪json）/ base_commit:`84c894b92` / dependency_revisions:无跨仓 / spec_inputs:docs/specs/auto-ac/{function-incremental-source,native-source-diagnostics,mir-native-cache}.md、auto-test-case/{profile-v2-native,m1-order-layout-observations}.md@67c7ae61d / acceptance_results:AC-01..10全pass（逐AC工件映射：AC-01/02=T-01/02冻结档+复现日志leg(a)(b)绿+套件/宿主腿证明拒绝门未放宽；AC-03/04=diff核验码从发生处映射无message解析+refusal_tests 8/8+I09组绿；AC-05=四态门+t11腿1unit/114hit断言+结构准入；AC-06=套件survive/repair/history绿+V-09两腿按AC原文显式pending；AC-07=campaign资源/预算腿绿+diff零时序/预算改动；AC-08=两t11门绿+宿主c/c2/c3+旧断言纠偏有914批准证据；AC-09=61/59两红具名不冒绿；AC-10=债务三笔+SD-01..06+健康）/ pending_closeout_gates:merge拥有——冻结受影响模块并集已在此基线跑过（组证据在fmt前语义等价树上，冻结提交冒烟三绿补绑：refusal_tests 8/8+932套件+t11门73.6s@67c7ae61d）/ findings:0 in-contract；非阻塞注记2条——(a)campaign 61vs60差额无法从927收据精确具名（其未枚举；候选=924 perf腿ba96b7762@2026-11-04 00:22；无删除证据：全族在场+原唯一红在场且绿）；(b)rustfmt连带归一ac_mn三个子模块（纯格式、H窗内）/ evidence:冻结档plan-artifacts/plan-932/{T-01-T-02-freeze.md,T-09-ace-performance-milestone-61.txt}+§8任务行内联+§9组运行台账 / next:merge（T-12）。
