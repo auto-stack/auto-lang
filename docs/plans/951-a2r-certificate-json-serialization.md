@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-951
-status: drafting
+status: reviewed
 feature_name: HIR Rust证书严格JSON序列化修复
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904]
-current_step: 0
+current_step: 4
 total_steps: 6
 ---
 
@@ -75,16 +75,29 @@ producer `CertDraft` → `to_json` → 原worker证书文件 → 严格JSON deco
 
 | ID | owner_stage | 内容 | 状态 |
 |---|---|---|---|
-| T-01 | work | 建专属树/scope，实际serializer解析回归修前红 | [ ] |
-| T-02 | work | 修serializer并补三schema/配置/能力/转义字段保真，定向回归通过 | [ ] |
-| T-03 | work | 原worker实际认证重放/C正控，准备SD，提交冻结实现 | [ ] |
-| T-04 | review | 同树重新核AC/SD/反例/健康，提交绑定final verdict | [ ] |
+| T-01 | work | 建专属树/scope，实际serializer解析回归修前红 | [x] |
+| T-02 | work | 修serializer并补三schema/配置/能力/转义字段保真，定向回归通过 | [x] |
+| T-03 | work | 原worker实际认证重放/C正控，准备SD，提交冻结实现 | [x] |
+| T-04 | review | 同树重新核AC/SD/反例/健康，提交绑定final verdict | [x] |
 | T-05 | merge | 冻结完整ace-a2x组、必要消费者，线性合入/Spec读回/归档 | [ ] |
 | T-06 | merge | 所有输出对账、scope全删、双仓guard后清树分支组，回941 | [ ] |
 
 ## 9. 复审记录
 
+2026-11-06 work entry：确认树D:/autostack/.wt/lang-951/auto-lang / branch plan-951-dev / base 1e85cb756，auto-down只读58ea33f。scope已在全局plan-artifacts/.retention/policy.json登记；T-01回归测试已写入原conformance target，原producer尚未改，定向红门运行中。
+
 2026-11-06 stage:new | PLAN-951 r1 | outcome:pass | 用户明确授权独立修复并继续941 | next:work T-01；不改941原验收/目标。
+
+
+2026-11-06 work T-01/T-02：`cargo t ace-a2x --test-name cert_json_951 --out .../red-json` exit1，2/2实际失败于标准serde_json解析（expected comma/close，line34 col3），冷编译35.11s、整命令37.260s；raw results SHA256 `63c27b33299616a077224563edc84216abb9d34796bf14011c33af95f19e621e`。修正producer字段分隔后同入口`.../green-json` exit0，2/2实际通过、8组typed组合（3schema/null与集合配置/空多能力/转义）与各自坏分隔符负控，整命令3.902s；raw results SHA256 `72d991b0e6004ba6e442b72d3caf1f0152defe6a3c39b3045f452cb30b5bc9f3`。`rustfmt --edition 2021 --config skip_children=true --check <cert.rs> <cert_json_951.rs>`与`git diff --check` exit0。实现及SD冻结提交`6d21078da10ecf92bf3407183542fb817d469a63`，4文件123行新增/3行删除，无Cargo/lock/语言/预算/旧guard变更。T-03原worker release准备中，尚未ready for review。
+
+冻结门选择：`ace-a2x`完整组涵盖被改producer及所有真实Rust/C worker认证/文件集/共享store消费者；根adapter日常只emit字节、不读取本证书serializer，本包未改其合同/接线，故不另跑根/全仓/全正式性能。正式时间/样本/ignore条件保持，merge一次完整组；targeted修前红与修后绿不替代最终门。
+
+
+2026-11-06 stage:work | PLAN-951 r1 | outcome:pass | worktree:D:/autostack/.wt/lang-951/auto-lang | base:1e85cb756 | code_commit:6d21078da10ecf92bf3407183542fb817d469a63 | T-01..03完成。`cargo build --locked --offline --release --manifest-path experimental/ace/Cargo.toml -p ace-a2x-worker --bin a2x-worker` exit0（126s，log无warning）。从941提交91968fd40取Q4源/ref blob到本scope/q4-inputs（非本机未跟踪残留，源SHA256仍827926839c09c494915fa161b7e4689294aaf4171af82fb24325df413d4f7b9d）；既有worker+process_capture.capture依次显式certify/certify-c，每次完整actual+独立reference编译运行，stdout各value:42、exit0，Rust1723.31ms、C15407.97ms，原360s墙内。941 EvidenceScope原严格JSON reader原样接受两证书，独立校源/ref hash并流式核3个actual源文件，schema/recipe/oracle42均符；原daily/旧38守卫未动。Rust cert hash `79833213b7ce060b6c46a75f5b4d4c7a6bce1f9da14ddb7ce18ce372c8a6a5cc`，命令收据hash `5795dc4c43af290dd05b580f4963c6ccac42ef0e9b74dcd1bf1e2cae64d888ba`；C正控cert hash `a54d5d4a52f18b9bd28384e2bebbaef238dd24e274628a527598a0518a2da6d1`、命令收据hash `44de514f4a9860c377cb511803a3b0c36a40bc9fb35c75a428db335feac6693e`。全部原始收据/actual/reference/exe仅本scope，默认构建target仅专属树内；无其他外部安装/消费目录。work-owned AC01/02已闭，无开放工作内finding，最终ace-a2x完整门归merge，next:final review。
+
+
+2026-11-06 stage:review | review_scope:final | reviewer:当前会话（与实现同上下文，未冒称独立agent；重新从冻结diff/原始证书/实际parser终态重建结论） | PLAN-951 r1 | outcome:pass | reviewed_commit:6d21078da10ecf92bf3407183542fb817d469a63 | base:1e85cb756 | worktree/branch:D:/autostack/.wt/lang-951/auto-lang / plan-951-dev | dependency:auto-down58ea33f。AC01=PASS：定向2test/8组合真实解析，修前原producer两test红，修后绿；双次坏JSON相等的历史伪证据被替换为标准parser独立oracle。AC02=PASS：重新读取两份现场cert，用标准json对象钩子拒重复key；Rust22键、C21键，source/ref/actual三文件hash及oracle42与原始命令独立核对，Rustnull配置仍原typed语义。生产diff仅字段逗号/最后kv末尾分隔，原字段序/转义/identity/typed验证保持；真实worker没有绕过producer。AC03=PASS：改动仅4个声明路径，target注册确实被固定组发现执行；未改旧guard、分母、预算/样本/ignore；无遗漏/未经授权延后/掩盖债，fmt与diff健康均绿，树clean。SD01=PASS：canonical文件`docs/specs/auto-test-case/a2r-hir-certification.md`增量确切对应输出可解析与字段保真，sha256 `53c96a30ecc6482852921c3c624322d4cce6898c532994a62cdad6c45f29c759`。最终完整ace-a2x职责并集pending merge；不凭本包签M1。next:merge。
 
 ## 10. 待澄清事项
 
