@@ -169,3 +169,8 @@ mod text_semantics;
 // PLAN-919: per-owner lifecycle events (R01/R04/R06 av cells).
 #[path = "cases/resource_events_919.rs"]
 mod resource_events_919;
+
+// PLAN-934 T-02: bounded fact-driven ordinary-source chain (source → query
+// facts → resolved program → checked HIR → execution).
+#[path = "cases/sq_source_facts_934.rs"]
+mod sq_source_facts_934;

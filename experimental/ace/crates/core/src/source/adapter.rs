@@ -888,6 +888,23 @@ fn compile_program_observed(
     })
 }
 
+/// PLAN-934 T-02: emit + bind + re-anchor a module from an ALREADY
+/// resolved program whose expression/binding types were supplied by the
+/// ordinary-source fact layer. This entry performs no resolve and no
+/// typecheck: binding (names/scopes/signatures) and the fact admission
+/// happened upstream, and the Emitter reads exactly the `VT`s the caller
+/// installed. It is the "fact-driven Resolved/Emitter entry" the plan's
+/// T-02 freezes; the legacy `compile_*` entry stays a bounded
+/// compatibility/differential reference until T-04 cuts its synthesis.
+pub fn emit_resolved_parts(
+    program: &ResolvedProgram,
+    src: &str,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    emit_whole_document(program, src, module_path, profile)
+}
+
 /// PLAN-912: emit + bind + re-anchor the WHOLE module from an already
 /// resolved+typechecked program (the cold truth path of the closures
 /// function frontend, which retains the resolved program instead of

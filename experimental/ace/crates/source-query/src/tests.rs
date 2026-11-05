@@ -302,3 +302,44 @@ fn sq11_walk_ids_and_versions_are_deterministic() {
     assert_ne!(w1.version, w3.version);
     assert_eq!(kinds(&w1), kinds(&w3));
 }
+
+// -- T-02 port (fact → resolved program → emitted HIR) -----------------
+
+#[test]
+fn sq12_apply_facts_drives_emission_and_verification() {
+    let p = parse(A);
+    let mut resolved =
+        ace_core::source::resolve_with(&p, &[], SourceProfile::Scalar).expect("bind");
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let applied = crate::apply_facts_to_resolved(&p, &mut resolved, &mut s).expect("apply facts");
+    assert_eq!(applied.len(), 2);
+    assert!(applied.iter().all(|a| a.report.exprs >= 1));
+    assert_eq!(
+        applied.iter().find(|a| a.name == "leaf").unwrap().report.exprs,
+        3,
+        "binary + var + literal"
+    );
+
+    let parts =
+        ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
+            .expect("emit from facts");
+    ace_core::verify::verify_scalar(parts.bundle).expect("the fact-typed HIR verifies");
+    assert!(resolved.fns.iter().all(|f| f.result == ace_core::source::resolve::VT::I32));
+}
+
+#[test]
+fn sq13_apply_rejects_another_owners_page() {
+    let p = parse(A);
+    let mut resolved =
+        ace_core::source::resolve_with(&p, &[], SourceProfile::Scalar).expect("bind");
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let leaf = s.infer_body(&p, "leaf").expect("leaf facts").facts;
+    let main_body = body_of(&p, "main");
+    let rf = resolved
+        .fns
+        .iter_mut()
+        .find(|f| f.name == "main")
+        .expect("main bound");
+    let err = crate::apply_body_facts(main_body, rf, &leaf).expect_err("foreign page");
+    assert!(matches!(err, crate::ApplyError::Facts(_)), "{err:?}");
+}

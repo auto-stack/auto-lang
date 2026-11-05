@@ -34,6 +34,7 @@
 //! parameter-binding pair); this crate surfaces that as explicit
 //! `Unsupported` and never as a mistyped fact.
 
+pub mod apply;
 pub mod facts;
 pub mod ident;
 pub mod produce;
@@ -42,6 +43,11 @@ pub mod walk;
 
 #[cfg(test)]
 mod tests;
+
+pub use apply::{
+    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, AppliedFn, ApplyError, ApplyReport,
+    FactsApplyError,
+};
 
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
