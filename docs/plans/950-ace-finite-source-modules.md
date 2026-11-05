@@ -240,6 +240,53 @@ pending_closeout_gates：冻结`cargo t ace-source ace-syntax ace-semantics ace-
 
 `stage: goal | plan_id: PLAN-950 | plan_revision: 1 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-950/auto-lang | commit: 8f595a9a35c839928c080c18e4ebb17cdc4f82a9 | next: merge`
 
+### 2026-11-06 merge gate：五组绿，A2X架构边界两红，回work修复1
+
+真实完整门禁`merge-gate/results.json`最终exit1：source370/370（原ignore1），syntax132/132（64MiB原压力326.875s），semantics190/190（原六场景30样本141.539s），artifacts40/40（10.294s），AV1012/1012（原512修订/32MiB等330.473s）均PASS；A2X185执行183PASS/2FAIL，0 skip，119.275s。新950两个真consumer例已在该组PASS，但不能覆盖两红或授予D950。
+
+F950-M01：`boundaries::manifest_face_only_sanctioned_dependencies`具名拒a2x-store新serde（新根纯数据codec，原sanction只列serde_json）；其首断言还遮蔽worker dev AV违规。F950-M02：`boundaries::source_face_no_forbidden_references`拒a2x-worker/tests/cases/module_sources_950.rs引用ace_av。这是本包测试落点/中立codec规约未同步，不是环境归因；不能加AV豁免或跳过tests目录。work修复：跨后端测试原文移AV既有conformance，仅AV dev依赖A2X；A2X生产/测试保AV禁止；只精确sanction serde纯数据derive，真实注入AV manifest/source各负控。其余生产实现、原样本/预算/平台条件不改，修后affected独立review。重新打开T05/06，4/7，原final pass历史保留但不覆盖新提交。
+
+AV旧测试输出散落已核pid37444与实际PASS终态，报告2文件共30882bytes迁入scope/reports，前后SHA256/字节数一致；tracked incremental-raw.json从本树HEAD精确恢复，唯一树实施仍clean。该既有D911-2仅输出治理问题，未修改无关测试/产品；scope/report-output-reconciliation.json保存原路径/目标/原及新hash，最终折入Plan后全删。早期外Temp25目录已按实际test前缀、精确02:42:13/31-32时窗核归属，2023files/171429799bytes、无reparse，登记retention；其他936在02:37的目录未动，外25仍待merge成功后删。完整门禁所有新临时目录位于scope/runtime-temp。
+
+`stage: merge | plan_id: PLAN-950 | plan_revision: 1 | outcome: needs_fix | reviewed_commit: 8f595a9a35c839928c080c18e4ebb17cdc4f82a9 | landed: no | canonical_verified: pending | findings: F950-M01/M02 | next: work repair1 then affected independent review`
+
+### 2026-11-06 work修复1完成：保持A2X架构禁令的跨consumer测试落点
+
+冻结提交`479a6053502fd17021581b02dfa889479e04d993`，唯一树clean，未合入。F950-M01/M02共同不变量=共享A2X生产与测试均不得依赖AV执行器，中立数据codec不等于后端依赖。修复仅测试拓扑/规约：永久module_sources_950.rs由a2x-worker→av既有conformance **100%原文移动**，AV仅dev依赖a2x-rust/store，worker移除dev AV；生产依赖表逐项相等，未改任何src/生产Rust。A2X guard原forbidden列表、扫描tests目录、双目标neutral-store断言全部保留，只在精确sanction加入serde纯数据derive。相邻conformance/guard格式整理未删任何case。Spec仅验证责任路径改av，不改r1语义或AC。
+
+合法对照及负控：原boundaries3/3通过；已构建真实边界binary直接运行两次实际变异（worker manifest注入dev ace-av、a2x-core源码注入ace_av引用），分别exit101且精确报unsanctioned ace-av / forbidden ace_av，try/finally逐字恢复。未豁免dev-dependencies或某个测试文件。移动测试正文canonical SHA256=3a4222809584f90b6a2221f96ac0eb3c0e20b5898b1ab127b3954330326d3c4a，Windows x64 gate/全部42/43/7、恢复/首编辑/身份/失败断言原样；移动后真consumer2/2通过，准备12.65s/运行2.29s，scope/repair1-dual-consumers.log。
+
+冻结后正式固定组定向重放：
+
+- `cargo t ace-av --test-name module_sources_950 --out <scope>/repair1-av-gate` exit0，selected2/executed2/0条件排除、所有子项和child_validation有效；准备8.867s/执行2.638s/整命令44.499s（含工具准备），完整发现当前AV1014项。receipt SHA256=7e5408c1d57a601e393b3f3f8874c85f0debcd7948b65c307939087dabc32845。
+- `cargo t ace-a2x --test-name boundaries --out <scope>/repair1-a2x-gate` exit0，selected4/executed4/0条件排除、全部child valid；准备4.226s/执行0.721s/整4.972s。实际3个boundaries加命中原record_text_902_t04_boundaries，未将该额外合法case藏成3；完整发现当前A2X183项。receipt SHA256=9bda9277bc1c44b6fa91265f35ed6c0ad02713ca80df65fe53e3efba909a23b7。
+
+复用边界逐身份核验：旧完整六组raw receipt仍**FAIL**，SHA256=8cc6f4187c2f50a1e83562e8f7ef89bacbc381aee9730c4bb9d96ab2ff8eee97，不覆盖/改banner。修复无生产源码或生产依赖改变，Cargo.lock仅移动dev边，版本/原固定配置/原样本/预算/输入不变；scope/repair1-unchanged-inputs.json实核。对当前discovery完整集合与旧selected逐名字对账，仅2例从worker移AV：当前AV1014=旧原样1012绿+当前2绿；当前A2X183=旧仍在集合的181绿+当前4绿（其中2项重叠），0 uncovered。其余source370/syntax132/sema190/artifacts40完整绿的相关实现/依赖/配置/输入全未变，保留一次有效64MiB/512修订/32MiB/30样本证据，不重复无关GC/scale/perf。此为证据身份对账，不是新增自报PASS runner；独立review/merge仍须核可复用性，不能把原失败父进程改称exit0。旧ignore1仍为原core 60s descendant pipe test，非PASS。
+
+Readiness：M01/M02永久guard实际拒绝能力保持且正例绿，work-owned开放项为空；T05恢复完成5/7，T06受影响独立复审/T07落地与清理仍pending。新改3份Rust注册/guard rustfmt skip_children及git diff/暂存check通过（包含顺手整理这几份已触文件原有排序），无新warning；原AV 7个lib/test warning与source-query/instance_host_935既有unused_mut已从完整门禁具名观察，未改其源，不宣称零warning。主检出其他docs WIP不混入。
+
+`stage: work | plan_id: PLAN-950 | plan_revision: 1 | outcome: pass | repair_cycle: 1 (merge boundary findings) | worktree_path: D:/autostack/.wt/lang-950/auto-lang | branch: plan-950-dev | code_commit: 479a6053502fd17021581b02dfa889479e04d993 | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | task_ids: T01..05 done; T06/07 pending | findings: F950-M01/M02 closed in work | next_responsible_role: independent affected final review950`
+
+### 2026-11-06 independent affected final review：merge修复1
+
+`stage: review | review_scope: final (affected re-review) | reviewer_identity: independent review950 context | plan_id: PLAN-950 | plan_revision: 1 | repair_cycle: 1 | outcome: pass | reviewed_commit: 479a6053502fd17021581b02dfa889479e04d993 | prior_reviewed_commit: 8f595a9a35c839928c080c18e4ebb17cdc4f82a9 | base_commit: 3eaaff58a | worktree_path: D:/autostack/.wt/lang-950/auto-lang | branch: plan-950-dev | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | findings: F950-M01/M02 closed | next: merge closeout; no implementation repairs pending`
+
+受影响范围为M01/M02的架构依赖边界、测试迁移、原断言/平台条件、Spec验证落点与有效证据复用。实际diff八文件，无任何crates/*/src、固定组配置/nextest配置、原样本/预算改动；独立解析两Cargo.toml剔除dev-dependencies后与旧冻结逐表相等，Cargo.lock仅dev边移动，无版本变更。原跨consumer用例旧blob与新AV文件**bytes完全相等**，SHA256=3a4222809584f90b6a2221f96ac0eb3c0e20b5898b1ab127b3954330326d3c4a；Windows x64条件及全部42/43/7、原计数、冷/暖诊断、三种失败后新会话真实执行与反控保持。注册文件只整理顺序/移2例，无其他case被删。
+
+M01：A2X sanctioned只精确增加serde中立数据derive；未加入ace-av或通配豁免，manifest所有dependencies/dev-dependencies仍被扫描。M02：原source forbidden列表、整个a2x-worker/tests扫描、neutral store双target禁依赖断言原样。已读取两实际注入负控log，manifest新增dev ace-av时明确unsanctioned、source新增ace_av时明确forbidden，均exit101且当前字节已恢复；不以迁移后正例单独证明guard有效。AV新增依赖仅dev a2x-rust/store，无生产反向环。两发现均按原规约闭合，无范围放宽。
+
+独立定向重放（唯一冻结树；AUTO_PLAN_ARTIFACTS和TEMP/TMP显式950 scope/runtime-temp；无全套压力重跑）：
+
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-av --features test-case-batch --test conformance module_sources_950:: -- --nocapture` exit0，2执行/2通过/0忽略/897过滤，准备3.57s、运行2.49s、整6.31s；`review-repair1-consumers.log` SHA256=e5a8ed6c7010db5b2967683caba719b77156c390406bd6d388c35c276f433278。
+- `cargo test ... -p ace-a2x-worker --test conformance boundaries:: -- --nocapture` exit0，3执行/3通过/0忽略/168过滤，准备2.78s、运行0.01s、整3.06s；`review-repair1-boundaries.log` SHA256=17b6056a61577cde9fc15f51caf5ef0feb9e7b3c3227801c4300c82bb8a8288d。此命令只命名3 guard；work固定组test-name boundaries实际4项（含原recordtext）保留其额外合法证据。
+- 受影响Rust含迁移文件/3注册guard的rustfmt skip_children、git diff --check均exit0，本次也关闭原951注册排序fmt差异。旧7个AV warning仍存在，本修复没有新增warning；未改未涉及源码。树HEAD/clean审查始终相同。
+
+完整门禁复用由本上下文**独立重算原始atomic results与当前nextest discovery集合**，未只信repair1-reuse-audit：旧merge-gate.gate_passed仍false，五原PASS均child_validation有效；同config_sha256，新定向两个receipt gate_passed/child_validation均true。当前AV1014=原1012实际ok+新2；当前A2X183=仍在集合的原181实际ok+当前4（其中2重复），未覆盖集合严格为空。独立audit JSON SHA256=6f9b1ef9fe170cab28a0fac621aca54859abd8131909124a5e65cc07cd745190，记录exact bytes/production input核验。审计脚本最初两次因nextest binary-id和事件名的bin/连字符映射断言失败，修正解析后才产出该对账；不把审计错误列产品红或成功证据。原始trace与终态没有被编辑。
+
+因此当前六组1929个唯一执行项均有适用绿证据（source370/syntax132/semantics190/artifacts40/AV1014/A2X183），旧core原ignored1仍为条件排除而非PASS；原64MiB、512修订/32MiB、六场景30样本的完整原规模证据保持，不重跑无关压力。旧A2X两FAIL与父exit1保留历史；这里是修复后按身份补齐的验收，绝不将旧失败收据改写为PASS。原AC01..04产品/来源/事务证据因实施/输入未变继续适用，AC05完成本次复核；AC06依然归merge实际落地/归档/路径清理。
+
+Spec仅finite-source-modules验证落点改为av::conformance::module_sources_950，与实际注册一致，语义/AC/impact不变；当前该文SHA256=e0870a71b96fb6f375a59bdc986aa097f7b3415e3318cdb531d7b2a1909cd617，另外两文不变。完整新Spec delta冻结scope/review-repair1-spec-delta.diff SHA256=edc5a85a147a391ccfca303600cb861dbeb972a801692ab7db5e2575dbb5f922。无新增债务/未批准延后；D950-1保持旧recipe具名边界。T06闭合6/7，T07只待实际来源沉淀、归档及guard/retention/所有输出根清理，不能以本次pass代称已交付D950。
+
 ## 10. 待澄清事项
 
 无新增用户范围决定；用户已选独立前置路线。T-01负责普通接口/模型落点和能力组合冻结，若真实证据要求改变本合同公开支持/阈值/跨仓范围才另提决定。2026-11-06宿主已由用户恢复active；原状态阻塞解除。
