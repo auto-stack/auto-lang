@@ -1,13 +1,16 @@
-//! PLAN-935（T-02）：有限标量模板实例层。
+//! PLAN-935（T-02/T-04）：有限标量模板实例层。
 //!
 //! 模板是**未具体化语义描述**，绝不是 Checked 可执行单元。本层消费统一
-//! 前门 `scalar-instances` 能力面投影出的模板 AST，按调用点实参唯一解出
-//! `T`（T-02：受限具体实参推导，见 [`solve_call`] 文档——T-04 升级为求解
-//! 器 mint_var+unify 钩子），产具体实例并把整个模块**脱糖为纯具体程序**：
+//! 前门 `scalar-instances` 能力面投影出的模板 AST，按调用点实参与期望
+//! **由 796 求解器真 unify** 解出 `T`（T-04：`Ann::TyParam` 签名 stub +
+//! 调用钩子 mint 共享 var + `take_instance_demands`——替换 T-02 的受限推
+//! 导车辆），产具体实例并把整个模块**脱糖为纯具体程序**：
 //!
 //! ```text
-//! 模板程序 →(实参约束)→ substitution →(concretize)→ 具体实例 fn
-//!         →(模板移除/实例落位/调用点重绑)→ 具体程序 → 934 事实产品路径
+//! 模板程序 ─(求解器：模板=签名 stub；调用点 unify)→ 需求 (模板, substitution)
+//!          ─(fixpoint：实例体内的模板调用再发现)→ 全部需求
+//!          ─(concretize：T→具体类型；同实例自调用重绑)→ 实例 fn
+//!          ─(模板移除/实例落位/调用点按 span 重绑)→ 具体程序 → 934 事实路径
 //! ```
 //!
 //! 身份分层（计划 §5.5）：
@@ -15,31 +18,29 @@
 //!   substitution（int/i32 同型 I32，bool 异型）——不带 span/callsite/body 版本；
 //! * 实现键 = 逻辑实例 + 模板签名/体版本 + substitution + 算法/schema
 //!   （[`InstanceRecord::key`]，域 [`INSTANCES_KEY_DOMAIN`]）；
-//! * 具体函数名（`choose$i32`）只是脱糖程序内的**装配拼写**，不是身份：
-//!   `$` 不在源 ident 字符集内，不可能与用户函数名冲突。
+//! * 具体函数名（`choose_i32`）只是脱糖程序内的**装配拼写**，不是身份；
+//!   拼写经确定性探测避让同名用户声明（见 [`concrete_name`]）。
 //!
 //! 版本域独立（SD-03）：不混入 934 事实页 schema；具体函数自身的 sig/body
 //! 页仍走 934 域（它们就是普通具体函数），实例域只承载模板→实例的调度
 //! 事实（T-02 进程内；T-05 持久化实例页）。
 //!
-//! T-02 覆盖边界（具名拒/留待 T-04，不当 token 跳过）：
-//! * 模板体内**跨模板**调用（另一个模板调用本模板或反之）——需要按
-//!   substitution 对模板体做真类型检查（T-04 求解器钩子）；
-//! * **同模板自递归**支持：自调用按同实例 substitution 重绑（先注册已验
-//!   证具体签名、再检查体的等价形状——具体体由真求解器检查）；
-//! * `T` 无法由实参唯一解出（含只在返回位出现）→ 具名拒；
-//! * 期望类型传播（if 条件/return 位）由实参解优先满足；纯期望解 T 属
-//!   T-04（求解器 Check 任务）。
+//! 诊断面（T-04）：discovery 的裁决是**求解器真诊断**（type-mismatch/
+//! unsolved-variable/arity-mismatch/unknown-parameter…，span 指向原源），
+//! 以 Stage::Bind 原码透出；不再使用 T-02 车辆的合成码。
 
 use crate::facts::PortableTy;
 use crate::ident::{signature_version, sq_hash};
+use crate::produce::ProduceLimits;
 use crate::walk::walk_body;
-use ace_core::atom_text::{Diagnostic, Stage};
+use ace_core::atom_text::{Diagnostic, Span, Stage};
 use ace_core::source::ast::{
-    Arg, BinOp, Block, Expr, ExprKind, FnItem, Ident, Item, Param, Program, Stmt, TypeAnn, TypeRef,
+    Arg, Block, Expr, ExprKind, FnItem, Ident, Item, Param, Program, Stmt, TypeAnn, TypeRef,
     TypeWord,
 };
-use std::collections::BTreeMap;
+use ace_semantics::adapter::project_body_scoped_with_caps;
+use ace_semantics::{InferOutcome, InferSession};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// PLAN-935 实例层 producer / schema / 域身份（SD-03 注册）。
 pub const INSTANCES_PRODUCER: &str = "plan935/source-instances";
@@ -48,8 +49,9 @@ pub const INSTANCES_SCHEMA: &str = "ac935/instances/v1";
 pub const INSTANCES_KEY_DOMAIN: &str = "ac935/instance-key/v1";
 /// 逻辑实例域（package+module+模板声明名）。
 pub const INSTANCES_LOGICAL_DOMAIN: &str = "ac935/instance-logical/v1";
-/// 实例化发现算法身份（T-02 受限推导；T-04 升级必须换键防旧命中）。
-pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/1";
+/// 实例化发现算法身份（T-04：796 求解器 mint_var+unify 替换 T-02 受限推导
+/// ——算法换面必须换键，防旧键伪命中）。
+pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/2";
 
 /// 一个已生产实例的调度记录（T-02 进程内；T-05 持久化为实例页）。
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -132,15 +134,6 @@ fn slot_of(ann: &TypeAnn, ty_param: &str, diags: &mut Vec<Diagnostic>) -> SlotTy
     }
 }
 
-fn ty_word(ty: PortableTy) -> TypeWord {
-    match ty {
-        PortableTy::I32 => TypeWord::Int,
-        PortableTy::Bool => TypeWord::Bool,
-        // Unit 不在实例 substitution 值域（无值级 Unit）。
-        PortableTy::Unit => TypeWord::Void,
-    }
-}
-
 /// 诊断用的类型位拼写（有限面）。
 fn spell_ty(t: &TypeRef) -> String {
     match t {
@@ -150,6 +143,15 @@ fn spell_ty(t: &TypeRef) -> String {
         TypeRef::Optional(_) => "?..".into(),
         TypeRef::Generic { .. } => "Name<..>".into(),
         TypeRef::Function { .. } => "fn(..)".into(),
+    }
+}
+
+fn ty_word(ty: PortableTy) -> TypeWord {
+    match ty {
+        PortableTy::I32 => TypeWord::Int,
+        PortableTy::Bool => TypeWord::Bool,
+        // Unit 不在实例 substitution 值域（无值级 Unit）。
+        PortableTy::Unit => TypeWord::Void,
     }
 }
 
@@ -175,11 +177,12 @@ fn ty_order(ty: &PortableTy) -> u8 {
 /// 拼写 = `{模板名}_{类型尾}`（`choose_i32`/`choose_bool`）。Atom/HIR 标识
 /// 符域是 `[A-Za-z0-9_]`（`$` 等分隔符过不了 binder），而源 ident 域允许
 /// 任何该形状拼写——装配名必须**确定性探测**避让同名用户声明（同源同探
-/// 测序；探测不进入身份）。碰撞时后接 `__2`/`__3`…。
+/// 测序；探测不进入身份）。碰撞时后接 `__2`/`__3`…（调用点重绑与实例落
+/// 位共用 by_template 表中的最终名，不重算拼写）。
 fn concrete_name(
     template: &str,
     ty: PortableTy,
-    taken: &mut std::collections::BTreeSet<String>,
+    taken: &mut BTreeSet<String>,
 ) -> String {
     let base = format!("{}_{}", template, ty_suffix(ty));
     if taken.insert(base.clone()) {
@@ -195,34 +198,33 @@ fn concrete_name(
     }
 }
 
-type LocalTys = BTreeMap<String, PortableTy>;
-
-/// 具体函数签名表（名字 → 返回类型；模板不在内）。
-#[derive(Default)]
-struct SigTable {
-    rets: BTreeMap<String, PortableTy>,
-}
-
-/// 模板条目（形状预解）。
-struct TemplateEntry {
+/// 模板条目（形状预解 + 源项引用）。
+struct TemplateEntryFull<'a> {
     name: String,
     ty_param: String,
-    param_names: Vec<String>,
+    #[allow(dead_code)]
     params: Vec<SlotTy>,
+    #[allow(dead_code)]
     ret: SlotTy,
+    item: &'a FnItem,
 }
 
 // ---------------------------------------------------------------------------
 // concretize：T 注解位 → 具体类型词；自调用按同实例重绑；span 全保留
 // ---------------------------------------------------------------------------
 
-fn concretize(template: &FnItem, entry: &TemplateEntry, ty: PortableTy, name: &str) -> FnItem {
-    let tp = entry.ty_param.as_str();
+fn concretize(
+    template: &FnItem,
+    ty_param: &str,
+    ty: PortableTy,
+    name: &str,
+    span_map: Option<&BTreeMap<(String, u32, u32), (String, String)>>,
+) -> FnItem {
     let self_name = &template.name.name;
     let concrete_self = name.to_string();
     let subst_ann = |a: &TypeAnn| -> TypeAnn {
         if let TypeRef::TyVar(id) = &a.kind {
-            if id.name == tp {
+            if id.name == ty_param {
                 return TypeAnn {
                     kind: TypeRef::Builtin(ty_word(ty)),
                     span: a.span,
@@ -232,9 +234,14 @@ fn concretize(template: &FnItem, entry: &TemplateEntry, ty: PortableTy, name: &s
         a.clone()
     };
     let subst_block = |b: &Block| -> Block { subst_block_anns(b, &subst_ann) };
-    // 体：注解位替换 + 同实例自调用重绑（同-ty 幂等）。
+    // 体：注解位替换 + 同实例自调用重绑（同-ty 幂等）+ 跨模板调用按
+    // 需求表重绑（fixpoint 轮发现的具体体内模板调用——None = fixpoint
+    // 工作程序（模板 stub 仍在，供再发现）；Some = 最终脱糖（模板移除））。
     let mut body = subst_block(&template.body);
     rebind_self_calls(&mut body, self_name, &concrete_self);
+    if let Some(map) = span_map {
+        rebind_callsites_owned(&mut body, &concrete_self, map);
+    }
     FnItem {
         name: Ident {
             name: concrete_self,
@@ -363,283 +370,107 @@ fn rebind_self_expr(e: &mut Expr, self_name: &str, concrete: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// T-02 受限实参推导（discovery vehicle）
+// T-04：求解器驱动的需求发现（每轮 = 对当前程序的全部非模板体各跑一次
+// body-scoped 推理；模板以签名 stub 参与，调用点 mint 共享 var 真 unify）
 // ---------------------------------------------------------------------------
 
-/// 受限实参类型推导：字面量/算子结果形/局部绑定类型。未知形状 None——
-/// 该位若在 T 位/具体位则具名拒（不猜）。
-///
-/// **边界声明**：这不是类型检查器，只为 substitution 发现提供实参类型；
-/// 脱糖程序的全部真类型检查由 796 求解器经 934 事实路径执行。T-04 以
-/// 求解器 mint_var+unify 钩子替换（INSTANCES_ALGO 换键）。
-fn expr_ty(e: &Expr, locals: &LocalTys) -> Option<PortableTy> {
-    match &e.kind {
-        ExprKind::IntLit(_) => Some(PortableTy::I32),
-        ExprKind::BoolLit(_) => Some(PortableTy::Bool),
-        ExprKind::Var(id) => locals.get(&id.name).copied(),
-        ExprKind::Binary { op, .. } => Some(match op {
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => PortableTy::I32,
-            _ => PortableTy::Bool,
-        }),
-        _ => None,
-    }
+#[derive(Default)]
+struct RoundDemands {
+    /// 模板名 → (ty_order → (ty, 调用点数))。
+    per_template: BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>>,
+    /// (owner fn, 调用点 span) → (模板名, 解出的 T)。owner 必须入键：同
+    /// 一模板的两个实例体**共享源 span**（concretize 保 span），仅按 span
+    /// 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
+    callsites: BTreeMap<(String, u32, u32), (String, PortableTy)>,
 }
 
-/// 一个函数（非模板）体内可见的局部绑定类型：参数 + let/var（注解优先，
-/// 无注解取受限推导初值型；后声明遮蔽先声明——T-02 近似）。
-fn collect_locals(f: &FnItem, sigs: &SigTable) -> LocalTys {
-    let mut m: LocalTys = BTreeMap::new();
-    for p in &f.params {
-        if let Some(t) = concrete_of(&p.ty) {
-            m.insert(p.name.name.clone(), t);
+/// 一轮发现：对 `prog` 的每个非模板函数跑一次真推理，收集模板调用需求。
+/// 任何真诊断（type-mismatch/unsolved-variable/arity/unknown-name…）都以
+/// 求解器原码透出（Stage::Bind、span 指向原源）。
+fn discover_round(
+    prog: &Program,
+    package: &str,
+    module: &str,
+    capabilities: &[String],
+    limits: &ProduceLimits,
+) -> Result<RoundDemands, Vec<Diagnostic>> {
+    let mut diags: Vec<Diagnostic> = Vec::new();
+    let mut out = RoundDemands::default();
+    for item in &prog.items {
+        let Item::Fn(f) = item else { continue };
+        if !f.type_params.is_empty() {
+            continue;
         }
-    }
-    collect_block_locals(&f.body, &mut m, sigs);
-    m
-}
-
-fn collect_block_locals(b: &Block, m: &mut LocalTys, sigs: &SigTable) {
-    for s in &b.stmts {
-        collect_stmt_locals(s, m, sigs);
-    }
-}
-
-fn collect_stmt_locals(s: &Stmt, m: &mut LocalTys, sigs: &SigTable) {
-    match s {
-        Stmt::Let {
-            name, ann, value, ..
-        } => {
-            let t = ann
-                .as_ref()
-                .and_then(concrete_of)
-                .or_else(|| expr_ty(value, m))
-                .or_else(|| match &value.kind {
-                    ExprKind::Call { callee, .. } => sigs.rets.get(&callee.name).copied(),
-                    _ => None,
-                });
-            if let Some(t) = t {
-                m.insert(name.name.clone(), t);
-            }
-        }
-        Stmt::If { then, els, .. } => {
-            collect_block_locals(then, m, sigs);
-            if let Some(e) = els {
-                collect_block_locals(e, m, sigs);
-            }
-        }
-        Stmt::While { body, .. } | Stmt::Loop { body, .. } => collect_block_locals(body, m, sigs),
-        _ => {}
-    }
-}
-
-/// 解一个模板调用的 substitution。规则：T 位实参全部同型（int/i32 同型）
-/// 且可推导；具体位精确同型（无隐式转换）；arity/命名绑定与求解器同则；
-/// T 无法由实参唯一解出 → 具名拒。返回 (替换后返回型, 解出的 T)。
-fn solve_call(
-    callee: &Ident,
-    args: &[Arg],
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    diags: &mut Vec<Diagnostic>,
-) -> Option<(PortableTy, PortableTy)> {
-    let entry = entries.iter().find(|t| t.name == callee.name)?;
-    // 实参 → 参数位绑定（位置/命名；求值序不变——只建 plan）。
-    let mut bound: Vec<Option<&Expr>> = vec![None; entry.params.len()];
-    let param_names: Vec<&str> = param_names_of(entry);
-    for (i, a) in args.iter().enumerate() {
-        let (name, value): (Option<&str>, &Expr) = match a {
-            Arg::Pos(e) | Arg::MovePos(e) => (None, e),
-            Arg::Named { name, value, .. } => (Some(name.name.as_str()), value),
-        };
-        let pos = match name {
-            None => Some(i),
-            Some(n) => param_names.iter().position(|&p| p == n),
-        };
-        match pos {
-            Some(p) if p < bound.len() => bound[p] = Some(value),
-            _ => {
-                diags.push(Diagnostic::new(
+        let input = project_body_scoped_with_caps(prog, &f.name.name, package, module, capabilities)
+            .map_err(|m| {
+                vec![Diagnostic::new(
                     Stage::Text,
-                    "source.instances-arity",
-                    format!(
-                        "`{}` binds no parameter at this position (expects {})",
-                        callee.name,
-                        entry.params.len()
-                    ),
-                    callee.span,
-                ));
-                return None;
+                    "source.instances-unsupported",
+                    format!("projection failed for `{}`: {m}", f.name.name),
+                    Span { start: 0, end: 0 },
+                )]
+            })?;
+        let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
+        match session.infer_function(&f.name.name) {
+            InferOutcome::Ok(_) => {}
+            InferOutcome::Diags(s) => {
+                // 真语言错误（不一定与模板相关）——原码透出。
+                for d in &s.facts.diagnostics {
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        d.code,
+                        d.message.clone(),
+                        Span {
+                            start: d.start as usize,
+                            end: d.end as usize,
+                        },
+                    ));
+                }
+                continue;
+            }
+            InferOutcome::ResourceExhausted(e) => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.instances-resource",
+                    format!("instance discovery budget: {e}"),
+                    Span { start: 0, end: 0 },
+                )])
+            }
+            InferOutcome::Cancelled => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.instances-cancelled",
+                    "instance discovery cancelled",
+                    Span { start: 0, end: 0 },
+                )])
             }
         }
-    }
-    if args.len() != entry.params.len() || bound.iter().any(|b| b.is_none()) {
-        diags.push(Diagnostic::new(
-            Stage::Text,
-            "source.instances-arity",
-            format!(
-                "`{}` expects {} argument(s), found {}",
-                callee.name,
-                entry.params.len(),
-                args.len()
-            ),
-            callee.span,
-        ));
-        return None;
-    }
-    // 逐位 unify：具体位精确同型；T 位全同。
-    let mut solved: Option<PortableTy> = None;
-    for (p, slot) in entry.params.iter().enumerate() {
-        let e = bound[p].expect("checked above");
-        let at = arg_ty(e, locals, sigs, entries, diags);
-        match slot {
-            SlotTy::Concrete(want) => match at {
-                Some(t) if t == *want => {}
-                Some(t) => {
-                    diags.push(Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-conflict",
-                        format!(
-                            "argument {} of `{}` must be `{}`, found `{}` (no implicit conversion)",
-                            p + 1,
-                            callee.name,
-                            ty_suffix(*want),
-                            ty_suffix(t)
-                        ),
-                        e.span,
-                    ));
-                    return None;
-                }
-                None => {
-                    diags.push(Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unresolved",
-                        format!(
-                            "argument {} of `{}` has no derivable type at this finite surface",
-                            p + 1,
-                            callee.name
-                        ),
-                        e.span,
-                    ));
-                    return None;
-                }
-            },
-            SlotTy::Var => match at {
-                Some(t) => match solved {
-                    None => solved = Some(t),
-                    Some(prev) if prev == t => {}
-                    Some(prev) => {
-                        diags.push(Diagnostic::new(
-                            Stage::Text,
-                            "source.instances-conflict",
-                            format!(
-                                "type parameter `{}` is bound to `{}` and `{}` by different \
-                                 arguments (heterogeneous arguments)",
-                                entry.ty_param,
-                                ty_suffix(prev),
-                                ty_suffix(t)
-                            ),
-                            e.span,
-                        ));
-                        return None;
-                    }
-                },
-                None => {
-                    diags.push(Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unresolved",
-                        format!(
-                            "type parameter `{}` cannot be solved: argument {} has no derivable \
-                             type",
-                            entry.ty_param,
-                            p + 1
-                        ),
-                        e.span,
-                    ));
-                    return None;
-                }
-            },
+        for (callee, tys, span) in session.take_instance_demands() {
+            // 有限面：单类型参数（投影已拒 >1）。
+            let Some(Some(ty)) = tys.first().copied() else {
+                continue;
+            };
+            let ty = match ty {
+                ace_semantics::Ty::I32 => PortableTy::I32,
+                ace_semantics::Ty::Bool => PortableTy::Bool,
+                ace_semantics::Ty::Var(_) => continue,
+            };
+            let m = out.per_template.entry(callee.clone()).or_default();
+            let ent = m.entry(ty_order(&ty)).or_insert((ty, 0));
+            ent.1 += 1;
+            out.callsites
+                .insert((f.name.name.clone(), span.0, span.1), (callee, ty));
         }
     }
-    let t = match solved {
-        Some(t) => t,
-        None => {
-            diags.push(Diagnostic::new(
-                Stage::Text,
-                "source.instances-unresolved",
-                format!(
-                    "type parameter `{}` only appears in the result of `{}` — arguments do not \
-                     determine it",
-                    entry.ty_param, callee.name
-                ),
-                callee.span,
-            ));
-            return None;
-        }
-    };
-    let ret = match entry.ret {
-        SlotTy::Var => t,
-        SlotTy::Concrete(c) => c,
-    };
-    Some((ret, t))
-}
-
-fn param_names_of(entry: &TemplateEntry) -> Vec<&str> {
-    // 参数名从模板 FnItem 拿：entries 构建时同步保存（见 build_entries）。
-    entry.param_names.iter().map(|s| s.as_str()).collect()
-}
-
-fn arg_ty(
-    e: &Expr,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    diags: &mut Vec<Diagnostic>,
-) -> Option<PortableTy> {
-    match &e.kind {
-        // 嵌套模板调用：先解内层（返回替换后返回型）。
-        ExprKind::Call { callee, args } if entries.iter().any(|t| t.name == callee.name) => {
-            solve_call(callee, args, locals, sigs, entries, diags).map(|(r, _)| r)
-        }
-        ExprKind::Call { callee, .. } => sigs.rets.get(&callee.name).copied(),
-        _ => expr_ty(e, locals),
+    if !diags.is_empty() {
+        return Err(diags);
     }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
-// 主流程
+// 主流程：fixpoint 物化 + 脱糖组装
 // ---------------------------------------------------------------------------
-
-struct TemplateEntryFull<'a> {
-    entry: TemplateEntry,
-    item: &'a FnItem,
-}
-
-fn build_entries<'a>(
-    templates: &[&'a FnItem],
-    diags: &mut Vec<Diagnostic>,
-) -> Vec<TemplateEntryFull<'a>> {
-    let mut out = Vec::new();
-    for t in templates {
-        let ty_param = t.type_params[0].name.clone();
-        let mut params = Vec::new();
-        for p in &t.params {
-            params.push(slot_of(&p.ty, &ty_param, diags));
-        }
-        let ret = slot_of(&t.ret, &ty_param, diags);
-        out.push(TemplateEntryFull {
-            entry: TemplateEntry {
-                name: t.name.name.clone(),
-                ty_param,
-                param_names: t.params.iter().map(|p| p.name.name.clone()).collect(),
-                params,
-                ret,
-            },
-            item: t,
-        });
-    }
-    out
-}
 
 /// 实例化一个（可能含模板的）程序。无模板时恒等返回（plain 模块经实例
 /// lane 与 plain 面逐字节同产物）。
@@ -647,18 +478,34 @@ pub fn instantiate_program(
     prog: &Program,
     package: &str,
     module: &str,
+    capabilities: &[String],
+) -> Result<InstantiateOutcome, Vec<Diagnostic>> {
+    instantiate_program_limited(
+        prog,
+        package,
+        module,
+        capabilities,
+        &ProduceLimits::default(),
+    )
+}
+
+pub fn instantiate_program_limited(
+    prog: &Program,
+    package: &str,
+    module: &str,
+    capabilities: &[String],
+    limits: &ProduceLimits,
 ) -> Result<InstantiateOutcome, Vec<Diagnostic>> {
     let mut diags: Vec<Diagnostic> = Vec::new();
-    // 1. 模板/具体签名清单。
+    // 1. 模板清单 + 唯一性。
     let mut templates: Vec<&FnItem> = Vec::new();
-    let mut sigs = SigTable::default();
+    let mut taken: BTreeSet<String> = BTreeSet::new();
     for item in &prog.items {
         if let Item::Fn(f) = item {
             if !f.type_params.is_empty() {
                 templates.push(f);
-            } else if let Some(t) = concrete_of(&f.ret) {
-                sigs.rets.insert(f.name.name.clone(), t);
             }
+            taken.insert(f.name.name.clone());
         }
     }
     if templates.is_empty() {
@@ -668,130 +515,149 @@ pub fn instantiate_program(
             rebinding_count: 0,
         });
     }
-    // 模板名唯一（与具体函数也不重复）。
     for t in &templates {
         let n = &t.name.name;
         let dup_tpl = templates.iter().filter(|x| x.name.name == *n).count() > 1;
-        if dup_tpl || sigs.rets.contains_key(n) {
+        if dup_tpl {
             diags.push(Diagnostic::new(
                 Stage::Text,
-                "source.instances-conflict",
-                format!("template `{n}` has ambiguous candidates in the fn domain"),
+                "source.instances-unsupported",
+                format!("template `{n}` is declared more than once"),
                 t.name.span,
             ));
         }
     }
-    // 模板体内的跨模板调用（非自调用）= T-02 覆盖边界外，具名拒。
-    check_template_bodies(&templates, &mut diags);
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-    let entries = build_entries(&templates, &mut diags);
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-    let plain_entries: Vec<TemplateEntry> = entries.iter().map(|e| clone_entry(&e.entry)).collect();
-
-    // 2. 需求发现：每个非模板函数体内的模板调用点 → substitution。
-    let mut demands: BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>> = templates
-        .iter()
-        .map(|t| (t.name.name.clone(), BTreeMap::new()))
-        .collect();
-    for item in &prog.items {
-        if let Item::Fn(f) = item {
-            if f.type_params.is_empty() {
-                let locals = collect_locals(f, &sigs);
-                discover_in_block(
-                    &f.body,
-                    &locals,
-                    &sigs,
-                    &plain_entries,
-                    &mut demands,
-                    &mut diags,
-                );
-            }
+    // 2. 签名形状（T/int/i32/bool 越界面具名拒——求解器之外的第二道面）。
+    let mut entries: Vec<TemplateEntryFull> = Vec::new();
+    for t in &templates {
+        let ty_param = t.type_params[0].name.clone();
+        let mut params = Vec::new();
+        for p in &t.params {
+            params.push(slot_of(&p.ty, &ty_param, &mut diags));
         }
+        let ret = slot_of(&t.ret, &ty_param, &mut diags);
+        entries.push(TemplateEntryFull {
+            name: t.name.name.clone(),
+            ty_param,
+            params,
+            ret,
+            item: t,
+        });
     }
     if !diags.is_empty() {
         return Err(diags);
     }
 
-    // 3. 具体化 + 实例记录（规范序：ty_order；装配名确定性探测避让用户名）。
-    let mut taken: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for item in &prog.items {
-        match item {
-            Item::Fn(f) => {
-                taken.insert(f.name.name.clone());
-            }
-            Item::Type(t) => {
-                taken.insert(t.name.name.clone());
-            }
-            Item::Enum(e) => {
-                taken.insert(e.name.name.clone());
-            }
-        }
-    }
+    // 3. fixpoint 物化：每轮真推理发现需求；新需求的具体体入列再发现其
+    //    体内的模板调用（跨模板/嵌套模板）；无新需求即收敛（有界：每模
+    //    板至多 |{I32,Bool}| 个实例）。
+    let mut materialized: BTreeSet<(String, u8)> = BTreeSet::new();
     let mut instances: Vec<InstanceRecord> = Vec::new();
     let mut by_template: BTreeMap<String, Vec<(PortableTy, String)>> = BTreeMap::new();
-    for full in &entries {
-        let t = full.item;
-        let logical = sq_hash(
-            INSTANCES_LOGICAL_DOMAIN,
-            &[
-                package.as_bytes(),
-                module.as_bytes(),
-                b"tpl",
-                t.name.name.as_bytes(),
-            ],
-        );
-        let sig_version = signature_version(t).as_str().to_string();
-        let body_version = match walk_body(&t.body) {
-            Ok(w) => w.version.as_str().to_string(),
-            Err(e) => {
-                diags.push(Diagnostic::new(
-                    Stage::Text,
-                    "source.instances-unsupported",
-                    format!("template body walk failed: {e}"),
-                    t.span,
-                ));
-                continue;
+    let mut all_callsites: BTreeMap<(String, u32, u32), (String, PortableTy)> = BTreeMap::new();
+    let mut rounds_left = templates.len() * 2 + 2;
+    loop {
+        // 当前工作程序：原始项 + 已物化实例项（模板保留，供后续轮发现）。
+        let mut work_items: Vec<Item> = prog.items.clone();
+        for (tpl, list) in &by_template {
+            for (ty, name) in list {
+                let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
+                let concrete = concretize(entry.item, &entry.ty_param, *ty, name, None);
+                work_items.push(Item::Fn(concrete));
             }
-        };
-        if let Some(dems) = demands.get(&t.name.name) {
-            for (_order, (ty, count)) in dems {
-                let name = concrete_name(&t.name.name, *ty, &mut taken);
+        }
+        let work = Program { items: work_items };
+        let round = discover_round(&work, package, module, capabilities, limits)?;
+        for (k, v) in &round.callsites {
+            all_callsites.insert(k.clone(), v.clone());
+        }
+        let mut fresh = false;
+        for (tpl, tys) in &round.per_template {
+            for (order, (ty, _count)) in tys {
+                if !materialized.insert((tpl.clone(), *order)) {
+                    continue;
+                }
+                fresh = true;
+                let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
+                let name = concrete_name(tpl, *ty, &mut taken);
+                let logical = sq_hash(
+                    INSTANCES_LOGICAL_DOMAIN,
+                    &[package.as_bytes(), module.as_bytes(), b"tpl", tpl.as_bytes()],
+                );
+                let sig_version = signature_version(entry.item).as_str().to_string();
+                let body_version = match walk_body(&entry.item.body) {
+                    Ok(w) => w.version.as_str().to_string(),
+                    Err(e) => {
+                        diags.push(Diagnostic::new(
+                            Stage::Text,
+                            "source.instances-unsupported",
+                            format!("template body walk failed: {e}"),
+                            entry.item.span,
+                        ));
+                        continue;
+                    }
+                };
                 instances.push(InstanceRecord {
-                    logical: logical.clone(),
+                    logical,
                     key: instance_key(
-                        &logical,
+                        tpl,
+                        package,
+                        module,
                         &sig_version,
                         &body_version,
-                        &full.entry.ty_param,
+                        &entry.ty_param,
                         *ty,
                     ),
-                    template: t.name.name.clone(),
-                    ty_param: full.entry.ty_param.clone(),
+                    template: tpl.clone(),
+                    ty_param: entry.ty_param.clone(),
                     ty: *ty,
                     concrete_name: name.clone(),
-                    sig_version: sig_version.clone(),
-                    body_version: body_version.clone(),
-                    demands: *count,
+                    sig_version,
+                    body_version,
+                    demands: 0,
                 });
-                by_template
-                    .entry(t.name.name.clone())
-                    .or_default()
-                    .push((*ty, name));
+                by_template.entry(tpl.clone()).or_default().push((*ty, name));
             }
+        }
+        if !diags.is_empty() {
+            return Err(diags);
+        }
+        if !fresh {
+            break;
+        }
+        rounds_left -= 1;
+        if rounds_left == 0 {
+            diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.instances-unsupported",
+                "instance demand fixpoint did not converge within its bound",
+                Span { start: 0, end: 0 },
+            ));
+            return Err(diags);
+        }
+    }
+    // 需求计数按最终累计的调用点（跨轮同 span 去重）。
+    let mut count_by: BTreeMap<(String, u8), usize> = BTreeMap::new();
+    for (_span, (tpl, ty)) in &all_callsites {
+        *count_by.entry((tpl.clone(), ty_order(ty))).or_insert(0) += 1;
+    }
+    for inst in instances.iter_mut() {
+        if let Some(c) = count_by.get(&(inst.template.clone(), ty_order(&inst.ty))) {
+            inst.demands = *c;
         }
     }
 
-    // 4. 脱糖组装：模板位换成其实例（规范序）；非模板体调用点重绑。
-    //    assign：模板名 → ty_order → 装配名（重绑与落位同一来源）。
-    let mut assign: BTreeMap<String, BTreeMap<u8, String>> = BTreeMap::new();
-    for (tpl, list) in &by_template {
-        let m = assign.entry(tpl.clone()).or_default();
-        for (ty, name) in list {
-            m.insert(ty_order(ty), name.clone());
+    // 4. 脱糖组装：模板位换成其需求实例（规范序）；非模板体调用点按
+    //    span→名表重绑；未需求模板移除（不无限实例化）。
+    let mut span_to_name: BTreeMap<(String, u32, u32), (String, String)> = BTreeMap::new();
+    for ((owner, s0, s1), (tpl, ty)) in &all_callsites {
+        if let Some(list) = by_template.get(tpl) {
+            if let Some((_, name)) = list.iter().find(|(t, _)| t == ty) {
+                span_to_name.insert(
+                    (owner.clone(), *s0, *s1),
+                    (tpl.clone(), name.clone()),
+                );
+            }
         }
     }
     let mut items: Vec<Item> = Vec::new();
@@ -800,34 +666,30 @@ pub fn instantiate_program(
         match item {
             Item::Fn(f) if !f.type_params.is_empty() => {
                 if let Some(list) = by_template.get(&f.name.name) {
+                    let entry = entries
+                        .iter()
+                        .find(|e| e.item.name.name == f.name.name)
+                        .expect("same set");
                     for (ty, name) in list {
-                        let entry = entries
-                            .iter()
-                            .find(|e| e.item.name.name == f.name.name)
-                            .expect("same set");
-                        items.push(Item::Fn(concretize(f, &entry.entry, *ty, name)));
+                        items.push(Item::Fn(concretize(
+                            f,
+                            &entry.ty_param,
+                            *ty,
+                            name,
+                            Some(&span_to_name),
+                        )));
                     }
                 }
-                // 无需求的模板：移除（未引用不生产，不无限实例化）。
+                // 未需求模板：移除。
             }
             Item::Fn(f) => {
                 let mut g = f.clone();
-                let locals = collect_locals(f, &sigs);
-                rebinding_count += rebind_block(
-                    &mut g.body,
-                    &locals,
-                    &sigs,
-                    &plain_entries,
-                    &assign,
-                    &mut diags,
-                );
+                rebinding_count +=
+                    rebind_callsites_owned(&mut g.body, &f.name.name, &span_to_name);
                 items.push(Item::Fn(g));
             }
             other => items.push(other.clone()),
         }
-    }
-    if !diags.is_empty() {
-        return Err(diags);
     }
     Ok(InstantiateOutcome {
         program: Program { items },
@@ -836,24 +698,20 @@ pub fn instantiate_program(
     })
 }
 
-fn clone_entry(e: &TemplateEntry) -> TemplateEntry {
-    TemplateEntry {
-        name: e.name.clone(),
-        ty_param: e.ty_param.clone(),
-        param_names: e.param_names.clone(),
-        params: e.params.clone(),
-        ret: e.ret,
-    }
-}
-
 /// 完整实例键：逻辑实例 + 模板签名/体版本 + substitution + 算法/schema。
 fn instance_key(
-    logical: &str,
+    template: &str,
+    package: &str,
+    module: &str,
     sig_version: &str,
     body_version: &str,
     ty_param: &str,
     ty: PortableTy,
 ) -> String {
+    let logical = sq_hash(
+        INSTANCES_LOGICAL_DOMAIN,
+        &[package.as_bytes(), module.as_bytes(), b"tpl", template.as_bytes()],
+    );
     sq_hash(
         INSTANCES_KEY_DOMAIN,
         &[
@@ -870,252 +728,85 @@ fn instance_key(
     )
 }
 
-/// 模板体覆盖边界检查：体内只允许自调用（同实例）；跨模板调用具名拒
-/// （T-04：按 substitution 的真体检查后解除）。
-fn check_template_bodies(templates: &[&FnItem], diags: &mut Vec<Diagnostic>) {
-    for t in templates {
-        check_tpl_block(&t.body, &t.name.name, templates, diags);
-    }
-}
-
-fn check_tpl_block(b: &Block, self_name: &str, templates: &[&FnItem], diags: &mut Vec<Diagnostic>) {
-    for s in &b.stmts {
-        check_tpl_stmt(s, self_name, templates, diags);
-    }
-}
-
-fn check_tpl_stmt(s: &Stmt, self_name: &str, templates: &[&FnItem], diags: &mut Vec<Diagnostic>) {
-    match s {
-        Stmt::Let { value, .. }
-        | Stmt::Assign { value, .. }
-        | Stmt::Return { value, .. }
-        | Stmt::ExprStmt { value, .. } => check_tpl_expr(value, self_name, templates, diags),
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            check_tpl_expr(cond, self_name, templates, diags);
-            check_tpl_block(then, self_name, templates, diags);
-            if let Some(e) = els {
-                check_tpl_block(e, self_name, templates, diags);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            check_tpl_expr(cond, self_name, templates, diags);
-            check_tpl_block(body, self_name, templates, diags);
-        }
-        Stmt::Loop { body, .. } => check_tpl_block(body, self_name, templates, diags),
-        _ => {}
-    }
-}
-
-fn check_tpl_expr(e: &Expr, self_name: &str, templates: &[&FnItem], diags: &mut Vec<Diagnostic>) {
-    match &e.kind {
-        ExprKind::Call { callee, args } => {
-            let is_tpl = templates.iter().any(|t| t.name.name == callee.name);
-            if is_tpl && callee.name != self_name {
-                diags.push(Diagnostic::new(
-                    Stage::Text,
-                    "source.instances-unsupported",
-                    format!(
-                        "template body calls another template `{}` — cross-template bodies are \
-                         beyond the T-02 finite surface (arrives with the solver hook, T-04)",
-                        callee.name
-                    ),
-                    callee.span,
-                ));
-            }
-            for a in args {
-                let v = match a {
-                    Arg::Pos(e) | Arg::MovePos(e) => e,
-                    Arg::Named { value, .. } => value,
-                };
-                check_tpl_expr(v, self_name, templates, diags);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            check_tpl_expr(lhs, self_name, templates, diags);
-            check_tpl_expr(rhs, self_name, templates, diags);
-        }
-        ExprKind::Unary { operand, .. } => {
-            check_tpl_expr(operand, self_name, templates, diags);
-        }
-        _ => {}
-    }
-}
-
-// -- 发现（记录需求）与重绑（改写调用点）共用同一 solve 规则 ---------------
-
-fn discover_in_block(
-    b: &Block,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    demands: &mut BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    for s in &b.stmts {
-        discover_in_stmt(s, locals, sigs, entries, demands, diags);
-    }
-}
-
-fn discover_in_stmt(
-    s: &Stmt,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    demands: &mut BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    match s {
-        Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } => {
-            discover_in_expr(value, locals, sigs, entries, demands, diags);
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            discover_in_expr(cond, locals, sigs, entries, demands, diags);
-            discover_in_block(then, locals, sigs, entries, demands, diags);
-            if let Some(e) = els {
-                discover_in_block(e, locals, sigs, entries, demands, diags);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            discover_in_expr(cond, locals, sigs, entries, demands, diags);
-            discover_in_block(body, locals, sigs, entries, demands, diags);
-        }
-        Stmt::Loop { body, .. } => discover_in_block(body, locals, sigs, entries, demands, diags),
-        Stmt::ExprStmt { value, .. } => {
-            discover_in_expr(value, locals, sigs, entries, demands, diags);
-        }
-        _ => {}
-    }
-}
-
-fn discover_in_expr(
-    e: &Expr,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    demands: &mut BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    match &e.kind {
-        ExprKind::Call { callee, args } => {
-            if entries.iter().any(|t| t.name == callee.name) {
-                if let Some((_ret, t)) = solve_call(callee, args, locals, sigs, entries, diags) {
-                    let m = demands.get_mut(&callee.name).expect("pre-registered");
-                    let ent = m.entry(ty_order(&t)).or_insert((t, 0));
-                    ent.1 += 1;
-                }
-            } else {
-                for a in args {
-                    let v = match a {
-                        Arg::Pos(e) | Arg::MovePos(e) => e,
-                        Arg::Named { value, .. } => value,
-                    };
-                    discover_in_expr(v, locals, sigs, entries, demands, diags);
-                }
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            discover_in_expr(lhs, locals, sigs, entries, demands, diags);
-            discover_in_expr(rhs, locals, sigs, entries, demands, diags);
-        }
-        ExprKind::Unary { operand, .. } => {
-            discover_in_expr(operand, locals, sigs, entries, demands, diags);
-        }
-        _ => {}
-    }
-}
-
-/// 非模板体调用点重绑（与 discover 同一 solve 规则——绑定缺口不靠重算
-/// 所有 caller 掩盖：重绑只发生在真实模板调用点，其余体字节不动）。
-fn rebind_block(
+/// 非模板体调用点重绑：span 命中需求表 → 具体实例名（与发现/落位同一
+/// 来源——绑定缺口不靠重算所有 caller 掩盖：重绑只发生在真实模板调用点）。
+fn rebind_callsites_owned(
     b: &mut Block,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    assign: &BTreeMap<String, BTreeMap<u8, String>>,
-    diags: &mut Vec<Diagnostic>,
+    owner: &str,
+    span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
 ) -> usize {
     let mut n = 0;
     for s in b.stmts.iter_mut() {
-        n += rebind_stmt(s, locals, sigs, entries, assign, diags);
+        n += rebind_stmt_callsites_owned(s, owner, span_to_name);
     }
     n
 }
 
-fn rebind_stmt(
+fn rebind_stmt_callsites_owned(
     s: &mut Stmt,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    assign: &BTreeMap<String, BTreeMap<u8, String>>,
-    diags: &mut Vec<Diagnostic>,
+    owner: &str,
+    span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
 ) -> usize {
     let mut n = 0;
     match s {
         Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } => {
-            n += rebind_expr(value, locals, sigs, entries, assign, diags);
+            n += rebind_expr_callsites_owned(value, owner, span_to_name);
         }
         Stmt::If {
             cond, then, els, ..
         } => {
-            n += rebind_expr(cond, locals, sigs, entries, assign, diags);
-            n += rebind_block(then, locals, sigs, entries, assign, diags);
+            n += rebind_expr_callsites_owned(cond, owner, span_to_name);
+            n += rebind_callsites_owned(then, owner, span_to_name);
             if let Some(e) = els {
-                n += rebind_block(e, locals, sigs, entries, assign, diags);
+                n += rebind_callsites_owned(e, owner, span_to_name);
             }
         }
         Stmt::While { cond, body, .. } => {
-            n += rebind_expr(cond, locals, sigs, entries, assign, diags);
-            n += rebind_block(body, locals, sigs, entries, assign, diags);
+            n += rebind_expr_callsites_owned(cond, owner, span_to_name);
+            n += rebind_callsites_owned(body, owner, span_to_name);
         }
-        Stmt::Loop { body, .. } => n += rebind_block(body, locals, sigs, entries, assign, diags),
-        Stmt::ExprStmt { value, .. } => {
-            n += rebind_expr(value, locals, sigs, entries, assign, diags)
-        }
+        Stmt::Loop { body, .. } => n += rebind_callsites_owned(body, owner, span_to_name),
+        Stmt::ExprStmt { value, .. } => n += rebind_expr_callsites_owned(value, owner, span_to_name),
         _ => {}
     }
     n
 }
 
-fn rebind_expr(
+fn rebind_expr_callsites_owned(
     e: &mut Expr,
-    locals: &LocalTys,
-    sigs: &SigTable,
-    entries: &[TemplateEntry],
-    assign: &BTreeMap<String, BTreeMap<u8, String>>,
-    diags: &mut Vec<Diagnostic>,
+    owner: &str,
+    span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
 ) -> usize {
     let mut n = 0;
     match &mut e.kind {
         ExprKind::Call { callee, args } => {
-            if entries.iter().any(|t| t.name == callee.name) {
-                if let Some((_ret, t)) = solve_call(callee, args, locals, sigs, entries, diags) {
-                    // 装配名来自 assign（与实例落位同一来源——不是重算拼写）。
-                    if let Some(name) = assign.get(&callee.name).and_then(|m| m.get(&ty_order(&t)))
-                    {
-                        callee.name = name.clone();
-                        n += 1;
-                    }
-                }
-            } else {
-                for a in args.iter_mut() {
-                    let v = match a {
-                        Arg::Pos(e) | Arg::MovePos(e) => e,
-                        Arg::Named { value, .. } => value,
-                    };
-                    n += rebind_expr(v, locals, sigs, entries, assign, diags);
-                }
+            let key = (
+                owner.to_string(),
+                e.span.start as u32,
+                e.span.end as u32,
+            );
+            if let Some((tpl, name)) = span_to_name.get(&key) {
+                debug_assert_eq!(
+                    &callee.name, tpl,
+                    "callsite span must name its template (discovery/rebind same source)"
+                );
+                callee.name = name.clone();
+                n += 1;
+            }
+            for a in args.iter_mut() {
+                let v = match a {
+                    Arg::Pos(e) | Arg::MovePos(e) => e,
+                    Arg::Named { value, .. } => value,
+                };
+                n += rebind_expr_callsites_owned(v, owner, span_to_name);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
-            n += rebind_expr(lhs, locals, sigs, entries, assign, diags);
-            n += rebind_expr(rhs, locals, sigs, entries, assign, diags);
+            n += rebind_expr_callsites_owned(lhs, owner, span_to_name);
+            n += rebind_expr_callsites_owned(rhs, owner, span_to_name);
         }
         ExprKind::Unary { operand, .. } => {
-            n += rebind_expr(operand, locals, sigs, entries, assign, diags);
+            n += rebind_expr_callsites_owned(operand, owner, span_to_name)
         }
         _ => {}
     }

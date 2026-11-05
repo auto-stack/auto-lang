@@ -22,7 +22,7 @@ pub mod query;
 pub mod reflect;
 
 pub use budget::{Budget, BudgetError};
-pub use infer::{InferOutcome, InferSession, InferSummary};
+pub use infer::{InferOutcome, InferSession, InferSummary, TplDemand, Ty};
 pub use input::{
     Ann, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord, InputStmt, SemaInput, Span,
 };

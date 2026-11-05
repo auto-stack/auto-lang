@@ -146,10 +146,9 @@ fn main() int {
 ";
     match compile(src) {
         Err(ds) => assert!(
-            ds.iter()
-                .any(|d| d.code == "source.instances-conflict"
-                    && d.message.contains("heterogeneous")),
-            "expected heterogeneous rejection, got {ds:?}"
+            ds.iter().any(|d| d.code == "type-mismatch"
+                && d.message.contains("bool") && d.message.contains("i32")),
+            "expected the real solver heterogeneous rejection, got {ds:?}"
         ),
         Ok(p) => panic!(
             "must reject, got lane={:?} instances={}",
@@ -175,9 +174,8 @@ fn main() int {
 ";
     match compile(src) {
         Err(ds) => assert!(
-            ds.iter().any(|d| d.code == "source.instances-unresolved"
-                && d.message.contains("only appears in the result")),
-            "expected unresolved rejection, got {ds:?}"
+            ds.iter().any(|d| d.code == "unsolved-variable"),
+            "expected the real solver unsolved rejection, got {ds:?}"
         ),
         Ok(_p) => panic!("must reject, got acceptance"),
     }
@@ -353,8 +351,8 @@ fn instantiate_api_deterministic() {
         FrontOutcome::Ok(ok) => ok.program,
         other => panic!("parse failed: {other:?}"),
     };
-    let a = instantiate_program(&parse(CHOOSE), "plan935", "choose.at").expect("ok");
-    let b = instantiate_program(&parse(CHOOSE), "plan935", "choose.at").expect("ok");
+    let a = instantiate_program(&parse(CHOOSE), "plan935", "choose.at", &caps()).expect("ok");
+    let b = instantiate_program(&parse(CHOOSE), "plan935", "choose.at", &caps()).expect("ok");
     assert_eq!(a.rebinding_count, 2, "two template callsites rebound");
     assert_eq!(format!("{:?}", a.program), format!("{:?}", b.program));
     assert_eq!(a.instances, b.instances);
@@ -365,4 +363,93 @@ fn instantiate_api_deterministic() {
         ace_source_query::INSTANCES_PRODUCER,
         "plan935/source-instances"
     );
+}
+/// T-04：期望类型解 T——`make<T>() T` 无实参可约束，`let x int = make()`
+/// 的注解位经真求解器 Check 任务 unify 出 T=int（T-02 车辆拒的形态）。
+#[test]
+fn t04_expected_type_solves_t() {
+    let src = "\
+fn make<T>() T {
+    return 0
+}
+fn main() int {
+    let x int = make()
+    return x
+}
+";
+    let p = compile(src).expect("expected-type solves T");
+    assert_eq!(p.lane, CompileLane::Instances);
+    assert_eq!(p.instances.len(), 1);
+    assert!(p.instances[0].concrete_name.contains("make_i32"));
+    assert!(def_texts(&p).iter().any(|d| d.contains("make_i32")));
+}
+
+/// T-04：跨模板调用（wrap<T> 体调 choose）——fixpoint 物化把实例体内的
+/// 模板调用再发现（T-02 具名拒的形态），两层 substitution 正确传播。
+#[test]
+fn t04_cross_template_fixpoint() {
+    let src = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn wrap<T>(a T, b T) T {
+    return choose(a, b, true)
+}
+fn main() int {
+    if wrap(true, false) { return wrap(40, 42) }
+    return 0
+}
+";
+    let p = compile(src).expect("cross-template compiles");
+    assert_eq!(p.instances.len(), 4, "wrap i32+bool and choose i32+bool");
+    for name in ["wrap_i32", "wrap_bool", "choose_i32", "choose_bool"] {
+        assert!(
+            p.instances.iter().any(|i| i.concrete_name == name),
+            "missing {name}: {:?}",
+            p.instances.iter().map(|i| i.concrete_name.clone()).collect::<Vec<_>>()
+        );
+    }
+    // 实例体内的跨模板调用已重绑到同型实例（脱糖程序形状）。
+    use ace_core::source::cst::{parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest};
+    use ace_core::source::SourceProfile;
+    let parse = |s: &str| match parse_front_with_caps(
+        FrontRequest { src: s, profile: SourceProfile::Scalar, kind: FrontKind::WholeModule, budget: FrontBudget::WORK_OWNED_64MIB },
+        &caps(),
+    ) {
+        FrontOutcome::Ok(ok) => ok.program,
+        other => panic!("{other:?}"),
+    };
+    let desugared = instantiate_program(&parse(src), "plan935", "choose.at", &caps()).expect("ok");
+    let body_of = |p: &ace_core::source::ast::Program, name: &str| {
+        p.items.iter().find_map(|i| match i {
+            ace_core::source::ast::Item::Fn(f) if f.name.name == name => Some(format!("{:?}", f.body)),
+            _ => None,
+        }).unwrap_or_else(|| panic!("no {name}"))
+    };
+    assert!(body_of(&desugared.program, "wrap_i32").contains("choose_i32"));
+    assert!(body_of(&desugared.program, "wrap_bool").contains("choose_bool"));
+    assert!(!body_of(&desugared.program, "wrap_i32").contains("\"choose\""));
+}
+
+/// T-04：模板自递归——同实例先注册具体签名后检查体；自调用重绑到同型
+/// 实例，具体体由真求解器检查（递归不逃实例化）。
+#[test]
+fn t04_template_self_recursion_same_instance() {
+    let src = "\
+fn pick<T>(n int, seed T) T {
+    if n <= 0 { return seed }
+    return pick(n - 1, seed)
+}
+fn main() int {
+    return pick(2, 40)
+}
+";
+    let p = compile(src).expect("recursive template compiles");
+    assert_eq!(p.instances.len(), 1);
+    assert_eq!(p.instances[0].concrete_name, "pick_i32");
+    let defs = def_texts(&p);
+    assert!(defs.iter().any(|d| d.contains("pick_i32")));
+    // 递归体真实走完 emit+verify（无未解残留）。
+    assert!(p.applied.iter().any(|a| a.name == "pick_i32"));
 }

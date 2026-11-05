@@ -75,6 +75,12 @@ fn write_ann(out: &mut Vec<u8>, a: &Ann) {
             out.extend_from_slice(b"unsupported:");
             out.extend_from_slice(w.as_bytes());
         }
+        // PLAN-935 (T-04): a template type-parameter position keeps its
+        // index (two positions of the same parameter are the same type).
+        Ann::TyParam(i) => {
+            out.extend_from_slice(b"typaram:");
+            out.extend_from_slice(&i.to_le_bytes());
+        }
     }
     out.push(0);
 }
@@ -180,6 +186,7 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                     Ann::Record(_) => b'r',
                     Ann::Inferred => b'?',
                     Ann::Unsupported(_) => b'x',
+                    Ann::TyParam(_) => b't',
                 };
                 out.push(tag);
                 out.push(*mutable as u8);

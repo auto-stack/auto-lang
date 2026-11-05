@@ -55,7 +55,7 @@ fn derive(src: &str) -> ace_core::source::ast::Program {
         &caps(),
     ) {
         FrontOutcome::Ok(ok) => {
-            instantiate_program(&ok.program, PACKAGE, MODULE)
+            instantiate_program(&ok.program, PACKAGE, MODULE, &caps())
                 .expect("instantiate")
                 .program
         }
@@ -169,8 +169,8 @@ fn instances_restore_pages_only_bind_and_first_edits() {
     let bad = CHOOSE.replace("choose(40, 42, false)", "choose(40, true, false)");
     match compile_scalar_product(&bad, MODULE, &caps(), PACKAGE, MODULE, &mut warm) {
         Err(ds) => assert!(
-            ds.iter().any(|d| d.code == "source.instances-conflict"),
-            "expected the heterogeneous named rejection, got {ds:?}"
+            ds.iter().any(|d| d.code == "type-mismatch"),
+            "expected the real solver heterogeneous rejection, got {ds:?}"
         ),
         Ok(_) => panic!("first bad edit must be rejected"),
     }

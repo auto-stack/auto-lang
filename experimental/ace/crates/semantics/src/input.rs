@@ -34,6 +34,12 @@ pub enum Ann {
     /// An annotation outside the limited i32/bool profile (text/char
     /// surfaces) — surfaces as unsupported-construct, never widened.
     Unsupported(&'static str),
+    /// PLAN-935 (T-04): reference to the fn's i-th DECLARED type parameter.
+    /// Only produced for template signatures (stubs) inside the instances
+    /// discovery pass; the solver's call hook mints one shared var per
+    /// type parameter per CALL SITE and substitutes before unification —
+    /// plain `ann_ty` never sees this variant on a solved path.
+    TyParam(u16),
 }
 
 /// One function of the input module.
@@ -43,6 +49,11 @@ pub struct InputFn {
     /// (name, annotation) in declaration order.
     pub params: Vec<(String, Ann)>,
     pub ret: Ann,
+    /// PLAN-935 (T-04): declared type parameter names (empty outside the
+    /// instances template face). A fn carrying them is a TEMPLATE: the
+    /// discovery pass admits its SIGNATURE only (body stays a stub — type
+    /// errors of a template body are checked per concrete instance).
+    pub type_params: Vec<String>,
     pub body: InputBlock,
 }
 

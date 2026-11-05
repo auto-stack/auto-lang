@@ -184,7 +184,7 @@ pub fn compile_scalar_product(
             capabilities,
         ) {
             FrontOutcome::Ok(ok) => {
-                match crate::instances::instantiate_program(&ok.program, package, module) {
+                match crate::instances::instantiate_program(&ok.program, package, module, capabilities) {
                     Ok(out) => (out.program, out.instances),
                     Err(ds) => return Err(ds),
                 }
