@@ -7,4 +7,7 @@ publish = false
 
 [dependencies]
 ace-a2x-core = { path = "../a2x-core" }
+# PLAN-937 CA-D1: the neutral lane/projection vocabulary shared with the
+# abi side (pure model crate — no backend stack inside).
+ace-foreign-contract = { path = "../foreign-contract" }
 ace-core = { path = "../core" }

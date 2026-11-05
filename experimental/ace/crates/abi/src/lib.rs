@@ -19,6 +19,7 @@
 
 #![cfg(windows)]
 
+pub mod bridge;
 pub mod build;
 pub mod cache;
 pub mod ctool;
@@ -30,9 +31,14 @@ pub mod link;
 pub mod run;
 pub mod semref;
 pub mod trace;
+pub mod typed_decl;
+pub mod typed_emit;
 pub mod validate;
 pub mod worker;
 
 /// Re-export the semantic contract crate so integration tests can mint
 /// refs through the SAME real library the implementation binds to.
 pub use ace_semantics_contract;
+/// PLAN-937 CA-D1: the neutral foreign-interface contract shared with
+/// the A2C C side (both real consumers bind to this one model).
+pub use ace_foreign_contract;

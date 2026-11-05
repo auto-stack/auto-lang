@@ -59,16 +59,21 @@ fn abi_binding_real_contract_and_retirement_receipt() {
     let bytes = d.encode().unwrap();
     admit(&bytes, &probe_expectation()).expect("real-binding descriptor admits");
 
-    // The retirement receipt exists and names the retired identity.
+    // The retirement receipt names the retired identity. Since the
+    // 2026-10-31 evidence ruling (attachments untracked repo-wide) the
+    // DURABLE form of the receipt is the folded record inside the
+    // ARCHIVED 797 plan §9 — tracked, present in every fresh worktree
+    // (the old attachments file only survived on already-populated
+    // checkouts; PLAN-937 repairs the read target accordingly).
     let receipt = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../docs/plans/attachments/797/semref-retirement-receipt.md");
+        .join("../../../../docs/plans/archive/797-autoabi-v01-bidirectional-probe.md");
     let text = std::fs::read_to_string(&receipt)
-        .unwrap_or_else(|e| panic!("retirement receipt readable ({}): {e}", receipt.display()));
+        .unwrap_or_else(|e| panic!("archived 797 plan readable ({}): {e}", receipt.display()));
     assert!(
         text.contains("autoabi-semref-snapshot/0"),
-        "receipt names the retired format"
+        "archived record names the retired format"
     );
-    assert!(text.contains("15f81fd0"), "receipt names the retired hash");
+    assert!(text.contains("15f81fd0"), "archived record names the retired hash");
 }
 
 /// The semref gate still rejects a foreign binding on the REAL path.

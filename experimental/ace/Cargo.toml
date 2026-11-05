@@ -17,6 +17,7 @@ members = [
   "crates/comptime-core",
   "crates/core",
   "crates/data-runtime",
+  "crates/foreign-contract",
   "crates/lowering",
   "crates/native",
   "crates/semantics",

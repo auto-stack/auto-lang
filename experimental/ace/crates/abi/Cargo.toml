@@ -24,6 +24,14 @@ ace-artifacts = { path = "../artifacts" }
 # PLAN-796 contract read-only for nominal refs/content versions/type
 # descriptions (T-06; the local semref snapshot adapter is retired).
 ace-semantics-contract = { path = "../semantics-contract" }
+# PLAN-937 CA-D1: the neutral interface-facts/physical-plan model both
+# real consumers (native emit/admission + A2C wrapper) bind to.
+ace-foreign-contract = { path = "../foreign-contract" }
+# PLAN-937 CA-D1 bridge host composition: the real source->C provider
+# stack (checked frontdoor consumption, C fragments/fileset). Direction
+# is abi->a2x only; a2x-* never depends on ace-abi.
+ace-a2x-core = { path = "../a2x-core" }
+ace-a2x-c = { path = "../a2x-c" }
 # Cranelift stack pinned to the same versions as ac-core (plan §3).
 cranelift-codegen = "0.126"
 cranelift-frontend = "0.126"
@@ -38,6 +46,7 @@ serde_json = "1"
 [[bin]]
 name = "abi-worker"
 path = "src/bin/abi-worker.rs"
+
 
 [[test]]
 name = "conformance"

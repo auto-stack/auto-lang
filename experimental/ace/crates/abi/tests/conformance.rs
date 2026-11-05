@@ -10,3 +10,5 @@ mod contract_layout_admission;
 mod feasibility;
 #[path = "cases/resource.rs"]
 mod resource;
+#[path = "cases/scalar_bridge.rs"]
+mod scalar_bridge;

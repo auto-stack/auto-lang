@@ -1,0 +1,23 @@
+[package]
+autotests = false
+name = "ace-foreign-contract"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-937 CA-D1: backend-free logical interface facts + target/domain physical projection shared by the 797 native ABI consumer and the new A2C scalar wrapper (no core/AV/Cranelift/AST/store dependency)"
+publish = false
+
+# Neutral-contract constraint (937 plan §2): this crate is the SHARED model
+# consumed by BOTH the native ABI side (ace-abi) and the C emit side
+# (ace-a2x-c). It must never depend on either backend's stack — no core
+# frontdoor, no AV, no Cranelift, no old AST, no process/store access.
+# Allowed: the merged semantic contract (nominal identity) + controlled
+# codecs (serde) + blake3 digests.
+[dependencies]
+ace-semantics-contract = { path = "../semantics-contract" }
+blake3 = "1.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
