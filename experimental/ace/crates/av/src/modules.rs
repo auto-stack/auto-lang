@@ -21,10 +21,14 @@ use ace_av_core::{
     CancelFlag, ExecLimits,
 };
 use ace_core::source::modules::BoundModules;
+use ace_semantics_contract::assembly::Manifest;
 use ace_source_query::modules::{ModuleProduct, ModuleReceipt, PreparedModuleEdit};
 use serde::{Deserialize, Serialize};
 use std::{path::Path, sync::Arc};
 const SCHEMA: &str = "av-source-modules/1";
+const ASSEMBLY_SCHEMA: &str = "av-source-modules/2";
+mod assembly;
+pub use assembly::assembly_consumer;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Unit {
@@ -32,8 +36,10 @@ struct Unit {
     artifact: String,
     body_fp: String,
     mint: (usize, usize),
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    context: String,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Root {
     schema: String,
@@ -42,6 +48,10 @@ struct Root {
     entry: String,
     owner: String,
     units: Vec<Unit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assembly: Option<Manifest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requirements: Vec<String>,
 }
 pub struct ModuleAvTarget {
     store: ManagedStore,
@@ -95,12 +105,36 @@ fn persist_unit(
     caps: &[String],
     revision: u64,
 ) -> Result<(Unit, Arc<FunctionCode>), String> {
+    persist_unit_with_context(store, unit, mint, caps, revision, "")
+}
+fn unit_fingerprint(bytes: &[u8], context: &str) -> String {
+    if context.is_empty() {
+        format!(
+            "module-unit-wire/1:{}",
+            ace_core::runtime_contract::sha256_hex(bytes)
+        )
+    } else {
+        format!(
+            "module-unit-wire/2:{}:{}",
+            context,
+            ace_core::runtime_contract::sha256_hex(bytes)
+        )
+    }
+}
+fn root_revision(root: &Root) -> String {
+    ace_core::runtime_contract::sha256_hex(&serde_json::to_vec(root).unwrap())
+}
+fn persist_unit_with_context(
+    store: &ManagedStore,
+    unit: &ace_av_core::mir::MirModule,
+    mint: (usize, usize),
+    caps: &[String],
+    revision: u64,
+    context: &str,
+) -> Result<(Unit, Arc<FunctionCode>), String> {
     let wire = WireCodec::LegacyAbc;
     let bytes = wire.encode(unit).map_err(|e| format!("{e:?}"))?;
-    let body_fp = format!(
-        "module-unit-wire/1:{}",
-        ace_core::runtime_contract::sha256_hex(&bytes)
-    );
+    let body_fp = unit_fingerprint(&bytes, context);
     let name = unit.funcs[0].name.clone();
     let key = abc_unit_key(&unit.owner.module, &name, &body_fp, &caps_fingerprint(caps));
     let envelope = EnvelopeIdentity::abc_bound(&unit.owner.module, &name, &body_fp);
@@ -116,27 +150,62 @@ fn persist_unit(
             artifact,
             body_fp,
             mint,
+            context: context.into(),
         },
         code,
     ))
 }
 impl ModuleAvTarget {
     pub fn cold(path: &Path, product: &ModuleProduct) -> Result<Self, String> {
+        Self::cold_inner(path, product, None)
+    }
+    fn cold_inner(
+        path: &Path,
+        product: &ModuleProduct,
+        assembly: Option<&Manifest>,
+    ) -> Result<Self, String> {
+        if let Some(manifest) = assembly {
+            self::assembly::admit_manifest(&product.bound, manifest)?;
+        }
         let store = ManagedStore::open(path).map_err(|e| e.to_string())?;
         let mir = ace_lowering::lower_checked(&product.compiled.checked, "d_main", 0)
             .map_err(|e| format!("{e:?}"))?;
         let mut root = Root {
-            schema: SCHEMA.into(),
+            schema: if assembly.is_some() {
+                ASSEMBLY_SCHEMA
+            } else {
+                SCHEMA
+            }
+            .into(),
             source: product.bound.input_hash.clone(),
             caps: product.bound.capabilities.clone(),
             entry: "d_main".into(),
             owner: mir.owner.module.clone(),
             units: Vec::new(),
+            assembly: assembly.cloned(),
+            requirements: assembly
+                .map(|m| ace_source_query::assembly::entry_requirements(&product.bound, m))
+                .transpose()?
+                .unwrap_or_default(),
         };
         let mut codes = Vec::new();
         for unit in split_units(&mir)? {
             let mint = span(&product.bound, &unit.funcs[0].name)?;
-            let (record, code) = persist_unit(&store, &unit, mint, &root.caps, 0)?;
+            let context = assembly
+                .map(|m| {
+                    ace_source_query::assembly::function_input_version(
+                        &product.bound,
+                        m,
+                        unit.funcs[0]
+                            .name
+                            .strip_prefix("d_")
+                            .ok_or("AV assembly def identity")?,
+                    )
+                })
+                .transpose()?
+                .unwrap_or_default();
+            let (record, code) =
+                persist_unit_with_context(&store, &unit, mint, &root.caps, 0, &context)?;
             root.units.push(record);
             codes.push(code);
         }
@@ -153,6 +222,12 @@ impl ModuleAvTarget {
         &self.current
     }
     pub fn run(&self) -> Result<i32, String> {
+        if self.root.assembly.is_some() {
+            return Err("assembly.current-run-admission-required".into());
+        }
+        self.execute_current()
+    }
+    fn execute_current(&self) -> Result<i32, String> {
         let (out, _) = ace_av_core::execute_program(
             &self.current,
             &ExecLimits::default(),
@@ -167,6 +242,9 @@ impl ModuleAvTarget {
         }
     }
     pub fn prepare(&mut self, edit: &PreparedModuleEdit) -> Result<ModuleAvEdit, String> {
+        if self.root.assembly.is_some() {
+            return Err("assembly.requires-batch-preparation".into());
+        }
         if self.root.source != edit.base_source() {
             return Err("module AV source base mismatch".into());
         }
@@ -204,6 +282,8 @@ impl ModuleAvTarget {
             entry: self.root.entry.clone(),
             owner: self.root.owner.clone(),
             units: self.root.units.clone(),
+            assembly: None,
+            requirements: Vec::new(),
         };
         let slot = root
             .units
@@ -215,13 +295,13 @@ impl ModuleAvTarget {
         codes[slot] = code;
         let snapshot = link(&root, &edit.bound, codes, self.current.revision() + 1)?;
         Ok(ModuleAvEdit {
-            base: self.root.source.clone(),
+            base: root_revision(&self.root),
             snapshot,
             root,
         })
     }
     pub fn validate(&self, edit: &ModuleAvEdit) -> Result<(), String> {
-        if edit.base != self.root.source {
+        if edit.base != root_revision(&self.root) {
             return Err("stale AV module edit".into());
         }
         Ok(())
@@ -236,7 +316,7 @@ impl ModuleAvTarget {
         write_root(&self.store, &self.root)
     }
     pub fn prepared_receipt(&self, edit: &ModuleAvEdit) -> Result<ModuleReceipt, String> {
-        if edit.base != self.root.source {
+        if edit.base != root_revision(&self.root) {
             return Err("stale AV module receipt".into());
         }
         write_root(&self.store, &edit.root)
@@ -246,6 +326,17 @@ impl ModuleAvTarget {
         receipt: &ModuleReceipt,
         bound: &BoundModules,
     ) -> Result<Self, String> {
+        Self::restore_inner(path, receipt, bound, None)
+    }
+    fn restore_inner(
+        path: &Path,
+        receipt: &ModuleReceipt,
+        bound: &BoundModules,
+        expected: Option<&Manifest>,
+    ) -> Result<Self, String> {
+        if let Some(manifest) = expected {
+            self::assembly::admit_manifest(bound, manifest)?;
+        }
         let store = ManagedStore::open(path).map_err(|e| e.to_string())?;
         let a = store
             .get_artifact_by_id_bounded(&receipt.artifact, 512 * 1024)
@@ -257,12 +348,25 @@ impl ModuleAvTarget {
             return Err("AV module root receipt mismatch".into());
         }
         let root: Root = serde_json::from_slice(&a.payload).map_err(|e| e.to_string())?;
-        if root.schema != SCHEMA
+        if root.schema
+            != if expected.is_some() {
+                ASSEMBLY_SCHEMA
+            } else {
+                SCHEMA
+            }
+            || root.assembly.as_ref() != expected
             || root.source != bound.input_hash
             || root.caps != bound.capabilities
             || root.entry != "d_main"
         {
             return Err("AV module source/schema/capability mismatch".into());
+        }
+        let requirements = expected
+            .map(|m| ace_source_query::assembly::entry_requirements(bound, m))
+            .transpose()?
+            .unwrap_or_default();
+        if root.requirements != requirements {
+            return Err("AV assembly requirement closure mismatch".into());
         }
         let required: std::collections::BTreeSet<_> =
             root.units.iter().map(|u| u.artifact.clone()).collect();
@@ -278,6 +382,21 @@ impl ModuleAvTarget {
         let mut codes = Vec::new();
         let mut names = std::collections::BTreeSet::new();
         for u in &root.units {
+            let context = expected
+                .map(|m| {
+                    ace_source_query::assembly::function_input_version(
+                        bound,
+                        m,
+                        u.name
+                            .strip_prefix("d_")
+                            .ok_or("AV assembly def identity")?,
+                    )
+                })
+                .transpose()?
+                .unwrap_or_default();
+            if u.context != context {
+                return Err("AV assembly unit context mismatch".into());
+            }
             if !names.insert(u.name.clone()) {
                 return Err("duplicate AV module unit".into());
             }
@@ -293,11 +412,7 @@ impl ModuleAvTarget {
                 &EnvelopeIdentity::abc_bound(&root.owner, &u.name, &u.body_fp),
             )
             .map_err(|e| e.to_string())?;
-            if format!(
-                "module-unit-wire/1:{}",
-                ace_core::runtime_contract::sha256_hex(&bytes)
-            ) != u.body_fp
-            {
+            if unit_fingerprint(&bytes, &u.context) != u.body_fp {
                 return Err("AV module unit digest mismatch".into());
             }
             let expected = ace_av_core::mir::OwnerScope {
@@ -327,6 +442,9 @@ impl ModuleAvTarget {
 }
 fn write_root(store: &ManagedStore, root: &Root) -> Result<ModuleReceipt, String> {
     let payload = serde_json::to_vec(root).map_err(|e| e.to_string())?;
+    if payload.len() > 512 * 1024 {
+        return Err("AV module root resource budget".into());
+    }
     let digest = ace_core::runtime_contract::sha256_hex(&payload);
     let artifact = store
         .put_artifact(PutRequest {
@@ -334,7 +452,7 @@ fn write_root(store: &ManagedStore, root: &Root) -> Result<ModuleReceipt, String
             key: QueryKey {
                 layer: "AVM950",
                 components: vec![
-                    ("schema".into(), SCHEMA.into()),
+                    ("schema".into(), root.schema.clone()),
                     ("digest".into(), digest.clone()),
                 ],
             },

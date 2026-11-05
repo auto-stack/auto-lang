@@ -172,6 +172,8 @@ mod resource_events_919;
 
 // PLAN-934 T-02: bounded fact-driven ordinary-source chain (source → query
 // facts → resolved program → checked HIR → execution).
+#[path = "cases/assembly_944.rs"]
+mod assembly_944;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
 #[path = "cases/module_sources_950.rs"]

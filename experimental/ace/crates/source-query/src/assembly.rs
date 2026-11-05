@@ -12,6 +12,8 @@ use ace_core::source::{
 };
 use ace_semantics_contract::assembly::{Manifest, Signature, SourceInput};
 use std::collections::BTreeMap;
+pub const ASSEMBLY_HOST: &str = "ace.explicit-finite-host/1";
+pub const ASSEMBLY_PLATFORM: &str = "x86_64-pc-windows-msvc";
 
 pub fn source_inputs(bound: &BoundModules) -> Vec<SourceInput> {
     let mut sources: Vec<_> = bound
@@ -139,6 +141,33 @@ pub fn function_input_version(
     ))
     .map_err(|e| e.to_string())?;
     Ok(ace_core::runtime_contract::sha256_hex(&bytes))
+}
+
+/// Reachability over the module binder's existing call edges, collecting only
+/// explicit requirements. This performs no capability inference/selection.
+pub fn entry_requirements(
+    bound: &BoundModules,
+    manifest: &Manifest,
+) -> Result<Vec<String>, String> {
+    manifest_contexts(bound, manifest)?;
+    let mut pending = vec!["main".to_string()];
+    let mut visited = std::collections::BTreeSet::new();
+    let mut requirements = std::collections::BTreeSet::new();
+    while let Some(owner) = pending.pop() {
+        if !visited.insert(owner.clone()) {
+            continue;
+        }
+        let (module, symbol) = bound.origins.get(&owner).ok_or("assembly.entry-owner")?;
+        let declaration = manifest
+            .semantic()
+            .declarations
+            .iter()
+            .find(|d| &d.module == module && &d.symbol == symbol)
+            .ok_or("assembly.entry-declaration")?;
+        requirements.extend(declaration.requirements.iter().cloned());
+        pending.extend(bound.references.get(&owner).into_iter().flatten().cloned());
+    }
+    Ok(requirements.into_iter().collect())
 }
 
 /// Ordinary source -> actual namespace/visibility -> declaration/effect keys ->
