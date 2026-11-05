@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-935
-status: drafting
+status: executing
 feature_name: SQ-B 普通源码有限标量模板与真实实例闭环
 author: [Codex]
 created_at: 2026-11-04
-updated_at: 2026-11-04
+updated_at: 2026-11-05
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-semantics/semantic-contract.md, docs/specs/auto-semantics/inference-profile.md, docs/specs/auto-semantics/source-query-session.md]
 new_spec_components: [docs/specs/auto-semantics/source-scalar-instances.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-934, PLAN-929]
-current_step: 0
+current_step: 1
 total_steps: 12
 ---
 
@@ -153,7 +153,7 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 
 | T | owner_stage | 前置/实际写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 当前源/934设计/语言合同只读 | 冻结有限语法/类型/所有构造器/consumer/版本/预算与S/H，AC-01/02/09 | [ ] |
+| T-01 | work | 当前源/934设计/语言合同只读 | 冻结有限语法/类型/所有构造器/consumer/版本/预算与S/H，AC-01/02/09 | [x] 2026-11-05 两路只读勘察+33项输入hash冻结@1b2473480；**全部7处FnItem构造点**+解构消费审计清单（shift/codec/units等）；语言合同Generics节锚定+EBNF失同步裁定；求解原语（Ty::Var/unify/mint_var）与直接调用钩子锚定；796 InstanceKey模型边界；934端口消费设计（STALE待D934）；四端consumer身份键清单；B线预算锚；种子语料。冻结文档`D:/autostack/plan-artifacts/plan-935/t01-syntax-instance-freeze.md`（SHA256见§9） |
 | T-02 | work | T-01，934已审稳定query/929来源端口 | choose双实例→四端与恢复/16MiB整链可行性，V-01/06/07；失败needs_replan，AC-01/06/08 | [ ] |
 | T-03 | work | T-02，统一grammar/AST S窗 | 模板声明能力/投影/诊断与全部construct-match，V-01/02，AC-01/02 | [ ] |
 | T-04 | work | T-03，query instantiate/core事实消费 | 真类型约束/具体body/签名/递归与去重，V-01/02/03，AC-01..03 | [ ] |
@@ -170,10 +170,14 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 
 ## 9. 复审记录
 
+2026-11-05 stage:work / PLAN-935 r2 / outcome:**waiting**（T-01 完成 1/12；T-02 前置 D934 未合入——934 由另一活跃会话推进中 6/13、T-07 已提交 `2793de9b2`、worktree 分钟级活动，本会话按单写面规则不并写，等其 work→review→merge 交付）/ worktree:未建（T-01 只读零代码；T-02 起建 `D:/autostack/.wt/lang-935/auto-lang`/`plan-935-dev`）/ base_commit:`1b2473480` / code_commit:无 / dependency_revisions: D929=已归档✓；D934=executing 6/13 在途（source-query crate 仅在 plan-934-dev +9 提交） / task_ids: T-01 完成；T-02..T-10 等 D934 / evidence: 冻结文档 `D:/autostack/plan-artifacts/plan-935/t01-syntax-instance-freeze.md` SHA256=`6c7ef5b5863ba31ef0563e6a8346f29618df4db5acae6a7e18601b4f1035434a`/ blockers: D934 合入 / next_responsible_role: work（D934 交付后 T-02 choose 双实例整链，届时重锚 33 项 hash 表）/ 执行方注记：本轮 T-01 由 936-goal 会话按用户 goal 续行授权执行（935 此前无认领会话）。
+
 2026-11-04 stage:new / revision:2 / outcome:pass（规划静态合同复核，不是独立实施review）/ next:work（后续实施指令及任务实际稳定接缝/写窗）。保全部T/AC编号、总步骤与0进度；补例未执行，r1与旧796/817运行不能为r2补充断言背书。关键修改/源码身份/并行前置见[复核报告](reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)，以下r1为历史。
 
 2026-11-04 stage:new / PLAN-935 r1 / outcome:pass（规划静态合同）/ next:work（后续实施指令及934/929所需稳定接缝）。0/12，新模板语法/实例/测试/认证均未执行；独立实施review另做，不由已有796 InstanceKey模型背书。
 
 ## 10. 待澄清事项
+
+**[2026-11-05 work 等待]** T-01 已完成（只读冻结，见§9）。T-02 的前置"D934 已审稳定 query 端口"未满足：PLAN-934 由**另一活跃会话**推进中（executing 6/13，T-07 已提交 `2793de9b2`，worktree 分钟级文件活动、cargo 进程在跑，review/merge 未开始）。本会话按单写面规则不并写 934。**解除条件**：master 出现 934 merge 交付后，T-02 开工（建树 `lang-935`/`plan-935-dev`，重锚 T-01 的 33 项 hash 表与 934 端口符号）。
 
 有限type参数/错误/能力边界本计划已明示，未请求扩大完整泛型。模板/实例编号及字节格式由T-02证明并版本化；如只能重编全部caller/序列化Checked或突破预算则needs_replan。936组合CT须真实本包实例，runtime反射/const泛型等留覆盖后继，不借未实现能力参与M1签章。
