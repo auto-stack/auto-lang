@@ -891,7 +891,7 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
         .resolve_qualified("auto.json.encode")
     {
         if let Some(original) = native_interface.get(id) {
-            JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original);
+            JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original.clone());
             let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
                 let nv = task.ram.pop_nv();
                 if let Some(doc_id) = json_doc_heap_id(vm, nv) {
@@ -1322,4 +1322,5 @@ pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeI
     // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
     natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 }
+
 
