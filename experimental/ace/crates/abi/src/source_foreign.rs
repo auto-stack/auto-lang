@@ -42,7 +42,7 @@ pub enum Target {
 impl Target {
     pub fn identity(self) -> String {
         match self {
-            Self::Native => format!("ac-mn-foreign/1+{}", crate::cache::emitter_identity()),
+            Self::Native => ace_native::foreign_lower::emitter_identity(),
             Self::C => "auto-a2x-c-foreign/1+c11+a2x-c-foreign-print/1".into(),
         }
     }
@@ -285,6 +285,15 @@ impl Session {
         admit_provider(&environment, &provider)?;
         let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
             .map_err(|e| e.to_string())?;
+        Self::from_frontend(front, checked, provider, target)
+    }
+    pub(crate) fn from_frontend(
+        front: Frontend,
+        checked: ace_core::verify::CheckedModule,
+        provider: Arc<Vec<u8>>,
+        target: Target,
+    ) -> Result<Self, String> {
+        admit_provider(front.foreign(), &provider)?;
         let view = SemanticView::from_checked(&checked).map_err(|e| format!("{e:?}"))?;
         let mut artifacts = BTreeMap::new();
         let mut meter = Meter::default();
@@ -437,6 +446,13 @@ impl Session {
             owner: self.id,
             base: self.generation,
         })
+    }
+    pub fn prepare_source(&mut self, source: &str) -> Result<Candidate, String> {
+        let (name, declaration) = self
+            .front
+            .owner_replacement(source)
+            .map_err(|e| e.to_string())?;
+        self.prepare(&name, &declaration)
     }
     pub fn validate(&self, candidate: &Candidate) -> Result<(), String> {
         if candidate.owner != self.id || candidate.base != self.generation {
@@ -659,6 +675,11 @@ impl Session {
     /// All source foreign calls remain in the emitted business functions.
     pub fn run(&mut self, directory: &Path) -> Result<ace_native::link_driver::PeRun, String> {
         std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+        std::fs::write(
+            directory.join("source938_events.c"),
+            crate::source_provider::EVENT_RUNTIME,
+        )
+        .map_err(|e| e.to_string())?;
         let provider = directory.join("provider.obj");
         std::fs::write(&provider, &*self.provider).map_err(|e| e.to_string())?;
         let mut objects = vec![provider];
@@ -690,7 +711,7 @@ impl Session {
                 .map_err(|e| e.to_string())?;
                 std::fs::write(directory.join("foreign_runtime.c"), &*self.runtime)
                     .map_err(|e| e.to_string())?;
-                sources = vec!["entry.c", "foreign_runtime.c"];
+                sources = vec!["entry.c", "foreign_runtime.c", "source938_events.c"];
             }
             Target::C => {
                 let fragments = self
@@ -729,7 +750,12 @@ impl Session {
                     std::fs::write(directory.join(name), text).map_err(|e| e.to_string())?;
                 }
                 std::fs::write(directory.join("entry.c"),"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n").map_err(|e|e.to_string())?;
-                sources = vec!["entry.c", "foreign_runtime.c", "generated.c"];
+                sources = vec![
+                    "entry.c",
+                    "foreign_runtime.c",
+                    "generated.c",
+                    "source938_events.c",
+                ];
             }
         }
         self.meter.links += 1;
@@ -782,6 +808,53 @@ fn admit_provider(env: &AdmittedForeign, bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > MAX_ARTIFACT || blake3::hash(bytes).to_hex().as_str() != env.provider_digest()
     {
         return Err("foreign.provider-content".into());
+    }
+    use object::{Object, ObjectSymbol};
+    let object = object::File::parse(bytes).map_err(|e| format!("foreign.provider-object: {e}"))?;
+    if object.format() != object::BinaryFormat::Coff
+        || object.architecture() != object::Architecture::X86_64
+        || object.kind() != object::ObjectKind::Relocatable
+    {
+        return Err("foreign.provider-profile: expected AMD64 relocatable COFF".into());
+    }
+    let declarations = env.source_declarations();
+    let needed = declarations
+        .iter()
+        .flat_map(|d| {
+            std::iter::once(d.function.symbol.as_str())
+                .chain(d.context_symbol.iter().map(|s| s.as_str()))
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    let definitions = object
+        .symbols()
+        .filter(|s| s.is_definition() && s.is_global())
+        .filter_map(|s| {
+            s.name()
+                .ok()
+                .filter(|name| needed.contains(name))
+                .map(|name| (name, s.kind()))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for declaration in &declarations {
+        for (symbol, kind) in std::iter::once((
+            declaration.function.symbol.as_str(),
+            object::SymbolKind::Text,
+        ))
+        .chain(
+            declaration
+                .context_symbol
+                .iter()
+                .map(|name| (name.as_str(), object::SymbolKind::Data)),
+        ) {
+            let Some(actual) = definitions.get(symbol) else {
+                return Err(format!("foreign.provider-symbol: reviewed symbol `{symbol}` is absent from the actual provider object"));
+            };
+            if *actual != kind {
+                return Err(format!(
+                    "foreign.provider-symbol-kind: `{symbol}` is {actual:?}, expected {kind:?}"
+                ));
+            }
+        }
     }
     Ok(())
 }

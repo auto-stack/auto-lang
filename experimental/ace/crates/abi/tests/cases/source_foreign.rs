@@ -239,6 +239,17 @@ fn source_foreign_native_calls_real_c_provider_and_body_edit_keeps_caller_identi
     )
     .unwrap();
     assert_eq!(product.compiled.checked.bundle().modules[0].bodies.len(), 1);
+    {
+        use ace_a2x_core::target::{Family, TargetProvider};
+        let view = ace_a2x_core::SemanticView::from_checked(&product.compiled.checked).unwrap();
+        assert_eq!(
+            ace_a2x_rust::RustTargetProvider::v1()
+                .runtime_source(&view, Family::Scalar)
+                .unwrap_err()
+                .code,
+            "a2r.foreign-unsupported"
+        );
+    }
     assert_eq!(units.len(), 1);
     assert!(units[0].funcs[0].blocks.iter().any(|b| b
         .instrs
@@ -713,6 +724,169 @@ fn source_foreign_real_process_restart_uses_required_managed_pages_before_first_
         assert_eq!(
             report["solver_runs"], 2,
             "failed attempt and repair are both real solves"
+        );
+    }
+}
+
+#[test]
+fn source_foreign_actual_provider_symbols_are_checked_before_source_or_target_production() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("missing-provider-symbol");
+    let (path, environment) = provider(&root, 0);
+    let mut object = std::fs::read(path).unwrap();
+    let needle = b"provider_add";
+    let replacement = b"provider_bad";
+    let mut found = 0;
+    for start in 0..object.len() - needle.len() {
+        if &object[start..start + needle.len()] == needle {
+            object[start..start + needle.len()].copy_from_slice(replacement);
+            found += 1;
+        }
+    }
+    assert!(found > 0);
+    let m = environment.manifest().clone();
+    // Even a host inventory claiming the name is present cannot turn the
+    // actual wrong object into a valid source binding or a linker fallback.
+    let h = HostAuthority {
+        review_id: m.review_id.clone(),
+        contract_digest: m.contract_digest().unwrap(),
+        provider: m.provider.clone(),
+        provider_digest: hash(&object),
+        header_digest: m.header_digest.clone(),
+        physical_table_digest: m.physical_table_digest.clone(),
+        target: m.target.clone(),
+        capabilities: [SOURCE_CAP.into()].into_iter().collect(),
+        available_symbols: ["provider_add".into()].into_iter().collect(),
+        binding_generation: 1,
+    };
+    let admitted = m.admit(&h).unwrap();
+    for target in [Target::Native, Target::C] {
+        let result = Session::cold(
+            "not even parseable Auto source",
+            "m938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            admitted.clone(),
+            Arc::new(object.clone()),
+            target,
+        );
+        let error = result
+            .err()
+            .expect("provider rejection must precede parser/codegen/link");
+        assert!(error.starts_with("foreign.provider-symbol:"), "{error}");
+    }
+}
+
+#[test]
+fn source_foreign_context_binding_requires_actual_data_symbol_and_keeps_nonzero_context_legal() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("provider-context-kind");
+    let (path, environment) = provider_with(&root, 0, true, false);
+    let bytes = Arc::new(std::fs::read(path).unwrap());
+    let mut m = environment.manifest().clone();
+    m.declarations
+        .iter_mut()
+        .find(|d| d.source_name == "foreign_div")
+        .unwrap()
+        .context_symbol = Some("provider_add".into());
+    let h = HostAuthority {
+        review_id: m.review_id.clone(),
+        contract_digest: m.contract_digest().unwrap(),
+        provider: m.provider.clone(),
+        provider_digest: hash(&bytes),
+        header_digest: m.header_digest.clone(),
+        physical_table_digest: m.physical_table_digest.clone(),
+        target: m.target.clone(),
+        capabilities: [SOURCE_CAP.into()].into_iter().collect(),
+        available_symbols: m
+            .declarations
+            .iter()
+            .flat_map(|d| std::iter::once(d.symbol.clone()).chain(d.context_symbol.iter().cloned()))
+            .collect(),
+        binding_generation: 1,
+    };
+    let wrong = m.admit(&h).unwrap();
+    for target in [Target::Native, Target::C] {
+        Session::cold(
+            "fn main() int { return foreign_div(84,2) }",
+            "m938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let error = Session::cold(
+            "not parseable",
+            "m938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            wrong.clone(),
+            bytes.clone(),
+            target,
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.starts_with("foreign.provider-symbol-kind:"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn source_foreign_protocol_rejects_unknown_fields_and_empty_selection_before_any_store_or_tool() {
+    use std::process::Command;
+    let root = scope("source-protocol");
+    let store = root.join("must-not-exist");
+    let request = serde_json::json!({"recipe":ace_abi::worker_source::RECIPE,"nonce":"n938","request_hash":"h938","deck_b64":"","leg":"native",
+        "store_root":store,"steps":[{"op":"restart"}]});
+    let wrap = |request: &serde_json::Value| {
+        serde_json::json!({"op":"request","request":request}).to_string()
+    };
+    let begin = "{\"op\":\"begin\",\"schema\":\"abiworker/1\"}";
+    let end = "{\"op\":\"end\"}";
+    let mut unknown = serde_json::json!({"op":"request","request":request});
+    unknown["safe"] = true.into();
+    let mut empty = request.clone();
+    empty["steps"] = serde_json::json!([]);
+    let mut ignored = request.clone();
+    ignored["steps"][0]["from"] = "ignored".into();
+    let inputs = [
+        (wrap(&request), end.to_string(), None),
+        (unknown.to_string(), end.to_string(), Some("protocol")),
+        (
+            wrap(&request),
+            "{\"op\":\"end\",\"unknown\":1}".into(),
+            Some("protocol"),
+        ),
+        (wrap(&empty), end.into(), Some("recipe")),
+        (wrap(&ignored), end.into(), Some("op")),
+    ];
+    for (request, end, error) in inputs {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_abi-worker"));
+        let run = ace_core::link::run_deadlined_typed(
+            &mut cmd,
+            std::time::Duration::from_secs(5),
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+            format!("{begin}\n{request}\n{end}\n").into_bytes(),
+        )
+        .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+        if let Some(code) = error {
+            assert_eq!(response["error"]["code"], code);
+        } else {
+            assert_eq!(response["ok"]["restart_pending"], true);
+        }
+        assert!(
+            !store.exists(),
+            "invalid/non-query operation touched the store or producers"
         );
     }
 }

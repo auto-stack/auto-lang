@@ -38,6 +38,11 @@ pub struct SourceDecl {
 
 impl SourceDecl {
     pub fn validate(&self) -> Result<(), String> {
+        manual_facts(
+            std::slice::from_ref(&self.function),
+            &self.effects,
+            &self.capabilities,
+        )?;
         let needs_context = matches!(self.function.form, FnForm::Fallible { ctx: Some(_), .. });
         if needs_context != self.context_symbol.is_some()
             || self.context_symbol.as_ref().is_some_and(|s| !ident(s))
@@ -149,6 +154,43 @@ fn digest(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
+fn manual_facts(
+    functions: &[crate::FnFact],
+    effects: &[String],
+    capabilities: &[String],
+) -> Result<(), String> {
+    if !capabilities.iter().any(|c| c == SOURCE_CAP) {
+        return Err(
+            "foreign.capability: explicit source capability is required in the declaration".into(),
+        );
+    }
+    if functions.iter().any(|f| f.semantic_ref.is_some()) {
+        return Err("foreign.semantic-ref: this manual lane has no semantic-service authority; unresolved or persisted refs are not callable".into());
+    }
+    if effects
+        .iter()
+        .any(|e| e != "checked" && !functions.iter().any(|f| e == &format!("pure:{}", f.symbol)))
+    {
+        return Err(
+            "foreign.effect: unknown/ownership effects are outside the manual scalar lane".into(),
+        );
+    }
+    for f in functions {
+        let required = match f.form {
+            FnForm::Pure { .. } => format!("pure:{}", f.symbol),
+            FnForm::Fallible { .. } => "checked".into(),
+        };
+        // A reviewed mixed interface can carry the module's `checked`
+        // effects while each total C form remains explicitly Pure. This is
+        // the existing bool/order/fallible fixture's admitted contract.
+        if !effects.contains(&required)
+            && !(matches!(f.form, FnForm::Pure { .. }) && effects.iter().any(|e| e == "checked"))
+        {
+            return Err("foreign.effect: missing explicit totality/error evidence".into());
+        }
+    }
+    Ok(())
+}
 
 impl ManualManifest {
     pub fn validate(&self) -> Result<(), String> {
@@ -170,6 +212,14 @@ impl ManualManifest {
             return Err("foreign.source: missing reviewed provenance".into());
         }
         self.facts.validate()?;
+        if !matches!(&self.facts.source,crate::FactsSource::Typed{id} if !id.is_empty()) {
+            return Err("foreign.source: manual imports require an explicitly reviewed typed source, never a self-claimed checked-source credential".into());
+        }
+        manual_facts(
+            &self.facts.functions,
+            &self.facts.effects,
+            &self.facts.capabilities,
+        )?;
         if self.declarations.is_empty() || self.declarations.len() != self.facts.functions.len() {
             return Err(
                 "foreign.selection: declarations must cover every function exactly once".into(),
@@ -484,5 +534,33 @@ mod tests {
             ret: LaneKind::I32,
         };
         assert!(other.admit(&h).unwrap_err().contains("foreign.authority"));
+    }
+    #[test]
+    fn manual_source_never_admits_unknown_effects_or_unqualified_semantic_services() {
+        let (m, h) = fixture();
+        let mut candidates = Vec::new();
+        let mut x = m.clone();
+        x.facts.effects.push("owns:raw-pointer".into());
+        candidates.push(x);
+        let mut x = m.clone();
+        x.facts.effects.clear();
+        candidates.push(x);
+        let mut x = m.clone();
+        x.facts.capabilities.clear();
+        candidates.push(x);
+        let mut x = m.clone();
+        x.facts.functions[0].semantic_ref = Some(("wrong-service".into(), "stale-version".into()));
+        candidates.push(x);
+        let mut x = m.clone();
+        x.facts.source = FactsSource::CheckedSource {
+            module: "forged-safe".into(),
+            source_sha256: "0".repeat(64),
+        };
+        candidates.push(x);
+        for candidate in candidates {
+            assert!(candidate.clone().admit(&h).is_err());
+            assert!(ManualManifest::decode(&serde_json::to_vec(&candidate).unwrap()).is_err());
+        }
+        assert!(m.admit(&h).is_ok());
     }
 }

@@ -162,6 +162,22 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     }
     m
 }
+pub fn current_source_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    let mut m = current_toolchain_identity();
+    m.insert("recipe".into(), super::abi_source::RECIPE.into());
+    m
+}
+fn source_axes(exe_sha: &str, source: bool) -> Vec<(String, String)> {
+    let mut axes = abi_toolchain_axes(exe_sha);
+    if source {
+        for (k, v) in &mut axes {
+            if k == "recipe" {
+                *v = super::abi_source::RECIPE.into();
+            }
+        }
+    }
+    axes
+}
 
 /// The report's ABI toolchain axes: the SAME set the stale checker
 /// declares applicable for probe rows (recipe family differs).
@@ -214,6 +230,8 @@ struct OkOut {
     steps: Vec<StepOut>,
     restart_pending: bool,
     worker_version: String,
+    #[serde(default)]
+    source_import: Option<super::abi_source::SourceReport>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -370,9 +388,8 @@ fn call_worker(
                         break;
                     }
                     buf.extend_from_slice(&chunk[..n]);
-                    if buf.ends_with(b"\n") {
-                        done = true;
-                    }
+                    // Drain through EOF: a delayed second envelope is still
+                    // part of this child outcome and must fail admission.
                 }
                 Err(_) => done = true,
             }
@@ -565,6 +582,8 @@ fn judge_query_step(
     want: &auto_test_case::ir::ResolvedProbeStep,
     i: usize,
     mismatches: &mut Vec<Mismatch>,
+    expected_exit: Option<i32>,
+    source_stage: Option<&str>,
 ) {
     match (completion, got.outcome.as_str()) {
         (Completion::Success, "ok") => {
@@ -585,11 +604,11 @@ fn judge_query_step(
                 });
             }
             // a successful query must be a REAL PE pass
-            if got.pe_exit != Some(0) {
+            if got.pe_exit != expected_exit {
                 mismatches.push(Mismatch {
                     observation: format!("probe[{i}].pe_exit"),
                     kind: "text",
-                    expected: "0".into(),
+                    expected: format!("{:?}", expected_exit),
                     actual: format!("{:?}", got.pe_exit),
                     first_diff: None,
                 });
@@ -605,7 +624,7 @@ fn judge_query_step(
         ) => {
             let want_stage = stage.as_str();
             let matched = got.diagnostics.iter().any(|d| {
-                stage_of(&d.code) == want_stage
+                source_stage.unwrap_or_else(|| stage_of(&d.code)) == want_stage
                     && code.as_deref().map(|c| c == d.code).unwrap_or(true)
                     && match message {
                         Some(MessageMatcher::Exact(m)) => &d.message == m,
@@ -795,10 +814,27 @@ pub fn run_check(
         .as_ref()
         .ok_or("probe check without steps (contract violation)")?;
     let bridge_mode = check.options.probe_recipe.as_deref() == Some(BRIDGE_RECIPE);
-    if !bridge_mode && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
+    let source_mode = check.options.probe_recipe.as_deref() == Some(super::abi_source::RECIPE);
+    if !bridge_mode && !source_mode && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
-    let active_recipe = if bridge_mode { BRIDGE_RECIPE } else { ABI_RECIPE };
+    let active_recipe = if source_mode {
+        super::abi_source::RECIPE
+    } else if bridge_mode {
+        BRIDGE_RECIPE
+    } else {
+        ABI_RECIPE
+    };
+    if source_mode
+        && (matches!(oracle.completion, Completion::Success) && oracle.exit.is_none()
+            || !matches!(abi.leg.as_str(), "native" | "c")
+            || !matches!(steps.last(), Some(ProbeStep::Query)))
+    {
+        return Err(
+            "source import requires an explicit consumer, a final query and a parent exit oracle on success"
+                .into(),
+        );
+    }
 
     // Run belongs only to the AV recipe. Also reject programmatically
     // constructed checks before creating artifacts or locating a worker.
@@ -990,6 +1026,35 @@ pub fn run_check(
                     ok.worker_version, EXPECTED_ABI_WORKER_VERSION
                 ));
             }
+            if !source_mode && ok.source_import.is_some() {
+                return Err("source-import report on another ABI recipe".into());
+            }
+            if source_mode && !matches!(st, ProbeStep::Restart) {
+                if ok.steps.len() != 1 || ok.steps[0].op != "query" {
+                    return Err("source-import requires exactly one query result".into());
+                }
+                let report = ok
+                    .source_import
+                    .as_ref()
+                    .ok_or("missing source-import report")?;
+                let input: serde_json::Value =
+                    serde_json::from_slice(&deck).unwrap_or(serde_json::Value::Null);
+                report.admit(
+                    &abi.leg,
+                    ok.steps[0].outcome == "ok",
+                    ok.steps[0].pe_exit,
+                    input.get("source").and_then(|s| s.as_str()),
+                )?;
+                if report.diagnostics.len() != ok.steps[0].diagnostics.len()
+                    || report
+                        .diagnostics
+                        .iter()
+                        .zip(&ok.steps[0].diagnostics)
+                        .any(|(a, b)| a.code != b.code || a.message != b.message)
+                {
+                    return Err("source-import diagnostic order/content differs from the original source verdict".into());
+                }
+            }
             Ok(ok)
         })();
         let ok = match admitted {
@@ -1017,6 +1082,18 @@ pub fn run_check(
                 break 'steps;
             }
         };
+        if let Some(source) = &ok.source_import {
+            let bytes = serde_json::to_vec(
+                &serde_json::json!({"nonce":nonce,"request_hash":request_hash,
+                "worker_exe_sha256":exe_sha,"report":source}),
+            )
+            .map_err(|e| e.to_string())?;
+            std::fs::write(
+                artifact_dir.join(format!("source-import-report-{sample_seq}.json")),
+                bytes,
+            )
+            .map_err(|e| format!("source-import evidence: {e}"))?;
+        }
         if matches!(st, ProbeStep::Restart) {
             let ok_row = ok.restart_pending;
             stage_spans.push((
@@ -1095,7 +1172,31 @@ pub fn run_check(
                 break 'steps;
             }
             match expects.get(qi) {
-                Some(want) => judge_query_step(&oracle.completion, s, want, qi, &mut mismatches),
+                Some(want) => {
+                    judge_query_step(
+                        &oracle.completion,
+                        s,
+                        want,
+                        qi,
+                        &mut mismatches,
+                        if source_mode { oracle.exit } else { Some(0) },
+                        ok.source_import
+                            .as_ref()
+                            .map(|r| r.diagnostic_stage.as_str()),
+                    );
+                    if source_mode && matches!(oracle.completion, Completion::Success) {
+                        let reference = ok.source_import.as_ref().and_then(|r| r.reference_exit);
+                        if reference != oracle.exit {
+                            mismatches.push(Mismatch {
+                                observation: format!("probe[{qi}].reference_exit"),
+                                kind: "text",
+                                expected: format!("{:?}", oracle.exit),
+                                actual: format!("{reference:?}"),
+                                first_diff: None,
+                            });
+                        }
+                    }
+                }
                 None => mismatches.push(Mismatch {
                     observation: "probe.steps".into(),
                     kind: "text",
@@ -1270,7 +1371,7 @@ pub fn run_check(
                 cache_mode: Some("abi-store".into()),
                 cache_hits,
                 counters: sample_counters,
-                toolchain: abi_toolchain_axes(&exe_sha),
+                toolchain: source_axes(&exe_sha, source_mode),
                 gaps: vec![],
             }),
         });
@@ -1318,8 +1419,31 @@ pub fn run_check(
             cache_mode: Some("abi-store".into()),
             cache_hits,
             counters: sample_counters,
-            toolchain: abi_toolchain_axes(&exe_sha),
+            toolchain: source_axes(&exe_sha, source_mode),
             gaps: vec![],
         }),
     })
+}
+
+#[cfg(test)]
+mod source_protocol_tests {
+    use super::*;
+    #[test]
+    fn source_transport_refuses_late_duplicate_output_and_late_process_failure() {
+        let request=serde_json::json!({"recipe":super::super::abi_source::RECIPE,"nonce":"source938-nonce","request_hash":"source938-request",
+            "deck_b64":"","leg":"native","store_root":"unused-on-restart","steps":[{"op":"restart"}]}).to_string();
+        assert!(call_worker(&request, Duration::from_secs(5)).is_ok());
+        for (key, value) in [
+            ("ABI_TEST_LATE_STDOUT_MS", "30"),
+            ("ABI_TEST_HANG_AFTER_RESPONSE_SECS", "2"),
+        ] {
+            *TEST_FAULTS.write().unwrap() = Some(TestFaults {
+                child_envs: vec![(key.into(), value.into())],
+                session_wall_ms: Some(300),
+            });
+            let result = call_worker(&request, Duration::from_secs(5));
+            *TEST_FAULTS.write().unwrap() = None;
+            assert!(result.is_err(), "late fault {key} was accepted");
+        }
+    }
 }

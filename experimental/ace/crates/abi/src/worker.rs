@@ -116,6 +116,8 @@ pub struct OkOut {
     pub steps: Vec<StepOut>,
     pub restart_pending: bool,
     pub worker_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_import: Option<crate::worker_source::SourceReport>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1065,6 +1067,7 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         steps: steps_out,
         restart_pending,
         worker_version: WORKER_VERSION.to_string(),
+        source_import: None,
     })
 }
 
@@ -1106,6 +1109,7 @@ pub fn serve() -> i32 {
         }
     };
     #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Envelope {
         op: String,
         request: WorkerRequest,
@@ -1128,14 +1132,21 @@ pub fn serve() -> i32 {
             ))
         }
     };
-    if !end_line.contains(r#""op":"end""#) && !end_line.contains(r#""op": "end""#) {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct End {
+        op: String,
+    }
+    if !matches!(serde_json::from_str::<End>(end_line.trim()),Ok(End{op}) if op=="end") {
         return fail_protocol("end line malformed");
     }
 
     let (nonce, request_hash) = (env.request.nonce.clone(), env.request.request_hash.clone());
     // PLAN-937: parallel recipe dispatch on the SAME envelope — the two
     // recipes share the worker lifecycle but never each other's decks.
-    let resp = match if env.request.recipe == crate::worker_bridge::BRIDGE_RECIPE {
+    let resp = match if env.request.recipe == crate::worker_source::RECIPE {
+        crate::worker_source::execute(&env.request)
+    } else if env.request.recipe == crate::worker_bridge::BRIDGE_RECIPE {
         crate::worker_bridge::execute_bridge(&env.request)
     } else {
         execute(&env.request)
@@ -1170,6 +1181,11 @@ pub fn serve() -> i32 {
     };
     let _ = writeln!(out, "{line}");
     let _ = out.flush();
+    if let Ok(ms) = std::env::var("ABI_TEST_LATE_STDOUT_MS") {
+        std::thread::sleep(std::time::Duration::from_millis(ms.parse().unwrap_or(30)));
+        let _ = writeln!(out, "{{\"late\":true}}");
+        let _ = out.flush();
+    }
     if let Ok(secs) = std::env::var("ABI_TEST_LATE_STDERR_OVERFLOW_MS") {
         let ms: u64 = secs.parse().unwrap_or(150);
         std::thread::sleep(std::time::Duration::from_millis(ms));

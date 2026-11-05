@@ -410,3 +410,89 @@ fn recursive_owner_fact_restore_keeps_one_frozen_self_signature_dependency() {
     query.seed(&program, &facts).unwrap();
     assert!(query.infer_body(&program, "recurse").unwrap().hit);
 }
+
+#[test]
+fn source_foreign_conflict_and_capability_keep_current_name_spans_before_any_solve() {
+    for (source, caps, code) in [
+        (
+            "\nfn foreign_add(a int,b int) int { return a+b }\nfn main() int { return 42 }",
+            vec![SOURCE_CAP.to_string()],
+            "source.foreign-conflict",
+        ),
+        (
+            "\nfn main() int { return foreign_add(20,22) }",
+            vec![],
+            "source.foreign-capability",
+        ),
+    ] {
+        let mut query = crate::SourceQuerySession::new("p938", "m938");
+        query.set_foreign(Some(environment()));
+        let ds = crate::compile_scalar_product(source, "m938", &caps, "p938", "m938", &mut query)
+            .err()
+            .expect("must refuse before foreign call");
+        assert!(ds
+            .iter()
+            .any(|d| d.code == code && d.span.start > 0 && d.span.end <= source.len()));
+        assert_eq!(query.counters().solver_runs, 0);
+    }
+}
+
+#[test]
+fn source_foreign_names_obey_local_shadowing_instead_of_substituting_a_call() {
+    let mut query = crate::SourceQuerySession::new("p938", "m938");
+    query.set_foreign(Some(environment()));
+    let good = "fn main() int { let foreign_add=42\nreturn foreign_add }";
+    crate::compile_scalar_product(
+        good,
+        "m938",
+        &[SOURCE_CAP.into()],
+        "p938",
+        "m938",
+        &mut query,
+    )
+    .unwrap();
+    let facts = query.resident_page("main").unwrap().0;
+    assert!(
+        facts.sig_reads.is_empty(),
+        "reading a local must not become a foreign dependency"
+    );
+    let bad = "fn main() int { let foreign_add=42\nreturn foreign_add(20,22) }";
+    let ds = crate::compile_scalar_product(
+        bad,
+        "m938",
+        &[SOURCE_CAP.into()],
+        "p938",
+        "m938",
+        &mut query,
+    )
+    .err()
+    .expect("scalar local is not callable");
+    assert!(ds
+        .iter()
+        .any(|d| d.code == "source.not-callable" && d.span.start > 0));
+}
+
+#[test]
+fn malformed_source_preserves_parser_diagnostics_and_counts_the_failed_parse_attempt() {
+    let source = "fn main() int { return ";
+    let mut observation = crate::frontend::ColdObservation::default();
+    let error = crate::frontend::Frontend::cold_observed(
+        source,
+        "m938",
+        "p938",
+        &[SOURCE_CAP.into()],
+        environment(),
+        &mut observation,
+    )
+    .err()
+    .unwrap();
+    let crate::frontend::Error::Diagnostics(ds) = error else {
+        panic!("parser language error became infrastructure");
+    };
+    assert!(!ds.is_empty());
+    assert!(ds
+        .iter()
+        .all(|d| d.stage == ace_core::atom_text::Stage::Text && d.span.end <= source.len()));
+    assert_eq!(observation.whole_parse_attempts, 1);
+    assert_eq!(observation.queries.solver_runs, 0);
+}

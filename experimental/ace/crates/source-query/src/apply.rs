@@ -577,6 +577,10 @@ pub fn bind_with_facts(
     if session.package() != package || session.module() != module {
         return Err(BindFactsError::Profile("session/module identity mismatch"));
     }
+    if let Some(foreign) = session.foreign() {
+        ace_core::source::resolve::validate_foreign_context(program, foreign, capabilities)
+            .map_err(BindFactsError::Resolve)?;
+    }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {
         match item {

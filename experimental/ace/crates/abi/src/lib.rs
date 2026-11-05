@@ -31,12 +31,14 @@ pub mod link;
 pub mod run;
 pub mod semref;
 pub mod source_foreign;
+pub mod source_provider;
 pub mod trace;
 pub mod typed_decl;
 pub mod typed_emit;
 pub mod validate;
 pub mod worker;
 pub mod worker_bridge;
+pub mod worker_source;
 
 /// PLAN-937 CA-D1: the neutral foreign-interface contract shared with
 /// the A2C C side (both real consumers bind to this one model).

@@ -76,6 +76,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-c",
  "ace-a2x-core",
+ "ace-a2x-rust",
  "ace-artifacts",
  "ace-av-core",
  "ace-core",
@@ -90,6 +91,7 @@ dependencies = [
  "cranelift-frontend",
  "cranelift-module",
  "cranelift-object",
+ "object 0.37.3",
  "serde",
  "serde_json",
  "target-lexicon",

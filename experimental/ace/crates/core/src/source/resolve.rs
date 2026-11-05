@@ -1213,6 +1213,63 @@ fn reject_variant_cycles(coll: &CollTables, diags: &mut Vec<Diagnostic>) {
 /// The declaration passes + per-function resolve shared by the
 /// whole-module entry ([`resolve_with`]) and the retained-environment
 /// cold entry ([`resolve_env`]).
+/// Declaration-only foreign admission, shared by the fact-query entry and
+/// core binding. It never walks a body and keeps the source name's location.
+pub fn validate_foreign_context(
+    program: &ast::Program,
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    capabilities: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    if !capabilities
+        .iter()
+        .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+        || foreign
+            .manifest()
+            .facts
+            .capabilities
+            .iter()
+            .any(|c| !capabilities.contains(c))
+    {
+        let span = program
+            .items
+            .first()
+            .map(|i| match i {
+                ast::Item::Fn(f) => f.name.span,
+                ast::Item::Type(t) => t.name.span,
+                ast::Item::Enum(e) => e.name.span,
+            })
+            .unwrap_or(Span { start: 0, end: 0 });
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.foreign-capability",
+            "foreign.scalar capability is required",
+            span,
+        )]);
+    }
+    let declarations = foreign.source_declarations();
+    let mut ds = Vec::new();
+    for item in &program.items {
+        if let ast::Item::Fn(f) = item {
+            if declarations.iter().any(|d| d.name == f.name.name) {
+                ds.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.foreign-conflict",
+                    format!(
+                        "foreign declaration `{}` conflicts with a source function",
+                        f.name.name
+                    ),
+                    f.name.span,
+                ));
+            }
+        }
+    }
+    if ds.is_empty() {
+        Ok(())
+    } else {
+        Err(ds)
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1228,6 +1285,9 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
+    if let Some(foreign) = supply.and_then(|s| s.foreign()) {
+        validate_foreign_context(program, foreign, capabilities)?;
+    }
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
@@ -1498,23 +1558,6 @@ fn resolve_detailed(
     }
 
     if let Some(foreign) = supply.and_then(|s| s.foreign()) {
-        if !capabilities
-            .iter()
-            .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
-            || foreign
-                .manifest()
-                .facts
-                .capabilities
-                .iter()
-                .any(|c| !capabilities.contains(c))
-        {
-            return Err(vec![Diagnostic::new(
-                Stage::Bind,
-                "source.foreign-capability",
-                "foreign.scalar capability is required",
-                Span { start: 0, end: 0 },
-            )]);
-        }
         for (index, declaration) in foreign.source_declarations().iter().enumerate() {
             if sigs.contains_key(&declaration.name) {
                 diags.push(Diagnostic::new(

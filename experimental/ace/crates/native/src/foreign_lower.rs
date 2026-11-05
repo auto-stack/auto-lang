@@ -7,6 +7,13 @@ use cranelift_codegen::{
     ir::{types, AbiParam, Signature},
     isa::CallConv,
 };
+pub fn emitter_identity() -> String {
+    format!(
+        "ace-native-foreign/1+ace-native/{}+cranelift/{}",
+        env!("CARGO_PKG_VERSION"),
+        cranelift_codegen::VERSION
+    )
+}
 
 /// Source host composition uses the ordinary fact-driven product entry and the
 /// ONE shared HIR→MIR lowering. There is no wrapper-level substitute call.

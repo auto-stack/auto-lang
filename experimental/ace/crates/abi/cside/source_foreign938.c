@@ -3,6 +3,12 @@
 #ifndef BODY_BIAS
 #define BODY_BIAS 0
 #endif
+#ifdef SOURCE938_EVENTS
+extern void source938_event(const char *name);
+#define SOURCE938_EVENT(name) source938_event(name)
+#else
+#define SOURCE938_EVENT(name) ((void)0)
+#endif
 static uint32_t trace_value = 0;
 static int32_t call_count = 0;
 unsigned char provider_ctx = 0x5a;
@@ -12,6 +18,7 @@ static int32_t bits_to_i32(uint32_t value) {
     return result.signed_value;
 }
 int32_t provider_add(int32_t a, int32_t b) {
+    SOURCE938_EVENT("provider_add");
     ++call_count;
     return bits_to_i32((uint32_t)a + (uint32_t)b + (uint32_t)BODY_BIAS);
 }

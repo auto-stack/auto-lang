@@ -1118,6 +1118,15 @@ fn decode_check(
         a2x_recipe,
         trace_recipe,
     )?;
+    if options.probe_recipe.as_deref() == Some("abi/source-foreign-certify-v1")
+        && matches!(expect.completion, Completion::Success)
+        && expect.exit.is_none()
+    {
+        return Err(err(
+            &f.path_of("expect"),
+            "source-import certification requires an independent parent exit oracle",
+        ));
+    }
     if adapter == Adapter::Probe {
         // PLAN-914 (I04): the declaration oracle and the declaration round
         // are two halves of one observation — never execute an invalidation
@@ -1894,12 +1903,15 @@ fn decode_options(
                             "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
                         ));
                 }
-                if recipe == "cte/scalar-query-v1" && !matches!(out.last(), Some(ProbeStep::Query))
+                if (recipe == "cte/scalar-query-v1" || recipe == "abi/source-foreign-certify-v1")
+                    && !matches!(out.last(), Some(ProbeStep::Query))
                 {
                     return Err(err(
-                            &f.path_of("steps"),
-                            "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
-                        ));
+                        &f.path_of("steps"),
+                        format!(
+                            "{recipe} step sequences must end with a query step (the judged step)"
+                        ),
+                    ));
                 }
                 if matches!(
                     recipe.as_str(),
@@ -1966,7 +1978,10 @@ fn decode_options(
         };
         let abi = match f.sub("abi") {
             None => {
-                if recipe == "abi/interop-v1" || recipe == "abi/ca-d1-bridge-v1" {
+                if recipe == "abi/interop-v1"
+                    || recipe == "abi/ca-d1-bridge-v1"
+                    || recipe == "abi/source-foreign-certify-v1"
+                {
                     return Err(err(
                         &f.path_of("abi"),
                         format!("{recipe} requires an abi binding"),
@@ -1975,7 +1990,10 @@ fn decode_options(
                 None
             }
             Some(v) => {
-                if recipe != "abi/interop-v1" && recipe != "abi/ca-d1-bridge-v1" {
+                if recipe != "abi/interop-v1"
+                    && recipe != "abi/ca-d1-bridge-v1"
+                    && recipe != "abi/source-foreign-certify-v1"
+                {
                     return Err(err(
                         &f.path_of("abi"),
                         format!(
@@ -1990,6 +2008,8 @@ fn decode_options(
                 let leg = req_str(&af, "leg")?;
                 let legal = if recipe == "abi/interop-v1" {
                     matches!(leg.as_str(), "a" | "b" | "c")
+                } else if recipe == "abi/source-foreign-certify-v1" {
+                    matches!(leg.as_str(), "native" | "c")
                 } else {
                     // PLAN-937: the bridge legs (source export + the three
                     // typed peer legs).
@@ -2788,6 +2808,7 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-937 CA-D1: the scalar bridge recipe (same worker binary, own
     // deck grammar/legs; strictly disjoint from abi/interop-v1).
     "abi/ca-d1-bridge-v1",
+    "abi/source-foreign-certify-v1",
     "ac-av/core-run-v1",
     // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
     // post-797/798 single-writer window; same seam contract.

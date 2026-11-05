@@ -53,6 +53,12 @@ impl std::error::Error for Error {}
 fn reject(e: impl std::fmt::Debug) -> Error {
     Error::Reject(format!("source.frontend: {e:?}"))
 }
+fn syntax_error(e: units::EditError) -> Error {
+    match e {
+        units::EditError::Diag(ds) => Error::Diagnostics(ds),
+        other => reject(other),
+    }
+}
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -110,6 +116,12 @@ pub struct Checkpoint {
     pub pages: BTreeMap<String, Page>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ColdObservation {
+    pub whole_parse_attempts: u64,
+    pub queries: crate::Counters,
+}
+
 struct Resident {
     page: Page,
     mint_origin: usize,
@@ -163,18 +175,37 @@ impl Frontend {
         capabilities: &[String],
         foreign: AdmittedForeign,
     ) -> Result<(Self, CheckedModule), Error> {
+        Self::cold_observed(
+            source,
+            module,
+            package,
+            capabilities,
+            foreign,
+            &mut ColdObservation::default(),
+        )
+    }
+    pub fn cold_observed(
+        source: &str,
+        module: &str,
+        package: &str,
+        capabilities: &[String],
+        foreign: AdmittedForeign,
+        observation: &mut ColdObservation,
+    ) -> Result<(Self, CheckedModule), Error> {
         if source.len() > MAX_SOURCE_BYTES {
             return Err(reject("source budget"));
         }
+        observation.whole_parse_attempts += 1;
         let catalog =
             UnitCatalog::build(source, SourceProfile::Scalar, FrontBudget::WORK_OWNED_64MIB)
-                .map_err(reject)?;
+                .map_err(syntax_error)?;
         if catalog.fns.len() > MAX_FUNCTIONS {
             return Err(reject("function budget"));
         }
         let mut queries = SourceQuerySession::new(package, module)
             .with_capabilities(capabilities.iter().cloned());
         queries.set_foreign(Some(foreign.clone()));
+        observation.whole_parse_attempts += 1;
         let product = crate::compile_scalar_product(
             source,
             module,
@@ -183,7 +214,9 @@ impl Frontend {
             module,
             &mut queries,
         )
-        .map_err(Error::Diagnostics)?;
+        .map_err(Error::Diagnostics);
+        observation.queries = queries.counters();
+        let product = product?;
         // Cold catalog already owns these syntax nodes. Preserve declaration
         // order rather than parsing the module a third time for retained env.
         let mut items: Vec<_> = catalog.fns.values().collect();
@@ -204,7 +237,7 @@ impl Frontend {
         let signatures = queries.catalog(&program).map_err(reject)?;
         let mut residents = BTreeMap::new();
         let mut meter = Meter {
-            whole_parse_attempts: 2,
+            whole_parse_attempts: observation.whole_parse_attempts,
             ..Meter::default()
         };
         let mut per_function = BTreeMap::new();
@@ -262,6 +295,49 @@ impl Frontend {
     }
     pub fn module(&self) -> &str {
         &self.module
+    }
+    /// Locate one edited owner using the already admitted unit directory and
+    /// byte replacement extent. This is source-map metadata work, never a
+    /// second parser or a whole-module projection on the warm path.
+    pub fn owner_replacement(&self, source: &str) -> Result<(String, String), Error> {
+        if source.len() > MAX_SOURCE_BYTES || source == self.source() {
+            return Err(reject("unchanged or over-budget source"));
+        }
+        let old = self.source().as_bytes();
+        let new = source.as_bytes();
+        let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+        let suffix = old[prefix..]
+            .iter()
+            .rev()
+            .zip(new[prefix..].iter().rev())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let old_end = old.len() - suffix;
+        let mut matches = self
+            .catalog
+            .fns
+            .iter()
+            .filter(|(_, f)| f.span.start <= prefix && f.span.end >= old_end);
+        let (name, unit) = matches
+            .next()
+            .ok_or_else(|| reject("edit is outside one current source owner"))?;
+        if matches.next().is_some() {
+            return Err(reject("ambiguous owner edit"));
+        }
+        let end = unit
+            .span
+            .end
+            .checked_add_signed(source.len() as isize - old.len() as isize)
+            .ok_or_else(|| reject("edit span overflow"))?;
+        let declaration = source
+            .get(unit.span.start..end)
+            .ok_or_else(|| reject("edit UTF-8 boundary"))?;
+        if self.source().as_bytes()[..unit.span.start] != new[..unit.span.start]
+            || self.source().as_bytes()[unit.span.end..] != new[end..]
+        {
+            return Err(reject("edit crosses source owners"));
+        }
+        Ok((name.clone(), declaration.into()))
     }
     pub fn foreign(&self) -> &AdmittedForeign {
         &self.foreign
@@ -325,7 +401,7 @@ impl Frontend {
         let syntax = self
             .catalog
             .stage_owner_edit(owner, declaration, FrontBudget::WORK_OWNED_64MIB)
-            .map_err(reject)?;
+            .map_err(syntax_error)?;
         self.meter.body_parse_produced += syntax.produced() as u64;
         self.per_function
             .entry(owner.into())
