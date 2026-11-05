@@ -16,6 +16,14 @@ SpawnError）、请求级 deadline、cancel 与 owned 收尸、捕获 reader 真
 cwd/DirectChildOnly/退出分类）、http_service.rs serve_rust 轨）——不建第二套
 并存 runner。
 
+### 结束后的最后字节（PLAN-953）
+
+捕获reader观察owned写端全部结束后，必须重新确认管道就绪；此前的空peek
+不能证明结束后的EOF。新确认仍有数据时继续原始字节读取，最后一次read的
+真实I/O错误也继续具名为ReaderIo，不能抹为干净EOF/空成功。该路径不增加
+新的排空时间帽，原stop/deadline/cancel/panic/PipesHeld与线程/树回收合同保持。
+确定性交错、两流原字节及最后读错/合法空EOF由`owned_close_953`永久回归覆盖。
+
 ### 寿命与真停合同
 
 - **deadline 覆盖整次执行**：stdin 写入（经 writer 线程分片）、根等待与资源收尾
