@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-929
-status: executing
+status: execution_done
 feature_name: SG-C 全源码入口增量恢复统一与重复parser退役
 author: [Codex]
 created_at: 2026-11-03
@@ -223,6 +223,7 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
   - T-09（`5e8db3d64`）：unified-source-syntax-929 套件 11/11（九 profile parse+门负控+AV 执行腿）+ SYN 严格父 decoder；T-10：legacy oracle feature 隔离（生产编译期不可达）+retirement_gate_929 结构门。
   - T-11：职责 13 组+集成 18 组全绿（semantics/native/a2x 三处红均环境/既有归因：attachments 未跟踪/924-churn P90 隔离绿/a2c_coll 隔离绿；904=PLAN-933 既有债）。**环境教训（具名）**：后台链会被"取消轮询命令"连带杀进程组（无错误行、静默死）——本轮余组改为独立小批重跑；stale `target/test-groups/active` 单实例锁需先清。
   - T-12：SYN-01..06 收据入 §8 T-12 行；余账具名（不冒 M1）。ace-performance 后台采样中（结果落本收据续记）。
+  - **正式采样收据（11:50）**：`cargo t ace-performance` 站立截止窗内 **28/28 已执行全 ok**——929 触面全绿（av_source_incremental P95、closures_fn_912/closures_recovery_913 formal、828 function_incremental formal+v07/v08 双门、av closures/collections/dynamic 增量 churn/512、cte 资源与红线门、abi cache/churn）；余 33 项（长 MSVC C/native turnaround 语料腿）= 与 D928 同集站立截止截断，**记为本次未执行不充 PASS**（里程碑档重跑，沿 928 先例与 AG 2026-10-28 错峰裁定）。gate FAIL=未全集，非红。
 
 - stage: goal | plan_id: PLAN-929 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: in-progress（T-07/T-08 完成 8/14） | worktree: `lang-929` @ `plan-929-dev`（代码至 `0234f3a22`） | commit: 0234f3a22 | next: work（T-09 case/父decoder/注册）
   - T-07（`decl_events_929_t07`）：references_name 扩全语法引用面（注解嵌套+全部名字叶）；签名事件必达/dependents 已物化-only/前缀漂移身份携带/**fresh≡增量清单全等**。T-08：decl-env 声明面持久化+stub 装配（913 checked_env_from_parts 先例推广）；过程修复：fld/mth/arm 编码组名残留、sigs owner 限定键、只读发布豁免、发布幂等（restart 零新增）；quota 测试按自身 settle 纪律核总量（被拒 put 的 WAL/trash 瞬态=既有会计行为，具名记录）。
