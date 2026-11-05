@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [tool-execution]
 depends_on: [PLAN-816, PLAN-896]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -81,7 +81,7 @@ Rust std-only，原PipePoll/Read注入面，原固定组`cargo t auto-tool-execu
 | T-03 | work | T-02 | SD与代码提交，execution_done，完整职责门留merge | [x] |
 | T-04 | review | T-03 | 同树冻结独立复读AC/负控/遗漏/SD | [x] |
 | T-05 | merge | T-04 | 完整auto-tool-execution与ACE两命名消费者、线性合入/spec核验、归档 | [x] |
-| T-06 | merge | T-05 | guard/tree/branch/组/scope及实际输出目录对账清理、返回952/941 | [ ] |
+| T-06 | merge | T-05 | guard/tree/branch/组/scope及实际输出目录对账清理、返回952/941 | [x] |
 
 ## 9. 复审记录
 
@@ -149,6 +149,18 @@ r2冻结`cargo t auto-tool-execution --out .../full-frozen-r2` **exit0、43/43�
 输出目录对账：原正式命令只有本scope（含TEMP/TMP runtime-temp）、953树根target与experimental/ace/target；无外置消费者源码/安装/发行副本或其他盘符输出。scope预折叠131文件/625,534 bytes（不含后写closeout-scope摘要），未发现链接或未知材料混入；所有仍需证据已在本Plan折叠，merge清理全删，无hold。正常编译缓存随tree删除，不回收存盘。952的诊断副本/target与941材料仍是各自in-flight scope，不在本包删除范围。
 
 生产物观察（北京时间，未冒部署）：PATH `auto`实际是`D:/autostack/auto-man/target/debug/auto.exe`，mtime 2026-11-05 22:35:19，未在本包重建/重启；main `target/debug/auto-case.exe` 2026-11-06 00:55:19、`experimental/ace/target/release/a2x-worker.exe` 2026-11-05 13:29:34，均早于本修复、显式stale。main `target/release/auto.exe`不存在。后续952/941在其树显式重建使用本源，不以旧exe作已修证明；未触依赖仓binary/UI前端，所以无对应部署声明。
+
+### cleaned / delivered receipt（2026-11-06）
+
+953/auto-lang、只读953/auto-down移除前分别再跑wt-guard，两者clean无reparse；git worktree remove两树exit0，plan-953-dev已-d删除，空组lang-953移除，实际不存在。所有代码提交均在main65db88be2150991b9c3bbe79d527891fd6a7a27f ancestry内，archive move与r2状态已commit `4e976fb19`。构建target直接随tree删除，无exe/PDB回收副本。
+
+scope清理：首次批量PowerShell删除命令被自动安全审查以“blocked by policy”拒绝，**未执行删除**；改用既有auto-plan-merge保守`artifact_retention.remove_scope`，校验953 owner、实际archived源/交付commit、已无tree、无链接后，对每个打开句柄复核最终真实路径并删除该目录项（不运行已退役latest-five全局选择器）。实际删除**132 files / 41 dirs / 625,855 bytes / 0 reparse**，scope `D:/autostack/plan-artifacts/plan-953`不存在，无hold。删除前逐文件清单聚合SHA **`bfdc4a73cab99c40b483db7e070363fa64e78b4b2f34678390f28f0c16065ecb`**；清理索引刷新为deleted。952/941在途scope及未知其他材料均保留。
+
+周期门due-check：最新共享receipt仍covered940；950已真实交付且%5=0，**到期**。950归档记录§9已把周期门交regress并等936 CT gate，当前确有其他会话CT nextest在运行；按regress“single instance / no other heavy gate”不再启动第二full tier。此处为具名交接既有950周期门owner，不写新的已覆盖收据、不报cargo t all绿；本包43职责门与两个ACE消费者均已验证。旧receipt时限未超48h不改变950触发事实。
+
+D-952-1/F-952-01的原EOF竞态已由本包生产修复与永久反例/完整设施组/新基面两consumer闭合。历史952两次空输出具体因果未冒确定；952须在本交付基面重做其完整ACE门，941也仍需其余完整验收。T-06完成，**6/6**；scope/worktree/branch清理完成不等同941完成。
+
+stage: merge | plan_id: PLAN-953 | plan_revision: r2 | outcome: pass | completion_kind: delivered | delivery_commit: 65db88be2150991b9c3bbe79d527891fd6a7a27f | canonical_spec: docs/specs/tool-execution/project.md@535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4 | archive: docs/plans/archive/953-tool-capture-owned-close-race.md | cleanup: complete, no holds | periodic_batch: due, existing PLAN-950 regress owner waiting active PLAN-936 CT gate | next: PLAN-952
 
 ## 10. 待澄清事项
 

@@ -340,6 +340,8 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to
 
 2026-11-06 F-952-01新增解阻授权：用户答复“授权独立修复并继续（推荐）”；独立PLAN-953承接原采集器竞态、错误分态/永久反例/职责与消费者回归、复审合入后返回952/941。当前仅已授权/立项，不冒修复已交付，不再重复询问该范围。host goal仍blocked，本次按明确直接用户指令执行953全链，不新建goal或伪称自动active。
 
+2026-11-06 **D953已交付**：PLAN-953 r2 source修复65db88be2150991b9c3bbe79d527891fd6a7a27f已线性合main，完整auto-tool-execution43/43、无LEAK/残留，必要ACE两case在新950基面也各1/1，canonical SHA535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953实际归档6/6、两树/branch/组/scope删除完成，无hold。F-952-01独立共享采集器修复授权/交付阻塞解除，不再问授权；952应重基并复审/完整ace-a2x门后合入，941原目标继续保持。周期cargo t all已由950交regress等待936 CT活动门，本会话不重复启动。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
