@@ -290,6 +290,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
     /// PLAN-936（T-06）：一般表达式 CT 需求——同一缓存/准入/计数/执行
     /// 日志纪律；键 = 表达式规范哈希 + 调用闭包版本轴
     /// （[`crate::identity::exec_key_of_expr`]）。
+    #[allow(clippy::too_many_arguments)]
     pub fn execute_expr_ct(
         &mut self,
         program: &Program,

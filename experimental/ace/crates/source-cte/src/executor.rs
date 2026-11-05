@@ -462,6 +462,7 @@ pub fn execute_call(
 /// * bool callee: `fn <entry>() int { if <callee>(<args>) { return 1 }
 ///   return 0 }` — the EXPLICIT, lane-versioned bool→i32 projection
 ///   (§5.8.3); the strict fold admits only its 0/1 outputs.
+///
 /// The general wrapper: body = the expression itself (i32) or its
 /// explicit 0/1 bool→i32 projection (§5.8.3).
 fn wrapper_item_from_expr(entry: &str, expr: &Expr, expr_is_bool: bool) -> FnItem {
