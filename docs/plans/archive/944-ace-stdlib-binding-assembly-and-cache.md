@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-binding-and-assembly.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-950]
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -125,7 +125,7 @@ Auto公共源码、现有Rust装配/ACE workspace、既有TestCase与固定Cargo
 - [x] **T-04｜owner_stage: work｜AC-04**：接既有 query/store 的依赖、恢复与首次编辑：body、合同、provider、授权分别处理；持久化无宿主地址/授权，失败候选保旧可用。
 - [x] **T-05｜owner_stage: work｜AC-04**：补两个真 consumer 的值腿、真实引用证明、坏身份/用户遮蔽、provider/effect变更与恢复首编辑反例，跑职责组及必要下游，核实际生产而非 wrapper 计数。
 - [x] **T-06｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
-- [ ] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
+- [x] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
 T-01继续执行前置：D943及D950均已正式交付；本目标用户授权已齐。在原944唯一树同步master后重新T-01冻结，不把前置950的验收替代本包标准操作proof、装配身份/失效和当前运行授权义务。T-02..05依次依赖T-01冻结结果；T-06在work侧AC全闭后，T-07在review pass后。任务与AC引用多对多：T-05覆盖AC-01..04，不以单行对应限制验证。
 
@@ -448,6 +448,20 @@ canonical_verified：主线实际文件与delivery tree逐项同源，五hash如
 部署观察（不是全新部署承诺）：本包为显式装配库API，无默认UI/worker模式切换，未改外仓。主检出旧worker未重建：debug av-worker UTC2026-10-31T21:31:54.4934979Z、a2x-worker UTC2026-11-03T23:44:03.852084Z；release av-worker UTC2026-11-05T16:13:38.4647917Z、a2x-worker UTC2026-11-05T05:29:34.6083153Z，均在`experimental/ace/target/<profile>/`。真实本次测试worker已在专属树重建并验证；不冒称主线旧二进制含新库。无生产进程重启/前端bundle动作。
 
 清理前事实：专属lang/down两树clean、lang944 guard clean；无活动进程的ExecutablePath/命令引用本树或scope（只读检查自身pwsh排除）；group仅auto-lang/auto-down。待fresh两guard后移除树/分支/空组，再删整个scope并刷新全局registry。只读auto-down detached58ea33f未改、无待交付分支。没有具名未解决944问题需持有原材料，首次artifact红的数字/原输入与重放hash已折本Plan。
+
+### r2 cleanup inventory before removal（2026-11-06）
+
+已逐一Resolve-Path核对精确删除根，递归只读清点/全部无reparse：lang944/auto-lang 75593文件/26660824003bytes；只读auto-down 1256文件/26409169bytes；统一scope944 65561文件/17542363770bytes。scope已登记owner，在途材料/target皆本包，未持有未解决问题。两树fresh wt-guard均clean、plan分支全部已落地；按此inventory仅移除具名根，不处理其他组/历史scope。实际删除完成前T07保持pending。
+
+### r2 cleaned / delivered final-state check（2026-11-06）
+
+stage: merge | PLAN-944:r2 | outcome: pass | completion_kind: delivered | delivery_commit371702e114c2254ac0d8f16118a49a823d0b8e08 | canonical_verified五源如前 | archive docs/plans/archive/944-ace-stdlib-binding-assembly-and-cache.md（归档提交204904312） | cleaned: verified。
+
+fresh两guard均clean后，git正常移除本计划lang/down两树、删除已合并plan-944-dev分支、空lang-944组目录；65561文件/17542363770bytes的整个plan-artifacts/plan-944亦已安全删除。累计删除142410文件/44229596942bytes，0链接、0持有；probe/外置target/原始日志无第二暂存区或回收exe，正常WT构建缓存随树删除。先前两件legacy报告迁移/还原已核，历史报告未动。实际不存在性、Git worktree/branch注销、归档status/路径/7任务勾选/current7/total7与tracked文件、canonical源和主线代码无WIP逐项复核。默认检出保留他方设计/计划簿记WIP（含未跟踪Design54和其他计划/本地retention），没有代提交、stash或删除；本包自有更改均已具名提交。
+
+Artifact首红与两个同SHA绿重放均已折入本Plan，原记录不因清理变绿；无944未闭合同缺口。周期维护due核对：前收据覆盖953，之后955已正式落地，故按仓规单独handoff auto-plan-regress；等待其他重门结束后在main单实例跑原cargo t all，UI/Man由其owner负责。该全局门与本包1972唯一用例/25原排除冻结门分开记录，不把历史known red说成全环境绿。
+
+`stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 8 | from: merge | to: regress due check | status: archived | outcome: pass | worktree: removed | commit: 371702e114c2254ac0d8f16118a49a823d0b8e08 | next: periodic maintenance receipt then done`
 
 ## 10. 待澄清事项
 
