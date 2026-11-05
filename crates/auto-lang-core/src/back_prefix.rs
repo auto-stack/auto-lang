@@ -41,6 +41,17 @@ pub fn set_guard(spec: PrefixSpec) -> PrefixGuard {
     PrefixGuard
 }
 
+/// PLAN-949 T-01：当前激活的前缀化规格（root, app_key）——供 VM 侧
+/// split 模式（api_over_http）在编解码处解析「本 app 的 back 根」，
+/// 使 AUTO_BACKEND 可按 app 生效而不依赖进程级 env。
+pub fn current_spec() -> Option<(String, String)> {
+    ACTIVE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| (s.root.clone(), s.app_key.clone()))
+}
+
 /// guard：drop 清 overlay（编译失败路径同样回收）。
 #[must_use]
 pub struct PrefixGuard;
@@ -208,3 +219,4 @@ mod tests {
     // src/tests/plan712_back_prefix_route_fetch.rs（原 ui-iced 门在 SDK
     // 无定义——死门、选择丢失，V-05 勘误）。
 }
+
