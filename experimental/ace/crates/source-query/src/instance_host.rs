@@ -81,10 +81,18 @@ impl From<&InstanceRecord> for InstancePage {
 /// 实例页信封/内容错误。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum InstancePageError {
-    TooLarge { bytes: usize },
+    TooLarge {
+        bytes: usize,
+    },
     BadMagic,
-    BadVersion { found: u8 },
-    BadEnvelope { producer: String, schema: String, algo: String },
+    BadVersion {
+        found: u8,
+    },
+    BadEnvelope {
+        producer: String,
+        schema: String,
+        algo: String,
+    },
     Truncated,
 }
 
@@ -121,8 +129,8 @@ fn get_str(b: &[u8], pos: &mut usize) -> Result<String, InstancePageError> {
     if *pos + n > b.len() {
         return Err(InstancePageError::Truncated);
     }
-    let s = String::from_utf8(b[*pos..*pos + n].to_vec())
-        .map_err(|_| InstancePageError::Truncated)?;
+    let s =
+        String::from_utf8(b[*pos..*pos + n].to_vec()).map_err(|_| InstancePageError::Truncated)?;
     *pos += n;
     Ok(s)
 }
@@ -166,11 +174,12 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
     let producer = get_str(b, &mut pos)?;
     let schema = get_str(b, &mut pos)?;
     let algo = get_str(b, &mut pos)?;
-    if producer != INSTANCES_PRODUCER
-        || schema != INSTANCES_SCHEMA
-        || algo != INSTANCES_ALGO
-    {
-        return Err(InstancePageError::BadEnvelope { producer, schema, algo });
+    if producer != INSTANCES_PRODUCER || schema != INSTANCES_SCHEMA || algo != INSTANCES_ALGO {
+        return Err(InstancePageError::BadEnvelope {
+            producer,
+            schema,
+            algo,
+        });
     }
     let key = get_str(b, &mut pos)?;
     let logical = get_str(b, &mut pos)?;
@@ -188,7 +197,14 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         return Err(InstancePageError::Truncated);
     }
     let demands = u64::from_le_bytes([
-        b[pos], b[pos + 1], b[pos + 2], b[pos + 3], b[pos + 4], b[pos + 5], b[pos + 6], b[pos + 7],
+        b[pos],
+        b[pos + 1],
+        b[pos + 2],
+        b[pos + 3],
+        b[pos + 4],
+        b[pos + 5],
+        b[pos + 6],
+        b[pos + 7],
     ]);
     Ok(InstancePage {
         producer: INSTANCES_PRODUCER,
@@ -331,9 +347,15 @@ pub struct CurrentInstanceSet {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum InstanceCommitError {
     Cancelled,
-    LateResult { current: InstanceRevision, candidate: InstanceRevision },
+    LateResult {
+        current: InstanceRevision,
+        candidate: InstanceRevision,
+    },
     /// 当前源重推导出的集合与候选不同（模板签名/体/调用需求漂移）。
-    SetChanged { expected: String, current: String },
+    SetChanged {
+        expected: String,
+        current: String,
+    },
     Sink(String),
 }
 
@@ -413,8 +435,13 @@ impl<S: InstanceSink> InstanceHost<S> {
         module: &str,
         capabilities: &[String],
     ) -> Result<InstanceSetCandidate, Vec<ace_core::atom_text::Diagnostic>> {
-        let out: InstantiateOutcome =
-            instantiate_program_limited(prog, package, module, capabilities, &ProduceLimits::default())?;
+        let out: InstantiateOutcome = instantiate_program_limited(
+            prog,
+            package,
+            module,
+            capabilities,
+            &ProduceLimits::default(),
+        )?;
         let set_fp = set_fingerprint(&out.instances);
         Ok(InstanceSetCandidate {
             program: out.program,
@@ -499,7 +526,10 @@ impl<S: InstanceSink> InstanceHost<S> {
 
 /// 集合指纹：全部实例完整键的域分离合成（序确定）。
 pub fn set_fingerprint(instances: &[InstanceRecord]) -> String {
-    let parts: Vec<Vec<u8>> = instances.iter().map(|i| i.key.as_bytes().to_vec()).collect();
+    let parts: Vec<Vec<u8>> = instances
+        .iter()
+        .map(|i| i.key.as_bytes().to_vec())
+        .collect();
     let refs: Vec<&[u8]> = parts.iter().map(|p| p.as_slice()).collect();
     sq_hash("ac935/instance-set/v1", &refs)
 }

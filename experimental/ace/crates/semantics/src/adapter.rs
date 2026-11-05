@@ -198,12 +198,7 @@ fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
         params: f
             .params
             .iter()
-            .map(|p| {
-                Ok::<_, String>((
-                    p.name.name.clone(),
-                    ann_of_tp(&p.ty, &tps)?,
-                ))
-            })
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of_tp(&p.ty, &tps)?)))
             .collect::<Result<Vec<_>, _>>()?,
         ret: ann_of_tp(&f.ret, &tps)?,
         body: project_block(&f.body)?,
@@ -332,12 +327,7 @@ fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, Stri
         params: f
             .params
             .iter()
-            .map(|p| {
-                Ok::<_, String>((
-                    p.name.name.clone(),
-                    ann_of_tp(&p.ty, &tps)?,
-                ))
-            })
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of_tp(&p.ty, &tps)?)))
             .collect::<Result<Vec<_>, _>>()?,
         ret: ann_of_tp(&f.ret, &tps)?,
         body: if f.name.name == target && !is_template {

@@ -1,0 +1,8 @@
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return b }
+    return a
+}
+fn main() int {
+    if choose(true, false, true) { return choose(40, 42, false) }
+    return 0
+}

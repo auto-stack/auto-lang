@@ -179,11 +179,7 @@ fn ty_order(ty: &PortableTy) -> u8 {
 /// 任何该形状拼写——装配名必须**确定性探测**避让同名用户声明（同源同探
 /// 测序；探测不进入身份）。碰撞时后接 `__2`/`__3`…（调用点重绑与实例落
 /// 位共用 by_template 表中的最终名，不重算拼写）。
-fn concrete_name(
-    template: &str,
-    ty: PortableTy,
-    taken: &mut BTreeSet<String>,
-) -> String {
+fn concrete_name(template: &str, ty: PortableTy, taken: &mut BTreeSet<String>) -> String {
     let base = format!("{}_{}", template, ty_suffix(ty));
     if taken.insert(base.clone()) {
         return base;
@@ -401,15 +397,16 @@ fn discover_round(
         if !f.type_params.is_empty() {
             continue;
         }
-        let input = project_body_scoped_with_caps(prog, &f.name.name, package, module, capabilities)
-            .map_err(|m| {
-                vec![Diagnostic::new(
-                    Stage::Text,
-                    "source.instances-unsupported",
-                    format!("projection failed for `{}`: {m}", f.name.name),
-                    Span { start: 0, end: 0 },
-                )]
-            })?;
+        let input =
+            project_body_scoped_with_caps(prog, &f.name.name, package, module, capabilities)
+                .map_err(|m| {
+                    vec![Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        format!("projection failed for `{}`: {m}", f.name.name),
+                        Span { start: 0, end: 0 },
+                    )]
+                })?;
         let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
         match session.infer_function(&f.name.name) {
             InferOutcome::Ok(_) => {}
@@ -582,7 +579,12 @@ pub fn instantiate_program_limited(
                 let name = concrete_name(tpl, *ty, &mut taken);
                 let logical = sq_hash(
                     INSTANCES_LOGICAL_DOMAIN,
-                    &[package.as_bytes(), module.as_bytes(), b"tpl", tpl.as_bytes()],
+                    &[
+                        package.as_bytes(),
+                        module.as_bytes(),
+                        b"tpl",
+                        tpl.as_bytes(),
+                    ],
                 );
                 let sig_version = signature_version(entry.item).as_str().to_string();
                 let body_version = match walk_body(&entry.item.body) {
@@ -616,7 +618,10 @@ pub fn instantiate_program_limited(
                     body_version,
                     demands: 0,
                 });
-                by_template.entry(tpl.clone()).or_default().push((*ty, name));
+                by_template
+                    .entry(tpl.clone())
+                    .or_default()
+                    .push((*ty, name));
             }
         }
         if !diags.is_empty() {
@@ -653,10 +658,7 @@ pub fn instantiate_program_limited(
     for ((owner, s0, s1), (tpl, ty)) in &all_callsites {
         if let Some(list) = by_template.get(tpl) {
             if let Some((_, name)) = list.iter().find(|(t, _)| t == ty) {
-                span_to_name.insert(
-                    (owner.clone(), *s0, *s1),
-                    (tpl.clone(), name.clone()),
-                );
+                span_to_name.insert((owner.clone(), *s0, *s1), (tpl.clone(), name.clone()));
             }
         }
     }
@@ -684,8 +686,7 @@ pub fn instantiate_program_limited(
             }
             Item::Fn(f) => {
                 let mut g = f.clone();
-                rebinding_count +=
-                    rebind_callsites_owned(&mut g.body, &f.name.name, &span_to_name);
+                rebinding_count += rebind_callsites_owned(&mut g.body, &f.name.name, &span_to_name);
                 items.push(Item::Fn(g));
             }
             other => items.push(other.clone()),
@@ -710,7 +711,12 @@ fn instance_key(
 ) -> String {
     let logical = sq_hash(
         INSTANCES_LOGICAL_DOMAIN,
-        &[package.as_bytes(), module.as_bytes(), b"tpl", template.as_bytes()],
+        &[
+            package.as_bytes(),
+            module.as_bytes(),
+            b"tpl",
+            template.as_bytes(),
+        ],
     );
     sq_hash(
         INSTANCES_KEY_DOMAIN,
@@ -766,7 +772,9 @@ fn rebind_stmt_callsites_owned(
             n += rebind_callsites_owned(body, owner, span_to_name);
         }
         Stmt::Loop { body, .. } => n += rebind_callsites_owned(body, owner, span_to_name),
-        Stmt::ExprStmt { value, .. } => n += rebind_expr_callsites_owned(value, owner, span_to_name),
+        Stmt::ExprStmt { value, .. } => {
+            n += rebind_expr_callsites_owned(value, owner, span_to_name)
+        }
         _ => {}
     }
     n
@@ -780,11 +788,7 @@ fn rebind_expr_callsites_owned(
     let mut n = 0;
     match &mut e.kind {
         ExprKind::Call { callee, args } => {
-            let key = (
-                owner.to_string(),
-                e.span.start as u32,
-                e.span.end as u32,
-            );
+            let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
             if let Some((tpl, name)) = span_to_name.get(&key) {
                 debug_assert_eq!(
                     &callee.name, tpl,

@@ -839,6 +839,26 @@ suite = "crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.su
 domain = "ace"
 all = false
 
+# PLAN-935: SQ-B finite scalar template instances family (T-09) — closed-form
+# values (42/0/42/40/40: dual instances, template body swap, expected-type
+# solving, cross-template fixpoint, same-instance recursion) through the
+# product entries under the instances capability, plus the frozen
+# heterogeneous-arguments rejection. The instances-layer negative controls
+# (solver-off, tampered instance pages, restore/first-edit, A-B-A,
+# single-flight counters, budget states) live in the `ace-source-query` crate
+# tests carried by the `ace-semantics` fixed package group.
+[[group]]
+name = "case-ace-source-instances-935"
+title = "ACE M1 SQ-B source instances 935 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-932: the native warm-edit admission suite — typed refusal verdicts
 # (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
 # state survival and history A→B→A on the real scalar worker (source-v1).

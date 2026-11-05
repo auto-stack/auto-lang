@@ -101,3 +101,18 @@
 - 求解沿用 796 原门：5s / 1,000,000 steps；页 ≤512KiB、managed 16MiB、hot8+scratch8；
   A2X 48MiB 含本层新增保留物；正式 release 父窗 P90≤2000ms（fresh 冷准备分列）。
 - 缺样本/伪造 0/越界即红；预算/取消是资源状态，不持久成语言诊断。
+
+## 实例层叠加（PLAN-935，SQ-B）
+
+- `compile_scalar_product` 的**实例 lane**：capabilities 携带
+  `ac.source.instances.scalar/v1` 时，统一前门以 `scalar-instances` 裁剪
+  解析（`FRONT_CAPS_VERSION=ac-source-front/2`），实例层经求解器真 unify
+  发现需求并**脱糖**（模板移除/实例落位/调用点按 (owner,span) 重绑），
+  事实路径跑在脱糖程序上；plain 模块经 lane 与 plain 面逐字节同产物。
+- 产品结果 `ProductCompile` 增 `instances`（身份在键不在装配名）与
+  `program`（事实路径真实输入——env 保留宿主用它，不做第二次盲 parse）。
+- 实例宿主协议（prepare_set→attach_target→commit 重验一步切换、按完整
+  键单飞、S935 页持久化与 A→B→A 内容等值再准入）与恢复语义见
+  [source-scalar-instances.md](source-scalar-instances.md)。
+- 模板 body-only 变化：实例键变、实例体重产；调用者 body 页 hit（推导
+  0）——签名轴不动，不重算所有 caller。

@@ -564,15 +564,11 @@ impl<'a> InferSession<'a> {
                             let tvars: Vec<Ty> = if f.type_params.is_empty() {
                                 Vec::new()
                             } else {
-                                (0..f.type_params.len())
-                                    .map(|_| self.mint_var())
-                                    .collect()
+                                (0..f.type_params.len()).map(|_| self.mint_var()).collect()
                             };
                             let subst = |ann: &Ann| -> Option<Ty> {
                                 match ann {
-                                    Ann::TyParam(i) => {
-                                        tvars.get(*i as usize).copied()
-                                    }
+                                    Ann::TyParam(i) => tvars.get(*i as usize).copied(),
                                     _ => None,
                                 }
                             };
@@ -586,7 +582,8 @@ impl<'a> InferSession<'a> {
                             // vector order remains the SOURCE evaluation
                             // order (binding must never reorder reads).
                             let mut bound: Vec<Option<usize>> = vec![None; f.params.len()];
-                            let mut plan: Vec<(usize, Option<usize>)> = Vec::with_capacity(args.len());
+                            let mut plan: Vec<(usize, Option<usize>)> =
+                                Vec::with_capacity(args.len());
                             for (i, arg) in args.iter().enumerate() {
                                 let pos = match &arg.name {
                                     None => Some(i),
@@ -1309,7 +1306,11 @@ mod tests {
         let mut s = InferSession::new(&unknown);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "unknown-parameter"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "unknown-parameter"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -1321,19 +1322,24 @@ mod tests {
         let mut s = InferSession::new(&duplicate);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "duplicate-argument"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "duplicate-argument"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
 
-        let missing = call_pick(vec![InputArg::named(
-            "a",
-            expr(InputExprKind::IntLit(1)),
-        )]);
+        let missing = call_pick(vec![InputArg::named("a", expr(InputExprKind::IntLit(1)))]);
         let mut s = InferSession::new(&missing);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "arity-mismatch"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "arity-mismatch"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }

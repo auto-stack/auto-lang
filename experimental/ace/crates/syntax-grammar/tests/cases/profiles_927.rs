@@ -18,16 +18,19 @@ const NINE: &[&str] = &[
     // PLAN-928：集合/闭包两面。
     "collections",
     "closures",
+    // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
+    // 声明序在闭包之后）。
+    "scalar-instances",
 ];
 
 #[test]
-fn profiles_declared_set_is_the_seven() {
+fn profiles_declared_set_is_exact() {
     let names = declared_profiles(SOURCE).expect("declared profiles");
     assert_eq!(names, NINE);
 }
 
 #[test]
-fn profiles_compile_all_seven_and_ids_isolate() {
+fn profiles_compile_all_and_ids_isolate() {
     let mut ids = Vec::new();
     for p in NINE {
         let prog = compile_profile(SOURCE, p).expect(p);
@@ -35,7 +38,7 @@ fn profiles_compile_all_seven_and_ids_isolate() {
         assert!(!prog.rules.is_empty(), "{p} rules");
         ids.push(format!("{}", prog.identity.grammar_id.0));
     }
-    // 身份隔离：九个 GrammarId 互异（canonical bytes 不同）。
+    // 身份隔离：各 GrammarId 互异（canonical bytes 不同）。
     let mut sorted = ids.clone();
     sorted.sort();
     sorted.dedup();
