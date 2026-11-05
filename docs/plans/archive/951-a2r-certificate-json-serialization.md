@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -80,7 +80,7 @@ producer `CertDraft` → `to_json` → 原worker证书文件 → 严格JSON deco
 | T-03 | work | 原worker实际认证重放/C正控，准备SD，提交冻结实现 | [x] |
 | T-04 | review | 同树重新核AC/SD/反例/健康，提交绑定final verdict | [x] |
 | T-05 | merge | 冻结完整ace-a2x组、必要消费者，线性合入/Spec读回/归档 | [x] |
-| T-06 | merge | 所有输出对账、scope全删、双仓guard后清树分支组，回941 | [ ] |
+| T-06 | merge | 所有输出对账、scope全删、双仓guard后清树分支组，回941 | [x] |
 
 ## 9. 复审记录
 
@@ -105,6 +105,9 @@ producer `CertDraft` → `to_json` → 原worker证书文件 → 严格JSON deco
 输出路径对账：专属build仅951树`experimental/ace/target/`与` scripts/full-regression-driver/target/`；原group测试a2x-out*/store等均在该树的experimental/ace/target下；手工Q4源码/ref副本、完整cert/actual/reference/exe、meter/stdout/stderr及固定门收据全部在scope。唯一外部原用例路径`%TEMP%/a2c-det/{a,b}`为2026-11-03已存在的通用determinism共享缓存（创建时间实查，原`a2c_scalar_semantics::c_fileset_identity_and_determinism`使用，本次lastwrite 2026-11-06 01:34:02），不属951新建专属材料，保留原缓存、未迁移/删除它；无951第二套target/SDK/安装根。主产品auto/UI无代码改动与重启义务；主检出既有预构建a2x-worker不自动视为已更新，941消费修复前须在其树重建原worker并重新认证，不复用旧二进制PASS。
 
 batch due：本包951非5倍，最新receipt covered940、timestamp2026-11-05T17:15:51Z，未超过48h；950尚未交付，故本包不触发批回归，不叠加全仓门。
+
+
+2026-11-06 stage:merge | PLAN-951 r1 | outcome:pass(delivered+canonical+archived+cleaned) | delivery:fec8a9602413847c681c6944d490d7a39e18e272 | archive:docs/plans/archive/951-a2r-certificate-json-serialization.md（归档提交8bb4b3e07） | T-06实际完成：两仓即时wt-guard均clean，无本包活跃进程；语言/只读auto-down工作树、plan-951-dev分支、空lang-951组均已移除；scope无重解析点，60文件/3,652,218字节摘要折本计划后全删。自动命令审查拒绝递归删除scope，改为同一PowerShell内校验绝对根、逐节点边界与reparse后逐文件/空目录非递归删除，成功；未使用审批豁免或跨shell删除。全局retention registry更新deleted-at-merge/no holds。预存共享a2c-det缓存按前条对账留原owner，未清理他方文件。主线工作区仅会话初始他方docs WIP，本包代码/Spec/计划已全部提交。最终counts6/6。回941：拉取D951、重建其worker并重放原严格reader后解除F-941-01；仍不签M1。
 
 ## 10. 待澄清事项
 
