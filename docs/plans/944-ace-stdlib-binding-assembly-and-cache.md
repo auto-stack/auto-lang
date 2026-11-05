@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-binding-and-assembly.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-950]
-current_step: 0
+current_step: 1
 total_steps: 7
 ---
 
@@ -116,7 +116,7 @@ Auto公共源码、现有Rust装配/ACE workspace、既有TestCase与固定Cargo
 
 唯一实施树 `D:/autostack/.wt/lang-944/auto-lang`、分支 `plan-944-dev` 已在r1前探创建并保持clean。用户已授权全链；先交付950再回本树同步正式master，重核唯一树/仓/分支/base/HEAD，不另建944树。无junction、无跨树可写target。
 
-- [ ] **T-01｜owner_stage: work｜AC-01**：重核 D943、929 统一前门和 source-query 实际 API；以有限公共模块完成 source→Checked→AV/Rust 可行性前探，冻结中立模型位置、读写版本和支持范围；缺语言前置则记录并修订依赖。
+- [x] **T-01｜owner_stage: work｜AC-01**：重核 D943、929 统一前门和 source-query 实际 API；以有限公共模块完成 source→Checked→AV/Rust 可行性前探，冻结中立模型位置、读写版本和支持范围；缺语言前置则记录并修订依赖。
 - [ ] **T-02｜owner_stage: work｜AC-02**：实现操作/模块绑定与真实引用证明；校验 namespace、可见性、用户遮蔽、签名/mode/版本；接通 AV 和 HIR→Rust 两个 consumer，未知符号调用前拒绝。
 - [ ] **T-03｜owner_stage: work｜AC-03**：扩展既有 manifest/codec 和 provider 输入闭包；保持双指纹，分离新旧 producer；结构坏 schema/版本/重复声明在消费前拒绝。
 - [ ] **T-04｜owner_stage: work｜AC-04**：接既有 query/store 的依赖、恢复与首次编辑：body、合同、provider、授权分别处理；持久化无宿主地址/授权，失败候选保旧可用。
@@ -180,9 +180,61 @@ T-01继续执行前置：D943及D950均已正式交付；本目标用户授权�
 
 2026-11-06 regress closeout：原完整队列/三项定向诊断/归因及原子数已在.last-batch-regression.json持久化，batch scope13365files/7943127877bytes已实际删除（1.848s，无links/hold），原主检出admission-0fm3rxcv 5files/56628bytes先迁入scope并逐内容hash核对后随scope删除。原始反例/输入/预期折入954，未因scratch隔离控制改变生产实现；未重复全仓队列。上一goal回合是progress（D950源码/规范/归档/清理真实完成），本回合也是progress（到期queue真实终态、定位新增夹具观察、登记954与提交新周期收据），原目标944仍active。现在进入944 work，后继不再等待周期门，0/7由实际任务验收推进。
 
+### 2026-11-06 T-01只读接线调查（未冻结设计、未写产品代码）
+
+当前唯一树同步commit=7ddeadcfd9bae8b778a384f4d9f23e11fc2f172a，branch plan-944-dev，clean；仍0/7。已按实际源码定位以下接缝，供下一work有界probe验证，不把下列候选机制当交付合同或验收绿：
+
+- D950公共入口`compile_module_product`、`ModuleSession::{from_product,from_recovery,prepare}`、`ModuleAvTarget`与`ModuleA2xTarget`已正式提供模块namespace/可见性/原Span、真实CST恢复与单体事务。两个consumer永久跨端验证现在归AV conformance（A2X生产及tests不依赖AV）；新增中立data依赖须同步原boundaries精确sanction并保真实禁止负控，不能再把双端case放回A2X目录。
+- 真实943事实由`stdlib_assembly::loader::scan_inventory`、`contracts::{scan,validate,audit_providers}`生成，原17 operations/compatibility及operation_proofs。至少一项真实标准操作reference应由实际source/provider签名证明进入新manifest，不能手写一份自证合同；`reference::verify_native_reference`只处理CORE_MODULES公共callee，对str native-only不返回公共proof，不能拿它假称通用。下一probe优先核实际公共`io.say`/console.say等与生产NativeInterface的充分proof；若仅取byte_length的producer-only proof必须准确保留等级/来源，不能升格ACE callable support。945/947行为交付仍不由测试module42/7冒充。
+- 原schema4 AssemblyManifest::freeze/common/consumer FNV语义保持；新ACE producer须明确版本化profile/host/platform/ABI/runtime及操作/物理provider依赖。候选中立数据放semantics-contract（目前只依赖blake3；任何新增必须保持无auto-lang/VM/backend反向依赖），root legacy adapter只提取真实已核事实，禁止用legacy parser去编译新module输入。
+- source-query真实SignatureCatalog集中在catalog.rs，`fn_sig_with`取catalog.get().version，`infer_body_with`按own signature/body key及实际sig_reads失效。可研究把显式effect/context版本作为声明轴接入原catalog/事实，不复制solver，不把整个manifest hash塞每个body键以致无关函数全miss。`ModuleStore`现source-modules-root/2有CST origin、decl_env、facts、targets，Root2不含新assembly contexts；新axis若入存储须新schema/recipe，不重解释旧payload/键。
+- `ManagedStore::replace_current_root`已有liveness+SQLite事务CAS替换。可研究新assembly snapshot保护unpublished source/target required闭包，仅一个外层当前根原子发布；不能分两次发布source-current/assembly-current再把后半失败叫“保旧”。这只是待probe策略，现ModuleStore.prepare/restore可用宿主receipt读未成为CURRENT的不可变根，须真实验证生命周期/GC/失败下一次恢复。
+- AV当前per-run权限路径为av-core::host::authorize(module,grants)，只适用真实host-console MIR；不能把纯模块伪装host-console以制造授权绿。新assembly只能登记显式要求/接当前调用授权，不能保存grants/指针或造CAP求解器；纯module42/7与未来947 console行为分账。原A2X current provider/fragment key/runtime/print identity及现有single-body emitter/verify需继续复用。
+
+Design54只在主检出未提交设计文档存在，实施树未包含该WIP；已只读取材，当前规范仍以canonical Specs与r2 Plan/正式D943/D950为准。未将其或其他会话设计WIP混入提交。后继T-01须先做原真实两个consumer+真实reference proof的有界闭环，再冻结模型/读写版本/实际输入，不以这段调查替代T-01。
+
+
+### T-01 冻结（2026-11-06；r2，唯一树7ddeadcfd基线）
+
+有界前探已闭：原950两条真实consumer用例在944树执行，`cargo test --manifest-path experimental/ace/Cargo.toml -p ace-av --features test-case-batch --test conformance module_sources_950::` exit0，2执行/0失败/0排除（897过滤），准备/编译35.44s、运行5.18s。独立oracle42/7、恢复首编辑及下一次读回仍有效；非944全包验收。日志`D:/autostack/plan-artifacts/plan-944/module-baseline.log`。真实943公共proof选`io.read_line`：当前production接口#1150，公共io.at签名`()->str`与独立adapter一致；临时probe exit0（17operations）。console.say没有普通native绑定，原probe两次unwrap失败如实保留，不能将专用console发射冒充普通native reference。text.byte_length是native_only，不升格公共proof。read_line行为交付仍属947，本包只接signature evidence。
+
+冻结普通实现选择（不改AC/阈值/仓范围）：
+
+| 入口/规则 | 位置及版本 | 生命周期/关闭条件 |
+|---|---|---|
+| 中立显式操作/声明/来源/物理provider事实 | `semantics-contract::assembly`，`ace-stdlib-assembly/1`，独立新domain，不改legacy4字段顺序/FNV投影 | 不依赖root/VM/任一backend；declarations显式requirements、无CAP求解；仅有限scalar模块源，证据reference不扩展可调用profile |
+| 真实std证明导出 | root `stdlib_assembly::ace::current_operation_reference`，重新读当前公共声明+最终NativeInterface独立contract | 归一真实相对producer位置、去掉build根；保声明hash/adapter合同hash、语义版本/requirements；改变当前adapter须拒，不能序列化callee地址/授权 |
+| 新旧身份/双指纹 | 共同指纹包含profile/host/platform及语义source/声明/reference；消费者指纹另含producer/ABI/runtime/toolchain/provider闭包；原`AssemblyManifest::decode_v4`只以旧字段序/FNV读取4 | 新模型未知schema/producer/profile、重复项/坏hash使用前拒；恢复拿当前独立输入admit；异绝对根合法来源不进入portable新身份 |
+| 查询/effect轴 | 复用`SourceQuerySession::catalog`/SignatureCatalog，按真实owner显式声明context增强signature version；默认无context保持原键 | body变只重产owner；显式需求变重验实际读者；无关函数solver/emit/lower/print为0；不把全manifest塞全部body键 |
+| 存储/发布/恢复 | 复用`ModuleStore`、SyntaxArtifactStore与ManagedStore；新context根须显式新schema/recipe；旧root2保旧义 | 唯一外层assembly CURRENT通过已有事务CAS发布并保护source/target required闭包，inner root只prepare；保旧/取消/恢复下一读必须真实验证 |
+| 两端物理身份/运行授权 | 扩原ModuleAvTarget/ModuleA2xTarget，按真实受影响owner读取provider版本；原ABC/fragment admission/lowering/print继续复用 | 不造solver/emitter/store；当前运行每次从调用方重新准入显式要求，拒绝dispatch0；持久化不携grants/host地址。纯scalar不伪装host-console |
+
+T-02已开始模型/adapter/codec实现，T-03..05仍待完成。新模型定向永久测试`ace-semantics-contract --test conformance assembly_944`已3执行/3绿，0排除、11过滤，准备3.79s；其结果只证明模型身份规则，不证明实际consumer/cache已接通。root探针/旧读取验证在进行；既有root编译131warnings、950双端test编译4warnings为实际旧基线，后续逐项归因，不宣称warning-clean。独立review、最终职责组并集、Spec沉淀、归档/清理均pending。
+
+
+### T-02..04 实施检查点：模型、真实proof、查询恢复与AV装配
+
+唯一树已提交基础`4c823e072`、实际reader物理输入`6e25e1631`，随后AV装配单元另提交（见树HEAD）。仍executing 1/7，T-02..05均未整体关闭；不能把这个单元当完整交付。新增中立DTO只引入serde/serde_json；root SDK只依赖data-only contract，不依赖ACE compiler/worker/backend/store。双Cargo.lock只增加该合同包/codec依赖。sema_boundary_manifest_dependency_audit精确声明新增serde数据codec面，原禁止product/backend清单保留；定向1执行绿。
+
+验证（全在944树，scope根统一，TEMP/TMP指向scope/scratch）：
+
+- `cargo nextest run -p auto-lang-core --lib --target-dir D:/autostack/plan-artifacts/plan-944/target -E 'test(actual_public_reference_retains_proof) or test(schema4_read_preserves_original)'`：2执行/2绿，1640非选择。最终准备29.06s、运行0.300s；此前首次冷准备121s/运行0.324s同两项绿。schema4带独立固定wire/FNV金样`common=133f7fdee4742800, consumer=93ff2a3f7992bab7`，不是加新字段再重hash；读取仍原field序/FNV。真实io.read_line proof保`()->str/stdin/来源/独立adapter合同hash`、无绝对根/数字ID冒充操作身份，实际替换独立adapter参数/返回为i32后公共proof拒绝；native_only/未知操作拒绝。
+- 中立模型3执行绿（首次准备3.79s，末次1.62s）：实际common/consumer分离、provider owner区分、ABI/runtime/toolchain/语义签名/版本/requirements陈旧拒绝，schema/profile/producer/重复项/未知字段/绝对路径坏输入拒；codec读/写共4MiB资源上限，无源码语法支持阈值变化。只证明模型。
+- source-query `--lib modules::`：10执行/10绿、37非选择，准备5.29s、运行0.20s。包含新Root3显式contexts，原Root2仍原义；原CST恢复/取消/CAS发布失败等8项继续绿，新effect只真实求解声明者+实际reader共2，local命中；重启无scan/parse/solver，首编辑1solver，再次读回0solver，错误currentcontexts/旧restore入口拒。
+- 新batch候选2执行绿（末次准备0.95s、运行0.01s、48非选择）：同env/generation/不同slot先全验后swap，重复拒绝generation仍0，外来/旧代候选拒。取消后的candidate fact页不能隐藏下次重试的target更新：受影响owner集合按旧/新已提交context差及真实read set选取，不能按候选cache是否hit来决定是否更新目标。无text编辑时0tokenize/parse，两个实际单bodyemit receipts均real_body_plans=1。
+- source-query `--lib assembly::tests`：2执行绿（准备1.25s、运行0.01s、49非选择）：真实模块namespace/同名用户函数不同owner/context；缺声明/坏签名/mode/source/namespace在solver0时拒；函数physical input仅纳own/direct实际读取声明、当前producer/ABI/runtime/toolchain和其provider闭包，无关owner不变。
+- AV版本化入口已接原lower_function_unit/ABC envelope/FunctionCode/ProgramSnapshot，Root2带manifest/current requirement闭包，每unit wire/2键带实际function input version；旧Root1/wire1字段和hash不改。新`run_authorized`每次调用当前checker，不持有或序列化grants/宿主地址；新模式普通run受控拒绝。受影响reader函数实际lower2、无关local的执行FunctionCode为原Arc；同source的旧assembly candidate因root身份不同拒。重启source 0scan/parse/solver、AV0lower；旧入口/陈旧manifest拒，恢复后拒授权和重新授权42均真实执行验证。该AV用例1执行绿，899非选择，准备16.18s、运行0.17s；首次check两个版本常量根路径错误exit101，已改为真实contract模块路径，随后check exit0（2.35s）。
+- AV扩展后重跑950原两个双端consumer用例：2执行/2绿，898非选择，准备0.17s/运行2.48s；原Root1/qualified42/user-shadow7及双端恢复仍有效。不是新增Rust装配入口验证。
+
+日志均在`D:/autostack/plan-artifacts/plan-944/`：root-adapter-tests.log、reference-probe.log、context-root-test.log、source-modules-unit.log、batch-candidates.log、assembly-binding.log、neutral-dependency-audit.log、av-assembly-check.log、av-assembly-test.log、module-baseline-av-extension.log。merge时摘要/hash折入本文件后整scope删除。实际既有warnings：root lib131/libtest145，AV lib3/test4，source-query libtest1；新文件无新增warning，完整归因/health review仍pending。
+
+后继必须闭：HIR→Rust真实装配入口与per-owner fragment键；两端同一次事务发布/失败保旧/下一恢复；真实std proof进入实际双端manifest的永久集成；provider内容与body编辑真实新值、恢复首编辑；当前授权断言；独立review/最终固定职责组/Spec/归档/清理。无用户决定或外部阻塞。可复用ModuleRoot3本身作为唯一外层CURRENT（已required保护targets与CST/facts）而非额外新store/第二层发布；须实证两target manifest/currentcontexts一致和单CAS失败回滚，不能只在文档称已闭。这是原“唯一原子外层根”实现的收敛，不改变AC。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权已由2026-11-06 `/goal 完成计划944` 给出；无额外预算/模型约束。跨仓仍只读。
 - **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](archive/950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；继续交付950，不创建第二目标。
+
+
