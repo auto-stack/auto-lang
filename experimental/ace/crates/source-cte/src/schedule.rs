@@ -336,7 +336,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     // 4) Substitute (nested hash values + meta values -> literals) and
     //    serve through the store-keyed service (single-flight by key).
     let substituted = substitute(inner, out, &meta_vals);
-    out.meta_axes.extend(meta_axes.drain(..));
+    out.meta_axes.append(&mut meta_axes);
     // The demand's compile program: CLOSURE-FILTERED (the owner, its
     // transitive callee closure and the type declarations — §5.3 "callee/
     // instance and executable dependencies first obtain shared Checked
@@ -902,17 +902,18 @@ fn lit_value(e: &Expr) -> Option<CtValue> {
 pub fn expect_of(e: &Expr) -> ExpectTy {
     match &e.kind {
         ExprKind::BoolLit(_) => ExpectTy::Bool,
-        ExprKind::Binary { op, .. } => match op {
-            ace_core::source::ast::BinOp::Lt
-            | ace_core::source::ast::BinOp::Le
-            | ace_core::source::ast::BinOp::Gt
-            | ace_core::source::ast::BinOp::Ge
-            | ace_core::source::ast::BinOp::Eq
-            | ace_core::source::ast::BinOp::Ne
-            | ace_core::source::ast::BinOp::And
-            | ace_core::source::ast::BinOp::Or => ExpectTy::Bool,
-            _ => ExpectTy::I32,
-        },
+        ExprKind::Binary {
+            op:
+                ace_core::source::ast::BinOp::Lt
+                | ace_core::source::ast::BinOp::Le
+                | ace_core::source::ast::BinOp::Gt
+                | ace_core::source::ast::BinOp::Ge
+                | ace_core::source::ast::BinOp::Eq
+                | ace_core::source::ast::BinOp::Ne
+                | ace_core::source::ast::BinOp::And
+                | ace_core::source::ast::BinOp::Or,
+            ..
+        } => ExpectTy::Bool,
         // Call form: the service/executor re-checks the declared class
         // (typed admission); default i32 is only the planning hint.
         _ => ExpectTy::I32,
