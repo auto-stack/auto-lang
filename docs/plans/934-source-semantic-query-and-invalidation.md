@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-cte, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-927, PLAN-928, PLAN-929]
-current_step: 3
+current_step: 4
 total_steps: 13
 ---
 
@@ -161,7 +161,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 | T-01 | work | 当前基线/原796817/929933只读输入 | 全调用/差额/实际版本/预算与S/H窗口冻结，AC-01..03/09 | [x] 2026-11-05：五要素冻结于 master `f38e50758`，主件 `plan-artifacts/plan-934/t01-freeze-inventory.md`。两报告 hash 表全量重算：仅 2 漂移均出自 D932 merge `da4c98b51`（resolve.rs/test-groups，漂移面已核不伤本包缝）；**932/933 已归档**（相对 r2 快照推进——typed 判面/933 材料现为 master 稳定）；929 executing 10/14（代码 `bf8c189c0`，T-11 在途，非D）。PR-01/02 三缺口 master 现核仍开口（adapter.rs:795 resolve先于typecheck；codec.rs:256 InferFacts name+span稀疏；adapter.rs:363 命名实参Unsupported）；929 消费接口具名清单（decl_env/from_restored/fragment桥/profile_grammar/syn decoder）登记待 D929 交付 SHA |
 | T-02 | work | T-01及source/cst/声明稳定接口 | 无环+单体事实消费+恢复首操作/预算的有界整链可行性，失败needs_replan；V-01/04/06，AC-01/05/07 | [x] 2026-11-05：**有界整链通过，不 needs_replan**。代码 `d3226ff69`（crate）+ `bba86bb4b`（事实消费端口/av 用例）；接口冻结件 `plan-artifacts/plan-934/t02-interface-freeze.md`（端口/身份轴/legacy切断设计/恢复交接/预算）。证据：源→每 body 查询（复用 796 solver，他函数仅签名 stub）→事实安装→`emit_resolved_parts`→`verify_scalar`→MIR/ABC→**真实执行 42**，改 leaf body→**43 且 caller 暖命中**（solver 恰 +1）；`body_work` 计量 facts 路径 `typecheck=0`、legacy 对照 1/函数；四方向：冷 miss+solver 关→红、暖 hit+solver 关→绿、篡改事实类型→真实 HIR 校验红、异 owner 页→准入拒。验证：`cargo test -p ace-av --test conformance sq934` 8/8；`cargo test -p ace-source-query --lib` 13/13；`cargo t ace-source ace-semantics` PASS（run-w0t3vybv，冻结提交）。**拆分归属**：legacy 综合切断+命名实参输入=T-04；恢复页/首编辑腿=T-07；预算/峰值正式采样=T-10；四端全消费=T-08；独立 V 用例族/固定组=T-09 |
 | T-03 | work | T-02，拟source-query及semantics adapter必要窗 | 单体懒输入/签名目录/新schema命名空间，V-02/07，AC-02/04 | [x] 2026-11-05：`cc9f9b255`。①**单体懒输入**：`ace_semantics::adapter::project_body_scoped(program,target,…)` —— 目标 body 物化，其余函数仅签名 stub（空 body），**不再 clone 整 Program**，无关 body 的越界构造根本不投影（sq14 直接断言 stub 空/翻转 target 生效/Text 模块的 str body 不被投影）。②**签名目录**：`SignatureCatalog`（name→sig 页、logical↔name、排序候选集+指纹），纯声明面——只改 body 时目录内**所有版本与候选指纹不变**（sq15）；session `fn_sig` 与失效判定改读目录（sq17 一致）。③**命名空间准入**：`validate_against`/`check_envelope` 先验 producer/schema/algo/profile，旧 `ac796` schema 永不命中（sq16：旧 schema/异 producer/错 algo/错 profile 全拒，且 `SQ_SCHEMA != SEMA_PAGE_SCHEMA_V2`）。验证：crate 17/17；av `sq934` 8/8 复跑；`cargo t ace-semantics` PASS（run-bu0_9jsy，冻结提交）。V-02 轴（callee 签名漂移/负依赖/候选集）与 V-07（旧页隔离）在本层成立，正式 V-case 族归 T-09 |
-| T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [ ] 2026-11-05 部分（`bac17cb48`）：**命名实参输入已完成**——`InputArg{name,value}` 保 source-order、按名绑参、未知/重复/元数/类型诊断、adapter 投影、canonical 含绑定名；`pick(b: true, a: 7)` 事实链真实执行 7，位置写法在准入处红（semantics 20/20、av sq934 10/10、source-query 18/18、`cargo t ace-semantics` PASS）。**未完成**：legacy 综合切断（`resolve_with_supply` + 事实权威 VT 安装 + synth 计量反控） |
+| T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [x] 2026-11-05：**命名实参**（`bac17cb48`：`InputArg{name,value}` 保 source-order、按名绑参/未知/重复/元数/类型诊断、adapter 投影、canonical 含绑定名；`pick(b: true, a: 7)`=7，位置写法准入红）+ **legacy 综合切断**（`a676fce5c`：core `TypeSupply` 端口与 `resolve_with_supply`——每个 scalar 表达式/`let` 的 VT 由事实页安装、core 的规则降为校验（`source.fact-mismatch`/`source.fact-missing` 在 bind 阶段红，HIR 之前）；`type_synth` 计量：事实路径 `synth=0 / fact_checks>0 / fact_missing=0`，legacy 对照 `synth>0`；source-query `BodyTypeSupply`+`bind_with_facts` 统一查页/准入/绑定/签名安装）。验证：crate 20/20、av `sq934` 10/10（42/43/命名 7 + 坏事实 bind 红 + cold/warm 反控）、`cargo t ace-source ace-semantics` PASS（run-dzy4abt8，冻结提交） |
 | T-05 | work | T-03/04，query deps/meta目录 | 完整键/正负/SCC/来源刷新，V-02/03，AC-02/03 | [ ] |
 | T-06 | work | T-05，ManagedStore required/root/会话 | source-query candidate/target宿主安装两阶段、dep重验/取消/single-flight，V-05/11，AC-06 | [ ] |
 | T-07 | work | T-05/06，929已审稳定来源恢复接口 | 929-source与934-facts页分工、深验/首好与首坏编辑修复/历史/坏页，V-04/07/10/11，AC-05 | [ ] |
@@ -176,9 +176,17 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 **T-02 已完成（2026-11-05）**：D929 归档（merge `29a7d7007`）后门槛解除，建树 `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`，基面 `cc7b2fce2`）。`d3226ff69` 新 crate + `bba86bb4b` 事实消费端口：普通 scalar 源经 query 事实驱动 HIR 后**真实执行 42**，body 编辑 43 且 caller 暖命中，四方向反控齐；接口冻结见 `plan-artifacts/plan-934/t02-interface-freeze.md`。
 
-**T-03 已完成（2026-11-05，`cc9f9b255`）**：单体懒输入（`project_body_scoped`：只物化目标 body，其余仅签名 stub，不再 clone 整 Program）、签名目录（纯声明面，body 编辑零版本变化）、页信封准入（producer/schema/algo/profile 先验，旧 `ac796` 页永不命中）。下一入口 T-04。
+**T-03 已完成（2026-11-05，`cc9f9b255`）**：单体懒输入（`project_body_scoped`：只物化目标 body，其余仅签名 stub，不再 clone 整 Program）、签名目录（纯声明面，body 编辑零版本变化）、页信封准入（producer/schema/algo/profile 先验，旧 `ac796` 页永不命中）。
+
+**T-04 已完成（2026-11-05，`bac17cb48` + `a676fce5c`）**：命名实参按名绑定（保源求值序），以及 **legacy 综合切断**——`resolve_with_supply` 下 HIR 类型全部来自事实页，core 规则降为校验，`type_synth` 计量 `synth=0`（legacy 对照 >0），坏事实在 bind 阶段红。下一入口 T-05。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: in-progress（**T-04 完成**：命名实参 + legacy 综合切断，事实成为 bind 期类型权威；T-05 下一入口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `bac17cb48`（命名实参）→ `a676fce5c`（综合切断）；主检出簿记 | next: work（T-05 完整键/正负/SCC/来源刷新 → V-02/03）
+  - 综合切断证据：`resolve_with_supply` 下每个 scalar 表达式/`let` 的 VT 来自事实页（`FnResolver::node_ty`/`binding_ty`），core 自身规则仅作校验；`type_synth` 窗口内 `leaf`/`main` 均 `synth=0`、`fact_checks>0`、`fact_missing=0`；同窗口 legacy `compile_scalar_source` `synth>0`（对照）。坏事实（binary 事实改成 bool）在 **bind 阶段** 以 `source.fact-mismatch` 红；部分页 `add_body` 准入拒（sq20）。
+  - 命名实参证据：semantics 20/20（bind-by-name 正例 + 位置写法类型错对照 + 混合 + 三诊断 + 按绑定参数类型检查）；av `pick(b: true, a: 7)`=7；source-query sq18 事实 clean 且两种拼写 body version 不同。
+  - 验证：`cargo test -p ace-av --test conformance sq934` **10/10**；`cargo test -p ace-source-query --lib` **20/20**；`cargo test -p ace-semantics --lib` **20/20**；`cargo t ace-source ace-semantics` **PASS**（`target/test-groups/run-dzy4abt8/`，退出 0，冻结提交单实例；legacy 路径行为未变）。
+  - 说明：`resolve_with`/`compile_*` 旧入口保持 legacy 行为，仅作兼容/差分参照；事实路径已在 av 消费链上真实运行。T-04 行 AC-01/04 的"事实权威 + 综合切断 + 命名输入"三项均具观测。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 10 | from: work | to: work | status: executing | outcome: in-progress（T-04 部分：命名实参输入整链闭合；legacy 综合切断未开始，T-04 仍 `[ ]`） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `bac17cb48`；主检出簿记 | next: work（T-04 余项：`resolve_with_supply` + 事实权威 VT 安装 + synth 计量反控；随后 T-05）
   - 命名实参（V-01 差额面）：中立输入 `InputArg{name,value}` + `Call` 保 source-order；solver 按名绑参（未知参数/重复绑定/元数/按绑定参数的精确类型检查均出定型诊断，`infer.rs` 5 例）；adapter 不再把 named-arg-call 塌成 `Unsupported`；canonical 内容与预算计数含绑定名（同名异绑=不同语义内容）。
