@@ -176,6 +176,8 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 4 | from: user | to: user | status: executing | outcome: waiting（纯等待轮 2/3：D929 仍未落地——master 无 929 merge、archive 无 929、929 仍 10/14 @ `bf8c189c0`；WIP 仍冻结于 03:56，现 09:39 ≈5h43m 无变化） | worktree: 未建 | commit: master `efd8a25c1`（无变化） | next: user（下一轮若仍未落地按上限转 blocked；解除条件：master 出现 929 merge 交付+archive/929-*.md 后 /goal resume）
+
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 3 | from: user | to: user | status: executing | outcome: waiting（纯等待轮 1/3：D929 未落地——master 无 929 merge、archive 无 929、929 仍 executing 10/14 代码 `bf8c189c0`） | worktree: 未建 | commit: master `918ab7a24`（无变化） | next: user（私有层五要素已齐、无授权内工作可做；D929 落地即自动恢复建树 T-02）
   - 观察：929 worktree WIP（incremental-raw.json/Cargo.lock）自 03:56 起 ~5h40m 字节级无变化（现 09:37）——可能为静机 T-11 长采样，也可能 929 会话已停滞；按合同本会话不代 resume，连续 3 个纯等待轮后将转 blocked 并具名解除条件。
 
