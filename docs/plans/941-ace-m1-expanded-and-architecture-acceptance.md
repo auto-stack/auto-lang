@@ -416,6 +416,27 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: aa23ed8be8528dff01c3ed81a23d617909e00ca2 | next: work（剩余映射/实现继续，不是final review失败）
 
+### 2026-11-06 全旧313义务显式映射与对象生命周期预算（goal第10轮）
+
+上一轮分类progress（aa23ed8be真实typed接线/冻结12+90/14旧格位）。本轮main零代码WIP，唯一941树复用；当前施工提交`0dbae763b`→`4ea428e12`→**`07874db1ab270c3a4a3bee51a91dde979b2bd624`**，冻结树clean。继续T-01/T-02，**0/15**；没有缩减原目标、提前final review或签章。
+
+- 显式原parent只读发现到`full-map-formal-identities/`，随后canonical刷新到`full-map-canonical-identities/`：37套件533check（旧35/511 + 原ac-av18 + 941旧源4），执行=0。新增长期源合同`crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json`，完整**313** required逐格保原layer/token/namespace/target/binding oracle、source/typed/scenario身份、原source SHA、正式suite/case/check/recipe/当前Case与sidecar SHA、双owner及具名缺项；不是runtime收据。**251格**有显式原正式入口locator（共304个不同entry），**62格**尚未绑定正式入口，78个scenario仍欠完整机制/原样本序列，原38 cert-gap完整保留。所有discovery execution=UNOBSERVED/executed=0，14个已支持reader不冒313实际执行或全部机制覆盖。legacy-A2R/legacy-AVM不被新HIR/C身份替换；同源hash只核源，不自动判覆盖/执行。
+- 新`ace_m1_legacy_obligations.py`在当前授权repo内严格核固定map hash、原四批准件+scenario规范、313集合hash/原oracle、正式组与suite/target身份、全部显式当前源/sidecars和alias边界。W01 i64-min与W03 f64负零虽有相同bits也不能交换locator；多文件project保main+helper，不误删合法二文件腿。原sample冻结：I01 30修订、I10 512不同修订；I11按既有批准规范P90≤2000ms、至少9/10，P95<1000ms仅历史诊断并列，未用binding的旧简写改验收口径。缺项/unknown/type错/样本削减/认证gap删项/父PASS冒执行均拒。
+- 将完整旧义务discovery接入现只读preview，未把它称完整新registry。加入后原累积reservation触发48MiB拒，**没有放宽帽**：新增显式对象生命周期释放，三个已知旧执行reader与两个已知discovery reader返回后，原raw/decoded表/索引不再存活，只保有界摘要预留（执行摘要512KiB、discovery128KiB）；原CaseCopy、registry/identity等仍存活部分不释放。LiveBudget保留全生命周期`peak_reserved`，summary过大/无效释放/新分配越帽仍拒，不清峰值、不从传入counter推导。永久反控证明保留摘要预算、峰值不回退、后续超限拒、过大返回对象不释放原预算。
+- **canonical交付缺陷本轮关闭**：全局*.json最初吞掉新map，4ea428e12以明确永久源合同例外纳入git（raw evidence仍只在scope）。随后实际`git show`对照发现Python默认写CRLF，而core.autocrlf=input保存LF：本地source pins与fresh blob不一致。归一15个本包文件的本地换行（大部分Git源码blob本来已LF，无业务改动），更新registry中ABI/native父源码hash与legacy Case/suite字节身份、完整map及其固定hash；最终map705009 bytes、SHA256=`ebe902c39c042e422b7eef604b119a4fab0f88122374914b9083a3e604d1d1fb`。原批准manifest/binding/NA/分母零改。最终`git cat-file --batch`逐件核验**191个**map/registry/parent/批准/原源/Case/sidecar：工作字节全部等于当前提交blob，`full-map-committed-input-audit.json`留明细。之前CRLF工作副本的收据不再充作新鲜检出证明。
+- legacy B08/B11 Case/suite换行字节身份变化，按实际需要重取原4条：`cargo t case-ace-m1-legacy-941 --out <scope>/legacy-canonical-lf` exit0 **4/4**，15.4418981s，results SHA256=`ffaf16e3f1b72ba84d571c0cf68d10898ba6a924ed6f7e0e3c8075acbbea9567`。原AV/native worker SHA、其他原Case/suite/source/oracle/steps均未改变，20首链与typed原18/12有效原始证据复用；只读37份正式身份+原parent discovery重新从实际双bin当前auto-case取得并与6份跟踪合同对账，配置`full-map-canonical-bindings.json`，没有拿旧producer身份冒新二进制。
+- **最终冻结有效治理门**：`cargo t infra-ace-m1-arch --out <scope>/full-map-canonical-frozen-controls` exit0/gate_passed=true，**100/100**（90旧控制+7 map+3生命周期），2.6169286s；results SHA256=`0196907038cc7332338bfba7548231f9ec2ede32a47ed922042743f1e2a40d54`。本轮只改父只读治理/源合同，未重复运行未改语言原完整组或全仓batch；新鲜LF Case4已单列实际重放。diff检查通过。
+- 最终原capture/native_meter包实际CLI `python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <941-tree> --evidence <scope> --bindings full-map-canonical-bindings.json`：exit1、20首链完整、实际旧执行仍**14PASS/299UNOBSERVED**，map发现执行0，claim=false。`full-map-canonical-final-preview.json`39525 bytes，SHA256=`05546a8ed3c63cbb6a2cb84ccef7cf3bcf2b91761ec6a415c83fbf4ec9781f60`；1429.2239ms，whole process peak20,496,384 bytes<128MiB，当前保留reservation30,045,318、**峰值46,727,672 bytes<48MiB**（双值都入报告）。14个reader来源SHA可追溯；组合Popen禁止正控通过。该运行不是正式性能采样/P90 gate。
+- 当前canonical配置重放既有真实证据副本反控（`full-map-canonical-controls.json`）：native帧及摘要同改错误f64/正确原bits，只有W01:ac FAIL（13PASS）；再将AV同改同错，两格均FAIL（12PASS）；299未观测与map UNOBSERVED原样保留。证明新locator与对象释放不覆盖反例。副本不是实际运行证据。
+
+首次失败/中间状态保留：首遍map适配误限single source而拒合法916/917二文件project，补完整source列表逐件核验；生命周期初版只释放catalog仍越48MiB而拒，未调高帽，按已知reader真实返回生命周期释放后通过；新增预算单元首遍漏算EvidenceScope既有256KiB缓冲而1/10红，校正预存基数后10/10；首个100门时map被ignore/后续CRLF blob不等，均未作为最终交付门，最终跟踪LF提交与191件blob对照重新证明如上。全部原始材料仅plan-941 scope，未写新Spec/legacy specs.json或操作别会话。
+
+T-01尚欠**新Q4/ARCH完整原子义务、全部域具体原预算/完整生产者及后继owner映射**（map明确legacy in-process budget仍待审，不套AV/native默认帽）；新全registry、全机制reader及T05..13未关闭。当前D936/938/939待真实交付只限制所需consumer/最终T12，不阻后续独立审计；下一轮以完整Q4/ARCH表和预算收口为主，不将251 locator/100控制等同系统交付或完成验收。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 07874db1ab270c3a4a3bee51a91dde979b2bd624 | task_ids: T-01/T-02（未关闭） | evidence: 完整313显式locator/gap表、100冻结控制、canonical旧4实测与191件提交blob对账、20首链/14旧格位与46.7MB峰值 | blockers: 无新增用户决定；完整Q4/ARCH/预算映射与剩余实现 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 10 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 07874db1ab270c3a4a3bee51a91dde979b2bd624 | next: work（余下完整映射/实现，不是final review失败）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
