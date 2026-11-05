@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-952
-status: reviewed
+status: archived
 feature_name: Rust证书绑定实际HIR域
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904]
-current_step: 4
+current_step: 5
 total_steps: 6
 ---
 
@@ -72,7 +72,7 @@ V-01=真实worker各profile实际actual+手写reference认证，标准JSON解析
 | T-02 | work | T-01 | 原producer绑定out.hir_domain、移除domain_of，定向回归/格式/编译 | [x] |
 | T-03 | work | T-02 | 提交代码/SD草案，execution_done，完整组门留merge | [x] |
 | T-04 | review | T-03 | 冻结逐AC/遗漏/健康/SD独立复审 | [x] |
-| T-05 | merge | T-04 | 冻结cargo t ace-a2x完整组、合main及Spec、归档 | [ ] |
+| T-05 | merge | T-04 | 冻结cargo t ace-a2x完整组、合main及Spec、归档 | [x] |
 | T-06 | merge | T-05 | guard/tree/branch/组/scope清理、941交付回执 | [ ] |
 
 ## 9. 复审记录
@@ -140,6 +140,16 @@ stage: review | review_scope: final | plan_id: PLAN-952 | plan_revision: r1 | ou
 
 2026-11-06 D953后完整门终态：release显式构建exit0；`cargo t ace-a2x --out D:/autostack/plan-artifacts/plan-952/full-after-d953` exit0，**189执行/189通过**，gate_passed=true，errors=[]，整命令164.0424465s；results SHA256 **25c198b56e3fc3187b507c0add67e573518b037e9f341f1a902f82947b4336c6**。冻结代码仍a2866eba2f73a3824a3425dfbc42e9e272f483fe；不以该绿追认原两次红。当前reviewed 4/6，完整职责门已闭，尚未landing/archive/cleanup。周期新fixture红已有独立PLAN-954由原队列owner立项，不重复建号或打开953。host goal经实际get_goal仍blocked；按auto-plan-goal的inactive恢复规则保存检查点，待用户`/goal resume`恢复自动链后执行merge。
 
+### Merge落地回执（2026-11-06）
+
+用户已发`/goal resume`恢复原941目标执行授权；host状态尚未反映active，不再要求用户重复同一恢复指令。prepared/final pass r1/a2866eba2；main自该基面仅计划文档变化，952 rebase无冲突且range-diff **a2866eba2 = 08df260df**。生产代码、fixture、SD、依赖/配置/输入未变，复用已冻结189/189全组结果，不重复跑组。guard clean后ff-only合入，main tip实际=**08df260df8fad98ad2b56a1ba79e68a64e161e55**，无merge commit。canonical `docs/specs/auto-test-case/a2r-hir-certification.md`实际SHA **a354c7807e538d9f34482f2710083752d7837a4ffb55c6bd459c6c1e0342192b**，与reviewed SD一致，正文链接和结构核对通过，不写派生index/旧ledger。
+
+路径对账：所有probe源码/diagnosis-target/日志/回归结果/child TEMP/TMP均在plan-952 scope；常规target在952唯一树，auto-down只读兄弟。没有额外安装/消费根/外盘输出。scope清点3348 files /132833054 bytes、0 reparse；无关联活动进程。复制原始采集器诊断所持F95201已由D953关闭，原两个非确定性失败仅历史观察，未声称逐次因果证明；无具名未解决材料持有，scope全删。清理待执行，不先填cleaned。
+
+落地非部署：main release/a2x-worker.exe仍2026-11-05 13:29:34旧产物；main debug/auto-case.exe为2026-11-06 03:59:09，不等同本包新release。未替用户重启共享进程，941将自己重建原producer后二次真实认证。周期receipt现covered953、37/37队列实际终态red且已具名分流954；952不触发新的%5阈值，无需再跑全仓，保留known red，不冒全绿。
+
+completion_kind: delivered | stage: merge | plan_id: PLAN-952 | plan_revision: r1 | delivery_commit: 08df260df8fad98ad2b56a1ba79e68a64e161e55 | checkpoints: prepared/landed/canonical_verified/archived | cleanup: pending
+
 ## 10. 待澄清事项
 
-1. F-952-01独立修复已由D953交付；952原授权保持，待在D953基面核完整门再合入。
+1. F-952-01由D953关闭；952已交付，当前仅清理待完成，之后返回941。
