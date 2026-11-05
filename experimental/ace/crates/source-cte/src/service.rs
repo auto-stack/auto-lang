@@ -95,6 +95,12 @@ impl<S: CtEnvelopeSink> CtService<S> {
         self.forbid_av = on;
     }
 
+    /// PLAN-936（T-05）：root 累计预算收窄每次调用的墙钟（min(2s, remaining)；
+    /// 不重置。由调度层按当前 root 剩余设置）。
+    pub fn set_wall_budget(&mut self, budget: std::time::Duration) {
+        self.wall_budget = budget;
+    }
+
     pub fn cancel(&self) -> &CancelFlag {
         &self.cancel
     }

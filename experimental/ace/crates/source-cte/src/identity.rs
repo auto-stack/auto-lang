@@ -402,6 +402,8 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
 
 fn walk_expr(e: &Expr, out: &mut Vec<String>) {
     match &e.kind {
+        // PLAN-936：Hash 内的被调方进入执行闭包轴（其 body 版本入 key）。
+        ExprKind::HashExpr { expr: inner } => walk_expr(inner, out),
         ExprKind::Call { callee, args } => {
             out.push(callee.name.clone());
             for a in args {

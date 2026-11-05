@@ -445,3 +445,292 @@ fn t02_08_unknown_and_off_surface_callees_are_controlled_rejections() {
     assert_eq!(c.ct_execute, 0, "no rejection reached the AV");
     assert_eq!(c.ct_rejections, 3);
 }
+
+// -- T-05: query DAG / scheduling ------------------------------------------
+
+use crate::schedule::{serve_program, PlanError, RootBudget};
+
+/// Parse through the CT caps front door (the scalar-ct face admits `#`,
+/// the fields-only type form and — with the meta cap — the selectors).
+fn parse_ct(src: &str, meta: bool) -> ace_core::source::ast::Program {
+    let mut caps = vec![ace_core::source::cst::CT_CAPABILITY.to_string()];
+    if meta {
+        caps.push("cte.meta.fields/v1".to_string());
+    }
+    match ace_core::source::cst::parse_front_with_caps(
+        ace_core::source::cst::FrontRequest {
+            src,
+            profile: SourceProfile::Scalar,
+            kind: ace_core::source::cst::FrontKind::WholeModule,
+            budget: ace_core::source::cst::FrontBudget::WORK_OWNED_64MIB,
+        },
+        &caps,
+    ) {
+        ace_core::source::cst::FrontOutcome::Ok(ok) => ok.program,
+        other => panic!(
+            "ct-face parse failed: {:?}",
+            matches!(other, ace_core::source::cst::FrontOutcome::Diag(_))
+        ),
+    }
+}
+
+fn serve(src: &str) -> (crate::schedule::ServedRoot, CtService<MemoryEnvelopeSink>) {
+    serve_meta(src, false)
+}
+
+fn serve_meta(
+    src: &str,
+    meta: bool,
+) -> (crate::schedule::ServedRoot, CtService<MemoryEnvelopeSink>) {
+    let program = parse_ct(src, meta);
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let root = serve_program(
+        &mut svc,
+        &program,
+        src,
+        "m.at",
+        "pkg",
+        "mod",
+        &RootBudget::new(RootBudget::default_total()),
+    )
+    .expect("serve");
+    (root, svc)
+}
+
+/// 相位规则：嵌套显式 Hash 都是编译期需求——先内后外全部求值；同键
+/// 单飞（两个相同嵌套需求只执行一次真 AV）。
+#[test]
+fn t05_nested_hashes_are_demands_inner_first_single_flight() {
+    const SRC: &str = "\
+fn unit() int {
+    return 5
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(#{ unit() }, #{ unit() }) }
+}
+";
+    let (root, svc) = serve(SRC);
+    // 三个站点全部拿到冻结值：unit=5（×2 站点）、sum=10。
+    assert_eq!(root.values.len(), 3, "all three hash sites served");
+    assert!(root
+        .values
+        .values()
+        .all(|v| *v == CtValue::I32(5) || *v == CtValue::I32(10)));
+    // 单飞：unit 一个键只执行一次 + sum 一次 = 2 次真实 AV。
+    let c = svc.counters();
+    assert_eq!(c.ct_execute, 2, "inner deduped by complete key, outer once");
+    assert_eq!(
+        c.ct_hits, 1,
+        "the second identical nested demand hits the frozen page"
+    );
+}
+
+/// 同根多站点同键：一次执行，站点共享冻结值（根内单飞经 store 键）。
+#[test]
+fn t05_two_identical_sites_execute_once() {
+    const SRC: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    let a = #{ sum(20, 22) }
+    let b = #{ sum(20, 22) }
+    return a+b
+}
+";
+    let (root, svc) = serve(SRC);
+    assert_eq!(root.values.len(), 2);
+    assert!(root.values.values().all(|v| *v == CtValue::I32(42)));
+    assert_eq!(svc.counters().ct_execute, 1);
+}
+
+/// 查询环：A 的 Hash 调 B，B 的 Hash 调 A —— 闭合链具名拒绝。
+#[test]
+fn t05_query_cycle_is_named_with_the_chain() {
+    const SRC: &str = "\
+fn a() int {
+    return #{ b() }
+}
+fn b() int {
+    return #{ a() }
+}
+fn main() int {
+    return #{ a() }
+}
+";
+    let program = parse_ct(SRC, false);
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let err = serve_program(
+        &mut svc,
+        &program,
+        SRC,
+        "m.at",
+        "pkg",
+        "mod",
+        &RootBudget::new(RootBudget::default_total()),
+    )
+    .expect_err("the A->B->A hash cycle must be rejected");
+    match &err {
+        PlanError::Cycle { chain } => {
+            assert!(chain
+                .first()
+                .map(|s| s == "a" || s == "main")
+                .unwrap_or(false));
+            assert!(chain.contains(&"a".to_string()) && chain.contains(&"b".to_string()));
+            assert_eq!(chain.last(), Some(&"a".to_string()), "the chain closes");
+        }
+        other => panic!("expected a named cycle, got {other:?}"),
+    }
+    assert_eq!(
+        svc.counters().ct_execute,
+        0,
+        "no AV runs for a cyclic demand"
+    );
+}
+
+/// 普通函数递归不是查询环：AV fuel 执行，返回真值。
+#[test]
+fn t05_plain_recursion_is_not_a_cycle() {
+    const SRC: &str = "\
+fn countdown(n int) int {
+    if n <= 0 {
+        return 0
+    }
+    return countdown(n-1)
+}
+fn main() int {
+    return #{ countdown(3) }
+}
+";
+    let (root, svc) = serve(SRC);
+    assert_eq!(root.values.len(), 1);
+    assert_eq!(
+        root.values.values().next(),
+        Some(&CtValue::I32(0)),
+        "recursion ran to completion on the AV"
+    );
+    assert_eq!(svc.counters().ct_execute, 1);
+}
+
+/// meta 本地求值：field_count 成真实 AV 实参（2 字段 → sum(2,40)=42）；
+/// 字段 2→3 使同一站点 43（经替换参数轴失效）；meta-only 需求零 AV。
+#[test]
+fn t05_meta_evaluates_locally_and_becomes_real_av_args() {
+    const V2F: &str = "\
+type Pair {
+    x int
+    y int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(ct_field_count(Pair), 40) }
+}
+";
+    const V3F: &str = "\
+type Pair {
+    x int
+    y int
+    z int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(ct_field_count(Pair), 40) }
+}
+";
+    let (r1, s1) = serve_meta(V2F, true);
+    assert_eq!(r1.values.values().next(), Some(&CtValue::I32(42)));
+    assert_eq!(r1.meta_queries, 1);
+    assert_eq!(s1.counters().ct_execute, 1, "the sum call really executed");
+    assert_eq!(r1.meta_axes.len(), 1);
+
+    // 字段 2→3：同一调用点文本不变，经替换实参（sum(3,40)）真实重执行。
+    let (r2, s2) = serve_meta(V3F, true);
+    assert_eq!(r2.values.values().next(), Some(&CtValue::I32(43)));
+    assert_eq!(
+        s2.counters().ct_execute,
+        1,
+        "fresh service: a real AV run for the new shape"
+    );
+}
+
+/// meta-only 需求（has_field）零 AV 执行、Bool 语义（缺席=false）。
+#[test]
+fn t05_meta_only_demand_never_runs_the_av() {
+    const SRC: &str = "\
+type Pair {
+    x int
+}
+fn main() int {
+    if #{ ct_has_field(Pair, \"x\") } { return #{ ct_field_count(Pair) }
+ }
+    return 0
+}
+";
+    let (root, svc) = serve_meta(SRC, true);
+    let c = svc.counters();
+    assert_eq!(
+        c.ct_execute, 0,
+        "literal/meta-only demands never touch the AV"
+    );
+    assert_eq!(c.ct_hits, 0);
+    assert!(root.values.values().any(|v| *v == CtValue::Bool(true)));
+    assert!(root.values.values().any(|v| *v == CtValue::I32(1)));
+    assert!(root.meta_queries >= 2);
+}
+
+/// 共享累计预算：耗尽的 root 是资源态，不执行不发布。
+#[test]
+fn t05_shared_root_deadline_is_a_resource_state() {
+    const SRC: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(20, 22) }
+}
+";
+    let program = parse_ct(SRC, false);
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let err = serve_program(
+        &mut svc,
+        &program,
+        SRC,
+        "m.at",
+        "pkg",
+        "mod",
+        &RootBudget::new(std::time::Duration::from_millis(0)),
+    )
+    .expect_err("an exhausted root budget rejects before any execution");
+    assert!(matches!(err, PlanError::Deadline { .. }));
+    assert_eq!(svc.counters().ct_execute, 0);
+    assert_eq!(svc.counters().ct_freeze_publishes, 0);
+}
+
+#[test]
+fn t05_expect_inference_helper() {
+    use crate::identity::ExpectTy as E;
+    use ace_core::source::ast::{BinOp, Expr, ExprKind};
+    let mk = |op: BinOp| Expr {
+        span: ace_core::atom_text::Span { start: 0, end: 0 },
+        kind: ExprKind::Binary {
+            op,
+            lhs: Box::new(Expr {
+                span: ace_core::atom_text::Span { start: 0, end: 0 },
+                kind: ExprKind::IntLit(1),
+            }),
+            rhs: Box::new(Expr {
+                span: ace_core::atom_text::Span { start: 0, end: 0 },
+                kind: ExprKind::IntLit(2),
+            }),
+        },
+    };
+    assert_eq!(crate::schedule::expect_of(&mk(BinOp::Lt)), E::Bool);
+    assert_eq!(crate::schedule::expect_of(&mk(BinOp::Add)), E::I32);
+}
