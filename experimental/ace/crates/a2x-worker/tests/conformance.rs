@@ -30,6 +30,8 @@ mod boundaries;
 mod bridge_flags;
 #[path = "cases/cert_coll_904.rs"]
 mod cert_coll_904;
+#[path = "cases/cert_domain_952.rs"]
+mod cert_domain_952;
 #[path = "cases/cert_json_951.rs"]
 mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]

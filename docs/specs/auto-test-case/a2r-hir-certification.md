@@ -43,6 +43,15 @@ schema/recipe、完整文件集、工具、能力、配置键材语义保持；�
 回归入口为 `cargo t ace-a2x --test-name cert_json_951`，包含 null/集合非空配置、
 空/多项能力列表、字符串转义与坏分隔符拒绝控制。
 
+### 实际 HIR 域绑定（PLAN-952）
+
+证书的 `profile` 与 `hir_domain` 均绑定同一次实际编译产物：HIR 域直接取
+`EmitOutcome.hir_domain`，与该产物的 manifest 一致。不从 profile 字符串
+另建映射或在未知拼写时默退 core。标量、core、record、text、text-record、
+collections 的真实认证回归由 `cargo t ace-a2x --test-name cert_domain_952`
+核对 actual/reference 的值与 cert/manifest/事前正式域；六个 profile 均执行，
+不能用手构证书或文件可解析代替域身份验证。
+
 ## 资产与门
 
 `test/cases/a2r-hir-892/`：B01/B04/B13/B14/NAMED-01 五例（源=冻结语料字节
