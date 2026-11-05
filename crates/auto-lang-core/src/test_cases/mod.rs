@@ -1041,7 +1041,8 @@ fn dispatch_check(
             )
         }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
+            if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(abi::BRIDGE_RECIPE) =>
         {
             abi::run_check(
                 resolved,

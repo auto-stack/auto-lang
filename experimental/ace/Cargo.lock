@@ -23,6 +23,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-core",
  "ace-core",
+ "ace-foreign-contract",
 ]
 
 [[package]]
@@ -69,8 +70,11 @@ dependencies = [
 name = "ace-abi"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-c",
+ "ace-a2x-core",
  "ace-artifacts",
  "ace-core",
+ "ace-foreign-contract",
  "ace-semantics-contract",
  "base64 0.22.1",
  "blake3",
@@ -230,6 +234,16 @@ dependencies = [
 [[package]]
 name = "ace-data-runtime"
 version = "0.1.0"
+
+[[package]]
+name = "ace-foreign-contract"
+version = "0.1.0"
+dependencies = [
+ "ace-semantics-contract",
+ "blake3",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "ace-lowering"

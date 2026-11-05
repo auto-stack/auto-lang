@@ -1,0 +1,10 @@
+# PLAN-937 CA-D1: the scalar bridge corpus. The `probe` adapter runs the
+# registered `abi/ca-d1-bridge-v1` recipe through the SAME abi worker
+# (real compile/link/run per query step, real store on disk); every
+# judgement is parent-side. fixture_root = this directory.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-ca-d-scalar-937", include: [
+    "bridge-legs.case.ad"
+] }
+```

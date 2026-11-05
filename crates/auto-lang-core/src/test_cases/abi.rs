@@ -37,6 +37,10 @@ const BUILD_WALL: Duration = Duration::from_secs(300);
 
 pub const ABI_WORKER_SCHEMA: &str = "abiworker/1";
 pub const ABI_RECIPE: &str = "abi/interop-v1";
+/// PLAN-937 CA-D1: the scalar bridge recipe (same `abiworker/1` worker,
+/// own deck grammar `deck ace-ca-d1/1` and legs; strictly disjoint from
+/// `abi/interop-v1` — decks/legs never cross).
+pub const BRIDGE_RECIPE: &str = "abi/ca-d1-bridge-v1";
 /// Mirrored worker identity (drift fails admission loudly).
 pub const EXPECTED_ABI_WORKER_VERSION: &str = "abi-worker/0.1.0";
 
@@ -790,9 +794,12 @@ pub fn run_check(
         .probe_steps
         .as_ref()
         .ok_or("probe check without steps (contract violation)")?;
-    if check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
+    let bridge_mode = check.options.probe_recipe.as_deref() == Some(BRIDGE_RECIPE);
+    if !bridge_mode && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
+    let active_recipe = if bridge_mode { BRIDGE_RECIPE } else { ABI_RECIPE };
+
     // Run belongs only to the AV recipe. Also reject programmatically
     // constructed checks before creating artifacts or locating a worker.
     if steps.iter().any(|step| matches!(step, ProbeStep::Run)) {
@@ -808,6 +815,22 @@ pub fn run_check(
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("probe artifact dir: {e}"))?;
 
     let mut deck = input_bytes.clone();
+    if bridge_mode {
+        // deck-level admission parent-side: the bridge deck header is
+        // mandatory before any worker is built or spawned (mutual
+        // exclusion with the 797 grammar starts here).
+        let deck_head = String::from_utf8_lossy(&deck).into_owned();
+        let first_meaningful = deck_head
+            .lines()
+            .map(|l| l.trim())
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .unwrap_or("");
+        if first_meaningful != "deck ace-ca-d1/1" {
+            return Err(format!(
+                "abi/ca-d1-bridge-v1 consumes `deck ace-ca-d1/1` decks; this deck is not one (got {first_meaningful:?})"
+            ));
+        }
+    }
 
     let mut mismatches: Vec<Mismatch> = Vec::new();
     /// F-797-R4-09 (R8/R9): each reported query step paired with the JOB
@@ -906,7 +929,7 @@ pub fn run_check(
             .as_bytes(),
         ));
         let mut request = serde_json::json!({
-            "recipe": ABI_RECIPE,
+            "recipe": active_recipe,
             "nonce": nonce,
             "deck_b64": b64(&deck),
             "leg": abi.leg,
@@ -958,7 +981,7 @@ pub fn run_check(
                     return Err(format!("abi worker error {}: {}", e.code, e.message));
                 }
             };
-            if ok.recipe != ABI_RECIPE {
+            if ok.recipe != active_recipe {
                 return Err(format!("abi worker recipe mismatch: {}", ok.recipe));
             }
             if ok.worker_version != EXPECTED_ABI_WORKER_VERSION {

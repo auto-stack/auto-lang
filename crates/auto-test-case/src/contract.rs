@@ -1966,20 +1966,20 @@ fn decode_options(
         };
         let abi = match f.sub("abi") {
             None => {
-                if recipe == "abi/interop-v1" {
+                if recipe == "abi/interop-v1" || recipe == "abi/ca-d1-bridge-v1" {
                     return Err(err(
                         &f.path_of("abi"),
-                        "abi/interop-v1 requires an abi binding",
+                        format!("{recipe} requires an abi binding"),
                     ));
                 }
                 None
             }
             Some(v) => {
-                if recipe != "abi/interop-v1" {
+                if recipe != "abi/interop-v1" && recipe != "abi/ca-d1-bridge-v1" {
                     return Err(err(
                         &f.path_of("abi"),
                         format!(
-                            "the abi binding belongs to abi/interop-v1, not {:?}",
+                            "the abi binding belongs to abi/interop-v1 / abi/ca-d1-bridge-v1, not {:?}",
                             recipe
                         ),
                     ));
@@ -1988,10 +1988,20 @@ fn decode_options(
                 let pairs = as_obj(v, &apath)?;
                 let af = Fields::new(&apath, pairs, &["leg"])?;
                 let leg = req_str(&af, "leg")?;
-                if !matches!(leg.as_str(), "a" | "b" | "c") {
+                let legal = if recipe == "abi/interop-v1" {
+                    matches!(leg.as_str(), "a" | "b" | "c")
+                } else {
+                    // PLAN-937: the bridge legs (source export + the three
+                    // typed peer legs).
+                    matches!(
+                        leg.as_str(),
+                        "source" | "typed-self" | "typed-n2c" | "typed-c2n"
+                    )
+                };
+                if !legal {
                     return Err(err(
                         &af.path_of("leg"),
-                        format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
+                        format!("unknown ABI leg {leg:?} for {recipe}"),
                     ));
                 }
                 Some(ProbeAbiSpec { leg })
@@ -2775,6 +2785,9 @@ pub struct SyntaxEdit {
 pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "sema/query-v1",
     "abi/interop-v1",
+    // PLAN-937 CA-D1: the scalar bridge recipe (same worker binary, own
+    // deck grammar/legs; strictly disjoint from abi/interop-v1).
+    "abi/ca-d1-bridge-v1",
     "ac-av/core-run-v1",
     // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
     // post-797/798 single-writer window; same seam contract.

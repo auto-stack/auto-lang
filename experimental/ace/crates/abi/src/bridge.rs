@@ -675,7 +675,7 @@ fn produce_c_object_cached(
     let key_tag = format!("cl:{}", src.file_name().unwrap_or_default().to_string_lossy());
     let include = cside_dir();
     let obj_path = obj_out.to_path_buf();
-    crate::cache::produce_c_object(store, src, &include, &[], || {
+    let (bytes, _hit) = crate::cache::produce_c_object(store, src, &include, &[], || {
         counters.bump_producer(&key_tag);
         let deps = ctool::compile_c_with_deps(src, &include, &obj_path)
             .map_err(|e| format!("cl: {e:?}"))?;
@@ -683,9 +683,9 @@ fn produce_c_object_cached(
         Ok((bytes, deps))
     })
     .map_err(|e| BridgeError(format!("c object: {e:?}")))?;
-    // materialize the cached/stored object bytes at obj_out (link input)
-    std::fs::write(obj_out, std::fs::read(obj_out).unwrap_or_default())
-        .map_err(|e| BridgeError(e.to_string()))?;
+    // ALWAYS materialize the object bytes at obj_out — a store HIT does
+    // not write the file, but the link step needs it on disk.
+    std::fs::write(obj_out, bytes).map_err(|e| BridgeError(e.to_string()))?;
     Ok(())
 }
 
@@ -888,6 +888,7 @@ pub fn run_typed_caller_with_checks(
 // Source export chain (V-02 / V-05 / V-06)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct SourceExportRequest {
     /// Real Auto source text (compiled by the checked frontdoor — never
     /// a fixture-name body).

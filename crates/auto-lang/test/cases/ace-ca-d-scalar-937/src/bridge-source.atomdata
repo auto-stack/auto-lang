@@ -1,0 +1,13 @@
+# PLAN-937 CA-D1 bridge deck (data, not executable source): the frozen
+# first-case source-export + typed-peer inputs consumed by the
+# abi/ca-d1-bridge-v1 recipe worker.
+deck ace-ca-d1/1
+leg source
+module t937_source
+export sum as t937_sum
+export div as t937_div
+src {
+fn sum(a int, b int) int { return a + b }
+fn div(n int, d int) int { return n / d }
+fn main() int { return 0 }
+}

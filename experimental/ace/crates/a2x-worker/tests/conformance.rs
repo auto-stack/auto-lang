@@ -64,3 +64,5 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
+#[path = "cases/bridge_flags.rs"]
+mod bridge_flags;

@@ -35,6 +35,7 @@ pub mod typed_decl;
 pub mod typed_emit;
 pub mod validate;
 pub mod worker;
+pub mod worker_bridge;
 
 /// Re-export the semantic contract crate so integration tests can mint
 /// refs through the SAME real library the implementation binds to.

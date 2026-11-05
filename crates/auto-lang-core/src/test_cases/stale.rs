@@ -415,7 +415,9 @@ pub fn check_with_families(
                 // PLAN-797 T-06: probe rows carry a RECIPE-SPECIFIC axis
                 // family — the ABI recipe binds to the abi worker's
                 // identity axes, everything else to the sema worker's.
-                let abi_row = row_axes.get("recipe").map(|r| r == "abi/interop-v1");
+                let abi_row = row_axes.get("recipe").map(
+                    |r| r == "abi/interop-v1" || r == "abi/ca-d1-bridge-v1",
+                );
                 let mut applicable: Vec<&str> = if is_probe {
                     match abi_row {
                         Some(true) => vec![

@@ -958,6 +958,40 @@ suite = "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad"
 all = false
 
 [[group]]
+name = "ace-foreign-contract"
+title = "Cargo包 ace-foreign-contract（PLAN-937 CA-D1 中立接口事实/物理投影）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "ace-foreign-contract", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-a2c-abi"
+title = "Cargo包 ace-a2x-c ABI 标量导出面（PLAN-937 CA-D1 abi_scalar）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "ace-a2x-c", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "case-ace-ca-d-scalar-937"
+title = "TestCase case-ace-ca-d-scalar-937（PLAN-937 CA-D1 标量桥首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-ca-d-scalar-937/ace-ca-d-scalar-937.suite.ad"
+all = false
+
+[[group]]
 name = "case-autoabi"
 title = "TestCase case-autoabi"
 runner = "case"

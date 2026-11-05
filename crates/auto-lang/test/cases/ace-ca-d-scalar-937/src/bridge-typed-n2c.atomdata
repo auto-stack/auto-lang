@@ -1,0 +1,4 @@
+# PLAN-937 CA-D1 typed-peer deck: the frozen typed declarations are code
+# (typed_decl.rs); the deck only names the leg.
+deck ace-ca-d1/1
+leg typed-n2c

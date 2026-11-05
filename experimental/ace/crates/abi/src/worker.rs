@@ -26,7 +26,7 @@ pub const RECIPE: &str = "abi/interop-v1";
 pub const WORKER_VERSION: &str = concat!("abi-worker/", env!("CARGO_PKG_VERSION"));
 
 /// Bounded request line (the seam freezes request metadata at 4 MiB).
-const MAX_LINE: usize = 4 << 20;
+pub const MAX_LINE: usize = 4 << 20;
 
 // ---------------------------------------------------------------------------
 // wire types
@@ -1133,7 +1133,13 @@ pub fn serve() -> i32 {
     }
 
     let (nonce, request_hash) = (env.request.nonce.clone(), env.request.request_hash.clone());
-    let resp = match execute(&env.request) {
+    // PLAN-937: parallel recipe dispatch on the SAME envelope — the two
+    // recipes share the worker lifecycle but never each other's decks.
+    let resp = match if env.request.recipe == crate::worker_bridge::BRIDGE_RECIPE {
+        crate::worker_bridge::execute_bridge(&env.request)
+    } else {
+        execute(&env.request)
+    } {
         Ok(ok) => ResponseEnvelope {
             schema: WORKER_SCHEMA,
             nonce,
