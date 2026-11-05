@@ -183,6 +183,8 @@ pub struct Session {
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct PublicationMaintenance {
     pub roots_retired: usize,
+    pub temp_files_removed: usize,
+    pub temp_bytes_removed: u64,
     pub cleanup_error: Option<String>,
 }
 #[derive(Debug)]
@@ -1558,6 +1560,8 @@ mod function_cache;
 
 #[path = "source_publication.rs"]
 mod publication;
+#[path = "source_publication_scratch.rs"]
+mod publication_scratch;
 pub use publication::{
     publication_root_project, read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit,
     PreparedPublication,

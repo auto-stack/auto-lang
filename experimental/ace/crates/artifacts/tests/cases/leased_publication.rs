@@ -74,3 +74,48 @@ fn leased_put_and_owned_root_retirement_preserve_readers_and_other_projects() {
     assert!(gc().deleted_chunks > 0);
     assert!(store.get_artifact_by_id(&new).unwrap().is_none());
 }
+
+#[test]
+fn original_staging_turn_accounts_residue_before_writes_and_allows_over_cap_cleanup() {
+    let root = std::env::temp_dir().join(format!("staging-turn-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = ManagedStore::open(&root.join("store")).unwrap();
+    let filler = store.root.join("staging").join("owned-pressure-fixture");
+    {
+        let turn = store.staging_turn().unwrap();
+        turn.admit_bytes(ManagedStore::STAGING_BUDGET).unwrap();
+        let file = std::fs::File::create(&filler).unwrap();
+        file.set_len(ManagedStore::STAGING_BUDGET).unwrap();
+        assert!(turn.admit_bytes(1).is_err());
+        // External residue can exceed the cap. Maintenance must still obtain
+        // the SAME turn to clean it; a rejected grant never permits a write.
+        file.set_len(ManagedStore::STAGING_BUDGET + 1).unwrap();
+        assert!(turn.admit_bytes(0).is_err());
+    }
+    {
+        let turn = store.staging_turn().unwrap();
+        assert!(turn.admit_bytes(0).is_err());
+        std::fs::remove_file(&filler).unwrap();
+        turn.admit_bytes(1024).unwrap();
+    }
+    let (id, lease) = store
+        .put_artifact_leased(
+            PutRequest {
+                layer: "A04",
+                key: QueryKey::new(
+                    schema::layer("A04").unwrap(),
+                    vec![("case".into(), "after-pressure".into())],
+                ),
+                kind: ChunkKind::DeclSummary,
+                payload: vec![1; 512],
+                edges: vec![],
+                project: None,
+            },
+            "after-staging-cleanup",
+            1,
+        )
+        .unwrap();
+    assert!(store.get_artifact_by_id(&id).unwrap().is_some());
+    assert!(store.lease_live(&lease.lease_id).unwrap());
+    assert_eq!(store.space().staging, 0);
+}

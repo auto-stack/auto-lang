@@ -1,14 +1,10 @@
 //! Selected-target readiness and the only durable current-pointer switch.
 //! No current source, declarations or body artifacts change during linking,
 //! execution, persistence, cancellation or failed pointer replacement.
+use super::publication_scratch::Scratch;
 use super::*;
 use ace_foreign_contract::manual::HostAuthority;
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::PathBuf,
-    sync::atomic::AtomicBool,
-};
+use std::{fs::File, io::Read, path::PathBuf, sync::atomic::AtomicBool};
 
 /// Supplied afresh by the host, independent of serialized candidate pages.
 #[derive(Clone, Debug)]
@@ -112,28 +108,35 @@ impl Session {
         let _lock = pointer_lock(pointer)?;
         let observed = read_pointer_identity(pointer)?;
         let project = publication_root_project(pointer)?;
-        let result = store
-            .root_artifacts(&project, observed.as_deref().unwrap_or(""))
-            .map_err(|e| e.to_string())
-            .and_then(|roots| {
-                if observed.is_some() && roots.is_empty() {
-                    return Err("foreign.publication.unrecognized-current-root".into());
-                }
-                store
-                    .retain_root_kind(&project, observed.as_deref())
-                    .map_err(|e| e.to_string())
-            });
+        let result: Result<(usize, super::publication_scratch::Swept), String> = (|| {
+            let roots = store
+                .root_artifacts(&project, observed.as_deref().unwrap_or(""))
+                .map_err(|e| e.to_string())?;
+            if observed.is_some() && roots.is_empty() {
+                return Err("foreign.publication.unrecognized-current-root".into());
+            }
+            let turn = store.staging_turn().map_err(|e| e.to_string())?;
+            let scratch = Scratch::open(store, &project, self.front.resources(), &turn)?;
+            let swept = scratch.sweep()?;
+            let retired = store
+                .retain_root_kind(&project, observed.as_deref())
+                .map_err(|e| e.to_string())?;
+            Ok((retired, swept))
+        })();
         self.publication_maintenance = match &result {
-            Ok(roots_retired) => PublicationMaintenance {
+            Ok((roots_retired, swept)) => PublicationMaintenance {
                 roots_retired: *roots_retired,
+                temp_files_removed: swept.files,
+                temp_bytes_removed: swept.bytes,
                 cleanup_error: None,
             },
             Err(error) => PublicationMaintenance {
                 roots_retired: 0,
                 cleanup_error: Some(error.clone()),
+                ..PublicationMaintenance::default()
             },
         };
-        result
+        result.map(|(retired, _)| retired)
     }
     fn validate_edit(&self, edit: &Edit) -> Result<(), String> {
         match edit {
@@ -363,60 +366,29 @@ impl Session {
                 return Err("foreign.publication.unrecognized-current-root".into());
             }
         }
-        let retired_before = store
-            .retain_root_kind(&project, observed.as_deref())
-            .map_err(|e| format!("foreign.publication.recovery: {e}"))?;
+        let (retired_before, swept) = {
+            let turn = store.staging_turn().map_err(|e| e.to_string())?;
+            let scratch = Scratch::open(store, &project, self.front.resources(), &turn)?;
+            let swept = scratch.sweep()?;
+            let retired = store
+                .retain_root_kind(&project, observed.as_deref())
+                .map_err(|e| format!("foreign.publication.recovery: {e}"))?;
+            (retired, swept)
+        };
         let (stored, lease) = prepared.snapshot.persist_leased(store, previous)?;
         let bytes = encode_pointer(&stored)?;
         if bytes.len() > MAX_ROOT {
             return Err("foreign.resource.pointer".into());
         }
-        static SERIAL: AtomicU64 = AtomicU64::new(1);
-        let temp = pointer.with_extension(format!(
-            "tmp-{}-{}",
-            std::process::id(),
-            SERIAL.fetch_add(1, Ordering::Relaxed)
-        ));
-        struct Temp(PathBuf);
-        impl Drop for Temp {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.0);
-            }
-        }
-        let temp = Temp(temp);
-        let mut file = std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temp.0)
-            .map_err(|e| e.to_string())?;
-        file.write_all(&bytes)
-            .and_then(|_| file.sync_all())
-            .map_err(|e| e.to_string())?;
-        drop(file);
+        let turn = store.staging_turn().map_err(|e| e.to_string())?;
+        let scratch = Scratch::open(store, &project, self.front.resources(), &turn)?;
+        let kind = hash(&bytes);
+        let temp = scratch.write(bytes, &turn)?;
+        let mut introduced = false;
         // Last gates are after every fallible producer and before the sole
         // current-pointer switch. No source/HIR/target is installed on failure.
-        cancelled(cancel)?;
-        qualify(
-            &prepared.environment,
-            &prepared.runtime_digest,
-            self.target,
-            current,
-        )?;
-        if read_pointer_identity(pointer)? != observed {
-            return Err("foreign.publication.late-pointer".into());
-        }
-        cancelled(cancel)?;
-        let kind = hash(&bytes);
-        let existing = store
-            .root_artifacts(&project, &kind)
-            .map_err(|e| e.to_string())?;
-        if existing.iter().any(|id| id != &stored.artifact_id) {
-            return Err("foreign.publication.pointer-content-conflict".into());
-        }
-        store
-            .register_root(&project, &stored.artifact_id, &kind)
-            .map_err(|e| e.to_string())?;
         let switch = (|| {
+            cancelled(cancel)?;
             qualify(
                 &prepared.environment,
                 &prepared.runtime_digest,
@@ -427,10 +399,32 @@ impl Session {
                 return Err("foreign.publication.late-pointer".into());
             }
             cancelled(cancel)?;
-            atomic_replace(&temp.0, pointer)
+            let existing = store
+                .root_artifacts(&project, &kind)
+                .map_err(|e| e.to_string())?;
+            if existing.iter().any(|id| id != &stored.artifact_id) {
+                return Err("foreign.publication.pointer-content-conflict".into());
+            }
+            store
+                .register_root(&project, &stored.artifact_id, &kind)
+                .map_err(|e| e.to_string())?;
+            introduced = existing.is_empty();
+            qualify(
+                &prepared.environment,
+                &prepared.runtime_digest,
+                self.target,
+                current,
+            )?;
+            if read_pointer_identity(pointer)? != observed {
+                return Err("foreign.publication.late-pointer".into());
+            }
+            cancelled(cancel)?;
+            atomic_replace(&temp.path, pointer)
         })();
         if let Err(error) = switch {
-            if existing.is_empty() {
+            temp.remove()
+                .map_err(|cleanup| format!("{error}; {cleanup}"))?;
+            if introduced {
                 store
                     .remove_root(&project, &kind, &stored.artifact_id)
                     .map_err(|cleanup| {
@@ -439,6 +433,7 @@ impl Session {
             }
             return Err(error);
         }
+        temp.moved();
         match prepared.edit {
             Edit::Current => {}
             Edit::Body(body) => self.commit(body)?,
@@ -455,10 +450,14 @@ impl Session {
         self.publication_maintenance = match store.retain_root_kind(&project, Some(&kind)) {
             Ok(retired) => PublicationMaintenance {
                 roots_retired: retired_before + retired,
+                temp_files_removed: swept.files,
+                temp_bytes_removed: swept.bytes,
                 cleanup_error: None,
             },
             Err(error) => PublicationMaintenance {
                 roots_retired: retired_before,
+                temp_files_removed: swept.files,
+                temp_bytes_removed: swept.bytes,
                 cleanup_error: Some(error.to_string()),
             },
         };

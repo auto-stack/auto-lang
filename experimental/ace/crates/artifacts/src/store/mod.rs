@@ -338,6 +338,34 @@ pub struct ManagedStore {
     blobs: auto_cache::storage::BlobStore,
 }
 
+/// An original-store staging maintenance/write turn. The caller may clean
+/// owned residue even when already above the cap, then MUST admit its complete
+/// new physical copy count before writing. Both guards remain held through
+/// publication/removal; GC and other staging producers cannot race the check.
+pub struct StagingTurn<'a> {
+    store: &'a ManagedStore,
+    _budget: FileGuard,
+    _live: FileGuard,
+}
+impl StagingTurn<'_> {
+    pub fn admit_bytes(&self, extra: u64) -> Result<(), StoreError> {
+        let current = ManagedStore::dir_size(&self.store.root.join("staging"));
+        let residue = self.store.cas_tmp_bytes();
+        let total = current
+            .checked_add(residue)
+            .and_then(|n| n.checked_add(extra))
+            .ok_or_else(|| StoreError::ResourceExhausted("staging size overflow".into()))?;
+        if total > ManagedStore::STAGING_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "staging {current} + CAS residue {residue} + new {extra} exceeds {}",
+                ManagedStore::STAGING_BUDGET
+            )));
+        }
+        PEAK_TRANSIENT.fetch_max(total, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+}
+
 /// Classified on-disk accounting: blocks, DB/WAL, staging, trash, locks,
 /// logs — everything counts (PLAN-783 §5.4). `db` = main file + WAL + SHM
 /// (full accounted usage); `db_main` = the main journal file only — the
@@ -379,6 +407,18 @@ pub struct LoadedArtifact {
 }
 
 impl ManagedStore {
+    pub fn staging_turn(&self) -> Result<StagingTurn<'_>, StoreError> {
+        check_namespace_roots(self)?;
+        let live = self.liveness_shared()?;
+        let budget =
+            FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
+        Ok(StagingTurn {
+            store: self,
+            _live: live,
+            _budget: budget,
+        })
+    }
     /// Open (creating when absent) an isolated managed store.
     pub fn open(root: &Path) -> Result<Self, StoreError> {
         if is_reparse(root) {

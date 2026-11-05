@@ -2584,6 +2584,25 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
         );
         assert_eq!(std::fs::read(&pointer).unwrap(), old_pointer);
         let project = publication_root_project(&pointer).unwrap();
+        let stage = store.root.join("staging").join(&project);
+        let temporary_count = || {
+            std::fs::read_dir(&stage)
+                .unwrap()
+                .filter(|e| {
+                    let e = e.as_ref().unwrap();
+                    e.file_name().to_string_lossy().starts_with("pointer-")
+                })
+                .count()
+        };
+        assert_eq!(
+            temporary_count(),
+            1,
+            "crashed pointer copy must stay in original managed staging"
+        );
+        let user_tmp = output.join("current.tmp-user-sentinel");
+        std::fs::write(&user_tmp, b"outside managed staging").unwrap();
+        let unknown = stage.join("other-owner.tmp");
+        std::fs::write(&unknown, b"preserve unknown name").unwrap();
         let orphan: String = store
             .db()
             .query_row(
@@ -2598,6 +2617,47 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
                 .retry_publication_maintenance(&store, &pointer)
                 .unwrap(),
             1
+        );
+        assert_eq!(temporary_count(), 0);
+        assert_eq!(session.publication_maintenance().temp_files_removed, 1);
+        assert!(session.publication_maintenance().temp_bytes_removed > 0);
+        assert_eq!(
+            std::fs::read(&user_tmp).unwrap(),
+            b"outside managed staging"
+        );
+        assert_eq!(std::fs::read(&unknown).unwrap(), b"preserve unknown name");
+        std::fs::remove_file(&unknown).unwrap(); // explicit fixture teardown
+        let marker = stage.join("source938-publication.marker");
+        let owner = std::fs::read(&marker).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&marker)
+            .unwrap()
+            .set_len(11)
+            .unwrap();
+        assert_eq!(
+            session
+                .retry_publication_maintenance(&store, &pointer)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            std::fs::read(&marker).unwrap(),
+            owner,
+            "partial owned initialization did not repair"
+        );
+        std::fs::write(&marker, b"unrecognized marker").unwrap();
+        assert!(session
+            .retry_publication_maintenance(&store, &pointer)
+            .is_err());
+        assert_eq!(std::fs::read(&marker).unwrap(), b"unrecognized marker");
+        assert_eq!(std::fs::read(&pointer).unwrap(), old_pointer);
+        std::fs::write(&marker, &owner).unwrap(); // restore the corrupt fixture
+        assert_eq!(
+            session
+                .retry_publication_maintenance(&store, &pointer)
+                .unwrap(),
+            0
         );
         assert_eq!(
             store.root_artifacts(&project, &old_hash).unwrap(),
@@ -2687,6 +2747,21 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
         let mut readonly_after_switch = || {
             checks += 1;
             if checks == 3 {
+                let copies: Vec<_> = std::fs::read_dir(&stage)
+                    .unwrap()
+                    .map(|e| e.unwrap().path())
+                    .filter(|p| {
+                        p.file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .starts_with("pointer-")
+                    })
+                    .collect();
+                assert_eq!(copies.len(), 1);
+                assert!(
+                    std::fs::write(&copies[0], b"tamper accepted pointer bytes").is_err(),
+                    "a writer changed the staged pointer after its content hash was rooted"
+                );
                 store.db().execute_batch("PRAGMA query_only=ON").unwrap();
             }
             Ok(authority.clone())
