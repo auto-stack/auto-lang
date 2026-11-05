@@ -1764,3 +1764,139 @@ fn plan046_key_clause_requires_expr() {
         "empty key clause must be a parse error"
     );
 }
+
+// ==========================================================================
+// PLAN-940：Core 推进性/EOF 受控拒绝控制验证。
+//
+// UI042 截断 widget 51GB 病理的归因在 auto-ui 文法收集循环（EOF 上
+// advance 不越过 EOF、循环只看闭合符 → 无限收集；语言仓零生产差额）。
+// 此处是 Core 合同的永久控制反例：`Parser::parse` / `Parser::parse_domain`
+// 在截断/坏源上有限终止、诊断有界（error_limit 收口）、恢复后下一份
+// 合法源码仍可消费、方言 None 让行的 checkpoint 回滚保持。
+// ==========================================================================
+
+/// 最小测试方言：`gadget Name { core-body }`——经 `parse_domain` 驱动
+/// 领域主循环（try_domain_item/Err 恢复/synchronize）。
+struct Plan940GadgetDialect {
+    /// true = 命中关键字也让行（测 None 回滚腿）。
+    decline: bool,
+}
+
+impl auto_parser_api::DomainDialect for Plan940GadgetDialect {
+    type Output = ();
+
+    fn matches(&self, _session: &crate::session::CompilerSession) -> bool {
+        true
+    }
+
+    fn keywords(&self) -> &'static [&'static str] {
+        &["gadget"]
+    }
+
+    fn try_parse_stmt(
+        &self,
+        ctx: &mut dyn auto_parser_api::DomainParseContext,
+        _keyword: &str,
+    ) -> auto_parser_api::error::AutoResult<
+        Option<auto_parser_api::DomainStmt<()>>,
+    > {
+        if self.decline {
+            return Ok(None);
+        }
+        ctx.expect_ident("gadget")?;
+        let _name = ctx.cur_text();
+        ctx.advance();
+        // core 文法体：截断（如 `let x =` 后 EOF）在体内受控 Err，
+        // `parse_body` 以 expect(LBrace) 开头、循环守卫含 EOF。
+        ctx.parse_body()?;
+        Ok(Some(auto_parser_api::DomainStmt::Domain(())))
+    }
+}
+
+/// Core 截断形态：有限终止 + 受控 Err（完成即 oracle，回归则挂起/膨胀）。
+#[test]
+fn plan940_core_truncated_shapes_rejected_bounded() {
+    const SHAPES: &[&str] = &[
+        "fn f() {",
+        "fn f() {\n  let x = ",
+        "fn f() {\n  if done {",
+        "let xs = [1, 2",
+        "fn f() {\n  let a = 1\n  let b = ",
+    ];
+    for (i, src) in SHAPES.iter().enumerate() {
+        let mut parser = Parser::from(src);
+        assert!(
+            parser.parse().is_err(),
+            "core truncated shape #{i} must be rejected, got Ok"
+        );
+    }
+}
+
+/// Core 合法程序逐字节前缀：每个前缀 Ok 或受控 Err，绝不挂起。
+#[test]
+fn plan940_core_prefix_sweep_bounded() {
+    const VALID: &str = concat!(
+        "fn main() {\n",
+        "  let count = 11\n",
+        "  if count > 0 {\n",
+        "    count = count - 1\n",
+        "  }\n",
+        "}\n",
+    );
+    let mut ok = 0usize;
+    let mut err = 0usize;
+    for end in 0..=VALID.len() {
+        let mut parser = Parser::from(&VALID[..end]);
+        match parser.parse() {
+            Ok(_) => ok += 1,
+            Err(_) => err += 1,
+        }
+    }
+    assert!(ok >= 1, "full valid core source must parse");
+    assert!(err >= 1, "truncations must be rejected");
+}
+
+/// 领域循环（parse_domain + 真方言）：截断 gadget 受控 Err、诊断有界、
+/// 恢复后下一份合法源码（core 与领域形态混合）仍可消费。
+#[test]
+fn plan940_domain_truncation_bounded_and_recovers() {
+    let dialect = Plan940GadgetDialect { decline: false };
+
+    // 截断：gadget 体内表达式缺失（EOF）。
+    let truncated = "gadget g {\n  let x = ";
+    let mut parser = Parser::from(truncated);
+    let err = parser
+        .parse_domain(&dialect)
+        .expect_err("truncated gadget must be rejected");
+    assert!(
+        err.to_string().chars().count() < 10_000,
+        "diagnostics must be bounded"
+    );
+
+    // 坏声明 + 合法声明同文件：synchronize 恢复有限终止（两声明恢复面），
+    // 整体仍 Err（错误被收集），但循环推进到消费完 EOF。
+    let mixed = "gadget g { let x = }\nfn ok() -> int { 7 }";
+    let mut parser = Parser::from(mixed);
+    assert!(
+        parser.parse_domain(&dialect).is_err(),
+        "bad decl must surface errors; loop must still consume to EOF (bounded)"
+    );
+
+    // 下一次合法源码：同公开流程（新 Parser）成功，领域与 core 语句并存。
+    let good = "gadget g {\n  let x = 1\n}\nfn ok() -> int { 7 }";
+    let mut parser = Parser::from(good);
+    let code = parser.parse_domain(&dialect).expect("next legal source parses");
+    assert_eq!(code.items.len(), 2, "gadget + fn both consumed");
+}
+
+/// 方言 None 让行腿的 checkpoint 回滚保持：命中关键字仍让行 → 游标回滚，
+/// 语句按 core 文法解析（gadget(1) 为调用表达式语句）。
+#[test]
+fn plan940_domain_decline_rollback_preserved() {
+    let dialect = Plan940GadgetDialect { decline: true };
+    let mut parser = Parser::from("gadget(1)");
+    let code = parser
+        .parse_domain(&dialect)
+        .expect("declined keyword falls back to core grammar");
+    assert_eq!(code.items.len(), 1, "statement consumed exactly once");
+}
