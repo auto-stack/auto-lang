@@ -1453,6 +1453,12 @@ impl NativeInterface {
         map
     }
 
+    /// All registered spellings, including aliases sharing one native ID.
+    /// Inventory must use this surface rather than the lossy tooltip reverse map.
+    pub fn registered_names(&self) -> impl Iterator<Item = &str> {
+        self.name_to_id.keys().map(String::as_str)
+    }
+
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
     ///
     /// Supports canonical normalization: "List.push" → checks "auto.list.push" etc.

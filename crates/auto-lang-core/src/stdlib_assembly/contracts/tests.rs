@@ -277,6 +277,63 @@ fn native_alias_control_and_unverified_candidate_proofs() {
 }
 
 #[test]
+fn all_registered_aliases_survive_one_native_id() {
+    let temporary = tempfile::tempdir().unwrap();
+    let mut inv = loader::scan_inventory(temporary.path());
+    let mut interface = crate::vm::native::NativeInterface::new();
+    interface.register(6800, |_task, _vm| Ok(()));
+    interface.register_name("user.fixture.original", 6800);
+    interface.register_name("user.fixture.alias", 6800);
+    interface.register_name("user.fixture.third", 6800);
+    // Neither spelling belongs to the catalogue or the global registry.
+    // The previous id_to_name() projection necessarily dropped one of them.
+    audit_providers(&mut inv, &interface);
+    for name in [
+        "user.fixture.original",
+        "user.fixture.alias",
+        "user.fixture.third",
+    ] {
+        assert!(inv
+            .contracts
+            .native_bindings
+            .iter()
+            .any(|b| b.name == name && b.id == Some(6800) && b.bound && b.producer.is_none()));
+    }
+    let interface = crate::vm::native::NativeInterface::production();
+    audit_providers(&mut inv, &interface);
+    let reported: BTreeSet<_> = inv
+        .contracts
+        .native_bindings
+        .iter()
+        .map(|b| b.name.as_str())
+        .collect();
+    assert!(interface
+        .registered_names()
+        .all(|name| reported.contains(name)));
+    for name in interface.registered_names() {
+        let row = inv
+            .contracts
+            .native_bindings
+            .iter()
+            .find(|b| b.name == name)
+            .unwrap();
+        let id = interface.resolve(name).unwrap();
+        assert_eq!(row.id, Some(id));
+        assert_eq!(row.bound, interface.get(id).is_some());
+        assert_eq!(
+            row.producer.as_deref(),
+            interface.contract(id).map(|c| c.producer.as_str())
+        );
+    }
+    let first = serde_json::to_value(&inv.contracts.native_bindings).unwrap();
+    audit_providers(&mut inv, &interface);
+    assert_eq!(
+        first,
+        serde_json::to_value(&inv.contracts.native_bindings).unwrap()
+    );
+}
+
+#[test]
 fn wide_math_private_helpers_and_legacy_dispatches_are_not_reclassified() {
     let (_, inv) = real();
     for name in ["math.abs", "math.min", "math.max"] {

@@ -118,7 +118,7 @@ pub fn audit_providers(
         .get_function_names()
         .into_iter()
         .collect();
-    names.extend(interface.id_to_name().into_values());
+    names.extend(interface.registered_names().map(str::to_owned));
     names.extend(
         crate::vm::native_catalog::NATIVE_ID_ENTRIES
             .iter()

@@ -32,6 +32,8 @@ producer签名核验与仅政策一致但source签名未验证分开；未解析
 Inventory schema 3 保留全部层（包括解析/读取失败）、函数/类型内方法/ext、
 enum 方法、spec 方法、类型、字段及 alias。声明行按源身份关联 native 名；
 native 别名逐名保留最终绑定记录；provider 模块目录仍是声明，不升格为执行证据。
+原生名称来自最终interface的完整注册表、catalogue和registry集合；不得用反汇编
+提示专用的单名ID反向表计分母。每个实际别名保留同一ID对应的绑定/producer事实。
 `contract_declared`、`missing_contract`、`parse_failed_api_unknown` 分开。
 失败层的 API 数量未知，既不记成零 API，也不从文件分母删除。
 
