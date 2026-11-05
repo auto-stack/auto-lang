@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-cte, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-927, PLAN-928, PLAN-929]
-current_step: 0
+current_step: 1
 total_steps: 13
 ---
 
@@ -158,7 +158,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 | T | owner_stage | 前置/实际写面 | 产出与验证/AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 当前基线/原796817/929933只读输入 | 全调用/差额/实际版本/预算与S/H窗口冻结，AC-01..03/09 | [ ] |
+| T-01 | work | 当前基线/原796817/929933只读输入 | 全调用/差额/实际版本/预算与S/H窗口冻结，AC-01..03/09 | [x] 2026-11-05：五要素冻结于 master `f38e50758`，主件 `plan-artifacts/plan-934/t01-freeze-inventory.md`。两报告 hash 表全量重算：仅 2 漂移均出自 D932 merge `da4c98b51`（resolve.rs/test-groups，漂移面已核不伤本包缝）；**932/933 已归档**（相对 r2 快照推进——typed 判面/933 材料现为 master 稳定）；929 executing 10/14（代码 `bf8c189c0`，T-11 在途，非D）。PR-01/02 三缺口 master 现核仍开口（adapter.rs:795 resolve先于typecheck；codec.rs:256 InferFacts name+span稀疏；adapter.rs:363 命名实参Unsupported）；929 消费接口具名清单（decl_env/from_restored/fragment桥/profile_grammar/syn decoder）登记待 D929 交付 SHA |
 | T-02 | work | T-01及source/cst/声明稳定接口 | 无环+单体事实消费+恢复首操作/预算的有界整链可行性，失败needs_replan；V-01/04/06，AC-01/05/07 | [ ] |
 | T-03 | work | T-02，拟source-query及semantics adapter必要窗 | 单体懒输入/签名目录/新schema命名空间，V-02/07，AC-02/04 | [ ] |
 | T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [ ] |
@@ -175,6 +175,10 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 下一入口T-01私有盘点不等929整包；T-02及S实现须其已审稳定接缝，最终交付不能缺首编辑腿。frontmatter依赖不是要求所有私有研究先等整波。本轮未授权work。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 1 | from: work | to: work | status: executing | outcome: in-progress（T-01 完成 1/13；T-02 前置 929 稳定接口未满足，按用户目标分层转私有 DRAFT 准备） | worktree: 未建（T-01 只读盘点无需树；T-02 起建 `lang-934`） | commit: master `f38e50758`（簿记：规划波次入库+授权记录） | next: work（私有facts/读集/键/用例 DRAFT；D929 落地后 T-02 整链）
+  - T-01 证据：`plan-artifacts/plan-934/t01-freeze-inventory.md`（hash 重算 21+27 项仅 2 漂移=D932；929/932/933 状态刷新；PR-01/02 三缺口现核；预算/版本/S-H 窗冻结）。材料 scope 已登记 `.retention/policy.json`。
+  - 授权记录（§4 新增）：2026-11-05 /goal 整链授权；私有先行/公共接线消费 D929 稳定接口的分层按用户目标语执行。
 
 2026-11-04 stage:new / revision:2 / outcome:pass（规划静态合同复核，不是独立实施review）/ next:work（后续实施指令及任务实际稳定接缝/写窗）。保全部T/AC编号、总步骤与0进度；补例未执行，r1与旧796/817运行不能为r2补充断言背书。关键修改/源码身份/并行前置见[复核报告](reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)，以下r1为历史。
 
