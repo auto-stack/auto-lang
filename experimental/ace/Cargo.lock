@@ -309,6 +309,7 @@ dependencies = [
 name = "ace-source-query"
 version = "0.1.0"
 dependencies = [
+ "ace-artifacts",
  "ace-core",
  "ace-semantics",
  "ace-semantics-contract",

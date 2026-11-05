@@ -13,6 +13,9 @@ ace-semantics-contract = { path = "../semantics-contract" }
 ace-semantics = { path = "../semantics", features = ["core-ast"] }
 ace-core = { path = "../core" }
 blake3 = "1.5"
+# T-06: the unified managed store is the page sink (same store every
+# other layer uses; the SQ-A layer id keeps its pages separate).
+ace-artifacts = { path = "../artifacts" }
 
 # PLAN-934 §2/§3 dependency direction: this crate sits BETWEEN core (it
 # consumes the public AST and the neutral solver) and the consumers

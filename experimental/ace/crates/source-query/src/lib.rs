@@ -42,6 +42,7 @@ pub mod ident;
 pub mod keys;
 pub mod produce;
 pub mod session;
+pub mod store;
 pub mod walk;
 
 #[cfg(test)]
@@ -58,7 +59,6 @@ pub use host::{
     TargetHandle,
 };
 pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
-pub use session::PageAudit;
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
     PortableTy,
@@ -68,5 +68,6 @@ pub use ident::{
     SQ_SCHEMA,
 };
 pub use produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};
-pub use session::{Counters, QueryError, QueryOutcome, SourceQuerySession};
+pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
+pub use store::{decode_page, encode_page, store_key, ManagedStoreSink, PageReadError};
 pub use walk::{walk_body, BodyWalk, LetDecl, NodeId, NodeInfo, WalkError};

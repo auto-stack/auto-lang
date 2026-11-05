@@ -845,3 +845,107 @@ fn sq30_read_only_view_never_installs() {
     assert!(view.key.body_version.is_some());
     assert!(view.facts.is_complete());
 }
+
+// -- T-06: ManagedStore page sink + page codec -------------------------
+
+use crate::host::PageSink;
+use crate::store::{decode_page, encode_page, ManagedStoreSink, PageReadError};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+
+fn temp_dir(tag: &str) -> std::path::PathBuf {
+    static N: AtomicU64 = AtomicU64::new(1);
+    let n = N.fetch_add(1, AtomicOrdering::Relaxed);
+    std::env::temp_dir().join(format!("sq934-{tag}-{}-{n}", std::process::id()))
+}
+
+#[test]
+fn sq31_managed_store_sink_roundtrip_and_key_admission() {
+    let dir = temp_dir("store");
+    let mut sink = ManagedStoreSink::open(&dir, Some("sq934-test")).expect("open managed store");
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let facts = s.infer_body(&p, "leaf").expect("facts").facts;
+    let key = s.body_key(&p, "leaf").expect("key");
+
+    let art = sink.put(&key, &facts).expect("publish page");
+    assert_eq!(sink.get(&art), Some(facts.clone()), "read back by artifact id");
+    assert_eq!(
+        sink.get_by_key(&key).expect("lookup by complete key"),
+        Some(facts.clone()),
+        "the store key IS the complete query key"
+    );
+
+    // A page is only admissible for the key it was written for.
+    let main_key = s.body_key(&p, "main").expect("main key");
+    assert!(matches!(
+        sink.get_checked(&art, &main_key),
+        Err(PageReadError::KeyMismatch { .. })
+    ));
+    assert!(sink.get_checked(&art, &key).is_ok());
+    assert_eq!(sink.get_by_key(&main_key).expect("miss"), None);
+    assert!(sink.get("art-does-not-exist").is_none());
+
+    drop(sink);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn sq32_page_codec_rejects_foreign_truncated_and_tampered_pages() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let facts = s.infer_body(&p, "leaf").expect("facts").facts;
+    let key = s.body_key(&p, "leaf").expect("key");
+    let bytes = encode_page(&key, &facts).expect("encode");
+    let (k, back) = decode_page(&bytes).expect("decode own page");
+    assert_eq!(k, key.canonical());
+    assert_eq!(back, facts);
+
+    let mut bad_magic = bytes.clone();
+    bad_magic[0] = b'X';
+    assert!(matches!(decode_page(&bad_magic), Err(PageReadError::Decode(_))));
+
+    assert!(matches!(
+        decode_page(&bytes[..bytes.len() - 4]),
+        Err(PageReadError::Decode(_))
+    ));
+
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    assert!(matches!(decode_page(&trailing), Err(PageReadError::Decode(_))));
+
+    let mut old_codec = bytes.clone();
+    old_codec[6] = 0;
+    assert!(matches!(decode_page(&old_codec), Err(PageReadError::Decode(_))));
+
+    // A page from another schema revision is a foreign envelope, never a
+    // reinterpretation (the old 796 domain is a different string too).
+    let needle = crate::SQ_SCHEMA.as_bytes();
+    let at = bytes
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("schema in page");
+    let mut foreign = bytes.clone();
+    foreign[at + needle.len() - 1] = b'2';
+    assert!(matches!(
+        decode_page(&foreign),
+        Err(PageReadError::Envelope { .. })
+    ));
+}
+
+#[test]
+fn sq33_published_page_is_a_project_root() {
+    let dir = temp_dir("root");
+    let mut sink = ManagedStoreSink::open(&dir, Some("sq934-root")).expect("open store");
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let facts = s.infer_body(&p, "leaf").expect("facts").facts;
+    let key = s.body_key(&p, "leaf").expect("key");
+    let art = sink.put(&key, &facts).expect("publish");
+    let roots = sink
+        .store()
+        .root_artifacts("sq934-root", crate::store::SQ_ROOT_KIND)
+        .expect("roots");
+    assert_eq!(roots, vec![art], "the page is pinned under its project root");
+    drop(sink);
+    let _ = std::fs::remove_dir_all(&dir);
+}
