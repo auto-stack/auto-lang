@@ -263,9 +263,14 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 3 | from: user | to
 
 2026-11-06 依赖修复已交付：PLAN-951 archived6/6，delivery=fec8a9602413847c681c6944d490d7a39e18e272，真实Rust/C证书均可由原941严格reader解析；全ace-a2x183/183及canonical source读回已通过，scope/tree/branch已清。F-941-01的producer缺陷已闭；941尚须同步D951、重建本树worker、重放证书后继续T-01/T-02（未预先勾完成）。用户独立修复并继续授权持续有效；旧38格认证及D936/938/939真实交付条件不变。next:work。
 
+
+2026-11-06 work恢复/依赖闭环：941分支rebase master，`git range-diff 3b09e32b0..91968fd40 master..HEAD`为1/1 `=`，旧91968fd40→当前 **225ba6561bd571be6e69e56f20bdd2037d5a1c88**，本包首例/reader/tests补丁不变；新基面包含D951修复。树clean。当前树原a2x-worker release重建exit0、43.52s，随后原同源Q4-001 fresh显式certify/certify-c（现有受管Job，完整actual+独立ref各value:42）exit0，Rust682.25ms/C2772.64ms；原941严格JSON reader直接接受、source/ref及actual逐文件hash校验通过。Rust新cert hash `9fb138828f59c9776f327c047264d258b8be038c4f1f99d0f2e9329d65812c1d`，命令hash `2649ea02d7593807175638c6ef9946603a58ea02b8d4f4b806c3947f5dda2f66`；C正控新cert hash `ee9d3104298d979d0628508747967533909f99b14563603e869f52d81e1d7ea9`，命令hash `a9d3774b5daab54fda016b851ea1163c558b1d2321cbf681e94aff5ac1c58912`。材料仅原941 scope的worker-after-951.log / q4-after-951-* / after-951-summary.json，登记状态仍in-flight。F-941-01实际关闭，T-01完整映射与T-02组合闭包其余部分仍未完成，current_step0/15，next:work，不进入review/merge。
+
+应用自动目标仍显示blocked，工具不提供active/resume状态写入；用户“并继续”授权已据实执行951全链与上述941本树重放，未另建goal或声称应用goal已恢复。按auto-plan-goal的inactive恢复规则，后续自动续轮需用户`/goal resume`；这是目标运行控制，不是重新索要实施范围授权。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
 2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
-4. **2026-11-06 已授权 F-941-01（PLAN-951承接）**：是否授权为 `ace-a2x-rust` 证书JSON序列化缺陷独立立项并修复、复审、合入，再继续941？最小范围与真实复现见§9；不改941验收/预算/旧38认证守卫。若由原owner处理，则待其修复交付及有效证书后恢复941 T-02；不预占新计划号。此决定出现前不推进依赖该有界首链成功的T-03及后续步骤；保留已验证检查点与在途scope，不宣称系统或M1交付。
+4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
