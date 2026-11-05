@@ -16,14 +16,45 @@ fn run_capture(program: &str) -> String {
     stdout.trim_end_matches('\n').to_string()
 }
 
+/// PLAN-943: independently chosen byte/scalar oracles, including combining
+/// marks and NUL, must distinguish the preserved static/dynamic dispatches.
+#[test]
+fn plan943_unicode_units_and_dynamic_dispatch() {
+    assert_eq!(
+        run_capture(r#"fn main() { print("A中😀".byte_len()) }"#),
+        "8"
+    );
+    assert_eq!(
+        run_capture("fn main() { print(\"e\u{301}\".byte_len()) }"),
+        "3"
+    );
+    assert_eq!(
+        run_capture(r#"fn main() { print("a\0b".byte_len()) }"#),
+        "3"
+    );
+    assert_eq!(
+        run_capture(
+            r#"fn length<T>(s T) int { return s.len() }
+fn main() { print(length("A中😀")) }"#
+        ),
+        "3"
+    );
+}
+
 #[test]
 fn plan872_str_len_distinguish_chars_vs_bytes() {
     // CJK "中文" = 2 chars / 6 UTF-8 bytes：两名字语义必须可分。
     assert_eq!(run_capture(r#"fn main() { print("中文".length) }"#), "2");
     assert_eq!(run_capture(r#"fn main() { print(Str.len("中文")) }"#), "6");
     assert_eq!(run_capture(r#"fn main() { print("中文".len()) }"#), "6");
-    assert_eq!(run_capture(r#"fn main() { print(Str.byte_len("中文")) }"#), "6");
-    assert_eq!(run_capture(r#"fn main() { print("中文".byte_len()) }"#), "6");
+    assert_eq!(
+        run_capture(r#"fn main() { print(Str.byte_len("中文")) }"#),
+        "6"
+    );
+    assert_eq!(
+        run_capture(r#"fn main() { print("中文".byte_len()) }"#),
+        "6"
+    );
     // 边界：空串双侧同 0（不构成区分面，但钉住退化分支）。
     assert_eq!(run_capture(r#"fn main() { print("".length) }"#), "0");
     assert_eq!(run_capture(r#"fn main() { print(Str.len("")) }"#), "0");
@@ -77,13 +108,22 @@ fn plan872_str_len_binding_slots_pinned() {
 #[test]
 fn plan872_math_effective_semantics() {
     // 生效=纯 shim：IEEE 域外值不 Err，返回 NaN/-inf。
-    assert_eq!(run_capture(r#"fn main() { print(Math.sqrt(-1.0)) }"#), "NaN");
+    assert_eq!(
+        run_capture(r#"fn main() { print(Math.sqrt(-1.0)) }"#),
+        "NaN"
+    );
     assert_eq!(run_capture(r#"fn main() { print(Math.ln(0.0)) }"#), "-inf");
     // round = half away from zero（f64::round）。
     assert_eq!(run_capture(r#"fn main() { print(Math.round(2.5)) }"#), "3");
-    assert_eq!(run_capture(r#"fn main() { print(Math.round(-2.5)) }"#), "-3");
+    assert_eq!(
+        run_capture(r#"fn main() { print(Math.round(-2.5)) }"#),
+        "-3"
+    );
     assert_eq!(run_capture(r#"fn main() { print(Math.abs(-7)) }"#), "7");
-    assert_eq!(run_capture(r#"fn main() { print(Math.abs_f(-7.5)) }"#), "7.5");
+    assert_eq!(
+        run_capture(r#"fn main() { print(Math.abs_f(-7.5)) }"#),
+        "7.5"
+    );
     // 区分面：整型实参**不提升**（VMConvertible 提取不吞 i32 tag）。
     // 若生效轨被换成 Plan 437 的 tag 感知 nv 版（pop_f64_operand），
     // sin(1)/floor(7) 会变成 0.841…/7.0 —— 本断言变红即漂移警报。
@@ -101,9 +141,18 @@ fn plan872_to_int_parse_int_effective_0_fallback() {
     // ——断言变红即漂移警报。
     assert_eq!(run_capture(r#"fn main() { print("42".to_int()) }"#), "42");
     assert_eq!(run_capture(r#"fn main() { print("12x".to_int()) }"#), "0");
-    assert_eq!(run_capture(r#"fn main() { print(Str.to_int("12x")) }"#), "0");
-    assert_eq!(run_capture(r#"fn main() { print(Str.parse_int("12x")) }"#), "0");
-    assert_eq!(run_capture(r#"fn main() { print(Str.parse_int("-98")) }"#), "-98");
+    assert_eq!(
+        run_capture(r#"fn main() { print(Str.to_int("12x")) }"#),
+        "0"
+    );
+    assert_eq!(
+        run_capture(r#"fn main() { print(Str.parse_int("12x")) }"#),
+        "0"
+    );
+    assert_eq!(
+        run_capture(r#"fn main() { print(Str.parse_int("-98")) }"#),
+        "-98"
+    );
     // Unicode 数字形态：全角数字不按 ASCII digit 解析（trim+parse 语义）。
     assert_eq!(run_capture(r#"fn main() { print("４２".to_int()) }"#), "0");
 }

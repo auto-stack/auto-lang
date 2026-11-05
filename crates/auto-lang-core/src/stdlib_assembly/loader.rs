@@ -130,6 +130,19 @@ pub fn stdlib_assembly_fingerprint(
         acc = acc.wrapping_mul(0x100000001b3);
     };
     mix(INVENTORY_SCHEMA_VERSION as u64);
+    mix(fnv1a64(super::contracts::OPERATIONS));
+    mix(fnv1a64(super::contracts::COMPATIBILITY));
+    mix(inv.contracts.operations_hash);
+    mix(inv.contracts.compatibility_hash);
+    if inv
+        .diagnostics
+        .iter()
+        .any(|d| d.code == super::contracts::INVALID)
+    {
+        return Err(crate::error::AutoError::Msg(
+            "invalid semantic contracts; refusing assembly fingerprint".into(),
+        ));
+    }
     mix(super::providers::catalog_schema_version() as u64);
     mix(fnv1a64(include_str!(
         "../../../../stdlib/assembly-providers.json"
@@ -200,6 +213,8 @@ pub fn stdlib_assembly_fingerprint(
         "../trans/rust/call_emit/call_value_ctors.rs"
     )));
     // PLAN-884 T-06：主题算法模块入指纹闭包。
+    mix(fnv1a64(include_str!("../trans/rust/semantics.rs")));
+    mix(fnv1a64(include_str!("../trans/rust/semantics/walk.rs")));
     mix(fnv1a64(include_str!("../trans/rust/ast_scans.rs")));
     mix(fnv1a64(include_str!("../trans/rust/merged_fixes.rs")));
     mix(fnv1a64(include_str!("../trans/rust/post_fixes.rs")));
@@ -326,15 +341,26 @@ pub fn scan_inventory(root: &Path) -> StdlibInventory {
     }
     // 输出顺序与扫描顺序解耦：模块按身份排序（stable JSON 契约）
     modules.sort_by(|a, b| a.module.cmp(&b.module));
+    let (contracts, contract_diagnostics) = super::contracts::scan(root, &modules);
+    diagnostics.extend(contract_diagnostics);
     diagnostics.sort_by(|a, b| diag_sort(a).cmp(&diag_sort(b)));
 
-    let inv = StdlibInventory {
+    let mut inv = StdlibInventory {
         schema_version: INVENTORY_SCHEMA_VERSION,
         root: PORTABLE_ROOT.to_string(),
         files_total,
         modules,
         diagnostics,
+        contracts,
     };
+    if !inv.contracts.operations.is_empty() {
+        super::contracts::audit_providers(
+            &mut inv,
+            &crate::vm::native::NativeInterface::production(),
+        );
+        inv.diagnostics
+            .sort_by(|a, b| diag_sort(a).cmp(&diag_sort(b)));
+    }
     inv.assert_sorted();
     inv
 }
@@ -435,11 +461,77 @@ pub fn parse_layer_with_store(
                     push_fn(&mut symbols, m, Some(t.name.as_str()), content);
                 }
             }
+            crate::ast::Stmt::EnumDecl(decl) => {
+                push_declaration(
+                    &mut symbols,
+                    decl.name.as_str(),
+                    SymbolKind::Type,
+                    decl.is_pub,
+                    None,
+                );
+                if let crate::ast::EnumKind::Heterogeneous { methods, .. } = &decl.kind {
+                    for method in methods {
+                        push_fn(&mut symbols, method, Some(decl.name.as_str()), content);
+                    }
+                }
+            }
             crate::ast::Stmt::Ext(e) => {
                 for m in &e.methods {
                     push_fn(&mut symbols, m, Some(e.target.as_str()), content);
                 }
             }
+            crate::ast::Stmt::SpecDecl(spec) => {
+                push_declaration(
+                    &mut symbols,
+                    spec.name.as_str(),
+                    SymbolKind::Spec,
+                    spec.is_pub,
+                    None,
+                );
+                for method in &spec.methods {
+                    symbols.push(SymbolEntry {
+                        name: format!("{}.{}", spec.name, method.name),
+                        kind: SymbolKind::Method,
+                        is_pub: spec.is_pub,
+                        is_vm_decl: false,
+                        arity: method.params.len(),
+                        signature: Some(super::model::LogicalSignature {
+                            parameters: method
+                                .params
+                                .iter()
+                                .map(|p| p.ty.unique_name().to_string())
+                                .collect(),
+                            parameter_modes: method
+                                .params
+                                .iter()
+                                .map(|p| format!("{:?}", p.mode))
+                                .collect(),
+                            returns: method.ret.unique_name().to_string(),
+                            is_static: false,
+                            has_self: true,
+                            generics: Vec::new(),
+                            attributes: Vec::new(),
+                        }),
+                        has_body: method.body.is_some(),
+                        source_span: None,
+                        verification: VerificationLevel::Declared,
+                    });
+                }
+            }
+            crate::ast::Stmt::Alias(alias) => push_declaration(
+                &mut symbols,
+                alias.alias.as_str(),
+                SymbolKind::Alias,
+                false,
+                Some(alias.target.to_string()),
+            ),
+            crate::ast::Stmt::TypeAlias(alias) => push_declaration(
+                &mut symbols,
+                alias.name.as_str(),
+                SymbolKind::Alias,
+                false,
+                Some(alias.target.unique_name().to_string()),
+            ),
             _ => {}
         }
     }
@@ -452,6 +544,34 @@ pub fn parse_layer_with_store(
         parse: ParseStatus::Parsed { symbol_count },
         symbols,
     }
+}
+
+fn push_declaration(
+    symbols: &mut Vec<SymbolEntry>,
+    name: &str,
+    kind: SymbolKind,
+    is_pub: bool,
+    target: Option<String>,
+) {
+    symbols.push(SymbolEntry {
+        name: name.into(),
+        kind,
+        is_pub,
+        is_vm_decl: false,
+        arity: 0,
+        signature: target.map(|returns| super::model::LogicalSignature {
+            parameters: Vec::new(),
+            parameter_modes: Vec::new(),
+            returns,
+            is_static: false,
+            has_self: false,
+            generics: Vec::new(),
+            attributes: Vec::new(),
+        }),
+        has_body: false,
+        source_span: None,
+        verification: VerificationLevel::Declared,
+    });
 }
 
 fn push_fn(symbols: &mut Vec<SymbolEntry>, f: &crate::ast::Fn, owner: Option<&str>, content: &str) {

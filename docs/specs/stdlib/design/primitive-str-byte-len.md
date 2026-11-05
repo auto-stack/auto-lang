@@ -10,7 +10,9 @@ auto.str.byte_len(s str) -> int      # .at 方法形：s.byte_len()
 
 返回 `s` 的 **UTF-8 字节数**（Rust `String::len()` 口径）。
 
-- `str.len()` 是 PLAN-055 的**字符数**语义，两者不可互换；
+- 具体 `len` 派发须分开：静态 `Str.len(s)`/`s.len()` 为 nat#1500 的 UTF-8 **字节数**；
+  `.length` 与泛型 receiver 经 CALL_SPEC 的动态 `len` 为字符数。PLAN-872 的实际绑定
+  守卫及 [操作语义实册](semantic-operation-contract.md)（PLAN-943）取代旧的全局“len=字符数”表述；
 - `str.bytes()` 返回 VM 列表，在大文本（10MiB 书）不可用；
 - `str.char_at` 在 VM 轨索引 ≥1 恒 0（已知缺陷），不可作字节寻址。
 

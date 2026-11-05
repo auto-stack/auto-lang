@@ -226,6 +226,14 @@ pub fn enabled_features() -> Vec<String> {
 pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
     let common = [
         (
+            "stdlib/contracts/operations.toml",
+            super::contracts::OPERATIONS,
+        ),
+        (
+            "stdlib/contracts/compatibility.toml",
+            super::contracts::COMPATIBILITY,
+        ),
+        (
             "stdlib/assembly-providers.json",
             include_str!("../../../../stdlib/assembly-providers.json"),
         ),
@@ -418,6 +426,14 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 include_str!("../trans/rust/call_emit/call_value_ctors.rs"),
             ),
             // PLAN-884 T-06：主题算法模块入 Vm provider 输入。
+            (
+                "trans/rust/semantics.rs",
+                include_str!("../trans/rust/semantics.rs"),
+            ),
+            (
+                "trans/rust/semantics/walk.rs",
+                include_str!("../trans/rust/semantics/walk.rs"),
+            ),
             (
                 "trans/rust/ast_scans.rs",
                 include_str!("../trans/rust/ast_scans.rs"),
