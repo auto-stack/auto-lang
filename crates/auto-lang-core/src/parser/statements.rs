@@ -328,6 +328,13 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
+        // parse_body and Pratt already use these same segment sizes. Statement
+        // dispatch has a large debug frame of its own; checking only at a body
+        // boundary leaves no reserve for dispatch plus nested call arguments.
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.parse_stmt_guarded())
+    }
+
+    fn parse_stmt_guarded(&mut self) -> AutoResult<Stmt> {
         // Plan 6B-4.19: pub keyword prefix — unified visibility handling
         if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
             let saved_cur = self.cur.clone();

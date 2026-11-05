@@ -1,5 +1,42 @@
 use super::*;
 
+#[test]
+fn ui053_nested_statement_calls_fit_default_worker_stack() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            for depth in [1, 48] {
+                let source = format!("{}0{}", "wrap(".repeat(depth), ")".repeat(depth));
+                let mut parser = Parser::from(source.as_str());
+                parser.skip_check = true;
+                let mut expr = parser.node_or_call_expr().expect("nested identifier arguments");
+                let mut observed = 0;
+                while let Expr::Call(call) = expr {
+                    observed += 1;
+                    assert_eq!(call.args.args.len(), 1);
+                    expr = match call.args.args.into_iter().next().unwrap() {
+                        Arg::Pos(expr) => expr,
+                        other => panic!("positional argument became {other:?}"),
+                    };
+                }
+                assert_eq!(observed, depth);
+                assert!(matches!(expr, Expr::Int(0)));
+            }
+            let call = format!("{}0{}", "wrap(".repeat(24), ")".repeat(24));
+            let body = format!("{}{}{}", "if true { loop { ".repeat(12), call, " } }".repeat(12));
+            let source = format!("fn main() {{ {body} }}");
+            let mut parser = Parser::from(source.as_str());
+            parser.skip_check = true;
+            assert_eq!(parser.parse().expect("mixed statement and argument recursion").stmts.len(), 1);
+            let mut malformed = Parser::from("wrap(wrap(0)");
+            malformed.skip_check = true;
+            assert!(malformed.node_or_call_expr().is_err());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
 /// Plan 567 T12（P560-D1）: with-as 绑定解析——pratt 截断 + 块形态产物。
 #[test]
 fn test_with_as_binding_parses_to_block_form() {

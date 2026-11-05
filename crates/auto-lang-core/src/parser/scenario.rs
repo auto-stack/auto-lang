@@ -514,6 +514,13 @@ impl<'a> Parser<'a> {
     }
 
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
+        // UI handlers and ordinary argument lists reach this route directly,
+        // bypassing the Pratt parser's stack checkpoint. Check before entering
+        // its large debug frame, including recursive node_or_call_expr -> args.
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.node_or_call_expr_inner())
+    }
+
+    fn node_or_call_expr_inner(&mut self) -> AutoResult<Expr> {
         // Handle 'not' as prefix unary operator for boolean negation
         // e.g., assert(not expr) -> assert(!expr)
         if self.cur.text == "not" {

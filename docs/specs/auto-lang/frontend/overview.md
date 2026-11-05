@@ -12,6 +12,16 @@
 
 ## 职责
 
+### 嵌套解析的 worker 栈保护（auto-ui/PLAN-053）
+
+通用语句分派 `parse_stmt` 与标识符调用/节点入口 `node_or_call_expr` 在进入
+各自较大的解析帧之前，使用与既有 body/Pratt 相同的动态栈检查参数
+（512 KiB reserve、1 MiB segment）。这补齐 `node_or_call_expr → args →
+node_or_call_expr` 绕过 Pratt，以及 body 后进入大语句帧的路径；不增加
+默认线程栈、不改变语法、AST 或现有 block nesting 限额。默认 2 MiB worker
+上的嵌套调用、if/loop 与坏括号回归由 `parser::tests::ui053_*` 覆盖，UI
+实际多应用扫描仍由 auto-ui 消费门验证。
+
 源码 → AST：词法分析（含 f-string 插值 `$var`/`${expr}`）、递归下降语法分析、
 方言（dialect）场景化关键字派发、`use` 语句快速扫描与模块路径解析。
 产出 `Code`/`Stmt`/`Expr` 树，供 AutoVM、trans 多目标转译（C/Rust/TypeScript/
