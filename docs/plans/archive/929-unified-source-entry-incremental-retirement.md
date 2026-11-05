@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-929
-status: reviewed
+status: archived
 feature_name: SG-C 全源码入口增量恢复统一与重复parser退役
 author: [Codex]
 created_at: 2026-11-03
-updated_at: 2026-11-04
+updated_at: 2026-11-05
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-syntax/source-frontdoor.md, docs/specs/auto-ac/function-incremental-source.md, docs/specs/auto-ac/closures-function-production.md, docs/specs/auto-av/closures-source-recovery.md, docs/specs/auto-a2x/incremental-and-cache.md]
 new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 12
+current_step: 14
 total_steps: 14
 ---
 
@@ -207,12 +207,14 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 | T-10 | work | T-03..09，调用清单闭合后 | 重复手写lexer/parser生产退役、兼容门面/测试隔离与负控；V-11，AC-01/10 | [x] 2026-11-05：旧手写整源/三片段 parser + 词法器退役为 `legacy-syntax-oracle` feature 隔离的差分 oracle（**生产构建编译期不可达**——8 个消费 crate 无 feature check 全绿）；re-export 面拆分；`retirement_gate_929` 结构门：改名复制检测（消费 crate tokenize/Parser/parse_program 定义扫描+不同领域白名单）+ oracle 面负控锚 2/2；ace-source PASS。**T-01 清单的生产 legacy 调用点经 T-03..T-06 迁移后清零**（a2x 六处/native 一处/closures_fn 两处/av 准入与探针/case-worker 裁剪缓存） |
 | T-11 | work | T-10，冻结提交、正式采样错峰 | 职责/必要集成并集与真实正式时间/内存/认证，AC-01..11 | [x] 2026-11-05：**职责组 13 组**：ace-syntax/source/comptime/artifacts/lowering/adapters/auto-test-case/infra-fixed/av/native/a2x + infra-ace-m1；ace-semantics 2 红=既有环境（worktree 缺未跟踪 attachments/796，928 复审已记，主检出绿）；ace-native 单红 924-churn restart P90 2505ms **隔离复跑绿**（218.96s，负载环境）；ace-a2x 单红 a2c_coll probe **隔离复跑绿**（环境）。**必要集成并集 18 组**全绿：base/864/866/881/862/863/894/891/889/911/902/921/912/913/865/909/928-composite/929-unified；**904 红=既有 KNOWN-DEBT**（golden manifest 缺失，PLAN-933 认领，非本包触面）。ace-performance 正式采样错峰后台执行（截断/结果如实记入 §9 收据） |
 | T-12 | work | T-11 | SYN-01..06收据、旧门/C/ARCH余账与实际交接摘要，无总M1冒签；AC-11 | [x] 2026-11-05：**SYN-01**（统一路由/退役）：九 profile 单一语法事实（T-03..T-06 迁移+T-06 重复编译清零+T-10 编译期退役门+改名复制门）✓；**SYN-02**（fresh≡增量/传播）：清单全等等价（decl_events t07d）+dependents 全引用面+失败零变异修复+三消费面拒绝门 ✓；**SYN-03**（无损/事务）：九 profile 字节无损重建（929 套件）+stale/foreign typed 拒+零编辑重放诚实回执 ✓；**SYN-04**（restart→下一编辑）：decl-env 恢复 whole=0+深验绑定+预算/配额纪律（store_cache settle 断言）✓；**SYN-05**（真实 P/M/R）：ProductionMeter/StageAttempts 双轴+note_parse 计量保真+SYN 伪 0 结构拒 ✓；**SYN-06**（适用真实执行+父准入）：AV exit=14/C MSVC value:23/native+a2x 组+`ac-source-syn-report/1` 严格父 decoder（篡改矩阵）✓。**余账（不冒 M1）**：SQ/INST/CT/CA-D 另有 owner 待立项；av798 %TEMP% 清理责任（归因配方已记，runner 侧清理未施工——具名债）；av crate 6 文件 fmt 漂移（928 基线）；904→PLAN-933；911/924 P90 类负载环境归因配方已记；附件未跟踪致 worktree 缺审计数据（环境）。交接摘要见 §9 |
-| T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/健康最终复审，AC-12 | [ ] |
-| T-14 | merge | T-13 pass及后续授权 | Spec沉淀/交付/归档/所有输出目录清理，AC-13 | [ ] |
+| T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/健康最终复审，AC-12 | [x] 2026-11-05：needs_fix（F-R1 健康）→修复→**pass**（终判基面 `ab8729f7`；merge 期 cfg 边界修复 `9e9f3558`/`0fee3e39` 为健康类、零语义变更，冻结并集门 9/9 重验绿）；AC-01..12 闭合，F-R2..R5 具名随档 |
+| T-14 | merge | T-13 pass及后续授权 | Spec沉淀/交付/归档/所有输出目录清理，AC-13 | [x] 2026-11-05：SD-01..06 落 `54dc00b2f`（六 canonical blob 哈希见 §9 收据）；15 提交 rebase 落地（range-diff 15/15 全等，交付 `29a7d7007` ff-only）；merge 冻结并集门 9/9 PASS；归档+清树+plan-artifacts 折叠删除+retention 刷新+落地检查收据见 §9 |
 
 下一入口T-01私有清单，T-02最小恢复整链在迁移前完成；公共实现需927/928稳定接口与所有实际owner释放，不把在途分支当D。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: merge | plan_id: PLAN-929 | plan_revision: r2 | outcome: **pass**（delivered） | worktree: `lang-929`（已清） | delivery_commit: `29a7d7007`（rebase 15/15 range-diff 全等，旧尖 `0fee3e394`；ff-only 无 merge commit） | checkpoint: prepared=SD-01..06@`54dc00b2f`；landed=master==29a7d7007；canonical_verified=六路径 blob（source-frontdoor c7e985126dbd / fn-inc 486df15ec2d3 / closures-prod 83acd6503cef / closures-recovery 5f99d463e0ae / a2x-inc c8353a363c0f / unified-syntax-admission 37eb86e71499）+新文件 unified-source-syntax-admission.md；archived=本文件 git mv archive/；cleaned=wt-guard clean→worktree/branch/组目录删除，plan-artifacts/plan-929 全删（证据折叠入本计划），retention 刷新 | merge_gate: 冻结受影响并集 9/9 PASS（ace-source/av/native/a2x/auto-test-case/case-unified-929/closures-912/closures-913/composite-928 @0fee3e39）；merge 期修复=cfg 边界（lexer 整模块+Parser 机械族门控；初版常量单门致依赖构建红，结构门当场抓出） | landing_checks: 生产产物陈旧性观察——release 二进制/gen bundle 未随本包重建（观察项：ac.exe 及各 worker release 构建日期先于 29a7d7007；按需重建归后续运维窗） | batch_regression_due: 929%5≠0；`.last-batch-regression.json` 读取判 48h/合并规则（见收据尾注） | 余账: F-R2 av798 清理/F-R4 附件环境/F-R5 av fmt 漂移（928 基线）——具名随档非阻塞；M1 总绿不签（SYN 门内自证）
 
 - stage: review | review_scope: final（复审终判） | reviewer_identity: 同会话复审（独立重建面同前） | plan_id: PLAN-929 | plan_revision: r2 | outcome: **pass** | worktree_path: `D:/autostack/.wt/lang-929/auto-lang` | branch: plan-929-dev | reviewed_commit: `ab8729f7`（=20102812d + F-R1 健康修复：6 mut+退役路径内部助手 cfg 门；lib 零警告、tests 零错） | base_commit: 37503a3f5 | dependency_revisions: 无外仓 | spec_inputs: 同前 | acceptance_results: F-R1 修复面回归绿（decl_env_roundtrip 2/2、source_restore 8/8 即时重放）；AC-01..11 证据沿 20102812d 终判基面有效（健康修复零语义变更）——**AC-12 闭合** | pending_closeout_gates: merge-owned：冻结受影响并集重验 + SD-01..06 spec 沉淀 + 归档/清树/输出对账 | findings: F-R1 已闭；F-R2..R5 具名随档（非阻塞） | evidence: 零警告/零错/回归绿即时重放；采样与组级收据见 §8/round-12 | next: merge（T-14）
 
