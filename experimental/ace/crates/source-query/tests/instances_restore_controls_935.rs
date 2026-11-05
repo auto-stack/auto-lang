@@ -63,6 +63,23 @@ fn derive(src: &str) -> ace_core::source::ast::Program {
     }
 }
 
+
+/// 模板源（未脱糖）解析——T-07/T-08 测试直接用模板程序（derive 已脱糖）。
+fn parse_tpl(src: &str) -> ace_core::source::ast::Program {
+    match parse_front_with_caps(
+        FrontRequest {
+            src,
+            profile: SourceProfile::Scalar,
+            kind: FrontKind::WholeModule,
+            budget: FrontBudget::WORK_OWNED_64MIB,
+        },
+        &caps(),
+    ) {
+        FrontOutcome::Ok(ok) => ok.program,
+        other => panic!("parse failed: {other:?}"),
+    }
+}
+
 fn fn_names(p: &ace_core::source::ast::Program) -> Vec<String> {
     p.items
         .iter()
@@ -297,5 +314,119 @@ fn anti_foreign_owner_page_refused() {
     assert!(
         home.seed(&program, &page).is_err(),
         "a foreign-owner page must be refused at seed (logical-domain mismatch)"
+    );
+}
+
+/// T-07（V-10 面）：删最后一个 caller → 实例集合收缩（无需求模板移除、
+/// 不生产、lane 回 Facts）；恢复路径对新集合一致。
+#[test]
+fn t07_delete_last_caller_shrinks_instance_set() {
+    let with_call = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    return choose(40, 42, false)
+}
+";
+    let no_call = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    return 7
+}
+";
+    let mut session = SourceQuerySession::new(PACKAGE, MODULE).with_capabilities(caps());
+    let p1 = compile_scalar_product(with_call, MODULE, &caps(), PACKAGE, MODULE, &mut session)
+        .expect("with call");
+    assert_eq!(p1.instances.len(), 1);
+    let p2 = compile_scalar_product(no_call, MODULE, &caps(), PACKAGE, MODULE, &mut session)
+        .expect("call deleted");
+    assert!(p2.instances.is_empty(), "no demand → no instance in the set");
+    assert_eq!(p2.lane, ace_source_query::CompileLane::Facts);
+    // 无模板残留：模板 fn 不在脱糖程序/def 面。
+    let defs: Vec<String> = p2
+        .compiled
+        .checked
+        .bundle()
+        .modules
+        .iter()
+        .flat_map(|m| m.defs.iter().map(|d| d.id_text.clone()))
+        .collect();
+    assert!(!defs.iter().any(|d| d.contains("choose")), "defs: {defs:?}");
+}
+
+/// T-07（V-11 面）：坏实例页——损坏/截断的 S935 字节在解码/信封准入被拒
+/// （不重释、不当缓存命中）。
+#[test]
+fn t07_corrupted_instance_page_refused() {
+    let mut host = ace_source_query::InstanceHost::new(
+        ace_source_query::MemoryInstanceSink::default(),
+    );
+    let cand = host.prepare_set(&parse_tpl(CHOOSE), PACKAGE, MODULE, &caps()).expect("prepare");
+    let page = ace_source_query::InstancePage::from(&cand.instances[0]);
+    let bytes = ace_source_query::encode_instance_page(&page).expect("encode");
+    // 截断 → 拒。
+    let truncated = &bytes[..bytes.len() - 3];
+    assert!(ace_source_query::decode_instance_page(truncated).is_err());
+    // 错误域字节（S934 页）→ 非 S935 magic → 拒。
+    let foreign = vec![0u8; 16];
+    assert!(ace_source_query::decode_instance_page(&foreign).is_err());
+}
+
+/// T-08：预算态——0 步求解器预算下 discovery 以**资源态**拒绝（不是语言
+/// 拒绝、无半状态）。
+#[test]
+fn t08_zero_budget_is_resource_state() {
+    use ace_source_query::instantiate_program_limited;
+    use ace_source_query::ProduceLimits;
+    use std::time::Duration;
+    let prog = parse_tpl(CHOOSE);
+    let limits = ProduceLimits {
+        max_steps: 0,
+        wall: Duration::from_millis(1),
+        max_body_nodes: 4096,
+    };
+    match instantiate_program_limited(&prog, PACKAGE, MODULE, &caps(), &limits) {
+        Err(ds) => assert!(
+            ds.iter().any(|d| d.code == "source.instances-resource"),
+            "expected a resource-state rejection, got {ds:?}"
+        ),
+        Ok(_) => panic!("a zero-step budget must not complete discovery"),
+    }
+}
+
+/// T-08：实例负载（双 T + 多读者）——一个会话内 N 个调用点共享两实例：
+/// 求解次数有界（体页 per 函数一次），不随读者数线性增长。
+#[test]
+fn t08_multi_reader_instance_load_bounded_solves() {
+    let mut src = String::from(
+        "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+",
+    );
+    let readers = 24;
+    for i in 0..readers {
+        src.push_str(&format!(
+            "    let x{i} = choose({i}, {i}, false)\n    if choose(true, false, true) {{ return x{i} }}\n"
+        ));
+    }
+    src.push_str("    return 0\n}\n");
+    let mut session = SourceQuerySession::new(PACKAGE, MODULE).with_capabilities(caps());
+    let p = compile_scalar_product(&src, MODULE, &caps(), PACKAGE, MODULE, &mut session)
+        .expect("multi-reader compiles");
+    assert_eq!(p.instances.len(), 2, "two instances serve all readers");
+    assert_eq!(p.instances[0].demands + p.instances[1].demands, readers * 2);
+    // 冷编译总求解 = 3 个体（main + 两实例）——读者数不放大求解。
+    assert_eq!(
+        session.counters().solver_runs, 3,
+        "readers share instances; solves stay per-function"
     );
 }

@@ -453,3 +453,75 @@ fn main() int {
     // 递归体真实走完 emit+verify（无未解残留）。
     assert!(p.applied.iter().any(|a| a.name == "pick_i32"));
 }
+
+/// T-06（§5.5 caller/target 行）：模板 body-only 换版——普通 caller 只读
+/// 具体签名（choose_i32 的签名轴不含 body），main 的 body 页 **hit、
+/// 推导 0**；仅两个实例体重解（+2）；实现版本换新而调用引用（具体名）
+/// 不变——不是把所有 caller 重算来掩盖绑定。
+#[test]
+fn t06_template_body_edit_caller_solve_zero() {
+    let mut session = SourceQuerySession::new("plan935", "t06.at");
+    let caps = caps();
+    let p1 = compile_scalar_product(CHOOSE, "t06.at", &caps, "plan935", "t06.at", &mut session)
+        .expect("cold");
+    assert_eq!(p1.instances.len(), 2);
+    let runs1 = session.counters().solver_runs;
+    // 模板 body 换版（交换分支）；调用点与模板签名不动。
+    let p2 = compile_scalar_product(CHOOSE_SWAPPED, "t06.at", &caps, "plan935", "t06.at", &mut session)
+        .expect("recompile");
+    assert_eq!(p2.instances.len(), 2);
+    // 实例实现版本换新：choose_i32/choose_bool 的键变化。
+    for (a, b) in p1.instances.iter().zip(p2.instances.iter()) {
+        assert_ne!(a.key, b.key, "body version moves the instance key");
+        assert_eq!(a.concrete_name, b.concrete_name, "assembly name stable");
+        assert_eq!(a.sig_version, b.sig_version, "signature axis stable");
+    }
+    // 计量：恰两个实例体重解；main 推导 0。
+    assert_eq!(
+        session.counters().solver_runs,
+        runs1 + 2,
+        "only the two instance bodies re-solve; the caller never does"
+    );
+    // 暖 session 再编同源：0（全 hit）。
+    let _p3 = compile_scalar_product(CHOOSE_SWAPPED, "t06.at", &caps, "plan935", "t06.at", &mut session)
+        .expect("third");
+    assert_eq!(session.counters().solver_runs, runs1 + 2);
+}
+
+/// T-06：调用者改 T（int 实例 → bool 实例）——该 caller 的实例集合需求
+/// 变化：新实例生产、旧实例不再被该点需求（demands 计数迁移）。
+#[test]
+fn t06_caller_switches_t_demand_moves() {
+    let int_call = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    let x = choose(40, 42, false)
+    return x
+}
+";
+    let bool_call = int_call.replace(
+        "let x = choose(40, 42, false)
+    return x",
+        "if choose(true, false, true) {
+        return 1
+    }
+    return 0",
+    );
+    let mut session = SourceQuerySession::new("plan935", "t06b.at");
+    let caps = caps();
+    let p1 = compile_scalar_product(int_call, "t06b.at", &caps, "plan935", "t06b.at", &mut session)
+        .expect("int call");
+    assert_eq!(p1.instances.len(), 1);
+    assert_eq!(p1.instances[0].demands, 1);
+    assert!(p1.instances[0].concrete_name.contains("i32"));
+    let p2 = compile_scalar_product(&bool_call, "t06b.at", &caps, "plan935", "t06b.at", &mut session)
+        .expect("bool call");
+    assert_eq!(p2.instances.len(), 1);
+    assert!(p2.instances[0].concrete_name.contains("bool"));
+    assert_eq!(p2.instances[0].demands, 1);
+    // 实例身份隔离：两个需求是不同键。
+    assert_ne!(p1.instances[0].key, p2.instances[0].key);
+}
