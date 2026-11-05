@@ -330,6 +330,10 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 4 | from: work | to
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 5 | from: work | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（仅F-952-01新增共享采集器独立修复授权；941/952原授权保持）
 
+2026-11-06 waiting audit（F-952-01同一条件连续第2轮）：上一轮为progress，已提交a834b9cfa、952真实6域红绿与共享采集器确定性反例，非纯状态复述。本轮仅复读941/952 §9/§10、当前工作树身份与新增计划存在性；未收到共享采集器独立修复授权，未见原owner交付修复。941/952两树均clean，952 HEAD仍6308a8ca550586f5e9d221483611e991a6db57ba；上一完整组进程已明确exit1，不存在可当verified wait的活跃门禁。按auto-plan-goal待答规则不实施新修复、不运行测试/构建、不重复提问、不缩小原941目标。当前goal保active，未满足blocked三轮阈值；本轮属于no progress（待答簿记）。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 6 | from: user | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（F-952-01共享采集器独立修复授权）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
