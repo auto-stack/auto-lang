@@ -253,6 +253,11 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 1 | from: work | to
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 2 | from: user | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 91968fd403d0bf0c7bf2f5a4e002ae50d44440a6 | next: user
 
+
+2026-11-06 blocked audit（连续第3轮同一条件）：上一轮为no progress（仅待答状态复核/簿记，没有已确认活跃进程可轮询，不计verified wait）。本轮重读§10-4，仍无独立producer修复授权；主线CertDraft::to_json仍含已定位的两处JSON标点缺陷，实施树clean且HEAD仍91968fd40。按r1 §5.4/§8有界首链门与既有待决定记录，不能修补child文本、跳过证书，亦不能在未授权独立修复时扩写原producer；T-03及后续依赖T-02成功，不具备可继续执行的独立入口。未重跑测试/构建。连续3轮阈值满足，goal转blocked，Plan仍executing、不归档，树/branch/scope保持在途。解阻动作=用户授权§10-4最小独立修复包，或原owner交付修复及可严格读取证书后恢复目标。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 3 | from: user | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 91968fd403d0bf0c7bf2f5a4e002ae50d44440a6 | next: user
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
