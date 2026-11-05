@@ -92,7 +92,17 @@ impl CtEnvelopeSink for ManagedEnvelopeSink {
     }
 
     fn publish(&mut self, key: &ExecKey, env: &CtExecutedV1) -> Result<(), EnvelopeError> {
+        // Write-path admission: the sink never stores a page its own codec
+        // would refuse on read (foreign schema/producer/tag = rejected
+        // here, not written for the reader to trip over).
         let payload = encode_envelope(env)?;
+        let (page_key, _) = decode_envelope(&payload)?;
+        if page_key != key.canonical() {
+            return Err(EnvelopeError::KeyMismatch {
+                expected: key.canonical(),
+                found: page_key,
+            });
+        }
         let req = PutRequest {
             layer: CT_LAYER,
             key: store_key(key),

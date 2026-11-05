@@ -580,7 +580,10 @@ name = "ace-comptime"
 title = "ACE包 experimental/ace"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+# PLAN-936（T-11）：source-cte 服务包（真实 AV CT 执行/冻结/调度/回灌）
+# 单元与集成职责显式纳入本固定清单——被 comptime 依赖编译不等于其测试
+# 已执行。
+args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "-p", "ace-source-cte", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
