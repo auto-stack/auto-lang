@@ -37,6 +37,27 @@
 
 ## 诊断与失败原子性
 
+`NameError::UndefinedFunction` 的 Display 必须包含实际符号名（例如
+`undefined function: type_of`）；API 生成包装器同时保留 `library.at` 等模块名。
+不能只打印族名后把定位责任交给使用方。code/span/help/suggestion 的 typed 身份保持。
+
+### Vue 后端选择与 VM 专有能力（PLAN-955）
+
+Vue 是前端选择，不意味着后端自动使用 VM。CLI `run` 缺省 server 为 Rust；
+`--no-merge` 只选择分离模式。含 VM 专有 native 的应用应显式
+`auto run --server vm`，生成 TS client 后由 VM HTTP 服务执行后端。
+`type_of(x)` 当前只有 VM native 注册，裸名 A2R 无映射；不能因 VM 能执行
+就将其列为 A2R 已支持能力，也不能把它的失败推断为所有跨模块 import 失效。
+auto-reader 的 `use pathx: json_escape` 在共享 API 转译入口正常准入；
+其 `library.at` 首个被拒调用是 `type_of`，而非 `json_escape`。
+
+`#[test]` 是函数的测试发现标记，不是生产模块链接的条件排除指令。
+Parser 保留函数及 `is_test`，VM codegen/loader 会处理其函数体与引用，
+因此未执行的测试函数仍须符合模块可见性。跨模块测试 helper 须显式
+`use helper: expect` 或使用限定名，不能依赖其他模块的裸名导出；
+需要从产品装配排除的测试应放在独立测试源/入口。该规则来自现有模块
+链接规则，PLAN-955 不引入新的 `#[test]` 排除或导入语义。
+
 诊断以 `AutoError::{Name,Type,Syntax,MultipleErrors}` 传播真实 stage/code/span；工具 panic、I/O、资源超限和普通 `Msg` 不得满足语言负例。adapter 只在成功时持久化 accepted actual；失败时 artifact ref 为空，已有外部产物不由 API 覆盖。Rust 编译/运行拒绝不替代 Auto 前端拒绝。
 
 ## 验证与边界

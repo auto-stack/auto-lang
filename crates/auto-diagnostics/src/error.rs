@@ -741,7 +741,7 @@ pub enum NameError {
     ImmutableAssignment { name: String, span: SourceSpan },
 
     /// Undefined function
-    #[error("undefined function")]
+    #[error("undefined function: {name}")]
     UndefinedFunction {
         name: String,
         span: SourceSpan,

@@ -7,6 +7,8 @@
 //! 的输出与之逐字段比对——display/code/severity/help/url/labels/
 //! related/debug 与固定宽度(60)/无色 GraphicalReportHandler 渲染。
 //! 新实现不参与期望生成（oracle 界，V02）。
+//! PLAN-955 intentionally revises only UndefinedFunction's display/rendered
+//! message to include the symbol. Its typed code/span/help/debug stay frozen.
 
 use auto_diagnostics::error::{
     attach_source, AutoError, ComptimeError, NameError, RuntimeError, SyntaxError, TypeError,

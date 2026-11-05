@@ -884,6 +884,46 @@ pub fn parse_params(params_str: &str) -> Vec<ApiParam> {
 }
 
 #[cfg(test)]
+mod backend_diagnostic_tests {
+    use super::transpile_back_module_to_rs_with_proofs;
+
+    #[test]
+    fn named_companion_imports_survive_api_transpile() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("pathx.at"),
+            "pub fn json_escape(text str) str { return text }",
+        )
+        .unwrap();
+        let (code, _) = transpile_back_module_to_rs_with_proofs(
+            "library",
+            "use pathx: json_escape\nfn encode(text str) str { return json_escape(text) }",
+            Some(dir.path().to_path_buf()),
+        )
+        .unwrap();
+        assert!(code.contains("json_escape(text)"), "{code}");
+        assert!(code.contains("crate::pathx"), "{code}");
+    }
+
+    #[test]
+    fn rejected_call_reports_symbol_and_backend_module() {
+        // Reader's VM-only native was previously reported as just
+        // "undefined function", incorrectly implicating valid imports.
+        for name in ["type_of", "unknown_helper"] {
+            let source = format!("fn check(x) bool {{ return {name}(x) == \"int\" }}");
+            let error = transpile_back_module_to_rs_with_proofs("library", &source, None)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("library.at"), "{error}");
+            assert!(
+                error.contains(&format!("undefined function: {name}")),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod qualify_faces_tests {
     use super::qualify_a2r_std;
 
@@ -896,7 +936,8 @@ mod qualify_faces_tests {
         let out = qualify_a2r_std(
             "let db = a2r_std::sqlite::open(p);
 let s = a2r_std::rand::secure_hex(32);
-let h = a2r_std::env::get(\"K\");".to_string(),
+let h = a2r_std::env::get(\"K\");"
+                .to_string(),
         );
         assert!(out.contains("::a2r_std::sqlite::open(p)"), "{out}");
         assert!(out.contains("::a2r_std::rand::secure_hex(32)"), "{out}");
