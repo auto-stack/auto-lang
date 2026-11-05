@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-936
-status: drafting
+status: executing
 feature_name: SQ-C 普通源码真实AV CT查询与冻结回灌恢复闭环
 author: [Codex]
 created_at: 2026-11-04
-updated_at: 2026-11-04
+updated_at: 2026-11-05
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-cte/scalar-query-profile.md, docs/specs/auto-cte/frozen-cache.md, docs/specs/auto-semantics/source-query-session.md, docs/specs/auto-test-case/architecture.md]
 new_spec_components: [docs/specs/auto-cte/source-query-integration.md]
 touched_goals: [GOAL-002]
 affects: [auto-cte, auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-817, PLAN-934, PLAN-935, PLAN-929]
-current_step: 0
+current_step: 1
 total_steps: 14
 ---
 
@@ -187,7 +187,7 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 | T | owner_stage | 前置/实际写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 当前817/934935929/旧语言合同只读 | 服务图/原输入与反控/新Hash与meta符号/预算/完整consumer和窗冻结，AC-01..04/10 | [ ] |
+| T-01 | work | 当前817/934935929/旧语言合同只读 | 服务图/原输入与反控/新Hash与meta符号/预算/完整consumer和窗冻结，AC-01..04/10 | [x] 2026-11-05 三路只读勘察+41项输入hash冻结@cb1bcbb7f（r2报告23项核对20匹配/3漂移归属D929/D937）；6项缺口重锚裁定；T-02门槛评估=934/935未交付。冻结文档`D:/autostack/plan-artifacts/plan-936/t01-service-graph-freeze.md`（SHA256 见§9） |
 | T-02 | work | T-01，934已审稳定query端口/929来源 | 无环服务+checked片段真AV+回灌四端/首编辑与原预算有界整链证明，AC-01/03/06/08；失败needs_replan | [ ] |
 | T-03 | work | T-02，comptime→拟source-cte/private服务 | 最小执行/冻结公共服务提取、旧probe双车道委托与原反控，V-10，AC-03/09 | [ ] |
 | T-04 | work | T-02/03，935模板窗后统一grammar/AST S | HashExpr/有限meta selector/能力/来源绑定，V-01/02/03，AC-01/02 | [ ] |
@@ -206,10 +206,22 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 9. 复审记录
 
+2026-11-05 stage:work / PLAN-936 r2 / outcome:**blocked**（外部前置未交付，非合同问题）/ worktree:`D:/autostack/.wt/lang-936/auto-lang` / branch:`plan-936-dev` / base_commit:`cb1bcbb7f` / code_commit:无（T-01 只读，零代码写入，树 clean）/ dependency_revisions: master=cb1bcbb7f；D929=已归档（929 交付致 resolve.rs/units.rs 漂移，已重锚）；D934=executing r2 4/13，代码仅存 plan-934-dev（+8 提交/77 文件，含未合并 source-query crate）；D935=drafting r2 0/12 / task_ids: T-01 完成；T-02..T-12 阻塞 / evidence: T-01 冻结文档 `D:/autostack/plan-artifacts/plan-936/t01-service-graph-freeze.md` SHA256=`240c8051f2e798d9638ee2e9a24c450631881c23cb8fd4460192758b0bbad78c`（服务图/调用链/envelope schema/Cargo 边与无环提取集/817 义务与 12 类反控/预算全表/Hash 与 meta 符号附着点/consumer 与写窗/41 项输入 hash；r2 报告 23 项核对 20 匹配、3 漂移归属 D929/D937；6 项缺口重锚裁定：规范负载=115fn≥256KiB、页界走 796 512KiB 轴+envelope 1MiB 重组界、正式门=P90≤2000ms、resident-866 实名、817 路径已迁移、其余无缺失）/ blockers: T-02 前置"934已审稳定query端口"未满足（934 4/13 在途未合并）；T-04 语法窗/T-08/12 实例能力需 935（0/12 未启动）/ next_responsible_role: user（解锁决策）；解锁后 work 从 T-02 续起。
+
+2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 1 | from: work | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-936/auto-lang | commit: cb1bcbb7f（基面，无代码提交） | next: user（等待 934/935 交付或授权调整）
+
 2026-11-04 stage:new / revision:2 / outcome:pass（规划静态合同复核，不是独立实施review）/ next:work（后续实施指令及任务实际稳定接缝/写窗）。保全部T/AC编号、总步骤与0进度；补例未执行，r1与旧796/817运行不能为r2补充断言背书。关键修改/源码身份/并行前置见[复核报告](reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)，以下r1为历史。
 
 2026-11-04 stage:new / PLAN-936 r1 / outcome:pass（规划静态合同）/ next:work（后续实施指令及所需稳定query/来源接缝）。0/14，全部新source/AV提取/恢复/性能/认证未执行；817旧真实AV已交付，不因此宣称本普通源入口已接好。独立实施review仍待后续完成。
 
 ## 10. 待澄清事项
+
+**【2026-11-05 work 阻塞】** T-01 已完成（只读盘点冻结，见§9）。T-02..T-12 被两项在途前置硬阻塞，本目标会话无法在不违反计划合同的前提下继续：
+
+1. **T-02 前置"934已审稳定query端口"未满足**：PLAN-934 现executing r2 4/13，其 query 端口代码（含全新 `experimental/ace/crates/source-query/` crate）只在未合并分支 `plan-934-dev`（领先 master 8 提交/77 文件）上，review（T-12）与 merge（T-13）均未开始。计划合同（§5.9"934稳定端口后才实接"）禁止对未审未合并端口实接，也不允许跨 worktree 借用其分支。
+   **解锁动作**：等待 PLAN-934 走完 work→review→merge 交付（其 query 端口合入 master）后，以 `/auto-plan-goal 完成计划936` 或 `/auto-plan:work PLAN-936` 从 T-02 恢复（worktree/分支已就位，直接可用）。
+2. **T-04 语法窗/T-08、T-12 实例能力需 PLAN-935**：935 现 drafting r2 0/12（无实施树）。公共写面建议序（r2 报告§3）为 934 事实端口→935 模板/实例→936 Hash/CT 接线；T-08/T-12 的真实实例组合（`#{choose(40,42,false)}` 模板换体 42→40 等）必须等 935 真实能力，不能用模型 InstanceKey 或旧 deck 顶替。
+
+用户可选路径：(a) 等 934/935 各自交付后恢复 936（推荐，符合既定写窗序）；(b) 授权变更依赖序列/合同（属 scope 决策，须显式批准并走 needs_replan）。在解除前，936 保持 executing 1/14，worktree 与 plan-artifacts scope 保留待恢复。
 
 没有扩大旧语言/资源/FFI权限的授权；有限新增Hash/profile/meta intrinsic语义已写明，属于待实施计划合同而非已发布stdlib。服务提取/最小checked wrapper/无环/回灌接缝由T-02证明；如需全源重parse/后台旧VM/host执行或放宽预算，先needs_replan。真正type生成/runtime反射/完整泛型等仍覆盖后继，CA-D与ARCH最终组合签章独立，不因本包绿就跳过。
