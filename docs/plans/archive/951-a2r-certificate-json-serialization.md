@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-951
-status: reviewed
+status: archived
 feature_name: HIR Rust证书严格JSON序列化修复
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904]
-current_step: 4
+current_step: 5
 total_steps: 6
 ---
 
@@ -79,7 +79,7 @@ producer `CertDraft` → `to_json` → 原worker证书文件 → 严格JSON deco
 | T-02 | work | 修serializer并补三schema/配置/能力/转义字段保真，定向回归通过 | [x] |
 | T-03 | work | 原worker实际认证重放/C正控，准备SD，提交冻结实现 | [x] |
 | T-04 | review | 同树重新核AC/SD/反例/健康，提交绑定final verdict | [x] |
-| T-05 | merge | 冻结完整ace-a2x组、必要消费者，线性合入/Spec读回/归档 | [ ] |
+| T-05 | merge | 冻结完整ace-a2x组、必要消费者，线性合入/Spec读回/归档 | [x] |
 | T-06 | merge | 所有输出对账、scope全删、双仓guard后清树分支组，回941 | [ ] |
 
 ## 9. 复审记录
@@ -98,6 +98,13 @@ producer `CertDraft` → `to_json` → 原worker证书文件 → 严格JSON deco
 
 
 2026-11-06 stage:review | review_scope:final | reviewer:当前会话（与实现同上下文，未冒称独立agent；重新从冻结diff/原始证书/实际parser终态重建结论） | PLAN-951 r1 | outcome:pass | reviewed_commit:6d21078da10ecf92bf3407183542fb817d469a63 | base:1e85cb756 | worktree/branch:D:/autostack/.wt/lang-951/auto-lang / plan-951-dev | dependency:auto-down58ea33f。AC01=PASS：定向2test/8组合真实解析，修前原producer两test红，修后绿；双次坏JSON相等的历史伪证据被替换为标准parser独立oracle。AC02=PASS：重新读取两份现场cert，用标准json对象钩子拒重复key；Rust22键、C21键，source/ref/actual三文件hash及oracle42与原始命令独立核对，Rustnull配置仍原typed语义。生产diff仅字段逗号/最后kv末尾分隔，原字段序/转义/identity/typed验证保持；真实worker没有绕过producer。AC03=PASS：改动仅4个声明路径，target注册确实被固定组发现执行；未改旧guard、分母、预算/样本/ignore；无遗漏/未经授权延后/掩盖债，fmt与diff健康均绿，树clean。SD01=PASS：canonical文件`docs/specs/auto-test-case/a2r-hir-certification.md`增量确切对应输出可解析与字段保真，sha256 `53c96a30ecc6482852921c3c624322d4cce6898c532994a62cdad6c45f29c759`。最终完整ace-a2x职责并集pending merge；不凭本包签M1。next:merge。
+
+
+2026-11-06 stage:merge | PLAN-951 r1 | prepared/landed/canonical_verified:pass | reviewed6d21078da→delivery **fec8a9602413847c681c6944d490d7a39e18e272**，rebase onto master a3a42d74b，`git range-diff 1e85cb756..6d21078da master..HEAD`为1/1 `=`，实现/依赖/SD字节相同；主检出`git merge --ff-only plan-951-dev`到该delivery，无merge commit、未动他方文档WIP。最终冻结`cargo t ace-a2x --out D:/autostack/plan-artifacts/plan-951/final-ace-a2x` exit0、selected=executed=183、excluded=0、not_run=0、183终态全ok，整命令168.602s（准备编译2.94s另列），raw results SHA256 `841cf25e0cec3af3b255a767209a5d10ab0bd7aa9ad4c168154dca93c046cf3d`，source_state b9f159a12ec03847c412c0227fe0fbb4d92bde06f8120645936fa30fab195d44。scope内原始证据摘要已折本计划；共享变更只在证书serializer，完整Rust/C认证及store职责原用例均真实执行。canonical主线读回sha256仍`53c96a30ecc6482852921c3c624322d4cce6898c532994a62cdad6c45f29c759`。guard双仓clean。T-06 cleanup待实际完成；不以本包通过冒M1通过。
+
+输出路径对账：专属build仅951树`experimental/ace/target/`与` scripts/full-regression-driver/target/`；原group测试a2x-out*/store等均在该树的experimental/ace/target下；手工Q4源码/ref副本、完整cert/actual/reference/exe、meter/stdout/stderr及固定门收据全部在scope。唯一外部原用例路径`%TEMP%/a2c-det/{a,b}`为2026-11-03已存在的通用determinism共享缓存（创建时间实查，原`a2c_scalar_semantics::c_fileset_identity_and_determinism`使用，本次lastwrite 2026-11-06 01:34:02），不属951新建专属材料，保留原缓存、未迁移/删除它；无951第二套target/SDK/安装根。主产品auto/UI无代码改动与重启义务；主检出既有预构建a2x-worker不自动视为已更新，941消费修复前须在其树重建原worker并重新认证，不复用旧二进制PASS。
+
+batch due：本包951非5倍，最新receipt covered940、timestamp2026-11-05T17:15:51Z，未超过48h；950尚未交付，故本包不触发批回归，不叠加全仓门。
 
 ## 10. 待澄清事项
 
