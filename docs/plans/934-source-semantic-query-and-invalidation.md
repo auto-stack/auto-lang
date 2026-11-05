@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-cte, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-927, PLAN-928, PLAN-929]
-current_step: 1
+current_step: 2
 total_steps: 13
 ---
 
@@ -159,7 +159,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 | T | owner_stage | 前置/实际写面 | 产出与验证/AC | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 当前基线/原796817/929933只读输入 | 全调用/差额/实际版本/预算与S/H窗口冻结，AC-01..03/09 | [x] 2026-11-05：五要素冻结于 master `f38e50758`，主件 `plan-artifacts/plan-934/t01-freeze-inventory.md`。两报告 hash 表全量重算：仅 2 漂移均出自 D932 merge `da4c98b51`（resolve.rs/test-groups，漂移面已核不伤本包缝）；**932/933 已归档**（相对 r2 快照推进——typed 判面/933 材料现为 master 稳定）；929 executing 10/14（代码 `bf8c189c0`，T-11 在途，非D）。PR-01/02 三缺口 master 现核仍开口（adapter.rs:795 resolve先于typecheck；codec.rs:256 InferFacts name+span稀疏；adapter.rs:363 命名实参Unsupported）；929 消费接口具名清单（decl_env/from_restored/fragment桥/profile_grammar/syn decoder）登记待 D929 交付 SHA |
-| T-02 | work | T-01及source/cst/声明稳定接口 | 无环+单体事实消费+恢复首操作/预算的有界整链可行性，失败needs_replan；V-01/04/06，AC-01/05/07 | [ ] |
+| T-02 | work | T-01及source/cst/声明稳定接口 | 无环+单体事实消费+恢复首操作/预算的有界整链可行性，失败needs_replan；V-01/04/06，AC-01/05/07 | [x] 2026-11-05：**有界整链通过，不 needs_replan**。代码 `d3226ff69`（crate）+ `bba86bb4b`（事实消费端口/av 用例）；接口冻结件 `plan-artifacts/plan-934/t02-interface-freeze.md`（端口/身份轴/legacy切断设计/恢复交接/预算）。证据：源→每 body 查询（复用 796 solver，他函数仅签名 stub）→事实安装→`emit_resolved_parts`→`verify_scalar`→MIR/ABC→**真实执行 42**，改 leaf body→**43 且 caller 暖命中**（solver 恰 +1）；`body_work` 计量 facts 路径 `typecheck=0`、legacy 对照 1/函数；四方向：冷 miss+solver 关→红、暖 hit+solver 关→绿、篡改事实类型→真实 HIR 校验红、异 owner 页→准入拒。验证：`cargo test -p ace-av --test conformance sq934` 8/8；`cargo test -p ace-source-query --lib` 13/13；`cargo t ace-source ace-semantics` PASS（run-w0t3vybv，冻结提交）。**拆分归属**：legacy 综合切断+命名实参输入=T-04；恢复页/首编辑腿=T-07；预算/峰值正式采样=T-10；四端全消费=T-08；独立 V 用例族/固定组=T-09 |
 | T-03 | work | T-02，拟source-query及semantics adapter必要窗 | 单体懒输入/签名目录/新schema命名空间，V-02/07，AC-02/04 | [ ] |
 | T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [ ] |
 | T-05 | work | T-03/04，query deps/meta目录 | 完整键/正负/SCC/来源刷新，V-02/03，AC-02/03 | [ ] |
@@ -174,9 +174,15 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 下一入口T-01私有盘点不等929整包；T-02及S实现须其已审稳定接缝，最终交付不能缺首编辑腿。frontmatter依赖不是要求所有私有研究先等整波。本轮未授权work。
 
-**T-02 进行中（2026-11-05，D929 已落地后开工）**：D929 归档（merge `29a7d7007`，`docs/plans/archive/929-*.md`）后门槛解除，建树 `D:/autostack/.wt/lang-934/auto-lang`（分支 `plan-934-dev`，基面 master `cc7b2fce2`）。已落 `d3226ff69`：新 crate `experimental/ace/crates/source-query`（依赖仅 core/semantics/contract，`cargo tree` 无 av/native/a2x——方向无环）+ 结构走查/版本/事实页/会话 11 例（sq01..sq11）。**未完成**：core 侧事实消费端口与 legacy 综合切断（T-02 的"事实驱动 HIR"腿）、四方向反对称、恢复首操作/预算观察窗——T-02 仍 `[ ]`。
+**T-02 已完成（2026-11-05）**：D929 归档（merge `29a7d7007`）后门槛解除，建树 `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`，基面 `cc7b2fce2`）。`d3226ff69` 新 crate + `bba86bb4b` 事实消费端口：普通 scalar 源经 query 事实驱动 HIR 后**真实执行 42**，body 编辑 43 且 caller 暖命中，四方向反控齐；接口冻结见 `plan-artifacts/plan-934/t02-interface-freeze.md`。下一入口 T-03。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: in-progress（T-02 完成：事实驱动整链真实执行 42/43 + 四方向反控；T-03 下一入口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `d3226ff69`（crate）→ `bba86bb4b`（端口+av 用例）；主检出簿记 | next: work（T-03 单体懒输入/签名目录/新 schema 命名空间 → V-02/07）
+  - 证据：`cargo test -p ace-av --test conformance sq934` **8/8 PASS**（真实执行：`leaf(41)`=42；只改 leaf body `+1→+2`=43 且 main 命中、solver_runs 恰 3；冷 miss+solver 关闭→红；暖 hit+solver 关闭→绿；篡改 leaf 二元节点事实为 bool→`verify_scalar` 红；叶事实贴到 main→准入拒；空 caps 同值）。`cargo test -p ace-source-query --lib` **13/13**（含 sq12 事实驱动 emit+verify、sq13 异 owner 拒）。`cargo t ace-source ace-semantics` **PASS**（`target/test-groups/run-w0t3vybv/`，退出 0，冻结提交后单实例运行）。方向：`cargo tree -p ace-source-query --depth 1` 无 av/native/a2x。
+  - 计量：facts 路径 `body_work` 每函数 `typecheck=0`、`resolve/plan≥1`；legacy `compile_scalar_source` 对照 `typecheck=1`。即 **typecheck 阶段已切断**；resolve 内综合仍在（T-04 关闭，接口冻结件 §4 已列 4 条关闭面）。
+  - 冻结件：`plan-artifacts/plan-934/t02-interface-freeze.md`（端口/依赖方向/应用面边界/身份轴/legacy 切断设计/恢复交接设计/预算）。
+  - 未闭环（按任务表归位，不阻塞 T-02 判定）：T-03 签名目录+V-02/07 用例、T-04 legacy 综合切断+命名实参、T-07 恢复页/首编辑腿、T-08 四端消费、T-09 独立用例族/固定组、T-10 预算/峰值正式采样。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 7 | from: work | to: work | status: executing | outcome: in-progress（D929 门槛已解除，T-02 开工：新 crate + 结构身份/事实页/失效会话落地 11/11 绿；core 事实消费端口未开始） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（分支 `plan-934-dev`，基面 master `cc7b2fce2`=含 D929 归档） | commit: `d3226ff69`（crate）+ 主检出簿记 | next: work（T-02 core 事实消费端口/legacy 综合切断/四方向反对称→V-01 四端值 42）
   - 证据：`cargo test -p ace-source-query --lib` 11/11 PASS（sq01 单体事实完整/结构 id 对齐；sq02 绑定按声明节点；sq03 只改 callee body → caller 命中、body 重解（solver_runs 3）；sq04 callee 签名变 → 真实读者失效并带诊断；sq05 前缀漂移命中且 span 变化；sq06 负依赖名字出现即失效重解；sq07 旧版本/缺覆盖/错 kind/重复/带诊断页全部拒绝；sq08 solver 关闭时冷 miss 红、暖 hit 绿；sq09 有限面外受控拒绝；sq10 签名查询不触 body/solver；sq11 走查确定性与值敏感版本）。`cargo t ace-semantics` PASS（组清单已加 `-p ace-source-query`，`results.json` 在树内 `target/test-groups/run-g16r_x83/`，忽略产物不入库）。
