@@ -176,6 +176,9 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 5 | from: user | to: user | status: executing | outcome: **blocked**（3 纯等待轮上限：D929 未落地——master 无 929 merge、archive 无 929、929 仍 10/14 @ `bf8c189c0`、WIP 冻结 03:56→09:39） | worktree: 未建 | commit: master `df0f6c57e` | next: user（解除条件与恢复入口见 §10 首条；检查点全保留）
+  - 交付状态快照：T-01 1/13 完成；私有层五要素 DRAFT 齐（plan-artifacts/plan-934/）；T-02..T-13 待 D929。无半成品代码/树/scope 泄漏。
+
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 4 | from: user | to: user | status: executing | outcome: waiting（纯等待轮 2/3：D929 仍未落地——master 无 929 merge、archive 无 929、929 仍 10/14 @ `bf8c189c0`；WIP 仍冻结于 03:56，现 09:39 ≈5h43m 无变化） | worktree: 未建 | commit: master `efd8a25c1`（无变化） | next: user（下一轮若仍未落地按上限转 blocked；解除条件：master 出现 929 merge 交付+archive/929-*.md 后 /goal resume）
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 3 | from: user | to: user | status: executing | outcome: waiting（纯等待轮 1/3：D929 未落地——master 无 929 merge、archive 无 929、929 仍 executing 10/14 代码 `bf8c189c0`） | worktree: 未建 | commit: master `918ab7a24`（无变化） | next: user（私有层五要素已齐、无授权内工作可做；D929 落地即自动恢复建树 T-02）
@@ -195,4 +198,6 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 10. 待澄清事项
 
-无需放宽语言/预算/旧批准。单体事实应用API、页格式与复用sema-store方式由T-02有界证明；若必须后台全源check或突破原预算，先needs_replan，不能换名M/R。935936机制、CA-D与最终ARCH签章仍各有owner；本包不因只支持有限类型而豁免真实依赖/恢复。
+**[2026-11-05 09:39 blocked] D929 门控等待（3 纯等待轮上限触发）**：T-02（首个代码任务）按合同须消费 PLAN-929 已审稳定接口（source/CST/decl：`decl_env.rs`、`UnitCatalog::from_restored`、fragment 桥、统一会话）。现况：929 executing 10/14（代码 `bf8c189c0`），T-11 正式采样在途，其 worktree WIP 自 03:56 起 ≈5h44m 无字节变化（可能静机长采样或会话停滞）；本会话按合同不代 resume。**解除条件**：①master 出现 PLAN-929 merge 交付 + `docs/plans/archive/929-*.md` 后 `/goal resume` 本计划（恢复入口：读 D929 交付 SHA → 建树 `lang-934` → T-02）；或 ②若 929 会话确已停滞，用户先恢复/重派 929 的 T-11..T-14。全部检查点已保留可续（T-01 已入库、私有层 DRAFT 在 plan-artifacts、无 worktree 需清理、主检出仅计划簿记）。无需放宽语言/预算/旧批准。
+
+（原）无需放宽语言/预算/旧批准。单体事实应用API、页格式与复用sema-store方式由T-02有界证明；若必须后台全源check或突破原预算，先needs_replan，不能换名M/R。935936机制、CA-D与最终ARCH签章仍各有owner；本包不因只支持有限类型而豁免真实依赖/恢复。
