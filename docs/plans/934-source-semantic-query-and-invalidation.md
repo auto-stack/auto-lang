@@ -188,6 +188,8 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 19 | from: work | to: work | status: executing | outcome: in-progress（T-08 续：AV 产品 seam `compile_scalar_source_via_facts` 落地并跑同值；driver/session/native/A2X 冷路径切换未做） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `e505a665d`；主检出簿记 | next: work（T-08 driver/session/native/A2X 冷路径接 seam；T-09 V 用例族；T-10 正式采样）
+- 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: in-progress（健康门：新 crate rustfmt 干净；T-08 产品冷路径 / T-09 / T-10 仍开口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `038b75b06`；主检出簿记 | next: work（T-08 产品冷路径接线；T-09 独立 V 用例族与固定组；T-10 正式采样）
   - 证据：`cargo fmt -p ace-source-query -- --check` 退出 0；`cargo test -p ace-source-query --lib` **37/37** 复跑绿（格式化不改行为）。
 
