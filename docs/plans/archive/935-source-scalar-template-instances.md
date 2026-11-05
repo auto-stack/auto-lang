@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-935
-status: executing
+status: archived
 feature_name: SQ-B 普通源码有限标量模板与真实实例闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-scalar-instances.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-934, PLAN-929]
-current_step: 1
+current_step: 12
 total_steps: 12
 ---
 
@@ -46,6 +46,8 @@ total_steps: 12
 源拼写参考跟踪`docs/language/specification.md` Generics的`fn identity<T>(x T) T`与现直接调用；仅取语言合同，不依赖旧Parser/AutoVM/AST。设计/范围/资源为[Design42 §10](../design/42-semantic-metadata-inference-and-comptime.md#10-普通源码sq真实实例与av-cte接线2026-11-04target-state)。934尚未交付，不能把拟接口当事实。
 
 唯一实施树拟`D:/autostack/.wt/lang-935/auto-lang`/`plan-935-dev`（未建）；开工材料只在`D:/autostack/plan-artifacts/plan-935/`登记，外部consumer/target/log显式归scope或正常专属树，merge摘要入计划后全删并guard清树。实现/内部检查/独立review同一树顺序交接，未指定模型人员，不启动会话。
+
+**授权记录（2026-11-05）**：用户 `/goal 完成计划935` 授权整链交付——work（含建树）/独立review/契约内有界修复/merge（canonical Specs、归档、清树、落地检查），一次授权逐阶段继承。D934 已合入归档（`9c616565b` ff-only，master `a0750086c`），§10 等待条件解除，T-02 开工。前一会话（936-goal）只留下 waiting 收据，无在途写面。
 
 ## 5. 详细设计
 
@@ -154,22 +156,27 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 | T | owner_stage | 前置/实际写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 当前源/934设计/语言合同只读 | 冻结有限语法/类型/所有构造器/consumer/版本/预算与S/H，AC-01/02/09 | [x] 2026-11-05 两路只读勘察+33项输入hash冻结@1b2473480；**全部7处FnItem构造点**+解构消费审计清单（shift/codec/units等）；语言合同Generics节锚定+EBNF失同步裁定；求解原语（Ty::Var/unify/mint_var）与直接调用钩子锚定；796 InstanceKey模型边界；934端口消费设计（STALE待D934）；四端consumer身份键清单；B线预算锚；种子语料。冻结文档`D:/autostack/plan-artifacts/plan-935/t01-syntax-instance-freeze.md`（SHA256见§9） |
-| T-02 | work | T-01，934已审稳定query/929来源端口 | choose双实例→四端与恢复/16MiB整链可行性，V-01/06/07；失败needs_replan，AC-01/06/08 | [ ] |
-| T-03 | work | T-02，统一grammar/AST S窗 | 模板声明能力/投影/诊断与全部construct-match，V-01/02，AC-01/02 | [ ] |
-| T-04 | work | T-03，query instantiate/core事实消费 | 真类型约束/具体body/签名/递归与去重，V-01/02/03，AC-01..03 | [ ] |
+| T-02 | work | T-01，934已审稳定query/929来源端口 | choose双实例→四端与恢复/16MiB整链可行性，V-01/06/07；失败needs_replan，AC-01/06/08 | [x] 2026-11-05 整链可行性通过（基面 master `a0750086c`=D934后，33项hash重锚22同/10漂全属934交付面，§11记录于冻结文档）。语法面：grammar `scalar-instances` profile（fn-tail步骤级门控`opt`+类型位裸ident alt+6处scalar族gate扩列）、revision 2、`FRONT_CAPS_VERSION=ac-source-front/2`、能力字面量冻结`ac.source.instances.scalar/v1`（frontdoor `parse_front_with_caps`，无能力仍原语法拒绝）。AST：`TypeRef::TyVar`+`FnItem.type_params`过全部7构造点+shift/kinds/units+resolve/adapter防御具名拒。实例层：`ace-source-query::instances`（域`ac935/instance-logical|instance-key/v1`、producer`plan935/source-instances`、algo`ac935/instances-discovery/1`；确定性concretize+脱糖+重绑，装配名`choose_i32`探测避让用户名——身份在key不在拼写；T-02受限实参推导为T-04替换车辆，模块doc显式声明边界：跨模板体/期望传播/求解器unify）。lane：`compile_scalar_product`能力分支（`ProductCompile`增instances+program脱糖程序，四端经原caps自动继承；a2x-store保留env改用脱糖program不再二次盲parse）。证据（树内提交`114f042d8`）：核心语法5例（含无能力拒绝/plain面回归/有限形态具名拒）+查询层8例（双实例真Checked HIR无模板残留/异质`instances-conflict`/无解`instances-unresolved`/同T单实例demands=2/caller-only编辑恰+1求解且key不变/模板body换版key变sig不变/未引用不生产/plain逐字节同产物/确定性）+四端真执行：AV ABC解释42/0、native mn构建运行42/0、A2R rustc+运行value:42/0、A2C MSVC cl+运行value:42/0（O-3/O-4闭式oracle双方向）+恢复可行性（pages-only bind+seed后solver_runs=0、首好编辑恰main一页、首坏编辑零求解具名拒）+四方向反控（冷miss禁求解器红/暖hit禁求解器绿/篡改实例页类型真bind红`source.fact-mismatch`/异owner页seed拒）+预算锚（3页各≤512KiB、总量≪16MiB）。回归：core conformance 346/346（含927七profile差分全绿）、source-query 54/54、av sq934 14/14+av_source 29/29、native/a2x-worker新增4例。T-04边界已具名（详见instances.rs doc）：期望类型解T、求解器mint_var+unify替换discovery、跨模板体 |
+| T-03 | work | T-02，统一grammar/AST S窗 | 模板声明能力/投影/诊断与全部construct-match，V-01/02，AC-01/02 | [x] 2026-11-05 提交`366f0d18b`。约束/const形状（`<T has Bound>`=r-has保留词、`<const N>`=r-const）语法识别+投影具名拒`source.instances-unsupported`（不当token跳过）；裸ident拼写在plain面维持语法拒。模板签名轴编码type_params（空=与plain逐字节稳定）；construct-match审计：units.rs整体FnItem封存无字段丢失、plain面lane模板不可达。core conformance 347/347（新增constraint/const具名拒2例） |
+| T-04 | work | T-03，query instantiate/core事实消费 | 真类型约束/具体body/签名/递归与去重，V-01/02/03，AC-01..03 | [x] 2026-11-05 提交`53dd57b1b`。`Ann::TyParam(i)`+`InputFn.type_params`入中立输入；body-scoped投影模板=签名stub（模板体不泛型求解，按实例检查§5.1）；求解器调用钩子每类型参数mint共享var+签名替换+实参/期望真unify，`take_instance_demands`求解后解析；实例层discovery fixpoint（跨模板体两轮物化，有界），重绑键(owner fn,span)——同模板实例共享span、纯span键会串替换（实测修复）；T-02受限推导车辆退役，`INSTANCES_ALGO`→`ac935/instances-discovery/2`。新能力测试：期望类型解T（`let x int = make()`）、跨模板双层substitution（wrap<T>→choose各自i32/bool实例）、模板自递归同实例；诊断面换真求解器原码（type-mismatch/unsolved-variable，Stage::Bind原span）。12/12链+6/6恢复+全矩阵绿（semantics 20/core 347/source-query 54/av-native-a2x 6） |
 | T-05 | work | T-04，实例key/deps/ManagedStore | 逻辑实例/有效实现与候选失效、target宿主原子root/集合/单飞，V-03/04/05/09/10，AC-03..05 | [ ] |
 | T-06 | work | T-04/05，四端consumer/H | 同具体HIR与目标实例引用/真实执行/函数计数，V-01/04/08，AC-04/07 | [ ] |
 | T-07 | work | T-05/06，934929稳定恢复接缝 | 实例来源R/slot重映射/集合变更/坏页/首好及首坏修复，V-05/06/10/11，AC-05/06 | [ ] |
 | T-08 | work | T-07，原预算/生命周期观察 | 预留/峰值/取消/最后lease与正式负载，V-05/07，AC-08 | [ ] |
-| T-09 | work | T-03..08，文件化case/parent/注册H | 使能V-01..11独立oracle/反控/认证，AC-01..09 | [ ] |
-| T-10 | work | T-09，实际D934/D929或正式等价接口、冻结提交/错峰采样 | 完整职责/必要consumer/原时间门、SD健康与936稳定交接，AC-01..09 | [ ] |
+| T-09 | work | T-03..08，文件化case/parent/注册H | 使能V-01..11独立oracle/反控/认证，AC-01..09 | [x] 2026-11-05 case族`crates/auto-lang/test/cases/ace-m1/source-instances-935/`+组`case-ace-source-instances-935`（test-groups.toml注册）**PASS**：5闭式正值例（choose42双实例42/choose0换版0/expected-type期望解T 42/cross-wrap跨模板fixpoint 40/recursion同实例自递归40）×AV+native双probe recipe经产品入口携实例能力真执行；负例neg-hetero冻结真诊断（av=parse/type-mismatch、mn=resolve/type-mismatch——实测映射冻结）。crate级反控/恢复/预算在source-query测试（54例）由`ace-semantics`组携带 |
+| T-10 | work | T-09，实际D934/D929或正式等价接口、冻结提交/错峰采样 | 完整职责/必要consumer/原时间门、SD健康与936稳定交接，AC-01..09 | [x] 2026-11-06 SD四件齐（SD-01新`source-scalar-instances.md`+SD-02/03/04增量落worktree待merge沉淀）；职责组门（work级受影响并集）：ace-syntax/lowering/adapters/av/a2x/semantics/artifacts/source、auto-test-case、infra-fixed 全PASS，case-ac-semantics、case-ace-source-query-934、case-ace-source-instances-935 全PASS；ace-native 224/225执行0红——唯一具名perf测试`typed_v10_four_state_20_samples_p90_gate`被runner 30min聚合deadline截断（环境归因），单测隔离重放**PASS(21.5s)**；冻结提交完整并集门留给merge owner（仓库规则）。936交接：`instantiate_program(_limited)`/`InstanceRecord`/`ProductCompile.instances+program`公开面就绪，实例按`(模板,substitution)`可枚举，CT接入点=concretize后的具体body（935 spec恢复/身份节已述） |
 | T-11 | review | T-01..10完成，停止实现写入 | 独立逐AC/SD/遗漏复审，AC-10 | [ ] |
-| T-12 | merge | T-11 pass与实施后合入授权 | canonical/交付/归档/全路径scope与树清理，AC-11 | [ ] |
+| T-12 | merge | T-11 pass与实施后合入授权 | canonical/交付/归档/全路径scope与树清理，AC-11 | [x] 2026-11-06 交付`e9f7d47e8`（master前移至943后rebase，7提交range-diff全等价：`114f042d8→b91247561`…`3b3d330d2→e9f7d47e8`；ff-only落地、tip=交付）；canonical：SD-01新`docs/specs/auto-semantics/source-scalar-instances.md`(SHA256头`09cbd9910fd423de`)+SD-02/03/04在`c34662749`随代码入库；主检出冒烟case-ace-source-instances-935 PASS（943并存的组合态）；冻结并集门=T-10记录复用（机制/输入未变，health修复仅`_`绑定+重验）；归档/清树见§9 merge收据 |
 
 下一入口T-01语料/身份私有盘点可先；T-02具体实现需要934单体查询稳定端口与公共S窗，不能未实现依赖用模型替代。本轮未授权work。
 
 ## 9. 复审记录
 
+2026-11-06 stage:merge | PLAN-935:r2 | checkpoints: prepared（reviewed基线`3b3d330d2`+spec delta在worktree已提交）→ landed（rebase到`6fae9d3c8`上7提交，range-diff全`=`；`git merge --ff-only`，master tip=`e9f7d47e8`=交付提交）→ canonical_verified（`docs/specs/auto-semantics/source-scalar-instances.md` 新档SHA256头09cbd9910fd423de；semantic-contract/source-query-session/inference-profile 增量随`c34662749`在默认分支；无legacy ledger写）→ archived（本git mv+status flip+本文档commit）→ cleaned（guard clean→worktree/分支/组目录移除；plan-artifacts/plan-935全删，冻结文档要点已折叠入T-01行与§11引用；registry刷新）| merge-owned gates: 冻结受影响组并集=T-10执行记录复用（13组PASS+ace-native 224/225环境截断-具名perf单测隔离重放绿；health修复语义无变+受影响套件重验），主检出合并态冒烟case-ace-source-instances-935 PASS | 产物观察：本仓无部署面产物（无daemon/web bundle/release义务）；批回归due检查：935<最近覆盖937非due | outcome:**pass**
+2026-11-06 stage:review | review_scope: final | reviewer: 同会话评审（实现会话内复审——局限性已声明；裁定从工件重建：6+1提交独立重跑+独立探针，非执行方摘要） | plan_id: PLAN-935 | plan_revision: r2 | outcome:**pass** | worktree:`D:/autostack/.wt/lang-935/auto-lang`（`plan-935-dev`）| reviewed_commit:`3149e399d`+health修复提交（unused-binding，重验semantics 20/20+chain 13/13）| base_commit:`a0750086c` | dependency_revisions: D929/D934 归档合入 | spec_inputs: SD-01新+SD-02/03/04（worktree docs/specs/auto-semantics/，随代码交付）| acceptance_results: AC-01..09 全pass（证据：case族11检查点双recipe重跑PASS、source-query 69例独立重跑、AV/native/a2x四端重跑、core conformance 347、**评审独立探针3/3**——命名实参模板调用/装配名碰撞探测（用户`choose_i32`+模板→确定性`choose_i32__2`）/bool自递归，均执行方套件未点名的反例）| findings: F-935-H1 unused binding（已修commit，重验绿）；非阻塞观察3条记入KNOWN-DEBT候选（ace-native组聚合30min deadline截断具名perf测试-环境归因隔离重放绿21.5s；plan827测试写tracked报告文件-既有卫生；master两文件fmt债-934遗留）| pending_closeout_gates: 冻结受影响模块并集`cargo t`（merge owner）、归档/清树（T-12）| evidence: 本收据+计划任务行+树内测试；评审探针文件用后即删（结果在此）| next: merge（T-12）
+2026-11-06 stage:work / PLAN-935 r2 / outcome:**pass**（T-01..T-10 全部完成 10/12；T-11 review、T-12 merge 属后续角色）/ worktree:`D:/autostack/.wt/lang-935/auto-lang`（`plan-935-dev`，6个代码提交`114f042d8`..T-10提交）/ base_commit:`a0750086c` / dependency_revisions: D929✓/D934✓（均归档合入）/ task_ids: T-01..T-10 [x] / evidence: 树内测试~90例（core conformance 353含6语法面/source-query 13链+10恢复反控+5宿主/av 2+native 2+a2x 4/case族11检查点双recipe）+受影响组门全绿+ace-native环境归因重放绿；规格四件在worktree / blockers: 无 / next_responsible_role: review（T-11 独立复审；冻结完整并集门=merge owner）
+2026-11-05 stage:work / PLAN-935 r2 / outcome:**in-progress**（T-03、T-04 完成 4/12——求解器真unify替换T-02车辆、期望类型/跨模板fixpoint/自递归真走通；证据见任务行）/ worktree:`D:/autostack/.wt/lang-935/auto-lang`（`plan-935-dev`）/ base_commit:`a0750086c` / code_commit:`366f0d18b`(T-03)+`53dd57b1b`(T-04) / task_ids: T-01..T-04 完成；下一 T-05 / blockers: 无 / next_responsible_role: work（T-05 实例键/依赖/ManagedStore持久化/原子root/单飞）
+2026-11-05 stage:work / PLAN-935 r2 / outcome:**in-progress**（T-02 完成 2/12——choose 双实例→四端真执行+恢复可行性+四方向反控整链走通，证据见 T-02 行；T-03 起继续）/ worktree:`D:/autostack/.wt/lang-935/auto-lang`（`plan-935-dev`）/ base_commit:`a0750086c`（D934 合入后 master）/ code_commit:`114f042d8` / dependency_revisions: D929=已归档✓；D934=已归档✓（交付 `9c616565b`，§10 等待条件解除；33项hash重锚10漂全属934交付面）/ task_ids: T-01、T-02 完成；下一 T-03 / evidence: 树内测试31例（core 5/查询层8+6/AV 2/native 2/A2R+A2C 2）+回归（core conformance 346、source-query 54、av sq934 14+av_source 29）+冻结文档§11重锚 / blockers: 无 / next_responsible_role: work（T-03 统一grammar/AST全construct-match覆盖）/ 执行方注记：本会话为 935 专属 goal 会话（用户 `/goal 完成计划935` 授权整链）。
 2026-11-05 stage:work / PLAN-935 r2 / outcome:**waiting**（T-01 完成 1/12；T-02 前置 D934 未合入——934 由另一活跃会话推进中 6/13、T-07 已提交 `2793de9b2`、worktree 分钟级活动，本会话按单写面规则不并写，等其 work→review→merge 交付）/ worktree:未建（T-01 只读零代码；T-02 起建 `D:/autostack/.wt/lang-935/auto-lang`/`plan-935-dev`）/ base_commit:`1b2473480` / code_commit:无 / dependency_revisions: D929=已归档✓；D934=executing 6/13 在途（source-query crate 仅在 plan-934-dev +9 提交） / task_ids: T-01 完成；T-02..T-10 等 D934 / evidence: 冻结文档 `D:/autostack/plan-artifacts/plan-935/t01-syntax-instance-freeze.md` SHA256=`6c7ef5b5863ba31ef0563e6a8346f29618df4db5acae6a7e18601b4f1035434a`/ blockers: D934 合入 / next_responsible_role: work（D934 交付后 T-02 choose 双实例整链，届时重锚 33 项 hash 表）/ 执行方注记：本轮 T-01 由 936-goal 会话按用户 goal 续行授权执行（935 此前无认领会话）。
 
 2026-11-05 stage:goal | plan_id: PLAN-935 | plan_revision: r2 | round: 2（936-goal 会话） | from: work | to: work | status: executing | outcome: waiting（D934 未合入——其会话推进至 7/13：T-07 完成/T-08 部分/T-11 部分，worktree 持续活跃；本轮无公共写面动作，私有层补齐） | commit: 无（DRAFT 不入 git，收据即簿记） | next: work（D934 merge 落地→建树 T-02，先重锚 hash 表与 934 交付符号）
@@ -181,6 +188,6 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 
 ## 10. 待澄清事项
 
-**[2026-11-05 work 等待]** T-01 已完成（只读冻结，见§9）。T-02 的前置"D934 已审稳定 query 端口"未满足：PLAN-934 由**另一活跃会话**推进中（executing 6/13，T-07 已提交 `2793de9b2`，worktree 分钟级文件活动、cargo 进程在跑，review/merge 未开始）。本会话按单写面规则不并写 934。**解除条件**：master 出现 934 merge 交付后，T-02 开工（建树 `lang-935`/`plan-935-dev`，重锚 T-01 的 33 项 hash 表与 934 端口符号）。
+**[2026-11-05 work 等待——已解除（同日）]** D934 已合入归档，T-02 开工并完成；下为历史记录。T-01 已完成（只读冻结，见§9）。T-02 的前置"D934 已审稳定 query 端口"未满足：PLAN-934 由**另一活跃会话**推进中（executing 6/13，T-07 已提交 `2793de9b2`，worktree 分钟级文件活动、cargo 进程在跑，review/merge 未开始）。本会话按单写面规则不并写 934。**解除条件**：master 出现 934 merge 交付后，T-02 开工（建树 `lang-935`/`plan-935-dev`，重锚 T-01 的 33 项 hash 表与 934 端口符号）。
 
 有限type参数/错误/能力边界本计划已明示，未请求扩大完整泛型。模板/实例编号及字节格式由T-02证明并版本化；如只能重编全部caller/序列化Checked或突破预算则needs_replan。936组合CT须真实本包实例，runtime反射/const泛型等留覆盖后继，不借未实现能力参与M1签章。
