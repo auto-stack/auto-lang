@@ -342,6 +342,12 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to
 
 2026-11-06 **D953已交付**：PLAN-953 r2 source修复65db88be2150991b9c3bbe79d527891fd6a7a27f已线性合main，完整auto-tool-execution43/43、无LEAK/残留，必要ACE两case在新950基面也各1/1，canonical SHA535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953实际归档6/6、两树/branch/组/scope删除完成，无hold。F-952-01独立共享采集器修复授权/交付阻塞解除，不再问授权；952应重基并复审/完整ace-a2x门后合入，941原目标继续保持。周期cargo t all已由950交regress等待936 CT活动门，本会话不重复启动。
 
+2026-11-06 恢复检查点：D953已交付；952在新基面完整ace-a2x **189/189**（results SHA25c198b56e3fc3187b507c0add67e573518b037e9f341f1a902f82947b4336c6），下一步为952 merge，未冒称952归档。941新syntax严格reader提交原5c5547e71，10个真实SYN观察用临时显式当前929约定逐项准入、45治理单元控制通过；**正式identity CLI新metadata导出尚未编译验证**，原10例不充正式新导出证明，T-02仍未完成。原native/AV scalar、cert、SYN等局部证据均不代表完整registry/reducer或/3 AND交付，仍executing 0/15。
+
+941重基含D953的main6b6b191c3，原5c5547e71最终映射到**2033c1e6335e85842fdc568c7c019b93dea55eea**。唯一冲突为950移动bridge_flags注册；保原模块一次、cert_execution_941一次排序注册。rebase已终态成功，正式metadata自有WIP从scope补丁恢复，只有inventory.rs未提交，不误删。原始补丁在plan-941/pending-identity-metadata.patch供恢复；无第二checkout。后续须核重基diff并执行正式导出/相应定向门，未把旧证据自动全绑定到新源码。
+
+host实际goal objective=resume/status=blocked；原F-952-01授权与修复均已解除，但host未自动转active。按auto-plan-goal inactive规则请求`/goal resume`，本次保存已授权工作与已结束门结果，不创建第二goal、不mark complete。恢复后先952合入收尾，再941 T-02真实四端/SYN/937链。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -349,4 +355,4 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
 
-5. **F-952-01 独立共享采集器修复授权待答**：具体最小范围与确定性反例见952 §9；当前goal blocked，原941/952授权不撤销，工作树与材料在途保护。
+5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952完整189/189绿待merge；原941/952授权保持。当前仅host goal仍blocked，需要`/goal resume`恢复自动续行，工作树与材料在途保护。

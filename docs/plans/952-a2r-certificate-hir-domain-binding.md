@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-952
-status: executing
+status: reviewed
 feature_name: Rust证书绑定实际HIR域
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-a2x, auto-test-case]
 depends_on: [PLAN-892, PLAN-902, PLAN-904]
-current_step: 3
+current_step: 4
 total_steps: 6
 ---
 
@@ -71,7 +71,7 @@ V-01=真实worker各profile实际actual+手写reference认证，标准JSON解析
 | T-01 | work | - | 登记scope/树，补真实profile回归并保修前红 | [x] |
 | T-02 | work | T-01 | 原producer绑定out.hir_domain、移除domain_of，定向回归/格式/编译 | [x] |
 | T-03 | work | T-02 | 提交代码/SD草案，execution_done，完整组门留merge | [x] |
-| T-04 | review | T-03 | 冻结逐AC/遗漏/健康/SD独立复审 | [ ] |
+| T-04 | review | T-03 | 冻结逐AC/遗漏/健康/SD独立复审 | [x] |
 | T-05 | merge | T-04 | 冻结cargo t ace-a2x完整组、合main及Spec、归档 | [ ] |
 | T-06 | merge | T-05 | guard/tree/branch/组/scope清理、941交付回执 | [ ] |
 
@@ -125,6 +125,20 @@ stage: merge | plan_id: PLAN-952 | plan_revision: r1 | outcome: needs_fix | code
 2026-11-06 F-952-01新增解阻授权：用户答复“授权独立修复并继续（推荐）”；独立PLAN-953承接原采集器竞态、错误分态/永久反例/职责与消费者回归、复审合入后返回952/941。当前仅已授权/立项，不冒修复已交付，不再重复询问该范围。host goal仍blocked，本次按明确直接用户指令执行953全链，不新建goal或伪称自动active。
 
 2026-11-06 **D953已交付**：PLAN-953 r2 source修复65db88be2150991b9c3bbe79d527891fd6a7a27f已线性合main，完整auto-tool-execution43/43、无LEAK/残留，必要ACE两case在新950基面也各1/1，canonical SHA535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953实际归档6/6、两树/branch/组/scope删除完成，无hold。F-952-01独立共享采集器修复授权/交付阻塞解除，不再问授权；952应重基并复审/完整ace-a2x门后合入，941原目标继续保持。周期cargo t all已由950交regress等待936 CT活动门，本会话不重复启动。
+
+### D953后work/affected final review刷新（2026-11-06）
+
+原阻塞F-952-01的生产EOF竞态已由D953交付（独立原始字节/读错反例红绿、完整设施43/43与原ACE消费者绿），不把旧副本替换为伪修复。952重基到含950与953的main6b6b191c3：原6308a8ca5→**`a2866eba2f73a3824a3425dfbc42e9e272f483fe`**。唯一冲突为conformance注册：950将bridge_flags移到按名字排序位置；保既有所有模块且bridge_flags恰一次，将cert_domain_952注册到排序位置恰一次。range-diff标`!`仅因该注册上下文位置；生产域绑定、6个fixture断言、SD字节均与原patch等价，**不谎称整patch `=`**。
+
+work复验：`cargo t ace-a2x --test-name cert_domain_952 --out .../after-d953` exit0，6/6、12.381s，结果SHA **`a9fdf92e8f2c970c7777b740098239a756372dfbd634c7ab800d72495e4500ec`**；新950编译基面实际通过，核心/标量/record/text/text-record/collections全保。tree clean，原预算/原文件集/schema/oracle未改；本包没有新增生产代码修复或scope变更，仍r1。
+
+同会话独立复读上下文限制同原review。重新读取rebased diff与测试注册（无重复或删项）、六断言与真实stdout/JSON、SD。AC-01 pass；AC-02 source/perf/完整生成/工具字段零变且D953已闭原原始采集不变量，所属完整ace-a2x门仍pending merge；AC-03 pass；AC-04 pending。**final pass bound r1/a2866eba2f73a3824a3425dfbc42e9e272f483fe**，SD源码SHA **`a354c7807e538d9f34482f2710083752d7837a4ffb55c6bd459c6c1e0342192b`**。只允许该身份或重新核验的基面合入；不把旧6308历史pass覆盖新基面。
+
+周期主检出队列已由已有owner实际执行37/37（PID1740现已终态/缺失，队列wall702.068s），不是本会话重启；std设施在更广队列出现新增fixture首heartbeat未就绪红，原新EOF单测均绿，生产scope未失效。该新red由周期owner按fix-forward归因/后继计划处理，不把它改成known green、不重新打开已归档953；不据其root队列总FAIL跳过本包所属完整组。当前实际无该批量重门在运行，952可恢复专属模块门。其他936专属语义门与此不同树、无共享输出；不启动第二主检出周期队列。
+
+stage: review | review_scope: final | plan_id: PLAN-952 | plan_revision: r1 | outcome: pass | reviewed_commit: a2866eba2f73a3824a3425dfbc42e9e272f483fe | worktree_path: D:/autostack/.wt/lang-952/auto-lang | branch: plan-952-dev | next: merge（完整ace-a2x pending）
+
+2026-11-06 D953后完整门终态：release显式构建exit0；`cargo t ace-a2x --out D:/autostack/plan-artifacts/plan-952/full-after-d953` exit0，**189执行/189通过**，gate_passed=true，errors=[]，整命令164.0424465s；results SHA256 **25c198b56e3fc3187b507c0add67e573518b037e9f341f1a902f82947b4336c6**。冻结代码仍a2866eba2f73a3824a3425dfbc42e9e272f483fe；不以该绿追认原两次红。当前reviewed 4/6，完整职责门已闭，尚未landing/archive/cleanup。周期新fixture红已有独立PLAN-954由原队列owner立项，不重复建号或打开953。host goal经实际get_goal仍blocked；按auto-plan-goal的inactive恢复规则保存检查点，待用户`/goal resume`恢复自动链后执行merge。
 
 ## 10. 待澄清事项
 
