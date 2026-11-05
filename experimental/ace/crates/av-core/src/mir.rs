@@ -267,7 +267,9 @@ pub enum MirInstr {
     /// PLAN-938: a typed external call, never a guest import or console HostCall.
     /// Only the native consumer admits execution with current host authority.
     ForeignCall {
-        declaration: ace_foreign_contract::manual::SourceDecl,
+        // Keep foreign metadata out of every scalar instruction's inline
+        // footprint. Its heap allocation is charged explicitly below.
+        declaration: Box<ace_foreign_contract::manual::SourceDecl>,
         dst: SlotId,
         args: Vec<SlotId>,
     },
@@ -1210,7 +1212,8 @@ impl MirModule {
                             declaration, args, ..
                         } => {
                             b += args.len() * std::mem::size_of::<SlotId>() + VEC;
-                            b += serde_json::to_vec(declaration).map_or(0, |bytes| bytes.len()) * 2;
+                            b += std::mem::size_of::<ace_foreign_contract::manual::SourceDecl>()
+                                + declaration.heap_bytes();
                         }
                         MirInstr::Call { args, .. } => {
                             b += args.len() * std::mem::size_of::<SlotId>() + VEC

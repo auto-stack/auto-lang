@@ -796,11 +796,13 @@ mod tests {
         coverage_check().expect("the V-11 instruction contract table is complete");
         // Trap classification frozen: BIN/UN plus the text-runtime traps,
         // the PLAN-822 index/variant-defense traps, and PLAN-824's
-        // runtime-CHECKED wrong-type take.
+        // runtime-CHECKED wrong-type take, plus PLAN-938's foreign
+        // status/bool boundary failures (AV execution remains unsupported).
         let trapping: Vec<&str> = SPECS.iter().filter(|s| s.traps).map(|s| s.name).collect();
         assert_eq!(
             trapping,
             vec![
+                "FOREIGN_CALL",
                 "BIN",
                 "UN",
                 "STR_CHAR_AT",

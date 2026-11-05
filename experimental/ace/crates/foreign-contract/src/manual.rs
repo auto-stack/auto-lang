@@ -39,6 +39,66 @@ pub struct SourceDecl {
 }
 
 impl SourceDecl {
+    /// Heap allocations owned by this declaration, excluding the inline
+    /// SourceDecl itself. Measurement is allocation-free, including malformed
+    /// candidates. Containers charge their own inline/boxed storage separately.
+    pub fn heap_bytes(&self) -> usize {
+        let mut bytes = 0usize;
+        let mut add = |n: usize| {
+            bytes = bytes.saturating_add(n);
+        };
+        for text in [
+            &self.name,
+            &self.provider,
+            &self.logical,
+            &self.content_version,
+            &self.review_id,
+            &self.header_digest,
+            &self.physical_table_digest,
+            &self.function.symbol,
+        ] {
+            add(text.capacity());
+        }
+        if let Some(context) = &self.context_symbol {
+            add(context.capacity());
+        }
+        match &self.function.form {
+            FnForm::Pure { params, .. } => add(params
+                .capacity()
+                .saturating_mul(std::mem::size_of::<LaneKind>())),
+            FnForm::Fallible { params, outs, .. } => {
+                add(params
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<LaneKind>()));
+                add(outs
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<LaneKind>()));
+            }
+        }
+        if let Some(error) = &self.function.error_model {
+            add(error.kind.capacity());
+            add(error
+                .codes
+                .capacity()
+                .saturating_mul(std::mem::size_of::<(i32, String)>()));
+            for (_, reason) in &error.codes {
+                add(reason.capacity());
+            }
+        }
+        if let Some((id, version)) = &self.function.semantic_ref {
+            add(id.capacity());
+            add(version.capacity());
+        }
+        for values in [&self.effects, &self.capabilities] {
+            add(values
+                .capacity()
+                .saturating_mul(std::mem::size_of::<String>()));
+            for value in values {
+                add(value.capacity());
+            }
+        }
+        bytes
+    }
     pub fn validate(&self) -> Result<(), String> {
         manual_facts(
             std::slice::from_ref(&self.function),
@@ -238,6 +298,15 @@ fn manual_facts(
     effects: &[String],
     capabilities: &[String],
 ) -> Result<(), String> {
+    if functions.iter().any(|f| match &f.form {
+        FnForm::Pure { params, .. } | FnForm::Fallible { params, .. } => {
+            params.len() > u8::MAX as usize
+        }
+    }) {
+        return Err(
+            "foreign.signature: manual source calls support at most 255 logical arguments".into(),
+        );
+    }
     if !capabilities.iter().any(|c| c == SOURCE_CAP) {
         return Err(
             "foreign.capability: explicit source capability is required in the declaration".into(),
@@ -925,6 +994,48 @@ mod tests {
             .requalify(&changed)
             .unwrap_err()
             .starts_with("foreign.symbol"));
+    }
+
+    #[test]
+    fn source_wire_arity_is_rejected_before_physical_projection() {
+        let (mut manifest, host) = fixture();
+        let FnForm::Pure { params, .. } = &mut manifest.facts.functions[0].form else {
+            unreachable!()
+        };
+        *params = vec![LaneKind::I32; 255];
+        manifest.validate().unwrap(); // candidate-shape control, not a C-call authorization
+        let FnForm::Pure { params, .. } = &mut manifest.facts.functions[0].form else {
+            unreachable!()
+        };
+        params.push(LaneKind::I32);
+        assert!(manifest
+            .validate()
+            .unwrap_err()
+            .starts_with("foreign.signature"));
+        let failure = crate::work::with_observer(
+            Arc::new(|stage, _| {
+                assert_ne!(
+                    stage, "foreign-plan-project",
+                    "unsupported arity reached the plan producer"
+                );
+            }),
+            || manifest.admit(&host),
+        );
+        assert!(failure.unwrap_err().starts_with("foreign.signature"));
+        let (manifest, host) = fixture();
+        let mut declaration = manifest
+            .admit(&host)
+            .unwrap()
+            .source_declarations()
+            .remove(0);
+        let FnForm::Pure { params, .. } = &mut declaration.function.form else {
+            unreachable!()
+        };
+        *params = vec![LaneKind::I32; 256];
+        assert!(declaration
+            .validate()
+            .unwrap_err()
+            .starts_with("foreign.signature"));
     }
 
     #[test]

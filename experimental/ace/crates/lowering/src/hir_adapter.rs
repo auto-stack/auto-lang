@@ -3030,7 +3030,7 @@ impl<'a> FnLower<'a> {
                     let dst = self.temp_ty(ty);
                     self.emit(
                         MirInstr::ForeignCall {
-                            declaration,
+                            declaration: Box::new(declaration),
                             dst,
                             args: actuals,
                         },

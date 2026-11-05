@@ -1061,8 +1061,12 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         declaration
                             .validate()
                             .map_err(|e| AbcDecodeError::fmt_err("abc.encode.foreign", e))?;
-                        let bytes = serde_json::to_vec(declaration).map_err(|e| {
-                            AbcDecodeError::fmt_err("abc.encode.foreign", e.to_string())
+                        let bytes = ace_foreign_contract::codec::encode_json_bounded(
+                            declaration,
+                            ace_foreign_contract::codec::MAX_CODEC_BYTES,
+                        )
+                        .map_err(|e| {
+                            AbcDecodeError::fmt_err("abc.encode.foreign-budget", e.to_string())
                         })?;
                         if bytes.len() > ace_foreign_contract::codec::MAX_CODEC_BYTES {
                             return Err(AbcDecodeError::fmt_err(
@@ -2540,6 +2544,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     for _ in 0..n_funcs {
         let sig = c.u32()?;
         let nlen = c.u16()? as usize;
+        decode_mem!(nlen + 24, "a function name");
         let name_bytes = c.take(nlen)?.to_vec();
         let name = String::from_utf8(name_bytes).map_err(|_| {
             AbcDecodeError::fmt_err(
@@ -2547,7 +2552,6 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 "function name is not UTF-8".to_string(),
             )
         })?;
-        decode_mem!(name.len() + 24, "a function name");
         let nslots = c.u32()? as usize;
         fn_probe = nslots;
         decode_mem!(nslots * std::mem::size_of::<MirSlot>() + 24, "a slot table");
@@ -2683,6 +2687,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         }
                         let dst = c.u32()?;
                         let count = c.u8()? as usize;
+                        decode_mem!(
+                            count * std::mem::size_of::<SlotId>() + 24,
+                            "foreign argument slots"
+                        );
                         let mut args = Vec::with_capacity(count);
                         for _ in 0..count {
                             args.push(c.u32()?);
@@ -2694,15 +2702,49 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                                 "foreign declaration too large".into(),
                             ));
                         }
+                        let bytes = c.take(len)?;
+                        let allocation = ace_foreign_contract::codec::metadata_json_allocation(
+                            bytes,
+                            crate::contract::MAX_DECODED_MODULE_BYTES,
+                        )
+                        .map_err(|e| match e {
+                            ace_foreign_contract::codec::AllocationError::Budget(message) => {
+                                AbcDecodeError::Resource {
+                                    kind: ResourceKind::DecodeMemory,
+                                    message,
+                                }
+                            }
+                            ace_foreign_contract::codec::AllocationError::Decode(message) => {
+                                AbcDecodeError::fmt_err("abc.decode.foreign", message)
+                            }
+                        })?;
+                        let temporary = allocation
+                            .total()
+                            .unwrap_or(usize::MAX)
+                            .saturating_add(len.saturating_mul(2))
+                            .saturating_add(std::mem::size_of::<
+                                ace_foreign_contract::manual::SourceDecl,
+                            >());
+                        if decoded_est.saturating_add(temporary)
+                            > crate::contract::MAX_DECODED_MODULE_BYTES
+                        {
+                            return Err(AbcDecodeError::Resource { kind: ResourceKind::DecodeMemory,
+                                message: "foreign declaration decode/model/scratch exceeds the remaining decoded module budget".into() });
+                        }
                         let declaration: ace_foreign_contract::manual::SourceDecl =
-                            serde_json::from_slice(c.take(len)?).map_err(|e| {
+                            serde_json::from_slice(bytes).map_err(|e| {
                                 AbcDecodeError::fmt_err("abc.decode.foreign", e.to_string())
                             })?;
                         declaration
                             .validate()
                             .map_err(|e| AbcDecodeError::fmt_err("abc.decode.foreign", e))?;
+                        decode_mem!(
+                            std::mem::size_of::<ace_foreign_contract::manual::SourceDecl>()
+                                + declaration.heap_bytes(),
+                            "a boxed foreign declaration"
+                        );
                         MirInstr::ForeignCall {
-                            declaration,
+                            declaration: Box::new(declaration),
                             dst,
                             args,
                         }
