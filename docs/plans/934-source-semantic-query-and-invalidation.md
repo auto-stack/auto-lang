@@ -188,6 +188,9 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: in-progress（健康门：新 crate rustfmt 干净；T-08 产品冷路径 / T-09 / T-10 仍开口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `038b75b06`；主检出簿记 | next: work（T-08 产品冷路径接线；T-09 独立 V 用例族与固定组；T-10 正式采样）
+  - 证据：`cargo fmt -p ace-source-query -- --check` 退出 0；`cargo test -p ace-source-query --lib` **37/37** 复跑绿（格式化不改行为）。
+
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: in-progress（T-11 部分：SD-01..04 canonical 规范在实施树落地；T-08 产品冷路径与 T-09/T-10 仍开口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `a10d4efac`；主检出簿记 | next: work（T-08 产品冷路径接线 / T-09 独立 V 用例族与固定组 / T-10 正式采样，然后 T-11 收口）
   - 证据：新增/修改 4 个 canonical spec（见 T-11 行）；`python scripts/spec-lint.py` 对新文件无 error/warn（仓库既有 3 error 属 ace-migration/design/history 缺 project.md，与本包无关）。
   - 说明：规范内容按已实现行为书写（键/页/准入/事务/恢复/预算），未把 T-08/T-09/T-10 的余账写成已交付。
