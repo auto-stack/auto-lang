@@ -6,7 +6,8 @@
 标准库操作身份与 native 数字 ID 分开。`operations.toml` schema 1 保存稳定 ID、
 语义版本、模块/符号/来源层、公共拼写与可见性、参数/返回/mode、单位与派发、
 所有权/错误/显式需求、profile、独立 oracle、来源和后继 owner。
-`compatibility.toml` schema 1 为每个操作保存一份兼容政策、差额和四个 ACE
+`compatibility.toml` schema 1 为每个操作保存一份兼容政策（含逻辑参数/mode/返回与
+必须保留的原生绑定证据）、差额和四个 ACE
 producer（AV/native/HIR→Rust/HIR→C）的支持分类。不得由名称或文件存在推定支持。
 
 ## 消费与拒绝
@@ -22,6 +23,11 @@ schema 不识别、解码失败、重复/缺失 ID、政策孤儿、逻辑签名
 AST。最终生产 `NativeInterface::production()` 提供实际名称/ID/绑定和独立
 producer 签名。字节长度适配只接受 String/&str→str、i32→int、()→void 的具体
 表示对应；不会把 i64/u64/usize 统一为 int。没有独立签名的原生仍为语义未验证。
+
+政策要求原生绑定时，删除该字段属于具名错误，不能因为来源层解析失败而降级为
+可用身份。合法同callee别名可用。`operation_proofs` 将实际source签名核验、
+producer签名核验与仅政策一致但source签名未验证分开；未解析候选的逻辑签名
+仍必须与政策一致，但这不构成实现签名或语义已验证的证明。
 
 Inventory schema 3 保留全部层（包括解析/读取失败）、函数/类型内方法/ext、
 enum 方法、spec 方法、类型、字段及 alias。声明行按源身份关联 native 名；

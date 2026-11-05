@@ -13,6 +13,10 @@ hir_c = "unwired"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "Public str.at has no byte_len declaration; native-only legacy binding must be mapped by 944"
+parameters = ["str"]
+modes = ["View"]
+returns = "int"
+native = "auto.str.byte_len"
 
 [[entries]]
 operation = "math.abs"
@@ -27,6 +31,9 @@ hir_c = "missing_capability"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "ACE source scalar i32 is not this i64 public API; no lossy cast adapter"
+parameters = ["i64"]
+modes = ["View"]
+returns = "i64"
 
 [[entries]]
 operation = "math.min"
@@ -41,6 +48,9 @@ hir_c = "missing_capability"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "ACE source scalar i32 is not this i64 public API; no lossy cast adapter"
+parameters = ["i64", "i64"]
+modes = ["View", "View"]
+returns = "i64"
 
 [[entries]]
 operation = "math.max"
@@ -55,6 +65,9 @@ hir_c = "missing_capability"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "ACE source scalar i32 is not this i64 public API; no lossy cast adapter"
+parameters = ["i64", "i64"]
+modes = ["View", "View"]
+returns = "i64"
 
 [[entries]]
 operation = "math.private_square"
@@ -69,6 +82,9 @@ hir_c = "missing_capability"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "944 must honor visibility; 945 cannot import as public"
+parameters = ["int"]
+modes = ["View"]
+returns = "int"
 
 [[entries]]
 operation = "math.private_cube"
@@ -83,6 +99,9 @@ hir_c = "missing_capability"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "944 must honor visibility; 945 cannot import as public"
+parameters = ["int"]
+modes = ["View"]
+returns = "int"
 
 [[entries]]
 operation = "text.equal"
@@ -97,6 +116,9 @@ hir_c = "unwired"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "944/945 must bind existing checked text operator; str.at isolated parse fails"
+parameters = ["str", "str"]
+modes = ["View", "View"]
+returns = "bool"
 
 [[entries]]
 operation = "text.clone"
@@ -111,6 +133,9 @@ hir_c = "unwired"
 host = "per-run authorization required"
 owner = "PLAN-945"
 gap = "Owned-text adapter and checked source binding required; no whole Clone blanket claim"
+parameters = []
+modes = []
+returns = "Self"
 
 [[entries]]
 operation = "list.length"
@@ -125,6 +150,9 @@ hir_c = "unwired"
 host = "no implicit host grant"
 owner = "PLAN-946"
 gap = "946 limited List profile only; generic List<T,S> not implied"
+parameters = []
+modes = []
+returns = "int"
 
 [[entries]]
 operation = "result.is_ok"
@@ -139,6 +167,9 @@ hir_c = "unwired"
 host = "no implicit host grant"
 owner = "PLAN-946"
 gap = "946 must use supported finite Variant/Option/Result profile and resource facts"
+parameters = []
+modes = []
+returns = "bool"
 
 [[entries]]
 operation = "console.say"
@@ -153,6 +184,9 @@ hir_c = "unwired"
 host = "per-run authorization required"
 owner = "PLAN-947"
 gap = "947 must check console/1 signature, authority and original budgets"
+parameters = ["str"]
+modes = ["View"]
+returns = "void"
 
 [[entries]]
 operation = "io.read_line"
@@ -167,6 +201,9 @@ hir_c = "unknown"
 host = "per-run authorization required"
 owner = "PLAN-947"
 gap = "947 resource exploration only; no synchronous/async conversion"
+parameters = []
+modes = []
+returns = "str"
 
 [[entries]]
 operation = "io.read_line_opt"
@@ -181,6 +218,9 @@ hir_c = "unknown"
 host = "per-run authorization required"
 owner = "PLAN-947"
 gap = "947 resource exploration; finite input and per-request lifecycle required"
+parameters = []
+modes = []
+returns = "Option<str>"
 
 [[entries]]
 operation = "text.legacy_len_static"
@@ -195,6 +235,9 @@ hir_c = "unknown"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "Accepted difference retained; excluded from equivalence certification"
+parameters = []
+modes = []
+returns = "int"
 
 [[entries]]
 operation = "text.legacy_len_dynamic"
@@ -209,6 +252,9 @@ hir_c = "unknown"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "Accepted difference retained; excluded from equivalence certification"
+parameters = []
+modes = []
+returns = "int"
 
 [[entries]]
 operation = "text.legacy_length_property"
@@ -223,6 +269,9 @@ hir_c = "unknown"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "Accepted difference retained; excluded from equivalence certification"
+parameters = []
+modes = []
+returns = "int"
 
 [[entries]]
 operation = "text.legacy_parse_int"
@@ -237,3 +286,6 @@ hir_c = "unknown"
 host = "no implicit host grant"
 owner = "PLAN-945"
 gap = "Accepted difference retained; excluded from equivalence certification"
+parameters = []
+modes = []
+returns = "int"

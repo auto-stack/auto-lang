@@ -59,6 +59,10 @@ pub struct Compatibility {
     pub operation: String,
     pub unit: String,
     pub dispatch: String,
+    pub parameters: Vec<String>,
+    pub modes: Vec<String>,
+    pub returns: String,
+    pub native: Option<String>,
     pub legacy: String,
     pub evidence: String,
     pub ace_av: String,
@@ -80,6 +84,16 @@ pub struct ContractInventory {
     pub operations: Vec<Operation>,
     pub compatibility: Vec<Compatibility>,
     pub native_bindings: Vec<NativeBinding>,
+    pub operation_proofs: Vec<OperationProof>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OperationProof {
+    pub operation: String,
+    /// Policy agreement is not independent implementation evidence.
+    pub signature_status: String,
+    pub source_file: Option<String>,
+    pub native: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,6 +171,22 @@ pub fn audit_providers(
         .collect();
     for op in &inventory.contracts.operations {
         if let Some(name) = &op.native {
+            let expected = inventory
+                .contracts
+                .compatibility
+                .iter()
+                .find(|p| p.operation == op.id)
+                .and_then(|p| p.native.as_deref());
+            let expected_id = expected.and_then(|n| interface.resolve(n));
+            if expected_id.is_none() || interface.resolve(name) != expected_id {
+                inventory.diagnostics.push(bad(
+                    &op.module,
+                    format!(
+                        "{}: native {name} conflicts with compatibility binding {expected:?}",
+                        op.id
+                    ),
+                ));
+            }
             match interface
                 .resolve(name)
                 .and_then(|id| interface.contract(id))
@@ -188,6 +218,15 @@ pub fn audit_providers(
                             &op.module,
                             format!("{}: native {name} is not bound", op.id),
                         ));
+                    }
+                    if let Some(proof) = inventory
+                        .contracts
+                        .operation_proofs
+                        .iter_mut()
+                        .find(|p| p.operation == op.id)
+                    {
+                        proof.signature_status =
+                            "producer_signature_checked_semantics_unverified".into();
                     }
                 }
                 None => inventory.diagnostics.push(bad(
@@ -298,6 +337,8 @@ pub fn validate(
                 &op.oracle,
                 &op.source,
                 &op.followup,
+                &op.caller,
+                &op.returns,
             ]
             .iter()
             .any(|s| s.trim().is_empty())
@@ -328,6 +369,21 @@ pub fn validate(
                         policy.evidence
                     ),
                 ));
+            }
+            if policy.parameters != op.parameters
+                || policy.modes != op.modes
+                || policy.returns != op.returns
+            {
+                diagnostics.push(bad(
+                    &op.module,
+                    format!(
+                        "{label}: logical signature/mode conflicts with compatibility policy ({})",
+                        policy.evidence
+                    ),
+                ));
+            }
+            if policy.native.is_some() != op.native.is_some() {
+                diagnostics.push(bad(&op.module, format!("{label}: missing/unexpected native evidence required by compatibility policy")));
             }
         }
         // An unparsable layer is a reported gap, never fabricated declaration proof.
@@ -469,6 +525,35 @@ pub fn scan(
     report.providers = super::providers::load_catalog()
         .map(|c| c.providers)
         .unwrap_or_default();
+    report.operation_proofs = report
+        .operations
+        .iter()
+        .map(|op| {
+            let layer = modules
+                .iter()
+                .find(|m| m.module == op.module)
+                .and_then(|m| m.layers.iter().find(|l| l.kind == op.layer));
+            let checked = layer
+                .and_then(|l| l.symbols.iter().find(|s| s.name == op.symbol))
+                .and_then(|s| s.signature.as_ref())
+                .is_some_and(|sig| {
+                    sig.parameters == op.parameters
+                        && sig.parameter_modes == op.modes
+                        && sig.returns == op.returns
+                });
+            OperationProof {
+                operation: op.id.clone(),
+                signature_status: if checked {
+                    "source_signature_checked_semantics_unverified"
+                } else {
+                    "policy_only_signature_unverified"
+                }
+                .into(),
+                source_file: layer.map(|l| l.file.clone()),
+                native: op.native.clone(),
+            }
+        })
+        .collect();
     for module in modules {
         for layer in &module.layers {
             if matches!(layer.parse, ParseStatus::Failed { .. }) {

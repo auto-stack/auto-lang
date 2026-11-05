@@ -84,6 +84,11 @@ fn contract_mutations_are_rejected_by_real_inventory() {
         "dispatch",
         "visibility",
         "native_identity",
+        "missing_native",
+        "missing_native_wrong_return",
+        "candidate_signature",
+        "candidate_mode",
+        "byte_return_float",
     ] {
         let mut mutated = ops.clone();
         let byte = mutated
@@ -105,6 +110,31 @@ fn contract_mutations_are_rejected_by_real_inventory() {
             "missing_id" => byte.id.clear(),
             "dispatch" => byte.dispatch = "dynamic_call_spec".into(),
             "native_identity" => byte.native = Some("auto.user.byte_len".into()),
+            "missing_native" => byte.native = None,
+            "missing_native_wrong_return" => {
+                byte.native = None;
+                byte.returns = "float".into();
+            }
+            "byte_return_float" => byte.returns = "float".into(),
+            "candidate_signature" => {
+                let op = mutated
+                    .operations
+                    .iter_mut()
+                    .find(|op| op.id == "list.length")
+                    .unwrap();
+                op.parameters = vec!["str".into()];
+                op.modes = vec!["Move".into()];
+                op.returns = "float".into();
+            }
+            "candidate_mode" => {
+                let op = mutated
+                    .operations
+                    .iter_mut()
+                    .find(|op| op.id == "list.length")
+                    .unwrap();
+                op.parameters = vec!["str".into()];
+                op.modes = vec!["Move".into()];
+            }
             "visibility" => {
                 mutated
                     .operations
@@ -143,7 +173,9 @@ fn contract_mutations_are_rejected_by_real_inventory() {
             loader::stdlib_assembly_fingerprint(&stdlib.join("auto"), AssemblyTarget::Vm).is_err(),
             "{mutation}: invalid contract must not yield an admissible assembly identity"
         );
-        let expected = if matches!(mutation, "same_width_signature" | "visibility") {
+        let expected = if mutation.starts_with("candidate_") {
+            "list.length"
+        } else if matches!(mutation, "same_width_signature" | "visibility") {
             "math.min"
         } else {
             "text.byte_length"
@@ -208,6 +240,40 @@ fn decode_and_policy_boundaries_fail_closed() {
     let (ops, mut compat) = decode(OPERATIONS, COMPATIBILITY).unwrap();
     compat.entries.pop();
     assert!(!validate(&ops, &compat, &real().1.modules).is_empty());
+}
+
+#[test]
+fn native_alias_control_and_unverified_candidate_proofs() {
+    let (_, mut inv) = real();
+    let policy_only = inv
+        .contracts
+        .operation_proofs
+        .iter()
+        .find(|p| p.operation == "list.length")
+        .unwrap();
+    assert_eq!(
+        policy_only.signature_status,
+        "policy_only_signature_unverified"
+    );
+    let native = inv
+        .contracts
+        .operation_proofs
+        .iter()
+        .find(|p| p.operation == "text.byte_length")
+        .unwrap();
+    assert_eq!(
+        native.signature_status,
+        "producer_signature_checked_semantics_unverified"
+    );
+    inv.contracts
+        .operations
+        .iter_mut()
+        .find(|op| op.id == "text.byte_length")
+        .unwrap()
+        .native = Some("Str.byte_len".into());
+    let interface = crate::vm::native::NativeInterface::production();
+    audit_providers(&mut inv, &interface);
+    assert!(!inv.diagnostics.iter().any(|d| d.code == INVALID));
 }
 
 #[test]
