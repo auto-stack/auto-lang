@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-937
-status: execution_done
+status: executing
 feature_name: CA-D1 共享接口事实与标量ABI桥底座
 author: [Codex]
 created_at: 2026-11-05
@@ -187,6 +187,8 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 Work-owned AC 结果：AC-01 ✓（三腿真实执行+797兼容+依赖图无环实证）、AC-02 ✓（位置制物理投影+位型一致+公开candidate不冒私有ABI）、AC-03 ✓（真实源→前门→C库→独立caller执行，body编辑可观察）、AC-04 ✓（六维pre-call拒+计数0+合法控制过）、AC-05 ✓（逐函数P0+恢复深验；source恢复明确不在本包——938）、AC-06 ✓（预算/原子失败/lease/GC/512全兑现）、AC-07 ✓（首例6/6+独立oracle+回转门+daily spawn纪律沿worker协议）、AC-08/AC-09 归 review/merge。统一回归门（冻结并集）已在review前跑绿；review按需复跑触面。
 
 stage: goal | plan_id: PLAN-937 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-937/auto-lang | commit: c5d5fa497 | next: review
+
+stage: review | review_scope: final | reviewer: 同会话自审（计划§6约定不派agent——独立限制：判决由工件重构，未采信执行摘要；代表性证据全部重跑） | PLAN-937 | r1 | outcome:needs_fix | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | reviewed c5d5fa497 | base 122725e9a | deps: cl 14.44.35207/lld(sysroot)/SDK 10.0.26100 | spec_inputs: SD-01..07目标路径5现存2新建已核 | acceptance_results: AC-01..07 pass（FC 25绿、scalar_bridge 14绿含192s回转门、case组6/6绿、冻结组并集9/9[ace-a2x组于c5d5fa497复绿,其余组输入在68382861a..c5d5fa497间未变]、diff范围41文件全在声明写面、无调试打印/TODO、SD路径齐） | findings: RV-01 P3 fmt漂移(a2x-c/abi_scalar.rs行宽,cargo fmt --check红)；RV-02 P3 未用导入self(worker_bridge.rs:21)；RV-03 P3 未用变量plan_key_canonical(bridge.rs:758,typed链副本;源导出副本入handle已用) | debt候选(非缺陷): D-01 空steps空过为797协议族既有属性(零选择),938+可加固; D-02 797 emit.rs文档注释"fp in XMM0/1"与位置制实际不符(冻结文件未动,§7.1已记) | evidence: 本行内嵌+§7.1 | next: work修复RV-01..03(最小范围:fmt+两处清理+受影响crate编译复验),其余证据按输入未变复用 | 复审修复范围: cargo fmt + 删除未用导入/变量 + cargo check -p 受影响crate零警告 + scalar_bridge抽样复跑
 
 ## 10. 待澄清事项
 
