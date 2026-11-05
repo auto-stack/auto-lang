@@ -218,6 +218,10 @@ pub fn spawn_async_http(
     body: Option<String>,
     request_id: u64,
 ) -> bool {
+    // PLAN-949 诊断：fetch 请求提交点（env 门控）。
+    if std::env::var_os("AUTO_DEBUG_HTTP").is_some() {
+        eprintln!("[plan949] fetch spawn {method} {url} req={request_id}");
+    }
     let job = HttpJsonJob {
         method,
         url,
@@ -821,3 +825,4 @@ pub(super) fn register_warn_noop_shims(natives: &mut crate::vm::native::NativeIn
     // PLAN-053 P-053-4: merged 模式下 #[api] no-op 告警
     natives.register_shim_by_name("auto.vm.warn_api_noop", shim_warn_api_noop);
 }
+
