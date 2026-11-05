@@ -389,6 +389,48 @@ pending_closeout_gates：merge独占执行`cargo t stdlib ace-source ace-semanti
 
 `stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: e269f417895ffa09493fd42390d24ef336f503f4 | next: frozen union and actual closeout`
 
+### r2 merge prepared / frozen gate started（2026-11-06）
+
+stage: merge | PLAN-944:r2 | checkpoint: prepared | reviewed_commit e269f417895ffa09493fd42390d24ef336f503f4 | delivery_candidate 34f06712b20bba62994ebcbe55e3b7fd4f2fdee9 | default base4b1a649ab（仅Plan/debt簿记增加） | authoritative tree/branch/dependency不变。rebase master无冲突，七个代码提交range-diff逐项`=`（4c823e072→0f6d26da8、6e25e1631→bb94a2b64、376919a43→035bb1992、180ea2f51→f14bf0cd8、46a8a6248→f506b88e4、45839d9c9→c361dc71c、e269f4178→34f06712b）；独立review绑定patch等价，不把新代码免审。默认分支未重写、尚未landing。
+
+已审查显式selection：stdlib、ace-source、ace-semantics、ace-artifacts、ace-av、ace-a2x、ace-stdlib七完整组及原tools/条件，未添加test-name过滤/改ignore/性能样本。冻结命令`cargo t stdlib ace-source ace-semantics ace-artifacts ace-av ace-a2x ace-stdlib --out D:/autostack/plan-artifacts/plan-944/frozen-gate`正在唯一944树执行；AUTO_LANG_ROOT=该树、AUTO_PLAN_ARTIFACTS=scope944、TEMP/TMP=scope944/scratch，常规target在该树，所有需留存输出scope内。选择仅read，不算执行绿。当前T07/gate/landing/archive/cleanup仍pending，6/7。
+
+### r2 frozen gate first-red retained（2026-11-06；尚未判因）
+
+同冻结34f06712b七组队列继续执行。stdlib152/152（24原条件排除）、ace-source370/370（1原排除）、ace-semantics201/201（0排除）均PASS；语义组运行402.208s，保原4096深链完整路径/规模/预算，未用本包无关为由省略。
+
+ace-artifacts首次40执行、39PASS/1FAIL，0排除。`subproc::adapter_controls::timeout_retains_the_original_partial_stdout_contract` wall0.601s，500ms原截止返回timed_out=true/code=None，但stdout为空，预期1024个x；run.stderr SHA256=1d19d8ceac894e14707d2de626c478d604ebe958e86787421b551ace8ab4878c，原始result outcome FAIL永久保留于本摘要，不改成绿。实际fixture=本树target/debug/te-child.exe，stdout-kib/ARG1=1/ARG2=30原输入。944对artifact subproc、auto-tool-execution和语义store算法diff为空；这不足以单独证明环境原因。当前AV原规模/churn用例继续，等待队列终态后在同SHA按原500ms/input先隔离重放，再核受影响完整artifact组，不盲重跑全七组；未减预算/改assert/代码/配置，T07仍pending。
+
+rebase后source-query Spec Git blob与reviewed e269逐字节相同，SHA256=da1807180c6e792200fd9441357e97525adeb0350cb63096dbfadec1bdb96a14；review记录f0bf…为当时工作文件换行形式的raw hash，Git规范化后readback为da180…，不是规则delta。其余四Spec raw hash不变。
+
+### r2 frozen complete-group closure（2026-11-06）
+
+冻结源码34f06712b20bba62994ebcbe55e3b7fd4f2fdee9、auto-down58ea33f699efa5cb1194473a2d45dcec51006842，只读依赖/配置/输入未改，三个driver source_state均`159fcc0d8ee895c6e18861c23664cd54f10242518c7dc3c55edd961664a8d219`。七完整组经真实终态对账，最终1972个唯一用例通过，25原条件排除、未执行0；未把条件排除计PASS。注意原七组队列总29分9.633秒、exit1/gate_passed=false因artifact首红，原结果未改；最终门由该队列其余六组PASS加同冻结身份的完整artifact40/40 PASS收据组成，不声称首轮全绿。
+
+| 固定组 | 列出/实际执行/原条件排除/未执行 | 准备发现秒 | 运行含原清理秒 | 最终结果 |
+|---|---|---|---|---|
+| stdlib | 152/152/24/0 | 96.307 | 4.325 | PASS |
+| ace-source | 370/370/1/0 | 18.549 | 3.282 | PASS |
+| ace-semantics | 201/201/0/0 | 15.448 | 402.208 | PASS |
+| ace-artifacts | 40/40/0/0 | 0.803 | 28.889 | PASS（首次39绿1红；完整40重放绿） |
+| ace-av | 1019/1019/0/0 | 42.671 | 637.028 | PASS |
+| ace-a2x | 189/189/0/0 | 9.990 | 139.156 | PASS |
+| ace-stdlib | 1/1/0/0 | 40.291 | 7.955 | PASS |
+
+工具冷编译独立在各组tools receipts（AV release101.531秒等），不混入上述nextest准备/运行；原固定组定义、样本/规模、平台/ignore、资源和超时全部保留。长原子owner具名：ace-semantics-store sema_budget_deep_chain_4096_full_path、ace-av closure/function_incremental/resource正式压力；不是本包新增预算或豁免。各group子终态validation.valid=true、无未执行。
+
+Artifact首红核查：代码diff确认subproc/auto-tool-execution/te-child未改。队列结束后以`cargo t ace-artifacts --test-name subproc::adapter_controls::timeout_retains_the_original_partial_stdout_contract --out scope/artifact-timeout-replay`按原500ms/1024x输入exit0，1/1绿，准备0.894s、运行1.221s、整2.475s；随后`cargo t ace-artifacts --out scope/artifact-full-replay`原完整40/40绿，准备0.803s、运行28.889s、整30.021s。两次重放与首轮fixture路径及SHA256完全相同：83b0513dc110c58cc387243a5e734639f06eeb8008567fcc80d9bf970bb29caf；完整selected集合相同、未改源码/预算/断言。结论限定为首次暂态空输出、隔离及完整同输入重放均绿，具体原因未建立，不能冒称已修复collector或抹掉首红；没有可复现的944代码缺陷，无实现变更或额外review绕过。
+
+收据/hash（raw最终按scope全删，事实/数字留本Plan）：
+- `frozen-gate/results.json` SHA256=2f41a66feafe2510d6c3881a5cf8d97d50169b369e7f62b3eac3e8d57596ebdb
+- `artifact-timeout-replay/results.json` SHA256=4098319413bf7aaf3a0bd8ca45755f80a11fbb7e88b68770e1581fde9b1be462
+- `artifact-full-replay/results.json` SHA256=f51aabf32997000e4b0d5dfa65ca5f406f8f82aac98f2cc360b4d35b322e5932
+- `merge-range-diff.txt` SHA256=046f419d4f88c59b95480823b4574305e32f3fa69a78bac9128283083e6a1749
+
+输出对账补充：旧AV正式用例`av_source_incremental::report_file`固定写本树docs/reports/plan827，生成本次run_id1793919760-pid25896的15407bytes及latest15435bytes。均已复制到scope/legacy-report-migration，逐文件字节数/SHA一致后移除本次唯一新文件、恢复已跟踪latest基线；不提交测量噪声。原2件SHA256=c9899df05b39563f8a9b848cf4911a4de51be500136d24dfd2ca8f55552e93ed、db656a57dc20554c18e2bfd92f06557f930bd6b413d000876749f4fde966be72，合计30842bytes；未动历史已跟踪报告。WT现在clean。其余ignored输出仅target、experimental/ace/target、experimental/ace/crates/av/target、scripts/full-regression-driver/target及Python缓存，随WT删除；所有probe/运行临时/外置target/已迁移receipt在唯一scope，计划和日志未发现其它盘输出根。
+
+当前主线新增cffee9b5b仅941 Plan簿记，无代码/Spec输入变化；收尾将再次纯rebase记录等价映射，之后ff-only落地主线。T07仍待实际landing/Spec readback/归档/清理，尚不报告完成。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
