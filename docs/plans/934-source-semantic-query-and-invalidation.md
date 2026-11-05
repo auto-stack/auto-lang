@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-cte, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-927, PLAN-928, PLAN-929]
-current_step: 4
+current_step: 5
 total_steps: 13
 ---
 
@@ -162,7 +162,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 | T-02 | work | T-01及source/cst/声明稳定接口 | 无环+单体事实消费+恢复首操作/预算的有界整链可行性，失败needs_replan；V-01/04/06，AC-01/05/07 | [x] 2026-11-05：**有界整链通过，不 needs_replan**。代码 `d3226ff69`（crate）+ `bba86bb4b`（事实消费端口/av 用例）；接口冻结件 `plan-artifacts/plan-934/t02-interface-freeze.md`（端口/身份轴/legacy切断设计/恢复交接/预算）。证据：源→每 body 查询（复用 796 solver，他函数仅签名 stub）→事实安装→`emit_resolved_parts`→`verify_scalar`→MIR/ABC→**真实执行 42**，改 leaf body→**43 且 caller 暖命中**（solver 恰 +1）；`body_work` 计量 facts 路径 `typecheck=0`、legacy 对照 1/函数；四方向：冷 miss+solver 关→红、暖 hit+solver 关→绿、篡改事实类型→真实 HIR 校验红、异 owner 页→准入拒。验证：`cargo test -p ace-av --test conformance sq934` 8/8；`cargo test -p ace-source-query --lib` 13/13；`cargo t ace-source ace-semantics` PASS（run-w0t3vybv，冻结提交）。**拆分归属**：legacy 综合切断+命名实参输入=T-04；恢复页/首编辑腿=T-07；预算/峰值正式采样=T-10；四端全消费=T-08；独立 V 用例族/固定组=T-09 |
 | T-03 | work | T-02，拟source-query及semantics adapter必要窗 | 单体懒输入/签名目录/新schema命名空间，V-02/07，AC-02/04 | [x] 2026-11-05：`cc9f9b255`。①**单体懒输入**：`ace_semantics::adapter::project_body_scoped(program,target,…)` —— 目标 body 物化，其余函数仅签名 stub（空 body），**不再 clone 整 Program**，无关 body 的越界构造根本不投影（sq14 直接断言 stub 空/翻转 target 生效/Text 模块的 str body 不被投影）。②**签名目录**：`SignatureCatalog`（name→sig 页、logical↔name、排序候选集+指纹），纯声明面——只改 body 时目录内**所有版本与候选指纹不变**（sq15）；session `fn_sig` 与失效判定改读目录（sq17 一致）。③**命名空间准入**：`validate_against`/`check_envelope` 先验 producer/schema/algo/profile，旧 `ac796` schema 永不命中（sq16：旧 schema/异 producer/错 algo/错 profile 全拒，且 `SQ_SCHEMA != SEMA_PAGE_SCHEMA_V2`）。验证：crate 17/17；av `sq934` 8/8 复跑；`cargo t ace-semantics` PASS（run-bu0_9jsy，冻结提交）。V-02 轴（callee 签名漂移/负依赖/候选集）与 V-07（旧页隔离）在本层成立，正式 V-case 族归 T-09 |
 | T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [x] 2026-11-05：**命名实参**（`bac17cb48`：`InputArg{name,value}` 保 source-order、按名绑参/未知/重复/元数/类型诊断、adapter 投影、canonical 含绑定名；`pick(b: true, a: 7)`=7，位置写法准入红）+ **legacy 综合切断**（`a676fce5c`：core `TypeSupply` 端口与 `resolve_with_supply`——每个 scalar 表达式/`let` 的 VT 由事实页安装、core 的规则降为校验（`source.fact-mismatch`/`source.fact-missing` 在 bind 阶段红，HIR 之前）；`type_synth` 计量：事实路径 `synth=0 / fact_checks>0 / fact_missing=0`，legacy 对照 `synth>0`；source-query `BodyTypeSupply`+`bind_with_facts` 统一查页/准入/绑定/签名安装）。验证：crate 20/20、av `sq934` 10/10（42/43/命名 7 + 坏事实 bind 红 + cold/warm 反控）、`cargo t ace-source ace-semantics` PASS（run-dzy4abt8，冻结提交） |
-| T-05 | work | T-03/04，query deps/meta目录 | 完整键/正负/SCC/来源刷新，V-02/03，AC-02/03 | [ ] |
+| T-05 | work | T-03/04，query deps/meta目录 | 完整键/正负/SCC/来源刷新，V-02/03，AC-02/03 | [x] 2026-11-05：`7316e929d`。①**完整键**：`QueryKey` 含 query kind/logical/签名轴/body 轴/profile/algo/schema/producer/target semantics/能力集（排序去重），canonical 为域分离哈希，不含 source hash/span/intern slot；`body_key`/`sig_key` 公开。②**能力失效**：`set_capabilities` 后暖页必 miss 重解（能力集参与键，顺序无关，sq21/22）。③**正负依赖对账**：`audit()` 逐页给 `ok/body-changed/signature-changed/key-changed/dep-changed/negative-flipped`，与命中判定同一函数（sq24：改 body 只标该 owner；负依赖名字出现→`negative-flipped`）。④**SCC**：互递归 even/odd 各自只在签名面读对方，无 query 环；改 odd body 时 even 仍暖（sq23）；自递归同理；前向引用经 stub 签名。⑤**来源刷新**：前缀漂移下 `body_key` 不变、`bind_with_facts` 仍成立并验证（sq25 + av `sq934_source_map_drift_keeps_facts_and_executes` 值 42）。验证：crate 25/25、av `sq934` 11/11、`cargo t ace-semantics` PASS（run-raania71，冻结提交） |
 | T-06 | work | T-05，ManagedStore required/root/会话 | source-query candidate/target宿主安装两阶段、dep重验/取消/single-flight，V-05/11，AC-06 | [ ] |
 | T-07 | work | T-05/06，929已审稳定来源恢复接口 | 929-source与934-facts页分工、深验/首好与首坏编辑修复/历史/坏页，V-04/07/10/11，AC-05 | [ ] |
 | T-08 | work | T-04..07，AV/native/A2X/worker H短窗 | 真实普通源consumer接入与四端认证，V-01/08，AC-08 | [ ] |
@@ -178,9 +178,16 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 **T-03 已完成（2026-11-05，`cc9f9b255`）**：单体懒输入（`project_body_scoped`：只物化目标 body，其余仅签名 stub，不再 clone 整 Program）、签名目录（纯声明面，body 编辑零版本变化）、页信封准入（producer/schema/algo/profile 先验，旧 `ac796` 页永不命中）。
 
-**T-04 已完成（2026-11-05，`bac17cb48` + `a676fce5c`）**：命名实参按名绑定（保源求值序），以及 **legacy 综合切断**——`resolve_with_supply` 下 HIR 类型全部来自事实页，core 规则降为校验，`type_synth` 计量 `synth=0`（legacy 对照 >0），坏事实在 bind 阶段红。下一入口 T-05。
+**T-04 已完成（2026-11-05，`bac17cb48` + `a676fce5c`）**：命名实参按名绑定（保源求值序），以及 **legacy 综合切断**——`resolve_with_supply` 下 HIR 类型全部来自事实页，core 规则降为校验，`type_synth` 计量 `synth=0`（legacy 对照 >0），坏事实在 bind 阶段红。
+
+**T-05 已完成（2026-11-05，`7316e929d`）**：完整查询键（含能力集）+ 能力失效 + 逐页依赖审计（六种 reason）+ 互递归 SCC 非环 + 前缀漂移保持键并仍可 bind/执行。下一入口 T-06。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: in-progress（**T-05 完成**：完整键/能力失效/依赖审计/SCC/来源刷新；T-06 下一入口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `7316e929d`；主检出簿记 | next: work（T-06 source-query candidate/target 宿主两阶段安装 + dep 重验/取消/single-flight → V-05/11）
+  - 实现：新增 `keys.rs`（`QueryKey`/`QueryKind`/`TARGET_SEMANTICS`，能力集排序去重参与 canonical）；`session.rs` 重写为按完整键寻址 + `set_capabilities`/`body_key`/`sig_key`/`audit`；`PageAudit` 暴露每条依赖轴。
+  - 证据：`cargo test -p ace-source-query --lib` **25/25**（sq21 键轴/能力顺序无关；sq22 能力变更失效；sq23 互递归非环 + body 编辑不动签名读者 + 自递归；sq24 audit 六种 reason；sq25 漂移下键不变且 bind+verify 成立）。av `sq934` **11/11**（新增漂移端到端 42 暖命中）。`cargo t ace-semantics` **PASS**（`target/test-groups/run-raania71/`，退出 0，冻结提交单实例）。
+  - 未闭环：T-06 托管存储/两阶段宿主安装/并发取消、T-07 恢复页与首编辑腿、T-08 四端真实消费、T-09 独立 V 用例族与固定组、T-10 预算/峰值正式采样、T-11 SD/窗口/健康冻结。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: in-progress（**T-04 完成**：命名实参 + legacy 综合切断，事实成为 bind 期类型权威；T-05 下一入口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `bac17cb48`（命名实参）→ `a676fce5c`（综合切断）；主检出簿记 | next: work（T-05 完整键/正负/SCC/来源刷新 → V-02/03）
   - 综合切断证据：`resolve_with_supply` 下每个 scalar 表达式/`let` 的 VT 来自事实页（`FnResolver::node_ty`/`binding_ty`），core 自身规则仅作校验；`type_synth` 窗口内 `leaf`/`main` 均 `synth=0`、`fact_checks>0`、`fact_missing=0`；同窗口 legacy `compile_scalar_source` `synth>0`（对照）。坏事实（binary 事实改成 bool）在 **bind 阶段** 以 `source.fact-mismatch` 红；部分页 `add_body` 准入拒（sq20）。
