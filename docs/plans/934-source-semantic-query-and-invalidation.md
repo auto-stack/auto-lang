@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-934
-status: drafting
+status: executing
 feature_name: SQ-A 普通源码语义查询与依赖失效闭环
 author: [Codex]
 created_at: 2026-11-04
-updated_at: 2026-11-04
+updated_at: 2026-11-05
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-semantics/inference-profile.md, docs/specs/auto-semantics/query-cache.md, docs/specs/auto-ac/function-incremental-source.md]
 new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
@@ -174,7 +174,14 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 下一入口T-01私有盘点不等929整包；T-02及S实现须其已审稳定接缝，最终交付不能缺首编辑腿。frontmatter依赖不是要求所有私有研究先等整波。本轮未授权work。
 
+**T-02 进行中（2026-11-05，D929 已落地后开工）**：D929 归档（merge `29a7d7007`，`docs/plans/archive/929-*.md`）后门槛解除，建树 `D:/autostack/.wt/lang-934/auto-lang`（分支 `plan-934-dev`，基面 master `cc7b2fce2`）。已落 `d3226ff69`：新 crate `experimental/ace/crates/source-query`（依赖仅 core/semantics/contract，`cargo tree` 无 av/native/a2x——方向无环）+ 结构走查/版本/事实页/会话 11 例（sq01..sq11）。**未完成**：core 侧事实消费端口与 legacy 综合切断（T-02 的"事实驱动 HIR"腿）、四方向反对称、恢复首操作/预算观察窗——T-02 仍 `[ ]`。
+
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 7 | from: work | to: work | status: executing | outcome: in-progress（D929 门槛已解除，T-02 开工：新 crate + 结构身份/事实页/失效会话落地 11/11 绿；core 事实消费端口未开始） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（分支 `plan-934-dev`，基面 master `cc7b2fce2`=含 D929 归档） | commit: `d3226ff69`（crate）+ 主检出簿记 | next: work（T-02 core 事实消费端口/legacy 综合切断/四方向反对称→V-01 四端值 42）
+  - 证据：`cargo test -p ace-source-query --lib` 11/11 PASS（sq01 单体事实完整/结构 id 对齐；sq02 绑定按声明节点；sq03 只改 callee body → caller 命中、body 重解（solver_runs 3）；sq04 callee 签名变 → 真实读者失效并带诊断；sq05 前缀漂移命中且 span 变化；sq06 负依赖名字出现即失效重解；sq07 旧版本/缺覆盖/错 kind/重复/带诊断页全部拒绝；sq08 solver 关闭时冷 miss 红、暖 hit 绿；sq09 有限面外受控拒绝；sq10 签名查询不触 body/solver；sq11 走查确定性与值敏感版本）。`cargo t ace-semantics` PASS（组清单已加 `-p ace-source-query`，`results.json` 在树内 `target/test-groups/run-g16r_x83/`，忽略产物不入库）。
+  - 方向核验：`cargo tree -p ace-source-query --depth 1` = ace-core/ace-semantics/ace-semantics-contract/blake3，无 av/native/a2x/lowering/abi。
+  - 未完成（T-02 仍 `[ ]`）：core 侧 `ResolvedProgram` 类型事实消费与 legacy 综合切断端口、四方向反对称反控、恢复首操作/预算观察窗、AV/native/Rust/C 至少一端真实值 42。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 6 | from: user | to: work | status: executing | outcome: in-progress（**解除门槛行动**：按用户指令接管停滞的 929——恢复/重派其 T-11..T-14，以产出 D929） | worktree: 934 未建；929 树 `lang-929` @ `bf8c189c0` 由本会话接管执行 | commit: master `3651146f9`→`a9a485a3a`（929 接管收据） | next: work（929 T-11 并集后台运行中→T-12/T-13/T-14 → D929 落地后回本计划建树 T-02）
   - 停滞三证：无 cargo/rustc/nextest 进程；worktree 04:03 起零文件活动（≈5h40m）；stale 锁 pid3376 已死。授权链：用户本轮指令 + 929 round-11 已录用户令（T-07..T-14 全链）。
@@ -201,6 +208,8 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 2026-11-04 stage:new / PLAN-934 r1 / outcome:pass（规划静态合同）/ next:work（后续明确实施指令及T-02所需稳定写面就绪）。全部0/13，新机制/例/认证未执行；D796/817历史非祖先事实已记录，不冒新baseline PASS。正式最终review仍待实施完成。
 
 ## 10. 待澄清事项
+
+**[2026-11-05 13:10 已解除]** 上一轮的 D929 门控已闭合：`docs/plans/archive/929-unified-source-entry-incremental-retirement.md` 存在（`status: archived`），master `cc7b2fce2` 含 merge 交付 `29a7d7007`；本计划已建树并按 T-02 开工（见 §9 round-7 收据）。原条目保留为历史：
 
 **[2026-11-05 09:39 blocked] D929 门控等待（3 纯等待轮上限触发）**：T-02（首个代码任务）按合同须消费 PLAN-929 已审稳定接口（source/CST/decl：`decl_env.rs`、`UnitCatalog::from_restored`、fragment 桥、统一会话）。现况：929 executing 10/14（代码 `bf8c189c0`），T-11 正式采样在途，其 worktree WIP 自 03:56 起 ≈5h44m 无字节变化（可能静机长采样或会话停滞）；本会话按合同不代 resume。**解除条件**：①master 出现 PLAN-929 merge 交付 + `docs/plans/archive/929-*.md` 后 `/goal resume` 本计划（恢复入口：读 D929 交付 SHA → 建树 `lang-934` → T-02）；或 ②若 929 会话确已停滞，用户先恢复/重派 929 的 T-11..T-14。全部检查点已保留可续（T-01 已入库、私有层 DRAFT 在 plan-artifacts、无 worktree 需清理、主检出仅计划簿记）。无需放宽语言/预算/旧批准。
 
