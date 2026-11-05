@@ -172,6 +172,9 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 
 2026-11-05 stage:work / PLAN-935 r2 / outcome:**waiting**（T-01 完成 1/12；T-02 前置 D934 未合入——934 由另一活跃会话推进中 6/13、T-07 已提交 `2793de9b2`、worktree 分钟级活动，本会话按单写面规则不并写，等其 work→review→merge 交付）/ worktree:未建（T-01 只读零代码；T-02 起建 `D:/autostack/.wt/lang-935/auto-lang`/`plan-935-dev`）/ base_commit:`1b2473480` / code_commit:无 / dependency_revisions: D929=已归档✓；D934=executing 6/13 在途（source-query crate 仅在 plan-934-dev +9 提交） / task_ids: T-01 完成；T-02..T-10 等 D934 / evidence: 冻结文档 `D:/autostack/plan-artifacts/plan-935/t01-syntax-instance-freeze.md` SHA256=`6c7ef5b5863ba31ef0563e6a8346f29618df4db5acae6a7e18601b4f1035434a`/ blockers: D934 合入 / next_responsible_role: work（D934 交付后 T-02 choose 双实例整链，届时重锚 33 项 hash 表）/ 执行方注记：本轮 T-01 由 936-goal 会话按用户 goal 续行授权执行（935 此前无认领会话）。
 
+2026-11-05 stage:goal | plan_id: PLAN-935 | plan_revision: r2 | round: 2（936-goal 会话） | from: work | to: work | status: executing | outcome: waiting（D934 未合入——其会话推进至 7/13：T-07 完成/T-08 部分/T-11 部分，worktree 持续活跃；本轮无公共写面动作，私有层补齐） | commit: 无（DRAFT 不入 git，收据即簿记） | next: work（D934 merge 落地→建树 T-02，先重锚 hash 表与 934 交付符号）
+  - 私有 DRAFT：`plan-artifacts/plan-935/t02-draft-choose-chain.md`（整链骨架/独立 oracle 矩阵 O-1..10/四方向实例轴反控/开工清单/风险预记——fn-tail 尖括号歧义、两层签名键、实例 body NodeId 空间）。
+
 2026-11-04 stage:new / revision:2 / outcome:pass（规划静态合同复核，不是独立实施review）/ next:work（后续实施指令及任务实际稳定接缝/写窗）。保全部T/AC编号、总步骤与0进度；补例未执行，r1与旧796/817运行不能为r2补充断言背书。关键修改/源码身份/并行前置见[复核报告](reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)，以下r1为历史。
 
 2026-11-04 stage:new / PLAN-935 r1 / outcome:pass（规划静态合同）/ next:work（后续实施指令及934/929所需稳定接缝）。0/12，新模板语法/实例/测试/认证均未执行；独立实施review另做，不由已有796 InstanceKey模型背书。
