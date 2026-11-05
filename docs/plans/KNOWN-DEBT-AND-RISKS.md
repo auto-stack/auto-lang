@@ -3983,3 +3983,15 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 ## 2026-11-04 生成交付后继（PLAN-930，仅规划）
 
 UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静态确认driver V04仍硬编码dev-run/rust-workspace/dev-run，910真实成员已为basename-id8；由[930](930-generated-delivery-regression-and-source-boundary-closure.md)先实证当前输入/根因、保原main.rs同源/真实A-B tool义务，必要UI投影窄改归实际owner，不复制UI算法。另核当前语言L1/L2/正常审计与新固定控制；本轮未跑测试，不标closed。Tauri R-6、vue-render新渠道、Web D-906-1/ID集合schema、Man D-910-2及其他语法/ACE合同不纳自动关闭。
+
+## PLAN-943 final review R1 (2026-11-05)
+
+- **F-943-R1-01 / P1 / open / in-contract**：stdlib semantic validator对失败层仅可选native证据校验；删除`text.byte_length.native`并改returns int→float后，真实scan无CONTRACT_INVALID且VM fingerprint可用。list.length失败层的逻辑签名/mode也可任改而无逐操作验证等级。Owner：PLAN-943 work/T-02/T-03/T-05；关闭条件与合法控制见[943](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9独立final review R1。不得以记债替代修复/复审；现有6/6不覆盖证据删除组合。不要求修parser或新增泛型支持。
+
+- **F-943-R1-01 / closed by independent final re-review R2 (2026-11-05)**：冻结`f05b28eadc2862cb1a6a0e0c1929bff3fac7bc06`。政策签名/所需native与真实ID核验堵住证据删除降级；候选明确policy_only_signature_unverified。独立合同族7/7及额外原版/合法alias、删除native/组合错返回、候选仅返回/仅mode漂移控制通过，关闭原要求失败；详见PLAN-943 §9 R2。merge-owned冻结stdlib完整并集与收尾仍pending，不由本债务闭环替代。
+
+- **F-943-M1-02 / P1 / open / in-contract**：合入后收尾set对账发现native alias inventory误用每ID一个任意名称的tooltip反向表，实际别名分母随机漏列。Owner PLAN-943 work/T-03/T-05；须完整名称表+三别名/生产全集/排序永久守卫及独立affected review后闭环。见943 §9 merge checkpoint。
+
+- **F-943-M1-02 / closed by independent affected final review R3 (2026-11-05)**：冻结`72ac9e7b341bd53de92cb53c9ecaf0716371a5a3`。完整registered_names替代有损id_to_name盘点；独立单ID三专属别名/生产全集/id/bound/producer/重复序列永久case1/1，加两新production接口集合与严格排序序列全等近邻通过。详见943 §9 R3；最终新冻结stdlib完整并集与归档清理仍pending。
+
+- **PLAN-943 delivery**：两项finding均经独立复审关闭，最终149/149固定stdlib门通过；源码/Spec已落72ac9e7b，归档及清理状态以[归档Plan](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9实际收据为准。
