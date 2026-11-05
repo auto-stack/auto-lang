@@ -174,6 +174,16 @@ pub struct Session {
     meter: Meter,
     per_function: BTreeMap<String, Meter>,
     cache: function_cache::FunctionCache,
+    root_lease: Option<ace_artifacts::store::Lease>,
+    publication_maintenance: PublicationMaintenance,
+}
+/// Publication has already committed when post-switch root retirement runs.
+/// Maintenance failure is explicit and retryable, never an ambiguous rejected
+/// candidate after the accepted pointer has changed.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct PublicationMaintenance {
+    pub roots_retired: usize,
+    pub cleanup_error: Option<String>,
 }
 #[derive(Debug)]
 pub enum PrepareError {
@@ -267,8 +277,31 @@ impl Snapshot {
         project: &str,
         previous: Option<&Stored>,
     ) -> Result<Stored, String> {
+        let (stored, lease) = self.persist_leased(store, previous)?;
+        store
+            .register_root(project, &stored.artifact_id, "soft")
+            .map_err(|e| e.to_string())?;
+        drop(lease);
+        Ok(stored)
+    }
+    fn persist_leased(
+        &self,
+        store: &ManagedStore,
+        previous: Option<&Stored>,
+    ) -> Result<(Stored, ace_artifacts::store::Lease), String> {
         let mut ids = BTreeMap::new();
         let mut leases = Vec::new();
+        if let Some(previous) = previous {
+            leases.push(
+                store
+                    .acquire_lease(
+                        "source938-previous-closure",
+                        120,
+                        Some(&previous.artifact_id),
+                    )
+                    .map_err(|e| e.to_string())?,
+            );
+        }
         for (digest, bytes) in &self.pages {
             let owner = self
                 .page_owners
@@ -290,22 +323,22 @@ impl Snapshot {
                 .map_err(|e| e.to_string())?;
             let put = self.work.begin(owner, "store-leaf", Phase::Metadata);
             self.work.io(owner, "store-leaf", 0, bytes.len() as u64);
-            let id = store
-                .put_artifact(PutRequest {
-                    layer: LAYER.id,
-                    key: content_key(digest),
-                    kind: ChunkKind::SnapshotRecord,
-                    payload: bytes.as_ref().clone(),
-                    edges: vec![],
-                    project: None,
-                })
+            let (id, lease) = store
+                .put_artifact_leased(
+                    PutRequest {
+                        layer: LAYER.id,
+                        key: content_key(digest),
+                        kind: ChunkKind::SnapshotRecord,
+                        payload: bytes.as_ref().clone(),
+                        edges: vec![],
+                        project: None,
+                    },
+                    "source938-candidate-page",
+                    120,
+                )
                 .map_err(|e| e.to_string())?;
             put.accept();
-            leases.push(
-                store
-                    .acquire_lease("source938-candidate-page", 120, Some(&id))
-                    .map_err(|e| e.to_string())?,
-            );
+            leases.push(lease);
             ids.insert(digest.clone(), id);
         }
         let root_work = self.work.begin("*", "store-root", Phase::Metadata);
@@ -331,26 +364,33 @@ impl Snapshot {
         }
         let digest = hash(&payload);
         self.work.io("*", "store-root", 0, payload.len() as u64);
-        let id = store
-            .put_artifact(PutRequest {
-                layer: LAYER.id,
-                key: content_key(&digest),
-                kind: ChunkKind::SnapshotRecord,
-                payload,
-                edges: ids
-                    .values()
-                    .map(|id| (id.clone(), RefKind::RequiredData))
-                    .collect(),
-                project: Some(project.into()),
-            })
+        let (id, lease) = store
+            .put_artifact_leased(
+                PutRequest {
+                    layer: LAYER.id,
+                    key: content_key(&digest),
+                    kind: ChunkKind::SnapshotRecord,
+                    payload,
+                    edges: ids
+                        .values()
+                        .map(|id| (id.clone(), RefKind::RequiredData))
+                        .collect(),
+                    project: None,
+                },
+                "source938-prepared-closure",
+                120,
+            )
             .map_err(|e| e.to_string())?;
         root_work.accept();
         drop(leases);
-        Ok(Stored {
-            artifact_id: id,
-            digest,
-            pages: ids,
-        })
+        Ok((
+            Stored {
+                artifact_id: id,
+                digest,
+                pages: ids,
+            },
+            lease,
+        ))
     }
 }
 fn content_key(digest: &str) -> QueryKey {
@@ -396,6 +436,11 @@ impl Session {
         environment: EnvironmentInput,
     ) -> Result<Self, String> {
         let resources = Resources::default();
+        // Lease BEFORE the first payload read, so GC cannot retire the root
+        // while the decoder is traversing its required closure.
+        let lease = store
+            .acquire_lease("source938-restoring", 120, Some(&stored.artifact_id))
+            .map_err(|e| e.to_string())?;
         let root = resources
             .load_payload(MAX_ROOT, ChunkKind::SnapshotRecord, |bound| {
                 store.get_artifact_by_id_bounded(&stored.artifact_id, bound)
@@ -410,9 +455,6 @@ impl Session {
         if wire.schema != SCHEMA || wire.pages != stored.pages {
             return Err("foreign.restore.store-index".into());
         }
-        let lease = store
-            .acquire_lease("source938-restoring", 120, Some(&stored.artifact_id))
-            .map_err(|e| e.to_string())?;
         let mut read_error = None;
         let restored = Self::restore_with_resources(
             &wire.root,
@@ -442,7 +484,7 @@ impl Session {
         restored
             .cache
             .attach(&store.root, restored.front.foreign())?;
-        drop(lease);
+        restored.root_lease = Some(lease);
         Ok(restored)
     }
     pub fn cold(
@@ -571,6 +613,8 @@ impl Session {
             meter,
             per_function,
             cache,
+            root_lease: None,
+            publication_maintenance: PublicationMaintenance::default(),
         };
         session.admit_resident(0)?;
         for output in work {
@@ -1095,6 +1139,8 @@ impl Session {
             },
             per_function: BTreeMap::new(),
             cache,
+            root_lease: None,
+            publication_maintenance: PublicationMaintenance::default(),
         };
         session.admit_resident(0)?;
         recovery.accept();
@@ -1513,7 +1559,8 @@ mod function_cache;
 #[path = "source_publication.rs"]
 mod publication;
 pub use publication::{
-    read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit, PreparedPublication,
+    publication_root_project, read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit,
+    PreparedPublication,
 };
 
 /// SDK composition identity includes the common failure/event runtime assets,

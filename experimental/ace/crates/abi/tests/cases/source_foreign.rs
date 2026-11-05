@@ -1441,6 +1441,28 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
         let old_pointer = read_pointer_bytes(&pointer).unwrap().unwrap();
         let pointer_id = ace_a2x_core::sha256::sha256_hex(&old_pointer);
         let original_stored: Stored = serde_json::from_slice(&old_pointer).unwrap();
+        let root_project = ace_abi::source_foreign::publication_root_project(&pointer).unwrap();
+        let root_count = || {
+            store
+                .db()
+                .query_row(
+                    "SELECT COUNT(*) FROM roots WHERE project=?1",
+                    [&root_project],
+                    |r| r.get::<_, i64>(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(root_count(), 1);
+        std::fs::write(&pointer, b"unrecognized external pointer bytes").unwrap();
+        assert!(session
+            .retry_publication_maintenance(&store, &pointer)
+            .is_err());
+        assert_eq!(
+            root_count(),
+            1,
+            "unknown pointer bytes must not erase the accepted recovery root"
+        );
+        std::fs::write(&pointer, &old_pointer).unwrap();
         let untouched = session.artifact_bytes("main").unwrap().clone();
         let old_facts = session.frontend().page("main").unwrap().bytes.clone();
         let declaration = "fn helper() int { let extra=1\nreturn foreign_add(20,22)+extra }";
@@ -1494,6 +1516,8 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
         drop(ready);
         for fault in [
             "cancel-at-last-qualification",
+            "revoked-after-registration",
+            "cancel-after-registration",
             "metadata-failure",
             "cancel-before-switch",
             "replace-failure",
@@ -1547,6 +1571,14 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 if fault == "cancel-at-last-qualification" && final_checks == 2 {
                     cancel.store(true, Ordering::Release);
                 }
+                if fault == "cancel-after-registration" && final_checks == 3 {
+                    cancel.store(true, Ordering::Release);
+                }
+                if fault == "revoked-after-registration" && final_checks == 3 {
+                    let mut denied = authority.clone();
+                    denied.foreign.capabilities.clear();
+                    return Ok(denied);
+                }
                 Ok(authority.clone())
             };
             let result = session.publish_prepared(
@@ -1560,6 +1592,11 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 Some(&cancel),
             );
             assert!(result.is_err(), "{fault}");
+            assert_eq!(root_count(), 1, "failed candidate leaked a root: {fault}");
+            assert_eq!(
+                store.root_artifacts(&root_project, &pointer_id).unwrap(),
+                vec![stored.artifact_id.clone()]
+            );
             drop(blocker);
             assert_eq!(session.snapshot().unwrap().digest, old_digest, "{fault}");
             if fault == "late-pointer" {
@@ -1614,6 +1651,9 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
             )
             .unwrap();
         assert_eq!(session.snapshot().unwrap().digest, expected);
+        assert_eq!(root_count(), 1, "old accepted root was not retired");
+        assert!(session.publication_maintenance().cleanup_error.is_none());
+        assert!(session.publication_maintenance().roots_retired > 0);
         assert_eq!(
             session.run(&dir.join("installed")).unwrap().exit_code,
             Some(43)
@@ -2373,4 +2413,322 @@ fn source_foreign_work_tracks_target_discard_accept_and_unchanged_publication_pa
         );
         assert_eq!(io.reused, unchanged_io.reused + 2); // required facts and target pages
     }
+}
+
+#[test]
+fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_live_readers() {
+    use ace_abi::source_foreign::{
+        publication_root_project, read_pointer_identity, CurrentAuthority, Edit, Session, Stored,
+        Target,
+    };
+    use ace_artifacts::store::{run_gc, GcConfig, ManagedStore};
+    use std::sync::Arc;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CrashRequest {
+        store: PathBuf,
+        pointer: PathBuf,
+        stored: Stored,
+        target: Target,
+        output: PathBuf,
+    }
+    const CRASH_REQUEST: &str = "ACE938_ROOT_CRASH_REQUEST";
+    let caps = vec![SOURCE_CAP.into()];
+    if let Some(path) = std::env::var_os(CRASH_REQUEST) {
+        let request: CrashRequest = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let store = ManagedStore::open_existing(&request.store).unwrap();
+        // The fixture's current independent policy is metadata only. No
+        // manifest admission/project is hidden before this recovery entry.
+        let mut restored_host = None;
+        // The provider is a required page, but its independent host digest is
+        // carried separately by this trusted test request's parent directory.
+        let provider_digest =
+            std::fs::read_to_string(request.output.join("provider.digest")).unwrap();
+        let host = ace_abi::source_provider::authority(&provider_digest, 1, &caps).unwrap();
+        let authority = CurrentAuthority {
+            foreign: host,
+            runtime_digest: ace_abi::source_foreign::certification_runtime_policy(request.target),
+            emitter: request.target.identity(),
+        };
+        let mut current = || {
+            restored_host = Some(());
+            Ok(authority.clone())
+        };
+        let mut session = Session::restore_stored_current(
+            &store,
+            &request.stored,
+            request.target,
+            &caps,
+            &mut current,
+        )
+        .unwrap();
+        assert!(restored_host.is_some());
+        let edit = Edit::Body(
+            session
+                .prepare("helper", "fn helper() int { return foreign_add(20,23) }")
+                .unwrap(),
+        );
+        let prepared = session
+            .prepare_publication(
+                edit,
+                &request.output.join("child-ready"),
+                &mut || Ok(authority.clone()),
+                None,
+            )
+            .unwrap();
+        let expected = read_pointer_identity(&request.pointer).unwrap();
+        let mut checks = 0;
+        let mut crash_after_registration = || {
+            checks += 1;
+            if checks == 3 {
+                std::process::exit(73);
+            }
+            Ok(authority.clone())
+        };
+        let _ = session.publish_prepared(
+            prepared,
+            &store,
+            &request.pointer,
+            expected.as_deref(),
+            Some(&request.stored),
+            |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+            &mut crash_after_registration,
+            None,
+        );
+        panic!("child did not reach the registered-before-switch crash boundary");
+    }
+    let root = scope("root-reader-gc");
+    let (object, environment) = provider(&root, 0);
+    let provider = Arc::new(std::fs::read(object).unwrap());
+    let source = "fn helper() int { return foreign_add(20,22) }\nfn main() int { return helper() }";
+    let sentinel = root.join("user-source.auto");
+    let delivered = root.join("user-delivered.exe");
+    std::fs::write(&sentinel, b"user source sentinel").unwrap();
+    std::fs::write(&delivered, b"MZ user executable sentinel").unwrap();
+    for target in [Target::Native, Target::C] {
+        let output = root.join(format!("{target:?}"));
+        std::fs::create_dir_all(&output).unwrap();
+        assert_ne!(
+            publication_root_project(&output.join("Case.json")).unwrap(),
+            publication_root_project(&output.join("case.json")).unwrap(),
+            "case-sensitive directory entries must never share a retirement namespace"
+        );
+        std::fs::write(
+            output.join("provider.digest"),
+            environment.provider_digest(),
+        )
+        .unwrap();
+        let store = ManagedStore::open(&output.join("store")).unwrap();
+        let pointer = output.join("current.json");
+        let mut session = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            target,
+        )
+        .unwrap();
+        let authority = fixture_current(&environment, target);
+        let mut current = || Ok(authority.clone());
+        let ready = session
+            .prepare_publication(Edit::Current, &output.join("baseline"), &mut current, None)
+            .unwrap();
+        let old = session
+            .publish_prepared(
+                ready,
+                &store,
+                &pointer,
+                None,
+                None,
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        let old_pointer = std::fs::read(&pointer).unwrap();
+        let old_hash = read_pointer_identity(&pointer).unwrap().unwrap();
+        let mut reader =
+            Session::restore_stored_current(&store, &old, target, &caps, &mut current).unwrap();
+        let request = output.join("crash-request.json");
+        std::fs::write(
+            &request,
+            serde_json::to_vec(&CrashRequest {
+                store: store.root.clone(),
+                pointer: pointer.clone(),
+                stored: old.clone(),
+                target,
+                output: output.clone(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+        cmd.args(["--exact", "source_foreign::source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_live_readers", "--nocapture"])
+            .env(CRASH_REQUEST, &request);
+        let crashed = ace_core::link::run_deadlined_captured(
+            &mut cmd,
+            std::time::Duration::from_secs(70),
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            crashed.exit_code,
+            Some(73),
+            "{}",
+            String::from_utf8_lossy(&crashed.stderr)
+        );
+        assert_eq!(std::fs::read(&pointer).unwrap(), old_pointer);
+        let project = publication_root_project(&pointer).unwrap();
+        let orphan: String = store
+            .db()
+            .query_row(
+                "SELECT artifact FROM roots WHERE project=?1 AND kind<>?2",
+                [&project, &old_hash],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_ne!(orphan, old.artifact_id);
+        assert_eq!(
+            session
+                .retry_publication_maintenance(&store, &pointer)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store.root_artifacts(&project, &old_hash).unwrap(),
+            vec![old.artifact_id.clone()]
+        );
+        let gc = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+        assert!(
+            gc.ran && gc.deleted_chunks > 0 && gc.freed_bytes > 0,
+            "{gc:?}"
+        );
+        assert!(store.get_artifact_by_id(&orphan).unwrap().is_none());
+        assert!(store
+            .get_artifact_by_id(&old.artifact_id)
+            .unwrap()
+            .is_some());
+        let edit = Edit::Body(
+            session
+                .prepare("helper", "fn helper() int { return foreign_add(20,23) }")
+                .unwrap(),
+        );
+        let ready = session
+            .prepare_publication(edit, &output.join("repair"), &mut current, None)
+            .unwrap();
+        let new = session
+            .publish_prepared(
+                ready,
+                &store,
+                &pointer,
+                Some(&old_hash),
+                Some(&old),
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert!(session.publication_maintenance().cleanup_error.is_none());
+        assert!(session.publication_maintenance().roots_retired > 0);
+        assert!(run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap().ran);
+        assert!(
+            store
+                .get_artifact_by_id(&old.artifact_id)
+                .unwrap()
+                .is_some(),
+            "in-flight old reader lost its required root"
+        );
+        assert_eq!(
+            reader
+                .run_authorized(&output.join("old-reader"), &mut current, None)
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        assert_eq!(
+            session
+                .run_authorized(&output.join("new-current"), &mut current, None)
+                .unwrap()
+                .exit_code,
+            Some(43)
+        );
+        drop(reader);
+        let gc = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+        assert!(
+            gc.ran && gc.deleted_chunks > 0 && gc.freed_bytes > 0,
+            "{gc:?}"
+        );
+        assert!(store
+            .get_artifact_by_id(&old.artifact_id)
+            .unwrap()
+            .is_none());
+        assert!(store
+            .get_artifact_by_id(&new.artifact_id)
+            .unwrap()
+            .is_some());
+        // A post-switch maintenance error is an explicit committed outcome,
+        // never a falsely rejected candidate. Retry closes it before further
+        // publication, preserving the currently accepted closure meanwhile.
+        let edit = Edit::Body(
+            session
+                .prepare("helper", "fn helper() int { return foreign_add(20,24) }")
+                .unwrap(),
+        );
+        let ready = session
+            .prepare_publication(edit, &output.join("maintenance-fault"), &mut current, None)
+            .unwrap();
+        let expected = read_pointer_identity(&pointer).unwrap();
+        let mut checks = 0;
+        let mut readonly_after_switch = || {
+            checks += 1;
+            if checks == 3 {
+                store.db().execute_batch("PRAGMA query_only=ON").unwrap();
+            }
+            Ok(authority.clone())
+        };
+        let committed = session
+            .publish_prepared(
+                ready,
+                &store,
+                &pointer,
+                expected.as_deref(),
+                Some(&new),
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut readonly_after_switch,
+                None,
+            )
+            .unwrap();
+        assert!(session.publication_maintenance().cleanup_error.is_some());
+        assert_eq!(
+            serde_json::from_slice::<Stored>(&std::fs::read(&pointer).unwrap())
+                .unwrap()
+                .artifact_id,
+            committed.artifact_id
+        );
+        store.db().execute_batch("PRAGMA query_only=OFF").unwrap();
+        assert_eq!(
+            session
+                .retry_publication_maintenance(&store, &pointer)
+                .unwrap(),
+            1
+        );
+        assert!(session.publication_maintenance().cleanup_error.is_none());
+        assert_eq!(
+            session
+                .run_authorized(&output.join("after-maintenance-repair"), &mut current, None)
+                .unwrap()
+                .exit_code,
+            Some(44)
+        );
+    }
+    assert_eq!(std::fs::read(sentinel).unwrap(), b"user source sentinel");
+    assert_eq!(
+        std::fs::read(delivered).unwrap(),
+        b"MZ user executable sentinel"
+    );
 }

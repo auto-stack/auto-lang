@@ -456,6 +456,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             None,
         )
         .map_err(|e| err("store", e))?;
+    if let Some(error) = &session.publication_maintenance().cleanup_error {
+        return Err(err("store.cleanup-pending", error));
+    }
     let compute = report.solver
         + report.hir
         + report.mir

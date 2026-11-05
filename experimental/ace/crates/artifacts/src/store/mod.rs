@@ -567,6 +567,22 @@ impl ManagedStore {
         result
     }
 
+    /// Publish bytes and acquire their reader lease in ONE liveness interval.
+    /// A rootless prepared artifact cannot be collected in the gap between
+    /// `put_artifact` returning and the caller obtaining its lease. Shared
+    /// guards compose; lock order remains liveness -> budget/chunk -> SQLite.
+    pub fn put_artifact_leased(
+        &self,
+        req: PutRequest,
+        purpose: &str,
+        ttl_secs: u64,
+    ) -> Result<(String, Lease), StoreError> {
+        let _live = self.liveness_shared()?;
+        let id = self.put_artifact(req)?;
+        let lease = self.acquire_lease(purpose, ttl_secs, Some(&id))?;
+        Ok((id, lease))
+    }
+
     fn put_inner(&self, req: &PutRequest, staging_dir: &Path) -> Result<String, StoreError> {
         let framed = frame_chunk(req.kind, &req.payload);
         let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
@@ -1020,6 +1036,18 @@ impl ManagedStore {
             .flatten()
             .collect();
         Ok(out)
+    }
+
+    /// Retire other generations of an EXCLUSIVELY OWNED project root set.
+    /// External publishers hold their own publication lock and select the
+    /// surviving kind from the ACTUAL accepted pointer bytes. This is not a
+    /// global root/lease cleanup; other projects and all reader leases survive.
+    pub fn retain_root_kind(&self, project: &str, keep: Option<&str>) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
+        Ok(self.db.lock().unwrap().execute(
+            "DELETE FROM roots WHERE project=?1 AND (?2 IS NULL OR kind<>?2)",
+            params![project, keep],
+        )?)
     }
 
     /// Artifact payload by artifact id (adapter read seam; gated chunk read —

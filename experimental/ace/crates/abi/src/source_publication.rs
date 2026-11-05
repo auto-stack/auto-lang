@@ -98,6 +98,43 @@ impl PreparedPublication {
     }
 }
 impl Session {
+    pub fn publication_maintenance(&self) -> &PublicationMaintenance {
+        &self.publication_maintenance
+    }
+    /// Retry only owned root retirement. A crash on either side of the pointer
+    /// switch leaves at most the old and prepared generation. The actual
+    /// pointer hash chooses the survivor without decoding a caller's wrapper.
+    pub fn retry_publication_maintenance(
+        &mut self,
+        store: &ManagedStore,
+        pointer: &Path,
+    ) -> Result<usize, String> {
+        let _lock = pointer_lock(pointer)?;
+        let observed = read_pointer_identity(pointer)?;
+        let project = publication_root_project(pointer)?;
+        let result = store
+            .root_artifacts(&project, observed.as_deref().unwrap_or(""))
+            .map_err(|e| e.to_string())
+            .and_then(|roots| {
+                if observed.is_some() && roots.is_empty() {
+                    return Err("foreign.publication.unrecognized-current-root".into());
+                }
+                store
+                    .retain_root_kind(&project, observed.as_deref())
+                    .map_err(|e| e.to_string())
+            });
+        self.publication_maintenance = match &result {
+            Ok(roots_retired) => PublicationMaintenance {
+                roots_retired: *roots_retired,
+                cleanup_error: None,
+            },
+            Err(error) => PublicationMaintenance {
+                roots_retired: 0,
+                cleanup_error: Some(error.clone()),
+            },
+        };
+        result
+    }
     fn validate_edit(&self, edit: &Edit) -> Result<(), String> {
         match edit {
             Edit::Current => Ok(()),
@@ -316,12 +353,20 @@ impl Session {
         if observed.as_deref() != expected_pointer {
             return Err("foreign.publication.late-pointer".into());
         }
-        let stored = prepared
-            .snapshot
-            .publish(store, "source938-current", previous)?;
-        let _lease = store
-            .acquire_lease("source938-publishing", 120, Some(&stored.artifact_id))
-            .map_err(|e| e.to_string())?;
+        let project = publication_root_project(pointer)?;
+        if let Some(kind) = &observed {
+            if store
+                .root_artifacts(&project, kind)
+                .map_err(|e| e.to_string())?
+                .is_empty()
+            {
+                return Err("foreign.publication.unrecognized-current-root".into());
+            }
+        }
+        let retired_before = store
+            .retain_root_kind(&project, observed.as_deref())
+            .map_err(|e| format!("foreign.publication.recovery: {e}"))?;
+        let (stored, lease) = prepared.snapshot.persist_leased(store, previous)?;
         let bytes = encode_pointer(&stored)?;
         if bytes.len() > MAX_ROOT {
             return Err("foreign.resource.pointer".into());
@@ -361,7 +406,39 @@ impl Session {
             return Err("foreign.publication.late-pointer".into());
         }
         cancelled(cancel)?;
-        atomic_replace(&temp.0, pointer)?;
+        let kind = hash(&bytes);
+        let existing = store
+            .root_artifacts(&project, &kind)
+            .map_err(|e| e.to_string())?;
+        if existing.iter().any(|id| id != &stored.artifact_id) {
+            return Err("foreign.publication.pointer-content-conflict".into());
+        }
+        store
+            .register_root(&project, &stored.artifact_id, &kind)
+            .map_err(|e| e.to_string())?;
+        let switch = (|| {
+            qualify(
+                &prepared.environment,
+                &prepared.runtime_digest,
+                self.target,
+                current,
+            )?;
+            if read_pointer_identity(pointer)? != observed {
+                return Err("foreign.publication.late-pointer".into());
+            }
+            cancelled(cancel)?;
+            atomic_replace(&temp.0, pointer)
+        })();
+        if let Err(error) = switch {
+            if existing.is_empty() {
+                store
+                    .remove_root(&project, &kind, &stored.artifact_id)
+                    .map_err(|cleanup| {
+                        format!("{error}; foreign.publication.rollback-pending: {cleanup}")
+                    })?;
+            }
+            return Err(error);
+        }
         match prepared.edit {
             Edit::Current => {}
             Edit::Body(body) => self.commit(body)?,
@@ -370,8 +447,46 @@ impl Session {
         for output in prepared.work {
             output.accept();
         }
+        self.root_lease = Some(lease);
+        // The candidate is now accepted. Retirement is a separate maintenance
+        // result; reporting it as an ordinary rejected candidate would lie
+        // about the already committed pointer/source/target. Next publication
+        // retries this before persisting a new candidate under the lock.
+        self.publication_maintenance = match store.retain_root_kind(&project, Some(&kind)) {
+            Ok(retired) => PublicationMaintenance {
+                roots_retired: retired_before + retired,
+                cleanup_error: None,
+            },
+            Err(error) => PublicationMaintenance {
+                roots_retired: retired_before,
+                cleanup_error: Some(error.to_string()),
+            },
+        };
         Ok(stored)
     }
+}
+
+/// Namespace owned by one accepted pointer. Other projects' roots, delivered
+/// artifacts and active reader leases are outside this retirement operation.
+pub fn publication_root_project(pointer: &Path) -> Result<String, String> {
+    let parent = pointer
+        .parent()
+        .ok_or("foreign.publication.pointer-parent")?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let path = parent.join(
+        pointer
+            .file_name()
+            .ok_or("foreign.publication.pointer-name")?,
+    );
+    Ok(format!(
+        "source938-pointer-{}",
+        hash(
+            path.to_str()
+                .ok_or("foreign.publication.non-utf8-pointer")?
+                .as_bytes()
+        )
+    ))
 }
 
 /// The identity and decoded host record must come from these SAME bytes.
