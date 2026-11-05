@@ -174,6 +174,10 @@ T-01继续执行前置：D943及D950均已正式交付；本目标用户授权�
 
 2026-11-06 prerequisite delivered：D950正式交付，source=`68cd53d435f7d3a6fc69fd911e474895dc387ed5`在master祖先；独立r1/修复1 final pass、三份canonical Spec精确hash、归档950 7/7、两个worktree/branch/group/材料scope与28外输出根实际清理均完成，无hold。有限module API只i32/bool，不声称943真实标准操作行为已执行；本包仍r2/0-of-7，原AC全部保留。周期cargo t all因950到期，由主检出单实例regress接管，不能与936现存CT gate竞争。下一步在原944树同步正式master并重做T01；无新用户范围决定，既有全链授权持续有效。
 
+2026-11-06 work准备状态核验：原944树/branch身份已核，clean，从3b09e32b0真实ff同步master至5b71983bad7973127f4be4d1e5c3829acc455d12（含D950以及其他owner正式交付的953 capture EOF修复；不是本包新实现）。scope944原在途材料保留；T01产品前探/新manifest/query/provider/authority尚未实施，仍0/7。当前执行950到期的主检出单实例batch-regression-20261106，所有新输出及TEMP/TMP显式在该slug scope，batch基线原receipt940不提前推进；本包后续编译/测试待队列终态，不能并发第二full tier。
+
+2026-11-06 due regression已结束：主检出单实例cargo t all完成37组/2828执行/1014原条件排除，702.068s，27组PASS/7组FAIL/3组NA，原raw exit1未改。protected source=config身份固定6b6b191c3。原基线红具名保留；新增heartbeat夹具首红隔离1/1绿，4个HTTP文件首红证实旧fixture路径literal转义失真（Win32 GetTempPathW/2W实际含\r，原源码未改），同scope scratch控制12+3绿。后继PLAN-954仅draft认领夹具，无生产回归确认，也不作本包依赖；.last-batch-regression.json已写真实明细与覆盖到953，不能称all-green。批量scope原材料将按政策清理，复现/结论已折入954与收据。950前置正式完成不变，本包原944树5b71983ba clean，下一实际步骤=auto-plan-work T-01有界闭环与模型冻结，仍r2/0-of-7；未把周期门或草拟954冒作本包产品实现。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。

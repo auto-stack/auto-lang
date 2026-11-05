@@ -4004,3 +4004,8 @@ PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变
 ### D-952-1 / F-952-01：共享子进程采集器owned-close竞态（2026-11-06，closed by PLAN-953）
 
 owner=auto-tool-execution；PLAN-953 r2已交付65db88be2150991b9c3bbe79d527891fd6a7a27f：结束后新peek才可EOF；原始两流最后字节/最后I/O错误永久反例修前红修后绿，完整职责43/43无LEAK/残留，新950基面两个真实ACE消费者各1/1，canonical535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953归档6/6、tree/branch/scope已清理，无hold。952两次历史空输出具体因果未冒确定，952仍须重基D953后重做完整ACE门；941原目标未完成。原确定性源码副本反例与首红记录见952 §9，原源码SHA c177b278f1d805d21c808054a847adde0bc830e1e24ad0db9b811ce8298e4e09。
+
+
+### D-954-1 / D-954-2 — 周期batch的路径产码与非拥有夹具就绪（新观察，未关闭）
+
+950触发全量37组终态（覆盖source6b6b191c3）发现：①旧plan349/727测试直接将Windows TEMP路径嵌入Auto双引号literal，runtime-temp分段经Win32规范为反斜杠后触发合法\r转义，4项HTTP文件case假红；同scope scratch根原12+3合法控制绿，相关测试/lexer/transfer在合并窗口零改动。②auto-tool-execution deadline_covers_blocked_stdin_with_unowned_holder批量一次后置wait_first_tick未见2s心跳，原1case隔离绿；尚无产品根因，不以timeout码证明后代状态。新[PLAN-954](954-batch-fixture-path-and-readiness.md)认领夹具修复（owner=test governance/tool-execution fixtures），保原250ms/elapsed1500ms/2s及所有权/真实退出，不放宽或ignore。关闭条件=原路径literal往返与真实HTTP文件结果、被测后代状态/原预算/退出证据与独立review；仅建draft，未修复。全量raw exit1及旧媒体/sys/宏/ownership/LSP/pilot红另留.last-batch-regression.json，不拿重放绿抹首红。原反例与控制完整折入954，batch raw按政策清理，无原始材料hold。
