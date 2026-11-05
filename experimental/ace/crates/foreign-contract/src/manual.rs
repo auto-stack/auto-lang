@@ -242,6 +242,99 @@ struct DeclarationPage {
     declarations: Vec<SourceDecl>,
     digests: BTreeMap<String, String>,
 }
+#[derive(Serialize)]
+struct DeclarationPageRef<'a> {
+    schema: &'static str,
+    declarations: &'a [SourceDecl],
+    digests: &'a BTreeMap<String, String>,
+}
+
+/// The projected JSON shape without cloning module-wide fields for each
+/// function. Ordering changes bytes, but never the size being admitted here.
+#[derive(Serialize)]
+struct ProjectedDeclRef<'a> {
+    name: &'a str,
+    provider: &'a str,
+    logical: LogicalName<'a>,
+    content_version: &'a str,
+    review_id: &'a str,
+    header_digest: &'a str,
+    physical_table_digest: &'a str,
+    context_symbol: &'a Option<String>,
+    function: &'a crate::FnFact,
+    effects: ProjectedEffects<'a>,
+    capabilities: &'a [String],
+}
+struct LogicalName<'a>(&'a str, &'a str);
+impl std::fmt::Display for LogicalName<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.0, self.1)
+    }
+}
+impl Serialize for LogicalName<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+struct ProjectedEffects<'a>(&'a [String], &'a str);
+impl Serialize for ProjectedEffects<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(None)?;
+        for effect in self.0 {
+            if !effect.starts_with("pure:") || effect.strip_prefix("pure:") == Some(self.1) {
+                seq.serialize_element(effect)?;
+            }
+        }
+        seq.end()
+    }
+}
+
+fn projected_page_size(manifest: &ManualManifest) -> Result<usize, String> {
+    let limit = crate::codec::MAX_CODEC_BYTES;
+    let empty: BTreeMap<String, String> = BTreeMap::new();
+    let mut size = crate::codec::json_size(
+        &DeclarationPageRef {
+            schema: "ace.foreign.source-declarations/1",
+            declarations: &[],
+            digests: &empty,
+        },
+        limit,
+    )
+    .map_err(|e| format!("foreign.budget: {e}"))?;
+    for (index, entry) in manifest.declarations.iter().enumerate() {
+        let declaration = ProjectedDeclRef {
+            name: &entry.source_name,
+            provider: &manifest.provider,
+            logical: LogicalName(&manifest.facts.logical, &entry.symbol),
+            content_version: &manifest.facts.content_version,
+            review_id: &manifest.review_id,
+            header_digest: &manifest.header_digest,
+            physical_table_digest: &manifest.physical_table_digest,
+            context_symbol: &entry.context_symbol,
+            function: manifest
+                .facts
+                .function(&entry.symbol)
+                .ok_or("foreign.symbol")?,
+            effects: ProjectedEffects(&manifest.facts.effects, &entry.symbol),
+            capabilities: &manifest.facts.capabilities,
+        };
+        let remaining = limit.saturating_sub(size);
+        let declaration_size = crate::codec::json_size(&declaration, remaining)
+            .map_err(|e| format!("foreign.budget: projected declarations: {e}"))?;
+        let name_size = crate::codec::json_size(entry.source_name.as_str(), remaining)
+            .map_err(|e| format!("foreign.budget: projected digest name: {e}"))?;
+        // Digest map entry: JSON name, colon, and a quoted 64-byte digest.
+        // Both the declaration array and digest map need one comma after #0.
+        size = size
+            .checked_add(declaration_size)
+            .and_then(|s| s.checked_add(name_size))
+            .and_then(|s| s.checked_add(67 + usize::from(index != 0) * 2))
+            .filter(|s| *s <= limit)
+            .ok_or("foreign.budget: projected declarations exceed codec budget")?;
+    }
+    Ok(size)
+}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BindingPage {
@@ -414,6 +507,10 @@ impl ManualManifest {
     }
     fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
         crate::work::observe("foreign-logical-encode", false);
+        // Canonicalization only reorders fields, so this checks the exact
+        // output size before cloning/sorting the owned input.
+        crate::codec::json_size(self, crate::codec::MAX_CODEC_BYTES)
+            .map_err(|e| format!("foreign.budget: manual manifest: {e}"))?;
         self.validate()?;
         let mut canonical = self.clone();
         canonical
@@ -441,6 +538,7 @@ impl ManualManifest {
         let logical = Arc::new(self.canonical_bytes()?);
         let contract_digest = crate::blake3_hex(&logical);
         qualify_host(&self, &contract_digest, host)?;
+        projected_page_size(&self)?;
         let plan = PhysicalPlan::project(&self.facts)?;
         crate::work::observe("foreign-source-project", false);
         let declarations = project_source_declarations(&self);
@@ -456,10 +554,10 @@ impl ManualManifest {
             })?),
             declarations: Arc::new(crate::work::produce("foreign-declarations-encode", || {
                 crate::codec::encode_json_bounded(
-                    &DeclarationPage {
-                        schema: "ace.foreign.source-declarations/1".into(),
-                        declarations: declarations.clone(),
-                        digests: declaration_digests.clone(),
+                    &DeclarationPageRef {
+                        schema: "ace.foreign.source-declarations/1",
+                        declarations: &declarations,
+                        digests: &declaration_digests,
                     },
                     crate::codec::MAX_CODEC_BYTES,
                 )
@@ -686,7 +784,9 @@ fn project_source_declarations(manifest: &ManualManifest) -> Vec<SourceDecl> {
                 .facts
                 .effects
                 .iter()
-                .filter(|e| !e.starts_with("pure:") || *e == &format!("pure:{}", d.symbol))
+                .filter(|e| {
+                    !e.starts_with("pure:") || e.strip_prefix("pure:") == Some(d.symbol.as_str())
+                })
                 .cloned()
                 .collect();
             effects.sort();
@@ -803,6 +903,54 @@ mod tests {
             binding_generation: 7,
         };
         (m, host)
+    }
+
+    #[test]
+    fn declaration_expansion_is_admitted_before_any_projection() {
+        for oversized in [false, true] {
+            let (mut manifest, mut host) = fixture();
+            // Escapes exercise the JSON byte count, rather than a string-length
+            // estimate. Shared fields are repeated in every projected function.
+            manifest.provider = "provider\"\\\n中文".repeat(if oversized { 4_000 } else { 4 });
+            manifest.facts.effects = vec!["checked".into(), "checked".into()];
+            manifest.facts.capabilities.push(SOURCE_CAP.into());
+            let function = manifest.facts.functions[0].clone();
+            manifest.facts.functions.clear();
+            manifest.declarations.clear();
+            host.available_symbols.clear();
+            for i in 0..32 {
+                let mut function = function.clone();
+                function.symbol = format!("c_function_{i}");
+                host.available_symbols.insert(function.symbol.clone());
+                manifest.declarations.push(ManualDecl {
+                    source_name: format!("foreign_function_{i}"),
+                    symbol: function.symbol.clone(),
+                    context_symbol: None,
+                });
+                manifest.facts.functions.push(function);
+            }
+            host.provider = manifest.provider.clone();
+            host.contract_digest = manifest.contract_digest().unwrap();
+            assert!(manifest.canonical_bytes().unwrap().len() < crate::codec::MAX_CODEC_BYTES);
+            if oversized {
+                let rejected = crate::work::with_observer(
+                    Arc::new(|stage, _| {
+                        assert!(
+                            stage == "foreign-logical-encode",
+                            "oversized projection entered producer {stage}"
+                        );
+                    }),
+                    || manifest.admit(&host),
+                )
+                .unwrap_err();
+                assert!(rejected.contains("foreign.budget"), "{rejected}");
+            } else {
+                let expected = projected_page_size(&manifest).unwrap();
+                let admitted = manifest.admit(&host).unwrap();
+                assert_eq!(expected, admitted.pages.declarations.len());
+                AdmittedForeign::restore_pages(admitted.pages.clone(), &host).unwrap();
+            }
+        }
     }
 
     #[test]
