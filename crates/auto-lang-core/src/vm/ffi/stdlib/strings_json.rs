@@ -344,6 +344,14 @@ pub fn shim_json_encode(value: String) -> String {
     if !value.is_empty() && value.parse::<i64>().is_ok() && !value.starts_with('0') {
         return value;
     }
+    // PLAN-949 T-02：JSON 字面量（true/false/null）按裸值输出——VM 的
+    // `json.get` 对 bool/null 返回文本形态，`json.encode` 若按普通字符串
+    // 编码会得到 `"true"`，使 back api.at 的 `ok_txt == "true"` 恒假
+    // （proxy 全量 ok=false 的根因）。字符串 "true" 的解释差异记为已知
+    // 权衡（与数值串既有口径一致）。
+    if value == "true" || value == "false" || value == "null" {
+        return value;
+    }
     serde_json::to_string(&value).unwrap_or_default()
 }
 
@@ -1322,5 +1330,6 @@ pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeI
     // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
     natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 }
+
 
 
