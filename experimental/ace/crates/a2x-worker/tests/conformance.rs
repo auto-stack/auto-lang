@@ -42,6 +42,8 @@ mod collections_face;
 mod collections_v15;
 #[path = "cases/contract_certification.rs"]
 mod contract_certification;
+#[path = "cases/cert_json_951.rs"]
+mod cert_json_951;
 #[path = "cases/hir_shape.rs"]
 mod hir_shape;
 #[path = "cases/incremental_cache.rs"]

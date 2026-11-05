@@ -33,6 +33,16 @@ rustc 编译运行，stdout 值/trap 线与 stderr 标记序双方一致等于�
 错 oracle/错 reference→REJECTED。受控执行=Job 子树＋deadline（编译≤120s/
 运行≤30s；挂起目标被杀受控拒）。
 
+### 序列化文件准入（PLAN-951）
+
+`CertDraft` 的 typed 验证与重复序列化字节稳定均不能代替文件格式验证。
+scalar、record-text、collections 的 `to_json` 输出必须可由标准严格 JSON
+decoder 直接解析，不由消费者补逗号、删尾逗号或宽容修复。字段顺序及原
+schema/recipe、完整文件集、工具、能力、配置键材语义保持；解析后能力列表与
+配置字符串（含其内部 JSON 的转义）须与 producer 的原 typed 值一致。
+回归入口为 `cargo t ace-a2x --test-name cert_json_951`，包含 null/集合非空配置、
+空/多项能力列表、字符串转义与坏分隔符拒绝控制。
+
 ## 资产与门
 
 `test/cases/a2r-hir-892/`：B01/B04/B13/B14/NAMED-01 五例（源=冻结语料字节

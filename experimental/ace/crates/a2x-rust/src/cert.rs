@@ -151,10 +151,14 @@ impl CertDraft {
             };
             s.push_str(&format!("    \"{}\"{}\n", c, comma));
         }
-        s.push_str("  ]\n");
+        s.push_str("  ],\n");
         match &self.execution_config {
-            Some(cfg) => s.push_str(&kv("execution_config", cfg)),
-            None => s.push_str("  \"execution_config\": null,\n"),
+            Some(cfg) => {
+                let field = kv("execution_config", cfg);
+                s.push_str(field.strip_suffix(",\n").expect("kv field terminator"));
+                s.push('\n');
+            }
+            None => s.push_str("  \"execution_config\": null\n"),
         }
         s.push_str("}\n");
         s
