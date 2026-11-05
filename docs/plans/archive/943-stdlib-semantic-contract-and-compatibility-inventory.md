@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/semantic-operation-contract.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: []
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -138,7 +138,7 @@ Auto公共源码、现有Rust装配/ACE workspace、既有TestCase与固定Cargo
 - [x] **T-04｜owner_stage: work｜AC-04**：为后继四端/宿主输出明确的支持、缺能力、未接线、未知表和逐项 owner；首批符号的 caller/producer/宽度/源码合法性与独立 expected 一并冻结。
 - [x] **T-05｜owner_stage: work｜AC-04**：补缺 ID、同宽错签名、语义错单位、解析失败不删行、用户同名合法对照及旧行为守卫，跑完整职责组并核子终态。
 - [x] **T-06｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
-- [ ] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
+- [x] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
 T-01可执行前置：无新计划前置；开工重核当前主线/Specs。 只有取得后续实施授权后才运行；依赖未齐时至多做明确隔离的只读准备，不把准备计为下游交付。T-02..05依次依赖T-01冻结结果；T-06在work侧AC全闭后，T-07在review pass后。任务与AC引用多对多：T-05覆盖AC-01..04，不以单行对应限制验证。
 
@@ -315,10 +315,32 @@ F-943-M1-02关闭候选：`NativeInterface::registered_names()`只读枚举整�
 
 部署观察：PATH上的auto为`D:/autostack/auto-man/target/debug/auto.exe`，UTC构建时间2026-11-05 11:19:39，早于交付，尚未重编译/重启；本包没有auto-lang release/auto.exe或web bundle发布任务，auto-man等外仓未修改。当前交付是源码/SDK合同，不宣称运行中工具已热更新。批量due核验：.last-batch-regression.json覆盖937、timestamp2026-11-05T12:21:00Z，本次943非%5且收据未超48h，窗口内未合入新的%5语言Plan，无需再跑cargo t all；已有known_reds_only历史不当成本包PASS。
 
+
+
+外部source-profile前探的精确narrow输入（宽近邻把全部int注解换为i64），用`ace_core::source::compile_scalar_source(src, module_path, &[])`观察；int接受scalar-i32，i64拒绝source.unsupported。仅证明源码域边界，不宣称std.math调用/执行已支持：
+
+```auto
+fn min(a int, b int) int { if a < b { return a }
+ return b }
+fn main() int { return min(3, 5) }
+```
+
+2026-11-05 cleaned / delivered：archive提交4742ec1741f9123dd792e803acf8e816bc7e332e已在master；实际archive gate核status/location/本地链接/跟踪/72ac9e7b祖先通过。两实施树立即移除前guard均clean，auto-lang 23,262文件/5,854,123,838 bytes、只读auto-down 1,250文件/26,384,862 bytes随worktree remove删除；plan-943-dev已git branch -d，空lang-943组已删除，未回收构建产物。
+
+统一scope删除前无活跃进程，路径恰为D:/autostack/plan-artifacts/plan-943，guard clean；预清理测量4,174文件/1,747,250,930 bytes，新增一份清理数量清单后全scope共4,175文件一并删除（约1.75GB）。首次包含Force的组合删除命令被自动策略拒绝，未执行任何部分；完成独立路径/进程/guard核查后，以显式literal路径、不带Force的Remove-Item -Recurse成功清除。实际Test-Path/exists核scope不存在，树/组/分支均不存在。代码/临时输出/安装根路径已逐项对账，无其他盘符或外部消费根残留。用户持有的fix-943-preflight-temporaries仍保留7原文件和manifest，owner/原因/关闭条件在登记中，未以归档释放。
+
+证据摘要与所有必要命令、exit、关键计数、区分输入/结果及原始哈希已折入本Plan §9；原scope不再是可用留存件。权威登记D:/autostack/plan-artifacts/.retention/policy.json刷新为deleted-at-merge，并记录最终Plan内容hash；初期误写到D:/autostack/.retention/policy.json的本任务两条登记已撤回、迁入正确索引，其他旧条目保留。scope内probe/安装验证副本/target/exe/pdb均已删除，无本Plan具名未解决问题持有。
+
+AC-01..06最终均已闭合，T-01..07=7/7；F-943-R1-01与F-943-M1-02各经独立复审/永久反例关闭。主检出本Plan实现/Spec/归档范围干净；预先存在的其他会话docs草稿/WIP保留并未混入本次提交，未声称全仓这些文档也已提交。源码交付commit=72ac9e7b341bd53de92cb53c9ecaf0716371a5a3，canonical identity及149/149门见上，陈旧auto-man工具观察仍如上；未擅自部署/跨仓重建。
+
+`stage: merge | plan_id: PLAN-943 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: 72ac9e7b341bd53de92cb53c9ecaf0716371a5a3 | archive_path: docs/plans/archive/943-stdlib-semantic-contract-and-compatibility-inventory.md | canonical_verified: SD-01..04 | cleanup: tree/branch/group/scope removed; registry refreshed | pending_merge_gates: none`
+
+`stage: goal | plan_id: PLAN-943 | plan_revision: 1 | round: 9 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 72ac9e7b341bd53de92cb53c9ecaf0716371a5a3 | next: done`
+
 ## 10. 待澄清事项
 
 2026-11-05 用户答复：“它们是临时产物，移到独立暂存目录后继续”。已逐文件迁出至 `D:/autostack/plan-artifacts/fix-943-preflight-temporaries/`（独立于本计划交付材料），7/7 SHA256 一致，原路径与大小/哈希见该目录 manifest.json；登记为用户临时产物持有，不随 943 merge 删除。主检出 examples/scripts/test 路径已无未提交文件，开工阻塞解除。943 材料 scope 已建立并登记，work/T-01 开始。其他会话 docs WIP 保留，不纳入本计划提交。
 
-- 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
+- 首批符号/合法source/profile/接口位置已在§5/机器合同冻结；缺能力留具名后继进入条件，不构成943待决事项。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权与临时产物安置问题已关闭，work完成；当前无等待用户决定的阻塞。未指定预算/模型/角色不虚构约束；跨仓若后续需写代码，由对应 owner 另建合同与授权。
