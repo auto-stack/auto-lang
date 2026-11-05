@@ -528,6 +528,47 @@ impl SyntaxArtifactStore {
         )
     }
 
+    /// Open an immutable CST origin by a parent-held receipt, then verify
+    /// its grammar and source-page snapshot identity before projection.
+    pub fn open_cst_receipt(
+        &self,
+        p: &GrammarProgram,
+        artifact_id: &str,
+    ) -> Result<Option<CstView<'_>>, AdapterError> {
+        let Some(a) = self
+            .store
+            .get_artifact_by_id_bounded(artifact_id, 512 * 1024)?
+        else {
+            return Ok(None);
+        };
+        if a.kind != ace_artifacts::codec::ChunkKind::CstManifest {
+            return Err(AdapterError::Admissions(
+                "CST origin carrier mismatch".into(),
+            ));
+        }
+        let manifest: CstManifest = serde_json::from_slice(&a.payload)
+            .map_err(|e| AdapterError::Admissions(e.to_string()))?;
+        let view = self.view_from_manifest(
+            &a.payload,
+            a.artifact_id,
+            Some((&manifest.snapshot, p)),
+            None,
+        )?;
+        if let Some(v) = &view {
+            let bytes = v.source_bytes()?;
+            let source =
+                std::str::from_utf8(&bytes).map_err(|e| AdapterError::Admissions(e.to_string()))?;
+            let pages = Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
+            let snapshot = Snapshot::from_text(&pages, source);
+            if snapshot.id().as_str() != manifest.snapshot {
+                return Err(AdapterError::Admissions(
+                    "CST origin source snapshot mismatch".into(),
+                ));
+            }
+        }
+        Ok(view)
+    }
+
     fn view_from_manifest(
         &self,
         payload: &[u8],

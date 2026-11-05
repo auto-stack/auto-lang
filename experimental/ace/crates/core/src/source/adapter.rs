@@ -520,8 +520,27 @@ fn emit_scoped_document(
     module_path: &str,
     batch: bool,
 ) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    emit_scoped_source(
+        env,
+        indices,
+        src.len(),
+        fnv1a_hex(src.as_bytes()),
+        &|p| src.is_char_boundary(p),
+        module_path,
+        batch,
+    )
+}
+fn emit_scoped_source(
+    env: &super::resolve::CheckedEnv,
+    indices: &[usize],
+    source_len: usize,
+    input_hash: String,
+    boundary: &dyn Fn(usize) -> bool,
+    module_path: &str,
+    batch: bool,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
     let profile = env.profile;
-    let mut em = Emitter::new(&env.program, src.len(), profile);
+    let mut em = Emitter::new(&env.program, source_len, profile);
     if batch {
         em.batch_scope = Some(indices.to_vec());
     } else {
@@ -561,14 +580,14 @@ fn emit_scoped_document(
             )]);
         }
     };
-    match em.reanchor_spans(&mut bundle, src) {
+    match em.reanchor_spans_checked(&mut bundle, source_len, boundary) {
         Ok(()) => {}
         Err(d) => return Err(vec![d]),
     }
     Ok((
         SourceParts {
             profile: profile.as_str(),
-            input_hash: fnv1a_hex(src.as_bytes()),
+            input_hash,
             atom_text,
             bundle,
             planned_fns: em.plans.len(),
@@ -4152,4 +4171,58 @@ fn intrinsic_id_suffix(sym: &str) -> String {
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()
     }
+}
+
+/// PLAN-950 single-body module transaction over the existing candidate and
+/// source-map-aware emitter. Facts remain the candidate's type authority.
+pub fn prepare_module_candidate(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    index: usize,
+    sources: &super::modules::BoundModules,
+    supply: &dyn super::resolve::TypeSupply,
+) -> Result<FnCandidate, Vec<Diagnostic>> {
+    let old: Vec<_> = env
+        .program
+        .fns
+        .iter()
+        .map(|f| (f.name_span, f.item_span))
+        .collect();
+    super::resolve::reanchor_env_declarations(env, &sources.program)?;
+    let result = (|| {
+        let current = super::resolve::recheck_swap_with_supply(env, item, index, Some(supply))?;
+        let emitted = emit_scoped_source(
+            env,
+            &[index],
+            sources.source_len(),
+            sources.input_hash.clone(),
+            &|p| sources.is_char_boundary(p),
+            "modules",
+            false,
+        );
+        let candidate_state = current.swap_into(env, index);
+        let (parts, receipt) = emitted?;
+        let candidate = FnCandidate {
+            env_id: env.id,
+            base_generation: env.generation,
+            fn_index: index,
+            slot_name: item.name.name.clone(),
+            state: candidate_state,
+            parts,
+            receipt,
+        };
+        let def = format!("d_{}", item.name.name);
+        let def_index = candidate.parts.bundle.modules[0]
+            .defs
+            .iter()
+            .position(|f| f.id_text == def)
+            .ok_or_else(|| vec![internal_diag("module candidate def absent".into())])?;
+        crate::verify::verify_function_ref(&candidate.parts.bundle, def_index)?;
+        Ok(candidate)
+    })();
+    for (f, (name, item)) in env.program.fns.iter_mut().zip(old) {
+        f.name_span = name;
+        f.item_span = item;
+    }
+    result
 }

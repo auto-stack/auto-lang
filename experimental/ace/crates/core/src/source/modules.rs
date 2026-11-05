@@ -25,8 +25,26 @@ pub struct ModuleSyntax {
     pub grammar_id: String,
     /// Source binding for store admission; neither addresses nor authority.
     pub source_hash: String,
-    pub syntax: Vec<ace_syntax_runtime::cst::CstTree>,
+    pub pieces: Vec<SyntaxPiece>,
+    /// Full declaration spans include the visibility keyword when present.
+    pub declarations: std::collections::BTreeMap<String, Span>,
+}
+
+/// An immutable syntax origin plus the declarations still selected from it.
+/// Edits relocate declarations; they never reparse an unchanged origin.
+#[derive(Clone, Debug)]
+pub struct SyntaxPiece {
+    pub source: std::rc::Rc<str>,
+    pub tree: Option<ace_syntax_runtime::cst::CstTree>,
     pub tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+    pub placements: Vec<DeclarationPlacement>,
+    pub stored_cst: Option<String>,
+}
+#[derive(Clone, Debug)]
+pub struct DeclarationPlacement {
+    pub index: usize,
+    pub mint: Span,
+    pub current: Span,
 }
 
 /// The explicit module entry. Old scalar entrypoints never discard metadata
@@ -173,3 +191,6 @@ pub fn project_stored_module(
     }
     super::cst::project_module_front(src, trees, None)
 }
+
+mod edit;
+pub use edit::{assemble_relocated_module, edit_module_function};

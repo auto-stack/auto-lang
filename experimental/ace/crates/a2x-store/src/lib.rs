@@ -881,6 +881,17 @@ impl A2xSession {
         _src: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
+        self.assemble_view_internal(view, input_hash, entry, _src, read_only, true)
+    }
+    fn assemble_view_internal(
+        &mut self,
+        view: &SemanticView<'_>,
+        input_hash: &str,
+        entry: &str,
+        _src: &str,
+        read_only: bool,
+        publish_source_anchor: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
         let family = self.family();
         let backend = self.current_backend().to_string();
         let runtime = self
@@ -1046,7 +1057,7 @@ impl A2xSession {
         // required edges keep every fragment alive and are
         // liveness-checked atomically at this put - a crash before it
         // leaves a store restore rejects, never a half-restorable one.
-        if self.anchors_family(family) && !read_only {
+        if publish_source_anchor && self.anchors_family(family) && !read_only {
             let src_sha = self
                 .source_sha256
                 .clone()
@@ -2403,3 +2414,6 @@ fn static_layer(id: &str) -> &'static str {
         other => panic!("unknown layer {}", other),
     }
 }
+
+/// PLAN-950 metadata-preserving finite-module emit consumer.
+pub mod modules;

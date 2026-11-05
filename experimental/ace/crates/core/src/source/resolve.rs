@@ -2275,6 +2275,14 @@ pub(crate) fn recheck_swap(
     item: &ast::FnItem,
     fn_index: usize,
 ) -> Result<BodyState, Vec<Diagnostic>> {
+    recheck_swap_with_supply(env, item, fn_index, None)
+}
+pub(crate) fn recheck_swap_with_supply(
+    env: &mut CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+    supply: Option<&dyn TypeSupply>,
+) -> Result<BodyState, Vec<Diagnostic>> {
     if env.closed {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -2430,7 +2438,7 @@ pub(crate) fn recheck_swap(
         &mut Vec::new(),
         &mut Vec::new(),
         env.program.fns.len(),
-        None,
+        supply,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -8032,4 +8040,41 @@ impl<'a, 's> FnResolver<'a, 's> {
             }
         }
     }
+}
+
+/// Refresh declaration coordinates after a source-map-only movement. Bodies
+/// remain immutable resident payloads; callers publish their own span maps.
+pub fn reanchor_env_declarations(
+    env: &mut CheckedEnv,
+    program: &ast::Program,
+) -> Result<(), Vec<Diagnostic>> {
+    let fns: Vec<_> = program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            ast::Item::Fn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    if env.closed
+        || fns.len() != env.program.fns.len()
+        || env
+            .program
+            .fns
+            .iter()
+            .zip(&fns)
+            .any(|(r, f)| r.name != f.name.name)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.module-context",
+            "declaration context mismatch",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    for (r, f) in env.program.fns.iter_mut().zip(fns) {
+        r.name_span = f.name.span;
+        r.item_span = f.span;
+    }
+    Ok(())
 }

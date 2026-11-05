@@ -49,6 +49,8 @@ dependencies = [
  "ace-artifacts",
  "ace-core",
  "ace-source-query",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -61,6 +63,7 @@ dependencies = [
  "ace-a2x-store",
  "ace-abi",
  "ace-artifacts",
+ "ace-av",
  "ace-core",
  "ace-source-query",
  "auto-tool-execution",

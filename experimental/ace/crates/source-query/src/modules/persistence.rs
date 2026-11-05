@@ -22,7 +22,7 @@ use std::{
     rc::Rc,
 };
 
-pub const MODULE_ROOT_SCHEMA: &str = "source-modules-root/1";
+pub const MODULE_ROOT_SCHEMA: &str = "source-modules-root/2";
 const ROOT_KIND: &str = "source-modules-current";
 const MAX_ROOT_BYTES: usize = 512 * 1024;
 
@@ -37,7 +37,20 @@ pub struct ModuleReceipt {
 struct UnitRef {
     id: String,
     source_sha: String,
+    pieces: Vec<PieceRef>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PieceRef {
     cst: String,
+    placements: Vec<PlacementRef>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlacementRef {
+    index: usize,
+    mint: (usize, usize),
+    current: (usize, usize),
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +70,8 @@ struct Root {
     module: String,
     capabilities: Vec<String>,
     input_hash: String,
+    decl_env: String,
+    targets: BTreeMap<String, ModuleReceipt>,
     units: Vec<UnitRef>,
     facts: Vec<FactRef>,
 }
@@ -64,11 +79,72 @@ struct Root {
 pub struct ModuleRecovery {
     pub bound: BoundModules,
     pub session: SourceQuerySession,
+    pub env: ace_core::source::resolve::CheckedEnv,
+    pub targets: BTreeMap<String, ModuleReceipt>,
 }
 pub struct ModuleStore {
     syntax: SyntaxArtifactStore,
     sink: ManagedStoreSink,
     project: String,
+}
+fn validate_declarations(
+    bound: &BoundModules,
+    dump: &ace_core::source::decl_env::DeclEnvDump,
+) -> Result<(), String> {
+    use ace_core::source::ast::{Item, ParamMode, TypeRef, TypeWord};
+    let vt = |t: &ace_core::source::ast::TypeAnn| match t.kind {
+        TypeRef::Builtin(TypeWord::Int | TypeWord::I32) => Some("i32"),
+        TypeRef::Builtin(TypeWord::Bool) => Some("bool"),
+        _ => None,
+    };
+    let functions: Vec<_> = bound
+        .program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Fn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    if dump.fns.len() != functions.len()
+        || !dump.records.is_empty()
+        || !dump.lists.is_empty()
+        || !dump.variants.is_empty()
+        || !dump.function_types.is_empty()
+    {
+        return Err("module declaration environment shape mismatch".into());
+    }
+    for (d, f) in dump.fns.iter().zip(functions) {
+        let params: Option<Vec<_>> = f
+            .params
+            .iter()
+            .map(|p| vt(&p.ty).map(str::to_string))
+            .collect();
+        if d.name != f.name.name
+            || d.param_names
+                != f.params
+                    .iter()
+                    .map(|p| p.name.name.clone())
+                    .collect::<Vec<_>>()
+            || Some(d.params.clone()) != params
+            || Some(d.result.as_str()) != vt(&f.ret)
+            || d.param_modes
+                != f.params
+                    .iter()
+                    .map(|p| p.mode == ParamMode::Mut)
+                    .collect::<Vec<_>>()
+            || d.receiver != "free"
+            || d.owner_rec.is_some()
+            || d.name_span != (f.name.span.start, f.name.span.end)
+            || d.item_span != (f.span.start, f.span.end)
+        {
+            return Err(format!(
+                "module declaration environment signature/span mismatch for `{}`",
+                f.name.name
+            ));
+        }
+    }
+    Ok(())
 }
 fn canonical_caps(caps: &[String]) -> Vec<String> {
     caps.iter()
@@ -102,43 +178,107 @@ impl ModuleStore {
         {
             return Err("module candidate identity mismatch".into());
         }
+        let env = ace_core::source::resolve_env_with_supply(
+            &product.bound.program,
+            caps,
+            SourceProfile::Scalar,
+            Some(&product.supply),
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        self.prepare_context(&product.bound, session, &env)
+    }
+    /// Persist source/query/declaration context after a checked single-body
+    /// prepare; targets remain a host-owned prepare/publish transaction.
+    pub fn prepare_context(
+        &mut self,
+        bound: &BoundModules,
+        session: &mut SourceQuerySession,
+        env: &ace_core::source::resolve::CheckedEnv,
+    ) -> Result<ModuleReceipt, String> {
+        self.prepare_context_targets(bound, session, env, &BTreeMap::new())
+    }
+    pub fn prepare_context_targets(
+        &mut self,
+        bound: &BoundModules,
+        session: &mut SourceQuerySession,
+        env: &ace_core::source::resolve::CheckedEnv,
+        targets: &BTreeMap<String, ModuleReceipt>,
+    ) -> Result<ModuleReceipt, String> {
+        let entry = &bound.entry;
+        let caps = &bound.capabilities;
+        if canonical_caps(session.capabilities()) != *caps {
+            return Err("module candidate capabilities mismatch".into());
+        }
         let grammar = module_grammar()?;
         let mut units = Vec::new();
         let mut edges = Vec::new();
-        for segment in &product.bound.segments {
-            let syntax = &product.bound.units[&segment.module];
-            if syntax.syntax.len() != 1 {
-                return Err(
-                    "candidate needs current parsed CST, not a reconstructed declaration list"
-                        .into(),
-                );
+        for segment in &bound.segments {
+            let unit = &bound.units[&segment.module];
+            let mut pieces = Vec::new();
+            for piece in &unit.pieces {
+                let cst = if let Some(id) = &piece.stored_cst {
+                    let v = self
+                        .syntax
+                        .open_cst_receipt(grammar.program(), id)
+                        .map_err(|e| format!("{e:?}"))?
+                        .ok_or("missing retained CST origin")?;
+                    if v.source_bytes().map_err(|e| format!("{e:?}"))? != piece.source.as_bytes() {
+                        return Err("retained CST source mismatch".into());
+                    }
+                    id.clone()
+                } else {
+                    let tree = piece.tree.as_ref().ok_or("new syntax origin tree absent")?;
+                    let tokens = piece
+                        .tokens
+                        .as_ref()
+                        .ok_or("new syntax origin tokens absent")?;
+                    let pages = Rc::new(PageStore::new());
+                    let snap = Snapshot::from_text(&pages, &piece.source);
+                    let a02 = self
+                        .syntax
+                        .put_tokens(grammar.program(), &snap, tokens)
+                        .map_err(|e| format!("{e:?}"))?;
+                    self.syntax
+                        .put_cst_unpublished(grammar.program(), &snap, tree, &a02)
+                        .map_err(|e| format!("{e:?}"))?
+                };
+                let mut placements = Vec::new();
+                for d in &piece.placements {
+                    if piece.source.get(d.mint.start..d.mint.end)
+                        != segment.source.get(d.current.start..d.current.end)
+                    {
+                        return Err("candidate declaration origin mismatch".into());
+                    }
+                    placements.push(PlacementRef {
+                        index: d.index,
+                        mint: (d.mint.start, d.mint.end),
+                        current: (d.current.start, d.current.end),
+                    });
+                }
+                pieces.push(PieceRef {
+                    cst: cst.clone(),
+                    placements,
+                });
+                edges.push((cst, RefKind::RequiredData));
             }
-            let tokens = syntax.tokens.as_ref().ok_or("candidate tokens absent")?;
-            let pages = Rc::new(PageStore::new());
-            let snap = Snapshot::from_text(&pages, &segment.source);
-            let a02 = self
-                .syntax
-                .put_tokens(grammar.program(), &snap, tokens)
-                .map_err(|e| format!("{e:?}"))?;
-            let cst = self
-                .syntax
-                .put_cst_unpublished(grammar.program(), &snap, &syntax.syntax[0], &a02)
-                .map_err(|e| format!("{e:?}"))?;
             units.push(UnitRef {
                 id: segment.module.clone(),
                 source_sha: sha256_hex(segment.source.as_bytes()),
-                cst: cst.clone(),
+                pieces,
             });
-            edges.push((cst, RefKind::RequiredData));
+        }
+        for target in targets.values() {
+            self.verify_target(target, &bound.input_hash)?;
+            edges.push((target.artifact.clone(), RefKind::RequiredData));
         }
         let mut facts = Vec::new();
         // These are cache hits after the product compile, not a second solver.
-        for name in product.bound.origins.keys() {
+        for name in bound.origins.keys() {
             let key = session
-                .body_key(&product.bound.program, name)
+                .body_key(&bound.program, name)
                 .map_err(|e| e.to_string())?;
             let page = session
-                .infer_body(&product.bound.program, name)
+                .infer_body(&bound.program, name)
                 .map_err(|e| e.to_string())?;
             if !page.hit {
                 return Err(format!("module preparation unexpectedly produced `{name}`"));
@@ -146,9 +286,7 @@ impl ModuleStore {
             // Request revisions are lifecycle observations, not immutable
             // semantic content. The module recipe also binds every signature
             // read, unlike the original bare S934 lookup address.
-            let catalog = session
-                .catalog(&product.bound.program)
-                .map_err(|e| e.to_string())?;
+            let catalog = session.catalog(&bound.program).map_err(|e| e.to_string())?;
             let mut reads: BTreeMap<String, String> = BTreeMap::new();
             for name in std::iter::once(name).chain(page.facts.sig_reads.iter()) {
                 reads.insert(
@@ -199,15 +337,36 @@ impl ModuleStore {
             });
             edges.push((artifact, RefKind::RequiredData));
         }
+        let mut dump = ace_core::source::decl_env::decl_env_dump(
+            env,
+            MODULE_BINDING_VERSION,
+            &bound.input_hash,
+        );
+        for f in &mut dump.fns {
+            let ast = bound
+                .program
+                .items
+                .iter()
+                .find_map(|i| match i {
+                    ace_core::source::ast::Item::Fn(a) if a.name.name == f.name => Some(a),
+                    _ => None,
+                })
+                .ok_or("module declaration context missing owner")?;
+            f.name_span = (ast.name.span.start, ast.name.span.end);
+            f.item_span = (ast.span.start, ast.span.end);
+        }
+        validate_declarations(bound, &dump)?;
         let root = Root {
             schema: MODULE_ROOT_SCHEMA.into(),
             binding: MODULE_BINDING_VERSION.into(),
-            grammar: product.bound.grammar_id.clone(),
+            grammar: bound.grammar_id.clone(),
             entry: entry.into(),
             package: session.package().into(),
             module: session.module().into(),
             capabilities: canonical_caps(caps),
-            input_hash: product.bound.input_hash.clone(),
+            input_hash: bound.input_hash.clone(),
+            decl_env: ace_core::source::decl_env::encode_decl_env(&dump),
+            targets: targets.clone(),
             units,
             facts,
         };
@@ -236,6 +395,23 @@ impl ModuleStore {
             })
             .map_err(|e| e.to_string())?;
         Ok(ModuleReceipt { artifact, digest })
+    }
+    fn verify_target(&self, target: &ModuleReceipt, source: &str) -> Result<(), String> {
+        let a = self
+            .sink
+            .store()
+            .get_artifact_by_id_bounded(&target.artifact, MAX_ROOT_BYTES as u64)
+            .map_err(|e| e.to_string())?
+            .ok_or("required module target absent")?;
+        if a.kind != ChunkKind::SnapshotRecord || sha256_hex(&a.payload) != target.digest {
+            return Err("module target receipt mismatch".into());
+        }
+        let value: serde_json::Value =
+            serde_json::from_slice(&a.payload).map_err(|e| e.to_string())?;
+        if value.get("source").and_then(|v| v.as_str()) != Some(source) {
+            return Err("module target source binding mismatch".into());
+        }
+        Ok(())
     }
     fn read_root(&self, receipt: &ModuleReceipt) -> Result<Root, String> {
         let artifact = self
@@ -279,8 +455,9 @@ impl ModuleStore {
         let required: BTreeSet<_> = root
             .units
             .iter()
-            .map(|u| u.cst.clone())
+            .flat_map(|u| u.pieces.iter().map(|p| p.cst.clone()))
             .chain(root.facts.iter().map(|f| f.artifact.clone()))
+            .chain(root.targets.values().map(|r| r.artifact.clone()))
             .collect();
         let actual: BTreeSet<_> = self
             .sink
@@ -291,6 +468,9 @@ impl ModuleStore {
             .collect();
         if actual != required {
             return Err("module root required edges mismatch".into());
+        }
+        for target in root.targets.values() {
+            self.verify_target(target, &root.input_hash)?;
         }
         Ok(root)
     }
@@ -382,42 +562,76 @@ impl ModuleStore {
             if sha256_hex(src.as_bytes()) != u.source_sha || units.contains_key(&u.id) {
                 return Err("module source binding/duplicate mismatch".into());
             }
-            let pages = Rc::new(PageStore::new());
-            let snap = Snapshot::from_text(&pages, src);
-            let view = self
-                .syntax
-                .open_cst(grammar.program(), &snap)
-                .map_err(|e| format!("{e:?}"))?
-                .ok_or("missing module CST")?;
-            // The caller-held root receipt protects this expected A03 identity.
-            // open_cst rechecks the source+grammar key and all pages on demand.
-            if view.artifact_id() != u.cst {
-                return Err("module CST receipt mismatch".into());
+            use ace_core::source::modules::{
+                assemble_relocated_module, DeclarationPlacement, SyntaxPiece,
+            };
+            let mut pieces = Vec::new();
+            let mut projected = Vec::new();
+            for p in u.pieces {
+                let view = self
+                    .syntax
+                    .open_cst_receipt(grammar.program(), &p.cst)
+                    .map_err(|e| format!("{e:?}"))?
+                    .ok_or("missing module CST origin")?;
+                let minted = String::from_utf8(view.source_bytes().map_err(|e| format!("{e:?}"))?)
+                    .map_err(|e| e.to_string())?;
+                if minted.len() > budget.work_bytes {
+                    return Err("module syntax origin byte budget".into());
+                }
+                let mut trees = Vec::new();
+                let mut placements = Vec::new();
+                let mut selected = BTreeSet::new();
+                for d in p.placements {
+                    if !selected.insert(d.index) {
+                        return Err("duplicate CST origin declaration".into());
+                    }
+                    let (a, b) = view.decl_range(d.index).map_err(|e| format!("{e:?}"))?;
+                    if (a as usize, b as usize) != d.mint {
+                        return Err("CST origin extent mismatch".into());
+                    }
+                    let mint = Span {
+                        start: d.mint.0,
+                        end: d.mint.1,
+                    };
+                    let current = Span {
+                        start: d.current.0,
+                        end: d.current.1,
+                    };
+                    if minted.get(mint.start..mint.end) != src.get(current.start..current.end) {
+                        return Err("module declaration origin slice mismatch".into());
+                    }
+                    trees.push(view.decl_subtree(d.index).map_err(|e| format!("{e:?}"))?);
+                    placements.push(DeclarationPlacement {
+                        index: d.index,
+                        mint,
+                        current,
+                    });
+                }
+                if placements.is_empty() {
+                    return Err("empty CST origin selection".into());
+                }
+                let syntax = project_stored_module(&minted, trees, &grammar_id, budget)
+                    .map_err(|e| format!("{e:?}"))?;
+                projected.push((syntax, placements.clone()));
+                let pages = Rc::new(PageStore::new());
+                let snap = Snapshot::from_text(&pages, &minted);
+                if self
+                    .syntax
+                    .get_tokens(grammar.program(), &snap)
+                    .map_err(|e| format!("{e:?}"))?
+                    .is_none()
+                {
+                    return Err("required module token stream absent".into());
+                }
+                pieces.push(SyntaxPiece {
+                    source: Rc::from(minted.as_str()),
+                    tree: None,
+                    tokens: None,
+                    placements,
+                    stored_cst: Some(p.cst),
+                });
             }
-            let expected = self
-                .sink
-                .store()
-                .get_artifact_by_id(&u.cst)
-                .map_err(|e| e.to_string())?
-                .ok_or("required module CST absent")?;
-            if expected.kind != ChunkKind::CstManifest {
-                return Err("module CST carrier mismatch".into());
-            }
-            if view.source_bytes().map_err(|e| format!("{e:?}"))? != src.as_bytes() {
-                return Err("module CST source mismatch".into());
-            }
-            let tokens = self
-                .syntax
-                .get_tokens(grammar.program(), &snap)
-                .map_err(|e| format!("{e:?}"))?
-                .ok_or("required module token stream absent")?;
-            let mut trees = Vec::new();
-            for i in 0..view.decl_count() {
-                trees.push(view.decl_subtree(i).map_err(|e| format!("{e:?}"))?);
-            }
-            let mut syntax = project_stored_module(src, trees, &grammar_id, budget)
-                .map_err(|e| format!("{e:?}"))?;
-            syntax.tokens = Some(tokens);
+            let syntax = assemble_relocated_module(src, projected, pieces, grammar_id.clone())?;
             units.insert(u.id, syntax);
         }
         let bound =
@@ -449,7 +663,34 @@ impl ModuleStore {
         if seen.len() != bound.origins.len() {
             return Err("missing required module fact".into());
         }
-        Ok(ModuleRecovery { bound, session })
+        let dump = ace_core::source::decl_env::decode_decl_env(&root.decl_env)
+            .map_err(|e| format!("{e:?}"))?;
+        let names: Vec<_> = bound
+            .program
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                ace_core::source::ast::Item::Fn(f) => Some(f.name.name.as_str()),
+                _ => None,
+            })
+            .collect();
+        if !dump.fns.iter().map(|f| f.name.as_str()).eq(names) {
+            return Err("module declaration environment owner mismatch".into());
+        }
+        validate_declarations(&bound, &dump)?;
+        let env = ace_core::source::decl_env::decl_env_restore(
+            &dump,
+            SourceProfile::Scalar,
+            MODULE_BINDING_VERSION,
+            &bound.input_hash,
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        Ok(ModuleRecovery {
+            bound,
+            session,
+            env,
+            targets: root.targets,
+        })
     }
 }
 
@@ -730,7 +971,11 @@ mod tests {
             let edges = root
                 .units
                 .iter()
-                .map(|u| (u.cst.clone(), RefKind::RequiredData))
+                .flat_map(|u| {
+                    u.pieces
+                        .iter()
+                        .map(|p| (p.cst.clone(), RefKind::RequiredData))
+                })
                 .chain(
                     root.facts
                         .iter()
@@ -790,6 +1035,127 @@ mod tests {
             .restore(
                 &original,
                 &inputs(42),
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB
+            )
+            .is_ok());
+    }
+    #[test]
+    fn restored_first_body_edit_reuses_unchanged_declarations_and_survives_next_recovery() {
+        let temp = Temp::new();
+        let mut source = inputs(42);
+        source[0].source.push_str(" fn helper() int { return 9 }");
+        let old = {
+            let mut store = ModuleStore::open(&temp.0, "edit").unwrap();
+            let mut query = SourceQuerySession::new("pkg", "app");
+            let p = build(&source, &mut query);
+            let root = store.prepare(&p, &mut query, "app", &caps()).unwrap();
+            store.publish(&root, None, false).unwrap();
+            root
+        };
+        let mut store = ModuleStore::open(&temp.0, "edit").unwrap();
+        let recovery = store
+            .restore(
+                &old,
+                &source,
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .unwrap();
+        let mut session = ModuleSession::from_recovery(recovery);
+        let ((edit, body), syntax) = ace_core::source::parser::capture_syntax_work(|| {
+            ace_core::body_work::capture_body_work(|| {
+                session.prepare(
+                    "std",
+                    "answer",
+                    "pub fn answer() int { return 123 }",
+                    FrontBudget::WORK_OWNED_64MIB,
+                )
+            })
+        });
+        let edit = edit.unwrap();
+        assert_eq!(syntax.parsed_functions.len(), 1);
+        assert_eq!(syntax.parsed_functions["answer"], 1);
+        assert_eq!(syntax.tokenized_ranges.len(), 1);
+        assert_eq!(body.len(), 1, "{body:?}");
+        let work = body["m3_std_answer"];
+        assert_eq!(
+            (work.resolve, work.typecheck, work.plan, work.bind),
+            (1, 1, 1, 1)
+        );
+        assert_eq!(
+            edit.bound.binding_walks,
+            BTreeSet::from(["m3_std_answer".into()])
+        );
+        assert_eq!(session.query.counters().solver_runs, 1);
+        let candidate = session.prepare_receipt(&mut store, &edit).unwrap();
+        assert_eq!(
+            session.query.counters().solver_runs,
+            1,
+            "persist cannot solve unchanged functions"
+        );
+        session.validate(&edit).unwrap();
+        store.publish(&candidate, Some(&old), false).unwrap();
+        session.commit(edit).unwrap();
+        source = session
+            .bound
+            .segments
+            .iter()
+            .map(|s| ModuleInput {
+                id: s.module.clone(),
+                source: s.source.clone(),
+            })
+            .collect();
+        drop(session);
+        drop(store);
+        let store = ModuleStore::open(&temp.0, "edit").unwrap();
+        let recovery = store
+            .restore(
+                &candidate,
+                &source,
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .unwrap();
+        let mut session = ModuleSession::from_recovery(recovery);
+        let ((next, body), syntax) = ace_core::source::parser::capture_syntax_work(|| {
+            ace_core::body_work::capture_body_work(|| {
+                session.prepare(
+                    "std",
+                    "answer",
+                    "pub fn answer() int { return 43 }",
+                    FrontBudget::WORK_OWNED_64MIB,
+                )
+            })
+        });
+        let next = next.unwrap();
+        assert_eq!(body.len(), 1);
+        assert_eq!(syntax.parsed_functions.len(), 1);
+        assert_eq!(
+            next.bound.binding_walks,
+            BTreeSet::from(["m3_std_answer".into()])
+        );
+        assert_eq!(session.query.counters().solver_runs, 1);
+        // Dropping the prepared edit does not publish new source or context.
+        drop(next);
+        assert!(session
+            .bound
+            .segments
+            .iter()
+            .any(|s| s.module == "std" && s.source.contains("return 123")));
+        assert!(store
+            .restore(
+                &candidate,
+                &source,
                 "app",
                 &caps(),
                 "pkg",

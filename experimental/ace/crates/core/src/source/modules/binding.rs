@@ -30,6 +30,7 @@ pub struct BoundModules {
     pub origins: BTreeMap<String, (String, String)>,
     /// Actual direct calls, not a declaration inventory.
     pub references: BTreeMap<String, BTreeSet<String>>,
+    pub binding_walks: BTreeSet<String>,
     pub input_hash: String,
     pub grammar_id: String,
 }
@@ -134,6 +135,16 @@ pub fn bind_module_syntax(
     caps: &[String],
     budget: FrontBudget,
     units: BTreeMap<String, ModuleSyntax>,
+) -> Result<BoundModules, ModuleDiagnostic> {
+    bind_module_syntax_reusing(inputs, entry, caps, budget, units, None)
+}
+pub(super) fn bind_module_syntax_reusing(
+    inputs: &[ModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    units: BTreeMap<String, ModuleSyntax>,
+    previous: Option<&BoundModules>,
 ) -> Result<BoundModules, ModuleDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == MODULES_CAPABILITY)
@@ -264,6 +275,26 @@ pub fn bind_module_syntax(
             }
             Ok(symbol(target, name, entry))
         };
+    let scope_same = previous.is_some_and(|old| {
+        old.entry == entry
+            && old.capabilities
+                == caps
+                    .iter()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            && old.units.keys().eq(units.keys())
+            && units.iter().all(|(id, u)| {
+                let o = &old.units[id];
+                o.exports == u.exports
+                    && o.declarations.keys().eq(u.declarations.keys())
+                    && o.imports
+                        .iter()
+                        .map(|i| (&i.module, &i.name))
+                        .eq(u.imports.iter().map(|i| (&i.module, &i.name)))
+            })
+    });
     let mut result = BoundModules {
         entry: entry.into(),
         capabilities: caps
@@ -277,6 +308,7 @@ pub fn bind_module_syntax(
         segments: Vec::new(),
         origins: BTreeMap::new(),
         references: BTreeMap::new(),
+        binding_walks: BTreeSet::new(),
         input_hash: String::new(),
         grammar_id: String::new(),
     };
@@ -303,6 +335,54 @@ pub fn bind_module_syntax(
             };
             let mut f = original.clone();
             let owner = symbol(id, &f.name.name, entry);
+            if scope_same {
+                let old = previous.expect("scope comparison needs old graph");
+                let old_source = &old
+                    .segments
+                    .iter()
+                    .find(|s| s.module == *id)
+                    .expect("old module")
+                    .source;
+                let old_original = old.units[id].program.items.iter().find_map(|i| match i {
+                    Item::Fn(f) if f.name.name == original.name.name => Some(f),
+                    _ => None,
+                });
+                if let Some(old_original) = old_original {
+                    if old_source.get(old_original.span.start..old_original.span.end)
+                        == sources[id].get(original.span.start..original.span.end)
+                    {
+                        let old_bound = old
+                            .program
+                            .items
+                            .iter()
+                            .find_map(|i| match i {
+                                Item::Fn(f) if f.name.name == owner => Some(f),
+                                _ => None,
+                            })
+                            .expect("old bound owner");
+                        let mut reused = old_bound.clone();
+                        crate::source::cst::shift_fn_item_signed(
+                            &mut reused,
+                            (offset + original.span.start) as i64 - old_bound.span.start as i64,
+                        );
+                        let refs = old.references[&owner].clone();
+                        for target in &refs {
+                            if let Some((target_module, _)) = old.origins.get(target) {
+                                if target_module != id {
+                                    edges.get_mut(id).unwrap().insert(target_module.clone());
+                                }
+                            }
+                        }
+                        result.references.insert(owner.clone(), refs);
+                        result
+                            .origins
+                            .insert(owner, (id.clone(), original.name.name.clone()));
+                        result.program.items.push(Item::Fn(reused));
+                        continue;
+                    }
+                }
+            }
+            result.binding_walks.insert(owner.clone());
             let mut refs = BTreeSet::new();
             // Explicit frames keep namespace binding independent of native
             // stack depth; lexical local sets preserve call-site shadowing.

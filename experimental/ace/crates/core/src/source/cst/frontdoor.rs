@@ -220,6 +220,19 @@ pub(crate) fn parse_module_front(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    parse_module_syntax_range(src, budget, true)
+}
+pub(crate) fn parse_module_fragment(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    parse_module_syntax_range(src, budget, false)
+}
+fn parse_module_syntax_range(
+    src: &str,
+    budget: FrontBudget,
+    whole: bool,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let zero = Span { start: 0, end: 0 };
@@ -229,7 +242,9 @@ pub(crate) fn parse_module_front(
         start: 0,
         end: src.len(),
     });
-    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    if whole {
+        crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    }
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
     let parsed = parse_snapshot(
@@ -261,7 +276,7 @@ pub(crate) fn project_module_front(
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
 ) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
-    use crate::source::modules::{Import, ModuleSyntax};
+    use crate::source::modules::{DeclarationPlacement, Import, ModuleSyntax, SyntaxPiece};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let cached = module_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
     let pages = std::rc::Rc::new(PageStore::new());
@@ -284,6 +299,7 @@ pub(crate) fn project_module_front(
         let (a, b) = tree.abs_range(n);
         snap.read_str(a, b).expect("CST source range")
     };
+    let mut declarations = std::collections::BTreeMap::new();
     let mut exports = std::collections::BTreeSet::new();
     let mut imports = Vec::new();
     let mut saw_fn = false;
@@ -337,9 +353,32 @@ pub(crate) fn project_module_front(
                     .into_iter()
                     .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
                     .expect("fn tail");
-                exports.insert(text(tree, field(tree, tail, "name").expect("fn name")));
+                let name = text(tree, field(tree, tail, "name").expect("fn name"));
+                let (start, end) = tree.abs_range(node);
+                declarations.insert(
+                    name.clone(),
+                    Span {
+                        start: start as usize,
+                        end: end as usize,
+                    },
+                );
+                exports.insert(name);
             } else if tree.kind(node) == cached.kinds.fn_item {
                 saw_fn = true;
+                let tail = tree
+                    .children(node)
+                    .into_iter()
+                    .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                    .expect("fn tail");
+                let name = text(tree, field(tree, tail, "name").expect("fn name"));
+                let (start, end) = tree.abs_range(node);
+                declarations.insert(
+                    name,
+                    Span {
+                        start: start as usize,
+                        end: end as usize,
+                    },
+                );
             }
         }
     }
@@ -349,8 +388,36 @@ pub(crate) fn project_module_front(
         imports,
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
         source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
-        syntax: trees,
-        tokens,
+        pieces: trees
+            .into_iter()
+            .map(|tree| {
+                let placements = tree
+                    .decls
+                    .iter()
+                    .enumerate()
+                    .map(|(index, d)| {
+                        let (start, end) = tree.abs_range(d.node);
+                        let span = Span {
+                            start: start as usize,
+                            end: end as usize,
+                        };
+                        DeclarationPlacement {
+                            index,
+                            mint: span,
+                            current: span,
+                        }
+                    })
+                    .collect();
+                SyntaxPiece {
+                    source: std::rc::Rc::from(src),
+                    tree: Some(tree),
+                    tokens: tokens.clone(),
+                    placements,
+                    stored_cst: None,
+                }
+            })
+            .collect(),
+        declarations,
     })
 }
 

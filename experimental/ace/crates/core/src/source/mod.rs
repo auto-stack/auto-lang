@@ -36,8 +36,9 @@ pub use adapter::{
     compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
     compile_text_record_source, compile_text_source, emit_collections_function_batch,
     emit_function_body, emit_resolved_module_parts, emit_resolved_parts,
-    prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt,
-    ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    prepare_candidate_document, prepare_function_candidate, prepare_module_candidate,
+    BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——

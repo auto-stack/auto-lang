@@ -116,3 +116,17 @@
   [source-scalar-instances.md](source-scalar-instances.md)。
 - 模板 body-only 变化：实例键变、实例体重产；调用者 body 页 hit（推导
   0）——签名轴不动，不重算所有 caller。
+
+## 有限模块消费者（PLAN-950）
+
+`source_query::modules` 在原 producer/session/store 之上接收保留 namespace/
+可见性/导入事实的模块图。正签名依赖沿原 SignatureCatalog；缺失导出在绑定门
+拒绝，失败候选不成为可执行缓存。单函数 body 编辑复用原 BodyTypeSupply 与
+FnCandidate，不重产未变函数；签名漂移仍具名归非快路径。
+
+`source-modules-root/2` 引用 A01/A02/A03、S934 事实和 core 声明环境；恢复无
+源码解析/solver，首编辑不整图 resolve/emit。模块事实的 `sq-module-page/1`
+地址把所读版本与语义事实绑定，临时请求 revision 规范为0；旧 bare S934
+持久地址/codec 不重解释。source-bound AV/Rust target receipts 通过同一根的
+required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set。
+完整边界见[有限模块合同](../auto-syntax/finite-source-modules.md)。

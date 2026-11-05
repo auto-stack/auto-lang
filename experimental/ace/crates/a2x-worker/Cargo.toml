@@ -29,3 +29,5 @@ name = "conformance"
 path = "tests/conformance.rs"
 
 [dev-dependencies]
+# PLAN-950 two real consumers over the same restored source/query graph.
+ace-av = { path = "../av" }

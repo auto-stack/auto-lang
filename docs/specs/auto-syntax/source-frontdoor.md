@@ -107,3 +107,11 @@ oracle，经 `auto-source@<profile>` 语法名路由 case-worker/contract——�
   白名单：atom 文本/CT deck/interface-mini 等）。
 - **计量保真**：fn 片段桥按真实函数名 `note_parse`（结构门"改函恰 1、
   无关 0"对账）；整源诊断/预算/差分 oracle 面不变。
+
+## 显式有限模块能力（PLAN-950）
+
+原九 profile 默认面之外，`ac.source.modules.scalar/v1` 使用同一规则源的
+`scalar-modules` 裁剪：公共函数、显式 use 与限定函数名投影到携带可见性/
+导入/来源的 ModuleSyntax，再经模块 binder 和原 query/Checked 链消费。
+不走 legacy parser，也不将模块元数据丢弃后交给普通 scalar 编译。
+范围、来源迁移和恢复合同见[有限公共函数模块](finite-source-modules.md)。
