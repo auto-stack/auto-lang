@@ -560,3 +560,135 @@ fn sq20_fact_supplied_bind_rejects_a_missing_fact() {
         .expect_err("a partial page must not be admitted");
     assert!(matches!(err, crate::ApplyError::Facts(_)), "{err:?}");
 }
+
+// -- T-05: complete keys, positive/negative deps, SCC, refresh --------
+
+const MUTUAL: &str = "fn even(n int) bool { if n == 0 { return true }\n  return odd(n - 1) }\n\nfn odd(n int) bool { if n == 0 { return false }\n  return even(n - 1) }\n";
+
+#[test]
+fn sq21_complete_key_covers_every_axis_and_capabilities() {
+    let p = parse(A);
+    let s = SourceQuerySession::new("pkg", "mod");
+    let key = s.body_key(&p, "leaf").expect("body key");
+    assert_eq!(key.query, QueryKind::InferBody);
+    assert!(key.body_version.is_some());
+    assert_eq!(key.profile, crate::SQ_PROFILE);
+    assert_eq!(key.schema, crate::SQ_SCHEMA);
+    assert_eq!(key.target, crate::TARGET_SEMANTICS);
+    assert!(key.capabilities.is_empty());
+
+    // Body edit changes the body axis only.
+    let p2 = parse(&A.replace("+ 1", "+ 2"));
+    let key2 = s.body_key(&p2, "leaf").expect("body key");
+    assert_ne!(key.body_version, key2.body_version);
+    assert_eq!(key.sig_version, key2.sig_version);
+    assert_ne!(key.canonical(), key2.canonical());
+
+    // Signature edit changes the signature axis (and therefore the key).
+    let p3 = parse("fn leaf(x bool) int { return 1 }\n\nfn main() int { return leaf(41) }\n");
+    let key3 = s.body_key(&p3, "leaf").expect("body key");
+    assert_ne!(key.sig_version, key3.sig_version);
+
+    // Capabilities are part of the key, order-free.
+    let caps_a = SourceQuerySession::new("pkg", "mod").with_capabilities(["b", "a"]);
+    let caps_b = SourceQuerySession::new("pkg", "mod").with_capabilities(["a", "b", "a"]);
+    let ka = caps_a.body_key(&p, "leaf").expect("key");
+    let kb = caps_b.body_key(&p, "leaf").expect("key");
+    assert_eq!(ka.canonical(), kb.canonical(), "caller order does not matter");
+    assert_eq!(ka.capabilities, vec!["a".to_string(), "b".to_string()]);
+    let kc = SourceQuerySession::new("pkg", "mod")
+        .with_capabilities(["a"])
+        .body_key(&p, "leaf")
+        .expect("key");
+    assert_ne!(ka.canonical(), kc.canonical());
+}
+
+#[test]
+fn sq22_capability_change_invalidates_warm_pages() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    assert!(!s.infer_body(&p, "leaf").expect("cold").hit);
+    assert!(s.infer_body(&p, "leaf").expect("warm").hit);
+    let runs = s.counters().solver_runs;
+    s.set_capabilities(["trace-capability"]);
+    let out = s.infer_body(&p, "leaf").expect("re-solve after a capability change");
+    assert!(!out.hit, "a different capability set is a different meaning");
+    assert_eq!(s.counters().solver_runs, runs + 1);
+}
+
+#[test]
+fn sq23_mutual_recursion_is_not_a_query_cycle() {
+    let p = parse(MUTUAL);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let even = s.infer_body(&p, "even").expect("even facts");
+    let odd = s.infer_body(&p, "odd").expect("odd facts");
+    assert!(even.facts.is_complete() && even.facts.is_clean(), "{:?}", even.facts);
+    assert!(odd.facts.is_complete() && odd.facts.is_clean(), "{:?}", odd.facts);
+    assert_eq!(even.facts.sig_reads, vec!["odd".to_string()]);
+    assert_eq!(odd.facts.sig_reads, vec!["even".to_string()]);
+
+    // Editing odd's BODY keeps even warm: even reads odd's signature only.
+    let edited = MUTUAL.replace("return false", "return n == 7");
+    let p2 = parse(&edited);
+    assert!(!s.infer_body(&p2, "odd").expect("odd re-solve").hit);
+    assert!(
+        s.infer_body(&p2, "even").expect("even warm").hit,
+        "an SCC member's body edit must not invalidate its signature readers"
+    );
+
+    // Self-recursion resolves against its own signature (no cycle).
+    let rec = parse("fn sum(n int) int { if n == 0 { return 0 }\n  return n + sum(n - 1) }\n");
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    let facts = s2.infer_body(&rec, "sum").expect("self-recursive facts");
+    assert!(facts.facts.is_complete() && facts.facts.is_clean(), "{:?}", facts.facts);
+}
+
+#[test]
+fn sq24_audit_reports_each_dependency_axis() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    s.infer_body(&p, "leaf").expect("leaf");
+    s.infer_body(&p, "main").expect("main");
+    let audit = s.audit(&p).expect("audit");
+    assert_eq!(audit.len(), 2);
+    assert!(audit.iter().all(|a| a.fresh && a.reason == "ok"), "{audit:?}");
+
+    // Body-only edit: only the edited owner is stale.
+    let p2 = parse(&A.replace("+ 1", "+ 2"));
+    let audit = s.audit(&p2).expect("audit");
+    let leaf = audit.iter().find(|a| a.name == "leaf").unwrap();
+    let main = audit.iter().find(|a| a.name == "main").unwrap();
+    assert!(!leaf.fresh && leaf.reason == "body-changed", "{leaf:?}");
+    assert!(main.fresh && main.reason == "ok", "{main:?}");
+
+    // New function appearing: a page that recorded an absent name flips.
+    let missing = parse("fn main() int { return helper(1) }\n");
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    s2.infer_body(&missing, "main").expect("negative dep");
+    let with_helper = parse("fn helper(v int) int { return v }\n\nfn main() int { return helper(1) }\n");
+    let audit = s2.audit(&with_helper).expect("audit");
+    assert_eq!(audit.len(), 1);
+    assert!(!audit[0].fresh && audit[0].reason == "negative-flipped", "{audit:?}");
+}
+
+#[test]
+fn sq25_source_map_refresh_keeps_the_key_and_the_bind_works() {
+    let drifted = format!("\n\n// shifted\n{}", A);
+    let p1 = parse(A);
+    let p2 = parse(&drifted);
+    let s = SourceQuerySession::new("pkg", "mod");
+    let k1 = s.body_key(&p1, "leaf").expect("key");
+    let k2 = s.body_key(&p2, "leaf").expect("key");
+    assert_eq!(k1.canonical(), k2.canonical(), "spans are not identity");
+
+    // The drifted source still binds from facts and verifies.
+    let mut session = SourceQuerySession::new("pkg", "mod");
+    let (resolved, applied, supply) =
+        crate::bind_with_facts(&p2, &[], "pkg", "mod", &mut session, SourceProfile::Scalar)
+            .expect("bind drifted source");
+    assert_eq!(applied.len(), 2);
+    assert_eq!(supply.admitted_bodies(), 2);
+    let parts = ace_core::source::emit_resolved_parts(&resolved, &drifted, "m.at", SourceProfile::Scalar)
+        .expect("emit");
+    ace_core::verify::verify_scalar(parts.bundle).expect("drifted fact-bound HIR verifies");
+}

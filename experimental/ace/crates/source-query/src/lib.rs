@@ -38,6 +38,7 @@ pub mod apply;
 pub mod catalog;
 pub mod facts;
 pub mod ident;
+pub mod keys;
 pub mod produce;
 pub mod session;
 pub mod walk;
@@ -51,6 +52,8 @@ pub use apply::{
 };
 
 pub use catalog::SignatureCatalog;
+pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
+pub use session::PageAudit;
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
     PortableTy,

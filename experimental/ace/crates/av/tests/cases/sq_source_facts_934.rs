@@ -281,3 +281,18 @@ fn sq934_named_arguments_positional_control_is_rejected() {
     let err = prepare(&bad, &mut session).expect_err("the positional reading is a type error");
     assert!(err.contains("diagnostic"), "{err}");
 }
+
+#[test]
+fn sq934_source_map_drift_keeps_facts_and_executes() {
+    let drifted = format!("\n\n\n{}", SRC);
+    let mut session = SourceQuerySession::new("sq934", "main");
+    let cold = prepare(SRC, &mut session).expect("cold");
+    assert_eq!(run_value(&cold.checked), Value::I32(42));
+
+    let warm = prepare(&drifted, &mut session).expect("drifted source");
+    assert!(
+        warm.applied.iter().all(|a| a.body_hit && a.sig_hit),
+        "prefix drift is a source-map change, not a semantic one"
+    );
+    assert_eq!(run_value(&warm.checked), Value::I32(42));
+}
