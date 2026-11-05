@@ -4000,3 +4000,7 @@ UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静�
 ### D-950-1 — 旧bare S934地址的重复发布revision冲突（未关闭，旧query-store owner）
 
 PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变，旧ManagedStoreSink::put在同不可变S934 key下写不同payload会key conflict；这是旧地址recipe的生命周期字段问题。950模块producer明确使用新版本sq-module-page/1地址（读签名/negative版本摘要，revision规范0），沿原事实codec，不重解释旧键，不代表旧路径已修。owner=source-query旧ManagedStoreSink::put；关闭条件=旧recipe独立重复发布反例+合法读取/恢复对照，保持旧缓存读取合同的版本化修复并review。证据摘要在PLAN-950 §9，原材料按merge全删，无需要持有的原始输出。
+
+### D-952-1 / F-952-01：共享子进程采集器owned-close竞态（2026-11-06，closed by PLAN-953）
+
+owner=auto-tool-execution；PLAN-953 r2已交付65db88be2150991b9c3bbe79d527891fd6a7a27f：结束后新peek才可EOF；原始两流最后字节/最后I/O错误永久反例修前红修后绿，完整职责43/43无LEAK/残留，新950基面两个真实ACE消费者各1/1，canonical535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953归档6/6、tree/branch/scope已清理，无hold。952两次历史空输出具体因果未冒确定，952仍须重基D953后重做完整ACE门；941原目标未完成。原确定性源码副本反例与首红记录见952 §9，原源码SHA c177b278f1d805d21c808054a847adde0bc830e1e24ad0db9b811ce8298e4e09。
