@@ -186,6 +186,8 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 
 Work-owned AC 结果：AC-01 ✓（三腿真实执行+797兼容+依赖图无环实证）、AC-02 ✓（位置制物理投影+位型一致+公开candidate不冒私有ABI）、AC-03 ✓（真实源→前门→C库→独立caller执行，body编辑可观察）、AC-04 ✓（六维pre-call拒+计数0+合法控制过）、AC-05 ✓（逐函数P0+恢复深验；source恢复明确不在本包——938）、AC-06 ✓（预算/原子失败/lease/GC/512全兑现）、AC-07 ✓（首例6/6+独立oracle+回转门+daily spawn纪律沿worker协议）、AC-08/AC-09 归 review/merge。统一回归门（冻结并集）已在review前跑绿；review按需复跑触面。
 
+stage: goal | plan_id: PLAN-937 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-937/auto-lang | commit: c5d5fa497 | next: review
+
 ## 10. 待澄清事项
 
 没有需再次批准的旧ABI扩容或预算放宽。crate提取/re-export及完整错误转换由T-02证明，不能先默认成功；若必须修改929的共享source/session才能做D1，停依赖任务并修订归包，保937可独立边界，不能把未交付主目标塞后继。原797候选profile不升版。后续执行/合入由用户另行指定。
