@@ -206,6 +206,10 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 9. 复审记录
 
+2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 3 | from: work | to: work | status: executing | outcome: waiting（依赖链推进轮：D934 在途 7/13 由另一活跃会话推进，D935 T-01 已由本会话交付；本轮补 936 T-02/T-03 私有设计 DRAFT） | worktree: lang-936（clean 保留） | commit: 主检出簿记（DRAFT 不入 git） | next: work（D934→D935 交付后 T-02 开工，先重锚 41 项 hash 表）
+  - 私有 DRAFT：`plan-artifacts/plan-936/t02-draft-bounded-proof.md`（sum 首例最小闭合链+四判据、ExecKey/UseBinding 字段级草案、CtExecutor 端口草图与依赖白名单、计数器落位、开工清单、风险预记）。
+  - 同轮依赖链状态：935 T-01 冻结已交付（其 §9）；934 round-19/交接检查点在 master（其会话持窗）。
+
 2026-11-05 stage:work / PLAN-936 r2 / outcome:**blocked**（外部前置未交付，非合同问题）/ worktree:`D:/autostack/.wt/lang-936/auto-lang` / branch:`plan-936-dev` / base_commit:`cb1bcbb7f` / code_commit:无（T-01 只读，零代码写入，树 clean）/ dependency_revisions: master=cb1bcbb7f；D929=已归档（929 交付致 resolve.rs/units.rs 漂移，已重锚）；D934=executing r2 4/13，代码仅存 plan-934-dev（+8 提交/77 文件，含未合并 source-query crate）；D935=drafting r2 0/12 / task_ids: T-01 完成；T-02..T-12 阻塞 / evidence: T-01 冻结文档 `D:/autostack/plan-artifacts/plan-936/t01-service-graph-freeze.md` SHA256=`240c8051f2e798d9638ee2e9a24c450631881c23cb8fd4460192758b0bbad78c`（服务图/调用链/envelope schema/Cargo 边与无环提取集/817 义务与 12 类反控/预算全表/Hash 与 meta 符号附着点/consumer 与写窗/41 项输入 hash；r2 报告 23 项核对 20 匹配、3 漂移归属 D929/D937；6 项缺口重锚裁定：规范负载=115fn≥256KiB、页界走 796 512KiB 轴+envelope 1MiB 重组界、正式门=P90≤2000ms、resident-866 实名、817 路径已迁移、其余无缺失）/ blockers: T-02 前置"934已审稳定query端口"未满足（934 4/13 在途未合并）；T-04 语法窗/T-08/12 实例能力需 935（0/12 未启动）/ next_responsible_role: user（解锁决策）；解锁后 work 从 T-02 续起。
 
 2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 1 | from: work | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-936/auto-lang | commit: cb1bcbb7f（基面，无代码提交） | next: user（等待 934/935 交付或授权调整）
