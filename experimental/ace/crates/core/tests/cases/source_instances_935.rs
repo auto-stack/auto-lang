@@ -55,7 +55,9 @@ fn parse_choose_template_with_capability() {
     let FrontOutcome::Ok(ok) = with_caps(CHOOSE) else {
         panic!("choose must parse under the instances capability");
     };
-    assert_eq!(ok.caps_version, "ac-source-front/2");
+    // PLAN-936（T-04）：前门能力面加 scalar-ct → caps 键升 /3（语法/
+    // 能力/映射面变更必须换键；本面行为不变）。
+    assert_eq!(ok.caps_version, "ac-source-front/3");
     let choose = fn_of(&ok.program, "choose");
     assert_eq!(
         choose

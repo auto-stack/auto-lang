@@ -433,6 +433,9 @@ fn walk_expr<'a>(
             canon.push(0);
             stack.push(Task::Expr(operand));
         }
+        // PLAN-936（T-04）：CT 需求原子暂在 934 有限事实面之外（其身份/
+        // 事实化随 T-05/T-06 的 936 查询面落）——保守拒，绝不静默跳过。
+        ExprKind::HashExpr { .. } => unsupported("hash-expr", e.span)?,
         ExprKind::StrLit(_) => unsupported("str-literal", e.span)?,
         ExprKind::CharLit(_) => unsupported("char-literal", e.span)?,
         ExprKind::Method { .. } => unsupported("text-method", e.span)?,

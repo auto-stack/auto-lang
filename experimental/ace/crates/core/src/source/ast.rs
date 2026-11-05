@@ -335,6 +335,14 @@ pub enum ExprKind {
         name: Ident,
         args: Vec<TypeAnn>,
     },
+    /// PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
+    /// 原子。仅 scalar-ct 面（`ac.source.cte.scalar/v1` 能力）解析产出；
+    /// inner 由普通 resolver 绑定/类型，HashExpr 自身类型 = inner 类型。
+    /// HIR 发射前必须已由 CT 服务回灌为常量——未服务的 HashExpr 在发射
+    /// 处受控拒（不得静默当运行时表达式下跑，§5.2）。
+    HashExpr {
+        expr: Box<Expr>,
+    },
     /// PLAN-865 lambda expression. Capture analysis runs in resolve and
     /// records the ordered environment before HIR emission.
     Closure {

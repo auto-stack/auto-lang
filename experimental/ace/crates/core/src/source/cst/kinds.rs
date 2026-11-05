@@ -58,6 +58,8 @@ pub struct SourceKinds {
     pub lambda_param: Option<u32>,
     /// PLAN-928：闭包函数类型（closures 面 ret/ann 位）。
     pub fn_type: Option<u32>,
+    /// PLAN-936（T-04）：编译期表达式 `#{ expr }`（仅 scalar-ct 裁剪存在）。
+    pub hash_expr: Option<u32>,
     /// PLAN-928：函数类型的参数项（词或嵌套 fn 型）。
     pub fn_type_param: Option<u32>,
     /// PLAN-928（T-03）：collections/closures 面的声明/语句/类型族。
@@ -265,6 +267,7 @@ impl SourceKinds {
             ret_ty: rk("ret-ty"),
             ann_ty: rk("ann-ty"),
             type_params: rk_opt(p, "type-params"),
+            hash_expr: rk_opt(p, "hash-expr"),
             type_param: rk_opt(p, "type-param"),
             block: rk("block"),
             stmt: rk("stmt"),

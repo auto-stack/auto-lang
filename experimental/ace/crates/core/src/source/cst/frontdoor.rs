@@ -17,9 +17,11 @@ pub const AUTO_SOURCE_GRAMMAR: &str = include_str!("../../../../../grammars/auto
 
 /// profile 能力清单版本：语法语义/能力/映射面变更必须换键（计划 §5.2）。
 /// 与 `auto-source.at` 的 revision、grammar-id 一同进入前端结果身份。
+/// PLAN-936（T-04）：`ac-source-front/3` —— 新增 `scalar-ct` 裁剪面与
+/// `ac.source.cte.scalar/v1` 显式能力（`#{ expr }` CT 需求原子）。
 /// PLAN-935（T-02）：`ac-source-front/2` —— 新增 `scalar-instances` 裁剪面
 /// 与 `ac.source.instances.scalar/v1` 显式能力（fn `<T>`/类型位裸 ident）。
-pub const FRONT_CAPS_VERSION: &str = "ac-source-front/2";
+pub const FRONT_CAPS_VERSION: &str = "ac-source-front/3";
 
 /// 前端显式预算（V-09：不得沿 `Budget::default()` 的 256MiB work_bytes 冒
 /// 64MiB 档授权；各消费门按原适用域显式传入）。
@@ -176,6 +178,43 @@ static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
 static INSTANCES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// PLAN-936（T-04）：`scalar-ct` 裁剪程序（scalar-instances 全表面 +
+/// `#{ expr }` CT 需求原子）。独立缓存槽，同上隔离。
+static CT_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// PLAN-936：启用有限 CT 表达式面的显式能力。调用方携带本能力时统一前门
+/// 以 `scalar-ct` 裁剪编译（该面包含模板表面——CT 可作用于模板实例）；
+/// 未携带 → `#` 不是词面 → 原语法拒绝面不变。
+pub const CT_CAPABILITY: &str = "ac.source.cte.scalar/v1";
+
+/// scalar-ct 裁剪编译并缓存（进程内一次）。
+pub fn ct_grammar() -> Result<&'static CachedGrammar, String> {
+    let slot = CT_GRAMMAR.get_or_init(|| Default::default());
+    if let Some(g) = slot.get() {
+        return Ok(g);
+    }
+    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, "scalar-ct").map_err(
+        |diags| {
+            format!(
+                "auto-source grammar failed to compile for `scalar-ct`: {:?}",
+                diags
+            )
+        },
+    )?;
+    let scanner =
+        CompiledScanner::compile(&program).map_err(|e| format!("scanner compile: {e}"))?;
+    let kinds = SourceKinds::from_program(&program).map_err(|missing| {
+        format!("auto-source grammar for `scalar-ct` lacks required kinds: {missing:?}")
+    })?;
+    let cached = CachedGrammar {
+        program,
+        scanner,
+        kinds,
+    };
+    let _ = slot.set(cached);
+    Ok(slot.get().expect("just set"))
+}
 
 /// PLAN-935：启用有限模板面的显式能力（T-02 冻结字面量）。调用方在其
 /// capabilities 中携带本能力时，统一前门以 `scalar-instances` 裁剪编译；
@@ -509,9 +548,14 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
 /// 逐字节同面（无能力仍原拒绝）。片段 kind 在 instances 面不支持（增量
 /// 片段合同仍走 plain 面——模板函数编辑的增量路径由 T-07 冻结）。
 pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> FrontOutcome {
-    let instances = capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+    // PLAN-936（T-04）：CT 能力优先——scalar-ct 面包含 scalar-instances 全
+    // 表面（CT 可作用于模板实例），不与 instances 面叠加选择。
+    let ct = capabilities.iter().any(|c| c == CT_CAPABILITY)
         && req.profile == SourceProfile::Scalar;
-    if !instances {
+    let instances = !ct
+        && capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+        && req.profile == SourceProfile::Scalar;
+    if !instances && !ct {
         return parse_front(req);
     }
     if !matches!(req.kind, FrontKind::WholeModule) {
@@ -523,7 +567,7 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         profile,
         ..
     } = req;
-    let cached = match instances_grammar() {
+    let cached = match if ct { ct_grammar() } else { instances_grammar() } {
         Ok(c) => c,
         Err(e) => return FrontOutcome::Infra(e),
     };

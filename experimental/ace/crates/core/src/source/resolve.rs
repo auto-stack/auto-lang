@@ -3815,6 +3815,9 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn infer_closure_expr(&self, expr: &Expr, locals: &BTreeMap<String, VT>) -> VT {
         match &expr.kind {
+            // PLAN-936（T-04）：HashExpr 的类型 = inner 的类型（closures 面
+            // 不产 HashExpr；本臂仅为穷尽性——inner 递归即可）。
+            ExprKind::HashExpr { expr: inner } => self.infer_closure_expr(inner, locals),
             ExprKind::IntLit(_) => VT::I32,
             ExprKind::BoolLit(_) => VT::Bool,
             ExprKind::StrLit(_) => VT::Str,
@@ -5685,6 +5688,22 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-936（T-04）：`#{ expr }` 是编译期需求，不是运行时表达式。
+            // 合法路径：CT 服务在绑定前以冻结常量结构性替换本节点（T-06/
+            // T-07 回灌）。走到这里 = 该编译车道没有 CT 服务或未服务——
+            // 受控拒（绝不跳过 Hash token 当普通运行时表达式下跑，§5.2）。
+            ExprKind::HashExpr { .. } => {
+                self.bind_err(
+                    "source.cte.unserved",
+                    "a `#{ ... }` compile-time demand was not served before binding — this                      compile lane carries no CT service (the frozen constant must replace the                      node structurally before resolve)",
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
             // PLAN-864: generic receivers ride the iterative machine only.
             ExprKind::GenericType { name, .. } => {
                 self.bind_err(

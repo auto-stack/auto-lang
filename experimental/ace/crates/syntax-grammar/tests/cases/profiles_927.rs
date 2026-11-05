@@ -23,7 +23,9 @@ const NINE: &[&str] = &[
     "scalar-instances",
     // PLAN-950: explicit finite public-function module capability.
     "scalar-modules",
-];
+    // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
+    // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
+    "scalar-ct",];
 
 #[test]
 fn profiles_declared_set_is_exact() {

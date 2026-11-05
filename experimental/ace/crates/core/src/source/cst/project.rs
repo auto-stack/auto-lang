@@ -2632,6 +2632,10 @@ enum Val {
 enum Frame {
     // -- 块/语句 --
     Block(BlockFrame),
+    /// PLAN-936（T-04）：`#{ expr }` 原子——inner 表达式入场后包裹。
+    HashExpr {
+        span: Span,
+    },
     LetFinish {
         node: u32,
         kw: Span,
@@ -3984,6 +3988,26 @@ impl<'a> Engine<'a> {
                 }));
                 return;
             }
+            // PLAN-936（T-04）：`#{ expr }` CT 需求原子（scalar-ct 面）。
+            if ck == self.cx.k.hash_expr.unwrap_or(u32::MAX) {
+                let span = self.cx.span_of(c);
+                match self.cx.field_child(c, "expr") {
+                    Some(inner) => {
+                        self.stack.push(Frame::HashExpr { span });
+                        self.stack.push(Frame::ExprEnter(inner));
+                    }
+                    None => {
+                        self.cx.reject(span, || {
+                            syntax_diag("expected an expression inside `#{ ... }`", span)
+                        });
+                        self.vals.push(Val::E(Expr {
+                            kind: ExprKind::IntLit(0),
+                            span,
+                        }));
+                    }
+                }
+                return;
+            }
             // PLAN-928：lambda 原子（closures 面）——先于其余原子形状。
             if ck == self.cx.k.lambda_expr.unwrap_or(u32::MAX) {
                 self.enter_lambda(c);
@@ -5301,6 +5325,15 @@ impl<'a> Engine<'a> {
                 }));
             }
             Frame::ExprEnter(n) => self.enter_expr(n),
+            Frame::HashExpr { span } => {
+                let inner = self.pop_e();
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::HashExpr {
+                        expr: Box::new(inner),
+                    },
+                }));
+            }
             Frame::OpPost { op } => {
                 let rhs = self.pop_e();
                 let lhs = self.pop_e();

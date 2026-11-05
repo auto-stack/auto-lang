@@ -536,6 +536,11 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             operand: Box::new(project_expr(&operand)),
         },
         // -- outside the limited inference surface: explicit unsupported --
+        // PLAN-936（T-04）：CT 需求原子——有限推理面暂不支持（保守拒，
+        // 936 查询面在其上落自己的身份/事实）。
+        core_ast::ExprKind::HashExpr { .. } => InputExprKind::Unsupported {
+            what: "hash-expr",
+        },
         core_ast::ExprKind::StrLit(_) => InputExprKind::Unsupported {
             what: "str-literal",
         },
