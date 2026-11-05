@@ -1,0 +1,15 @@
+{
+  "schema": "ace.foreign.review-table/1",
+  "review_id": "plan938-independent-provider-v1",
+  "target": "x86_64-pc-windows-msvc",
+  "callconv": "windows-x64",
+  "functions": {
+    "provider_add": "i32(i32,i32); total wrapping unsigned addition with bit-preserving signed result",
+    "provider_not": "u8(u8); logical bool only; result 0/1",
+    "provider_div": "status-i32(ptr,i32,i32,ptr-out-i32); ctx=&provider_ctx; success=0; failures=-3 ctx,-2 overflow,-1 zero; no out store on failure",
+    "provider_tick": "i32(i32); explicit effect and ordered decimal trace",
+    "provider_trace": "i32(); observation",
+    "provider_calls": "i32(); observation"
+  },
+  "review_rule": "header and review-table bytes are independently authored; compile provider with the same header; bind their SHA256 and actual object SHA256 at the host composition root; no symbol-name inference of physical signature"
+}

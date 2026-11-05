@@ -649,6 +649,7 @@ impl ResolvedFn {
 }
 
 pub struct ResolvedProgram {
+    pub foreign: Vec<ace_foreign_contract::manual::SourceDecl>,
     pub fns: Vec<ResolvedFn>,
     /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
     /// indexes here.
@@ -1017,6 +1018,7 @@ pub fn resolve_closures_cached(
     )?;
     Ok((
         ResolvedProgram {
+            foreign: Vec::new(),
             fns,
             records,
             lists: coll.lists,
@@ -1060,6 +1062,7 @@ pub(crate) fn resolve_closures_env(
     Ok((
         CheckedEnv {
             program: ResolvedProgram {
+                foreign: Vec::new(),
                 fns,
                 records,
                 lists: coll.lists,
@@ -1087,6 +1090,7 @@ pub fn resolve_with(
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
     let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None)?;
     Ok(ResolvedProgram {
+        foreign: Vec::new(),
         fns,
         records,
         lists: coll.lists,
@@ -1104,6 +1108,9 @@ pub fn resolve_with(
 /// authoritative and its own rule as the expectation to CHECK — a missing
 /// or mismatching fact is a bind-stage rejection.
 pub trait TypeSupply {
+    fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        None
+    }
     /// Type of the expression node at this source span.
     fn expr_ty(&self, span: Span) -> Option<VT>;
     /// Type of the `let`/`var` declaration whose statement span is given.
@@ -1146,6 +1153,10 @@ pub fn resolve_with_supply(
     let (fns, records, coll, _) =
         resolve_detailed(program, capabilities, surface, None, Some(supply))?;
     Ok(ResolvedProgram {
+        foreign: supply
+            .foreign()
+            .map(|f| f.source_declarations())
+            .unwrap_or_default(),
         fns,
         records,
         lists: coll.lists,
@@ -1483,6 +1494,58 @@ fn resolve_detailed(
                 fn_index: i,
                 span: f.span,
             });
+        }
+    }
+
+    if let Some(foreign) = supply.and_then(|s| s.foreign()) {
+        if !capabilities
+            .iter()
+            .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+            || foreign
+                .manifest()
+                .facts
+                .capabilities
+                .iter()
+                .any(|c| !capabilities.contains(c))
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-capability",
+                "foreign.scalar capability is required",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        for (index, declaration) in foreign.source_declarations().iter().enumerate() {
+            if sigs.contains_key(&declaration.name) {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.foreign-conflict",
+                    format!(
+                        "foreign declaration `{}` conflicts with a source function",
+                        declaration.name
+                    ),
+                    Span { start: 0, end: 0 },
+                ));
+                continue;
+            }
+            let vt = |k| match k {
+                ace_foreign_contract::LaneKind::Bool => VT::Bool,
+                _ => VT::I32,
+            };
+            sigs.insert(
+                declaration.name.clone(),
+                FnSig {
+                    param_names: (0..declaration.params().len())
+                        .map(|i| format!("arg{i}"))
+                        .collect(),
+                    params: declaration.params().iter().copied().map(vt).collect(),
+                    result: vt(declaration.result()),
+                    index: flat.len() + index,
+                },
+            );
+        }
+        if !diags.is_empty() {
+            return Err(diags);
         }
     }
 
@@ -2107,6 +2170,10 @@ pub fn resolve_env_with_supply(
     let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, supply)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
+            foreign: supply
+                .and_then(|s| s.foreign())
+                .map(|f| f.source_declarations())
+                .unwrap_or_default(),
             fns,
             records,
             lists: coll.lists,

@@ -756,6 +756,9 @@ impl<'a> Verifier<'a> {
         // not a runtime grant (F798-R3-01).
         for c in &self.module.capabilities {
             let known = c == TRACE_CAPABILITY
+                || c == ace_foreign_contract::manual::SOURCE_CAP
+                || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
+                    matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
                 || (self.is_owned && c == crate::contract::TEXT_RUNTIME_CAPABILITY)
                 || (self.module.is_host_console_profile()
                     && matches!(c.as_str(), crate::host::STDOUT | crate::host::STDERR));
@@ -1712,6 +1715,7 @@ impl<'a> Verifier<'a> {
             .map(|instr| match instr {
                 MirInstr::Aggregate { operands, .. }
                 | MirInstr::Call { args: operands, .. }
+                | MirInstr::ForeignCall { args: operands, .. }
                 | MirInstr::CallClosure { args: operands, .. } => operands.len(),
                 MirInstr::CreateClosure { captures, .. } => captures.len(),
                 _ => 1,
@@ -1852,6 +1856,7 @@ impl<'a> Verifier<'a> {
                 let consuming: Vec<u32> = match instr {
                     MirInstr::Aggregate { operands, .. }
                     | MirInstr::Call { args: operands, .. }
+                    | MirInstr::ForeignCall { args: operands, .. }
                     | MirInstr::CallClosure { args: operands, .. } => operands.clone(),
                     MirInstr::ListPush { value, .. }
                     | MirInstr::ListInsert { value, .. }
@@ -2250,6 +2255,60 @@ impl<'a> Verifier<'a> {
                                     "unary {:?} does not type check for types ({},{})",
                                     op, dt, ot
                                 ),
+                            ));
+                        }
+                    }
+                    MirInstr::ForeignCall {
+                        declaration,
+                        dst,
+                        args,
+                    } => {
+                        declaration
+                            .validate()
+                            .map_err(|m| err("mir.foreign-contract", m))?;
+                        if !self
+                            .module
+                            .capabilities
+                            .iter()
+                            .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+                            || declaration
+                                .capabilities
+                                .iter()
+                                .any(|c| !self.module.capabilities.contains(c))
+                        {
+                            return Err(err(
+                                "mir.foreign-capability",
+                                "foreign requirements are missing".into(),
+                            ));
+                        }
+                        let matches_lane = |ty: u32, lane: ace_foreign_contract::LaneKind| match (
+                            self.module.types.get(ty as usize),
+                            lane,
+                        ) {
+                            (Some(MirType::I32), ace_foreign_contract::LaneKind::I32)
+                            | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
+                            _ => false,
+                        };
+                        if args.len() != declaration.params().len() {
+                            return Err(err(
+                                "mir.foreign-arity",
+                                "foreign argument count mismatch".into(),
+                            ));
+                        }
+                        for (arg, lane) in args.iter().zip(declaration.params()) {
+                            let ty = slot_ty_of(f, *arg, sp, "foreign arg")?;
+                            if !matches_lane(ty, *lane) {
+                                return Err(err(
+                                    "mir.foreign-type",
+                                    "foreign argument logical type mismatch".into(),
+                                ));
+                            }
+                        }
+                        let ty = slot_ty_of(f, *dst, sp, "foreign dst")?;
+                        if !matches_lane(ty, declaration.result()) {
+                            return Err(err(
+                                "mir.foreign-type",
+                                "foreign result logical type mismatch".into(),
                             ));
                         }
                     }
@@ -4118,6 +4177,7 @@ impl MirInstr {
             | MirInstr::Bin { dst, .. }
             | MirInstr::Un { dst, .. }
             | MirInstr::Call { dst, .. }
+            | MirInstr::ForeignCall { dst, .. }
             | MirInstr::FieldGet { dst, .. }
             | MirInstr::Aggregate { dst, .. }
             | MirInstr::Clone { dst, .. }
@@ -4181,7 +4241,7 @@ impl MirInstr {
             MirInstr::FieldMove { root, .. } => vec![*root],
             MirInstr::Bin { lhs, rhs, .. } => vec![*lhs, *rhs],
             MirInstr::Un { operand, .. } => vec![*operand],
-            MirInstr::Call { args, .. } => args.clone(),
+            MirInstr::Call { args, .. } | MirInstr::ForeignCall { args, .. } => args.clone(),
             MirInstr::HostCall { arg, .. } => vec![*arg],
             MirInstr::FieldGet { base, .. } => vec![*base],
             // FieldSet READS the root record (structural rebuild source) and

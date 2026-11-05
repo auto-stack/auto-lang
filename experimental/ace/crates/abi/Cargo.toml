@@ -32,6 +32,9 @@ ace-foreign-contract = { path = "../foreign-contract" }
 # is abi->a2x only; a2x-* never depends on ace-abi.
 ace-a2x-core = { path = "../a2x-core" }
 ace-a2x-c = { path = "../a2x-c" }
+ace-native = { path = "../native" }
+ace-source-query = { path = "../source-query" }
+ace-av-core = { path = "../av-core" }
 # Cranelift stack pinned to the same versions as ac-core (plan §3).
 cranelift-codegen = "0.126"
 cranelift-frontend = "0.126"

@@ -158,6 +158,28 @@ pub fn produce_infer_body(
     limits: ProduceLimits,
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_foreign(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        None,
+    )
+}
+
+pub fn produce_infer_body_with_foreign(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
         return Err(ProduceError::Profile {
             what: "empty node budget",
@@ -174,7 +196,7 @@ pub fn produce_infer_body(
     // Body-scoped LAZY input (PLAN-934 T-03): the shared adapter projects
     // ONLY the target function's body; every other function is a
     // signature stub and no AST is cloned or walked.
-    let input = ace_semantics::adapter::project_body_scoped_with_caps(
+    let mut input = ace_semantics::adapter::project_body_scoped_with_caps(
         program,
         name,
         package,
@@ -182,6 +204,32 @@ pub fn produce_infer_body(
         capabilities,
     )
     .map_err(ProduceError::Projection)?;
+
+    if let Some(environment) = foreign {
+        let lane = |k| {
+            if k == ace_foreign_contract::LaneKind::Bool {
+                ace_semantics::input::Ann::Bool
+            } else {
+                ace_semantics::input::Ann::I32
+            }
+        };
+        for d in environment.source_declarations() {
+            input
+                .external_signatures
+                .push(ace_semantics::input::ExternalSignature {
+                    name: d.name.clone(),
+                    params: d
+                        .params()
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(i, k)| (format!("arg{i}"), lane(k)))
+                        .collect(),
+                    ret: lane(d.result()),
+                    contract: d.digest(),
+                });
+        }
+    }
 
     let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
     if let Some(flag) = cancel {

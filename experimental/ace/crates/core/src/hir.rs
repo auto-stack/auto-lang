@@ -275,6 +275,12 @@ impl ReceiverKind {
 
 #[derive(Clone, Debug)]
 pub enum DefKind {
+    /// PLAN-938 external signature, with no local BodyId. These are candidate
+    /// facts until checked against the CURRENT admitted foreign environment.
+    Foreign {
+        ty: TypeId,
+        declaration: ace_foreign_contract::manual::SourceDecl,
+    },
     Function {
         name: String,
         ty: TypeId,
@@ -302,6 +308,7 @@ impl DefKind {
     /// and intrinsics all do).
     pub fn fn_type(&self) -> Option<TypeId> {
         match self {
+            DefKind::Foreign { ty, .. } => Some(*ty),
             DefKind::Function { ty, .. } => Some(*ty),
             DefKind::Method { ty, .. } => Some(*ty),
             DefKind::Intrinsic { ty, .. } => Some(*ty),
@@ -312,7 +319,7 @@ impl DefKind {
     pub fn fn_body(&self) -> Option<BodyId> {
         match self {
             DefKind::Function { body, .. } | DefKind::Method { body, .. } => Some(*body),
-            DefKind::Intrinsic { .. } => None,
+            DefKind::Intrinsic { .. } | DefKind::Foreign { .. } => None,
         }
     }
 }
@@ -327,6 +334,7 @@ pub struct Def {
 impl Def {
     pub fn name_for_diagnostic(&self) -> &str {
         match &self.kind {
+            DefKind::Foreign { declaration, .. } => &declaration.name,
             DefKind::Function { name, .. } => name,
             DefKind::Method { name, .. } => name,
             DefKind::Intrinsic { symbol, .. } => symbol,
@@ -953,6 +961,17 @@ impl PartialEq for Def {
     fn eq(&self, other: &Self) -> bool {
         self.id_text == other.id_text
             && match (&self.kind, &other.kind) {
+                (
+                    DefKind::Foreign {
+                        ty: t1,
+                        declaration: d1,
+                    },
+                    DefKind::Foreign {
+                        ty: t2,
+                        declaration: d2,
+                    },
+                ) => t1 == t2 && d1 == d2,
+
                 (
                     DefKind::Function {
                         name: n1,

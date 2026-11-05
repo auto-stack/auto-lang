@@ -750,6 +750,7 @@ pub fn decl_env_restore(
         );
     }
     let program = super::resolve::ResolvedProgram {
+        foreign: Vec::new(),
         fns,
         records,
         lists,

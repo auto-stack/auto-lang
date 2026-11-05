@@ -37,6 +37,15 @@ impl SignatureCatalog {
     /// Build the catalog from a parsed module. Declarations outside the
     /// finite signature surface are a controlled rejection.
     pub fn build(program: &Program, package: &str, module: &str) -> Result<Self, ProduceError> {
+        Self::build_with_foreign(program, package, module, None)
+    }
+
+    pub fn build_with_foreign(
+        program: &Program,
+        package: &str,
+        module: &str,
+        foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    ) -> Result<Self, ProduceError> {
         let mut by_name: BTreeMap<String, FnSigFacts> = BTreeMap::new();
         let mut by_logical: BTreeMap<LogicalId, String> = BTreeMap::new();
         for item in &program.items {
@@ -56,6 +65,40 @@ impl SignatureCatalog {
                         what: "enum declaration",
                     })
                 }
+            }
+        }
+        if let Some(environment) = foreign {
+            for declaration in environment.source_declarations() {
+                if by_name.contains_key(&declaration.name) {
+                    return Err(ProduceError::Profile {
+                        what: "foreign/source declaration conflict",
+                    });
+                }
+                let lane = |k| {
+                    if k == ace_foreign_contract::LaneKind::Bool {
+                        crate::facts::PortableTy::Bool
+                    } else {
+                        crate::facts::PortableTy::I32
+                    }
+                };
+                let facts = FnSigFacts {
+                    name: declaration.name.clone(),
+                    logical: owner_logical(package, module, &declaration.name),
+                    version: ContentVersion::of_canonical(declaration.digest().as_bytes()),
+                    params: declaration
+                        .params()
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(i, k)| (format!("arg{i}"), lane(k)))
+                        .collect(),
+                    ret: lane(declaration.result()),
+                    profile: crate::ident::SQ_PROFILE,
+                    schema: crate::ident::SQ_SCHEMA,
+                    producer: crate::ident::SQ_PRODUCER,
+                };
+                by_logical.insert(facts.logical.clone(), facts.name.clone());
+                by_name.insert(facts.name.clone(), facts);
             }
         }
         let candidates: Vec<String> = by_name.keys().cloned().collect();

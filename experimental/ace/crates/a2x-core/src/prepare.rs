@@ -685,6 +685,8 @@ fn ser_expr(
                 t.source_name.to_string()
             } else if let Some(x) = view.external_by_def(target) {
                 x.source_name.clone()
+            } else if let Some(declaration) = view.foreign_by_def(target) {
+                format!("foreign:{}[{}]", declaration.logical, declaration.digest())
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };
@@ -854,7 +856,10 @@ fn ser_expr(
         }
         // ---- PLAN-904 collections surface ----
         hir::ExprKind::ListNew { list } => {
-            let elem = view.list_elem(list.0).map(|t| view.ty_name(t)).unwrap_or_default();
+            let elem = view
+                .list_elem(list.0)
+                .map(|t| view.ty_name(t))
+                .unwrap_or_default();
             out.push_str(&format!("lnew<{elem}>"));
         }
         hir::ExprKind::ListLen { list } => {

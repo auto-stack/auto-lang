@@ -185,6 +185,11 @@ fn kind_tag(k: SlotKind) -> &'static str {
 
 fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
     Ok(match i {
+        MirInstr::ForeignCall {
+            declaration,
+            dst,
+            args,
+        } => format!("foreign {} {} {:?}", declaration.digest(), dst, args),
         MirInstr::Const { dst, value } => format!("const {} = {}", dst, const_value(m, *value)),
         MirInstr::Copy { dst, src } => format!("copy {} <- {}", dst, src),
         MirInstr::Bin { op, dst, lhs, rhs } => format!("bin {:?} {} {} {}", op, dst, lhs, rhs),

@@ -610,6 +610,17 @@ fn write_all(dir: &Path, files: &[(&str, &str)]) -> Result<(), BridgeError> {
 /// exactly like the A2C channel; `/MT` static CRT closure — see
 /// `BRIDGE_CRT_FLAGS`).
 pub fn compile_bridge_crt(dir: &Path, sources: &[&str], exe: &Path) -> Result<(), BridgeError> {
+    compile_bridge_crt_with_objects(dir, sources, &[], exe)
+}
+
+/// Keep independent native/provider objects on the LINK side of `/TC`.
+/// Treating them as compiler inputs would interpret COFF bytes as C source.
+pub fn compile_bridge_crt_with_objects(
+    dir: &Path,
+    sources: &[&str],
+    objects: &[PathBuf],
+    exe: &Path,
+) -> Result<(), BridgeError> {
     let tool = ctool::find_cl().map_err(|e| BridgeError(format!("cl locator: {e:?}")))?;
     let vcvars = match std::env::var("A2C_VCVARS64") {
         Ok(p) if !p.is_empty() => PathBuf::from(p),
@@ -641,6 +652,12 @@ pub fn compile_bridge_crt(dir: &Path, sources: &[&str], exe: &Path) -> Result<()
     for s in sources {
         line.push(' ');
         line.push_str(s);
+    }
+    if !objects.is_empty() {
+        line.push_str(" /link");
+        for object in objects {
+            line.push_str(&format!(" \"{}\"", object.display()));
+        }
     }
     let mut cmd = Command::new("cmd.exe");
     cmd.arg("/D").arg("/C");

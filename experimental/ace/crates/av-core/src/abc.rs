@@ -48,6 +48,11 @@ pub const OP_CALL: u8 = 0x05;
 pub const OP_TRACE: u8 = 0x06;
 /// PLAN-863: not admitted by any earlier wire family.
 pub const OP_HOST_CALL: u8 = 0x35;
+pub const OP_FOREIGN_CALL: u8 = 0x36;
+pub const ABC_FOREIGN_MAGIC: [u8; 4] = *b"AVFI";
+pub const ABC_FOREIGN_VERSION: u16 = 1;
+pub const ABC_PROFILE_FOREIGN: u16 = 9;
+pub const ABC_FOREIGN_SCHEMA: &str = "auto.abc.foreign-scalar/1";
 pub const OP_FIELD_GET: u8 = 0x07;
 pub const OP_FIELD_SET: u8 = 0x08;
 pub const OP_AGGREGATE: u8 = 0x09;
@@ -276,11 +281,13 @@ pub enum WireFamily {
     /// `AVAD`: neither generation can be read as the other.
     EntryUnit,
     HostConsole,
+    ForeignScalar,
 }
 
 impl WireFamily {
     fn magic(&self) -> [u8; 4] {
         match self {
+            WireFamily::ForeignScalar => ABC_FOREIGN_MAGIC,
             WireFamily::Core => *ABC_MAGIC,
             WireFamily::Data
             | WireFamily::Owned
@@ -294,6 +301,7 @@ impl WireFamily {
     }
     fn version(&self) -> u16 {
         match self {
+            WireFamily::ForeignScalar => ABC_FOREIGN_VERSION,
             WireFamily::Core => ABC_VERSION,
             WireFamily::Data => crate::contract::ABC_DATA_VERSION,
             WireFamily::Owned => crate::contract::ABC_OWNED_VERSION,
@@ -306,6 +314,7 @@ impl WireFamily {
     }
     fn profile_id(&self) -> u16 {
         match self {
+            WireFamily::ForeignScalar => ABC_PROFILE_FOREIGN,
             WireFamily::Core => ABC_PROFILE_CORE_I32,
             WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
             WireFamily::Owned => crate::contract::ABC_PROFILE_OWNED,
@@ -520,6 +529,17 @@ fn un_op_code(op: UnOp) -> u8 {
 /// core-profile module — that mismatch is an encode rejection).
 pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     let family = match m.profile.as_str() {
+        crate::contract::AV_PROFILE
+            if m.funcs.iter().any(|f| {
+                f.blocks.iter().any(|b| {
+                    b.instrs
+                        .iter()
+                        .any(|i| matches!(i, MirInstr::ForeignCall { .. }))
+                })
+            }) =>
+        {
+            WireFamily::ForeignScalar
+        }
         crate::contract::AV_PROFILE => WireFamily::Core,
         crate::contract::AV_DATA_PROFILE => WireFamily::Data,
         crate::contract::AV_OWNED_PROFILE => WireFamily::Owned,
@@ -1026,6 +1046,39 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             put_u32(&mut w, b.instrs.len() as u32);
             for instr in &b.instrs {
                 match instr {
+                    MirInstr::ForeignCall {
+                        declaration,
+                        dst,
+                        args,
+                    } => {
+                        if family != WireFamily::ForeignScalar || args.len() > 255 {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.foreign",
+                                "foreign calls require the AVFI scalar family and bounded arity"
+                                    .into(),
+                            ));
+                        }
+                        declaration
+                            .validate()
+                            .map_err(|e| AbcDecodeError::fmt_err("abc.encode.foreign", e))?;
+                        let bytes = serde_json::to_vec(declaration).map_err(|e| {
+                            AbcDecodeError::fmt_err("abc.encode.foreign", e.to_string())
+                        })?;
+                        if bytes.len() > ace_foreign_contract::codec::MAX_CODEC_BYTES {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.foreign-budget",
+                                "foreign declaration too large".into(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_FOREIGN_CALL);
+                        put_u32(&mut w, *dst);
+                        put_u8(&mut w, args.len() as u8);
+                        for arg in args {
+                            put_u32(&mut w, *arg);
+                        }
+                        put_u32(&mut w, bytes.len() as u32);
+                        w.push(&bytes);
+                    }
                     MirInstr::HostCall { host, arg } => {
                         if family != WireFamily::HostConsole {
                             return Err(AbcDecodeError::fmt_err(
@@ -1871,7 +1924,9 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         steps: 0,
     };
     let magic = c.take(4)?;
-    let family = if magic == ABC_MAGIC {
+    let family = if magic == ABC_FOREIGN_MAGIC {
+        WireFamily::ForeignScalar
+    } else if magic == ABC_MAGIC {
         WireFamily::Core
     } else if magic == crate::contract::ABC_HOST_CONSOLE_MAGIC {
         WireFamily::HostConsole
@@ -2103,7 +2158,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let mut module = MirModule {
         host_imports,
         profile: match family {
-            WireFamily::Core => crate::contract::AV_PROFILE.to_string(),
+            WireFamily::Core | WireFamily::ForeignScalar => crate::contract::AV_PROFILE.to_string(),
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
             WireFamily::Owned => crate::contract::AV_OWNED_PROFILE.to_string(),
             WireFamily::Collections => crate::contract::AV_COLLECTIONS_PROFILE.to_string(),
@@ -2619,6 +2674,39 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         }
                         MirInstr::Call { callee, dst, args }
                     }
+                    OP_FOREIGN_CALL => {
+                        if family != WireFamily::ForeignScalar {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.foreign-profile",
+                                "foreign opcode outside AVFI".into(),
+                            ));
+                        }
+                        let dst = c.u32()?;
+                        let count = c.u8()? as usize;
+                        let mut args = Vec::with_capacity(count);
+                        for _ in 0..count {
+                            args.push(c.u32()?);
+                        }
+                        let len = c.u32()? as usize;
+                        if len > ace_foreign_contract::codec::MAX_CODEC_BYTES {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.foreign-budget",
+                                "foreign declaration too large".into(),
+                            ));
+                        }
+                        let declaration: ace_foreign_contract::manual::SourceDecl =
+                            serde_json::from_slice(c.take(len)?).map_err(|e| {
+                                AbcDecodeError::fmt_err("abc.decode.foreign", e.to_string())
+                            })?;
+                        declaration
+                            .validate()
+                            .map_err(|e| AbcDecodeError::fmt_err("abc.decode.foreign", e))?;
+                        MirInstr::ForeignCall {
+                            declaration,
+                            dst,
+                            args,
+                        }
+                    }
                     OP_HOST_CALL => {
                         if family != WireFamily::HostConsole {
                             return Err(AbcDecodeError::fmt_err(
@@ -3089,6 +3177,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
 
     let owner = OwnerScope {
         schema: match family {
+            WireFamily::ForeignScalar => ABC_FOREIGN_SCHEMA.to_string(),
             WireFamily::Core => crate::contract::ABC_SCHEMA.to_string(),
             WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
             WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),

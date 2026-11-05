@@ -15,6 +15,85 @@ pub const SOURCE_CAP: &str = "foreign.scalar";
 pub struct ManualDecl {
     pub source_name: String,
     pub symbol: String,
+    pub context_symbol: Option<String>,
+}
+
+/// Untrusted per-declaration facts carried by HIR/MIR. Possession is not a
+/// credential: a consumer must compare them with the current admitted host
+/// environment. No provider implementation digest enters this signature key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceDecl {
+    pub name: String,
+    pub provider: String,
+    pub logical: String,
+    pub review_id: String,
+    pub header_digest: String,
+    pub physical_table_digest: String,
+    pub context_symbol: Option<String>,
+    pub function: crate::FnFact,
+    pub effects: Vec<String>,
+    pub capabilities: Vec<String>,
+}
+
+impl SourceDecl {
+    pub fn validate(&self) -> Result<(), String> {
+        let needs_context = matches!(self.function.form, FnForm::Fallible { ctx: Some(_), .. });
+        if needs_context != self.context_symbol.is_some()
+            || self.context_symbol.as_ref().is_some_and(|s| !ident(s))
+        {
+            return Err("foreign.context: invalid target context binding".into());
+        }
+        if !ident(&self.name)
+            || !ident(&self.function.symbol)
+            || self.logical.is_empty()
+            || self.provider.is_empty()
+            || self.review_id.is_empty()
+            || !digest(&self.header_digest)
+            || !digest(&self.physical_table_digest)
+        {
+            return Err("foreign.declaration: invalid identity/provenance".into());
+        }
+        let scalar = |k: &LaneKind| matches!(k, LaneKind::I32 | LaneKind::Bool);
+        let valid = match &self.function.form {
+            FnForm::Pure { params, ret } => params.iter().all(scalar) && scalar(ret),
+            FnForm::Fallible { params, outs, .. } => {
+                params.iter().all(scalar) && outs.len() == 1 && outs.iter().all(scalar)
+            }
+        };
+        if !valid {
+            return Err("foreign.signature: expected finite scalar signature".into());
+        }
+        InterfaceFacts {
+            format: crate::FACTS_FORMAT.into(),
+            logical: self.logical.clone(),
+            content_version: self.digest(),
+            source: crate::FactsSource::Typed {
+                id: self.review_id.clone(),
+            },
+            functions: vec![self.function.clone()],
+            effects: self.effects.clone(),
+            capabilities: self.capabilities.clone(),
+        }
+        .validate()
+    }
+
+    pub fn digest(&self) -> String {
+        crate::blake3_hex(&serde_json::to_vec(self).expect("serializable declaration"))
+    }
+
+    pub fn params(&self) -> &[LaneKind] {
+        match &self.function.form {
+            FnForm::Pure { params, .. } | FnForm::Fallible { params, .. } => params,
+        }
+    }
+
+    pub fn result(&self) -> LaneKind {
+        match &self.function.form {
+            FnForm::Pure { ret, .. } => *ret,
+            FnForm::Fallible { outs, .. } => outs[0],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +199,12 @@ impl ManualManifest {
             if !supported {
                 return Err("foreign.signature: source requires i32/bool and one result".into());
             }
+            let needs_context = matches!(f.form, FnForm::Fallible { ctx: Some(_), .. });
+            if needs_context != d.context_symbol.is_some()
+                || d.context_symbol.as_ref().is_some_and(|s| !ident(s))
+            {
+                return Err("foreign.context: explicit target context symbol required exactly for ctx forms".into());
+            }
         }
         Ok(())
     }
@@ -170,11 +255,12 @@ impl ManualManifest {
         {
             return Err("foreign.authority: current review/provider binding does not match".into());
         }
-        if self
-            .declarations
-            .iter()
-            .any(|d| !host.available_symbols.contains(&d.symbol))
-        {
+        if self.declarations.iter().any(|d| {
+            !host.available_symbols.contains(&d.symbol)
+                || d.context_symbol
+                    .as_ref()
+                    .is_some_and(|s| !host.available_symbols.contains(s))
+        }) {
             return Err("foreign.symbol: provider lacks a reviewed symbol".into());
         }
         let plan = PhysicalPlan::project(&self.facts)?;
@@ -189,6 +275,46 @@ impl ManualManifest {
 }
 
 impl AdmittedForeign {
+    pub fn source_declarations(&self) -> Vec<SourceDecl> {
+        self.manifest
+            .declarations
+            .iter()
+            .map(|d| {
+                let mut effects: Vec<_> = self
+                    .manifest
+                    .facts
+                    .effects
+                    .iter()
+                    .filter(|e| !e.starts_with("pure:") || *e == &format!("pure:{}", d.symbol))
+                    .cloned()
+                    .collect();
+                effects.sort();
+                let mut capabilities = self.manifest.facts.capabilities.clone();
+                capabilities.sort();
+                SourceDecl {
+                    name: d.source_name.clone(),
+                    provider: self.manifest.provider.clone(),
+                    logical: format!("{}/{}", self.manifest.facts.logical, d.symbol),
+                    review_id: self.manifest.review_id.clone(),
+                    header_digest: self.manifest.header_digest.clone(),
+                    physical_table_digest: self.manifest.physical_table_digest.clone(),
+                    context_symbol: d.context_symbol.clone(),
+                    function: self
+                        .manifest
+                        .facts
+                        .function(&d.symbol)
+                        .expect("admitted symbol")
+                        .clone(),
+                    effects,
+                    capabilities,
+                }
+            })
+            .collect()
+    }
+
+    pub fn admits_declaration(&self, declaration: &SourceDecl) -> bool {
+        self.source_declarations().iter().any(|d| d == declaration)
+    }
     pub fn manifest(&self) -> &ManualManifest {
         &self.manifest
     }
@@ -257,6 +383,7 @@ mod tests {
                 capabilities: vec![SOURCE_CAP.into()],
             },
             declarations: vec![ManualDecl {
+                context_symbol: None,
                 source_name: "foreign_add".into(),
                 symbol: "c_add".into(),
             }],

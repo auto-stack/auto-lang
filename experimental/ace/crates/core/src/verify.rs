@@ -328,6 +328,7 @@ fn verify_function_impl(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: closures.map(|c| c.view()),
         domain: bundle.domain,
@@ -377,7 +378,8 @@ fn verify_function_impl(
         let ty_id = match &d.kind {
             hir::DefKind::Function { ty, .. }
             | hir::DefKind::Method { ty, .. }
-            | hir::DefKind::Intrinsic { ty, .. } => *ty,
+            | hir::DefKind::Intrinsic { ty, .. }
+            | hir::DefKind::Foreign { ty, .. } => *ty,
         };
         match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::Function(sig)) => {
@@ -424,7 +426,7 @@ fn verify_function_impl(
                 def.span,
             )]);
         }
-        hir::DefKind::Intrinsic { .. } => {
+        hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => {
             return Err(vec![Diagnostic::new(
                 Stage::Verify,
                 "verify.def-kind",
@@ -599,6 +601,7 @@ pub fn verify_text_function(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
         domain: bundle.domain,
@@ -613,7 +616,8 @@ pub fn verify_text_function(
         let ty_id = match &d.kind {
             hir::DefKind::Function { ty, .. }
             | hir::DefKind::Method { ty, .. }
-            | hir::DefKind::Intrinsic { ty, .. } => *ty,
+            | hir::DefKind::Intrinsic { ty, .. }
+            | hir::DefKind::Foreign { ty, .. } => *ty,
         };
         match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::Function(sig)) => {
@@ -645,7 +649,7 @@ pub fn verify_text_function(
     let (body_id, name) = match &def.kind {
         hir::DefKind::Function { name, body, .. } => (*body, name.clone()),
         hir::DefKind::Method { name, body, .. } => (*body, name.clone()),
-        hir::DefKind::Intrinsic { .. } => {
+        hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => {
             return Err(vec![Diagnostic::new(
                 Stage::Verify,
                 "verify.def-kind",
@@ -1543,6 +1547,7 @@ pub fn declaration_context_fingerprint_in(m: &hir::Module, domain: HirDomain) ->
                 mix(&mut h, &format!("method:{receiver:?}"));
                 use_type(&mut h, &hir::TypeUse::Ref(*record), m)
             }
+            hir::DefKind::Foreign { declaration, .. } => mix(&mut h, &declaration.digest()),
             hir::DefKind::Intrinsic { .. } => unreachable!(),
         }
         if let Some(ty) = d.kind.fn_type() {
@@ -1676,6 +1681,11 @@ fn context_fingerprint(m: &hir::Module) -> String {
                 mix(&mut h, "m:");
                 mix_fn_type(&mut h, *ty, m);
             }
+            hir::DefKind::Foreign { ty, declaration } => {
+                mix(&mut h, "foreign");
+                mix(&mut h, &declaration.digest());
+                mix_fn_type(&mut h, *ty, m);
+            }
             hir::DefKind::Intrinsic { symbol, ty, .. } => {
                 mix(&mut h, &format!("i:{symbol}:"));
                 mix_fn_type(&mut h, *ty, m);
@@ -1697,6 +1707,121 @@ pub fn verify(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
 /// another domain.
 pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
     verify_domain(bundle, HirDomain::Scalar)
+}
+
+/// PLAN-938: the only whole-source admission for external declarations.
+/// Candidate HIR is compared with current host-qualified facts before ordinary
+/// structural/type verification. Legacy/CT entries keep rejecting these defs.
+pub fn verify_foreign_scalar(
+    bundle: hir::Bundle,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    check_foreign_declarations(&bundle, environment)?;
+    let mut verifier = Verifier {
+        diags: Vec::new(),
+        foreign_allowed: true,
+        domain: HirDomain::Scalar,
+        closures_ctx: None,
+    };
+    verifier.check_bundle(&bundle);
+    if verifier.diags.is_empty() {
+        Ok(CheckedModule {
+            bundle,
+            text_plan: None,
+            runtime_text_needed: false,
+            coll_plan: None,
+        })
+    } else {
+        Err(verifier.diags)
+    }
+}
+
+fn check_foreign_declarations(
+    bundle: &hir::Bundle,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<(), Vec<Diagnostic>> {
+    let reject = |span, message| {
+        vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.foreign-authority",
+            message,
+            span,
+        )]
+    };
+    if bundle.domain != HirDomain::Scalar {
+        return Err(reject(
+            Span { start: 0, end: 0 },
+            "foreign declarations require the scalar source domain",
+        ));
+    }
+    if !bundle
+        .requires
+        .iter()
+        .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+    {
+        return Err(reject(
+            Span { start: 0, end: 0 },
+            "foreign scalar capability is missing from the HIR requirements",
+        ));
+    }
+    for module in &bundle.modules {
+        let lane = |u: &hir::TypeUse| match u {
+            hir::TypeUse::Builtin(hir::BuiltinType::I32) => {
+                Some(ace_foreign_contract::LaneKind::I32)
+            }
+            hir::TypeUse::Builtin(hir::BuiltinType::Bool) => {
+                Some(ace_foreign_contract::LaneKind::Bool)
+            }
+            hir::TypeUse::Ref(t) => match module.types.get(t.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::I32) => Some(ace_foreign_contract::LaneKind::I32),
+                Some(hir::TypeKind::Bool) => Some(ace_foreign_contract::LaneKind::Bool),
+                _ => None,
+            },
+            _ => None,
+        };
+        for def in &module.defs {
+            if let hir::DefKind::Foreign { ty, declaration } = &def.kind {
+                if declaration
+                    .capabilities
+                    .iter()
+                    .any(|c| !bundle.requires.contains(c))
+                {
+                    return Err(reject(
+                        def.span,
+                        "foreign declaration capability is missing from the HIR requirements",
+                    ));
+                }
+                if !environment.admits_declaration(declaration) {
+                    return Err(reject(
+                        def.span,
+                        "declaration is not admitted by the current host",
+                    ));
+                }
+                let Some(hir::TypeKind::Function(sig)) =
+                    module.types.get(ty.0 as usize).map(|t| &t.kind)
+                else {
+                    return Err(reject(
+                        def.span,
+                        "foreign declaration has no valid function signature",
+                    ));
+                };
+                if sig.params.len() != declaration.params().len()
+                    || sig
+                        .params
+                        .iter()
+                        .zip(declaration.params())
+                        .any(|(p, k)| lane(p) != Some(*k))
+                    || lane(&sig.result) != Some(declaration.result())
+                {
+                    return Err(reject(
+                        def.span,
+                        "foreign signature differs from the admitted logical contract",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Verify a bound text-domain bundle (`text-i32-draft`, PLAN-770): the
@@ -1740,6 +1865,7 @@ fn verify_text_domain(
         )]);
     }
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
         domain: expected,
@@ -1850,6 +1976,7 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
         )]);
     }
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
         domain: HirDomain::TextRecord,
@@ -1980,6 +2107,7 @@ fn verify_collection_family(
         )]);
     }
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
         domain: expected,
@@ -2107,6 +2235,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
         )]);
     }
     let mut v = Verifier {
+        foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
         domain: expect,
@@ -2265,6 +2394,7 @@ struct TypeMemo {
 }
 
 pub(crate) struct Verifier {
+    foreign_allowed: bool,
     diags: Vec<Diagnostic>,
     domain: HirDomain,
     /// PLAN-912 §5.2: the resident closures registry view for a SINGLE-
@@ -3140,7 +3270,8 @@ impl Verifier {
             let ty_id = match &d.kind {
                 hir::DefKind::Function { ty, .. }
                 | hir::DefKind::Method { ty, .. }
-                | hir::DefKind::Intrinsic { ty, .. } => *ty,
+                | hir::DefKind::Intrinsic { ty, .. }
+                | hir::DefKind::Foreign { ty, .. } => *ty,
             };
             match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
@@ -3171,7 +3302,7 @@ impl Verifier {
         for (di, d) in m.defs.iter().enumerate() {
             let def_body = match &d.kind {
                 hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
-                hir::DefKind::Intrinsic { .. } => continue,
+                hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => continue,
             };
             let Some(b) = m.bodies.get(def_body.0 as usize) else {
                 // T01-C04: a body-less declaration (the binder's extern
@@ -3228,6 +3359,22 @@ impl Verifier {
     /// references against the table); mutated bundles can, and must be
     /// rejected before any signature-driven walk or native lowering.
     fn check_module_type_bounds(&mut self, m: &hir::Module) -> bool {
+        if !self.foreign_allowed
+            && m.defs
+                .iter()
+                .any(|d| matches!(d.kind, hir::DefKind::Foreign { .. }))
+        {
+            self.error(
+                "verify.foreign-authority",
+                "foreign declarations require current host admission",
+                m.defs
+                    .iter()
+                    .find(|d| matches!(d.kind, hir::DefKind::Foreign { .. }))
+                    .unwrap()
+                    .span,
+            );
+            return false;
+        }
         let n_types = m.types.len();
         let mut diags: Vec<Diagnostic> = Vec::new();
         for t in &m.types {
@@ -3820,7 +3967,9 @@ impl Verifier {
             hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
                 (*body, true)
             }
-            hir::DefKind::Intrinsic { .. } => (hir::BodyId(0), false),
+            hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => {
+                (hir::BodyId(0), false)
+            }
         };
         if !def_is_fn {
             self.error(
@@ -7174,6 +7323,7 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
             let sig_ok = match m.types.get(ty.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
                     let v = Verifier {
+                        foreign_allowed: false,
                         diags: Vec::new(),
                         closures_ctx: None,
                         domain: HirDomain::HostConsole,

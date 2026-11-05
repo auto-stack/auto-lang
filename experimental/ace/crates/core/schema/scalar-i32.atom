@@ -37,7 +37,7 @@ descriptor(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32
             fields { path: Text }
             containers {
                 types: [type]
-                declarations: [function, intrinsic]
+                declarations: [function, intrinsic, foreign]
                 bodies: [body]
             }
         }
@@ -50,6 +50,11 @@ descriptor(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32
         node function {
             slots: [Id, TypeRef]
             fields { name: Text; body: BodyRef }
+        }
+
+        node foreign {
+            slots: [Id, TypeRef]
+            fields { contract: Text }
         }
 
         node intrinsic {
@@ -115,6 +120,7 @@ descriptor(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32
         branch(key: "type.bool") { forbid: [params, result] }
         branch(key: "type.function") { require: [params, result] }
         branch(key: "function") { require: [name]; forbid: [symbol, effect] }
+        branch(key: "foreign") { require: [contract]; forbid: [name, body, symbol, effect] }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body] }
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }

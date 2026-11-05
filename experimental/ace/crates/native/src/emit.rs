@@ -129,6 +129,27 @@ fn exit_sig() -> Signature {
 /// controlled rejection. Rejected here with codegen count 0 — never NOP'd
 /// past.
 pub fn admit_unit(unit: &MirModule) -> Result<(), MnError> {
+    admit_unit_shape(unit)?;
+    if has_foreign(unit) {
+        return Err(MnError::Unsupported(
+            "foreign.authority",
+            "use the current-host foreign codegen entry".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn has_foreign(unit: &MirModule) -> bool {
+    unit.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, ace_av_core::mir::MirInstr::ForeignCall { .. }))
+        })
+    })
+}
+
+fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
     let admitted = unit.profile == AV_PROFILE
         || unit.profile == AV_DATA_PROFILE
         || unit.profile == AV_OWNED_PROFILE;
@@ -233,7 +254,27 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    admit_unit(unit)?;
+    emit_unit_coff_impl(unit, None)
+}
+
+pub fn emit_foreign_unit_coff(
+    unit: &MirModule,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(unit, Some(environment))
+}
+
+fn emit_unit_coff_impl(
+    unit: &MirModule,
+    environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<UnitObject, MnError> {
+    if let Some(environment) = environment {
+        admit_unit_shape(unit)?;
+        crate::foreign_lower::admit(unit, environment)
+            .map_err(|e| MnError::Unsupported("foreign.authority", e))?;
+    } else {
+        admit_unit(unit)?;
+    }
     let f = &unit.funcs[0];
     let isa = make_isa()?;
     let obj_name = format!("mn8-{}", f.name);
@@ -256,6 +297,41 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
             .map_err(|e| MnError::Backend(format!("declare import {}: {e}", logical)))?;
         import_ids.push(id);
         import_syms.push((imp.symbol.clone(), logical));
+    }
+    for block in &f.blocks {
+        for instruction in &block.instrs {
+            if let ace_av_core::mir::MirInstr::ForeignCall { declaration, .. } = instruction {
+                let item = (
+                    format!("foreign:{}:{}", declaration.logical, declaration.digest()),
+                    declaration.function.symbol.clone(),
+                );
+                if !import_syms.contains(&item) {
+                    import_syms.push(item);
+                }
+                if let Some(context) = &declaration.context_symbol {
+                    let item = (
+                        format!("foreign-context:{}", declaration.logical),
+                        context.clone(),
+                    );
+                    if !import_syms.contains(&item) {
+                        import_syms.push(item);
+                    }
+                }
+                if matches!(
+                    declaration.function.form,
+                    ace_foreign_contract::FnForm::Fallible { .. }
+                ) || declaration
+                    .params()
+                    .contains(&ace_foreign_contract::LaneKind::Bool)
+                    || declaration.result() == ace_foreign_contract::LaneKind::Bool
+                {
+                    let item = ("foreign-status-runtime/1".into(), "ace_foreign_fail".into());
+                    if !import_syms.contains(&item) {
+                        import_syms.push(item);
+                    }
+                }
+            }
+        }
     }
     // A bare Trace instruction without a matching table import still needs
     // its runtime symbol (verify admits trace via capability; the unit

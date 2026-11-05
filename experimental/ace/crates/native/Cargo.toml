@@ -8,6 +8,8 @@ description = "PLAN-818: shared CheckedMir -> per-function COFF -> multi-obj PE,
 
 [dependencies]
 ace-core = { path = "../core" }
+ace-foreign-contract = { path = "../foreign-contract" }
+ace-source-query = { path = "../source-query" }
 ace-av-core = { path = "../av-core" }
 ace-av = { path = "../av" }
 ace-lowering = { path = "../lowering" }

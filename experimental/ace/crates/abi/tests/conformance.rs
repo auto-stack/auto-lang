@@ -12,3 +12,5 @@ mod feasibility;
 mod resource;
 #[path = "cases/scalar_bridge.rs"]
 mod scalar_bridge;
+#[path = "cases/source_foreign.rs"]
+mod source_foreign;

@@ -150,6 +150,7 @@ fn cache_meta_negative_dependency_rekeys_identity() {
     let caps = vec!["cte.meta.fields/v1".to_string()];
     let probes = vec![("Pair".to_string(), "zzz".to_string())];
     let input = || SemaInput {
+        external_signatures: Vec::new(),
         package: "cte817".into(),
         module: "main".into(),
         source_fp: String::new(),

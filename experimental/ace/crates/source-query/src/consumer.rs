@@ -84,7 +84,11 @@ pub fn compile_via_facts(
         bundle,
         ..
     } = parts;
-    let checked = verify_scalar(bundle).map_err(ConsumerError::Verify)?;
+    let checked = match session.foreign() {
+        Some(environment) => ace_core::verify::verify_foreign_scalar(bundle, environment),
+        None => verify_scalar(bundle),
+    }
+    .map_err(ConsumerError::Verify)?;
     Ok(FactCompiled {
         profile: prof,
         input_hash,
@@ -171,7 +175,10 @@ pub fn compile_scalar_product(
                 bundle,
                 ..
             } = parts;
-            let checked = verify_scalar(bundle)?;
+            let checked = match session.foreign() {
+                Some(environment) => ace_core::verify::verify_foreign_scalar(bundle, environment),
+                None => verify_scalar(bundle),
+            }?;
             Ok(ProductCompile {
                 compiled: CompiledSource {
                     profile,

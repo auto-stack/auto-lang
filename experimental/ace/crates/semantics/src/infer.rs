@@ -240,14 +240,25 @@ impl<'a> InferSession<'a> {
     }
 
     fn record_negative(&mut self, domain: &'static str, name: &str) {
+        self.record_negative_at(domain, name, Span::new(0, 0));
+    }
+
+    fn record_negative_at(&mut self, domain: &'static str, name: &str, span: Span) {
+        // The established local-only diagnostic/cache wire stays byte-stable;
+        // source foreign inputs have a distinct signature-key generation.
+        let span = if self.input.external_signatures.is_empty() {
+            Span::new(0, 0)
+        } else {
+            span
+        };
         let set_fp = self.candidate_fp(domain);
         self.reads
             .negatives
             .push((domain, name.to_string(), set_fp));
         self.diags.push(FactDiag {
             code: "unknown-name",
-            start: 0,
-            end: 0,
+            start: span.start,
+            end: span.end,
             message: format!("unknown {} name `{}`", domain, name),
         });
     }
@@ -499,14 +510,13 @@ impl<'a> InferSession<'a> {
                     Some((t, _)) => {
                         self.record_expr(e, t, expected);
                     }
-                    None => self.record_negative("local", name),
+                    None => self.record_negative_at("local", name, e.span),
                 },
                 InputExprKind::Call { callee, args } => {
                     let input: &'a SemaInput = self.input;
-                    let cands: Vec<&'a InputFn> =
-                        input.fns.iter().filter(|f| f.name == *callee).collect();
+                    let cands: Vec<_> = input.signatures().filter(|f| f.name == *callee).collect();
                     match cands.len() {
-                        0 => self.record_negative("fn", callee),
+                        0 => self.record_negative_at("fn", callee, e.span),
                         1 => {
                             let f = cands[0];
                             self.read_sig(callee);
@@ -517,7 +527,8 @@ impl<'a> InferSession<'a> {
                             // vector order remains the SOURCE evaluation
                             // order (binding must never reorder reads).
                             let mut bound: Vec<Option<usize>> = vec![None; f.params.len()];
-                            let mut plan: Vec<(usize, Option<usize>)> = Vec::with_capacity(args.len());
+                            let mut plan: Vec<(usize, Option<usize>)> =
+                                Vec::with_capacity(args.len());
                             for (i, arg) in args.iter().enumerate() {
                                 let pos = match &arg.name {
                                     None => Some(i),
@@ -759,6 +770,7 @@ mod tests {
 
     fn input(fns: Vec<InputFn>) -> SemaInput {
         SemaInput {
+            external_signatures: Vec::new(),
             package: "test".into(),
             module: "m".into(),
             fns,
@@ -1227,7 +1239,11 @@ mod tests {
         let mut s = InferSession::new(&unknown);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "unknown-parameter"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "unknown-parameter"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -1239,19 +1255,24 @@ mod tests {
         let mut s = InferSession::new(&duplicate);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "duplicate-argument"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "duplicate-argument"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
 
-        let missing = call_pick(vec![InputArg::named(
-            "a",
-            expr(InputExprKind::IntLit(1)),
-        )]);
+        let missing = call_pick(vec![InputArg::named("a", expr(InputExprKind::IntLit(1)))]);
         let mut s = InferSession::new(&missing);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "arity-mismatch"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "arity-mismatch"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }

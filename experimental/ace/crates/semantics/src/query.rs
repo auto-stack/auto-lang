@@ -82,16 +82,29 @@ fn write_ann(out: &mut Vec<u8>, a: &Ann) {
 /// Canonical content of one function's SIGNATURE (params + ret,
 /// declaration order; positions excluded — D4).
 pub fn fn_sig_canonical(f: &crate::input::InputFn) -> Vec<u8> {
+    signature_canonical(crate::input::SignatureView {
+        name: &f.name,
+        params: &f.params,
+        ret: f.ret,
+        external_contract: None,
+    })
+}
+
+pub fn signature_canonical(f: crate::input::SignatureView<'_>) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(f.name.as_bytes());
     out.push(0);
-    for (n, a) in &f.params {
+    for (n, a) in f.params {
         out.extend_from_slice(n.as_bytes());
         out.push(b':');
         write_ann(&mut out, a);
     }
     out.push(b'-');
     write_ann(&mut out, &f.ret);
+    if let Some(contract) = f.external_contract {
+        out.extend_from_slice(b"\0external-signature/1\0");
+        out.extend_from_slice(contract.as_bytes());
+    }
     out
 }
 
@@ -558,8 +571,8 @@ pub fn called_sigs_fp(input: &SemaInput, fn_name: &str) -> String {
             let names = called_names(f);
             let mut parts: Vec<String> = Vec::new();
             for n in names {
-                let sig = match input.lookup_fn(&n) {
-                    Some(callee) => fp(&fn_sig_canonical(callee)),
+                let sig = match input.lookup_signature(&n) {
+                    Some(callee) => fp(&signature_canonical(callee)),
                     None => "absent".to_string(),
                 };
                 parts.push(format!("{n}={sig}"));
@@ -655,10 +668,10 @@ impl SemaQueryKey {
                 ));
             }
             QueryKind::FnSig { fn_name } => {
-                let f = input.lookup_fn(fn_name);
+                let f = input.lookup_signature(fn_name);
                 c.push((
                     "fn-sig-fp".into(),
-                    f.map(|f| fp(&fn_sig_canonical(f)))
+                    f.map(|f| fp(&signature_canonical(f)))
                         .unwrap_or_else(|| "absent".into()),
                 ));
                 // F-796-R14-01: the FnSig page HEADER semantics is
@@ -742,6 +755,9 @@ pub fn current_fingerprints(input: &SemaInput) -> DependencyFingerprints {
         fn_sigs.insert(f.name.clone(), fp(&fn_sig_canonical(f)));
         fn_bodies.insert(f.name.clone(), fp(&fn_body_canonical(f)));
     }
+    for f in input.signatures().filter(|f| f.external_contract.is_some()) {
+        fn_sigs.insert(f.name.to_string(), fp(&signature_canonical(f)));
+    }
     let mut field_sets = BTreeMap::new();
     for r in &input.records {
         field_sets.insert(r.name.clone(), fp(&record_canonical(r)));
@@ -805,8 +821,8 @@ pub fn manifest_from(reads: &Reads, input: &SemaInput, target: &str) -> DepManif
     }
     for p in positives.iter_mut() {
         if p.kind == "fn-sig" {
-            if let Some(f) = input.lookup_fn(&p.origin) {
-                p.fp = fp(&fn_sig_canonical(f));
+            if let Some(f) = input.lookup_signature(&p.origin) {
+                p.fp = fp(&signature_canonical(f));
             }
         }
     }
@@ -944,6 +960,17 @@ pub fn module_decl_versions(
             )
         })
         .collect();
+    for f in input.signatures().filter(|f| f.external_contract.is_some()) {
+        v.push((
+            ace_semantics_contract::logical_id(
+                &PackageId::new(&input.package),
+                &input.module,
+                DeclKind::Fn,
+                f.name,
+            ),
+            ContentVersion::of_canonical(&signature_canonical(f)),
+        ));
+    }
     v.sort_by(|a, b| a.0.cmp(&b.0));
     v
 }
@@ -986,8 +1013,8 @@ pub fn target_content(input: &SemaInput, query: &QueryKind) -> ContentVersion {
             })
             .unwrap_or_default(),
         QueryKind::FnSig { fn_name } => input
-            .lookup_fn(fn_name)
-            .map(fn_sig_canonical)
+            .lookup_signature(fn_name)
+            .map(signature_canonical)
             .unwrap_or_default(),
         QueryKind::RecordFields { record } => input
             .lookup_record(record)

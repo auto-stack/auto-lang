@@ -278,6 +278,77 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 bindings,
             } => {
                 let target_id = callee.0 as usize;
+                if let Some(declaration) = self.view.foreign_by_def(target_id).cloned() {
+                    declaration
+                        .validate()
+                        .map_err(|e| A2xReject::new("a2c.foreign-contract", e))?;
+                    let mut evaluated = Vec::new();
+                    for arg in eval_args {
+                        let expression = self.lower_pure(*arg)?;
+                        let temp = self.fresh_temp();
+                        self.out.push(format!("int32_t {temp} = {expression};"));
+                        evaluated.push(temp);
+                    }
+                    let mut placed = vec![None; declaration.params().len()];
+                    for binding in bindings {
+                        placed[binding.param as usize] =
+                            Some(evaluated[binding.arg as usize].clone());
+                    }
+                    let mut arguments = Vec::new();
+                    self.out.push(crate::foreign::prototype(&declaration));
+                    self.out
+                        .push("extern void ace_foreign_fail(int32_t status);".into());
+                    if let Some(symbol) = &declaration.context_symbol {
+                        self.out.push(format!("extern unsigned char {symbol};"));
+                        arguments.push(format!("(void *)&{symbol}"));
+                    }
+                    for (value, lane) in placed.into_iter().zip(declaration.params()) {
+                        let value = value.ok_or_else(|| {
+                            A2xReject::new("a2c.foreign-binding", "missing foreign argument")
+                        })?;
+                        if *lane == ace_foreign_contract::LaneKind::Bool {
+                            self.out.push(format!(
+                                "if ((uint32_t){value} > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                            ));
+                            arguments.push(format!("(uint8_t){value}"));
+                        } else {
+                            arguments.push(value);
+                        }
+                    }
+                    let result = self.fresh_temp();
+                    let c_type = if declaration.result() == ace_foreign_contract::LaneKind::Bool {
+                        "uint8_t"
+                    } else {
+                        "int32_t"
+                    };
+                    if matches!(
+                        declaration.function.form,
+                        ace_foreign_contract::FnForm::Fallible { .. }
+                    ) {
+                        self.out.push(format!("{c_type} {result};"));
+                        arguments.push(format!("&{result}"));
+                        let status = self.fresh_temp();
+                        self.out.push(format!(
+                            "int32_t {status} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        self.out
+                            .push(format!("if ({status} != 0) ace_foreign_fail({status});"));
+                    } else {
+                        self.out.push(format!(
+                            "{c_type} {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                    }
+                    if declaration.result() == ace_foreign_contract::LaneKind::Bool {
+                        self.out.push(format!(
+                            "if ({result} > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                        ));
+                    }
+                    return Ok(format!("(int32_t){result}"));
+                }
                 if let Some(sym) = self.view.trace_symbol(target_id) {
                     if !eval_args.is_empty() {
                         return Err(A2xReject::new(
@@ -464,6 +535,19 @@ fn clone_map(m: &HashMap<u32, String>) -> HashMap<u32, String> {
 
 /// Lower ONE function of the view to its [`CFn`].
 pub fn lower_fn_c(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFn, A2xReject> {
+    if view.foreign_declarations().next().is_some() {
+        return Err(A2xReject::new(
+            "a2c.foreign-authority",
+            "foreign HIR requires the explicit checked foreign target",
+        ));
+    }
+    lower_foreign_fn_c(view, facts)
+}
+
+pub(crate) fn lower_foreign_fn_c(
+    view: &SemanticView<'_>,
+    facts: &FnFacts<'_>,
+) -> Result<CFn, A2xReject> {
     // local names: index-prefixed sanitized (stable across whole-module
     // and single-body bundles — same scheme as the Rust target)
     let mut local_names = HashMap::new();

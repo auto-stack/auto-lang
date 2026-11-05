@@ -48,6 +48,8 @@ pub mod store;
 pub mod walk;
 
 #[cfg(test)]
+mod foreign_tests;
+#[cfg(test)]
 mod tests;
 
 pub use apply::{

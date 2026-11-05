@@ -12,6 +12,7 @@ ace-semantics-contract = { path = "../semantics-contract" }
 # into the neutral input model.
 ace-semantics = { path = "../semantics", features = ["core-ast"] }
 ace-core = { path = "../core" }
+ace-foreign-contract = { path = "../foreign-contract" }
 blake3 = "1.5"
 # T-06: the unified managed store is the page sink (same store every
 # other layer uses; the SQ-A layer id keeps its pages separate).

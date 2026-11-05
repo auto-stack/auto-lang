@@ -892,7 +892,7 @@ fn sq29_single_flight_shares_one_computation_per_key() {
 fn sq30_read_only_view_never_installs() {
     let p = parse(A);
     let mut s = SourceQuerySession::new("pkg", "mod");
-    let mut host = QueryHost::new(MemorySink::new());
+    let host = QueryHost::new(MemorySink::new());
     let view = host.view(&mut s, &p, "main").expect("view");
     assert!(host.current().is_none(), "a view is not an install");
     assert!(host.sink().is_empty());

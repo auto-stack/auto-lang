@@ -25,7 +25,7 @@ use crate::catalog::SignatureCatalog;
 use crate::facts::{FactsError, FnSigFacts, InferBodyFacts, NegativeDep};
 use crate::ident::owner_logical;
 use crate::keys::QueryKey;
-use crate::produce::{produce_infer_body, ProduceError, ProduceLimits};
+use crate::produce::{ProduceError, ProduceLimits};
 use crate::walk::walk_body;
 use ace_core::source::ast::{FnItem, Item, Program};
 use ace_semantics_contract::{ContentVersion, LogicalId};
@@ -120,6 +120,7 @@ struct BodyPage {
 
 /// The per-module query session.
 pub struct SourceQuerySession {
+    foreign: Option<ace_foreign_contract::manual::AdmittedForeign>,
     package: String,
     module: String,
     capabilities: Vec<String>,
@@ -133,8 +134,16 @@ pub struct SourceQuerySession {
 }
 
 impl SourceQuerySession {
+    pub fn set_foreign(&mut self, foreign: Option<ace_foreign_contract::manual::AdmittedForeign>) {
+        self.foreign = foreign;
+    }
+    pub fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        self.foreign.as_ref()
+    }
+
     pub fn new(package: &str, module: &str) -> Self {
         SourceQuerySession {
+            foreign: None,
             package: package.to_string(),
             module: module.to_string(),
             capabilities: Vec::new(),
@@ -228,7 +237,13 @@ impl SourceQuerySession {
     /// The current module's signature catalog (declarations only: building
     /// it never reads a body).
     pub fn catalog(&self, program: &Program) -> Result<SignatureCatalog, QueryError> {
-        SignatureCatalog::build(program, &self.package, &self.module).map_err(QueryError::Produce)
+        SignatureCatalog::build_with_foreign(
+            program,
+            &self.package,
+            &self.module,
+            self.foreign.as_ref(),
+        )
+        .map_err(QueryError::Produce)
     }
 
     /// Complete key of one signature query against the current module.
@@ -430,7 +445,7 @@ impl SourceQuerySession {
                 owner: name.to_string(),
             });
         }
-        let mut facts = produce_infer_body(
+        let mut facts = crate::produce::produce_infer_body_with_foreign(
             program,
             &self.package,
             &self.module,
@@ -438,6 +453,7 @@ impl SourceQuerySession {
             &self.capabilities,
             self.limits,
             self.cancel.clone(),
+            self.foreign.as_ref(),
         )
         .map_err(QueryError::Produce)?;
         self.counters.solver_runs += 1;

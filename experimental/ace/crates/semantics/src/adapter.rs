@@ -182,6 +182,7 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
         }
     }
     Ok(SemaInput {
+        external_signatures: Vec::new(),
         package: package.into(),
         module: module.into(),
         fns,
@@ -288,6 +289,7 @@ pub fn project_body_scoped_with_caps(
         }
     }
     Ok(SemaInput {
+        external_signatures: Vec::new(),
         package: package.into(),
         module: module.into(),
         fns,

@@ -311,6 +311,7 @@ fn fn_result_of(
     };
     let ty_id = match &def.kind {
         hir::DefKind::Function { ty, .. }
+        | hir::DefKind::Foreign { ty, .. }
         | hir::DefKind::Intrinsic { ty, .. }
         | hir::DefKind::Method { ty, .. } => *ty,
     };

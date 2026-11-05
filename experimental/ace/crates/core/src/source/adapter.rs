@@ -2024,6 +2024,26 @@ impl PlanCtx<'_> {
                             }
                         }
                     }
+                    if let Some(declaration) = fn_index
+                        .checked_sub(self.program.fns.len())
+                        .and_then(|i| self.program.foreign.get(i))
+                    {
+                        for (idx, a) in args.iter().enumerate() {
+                            let pos = a
+                                .name
+                                .as_ref()
+                                .and_then(|n| {
+                                    n.name
+                                        .strip_prefix("arg")
+                                        .and_then(|i| i.parse::<usize>().ok())
+                                })
+                                .unwrap_or(idx);
+                            if pos < declaration.params().len() {
+                                bindings.push((pos as u32, idx as u32));
+                                moved.push(false);
+                            }
+                        }
+                    }
                     plan.exprs.push(ENode {
                         kind: EKind::Call {
                             callee_fn: Some(*fn_index),
@@ -2309,6 +2329,25 @@ impl PlanCtx<'_> {
                         if let Some(pos) = param_position(idx, a, callee) {
                             bindings.push((pos as u32, idx as u32));
                             moved.push(a.moved);
+                        }
+                    }
+                } else if let Some(declaration) = fn_index
+                    .checked_sub(self.program.fns.len())
+                    .and_then(|i| self.program.foreign.get(i))
+                {
+                    for (idx, a) in args.iter().enumerate() {
+                        let pos = a
+                            .name
+                            .as_ref()
+                            .and_then(|n| {
+                                n.name
+                                    .strip_prefix("arg")
+                                    .and_then(|i| i.parse::<usize>().ok())
+                            })
+                            .unwrap_or(idx);
+                        if pos < declaration.params().len() {
+                            bindings.push((pos as u32, idx as u32));
+                            moved.push(false);
                         }
                     }
                 }
@@ -3049,7 +3088,17 @@ impl<'p> Emitter<'p> {
         frag!("{", program_span);
         nl!(4);
 
-        let mut requires: Vec<&'static str> = Vec::new();
+        let mut requires: Vec<&str> = Vec::new();
+        if !self.program.foreign.is_empty() {
+            requires.push(ace_foreign_contract::manual::SOURCE_CAP);
+            for declaration in &self.program.foreign {
+                for capability in &declaration.capabilities {
+                    if !requires.contains(&capability.as_str()) {
+                        requires.push(capability);
+                    }
+                }
+            }
+        }
         for sym in &use_intrinsics {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
@@ -3283,6 +3332,31 @@ impl<'p> Emitter<'p> {
             spans.types.push(span);
             nl!(12);
         }
+        for declaration in &self.program.foreign {
+            let ty = |k| {
+                if k == ace_foreign_contract::LaneKind::Bool {
+                    "t_bool"
+                } else {
+                    "t_i32"
+                }
+            };
+            let params: Vec<_> = declaration
+                .params()
+                .iter()
+                .map(|k| format!("\"{}\"", ty(*k)))
+                .collect();
+            frag!(
+                &format!(
+                    "type t_foreign_{} function {{ params: [{}]; result: \"{}\" }}",
+                    declaration.name,
+                    params.join(", "),
+                    ty(declaration.result())
+                ),
+                Span { start: 0, end: 0 }
+            );
+            spans.types.push(Span { start: 0, end: 0 });
+            nl!(12);
+        }
         for sym in &use_intrinsics {
             let span = self.intrinsic_first_use[*sym];
             frag!(
@@ -3397,6 +3471,20 @@ impl<'p> Emitter<'p> {
                 m_span
             );
             spans.defs.push(m_span);
+            nl!(12);
+        }
+        for declaration in &self.program.foreign {
+            let contract = serde_json::to_string(declaration).expect("serializable contract");
+            frag!(
+                &format!(
+                    "foreign d_foreign_{} t_foreign_{} {{ contract: \"{}\" }}",
+                    declaration.name,
+                    declaration.name,
+                    Self::esc(&contract)
+                ),
+                Span { start: 0, end: 0 }
+            );
+            spans.defs.push(Span { start: 0, end: 0 });
             nl!(12);
         }
         for sym in &use_intrinsics {
@@ -3686,11 +3774,18 @@ impl<'p> Emitter<'p> {
                         } => {
                             let callee = match (callee_fn, callee_intrinsic) {
                                 (Some(i), _) => {
-                                    let cf = &self.program.fns[*i];
-                                    if cf.receiver == crate::source::ast::Receiver::Free {
-                                        format!("d_{}", cf.name)
+                                    if let Some(decl) = i
+                                        .checked_sub(self.program.fns.len())
+                                        .and_then(|i| self.program.foreign.get(i))
+                                    {
+                                        format!("d_foreign_{}", decl.name)
                                     } else {
-                                        format!("d_f{}_{}", i, cf.name)
+                                        let cf = &self.program.fns[*i];
+                                        if cf.receiver == crate::source::ast::Receiver::Free {
+                                            format!("d_{}", cf.name)
+                                        } else {
+                                            format!("d_f{}_{}", i, cf.name)
+                                        }
                                     }
                                 }
                                 (None, Some(s)) => intrinsic_def_id(s).to_string(),

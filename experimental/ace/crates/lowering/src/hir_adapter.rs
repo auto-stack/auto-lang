@@ -193,6 +193,7 @@ pub fn lower_checked(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -346,6 +347,7 @@ pub fn lower_checked_data(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -506,6 +508,7 @@ fn lower_checked_collection_family(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -838,7 +841,10 @@ impl ClosureFacts for ModuleScanFacts {
             return Ok(None);
         };
         let def = module.defs.get(def_index as usize).ok_or_else(|| {
-            AdapterError::inv("lower.callee", format!("callee def {def_index} out of range"))
+            AdapterError::inv(
+                "lower.callee",
+                format!("callee def {def_index} out of range"),
+            )
         })?;
         let hir::DefKind::Function { body, .. } = &def.kind else {
             return Err(AdapterError::uns(
@@ -1184,6 +1190,7 @@ pub fn lower_checked_owned(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -1322,6 +1329,7 @@ pub fn lower_function_owned_unit_with_modes(
     let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 // R1-F08: mode-aware — the import's sig must equal the
                 // callee's own emission (borrowed record params =
@@ -1547,6 +1555,7 @@ fn lower_function_unit_impl(
     let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 if d.id_text == def_id_text {
                     // Self-recursion also rides the unit's import
@@ -3009,6 +3018,25 @@ impl<'a> FnLower<'a> {
                 let mut arg_slots = Vec::with_capacity(eval_args.len());
                 for a in eval_args {
                     arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                }
+                if let hir::DefKind::Foreign { declaration, .. } =
+                    &self.hir_module.defs[callee.0 as usize].kind
+                {
+                    let declaration = declaration.clone();
+                    let mut actuals = vec![0; declaration.params().len()];
+                    for binding in bindings {
+                        actuals[binding.param as usize] = arg_slots[binding.arg as usize];
+                    }
+                    let dst = self.temp_ty(ty);
+                    self.emit(
+                        MirInstr::ForeignCall {
+                            declaration,
+                            dst,
+                            args: actuals,
+                        },
+                        sp,
+                    );
+                    return Ok(dst);
                 }
                 if self.out.is_host_console_profile() {
                     if let hir::DefKind::Intrinsic { symbol, .. } =

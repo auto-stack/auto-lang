@@ -135,6 +135,7 @@ pub fn restore_bind(
     if names.is_empty() {
         return Ok((
             ResolvedProgram {
+                foreign: Vec::new(),
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),

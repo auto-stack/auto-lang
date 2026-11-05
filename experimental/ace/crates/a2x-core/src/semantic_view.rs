@@ -464,6 +464,26 @@ impl<'a> SemanticView<'a> {
         self.externals.iter().find(|f| f.def_index == def_index)
     }
 
+    /// A real source foreign declaration; never a sibling ExternalFn scaffold.
+    pub fn foreign_by_def(
+        &self,
+        def_index: usize,
+    ) -> Option<&ace_foreign_contract::manual::SourceDecl> {
+        match &self.module.defs.get(def_index)?.kind {
+            hir::DefKind::Foreign { declaration, .. } => Some(declaration),
+            _ => None,
+        }
+    }
+
+    pub fn foreign_declarations(
+        &self,
+    ) -> impl Iterator<Item = &ace_foreign_contract::manual::SourceDecl> {
+        self.module.defs.iter().filter_map(|d| match &d.kind {
+            hir::DefKind::Foreign { declaration, .. } => Some(declaration),
+            _ => None,
+        })
+    }
+
     /// The authorized trace symbol of `def_index`, if it is one.
     pub fn trace_symbol(&self, def_index: usize) -> Option<&'static str> {
         self.trace_defs
@@ -697,6 +717,7 @@ impl<'a> SemanticView<'a> {
                 if self.fn_by_def(target).is_some()
                     || self.trace_symbol(target).is_some()
                     || self.external_by_def(target).is_some()
+                    || self.foreign_by_def(target).is_some()
                 {
                     Ok(())
                 } else {
@@ -902,7 +923,7 @@ fn collect_functions<'m>(
                     receiver: *receiver,
                 },
             ),
-            hir::DefKind::Intrinsic { .. } => continue,
+            hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => continue,
         };
         if let Some(want) = only_def {
             if def.id_text != want {
@@ -980,7 +1001,7 @@ fn collect_externals(
                     receiver: *receiver,
                 },
             ),
-            hir::DefKind::Intrinsic { .. } => continue,
+            hir::DefKind::Intrinsic { .. } | hir::DefKind::Foreign { .. } => continue,
         };
         if def.id_text == planned_def {
             continue;
