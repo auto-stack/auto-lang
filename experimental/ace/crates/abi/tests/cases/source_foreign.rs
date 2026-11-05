@@ -1940,12 +1940,11 @@ fn source_foreign_required_restore_rejects_each_missing_corrupt_or_misbound_page
             |root: &[u8],
              expected: &str,
              pages: &std::collections::BTreeMap<String, Arc<Vec<u8>>>| {
-                Session::restore_authorized(
+                Session::restore_current(
                     root,
                     expected,
                     target,
                     &caps,
-                    environment.clone(),
                     |id| pages.get(id).cloned(),
                     &mut || Ok(authority.clone()),
                 )
@@ -2298,6 +2297,12 @@ fn source_foreign_history_hits_before_lowering_and_uses_original_a2x_cache_after
 
 #[test]
 fn source_foreign_runtime_policy_pin_matches_current_sdk_material() {
+    assert_eq!(
+        ace_abi::source_provider::reviewed_add_manifest()
+            .contract_digest()
+            .unwrap(),
+        ace_abi::source_provider::ADD_CONTRACT_DIGEST
+    );
     assert_eq!(
         ace_a2x_core::sha256::sha256_hex(ace_a2x_c::runtime_source(&[]).as_bytes()),
         ace_abi::source_foreign::CERTIFICATION_C_RUNTIME_SHA256

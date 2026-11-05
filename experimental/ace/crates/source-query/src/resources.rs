@@ -346,6 +346,28 @@ impl Resources {
             serde_json::from_slice(bytes).map_err(|e| ResourceError::Decode(e.to_string()))?;
         Ok((decoded, reservation))
     }
+    /// Hold both parser scratch and the finite foreign metadata representation
+    /// before entering its strict typed codec. Caller retains the typed share
+    /// for the admitted environment's complete shared lifetime.
+    pub fn reserve_foreign_decode(&self, bytes: &[u8]) -> Result<Reservation, ResourceError> {
+        let io = bytes
+            .len()
+            .checked_mul(2)
+            .ok_or_else(|| ResourceError::Budget("foreign JSON scratch overflow".into()))?;
+        let mut reservation = self.reserve(Charge::io(io))?;
+        let bound =
+            ace_foreign_contract::codec::metadata_json_allocation(bytes, Limits::default().total)
+                .map_err(|e| match e {
+                ace_foreign_contract::codec::AllocationError::Budget(s) => ResourceError::Budget(s),
+                ace_foreign_contract::codec::AllocationError::Decode(s) => ResourceError::Decode(s),
+            })?;
+        reservation.resize(Charge {
+            io,
+            index: bound.metadata,
+            ..Charge::default()
+        })?;
+        Ok(reservation)
+    }
     /// Charge an already-owned immutable input when the consumer adopts it.
     /// Its weak identity preserves the charge across external Arc pins and
     /// snapshots, and it is charged once per account even through aliases.
@@ -383,6 +405,15 @@ pub struct Reservation {
     charge: Option<Charge>,
 }
 impl Reservation {
+    pub fn retain_foreign_metadata<T: Any + Send + Sync>(
+        mut self,
+        object: &Arc<T>,
+    ) -> Result<(), ResourceError> {
+        let mut charge = self.charge.expect("live reservation");
+        charge.io = 0;
+        self.resize(charge)?;
+        self.retain(object)
+    }
     pub fn resize(&mut self, next: Charge) -> Result<(), ResourceError> {
         let old = self.charge.expect("live reservation");
         let mut state = self.resources.0.lock().expect("resource account");
@@ -424,6 +455,28 @@ impl Drop for Reservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn foreign_metadata_profile_reserves_structured_facts_and_releases_scratch_after_admission() {
+        let resources = Resources::default();
+        let bytes = br#"{"facts":{"source":{"Typed":{"id":"manual"}},"functions":[{"form":{"Pure":{"params":["I32","Bool"],"ret":"I32"}}}]}}"#;
+        // Source-session facts are BYTE pages; foreign-interface facts are
+        // STRUCTURED objects. Accidentally sharing the former profile rejects
+        // this valid wire before its typed codec can enter.
+        assert!(ace_foreign_contract::codec::source_json_allocation(bytes, 1 << 20).is_err());
+        let allocation = resources.reserve_foreign_decode(bytes).unwrap();
+        assert!(resources.stats().current.index > 0);
+        assert_eq!(resources.stats().current.io, bytes.len() * 2);
+        let identity = Arc::new(());
+        allocation.retain_foreign_metadata(&identity).unwrap();
+        assert_eq!(resources.stats().current.io, 0);
+        let pinned = resources.stats().current.index;
+        assert!(pinned > 0);
+        let pin = identity.clone();
+        drop(identity);
+        assert_eq!(resources.stats().current.index, pinned);
+        drop(pin);
+        assert!(resources.stats().current.index < pinned);
+    }
     #[test]
     fn managed_read_reserves_before_dispatch_and_keeps_the_returned_page_charged() {
         use ace_artifacts::{codec::ChunkKind, store::LoadedArtifact};

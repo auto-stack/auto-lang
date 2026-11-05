@@ -6,6 +6,7 @@
 use crate::{FnForm, InterfaceFacts, LaneKind, PhysicalPlan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 pub const MANUAL_SCHEMA: &str = "ace.foreign.manual/1";
 pub const SOURCE_CAP: &str = "foreign.scalar";
@@ -86,7 +87,21 @@ impl SourceDecl {
     }
 
     pub fn digest(&self) -> String {
-        crate::blake3_hex(&serde_json::to_vec(self).expect("serializable declaration"))
+        // Hash validation streams the wire identity; it does not materialize
+        // or regenerate a persisted artifact during recovery.
+        struct Hash(blake3::Hasher);
+        impl std::io::Write for Hash {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.update(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut hash = Hash(blake3::Hasher::new());
+        serde_json::to_writer(&mut hash, self).expect("serializable declaration");
+        hash.0.finalize().to_hex().to_string()
     }
 
     pub fn params(&self) -> &[LaneKind] {
@@ -138,13 +153,73 @@ pub struct HostAuthority {
 /// Intentionally not serializable. Construction requires current host admission.
 #[derive(Clone, Debug)]
 pub struct AdmittedForeign {
-    manifest: ManualManifest,
-    plan: PhysicalPlan,
+    manifest: Arc<ManualManifest>,
+    plan: Arc<PhysicalPlan>,
     contract_digest: String,
     provider_digest: String,
     generation: u64,
+    declarations: Arc<Vec<SourceDecl>>,
+    declaration_digests: Arc<BTreeMap<String, String>>,
+    pages: ForeignPages,
+    allocation_identity: Arc<()>,
+}
+
+/// Immutable required content, never a persisted authorization credential.
+/// The logical page uses the canonical manual contract bytes; the physical
+/// page retains the original 937 plan codec. Provider-only rebinding shares
+/// all three interface pages and makes only a new binding record.
+#[derive(Clone, Debug)]
+pub struct ForeignPages {
+    pub logical: Arc<Vec<u8>>,
+    pub physical: Arc<Vec<u8>>,
+    pub declarations: Arc<Vec<u8>>,
+    pub binding: Arc<Vec<u8>>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeclarationPage {
+    schema: String,
     declarations: Vec<SourceDecl>,
-    declaration_digests: BTreeMap<String, String>,
+    digests: BTreeMap<String, String>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BindingPage {
+    schema: String,
+    contract: String,
+    physical: String,
+    declarations: String,
+    provider: String,
+    generation: u64,
+}
+impl ForeignPages {
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &Arc<Vec<u8>>)> {
+        [
+            ("foreign-logical", &self.logical),
+            ("foreign-physical", &self.physical),
+            ("foreign-declarations", &self.declarations),
+            ("foreign-binding", &self.binding),
+        ]
+        .into_iter()
+    }
+    fn binding(&self, host: &HostAuthority) -> Result<Arc<Vec<u8>>, String> {
+        crate::work::produce("foreign-binding-encode", || {
+            Ok(Arc::new(
+                crate::codec::encode_json_bounded(
+                    &BindingPage {
+                        schema: "ace.foreign.binding/1".into(),
+                        contract: host.contract_digest.clone(),
+                        physical: crate::blake3_hex(&self.physical),
+                        declarations: crate::blake3_hex(&self.declarations),
+                        provider: host.provider_digest.clone(),
+                        generation: host.binding_generation,
+                    },
+                    crate::codec::MAX_CODEC_BYTES,
+                )
+                .map_err(|e| e.to_string())?,
+            ))
+        })
+    }
 }
 
 fn ident(s: &str) -> bool {
@@ -266,6 +341,10 @@ impl ManualManifest {
     /// Contract identity excludes provider implementation bytes. A body-only
     /// provider edit changes the link/binding root, never the caller signature.
     pub fn contract_digest(&self) -> Result<String, String> {
+        Ok(crate::blake3_hex(&self.canonical_bytes()?))
+    }
+    fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
+        crate::work::observe("foreign-logical-encode", false);
         self.validate()?;
         let mut canonical = self.clone();
         canonical
@@ -273,9 +352,10 @@ impl ManualManifest {
             .sort_by(|a, b| a.source_name.cmp(&b.source_name));
         canonical.facts =
             serde_json::from_str(&self.facts.canonical()?).map_err(|e| e.to_string())?;
-        Ok(crate::blake3_hex(
-            &serde_json::to_vec(&canonical).map_err(|e| e.to_string())?,
-        ))
+        let bytes = crate::codec::encode_json_bounded(&canonical, crate::codec::MAX_CODEC_BYTES)
+            .map_err(|e| e.to_string())?;
+        crate::work::observe("foreign-logical-encode", true);
+        Ok(bytes)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
@@ -289,29 +369,142 @@ impl ManualManifest {
     }
 
     pub fn admit(self, host: &HostAuthority) -> Result<AdmittedForeign, String> {
-        let contract_digest = self.contract_digest()?;
+        let logical = Arc::new(self.canonical_bytes()?);
+        let contract_digest = crate::blake3_hex(&logical);
         qualify_host(&self, &contract_digest, host)?;
         let plan = PhysicalPlan::project(&self.facts)?;
+        crate::work::observe("foreign-source-project", false);
         let declarations = project_source_declarations(&self);
-        let declaration_digests = declarations
+        let declaration_digests: BTreeMap<_, _> = declarations
             .iter()
             .map(|d| (d.name.clone(), d.digest()))
             .collect();
+        crate::work::observe("foreign-source-project", true);
+        let mut pages = ForeignPages {
+            logical,
+            physical: Arc::new(crate::work::produce("foreign-plan-encode", || {
+                crate::codec::plan_codec::encode(&plan).map_err(|e| e.to_string())
+            })?),
+            declarations: Arc::new(crate::work::produce("foreign-declarations-encode", || {
+                crate::codec::encode_json_bounded(
+                    &DeclarationPage {
+                        schema: "ace.foreign.source-declarations/1".into(),
+                        declarations: declarations.clone(),
+                        digests: declaration_digests.clone(),
+                    },
+                    crate::codec::MAX_CODEC_BYTES,
+                )
+                .map_err(|e| e.to_string())
+            })?),
+            binding: Arc::default(),
+        };
+        pages.binding = pages.binding(host)?;
         Ok(AdmittedForeign {
-            declarations,
-            declaration_digests,
-            manifest: self,
-            plan,
+            declarations: Arc::new(declarations),
+            declaration_digests: Arc::new(declaration_digests),
+            manifest: Arc::new(self),
+            plan: Arc::new(plan),
             contract_digest,
             provider_digest: host.provider_digest.clone(),
             generation: host.binding_generation,
+            pages,
+            allocation_identity: Arc::new(()),
         })
     }
 }
 
 impl AdmittedForeign {
     pub fn source_declarations(&self) -> Vec<SourceDecl> {
-        self.declarations.clone()
+        self.declarations.as_ref().clone()
+    }
+    pub fn pages(&self) -> &ForeignPages {
+        &self.pages
+    }
+    pub fn allocation_identity(&self) -> &Arc<()> {
+        &self.allocation_identity
+    }
+
+    /// Admit required decoded content under NEW current authority. No parser,
+    /// interface extraction, physical projection or artifact encoder runs.
+    /// The enclosing host reserves decode/index coexistence before this call.
+    pub fn restore_pages(pages: ForeignPages, host: &HostAuthority) -> Result<Self, String> {
+        if pages
+            .iter()
+            .any(|(_, p)| p.len() > crate::codec::MAX_CODEC_BYTES)
+        {
+            return Err("foreign.restore.interface-budget".into());
+        }
+        let contract_digest = crate::blake3_hex(&pages.logical);
+        let manifest = ManualManifest::decode(&pages.logical)?;
+        qualify_host(&manifest, &contract_digest, host)?;
+        let plan = crate::codec::plan_codec::decode(&pages.physical).map_err(|e| e.to_string())?;
+        plan.validate_against(&manifest.facts)?;
+        let declared: DeclarationPage = serde_json::from_slice(&pages.declarations)
+            .map_err(|e| format!("foreign.restore.declarations: {e}"))?;
+        if declared.schema != "ace.foreign.source-declarations/1"
+            || declared.declarations.len() != manifest.declarations.len()
+            || declared.digests.len() != declared.declarations.len()
+            || declared
+                .declarations
+                .windows(2)
+                .any(|p| p[0].name >= p[1].name)
+        {
+            return Err("foreign.restore.declaration-coverage".into());
+        }
+        for declaration in &declared.declarations {
+            validate_source_declaration(&manifest, declaration)?;
+            if declared.digests.get(&declaration.name) != Some(&declaration.digest()) {
+                return Err("foreign.restore.declaration-digest".into());
+            }
+        }
+        let binding: BindingPage = serde_json::from_slice(&pages.binding)
+            .map_err(|e| format!("foreign.restore.binding: {e}"))?;
+        if binding.schema != "ace.foreign.binding/1"
+            || binding.contract != contract_digest
+            || binding.physical != crate::blake3_hex(&pages.physical)
+            || binding.declarations != crate::blake3_hex(&pages.declarations)
+            || binding.provider != host.provider_digest
+            || binding.generation != host.binding_generation
+        {
+            return Err("foreign.restore.binding-identity".into());
+        }
+        Ok(Self {
+            manifest: Arc::new(manifest),
+            plan: Arc::new(plan),
+            contract_digest,
+            provider_digest: host.provider_digest.clone(),
+            generation: host.binding_generation,
+            declarations: Arc::new(declared.declarations),
+            declaration_digests: Arc::new(declared.digests),
+            pages,
+            allocation_identity: Arc::new(()),
+        })
+    }
+
+    /// The admitted interface is immutable; a provider body edit changes only
+    /// process-local authority and its untrusted binding-dependency page.
+    pub fn rebind(&self, host: &HostAuthority) -> Result<Self, String> {
+        qualify_host(&self.manifest, &self.contract_digest, host)?;
+        let mut result = self.clone();
+        result.provider_digest = host.provider_digest.clone();
+        result.generation = host.binding_generation;
+        result.pages.binding = result.pages.binding(host)?;
+        Ok(result)
+    }
+
+    /// Validate persisted required pages against an already current admitted
+    /// environment without manufacturing authority from those pages.
+    pub fn restore_required(&self, pages: ForeignPages) -> Result<Self, String> {
+        for ((_, current), (_, persisted)) in self.pages.iter().zip(pages.iter()) {
+            if current.as_slice() != persisted.as_slice() {
+                return Err("foreign.restore.current-interface".into());
+            }
+        }
+        // The current environment already owns deeply admitted typed data.
+        // Matching byte identities reuse it; no producer or encoder is entered.
+        let mut result = self.clone();
+        result.pages = pages;
+        Ok(result)
     }
     pub fn declaration_digest(&self, name: &str) -> Option<&str> {
         self.declaration_digests.get(name).map(String::as_str)
@@ -363,6 +556,56 @@ impl AdmittedForeign {
             })
             .collect()
     }
+}
+
+fn validate_source_declaration(
+    manifest: &ManualManifest,
+    declaration: &SourceDecl,
+) -> Result<(), String> {
+    declaration.validate()?;
+    let entry = manifest
+        .declarations
+        .iter()
+        .find(|d| d.source_name == declaration.name)
+        .ok_or("foreign.restore.unknown-declaration")?;
+    let function = manifest
+        .facts
+        .function(&entry.symbol)
+        .ok_or("foreign.restore.logical-symbol")?;
+    let logical_symbol = declaration
+        .logical
+        .strip_prefix(&manifest.facts.logical)
+        .and_then(|s| s.strip_prefix('/'));
+    let expected_effects = manifest.facts.effects.iter().filter(|e| {
+        !e.starts_with("pure:") || e.strip_prefix("pure:") == Some(entry.symbol.as_str())
+    });
+    let valid_set = |actual: &[String], expected: &[String]| {
+        actual.len() == expected.len()
+            && actual.windows(2).all(|w| w[0] <= w[1])
+            && actual.iter().all(|a| {
+                actual.iter().filter(|x| *x == a).count()
+                    == expected.iter().filter(|x| *x == a).count()
+            })
+    };
+    if declaration.provider != manifest.provider
+        || logical_symbol != Some(entry.symbol.as_str())
+        || declaration.content_version != manifest.facts.content_version
+        || declaration.review_id != manifest.review_id
+        || declaration.header_digest != manifest.header_digest
+        || declaration.physical_table_digest != manifest.physical_table_digest
+        || declaration.context_symbol != entry.context_symbol
+        || &declaration.function != function
+        || declaration.effects.len() != expected_effects.clone().count()
+        || !declaration.effects.windows(2).all(|w| w[0] <= w[1])
+        || !declaration.effects.iter().all(|e| {
+            declaration.effects.iter().filter(|a| *a == e).count()
+                == expected_effects.clone().filter(|a| *a == e).count()
+        })
+        || !valid_set(&declaration.capabilities, &manifest.facts.capabilities)
+    {
+        return Err("foreign.restore.declaration-logical-mismatch".into());
+    }
+    Ok(())
 }
 
 fn project_source_declarations(manifest: &ManualManifest) -> Vec<SourceDecl> {
@@ -491,6 +734,157 @@ mod tests {
             binding_generation: 7,
         };
         (m, host)
+    }
+
+    #[test]
+    fn required_interface_recovers_without_any_producer_and_rebind_shares_interface() {
+        use std::sync::Mutex;
+        let (manifest, host) = fixture();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let captured = seen.clone();
+        let environment = crate::work::with_observer(
+            Arc::new(move |stage, produced| {
+                captured.lock().unwrap().push((stage, produced));
+            }),
+            || manifest.admit(&host),
+        )
+        .unwrap();
+        for stage in [
+            "foreign-logical-encode",
+            "foreign-plan-project",
+            "foreign-source-project",
+            "foreign-plan-encode",
+            "foreign-declarations-encode",
+            "foreign-binding-encode",
+        ] {
+            assert!(
+                seen.lock().unwrap().contains(&(stage, false)),
+                "{stage} missing attempt"
+            );
+            assert!(
+                seen.lock().unwrap().contains(&(stage, true)),
+                "{stage} missing output"
+            );
+        }
+        let pages = environment.pages().clone();
+        drop(environment);
+        let restored = crate::work::with_observer(
+            Arc::new(|stage, _| {
+                panic!("recovery entered producer {stage}");
+            }),
+            || AdmittedForeign::restore_pages(pages.clone(), &host),
+        )
+        .unwrap();
+        assert_eq!(
+            restored.declaration_digest("foreign_add"),
+            Some(restored.source_declarations()[0].digest().as_str())
+        );
+        let mut changed = host.clone();
+        changed.provider_digest = "d".repeat(64);
+        changed.binding_generation += 1;
+        seen.lock().unwrap().clear();
+        let captured = seen.clone();
+        let rebound = crate::work::with_observer(
+            Arc::new(move |stage, produced| {
+                captured.lock().unwrap().push((stage, produced));
+            }),
+            || restored.rebind(&changed),
+        )
+        .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                ("foreign-binding-encode", false),
+                ("foreign-binding-encode", true)
+            ]
+        );
+        assert!(Arc::ptr_eq(&restored.plan, &rebound.plan));
+        assert!(Arc::ptr_eq(&restored.manifest, &rebound.manifest));
+        for (which, before) in pages.iter().take(3) {
+            let after = rebound
+                .pages()
+                .iter()
+                .find(|(name, _)| *name == which)
+                .unwrap()
+                .1;
+            assert!(Arc::ptr_eq(before, after));
+        }
+        assert!(!Arc::ptr_eq(
+            &restored.pages.binding,
+            &rebound.pages.binding
+        ));
+        assert!(AdmittedForeign::restore_pages(rebound.pages.clone(), &changed).is_ok());
+        assert!(AdmittedForeign::restore_pages(pages, &changed).is_err());
+        changed.capabilities.clear();
+        assert!(restored.rebind(&changed).is_err());
+        assert!(AdmittedForeign::restore_pages(rebound.pages.clone(), &changed).is_err());
+    }
+
+    #[test]
+    fn required_interface_rejects_rehashed_slot_declaration_and_binding_forgery() {
+        let (manifest, host) = fixture();
+        let environment = manifest.admit(&host).unwrap();
+        for axis in 0..10 {
+            let mut pages = environment.pages.clone();
+            let mut plan = environment.plan.as_ref().clone();
+            if axis < 6 {
+                let crate::PhysForm::Pure { params, ret } = &mut plan.functions[0].form else {
+                    unreachable!()
+                };
+                match axis {
+                    0 => params[0].lane = crate::PhysLane::BoolU8,
+                    1 => params[0].slot = crate::SlotClass::GpRegister { index: 1 },
+                    2 => params[0].stack_bank = Some(crate::lane::SlotBank::Gp),
+                    3 => params[0].name = "p1".into(),
+                    4 => *ret = crate::PhysRet::RaxBoolU8,
+                    5 => {
+                        params.pop();
+                    }
+                    _ => unreachable!(),
+                }
+                pages.physical = Arc::new(crate::codec::plan_codec::encode(&plan).unwrap());
+                pages.binding = pages.binding(&host).unwrap();
+            } else if axis < 9 {
+                let mut declared: DeclarationPage =
+                    serde_json::from_slice(&pages.declarations).unwrap();
+                match axis {
+                    6 => declared.declarations[0].header_digest = "e".repeat(64),
+                    7 => declared.declarations[0].effects.clear(),
+                    8 => declared.declarations[0].logical = "different/c_add".into(),
+                    _ => unreachable!(),
+                }
+                declared.digests.insert(
+                    declared.declarations[0].name.clone(),
+                    declared.declarations[0].digest(),
+                );
+                pages.declarations = Arc::new(serde_json::to_vec(&declared).unwrap());
+                pages.binding = pages.binding(&host).unwrap();
+            } else {
+                let mut binding: BindingPage = serde_json::from_slice(&pages.binding).unwrap();
+                binding.generation += 1;
+                pages.binding = Arc::new(serde_json::to_vec(&binding).unwrap());
+            }
+            assert!(
+                AdmittedForeign::restore_pages(pages, &host).is_err(),
+                "axis {axis}"
+            );
+        }
+        for stage in ["logical", "physical", "declarations", "binding"] {
+            let mut pages = environment.pages.clone();
+            let page = match stage {
+                "logical" => &mut pages.logical,
+                "physical" => &mut pages.physical,
+                "declarations" => &mut pages.declarations,
+                _ => &mut pages.binding,
+            };
+            let mut wire: serde_json::Value = serde_json::from_slice(page).unwrap();
+            wire["safe"] = true.into();
+            *page = Arc::new(serde_json::to_vec(&wire).unwrap());
+            assert!(
+                AdmittedForeign::restore_pages(pages, &host).is_err(),
+                "{stage}"
+            );
+        }
     }
 
     #[test]

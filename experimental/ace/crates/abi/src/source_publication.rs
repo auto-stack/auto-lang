@@ -229,6 +229,53 @@ impl Session {
         )?;
         Ok(restored)
     }
+    /// Production recovery accepts current HOST authority, not a freshly
+    /// projected environment. All logical/physical/declaration/binding data
+    /// comes from the accepted required closure and remains untrusted until
+    /// deep validation and the final fresh qualification below.
+    pub fn restore_stored_current(
+        store: &ManagedStore,
+        stored: &Stored,
+        target: Target,
+        capabilities: &[String],
+        current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
+    ) -> Result<Self, String> {
+        let authority = current()?;
+        let restored =
+            Self::restore_stored_host(store, stored, target, capabilities, authority.foreign)?;
+        qualify(
+            restored.front.foreign(),
+            &restored.runtime_identity,
+            target,
+            current,
+        )?;
+        Ok(restored)
+    }
+    pub fn restore_current(
+        root: &[u8],
+        expected: &str,
+        target: Target,
+        capabilities: &[String],
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
+    ) -> Result<Self, String> {
+        let authority = current()?;
+        let restored = Self::restore_host(
+            root,
+            expected,
+            target,
+            capabilities,
+            authority.foreign,
+            read,
+        )?;
+        qualify(
+            restored.front.foreign(),
+            &restored.runtime_identity,
+            target,
+            current,
+        )?;
+        Ok(restored)
+    }
     pub fn run_authorized(
         &mut self,
         directory: &Path,

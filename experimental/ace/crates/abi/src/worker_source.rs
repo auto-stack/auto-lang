@@ -176,7 +176,6 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     } else {
         Target::C
     };
-    let policy = provider::reviewed_add_manifest();
     let mut report = SourceReport {
         diagnostics: vec![],
         schema: REPORT_SCHEMA.into(),
@@ -191,7 +190,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         compiler: target.identity(),
         source_sha256: String::new(),
         c_toolchain: String::new(),
-        contract_digest: policy.contract_digest().map_err(|e| err("policy", e))?,
+        contract_digest: provider::ADD_CONTRACT_DIGEST.into(),
         provider_digest: String::new(),
         header_digest: provider::hash(provider::HEADER),
         physical_table_digest: provider::hash(provider::TABLE),
@@ -221,12 +220,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.source_sha256 = ace_a2x_core::sha256::sha256_hex(deck.source.as_bytes());
     // Reject unauthorized ABI/declaration candidates before compiling/linking
     // or calling any C provider. No candidate supplies this policy digest.
-    if let Err(e) = provider::admit(
-        deck.manifest.clone(),
-        &provider::hash(b"preflight"),
-        1,
-        &deck.capabilities,
-    ) {
+    if let Err(e) = provider::qualify_candidate(&deck.manifest, &deck.capabilities) {
         report.diagnostic_stage = "resolve".into();
         let code = e.split(':').next().unwrap_or("foreign.authority");
         return Ok(output(
@@ -257,13 +251,6 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         Some(p) => p.binding_generation,
         None => 1,
     };
-    let environment = provider::admit(
-        deck.manifest,
-        &report.provider_digest,
-        binding_generation,
-        &deck.capabilities,
-    )
-    .map_err(|e| err("foreign.authority", e))?;
     let (mut session, edit) = if let Some(previous) = &previous {
         if previous.module != deck.module {
             return Err(err(
@@ -273,22 +260,15 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         }
         // R admits the accepted old binding first. A different requested body
         // then uses the explicit provider transaction, never a cold fallback.
-        let restore_environment = if previous.provider_bias != deck.provider_bias {
+        let restore_digest = if previous.provider_bias != deck.provider_bias {
             let (old_bytes, old_hit) =
                 prepare_provider(&store, Path::new(&req.store_root), previous.provider_bias)?;
             provider_productions += (!old_hit) as u64;
-            provider::admit(
-                provider::reviewed_add_manifest(),
-                &provider::hash(&old_bytes),
-                previous.binding_generation,
-                &deck.capabilities,
-            )
-            .map_err(|e| err("foreign.authority", e))?
+            provider::hash(&old_bytes)
         } else {
-            environment.clone()
+            report.provider_digest.clone()
         };
-        let restore_digest = restore_environment.provider_digest().to_string();
-        let restore_generation = restore_environment.generation();
+        let restore_generation = previous.binding_generation;
         let mut restore_current = || {
             Ok(CurrentAuthority {
                 foreign: provider::authority(
@@ -300,25 +280,35 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 emitter: target.identity(),
             })
         };
-        let mut restored = Session::restore_stored_authorized(
+        let mut restored = Session::restore_stored_current(
             &store,
             &previous.stored,
             target,
             &deck.capabilities,
-            restore_environment,
             &mut restore_current,
         )
         .map_err(|e| err("restore", e))?;
         let changed_source = restored.frontend().source() != deck.source;
         let changed_provider = previous.provider_bias != deck.provider_bias;
         let result = if changed_provider {
+            let authority = provider::authority(
+                &report.provider_digest,
+                binding_generation,
+                &deck.capabilities,
+            )
+            .map_err(|e| err("foreign.authority", e))?;
+            let (environment, interface_work) = restored
+                .frontend()
+                .work()
+                .observe_foreign(|| restored.frontend().foreign().rebind(&authority));
+            let environment = environment.map_err(|e| err("foreign.authority", e))?;
             restored
                 .prepare_foreign_source_checked(
                     environment,
                     Arc::new(bytes.clone()),
                     changed_source.then_some(deck.source.as_str()),
                 )
-                .map(Edit::Foreign)
+                .map(|candidate| Edit::Foreign(candidate.include_interface_work(interface_work)))
         } else if changed_source {
             restored
                 .prepare_source_checked(&deck.source)
@@ -345,6 +335,15 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         (restored, edit)
     } else {
         let mut observation = ace_source_query::frontend::ColdObservation::default();
+        let (environment, interface_work) = observation.work.observe_foreign(|| {
+            provider::admit(
+                deck.manifest,
+                &report.provider_digest,
+                binding_generation,
+                &deck.capabilities,
+            )
+        });
+        let environment = environment.map_err(|e| err("foreign.authority", e))?;
         let (front, checked) = match Frontend::cold_observed(
             &deck.source,
             &deck.module,
@@ -367,11 +366,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             }
             Err(e) => return Err(err("source", e)),
         };
-        (
+        let session =
             Session::from_frontend_stored(front, checked, Arc::new(bytes.clone()), target, &store)
-                .map_err(|e| err("source", e))?,
-            Edit::Current,
-        )
+                .map_err(|e| err("source", e))?;
+        for work in interface_work {
+            work.accept();
+        }
+        (session, Edit::Current)
     };
     let fm = session.frontend().meter();
     let tm = session.meter();

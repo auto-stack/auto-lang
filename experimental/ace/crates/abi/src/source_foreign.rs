@@ -12,7 +12,7 @@ use ace_artifacts::{
     schema::{LayerCoverage, LayerSpec, Regeneration},
     store::{ManagedStore, PutRequest},
 };
-use ace_foreign_contract::manual::AdmittedForeign;
+use ace_foreign_contract::manual::{AdmittedForeign, ForeignPages, HostAuthority};
 use ace_source_query::frontend::{
     Candidate as SourceCandidate, ForeignCandidate as SourceForeignCandidate, Frontend,
 };
@@ -204,6 +204,12 @@ pub struct ForeignCandidate {
     base: u64,
     work: Vec<Work>,
 }
+impl ForeignCandidate {
+    pub fn include_interface_work(mut self, work: Vec<Work>) -> Self {
+        self.work.extend(work);
+        self
+    }
+}
 pub struct Snapshot {
     pub root: Vec<u8>,
     pub digest: String,
@@ -358,6 +364,36 @@ impl Session {
         target: Target,
         capabilities: &[String],
         environment: AdmittedForeign,
+    ) -> Result<Self, String> {
+        Self::restore_stored_input(
+            store,
+            stored,
+            target,
+            capabilities,
+            EnvironmentInput::Admitted(environment),
+        )
+    }
+    pub fn restore_stored_host(
+        store: &ManagedStore,
+        stored: &Stored,
+        target: Target,
+        capabilities: &[String],
+        host: HostAuthority,
+    ) -> Result<Self, String> {
+        Self::restore_stored_input(
+            store,
+            stored,
+            target,
+            capabilities,
+            EnvironmentInput::Host(host),
+        )
+    }
+    fn restore_stored_input(
+        store: &ManagedStore,
+        stored: &Stored,
+        target: Target,
+        capabilities: &[String],
+        environment: EnvironmentInput,
     ) -> Result<Self, String> {
         let resources = Resources::default();
         let root = resources
@@ -812,6 +848,12 @@ impl Session {
         }
         pages.insert(self.runtime_page_id.clone(), self.runtime.clone());
         pages.insert(provider_id.into(), provider.clone());
+        let foreign = ForeignRoot::from_pages(environment.pages());
+        for (stage, page) in environment.pages().iter() {
+            let digest = hash(page);
+            page_owners.insert(digest.clone(), stage.into());
+            pages.insert(digest, page.clone());
+        }
         for page in pages.values() {
             resources
                 .adopt(page, Charge::resident(page.capacity() + 40))
@@ -828,6 +870,7 @@ impl Session {
             provider_digest: environment.provider_digest().into(),
             binding_generation: environment.generation(),
             contract: environment.contract_digest().into(),
+            foreign,
             functions,
         };
         let size =
@@ -866,7 +909,25 @@ impl Session {
             expected,
             target,
             capabilities,
-            environment,
+            EnvironmentInput::Admitted(environment),
+            read,
+            Resources::default(),
+        )
+    }
+    pub fn restore_host(
+        root: &[u8],
+        expected: &str,
+        target: Target,
+        capabilities: &[String],
+        host: HostAuthority,
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+    ) -> Result<Self, String> {
+        Self::restore_with_resources(
+            root,
+            expected,
+            target,
+            capabilities,
+            EnvironmentInput::Host(host),
             read,
             Resources::default(),
         )
@@ -876,7 +937,7 @@ impl Session {
         expected: &str,
         target: Target,
         capabilities: &[String],
-        environment: AdmittedForeign,
+        environment: EnvironmentInput,
         mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
         resources: Resources,
     ) -> Result<Self, String> {
@@ -888,12 +949,22 @@ impl Session {
         }
         let (root, _root_heap): (Root, _) =
             resources.decode_json(root).map_err(|e| e.to_string())?;
+        let (contract, provider_digest, generation) = match &environment {
+            EnvironmentInput::Admitted(e) => {
+                (e.contract_digest(), e.provider_digest(), e.generation())
+            }
+            EnvironmentInput::Host(h) => (
+                h.contract_digest.as_str(),
+                h.provider_digest.as_str(),
+                h.binding_generation,
+            ),
+        };
         if root.schema != SCHEMA
             || root.target != target
             || root.target_identity != target.identity()
-            || root.provider_digest != environment.provider_digest()
-            || root.binding_generation != environment.generation()
-            || root.contract != environment.contract_digest()
+            || root.provider_digest != provider_digest
+            || root.binding_generation != generation
+            || root.contract != contract
             || root.runtime_identity != runtime_identity(target, &root.runtime)
         {
             return Err("foreign.restore.identity".into());
@@ -911,6 +982,43 @@ impl Session {
                 .adopt(&bytes, Charge::resident(bytes.capacity() + 40))
                 .map_err(|e| e.to_string())?;
             Ok(bytes)
+        };
+        let mut environment_pages = Vec::new();
+        for (stage, id) in root.foreign.iter() {
+            let ticket = work.begin("*", stage, Phase::Recovery);
+            let page = required(id)?;
+            work.io("*", stage, page.len() as u64, 0);
+            environment_pages.push(page);
+            ticket.accept();
+        }
+        let [logical, physical, declarations, binding]: [Arc<Vec<u8>>; 4] = environment_pages
+            .try_into()
+            .map_err(|_| "foreign.restore.interface-coverage")?;
+        let pages = ForeignPages {
+            logical,
+            physical,
+            declarations,
+            binding,
+        };
+        let environment = match environment {
+            EnvironmentInput::Admitted(current) => current.restore_required(pages)?,
+            EnvironmentInput::Host(host) => {
+                let mut allocations = Vec::new();
+                for (_, page) in pages.iter() {
+                    allocations.push(
+                        resources
+                            .reserve_foreign_decode(page)
+                            .map_err(|e| e.to_string())?,
+                    );
+                }
+                let admitted = AdmittedForeign::restore_pages(pages, &host)?;
+                for allocation in allocations {
+                    allocation
+                        .retain_foreign_metadata(admitted.allocation_identity())
+                        .map_err(|e| e.to_string())?;
+                }
+                admitted
+            }
         };
         let provider = required(&root.provider)?;
         let qualification = work.begin("*", "restore-provider", Phase::Recovery);
@@ -982,7 +1090,7 @@ impl Session {
             id: IDS.fetch_add(1, Ordering::Relaxed),
             generation: 0,
             meter: Meter {
-                restore_pages: count + 3,
+                restore_pages: count + 7,
                 ..Meter::default()
             },
             per_function: BTreeMap::new(),
@@ -1229,7 +1337,39 @@ struct Root {
     provider_digest: String,
     binding_generation: u64,
     contract: String,
+    foreign: ForeignRoot,
     functions: BTreeMap<String, String>,
+}
+enum EnvironmentInput {
+    Admitted(AdmittedForeign),
+    Host(HostAuthority),
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForeignRoot {
+    logical: String,
+    physical: String,
+    declarations: String,
+    binding: String,
+}
+impl ForeignRoot {
+    fn from_pages(p: &ForeignPages) -> Self {
+        Self {
+            logical: hash(&p.logical),
+            physical: hash(&p.physical),
+            declarations: hash(&p.declarations),
+            binding: hash(&p.binding),
+        }
+    }
+    fn iter(&self) -> impl Iterator<Item = (&'static str, &str)> {
+        [
+            ("restore-foreign-logical", self.logical.as_str()),
+            ("restore-foreign-physical", self.physical.as_str()),
+            ("restore-foreign-declarations", self.declarations.as_str()),
+            ("restore-foreign-binding", self.binding.as_str()),
+        ]
+        .into_iter()
+    }
 }
 fn add(a: &mut Meter, b: Meter) {
     a.mir_attempts += b.mir_attempts;

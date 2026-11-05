@@ -38,6 +38,31 @@ pub struct Row {
     pub totals: Totals,
 }
 impl Ledger {
+    pub fn observe_foreign<T>(&self, f: impl FnOnce() -> T) -> (T, Vec<Work>) {
+        let outputs: Arc<Mutex<Vec<Work>>> = Arc::default();
+        let captured = outputs.clone();
+        let ledger = self.clone();
+        let observer = Arc::new(move |stage, produced| {
+            let mut outputs = captured.lock().expect("foreign work");
+            if produced {
+                if let Some(output) = outputs
+                    .iter_mut()
+                    .rev()
+                    .find(|w| w.stage == stage && w.produced == 0)
+                {
+                    output.produced(1);
+                }
+            } else {
+                outputs.push(ledger.begin("*", stage, Phase::Production));
+            }
+        });
+        let result = ace_foreign_contract::work::with_observer(observer, f);
+        let outputs = match Arc::try_unwrap(outputs) {
+            Ok(m) => m.into_inner().expect("foreign work"),
+            Err(_) => unreachable!("observer released"),
+        };
+        (result, outputs)
+    }
     /// Observe the existing core producer hooks without resetting any enclosing
     /// test window. The returned tickets belong to the source candidate.
     pub fn observe_core<T>(&self, f: impl FnOnce() -> T) -> (T, Vec<Work>) {

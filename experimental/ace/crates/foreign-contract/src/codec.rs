@@ -139,6 +139,22 @@ pub fn source_json_allocation(
     bytes: &[u8],
     limit: usize,
 ) -> Result<JsonAllocation, AllocationError> {
+    json_allocation(bytes, limit, true)
+}
+/// The finite manual-interface/physical-plan/binding wire contains no payload
+/// byte arrays: e.g. `facts` and `source` are structured objects here. Keep
+/// that profile separate from the source-session's byte-valued `facts` field.
+pub fn metadata_json_allocation(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<JsonAllocation, AllocationError> {
+    json_allocation(bytes, limit, false)
+}
+fn json_allocation(
+    bytes: &[u8],
+    limit: usize,
+    source_fields: bool,
+) -> Result<JsonAllocation, AllocationError> {
     use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Visitor};
     #[derive(Clone, Copy)]
     enum Mode {
@@ -151,6 +167,7 @@ pub fn source_json_allocation(
         result: JsonAllocation,
         limit: usize,
         exhausted: bool,
+        source_fields: bool,
     }
     impl Bound {
         fn add(&mut self, mode: Mode, n: usize, factor: usize) -> Result<(), String> {
@@ -326,8 +343,12 @@ pub fn source_json_allocation(
                     )
                     .map_err(A::Error::custom)?;
                 map.next_value_seed(Seed {
+                    mode: if self.bound.source_fields {
+                        mode
+                    } else {
+                        Mode::Normal
+                    },
                     bound: self.bound,
-                    mode,
                     factor: self.factor,
                 })?;
             }
@@ -338,6 +359,7 @@ pub fn source_json_allocation(
         result: JsonAllocation::default(),
         limit,
         exhausted: false,
+        source_fields,
     };
     let mut d = serde_json::Deserializer::from_slice(bytes);
     if let Err(e) = (Seed {

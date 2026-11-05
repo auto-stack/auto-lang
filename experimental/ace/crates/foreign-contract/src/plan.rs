@@ -169,6 +169,7 @@ impl PhysicalPlan {
     /// frozen domain. Named rejections: unknown domain fields, forms the
     /// candidate ABI cannot spell.
     pub fn project(facts: &InterfaceFacts) -> Result<PhysicalPlan, String> {
+        crate::work::observe("foreign-plan-project", false);
         facts.validate()?;
         let mut functions = Vec::new();
         for f in &facts.functions {
@@ -225,6 +226,7 @@ impl PhysicalPlan {
             functions,
         };
         plan.validate()?;
+        crate::work::observe("foreign-plan-project", true);
         Ok(plan)
     }
 
@@ -257,6 +259,102 @@ impl PhysicalPlan {
 
     pub fn function(&self, symbol: &str) -> Option<&PhysFn> {
         self.functions.iter().find(|f| f.symbol == symbol)
+    }
+
+    /// Check a decoded plan against its logical input without projecting or
+    /// allocating a replacement plan. Every argument position, bank, lane,
+    /// context/out edge and return form is checked, including stack arguments.
+    pub fn validate_against(&self, facts: &InterfaceFacts) -> Result<(), String> {
+        self.validate()?;
+        facts.validate()?;
+        if self.functions.len() != facts.functions.len() {
+            return Err("plan logical function coverage".into());
+        }
+        fn parameter(p: &PhysParam, position: usize, name: &str, lane: PhysLane) -> bool {
+            let bank = lane.slot_class();
+            let (slot, stack_bank) = if position < ARG_SLOTS {
+                (
+                    match bank {
+                        SlotBank::Gp => SlotClass::GpRegister { index: position },
+                        SlotBank::Fp => SlotClass::FpRegister { index: position },
+                    },
+                    None,
+                )
+            } else {
+                (
+                    SlotClass::Stack {
+                        index: position - ARG_SLOTS,
+                    },
+                    Some(bank),
+                )
+            };
+            p.name == name && p.lane == lane && p.slot == slot && p.stack_bank == stack_bank
+        }
+        for physical in &self.functions {
+            let logical = facts
+                .function(&physical.symbol)
+                .ok_or("plan unknown logical symbol")?;
+            let valid = match (&physical.form, &logical.form) {
+                (
+                    PhysForm::Pure {
+                        params: actual,
+                        ret: actual_ret,
+                    },
+                    FnForm::Pure { params, ret },
+                ) => {
+                    *actual_ret == ret_lane(*ret)
+                        && actual.len() == params.len()
+                        && actual
+                            .iter()
+                            .zip(params)
+                            .enumerate()
+                            .all(|(i, (p, k))| parameter(p, i, &format!("p{i}"), k.physical()))
+                }
+                (
+                    PhysForm::Fallible {
+                        ctx: actual_ctx,
+                        params: actual,
+                        outs: actual_outs,
+                    },
+                    FnForm::Fallible { ctx, params, outs },
+                ) => {
+                    let offset = usize::from(ctx.is_some());
+                    actual_ctx == ctx
+                        && actual.len() == offset + params.len() + outs.len()
+                        && actual_outs.len() == outs.len()
+                        && actual_outs
+                            .iter()
+                            .zip(outs)
+                            .all(|(a, k)| *a == k.physical())
+                        && (offset == 0 || parameter(&actual[0], 0, "ctx", PhysLane::I64))
+                        && params.iter().enumerate().all(|(i, k)| {
+                            parameter(
+                                &actual[offset + i],
+                                offset + i,
+                                &format!("p{i}"),
+                                k.physical(),
+                            )
+                        })
+                        && outs.iter().enumerate().all(|(i, k)| {
+                            let position = offset + params.len() + i;
+                            parameter(
+                                &actual[position],
+                                position,
+                                &format!("out{i}_ptr"),
+                                k.physical(),
+                            )
+                        })
+                }
+                _ => false,
+            };
+            if !valid {
+                return Err(format!(
+                    "plan logical/physical shape mismatch: {}",
+                    physical.symbol
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Canonical JSON (functions sorted) + digest.
@@ -384,6 +482,57 @@ mod tests {
         let mut plan = PhysicalPlan::project(&facts_8lanes()).unwrap();
         plan.target = "aarch64-linux".into();
         assert!(plan.validate().unwrap_err().contains("target"));
+    }
+
+    #[test]
+    fn decoded_plan_checks_stack_fp_context_and_out_edges_without_projecting() {
+        let facts = facts_8lanes();
+        let plan = PhysicalPlan::project(&facts).unwrap();
+        crate::work::with_observer(
+            std::sync::Arc::new(|stage, _| panic!("validation produced {stage}")),
+            || plan.validate_against(&facts),
+        )
+        .unwrap();
+        for axis in 0..3 {
+            let mut forged = plan.clone();
+            let PhysForm::Pure { params, .. } = &mut forged.functions[0].form else {
+                unreachable!()
+            };
+            match axis {
+                0 => params[4].slot = SlotClass::FpRegister { index: 0 },
+                1 => params[4].stack_bank = Some(SlotBank::Gp),
+                _ => params[7].slot = SlotClass::Stack { index: 2 },
+            }
+            assert!(forged.validate_against(&facts).is_err());
+        }
+        let mut facts = facts;
+        facts.functions[0].form = FnForm::Fallible {
+            ctx: Some(false),
+            params: vec![LaneKind::Bool; 5],
+            outs: vec![LaneKind::I32],
+        };
+        facts.functions[0].error_model = Some(crate::ErrorModel {
+            kind: "status-i32".into(),
+            codes: vec![(-1, "failure".into())],
+        });
+        let plan = PhysicalPlan::project(&facts).unwrap();
+        plan.validate_against(&facts).unwrap();
+        for axis in 0..5 {
+            let mut forged = plan.clone();
+            let PhysForm::Fallible { ctx, params, outs } = &mut forged.functions[0].form else {
+                unreachable!()
+            };
+            match axis {
+                0 => *ctx = Some(true),
+                1 => params[0].lane = PhysLane::BoolU8,
+                2 => params[6].name = "p5".into(),
+                3 => outs[0] = PhysLane::BoolU8,
+                _ => {
+                    params.remove(0);
+                }
+            }
+            assert!(forged.validate_against(&facts).is_err(), "axis {axis}");
+        }
     }
 }
 

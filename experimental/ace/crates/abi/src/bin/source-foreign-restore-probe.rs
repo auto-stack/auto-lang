@@ -117,7 +117,6 @@ fn run() -> Result<serde_json::Value, String> {
         .collect(),
         binding_generation: 1,
     };
-    let environment = manifest.admit(&host)?;
     let store = ace_artifacts::store::ManagedStore::open_existing(&request.store)
         .map_err(|e| e.to_string())?;
     let mut current = || {
@@ -127,17 +126,23 @@ fn run() -> Result<serde_json::Value, String> {
             emitter: request.target.identity(),
         })
     };
-    let mut session = Session::restore_stored_authorized(
-        &store,
-        &request.stored,
-        request.target,
-        &[SOURCE_CAP.into()],
-        environment,
-        &mut current,
-    )?;
+    let observation = ace_source_query::work::Ledger::default();
+    let (restored_session, interface_work) = observation.observe_foreign(|| {
+        Session::restore_stored_current(
+            &store,
+            &request.stored,
+            request.target,
+            &[SOURCE_CAP.into()],
+            &mut current,
+        )
+    });
+    let mut session = restored_session?;
+    if session.frontend().foreign().manifest() != &manifest {
+        return Err("source938.current-contract".into());
+    }
     let r = session.meter();
     let f = session.frontend().meter();
-    let restored = serde_json::json!({"target_production":r.mir_attempts+r.native_attempts+r.c_attempts+r.page_encodes,
+    let restored = serde_json::json!({"interface_production":interface_work.len(),"target_production":r.mir_attempts+r.native_attempts+r.c_attempts+r.page_encodes,
         "whole_parse":f.whole_parse_attempts,"body_parse":f.body_parse_attempts,"hir":f.hir_attempts,
         "page_encode":f.page_encode_attempts,"solver":session.frontend().query_counters().solver_runs});
     let mut active = host.clone();

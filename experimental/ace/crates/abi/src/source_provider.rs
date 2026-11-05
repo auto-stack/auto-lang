@@ -6,6 +6,8 @@ use ace_foreign_contract::{
 pub const REVIEW: &str = "plan938-independent-provider-v1";
 pub const HEADER: &[u8] = include_bytes!("../cside/source_foreign938.h");
 pub const TABLE: &[u8] = include_bytes!("../cside/source_foreign938.contract");
+pub const ADD_CONTRACT_DIGEST: &str =
+    "702b82e7fb398a265182605b2aad5a85c076645691ebd15f1c8e8f599c24854c";
 pub fn hash(b: &[u8]) -> String {
     blake3::hash(b).to_hex().to_string()
 }
@@ -62,7 +64,7 @@ pub fn authority(
     let policy = reviewed_add_manifest();
     Ok(HostAuthority {
         review_id: REVIEW.into(),
-        contract_digest: policy.contract_digest()?,
+        contract_digest: ADD_CONTRACT_DIGEST.into(),
         provider: policy.provider,
         provider_digest: provider_digest.into(),
         header_digest: hash(HEADER),
@@ -72,5 +74,22 @@ pub fn authority(
         available_symbols: ["provider_add".into()].into_iter().collect(),
         binding_generation: generation,
     })
+}
+pub fn qualify_candidate(candidate: &ManualManifest, caps: &[String]) -> Result<(), String> {
+    candidate.validate()?;
+    if candidate != &reviewed_add_manifest() {
+        return Err(
+            "foreign.authority: candidate is outside the independent review registry".into(),
+        );
+    }
+    if candidate
+        .facts
+        .capabilities
+        .iter()
+        .any(|c| !caps.contains(c))
+    {
+        return Err("foreign.capability: current host denies source FFI".into());
+    }
+    Ok(())
 }
 pub const EVENT_RUNTIME:&str="#include <stdio.h>\nvoid source938_event(const char *name) { fprintf(stderr, \"source938.call=%s\\n\",name); fflush(stderr); }\n";
