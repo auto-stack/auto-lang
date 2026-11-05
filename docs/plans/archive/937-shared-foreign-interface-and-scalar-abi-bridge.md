@@ -198,6 +198,8 @@ stage: merge | PLAN-937:r1 | outcome:pass | prepared: 基线reviewed 8b52a7157+S
 
 cleaned: wt-guard clean×2（auto-lang/auto-down）→ worktree移除、plan-937-dev删除、组目录rmdir；D:/autostack/plan-artifacts/plan-937/ 整目录删除（证据已折§7.1/§9；探针conv.c为一次性位型实证，结论已入§7.1与spec）；.retention/policy.json 刷新（auto-lang/PLAN-937 archived/deleted/no holds）。批量回归到期核对：.last-batch-regression.json last_covered=925@2026-11-03T14:11Z——937%5≠0 且回执<48h，未到期（下次到期由后续%5计划或48h+merge触发）。生产工件：本仓无部署进程/发行二进制/网页包需重建（ACE为experimental；显式观察，非遗漏）。
 
+stage: goal | plan_id: PLAN-937 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed, cleaned) | commit: fa35943ac | next: done
+
 ## 10. 待澄清事项
 
 没有需再次批准的旧ABI扩容或预算放宽。crate提取/re-export及完整错误转换由T-02证明，不能先默认成功；若必须修改929的共享source/session才能做D1，停依赖任务并修订归包，保937可独立边界，不能把未交付主目标塞后继。原797候选profile不升版。后续执行/合入由用户另行指定。
