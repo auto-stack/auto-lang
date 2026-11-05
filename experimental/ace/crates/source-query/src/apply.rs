@@ -381,6 +381,7 @@ pub fn apply_facts_to_resolved(
         .collect::<Result<_, _>>()?;
 
     let mut out = Vec::with_capacity(names.len());
+    let catalog = session.catalog(program).map_err(FactsApplyError::Query)?;
     for name in names {
         let ast_body = program
             .items
@@ -401,12 +402,12 @@ pub fn apply_facts_to_resolved(
         };
 
         let sig = session
-            .fn_sig(program, &name)
+            .fn_sig_with(program, &catalog, &name)
             .map_err(FactsApplyError::Query)?;
         apply_fn_sig(rfn, &sig.facts)?;
 
         let body = session
-            .infer_body(program, &name)
+            .infer_body_with(program, &catalog, &name)
             .map_err(FactsApplyError::Query)?;
         // Full admission: shape, coverage and a diagnostic-free page.
         let walk = walk_body(ast_body).map_err(|e| FactsApplyError::Apply(ApplyError::Walk(e)))?;
@@ -593,6 +594,9 @@ pub fn bind_with_facts(
     let mut supply = BodyTypeSupply::new();
     let mut sigs: Vec<(String, FnSigFacts, bool)> = Vec::new();
     let mut applied: Vec<AppliedFn> = Vec::new();
+    // PLAN-934 T-08: ONE declaration catalog for the whole module compile
+    // (the per-query rebuild made a whole-module compile O(functions²)).
+    let catalog = session.catalog(program).map_err(BindFactsError::Query)?;
     for name in &names {
         let ast_body = program
             .items
@@ -603,13 +607,13 @@ pub fn bind_with_facts(
             })
             .expect("name came from the same program");
         let sig = session
-            .fn_sig(program, name)
+            .fn_sig_with(program, &catalog, name)
             .map_err(BindFactsError::Query)?;
         sig.facts
             .check_envelope()
             .map_err(|e| BindFactsError::Apply(ApplyError::Facts(e)))?;
         let body = session
-            .infer_body(program, name)
+            .infer_body_with(program, &catalog, name)
             .map_err(BindFactsError::Query)?;
         supply
             .add_body(ast_body, &body.facts)

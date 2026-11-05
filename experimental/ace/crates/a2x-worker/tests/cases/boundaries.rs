@@ -31,6 +31,11 @@ fn manifest_face_only_sanctioned_dependencies() {
         "ace-a2x-store",
         "ace-core",
         "ace-artifacts",
+        // PLAN-934 T-08: the ordinary scalar source cold path is compiled by
+        // the SQ-A fact entry (`ace-source-query::compile_scalar_product`),
+        // the same shared consumer door AV/native use. The dependency is
+        // consumer-side only: source-query never depends on any a2x crate.
+        "ace-source-query",
         "auto-tool-execution", // neutral std-only lifecycle: formal compiler tool and test consumers
         "windows-sys",         // probe-only, cfg(windows): process memory counters
         "serde_json",          // probe-only: the a2xworker/1 JSON protocol (the same

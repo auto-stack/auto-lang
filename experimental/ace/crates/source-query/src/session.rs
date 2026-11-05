@@ -325,8 +325,21 @@ impl SourceQuerySession {
         program: &Program,
         name: &str,
     ) -> Result<QueryOutcome<FnSigFacts>, QueryError> {
-        self.revision += 1;
         let catalog = self.catalog(program)?;
+        self.fn_sig_with(program, &catalog, name)
+    }
+
+    /// PLAN-934 T-08: the same signature query against a catalog the
+    /// caller already built. A whole-module compile queries every body, so
+    /// rebuilding the declaration catalog per query would make one compile
+    /// O(functions²) hashing for no semantic gain.
+    pub fn fn_sig_with(
+        &mut self,
+        _program: &Program,
+        catalog: &SignatureCatalog,
+        name: &str,
+    ) -> Result<QueryOutcome<FnSigFacts>, QueryError> {
+        self.revision += 1;
         let current = catalog.get(name).cloned().ok_or_else(|| {
             QueryError::Produce(ProduceError::UnknownFn {
                 name: name.to_string(),
@@ -367,6 +380,18 @@ impl SourceQuerySession {
         program: &Program,
         name: &str,
     ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
+        let catalog = self.catalog(program)?;
+        self.infer_body_with(program, &catalog, name)
+    }
+
+    /// PLAN-934 T-08: the same body query against a caller-built catalog
+    /// (see [`Self::fn_sig_with`]).
+    pub fn infer_body_with(
+        &mut self,
+        program: &Program,
+        catalog: &SignatureCatalog,
+        name: &str,
+    ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
         self.revision += 1;
         let rev = self.revision;
         let f = find_fn(program, name).ok_or_else(|| {
@@ -376,7 +401,6 @@ impl SourceQuerySession {
         })?;
         let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
         let logical = owner_logical(&self.package, &self.module, name);
-        let catalog = self.catalog(program)?;
         let sig_now = catalog.current_version(name).ok_or_else(|| {
             QueryError::Produce(ProduceError::UnknownFn {
                 name: name.to_string(),
