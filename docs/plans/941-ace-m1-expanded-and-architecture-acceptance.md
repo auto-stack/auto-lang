@@ -21,7 +21,7 @@ total_steps: 15
 
 正式认领CA-E与ARCH最终组合门，一个验收集成包，不拆成空schema与以后才找consumer。新增独立target/机制登记、严格父侧证据适配、四端同源独立oracle与版本化组合报告，组合原313 required门、C A/B/C/D、SYN与ARCH-01..08；复核真实函数级增量、恢复首编辑、资源、在线更新及独立认证。编译/语言/资源功能仍由原owner交付，本包不变相接走延期功能，不再造编译器、store、runner或meter。
 
-架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。本轮仅规划，不实施/建树/构建/测试/签章。
+架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。
 
 ## 1. 目标
 
@@ -58,7 +58,7 @@ total_steps: 15
 
 只读重算（非运行验收）：原binding131行/12列，批准hash匹配；required313、非绿能力token0、required旧A2R cert-gap38，required-set hash `35ad43aae27ffb2d2c9a162c3dd5b99f971e4cd7b2ed36f4fe747a5634bd770e`。现acceptance scope只核算且exit0不等里程碑pass；其ParentReport检查非空/PASS不能独自证明source/producer/义务完整，/3须独立核闭包。/2已有`certGapCells.Count -eq 0`守卫，不能被本包暗绕。
 
-唯一拟树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`（未建），实现/内部自查/独立上下文复审顺序使用同一树。未来材料仅`D:/autostack/plan-artifacts/plan-941/`，开工登记owner/用途/在途；consumer/外置target/日志/cert scratch显式归scope，正常构建在树内。merge摘要折计划、全输出路径对账、删除scope与guard清树；不操作他方产物/SDK/工作目录，不写legacy specs.json。
+唯一实施树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`（已建，当前基线以§9检查点为准），实现/内部自查/独立上下文复审顺序使用同一树。未来材料仅`D:/autostack/plan-artifacts/plan-941/`，开工登记owner/用途/在途；consumer/外置target/日志/cert scratch显式归scope，正常构建在树内。merge摘要折计划、全输出路径对账、删除scope与guard清树；不操作他方产物/SDK/工作目录，不写legacy specs.json。
 
 ## 5. 详细设计
 
@@ -224,7 +224,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-14 | review | T-01..13完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
 | T-15 | merge | T-14 pass与后续合入指令 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
 
-下一入口T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。本轮未授权work，后续由用户指定。
+下一入口T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
 
 ## 9. 复审记录
 
@@ -267,6 +267,22 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 3 | from: user | to
 2026-11-06 work恢复/依赖闭环：941分支rebase master，`git range-diff 3b09e32b0..91968fd40 master..HEAD`为1/1 `=`，旧91968fd40→当前 **225ba6561bd571be6e69e56f20bdd2037d5a1c88**，本包首例/reader/tests补丁不变；新基面包含D951修复。树clean。当前树原a2x-worker release重建exit0、43.52s，随后原同源Q4-001 fresh显式certify/certify-c（现有受管Job，完整actual+独立ref各value:42）exit0，Rust682.25ms/C2772.64ms；原941严格JSON reader直接接受、source/ref及actual逐文件hash校验通过。Rust新cert hash `9fb138828f59c9776f327c047264d258b8be038c4f1f99d0f2e9329d65812c1d`，命令hash `2649ea02d7593807175638c6ef9946603a58ea02b8d4f4b806c3947f5dda2f66`；C正控新cert hash `ee9d3104298d979d0628508747967533909f99b14563603e869f52d81e1d7ea9`，命令hash `a9d3774b5daab54fda016b851ea1163c558b1d2321cbf681e94aff5ac1c58912`。材料仅原941 scope的worker-after-951.log / q4-after-951-* / after-951-summary.json，登记状态仍in-flight。F-941-01实际关闭，T-01完整映射与T-02组合闭包其余部分仍未完成，current_step0/15，next:work，不进入review/merge。
 
 应用自动目标仍显示blocked，工具不提供active/resume状态写入；用户“并继续”授权已据实执行951全链与上述941本树重放，未另建goal或声称应用goal已恢复。按auto-plan-goal的inactive恢复规则，后续自动续轮需用户`/goal resume`；这是目标运行控制，不是重新索要实施范围授权。
+
+
+### 2026-11-06 恢复目标后的执行检查点（仍在work，非完成移交）
+
+用户按恢复指令激活goal，应用objective显示`resume`，按紧邻原指令解析为继续完成PLAN-941；不是替换成“只恢复状态”的新目标。先前目标轮有实际进展：D951独立修复/归档/清理与941本树严格认证重放。当前应用goal active，原授权继续有效，无需再问范围。
+
+检查点提交 **b002a738ae5a3a99a45c0440f1442287417dd993**（941树clean）：
+
+- T-01实际清单盘点：冻结显式34个现存TestCase组，原`cargo t <明确名单> --discover-only --out .../fixture-inventory`成功；另对存在但无独立固定组的892 suite调用原父入口只读盘点，总35suite、**511 atomic checks、executed=0**，不是511执行通过。初始尝试猜测`case-a2r-hir-892`被原固定组入口拒绝（两次纯前置校验，无测试），已查实际配置确认其无该组并保留未注册定位，不伪造组成功。原scalar61及资源/方法/机制原子义务到所有实际source/check/owner的完整映射仍未闭，T-01不勾完成。
+- T-02必要H观察边：新增原`auto-case identity-inventory`维护入口→**test-case-inventory/2**，共用原parser/resolver与执行时同一`fingerprint(spec/effective check)`，从当前源码独立输出contract/check身份，不从child PASS反推期望；原`inventory`与/1保持输出不变，固定driver仍用/1。35suite版本化元数据及原始命令均在`.../identity-inventories/`。Q4/SYN/937的/2删新增两键并投影schema回/1后与原/1逐值完全相同；在隔离scope复制首例，**只改expected 42→43**，正式/2的source hash保持、contract hash必变，AV/native oracle hash变而Rust/C emit oracle保持；原始/2 contract pin又与实际Q4执行report.identity.contract相等。控制件=`.../identity-oracle-control/`及`identity-oracle-control.json`。此为身份观察元数据，不是新parser/runner/语义分析器。
+- 正式真实首例事实：`cargo t case-ace-m1-q4-941 case-ace-unified-source-929 case-ace-ca-d-scalar-937 --out .../t02-real-inputs` exit0，实际4+11+6=**21检查全部PASS**，整命令54.794s（准备/原命令窗口由原command/meter分别保留），`results.json` SHA256 **18626a7539acbb0641da5dd5ea5474caeecd2d7b1faa81d0ecfe427d21d0d5fa**。所用原runtime分别tmcase-w3qpj_0a/pjndfuxa/v7ny1t6q均已由原驱动验证复制并清理，副本在scope内。SYN这些parse/AV腿与937有限桥首例不冒完整ARCH或D938/939。
+- 新只读域reader `scripts/test-governance/ace_m1_legacy.py`：对独立父冻结binding/applicability/source-manifest/批准hash重建全部524原格位、313 required集合及38旧A2R cert-gap，逐字段/类型/规则/分母/原报告严格对账；只消费/2零执行accounting模式，执行来源始终**UNOBSERVED**，不借旧parent_admission/selected/exit0/claim布尔授信，旧认证缺口如实false。原始真实/2报表SHA25640f006ca303e424abab473e5bc1cfd9ad9af49caa8a8c1a5a074116dbd8bbd18；这条实际组合读取的全根累计保守预留7,362,912字节。通用EvidenceScope增加**跨授权根共享48MiB预算**与有界raw读取，不得每child重置额度。
+- `cargo t infra-ace-m1-arch --out .../legacy-reader-controls` exit0，**23/23**实际通过：既有14输入严格控制+1跨根活数据预算控制+8组真实PowerShell /2输出突变控制。实际/2由原script在隔离scope新生成；mutation拒claimfalse→true、缺/重原格位、required/cert-axis/token改写、bool/int/float混淆、分母/unknown/schema/future/accepted改写、parent/selection/执行计数冒证据、批准文档漂移。reader准入阶段以Popen禁用断言证明不spawn。raw results SHA256 **b8f3a806bcf561cf3e74a0dd5b3da20594643a9195f8feb83336e82550fc8aaa**。
+- 健康：改动两Rust文件定向rustfmt --check与git diff --check exit0。原parent编译存在131条core+5条lang warnings（含summary行共138个warning header）；与开工前admission-ytb2d4sw原父构建日志逐header Counter对比完全相同，新增0、触及metadata文件无warning。不以本包顺手改无关存量warning；原日志与归因保留。编译元数据入口87s，最终仅格式/空行调整不改变执行/parser/fingerprint算法；有冻结后affected group门归最终阶段，不重复全仓/ACE全量。
+
+下一入口仍T-01/T-02：纯组合器尚缺完整registry、Case/证书/原始command严格关联与版本化报告/正反归约；当前直接CLI仍exit2拒发结论，不能宣称系统交付或M1通过。真实首例还暴露**观察适配**待接线：ABI parent的toolchain axes仍写通用`abi/interop-v1`，而其实际执行已严格验证active_recipe=CA-D1；request-samples主要保计量，未持有供独立组合器重验的完整request/response身份。A2X daily也尚未保原始请求/终态收据。这是本包T-02/T-04已授权的必要父观察边：在原owner输出窗口保留真正请求/响应/来源/nonce/工具身份并保原分态/预算，不由新组合器改写旧标签或模拟后端。不得仅凭21个父PASS关闭strict证据闭包。T-01/T-02都仍未完成，counts仍0/15；下一步按真实wire与全部状态路径逐writer/reader接线，后续T-03仍依赖T-02成功。
 
 ## 10. 待澄清事项
 
