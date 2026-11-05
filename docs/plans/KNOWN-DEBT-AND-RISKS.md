@@ -4012,7 +4012,7 @@ owner=auto-tool-execution；PLAN-953 r2已交付65db88be2150991b9c3bbe79d527891f
 
 ### D-944-R1 — assembly batch诊断与取消缓存生命周期（CLOSED，PLAN-944 final re-review r2）
 
-独立final review r1（plan revision2，e8cf62cbc1bda879bfc83e6f459dd4e746471f7f）发现F944-R1-01/P2：新AssemblyHost批路径签名漂移拒绝丢std模块与原byte7，返回合图byte34；F944-R1-02/P2：取消std.unused42→43候选后合法app.main7→8首次prepare重solve未改std并以unexpectedly produced拒绝，solver2而非1。owner=PLAN-944/source-query batch lifecycle；不是批准延期的债务，不可留到merge。最小输入、实际/预期、日志hash与共享原因见[PLAN-944 §9](944-ace-stdlib-binding-assembly-and-cache.md)。关闭须原反例+同签名合法控制、取消/失败后不同owner首编辑零无关生产且下次真实恢复新态，affected independent review；不重复无关全量压力。原材料唯一scope/plan-944，最终摘要折Plan后merge全删，无原始材料hold。
+独立final review r1（plan revision2，e8cf62cbc1bda879bfc83e6f459dd4e746471f7f）发现F944-R1-01/P2：新AssemblyHost批路径签名漂移拒绝丢std模块与原byte7，返回合图byte34；F944-R1-02/P2：取消std.unused42→43候选后合法app.main7→8首次prepare重solve未改std并以unexpectedly produced拒绝，solver2而非1。owner=PLAN-944/source-query batch lifecycle；不是批准延期的债务，不可留到merge。最小输入、实际/预期、日志hash与共享原因见[PLAN-944 §9](archive/944-ace-stdlib-binding-assembly-and-cache.md)。关闭须原反例+同签名合法控制、取消/失败后不同owner首编辑零无关生产且下次真实恢复新态，affected independent review；不重复无关全量压力。原材料唯一scope/plan-944，最终摘要折Plan后merge全删，无原始材料hold。
 PLAN-944 repair-r1工作修复提交e269f417895ffa09493fd42390d24ef336f503f4：F944-R1-01/02原反例重放绿、共享生命周期永久用例绿，待独立复审确认关闭；不作延期或merge豁免，证据见944 §9。
 
 D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根事务与bound.locate已独立复审r2 pass；原两个Host反例std/7..13与cancel A→B首次delta1均绿，五失败分支/单体receipt兄弟路径及真实下一恢复8、旧42/7消费者均通过。实际输入/红绿日志hash、共享机制与适用边界见PLAN-944 §9；未批准延期，原r1红保留。当前仅七组merge门及实际交付清理pending，无原始材料hold。

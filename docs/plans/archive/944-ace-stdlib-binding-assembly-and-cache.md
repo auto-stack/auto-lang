@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-944
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: ACE 标准库绑定、装配与缓存接入
 author: [Codex]
 created_at: 2026-11-05
@@ -21,7 +22,7 @@ total_steps: 7
 
 将公共有限模块和语义合同接入统一 source 前门及 AV、HIR→Rust 两条真实消费者；扩展 manifest/缓存身份并证明恢复首编辑正确。
 
-设计依据：[Design54](../design/54-stdlib-semantics-and-ace-integration.md)，衔接 Design33/46/51。用户已授权完整goal链；950前置已正式交付。本包work侧五项已完成并提交，待同树独立final review及merge-owned冻结职责组门，当前5/7；未归档，未完成目标。历史draft说明及前探结果保留在§9。
+设计依据：Design54（历史规划输入；当前合同见[ACE绑定与装配](../../specs/stdlib/design/ace-binding-and-assembly.md)），衔接 Design33/46/51。用户已授权完整goal链；950前置已正式交付。本包work侧五项已完成并提交，待同树独立final review及merge-owned冻结职责组门，当前5/7；未归档，未完成目标。历史draft说明及前探结果保留在§9。
 
 ## 1. 目标
 
@@ -35,7 +36,7 @@ total_steps: 7
 
 复用当前统一source/Checked HIR、共享MIR/资源事实及query/store。A2X消费HIR，AV/native消费共享MIR；公共语义与物理实现分开，旧runtime只按实际合同复用。标准操作身份、兼容策略和manifest双指纹遵守Design54 §4–7。
 
-依赖：PLAN-943 正式交付（D943）及 [PLAN-950 有限公共函数模块前置](archive/950-ace-finite-source-modules.md) 正式交付（D950）
+依赖：PLAN-943 正式交付（D943）及 [PLAN-950 有限公共函数模块前置](950-ace-finite-source-modules.md) 正式交付（D950）
 
 ## 3. 技术栈
 
@@ -431,9 +432,26 @@ Artifact首红核查：代码diff确认subproc/auto-tool-execution/te-child未�
 
 当前主线新增cffee9b5b仅941 Plan簿记，无代码/Spec输入变化；收尾将再次纯rebase记录等价映射，之后ff-only落地主线。T07仍待实际landing/Spec readback/归档/清理，尚不报告完成。
 
+### r2 merge landed / canonical_verified / archive checkpoint（2026-11-06）
+
+stage: merge | PLAN-944:r2 | completion_kind: delivered | delivery_commit: 371702e114c2254ac0d8f16118a49a823d0b8e08 | default branch: master | landed: verified ff-only 491aa93624844c0f98f1337697d9bb7aa784bfc0→371702e11（主线未新增merge commit）。第二次rebase全部七项range-diff`=`：0f6d26da8→7288db534、bb94a2b64→852b47ddd、035bb1992→29ff7dfd9、f14bf0cd8→1fe7a47f0、f506b88e4→29b856567、c361dc71c→5b6fa18c7、34f06712b→371702e11；reviewed e269到delivery排除docs/plans后的diff严格为空，复用原review/冻结门有实际等价证据。landing-range-diff.txt在唯一scope，最终摘要留此，无重跑未变完整队列。
+
+canonical_verified：主线实际文件与delivery tree逐项同源，五hash如下；未写specs.json/index，4modify+1add的原delta已落地：
+- `docs/specs/stdlib/design/assembly-manifest.md` SHA256=e5659cb7d9871af0243335116da60488537a5e5cab330f6e343c8fe4546f8ba5
+- `docs/specs/auto-a2x/incremental-and-cache.md` SHA256=b81d076e2feeb46526a1dccec70d4064f76291277d6f5cc4e0879123ef9ad69e
+- `docs/specs/stdlib/design/ace-binding-and-assembly.md` SHA256=6c8c8b068a3c235c23599e319c37d0a76bd7887901826ed8c4ef679218d77c68
+- `docs/specs/language-sdk/project.md` SHA256=78321e409c0a69e13db19d4efa7514c1112c67ba150c64dbb4314b1a60dc90cd
+- `docs/specs/auto-semantics/source-query-session.md` SHA256=da1807180c6e792200fd9441357e97525adeb0350cb63096dbfadec1bdb96a14
+
+归档实际路径`docs/plans/archive/944-ace-stdlib-binding-assembly-and-cache.md`，status archived、6/7（T07清理待完成）。950链接按实际同级修正；Design54仍属其他会话未跟踪规划输入，本包不代提交，归档引用改到已落地的canonical绑定/装配Spec，历史规划来源文字保留。归档文件/对应debt链接将具名提交，实际link/metadata/count核验后才记录archive成功。未把已合并等同清理完成。
+
+部署观察（不是全新部署承诺）：本包为显式装配库API，无默认UI/worker模式切换，未改外仓。主检出旧worker未重建：debug av-worker UTC2026-10-31T21:31:54.4934979Z、a2x-worker UTC2026-11-03T23:44:03.852084Z；release av-worker UTC2026-11-05T16:13:38.4647917Z、a2x-worker UTC2026-11-05T05:29:34.6083153Z，均在`experimental/ace/target/<profile>/`。真实本次测试worker已在专属树重建并验证；不冒称主线旧二进制含新库。无生产进程重启/前端bundle动作。
+
+清理前事实：专属lang/down两树clean、lang944 guard clean；无活动进程的ExecutablePath/命令引用本树或scope（只读检查自身pwsh排除）；group仅auto-lang/auto-down。待fresh两guard后移除树/分支/空组，再删整个scope并刷新全局registry。只读auto-down detached58ea33f未改、无待交付分支。没有具名未解决944问题需持有原材料，首次artifact红的数字/原输入与重放hash已折本Plan。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权已由2026-11-06 `/goal 完成计划944` 给出；无额外预算/模型约束。跨仓仍只读。
-- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](archive/950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；950已正式交付，当前继续944，不创建第二目标。
+- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；950已正式交付，当前继续944，不创建第二目标。
