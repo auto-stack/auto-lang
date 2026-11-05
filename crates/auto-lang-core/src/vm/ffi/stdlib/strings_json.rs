@@ -882,6 +882,53 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
         ("auto.json.keys", 0),
         ("auto.json.is_valid", 0),
     ];
+    // PLAN-949 T-02：文档类 `json.encode` 双态化——文档句柄直接吐原始 JSON
+    // 文本（bool `true` → `true`），不再被字符串编码成 `"true"`（back api.at
+    // 的 `ok_txt == "true"` 比较因此在 VM 里恒假、代理返回 ok=false 的根因）。
+    if let Some(id) = BIGVM_NATIVES
+        .lock()
+        .unwrap()
+        .resolve_qualified("auto.json.encode")
+    {
+        if let Some(original) = native_interface.get(id) {
+            JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original);
+            let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
+                let nv = task.ram.pop_nv();
+                if let Some(doc_id) = json_doc_heap_id(vm, nv) {
+                    let direct = json_serialize_i32_list(vm, doc_id);
+                    let text = direct.or_else(|| {
+                        let jv = vm_value_to_json(
+                            vm,
+                            &auto_val::Value::VmRef(auto_val::VmRef {
+                                id: doc_id as usize,
+                            }),
+                            0,
+                        )
+                        .ok()?;
+                        serde_json::to_string(&jv).ok()
+                    });
+                    if let Some(text) = text {
+                        let idx = vm.add_string(text.into_bytes());
+                        vm.rc_push_str_idx(task, idx);
+                        return Ok(());
+                    }
+                    task.ram.push_nv(nv);
+                    return Ok(());
+                }
+                task.ram.push_nv(nv);
+                let original = JSON_DOC_ORIGINALS
+                    .lock()
+                    .unwrap()
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        VMError::RuntimeError("json.encode doc native: original shim missing".into())
+                    })?;
+                original(task, vm)
+            };
+            native_interface.register(id, wrapper);
+        }
+    }
     for (name, extra) in DOC_NATIVES {
         let id = match BIGVM_NATIVES.lock().unwrap().resolve_qualified(name) {
             Some(id) => id,
@@ -1275,3 +1322,4 @@ pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeI
     // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
     natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 }
+
