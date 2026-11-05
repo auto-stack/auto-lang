@@ -806,14 +806,50 @@ impl A2xSession {
         let compiled = match profile {
             SourceProfile::Core => compile_source(src, "a2x", caps),
             SourceProfile::Scalar => {
-                let product = ace_source_query::compile_scalar_product(
-                    src,
-                    "a2x",
-                    caps,
-                    "a2x",
-                    "a2x",
-                    &mut ace_source_query::SourceQuerySession::new("a2x", "a2x"),
-                );
+                // PLAN-936（T-13 F-1 修复）：CT 需求经 source-cte 单门
+                // （服务/回灌/事实车道），产物与普通车道同形；组合根注入
+                // 每请求 owned store（冷真实执行）。
+                let product = if caps
+                    .iter()
+                    .any(|c| c == ace_core::source::cst::CT_CAPABILITY)
+                {
+                    let mut svc =
+                        ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+                    ace_source_cte::compile_scalar_ct(&mut svc, src, "a2x", caps, "a2x", "a2x")
+                        .map(|out| ace_source_query::ProductCompile {
+                            compiled: ace_core::source::CompiledSource {
+                                profile: "scalar",
+                                input_hash: out.input_hash,
+                                atom_text: out.atom_text,
+                                checked: out.checked,
+                            },
+                            lane: ace_source_query::CompileLane::Facts,
+                            applied: Vec::new(),
+                            supply: out.supply,
+                            instances: out.instances,
+                            program: out.program,
+                        })
+                        .map_err(|e| match e {
+                            ace_source_cte::CtProductError::Diagnostics(ds) => ds,
+                            ace_source_cte::CtProductError::Plan(pl) => {
+                                vec![ace_core::atom_text::Diagnostic::new(
+                                    ace_core::atom_text::Stage::Text,
+                                    "source.cte.plan",
+                                    format!("{pl}"),
+                                    ace_core::atom_text::Span { start: 0, end: 0 },
+                                )]
+                            }
+                        })
+                } else {
+                    ace_source_query::compile_scalar_product(
+                        src,
+                        "a2x",
+                        caps,
+                        "a2x",
+                        "a2x",
+                        &mut ace_source_query::SourceQuerySession::new("a2x", "a2x"),
+                    )
+                };
                 match product {
                     Ok(p) => {
                         scalar_supply = Some(p.supply);
