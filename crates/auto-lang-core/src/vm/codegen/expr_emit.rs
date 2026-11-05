@@ -172,10 +172,17 @@ impl Codegen {
         // Plan 057 (ash-gui): AUTO_BACKEND (e.g. http://127.0.0.1:3000) takes
         // precedence as the base URL — the VM app talks to a real backend
         // (ash-server) rather than the split-mode scaffold server.
-        let base_url = std::env::var("AUTO_BACKEND")
-            .ok()
-            .map(|s| s.trim().trim_end_matches('/').to_string())
-            .filter(|s| !s.is_empty())
+        // PLAN-949 T-01：优先取当前 app 的前缀化规格（root + app_key）——
+        // split 模式下按 app 解析 back 根（`<root>/apps/<key>/api/...`），
+        // 使多 app 共存时不必依赖进程级 AUTO_BACKEND。
+        let base_url = crate::back_prefix::current_spec()
+            .map(|(root, key)| format!("{}/apps/{}", root.trim_end_matches('/'), key))
+            .or_else(|| {
+                std::env::var("AUTO_BACKEND")
+                    .ok()
+                    .map(|s| s.trim().trim_end_matches('/').to_string())
+                    .filter(|s| !s.is_empty())
+            })
             .unwrap_or_else(|| {
                 let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
                 format!("http://127.0.0.1:{}", port)
@@ -1676,3 +1683,4 @@ impl Codegen {
 
     // ========== Plan 073: Instance Method Call Support ==========
 }
+
