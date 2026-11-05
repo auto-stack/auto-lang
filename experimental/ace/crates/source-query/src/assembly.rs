@@ -104,6 +104,43 @@ pub fn manifest_contexts(
     Ok(result)
 }
 
+/// Physical key extension for one real function. Whole assembly/source hashes
+/// deliberately do not enter it: unchanged siblings keep their code/fragments.
+/// Signature/effect reads come from the existing admitted binding graph.
+pub fn function_input_version(
+    bound: &BoundModules,
+    manifest: &Manifest,
+    owner: &str,
+) -> Result<String, String> {
+    let contexts = manifest_contexts(bound, manifest)?;
+    if !contexts.contains_key(owner) {
+        return Err("assembly.function-owner".into());
+    }
+    let mut declarations = BTreeMap::new();
+    for name in std::iter::once(owner).chain(
+        bound
+            .references
+            .get(owner)
+            .into_iter()
+            .flatten()
+            .map(String::as_str),
+    ) {
+        declarations.insert(name, contexts.get(name).ok_or("assembly.function-read")?);
+    }
+    let c = manifest.consumer();
+    let bytes = serde_json::to_vec(&(
+        "assembly-function-inputs/1",
+        declarations,
+        &c.producer,
+        &c.abi,
+        &c.runtime,
+        &c.toolchain,
+        manifest.provider_version(owner),
+    ))
+    .map_err(|e| e.to_string())?;
+    Ok(ace_core::runtime_contract::sha256_hex(&bytes))
+}
+
 /// Ordinary source -> actual namespace/visibility -> declaration/effect keys ->
 /// the existing fact-driven checked product. Invalid assembly inputs never
 /// reach a semantic body producer or either backend.
@@ -164,6 +201,56 @@ mod tests {
             providers: vec![],
         };
         (inputs, caps, Manifest::freeze(semantic, consumer).unwrap())
+    }
+    #[test]
+    fn real_readers_and_provider_owners_determine_physical_key_inputs() {
+        let (inputs, caps, manifest) = fixture();
+        let bound = bind_modules(&inputs, "app", &caps, FrontBudget::WORK_OWNED_64MIB).unwrap();
+        let std_owner = bound.origins.iter().find(|(_, o)| o.0 == "std").unwrap().0;
+        let local_owner = bound
+            .origins
+            .iter()
+            .find(|(_, o)| o.0 == "app" && o.1 == "answer")
+            .unwrap()
+            .0;
+        let mut semantic = manifest.semantic().clone();
+        semantic
+            .declarations
+            .iter_mut()
+            .find(|d| d.module == "std")
+            .unwrap()
+            .requirements
+            .push("console".into());
+        let effect = Manifest::freeze(semantic, manifest.consumer().clone()).unwrap();
+        for name in [std_owner.as_str(), "main"] {
+            assert_ne!(
+                function_input_version(&bound, &manifest, name).unwrap(),
+                function_input_version(&bound, &effect, name).unwrap()
+            );
+        }
+        assert_eq!(
+            function_input_version(&bound, &manifest, local_owner).unwrap(),
+            function_input_version(&bound, &effect, local_owner).unwrap()
+        );
+        let mut consumer = manifest.consumer().clone();
+        consumer
+            .providers
+            .push(ace_semantics_contract::assembly::ProviderInput {
+                source_id: "providers/answer.at".into(),
+                content_hash: "actual-provider-content".into(),
+                owners: vec![std_owner.clone()],
+            });
+        let provider = Manifest::freeze(manifest.semantic().clone(), consumer).unwrap();
+        assert_ne!(
+            function_input_version(&bound, &manifest, std_owner).unwrap(),
+            function_input_version(&bound, &provider, std_owner).unwrap()
+        );
+        for name in [local_owner.as_str(), "main"] {
+            assert_eq!(
+                function_input_version(&bound, &manifest, name).unwrap(),
+                function_input_version(&bound, &provider, name).unwrap()
+            );
+        }
     }
     #[test]
     fn assembly_contract_uses_real_module_bindings_and_rejects_stale_or_missing_declarations_before_solve(
