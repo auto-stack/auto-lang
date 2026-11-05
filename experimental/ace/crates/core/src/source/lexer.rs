@@ -266,12 +266,10 @@ struct Lexer<'s> {
     text: bool,
 }
 
-#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
     tokenize_with(src, false)
 }
 
-#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// Tokenize with the text-profile literal surface enabled (PLAN-770):
 /// string/char literals decode to real tokens (escape whitelist, scalar
 /// validation, cross-line strings whose line breaks enter the value

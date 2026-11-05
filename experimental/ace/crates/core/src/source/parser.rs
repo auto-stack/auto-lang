@@ -43,9 +43,12 @@
 //! (excluded-surface constructs, pointed at the offending token).
 
 use super::ast::*;
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 use super::lexer::{Kw, Tok, Token, P};
 use super::SourceProfile;
-use crate::atom_text::{Diagnostic, Span, Stage};
+use crate::atom_text::{Diagnostic, Span};
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
+use crate::atom_text::Stage;
 
 /// Full-language top-level starter words that this profile rejects with
 /// `source.unsupported` (rather than a plain syntax error) when they appear
@@ -410,6 +413,7 @@ pub fn parse_closure_fragment(
 
 // Expression-parser frame types (module scope; PLAN-745 R5-QA-01).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 enum OpFrame {
     /// Pending binary operator (left-associative), carrying the operator
     /// itself plus its precedence level.
@@ -423,6 +427,7 @@ enum OpFrame {
     Paren,
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 struct CallFrame {
     /// The popped receiver when this call frame is actually a METHOD call
     /// (`recv.name(args)`, PLAN-770 text `.to/.move/...` and PLAN-771
@@ -440,6 +445,7 @@ struct CallFrame {
 /// PLAN-771: `Ty { field: expr, ... }` — named constructor frame. Field
 /// values are full expressions on the shared value stack; separators are
 /// commas or (inside the braces) newlines.
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 struct CtorFrame {
     ty: Ident,
     fields: Vec<NamedCtorField>,
@@ -447,6 +453,7 @@ struct CtorFrame {
     pending_name: Option<Ident>,
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 enum Frame {
     Op(OpFrame),
     Call(Box<CallFrame>),
@@ -455,6 +462,7 @@ enum Frame {
 
 // Statement-block machine types (R6: block nesting is unlimited — the
 // open-block stack replaces the recursive block()/stmt() pair).
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 struct OpenBlock {
     /// Span of the opening `{`.
     lb: Span,
@@ -462,6 +470,7 @@ struct OpenBlock {
     cont: BlockCont,
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 enum BlockCont {
     /// The function body block; closing it finishes the item.
     FnBody {
@@ -511,6 +520,7 @@ enum BlockCont {
     },
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 struct Parser<'s> {
     src: &'s str,
     end: usize,
@@ -527,6 +537,7 @@ struct Parser<'s> {
     pending_is: Vec<PendingIs>,
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 /// One `is` statement between its header parse and its final `}`
 /// (PLAN-864).
 struct PendingIs {
@@ -535,6 +546,7 @@ struct PendingIs {
     arms: Vec<MatchArm>,
 }
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 impl<'s> Parser<'s> {
     // -- plumbing -----------------------------------------------------------
 

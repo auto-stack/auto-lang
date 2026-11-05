@@ -23,6 +23,7 @@ pub mod closures_fn;
 pub mod console;
 pub mod cst;
 pub mod decl_env;
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;
 pub mod parser;
 pub mod resolve;
