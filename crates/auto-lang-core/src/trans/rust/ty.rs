@@ -205,6 +205,9 @@ impl RustTrans {
                 format!("&{}", self.rust_type_name(inner))
             }
             Type::User(usr) => {
+                if usr.name.as_str() == "JsonValue" {
+                    return "serde_json::Value".to_string();
+                }
                 // Plan 371 (defect A): if this bare User type name is actually a
                 // known spec (from this file's pre-scan OR a sibling .at file's
                 // pre-populated spec_decls), emit Box<dyn X> — the parser failed
@@ -1033,6 +1036,9 @@ impl RustTrans {
 
     /// Infer Rust type from an Auto expression (for let-bound variables without type annotation).
     pub(super) fn infer_type_from_expr(&self, expr: &Expr) -> Type {
+        if self.expr_is_dynamic_json(expr) {
+            return Self::placeholder_user_type("JsonValue".into());
+        }
         match expr {
             // Plan 523 H1: struct 构造字面量 `Name { field: e }` 解析为
             // Expr::Node(Pair args)。未注解 `let p = Point { ... }` 此前推成
@@ -1050,6 +1056,26 @@ impl RustTrans {
                 }
             }
             Expr::Call(call) => {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    let collection = match obj.as_ref() {
+                        Expr::GenName(n) => matches!(n.split('<').next(), Some("List" | "Array")),
+                        Expr::Ident(n) => matches!(n.as_str(), "List" | "Array"),
+                        Expr::Bina(lhs, Op::Lt, _) => {
+                            matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array"))
+                        }
+                        _ => false,
+                    };
+                    if collection && method.as_str() == "new" && call.args.args.len() == 1 {
+                        if let Some(Arg::Pos(value)) = call.args.args.first() {
+                            let inferred = self.infer_type_from_expr(value);
+                            return if matches!(inferred, Type::Unknown) {
+                                Type::List(Box::new(Type::Unknown))
+                            } else {
+                                inferred
+                            };
+                        }
+                    }
+                }
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
                     // method is AutoStr, obj is Expr
                     match method.as_str() {
@@ -1200,7 +1226,9 @@ impl RustTrans {
                 // Check for known function calls that return String
                 if let Expr::Ident(fn_name) = call.name.as_ref() {
                     match fn_name.as_str() {
-                        "json_escape" | "json_to_string" | "format" => return Type::StrOwned,
+                        "json_escape" | "json_to_string" | "format" | "type_of" => {
+                            return Type::StrOwned
+                        }
                         _ => {}
                     }
                     // Plan 310 Phase 0.2: Union construction infers its type

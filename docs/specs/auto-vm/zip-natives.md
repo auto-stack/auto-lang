@@ -27,7 +27,7 @@
 
 ## 非目标
 
-zip 写侧、CFI/EPUB 语义、a2r/Rust 后端轨映射、VM 列表/字符串语义
+zip 写侧、CFI/EPUB 语义、VM 列表/字符串语义
 （N-003-1..6）的根修。
 
 ## 实现锚点
@@ -38,3 +38,11 @@ zip 写侧、CFI/EPUB 语义、a2r/Rust 后端轨映射、VM 列表/字符串语
 - 测试：`crates/auto-lang-core/src/vm/ffi/stdlib/zip_io.rs`
   `plan897_tests`（进程内三测）；`tests/probe/plan897_zip_probe.as`
   （VM 轨端到端，PLAN-897 T-03）
+
+## 原生 Rust 后端（PLAN-956）
+
+三项算法归 `crates/a2r-std/src/zip.rs`，Rust 生成代码直接调用；VM adapter
+保留请求根解析与受限路径检查，再调用同一纯 Rust 算法。没有解释器桥接。
+Rust 的 i64 预算适配到既有正 i32 范围；超范围拒绝（不截断）。读侧限额、
+UTF-8、中央目录顺序、超预算不覆盖目标文件的规则不变。标准库 provider
+目录登记 zip/hash；hash.file_sha256 读取全部文件字节，失败以可捕获错误退出。

@@ -10,6 +10,78 @@ impl RustTrans {
         call: &Call,
         out: &mut impl Write,
     ) -> AutoResult<CallShape> {
+        if let Expr::Dot(owner, method) = call.name.as_ref() {
+            if let Expr::Ident(owner) = owner.as_ref() {
+                if !self.local_var_types.contains_key(owner)
+                    && !self.local_modules.contains(owner.as_str())
+                    && !self.sibling_modules.contains(owner.as_str())
+                {
+                    let mapped = match (owner.as_str(), method.as_str()) {
+                        ("zip", "list_json") => Some(("zip::list_json", 1, 1)),
+                        ("zip", "read_text") => Some(("zip::read_text", 2, 3)),
+                        ("zip", "extract_entry") => Some(("zip::extract_entry", 3, 4)),
+                        ("hash", "file_sha256") => Some(("hash::file_sha256", 1, 1)),
+                        ("file", "exists") => Some(("fs::exists", 1, 1)),
+                        ("file", "copy") => Some(("fs::copy_int", 2, 2)),
+                        ("file", "read_bytes") => Some(("fs::read_int_bytes", 1, 1)),
+                        ("fs", "size") => Some(("fs::file_size", 1, 1)),
+                        _ => None,
+                    };
+                    if let Some((face, string_count, arity)) = mapped {
+                        if call.args.args.len() != arity
+                            || !call.args.args.iter().all(|arg| matches!(arg, Arg::Pos(_)))
+                        {
+                            return Err(crate::error::TypeError::Mismatch {
+                                expected: format!(
+                                    "{arity} positional arguments to {owner}.{method}"
+                                ),
+                                found: format!("{} arguments", call.args.args.len()),
+                                span: miette::SourceSpan::new(0.into(), 1),
+                            }
+                            .into());
+                        }
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::{face}(")?;
+                        for (index, arg) in call.args.args.iter().enumerate() {
+                            if index > 0 {
+                                write!(out, ", ")?;
+                            }
+                            if let Arg::Pos(value) = arg {
+                                if index < string_count {
+                                    self.expr_as_str(value, out)?;
+                                } else {
+                                    self.expr(value, out)?;
+                                }
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(CallShape::Handled);
+                    }
+                }
+            }
+        }
+        if matches!(call.name.as_ref(), Expr::Ident(name) if name == "type_of")
+            && !self.fn_ret_types.contains_key(&AutoStr::from("type_of"))
+            && !self.local_var_types.contains_key(&AutoStr::from("type_of"))
+        {
+            if call.args.args.len() != 1 || !matches!(call.args.args.first(), Some(Arg::Pos(_))) {
+                return Err(crate::error::TypeError::Mismatch {
+                    expected: "one positional argument to type_of".into(),
+                    found: format!("{} arguments", call.args.args.len()),
+                    span: miette::SourceSpan::new(0.into(), 1),
+                }
+                .into());
+            }
+            self.a2r_std_used.set(true);
+            write!(out, "a2r_std::type_of(&(")?;
+            if let Some(Arg::Pos(value)) = call.args.args.first() {
+                self.expr(value, out)?;
+            }
+            write!(out, "))")?;
+            return Ok(CallShape::Handled);
+        }
         // PLAN-714 r3 R3-T2: 裸名 diff 内建映射（VM codegen intrinsics
         // 9915/9916/9917 同源——corpus fsys.at 裸名直调位；模块内无本地
         // 同名符号[fsys.at:245 注记原文]）。

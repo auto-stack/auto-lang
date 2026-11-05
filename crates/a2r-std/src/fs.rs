@@ -145,8 +145,12 @@ pub fn read_text_range(path: impl AsRef<Path>, offset: usize, limit: usize) -> S
         next_offset: Option<u64>,
     }
     let ok = |text: String, total: i64, next_offset: Option<u64>| {
-        serde_json::to_string(&ReadTextRangeOut { text, total, next_offset })
-            .expect("read_text_range envelope serialization cannot fail")
+        serde_json::to_string(&ReadTextRangeOut {
+            text,
+            total,
+            next_offset,
+        })
+        .expect("read_text_range envelope serialization cannot fail")
     };
     let err = || ok(String::new(), -1, None);
     if limit == 0 {
@@ -197,7 +201,11 @@ pub fn read_text_range(path: impl AsRef<Path>, offset: usize, limit: usize) -> S
         Err(_) => return err(),
     };
     let end_abs = (e + win_start as usize) as u64;
-    let next_offset = if end_abs >= total { None } else { Some(end_abs) };
+    let next_offset = if end_abs >= total {
+        None
+    } else {
+        Some(end_abs)
+    };
     ok(text, total as i64, next_offset)
 }
 
@@ -218,6 +226,14 @@ pub fn write_text(path: &str, content: &str) -> i32 {
 /// Read file contents as bytes
 pub fn read_bytes(path: &str) -> Vec<u8> {
     std::fs::read(path).unwrap_or_default()
+}
+
+pub fn read_int_bytes(path: &str) -> Vec<i64> {
+    read_bytes(path).into_iter().map(i64::from).collect()
+}
+
+pub fn copy_int(src: &str, dst: &str) -> i64 {
+    copy(src, dst) as i64
 }
 
 /// Write bytes to a file, returns 0 on success, -1 on failure

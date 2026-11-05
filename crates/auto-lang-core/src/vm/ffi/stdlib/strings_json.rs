@@ -256,29 +256,7 @@ pub fn shim_str_replace_first(s: String, from: String, to: String) -> String {
 /// Generate a UUID-like string from timestamp and random components
 #[auto_macros::rust_fn("Str.uuid")]
 pub fn shim_str_uuid() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos: u64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u64;
-    // Simple UUID v4-like: 8-4-4-4-12 hex format using nanos + LCG
-    let r1: u64 = nanos;
-    let r2: u64 = nanos
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-    let r3: u64 = nanos
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407)
-        .rotate_left(17);
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:08x}{:04x}",
-        (r1 >> 32) as u32,
-        (r1 >> 16) as u16 & 0xFFFF,
-        ((r2 >> 16) as u16 & 0x0FFF) | 0x4000, // version 4
-        ((r2 >> 0) as u16 & 0x3FFF) | 0x8000,  // variant 1
-        (r3 >> 32) as u32,
-        r3 as u16,
-    )
+    ::a2r_std::uuid()
 }
 
 /// Convert unsigned integer to string

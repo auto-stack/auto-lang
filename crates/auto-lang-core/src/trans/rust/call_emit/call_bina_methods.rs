@@ -165,6 +165,10 @@ impl RustTrans {
                             return Ok(CallShape::Handled);
                         }
                         "sub" => {
+                            if self.expr_is_string_like(lhs) {
+                                self.emit_str_slice_bytes(lhs, &call.args.args, out)?;
+                                return Ok(CallShape::Handled);
+                            }
                             // s.sub(start, end) -> &s[start..end]
                             write!(out, "&")?;
                             self.expr(lhs, out)?;
@@ -201,7 +205,7 @@ impl RustTrans {
                             // non-string receivers keep the byte-index form.
                             if self.expr_is_string_like(lhs) {
                                 return self
-                                    .emit_str_slice_chars(lhs, &call.args.args, out)
+                                    .emit_str_slice_bytes(lhs, &call.args.args, out)
                                     .map(|_| CallShape::Handled);
                             }
                             self.expr(lhs, out)?;

@@ -502,6 +502,9 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
             ("Cargo.toml", include_str!("../../../a2r-std/Cargo.toml")),
             ("src/lib.rs", include_str!("../../../a2r-std/src/lib.rs")),
             ("src/json.rs", include_str!("../../../a2r-std/src/json.rs")),
+            ("src/str.rs", include_str!("../../../a2r-std/src/str.rs")),
+            ("src/hash.rs", include_str!("../../../a2r-std/src/hash.rs")),
+            ("src/fs.rs", include_str!("../../../a2r-std/src/fs.rs")),
             ("src/http.rs", include_str!("../../../a2r-std/src/http.rs")),
             ("src/sse.rs", include_str!("../../../a2r-std/src/sse.rs")),
         ] {
@@ -510,6 +513,12 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 content_hash: fnv1a64(source),
             });
         }
+    }
+    if matches!(target, AssemblyTarget::Vm | AssemblyTarget::Rust) {
+        inputs.push(ProviderInput {
+            source_id: "crates/a2r-std/src/zip.rs".to_string(),
+            content_hash: fnv1a64(include_str!("../../../a2r-std/src/zip.rs")),
+        });
     }
     inputs.sort_by(|a, b| a.source_id.cmp(&b.source_id));
     for &(source_id, content_hash) in BUILD_INPUTS {

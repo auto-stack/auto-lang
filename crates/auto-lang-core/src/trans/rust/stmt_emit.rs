@@ -389,6 +389,10 @@ impl RustTrans {
             }
             Stmt::For(f) => Self::try_body_has_return(&f.body.stmts),
             Stmt::Block(b) => Self::try_body_has_return(&b.stmts),
+            Stmt::Try(t) => {
+                Self::try_body_has_return(&t.body.stmts)
+                    || Self::try_body_has_return(&t.catch_body.stmts)
+            }
             _ => false,
         })
     }
@@ -399,16 +403,7 @@ impl RustTrans {
             match st {
                 Stmt::Return(expr) => {
                     let inner = expr.as_ref().clone();
-                    *expr = Box::new(Expr::Call(crate::ast::Call {
-                        name: Box::new(Expr::Ident("Some".into())),
-                        args: crate::ast::Args {
-                            args: vec![crate::ast::Arg::Pos(inner)],
-                        },
-                        ret: Type::Unknown,
-                        type_args: Vec::new(),
-                        generic_args: Vec::new(),
-                        pos: None,
-                    }));
+                    *expr = Box::new(Expr::Some(Box::new(inner)));
                 }
                 Stmt::If(if_) => {
                     for b in if_.branches.iter_mut() {
@@ -420,6 +415,9 @@ impl RustTrans {
                 }
                 Stmt::For(f) => Self::rewrite_try_returns(&mut f.body.stmts),
                 Stmt::Block(b) => Self::rewrite_try_returns(&mut b.stmts),
+                // The nested body has its own closure. Its handlers execute
+                // in this closure and must return the enclosing Option.
+                Stmt::Try(t) => Self::rewrite_try_returns(&mut t.catch_body.stmts),
                 _ => {}
             }
         }
@@ -745,6 +743,12 @@ impl RustTrans {
                     Self::rewrite_try_returns(&mut body.stmts);
                 }
                 let try_body = body;
+                let previous_json_slots = self.json_null_slots.clone();
+                self.json_null_slots
+                    .extend(Self::collect_json_null_slots_in(
+                        &try_body,
+                        &self.local_var_types,
+                    ));
                 if propagate {
                     let ret_ty = self
                         .rust_type_name(self.current_fn_ret_type.as_ref().expect("checked above"));
@@ -755,6 +759,8 @@ impl RustTrans {
                     )?;
                 }
                 self.indent();
+                let enclosing_option = self.try_returns_option;
+                self.try_returns_option = propagate;
                 for inner in &try_body.stmts {
                     self.print_indent(&mut sink.body)?;
                     self.stmt(inner, sink)?;
@@ -763,13 +769,20 @@ impl RustTrans {
                     }
                     sink.body.write(b"\n")?;
                 }
+                if propagate {
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"None\n")?;
+                }
                 self.dedent();
+                self.try_returns_option = enclosing_option;
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}))")?;
                 if propagate {
-                    sink.body.write(
-                        b" { Ok(Some(__v)) => return __v, Ok(None) => return Default::default(), ",
-                    )?;
+                    sink.body.write(if enclosing_option {
+                        b" { Ok(Some(__v)) => return Some(__v), Ok(None) => {}, "
+                    } else {
+                        b" { Ok(Some(__v)) => return __v, Ok(None) => {}, "
+                    })?;
                 } else {
                     sink.body.write(b" { Ok(_) => {}, ")?;
                 }
@@ -836,6 +849,7 @@ impl RustTrans {
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
                 }
+                self.json_null_slots = previous_json_slots;
                 Ok(true)
             }
 
@@ -1598,6 +1612,16 @@ impl RustTrans {
             store.ty.clone()
         };
         // PLAN-596 T-07 (DIV-DEP-8): an un-annotated let bound from a dep
+        let effective_ty = if self
+            .json_null_slots
+            .contains(&(store as *const Store as usize))
+        {
+            Self::placeholder_user_type("JsonValue".into())
+        } else {
+            effective_ty
+        };
+
+        // PLAN-596 T-07 (DIV-DEP-8): an un-annotated let bound from a dep
         // ctor chain (`let u = Url.parse(..).unwrap()`) types as the dep
         // type, so downstream `.to(str)`/print resolve Display (three-way
         // parity) instead of staying Unknown.
@@ -2205,7 +2229,12 @@ impl RustTrans {
         // Plan 159 6B-2.2: Wrap array elements in Box::new() for []Spec types
         let is_spec_slice =
             matches!(&store.ty, Type::Slice(slice) if matches!(&*slice.elem, Type::Spec(_)));
-        if is_spec_slice {
+        if self
+            .json_null_slots
+            .contains(&(store as *const Store as usize))
+        {
+            write!(out, "serde_json::Value::Null")?;
+        } else if is_spec_slice {
             // [b1, b2] → vec![Box::new(b1), Box::new(b2)]
             if let Expr::Array(elems) = &store.expr {
                 write!(out, "vec![")?;
@@ -2289,7 +2318,7 @@ impl RustTrans {
             }
             self.expr(&store.expr, out)?;
             if narrow_i32 {
-                write!(out, ") as i32")?;
+                write!(out, ") as i64")?;
             }
             self.let_init_str_coercion = saved_let_coerce;
             self.len_i32_cast_suppressed = saved_suppress;

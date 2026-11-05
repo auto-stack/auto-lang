@@ -520,74 +520,77 @@ fn add_mut_to_let_collections(code: &str) -> String {
 /// String struct field, append `.to_string()`. Scans for `ident: ident,` pairs
 /// (no regex backref — regex crate lacks it) where the ident is a str param.
 fn append_tostring_for_str_fields(code: &str) -> String {
-    use std::collections::HashSet;
-    let mut str_params: HashSet<String> = HashSet::new();
-    // Plan 399 §3: slice params (&[String]) assigned to Vec<String> fields need
-    // .to_vec() (a2r passes them straight: `tags: tags` where tags: &[String]).
-    let mut slice_params: HashSet<String> = HashSet::new();
-    for line in code.lines() {
-        let l = line.trim_start();
-        if !(l.starts_with("pub fn ") || l.starts_with("fn ")) {
-            continue;
-        }
-        if let Some(open) = l.find('(') {
-            if let Some(close) = l[open..].find(')') {
-                for p in l[open + 1..open + close].split(',') {
-                    let tok: Vec<&str> = p
-                        .trim()
-                        .split(|c: char| c == ':' || c.is_whitespace())
-                        .filter(|t| !t.is_empty())
-                        .collect();
-                    if tok.len() >= 2 && (tok[1] == "str" || tok[1] == "&str") {
-                        str_params.insert(tok[0].to_string());
+    let mask = code_region_mask_text(code);
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    let mut scopes: Vec<(i64, Vec<(String, &str)>)> = Vec::new();
+    let mut depth = 0_i64;
+    let mut offset = 0;
+    for line in code.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ") {
+            let mut params = Vec::new();
+            if let Some(open) = line.find('(') {
+                if let Some(close) = line[open..].find(')') {
+                    for param in line[open + 1..open + close].split(',') {
+                        let param = param.trim().strip_prefix("mut ").unwrap_or(param.trim());
+                        if let Some((name, ty)) = param.split_once(':') {
+                            let method = if ty.trim() == "&str" {
+                                Some("to_string")
+                            } else if ty.trim().starts_with("&[") {
+                                Some("to_vec")
+                            } else {
+                                None
+                            };
+                            if let Some(method) = method {
+                                params.push((name.trim().to_string(), method));
+                            }
+                        }
                     }
-                    // Slice param: `name &[String]` or `name &[...]`.
-                    if tok.len() >= 2 && tok[1].starts_with("&[") {
-                        slice_params.insert(tok[0].to_string());
+                }
+            }
+            scopes.push((depth, params));
+        }
+        if let Some((_, params)) = scopes.last() {
+            for (name, method) in params {
+                for sep in [",", " }"] {
+                    let needle = format!("{name}: {name}{sep}");
+                    for (at, _) in line.match_indices(&needle) {
+                        let begin = offset + at;
+                        let end = begin + needle.len();
+                        if mask[begin..end].iter().all(|b| *b)
+                            && line[..at]
+                                .chars()
+                                .next_back()
+                                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+                        {
+                            edits.push((begin, end, format!("{name}: {name}.{method}(){sep}")));
+                        }
                     }
                 }
             }
         }
+        for (i, byte) in line.bytes().enumerate() {
+            if mask[offset + i] {
+                if byte == b'{' {
+                    depth += 1;
+                }
+                if byte == b'}' {
+                    depth -= 1;
+                }
+            }
+        }
+        while scopes.last().is_some_and(|(entry, _)| depth <= *entry) {
+            scopes.pop();
+        }
+        offset += line.len();
     }
-    let skip: HashSet<&str> = [
-        "id",
-        "mine",
-        "done",
-        "pinned",
-        "time",
-        "count",
-        "unread",
-        "active_id",
-    ]
-    .iter()
-    .copied()
-    .collect();
-    // Scan the whole code; for each word w that is a str param, replace `w: w,` -> `w: w.to_string(),`.
-    // Process by iterating over str_params (small set) and doing targeted replace.
     let mut out = code.to_string();
-    for name in &str_params {
-        if skip.contains(name.as_str()) {
-            continue;
-        }
-        // Plan 399 §3: a2r emits `field: field` for str params; add .to_string().
-        // Match both `,` (mid-struct) and ` }` (last field, no trailing comma).
-        for sep in [",", " }"] {
-            let needle = format!("{}: {}{}", name, name, sep);
-            let repl = format!("{}: {}.to_string(){}", name, name, sep);
-            out = out.replace(&needle, &repl);
-        }
-    }
-    // Plan 399 §3: slice params (`tags: &[String]`) → `field: tags.to_vec()`.
-    for name in &slice_params {
-        for sep in [",", " }"] {
-            let needle = format!("{}: {}{}", name, name, sep);
-            let repl = format!("{}: {}.to_vec(){}", name, name, sep);
-            out = out.replace(&needle, &repl);
-        }
+    edits.sort_by_key(|e| e.0);
+    for (begin, end, replacement) in edits.into_iter().rev() {
+        out.replace_range(begin..end, &replacement);
     }
     out
 }
-
 /// Strip `List<T>.new(...)` / `Array<T>.new(...)` wrappers, leaving the inner expr.
 /// Plan 399 §7: made UTF-8 safe — `List</Array<` are ASCII so byte-indexing for
 /// matching is fine, but the byte cursor must skip whole UTF-8 sequences when
@@ -907,9 +910,9 @@ mod backend_diagnostic_tests {
 
     #[test]
     fn rejected_call_reports_symbol_and_backend_module() {
-        // Reader's VM-only native was previously reported as just
-        // "undefined function", incorrectly implicating valid imports.
-        for name in ["type_of", "unknown_helper"] {
+        // Unknown calls must still identify the rejected name and module;
+        // type_of is now supported by the native Rust runtime (PLAN-956).
+        for name in ["unknown_helper", "another_unknown_helper"] {
             let source = format!("fn check(x) bool {{ return {name}(x) == \"int\" }}");
             let error = transpile_back_module_to_rs_with_proofs("library", &source, None)
                 .unwrap_err()
@@ -920,6 +923,56 @@ mod backend_diagnostic_tests {
                 "{error}"
             );
         }
+    }
+
+    #[test]
+    fn reader_dynamic_json_nested_return_and_list_reuse_are_admitted() {
+        let source = r#"
+use auto.json: JsonValue
+fn inspect(value JsonValue) str {
+    var parsed = null
+    parsed = json.parse("{}")
+    try {
+        if value.active { return "active" }
+        try { if parsed.nested != null { return "nested" } } catch {}
+    } catch {}
+    return "after"
+}
+fn sum(xs List<int>) int { return xs[0] }
+fn reuse() int {
+    var values = List<int>.new([7])
+    let first int = sum(values)
+    return first + sum(values)
+}
+"#;
+        let (code, _) = transpile_back_module_to_rs_with_proofs("probe", source, None).unwrap();
+        assert!(code.contains("json_condition"), "{code}");
+        assert!(code.contains("return Some(__v)"), "{code}");
+        assert!(code.contains("sum(values.clone())"), "{code}");
+        assert!(code.contains("serde_json::Value::Null"), "{code}");
+    }
+
+    #[test]
+    fn string_field_coercion_stays_in_its_function_and_skips_literals() {
+        let input = r#"fn text(book_id: &str) -> Chapter {
+    let example = "book_id: book_id";
+    Chapter { book_id: book_id }
+}
+fn number(book_id: i64) -> Chapter {
+    Chapter { book_id: book_id }
+}
+"#;
+        let output = super::append_tostring_for_str_fields(input);
+        assert!(
+            output.contains("Chapter { book_id: book_id.to_string() }"),
+            "{output}"
+        );
+        assert!(
+            output
+                .contains("fn number(book_id: i64) -> Chapter {\n    Chapter { book_id: book_id }"),
+            "{output}"
+        );
+        assert!(output.contains("\"book_id: book_id\""), "{output}");
     }
 }
 

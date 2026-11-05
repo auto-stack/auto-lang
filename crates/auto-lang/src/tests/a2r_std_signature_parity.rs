@@ -71,7 +71,16 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                 // tests/fs_tree_parity.rs 钉（强于本名/元数兜带）。
                 // `fs.dir_names` is declared by fs.at and dispatched through
                 // the shared a2r-std helper; file.rs.at is not its source twin.
-                allow_only_rs: &["mkdir_all", "tree", "basename", "dir_names"],
+                // PLAN-956: typed Rust int-byte and i64 status adapters;
+                // public File.read_bytes/copy keep their existing Auto surface.
+                allow_only_rs: &[
+                    "mkdir_all",
+                    "tree",
+                    "basename",
+                    "dir_names",
+                    "read_int_bytes",
+                    "copy_int",
+                ],
             },
         ),
         (
@@ -150,6 +159,8 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                     "match_count",
                     "replace_first",
                     "str_substr",
+                    // PLAN-956: adapter for the Auto string .slice method.
+                    "str_slice",
                     "str_ends_with",
                     "str_starts_with",
                     "str_split",

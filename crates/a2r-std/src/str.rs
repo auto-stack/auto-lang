@@ -4,8 +4,8 @@
 /// UTF-8 byte length. PLAN-781 阶段 E（T-24）：VM 轨 nat#1526
 /// （`shim_str_byte_len`）的 a2r 镜像——与 `fs::read_text_range` 的字节
 /// 游标同空间（Reader 章 meta 索引偏移累计）。
-pub fn str_byte_len(s: &str) -> i32 {
-    s.len() as i32
+pub fn str_byte_len(s: &str) -> i64 {
+    s.len() as i64
 }
 
 /// Get the character at a given index (returns code point as i32)
@@ -18,8 +18,8 @@ pub fn char_at(s: &str, i: i32) -> i32 {
 }
 
 /// Count non-overlapping occurrences of a substring
-pub fn match_count(s: &str, pattern: &str) -> i32 {
-    s.matches(pattern).count() as i32
+pub fn match_count(s: &str, pattern: &str) -> i64 {
+    s.matches(pattern).count() as i64
 }
 
 /// Replace first occurrence of a pattern in a string
@@ -41,44 +41,70 @@ pub fn replace_first(s: &str, from: &str, to: &str) -> String {
 /// PLAN-885 G3/G2: returns `i64` — `.at int` maps to Rust `i64` (ty.rs Plan 399
 /// Phase 11.1); the historical `i32` return caused E0308 on generated
 /// backends (`let hit: i64 = str_find(...)`).
-/// PLAN-885 G2: returns a **char** offset (not byte) — the a2r emitter renders
-/// `.slice(j, j+1)` as `chars().take(j+1).skip(j)` (char semantics), so a byte
-/// offset from `str::find` desynchronizes on multi-byte UTF-8 (list/JSON
-/// field extraction read wrong characters). The VM pairs byte `find` with byte
-/// `slice`; the transpiled side pairs char `find` with char `slice`.
+/// PLAN-956: byte offsets replace the former Rust-only character offsets.
+/// UTF-8 byte offset, paired with `str_substr` and `str_slice` on both backends.
 pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P) -> i64 {
-    let s = s.as_ref();
-    let p = pattern.as_ref();
-    match s.find(p) {
-        Some(byte_idx) => s[..byte_idx].chars().count() as i64,
-        None => -1,
-    }
+    s.as_ref()
+        .find(pattern.as_ref())
+        .map(|i| i as i64)
+        .unwrap_or(-1)
 }
 
-/// Find the index of a substring starting from position, returns -1 if not found.
-/// `start` is a char offset (matching the char-slice semantics above).
-pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P, start: i32) -> i64 {
-    let start = start.max(0) as usize;
+/// Byte offset search. A start inside a UTF-8 character is clamped forward.
+pub fn str_find_from<S: AsRef<str>, P: AsRef<str>, I: TryInto<usize>>(
+    s: S,
+    pattern: P,
+    start: I,
+) -> i64 {
     let s = s.as_ref();
-    let p = pattern.as_ref();
-    let byte_start = s
-        .char_indices()
-        .nth(start)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len());
-    match s[byte_start..].find(p) {
-        Some(byte_idx) => {
-            start as i64 + s[byte_start..][..byte_idx].chars().count() as i64
-        }
-        None => -1,
+    let mut start = start.try_into().unwrap_or(0);
+    if start > s.len() {
+        return -1;
     }
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    s[start..]
+        .find(pattern.as_ref())
+        .map(|i| (start + i) as i64)
+        .unwrap_or(-1)
 }
 
+/// END-semantics slicing with the same byte offsets and UTF-8 clamps as VM.
+pub fn str_slice<S: AsRef<str>, I: TryInto<usize>, N: TryInto<usize>>(
+    s: S,
+    start: I,
+    end: N,
+) -> String {
+    let s = s.as_ref();
+    let (Ok(start), Ok(end)) = (start.try_into(), end.try_into()) else {
+        return String::new();
+    };
+    if start > end || end > s.len() {
+        return String::new();
+    }
+    str_substr(s, start, end - start)
+}
 /// Extract a substring from start index with given length
-pub fn str_substr(s: &str, start: i32, len: i32) -> String {
-    let start = start.max(0) as usize;
-    let len = len.max(0) as usize;
-    s.chars().skip(start).take(len).collect()
+pub fn str_substr<I: TryInto<usize>, N: TryInto<usize>>(s: &str, start: I, len: N) -> String {
+    let (Ok(mut start), Ok(len)) = (start.try_into(), len.try_into()) else {
+        return String::new();
+    };
+    if start > s.len() {
+        return String::new();
+    }
+    let mut end = start.saturating_add(len).min(s.len());
+    // VM substr uses byte offsets and clamps partial UTF-8 characters inward.
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end < start {
+        return String::new();
+    }
+    s[start..end].to_string()
 }
 
 /// Check if a string ends with a suffix
@@ -121,4 +147,31 @@ pub fn str_to_upper(s: &str) -> String {
 /// Accepts `&[u8]` or `Vec<u8>` (the call site may receive either).
 pub fn from_bytes(bytes: impl AsRef<[u8]>) -> String {
     String::from_utf8_lossy(bytes.as_ref()).into_owned()
+}
+
+#[cfg(test)]
+mod byte_index_tests {
+    use super::*;
+
+    #[test]
+    fn chinese_emoji_find_slice_and_substr_share_byte_offsets() {
+        let text = "山😀月abc";
+        assert_eq!(str_find(text, "月"), 7);
+        assert_eq!(str_substr(text, 7_i64, 3_i64), "月");
+        assert_eq!(str_slice(text, 3_i64, 10_i64), "😀月");
+        assert_eq!(str_find_from(text, "月", 4_i64), 7);
+        assert_eq!(str_find_from(text, "😀", 4_i64), -1);
+    }
+
+    #[test]
+    fn partial_characters_negative_and_overflow_do_not_panic() {
+        let text = "山😀月";
+        assert_eq!(str_substr(text, 1_i64, 8_i64), "😀");
+        assert_eq!(str_substr(text, -1_i64, 3_i64), "");
+        assert_eq!(str_substr(text, 3_usize, usize::MAX), "😀月");
+        assert_eq!(str_slice(text, 0_i64, 99_i64), "");
+        assert_eq!(str_slice(text, 7_i64, 3_i64), "");
+        assert_eq!(str_find_from(text, "山", -1_i64), 0);
+        assert_eq!(str_find_from(text, "", 99_i64), -1);
+    }
 }

@@ -38,18 +38,32 @@
 ## 诊断与失败原子性
 
 `NameError::UndefinedFunction` 的 Display 必须包含实际符号名（例如
-`undefined function: type_of`）；API 生成包装器同时保留 `library.at` 等模块名。
+`undefined function: missing_helper`）；API 生成包装器同时保留 `library.at` 等模块名。
 不能只打印族名后把定位责任交给使用方。code/span/help/suggestion 的 typed 身份保持。
 
-### Vue 后端选择与 VM 专有能力（PLAN-955）
+### Vue 后端选择与 Reader Rust 能力（PLAN-955/956）
 
-Vue 是前端选择，不意味着后端自动使用 VM。CLI `run` 缺省 server 为 Rust；
-`--no-merge` 只选择分离模式。含 VM 专有 native 的应用应显式
-`auto run --server vm`，生成 TS client 后由 VM HTTP 服务执行后端。
-`type_of(x)` 当前只有 VM native 注册，裸名 A2R 无映射；不能因 VM 能执行
-就将其列为 A2R 已支持能力，也不能把它的失败推断为所有跨模块 import 失效。
-auto-reader 的 `use pathx: json_escape` 在共享 API 转译入口正常准入；
-其 `library.at` 首个被拒调用是 `type_of`，而非 `json_escape`。
+Vue 为前端选择；默认 Rust 后端，`--server vm` 可显式选择 VM。
+`--no-merge` 仅选择分离模式。裸 `type_of(x)` 在 A2R 已映射到纯 Rust
+运行时，借用实参，保留用户同名函数/局部绑定优先权；参数数目错误具名拒绝。
+普通未知调用仍执行上表静态准入。`use pathx: json_escape` 等显式模块导入
+沿原规则解析，不能把某个 VM native 缺失误判成模块链接失效。
+
+Reader 采用显式 `auto.json.JsonValue` 动态形参。JSON 字段/索引保留动态值，
+标量转换在已知消费点执行；`json.as_int` 的 JsonValue 实参走 Value 适配面。
+null 初始槽按词法绑定与后续 JSON 赋值推断，内层同名变量/循环绑定不重定外层。
+动态条件保持 VM 的零/null/false 为假、字符串与容器引用为真（包括空字符串）。
+字符串拼接中的 JSON 字符串不加引号；null 拼接抛出可捕获错误，与 VM 一致。
+
+条件 `return` 的 try 闭包以 `Option<返回类型>` 传递：没有返回时继续执行函数；
+嵌套 try 的 Some 返回继续传到函数出口。此项不扩大既有 finally、外层 loop
+的 break/continue 边界。`List<T>.new(...)` 的结果登记为列表，以避免重复传参
+搬走 owned Vec；修改调用方列表须显式 `mut` 参数，不以 clone 代替共享修改。
+
+原生映射增加 zip.list_json/read_text/extract_entry、hash.file_sha256、
+file.exists/copy/read_bytes、fs.size 的有界面；ZIP 见 zip-natives 规范。
+函数参数修补/字符串字段 coercion 只作用于自己的函数及完整标识符，不能由
+其他函数同名参数污染整数参数或 max_out 一类后缀名称。
 
 `#[test]` 是函数的测试发现标记，不是生产模块链接的条件排除指令。
 Parser 保留函数及 `is_test`，VM codegen/loader 会处理其函数体与引用，

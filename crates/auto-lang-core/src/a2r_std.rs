@@ -19,6 +19,21 @@
 
 use std::cell::RefCell;
 
+pub use ::a2r_std::json_condition;
+pub use ::a2r_std::type_of;
+pub use ::a2r_std::{hash, str, uuid, zip};
+
+/// Dynamic values use Auto's unquoted string form in string concatenation.
+pub fn json_display(value: &serde_json::Value) -> String {
+    if value.is_null() {
+        panic!("TypeError: unsupported operand type(s) for +: 'str' and 'NoneType'");
+    }
+    value
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| value.to_string())
+}
+
 /// Extension trait to provide stable `as_str()` for String/&str.
 /// In Rust 1.93, String::as_str() is stable but str::as_str() is still unstable (E0658).
 /// This trait provides a stable alternative that works for both types.
@@ -305,6 +320,7 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 #[allow(non_snake_case)]
 pub mod json {
     use serde_json::Value;
+    pub type JsonValue = Value;
 
     pub fn encode<T: serde::Serialize>(value: &T) -> String {
         serde_json::to_string(value).unwrap_or_default()
@@ -521,47 +537,27 @@ pub fn str_new(s: &str, _capacity: usize) -> String {
 /// signature aligned with the standalone crate `a2r_std::str_find`
 /// (PLAN-885 G3: embedded facade previously required 3 args while the
 /// call_dot emitter emitted 2, causing E0061 on generated backends).
-/// PLAN-885 G2: returns a **char** offset, matching the a2r `.slice(j, j+1)`
-/// emission (`chars().take().skip()`, char semantics) — see standalone crate.
+/// PLAN-956: returns UTF-8 byte offsets, paired with byte slice/substr (VM parity).
 /// In AutoLang: s.find(needle)
 pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, needle: P) -> i64 {
-    let s = s.as_ref();
-    let p = needle.as_ref();
-    match s.find(p) {
-        Some(byte_idx) => s[..byte_idx].chars().count() as i64,
-        None => -1,
-    }
+    ::a2r_std::str::str_find(s, needle)
 }
 
-/// Find substring in string starting from position, returning -1 if not
-/// found. Three-argument form `s.find(needle, start)` — aligned with
-/// `a2r_std::str_find_from` in the standalone crate. `start` is a char offset.
-/// In AutoLang: s.find(needle, start_pos)
-pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, needle: P, start: i32) -> i64 {
-    let start = start.max(0) as usize;
-    let s = s.as_ref();
-    let p = needle.as_ref();
-    let byte_start = s
-        .char_indices()
-        .nth(start)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len());
-    match s[byte_start..].find(p) {
-        Some(byte_idx) => start as i64 + s[byte_start..][..byte_idx].chars().count() as i64,
-        None => -1,
-    }
+pub fn str_find_from<S: AsRef<str>, P: AsRef<str>, I: TryInto<usize>>(
+    s: S,
+    needle: P,
+    start: I,
+) -> i64 {
+    ::a2r_std::str::str_find_from(s, needle, start)
 }
-
 /// Get substring from position with length.
 /// In AutoLang: s.substr(start, length)
-pub fn str_substr<S: AsRef<str>>(s: S, start: i32, length: i32) -> String {
-    let s = s.as_ref();
-    if start < 0 || length <= 0 || start as usize >= s.len() {
-        return String::new();
-    }
-    let start_usize = start as usize;
-    let end = std::cmp::min(start_usize + length as usize, s.len());
-    s[start_usize..end].to_string()
+pub fn str_substr<S: AsRef<str>, I: TryInto<usize>, N: TryInto<usize>>(
+    s: S,
+    start: I,
+    length: N,
+) -> String {
+    ::a2r_std::str::str_substr(s.as_ref(), start, length)
 }
 
 /// String contains check.
@@ -591,11 +587,11 @@ pub fn str_append(s: &mut String, other: &str) {
 
 /// Convert a JSON value to i32 (handles both string and number values)
 /// Used by to_int() interceptor when the receiver may be Option<Value>
-pub fn value_to_int(val: &serde_json::Value) -> i32 {
+pub fn value_to_int(val: &serde_json::Value) -> i64 {
     if val.is_i64() || val.is_u64() || val.is_f64() {
-        val.as_i64().map(|n| n as i32)
+        val.as_i64()
     } else if let Some(s) = val.as_str() {
-        s.parse::<i32>().ok()
+        s.parse::<i64>().ok()
     } else {
         None
     }
@@ -603,12 +599,10 @@ pub fn value_to_int(val: &serde_json::Value) -> i32 {
 }
 
 /// Get the length of a JSON value (string length for strings, 0 for other types)
-pub fn value_len(val: &serde_json::Value) -> i32 {
-    if let Some(s) = val.as_str() {
-        s.len() as i32
-    } else {
-        0
-    }
+pub fn value_len(val: &serde_json::Value) -> i64 {
+    val.as_str()
+        .map(|s| s.len())
+        .unwrap_or_else(|| ::a2r_std::json::json_len(val)) as i64
 }
 
 // PLAN-714 r3 R3-T1: json! 宏再导出——发射臂发 a2r_std::json!({...})
@@ -716,8 +710,8 @@ pub mod fs {
         std::path::Path::new(path.as_ref()).exists()
     }
 
-    pub fn create_dir(path: impl AsRef<str>) -> bool {
-        std::fs::create_dir_all(path.as_ref()).is_ok()
+    pub fn create_dir(path: impl AsRef<str>) -> i64 {
+        ::a2r_std::fs::create_dir(path.as_ref()) as i64
     }
 
     /// Plan 742 D9: 与独立 a2r-std crate 的 fs::list_dir 对齐（直接子文件名，
@@ -740,16 +734,22 @@ pub mod fs {
         std::fs::create_dir_all(path.as_ref()).is_ok()
     }
 
-    pub fn write_text(path: impl AsRef<str>, content: impl AsRef<str>) -> bool {
-        std::fs::write(path.as_ref(), content.as_ref()).is_ok()
+    pub fn write_text(path: impl AsRef<str>, content: impl AsRef<str>) -> i64 {
+        ::a2r_std::fs::write_text(path.as_ref(), content.as_ref()) as i64
     }
+
+    pub fn copy(src: impl AsRef<str>, dst: impl AsRef<str>) -> i64 {
+        ::a2r_std::fs::copy(src.as_ref(), dst.as_ref()) as i64
+    }
+
+    pub use ::a2r_std::fs::{copy_int, read_int_bytes};
 
     pub fn read_bytes(path: impl AsRef<str>) -> Vec<u8> {
         std::fs::read(path.as_ref()).unwrap_or_default()
     }
 
-    pub fn delete(path: impl AsRef<str>) -> bool {
-        std::fs::remove_file(path.as_ref()).is_ok()
+    pub fn delete(path: impl AsRef<str>) -> i64 {
+        ::a2r_std::fs::delete(path.as_ref()) as i64
     }
 
     pub fn is_dir(path: impl AsRef<str>) -> bool {
@@ -816,9 +816,9 @@ pub mod fs {
 
     /// PLAN-714 r3 R3-T1: File.write_bytes 的 list 形（read_bytes_list
     /// 对偶——Value 元素按 as_i64 取低字节；缺失补 0 保长度）。
-    pub fn write_bytes_list(path: impl AsRef<str>, data: Vec<serde_json::Value>) -> bool {
+    pub fn write_bytes_list(path: impl AsRef<str>, data: Vec<serde_json::Value>) -> i64 {
         let bytes: Vec<u8> = data.iter().map(|v| v.as_i64().unwrap_or(0) as u8).collect();
-        std::fs::write(path.as_ref(), bytes).is_ok()
+        ::a2r_std::fs::write_bytes(path.as_ref(), &bytes) as i64
     }
 
     pub fn walk(dir: impl AsRef<str>) -> String {
@@ -1335,6 +1335,14 @@ pub mod diff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_string_concat_unquotes_strings_and_null_is_catchable() {
+        assert_eq!(json_display(&serde_json::json!("中文😀")), "中文😀");
+        assert_eq!(json_display(&serde_json::json!(false)), "false");
+        assert_eq!(json_display(&serde_json::json!(-3)), "-3");
+        assert!(std::panic::catch_unwind(|| json_display(&serde_json::Value::Null)).is_err());
+    }
 
     #[test]
     fn test_list_basic() {

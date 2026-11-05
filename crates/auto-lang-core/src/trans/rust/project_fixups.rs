@@ -630,7 +630,48 @@ impl RustTrans {
                 sink.body.write(b" in ")?;
 
                 // Check if it's a range or array iteration
-                if let Expr::Range(range) = &for_stmt.range {
+                if self.expr_is_string_like(&for_stmt.range) {
+                    let previous_type = self.local_var_types.insert(name.clone(), Type::Char);
+                    self.expr(&for_stmt.range, &mut sink.body)?;
+                    sink.body.write(b".chars() {\n")?;
+                    self.indent();
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                    match previous_type {
+                        Some(ty) => {
+                            self.local_var_types.insert(name.clone(), ty);
+                        }
+                        None => {
+                            self.local_var_types.remove(name);
+                        }
+                    }
+                } else if self.expr_is_dynamic_json(&for_stmt.range) {
+                    let previous_type = self.local_var_types.insert(
+                        name.clone(),
+                        Self::placeholder_user_type("JsonValue".into()),
+                    );
+                    let previous_str = self.current_fn_str_params.remove(name);
+                    self.expr(&for_stmt.range, &mut sink.body)?;
+                    sink.body.write(b".as_array().into_iter().flatten() {\n")?;
+                    self.indent();
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                    match previous_type {
+                        Some(ty) => {
+                            self.local_var_types.insert(name.clone(), ty);
+                        }
+                        None => {
+                            self.local_var_types.remove(name);
+                        }
+                    }
+                    if previous_str {
+                        self.current_fn_str_params.insert(name.clone());
+                    }
+                } else if let Expr::Range(range) = &for_stmt.range {
                     // Range iteration: for x in start..end
                     self.expr(&range.start, &mut sink.body)?;
                     sink.body.write(b"..")?;
@@ -645,6 +686,9 @@ impl RustTrans {
                     sink.body.write(b"}")?;
                 } else {
                     // Array iteration: for x in arr.
+                    let previous_type = self.local_var_types.get(name).cloned();
+                    let previous_str = self.current_fn_str_params.contains(name);
+                    let previous_borrowed = self.borrowed_iter_vars.contains(name);
                     // Plan 016 Phase A A.4: bind the loop variable's type into
                     // local_var_types so downstream codegen can make correct
                     // borrow/coercion decisions (e.g. .as_str() skipping for
@@ -711,8 +755,9 @@ impl RustTrans {
                                 elem_ty,
                                 Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice
                             );
-                            if !is_str {
-                                self.local_var_types.insert(name.clone(), elem_ty);
+                            self.local_var_types.insert(name.clone(), elem_ty);
+                            if is_str {
+                                self.current_fn_str_params.remove(name);
                             }
                         }
                         // PLAN-681 T-05（N2/P1b）：bare List 迭代元素=动态记录
@@ -737,6 +782,22 @@ impl RustTrans {
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
+                    match previous_type {
+                        Some(ty) => {
+                            self.local_var_types.insert(name.clone(), ty);
+                        }
+                        None => {
+                            self.local_var_types.remove(name);
+                        }
+                    }
+                    if previous_str {
+                        self.current_fn_str_params.insert(name.clone());
+                    } else {
+                        self.current_fn_str_params.remove(name);
+                    }
+                    if !previous_borrowed {
+                        self.borrowed_iter_vars.remove(name);
+                    }
                 }
             }
             Iter::Destructured(key, val) => {
@@ -914,7 +975,7 @@ impl RustTrans {
                 sink.body.write(b" else if ")?;
             }
 
-            self.expr(&branch.cond, &mut sink.body)?;
+            self.expr_condition(&branch.cond, &mut sink.body)?;
             sink.body.write(b" ")?;
 
             // Process branch body - use body() method for proper formatting
@@ -3613,11 +3674,17 @@ impl RustTrans {
             for name in &mutated {
                 let marker = format!("{}:", name);
                 let marker_mut = format!("mut {}:", name);
-                if let Some(pos) = new_params.find(&marker) {
+                if let Some(pos) = new_params.match_indices(&marker).find_map(|(pos, _)| {
+                    let boundary = new_params[..pos]
+                        .chars()
+                        .next_back()
+                        .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+                    boundary.then_some(pos)
+                }) {
                     // Only replace if not already `mut `-prefixed.
                     let before = &new_params[..pos];
                     if !before.ends_with("mut ") {
-                        new_params = new_params.replacen(&marker, &marker_mut, 1);
+                        new_params.replace_range(pos..pos + marker.len(), &marker_mut);
                     }
                 }
             }

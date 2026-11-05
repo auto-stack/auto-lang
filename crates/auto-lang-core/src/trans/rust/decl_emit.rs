@@ -26,6 +26,9 @@ impl RustTrans {
 
         // Clear local var type cache for this function, register params
         self.local_var_types.clear();
+        self.json_value_vars.clear();
+        self.json_value_bindings.clear();
+        self.json_null_slots = Self::collect_json_null_slots(fn_decl);
         // Plan 427: is-arm &str bindings are function-scoped (mirrors
         // local_var_types above).
         self.str_slice_pattern_bindings.clear();

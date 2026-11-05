@@ -1354,7 +1354,11 @@ pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // 100 份输入引用（对象 heap 0→100、动态串 pool +100）。
     let nv = crate::vm::native::pop_arg_nv(task);
     let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
-    let t: &'static str = if auto_val::is_i32(nv) {
+    let t: &'static str = if auto_val::is_i32(nv)
+        || auto_val::is_i64(nv)
+        || auto_val::is_u64(nv)
+        || auto_val::is_bigint(nv)
+    {
         "int"
     } else if auto_val::is_f32(nv) || auto_val::is_f64(nv) {
         "float"
@@ -1374,6 +1378,46 @@ pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         "unknown"
     };
     push_string_result(task, vm, t.to_string())
+}
+
+#[cfg(test)]
+mod reader_type_parity_tests {
+    use super::*;
+
+    #[test]
+    fn parsed_json_kinds_match_native_rust_including_wide_numbers() {
+        for (source, expected) in [
+            ("0", "int"),
+            ("-1", "int"),
+            ("2147483648", "int"),
+            ("9223372036854775807", "int"),
+            ("18446744073709551615", "int"),
+            ("0.0", "float"),
+            ("1e0", "float"),
+            ("-0.0", "float"),
+            ("null", "null"),
+            ("true", "bool"),
+            ("false", "bool"),
+            ("\"中文😀\"", "str"),
+            ("[]", "object"),
+            ("{}", "object"),
+        ] {
+            let value: serde_json::Value = serde_json::from_str(source).unwrap();
+            let vm = AutoVM::new(
+                crate::vm::virt_memory::VirtualFlash::new_with_code(vec![]),
+                1024,
+            );
+            let mut task = AutoTask::new(1, 1024, 0);
+            crate::vm::ffi::stdlib::strings_json::json_to_vm_value(&mut task, &vm, &value, 0)
+                .unwrap();
+            shim_type_of(&mut task, &vm).unwrap();
+            let result = auto_val::decode_string(task.ram.pop_nv()) as usize;
+            let strings = vm.strings.read().unwrap();
+            let actual = String::from_utf8_lossy(strings.get(result).unwrap()).to_string();
+            assert_eq!(actual, expected, "VM source={source}");
+            assert_eq!(::a2r_std::type_of(&value), expected, "Rust source={source}");
+        }
+    }
 }
 
 // ============================================================================

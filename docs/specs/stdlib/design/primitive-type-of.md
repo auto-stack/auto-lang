@@ -1,6 +1,6 @@
 # 原语：`auto.type_of`（运行时类型谓词）
 
-> 来源：PLAN-781 阶段 E（T-25 R05-r6/r7，SD-12）。状态：已交付（VM nat#1527）。
+> 来源：PLAN-781 阶段 E（T-25 R05-r6/r7，SD-12）。状态：已交付（VM nat#1527；PLAN-956 增加原生 Rust）。
 
 ## 合同
 
@@ -12,7 +12,7 @@ auto.type_of(x) -> str      # .at 调用形：type_of(x)（裸名注册）
 
 | 返回 | 判定（nanbox tag） |
 |---|---|
-| `"int"` | i32 tag（小整数；i64/u64/BigInt 为独立宽整 tag，本表未单列） |
+| `"int"` | i32 / i64 / u64 / BigInt 整数 tag（PLAN-956 补齐宽整数谓词） |
 | `"float"` | f32 tag 或 f64（tag 7 / 非装箱形态归一） |
 | `"str"` | 字符串池引用 |
 | `"bool"` / `"null"` | 布尔 / null |
@@ -38,5 +38,9 @@ json.parse 对 `0.0` 产生 float、对 `0` 产生 int——`type_of` 是唯一�
 
 - nat#1527 + 裸名 `type_of` 双注册；白名单避让行防动态 `#[vm]` id 撞号
   （T-03 教训：动态计数器爬 15xx/99xx 带，撞号会静默覆盖无关绑定）；
-- a2r 轨暂不镜像（唯一消费方 Reader 为 VM 轨专用；出现转译消费方时补
-  `str.rs.at` 声明 + parity）。
+- Rust A2R 裸名映射到 `a2r_std::type_of(&value)`；已实现可序列化标量与
+  JSON 值，包含 int/float（保留 0.0）、str/bool/null/object。JSON 数组及生成
+  Vec 对应 VM 堆对象，返回 `object`，不改旧数组标签；VM 的专用 list tag
+  与 future tag 保留，Rust 本次不宣称支持不透明 Future/任意宿主类型。
+- Rust 借用输入，VM 继续 pop_arg_nv + StakeGuard；两轨直接值域测试覆盖
+  JSON 标量/数组/对象以及完整 i64/u64 范围，不能用转成字符串后的值代替原值。

@@ -26,6 +26,8 @@
     { "module": "sse", "target": "rust", "kind": "a2r-std", "status": "unverified", "locator": "a2r_std::sse", "reason": "a2r-std sse 仅解析无网络 IO；映射未验证" },
     { "module": "sse", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 sse 目标层" },
 
+    { "module": "zip", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::zip", "notes": "PLAN-956: list_json/read_text/extract_entry；与 VM 共享有预算上限的纯 Rust 算法" },
+    { "module": "hash", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::hash", "notes": "PLAN-956: file_sha256，仅此公开面；读取失败 panic 可由 try/catch 捕获" },
     { "module": "env", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::env", "notes": "env.rs.at 镜像 + parity 在案" },
     { "module": "file", "target": "rust", "kind": "none", "status": "unsupported", "reason": "名称表路由 a2r_std::file 但模块不存在（文件面由 fs.rs 承担）——发射漂移在案" },
     { "module": "fs", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::fs" },

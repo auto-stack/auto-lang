@@ -7,6 +7,8 @@ description = "Auto language standard library for a2r transpiled Rust code"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+zip = { workspace = true }
 # PLAN-727 T-03/T-04: 文件 helper 全部迁移至共享传输核心（http/transfer.rs），
 # ureq 依赖退役（最后消费者 legacy 三 helper 已于本计划迁走）。
 reqwest = { workspace = true, features = ["stream", "multipart"] }
