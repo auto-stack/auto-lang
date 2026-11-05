@@ -21,9 +21,7 @@ use crate::facts::{FactsError, FnSigFacts, InferBodyFacts, PortableTy};
 use crate::session::{QueryError, SourceQuerySession};
 use crate::walk::{walk_body, NodeId, WalkError};
 use ace_core::source::ast::{Block, Item, Program};
-use ace_core::source::resolve::{
-    RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT,
-};
+use ace_core::source::resolve::{RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// What one body's application installed (producer-side counts).
@@ -39,27 +37,47 @@ pub enum ApplyError {
     Walk(WalkError),
     Facts(FactsError),
     /// A resolved expression has no structural node of the current body.
-    SpanNodeMissing { start: u32, end: u32 },
+    SpanNodeMissing {
+        start: u32,
+        end: u32,
+    },
     /// Two structural nodes share one source span (ambiguous mapping).
-    DuplicateSpan { start: u32, end: u32 },
+    DuplicateSpan {
+        start: u32,
+        end: u32,
+    },
     /// A resolved expression maps to a non-expression node.
-    NotAnExpression { id: u32, kind: &'static str },
+    NotAnExpression {
+        id: u32,
+        kind: &'static str,
+    },
     /// A fact node was never consumed by the resolved tree (stale/foreign
     /// page: the fact describes a body core did not bind).
-    UnusedFact { id: u32 },
+    UnusedFact {
+        id: u32,
+    },
     /// The body has a declaration node with no binding fact.
-    MissingBinding { id: u32 },
+    MissingBinding {
+        id: u32,
+    },
     /// A resolved construct outside the finite application surface.
-    UnsupportedExpr { what: &'static str },
+    UnsupportedExpr {
+        what: &'static str,
+    },
     /// The signature page disagrees with the bound declaration.
-    SigArity { facts: usize, resolved: usize },
+    SigArity {
+        facts: usize,
+        resolved: usize,
+    },
     SigParamName {
         index: usize,
         facts: String,
         resolved: String,
     },
     /// Non-function declarations are outside this bounded profile.
-    Profile { what: &'static str },
+    Profile {
+        what: &'static str,
+    },
 }
 
 impl std::fmt::Display for ApplyError {
@@ -205,11 +223,7 @@ pub fn apply_body_facts(
     let mut stmts: Vec<&mut RStmt> = resolved.body.stmts.iter_mut().collect();
     while let Some(stmt) = stmts.pop() {
         match stmt {
-            RStmt::Let {
-                local,
-                value,
-                span,
-            } => {
+            RStmt::Let { local, value, span } => {
                 let id = node_at(*span, &map)?;
                 let Some(b) = facts.bindings.iter().find(|b| b.node == id) else {
                     return Err(ApplyError::MissingBinding { id: id.0 });
@@ -283,7 +297,9 @@ fn visit_expr(
             return Err(ApplyError::NotAnExpression { id: id.0, kind });
         }
         let Some(ty) = facts.ty_of(id) else {
-            return Err(ApplyError::Facts(FactsError::IncompleteCoverage { missing: 1 }));
+            return Err(ApplyError::Facts(FactsError::IncompleteCoverage {
+                missing: 1,
+            }));
         };
         e.vt = vt_of(ty);
         consumed.insert(id.0);
@@ -453,9 +469,12 @@ impl BodyTypeSupply {
         let walk = walk_body(ast_body).map_err(ApplyError::Walk)?;
         facts.admit(&walk).map_err(ApplyError::Facts)?;
         for n in walk.nodes.iter().filter(|n| n.is_expr()) {
-            let ty = facts
-                .ty_of(n.id)
-                .ok_or(ApplyError::Facts(FactsError::IncompleteCoverage { missing: 1 }))?;
+            let ty =
+                facts
+                    .ty_of(n.id)
+                    .ok_or(ApplyError::Facts(FactsError::IncompleteCoverage {
+                        missing: 1,
+                    }))?;
             self.exprs
                 .insert((n.span.start as u32, n.span.end as u32), vt_of(ty));
         }
@@ -463,10 +482,10 @@ impl BodyTypeSupply {
             if decl.node != b.node {
                 return Err(ApplyError::Facts(FactsError::BindingAlignment));
             }
-            let span = walk.node(b.node).map(|n| n.span).unwrap_or(CoreSpan {
-                start: 0,
-                end: 0,
-            });
+            let span = walk
+                .node(b.node)
+                .map(|n| n.span)
+                .unwrap_or(CoreSpan { start: 0, end: 0 });
             self.bindings
                 .insert((span.start as u32, span.end as u32), vt_of(b.ty));
         }
@@ -532,9 +551,7 @@ pub fn bind_with_facts(
     profile: SourceProfile,
 ) -> Result<(ResolvedProgram, Vec<AppliedFn>, BodyTypeSupply), BindFactsError> {
     if session.package() != package || session.module() != module {
-        return Err(BindFactsError::Profile(
-            "session/module identity mismatch",
-        ));
+        return Err(BindFactsError::Profile("session/module identity mismatch"));
     }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {

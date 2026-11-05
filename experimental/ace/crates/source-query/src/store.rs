@@ -51,9 +51,14 @@ pub enum PageReadError {
     Store(String),
     Decode(String),
     /// The page belongs to another complete key than the caller expected.
-    KeyMismatch { expected: String, found: String },
+    KeyMismatch {
+        expected: String,
+        found: String,
+    },
     /// The page envelope is not this producer's/schema's.
-    Envelope { found: String },
+    Envelope {
+        found: String,
+    },
 }
 
 impl std::fmt::Display for PageReadError {
@@ -346,7 +351,9 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
         });
     }
     if r.at != bytes.len() {
-        return Err(PageReadError::Decode("trailing bytes after the page".into()));
+        return Err(PageReadError::Decode(
+            "trailing bytes after the page".into(),
+        ));
     }
     Ok((
         key_canonical,
@@ -379,7 +386,10 @@ pub struct ManagedStoreSink {
 }
 
 impl ManagedStoreSink {
-    pub fn open(root: &Path, project: Option<&str>) -> Result<Self, ace_artifacts::store::StoreError> {
+    pub fn open(
+        root: &Path,
+        project: Option<&str>,
+    ) -> Result<Self, ace_artifacts::store::StoreError> {
         Ok(ManagedStoreSink {
             store: ManagedStore::open(root)?,
             project: project.map(|s| s.to_string()),

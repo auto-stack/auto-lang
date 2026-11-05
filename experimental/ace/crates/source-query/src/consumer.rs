@@ -16,9 +16,7 @@
 
 use crate::apply::{bind_with_facts, AppliedFn, BindFactsError, BodyTypeSupply};
 use ace_core::atom_text::Diagnostic;
-use ace_core::source::{
-    emit_resolved_parts, parse_program_with, SourceParts, SourceProfile,
-};
+use ace_core::source::{emit_resolved_parts, parse_program_with, SourceParts, SourceProfile};
 use ace_core::verify::{verify_scalar, CheckedModule};
 
 /// What the shared entry produced.
@@ -72,8 +70,8 @@ pub fn compile_via_facts(
     let (resolved, applied, supply) =
         bind_with_facts(&program, capabilities, package, module, session, profile)
             .map_err(ConsumerError::Bind)?;
-    let parts = emit_resolved_parts(&resolved, src, module_path, profile)
-        .map_err(ConsumerError::Emit)?;
+    let parts =
+        emit_resolved_parts(&resolved, src, module_path, profile).map_err(ConsumerError::Emit)?;
     let SourceParts {
         profile: prof,
         input_hash,

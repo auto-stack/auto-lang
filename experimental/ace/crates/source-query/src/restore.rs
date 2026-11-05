@@ -31,14 +31,18 @@ use std::collections::BTreeMap;
 pub enum RestoreError {
     /// A required page is absent for this owner: the restore lane is
     /// refused (an explicit cold build is a different request).
-    MissingRequiredPage { owner: String },
+    MissingRequiredPage {
+        owner: String,
+    },
     /// The page does not describe the current source body.
     Facts(FactsError),
     Walk(WalkError),
     /// Core's bind rejected the restored supply (bad/missing fact).
     Bind(Vec<Diagnostic>),
     /// The restored module carries declarations outside the finite surface.
-    Profile { what: &'static str },
+    Profile {
+        what: &'static str,
+    },
     /// A signature fact could not be derived from the declaration.
     Signature(String),
 }
@@ -153,16 +157,14 @@ pub fn restore_bind(
             })?;
         restore_verify(program, package, module, name, Some(page))?;
         let body = body_of(program, name).expect("name came from the same program");
-        supply
-            .add_body(body, page)
-            .map_err(|e| match e {
-                ApplyError::Walk(w) => RestoreError::Walk(w),
-                ApplyError::Facts(f) => RestoreError::Facts(f),
-                _ => RestoreError::Facts(FactsError::BodyVersionMismatch {
-                    facts: "page".into(),
-                    body: name.clone(),
-                }),
-            })?;
+        supply.add_body(body, page).map_err(|e| match e {
+            ApplyError::Walk(w) => RestoreError::Walk(w),
+            ApplyError::Facts(f) => RestoreError::Facts(f),
+            _ => RestoreError::Facts(FactsError::BodyVersionMismatch {
+                facts: "page".into(),
+                body: name.clone(),
+            }),
+        })?;
         let sig = produce_fn_sig(program, package, module, name)
             .map_err(|e| RestoreError::Signature(e.to_string()))?;
         sigs.push((name.clone(), sig));
@@ -177,8 +179,8 @@ pub fn restore_bind(
             },
         });
     }
-    let mut resolved = resolve_with_supply(program, capabilities, profile, &supply)
-        .map_err(RestoreError::Bind)?;
+    let mut resolved =
+        resolve_with_supply(program, capabilities, profile, &supply).map_err(RestoreError::Bind)?;
     for (name, sig) in &sigs {
         if let Some(rfn) = resolved
             .fns

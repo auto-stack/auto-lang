@@ -114,7 +114,10 @@ pub enum CommitError {
     Cancelled,
     /// The host revision advanced after the candidate was prepared: a late
     /// result is never installed.
-    LateResult { current: Revision, candidate: Revision },
+    LateResult {
+        current: Revision,
+        candidate: Revision,
+    },
     /// The source now yields a different complete key (body/signature/
     /// capability change) than the one the candidate was computed for.
     KeyChanged { expected: String, current: String },
@@ -137,7 +140,10 @@ impl std::fmt::Display for CommitError {
                 "the source now maps to key {current}, not the prepared {expected}"
             ),
             CommitError::DepChanged { name } => {
-                write!(f, "dependency `{name}` changed after the candidate was prepared")
+                write!(
+                    f,
+                    "dependency `{name}` changed after the candidate was prepared"
+                )
             }
             CommitError::Sink(m) => write!(f, "page sink failed: {m}"),
         }
@@ -268,12 +274,13 @@ impl<S: PageSink> QueryHost<S> {
             });
         }
         // The complete key must still describe the CURRENT source.
-        let current_key = session
-            .body_key(program, &candidate.name)
-            .map_err(|_| CommitError::KeyChanged {
-                expected: candidate.key.canonical(),
-                current: "<unknown>".into(),
-            })?;
+        let current_key =
+            session
+                .body_key(program, &candidate.name)
+                .map_err(|_| CommitError::KeyChanged {
+                    expected: candidate.key.canonical(),
+                    current: "<unknown>".into(),
+                })?;
         if current_key.canonical() != candidate.key.canonical() {
             return Err(CommitError::KeyChanged {
                 expected: candidate.key.canonical(),
@@ -281,15 +288,13 @@ impl<S: PageSink> QueryHost<S> {
             });
         }
         // Every positive dependency must still hold.
-        let catalog = session.catalog(program).map_err(|e| CommitError::Sink(e.to_string()))?;
+        let catalog = session
+            .catalog(program)
+            .map_err(|e| CommitError::Sink(e.to_string()))?;
         for (dep, version) in &candidate.deps {
             match catalog.version(dep) {
                 Some(v) if v == version => {}
-                _ => {
-                    return Err(CommitError::DepChanged {
-                        name: dep.clone(),
-                    })
-                }
+                _ => return Err(CommitError::DepChanged { name: dep.clone() }),
             }
         }
         let artifact = self
@@ -350,8 +355,12 @@ impl<S: PageSink> QueryHost<S> {
         if &facts != expected {
             return Err(FlightError::PayloadMismatch { key: id });
         }
-        self.flights.insert(id, Flight { facts: facts.clone() });
+        self.flights.insert(
+            id,
+            Flight {
+                facts: facts.clone(),
+            },
+        );
         Ok((facts, false))
     }
 }
-

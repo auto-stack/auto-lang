@@ -204,7 +204,12 @@ impl InferBodyFacts {
                 });
             }
         }
-        if !walk.lets.iter().map(|l| l.node).eq(self.bindings.iter().map(|b| b.node)) {
+        if !walk
+            .lets
+            .iter()
+            .map(|l| l.node)
+            .eq(self.bindings.iter().map(|b| b.node))
+        {
             return Err(FactsError::BindingAlignment);
         }
         // Coverage is validated against the CURRENT walk, never taken
@@ -242,16 +247,34 @@ impl InferBodyFacts {
 /// Why a fact page cannot be consumed.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FactsError {
-    BodyVersionMismatch { facts: String, body: String },
-    UnknownNode { id: u32 },
-    KindMismatch { id: u32, facts: &'static str, body: &'static str },
-    DuplicateNode { id: u32 },
-    IncompleteCoverage { missing: usize },
-    Diagnostics { count: usize },
+    BodyVersionMismatch {
+        facts: String,
+        body: String,
+    },
+    UnknownNode {
+        id: u32,
+    },
+    KindMismatch {
+        id: u32,
+        facts: &'static str,
+        body: &'static str,
+    },
+    DuplicateNode {
+        id: u32,
+    },
+    IncompleteCoverage {
+        missing: usize,
+    },
+    Diagnostics {
+        count: usize,
+    },
     /// Binding facts do not align with the body's `let`/`var` order.
     BindingAlignment,
     /// The page was produced under another profile/schema identity.
-    Envelope { facts: &'static str, expected: &'static str },
+    Envelope {
+        facts: &'static str,
+        expected: &'static str,
+    },
 }
 
 impl std::fmt::Display for FactsError {
@@ -262,7 +285,10 @@ impl std::fmt::Display for FactsError {
                 "fact page was produced for body version {facts}, current body is {body}"
             ),
             FactsError::UnknownNode { id } => {
-                write!(f, "fact references node {id}, which the current body does not have")
+                write!(
+                    f,
+                    "fact references node {id}, which the current body does not have"
+                )
             }
             FactsError::KindMismatch { id, facts, body } => write!(
                 f,
@@ -276,7 +302,10 @@ impl std::fmt::Display for FactsError {
                 write!(f, "fact page carries {count} diagnostic(s)")
             }
             FactsError::BindingAlignment => {
-                write!(f, "binding facts do not align with the body's declaration order")
+                write!(
+                    f,
+                    "binding facts do not align with the body's declaration order"
+                )
             }
             FactsError::Envelope { facts, expected } => write!(
                 f,

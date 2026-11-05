@@ -77,10 +77,7 @@ impl BodyWalk {
     }
 
     pub fn expr_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.nodes
-            .iter()
-            .filter(|n| n.is_expr())
-            .map(|n| n.id)
+        self.nodes.iter().filter(|n| n.is_expr()).map(|n| n.id)
     }
 
     /// Map `(start,end)` → node id for expression nodes of THIS walk.

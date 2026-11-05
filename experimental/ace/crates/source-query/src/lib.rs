@@ -51,27 +51,27 @@ pub mod walk;
 mod tests;
 
 pub use apply::{
-    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, bind_with_facts, AppliedFn, ApplyError,
-    ApplyReport, BindFactsError, BodyTypeSupply, FactsApplyError,
+    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, bind_with_facts, AppliedFn,
+    ApplyError, ApplyReport, BindFactsError, BodyTypeSupply, FactsApplyError,
 };
 
 pub use catalog::SignatureCatalog;
 pub use consumer::{compile_via_facts, ConsumerError, FactCompiled};
-pub use host::{
-    Candidate, CommitError, CurrentRecord, FlightError, MemorySink, PageSink, QueryHost, QueryView,
-    TargetHandle,
-};
-pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
     PortableTy,
 };
+pub use host::{
+    Candidate, CommitError, CurrentRecord, FlightError, MemorySink, PageSink, QueryHost, QueryView,
+    TargetHandle,
+};
 pub use ident::{
-    content_version, owner_logical, signature_version, sq_hash, SQ_ALGO, SQ_PROFILE, SQ_PRODUCER,
+    content_version, owner_logical, signature_version, sq_hash, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE,
     SQ_SCHEMA,
 };
+pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
 pub use produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};
-pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
 pub use restore::{restore_bind, restore_verify, RestoreError};
+pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
 pub use store::{decode_page, encode_page, store_key, ManagedStoreSink, PageReadError};
 pub use walk::{walk_body, BodyWalk, LetDecl, NodeId, NodeInfo, WalkError};

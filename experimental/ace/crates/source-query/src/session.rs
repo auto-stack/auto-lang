@@ -55,7 +55,10 @@ pub enum QueryError {
     Produce(ProduceError),
     /// The negative-control switch is off and the answer would have
     /// required a solver run.
-    SolverDisabled { query: &'static str, owner: String },
+    SolverDisabled {
+        query: &'static str,
+        owner: String,
+    },
     /// A restored page was refused against the current source (stale,
     /// foreign, incomplete or carrying diagnostics).
     Reject(FactsError),
@@ -258,11 +261,8 @@ impl SourceQuerySession {
     /// store), and its logical id must be this module's own derivation.
     pub fn seed(&mut self, program: &Program, page: &InferBodyFacts) -> Result<(), QueryError> {
         let name = page.name.clone();
-        let f = find_fn(program, &name).ok_or_else(|| {
-            QueryError::Produce(ProduceError::UnknownFn {
-                name: name.clone(),
-            })
-        })?;
+        let f = find_fn(program, &name)
+            .ok_or_else(|| QueryError::Produce(ProduceError::UnknownFn { name: name.clone() }))?;
         let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
         page.validate_against(&walk).map_err(QueryError::Reject)?;
         page.admit(&walk).map_err(QueryError::Reject)?;
@@ -274,12 +274,15 @@ impl SourceQuerySession {
             }));
         }
         let catalog = self.catalog(program)?;
-        let sig_now = catalog.current_version(&name).ok_or_else(|| {
-            QueryError::Produce(ProduceError::UnknownFn {
-                name: name.clone(),
-            })
-        })?;
-        let key = QueryKey::infer_body(own.clone(), sig_now.clone(), walk.version.clone(), &self.capabilities);
+        let sig_now = catalog
+            .current_version(&name)
+            .ok_or_else(|| QueryError::Produce(ProduceError::UnknownFn { name: name.clone() }))?;
+        let key = QueryKey::infer_body(
+            own.clone(),
+            sig_now.clone(),
+            walk.version.clone(),
+            &self.capabilities,
+        );
         let mut sig_deps = vec![(name.clone(), sig_now)];
         for callee in &page.sig_reads {
             if callee == &name {
@@ -316,7 +319,11 @@ impl SourceQuerySession {
                 name: name.to_string(),
             })
         })?;
-        let key = QueryKey::fn_sig(current.logical.clone(), current.version.clone(), &self.capabilities);
+        let key = QueryKey::fn_sig(
+            current.logical.clone(),
+            current.version.clone(),
+            &self.capabilities,
+        );
         if let Some(page) = self.sigs.get(name) {
             if page.key == key {
                 self.counters.sig_hits += 1;
@@ -464,7 +471,8 @@ impl SourceQuerySession {
                 "body-changed"
             } else if page.key.sig_version != key.sig_version {
                 "signature-changed"
-            } else if page.key.capabilities != key.capabilities || page.key.profile != key.profile
+            } else if page.key.capabilities != key.capabilities
+                || page.key.profile != key.profile
                 || page.key.algo != key.algo
                 || page.key.schema != key.schema
                 || page.key.producer != key.producer

@@ -13,12 +13,8 @@
 //! the per-body input assembly, the structural-id mapping and the fact
 //! envelope.
 
-use crate::facts::{
-    BindingFact, InferBodyFacts, NegativeDep, NodeFact, PortableDiag, PortableTy,
-};
-use crate::ident::{
-    owner_logical, signature_version, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA,
-};
+use crate::facts::{BindingFact, InferBodyFacts, NegativeDep, NodeFact, PortableDiag, PortableTy};
+use crate::ident::{owner_logical, signature_version, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA};
 use crate::walk::{walk_body, WalkError};
 use ace_core::source::ast::{FnItem, Item, Program, TypeAnn, TypeRef, TypeWord};
 use ace_semantics::{InferOutcome, InferSession};
@@ -49,9 +45,13 @@ impl Default for ProduceLimits {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ProduceError {
     /// The queried function does not exist in this module.
-    UnknownFn { name: String },
+    UnknownFn {
+        name: String,
+    },
     /// Declarations outside the finite ordinary-source surface.
-    Profile { what: &'static str },
+    Profile {
+        what: &'static str,
+    },
     /// The body walk rejected the construct.
     Walk(WalkError),
     /// The 796 projection rejected the input (typed as infrastructure).
@@ -60,18 +60,28 @@ pub enum ProduceError {
     Resource(String),
     Cancelled,
     /// One source span carries two structural expression nodes.
-    DuplicateSpan { start: u32, end: u32 },
+    DuplicateSpan {
+        start: u32,
+        end: u32,
+    },
     /// The solver typed a span the structural walk does not have.
-    UnmappedSpan { count: usize },
+    UnmappedSpan {
+        count: usize,
+    },
     /// Binding facts do not align with the body's declaration order.
-    BindingAlignment { expected: usize, found: usize },
+    BindingAlignment {
+        expected: usize,
+        found: usize,
+    },
     BindingName {
         index: usize,
         expected: String,
         found: String,
     },
     /// A type outside the finite portable set (never widened to `Any`).
-    NonPortableType { what: String },
+    NonPortableType {
+        what: String,
+    },
 }
 
 impl std::fmt::Display for ProduceError {
@@ -148,7 +158,9 @@ pub fn produce_infer_body(
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
-        return Err(ProduceError::Profile { what: "empty node budget" });
+        return Err(ProduceError::Profile {
+            what: "empty node budget",
+        });
     }
     let target = find_free_fn(program, name)?;
     let walk = walk_body(&target.body).map_err(ProduceError::Walk)?;

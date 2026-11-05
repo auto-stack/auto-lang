@@ -166,8 +166,13 @@ fn sq06_negative_dependency_flips_when_the_name_appears() {
         .any(|n| n.domain == "fn" && n.name == "helper"));
 
     let p2 = parse("fn helper(v int) int { return v }\n\nfn main() int { return helper(1) }\n");
-    let warm = s.infer_body(&p2, "main").expect("re-solve after the name appears");
-    assert!(!warm.hit, "the candidate set changed: the negative dep is stale");
+    let warm = s
+        .infer_body(&p2, "main")
+        .expect("re-solve after the name appears");
+    assert!(
+        !warm.hit,
+        "the candidate set changed: the negative dep is stale"
+    );
     assert!(
         warm.facts.is_complete() && warm.facts.is_clean(),
         "the now-resolvable call must be typed: {:?}",
@@ -263,7 +268,13 @@ fn sq09_outside_the_finite_surface_is_a_controlled_rejection() {
     let t = parse_program_with("fn f() str { return \"x\" }\n", SourceProfile::Text)
         .expect("text profile parse");
     let err = walk_body(body_of(&t, "f")).expect_err("str literal is unsupported");
-    assert!(matches!(err, WalkError::Unsupported { what: "str-literal", .. }));
+    assert!(matches!(
+        err,
+        WalkError::Unsupported {
+            what: "str-literal",
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -315,16 +326,23 @@ fn sq12_apply_facts_drives_emission_and_verification() {
     assert_eq!(applied.len(), 2);
     assert!(applied.iter().all(|a| a.report.exprs >= 1));
     assert_eq!(
-        applied.iter().find(|a| a.name == "leaf").unwrap().report.exprs,
+        applied
+            .iter()
+            .find(|a| a.name == "leaf")
+            .unwrap()
+            .report
+            .exprs,
         3,
         "binary + var + literal"
     );
 
-    let parts =
-        ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
-            .expect("emit from facts");
+    let parts = ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
+        .expect("emit from facts");
     ace_core::verify::verify_scalar(parts.bundle).expect("the fact-typed HIR verifies");
-    assert!(resolved.fns.iter().all(|f| f.result == ace_core::source::resolve::VT::I32));
+    assert!(resolved
+        .fns
+        .iter()
+        .all(|f| f.result == ace_core::source::resolve::VT::I32));
 }
 
 #[test]
@@ -353,7 +371,10 @@ fn sq14_body_scoped_projection_materialises_only_the_target_body() {
         .expect("scoped projection");
     let leaf = input.lookup_fn("leaf").expect("leaf projected");
     let main = input.lookup_fn("main").expect("main projected");
-    assert!(!leaf.body.stmts.is_empty(), "the target body is materialised");
+    assert!(
+        !leaf.body.stmts.is_empty(),
+        "the target body is materialised"
+    );
     assert!(
         main.body.stmts.is_empty(),
         "an unrelated function is a signature stub"
@@ -505,11 +526,7 @@ fn sq18_named_arguments_produce_clean_facts_and_a_distinct_key() {
     let mut s2 = SourceQuerySession::new("pkg", "mod");
     let bad = s2.infer_body(&p2, "main").expect("positional facts");
     assert!(!bad.facts.is_clean(), "{:?}", bad.facts);
-    assert!(bad
-        .facts
-        .diags
-        .iter()
-        .any(|d| d.code == "type-mismatch"));
+    assert!(bad.facts.diags.iter().any(|d| d.code == "type-mismatch"));
 
     // Binding names are part of the structural key: the two spellings can
     // never share a body version.
@@ -594,7 +611,11 @@ fn sq21_complete_key_covers_every_axis_and_capabilities() {
     let caps_b = SourceQuerySession::new("pkg", "mod").with_capabilities(["a", "b", "a"]);
     let ka = caps_a.body_key(&p, "leaf").expect("key");
     let kb = caps_b.body_key(&p, "leaf").expect("key");
-    assert_eq!(ka.canonical(), kb.canonical(), "caller order does not matter");
+    assert_eq!(
+        ka.canonical(),
+        kb.canonical(),
+        "caller order does not matter"
+    );
     assert_eq!(ka.capabilities, vec!["a".to_string(), "b".to_string()]);
     let kc = SourceQuerySession::new("pkg", "mod")
         .with_capabilities(["a"])
@@ -611,8 +632,13 @@ fn sq22_capability_change_invalidates_warm_pages() {
     assert!(s.infer_body(&p, "leaf").expect("warm").hit);
     let runs = s.counters().solver_runs;
     s.set_capabilities(["trace-capability"]);
-    let out = s.infer_body(&p, "leaf").expect("re-solve after a capability change");
-    assert!(!out.hit, "a different capability set is a different meaning");
+    let out = s
+        .infer_body(&p, "leaf")
+        .expect("re-solve after a capability change");
+    assert!(
+        !out.hit,
+        "a different capability set is a different meaning"
+    );
     assert_eq!(s.counters().solver_runs, runs + 1);
 }
 
@@ -622,8 +648,16 @@ fn sq23_mutual_recursion_is_not_a_query_cycle() {
     let mut s = SourceQuerySession::new("pkg", "mod");
     let even = s.infer_body(&p, "even").expect("even facts");
     let odd = s.infer_body(&p, "odd").expect("odd facts");
-    assert!(even.facts.is_complete() && even.facts.is_clean(), "{:?}", even.facts);
-    assert!(odd.facts.is_complete() && odd.facts.is_clean(), "{:?}", odd.facts);
+    assert!(
+        even.facts.is_complete() && even.facts.is_clean(),
+        "{:?}",
+        even.facts
+    );
+    assert!(
+        odd.facts.is_complete() && odd.facts.is_clean(),
+        "{:?}",
+        odd.facts
+    );
     assert_eq!(even.facts.sig_reads, vec!["odd".to_string()]);
     assert_eq!(odd.facts.sig_reads, vec!["even".to_string()]);
 
@@ -640,7 +674,11 @@ fn sq23_mutual_recursion_is_not_a_query_cycle() {
     let rec = parse("fn sum(n int) int { if n == 0 { return 0 }\n  return n + sum(n - 1) }\n");
     let mut s2 = SourceQuerySession::new("pkg", "mod");
     let facts = s2.infer_body(&rec, "sum").expect("self-recursive facts");
-    assert!(facts.facts.is_complete() && facts.facts.is_clean(), "{:?}", facts.facts);
+    assert!(
+        facts.facts.is_complete() && facts.facts.is_clean(),
+        "{:?}",
+        facts.facts
+    );
 }
 
 #[test]
@@ -651,7 +689,10 @@ fn sq24_audit_reports_each_dependency_axis() {
     s.infer_body(&p, "main").expect("main");
     let audit = s.audit(&p).expect("audit");
     assert_eq!(audit.len(), 2);
-    assert!(audit.iter().all(|a| a.fresh && a.reason == "ok"), "{audit:?}");
+    assert!(
+        audit.iter().all(|a| a.fresh && a.reason == "ok"),
+        "{audit:?}"
+    );
 
     // Body-only edit: only the edited owner is stale.
     let p2 = parse(&A.replace("+ 1", "+ 2"));
@@ -665,10 +706,14 @@ fn sq24_audit_reports_each_dependency_axis() {
     let missing = parse("fn main() int { return helper(1) }\n");
     let mut s2 = SourceQuerySession::new("pkg", "mod");
     s2.infer_body(&missing, "main").expect("negative dep");
-    let with_helper = parse("fn helper(v int) int { return v }\n\nfn main() int { return helper(1) }\n");
+    let with_helper =
+        parse("fn helper(v int) int { return v }\n\nfn main() int { return helper(1) }\n");
     let audit = s2.audit(&with_helper).expect("audit");
     assert_eq!(audit.len(), 1);
-    assert!(!audit[0].fresh && audit[0].reason == "negative-flipped", "{audit:?}");
+    assert!(
+        !audit[0].fresh && audit[0].reason == "negative-flipped",
+        "{audit:?}"
+    );
 }
 
 #[test]
@@ -688,8 +733,9 @@ fn sq25_source_map_refresh_keeps_the_key_and_the_bind_works() {
             .expect("bind drifted source");
     assert_eq!(applied.len(), 2);
     assert_eq!(supply.admitted_bodies(), 2);
-    let parts = ace_core::source::emit_resolved_parts(&resolved, &drifted, "m.at", SourceProfile::Scalar)
-        .expect("emit");
+    let parts =
+        ace_core::source::emit_resolved_parts(&resolved, &drifted, "m.at", SourceProfile::Scalar)
+            .expect("emit");
     ace_core::verify::verify_scalar(parts.bundle).expect("drifted fact-bound HIR verifies");
 }
 
@@ -711,13 +757,19 @@ fn sq26_host_prepare_then_commit_switches_once() {
     assert_eq!(rec.revision, 1);
     assert_eq!(rec.target, None);
     assert_eq!(host.sink().len(), 1);
-    assert!(host.sink().get(&rec.artifact).is_some(), "the page was published");
+    assert!(
+        host.sink().get(&rec.artifact).is_some(),
+        "the page was published"
+    );
     assert_eq!(host.current().map(|c| c.revision), Some(1));
 
     // Second owner installs as a second revision; the old record is gone
     // atomically (one current record, never two).
     let cand2 = host.prepare(&mut s, &p, "main").expect("prepare main");
-    let rec2 = host.commit(cand2, &s, &p, None).expect("commit main").clone();
+    let rec2 = host
+        .commit(cand2, &s, &p, None)
+        .expect("commit main")
+        .clone();
     assert_eq!(rec2.revision, 2);
     assert_ne!(rec.artifact, rec2.artifact);
 }
@@ -728,7 +780,10 @@ fn sq27_pre_commit_failures_keep_the_old_record() {
     let mut s = SourceQuerySession::new("pkg", "mod");
     let mut host = QueryHost::new(MemorySink::new());
     let cand = host.prepare(&mut s, &p, "leaf").expect("prepare");
-    let first = host.commit(cand, &s, &p, None).expect("first install").clone();
+    let first = host
+        .commit(cand, &s, &p, None)
+        .expect("first install")
+        .clone();
 
     // Cancelled before the switch.
     let cand = host.prepare(&mut s, &p, "main").expect("prepare");
@@ -868,7 +923,11 @@ fn sq31_managed_store_sink_roundtrip_and_key_admission() {
     let key = s.body_key(&p, "leaf").expect("key");
 
     let art = sink.put(&key, &facts).expect("publish page");
-    assert_eq!(sink.get(&art), Some(facts.clone()), "read back by artifact id");
+    assert_eq!(
+        sink.get(&art),
+        Some(facts.clone()),
+        "read back by artifact id"
+    );
     assert_eq!(
         sink.get_by_key(&key).expect("lookup by complete key"),
         Some(facts.clone()),
@@ -902,7 +961,10 @@ fn sq32_page_codec_rejects_foreign_truncated_and_tampered_pages() {
 
     let mut bad_magic = bytes.clone();
     bad_magic[0] = b'X';
-    assert!(matches!(decode_page(&bad_magic), Err(PageReadError::Decode(_))));
+    assert!(matches!(
+        decode_page(&bad_magic),
+        Err(PageReadError::Decode(_))
+    ));
 
     assert!(matches!(
         decode_page(&bytes[..bytes.len() - 4]),
@@ -911,11 +973,17 @@ fn sq32_page_codec_rejects_foreign_truncated_and_tampered_pages() {
 
     let mut trailing = bytes.clone();
     trailing.push(0);
-    assert!(matches!(decode_page(&trailing), Err(PageReadError::Decode(_))));
+    assert!(matches!(
+        decode_page(&trailing),
+        Err(PageReadError::Decode(_))
+    ));
 
     let mut old_codec = bytes.clone();
     old_codec[6] = 0;
-    assert!(matches!(decode_page(&old_codec), Err(PageReadError::Decode(_))));
+    assert!(matches!(
+        decode_page(&old_codec),
+        Err(PageReadError::Decode(_))
+    ));
 
     // A page from another schema revision is a foreign envelope, never a
     // reinterpretation (the old 796 domain is a different string too).
@@ -945,7 +1013,11 @@ fn sq33_published_page_is_a_project_root() {
         .store()
         .root_artifacts("sq934-root", crate::store::SQ_ROOT_KIND)
         .expect("roots");
-    assert_eq!(roots, vec![art], "the page is pinned under its project root");
+    assert_eq!(
+        roots,
+        vec![art],
+        "the page is pinned under its project root"
+    );
     drop(sink);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1020,7 +1092,10 @@ fn sq36_restore_then_first_edit_legs() {
     let mut pages: std::collections::BTreeMap<String, InferBodyFacts> =
         std::collections::BTreeMap::new();
     for n in ["leaf", "main"] {
-        pages.insert(n.to_string(), producer.infer_body(&p, n).expect("facts").facts);
+        pages.insert(
+            n.to_string(),
+            producer.infer_body(&p, n).expect("facts").facts,
+        );
     }
 
     // Restore, then the FIRST edit: only the edited body re-solves.
@@ -1028,7 +1103,11 @@ fn sq36_restore_then_first_edit_legs() {
     for page in pages.values() {
         s.seed(&p, page).expect("seed restored page");
     }
-    assert_eq!(s.counters().solver_runs, 0, "the restore itself solves nothing");
+    assert_eq!(
+        s.counters().solver_runs,
+        0,
+        "the restore itself solves nothing"
+    );
     let p2 = parse(&A.replace("+ 1", "+ 7"));
     assert!(!s.infer_body(&p2, "leaf").expect("edited body").hit);
     assert!(s.infer_body(&p2, "main").expect("unchanged body").hit);
@@ -1053,8 +1132,11 @@ fn sq36_restore_then_first_edit_legs() {
     let fixed = parse(&A.replace("return x + 1", "return x + 5"));
     let fixed_facts = s2.infer_body(&fixed, "leaf").expect("repaired facts").facts;
     let fixed_walk = walk_body(body_of(&fixed, "leaf")).unwrap();
-    fixed_facts.admit(&fixed_walk).expect("repaired page admits");
-    crate::restore_verify(&fixed, "pkg", "mod", "leaf", Some(&fixed_facts)).expect("verify repaired");
+    fixed_facts
+        .admit(&fixed_walk)
+        .expect("repaired page admits");
+    crate::restore_verify(&fixed, "pkg", "mod", "leaf", Some(&fixed_facts))
+        .expect("verify repaired");
 }
 
 // -- T-08: shared consumer entry / shared HIR identity -----------------
@@ -1069,7 +1151,8 @@ fn sq37_fact_entry_produces_the_same_hir_as_the_legacy_entry() {
         MUTUAL,
     ];
     for (i, src) in corpus.iter().enumerate() {
-        let legacy = ace_core::source::compile_scalar_source(src, "m.at", &[]).expect("legacy compiles");
+        let legacy =
+            ace_core::source::compile_scalar_source(src, "m.at", &[]).expect("legacy compiles");
         let mut s = SourceQuerySession::new("pkg", "mod");
         let fact = crate::compile_via_facts(
             src,

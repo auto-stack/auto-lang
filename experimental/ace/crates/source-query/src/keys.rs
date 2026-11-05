@@ -12,7 +12,7 @@
 //! components, and the capability list is sorted so caller order cannot
 //! change the key.
 
-use crate::ident::{sq_hash, SQ_ALGO, SQ_PROFILE, SQ_PRODUCER, SQ_SCHEMA};
+use crate::ident::{sq_hash, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA};
 use ace_semantics_contract::{ContentVersion, LogicalId};
 
 /// Target-relevant semantics marker. The infer facts are

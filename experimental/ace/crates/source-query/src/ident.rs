@@ -75,7 +75,12 @@ pub fn content_version(domain: &str, canonical: &[u8]) -> ContentVersion {
 pub fn owner_logical(package: &str, module: &str, name: &str) -> LogicalId {
     LogicalId(sq_hash(
         LOGICAL_DOMAIN,
-        &[package.as_bytes(), module.as_bytes(), b"fn", name.as_bytes()],
+        &[
+            package.as_bytes(),
+            module.as_bytes(),
+            b"fn",
+            name.as_bytes(),
+        ],
     ))
 }
 
