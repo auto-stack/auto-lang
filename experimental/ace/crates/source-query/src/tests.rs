@@ -1056,3 +1056,38 @@ fn sq36_restore_then_first_edit_legs() {
     fixed_facts.admit(&fixed_walk).expect("repaired page admits");
     crate::restore_verify(&fixed, "pkg", "mod", "leaf", Some(&fixed_facts)).expect("verify repaired");
 }
+
+// -- T-08: shared consumer entry / shared HIR identity -----------------
+
+#[test]
+fn sq37_fact_entry_produces_the_same_hir_as_the_legacy_entry() {
+    let corpus: &[&str] = &[
+        A,
+        NAMED_SRC,
+        "fn f(x int) int {\n  var y = 1\n  if x > 0 { y = x }\n  loop { break }\n  return y + 0\n}\n",
+        "fn main() int { return later(1) }\n\nfn later(v int) int { return v + 1 }\n",
+        MUTUAL,
+    ];
+    for (i, src) in corpus.iter().enumerate() {
+        let legacy = ace_core::source::compile_scalar_source(src, "m.at", &[]).expect("legacy compiles");
+        let mut s = SourceQuerySession::new("pkg", "mod");
+        let fact = crate::compile_via_facts(
+            src,
+            "m.at",
+            &[],
+            "pkg",
+            "mod",
+            &mut s,
+            SourceProfile::Scalar,
+        )
+        .expect("fact entry compiles");
+        assert_eq!(
+            fact.atom_text, legacy.atom_text,
+            "case {i}: the fact path must emit the SAME HIR every consumer shares"
+        );
+        assert_eq!(fact.profile, legacy.profile);
+        assert_eq!(fact.input_hash, legacy.input_hash);
+        assert!(!fact.applied.is_empty());
+        assert!(fact.supply.admitted_bodies() >= 1);
+    }
+}

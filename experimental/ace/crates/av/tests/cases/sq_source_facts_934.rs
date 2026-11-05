@@ -325,3 +325,29 @@ fn sq934_restore_bind_executes_from_pages_only() {
     let checked = verify_scalar(parts.bundle).expect("restored HIR verifies");
     assert_eq!(run_value(&checked), Value::I32(42));
 }
+
+#[test]
+fn sq934_shared_consumer_entry_feeds_real_execution_without_typecheck() {
+    let mut session = SourceQuerySession::new("sq934", "main");
+    let (compiled, work) = body_work::capture_body_work(|| {
+        ace_source_query::compile_via_facts(
+            SRC,
+            "sq934.at",
+            &[],
+            "sq934",
+            "main",
+            &mut session,
+            SourceProfile::Scalar,
+        )
+    });
+    let compiled = compiled.expect("shared fact entry");
+    assert_eq!(compiled.applied.len(), 2);
+    for name in ["leaf", "main"] {
+        assert_eq!(
+            work.get(name).map(|w| w.typecheck),
+            Some(0),
+            "{name}: the shared consumer entry never runs the legacy typecheck"
+        );
+    }
+    assert_eq!(run_value(&compiled.checked), Value::I32(42));
+}

@@ -36,6 +36,7 @@
 
 pub mod apply;
 pub mod catalog;
+pub mod consumer;
 pub mod facts;
 pub mod host;
 pub mod ident;
@@ -55,6 +56,7 @@ pub use apply::{
 };
 
 pub use catalog::SignatureCatalog;
+pub use consumer::{compile_via_facts, ConsumerError, FactCompiled};
 pub use host::{
     Candidate, CommitError, CurrentRecord, FlightError, MemorySink, PageSink, QueryHost, QueryView,
     TargetHandle,
