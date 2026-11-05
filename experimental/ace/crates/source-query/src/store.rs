@@ -205,6 +205,7 @@ pub fn encode_page(key: &QueryKey, facts: &InferBodyFacts) -> Result<Vec<u8>, Pa
     w.s(SQ_SCHEMA)?;
     w.s(SQ_PROFILE)?;
     w.s(SQ_ALGO)?;
+    w.s(&facts.name)?;
     w.s(facts.logical.as_str())?;
     w.s(facts.body_version.as_str())?;
     w.u64(facts.revision);
@@ -288,6 +289,7 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
     if algo != SQ_ALGO {
         return Err(PageReadError::Envelope { found: algo });
     }
+    let name = r.s()?;
     let logical = r.s()?;
     let body_version = r.s()?;
     let revision = r.u64()?;
@@ -349,6 +351,7 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
     Ok((
         key_canonical,
         InferBodyFacts {
+            name,
             logical: ace_semantics_contract::LogicalId(logical),
             body_version: ace_semantics_contract::ContentVersion(body_version),
             profile: SQ_PROFILE,

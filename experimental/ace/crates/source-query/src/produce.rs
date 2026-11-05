@@ -244,6 +244,7 @@ pub fn produce_infer_body(
         .collect();
 
     Ok(InferBodyFacts {
+        name: name.to_string(),
         logical: owner_logical(package, module, name),
         body_version: walk.version.clone(),
         profile: SQ_PROFILE,

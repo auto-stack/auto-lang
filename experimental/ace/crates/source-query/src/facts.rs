@@ -92,6 +92,9 @@ pub struct PortableDiag {
 /// One immutable infer-body fact page.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InferBodyFacts {
+    /// Owner function name (the page is self-describing for restore: the
+    /// logical id alone cannot be inverted back to a name).
+    pub name: String,
     pub logical: LogicalId,
     /// The body version these ids are valid for.
     pub body_version: ContentVersion,

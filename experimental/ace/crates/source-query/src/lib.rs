@@ -41,6 +41,7 @@ pub mod host;
 pub mod ident;
 pub mod keys;
 pub mod produce;
+pub mod restore;
 pub mod session;
 pub mod store;
 pub mod walk;
@@ -69,5 +70,6 @@ pub use ident::{
 };
 pub use produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};
 pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
+pub use restore::{restore_bind, restore_verify, RestoreError};
 pub use store::{decode_page, encode_page, store_key, ManagedStoreSink, PageReadError};
 pub use walk::{walk_body, BodyWalk, LetDecl, NodeId, NodeInfo, WalkError};

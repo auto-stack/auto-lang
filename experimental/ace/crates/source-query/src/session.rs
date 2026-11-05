@@ -22,7 +22,7 @@
 //! target-ready record. This crate never builds a target itself.
 
 use crate::catalog::SignatureCatalog;
-use crate::facts::{FnSigFacts, InferBodyFacts, NegativeDep};
+use crate::facts::{FactsError, FnSigFacts, InferBodyFacts, NegativeDep};
 use crate::ident::owner_logical;
 use crate::keys::QueryKey;
 use crate::produce::{produce_infer_body, ProduceError, ProduceLimits};
@@ -56,6 +56,9 @@ pub enum QueryError {
     /// The negative-control switch is off and the answer would have
     /// required a solver run.
     SolverDisabled { query: &'static str, owner: String },
+    /// A restored page was refused against the current source (stale,
+    /// foreign, incomplete or carrying diagnostics).
+    Reject(FactsError),
 }
 
 impl std::fmt::Display for QueryError {
@@ -66,6 +69,7 @@ impl std::fmt::Display for QueryError {
                 f,
                 "{query} for `{owner}` misses the query cache and the solver is disabled"
             ),
+            QueryError::Reject(e) => write!(f, "restored page refused: {e}"),
         }
     }
 }
@@ -248,6 +252,56 @@ impl SourceQuerySession {
         ))
     }
 
+    /// Seed one RESTORED page into the cache after deep verification
+    /// against the CURRENT source. The page is refused unless it describes
+    /// this body version exactly (never trusted because it came from the
+    /// store), and its logical id must be this module's own derivation.
+    pub fn seed(&mut self, program: &Program, page: &InferBodyFacts) -> Result<(), QueryError> {
+        let name = page.name.clone();
+        let f = find_fn(program, &name).ok_or_else(|| {
+            QueryError::Produce(ProduceError::UnknownFn {
+                name: name.clone(),
+            })
+        })?;
+        let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
+        page.validate_against(&walk).map_err(QueryError::Reject)?;
+        page.admit(&walk).map_err(QueryError::Reject)?;
+        let own = owner_logical(&self.package, &self.module, &name);
+        if page.logical != own {
+            return Err(QueryError::Reject(FactsError::BodyVersionMismatch {
+                facts: page.logical.as_str().to_string(),
+                body: own.as_str().to_string(),
+            }));
+        }
+        let catalog = self.catalog(program)?;
+        let sig_now = catalog.current_version(&name).ok_or_else(|| {
+            QueryError::Produce(ProduceError::UnknownFn {
+                name: name.clone(),
+            })
+        })?;
+        let key = QueryKey::infer_body(own.clone(), sig_now.clone(), walk.version.clone(), &self.capabilities);
+        let mut sig_deps = vec![(name.clone(), sig_now)];
+        for callee in &page.sig_reads {
+            if callee == &name {
+                continue;
+            }
+            if let Some(v) = catalog.version(callee) {
+                sig_deps.push((callee.clone(), v.clone()));
+            }
+        }
+        self.bodies.insert(
+            own,
+            BodyPage {
+                name,
+                facts: page.clone(),
+                key,
+                sig_deps,
+                negatives: page.negatives.clone(),
+                fn_candidates_fp: catalog.candidates_fp().to_string(),
+            },
+        );
+        Ok(())
+    }
     /// Signature query: reads ONLY the declaration axis (through the
     /// signature catalog). A body-only edit must keep this a hit.
     pub fn fn_sig(

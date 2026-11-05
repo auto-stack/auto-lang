@@ -949,3 +949,110 @@ fn sq33_published_page_is_a_project_root() {
     drop(sink);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// -- T-07: fact-side restore contract and edit legs -------------------
+
+#[test]
+fn sq34_restore_verify_refuses_missing_stale_or_partial_pages() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let leaf = s.infer_body(&p, "leaf").expect("leaf facts").facts;
+    let key = crate::restore_verify(&p, "pkg", "mod", "leaf", Some(&leaf)).expect("own page");
+    assert_eq!(key.query, QueryKind::InferBody);
+
+    assert!(matches!(
+        crate::restore_verify(&p, "pkg", "mod", "main", None),
+        Err(crate::RestoreError::MissingRequiredPage { .. })
+    ));
+
+    let p2 = parse(&A.replace("+ 1", "+ 2"));
+    assert!(matches!(
+        crate::restore_verify(&p2, "pkg", "mod", "leaf", Some(&leaf)),
+        Err(crate::RestoreError::Facts(_))
+    ));
+
+    let mut partial = leaf.clone();
+    partial.nodes.pop();
+    assert!(matches!(
+        crate::restore_verify(&p, "pkg", "mod", "leaf", Some(&partial)),
+        Err(crate::RestoreError::Facts(_))
+    ));
+
+    // A page of another owner is foreign here.
+    let main = s.infer_body(&p, "main").expect("main facts").facts;
+    assert!(matches!(
+        crate::restore_verify(&p, "pkg", "mod", "leaf", Some(&main)),
+        Err(crate::RestoreError::Facts(_))
+    ));
+}
+
+#[test]
+fn sq35_restore_bind_uses_pages_only_and_needs_every_page() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut pages: std::collections::BTreeMap<String, InferBodyFacts> =
+        std::collections::BTreeMap::new();
+    for n in ["leaf", "main"] {
+        pages.insert(n.to_string(), s.infer_body(&p, n).expect("facts").facts);
+    }
+    let (resolved, applied, supply) =
+        crate::restore_bind(&p, &[], "pkg", "mod", &pages, SourceProfile::Scalar)
+            .expect("restore bind");
+    assert_eq!(applied.len(), 2);
+    assert!(applied.iter().all(|a| a.body_hit && a.sig_hit));
+    assert_eq!(supply.admitted_bodies(), 2);
+
+    let parts = ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
+        .expect("emit");
+    ace_core::verify::verify_scalar(parts.bundle).expect("restored HIR verifies");
+
+    pages.remove("main");
+    assert!(matches!(
+        crate::restore_bind(&p, &[], "pkg", "mod", &pages, SourceProfile::Scalar),
+        Err(crate::RestoreError::MissingRequiredPage { .. })
+    ));
+}
+
+#[test]
+fn sq36_restore_then_first_edit_legs() {
+    let p = parse(A);
+    let mut producer = SourceQuerySession::new("pkg", "mod");
+    let mut pages: std::collections::BTreeMap<String, InferBodyFacts> =
+        std::collections::BTreeMap::new();
+    for n in ["leaf", "main"] {
+        pages.insert(n.to_string(), producer.infer_body(&p, n).expect("facts").facts);
+    }
+
+    // Restore, then the FIRST edit: only the edited body re-solves.
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    for page in pages.values() {
+        s.seed(&p, page).expect("seed restored page");
+    }
+    assert_eq!(s.counters().solver_runs, 0, "the restore itself solves nothing");
+    let p2 = parse(&A.replace("+ 1", "+ 7"));
+    assert!(!s.infer_body(&p2, "leaf").expect("edited body").hit);
+    assert!(s.infer_body(&p2, "main").expect("unchanged body").hit);
+    assert_eq!(s.counters().solver_runs, 1);
+
+    // Restore, then a BAD first edit: the page carries diagnostics and is
+    // refused by admission; the repair produces a clean page.
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    for page in pages.values() {
+        s2.seed(&p, page).expect("seed restored page");
+    }
+    let bad = parse(&A.replace("return x + 1", "return x + true"));
+    let bad_facts = s2.infer_body(&bad, "leaf").expect("bad edit facts").facts;
+    assert!(!bad_facts.is_clean(), "{:?}", bad_facts.diags);
+    let bad_walk = walk_body(body_of(&bad, "leaf")).unwrap();
+    assert!(bad_facts.admit(&bad_walk).is_err());
+    assert!(matches!(
+        crate::restore_verify(&bad, "pkg", "mod", "leaf", Some(&bad_facts)),
+        Err(crate::RestoreError::Facts(_))
+    ));
+
+    let fixed = parse(&A.replace("return x + 1", "return x + 5"));
+    let fixed_facts = s2.infer_body(&fixed, "leaf").expect("repaired facts").facts;
+    let fixed_walk = walk_body(body_of(&fixed, "leaf")).unwrap();
+    fixed_facts.admit(&fixed_walk).expect("repaired page admits");
+    crate::restore_verify(&fixed, "pkg", "mod", "leaf", Some(&fixed_facts)).expect("verify repaired");
+}

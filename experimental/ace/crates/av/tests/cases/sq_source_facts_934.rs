@@ -296,3 +296,32 @@ fn sq934_source_map_drift_keeps_facts_and_executes() {
     );
     assert_eq!(run_value(&warm.checked), Value::I32(42));
 }
+
+#[test]
+fn sq934_restore_bind_executes_from_pages_only() {
+    let program = parse_program_with(SRC, SourceProfile::Scalar).expect("parse");
+    let mut producer = SourceQuerySession::new("sq934", "main");
+    let mut pages: BTreeMap<String, InferBodyFacts> = BTreeMap::new();
+    for name in ["leaf", "main"] {
+        pages.insert(
+            name.to_string(),
+            producer.infer_body(&program, name).expect("facts").facts,
+        );
+    }
+    // Restore lane: pages only, no solver involved.
+    let (resolved, applied, supply) = ace_source_query::restore_bind(
+        &program,
+        &[],
+        "sq934",
+        "main",
+        &pages,
+        SourceProfile::Scalar,
+    )
+    .expect("restore bind from pages");
+    assert_eq!(applied.len(), 2);
+    assert_eq!(supply.admitted_bodies(), 2);
+    let parts = emit_resolved_parts(&resolved, SRC, "sq934.at", SourceProfile::Scalar)
+        .expect("emit restored program");
+    let checked = verify_scalar(parts.bundle).expect("restored HIR verifies");
+    assert_eq!(run_value(&checked), Value::I32(42));
+}
