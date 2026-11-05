@@ -395,6 +395,27 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: blocked | worktre
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 8 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 2a460d6d467e654bd18a784de59492d3d3881c79 | next: work（剩余实现/映射继续；不是新增final review失败轮）
 
+### 2026-11-06 原父合同发现、AV/native typed严格准入检查点（goal第9轮）
+
+本轮继续T-01/T-02，仍executing **0/15**，无work完成/复审pass/扩大后M1签章。实际实现提交`269590f00`、`291d88cbb`、`983fb8f8d`、`cf520423f`、`b974ee884`、`aa23ed8be8528dff01c3ed81a23d617909e00ca2`；唯一941树clean。原授权有效，继续范围内工作，不因最终D未齐中断独立映射/reader施工。
+
+- 在原auto-case增加只读`parent-inventory`：直接读取原AV/native/ABI父限额与原常量表，不启动worker/solver/语言执行。11表43行（含8个typed值）为DISCOVERY、executed=0；AV/ABI原session60s、native120s与各request/response/stderr/build/grace帽分开保留，未把发现视作预算运行通过。当前7份原producer源码SHA与实际auto-case二进制SHA、显式命令/原native_meter/stdout/stderr绑定，表/来源/命令/计量伪造均拒。
+- 原identity-inventory /2增加已解析probe_bindings、declared_probe_steps、resolved_probe_oracles、typed_oracle及真实File/Text/Block来源；不解析Debug字符串。旧/1在34个原固定套件506check上逐JSON对照不变；原35套件511目录另含manual892五项，目录仍DISCOVERY。ac-av原18check含4个inline Text源，严格绑定原Case文档及当前resolved合同，不伪造源文件。
+- 真实`cargo t case-ac-av infra-ace-m1-arch --out <scope>/parent-contracts-and-ac-av`：18/18原check及76/76当时治理控制，37.1690141s；results SHA256=`281854e863717b80fd7ede7f26ddcb5447f9820db497e37c3a24717d482563f4`。随后冻结b974ee的`cargo t infra-ace-m1-arch --out <scope>/av-typed-final-controls`实际83/83，results SHA256=`c812e73708a1422ec7ed11da5579021033c2441fdbde541532fd039168ce353b`，不是新增83项真实语言用例。
+- AV data typed原始request/terminal/response严格绑定原entry/fixture、carrier SHA、caps、store owner、recipe/nonce/request hash与当前worker；原typed分支source_hash实际是entry FNV，不能套carrier FNV。8原typed值逐(kind,bits)比较（含NaN符号/payload/负零），5项映射原W01..W05:av。它们是typed fixture，`.at`只作请求carrier，**不冒宽类型源码**。位值相同把i64标成f64、同时重hash的副本，仅W01:av FAIL，原4+其余4仍PASS，304未观测；`typed-av-wrong-kind-control.json`为隔离反控而非执行。
+- native原891入口的opt-in原始exchange采集接入既有call_worker_observed；原二进制路由把多个recipe归一为scalar/collections，新增采集记录改取原request.recipe，业务路由不变。这是941新观察接线，不改891功能/私有ABI。严格reader核验44字节原机器帧magic/version/签名ID/状态/FNV校验/类型/完整位值与JSON摘要一致，再单独对原binding及当前Case独立oracle；12个原Case父拒绝全保留，严格执行认领仅5项W01..W05:ac。原父text nonce在机器帧仍为0，报告明列此事实，不声称帧freshness或public ABI。
+- **冻结最终有效门**：`cargo t case-ace-m1-typed-native-891 infra-ace-m1-arch --out <scope>/native-typed-frozen-gate`，原native **12/12**、治理 **90/90**，exit0/gate_passed=true，36.8467436s；results SHA256=`1f9b3f9e07a1c0c191de87e8ac59d993b6643cd67e97673b0b97497224445467`。新7反控检查一致造错的机器帧+摘要仍FAIL、只改摘要拒、坏checksum/签名/nonce/状态/ABI/目录/fixture/args/计数/transport拒；没有缩样或替换原oracle。最终双bin构建37.37s，原core131/lang5基线warnings未增加，本单元无新增warning；diff检查通过，不对原大文件整体格式化。
+- 新鲜身份重新发现到`native-typed-frozen-metadata/`，与6份跟踪typed合同逐项相等，当前配置`native-typed-frozen-bindings.json`。只读CLI `python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <941-tree> --evidence <scope> --bindings native-typed-frozen-bindings.json`真实exit1（preview恒ineligible），20首例独立义务完整；原执行仅**14/313 PASS、299 UNOBSERVED**，所有旧38 cert-gap仍阻签，claim=false。报告`native-typed-fourteen-final-preview.json`37508 bytes，SHA256=`89b02c48c7580847c60810e777fda6ad6367b918b7e69315fb0910830206b198`；原capture/native_meter 559.1872ms、whole process peak20,430,848 bytes<128MiB，共享保守reservation44,496,668 bytes<48MiB。13个reader来源hash入报告，Popen禁止控制证明组合阶段不执行工具。未来更大集合须在同预算下明确对象释放/流式归约，不能重置仍存活对象的预算或放宽帽。
+- 真实证据副本反控`typed-wrong-kind-native-and-av-control.json`：native帧及摘要同改f64且位值仍8000000000000000并重算帧checksum/所有文件hash，只有W01:ac FAIL（13PASS/299未观测）；再把AV同格也改同一错误类型，两格都FAIL（12PASS/299未观测），不因双端相等变绿。控制副本不列真实执行。
+
+保留首次失败/无效结果：原`native-typed-original`12项父绿但无wire；第一版接线在`native-typed-observed`未显式打开采集开关，仍被严格reader拒无exchange；`native-typed-wire`打开开关后原记录recipe错为scalar，被拒；`native-typed-exact-recipe`运行期间施工变动，固定门报`code/config/inputs changed during execution`，整轮无效不计PASS；本地90控制初跑因ac_mn源码pin未刷新89/90，重新冻结源码后90/90。均未覆盖、未当环境绿；最后有效冻结门如上。原auto-case仅构建一个bin与固定组双bin feature-union会有不同二进制SHA；先前parent收据因此STALE，重新用实际双bin当前producer发现，没有将同源码当同工具身份。新鲜源/命令/原始输出都在唯一scope。
+
+当前936已更新到reviewed r2 13/14（仍非D），938 executing6/13、939 drafting0/14；此状态只影响真实消费其稳定接口及最终T12，不阻独立T01/T03/T04。下一步补**完整原313与Q4/ARCH义务到producer/case/check/owner/原预算/样本的显式映射**并推进完整registry；不得把14条已实现reader或90控制替代T01全闭包，也不再只复述外部D等待。SD草案保持，最终冻结职责并集/独立review/merge未执行。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: aa23ed8be8528dff01c3ed81a23d617909e00ca2 | task_ids: T-01/T-02（未关闭） | evidence: 原父11表43行发现、83→90治理控制、原18AV/12native check与14/313严格旧执行、same-wrong类型反控、20首链与预算实测 | blockers: 本单元无新增待用户决定；完整registry/机制reader与真实D仍欠 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: aa23ed8be8528dff01c3ed81a23d617909e00ca2 | next: work（剩余映射/实现继续，不是final review失败）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
