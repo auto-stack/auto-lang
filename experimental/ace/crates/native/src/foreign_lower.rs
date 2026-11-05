@@ -93,7 +93,7 @@ pub fn admit(
     unit: &ace_av_core::mir::MirModule,
     environment: &AdmittedForeign,
 ) -> Result<(), String> {
-    ace_av_core::mir_verify::verify_mir(unit).map_err(|e| format!("foreign.mir: {e:?}"))?;
+    ace_av_core::mir_verify::validate_mir(unit).map_err(|e| format!("foreign.mir: {e:?}"))?;
     for f in &unit.funcs {
         for block in &f.blocks {
             for instruction in &block.instrs {

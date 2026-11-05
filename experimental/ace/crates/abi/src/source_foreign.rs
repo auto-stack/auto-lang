@@ -968,6 +968,27 @@ impl Session {
         host: HostAuthority,
         read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
     ) -> Result<Self, String> {
+        Self::restore_host_with_resources(
+            root,
+            expected,
+            target,
+            capabilities,
+            host,
+            read,
+            Resources::default(),
+        )
+    }
+    /// Host-owned live account, shared with request decoding and other retained
+    /// compiler state. Limits may only tighten the original partitions.
+    pub fn restore_host_with_resources(
+        root: &[u8],
+        expected: &str,
+        target: Target,
+        capabilities: &[String],
+        host: HostAuthority,
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        resources: Resources,
+    ) -> Result<Self, String> {
         Self::restore_with_resources(
             root,
             expected,
@@ -975,7 +996,7 @@ impl Session {
             capabilities,
             EnvironmentInput::Host(host),
             read,
-            Resources::default(),
+            resources,
         )
     }
     fn restore_with_resources(
@@ -1101,7 +1122,7 @@ impl Session {
             work.io(&name, "restore-target", bytes.len() as u64, 0);
             let (decoded, _decoded_heap): (TargetWire, _) =
                 resources.decode_json(&bytes).map_err(|e| e.to_string())?;
-            validate_target_artifact(target, &name, &decoded, front.foreign())?;
+            validate_target_artifact(target, &name, &decoded, front.foreign(), &resources)?;
             page_work.accept();
             let allocation = resources
                 .reserve(Charge::resident(Artifact::decoded_bytes(&decoded)))
@@ -1600,6 +1621,7 @@ fn validate_target_artifact(
     name: &str,
     decoded: &TargetWire,
     environment: &AdmittedForeign,
+    resources: &Resources,
 ) -> Result<(), String> {
     match decoded {
         TargetWire::Native {
@@ -1620,7 +1642,10 @@ fn validate_target_artifact(
             // ABC deliberately omits the project/unit owner. Rebind
             // it from the authenticated required envelope BEFORE MIR
             // admission, as the existing unit-store protocol does.
-            let mut decoded = ace_av_core::abc::decode_abc(mir)
+            let (maximum, _mir_allocation) = resources
+                .reserve_remaining_mir()
+                .map_err(|e| e.to_string())?;
+            let mut decoded = ace_av_core::abc::decode_abc_limited(mir, maximum)
                 .map_err(|e| format!("foreign.restore.mir: {e:?}"))?;
             decoded.module.owner = ace_av_core::mir::OwnerScope {
                 schema: owner_schema.clone(),

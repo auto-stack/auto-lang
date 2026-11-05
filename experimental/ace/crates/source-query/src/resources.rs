@@ -260,6 +260,38 @@ impl Resources {
                 .saturating_sub(state.stats.current.total().unwrap_or(usize::MAX)),
         )
     }
+    /// Reserve the remaining MIR partition atomically with checking the shared
+    /// live total. A bounded decoder consumes this allowance, rather than
+    /// independently assuming that the entire original 16MiB is free.
+    pub fn reserve_remaining_mir(&self) -> Result<(usize, Reservation), ResourceError> {
+        let mut state = self.0.lock().expect("resource account");
+        state.collect();
+        let available = state
+            .limits
+            .mir
+            .saturating_sub(state.stats.current.mir)
+            .min(
+                state
+                    .limits
+                    .total
+                    .saturating_sub(state.stats.current.total().unwrap_or(usize::MAX)),
+            );
+        if available == 0 {
+            state.stats.rejections += 1;
+            return Err(ResourceError::Budget(
+                "no remaining MIR decode allowance".into(),
+            ));
+        }
+        let charge = Charge::mir(available);
+        state.add(charge)?;
+        Ok((
+            available,
+            Reservation {
+                resources: self.clone(),
+                charge: Some(charge),
+            },
+        ))
+    }
     /// Original ManagedStore read, with room for its framed read and returned
     /// payload BEFORE dispatch. The returned immutable page inherits the same
     /// reservation; there is no uncharged adoption gap or extra payload copy.
@@ -556,6 +588,30 @@ mod tests {
             Err(ResourceError::Decode(_))
         ));
     }
+    #[test]
+    fn mir_decode_reservation_obeys_both_remaining_partition_and_live_total() {
+        let r = Resources::limited(Limits {
+            total: 32 << 10,
+            mir: 24 << 10,
+            ..Limits::default()
+        })
+        .unwrap();
+        let baseline = r.stats().current;
+        let old_mir = r.reserve(Charge::mir(4 << 10)).unwrap();
+        let (limit, decoding) = r.reserve_remaining_mir().unwrap();
+        assert_eq!(limit, 20 << 10);
+        assert!(r.reserve_remaining_mir().is_err());
+        drop(decoding);
+        let other = r.reserve(Charge::resident(12 << 10)).unwrap();
+        let (limit, decoding) = r.reserve_remaining_mir().unwrap();
+        assert_eq!(limit, (16 << 10) - baseline.index);
+        assert!(r.reserve(Charge::io(1)).is_err());
+        drop(decoding);
+        drop(other);
+        drop(old_mir);
+        assert_eq!(r.stats().current, baseline);
+    }
+
     #[test]
     fn reservations_share_caps_before_allocation_and_drop_on_rejection() {
         let r = Resources::default();

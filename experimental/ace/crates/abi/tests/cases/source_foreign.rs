@@ -496,6 +496,73 @@ fn source_foreign_both_targets_preserve_status_bool_order_short_circuit_and_mixe
 }
 
 #[test]
+fn source_foreign_restore_shares_remaining_mir_budget_and_repairs_after_release() {
+    use ace_abi::source_foreign::{Session, Target};
+    use ace_source_query::resources::{Charge, Resources};
+    use std::sync::Arc;
+    let root = scope("shared-mir-decode");
+    let (object, environment) = provider(&root, 0);
+    let source = "fn main() int { return foreign_add(20,22) }";
+    let cold = Session::cold(
+        source,
+        "source938",
+        "p938",
+        &[SOURCE_CAP.into()],
+        environment.clone(),
+        Arc::new(std::fs::read(object).unwrap()),
+        Target::Native,
+    )
+    .unwrap();
+    let snapshot = cold.snapshot().unwrap();
+    let authority = fixture_current(&environment, Target::Native);
+    let resources = Resources::default();
+    let pressure = resources.reserve(Charge::mir((16 << 20) - 64)).unwrap();
+    let rejected = Session::restore_host_with_resources(
+        &snapshot.root,
+        &snapshot.digest,
+        Target::Native,
+        &[SOURCE_CAP.into()],
+        authority.foreign.clone(),
+        |id| snapshot.pages.get(id).cloned(),
+        resources.clone(),
+    );
+    let error = match rejected {
+        Ok(_) => panic!("restore allocated an independent full MIR partition"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("foreign.restore.mir") && error.contains("DecodeMemory"),
+        "{error}"
+    );
+    assert_eq!(resources.stats().current.mir, (16 << 20) - 64);
+    assert_eq!(resources.stats().current.io, 0);
+    assert_eq!(cold.frontend().source(), source);
+    assert_eq!(cold.snapshot().unwrap().digest, snapshot.digest);
+    drop(pressure);
+    let mut restored = Session::restore_host_with_resources(
+        &snapshot.root,
+        &snapshot.digest,
+        Target::Native,
+        &[SOURCE_CAP.into()],
+        authority.foreign,
+        |id| snapshot.pages.get(id).cloned(),
+        resources.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        resources.stats().current.mir,
+        0,
+        "temporary MIR not released after deep validation"
+    );
+    assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+    assert_eq!(restored.snapshot().unwrap().digest, snapshot.digest);
+    assert_eq!(
+        restored.run(&root.join("repaired")).unwrap().exit_code,
+        Some(42)
+    );
+}
+
+#[test]
 fn source_foreign_selected_targets_restore_then_immediate_edit_and_failed_first_edit() {
     use ace_abi::source_foreign::{Meter, Session, Snapshot, Target};
     use std::sync::Arc;

@@ -132,18 +132,13 @@ impl SourceDecl {
         if !valid {
             return Err("foreign.signature: expected finite scalar signature".into());
         }
-        InterfaceFacts {
-            format: crate::FACTS_FORMAT.into(),
-            logical: self.logical.clone(),
-            content_version: self.content_version.clone(),
-            source: crate::FactsSource::Typed {
-                id: self.review_id.clone(),
-            },
-            functions: vec![self.function.clone()],
-            effects: self.effects.clone(),
-            capabilities: self.capabilities.clone(),
+        if self.logical.trim().is_empty() {
+            return Err("logical id must be non-empty".into());
         }
-        .validate()
+        if self.content_version.trim().is_empty() {
+            return Err("content version must be non-empty".into());
+        }
+        crate::facts::validate_functions(std::slice::from_ref(&self.function), false, &self.effects)
     }
 
     pub fn digest(&self) -> String {

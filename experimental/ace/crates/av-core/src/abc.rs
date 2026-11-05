@@ -129,7 +129,10 @@ fn write_env_decl(w: &mut PageWriter, env: &Option<Vec<u32>>) {
     }
 }
 
-fn read_env_decl(c: &mut Cursor) -> Result<Option<Vec<u32>>, AbcDecodeError> {
+fn read_env_decl(
+    c: &mut Cursor,
+    mut admit: impl FnMut(usize) -> Result<(), AbcDecodeError>,
+) -> Result<Option<Vec<u32>>, AbcDecodeError> {
     match c.u8()? {
         0 => Ok(None),
         1 => {
@@ -144,6 +147,7 @@ fn read_env_decl(c: &mut Cursor) -> Result<Option<Vec<u32>>, AbcDecodeError> {
                     ),
                 ));
             }
+            admit(n * std::mem::size_of::<u32>())?;
             let mut v = Vec::with_capacity(n);
             for _ in 0..n {
                 v.push(c.u32()?);
@@ -1893,6 +1897,13 @@ impl<'a> Cursor<'a> {
 /// module. Structure-only: identity checks, checked arithmetic, quotas,
 /// unknown version/opcode rejection, bool legality, index bounds.
 pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
+    decode_abc_limited(bytes, crate::contract::MAX_DECODED_MODULE_BYTES)
+}
+
+/// A composing host can tighten the original decode partition to its remaining
+/// live allowance. Wire input and table limits remain unchanged.
+pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, AbcDecodeError> {
+    let maximum = maximum.min(crate::contract::MAX_DECODED_MODULE_BYTES);
     if bytes.len() > crate::contract::MAX_INPUT_BYTES {
         return Err(AbcDecodeError::Resource {
             kind: ResourceKind::InputTooLarge,
@@ -2025,62 +2036,6 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let n_funcs = c.u32()? as usize;
     let entry = c.u32()?;
     let n_caps = c.u16()? as usize;
-    let mut capabilities = Vec::with_capacity(n_caps.min(16));
-    for _ in 0..n_caps {
-        let n = c.u16()? as usize;
-        let cb = c.take(n)?.to_vec();
-        capabilities.push(String::from_utf8(cb).map_err(|_| {
-            AbcDecodeError::fmt_err(
-                "abc.decode.capability-utf8",
-                "capability is not UTF-8".to_string(),
-            )
-        })?);
-    }
-    let mut host_imports = Vec::new();
-    if family == WireFamily::HostConsole {
-        if c.take(4)? != b"HOST" {
-            return Err(AbcDecodeError::fmt_err(
-                "abc.decode.host-section",
-                "missing host-import section".into(),
-            ));
-        }
-        let n = c.u16()? as usize;
-        if n > 8 {
-            return Err(AbcDecodeError::fmt_err(
-                "abc.decode.host-section",
-                "too many host imports".into(),
-            ));
-        }
-        for _ in 0..n {
-            let mut fields = Vec::with_capacity(3);
-            for _ in 0..3 {
-                let len = c.u16()? as usize;
-                if len > 128 {
-                    return Err(AbcDecodeError::fmt_err(
-                        "abc.decode.host-section",
-                        "host field exceeds 128 bytes".into(),
-                    ));
-                }
-                fields.push(
-                    std::str::from_utf8(c.take(len)?)
-                        .map_err(|_| {
-                            AbcDecodeError::fmt_err(
-                                "abc.decode.host-section",
-                                "invalid host field UTF-8".into(),
-                            )
-                        })?
-                        .to_string(),
-                );
-            }
-            host_imports.push(MirHostImport {
-                category: fields.remove(0),
-                symbol: fields.remove(0),
-                capability: fields.remove(0),
-                sig: c.u32()?,
-                max_call_bytes: c.u32()?,
-            });
-        }
-    }
     // Quota: counts alone are bounded by the frozen table budget (checked
     // again post-assembly by the verifier; checked HERE before allocation).
     if n_types
@@ -2104,23 +2059,12 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     // rejects as `av.resource.decode-memory` — decode itself must never
     // finish (let alone hand out) an over-budget object. Per-element
     // estimates mirror `MirModule::heap_estimate` semantics.
-    let mut decoded_est: usize = host_imports
-        .iter()
-        .map(|h| {
-            std::mem::size_of::<MirHostImport>()
-                + h.category.len()
-                + h.symbol.len()
-                + h.capability.len()
-        })
-        .sum();
+    let mut decoded_est: usize = 0;
     {
         let est_vec_overhead = std::mem::size_of::<usize>() * 3;
         decoded_est += std::mem::size_of::<MirModule>()
             + std::mem::size_of::<String>() * 3
-            + capabilities
-                .iter()
-                .map(|c| c.len() + std::mem::size_of::<String>())
-                .sum::<usize>()
+            + n_caps * std::mem::size_of::<String>()
             + est_vec_overhead * 5
             + n_types * (std::mem::size_of::<MirType>() + 4)
             + n_consts * std::mem::size_of::<MirConst>()
@@ -2132,33 +2076,109 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     + est_vec_overhead,
             );
     }
-    if decoded_est > crate::contract::MAX_DECODED_MODULE_BYTES {
+    if decoded_est > maximum {
         return Err(AbcDecodeError::Resource {
             kind: ResourceKind::DecodeMemory,
             message: format!(
                 "header alone estimates {} decoded bytes, above the frozen {} budget",
-                decoded_est,
-                crate::contract::MAX_DECODED_MODULE_BYTES
+                decoded_est, maximum
             ),
         });
     }
     macro_rules! decode_mem {
         ($add:expr, $what:expr) => {{
             decoded_est = decoded_est.saturating_add($add);
-            if decoded_est > crate::contract::MAX_DECODED_MODULE_BYTES {
+            if decoded_est > maximum {
                 return Err(AbcDecodeError::Resource {
                     kind: ResourceKind::DecodeMemory,
                     message: format!(
                         "decoding {} pushes the decoded-heap estimate to {} bytes, above the frozen {} budget",
                         $what,
                         decoded_est,
-                        crate::contract::MAX_DECODED_MODULE_BYTES
+                        maximum
                     ),
                 });
             }
         }};
     }
 
+    let mut capabilities = Vec::with_capacity(n_caps);
+    for _ in 0..n_caps {
+        let n = c.u16()? as usize;
+        decode_mem!(n, "a capability string");
+        let cb = c.take(n)?.to_vec();
+        capabilities.push(String::from_utf8(cb).map_err(|_| {
+            AbcDecodeError::fmt_err(
+                "abc.decode.capability-utf8",
+                "capability is not UTF-8".to_string(),
+            )
+        })?);
+    }
+    let mut host_imports = Vec::new();
+    if family == WireFamily::HostConsole {
+        if c.take(4)? != b"HOST" {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.host-section",
+                "missing host-import section".into(),
+            ));
+        }
+        let n = c.u16()? as usize;
+        if n > 8 {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.host-section",
+                "too many host imports".into(),
+            ));
+        }
+        decode_mem!(
+            n * std::mem::size_of::<MirHostImport>(),
+            "host import records"
+        );
+        host_imports.reserve_exact(n);
+        for _ in 0..n {
+            let mut fields = [String::new(), String::new(), String::new()];
+            for field in &mut fields {
+                let len = c.u16()? as usize;
+                if len > 128 {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.host-section",
+                        "host field exceeds 128 bytes".into(),
+                    ));
+                }
+                decode_mem!(len, "a host import field");
+                *field = std::str::from_utf8(c.take(len)?)
+                    .map_err(|_| {
+                        AbcDecodeError::fmt_err(
+                            "abc.decode.host-section",
+                            "invalid host field UTF-8".into(),
+                        )
+                    })?
+                    .to_string();
+            }
+            let [category, symbol, capability] = fields;
+            host_imports.push(MirHostImport {
+                category,
+                symbol,
+                capability,
+                sig: c.u32()?,
+                max_call_bytes: c.u32()?,
+            });
+        }
+    }
+    let owner_schema = match family {
+        WireFamily::ForeignScalar => ABC_FOREIGN_SCHEMA,
+        WireFamily::Core => crate::contract::ABC_SCHEMA,
+        WireFamily::Data => crate::contract::ABC_DATA_SCHEMA,
+        WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA,
+        WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA,
+        WireFamily::Closures => crate::contract::ABC_CLOSURES_SCHEMA,
+        WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA,
+        WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_SCHEMA,
+        WireFamily::HostConsole => crate::contract::ABC_HOST_CONSOLE_SCHEMA,
+    };
+    decode_mem!(
+        (n_funcs + 1) * owner_schema.len() + 128,
+        "owner and profile strings"
+    );
     let mut module = MirModule {
         host_imports,
         profile: match family {
@@ -2177,7 +2197,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         // kind; their contract is the profile itself).
         entry_kind,
         owner: OwnerScope {
-            schema: String::new(),
+            schema: owner_schema.into(),
             module: String::new(),
         },
         // F798-R11-02: the kind is read from the WIRE flag, never
@@ -2185,10 +2205,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         // module (direct self/mutual calls allowed) round-trips as a
         // module, and a split unit stays a unit.
         is_unit: flags & FLAG_IS_UNIT != 0,
-        types: Vec::with_capacity(n_types.min(1024)),
-        consts: Vec::with_capacity(n_consts.min(1024)),
-        imports: Vec::with_capacity(n_imports.min(64)),
-        funcs: Vec::with_capacity(n_funcs.min(1024)),
+        types: Vec::with_capacity(n_types),
+        consts: Vec::with_capacity(n_consts),
+        imports: Vec::with_capacity(n_imports),
+        funcs: Vec::with_capacity(n_funcs),
         entry,
         capabilities,
     };
@@ -2249,7 +2269,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     nfields * (std::mem::size_of::<MirFieldDef>() + 8) + 24,
                     "a record field table"
                 );
-                let mut fields = Vec::with_capacity(nfields.min(1024));
+                let mut fields = Vec::with_capacity(nfields);
                 for _ in 0..nfields {
                     let flen = c.u16()? as usize;
                     // R4-F09: mirror `MirModule::heap_estimate` — every
@@ -2303,7 +2323,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     nfields * (std::mem::size_of::<MirFieldDef>() + 8) + 24,
                     "a record-view field table"
                 );
-                let mut fields = Vec::with_capacity(nfields.min(1024));
+                let mut fields = Vec::with_capacity(nfields);
                 for _ in 0..nfields {
                     let flen = c.u16()? as usize;
                     decode_mem!(flen + 24, "a record-view field name");
@@ -2355,7 +2375,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     narms * (std::mem::size_of::<VariantArm>() + 8) + 24,
                     "a variant arm table"
                 );
-                let mut arms = Vec::with_capacity(narms.min(1024));
+                let mut arms = Vec::with_capacity(narms);
                 for _ in 0..narms {
                     let alen = c.u16()? as usize;
                     decode_mem!(alen + 24, "a variant arm name");
@@ -2404,6 +2424,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         format!("closure signature with {} params exceeds wire width", n),
                     ));
                 }
+                decode_mem!(
+                    n * std::mem::size_of::<TypeIdx>(),
+                    "closure signature parameters"
+                );
                 let mut params = Vec::with_capacity(n);
                 for _ in 0..n {
                     params.push(c.u32()?);
@@ -2516,7 +2540,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         };
         let sig = c.u32()?;
         let env = if family == WireFamily::Closures {
-            read_env_decl(&mut c)?
+            read_env_decl(&mut c, |bytes| {
+                decode_mem!(bytes, "a closure environment");
+                Ok(())
+            })?
         } else {
             None
         };
@@ -2528,15 +2555,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         });
     }
     // Functions.
-    let mut sidecar_needed = flags & FLAG_SOURCE_SIDECAR != 0;
-    let mut raw_funcs: Vec<(
-        TypeIdx,
-        String,
-        Vec<MirSlot>,
-        BlockId,
-        Vec<MirBlock>,
-        Option<Vec<u32>>,
-    )> = Vec::with_capacity(n_funcs);
+    let sidecar_needed = flags & FLAG_SOURCE_SIDECAR != 0;
     // Per-TABLE-FAMILY probe (plan §3 r2): module tables were checked in
     // the header; each FUNCTION's slot/block/instruction table is checked
     // at its own boundary — never accumulated across the whole module.
@@ -2555,7 +2574,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         let nslots = c.u32()? as usize;
         fn_probe = nslots;
         decode_mem!(nslots * std::mem::size_of::<MirSlot>() + 24, "a slot table");
-        let mut slots = Vec::with_capacity(nslots.min(4096));
+        let mut slots = Vec::with_capacity(nslots);
         for _ in 0..nslots {
             let k = c.u8()?;
             let kind = match k {
@@ -2583,7 +2602,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             nblocks * (std::mem::size_of::<MirBlock>() + 24),
             "a block table"
         );
-        let mut blocks = Vec::with_capacity(nblocks.min(4096));
+        let mut blocks = Vec::with_capacity(nblocks);
         for _ in 0..nblocks {
             let ninstrs = c.u32()? as usize;
             fn_probe += ninstrs;
@@ -2602,7 +2621,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     ),
                 });
             }
-            let mut instrs = Vec::with_capacity(ninstrs.min(4096));
+            let mut instrs = Vec::with_capacity(ninstrs);
             for _ in 0..ninstrs {
                 let op = c.u8()?;
                 let instr = match op {
@@ -2672,6 +2691,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         };
                         let dst = c.u32()?;
                         let nargs = c.u8()? as usize;
+                        decode_mem!(nargs * std::mem::size_of::<SlotId>(), "call arguments");
                         let mut args = Vec::with_capacity(nargs);
                         for _ in 0..nargs {
                             args.push(c.u32()?);
@@ -2703,21 +2723,19 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             ));
                         }
                         let bytes = c.take(len)?;
-                        let allocation = ace_foreign_contract::codec::metadata_json_allocation(
-                            bytes,
-                            crate::contract::MAX_DECODED_MODULE_BYTES,
-                        )
-                        .map_err(|e| match e {
-                            ace_foreign_contract::codec::AllocationError::Budget(message) => {
-                                AbcDecodeError::Resource {
-                                    kind: ResourceKind::DecodeMemory,
-                                    message,
+                        let allocation =
+                            ace_foreign_contract::codec::metadata_json_allocation(bytes, maximum)
+                                .map_err(|e| match e {
+                                ace_foreign_contract::codec::AllocationError::Budget(message) => {
+                                    AbcDecodeError::Resource {
+                                        kind: ResourceKind::DecodeMemory,
+                                        message,
+                                    }
                                 }
-                            }
-                            ace_foreign_contract::codec::AllocationError::Decode(message) => {
-                                AbcDecodeError::fmt_err("abc.decode.foreign", message)
-                            }
-                        })?;
+                                ace_foreign_contract::codec::AllocationError::Decode(message) => {
+                                    AbcDecodeError::fmt_err("abc.decode.foreign", message)
+                                }
+                            })?;
                         let temporary = allocation
                             .total()
                             .unwrap_or(usize::MAX)
@@ -2725,9 +2743,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             .saturating_add(std::mem::size_of::<
                                 ace_foreign_contract::manual::SourceDecl,
                             >());
-                        if decoded_est.saturating_add(temporary)
-                            > crate::contract::MAX_DECODED_MODULE_BYTES
-                        {
+                        if decoded_est.saturating_add(temporary) > maximum {
                             return Err(AbcDecodeError::Resource { kind: ResourceKind::DecodeMemory,
                                 message: "foreign declaration decode/model/scratch exceeds the remaining decoded module budget".into() });
                         }
@@ -2780,7 +2796,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let base = c.u32()?;
                         let plen = c.u16()? as usize;
                         decode_mem!(plen * 2 + 24, "a field path");
-                        let mut path = Vec::with_capacity(plen.min(64));
+                        let mut path = Vec::with_capacity(plen);
                         for _ in 0..plen {
                             path.push(c.u16()?);
                         }
@@ -2790,7 +2806,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let root = c.u32()?;
                         let plen = c.u16()? as usize;
                         decode_mem!(plen * 2 + 24, "a field path");
-                        let mut path = Vec::with_capacity(plen.min(64));
+                        let mut path = Vec::with_capacity(plen);
                         for _ in 0..plen {
                             path.push(c.u16()?);
                         }
@@ -2802,7 +2818,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let record_ty = c.u32()?;
                         let nops = c.u16()? as usize;
                         decode_mem!(nops * 4 + 24, "an aggregate operand table");
-                        let mut operands = Vec::with_capacity(nops.min(1024));
+                        let mut operands = Vec::with_capacity(nops);
                         for _ in 0..nops {
                             operands.push(c.u32()?);
                         }
@@ -3087,6 +3103,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                                 ),
                             ));
                         }
+                        decode_mem!(
+                            n * std::mem::size_of::<crate::mir::CaptureOperand>(),
+                            "closure captures"
+                        );
                         let mut captures = Vec::with_capacity(n);
                         for _ in 0..n {
                             let kind_byte = c.u8()?;
@@ -3106,7 +3126,8 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let dst = c.u32()?;
                         let closure = c.u32()?;
                         let n = c.u8()? as usize;
-                        let mut args = Vec::with_capacity(n.min(64));
+                        decode_mem!(n * std::mem::size_of::<SlotId>(), "closure arguments");
+                        let mut args = Vec::with_capacity(n);
                         for _ in 0..n {
                             args.push(c.u32()?);
                         }
@@ -3164,15 +3185,26 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             blocks.push(MirBlock { instrs, term });
         }
         let env = if family == WireFamily::Closures {
-            read_env_decl(&mut c)?
+            read_env_decl(&mut c, |bytes| {
+                decode_mem!(bytes, "a closure environment");
+                Ok(())
+            })?
         } else {
             None
         };
-        raw_funcs.push((sig, name, slots, entry_block, blocks, env));
+        module.funcs.push(MirFunction {
+            owner: module.owner.clone(),
+            name,
+            sig,
+            slots,
+            blocks,
+            entry: entry_block,
+            source_snapshot: 0,
+            spans: Vec::new(),
+            env,
+        });
     }
     // Sidecar.
-    let mut snapshots: Vec<u64> = Vec::with_capacity(n_funcs);
-    let mut span_tables: Vec<Vec<(u32, crate::contract::SpanInfo)>> = Vec::with_capacity(n_funcs);
     if sidecar_needed {
         let sc_len = c.u32()? as usize;
         let sc = c.take(sc_len)?;
@@ -3181,14 +3213,14 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             pos: 0,
             steps: 0,
         };
-        for _ in 0..n_funcs {
-            let snap = sc_cur.u64()?;
+        for function in &mut module.funcs {
+            function.source_snapshot = sc_cur.u64()?;
             let nspans = sc_cur.u32()? as usize;
             decode_mem!(
                 nspans * std::mem::size_of::<(u32, crate::contract::SpanInfo)>() + 24,
                 "a span table"
             );
-            let mut spans = Vec::with_capacity(nspans.min(4096));
+            let mut spans = Vec::with_capacity(nspans);
             for _ in 0..nspans {
                 let instr = sc_cur.u32()?;
                 let func = sc_cur.u32()?;
@@ -3196,13 +3228,13 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 let end = sc_cur.u32()?;
                 spans.push((instr, crate::contract::SpanInfo { func, start, end }));
             }
-            snapshots.push(snap);
-            span_tables.push(spans);
+            function.spans = spans;
         }
-    } else {
-        for _ in 0..n_funcs {
-            snapshots.push(0);
-            span_tables.push(Vec::new());
+        if sc_cur.pos != sc_cur.data.len() {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.sidecar-trailing-bytes",
+                "trailing bytes inside the source sidecar".into(),
+            ));
         }
     }
     if c.pos != c.data.len() {
@@ -3213,38 +3245,6 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 c.data.len() - c.pos
             ),
         ));
-    }
-    sidecar_needed = false;
-    let _ = sidecar_needed;
-
-    let owner = OwnerScope {
-        schema: match family {
-            WireFamily::ForeignScalar => ABC_FOREIGN_SCHEMA.to_string(),
-            WireFamily::Core => crate::contract::ABC_SCHEMA.to_string(),
-            WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
-            WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),
-            WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA.to_string(),
-            WireFamily::Closures => crate::contract::ABC_CLOSURES_SCHEMA.to_string(),
-            WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA.to_string(),
-            // PLAN-862: the entry-unit family has its own schema identity.
-            WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_SCHEMA.to_string(),
-            WireFamily::HostConsole => crate::contract::ABC_HOST_CONSOLE_SCHEMA.to_string(),
-        },
-        module: String::new(),
-    };
-    module.owner = owner;
-    for (fi, (sig, name, slots, entry_block, blocks, env)) in raw_funcs.into_iter().enumerate() {
-        module.funcs.push(MirFunction {
-            owner: module.owner.clone(),
-            name,
-            sig,
-            slots,
-            blocks,
-            entry: entry_block,
-            source_snapshot: snapshots[fi],
-            spans: span_tables[fi].clone(),
-            env,
-        });
     }
     Ok(DecodedAbc {
         version,

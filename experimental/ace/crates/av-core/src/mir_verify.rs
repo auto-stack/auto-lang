@@ -114,6 +114,24 @@ pub fn verify_mir_with_deadline(
     module: &MirModule,
     deadline: Instant,
 ) -> Result<CheckedMir, MirVerifyError> {
+    let stats = validate_mir_with_deadline(module, deadline)?;
+    Ok(CheckedMir {
+        inner: module.clone(),
+        stats,
+    })
+}
+
+/// The same deep validation for hosts that need a verdict and keep their
+/// immutable module, rather than constructing a second owning credential.
+/// This returns no executable credential and cannot outlive a module rewrite.
+pub fn validate_mir(module: &MirModule) -> Result<VerifyStats, MirVerifyError> {
+    validate_mir_with_deadline(module, Instant::now() + MAX_VERIFY_WALL)
+}
+
+fn validate_mir_with_deadline(
+    module: &MirModule,
+    deadline: Instant,
+) -> Result<VerifyStats, MirVerifyError> {
     let mut v = Verifier {
         module,
         steps: 0,
@@ -128,11 +146,7 @@ pub fn verify_mir_with_deadline(
         is_entry_unit: module.is_entry_unit_profile() || module.is_host_console_profile(),
     };
     v.run()?;
-    let stats = v.stats_snapshot();
-    Ok(CheckedMir {
-        inner: module.clone(),
-        stats,
-    })
+    Ok(v.stats_snapshot())
 }
 
 struct Verifier<'a> {

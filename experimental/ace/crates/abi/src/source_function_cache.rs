@@ -137,7 +137,13 @@ impl FunctionCache {
             let verify = self
                 .work
                 .begin(name, "target-cache-validate", Phase::Recovery);
-            validate_target_artifact(target, name, &artifact.decoded, environment)?;
+            validate_target_artifact(
+                target,
+                name,
+                &artifact.decoded,
+                environment,
+                &self.resources,
+            )?;
             if artifact.semantic() != semantic {
                 return Err("foreign.cache.semantic".into());
             }
@@ -174,7 +180,7 @@ impl FunctionCache {
             .resources
             .decode_json(&loaded)
             .map_err(|e| format!("foreign.cache.decode: {e}"))?;
-        validate_target_artifact(target, name, &decoded, environment)?;
+        validate_target_artifact(target, name, &decoded, environment, &self.resources)?;
         let allocation = self
             .resources
             .reserve(Charge::resident(Artifact::decoded_bytes(&decoded)))
