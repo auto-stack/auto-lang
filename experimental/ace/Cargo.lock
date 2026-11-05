@@ -204,6 +204,7 @@ dependencies = [
 name = "ace-core"
 version = "0.1.0"
 dependencies = [
+ "ace-core",
  "ace-syntax-grammar",
  "ace-syntax-runtime",
  "anyhow",
