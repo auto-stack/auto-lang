@@ -204,6 +204,81 @@ fn wait_first_tick(hb: &Path, limit: Duration) {
     panic!("grandchild heartbeat never started within {limit:?}");
 }
 
+// A fixture may deliberately outlive the execution API, but must not outlive
+// its test. Waiting happens AFTER the measured API interval; no deadline or
+// ownership assertion is relaxed and no unowned child is killed early.
+fn wait_fixture_exit(pid: u32, limit: Duration) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+            fn WaitForSingleObject(handle: *mut std::ffi::c_void, ms: u32) -> u32;
+            fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+        }
+        let handle = unsafe { OpenProcess(0x0010_0000, 0, pid) }; // SYNCHRONIZE
+        if handle.is_null() {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() == Some(87) {
+                return Ok(());
+            } // already exited
+            return Err(error);
+        }
+        let status = unsafe { WaitForSingleObject(handle, limit.as_millis() as u32) };
+        let wait_error = (status == u32::MAX).then(std::io::Error::last_os_error);
+        unsafe {
+            CloseHandle(handle);
+        }
+        if status == 0 {
+            return Ok(());
+        }
+        if let Some(error) = wait_error {
+            return Err(error);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("fixture {pid} did not reach its own exit (wait={status})"),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        unsafe extern "C" {
+            fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
+        let deadline = Instant::now() + limit;
+        loop {
+            let mut status = 0;
+            let reaped = unsafe { waitpid(pid as i32, &mut status, 1) }; // WNOHANG
+            if reaped == pid as i32 {
+                return Ok(());
+            }
+            if reaped < 0 && unsafe { kill(pid as i32, 0) } != 0 {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() == Some(3) {
+                    return Ok(());
+                } // ESRCH
+                return Err(error);
+            }
+            if Instant::now() >= deadline {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "fixture still live",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+fn wait_heartbeat_fixture_exit(hb: &Path) {
+    wait_first_tick(hb, Duration::from_secs(2));
+    let pid: u32 = std::fs::read_to_string(format!("{}.pid", hb.display()))
+        .expect("fixture PID published before first tick")
+        .parse()
+        .expect("fixture PID");
+    wait_fixture_exit(pid, Duration::from_secs(6)).expect("fixture self-exit, no workload leak");
+}
+
 // ---------------------------------------------------------------------------
 // argv / cwd / env
 // ---------------------------------------------------------------------------
@@ -593,8 +668,10 @@ fn deadline_covers_blocked_stdin_with_unowned_holder() {
     spec.stdin_data = Some(vec![b'x'; 1024 * 1024]);
     spec.deadline = Some(Duration::from_millis(250));
     let started = Instant::now();
-    let result = run(&spec).expect("run with deadline");
+    let result = run(&spec);
     let elapsed = started.elapsed();
+    wait_heartbeat_fixture_exit(&hb);
+    let result = result.expect("run with deadline");
     assert!(
         matches!(result.kind, ExitKind::Timeout { .. }),
         "{:?}",
@@ -659,6 +736,7 @@ fn detached_child_outlives_spawn_caller_handle() {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+    wait_fixture_exit(pid, Duration::from_secs(4)).expect("detached fixture self-exit");
     assert!(
         ticks >= 3,
         "detached child must keep living (ticks={ticks})"
