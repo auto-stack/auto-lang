@@ -189,6 +189,14 @@ impl SourceQuerySession {
         &self.capabilities
     }
 
+    pub fn package(&self) -> &str {
+        &self.package
+    }
+
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
     /// Drop every cached page (test/measurement helper; a production
     /// consumer relies on invalidation, never on clearing the store to
     /// hide a stale hit).

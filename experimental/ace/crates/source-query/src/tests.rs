@@ -692,3 +692,156 @@ fn sq25_source_map_refresh_keeps_the_key_and_the_bind_works() {
         .expect("emit");
     ace_core::verify::verify_scalar(parts.bundle).expect("drifted fact-bound HIR verifies");
 }
+
+// -- T-06: host two-phase install / deps / single-flight ----------------
+
+use crate::host::{MemorySink, QueryHost, TargetHandle};
+use std::sync::atomic::AtomicBool;
+
+#[test]
+fn sq26_host_prepare_then_commit_switches_once() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+    let cand = host.prepare(&mut s, &p, "leaf").expect("prepare leaf");
+    assert!(host.current().is_none(), "prepare must not install");
+    assert!(host.sink().is_empty(), "prepare must not publish a page");
+
+    let rec = host.commit(cand, &s, &p, None).expect("commit").clone();
+    assert_eq!(rec.revision, 1);
+    assert_eq!(rec.target, None);
+    assert_eq!(host.sink().len(), 1);
+    assert!(host.sink().get(&rec.artifact).is_some(), "the page was published");
+    assert_eq!(host.current().map(|c| c.revision), Some(1));
+
+    // Second owner installs as a second revision; the old record is gone
+    // atomically (one current record, never two).
+    let cand2 = host.prepare(&mut s, &p, "main").expect("prepare main");
+    let rec2 = host.commit(cand2, &s, &p, None).expect("commit main").clone();
+    assert_eq!(rec2.revision, 2);
+    assert_ne!(rec.artifact, rec2.artifact);
+}
+
+#[test]
+fn sq27_pre_commit_failures_keep_the_old_record() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+    let cand = host.prepare(&mut s, &p, "leaf").expect("prepare");
+    let first = host.commit(cand, &s, &p, None).expect("first install").clone();
+
+    // Cancelled before the switch.
+    let cand = host.prepare(&mut s, &p, "main").expect("prepare");
+    let cancel = AtomicBool::new(true);
+    assert_eq!(
+        host.commit(cand, &s, &p, Some(&cancel)).map(|_| ()),
+        Err(crate::host::CommitError::Cancelled)
+    );
+    assert_eq!(host.current().map(|c| c.revision), Some(1));
+
+    // Late result: prepared at revision 1, another install advanced it.
+    let stale = host.prepare(&mut s, &p, "main").expect("prepare stale");
+    let fresh = host.prepare(&mut s, &p, "main").expect("prepare fresh");
+    host.commit(fresh, &s, &p, None).expect("install fresh");
+    assert_eq!(
+        host.commit(stale, &s, &p, None).map(|_| ()),
+        Err(crate::host::CommitError::LateResult {
+            current: 2,
+            candidate: 1
+        })
+    );
+    assert_eq!(host.current().map(|c| c.revision), Some(2));
+
+    // A dependency change after prepare is refused, not installed.
+    let p_sig = parse("fn leaf(x bool) int { return 1 }\n\nfn main() int { return leaf(41) }\n");
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    let mut host2 = QueryHost::new(MemorySink::new());
+    let main_cand = host2.prepare(&mut s2, &p, "main").expect("prepare main");
+    // Leaf's signature changed, so main's dep version no longer matches.
+    let s3 = SourceQuerySession::new("pkg", "mod");
+    assert_eq!(
+        host2.commit(main_cand, &s3, &p_sig, None).map(|_| ()),
+        Err(crate::host::CommitError::DepChanged {
+            name: "leaf".to_string()
+        })
+    );
+    assert!(host2.current().is_none());
+    let _ = first;
+}
+
+#[test]
+fn sq28_target_ready_is_attached_at_the_same_switch() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+    let mut cand = host.prepare(&mut s, &p, "leaf").expect("prepare");
+    crate::host::QueryHost::<MemorySink>::attach_target(&mut cand, TargetHandle(77));
+    let rec = host.commit(cand, &s, &p, None).expect("commit").clone();
+    assert_eq!(rec.target, Some(TargetHandle(77)));
+    assert_eq!(rec.key.query, QueryKind::InferBody);
+}
+
+#[test]
+fn sq29_single_flight_shares_one_computation_per_key() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let facts = s.infer_body(&p, "leaf").expect("facts").facts;
+    let key = s.body_key(&p, "leaf").expect("key");
+    let mut host = QueryHost::new(MemorySink::new());
+    let mut calls = 0;
+    let (f1, hit1) = host
+        .join(&key, &facts, None, || {
+            calls += 1;
+            Ok(facts.clone())
+        })
+        .expect("first join");
+    assert!(!hit1);
+    let (f2, hit2) = host
+        .join(&key, &facts, None, || {
+            calls += 1;
+            Ok(facts.clone())
+        })
+        .expect("second join");
+    assert!(hit2, "the same key is served from the shared flight");
+    assert_eq!(calls, 1);
+    assert_eq!(f1, f2);
+
+    // A cancelled waiter does not poison the shared flight.
+    let cancel = AtomicBool::new(true);
+    assert_eq!(
+        host.join(&key, &facts, Some(&cancel), || {
+            calls += 1;
+            Ok(facts.clone())
+        }),
+        Err(crate::host::FlightError::Cancelled)
+    );
+    let (_, hit3) = host
+        .join(&key, &facts, None, || {
+            calls += 1;
+            Ok(facts.clone())
+        })
+        .expect("third join");
+    assert!(hit3);
+    assert_eq!(calls, 1);
+
+    // Same key, different payload: rejected and located.
+    let mut tampered = facts.clone();
+    tampered.nodes[0].ty = PortableTy::Bool;
+    assert!(matches!(
+        host.join(&key, &tampered, None, || Ok(tampered.clone())),
+        Err(crate::host::FlightError::PayloadMismatch { .. })
+    ));
+}
+
+#[test]
+fn sq30_read_only_view_never_installs() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+    let view = host.view(&mut s, &p, "main").expect("view");
+    assert!(host.current().is_none(), "a view is not an install");
+    assert!(host.sink().is_empty());
+    assert_eq!(view.revision, 0);
+    assert!(view.key.body_version.is_some());
+    assert!(view.facts.is_complete());
+}

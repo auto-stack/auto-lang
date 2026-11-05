@@ -531,6 +531,11 @@ pub fn bind_with_facts(
     session: &mut SourceQuerySession,
     profile: SourceProfile,
 ) -> Result<(ResolvedProgram, Vec<AppliedFn>, BodyTypeSupply), BindFactsError> {
+    if session.package() != package || session.module() != module {
+        return Err(BindFactsError::Profile(
+            "session/module identity mismatch",
+        ));
+    }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {
         match item {

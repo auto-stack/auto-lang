@@ -37,6 +37,7 @@
 pub mod apply;
 pub mod catalog;
 pub mod facts;
+pub mod host;
 pub mod ident;
 pub mod keys;
 pub mod produce;
@@ -52,6 +53,10 @@ pub use apply::{
 };
 
 pub use catalog::SignatureCatalog;
+pub use host::{
+    Candidate, CommitError, CurrentRecord, FlightError, MemorySink, PageSink, QueryHost, QueryView,
+    TargetHandle,
+};
 pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
 pub use session::PageAudit;
 pub use facts::{
