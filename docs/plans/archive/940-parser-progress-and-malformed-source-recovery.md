@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-05
 updated_at: 2026-11-06
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: [auto-ui/PLAN-042, PLAN-900, PLAN-906]
 supersedes_spec_components: []
@@ -100,7 +100,7 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 | T-04 | [x] 跑完整受影响parser/领域consumer职责，健康/遗漏扫描与SD草案，冻结work源（`cargo t parser` 149/149（145存量+4新）；auto-ui-dialect 全套 102/102；plan042 t02 族 26/26；探针修复后 16/16 受控；新告警 0、新行 fmt 干净、无调试残留；端口未改 → 三个 modularity consumer 不触发；SD 草案=§5 表；冻结 commit：auto-ui d99a36b8 / auto-lang 928ca15db） | T-03；AC-01..04 | work |
 | T-05 | [x] 独立上下文final review逐AC/反控/资源分类，finding返work（final pass，见 §9 R2 复审记录；finding 0） | T-04；AC-05 | review |
 | T-06 | [x] 冻结必要职责并集，依赖序真实合入、canonical读回与归档（冻结门 parser 149/149+UI 102/102+26/26 绑定交付基线；rebase range-diff 全等价；两仓 ff-only 合入 lang ec4fb9368/ui eff9ece3；canonical 读回+main 冒烟 4/4；本文件 git mv 归档） | T-05；AC-06 | merge |
-| T-07 | [ ] 输出/进程/设置/登记对账，guard后删树与scope，摘要折Plan | T-06；AC-07 | merge |
+| T-07 | [x] 输出/进程/设置/登记对账，guard后删树与scope，摘要折Plan（四树 guard clean→移除，两分支删除于 tip=master tip，组目录删除；plan-940 scope 整删+登记表刷新，无具名持有；监督器临时文件逐例自删，无外置输出/进程/设置残留） | T-06；AC-07 | merge |
 
 ## 9. 复审记录
 
@@ -144,7 +144,7 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 - **canonical_verified**：master `git show` 读回——progress-and-rejection.md 在 master（blob 36b0d1ad，内容 sha256 dda0fcc5…）；auto-ui reload spec §7 含"已关闭，PLAN-940"且由 eff9ece3 落盘。main 冒烟：`cargo test -p auto-lang-core --lib parser::tests::plan940` 4/4。
 - **archived**：本文件 git mv 至 `docs/plans/archive/`，status: archived，docs 提交入库（见下方 commit）。
 - **观测项（产物时效）**：auto-lang/auto-ui 为库/工具链仓，本工作流不拥有常驻 backend 二进制或 web bundle 部署面（auto-musk 教训不适用）；下游应用下次构建即取修复。无进程/设置残留（探针均被监督器终止，无长驻进程）。
-- **cleaned**：（清理完成后追加）
+- **cleaned**：四树 `wt-guard.sh` clean（reparse point 扫描）后 `git worktree remove`：lang-940/{auto-lang,auto-ui,auto-web,auto-down}，两仓分支 `codex/plan-940-parser-recovery` 删除于 ec4fb9368/eff9ece3（=各 master tip，落地证明），组目录 `D:/autostack/.wt/lang-940` 删除；`D:/autostack/plan-artifacts/plan-940/` 整 scope 删除（探针源/fixture/结果/监督脚本/外置 target，证据已折 §9），`.retention/policy.json` 刷新（无具名持有）。收尾路径对账：本计划全部显式输出路径=plan-artifacts scope + worktree 内 target（随树亡）+ 监督器逐例临时文件（自删），无其他盘符/散落目录。
 
 ## 10. 待澄清事项
 
