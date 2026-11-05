@@ -123,6 +123,7 @@ pub struct SourceQuerySession {
     package: String,
     module: String,
     capabilities: Vec<String>,
+    declaration_contexts: BTreeMap<String, String>,
     limits: ProduceLimits,
     allow_solver: bool,
     cancel: Option<Arc<AtomicBool>>,
@@ -138,6 +139,7 @@ impl SourceQuerySession {
             package: package.to_string(),
             module: module.to_string(),
             capabilities: Vec::new(),
+            declaration_contexts: BTreeMap::new(),
             limits: ProduceLimits::default(),
             allow_solver: true,
             cancel: None,
@@ -228,7 +230,44 @@ impl SourceQuerySession {
     /// The current module's signature catalog (declarations only: building
     /// it never reads a body).
     pub fn catalog(&self, program: &Program) -> Result<SignatureCatalog, QueryError> {
-        SignatureCatalog::build(program, &self.package, &self.module).map_err(QueryError::Produce)
+        SignatureCatalog::build(program, &self.package, &self.module)
+            .and_then(|c| c.with_declaration_contexts(&self.declaration_contexts))
+            .map_err(QueryError::Produce)
+    }
+
+    pub fn declaration_contexts(&self) -> &BTreeMap<String, String> {
+        &self.declaration_contexts
+    }
+
+    /// Existing positive read sets identify affected declarations without
+    /// walking, parsing or solving any unrelated body. Used when the host
+    /// changes explicit requirements while source text stays identical.
+    pub fn declaration_readers(
+        &self,
+        changed: &std::collections::BTreeSet<String>,
+    ) -> std::collections::BTreeSet<String> {
+        let mut result = changed.clone();
+        result.extend(
+            self.bodies
+                .values()
+                .filter(|page| page.sig_deps.iter().any(|(name, _)| changed.contains(name)))
+                .map(|page| page.name.clone()),
+        );
+        result
+    }
+
+    /// Candidate contexts are validated against current declarations before
+    /// replacing the session's inputs. This does not flush unrelated pages.
+    pub fn set_declaration_contexts(
+        &mut self,
+        program: &Program,
+        contexts: BTreeMap<String, String>,
+    ) -> Result<(), QueryError> {
+        SignatureCatalog::build(program, &self.package, &self.module)
+            .and_then(|c| c.with_declaration_contexts(&contexts))
+            .map_err(QueryError::Produce)?;
+        self.declaration_contexts = contexts;
+        Ok(())
     }
 
     /// Complete key of one signature query against the current module.

@@ -23,6 +23,7 @@ use std::{
 };
 
 pub const MODULE_ROOT_SCHEMA: &str = "source-modules-root/2";
+pub const CONTEXT_ROOT_SCHEMA: &str = "source-modules-root/3";
 const ROOT_KIND: &str = "source-modules-current";
 const MAX_ROOT_BYTES: usize = 512 * 1024;
 
@@ -74,6 +75,8 @@ struct Root {
     targets: BTreeMap<String, ModuleReceipt>,
     units: Vec<UnitRef>,
     facts: Vec<FactRef>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    declaration_contexts: BTreeMap<String, String>,
 }
 
 pub struct ModuleRecovery {
@@ -356,8 +359,13 @@ impl ModuleStore {
             f.item_span = (ast.span.start, ast.span.end);
         }
         validate_declarations(bound, &dump)?;
+        let schema = if session.declaration_contexts().is_empty() {
+            MODULE_ROOT_SCHEMA
+        } else {
+            CONTEXT_ROOT_SCHEMA
+        };
         let root = Root {
-            schema: MODULE_ROOT_SCHEMA.into(),
+            schema: schema.into(),
             binding: MODULE_BINDING_VERSION.into(),
             grammar: bound.grammar_id.clone(),
             entry: entry.into(),
@@ -369,6 +377,7 @@ impl ModuleStore {
             targets: targets.clone(),
             units,
             facts,
+            declaration_contexts: session.declaration_contexts().clone(),
         };
         let payload = serde_json::to_vec(&root).map_err(|e| e.to_string())?;
         if payload.len() > MAX_ROOT_BYTES {
@@ -379,7 +388,7 @@ impl ModuleStore {
             layer: "S950",
             components: vec![
                 ("root-digest".into(), digest.clone()),
-                ("schema".into(), MODULE_ROOT_SCHEMA.into()),
+                ("schema".into(), schema.into()),
             ],
         };
         let artifact = self
@@ -427,7 +436,12 @@ impl ModuleStore {
         }
         let root: Root = serde_json::from_slice(&artifact.payload)
             .map_err(|e| format!("module root codec: {e}"))?;
-        if root.schema != MODULE_ROOT_SCHEMA || root.binding != MODULE_BINDING_VERSION {
+        let expected_schema = if root.declaration_contexts.is_empty() {
+            MODULE_ROOT_SCHEMA
+        } else {
+            CONTEXT_ROOT_SCHEMA
+        };
+        if root.schema != expected_schema || root.binding != MODULE_BINDING_VERSION {
             return Err("module root schema/binding mismatch".into());
         }
         let grammar = module_grammar()?;
@@ -519,7 +533,35 @@ impl ModuleStore {
         module: &str,
         budget: FrontBudget,
     ) -> Result<ModuleRecovery, String> {
+        self.restore_with_contexts(
+            receipt,
+            inputs,
+            entry,
+            caps,
+            package,
+            module,
+            budget,
+            &BTreeMap::new(),
+        )
+    }
+
+    /// Root 3 is admitted only against the caller's CURRENT declaration inputs;
+    /// a self-consistent persisted map is not freshness authority.
+    pub fn restore_with_contexts(
+        &self,
+        receipt: &ModuleReceipt,
+        inputs: &[ModuleInput],
+        entry: &str,
+        caps: &[String],
+        package: &str,
+        module: &str,
+        budget: FrontBudget,
+        contexts: &BTreeMap<String, String>,
+    ) -> Result<ModuleRecovery, String> {
         let root = self.read_root(receipt)?;
+        if &root.declaration_contexts != contexts {
+            return Err("module declaration context mismatch".into());
+        }
         let grammar = module_grammar()?;
         let grammar_id = format!("{}", grammar.program().identity.grammar_id.0);
         if root.entry != entry
@@ -638,6 +680,9 @@ impl ModuleStore {
         }
         let mut session =
             SourceQuerySession::new(package, module).with_capabilities(caps.iter().cloned());
+        session
+            .set_declaration_contexts(&bound.program, contexts.clone())
+            .map_err(|e| e.to_string())?;
         let mut seen = BTreeSet::new();
         for f in root.facts {
             if !seen.insert(f.name.clone()) || !bound.origins.contains_key(&f.name) {
@@ -741,6 +786,130 @@ mod tests {
             FrontBudget::WORK_OWNED_64MIB,
         )
         .unwrap()
+    }
+    #[test]
+    fn declaration_effect_readers_invalidate_and_context_root_restores_first_edit() {
+        let temp = Temp::new();
+        let source = inputs(42);
+        let mut query = SourceQuerySession::new("pkg", "app");
+        let plain = build(&source, &mut query);
+        let owner = plain
+            .bound
+            .origins
+            .iter()
+            .find(|(_, o)| o.0 == "std" && o.1 == "answer")
+            .unwrap()
+            .0
+            .clone();
+        let contexts =
+            BTreeMap::from([(owner.clone(), sha256_hex(b"explicit requirements: console"))]);
+        query
+            .set_declaration_contexts(&plain.bound.program, contexts.clone())
+            .unwrap();
+        let before = query.counters().solver_runs;
+        let product = compile_bound_modules(plain.bound, &caps(), &mut query).unwrap();
+        assert_eq!(
+            query.counters().solver_runs - before,
+            2,
+            "only declaration owner and actual reader"
+        );
+        assert!(
+            product
+                .applied
+                .iter()
+                .find(|f| f.name.contains("local"))
+                .unwrap()
+                .body_hit
+        );
+        let mut store = ModuleStore::open(&temp.0, "context944").unwrap();
+        let receipt = store.prepare(&product, &mut query, "app", &caps()).unwrap();
+        assert!(store
+            .restore(
+                &receipt,
+                &source,
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB
+            )
+            .is_err());
+        let mut wrong = contexts.clone();
+        wrong.insert(owner.clone(), sha256_hex(b"explicit requirements: stdin"));
+        assert!(store
+            .restore_with_contexts(
+                &receipt,
+                &source,
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB,
+                &wrong
+            )
+            .is_err());
+        let (restored, work) = ace_core::source::parser::capture_syntax_work(|| {
+            store
+                .restore_with_contexts(
+                    &receipt,
+                    &source,
+                    "app",
+                    &caps(),
+                    "pkg",
+                    "app",
+                    FrontBudget::WORK_OWNED_64MIB,
+                    &contexts,
+                )
+                .unwrap()
+        });
+        assert!(work.tokenized_ranges.is_empty());
+        assert!(work.parsed_functions.is_empty());
+        assert_eq!(restored.session.counters().solver_runs, 0);
+        let mut session = ModuleSession::from_recovery(restored);
+        let edit = session
+            .prepare(
+                "std",
+                "answer",
+                "pub fn answer() int { return 43 }",
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .unwrap();
+        assert_eq!(session.query.counters().solver_runs, 1);
+        let next = session.prepare_receipt(&mut store, &edit).unwrap();
+        session.commit(edit).unwrap();
+        let next_source = inputs(43);
+        drop(session);
+        drop(store);
+        let store = ModuleStore::open(&temp.0, "context944").unwrap();
+        let mut recovered = store
+            .restore_with_contexts(
+                &next,
+                &next_source,
+                "app",
+                &caps(),
+                "pkg",
+                "app",
+                FrontBudget::WORK_OWNED_64MIB,
+                &contexts,
+            )
+            .unwrap();
+        assert_eq!(recovered.session.counters().solver_runs, 0);
+        let before = recovered.session.counters().solver_runs;
+        recovered
+            .session
+            .set_declaration_contexts(&recovered.bound.program, wrong)
+            .unwrap();
+        let product =
+            compile_bound_modules(recovered.bound, &caps(), &mut recovered.session).unwrap();
+        assert_eq!(recovered.session.counters().solver_runs - before, 2);
+        assert!(
+            product
+                .applied
+                .iter()
+                .find(|f| f.name.contains("local"))
+                .unwrap()
+                .body_hit
+        );
     }
     #[test]
     fn stored_module_cst_and_facts_restore_without_scanning_parsing_or_solving() {

@@ -344,7 +344,9 @@ mod tests {
 }
 
 mod persistence;
-pub use persistence::{ModuleReceipt, ModuleRecovery, ModuleStore, MODULE_ROOT_SCHEMA};
+pub use persistence::{
+    ModuleReceipt, ModuleRecovery, ModuleStore, CONTEXT_ROOT_SCHEMA, MODULE_ROOT_SCHEMA,
+};
 
 mod session;
-pub use session::{ModuleSession, PreparedModuleEdit};
+pub use session::{ModuleSession, PreparedModuleBatch, PreparedModuleBody, PreparedModuleEdit};

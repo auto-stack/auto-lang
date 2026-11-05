@@ -128,7 +128,7 @@ pub enum SymbolKind {
 
 /// Logical source contract. Host producers supply their own signature; an
 /// inventory declaration alone can never establish SignatureChecked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct LogicalSignature {
     pub parameters: Vec<String>,
     pub parameter_modes: Vec<String>,

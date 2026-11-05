@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use super::model::{LayerKind, ParseStatus, SymbolKind, VerificationLevel};
 use crate::vm::native::NativeInterface;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceProof {
     pub module: String,
     pub symbol: String,

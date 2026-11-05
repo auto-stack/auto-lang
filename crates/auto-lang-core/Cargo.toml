@@ -30,6 +30,8 @@ streaming-http = ["dep:tokio-util"]
 mem-profile = []
 
 [dependencies]
+# Data-only assembly contract; no ACE compiler, worker, store or backend.
+ace-semantics-contract = { path = "../../experimental/ace/crates/semantics-contract" }
 # Pure domain contract only; never the Web runtime.
 auto-web-contract = { path = "../auto-web-contract", version = "=0.1.0" }
 # PLAN-814 T-02 前端门面组闭包（ast/token/error/session/lexer 直连外部轻

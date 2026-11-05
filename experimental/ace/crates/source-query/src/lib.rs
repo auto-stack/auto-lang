@@ -35,6 +35,7 @@
 //! `Unsupported` and never as a mistyped fact.
 
 pub mod apply;
+pub mod assembly;
 pub mod catalog;
 pub mod consumer;
 pub mod facts;

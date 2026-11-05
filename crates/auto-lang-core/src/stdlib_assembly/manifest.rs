@@ -6,7 +6,7 @@ use super::model::{fnv1a64, AssemblyContext, AssemblyTarget, Environment, LayerS
 use super::reference::ReferenceProof;
 include!(concat!(env!("OUT_DIR"), "/assembly_build_inputs.rs"));
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SourceInput {
     pub module: String,
     pub source_id: String,
@@ -14,13 +14,14 @@ pub struct SourceInput {
     pub content_hash: u64,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderInput {
     pub source_id: String,
     pub content_hash: u64,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Payload {
     schema_version: u32,
     target: AssemblyTarget,
@@ -40,7 +41,7 @@ struct Payload {
 /// - `consumer_fingerprint`：**消费者收据身份**——全量 payload（含
 ///   consumer 名与消费者输入），供新鲜度门/收据对拍使用。
 /// 旧（≤schema 3）单指纹语义 = 现.consumer_fingerprint。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AssemblyManifest {
     #[serde(flatten)]
     payload: Payload,
@@ -49,6 +50,28 @@ pub struct AssemblyManifest {
 }
 
 impl AssemblyManifest {
+    /// Read schema 4 with its original field ordering and FNV projections.
+    /// This is not admission as an ACE producer or a current host grant.
+    pub fn decode_v4(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() > 4 * 1024 * 1024 {
+            return Err("STDASSEMBLY.MANIFEST_SIZE".into());
+        }
+        let manifest: Self = serde_json::from_slice(bytes)
+            .map_err(|e| format!("STDASSEMBLY.MANIFEST_CODEC: {e}"))?;
+        if manifest.schema_version() != 4 {
+            return Err("STDASSEMBLY.MANIFEST_SCHEMA".into());
+        }
+        if manifest.fingerprint != assembly_identity(&manifest.payload)
+            || manifest.consumer_fingerprint
+                != format!(
+                    "{:016x}",
+                    fnv1a64(&serde_json::to_string(&manifest.payload).unwrap())
+                )
+        {
+            return Err("STDASSEMBLY.MANIFEST_FINGERPRINT".into());
+        }
+        Ok(manifest)
+    }
     pub fn freeze(
         context: AssemblyContext,
         consumer: &str,
@@ -650,6 +673,46 @@ mod plan884_provider_input_coverage {
 #[cfg(test)]
 mod plan738_manifest {
     use super::*;
+    #[test]
+    fn schema4_read_preserves_original_common_and_consumer_projections() {
+        // Pre-extension wire shape and independently fixed FNV answers. A new
+        // field/order/hash algorithm must not silently change this reader.
+        let legacy = br#"{"schema_version":4,"target":"vm","environment":"native","platform":"test-x64","consumer":"legacy","features":[],"sources":[],"providers":[],"references":[],"fingerprint":"133f7fdee4742800","consumer_fingerprint":"93ff2a3f7992bab7"}"#;
+        let golden = AssemblyManifest::decode_v4(legacy).unwrap();
+        assert_eq!(serde_json::to_vec(&golden).unwrap(), legacy);
+        let manifest = AssemblyManifest::freeze(
+            Default::default(),
+            "reader944",
+            Path::new("."),
+            Path::new("stdlib"),
+            &[],
+            vec![],
+        );
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        let read = AssemblyManifest::decode_v4(&bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&read).unwrap(), bytes);
+        let business = manifest
+            .clone()
+            .with_consumer_input("project/main.at", "fn main() {}");
+        assert_eq!(manifest.fingerprint(), business.fingerprint());
+        assert_ne!(
+            manifest.consumer_fingerprint(),
+            business.consumer_fingerprint()
+        );
+        assert!(AssemblyManifest::decode_v4(&serde_json::to_vec(&business).unwrap()).is_ok());
+        for (key, value) in [
+            ("schema_version", serde_json::json!(5)),
+            ("fingerprint", serde_json::json!("forged")),
+            ("consumer", serde_json::json!("other")),
+        ] {
+            let mut value0 = serde_json::to_value(&manifest).unwrap();
+            value0[key] = value;
+            assert!(
+                AssemblyManifest::decode_v4(&serde_json::to_vec(&value0).unwrap()).is_err(),
+                "{key}"
+            );
+        }
+    }
     #[test]
     fn captured_sources_are_immutable_and_portable() {
         let root = tempfile::tempdir().unwrap();

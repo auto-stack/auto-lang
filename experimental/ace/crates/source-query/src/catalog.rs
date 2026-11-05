@@ -34,6 +34,29 @@ pub struct SignatureCatalog {
 }
 
 impl SignatureCatalog {
+    /// Apply only the explicit declaration/effect inputs read by this owner.
+    /// The empty map leaves every original SQ-A version byte-for-byte intact.
+    pub fn with_declaration_contexts(
+        mut self,
+        contexts: &BTreeMap<String, String>,
+    ) -> Result<Self, ProduceError> {
+        for (name, context) in contexts {
+            let facts = self
+                .by_name
+                .get_mut(name)
+                .ok_or_else(|| ProduceError::UnknownFn { name: name.clone() })?;
+            if context.len() != 64 || !context.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(ProduceError::Profile {
+                    what: "invalid declaration context digest",
+                });
+            }
+            facts.version = ContentVersion(sq_hash(
+                "ac944/declaration-context/v1",
+                &[facts.version.as_str().as_bytes(), context.as_bytes()],
+            ));
+        }
+        Ok(self)
+    }
     /// Build the catalog from a parsed module. Declarations outside the
     /// finite signature surface are a controlled rejection.
     pub fn build(program: &Program, package: &str, module: &str) -> Result<Self, ProduceError> {

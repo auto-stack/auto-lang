@@ -72,7 +72,7 @@ pub const DYNAMIC_ID_START: u16 = 10000;
 
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NativeContract {
     pub parameters: Vec<String>,
     pub returns: String,

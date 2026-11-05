@@ -618,6 +618,45 @@ pub struct FnCandidate {
 }
 
 impl FnCandidate {
+    /// Validate one exclusive publication containing distinct body slots.
+    /// Every candidate retains its original environment identity/generation;
+    /// none is rebased or given a bypass after another body is installed.
+    pub fn validate_batch(
+        candidates: &[Self],
+        env: &super::resolve::CheckedEnv,
+    ) -> Result<(), Vec<Diagnostic>> {
+        let mut slots = BTreeSet::new();
+        for candidate in candidates {
+            candidate.validate(env)?;
+            if !slots.insert(candidate.fn_index) {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate-candidate",
+                    "one publication cannot install a body slot twice",
+                    Span { start: 0, end: 0 },
+                )]);
+            }
+        }
+        Ok(())
+    }
+
+    /// All fallible checks precede any swap. Under the exclusive environment
+    /// borrow, a successful batch advances publication once, without weakening
+    /// the existing single-body owner/base guard.
+    pub fn commit_batch(
+        candidates: Vec<Self>,
+        env: &mut super::resolve::CheckedEnv,
+    ) -> Result<(), Vec<Diagnostic>> {
+        Self::validate_batch(&candidates, env)?;
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        for candidate in candidates {
+            candidate.state.swap_into(env, candidate.fn_index);
+        }
+        env.generation += 1;
+        Ok(())
+    }
     /// The environment slot this candidate installs into on commit.
     pub fn fn_index(&self) -> usize {
         self.fn_index
