@@ -124,9 +124,11 @@ pub fn edit_module_function(
         .ok_or_else(|| error(module, "function absent", zero))?;
     let parsed =
         crate::source::cst::parse_module_fragment(fragment, budget).map_err(|mut ds| {
+            let mut diagnostic = ds.remove(0);
+            diagnostic.span = shifted(diagnostic.span, range.start as i64);
             ModuleDiagnostic {
                 module: module.into(),
-                diagnostic: ds.remove(0),
+                diagnostic,
             }
         })?;
     if parsed.program.items.len() != 1

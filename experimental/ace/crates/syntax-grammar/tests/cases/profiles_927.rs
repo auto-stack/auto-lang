@@ -21,6 +21,8 @@ const NINE: &[&str] = &[
     // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
     // 声明序在闭包之后）。
     "scalar-instances",
+    // PLAN-950: explicit finite public-function module capability.
+    "scalar-modules",
 ];
 
 #[test]
@@ -78,8 +80,7 @@ fn profiles_trim_core_wide_ops_and_while_swap() {
 fn profiles_plain_compile_of_gated_grammar_is_refused() {
     let err = compile(SOURCE).expect_err("plain compile must refuse gated grammar");
     assert!(
-        err.iter()
-            .any(|d| d.message.contains("compile_profile")),
+        err.iter().any(|d| d.message.contains("compile_profile")),
         "diags must name compile_profile: {err:?}"
     );
 }
@@ -89,7 +90,5 @@ fn profiles_unknown_profile_is_refused() {
     // PLAN-928：`collections` 已是真声明 profile（T-03），本例改用仍非法的
     // slug——前提与 auto-source.at 的 profiles 声明同步。
     let err = compile_profile(SOURCE, "mega-profile").expect_err("undeclared profile");
-    assert!(err
-        .iter()
-        .any(|d| d.message.contains("not declared")));
+    assert!(err.iter().any(|d| d.message.contains("not declared")));
 }

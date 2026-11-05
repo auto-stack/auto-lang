@@ -1025,6 +1025,45 @@ impl ManagedStore {
         Ok(())
     }
 
+    /// Compare and replace one current root atomically, including retirement
+    /// of the old root. Any insert/delete failure rolls back the whole change.
+    pub fn replace_current_root(
+        &self,
+        project: &str,
+        kind: &str,
+        expected: Option<&str>,
+        candidate: &str,
+    ) -> Result<(), StoreError> {
+        let _live = self.liveness_shared()?;
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        let roots: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT artifact FROM roots WHERE project=?1 AND kind=?2")?;
+            let rows = stmt
+                .query_map(params![project, kind], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        if roots.len() != usize::from(expected.is_some())
+            || expected.is_some_and(|old| roots[0] != old)
+        {
+            return Err(StoreError::Boundary("current root base changed".into()));
+        }
+        if !row_chunk_live(&tx, candidate)? {
+            return Err(StoreError::TargetMissing(candidate.into()));
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO roots(project, artifact, kind) VALUES (?1, ?2, ?3)",
+            params![project, candidate, kind],
+        )?;
+        tx.execute(
+            "DELETE FROM roots WHERE project=?1 AND kind=?2 AND artifact<>?3",
+            params![project, kind, candidate],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Roots of one project+kind (adapter read seam: version arbitration for
     /// current-publication decisions — PLAN-787 R2).
     pub fn root_artifacts(&self, project: &str, kind: &str) -> Result<Vec<String>, StoreError> {

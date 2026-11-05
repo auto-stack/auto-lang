@@ -384,6 +384,20 @@ impl SourceQuerySession {
         self.infer_body_with(program, &catalog, name)
     }
 
+    /// Read-only diagnostic projection; never runs the solver on rejection.
+    pub(crate) fn cached_body_facts(
+        &self,
+        program: &Program,
+        name: &str,
+    ) -> Option<&InferBodyFacts> {
+        let key = self.body_key(program, name).ok()?;
+        let catalog = self.catalog(program).ok()?;
+        self.bodies
+            .values()
+            .find(|p| p.name == name && p.key == key && page_deps_fresh(p, &catalog).is_ok())
+            .map(|p| &p.facts)
+    }
+
     /// PLAN-934 T-08: the same body query against a caller-built catalog
     /// (see [`Self::fn_sig_with`]).
     pub fn infer_body_with(

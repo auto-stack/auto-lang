@@ -222,6 +222,53 @@ fn run_case(local: bool) {
     rust_value(rust.current(), &temp.0.join("restored"), expected);
     let old_codes: Vec<_> = av.current().code().iter().cloned().collect();
     let old_fragments = rust.fragment_receipts();
+    // A valid edit from a different source base cannot stamp its source hash
+    // onto this target's unchanged functions.
+    let mut foreign_inputs = initial.clone();
+    let app = foreign_inputs.iter_mut().find(|m| m.id == "app").unwrap();
+    app.source = app.source.replace("return 7", "return 8");
+    let mut foreign_query = SourceQuerySession::new("pkg", "app");
+    let foreign_product =
+        compile_module_product(&foreign_inputs, "app", &caps, &mut foreign_query, B).unwrap();
+    let mut foreign = ModuleSession::from_product(&foreign_product, foreign_query).unwrap();
+    let foreign_edit = foreign
+        .prepare("std", "answer", "pub fn answer() int { return 43 }", B)
+        .unwrap();
+    assert!(av
+        .prepare(&foreign_edit)
+        .err()
+        .unwrap()
+        .contains("source base"));
+    assert!(rust
+        .prepare(&foreign_edit)
+        .err()
+        .unwrap()
+        .contains("source base"));
+    assert_eq!(av.lowered, 0);
+    assert_eq!((rust.stats().lower, rust.stats().print), (0, 0));
+    let reopen_old = |label: &str| {
+        let reopened = ModuleStore::open(&store_path, "module-test").unwrap();
+        let old = reopened
+            .restore(&original, &initial, "app", &caps, "pkg", "app", B)
+            .unwrap();
+        assert_eq!(old.session.counters().solver_runs, 0);
+        let av = ModuleAvTarget::restore(&store_path, &old.targets["av"], &old.bound).unwrap();
+        let rust = ModuleA2xTarget::restore(
+            &store_path,
+            "module-test",
+            "pkg",
+            QUOTA,
+            RustTargetProvider::v1(),
+            &old.targets["a2x-rust"],
+            &old.bound,
+        )
+        .unwrap();
+        assert_eq!(av.lowered, 0);
+        assert_eq!((rust.stats().lower, rust.stats().print), (0, 0));
+        assert_eq!(av.run().unwrap(), expected);
+        assert_eq!(rust.current().files, old_files);
+        rust_value(rust.current(), &temp.0.join(label), expected);
+    };
     let mut session = ModuleSession::from_recovery(recovery);
     let ((edit, work), syntax) = ace_core::source::parser::capture_syntax_work(|| {
         ace_core::body_work::capture_body_work(|| {
@@ -258,6 +305,7 @@ fn run_case(local: bool) {
     // The real source publication rejects cancellation after both targets are
     // ready. Current executable handles and emitted old bytes still run old.
     assert!(store.publish(&next, Some(&original), true).is_err());
+    reopen_old("after-cancel");
     assert_eq!(av.run().unwrap(), expected);
     assert_eq!(rust.current().files, old_files);
     assert!(store
@@ -275,6 +323,23 @@ fn run_case(local: bool) {
         .db()
         .execute_batch("DROP TRIGGER fail_module_install")
         .unwrap();
+    reopen_old("after-insert-failure");
+    injector.db().execute_batch("CREATE TRIGGER fail_module_retire BEFORE DELETE ON roots WHEN OLD.kind='source-modules-current' BEGIN SELECT RAISE(ABORT,'injected module retire failure'); END;").unwrap();
+    assert!(store
+        .publish(&next, Some(&original), false)
+        .unwrap_err()
+        .contains("injected module retire failure"));
+    assert_eq!(
+        injector
+            .root_artifacts("module-test", "source-modules-current")
+            .unwrap(),
+        vec![original.artifact.clone()]
+    );
+    injector
+        .db()
+        .execute_batch("DROP TRIGGER fail_module_retire")
+        .unwrap();
+    reopen_old("after-delete-failure");
     drop(injector);
     assert!(store
         .restore(&original, &initial, "app", &caps, "pkg", "app", B)

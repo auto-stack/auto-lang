@@ -100,7 +100,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         r-try { literal: "try" }
         r-union { literal: "union" }
         r-use { literal: "use" }
-        r-pub { literal: "pub" }
+        r-pub(profiles: [scalar-modules]) { literal: "pub" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }

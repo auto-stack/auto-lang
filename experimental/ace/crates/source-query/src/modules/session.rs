@@ -14,10 +14,16 @@ pub struct ModuleSession {
     pub targets: std::collections::BTreeMap<String, ModuleReceipt>,
 }
 pub struct PreparedModuleEdit {
+    base_source: String,
     pub bound: BoundModules,
     pub owner: String,
     pub candidate: FnCandidate,
     targets: std::collections::BTreeMap<String, ModuleReceipt>,
+}
+impl PreparedModuleEdit {
+    pub fn base_source(&self) -> &str {
+        &self.base_source
+    }
 }
 impl ModuleSession {
     pub fn from_product(
@@ -77,12 +83,22 @@ impl ModuleSession {
             .infer_body(&bound.program, &owner)
             .map_err(|e| e.to_string())?;
         let mut supply = BodyTypeSupply::new();
+        let ds = fact_diagnostics(&bound, &item.body, &page.facts);
+        if !ds.is_empty() {
+            return Err(format!("{ds:?}"));
+        }
         supply
             .add_body(&item.body, &page.facts)
             .map_err(|e| e.to_string())?;
         let candidate = prepare_module_candidate(&mut self.env, item, index, &bound, &supply)
-            .map_err(|e| format!("{e:?}"))?;
+            .map_err(|ds| {
+                format!(
+                    "{:?}",
+                    ds.into_iter().map(|d| bound.locate(d)).collect::<Vec<_>>()
+                )
+            })?;
         Ok(PreparedModuleEdit {
+            base_source: self.bound.input_hash.clone(),
             bound,
             owner,
             candidate,

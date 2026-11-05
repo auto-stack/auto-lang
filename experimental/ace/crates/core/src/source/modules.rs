@@ -109,6 +109,15 @@ mod tests {
     #[test]
     fn module_syntax_keeps_old_scalar_gate_and_explicit_capability() {
         for src in [
+            "fn pub() int { return 7 } fn main() int { return pub() }",
+            "fn main() int { let pub = 7\n return pub }",
+        ] {
+            assert!(
+                parse_program_with(src, SourceProfile::Scalar).is_ok(),
+                "{src}"
+            );
+        }
+        for src in [
             "pub fn f() int { return 42 }",
             "use std.answer\nfn f() int { return answer() }",
             "fn f() int { return std.answer() }",

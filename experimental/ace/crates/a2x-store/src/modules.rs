@@ -214,6 +214,9 @@ impl ModuleA2xTarget {
             .collect()
     }
     pub fn prepare(&mut self, edit: &PreparedModuleEdit) -> Result<ModuleA2xEdit, String> {
+        if self.root.source != edit.base_source() {
+            return Err("module A2X source base mismatch".into());
+        }
         if self.root.caps != edit.bound.capabilities {
             return Err("A2X module capabilities changed".into());
         }

@@ -13,6 +13,28 @@ pub struct ModuleProduct {
     pub supply: BodyTypeSupply,
 }
 
+fn fact_diagnostics(
+    bound: &BoundModules,
+    body: &ace_core::source::ast::Block,
+    facts: &crate::facts::InferBodyFacts,
+) -> Vec<ModuleDiagnostic> {
+    let Ok(walk) = crate::walk::walk_body(body) else {
+        return Vec::new();
+    };
+    facts
+        .diags
+        .iter()
+        .map(|d| {
+            let span = d
+                .node
+                .and_then(|id| walk.node(id))
+                .map(|n| n.span)
+                .unwrap_or(body.span);
+            bound.locate(Diagnostic::new(Stage::Bind, &d.code, &d.message, span))
+        })
+        .collect()
+}
+
 pub fn compile_module_product(
     inputs: &[ModuleInput],
     entry: &str,
@@ -42,6 +64,23 @@ pub(crate) fn compile_bound_modules(
         SourceProfile::Scalar,
     )
     .map_err(|e| {
+        if !matches!(e, crate::BindFactsError::Resolve(_)) {
+            let ds: Vec<_> = bound
+                .program
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    ace_core::source::ast::Item::Fn(f) => session
+                        .cached_body_facts(&bound.program, &f.name.name)
+                        .map(|facts| fact_diagnostics(&bound, &f.body, facts)),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            if !ds.is_empty() {
+                return ds;
+            }
+        }
         let ds = match e {
             crate::BindFactsError::Resolve(ds) => ds,
             other => vec![Diagnostic::new(
@@ -74,6 +113,77 @@ pub(crate) fn compile_bound_modules(
 mod tests {
     use super::*;
     use ace_core::source::modules::MODULES_CAPABILITY;
+    #[test]
+    fn module_type_rejections_keep_the_actual_source_location() {
+        let caps = [MODULES_CAPABILITY.into()];
+        let good = "pub fn accept_bool(x bool) int { return 42 } pub fn answer() int { return accept_bool(true) }";
+        let bad = good.replace("accept_bool(true)", "accept_bool(1)");
+        let mut inputs = [
+            ModuleInput {
+                id: "std".into(),
+                source: good.into(),
+            },
+            ModuleInput {
+                id: "app".into(),
+                source: "fn main() int { return std.answer() }".into(),
+            },
+        ];
+        let mut query = SourceQuerySession::new("pkg", "app");
+        let product = compile_module_product(
+            &inputs,
+            "app",
+            &caps,
+            &mut query,
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .unwrap();
+        let mut retained = ModuleSession::from_product(&product, query).unwrap();
+        let err = retained
+            .prepare(
+                "std",
+                "answer",
+                "pub fn answer() int { return accept_bool(1) }",
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .err()
+            .unwrap();
+        assert!(err.contains("std"), "{err}");
+        inputs[0].source = bad.clone();
+        let mut query = SourceQuerySession::new("pkg", "app");
+        let ds = compile_module_product(
+            &inputs,
+            "app",
+            &caps,
+            &mut query,
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(ds[0].module, "std", "{ds:?}");
+        assert!(
+            ds[0].diagnostic.span.start >= bad.find("accept_bool(1)").unwrap(),
+            "{ds:?}"
+        );
+        assert!(ds[0].diagnostic.span.end <= bad.len(), "{ds:?}");
+        assert!(
+            err.contains(&format!("start: {}", ds[0].diagnostic.span.start)),
+            "{err}; cold={ds:?}"
+        );
+        let parse_err = ace_core::source::modules::edit_module_function(
+            &product.bound,
+            "std",
+            "answer",
+            "pub fn answer() int { return @ }",
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(parse_err.module, "std");
+        assert!(
+            parse_err.diagnostic.span.start > good.find("pub fn answer").unwrap(),
+            "{parse_err:?}"
+        );
+    }
     #[test]
     fn finite_module_graph_reaches_checked_hir_through_query_facts() {
         let inputs=[ModuleInput {id:"std".into(),source:"pub fn answer() int { return 42 }".into()},

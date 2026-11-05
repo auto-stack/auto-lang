@@ -167,6 +167,9 @@ impl ModuleAvTarget {
         }
     }
     pub fn prepare(&mut self, edit: &PreparedModuleEdit) -> Result<ModuleAvEdit, String> {
+        if self.root.source != edit.base_source() {
+            return Err("module AV source base mismatch".into());
+        }
         if self.root.caps != edit.bound.capabilities {
             return Err("AV module capabilities changed".into());
         }

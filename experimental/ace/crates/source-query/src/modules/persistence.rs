@@ -500,16 +500,13 @@ impl ModuleStore {
         }
         self.sink
             .store()
-            .register_root(&self.project, &candidate.artifact, ROOT_KIND)
+            .replace_current_root(
+                &self.project,
+                ROOT_KIND,
+                base.map(|b| b.artifact.as_str()),
+                &candidate.artifact,
+            )
             .map_err(|e| e.to_string())?;
-        for old in roots {
-            if old != candidate.artifact {
-                self.sink
-                    .store()
-                    .remove_root(&self.project, ROOT_KIND, &old)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
         Ok(())
     }
     pub fn restore(
@@ -860,6 +857,17 @@ mod tests {
             .store()
             .db()
             .execute_batch("DROP TRIGGER reject_module_root")
+            .unwrap();
+        store.sink.store().db().execute_batch("CREATE TRIGGER reject_module_retire BEFORE DELETE ON roots WHEN OLD.kind='source-modules-current' BEGIN SELECT RAISE(ABORT,'injected retirement failure'); END;").unwrap();
+        assert!(store
+            .publish(&candidate, Some(&old), false)
+            .unwrap_err()
+            .contains("injected retirement failure"));
+        store
+            .sink
+            .store()
+            .db()
+            .execute_batch("DROP TRIGGER reject_module_retire")
             .unwrap();
         assert_eq!(
             store
