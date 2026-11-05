@@ -176,8 +176,9 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
-- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 1 | from: work | to: work | status: executing | outcome: in-progress（T-01 完成 1/13；T-02 前置 929 稳定接口未满足，按用户目标分层转私有 DRAFT 准备） | worktree: 未建（T-01 只读盘点无需树；T-02 起建 `lang-934`） | commit: master `f38e50758`（簿记：规划波次入库+授权记录） | next: work（私有facts/读集/键/用例 DRAFT；D929 落地后 T-02 整链）
-  - T-01 证据：`plan-artifacts/plan-934/t01-freeze-inventory.md`（hash 重算 21+27 项仅 2 漂移=D932；929/932/933 状态刷新；PR-01/02 三缺口现核；预算/版本/S-H 窗冻结）。材料 scope 已登记 `.retention/policy.json`。
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 1 | from: work | to: work | status: executing | outcome: in-progress（T-01 完成 1/13 + 私有 DRAFT 层交付；T-02 前置 929 稳定接口未满足——929 executing 10/14、T-11 正式采样在途，非 D） | worktree: 未建（T-01/私有层无代码写面；T-02 起建 `lang-934`） | commit: master `f38e50758`（规划波次簿记+授权记录）→ `94cc4235b`（T-01） | next: work（D929 落地→建树 T-02 整链；期间仅私有 DRAFT，不触 929 S 面/core）
+  - T-01 证据：`plan-artifacts/plan-934/t01-freeze-inventory.md`（两报告 hash 表全量重算仅 2 漂移=D932 `da4c98b51`；932/933 已归档刷新；PR-01/02 三缺口 master 现核仍开口；预算/版本/S-H 窗冻结；929 消费接口具名清单）。材料 scope 已登记 `.retention/policy.json`。
+  - 私有 DRAFT 层（T-02/05/09 输入，均标注 DRAFT 待整链终冻）：`t02-draft-facts-port-and-session.md`（职责三分切断+SourceQuerySession 骨架+四方向反对称+新命名域草案+legacy 切断面清单）、`t05-draft-keys-deps-invalidation.md`（键分层/读集/失效矩阵/事务与恢复页大纲，[D929] 项具名）、`t09-draft-v-case-skeletons.md`（V-01..11 骨架+分组运行）。
   - 授权记录（§4 新增）：2026-11-05 /goal 整链授权；私有先行/公共接线消费 D929 稳定接口的分层按用户目标语执行。
 
 2026-11-04 stage:new / revision:2 / outcome:pass（规划静态合同复核，不是独立实施review）/ next:work（后续实施指令及任务实际稳定接缝/写窗）。保全部T/AC编号、总步骤与0进度；补例未执行，r1与旧796/817运行不能为r2补充断言背书。关键修改/源码身份/并行前置见[复核报告](reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)，以下r1为历史。
