@@ -1,29 +1,33 @@
 {
-  "last_covered_plan_id": 937,
-  "timestamp": "2026-11-05T12:21:00Z",
-  "covered_commit": "da5274a885cd09f3c7623472da9efb3d7ee02d54",
-  "command": "cargo t all",
-  "legs": ["language fixed-group union (37 groups incl. aavm/a2r-std/shim-metadata/auto-*/infra-*/case-pilot/web-delivery-controls/generated-delivery-controls); UI/Man owner legs not run by this gate"],
-  "single_instance": true,
-  "results_path": "target/test-groups/run-hqij3scq/results.json",
-  "elapsed_seconds": 546.98,
-  "verdict": "known_reds_only",
-  "new_reds": [],
-  "known_reds_seen": [
-    "auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (baseline red)",
-    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: Assertion failed (baseline red)",
-    "auto-lang-core: ACE host tests leaked into a legacy group; fix feature/target ownership before execution (PLAN-901 baseline red)",
-    "auto-macros: value_macro_tests E0308 Box<Obj> vs Obj (baseline red)",
-    "auto-lsp: package ID specification `auto-lsp` did not match any packages; moved out of this workspace (PLAN-900 baseline red)",
-    "infra-pilot-cli: 5 failures + 1 error (PLAN-901 legacy group requested ACE worker, same shape as baseline)"
-  ],
-  "exclusions": [
-    "aavm NOT_APPLICABLE",
-    "a2r-actor-tests NOT_APPLICABLE",
-    "auto-vm NOT_APPLICABLE",
-    "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
-    "ACE domain groups (ace-*, case-ace-*) are all=false and not part of the language cargo t all union; their evidence lives in the per-plan frozen union"
-  ],
-  "window": "925..937 (PLAN-927/928/929/931/932/933/934/937 merges + UI/docs commits); no failing group maps to the 934 delivery (experimental/ace + case family + test-group registration only)",
-  "fix_forward": "No new reds attributable to the merged window. Every failing group maps to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md or the prior batch receipt baseline; no unrelated repair attempted by the batch runner."
+ "last_covered_plan_id": 940,
+ "timestamp": "2026-11-05T17:15:51Z",
+ "covered_commit": "3b09e32b0",
+ "command": "cargo t all",
+ "legs": [
+  "language fixed-group union (37 groups incl. aavm/a2r-std/shim-metadata/auto-*/infra-*/case-pilot/web-delivery-controls/generated-delivery-controls); UI/Man owner legs not run by this gate"
+ ],
+ "single_instance": true,
+ "results_path": "target/test-groups/run-_cipi5jr/results.json",
+ "elapsed_seconds": 1112.1,
+ "verdict": "known_reds_only",
+ "new_reds": [],
+ "known_reds_seen": [
+  "auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (baseline red, identical)",
+  "auto-lang sys_natives_vm_tests::test_sys_natives_vm: Assertion failed (baseline red, identical)",
+  "auto-lang-core: ACE host tests leaked into a legacy group (PLAN-901 baseline red, identical)",
+  "auto-macros: target discovery/build failed — value_macro_tests E0308 family (baseline red group)",
+  "auto-lsp: package moved out of workspace (PLAN-900 baseline red, identical)",
+  "case-pilot python legs: PLAN-901 legacy family (baseline red)",
+  "auto-lang plan707_spike_cancel_gap_active_job_future_not_stopped: debt-documented intermittent timing family (KNOWN-DEBT 2026-10-28 entry); NOT touched in window; isolated replay green (debug+release)",
+  "auto-tool-execution exec_lifecycle::prepared_command_timeout_keeps_partial_capture: first red under concurrent load (plan-021 ag-examples cargo running during batch); file untouched in window (last change Plan 896); isolated replay green x2; environment-attributed, watch list"
+ ],
+ "exclusions": [
+  "aavm NOT_APPLICABLE",
+  "a2r-actor-tests NOT_APPLICABLE",
+  "auto-vm NOT_APPLICABLE",
+  "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
+  "ACE domain groups all=false, not part of cargo t all union"
+ ],
+ "window": "937..940 (PLAN-935 + PLAN-940 merges + docs; parser group passed in-batch 149/149; no failing group maps to the 940 delivery — 940 lang delta is parser-tests-only and both timing reds predate the window untouched)",
+ "fix_forward": "No new reds attributable to the merged window. plan707 spike: pre-documented intermittent family. exec_lifecycle timeout-capture: first observation under concurrent load, isolated replays green (x2); recorded here for the next batch's comparison — if it recurs isolated, open fix-forward."
 }
