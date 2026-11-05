@@ -284,6 +284,31 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 3 | from: user | to
 
 下一入口仍T-01/T-02：纯组合器尚缺完整registry、Case/证书/原始command严格关联与版本化报告/正反归约；当前直接CLI仍exit2拒发结论，不能宣称系统交付或M1通过。真实首例还暴露**观察适配**待接线：ABI parent的toolchain axes仍写通用`abi/interop-v1`，而其实际执行已严格验证active_recipe=CA-D1；request-samples主要保计量，未持有供独立组合器重验的完整request/response身份。A2X daily也尚未保原始请求/终态收据。这是本包T-02/T-04已授权的必要父观察边：在原owner输出窗口保留真正请求/响应/来源/nonce/工具身份并保原分态/预算，不由新组合器改写旧标签或模拟后端。不得仅凭21个父PASS关闭strict证据闭包。T-01/T-02都仍未完成，counts仍0/15；下一步按真实wire与全部状态路径逐writer/reader接线，后续T-03仍依赖T-02成功。
 
+### 2026-11-06 T-02 原父执行器观察边与Case身份闭包检查点（仍0/15）
+
+实施提交 **`1b6e524b5a3218199fb788b89b1d9fca715b17d5`**，唯一941树/branch未变、提交后clean；仅完成首链中的可核验单元，**不是T-02 pass，不进T-03**。
+
+- 在既有`execution_trace`增加显式`AUTO_CASE_WIRE_EVIDENCE=1`观察模式，沿原AV、native冷会话、A2R/C daily、ac/syntax与ABI父执行器保存原请求载荷/响应字节及实际退出码；PID+序号/create_new保不覆盖，START hash链接TERMINAL。未写PASS，提前失败保缺终态，默认模式不写文件/不额外计算worker哈希。原进程/Job/预算/错误路径继续拥有执行，不添runner/meter；native persistent rounds与其余机制路径尚未接线，不冒全覆盖。
+- ABI工具身份现记录实际active recipe，stale从当前有效合同决定ABI family/recipe，不能靠旧报告echo换recipe。真实937报告6/6 FRESH（exit0），仅将第一row的recipe篡为interop后恰1 STALE（exit1）；收据`.../abi-recipe-stale-controls.json` SHA256 **`0ed88e0958c71e5b1e2eff3c91d0ccc4c12c22559e264379db9c48b50a4cbf44`**。
+- 新`ace_m1_case_evidence.py`只做Case `/2`当前identity/全check集合/summary/复制清单/原始字节终态关联。原绝对路径只作名字映射，禁止回读已删除临时root；逐引用核对bytes/SHA，显式scope/reparse及4MiB/48MiB共用原门。reader输出`execution_judgement=UNOBSERVED`，不把schema/child PASS当执行归约；nested domain内容、counter语义、oracle与证书闭包仍归后续域reader。当前inventory/worker哈希必须来自caller冻结的正式输入，不能由child提供。
+
+定向验证（未减原样本/预算；完整模块并集仍归最终冻结门）：
+
+1. `AUTO_PLAN_ARTIFACTS=.../plan-941 cargo t auto-lang-core --test-name test_cases::execution_trace::tests --out .../wire-recorder-tests` exit0、**5/5**，无条件排除；保无效UTF8/NUL原字节、非零exit、缺终态/不覆盖与超cap不截断。结果SHA **`fca60682de63c3258680f27a20eed4dfc138d1a7b988a3d470b9519f1ce7b693`**。
+2. `AUTO_CASE_WIRE_EVIDENCE=1 cargo t case-ace-m1-q4-941 case-ace-unified-source-929 case-ace-ca-d-scalar-937 --out .../wire-real-inputs` exit0、**21/21**（4+11+6），无条件排除，整命令51.410s；原始Case runtime均复制核验并clean。结果SHA **`4ef669e2df472844fb1c034fc239fda4b1958262c7e14d9ad9bc6a6708eae9e3`**。对同一正式identity-inventory `/2`及当前原worker实际文件SHA，独立调用新reader：21check、**26组**原请求/终态关联有效（4+11+11），保`UNOBSERVED`，每scope保守reservation分别1,312,452 / 2,480,645 / 2,339,685 bytes；摘要`case-wire-admission.json` SHA **`3cc79f795d1b5d7cd49c24df0b5817ff06df8225c2ad7fd6127e44d61fb2cdd7`**。
+3. `cargo t ace-host --test-name abi_worker --out .../abi-wire-liveness` exit0、原6个反例**6/6**，169个不匹配过滤项不充执行/条件排除。涵盖回答后hang、晚stderr溢出、溢出后hang、infra分态、双envelope、原produced-budget resource；准备/冷编译主要在发现阶段（2m35s），实际nextest3.772s，整命令190.170s，结果SHA **`94a7a5554d9450d0e6b626c98f52b56e6a5b245a72f26d2fdf2bfdd6510245cf`**。编译仍为已确认baseline core131 warnings，无新增warning；未对既有警告泛化修复。
+4. `cargo t infra-ace-m1-arch --out .../case-binding-controls` exit0、**31/31**，无条件排除，整命令1.953s；新增8个schema/linkage控制含删/重复/额外row、来源/oracle/contract/key漂移、bool冒计数、copy改字节/重复/未清理、越界旧路径、终态/worker/recipe不符。生成的ERROR输入仅验reader边界，不冒真实M1正控。结果SHA **`a234d2918876b01ff2dce72ca14814007f9b27d49546b7100e588b848a2bfa04`**；`git diff --check` exit0。
+
+输出对账：ABI既有conformance helper仍硬编码std::env::temp_dir，首次运行遗留本次6个PID的12目录。已核对创建窗口、精确tags（abiboth40360、abibudget23800、abihang45672、abiinfra44444、abilate41436、abiovh9632）、无活动owner、无reparse后，用单PowerShell原生Move-Item迁入本scope的`abi-wire-liveness/legacy-runtime/`；**78文件/312,998 bytes**，逐文件迁移前后SHA/大小/数量相同，原路径消失。清单`abi-runtime-migration.json` SHA **`ccb0d17b191b6870493f13bab5e14c1e2279dde9aa24d8d6aca26a97ea98f900`**。其他日期/PID目录归属未知，未动。后续这类原helper验证应显式给child TEMP/TMP为本scope子目录，避免再散落。正常编译target仍仅专属树默认路径。scope保持in-flight，最终merge再全删，非本轮清理完成。
+
+拟Spec沉淀补充：显式wire证据schema及缺终态含义、Case复制件身份层与执行判定分离、ABI recipe必须来自当前合同。尚不改canonical；最终SD需随完整reader/registry/report再核。
+
+下一入口仍T-01/T-02：用原始请求重算nonce/request/source绑定、四端独立oracle与真实Rust/C完整执行证书归约、SYN/937原语义及计量适配、完整有界首链与same-wrong/删C/旧假签章反控，然后才判T-02。当前证书命令曾钉225ba时worker哈希，与后来固定组重建的worker不同，后续须在最终确定producer身份重做显式认证，不能静默用旧producer凑当前证书。完整registry、/3 reducer及其余12AC仍待做，旧38cert-gap照旧阻M1；当前CLI仍exit2。D936/D938/D939交付依赖保持，非本观察边自动解除。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 1b6e524b5a3218199fb788b89b1d9fca715b17d5 | task_ids: T-01/T-02（未关闭） | evidence: 5+21+6+31定向验证与真实21check/26exchange身份关联 | blockers: 无本单元待用户决定；最终依赖及域语义闭包未完成 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: progress | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 1b6e524b5a3218199fb788b89b1d9fca715b17d5 | next: work
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
