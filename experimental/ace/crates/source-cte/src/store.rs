@@ -89,7 +89,11 @@ impl ManagedEnvelopeSink {
 
 impl CtEnvelopeSink for ManagedEnvelopeSink {
     fn r_window(&self) -> (u64, u64, u64) {
-        (self.probes.get(), self.payload_bytes.get(), self.decodes.get())
+        (
+            self.probes.get(),
+            self.payload_bytes.get(),
+            self.decodes.get(),
+        )
     }
 
     fn probe(&self, key: &ExecKey) -> Result<Option<CtExecutedV1>, EnvelopeError> {
@@ -101,7 +105,8 @@ impl CtEnvelopeSink for ManagedEnvelopeSink {
             None => Ok(None),
             Some(a) => {
                 self.probes.set(self.probes.get() + 1);
-                self.payload_bytes.set(self.payload_bytes.get() + a.payload.len() as u64);
+                self.payload_bytes
+                    .set(self.payload_bytes.get() + a.payload.len() as u64);
                 let (page_key, env) = decode_envelope(&a.payload)?;
                 self.decodes.set(self.decodes.get() + 1);
                 if page_key != key.canonical() {

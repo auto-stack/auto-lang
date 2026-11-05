@@ -82,7 +82,9 @@ impl std::fmt::Display for EnvelopeError {
     }
 }
 
-const MAX_STR: usize = 16 * 1024;
+// PLAN-936（T-10）：执行键 canonical 携带完整闭包列表（116 成员闭包 ≈
+// 24KiB）——单串界 64KiB，页总界仍是 512KiB（MAX_PAGE_BYTES）。
+const MAX_STR: usize = 64 * 1024;
 const MAX_CLOSURE: usize = 8192;
 
 struct W {

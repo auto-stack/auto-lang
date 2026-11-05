@@ -1273,9 +1273,13 @@ fn t09_restore_then_first_edits() {
         assert_eq!(svc.counters().ct_execute, 0, "restore-hit executes nothing");
         assert_eq!(svc.counters().ct_hits, 1);
         // 首个仅改实参的编辑：新键（args 轴）真执行。
-        let p2 =
-            compile_scalar_ct(&mut svc, R_SUM_ARGS, "m.at", &caps, "pkg", "mod").expect("args edit");
-        assert_eq!(svc.counters().ct_execute, 1, "the args edit really executed");
+        let p2 = compile_scalar_ct(&mut svc, R_SUM_ARGS, "m.at", &caps, "pkg", "mod")
+            .expect("args edit");
+        assert_eq!(
+            svc.counters().ct_execute,
+            1,
+            "the args edit really executed"
+        );
         let (v, _) = crate::executor::run_entry_on_av(
             &p2.checked,
             "d_main",
@@ -1286,8 +1290,8 @@ fn t09_restore_then_first_edits() {
         .expect("run");
         assert_eq!(v, ace_av_core::contract::Value::I32(42));
         // 体编辑：闭包版本轴真执行（43）。
-        let p3 =
-            compile_scalar_ct(&mut svc, R_SUM_BODY, "m.at", &caps, "pkg", "mod").expect("body edit");
+        let p3 = compile_scalar_ct(&mut svc, R_SUM_BODY, "m.at", &caps, "pkg", "mod")
+            .expect("body edit");
         assert_eq!(svc.counters().ct_execute, 2);
         let (v3, _) = crate::executor::run_entry_on_av(
             &p3.checked,
@@ -1342,7 +1346,10 @@ fn t09_bad_envelope_is_a_controlled_rejection_not_a_miss() {
             "pkg",
             "mod",
             "sum",
-            &[crate::identity::CtValue::I32(20), crate::identity::CtValue::I32(22)],
+            &[
+                crate::identity::CtValue::I32(20),
+                crate::identity::CtValue::I32(22),
+            ],
             crate::identity::ExpectTy::I32,
             &[],
         )
@@ -1366,7 +1373,11 @@ fn t09_missing_pages_fall_back_to_real_execution() {
     let sink = ManagedEnvelopeSink::open(&dir, Some("ct936-e")).expect("store");
     let mut svc = CtService::new(sink);
     let p = compile_scalar_ct(&mut svc, R_SUM, "m.at", &caps, "pkg", "mod").expect("cold serve");
-    assert_eq!(svc.counters().ct_execute, 1, "a cold lane executes for real");
+    assert_eq!(
+        svc.counters().ct_execute,
+        1,
+        "a cold lane executes for real"
+    );
     assert_eq!(svc.counters().ct_hits, 0);
     let _ = p;
     std::fs::remove_dir_all(&dir).ok();
@@ -1437,4 +1448,105 @@ fn main() int {
     .expect("run");
     assert_eq!(v, ace_av_core::contract::Value::I32(43));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// T-10（有界原规模）：115 函数基线（≥256KiB）上的 CT 车道——真实 AV 执行
+/// 计量（steps/wall 实测入执行日志），根预算内完成；AV fuel/槽位/墙钟
+/// 预算由共享执行尾强制（817 继承门在 V-10 全绿）。正式 30 样本
+/// ace-performance 单实例窗归 T-12 冻结门（错峰）。
+#[test]
+fn t10_original_scale_baseline_with_ct_demand() {
+    // The 115-fn reference load shape (817 bench generator's form,
+    // inlined — the service crate must not depend on the probe package
+    // even dev-side): h0..h114 + cte_sum folding all of them.
+    let fns = 115usize;
+    let mut base = String::new();
+    for k in 0..fns {
+        base.push_str("fn h");
+        base.push_str(&k.to_string());
+        base.push_str(
+            "(x int) int {
+    var acc = x + ",
+        );
+        base.push_str(&k.to_string());
+        base.push_str(
+            "
+",
+        );
+        for j2 in 0..80 {
+            base.push_str("    acc = acc + ");
+            base.push_str(&j2.to_string());
+            base.push_str(" + x + ");
+            base.push_str(&k.to_string());
+            base.push_str(
+                "
+",
+            );
+        }
+        base.push_str(
+            "    return acc
+}
+
+",
+        );
+    }
+    base.push_str(
+        "fn cte_sum(a int, b int) int {
+    var acc = a + b
+",
+    );
+    for k in 0..fns {
+        base.push_str("    acc = acc + h");
+        base.push_str(&k.to_string());
+        base.push_str(
+            "(20)
+",
+        );
+    }
+    base.push_str(
+        "    return acc
+}
+
+",
+    );
+    assert!(
+        base.len() >= 256 * 1024,
+        "the baseline load is at least 256 KiB"
+    );
+    // The CT demand rides the baseline: one hash site over cte_sum(20, 22).
+    let src = format!(
+        "{base}fn main936() int {{
+    return #{{ cte_sum(20, 22) }}
+}}
+"
+    );
+    // The 817 frozen closed form: 42 + sum_k(4780 + 81k), k = 0..114.
+    let expected: i32 = 42 + (0..fns as i32).map(|k| 4780 + 81 * k).sum::<i32>();
+    let caps = ct_caps();
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let started = std::time::Instant::now();
+    let p = compile_scalar_ct(&mut svc, &src, "m.at", &caps, "pkg", "mod")
+        .expect("the 115-fn baseline + CT demand compiles");
+    let elapsed = started.elapsed();
+    assert_eq!(svc.counters().ct_execute, 1, "one real AV execution");
+    assert_eq!(svc.counters().ct_hits, 0);
+    let log = svc.exec_log();
+    assert!(log[0].steps > 0);
+    assert!(
+        elapsed < RootBudget::default_total(),
+        "within the root budget"
+    );
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main936",
+        51,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("run");
+    assert_eq!(
+        v,
+        ace_av_core::contract::Value::I32(expected),
+        "the frozen constant is the baseline closed form",
+    );
 }
