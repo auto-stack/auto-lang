@@ -364,6 +364,21 @@ host实际goal objective=resume/status=blocked；原F-952-01授权与修复均�
 
 当前未闭：T01完整scalar61/resource/method/collections/所有ARCH到原case/check/负载预算映射；T02此次只证明bounded首链，完整身份/闭包还须随T01审计冻结；T03完整registry、T04..T13机制/报告与最终review/merge均未交。D936现executing11/14、D938 executing6/13、D939 drafting0/14，最终真实required输入尚未交齐，不能替owner实现或靠preview空过。下一步继续T01实际原子来源/预算与全部责任映射，不先开放仅凭首例推导全覆盖。
 
+### 2026-11-06 T01原始义务发现与完整交付前置检查点
+
+最新941源码提交 **a5105c3e8**（唯一树/branch clean）；新增c5fe47756原typed scalar表显式只读导出、2140dd941 scalar义务表、08d7776fd Case目录与只读审计、61448f2ce来源记录、000ac7b9b实际source/oracle重hash、a5105c3e8永久失鲜反控。未修改主检出代码，主检出他方docs WIP保留。
+
+- 原`scalar_semantics::cases()`直接导出61个typed Case：40 core/21 scalar、53 value/8 trap、4 trace配置、8个release_too；source_sha/独立oracle/marks/配置均来自原表，**discovery executed=0**。新named ignored test只写显式plan-941输出、父目录reparse拒绝/create_new、4MiB帽，不调用frontend/compile/guest，不把table记录算语义执行。`cargo t ... --ignored`被固定入口的仅aavm规则前置拒；native nextest首次libtest-json缺显式experimental env也前置拒；随后原`cargo nextest run --manifest-path experimental/ace/Cargo.toml --target-dir experimental/ace/target -p ace-a2x-worker --test conformance --run-ignored only -E test(=inventory_941::read_scalar_contract_inventory_941)`配原NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1 exit0、仅1 metadata test实际ok，未运行标量语义组。原libtest兼容事件对ignored过滤数出现u64max，因此不采用该过滤数计量覆盖；61来自实际输出和原typed表，不拿过滤数/ignore事件充PASS。
+- `scalar-original-contract-inventory.json` SHA20a0054e641d4010e05d1f8ccddb7e963fe25aa69dfe25a5998274921af85a53；原表源SHA9007cdd1ecfbac5b9fcd73e7629983bb2ff35fac1fff8a63a740fec6079861b3。跟踪`scalar-obligations.tsv`完整61条，原Rust正式入口scalar_semantics::full_corpus_true_chain=61 debug+8 release=69次声明配置，C正式入口a2c_scalar_semantics::c_full_corpus_true_chain=61次声明配置，组ace-a2x。原caller deadline/资源与nextest-full slow-timeout按代码来源记录，不把AC默认预算拿来冒probe成本，不把声明130配置计为本轮执行。TSV SHA28e65dfd5b80d2d4334f5524ab973870eabfdcc6ca9c2cbd6fb60a9223637b1b。
+- 在当前同一formal auto-case typed exporter重新发现35 suites/511 checks，2.739s、executed=0，scope/t01-current-identities-final/summary.json SHAb31fcc69c8dccdf4c4ca9444a1a500744a2e801f28f0135ed2c4f50cbeddd85d。首次辅助循环误将旧summary.json列表当inventory，TypeError中止；新final目录显式排除该索引后35输出全成功，保首次目录，不覆盖失败记录。跟踪`case-obligations.tsv`按完整suite/case/check、原group/suite文件、源码与oracle身份、合同/有效check指纹、state/skip、原声明AC预算、source/oracle文件内容摘要映射；不是保存旧PASS日志。原正式metadata全部显式input_paths整理为542个去重source/oracle文件，父准入流式重hash连同case/suite共668个当前文件，不能只hash.case.ad后放过源/金样漂移；额外resolved probe sidecar/helper依赖仍明确pending。TSV最终539,431 bytes，SHA717d4c8a5635369a3b37a6e99ed4071367be4e4b3a9e861dcc9999ba6ef301b4。
+- 35中的`unregistered-a2r-hir-892`是原已具名的5check手动suite，不存在独立固定组。首次catalog审计拒绝了把它混当固定组的做法；当前精确列出原suite路径/owner=941显式原auto-case调用，其他任意缺失组仍拒，不自动映射别名或新加全局组。Case/Scalar两目录已由真实只读组合器消费，冻结TSV/原表hash、原组输入hash/完整列与分母、唯一性/状态/原始配置均核；报告执行保持UNOBSERVED、mapping_complete=false，域预算/额外sidecar/helpers/剩余ARCH/旧required闭包不补0、不充green。
+- 永久治理64：原60+目录4组控制（511/61/69/61守恒、duplicate/missing、伪执行/未知组、current source/oracle漂移、削release/trap配置、重写跟踪目录）。`cargo t infra-ace-m1-arch --out .../catalog-final-frozen-controls`实际exit0 **64/64**，results SHA **d28edc13e07b4d1b3bb0edd76b6c33a634c549b3ecf46945d00d6aac14a4fda2**。正常构建仍唯一树target、ACE target，无外置target/其他盘安装或消费根。
+- 最终当前首例预览`catalog-first-slice-preview.json` SHA **656f3cb3033dc95c64000c86768624e838e1741254b1edba1881a142fee2998d**，16,876 bytes，20首例义务仍全PASS，CLI exit1（旧门/旧required执行/完整registry未闭，preview恒不签）。同一原capture/meter实测wall548.376ms、whole process peak18,956,288 bytes<128MiB，共享保守reservation25,177,278 bytes<48MiB；记录parent bindings hash、9个实际reader源文件hash与catalog/原typed表hash，来源闭合到当前入参。原始new ABI/SYN/Q4/cert source/工具/契约未改，复用先前真实执行并在此逐字节重验，未为catalog/schema变动重复昂贵认证/性能门。
+
+**当前前置阻塞（不假称本包work完成）**：936仍executing11/14，938仍executing6/13，939仍drafting0/14；required source CT/frozen pages、foreign标量调用/事实代际、资源/opaque/callback/error/ctx及其预算/恢复观测没有已交付最终合同与全部原始接口。依据本Plan §5.1（required行须具体producer或明确未交付owner）、§5.4（原owner交付功能/观察，不由组合器模拟）、§8 T01→T02→T03依赖，不将在途branch或939待证明source机制冻结成已发布能力，也不开放依赖该完整映射的T03及后续验收。当前原scalar/Case清单和首例链已形成可恢复检查点，但T01域预算/ARCH/旧313到执行闭包等自有审计仍未闭，不能因依赖缺失写execution_done或将本轮0/15改成完成。解阻=原936/938/939 owner交付稳定D及承诺字段/原始计量/required页；恢复先核实际source身份，补全T01，再按依赖扩展registry/reader/正式联合报告，不重复问原941/952/953授权。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: blocked | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: a5105c3e8 | task_ids: T01/T02（检查点，未闭） | blockers: required D936/D938/D939稳定producer/原始接口未齐；完整映射/后续验收pending | next: 原owner交付后继续work，非final review
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -372,3 +387,5 @@ host实际goal objective=resume/status=blocked；原F-952-01授权与修复均�
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
 
 5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952完整189/189绿待merge；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
+
+6. **当前真实前置缺口**：D936（CT/frozen/原required页与计量）、D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）尚未交齐；T01完整映射和后续验收保持pending。首例20项通过与64治理控制不核销上述义务。原owner稳定交付后恢复本树继续，无需重授941或重做已关闭952/953。
