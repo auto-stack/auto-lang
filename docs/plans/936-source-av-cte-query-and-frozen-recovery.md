@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-cte/source-query-integration.md]
 touched_goals: [GOAL-002]
 affects: [auto-cte, auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-817, PLAN-934, PLAN-935, PLAN-929]
-current_step: 7
+current_step: 8
 total_steps: 14
 ---
 
@@ -194,7 +194,7 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 | T-05 | work | T-04，source-query调度端口 | 自动DAG/Hash相位/绑定/环/single-flight/累计deadline，V-02/05/11/13，AC-02/05 | [x] 2026-11-06 `source-cte/schedule.rs`（commits e7ef98a63+e21fa6cf9）：serve_program 单根共享累计预算（10s；每次 AV=min(2s,remaining) 不重置；耗尽=资源态零发布）；相位规则——显式 Hash 是编译期需求（owner 体/嵌套于 Hash 表达式/CT 闭包 callee 体内皆先内后闭包先求值）；查询环按 (owner,span) 节点身份具名拒绝（闭合链入诊断；同 owner 嵌套站点=同一站点计划的组成部分非环）；普通递归≠环（AV fuel 真执行 t05）；meta 本地求值（meta_query 计数、绝零 vm_execute、缺席 has_field=false）经结构替换成真实 AV 实参（字段 2→3 使 42→43 经替换实参轴）；每需求闭包过滤编译程序（owner 传递闭包+类型声明；当前站点换替换后 inner、已服务站点换冻结字面量）——CT 闭包零能力编译、未服务站点不污染准入；根内单飞经完整键（两同站点=1 执行+1 冻结 hit）。8 新 T-05 测试（18 总全绿，clippy 零警）。**边界**：一般表达式 wrapper（非 call 形）与并发多 waiter 单飞归 T-06/T-11 |
 | T-06 | work | T-03/05，AV-core/shared lowering/服务 | 真实AV边界与严格tag/投影、执行/Use分层身份、失败attempt/禁调用，V-01/04/05/12，AC-03/04 | [x] 2026-11-06（commit bdd3e0001）一般表达式 wrapper（execute_expr：wrapper 体=替换后 inner 本体，i32 直返/bool 已审 0/1 投影；同共享尾/入口合同/严格折叠）；表达式执行键=规范结构哈希+传递闭包版本轴（exec_key_of_expr）；真实 execute 边界日志 ExecLogEntry（键哈希/attempt 序/结果/实测 steps/wall；hit 条目 from_cache+attempt 0）；调度器非 call 形走一般路径；未走分支 trap 潜伏（AV 控制流决定）；实际 trap 计到达 AV 的失败 attempt、零发布、日志记失败；表达式类 vs 期望 typed 拒 |
 | T-07 | work | T-06，934事实消费/core S | 值/类型回灌、必要owner重推导/HIR重验、四端源产物，V-01/04，AC-01/03/09 | [x] 2026-11-06（commit bdd3e0001）`product.rs::compile_scalar_ct` 单门：CT 面前门→T-05 调度全服务→**结构回灌**（全部站点→冻结字面量，owner 体常量化 t07 断言）→934 事实车道 bind_with_facts/emit/real verify→CheckedModule 供各端既有车道。AV 端 main=42→只改 sum 体→43（调用点不改）；bool hash 回灌 if 条件（AV 端 7）；二次编译 hit 零执行产物一致。26 测试绿 clippy 零警。**边界**：native/Rust/C 独立严格四端 oracle 属 V-01/T-11 文件 case 面；本任务四端源产物经 CheckedModule 单门交付 |
-| T-08 | work | T-05..07，统一deps/root/store/935实例稳定能力 | Exec/Use及checked-child传递版本、target宿主原子required/旧根、多工程/late与实例组合，V-03..06/08/11/14，AC-04/05/07 | [ ] |
+| T-08 | work | T-05..07，统一deps/root/store/935实例稳定能力 | Exec/Use及checked-child传递版本、target宿主原子required/旧根、多工程/late与实例组合，V-03..06/08/11/14，AC-04/05/07 | [x] 2026-11-06（commit c17003140）compile_scalar_ct 实例 lane：模板模块先真实 concretize（935 实例），CT 需求跑在具体实例体上（结构版本入执行键闭包轴）；事实/推理面 hash 一等化（semantics 投影推理透明=inner 形状挂 hash span、934 walk 增 expr.hash 节点+页 codec kind、实例重绑器入 HashExpr 且 hash-span 键需求位重绑）。V-04：`#{choose(40,42,false)}`=42、模板换体（调用点不改）真重执行 40；V-11/§5.7 组合例全链：只改 flag 体→内层 CT true→false→pick 实例体（含回灌常量）版本过时→外层重键重执行 40→42（checked-child 传递版本经替换体结构版本轴成立；源码 hash-only 缓存必误 hit 的反例绿）；同 store 跨编辑零假 hit。3 新测试（29 总）；门禁 ace-source/ace-semantics(181)/case-934/case-935 全 PASS。**边界**：多工程/overlay/GC/last-pin 计量腿归 T-09/T-10 恢复与资源面 |
 | T-09 | work | T-08，929934935稳定来源恢复接缝 | 各包页owner/R复装/首好与首坏修复/真实P-M-R-I/O、坏envelope/缺执行页，V-06/07/14，AC-06/07 | [ ] |
 | T-10 | work | T-09，原资源/生命周期与正式采样窗 | 分区/峰值/timeout/GC/最后pin和原规模计量，V-08/09，AC-08 | [ ] |
 | T-11 | work | T-03..10，文件case/worker/父decoder/注册H | 使能V-01..14独立oracle/文件化/反控/四端与旧recipe认证，新服务职责纳ace-comptime固定清单，AC-01..09 | [ ] |
