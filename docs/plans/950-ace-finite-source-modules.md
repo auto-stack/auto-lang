@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-950
-status: drafting
+status: execution_done
 feature_name: ACE 有限公共函数模块与受检绑定前置
 author: [Codex]
 created_at: 2026-11-06
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/finite-source-modules.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-semantics, auto-a2x, auto-av]
 depends_on: [PLAN-929, PLAN-934, PLAN-943]
-current_step: 0
+current_step: 5
 total_steps: 7
 ---
 
@@ -98,11 +98,11 @@ T-01 bounded闭环：仅两模块、三个函数（std public answer=42、privat
 
 唯一实施树拟`D:/autostack/.wt/lang-950/auto-lang`，branch=`plan-950-dev`；主检出保留Plan簿记，代码/测试/Spec编辑在该树。建组前核所有权，使用`scripts/new-wt-group.sh lang-950 --branch plan-950-dev`。scope=`D:/autostack/plan-artifacts/plan-950/`开工登记owner/用途/状态；常规target在树，外置仅scope；不建链接。950不得借用944树。D950正式落地后将master同步至944原唯一树，再重做944 T-01冻结。
 
-- [ ] **T-01｜owner_stage: work｜AC-01/02**：以§5两模块闭环核实际CST/AST/source-query→AV/A2X接口，冻结模块能力版本、最小模型/持久化布局与实例组合规则；补下表真实entrypoint/来源身份，不以纯schema成功交付。
-- [ ] **T-02｜owner_stage: work｜AC-01**：扩`auto-source.at`与core CST投影/AST，保旧门与诊断；补public/import/限定调用原span及V-02/03永久用例。
-- [ ] **T-03｜owner_stage: work｜AC-02**：有限module binder接source-query/唯一resolve，两个真实consumer实际执行V-01/02；拒绝未知/私有/重复/错签名，保遮蔽。
-- [ ] **T-04｜owner_stage: work｜AC-03/04**：沿source-query/artifacts恢复与原事务接模块身份、正负依赖与首编辑；V-04..07永久反例和合法对照，失败后真实读回。
-- [ ] **T-05｜owner_stage: work｜AC-01..04**：核实际生产计数/边界与所有新用例接固定组，完成受影响完整职责组和健康检查，提交冻结源码与拟议Spec delta。
+- [x] **T-01｜owner_stage: work｜AC-01/02**：以§5两模块闭环核实际CST/AST/source-query→AV/A2X接口，冻结模块能力版本、最小模型/持久化布局与实例组合规则；补下表真实entrypoint/来源身份，不以纯schema成功交付。
+- [x] **T-02｜owner_stage: work｜AC-01**：扩`auto-source.at`与core CST投影/AST，保旧门与诊断；补public/import/限定调用原span及V-02/03永久用例。
+- [x] **T-03｜owner_stage: work｜AC-02**：有限module binder接source-query/唯一resolve，两个真实consumer实际执行V-01/02；拒绝未知/私有/重复/错签名，保遮蔽。
+- [x] **T-04｜owner_stage: work｜AC-03/04**：沿source-query/artifacts恢复与原事务接模块身份、正负依赖与首编辑；V-04..07永久反例和合法对照，失败后真实读回。
+- [x] **T-05｜owner_stage: work｜AC-01..04**：核实际生产计数/边界与所有新用例接固定组，完成受影响完整职责组和健康检查，提交冻结源码与拟议Spec delta。
 - [ ] **T-06｜owner_stage: review｜AC-05**：同一唯一树独立final review，逐AC与遗漏/债务候选核验，结论绑定revision/SHA；pass才reviewed。
 - [ ] **T-07｜owner_stage: merge｜AC-06**：冻结职责组并集、ff来源核验、落Spec/归档、证据摘要折入Plan；逐命令所有输出根对账、刷新retention、guard clean后删除树/branch/scope。实际交付后回944。
 
@@ -116,6 +116,93 @@ T-01依赖已交付929/934/943，T-02..05依赖T-01冻结；T-06在work AC全闭
 
 静态复核：950编号唯一、0–10章节及7未执行任务齐全、3个现有Spec目标存在，git diff --cached --check通过；文档提交`18ed4a9c6`（950新合同与944 r2）。首个预检使用.next-id严格等于951，因并发951合法取号/提交而失败；PowerShell未因该子进程失败中止后续文档提交，未把该次检查记PASS。已重核：951为独立a2r证书JSON修复计划，.next-id=952且已随其`1e85cb756`提交；950文件唯一，无编号冲突，不回退.next-id。调整为单调>=951及具体951归属检查通过，不影响语义合同。实施/产品验证仍未执行。
 
+2026-11-06 work entry：goal恢复active，上一轮创建/提交950与修订944依赖属于progress。现已创建唯一`D:/autostack/.wt/lang-950/auto-lang`，`plan-950-dev`，base=27fb2cba5e28db66fd363efe176bb85f1287945e；只读auto-down=58ea33f699efa5cb1194473a2d45dcec51006842。主检出零代码WIP，其他docs WIP保留。scope已登记，无链接/第二输出根；T-01有界接线开始，未完成AC。
+
+### 2026-11-06 work checkpoint：有限模块→事实→双consumer真实值腿
+
+源码检查点 `dc9f63f4f6579596b4017f41e875fe351a57bb37`，唯一950树/branch不变、提交后clean，未落master。新增`core::source::modules::{parse_module_source,bind_modules,ModuleSyntax,BoundModules}`和`source_query::modules::compile_module_product`，显式能力`ac.source.modules.scalar/v1`，绑定版本`source-module-binding/1`。模块+实例组合具名拒绝，不隐式扩大模板域。共享grammar新增scalar-modules裁剪；pub wrapper、use-item、qualified-name为真实CST事实；ModuleSyntax保exports/imports，Fn AST投影复用原引擎。名称绑定在AST发生，私有函数按模块隔离，入口本地同名函数遮蔽裸导入而限定名仍取指定模块；未拼接源、未复制parser/类型/store。输入源独立保存，经不重叠虚拟span区间映射回原模块/字节坐标；发射器仅抽取既有边界检查以消费该map，原单源入口沿原hash和UTF-8边界行为。
+
+真实接线：`compile_module_product`→`bind_modules`→原`bind_with_facts`（唯一query/resolve事实）→`emit_resolved_module_parts`→`verify_scalar`；之后两条原消费者分别为`ace_lowering::lower_checked`→ABC encode/verify→`ace_av_core::execute`与`SemanticView::from_checked`→`ace_a2x_rust::lower_program/assemble_file_set`→真实rustc→exe。外部前探的同一两模块：std public answer调用其private helper返回42、app本地answer返回7；限定`std.answer()`与本地`answer()`分别AV=42/Rust=42、AV=7/Rust=7，独立预期逐端断言。每次solver_runs=4、body_misses=4、diagnostic_verdicts=0，未走legacy诊断/类型fallback。该值腿不是完整T-03/T-05交付，永久消费者回归接线及恢复仍待完成。
+
+实际验证（均从950树；日志在统一scope）：
+
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-core --lib source::modules:: -- --nocapture` exit0：5执行/5通过/0忽略、19过滤；运行0.06s（准备/编译16.95s）。可见性/导入/原span/旧scalar拒绝、重复/缺失/私有/循环及同名private隔离有永久断言。`binding-test.log` SHA256=fb17359978f55254c7aa1af684daa435ce321acbae33e846f0d94b27612acec1。
+- `cargo test ... -p ace-source-query --lib modules::tests -- --nocapture` exit0：1执行/1通过/0忽略、37过滤；运行0.01s、准备1.50s。生成Checked与第二次query事实复用断言，非恢复证据。日志`query-compile-test-r2.log` SHA256=bd04647ea17f2a5abd3827b695058a4087d275cb6008d6310c4e195c0b756517。
+- `cargo test ... -p ace-core --test conformance source_cst_927::` exit0：10执行/10通过/0忽略、337过滤；运行1.91s、准备10.60s，含旧profile corpus/edge诊断差分、片段/预算。不是完整ace-source组PASS。`legacy-cst-regress.log` SHA256=e45c6a7a75d13581f169f863b900e497cd5733210ee8c37f76cacd1c2ed48ad3。
+- `cargo run --manifest-path D:/autostack/plan-artifacts/plan-950/probe/Cargo.toml --target-dir D:/autostack/plan-artifacts/plan-950/target` exit0，两输入×两个consumer=4个真实值观察；准备37.48s，内部rustc/exe都exit0，输出准确value:42/value:7。`t01-consumers.log` SHA256=e292b3bc368de5354dbd16169d632af83857b06edbff7a61fe4b092001c29a98；probe源在scope/probe，文件集/exe在scope/consumer-output/{qualified,local}，均可删除，不构成发行/安装证据。
+- `cargo check ... -p ace-core -p ace-source-query` exit0，无产品库warning，准备/检查21.52s；全部9个修改Rust文件rustfmt --check通过，git diff --check/暂存检查通过。source-query lib-test有既有tests.rs:895 unused_mut，未改该文件，后续完整门需继续具名记账。Git自动维护提示unreachable loose objects为仓库维护信息，未运行prune或删其他工作。
+
+开发红保留：首版public可选前缀使不带pub的fn未进入正确恢复路径，3语法case仅1通过；改为独立public-fn wrapper后3/3，再补namespace成为5/5。初次bind check有format/hash API编译错误，修复为既有runtime_contract::sha256_hex后通过；初次query测试误用了不存在的计数字段，改为真实session.counters().solver_runs，第二次通过。这些编译错误/首红不算语言拒绝PASS。一次.at换行处理使git diff --check红，已按HEAD精确LF恢复后通过，未引入整文件换行重写。
+
+T-01仍有持久化接口/最小布局冻结未闭，T-02/T-03有产品化/永久consumer覆盖未闭，T-04..07未执行；保持0/7及executing，不以值腿替代AC-03/04或final review。下一步复用已核`SyntaxArtifactStore::{put_grammar,put_tokens,put_cst,open_cst}`及`CstView::decl_subtree`、既有ManagedStore required边/S934事实页：冻结并接模块图恢复/首编辑，不新造平行store；原UnitCatalog::from_restored只接旧profile，不能假称直接支持新模块profile。需将模块元数据、源/CST身份与query事实绑定，测试真实坏缓存、失败保旧和下一次读回。未建立任何950之外的材料输出根。
+
+### 2026-11-06 work checkpoint：共享store源图恢复与候选发布
+
+提交`7f0abd10d450275a69499f143268324150bf3c04`，950唯一树/branch不变、clean，未合master。上一goal回合交付dc9f63f4f双consumer值腿和真实测试，属于progress；本回合继续实际代码/反例进展，不是verified wait或状态重述。主检出crates/experimental/scripts/test零WIP，其他docs WIP保留。
+
+新接口：`source_query::modules::{ModuleStore,ModuleReceipt,ModuleRecovery}`，模块根`source-modules-root/1`、S950 SnapshotRecord载体；`ModuleReceipt`是宿主持有的artifact+SHA256，不从待信任store自导expected。根绑定entry/package/module、canonical source capabilities、grammar、binding版本、全源图hash及每模块源hash/CST ID/每函数事实页ID。只存声明性能力，不存宿主地址/可执行指针或逐运行authority。`prepare`只写不可变候选，`publish`按原ManagedStore先注册新根→再撤旧根，base/cancel失败不替换旧根。`SyntaxArtifactStore::put_cst_unpublished`复用原put_cst实现，只禁候选抢占旧cst当前根；原put_cst发布语义未变。新增`CstView::artifact_id`与`ManagedStore::required_targets`只读接缝，比较父receipt与实际打开的A03身份、父required集合。
+
+恢复真实链：重开同一store→核宿主receipt/codec/schema/binding/grammar/能力/声明唯一性/required集合→按原source+grammar key读A01/A02/A03源页及声明子树→原core严格投影（无scanner/parser）→模块AST绑定→S934事实页codec和body key/shape/coverage深验→seed原SourceQuerySession。`ModuleRecovery`此时只给bound graph+事实session，不假称已恢复目标可执行体。AST与原模块/字节坐标映射均来自既有CST；初始parse与恢复project分开。新module parse接入既有SyntaxWork/WholeParse真实观察，恢复负控不能靠遗漏计数自证0。
+
+开发反例揭露原bare S934持久地址会把临时facts.revision写入不可变payload，同key第二次请求产生key conflict。模块页现用**独立版本化地址recipe**`sq-module-page/1`：仍用原S934事实codec与同一ManagedStore，storage key附读过的signature/negative版本摘要，生命周期revision规范为0；原bare S934键/codec读写不重解释。合法第二候选、原函数事实复用不再发生假冲突；同时能区别读取合同变化。原bare S934调用方的重复发布revision冲突是具名旧路径债务候选（owner=source-query旧ManagedStoreSink::put；本包模块producer不再使用该地址recipe，不能拿模块绿宣称旧路径已修）。其后若需要统一迁移应保持旧读取合同并给独立反例，不用改旧schema的hash混过去。
+
+验证（所有日志scope内，temporary store通过AUTO_PLAN_ARTIFACTS显式放scope并在测试drop自动清理）：
+
+- 冻结候选`cargo test --manifest-path experimental/ace/Cargo.toml -p ace-core -p ace-source-query --lib modules::` exit0：core5/5、source-query5/5，共10执行/0忽略，分别19/37过滤；准备14.23s、运行0.01+0.15s。`module-recovery-union.log` SHA256=80c594458b9da28727027d48b530b1289a5d577bfd15852f56da6eb60fa1425c。
+- 最后一处显式required token读取后重跑`-p ace-source-query --lib modules::persistence::tests` exit0：4/4执行、0忽略、38过滤，准备1.80s/运行0.14s。`module-store-final.log` SHA256=3e2b2cdbe943d8cdb0a08bce8a55aaa49450b890cfeae9acc98935a881189e30。真实覆盖：冷2模块/3函数计数非零；重开恢复tokenized_ranges/parsed_functions为空、solver_runs=0，恢复所有body查询hit；更改源/无能力/坏digest拒；schema/binding/grammar/能力/重复module/重复fact/未知字段7种实际新payload（重算receipt并真写CAS）在恢复和publish前均拒；删父required边证实mutation>0后恢复/publish拒。
+- 旧42根→准备43候选→取消拒→在真实SQLite roots表安装trigger使新根注册报错→断言旧根集合不变→撤trigger并drop/reopen→旧42源图恢复成功；之后成功发布43、再drop/reopen→43源图恢复成功。这里只证明源图/事实持久状态保旧/读回，**尚未证明旧可执行结果或双consumer恢复首编辑**。
+- `cargo nextest run --manifest-path experimental/ace/Cargo.toml -p ace-syntax-artifacts --test conformance -E 'test(root_) | test(revision_zero)'` exit0，3/3执行、28未选择（非条件排除）；准备9.03s、运行0.464s。原failed-root-preserves-current、fresh-session-revision-zero、root/lease/GC lifecycle均PASS。`syntax-root-replay.log` SHA256=921ab2b20874e1dffc4d723f64d25da10f39c960bc8453c334eaba8d277ae938。
+- 本次9个Rust文件rustfmt --check、git diff --check/暂存检查通过；产品库check通过。lib-test唯一warning仍为既有source-query/tests.rs:895 unused_mut，未修改该行。新syntax-artifacts依赖改变实际触面，最终完整并集须增加**ace-syntax**，不是因为包标题而扩；ace-artifacts/ace-semantics/ace-source原已在并集。未改共享MIR/lowering，不因此自动添加native/comptime全套。
+
+首红保留：初次store check两个API类型错误（StoreQueryKey::new需要LayerSpec、bounded读取参数u64）未当语义反例；修正后check绿。首次4方向中的3个persist case为2绿1红，原因S934 revision冲突；引入上述新地址recipe后3/3，再补7种坏root成为4/4。未把首次红抹成全绿。
+
+当前仍executing/0-of-7，未final review/merge/落Spec。T-01/T-02/T-03前探主体已有可用接线，但持久化首编辑布局/永久双consumer集成尚未全闭，不能提前勾选。**下一工作关键**：现`prepare`仅接冷解析单CST，恢复给声明子树；恢复后修改一个函数并重新发布尚不可用。必须保留/复用认证的未变声明来源（可沿既有UnitCatalog的mint/current span与CST源receipt），只解析被编辑函数，重绑定可见性/正负依赖，接原保留CheckedEnv/单体candidate/consumer片段缓存；补旧结果与新43结果、无关函数parse/resolve/typecheck/lower/print零生产以及下一次真实恢复读回。不可把`compile_bound_modules`整图resolve/emit重跑伪装首编辑，亦不可冷重编源码换取恢复。现Root/codec仍是本包未发布候选，布局若变化需显式换版本，保留上述证据适用边界。
+
+### 2026-11-06 work checkpoint：恢复首编辑与双目标闭环
+
+提交 `dc0741bf7d689f725e030cab03de7df34f1707fc`，950唯一树 clean，实施仍未合master。此记录取代上一检查点的“尚无首编辑/目标恢复”现况判断，保留其历史证据边界。T-01..04已完成，4/7；T-05完整职责组正在运行，T-06/07未执行，不声明execution_done。
+
+模型冻结：`ModuleSyntax::pieces` 保存认证CST origin及声明mint/current区间，`edit_module_function`仅解析实际pub声明片段、迁移未变区间；模块根明确升级 `source-modules-root/2`，不重解释旧候选/1。持久声明环境逐参数/mode/结果/owner/span验证，恢复组装stub-body环境，不整图resolve。`ModuleSession::prepare`经原query事实及`prepare_module_candidate`→原FnCandidate单体事务；恢复后的首编辑只有目标函数实际parse/namespace/resolve/typecheck/plan/bind，复用未变声明、事实和目标产物。
+
+真实目标为`ModuleAvTarget`及`ModuleA2xTarget`：前者沿现有ABC envelope、FunctionCode admission/ProgramSnapshot link；后者沿现有A2xSession/provider/fragment缓存与文件装配。目标根包含source-set及现有producer/print/runtime身份，source父根保护目标receipt/digest与required闭包。所有候选先准备，核同一base后发布；旧source的目标receipt不可重绑新source。取消及真实SQLite roots INSERT trigger错误保持旧代码句柄、文件字节和持久源根，下一次重开真实执行仍为旧结果。
+
+永久双consumer用例接入`a2x-worker/tests/cases/module_sources_950.rs`（Windows x64）及原conformance target：同一模块输入在AV与真实rustc/exe各断言42或7；drop/reopen恢复0 scanner/parser/solver/目标lower/print；首编辑42→43只有目标lower1/print1，AV未变Arc与Rust未变AXR ID保持；成功发布后再次drop/reopen，实际结果43或7。私有同类型替换、错误目标schema/print版本、取消、真实发布错误、旧目标重绑均为永久反例，不只检查wrapper计数。产品源码/测试/拟议3份Spec已提交；未修改旧9profile支持面或任何全局测试条件。
+
+实证（统一scope日志，全部exit0）：
+
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-source-query --lib modules:: -- --nocapture`：8/8执行、0忽略、37过滤；准备3.15s/运行0.90s。`module-source-closure.log` SHA256=747d7289c41f0c5fa6b7ec452bc312fc0188d113653f85950722cf54bd9118ac。含被读签名改变只使真实reader重算、缺失导出后来新增、坏root身份/required边、变长首编辑123及随后43读回。
+- `cargo test ... -p ace-a2x-worker --test conformance module_sources_950:: -- --nocapture`：2/2执行、0忽略、169过滤；准备7.26s/运行1.93s。`dual-consumer-identities.log` SHA256=5607df4a39231731feaefaa01878509af34fa6ff92da4c2fc7ff11e454b6a283；后续加入真实发布失败及source绑定反例的`dual-consumer-closure.log`仍2/2，准备5.61s/运行1.68s。
+- `restored-first-edit.log`：source-query变长首编辑1/1，准备11.17s/运行0.21s，SHA256=71af6827bee4aef38d42aaf4c8a01bf298bfbd5b950272a5a1ccc7f95f66a0b7。
+- 新改Rust文件rustfmt及git diff/暂存--check通过；新AV unused import已移除。既有warning：source-query/tests.rs895 unused_mut；AV closures_fn_session.rs613 unused assignment、803 dead mix_u64、owned_session.rs111/112未读字段。非本包引入，不将其描述为零warning。
+
+开发首红保留：首个真首编辑把source能力误传runtime MIR造成mir.capability-unknown，修为读取已验证bundle.requires；下一次恢复用ABC_SCHEMA误作MIR owner导致link拒foreign owner，改为与冷/热相同MIR_SCHEMA，不绕过owner guard。其后双consumer2/2。S934旧地址债务候选仍由独立review核验，不以新模块地址绿宣称旧路径修复。
+
+冻结完整并集 `cargo t ace-source ace-syntax ace-semantics ace-artifacts ace-av ace-a2x --out D:/autostack/plan-artifacts/plan-950/work-gate` 正在同树单实例执行，源提交如上。新增ace-syntax因真实syntax-artifacts修改；未改共享MIR/lowering，未自动扩大native/comptime。工具准备冷编译未终态，不能计完整组PASS。scope内外置probe/target/consumer-output和work-gate全部登记为merge可删除材料，无新增散落输出根。下一步核实际完整组子终态、补齐任何work-owned覆盖缺口，才交独立final review。
+
+### 2026-11-06 work完成与独立final review交接
+
+源码冻结`d935caa85b39185d5f101dbe3433a7577d561a37`，branch/tree仍唯一且clean。独立上下文review950在work预检时只读审计全部风险面、未给final verdict或写代码；其发现已由work补永久反例/修复，属于work准备，不虚报final review修复轮次。
+
+| 发现 | 不变量/实际修复与反例 | 当前结果/边界 |
+|---|---|---|
+| F950-PRE-01 | 冷类型拒绝投影已有当前key/deps事实页PortableDiag结构节点，暖事实/candidate经bound.locate；片段parse加当前声明偏移；不重solve/legacy fallback | 永久bool/int错调用以accept_bool(true)合法对照，冷/暖均std且同原字节位置，parse偏移；关闭 |
+| F950-PRE-02 | 新r-pub词法全局作用令旧scalar的fn pub/let pub拒绝；compiler token复用现有profile gate，r-pub只scalar-modules | 真实首红3/4→core5/5；原9profile corpus/edge10/10，grammar profiles5/5；关闭 |
+| F950-PRE-03 | register新root后独立DELETE旧root失败会半安装；同ManagedStore新增事务内compare/liveness/insert/delete/commit | 真实INSERT及DELETE trigger各Err、严格仅old root；独立重开两个target真实执行42/7；关闭 |
+| F950-PRE-04 | source候选必须源于目标旧source-set；PreparedModuleEdit私有base_source，两target生产前核对 | app.answer=8另一合法source会话的std43候选被旧7 target拒；lower/print0；关闭 |
+| E950-PRE-01 | 每次失败之后须新会话实际执行旧目标，不只旧句柄/源根is_ok | cancellation/INSERT/DELETE各重开store+AV+Rust，真执行42或7，恢复lower/print0；关闭 |
+
+控制验证：暂时去诊断节点映射→type-location-control exit101；去两source-base guard→两consumer case均FAIL/exit101；替换原子发布为仅注册新根→retirement-atomicity-control exit101。均try/finally逐字恢复，再跑最终合法闭环；控制未入提交。原诊断探针首版用保留字take作函数名，被语法拒绝，明确无效输入；改accept_bool后才作bool/int类型反例，未把该首红当产品类型证据。grammar declared_set首跑4/5，新增合法scalar-modules未同步名单导致红；补第11个精确期望（未删旧项）后5/5。
+
+最终定向实证（exit0；scope内日志）：core module5/5、source-query module9/9，0 ignored，分别19/37过滤；准备4.10s前后，最终运行0.01+0.22s，`preflight-final-source.log` SHA256=a2f24a2e7657d7a8e722eb2dd0c3b59f10c40f5ffa8a6d3fbff0247668f05108。双consumer2/2、0 ignored169过滤，准备14.14s/运行2.26s，`preflight-consumer-repair.log` SHA256=1ee653463637e290524de7020b12c1301e8c936bc6368a700ae0e8e24d033f14。grammar profile5/5（26过滤）0.05s，`token-profile-conformance-final.log` SHA256=c398a6f57c6ff1583a3c0a454fc8619e1c58fb6f0f4a03a97d4bf676de9bd987。原CST conformance10/10（337过滤）1.93s，`legacy-profile-final.log` SHA256=1f8b2f9f58ffe040b8cf5a129ad07ce499df3c679b7f54f15d31bb6999e475c1。另grammar --lib实际0用例，仅编译成功，不充测试PASS。rustfmt/git diff/暂存check通过；既有具名warning如上，无新warning/debug。
+
+早期完整并集门禁：dc0741基线ace-source完整370/370、准备17.356s/运行3.372s通过；ace-syntax已发现132项，在64MiB原压力运行中主动停止，因为work审计出现待修缺口（本机936另一个相同压力并发观察也保留），非timeout/不是PASS；ace-semantics/artifacts/av/a2x未执行。外层exit1及原results/日志保留。该旧source PASS不自动覆盖本次grammar/query/root修复；最终六组并集明确pending，由merge在final code/AC/Spec pass后核冻结基线，不减原样本/预算/条件。
+
+Readiness：AC01..04均由永久合法/非法对照、真实双执行值及恢复/首编辑/身份/发布失败覆盖；work-owned开放缺陷、必需覆盖缺口、合同决定均为空。T01..05完成5/7；T06独立final review、T07合并门禁/沉淀/归档/清理未做。旧bare S934 revision重复发布地址冲突为本包之外旧recipe债务，在KNOWN-DEBT具名登记，不宣称已修。拟议Spec三路径已冻结提交；现模块能力仅i32/bool，不代替944标准操作/装配授权验收。主检出代码无WIP，其他会话docs保留。
+
+`stage: work | plan_id: PLAN-950 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-950/auto-lang | branch: plan-950-dev | base_commit: 27fb2cba5e28db66fd363efe176bb85f1287945e | code_commit: d935caa85b39185d5f101dbe3433a7577d561a37 | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | task_ids: T-01..05 complete; T-06/07 pending | evidence: scoped source/dual-consumer/profile logs above | blockers: none | next_responsible_role: independent final review950; frozen six-group gate merge-owned`
+
+`stage: goal | plan_id: PLAN-950 | plan_revision: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-950/auto-lang | commit: d935caa85b39185d5f101dbe3433a7577d561a37 | next: review`
+
 ## 10. 待澄清事项
 
-无新增用户范围决定；用户已选独立前置路线。T-01负责普通接口/模型落点和能力组合冻结，若真实证据要求改变本合同公开支持/阈值/跨仓范围才另提决定。当前宿主blocked状态仅可由用户resume恢复；该状态不代表本包已交付或944已解完所有工程缺口。
+无新增用户范围决定；用户已选独立前置路线。T-01负责普通接口/模型落点和能力组合冻结，若真实证据要求改变本合同公开支持/阈值/跨仓范围才另提决定。2026-11-06宿主已由用户恢复active；原状态阻塞解除。

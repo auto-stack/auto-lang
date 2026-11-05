@@ -3995,3 +3995,8 @@ UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静�
 - **F-943-M1-02 / closed by independent affected final review R3 (2026-11-05)**：冻结`72ac9e7b341bd53de92cb53c9ecaf0716371a5a3`。完整registered_names替代有损id_to_name盘点；独立单ID三专属别名/生产全集/id/bound/producer/重复序列永久case1/1，加两新production接口集合与严格排序序列全等近邻通过。详见943 §9 R3；最终新冻结stdlib完整并集与归档清理仍pending。
 
 - **PLAN-943 delivery**：两项finding均经独立复审关闭，最终149/149固定stdlib门通过；源码/Spec已落72ac9e7b，归档及清理状态以[归档Plan](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9实际收据为准。
+
+
+### D-950-1 — 旧bare S934地址的重复发布revision冲突（未关闭，旧query-store owner）
+
+PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变，旧ManagedStoreSink::put在同不可变S934 key下写不同payload会key conflict；这是旧地址recipe的生命周期字段问题。950模块producer明确使用新版本sq-module-page/1地址（读签名/negative版本摘要，revision规范0），沿原事实codec，不重解释旧键，不代表旧路径已修。owner=source-query旧ManagedStoreSink::put；关闭条件=旧recipe独立重复发布反例+合法读取/恢复对照，保持旧缓存读取合同的版本化修复并review。证据摘要在PLAN-950 §9，原材料按merge全删，无需要持有的原始输出。
