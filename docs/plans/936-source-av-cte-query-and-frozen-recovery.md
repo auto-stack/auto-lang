@@ -4,14 +4,14 @@ status: executing
 feature_name: SQ-C 普通源码真实AV CT查询与冻结回灌恢复闭环
 author: [Codex]
 created_at: 2026-11-04
-updated_at: 2026-11-05
+updated_at: 2026-11-06
 plan_revision: 2
 supersedes_spec_components: [docs/specs/auto-cte/scalar-query-profile.md, docs/specs/auto-cte/frozen-cache.md, docs/specs/auto-semantics/source-query-session.md, docs/specs/auto-test-case/architecture.md]
 new_spec_components: [docs/specs/auto-cte/source-query-integration.md]
 touched_goals: [GOAL-002]
 affects: [auto-cte, auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-817, PLAN-934, PLAN-935, PLAN-929]
-current_step: 1
+current_step: 3
 total_steps: 14
 ---
 
@@ -188,9 +188,9 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 | T | owner_stage | 前置/实际写面 | 产出/验证与AC | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 当前817/934935929/旧语言合同只读 | 服务图/原输入与反控/新Hash与meta符号/预算/完整consumer和窗冻结，AC-01..04/10 | [x] 2026-11-05 三路只读勘察+41项输入hash冻结@cb1bcbb7f（r2报告23项核对20匹配/3漂移归属D929/D937）；6项缺口重锚裁定；T-02门槛评估=934/935未交付。冻结文档`D:/autostack/plan-artifacts/plan-936/t01-service-graph-freeze.md`（SHA256 见§9） |
-| T-02 | work | T-01，934已审稳定query端口/929来源 | 无环服务+checked片段真AV+回灌四端/首编辑与原预算有界整链证明，AC-01/03/06/08；失败needs_replan | [ ] |
-| T-03 | work | T-02，comptime→拟source-cte/private服务 | 最小执行/冻结公共服务提取、旧probe双车道委托与原反控，V-10，AC-03/09 | [ ] |
-| T-04 | work | T-02/03，935模板窗后统一grammar/AST S | HashExpr/有限meta selector/能力/来源绑定，V-01/02/03，AC-01/02 | [ ] |
+| T-02 | work | T-01，934已审稳定query端口/929来源 | 无环服务+checked片段真AV+回灌四端/首编辑与原预算有界整链证明，AC-01/03/06/08；失败needs_replan | [x] 2026-11-06 新 crate `experimental/ace/crates/source-cte/`（ace-source-cte，依赖白名单 core/lowering/av-core/artifacts/semantics-contract/source-query，t02_07 断言禁 ace-av/native/comptime）；AST 级最小 checked 调用入口（append wrapper FnItem→resolve_with→emit→verify_scalar，无 deck/无 wrapper 文本合成/无重 parse，用户已声明 ct936_call 碰撞例证 AST 级构造）；真实 AV 共享尾 lower→verify MIR→ABC 往返→abc_verify→execute；envelope `ac936/ct-exec/v1`/producer `plan936/source-cte`/层 S936 严格 codec（无 source_fp；bool 走 §5.8.3 显式 0/1 投影 wrapper，I32(2) 拒）；ExecKey 含 callee logical/sig/body 版+传递闭包版本轴（helper body 编辑真实失效 t02_05）；10 证明测试全绿（sum 42→43 调用点不改、bool 翻转、严格 tag、恢复 hit ct_execute=0 复用真字节+新需求真执行、forbid_av 反控、受控拒绝零 AV）。commit 242d68ac3 |
+| T-03 | work | T-02，comptime→拟source-cte/private服务 | 最小执行/冻结公共服务提取、旧probe双车道委托与原反控，V-10，AC-03/09 | [x] 2026-11-06 共享执行尾提取落地：source-cte 增中立 `CtExecutor` 端口（默认 `ColdAvExecutor`=共享尾）+`AvExecFacts`（steps/wall/trace_events/peak）；comptime closure 道执行尾（lower→verify MIR→ABC 往返→abc_verify→execute ~80 行）删除，委托 `ace_source_cte::executor::run_entry_on_av`，错误经 `shared_tail_error` 逐码翻译回 817 冻结分类（Trap 含 V-02 调用源消息、Resource/Cancelled/Infra 同串）；snapshot 道保 828 前端（§5.1 批准形状：前端适配留 probe 侧，其执行同落 av-core execute，非第二 VM）。**D-935-1 发现**：935 给 semantics `InputFn` 加 `type_params`（bb22115d7）但未跑 `ace-comptime` 组——conformance 两处构造（cte_cache_tests.rs:156/cte_schedule_tests.rs:332）master 上编译红（先于本计划存在）；本计划已补空 `type_params: vec![]` 修复（下游编译修复非行为变更）。V-10：`cargo t ace-comptime` 100 例——94 执行全绿中 2 例资源 deadline 时序测试在 20 并发负载下首红（`cte_resources_request_deadline_fast_control` 300ms 快控在编译段耗尽、`cte_resources_request_wall_real_ten_seconds` 合法规模 15.5s>10s 累计墙），**隔离串行重放 2/2 绿**（3.1s/12.3s）→ 环境归因非代码失败；余 6 turnaround 性能腿因 runner 30 分钟 deadline 截断未跑，单独串行补跑中（见 §9 收据） |
+| T-04 | work | T-02/03，935模板窗后统一grammar/AST S | HashExpr/有限meta selector/能力/来源绑定，V-01/02/03，AC-01/02 | [~] 2026-11-06 **HashExpr 主体已落**（commit 8baa8764a）：scalar-ct profile（scalar-instances 全表面+hash-expr 原子，14 处表面提及继承）、`#` token、`ExprKind::HashExpr`、Frame::HashExpr 投影（畸形近邻精确拒）、frontdoor `CT_CAPABILITY=ac.source.cte.scalar/v1`+ct_grammar()+路由（CT 面含模板面；仅 instances 能力不 admint `#`）、FRONT_CAPS_VERSION→`ac-source-front/3`（935 caps 钉重锚）；未服务 HashExpr 绑定处受控拒 `source.cte.unserved`（Bind 阶段，服务/结构性替换归 T-06/T-07）；capture/shift/infer 递归 inner，934 walk 与 semantics adapter 保守拒（各自有限面）。6 新测试（source_ct_936）+ profiles_927 精确集更新；门禁 ace-source PASS/ace-syntax PASS/消费 crate check 净。**余**：有限 meta selector（ct_field_count/ct_has_field intrinsic+cap 门+selector 校验，V-03 面）。unit/owner/revision/期望类型附着归查询层（T-05/T-06，AST 只承载结构） |
 | T-05 | work | T-04，source-query调度端口 | 自动DAG/Hash相位/绑定/环/single-flight/累计deadline，V-02/05/11/13，AC-02/05 | [ ] |
 | T-06 | work | T-03/05，AV-core/shared lowering/服务 | 真实AV边界与严格tag/投影、执行/Use分层身份、失败attempt/禁调用，V-01/04/05/12，AC-03/04 | [ ] |
 | T-07 | work | T-06，934事实消费/core S | 值/类型回灌、必要owner重推导/HIR重验、四端源产物，V-01/04，AC-01/03/09 | [ ] |
@@ -205,6 +205,10 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 下一入口T-01私有服务图/原反控盘点可与935研究并行，不等935归档；T-02接真实934 query/929来源，T-08/12组合/最终需935实际能力。不能拿模型实例/旧deck替代。本轮未授权work。
 
 ## 9. 复审记录
+
+2026-11-06 stage:work / PLAN-936 r2 / outcome:**progress**（T-02/T-03 完成，T-04 主体完成；未到 execution_done，无 blocker）/ worktree:`D:/autostack/.wt/lang-936/auto-lang` / branch:`plan-936-dev` / base_commit:61854dfc8 / code_commits:242d68ac3(T-02)+1ac52458a(T-03)+8baa8764a(T-04主体) / dependency_revisions: D934=archived 32bf9c57e、D935=archived edda879ec / task_ids: T-02[x] T-03[x] T-04[~ HashExpr主体，meta selector 余] T-05..T-12[ ] / evidence: **T-02**=ace-source-cte crate（10 证明测试全绿：sum 42/43 调用点不改、bool 严格翻转 0/1 投影、helper body 编辑经传递闭包版本轴失效、恢复 hit ct_execute=0 复用真字节+新需求真执行、forbid_av 反控、无环 manifest 断言、碰撞安全 AST 级入口、受控拒绝零 AV）；**T-03**=closure 道执行尾删除委托共享尾+CtExecutor 端口+AvExecFacts，V-10 ace-comptime 族 100 例（94 首窗 92 绿+2 deadline 时序首红→隔离串行重放 2/2 绿=环境归因；6 runner-deadline 截断腿+全 12 turnaround 串行补跑全绿 791s）；D-935-1=935 InputFn.type_params 漏跑 ace-comptime 组致 conformance 编译红（master 先在），本计划修复；**T-04**=scalar-ct 面（6 新测试+profiles_927 更新；ace-source/ace-syntax PASS）。hash 重锚=t02-reanchor-61854dfc8.md（10/37 漂移全归属 934/935/943，零未归属；comptime 系零漂移=817 义务面有效）/ blockers: 无硬阻塞；余量=T-04 meta selector、T-05 DAG/调度、T-06 真实AV边界接线 HashExpr 服务、T-07 四端回灌、T-08 依赖/实例轴、T-09 恢复/R窗、T-10 资源计量、T-11 case 族/组注册、T-12 正式门 / next_responsible_role: work（继续 T-04 meta → T-05）
+
+2026-11-06 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 6 | from: work | to: work | status: executing | outcome: pass（阻塞解除确认轮：D934 已 archived（master 32bf9c57e 归档/9c616565b 交付含 source-query crate）；D935 已 archived（master edda879ec 归档/e9f7d47e8 交付，真实实例/模板能力合入）→ §10 两项前置全满足。worktree lang-936 clean、plan-936-dev tip=cb1bcbb7f 为 master 祖先（零自有提交），re-base 至 61854dfc8 后从 T-02 开工，先重锚 41 项 hash 表） | worktree: D:/autostack/.wt/lang-936/auto-lang | commit: 61854dfc8（新基面） | next: work（T-02）
 
 2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 5（纯等待轮） | from: work | to: work | status: executing | outcome: waiting（D934 活跃证据：worktree 最新写入 14:53:39 query_entry.rs/sq_source_facts_934.rs（T-08 进行中），距检查时刻 ~6 分钟；接管三证不成立，继续等待） | worktree: lang-936（clean） | commit: 本收据即簿记 | next: work（按接管规则持续判定；D934 合入→935 T-02）
 
@@ -225,12 +229,10 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 10. 待澄清事项
 
-**【2026-11-05 work 阻塞】** T-01 已完成（只读盘点冻结，见§9）。T-02..T-12 被两项在途前置硬阻塞，本目标会话无法在不违反计划合同的前提下继续：
+**【2026-11-05 work 阻塞 → 2026-11-06 已全部解除】** D934（query 端口）与 D935（真实实例/模板能力）均已交付归档合入 master（32bf9c57e/edda879ec），§5.9 写窗序满足；936 已从 T-02 恢复并推进至 T-04 主体（见 §9 进度收据）。当前无待用户决策事项。
 
-1. **T-02 前置"934已审稳定query端口"未满足**：PLAN-934 现executing r2 4/13，其 query 端口代码（含全新 `experimental/ace/crates/source-query/` crate）只在未合并分支 `plan-934-dev`（领先 master 8 提交/77 文件）上，review（T-12）与 merge（T-13）均未开始。计划合同（§5.9"934稳定端口后才实接"）禁止对未审未合并端口实接，也不允许跨 worktree 借用其分支。
-   **解锁动作**：等待 PLAN-934 走完 work→review→merge 交付（其 query 端口合入 master）后，以 `/auto-plan-goal 完成计划936` 或 `/auto-plan:work PLAN-936` 从 T-02 恢复（worktree/分支已就位，直接可用）。
-2. **T-04 语法窗/T-08、T-12 实例能力需 PLAN-935**：935 现 drafting r2 0/12（无实施树）。公共写面建议序（r2 报告§3）为 934 事实端口→935 模板/实例→936 Hash/CT 接线；T-08/T-12 的真实实例组合（`#{choose(40,42,false)}` 模板换体 42→40 等）必须等 935 真实能力，不能用模型 InstanceKey 或旧 deck 顶替。
-
-用户可选路径：(a) 等 934/935 各自交付后恢复 936（推荐，符合既定写窗序）；(b) 授权变更依赖序列/合同（属 scope 决策，须显式批准并走 needs_replan）。在解除前，936 保持 executing 1/14，worktree 与 plan-artifacts scope 保留待恢复。
+历史记录（已解除，留档）：
+1. ~~T-02 前置"934已审稳定query端口"未满足~~ → 2026-11-06 解除（934 archived）。
+2. ~~T-04 语法窗/T-08、T-12 实例能力需 PLAN-935~~ → 2026-11-06 解除（935 archived；T-04 语法面已按 935 之后的窗落地）。
 
 没有扩大旧语言/资源/FFI权限的授权；有限新增Hash/profile/meta intrinsic语义已写明，属于待实施计划合同而非已发布stdlib。服务提取/最小checked wrapper/无环/回灌接缝由T-02证明；如需全源重parse/后台旧VM/host执行或放宽预算，先needs_replan。真正type生成/runtime反射/完整泛型等仍覆盖后继，CA-D与ARCH最终组合签章独立，不因本包绿就跳过。
