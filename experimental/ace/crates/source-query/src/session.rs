@@ -17,9 +17,10 @@
 //! bodies they are (re)building and install them together with the
 //! target-ready record. This crate never builds a target itself.
 
+use crate::catalog::SignatureCatalog;
 use crate::facts::{FnSigFacts, InferBodyFacts, NegativeDep};
-use crate::ident::{owner_logical, signature_version, sq_hash};
-use crate::produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};
+use crate::ident::owner_logical;
+use crate::produce::{produce_infer_body, ProduceError, ProduceLimits};
 use crate::walk::walk_body;
 use ace_core::source::ast::{FnItem, Item, Program};
 use ace_semantics_contract::{ContentVersion, LogicalId};
@@ -145,16 +146,20 @@ impl SourceQuerySession {
         self.bodies.clear();
     }
 
-    /// Signature query: reads ONLY the declaration axis. A body-only edit
-    /// must keep this a hit.
+    /// Signature query: reads ONLY the declaration axis (through the
+    /// signature catalog). A body-only edit must keep this a hit.
     pub fn fn_sig(
         &mut self,
         program: &Program,
         name: &str,
     ) -> Result<QueryOutcome<FnSigFacts>, QueryError> {
         self.revision += 1;
-        let current = produce_fn_sig(program, &self.package, &self.module, name)
-            .map_err(QueryError::Produce)?;
+        let catalog = self.catalog(program)?;
+        let current = catalog.get(name).cloned().ok_or_else(|| {
+            QueryError::Produce(ProduceError::UnknownFn {
+                name: name.to_string(),
+            })
+        })?;
         if let Some(cached) = self.sigs.get(name) {
             if cached.version == current.version {
                 self.counters.sig_hits += 1;
@@ -170,6 +175,12 @@ impl SourceQuerySession {
             facts: current,
             hit: false,
         })
+    }
+
+    /// The current module's signature catalog (declarations only: building
+    /// it never reads a body).
+    pub fn catalog(&self, program: &Program) -> Result<SignatureCatalog, QueryError> {
+        SignatureCatalog::build(program, &self.package, &self.module).map_err(QueryError::Produce)
     }
 
     /// Infer-body query: a hit requires the body version AND every
@@ -188,9 +199,10 @@ impl SourceQuerySession {
         })?;
         let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
         let logical = owner_logical(&self.package, &self.module, name);
+        let catalog = self.catalog(program)?;
 
         if let Some(page) = self.bodies.get(&logical) {
-            if page.facts.body_version == walk.version && self.page_is_fresh(page, program) {
+            if page.facts.body_version == walk.version && self.page_is_fresh(page, &catalog) {
                 self.counters.body_hits += 1;
                 let mut facts = page.facts.clone();
                 facts.revision = rev;
@@ -218,20 +230,23 @@ impl SourceQuerySession {
         self.counters.solver_runs += 1;
         facts.revision = rev;
 
-        let mut sig_deps = vec![(name.to_string(), signature_version(f))];
+        let mut sig_deps = Vec::new();
+        if let Some(v) = catalog.version(name) {
+            sig_deps.push((name.to_string(), v.clone()));
+        }
         for callee in &facts.sig_reads {
             if callee == name {
                 continue;
             }
-            if let Some(cf) = find_fn(program, callee) {
-                sig_deps.push((callee.clone(), signature_version(cf)));
+            if let Some(v) = catalog.version(callee) {
+                sig_deps.push((callee.clone(), v.clone()));
             }
         }
         let page = BodyPage {
             facts: facts.clone(),
             sig_deps,
             negatives: facts.negatives.clone(),
-            fn_candidates_fp: fn_candidates_fp(program),
+            fn_candidates_fp: catalog.candidates_fp().to_string(),
         };
         self.bodies.insert(logical, page);
         Ok(QueryOutcome { facts, hit: false })
@@ -239,17 +254,18 @@ impl SourceQuerySession {
 
     /// Dependency validation of a cached page against the CURRENT module:
     /// body version is checked by the caller; here every recorded positive
-    /// must match and, when the page depended on an ABSENT name, the
-    /// candidate set must be unchanged.
-    fn page_is_fresh(&self, page: &BodyPage, program: &Program) -> bool {
+    /// must still resolve to the same version and, when the page depended
+    /// on an ABSENT name, the candidate set must be unchanged. Both reads
+    /// are declaration-only (the catalog never walks a body).
+    fn page_is_fresh(&self, page: &BodyPage, catalog: &SignatureCatalog) -> bool {
         for (name, version) in &page.sig_deps {
-            match find_fn(program, name) {
-                Some(f) if &signature_version(f) == version => {}
+            match catalog.version(name) {
+                Some(current) if current == version => {}
                 _ => return false,
             }
         }
         if page.negatives.iter().any(|n| n.domain == "fn")
-            && page.fn_candidates_fp != fn_candidates_fp(program)
+            && page.fn_candidates_fp != catalog.candidates_fp()
         {
             return false;
         }
@@ -262,19 +278,4 @@ fn find_fn<'a>(program: &'a Program, name: &str) -> Option<&'a FnItem> {
         Item::Fn(f) if f.name.name == name => Some(f),
         _ => None,
     })
-}
-
-fn fn_candidates_fp(program: &Program) -> String {
-    let mut names: Vec<&str> = program
-        .items
-        .iter()
-        .filter_map(|i| match i {
-            Item::Fn(f) => Some(f.name.name.as_str()),
-            _ => None,
-        })
-        .collect();
-    names.sort_unstable();
-    names.dedup();
-    let parts: Vec<&[u8]> = names.iter().map(|n| n.as_bytes()).collect();
-    sq_hash("ac934/candidates/fn/v1", &parts)
 }

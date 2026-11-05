@@ -203,6 +203,77 @@ fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
     })
 }
 
+/// PLAN-934 SQ-A: BODY-SCOPED projection — the single-body lazy input of
+/// the ordinary-source query layer.
+///
+/// The target function is projected with its REAL body; every other
+/// function contributes only its signature with an EMPTY body, so an
+/// unrelated body is never materialised and the caller never has to clone
+/// or rebuild the program to get one body's input. Records keep their
+/// field order and signature-only methods (the scalar query surface does
+/// not consume them).
+///
+/// This is an input-builder extension, not a second solver: the same
+/// [`crate::infer::InferSession`] runs over the result.
+#[cfg(feature = "core-ast")]
+pub fn project_body_scoped(
+    prog: &core_ast::Program,
+    target: &str,
+    package: &str,
+    module: &str,
+) -> Result<SemaInput, String> {
+    let mut fns = Vec::new();
+    let mut records = Vec::new();
+    for item in &prog.items {
+        match item {
+            core_ast::Item::Fn(f) => fns.push(project_fn_scoped(f, target)?),
+            core_ast::Item::Enum(_) => {}
+            core_ast::Item::Type(t) => {
+                records.push(InputRecord {
+                    name: t.name.name.clone(),
+                    fields: t
+                        .fields
+                        .iter()
+                        .map(|fd| Ok::<_, String>((fd.name.name.clone(), ann_of(&fd.ty)?)))
+                        .collect::<Result<Vec<_>, _>>()?,
+                    methods: t
+                        .methods
+                        .iter()
+                        .map(|m| project_fn_scoped(m, target))
+                        .collect::<Result<Vec<_>, _>>()?,
+                });
+            }
+        }
+    }
+    Ok(SemaInput {
+        package: package.into(),
+        module: module.into(),
+        fns,
+        records,
+        source_fp: String::new(),
+    })
+}
+
+#[cfg(feature = "core-ast")]
+fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, String> {
+    Ok(InputFn {
+        name: f.name.name.clone(),
+        params: f
+            .params
+            .iter()
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of(&p.ty)?)))
+            .collect::<Result<Vec<_>, _>>()?,
+        ret: ann_of(&f.ret)?,
+        body: if f.name.name == target {
+            project_block(&f.body)?
+        } else {
+            InputBlock {
+                stmts: Vec::new(),
+            }
+        },
+    })
+}
+
 fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
     match &a.kind {
         core_ast::TypeRef::Builtin(w) => Ok(match w {

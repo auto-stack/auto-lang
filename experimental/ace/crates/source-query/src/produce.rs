@@ -17,10 +17,10 @@ use crate::facts::{
     BindingFact, InferBodyFacts, NegativeDep, NodeFact, PortableDiag, PortableTy,
 };
 use crate::ident::{
-    owner_logical, signature_version, SQ_ALGO, SQ_PROFILE, SQ_SCHEMA,
+    owner_logical, signature_version, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA,
 };
 use crate::walk::{walk_body, WalkError};
-use ace_core::source::ast::{Block, FnItem, Item, Program, TypeAnn, TypeRef, TypeWord};
+use ace_core::source::ast::{FnItem, Item, Program, TypeAnn, TypeRef, TypeWord};
 use ace_semantics::{InferOutcome, InferSession};
 use std::time::Duration;
 
@@ -133,6 +133,8 @@ pub fn produce_fn_sig(
         params,
         ret: portable_of_ann(&f.ret)?,
         profile: SQ_PROFILE,
+        schema: SQ_SCHEMA,
+        producer: SQ_PRODUCER,
     })
 }
 
@@ -156,10 +158,10 @@ pub fn produce_infer_body(
         });
     }
 
-    // Body-scoped input: target in full, every other function as a
-    // signature stub (empty body). No unrelated body is materialised.
-    let reduced = stub_out_other_bodies(program, name)?;
-    let input = ace_semantics::adapter::project(&reduced, package, module)
+    // Body-scoped LAZY input (PLAN-934 T-03): the shared adapter projects
+    // ONLY the target function's body; every other function is a
+    // signature stub and no AST is cloned or walked.
+    let input = ace_semantics::adapter::project_body_scoped(program, name, package, module)
         .map_err(ProduceError::Projection)?;
 
     let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
@@ -247,6 +249,7 @@ pub fn produce_infer_body(
         profile: SQ_PROFILE,
         algo: SQ_ALGO,
         schema: SQ_SCHEMA,
+        producer: SQ_PRODUCER,
         revision: 0,
         nodes,
         bindings,
@@ -321,38 +324,6 @@ fn find_free_fn<'a>(program: &'a Program, name: &str) -> Result<&'a FnItem, Prod
     hit.ok_or_else(|| ProduceError::UnknownFn {
         name: name.to_string(),
     })
-}
-
-/// The target keeps its body; every other function becomes a signature
-/// stub (empty body). Declarations outside the finite surface are a
-/// controlled rejection.
-fn stub_out_other_bodies(program: &Program, target: &str) -> Result<Program, ProduceError> {
-    let mut items = Vec::with_capacity(program.items.len());
-    for item in &program.items {
-        match item {
-            Item::Fn(f) => {
-                let mut g = f.clone();
-                if g.name.name != target {
-                    g.body = Block {
-                        stmts: Vec::new(),
-                        span: g.body.span,
-                    };
-                }
-                items.push(Item::Fn(g));
-            }
-            Item::Type(_) => {
-                return Err(ProduceError::Profile {
-                    what: "record declaration",
-                })
-            }
-            Item::Enum(_) => {
-                return Err(ProduceError::Profile {
-                    what: "enum declaration",
-                })
-            }
-        }
-    }
-    Ok(Program { items })
 }
 
 /// Portable type of an annotation; `None`-capable types are a controlled

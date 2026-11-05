@@ -20,7 +20,7 @@
 //! "not found, so infer it" — that fallback is exactly the legacy
 //! synthesis this plan removes.
 
-use crate::ident::{SQ_ALGO, SQ_PROFILE, SQ_SCHEMA};
+use crate::ident::{SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA};
 use crate::walk::{BodyWalk, NodeId};
 use ace_semantics_contract::{ContentVersion, LogicalId, TypeDesc};
 
@@ -98,6 +98,7 @@ pub struct InferBodyFacts {
     pub profile: &'static str,
     pub algo: &'static str,
     pub schema: &'static str,
+    pub producer: &'static str,
     /// Request revision this view is bound to (set by the session at
     /// query time; a late result for an older revision is never
     /// installed as current).
@@ -132,6 +133,33 @@ impl InferBodyFacts {
 
     /// Validate identity/shape against the CURRENT walk of the same body.
     pub fn validate_against(&self, walk: &BodyWalk) -> Result<(), FactsError> {
+        // Namespace admission first: a page from another producer/schema/
+        // algorithm/profile (including the old 796 `ac796/*` surface) must
+        // never be reinterpreted, even if its bytes happen to parse.
+        if self.producer != SQ_PRODUCER {
+            return Err(FactsError::Envelope {
+                facts: self.producer,
+                expected: SQ_PRODUCER,
+            });
+        }
+        if self.schema != SQ_SCHEMA {
+            return Err(FactsError::Envelope {
+                facts: self.schema,
+                expected: SQ_SCHEMA,
+            });
+        }
+        if self.algo != SQ_ALGO {
+            return Err(FactsError::Envelope {
+                facts: self.algo,
+                expected: SQ_ALGO,
+            });
+        }
+        if self.profile != SQ_PROFILE {
+            return Err(FactsError::Envelope {
+                facts: self.profile,
+                expected: SQ_PROFILE,
+            });
+        }
         if self.body_version != walk.version {
             return Err(FactsError::BodyVersionMismatch {
                 facts: self.body_version.as_str().to_string(),
@@ -265,17 +293,41 @@ pub struct FnSigFacts {
     pub params: Vec<(String, PortableTy)>,
     pub ret: PortableTy,
     pub profile: &'static str,
+    pub schema: &'static str,
+    pub producer: &'static str,
 }
 
 impl FnSigFacts {
-    /// Contract identity: the page must carry the SQ-A profile before a
-    /// consumer may use it.
+    /// Contract identity: the page must carry the SQ-A producer, schema and
+    /// profile before a consumer may use it.
     pub fn check_envelope(&self) -> Result<(), FactsError> {
+        if self.producer != SQ_PRODUCER {
+            return Err(FactsError::Envelope {
+                facts: self.producer,
+                expected: SQ_PRODUCER,
+            });
+        }
+        if self.schema != SQ_SCHEMA {
+            return Err(FactsError::Envelope {
+                facts: self.schema,
+                expected: SQ_SCHEMA,
+            });
+        }
         if self.profile != SQ_PROFILE {
             return Err(FactsError::Envelope {
                 facts: self.profile,
                 expected: SQ_PROFILE,
             });
+        }
+        if !self.version.as_str().is_empty() {
+            // The version must be a real domain hash, not a borrowed span
+            // or an empty placeholder.
+            if self.version.as_str().len() != 64 {
+                return Err(FactsError::BodyVersionMismatch {
+                    facts: self.version.as_str().to_string(),
+                    body: "<64-hex domain hash>".into(),
+                });
+            }
         }
         Ok(())
     }

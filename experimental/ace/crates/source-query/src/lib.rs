@@ -35,6 +35,7 @@
 //! `Unsupported` and never as a mistyped fact.
 
 pub mod apply;
+pub mod catalog;
 pub mod facts;
 pub mod ident;
 pub mod produce;
@@ -49,6 +50,7 @@ pub use apply::{
     FactsApplyError,
 };
 
+pub use catalog::SignatureCatalog;
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
     PortableTy,

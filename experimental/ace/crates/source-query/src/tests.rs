@@ -343,3 +343,140 @@ fn sq13_apply_rejects_another_owners_page() {
     let err = crate::apply_body_facts(main_body, rf, &leaf).expect_err("foreign page");
     assert!(matches!(err, crate::ApplyError::Facts(_)), "{err:?}");
 }
+
+// -- T-03: body-scoped lazy input / signature catalog / namespace ------
+
+#[test]
+fn sq14_body_scoped_projection_materialises_only_the_target_body() {
+    let p = parse(A);
+    let input = ace_semantics::adapter::project_body_scoped(&p, "leaf", "pkg", "mod")
+        .expect("scoped projection");
+    let leaf = input.lookup_fn("leaf").expect("leaf projected");
+    let main = input.lookup_fn("main").expect("main projected");
+    assert!(!leaf.body.stmts.is_empty(), "the target body is materialised");
+    assert!(
+        main.body.stmts.is_empty(),
+        "an unrelated function is a signature stub"
+    );
+    assert_eq!(leaf.params.len(), 1);
+    assert_eq!(main.params.len(), 0);
+
+    // Flipping the target flips which body exists — no whole-module input.
+    let flipped = ace_semantics::adapter::project_body_scoped(&p, "main", "pkg", "mod")
+        .expect("scoped projection");
+    assert!(flipped.lookup_fn("leaf").unwrap().body.stmts.is_empty());
+    assert!(!flipped.lookup_fn("main").unwrap().body.stmts.is_empty());
+
+    // An unrelated body outside this layer's finite surface is never
+    // projected at all (its construct cannot block the target).
+    let t = parse_program_with(
+        "fn f() str { return \"x\" }\nfn main() int { return 1 }\n",
+        SourceProfile::Text,
+    )
+    .expect("text parse");
+    let input = ace_semantics::adapter::project_body_scoped(&t, "main", "pkg", "mod")
+        .expect("scoped projection of a mixed module");
+    assert!(input.lookup_fn("f").unwrap().body.stmts.is_empty());
+    assert!(!input.lookup_fn("main").unwrap().body.stmts.is_empty());
+}
+
+#[test]
+fn sq15_signature_catalog_is_declaration_only() {
+    let p = parse(A);
+    let cat = SignatureCatalog::build(&p, "pkg", "mod").expect("catalog");
+    assert_eq!(
+        cat.candidates(),
+        &["leaf".to_string(), "main".to_string()],
+        "candidate set is sorted"
+    );
+    let leaf = cat.get("leaf").expect("leaf entry");
+    assert_eq!(leaf.ret, PortableTy::I32);
+    assert_eq!(leaf.params, vec![("x".to_string(), PortableTy::I32)]);
+    assert_eq!(cat.logical_of("leaf").unwrap(), leaf.logical);
+    assert!(cat.by_logical(&leaf.logical).is_some());
+    assert!(cat.get("absent").is_none());
+    assert_eq!(cat.len(), 2);
+
+    // A body-only edit changes NO catalog version.
+    let p2 = parse(&A.replace("+ 1", "+ 9"));
+    let cat2 = SignatureCatalog::build(&p2, "pkg", "mod").expect("catalog");
+    assert_eq!(cat.version("leaf"), cat2.version("leaf"));
+    assert_eq!(cat.version("main"), cat2.version("main"));
+    assert_eq!(cat.candidates_fp(), cat2.candidates_fp());
+
+    // A signature edit changes only that entry.
+    let p3 = parse("fn leaf(x bool) int { return 1 }\n\nfn main() int { return leaf(41) }\n");
+    let cat3 = SignatureCatalog::build(&p3, "pkg", "mod").expect("catalog");
+    assert_ne!(cat.version("leaf"), cat3.version("leaf"));
+    assert_eq!(cat.version("main"), cat3.version("main"));
+}
+
+#[test]
+fn sq16_foreign_namespace_pages_are_never_reinterpreted() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let body = s.infer_body(&p, "leaf").expect("facts").facts;
+    let walk = walk_body(body_of(&p, "leaf")).unwrap();
+    body.admit(&walk).expect("own page admits");
+
+    // The new namespace is not the old 796 page schema: an old page can
+    // never be a hit for this layer.
+    assert_ne!(SQ_SCHEMA, ace_semantics_contract::SEMA_PAGE_SCHEMA_V2);
+
+    let mut old_schema = body.clone();
+    old_schema.schema = ace_semantics_contract::SEMA_PAGE_SCHEMA_V2;
+    assert!(matches!(
+        old_schema.admit(&walk),
+        Err(FactsError::Envelope { .. })
+    ));
+
+    let mut foreign_producer = body.clone();
+    foreign_producer.producer = "ac796.sema-probe/1";
+    assert!(matches!(
+        foreign_producer.admit(&walk),
+        Err(FactsError::Envelope { .. })
+    ));
+
+    let mut wrong_algo = body.clone();
+    wrong_algo.algo = "ac796-bidir-worklist/0";
+    assert!(matches!(
+        wrong_algo.admit(&walk),
+        Err(FactsError::Envelope { .. })
+    ));
+
+    let mut wrong_profile = body.clone();
+    wrong_profile.profile = "core-i32/1";
+    assert!(matches!(
+        wrong_profile.admit(&walk),
+        Err(FactsError::Envelope { .. })
+    ));
+
+    // Signature pages carry the same envelope discipline.
+    let sig = s.fn_sig(&p, "leaf").expect("sig").facts;
+    sig.check_envelope().expect("own signature page");
+    let mut bad_sig = sig.clone();
+    bad_sig.schema = ace_semantics_contract::SEMA_PAGE_SCHEMA_V2;
+    assert!(matches!(
+        bad_sig.check_envelope(),
+        Err(FactsError::Envelope { .. })
+    ));
+    let mut bad_sig = sig;
+    bad_sig.producer = "ac796.sema-probe/1";
+    assert!(matches!(
+        bad_sig.check_envelope(),
+        Err(FactsError::Envelope { .. })
+    ));
+}
+
+#[test]
+fn sq17_session_signature_query_matches_the_catalog() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let cat = s.catalog(&p).expect("catalog");
+    let from_session = s.fn_sig(&p, "leaf").expect("sig").facts;
+    let from_catalog = cat.get("leaf").expect("catalog entry");
+    assert_eq!(from_session.version, from_catalog.version);
+    assert_eq!(from_session.logical, from_catalog.logical);
+    assert_eq!(from_session.params, from_catalog.params);
+    assert_eq!(from_session.ret, from_catalog.ret);
+}

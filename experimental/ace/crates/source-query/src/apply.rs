@@ -142,6 +142,7 @@ pub struct AppliedFn {
 /// Install the signature page on a bound function: parameter names/arity
 /// and the result type must agree, then the types become authoritative.
 pub fn apply_fn_sig(resolved: &mut ResolvedFn, sig: &FnSigFacts) -> Result<(), ApplyError> {
+    sig.check_envelope().map_err(ApplyError::Facts)?;
     if sig.params.len() != resolved.params.len() {
         return Err(ApplyError::SigArity {
             facts: sig.params.len(),
