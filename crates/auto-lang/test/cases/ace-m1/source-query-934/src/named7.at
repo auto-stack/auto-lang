@@ -1,0 +1,13 @@
+// PLAN-934 SQ-A named-argument binding: `pick(b: true, a: 7)` binds by
+// NAME, so a = 7 and the branch on b returns 7. The positional reading of
+// the same operands is a type error (7 is not bool).
+fn pick(a int, b bool) int {
+    if b {
+        return a
+    }
+    return 0
+}
+
+fn main() int {
+    return pick(b: true, a: 7)
+}

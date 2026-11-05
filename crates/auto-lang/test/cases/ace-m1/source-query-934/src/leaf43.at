@@ -1,0 +1,11 @@
+// PLAN-934 SQ-A closed-form oracle after a body edit: the caller `main` is
+// unchanged, only leaf's body changes (+1 -> +2), so the value is 43 while
+// the caller's facts stay warm (the warm/cold counters are pinned by the
+// crate tests in the same fixed group).
+fn leaf(x int) int {
+    return x + 2
+}
+
+fn main() int {
+    return leaf(41)
+}

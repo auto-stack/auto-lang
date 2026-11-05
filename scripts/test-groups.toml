@@ -821,6 +821,24 @@ suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.su
 domain = "ace"
 all = false
 
+# PLAN-934: SQ-A ordinary-source query family (T-09) — closed-form values
+# (42/43/7 + mark trace), frozen frontend diagnostics, and the Rust/C emit
+# goldens of the same HASH-bound HIR, executed by the product entries that
+# consume the fact layer. The facts-layer negative controls (solver-off,
+# tampered facts, cold/warm counters) live in the `ace-source-query` crate
+# tests carried by the `ace-semantics` fixed package group.
+[[group]]
+name = "case-ace-source-query-934"
+title = "ACE M1 SQ-A source query 934 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-932: the native warm-edit admission suite — typed refusal verdicts
 # (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
 # state survival and history A→B→A on the real scalar worker (source-v1).

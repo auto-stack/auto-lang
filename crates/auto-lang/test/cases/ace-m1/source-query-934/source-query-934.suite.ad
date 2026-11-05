@@ -1,0 +1,8 @@
+# PLAN-934 T-09 — SQ-A ordinary-source query family (closed-form values on
+# AV/native, frozen diagnostics, and the Rust/C emit goldens of the same HIR).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-source-query-934", include: [
+  "source-query-934.case.ad",
+] }
+```
