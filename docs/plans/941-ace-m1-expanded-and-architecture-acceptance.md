@@ -348,6 +348,8 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to
 
 host实际goal objective=resume/status=blocked；原F-952-01授权与修复均已解除，但host未自动转active。按auto-plan-goal inactive规则请求`/goal resume`，本次保存已授权工作与已结束门结果，不创建第二goal、不mark complete。恢复后先952合入收尾，再941 T-02真实四端/SYN/937链。
 
+2026-11-06 **D952已交付**：r1/08df260df8fad98ad2b56a1ba79e68a64e161e55线性合main，canonical SHAa354c7807e538d9f34482f2710083752d7837a4ffb55c6bd459c6c1e0342192b，6域真实认证/全组189/189，归档6/6，两树/branch/组/材料目录已删除、无hold。F-941-02关闭；941须在自己新producer上重建/重放严格认证，旧55c8结果不得冒当前身份。用户`/goal resume`已明确恢复续行，不重复请求同一操作；host状态未更新仅记录，不建第二goal。下一阶段auto-plan-work继续原T-02，941仍0/15。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
