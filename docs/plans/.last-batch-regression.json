@@ -1,30 +1,29 @@
 {
- "last_covered_plan_id": 925,
- "timestamp": "2026-11-03T14:11:01Z",
- "covered_commit": "1359ab1da7ca597e5181d1d0684f885c321828a8",
- "command": "cargo t all",
- "single_instance": true,
- "results_path": "target/test-groups/run-moc3dcba/results.json",
- "elapsed_seconds": 583,
- "verdict": "known_reds_only",
- "new_reds": [],
- "known_reds_seen": [
-  "PLAN-007 auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent",
-  "PLAN-900 auto-lsp: package moved out of this workspace but fixed group still selects it",
-  "PLAN-901 auto-lang-core: ACE host tests leaked into legacy group",
-  "PLAN-901 infra-pilot-cli: legacy group requested ACE worker (5 failures+1 error, same shape)",
-  "auto-macros: Box<Obj> vs Obj compile errors in value_macro_tests (known)",
-  "P707-R1 auto-lang plan707_spike_cancel_gap_active_job_future_not_stopped: deliberate RED spike (KNOWN-DEBT)",
-  "auto-lang sys_natives_vm_tests::test_sys_natives_vm: known red"
- ],
- "exclusions": [
-  "aavm NOT_APPLICABLE",
-  "a2r-actor-tests NOT_APPLICABLE",
-  "auto-vm NOT_APPLICABLE",
-  "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
-  "D-910-1 web-delivery-controls execution_ids debt NOT triggered this run (group PASS)"
- ],
- "window": "9c91a1b48..1359ab1da (PLAN-921/922/925 merges + UI/docs commits); all 925-touched groups green in the full union (ace-a2x/source/adapters/auto-test-case/infra-fixed/infra-ace-m1/ace-artifacts/case-a2c-hir-record-text-925/case-a2c-hir-scalar-921/case-a2r-hir-record-text-902/881/894)",
- "known_red_not_yet_in_baseline": "case-a2r-hir-collections-904: pre-existing master red (all 20 goldens missing manifest.json since PLAN-904 delivery 6049a3da6; same defect class PLAN-925 fixed for its own suite via gitignore exemption) - NOT in language cargo t all union (domain=ace, all=false), surfaced only in explicit ace-group runs; routed for a PLAN-904-owned fix task",
- "fix_forward": "No new reds attributable to the merged window. Every failing group maps to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md (or the prior batch receipt baseline); no unrelated repair attempted by the batch runner."
+  "last_covered_plan_id": 937,
+  "timestamp": "2026-11-05T12:21:00Z",
+  "covered_commit": "da5274a885cd09f3c7623472da9efb3d7ee02d54",
+  "command": "cargo t all",
+  "legs": ["language fixed-group union (37 groups incl. aavm/a2r-std/shim-metadata/auto-*/infra-*/case-pilot/web-delivery-controls/generated-delivery-controls); UI/Man owner legs not run by this gate"],
+  "single_instance": true,
+  "results_path": "target/test-groups/run-hqij3scq/results.json",
+  "elapsed_seconds": 546.98,
+  "verdict": "known_reds_only",
+  "new_reds": [],
+  "known_reds_seen": [
+    "auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (baseline red)",
+    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: Assertion failed (baseline red)",
+    "auto-lang-core: ACE host tests leaked into a legacy group; fix feature/target ownership before execution (PLAN-901 baseline red)",
+    "auto-macros: value_macro_tests E0308 Box<Obj> vs Obj (baseline red)",
+    "auto-lsp: package ID specification `auto-lsp` did not match any packages; moved out of this workspace (PLAN-900 baseline red)",
+    "infra-pilot-cli: 5 failures + 1 error (PLAN-901 legacy group requested ACE worker, same shape as baseline)"
+  ],
+  "exclusions": [
+    "aavm NOT_APPLICABLE",
+    "a2r-actor-tests NOT_APPLICABLE",
+    "auto-vm NOT_APPLICABLE",
+    "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
+    "ACE domain groups (ace-*, case-ace-*) are all=false and not part of the language cargo t all union; their evidence lives in the per-plan frozen union"
+  ],
+  "window": "925..937 (PLAN-927/928/929/931/932/933/934/937 merges + UI/docs commits); no failing group maps to the 934 delivery (experimental/ace + case family + test-group registration only)",
+  "fix_forward": "No new reds attributable to the merged window. Every failing group maps to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md or the prior batch receipt baseline; no unrelated repair attempted by the batch runner."
 }
