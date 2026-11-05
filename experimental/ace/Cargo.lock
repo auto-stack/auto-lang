@@ -172,6 +172,7 @@ dependencies = [
  "ace-native",
  "ace-semantics",
  "ace-semantics-contract",
+ "ace-source-cte",
  "base64 0.22.1",
  "rusqlite",
  "serde",

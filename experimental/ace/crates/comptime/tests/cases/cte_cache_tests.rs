@@ -154,6 +154,7 @@ fn cache_meta_negative_dependency_rekeys_identity() {
         module: "main".into(),
         source_fp: String::new(),
         fns: vec![InputFn {
+            type_params: vec![],
             name: "scale".into(),
             params: vec![("n".into(), Ann::I32)],
             ret: Ann::I32,

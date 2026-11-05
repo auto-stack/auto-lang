@@ -81,7 +81,7 @@ fn backfill_return_constant(program: &Program, owner: &str, value: CtValue) -> P
 /// value (the AV-end observation of the CT backfill).
 fn run_owner_on_av(program: &Program, src: &str, entry: &str) -> i32 {
     let checked = checked_module_of(program, src, "m.at").expect("backfilled program checks");
-    let (v, _steps, _wall) = run_entry_on_av(
+    let (v, _facts) = run_entry_on_av(
         &checked,
         &format!("d_{entry}"),
         7,

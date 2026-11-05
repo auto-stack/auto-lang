@@ -57,7 +57,10 @@ mod tests;
 pub const MAX_CALL_WALL: std::time::Duration = ace_av_core::contract::MAX_AV_WALL;
 
 pub use envelope::CtExecutedV1;
-pub use executor::{checked_module_of, execute_call, run_entry_on_av, CtExecError, CtExecOutcome};
+pub use executor::{
+    checked_module_of, execute_call, run_entry_on_av, AvExecFacts, ColdAvExecutor, CtExecError,
+    CtExecOutcome, CtExecutor, ExecCtl,
+};
 pub use identity::{
     transitive_closure_versions, CtEngine, CtValue, ExecKey, ExpectTy, UseBinding, CT_ALGO,
     CT_LANE, CT_PRODUCER, CT_PROFILE, CT_SCHEMA,

@@ -8,6 +8,10 @@ publish = false
 
 [dependencies]
 ace-comptime-contract = { path = "../comptime-contract" }
+# PLAN-936 T-03: the real-AV/freeze shared service. Direction is
+# comptime → source-cte ONLY (the service must never depend on the
+# probe, ace-av or ace-native — its manifest asserts this).
+ace-source-cte = { path = "../source-cte" }
 ace-comptime-core = { path = "../comptime-core" }
 ace-av-core = { path = "../av-core" }
 ace-av = { path = "../av" }

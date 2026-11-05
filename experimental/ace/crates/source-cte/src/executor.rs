@@ -132,6 +132,53 @@ pub fn checked_module_of(
         .map_err(|ds| CtExecError::pre("cte.frontend/verify", first_diag(&ds)))
 }
 
+/// Measured facts of one real AV execution (never reconstructed).
+#[derive(Clone, Copy, Debug)]
+pub struct AvExecFacts {
+    pub steps: u64,
+    pub wall_ms: u64,
+    pub trace_events: usize,
+    pub peak_slot_bytes: u64,
+}
+
+/// The neutral execution port (§2/§5.1): ONE boundary every CT lane
+/// funnels through. The default implementation is the COLD shared tail
+/// below; a resident lane (the 817 snapshot frontend, PLAN-828) supplies
+/// its own implementation probe-side — its frontend types must never
+/// enter this crate, and its execution bottoms out at the same
+/// `av-core execute` (no second VM).
+pub trait CtExecutor {
+    /// Execute one checked entry for real. The value is RAW — each lane
+    /// folds it under its own contract (this lane: strictly; the 817
+    /// probe: its frozen nonzero projection).
+    fn execute(
+        &mut self,
+        checked: &CheckedModule,
+        entry_id: &str,
+        snapshot: u64,
+        limits: &ExecLimits,
+        cancel: &CancelFlag,
+    ) -> Result<(Value, AvExecFacts), CtExecError>;
+}
+
+/// The cold shared-tail executor (lower → verify MIR → ABC roundtrip →
+/// ABC admission → av-core execute).
+#[derive(Default)]
+pub struct ColdAvExecutor;
+
+impl CtExecutor for ColdAvExecutor {
+    fn execute(
+        &mut self,
+        checked: &CheckedModule,
+        entry_id: &str,
+        snapshot: u64,
+        limits: &ExecLimits,
+        cancel: &CancelFlag,
+    ) -> Result<(Value, AvExecFacts), CtExecError> {
+        run_entry_on_av(checked, entry_id, snapshot, limits, cancel)
+    }
+}
+
 /// The shared execution tail: lower one entry of a checked module, admit
 /// it through MIR/ABC verification, and execute it on the REAL AV.
 /// Returns the raw AV value + measured facts; callers fold strictly.
@@ -141,7 +188,7 @@ pub fn run_entry_on_av(
     snapshot: u64,
     limits: &ExecLimits,
     cancel: &CancelFlag,
-) -> Result<(Value, u64, u64), CtExecError> {
+) -> Result<(Value, AvExecFacts), CtExecError> {
     let mir = lower_checked(checked, entry_id, snapshot)
         .map_err(|e| CtExecError::pre("cte.infra/mir-lower", format!("lowering failed: {e:?}")))?;
     let _ = verify_mir(&mir).map_err(|e| {
@@ -167,10 +214,18 @@ pub fn run_entry_on_av(
         )
     })?;
     let started = std::time::Instant::now();
-    let (outcome, _trace) = execute(&loaded, limits, cancel);
+    let (outcome, trace) = execute(&loaded, limits, cancel);
     let wall_ms = started.elapsed().as_millis() as u64;
     match outcome {
-        ExecOutcome::Success { value, steps } => Ok((value, steps, wall_ms)),
+        ExecOutcome::Success { value, steps } => Ok((
+            value,
+            AvExecFacts {
+                steps,
+                wall_ms,
+                trace_events: trace.events.len(),
+                peak_slot_bytes: trace.peak_slot_bytes,
+            },
+        )),
         ExecOutcome::Trap { kind, .. } => Err(CtExecError::at_av(
             &format!("cte.trap/{}", kind.code()),
             format!("compiletime-executed entry trapped: {}", kind.code()),
@@ -297,7 +352,7 @@ pub fn execute_call(
             .join(",");
         ace_source_query_fnv(format!("{callee}|{args_txt}").as_bytes())
     };
-    let (value, steps, wall_ms) = run_entry_on_av(
+    let (value, facts) = run_entry_on_av(
         &checked,
         &entry_id,
         snapshot,
@@ -310,8 +365,8 @@ pub fn execute_call(
     let value = strict_fold(&value, expect)?;
     Ok(CtExecOutcome {
         value,
-        steps,
-        wall_ms,
+        steps: facts.steps,
+        wall_ms: facts.wall_ms,
     })
 }
 
