@@ -158,15 +158,15 @@ T-01继续执行前置：D943及D950均已正式交付；本目标用户授权�
 
 `stage: work | plan_id: PLAN-944 | plan_revision: 1 | outcome: blocked | worktree_path: D:/autostack/.wt/lang-944/auto-lang | branch: plan-944-dev | base_commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | code_commit: none | dependency_revisions: D943=72ac9e7b; auto-down=58ea33f | task_ids: T-01 partial | evidence: four-case frontdoor-probe | blockers: missing public/import/namespace frontend prerequisite; dependency revision decision in §10 | next_responsible_role: user decision then auto-plan-new bounded revision`
 
-`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 1 | from: work | to: user | status: execution_done | outcome: waiting | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
+`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 1 | from: work | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
 
 2026-11-06 goal round 2：重读主检出§9/§10，尚未收到语言前置交付方式的用户决定；唯一实施树仍在原base，clean，无新实现交付。上一轮产生了真实前探证据与进入条件判断，属于progress；本轮无新增产品进展，等待同一明确决定，不把对话等待计为活跃进程的verified wait。按goal技能waiting规则未运行产品检查或重启探针。既有请求继续有效，不重复提问。
 
-`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 2 | from: user | to: user | status: execution_done | outcome: waiting | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
+`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 2 | from: user | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
 
 2026-11-06 goal round 3 / blocked audit：上一轮为no progress（只记录同一待决项），不是verified wait；本轮重读§10仍无用户决定，唯一实施树clean。该同一阻塞已连续出现在原始goal回合及两次自动续跑，达到三回合门槛。未运行产品测试或重复前探。按goal宿主规则将目标标记blocked；Plan状态仍为executing，0/7，保留唯一树和在途scope。解锁动作：用户选择先交付独立有限模块前置Plan（建议），或明确在944内修订任务承载前置，然后恢复goal。未放宽AC、未声称交付。
 
-`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 3 | from: user | to: user | status: execution_done | outcome: blocked | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
+`stage: goal | plan_id: PLAN-944 | plan_revision: 1 | round: 3 | from: user | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: 3b09e32b016ceafed97c4415d021626474fcadf7 | next: user`
 
 2026-11-06 new dependency revision r2：用户答复关闭r1 §10的路线决定，已独立分配PLAN-950（有限公共函数模块与受检绑定前置）。本包仅新增D950依赖及继续执行入口，原任务/AC不删减，历史前探仍只证明r1基线缺能力；没有产品实现证据被提升。原944唯一树保留、无新建树。原始“未授权/未建树”陈述为draft历史，当前授权/树状态以§8及本记录为准。
 
@@ -270,4 +270,4 @@ review/merge尚待：冻结后独立逐AC/原始反例/Spec delta核验；merge-
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权已由2026-11-06 `/goal 完成计划944` 给出；无额外预算/模型约束。跨仓仍只读。
-- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](archive/950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；继续交付950，不创建第二目标。
+- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](archive/950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；950已正式交付，当前继续944，不创建第二目标。
