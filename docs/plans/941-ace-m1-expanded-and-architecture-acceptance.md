@@ -379,6 +379,22 @@ host实际goal objective=resume/status=blocked；原F-952-01授权与修复均�
 
 stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: blocked | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: a5105c3e8 | task_ids: T01/T02（检查点，未闭） | blockers: required D936/D938/D939稳定producer/原始接口未齐；完整映射/后续验收pending | next: 原owner交付后继续work，非final review
 
+### 2026-11-06 goal恢复active后的独立旧格位执行与父终态修复
+
+上一goal turn分类=**progress**（D952收尾、20项真实首链/64控制、511/61源目录）。本轮get_goal实际active；恢复检查承认此前“待D”不是所有独立工作的停点：D936/938/939仍未齐，但原旧格位接线可安全推进，继续work而不重复请求授权。最新main仅他方docs WIP、无代码WIP；941唯一树clean，auto-down只读58ea33f，原未归档工作保留。
+
+- 逐旧required源格位审计发现B08/B11：binding原oracle均7、ac/av required，但35个原suite缺对应四条正式Case入口（原legacy-AVM差异与a2r emit-unverified依旧分开）。在941自有fixture增加独立legacy-coverage.suite/case与**逐字节复制**原B08/B11，直接用原formal native/AV父入口及原oracle7（B08外层x保持7；B11 a=10/b=3故7）；原批准binding/source-manifest/NA/denominator/旧assets零改。新增显式固定组case-ace-m1-legacy-941，all=false、不改daily/batch范围。提交abf8fea4e。
+- `cargo t case-ace-m1-legacy-941 --out .../legacy-b08-b11-original` exit0、4/4、5.147s，results SHA **8e36158c251d0b03099db2f2d4e6ddc68d5dc912bbfc6636596af99c011c92d0**；原wire opt-in开启，所有runtime/TEMP/TMP在plan-941 scope。原35/511目录不动态扩分母；新增四条在独立legacy执行视图单列。
+- 新`ace_m1_legacy_execution.py`（caf72c902）从原已hash批准表提取原value7，重hash原source并核新copy同源、受跟踪typed合同的当前Case/check/oracle/recipe/target/报告身份、当前正式worker与原始终态，再调用原scalar reader分别判断。不是按Case PASS回填。所需313集合仍从原冻结ledger导出，当前实际**4/313 PASS、309 UNOBSERVED**，完整执行verdict=UNOBSERVED；旧38 cert-gap不替换、不免除。registry仅追加该typed合同，preview仍20原首例义务，四旧格位另有execution_summary。缺旧required项不归绿。
+- 隔离控制只修改副本四条raw观察7→8并重算原始链接/清单hash，Case自报PASS未动，strict四个旧格位均FAIL、其余309未观测；`legacy-execution-wrong-control.json`保留明确counterfactual标记，不进真实执行集合。永久控制验证部分4项不冒313、任一313删除不闭合、外来key/重复分母/布尔verdict拒、原copy源hash与批准件完全相同；合成全313正控只验证纯AND，不冒实际覆盖。
+- **本包自有新准入缺陷修复**：pre-fix反事实Q4副本把父Case AV状态改ERROR/summary改3PASS+1ERROR，raw value42保真，原组合器竟仍给q4/AV PASS。`parent-error-before-fix.json`确立expected FAIL/observed PASS；无需另立已归档能力修复，此代码为本包未交付实现，在原AC-02/10/11范围修复。32c2d7aaa保每个原Case父状态，PASS不能提供正向授权，FAIL/ERROR/SKIP必须阻断提升；`parent-error-after-fix.json`实际ERROR→FAIL，first_slice false。2a460d6d4进一步保全部declared Case父终态（包括daily-only emit check），避免fresh explicit cert盖住daily ERROR；独立daily父ERROR副本原20 raw域观察全部PASS，组合首链仍明确false、source_case_reports列原ERROR。此为真实区分性副本反例，不声称发生过实际工具ERROR，也不更改生产runner/语义预算。
+- 冻结提交 **2a460d6d467e654bd18a784de59492d3d3881c79**，`cargo t infra-ace-m1-arch --out .../legacy-and-parent-frozen-controls` exit0、**71/71**、1.819s，results SHA **7e2ecf2d74e53964bdc7dfe80b001fa11df50dd9c1e42966c31ab372718d5b58**。git diff --check通过；没有final review/merge pass，也没有启动全仓或跨owner修复。
+- 新完整首例CLI用first-slice-with-legacy-bindings.json（默认无旧执行输入时依旧UNOBSERVED）；`legacy-four-final-preview.json` SHA **ea4aeb71b6f8070cf67c778d23cc1b1fd75a1094a6d5b96959873237e989015a**，24,884 bytes；真实20首例PASS/旧执行4/313，CLI exit1、全局claim=false。原capture/native_meter实测398.860ms、whole process peak18,563,072 bytes<128MiB，保守共享reservation28,810,324 bytes<48MiB。10个reader来源hash与父bindings/case reports/raw命令/文件身份可追溯，组合器Popen禁用控制通过。
+
+936最新复审needs_fix（F-936-R1-01 source CT到a2x缺接线，main fb68b6a3e收据），不能当D936稳定交付；938/939仍待原owner。下一工作仍为T01/T02：从原规范与真实入口继续补旧required/ARCH/预算映射，未支持reader明确UNOBSERVED，不能将四条新执行或71控制替代313、扩大后全registry或最终验收。当前仍executing0/15，留active继续，不把有独立进展的轮次算成waiting。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 8 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 2a460d6d467e654bd18a784de59492d3d3881c79 | next: work（剩余实现/映射继续；不是新增final review失败轮）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -386,6 +402,6 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: blocked | worktre
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
 
-5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952完整189/189绿待merge；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
+5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952已合入/归档/清理6/6；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
 
 6. **当前真实前置缺口**：D936（CT/frozen/原required页与计量）、D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）尚未交齐；T01完整映射和后续验收保持pending。首例20项通过与64治理控制不核销上述义务。原owner稳定交付后恢复本树继续，无需重授941或重做已关闭952/953。
