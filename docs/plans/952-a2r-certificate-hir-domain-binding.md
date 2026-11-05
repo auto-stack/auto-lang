@@ -122,6 +122,8 @@ work诊断/affected re-review：修复正确性与6域证据仍成立，本次�
 
 stage: merge | plan_id: PLAN-952 | plan_revision: r1 | outcome: needs_fix | code_commit: 6308a8ca550586f5e9d221483611e991a6db57ba | blocker: F-952-01独立共享采集器修复授权 | next_responsible_role: user
 
+2026-11-06 F-952-01新增解阻授权：用户答复“授权独立修复并继续（推荐）”；独立PLAN-953承接原采集器竞态、错误分态/永久反例/职责与消费者回归、复审合入后返回952/941。当前仅已授权/立项，不冒修复已交付，不再重复询问该范围。host goal仍blocked，本次按明确直接用户指令执行953全链，不新建goal或伪称自动active。
+
 ## 10. 待澄清事项
 
 1. F-952-01独立共享采集器修复授权待答；952原证书修复全链授权保持，但完整模块健康门未闭，暂不合入。

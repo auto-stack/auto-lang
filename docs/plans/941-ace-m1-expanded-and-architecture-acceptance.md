@@ -338,6 +338,8 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 6 | from: user | to
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（F-952-01独立共享采集器修复授权/原owner有效交付）
 
+2026-11-06 F-952-01新增解阻授权：用户答复“授权独立修复并继续（推荐）”；独立PLAN-953承接原采集器竞态、错误分态/永久反例/职责与消费者回归、复审合入后返回952/941。当前仅已授权/立项，不冒修复已交付，不再重复询问该范围。host goal仍blocked，本次按明确直接用户指令执行953全链，不新建goal或伪称自动active。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
