@@ -105,3 +105,15 @@
   `max_codegen_units`、`stable_defs`）判定，反控（超界/把重建 def 当 stable）必须红。
 - 该边界只覆盖 AC collections 记录域；字面/文本/借用族的声明失效仍在既有域内，
   此处不扩大语言承诺。
+
+## PLAN-929：统一语法面与真实 P/M/R 轴
+
+- 单 body 编辑的语法事实全部经统一前门（含片段面）；目录事件
+  （OwnerSignatureChanged/DeclChanged{dependents=全语法引用面}/
+  DeclSetChanged/LambdaTopologyChanged）驱动精确传播——签名面不可比
+  （恢复目录未物化）时保守置变，不静默。
+- **fresh ≡ 增量**：编辑后目录清单与对新源冷建清单全等（确定性编解码，
+  `to_manifest` module_sha=当前源指纹）。
+- 计量轴：`ProductionMeter`（produced/reused/discarded 分账）+
+  `StageAttempts`（whole/per-unit 双轴）为正式 P/M 观察面；失败 attempt
+  如实计数不默认 0。

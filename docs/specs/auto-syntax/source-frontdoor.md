@@ -1,6 +1,6 @@
 # auto-syntax source front door（九 profile 统一源码前门）
 
-> **Status**: experimental（PLAN-927 交付，PLAN-928 扩至九 profile；实现=`experimental/ace/crates/core/src/source/cst/`）
+> **Status**: experimental（PLAN-927 交付，PLAN-928 扩至九 profile，PLAN-929 全消费者统一+退役门；实现=`experimental/ace/crates/core/src/source/cst/`）
 > 来源：PLAN-927；上游 [project.md](project.md)；规则/身份见
 > [grammar-contract.md](grammar-contract.md)；树/预算不变量见 [snapshot-cst.md](snapshot-cst.md)。
 
@@ -90,3 +90,20 @@ oracle，经 `auto-source@<profile>` 语法名路由 case-worker/contract——�
 旧合同保持至调用方迁移；`closures_fn` 的 `edit_body` 与单元目录
 `UnitCatalog` 的会话级统一、来源恢复 store 接线、`%TEMP%` av 会话存储
 清理责任由 929 裁定。
+
+## PLAN-929：全消费者统一与退役门
+
+- **生产重复语法清零**：全部真实 Auto 源码消费者经统一前门——常驻/暖
+  面消费 `profile_grammar` 进程缓存（`CachedGrammar::program()/scanner()`
+  访问器；av 常驻 session、case-worker `auto-source@<slug>` 臂同源）；
+  片段生产者（free/method/closure）经 `parse_function_fragment_via_cst/
+  parse_method_fragment_via_cst/parse_closure_fragment_via_cst`（方法=
+  合成 type 宿主+占位字段，receiver 从语法/owner 从调用方；closure=
+  合成宿主 return 位；span 有符号回绝对坐标）。
+- **退役门**：旧手写整源/片段 parser 与词法器在
+  `legacy-syntax-oracle` feature 后（生产构建编译期不可达；差分 oracle
+  经 dev 自依赖供测试）；改名复制由 `retirement_gate_929` 结构门扫描
+  （消费 crate 新 tokenize/Parser/parse_program 定义即红；不同领域语法
+  白名单：atom 文本/CT deck/interface-mini 等）。
+- **计量保真**：fn 片段桥按真实函数名 `note_parse`（结构门"改函恰 1、
+  无关 0"对账）；整源诊断/预算/差分 oracle 面不变。

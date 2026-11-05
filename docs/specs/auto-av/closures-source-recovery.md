@@ -107,3 +107,13 @@ scoped Atom 文档（`closures_context_913` 用例）。
 [闭包环境](closure-environments.md)、[常驻函数安装](resident-function-install.md)、
 [源码闭包域](../auto-ac/source-closures.md)、[AV 缓存与验收](cache-and-conformance.md)、
 [产物契约](../auto-ac/artifact-contract.md)、[ACE M1 一致性语料](../auto-test-case/ace-m1-conformance.md)。
+
+## PLAN-929：恢复发布的版本化 required 边（推广面）
+
+- 913 深重验模型推广为**声明面环境清单**（`core-decl-env/1`：签名/
+  参数 mode/receiver/记录形状/VT 池；无 body/指针/trusted 位）——
+  恢复侧从清单装配 stub-body `CheckedEnv`（`recheck_swap` 单体事务
+  自带给定 body，未改函数 body 暖路径永不被读），恢复后首个暖编辑
+  **整源 parse/resolve=0**（whole 轴观察）。
+- 身份对账（profile/caps/source sha/池索引越界）使用前受控拒；发布
+  幂等（同键同字节不再 put；只读冷装零发布）。

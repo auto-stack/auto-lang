@@ -103,3 +103,14 @@
 [HIR lowering 边界](../auto-mir/hir-lowering-boundary.md)、
 [常驻函数安装](../auto-av/resident-function-install.md)与
 [ACE M1 一致性语料](../auto-test-case/ace-m1-conformance.md)。
+
+## PLAN-929：统一语法单元与恢复面
+
+- closures 暖编辑片段生产者（lambda/owner）经统一前门桥（合成宿主）；
+  捕获/资源/凭证语义（L04/L05=42、K02/K06）不变——语法接管不重写
+  语义。
+- `ClosuresFunctionFrontend::edit_body` 的 P 轴窗口/候选事务
+  （stale/foreign typed 拒、零编辑重放诚实回执）沿 912/913 合同；
+  `UnitCatalog`（928）为目录/候选/pin 的语法事实层，929 增
+  `from_restored` 零生产惰性恢复（身份-only headless 单元 + 字节级
+  深验 + `RestoreError` 使用前拒）。

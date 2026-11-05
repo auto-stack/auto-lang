@@ -144,3 +144,13 @@
 - 正式采样（实测 2026-11-04）：904 冻结负载四态×30、512 修订（256 left_pad+
   256 right_pad）逐修订 cl 预认证对闭式 oracle；数据见 PLAN-926 §9 T-10 收据。
 
+## PLAN-929：AXD1 声明面环境层与恢复后首编辑
+
+| `AXD1` a2x-decl-env | 冷装发布的 CheckedEnv 声明面（`core-decl-env/1`；签名/mode/receiver/记录/VT 池；key=owner/profile/source_sha/backend/entry） | ObjectManifest | FromUserInputs |
+
+- `ensure_env` 整源 parse+resolve 路径退役：恢复（P0）→首个 ranged/
+  method 编辑经 AXD1 清单装配 env（深验绑定；清单缺失=具名拒绝
+  `a2x.decl-env`，不静默整源回退）；whole 轴 0、parse 只计片段面；
+  `env_rebuilds` 如实 +1（R 轴装配）。
+- 片段生产者六处全部经统一前门桥；925/926 provider/runtime 面零触碰
+  （TargetProvider 之后全 SemanticView）。
