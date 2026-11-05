@@ -496,6 +496,53 @@ fn source_foreign_both_targets_preserve_status_bool_order_short_circuit_and_mixe
 }
 
 #[test]
+fn source_foreign_native_output_reservation_is_live_until_cache_handoff() {
+    use ace_abi::source_foreign::{Session, Target};
+    use ace_source_query::resources::{Charge, Resources};
+    use std::sync::Arc;
+    let root = scope("native-output-reservation");
+    let (object, environment) = provider(&root, 0);
+    let session = Session::cold(
+        "fn main() int { return foreign_add(20,22) }",
+        "source938",
+        "p938",
+        &[SOURCE_CAP.into()],
+        environment.clone(),
+        Arc::new(std::fs::read(object).unwrap()),
+        Target::Native,
+    )
+    .unwrap();
+    let saved = session.snapshot().unwrap();
+    let wire: serde_json::Value =
+        serde_json::from_slice(session.artifact_bytes("main").unwrap()).unwrap();
+    let mir: Vec<u8> = serde_json::from_value(wire["mir"].clone()).unwrap();
+    let expected: Vec<u8> = serde_json::from_value(wire["coff"].clone()).unwrap();
+    let mut decoded = ace_av_core::decode_abc(&mir).unwrap().module;
+    decoded.owner.schema = wire["owner_schema"].as_str().unwrap().into();
+    decoded.owner.module = wire["owner_module"].as_str().unwrap().into();
+    for function in &mut decoded.funcs {
+        function.owner = decoded.owner.clone();
+    }
+    let resources = Resources::default();
+    let pressure = resources.reserve(Charge::staging(24 << 20)).unwrap();
+    assert!(matches!(
+        ace_native::emit::emit_foreign_unit_coff_reserved(&decoded, &environment, &resources),
+        Err(ace_native::MnError::Resource("managed-memory", _))
+    ));
+    assert_eq!(resources.stats().current.staging, 24 << 20);
+    assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+    drop(pressure);
+    let (object, charge) =
+        ace_native::emit::emit_foreign_unit_coff_reserved(&decoded, &environment, &resources)
+            .unwrap();
+    assert_eq!(object.bytes, expected);
+    assert_eq!(resources.stats().current.staging, object.bytes.capacity());
+    drop(object);
+    drop(charge);
+    assert_eq!(resources.stats().current.staging, 0);
+}
+
+#[test]
 fn source_foreign_target_source_caps_reject_before_production_and_preserve_current() {
     use ace_abi::source_foreign::{Session, Target};
     use std::sync::Arc;

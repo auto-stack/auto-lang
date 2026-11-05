@@ -143,9 +143,20 @@ impl Artifact {
             }
     }
     fn new(decoded: TargetWire, resources: &Resources) -> Result<Arc<Self>, String> {
-        let decoded_charge = resources
-            .reserve(Charge::resident(Self::decoded_bytes(&decoded)))
-            .map_err(|e| e.to_string())?;
+        Self::new_reserved(decoded, resources, None)
+    }
+    fn new_reserved(
+        decoded: TargetWire,
+        resources: &Resources,
+        previous: Option<Reservation>,
+    ) -> Result<Arc<Self>, String> {
+        let charge = Charge::resident(Self::decoded_bytes(&decoded));
+        let decoded_charge = if let Some(mut previous) = previous {
+            previous.resize(charge).map_err(|e| e.to_string())?;
+            previous
+        } else {
+            resources.reserve(charge).map_err(|e| e.to_string())?
+        };
         let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
             .map_err(|e| e.to_string())?;
         let bytes_charge = resources
@@ -1357,7 +1368,9 @@ fn native_artifact(
     work.push(verify);
     let mut emit = ledger.begin(name, "native-emit", Phase::Production);
     meter.native_attempts += 1;
-    let object = ace_native::emit::emit_foreign_unit_coff(&mir, env).map_err(|e| e.to_string())?;
+    let (object, output_charge) =
+        ace_native::emit::emit_foreign_unit_coff_reserved(&mir, env, resources)
+            .map_err(|e| e.to_string())?;
     meter.native_produced += 1;
     emit.produced(1);
     work.push(emit);
@@ -1371,7 +1384,7 @@ fn native_artifact(
     work.push(encode);
     meter.page_encodes += 1;
     let mut page = ledger.begin(name, "target-encode", Phase::Production);
-    let artifact = Artifact::new(
+    let artifact = Artifact::new_reserved(
         TargetWire::Native {
             name: name.into(),
             symbol: object.symbol,
@@ -1382,6 +1395,7 @@ fn native_artifact(
             coff: object.bytes,
         },
         resources,
+        Some(output_charge),
     )?;
     page.produced(1);
     work.push(page);

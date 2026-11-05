@@ -254,20 +254,34 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None)
+    emit_unit_coff_impl(unit, None, None).map(|(object, _)| object)
 }
 
 pub fn emit_foreign_unit_coff(
     unit: &MirModule,
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, Some(environment))
+    emit_unit_coff_impl(unit, Some(environment), None).map(|(object, _)| object)
 }
+
+/// Keep the exact output reservation through the caller's cache handoff.
+pub fn emit_foreign_unit_coff_reserved(
+    unit: &MirModule,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<(UnitObject, ace_source_query::resources::Reservation), MnError> {
+    let (object, reservation) = emit_unit_coff_impl(unit, Some(environment), Some(resources))?;
+    Ok((object, reservation.expect("host-backed COFF reservation")))
+}
+
+#[path = "coff_buffer.rs"]
+mod coff_buffer;
 
 fn emit_unit_coff_impl(
     unit: &MirModule,
     environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
-) -> Result<UnitObject, MnError> {
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
     if let Some(environment) = environment {
         admit_unit_shape(unit)?;
         crate::foreign_lower::admit(unit, environment)
@@ -374,26 +388,16 @@ fn emit_unit_coff_impl(
     om.define_function(fid, &mut ctx)
         .map_err(|e| MnError::Backend(format!("define {symbol}: {e}")))?;
 
-    let bytes = om
-        .finish()
-        .emit()
-        .map_err(|e| MnError::Backend(format!("emit object: {e}")))?;
-    if bytes.len() > MAX_COFF_BYTES {
-        return Err(MnError::Resource(
-            "object-size",
-            format!(
-                "COFF for `{}` is {} bytes, above the frozen {} cap",
-                f.name,
-                bytes.len(),
-                MAX_COFF_BYTES
-            ),
-        ));
-    }
-    Ok(UnitObject {
-        symbol,
-        bytes,
-        imports: import_syms,
-    })
+    let product = om.finish();
+    let (bytes, reservation) = coff_buffer::emit(&product.object, resources)?;
+    Ok((
+        UnitObject {
+            symbol,
+            bytes,
+            imports: import_syms,
+        },
+        reservation,
+    ))
 }
 
 fn trace_sig() -> Signature {
