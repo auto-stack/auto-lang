@@ -63,7 +63,6 @@ fn derive(src: &str) -> ace_core::source::ast::Program {
     }
 }
 
-
 /// 模板源（未脱糖）解析——T-07/T-08 测试直接用模板程序（derive 已脱糖）。
 fn parse_tpl(src: &str) -> ace_core::source::ast::Program {
     match parse_front_with_caps(
@@ -345,7 +344,10 @@ fn main() int {
     assert_eq!(p1.instances.len(), 1);
     let p2 = compile_scalar_product(no_call, MODULE, &caps(), PACKAGE, MODULE, &mut session)
         .expect("call deleted");
-    assert!(p2.instances.is_empty(), "no demand → no instance in the set");
+    assert!(
+        p2.instances.is_empty(),
+        "no demand → no instance in the set"
+    );
     assert_eq!(p2.lane, ace_source_query::CompileLane::Facts);
     // 无模板残留：模板 fn 不在脱糖程序/def 面。
     let defs: Vec<String> = p2
@@ -363,10 +365,11 @@ fn main() int {
 /// （不重释、不当缓存命中）。
 #[test]
 fn t07_corrupted_instance_page_refused() {
-    let mut host = ace_source_query::InstanceHost::new(
-        ace_source_query::MemoryInstanceSink::default(),
-    );
-    let cand = host.prepare_set(&parse_tpl(CHOOSE), PACKAGE, MODULE, &caps()).expect("prepare");
+    let mut host =
+        ace_source_query::InstanceHost::new(ace_source_query::MemoryInstanceSink::default());
+    let cand = host
+        .prepare_set(&parse_tpl(CHOOSE), PACKAGE, MODULE, &caps())
+        .expect("prepare");
     let page = ace_source_query::InstancePage::from(&cand.instances[0]);
     let bytes = ace_source_query::encode_instance_page(&page).expect("encode");
     // 截断 → 拒。
@@ -426,7 +429,8 @@ fn main() int {
     assert_eq!(p.instances[0].demands + p.instances[1].demands, readers * 2);
     // 冷编译总求解 = 3 个体（main + 两实例）——读者数不放大求解。
     assert_eq!(
-        session.counters().solver_runs, 3,
+        session.counters().solver_runs,
+        3,
         "readers share instances; solves stay per-function"
     );
 }

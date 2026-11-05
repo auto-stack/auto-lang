@@ -40,12 +40,18 @@ use ace_source_query::{apply::BodyTypeSupply, SourceQuerySession};
 pub struct CtProduct {
     pub checked: CheckedModule,
     /// The fully substituted program (every hash site replaced by its
-    /// frozen literal — the structural backfill itself).
+    /// frozen literal — the structural backfill itself). Under the
+    /// instances lane this is the DESUGARED concrete program (templates
+    /// removed, instances placed, calls rebound), post-backfill.
     pub program: Program,
     pub served: ServedRoot,
     /// The fact supply of the substituted program's bodies (hosts that
     /// retain a checked environment seed from the same facts).
     pub supply: BodyTypeSupply,
+    /// PLAN-936 T-08: the instances this compile produced (empty outside
+    /// the instances lane). Hosts that pin per-instance implementation
+    /// versions read their identity from here.
+    pub instances: Vec<ace_source_query::instances::InstanceRecord>,
 }
 
 /// Why a CT product compile failed.
@@ -79,9 +85,17 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
     package: &str,
     module: &str,
 ) -> Result<CtProduct, CtProductError> {
+    // 0) PLAN-936 T-08: the instances lane — a template-carrying module
+    //    concretizes FIRST (935's real instances; the CT demands then run
+    //    against the concrete instance bodies, whose structural versions
+    //    ride the execution key's closure axis — a template body edit or
+    //    an inner CT value flip re-keys the outer demand).
+    let instances_lane = capabilities
+        .iter()
+        .any(|c| c == ace_core::source::cst::INSTANCES_CAPABILITY);
     // 1) CT-face parse (the caps front door; meta selectors need the meta
     //    capability riding the same list).
-    let program = match parse_front_with_caps(
+    let parsed = match parse_front_with_caps(
         FrontRequest {
             src,
             profile: SourceProfile::Scalar,
@@ -108,6 +122,19 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
                 ace_core::atom_text::Span { start: 0, end: 0 },
             )]))
         }
+    };
+    let (program, instances) = if instances_lane {
+        match ace_source_query::instances::instantiate_program(
+            &parsed,
+            package,
+            module,
+            capabilities,
+        ) {
+            Ok(out) => (out.program, out.instances),
+            Err(ds) => return Err(CtProductError::Diagnostics(ds)),
+        }
+    } else {
+        (parsed, Vec::new())
     };
     // 2) Serve every demand under one shared root budget.
     let served = serve_program(
@@ -150,6 +177,7 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
         program: substituted,
         served,
         supply,
+        instances,
     })
 }
 

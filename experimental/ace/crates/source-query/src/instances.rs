@@ -344,6 +344,8 @@ fn rebind_self_stmt(s: &mut Stmt, self_name: &str, concrete: &str) {
 
 fn rebind_self_expr(e: &mut Expr, self_name: &str, concrete: &str) {
     match &mut e.kind {
+        // PLAN-936（T-08）：CT 需求原子内的模板调用同样重绑到具体实例。
+        ExprKind::HashExpr { expr: inner } => rebind_self_expr(inner, self_name, concrete),
         ExprKind::Call { callee, args } => {
             if callee.name == self_name {
                 callee.name = concrete.to_string();
@@ -787,6 +789,21 @@ fn rebind_expr_callsites_owned(
 ) -> usize {
     let mut n = 0;
     match &mut e.kind {
+        // PLAN-936（T-08）：CT 需求原子内的模板调用点同样重绑。hash 对
+        // 推理透明（其投影=inner 的形状挂在 hash 的 span 上），故需求
+        // 调用点以 hash span 为键——命中则重绑 inner 的直接调用。
+        ExprKind::HashExpr { expr: inner } => {
+            let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
+            if let Some((tpl, name)) = span_to_name.get(&key) {
+                if let ExprKind::Call { callee, .. } = &mut inner.kind {
+                    if &callee.name == tpl {
+                        callee.name = name.clone();
+                        n += 1;
+                    }
+                }
+            }
+            n += rebind_expr_callsites_owned(inner, owner, span_to_name);
+        }
         ExprKind::Call { callee, args } => {
             let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
             if let Some((tpl, name)) = span_to_name.get(&key) {

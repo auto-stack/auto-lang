@@ -1020,3 +1020,189 @@ fn main() int {
         assert_eq!(v, ace_av_core::contract::Value::I32(42));
     }
 }
+
+// -- T-08: instances composition + checked-child transitive versions -------
+
+fn compile_ct_caps(
+    src: &str,
+    caps: &[&str],
+) -> (crate::product::CtProduct, CtService<MemoryEnvelopeSink>) {
+    let caps: Vec<String> = caps.iter().map(|s| s.to_string()).collect();
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let out =
+        compile_scalar_ct(&mut svc, src, "m.at", &caps, "pkg", "mod").expect("ct product compiles");
+    (out, svc)
+}
+
+/// V-04：935 真实实例 CT——`#{ choose(40,42,false) }`=42；模板换体（调用
+/// 点不改）→ 实例体版本变 → 外层 CT 重执行 → 40。无关读者零执行。
+#[test]
+fn t08_instance_composition_choose_flips_with_the_template_body() {
+    const V1: &str = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    return #{ choose(40, 42, false) }
+}
+";
+    const V2: &str = "\
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return b }
+    return a
+}
+fn main() int {
+    return #{ choose(40, 42, false) }
+}
+";
+    let caps = ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"];
+    let (p1, svc1) = compile_ct_caps(V1, &caps);
+    assert_eq!(svc1.counters().ct_execute, 1, "one real AV run");
+    assert_eq!(p1.instances.len(), 1, "the template produced its instance");
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p1.checked,
+        "d_main",
+        21,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(42));
+
+    // 模板换体（main 调用点字节不变）：实例体结构版本变 → 新键 → 真重执行 40。
+    let (p2, svc2) = compile_ct_caps(V2, &caps);
+    assert_eq!(
+        svc2.counters().ct_execute,
+        1,
+        "the edited template really re-executed (fresh service)"
+    );
+    let (v2, _) = crate::executor::run_entry_on_av(
+        &p2.checked,
+        "d_main",
+        22,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end v2");
+    assert_eq!(v2, ace_av_core::contract::Value::I32(40));
+}
+
+/// V-11/§5.7 组合例：flag 内层 CT → pick<T> 实例 checked 有效实现 → 外层
+/// CT。只改 flag 返回（模板与 outer 调用点源码不改）：内层 CT true→false、
+/// 实例体（含回灌常量）版本过时、外层 CT 重执行 40→42——checked-child
+/// 传递版本沿替换体结构版本轴真实成立；源码 hash-only 缓存在此必 miss。
+#[test]
+fn t08_inner_ct_flip_stales_the_instance_and_reexecutes_the_outer() {
+    const V1: &str = "\
+fn flag() bool {
+    return true
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}
+";
+    const V2: &str = "\
+fn flag() bool {
+    return false
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}
+";
+    let caps = ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"];
+    let (p1, svc1) = compile_ct_caps(V1, &caps);
+    // 两个 CT 需求都真实执行：内层 flag() + 外层 pick 实例。
+    assert_eq!(
+        svc1.counters().ct_execute,
+        2,
+        "inner flag demand + outer pick demand both really executed"
+    );
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p1.checked,
+        "d_main",
+        23,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(
+        v,
+        ace_av_core::contract::Value::I32(40),
+        "flag=true -> a=40"
+    );
+
+    // 只改 flag 体：内层 CT false → pick 实例体（回灌常量变）版本变 →
+    // 外层键变 → 两级真实重执行 → 42。
+    let (p2, svc2) = compile_ct_caps(V2, &caps);
+    assert_eq!(
+        svc2.counters().ct_execute,
+        2,
+        "both demands re-executed for the flipped chain"
+    );
+    let (v2, _) = crate::executor::run_entry_on_av(
+        &p2.checked,
+        "d_main",
+        24,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end v2");
+    assert_eq!(
+        v2,
+        ace_av_core::contract::Value::I32(42),
+        "flag=false -> b=42"
+    );
+}
+
+/// 同服务内 V1→V2（同一 store）：flag 的键变（body 版本轴）真 miss；V1
+/// 的外层键与 V2 的外层键不同（实例体回灌常量不同）——都重执行非假 hit。
+#[test]
+fn t08_chain_edits_miss_on_the_shared_store() {
+    const V1: &str = "\
+fn flag() bool {
+    return true
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}
+";
+    const V2: &str = "\
+fn flag() bool {
+    return false
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}
+";
+    let caps: Vec<String> = ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let _p1 = compile_scalar_ct(&mut svc, V1, "m.at", &caps, "pkg", "mod").expect("v1");
+    assert_eq!(svc.counters().ct_execute, 2);
+    let _p2 = compile_scalar_ct(&mut svc, V2, "m.at", &caps, "pkg", "mod").expect("v2");
+    assert_eq!(
+        svc.counters().ct_execute,
+        4,
+        "the flag edit + the instance-body stale re-key both really re-executed (no false hits)"
+    );
+    assert_eq!(svc.counters().ct_hits, 0, "nothing mis-hit across the edit");
+}

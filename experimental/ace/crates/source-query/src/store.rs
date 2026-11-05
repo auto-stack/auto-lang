@@ -183,6 +183,8 @@ const KINDS: &[&str] = &[
     "expr.call",
     "expr.binary",
     "expr.unary",
+    // PLAN-936（T-08）：CT 需求原子（类型=inner 的类型）。
+    "expr.hash",
 ];
 
 fn kind_index(kind: &str) -> Result<u8, PageReadError> {
