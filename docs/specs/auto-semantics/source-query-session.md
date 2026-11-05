@@ -143,3 +143,15 @@ required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set�
 单函数与批量路径在拒绝、丢弃、取消或发布失败后均保留current缓存，只有成功commit安装候选缓存。
 真实求解计数和请求revision持续累计，不随候选回滚；失败A后首次编辑独立B仍只求解B。
 批量签名拒绝沿模块源映射保留模块身份和原文byte span，与单函数入口一致。
+
+## CT 挂起/恢复与冻结回灌（PLAN-936，SD-04）
+
+- HashExpr 是事实面一等节点（kind `expr.hash`，结构身份含包裹；**对推理透明**
+  ——hash 类型=inner 类型，页 codec 携带该 kind）。fields-only record 声明是
+  meta 源形状：catalog/produce/restore/apply 按 fn 逐体定型时跳过 Type 项
+  （core resolve 仍注册 rec_index 供 selector 验证）。
+- 回灌=同一事实车道：CT 值结构替换 hash 位→字面量后，`bind_with_facts`/
+  emit/verify 照常（查询层为类型权威，HIR 与普通车道同产物）。实例 lane 先
+  真实 concretize（935），hash 内模板调用点按 hash-span 键重绑到具体实例。
+- CT 挂起/恢复沿 934 会话身份：冻结 envelope 经统一 store 跨上下文复用
+  （hit 零 AV、R 窗真实读计量），实例/闭包版本轴经执行键闭包传递。

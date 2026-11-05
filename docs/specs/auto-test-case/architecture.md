@@ -362,3 +362,15 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
   terminal `ok`事件）；driver errors/零选择/伪PASS/取消超时（exit 124/meter error）一律红；
   外部杀driver遗留stale lease→后续运行fail-closed拒跑（WinError 183），人工恢复路径成立——
   该行为经刻意取消控制实证（PLAN-893 T-02）。
+
+
+## 普通源码 CT 证据（PLAN-936，SD-05）
+
+- 新 case 族 `ace-m1/source-cte-936/`（suite `ace-m1-source-cte-936`，组
+  `case-ace-source-cte-936`）：复用既有 recipe（`ac-av/core-run-v1`、
+  `ac/mir-native-scalar-v1`），caps 携带 `ac.source.cte.scalar/v1`（+
+  instances/meta）。闭式 oracle 独立手算（42/43、bool 分支、meta 2→3、模板
+  42、链 40）；调用点不改的体编辑翻值即依赖失效的反例。
+- 新服务包 `ace-source-cte` 的单元/集成职责显式入 `ace-comptime` 固定组
+  （被依赖编译≠测试已执行）；负例（未服务/环/deadline/禁调/篡改 envelope/
+  恢复 R 窗/首坏修复）由该组包测试承载。旧 817 recipe/证书不受新面影响。
