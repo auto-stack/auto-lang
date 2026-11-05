@@ -34,6 +34,7 @@ pub struct PreparedPublication {
     exe_digest: String,
     owner: u64,
     base: u64,
+    work: Vec<Work>,
 }
 fn cancelled(cancel: Option<&AtomicBool>) -> Result<(), String> {
     if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
@@ -162,6 +163,7 @@ impl Session {
             Edit::Foreign(foreign) => foreign.source.source().unwrap_or(self.front.source()),
             _ => self.front.source(),
         };
+        let mut work = Vec::new();
         let exe = link_artifacts(
             directory,
             self.target,
@@ -171,6 +173,8 @@ impl Session {
             &self.runtime,
             &artifacts,
             &mut self.meter,
+            &self.front.work(),
+            &mut work,
         )?;
         cancelled(cancel)?;
         qualify(environment, &self.runtime_identity, self.target, current)?;
@@ -187,6 +191,7 @@ impl Session {
             exe_digest,
             owner: self.id,
             base: self.generation,
+            work,
         })
     }
     pub fn restore_authorized(
@@ -314,6 +319,9 @@ impl Session {
             Edit::Current => {}
             Edit::Body(body) => self.commit(body)?,
             Edit::Foreign(foreign) => self.commit_foreign(foreign)?,
+        }
+        for output in prepared.work {
+            output.accept();
         }
         Ok(stored)
     }

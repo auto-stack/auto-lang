@@ -2178,3 +2178,186 @@ fn source_foreign_formal_restart_first_error_repair_preserves_structured_diagnos
         assert_eq!(report["reference_exit"], 42);
     }
 }
+
+#[test]
+fn source_foreign_history_hits_before_lowering_and_uses_original_a2x_cache_after_restart() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("target-history");
+    let (object, environment) = provider(&root, 0);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into()];
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    for target in [Target::Native, Target::C] {
+        let dir = root.join(format!("{target:?}"));
+        let store = ace_artifacts::store::ManagedStore::open(&dir).unwrap();
+        let mut session = Session::cold_stored(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+            &store,
+        )
+        .unwrap();
+        let a = session.artifact_bytes("main").unwrap().clone();
+        let independent = session.artifact_bytes("independent").unwrap().clone();
+        let edit = session
+            .prepare("main", "fn main() int { return foreign_add(20,23) }")
+            .unwrap();
+        session.commit(edit).unwrap();
+        let before = session.function_meter("main");
+        let edit = session
+            .prepare("main", "fn main() int { return foreign_add(20,22) }")
+            .unwrap();
+        session.commit(edit).unwrap();
+        let after = session.function_meter("main");
+        assert_eq!(after.mir_attempts, before.mir_attempts);
+        assert_eq!(after.native_attempts, before.native_attempts);
+        assert_eq!(after.c_attempts, before.c_attempts);
+        assert_eq!(after.cache_hits, before.cache_hits + 1);
+        assert!(Arc::ptr_eq(&a, session.artifact_bytes("main").unwrap()));
+        assert!(Arc::ptr_eq(
+            &independent,
+            session.artifact_bytes("independent").unwrap()
+        ));
+        let edit = session
+            .prepare("main", "fn main() int { return foreign_add(20,23) }")
+            .unwrap();
+        session.commit(edit).unwrap();
+        let snapshot = session
+            .snapshot()
+            .unwrap()
+            .publish(&store, "history-current", None)
+            .unwrap();
+        drop(session);
+        let mut restored =
+            Session::restore_stored(&store, &snapshot, target, &caps, environment.clone()).unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        let work = restored.frontend().work();
+        assert!(work.rows().iter().all(|r| r.totals.p == 0));
+        let nonreader = work
+            .rows()
+            .into_iter()
+            .filter(|r| r.owner == "independent")
+            .map(|r| (r.stage, r.totals))
+            .collect::<Vec<_>>();
+        let edit = restored
+            .prepare("main", "fn main() int { return foreign_add(20,22) }")
+            .unwrap();
+        restored.commit(edit).unwrap();
+        let meter = restored.function_meter("main");
+        assert_eq!(
+            meter.mir_attempts + meter.native_attempts + meter.c_attempts,
+            0
+        );
+        assert_eq!(meter.cache_hits, 1);
+        assert!(meter.cache_bytes_read > 0);
+        assert_eq!(
+            restored.artifact_bytes("main").unwrap().as_slice(),
+            a.as_slice()
+        );
+        assert_eq!(restored.function_meter("independent"), Default::default());
+        assert_eq!(
+            nonreader,
+            work.rows()
+                .into_iter()
+                .filter(|r| r.owner == "independent")
+                .map(|r| (r.stage, r.totals))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            restored.run(&dir.join("restored-a")).unwrap().exit_code,
+            Some(42)
+        );
+        assert_eq!(work.totals("*", "shared-assembly").p, 1);
+        assert_eq!(work.totals("*", "compile-link-tool").p, 1);
+        assert!(work.totals("*", "assembly-output").written_bytes > 0);
+        if target == Target::C {
+            // Remove only the new wrapper cache. AXCF1 remains the canonical
+            // C fragment owner: B must still hit its original A2X store port.
+            store.purge_layer("S938F").unwrap();
+            let before = restored.function_meter("main");
+            let edit = restored
+                .prepare("main", "fn main() int { return foreign_add(20,23) }")
+                .unwrap();
+            restored.commit(edit).unwrap();
+            let after = restored.function_meter("main");
+            assert_eq!(after.c_attempts, before.c_attempts);
+            assert_eq!(after.c_produced, before.c_produced);
+            assert_eq!(after.cache_hits, before.cache_hits + 1);
+            assert_eq!(
+                restored.run(&dir.join("original-a2x-b")).unwrap().exit_code,
+                Some(43)
+            );
+        }
+    }
+}
+
+#[test]
+fn source_foreign_work_tracks_target_discard_accept_and_unchanged_publication_payload_io() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("work-disposition");
+    let (object, environment) = provider(&root, 0);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into()];
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    for target in [Target::Native, Target::C] {
+        let store =
+            ace_artifacts::store::ManagedStore::open(&root.join(format!("{target:?}"))).unwrap();
+        let mut session = Session::cold_stored(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+            &store,
+        )
+        .unwrap();
+        let before = session
+            .snapshot()
+            .unwrap()
+            .publish(&store, "disposition", None)
+            .unwrap();
+        let work = session.frontend().work();
+        let old = work.totals("main", "target-encode");
+        let unchanged_io = work.totals("independent", "store-leaf");
+        let dropped = session
+            .prepare("main", "fn main() int { return foreign_add(21,22) }")
+            .unwrap();
+        let pending = work.totals("main", "target-encode");
+        assert_eq!(pending.produced, old.produced + 1);
+        assert_eq!(pending.pending, 1);
+        assert_eq!(pending.accepted, old.accepted);
+        drop(dropped);
+        assert_eq!(
+            work.totals("main", "target-encode").discarded,
+            old.discarded + 1
+        );
+        assert_eq!(session.frontend().source(), source);
+        let accepted = session
+            .prepare("main", "fn main() int { return foreign_add(22,22) }")
+            .unwrap();
+        session.commit(accepted).unwrap();
+        session
+            .snapshot()
+            .unwrap()
+            .publish(&store, "disposition", Some(&before))
+            .unwrap();
+        let t = work.totals("main", "target-encode");
+        assert_eq!(t.accepted, old.accepted + 1);
+        assert_eq!(t.pending, 0);
+        assert_eq!(t.accepted + t.discarded, t.produced);
+        let io = work.totals("independent", "store-leaf");
+        assert_eq!(
+            (io.read_bytes, io.written_bytes),
+            (unchanged_io.read_bytes, unchanged_io.written_bytes)
+        );
+        assert_eq!(io.reused, unchanged_io.reused + 2); // required facts and target pages
+    }
+}

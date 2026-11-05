@@ -121,6 +121,9 @@ fn scalar(family: Family) -> Result<(), A2xReject> {
     }
 }
 impl TargetProvider for ForeignTargetProvider {
+    fn validate_view(&self, view: &SemanticView<'_>) -> Result<(), A2xReject> {
+        self.admit(view)
+    }
     fn descriptor(&self) -> TargetDescriptor {
         TargetDescriptor {
             lang: "c",

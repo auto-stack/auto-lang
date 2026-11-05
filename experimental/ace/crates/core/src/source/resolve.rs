@@ -2732,6 +2732,7 @@ pub(crate) fn recheck_swap_with_supply(
         entry: resolved,
         pools: None,
     };
+    crate::body_work::record_produced("resolve", &sig_key);
     if env.profile == SourceProfile::Collections {
         previous.pools = Some(BodyTypePools {
             lists: coll.lists,

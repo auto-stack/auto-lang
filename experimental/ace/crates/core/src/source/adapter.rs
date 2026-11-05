@@ -1379,6 +1379,7 @@ impl PlanCtx<'_> {
                 }
             };
         }
+        crate::body_work::record_produced("hir-plan", &f.work_key(&self.program.records));
         plan
     }
 

@@ -1742,6 +1742,9 @@ impl<'d> Binder<'d> {
         };
         let _ = (loop_sibs, place_sibs); // reserved for future ref categories
 
+        if let Some(name) = id_text.strip_prefix("b_") {
+            crate::body_work::record_produced("hir-bind", name);
+        }
         hir::Body {
             id_text,
             owner,

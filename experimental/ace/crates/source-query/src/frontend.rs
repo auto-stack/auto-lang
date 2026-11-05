@@ -116,10 +116,11 @@ pub struct Checkpoint {
     pub pages: BTreeMap<String, Page>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ColdObservation {
     pub whole_parse_attempts: u64,
     pub queries: crate::Counters,
+    pub work: crate::work::Ledger,
 }
 
 struct Resident {
@@ -141,6 +142,7 @@ pub struct Frontend {
     residents: BTreeMap<String, Resident>,
     meter: Meter,
     per_function: BTreeMap<String, Meter>,
+    work: crate::work::Ledger,
 }
 
 /// Prepared HIR + an opaque core transaction. No source/environment/current
@@ -150,12 +152,14 @@ pub struct Candidate {
     semantic: FnCandidate,
     checked: CheckedFunction,
     resident: Resident,
+    work: Vec<crate::work::Work>,
 }
 
 pub struct ForeignBody {
     semantic: FnCandidate,
     checked: CheckedFunction,
     resident: Resident,
+    work: Vec<crate::work::Work>,
 }
 impl ForeignBody {
     pub fn owner(&self) -> &str {
@@ -174,6 +178,7 @@ pub struct ForeignCandidate {
     signatures: SignatureCatalog,
     bodies: Vec<ForeignBody>,
     syntax: Option<StagedCandidate>,
+    work: Vec<crate::work::Work>,
 }
 impl ForeignCandidate {
     pub fn source(&self) -> Option<&str> {
@@ -233,16 +238,21 @@ impl Frontend {
             return Err(reject("source budget"));
         }
         observation.whole_parse_attempts += 1;
+        let work = observation.work.clone();
+        let parse = work.begin("*", "whole-project", crate::work::Phase::Production);
         let catalog =
             UnitCatalog::build(source, SourceProfile::Scalar, FrontBudget::WORK_OWNED_64MIB)
                 .map_err(syntax_error)?;
+        parse.complete(1);
         if catalog.fns.len() > MAX_FUNCTIONS {
             return Err(reject("function budget"));
         }
         let mut queries = SourceQuerySession::new(package, module)
+            .with_work(work.clone())
             .with_capabilities(capabilities.iter().cloned());
         queries.set_foreign(Some(foreign.clone()));
         observation.whole_parse_attempts += 1;
+        let module_work = work.begin("*", "whole-frontend", crate::work::Phase::Production);
         let product = crate::compile_scalar_product(
             source,
             module,
@@ -254,6 +264,7 @@ impl Frontend {
         .map_err(Error::Diagnostics);
         observation.queries = queries.counters();
         let product = product?;
+        module_work.complete(1);
         // Cold catalog already owns these syntax nodes. Preserve declaration
         // order rather than parsing the module a third time for retained env.
         let mut items: Vec<_> = catalog.fns.values().collect();
@@ -284,6 +295,11 @@ impl Frontend {
                 .resident_page(&item.name.name)
                 .ok_or_else(|| reject("missing cold fact"))?;
             let walk = crate::walk_body(&item.body).map_err(reject)?;
+            let page_work = work.begin(
+                &item.name.name,
+                "facts-encode",
+                crate::work::Phase::Production,
+            );
             let resident = encode_resident(
                 facts,
                 deps,
@@ -293,6 +309,7 @@ impl Frontend {
                 capabilities,
                 &source[s.span.start..s.span.end],
             )?;
+            page_work.complete(1);
             residents.insert(item.name.name.clone(), resident);
             per_function.insert(
                 item.name.name.clone(),
@@ -322,16 +339,23 @@ impl Frontend {
                 residents,
                 meter,
                 per_function,
+                work,
             },
             product.compiled.checked,
         ))
     }
 
+    pub fn work(&self) -> crate::work::Ledger {
+        self.work.clone()
+    }
     pub fn source(&self) -> &str {
         self.catalog.src()
     }
     pub fn module(&self) -> &str {
         &self.module
+    }
+    pub fn package(&self) -> &str {
+        &self.package
     }
     /// Locate one edited owner using the already admitted unit directory and
     /// byte replacement extent. This is source-map metadata work, never a
@@ -430,6 +454,10 @@ impl Frontend {
         {
             return Err(reject("source budget"));
         }
+        let mut work = Vec::new();
+        let mut projection = self
+            .work
+            .begin(owner, "project", crate::work::Phase::Production);
         self.meter.body_parse_attempts += 1;
         self.per_function
             .entry(owner.into())
@@ -439,6 +467,8 @@ impl Frontend {
             .catalog
             .stage_owner_edit(owner, declaration, FrontBudget::WORK_OWNED_64MIB)
             .map_err(syntax_error)?;
+        projection.produced(syntax.produced() as u64);
+        work.push(projection);
         self.meter.body_parse_produced += syntax.produced() as u64;
         self.per_function
             .entry(owner.into())
@@ -462,7 +492,12 @@ impl Frontend {
             ));
         }
         let mut supply = BodyTypeSupply::new().with_foreign(self.foreign.clone());
+        let mut application = self
+            .work
+            .begin(owner, "facts-apply", crate::work::Phase::Production);
         supply.add_body(&item.body, &answer.facts).map_err(reject)?;
+        application.produced(1);
+        work.push(application);
         let slot = resolve::env_free_fn_index(&self.env, owner)
             .ok_or_else(|| reject("unknown semantic slot"))?;
         self.meter.hir_attempts += 1;
@@ -470,21 +505,34 @@ impl Frontend {
             .entry(owner.into())
             .or_default()
             .hir_attempts += 1;
-        let semantic = prepare_candidate_document_with_supply(
-            &mut self.env,
-            item,
-            slot,
-            syntax.new_src(),
-            &self.module,
-            Some(&supply),
-        )
-        .map_err(Error::Diagnostics)?;
+        let mut hir_work = self
+            .work
+            .begin(owner, "hir-document", crate::work::Phase::Production);
+        let (semantic, core_work) = self.work.observe_core(|| {
+            prepare_candidate_document_with_supply(
+                &mut self.env,
+                item,
+                slot,
+                syntax.new_src(),
+                &self.module,
+                Some(&supply),
+            )
+        });
+        work.extend(core_work);
+        let semantic = semantic.map_err(Error::Diagnostics)?;
+        hir_work.produced(semantic.receipt().real_body_plans as u64);
+        work.push(hir_work);
+        let mut verify_work = self
+            .work
+            .begin(owner, "hir-verify", crate::work::Phase::Production);
         let checked = ace_core::verify::verify_foreign_function(
             &semantic.parts().bundle,
             slot,
             &self.foreign,
         )
         .map_err(Error::Diagnostics)?;
+        verify_work.produced(1);
+        work.push(verify_work);
         self.meter.hir_produced += semantic.receipt().real_body_plans as u64;
         self.per_function
             .entry(owner.into())
@@ -500,6 +548,9 @@ impl Frontend {
             .entry(owner.into())
             .or_default()
             .page_encode_attempts += 1;
+        let mut page_work = self
+            .work
+            .begin(owner, "facts-encode", crate::work::Phase::Production);
         let resident = encode_resident(
             &answer.facts,
             deps,
@@ -509,6 +560,8 @@ impl Frontend {
             &self.capabilities,
             declaration,
         )?;
+        page_work.produced(1);
+        work.push(page_work);
         self.meter.page_produced += 1;
         self.per_function
             .entry(owner.into())
@@ -519,6 +572,7 @@ impl Frontend {
             semantic,
             checked,
             resident,
+            work,
         })
     }
 
@@ -569,8 +623,12 @@ impl Frontend {
             .signatures
             .replace_foreign(&self.foreign, &foreign)
             .map_err(reject)?;
+        let mut work = Vec::new();
         let syntax = if let Some(source) = source.filter(|s| *s != self.source()) {
             let (owner, declaration) = self.owner_replacement(source)?;
+            let mut projection = self
+                .work
+                .begin(&owner, "project", crate::work::Phase::Production);
             self.meter.body_parse_attempts += 1;
             self.per_function
                 .entry(owner.clone())
@@ -580,6 +638,8 @@ impl Frontend {
                 .catalog
                 .stage_owner_edit(&owner, &declaration, FrontBudget::WORK_OWNED_64MIB)
                 .map_err(syntax_error)?;
+            projection.produced(syntax.produced() as u64);
+            work.push(projection);
             self.meter.body_parse_produced += syntax.produced() as u64;
             self.per_function
                 .entry(owner.clone())
@@ -617,10 +677,19 @@ impl Frontend {
         let result = (|| {
             let mut bodies = Vec::new();
             for name in readers {
+                let mut body_work = Vec::new();
+
                 let parse = self
                     .catalog
                     .reader_projection_required(&name, syntax.as_ref())
                     .map_err(reject)?;
+                let mut projection = parse.then(|| {
+                    self.work
+                        .begin(&name, "project", crate::work::Phase::Production)
+                });
+                if !parse {
+                    self.work.reuse(&name, "project", 1);
+                }
                 if parse {
                     self.meter.body_parse_attempts += 1;
                     self.per_function
@@ -632,6 +701,10 @@ impl Frontend {
                     .catalog
                     .owner_for_staged_recheck(&name, syntax.as_ref(), FrontBudget::WORK_OWNED_64MIB)
                     .map_err(syntax_error)?;
+                if let Some(mut projection) = projection.take() {
+                    projection.produced(produced as u64);
+                    body_work.push(projection);
+                }
                 self.meter.body_parse_produced += produced as u64;
                 self.per_function
                     .entry(name.clone())
@@ -648,7 +721,12 @@ impl Frontend {
                     ));
                 }
                 let mut supply = BodyTypeSupply::new().with_foreign(foreign.clone());
+                let mut apply_work =
+                    self.work
+                        .begin(&name, "facts-apply", crate::work::Phase::Production);
                 supply.add_body(&item.body, &answer.facts).map_err(reject)?;
+                apply_work.produced(1);
+                body_work.push(apply_work);
                 let slot = resolve::env_free_fn_index(&self.env, &name)
                     .ok_or_else(|| reject("unknown reader slot"))?;
                 self.meter.hir_attempts += 1;
@@ -656,8 +734,11 @@ impl Frontend {
                     .entry(name.clone())
                     .or_default()
                     .hir_attempts += 1;
-                let semantic = context
-                    .prepare_document(
+                let mut hir_work =
+                    self.work
+                        .begin(&name, "hir-document", crate::work::Phase::Production);
+                let (semantic, core_work) = self.work.observe_core(|| {
+                    context.prepare_document(
                         &mut self.env,
                         &item,
                         slot,
@@ -665,13 +746,22 @@ impl Frontend {
                         &self.module,
                         &supply,
                     )
-                    .map_err(Error::Diagnostics)?;
+                });
+                body_work.extend(core_work);
+                let semantic = semantic.map_err(Error::Diagnostics)?;
+                hir_work.produced(semantic.receipt().real_body_plans as u64);
+                body_work.push(hir_work);
+                let mut verify_work =
+                    self.work
+                        .begin(&name, "hir-verify", crate::work::Phase::Production);
                 let checked = ace_core::verify::verify_foreign_function(
                     &semantic.parts().bundle,
                     slot,
                     &foreign,
                 )
                 .map_err(Error::Diagnostics)?;
+                verify_work.produced(1);
+                body_work.push(verify_work);
                 self.meter.hir_produced += semantic.receipt().real_body_plans as u64;
                 self.per_function
                     .entry(name.clone())
@@ -687,6 +777,9 @@ impl Frontend {
                     .entry(name.clone())
                     .or_default()
                     .page_encode_attempts += 1;
+                let mut page_work =
+                    self.work
+                        .begin(&name, "facts-encode", crate::work::Phase::Production);
                 let resident = encode_resident(
                     &answer.facts,
                     deps,
@@ -696,6 +789,8 @@ impl Frontend {
                     &self.capabilities,
                     &candidate_source[item.span.start..item.span.end],
                 )?;
+                page_work.produced(1);
+                body_work.push(page_work);
                 self.meter.page_produced += 1;
                 self.per_function
                     .entry(name.clone())
@@ -705,6 +800,7 @@ impl Frontend {
                     semantic,
                     checked,
                     resident,
+                    work: body_work,
                 });
             }
             Ok(bodies)
@@ -716,6 +812,7 @@ impl Frontend {
             signatures,
             bodies: result?,
             syntax,
+            work,
         })
     }
     pub fn validate_foreign(&self, candidate: &ForeignCandidate) -> Result<(), Error> {
@@ -731,8 +828,11 @@ impl Frontend {
         self.validate_foreign(&candidate)?;
         let mut semantics = Vec::with_capacity(candidate.bodies.len());
         let mut residents = Vec::with_capacity(candidate.bodies.len());
+        let mut work = candidate.work;
         for body in candidate.bodies {
-            residents.push((body.owner().to_string(), body.resident));
+            let owner = body.owner().to_string();
+            work.extend(body.work);
+            residents.push((owner, body.resident));
             semantics.push(body.semantic);
         }
         ace_core::source::adapter::commit_foreign_candidates(
@@ -750,6 +850,9 @@ impl Frontend {
         self.signatures = candidate.signatures;
         self.queries.set_foreign(Some(candidate.foreign.clone()));
         self.foreign = candidate.foreign;
+        for entry in work {
+            entry.accept();
+        }
         Ok(())
     }
 
@@ -766,6 +869,9 @@ impl Frontend {
             .commit_staged(candidate.syntax)
             .map_err(reject)?;
         self.residents.insert(name, candidate.resident);
+        for entry in candidate.work {
+            entry.accept();
+        }
         Ok(())
     }
 
@@ -831,6 +937,9 @@ impl Frontend {
         overrides: &BTreeMap<String, &Resident>,
         changed_item: Option<&ace_core::source::ast::FnItem>,
     ) -> Result<Checkpoint, Error> {
+        let metadata = self
+            .work
+            .begin("*", "checkpoint", crate::work::Phase::Metadata);
         let source_sha = sha(source.as_bytes());
         let mut env =
             decl_env::decl_env_dump(&self.env, &caps_key(&self.capabilities), &source_sha);
@@ -883,6 +992,7 @@ impl Frontend {
             return Err(reject("root budget"));
         }
         let digest = sha(&root);
+        metadata.complete(1);
         Ok(Checkpoint {
             root,
             digest,
@@ -897,8 +1007,27 @@ impl Frontend {
         expected_digest: &str,
         capabilities: &[String],
         foreign: AdmittedForeign,
-        mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
     ) -> Result<Self, Error> {
+        Self::restore_with_work(
+            root,
+            expected_digest,
+            capabilities,
+            foreign,
+            read,
+            crate::work::Ledger::default(),
+        )
+    }
+    pub fn restore_with_work(
+        root: &[u8],
+        expected_digest: &str,
+        capabilities: &[String],
+        foreign: AdmittedForeign,
+        mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        work: crate::work::Ledger,
+    ) -> Result<Self, Error> {
+        let recovery = work.begin("*", "restore-root", crate::work::Phase::Recovery);
+        work.io("*", "restore-root", root.len() as u64, 0);
         if root.len() > MAX_ROOT_BYTES || sha(root) != expected_digest {
             return Err(reject("root identity or budget"));
         }
@@ -964,16 +1093,19 @@ impl Frontend {
             }
         }
         let mut queries = SourceQuerySession::new(&root.package, &root.module)
+            .with_work(work.clone())
             .with_capabilities(capabilities.iter().cloned());
         queries.set_foreign(Some(foreign.clone()));
         let mut residents = BTreeMap::new();
         let mut meter = Meter::default();
         for (name, edge) in root.edges {
+            let page_work = work.begin(&name, "restore-facts", crate::work::Phase::Recovery);
             let unit = catalog
                 .fns
                 .get(&name)
                 .ok_or_else(|| reject("foreign required owner"))?;
             let bytes = read(&edge.digest).ok_or_else(|| reject("missing required fact page"))?;
+            work.io(&name, "restore-facts", bytes.len() as u64, 0);
             if bytes.len() > MAX_PAGE_BYTES || sha(&bytes) != edge.digest {
                 return Err(reject("required fact content identity"));
             }
@@ -1018,6 +1150,7 @@ impl Frontend {
             queries
                 .seed_with_walk(&signatures, &facts, &walk, &deps)
                 .map_err(reject)?;
+            page_work.accept();
             meter.restore_pages += 1;
             meter.restore_nodes += walk.nodes.len() as u64;
             residents.insert(
@@ -1037,6 +1170,7 @@ impl Frontend {
                 },
             );
         }
+        recovery.accept();
         Ok(Self {
             catalog,
             env,
@@ -1049,6 +1183,7 @@ impl Frontend {
             residents,
             meter,
             per_function: BTreeMap::new(),
+            work,
         })
     }
 }

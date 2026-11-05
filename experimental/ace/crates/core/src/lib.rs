@@ -49,9 +49,48 @@ pub mod body_work {
     thread_local! {
         static COUNTS: RefCell<Option<BTreeMap<String, BodyWork>>> =
             RefCell::new(None);
+        static OBSERVERS: RefCell<Vec<BodyObserver>> = RefCell::new(Vec::new());
+    }
+
+    /// A neutral observation seam: no dependency on a cache, compiler host or
+    /// backend. `produced=false` is entry; `true` is an actual returned output.
+    pub type BodyObserver = std::sync::Arc<dyn Fn(&'static str, &str, bool) + Send + Sync>;
+    fn notify(stage: &'static str, name: &str, produced: bool) {
+        let observers = OBSERVERS.with(|c| c.borrow().clone());
+        for observer in observers {
+            observer(stage, name, produced);
+        }
+    }
+    pub fn record_produced(stage: &'static str, name: &str) {
+        notify(stage, name, true);
+    }
+    /// Observers stack independently of the existing test counters, including
+    /// across unwinding. An inner observation never erases an outer window.
+    pub fn with_body_observer<T>(observer: BodyObserver, f: impl FnOnce() -> T) -> T {
+        struct Scope;
+        impl Drop for Scope {
+            fn drop(&mut self) {
+                OBSERVERS.with(|c| {
+                    c.borrow_mut().pop();
+                });
+            }
+        }
+        OBSERVERS.with(|c| c.borrow_mut().push(observer));
+        let _scope = Scope;
+        f()
     }
 
     fn record(kind: u8, name: &str) {
+        notify(
+            match kind {
+                0 => "resolve",
+                1 => "legacy-typecheck",
+                2 => "hir-plan",
+                _ => "hir-bind",
+            },
+            name,
+            false,
+        );
         COUNTS.with(|c| {
             if let Some(m) = c.borrow_mut().as_mut() {
                 let e = m.entry(name.to_string()).or_default();

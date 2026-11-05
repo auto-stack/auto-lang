@@ -280,6 +280,66 @@ fn restart(snapshot: &crate::frontend::Checkpoint) -> crate::frontend::Frontend 
 }
 
 #[test]
+fn frontend_work_records_rejected_dropped_and_accepted_candidates_without_nonreader_production() {
+    use crate::frontend::Frontend;
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let (front, _) =
+        Frontend::cold(source, "m938", "p938", &[SOURCE_CAP.into()], environment()).unwrap();
+    let saved = front.checkpoint().unwrap();
+    let mut front = restart(&saved);
+    let work = front.work();
+    assert!(work.rows().iter().all(|r| r.totals.p == 0));
+    assert!(front
+        .prepare("main", "fn main() int { return foreign_add(true,22) }")
+        .is_err());
+    assert_eq!(work.totals("main", "solver").attempted, 1);
+    assert_eq!(work.totals("main", "hir-document").attempted, 0);
+    let (dropped, outer) = ace_core::body_work::capture_body_work(|| {
+        front
+            .prepare("main", "fn main() int { return foreign_add(21,22) }")
+            .unwrap()
+    });
+    let actual = outer.get("main").unwrap();
+    assert_eq!(
+        (actual.resolve, actual.typecheck, actual.plan, actual.bind),
+        (1, 0, 1, 1)
+    );
+    let pending = work.totals("main", "hir-document");
+    assert_eq!(
+        (pending.produced, pending.pending, pending.accepted),
+        (1, 1, 0)
+    );
+    drop(dropped);
+    assert_eq!(work.totals("main", "hir-document").discarded, 1);
+    assert_eq!(work.totals("main", "hir-document").pending, 0);
+    assert_eq!(front.source(), source);
+    let accepted = front
+        .prepare("main", "fn main() int { return foreign_add(22,22) }")
+        .unwrap();
+    front.commit(accepted).unwrap();
+    for stage in [
+        "resolve",
+        "hir-plan",
+        "hir-bind",
+        "project",
+        "facts-apply",
+        "hir-document",
+        "hir-verify",
+        "facts-encode",
+    ] {
+        let t = work.totals("main", stage);
+        assert_eq!(t.accepted + t.discarded + t.pending, t.produced, "{stage}");
+        assert_eq!(t.accepted, 1, "{stage}");
+        assert_eq!(t.pending, 0, "{stage}");
+    }
+    assert!(work
+        .rows()
+        .iter()
+        .filter(|r| r.owner == "independent")
+        .all(|r| r.totals.p == 0 && r.totals.written_bytes == 0));
+}
+
+#[test]
 fn shared_frontend_restores_without_production_and_immediately_edits_one_source_body() {
     use crate::frontend::{Frontend, Meter};
     let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";

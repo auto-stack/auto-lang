@@ -77,6 +77,7 @@ dependencies = [
  "ace-a2x-c",
  "ace-a2x-core",
  "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-artifacts",
  "ace-av-core",
  "ace-core",

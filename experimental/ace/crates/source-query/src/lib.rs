@@ -47,6 +47,7 @@ pub mod restore;
 pub mod session;
 pub mod store;
 pub mod walk;
+pub mod work;
 
 #[cfg(test)]
 mod foreign_tests;

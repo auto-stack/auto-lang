@@ -204,6 +204,32 @@ pub fn produce_infer_body_with_catalog(
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     catalog: Option<&crate::catalog::SignatureCatalog>,
 ) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog_observed(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        catalog,
+        None,
+    )
+}
+
+pub(crate) fn produce_infer_body_with_catalog_observed(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+    work: Option<&crate::work::Ledger>,
+) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
         return Err(ProduceError::Profile {
             what: "empty node budget",
@@ -279,12 +305,16 @@ pub fn produce_infer_body_with_catalog(
     if let Some(flag) = cancel {
         session = session.with_cancel(flag);
     }
+    let solver = work.map(|w| w.begin(name, "solver", crate::work::Phase::Production));
     let outcome = session.infer_function(name);
     let summary = match outcome {
         InferOutcome::Ok(s) | InferOutcome::Diags(s) => s,
         InferOutcome::ResourceExhausted(e) => return Err(ProduceError::Resource(e.to_string())),
         InferOutcome::Cancelled => return Err(ProduceError::Cancelled),
     };
+    if let Some(solver) = solver {
+        solver.complete(1);
+    }
 
     // PLAN-934 T-08 corpus finding: the core parser gives a unary
     // expression the span of its operand, so one span can describe a

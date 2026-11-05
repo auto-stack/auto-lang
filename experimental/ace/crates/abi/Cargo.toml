@@ -32,6 +32,7 @@ ace-foreign-contract = { path = "../foreign-contract" }
 # is abi->a2x only; a2x-* never depends on ace-abi.
 ace-a2x-core = { path = "../a2x-core" }
 ace-a2x-c = { path = "../a2x-c" }
+ace-a2x-store = { path = "../a2x-store" }
 ace-native = { path = "../native" }
 ace-source-query = { path = "../source-query" }
 ace-av-core = { path = "../av-core" }

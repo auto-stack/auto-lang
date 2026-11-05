@@ -16,6 +16,7 @@ use ace_foreign_contract::manual::AdmittedForeign;
 use ace_source_query::frontend::{
     Candidate as SourceCandidate, ForeignCandidate as SourceForeignCandidate, Frontend,
 };
+use ace_source_query::work::{Ledger, Phase, Work};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -60,6 +61,12 @@ pub struct Meter {
     pub page_encodes: u64,
     pub restore_pages: u64,
     pub links: u64,
+    pub cache_hits: u64,
+    pub cache_lookups: u64,
+    pub cache_writes: u64,
+    pub cache_bytes_read: u64,
+    pub cache_bytes_written: u64,
+    pub cache_evictions: u64,
 }
 
 struct Artifact {
@@ -75,6 +82,7 @@ enum TargetWire {
         symbol: String,
         owner_schema: String,
         owner_module: String,
+        semantic: String,
         mir: Vec<u8>,
         coff: Vec<u8>,
     },
@@ -86,6 +94,11 @@ enum TargetWire {
     },
 }
 impl Artifact {
+    fn semantic(&self) -> &str {
+        match &self.decoded {
+            TargetWire::Native { semantic, .. } | TargetWire::C { semantic, .. } => semantic,
+        }
+    }
     fn new(decoded: TargetWire) -> Result<Arc<Self>, String> {
         let bytes = serde_json::to_vec(&decoded).map_err(|e| e.to_string())?;
         if bytes.len() > MAX_ARTIFACT {
@@ -112,6 +125,7 @@ pub struct Session {
     generation: u64,
     meter: Meter,
     per_function: BTreeMap<String, Meter>,
+    cache: function_cache::FunctionCache,
 }
 #[derive(Debug)]
 pub enum PrepareError {
@@ -132,6 +146,7 @@ pub struct Candidate {
     artifact: Arc<Artifact>,
     owner: u64,
     base: u64,
+    work: Vec<Work>,
 }
 pub struct ForeignCandidate {
     source: SourceForeignCandidate,
@@ -139,11 +154,14 @@ pub struct ForeignCandidate {
     provider: Arc<Vec<u8>>,
     owner: u64,
     base: u64,
+    work: Vec<Work>,
 }
 pub struct Snapshot {
     pub root: Vec<u8>,
     pub digest: String,
     pub pages: BTreeMap<String, Arc<Vec<u8>>>,
+    work: Ledger,
+    page_owners: BTreeMap<String, String>,
 }
 
 /// The original managed store remains the ONLY persistence/GC/lease authority.
@@ -189,10 +207,18 @@ impl Snapshot {
         let mut ids = BTreeMap::new();
         let mut leases = Vec::new();
         for (digest, bytes) in &self.pages {
+            let owner = self
+                .page_owners
+                .get(digest)
+                .map(String::as_str)
+                .unwrap_or("*");
             if let Some(id) = previous.and_then(|p| p.pages.get(digest)) {
+                self.work.reuse(owner, "store-leaf", 1);
                 ids.insert(digest.clone(), id.clone());
                 continue;
             }
+            let put = self.work.begin(owner, "store-leaf", Phase::Metadata);
+            self.work.io(owner, "store-leaf", 0, bytes.len() as u64);
             let id = store
                 .put_artifact(PutRequest {
                     layer: LAYER.id,
@@ -203,6 +229,7 @@ impl Snapshot {
                     project: None,
                 })
                 .map_err(|e| e.to_string())?;
+            put.accept();
             leases.push(
                 store
                     .acquire_lease("source938-candidate-page", 120, Some(&id))
@@ -210,6 +237,7 @@ impl Snapshot {
             );
             ids.insert(digest.clone(), id);
         }
+        let root_work = self.work.begin("*", "store-root", Phase::Metadata);
         let wire = StoreRoot {
             schema: SCHEMA.into(),
             digest: self.digest.clone(),
@@ -221,6 +249,7 @@ impl Snapshot {
             return Err("foreign.resource.store-root".into());
         }
         let digest = hash(&payload);
+        self.work.io("*", "store-root", 0, payload.len() as u64);
         let id = store
             .put_artifact(PutRequest {
                 layer: LAYER.id,
@@ -234,6 +263,7 @@ impl Snapshot {
                 project: Some(project.into()),
             })
             .map_err(|e| e.to_string())?;
+        root_work.accept();
         drop(leases);
         Ok(Stored {
             artifact_id: id,
@@ -296,8 +326,12 @@ impl Session {
             },
         )
         .map_err(|e| read_error.unwrap_or(e));
-        drop(lease);
+        let mut restored = restored?;
         restored
+            .cache
+            .attach(&store.root, restored.front.foreign())?;
+        drop(lease);
+        Ok(restored)
     }
     pub fn cold(
         source: &str,
@@ -313,11 +347,49 @@ impl Session {
             .map_err(|e| e.to_string())?;
         Self::from_frontend(front, checked, provider, target)
     }
+    pub fn cold_stored(
+        source: &str,
+        module: &str,
+        package: &str,
+        capabilities: &[String],
+        environment: AdmittedForeign,
+        provider: Arc<Vec<u8>>,
+        target: Target,
+        store: &ManagedStore,
+    ) -> Result<Self, String> {
+        admit_provider(&environment, &provider)?;
+        let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
+            .map_err(|e| e.to_string())?;
+        Self::from_frontend_stored(front, checked, provider, target, store)
+    }
+    pub(crate) fn from_frontend_stored(
+        front: Frontend,
+        checked: ace_core::verify::CheckedModule,
+        provider: Arc<Vec<u8>>,
+        target: Target,
+        store: &ManagedStore,
+    ) -> Result<Self, String> {
+        let mut cache =
+            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
+        cache.attach(&store.root, front.foreign())?;
+        Self::from_frontend_cached(front, checked, provider, target, cache)
+    }
     pub(crate) fn from_frontend(
         front: Frontend,
         checked: ace_core::verify::CheckedModule,
         provider: Arc<Vec<u8>>,
         target: Target,
+    ) -> Result<Self, String> {
+        let cache =
+            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
+        Self::from_frontend_cached(front, checked, provider, target, cache)
+    }
+    fn from_frontend_cached(
+        front: Frontend,
+        checked: ace_core::verify::CheckedModule,
+        provider: Arc<Vec<u8>>,
+        target: Target,
+        mut cache: function_cache::FunctionCache,
     ) -> Result<Self, String> {
         admit_provider(front.foreign(), &provider)?;
         let view = SemanticView::from_checked(&checked).map_err(|e| format!("{e:?}"))?;
@@ -335,53 +407,27 @@ impl Session {
         } else {
             Arc::new(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes().to_vec())
         };
-        match target {
-            Target::Native => {
-                // The real one-function unit lowering is shared by cold and
-                // warm. It reads only the selected body's checked HIR.
-                for f in view.functions() {
-                    let mut counts = Meter::default();
-                    let artifact = native_artifact(
-                        checked.bundle(),
-                        &checked.bundle().modules[0].defs[f.def_index].id_text,
-                        f.source_name,
-                        front.capabilities(),
-                        front.foreign(),
-                        &mut counts,
-                    )?;
-                    add(&mut meter, counts);
-                    per_function.insert(f.source_name.into(), counts);
-                    artifacts.insert(f.source_name.into(), artifact);
-                }
-            }
-            Target::C => {
-                let provider = ForeignTargetProvider::new(front.foreign().clone());
-                for f in view.functions() {
-                    let counts = Meter {
-                        c_attempts: 1,
-                        c_produced: 1,
-                        page_encodes: 1,
-                        ..Meter::default()
-                    };
-                    let text = provider
-                        .produce_fragments(&view, &[f], Family::Scalar)
-                        .map_err(|e| format!("{e:?}"))?
-                        .remove(0);
-                    let semantic = ace_a2x_core::prepare::semantic_fingerprint(&view, f)
-                        .map_err(|e| format!("{e:?}"))?;
-                    artifacts.insert(
-                        f.source_name.into(),
-                        Artifact::new(TargetWire::C {
-                            name: f.source_name.into(),
-                            def_index: f.def_index,
-                            semantic,
-                            text,
-                        })?,
-                    );
-                    add(&mut meter, counts);
-                    per_function.insert(f.source_name.into(), counts);
-                }
-            }
+        let runtime_sha = hash(&runtime);
+        let mut work = Vec::new();
+        for f in view.functions() {
+            let mut counts = Meter::default();
+            let artifact = cached_artifact(
+                target,
+                checked.bundle(),
+                &checked.bundle().modules[0].defs[f.def_index].id_text,
+                f.source_name,
+                front.capabilities(),
+                front.foreign(),
+                &view,
+                f,
+                &mut cache,
+                &runtime_sha,
+                &mut counts,
+                &mut work,
+            )?;
+            add(&mut meter, counts);
+            per_function.insert(f.source_name.into(), counts);
+            artifacts.insert(f.source_name.into(), artifact);
         }
         let session = Self {
             front,
@@ -396,8 +442,12 @@ impl Session {
             generation: 0,
             meter,
             per_function,
+            cache,
         };
         session.admit_resident(0)?;
+        for output in work {
+            output.accept();
+        }
         Ok(session)
     }
     pub fn frontend(&self) -> &Frontend {
@@ -451,6 +501,7 @@ impl Session {
     ) -> Result<Candidate, String> {
         let counts = self.per_function.entry(name.into()).or_default();
         let before = *counts;
+        let mut work = Vec::new();
         let result = selected_artifact(
             self.target,
             source.parts(),
@@ -458,7 +509,10 @@ impl Session {
             name,
             self.front.capabilities(),
             self.front.foreign(),
+            &mut self.cache,
+            &self.runtime_page_id,
             counts,
+            &mut work,
         );
         add(&mut self.meter, difference(*counts, before));
         let artifact = result?;
@@ -468,6 +522,7 @@ impl Session {
             artifact,
             owner: self.id,
             base: self.generation,
+            work,
         })
     }
     pub fn prepare_source(&mut self, source: &str) -> Result<Candidate, String> {
@@ -497,6 +552,9 @@ impl Session {
             .commit(candidate.source)
             .map_err(|e| e.to_string())?;
         self.artifacts.insert(name, candidate.artifact);
+        for output in candidate.work {
+            output.accept();
+        }
         self.generation += 1;
         Ok(())
     }
@@ -556,6 +614,7 @@ impl Session {
     ) -> Result<ForeignCandidate, String> {
         let mut artifacts = BTreeMap::new();
         let mut extra = provider.len();
+        let mut work = Vec::new();
         for body in source.bodies() {
             let name = body.owner();
             let counts = self.per_function.entry(name.into()).or_default();
@@ -567,7 +626,10 @@ impl Session {
                 name,
                 self.front.capabilities(),
                 source.foreign(),
+                &mut self.cache,
+                &self.runtime_page_id,
                 counts,
+                &mut work,
             );
             add(&mut self.meter, difference(*counts, before));
             let artifact = result?;
@@ -583,6 +645,7 @@ impl Session {
             provider,
             owner: self.id,
             base: self.generation,
+            work,
         })
     }
     pub fn validate_foreign(&self, candidate: &ForeignCandidate) -> Result<(), String> {
@@ -603,6 +666,9 @@ impl Session {
         }
         self.provider_page_id = hash(&candidate.provider);
         self.provider = candidate.provider;
+        for output in candidate.work {
+            output.accept();
+        }
         self.generation += 1;
         Ok(())
     }
@@ -623,6 +689,13 @@ impl Session {
         provider_id: &str,
         overrides: &BTreeMap<String, Arc<Artifact>>,
     ) -> Result<Snapshot, String> {
+        let work = self.front.work();
+        let checkpoint = work.begin("*", "target-checkpoint", Phase::Metadata);
+        let mut page_owners: BTreeMap<_, _> = front
+            .pages
+            .iter()
+            .map(|(name, page)| (page.digest.clone(), name.clone()))
+            .collect();
         let mut pages: BTreeMap<_, _> = front
             .pages
             .values()
@@ -633,6 +706,7 @@ impl Session {
         let mut functions = BTreeMap::new();
         for (name, artifact) in &self.artifacts {
             let artifact = overrides.get(name).unwrap_or(artifact);
+            page_owners.insert(artifact.digest.clone(), name.clone());
             pages.insert(artifact.digest.clone(), artifact.bytes.clone());
             functions.insert(name.clone(), artifact.digest.clone());
         }
@@ -655,10 +729,13 @@ impl Session {
         if root.len() > MAX_ROOT {
             return Err("foreign.resource.root".into());
         }
+        checkpoint.accept();
         Ok(Snapshot {
             digest: hash(&root),
             root,
             pages,
+            work,
+            page_owners,
         })
     }
     /// Required-page decode/deep validation only. The caller supplies the
@@ -671,6 +748,9 @@ impl Session {
         environment: AdmittedForeign,
         mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
     ) -> Result<Self, String> {
+        let work = Ledger::default();
+        let recovery = work.begin("*", "restore-target-root", Phase::Recovery);
+        work.io("*", "restore-target-root", root.len() as u64, 0);
         if root.len() > MAX_ROOT || hash(root) != expected {
             return Err("foreign.restore.root".into());
         }
@@ -697,83 +777,40 @@ impl Session {
             Ok(bytes)
         };
         let provider = required(&root.provider)?;
+        let qualification = work.begin("*", "restore-provider", Phase::Recovery);
+        work.io("*", "restore-provider", provider.len() as u64, 0);
         admit_provider(&environment, &provider)?;
+        qualification.accept();
         let runtime = required(&root.runtime)?;
+        work.io("*", "restore-runtime", runtime.len() as u64, 0);
         let front = required(&root.frontend)?;
         let mut read_error = None;
-        let front =
-            Frontend::restore(
-                &front,
-                &root.frontend,
-                capabilities,
-                environment,
-                |id| match required(id) {
-                    Ok(bytes) => Some(bytes),
-                    Err(e) => {
-                        read_error = Some(e);
-                        None
-                    }
-                },
-            )
-            .map_err(|e| read_error.unwrap_or_else(|| e.to_string()))?;
+        let front = Frontend::restore_with_work(
+            &front,
+            &root.frontend,
+            capabilities,
+            environment,
+            |id| match required(id) {
+                Ok(bytes) => Some(bytes),
+                Err(e) => {
+                    read_error = Some(e);
+                    None
+                }
+            },
+            work.clone(),
+        )
+        .map_err(|e| read_error.unwrap_or_else(|| e.to_string()))?;
         let mut artifacts = BTreeMap::new();
         for (name, id) in root.functions {
+            let page_work = work.begin(&name, "restore-target", Phase::Recovery);
             if front.page(&name).is_none() {
                 return Err("foreign.restore.extra-function".into());
             }
             let bytes = required(&id)?;
+            work.io(&name, "restore-target", bytes.len() as u64, 0);
             let decoded: TargetWire = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-            match &decoded {
-                TargetWire::Native {
-                    name: stored,
-                    symbol,
-                    owner_schema,
-                    owner_module,
-                    mir,
-                    coff,
-                } if target == Target::Native && stored == &name => {
-                    // The shared source adapter uses the stable HIR module
-                    // id `m_src`; its logical source path lives separately in
-                    // the authenticated frontend root.
-                    if owner_schema != ace_av_core::contract::MIR_SCHEMA || owner_module != "m_src"
-                    {
-                        return Err("foreign.restore.native-owner".into());
-                    }
-                    // ABC deliberately omits the project/unit owner. Rebind
-                    // it from the authenticated required envelope BEFORE MIR
-                    // admission, as the existing unit-store protocol does.
-                    let mut decoded = ace_av_core::abc::decode_abc(mir)
-                        .map_err(|e| format!("foreign.restore.mir: {e:?}"))?;
-                    decoded.module.owner = ace_av_core::mir::OwnerScope {
-                        schema: owner_schema.clone(),
-                        module: owner_module.clone(),
-                    };
-                    for f in &mut decoded.module.funcs {
-                        f.owner = decoded.module.owner.clone();
-                    }
-                    ace_native::foreign_lower::admit(&decoded.module, front.foreign())?;
-                    if decoded.module.funcs.len() != 1
-                        || decoded.module.funcs[0].name != format!("d_{name}")
-                        || *symbol
-                            != ace_native::symbols::function_symbol(
-                                &decoded.module.owner,
-                                &decoded.module.funcs[0].name,
-                            )
-                        || coff.len() < 20
-                        || coff[..2] != [0x64, 0x86]
-                    {
-                        return Err("foreign.restore.native-identity".into());
-                    }
-                }
-                TargetWire::C {
-                    name: stored, text, ..
-                } if target == Target::C && stored == &name => {
-                    if !text.starts_with("// origin:") || text.lines().nth(1).is_none() {
-                        return Err("foreign.restore.c-fragment".into());
-                    }
-                }
-                _ => return Err("foreign.restore.target-artifact".into()),
-            }
+            validate_target_artifact(target, &name, &decoded, front.foreign())?;
+            page_work.accept();
             artifacts.insert(
                 name,
                 Arc::new(Artifact {
@@ -786,6 +823,8 @@ impl Session {
         if artifacts.len() != front.function_count() {
             return Err("foreign.restore.required-coverage".into());
         }
+        let cache =
+            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
         let count = artifacts.len() as u64;
         let session = Self {
             front,
@@ -803,8 +842,10 @@ impl Session {
                 ..Meter::default()
             },
             per_function: BTreeMap::new(),
+            cache,
         };
         session.admit_resident(0)?;
+        recovery.accept();
         Ok(session)
     }
     // Publication links a borrowed overlay before installing any source,
@@ -820,15 +861,21 @@ fn link_artifacts(
     runtime: &Arc<Vec<u8>>,
     artifacts: &BTreeMap<String, &Artifact>,
     meter: &mut Meter,
+    ledger: &Ledger,
+    work: &mut Vec<Work>,
 ) -> Result<std::path::PathBuf, String> {
+    let mut assembly = ledger.begin("*", "shared-assembly", Phase::Production);
+    let write = |path: &Path, bytes: &[u8]| -> Result<(), String> {
+        ledger.io("*", "assembly-output", 0, bytes.len() as u64);
+        std::fs::write(path, bytes).map_err(|e| e.to_string())
+    };
     std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-    std::fs::write(
-        directory.join("source938_events.c"),
-        crate::source_provider::EVENT_RUNTIME,
-    )
-    .map_err(|e| e.to_string())?;
+    write(
+        &directory.join("source938_events.c"),
+        crate::source_provider::EVENT_RUNTIME.as_bytes(),
+    )?;
     let provider_path = directory.join("provider.obj");
-    std::fs::write(&provider_path, provider.as_slice()).map_err(|e| e.to_string())?;
+    write(&provider_path, provider.as_slice())?;
     let mut objects = vec![provider_path];
     let sources;
     match target {
@@ -839,24 +886,25 @@ fn link_artifacts(
                     return Err("foreign.target".into());
                 };
                 let path = directory.join(format!("caller-{i}.obj"));
-                std::fs::write(&path, coff).map_err(|e| e.to_string())?;
+                write(&path, coff)?;
                 objects.push(path);
                 if name == "main" {
                     entry = Some(symbol);
                 }
             }
+            let mut wrapper_work = ledger.begin("*", "entry-wrapper", Phase::Production);
             let wrapper = ace_native::emit::emit_wrapper_coff(entry.ok_or("foreign.missing-main")?)
                 .map_err(|e| e.to_string())?;
+            wrapper_work.produced(1);
+            work.push(wrapper_work);
             let path = directory.join("entry-wrapper.obj");
-            std::fs::write(&path, wrapper).map_err(|e| e.to_string())?;
+            write(&path, &wrapper)?;
             objects.push(path);
-            std::fs::write(
-                directory.join("entry.c"),
-                "extern void ac_start(void);\nint main(void){ac_start();return 99;}\n",
-            )
-            .map_err(|e| e.to_string())?;
-            std::fs::write(directory.join("foreign_runtime.c"), runtime.as_slice())
-                .map_err(|e| e.to_string())?;
+            write(
+                &directory.join("entry.c"),
+                b"extern void ac_start(void);\nint main(void){ac_start();return 99;}\n",
+            )?;
+            write(&directory.join("foreign_runtime.c"), runtime.as_slice())?;
             sources = vec!["entry.c", "foreign_runtime.c", "source938_events.c"];
         }
         Target::C => {
@@ -892,9 +940,9 @@ fn link_artifacts(
                 })
                 .map_err(|e| format!("{e:?}"))?;
             for (name, text) in files.files {
-                std::fs::write(directory.join(name), text).map_err(|e| e.to_string())?;
+                write(&directory.join(name), text.as_bytes())?;
             }
-            std::fs::write(directory.join("entry.c"),"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n").map_err(|e|e.to_string())?;
+            write(&directory.join("entry.c"), b"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n")?;
             sources = vec![
                 "entry.c",
                 "foreign_runtime.c",
@@ -903,43 +951,68 @@ fn link_artifacts(
             ];
         }
     }
+    assembly.produced(1);
+    work.push(assembly);
     meter.links += 1;
+    let mut tool = ledger.begin("*", "compile-link-tool", Phase::Production);
     let exe = directory.join("source.exe");
     crate::bridge::compile_bridge_crt_with_objects(directory, &sources, &objects, &exe)
         .map_err(|e| e.to_string())?;
+    tool.produced(1);
+    work.push(tool);
     Ok(exe)
 }
 
 fn native_artifact(
+    semantic: &str,
     bundle: &ace_core::hir::Bundle,
     id: &str,
     name: &str,
     caps: &[String],
     env: &AdmittedForeign,
     meter: &mut Meter,
+    ledger: &Ledger,
+    work: &mut Vec<Work>,
 ) -> Result<Arc<Artifact>, String> {
+    let mut lower = ledger.begin(name, "mir-lower", Phase::Production);
     meter.mir_attempts += 1;
     let mir = ace_lowering::hir_adapter::lower_function_unit(bundle, id, caps, 0)
         .map_err(|e| format!("foreign.lower: {e:?}"))?;
-    ace_native::foreign_lower::admit(&mir, env)?;
     meter.mir_produced += 1;
+    lower.produced(1);
+    work.push(lower);
+    let mut verify = ledger.begin(name, "mir-verify", Phase::Production);
+    ace_native::foreign_lower::admit(&mir, env)?;
+    verify.produced(1);
+    work.push(verify);
+    let mut emit = ledger.begin(name, "native-emit", Phase::Production);
     meter.native_attempts += 1;
     let object = ace_native::emit::emit_foreign_unit_coff(&mir, env).map_err(|e| e.to_string())?;
     meter.native_produced += 1;
+    emit.produced(1);
+    work.push(emit);
     let owner_schema = mir.owner.schema.clone();
     let owner_module = mir.owner.module.clone();
+    let mut encode = ledger.begin(name, "mir-encode", Phase::Production);
     let mir = ace_av_core::abc::encode_abc(&mir)
         .map_err(|e| format!("foreign.mir-encode: {e:?}"))?
         .to_flat();
+    encode.produced(1);
+    work.push(encode);
     meter.page_encodes += 1;
-    Artifact::new(TargetWire::Native {
+    let mut page = ledger.begin(name, "target-encode", Phase::Production);
+    let artifact = Artifact::new(TargetWire::Native {
         name: name.into(),
         symbol: object.symbol,
         owner_schema,
         owner_module,
+        semantic: semantic.into(),
         mir,
         coff: object.bytes,
-    })
+    })?;
+    page.produced(1);
+    work.push(page);
+    Ok(artifact)
 }
 fn admit_provider(env: &AdmittedForeign, bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > MAX_ARTIFACT || blake3::hash(bytes).to_hex().as_str() != env.provider_digest()
@@ -1020,6 +1093,12 @@ fn add(a: &mut Meter, b: Meter) {
     a.page_encodes += b.page_encodes;
     a.restore_pages += b.restore_pages;
     a.links += b.links;
+    a.cache_hits += b.cache_hits;
+    a.cache_lookups += b.cache_lookups;
+    a.cache_writes += b.cache_writes;
+    a.cache_bytes_read += b.cache_bytes_read;
+    a.cache_bytes_written += b.cache_bytes_written;
+    a.cache_evictions += b.cache_evictions;
 }
 fn difference(a: Meter, b: Meter) -> Meter {
     Meter {
@@ -1032,9 +1111,16 @@ fn difference(a: Meter, b: Meter) -> Meter {
         page_encodes: a.page_encodes - b.page_encodes,
         restore_pages: a.restore_pages - b.restore_pages,
         links: a.links - b.links,
+        cache_hits: a.cache_hits - b.cache_hits,
+        cache_lookups: a.cache_lookups - b.cache_lookups,
+        cache_writes: a.cache_writes - b.cache_writes,
+        cache_bytes_read: a.cache_bytes_read - b.cache_bytes_read,
+        cache_bytes_written: a.cache_bytes_written - b.cache_bytes_written,
+        cache_evictions: a.cache_evictions - b.cache_evictions,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn selected_artifact(
     target: Target,
     parts: &ace_core::source::SourceParts,
@@ -1042,39 +1128,95 @@ fn selected_artifact(
     name: &str,
     capabilities: &[String],
     environment: &AdmittedForeign,
+    cache: &mut function_cache::FunctionCache,
+    runtime: &str,
     counts: &mut Meter,
+    work: &mut Vec<Work>,
 ) -> Result<Arc<Artifact>, String> {
-    match target {
+    let view = SemanticView::from_parts(parts, checked).map_err(|e| format!("{e:?}"))?;
+    let f = view.functions().first().ok_or("foreign.empty-fragment")?;
+    cached_artifact(
+        target,
+        &parts.bundle,
+        checked.def_id_text(),
+        name,
+        capabilities,
+        environment,
+        &view,
+        f,
+        cache,
+        runtime,
+        counts,
+        work,
+    )
+}
+#[allow(clippy::too_many_arguments)]
+fn cached_artifact(
+    target: Target,
+    bundle: &ace_core::hir::Bundle,
+    id: &str,
+    name: &str,
+    capabilities: &[String],
+    environment: &AdmittedForeign,
+    view: &SemanticView<'_>,
+    f: &ace_a2x_core::FnFacts<'_>,
+    cache: &mut function_cache::FunctionCache,
+    runtime: &str,
+    counts: &mut Meter,
+    work: &mut Vec<Work>,
+) -> Result<Arc<Artifact>, String> {
+    ForeignTargetProvider::new(environment.clone())
+        .validate_view(view)
+        .map_err(|e| format!("{e:?}"))?;
+    let semantic =
+        ace_a2x_core::prepare::semantic_fingerprint(view, f).map_err(|e| format!("{e:?}"))?;
+    let key = cache.key(
+        name,
+        &semantic,
+        target,
+        if target == Target::C {
+            runtime
+        } else {
+            "foreign-scalar-runtime-abi/1"
+        },
+        capabilities,
+    );
+    if let Some(artifact) = cache.get(&key, target, name, &semantic, environment, counts)? {
+        return Ok(artifact);
+    }
+    let artifact = match target {
         Target::Native => native_artifact(
-            &parts.bundle,
-            checked.def_id_text(),
+            &semantic,
+            bundle,
+            id,
             name,
             capabilities,
             environment,
             counts,
-        ),
+            &cache.work,
+            work,
+        )?,
         Target::C => {
-            counts.c_attempts += 1;
-            let view = SemanticView::from_parts(parts, checked).map_err(|e| format!("{e:?}"))?;
-            let f = view.functions().first().ok_or("foreign.empty-fragment")?;
-            let provider = ForeignTargetProvider::new(environment.clone());
-            let text = provider
-                .produce_fragments(&view, &[f], Family::Scalar)
-                .map_err(|e| format!("{e:?}"))?
-                .remove(0);
-            counts.c_produced += 1;
+            let text =
+                cache.c_fragment(view, f, capabilities, runtime, environment, counts, work)?;
+            let mut page = cache.work.begin(name, "target-encode", Phase::Production);
             counts.page_encodes += 1;
-            let semantic = ace_a2x_core::prepare::semantic_fingerprint(&view, f)
-                .map_err(|e| format!("{e:?}"))?;
-            Artifact::new(TargetWire::C {
+            let artifact = Artifact::new(TargetWire::C {
                 name: name.into(),
                 def_index: f.def_index,
                 semantic,
                 text,
-            })
+            })?;
+            page.produced(1);
+            work.push(page);
+            artifact
         }
-    }
+    };
+    cache.put(&key, artifact.clone(), counts)?;
+    Ok(artifact)
 }
+#[path = "source_function_cache.rs"]
+mod function_cache;
 
 #[path = "source_publication.rs"]
 mod publication;
@@ -1103,4 +1245,64 @@ pub fn certification_runtime_policy(target: Target) -> String {
         Target::C => hash(ace_a2x_c::runtime_source(&[]).as_bytes()),
     };
     runtime_identity(target, &page)
+}
+
+fn validate_target_artifact(
+    target: Target,
+    name: &str,
+    decoded: &TargetWire,
+    environment: &AdmittedForeign,
+) -> Result<(), String> {
+    match decoded {
+        TargetWire::Native {
+            name: stored,
+            symbol,
+            owner_schema,
+            owner_module,
+            mir,
+            coff,
+            ..
+        } if target == Target::Native && stored.as_str() == name => {
+            // The shared source adapter uses the stable HIR module
+            // id `m_src`; its logical source path lives separately in
+            // the authenticated frontend root.
+            if owner_schema != ace_av_core::contract::MIR_SCHEMA || owner_module != "m_src" {
+                return Err("foreign.restore.native-owner".into());
+            }
+            // ABC deliberately omits the project/unit owner. Rebind
+            // it from the authenticated required envelope BEFORE MIR
+            // admission, as the existing unit-store protocol does.
+            let mut decoded = ace_av_core::abc::decode_abc(mir)
+                .map_err(|e| format!("foreign.restore.mir: {e:?}"))?;
+            decoded.module.owner = ace_av_core::mir::OwnerScope {
+                schema: owner_schema.clone(),
+                module: owner_module.clone(),
+            };
+            for f in &mut decoded.module.funcs {
+                f.owner = decoded.module.owner.clone();
+            }
+            ace_native::foreign_lower::admit(&decoded.module, environment)?;
+            if decoded.module.funcs.len() != 1
+                || decoded.module.funcs[0].name != format!("d_{name}")
+                || *symbol
+                    != ace_native::symbols::function_symbol(
+                        &decoded.module.owner,
+                        &decoded.module.funcs[0].name,
+                    )
+                || coff.len() < 20
+                || coff[..2] != [0x64, 0x86]
+            {
+                return Err("foreign.restore.native-identity".into());
+            }
+        }
+        TargetWire::C {
+            name: stored, text, ..
+        } if target == Target::C && stored.as_str() == name => {
+            if !text.starts_with("// origin:") || text.lines().nth(1).is_none() {
+                return Err("foreign.restore.c-fragment".into());
+            }
+        }
+        _ => return Err("foreign.restore.target-artifact".into()),
+    }
+    Ok(())
 }

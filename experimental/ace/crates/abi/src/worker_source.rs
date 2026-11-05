@@ -368,7 +368,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             Err(e) => return Err(err("source", e)),
         };
         (
-            Session::from_frontend(front, checked, Arc::new(bytes.clone()), target)
+            Session::from_frontend_stored(front, checked, Arc::new(bytes.clone()), target, &store)
                 .map_err(|e| err("source", e))?,
             Edit::Current,
         )

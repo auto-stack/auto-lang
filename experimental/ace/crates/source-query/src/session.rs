@@ -131,6 +131,7 @@ pub struct SourceQuerySession {
     sigs: BTreeMap<String, SigPage>,
     bodies: BTreeMap<LogicalId, BodyPage>,
     counters: Counters,
+    work: crate::work::Ledger,
 }
 
 impl SourceQuerySession {
@@ -154,12 +155,17 @@ impl SourceQuerySession {
             sigs: BTreeMap::new(),
             bodies: BTreeMap::new(),
             counters: Counters::default(),
+            work: crate::work::Ledger::default(),
         }
     }
 
     /// The caller's capability set participates in every key: enabling or
     /// disabling a capability can change what the source means, so old
     /// answers are never reused across it.
+    pub fn with_work(mut self, work: crate::work::Ledger) -> Self {
+        self.work = work;
+        self
+    }
     pub fn with_capabilities<I, S>(mut self, caps: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -501,6 +507,7 @@ impl SourceQuerySession {
 
         if let Some(page) = self.bodies.get(&logical) {
             if page.key == key && page_deps_fresh(page, &catalog).is_ok() {
+                self.work.reuse(name, "infer", 1);
                 self.counters.body_hits += 1;
                 let mut facts = page.facts.clone();
                 facts.revision = rev;
@@ -525,7 +532,11 @@ impl SourceQuerySession {
             };
             &single
         };
-        let mut facts = crate::produce::produce_infer_body_with_catalog(
+        let work = self
+            .work
+            .begin(name, "infer", crate::work::Phase::Production);
+        let before_solver = self.work.totals(name, "solver").attempted;
+        let result = crate::produce::produce_infer_body_with_catalog_observed(
             input,
             &self.package,
             &self.module,
@@ -539,10 +550,12 @@ impl SourceQuerySession {
             } else {
                 None
             },
-        )
-        .map_err(QueryError::Produce)?;
+            Some(&self.work),
+        );
+        self.counters.solver_runs += self.work.totals(name, "solver").attempted - before_solver;
+        let mut facts = result.map_err(QueryError::Produce)?;
 
-        self.counters.solver_runs += 1;
+        work.complete(1);
         facts.revision = rev;
 
         let mut sig_deps = Vec::new();
