@@ -43,6 +43,7 @@
 pub mod codec;
 pub mod facts;
 pub mod lane;
+pub mod manual;
 pub mod plan;
 pub mod typed;
 
