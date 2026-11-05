@@ -2,7 +2,7 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-16
-updated_at: 2026-10-28
+updated_at: 2026-11-04
 implemented_by_plans: []
 ---
 
@@ -199,3 +199,116 @@ AV的CTE profile默认无任意文件/网络/时间/随机/FFI权限；有必要
 ## 10. 待冻结决定
 
 首版反射语法/API与可见性、type-as-value支持、泛型/泛化规则、生成项卫生、递归求解允许域、target布局查询、冻结常量图类型、runtime默认保留/剥离和动态查找域、CT能力broker、资源预算、来源/隐私政策、Schema编码和版本。用户已确定方向与v0.6规划要求，以上技术细节仍需探针/Plan定界，不把草案编号当作实现或正式ABI发布。
+
+
+## 10. 普通源码SQ、真实实例与AV CTE接线（2026-11-04，target-state）
+
+用户授权本轮正式立项及后续规划复核，仅规划，不施工/建树/构建测试。934–936现为drafting r2，最新合同见[复核/写窗](../plans/reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)。正式拆为[SQ-A 934](../plans/934-source-semantic-query-and-invalidation.md)→[SQ-B 935](../plans/935-source-scalar-template-instances.md)与[SQ-C 936](../plans/936-source-av-cte-query-and-frozen-recovery.md)；C的私有执行服务提取可与B准备并行，最终含真实实例→CT→类型回灌联验，不能留模型接缝。调查/历史收据及输入hash见[基线与排期](../plans/reports/ace-source-sq-instance-cte-baseline-and-schedule-2026-11-04.md)。三包关闭ARCH-02/04相应有限机制职责，不替CA-D或最终ARCH总签章。
+
+### 10.1 现有机制、缺口与为何三包
+
+- 796真实有限i32/bool推导、FnSig/InferBody/RecordFields/ListCandidates、正负依赖/SCC/来源新鲜分类与S796持久页已交付；`reflect::InstanceKey`只含template/substitution，注释明确无代码生成。`adapter::project`是整Program投影，`InferBody`键有模块级src-fp；直接拿来暖调用会把未改body投影/位置漂移变成真实生产。
+- 817不是假的CTE：真实checked callee→共享MIR/ABC→AV→executed envelope→796推导→HIR常量回填/verify→native观察已存在。普通源码还未自动产生CT请求；目前deck/anchor绑定与专用driver为主。其consumer会重新compile source，snapshot lane会以源码wrapper进行暖编辑，这些既有探针合法证据不能冒新普通源码P0接线。
+- 依赖图实为`semantics[core-ast]→core`、`comptime→AV/native/core`、`native→AV`。让core/AV/A2X直接反依赖comptime会引环/耦合；把所有语义、模板、新CT语法、执行服务和四端恢复塞一包又无法独立验收。
+- 因此A先交源码查询/依赖/事实消费与恢复；B独立交有限真实实例；C交从源码自动调度真实AV/冻结回灌。三包的唯一实施树/材料与独立review各自负责，不新增聊天或自动开工。
+
+### 10.2 依赖方向与语义权威
+
+拟新增`ace-source-query`职责包（路径`experimental/ace/crates/source-query/`，尚不存在）只依赖core、semantics/contract、artifacts以及必要可复用的sema持久库；**不依赖AV/native/目标后端**。它拥有SourceQuerySession/不可变事实、可恢复查询图、单体推导与实例任务；core提供消费事实的受检入口，不能反向依赖source-query。名字/资源规则仍由现core权威承担；有限i32/bool推导复用796算法，结果真实用于binding/expr结构ID上的类型/Checked HIR，不准跑完旧推导再只多写一份query日志。现core resolver本身产生VT，新facts端口需切断其旧类型综合而保留名字绑定；只屏蔽独立typecheck调用不能证明权威迁移。core verifier仍独立验事实/IR，不等于第二推导源。
+
+新source-query需单体AST投影及纯声明输入，不能调用整module `adapter::project`/`current_fingerprints`遍历未改body再记M。928目录module字段由冷源FNV生成，只作语法来源/授权；新LogicalModule/Decl必须独立按package/module/owner绑定，不能用该源hash/Rc/绝对span作语义身份。796稀疏name/span facts亦不能直接回填，新增完整scope/local/node与body/context绑定；当前坐标经目录包装重锚，不原地改旧pin AST。允许遍历有限声明/候选目录，明确计字节/工作；改body只换该body版本，不换未读取者的语义键。796旧S796页/键、模型CT seam与旧探针保其兼容；新单位事实/来源刷新/实例页用独立版本化命名空间与producer，禁止同键改payload或假装旧全局src-fp已支持新P0。
+
+CT用query层定义的中立executor端口，拟`CtExecutor`（名字待T-02冻结）只收已checked有限callee/实例闭包、参数/能力/预算/身份，返回typed executed/failure证据。拟从817提取最小`ace-source-cte`服务（路径`experimental/ace/crates/source-cte/`，尚不存在），依赖query端口、comptime-contract/core、shared lowering、av-core与artifacts；**不依赖ace-av前端会话或ace-native**。817旧probe再消费该服务，不能复制一套执行/cache；服务在worker/编译宿主的组合根注入。A2X HIR/provider/目标代码不依赖MIR、AV或Cranelift；其编译宿主可为CT显式组合AV服务，A2X打印仍只消费Checked HIR/资源事实。
+
+旧SnapshotLane的前端FunctionIncrementalSession适配可保在probe侧，通过中立执行入口共享服务，不把该前端会话搬入最小服务引环。提取范围/依赖方向先由936 T-02整体可行性门证明，保持旧817closure/snapshot车道、producer/旧envelope及资源义务。新源producer必须区分来源：迁移817旧executed envelope只有完整身份/依赖/车道都满足才可复用，不把旧producer字面量冒源码新执行证明。
+
+### 10.3 有限普通源码表面（新增目标，不是已有实现）
+
+A无新语法：Core/Scalar现有i32/bool函数、局部/赋值/分支/循环、直接调用/命名绑定、前向显式签名与递归，从普通`.at`入口进入查询结果驱动的Checked HIR，并送AV/native/A2R/A2C。与796适用差额（如命名参数/算子/前向控制）由A枚举并补真实adapter/规则，不默认unsupported再走旧推导。其他资源/闭包profile保现机制与明确未迁范围，不以A冒全语言求解器重写。RecordFields/meta目录可只读消费源声明，不承诺record值级推导。
+
+B复用Auto既有声明拼写`fn choose<T>(a T, b T, flag bool) T`，先限一个类型参数、通过实参/明确期望类型唯一确定的T=int/i32或bool（int/i32规范同型）；已有直接调用，不新增另一套`@[...]`语法。模板体可读T局部/参数/return，bool条件选择，标量常规子表达式按具体实例检查。例：
+
+```auto
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    if choose(true, false, true) { return choose(40, 42, false) }
+    return 0
+}
+```
+
+闭式oracle=42，至少两个实际checked具体实例，AV/native/Rust/C都真实执行。模板body改为交换分支后主程序=0，调用点不改亦应失效。类型参数必须可解，异质实参/无解/歧义具名拒，禁止Any。首期不含const泛型、约束/spec求解、模板方法、用户泛型record/owned资源类型参数、HOF或任意显式类型实参语法；这是覆盖边界，不豁免实例机制、依赖和恢复。新语法以显式版本化能力profile启用，原profile接受/拒绝与冻结差异不改；A与B的组合入口仍是普通源码，不是手写实例IR。
+
+C复用Auto的`#{ expr }`拼写，限单表达式、i32/bool结果、纯scalar直接调用/有限递归与嵌套CT DAG；该表达式从普通`.at` AST自动产生query，不接收用户填的deck/placeholder/ct_ref→HIR位置绑定。例：
+
+```auto
+fn sum(a int, b int) int { return a + b }
+fn main() int { let n = #{ sum(20, 22) }; return n }
+```
+
+冷/失效真AV结果42→冻结→局部推导事实→常量HIR重验→四端实际42；把sum改`a+b+1`而调用点不动，结果43。CT泛型组合`#{ choose(40, 42, false) }`须消费B真实实例，不将model substitution当实例执行。
+
+有限source meta接缝采用**新增受能力保护的intrinsic声明**`ct_field_count(TypeName)`与`ct_has_field(TypeName,"field")`（最终符号身份在936 T-01/02冻结，不是已有stdlib API）：仅在CT表达式内、须`cte.meta.fields/v1`，TypeName绑定当前源中的名义type声明，field必须字面选择子。该meta源在显式Record声明能力的有限query profile中接纳type字段声明+i32/bool函数，不将record值/owned字段带入AV CT。返回i32/bool；TypeName/字段串只作为query selector，不进入AV运行值，不能伪称type-as-value或文本CT执行。以真实resolver绑定的intrinsic def身份识别，不按拼写绕过shadow；用户同名声明在该能力profile下具名冲突拒绝，缺cap/外部句法/未知类型按明确阶段拒绝。meta查询值作为实际AV scalar参数，如`#{ sum(ct_field_count(Pair), 40) }`；Pair两字段→42，加第三字段→43，HasField负依赖无→有使旧结果失效。字段shape/meta-only不是vm_execute，只有真实AV调用才计执行。
+
+新CT/模板能力由统一语法规则/profile版本表达，普通旧profile既有拒绝不改；不改旧source/expected/accepted分母，新增文件化case独立登记。C不覆盖`#if/#for/#is`、任意多语句CT、外部mutable runtime局部/IO/env/FFI/type生成或完整反射；已识别但未支持的CT构造具名拒，不当注释剥掉继续编译。
+
+### 10.4 查询身份与依赖矩阵
+
+| 查询结果 | 必须读取并绑定 | 编辑后的正确动作 |
+|---|---|---|
+| 声明/签名/类型meta | package/module/logical owner、名义type、参数名/mode/result、字段有序shape、scope/候选集合、算法/profile/caps | body-only不得使纯签名查询失效；字段/候选/缺席名字变化只重验真实读取者；暂存overlay不能污染他工程 |
+| 普通body推导/Checked单元 | 本体内容、期望类型、所有实际读callee签名、候选正负依赖、资源计划版本；语义与源坐标分开 | 未读callee body的普通caller不因body-only再推导；改签名/type/mode需重验读取者，不能因caller源未改就hit |
+| 具体实例 | 模板logical id与签名/body版本、规范substitution/类型实际语义版本、约束/推导profile与caps、传递实例依赖 | 同实例共享checked实现；不同T隔离，owner/module不同不得合并；模板body变化使所有活实例及受影响产物正确换版，普通caller是否需重推导按它读的事实决定 |
+| CT冻结/消费事实 | callee及helper真实body+签名传递闭包、实例、meta正负读取、实参、engine/MIR/ABC/codec/lane/target语义/caps/producer | helper/meta/type/caps/版本改而CT调用点不改也失效；非读者保持hit。CT值变更/类型依赖使owner推导/IR重验，不缓存旧Checked/PASS |
+
+首次先检查CT实际请求callee/实例闭包，不能等全模块最终Checked后才启动决定类型的CT。合法普通递归先发布声明签名；实例检查InProgress可先用其已验证具体签名，CT依赖环则明确链（与AV递归fuel不同）。统一任务状态至少pending/in-progress/completed/failed与revision/cancel身份；失败/取消/资源/旧snapshot迟到不能发布为当前成功，single-flight也不能跨不相同完整key共用。CT miss必须反映真实运行时选择：普通`if`/`&&`/`||`的值计算由已checked AV程序决定，未执行分支trap潜伏；源码CT DAG只能对被语义请求的嵌套CT作调度，不能把不该执行的分支预先host求值。
+
+CT执行语义key（ExecKey）与当前owner/source/node/期望类型的UseBinding分离；旧817 source_fp来源不能冒当前消费授权。ExecKey不能带整个模块source hash使非读者全miss，也不能漏实际callee展开后checked有效body及子CT/实例/meta传递版本。相同执行结果可复用，但各owner都要重新准入UseBinding，旧v1不足者换source lane schema而不改同key旧payload。
+
+CT依赖可沿817 ClosureBodies保守颗粒：不承诺未执行callee分支里的helper body不失效，但不能把模块全部body或全module src哈希作为所有query语义键。meta候选集合的保守粒度必须声明，未读取该域的独立函数仍P0。来源坐标变化只刷新诊断/映射，不重新推导未改body；旧页若带span按新source身份重锚或受控拒，不能用旧spans。
+
+### 10.5 函数级增量、恢复与发布
+
+A交付SourceQuerySession与query页/root manifest；B将模板/具体实例/调用绑定接入同一事务；C将CT请求/envelope required边/owner事实接入。root原子发布包含source+CST/声明目录、完整依赖版本、语义单元/实例/CT与各目标关联。CAS中成功不可变页不等于current；失败事务留下的未root页须由旧租约/GC规则回收，不安装半候选或写PASS。RequiredData保确需载荷，Recipe/溯源边不强pin全部历史AST/AV工件；current/old/候选同时存活全计。
+
+共享来源恢复消费929的已审稳定接口，**最终以D929或实际正式等价接缝闭合**。跨进程hit/restart先重验owner/source/grammar/decl/producer/schema/required闭包和嵌入ref，再恢复声明/事实与具体HIR；不序列化Checked位、union-find工作态、宿主地址/活AV。必要decode/deep-verify为R，重新parse/project/infer/instantiate/emit/lower是P，不得改记R/M。936若承诺恢复后CT实参编辑的旧helper单元生产/I/O0，session root需显式required已有checked/MIR/ABC页，恢复R窗口decode/deep-verify/有界复装（计真实读量，不是AV执行或source warmup）；缺页拒绝而非静默重编。新需求受影响的实例/执行单元单列真实生产，不能换名未改0；原固定负载0门不放宽。
+
+新进程restore→立即有效body编辑与restore→首坏编辑→修复→第二有效编辑，无dummy/ensure_env/遍历body预热；未改函数/实例真实P=0及编辑时单元payload额外读写0，模块组装/link/manifest输出另列且进总预算。旧格式缺required不得静默cold，显式cold请求单列。
+
+无变化/命中/历史回退需禁调真实producer反控；934普通caller未读helper body时保持infer0，935只改使用模板的一个call owner不会重新实例化别的T，936只改helper使相关CT重执行而无关函数全P0。失败attempt先计，不能早退默认0；恢复R不要求0 I/O，不能通过把真实compute藏在decode规避。
+
+### 10.6 资源与正式时间
+
+不增加未经批准的预算：语义query/实例共享796 hot8MiB+scratch8MiB、managed≤16MiB、单页512KiB与step/wall5s；CT沿817 hot8/staging16/AV8、managed≤32MiB、wire6MiB/input4MiB、query节点/引用深度128、单AV≤2s/整请求≤10s、worker private≤384MiB/tree≤512MiB。节点限制是CT调度原限额，不扩大为普通Auto语法新深度限制；新增实例按实际工作/内存限额受控资源拒绝，不加随意固定“最多N泛型”的语言上限。
+
+CST/source/closures/各target仍沿929/原owner更严格的适用限额（语法64MiB档、A2X受管工作集≤48MiB等）；新query/实例/CT保持的页和解码瞬态须计入实际消费域，不能把16/32MiB当额外赠送或分域重复预留。先预留后clone/decode/encode/AV装载，所有错误出口/最后pin/close有界回收；多工程/并发相同key/取消旧代都测真实总峰值。整链可行性失败先needs_replan，不抬阈值。
+
+时间沿正式release父连续窗口P90≤2000ms，原样本数量/规模/平台/ignore不减；796 gen796-1mi/v1的1MiB/30编辑、817 115fn≥256KiB/30 CT helper及meta编辑与≥32MiB页/512修订/GC原义务保持。新增实例与普通源组合选原规模的有限代表，逐状态明确生产/命中/恢复采样，不能用三份小例替正式样本。source/grammar/请求生成与序列化、实际等待/IPC、query/AV/冻结/回灌/父准入全入墙钟；冷准备单列，restore首操作不得从窗口外预热。真实工具hash/原始样本与分区/OS峰值可区分缺失、伪0、spike和放宽预算。
+
+### 10.7 与928、929、931–933交接
+
+| owner | 保留职责与本线边界 | 放行/最终条件 |
+|---|---|---|
+| 928 S | 九profile规则/AST/声明单元/sealed lambda body；本线不接管其在途树 | A可先读API/私有query，公共AST/grammar变更等待D928→929稳定释放；B/C新增能力不得并写auto-source.at/frontdoor/units |
+| 929 S/H | 所有来源入口/首编辑恢复、重复parser退役与SYN父门；本线只增查询/实例/CT语义 | A全源编译接线、env/manifest恢复按已审符号SHA短窗；可提前交稳定query端口供929消费，最终A不能绕过D929真实来源恢复门；原929不被自动扩包或解除挂起 |
+| 931 P/H | Rust临时资源/modes/缓存语义轴；本线只给checked单元/实例/CT常量 | 不写Rust lower/rt；若query输入影响A2X provider/证书，等稳定producer/key交窗重验，不复用旧错误片段 |
+| 932 N/S/H | native合法暖准入/typed拒绝与914判面；本线不得恢复“一律ERROR”旧口径 | native/AV候选、source diagnostic、ac_mn/协议reader按其稳定SHA释放；本线新语言/资源结果维持原分类，必要consumer负控重验 |
+| 933 P/H | sema跟踪来源与904独立manifest oracle；本线不能借新schema刷新原golden | 934原sema职责组需其跟踪fixture稳定提交消除隐形依赖；私有实现不等整包归档。原796schema值不因本线扩面改写，新增producer/page用新命名空间；最终原组红不可豁免 |
+
+H含workspace Cargo/lock、driver/SDK、协议/父decoder、mod.rs/test-groups/来源登记，全文件单写。每窗owner/revision/base+handoff SHA、schema/所有producer-reader-construct-match、已验/STALE/pending/反控/释放逐项记录；不持写窗等慢认证，性能单实例错峰。当前各原计划进度、用户挂起及多会话WIP保持，本轮不启动任何实施。
+
+本线触及共享AST/source会话的最终消费者验证还须保原866同PID安全点/在途旧链/最后lease及912/913闭包来源恢复原门；query/实例/CT root提交与现AV代际准入绑定，不能用restart/resume代同PID在线证据，不借新profile绕掉旧消费者。此处复用原机制，不新增完整AJ/OSR。
+
+
+### 10.8 r2：权威事实、CT相位与恢复/交接的区分性出口
+
+本次[934–936复核](../plans/reports/ace-934-936-plan-review-and-parallel-handoff-2026-11-04.md)把共同原则补成必需V例，保持原T/AC编号与0进度，不能用新文档代已验实现：
+
+- **权威事实**：934实际worker四向对照为miss禁真实796 solver红、合法facts禁legacy类型综合仍绿、缺/错scope/callee/node事实由core实际拒且无fallback、hit双禁solver绿。完整fact-id消费/独立HIR断言与命名实参E01 value7/trace=b,a配对，单纯query日志或旁挂校验不够。
+- **逻辑与有效实现**：935 InstanceId不因body/位置变，recipe/checked实现版本包含实际typed依赖；普通caller只读具体签名时不重推导/打印，target闭包仍切到新实现。首次需求、旧实例集合/last user/旧链lease、slot重映射与读集各自可观察，不预编全部T制造后续0。
+- **跨层CT失效**：936强制`flag`内CT→`pick<T>`实现→外层CT例，flag true→false时模板/main源码不变，最终40→42；依赖是展开后checked实现和子CT版本，不只源码body hash。只有935页预留不能关闭这条链。
+- **CT需求与运行分支**：被要求检查的owner/实例内显式HashExpr是编译期需求，外围runtime分支不跳过它；嵌套Hash先形成依赖。单个CT中普通pure函数/短路未执行的runtime trap潜伏，语法/类型错仍检查。CT闭包禁止能力在AV前审计，不能因普通宿主有trace/IO权限就透传。bool source lane只收Bool或已审严格0/1投影，任意非零转true不得照搬。多Hash/嵌套/等待共享一次累计deadline，不为子query重置预算。
+- **安装与恢复角色**：backend-free query层先prepare语义candidate，消费宿主准备选中target、重验base/deps/caps/cancel再线性安装source/query/target当前记录；纯只读meta查询不构建target、不冒执行替换。929负责source/CST/decl，934 facts/deps，935实例，936 Exec/Use/执行页；这些required/R准入不能互相推给后继。恢复可R复装既有编码单元，不可新parse/infer/instantiate/lower/编码再标R；固定负载首CT实参编辑依旧旧helper/实例P与单元payload I/O0，缺页具名拒而非silent cold。
+- **当前边界**：D928=6b429502f、D931=84c894b92已交付；931 print/2与D-931-1/3实际余账继承。929原恢复纪律不因D928满足自动解除，932已实施、933审计已有manifest独立来源；公共source-query/source/grammar/会话与H串行释放，935模板私有面与936 AV服务可分窗，不等于两个包可并写source-query/Cargo/decoder。原预算/P90/样本/分母保持。

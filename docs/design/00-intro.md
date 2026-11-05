@@ -102,7 +102,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 33 | [Stdlib Runtime & HTTP](33-stdlib-runtime-and-http.md) | 标准库多后台实际装配、AutoUI API 拓扑、Axum/VM owner 与 HTTP/task 分阶段路线 | 696–738 主线及 751/755 修复已交付；v0.6 下一项 776 返回资源/异步终值 drafting；剩余四阶段见进度审计 |
 | 34 | [VM Store 所有权与 Handler 阻塞纪律](34-vm-store-ownership-and-handler-discipline.md) | 决策工件：段执行/actor 双形态下的 store 所有权（Erlang vs Go 式）与 handler 阻塞纪律（类型化 vs ui_lint+段切预算）两案对比、迁移面评估与裁定建议 | 📝 决策工件（PLAN-702 T-07 产出，待用户裁定；不含实现） |
 | 50 | [AutoWeb服务框架与仓库边界](50-autoweb-service-framework-and-repo-boundaries.md) | 独立auto-web仓首期：Web/语言/Man/UI职责、HTTP生成与运行、测试发行、Blog消费及885/887/888交接 | target-state r3（2026-10-30）；890实施/完整交付→[auto-ui/014结构收口草案](../../../auto-ui/docs/plans/014-ui-man-structure-closure.md)→按007原门推进；014仅规划 |
-| 53 | [独立构建边界与生成Cargo产物治理](53-independent-build-and-generated-cargo-governance.md) | 现有生成workspace/缓存差额实测、有限治理方案；Core及完整语言workspace的Web检出依赖边界、类型/政策/来源兼容 | target-state r1（2026-11-01）；PLAN-905有界研究、PLAN-906独立构建收口合同；均仅立项，未实施，方案门不冒已交付 |
+| 53 | [独立构建边界与生成Cargo产物治理](53-independent-build-and-generated-cargo-governance.md) | 905/906/910/918有限交付与036后继；930实际生成回归/独立来源守门正式草案 | 2026-11-04；930 drafting0/9，仅规划，不冒全机Cargo问题已闭 |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
@@ -120,7 +120,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 29 | [AutoUI Style & Theme System](29-autoui-style-theme-system.md) | 样式抽象与主题系统：ThemeRegistry 单一值源（partial override/extends 派生/hot-switch）+ style recipe 编译期组合宏；取代原 Design 19 值层（2026-09-09 立档） |
 | 32 | [AutoUI Repo Extraction](32-autoui-repo-extraction.md) | AutoUI 仓分离总方案（三件套+双插件缝）：方言插件（Dialect trait 补完）+ auto-man cargo 式插件缝 + 五阶段拆仓路线 + 函数级迁移勘定账。📝 方案稿（2026-09-20 立档待评审；DEBTS `拆仓-候选` 登记，下一版规划实施） |
 | 38 | [AutoUI Features & System Services](38-autoui-features-and-system-services.md) | Widget / Blueprint / Feature / App 与横向 System Service：功能包命名、分散 UI 贡献、scoped 命令/状态、裁剪与跨 App 复用、服务治理、编辑/知识能力纵向抽取。📝 调研与架构草案（2026-10-14；未冻结/实施） |
-| 47 | [AutoUI State, Design & Feature Architecture](47-autoui-state-design-and-feature-architecture.md) | 基于 v0.5.0 的应用架构调研：状态所有权/通信/事务与历史、保状态热重载、类型化设计体系与 Figma/DTCG、Feature 多出口复用。📝 RFC（2026-10-22；仅分析设计，独立仓迁移后再实施） |
+| 47 | [AutoUI State, Design & Feature Architecture](47-autoui-state-design-and-feature-architecture.md) | 原RFC输入；2026-11-04在auto-ui立041实例/042 Reload研究，主题045–047按038实测接续；未实施新Feature/Service |
 
 **需求级设计子目录**（各篇头部有归位注记，保留原 Design NN 对应）：
 
@@ -161,7 +161,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | Auto语言工具基础设施：Auto/Atom Grammar、CST/AST/HIR分层、ACE编译部署与插件、auto-edit/编码工具及可选语义LSP；复用增量/cache/有界工作集 | 📝 2026-10-22补长期定位与P1–P4路线；787有限实验已交付，完整通用产品未交付；本次仅设计 |
 | [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、HIR/MIR/ABC等查询/产物/页/装载四种粒度、持久格式与依赖验收；共享store/lease/预算及自动GC | 📝 目标态合同草案（2026-10-20补§3.2–3.6决策基线；参数/codec迁移待Plan冻结，现状查producer Spec） |
 | [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI/Foreign IR/FFI分层；§10有限桥、§11共享逻辑事实/分域物理ABI/adapter与M2 host顺序 | 797仍candidate/descriptor3；CA-B内部表示不冒公开ABI，CA-D带真实双consumer后立项，完整FFI按现有应用需求分包 |
-| [42-semantic-metadata-inference-and-comptime](42-semantic-metadata-inference-and-comptime.md) | v0.6语义meta/类型推导/泛型与AV驱动CTE；双期反射、runtime保留、统一查询/依赖及可缓存冻结结果 | 796/817有限语义与AV标量CTE已交付；完整泛型/meta/双期反射待扩面 |
+| [42-semantic-metadata-inference-and-comptime](42-semantic-metadata-inference-and-comptime.md) | v0.6语义meta/类型推导/泛型与AV驱动CTE；双期反射、runtime保留、统一查询/依赖及可缓存冻结结果 | 796/817有限语义与AV标量CTE已交付；完整泛型/meta/双期反射待扩面 §10正式规划934源码SQ/935有限实例/936源码AV CTE接线（均r2、未实施）；完整泛型与双期反射仍待扩面 |
 | [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | ACE Typed MIR/ABC/CTE与增量；§18 A2C/Q4、§19 M2替换、§20 919–922、§21 native R02/R03/R05分包 | 📝 915/917/919/920已交付；921实施、922已有树；923故障/Place与924有限native闭包仅规划，三格分层关闭；M1含C、M2全替换为v0.6硬门 |
 | [44-av-data-layout-place-and-ownership](44-av-data-layout-place-and-ownership.md) | AV布局、Place/owned、集合/闭包/Dyn；820–824扩面与825/826性能分工 | 📝 先798交付→优先828→其余ACE扩展；各Plan强制保留全链路增量，实际能力查Spec |
 | [45-autographics-wgpu-engine-and-game-prototypes](45-autographics-wgpu-engine-and-game-prototypes.md) | wgpu 共同图形基础、2D/3D 游戏原型与生产集成边界；§13为M2有界运行对象/触发/新局事务拟议合同（882→883） | M1已交付；M2角色/相机与879纯迁仓已交付、源码权威auto-ui；880在途、882→883规划，生产AutoUI/HIR/ACE仍待相应成熟度门 |
@@ -174,7 +174,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [48-ui-domain-ast-and-lowering](48-ui-domain-ast-and-lowering.md) | UI owned领域模型、泛型领域解析、受检lowering与Core准入 | PLAN-841 架构合同 |
 | [49-native-single-mir-lowering](49-native-single-mir-lowering.md) | 共享HIR→Typed MIR→native收敛、五旧profile覆盖/删除门、布局/身份/cache交接 | 868已交付；870/871待实施，不提前删除旧能力；保留verify资源分析 |
 | [51-shared-a2x-and-hir-to-rust](51-shared-a2x-and-hir-to-rust.md) | 共享Checked HIR→Rust/C；§13 M1增补、§14 CA-B、§15 CA-C及双线实施顺序 | 921待review；925 record/text→926集合/变体均drafting；native923→924并行，CA-D/E未取号，分支代码不冒主线交付 |
-| [52-single-compile-profile-consolidation](52-single-compile-profile-consolidation.md) | 单一编译profile：auto-lang去UI依赖反转、测试feature拍平（编译恒定+运行期选择）、tm/tier清退 | target-state r1（2026-10-31）；实施中，四计划 C→A→B（本仓）+D（auto-ui） |
+| [52-single-compile-profile-consolidation](52-single-compile-profile-consolidation.md) | 去UI依赖/测试feature/tm清退四计划均归档；全局profile测量目标不凭归档外推 | 2026-11-04交付记录刷新，后继930不重做拍平 |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

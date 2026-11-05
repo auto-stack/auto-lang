@@ -1,6 +1,6 @@
 # 模块拆分与重构：当前战略及接续边界
 
-> 当前战略v24，2026-11-03。唯一调度表见[路线v24](../../plans/reports/v06-extraction-execution-roadmap.md)；下方2026-10-30正文折叠保留为历史，不再按旧waiting/测试入口/证据留存执行。本轮仅核查、Plan立约及文档刷新，暂不实施。
+> 当前战略v25，2026-11-04。唯一调度表见[路线v25](../../plans/reports/v06-extraction-execution-roadmap.md)；下方2026-10-30正文折叠保留为历史，不再按旧waiting/测试入口/证据留存执行。本轮仅核查、Plan立约及文档刷新，暂不实施。
 
 ## 1. 当前接受的有限交付
 
@@ -10,21 +10,17 @@
 
 ## 2. 后继工作与顺序
 
-- 031/033交付，B1累计十例；[036](../../../../auto-ui/docs/plans/036-official-theme-distribution-and-input-closure.md)最新executing4/10、复审needs_fix返修，尚未交付，补包渠道/生成输入。
-- 新立[037](../../../../auto-ui/docs/plans/037-business-examples-theme-migration.md)草案0/11，B2十二业务例保行为主题迁移；获授权可先path基线/源码，采用新渠道的最终门等U036。
-- 新立[038](../../../../auto-ui/docs/plans/038-specialized-examples-theme-readiness.md)草案0/8，B3十二专用例先做六类真实支持核验，产前置/owner/后继分包，研究不是迁移完成。
-- [OS053](../../../../auto-os/docs/plans/archive/053-host-theme-chain-and-calculator-adoption.md)已交付但G-1/G-2具名未闭，新立[OS055](../../../../auto-os/docs/plans/055-clock-theme-and-host-evidence-closure.md)草案0/11，真实clock＋系统事件/真实载体，正式包接U036；不重复OS054八产品装配。
-- [918](../../plans/archive/918-cross-repository-admission-and-boundary-closure.md)已归档9/9，有限治理交付；后继真实来源仍按审计，Web schema等差额各归owner。
-- 本轮仅调研/立约；顺序与静态依据见[第二阶段设计](../../../../auto-ui/docs/design/autoui/theme-rollout-stage-two.md)。State/Feature/Reload继续独立深化，不成为主题推广统一前置。
-
-- **全实际产品独立线**：[OS Design03](../../../../auto-os/docs/design/03-product-theme-rollout.md)已盘28 active入口；calc已交1、055/clock待做1，其余26全量立056–061六批（生产力8/工具6/媒体3/Reader1/游戏3/外部5），均drafting0/9，暂不实施。外部Musk/Jade与local syslog不漏项，产品不从教学源码同步，不以Demo绿抵交付。
-- 056最终OS pin/组合主题门等054正式业务组合，059接Reader007正式阅读表面；其他批不整体等待。六批采用036正式发行；055只有所需载体能力是对应腿前置，不把系统设置窗口扩成全产品门。
+- UI036已archived10/10，037最终收据完成（头计数待owner对账）、B1+B2按canonical累计22；038研究已archived8/8。新增[045](../../../../auto-ui/docs/plans/045-media-demo-theme-migration.md)/[046](../../../../auto-ui/docs/plans/046-image-and-file-demo-theme-migration.md)/[047](../../../../auto-ui/docs/plans/047-specialized-workbench-demo-theme-migration.md)三教学B3合同，覆盖3+3+6，原阻点/支持条件不削减。
+- 新立[041](../../../../auto-ui/docs/plans/041-component-and-store-instance-ownership.md) drafting0/10，有限实例/共享/receiver/退出实施合同；[042](../../../../auto-ui/docs/plans/042-reload-schema-and-effect-readiness.md) drafting0/8，Reload/schema/effect有界研究。完整Feature/命令/Service留后继，不同时造万能架构。
+- 新立[语言930](../../plans/930-generated-delivery-regression-and-source-boundary-closure.md) drafting0/9，接036三原红V04×2/V05a及语言L1/L2；不回退910成员身份、不把测试绿当真实tool可发行。918已交付，后继真实source照规则审计。
+- 实际产品仍单独按OS Design03/055–061。056八产品源码已主题接入但正式OS pin/组合等054具名hold；教学结果不抵产品，源码落地不冒已部署。其他OS状态按唯一合同核。
+- 本轮六新合同均只规划，设计见[两仓接续](../../../../auto-ui/docs/design/autoui/instance-state-and-reload-stage-one.md)。041/042/930不当全部主题迁移统一前置，只有真正所需接口/共同根因的腿接正式结果；语法927及SG/ACE按原合同，不接管。
 
 ## 3. Owner与真实限制
 
 语言基础不依赖UI/Man/Web实现。036拥有包渠道/中立输入接线，037拥有教学业务主题映射，038只核专用支持面，055拥有真实clock与宿主G-1/G-2；各接受正式来源/接口，实际共享文件/锁短窗单写，不借WIP。055系统事件届时要具体窗口许可，不能用provider注入/协议helper当真实闭环。
 
-教学B1十例已迁，B2/B3二十四仍未迁；实际产品另按28入口逐项验收，研究/计划覆盖不改变任何已迁分母。055不升级054八产品pin，教学例不替真实产品。Web D-906-1与schema级预期ID集合、Man D-910-2、UI旧红/013生成与015编辑依赖保真实owner；所选必需面失败不能直接按历史债充PASS。批回归user-pending、910缓存持有与平台限制保持。
+教学B1+B2按canonical二十二例已迁，B3十二仍未迁；实际产品另按28入口逐项验收，研究/计划覆盖不改变任何已迁分母。055不升级054八产品pin，教学例不替真实产品。Web D-906-1与schema级预期ID集合、Man D-910-2、UI旧红/013生成与015编辑依赖保真实owner；所选必需面失败不能直接按历史债充PASS。批回归user-pending、910缓存持有与平台限制保持。
 
 ## 4. 工作/验收纪律
 

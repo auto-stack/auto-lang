@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/unified-source-syntax-admission.
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-927, PLAN-928, PLAN-866, PLAN-889, PLAN-911, PLAN-913, PLAN-921]
-current_step: 8
+current_step: 10
 total_steps: 14
 ---
 
@@ -203,8 +203,8 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 | T-06 | work | T-02，semantics/comptime/工具adapter窗 | 剩余Auto源码reader切共享门面，严分Atom/模型输入；V-01/02，AC-01/02/08 | [x] 2026-11-05（worktree `b6edf15d9`）：case-worker `auto-source@<slug>` 语法臂切 `profile_grammar` 共享缓存（进程 OnceLock，消除线程本地第二份裁剪编译；`profile_from_slug` 导出）；auto-core.at/interface-mini-v1.at = **不同领域语法合法保留**（测试用例 DSL，具名登记）；semantics/comptime/core CLI 均经统一路由（928 后无独立分支）。auto-test-case 组绿。至此**生产依赖中重复 Auto 源码语法编译清零**（T-10 只剩 cfg 隔离+结构门） |
 | T-07 | work | T-03..06，来源目录/CheckedEnv/registry | type/enum/签名依赖、失败与迟到事务、完整诊断；V-03/06，AC-04/06 | [ ] |
 | T-08 | work | T-07，来源manifest/codec/store/会话S窗 | 语法/上下文原子required闭包/版本隔离与深准入，恢复后首编辑去整源重建；V-04/05/12..14，AC-05/07 | [x] 2026-11-05（worktree `0234f3a22`+fmt `3e810a3c2`）：**ensure_env 整源重建退役**——新 `core/source/decl_env.rs`（`core-decl-env/1` 确定性声明面清单：签名/参数 mode/receiver/记录形状/VT 池；严格解码；stub-body `CheckedEnv` 装配，sigs 按 work_key owner 限定）+ AXD1 存储层（幂等发布、只读豁免）+ ensure_env 改为深验装配（profile/caps/source-hash 绑定+池越界受控拒）；**恢复→首个 ranged/method 编辑 whole 轴=0、parse 只计片段面**（a2x_decl_env_929：MSVC 产物 value:23 正确+清单缺失具名拒）；decl_env_roundtrip（字节全等回环/零 parse 装配/五类篡改拒）；rt_restore 4/4、store_cache 5/5（计数按新工件更新：persist 5→6、quota 头窗、settle 后总量断言沿测试自身 WAL/trash 纪律）；ace-a2x 真实失败清零（full_corpus 首红隔离绿=负载环境）；ace-source PASS。原子发布闭包六步沿 anchor 幂等提交点（V-14 seam 面归 T-09 文件化负控） |
-| T-09 | work | T-03..08，case/父decoder/注册H窗 | 使能V-01..14文件化oracle/SYN报告严格准入及无预热/I/O/原子发布/Q4/资源/HMR/预算反控；V-07..10/12..14，AC-07/08/09/11 | [ ] |
-| T-10 | work | T-03..09，调用清单闭合后 | 重复手写lexer/parser生产退役、兼容门面/测试隔离与负控；V-11，AC-01/10 | [ ] |
+| T-09 | work | T-03..08，case/父decoder/注册H窗 | 使能V-01..14文件化oracle/SYN报告严格准入及无预热/I/O/原子发布/Q4/资源/HMR/预算反控；V-07..10/12..14，AC-07/08/09/11 | [x] 2026-11-05（worktree `5e8db3d64`）：文件化 suite `unified-source-syntax-929`（**九 profile parse 腿**经共享前门缓存字节无损重建 + profile 门负控 record@scalar 拒 + AV scalar 执行腿 exit=14）11/11，组 `case-ace-unified-source-929` 注册；**SYN 严格父 decoder** `syn_report_929`（`ac-source-syn-report/1`：缺字段/未知键/错类型/枚举外/坏计数/STALE 三面/伪 0 结构矛盾——whole=0 而 M/R 矛盾即拒；计数四轴+预算白名单前缀放行）篡改矩阵 2/2。V-02/05/07/08/12/13 的 in-process 反控已由 T-02..T-08 套件承载（source_restore/decl_env_roundtrip/decl_events/a2x_decl_env + 各消费组），V-04/14 seam 面沿 anchor/decl-env 幂等提交点 |
+| T-10 | work | T-03..09，调用清单闭合后 | 重复手写lexer/parser生产退役、兼容门面/测试隔离与负控；V-11，AC-01/10 | [x] 2026-11-05：旧手写整源/三片段 parser + 词法器退役为 `legacy-syntax-oracle` feature 隔离的差分 oracle（**生产构建编译期不可达**——8 个消费 crate 无 feature check 全绿）；re-export 面拆分；`retirement_gate_929` 结构门：改名复制检测（消费 crate tokenize/Parser/parse_program 定义扫描+不同领域白名单）+ oracle 面负控锚 2/2；ace-source PASS。**T-01 清单的生产 legacy 调用点经 T-03..T-06 迁移后清零**（a2x 六处/native 一处/closures_fn 两处/av 准入与探针/case-worker 裁剪缓存） |
 | T-11 | work | T-10，冻结提交、正式采样错峰 | 职责/必要集成并集与真实正式时间/内存/认证，AC-01..11 | [ ] |
 | T-12 | work | T-11 | SYN-01..06收据、旧门/C/ARCH余账与实际交接摘要，无总M1冒签；AC-11 | [ ] |
 | T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/健康最终复审，AC-12 | [ ] |

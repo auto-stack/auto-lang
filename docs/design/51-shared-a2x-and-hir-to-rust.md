@@ -312,3 +312,13 @@ push/insert/set/remove/clear按源码序各求值一次、先界/预算/分配�
 native：923资源/Place→924有限native闭包及完整R02/R05；A2C：921复审合入→925 record/text→CA-C集合/变体。两条主体N/P可以并行，共用core/受检facts/共享lowering只按真实缺出口取S短窗，worker/父adapter/SDK/auto-test-case/fixed/workspace manifest-lock/登记与source-manifest取H全文件单写，所有construct-match/consumer与SHA/版本/已验/pending/释放齐，漂移STALE影响证据，正式采样错峰。925 A2X私有runtime/provider接缝稳定后可先交具体符号，CA-C最终基面含D925/D921，不能并写它们的store/provider或消费未提交WIP；无D923/D924整包前置。
 
 CA-D有限ABI桥仍未取号：A/B正式target/资源/模式/来源接缝稳定后可立项并与CA-C分窗，不强等集合包；本包内部C List/Variant不冒public ABI。CA-E规则/登记/独立oracle准备随首例，最终签章在native旧三格、C A/B/C/D全部必需门及Q4组合后；各包资源/恢复/认证不延期给总验收。922已有M2盘点，M2-EXEC/HOST/TS及域迁移可另行规划，与A2C并行，不能把M1或C线交付冒v0.6全替换/disable。
+
+## 16. Rust临时消费者生命周期与source-only验收（2026-11-04，target-state）
+
+925/926交付不证明Rust目标所有资源临时已正确。D-925-2已暴露Rust lower_pure/lower_move_value/lower_view_value在新pin前全量drain，可能在多实参真正消费前清理前一view临时；C侧scoped drain是取材，不是唯一oracle。新立[931](../plans/931-a2r-owned-temporary-consumer-lifetime.md)，从受检资源计划保源码序、嵌套消费者责任、move转移/失败/预算与尽早释放，旧错误片段的lowering语义版本必须换键；不引入第二ownership分析，不用拖到函数结束规避。
+
+[933](../plans/933-ace-tracked-oracle-and-fresh-checkout-closure.md)接sema ignored附件/904缺manifest来源，原20源/行为expected/三份golden和四文件bytes断言保持，独立推导补缺而非actual回填。先释放独立材料给代码修复最终consumer验证，931若影响合法版本字段在该基线上自证最小更新，不形成相互等actual的循环。
+
+927合入→928→929继续；931私有Rust lowering与语法规则主体可并行，a2x-store/worker/cache版本与H注册按稳定SHA单写。一般来源恢复后首编辑去整源重建仍归929。CA-D资源前置已具备，待独立typed foreign/ABI原型与资源包设计；本轮不把兄弟ExternalFn或内部C布局冒公开FFI，不自动规划完整生态。详[本波调查](../plans/reports/ace-next-wave-correctness-and-admission-2026-11-04.md)。
+
+931 r2将责任落实到真实RStmt求值/派生view的底层owner、短路右支隔离及cold/片段external原modes（不默认View）；rt目前无累计存活字节配额，早清理以独立event峰值/释放顺序/调用身份反控证明，不虚构runtime预算。933逐字段独立补manifest并先释放稳定材料；无预热恢复首编辑接929稳定接口，尚无则931最终AC pending，私有修复不等整包才可开工。927已交付，928在途，929按用户裁定等D928；最新排期与M1三条未立项机制线见[r2复核](../plans/reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)。

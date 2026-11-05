@@ -1,5 +1,7 @@
 # 47 — AutoUI 应用架构：状态、热重载、设计体系与功能复用
 
+> 2026-11-04独立仓后继：主题/正式包031/033/036已有限交付；[现源码接续设计](../../../auto-ui/docs/design/autoui/instance-state-and-reload-stage-one.md)将组件/Store实例收口立为UI041、Reload/schema/effect有界核验立为UI042，均仅规划。完整Feature/命令/Service未自动实施；本文旧语言仓源码路径为历史观察，真实UI owner已在auto-ui。
+
 > 2026-11-02 重审入口：910 Cargo有限治理与auto-ui/007主题试点/示例归位已交付，见UI仓[拆分后架构与主题收口设计](../../../auto-ui/docs/design/autoui/post-extraction-architecture-and-theme-closure.md)。该页按当前独立仓源码区分主题/实例/Feature/HMR差额，明确能力→示例批次及AutoOS承接顺序；本页v0.5证据/语法仍是历史研究输入，不据此称整套新架构已实现或获准实施。
 
 > 状态：Draft RFC，研究与讨论稿，2026-10-22；未冻结语法、接口或实施范围。

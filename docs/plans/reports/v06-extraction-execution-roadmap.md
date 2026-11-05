@@ -1,6 +1,6 @@
 # v0.6 拆分与重构总路线图：按完整模块交付
 
-更新：2026-11-03；**当前路线v24**。本节为当前调度；下方v20/v9全文保留为折叠历史，旧waiting/入口/证据政策不再是执行指令。状态以各唯一合同及最终收据为准；本轮只核查/规划/刷新文档，暂不实施、不建树或运行项目门。
+更新：2026-11-04；**当前路线v25**。本节为当前调度；下方v20/v9全文保留为折叠历史，旧waiting/入口/证据政策不再是执行指令。状态以各唯一合同及最终收据为准；本轮只核查/规划/刷新文档，暂不实施、不建树或运行项目门。
 
 ## 1. 已交付基面
 
@@ -22,11 +22,17 @@
 | [UI033](../../../../auto-ui/docs/plans/archived/033-basic-examples-theme-migration.md) | archived r1，9/9 | d734f1fe已在主线；六例迁移，B1累计10例，余B2/B3共24应用及验证/共享资产义务 |
 | [OS053](../../../../auto-os/docs/plans/archive/053-host-theme-chain-and-calculator-adoption.md) | archived r1，10/10 | 宿主/calc落地并清理；G-1真实系统事件hold、G-2真实outproc载体闭环交055，不冒这两腿已PASS |
 | [语言918](../archive/918-cross-repository-admission-and-boundary-closure.md) | archived r1，9/9 | ca9bcafb9交付、独立复审/规范/归档清理齐；D-910-1/D-906-3有限关闭，Web schema级ID集合对账仍归Web |
-| [UI036](../../../../auto-ui/docs/plans/036-official-theme-distribution-and-input-closure.md) | executing r1，最新4/10 | 已经execution_done后final review needs_fix返work，修R-01..03；未正式交付，不消费其WIP |
-| [UI037](../../../../auto-ui/docs/plans/037-business-examples-theme-migration.md) | drafting r1，0/11 | B2十二例保业务主题迁移，path基线/源码可先核；采用036新渠道的最终门接U036；本轮不实施 |
-| [UI038](../../../../auto-ui/docs/plans/038-specialized-examples-theme-readiness.md) | drafting r1，0/8 | B3十二例/六类代表整链支持研究，产逐例结论/owner/后继分包，研究不等迁移；本轮不实施 |
+| [UI036](../../../../auto-ui/docs/plans/archived/036-official-theme-distribution-and-input-closure.md) | archived r1，10/10 | 三仓落地/清理齐；V04×2/V05a原红交语言930；Tauri R-6/vue-render新渠道仍具名，不冒全部发行已绿 |
+| [UI037](../../../../auto-ui/docs/plans/archived/037-business-examples-theme-migration.md) | archived；头7/11，最终收据11/11 | delivery0f90ec1b与清理在案，头部计数待owner对账；B1+B2按canonical累计22；首红/复审来源/外部新渠道限制保留 |
+| [UI038](../../../../auto-ui/docs/plans/archived/038-specialized-examples-theme-readiness.md) | archived r1，8/8 | 十二例支持面/阻点研究已交付；B3仍未迁，正式实施后继045/046/047 |
+| [UI041](../../../../auto-ui/docs/plans/041-component-and-store-instance-ownership.md) | drafting r1，0/10 | 新立组件/props/handler receiver、App/store共享隔离与owner退出；不是全部Feature架构 |
+| [UI042](../../../../auto-ui/docs/plans/042-reload-schema-and-effect-readiness.md) | drafting r1，0/8 | 新立多文件Reload/schema/effect有界核验；相关新实例腿接041，研究不抵HMR实现 |
+| [UI045](../../../../auto-ui/docs/plans/045-media-demo-theme-migration.md) | drafting r1，0/9 | 新立019/020/030媒体三教学例；links/back contract/真实播放支持具名门 |
+| [UI046](../../../../auto-ui/docs/plans/046-image-and-file-demo-theme-migration.md) | drafting r1，0/9 | 新立029/031iv/027三教学例；031iv七编译错/VM挂起等先核，保像素/文件/性能 |
+| [UI047](../../../../auto-ui/docs/plans/047-specialized-workbench-demo-theme-migration.md) | drafting r1，0/9 | 新立018/041/026/025/024/031-paint六教学例；挂载/旧测试定位/主题声明与内容owner |
+| [语言930](../930-generated-delivery-regression-and-source-boundary-closure.md) | drafting r1，0/9 | 新立三项生成交付原红/正确成员身份/随包tool与语言L1/L2；不接语法ACE全线 |
 | [OS055](../../../../auto-os/docs/plans/055-clock-theme-and-host-evidence-closure.md) | drafting r1，0/11 | 真实auto-clock＋G-1系统事件/G-2载体闭环；正式包接U036，先核真实载体可行性；本轮不实施 |
-| [OS056](../../../../auto-os/docs/plans/056-productivity-products-theme-adoption.md) | drafting r1，0/9 | 八个生产力/内容产品主题；产品接U036，最终OS pin/组合主题门等U054 |
+| [OS056](../../../../auto-os/docs/plans/archive/056-productivity-products-theme-adoption.md) | archived r1，9/9 | 八产品源码主题已交付；OS gitlink/组合部署仍等054具名hold，blog基线失败另owner，不能按归档冒全部桌面已升级 |
 | [OS057](../../../../auto-os/docs/plans/057-desktop-utilities-theme-adoption.md) | drafting r1，0/9 | Weather/Launcher/Monitor/Explorer/os-config/syslog六入口；设置接053唯一policy |
 | [OS058](../../../../auto-os/docs/plans/058-media-products-theme-adoption.md) | drafting r1，0/9 | Music/Video/Photos三产品；保真实媒体链，不等Reader/教学038 |
 | [OS059](../../../../auto-os/docs/plans/059-reader-product-theme-adoption.md) | drafting r1，0/9 | 正式Reader主题，接U036与READER-007正式阅读/Locator源，不借在途WIP |
@@ -35,28 +41,23 @@
 
 ```mermaid
 flowchart LR
-    A[031/033已交付] --> P[036发行与输入 实施修复]
-    A --> D[037教学B2迁移 草案]
-    A --> R[038教学B3研究 草案]
-    R --> DL[后续教学B3实施包]
-    P --> DF[教学新渠道验收]
-    D --> DF
-    H[053宿主与calc已交] --> C[055真实clock与G1/G2 草案]
-    P --> C
-    P --> Products[056至061 实际产品26 草案]
-    F[054八产品业务装配] --> F1[056最终OS组合门]
-    Products --> F1
-    E[READER007正式阅读交付] --> Reader[059阅读产品主题]
-    C -. 仅所需载体能力 .-> Products
+    T[031/033/036/037已交付 教学22] --> B[045媒体3 / 046图像文件3 / 047工作台6 草案]
+    R[038研究已交付] --> B
+    T --> S[041组件与Store实例 草案]
+    S -. 正式实例接口 .-> H[042 Reload生命周期研究 草案]
+    U[906/910/918/036有限交付] --> L[语言930交付回归与独立源 草案]
+    U --> O[055/057至061 OS产品主题合同]
+    P[056八产品源码已交付] --> G[054后接正式OS pin/组合hold]
 ```
 
 
 
-**教学与产品分两条独立演进线**：auto-ui/examples/ui已迁10、B2十二由037、B3十二先038研究；产品从AutoOS apps.manifest逐个核真实仓，28 active入口=053/calc已有1+055/clock合同1+056–061新增26。源码/数据/测试分别持有，Demo通过不折算产品完成，不以相同编号互相覆盖。
 
-产品全量盘点/精确HEAD与pin差额、批次与共同验收见[AutoOS Design03](../../../../auto-os/docs/design/03-product-theme-rollout.md)。包括外部Musk/Jade及OS local syslog；references旧来源不重复计活跃产品。036尚未交付，六新批均只立约；056最终OS pin/组合门等054正式业务组合，059接Reader007正式表面，其他批不整体等它们。仅真实需要055新增outproc能力的腿等该能力，不能把用户系统事件窗口等待变成所有迁移前置。
+**教学与产品独立演进**：教学B1+B2按canonical累计22，B3十二由038研究后正式分045/046/047（3+3+6），均本轮只立约。037最终收据已合入/清理但头计数未同步，不能据头7/11抹掉交付，也不隐去复审来源/首红与vue-render新渠道待办。
 
-共享包/manifest/锁/renderer/输入按真实文件短窗单写，不借WIP。普通产品独立clone main一写入者，Musk/auto-down等基础owner按本仓专属树规则；实际启动/测试到交付pin逐个验。State/Feature/Reload、ACE/AG/其他业务路线不是全局前置。
+UI041/042是框架状态/Reload接续，语言930收036三红与真实独立来源门，设计见[两仓接续](../../../../auto-ui/docs/design/autoui/instance-state-and-reload-stage-one.md)。它们不是所有Demo/OS主题迁移统一前置；只有实际命中共同根因/新增实例接口的腿接受对应正式结果。完整Feature/命令/Service、Tauri R-6、Vue发行新渠道仍须按owner后继，不冒自动完成。
+
+实际产品按OS Design03的28入口独立验。056源码八产品已主题接入，但OS组合pin/部署仍hold等054；055/057–061按各合同，不能以产品源码归档=用户桌面已升级。共享renderer/manifest/锁/来源输入短窗单写、不借WIP；语法927及后继SG/ACE合同独立，不把全线当本包前置。
 
 ## 3. 已交付治理与保留差额
 
@@ -75,9 +76,9 @@ work/review定向反控与完整受影响职责，独立final review后merge冻�
 
 ## 5. 下一步
 
-本轮完成28个actual manifest入口的源码/基线/主题差额盘点，新增OS056–061六完整产品合同（8+6+3+1+3+5=26），**全部暂不实施**。036继续原会话返修/复审/落地；055仍独占clock/真实系统事件与载体；教学037/038单独推进，不抵产品数量。
+本轮按用户明确的auto-ui+auto-lang范围，新增UI041（实例状态）、UI042（Reload有界研究）、语言930（生成交付回归/独立源）及接受038实测后的UI045/046/047三教学B3合同，**全部暂不实施**。可独立授权930或041；042现路径核验可先做，消费新实例的腿接041正式结果。B3各批T-01先核具名阻点，不以研究有界go冒必需面已通过。
 
-各批授权后T-01先核业务交付/写窗/实际工具与资源，后续按U036、限定054/Reader/载体能力门执行；不自动接管其他会话的未完成业务。B3教学实施包仍待038真实支持结论后取号。只有每批全部产品实际验收/独立review/落地清理后才计入主题已迁，计划覆盖不当运行完成。
+未给全部产品/媒体/编辑新能力自动实施授权；真正共享生成/类型/API缺口具名交实际owner，不无限塞入930。旧拆仓/测试feature计划不重开，Cargo全机问题不因这些有限交付自动关闭。
 
 来源：[重审设计](../../../../auto-ui/docs/design/autoui/post-extraction-architecture-and-theme-closure.md)、上述归档/活动合同和实际脚本/清单/边界配置；本次仅只读核查，未重跑历史验收或修改实现/配置/基线。
 

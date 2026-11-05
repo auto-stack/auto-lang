@@ -599,3 +599,13 @@ P私有case/codec/COFF探针可并行；N为native collections/runtime/layout/dr
 923 N/fault与925/926 C provider/runtime主体可并行；source AST/candidate、924闭包registry/消费、A2X方法/type-enum片段、会话恢复与H面manifest-lock/父decoder逐具体SHA/符号单写，详审计§4。927→928→929公共语法面串行释放；无923–926整波等待，最终适用真实native/C认证仍需其能力和稳定接口，原合同/进度不变。
 
 SYN闭环之外仍有SQ/INST/CT普通源码查询/实例/冻结事实接线、CA-D有限ABI桥和最终架构组合签章待立项。796模型与817真实AV执行及797 ABI候选分别保其已有证据，不能由独立交付冒称生产前端已全面贯通。新M1仍为原门 AND C新增门 AND SYN-01..06 AND ARCH-01..08；只剩语法/特性覆盖的目标不免这些机制缺口，M2继续全场景替换disable。
+
+## 24. Native暖编辑准入与真实父判（2026-11-04，target-state）
+
+923/924已交付native故障/闭包能力，旧required三格关闭不免新M1机制与正式门。927正式采样暴露基座D-927-2，当前收据为59/60及t11 refused分类不符；新立[932](../plans/932-native-warm-edit-admission-and-refusal-closure.md)先分别重建合法body和故意签名变更原输入，按r2继承914有效typed策略拒绝为diagnostic verdict（依原预期PASS/FAIL）；缺/坏typed与协议资源才ERROR，具名纠正911旧句/t11旧Error测试断言漂移，不回退批准。合法body是否真实有准入缺陷须先重建，不从故意签名红推断。合法body仍按原未改生产0与whole0成功，真接口变化不因修复放行，不用整模块重算或改expected求绿。
+
+失败早退真实producer attempt、candidate源/操作级诊断、恢复R/管理M与artifact I/O均在连续父观察内；候选失败保旧root，后续修复正常。保原115函数/正式样本/平台条件、预算和P90≤2000ms。共享av session/core接口与928/929取稳定SHA窗，native/parent私有反例可并行；一般全profile/声明增量与SYN退役仍归929。
+
+[931](../plans/931-a2r-owned-temporary-consumer-lifetime.md)/[933](../plans/933-ace-tracked-oracle-and-fresh-checkout-closure.md)分别修Rust临时责任与跟踪oracle，不把独立代码/证据缺口混进新的ABI包。完整状态与后续CA-D/SQ/INST/CT/组合签章见[本波排期](../plans/reports/ace-next-wave-correctness-and-admission-2026-11-04.md)。本节仅target-state，未实施或声称新M1通过。
+
+932 r2新增首编辑联验必须消费929或等价已释放的真实来源恢复接缝；普通whole-request restart不冒P0恢复。私有native/父侧修复可先交稳定提交供929消费，最终缺接缝的AC pending，不新增等待D929整包才开工。完整写窗、反控与M1余账见[r2复核](../plans/reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)。

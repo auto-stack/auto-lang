@@ -1,6 +1,6 @@
 # 53 · 独立构建边界与生成Cargo产物治理
 
-状态：目标设计与交付记录；2026-11-02。905研究、906独立边界与[910有限Cargo治理](../plans/archive/910-generated-cargo-build-governance.md)均已归档；治理后继[918](../plans/918-cross-repository-admission-and-boundary-closure.md)仅drafting r1、暂不实施。下文旧目标/研究结论按各自来源保留，不能把研究完成当生产治理已完成。
+状态：目标设计与交付记录；2026-11-04。905研究、906独立边界、910有限Cargo治理、918准入/边界规则与UI036包发行/输入已归档。新立[930生成交付回归与独立来源验收](../plans/930-generated-delivery-regression-and-source-boundary-closure.md) drafting r1、0/9，仅规划、暂不实施。旧目标/研究测量按各自时点保留，不因归档数量冒全机Cargo问题已解决。
 
 承接[Design40](40-compiler-artifacts-and-cache-lifecycle.md)、[Design50](50-autoweb-service-framework-and-repo-boundaries.md)、[Design52](52-single-compile-profile-consolidation.md)。统一的是来源、依赖与构建生命周期的可验证边界，不预定全局共享可写target，也不把源码分仓当独立构建已完成。
 
@@ -59,3 +59,11 @@
 有限出口为真实UI/Web两类同义A/B消费者的正确隔离/复用、共享稳态unique字节严格低于独立总和、完整物理误差/迁移峰值/周转账及可回滚清理，再经独立review/实际合入。不是固定百分比或全盘历史清仓。906具名发行/布局/审计红按是否阻塞实际必需oracle判定，不以既有归因代替门通过。
 
 UI007已完成整棵示例归位与首批主题，并接受910四仓版本、target/成员/receipt/配置合同和移根规则；910本身没有搬权威示例/改主题。后继031/033的新来源仍按910重新生成和验证独立消费，不恢复旧basename或mtime准入。910已实际交付（lang f665ce113/UI01f99fd/Web3de5524/Man67add3c），现知识以[生成生命周期](../specs/repository-boundaries/generated-cargo-build-lifecycle.md)为准；UI007亦已归档完成移根和首批，后继031/033及OS053按各自合同接受。D-910-1准入与D-906-3审计差额交918，Web/Man具名债及910缓存持有分owner保留；这些限制不抹成全产品已绿。
+
+## 7. 036/918后继：真实回归对象与独立来源守门（2026-11-04）
+
+036最终交付保留三项具名原红：792-driver V04×2（仍硬编码rust-workspace/dev-run，与910 basename-id8成员冲突）与V05a（真实bundle A内tool locked构建/815投影面）。[930](../plans/930-generated-delivery-regression-and-source-boundary-closure.md)先重现/定位与冻结owner，修正确实过时的验收对象，并在必要UI owner窄改面修真正投影缺陷；不能为旧测试把生成目录回退，不能只删main.rs同源断言或以包B抵包A。
+
+新固定generated-delivery-controls拟承接便宜身份/失败传播反控，真实原V01..V06、工具wire/资源/主题与A/B构建仍单独实际执行。语言L1 SDK、L2完整workspace隔离源分别核，不隐藏真实仓/删成员/借旧产物；本包新变化按918干净source/审边规则维护，其他语法计划变化不自动重冻洗绿。所有新探针均未执行。
+
+UI041状态实例、042 Reload研究、045–047教学B3与930独立落约；真实OS产品主题线仍在OS各仓合同，不成为这些框架/语言守门的全局前置。Tauri R-6、vue-render外部发行渠道、Web发行/ID集合schema及Man派发等保持原owner，未由930自动关闭。

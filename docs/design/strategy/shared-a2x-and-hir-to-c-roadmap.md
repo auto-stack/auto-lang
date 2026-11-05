@@ -1,5 +1,9 @@
 # 共享A2X第二目标：Checked HIR→C与M1实施路线
 
+> **2026-11-04 r2当前复核优先**：927已交付，928 executing4/12，929 executing1/14按用户裁定等D928；931–933 drafting r2，仅规划。932继承914有效typed策略拒绝为verdict，坏typed/协议资源才ERROR；旧911/host判面漂移具名修订。933先交独立材料，931/932私有修复可并行，最终恢复首编辑接929稳定接口。整波后仍有SQ/INST/CT、CA-D ABI、最终ARCH组合准入三条机制线未立项，933不是M1最后包；详[最新复核/写窗/距离](../../plans/reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)。下列早期状态为历史。
+
+> **2026-11-04后续优先级**：921/925/926已交付，C scalar/record-text/collections主体可复用，CA-D有限ABI桥前置已具备但尚未立项。新立931优先补Rust同形临时值过早释放，932补native暖准入/父分类，933补sema跟踪来源及904缺manifest；详[完整排期](../../plans/reports/ace-next-wave-correctness-and-admission-2026-11-04.md)。语法927合入→928→929按原owner继续；CA-D建议先核checked foreign/中立metadata及native+A2C真实消费者，再拆标量三腿/资源生命周期，不把ExternalFn兄弟签名或C内部struct当FFI。原797 candidate/descriptor3/资源门与M1必需身份不变，不在本轮施工。
+
 > **2026-11-03 M1新增架构机制门**：统一语法正式拆927→928→929，见[机制调查/写面交接](../../plans/reports/ace-m1-architecture-gap-audit-2026-11-03.md)。925/926的C provider/runtime原职责与顺序不变，公共source/AST/type-enum/method片段/A2xSession/来源恢复按实际SHA单写；929消费已交付能力，复验restart后下一编辑与真实未改生产0。CA-E最终必须合并原门+C门+SYN/ARCH门，不能仅C/native已绿就签M1；SQ/实例/CT接线、CA-D及最终组合收口仍待立项。本轮只规划，不扩在途合同或施工。
 
 > **2026-11-03最新CA-C/实施顺序**：CA-C正式为[926集合/变体资源闭环](../../plans/926-a2c-collections-variants-resource-closure.md)，drafting r1、0/14；承[925 CA-B](../../plans/925-a2c-record-text-resource-closure.md)资源底座，复用CollectionsBodyFacts，不拆List/Variant重复架构。原20源+全部补例/typed-runtime helper边界、P0/来源恢复/双侧真cl认证/预算时间均随包关闭。921已work done11/14待review，主序921复审合入→925→926；私有准备可先，公共A2X按stable SHA单写。native923→924与C主体并行，公共S/H与正式采样分窗。CA-D有限ABI桥得A/B稳定target/资源接口后可与926并行，不等集合全交付；CA-E最终需C A/B/C/D与旧M1/native三格/Q4组合门齐，D/E未取号。设计见[Design51 §15](../51-shared-a2x-and-hir-to-rust.md#15-ca-cc集合变体与近期实施顺序2026-11-03target-state)，下文旧“CA-C未取号”为历史。

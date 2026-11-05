@@ -1,12 +1,10 @@
 # 52 · 单一编译 profile 整改（auto-lang 去 UI / feature 拍平 / tm 清退）
 
-状态：target-state r1（2026-10-31 用户六问裁定驱动；实施经四计划 C→A→B（本仓）+ D（auto-ui 仓））
-进度（2026-10-31）：C（PLAN-898）已归档；**计划 A（PLAN-900）已交付、复审记录/合入/归档/清理完成，10/10**——§2.1 依赖方向反转落地
-（facade default=[]、零 auto-ui 包、ui_build 族/install 单点/测试/examples/cosmic/
-auto-lsp 迁 auto-ui 仓；auto-ui 兄弟仓依赖解除实证）。注：单仓完整不变量尚余
-auto-web-contract path 边（900-N7，另行计划）。
-**计划 B 为语言仓 [PLAN-901](../plans/901-test-feature-flattening.md)，当前读回 executing 1/8，实时以合同为准。** D 已在主责任仓立为 [auto-ui/PLAN-018](../../../auto-ui/docs/plans/018-ui-build-configuration-closure.md)，drafting r1、0/8，仅规划；实施须明确授权并接受901正式交付。B 包含语言测试门退出所必需的 UI SDK 发行投影与 Web 测试消费者接线；D 负责 UI 自身的默认 runtime 编译闭包、测试编译/运行分离及相应生成/发行消费，真实可选产品能力保持。B→D→014/007交接分别按合同，不重复迁移。
-性质：架构（L2）——依赖方向反转 + feature 面退役 + 测试设施概念清退
+状态：目标设计与有限交付记录，2026-11-04。C [898](../plans/archive/898-tm-tier-retirement.md)、A [900](../plans/archive/900-de-ui-dependency-inversion.md)、B [901](../plans/archive/901-test-feature-flattening.md)、D [UI018](../../../auto-ui/docs/plans/archived/018-ui-build-configuration-closure.md)均已归档；900-N7的Web兄弟依赖由[906](../plans/archive/906-standalone-language-web-boundary.md)关闭。后继生成输入/发行由UI036交付，语言准入/边界918已交付，930只补真实回归/独立源验证，不重做feature拍平。
+
+下文背景/分拆是2026-10-31历史设计依据，数量/旧path/feature不能视作当前事实；§2.4零新增rlib是全局目标表述，不凭四计划归档冒所有dev/test/工具链配置编译单元完全一致，现行测试入口仍cargo t固定组、原平台/ignore/资源条件保持。
+
+性质：架构（L2）——依赖方向反转 + feature面退役 + 测试设施概念清退。
 
 ## 1. 背景与动机
 

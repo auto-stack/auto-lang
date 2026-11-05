@@ -1,5 +1,7 @@
 # ACE M1架构机制剩余缺口与统一语法拆包调查（2026-11-03）
 
+> **2026-11-04后继规划更新**：本报告原“SQ/实例/CT未立项/或1–2包”为当时快照，现已正式拆[934普通源码query](../934-source-semantic-query-and-invalidation.md)、[935有限真实实例](../935-source-scalar-template-instances.md)、[936普通源码AV CT](../936-source-av-cte-query-and-frozen-recovery.md)，均drafting r1、未实施。详[新基线与写窗](ace-source-sq-instance-cte-baseline-and-schedule-2026-11-04.md)。CA-D有限ABI与最终ARCH组合准入仍未立项；计划成立不等于机制已交付。
+
 > **927–929规划复核更新**：三包当前drafting r2，0/12、0/12、0/14，新增入口授权/typed资源态、同文闭包与底层子体复用、无预热首编辑/真实计数与I/O、原子来源发布/预算适用性和具体写面交接；[完整复核及近期执行表](ace-927-929-plan-review-and-schedule-2026-11-03.md)为当前状态入口。下文初订快照保留，非实施通过证据。
 
 状态：只读源码/Spec/收据调查与规划，不是本轮测试认证。基面 `ec3e70414`；用户授权核清M1机制并正式立项统一源码语法前端，不授权施工。适用[最新M1裁定](ace-m1-architecture-completeness-decision-2026-11-03.md)，不改原required/NA/accepted-diff、expected或已有批准。
