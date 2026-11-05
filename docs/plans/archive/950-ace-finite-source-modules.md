@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/finite-source-modules.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-semantics, auto-a2x, auto-av]
 depends_on: [PLAN-929, PLAN-934, PLAN-943]
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -104,7 +104,7 @@ T-01 bounded闭环：仅两模块、三个函数（std public answer=42、privat
 - [x] **T-04｜owner_stage: work｜AC-03/04**：沿source-query/artifacts恢复与原事务接模块身份、正负依赖与首编辑；V-04..07永久反例和合法对照，失败后真实读回。
 - [x] **T-05｜owner_stage: work｜AC-01..04**：核实际生产计数/边界与所有新用例接固定组，完成受影响完整职责组和健康检查，提交冻结源码与拟议Spec delta。
 - [x] **T-06｜owner_stage: review｜AC-05**：同一唯一树独立final review，逐AC与遗漏/债务候选核验，结论绑定revision/SHA；pass才reviewed。
-- [ ] **T-07｜owner_stage: merge｜AC-06**：冻结职责组并集、ff来源核验、落Spec/归档、证据摘要折入Plan；逐命令所有输出根对账、刷新retention、guard clean后删除树/branch/scope。实际交付后回944。
+- [x] **T-07｜owner_stage: merge｜AC-06**：冻结职责组并集、ff来源核验、落Spec/归档、证据摘要折入Plan；逐命令所有输出根对账、刷新retention、guard clean后删除树/branch/scope。实际交付后回944。
 
 T-01依赖已交付929/934/943，T-02..05依赖T-01冻结；T-06在work AC全闭后、T-07在final pass后。不得勾选未做任务，count含7项全生命周期任务。正文命名是拟议接线，开工核符号，不手写HIR顶替source验收。
 
@@ -302,6 +302,76 @@ landing guard：默认bash误解析WSL导致脚本路径不存在（exit1，非d
 部署观察（未切默认）：主target/release/auto.exe不存在；主ACE release av-worker.exe=2026-11-06 00:13:38、a2x-worker.exe=2026-11-05 13:29:34，均早于本次API交付，本包未重建/重启；gen/front/vue/dist不存在。新模块源码/库API由当前测试构建消费，不宣称现有部署已加载950；未改auto-down代码/前端，readonly sibling无需发行构建。后续调用者须重建消费crate。
 
 周期门已核：receipt last_covered_plan_id=940，950为新落地且%5=0，因此cargo t all到期；由主检出单实例regress接管，当前936尚有CT gate，不能并发启动第二full tier。此周期门与本包1929项受影响门区分，不宣称全仓all-green。
+
+### 2026-11-06 cleanup前证据折叠（原材料全删，无具名hold）
+
+完整门禁原始总1170.564s/exit1，未改写；各组准备/发现与运行分列如下（秒，前者含对应test build/list，另工具冷准备归整命令差额，不混入运行）：
+
+| 组 | 原执行/终态 | 准备/发现 | 原运行（含parent采样） |
+|---|---:|---:|---:|
+| ace-source | 370 / PASS | 14.710 | 9.577 |
+| ace-syntax | 132 / PASS | 15.423 | 326.875 |
+| ace-semantics | 190 / PASS | 5.528 | 141.539 |
+| ace-artifacts | 40 / PASS | 2.622 | 10.294 |
+| ace-av | 1012 / PASS | 16.639 | 330.473 |
+| ace-a2x | 185 / FAIL | 12.519 | 120.083 |
+
+修复后当前AV1014/A2X183已由原适用atomic绿+冻结定向重放、独立严格集合对账补齐，合六组1929唯一项，0 uncovered；所有child_validation真。原core run_exe_60s_deadline_bounds_descendant_pipe_hold ignored1，仍排除不充PASS。原完整A2X185两红由M01/M02闭合，保留原败收据SHA及受影响新收据，不把旧FAIL改为PASS。清理耗时单独属后续cleanup，不混入测试运行。
+
+旧报告散落由既有AV test report_file硬编码产生（D911-2），本包未改其测量/断言：`docs/reports/plan827/incremental-raw-1793905927-pid37444.json` 15427bytes/SHA256=9a1fd2a304f12bd6ffa304c4a892a0f585f5769a23a1001b2a59ba3f0129da8a；pointer `incremental-raw.json`15455bytes/SHA256=c2be9b4860ce4b4005b0a7183700be7c0d3351da76191464b65bb6a05a2738ed。已迁入scope/reports并核前后file2/30882bytes/SHA一致，pointer工作树从HEAD恢复；本次30原样本verdict pass，P50=70.913ms/P90=143.9367ms/P95=148.0838ms，原2000ms门不改。两份原始报告随scope删除，持久摘要即本段。
+
+完整门禁额外旧warning具名：av/tests/cases/closures_recovery_913.rs1418 unused_mut、av_method_incremental.rs315 unused edited、av_method_perf.rs70 unused_mut、av_owned_first_case.rs42 dead FIRST_CASE_INT_TWIN；source-query/tests/instance_host_935.rs103 unused_mut；加前述旧lib三处及src/tests.rs895。它们没有950变更，不能拿“已处理”冒称零warning；950新改源码/注册/guard格式均过且无新debug输出。
+
+唯一材料输出根对账已核：scope/{probe,target,consumer-output,review-probe,reports,runtime-temp,各gate/log/receipt/失败fixture}；原专属worktree的root target、experimental/ace/target及所有build intermediates；下表28个早期默认Temp根。未发现其他盘符安装/发行/第二scope或保留exe，未迁移构建缓存保留。产品永久fixtures/Specs在提交中，不属清理材料。D950-1旧recipe问题为可从API重建的债务，owner/关闭条件已在KNOWN-DEBT，无需hold原材料。
+
+worktree及read-only sibling已在各自新鲜guard clean后实际移除，branch plan-950-dev已删，lang-950空组已删，注册列表无950。移除前确认HEAD全在master祖先、树clean/无活动950进程，未用force或穿透链接。当前scope预删除统计：49227 files / 3959740566 bytes（logical），无reparse；外Temp合28目录 / 2079 files / 171622313 bytes，无reparse，逐树内容身份不变。实际删除在下一条最终收据确认。
+
+外路径父根均为`C:/Users/zhaop/AppData/Local/Temp/`；表内basename完整列出以便未来归属核对（936不同PID/02:37目录未动）：
+
+| basename | files | bytes | tree SHA256 |
+|---|---:|---:|---|
+| ac787-adm-badref-40264 | 7 | 57781 | 790efcef13b2dd1d853dd5a883627cfba56af4c89ab1442f6c39a820c336d840 |
+| ac787-adm-corrupt-40892 | 18 | 63109 | 009093af730b52ce10aec66f0c5664fc1f793140517cc9158bcc4f60fb2d88c1 |
+| ac787-adm-id-42316 | 14 | 63109 | ea1f404cfc7d25aeeada9421a2ad1beffdfeb415faaa2d632e64f97047de8824 |
+| ac787-adm-lifecycle-46916 | 16 | 70013 | a6d9d198af9b3132ce3a18dbefd09a30a97b7185c2fde256a23ffd348169fc06 |
+| ac787-adm-missing-26484 | 17 | 60565 | 26c539c6cd90d6ec67cda487af4f361d408883dfb251f8e3202835380ab4c5b1 |
+| ac787-adm-pubfail-25760 | 18 | 60777 | 4a28d21137b36d536ece9b053c380da5a07e3d7adcedec34e578d14349b0fa9e |
+| ac787-adm-r4-childown-16900 | 11 | 58015 | 698ff86840674c91df7797ab28a8fbb1025c0b5d1320b9ec6aaae93e830ce3a9 |
+| ac787-adm-r4-childpar-44216 | 11 | 58015 | f0d692a88ac10e7917902c046f96929128af254fc21e9e33a635df384a9f3d21 |
+| ac787-adm-r4-childsrc-43532 | 11 | 58015 | 053631c28ea61bee11d45ed248c9504a9641282f05d62bf85f2a1b785418bd1a |
+| ac787-adm-r4-crosspage-41212 | 19 | 2670388 | af9d54b918beda228949094547866297f04bf9d704055ed9060cf6a974e04878 |
+| ac787-adm-r4-field-42064 | 11 | 58015 | 934215b08899b33e79c12e50b6b502222c8de15cb5b166327d80dd9d294f34dc |
+| ac787-adm-r5-eps-no-args-38300 | 11 | 57344 | f4abcabd3cd6a933291653c05f04d8bdb4d08198869467a4539bbb0b6ca45572 |
+| ac787-adm-r5-eps-one-arg-38300 | 11 | 57344 | 8dbf374dea62d58ba4b5595e5fba7cb9dcea4c732f9488cb6b64c35e58bc0c13 |
+| ac787-adm-r5-zw-bad-47988 | 11 | 58016 | 4cb330489f722cd5f541ba61dcb6d28f2a060af3bd87a8a5a9a1524becde6e11 |
+| ac787-adm-r5-zw-ok-41292 | 11 | 58016 | 917bc9e1db7220ad2d1a2a70fd5cf26a7145aaca3f882fe3e515710e058d84ca |
+| ac787-adm-restart-37724 | 22 | 61724 | 78005b715313476ea2ab5581917ea6fe746406eec6c91c74429ec9b3e390e69f |
+| ac787-adm-same-content-31832 | 14 | 60141 | 96092ed46a2954ac84245beecdc49083e85a5a5de3da6cbc8f49bda79409f35a |
+| ac787-adm-span-27192 | 11 | 57975 | acf28b75e8c61cba52a2765a60a09c8fd3208d3c4397eab0b462855f533aa0df |
+| ac787-adm-trunc-39612 | 18 | 63099 | ea64edee9127d7ae06cf44ecc94f383dd2947b62f61fd5ae7ca3ad9bff5d493c |
+| ac787-budget-64m-45528 | 1745 | 165522803 | 6133a3e3e269e90b03dd91ffc8f72b72139dcb5f1634ee672b01054e4007731d |
+| ac787-depth-persist-41204 | 12 | 57344 | 8d780411f40d4630001ed4f786aa1002f86d7736cd6d4a62d81460e9643bb082 |
+| ac788-capture-bytes | 1 | 6 | 43b02c49fbd3cd0f602d5113743fc992ff404b4627ee1bc648bcb64068f31eae |
+| ac788-capture-cap | 1 | 2097152 | 9fbe538cd3be43f6234c34d678119838799cb734b3da19b1e052dc2939f6e39d |
+| ac788-capture-cap-exact | 1 | 1024 | 1f41a5abe112e4940abc006d3078668bc3814c14285ba96b203e70c6c802874f |
+| ac788-capture-nul-crlf | 1 | 9 | a6779ce7a76c21bcd4308ae9f106d7b81d22547533b1d18f77d601337ad59fc7 |
+| ac787-adm-lifecycle-19964 | 16 | 70013 | 82390f6b836f1b8368d57573d7a000da99e63536b52241c3a6edaf7038c51854 |
+| ac787-adm-pubfail-11920 | 18 | 60777 | bad43dcb9c0c8c52a8fa365afdcbe388e59b282cdd00a16cb5fda83eb1c6ac95 |
+| ac787-adm-restart-37956 | 22 | 61724 | c96672b4f3fc1a313d6f8acff1f5926b15769148597e8d414bde3ff7dc2b3cb1 |
+
+以上原始证据已折入本Plan；scope与外根尚待实际删除，不能提前记cleanup完成。
+
+### 2026-11-06 merge最终收尾：D950 delivered
+
+实际核验：950语言worktree、只读auto-down sibling、plan-950-dev分支及lang-950空组均不存在；均先以显式Git Bash运行wt-guard得到clean，语言branch所有提交已在默认master祖先。scope `D:/autostack/plan-artifacts/plan-950/`已全删（49227files/3959740566 logical bytes），表列28个外Temp根全部不存在（2079files/171622313bytes）；可量化合计51306files/4131362879bytes，另worktree内部构建target随git worktree remove全删，未另量化字节、无缓存/二进制回收保留。该28外根按原表逐项绝对父路径/reparse/活动进程/唯一归属和内容身份核验，未碰其他时间/PID的936根。
+
+删除审批历史如实保留：带Force的外目录删除两次被自动审批拒绝，仅返回blocked by policy，无更细理由；随后改用不含Force的、显式已核路径/同一PowerShell的删除方案，审批允许执行，保护项遇错即停。先清scope，再清外28目录，终态逐项确认absent；未换shell/工具绕过拒绝、未请求升级权限。最终无未解决cleanup hold。外28清理0.273s；scope删除含核查5.479s，worktree移除使用独立命令等待真实完成；不混入产品测试时间。
+
+证据/命令/失败与修复/子终态/规范hash/输出路径及数量均已折入本Plan，原材料删除后不要求旧本地路径仍存在。retention刷新为已删除并记录本归档文档SHA256、28外根核对及无hold。主检出code paths干净，已知其他会话docs WIP保持不变；并未把别人的文档WIP一并提交。规范源码由delivery `68cd53d435f7d3a6fc69fd911e474895dc387ed5`提供，归档首次提交`7a6183c16`，本收尾再以docs提交确认T07/7-of-7。
+
+`stage: merge | plan_id: PLAN-950 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: 68cd53d435f7d3a6fc69fd911e474895dc387ed5 | reviewed_commit: 479a6053502fd17021581b02dfa889479e04d993 | canonical_verified: three exact docs/specs source hashes above | archive: docs/plans/archive/950-ace-finite-source-modules.md | cleanup: worktrees/branch/group/scope/external28 absent, holds none | tasks: 7/7 | pending_periodic_gate: due cargo t all on main, waits existing936 CT gate; not a missing per-plan affected gate | next: regress due handoff; resume PLAN-944 r2 T01 in original tree`
+
+`stage: goal | plan_id: PLAN-950 | plan_revision: 1 | from: merge | to: work | status: archived | outcome: pass | worktree: removed | commit: 68cd53d435f7d3a6fc69fd911e474895dc387ed5 | next: PLAN-944 (parent objective remains active, not complete)`
 
 ## 10. 待澄清事项
 

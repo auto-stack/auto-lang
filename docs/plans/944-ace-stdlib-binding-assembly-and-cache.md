@@ -124,7 +124,7 @@ Auto公共源码、现有Rust装配/ACE workspace、既有TestCase与固定Cargo
 - [ ] **T-06｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
 - [ ] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
-T-01继续执行前置：D943已正式交付，D950尚未交付；本目标用户授权已齐。先按用户决定交付独立950，再回本树继续；依赖未齐不把只读准备/历史前探计作下游交付。T-02..05依次依赖T-01冻结结果；T-06在work侧AC全闭后，T-07在review pass后。任务与AC引用多对多：T-05覆盖AC-01..04，不以单行对应限制验证。
+T-01继续执行前置：D943及D950均已正式交付；本目标用户授权已齐。在原944唯一树同步master后重新T-01冻结，不把前置950的验收替代本包标准操作proof、装配身份/失效和当前运行授权义务。T-02..05依次依赖T-01冻结结果；T-06在work侧AC全闭后，T-07在review pass后。任务与AC引用多对多：T-05覆盖AC-01..04，不以单行对应限制验证。
 
 ## 9. 复审记录
 
@@ -171,6 +171,8 @@ T-01继续执行前置：D943已正式交付，D950尚未交付；本目标用�
 `stage: new | plan_id: PLAN-944 | plan_revision: 2 | outcome: pass | changed: dependency D950, T-01 entry | next: deliver PLAN-950 then work T-01 | authorization: 用户先建并完成前置再继续944 | pending: D950 formal delivery; host goal resume`
 
 2026-11-06 resumed work checkpoint：用户已恢复原goal active。按已选路线执行950，检查点dc9f63f4f在950唯一树；有限模块的AV与HIR→Rust实际分别返回42/7，950恢复/首编辑/正式复审合并仍未完成，尚无D950。本包仍0/7，未把前置部分进展计为944验收通过。
+
+2026-11-06 prerequisite delivered：D950正式交付，source=`68cd53d435f7d3a6fc69fd911e474895dc387ed5`在master祖先；独立r1/修复1 final pass、三份canonical Spec精确hash、归档950 7/7、两个worktree/branch/group/材料scope与28外输出根实际清理均完成，无hold。有限module API只i32/bool，不声称943真实标准操作行为已执行；本包仍r2/0-of-7，原AC全部保留。周期cargo t all因950到期，由主检出单实例regress接管，不能与936现存CT gate竞争。下一步在原944树同步正式master并重做T01；无新用户范围决定，既有全链授权持续有效。
 
 ## 10. 待澄清事项
 
