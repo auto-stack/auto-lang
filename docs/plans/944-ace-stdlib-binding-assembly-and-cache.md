@@ -35,7 +35,7 @@ total_steps: 7
 
 复用当前统一source/Checked HIR、共享MIR/资源事实及query/store。A2X消费HIR，AV/native消费共享MIR；公共语义与物理实现分开，旧runtime只按实际合同复用。标准操作身份、兼容策略和manifest双指纹遵守Design54 §4–7。
 
-依赖：PLAN-943 正式交付（D943）及 [PLAN-950 有限公共函数模块前置](950-ace-finite-source-modules.md) 正式交付（D950）
+依赖：PLAN-943 正式交付（D943）及 [PLAN-950 有限公共函数模块前置](archive/950-ace-finite-source-modules.md) 正式交付（D950）
 
 ## 3. 技术栈
 
@@ -170,9 +170,11 @@ T-01继续执行前置：D943已正式交付，D950尚未交付；本目标用�
 
 `stage: new | plan_id: PLAN-944 | plan_revision: 2 | outcome: pass | changed: dependency D950, T-01 entry | next: deliver PLAN-950 then work T-01 | authorization: 用户先建并完成前置再继续944 | pending: D950 formal delivery; host goal resume`
 
+2026-11-06 resumed work checkpoint：用户已恢复原goal active。按已选路线执行950，检查点dc9f63f4f在950唯一树；有限模块的AV与HIR→Rust实际分别返回42/7，950恢复/首编辑/正式复审合并仍未完成，尚无D950。本包仍0/7，未把前置部分进展计为944验收通过。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权已由2026-11-06 `/goal 完成计划944` 给出；无额外预算/模型约束。跨仓仍只读。
-- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标仍blocked，请用户`/goal resume`恢复原目标；不创建第二目标。
+- **已决定（2026-11-06）**：用户选择“先建并完成前置计划，再继续944（推荐）”。前置为[PLAN-950](archive/950-ace-finite-source-modules.md)，按其有限public/import/可见性/查询恢复合同正式交付D950后继续本包；944的AC-01..06、支持阈值和标准操作proof等义务不变。无需再次请求相同范围施工批准。宿主目标已由用户恢复active；继续交付950，不创建第二目标。

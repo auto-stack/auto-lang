@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-950
-status: reviewed
+status: archived
 feature_name: ACE 有限公共函数模块与受检绑定前置
 author: [Codex]
 created_at: 2026-11-06
@@ -286,6 +286,22 @@ M01：A2X sanctioned只精确增加serde中立数据derive；未加入ace-av或�
 因此当前六组1929个唯一执行项均有适用绿证据（source370/syntax132/semantics190/artifacts40/AV1014/A2X183），旧core原ignored1仍为条件排除而非PASS；原64MiB、512修订/32MiB、六场景30样本的完整原规模证据保持，不重跑无关压力。旧A2X两FAIL与父exit1保留历史；这里是修复后按身份补齐的验收，绝不将旧失败收据改写为PASS。原AC01..04产品/来源/事务证据因实施/输入未变继续适用，AC05完成本次复核；AC06依然归merge实际落地/归档/路径清理。
 
 Spec仅finite-source-modules验证落点改为av::conformance::module_sources_950，与实际注册一致，语义/AC/impact不变；当前该文SHA256=e0870a71b96fb6f375a59bdc986aa097f7b3415e3318cdb531d7b2a1909cd617，另外两文不变。完整新Spec delta冻结scope/review-repair1-spec-delta.diff SHA256=edc5a85a147a391ccfca303600cb861dbeb972a801692ab7db5e2575dbb5f922。无新增债务/未批准延后；D950-1保持旧recipe具名边界。T06闭合6/7，T07只待实际来源沉淀、归档及guard/retention/所有输出根清理，不能以本次pass代称已交付D950。
+
+### 2026-11-06 merge landed / canonical verified / archive checkpoint
+
+PLAN-950:r1正式来源以独立pass `479a6053502fd17021581b02dfa889479e04d993`为准。仅文档master后继（无production/config改动）重放五提交，range-diff全部`=`：d2e2aaace→8486e78d4、2cfe77207→8a78d94db、297edb844→8fc9b5b8a、8f595a9a3→c1079b36c、479a60535→68cd53d435f7d3a6fc69fd911e474895dc387ed5。`git merge --ff-only plan-950-dev`真实快进至该delivery，未造merge commit。主检出code paths零WIP，其他会话docs WIP保留不纳入。交付与review代码/config逐路径git diff --exit-code为0，测试/依赖/样本不变，适用1929项绿证据及原ignored1继续有效，未在主检出另建/重复测试工作树。
+
+canonical三文从交付commit逐字读回并核SHA256：source-frontdoor=578e98e68e2d88691310d80b199546c0d6b39c564191106a54cbaa758370861e；source-query-session=7d8239fdecc3fc82ebd8f01f785ca76aa869db9c7e4cad1782d2a1aaa96020f9；finite-source-modules=e0870a71b96fb6f375a59bdc986aa097f7b3415e3318cdb531d7b2a1909cd617。均位于原metadata指定docs/specs路径且与独立delta精确相同；无ledger/index写。完成source identity与规范落地核验，不把未构建部署说成已更新。
+
+landing guard：默认bash误解析WSL导致脚本路径不存在（exit1，非dirty guard）；定位后显式`C:/Program Files/Git/bin/bash.exe D:/autostack/wt-guard.sh D:/autostack/.wt/lang-950/auto-lang` exit0、clean，无任何reparse。实际移除前仍需再guard。Git自动maintenance令ff命令短时持续运行，已轮询同一handle至exit0及landing-verified.json真终态，不按超时重启merge。
+
+归档位置=`docs/plans/archive/950-ace-finite-source-modules.md`，completion_kind=delivered；此checkpoint将由git mv/status后正式提交。T07尚未勾选，树/branch/scope/外输出清理仍待实际动作，不提前声明D950全闭。
+
+路径对账补齐：重新逐命令核早期syntax-root-replay发现01:59:33的adm-lifecycle-19964、adm-pubfail-11920、adm-restart-37956三个std temp目录（与该log3个原子case/终态01:59:34精确匹配）；连同早期完整门禁25目录，总28目录/2079files/171622313bytes，无reparse，逐树内容hash已核。外inventory SHA256=5012a30983f72e485d6f8e3eb5562537bc6c606feff019c0d6a49c21fd7a1c3b。所有外根仍待最终清理，完整路径/内容清单在scope/external-output-inventory.json，清理结果将折入下条收据。
+
+部署观察（未切默认）：主target/release/auto.exe不存在；主ACE release av-worker.exe=2026-11-06 00:13:38、a2x-worker.exe=2026-11-05 13:29:34，均早于本次API交付，本包未重建/重启；gen/front/vue/dist不存在。新模块源码/库API由当前测试构建消费，不宣称现有部署已加载950；未改auto-down代码/前端，readonly sibling无需发行构建。后续调用者须重建消费crate。
+
+周期门已核：receipt last_covered_plan_id=940，950为新落地且%5=0，因此cargo t all到期；由主检出单实例regress接管，当前936尚有CT gate，不能并发启动第二full tier。此周期门与本包1929项受影响门区分，不宣称全仓all-green。
 
 ## 10. 待澄清事项
 
