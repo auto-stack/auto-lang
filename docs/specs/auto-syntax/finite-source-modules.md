@@ -80,7 +80,7 @@ AXS/AXR 片段身份、runtime/print 版本与实际 file-set 收据。恢复重
 ## 验证责任
 
 永久入口包括 core 模块语法/绑定测试、source-query 模块存储/首编辑测试和
-`a2x-worker::conformance::module_sources_950` 的两个 Windows x64 真消费者用例。
+`av::conformance::module_sources_950` 的两个 Windows x64 真消费者用例。
 分别对独立42/43/7 oracle执行，核未变 AV Arc/AXR artifact ID，并检查下一次
 恢复、实际 root 写入失败、旧目标重绑和 producer 版本反例。实际计数与退出码
 见归档 Plan；其他平台/资源/标准库族不能据此声明支持。

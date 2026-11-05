@@ -63,7 +63,6 @@ dependencies = [
  "ace-a2x-store",
  "ace-abi",
  "ace-artifacts",
- "ace-av",
  "ace-core",
  "ace-source-query",
  "auto-tool-execution",
@@ -110,6 +109,8 @@ dependencies = [
 name = "ace-av"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-artifacts",
  "ace-av-core",
  "ace-core",

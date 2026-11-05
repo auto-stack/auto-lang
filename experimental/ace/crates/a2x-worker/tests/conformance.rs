@@ -30,6 +30,8 @@ mod boundaries;
 mod bridge_flags;
 #[path = "cases/cert_coll_904.rs"]
 mod cert_coll_904;
+#[path = "cases/cert_json_951.rs"]
+mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
 #[path = "cases/choose_instances_935.rs"]
@@ -44,8 +46,6 @@ mod collections_face;
 mod collections_v15;
 #[path = "cases/contract_certification.rs"]
 mod contract_certification;
-#[path = "cases/cert_json_951.rs"]
-mod cert_json_951;
 #[path = "cases/hir_shape.rs"]
 mod hir_shape;
 #[path = "cases/incremental_cache.rs"]
@@ -70,6 +70,3 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
-
-#[path = "cases/module_sources_950.rs"]
-mod module_sources_950;
