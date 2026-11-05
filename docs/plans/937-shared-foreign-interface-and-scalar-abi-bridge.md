@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-937
-status: executing
+status: reviewed
 feature_name: CA-D1 共享接口事实与标量ABI桥底座
 author: [Codex]
 created_at: 2026-11-05
@@ -189,6 +189,10 @@ Work-owned AC 结果：AC-01 ✓（三腿真实执行+797兼容+依赖图无环�
 stage: goal | plan_id: PLAN-937 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-937/auto-lang | commit: c5d5fa497 | next: review
 
 stage: review | review_scope: final | reviewer: 同会话自审（计划§6约定不派agent——独立限制：判决由工件重构，未采信执行摘要；代表性证据全部重跑） | PLAN-937 | r1 | outcome:needs_fix | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | reviewed c5d5fa497 | base 122725e9a | deps: cl 14.44.35207/lld(sysroot)/SDK 10.0.26100 | spec_inputs: SD-01..07目标路径5现存2新建已核 | acceptance_results: AC-01..07 pass（FC 25绿、scalar_bridge 14绿含192s回转门、case组6/6绿、冻结组并集9/9[ace-a2x组于c5d5fa497复绿,其余组输入在68382861a..c5d5fa497间未变]、diff范围41文件全在声明写面、无调试打印/TODO、SD路径齐） | findings: RV-01 P3 fmt漂移(a2x-c/abi_scalar.rs行宽,cargo fmt --check红)；RV-02 P3 未用导入self(worker_bridge.rs:21)；RV-03 P3 未用变量plan_key_canonical(bridge.rs:758,typed链副本;源导出副本入handle已用) | debt候选(非缺陷): D-01 空steps空过为797协议族既有属性(零选择),938+可加固; D-02 797 emit.rs文档注释"fp in XMM0/1"与位置制实际不符(冻结文件未动,§7.1已记) | evidence: 本行内嵌+§7.1 | next: work修复RV-01..03(最小范围:fmt+两处清理+受影响crate编译复验),其余证据按输入未变复用 | 复审修复范围: cargo fmt + 删除未用导入/变量 + cargo check -p 受影响crate零警告 + scalar_bridge抽样复跑
+
+2026-11-05 stage:work（复审修复轮）| PLAN-937 r1 | outcome:pass | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | code HEAD 见下条复审回执 | 修复 RV-01 cargo fmt（三crate全量，fmt --check 绿）；RV-02 删未用导入；RV-03 删未用变量；测试代码未用解构/导入/mut 同轮清零（lib+tests 零警告）；受影响复验：scalar_bridge 14/14（含回转门160s重跑）于修复后修订全绿，其余证据输入未变复用。| next: review 复验
+
+stage: review | review_scope: final（复验轮）| reviewer: 同会话自审（限制同前） | PLAN-937 | r1 | outcome:pass | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | reviewed 8b52a7157 | base 122725e9a | deps 同前轮 | findings闭包: RV-01 fmt --check绿；RV-02/03 删除且 lib+tests 零警告；受影响复验 scalar_bridge 14/14（含回转门）于8b52a7157全绿；其余AC证据输入未变复用（复验轮未重复冻结组并集——修复仅fmt+未用代码，组面输入未变；merge冻结门再核）。spec delta: SD-01..07 经复审可沉淀（新增2文件路径就绪、5修改目标现存、before/after与实现一致、无旧账隐匿）。| verdict: final pass → merge（T-12）。目标不再有未决用户问题（§10原条款已由goal授权覆盖）。
 
 ## 10. 待澄清事项
 
