@@ -106,7 +106,10 @@ mod tests {
         let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         doc["future_field"] = serde_json::json!(1);
         let bad = serde_json::to_vec(&doc).unwrap();
-        assert!(facts_codec::decode(&bad).unwrap_err().to_string().contains("decode"));
+        assert!(facts_codec::decode(&bad)
+            .unwrap_err()
+            .to_string()
+            .contains("decode"));
     }
 
     #[test]
@@ -115,19 +118,28 @@ mod tests {
         let bytes = facts_codec::encode(&f).unwrap();
         f.format = "autoabi.contract.facts/9".into();
         let bad = facts_codec::encode(&f);
-        assert!(bad.unwrap_err().to_string().contains("unknown facts format"));
+        assert!(bad
+            .unwrap_err()
+            .to_string()
+            .contains("unknown facts format"));
         // also on decode: an encoded doc whose format string lies
         let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         doc["format"] = serde_json::json!("autoabi.contract.facts/9");
         let bad = serde_json::to_vec(&doc).unwrap();
-        assert!(facts_codec::decode(&bad).unwrap_err().to_string().contains("unknown facts format"));
+        assert!(facts_codec::decode(&bad)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown facts format"));
     }
 
     #[test]
     fn oversized_payload_rejected() {
         let mut bytes = facts_codec::encode(&checksum_facts()).unwrap();
         bytes.resize(MAX_CODEC_BYTES + 1, b' ');
-        assert!(facts_codec::decode(&bytes).unwrap_err().to_string().contains("cap"));
+        assert!(facts_codec::decode(&bytes)
+            .unwrap_err()
+            .to_string()
+            .contains("cap"));
     }
 
     #[test]

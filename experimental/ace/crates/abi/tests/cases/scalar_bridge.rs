@@ -10,14 +10,13 @@
 #![cfg(windows)]
 
 use ace_abi::bridge::{
-    self, restore_bridge, run_source_export, run_typed_caller_with_checks,
-    run_typed_chain, source_export_body_edit, source_export_first_case, BridgeCounters,
-    TypedLeg, BRIDGE_TOTAL_DEADLINE,
+    self, restore_bridge, run_source_export, run_typed_caller_with_checks, run_typed_chain,
+    source_export_body_edit, source_export_first_case, BridgeCounters, TypedLeg,
+    BRIDGE_TOTAL_DEADLINE,
 };
 use ace_abi::typed_decl::{self, oracle_typed_mix, FROZEN_TYPED_INPUTS};
 use ace_abi::validate::admit_descriptor;
 use ace_artifacts::store::ManagedStore;
-use ace_foreign_contract::lane::LaneKind;
 use ace_foreign_contract::PhysicalPlan;
 
 use std::path::PathBuf;
@@ -50,13 +49,17 @@ fn store_at(tag: &str) -> (ManagedStore, PathBuf) {
 /// execute green: every PE exits with its FAILED check count = 0.
 #[test]
 fn typed_chain_three_legs_execute_green() {
-    let (store, root) = store_at("typed-legs");
+    let (store, _root) = store_at("typed-legs");
     let counters = BridgeCounters::new();
     let out = run_typed_chain(
         &store,
         &counters,
         &scratch_root("typed"),
-        &[TypedLeg::SelfCheck, TypedLeg::NativeToC, TypedLeg::CToNative],
+        &[
+            TypedLeg::SelfCheck,
+            TypedLeg::NativeToC,
+            TypedLeg::CToNative,
+        ],
         BRIDGE_TOTAL_DEADLINE,
     )
     .expect("typed chain runs");
@@ -74,7 +77,7 @@ fn typed_chain_three_legs_execute_green() {
 /// vacuous pass.
 #[test]
 fn typed_chain_negative_control_discriminates() {
-    let (store, root) = store_at("typed-neg");
+    let (store, _root) = store_at("typed-neg");
     let counters = BridgeCounters::new();
     let mut checks = ace_abi::typed_emit::frozen_typed_checks();
     if let ace_abi::typed_emit::TypedCheck::Mix { expected, .. } = &mut checks[0] {
@@ -82,8 +85,14 @@ fn typed_chain_negative_control_discriminates() {
     } else {
         panic!("first check must be the frozen mix");
     }
-    let exit = run_typed_caller_with_checks(&store, &counters, &scratch_root("typed-mut"), &checks, false)
-        .expect("mutated caller runs");
+    let exit = run_typed_caller_with_checks(
+        &store,
+        &counters,
+        &scratch_root("typed-mut"),
+        &checks,
+        false,
+    )
+    .expect("mutated caller runs");
     assert_ne!(exit, 0, "a wrong expected value must FAIL the PE");
 }
 
@@ -103,8 +112,9 @@ fn typed_frozen_inputs_carry_the_boundaries() {
         ace_abi::typed_emit::TypedCheck::Mix { inputs, .. }
             if inputs.f_bits == (-0.0f64).to_bits())));
     // div controlled failure present (out-sentinel check)
-    assert!(checks.iter().any(|c| matches!(c,
-        ace_abi::typed_emit::TypedCheck::Div { d: 0, .. })));
+    assert!(checks
+        .iter()
+        .any(|c| matches!(c, ace_abi::typed_emit::TypedCheck::Div { d: 0, .. })));
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +132,7 @@ fn admission_rejects_before_any_production() {
     let descriptor = bridge::descriptor_from_plan(&facts, &plan).expect("descriptor");
     let semref = bridge::interface_binding_hash(&facts).expect("semref");
 
-    let mut expect = bridge::typed_expectation(semref.clone());
+    let expect = bridge::typed_expectation(semref.clone());
     admit_descriptor(&descriptor, &expect).expect("baseline expectation admits");
 
     // wrong target
@@ -163,11 +173,7 @@ fn admission_rejects_before_any_production() {
 
     // LEGAL controls still admit: nullable-ctx fallible with ordered
     // outs, and non-null ctx VALUES are pre-call-validated, not rejected.
-    let r = facts.validate_call_values(
-        "t937_mix",
-        None,
-        &typed_decl::frozen_lane_values(),
-    );
+    let r = facts.validate_call_values("t937_mix", None, &typed_decl::frozen_lane_values());
     assert!(r.is_ok(), "legal mixed-lane values must pre-call validate");
     // invalid char (lone surrogate) is rejected BEFORE any call
     let mut bad = typed_decl::frozen_lane_values();
@@ -180,7 +186,10 @@ fn admission_rejects_before_any_production() {
     let e = facts.validate_call_values(
         "t937_div",
         Some(&ace_foreign_contract::LaneValue::CtxPtr(0xDEAD)),
-        &[ace_foreign_contract::LaneValue::I64(1), ace_foreign_contract::LaneValue::I64(2)],
+        &[
+            ace_foreign_contract::LaneValue::I64(1),
+            ace_foreign_contract::LaneValue::I64(2),
+        ],
     );
     assert!(e.is_ok(), "non-null ctx value is legal: {e:?}");
 }
@@ -192,7 +201,7 @@ fn admission_rejects_before_any_production() {
 
 #[test]
 fn source_export_chain_executes_real_source() {
-    let (store, root) = store_at("source-export");
+    let (store, _root) = store_at("source-export");
     let counters = BridgeCounters::new();
     let out = run_source_export(
         &store,
@@ -202,17 +211,25 @@ fn source_export_chain_executes_real_source() {
         BRIDGE_TOTAL_DEADLINE,
     )
     .expect("source export chain runs");
-    assert_eq!(out.caller_exit, 0, "independent caller must pass: {}", out.stdout);
+    assert_eq!(
+        out.caller_exit, 0,
+        "independent caller must pass: {}",
+        out.stdout
+    );
     assert!(out.stdout.contains("source-export: ok"), "{}", out.stdout);
-    assert!(out.library_manifest.contains(ace_a2x_c::LIBRARY_FILESET_SCHEMA));
-    assert!(out.library_manifest.contains(ace_a2x_c::LIBRARY_EXPORT_RECIPE));
+    assert!(out
+        .library_manifest
+        .contains(ace_a2x_c::LIBRARY_FILESET_SCHEMA));
+    assert!(out
+        .library_manifest
+        .contains(ace_a2x_c::LIBRARY_EXPORT_RECIPE));
 }
 
 /// The distinguishing oracle: editing the REAL body flips the DELIVERED
 /// value — the frozen independent caller (expecting 42) must now FAIL.
 #[test]
 fn source_body_edit_flips_delivered_value() {
-    let (store, root) = store_at("source-edit");
+    let (store, _root) = store_at("source-edit");
     let counters = BridgeCounters::new();
     let edited = bridge::SourceExportRequest {
         src: source_export_body_edit(),
@@ -222,9 +239,18 @@ fn source_body_edit_flips_delivered_value() {
             ("div".into(), "t937_div".into()),
         ],
     };
-    let out = run_source_export(&store, &counters, &scratch_root("src-edit"), &edited, BRIDGE_TOTAL_DEADLINE)
-        .expect("edited chain runs");
-    assert_ne!(out.caller_exit, 0, "body+1 must flip the delivered value (caller expects 42)");
+    let out = run_source_export(
+        &store,
+        &counters,
+        &scratch_root("src-edit"),
+        &edited,
+        BRIDGE_TOTAL_DEADLINE,
+    )
+    .expect("edited chain runs");
+    assert_ne!(
+        out.caller_exit, 0,
+        "body+1 must flip the delivered value (caller expects 42)"
+    );
     assert!(out.stdout.contains("FAILED"), "{}", out.stdout);
 }
 
@@ -238,19 +264,39 @@ fn source_body_edit_flips_delivered_value() {
 /// page stays a hit (caller metadata P=0).
 #[test]
 fn per_function_increment_accounting() {
-    let (store, root) = store_at("increment");
+    let (store, _root) = store_at("increment");
     let counters = BridgeCounters::new();
     let scratch = scratch_root("incr");
 
     // fresh run: 1 facts + 1 plan + 2 fragments + 1 library = 5 producers
-    let first = run_source_export(&store, &counters, &scratch, &source_export_first_case(), BRIDGE_TOTAL_DEADLINE)
-        .expect("first run");
-    assert_eq!(counters.total_producer_calls(), 5, "fresh run produces exactly the 5 bridge artifacts");
+    let first = run_source_export(
+        &store,
+        &counters,
+        &scratch,
+        &source_export_first_case(),
+        BRIDGE_TOTAL_DEADLINE,
+    )
+    .expect("first run");
+    assert_eq!(
+        counters.total_producer_calls(),
+        5,
+        "fresh run produces exactly the 5 bridge artifacts"
+    );
 
     // identical second run: everything hits, ZERO producers
-    run_source_export(&store, &counters, &scratch, &source_export_first_case(), BRIDGE_TOTAL_DEADLINE)
-        .expect("second run");
-    assert_eq!(counters.total_producer_calls(), 5, "identical re-run must be pure hits");
+    run_source_export(
+        &store,
+        &counters,
+        &scratch,
+        &source_export_first_case(),
+        BRIDGE_TOTAL_DEADLINE,
+    )
+    .expect("second run");
+    assert_eq!(
+        counters.total_producer_calls(),
+        5,
+        "identical re-run must be pure hits"
+    );
 
     // body edit: exactly ONE fragment reproduces (sum), the other
     // function's fragment is a hit, the plan (body-independent) is a
@@ -286,18 +332,38 @@ fn per_function_increment_accounting() {
         .expect("div fragment key");
     // The edit gives sum a NEW sem_fp -> a NEW key produced exactly once;
     // div's key is UNCHANGED between the two handles (pure hit).
-    assert_ne!(sum_key_v1, sum_key_v2, "edited body must be a new fragment key");
+    assert_ne!(
+        sum_key_v1, sum_key_v2,
+        "edited body must be a new fragment key"
+    );
     assert_eq!(counters.producer_calls(sum_key_v1), 1);
-    assert_eq!(counters.producer_calls(sum_key_v2), 1, "exactly one production for the edited fragment");
     assert_eq!(
-        second.handle.fragment_keys.iter().find(|k| k.contains("fn=div")).unwrap(),
+        counters.producer_calls(sum_key_v2),
+        1,
+        "exactly one production for the edited fragment"
+    );
+    assert_eq!(
+        second
+            .handle
+            .fragment_keys
+            .iter()
+            .find(|k| k.contains("fn=div"))
+            .unwrap(),
         div_key,
         "unchanged function keeps its fragment key"
     );
-    assert_eq!(counters.producer_calls(div_key), 1, "unchanged function: no additional div-fragment production");
+    assert_eq!(
+        counters.producer_calls(div_key),
+        1,
+        "unchanged function: no additional div-fragment production"
+    );
     // plan page (body-independent metadata): produced ONCE at the first
     // run; the interface-preserving edit is a pure hit.
-    assert_eq!(counters.producer_calls(&first.handle.plan_key), 1, "plan page P=0 across the edit");
+    assert_eq!(
+        counters.producer_calls(&first.handle.plan_key),
+        1,
+        "plan page P=0 across the edit"
+    );
     // total: 5 (run1) + 0 (run2) + facts + sum-fragment + library = 8
     assert_eq!(counters.total_producer_calls(), 8);
 }
@@ -309,11 +375,17 @@ fn per_function_increment_accounting() {
 
 #[test]
 fn bridge_restore_deep_verifies_without_producers() {
-    let (store, root) = store_at("restore");
+    let (store, _root) = store_at("restore");
     let counters = BridgeCounters::new();
     let scratch = scratch_root("restore");
-    let first = run_source_export(&store, &counters, &scratch, &source_export_first_case(), BRIDGE_TOTAL_DEADLINE)
-        .expect("chain runs");
+    let first = run_source_export(
+        &store,
+        &counters,
+        &scratch,
+        &source_export_first_case(),
+        BRIDGE_TOTAL_DEADLINE,
+    )
+    .expect("chain runs");
     let manifest_before = first.library_manifest.clone();
     let produced = counters.total_producer_calls();
 
@@ -321,7 +393,10 @@ fn bridge_restore_deep_verifies_without_producers() {
     let restore_counters = BridgeCounters::new();
     let restored = restore_bridge(&store, &restore_counters, &first.handle).expect("restore");
     assert_eq!(restored.producers_ran, 0, "restore must not run producers");
-    assert!(restored.payload_bytes_read > 0, "restore reads persisted payload");
+    assert!(
+        restored.payload_bytes_read > 0,
+        "restore reads persisted payload"
+    );
     assert_eq!(restored.library_manifest, manifest_before);
     assert_eq!(restored.facts.digest().unwrap(), first.facts_digest);
     let _ = produced;
@@ -342,25 +417,37 @@ fn bridge_restore_deep_verifies_without_producers() {
     // restore of the FIRST handle still yields the OLD manifest
     let rc2 = BridgeCounters::new();
     let r2 = restore_bridge(&store, &rc2, &first.handle).expect("old handle restores");
-    assert_eq!(r2.library_manifest, manifest_before, "old persisted bridge bytes are immutable");
+    assert_eq!(
+        r2.library_manifest, manifest_before,
+        "old persisted bridge bytes are immutable"
+    );
 }
 
 /// Missing page / forged handle / wrong-source identity are NAMED
 /// rejections — restore never "repairs" foreign edits.
 #[test]
 fn bridge_restore_negative_controls() {
-    let (store, root) = store_at("restore-neg");
+    let (store, _root) = store_at("restore-neg");
     let counters = BridgeCounters::new();
     let scratch = scratch_root("restore-neg");
-    let first = run_source_export(&store, &counters, &scratch, &source_export_first_case(), BRIDGE_TOTAL_DEADLINE)
-        .expect("chain runs");
+    let first = run_source_export(
+        &store,
+        &counters,
+        &scratch,
+        &source_export_first_case(),
+        BRIDGE_TOTAL_DEADLINE,
+    )
+    .expect("chain runs");
 
     // 1) wrong source identity in the handle -> named mismatch
     let mut forged = first.handle.clone();
     forged.source_sha256 = "0".repeat(64);
     let rc = BridgeCounters::new();
     let e = restore_bridge(&store, &rc, &forged).unwrap_err();
-    assert!(e.to_string().contains("mismatch") || e.to_string().contains("missing"), "{e}");
+    assert!(
+        e.to_string().contains("mismatch") || e.to_string().contains("missing"),
+        "{e}"
+    );
 
     // 2) missing page (handle pointing at a nonexistent key) -> named miss
     let mut missing = first.handle.clone();
@@ -370,7 +457,10 @@ fn bridge_restore_negative_controls() {
     );
     let rc = BridgeCounters::new();
     let e = restore_bridge(&store, &rc, &missing).unwrap_err();
-    assert!(e.to_string().contains("missing") || e.to_string().contains("mismatch"), "{e}");
+    assert!(
+        e.to_string().contains("missing") || e.to_string().contains("mismatch"),
+        "{e}"
+    );
 
     // 3) old-schema/wrong-layer key -> parse rejection
     let mut bad = first.handle.clone();
@@ -387,7 +477,7 @@ fn bridge_restore_negative_controls() {
 /// The total-budget seam rejects with a named error (no partial green).
 #[test]
 fn total_budget_exhaustion_is_a_named_rejection() {
-    let (store, root) = store_at("budget");
+    let (store, _root) = store_at("budget");
     let counters = BridgeCounters::new();
     let e = run_source_export(
         &store,
@@ -447,16 +537,29 @@ fn bridge_512_revision_churn_gc_convergence() {
         low: floor + 64 * 1024,
     };
     let receipt = run_gc(&store, cfg).expect("gc");
-    assert!(receipt.ran, "GC must run over the watermark: {}", receipt.reason);
-    assert!(receipt.deleted_chunks >= 500, "churn bulk reclaimed: {receipt:?}");
+    assert!(
+        receipt.ran,
+        "GC must run over the watermark: {}",
+        receipt.reason
+    );
+    assert!(
+        receipt.deleted_chunks >= 500,
+        "churn bulk reclaimed: {receipt:?}"
+    );
 
     // rooted newest + leased revision survive
     assert!(store
-        .get_artifact(bridge::LAYER_BRIDGE_V01.id, &bridge::library_fileset_key("rev-0511", "rt", "ex"))
+        .get_artifact(
+            bridge::LAYER_BRIDGE_V01.id,
+            &bridge::library_fileset_key("rev-0511", "rt", "ex")
+        )
         .expect("read newest")
         .is_some());
     assert!(store
-        .get_artifact(bridge::LAYER_BRIDGE_V01.id, &bridge::library_fileset_key("rev-0100", "rt", "ex"))
+        .get_artifact(
+            bridge::LAYER_BRIDGE_V01.id,
+            &bridge::library_fileset_key("rev-0100", "rt", "ex")
+        )
         .expect("read leased")
         .is_some());
 
@@ -464,7 +567,10 @@ fn bridge_512_revision_churn_gc_convergence() {
     let space1 = store.space();
     let floor1 = space1.db_main + space1.locks + space1.logs;
     let managed_live = space1.total.saturating_sub(floor1);
-    assert!(managed_live <= 128 * 1024, "block layer converges, got {managed_live}B");
+    assert!(
+        managed_live <= 128 * 1024,
+        "block layer converges, got {managed_live}B"
+    );
     assert!(space1.total < space0.total);
 
     // release flips liveness
@@ -481,13 +587,13 @@ fn producer_cap_rejects_oversized_artifact() {
     let (store, _root) = store_at("cap");
     let counters = BridgeCounters::new();
     let key = bridge::library_fileset_key("cap-test", "rt", "ex");
-    let e = bridge::produce_counted_for_test(&store, &counters, &key, ChunkKind::LayoutData, || {
-        Ok(vec![0u8; 64 * 1024 * 1024 + 1])
-    })
-    .unwrap_err();
+    let e =
+        bridge::produce_counted_for_test(&store, &counters, &key, ChunkKind::LayoutData, || {
+            Ok(vec![0u8; 64 * 1024 * 1024 + 1])
+        })
+        .unwrap_err();
     assert!(e.to_string().contains("64MiB"), "{}", e);
 }
-
 
 /// Worker-path equivalence: the edited deck through execute_bridge must
 /// deliver the flipped value (caller FAILS), same as the in-process run.
@@ -505,11 +611,18 @@ fn worker_bridge_edited_deck_flips_value() {
         deck_b64: base64::engine::general_purpose::STANDARD.encode(deck),
         leg: "source".into(),
         store_root: root.join("store").display().to_string(),
-        steps: vec![ace_abi::worker::StepIn { op: "query".into(), from: None, to: None }],
+        steps: vec![ace_abi::worker::StepIn {
+            op: "query".into(),
+            from: None,
+            to: None,
+        }],
     };
     let out = execute_bridge(&req).expect("bridge executes");
     let q = &out.steps[0];
-    eprintln!("outcome={} compute={} pe_exit={:?}", q.outcome, q.compute_calls, q.pe_exit);
+    eprintln!(
+        "outcome={} compute={} pe_exit={:?}",
+        q.outcome, q.compute_calls, q.pe_exit
+    );
     // the frozen caller FAILS the edited body: positive PE exit maps to a
     // `pe-exit` diagnostic (the 797 exit-code discipline), never a green step
     assert_eq!(q.outcome, "diags");
@@ -571,7 +684,11 @@ fn bridge_turnaround_six_scenarios_30_samples() {
         let t = std::time::Instant::now();
         let out = run_source_export(&store, &counters, &scratch, &base, BRIDGE_TOTAL_DEADLINE)
             .expect("hot");
-        assert_eq!(counters.total_producer_calls(), 0, "hot sample must be all-hit");
+        assert_eq!(
+            counters.total_producer_calls(),
+            0,
+            "hot sample must be all-hit"
+        );
         let _ = out;
         rows.push(("library-hot", t.elapsed().as_millis() as u128));
     }
@@ -579,14 +696,26 @@ fn bridge_turnaround_six_scenarios_30_samples() {
     // here, then every sampled re-run must be a pure hit)
     {
         let warm = BridgeCounters::new();
-        run_typed_chain(&store, &warm, &scratch, &[TypedLeg::SelfCheck], BRIDGE_TOTAL_DEADLINE)
-            .expect("typed warm");
+        run_typed_chain(
+            &store,
+            &warm,
+            &scratch,
+            &[TypedLeg::SelfCheck],
+            BRIDGE_TOTAL_DEADLINE,
+        )
+        .expect("typed warm");
     }
     for _ in 0..30 {
         let counters = BridgeCounters::new();
         let t = std::time::Instant::now();
-        run_typed_chain(&store, &counters, &scratch, &[TypedLeg::SelfCheck], BRIDGE_TOTAL_DEADLINE)
-            .expect("typed hot");
+        run_typed_chain(
+            &store,
+            &counters,
+            &scratch,
+            &[TypedLeg::SelfCheck],
+            BRIDGE_TOTAL_DEADLINE,
+        )
+        .expect("typed hot");
         assert_eq!(counters.total_producer_calls(), 0);
         rows.push(("typed-object-hot", t.elapsed().as_millis() as u128));
     }
@@ -608,7 +737,10 @@ fn bridge_turnaround_six_scenarios_30_samples() {
         let src = format!(
             "fn sum(a int, b int) int {{ return a + b + {i} }}\nfn div(n int, d int) int {{ return n / d }}\nfn main() int {{ return 0 }}\n"
         );
-        let req = bridge::SourceExportRequest { src, ..base.clone() };
+        let req = bridge::SourceExportRequest {
+            src,
+            ..base.clone()
+        };
         let t = std::time::Instant::now();
         run_source_export(&store, &counters, &scratch, &req, BRIDGE_TOTAL_DEADLINE)
             .expect("body edit");
@@ -623,9 +755,7 @@ fn bridge_turnaround_six_scenarios_30_samples() {
     let descriptor = bridge::descriptor_from_plan(&facts, &plan).expect("descriptor");
     let mut reject_ms = Vec::new();
     for i in 0..30 {
-        let mut e = bridge::typed_expectation(
-            bridge::interface_binding_hash(&facts).expect("sem"),
-        );
+        let mut e = bridge::typed_expectation(bridge::interface_binding_hash(&facts).expect("sem"));
         // rotate the mutated dimension per sample (target/packing/semref)
         match i % 3 {
             0 => e.target = format!("bad-target-{i}"),
@@ -635,7 +765,11 @@ fn bridge_turnaround_six_scenarios_30_samples() {
         let t = std::time::Instant::now();
         let rej = admit_descriptor(&descriptor, &e).expect_err("must reject");
         let ms = t.elapsed().as_millis() as u128;
-        assert!(format!("{rej:?}").contains("Wrong") || format!("{rej:?}").contains("SemRef") || format!("{rej:?}").contains("Packing"));
+        assert!(
+            format!("{rej:?}").contains("Wrong")
+                || format!("{rej:?}").contains("SemRef")
+                || format!("{rej:?}").contains("Packing")
+        );
         reject_ms.push(ms);
         rows.push(("descriptor-reject", ms));
     }
@@ -649,7 +783,11 @@ fn bridge_turnaround_six_scenarios_30_samples() {
         ("body-edit", 0),
         ("descriptor-reject", 0),
     ] {
-        let xs: Vec<u128> = rows.iter().filter(|(n, _)| *n == name).map(|(_, v)| *v).collect();
+        let xs: Vec<u128> = rows
+            .iter()
+            .filter(|(n, _)| *n == name)
+            .map(|(_, v)| *v)
+            .collect();
         let p0 = xs.iter().min().copied().unwrap_or(0);
         let p5 = p90(xs.clone()); // reuse ordering helper for a mid band
         let _ = p5;

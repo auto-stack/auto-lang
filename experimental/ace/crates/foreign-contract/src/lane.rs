@@ -159,10 +159,12 @@ impl LaneValue {
     /// Strict per-lane VALUE validation (937 plan §5.3: invalid bool /
     /// non-scalar char are rejected BEFORE any call, callee counter 0).
     pub fn validate(kind: LaneKind, v: &LaneValue) -> Result<(), String> {
-        let mismatch = |want: &str| Err(format!(
-            "lane value kind mismatch: lane {kind:?} expects {want}, got {v:?}",
-            kind = kind
-        ));
+        let mismatch = |want: &str| {
+            Err(format!(
+                "lane value kind mismatch: lane {kind:?} expects {want}, got {v:?}",
+                kind = kind
+            ))
+        };
         match (kind, v) {
             (LaneKind::I32, LaneValue::I32(_)) => Ok(()),
             (LaneKind::U32, LaneValue::U32(_)) => Ok(()),

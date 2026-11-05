@@ -26,8 +26,8 @@
 //! The semantic facts (AXS1/AXS2 keys, fingerprints) are SHARED with the
 //! Rust target; only the fragment layers are C-private.
 
-pub mod cert;
 pub mod abi_scalar;
+pub mod cert;
 pub mod coll_runtime;
 pub mod coll_table;
 pub mod lower;
@@ -40,9 +40,9 @@ pub mod seed;
 pub mod seed_coll;
 
 pub use abi_scalar::{
-    assemble_library_fileset, public_error_model_rows, public_header, public_prototype,
-    wrapper_c, ExportSpec, LibraryFilesetInputs, LIBRARY_EXPORT_RECIPE,
-    LIBRARY_FILESET_SCHEMA, TRAP_STATUS_TABLE,
+    assemble_library_fileset, public_error_model_rows, public_header, public_prototype, wrapper_c,
+    ExportSpec, LibraryFilesetInputs, LIBRARY_EXPORT_RECIPE, LIBRARY_FILESET_SCHEMA,
+    TRAP_STATUS_TABLE,
 };
 pub use cert::{BoundFile, CCertDraft, CToolchainIdentity, C_CERT_SCHEMA};
 pub use coll_runtime::collections_runtime_source;

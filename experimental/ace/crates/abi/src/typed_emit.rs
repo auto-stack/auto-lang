@@ -21,7 +21,9 @@ use ace_foreign_contract::lane::LaneKind;
 
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::types;
-use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, Signature, StackSlotData, StackSlotKind, Value};
+use cranelift_codegen::ir::{
+    AbiParam, InstBuilder, MemFlags, Signature, StackSlotData, StackSlotKind, Value,
+};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::builder as flags_builder;
 use cranelift_codegen::settings::Configurable;
@@ -47,7 +49,10 @@ fn typed_param_type(k: LaneKind) -> types::Type {
 fn mix_signature(params: &[LaneKind], ret: types::Type) -> Signature {
     Signature {
         call_conv: WINCALL,
-        params: params.iter().map(|p| AbiParam::new(typed_param_type(*p))).collect(),
+        params: params
+            .iter()
+            .map(|p| AbiParam::new(typed_param_type(*p)))
+            .collect(),
         returns: vec![AbiParam::new(ret)],
     }
 }
@@ -206,7 +211,9 @@ pub fn emit_typed_callee() -> Result<Vec<u8>, String> {
 
         fb.switch_to_block(fail);
         fb.seal_block(fail);
-        let err = fb.ins().iconst(types::I32, t937_status::ERR_DIV_ZERO as i64);
+        let err = fb
+            .ins()
+            .iconst(types::I32, t937_status::ERR_DIV_ZERO as i64);
         fb.ins().return_(&[err]);
 
         fb.switch_to_block(body);
@@ -227,7 +234,9 @@ pub fn emit_typed_callee() -> Result<Vec<u8>, String> {
     }
     om.define_function(div_id, &mut ctx)
         .map_err(|e| format!("define t937_div: {e}"))?;
-    om.finish().emit().map_err(|e| format!("emit typed callee: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit typed callee: {e}"))
 }
 
 /// One in-PE typed check. The PE exits with the number of FAILED
@@ -239,7 +248,12 @@ pub enum TypedCheck {
     /// Call t937_div(n, d, &out) with `out` pre-set to `sentinel`:
     /// Ok(q) requires status 0 AND out == q; Err(st) requires status st
     /// AND out UNTOUCHED (still the sentinel).
-    Div { n: i64, d: i64, expect: Result<i64, i32>, sentinel: i64 },
+    Div {
+        n: i64,
+        d: i64,
+        expect: Result<i64, i32>,
+        sentinel: i64,
+    },
 }
 
 /// Emit the TYPED caller object: imports `t937_mix`/`t937_div`, runs the
@@ -321,7 +335,12 @@ pub fn emit_typed_caller(checks: &[TypedCheck]) -> Result<Vec<u8>, String> {
                     let acc = fb.ins().iadd(cur, flag);
                     fb.def_var(viol, acc);
                 }
-                TypedCheck::Div { n, d, expect, sentinel } => {
+                TypedCheck::Div {
+                    n,
+                    d,
+                    expect,
+                    sentinel,
+                } => {
                     let slot = fb.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
                         8,
@@ -387,16 +406,27 @@ pub fn emit_typed_caller(checks: &[TypedCheck]) -> Result<Vec<u8>, String> {
     }
     om.define_function(entry_id, &mut ctx)
         .map_err(|e| format!("define {ENTRY_SYMBOL}: {e}"))?;
-    om.finish().emit().map_err(|e| format!("emit typed caller: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit typed caller: {e}"))
 }
 
 /// The frozen typed check set (V-03): extremes, NaN payload, -0.0,
 /// bool both values, char boundaries, wrapping div, controlled failure.
 pub fn frozen_typed_checks() -> Vec<TypedCheck> {
     use crate::typed_decl::{oracle_typed_div, oracle_typed_mix, FROZEN_TYPED_INPUTS};
-    let neg0 = TypedInputs { f_bits: (-0.0f64).to_bits(), ..FROZEN_TYPED_INPUTS };
-    let bool_f = TypedInputs { g: false, ..FROZEN_TYPED_INPUTS };
-    let char_min = TypedInputs { h: 0, ..FROZEN_TYPED_INPUTS };
+    let neg0 = TypedInputs {
+        f_bits: (-0.0f64).to_bits(),
+        ..FROZEN_TYPED_INPUTS
+    };
+    let bool_f = TypedInputs {
+        g: false,
+        ..FROZEN_TYPED_INPUTS
+    };
+    let char_min = TypedInputs {
+        h: 0,
+        ..FROZEN_TYPED_INPUTS
+    };
     let zeros = TypedInputs {
         a: 0,
         b: 0,
@@ -413,12 +443,34 @@ pub fn frozen_typed_checks() -> Vec<TypedCheck> {
             inputs: FROZEN_TYPED_INPUTS,
             expected: crate::typed_decl::HAND_COMPUTED_TYPED_EXPECTED,
         },
-        TypedCheck::Mix { inputs: neg0, expected: oracle_typed_mix(&neg0) },
-        TypedCheck::Mix { inputs: bool_f, expected: oracle_typed_mix(&bool_f) },
-        TypedCheck::Mix { inputs: char_min, expected: oracle_typed_mix(&char_min) },
-        TypedCheck::Mix { inputs: zeros, expected: oracle_typed_mix(&zeros) },
-        TypedCheck::Div { n: 20, d: 2, expect: oracle_typed_div(20, 2), sentinel: sent },
-        TypedCheck::Div { n: -7, d: 3, expect: oracle_typed_div(-7, 3), sentinel: sent },
+        TypedCheck::Mix {
+            inputs: neg0,
+            expected: oracle_typed_mix(&neg0),
+        },
+        TypedCheck::Mix {
+            inputs: bool_f,
+            expected: oracle_typed_mix(&bool_f),
+        },
+        TypedCheck::Mix {
+            inputs: char_min,
+            expected: oracle_typed_mix(&char_min),
+        },
+        TypedCheck::Mix {
+            inputs: zeros,
+            expected: oracle_typed_mix(&zeros),
+        },
+        TypedCheck::Div {
+            n: 20,
+            d: 2,
+            expect: oracle_typed_div(20, 2),
+            sentinel: sent,
+        },
+        TypedCheck::Div {
+            n: -7,
+            d: 3,
+            expect: oracle_typed_div(-7, 3),
+            sentinel: sent,
+        },
         TypedCheck::Div {
             n: i64::MIN,
             d: -1,

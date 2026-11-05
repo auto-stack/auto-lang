@@ -135,7 +135,12 @@ fn classify(params: &[(String, PhysLane, SlotBank)]) -> Vec<PhysParam> {
                 };
                 (s, None)
             } else {
-                (SlotClass::Stack { index: pos - ARG_SLOTS }, Some(*bank))
+                (
+                    SlotClass::Stack {
+                        index: pos - ARG_SLOTS,
+                    },
+                    Some(*bank),
+                )
             };
             PhysParam {
                 name: name.clone(),
@@ -225,7 +230,10 @@ impl PhysicalPlan {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.format != PLAN_FORMAT {
-            return Err(format!("unknown plan format '{}' (known '{PLAN_FORMAT}')", self.format));
+            return Err(format!(
+                "unknown plan format '{}' (known '{PLAN_FORMAT}')",
+                self.format
+            ));
         }
         if self.domain != DOMAIN || self.domain_version != DOMAIN_VERSION {
             return Err(format!(

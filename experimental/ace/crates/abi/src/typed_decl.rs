@@ -65,7 +65,7 @@ pub const FROZEN_TYPED_INPUTS: TypedInputs = TypedInputs {
     d: u64::MAX - 7,
     f_bits: 0x7FF8_0000_DEAD_BEEF, // quiet NaN with payload
     g: true,
-    h: 0x0010_FFFF,                // U+10FFFF (last scalar value)
+    h: 0x0010_FFFF, // U+10FFFF (last scalar value)
     i: 0x7FFF_FFFF_FFFF_F000,
 };
 
@@ -172,7 +172,10 @@ mod tests {
 
     #[test]
     fn oracle_matches_hand_computed_frozen_value() {
-        assert_eq!(oracle_typed_mix(&FROZEN_TYPED_INPUTS), HAND_COMPUTED_TYPED_EXPECTED);
+        assert_eq!(
+            oracle_typed_mix(&FROZEN_TYPED_INPUTS),
+            HAND_COMPUTED_TYPED_EXPECTED
+        );
     }
 
     #[test]
@@ -212,8 +215,14 @@ mod tests {
         x.f_bits = 0x7FF8_0000_DEAD_BEEE;
         assert_ne!(oracle_typed_mix(&x), HAND_COMPUTED_TYPED_EXPECTED);
         // -0.0 vs +0.0 differ by sign bit only
-        let nz = TypedInputs { f_bits: (-0.0f64).to_bits(), ..FROZEN_TYPED_INPUTS };
-        let pz = TypedInputs { f_bits: 0.0f64.to_bits(), ..FROZEN_TYPED_INPUTS };
+        let nz = TypedInputs {
+            f_bits: (-0.0f64).to_bits(),
+            ..FROZEN_TYPED_INPUTS
+        };
+        let pz = TypedInputs {
+            f_bits: 0.0f64.to_bits(),
+            ..FROZEN_TYPED_INPUTS
+        };
         assert_ne!(oracle_typed_mix(&nz), oracle_typed_mix(&pz));
     }
 

@@ -18,7 +18,7 @@
 //! hit iff zero producers ran.
 
 use crate::bridge::{
-    self, run_source_export, run_typed_chain, BridgeCounters, SourceExportRequest, TypedLeg,
+    run_source_export, run_typed_chain, BridgeCounters, SourceExportRequest, TypedLeg,
     BRIDGE_TOTAL_DEADLINE,
 };
 use crate::worker::{DiagOut, MeterOut, OkOut, StageSpan, StepOut, WorkerRequest, MAX_LINE};
@@ -99,7 +99,8 @@ pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
             if parts.len() != 2 {
                 return Err(format!("export line must be `export <fn> as <sym>`: {t:?}"));
             }
-            deck.exports.push((parts[0].trim().to_string(), parts[1].trim().to_string()));
+            deck.exports
+                .push((parts[0].trim().to_string(), parts[1].trim().to_string()));
         } else if t == "src {" {
             in_src = true;
         } else {
@@ -154,7 +155,9 @@ fn meter_of(store: &ManagedStore, scratch_root: &std::path::Path) -> MeterOut {
     }
     MeterOut {
         scratch_peak_disk_bytes: scratch_peak,
-        hot_bytes: space.total.saturating_sub(space.db_main + space.locks + space.logs),
+        hot_bytes: space
+            .total
+            .saturating_sub(space.db_main + space.locks + space.logs),
         rejections: 0,
         gc_runs: 0,
         gc_deleted_chunks: 0,
@@ -242,8 +245,14 @@ fn bridge_query_step(sess: &mut BridgeSession) -> StepOut {
                 "typed-c2n" => TypedLeg::CToNative,
                 _ => unreachable!("parser validated the leg"),
             };
-            run_typed_chain(&store, &counters, &scratch_root, &[tl], BRIDGE_TOTAL_DEADLINE)
-                .map(|o| (o.legs.first().map(|l| l.1).unwrap_or(-1), counters.clone()))
+            run_typed_chain(
+                &store,
+                &counters,
+                &scratch_root,
+                &[tl],
+                BRIDGE_TOTAL_DEADLINE,
+            )
+            .map(|o| (o.legs.first().map(|l| l.1).unwrap_or(-1), counters.clone()))
         }
     };
     let (pe_exit, counters) = match res {
@@ -275,13 +284,21 @@ fn bridge_query_step(sess: &mut BridgeSession) -> StepOut {
             sess.meter(),
         );
         out.compute_calls = compute;
-        out.cache = if compute == 0 { "hit".into() } else { "published".into() };
+        out.cache = if compute == 0 {
+            "hit".into()
+        } else {
+            "published".into()
+        };
         return out;
     }
     StepOut {
         op: "query",
         outcome: "ok",
-        cache: if compute == 0 { "hit".into() } else { "published".into() },
+        cache: if compute == 0 {
+            "hit".into()
+        } else {
+            "published".into()
+        },
         compute_calls: compute,
         diagnostics: vec![],
         stages: vec![StageSpan {
@@ -326,7 +343,10 @@ pub fn execute_bridge(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     if req.recipe != BRIDGE_RECIPE {
         return Err(DiagOut {
             code: "recipe".into(),
-            message: format!("bridge worker implements {BRIDGE_RECIPE}, got {}", req.recipe),
+            message: format!(
+                "bridge worker implements {BRIDGE_RECIPE}, got {}",
+                req.recipe
+            ),
         });
     }
     // the request leg (from the parent binding) must AGREE with the
@@ -468,7 +488,10 @@ mod tests {
     #[test]
     fn unknown_lines_and_unclosed_src_rejected() {
         assert!(parse_bridge_deck("deck ace-ca-d1/1\nleg source\nbogus x\n").is_err());
-        assert!(parse_bridge_deck("deck ace-ca-d1/1\nleg source\nmodule m\nexport a as b\nsrc {\nfn a() int").is_err());
+        assert!(parse_bridge_deck(
+            "deck ace-ca-d1/1\nleg source\nmodule m\nexport a as b\nsrc {\nfn a() int"
+        )
+        .is_err());
         assert!(parse_bridge_deck("deck ace-ca-d1/1\nleg nope\n").is_err());
         // source leg needs exports+src
         assert!(parse_bridge_deck("deck ace-ca-d1/1\nleg source\nmodule m\n").is_err());

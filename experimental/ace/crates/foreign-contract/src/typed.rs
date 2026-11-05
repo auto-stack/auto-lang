@@ -102,16 +102,30 @@ impl TypedDecls {
         let mut functions = Vec::new();
         for d in &self.decls {
             if d.symbol.is_empty()
-                || !d.symbol.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                || !d
+                    .symbol
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_')
             {
-                return Err(format!("symbol '{}' must be a non-empty C identifier", d.symbol));
+                return Err(format!(
+                    "symbol '{}' must be a non-empty C identifier",
+                    d.symbol
+                ));
             }
             if !seen.insert(d.symbol.clone()) {
                 return Err(format!("duplicate symbol '{}'", d.symbol));
             }
             if let Some(bad) = d.params.iter().chain(d.outs.iter()).find(|k| {
-                !matches!(k, LaneKind::I32 | LaneKind::U32 | LaneKind::I64 | LaneKind::U64
-                    | LaneKind::F64 | LaneKind::Bool | LaneKind::Char)
+                !matches!(
+                    k,
+                    LaneKind::I32
+                        | LaneKind::U32
+                        | LaneKind::I64
+                        | LaneKind::U64
+                        | LaneKind::F64
+                        | LaneKind::Bool
+                        | LaneKind::Char
+                )
             }) {
                 return Err(format!(
                     "symbol '{}': lane {:?} is outside the public vocabulary (no f32)",
@@ -156,7 +170,8 @@ impl TypedDecls {
                     )
                 }
                 TypedBodyFamily::FallibleDivV1 => {
-                    if d.params != [LaneKind::I64, LaneKind::I64] || d.ret != LaneKind::I32
+                    if d.params != [LaneKind::I64, LaneKind::I64]
+                        || d.ret != LaneKind::I32
                         || d.outs != [LaneKind::I64]
                     {
                         return Err(format!(
@@ -172,7 +187,10 @@ impl TypedDecls {
                         ));
                     }
                     let m = d.error_model.as_ref().ok_or_else(|| {
-                        format!("symbol '{}': fallible family requires a status table", d.symbol)
+                        format!(
+                            "symbol '{}': fallible family requires a status table",
+                            d.symbol
+                        )
                     })?;
                     if m.kind != "status-i32" || m.codes.is_empty() {
                         return Err(format!(
@@ -193,7 +211,11 @@ impl TypedDecls {
             functions.push(FnFact {
                 symbol: d.symbol.clone(),
                 form,
-                error_model: if family_is_total { None } else { d.error_model.clone() },
+                error_model: if family_is_total {
+                    None
+                } else {
+                    d.error_model.clone()
+                },
                 semantic_ref: None,
             });
         }
@@ -201,9 +223,13 @@ impl TypedDecls {
             format: FACTS_FORMAT.into(),
             logical: format!("typed/{}", self.id),
             content_version: crate::blake3_hex(
-                serde_json::to_string(self).map_err(|e| e.to_string())?.as_bytes(),
+                serde_json::to_string(self)
+                    .map_err(|e| e.to_string())?
+                    .as_bytes(),
             ),
-            source: FactsSource::Typed { id: self.id.clone() },
+            source: FactsSource::Typed {
+                id: self.id.clone(),
+            },
             functions,
             effects: Vec::new(),
             capabilities: Vec::new(),
@@ -249,8 +275,10 @@ mod tests {
     fn checksum_decls_project_to_valid_facts() {
         let facts = checksum_decls().validate().unwrap();
         assert!(matches!(facts.source, FactsSource::Typed { .. }));
-        assert_eq!(facts.function("t937_mix").unwrap().form.signature(),
-                   "pure(i32,u32,i64,u64,f64,bool,char,i64)->i64");
+        assert_eq!(
+            facts.function("t937_mix").unwrap().form.signature(),
+            "pure(i32,u32,i64,u64,f64,bool,char,i64)->i64"
+        );
     }
 
     #[test]
@@ -276,15 +304,24 @@ mod tests {
             ctx: Some(true),
             outs: vec![LaneKind::I64],
         };
-        assert!(d.validate().unwrap_err().contains("fallible-div family binds"));
+        assert!(d
+            .validate()
+            .unwrap_err()
+            .contains("fallible-div family binds"));
     }
 
     #[test]
     fn content_version_tracks_decl_content() {
         let a = checksum_decls();
         let mut b = a.clone();
-        assert_eq!(a.validate().unwrap().content_version, b.validate().unwrap().content_version);
+        assert_eq!(
+            a.validate().unwrap().content_version,
+            b.validate().unwrap().content_version
+        );
         b.decls[0].params[0] = LaneKind::U32;
-        assert_ne!(a.validate().unwrap().content_version, b.validate().unwrap().content_version);
+        assert_ne!(
+            a.validate().unwrap().content_version,
+            b.validate().unwrap().content_version
+        );
     }
 }

@@ -75,25 +75,39 @@ impl FnForm {
         match self {
             FnForm::Pure { params, ret } => format!(
                 "pure({})->{}",
-                params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(","),
+                params
+                    .iter()
+                    .map(|p| p.spell())
+                    .collect::<Vec<_>>()
+                    .join(","),
                 ret.spell()
             ),
             FnForm::Fallible { ctx, params, outs } => {
                 let ctx_s = match ctx {
-                    Some(nullable) => format!("ctx:{},", if *nullable { "nullable" } else { "required" }),
+                    Some(nullable) => {
+                        format!("ctx:{},", if *nullable { "nullable" } else { "required" })
+                    }
                     None => String::new(),
                 };
                 if outs.is_empty() {
                     format!(
                         "fallible({}{})->status",
                         ctx_s,
-                        params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(",")
+                        params
+                            .iter()
+                            .map(|p| p.spell())
+                            .collect::<Vec<_>>()
+                            .join(",")
                     )
                 } else {
                     format!(
                         "fallible({}{})->status,out {}",
                         ctx_s,
-                        params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(","),
+                        params
+                            .iter()
+                            .map(|p| p.spell())
+                            .collect::<Vec<_>>()
+                            .join(","),
                         outs.iter().map(|p| p.spell()).collect::<Vec<_>>().join(",")
                     )
                 }
@@ -161,8 +175,16 @@ impl InterfaceFacts {
             return Err("interface must export at least one function".into());
         }
         for f in &self.functions {
-            if f.symbol.is_empty() || !f.symbol.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
-                return Err(format!("symbol '{}' must be a non-empty C identifier", f.symbol));
+            if f.symbol.is_empty()
+                || !f
+                    .symbol
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                return Err(format!(
+                    "symbol '{}' must be a non-empty C identifier",
+                    f.symbol
+                ));
             }
             if !seen.insert(f.symbol.clone()) {
                 return Err(format!("duplicate symbol '{}'", f.symbol));
@@ -170,12 +192,18 @@ impl InterfaceFacts {
             match &f.form {
                 FnForm::Pure { .. } => {
                     if f.error_model.is_some() {
-                        return Err(format!("pure entry '{}' must not carry an error model", f.symbol));
+                        return Err(format!(
+                            "pure entry '{}' must not carry an error model",
+                            f.symbol
+                        ));
                     }
                     // A checked-source pure entry needs recorded pure
                     // evidence in the effects vocabulary.
                     if matches!(self.source, FactsSource::CheckedSource { .. })
-                        && !self.effects.iter().any(|e| e == &format!("pure:{}", f.symbol))
+                        && !self
+                            .effects
+                            .iter()
+                            .any(|e| e == &format!("pure:{}", f.symbol))
                     {
                         return Err(format!(
                             "checked-source entry '{}' is pure without totality evidence \
@@ -187,7 +215,10 @@ impl InterfaceFacts {
                 }
                 FnForm::Fallible { outs, .. } => {
                     let m = f.error_model.as_ref().ok_or_else(|| {
-                        format!("fallible entry '{}' must carry an explicit error model", f.symbol)
+                        format!(
+                            "fallible entry '{}' must carry an explicit error model",
+                            f.symbol
+                        )
                     })?;
                     if m.kind != "status-i32" {
                         return Err(format!(
@@ -260,7 +291,9 @@ impl InterfaceFacts {
         ctx: Option<&LaneValue>,
         args: &[LaneValue],
     ) -> Result<(), String> {
-        let f = self.function(symbol).ok_or_else(|| format!("unknown symbol '{symbol}'"))?;
+        let f = self
+            .function(symbol)
+            .ok_or_else(|| format!("unknown symbol '{symbol}'"))?;
         let (declared_ctx, params) = match &f.form {
             FnForm::Pure { params, .. } => (None, params),
             FnForm::Fallible { ctx, params, .. } => (Some(*ctx), params),
@@ -295,7 +328,9 @@ mod tests {
             format: FACTS_FORMAT.into(),
             logical: "probe937/typed-mix".into(),
             content_version: "v-test".into(),
-            source: FactsSource::Typed { id: "typed-1".into() },
+            source: FactsSource::Typed {
+                id: "typed-1".into(),
+            },
             functions: vec![FnFact {
                 symbol: "t937_mix".into(),
                 form: FnForm::Pure {

@@ -37,9 +37,9 @@ pub mod validate;
 pub mod worker;
 pub mod worker_bridge;
 
-/// Re-export the semantic contract crate so integration tests can mint
-/// refs through the SAME real library the implementation binds to.
-pub use ace_semantics_contract;
 /// PLAN-937 CA-D1: the neutral foreign-interface contract shared with
 /// the A2C C side (both real consumers bind to this one model).
 pub use ace_foreign_contract;
+/// Re-export the semantic contract crate so integration tests can mint
+/// refs through the SAME real library the implementation binds to.
+pub use ace_semantics_contract;

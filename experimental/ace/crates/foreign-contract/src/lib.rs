@@ -48,7 +48,7 @@ pub mod typed;
 
 pub use facts::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, FACTS_FORMAT};
 pub use lane::{LaneKind, LaneValue, PhysLane};
-pub use plan::{PhysForm, PhysFn, PhysParam, PhysRet, PhysicalPlan, SlotClass, PLAN_FORMAT};
+pub use plan::{PhysFn, PhysForm, PhysParam, PhysRet, PhysicalPlan, SlotClass, PLAN_FORMAT};
 pub use typed::{TotalityEvidence, TypedBodyFamily, TypedDecl, TypedDecls, TYPED_DECLS_FORMAT};
 
 /// blake3, hex-encoded — the digest form shared with the 797 probe's

@@ -73,7 +73,10 @@ fn abi_binding_real_contract_and_retirement_receipt() {
         text.contains("autoabi-semref-snapshot/0"),
         "archived record names the retired format"
     );
-    assert!(text.contains("15f81fd0"), "archived record names the retired hash");
+    assert!(
+        text.contains("15f81fd0"),
+        "archived record names the retired hash"
+    );
 }
 
 /// The semref gate still rejects a foreign binding on the REAL path.

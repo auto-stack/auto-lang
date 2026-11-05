@@ -31,7 +31,7 @@
 use crate::ctool;
 use crate::link::link_pe;
 use crate::run::run_pe;
-use crate::typed_emit::{emit_typed_caller, emit_typed_callee, frozen_typed_checks, TypedCheck};
+use crate::typed_emit::{emit_typed_callee, emit_typed_caller, frozen_typed_checks, TypedCheck};
 use crate::validate::{admit_descriptor, ConsumerExpectation, Rejection};
 use crate::{descriptor, layout, typed_decl};
 
@@ -42,18 +42,18 @@ use ace_artifacts::store::{LoadedArtifact, ManagedStore, PutRequest, StoreError}
 use ace_core::link::{run_deadlined_captured, CaptureCaps};
 use ace_foreign_contract::codec::{facts_codec, plan_codec};
 use ace_foreign_contract::lane::{LaneKind, PhysLane};
-use ace_foreign_contract::plan::{PhysicalPlan, PhysForm, PhysRet};
+use ace_foreign_contract::plan::{PhysForm, PhysRet, PhysicalPlan};
 use ace_foreign_contract::typed::TypedDecls;
 use ace_foreign_contract::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts};
 use ace_semantics_contract::codec::{encode_typedesc_bytes, TypeDesc};
 use ace_semantics_contract::identity::{ContentVersion, DeclKind, DeclRef, PackageId};
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Bridge-owned artifact layer (probe-owned like ABI-O1; nothing in the
@@ -312,7 +312,10 @@ pub fn plan_key(plan_digest: &str) -> QueryKey {
             ("kind".into(), "bridge-plan".into()),
             ("plan-digest".into(), plan_digest.into()),
             ("domain".into(), ace_foreign_contract::plan::DOMAIN.into()),
-            ("domain-version".into(), ace_foreign_contract::plan::DOMAIN_VERSION.into()),
+            (
+                "domain-version".into(),
+                ace_foreign_contract::plan::DOMAIN_VERSION.into(),
+            ),
             ("target".into(), ace_foreign_contract::plan::TARGET.into()),
             ("profile".into(), ace_foreign_contract::plan::PROFILE.into()),
         ],
@@ -402,7 +405,11 @@ pub fn interface_binding_hash(facts: &InterfaceFacts) -> Result<String, BridgeEr
     for f in &facts.functions {
         let (params, ret) = match &f.form {
             FnForm::Pure { params, ret } => (params.clone(), Some(*ret)),
-            FnForm::Fallible { ctx: _, params, outs } => {
+            FnForm::Fallible {
+                ctx: _,
+                params,
+                outs,
+            } => {
                 // status form: params + out lanes are the semantic shape;
                 // the i32 status is the declared result.
                 let mut ps = params.clone();
@@ -484,7 +491,10 @@ pub fn descriptor_from_plan(
                     // out-pointer lanes are FORM fields in descriptor/3.
                     params: params
                         .iter()
-                        .filter(|p| p.name != "ctx" && !(p.name.starts_with("out") && p.name.ends_with("_ptr")))
+                        .filter(|p| {
+                            p.name != "ctx"
+                                && !(p.name.starts_with("out") && p.name.ends_with("_ptr"))
+                        })
                         .map(|p| param_kind_of(p.lane))
                         .collect(),
                     outs: outs.iter().map(|l| param_kind_of(*l)).collect(),
@@ -548,10 +558,18 @@ pub fn source_expectation(
 ) -> ConsumerExpectation {
     let mut required = Vec::new();
     for s in exports {
-        let params = s.params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(",");
+        let params = s
+            .params
+            .iter()
+            .map(|p| p.spell())
+            .collect::<Vec<_>>()
+            .join(",");
         required.push((
             s.public_symbol.clone(),
-            format!("fallible(ctx:nullable,{params})->status,out {},i32", s.ret.spell()),
+            format!(
+                "fallible(ctx:nullable,{params})->status,out {},i32",
+                s.ret.spell()
+            ),
         ));
     }
     ConsumerExpectation {
@@ -575,10 +593,7 @@ pub fn source_expectation(
 /// Namespaced scratch dir (caller-supplied root + pid + step —
 /// concurrent bridge runs never collide).
 pub fn bridge_scratch(root: &Path, step: &str) -> PathBuf {
-    root.join(format!(
-        "bridge-937-{}-{step}",
-        std::process::id()
-    ))
+    root.join(format!("bridge-937-{}-{step}", std::process::id()))
 }
 
 fn write_all(dir: &Path, files: &[(&str, &str)]) -> Result<(), BridgeError> {
@@ -607,7 +622,10 @@ pub fn compile_bridge_crt(dir: &Path, sources: &[&str], exe: &Path) -> Result<()
                 .to_path_buf();
             let p = vc.join("Auxiliary").join("Build").join("vcvars64.bat");
             if !p.is_file() {
-                return Err(BridgeError(format!("vcvars64.bat missing: {}", p.display())));
+                return Err(BridgeError(format!(
+                    "vcvars64.bat missing: {}",
+                    p.display()
+                )));
             }
             p
         }
@@ -672,7 +690,10 @@ fn produce_c_object_cached(
     src: &Path,
     obj_out: &Path,
 ) -> Result<(), BridgeError> {
-    let key_tag = format!("cl:{}", src.file_name().unwrap_or_default().to_string_lossy());
+    let key_tag = format!(
+        "cl:{}",
+        src.file_name().unwrap_or_default().to_string_lossy()
+    );
     let include = cside_dir();
     let obj_path = obj_out.to_path_buf();
     let (bytes, _hit) = crate::cache::produce_c_object(store, src, &include, &[], || {
@@ -734,8 +755,8 @@ pub fn run_typed_chain(
     let facts = decls
         .validate()
         .map_err(|e| BridgeError(format!("typed decls: {e}")))?;
-    let plan = PhysicalPlan::project(&facts)
-        .map_err(|e| BridgeError(format!("plan projection: {e}")))?;
+    let plan =
+        PhysicalPlan::project(&facts).map_err(|e| BridgeError(format!("plan projection: {e}")))?;
     let facts_digest = facts.digest().map_err(BridgeError)?;
     let plan_digest = plan.digest().map_err(BridgeError)?;
 
@@ -755,7 +776,6 @@ pub fn run_typed_chain(
     let facts_bytes = facts_page;
     facts_codec::decode(&facts_bytes).map_err(|e| BridgeError(e.to_string()))?; // self-check
     let plan_digest_value = plan.digest().map_err(BridgeError)?;
-    let plan_key_canonical = plan_key(&plan_digest_value).canonical();
     let (_, _) = produce_counted(
         store,
         counters,
@@ -794,8 +814,11 @@ pub fn run_typed_chain(
             TypedLeg::SelfCheck => {
                 let dir = scratch.join("self");
                 write_all(&dir, &[])?;
-                std::fs::write(dir.join("caller.obj"), emit_typed_caller(&frozen_typed_checks())?)
-                    .map_err(|e| BridgeError(e.to_string()))?;
+                std::fs::write(
+                    dir.join("caller.obj"),
+                    emit_typed_caller(&frozen_typed_checks())?,
+                )
+                .map_err(|e| BridgeError(e.to_string()))?;
                 std::fs::write(dir.join("callee.obj"), &callee_obj)
                     .map_err(|e| BridgeError(e.to_string()))?;
                 let exe = link_pe(
@@ -811,15 +834,19 @@ pub fn run_typed_chain(
                 let dir = scratch.join("n2c");
                 write_all(&dir, &[])?;
                 let c_obj = dir.join("bridge_typed_callee.obj");
-                produce_c_object_cached(store, counters, &cside_dir().join("bridge_typed_callee.c"), &c_obj)?;
-                std::fs::write(dir.join("caller.obj"), emit_typed_caller(&frozen_typed_checks())?)
-                    .map_err(|e| BridgeError(e.to_string()))?;
-                let exe = link_pe(
-                    &dir,
-                    &[dir.join("caller.obj"), c_obj],
-                    "t937_entry",
+                produce_c_object_cached(
+                    store,
+                    counters,
+                    &cside_dir().join("bridge_typed_callee.c"),
+                    &c_obj,
+                )?;
+                std::fs::write(
+                    dir.join("caller.obj"),
+                    emit_typed_caller(&frozen_typed_checks())?,
                 )
-                .map_err(|e| BridgeError(format!("{e:?}")))?;
+                .map_err(|e| BridgeError(e.to_string()))?;
+                let exe = link_pe(&dir, &[dir.join("caller.obj"), c_obj], "t937_entry")
+                    .map_err(|e| BridgeError(format!("{e:?}")))?;
                 let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
                 out_legs.push(("native-to-c".into(), run.code));
             }
@@ -827,7 +854,12 @@ pub fn run_typed_chain(
                 let dir = scratch.join("c2n");
                 write_all(&dir, &[])?;
                 let c_obj = dir.join("bridge_typed_caller.obj");
-                produce_c_object_cached(store, counters, &cside_dir().join("bridge_typed_caller.c"), &c_obj)?;
+                produce_c_object_cached(
+                    store,
+                    counters,
+                    &cside_dir().join("bridge_typed_caller.c"),
+                    &c_obj,
+                )?;
                 std::fs::write(dir.join("callee.obj"), &callee_obj)
                     .map_err(|e| BridgeError(e.to_string()))?;
                 let exe = link_pe(&dir, &[c_obj, dir.join("callee.obj")], "t937_c_entry")
@@ -871,8 +903,7 @@ pub fn run_typed_caller_with_checks(
         ChunkKind::Object,
         emit_typed_callee,
     )?;
-    std::fs::write(dir.join("callee.obj"), &callee_obj)
-        .map_err(|e| BridgeError(e.to_string()))?;
+    std::fs::write(dir.join("callee.obj"), &callee_obj).map_err(|e| BridgeError(e.to_string()))?;
     let exe = link_pe(
         &dir,
         &[dir.join("caller.obj"), dir.join("callee.obj")],
@@ -983,7 +1014,9 @@ pub fn run_source_export(
             .iter()
             .find(|f| f.source_name == *src_name)
             .ok_or_else(|| {
-                BridgeError(format!("export '{src_name}' not found in the checked source"))
+                BridgeError(format!(
+                    "export '{src_name}' not found in the checked source"
+                ))
             })?;
         let params: Vec<LaneKind> = f
             .params
@@ -1044,8 +1077,8 @@ pub fn run_source_export(
         ChunkKind::LayoutData,
         || facts_codec::encode(&facts).map_err(|e| e.to_string()),
     )?;
-    let plan = PhysicalPlan::project(&facts)
-        .map_err(|e| BridgeError(format!("plan projection: {e}")))?;
+    let plan =
+        PhysicalPlan::project(&facts).map_err(|e| BridgeError(format!("plan projection: {e}")))?;
     let plan_digest_value = plan.digest().map_err(BridgeError)?;
     let plan_key_canonical = plan_key(&plan_digest_value).canonical();
     let (_, _) = produce_counted(
@@ -1066,8 +1099,8 @@ pub fn run_source_export(
     let mut fragments: Vec<String> = Vec::new();
     let mut fragment_key_canonicals: Vec<String> = Vec::new();
     for f in &exported {
-        let sem_fp = semantic_fingerprint(&view, f)
-            .map_err(|e| BridgeError(format!("sem fp: {e:?}")))?;
+        let sem_fp =
+            semantic_fingerprint(&view, f).map_err(|e| BridgeError(format!("sem fp: {e:?}")))?;
         let key = fragment_key(&f.source_name, &sem_fp, &provider_inputs);
         fragment_key_canonicals.push(key.canonical());
         let (bytes, _) = produce_counted(store, counters, &key, ChunkKind::SourcePage, || {
@@ -1081,8 +1114,7 @@ pub fn run_source_export(
 
     // 5) The LIBRARY fileset (explicit assembly — no process main; the
     //    old exe form is untouched by construction).
-    let frag_digest =
-        crate::semref::blake3_hex(fragments.join("\n").as_bytes());
+    let frag_digest = crate::semref::blake3_hex(fragments.join("\n").as_bytes());
     let exports_digest = crate::semref::blake3_hex(
         specs
             .iter()
@@ -1153,11 +1185,18 @@ pub fn run_source_export(
             .map(|(p, t)| (p.as_str(), t.as_str()))
             .collect::<Vec<_>>(),
     )?;
-    std::fs::copy(cside_dir().join("bridge_source_caller.c"), dir.join("bridge_source_caller.c"))
-        .map_err(|e| BridgeError(format!("caller copy: {e}")))?;
+    std::fs::copy(
+        cside_dir().join("bridge_source_caller.c"),
+        dir.join("bridge_source_caller.c"),
+    )
+    .map_err(|e| BridgeError(format!("caller copy: {e}")))?;
     let exe = dir.join("source_export.exe");
     budget_left()?;
-    compile_bridge_crt(&dir, &["library.c", "generated.c", "bridge_source_caller.c"], &exe)?;
+    compile_bridge_crt(
+        &dir,
+        &["library.c", "generated.c", "bridge_source_caller.c"],
+        &exe,
+    )?;
     let mut cmd = Command::new(&exe);
     let run = run_deadlined_captured(
         &mut cmd,
@@ -1233,7 +1272,8 @@ pub fn restore_bridge(
     // The facts page is the identity root; the plan is re-derivable but
     // persisted alongside (physical key identity); fragments and the
     // library page are the adapter closure.
-    let facts_bytes = read_key(&facts_key(&handle.facts_digest, &handle.source_sha256).canonical())?;
+    let facts_bytes =
+        read_key(&facts_key(&handle.facts_digest, &handle.source_sha256).canonical())?;
     let plan_bytes = read_key(&handle.plan_key)?;
     for k in &handle.fragment_keys {
         read_key(k)?;
@@ -1264,7 +1304,9 @@ pub fn restore_bridge(
         serde_json::from_slice(&lib_bytes).map_err(|e| BridgeError(format!("lib: {e}")))?;
     let manifest = lib["manifest"].as_str().unwrap_or_default().to_string();
     if manifest.is_empty() {
-        return Err(BridgeError("library manifest missing in persisted page".into()));
+        return Err(BridgeError(
+            "library manifest missing in persisted page".into(),
+        ));
     }
     Ok(RestoredBridge {
         facts,

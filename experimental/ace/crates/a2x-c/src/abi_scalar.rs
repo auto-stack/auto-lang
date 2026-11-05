@@ -129,12 +129,19 @@ pub struct ExportSpec {
 
 impl ExportSpec {
     fn check(&self) -> Result<(), String> {
-        let ident = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        let ident =
+            |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         if !ident(&self.public_symbol) {
-            return Err(format!("public symbol '{}' is not a C identifier", self.public_symbol));
+            return Err(format!(
+                "public symbol '{}' is not a C identifier",
+                self.public_symbol
+            ));
         }
         if !ident(&self.source_fn) {
-            return Err(format!("source fn '{}' is not a C identifier", self.source_fn));
+            return Err(format!(
+                "source fn '{}' is not a C identifier",
+                self.source_fn
+            ));
         }
         for k in self.params.iter().chain(std::iter::once(&self.ret)) {
             if !matches!(k, LaneKind::I32 | LaneKind::Bool) {
@@ -155,10 +162,7 @@ fn c_lane(k: LaneKind) -> &'static str {
 /// The public prototype of one export (the form both the generated
 /// header and the hand-written independent header spell).
 pub fn public_prototype(spec: &ExportSpec) -> String {
-    let mut s = format!(
-        "int32_t {}(void* ctx",
-        spec.public_symbol
-    );
+    let mut s = format!("int32_t {}(void* ctx", spec.public_symbol);
     for (i, p) in spec.params.iter().enumerate() {
         s.push_str(&format!(", {} p{}", c_lane(*p), i));
     }
@@ -187,25 +191,29 @@ pub fn wrapper_c(specs: &[ExportSpec]) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        s.push_str(&format!("extern a2x_result {}({params});\n", spec.source_fn));
+        s.push_str(&format!(
+            "extern a2x_result {}({params});\n",
+            spec.source_fn
+        ));
     }
     s.push('\n');
     for spec in specs {
         s.push_str(&format!("// {}\n", public_prototype(spec)));
-        s.push_str(&format!(
-            "int32_t {}(void* ctx",
-            spec.public_symbol
-        ));
+        s.push_str(&format!("int32_t {}(void* ctx", spec.public_symbol));
         for (i, p) in spec.params.iter().enumerate() {
             s.push_str(&format!(", {} p{}", c_lane(*p), i));
         }
-        s.push_str(&format!(", {}* out, int32_t* reason) {{\n", c_lane(spec.ret)));
+        s.push_str(&format!(
+            ", {}* out, int32_t* reason) {{\n",
+            c_lane(spec.ret)
+        ));
         s.push_str("    (void)ctx;\n");
         s.push_str("    a2x_result r = ");
         s.push_str(&spec.source_fn);
         s.push('(');
         s.push_str(
-            &spec.params
+            &spec
+                .params
                 .iter()
                 .enumerate()
                 .map(|(i, _)| format!("p{i}"))
@@ -358,10 +366,7 @@ pub fn assemble_library_fileset(
         export_rows.join(","),
         file_rows.join(",")
     );
-    Ok(FileSet {
-        files,
-        manifest,
-    })
+    Ok(FileSet { files, manifest })
 }
 
 #[cfg(test)]
@@ -427,10 +432,20 @@ mod tests {
         };
         let fs = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &inputs).unwrap();
         let names: Vec<&str> = fs.files.iter().map(|(p, _)| p.as_str()).collect();
-        assert_eq!(names, vec!["library.c", "abi_export.h", "generated.c", "a2x_c_runtime.h"]);
+        assert_eq!(
+            names,
+            vec![
+                "library.c",
+                "abi_export.h",
+                "generated.c",
+                "a2x_c_runtime.h"
+            ]
+        );
         assert!(!names.contains(&"main.c"));
         // generated.c carries the REAL fragment bytes + prototype block
-        assert!(fs.files[2].1.contains("a2x_result fn_sum(int32_t a, int32_t b);"));
+        assert!(fs.files[2]
+            .1
+            .contains("a2x_result fn_sum(int32_t a, int32_t b);"));
         assert!(fs.files[2].1.contains("return a2x_add(a, b);"));
         assert_eq!(fs.files[3].1, "RT");
         assert!(fs.manifest.contains(LIBRARY_FILESET_SCHEMA));
@@ -438,11 +453,15 @@ mod tests {
         assert!(fs.manifest.contains("\"symbol\":\"t937_sum\""));
         // determinism: identical inputs -> byte-identical outputs
         let fs2 = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &inputs).unwrap();
-        assert!(fs.files == fs2.files, "library fileset must be byte-deterministic");
+        assert!(
+            fs.files == fs2.files,
+            "library fileset must be byte-deterministic"
+        );
         assert!(fs.manifest == fs2.manifest);
         // a body edit changes generated.c bytes AND manifest hashes
         let frag2 = frag.replace("a + b", "a + b + 1");
-        let fs3 = assemble_library_fileset(&[frag2.as_str()], "RT", &[sum_spec()], &inputs).unwrap();
+        let fs3 =
+            assemble_library_fileset(&[frag2.as_str()], "RT", &[sum_spec()], &inputs).unwrap();
         assert_ne!(fs.manifest, fs3.manifest);
     }
 
