@@ -22,6 +22,8 @@ pub mod resource_events;
 pub mod collections_fixture;
 pub mod collections_session;
 pub mod data_driver;
+// PLAN-934 T-08: fact-driven scalar source entry (product seam).
+pub mod query_entry;
 pub mod data_session;
 pub mod driver;
 pub mod dynamic_fixture;

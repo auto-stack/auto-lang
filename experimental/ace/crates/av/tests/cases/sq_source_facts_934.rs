@@ -351,3 +351,16 @@ fn sq934_shared_consumer_entry_feeds_real_execution_without_typecheck() {
     }
     assert_eq!(run_value(&compiled.checked), Value::I32(42));
 }
+
+#[test]
+fn sq934_av_product_seam_matches_the_legacy_entry() {
+    let via = ace_av::query_entry::compile_scalar_source_via_facts(SRC, "sq934.at", &[])
+        .expect("product fact seam");
+    assert_eq!(run_value(&via), Value::I32(42));
+
+    let legacy = compile_scalar_source(SRC, "sq934.at", &[]).expect("legacy");
+    assert_eq!(run_value(&legacy.checked), Value::I32(42));
+    // HIR byte identity is proven at the crate level (sq37); here the two
+    // product entries must produce the same executable result.
+    assert_eq!(run_value(&via), run_value(&legacy.checked));
+}

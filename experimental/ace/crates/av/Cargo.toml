@@ -21,6 +21,8 @@ ace-artifacts = { path = "../artifacts" }
 ace-syntax-runtime = { path = "../syntax-runtime" }
 ace-syntax-grammar = { path = "../syntax-grammar" }
 ace-syntax-core = { path = "../syntax-core" }
+# PLAN-934 T-08: the fact-driven scalar source entry (product seam).
+ace-source-query = { path = "../source-query" }
 rusqlite = { version = "0.30", features = ["bundled"] }
 base64 = "0.22"
 blake3 = "1"
@@ -39,7 +41,6 @@ windows-sys = { version = "0.59", features = [
 [dev-dependencies]
 # PLAN-934 T-02: the bounded fact-driven source chain runs in this
 # consumer's conformance suite (dev-only; the product path is T-08).
-ace-source-query = { path = "../source-query" }
 # PLAN-827: seed-identity receipts (SHA256 over the frozen AP fixture bytes).
 sha2 = "0.10"
 
