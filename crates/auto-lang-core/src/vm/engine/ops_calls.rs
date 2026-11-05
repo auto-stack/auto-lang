@@ -12,6 +12,9 @@ impl AutoVM {
         match op {
             OpCode::CALL_NAT => {
                 let native_id = self.flash.read_u16(task.ip);
+                if std::env::var_os("AUTO_DEBUG_NATIVE").is_some() {
+                    eprintln!("[plan949] CALL_NAT id={native_id}");
+                }
                 task.ip += 2;
                 self.native_interface
                     .verify_core_reference(native_id)
@@ -1099,3 +1102,4 @@ impl AutoVM {
         Ok(StepResult::Continue)
     }
 }
+
