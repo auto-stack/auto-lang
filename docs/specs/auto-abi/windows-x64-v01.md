@@ -7,6 +7,19 @@
 `experimental/ace/crates/abi` 的真实编译/链接/PE 执行与独立复审证据支持
 （R4–R17 反例链）；每条后注其 finding 出处。
 
+## 位置制参数槽与薄 adapter 转换（PLAN-937 实证钉死）
+
+- **参数分类为位置制**：参数位置 0-3 用该位置的寄存器（整数类
+  RCX/RDX/R8/R9、F64 XMM0..3），位置 ≥4 一律栈传（混合签名中
+  `(int,double,int)` 的 double 在 XMM1——按位置索引，非浮点序数）。
+  已对 MSVC 14.44 代码生成（探针 disasm）与 Cranelift 0.126
+  WindowsFastcall（源码 `get_intreg/get_fltreg` 按 `arg_idx`）双实证。
+- 公开 typed lane 的薄 adapter 转换实际支持矩阵：i32/u32/i64/u64 原宽、
+  bool→u8(0/1)、char→u32(Unicode scalar)、f64 为真浮点 lane（891 宽
+  浮点的整数位载体不经此别名）；无 f32。ctx 槽为指针宽 GP lane；
+  多 out 为尾随指针 lane，按声明序、成功才提交。
+- descriptor/3 wire 不因桥改变（桥经投影构造 descriptor 走原准入）。
+
 ## 调用与形态
 
 1. **调用约定**：Windows x64；公开 AutoABI 函数 = 规范 C 标识符符号 +

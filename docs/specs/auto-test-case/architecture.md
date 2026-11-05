@@ -5,6 +5,15 @@
 
 > 状态：active（A 阶段）。为什么这个 crate 存在、依赖方向为什么是单向。
 
+## CA-D 标量桥 adapter（PLAN-937）
+
+- 正式 recipe `abi/ca-d1-bridge-v1` 经既有 `probe` adapter/父执行器
+  （`test_cases/abi.rs` 双 recipe 分发）与同一 abi worker；contract
+  绑定腿集 source/typed-self/typed-n2c/typed-c2n，与 `abi/interop-v1`
+  严格互斥。严格协议与原 probe 来源隔离：注册不等于认证 PASS，独立
+  oracle/原始行证据/退出码纪律（正退出=pe-exit diags）沿 797 父路径。
+  细节见 [ace-ca-d-bridge-certification.md](ace-ca-d-bridge-certification.md)。
+
 ## 裁判来源：pinned vendored parser
 
 - `vendor/autodown-test-parser/` 三文件快照（markdown_parser/ial/block_model），

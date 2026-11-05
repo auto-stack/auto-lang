@@ -22,6 +22,12 @@ P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md]
   [windows-x64-v01.md](windows-x64-v01.md)）。
 - 独立编译双方真实 COFF 对象、三腿互调与缓存/conformance 基准
   （见 [conformance-cache.md](conformance-cache.md)）。
+- **共享接口事实与标量 ABI 桥（CA-D1，PLAN-937）**：backend-free 中立
+  模型（`crates/foreign-contract`）+ 双真实消费者（native typed 发射/
+  准入与 A2C 标量导出 wrapper）+ 桥层增量/恢复——现状合同见
+  [shared-interface-and-scalar-bridge.md](shared-interface-and-scalar-bridge.md)。
+  797 candidate/descriptor3 原支持面与拒绝面不变；桥是其上的新入口，
+  不是新的 ABI 版本。
 - 不做：完整 AutoABI 所有类型/平台、C header importer、Rust shim 产品、
   variadic/bitfield/union/C++ ABI、DLL loader/热重载、跨线程 callback。
 

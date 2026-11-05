@@ -5,6 +5,15 @@
 > `ace-a2x-core`+`ace-core`） | 依据：PLAN-921（CA-A）；C 路线
 > [shared-a2x-and-hir-to-c-roadmap](../../design/strategy/shared-a2x-and-hir-to-c-roadmap.md)
 
+**有限 source 公开导出（CA-D1，PLAN-937）**：`abi_scalar` 模块为
+已受检的标量函数生成公开 fallible wrapper 与库 fileset（schema
+`auto.a2x.c.library.fileset/1`、recipe `ac-a2c/hir-scalar-library-export-v1`，
+无进程 main；显式 trap→status 表+reason 通道；CRT 闭包 `/MT` 编译）——
+是**导出**，不冒 source import（import 归 938）。合同见
+[auto-abi/shared-interface-and-scalar-bridge.md](../auto-abi/shared-interface-and-scalar-bridge.md)。
+依赖面：a2x-c 在原 `ace-a2x-core`+`ace-core` 外新增中立
+`ace-foreign-contract`（纯模型，无 Cranelift/abi）。
+
 受检 HIR → C11 的目标 provider（`CTargetProvider`）：与 Rust
 目标共享同一语义事实（AXS 键/语义指纹）与同一 session/store 服务，片段/
 文件集/证书身份完全按 C 目标隔离。两通道：**scalar**（层 AXC1、schema

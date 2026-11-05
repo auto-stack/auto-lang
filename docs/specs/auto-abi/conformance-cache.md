@@ -9,6 +9,24 @@
 AutoABI 互调 conformance 基准与对象缓存规范。每条规则由真实 cl 编译、
 rust-lld 链接、PE 执行与 R4–R17 独立反例链支持。
 
+## 桥层键/增量/恢复/认证（PLAN-937，层 ABI-BR1）
+
+- 键结构：facts（身份+签名+来源）/ plan（按 plan 自身 digest 键控——
+  接口不变的 body 编辑为纯命中）/ 逐函数 C 片段（sem_fp+provider 身份，
+  不混整源 hash：body 编辑恰重产该函数，他函数 P=0）/ library fileset
+  （片段 digest+runtime+exports+schema）。逐键 producer 计数可观测，
+  命中零生产。
+- 恢复：严格 codec（deny_unknown_fields/错版/超限拒）+digest 与来源
+  身份重核，零生产、零重编译；旧 persisted 页字节不可变；缺页/伪造/
+  错来源为命名拒绝。
+- 原限额沿用不放宽：build 60s/run 5s/total 70s、单流 1MiB、hot/staging
+  预算、单产物 64MiB；lease/GC 沿统一 ManagedStore（512 修订 churn、
+  root+lease 存活、哨兵不动在案）。
+- 认证：`abi/ca-d1-bridge-v1` recipe 走同一 worker/父判定（独立 oracle、
+  正 PE 退出=pe-exit diags、原始行证据）；回转门 6 场景×30，
+  body-edit 与 descriptor-reject P90≤2000ms（首例实测 1770ms/0ms）。
+  daily spawn=0 纪律沿 recipe 分工（库 CRT 编译仅在桥 query/certify 腿）。
+
 ## 三腿与 oracle
 
 1. **三腿**（每个 producer 独立命令/obj/lib + descriptor；consumer
