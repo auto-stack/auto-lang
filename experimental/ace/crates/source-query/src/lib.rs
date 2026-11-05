@@ -40,6 +40,7 @@ pub mod consumer;
 pub mod facts;
 pub mod host;
 pub mod ident;
+pub mod instances;
 pub mod keys;
 pub mod produce;
 pub mod restore;
@@ -71,6 +72,10 @@ pub use host::{
 pub use ident::{
     content_version, owner_logical, signature_version, sq_hash, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE,
     SQ_SCHEMA,
+};
+pub use instances::{
+    instantiate_program, InstanceRecord, InstantiateOutcome, INSTANCES_ALGO, INSTANCES_KEY_DOMAIN,
+    INSTANCES_LOGICAL_DOMAIN, INSTANCES_PRODUCER, INSTANCES_SCHEMA,
 };
 pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
 pub use produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};

@@ -24,6 +24,8 @@ fn shift_type_ann(t: &mut TypeAnn, delta: i64) {
     shift_span(&mut t.span, delta);
     match &mut t.kind {
         TypeRef::Record(id) => shift_ident(id, delta),
+        // PLAN-935：类型变量引用同 ident 平移。
+        TypeRef::TyVar(id) => shift_ident(id, delta),
         TypeRef::Optional(inner) => shift_type_ann(inner, delta),
         TypeRef::Generic { name, args } => {
             shift_ident(name, delta);
@@ -238,6 +240,10 @@ pub(crate) fn shift_fn_item(f: &mut FnItem, off: usize) {
 /// PLAN-929（T-05）：带符号 FnItem 平移（同一 visitor 覆盖面）。
 pub(crate) fn shift_fn_item_signed(f: &mut FnItem, delta: i64) {
     shift_ident(&mut f.name, delta);
+    // PLAN-935：类型参数声明 ident 同面平移。
+    for tp in f.type_params.iter_mut() {
+        shift_ident(tp, delta);
+    }
     for p in f.params.iter_mut() {
         shift_param(p, delta);
     }

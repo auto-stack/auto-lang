@@ -779,7 +779,11 @@ impl A2xSession {
         // PLAN-934 T-08: the scalar cold path compiles through the SQ-A
         // fact entry (query facts are the type authority) and keeps the
         // admitted supply for the retained environment below.
+        // PLAN-935: under the instances capability the product also carries
+        // the DESUGARED concrete program; the retained env builds from it
+        // (never a second caps-blind parse that would reject `<T>`).
         let mut scalar_supply = None;
+        let mut scalar_program: Option<ace_core::source::ast::Program> = None;
         let compiled = match profile {
             SourceProfile::Core => compile_source(src, "a2x", caps),
             SourceProfile::Scalar => {
@@ -794,6 +798,7 @@ impl A2xSession {
                 match product {
                     Ok(p) => {
                         scalar_supply = Some(p.supply);
+                        scalar_program = Some(p.program);
                         Ok::<CompiledSource, Vec<ace_core::atom_text::Diagnostic>>(p.compiled)
                     }
                     Err(ds) => Err(ds),
@@ -827,8 +832,14 @@ impl A2xSession {
         };
 
         // retained environment for warm edits
-        let program = parse_program_with(src, profile)
-            .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
+        let program = match scalar_program.take() {
+            // PLAN-935: the desugared/parsed program from the SAME product
+            // compile (instance fns in place of templates) — not a second
+            // caps-blind parse.
+            Some(p) => p,
+            None => parse_program_with(src, profile)
+                .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?,
+        };
         self.stats.parse += 1;
         // PLAN-934 T-08: a scalar cold assemble seeds its retained
         // environment from the SAME fact supply the HIR came from; the

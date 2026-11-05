@@ -174,3 +174,5 @@ mod resource_events_919;
 // facts → resolved program → checked HIR → execution).
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;

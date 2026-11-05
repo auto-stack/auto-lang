@@ -24,6 +24,9 @@ pub struct SourceKinds {
     pub param: u32,
     pub ret_ty: u32,
     pub ann_ty: u32,
+    /// PLAN-935：fn `<T>` 类型参数表/项（仅 scalar-instances 裁剪存在）。
+    pub type_params: Option<u32>,
+    pub type_param: Option<u32>,
     // stmts
     pub block: u32,
     pub stmt: u32,
@@ -261,6 +264,8 @@ impl SourceKinds {
             param: rk("param"),
             ret_ty: rk("ret-ty"),
             ann_ty: rk("ann-ty"),
+            type_params: rk_opt(p, "type-params"),
+            type_param: rk_opt(p, "type-param"),
             block: rk("block"),
             stmt: rk("stmt"),
             let_stmt: rk("let-stmt"),

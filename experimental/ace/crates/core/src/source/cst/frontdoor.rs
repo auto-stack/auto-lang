@@ -17,7 +17,9 @@ pub const AUTO_SOURCE_GRAMMAR: &str = include_str!("../../../../../grammars/auto
 
 /// profile 能力清单版本：语法语义/能力/映射面变更必须换键（计划 §5.2）。
 /// 与 `auto-source.at` 的 revision、grammar-id 一同进入前端结果身份。
-pub const FRONT_CAPS_VERSION: &str = "ac-source-front/1";
+/// PLAN-935（T-02）：`ac-source-front/2` —— 新增 `scalar-instances` 裁剪面
+/// 与 `ac.source.instances.scalar/v1` 显式能力（fn `<T>`/类型位裸 ident）。
+pub const FRONT_CAPS_VERSION: &str = "ac-source-front/2";
 
 /// 前端显式预算（V-09：不得沿 `Budget::default()` 的 256MiB work_bytes 冒
 /// 64MiB 档授权；各消费门按原适用域显式传入）。
@@ -171,6 +173,42 @@ impl CachedGrammar {
 
 static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
 
+/// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
+/// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
+static INSTANCES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// PLAN-935：启用有限模板面的显式能力（T-02 冻结字面量）。调用方在其
+/// capabilities 中携带本能力时，统一前门以 `scalar-instances` 裁剪编译；
+/// 未携带 → plain scalar 裁剪，`<T>`/裸 ident 维持原语法拒绝面。
+pub const INSTANCES_CAPABILITY: &str = "ac.source.instances.scalar/v1";
+
+/// scalar-instances 裁剪编译并缓存（进程内一次）。
+pub fn instances_grammar() -> Result<&'static CachedGrammar, String> {
+    let slot = INSTANCES_GRAMMAR.get_or_init(|| Default::default());
+    if let Some(g) = slot.get() {
+        return Ok(g);
+    }
+    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, "scalar-instances")
+        .map_err(|diags| {
+            format!(
+                "auto-source grammar failed to compile for `scalar-instances`: {:?}",
+                diags
+            )
+        })?;
+    let scanner =
+        CompiledScanner::compile(&program).map_err(|e| format!("scanner compile: {e}"))?;
+    let kinds = SourceKinds::from_program(&program).map_err(|missing| {
+        format!("auto-source grammar for `scalar-instances` lacks required kinds: {missing:?}")
+    })?;
+    let cached = CachedGrammar {
+        program,
+        scanner,
+        kinds,
+    };
+    let _ = slot.set(cached);
+    Ok(slot.get().expect("just set"))
+}
+
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，
 /// 跨进程恢复按 grammar-id 从 store 装载，不重复编译）。
 pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar, String> {
@@ -249,6 +287,69 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
             Some((owner, receiver)),
             receiver,
         ),
+    }
+}
+
+/// PLAN-935（T-02）：能力感知统一入口。capabilities 携带
+/// [`INSTANCES_CAPABILITY`] 且 profile 为 Scalar 时以 `scalar-instances`
+/// 裁剪解析（fn `<T>` + 类型位裸 ident 合法，投影产出
+/// `FnItem::type_params`/`TypeRef::TyVar`）；其余组合与 [`parse_front`]
+/// 逐字节同面（无能力仍原拒绝）。片段 kind 在 instances 面不支持（增量
+/// 片段合同仍走 plain 面——模板函数编辑的增量路径由 T-07 冻结）。
+pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> FrontOutcome {
+    let instances = capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+        && req.profile == SourceProfile::Scalar;
+    if !instances {
+        return parse_front(req);
+    }
+    if !matches!(req.kind, FrontKind::WholeModule) {
+        return parse_front(req);
+    }
+    let FrontRequest {
+        src,
+        budget,
+        profile,
+        ..
+    } = req;
+    let cached = match instances_grammar() {
+        Ok(c) => c,
+        Err(e) => return FrontOutcome::Infra(e),
+    };
+    let store = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let ParseOutput {
+        tree,
+        tokens: _,
+        lex_diags: _,
+        grafted_decls: _,
+    } = match parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    ) {
+        Ok(o) => o,
+        Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
+            return FrontOutcome::ResourceExhausted { what, limit };
+        }
+        Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
+    };
+    match project::project_program_with_caps(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        profile,
+        true,
+    ) {
+        Ok(program) => FrontOutcome::Ok(FrontOk {
+            program,
+            grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+            caps_version: FRONT_CAPS_VERSION,
+            snapshot_len: src.len(),
+            cst: tree,
+        }),
+        Err(diags) => FrontOutcome::Diag(diags),
     }
 }
 

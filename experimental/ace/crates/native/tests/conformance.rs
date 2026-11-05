@@ -4,6 +4,8 @@ mod cache_tier;
 mod cli;
 #[path = "cases/closures_compat.rs"]
 mod closures_compat;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;
 #[path = "cases/closures_native_tier.rs"]
 mod closures_native_tier;
 #[path = "cases/closures_native_924_performance.rs"]

@@ -328,6 +328,14 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
+        // PLAN-935: a template type parameter never enters the neutral input
+        // model — templates are concretized (TyVar → concrete builtin) before
+        // projection. Reaching here = a template fed straight to the solver;
+        // surface as unsupported, never widen to a concrete type.
+        core_ast::TypeRef::TyVar(id) => {
+            let _ = id;
+            Ok(Ann::Unsupported("type-parameter"))
+        }
         // PLAN-865: the closures profile adds this AST type, but the limited semantic model does not.
         core_ast::TypeRef::Function { .. } => Ok(Ann::Unsupported("closure-function-type")),
         // PLAN-864: the collections type grammar (?T / Name<..>) is outside

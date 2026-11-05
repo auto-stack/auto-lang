@@ -1415,7 +1415,10 @@ pub struct FnSummary {
     pub name: String,
     #[serde(default)]
     pub owner_record: Option<String>,
-    pub receiver: String,              // free | static | view
+    pub receiver: String, // free | static | view
+    // PLAN-935: declared type parameters (empty outside the instances face).
+    #[serde(default)]
+    pub type_params: Vec<String>,
     pub params: Vec<(String, String)>, // (name, canonical type word)
     pub result: String,
 }
@@ -1439,6 +1442,9 @@ pub fn canonical_type_word(t: &ace_core::source::ast::TypeAnn) -> String {
         // source profile only; the other profiles never parse it).
         TypeRef::Builtin(TypeWord::Void) => "unit".into(),
         TypeRef::Record(id) => format!("rec:{}", id.name),
+        // PLAN-935: a template type parameter word (only under the instances
+        // capability face; concrete summaries see only substituted builtins).
+        TypeRef::TyVar(id) => format!("tyvar:{}", id.name),
         // PLAN-864: collections type grammar (the canonical words keep the
         // written form; this codec's core/scalar summary never emits them).
         TypeRef::Optional(inner) => {
@@ -1473,6 +1479,7 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
                         Receiver::View => "view",
                     }
                     .into(),
+                    type_params: f.type_params.iter().map(|t| t.name.clone()).collect(),
                     params: f
                         .params
                         .iter()
@@ -1492,6 +1499,9 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
                             Receiver::View => "view",
                         }
                         .into(),
+                        // methods never carry type parameters (935 named
+                        // rejection at projection)
+                        type_params: Vec::new(),
                         params: m
                             .params
                             .iter()

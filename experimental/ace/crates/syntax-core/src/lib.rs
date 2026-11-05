@@ -7,7 +7,6 @@
 //! - 有符号字面量折叠与 i32 域检查在投影层（source.literal-range 语义拒绝）；
 //! - 本投影仅用于对照与未来接口验证，不替换 ac-core 编译入口。
 
-
 // ---------------------------------------------------------------------------
 // PLAN-927 T-03：薄重导出接缝。七 profile 统一源码前门（共享 CST/规则程序
 // → 严格 AST 投影）住在 `ace-core::source::cst`；本 crate 仅重导出，保持
@@ -291,6 +290,10 @@ fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {
     let body = project_block(p, cx, body_n)?;
     Ok(FnItem {
         name: ident,
+        // PLAN-935: the legacy strict projection never sees the instances
+        // grammar face (its consumers parse plain profiles); templates are
+        // rejected upstream in that path, so the field is always empty here.
+        type_params: Vec::new(),
         params,
         ret,
         body,
@@ -298,7 +301,7 @@ fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {
         receiver: Receiver::Free,
         owner: None,
         // a CST-projected declaration is never the PLAN-862 synthetic
-        // script item (the script form has no n keyword to project).
+        // script item (the script form has no n keyword to project).
         script: false,
     })
 }

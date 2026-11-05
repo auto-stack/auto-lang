@@ -97,6 +97,14 @@ pub fn type_canonical(t: &TypeAnn, out: &mut Vec<u8>) {
             out.extend_from_slice(b"record:");
             out.extend_from_slice(id.name.as_bytes());
         }
+        // PLAN-935: a template type parameter keeps its name (two distinct
+        // type parameters are distinct types); concrete instance pages carry
+        // only substituted builtins — a TyVar inside a query key means the
+        // key was built from an un-concretized template.
+        TypeRef::TyVar(id) => {
+            out.extend_from_slice(b"tyvar:");
+            out.extend_from_slice(id.name.as_bytes());
+        }
         TypeRef::Optional(inner) => {
             out.extend_from_slice(b"optional:");
             type_canonical(inner, out);

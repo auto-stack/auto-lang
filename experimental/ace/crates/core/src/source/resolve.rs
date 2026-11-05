@@ -3090,6 +3090,20 @@ fn vt_of_ann(
 ) -> VT {
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-935：类型变量只能存在于模板内；到达 resolve = 模板未被实例
+        // 化（防御面——实例层在 resolve 前已把模板替换为具体实例）。
+        ast::TypeRef::TyVar(id) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.instances-uninstantiated",
+                format!(
+                    "type parameter `{}` reached type binding — a template must be concretized into instances before resolve",
+                    id.name
+                ),
+                id.span,
+            ));
+            VT::I32
+        }
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
             None => {
@@ -3171,6 +3185,19 @@ fn vt_of_ann_coll(
     };
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-935：同 vt_of_ann——类型变量到达 bind = 未实例化模板的防御拒。
+        ast::TypeRef::TyVar(id) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.instances-uninstantiated",
+                format!(
+                    "type parameter `{}` reached type binding — a template must be concretized into instances before resolve",
+                    id.name
+                ),
+                id.span,
+            ));
+            VT::I32
+        }
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
             None if coll.variant_by_name(&id.name).is_some() => {

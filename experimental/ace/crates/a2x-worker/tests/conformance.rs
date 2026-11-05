@@ -22,6 +22,8 @@ mod a2x_decl_env_929;
 mod a2c_rt_restore;
 #[path = "cases/a2c_scalar_semantics.rs"]
 mod a2c_scalar_semantics;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;
 #[path = "cases/a2r_owned_temporaries_931.rs"]
 mod a2r_owned_temporaries_931;
 #[path = "cases/boundaries.rs"]
