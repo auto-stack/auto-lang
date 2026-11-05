@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-936
-status: executing
+status: reviewed
 feature_name: SQ-C 普通源码真实AV CT查询与冻结回灌恢复闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-cte/source-query-integration.md]
 touched_goals: [GOAL-002]
 affects: [auto-cte, auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-817, PLAN-934, PLAN-935, PLAN-929]
-current_step: 12
+current_step: 13
 total_steps: 14
 ---
 
@@ -199,12 +199,15 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 | T-10 | work | T-09，原资源/生命周期与正式采样窗 | 分区/峰值/timeout/GC/最后pin和原规模计量，V-08/09，AC-08 | [x] 2026-11-06（commit fcb8e3951）**原规模有界腿**：817 基线形状（115 fn ≥256KiB+cte_sum 全折叠，生成器内联——服务包不依赖 probe 包）+1 hash 位：1 次真实 AV（执行日志实测 steps/wall）→结构回灌→全模块事实车道→AV 端闭式 42+Σ(4780+81k)；根预算 10s/单 AV 2s/页 512KiB 由车道强制（817 继承资源门经 V-10 全绿；envelope 单串界 64KiB 供 116 成员闭包 canonical，页界仍 512KiB）。**正式 30 样本 ace-performance 单实例窗归 T-12 冻结门（错峰）** |
 | T-11 | work | T-03..10，文件case/worker/父decoder/注册H | 使能V-01..14独立oracle/文件化/反控/四端与旧recipe认证，新服务职责纳ace-comptime固定清单，AC-01..09 | [x] 2026-11-06（462b66b8d+3df59381a）ace-source-cte 入 ace-comptime 固定组（扩展组全 PASS）；**av/native 产品入口 CT 接线**（compile_scalar_source_product 检 CT 能力→compile_scalar_ct，组合根注入服务，产物 ProductCompile 同形——AV driver/session、native driver、A2X 全消费端经既有车道）；`source-cte-936` 文件 case 族（7 case×av+native 闭式 oracle：sum 42/体编辑 43 调用点不改、bool 分支、meta 2→3 字段 42→43、模板 choose 42（V-04）、flag→pick 链 40（V-11））注册 `case-ace-source-cte-936` 组 PASS（14 检查）；复用既有 recipe（ac-av/core-run-v1、ac/mir-native-scalar-v1）——无新 worker/toolchains 面；事实面容忍 fields-only record 声明（catalog/produce/restore/apply 四门） |
 | T-12 | work | T-11，实际D934935929或正式等价交付、冻结提交/错峰 | 完整职责/必要consumer/原正式门、SD/健康与机制余账交接，AC-01..10 | [x] 2026-11-06 冻结提交职责并集（19 组单实例 run-6uyd5hyb @ fcb8e3951）：ace-comptime(134, 含 source-cte 34)/ace-semantics(181)/ace-source(375)/ace-syntax(132)/ace-artifacts(40)/ace-lowering(5)/ace-av(1012)/ace-native(225)/ace-a2x(180/181——唯一首红 record_text_t04 隔离重放绿=环境归因)/ace-adapters(75)/auto-test-case(111)/infra-fixed(37)+case-ac-cte(6)/ac-semantics(5)/914(15)/866(3)/912(13)/913(5)/934(14)/935(12)/936(14) 全 PASS；SD-01..05 已写（source-query-integration.md 新建+四 modify，commit 56324db36）；817 原正式义务（turnaround 12 腿串行）本会话两轮全绿。**余账（显式 pending）**：新 source lane 的正式 30 样本 ace-performance 错峰单实例窗（P90≤2000ms 口径沿用；t10 已有单样本闭式腿）；跨进程 worker 级 V-14 腿（多工程候选/丢 ack）沿 case-worker 面归后续 |
-| T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [ ] |
+| T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [x] 2026-11-06 终审 pass（needs_fix→定向修复→复检闭环）：F-936-R1-01（a2x Rust/C 未接 CT，实证 source.syntax 拒）→ 修复 a21f3511b（a2x-store scalar lane CT 路由+sanctioned 清单 934 先例演化+provider 证据归 a2x-worker：Rust 42→43 冻结入发射片段、C 常量入发射 C）→ ace-a2x 组 PASS；四端合同实证闭环；F-02/03 记 note 非 blocker；AC-01..11 pass |
 | T-14 | merge | T-13 pass与实施后合入授权 | canonical/交付/归档/全路径scope与树清理，AC-12 | [ ] |
 
 下一入口T-01私有服务图/原反控盘点可与935研究并行，不等935归档；T-02接真实934 query/929来源，T-08/12组合/最终需935实际能力。不能拿模型实例/旧deck替代。本轮未授权work。
 
 ## 9. 复审记录
+
+2026-11-06 stage:review | review_scope:final（修复后定向复审） | reviewer:同会话（限制同前；F-1 闭包经探针复制+修复后实证重构） | plan_id: PLAN-936 | plan_revision: r2 | outcome:**pass** → reviewed | worktree:`D:/autostack/.wt/lang-936/auto-lang` | branch:`plan-936-dev` | reviewed_commit:a21f3511b | base_commit:61854dfc8 | dependency_revisions: D934/D935 archived | spec_inputs: SD-01..05 @56324db36（修复未触规范面） | findings: **F-936-R1-01 CLOSED**——修复前探针复制（a2x-lane plain 解析 `source.syntax` 拒）；修复后实证：Rust 端冷装配 `#{sum(20,22)}` 编译过、发射片段携带冻结 42、体编辑（调用点不改）再冻结 43；C 端同源装配常量在发射 C；921 seam 守卫全绿（sanctioned 清单按 934 先例演化+理由注释；a2x-store 仅携中立服务依赖；provider 级测试归 a2x-worker）；受影响组 ace-a2x PASS（181+3）。**四端合同闭环**：AV/native（case-936 7×2）+Rust/C（worker provider 测试）全经同一 CT 单门 | acceptance_results: AC-01..10 全 pass（AC-01 四端实证闭环）；AC-11 本复审 pass；AC-12 归 merge | pending_closeout_gates: merge 拥有——冻结提交落 master 后的登录检查；显式 pending 余账（非 blocker）：新 lane 正式 30 样本 ace-performance 错峰单实例窗、worker 级 V-14 跨进程腿、暖会话 CT 复用/866 在线身份 ACTIVE 集成（§5.9 设计文本无 AC/V 行） | evidence: 19 组并集 run-6uyd5hyb（frozen fcb8e3951 代码=56324db36 docs-only 之上）+ 修复定向复检（a21f3511b：a2x-store/a2x-worker 面） | next: merge（T-14）
+
 
 2026-11-06 stage:review | review_scope:final | reviewer:实施会话内独立复审（限制声明：非独立上下文；裁决从工件重构——冻结提交重跑关键门禁+读 diff+实证探针，不采信执行者总结） | plan_id: PLAN-936 | plan_revision: r2 | outcome:**needs_fix**（F-1；其余 AC pass/boundary） | worktree:`D:/autostack/.wt/lang-936/auto-lang` | branch:`plan-936-dev` | reviewed_commit:56324db36（=fcb8e3951 代码+docs-only SD 增量） | base_commit:61854dfc8 | dependency_revisions: D934=archived、D935=archived | spec_inputs: SD-01..05 @56324db36 | acceptance_results: AC-02..07 pass（10+8+9 测试族与门禁锚定）；AC-08/09/10 pass-with-boundary（原规模腿+继承门绿；正式 30 样本窗显式 pending；四端中 av+native 真）；**AC-01 partial→F-1** | findings: **F-936-R1-01**（severity: in-contract gap；AC-01/V-01"四端"——Rust/C 端的 A2X 产品车道未接 CT：`a2x-store/src/lib.rs:790` 直调 `source-query::compile_scalar_product`，其 caps 路由只认 instances 能力，携 `ac.source.cte.scalar/v1` 的源落入 plain 解析即 `source.syntax` 拒——实证探针：probe a2x-lane rejection codes=["source.syntax"]；修复=镜像 av query_entry 接线（a2x-store scalar lane 在 CT 能力时走 `compile_scalar_ct`，a2x-store→source-cte 依赖方向合法）；修复后最小面=a2x-store 单测+CT a2x 编译探针（sum42 编译过、产物含常量）+case-ace-source-cte-936 复跑，非全局重跑）；F-936-R1-02（note：av 产品口每请求 owned store=冷执行——暖会话跨请求 CT 复用/866 在线身份 ACTIVE 集成未建，属 §5.9 设计文本无 AC/V 行，case-866/912/913 绿=无回归，非 blocker）；F-936-R1-03（note：新 lane 正式 30 样本错峰窗显式 pending） | evidence: 冻结提交 19 组并集 run-6uyd5hyb（2397 例，18 组直绿+a2x 180/181 首红隔离重放绿）；source-cte 34 测试；case-936 7×2；本复审实证探针（F-1） | next: work（同树修复 F-1 → 定向复检 → 终审）
 
