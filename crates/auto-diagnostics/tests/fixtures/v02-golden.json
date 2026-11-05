@@ -275,7 +275,7 @@
     "id": "name_undefined_function_suggestion",
     "family": "name",
     "proj": {
-      "display": "undefined function",
+      "display": "undefined function: prinln",
       "code": "auto_name_E0204",
       "severity": "Error",
       "help": "Function 'prinln' is not defined. Did you mean 'println'?",
@@ -289,7 +289,7 @@
       ],
       "related_codes": null,
       "debug": "Name(UndefinedFunction { name: \"prinln\", span: SourceSpan { offset: SourceOffset(0), length: 6 }, suggested: Some(\"println\") })",
-      "rendered": "auto_name_E0204\n\n  × undefined function\n  help: Function 'prinln' is not defined. Did you mean\n        'println'?\n"
+      "rendered": "auto_name_E0204\n\n  × undefined function: prinln\n  help: Function 'prinln' is not defined. Did you mean\n        'println'?\n"
     }
   },
   {

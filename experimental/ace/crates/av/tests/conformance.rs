@@ -17,16 +17,6 @@ mod av_closures_resources;
 #[path = "cases/av_closures_semantics.rs"]
 mod av_closures_semantics;
 
-#[path = "cases/resource_915.rs"]
-mod resource_915;
-#[path = "cases/closures_fn_912_performance.rs"]
-mod closures_fn_912_performance;
-#[path = "cases/closures_fn_912.rs"]
-mod closures_fn_912;
-#[path = "cases/closures_recovery_913.rs"]
-mod closures_recovery_913;
-#[path = "cases/closures_recovery_913_performance.rs"]
-mod closures_recovery_913_performance;
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]
@@ -133,6 +123,14 @@ mod binding_tier;
 mod cache_tier;
 #[path = "cases/case_binding.rs"]
 mod case_binding;
+#[path = "cases/closures_fn_912.rs"]
+mod closures_fn_912;
+#[path = "cases/closures_fn_912_performance.rs"]
+mod closures_fn_912_performance;
+#[path = "cases/closures_recovery_913.rs"]
+mod closures_recovery_913;
+#[path = "cases/closures_recovery_913_performance.rs"]
+mod closures_recovery_913_performance;
 #[path = "cases/function_incremental.rs"]
 mod function_incremental;
 #[path = "cases/function_incremental_b1.rs"]
@@ -155,6 +153,8 @@ mod function_reclamation;
 mod host_console;
 #[path = "cases/mir_tier.rs"]
 mod mir_tier;
+#[path = "cases/resource_915.rs"]
+mod resource_915;
 #[path = "cases/resources_tier.rs"]
 mod resources_tier;
 #[path = "cases/vertical.rs"]
@@ -172,5 +172,11 @@ mod resource_events_919;
 
 // PLAN-934 T-02: bounded fact-driven ordinary-source chain (source → query
 // facts → resolved program → checked HIR → execution).
+#[path = "cases/assembly_944.rs"]
+mod assembly_944;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;
+#[path = "cases/module_sources_950.rs"]
+mod module_sources_950;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;

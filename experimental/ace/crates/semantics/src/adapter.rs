@@ -192,16 +192,33 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
 }
 
 fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
+    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.clone()).collect();
     Ok(InputFn {
         name: f.name.name.clone(),
+        type_params: tps.clone(),
         params: f
             .params
             .iter()
-            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of(&p.ty)?)))
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of_tp(&p.ty, &tps)?)))
             .collect::<Result<Vec<_>, _>>()?,
-        ret: ann_of(&f.ret)?,
+        ret: ann_of_tp(&f.ret, &tps)?,
         body: project_block(&f.body)?,
     })
+}
+
+/// PLAN-935 (T-04): `ann_of` with the enclosing fn's declared type params —
+/// a `TyVar` spelling that names one of them projects as `Ann::TyParam(i)`.
+fn ann_of_tp(a: &core_ast::TypeAnn, tps: &[String]) -> Result<Ann, String> {
+    if let core_ast::TypeRef::TyVar(id) = &a.kind {
+        if let Some(i) = tps.iter().position(|t| *t == id.name) {
+            return Ok(Ann::TyParam(i as u16));
+        }
+        return Err(format!(
+            "type parameter `{}` is not declared by this fn",
+            id.name
+        ));
+    }
+    ann_of(a)
 }
 
 /// PLAN-934 SQ-A: BODY-SCOPED projection — the single-body lazy input of
@@ -284,6 +301,7 @@ pub fn project_body_scoped_with_caps(
                 name: name.to_string(),
                 params: Vec::new(),
                 ret: Ann::I32,
+                type_params: Vec::new(),
                 body: InputBlock { stmts: Vec::new() },
             });
         }
@@ -300,15 +318,21 @@ pub fn project_body_scoped_with_caps(
 
 #[cfg(feature = "core-ast")]
 fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, String> {
+    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.clone()).collect();
+    // PLAN-935 (T-04): a TEMPLATE contributes its signature (with
+    // `Ann::TyParam` positions) and never a body — a template body is only
+    // ever checked as one of its concrete instances (plan §5.1).
+    let is_template = !tps.is_empty();
     Ok(InputFn {
         name: f.name.name.clone(),
+        type_params: tps.clone(),
         params: f
             .params
             .iter()
-            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of(&p.ty)?)))
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of_tp(&p.ty, &tps)?)))
             .collect::<Result<Vec<_>, _>>()?,
-        ret: ann_of(&f.ret)?,
-        body: if f.name.name == target {
+        ret: ann_of_tp(&f.ret, &tps)?,
+        body: if f.name.name == target && !is_template {
             project_block(&f.body)?
         } else {
             InputBlock { stmts: Vec::new() }
@@ -330,6 +354,11 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
+        // PLAN-935 (T-04): plain `ann_of` has no type-parameter context — a
+        // TyVar here is outside any template signature (the instances layer
+        // maps declared parameters through `ann_of_tp` before this). Surface
+        // the spelling, never widen to a concrete/record.
+        core_ast::TypeRef::TyVar(_) => Ok(Ann::Unsupported("type-parameter")),
         // PLAN-865: the closures profile adds this AST type, but the limited semantic model does not.
         core_ast::TypeRef::Function { .. } => Ok(Ann::Unsupported("closure-function-type")),
         // PLAN-864: the collections type grammar (?T / Name<..>) is outside

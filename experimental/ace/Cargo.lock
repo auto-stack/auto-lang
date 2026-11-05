@@ -50,7 +50,10 @@ dependencies = [
  "ace-a2x-core",
  "ace-artifacts",
  "ace-core",
+ "ace-semantics-contract",
  "ace-source-query",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -116,6 +119,8 @@ dependencies = [
 name = "ace-av"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-artifacts",
  "ace-av-core",
  "ace-core",
@@ -308,6 +313,8 @@ name = "ace-semantics-contract"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -332,10 +339,27 @@ dependencies = [
  "ace-foreign-contract",
  "ace-semantics",
  "ace-semantics-contract",
+ "ace-syntax-artifacts",
+ "ace-syntax-runtime",
  "blake3",
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ace-stdlib-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
+ "ace-av",
+ "ace-core",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "auto-lang-core",
+ "auto-tool-execution",
+ "serde_json",
 ]
 
 [[package]]
@@ -694,6 +718,7 @@ name = "auto-lang-core"
 version = "0.1.0"
 dependencies = [
  "a2r-std",
+ "ace-semantics-contract",
  "ansi_term",
  "auto-ast",
  "auto-atom",

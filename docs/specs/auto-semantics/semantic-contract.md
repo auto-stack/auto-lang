@@ -96,3 +96,16 @@ producer=`plan817/cte-probe` 绑定真实 AV 成功），契约见
 [auto-cte/scalar-query-profile.md](../auto-cte/scalar-query-profile.md) 与
 [auto-cte/frozen-cache.md](../auto-cte/frozen-cache.md)；consumer 回灌消费 796
 `InferSession::infer_function`/`SemaInput` 事实源，CtRef 属新 recipe IR 不进求解器。
+
+## 模板实例边界（PLAN-935，SQ-B）
+
+- `reflect::InstanceKey{template,substitution_fp}` 维持 **schema-only 模型**
+  地位（796 探针描述输入）；真实源码模板实例的键/页/生产在 935 实例域
+  （见 [source-scalar-instances.md](source-scalar-instances.md)）：
+  `producer=plan935/source-instances`、`schema=ac935/instances/v1`、
+  逻辑域 `ac935/instance-logical/v1`、实现键域 `ac935/instance-key/v1`。
+- 两域不混信任：796 模型 substitution 日志/`substitute_and_infer` 不是
+  实例生产证据；934 事实页 schema 不承载实例调度事实（S935 页独立信封）。
+- `Ann` 增 `TyParam(u16)`（模板签名位索引，仅实例发现路径的中立输入）；
+  `InputFn` 增 `type_params`。求解器调用钩子按类型参数 mint 共享 var 真
+  unify——plain 路径输入不含 `TyParam`，行为逐字节不变。

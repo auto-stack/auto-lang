@@ -1,0 +1,7 @@
+fn pick<T>(n int, seed T) T {
+    if n <= 0 { return seed }
+    return pick(n - 1, seed)
+}
+fn main() int {
+    return pick(2, 40)
+}

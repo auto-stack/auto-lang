@@ -16,20 +16,28 @@ mod a2c_rt_cert;
 mod a2c_rt_method_warm;
 #[path = "cases/a2c_rt_resource.rs"]
 mod a2c_rt_resource;
-#[path = "cases/a2x_decl_env_929.rs"]
-mod a2x_decl_env_929;
 #[path = "cases/a2c_rt_restore.rs"]
 mod a2c_rt_restore;
 #[path = "cases/a2c_scalar_semantics.rs"]
 mod a2c_scalar_semantics;
 #[path = "cases/a2r_owned_temporaries_931.rs"]
 mod a2r_owned_temporaries_931;
+#[path = "cases/a2x_decl_env_929.rs"]
+mod a2x_decl_env_929;
 #[path = "cases/boundaries.rs"]
 mod boundaries;
+#[path = "cases/bridge_flags.rs"]
+mod bridge_flags;
 #[path = "cases/cert_coll_904.rs"]
 mod cert_coll_904;
+#[path = "cases/cert_domain_952.rs"]
+mod cert_domain_952;
+#[path = "cases/cert_json_951.rs"]
+mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;
 #[path = "cases/coll_manifest_oracle_933.rs"]
 mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]
@@ -64,5 +72,3 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
-#[path = "cases/bridge_flags.rs"]
-mod bridge_flags;

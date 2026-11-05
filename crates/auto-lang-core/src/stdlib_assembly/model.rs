@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-pub const INVENTORY_SCHEMA_VERSION: u32 = 2;
+pub const INVENTORY_SCHEMA_VERSION: u32 = 3;
 
 /// 装配执行/发射目标（计划 §5.2：目标与环境分别记录；Vue 前端不改变后端目标）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, Serialize)]
@@ -122,11 +122,13 @@ pub enum SymbolKind {
     Method,
     Type,
     Field,
+    Alias,
+    Spec,
 }
 
 /// Logical source contract. Host producers supply their own signature; an
 /// inventory declaration alone can never establish SignatureChecked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct LogicalSignature {
     pub parameters: Vec<String>,
     pub parameter_modes: Vec<String>,
@@ -194,6 +196,7 @@ pub struct StdlibInventory {
     pub files_total: usize,
     pub modules: Vec<ModuleInventory>,
     pub diagnostics: Vec<AssemblyDiagnostic>,
+    pub contracts: super::contracts::ContractInventory,
 }
 
 impl StdlibInventory {

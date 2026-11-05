@@ -1,0 +1,11 @@
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn wrap<T>(a T, b T) T {
+    return choose(a, b, true)
+}
+fn main() int {
+    if wrap(false, true) { return 1 }
+    return wrap(40, 42)
+}

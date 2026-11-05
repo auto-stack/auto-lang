@@ -3385,6 +3385,20 @@ fn vt_of_ann(
 ) -> VT {
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-935：类型变量只能存在于模板内；到达 resolve = 模板未被实例
+        // 化（防御面——实例层在 resolve 前已把模板替换为具体实例）。
+        ast::TypeRef::TyVar(id) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.instances-uninstantiated",
+                format!(
+                    "type parameter `{}` reached type binding — a template must be concretized into instances before resolve",
+                    id.name
+                ),
+                id.span,
+            ));
+            VT::I32
+        }
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
             None => {
@@ -3466,6 +3480,19 @@ fn vt_of_ann_coll(
     };
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-935：同 vt_of_ann——类型变量到达 bind = 未实例化模板的防御拒。
+        ast::TypeRef::TyVar(id) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.instances-uninstantiated",
+                format!(
+                    "type parameter `{}` reached type binding — a template must be concretized into instances before resolve",
+                    id.name
+                ),
+                id.span,
+            ));
+            VT::I32
+        }
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
             None if coll.variant_by_name(&id.name).is_some() => {
@@ -8300,4 +8327,41 @@ impl<'a, 's> FnResolver<'a, 's> {
             }
         }
     }
+}
+
+/// Refresh declaration coordinates after a source-map-only movement. Bodies
+/// remain immutable resident payloads; callers publish their own span maps.
+pub fn reanchor_env_declarations(
+    env: &mut CheckedEnv,
+    program: &ast::Program,
+) -> Result<(), Vec<Diagnostic>> {
+    let fns: Vec<_> = program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            ast::Item::Fn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    if env.closed
+        || fns.len() != env.program.fns.len()
+        || env
+            .program
+            .fns
+            .iter()
+            .zip(&fns)
+            .any(|(r, f)| r.name != f.name.name)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.module-context",
+            "declaration context mismatch",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    for (r, f) in env.program.fns.iter_mut().zip(fns) {
+        r.name_span = f.name.span;
+        r.item_span = f.span;
+    }
+    Ok(())
 }

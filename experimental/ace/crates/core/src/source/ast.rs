@@ -53,6 +53,14 @@ pub struct TypeAnn {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TypeRef {
     Builtin(TypeWord),
+    /// PLAN-935: a declared type parameter reference (`T`) — only produced
+    /// under the `ac.source.instances.scalar/v1` capability face, and only
+    /// valid inside the template fn that declares it. Never reaches a
+    /// Checked unit: the instances layer concretizes every `TyVar` into a
+    /// concrete builtin before resolve/emit; a `TyVar` seen by resolve or
+    /// the semantics adapter is a definitive named rejection (template not
+    /// instantiated), never a silent fallback.
+    TyVar(Ident),
     /// Nominal record type by declared name.
     Record(Ident),
     /// PLAN-864: `?T` — the optional-type sugar for `Option<T>` (collections
@@ -109,6 +117,12 @@ pub enum Receiver {
 #[derive(Clone, Debug)]
 pub struct FnItem {
     pub name: Ident,
+    /// PLAN-935: declared type parameters (`<T>`) in written order. Only
+    /// non-empty under the instances capability face; a fn carrying them is
+    /// a TEMPLATE — a semantic description, never a checked unit on its own
+    /// (the instances layer drops templates from the concretized program and
+    /// replaces them with their demanded concrete instances).
+    pub type_params: Vec<Ident>,
     pub params: Vec<Param>,
     pub ret: TypeAnn,
     pub body: Block,

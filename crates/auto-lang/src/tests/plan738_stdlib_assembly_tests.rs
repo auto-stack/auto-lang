@@ -1100,11 +1100,11 @@ mod t07_witness_and_matrix {
     /// AC-05/AC-01：六模块「公开符号 × target × environment」矩阵完整性——
     /// 四格全在册、非 Supported 必有原因、Browser io/net 全族 Unsupported、
     /// rust claim 面与目录一致（json supported / io unsupported 有原因）。
-    /// 矩阵落盘 docs/plans/reports/738-stdlib-matrix.{json,md}（T-07 报告面）。
+    /// 矩阵默认写入自动回收临时目录；显式输出须指定 AUTO_STDLIB_MATRIX_OUTPUT_DIR。
     #[test]
     fn core_matrix_complete_and_report_written() {
         let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let (inv, registry, shims, repo_root) = production_surfaces();
+        let (inv, registry, shims, _repo_root) = production_surfaces();
         let matrix = validate::core_target_env_matrix(&inv, &registry, &shims);
         let modules = matrix["modules"].as_object().unwrap();
 
@@ -1194,7 +1194,10 @@ mod t07_witness_and_matrix {
         );
 
         // 报告落盘（JSON 机器面 + md 摘要）
-        let report_dir = repo_root.join("docs").join("plans").join("reports");
+        let temporary_report = tempfile::tempdir().unwrap();
+        let report_dir = std::env::var_os("AUTO_STDLIB_MATRIX_OUTPUT_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| temporary_report.path().to_path_buf());
         fs::create_dir_all(&report_dir).unwrap();
         let json_path = report_dir.join("738-stdlib-matrix.json");
         fs::write(

@@ -46,9 +46,9 @@ use super::ast::*;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 use super::lexer::{Kw, Tok, Token, P};
 use super::SourceProfile;
-use crate::atom_text::{Diagnostic, Span};
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 use crate::atom_text::Stage;
+use crate::atom_text::{Diagnostic, Span};
 
 /// Full-language top-level starter words that this profile rejects with
 /// `source.unsupported` (rather than a plain syntax error) when they appear
@@ -90,7 +90,7 @@ pub fn capture_syntax_work<T>(f: impl FnOnce() -> T) -> (T, SyntaxWork) {
     drop(restore);
     (result, work)
 }
-fn note_tokenize(span: Span) {
+pub(crate) fn note_tokenize(span: Span) {
     SYNTAX_WORK.with(|slot| {
         if let Some(work) = slot.borrow_mut().as_mut() {
             work.tokenized_ranges.push(span);
@@ -770,6 +770,9 @@ impl<'s> Parser<'s> {
                             name: "main".to_string(),
                             span: start,
                         },
+                        // PLAN-935: the legacy oracle parser never parses the
+                        // instances face — no type parameters here.
+                        type_params: Vec::new(),
                         params: Vec::new(),
                         // A script's result type is decided by resolve from
                         // its tail statement; the parser records Unit as the
@@ -1278,6 +1281,8 @@ impl<'s> Parser<'s> {
                 Ok(Some(FnItem {
                     span: fn_kw.join(last),
                     name,
+                    // PLAN-935: legacy oracle face — no type parameters.
+                    type_params: Vec::new(),
                     params,
                     ret,
                     body: block,

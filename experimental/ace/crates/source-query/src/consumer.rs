@@ -112,6 +112,10 @@ pub fn compile_via_facts(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompileLane {
     Facts,
+    /// PLAN-935: the instances lane answered — the module carried templates,
+    /// they were concretized into demanded instances, and the fact path ran
+    /// on the desugared concrete program.
+    Instances,
     Diagnostic,
 }
 
@@ -127,6 +131,16 @@ pub struct ProductCompile {
     /// it to `ace_core::source::resolve_env_with_supply`, so the retained
     /// environment is seeded from the same facts as the emitted HIR.
     pub supply: BodyTypeSupply,
+    /// PLAN-935: the instances this compile produced (empty outside the
+    /// instances lane). Hosts that pin per-instance implementation versions
+    /// read their identity from here — never from the generated fn name.
+    pub instances: Vec<crate::instances::InstanceRecord>,
+    /// PLAN-935: the program the fact path actually ran on — the DESUGARED
+    /// concrete program under the instances lane (templates removed,
+    /// instances placed, calls rebound), the parsed program otherwise.
+    /// Hosts that retain an environment (A2X) build it from THIS program,
+    /// never from a second caps-blind parse.
+    pub program: ace_core::source::ast::Program,
 }
 
 impl ProductCompile {
@@ -145,6 +159,11 @@ impl ProductCompile {
 /// from the query facts; on a language rejection the canonical diagnostics
 /// are reported unchanged (code/stage/message/span), so consumer-visible
 /// behavior does not drift while the type production authority moves.
+///
+/// PLAN-935（T-02）：capabilities 携带 `ac.source.instances.scalar/v1` 时走
+/// 实例 lane——统一前门以 `scalar-instances` 能力面解析，模板按调用点实
+/// 参实例化，事实路径跑在**脱糖具体程序**上（模板绝不进 resolve/emit）。
+/// plain 模块（无模板）经实例 lane 与 plain 面逐字节同产物。
 pub fn compile_scalar_product(
     src: &str,
     module_path: &str,
@@ -153,7 +172,65 @@ pub fn compile_scalar_product(
     module: &str,
     session: &mut crate::session::SourceQuerySession,
 ) -> Result<ProductCompile, Vec<Diagnostic>> {
-    let program = parse_program_with(src, SourceProfile::Scalar).map_err(|d| vec![d])?;
+    use ace_core::source::cst::{
+        parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest,
+        INSTANCES_CAPABILITY,
+    };
+    let instances_lane = capabilities.iter().any(|c| c == INSTANCES_CAPABILITY);
+    let (program, instance_records) = if instances_lane {
+        match parse_front_with_caps(
+            FrontRequest {
+                src,
+                profile: SourceProfile::Scalar,
+                kind: FrontKind::WholeModule,
+                budget: FrontBudget::WORK_OWNED_64MIB,
+            },
+            capabilities,
+        ) {
+            FrontOutcome::Ok(ok) => {
+                match crate::instances::instantiate_program(
+                    &ok.program,
+                    package,
+                    module,
+                    capabilities,
+                ) {
+                    Ok(out) => (out.program, out.instances),
+                    Err(ds) => return Err(ds),
+                }
+            }
+            FrontOutcome::Diag(ds) => return Err(ds),
+            FrontOutcome::ResourceExhausted { what, limit } => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.resource",
+                    format!("resource exhausted: {what} (limit {limit})"),
+                    Span { start: 0, end: 0 },
+                )])
+            }
+            FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.infra",
+                    m,
+                    Span { start: 0, end: 0 },
+                )])
+            }
+        }
+    } else {
+        (
+            parse_program_with(src, SourceProfile::Scalar).map_err(|d| vec![d])?,
+            Vec::new(),
+        )
+    };
+    // PLAN-935: the program the facts ran on travels with the product
+    // (desugared under the instances lane) so env-retaining hosts never
+    // re-parse caps-blind.
+    let program_out = program.clone();
+    let lane = if instance_records.is_empty() {
+        CompileLane::Facts
+    } else {
+        CompileLane::Instances
+    };
     // The capability set is part of every query key AND decides which
     // capability intrinsics the neutral input carries, so the session is
     // aligned with the compile request before anything is queried.
@@ -186,9 +263,11 @@ pub fn compile_scalar_product(
                     atom_text,
                     checked,
                 },
-                lane: CompileLane::Facts,
+                lane,
                 applied,
                 supply,
+                instances: instance_records,
+                program: program_out,
             })
         }
         Err(e) => Err(rejection_verdict(
@@ -197,6 +276,7 @@ pub fn compile_scalar_product(
             capabilities,
             session,
             e,
+            instances_lane,
         )),
     }
 }
@@ -220,6 +300,7 @@ fn rejection_verdict(
     capabilities: &[String],
     session: &mut crate::session::SourceQuerySession,
     err: BindFactsError,
+    instances_lane: bool,
 ) -> Vec<Diagnostic> {
     let language_verdict = match &err {
         BindFactsError::Apply(ApplyError::Facts(FactsError::Diagnostics { .. }))
@@ -231,6 +312,20 @@ fn rejection_verdict(
             BindFactsError::Resolve(ds) => ds,
             other => vec![infra_diagnostic(&other)],
         };
+    }
+    // PLAN-935：实例 lane 不咨询 legacy 诊断 oracle——oracle 前端解析不了
+    // 模板拼写（其裁决会是语法错，不是本面的规范诊断）。模板承载模块是
+    // 新面：事实层的语言裁决即规范面（source.instances-* / 事实页诊断）。
+    if instances_lane {
+        return vec![Diagnostic::new(
+            Stage::Verify,
+            "source.instances-diagnostic",
+            format!(
+                "the query layer rejected this template module (`{err}`); the instances lane \
+                 owns the canonical diagnostics for this surface"
+            ),
+            Span { start: 0, end: 0 },
+        )];
     }
     session.note_diagnostic_verdict();
     // The canonical diagnostic oracle: the core frontend's own diagnostic

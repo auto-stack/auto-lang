@@ -72,7 +72,7 @@ pub const DYNAMIC_ID_START: u16 = 10000;
 
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NativeContract {
     pub parameters: Vec<String>,
     pub returns: String,
@@ -1451,6 +1451,12 @@ impl NativeInterface {
             map.entry(id).or_insert_with(|| name.clone());
         }
         map
+    }
+
+    /// All registered spellings, including aliases sharing one native ID.
+    /// Inventory must use this surface rather than the lossy tooltip reverse map.
+    pub fn registered_names(&self) -> impl Iterator<Item = &str> {
+        self.name_to_id.keys().map(String::as_str)
     }
 
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")

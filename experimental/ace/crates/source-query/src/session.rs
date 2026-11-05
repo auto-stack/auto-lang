@@ -118,18 +118,28 @@ struct BodyPage {
     fn_candidates_fp: String,
 }
 
+/// Immutable cache roots for a speculative transaction. Facts remain shared;
+/// counters and request revisions belong to the live query session.
+#[derive(Clone)]
+pub(crate) struct QueryCacheCheckpoint {
+    declaration_contexts: BTreeMap<String, String>,
+    sigs: BTreeMap<String, Arc<SigPage>>,
+    bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
+}
+
 /// The per-module query session.
 pub struct SourceQuerySession {
     foreign: Option<ace_foreign_contract::manual::AdmittedForeign>,
     package: String,
     module: String,
     capabilities: Vec<String>,
+    declaration_contexts: BTreeMap<String, String>,
     limits: ProduceLimits,
     allow_solver: bool,
     cancel: Option<Arc<AtomicBool>>,
     revision: u64,
-    sigs: BTreeMap<String, SigPage>,
-    bodies: BTreeMap<LogicalId, BodyPage>,
+    sigs: BTreeMap<String, Arc<SigPage>>,
+    bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
     counters: Counters,
     work: crate::work::Ledger,
 }
@@ -141,6 +151,19 @@ impl SourceQuerySession {
     pub fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
         self.foreign.as_ref()
     }
+    pub(crate) fn cache_checkpoint(&self) -> QueryCacheCheckpoint {
+        QueryCacheCheckpoint {
+            declaration_contexts: self.declaration_contexts.clone(),
+            sigs: self.sigs.clone(),
+            bodies: self.bodies.clone(),
+        }
+    }
+
+    pub(crate) fn restore_cache(&mut self, checkpoint: QueryCacheCheckpoint) {
+        self.declaration_contexts = checkpoint.declaration_contexts;
+        self.sigs = checkpoint.sigs;
+        self.bodies = checkpoint.bodies;
+    }
 
     pub fn new(package: &str, module: &str) -> Self {
         SourceQuerySession {
@@ -148,6 +171,7 @@ impl SourceQuerySession {
             package: package.to_string(),
             module: module.to_string(),
             capabilities: Vec::new(),
+            declaration_contexts: BTreeMap::new(),
             limits: ProduceLimits::default(),
             allow_solver: true,
             cancel: None,
@@ -260,7 +284,31 @@ impl SourceQuerySession {
             &self.module,
             self.foreign.as_ref(),
         )
+        .and_then(|c| c.with_declaration_contexts(&self.declaration_contexts))
         .map_err(QueryError::Produce)
+    }
+
+    pub fn declaration_contexts(&self) -> &BTreeMap<String, String> {
+        &self.declaration_contexts
+    }
+
+    /// Candidate contexts are validated against current declarations before
+    /// replacing the session's inputs. This does not flush unrelated pages.
+    pub fn set_declaration_contexts(
+        &mut self,
+        program: &Program,
+        contexts: BTreeMap<String, String>,
+    ) -> Result<(), QueryError> {
+        SignatureCatalog::build_with_foreign(
+            program,
+            &self.package,
+            &self.module,
+            self.foreign.as_ref(),
+        )
+        .and_then(|c| c.with_declaration_contexts(&contexts))
+        .map_err(QueryError::Produce)?;
+        self.declaration_contexts = contexts;
+        Ok(())
     }
 
     /// Complete key of one signature query against the current module.
@@ -381,14 +429,14 @@ impl SourceQuerySession {
         }
         self.bodies.insert(
             own,
-            BodyPage {
+            Arc::new(BodyPage {
                 name,
                 facts: page.clone(),
                 key,
                 sig_deps,
                 negatives: page.negatives.clone(),
                 fn_candidates_fp: catalog.candidates_fp().to_string(),
-            },
+            }),
         );
         Ok(())
     }
@@ -436,10 +484,10 @@ impl SourceQuerySession {
         self.counters.sig_misses += 1;
         self.sigs.insert(
             name.to_string(),
-            SigPage {
+            Arc::new(SigPage {
                 facts: current.clone(),
                 key,
-            },
+            }),
         );
         Ok(QueryOutcome {
             facts: current,
@@ -456,6 +504,20 @@ impl SourceQuerySession {
     ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
         let catalog = self.catalog(program)?;
         self.infer_body_with(program, &catalog, name)
+    }
+
+    /// Read-only diagnostic projection; never runs the solver on rejection.
+    pub(crate) fn cached_body_facts(
+        &self,
+        program: &Program,
+        name: &str,
+    ) -> Option<&InferBodyFacts> {
+        let key = self.body_key(program, name).ok()?;
+        let catalog = self.catalog(program).ok()?;
+        self.bodies
+            .values()
+            .find(|p| p.name == name && p.key == key && page_deps_fresh(p, &catalog).is_ok())
+            .map(|p| &p.facts)
     }
 
     /// PLAN-934 T-08: the same body query against a caller-built catalog
@@ -578,7 +640,7 @@ impl SourceQuerySession {
             negatives: facts.negatives.clone(),
             fn_candidates_fp: catalog.candidates_fp().to_string(),
         };
-        self.bodies.insert(logical, page);
+        self.bodies.insert(logical, Arc::new(page));
         Ok(QueryOutcome { facts, hit: false })
     }
 

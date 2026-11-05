@@ -120,6 +120,9 @@ fn ann_desc(a: &Ann) -> TypeDesc {
         Ann::Unsupported(w) => TypeDesc::Opaque {
             name: format!("unsupported:{w}"),
         },
+        Ann::TyParam(i) => TypeDesc::Opaque {
+            name: format!("typaram:{i}"),
+        },
     }
 }
 
@@ -450,6 +453,7 @@ mod tests {
             source_fp: String::new(),
             fns: vec![InputFn {
                 name: "f".into(),
+                type_params: Vec::new(),
                 params: vec![("a".into(), Ann::I32)],
                 ret: Ann::Bool,
                 body: crate::input::InputBlock { stmts: vec![] },

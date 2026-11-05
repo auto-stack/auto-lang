@@ -19,12 +19,12 @@ fn workspace_root() -> PathBuf {
 #[test]
 fn manifest_face_only_sanctioned_dependencies() {
     let sanctioned = [
-        "ace-a2x-c", // PLAN-921 CA-A: the C target provider (a2x-core + core HIR)
+        "ace-a2x-c",            // PLAN-921 CA-A: the C target provider (a2x-core + core HIR)
         "ace-foreign-contract", // PLAN-937 CA-D1: the NEUTRAL interface-facts/
-                                 // physical-plan model both real consumers
-                                 // (abi native side + this C side) bind to —
-                                 // pure model crate, no backend stack
-        "ace-abi",   // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
+        // physical-plan model both real consumers
+        // (abi native side + this C side) bind to —
+        // pure model crate, no backend stack
+        "ace-abi", // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
         // no second MSVC discovery path
         "ace-a2x-core",
         "ace-a2x-rust",
@@ -36,10 +36,13 @@ fn manifest_face_only_sanctioned_dependencies() {
         // the same shared consumer door AV/native use. The dependency is
         // consumer-side only: source-query never depends on any a2x crate.
         "ace-source-query",
+        "ace-semantics-contract", // PLAN-944: backend-free assembly facts/codec only
         "auto-tool-execution", // neutral std-only lifecycle: formal compiler tool and test consumers
         "windows-sys",         // probe-only, cfg(windows): process memory counters
-        "serde_json",          // probe-only: the a2xworker/1 JSON protocol (the same
-                               // crate the 783 store already depends on)
+        "serde",               // PLAN-950: data-only module root/fragment codec derive;
+        // no backend, frontend or executor dependency
+        "serde_json", // probe-only: the a2xworker/1 JSON protocol (the same
+                      // crate the 783 store already depends on)
     ];
     let members = [
         "crates/a2x-c",

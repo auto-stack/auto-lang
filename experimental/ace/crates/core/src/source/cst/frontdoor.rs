@@ -17,7 +17,9 @@ pub const AUTO_SOURCE_GRAMMAR: &str = include_str!("../../../../../grammars/auto
 
 /// profile 能力清单版本：语法语义/能力/映射面变更必须换键（计划 §5.2）。
 /// 与 `auto-source.at` 的 revision、grammar-id 一同进入前端结果身份。
-pub const FRONT_CAPS_VERSION: &str = "ac-source-front/1";
+/// PLAN-935（T-02）：`ac-source-front/2` —— 新增 `scalar-instances` 裁剪面
+/// 与 `ac.source.instances.scalar/v1` 显式能力（fn `<T>`/类型位裸 ident）。
+pub const FRONT_CAPS_VERSION: &str = "ac-source-front/2";
 
 /// 前端显式预算（V-09：不得沿 `Budget::default()` 的 256MiB work_bytes 冒
 /// 64MiB 档授权；各消费门按原适用域显式传入）。
@@ -171,6 +173,254 @@ impl CachedGrammar {
 
 static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
 
+/// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
+/// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
+static INSTANCES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// PLAN-935：启用有限模板面的显式能力（T-02 冻结字面量）。调用方在其
+/// capabilities 中携带本能力时，统一前门以 `scalar-instances` 裁剪编译；
+/// 未携带 → plain scalar 裁剪，`<T>`/裸 ident 维持原语法拒绝面。
+pub const INSTANCES_CAPABILITY: &str = "ac.source.instances.scalar/v1";
+
+/// scalar-instances 裁剪编译并缓存（进程内一次）。
+pub fn instances_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&INSTANCES_GRAMMAR, "scalar-instances")
+}
+
+static MODULES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+pub(crate) fn module_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
+}
+
+fn capability_grammar(
+    cell: &'static OnceLock<OnceLock<CachedGrammar>>,
+    slug: &str,
+) -> Result<&'static CachedGrammar, String> {
+    let slot = cell.get_or_init(OnceLock::new);
+    if let Some(g) = slot.get() {
+        return Ok(g);
+    }
+    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, slug)
+        .map_err(|d| format!("auto-source grammar `{slug}`: {d:?}"))?;
+    let scanner = CompiledScanner::compile(&program).map_err(|e| format!("scanner: {e}"))?;
+    let kinds = SourceKinds::from_program(&program)
+        .map_err(|e| format!("auto-source grammar `{slug}` missing kinds: {e:?}"))?;
+    let _ = slot.set(CachedGrammar {
+        program,
+        scanner,
+        kinds,
+    });
+    Ok(slot.get().expect("just set"))
+}
+
+/// PLAN-950: the module grammar uses the same scanner, parser and strict
+/// projection as every source profile. Metadata is read from CST fields,
+/// never reconstructed by token stripping or source concatenation.
+pub(crate) fn parse_module_front(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    parse_module_syntax_range(src, budget, true)
+}
+pub(crate) fn parse_module_fragment(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    parse_module_syntax_range(src, budget, false)
+}
+fn parse_module_syntax_range(
+    src: &str,
+    budget: FrontBudget,
+    whole: bool,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let zero = Span { start: 0, end: 0 };
+    let cached = capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
+        .map_err(|e| err("source.infra", e, zero))?;
+    crate::source::parser::note_tokenize(Span {
+        start: 0,
+        end: src.len(),
+    });
+    if whole {
+        crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    }
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let parsed = parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    )
+    .map_err(|e| match e {
+        ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit } => err(
+            "source.resource",
+            format!("resource exhausted: {what} (limit {limit})"),
+            zero,
+        ),
+        other => err("source.infra", format!("parse: {other}"), zero),
+    })?;
+    let result = project_module_front(src, vec![parsed.tree], Some(parsed.tokens))?;
+    for item in &result.program.items {
+        if let crate::source::ast::Item::Fn(f) = item {
+            crate::source::parser::note_parse(&f.name.name);
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn project_module_front(
+    src: &str,
+    trees: Vec<CstTree>,
+    tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    use crate::source::modules::{DeclarationPlacement, Import, ModuleSyntax, SyntaxPiece};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let cached = module_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let rule = |name: &str| {
+        cached
+            .program
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    };
+    let field = |tree: &CstTree, n, name: &str| {
+        cached
+            .program
+            .field_id(name)
+            .and_then(|f| tree.field_child(n, f))
+    };
+    let text = |tree: &CstTree, n| {
+        let (a, b) = tree.abs_range(n);
+        snap.read_str(a, b).expect("CST source range")
+    };
+    let mut declarations = std::collections::BTreeMap::new();
+    let mut exports = std::collections::BTreeSet::new();
+    let mut imports = Vec::new();
+    let mut saw_fn = false;
+    let mut items = Vec::new();
+    for tree in &trees {
+        let program = project::project_program(
+            &cached.program,
+            &cached.kinds,
+            tree,
+            &snap,
+            SourceProfile::Scalar,
+        )?;
+        items.extend(program.items);
+        for d in &tree.decls {
+            let node = if tree.kind(d.node) == cached.kinds.item {
+                tree.children(d.node)
+                    .into_iter()
+                    .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                    .unwrap_or(d.node)
+            } else {
+                d.node
+            };
+            if Some(tree.kind(node)) == rule("use-item") {
+                let (a, b) = tree.abs_range(node);
+                let span = Span {
+                    start: a as usize,
+                    end: b as usize,
+                };
+                if saw_fn {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede functions".into(),
+                        span,
+                    ));
+                }
+                let module = text(tree, field(tree, node, "module").expect("module field"));
+                let name = text(tree, field(tree, node, "import").expect("import field"));
+                if imports.iter().any(|i: &Import| i.name == name) {
+                    return Err(err(
+                        "source.module-duplicate-import",
+                        format!("duplicate imported name `{name}`"),
+                        span,
+                    ));
+                }
+                imports.push(Import { module, name, span });
+            } else if Some(tree.kind(node)) == rule("public-fn") {
+                saw_fn = true;
+                let function = field(tree, node, "function").expect("public function");
+                let tail = tree
+                    .children(function)
+                    .into_iter()
+                    .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                    .expect("fn tail");
+                let name = text(tree, field(tree, tail, "name").expect("fn name"));
+                let (start, end) = tree.abs_range(node);
+                declarations.insert(
+                    name.clone(),
+                    Span {
+                        start: start as usize,
+                        end: end as usize,
+                    },
+                );
+                exports.insert(name);
+            } else if tree.kind(node) == cached.kinds.fn_item {
+                saw_fn = true;
+                let tail = tree
+                    .children(node)
+                    .into_iter()
+                    .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                    .expect("fn tail");
+                let name = text(tree, field(tree, tail, "name").expect("fn name"));
+                let (start, end) = tree.abs_range(node);
+                declarations.insert(
+                    name,
+                    Span {
+                        start: start as usize,
+                        end: end as usize,
+                    },
+                );
+            }
+        }
+    }
+    Ok(ModuleSyntax {
+        program: crate::source::ast::Program { items },
+        exports,
+        imports,
+        grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+        source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
+        pieces: trees
+            .into_iter()
+            .map(|tree| {
+                let placements = tree
+                    .decls
+                    .iter()
+                    .enumerate()
+                    .map(|(index, d)| {
+                        let (start, end) = tree.abs_range(d.node);
+                        let span = Span {
+                            start: start as usize,
+                            end: end as usize,
+                        };
+                        DeclarationPlacement {
+                            index,
+                            mint: span,
+                            current: span,
+                        }
+                    })
+                    .collect();
+                SyntaxPiece {
+                    source: std::rc::Rc::from(src),
+                    tree: Some(tree),
+                    tokens: tokens.clone(),
+                    placements,
+                    stored_cst: None,
+                }
+            })
+            .collect(),
+        declarations,
+    })
+}
+
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，
 /// 跨进程恢复按 grammar-id 从 store 装载，不重复编译）。
 pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar, String> {
@@ -249,6 +499,69 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
             Some((owner, receiver)),
             receiver,
         ),
+    }
+}
+
+/// PLAN-935（T-02）：能力感知统一入口。capabilities 携带
+/// [`INSTANCES_CAPABILITY`] 且 profile 为 Scalar 时以 `scalar-instances`
+/// 裁剪解析（fn `<T>` + 类型位裸 ident 合法，投影产出
+/// `FnItem::type_params`/`TypeRef::TyVar`）；其余组合与 [`parse_front`]
+/// 逐字节同面（无能力仍原拒绝）。片段 kind 在 instances 面不支持（增量
+/// 片段合同仍走 plain 面——模板函数编辑的增量路径由 T-07 冻结）。
+pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> FrontOutcome {
+    let instances = capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+        && req.profile == SourceProfile::Scalar;
+    if !instances {
+        return parse_front(req);
+    }
+    if !matches!(req.kind, FrontKind::WholeModule) {
+        return parse_front(req);
+    }
+    let FrontRequest {
+        src,
+        budget,
+        profile,
+        ..
+    } = req;
+    let cached = match instances_grammar() {
+        Ok(c) => c,
+        Err(e) => return FrontOutcome::Infra(e),
+    };
+    let store = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let ParseOutput {
+        tree,
+        tokens: _,
+        lex_diags: _,
+        grafted_decls: _,
+    } = match parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    ) {
+        Ok(o) => o,
+        Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
+            return FrontOutcome::ResourceExhausted { what, limit };
+        }
+        Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
+    };
+    match project::project_program_with_caps(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        profile,
+        true,
+    ) {
+        Ok(program) => FrontOutcome::Ok(FrontOk {
+            program,
+            grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+            caps_version: FRONT_CAPS_VERSION,
+            snapshot_len: src.len(),
+            cst: tree,
+        }),
+        Err(diags) => FrontOutcome::Diag(diags),
     }
 }
 

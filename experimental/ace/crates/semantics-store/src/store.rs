@@ -1450,6 +1450,11 @@ fn shape_of(
             ace_semantics::Ann::Unsupported(w) => TypeDesc::Opaque {
                 name: format!("unsupported:{w}"),
             },
+            // PLAN-935 (T-04): 模板类型参数位（记录字段面不会出现——模板
+            // 仅自由 fn；防御描述按索引区分，绝不并型）。
+            ace_semantics::Ann::TyParam(i) => TypeDesc::Opaque {
+                name: format!("typaram:{i}"),
+            },
         };
         fields.push(ace_semantics_contract::FieldDesc {
             name: n.clone(),
@@ -1662,6 +1667,10 @@ fn plain_desc(a: &ace_semantics::Ann) -> TypeDesc {
         },
         ace_semantics::Ann::Unsupported(w) => TypeDesc::Opaque {
             name: format!("unsupported:{w}"),
+        },
+        // PLAN-935 (T-04): 模板类型参数位（描述按索引区分——签名描述面）。
+        ace_semantics::Ann::TyParam(i) => TypeDesc::Opaque {
+            name: format!("typaram:{i}"),
         },
     }
 }

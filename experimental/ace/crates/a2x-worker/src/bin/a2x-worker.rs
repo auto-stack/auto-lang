@@ -742,11 +742,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
         recipe: cert_recipe,
         case: case_id.to_string(),
         profile: out.profile.clone(),
-        hir_domain: {
-            let t = ace_a2x_rust::TargetProfile::v1();
-            let _ = t;
-            domain_of(&out.profile)
-        },
+        hir_domain: out.hir_domain.clone(),
         entry: v["entry"].as_str().unwrap_or("main").to_string(),
         verdict: verdict.to_string(),
         oracle_kind: if oracle_kind == "trap" {
@@ -811,22 +807,6 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     r["reference_wall_ms"] = reference_wall_ms.into();
     r["files"] = file_records(&out.files).into();
     r
-}
-
-/// HIR domain text of a VIEW profile id (`auto.source.<p>.draft`).
-fn domain_of(view_profile: &str) -> String {
-    let short = view_profile
-        .strip_prefix("auto.source.")
-        .and_then(|s| s.strip_suffix(".draft"))
-        .unwrap_or("core");
-    match short {
-        "scalar" => "scalar-i32-draft".to_string(),
-        "record" => "record-i32-draft".to_string(),
-        "text" => "text-i32-draft".to_string(),
-        "text-record" => "text-record-i32-draft".to_string(),
-        "collections" => "collections-draft".to_string(),
-        _ => "core-i32-draft".to_string(),
-    }
 }
 
 fn toolchain_vv() -> String {

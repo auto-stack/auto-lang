@@ -89,10 +89,7 @@ pub fn declared_profiles(source: &str) -> Result<Vec<String>, Vec<CompileDiag>> 
     Ok(c.profile_names)
 }
 
-fn compile_inner(
-    source: &str,
-    profile: Option<&str>,
-) -> Result<GrammarProgram, Vec<CompileDiag>> {
+fn compile_inner(source: &str, profile: Option<&str>) -> Result<GrammarProgram, Vec<CompileDiag>> {
     let atom = AtomParser::parse(source).map_err(|e| {
         vec![CompileDiag {
             message: format!("atom parse error: {e:?}"),
@@ -147,7 +144,10 @@ impl Ctx {
         };
         let version = pint(&sec, "version").unwrap_or(1) as u64;
         if version != 1 {
-            self.err("profiles", format!("unsupported profiles version {version}"));
+            self.err(
+                "profiles",
+                format!("unsupported profiles version {version}"),
+            );
         }
         for (_k, kid) in sec.kids_iter() {
             let auto_val::Kid::Node(p) = kid else {
@@ -274,6 +274,9 @@ impl Ctx {
                 };
                 let t = t.as_ref();
                 let tname = t.name.to_string();
+                if !self.gate_allows(t, &format!("tokens.{tname}")) {
+                    continue;
+                }
                 let id = token_names.len() as u32;
                 if token_names.contains(&tname) {
                     self.err(
@@ -390,8 +393,12 @@ impl Ctx {
         }
         // 全名索引（未压缩 id 空间；压缩后重映射）。
         let full_rule_names: Vec<String> = raw_rules.iter().map(|r| r.name.clone()).collect();
-        let rule_of_full =
-            |n: &str| -> Option<u32> { full_rule_names.iter().position(|r| r == n).map(|i| i as u32) };
+        let rule_of_full = |n: &str| -> Option<u32> {
+            full_rule_names
+                .iter()
+                .position(|r| r == n)
+                .map(|i| i as u32)
+        };
         // 压缩映射：full id -> Option<compact id>（被裁 = None）。
         let mut compact_of: Vec<Option<u32>> = Vec::with_capacity(raw_rules.len());
         {
@@ -507,10 +514,7 @@ impl Ctx {
                 let field = pstr(src_props, "field").map(|f| field_of(&f));
                 let same_line = pbool(src_props, "same-line").unwrap_or(false);
                 let cut = pbool(src_props, "cut").unwrap_or(false);
-                let remap_rule = |ctx: &mut Ctx,
-                                  full: u32,
-                                  rule_path: &str|
-                 -> u32 {
+                let remap_rule = |ctx: &mut Ctx, full: u32, rule_path: &str| -> u32 {
                     match compact_of[full as usize] {
                         Some(c) => c,
                         None => {
@@ -643,9 +647,8 @@ impl Ctx {
                 recover: r.recover,
             });
         }
-        let rule_of = |n: &str| -> Option<u32> {
-            rules.iter().position(|r| r.name == n).map(|i| i as u32)
-        };
+        let rule_of =
+            |n: &str| -> Option<u32> { rules.iter().position(|r| r.name == n).map(|i| i as u32) };
 
         // ---- pratt 表体 ----
         let mut pratt: Vec<PrattSpec> = Vec::new();

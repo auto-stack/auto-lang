@@ -62,6 +62,63 @@ fn admit(m: ManualManifest) -> AdmittedForeign {
 }
 
 #[test]
+fn foreign_signatures_keep_declaration_contexts_and_speculative_cache_roots() {
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let program =
+        ace_core::source::parse_program_with(source, ace_core::source::SourceProfile::Scalar)
+            .unwrap();
+    let mut session =
+        crate::SourceQuerySession::new("p938", "m938").with_capabilities([SOURCE_CAP]);
+    session.set_foreign(Some(environment()));
+    let plain = session.catalog(&program).unwrap();
+    let context_a = [("foreign_add".into(), "a".repeat(64))]
+        .into_iter()
+        .collect();
+    session
+        .set_declaration_contexts(&program, context_a)
+        .unwrap();
+    let contextual = session.catalog(&program).unwrap();
+    assert_ne!(
+        plain.current_version("foreign_add"),
+        contextual.current_version("foreign_add")
+    );
+    assert_eq!(
+        plain.current_version("independent"),
+        contextual.current_version("independent")
+    );
+    for name in ["independent", "main"] {
+        assert!(session
+            .infer_body(&program, name)
+            .unwrap()
+            .facts
+            .diags
+            .is_empty());
+    }
+    let accepted = session.cache_checkpoint();
+    let before = session.counters().solver_runs;
+    let context_b = [("foreign_add".into(), "b".repeat(64))]
+        .into_iter()
+        .collect();
+    session
+        .set_declaration_contexts(&program, context_b)
+        .unwrap();
+    assert!(session
+        .infer_body(&program, "main")
+        .unwrap()
+        .facts
+        .diags
+        .is_empty());
+    assert_eq!(session.counters().solver_runs, before + 1);
+    session.infer_body(&program, "independent").unwrap();
+    assert_eq!(session.counters().solver_runs, before + 1);
+    session.restore_cache(accepted);
+    session.set_allow_solver(false);
+    session.infer_body(&program, "main").unwrap();
+    session.infer_body(&program, "independent").unwrap();
+    assert_eq!(session.counters().solver_runs, before + 1);
+}
+
+#[test]
 fn foreign_source_calls_are_typed_by_shared_facts_and_have_no_local_body() {
     let env = environment();
     let mut session = crate::SourceQuerySession::new("p938", "m938");

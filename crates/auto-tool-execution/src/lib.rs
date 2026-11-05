@@ -803,8 +803,10 @@ impl CaptureWorker {
                     break;
                 }
                 if !r.poll_ready(PIPE_POLL_SLICE) {
-                    if closed.load(Ordering::Relaxed) {
-                        // owned 写端已全关且无数据:EOF。
+                    // The earlier empty peek may predate the final write.
+                    // Only a NEW empty peek after observing owned closure can
+                    // establish EOF; otherwise continue the normal read path.
+                    if closed.load(Ordering::Relaxed) && !r.poll_ready(Duration::ZERO) {
                         break;
                     }
                     continue;
@@ -2034,5 +2036,116 @@ mod tests {
         spec.windows_cmd_shim = true;
         let err = run(&spec).unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidSpec(_)), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod owned_close_953 {
+    use super::*;
+    use std::sync::{atomic::AtomicUsize, Mutex};
+
+    /// Legal interleaving: an empty peek completes; final bytes and owned
+    /// termination arrive before the reader examines its closed flag.
+    struct LastWrite {
+        closed: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+        polls: AtomicUsize,
+        consumed: AtomicBool,
+        payload: &'static [u8],
+        read_error: bool,
+    }
+    impl PipePoll for LastWrite {
+        fn poll_ready(&self, _: Duration) -> bool {
+            if self.polls.fetch_add(1, Ordering::SeqCst) == 0 {
+                let deadline = Instant::now() + Duration::from_secs(2);
+                let closed = loop {
+                    if let Some(flag) = self.closed.lock().unwrap().clone() {
+                        break flag;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "test closed-flag handoff bounded"
+                    );
+                    std::thread::yield_now();
+                };
+                closed.store(true, Ordering::SeqCst);
+                // This is the earlier peek's result, not a fresh peek.
+                return false;
+            }
+            self.read_error || (!self.payload.is_empty() && !self.consumed.load(Ordering::SeqCst))
+        }
+    }
+    impl io::Read for LastWrite {
+        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+            if !self.payload.is_empty() && !self.consumed.swap(true, Ordering::SeqCst) {
+                out[..self.payload.len()].copy_from_slice(self.payload);
+                return Ok(self.payload.len());
+            }
+            if self.read_error {
+                return Err(io::Error::other("last-write read failed"));
+            }
+            Ok(0)
+        }
+    }
+    fn worker(
+        stream: &'static str,
+        payload: &'static [u8],
+        read_error: bool,
+    ) -> Option<CaptureWorker> {
+        let closed = Arc::new(Mutex::new(None));
+        let worker = CaptureWorker::spawn(
+            stream,
+            LastWrite {
+                closed: closed.clone(),
+                polls: AtomicUsize::new(0),
+                consumed: AtomicBool::new(false),
+                payload,
+                read_error,
+            },
+        );
+        *closed.lock().unwrap() = Some(worker.owned_closed.clone());
+        Some(worker)
+    }
+    fn join(worker: &mut Option<CaptureWorker>) {
+        worker
+            .as_mut()
+            .unwrap()
+            .join
+            .take()
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+    #[test]
+    fn last_bytes_after_empty_peek_preserved_on_both_streams() {
+        for stream in ["stdout", "stderr"] {
+            let payload = b"last\x00\xff\n";
+            let mut worker = worker(stream, payload, false);
+            let result = finish_capture(&mut worker, Duration::from_secs(2));
+            join(&mut worker);
+            assert_eq!(
+                result.unwrap().unwrap(),
+                payload,
+                "{stream}: must retain final original bytes"
+            );
+        }
+    }
+    #[test]
+    fn late_read_error_is_named_on_both_streams() {
+        for stream in ["stdout", "stderr"] {
+            let mut worker = worker(stream, b"last", true);
+            let result = finish_capture(&mut worker, Duration::from_secs(2));
+            join(&mut worker);
+            assert!(
+                matches!(result, Err(ExecutionError::ReaderIo { stream: s, .. }) if s == stream),
+                "{stream}: a final read error is never clean EOF: {result:?}"
+            );
+        }
+    }
+    #[test]
+    fn new_empty_poll_can_finish_cleanly() {
+        let mut worker = worker("stdout", b"", false);
+        let result = finish_capture(&mut worker, Duration::from_secs(2));
+        join(&mut worker);
+        assert_eq!(result.unwrap(), Some(Vec::new()));
     }
 }

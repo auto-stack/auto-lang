@@ -10,20 +10,19 @@
 pub mod bench;
 pub mod cache;
 pub mod closures_865_support;
-pub mod closures_fn_session;
 pub mod closures_fixture;
+pub mod closures_fn_session;
 pub mod closures_session;
 pub mod closures_source_recovery;
 pub mod coff_admission;
 pub mod collections_864_session;
 pub mod collections_864_support;
 // PLAN-919: the observed (lifecycle-channel) source→AV seam.
-pub mod resource_events;
 pub mod collections_fixture;
 pub mod collections_session;
 pub mod data_driver;
+pub mod resource_events;
 // PLAN-934 T-08: fact-driven scalar source entry (product seam).
-pub mod query_entry;
 pub mod data_session;
 pub mod driver;
 pub mod dynamic_fixture;
@@ -40,6 +39,7 @@ pub mod observations;
 pub mod owned_driver;
 pub mod owned_fixture;
 pub mod owned_session;
+pub mod query_entry;
 pub mod resident;
 pub mod resource_915;
 pub mod semrefs;
@@ -59,3 +59,6 @@ pub mod console_worker;
 
 #[cfg(test)]
 mod formal_turnaround_tests;
+
+/// PLAN-950 finite module source consumer over existing function units.
+pub mod modules;

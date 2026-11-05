@@ -3983,3 +3983,36 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 ## 2026-11-04 生成交付后继（PLAN-930，仅规划）
 
 UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静态确认driver V04仍硬编码dev-run/rust-workspace/dev-run，910真实成员已为basename-id8；由[930](930-generated-delivery-regression-and-source-boundary-closure.md)先实证当前输入/根因、保原main.rs同源/真实A-B tool义务，必要UI投影窄改归实际owner，不复制UI算法。另核当前语言L1/L2/正常审计与新固定控制；本轮未跑测试，不标closed。Tauri R-6、vue-render新渠道、Web D-906-1/ID集合schema、Man D-910-2及其他语法/ACE合同不纳自动关闭。
+
+## PLAN-943 final review R1 (2026-11-05)
+
+- **F-943-R1-01 / P1 / open / in-contract**：stdlib semantic validator对失败层仅可选native证据校验；删除`text.byte_length.native`并改returns int→float后，真实scan无CONTRACT_INVALID且VM fingerprint可用。list.length失败层的逻辑签名/mode也可任改而无逐操作验证等级。Owner：PLAN-943 work/T-02/T-03/T-05；关闭条件与合法控制见[943](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9独立final review R1。不得以记债替代修复/复审；现有6/6不覆盖证据删除组合。不要求修parser或新增泛型支持。
+
+- **F-943-R1-01 / closed by independent final re-review R2 (2026-11-05)**：冻结`f05b28eadc2862cb1a6a0e0c1929bff3fac7bc06`。政策签名/所需native与真实ID核验堵住证据删除降级；候选明确policy_only_signature_unverified。独立合同族7/7及额外原版/合法alias、删除native/组合错返回、候选仅返回/仅mode漂移控制通过，关闭原要求失败；详见PLAN-943 §9 R2。merge-owned冻结stdlib完整并集与收尾仍pending，不由本债务闭环替代。
+
+- **F-943-M1-02 / P1 / open / in-contract**：合入后收尾set对账发现native alias inventory误用每ID一个任意名称的tooltip反向表，实际别名分母随机漏列。Owner PLAN-943 work/T-03/T-05；须完整名称表+三别名/生产全集/排序永久守卫及独立affected review后闭环。见943 §9 merge checkpoint。
+
+- **F-943-M1-02 / closed by independent affected final review R3 (2026-11-05)**：冻结`72ac9e7b341bd53de92cb53c9ecaf0716371a5a3`。完整registered_names替代有损id_to_name盘点；独立单ID三专属别名/生产全集/id/bound/producer/重复序列永久case1/1，加两新production接口集合与严格排序序列全等近邻通过。详见943 §9 R3；最终新冻结stdlib完整并集与归档清理仍pending。
+
+- **PLAN-943 delivery**：两项finding均经独立复审关闭，最终149/149固定stdlib门通过；源码/Spec已落72ac9e7b，归档及清理状态以[归档Plan](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9实际收据为准。
+
+
+### D-950-1 — 旧bare S934地址的重复发布revision冲突（未关闭，旧query-store owner）
+
+PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变，旧ManagedStoreSink::put在同不可变S934 key下写不同payload会key conflict；这是旧地址recipe的生命周期字段问题。950模块producer明确使用新版本sq-module-page/1地址（读签名/negative版本摘要，revision规范0），沿原事实codec，不重解释旧键，不代表旧路径已修。owner=source-query旧ManagedStoreSink::put；关闭条件=旧recipe独立重复发布反例+合法读取/恢复对照，保持旧缓存读取合同的版本化修复并review。证据摘要在PLAN-950 §9，原材料按merge全删，无需要持有的原始输出。
+
+### D-952-1 / F-952-01：共享子进程采集器owned-close竞态（2026-11-06，closed by PLAN-953）
+
+owner=auto-tool-execution；PLAN-953 r2已交付65db88be2150991b9c3bbe79d527891fd6a7a27f：结束后新peek才可EOF；原始两流最后字节/最后I/O错误永久反例修前红修后绿，完整职责43/43无LEAK/残留，新950基面两个真实ACE消费者各1/1，canonical535cdafa3c393a06ceae0635dce506bb04577c304d7fc09565b699dde7b00fb4。953归档6/6、tree/branch/scope已清理，无hold。952两次历史空输出具体因果未冒确定，952仍须重基D953后重做完整ACE门；941原目标未完成。原确定性源码副本反例与首红记录见952 §9，原源码SHA c177b278f1d805d21c808054a847adde0bc830e1e24ad0db9b811ce8298e4e09。
+
+
+### D-954-1 / D-954-2 — 周期batch的路径产码与非拥有夹具就绪（新观察，未关闭）
+
+950触发全量37组终态（覆盖source6b6b191c3）发现：①旧plan349/727测试直接将Windows TEMP路径嵌入Auto双引号literal，runtime-temp分段经Win32规范为反斜杠后触发合法\r转义，4项HTTP文件case假红；同scope scratch根原12+3合法控制绿，相关测试/lexer/transfer在合并窗口零改动。②auto-tool-execution deadline_covers_blocked_stdin_with_unowned_holder批量一次后置wait_first_tick未见2s心跳，原1case隔离绿；尚无产品根因，不以timeout码证明后代状态。新[PLAN-954](954-batch-fixture-path-and-readiness.md)认领夹具修复（owner=test governance/tool-execution fixtures），保原250ms/elapsed1500ms/2s及所有权/真实退出，不放宽或ignore。关闭条件=原路径literal往返与真实HTTP文件结果、被测后代状态/原预算/退出证据与独立review；仅建draft，未修复。全量raw exit1及旧媒体/sys/宏/ownership/LSP/pilot红另留.last-batch-regression.json，不拿重放绿抹首红。原反例与控制完整折入954，batch raw按政策清理，无原始材料hold。
+
+### D-944-R1 — assembly batch诊断与取消缓存生命周期（CLOSED，PLAN-944 final re-review r2）
+
+独立final review r1（plan revision2，e8cf62cbc1bda879bfc83e6f459dd4e746471f7f）发现F944-R1-01/P2：新AssemblyHost批路径签名漂移拒绝丢std模块与原byte7，返回合图byte34；F944-R1-02/P2：取消std.unused42→43候选后合法app.main7→8首次prepare重solve未改std并以unexpectedly produced拒绝，solver2而非1。owner=PLAN-944/source-query batch lifecycle；不是批准延期的债务，不可留到merge。最小输入、实际/预期、日志hash与共享原因见[PLAN-944 §9](archive/944-ace-stdlib-binding-assembly-and-cache.md)。关闭须原反例+同签名合法控制、取消/失败后不同owner首编辑零无关生产且下次真实恢复新态，affected independent review；不重复无关全量压力。原材料唯一scope/plan-944，最终摘要折Plan后merge全删，无原始材料hold。
+PLAN-944 repair-r1工作修复提交e269f417895ffa09493fd42390d24ef336f503f4：F944-R1-01/02原反例重放绿、共享生命周期永久用例绿，待独立复审确认关闭；不作延期或merge豁免，证据见944 §9。
+
+D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根事务与bound.locate已独立复审r2 pass；原两个Host反例std/7..13与cancel A→B首次delta1均绿，五失败分支/单体receipt兄弟路径及真实下一恢复8、旧42/7消费者均通过。实际输入/红绿日志hash、共享机制与适用边界见PLAN-944 §9；未批准延期，原r1红保留。当前仅七组merge门及实际交付清理pending，无原始材料hold。

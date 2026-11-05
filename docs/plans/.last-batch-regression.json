@@ -1,29 +1,615 @@
 {
-  "last_covered_plan_id": 937,
-  "timestamp": "2026-11-05T12:21:00Z",
-  "covered_commit": "da5274a885cd09f3c7623472da9efb3d7ee02d54",
-  "command": "cargo t all",
-  "legs": ["language fixed-group union (37 groups incl. aavm/a2r-std/shim-metadata/auto-*/infra-*/case-pilot/web-delivery-controls/generated-delivery-controls); UI/Man owner legs not run by this gate"],
+  "last_covered_plan_id": 953,
+  "timestamp": "2026-11-05T20:24:10.655392+00:00",
+  "covered_commit": "6b6b191c39866ae637bacfe0c4f7b964a498a94b",
+  "command": "cargo t all --out D:/autostack/plan-artifacts/batch-regression-20261106/queue",
+  "legs": [
+    "language fixed-group union: 37 original groups; UI/Man remain owner legs; ACE domain all=false excluded by original configuration"
+  ],
   "single_instance": true,
-  "results_path": "target/test-groups/run-hqij3scq/results.json",
-  "elapsed_seconds": 546.98,
-  "verdict": "known_reds_only",
-  "new_reds": [],
+  "completed_queue": true,
+  "gate_passed": false,
+  "verdict": "known_reds_and_fixture_observations",
+  "previous_receipt_sha256": "cac3aae422ec4b1308f7fb61f7dc3a7ac822d2f795db636583306d35ee708d89",
+  "config_sha256": "6e5a2cf66f4be87974d5d0c29bff969b9d90e973d9947fc8ef817476a65d3aed",
+  "protected_input_sha256": "8f4a5f000cfd9ce75adf001ebee794a7c144131f58d903cb0537f0df0a702b6d",
+  "source_identity": "source_state exactly SHA256(covered HEAD + empty code/config diff + [] untracked); no source/config/input drift; subsequent drafting/debt commits are docs only",
+  "results_path": "D:\\autostack\\plan-artifacts\\batch-regression-20261106\\queue\\results.json",
+  "results_sha256": "8daca044b4fac3e8e2ac935ea138da86810788067a708bd78418c8d50a1d5709",
+  "elapsed_seconds": 702.0677687999996,
+  "executed": 2828,
+  "excluded": 1014,
+  "groups": [
+    {
+      "groups": [
+        "aavm"
+      ],
+      "outcome": "NOT_APPLICABLE",
+      "executed": 0,
+      "excluded": 130,
+      "prepare_discover_seconds": 14.549980799994955,
+      "run_seconds": null,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "a2r-std"
+      ],
+      "outcome": "PASS",
+      "executed": 108,
+      "excluded": 0,
+      "prepare_discover_seconds": 1.2169570000041858,
+      "run_seconds": 7.842021899996325,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "shim-metadata"
+      ],
+      "outcome": "PASS",
+      "executed": 16,
+      "excluded": 0,
+      "prepare_discover_seconds": 1.5632412999984808,
+      "run_seconds": 1.1101042999944184,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "a2r-actor-tests"
+      ],
+      "outcome": "NOT_APPLICABLE",
+      "executed": 0,
+      "excluded": 17,
+      "prepare_discover_seconds": 13.586365800001658,
+      "run_seconds": null,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-atom"
+      ],
+      "outcome": "PASS",
+      "executed": 53,
+      "excluded": 0,
+      "prepare_discover_seconds": 2.852339500001108,
+      "run_seconds": 1.2661596999969333,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-test-case"
+      ],
+      "outcome": "PASS",
+      "executed": 111,
+      "excluded": 0,
+      "prepare_discover_seconds": 4.082154700001411,
+      "run_seconds": 1.1770713000005344,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-gen"
+      ],
+      "outcome": "PASS",
+      "executed": 33,
+      "excluded": 0,
+      "prepare_discover_seconds": 6.055033800003002,
+      "run_seconds": 2.679698100000678,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-gen-core"
+      ],
+      "outcome": "PASS",
+      "executed": 12,
+      "excluded": 0,
+      "prepare_discover_seconds": 1.1527023000016925,
+      "run_seconds": 1.0740902999968966,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-media-core"
+      ],
+      "outcome": "FAIL",
+      "executed": 54,
+      "excluded": 0,
+      "prepare_discover_seconds": 1.6743235000030836,
+      "run_seconds": 27.98892899999919,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-lang"
+      ],
+      "outcome": "FAIL",
+      "executed": 1712,
+      "excluded": 864,
+      "prepare_discover_seconds": 12.412227300002996,
+      "run_seconds": 437.302554599999,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-lang-core"
+      ],
+      "outcome": "FAIL",
+      "executed": null,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": null,
+      "error": "ACE host tests leaked into a legacy group; fix feature/target ownership before execution",
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-text-core"
+      ],
+      "outcome": "PASS",
+      "executed": 65,
+      "excluded": 3,
+      "prepare_discover_seconds": 0.85636599999998,
+      "run_seconds": 1.1594514999960666,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-parser-api"
+      ],
+      "outcome": "PASS",
+      "executed": 4,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.9043216999998549,
+      "run_seconds": 0.843874300000607,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-ast"
+      ],
+      "outcome": "PASS",
+      "executed": 66,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.9179146000024048,
+      "run_seconds": 1.1658929999975953,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-lex"
+      ],
+      "outcome": "PASS",
+      "executed": 74,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.98112580000452,
+      "run_seconds": 1.0447451,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-diagnostics"
+      ],
+      "outcome": "PASS",
+      "executed": 1,
+      "excluded": 0,
+      "prepare_discover_seconds": 1.06484260000434,
+      "run_seconds": 0.84958639999968,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-project-model"
+      ],
+      "outcome": "PASS",
+      "executed": 42,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.8061720000041532,
+      "run_seconds": 0.8543868000051589,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-macros"
+      ],
+      "outcome": "FAIL",
+      "executed": null,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": null,
+      "error": "selected Cargo target discovery/build failed",
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-tool-execution"
+      ],
+      "outcome": "FAIL",
+      "executed": 43,
+      "excluded": 0,
+      "prepare_discover_seconds": 3.2304606000034255,
+      "run_seconds": 5.153569299996889,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-terminal-core"
+      ],
+      "outcome": "PASS",
+      "executed": 7,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.9603629999983241,
+      "run_seconds": 0.9391396999999415,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-lsp"
+      ],
+      "outcome": "FAIL",
+      "executed": null,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": null,
+      "error": "selected Cargo target discovery/build failed",
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-val"
+      ],
+      "outcome": "PASS",
+      "executed": 150,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.8526254000025801,
+      "run_seconds": 1.107058000001416,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-vm"
+      ],
+      "outcome": "NOT_APPLICABLE",
+      "executed": 0,
+      "excluded": 0,
+      "prepare_discover_seconds": 2.7722412000002805,
+      "run_seconds": null,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-cache"
+      ],
+      "outcome": "PASS",
+      "executed": 70,
+      "excluded": 0,
+      "prepare_discover_seconds": 2.133981400002085,
+      "run_seconds": 1.1284507000018493,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-playground"
+      ],
+      "outcome": "PASS",
+      "executed": 14,
+      "excluded": 0,
+      "prepare_discover_seconds": 16.040136900002835,
+      "run_seconds": 3.0564641000019037,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-bindgen"
+      ],
+      "outcome": "PASS",
+      "executed": 6,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.9710417000023881,
+      "run_seconds": 1.0079669000042486,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-tool-protocol"
+      ],
+      "outcome": "PASS",
+      "executed": 20,
+      "excluded": 0,
+      "prepare_discover_seconds": 0.9349289999954635,
+      "run_seconds": 0.8309579999986454,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "auto-api-gen"
+      ],
+      "outcome": "PASS",
+      "executed": 3,
+      "excluded": 0,
+      "prepare_discover_seconds": 14.645531699999992,
+      "run_seconds": 1.2232800999991014,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "infra-meter"
+      ],
+      "outcome": "PASS",
+      "executed": 10,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 14.552436800004216,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "infra-pilot-cli"
+      ],
+      "outcome": "FAIL",
+      "executed": 10,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 1.9914959000016097,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "case-pilot"
+      ],
+      "outcome": "PASS",
+      "executed": 24,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 1.9785320999944815,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "infra-ace-policy"
+      ],
+      "outcome": "PASS",
+      "executed": 11,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 0.3629603000008501,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "infra-ace-cost-report"
+      ],
+      "outcome": "PASS",
+      "executed": 16,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 0.4072117999967304,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "infra-fixed"
+      ],
+      "outcome": "PASS",
+      "executed": 37,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 1.28739250000217,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "auto-generation-core"
+      ],
+      "outcome": "PASS",
+      "executed": 28,
+      "excluded": 0,
+      "prepare_discover_seconds": 3.6483226000054856,
+      "run_seconds": 1.394101400001091,
+      "error": null,
+      "child_validation": true
+    },
+    {
+      "groups": [
+        "web-delivery-controls"
+      ],
+      "outcome": "PASS",
+      "executed": 13,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 1.0946938999986742,
+      "error": null,
+      "child_validation": null
+    },
+    {
+      "groups": [
+        "generated-delivery-controls"
+      ],
+      "outcome": "PASS",
+      "executed": 15,
+      "excluded": 0,
+      "prepare_discover_seconds": null,
+      "run_seconds": 0.6248402999990503,
+      "error": null,
+      "child_validation": null
+    }
+  ],
+  "new_reds": [
+    {
+      "case": "auto-tool-execution::exec_lifecycle::deadline_covers_blocked_stdin_with_unowned_holder",
+      "observation": "full-queue heartbeat fixture did not start within original2s; isolated exact case passed1/1, without deadline/limit changes",
+      "classification": "new fixture/startup observation, no confirmed product cause; cannot claim unowned descendant state from a timeout alone",
+      "fix_forward": "PLAN-954 T-01/T-03"
+    },
+    {
+      "cases": [
+        "plan349 test_http_download",
+        "plan349 test_http_download_resume",
+        "plan349 test_multipart_file_functional",
+        "plan727_vm_transfer_download_wait_success"
+      ],
+      "observation": "TEMP runtime-temp path normalized by Win32 GetTempPathW/2W to backslashes; original fixture inserts unescaped path into Auto source, so backslash-r becomes carriage-return; same-scope scratch controls12+3 passed",
+      "classification": "pre-existing test input generation gap exposed by this batch environment; tests/lexer/transfer source unchanged since3b09e32b0",
+      "fix_forward": "PLAN-954 T-02"
+    }
+  ],
+  "product_regressions_confirmed": [],
   "known_reds_seen": [
-    "auto-media-core image_pipeline::tests::fixture_manifest: manifest.json absent (baseline red)",
-    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: Assertion failed (baseline red)",
-    "auto-lang-core: ACE host tests leaked into a legacy group; fix feature/target ownership before execution (PLAN-901 baseline red)",
-    "auto-macros: value_macro_tests E0308 Box<Obj> vs Obj (baseline red)",
-    "auto-lsp: package ID specification `auto-lsp` did not match any packages; moved out of this workspace (PLAN-900 baseline red)",
-    "infra-pilot-cli: 5 failures + 1 error (PLAN-901 legacy group requested ACE worker, same shape as baseline)"
+    "auto-media-core image_pipeline::tests::fixture_manifest: identical Os NotFound baseline",
+    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: identical assertion line49 baseline",
+    "auto-lang-core blocked before execution: ACE host tests leaked into legacy group, original PLAN-901 ownership red",
+    "auto-macros discovery/build value_macro_tests E0308 x4 family, identical baseline",
+    "auto-lsp discovery: package not in workspace, original PLAN-900 red",
+    "infra-pilot-cli: original legacy-domain ACE worker rejection family; 10 executed,5 failures/1error, not PASS"
   ],
   "exclusions": [
-    "aavm NOT_APPLICABLE",
-    "a2r-actor-tests NOT_APPLICABLE",
+    "aavm NOT_APPLICABLE,130 original conditional/ignored",
+    "a2r-actor-tests NOT_APPLICABLE,17 original conditional/ignored",
     "auto-vm NOT_APPLICABLE",
-    "nextest-ignored tests counted as ignored (not PASS); T3/milestone and manual conditions preserved",
-    "ACE domain groups (ace-*, case-ace-*) are all=false and not part of the language cargo t all union; their evidence lives in the per-plan frozen union"
+    "auto-lang864 and auto-text-core3 original ignored/conditional exclusions; no ignore/oracle/sample changes",
+    "auto-lang-core/auto-macros/auto-lsp were not executed because original admission/discovery failed; failed, not green",
+    "UI/Man owner legs not executed by this language queue"
   ],
-  "window": "925..937 (PLAN-927/928/929/931/932/933/934/937 merges + UI/docs commits); no failing group maps to the 934 delivery (experimental/ace + case family + test-group registration only)",
-  "fix_forward": "No new reds attributable to the merged window. Every failing group maps to pre-registered debts in docs/plans/KNOWN-DEBT-AND-RISKS.md or the prior batch receipt baseline; no unrelated repair attempted by the batch runner."
+  "diagnostic_replays": [
+    {
+      "name": "isolated-stdin",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "-p",
+        "auto-tool-execution",
+        "--tests",
+        "--lib",
+        "--ignore-default-filter",
+        "-E",
+        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(deadline_covers_blocked_stdin_with_unowned_holder)",
+        "--no-fail-fast",
+        "--no-tests",
+        "fail",
+        "--message-format",
+        "libtest-json-plus",
+        "--message-format-version",
+        "0.1"
+      ],
+      "executed": 1,
+      "excluded": 0,
+      "outcome": "PASS",
+      "wall_seconds": 9.135879200002819,
+      "sha256": "42efd17eb408b9526743dd4104779efa45c99da8f572635015f43369a8ef01a0",
+      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
+    },
+    {
+      "name": "replay-http349",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "-p",
+        "auto-lang",
+        "--tests",
+        "--lib",
+        "--config-file",
+        ".config/nextest-full.toml",
+        "--ignore-default-filter",
+        "-E",
+        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(plan349_tests)",
+        "--no-fail-fast",
+        "--no-tests",
+        "fail",
+        "--message-format",
+        "libtest-json-plus",
+        "--message-format-version",
+        "0.1"
+      ],
+      "executed": 12,
+      "excluded": 0,
+      "outcome": "PASS",
+      "wall_seconds": 4.0285989999974845,
+      "sha256": "3efa3005155e0b5b5654b745c568b7edacda999abe136bd46790b2345d0c8023",
+      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
+    },
+    {
+      "name": "replay-http727",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "-p",
+        "auto-lang",
+        "--tests",
+        "--lib",
+        "--config-file",
+        ".config/nextest-full.toml",
+        "--ignore-default-filter",
+        "-E",
+        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(plan727_http_transfer_tests::vm)",
+        "--no-fail-fast",
+        "--no-tests",
+        "fail",
+        "--message-format",
+        "libtest-json-plus",
+        "--message-format-version",
+        "0.1"
+      ],
+      "executed": 3,
+      "excluded": 0,
+      "outcome": "PASS",
+      "wall_seconds": 3.6164422999936505,
+      "sha256": "fee26a5a0ce999f0e372935af2c8fa6fe35e987701c0ab604511669a20750311",
+      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
+    }
+  ],
+  "admission_output_migration": {
+    "original": "D:\\autostack\\auto-lang\\target\\test-groups\\admission-0fm3rxcv",
+    "destination": "D:/autostack/plan-artifacts/batch-regression-20261106/admission-diagnostics",
+    "files": 5,
+    "bytes": 56628,
+    "tree_sha256": "4f39e2b506310e9a269401ae6436b78e06d747b49919600be9118c5763d4dc52"
+  },
+  "cleanup": "batch raw scope deleted after durable receipt/PLAN-954 reproduction records;13365files/7943127877bytes, no links or holds; original admission directory moved/verified then deleted with scope; normal main build caches remain ordinary batch-owner outputs",
+  "holds": [],
+  "fix_forward": "PLAN-954 records both fixture gaps with original250ms/1500ms/2s and Windows path controls; only drafted, no unrelated production fix or unmerge",
+  "timing_note": "prepare/discovery and execution separate per group; fixture teardown within original measured execution; scratch closure separately recorded, no full-queue repetition",
+  "cleanup_inventory": {
+    "scope": "D:\\autostack\\plan-artifacts\\batch-regression-20261106",
+    "files": 13365,
+    "bytes": 7943127877,
+    "reparse_points": 0,
+    "admission_migration_verified": true
+  },
+  "raw_scope_deleted": true,
+  "cleanup_completed_at": "2026-11-05T20:28:59.187141+00:00",
+  "cleanup_seconds": 1.8483262
 }

@@ -520,8 +520,27 @@ fn emit_scoped_document(
     module_path: &str,
     batch: bool,
 ) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    emit_scoped_source(
+        env,
+        indices,
+        src.len(),
+        fnv1a_hex(src.as_bytes()),
+        &|p| src.is_char_boundary(p),
+        module_path,
+        batch,
+    )
+}
+fn emit_scoped_source(
+    env: &super::resolve::CheckedEnv,
+    indices: &[usize],
+    source_len: usize,
+    input_hash: String,
+    boundary: &dyn Fn(usize) -> bool,
+    module_path: &str,
+    batch: bool,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
     let profile = env.profile;
-    let mut em = Emitter::new(&env.program, src.len(), profile);
+    let mut em = Emitter::new(&env.program, source_len, profile);
     if batch {
         em.batch_scope = Some(indices.to_vec());
     } else {
@@ -561,14 +580,14 @@ fn emit_scoped_document(
             )]);
         }
     };
-    match em.reanchor_spans(&mut bundle, src) {
+    match em.reanchor_spans_checked(&mut bundle, source_len, boundary) {
         Ok(()) => {}
         Err(d) => return Err(vec![d]),
     }
     Ok((
         SourceParts {
             profile: profile.as_str(),
-            input_hash: fnv1a_hex(src.as_bytes()),
+            input_hash,
             atom_text,
             bundle,
             planned_fns: em.plans.len(),
@@ -601,6 +620,45 @@ pub struct FnCandidate {
 }
 
 impl FnCandidate {
+    /// Validate one exclusive publication containing distinct body slots.
+    /// Every candidate retains its original environment identity/generation;
+    /// none is rebased or given a bypass after another body is installed.
+    pub fn validate_batch(
+        candidates: &[Self],
+        env: &super::resolve::CheckedEnv,
+    ) -> Result<(), Vec<Diagnostic>> {
+        let mut slots = BTreeSet::new();
+        for candidate in candidates {
+            candidate.validate(env)?;
+            if !slots.insert(candidate.fn_index) {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate-candidate",
+                    "one publication cannot install a body slot twice",
+                    Span { start: 0, end: 0 },
+                )]);
+            }
+        }
+        Ok(())
+    }
+
+    /// All fallible checks precede any swap. Under the exclusive environment
+    /// borrow, a successful batch advances publication once, without weakening
+    /// the existing single-body owner/base guard.
+    pub fn commit_batch(
+        candidates: Vec<Self>,
+        env: &mut super::resolve::CheckedEnv,
+    ) -> Result<(), Vec<Diagnostic>> {
+        Self::validate_batch(&candidates, env)?;
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        for candidate in candidates {
+            candidate.state.swap_into(env, candidate.fn_index);
+        }
+        env.generation += 1;
+        Ok(())
+    }
     /// The environment slot this candidate installs into on commit.
     pub fn fn_index(&self) -> usize {
         self.fn_index
@@ -1006,7 +1064,42 @@ pub(crate) fn emit_whole_document(
     module_path: &str,
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    let mut em = Emitter::new(program, src.len(), profile);
+    emit_document_source(
+        program,
+        src.len(),
+        fnv1a_hex(src.as_bytes()),
+        &|p| src.is_char_boundary(p),
+        module_path,
+        profile,
+    )
+}
+
+/// PLAN-950: emit the already-resolved module graph using its disjoint
+/// source coordinate map. No synthetic concatenated source is parsed or hashed.
+pub fn emit_resolved_module_parts(
+    program: &ResolvedProgram,
+    sources: &super::modules::BoundModules,
+    module_path: &str,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    emit_document_source(
+        program,
+        sources.source_len(),
+        sources.input_hash.clone(),
+        &|p| sources.is_char_boundary(p),
+        module_path,
+        SourceProfile::Scalar,
+    )
+}
+
+fn emit_document_source(
+    program: &ResolvedProgram,
+    source_len: usize,
+    input_hash: String,
+    boundary: &dyn Fn(usize) -> bool,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let mut em = Emitter::new(program, source_len, profile);
     em.plan_module();
     let atom_text = em.render(module_path);
     let descriptor = match profile.hir_domain() {
@@ -1035,10 +1128,11 @@ pub(crate) fn emit_whole_document(
             )]);
         }
     };
-    em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
+    em.reanchor_spans_checked(&mut bundle, source_len, boundary)
+        .map_err(|d| vec![d])?;
     Ok(SourceParts {
         profile: profile.as_str(),
-        input_hash: fnv1a_hex(src.as_bytes()),
+        input_hash,
         atom_text,
         bundle,
         planned_fns: em.plans.len(),
@@ -4145,6 +4239,15 @@ impl<'p> Emitter<'p> {
     /// the §5.3 post-conditions (in-bounds, UTF-8 boundaries, no generated
     /// positions left).
     fn reanchor_spans(&self, bundle: &mut crate::hir::Bundle, src: &str) -> Result<(), Diagnostic> {
+        self.reanchor_spans_checked(bundle, src.len(), &|p| src.is_char_boundary(p))
+    }
+
+    fn reanchor_spans_checked(
+        &self,
+        bundle: &mut crate::hir::Bundle,
+        source_len: usize,
+        boundary: &dyn Fn(usize) -> bool,
+    ) -> Result<(), Diagnostic> {
         let Some(spans) = &self.spans else {
             return Err(internal_diag("render output missing".to_string()));
         };
@@ -4162,13 +4265,13 @@ impl<'p> Emitter<'p> {
             acc
         };
         let check = |s: Span| -> Result<Span, Diagnostic> {
-            if s.start > src.len() || s.end > src.len() {
+            if s.start > source_len || s.end > source_len {
                 return Err(internal_diag(format!(
                     "span {:?} escapes the source after projection",
                     s
                 )));
             }
-            if !src.is_char_boundary(s.start) || !src.is_char_boundary(s.end) {
+            if !boundary(s.start) || !boundary(s.end) {
                 return Err(internal_diag(format!(
                     "span {:?} is not on UTF-8 boundaries after projection",
                     s
@@ -4293,4 +4396,60 @@ fn intrinsic_id_suffix(sym: &str) -> String {
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()
     }
+}
+
+/// PLAN-950 single-body module transaction over the existing candidate and
+/// source-map-aware emitter. Facts remain the candidate's type authority.
+pub fn prepare_module_candidate(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    index: usize,
+    sources: &super::modules::BoundModules,
+    supply: &dyn super::resolve::TypeSupply,
+) -> Result<FnCandidate, Vec<Diagnostic>> {
+    let old: Vec<_> = env
+        .program
+        .fns
+        .iter()
+        .map(|f| (f.name_span, f.item_span))
+        .collect();
+    super::resolve::reanchor_env_declarations(env, &sources.program)?;
+    let result = (|| {
+        let current = super::resolve::recheck_swap_with_supply(env, item, index, Some(supply))?;
+        let emitted = emit_scoped_source(
+            env,
+            &[index],
+            sources.source_len(),
+            sources.input_hash.clone(),
+            &|p| sources.is_char_boundary(p),
+            "modules",
+            false,
+        );
+        let candidate_state = current.swap_into(env, index);
+        let (parts, receipt) = emitted?;
+        let candidate = FnCandidate {
+            env_id: env.id,
+            base_generation: env.generation,
+            fn_index: index,
+            slot_name: item.name.name.clone(),
+            state: candidate_state,
+            parts,
+            receipt,
+            foreign_context: env.program.foreign.clone(),
+            foreign_slots: env.program.foreign_slots.clone(),
+        };
+        let def = format!("d_{}", item.name.name);
+        let def_index = candidate.parts.bundle.modules[0]
+            .defs
+            .iter()
+            .position(|f| f.id_text == def)
+            .ok_or_else(|| vec![internal_diag("module candidate def absent".into())])?;
+        crate::verify::verify_function_ref(&candidate.parts.bundle, def_index)?;
+        Ok(candidate)
+    })();
+    for (f, (name, item)) in env.program.fns.iter_mut().zip(old) {
+        f.name_span = name;
+        f.item_span = item;
+    }
+    result
 }

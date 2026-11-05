@@ -249,12 +249,27 @@ fn main() {
                 .env(ARG2, &hb)
                 .spawn() // 默认继承 stdio:后代持有管道。
                 .unwrap();
-            drop(_child); // 不等待:自身立即退出。
+            // The root-exit witness needs an EXISTING descendant, not a race
+            // against the descendant's first instruction. Readiness precedes
+            // root exit; the owned run still kills the live pipe holder.
+            let ready_deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            while std::fs::metadata(&hb).map(|m| m.len() == 0).unwrap_or(true) {
+                assert!(
+                    std::time::Instant::now() < ready_deadline,
+                    "orphan heartbeat readiness"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            drop(_child); // 不等待完成；确认启动后根立即退出。
         }
         // ARG1 = 存活秒数;ARG2 = heartbeat 文件路径。
         "heartbeat" => {
             let secs: u64 = arg1().trim().parse().unwrap_or(5).min(30);
             let hb = arg2();
+            if !hb.is_empty() {
+                std::fs::write(format!("{hb}.pid"), std::process::id().to_string())
+                    .expect("fixture PID witness");
+            }
             let started = std::time::Instant::now();
             loop {
                 let elapsed_ms = started.elapsed().as_millis();

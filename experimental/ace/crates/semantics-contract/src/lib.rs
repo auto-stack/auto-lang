@@ -11,6 +11,7 @@
 //! below that participates in cross-plan identity is annotated with its
 //! decision anchor.
 
+pub mod assembly;
 pub mod codec;
 pub mod identity;
 pub mod metadata;

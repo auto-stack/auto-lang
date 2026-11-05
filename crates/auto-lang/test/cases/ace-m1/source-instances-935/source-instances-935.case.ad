@@ -1,0 +1,140 @@
+# PLAN-935 T-09 — SQ-B finite scalar template instances family (closed-form
+# values through the PRODUCT entries that consume the instances lane).
+#
+# Every program compiles under the `ac.source.instances.scalar/v1` capability
+# (the product entries route through compile_scalar_product's instances lane:
+# solver-driven discovery → concrete instances → the SAME concrete Checked HIR
+# every backend consumes). Oracles are hand-computed closed-form values:
+#
+# * choose42:  Design42 §10.3 verbatim — choose(true,false,true)=true guards
+#              choose(40,42,false)=42 -> main = 42 (two real instances);
+# * choose0:   the SAME call sites with the template branches swapped -> 0
+#              (instance bodies really re-produce; callers unchanged);
+# * expected-type: T solved ONLY by the expected type (let x int = make())
+#              -> make_i32() = 0, x + 42 = 42;
+# * cross-wrap: wrap<T> body calls choose (fixpoint materialization) —
+#              wrap(false,true)=choose(false,true,true)=false takes the else
+#              arm, wrap(40,42)=choose(40,42,true)=40 -> 40;
+# * recursion: pick(2,40) recurses into pick(1,40) then pick(0,40)=seed -> 40
+#              (self-recursion binds to the SAME instance);
+# * neg-hetero: choose(40, true, false) binds T to i32 and bool — the real
+#              solver rejects with type-mismatch (no implicit conversion).
+#
+# The instances-layer negative controls (solver-off cold/warm, tampered
+# instance pages, restore/first-edit, A-B-A, single-flight counters, budget
+# states) are pinned by the `ace-source-query` crate tests carried by the
+# `ace-semantics` fixed package group.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.choose42"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935"]
+  links: ["PLAN-935"]
+  source: { file: "src/choose42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.choose0"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935"]
+  links: ["PLAN-935"]
+  source: { file: "src/choose0.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 0 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.expected-type"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935"]
+  links: ["PLAN-935"]
+  source: { file: "src/expected-type.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.cross-wrap"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935"]
+  links: ["PLAN-935"]
+  source: { file: "src/cross-wrap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.recursion"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935"]
+  links: ["PLAN-935"]
+  source: { file: "src/recursion.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.inst935.neg-hetero"
+  tags: ["ace-m1", "source-instances", "sq-b", "plan-935", "negative"]
+  links: ["PLAN-935"]
+  source: { file: "src/neg-hetero.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "parse", code: "type-mismatch" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"], diagnostics: "source-v1" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "resolve", code: "type-mismatch" } } }
+  ]
+}
+```

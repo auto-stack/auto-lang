@@ -36,7 +36,35 @@ producer/compiler 源与 Cargo 版本）。
 provider/来源闭包变化改变共同身份。未知/旧不完整快照=陈旧或拒绝
 （保守再生），null 指纹不能相互证明新鲜。
 
-## 验证等级
+## ACE 有限模块清单（PLAN-944）
+
+`ace-semantics-contract::assembly::Manifest` 使用独立域
+`ace-stdlib-assembly/1`，不复用或改写上述 legacy schema 4。
+`AssemblyManifest::decode_v4` 仍按旧字段顺序及 FNV 双投影读取历史4；
+两种入口相互拒绝另一种格式，未知 schema/producer/profile 不作默认兼容。
+
+新清单共同指纹覆盖 profile、host、platform、全部源内容身份、完整声明
+（module/symbol、签名/mode、语义版本、显式 requirements）及操作引用证据。
+消费者指纹另覆盖 producer、ABI、runtime、发射工具配方和物理 provider
+闭包。AV 与 HIR→Rust 在相同语义输入下共同指纹相等，消费者指纹不同。
+便携 ID 不携绝对目录；改变 provider 只改其消费者身份，不改共同身份。
+
+公共操作证据由 SDK `stdlib_assembly::ace::current_operation_reference`
+重新扫描943合同/公共声明，并核最终 `NativeInterface` 的独立 adapter。
+当前实证为 `io.read_line` 的签名证明，保逻辑操作 ID/版本、相对声明及
+producer、声明 hash、adapter 合同 hash；数字 native ID 不是操作身份。
+它不使该操作在有限标量源域可调用，也不把 signature_checked 升为 executed。
+新证据记录的 verification 只接纳 `signature_checked`，不能从缓存提升为
+executed；声明 FNV64 用16个、adapter/input 的256位内容hash用64个规范
+小写十六进制字符表示。
+
+结构解码与当前身份准入分开：恢复的期望清单须来自当前 source/contract/
+provider 输入，不能复制候选载荷充当期望。重复声明/未知字段、坏指纹、
+不符的 host/platform/ABI/runtime/发射配方在消费前拒绝。
+具体绑定、恢复、单事务发布及授权见
+[ACE绑定与装配](ace-binding-and-assembly.md)。
+
+## 验证等级（legacy 与新证据同义）
 
 declared → resolved → bound → signature_checked → executed。文件存在/
 名称登记最高到 resolved/bound；producer 签名核对（含适配契约）后才

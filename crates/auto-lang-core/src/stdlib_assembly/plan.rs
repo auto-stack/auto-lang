@@ -411,6 +411,7 @@ mod plan738_repairs {
                 layers: vec![layer],
             }],
             diagnostics: Vec::new(),
+            contracts: Default::default(),
         };
         let mut registry = crate::vm::native_registry::AutoVMNativeRegistry::new();
         registry.register_with_id_and_type(
@@ -473,6 +474,7 @@ mod plan738_repairs {
                 layers: vec![layer],
             }],
             diagnostics: Vec::new(),
+            contracts: Default::default(),
         };
         let mut registry = crate::vm::native_registry::AutoVMNativeRegistry::new();
         registry.register_with_id_and_type(

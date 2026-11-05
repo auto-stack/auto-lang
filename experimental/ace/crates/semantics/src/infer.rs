@@ -107,6 +107,17 @@ impl<'b> Frames<'b> {
     }
 }
 
+/// PLAN-935 (T-04): one template call site's minted type-parameter vars,
+/// resolved into a concrete substitution AFTER the fn's solve.
+#[derive(Clone, Debug)]
+pub struct TplDemand {
+    pub callee: String,
+    pub vars: Vec<Ty>,
+    /// The call-site span (source bytes) — the desugar layer's rebinding
+    /// key. Spans identify call sites uniquely within one source.
+    pub span: (u32, u32),
+}
+
 pub struct InferSession<'a> {
     input: &'a SemaInput,
     budget: Budget,
@@ -120,6 +131,8 @@ pub struct InferSession<'a> {
     // -- facts being recorded --
     bindings: Vec<(String, Ty)>,
     expr_types: Vec<(u32, u32, Ty)>,
+    // PLAN-935 (T-04): template call demands of this run.
+    tpl_demands: Vec<TplDemand>,
 }
 
 impl<'a> InferSession<'a> {
@@ -135,6 +148,7 @@ impl<'a> InferSession<'a> {
             eq_pairs: Vec::new(),
             bindings: Vec::new(),
             expr_types: Vec::new(),
+            tpl_demands: Vec::new(),
         }
     }
 
@@ -146,6 +160,28 @@ impl<'a> InferSession<'a> {
     pub fn with_cancel(mut self, flag: Arc<AtomicBool>) -> Self {
         self.cancel = Some(flag);
         self
+    }
+
+    /// PLAN-935 (T-04): resolve and take this run's template-call demands.
+    /// Call AFTER [`Self::infer_function`] — the vars must be read through
+    /// the final union-find. An unresolved var yields `None` for its slot
+    /// (the run's diagnostics already carry the definitive unsolved
+    /// verdict; the demand is not admitted).
+    pub fn take_instance_demands(&mut self) -> Vec<(String, Vec<Option<Ty>>, (u32, u32))> {
+        std::mem::take(&mut self.tpl_demands)
+            .into_iter()
+            .map(|d| {
+                let tys = d
+                    .vars
+                    .into_iter()
+                    .map(|v| match self.resolve(v) {
+                        t @ (Ty::I32 | Ty::Bool) => Some(t),
+                        Ty::Var(_) => None,
+                    })
+                    .collect();
+                (d.callee, tys, d.span)
+            })
+            .collect()
     }
 
     /// Infer one function body by name. Unknown function → definitive
@@ -217,6 +253,12 @@ impl<'a> InferSession<'a> {
                 self.mint_var()
             }
             Ann::Inferred => self.mint_var(),
+            // PLAN-935 (T-04): defensive — the template call hook
+            // substitutes TyParam positions BEFORE ann_ty; reaching here
+            // means a template signature leaked onto a non-substituted
+            // path. Mint a var (never widen to a concrete) — the finish
+            // pass then flags it unsolved, which is the honest verdict.
+            Ann::TyParam(_) => self.mint_var(),
         }
     }
 
@@ -520,7 +562,30 @@ impl<'a> InferSession<'a> {
                         1 => {
                             let f = cands[0];
                             self.read_sig(callee);
-                            let fret = self.ann_ty(f.ret, e.span);
+                            // PLAN-935 (T-04): a TEMPLATE call mints one
+                            // shared var per declared type parameter, sub-
+                            // stitutes them through the signature, and
+                            // checks args/expected by REAL unification —
+                            // heterogeneous bindings conflict here, an
+                            // unconstrained T stays unsolved (definitive
+                            // diagnostics, never Any/defaults). The solved
+                            // substitution is recorded as an instance
+                            // demand (collected after the fn's solve).
+                            let tvars: Vec<Ty> = if f.type_params.is_empty() {
+                                Vec::new()
+                            } else {
+                                (0..f.type_params.len()).map(|_| self.mint_var()).collect()
+                            };
+                            let subst = |ann: &Ann| -> Option<Ty> {
+                                match ann {
+                                    Ann::TyParam(i) => tvars.get(*i as usize).copied(),
+                                    _ => None,
+                                }
+                            };
+                            let fret = match subst(&f.ret) {
+                                Some(t) => t,
+                                None => self.ann_ty(f.ret, e.span),
+                            };
                             self.record_expr(e, fret, expected);
                             // PLAN-934 T-04: arguments bind by NAME when
                             // written named, by position otherwise; the
@@ -582,11 +647,23 @@ impl<'a> InferSession<'a> {
                                 let arg = &args[i];
                                 match pos {
                                     Some(p) if p < f.params.len() => {
-                                        let t = self.ann_ty(f.params[p].1, arg.value.span);
+                                        let t = match subst(&f.params[p].1) {
+                                            Some(t) => t,
+                                            None => self.ann_ty(f.params[p].1, arg.value.span),
+                                        };
                                         stack.push(Task::Check(&arg.value, t));
                                     }
                                     _ => stack.push(Task::Synth(&arg.value)),
                                 }
+                            }
+                            // PLAN-935 (T-04): record the instance demand for
+                            // this call site (resolved after the fn solve).
+                            if !tvars.is_empty() {
+                                self.tpl_demands.push(TplDemand {
+                                    callee: f.name.to_string(),
+                                    vars: tvars,
+                                    span: (e.span.start, e.span.end),
+                                });
                             }
                         }
                         n => {
@@ -759,6 +836,7 @@ mod tests {
     fn fn_of(name: &str, params: Vec<(&str, Ann)>, ret: Ann, body: InputBlock) -> InputFn {
         InputFn {
             name: name.into(),
+            type_params: Vec::new(),
             params: params
                 .into_iter()
                 .map(|(n, a)| (n.to_string(), a))

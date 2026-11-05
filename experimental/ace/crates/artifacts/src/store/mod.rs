@@ -1040,6 +1040,22 @@ impl ManagedStore {
 
     // -- roots / pins / leases ------------------------------------------------
 
+    /// Read the required-data closure's direct targets. Parent codecs use
+    /// this to check that their declared dependencies match persisted edges.
+    pub fn required_targets(&self, artifact: &str) -> Result<Vec<String>, StoreError> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT dst FROM edges WHERE src=?1 AND kind=?2 ORDER BY dst")?;
+        let rows = stmt.query_map(
+            [artifact, crate::identity::RefKind::RequiredData.as_str()],
+            |r| r.get(0),
+        )?;
+        let mut targets = Vec::new();
+        for row in rows {
+            targets.push(row?);
+        }
+        Ok(targets)
+    }
+
     pub fn register_root(
         &self,
         project: &str,
@@ -1062,6 +1078,45 @@ impl ManagedStore {
                 params![project, artifact, kind],
             )?;
         }
+        Ok(())
+    }
+
+    /// Compare and replace one current root atomically, including retirement
+    /// of the old root. Any insert/delete failure rolls back the whole change.
+    pub fn replace_current_root(
+        &self,
+        project: &str,
+        kind: &str,
+        expected: Option<&str>,
+        candidate: &str,
+    ) -> Result<(), StoreError> {
+        let _live = self.liveness_shared()?;
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        let roots: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT artifact FROM roots WHERE project=?1 AND kind=?2")?;
+            let rows = stmt
+                .query_map(params![project, kind], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        if roots.len() != usize::from(expected.is_some())
+            || expected.is_some_and(|old| roots[0] != old)
+        {
+            return Err(StoreError::Boundary("current root base changed".into()));
+        }
+        if !row_chunk_live(&tx, candidate)? {
+            return Err(StoreError::TargetMissing(candidate.into()));
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO roots(project, artifact, kind) VALUES (?1, ?2, ?3)",
+            params![project, candidate, kind],
+        )?;
+        tx.execute(
+            "DELETE FROM roots WHERE project=?1 AND kind=?2 AND artifact<>?3",
+            params![project, kind, candidate],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 

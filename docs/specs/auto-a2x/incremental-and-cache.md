@@ -2,6 +2,37 @@
 
 > 状态：active（AX-A 形态，`a2x-store` crate；PLAN-892 T-04/§5.4）。
 
+## 显式有限模块装配（PLAN-944）
+
+`ModuleA2xTarget::{cold_assembly,prepare_batch,restore_assembly}` 复用现有
+provider、批量/单函数 producer、语义计划、片段 store 与文件集组装。
+新根 `a2x-source-modules/2` 绑定 `ace-stdlib-assembly/1` 清单、每函数物理
+context 和入口实际可达的显式 requirements。原根 `/1`、原无 context
+入口/键字节保持原义；旧入口拒绝新根，恢复新根须当前期望清单。
+
+`AXS1` 仍不读取 target/provider 字段。只有 `AXR1` 的显式模块装配配方
+增加可选键组件 `assembly_context_v1`，内容是该函数 own/direct-read
+声明版本及其消费者的 producer/ABI/runtime/发射配方、owner-scoped
+provider 输入。普通旧配方完全不带该组件。provider 的空 owners 表示
+link/装配输入，不表示“全部函数失效”。未改片段沿原 artifact 复用；
+另一消费者的物理输入变化不触发本消费者 lower/print。
+
+该有限标量入口的 runtime 身份为实际 provider runtime 文本 SHA256，
+toolchain 身份为当前 `fragment_key_inputs` 发射配方的内容身份（语言/
+edition/backend/version/runtime/printer）；外部 rustc 可执行产物的认证
+继续归原 Rust consumer，不在此缓存 compiler executable。
+
+`source-modules-root/3` 持久化显式声明 context、原 CST/facts/声明环境与
+两个目标 receipt 的 required 闭包。`AssemblyHost` 只通过既有
+`replace_current_root` CAS 发布这一个根，准备不安装。取消、绑定失败、
+事务插入/退休失败均保旧根/文件/可执行代码；恢复只读回原 payload，
+不以冷编译代替。恢复后的首 body 编辑仍是一函数 prepare/lower/print，
+无关函数零生产；需求变化重验真实读取函数。
+
+新模式 `run_authorized` 每次先调用当前调用方的授权检查，再把当前文件集
+交实际执行 consumer；清单/根不持有 grants 或宿主指针。详见
+[ACE绑定与装配](../stdlib/design/ace-binding-and-assembly.md)。
+
 ## 层注册（A2X 自有命名空间，不占 Design 40 A00–A12）
 
 | 层 | 内容 | ChunkKind | 再生 |

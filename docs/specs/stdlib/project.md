@@ -5,6 +5,10 @@
 
 Auto 标准库：auto/ 核心（多后端变体）、c/ C 绑定、aura/ UI 定义、collections/、may/、result/。
 
+操作语义与兼容实册见 [semantic-operation-contract](design/semantic-operation-contract.md)
+（PLAN-943）：17项有限合同接入真实 inventory 校验，失败层与未签约声明保留；
+旧 len/parse_int 差异和 i64 公共签名保持，ACE 公共 stdlib 仍待装配接线。
+
 HTTP/网络模块的公共声明、目标文件、VM native、生成 Axum 服务与 AutoUI 消费路径彼此独立；
 装配合同与 manifest 见 [assembly-manifest](design/assembly-manifest.md)（PLAN-738）；当前装配与缺口见 [后台装配与覆盖](design/backend-assembly.md) 和 [HTTP Server Spec](design/http-server.md)；handler 异步等待/请求生命周期现状见 [http-handler-async-lifecycle](design/http-handler-async-lifecycle.md)（PLAN-705），外部流生命周期现状见 [http-stream-lifecycle](design/http-stream-lifecycle.md)（PLAN-707）。
 

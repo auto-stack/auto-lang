@@ -839,6 +839,26 @@ suite = "crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.su
 domain = "ace"
 all = false
 
+# PLAN-935: SQ-B finite scalar template instances family (T-09) — closed-form
+# values (42/0/42/40/40: dual instances, template body swap, expected-type
+# solving, cross-template fixpoint, same-instance recursion) through the
+# product entries under the instances capability, plus the frozen
+# heterogeneous-arguments rejection. The instances-layer negative controls
+# (solver-off, tampered instance pages, restore/first-edit, A-B-A,
+# single-flight counters, budget states) live in the `ace-source-query` crate
+# tests carried by the `ace-semantics` fixed package group.
+[[group]]
+name = "case-ace-source-instances-935"
+title = "ACE M1 SQ-B source instances 935 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-932: the native warm-edit admission suite — typed refusal verdicts
 # (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
 # state survival and history A→B→A on the real scalar worker (source-v1).
@@ -1275,9 +1295,20 @@ title = "标准库与装配"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^stdlib_assembly::/) or test(/^vm::ffi::stdlib::/) or test(/^tests::(stdlib_tests|plan738_stdlib_assembly_tests|plan738_assembly_probe_tests)::/)"
+expression = "test(/^stdlib_assembly::/) or test(/^vm::ffi::stdlib::/) or test(/^tests::(stdlib_tests|plan738_stdlib_assembly_tests|plan738_assembly_probe_tests|plan872_builtin_semantics_tests)::/)"
 tools = []
 domain = "legacy"
+all = false
+
+[[group]]
+name = "ace-stdlib"
+title = "SDK标准操作证明与ACE装配双端集成"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-stdlib-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
 all = false
 
 [[group]]
@@ -1373,7 +1404,7 @@ name = "ace-workspace"
 title = "ACE独立workspace常规自动测试"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "all() and not test(/::performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"
@@ -1406,7 +1437,7 @@ name = "ace-performance"
 title = "ACE原正式收益与资源专项"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "test(/::performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"

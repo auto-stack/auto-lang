@@ -1,0 +1,376 @@
+schema_version = 1
+
+[[operations]]
+id = "text.byte_length"
+semantic_version = 1
+module = "str"
+symbol = "str_byte_len"
+layer = "rust"
+spelling = "s.byte_len()"
+caller = "s.byte_len()"
+visibility = "native_only"
+parameters = ["str"]
+modes = ["View"]
+returns = "int"
+unit = "utf8_bytes"
+dispatch = "rust_layer_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "A中😀 -> 8; e + U+0301 -> 3; NUL counted"
+source = "stdlib/auto/str.rs.at; vm/native_catalog.rs nat#1526; primitive-str-byte-len.md"
+followup = "PLAN-945"
+native = "auto.str.byte_len"
+
+[[operations]]
+id = "math.abs"
+semantic_version = 1
+module = "math"
+symbol = "abs"
+layer = "public"
+spelling = "use auto.math: abs; abs(-5)"
+caller = "use auto.math: abs; abs(-5)"
+visibility = "public"
+parameters = ["i64"]
+modes = ["View"]
+returns = "i64"
+unit = "signed_i64"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "-5 -> 5; MIN behavior requires existing overflow policy"
+source = "stdlib/auto/math.at; vm/ffi/stdlib/math.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "math.min"
+semantic_version = 1
+module = "math"
+symbol = "min"
+layer = "public"
+spelling = "use auto.math: min; min(3, 5)"
+caller = "use auto.math: min; min(3, 5)"
+visibility = "public"
+parameters = ["i64", "i64"]
+modes = ["View", "View"]
+returns = "i64"
+unit = "signed_i64"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "3,5 -> 3; i64 values must not narrow"
+source = "stdlib/auto/math.at; vm/ffi/stdlib/math.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "math.max"
+semantic_version = 1
+module = "math"
+symbol = "max"
+layer = "public"
+spelling = "use auto.math: max; max(3, 5)"
+caller = "use auto.math: max; max(3, 5)"
+visibility = "public"
+parameters = ["i64", "i64"]
+modes = ["View", "View"]
+returns = "i64"
+unit = "signed_i64"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "3,5 -> 5; i64 values must not narrow"
+source = "stdlib/auto/math.at; vm/ffi/stdlib/math.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "math.private_square"
+semantic_version = 1
+module = "math"
+symbol = "square"
+layer = "public"
+spelling = "square(3)"
+caller = "square(3)"
+visibility = "private"
+parameters = ["int"]
+modes = ["View"]
+returns = "int"
+unit = "signed_int_existing_profile"
+dispatch = "private_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "3 -> 9"
+source = "stdlib/auto/math.at"
+followup = "PLAN-945"
+
+[[operations]]
+id = "math.private_cube"
+semantic_version = 1
+module = "math"
+symbol = "cube"
+layer = "public"
+spelling = "cube(3)"
+caller = "cube(3)"
+visibility = "private"
+parameters = ["int"]
+modes = ["View"]
+returns = "int"
+unit = "signed_int_existing_profile"
+dispatch = "private_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "3 -> 27"
+source = "stdlib/auto/math.at"
+followup = "PLAN-945"
+
+[[operations]]
+id = "text.equal"
+semantic_version = 1
+module = "str"
+symbol = "operator=="
+layer = "public"
+spelling = "\"A中😀\" == \"A中😀\""
+caller = "\"A中😀\" == \"A中😀\""
+visibility = "native_only"
+parameters = ["str", "str"]
+modes = ["View", "View"]
+returns = "bool"
+unit = "byte_exact_equality"
+dispatch = "language_operator"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "true; A != B; embedded NUL distinguishes suffix"
+source = "experimental/ace/crates/text-runtime/src/lib.rs ac_rt_text_eq; language operator"
+followup = "PLAN-945"
+
+[[operations]]
+id = "text.clone"
+semantic_version = 1
+module = "clone"
+symbol = "Clone.clone"
+layer = "public"
+spelling = "owned.clone()"
+caller = "owned.clone()"
+visibility = "private"
+parameters = []
+modes = []
+returns = "Self"
+unit = "independent_owned_copy"
+dispatch = "spec_method"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "new independent owner; allocation failure preserves input"
+requirements = ["alloc"]
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "Independent bytes; dropping original preserves cloned value"
+source = "stdlib/auto/clone.at; experimental/ace/crates/text-runtime/src/lib.rs ac_rt_own_clone"
+followup = "PLAN-945"
+
+[[operations]]
+id = "list.length"
+semantic_version = 1
+module = "list"
+symbol = "List.len"
+layer = "public"
+spelling = "xs.len()"
+caller = "xs.len()"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "int"
+unit = "elements"
+dispatch = "instance_method"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "[2,4,8] -> 3"
+source = "stdlib/auto/list.at; experimental/ace/crates/collections-runtime/CONTRACT.md"
+followup = "PLAN-946"
+
+[[operations]]
+id = "result.is_ok"
+semantic_version = 1
+module = "result"
+symbol = "Result.is_ok"
+layer = "public"
+spelling = "Ok(42).is_ok()"
+caller = "Ok(42).is_ok()"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "bool"
+unit = "variant_tag"
+dispatch = "instance_method"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "Ok(42) -> true; Err(7) -> false"
+source = "stdlib/auto/result.at; experimental/ace/crates/collections-runtime/CONTRACT.md"
+followup = "PLAN-946"
+
+[[operations]]
+id = "console.say"
+semantic_version = 1
+module = "io"
+symbol = "say"
+layer = "public"
+spelling = "use auto.io: say; say(\"A中😀\")"
+caller = "use auto.io: say; say(\"A中😀\")"
+visibility = "public"
+parameters = ["str"]
+modes = ["View"]
+returns = "void"
+unit = "utf8_output"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = ["console"]
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "Exact UTF-8 output; ungranted host dispatch count zero"
+source = "stdlib/auto/io.at; experimental/ace/crates/av-core/src/host.rs console/1"
+followup = "PLAN-947"
+
+[[operations]]
+id = "io.read_line"
+semantic_version = 1
+module = "io"
+symbol = "read_line"
+layer = "public"
+spelling = "use auto.io: read_line; read_line()"
+caller = "use auto.io: read_line; read_line()"
+visibility = "public"
+parameters = []
+modes = []
+returns = "str"
+unit = "line_without_terminator"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = ["stdin"]
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "Empty input vs blank line retain legacy ambiguity"
+source = "stdlib/auto/io.at; vm/ffi/stdlib.rs register_request_io_shims"
+followup = "PLAN-947"
+
+[[operations]]
+id = "io.read_line_opt"
+semantic_version = 1
+module = "io"
+symbol = "read_line_opt"
+layer = "public"
+spelling = "use auto.io: read_line_opt; read_line_opt()"
+caller = "use auto.io: read_line_opt; read_line_opt()"
+visibility = "public"
+parameters = []
+modes = []
+returns = "Option<str>"
+unit = "optional_line_without_terminator"
+dispatch = "module_function"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = ["stdin"]
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "blank line -> Some(\"\"); EOF -> None"
+source = "stdlib/auto/io.at; docs/specs/stdlib/project.md PLAN-813"
+followup = "PLAN-947"
+
+[[operations]]
+id = "text.legacy_len_static"
+semantic_version = 1
+module = "str"
+symbol = "str.len"
+layer = "public"
+spelling = "Str.len(\"A中😀\")"
+caller = "Str.len(\"A中😀\")"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "int"
+unit = "utf8_bytes"
+dispatch = "static_native"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "8"
+source = "docs/specs/stdlib/project.md PLAN-872; vm/native_catalog.rs; vm/engine/call.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "text.legacy_len_dynamic"
+semantic_version = 1
+module = "str"
+symbol = "str.len"
+layer = "public"
+spelling = "dynamic.len()"
+caller = "dynamic.len()"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "int"
+unit = "unicode_scalars"
+dispatch = "dynamic_call_spec"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "A中😀 -> 3"
+source = "docs/specs/stdlib/project.md PLAN-872; vm/native_catalog.rs; vm/engine/call.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "text.legacy_length_property"
+semantic_version = 1
+module = "str"
+symbol = "str.length"
+layer = "public"
+spelling = "s.length"
+caller = "s.length"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "int"
+unit = "unicode_scalars"
+dispatch = "property"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "A中😀 -> 3 in VM; JS UTF-16 -> 4"
+source = "docs/specs/stdlib/project.md PLAN-872; vm/native_catalog.rs; vm/engine/call.rs"
+followup = "PLAN-945"
+
+[[operations]]
+id = "text.legacy_parse_int"
+semantic_version = 1
+module = "str"
+symbol = "str.parse_int"
+layer = "public"
+spelling = "Str.parse_int(\"12x\")"
+caller = "Str.parse_int(\"12x\")"
+visibility = "native_only"
+parameters = []
+modes = []
+returns = "int"
+unit = "signed_i32"
+dispatch = "static_native"
+errors = "Existing language/VM errors; no new conversion"
+ownership = "view; no ownership change"
+requirements = []
+profile = "Existing Windows x64 only; legacy source or explicitly named ACE finite profile"
+oracle = "0 in VM; legacy a2r Result"
+source = "docs/specs/stdlib/project.md PLAN-872; vm/native_catalog.rs; vm/engine/call.rs"
+followup = "PLAN-945"

@@ -409,7 +409,11 @@ fn sema_boundary_case_files_executed_status_honest() {
 fn sema_boundary_manifest_dependency_audit() {
     let root = workspace_root();
     for (manifest, extra_allowed) in [
-        ("crates/semantics-contract/Cargo.toml", vec!["blake3"]),
+        // PLAN-944: versioned backend-free assembly DTO codec only.
+        (
+            "crates/semantics-contract/Cargo.toml",
+            vec!["blake3", "serde", "serde_json"],
+        ),
         (
             "crates/semantics/Cargo.toml",
             vec!["ace-semantics-contract", "ace-core"],

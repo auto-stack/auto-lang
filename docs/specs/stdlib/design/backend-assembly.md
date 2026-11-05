@@ -6,6 +6,10 @@
 
 ## 装配规则（PLAN-738 实际 provider 索引）
 
+PLAN-943：实际扫描消费 [操作语义合同](semantic-operation-contract.md) 的版本化数据；
+inventory schema 3 报告所有声明、失败层、原生别名/最终绑定及兼容差额，
+合同错误阻止生成装配身份。candidate、bound 与语义认证保持分级；此变更不接入 ACE 调用。
+
 - **VM** = 名称/ID + 真实 shim 绑定双面成立才 Supported；ID 别名限明确
   同 callee，两不同 callee 争 ID 报错。
 - **Rust** = producer 文件（含 `pub use` 转发链解析到定义文件，producer

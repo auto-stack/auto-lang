@@ -1,0 +1,8 @@
+# PLAN-935 T-09 — SQ-B finite scalar template instances family (closed-form
+# values on AV/native through the instances lane; frozen diagnostics).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-source-instances-935", include: [
+  "source-instances-935.case.ad",
+] }
+```

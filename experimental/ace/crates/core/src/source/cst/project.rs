@@ -30,11 +30,26 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
+    project_program_with_caps(p, k, tree, snap, profile, false)
+}
+
+/// PLAN-935（T-02）：能力感知投影。`instances = true`（统一前门以
+/// `scalar-instances` 裁剪解析时）类型位裸 ident 按声明类型变量投影为
+/// `TypeRef::TyVar`；fn-tail 的 `<T>` 投影为 `FnItem::type_params`。plain
+/// 面与旧路径逐字节同形。
+pub(crate) fn project_program_with_caps(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+    instances: bool,
+) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     if let Some(d) = lex::first_lex_fact(tree, snap, k, profile) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile);
+    let mut eng = Engine::new(p, k, tree, snap, profile, instances);
     let tree_has_errors = tree.has_error_nodes();
     let mut items = Vec::new();
     let mut saw_script = false;
@@ -50,6 +65,21 @@ pub(crate) fn project_program(
             } else {
                 dn
             }
+        };
+        // PLAN-950: public visibility is retained in ModuleSyntax, while
+        // the existing function projector consumes the nested fn item.
+        let node = if p
+            .rules
+            .iter()
+            .position(|r| r.name == "public-fn")
+            .is_some_and(|i| {
+                tree.kind(node) == ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+            }) {
+            p.field_id("function")
+                .and_then(|f| tree.field_child(node, f))
+                .unwrap_or(node)
+        } else {
+            node
         };
         let kind = tree.kind(node);
         // 错误子树跳过乐观投影（结构层映射负责其诊断；干净子树照常投影
@@ -2646,6 +2676,7 @@ enum Frame {
     FnBodyFinish {
         node: u32,
         name: Ident,
+        type_params: Vec<Ident>,
         params: Vec<Param>,
         ret: TypeAnn,
         receiver: Receiver,
@@ -2756,6 +2787,11 @@ pub(crate) struct Cx<'a> {
     tree: &'a CstTree,
     snap: &'a Snapshot,
     profile: SourceProfile,
+    /// PLAN-935：instances 能力面激活（scalar-instances 裁剪）。
+    instances: bool,
+    /// PLAN-935：当前投影中函数声明的类型参数名（fn 投影期间有效——
+    /// 引擎栈在 run_fn_item 内驱完，无跨函数交错）。
+    ty_params: Vec<String>,
     visited: usize,
     diags: Vec<(u64, Diagnostic)>,
     over_budget: bool,
@@ -2900,6 +2936,7 @@ impl<'a> Engine<'a> {
         tree: &'a CstTree,
         snap: &'a Snapshot,
         profile: SourceProfile,
+        instances: bool,
     ) -> Self {
         Engine {
             cx: Cx {
@@ -2908,6 +2945,8 @@ impl<'a> Engine<'a> {
                 tree,
                 snap,
                 profile,
+                instances,
+                ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
                 over_budget: false,
@@ -2970,6 +3009,44 @@ impl<'a> Engine<'a> {
             let span = name.span;
             self.cx.reject(span, || self_method_name(span));
         }
+        // PLAN-935（T-02）：`<T>` 类型参数投影（scalar-instances 面才有
+        // 该字段；plain 面无此步 = 无字段）。有限形态门：至多一个类型参
+        // 数、不重名、模板方法与模板入口具名拒（覆盖边界，不当 token 跳过）。
+        let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
+        if !type_params.is_empty() {
+            let tp_span = type_params[0].span;
+            if receiver != Receiver::Free || owner.is_some() {
+                self.cx.reject(tp_span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "template methods are not part of the finite instances surface",
+                        tp_span,
+                    )
+                });
+            } else if type_params.len() > 1 {
+                let last = type_params[type_params.len() - 1].span;
+                self.cx.reject(last, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "at most one type parameter is supported (`<T>`)",
+                        last,
+                    )
+                });
+            } else if name.name == "main" {
+                self.cx.reject(tp_span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "the entry function cannot be a template",
+                        tp_span,
+                    )
+                });
+            }
+        }
+        // fn 投影期间类型变量可见（参数/返回/体内注解位）。
+        self.cx.ty_params = type_params.iter().map(|t| t.name.clone()).collect();
         let params = self.project_params(self.cx.field_child(tail, "params"));
         if receiver == Receiver::View {
             for prm in &params {
@@ -2985,6 +3062,7 @@ impl<'a> Engine<'a> {
         self.stack.push(Frame::FnBodyFinish {
             node,
             name,
+            type_params,
             params,
             ret,
             receiver,
@@ -2992,6 +3070,7 @@ impl<'a> Engine<'a> {
         });
         self.enter_block(body_n);
         self.drive();
+        self.cx.ty_params.clear();
         match self.vals.pop() {
             Some(Val::F(f)) => f,
             _ => FnItem {
@@ -2999,6 +3078,7 @@ impl<'a> Engine<'a> {
                     name: String::new(),
                     span: Span { start: 0, end: 0 },
                 },
+                type_params: Vec::new(),
                 params: Vec::new(),
                 ret: TypeAnn {
                     kind: TypeRef::Builtin(TypeWord::Int),
@@ -3014,6 +3094,52 @@ impl<'a> Engine<'a> {
                 script: false,
             },
         }
+    }
+
+    /// PLAN-935（T-02）：fn-tail `<T>` → `Vec<Ident>`（声明序；重名具名拒）。
+    fn project_type_params(&mut self, node: Option<u32>) -> Vec<Ident> {
+        let mut out = Vec::new();
+        let Some(n) = node else { return out };
+        let Some(tp_kind) = self.cx.k.type_param else {
+            return out;
+        };
+        let direct = collect_seq(&self.cx, n, tp_kind, "type-param-tail");
+        for tp in direct {
+            let leaf = self.cx.field_child(tp, "name").expect("type param name");
+            let id = ident_of(&mut self.cx, leaf);
+            // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
+            // ——r-has/r-const 保留词形状）语法可识别、此处具名拒（覆盖边
+            // 界，不当 token 跳过）。
+            let boundary = self
+                .cx
+                .field_child(tp, "constraint")
+                .or_else(|| self.cx.field_child(tp, "const_kw"));
+            if let Some(cst_n) = boundary {
+                let span = self.cx.span_of(cst_n);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "type parameter constraints (and const parameters) are not part of \
+                         the finite instances surface",
+                        span,
+                    )
+                });
+            }
+            if out.iter().any(|p: &Ident| p.name == id.name) {
+                let span = id.span;
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        format!("duplicate type parameter `{}`", id.name),
+                        span,
+                    )
+                });
+            }
+            out.push(id);
+        }
+        out
     }
 
     fn project_params(&mut self, params_node: Option<u32>) -> Vec<Param> {
@@ -3112,6 +3238,15 @@ impl<'a> Engine<'a> {
             _ => {}
         }
         let word = self.cx.spelling(word_leaf);
+        // PLAN-935（T-02）：instances 面类型位裸 ident = 声明类型变量（仅
+        // 当拼写匹配当前函数声明的 `<T>`；同名 record/局部不误绑——scalar
+        // 面无 record，未匹配的 ident 走下方具名拒绝，不猜默认类型）。
+        if self.cx.instances && self.cx.ty_params.iter().any(|t| t == &word) {
+            return TypeAnn {
+                kind: TypeRef::TyVar(Ident { name: word, span }),
+                span,
+            };
+        }
         let is_text = self.cx.profile.is_text();
         // PLAN-928（T-04，镜像旧 collections_type）：collections 面 `Str`
         // → StrOwned；`char` 仅 closures（909 共享 cell 值域）→ Char；小写
@@ -3375,6 +3510,7 @@ impl<'a> Engine<'a> {
                     name: "main".to_string(),
                     span: start_span,
                 },
+                type_params: Vec::new(),
                 params: Vec::new(),
                 ret: TypeAnn {
                     kind: TypeRef::Builtin(TypeWord::Void),
@@ -3786,6 +3922,23 @@ impl<'a> Engine<'a> {
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
             let ck = self.cx.tree.kind(c);
+            // PLAN-950: preserve the qualified source identity for module binding.
+            if self
+                .cx
+                .p
+                .rules
+                .iter()
+                .position(|r| r.name == "qualified-name")
+                .is_some_and(|r| ck == ace_syntax_runtime::program::RULE_KIND_BASE + r as u32)
+            {
+                if let Some(id) = self.first_ident_opt(c) {
+                    self.vals.push(Val::E(Expr {
+                        span: id.span,
+                        kind: ExprKind::Var(id),
+                    }));
+                    return;
+                }
+            }
             // PLAN-928（T-03）：`List<T>.member` 接收原子。
             if ck == self.cx.k.generic_atom.unwrap_or(u32::MAX) {
                 let name_leaf = self.cx.field_child(c, "name").expect("generic atom name");
@@ -4749,6 +4902,23 @@ impl<'a> Engine<'a> {
         // 复用 first_ident 的下降逻辑但返回 Option。
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
+            if self
+                .cx
+                .p
+                .rules
+                .iter()
+                .position(|r| r.name == "qualified-name")
+                .is_some_and(|r| {
+                    self.cx.tree.kind(n) == ace_syntax_runtime::program::RULE_KIND_BASE + r as u32
+                })
+            {
+                let a = self.cx.field_child(n, "module")?;
+                let b = self.cx.field_child(n, "member")?;
+                return Some(Ident {
+                    name: format!("{}.{}", self.cx.spelling(a), self.cx.spelling(b)),
+                    span: self.cx.span_of(a).join(self.cx.span_of(b)),
+                });
+            }
             if self.cx.tree.kind(n) == self.cx.k.tok_ident {
                 let span = self.cx.span_of(n);
                 let name = self.cx.spelling(n);
@@ -5088,6 +5258,7 @@ impl<'a> Engine<'a> {
             Frame::FnBodyFinish {
                 node,
                 name,
+                type_params,
                 params,
                 ret,
                 receiver,
@@ -5098,6 +5269,7 @@ impl<'a> Engine<'a> {
                 self.vals.push(Val::F(FnItem {
                     span,
                     name,
+                    type_params,
                     params,
                     ret,
                     body,
@@ -5115,6 +5287,7 @@ impl<'a> Engine<'a> {
                         name: "main".to_string(),
                         span: start_span,
                     },
+                    type_params: Vec::new(),
                     params: Vec::new(),
                     ret: TypeAnn {
                         kind: TypeRef::Builtin(TypeWord::Void),

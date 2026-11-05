@@ -39,6 +39,14 @@
   - FnSig 只读声明面；body-only 编辑不得使其失效。
   - 526/新增 record 字段闭包/SCC 属 935/后续，不在本层承诺。
 
+PLAN-944 的显式模块装配可为每个真实 owner 提供声明 context（操作语义
+版本/签名/mode/显式 requirements 的内容版本）。SignatureCatalog 在
+`ac944/declaration-context/v1` 域组合基础签名轴与该 context；默认空映射
+完整保留原934键。正依赖继续读取该 catalog 的当前版本，需求变更使真实
+读者失效；物理 provider/完整 manifest不进入该签名轴。根 `/3` 恢复必须
+匹配调用方当前 context，旧 `/2` 不重解释。跨两端单根发布与候选源图所有权
+见 [ACE绑定与装配](../stdlib/design/ace-binding-and-assembly.md)。
+
 ## 事实页（`InferBodyFacts`）
 
 - 自描述：`name`、`logical`、`body_version`、信封四元组、`revision`、`steps`。
@@ -101,3 +109,37 @@
 - 求解沿用 796 原门：5s / 1,000,000 steps；页 ≤512KiB、managed 16MiB、hot8+scratch8；
   A2X 48MiB 含本层新增保留物；正式 release 父窗 P90≤2000ms（fresh 冷准备分列）。
 - 缺样本/伪造 0/越界即红；预算/取消是资源状态，不持久成语言诊断。
+
+## 实例层叠加（PLAN-935，SQ-B）
+
+- `compile_scalar_product` 的**实例 lane**：capabilities 携带
+  `ac.source.instances.scalar/v1` 时，统一前门以 `scalar-instances` 裁剪
+  解析（`FRONT_CAPS_VERSION=ac-source-front/2`），实例层经求解器真 unify
+  发现需求并**脱糖**（模板移除/实例落位/调用点按 (owner,span) 重绑），
+  事实路径跑在脱糖程序上；plain 模块经 lane 与 plain 面逐字节同产物。
+- 产品结果 `ProductCompile` 增 `instances`（身份在键不在装配名）与
+  `program`（事实路径真实输入——env 保留宿主用它，不做第二次盲 parse）。
+- 实例宿主协议（prepare_set→attach_target→commit 重验一步切换、按完整
+  键单飞、S935 页持久化与 A→B→A 内容等值再准入）与恢复语义见
+  [source-scalar-instances.md](source-scalar-instances.md)。
+- 模板 body-only 变化：实例键变、实例体重产；调用者 body 页 hit（推导
+  0）——签名轴不动，不重算所有 caller。
+
+## 有限模块消费者（PLAN-950）
+
+`source_query::modules` 在原 producer/session/store 之上接收保留 namespace/
+可见性/导入事实的模块图。正签名依赖沿原 SignatureCatalog；缺失导出在绑定门
+拒绝，失败候选不成为可执行缓存。单函数 body 编辑复用原 BodyTypeSupply 与
+FnCandidate，不重产未变函数；签名漂移仍具名归非快路径。
+
+`source-modules-root/2` 引用 A01/A02/A03、S934 事实和 core 声明环境；恢复无
+源码解析/solver，首编辑不整图 resolve/emit。模块事实的 `sq-module-page/1`
+地址把所读版本与语义事实绑定，临时请求 revision 规范为0；旧 bare S934
+持久地址/codec 不重解释。source-bound AV/Rust target receipts 通过同一根的
+required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set。
+完整边界见[有限模块合同](../auto-syntax/finite-source-modules.md)。
+
+候选事务保留独立的不可变查询缓存根，事实页共享；准备和receipt写入不会替换已发布函数的页。
+单函数与批量路径在拒绝、丢弃、取消或发布失败后均保留current缓存，只有成功commit安装候选缓存。
+真实求解计数和请求revision持续累计，不随候选回滚；失败A后首次编辑独立B仍只求解B。
+批量签名拒绝沿模块源映射保留模块身份和原文byte span，与单函数入口一致。
