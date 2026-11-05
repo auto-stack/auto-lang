@@ -186,6 +186,9 @@ T-09使能拟`crates/auto-lang/test/cases/ace-m1/source-instances-935/`与独立
 
 2026-11-04 stage:new / PLAN-935 r1 / outcome:pass（规划静态合同）/ next:work（后续实施指令及934/929所需稳定接缝）。0/12，新模板语法/实例/测试/认证均未执行；独立实施review另做，不由已有796 InstanceKey模型背书。
 
+
+2026-11-06 stage:merge | PLAN-935:r2 | cleaned验证：`wt-guard` clean→worktree`D:/autostack/.wt/lang-935/auto-lang`与分支`plan-935-dev`（was e9f7d47e8）已删、组目录已空删；`plan-artifacts/plan-935/`全删（冻结/draft文档要点已折叠：T-01行hash、§9重锚收据）；registry `policy.json` 已刷新（PLAN-935 archived/scope deleted/no holds/delivery e9f7d47e8）。批回归due：非due（935<covered 937；回执2026-11-05<48h）。主检出状态：本计划簿记已提交（edda879ec）；docs/design下存在他方会话未提交WIP（会话开始即在，非本计划所有——已上浮不动）。| outcome: **pass**（delivered+canonical+archived+cleaned 全验证）
+
 ## 10. 待澄清事项
 
 **[2026-11-05 work 等待——已解除（同日）]** D934 已合入归档，T-02 开工并完成；下为历史记录。T-01 已完成（只读冻结，见§9）。T-02 的前置"D934 已审稳定 query 端口"未满足：PLAN-934 由**另一活跃会话**推进中（executing 6/13，T-07 已提交 `2793de9b2`，worktree 分钟级文件活动、cargo 进程在跑，review/merge 未开始）。本会话按单写面规则不并写 934。**解除条件**：master 出现 934 merge 交付后，T-02 开工（建树 `lang-935`/`plan-935-dev`，重锚 T-01 的 33 项 hash 表与 934 端口符号）。
