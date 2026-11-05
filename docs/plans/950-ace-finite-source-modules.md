@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-950
-status: execution_done
+status: reviewed
 feature_name: ACE 有限公共函数模块与受检绑定前置
 author: [Codex]
 created_at: 2026-11-06
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-syntax/finite-source-modules.md]
 touched_goals: [GOAL-002]
 affects: [auto-syntax, auto-semantics, auto-a2x, auto-av]
 depends_on: [PLAN-929, PLAN-934, PLAN-943]
-current_step: 5
+current_step: 6
 total_steps: 7
 ---
 
@@ -103,7 +103,7 @@ T-01 bounded闭环：仅两模块、三个函数（std public answer=42、privat
 - [x] **T-03｜owner_stage: work｜AC-02**：有限module binder接source-query/唯一resolve，两个真实consumer实际执行V-01/02；拒绝未知/私有/重复/错签名，保遮蔽。
 - [x] **T-04｜owner_stage: work｜AC-03/04**：沿source-query/artifacts恢复与原事务接模块身份、正负依赖与首编辑；V-04..07永久反例和合法对照，失败后真实读回。
 - [x] **T-05｜owner_stage: work｜AC-01..04**：核实际生产计数/边界与所有新用例接固定组，完成受影响完整职责组和健康检查，提交冻结源码与拟议Spec delta。
-- [ ] **T-06｜owner_stage: review｜AC-05**：同一唯一树独立final review，逐AC与遗漏/债务候选核验，结论绑定revision/SHA；pass才reviewed。
+- [x] **T-06｜owner_stage: review｜AC-05**：同一唯一树独立final review，逐AC与遗漏/债务候选核验，结论绑定revision/SHA；pass才reviewed。
 - [ ] **T-07｜owner_stage: merge｜AC-06**：冻结职责组并集、ff来源核验、落Spec/归档、证据摘要折入Plan；逐命令所有输出根对账、刷新retention、guard clean后删除树/branch/scope。实际交付后回944。
 
 T-01依赖已交付929/934/943，T-02..05依赖T-01冻结；T-06在work AC全闭后、T-07在final pass后。不得勾选未做任务，count含7项全生命周期任务。正文命名是拟议接线，开工核符号，不手写HIR顶替source验收。
@@ -202,6 +202,43 @@ Readiness：AC01..04均由永久合法/非法对照、真实双执行值及恢�
 `stage: work | plan_id: PLAN-950 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-950/auto-lang | branch: plan-950-dev | base_commit: 27fb2cba5e28db66fd363efe176bb85f1287945e | code_commit: d935caa85b39185d5f101dbe3433a7577d561a37 | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | task_ids: T-01..05 complete; T-06/07 pending | evidence: scoped source/dual-consumer/profile logs above | blockers: none | next_responsible_role: independent final review950; frozen six-group gate merge-owned`
 
 `stage: goal | plan_id: PLAN-950 | plan_revision: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-950/auto-lang | commit: d935caa85b39185d5f101dbe3433a7577d561a37 | next: review`
+
+2026-11-06 review baseline同步：worktree已无冲突rebase至master `3eaaff58a`（包括已交付951证书JSON修复及Plan簿记）；4个950提交range-diff全部`=`：dc9f63f4f→d2e2aaace、7f0abd10d→2cfe77207、dc0741bf7→297edb844、d935caa85→8f595a9a35c839928c080c18e4ebb17cdc4f82a9。实际final review以该新HEAD、base=3eaaff58a为准，不用旧SHA覆盖新上下文。唯一树clean，implementation暂停；受影响新基线目标结果与最终固定组由review/merge核，纯rebase不伪称重新执行。
+
+### 2026-11-06 independent final review r1
+
+`stage: review | review_scope: final | reviewer_identity: independent review950 context (implementation未参与；未声称其他model身份) | plan_id: PLAN-950 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-950/auto-lang | branch: plan-950-dev | reviewed_commit: 8f595a9a35c839928c080c18e4ebb17cdc4f82a9 | base_commit: 3eaaff58a | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | findings: no open in-contract findings | next: merge-owned frozen affected-group gate, then deposit/archive/cleanup`
+
+已独立读取本技能/AGENTS、主Plan r1、完整新增模块绑定/编辑/存储/两目标实现、共享改动与三份Spec delta。初次准备审计不是final review round；本次为正式final review第1轮。冻结进入与结束HEAD相同、实施clean，同一唯一树无review checkout。四个原提交rebase映射与真实依赖核对；951新增case使worker当前未选171（旧日志169不混算）。
+
+| AC → task | verdict | 实际路径/反例与边界 |
+|---|---|---|
+| AC-01 → T01/02/05 | pass | 统一auto-source.at scalar-modules CST及严格原AST投影；模块能力显式且instances组合拒绝；pub词法profile gate实核；旧fn pub/let pub合法对照、新语法无能力拒绝、原九profile corpus/edge重放通过；无legacy生产fallback |
+| AC-02 → T01/03/05 | pass | AST限定身份、可见性/本地遮蔽/不同private helper独立符号；真实AV与HIR→Rust生成文件经rustc/exe各自42/7；bool/int错调用冷暖原std/span和合法bool对照；独立return/arity/非callable sibling反例保持std及非零源span，diagnostic_verdicts=0 |
+| AC-03 → T04/05 | pass | 原A01/A02/A03、S934 codec及required闭包/外部SHA receipt；恢复CST重投影+声明env准入+facts seed，真实scanner/parser/solver零；变长首编辑只目标实际生产、未变AV Arc/AXR artifact复用，成功下次恢复43/7；错误schema/grammar/binding/source/caps/重复/required边真变异拒绝；source-base跨合法会话反控在lower/print前拒 |
+| AC-04 → T04/05 | pass | 单写candidate先准备，原FnCandidate owner/base检查；ManagedStore replace_current_root同liveness锁及SQLite事务compare/insert/delete/commit，DELETE错误回滚；cancel/INSERT/DELETE三方向各独立新store+AV+Rust重开真实旧42/7且旧文件相同；未序列化执行地址/授权，未改原预算或测试条件 |
+| AC-05 → T06 | pass | 全AC/Spec/负控及PRE共同机制闭合审查完成，无遗漏/未批准延后/冷编译冒恢复；旧bare S934冲突已具名D950-1，不将其冒充本包已修 |
+| AC-06 → T07 | pending merge | 六固定组完整并集、canonical来源落地、归档、实际guard/path/retention清理仍待merge，不声称已交付D950 |
+
+独立当前冻结重放（工作目录均唯一950树，临时材料显式scope，测试AUTO_PLAN_ARTIFACTS=scope；常规target在树）：
+
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-core -p ace-source-query --lib modules:: -- --nocapture` exit0，core5/5、query9/9，ignored0，过滤19/37；准备4.57s，运行0.01+0.29s，整命令5.52s。`review-final-modules.log` SHA256=6fb185f66cf9bd10e0f62735a021599a6e24d8fb755a75cf05935fc39ec313e4。
+- `cargo test ... -p ace-a2x-worker --test conformance module_sources_950:: -- --nocapture` exit0，2/2、ignored0、过滤171；准备9.03s/运行8.31s（含真实rustc/exe及各失败后新会话），`review-final-consumers.log` SHA256=53a6807d58da30b3b3d5ac74a5cb968326a0eccdb2b6c67a6d539afd722dfa6b。
+- 独立`cargo run --manifest-path D:/autostack/plan-artifacts/plan-950/review-probe/Cargo.toml --target-dir D:/autostack/plan-artifacts/plan-950/target` exit0，1合法bool控制+3不同拒绝（return bool/int、缺参数、局部非callable），全部std/有效原span且legacy诊断计数0；准备34.60s，执行<0.1s。`review-independent-probe.log` SHA256=a3a7e4a5fd5afeb0f09341b6feabfde85d7c9a21e9936471371c9755ecd18d30。probe源码/lock/产物仅scope，merge全删。
+- `cargo test ... -p ace-syntax-grammar --test conformance profiles_927:: -- --nocapture` exit0，5/5、ignored0、过滤26，准备0.83s/运行0.07s/整1.14s；`review-final-grammar.log` SHA256=7a7cdd5abefcbd6aeebf90fee6ac2f3337510a5a0f30e4ba0fe144a29257e064。
+- `cargo test ... -p ace-core --test conformance source_cst_927:: -- --nocapture` exit0，10/10、ignored0、过滤337，准备2.60s/运行1.81s/整4.73s；`review-final-legacy.log` SHA256=af8baaa0c11e0963b38d8d683d60303688f7763e41a3ea93ba66c49e88cd1e00。
+
+PRE控制原日志的实际断言已读：移除诊断投影使std断言失败；移除两base guard使预期Err收到Ok而两consumer失败；破坏原子replace使失败预期收到Ok。正式源码相应实现存在且当前上述定向均绿；未依赖自报banner。所有计数为实际执行，过滤不是条件SKIP；本次定向无条件排除，清理由fixture drop完成（未单独计时）。
+
+健康：本包所有改动Rust文件的`rustfmt --check --config skip_children=true`通过，唯一例外为a2x-worker/tests/conformance.rs中951继承的cert_json_951模块排序；独立将base同文件保存scope后同样fmt红，950新增行没有新格式问题。首个递归fmt还命中未改旧子模块，保留review-final-fmt.log/scoped.log，不假称全仓零红；排除该继承文件的本包检查review-final-fmt-owned.log exit0，git diff --check exit0。编译只见已具名旧source-query/tests.rs895 unused_mut及AV closures_fn_session613/803、owned_session111/112 warning；未新增warning/debug输出。
+
+Spec delta SD01..03通过，路径/当前规则/AC绑定准确；不扩大944标准操作/装配授权，不写legacy ledger或手工索引。冻结文本SHA256：source-frontdoor=578e98e68e2d88691310d80b199546c0d6b39c564191106a54cbaa758370861e，source-query-session=7d8239fdecc3fc82ebd8f01f785ca76aa869db9c7e4cad1782d2a1aaa96020f9，finite-source-modules=a5bcc32fa15162bfd77d9769fe8156e5157f3cb090f01966cb14ec9dee2b1806。三文件精确diff冻结scope/review-frozen-spec-delta.diff SHA256=0ac21c2a91dbacd1f623fae19340226f52782ac8308d1700e2726c375810db93；impact元数据保持两个modify、一个add、GOAL-002。
+
+pending_closeout_gates：冻结`cargo t ace-source ace-syntax ace-semantics ace-artifacts ace-av ace-a2x`由merge单实例运行；旧syntax132发现后64MiB压力主动中止不是PASS，旧source370不自动覆盖新修复。review pass不允许未满足门禁时合入。清理还须精确核查旧C:/Users/zhaop/AppData/Local/Temp/ac787-budget-64m-45528、scope内失败fixture及本次review-probe，不碰936异pid目录；后续TEMP/TMP显式scope/runtime-temp。T06闭合6/7，T07待实际交付。
+
+2026-11-06 merge prepared：已消费独立final pass，冻结review/source=`8f595a9a35c839928c080c18e4ebb17cdc4f82a9`。当前六组完整门禁在同树执行，scope/merge-gate，TEMP/TMP显式scope/runtime-temp；保持原样本/预算/平台/ignored条件。第一次启动exit2（旧中止work-gate留下active lease owner pid22124），核owner根确为950、PID已退出、目录无reparse后仅删该owner文件/空lease并重启；未删活动其他会话租约。原admission错误保留merge-gate-admission.log，不算产品红。早期测试默认Temp外散只确认为ac787-budget-64m-45528，merge最终逐路径核对/清除，尚未删除；runtime-temp及review材料仍在scope保护。修正旧work goal收据被簿记替换为reviewed的笔误，恢复该历史时点execution_done，本次reviewed仅由final receipt授予。
+
+`stage: goal | plan_id: PLAN-950 | plan_revision: 1 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-950/auto-lang | commit: 8f595a9a35c839928c080c18e4ebb17cdc4f82a9 | next: merge`
 
 ## 10. 待澄清事项
 
