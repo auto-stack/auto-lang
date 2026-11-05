@@ -459,7 +459,9 @@ mod tests {
         );
         assert!(fs.manifest == fs2.manifest);
         // a body edit changes generated.c bytes AND manifest hashes
-        let frag2 = frag.replace("a + b", "a + b + 1");
+        // (reassociated body: same observable semantics, distinct bytes —
+        // the fragment text carries the runtime helper, not raw )
+        let frag2 = frag.replace("a2x_add(a, b)", "a2x_add(b, a)");
         let fs3 =
             assemble_library_fileset(&[frag2.as_str()], "RT", &[sum_spec()], &inputs).unwrap();
         assert_ne!(fs.manifest, fs3.manifest);
