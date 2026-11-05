@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-929
-status: execution_done
+status: reviewed
 feature_name: SG-C 全源码入口增量恢复统一与重复parser退役
 author: [Codex]
 created_at: 2026-11-03
@@ -213,6 +213,8 @@ SYN门最终映射（927/928交分项证据，929按真实consumer复核）：
 下一入口T-01私有清单，T-02最小恢复整链在迁移前完成；公共实现需927/928稳定接口与所有实际owner释放，不把在途分支当D。用户本轮不授权work。
 
 ## 9. 复审记录
+
+- stage: review | review_scope: final（复审终判） | reviewer_identity: 同会话复审（独立重建面同前） | plan_id: PLAN-929 | plan_revision: r2 | outcome: **pass** | worktree_path: `D:/autostack/.wt/lang-929/auto-lang` | branch: plan-929-dev | reviewed_commit: `ab8729f7`（=20102812d + F-R1 健康修复：6 mut+退役路径内部助手 cfg 门；lib 零警告、tests 零错） | base_commit: 37503a3f5 | dependency_revisions: 无外仓 | spec_inputs: 同前 | acceptance_results: F-R1 修复面回归绿（decl_env_roundtrip 2/2、source_restore 8/8 即时重放）；AC-01..11 证据沿 20102812d 终判基面有效（健康修复零语义变更）——**AC-12 闭合** | pending_closeout_gates: merge-owned：冻结受影响并集重验 + SD-01..06 spec 沉淀 + 归档/清树/输出对账 | findings: F-R1 已闭；F-R2..R5 具名随档（非阻塞） | evidence: 零警告/零错/回归绿即时重放；采样与组级收据见 §8/round-12 | next: merge（T-14）
 
 - stage: review | review_scope: final | reviewer_identity: 同会话复审（与实施共上下文——已按技能要求从冻结工件独立重建：冻结 HEAD `20102812d` 上独立重放 + 全 diff 扫描，不采信执行者摘要；局限性见 F-R4） | plan_id: PLAN-929 | plan_revision: r2 | outcome: **needs_fix**（单点健康项） | worktree_path: `D:/autostack/.wt/lang-929/auto-lang` | branch: plan-929-dev | reviewed_commit: 20102812d（diff 基 master `37503a3f5`，51 文件 +6057/−1161） | base_commit: 37503a3f5 | dependency_revisions: D928 已归档；无外仓改 | spec_inputs: 六 delta 目标在位（merge 写入） | acceptance_results: AC-01..11 独立重放全过（restore 8/8、decl_env 2/2、decl_events 4/4、retirement 2/2、929 套件 PASS、a2x_decl_env 2/2；组级 14 职责+18 集成绿、采样 28/28 ok）——AC-12 本记录闭合 | pending_closeout_gates: merge-owned 冻结并集重验+spec 沉淀 | findings: **F-R1（medium，健康）** decl_env.rs 6 处多余 `mut` 警告（触碰 crate 零警告门）——最小修复面=删 6 mut+decl_env 回归；F-R2（low，具名债）av798 %TEMP% runner 侧清理未施工（归因配方已记）；F-R3（low，边界）V-14 发布 seam 故障以等价面覆盖（dump 篡改/缺失/修复链+幂等发布+失败后旧锚可恢复），未做字面六步注入——边界如实记；F-R4（low，环境）ace-semantics 红=worktree 缺未跟踪附件（主检出绿沿 928 复审，本轮未复跑=局限）；F-R5（low）av 6 文件 fmt 漂移=928 基线（具名） | evidence: 非测试调试打印 0（全 diff 扫描）；无 TODO/FIXME；worktree clean；采样/组级收据见 §8 与 round-12 | next: work 修 F-R1 → 复审终判
 
