@@ -260,6 +260,27 @@ fn check_expr(
                     e.span,
                 ));
             }
+            // PLAN-936（T-04）：走到 typecheck 的 HashExpr = 未服务 CT 需求
+            // ——受控拒（合法路径：CT 车道在发射前以冻结常量结构性替换该
+            // 节点，T-06/T-07）。子树不再走检（同一需求的诊断不重复）。
+            RExprKind::HashExpr { .. } => {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "source.cte.unserved",
+                    "a `#{ ... }` compile-time demand was not served — this compile lane carries                      no CT service (the frozen constant must replace the node before emit)",
+                    e.span,
+                ));
+            }
+            // meta 查询只在 HashExpr 子树内可绑定（bind 强制）；独立出现为
+            // 防御性受控拒。
+            RExprKind::MetaQuery { .. } => {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "source.cte.unserved",
+                    "a CT meta query is only legal inside a `#{ ... }` compile-time demand",
+                    e.span,
+                ));
+            }
             RExprKind::CallIntrinsic { args, .. } => {
                 stack.extend(args.iter());
             }

@@ -30,21 +30,29 @@ fn retirement_no_duplicate_parser_definitions_in_consumers() {
     // 允许的不同领域/共享面（非 Auto 源码语法）：atom 文本、语料工具、
     // 共享前门 re-export 缝、CT 请求 DSL、argv 面。
     let allow_files = [
-        "atom", // atom_text/atom 面（不同语言）
-        "deck",     // CT deck DSL
-        "request",  // comptime-contract 迷你 parser（本 crate 不在扫描面）
-        "syntax",   // syntax-* 共享前门/运行时（语法基础设施本体）
+        "atom",    // atom_text/atom 面（不同语言）
+        "deck",    // CT deck DSL
+        "request", // comptime-contract 迷你 parser（本 crate 不在扫描面）
+        "syntax",  // syntax-* 共享前门/运行时（语法基础设施本体）
     ];
     let mut offenders: Vec<String> = Vec::new();
     for c in consumers {
         let dir = root.join(c);
-        let Ok(_rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(_rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         stack_walk(&dir, &mut |path| {
-            let rel = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().to_string();
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .to_string();
             if allow_files.iter().any(|a| rel.contains(a)) {
                 return;
             }
-            let Ok(text) = std::fs::read_to_string(path) else { return };
+            let Ok(text) = std::fs::read_to_string(path) else {
+                return;
+            };
             for (i, line) in text.lines().enumerate() {
                 let l = line.trim();
                 if l.starts_with("fn tokenize(")
@@ -76,7 +84,9 @@ fn retirement_oracle_surface_reachable_for_differential() {
 }
 
 fn stack_walk(dir: &std::path::Path, f: &mut impl FnMut(&std::path::Path)) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {

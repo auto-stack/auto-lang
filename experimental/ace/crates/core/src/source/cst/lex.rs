@@ -369,7 +369,19 @@ pub(crate) fn first_lex_fact(
     k: &super::kinds::SourceKinds,
     profile: SourceProfile,
 ) -> Option<Diagnostic> {
-    let admits_text = profile.admits_text_literals();
+    first_lex_fact_ct(tree, snap, k, profile, false)
+}
+
+/// PLAN-936（T-04）：ct 面感知的首词法事实——字符串 token 在 ct 面上进入
+/// AST（唯一合法位置 = ct_has_field 字段选择子；值位置由 resolve 拒）。
+pub(crate) fn first_lex_fact_ct(
+    tree: &CstTree,
+    snap: &Snapshot,
+    k: &super::kinds::SourceKinds,
+    profile: SourceProfile,
+    ct_face: bool,
+) -> Option<Diagnostic> {
+    let admits_text = profile.admits_text_literals() || ct_face;
     let mut facts: Vec<(u64, Diagnostic)> = Vec::new();
     for leaf in collect_leaves(tree) {
         if leaf.kind == k.tok_str_lit || leaf.kind == k.tok_char_lit {

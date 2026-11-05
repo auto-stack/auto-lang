@@ -30,7 +30,7 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false)
+    project_program_with_caps(p, k, tree, snap, profile, false, false)
 }
 
 /// PLAN-935（T-02）：能力感知投影。`instances = true`（统一前门以
@@ -44,12 +44,15 @@ pub(crate) fn project_program_with_caps(
     snap: &Snapshot,
     profile: SourceProfile,
     instances: bool,
+    ct_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
-    if let Some(d) = lex::first_lex_fact(tree, snap, k, profile) {
+    // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
+    // resolve 拒绝）。
+    if let Some(d) = lex::first_lex_fact_ct(tree, snap, k, profile, ct_face) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile, instances);
+    let mut eng = Engine::new(p, k, tree, snap, profile, instances, ct_face);
     let tree_has_errors = tree.has_error_nodes();
     let mut items = Vec::new();
     let mut saw_script = false;
@@ -2793,6 +2796,9 @@ pub(crate) struct Cx<'a> {
     profile: SourceProfile,
     /// PLAN-935：instances 能力面激活（scalar-instances 裁剪）。
     instances: bool,
+    /// PLAN-936（T-04）：ct 能力面激活（scalar-ct 裁剪）——字符串字面量仅作为
+    /// meta 字段选择子进入 AST；值位置由 resolve 受控拒。
+    ct_face: bool,
     /// PLAN-935：当前投影中函数声明的类型参数名（fn 投影期间有效——
     /// 引擎栈在 run_fn_item 内驱完，无跨函数交错）。
     ty_params: Vec<String>,
@@ -2941,6 +2947,7 @@ impl<'a> Engine<'a> {
         snap: &'a Snapshot,
         profile: SourceProfile,
         instances: bool,
+        ct_face: bool,
     ) -> Self {
         Engine {
             cx: Cx {
@@ -2950,6 +2957,7 @@ impl<'a> Engine<'a> {
                 snap,
                 profile,
                 instances,
+                ct_face,
                 ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
@@ -4085,7 +4093,9 @@ impl<'a> Engine<'a> {
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
                 // PLAN-928：collections/closures 面拥有 Str 字面量（元素域）。
-                if !self.cx.profile.admits_text_literals() {
+                // PLAN-936（T-04）：ct 面上字符串字面量进入 AST（唯一合法位置是
+                // ct_has_field 的字段选择子，由 resolve 受控验证）。
+                if !self.cx.profile.admits_text_literals() && !self.cx.ct_face {
                     // 旧合同：非 text 面 lexer 产 Raw(StrLit)、primary 拒绝。
                     self.cx.reject(span, move || {
                         Diagnostic::new(

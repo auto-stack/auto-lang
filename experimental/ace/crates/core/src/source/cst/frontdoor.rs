@@ -194,14 +194,13 @@ pub fn ct_grammar() -> Result<&'static CachedGrammar, String> {
     if let Some(g) = slot.get() {
         return Ok(g);
     }
-    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, "scalar-ct").map_err(
-        |diags| {
+    let program =
+        ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, "scalar-ct").map_err(|diags| {
             format!(
                 "auto-source grammar failed to compile for `scalar-ct`: {:?}",
                 diags
             )
-        },
-    )?;
+        })?;
     let scanner =
         CompiledScanner::compile(&program).map_err(|e| format!("scanner compile: {e}"))?;
     let kinds = SourceKinds::from_program(&program).map_err(|missing| {
@@ -550,8 +549,8 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
 pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> FrontOutcome {
     // PLAN-936（T-04）：CT 能力优先——scalar-ct 面包含 scalar-instances 全
     // 表面（CT 可作用于模板实例），不与 instances 面叠加选择。
-    let ct = capabilities.iter().any(|c| c == CT_CAPABILITY)
-        && req.profile == SourceProfile::Scalar;
+    let ct =
+        capabilities.iter().any(|c| c == CT_CAPABILITY) && req.profile == SourceProfile::Scalar;
     let instances = !ct
         && capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
         && req.profile == SourceProfile::Scalar;
@@ -567,7 +566,11 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         profile,
         ..
     } = req;
-    let cached = match if ct { ct_grammar() } else { instances_grammar() } {
+    let cached = match if ct {
+        ct_grammar()
+    } else {
+        instances_grammar()
+    } {
         Ok(c) => c,
         Err(e) => return FrontOutcome::Infra(e),
     };
@@ -597,6 +600,7 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         &snap,
         profile,
         true,
+        ct,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
             program,

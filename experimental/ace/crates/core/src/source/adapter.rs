@@ -2297,6 +2297,11 @@ impl PlanCtx<'_> {
             RExprKind::Binary { .. } | RExprKind::Unary { .. } => {
                 unreachable!("binary/unary handled by plan_expr walk")
             }
+            // PLAN-936（T-04）：未服务 CT 需求/meta 查询在 typecheck 走查处
+            // 受控拒（source.cte.unserved），绝不进入发射。
+            RExprKind::HashExpr { .. } | RExprKind::MetaQuery { .. } => {
+                unreachable!("unserved CT demands are rejected by the typecheck walk")
+            }
             RExprKind::IntLit(v) => {
                 plan.exprs.push(ENode {
                     kind: EKind::Const(*v),

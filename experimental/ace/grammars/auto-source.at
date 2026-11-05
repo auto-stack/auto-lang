@@ -165,7 +165,8 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
-            alt(profiles: [record, text-record, collections]) { type-item() {} }
+            // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
+            alt(profiles: [record, text-record, collections, scalar-ct]) { type-item() {} }
             alt(profiles: [collections]) { enum-item() {} }
             alt(profiles: [entry-unit, host-console, closures]) { script-item() {} }
         }
@@ -309,7 +310,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, text-record, collections]) {
+        type-item(recover: true, profiles: [record, text-record, collections, scalar-ct]) {
             type-kw(field: "kw")
             ident(field: "name")
             lbrace() {}

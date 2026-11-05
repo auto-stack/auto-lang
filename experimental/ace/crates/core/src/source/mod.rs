@@ -261,5 +261,24 @@ pub fn trace_intrinsic(callee: &str) -> Option<&'static str> {
     }
 }
 
+/// PLAN-936 (T-04): capability that activates the closed set of CT meta
+/// query intrinsics (`ct_field_count` / `ct_has_field`). Defaults to
+/// CLOSED; these names are PROTECTED on the CT face — with the capability
+/// granted, a user declaration of the same name is a named conflict (it
+/// never silently shadows the query).
+pub const META_CAPABILITY: &str = "cte.meta.fields/v1";
+
+/// Map a source-level callee name to its meta-query intrinsic symbol
+/// (PLAN-936 §5.2). The type/field operands are QUERY SELECTORS, never
+/// runtime values: they are validated at bind and consumed by the CT
+/// query layer; only i32/bool values ever reach the AV.
+pub fn meta_intrinsic(callee: &str) -> Option<&'static str> {
+    match callee {
+        "ct_field_count" => Some("cte.meta.field_count"),
+        "ct_has_field" => Some("cte.meta.has_field"),
+        _ => None,
+    }
+}
+
 /// PLAN-863: explicitly selected typed console source profile.
 pub const HOST_CONSOLE_SOURCE_PROFILE: &str = "auto.source.host-console.draft";

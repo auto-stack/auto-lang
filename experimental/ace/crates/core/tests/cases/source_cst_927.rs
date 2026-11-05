@@ -120,7 +120,9 @@ fn probe_typed_budget_outcome() {
     match out {
         FrontOutcome::Ok(ok) => {
             assert!(!ok.grammar_id.is_empty());
-            assert_eq!(ok.caps_version, "ac-source-front/2"); // PLAN-935: instances face bump
+            // PLAN-936（T-04）：前门能力面加 scalar-ct → caps 键升 /3（语法/
+            // 能力/映射面变更必须换键；本面行为不变）。
+            assert_eq!(ok.caps_version, "ac-source-front/3"); // PLAN-935: instances face bump
             assert!(!ok.program.items.is_empty());
         }
         other => panic!("expected Ok, got {other:?}"),

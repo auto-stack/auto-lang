@@ -130,7 +130,6 @@ fn finite_surface_named_rejections() {
     }
 }
 
-
 /// PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`——词法
 /// ident+ident）语法可识别、投影具名拒——不能当普通 token 跳过；无能力
 /// 时同一形状仍是原语法拒绝。
@@ -196,4 +195,3 @@ fn main() int {
     // 有能力（scalar-instances 裁剪）：同一源码仍 Ok（超集面）。
     assert!(matches!(with_caps(src), FrontOutcome::Ok(_)));
 }
-
