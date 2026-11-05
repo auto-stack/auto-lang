@@ -206,6 +206,9 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 9. 复审记录
 
+2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 4（纯等待轮） | from: work | to: work | status: executing | outcome: waiting（D934 无变化：仍 7/13、未合并、branch tip e505a665d、worktree 活跃；本会话私有层已齐——936 T-01+T-02/T-03 DRAFT、935 T-01+T-02 DRAFT） | worktree: lang-936（clean） | commit: 本收据即簿记 | next: work / 视情形接管（见下）
+  - **接管判定规则（固化，沿 934 round-6 接管 929 的三证先例）**：934 会话已提交"交接检查点给下一会话"（9120756f2）。若后续轮观察到 934 **停滞三证**——①lang-934 worktree 无文件活动 ≥1h；②无 cargo/rustc/nextest 进程；③其计划 §9 无新收据且 frontmatter 不动——则本会话按用户 standing 指令（"先推进并交付 PLAN-934"）接管其 T-08..T-13（work→review→merge），在 lang-934 树上续作。观察到的活跃即继续等待，绝不并写。
+
 2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 3 | from: work | to: work | status: executing | outcome: waiting（依赖链推进轮：D934 在途 7/13 由另一活跃会话推进，D935 T-01 已由本会话交付；本轮补 936 T-02/T-03 私有设计 DRAFT） | worktree: lang-936（clean 保留） | commit: 主检出簿记（DRAFT 不入 git） | next: work（D934→D935 交付后 T-02 开工，先重锚 41 项 hash 表）
   - 私有 DRAFT：`plan-artifacts/plan-936/t02-draft-bounded-proof.md`（sum 首例最小闭合链+四判据、ExecKey/UseBinding 字段级草案、CtExecutor 端口草图与依赖白名单、计数器落位、开工清单、风险预记）。
   - 同轮依赖链状态：935 T-01 冻结已交付（其 §9）；934 round-19/交接检查点在 master（其会话持窗）。
