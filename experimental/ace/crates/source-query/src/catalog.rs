@@ -34,6 +34,31 @@ pub struct SignatureCatalog {
 }
 
 impl SignatureCatalog {
+    /// Replace only declaration metadata; no AST/body is projected or walked.
+    pub fn replace_foreign(
+        &self,
+        previous: &ace_foreign_contract::manual::AdmittedForeign,
+        next: &ace_foreign_contract::manual::AdmittedForeign,
+    ) -> Result<Self, ProduceError> {
+        let names: std::collections::BTreeSet<_> = previous
+            .source_declarations()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        let foreign = Self::build_with_foreign(
+            &Program { items: Vec::new() },
+            &self.package,
+            &self.module,
+            Some(next),
+        )?;
+        let entries = self
+            .entries()
+            .filter(|f| !names.contains(&f.name))
+            .cloned()
+            .chain(foreign.entries().cloned())
+            .collect();
+        Self::from_entries(&self.package, &self.module, entries)
+    }
     pub fn entries(&self) -> impl Iterator<Item = &FnSigFacts> {
         self.by_name.values()
     }

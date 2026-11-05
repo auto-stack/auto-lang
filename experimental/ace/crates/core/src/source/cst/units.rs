@@ -1401,6 +1401,43 @@ impl UnitCatalog {
         }
     }
 
+    /// Materialize only an actual declaration reader, including immediately
+    /// after restore. Reuse a current-span sealed AST when available; otherwise
+    /// use the same fragment parser/projector as an ordinary owner edit.
+    pub fn owner_for_recheck(
+        &self,
+        owner: &str,
+        budget: FrontBudget,
+    ) -> Result<(Rc<FnItem>, bool), EditError> {
+        let sealed = self
+            .fns
+            .get(owner)
+            .ok_or_else(|| EditError::Infra(format!("unknown owner {owner}")))?;
+        if let Some(item) = &sealed.item {
+            if item.span == sealed.span {
+                return Ok((item.clone(), false));
+            }
+        }
+        match parse_front(FrontRequest {
+            src: &self.src,
+            profile: self.profile,
+            kind: FrontKind::FreeFnFragment {
+                range: sealed.span.start..sealed.span.end,
+            },
+            budget,
+        }) {
+            FrontOutcome::Ok(ok) => match ok.program.items.into_iter().next() {
+                Some(Item::Fn(item)) if item.name.name == owner => Ok((Rc::new(item), true)),
+                _ => Err(EditError::Infra("reader fragment carried no owner".into())),
+            },
+            FrontOutcome::Diag(ds) => Err(EditError::Diag(ds)),
+            FrontOutcome::ResourceExhausted { what, limit } => {
+                Err(EditError::ResourceExhausted { what, limit })
+            }
+            FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => Err(EditError::Infra(m)),
+        }
+    }
+
     /// 提交暂存候选（当前修订推进；计量按暂存面如实入账）。
     ///
     /// PLAN-928（T-09，V-05/§5.4）：stale（候选基修订 ≠ 当前修订）与

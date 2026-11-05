@@ -936,6 +936,7 @@ pub fn restore_context(
     let env = checked_env_from_parts(
         ResolvedProgram {
             foreign: Vec::new(),
+            foreign_slots: Vec::new(),
             fns,
             records,
             lists: dump.lists.iter().map(|v| vt_in(*v)).collect(),

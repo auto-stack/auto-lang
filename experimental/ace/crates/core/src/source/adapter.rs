@@ -596,6 +596,8 @@ pub struct FnCandidate {
     state: super::resolve::BodyState,
     parts: SourceParts,
     receipt: BodyEmitReceipt,
+    foreign_context: Vec<ace_foreign_contract::manual::SourceDecl>,
+    foreign_slots: Vec<String>,
 }
 
 impl FnCandidate {
@@ -638,6 +640,21 @@ impl FnCandidate {
     /// this function is a controlled rejection that modifies nothing.
     /// Commit repeats these same checks at its single publication point.
     pub fn validate(&self, env: &super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        self.validate_base(env)?;
+        if self.foreign_context != env.program.foreign
+            || self.foreign_slots != env.program.foreign_slots
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-context",
+                "candidate declaration context differs from the current context",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(())
+    }
+
+    fn validate_base(&self, env: &super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
         if env.closed {
             return Err(vec![Diagnostic::new(
                 Stage::Bind,
@@ -701,6 +718,65 @@ impl FnCandidate {
     pub fn cancel(self) {}
 }
 
+impl super::resolve::ForeignContext {
+    /// The same ordinary one-body producer, temporarily bound to the candidate
+    /// declarations. The declaration graft is private to core; callers cannot
+    /// publish an unrelated mutation through a borrowed candidate environment.
+    pub fn prepare_document(
+        &mut self,
+        env: &mut super::resolve::CheckedEnv,
+        item: &super::ast::FnItem,
+        fn_index: usize,
+        src: &str,
+        module_path: &str,
+        supply: &dyn super::resolve::TypeSupply,
+    ) -> Result<FnCandidate, Vec<Diagnostic>> {
+        self.with_env(env, |env| {
+            prepare_candidate_document_with_supply(
+                env,
+                item,
+                fn_index,
+                src,
+                module_path,
+                Some(supply),
+            )
+        })?
+    }
+}
+
+/// Validate every owner before installing any declaration or body. No producer,
+/// allocation, I/O or fallible operation occurs after the validation loop.
+pub fn commit_foreign_candidates(
+    context: super::resolve::ForeignContext,
+    env: &mut super::resolve::CheckedEnv,
+    candidates: Vec<FnCandidate>,
+) -> Result<(), Vec<Diagnostic>> {
+    context.validate(env)?;
+    let mut slots = std::collections::BTreeSet::new();
+    for candidate in &candidates {
+        candidate.validate_base(env)?;
+        if candidate.foreign_context != context.declarations
+            || candidate.foreign_slots != context.slots
+            || !slots.insert(candidate.fn_index)
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-context",
+                "foreign batch contains a mismatched context or duplicate owner",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+    }
+    env.program.foreign = context.declarations;
+    env.program.foreign_slots = context.slots;
+    env.sigs = context.sigs;
+    for candidate in candidates {
+        candidate.state.swap_into(env, candidate.fn_index);
+    }
+    env.generation += 1;
+    Ok(())
+}
+
 /// PLAN-828 T-02: the PRODUCTION candidate document transaction — recheck
 /// + single-body emission, WITHOUT verification: the consuming session
 /// decides between content-addressed reuse of a stored, already-verified
@@ -745,6 +821,8 @@ pub fn prepare_candidate_document_with_supply(
                 state,
                 parts,
                 receipt,
+                foreign_context: env.program.foreign.clone(),
+                foreign_slots: env.program.foreign_slots.clone(),
             })
         }
         Err(ds) => {
@@ -2038,7 +2116,7 @@ impl PlanCtx<'_> {
                     }
                     if let Some(declaration) = fn_index
                         .checked_sub(self.program.fns.len())
-                        .and_then(|i| self.program.foreign.get(i))
+                        .and_then(|i| self.program.foreign_by_slot(i))
                     {
                         for (idx, a) in args.iter().enumerate() {
                             let pos = a
@@ -2345,7 +2423,7 @@ impl PlanCtx<'_> {
                     }
                 } else if let Some(declaration) = fn_index
                     .checked_sub(self.program.fns.len())
-                    .and_then(|i| self.program.foreign.get(i))
+                    .and_then(|i| self.program.foreign_by_slot(i))
                 {
                     for (idx, a) in args.iter().enumerate() {
                         let pos = a
@@ -3788,7 +3866,7 @@ impl<'p> Emitter<'p> {
                                 (Some(i), _) => {
                                     if let Some(decl) = i
                                         .checked_sub(self.program.fns.len())
-                                        .and_then(|i| self.program.foreign.get(i))
+                                        .and_then(|i| self.program.foreign_by_slot(i))
                                     {
                                         format!("d_foreign_{}", decl.name)
                                     } else {

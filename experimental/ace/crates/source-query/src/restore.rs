@@ -136,6 +136,7 @@ pub fn restore_bind(
         return Ok((
             ResolvedProgram {
                 foreign: Vec::new(),
+                foreign_slots: Vec::new(),
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),

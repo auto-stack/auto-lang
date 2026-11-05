@@ -233,28 +233,8 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             report,
         ));
     }
-    let inputs =
-        Path::new(&req.store_root).join(format!("source938-provider-{}", deck.provider_bias));
-    std::fs::create_dir_all(&inputs).map_err(|e| err("store", e))?;
-    let src = inputs.join("provider.c");
-    let object = inputs.join("provider.obj");
-    write(&inputs.join("source_foreign938.h"), provider::HEADER).map_err(|e| err("store", e))?;
-    write(
-        &src,
-        format!(
-            "#define SOURCE938_EVENTS\n#define BODY_BIAS {}\n{}",
-            deck.provider_bias,
-            include_str!("../cside/source_foreign938.c")
-        ),
-    )
-    .map_err(|e| err("store", e))?;
-    let (bytes, hit) =
-        crate::cache::produce_c_object(&store, &src, &inputs, &[object.clone()], || {
-            let deps = crate::ctool::compile_c_with_deps(&src, &inputs, &object)
-                .map_err(|e| e.to_string())?;
-            Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
-        })
-        .map_err(|e| err("infra", e))?;
+    let (bytes, hit) = prepare_provider(&store, Path::new(&req.store_root), deck.provider_bias)?;
+    let mut provider_productions = (!hit) as u64;
     report.c_toolchain = crate::ctool::toolchain_fingerprint().map_err(|e| err("infra", e))?;
     report.provider_digest = provider::hash(&bytes);
     let environment = provider::admit(
@@ -276,20 +256,41 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         None
     };
     let mut session = if let Some(previous) = &previous {
-        if previous.module != deck.module || previous.provider_bias != deck.provider_bias {
+        if previous.module != deck.module {
             return Err(err(
                 "restore",
-                "changed module/provider requires an explicit binding transaction",
+                "changed module requires a separate source session",
             ));
         }
+        // R admits the accepted old binding first. A different requested body
+        // then uses the explicit provider transaction, never a cold fallback.
+        let restore_environment = if previous.provider_bias != deck.provider_bias {
+            let (old_bytes, old_hit) =
+                prepare_provider(&store, Path::new(&req.store_root), previous.provider_bias)?;
+            provider_productions += (!old_hit) as u64;
+            provider::admit(
+                provider::reviewed_add_manifest(),
+                &provider::hash(&old_bytes),
+                previous.provider_bias as u64 + 1,
+                &deck.capabilities,
+            )
+            .map_err(|e| err("foreign.authority", e))?
+        } else {
+            environment.clone()
+        };
         let mut restored = Session::restore_stored(
             &store,
             &previous.stored,
             target,
             &deck.capabilities,
-            environment,
+            restore_environment,
         )
         .map_err(|e| err("restore", e))?;
+        if previous.provider_bias != deck.provider_bias {
+            restored
+                .rebind_provider(environment, std::sync::Arc::new(bytes.clone()))
+                .map_err(|e| err("foreign.binding", e))?;
+        }
         if restored.frontend().source() != deck.source {
             let candidate = restored
                 .prepare_source(&deck.source)
@@ -330,7 +331,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     step(
                         "diags",
                         ds.into_iter().map(|d| err(&d.code, d.message)).collect(),
-                        (!hit) as u32 + report.solver as u32,
+                        provider_productions as u32 + report.solver as u32,
                         &store,
                         started,
                         None,
@@ -413,8 +414,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     .map_err(|e| err("store", e))?;
     // Current-pointer fault/atomic replacement handling is part of T-08.
     std::fs::rename(&temp, &current).map_err(|e| err("store", e))?;
-    let compute =
-        report.solver + report.hir + report.mir + report.native + report.c_fragment + (!hit) as u64;
+    let compute = report.solver
+        + report.hir
+        + report.mir
+        + report.native
+        + report.c_fragment
+        + provider_productions;
     Ok(output(
         step(
             "ok",
@@ -447,4 +452,32 @@ fn output(step: StepOut, mut report: SourceReport) -> OkOut {
         worker_version: crate::worker::WORKER_VERSION.into(),
         source_import: Some(report),
     }
+}
+
+fn prepare_provider(
+    store: &ManagedStore,
+    root: &Path,
+    bias: u8,
+) -> Result<(Vec<u8>, bool), DiagOut> {
+    let inputs = root.join(format!("source938-provider-{bias}"));
+    std::fs::create_dir_all(&inputs).map_err(|e| err("store", e))?;
+    let src = inputs.join("provider.c");
+    let object = inputs.join("provider.obj");
+    write(&inputs.join("source_foreign938.h"), provider::HEADER).map_err(|e| err("store", e))?;
+    write(
+        &src,
+        format!(
+            "#define SOURCE938_EVENTS\n#define BODY_BIAS {}\n{}",
+            bias,
+            include_str!("../cside/source_foreign938.c")
+        ),
+    )
+    .map_err(|e| err("store", e))?;
+    let result = crate::cache::produce_c_object(store, &src, &inputs, &[object.clone()], || {
+        let deps =
+            crate::ctool::compile_c_with_deps(&src, &inputs, &object).map_err(|e| e.to_string())?;
+        Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
+    })
+    .map_err(|e| err("infra", e))?;
+    Ok(result)
 }

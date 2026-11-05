@@ -125,6 +125,8 @@ pub struct ColdObservation {
 struct Resident {
     page: Page,
     mint_origin: usize,
+    dependencies: Vec<(String, ContentVersion)>,
+    negative_candidates: Option<String>,
 }
 
 pub struct Frontend {
@@ -148,6 +150,37 @@ pub struct Candidate {
     semantic: FnCandidate,
     checked: CheckedFunction,
     resident: Resident,
+}
+
+pub struct ForeignBody {
+    semantic: FnCandidate,
+    checked: CheckedFunction,
+    resident: Resident,
+}
+impl ForeignBody {
+    pub fn owner(&self) -> &str {
+        self.semantic.slot_name()
+    }
+    pub fn parts(&self) -> &SourceParts {
+        self.semantic.parts()
+    }
+    pub fn checked(&self) -> &CheckedFunction {
+        &self.checked
+    }
+}
+pub struct ForeignCandidate {
+    context: resolve::ForeignContext,
+    foreign: AdmittedForeign,
+    signatures: SignatureCatalog,
+    bodies: Vec<ForeignBody>,
+}
+impl ForeignCandidate {
+    pub fn bodies(&self) -> &[ForeignBody] {
+        &self.bodies
+    }
+    pub fn foreign(&self) -> &AdmittedForeign {
+        &self.foreign
+    }
 }
 impl Candidate {
     pub fn parts(&self) -> &SourceParts {
@@ -419,6 +452,11 @@ impl Frontend {
             .queries
             .infer_item_with_catalog(item, &self.signatures)
             .map_err(reject)?;
+        if !answer.facts.diags.is_empty() {
+            return Err(Error::Diagnostics(
+                crate::apply::foreign_diagnostics(&item.body, &answer.facts).map_err(reject)?,
+            ));
+        }
         let mut supply = BodyTypeSupply::new().with_foreign(self.foreign.clone());
         supply.add_body(&item.body, &answer.facts).map_err(reject)?;
         let slot = resolve::env_free_fn_index(&self.env, owner)
@@ -488,6 +526,165 @@ impl Frontend {
             .semantic
             .validate(&self.env)
             .map_err(Error::Diagnostics)
+    }
+
+    /// Only resident dependency metadata chooses readers. Required fact payloads
+    /// of all other functions retain their original handles without decoding.
+    pub fn prepare_foreign(&mut self, foreign: AdmittedForeign) -> Result<ForeignCandidate, Error> {
+        resolve::validate_foreign_context(
+            &Program { items: Vec::new() },
+            &foreign,
+            &self.capabilities,
+        )
+        .map_err(Error::Diagnostics)?;
+        let mut context =
+            resolve::ForeignContext::prepare(&self.env, &foreign).map_err(Error::Diagnostics)?;
+        let signatures = self
+            .signatures
+            .replace_foreign(&self.foreign, &foreign)
+            .map_err(reject)?;
+        let readers: Vec<_> = self
+            .residents
+            .iter()
+            .filter(|(_, r)| {
+                r.dependencies
+                    .iter()
+                    .any(|(name, version)| signatures.version(name) != Some(version))
+                    || r.negative_candidates
+                        .as_ref()
+                        .is_some_and(|fp| fp != signatures.candidates_fp())
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        self.queries.set_foreign(Some(foreign.clone()));
+        let result = (|| {
+            let mut bodies = Vec::new();
+            for name in readers {
+                let sealed = &self.catalog.fns[&name];
+                let parse = sealed.item.as_ref().is_none_or(|f| f.span != sealed.span);
+                if parse {
+                    self.meter.body_parse_attempts += 1;
+                    self.per_function
+                        .entry(name.clone())
+                        .or_default()
+                        .body_parse_attempts += 1;
+                }
+                let (item, produced) = self
+                    .catalog
+                    .owner_for_recheck(&name, FrontBudget::WORK_OWNED_64MIB)
+                    .map_err(syntax_error)?;
+                self.meter.body_parse_produced += produced as u64;
+                self.per_function
+                    .entry(name.clone())
+                    .or_default()
+                    .body_parse_produced += produced as u64;
+                let answer = self
+                    .queries
+                    .infer_item_with_catalog(&item, &signatures)
+                    .map_err(reject)?;
+                if !answer.facts.diags.is_empty() {
+                    return Err(Error::Diagnostics(
+                        crate::apply::foreign_diagnostics(&item.body, &answer.facts)
+                            .map_err(reject)?,
+                    ));
+                }
+                let mut supply = BodyTypeSupply::new().with_foreign(foreign.clone());
+                supply.add_body(&item.body, &answer.facts).map_err(reject)?;
+                let slot = resolve::env_free_fn_index(&self.env, &name)
+                    .ok_or_else(|| reject("unknown reader slot"))?;
+                self.meter.hir_attempts += 1;
+                self.per_function
+                    .entry(name.clone())
+                    .or_default()
+                    .hir_attempts += 1;
+                let semantic = context
+                    .prepare_document(
+                        &mut self.env,
+                        &item,
+                        slot,
+                        self.catalog.src(),
+                        &self.module,
+                        &supply,
+                    )
+                    .map_err(Error::Diagnostics)?;
+                let checked = ace_core::verify::verify_foreign_function(
+                    &semantic.parts().bundle,
+                    slot,
+                    &foreign,
+                )
+                .map_err(Error::Diagnostics)?;
+                self.meter.hir_produced += semantic.receipt().real_body_plans as u64;
+                self.per_function
+                    .entry(name.clone())
+                    .or_default()
+                    .hir_produced += semantic.receipt().real_body_plans as u64;
+                let walk = crate::walk_body(&item.body).map_err(reject)?;
+                let (_, deps) = self
+                    .queries
+                    .resident_page(&name)
+                    .ok_or_else(|| reject("missing reader facts"))?;
+                self.meter.page_encode_attempts += 1;
+                self.per_function
+                    .entry(name.clone())
+                    .or_default()
+                    .page_encode_attempts += 1;
+                let resident = encode_resident(
+                    &answer.facts,
+                    deps,
+                    &signatures,
+                    &walk,
+                    item.span.start,
+                    &self.capabilities,
+                    &self.catalog.src()[item.span.start..item.span.end],
+                )?;
+                self.meter.page_produced += 1;
+                self.per_function
+                    .entry(name.clone())
+                    .or_default()
+                    .page_produced += 1;
+                bodies.push(ForeignBody {
+                    semantic,
+                    checked,
+                    resident,
+                });
+            }
+            Ok(bodies)
+        })();
+        self.queries.set_foreign(Some(self.foreign.clone()));
+        Ok(ForeignCandidate {
+            context,
+            foreign,
+            signatures,
+            bodies: result?,
+        })
+    }
+    pub fn validate_foreign(&self, candidate: &ForeignCandidate) -> Result<(), Error> {
+        candidate
+            .context
+            .validate(&self.env)
+            .map_err(Error::Diagnostics)
+    }
+    pub fn commit_foreign(&mut self, candidate: ForeignCandidate) -> Result<(), Error> {
+        self.validate_foreign(&candidate)?;
+        let mut semantics = Vec::with_capacity(candidate.bodies.len());
+        let mut residents = Vec::with_capacity(candidate.bodies.len());
+        for body in candidate.bodies {
+            residents.push((body.owner().to_string(), body.resident));
+            semantics.push(body.semantic);
+        }
+        ace_core::source::adapter::commit_foreign_candidates(
+            candidate.context,
+            &mut self.env,
+            semantics,
+        )
+        .map_err(Error::Diagnostics)?;
+        for (name, resident) in residents {
+            self.residents.insert(name, resident);
+        }
+        self.signatures = candidate.signatures;
+        self.queries.set_foreign(Some(candidate.foreign.clone()));
+        self.foreign = candidate.foreign;
+        Ok(())
     }
 
     /// Exclusive validation covers BOTH subtransactions before either writes.
@@ -703,6 +900,12 @@ impl Frontend {
                         bytes,
                     },
                     mint_origin: edge.mint_origin,
+                    dependencies: deps,
+                    negative_candidates: facts
+                        .negatives
+                        .iter()
+                        .any(|n| n.domain == "fn")
+                        .then_some(wire.candidates),
                 },
             );
         }
@@ -990,5 +1193,11 @@ fn encode_resident(
     Ok(Resident {
         page: Page::new(serde_json::to_vec(&wire).map_err(reject)?)?,
         mint_origin: origin,
+        dependencies: deps.to_vec(),
+        negative_candidates: facts
+            .negatives
+            .iter()
+            .any(|n| n.domain == "fn")
+            .then(|| catalog.candidates_fp().to_string()),
     })
 }

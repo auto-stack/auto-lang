@@ -648,7 +648,26 @@ impl ResolvedFn {
     }
 }
 
+impl ResolvedProgram {
+    pub fn foreign_by_slot(
+        &self,
+        slot: usize,
+    ) -> Option<&ace_foreign_contract::manual::SourceDecl> {
+        if self.foreign_slots.is_empty() {
+            self.foreign.get(slot)
+        } else {
+            self.foreign_slots
+                .get(slot)
+                .and_then(|name| self.foreign.iter().find(|d| &d.name == name))
+        }
+    }
+}
+
 pub struct ResolvedProgram {
+    /// Stable process-local foreign call slots. Empty means the cold declaration
+    /// order. Removed names remain tombstones; additions append without touching
+    /// any non-reader body. Restore has no resolved bodies and starts fresh slots.
+    pub foreign_slots: Vec<String>,
     pub foreign: Vec<ace_foreign_contract::manual::SourceDecl>,
     pub fns: Vec<ResolvedFn>,
     /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
@@ -1019,6 +1038,7 @@ pub fn resolve_closures_cached(
     Ok((
         ResolvedProgram {
             foreign: Vec::new(),
+            foreign_slots: Vec::new(),
             fns,
             records,
             lists: coll.lists,
@@ -1063,6 +1083,7 @@ pub(crate) fn resolve_closures_env(
         CheckedEnv {
             program: ResolvedProgram {
                 foreign: Vec::new(),
+                foreign_slots: Vec::new(),
                 fns,
                 records,
                 lists: coll.lists,
@@ -1091,6 +1112,7 @@ pub fn resolve_with(
     let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None)?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
+        foreign_slots: Vec::new(),
         fns,
         records,
         lists: coll.lists,
@@ -1153,6 +1175,7 @@ pub fn resolve_with_supply(
     let (fns, records, coll, _) =
         resolve_detailed(program, capabilities, surface, None, Some(supply))?;
     Ok(ResolvedProgram {
+        foreign_slots: Vec::new(),
         foreign: supply
             .foreign()
             .map(|f| f.source_declarations())
@@ -2066,6 +2089,129 @@ pub struct CheckedEnv {
     pub(crate) closed: bool,
 }
 
+/// Declaration-only candidate. Preparing it never visits or copies a retained
+/// body. Body candidates are checked under this context and published together.
+pub struct ForeignContext {
+    pub(crate) env_id: u64,
+    pub(crate) base_generation: u64,
+    pub(crate) declarations: Vec<ace_foreign_contract::manual::SourceDecl>,
+    pub(crate) slots: Vec<String>,
+    pub(crate) sigs: BTreeMap<String, FnSig>,
+}
+impl ForeignContext {
+    pub fn prepare(
+        env: &CheckedEnv,
+        foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let declarations = foreign.source_declarations();
+        if env.closed
+            || declarations
+                .iter()
+                .any(|d| env.program.fns.iter().any(|f| f.name == d.name))
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-conflict",
+                "foreign context is closed or conflicts with a source declaration",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let mut slots = if env.program.foreign_slots.is_empty() {
+            env.program
+                .foreign
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+        } else {
+            env.program.foreign_slots.clone()
+        };
+        for declaration in &declarations {
+            if !slots.contains(&declaration.name) {
+                slots.push(declaration.name.clone());
+            }
+        }
+        if slots.len() > 8192 {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-slot-budget",
+                "foreign declaration slot budget exceeded",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let mut sigs = env.sigs.clone();
+        for old in &env.program.foreign {
+            sigs.remove(&old.name);
+        }
+        for declaration in &declarations {
+            let index = slots
+                .iter()
+                .position(|n| n == &declaration.name)
+                .expect("reserved slot");
+            let vt = |k| match k {
+                ace_foreign_contract::LaneKind::Bool => VT::Bool,
+                _ => VT::I32,
+            };
+            sigs.insert(
+                declaration.name.clone(),
+                FnSig {
+                    param_names: (0..declaration.params().len())
+                        .map(|i| format!("arg{i}"))
+                        .collect(),
+                    params: declaration.params().iter().copied().map(vt).collect(),
+                    result: vt(declaration.result()),
+                    index: env.program.fns.len() + index,
+                },
+            );
+        }
+        Ok(Self {
+            env_id: env.id,
+            base_generation: env.generation,
+            declarations,
+            slots,
+            sigs,
+        })
+    }
+    pub fn validate(&self, env: &CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        if env.closed || self.env_id != env.id || self.base_generation != env.generation {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.stale",
+                "foreign context candidate is closed, foreign or stale",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(())
+    }
+    /// Exclusive temporary declaration graft, restored even if the caller
+    /// unwinds. The body port still owns its own temporary one-slot graft.
+    pub(crate) fn with_env<T>(
+        &mut self,
+        env: &mut CheckedEnv,
+        f: impl FnOnce(&mut CheckedEnv) -> T,
+    ) -> Result<T, Vec<Diagnostic>> {
+        self.validate(env)?;
+        struct Graft<'a> {
+            env: &'a mut CheckedEnv,
+            context: &'a mut ForeignContext,
+        }
+        impl Drop for Graft<'_> {
+            fn drop(&mut self) {
+                std::mem::swap(
+                    &mut self.env.program.foreign,
+                    &mut self.context.declarations,
+                );
+                std::mem::swap(&mut self.env.program.foreign_slots, &mut self.context.slots);
+                std::mem::swap(&mut self.env.sigs, &mut self.context.sigs);
+            }
+        }
+        std::mem::swap(&mut env.program.foreign, &mut self.declarations);
+        std::mem::swap(&mut env.program.foreign_slots, &mut self.slots);
+        std::mem::swap(&mut env.sigs, &mut self.sigs);
+        let graft = Graft { env, context: self };
+        Ok(f(graft.env))
+    }
+}
+
 impl CheckedEnv {
     /// Cold retained-environment consumer: run the same whole typecheck once,
     /// without first rendering/binding a second whole-module Atom document.
@@ -2213,6 +2359,7 @@ pub fn resolve_env_with_supply(
     let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, supply)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
+            foreign_slots: Vec::new(),
             foreign: supply
                 .and_then(|s| s.foreign())
                 .map(|f| f.source_declarations())

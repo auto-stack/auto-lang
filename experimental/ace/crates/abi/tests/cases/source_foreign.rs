@@ -890,3 +890,456 @@ fn source_foreign_protocol_rejects_unknown_fields_and_empty_selection_before_any
         );
     }
 }
+
+// The policy in these controls is the fixture owner, separate from serialized
+// session data. Known header/table and live provider content are re-approved.
+fn fixture_readmit(m: ManualManifest, bytes: &[u8], generation: u64) -> AdmittedForeign {
+    let authority = HostAuthority {
+        review_id: m.review_id.clone(),
+        contract_digest: m.contract_digest().unwrap(),
+        provider: m.provider.clone(),
+        provider_digest: hash(bytes),
+        header_digest: m.header_digest.clone(),
+        physical_table_digest: m.physical_table_digest.clone(),
+        target: m.target.clone(),
+        capabilities: m.facts.capabilities.iter().cloned().collect(),
+        available_symbols: m
+            .declarations
+            .iter()
+            .flat_map(|d| std::iter::once(d.symbol.clone()).chain(d.context_symbol.iter().cloned()))
+            .collect(),
+        binding_generation: generation,
+    };
+    m.admit(&authority).unwrap()
+}
+
+#[test]
+fn source_foreign_declaration_readers_atomic_after_restore() {
+    use ace_abi::source_foreign::{Meter, Session, Target};
+    use std::sync::Arc;
+    let root = scope("source-declaration");
+    let (object, environment) = provider_with(&root, 0, true, false);
+    let bytes = Arc::new(std::fs::read(&object).unwrap());
+    let source = "fn independent() int { return 7 }\nfn helper() int { return foreign_add(20,22) }\nfn flag() bool { return foreign_not(false) }\nfn main() int { return helper() }";
+    let caps = vec![SOURCE_CAP.into()];
+    for target in [Target::Native, Target::C] {
+        let label = format!("{target:?}");
+        let cold = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let saved = cold.snapshot().unwrap();
+        drop(cold);
+        let mut session = Session::restore(
+            &saved.root,
+            &saved.digest,
+            target,
+            &caps,
+            environment.clone(),
+            |id| saved.pages.get(id).cloned(),
+        )
+        .unwrap();
+        assert_eq!(session.frontend().query_counters().solver_runs, 0);
+        assert_eq!(session.frontend().meter().whole_parse_attempts, 0);
+        let unchanged: Vec<_> = ["independent", "flag", "main"]
+            .into_iter()
+            .map(|name| {
+                (
+                    name,
+                    session.artifact_bytes(name).unwrap().clone(),
+                    session.frontend().page(name).unwrap().bytes.clone(),
+                    session.frontend().body_identity(name),
+                )
+            })
+            .collect();
+        // First operation after R is an illegal signature edit. It must attempt
+        // the actual reader but leave every published layer at the old root.
+        let mut bad = environment.manifest().clone();
+        let FnForm::Pure { params, .. } = &mut bad.facts.functions[0].form else {
+            panic!()
+        };
+        params[0] = LaneKind::Bool;
+        let bad = fixture_readmit(bad, &bytes, 2);
+        let error = session.prepare_foreign(bad, bytes.clone()).err().unwrap();
+        assert!(error.contains("source.foreign.type-mismatch"), "{error}");
+        assert!(error.contains("span:"), "{error}");
+        assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+        assert_eq!(
+            session
+                .run(&root.join(format!("{label}-after-bad")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        // Removing the redundant pure tag changes only add's declaration;
+        // the separately reviewed global checked contract remains available.
+        let mut changed = environment.manifest().clone();
+        changed.facts.effects.retain(|e| e != "pure:provider_add");
+        let changed = fixture_readmit(changed, &bytes, 3);
+        let cancelled = session
+            .prepare_foreign(changed.clone(), bytes.clone())
+            .unwrap();
+        assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+        drop(cancelled);
+        assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+        let candidate = session
+            .prepare_foreign(changed.clone(), bytes.clone())
+            .unwrap();
+        session.commit_foreign(candidate).unwrap();
+        assert_ne!(session.snapshot().unwrap().digest, saved.digest);
+        for (name, artifact, facts, body) in unchanged {
+            assert_eq!(session.function_meter(name), Meter::default(), "{name}");
+            assert_eq!(
+                session.frontend().function_meter(name),
+                Default::default(),
+                "{name}"
+            );
+            assert!(
+                Arc::ptr_eq(&artifact, session.artifact_bytes(name).unwrap()),
+                "{name}"
+            );
+            assert!(
+                Arc::ptr_eq(&facts, &session.frontend().page(name).unwrap().bytes),
+                "{name}"
+            );
+            assert_eq!(body, session.frontend().body_identity(name), "{name}");
+        }
+        assert_eq!(session.frontend().query_counters().solver_runs, 2);
+        assert_eq!(
+            session
+                .frontend()
+                .function_meter("helper")
+                .body_parse_attempts,
+            3
+        );
+        assert_eq!(session.frontend().function_meter("helper").hir_produced, 2);
+        assert_eq!(
+            session
+                .run(&root.join(format!("{label}-after-change")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        let next = session.snapshot().unwrap();
+        drop(session);
+        let mut restored = Session::restore(
+            &next.root,
+            &next.digest,
+            target,
+            &caps,
+            changed.clone(),
+            |id| next.pages.get(id).cloned(),
+        )
+        .unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        // No warmup: revert the declaration as the first edit after the second R.
+        let candidate = restored
+            .prepare_foreign(environment.clone(), bytes.clone())
+            .unwrap();
+        restored.commit_foreign(candidate).unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 1);
+        assert_eq!(
+            restored
+                .frontend()
+                .function_meter("helper")
+                .body_parse_attempts,
+            1
+        );
+        assert_eq!(restored.function_meter("flag"), Meter::default());
+        assert_eq!(
+            restored
+                .run(&root.join(format!("{label}-second-restore")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        // A candidate from an older declaration root cannot overwrite a later
+        // ordinary source commit, even with identical source owner names.
+        let stale = restored.prepare_foreign(changed, bytes.clone()).unwrap();
+        let body = restored
+            .prepare("independent", "fn independent() int { return 8 }")
+            .unwrap();
+        restored.commit(body).unwrap();
+        let accepted = restored.snapshot().unwrap().digest;
+        assert!(restored.commit_foreign(stale).is_err());
+        assert_eq!(restored.snapshot().unwrap().digest, accepted);
+        let before_cap = restored.frontend().meter();
+        let mut cap = environment.manifest().clone();
+        cap.facts.capabilities.push("foreign.extra".into());
+        let denied = fixture_readmit(cap, &bytes, 4);
+        assert!(restored.prepare_foreign(denied, bytes.clone()).is_err());
+        assert_eq!(restored.frontend().meter(), before_cap);
+        assert_eq!(restored.snapshot().unwrap().digest, accepted);
+        // A real shared-header edit is a dependency of both actual foreign
+        // readers, including the one whose call site's text never changed.
+        let header_dir = root.join(format!("{label}-header"));
+        std::fs::create_dir_all(&header_dir).unwrap();
+        let mut header = std::fs::read(fixture().join("source_foreign938.h")).unwrap();
+        header.extend_from_slice(b"\n/* reviewed header revision 2 */\n");
+        std::fs::write(header_dir.join("source_foreign938.h"), &header).unwrap();
+        let c_path = header_dir.join("provider.c");
+        let o_path = header_dir.join("provider.obj");
+        std::fs::copy(fixture().join("source_foreign938.c"), &c_path).unwrap();
+        let deps = ace_abi::ctool::compile_c_with_deps(&c_path, &header_dir, &o_path).unwrap();
+        assert!(deps
+            .iter()
+            .any(|p| p.file_name().is_some_and(|n| n == "source_foreign938.h")));
+        let new_bytes = Arc::new(std::fs::read(o_path).unwrap());
+        let mut header_manifest = environment.manifest().clone();
+        header_manifest.header_digest = hash(&header);
+        let header_env = fixture_readmit(header_manifest, &new_bytes, 5);
+        let before: Vec<_> = ["helper", "flag", "main", "independent"]
+            .into_iter()
+            .map(|name| {
+                (
+                    name,
+                    restored.frontend().function_meter(name),
+                    restored.function_meter(name),
+                    restored.artifact_bytes(name).unwrap().clone(),
+                    restored.frontend().page(name).unwrap().bytes.clone(),
+                )
+            })
+            .collect();
+        let candidate = restored
+            .prepare_foreign(header_env.clone(), new_bytes)
+            .unwrap();
+        restored.commit_foreign(candidate).unwrap();
+        for (name, front, target_counts, artifact, facts) in before {
+            if name == "main" || name == "independent" {
+                assert_eq!(restored.frontend().function_meter(name), front);
+                assert_eq!(restored.function_meter(name), target_counts);
+                assert!(Arc::ptr_eq(
+                    &artifact,
+                    restored.artifact_bytes(name).unwrap()
+                ));
+                assert!(Arc::ptr_eq(
+                    &facts,
+                    &restored.frontend().page(name).unwrap().bytes
+                ));
+            } else {
+                assert_eq!(
+                    restored.frontend().function_meter(name).hir_produced,
+                    front.hir_produced + 1
+                );
+                assert_ne!(restored.function_meter(name), target_counts);
+            }
+        }
+        assert_eq!(
+            restored.run(&header_dir.join("linked")).unwrap().exit_code,
+            Some(42)
+        );
+        let snapshot = restored.snapshot().unwrap();
+        let again = Session::restore(
+            &snapshot.root,
+            &snapshot.digest,
+            target,
+            &caps,
+            header_env,
+            |id| snapshot.pages.get(id).cloned(),
+        )
+        .unwrap();
+        assert_eq!(again.frontend().query_counters().solver_runs, 0);
+    }
+}
+
+#[test]
+fn source_foreign_name_changes_keep_nonreader_slots() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("source-name-slots");
+    let (object, environment) = provider_with(&root, 0, true, false);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into()];
+    let source = "fn flag() bool { return foreign_not(false) }\nfn main() int { if flag() { return foreign_add(20,22) }\nreturn 9 }";
+    for target in [Target::Native, Target::C] {
+        let mut session = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let original = session.snapshot().unwrap();
+        let old_flag = session.frontend().body_identity("flag");
+        let flag_bytes = session.artifact_bytes("flag").unwrap().clone();
+        let counters = session.meter();
+        let cold_flag_count = session.function_meter("flag");
+        let front = session.frontend().meter();
+        // Delete an unused declaration BEFORE not's cold slot, then append a
+        // new name. Existing bodies and target artifacts must not be rewritten.
+        let mut manifest = environment.manifest().clone();
+        manifest
+            .declarations
+            .iter_mut()
+            .find(|d| d.source_name == "foreign_calls")
+            .unwrap()
+            .source_name = "foreign_new".into();
+        manifest.declarations.reverse(); // transport order is not semantic identity
+        let next = fixture_readmit(manifest, &bytes, 2);
+        let candidate = session
+            .prepare_foreign(next.clone(), bytes.clone())
+            .unwrap();
+        session.commit_foreign(candidate).unwrap();
+        assert_eq!(session.frontend().meter(), front);
+        assert_eq!(session.meter(), counters);
+        assert_eq!(session.frontend().body_identity("flag"), old_flag);
+        assert!(Arc::ptr_eq(
+            &flag_bytes,
+            session.artifact_bytes("flag").unwrap()
+        ));
+        let expected = session.snapshot().unwrap().digest;
+        let mut removed_reader = next.manifest().clone();
+        removed_reader
+            .declarations
+            .retain(|d| d.source_name != "foreign_not");
+        removed_reader
+            .facts
+            .functions
+            .retain(|f| f.symbol != "provider_not");
+        removed_reader
+            .facts
+            .effects
+            .retain(|e| e != "pure:provider_not");
+        assert!(session
+            .prepare_foreign(fixture_readmit(removed_reader, &bytes, 3), bytes.clone())
+            .is_err());
+        assert_eq!(session.snapshot().unwrap().digest, expected);
+        assert_eq!(session.frontend().body_identity("flag"), old_flag);
+        // Resolve under the new name table without moving the retained not slot.
+        let candidate = session
+            .prepare(
+                "main",
+                "fn main() int { if flag() { return 40 + foreign_new() }\nreturn 9 }",
+            )
+            .unwrap();
+        session.commit(candidate).unwrap();
+        assert_eq!(
+            session
+                .run(&root.join(format!("{target:?}-appended")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        let flag_count = session.function_meter("flag");
+        assert_eq!(flag_count, cold_flag_count);
+        // Rechecking the old reader after append/remove still resolves not.
+        let candidate = session
+            .prepare("flag", "fn flag() bool { return foreign_not(true) }")
+            .unwrap();
+        session.commit(candidate).unwrap();
+        assert_eq!(
+            session
+                .run(&root.join(format!("{target:?}-retained")))
+                .unwrap()
+                .exit_code,
+            Some(9)
+        );
+        let saved = session.snapshot().unwrap();
+        drop(session);
+        let mut restored =
+            Session::restore(&saved.root, &saved.digest, target, &caps, next, |id| {
+                saved.pages.get(id).cloned()
+            })
+            .unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        let candidate = restored
+            .prepare("flag", "fn flag() bool { return foreign_not(false) }")
+            .unwrap();
+        restored.commit(candidate).unwrap();
+        assert_eq!(
+            restored
+                .run(&root.join(format!("{target:?}-restored")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        assert_ne!(saved.digest, original.digest);
+    }
+}
+
+#[test]
+fn source_foreign_formal_worker_rebinds_provider_without_any_caller_production() {
+    use base64::Engine as _;
+    use std::process::Command;
+    let root = scope("formal-provider-swap");
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let mut first_contract = None;
+        let mut first_provider = None;
+        for (n, bias) in [0, 1, 0].into_iter().enumerate() {
+            let mut deck = deck.clone();
+            deck["provider_bias"] = bias.into();
+            let request = serde_json::json!({"recipe":ace_abi::worker_source::RECIPE,
+                "nonce":format!("n938-{n}"),"request_hash":format!("h938-{n}"),
+                "deck_b64":base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&deck).unwrap()),
+                "leg":leg,"store_root":store,"steps":[{"op":"query"}]});
+            let input = format!(
+                "{}\n{}\n{}\n",
+                serde_json::json!({"op":"begin","schema":"abiworker/1"}),
+                serde_json::json!({"op":"request","request":request}),
+                serde_json::json!({"op":"end"})
+            );
+            let run = ace_core::link::run_deadlined_typed(
+                &mut Command::new(env!("CARGO_BIN_EXE_abi-worker")),
+                std::time::Duration::from_secs(30),
+                ace_core::link::CaptureCaps {
+                    stdout_max: 1 << 20,
+                    stderr_max: 1 << 20,
+                },
+                input.into_bytes(),
+            )
+            .unwrap();
+            let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+            assert!(response.get("error").is_none(), "{response}");
+            let report = &response["ok"]["source_import"];
+            assert_eq!(report["actual_exit"], 42 + bias);
+            assert_eq!(report["reference_exit"], 42 + bias);
+            assert_eq!(report["actual_events"], serde_json::json!(["provider_add"]));
+            assert_eq!(
+                report["reference_events"],
+                serde_json::json!(["provider_add"])
+            );
+            if n == 0 {
+                first_contract = Some(report["contract_digest"].clone());
+                first_provider = Some(report["provider_digest"].clone());
+            } else {
+                assert_eq!(Some(report["contract_digest"].clone()), first_contract);
+                for field in [
+                    "source_parse",
+                    "solver",
+                    "hir",
+                    "mir",
+                    "native",
+                    "c_fragment",
+                ] {
+                    assert_eq!(
+                        report[field], 0,
+                        "{leg} provider-only swap produced {field}"
+                    );
+                }
+                assert_eq!(
+                    response["ok"]["steps"][0]["compute_calls"],
+                    if n == 1 { 1 } else { 0 }
+                );
+                if n == 1 {
+                    assert_ne!(Some(report["provider_digest"].clone()), first_provider);
+                } else {
+                    assert_eq!(Some(report["provider_digest"].clone()), first_provider);
+                }
+            }
+        }
+    }
+}

@@ -593,6 +593,7 @@ pub fn bind_with_facts(
         return Ok((
             ResolvedProgram {
                 foreign: Vec::new(),
+                foreign_slots: Vec::new(),
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),
@@ -633,29 +634,8 @@ pub fn bind_with_facts(
         // diagnostic-only frontend cannot see. Preserve its actual ordered
         // diagnostics and re-anchor them through the admitted structural walk.
         if session.foreign().is_some() && !body.facts.diags.is_empty() {
-            let walk =
-                walk_body(ast_body).map_err(|e| BindFactsError::Apply(ApplyError::Walk(e)))?;
-            let diagnostics = body
-                .facts
-                .diags
-                .iter()
-                .map(|d| {
-                    let span = d
-                        .node
-                        .and_then(|id| walk.nodes.iter().find(|n| n.id == id))
-                        .map(|n| n.span);
-                    Diagnostic::new(
-                        ace_core::atom_text::Stage::Bind,
-                        &format!("source.foreign.{}", d.code),
-                        d.message.clone(),
-                        span.map(|s| CoreSpan {
-                            start: s.start as usize,
-                            end: s.end as usize,
-                        })
-                        .unwrap_or(ast_body.span),
-                    )
-                })
-                .collect();
+            let diagnostics =
+                foreign_diagnostics(ast_body, &body.facts).map_err(BindFactsError::Apply)?;
             return Err(BindFactsError::Resolve(diagnostics));
         }
         supply
@@ -689,4 +669,33 @@ pub fn bind_with_facts(
         }
     }
     Ok((resolved, applied, supply))
+}
+
+/// Preserve the solver's ordered diagnostics through the shared structural map.
+pub(crate) fn foreign_diagnostics(
+    ast_body: &Block,
+    facts: &InferBodyFacts,
+) -> Result<Vec<ace_core::atom_text::Diagnostic>, ApplyError> {
+    use ace_core::atom_text::{Diagnostic, Span as CoreSpan};
+    let walk = walk_body(ast_body).map_err(ApplyError::Walk)?;
+    Ok(facts
+        .diags
+        .iter()
+        .map(|d| {
+            let span = d
+                .node
+                .and_then(|id| walk.nodes.iter().find(|n| n.id == id))
+                .map(|n| CoreSpan {
+                    start: n.span.start as usize,
+                    end: n.span.end as usize,
+                })
+                .unwrap_or(ast_body.span);
+            Diagnostic::new(
+                ace_core::atom_text::Stage::Bind,
+                &format!("source.foreign.{}", d.code),
+                d.message.clone(),
+                span,
+            )
+        })
+        .collect())
 }

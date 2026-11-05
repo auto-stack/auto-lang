@@ -496,3 +496,30 @@ fn malformed_source_preserves_parser_diagnostics_and_counts_the_failed_parse_att
     assert_eq!(observation.whole_parse_attempts, 1);
     assert_eq!(observation.queries.solver_runs, 0);
 }
+
+#[test]
+fn foreign_nominal_version_is_a_reader_dependency_without_provider_body() {
+    use crate::frontend::Frontend;
+    use std::sync::Arc;
+    let env = environment();
+    let caps = vec![SOURCE_CAP.into()];
+    let source = "fn leaf() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let (mut front, _) = Frontend::cold(source, "m938", "p938", &caps, env.clone()).unwrap();
+    let leaf = front.page("leaf").unwrap().bytes.clone();
+    let leaf_body = front.body_identity("leaf");
+    let meter = front.function_meter("leaf");
+    let mut manifest = env.manifest().clone();
+    manifest.facts.content_version = "v2".into();
+    let next = admit(manifest);
+    assert_ne!(
+        env.source_declarations()[0].digest(),
+        next.source_declarations()[0].digest()
+    );
+    let candidate = front.prepare_foreign(next).unwrap();
+    assert_eq!(candidate.bodies().len(), 1);
+    assert_eq!(candidate.bodies()[0].owner(), "main");
+    front.commit_foreign(candidate).unwrap();
+    assert!(Arc::ptr_eq(&leaf, &front.page("leaf").unwrap().bytes));
+    assert_eq!(front.function_meter("leaf"), meter);
+    assert_eq!(front.body_identity("leaf"), leaf_body);
+}

@@ -27,6 +27,7 @@ pub struct SourceDecl {
     pub name: String,
     pub provider: String,
     pub logical: String,
+    pub content_version: String,
     pub review_id: String,
     pub header_digest: String,
     pub physical_table_digest: String,
@@ -52,6 +53,7 @@ impl SourceDecl {
         if !ident(&self.name)
             || !ident(&self.function.symbol)
             || self.logical.is_empty()
+            || self.content_version.is_empty()
             || self.provider.is_empty()
             || self.review_id.is_empty()
             || !digest(&self.header_digest)
@@ -326,7 +328,8 @@ impl ManualManifest {
 
 impl AdmittedForeign {
     pub fn source_declarations(&self) -> Vec<SourceDecl> {
-        self.manifest
+        let mut declarations: Vec<_> = self
+            .manifest
             .declarations
             .iter()
             .map(|d| {
@@ -345,6 +348,7 @@ impl AdmittedForeign {
                     name: d.source_name.clone(),
                     provider: self.manifest.provider.clone(),
                     logical: format!("{}/{}", self.manifest.facts.logical, d.symbol),
+                    content_version: self.manifest.facts.content_version.clone(),
                     review_id: self.manifest.review_id.clone(),
                     header_digest: self.manifest.header_digest.clone(),
                     physical_table_digest: self.manifest.physical_table_digest.clone(),
@@ -359,7 +363,9 @@ impl AdmittedForeign {
                     capabilities,
                 }
             })
-            .collect()
+            .collect();
+        declarations.sort_by(|a, b| a.name.cmp(&b.name));
+        declarations
     }
 
     pub fn admits_declaration(&self, declaration: &SourceDecl) -> bool {

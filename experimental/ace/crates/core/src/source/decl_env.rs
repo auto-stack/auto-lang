@@ -829,6 +829,7 @@ pub fn decl_env_restore_with_foreign(
     }
     let program = super::resolve::ResolvedProgram {
         foreign: d.foreign.clone(),
+        foreign_slots: Vec::new(),
         fns,
         records,
         lists,

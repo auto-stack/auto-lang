@@ -278,7 +278,7 @@ fn check_expr(
                 }
                 if let Some(d) = fn_index
                     .checked_sub(program.fns.len())
-                    .and_then(|i| program.foreign.get(i))
+                    .and_then(|i| program.foreign_by_slot(i))
                 {
                     for (idx, a) in args.iter().enumerate() {
                         let pos = a

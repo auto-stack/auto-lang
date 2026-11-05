@@ -13,7 +13,9 @@ use ace_artifacts::{
     store::{ManagedStore, PutRequest},
 };
 use ace_foreign_contract::manual::AdmittedForeign;
-use ace_source_query::frontend::{Candidate as SourceCandidate, Frontend};
+use ace_source_query::frontend::{
+    Candidate as SourceCandidate, ForeignCandidate as SourceForeignCandidate, Frontend,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -111,6 +113,13 @@ pub struct Session {
 pub struct Candidate {
     source: SourceCandidate,
     artifact: Arc<Artifact>,
+    owner: u64,
+    base: u64,
+}
+pub struct ForeignCandidate {
+    source: SourceForeignCandidate,
+    artifacts: BTreeMap<String, Arc<Artifact>>,
+    provider: Arc<Vec<u8>>,
     owner: u64,
     base: u64,
 }
@@ -406,37 +415,15 @@ impl Session {
             .map_err(|e| e.to_string())?;
         let counts = self.per_function.entry(name.into()).or_default();
         let before = *counts;
-        let result = (|| match self.target {
-            Target::Native => native_artifact(
-                &source.parts().bundle,
-                source.checked().def_id_text(),
-                name,
-                self.front.capabilities(),
-                self.front.foreign(),
-                counts,
-            ),
-            Target::C => {
-                counts.c_attempts += 1;
-                let view = SemanticView::from_parts(source.parts(), source.checked())
-                    .map_err(|e| format!("{e:?}"))?;
-                let f = view.functions().first().ok_or("foreign.empty-fragment")?;
-                let provider = ForeignTargetProvider::new(self.front.foreign().clone());
-                let text = provider
-                    .produce_fragments(&view, &[f], Family::Scalar)
-                    .map_err(|e| format!("{e:?}"))?
-                    .remove(0);
-                counts.c_produced += 1;
-                counts.page_encodes += 1;
-                let semantic = ace_a2x_core::prepare::semantic_fingerprint(&view, f)
-                    .map_err(|e| format!("{e:?}"))?;
-                Artifact::new(TargetWire::C {
-                    name: name.into(),
-                    def_index: f.def_index,
-                    semantic,
-                    text,
-                })
-            }
-        })();
+        let result = selected_artifact(
+            self.target,
+            source.parts(),
+            source.checked(),
+            name,
+            self.front.capabilities(),
+            self.front.foreign(),
+            counts,
+        );
         add(&mut self.meter, difference(*counts, before));
         let artifact = result?;
         self.admit_resident(artifact.bytes.len())?;
@@ -484,6 +471,70 @@ impl Session {
             .rebind_provider(environment)
             .map_err(|e| e.to_string())?;
         self.provider = bytes;
+        self.generation += 1;
+        Ok(())
+    }
+    /// All affected target bodies are ready before the shared declaration
+    /// transaction can be installed. Cancellation is an ordinary candidate drop.
+    pub fn prepare_foreign(
+        &mut self,
+        environment: AdmittedForeign,
+        provider: Arc<Vec<u8>>,
+    ) -> Result<ForeignCandidate, String> {
+        admit_provider(&environment, &provider)?;
+        self.admit_resident(provider.len())?;
+        let source = self
+            .front
+            .prepare_foreign(environment)
+            .map_err(|e| e.to_string())?;
+        let mut artifacts = BTreeMap::new();
+        let mut extra = provider.len();
+        for body in source.bodies() {
+            let name = body.owner();
+            let counts = self.per_function.entry(name.into()).or_default();
+            let before = *counts;
+            let result = selected_artifact(
+                self.target,
+                body.parts(),
+                body.checked(),
+                name,
+                self.front.capabilities(),
+                source.foreign(),
+                counts,
+            );
+            add(&mut self.meter, difference(*counts, before));
+            let artifact = result?;
+            extra = extra
+                .checked_add(artifact.bytes.len())
+                .ok_or("foreign.resource.size-overflow")?;
+            self.admit_resident(extra)?;
+            artifacts.insert(name.into(), artifact);
+        }
+        Ok(ForeignCandidate {
+            source,
+            artifacts,
+            provider,
+            owner: self.id,
+            base: self.generation,
+        })
+    }
+    pub fn validate_foreign(&self, candidate: &ForeignCandidate) -> Result<(), String> {
+        if candidate.owner != self.id || candidate.base != self.generation {
+            return Err("foreign.stale-candidate".into());
+        }
+        self.front
+            .validate_foreign(&candidate.source)
+            .map_err(|e| e.to_string())
+    }
+    pub fn commit_foreign(&mut self, candidate: ForeignCandidate) -> Result<(), String> {
+        self.validate_foreign(&candidate)?;
+        self.front
+            .commit_foreign(candidate.source)
+            .map_err(|e| e.to_string())?;
+        for (name, artifact) in candidate.artifacts {
+            self.artifacts.insert(name, artifact);
+        }
+        self.provider = candidate.provider;
         self.generation += 1;
         Ok(())
     }
@@ -894,5 +945,46 @@ fn difference(a: Meter, b: Meter) -> Meter {
         page_encodes: a.page_encodes - b.page_encodes,
         restore_pages: a.restore_pages - b.restore_pages,
         links: a.links - b.links,
+    }
+}
+
+fn selected_artifact(
+    target: Target,
+    parts: &ace_core::source::SourceParts,
+    checked: &ace_core::verify::CheckedFunction,
+    name: &str,
+    capabilities: &[String],
+    environment: &AdmittedForeign,
+    counts: &mut Meter,
+) -> Result<Arc<Artifact>, String> {
+    match target {
+        Target::Native => native_artifact(
+            &parts.bundle,
+            checked.def_id_text(),
+            name,
+            capabilities,
+            environment,
+            counts,
+        ),
+        Target::C => {
+            counts.c_attempts += 1;
+            let view = SemanticView::from_parts(parts, checked).map_err(|e| format!("{e:?}"))?;
+            let f = view.functions().first().ok_or("foreign.empty-fragment")?;
+            let provider = ForeignTargetProvider::new(environment.clone());
+            let text = provider
+                .produce_fragments(&view, &[f], Family::Scalar)
+                .map_err(|e| format!("{e:?}"))?
+                .remove(0);
+            counts.c_produced += 1;
+            counts.page_encodes += 1;
+            let semantic = ace_a2x_core::prepare::semantic_fingerprint(&view, f)
+                .map_err(|e| format!("{e:?}"))?;
+            Artifact::new(TargetWire::C {
+                name: name.into(),
+                def_index: f.def_index,
+                semantic,
+                text,
+            })
+        }
     }
 }
