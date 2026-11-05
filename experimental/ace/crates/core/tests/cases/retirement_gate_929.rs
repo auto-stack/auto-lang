@@ -28,7 +28,7 @@ fn retirement_no_duplicate_parser_definitions_in_consumers() {
         "crates/syntax-core/src",
     ];
     // 允许的不同领域/共享面（非 Auto 源码语法）：atom 文本、语料工具、
-    /// 共享前门 re-export 缝、CT 请求 DSL、argv 面。
+    // 共享前门 re-export 缝、CT 请求 DSL、argv 面。
     let allow_files = [
         "atom", // atom_text/atom 面（不同语言）
         "deck",     // CT deck DSL
@@ -38,7 +38,7 @@ fn retirement_no_duplicate_parser_definitions_in_consumers() {
     let mut offenders: Vec<String> = Vec::new();
     for c in consumers {
         let dir = root.join(c);
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(_rd) = std::fs::read_dir(&dir) else { continue };
         stack_walk(&dir, &mut |path| {
             let rel = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().to_string();
             if allow_files.iter().any(|a| rel.contains(a)) {
@@ -71,7 +71,7 @@ fn retirement_no_duplicate_parser_definitions_in_consumers() {
 fn retirement_oracle_surface_reachable_for_differential() {
     // 测试构建经 dev 自依赖开启 `legacy-syntax-oracle`——编译通过即证
     // oracle 面在位（同刻生产构建零该 feature：见本文件头部门1说明与
-    /// ace 工作区 check 收据）。
+    // ace 工作区 check 收据）。
     let _ = ace_core::source::parser_is_oracle_gated();
 }
 
