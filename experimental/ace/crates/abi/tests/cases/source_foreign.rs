@@ -15,6 +15,139 @@ fn scope(tag: &str) -> PathBuf {
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("cside")
 }
+
+#[test]
+fn source_foreign_hot_collection_reclaims_revisions_and_preserves_current_and_reader_closures() {
+    use ace_abi::{
+        source_foreign::{Session, Target},
+        source_store::StorePolicy,
+    };
+    use ace_artifacts::store::ManagedStore;
+    use std::sync::Arc;
+    let root = scope("source-hot-collection");
+    let (object, environment) = provider(&root, 0);
+    let caps = vec![SOURCE_CAP.into()];
+    let padding = format!("//{}\n", "x".repeat(8192));
+    let source = format!("{padding}fn independent() int {{ return 7 }}\nfn main() int {{ return foreign_add(20,22) }}");
+    for target in [Target::Native, Target::C] {
+        let dir = root.join(format!("{target:?}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ManagedStore::open(&dir.join("store")).unwrap();
+        let mut session = Session::cold_stored(
+            &source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            Arc::new(std::fs::read(&object).unwrap()),
+            target,
+            &store,
+        )
+        .unwrap();
+        let mut stored = session
+            .snapshot()
+            .unwrap()
+            .publish(&store, "transfer", None)
+            .unwrap();
+        store
+            .replace_current_root("source-hot", "current", None, &stored.artifact_id)
+            .unwrap();
+        store.remove_project_roots("transfer").unwrap();
+        let initial = stored.clone();
+        let authority = fixture_current(&environment, target);
+        let mut old_reader =
+            Session::restore_stored_current(&store, &initial, target, &caps, &mut || {
+                Ok(authority.clone())
+            })
+            .unwrap();
+        let untouched = session.artifact_bytes("independent").unwrap().clone();
+        let policy = StorePolicy::tightened(1 << 20, 768 << 10).unwrap();
+        let mut reclaimed = 0;
+        let mut runs = 0;
+        for revision in 0..32 {
+            let candidate = session
+                .prepare(
+                    "main",
+                    &format!("fn main() int {{ return foreign_add(20,22)+{revision} }}"),
+                )
+                .unwrap();
+            session.commit(candidate).unwrap();
+            assert!(Arc::ptr_eq(
+                &untouched,
+                session.artifact_bytes("independent").unwrap()
+            ));
+            let next = session
+                .snapshot()
+                .unwrap()
+                .publish(&store, "transfer", Some(&stored))
+                .unwrap();
+            store
+                .replace_current_root(
+                    "source-hot",
+                    "current",
+                    Some(&stored.artifact_id),
+                    &next.artifact_id,
+                )
+                .unwrap();
+            store.remove_project_roots("transfer").unwrap();
+            stored = next;
+            let receipt = policy.collect(&store).unwrap();
+            assert!(receipt.backoff.is_none(), "{receipt:?}");
+            if receipt.ran {
+                assert!(receipt.total_after <= 768 << 10, "{receipt:?}");
+                runs += 1;
+                reclaimed += receipt.freed_bytes;
+            }
+            assert!(store.space().total <= 1 << 20);
+        }
+        assert!(
+            runs > 0 && reclaimed > 0,
+            "collector never reclaimed {target:?} source revisions"
+        );
+        assert_eq!(old_reader.frontend().source(), source);
+        assert_eq!(old_reader.meter().mir_produced, 0);
+        assert!(store
+            .get_artifact_by_id(&initial.artifact_id)
+            .unwrap()
+            .is_some());
+        let mut restored =
+            Session::restore_stored_current(&store, &stored, target, &caps, &mut || {
+                Ok(authority.clone())
+            })
+            .unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        let edit = restored
+            .prepare("main", "fn main() int { return foreign_add(21,22) }")
+            .unwrap();
+        restored.commit(edit).unwrap();
+        assert_eq!(
+            restored.run(&dir.join("new-current")).unwrap().exit_code,
+            Some(43)
+        );
+        assert_eq!(
+            old_reader.run(&dir.join("old-reader")).unwrap().exit_code,
+            Some(42)
+        );
+        drop(old_reader);
+        let last_gc = StorePolicy::tightened(1, 0)
+            .unwrap()
+            .collect(&store)
+            .unwrap();
+        assert!(last_gc.ran && last_gc.freed_bytes > 0, "{last_gc:?}");
+        assert!(store
+            .get_artifact_by_id(&initial.artifact_id)
+            .unwrap()
+            .is_none());
+        assert!(store
+            .get_artifact_by_id(&stored.artifact_id)
+            .unwrap()
+            .is_some());
+        eprintln!(
+            "source-hot {target:?}: revisions=32 runs={runs} reclaimed={reclaimed} final={}",
+            store.space().total
+        );
+    }
+}
 fn hash(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }

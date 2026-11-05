@@ -90,8 +90,25 @@ fn step(
     store: &ManagedStore,
     started: Instant,
     exit: Option<i32>,
-) -> StepOut {
-    StepOut {
+) -> Result<StepOut, DiagOut> {
+    let gc = crate::source_store::StorePolicy::worker()
+        .collect(store)
+        .map_err(|e| {
+            err(
+                "store.cleanup-pending",
+                format!("source operation completed; {e}"),
+            )
+        })?;
+    if let Some(backoff) = &gc.backoff {
+        // This is maintenance after the selected operation, which may have
+        // already published. Never disguise it as a rejected source candidate
+        // whose current root supposedly stayed unchanged.
+        return Err(err(
+            "store.cleanup-pending",
+            format!("source operation completed; store backoff: {backoff}"),
+        ));
+    }
+    Ok(StepOut {
         op: "query",
         outcome,
         cache: if outcome == "resource" {
@@ -117,12 +134,12 @@ fn step(
             } else {
                 0
             },
-            gc_runs: 0,
-            gc_deleted_chunks: 0,
-            gc_freed_bytes: 0,
+            gc_runs: u32::from(gc.ran),
+            gc_deleted_chunks: gc.deleted_chunks.try_into().unwrap_or(u32::MAX),
+            gc_freed_bytes: gc.freed_bytes,
         },
         pe_exit: exit,
-    }
+    })
 }
 fn events(bytes: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(bytes)
@@ -244,7 +261,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             } else {
                 "diags"
             };
-            let s = step(outcome, vec![d], 0, &store, started, None);
+            let s = step(outcome, vec![d], 0, &store, started, None)?;
             return Ok(output(s, report));
         }
     };
@@ -258,7 +275,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 &store,
                 started,
                 None,
-            ),
+            )?,
             report,
         ));
     }
@@ -269,7 +286,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         report.diagnostic_stage = "resolve".into();
         let code = e.split(':').next().unwrap_or("foreign.authority");
         return Ok(output(
-            step("diags", vec![err(code, &e)], 0, &store, started, None),
+            step("diags", vec![err(code, &e)], 0, &store, started, None)?,
             report,
         ));
     }
@@ -366,7 +383,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             Ok(candidate) => candidate,
             Err(PrepareError::Source(ace_source_query::frontend::Error::Diagnostics(ds))) => {
                 let fm = restored.frontend().meter();
-                return Ok(source_diagnostics(
+                return source_diagnostics(
                     report,
                     ds,
                     fm.whole_parse_attempts + fm.body_parse_attempts,
@@ -374,7 +391,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     provider_productions,
                     &store,
                     started,
-                ));
+                );
             }
             Err(e) => return Err(err("source", e)),
         };
@@ -401,7 +418,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         ) {
             Ok(c) => c,
             Err(ace_source_query::frontend::Error::Diagnostics(ds)) => {
-                return Ok(source_diagnostics(
+                return source_diagnostics(
                     report,
                     ds,
                     observation.whole_parse_attempts,
@@ -409,7 +426,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     provider_productions,
                     &store,
                     started,
-                ));
+                );
             }
             Err(e) => return Err(err("source", e)),
         };
@@ -520,7 +537,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             &store,
             started,
             actual.exit_code,
-        ),
+        )?,
         report,
     ))
 }
@@ -582,7 +599,7 @@ fn source_diagnostics(
     provider_productions: u64,
     store: &ManagedStore,
     started: Instant,
-) -> OkOut {
+) -> Result<OkOut, DiagOut> {
     report.source_parse = source_parse;
     report.solver = solver;
     report.diagnostic_stage = match ds.first().map(|d| d.stage) {
@@ -600,7 +617,7 @@ fn source_diagnostics(
             span: Some((d.span.start, d.span.end)),
         })
         .collect();
-    output(
+    Ok(output(
         step(
             "diags",
             ds.into_iter().map(|d| err(&d.code, d.message)).collect(),
@@ -608,15 +625,112 @@ fn source_diagnostics(
             store,
             started,
             None,
-        ),
+        )?,
         report,
-    )
+    ))
 }
 
 #[cfg(test)]
 mod request_budget_tests {
     use super::*;
     use ace_source_query::resources::Limits;
+
+    #[test]
+    fn source_step_runs_original_hot_collector_and_reports_its_actual_receipt() {
+        use ace_artifacts::{codec::ChunkKind, identity::QueryKey, store::PutRequest};
+        let dir =
+            std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+                "source-worker-gc-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        let store = ManagedStore::open(&dir).unwrap();
+        let layer = crate::cache::LAYER_OBJECT_V01;
+        let mut kept = String::new();
+        for revision in 0..5 {
+            let id = store
+                .put_artifact(PutRequest {
+                    layer: layer.id,
+                    key: QueryKey::new(&layer, vec![("revision".into(), revision.to_string())]),
+                    kind: ChunkKind::Object,
+                    payload: if revision == 0 {
+                        vec![0; 1024]
+                    } else {
+                        vec![revision; 3 << 20]
+                    },
+                    edges: vec![],
+                    project: None,
+                })
+                .unwrap();
+            if revision == 0 {
+                store
+                    .register_root("source-gc-control", &id, "current")
+                    .unwrap();
+                kept = id;
+            }
+        }
+        assert!(store.space().total > crate::source_store::HOT_HIGH);
+        let result = step("ok", vec![], 0, &store, Instant::now(), Some(42)).unwrap();
+        assert_eq!(result.outcome, "ok");
+        assert_eq!(result.meter.gc_runs, 1);
+        assert!(result.meter.gc_deleted_chunks > 0 && result.meter.gc_freed_bytes > 0);
+        assert!(result.meter.hot_bytes <= crate::source_store::HOT_LOW);
+        assert!(store.get_artifact_by_id(&kept).unwrap().is_some());
+        // A collector error is a visible maintenance failure, not a source
+        // rejection promising that a completed publication was rolled back.
+        for revision in 5u8..8 {
+            store
+                .put_artifact(PutRequest {
+                    layer: layer.id,
+                    key: QueryKey::new(&layer, vec![("revision".into(), revision.to_string())]),
+                    kind: ChunkKind::Object,
+                    payload: vec![revision; 3 << 20],
+                    edges: vec![],
+                    project: None,
+                })
+                .unwrap();
+        }
+        assert!(store.space().total > crate::source_store::HOT_HIGH);
+        store.db().execute_batch("PRAGMA query_only=ON").unwrap();
+        let error = step("ok", vec![], 0, &store, Instant::now(), Some(42))
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "store.cleanup-pending");
+        assert!(error.message.contains("source operation completed"));
+        store.db().execute_batch("PRAGMA query_only=OFF").unwrap();
+        assert!(step("ok", vec![], 0, &store, Instant::now(), Some(42)).is_ok());
+        for revision in 8u8..11 {
+            let id = store
+                .put_artifact(PutRequest {
+                    layer: layer.id,
+                    key: QueryKey::new(&layer, vec![("revision".into(), revision.to_string())]),
+                    kind: ChunkKind::Object,
+                    payload: vec![revision; 3 << 20],
+                    edges: vec![],
+                    project: None,
+                })
+                .unwrap();
+            store
+                .register_root("source-live-floor", &id, "live")
+                .unwrap();
+        }
+        let backoff = step("ok", vec![], 0, &store, Instant::now(), Some(42))
+            .err()
+            .unwrap();
+        assert_eq!(backoff.code, "store.cleanup-pending");
+        assert!(backoff.message.contains("backoff"));
+        assert!(store.get_artifact_by_id(&kept).unwrap().is_some());
+        assert_eq!(
+            store
+                .root_artifacts("source-live-floor", "live")
+                .unwrap()
+                .len(),
+            3
+        );
+    }
 
     fn request(value: &impl Serialize) -> WorkerRequest {
         WorkerRequest {
