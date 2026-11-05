@@ -20,6 +20,10 @@ fn workspace_root() -> PathBuf {
 fn manifest_face_only_sanctioned_dependencies() {
     let sanctioned = [
         "ace-a2x-c", // PLAN-921 CA-A: the C target provider (a2x-core + core HIR)
+        "ace-foreign-contract", // PLAN-937 CA-D1: the NEUTRAL interface-facts/
+                                 // physical-plan model both real consumers
+                                 // (abi native side + this C side) bind to —
+                                 // pure model crate, no backend stack
         "ace-abi",   // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
         // no second MSVC discovery path
         "ace-a2x-core",
