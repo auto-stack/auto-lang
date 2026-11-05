@@ -305,6 +305,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-source-query"
+version = "0.1.0"
+dependencies = [
+ "ace-core",
+ "ace-semantics",
+ "ace-semantics-contract",
+ "blake3",
+]
+
+[[package]]
 name = "ace-syntax-artifacts"
 version = "0.1.0"
 dependencies = [

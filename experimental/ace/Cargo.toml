@@ -23,6 +23,7 @@ members = [
   "crates/semantics",
   "crates/semantics-contract",
   "crates/semantics-store",
+  "crates/source-query",
   "crates/syntax-artifacts",
   "crates/syntax-core",
   "crates/syntax-grammar",

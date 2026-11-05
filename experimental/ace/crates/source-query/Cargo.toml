@@ -1,0 +1,23 @@
+[package]
+name = "ace-source-query"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-934 SQ-A: ordinary-source semantic query session between core binding and the AV/native/A2X consumers (source facts, logical keys, positive/negative invalidation)"
+publish = false
+
+[dependencies]
+ace-semantics-contract = { path = "../semantics-contract" }
+# The neutral solver (PLAN-796) is REUSED, never copied: the `core-ast`
+# feature exposes only the read-only projection of the core public AST
+# into the neutral input model.
+ace-semantics = { path = "../semantics", features = ["core-ast"] }
+ace-core = { path = "../core" }
+blake3 = "1.5"
+
+# PLAN-934 §2/§3 dependency direction: this crate sits BETWEEN core (it
+# consumes the public AST and the neutral solver) and the consumers
+# (AV/native/A2X) — it must not depend on av/native/a2x/lowering/abi, so
+# no core→source-query or source-query→consumer cycle can form. The
+# unified artifact store (`ace-artifacts`) joins at T-06 when the pages
+# are published; the plan's bounded T-02 feasibility keeps pages in
+# memory first.
