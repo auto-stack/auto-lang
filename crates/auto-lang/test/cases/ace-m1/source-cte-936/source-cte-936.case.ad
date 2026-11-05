@@ -1,0 +1,158 @@
+# PLAN-936 T-11 — SQ-C ordinary-source real-AV CT query family (frozen
+# constants through the CT product lane; hand-computed closed-form oracles).
+#
+# Every program compiles under the `ac.source.cte.scalar/v1` capability
+# (the product entries route through compile_scalar_source_product's CT
+# lane: serve every `#{ ... }` demand for real on the AV → structural
+# backfill → the fact lane → the SAME Checked HIR every backend consumes).
+# Oracles are hand-computed:
+#
+# * sum42:  §1 first case — #{sum(20,22)} = 42 (a real AV execution froze
+#           the constant into main's HIR);
+# * sum43:  the SAME call site with the callee body edited to a+b+1 -> 43
+#           (body-version invalidation; the call site text is unchanged);
+# * boollit: a bool CT demand guards the branch -> 7 (strict Bool tag);
+# * meta2/meta3: ct_field_count(Pair) with 2/3 fields -> 42/43 (meta is a
+#           local query whose result becomes a REAL AV argument; the field
+#           count axis flips the closed form);
+# * choose42 (V-04): the template instance #{choose(40,42,false)} -> 42
+#           through the instances lane;
+# * pick40 (V-11): flag's inner CT makes pick's instance body, the outer
+#           demand re-executes -> 40 (checked-child transitive versions).
+#
+# Negative controls (unserved hashes, cycles, deadline, forbid-av, tampered
+# envelopes, restore/R-window metering) are pinned by the `ace-source-cte`
+# crate tests carried by the `ace-comptime` fixed package group.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.sum42"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/sum42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.sum43"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/sum43.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.boollit"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/boollit.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.meta2"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/meta2.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.meta3"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/meta3.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.choose42"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/choose42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.cte936.pick40"
+  tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+  links: ["PLAN-936"]
+  source: { file: "src/pick40.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 40 } }
+  ]
+}
+```

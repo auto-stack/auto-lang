@@ -12,6 +12,9 @@ default = []
 test-case-batch = []
 
 [dependencies]
+# PLAN-936（T-11）：CT 需求的产品接线（av → source-cte 单向；服务永不反依
+# 赖 av/native——其 manifest 断言之）。
+ace-source-cte = { path = "../source-cte" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 ace-av-core = { path = "../av-core" }
 ace-lowering = { path = "../lowering" }

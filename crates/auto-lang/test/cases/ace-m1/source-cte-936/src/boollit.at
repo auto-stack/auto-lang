@@ -1,0 +1,7 @@
+fn flag() bool {
+    return true
+}
+fn main() int {
+    if #{ flag() } { return 7 }
+    return 9
+}

@@ -862,6 +862,22 @@ suite = "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instance
 domain = "ace"
 all = false
 
+# PLAN-936 T-11：SQ-C 普通源码真实 AV CT 查询族（CT 产品车道：真实 AV
+# 执行→结构回灌→事实车道→各端同 HIR）。负例（未服务/环/deadline/禁调/
+# 篡改 envelope/恢复 R 窗）由 ace-comptime 固定组的 ace-source-cte 包
+# 测试承载。
+[[group]]
+name = "case-ace-source-cte-936"
+title = "ACE M1 SQ-C source CTE 936 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-932: the native warm-edit admission suite — typed refusal verdicts
 # (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
 # state survival and history A→B→A on the real scalar worker (source-v1).

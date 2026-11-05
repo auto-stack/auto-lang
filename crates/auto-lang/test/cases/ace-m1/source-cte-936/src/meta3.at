@@ -1,0 +1,11 @@
+type Pair {
+    x int
+    y int
+    z int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(ct_field_count(Pair), 40) }
+}

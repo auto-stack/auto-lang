@@ -344,11 +344,8 @@ fn find_free_fn<'a>(program: &'a Program, name: &str) -> Result<&'a FnItem, Prod
                     hit = Some(f);
                 }
             }
-            Item::Type(_) => {
-                return Err(ProduceError::Profile {
-                    what: "record declaration",
-                })
-            }
+            // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
+            Item::Type(_) => {}
             Item::Enum(_) => {
                 return Err(ProduceError::Profile {
                     what: "enum declaration",

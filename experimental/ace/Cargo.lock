@@ -117,6 +117,7 @@ dependencies = [
  "ace-core",
  "ace-lowering",
  "ace-semantics-contract",
+ "ace-source-cte",
  "ace-source-query",
  "ace-syntax-core",
  "ace-syntax-grammar",

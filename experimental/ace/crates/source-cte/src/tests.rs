@@ -1371,3 +1371,70 @@ fn t09_missing_pages_fall_back_to_real_execution() {
     let _ = p;
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// T-09 余量：R 窗计量——恢复 hit 的读是真实读（probes/bytes/decode 非零）
+/// 且零 AV；首坏 CT（trap）受控拒零发布→修复→第二有效编辑成功发布。
+#[test]
+fn t09_r_window_metering_and_first_bad_then_repair() {
+    const GOOD: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(20, 22) }
+}
+";
+    const BAD: &str = "\
+fn sum(a int, b int) int {
+    return a/b
+}
+fn main() int {
+    return #{ sum(20, 0) }
+}
+";
+    const REPAIRED: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(20, 23) }
+}
+";
+    let dir = temp_store("rwin");
+    let caps = ct_caps();
+    {
+        let sink = ManagedEnvelopeSink::open(&dir, Some("ct936-w")).expect("store");
+        let mut svc = CtService::new(sink);
+        let _ = compile_scalar_ct(&mut svc, GOOD, "m.at", &caps, "pkg", "mod").expect("cold");
+        assert_eq!(svc.counters().ct_execute, 1);
+    }
+    // 恢复：hit 的 R 窗真实读计量，零 AV。
+    let sink = ManagedEnvelopeSink::open(&dir, Some("ct936-w")).expect("reopen");
+    let mut svc = CtService::new(sink);
+    let _ = compile_scalar_ct(&mut svc, GOOD, "m.at", &caps, "pkg", "mod").expect("hit");
+    assert_eq!(svc.counters().ct_execute, 0);
+    let (probes, bytes, decodes) = svc.r_window();
+    assert!(probes >= 1, "a real probe happened");
+    assert!(bytes > 0, "real payload bytes were read");
+    assert!(decodes >= 1, "the page was decoded+admitted");
+    // 首坏：trap 需求受控拒（失败 attempt 计数），零发布。
+    assert!(
+        compile_scalar_ct(&mut svc, BAD, "m.at", &caps, "pkg", "mod").is_err(),
+        "the trapping demand is rejected"
+    );
+    assert_eq!(svc.counters().ct_execute, 1, "the failed attempt counted");
+    let publishes_before = svc.counters().ct_freeze_publishes;
+    // 修复：第二有效编辑成功（真执行+发布）。
+    let p = compile_scalar_ct(&mut svc, REPAIRED, "m.at", &caps, "pkg", "mod").expect("repair");
+    assert!(svc.counters().ct_freeze_publishes > publishes_before);
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        41,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("run");
+    assert_eq!(v, ace_av_core::contract::Value::I32(43));
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -371,9 +371,11 @@ pub fn apply_facts_to_resolved(
         .iter()
         .map(|item| match item {
             Item::Fn(f) => Ok(f.name.name.clone()),
-            Item::Type(_) => Err(ApplyError::Profile {
-                what: "record declaration",
-            }),
+            // PLAN-936（T-11）：fields-only record 声明是 meta 源的合法形状
+            // （§5.2——元信息从名义声明表来；record 运行值不参与 CT 执行）。
+            // 事实面按 fn 逐体定型，Type 项跳过（core resolve 仍注册其
+            // rec_index 供 meta selector 验证）。
+            Item::Type(_) => Ok(String::new()),
             Item::Enum(_) => Err(ApplyError::Profile {
                 what: "enum declaration",
             }),
@@ -383,6 +385,9 @@ pub fn apply_facts_to_resolved(
     let mut out = Vec::with_capacity(names.len());
     let catalog = session.catalog(program).map_err(FactsApplyError::Query)?;
     for name in names {
+        if name.is_empty() {
+            continue; // the fields-only Type items (936 meta source form)
+        }
         let ast_body = program
             .items
             .iter()
@@ -573,7 +578,8 @@ pub fn bind_with_facts(
     for item in &program.items {
         match item {
             Item::Fn(f) => names.push(f.name.name.clone()),
-            Item::Type(_) => return Err(BindFactsError::Profile("record declaration")),
+            // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
+            Item::Type(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
         }
     }

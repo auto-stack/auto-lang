@@ -116,6 +116,11 @@ impl<S: CtEnvelopeSink> CtService<S> {
         &self.exec_log
     }
 
+    /// The sink's R-window metering (§5.5 real read facts).
+    pub fn r_window(&self) -> (u64, u64, u64) {
+        self.sink.r_window()
+    }
+
     /// The counter control (a miss must fail, not fold).
     pub fn set_forbid_av(&mut self, on: bool) {
         self.forbid_av = on;

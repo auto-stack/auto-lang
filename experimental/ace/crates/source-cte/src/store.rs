@@ -39,12 +39,23 @@ pub const MAX_PAGE_BYTES: usize = 512 * 1024;
 pub trait CtEnvelopeSink {
     fn probe(&self, key: &ExecKey) -> Result<Option<CtExecutedV1>, EnvelopeError>;
     fn publish(&mut self, key: &ExecKey, env: &CtExecutedV1) -> Result<(), EnvelopeError>;
+    /// R-window metering (probes / payload bytes / decoded pages); the
+    /// default is "no window" (memory sinks).
+    fn r_window(&self) -> (u64, u64, u64) {
+        (0, 0, 0)
+    }
 }
 
 /// The unified-store sink.
 pub struct ManagedEnvelopeSink {
     store: ManagedStore,
     project: Option<String>,
+    /// R-window metering (§5.5): REAL reads counted at the store seam —
+    /// probes, payload bytes and decode admissions. A restore lane reports
+    /// these; they are measured facts, never reconstructed.
+    probes: std::cell::Cell<u64>,
+    payload_bytes: std::cell::Cell<u64>,
+    decodes: std::cell::Cell<u64>,
 }
 
 impl ManagedEnvelopeSink {
@@ -55,6 +66,9 @@ impl ManagedEnvelopeSink {
         Ok(ManagedEnvelopeSink {
             store: ManagedStore::open(root)?,
             project: project.map(|s| s.to_string()),
+            probes: std::cell::Cell::new(0),
+            payload_bytes: std::cell::Cell::new(0),
+            decodes: std::cell::Cell::new(0),
         })
     }
 
@@ -62,6 +76,9 @@ impl ManagedEnvelopeSink {
         ManagedEnvelopeSink {
             store,
             project: project.map(|s| s.to_string()),
+            probes: std::cell::Cell::new(0),
+            payload_bytes: std::cell::Cell::new(0),
+            decodes: std::cell::Cell::new(0),
         }
     }
 
@@ -71,6 +88,10 @@ impl ManagedEnvelopeSink {
 }
 
 impl CtEnvelopeSink for ManagedEnvelopeSink {
+    fn r_window(&self) -> (u64, u64, u64) {
+        (self.probes.get(), self.payload_bytes.get(), self.decodes.get())
+    }
+
     fn probe(&self, key: &ExecKey) -> Result<Option<CtExecutedV1>, EnvelopeError> {
         let loaded = self
             .store
@@ -79,7 +100,10 @@ impl CtEnvelopeSink for ManagedEnvelopeSink {
         match loaded {
             None => Ok(None),
             Some(a) => {
+                self.probes.set(self.probes.get() + 1);
+                self.payload_bytes.set(self.payload_bytes.get() + a.payload.len() as u64);
                 let (page_key, env) = decode_envelope(&a.payload)?;
+                self.decodes.set(self.decodes.get() + 1);
                 if page_key != key.canonical() {
                     return Err(EnvelopeError::KeyMismatch {
                         expected: key.canonical(),

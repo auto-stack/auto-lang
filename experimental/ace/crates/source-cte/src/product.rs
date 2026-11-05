@@ -39,6 +39,10 @@ use ace_source_query::{apply::BodyTypeSupply, SourceQuerySession};
 #[derive(Debug)]
 pub struct CtProduct {
     pub checked: CheckedModule,
+    /// Emit identity (input hash + atom text of the served program — the
+    /// consumer-facing CompiledSource shape).
+    pub input_hash: String,
+    pub atom_text: String,
     /// The fully substituted program (every hash site replaced by its
     /// frozen literal — the structural backfill itself). Under the
     /// instances lane this is the DESUGARED concrete program (templates
@@ -171,9 +175,13 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
     })?;
     let parts = emit_resolved_parts(&resolved, src, module_path, SourceProfile::Scalar)
         .map_err(CtProductError::Diagnostics)?;
+    let input_hash = parts.input_hash;
+    let atom_text = parts.atom_text;
     let checked = verify_scalar(parts.bundle).map_err(CtProductError::Diagnostics)?;
     Ok(CtProduct {
         checked,
+        input_hash,
+        atom_text,
         program: substituted,
         served,
         supply,
