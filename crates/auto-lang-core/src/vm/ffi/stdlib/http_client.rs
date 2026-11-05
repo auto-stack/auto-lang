@@ -1061,6 +1061,10 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         .map_err(|e| VMError::RuntimeError(format!("Mutex poison: {}", e)))?;
     let method = builder_data.method.clone();
     let url = builder_data.url.clone();
+    // PLAN-949 诊断：请求发出点（env 门控；区分 boot/派发路径）。
+    if std::env::var_os("AUTO_DEBUG_HTTP").is_some() {
+        eprintln!("[plan949] http send {method} {url}");
+    }
     let body = builder_data.body.clone();
     let headers = builder_data.headers.clone();
     let timeout_ms = builder_data.timeout_ms;
@@ -3499,3 +3503,4 @@ pub(super) fn register_response_stream_shims(natives: &mut crate::vm::native::Na
 pub fn async_stream_registered_for_test(id: u64) -> bool {
     ASYNC_STREAMS.lock().unwrap().contains_key(&id)
 }
+
