@@ -55,7 +55,8 @@ provider/来源闭包变化改变共同身份。未知/旧不完整快照=陈旧
 producer、声明 hash、adapter 合同 hash；数字 native ID 不是操作身份。
 它不使该操作在有限标量源域可调用，也不把 signature_checked 升为 executed。
 新证据记录的 verification 只接纳 `signature_checked`，不能从缓存提升为
-executed；声明 FNV16、adapter/input64 均要求规范小写十六进制。
+executed；声明 FNV64 用16个、adapter/input 的256位内容hash用64个规范
+小写十六进制字符表示。
 
 结构解码与当前身份准入分开：恢复的期望清单须来自当前 source/contract/
 provider 输入，不能复制候选载荷充当期望。重复声明/未知字段、坏指纹、
