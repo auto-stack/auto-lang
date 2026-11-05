@@ -29,6 +29,10 @@ pub fn register_host_call(name: &str, f: HostCallFn) {
 
 /// 调用已注册的宿主桥函数(VM native 侧进入)。
 pub fn call_host(name: &str, args_json: &str) -> Result<String, String> {
+    // PLAN-949 诊断：宿主桥调用点（env 门控）。
+    if std::env::var_os("AUTO_DEBUG_HTTP").is_some() {
+        eprintln!("[plan949] host.call name={name} args={args_json}");
+    }
     let f = HOST_CALLS
         .lock()
         .unwrap()
@@ -47,3 +51,4 @@ pub fn has_host_calls() -> bool {
 pub fn has_host_call(name: &str) -> bool {
     HOST_CALLS.lock().unwrap().contains_key(name)
 }
+
