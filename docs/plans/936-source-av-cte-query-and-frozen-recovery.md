@@ -206,6 +206,8 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 9. 复审记录
 
+2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 5（纯等待轮） | from: work | to: work | status: executing | outcome: waiting（D934 活跃证据：worktree 最新写入 14:53:39 query_entry.rs/sq_source_facts_934.rs（T-08 进行中），距检查时刻 ~6 分钟；接管三证不成立，继续等待） | worktree: lang-936（clean） | commit: 本收据即簿记 | next: work（按接管规则持续判定；D934 合入→935 T-02）
+
 2026-11-05 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: 4（纯等待轮） | from: work | to: work | status: executing | outcome: waiting（D934 无变化：仍 7/13、未合并、branch tip e505a665d、worktree 活跃；本会话私有层已齐——936 T-01+T-02/T-03 DRAFT、935 T-01+T-02 DRAFT） | worktree: lang-936（clean） | commit: 本收据即簿记 | next: work / 视情形接管（见下）
   - **接管判定规则（固化，沿 934 round-6 接管 929 的三证先例）**：934 会话已提交"交接检查点给下一会话"（9120756f2）。若后续轮观察到 934 **停滞三证**——①lang-934 worktree 无文件活动 ≥1h；②无 cargo/rustc/nextest 进程；③其计划 §9 无新收据且 frontmatter 不动——则本会话按用户 standing 指令（"先推进并交付 PLAN-934"）接管其 T-08..T-13（work→review→merge），在 lang-934 树上续作。观察到的活跃即继续等待，绝不并写。
 
