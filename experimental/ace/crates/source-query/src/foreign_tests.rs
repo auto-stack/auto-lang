@@ -523,3 +523,31 @@ fn foreign_nominal_version_is_a_reader_dependency_without_provider_body() {
     assert_eq!(front.function_meter("leaf"), meter);
     assert_eq!(front.body_identity("leaf"), leaf_body);
 }
+
+#[test]
+fn foreign_warm_conflict_after_prefix_drift_uses_current_name_span_before_production() {
+    use crate::frontend::{Error, Frontend};
+    let env = environment();
+    let source = "fn first() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let (mut front, _) =
+        Frontend::cold(source, "m938", "p938", &[SOURCE_CAP.into()], env.clone()).unwrap();
+    let edit = front
+        .prepare("first", "fn first() int { let longer=7\nreturn longer }")
+        .unwrap();
+    front.commit(edit).unwrap();
+    let meter = front.meter();
+    let counters = front.query_counters();
+    let digest = front.checkpoint().unwrap().digest;
+    let mut manifest = env.manifest().clone();
+    manifest.declarations[0].source_name = "main".into();
+    let Error::Diagnostics(ds) = front.prepare_foreign(admit(manifest)).err().unwrap() else {
+        panic!()
+    };
+    assert_eq!(ds[0].code, "source.foreign-conflict");
+    let at = front.source().find("fn main").unwrap() + 3;
+    assert_eq!(ds[0].span.start, at);
+    assert_eq!(ds[0].span.end, at + 4);
+    assert_eq!(front.meter(), meter);
+    assert_eq!(front.query_counters(), counters);
+    assert_eq!(front.checkpoint().unwrap().digest, digest);
+}

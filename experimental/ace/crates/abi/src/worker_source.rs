@@ -1,7 +1,7 @@
 //! Explicit source-import CERTIFICATION recipe on the existing bounded ABI
 //! worker transport. Observed data is returned; only the parent owns oracles.
 use crate::{
-    source_foreign::{Session, Stored, Target},
+    source_foreign::{CurrentAuthority, Edit, PrepareError, Session, Stored, Target},
     source_provider as provider,
     worker::{DiagOut, MeterOut, OkOut, StageSpan, StepOut, WorkerRequest},
 };
@@ -73,6 +73,7 @@ pub struct SourceReport {
 struct Publication {
     module: String,
     provider_bias: u8,
+    binding_generation: u64,
     stored: Stored,
 }
 fn err(code: &str, message: impl ToString) -> DiagOut {
@@ -237,25 +238,33 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     let mut provider_productions = (!hit) as u64;
     report.c_toolchain = crate::ctool::toolchain_fingerprint().map_err(|e| err("infra", e))?;
     report.provider_digest = provider::hash(&bytes);
+    let current = Path::new(&req.store_root).join(format!("source938-current-{}.json", req.leg));
+    let (previous, expected_pointer) =
+        match crate::source_foreign::read_pointer_bytes(&current).map_err(|e| err("store", e))? {
+            Some(bytes) => {
+                let digest = ace_a2x_core::sha256::sha256_hex(&bytes);
+                let previous =
+                    serde_json::from_slice::<Publication>(&bytes).map_err(|e| err("restore", e))?;
+                (Some(previous), Some(digest))
+            }
+            None => (None, None),
+        };
+    let binding_generation = match &previous {
+        Some(p) if p.provider_bias != deck.provider_bias => p
+            .binding_generation
+            .checked_add(1)
+            .ok_or_else(|| err("foreign.binding", "generation overflow"))?,
+        Some(p) => p.binding_generation,
+        None => 1,
+    };
     let environment = provider::admit(
         deck.manifest,
         &report.provider_digest,
-        deck.provider_bias as u64 + 1,
+        binding_generation,
         &deck.capabilities,
     )
     .map_err(|e| err("foreign.authority", e))?;
-    let current = Path::new(&req.store_root).join(format!("source938-current-{}.json", req.leg));
-    let previous = if current.is_file() {
-        Some(
-            serde_json::from_slice::<Publication>(
-                &std::fs::read(&current).map_err(|e| err("store", e))?,
-            )
-            .map_err(|e| err("restore", e))?,
-        )
-    } else {
-        None
-    };
-    let mut session = if let Some(previous) = &previous {
+    let (mut session, edit) = if let Some(previous) = &previous {
         if previous.module != deck.module {
             return Err(err(
                 "restore",
@@ -271,33 +280,69 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             provider::admit(
                 provider::reviewed_add_manifest(),
                 &provider::hash(&old_bytes),
-                previous.provider_bias as u64 + 1,
+                previous.binding_generation,
                 &deck.capabilities,
             )
             .map_err(|e| err("foreign.authority", e))?
         } else {
             environment.clone()
         };
-        let mut restored = Session::restore_stored(
+        let restore_digest = restore_environment.provider_digest().to_string();
+        let restore_generation = restore_environment.generation();
+        let mut restore_current = || {
+            Ok(CurrentAuthority {
+                foreign: provider::authority(
+                    &restore_digest,
+                    restore_generation,
+                    &deck.capabilities,
+                )?,
+                runtime_digest: crate::source_foreign::certification_runtime_policy(target),
+                emitter: target.identity(),
+            })
+        };
+        let mut restored = Session::restore_stored_authorized(
             &store,
             &previous.stored,
             target,
             &deck.capabilities,
             restore_environment,
+            &mut restore_current,
         )
         .map_err(|e| err("restore", e))?;
-        if previous.provider_bias != deck.provider_bias {
+        let changed_source = restored.frontend().source() != deck.source;
+        let changed_provider = previous.provider_bias != deck.provider_bias;
+        let result = if changed_provider {
             restored
-                .rebind_provider(environment, std::sync::Arc::new(bytes.clone()))
-                .map_err(|e| err("foreign.binding", e))?;
-        }
-        if restored.frontend().source() != deck.source {
-            let candidate = restored
-                .prepare_source(&deck.source)
-                .map_err(|e| err("source", e))?;
-            restored.commit(candidate).map_err(|e| err("source", e))?;
-        }
-        restored
+                .prepare_foreign_source_checked(
+                    environment,
+                    Arc::new(bytes.clone()),
+                    changed_source.then_some(deck.source.as_str()),
+                )
+                .map(Edit::Foreign)
+        } else if changed_source {
+            restored
+                .prepare_source_checked(&deck.source)
+                .map(Edit::Body)
+        } else {
+            Ok(Edit::Current)
+        };
+        let edit = match result {
+            Ok(candidate) => candidate,
+            Err(PrepareError::Source(ace_source_query::frontend::Error::Diagnostics(ds))) => {
+                let fm = restored.frontend().meter();
+                return Ok(source_diagnostics(
+                    report,
+                    ds,
+                    fm.whole_parse_attempts + fm.body_parse_attempts,
+                    restored.frontend().query_counters().solver_runs,
+                    provider_productions,
+                    &store,
+                    started,
+                ));
+            }
+            Err(e) => return Err(err("source", e)),
+        };
+        (restored, edit)
     } else {
         let mut observation = ace_source_query::frontend::ColdObservation::default();
         let (front, checked) = match Frontend::cold_observed(
@@ -310,39 +355,23 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         ) {
             Ok(c) => c,
             Err(ace_source_query::frontend::Error::Diagnostics(ds)) => {
-                report.source_parse = observation.whole_parse_attempts;
-                report.solver = observation.queries.solver_runs;
-                report.diagnostic_stage = match ds.first().map(|d| d.stage) {
-                    Some(ace_core::atom_text::Stage::Text) => "parse",
-                    Some(ace_core::atom_text::Stage::Verify) => "verify",
-                    _ => "resolve",
-                }
-                .into();
-                report.diagnostics = ds
-                    .iter()
-                    .map(|d| SourceDiagnostic {
-                        stage: report.diagnostic_stage.clone(),
-                        code: d.code.clone(),
-                        message: d.message.clone(),
-                        span: Some((d.span.start, d.span.end)),
-                    })
-                    .collect();
-                return Ok(output(
-                    step(
-                        "diags",
-                        ds.into_iter().map(|d| err(&d.code, d.message)).collect(),
-                        provider_productions as u32 + report.solver as u32,
-                        &store,
-                        started,
-                        None,
-                    ),
+                return Ok(source_diagnostics(
                     report,
+                    ds,
+                    observation.whole_parse_attempts,
+                    observation.queries.solver_runs,
+                    provider_productions,
+                    &store,
+                    started,
                 ));
             }
             Err(e) => return Err(err("source", e)),
         };
-        Session::from_frontend(front, checked, Arc::new(bytes.clone()), target)
-            .map_err(|e| err("source", e))?
+        (
+            Session::from_frontend(front, checked, Arc::new(bytes.clone()), target)
+                .map_err(|e| err("source", e))?,
+            Edit::Current,
+        )
     };
     let fm = session.frontend().meter();
     let tm = session.meter();
@@ -357,7 +386,21 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         req.leg,
         std::process::id()
     ));
-    let actual = session.run(&run_dir).map_err(|e| err("infra", e))?;
+    let digest = report.provider_digest.clone();
+    let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
+    let mut current_authority = || {
+        Ok(CurrentAuthority {
+            foreign: provider::authority(&digest, binding_generation, &deck.capabilities)?,
+            runtime_digest: runtime_policy.clone(),
+            emitter: target.identity(),
+        })
+    };
+    let prepared = session
+        .prepare_publication(edit, &run_dir, &mut current_authority, None)
+        .map_err(|e| err("publication", e))?;
+    let actual = prepared
+        .run(&mut current_authority, None)
+        .map_err(|e| err("infra", e))?;
     let reference_dir = run_dir.join("reference");
     std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
     write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
@@ -392,28 +435,26 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.reference_events = events(&reference.stderr);
     report.actual_stderr = String::from_utf8_lossy(&actual.stderr).into();
     report.reference_stderr = String::from_utf8_lossy(&reference.stderr).into();
-    let stored = session
-        .snapshot()
-        .map_err(|e| err("store", e))?
-        .publish(
+    session
+        .publish_prepared(
+            prepared,
             &store,
-            "source938-certification",
+            &current,
+            expected_pointer.as_deref(),
             previous.as_ref().map(|p| &p.stored),
+            |stored| {
+                serde_json::to_vec(&Publication {
+                    module: deck.module.clone(),
+                    provider_bias: deck.provider_bias,
+                    binding_generation,
+                    stored: stored.clone(),
+                })
+                .map_err(|e| e.to_string())
+            },
+            &mut current_authority,
+            None,
         )
         .map_err(|e| err("store", e))?;
-    let publication = Publication {
-        module: deck.module,
-        provider_bias: deck.provider_bias,
-        stored,
-    };
-    let temp = current.with_extension(format!("tmp-{}", std::process::id()));
-    write(
-        &temp,
-        serde_json::to_vec(&publication).map_err(|e| err("store", e))?,
-    )
-    .map_err(|e| err("store", e))?;
-    // Current-pointer fault/atomic replacement handling is part of T-08.
-    std::fs::rename(&temp, &current).map_err(|e| err("store", e))?;
     let compute = report.solver
         + report.hir
         + report.mir
@@ -480,4 +521,43 @@ fn prepare_provider(
     })
     .map_err(|e| err("infra", e))?;
     Ok(result)
+}
+
+fn source_diagnostics(
+    mut report: SourceReport,
+    ds: Vec<ace_core::atom_text::Diagnostic>,
+    source_parse: u64,
+    solver: u64,
+    provider_productions: u64,
+    store: &ManagedStore,
+    started: Instant,
+) -> OkOut {
+    report.source_parse = source_parse;
+    report.solver = solver;
+    report.diagnostic_stage = match ds.first().map(|d| d.stage) {
+        Some(ace_core::atom_text::Stage::Text) => "parse",
+        Some(ace_core::atom_text::Stage::Verify) => "verify",
+        _ => "resolve",
+    }
+    .into();
+    report.diagnostics = ds
+        .iter()
+        .map(|d| SourceDiagnostic {
+            stage: report.diagnostic_stage.clone(),
+            code: d.code.clone(),
+            message: d.message.clone(),
+            span: Some((d.span.start, d.span.end)),
+        })
+        .collect();
+    output(
+        step(
+            "diags",
+            ds.into_iter().map(|d| err(&d.code, d.message)).collect(),
+            (provider_productions + solver) as u32,
+            store,
+            started,
+            None,
+        ),
+        report,
+    )
 }

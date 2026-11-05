@@ -105,11 +105,28 @@ pub struct Session {
     artifacts: BTreeMap<String, Arc<Artifact>>,
     runtime: Arc<Vec<u8>>,
     provider: Arc<Vec<u8>>,
+    runtime_identity: String,
+    runtime_page_id: String,
+    provider_page_id: String,
     id: u64,
     generation: u64,
     meter: Meter,
     per_function: BTreeMap<String, Meter>,
 }
+#[derive(Debug)]
+pub enum PrepareError {
+    Source(ace_source_query::frontend::Error),
+    Target(String),
+}
+impl std::fmt::Display for PrepareError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Source(e) => e.fmt(f),
+            Self::Target(e) => f.write_str(e),
+        }
+    }
+}
+impl std::error::Error for PrepareError {}
 pub struct Candidate {
     source: SourceCandidate,
     artifact: Arc<Artifact>,
@@ -370,6 +387,9 @@ impl Session {
             front,
             target,
             artifacts,
+            runtime_identity: runtime_identity(target, &hash(&runtime)),
+            runtime_page_id: hash(&runtime),
+            provider_page_id: hash(&provider),
             runtime,
             provider,
             id: IDS.fetch_add(1, Ordering::Relaxed),
@@ -409,10 +429,26 @@ impl Session {
         Ok(())
     }
     pub fn prepare(&mut self, name: &str, declaration: &str) -> Result<Candidate, String> {
+        self.prepare_checked(name, declaration)
+            .map_err(|e| e.to_string())
+    }
+    pub fn prepare_checked(
+        &mut self,
+        name: &str,
+        declaration: &str,
+    ) -> Result<Candidate, PrepareError> {
         let source = self
             .front
             .prepare(name, declaration)
-            .map_err(|e| e.to_string())?;
+            .map_err(PrepareError::Source)?;
+        self.finish_candidate(name, source)
+            .map_err(PrepareError::Target)
+    }
+    fn finish_candidate(
+        &mut self,
+        name: &str,
+        source: SourceCandidate,
+    ) -> Result<Candidate, String> {
         let counts = self.per_function.entry(name.into()).or_default();
         let before = *counts;
         let result = selected_artifact(
@@ -435,11 +471,15 @@ impl Session {
         })
     }
     pub fn prepare_source(&mut self, source: &str) -> Result<Candidate, String> {
+        self.prepare_source_checked(source)
+            .map_err(|e| e.to_string())
+    }
+    pub fn prepare_source_checked(&mut self, source: &str) -> Result<Candidate, PrepareError> {
         let (name, declaration) = self
             .front
             .owner_replacement(source)
-            .map_err(|e| e.to_string())?;
-        self.prepare(&name, &declaration)
+            .map_err(PrepareError::Source)?;
+        self.prepare_checked(&name, &declaration)
     }
     pub fn validate(&self, candidate: &Candidate) -> Result<(), String> {
         if candidate.owner != self.id || candidate.base != self.generation {
@@ -470,6 +510,7 @@ impl Session {
         self.front
             .rebind_provider(environment)
             .map_err(|e| e.to_string())?;
+        self.provider_page_id = hash(&bytes);
         self.provider = bytes;
         self.generation += 1;
         Ok(())
@@ -481,12 +522,38 @@ impl Session {
         environment: AdmittedForeign,
         provider: Arc<Vec<u8>>,
     ) -> Result<ForeignCandidate, String> {
-        admit_provider(&environment, &provider)?;
-        self.admit_resident(provider.len())?;
+        self.prepare_foreign_source(environment, provider, None)
+    }
+    pub fn prepare_foreign_source(
+        &mut self,
+        environment: AdmittedForeign,
+        provider: Arc<Vec<u8>>,
+        source: Option<&str>,
+    ) -> Result<ForeignCandidate, String> {
+        self.prepare_foreign_source_checked(environment, provider, source)
+            .map_err(|e| e.to_string())
+    }
+    pub fn prepare_foreign_source_checked(
+        &mut self,
+        environment: AdmittedForeign,
+        provider: Arc<Vec<u8>>,
+        source: Option<&str>,
+    ) -> Result<ForeignCandidate, PrepareError> {
+        admit_provider(&environment, &provider).map_err(PrepareError::Target)?;
+        self.admit_resident(provider.len())
+            .map_err(PrepareError::Target)?;
         let source = self
             .front
-            .prepare_foreign(environment)
-            .map_err(|e| e.to_string())?;
+            .prepare_foreign_source(environment, source)
+            .map_err(PrepareError::Source)?;
+        self.finish_foreign_candidate(source, provider)
+            .map_err(PrepareError::Target)
+    }
+    fn finish_foreign_candidate(
+        &mut self,
+        source: SourceForeignCandidate,
+        provider: Arc<Vec<u8>>,
+    ) -> Result<ForeignCandidate, String> {
         let mut artifacts = BTreeMap::new();
         let mut extra = provider.len();
         for body in source.bodies() {
@@ -534,12 +601,28 @@ impl Session {
         for (name, artifact) in candidate.artifacts {
             self.artifacts.insert(name, artifact);
         }
+        self.provider_page_id = hash(&candidate.provider);
         self.provider = candidate.provider;
         self.generation += 1;
         Ok(())
     }
     pub fn snapshot(&self) -> Result<Snapshot, String> {
-        let front = self.front.checkpoint().map_err(|e| e.to_string())?;
+        self.snapshot_view(
+            self.front.checkpoint().map_err(|e| e.to_string())?,
+            self.front.foreign(),
+            &self.provider,
+            &self.provider_page_id,
+            &BTreeMap::new(),
+        )
+    }
+    fn snapshot_view(
+        &self,
+        front: ace_source_query::frontend::Checkpoint,
+        environment: &AdmittedForeign,
+        provider: &Arc<Vec<u8>>,
+        provider_id: &str,
+        overrides: &BTreeMap<String, Arc<Artifact>>,
+    ) -> Result<Snapshot, String> {
         let mut pages: BTreeMap<_, _> = front
             .pages
             .values()
@@ -547,28 +630,26 @@ impl Session {
             .collect();
         let front_digest = front.digest;
         pages.insert(front_digest.clone(), Arc::new(front.root));
-        for a in self.artifacts.values() {
-            pages.insert(a.digest.clone(), a.bytes.clone());
+        let mut functions = BTreeMap::new();
+        for (name, artifact) in &self.artifacts {
+            let artifact = overrides.get(name).unwrap_or(artifact);
+            pages.insert(artifact.digest.clone(), artifact.bytes.clone());
+            functions.insert(name.clone(), artifact.digest.clone());
         }
-        let runtime = hash(&self.runtime);
-        pages.insert(runtime.clone(), self.runtime.clone());
-        let provider = hash(&self.provider);
-        pages.insert(provider.clone(), self.provider.clone());
+        pages.insert(self.runtime_page_id.clone(), self.runtime.clone());
+        pages.insert(provider_id.into(), provider.clone());
         let root = Root {
             schema: SCHEMA.into(),
             target: self.target,
             target_identity: self.target.identity(),
             frontend: front_digest,
-            runtime,
-            provider,
-            provider_digest: self.front.foreign().provider_digest().into(),
-            binding_generation: self.front.foreign().generation(),
-            contract: self.front.foreign().contract_digest().into(),
-            functions: self
-                .artifacts
-                .iter()
-                .map(|(n, a)| (n.clone(), a.digest.clone()))
-                .collect(),
+            runtime: self.runtime_page_id.clone(),
+            runtime_identity: self.runtime_identity.clone(),
+            provider: provider_id.into(),
+            provider_digest: environment.provider_digest().into(),
+            binding_generation: environment.generation(),
+            contract: environment.contract_digest().into(),
+            functions,
         };
         let root = serde_json::to_vec(&root).map_err(|e| e.to_string())?;
         if root.len() > MAX_ROOT {
@@ -600,6 +681,7 @@ impl Session {
             || root.provider_digest != environment.provider_digest()
             || root.binding_generation != environment.generation()
             || root.contract != environment.contract_digest()
+            || root.runtime_identity != runtime_identity(target, &root.runtime)
         {
             return Err("foreign.restore.identity".into());
         }
@@ -709,6 +791,9 @@ impl Session {
             front,
             target,
             artifacts,
+            runtime_identity: root.runtime_identity,
+            runtime_page_id: root.runtime,
+            provider_page_id: root.provider,
             runtime,
             provider,
             id: IDS.fetch_add(1, Ordering::Relaxed),
@@ -722,108 +807,109 @@ impl Session {
         session.admit_resident(0)?;
         Ok(session)
     }
-    /// Shared assembly and link/tool work are explicit and separately counted.
-    /// All source foreign calls remain in the emitted business functions.
-    pub fn run(&mut self, directory: &Path) -> Result<ace_native::link_driver::PeRun, String> {
-        std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-        std::fs::write(
-            directory.join("source938_events.c"),
-            crate::source_provider::EVENT_RUNTIME,
-        )
-        .map_err(|e| e.to_string())?;
-        let provider = directory.join("provider.obj");
-        std::fs::write(&provider, &*self.provider).map_err(|e| e.to_string())?;
-        let mut objects = vec![provider];
-        let sources;
-        match self.target {
-            Target::Native => {
-                let mut entry = None;
-                for (i, (name, a)) in self.artifacts.iter().enumerate() {
-                    let TargetWire::Native { symbol, coff, .. } = &a.decoded else {
-                        return Err("foreign.target".into());
-                    };
-                    let path = directory.join(format!("caller-{i}.obj"));
-                    std::fs::write(&path, coff).map_err(|e| e.to_string())?;
-                    objects.push(path);
-                    if name == "main" {
-                        entry = Some(symbol);
-                    }
-                }
-                let wrapper =
-                    ace_native::emit::emit_wrapper_coff(entry.ok_or("foreign.missing-main")?)
-                        .map_err(|e| e.to_string())?;
-                let path = directory.join("entry-wrapper.obj");
-                std::fs::write(&path, wrapper).map_err(|e| e.to_string())?;
-                objects.push(path);
-                std::fs::write(
-                    directory.join("entry.c"),
-                    "extern void ac_start(void);\nint main(void){ac_start();return 99;}\n",
-                )
-                .map_err(|e| e.to_string())?;
-                std::fs::write(directory.join("foreign_runtime.c"), &*self.runtime)
-                    .map_err(|e| e.to_string())?;
-                sources = vec!["entry.c", "foreign_runtime.c", "source938_events.c"];
-            }
-            Target::C => {
-                let fragments = self
-                    .artifacts
-                    .values()
-                    .map(|a| match &a.decoded {
-                        TargetWire::C {
-                            name,
-                            def_index,
-                            semantic,
-                            text,
-                        } => Ok(FragmentText {
-                            source_name: name,
-                            def_index: *def_index,
-                            sem_fp: semantic,
-                            text,
-                        }),
-                        _ => Err("foreign.target".to_string()),
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let runtime = std::str::from_utf8(&self.runtime).map_err(|e| e.to_string())?;
-                let files = ForeignTargetProvider::new(self.front.foreign().clone())
-                    .assemble_fileset(FilesetRequest {
-                        entry: "main",
-                        input_hash: &hash(self.front.source().as_bytes()),
-                        family: Family::Scalar,
-                        fragments: &fragments,
-                        view: None,
-                        runtime,
-                        prelude_seed: None,
-                        origins: None,
-                        source_sha256: None,
-                    })
-                    .map_err(|e| format!("{e:?}"))?;
-                for (name, text) in files.files {
-                    std::fs::write(directory.join(name), text).map_err(|e| e.to_string())?;
-                }
-                std::fs::write(directory.join("entry.c"),"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n").map_err(|e|e.to_string())?;
-                sources = vec![
-                    "entry.c",
-                    "foreign_runtime.c",
-                    "generated.c",
-                    "source938_events.c",
-                ];
-            }
-        }
-        self.meter.links += 1;
-        let exe = directory.join("source.exe");
-        crate::bridge::compile_bridge_crt_with_objects(directory, &sources, &objects, &exe)
-            .map_err(|e| e.to_string())?;
-        ace_native::link_driver::run_pe(
-            &exe,
-            crate::bridge::BRIDGE_RUN_DEADLINE,
-            ace_core::link::CaptureCaps {
-                stdout_max: 1 << 20,
-                stderr_max: 1 << 20,
-            },
-        )
-        .map_err(|e| e.to_string())
-    }
+    // Publication links a borrowed overlay before installing any source,
+    // declaration, provider binding or target root.
 }
+
+fn link_artifacts(
+    directory: &Path,
+    target: Target,
+    source: &str,
+    environment: &AdmittedForeign,
+    provider: &Arc<Vec<u8>>,
+    runtime: &Arc<Vec<u8>>,
+    artifacts: &BTreeMap<String, &Artifact>,
+    meter: &mut Meter,
+) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    std::fs::write(
+        directory.join("source938_events.c"),
+        crate::source_provider::EVENT_RUNTIME,
+    )
+    .map_err(|e| e.to_string())?;
+    let provider_path = directory.join("provider.obj");
+    std::fs::write(&provider_path, provider.as_slice()).map_err(|e| e.to_string())?;
+    let mut objects = vec![provider_path];
+    let sources;
+    match target {
+        Target::Native => {
+            let mut entry = None;
+            for (i, (name, a)) in artifacts.iter().enumerate() {
+                let TargetWire::Native { symbol, coff, .. } = &a.decoded else {
+                    return Err("foreign.target".into());
+                };
+                let path = directory.join(format!("caller-{i}.obj"));
+                std::fs::write(&path, coff).map_err(|e| e.to_string())?;
+                objects.push(path);
+                if name == "main" {
+                    entry = Some(symbol);
+                }
+            }
+            let wrapper = ace_native::emit::emit_wrapper_coff(entry.ok_or("foreign.missing-main")?)
+                .map_err(|e| e.to_string())?;
+            let path = directory.join("entry-wrapper.obj");
+            std::fs::write(&path, wrapper).map_err(|e| e.to_string())?;
+            objects.push(path);
+            std::fs::write(
+                directory.join("entry.c"),
+                "extern void ac_start(void);\nint main(void){ac_start();return 99;}\n",
+            )
+            .map_err(|e| e.to_string())?;
+            std::fs::write(directory.join("foreign_runtime.c"), runtime.as_slice())
+                .map_err(|e| e.to_string())?;
+            sources = vec!["entry.c", "foreign_runtime.c", "source938_events.c"];
+        }
+        Target::C => {
+            let fragments = artifacts
+                .values()
+                .map(|a| match &a.decoded {
+                    TargetWire::C {
+                        name,
+                        def_index,
+                        semantic,
+                        text,
+                    } => Ok(FragmentText {
+                        source_name: name,
+                        def_index: *def_index,
+                        sem_fp: semantic,
+                        text,
+                    }),
+                    _ => Err("foreign.target".to_string()),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let runtime = std::str::from_utf8(runtime.as_slice()).map_err(|e| e.to_string())?;
+            let files = ForeignTargetProvider::new(environment.clone())
+                .assemble_fileset(FilesetRequest {
+                    entry: "main",
+                    input_hash: &hash(source.as_bytes()),
+                    family: Family::Scalar,
+                    fragments: &fragments,
+                    view: None,
+                    runtime,
+                    prelude_seed: None,
+                    origins: None,
+                    source_sha256: None,
+                })
+                .map_err(|e| format!("{e:?}"))?;
+            for (name, text) in files.files {
+                std::fs::write(directory.join(name), text).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(directory.join("entry.c"),"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n").map_err(|e|e.to_string())?;
+            sources = vec![
+                "entry.c",
+                "foreign_runtime.c",
+                "generated.c",
+                "source938_events.c",
+            ];
+        }
+    }
+    meter.links += 1;
+    let exe = directory.join("source.exe");
+    crate::bridge::compile_bridge_crt_with_objects(directory, &sources, &objects, &exe)
+        .map_err(|e| e.to_string())?;
+    Ok(exe)
+}
+
 fn native_artifact(
     bundle: &ace_core::hir::Bundle,
     id: &str,
@@ -917,6 +1003,7 @@ struct Root {
     target_identity: String,
     frontend: String,
     runtime: String,
+    runtime_identity: String,
     provider: String,
     provider_digest: String,
     binding_generation: u64,
@@ -987,4 +1074,33 @@ fn selected_artifact(
             })
         }
     }
+}
+
+#[path = "source_publication.rs"]
+mod publication;
+pub use publication::{
+    read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit, PreparedPublication,
+};
+
+/// SDK composition identity includes the common failure/event runtime assets,
+/// not merely the persisted selected-target runtime page.
+pub fn runtime_identity(target: Target, runtime_page: &str) -> String {
+    hash(
+        format!(
+            "source-runtime/1|{}|{}|{}|{}",
+            target.identity(),
+            runtime_page,
+            hash(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes()),
+            hash(crate::source_provider::EVENT_RUNTIME.as_bytes())
+        )
+        .as_bytes(),
+    )
+}
+/// Independent policy for the explicit no-trace source certification fixture.
+pub fn certification_runtime_policy(target: Target) -> String {
+    let page = match target {
+        Target::Native => hash(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes()),
+        Target::C => hash(ace_a2x_c::runtime_source(&[]).as_bytes()),
+    };
+    runtime_identity(target, &page)
 }

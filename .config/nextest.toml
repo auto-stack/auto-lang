@@ -122,3 +122,10 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(/http/)"
 test-group = "fixed-http"
+
+# PLAN-938: source foreign publication/restart controls exercise real cl/link
+# and retain the original short discovery/IPC deadlines. Reserve this invocation
+# while each control runs; do not overlap its nested processes with this pool.
+[[profile.default.overrides]]
+filter = "test(/^source_foreign::/)"
+threads-required = "num-test-threads"

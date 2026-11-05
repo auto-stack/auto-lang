@@ -74,7 +74,7 @@ impl SourceDecl {
         InterfaceFacts {
             format: crate::FACTS_FORMAT.into(),
             logical: self.logical.clone(),
-            content_version: self.digest(),
+            content_version: self.content_version.clone(),
             source: crate::FactsSource::Typed {
                 id: self.review_id.clone(),
             },
@@ -143,6 +143,8 @@ pub struct AdmittedForeign {
     contract_digest: String,
     provider_digest: String,
     generation: u64,
+    declarations: Vec<SourceDecl>,
+    declaration_digests: BTreeMap<String, String>,
 }
 
 fn ident(s: &str) -> bool {
@@ -288,35 +290,16 @@ impl ManualManifest {
 
     pub fn admit(self, host: &HostAuthority) -> Result<AdmittedForeign, String> {
         let contract_digest = self.contract_digest()?;
-        if !host.capabilities.contains(SOURCE_CAP)
-            || self
-                .facts
-                .capabilities
-                .iter()
-                .any(|c| !host.capabilities.contains(c))
-        {
-            return Err("foreign.capability: current host denies source FFI".into());
-        }
-        if host.review_id != self.review_id
-            || host.contract_digest != contract_digest
-            || host.provider != self.provider
-            || host.header_digest != self.header_digest
-            || host.physical_table_digest != self.physical_table_digest
-            || host.target != self.target
-            || !digest(&host.provider_digest)
-        {
-            return Err("foreign.authority: current review/provider binding does not match".into());
-        }
-        if self.declarations.iter().any(|d| {
-            !host.available_symbols.contains(&d.symbol)
-                || d.context_symbol
-                    .as_ref()
-                    .is_some_and(|s| !host.available_symbols.contains(s))
-        }) {
-            return Err("foreign.symbol: provider lacks a reviewed symbol".into());
-        }
+        qualify_host(&self, &contract_digest, host)?;
         let plan = PhysicalPlan::project(&self.facts)?;
+        let declarations = project_source_declarations(&self);
+        let declaration_digests = declarations
+            .iter()
+            .map(|d| (d.name.clone(), d.digest()))
+            .collect();
         Ok(AdmittedForeign {
+            declarations,
+            declaration_digests,
             manifest: self,
             plan,
             contract_digest,
@@ -328,48 +311,27 @@ impl ManualManifest {
 
 impl AdmittedForeign {
     pub fn source_declarations(&self) -> Vec<SourceDecl> {
-        let mut declarations: Vec<_> = self
-            .manifest
-            .declarations
-            .iter()
-            .map(|d| {
-                let mut effects: Vec<_> = self
-                    .manifest
-                    .facts
-                    .effects
-                    .iter()
-                    .filter(|e| !e.starts_with("pure:") || *e == &format!("pure:{}", d.symbol))
-                    .cloned()
-                    .collect();
-                effects.sort();
-                let mut capabilities = self.manifest.facts.capabilities.clone();
-                capabilities.sort();
-                SourceDecl {
-                    name: d.source_name.clone(),
-                    provider: self.manifest.provider.clone(),
-                    logical: format!("{}/{}", self.manifest.facts.logical, d.symbol),
-                    content_version: self.manifest.facts.content_version.clone(),
-                    review_id: self.manifest.review_id.clone(),
-                    header_digest: self.manifest.header_digest.clone(),
-                    physical_table_digest: self.manifest.physical_table_digest.clone(),
-                    context_symbol: d.context_symbol.clone(),
-                    function: self
-                        .manifest
-                        .facts
-                        .function(&d.symbol)
-                        .expect("admitted symbol")
-                        .clone(),
-                    effects,
-                    capabilities,
-                }
-            })
-            .collect();
-        declarations.sort_by(|a, b| a.name.cmp(&b.name));
-        declarations
+        self.declarations.clone()
     }
-
+    pub fn declaration_digest(&self, name: &str) -> Option<&str> {
+        self.declaration_digests.get(name).map(String::as_str)
+    }
     pub fn admits_declaration(&self, declaration: &SourceDecl) -> bool {
-        self.source_declarations().iter().any(|d| d == declaration)
+        self.declarations
+            .binary_search_by(|d| d.name.cmp(&declaration.name))
+            .ok()
+            .is_some_and(|index| self.declarations[index] == *declaration)
+    }
+    /// Revalidate current permission/registry/binding metadata. The already
+    /// admitted immutable physical plan is neither reconstructed nor encoded.
+    pub fn requalify(&self, host: &HostAuthority) -> Result<(), String> {
+        qualify_host(&self.manifest, &self.contract_digest, host)?;
+        if host.provider_digest != self.provider_digest
+            || host.binding_generation != self.generation
+        {
+            return Err("foreign.authority.binding-changed".into());
+        }
+        Ok(())
     }
     pub fn manifest(&self) -> &ManualManifest {
         &self.manifest
@@ -401,6 +363,78 @@ impl AdmittedForeign {
             })
             .collect()
     }
+}
+
+fn project_source_declarations(manifest: &ManualManifest) -> Vec<SourceDecl> {
+    let mut declarations: Vec<_> = manifest
+        .declarations
+        .iter()
+        .map(|d| {
+            let mut effects: Vec<_> = manifest
+                .facts
+                .effects
+                .iter()
+                .filter(|e| !e.starts_with("pure:") || *e == &format!("pure:{}", d.symbol))
+                .cloned()
+                .collect();
+            effects.sort();
+            let mut capabilities = manifest.facts.capabilities.clone();
+            capabilities.sort();
+            SourceDecl {
+                name: d.source_name.clone(),
+                provider: manifest.provider.clone(),
+                logical: format!("{}/{}", manifest.facts.logical, d.symbol),
+                content_version: manifest.facts.content_version.clone(),
+                review_id: manifest.review_id.clone(),
+                header_digest: manifest.header_digest.clone(),
+                physical_table_digest: manifest.physical_table_digest.clone(),
+                context_symbol: d.context_symbol.clone(),
+                function: manifest
+                    .facts
+                    .function(&d.symbol)
+                    .expect("admitted symbol")
+                    .clone(),
+                effects,
+                capabilities,
+            }
+        })
+        .collect();
+    declarations.sort_by(|a, b| a.name.cmp(&b.name));
+    declarations
+}
+fn qualify_host(
+    manifest: &ManualManifest,
+    contract_digest: &str,
+    host: &HostAuthority,
+) -> Result<(), String> {
+    if !host.capabilities.contains(SOURCE_CAP)
+        || manifest
+            .facts
+            .capabilities
+            .iter()
+            .any(|c| !host.capabilities.contains(c))
+    {
+        return Err("foreign.capability: current host denies source FFI".into());
+    }
+    if host.review_id != manifest.review_id
+        || host.contract_digest != contract_digest
+        || host.provider != manifest.provider
+        || host.header_digest != manifest.header_digest
+        || host.physical_table_digest != manifest.physical_table_digest
+        || host.target != manifest.target
+        || !digest(&host.provider_digest)
+    {
+        return Err("foreign.authority: current review/provider binding does not match".into());
+    }
+    if manifest.declarations.iter().any(|d| {
+        !host.available_symbols.contains(&d.symbol)
+            || d.context_symbol
+                .as_ref()
+                .is_some_and(|s| !host.available_symbols.contains(s))
+    }) {
+        return Err("foreign.symbol: provider lacks a reviewed symbol".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -457,6 +491,46 @@ mod tests {
             binding_generation: 7,
         };
         (m, host)
+    }
+
+    #[test]
+    fn requalification_uses_admitted_plan_and_current_registry_metadata() {
+        let (m, host) = fixture();
+        let environment = m.admit(&host).unwrap();
+        for declaration in environment.source_declarations() {
+            assert_eq!(
+                environment.declaration_digest(&declaration.name),
+                Some(declaration.digest().as_str())
+            );
+        }
+        environment.requalify(&host).unwrap();
+        let mut denied = host.clone();
+        denied.capabilities.clear();
+        assert!(environment
+            .requalify(&denied)
+            .unwrap_err()
+            .starts_with("foreign.capability"));
+        let mut changed = host.clone();
+        changed.binding_generation += 1;
+        assert_eq!(
+            environment.requalify(&changed).unwrap_err(),
+            "foreign.authority.binding-changed"
+        );
+        changed = host.clone();
+        changed.provider_digest = "d".repeat(64);
+        assert_eq!(
+            environment.requalify(&changed).unwrap_err(),
+            "foreign.authority.binding-changed"
+        );
+        changed = host.clone();
+        changed.contract_digest = "e".repeat(64);
+        assert!(environment.requalify(&changed).is_err());
+        changed = host.clone();
+        changed.available_symbols.clear();
+        assert!(environment
+            .requalify(&changed)
+            .unwrap_err()
+            .starts_with("foreign.symbol"));
     }
 
     #[test]

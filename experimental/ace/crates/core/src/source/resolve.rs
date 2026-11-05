@@ -1243,6 +1243,24 @@ pub fn validate_foreign_context(
     foreign: &ace_foreign_contract::manual::AdmittedForeign,
     capabilities: &[String],
 ) -> Result<(), Vec<Diagnostic>> {
+    let names: Vec<_> = program
+        .items
+        .iter()
+        .map(|item| match item {
+            ast::Item::Fn(f) => (f.name.name.as_str(), f.name.span, true),
+            ast::Item::Type(t) => (t.name.name.as_str(), t.name.span, false),
+            ast::Item::Enum(e) => (e.name.name.as_str(), e.name.span, false),
+        })
+        .collect();
+    validate_foreign_declarations(&names, foreign, capabilities)
+}
+/// Same admission for a restored declaration directory: name/span metadata is
+/// sufficient; no placeholder local function or body projection is needed.
+pub fn validate_foreign_declarations(
+    names: &[(&str, Span, bool)],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    capabilities: &[String],
+) -> Result<(), Vec<Diagnostic>> {
     if !capabilities
         .iter()
         .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
@@ -1253,14 +1271,9 @@ pub fn validate_foreign_context(
             .iter()
             .any(|c| !capabilities.contains(c))
     {
-        let span = program
-            .items
+        let span = names
             .first()
-            .map(|i| match i {
-                ast::Item::Fn(f) => f.name.span,
-                ast::Item::Type(t) => t.name.span,
-                ast::Item::Enum(e) => e.name.span,
-            })
+            .map(|(_, span, _)| *span)
             .unwrap_or(Span { start: 0, end: 0 });
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -1271,19 +1284,14 @@ pub fn validate_foreign_context(
     }
     let declarations = foreign.source_declarations();
     let mut ds = Vec::new();
-    for item in &program.items {
-        if let ast::Item::Fn(f) = item {
-            if declarations.iter().any(|d| d.name == f.name.name) {
-                ds.push(Diagnostic::new(
-                    Stage::Bind,
-                    "source.foreign-conflict",
-                    format!(
-                        "foreign declaration `{}` conflicts with a source function",
-                        f.name.name
-                    ),
-                    f.name.span,
-                ));
-            }
+    for (name, span, function) in names {
+        if *function && declarations.iter().any(|d| d.name == *name) {
+            ds.push(Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-conflict",
+                format!("foreign declaration `{name}` conflicts with a source function"),
+                *span,
+            ));
         }
     }
     if ds.is_empty() {
@@ -2441,6 +2449,14 @@ pub fn env_fn_regions(env: &CheckedEnv) -> Vec<FunctionRegion> {
         })
         .collect()
 }
+/// Declaration source-map metadata only; no body is visited or copied.
+pub fn env_fn_declarations(env: &CheckedEnv) -> impl Iterator<Item = (&str, Span, Span)> + '_ {
+    env.program
+        .fns
+        .iter()
+        .map(|f| (f.name.as_str(), f.name_span, f.item_span))
+}
+
 /// Diagnostic producer identity of the actual retained statement allocation.
 /// A same-content freshly resolved body has a different live allocation; this
 /// number is never used as a cache key or a verification credential.

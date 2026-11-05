@@ -52,8 +52,15 @@ pub fn admit(
     generation: u64,
     caps: &[String],
 ) -> Result<AdmittedForeign, String> {
+    candidate.admit(&authority(provider_digest, generation, caps)?)
+}
+pub fn authority(
+    provider_digest: &str,
+    generation: u64,
+    caps: &[String],
+) -> Result<HostAuthority, String> {
     let policy = reviewed_add_manifest();
-    let host = HostAuthority {
+    Ok(HostAuthority {
         review_id: REVIEW.into(),
         contract_digest: policy.contract_digest()?,
         provider: policy.provider,
@@ -64,7 +71,6 @@ pub fn admit(
         capabilities: caps.iter().cloned().collect(),
         available_symbols: ["provider_add".into()].into_iter().collect(),
         binding_generation: generation,
-    };
-    candidate.admit(&host)
+    })
 }
 pub const EVENT_RUNTIME:&str="#include <stdio.h>\nvoid source938_event(const char *name) { fprintf(stderr, \"source938.call=%s\\n\",name); fflush(stderr); }\n";

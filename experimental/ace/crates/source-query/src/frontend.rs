@@ -173,8 +173,12 @@ pub struct ForeignCandidate {
     foreign: AdmittedForeign,
     signatures: SignatureCatalog,
     bodies: Vec<ForeignBody>,
+    syntax: Option<StagedCandidate>,
 }
 impl ForeignCandidate {
+    pub fn source(&self) -> Option<&str> {
+        self.syntax.as_ref().map(|s| s.new_src())
+    }
     pub fn bodies(&self) -> &[ForeignBody] {
         &self.bodies
     }
@@ -531,25 +535,78 @@ impl Frontend {
     /// Only resident dependency metadata chooses readers. Required fact payloads
     /// of all other functions retain their original handles without decoding.
     pub fn prepare_foreign(&mut self, foreign: AdmittedForeign) -> Result<ForeignCandidate, Error> {
-        resolve::validate_foreign_context(
-            &Program { items: Vec::new() },
-            &foreign,
-            &self.capabilities,
-        )
-        .map_err(Error::Diagnostics)?;
+        self.prepare_foreign_source(foreign, None)
+    }
+    pub fn prepare_foreign_source(
+        &mut self,
+        foreign: AdmittedForeign,
+        source: Option<&str>,
+    ) -> Result<ForeignCandidate, Error> {
+        let mut names = Vec::with_capacity(self.catalog.fns.len());
+        for (name, name_span, item_span) in resolve::env_fn_declarations(&self.env) {
+            let unit = self
+                .catalog
+                .fns
+                .get(name)
+                .ok_or_else(|| reject("missing declaration source owner"))?;
+            let delta = unit.span.start as i64 - item_span.start as i64;
+            names.push((
+                name,
+                Span {
+                    start: shift(name_span.start, delta)?,
+                    end: shift(name_span.end, delta)?,
+                },
+                true,
+            ));
+        }
+        names.sort_by_key(|(_, span, _)| span.start);
+        resolve::validate_foreign_declarations(&names, &foreign, &self.capabilities)
+            .map_err(Error::Diagnostics)?;
+        drop(names);
         let mut context =
             resolve::ForeignContext::prepare(&self.env, &foreign).map_err(Error::Diagnostics)?;
         let signatures = self
             .signatures
             .replace_foreign(&self.foreign, &foreign)
             .map_err(reject)?;
+        let syntax = if let Some(source) = source.filter(|s| *s != self.source()) {
+            let (owner, declaration) = self.owner_replacement(source)?;
+            self.meter.body_parse_attempts += 1;
+            self.per_function
+                .entry(owner.clone())
+                .or_default()
+                .body_parse_attempts += 1;
+            let syntax = self
+                .catalog
+                .stage_owner_edit(&owner, &declaration, FrontBudget::WORK_OWNED_64MIB)
+                .map_err(syntax_error)?;
+            self.meter.body_parse_produced += syntax.produced() as u64;
+            self.per_function
+                .entry(owner.clone())
+                .or_default()
+                .body_parse_produced += syntax.produced() as u64;
+            let item = syntax
+                .owner_item()
+                .ok_or_else(|| reject("missing compound owner"))?;
+            if signatures.version(&owner) != Some(&crate::signature_version(item)) {
+                return Err(reject("compound source edit changed a local signature"));
+            }
+            Some(syntax)
+        } else {
+            None
+        };
+        let candidate_source = syntax
+            .as_ref()
+            .map(|s| s.new_src())
+            .unwrap_or(self.catalog.src());
         let readers: Vec<_> = self
             .residents
             .iter()
-            .filter(|(_, r)| {
-                r.dependencies
-                    .iter()
-                    .any(|(name, version)| signatures.version(name) != Some(version))
+            .filter(|(name, r)| {
+                syntax.as_ref().is_some_and(|s| s.owner() == name.as_str())
+                    || r.dependencies
+                        .iter()
+                        .any(|(name, version)| signatures.version(name) != Some(version))
                     || r.negative_candidates
                         .as_ref()
                         .is_some_and(|fp| fp != signatures.candidates_fp())
@@ -560,8 +617,10 @@ impl Frontend {
         let result = (|| {
             let mut bodies = Vec::new();
             for name in readers {
-                let sealed = &self.catalog.fns[&name];
-                let parse = sealed.item.as_ref().is_none_or(|f| f.span != sealed.span);
+                let parse = self
+                    .catalog
+                    .reader_projection_required(&name, syntax.as_ref())
+                    .map_err(reject)?;
                 if parse {
                     self.meter.body_parse_attempts += 1;
                     self.per_function
@@ -571,7 +630,7 @@ impl Frontend {
                 }
                 let (item, produced) = self
                     .catalog
-                    .owner_for_recheck(&name, FrontBudget::WORK_OWNED_64MIB)
+                    .owner_for_staged_recheck(&name, syntax.as_ref(), FrontBudget::WORK_OWNED_64MIB)
                     .map_err(syntax_error)?;
                 self.meter.body_parse_produced += produced as u64;
                 self.per_function
@@ -602,7 +661,7 @@ impl Frontend {
                         &mut self.env,
                         &item,
                         slot,
-                        self.catalog.src(),
+                        candidate_source,
                         &self.module,
                         &supply,
                     )
@@ -635,7 +694,7 @@ impl Frontend {
                     &walk,
                     item.span.start,
                     &self.capabilities,
-                    &self.catalog.src()[item.span.start..item.span.end],
+                    &candidate_source[item.span.start..item.span.end],
                 )?;
                 self.meter.page_produced += 1;
                 self.per_function
@@ -656,9 +715,13 @@ impl Frontend {
             foreign,
             signatures,
             bodies: result?,
+            syntax,
         })
     }
     pub fn validate_foreign(&self, candidate: &ForeignCandidate) -> Result<(), Error> {
+        if let Some(syntax) = &candidate.syntax {
+            self.catalog.validate_staged(syntax).map_err(reject)?;
+        }
         candidate
             .context
             .validate(&self.env)
@@ -678,6 +741,9 @@ impl Frontend {
             semantics,
         )
         .map_err(Error::Diagnostics)?;
+        if let Some(syntax) = candidate.syntax {
+            self.catalog.commit_staged(syntax).map_err(reject)?;
+        }
         for (name, resident) in residents {
             self.residents.insert(name, resident);
         }
@@ -706,41 +772,108 @@ impl Frontend {
     /// Only root/declaration/source-map METADATA is encoded here. Resident
     /// body pages retain their exact Arc and digest across unrelated edits.
     pub fn checkpoint(&self) -> Result<Checkpoint, Error> {
-        let source_sha = sha(self.source().as_bytes());
+        self.checkpoint_view(
+            self.source(),
+            self.catalog.to_manifest(FRONT_CAPS_VERSION),
+            &self.foreign,
+            &self.signatures,
+            &BTreeMap::new(),
+            None,
+        )
+    }
+    pub fn checkpoint_candidate(&self, candidate: &Candidate) -> Result<Checkpoint, Error> {
+        self.validate(candidate)?;
+        let manifest = self
+            .catalog
+            .staged_manifest(&candidate.syntax, FRONT_CAPS_VERSION)
+            .map_err(reject)?;
+        let overrides = [(candidate.owner().to_string(), &candidate.resident)]
+            .into_iter()
+            .collect();
+        self.checkpoint_view(
+            candidate.source(),
+            manifest,
+            &self.foreign,
+            &self.signatures,
+            &overrides,
+            candidate.syntax.owner_item(),
+        )
+    }
+    pub fn checkpoint_foreign(&self, candidate: &ForeignCandidate) -> Result<Checkpoint, Error> {
+        self.validate_foreign(candidate)?;
+        let overrides = candidate
+            .bodies
+            .iter()
+            .map(|b| (b.owner().to_string(), &b.resident))
+            .collect();
+        let manifest = match &candidate.syntax {
+            Some(syntax) => self
+                .catalog
+                .staged_manifest(syntax, FRONT_CAPS_VERSION)
+                .map_err(reject)?,
+            None => self.catalog.to_manifest(FRONT_CAPS_VERSION),
+        };
+        self.checkpoint_view(
+            candidate.source().unwrap_or(self.source()),
+            manifest,
+            &candidate.foreign,
+            &candidate.signatures,
+            &overrides,
+            candidate.syntax.as_ref().and_then(|s| s.owner_item()),
+        )
+    }
+    fn checkpoint_view(
+        &self,
+        source: &str,
+        manifest: units::CatalogManifest,
+        foreign: &AdmittedForeign,
+        signatures: &SignatureCatalog,
+        overrides: &BTreeMap<String, &Resident>,
+        changed_item: Option<&ace_core::source::ast::FnItem>,
+    ) -> Result<Checkpoint, Error> {
+        let source_sha = sha(source.as_bytes());
         let mut env =
             decl_env::decl_env_dump(&self.env, &caps_key(&self.capabilities), &source_sha);
-        for f in &mut env.fns {
-            let unit = self
-                .catalog
-                .fns
-                .get(&f.name)
-                .ok_or_else(|| reject("env/catalog disagreement"))?;
-            let delta = unit.span.start as i64 - f.item_span.0 as i64;
-            f.name_span = (shift(f.name_span.0, delta)?, shift(f.name_span.1, delta)?);
-            f.item_span = (unit.span.start, unit.span.end);
-        }
-        let signatures = self.signatures.entries().map(SigRow::from).collect();
-        let edges = self
-            .residents
+        env.foreign = foreign.source_declarations();
+        let positions: BTreeMap<_, _> = manifest
+            .units
             .iter()
-            .map(|(name, r)| {
-                (
-                    name.clone(),
-                    Edge {
-                        digest: r.page.digest.clone(),
-                        mint_origin: r.mint_origin,
-                    },
-                )
-            })
+            .filter(|u| u.kind == units::UnitKind::Fn)
+            .map(|u| (u.owner.as_str(), u.current_span))
             .collect();
+        for f in &mut env.fns {
+            let &(start, end) = positions
+                .get(f.name.as_str())
+                .ok_or_else(|| reject("env/catalog disagreement"))?;
+            let delta = start as i64 - f.item_span.0 as i64;
+            f.name_span = (shift(f.name_span.0, delta)?, shift(f.name_span.1, delta)?);
+            f.item_span = (start, end);
+            if let Some(item) = changed_item.filter(|item| item.name.name == f.name) {
+                f.name_span = (item.name.span.start, item.name.span.end);
+            }
+        }
+        let signatures = signatures.entries().map(SigRow::from).collect();
+        let mut edges = BTreeMap::new();
+        let mut pages = BTreeMap::new();
+        for (name, resident) in &self.residents {
+            let resident = overrides.get(name).copied().unwrap_or(resident);
+            edges.insert(
+                name.clone(),
+                Edge {
+                    digest: resident.page.digest.clone(),
+                    mint_origin: resident.mint_origin,
+                },
+            );
+            pages.insert(name.clone(), resident.page.clone());
+        }
         let wire = Root {
             schema: SCHEMA.into(),
             package: self.package.clone(),
             module: self.module.clone(),
-            source: self.source().into(),
+            source: source.into(),
             source_sha,
             capabilities: self.capabilities.clone(),
-            catalog: units::encode_manifest(&self.catalog.to_manifest(FRONT_CAPS_VERSION)),
+            catalog: units::encode_manifest(&manifest),
             declarations: decl_env::encode_decl_env(&env),
             signatures,
             edges,
@@ -750,11 +883,6 @@ impl Frontend {
             return Err(reject("root budget"));
         }
         let digest = sha(&root);
-        let pages = self
-            .residents
-            .iter()
-            .map(|(n, r)| (n.clone(), r.page.clone()))
-            .collect();
         Ok(Checkpoint {
             root,
             digest,

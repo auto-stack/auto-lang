@@ -147,7 +147,12 @@ impl SignatureCatalog {
                 let facts = FnSigFacts {
                     name: declaration.name.clone(),
                     logical: owner_logical(package, module, &declaration.name),
-                    version: ContentVersion::of_canonical(declaration.digest().as_bytes()),
+                    version: ContentVersion::of_canonical(
+                        environment
+                            .declaration_digest(&declaration.name)
+                            .expect("admitted declaration digest")
+                            .as_bytes(),
+                    ),
                     params: declaration
                         .params()
                         .iter()

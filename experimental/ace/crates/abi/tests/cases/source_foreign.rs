@@ -1343,3 +1343,838 @@ fn source_foreign_formal_worker_rebinds_provider_without_any_caller_production()
         }
     }
 }
+
+fn fixture_current(
+    environment: &AdmittedForeign,
+    target: ace_abi::source_foreign::Target,
+) -> ace_abi::source_foreign::CurrentAuthority {
+    let m = environment.manifest();
+    ace_abi::source_foreign::CurrentAuthority {
+        foreign: HostAuthority {
+            review_id: m.review_id.clone(),
+            contract_digest: m.contract_digest().unwrap(),
+            provider: m.provider.clone(),
+            provider_digest: environment.provider_digest().into(),
+            header_digest: m.header_digest.clone(),
+            physical_table_digest: m.physical_table_digest.clone(),
+            target: m.target.clone(),
+            capabilities: m.facts.capabilities.iter().cloned().collect(),
+            available_symbols: m
+                .declarations
+                .iter()
+                .flat_map(|d| {
+                    std::iter::once(d.symbol.clone()).chain(d.context_symbol.iter().cloned())
+                })
+                .collect(),
+            binding_generation: environment.generation(),
+        },
+        runtime_digest: ace_abi::source_foreign::certification_runtime_policy(target),
+        emitter: target.identity(),
+    }
+}
+// Only these reviewed fixtures provide this convenience. Production Session
+// has no unchecked run method: every execution requires a fresh host callback.
+trait RunFixture {
+    fn run(&mut self, path: &Path) -> Result<ace_native::link_driver::PeRun, String>;
+}
+impl RunFixture for ace_abi::source_foreign::Session {
+    fn run(&mut self, path: &Path) -> Result<ace_native::link_driver::PeRun, String> {
+        let authority = fixture_current(self.frontend().foreign(), self.target());
+        self.run_authorized(path, &mut || Ok(authority.clone()), None)
+    }
+}
+
+#[test]
+fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root() {
+    use ace_abi::source_foreign::{
+        read_pointer_bytes, CurrentAuthority, Edit, Session, Stored, Target,
+    };
+    use std::{
+        cell::RefCell,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    };
+    let root = scope("publication-faults");
+    let (object, environment) = provider(&root, 0);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into()];
+    let source = "fn independent() int { return 7 }\nfn helper() int { return foreign_add(20,22) }\nfn main() int { return helper() }";
+    for target in [Target::Native, Target::C] {
+        let dir = root.join(format!("{target:?}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ace_artifacts::store::ManagedStore::open(&dir.join("store")).unwrap();
+        let pointer = dir.join("current.json");
+        let mut session = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let authority = fixture_current(&environment, target);
+        let mut current = || Ok(authority.clone());
+        let baseline = session
+            .prepare_publication(Edit::Current, &dir.join("old"), &mut current, None)
+            .unwrap();
+        let old_digest = baseline.snapshot().digest.clone();
+        assert_eq!(
+            baseline.run(&mut current, None).unwrap().exit_code,
+            Some(42)
+        );
+        let stored = session
+            .publish_prepared(
+                baseline,
+                &store,
+                &pointer,
+                None,
+                None,
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        let old_pointer = read_pointer_bytes(&pointer).unwrap().unwrap();
+        let pointer_id = ace_a2x_core::sha256::sha256_hex(&old_pointer);
+        let original_stored: Stored = serde_json::from_slice(&old_pointer).unwrap();
+        let untouched = session.artifact_bytes("main").unwrap().clone();
+        let old_facts = session.frontend().page("main").unwrap().bytes.clone();
+        let declaration = "fn helper() int { let extra=1\nreturn foreign_add(20,22)+extra }";
+        let body =
+            |session: &mut Session| Edit::Body(session.prepare("helper", declaration).unwrap());
+        for fault in [
+            "revoked-before-link",
+            "revoked-after-link",
+            "cancel-before-link",
+            "cancel-after-link",
+            "runtime",
+        ] {
+            let cancel = AtomicBool::new(fault == "cancel-before-link");
+            let mut calls = 0;
+            let mut policy = || -> Result<CurrentAuthority, String> {
+                calls += 1;
+                let mut a = authority.clone();
+                if fault == "revoked-before-link" || (fault == "revoked-after-link" && calls == 2) {
+                    a.foreign.capabilities.clear();
+                }
+                if fault == "cancel-after-link" && calls == 2 {
+                    cancel.store(true, Ordering::Release);
+                }
+                if fault == "runtime" {
+                    a.runtime_digest = "0".repeat(64);
+                }
+                Ok(a)
+            };
+            let edit = body(&mut session);
+            assert!(
+                session
+                    .prepare_publication(edit, &dir.join(fault), &mut policy, Some(&cancel))
+                    .is_err(),
+                "{fault}"
+            );
+            assert_eq!(session.snapshot().unwrap().digest, old_digest, "{fault}");
+            assert_eq!(std::fs::read(&pointer).unwrap(), old_pointer);
+        }
+        // Runtime/authority can change AFTER a target became ready too.
+        let edit = body(&mut session);
+        let ready = session
+            .prepare_publication(edit, &dir.join("ready-revoked"), &mut current, None)
+            .unwrap();
+        let mut denied = authority.clone();
+        denied.foreign.capabilities.clear();
+        assert!(ready.run(&mut || Ok(denied.clone()), None).is_err());
+        let mut wrong_runtime = authority.clone();
+        wrong_runtime.runtime_digest = "0".repeat(64);
+        assert!(ready.run(&mut || Ok(wrong_runtime.clone()), None).is_err());
+        assert_eq!(session.snapshot().unwrap().digest, old_digest);
+        drop(ready);
+        for fault in [
+            "cancel-at-last-qualification",
+            "metadata-failure",
+            "cancel-before-switch",
+            "replace-failure",
+            "late-base",
+            "late-pointer",
+            "ready-tampered",
+        ] {
+            let cancel = AtomicBool::new(false);
+            let edit = body(&mut session);
+            let ready = session
+                .prepare_publication(edit, &dir.join(fault), &mut current, None)
+                .unwrap();
+            if fault == "ready-tampered" {
+                std::fs::write(ready.executable(), b"changed executable").unwrap();
+            }
+            let blocker = RefCell::new(None);
+            let encode = |stored: &Stored| -> Result<Vec<u8>, String> {
+                if fault == "metadata-failure" {
+                    return Err("injected pointer encoding failure".into());
+                }
+                if fault == "cancel-before-switch" {
+                    cancel.store(true, Ordering::Release);
+                }
+                if fault == "replace-failure" {
+                    use std::os::windows::fs::OpenOptionsExt;
+                    // Allow the final identity read, deny replacing this file.
+                    *blocker.borrow_mut() = Some(
+                        std::fs::OpenOptions::new()
+                            .read(true)
+                            .share_mode(0x1 | 0x2)
+                            .open(&pointer)
+                            .unwrap(),
+                    );
+                }
+                if fault == "late-pointer" {
+                    let mut record: serde_json::Value =
+                        serde_json::from_slice(&old_pointer).unwrap();
+                    record["other-publisher"] = true.into();
+                    std::fs::write(&pointer, serde_json::to_vec(&record).unwrap()).unwrap();
+                }
+                serde_json::to_vec(stored).map_err(|e| e.to_string())
+            };
+            let expected = if fault == "late-base" {
+                "0".repeat(64)
+            } else {
+                pointer_id.clone()
+            };
+            let mut final_checks = 0;
+            let mut publish_current = || {
+                final_checks += 1;
+                if fault == "cancel-at-last-qualification" && final_checks == 2 {
+                    cancel.store(true, Ordering::Release);
+                }
+                Ok(authority.clone())
+            };
+            let result = session.publish_prepared(
+                ready,
+                &store,
+                &pointer,
+                Some(&expected),
+                Some(&stored),
+                encode,
+                &mut publish_current,
+                Some(&cancel),
+            );
+            assert!(result.is_err(), "{fault}");
+            drop(blocker);
+            assert_eq!(session.snapshot().unwrap().digest, old_digest, "{fault}");
+            if fault == "late-pointer" {
+                assert_ne!(
+                    std::fs::read(&pointer).unwrap(),
+                    old_pointer,
+                    "late writer was overwritten"
+                );
+                std::fs::write(&pointer, &old_pointer).unwrap();
+            } else {
+                assert_eq!(std::fs::read(&pointer).unwrap(), old_pointer, "{fault}");
+            }
+            assert!(
+                !std::fs::read_dir(&dir).unwrap().any(|e| e
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("current.tmp-")),
+                "temporary pointer leaked: {fault}"
+            );
+        }
+        assert_eq!(
+            session.run(&dir.join("after-failures")).unwrap().exit_code,
+            Some(42)
+        );
+        assert!(Arc::ptr_eq(
+            &untouched,
+            session.artifact_bytes("main").unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            &old_facts,
+            &session.frontend().page("main").unwrap().bytes
+        ));
+        // Repair installs exactly the candidate snapshot that was linked, never
+        // an old source with a new object or a new source with an old object.
+        let edit = body(&mut session);
+        let ready = session
+            .prepare_publication(edit, &dir.join("repair"), &mut current, None)
+            .unwrap();
+        let expected = ready.snapshot().digest.clone();
+        assert_eq!(ready.run(&mut current, None).unwrap().exit_code, Some(43));
+        let stored = session
+            .publish_prepared(
+                ready,
+                &store,
+                &pointer,
+                Some(&pointer_id),
+                Some(&stored),
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().unwrap().digest, expected);
+        assert_eq!(
+            session.run(&dir.join("installed")).unwrap().exit_code,
+            Some(43)
+        );
+        let stored_pointer: Stored =
+            serde_json::from_slice(&std::fs::read(pointer).unwrap()).unwrap();
+        assert_eq!(stored_pointer.artifact_id, stored.artifact_id);
+        drop(session);
+        let mut restored =
+            Session::restore_stored(&store, &stored, target, &caps, environment.clone()).unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        assert_eq!(restored.snapshot().unwrap().digest, expected);
+        let edit = Edit::Body(
+            restored
+                .prepare("helper", "fn helper() int { return foreign_add(20,24) }")
+                .unwrap(),
+        );
+        let ready = restored
+            .prepare_publication(edit, &dir.join("first-restored-edit"), &mut current, None)
+            .unwrap();
+        assert_eq!(ready.run(&mut current, None).unwrap().exit_code, Some(44));
+        assert_eq!(restored.snapshot().unwrap().digest, expected);
+        // A different host session prepared from the exact earlier pointer
+        // bytes is genuinely late after this accepted publication.
+        let mut delayed =
+            Session::restore_stored(&store, &original_stored, target, &caps, environment.clone())
+                .unwrap();
+        let edit = Edit::Body(
+            delayed
+                .prepare("helper", "fn helper() int { return foreign_add(20,24) }")
+                .unwrap(),
+        );
+        let ready = delayed
+            .prepare_publication(edit, &dir.join("delayed-session"), &mut current, None)
+            .unwrap();
+        let accepted_pointer = std::fs::read(dir.join("current.json")).unwrap();
+        let error = delayed
+            .publish_prepared(
+                ready,
+                &store,
+                &dir.join("current.json"),
+                Some(&pointer_id),
+                Some(&original_stored),
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error, "foreign.publication.late-pointer");
+        assert_eq!(delayed.snapshot().unwrap().digest, old_digest);
+        assert_eq!(
+            std::fs::read(dir.join("current.json")).unwrap(),
+            accepted_pointer
+        );
+    }
+}
+
+#[test]
+fn source_foreign_real_signature_and_source_repair_publish_together_after_restore() {
+    use ace_abi::source_foreign::{Edit, Session, Target};
+    use std::sync::Arc;
+    let root = scope("real-signature-repair");
+    let (object, environment) = provider(&root, 0);
+    let original = Arc::new(std::fs::read(&object).unwrap());
+    let changed_dir = root.join("new-reviewed-provider");
+    std::fs::create_dir_all(&changed_dir).unwrap();
+    let header = std::fs::read_to_string(fixture().join("source_foreign938.h"))
+        .unwrap()
+        .replace("provider_add(int32_t a,", "provider_add(uint8_t a,");
+    let c = std::fs::read_to_string(fixture().join("source_foreign938.c"))
+        .unwrap()
+        .replace("provider_add(int32_t a,", "provider_add(uint8_t a,");
+    let mut table: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixture().join("source_foreign938.contract")).unwrap(),
+    )
+    .unwrap();
+    table["functions"]["provider_add"] =
+        "i32(u8,i32); logical bool input 0/1; total unsigned wrapping addition".into();
+    let table = serde_json::to_vec(&table).unwrap();
+    std::fs::write(changed_dir.join("source_foreign938.h"), &header).unwrap();
+    std::fs::write(changed_dir.join("source_foreign938.contract"), &table).unwrap();
+    let c_path = changed_dir.join("provider.c");
+    let o_path = changed_dir.join("provider.obj");
+    std::fs::write(&c_path, c).unwrap();
+    ace_abi::ctool::compile_c_with_deps(&c_path, &changed_dir, &o_path).unwrap();
+    let changed_bytes = Arc::new(std::fs::read(&o_path).unwrap());
+    let mut manifest = environment.manifest().clone();
+    manifest.header_digest = hash(header.as_bytes());
+    manifest.physical_table_digest = hash(&table);
+    manifest.facts.content_version = "bool-add-v2".into();
+    let FnForm::Pure { params, .. } = &mut manifest.facts.functions[0].form else {
+        panic!()
+    };
+    params[0] = LaneKind::Bool;
+    let changed = fixture_readmit(manifest, &changed_bytes, 2);
+    let source = "fn independent() int { return 7 }\nfn helper() int { return foreign_add(20,22) }\nfn main() int { return helper() }";
+    let new_source = "fn independent() int { return 7 }\nfn helper() int { let value=true\nreturn foreign_add(value,42) }\nfn main() int { return helper() }";
+    let caps = vec![SOURCE_CAP.into()];
+    for target in [Target::Native, Target::C] {
+        let dir = root.join(format!("{target:?}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = ace_artifacts::store::ManagedStore::open(&dir.join("store")).unwrap();
+        let cold = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            original.clone(),
+            target,
+        )
+        .unwrap();
+        let snapshot = cold.snapshot().unwrap();
+        drop(cold);
+        let child_root = dir.join("declaration-first-process");
+        std::fs::create_dir_all(&child_root).unwrap();
+        let old_manifest = child_root.join("old-manifest.json");
+        let new_manifest = child_root.join("new-manifest.json");
+        std::fs::write(
+            &old_manifest,
+            serde_json::to_vec(environment.manifest()).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            &new_manifest,
+            serde_json::to_vec(changed.manifest()).unwrap(),
+        )
+        .unwrap();
+        let stored_for_child = snapshot
+            .publish(&store, "declaration-first-process", None)
+            .unwrap();
+        let request_path = child_root.join("request.json");
+        let request = serde_json::json!({"schema":"source938/restart-probe/1","store":dir.join("store"),
+            "stored":stored_for_child,"target":target,"manifest":old_manifest,"provider":object,
+            "output":child_root.join("output"),"edits":[
+                {"foreign_manifest":new_manifest,"foreign_provider":o_path,"source":null},
+                {"foreign_manifest":new_manifest,"foreign_provider":o_path,"source":new_source}]});
+        std::fs::write(&request_path, serde_json::to_vec(&request).unwrap()).unwrap();
+        let mut command =
+            std::process::Command::new(env!("CARGO_BIN_EXE_source-foreign-restore-probe"));
+        command
+            .arg("--request")
+            .arg(&request_path)
+            .arg("--contract")
+            .arg(environment.contract_digest())
+            .arg("--provider")
+            .arg(environment.provider_digest())
+            .arg("--root")
+            .arg(&stored_for_child.digest)
+            .arg("--candidate-contract")
+            .arg(changed.contract_digest())
+            .arg("--candidate-header")
+            .arg(&changed.manifest().header_digest)
+            .arg("--candidate-table")
+            .arg(&changed.manifest().physical_table_digest)
+            .arg("--candidate-provider")
+            .arg(changed.provider_digest());
+        let child = ace_core::link::run_deadlined_typed(
+            &mut command,
+            std::time::Duration::from_secs(30),
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+            Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            child.exit_code,
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+        let child: serde_json::Value = serde_json::from_slice(&child.stdout).unwrap();
+        for (_, value) in child["restored"].as_object().unwrap() {
+            assert_eq!(value, 0);
+        }
+        assert_eq!(child["steps"][0]["accepted"], false);
+        assert_eq!(child["steps"][0]["before"], child["steps"][0]["after"]);
+        assert_eq!(child["steps"][1]["accepted"], true);
+        assert_eq!(child["exit"], 43);
+        assert_eq!(child["solver_runs"], 2);
+        assert_eq!(child["main_hir_produced"], 0);
+        assert_eq!(child["independent_hir_produced"], 0);
+        let old_authority = fixture_current(&environment, target);
+        let mut session = Session::restore_authorized(
+            &snapshot.root,
+            &snapshot.digest,
+            target,
+            &caps,
+            environment.clone(),
+            |id| snapshot.pages.get(id).cloned(),
+            &mut || Ok(old_authority.clone()),
+        )
+        .unwrap();
+        let main = session.artifact_bytes("main").unwrap().clone();
+        let facts = session.frontend().page("main").unwrap().bytes.clone();
+        assert_eq!(session.frontend().query_counters().solver_runs, 0);
+        // The new independent header/provider/table agree with each other. Only
+        // the old ordinary source is invalid under the new logical signature.
+        assert!(session
+            .prepare_foreign(changed.clone(), changed_bytes.clone())
+            .is_err());
+        assert_eq!(session.snapshot().unwrap().digest, snapshot.digest);
+        assert_eq!(
+            session
+                .run(&dir.join("after-first-declaration-error"))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        let candidate = session
+            .prepare_foreign_source(changed.clone(), changed_bytes.clone(), Some(new_source))
+            .unwrap();
+        let new_authority = fixture_current(&changed, target);
+        let mut current = || Ok(new_authority.clone());
+        let ready = session
+            .prepare_publication(
+                Edit::Foreign(candidate),
+                &dir.join("ready"),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        let digest = ready.snapshot().digest.clone();
+        assert_eq!(ready.run(&mut current, None).unwrap().exit_code, Some(43));
+        assert_eq!(session.snapshot().unwrap().digest, snapshot.digest);
+        let stored = session
+            .publish_prepared(
+                ready,
+                &store,
+                &dir.join("current.json"),
+                None,
+                None,
+                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().unwrap().digest, digest);
+        assert_eq!(session.frontend().source(), new_source);
+        assert_eq!(
+            session.frontend().foreign().contract_digest(),
+            changed.contract_digest()
+        );
+        assert!(Arc::ptr_eq(&main, session.artifact_bytes("main").unwrap()));
+        assert!(Arc::ptr_eq(
+            &facts,
+            &session.frontend().page("main").unwrap().bytes
+        ));
+        assert_eq!(
+            session.frontend().function_meter("main"),
+            Default::default()
+        );
+        assert_eq!(session.frontend().meter().whole_parse_attempts, 0);
+        let mut fresh = Session::cold(
+            new_source,
+            "source938",
+            "p938",
+            &caps,
+            changed.clone(),
+            changed_bytes.clone(),
+            target,
+        )
+        .unwrap();
+        assert_eq!(
+            fresh.artifact_bytes("helper").unwrap().as_slice(),
+            session.artifact_bytes("helper").unwrap().as_slice()
+        );
+        assert_eq!(
+            fresh.run(&dir.join("independent-fresh")).unwrap().exit_code,
+            Some(43)
+        );
+        drop(session);
+        let mut again = Session::restore_stored_authorized(
+            &store,
+            &stored,
+            target,
+            &caps,
+            changed.clone(),
+            &mut current,
+        )
+        .unwrap();
+        assert_eq!(again.frontend().query_counters().solver_runs, 0);
+        let next = new_source.replace("value,42", "value,43");
+        let edit = Edit::Body(again.prepare_source(&next).unwrap());
+        let ready = again
+            .prepare_publication(
+                edit,
+                &dir.join("second-restore-first-edit"),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert_eq!(ready.run(&mut current, None).unwrap().exit_code, Some(44));
+        assert_eq!(again.snapshot().unwrap().digest, digest);
+    }
+}
+
+#[test]
+fn source_foreign_required_restore_rejects_each_missing_corrupt_or_misbound_page() {
+    use ace_abi::source_foreign::{runtime_identity, Session, Target};
+    use std::sync::Arc;
+    let root = scope("required-pages");
+    let (object, environment) = provider(&root, 0);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into()];
+    let digest = ace_a2x_core::sha256::sha256_hex;
+    for target in [Target::Native, Target::C] {
+        let session = Session::cold(
+            "fn leaf() int { return 7 }\nfn main() int { return foreign_add(20,22) }",
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let snapshot = session.snapshot().unwrap();
+        let authority = fixture_current(&environment, target);
+        let restore =
+            |root: &[u8],
+             expected: &str,
+             pages: &std::collections::BTreeMap<String, Arc<Vec<u8>>>| {
+                Session::restore_authorized(
+                    root,
+                    expected,
+                    target,
+                    &caps,
+                    environment.clone(),
+                    |id| pages.get(id).cloned(),
+                    &mut || Ok(authority.clone()),
+                )
+            };
+        let restored = restore(&snapshot.root, &snapshot.digest, &snapshot.pages).unwrap();
+        assert_eq!(restored.frontend().meter().whole_parse_attempts, 0);
+        assert_eq!(restored.frontend().meter().body_parse_attempts, 0);
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        assert_eq!(
+            restored.meter().mir_attempts
+                + restored.meter().native_attempts
+                + restored.meter().c_attempts,
+            0
+        );
+        for id in snapshot.pages.keys() {
+            let mut missing = snapshot.pages.clone();
+            missing.remove(id);
+            assert!(
+                restore(&snapshot.root, &snapshot.digest, &missing).is_err(),
+                "missing required {id}"
+            );
+            let mut corrupt = snapshot.pages.clone();
+            let mut bytes = (*corrupt[id]).clone();
+            *bytes.last_mut().unwrap() ^= 1;
+            corrupt.insert(id.clone(), Arc::new(bytes));
+            assert!(
+                restore(&snapshot.root, &snapshot.digest, &corrupt).is_err(),
+                "corrupt required {id}"
+            );
+        }
+        let root: serde_json::Value = serde_json::from_slice(&snapshot.root).unwrap();
+        for (field, value) in [
+            ("schema", "foreign/fake"),
+            ("target_identity", "wrong compiler"),
+            ("contract", "wrong contract"),
+            ("provider_digest", "wrong provider"),
+        ] {
+            let mut changed = root.clone();
+            changed[field] = value.into();
+            let bytes = serde_json::to_vec(&changed).unwrap();
+            assert!(
+                restore(&bytes, &digest(&bytes), &snapshot.pages).is_err(),
+                "{field}"
+            );
+        }
+        let mut fake_checked = root.clone();
+        fake_checked["safe"] = true.into();
+        let fake_checked = serde_json::to_vec(&fake_checked).unwrap();
+        assert!(restore(&fake_checked, &digest(&fake_checked), &snapshot.pages).is_err());
+        let mut denied = authority.clone();
+        denied.foreign.capabilities.clear();
+        assert!(Session::restore_authorized(
+            &snapshot.root,
+            &snapshot.digest,
+            target,
+            &caps,
+            environment.clone(),
+            |id| snapshot.pages.get(id).cloned(),
+            &mut || Ok(denied.clone())
+        )
+        .is_err());
+        let mut runtime = authority.clone();
+        runtime.runtime_digest = "0".repeat(64);
+        assert!(Session::restore_authorized(
+            &snapshot.root,
+            &snapshot.digest,
+            target,
+            &caps,
+            environment.clone(),
+            |id| snapshot.pages.get(id).cloned(),
+            &mut || Ok(runtime.clone())
+        )
+        .is_err());
+        // Even a self-consistent rehashed page/root cannot mint a current SDK
+        // runtime authorization or a foreign declaration credential.
+        for which in ["runtime", "foreign-declaration", "source", "target-owner"] {
+            let mut changed_root = root.clone();
+            let mut pages = snapshot.pages.clone();
+            if which == "runtime" {
+                let old = root["runtime"].as_str().unwrap();
+                let mut bytes = (*pages[old]).clone();
+                bytes.extend_from_slice(b"\n/* unapproved runtime */\n");
+                let id = digest(&bytes);
+                changed_root["runtime"] = id.clone().into();
+                changed_root["runtime_identity"] = runtime_identity(target, &id).into();
+                pages.insert(id, Arc::new(bytes));
+            } else if which == "target-owner" {
+                let old = root["functions"]["main"].as_str().unwrap();
+                let mut wire: serde_json::Value = serde_json::from_slice(&pages[old]).unwrap();
+                wire["name"] = "another-owner".into();
+                let bytes = serde_json::to_vec(&wire).unwrap();
+                let id = digest(&bytes);
+                changed_root["functions"]["main"] = id.clone().into();
+                pages.insert(id, Arc::new(bytes));
+            } else {
+                let old = root["frontend"].as_str().unwrap();
+                let mut wire: serde_json::Value = serde_json::from_slice(&pages[old]).unwrap();
+                if which == "source" {
+                    wire["source"] = "forged source".into();
+                } else {
+                    wire["declarations"] = wire["declarations"]
+                        .as_str()
+                        .unwrap()
+                        .replace(&environment.manifest().header_digest, &"0".repeat(64))
+                        .into();
+                }
+                let bytes = serde_json::to_vec(&wire).unwrap();
+                let id = digest(&bytes);
+                changed_root["frontend"] = id.clone().into();
+                pages.insert(id, Arc::new(bytes));
+            }
+            let bytes = serde_json::to_vec(&changed_root).unwrap();
+            assert!(
+                restore(&bytes, &digest(&bytes), &pages).is_err(),
+                "{target:?} {which}"
+            );
+        }
+        assert_eq!(session.snapshot().unwrap().digest, snapshot.digest);
+    }
+}
+
+fn source_worker_query(
+    deck: &serde_json::Value,
+    store: &Path,
+    leg: &str,
+    tag: &str,
+) -> serde_json::Value {
+    use base64::Engine as _;
+    let request = serde_json::json!({"recipe":ace_abi::worker_source::RECIPE,"nonce":tag,"request_hash":tag,
+        "deck_b64":base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(deck).unwrap()),
+        "leg":leg,"store_root":store,"steps":[{"op":"query"}]});
+    let input = format!(
+        "{}\n{}\n{}\n",
+        serde_json::json!({"op":"begin","schema":"abiworker/1"}),
+        serde_json::json!({"op":"request","request":request}),
+        serde_json::json!({"op":"end"})
+    );
+    let run = ace_core::link::run_deadlined_typed(
+        &mut std::process::Command::new(env!("CARGO_BIN_EXE_abi-worker")),
+        std::time::Duration::from_secs(30),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 20,
+            stderr_max: 1 << 20,
+        },
+        input.into_bytes(),
+    )
+    .unwrap();
+    let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert!(response.get("error").is_none(), "{response}");
+    response
+}
+
+#[test]
+fn source_foreign_formal_restart_first_error_repair_preserves_structured_diagnostics_and_pointer() {
+    let root = scope("formal-first-error");
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "cold-938");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let original = std::fs::read(&pointer).unwrap();
+        // Each query is a new process: these are actual first edits after R,
+        // with no ensure-env, empty edit or successful warmup query.
+        for (tag, source, stage) in [
+            (
+                "type",
+                "fn main() int { return foreign_add(true,22) }",
+                "resolve",
+            ),
+            (
+                "syntax",
+                "fn main() int { return foreign_add(20,22)",
+                "parse",
+            ),
+        ] {
+            let mut changed = deck.clone();
+            changed["source"] = source.into();
+            let response = source_worker_query(&changed, &store, leg, tag);
+            let report = &response["ok"]["source_import"];
+            assert_eq!(response["ok"]["steps"][0]["outcome"], "diags");
+            assert_eq!(report["source_parse"], 1);
+            assert_eq!(report["solver"], if tag == "type" { 1 } else { 0 });
+            assert_eq!(report["diagnostic_stage"], stage);
+            assert_eq!(report["diagnostics"][0]["stage"], stage);
+            if tag == "type" {
+                assert_eq!(
+                    report["diagnostics"][0]["code"],
+                    "source.foreign.type-mismatch"
+                );
+                let at = source.find("true").unwrap();
+                assert_eq!(
+                    report["diagnostics"][0]["span"],
+                    serde_json::json!([at, at + 4])
+                );
+            }
+            for field in ["hir", "mir", "native", "c_fragment"] {
+                assert_eq!(report[field], 0);
+            }
+            assert!(report["actual_exit"].is_null());
+            assert_eq!(report["actual_events"], serde_json::json!([]));
+            assert_eq!(std::fs::read(&pointer).unwrap(), original);
+        }
+        let mut repaired = deck.clone();
+        repaired["source"] = "fn main() int { let a=19\nreturn foreign_add(a,23) }".into();
+        let response = source_worker_query(&repaired, &store, leg, "repaired-938");
+        let report = &response["ok"]["source_import"];
+        assert_eq!(report["actual_exit"], 42);
+        assert_eq!(report["reference_exit"], 42);
+        assert_eq!(report["source_parse"], 1);
+        assert_eq!(report["solver"], 1);
+        assert_eq!(report["hir"], 1);
+        assert_ne!(std::fs::read(&pointer).unwrap(), original);
+        let warm = source_worker_query(&repaired, &store, leg, "restored-after-repair-938");
+        let report = &warm["ok"]["source_import"];
+        for field in [
+            "source_parse",
+            "solver",
+            "hir",
+            "mir",
+            "native",
+            "c_fragment",
+        ] {
+            assert_eq!(report[field], 0);
+        }
+        assert_eq!(report["actual_exit"], 42);
+        assert_eq!(report["reference_exit"], 42);
+    }
+}

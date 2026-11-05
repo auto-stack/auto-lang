@@ -346,6 +346,55 @@ impl UnitCatalog {
             units,
         }
     }
+
+    /// Candidate source-map metadata, without committing or cloning any AST.
+    /// Mirrors commit_staged's span update and lambda directory replacement.
+    pub fn staged_manifest(
+        &self,
+        cand: &StagedCandidate,
+        caps_version: &str,
+    ) -> Result<CatalogManifest, EditError> {
+        self.validate_staged(cand)?;
+        let mut manifest = self.to_manifest(caps_version);
+        if !cand.changed {
+            return Ok(manifest);
+        }
+        let old = self.fns[&cand.owner].span;
+        let delta = cand.new_fn_len as i64 - (old.end - old.start) as i64;
+        manifest.module_sha = content_sha(cand.new_src.as_bytes());
+        manifest
+            .units
+            .retain(|u| !(u.owner == cand.owner && u.kind == UnitKind::Lambda));
+        for unit in &mut manifest.units {
+            if unit.kind == UnitKind::Fn && unit.owner == cand.owner {
+                unit.content_sha = cand.owner_sha;
+                unit.current_span = (old.start, old.start + cand.new_fn_len);
+            } else if unit.current_span.0 >= old.end {
+                let shift = |n: usize| -> Result<usize, EditError> {
+                    usize::try_from(n as i128 + delta as i128)
+                        .map_err(|_| EditError::Infra("candidate span overflow".into()))
+                };
+                unit.current_span = (shift(unit.current_span.0)?, shift(unit.current_span.1)?);
+                if unit.kind == UnitKind::Lambda {
+                    unit.mint_span = unit.current_span;
+                }
+            }
+        }
+        manifest
+            .units
+            .extend(cand.lambdas.iter().map(|(ordinal, sl)| ManifestUnit {
+                kind: UnitKind::Lambda,
+                owner: cand.owner.clone(),
+                ordinal: *ordinal,
+                content_sha: sl.content_sha,
+                mint_span: (sl.span.start, sl.span.end),
+                current_span: (sl.span.start, sl.span.end),
+            }));
+        manifest
+            .units
+            .sort_by_key(|u| (u.owner.clone(), u.ordinal, u.kind as u8));
+        Ok(manifest)
+    }
 }
 
 /// 签名摘要（声明序：名(参数, ...) -> 返回；mode 词计入）。
@@ -1409,20 +1458,71 @@ impl UnitCatalog {
         owner: &str,
         budget: FrontBudget,
     ) -> Result<(Rc<FnItem>, bool), EditError> {
-        let sealed = self
+        self.owner_for_staged_recheck(owner, None, budget)
+    }
+
+    fn reader_span(&self, owner: &str, cand: Option<&StagedCandidate>) -> Result<Span, EditError> {
+        let mut span = self
             .fns
             .get(owner)
-            .ok_or_else(|| EditError::Infra(format!("unknown owner {owner}")))?;
-        if let Some(item) = &sealed.item {
-            if item.span == sealed.span {
+            .ok_or_else(|| EditError::Infra(format!("unknown owner {owner}")))?
+            .span;
+        if let Some(cand) = cand {
+            self.validate_staged(cand)?;
+            let old = self.fns[&cand.owner].span;
+            if owner == cand.owner {
+                span.end = span.start + cand.new_fn_len;
+            } else if span.start >= old.end {
+                let delta = cand.new_fn_len as i64 - (old.end - old.start) as i64;
+                let shift = |n: usize| {
+                    usize::try_from(n as i128 + delta as i128)
+                        .map_err(|_| EditError::Infra("candidate reader span overflow".into()))
+                };
+                span = Span {
+                    start: shift(span.start)?,
+                    end: shift(span.end)?,
+                };
+            }
+        }
+        Ok(span)
+    }
+    pub fn reader_projection_required(
+        &self,
+        owner: &str,
+        cand: Option<&StagedCandidate>,
+    ) -> Result<bool, EditError> {
+        let span = self.reader_span(owner, cand)?;
+        if let Some(cand) = cand.filter(|c| c.owner == owner) {
+            return Ok(cand.owner_item.is_none());
+        }
+        Ok(self.fns[owner].item.as_ref().is_none_or(|f| f.span != span))
+    }
+    /// Project just this reader at its candidate source position. Prefix drift
+    /// never causes unrelated ASTs to be cloned or materialized.
+    pub fn owner_for_staged_recheck(
+        &self,
+        owner: &str,
+        cand: Option<&StagedCandidate>,
+        budget: FrontBudget,
+    ) -> Result<(Rc<FnItem>, bool), EditError> {
+        let span = self.reader_span(owner, cand)?;
+        if let Some(item) = cand
+            .filter(|c| c.owner == owner)
+            .and_then(|c| c.owner_item.as_ref())
+        {
+            return Ok((item.clone(), false));
+        }
+        if let Some(item) = &self.fns[owner].item {
+            if item.span == span {
                 return Ok((item.clone(), false));
             }
         }
+        let src = cand.map(|c| c.new_src.as_str()).unwrap_or(&self.src);
         match parse_front(FrontRequest {
-            src: &self.src,
+            src,
             profile: self.profile,
             kind: FrontKind::FreeFnFragment {
-                range: sealed.span.start..sealed.span.end,
+                range: span.start..span.end,
             },
             budget,
         }) {
