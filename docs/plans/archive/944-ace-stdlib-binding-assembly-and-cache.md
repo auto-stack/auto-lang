@@ -463,6 +463,14 @@ Artifact首红与两个同SHA绿重放均已折入本Plan，原记录不因清�
 
 `stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 8 | from: merge | to: regress due check | status: archived | outcome: pass | worktree: removed | commit: 371702e114c2254ac0d8f16118a49a823d0b8e08 | next: periodic maintenance receipt then done`
 
+### r2 periodic due handoff / goal completion（2026-11-06）
+
+独立维护门precondition实核：既有batch receipt覆盖953/UTC2026-11-05T20:24:10Z；之后955落地，due=true。936的`cargo nextest run -p ace-syntax-runtime ...`及`syntax_budget_64mib_streaming_small_queries`仍活动，故遵守单实例规定，未启动第二批、未新建raw scope、未推进.last-batch-regression.json或冒称批量绿。维护待办owner=全仓batch regression队列（原955 due项继续），关闭条件=其它重门结束后在main单实例`cargo t all`真实终态/分组归因与新收据，UI/Man维持owner腿。已交接为独立维护等待项，不作为944的未完成验收；仓规明确周期批量“不成为每计划全局门”。
+
+PLAN-944自身最终结果：review pass/r2、冻结1972唯一用例最终通过（25原条件排除；artifact首次暂态红及同输入重放绿均保留）、ff-only landing371702e11、五canonical源核验、archive提交与7/7、树/分支/组/scope删除/登记全部完成。无944在途施工或清理，无待用户决策。默认分支他方仅文档簿记WIP原样保留，本包代码/Spec/计划交付均已提交，未推远程。
+
+`stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 9 | from: periodic due check | to: done | status: archived | outcome: pass | worktree: removed | commit: 371702e114c2254ac0d8f16118a49a823d0b8e08 | next: done (global maintenance separately queued, not passed)`
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
