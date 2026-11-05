@@ -151,3 +151,5 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 - 当前无需用户补充材料即可立约；T-01冻结内部机制、准确入口与实际来源。若改变公开语义、承诺支持或仓责任，给具体修订再进行受影响实施。
 - 既有UI052/053、OS055及语法/ACE会话继续各自实施，本包不接管其WIP；文件/符号交集协调单写，实际正式差额才形成前置。
 - 历史51GB输入未重放，不能预填当前FAIL/PASS；若当前已修，须以准确坏源、合法控制及真实UI恢复回归证明并记录零实现差额。
+
+2026-11-06 / stage:goal / PLAN-940:r1 / round:3 / from:review / to:merge / status:archived / outcome:pass — 全链交付完成：work(T-01..T-04)→review(T-05 final pass)→merge(T-06/T-07)。交付 commit lang ec4fb9368 / ui eff9ece3（ff-only，range-diff 等价）；canonical SD-01/SD-03 落盘读回、SD-02 零差额记理由；归档 docs/plans/archive/；四树 guard-clean 移除、分支删除、组目录删除；plan-artifacts/plan-940 整 scope 删除、登记表刷新、无具名持有；批量回归到期档 cargo t all（run-_cipi5jr，1112s）：known_reds_only、零窗口新红（两时序红均窗口前文件、隔离重放绿，回执 docs/plans/.last-batch-regression.json @5d51596bc）。next: done
