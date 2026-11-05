@@ -215,3 +215,217 @@ fn av_assembly_effect_update_preserves_unrelated_code_and_rechecks_authority_aft
         .is_err());
     assert_eq!(av.run_authorized(&mut |_, _| Ok(())).unwrap(), 42);
 }
+
+#[test]
+fn rust_assembly_effect_and_restored_first_body_edit_use_real_fragment_producers() {
+    use super::module_sources_950::rust_value;
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::ModuleA2xTarget;
+    let temp = Temp::new();
+    let store_path = temp.0.join("store");
+    let (mut inputs, caps, av_manifest) = fixture();
+    let mut query = SourceQuerySession::new("pkg", "app");
+    let product =
+        compile_assembly_product(&inputs, "app", &caps, &av_manifest, &mut query, B).unwrap();
+    let manifest = Manifest::freeze(
+        av_manifest.semantic().clone(),
+        ModuleA2xTarget::consumer_for_product(&product, &RustTargetProvider::v1(), vec![]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest.fingerprint(), av_manifest.fingerprint());
+    assert_ne!(
+        manifest.consumer_fingerprint(),
+        av_manifest.consumer_fingerprint()
+    );
+    let mut rust = ModuleA2xTarget::cold_assembly(
+        &store_path,
+        "assembly944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &product,
+        &manifest,
+    )
+    .unwrap();
+    let mut source = ModuleSession::from_product(&product, query).unwrap();
+    let mut store = ModuleStore::open(&store_path, "assembly944").unwrap();
+    let mut dispatched = false;
+    assert!(rust
+        .run_authorized(&mut |_, _| Err("denied".into()), |_| {
+            dispatched = true;
+            Ok(())
+        })
+        .is_err());
+    assert!(!dispatched);
+    rust.run_authorized(&mut |_, _| Ok(()), |a| {
+        rust_value(a, &temp.0.join("cold"), 42);
+        Ok(())
+    })
+    .unwrap();
+    let old = source
+        .prepare_current_receipt(
+            &mut store,
+            &BTreeMap::from([("a2x-rust".into(), rust.receipt().unwrap())]),
+        )
+        .unwrap();
+    store.publish(&old, None, false).unwrap();
+    let local = source
+        .bound
+        .origins
+        .iter()
+        .find(|(_, o)| o.1 == "local")
+        .unwrap()
+        .0
+        .clone();
+    let old_local = rust.fragment_receipts()[&local].clone();
+    let mut semantic = manifest.semantic().clone();
+    semantic
+        .declarations
+        .iter_mut()
+        .find(|d| d.module == "std")
+        .unwrap()
+        .requirements
+        .push("console".into());
+    let effect = Manifest::freeze(semantic, manifest.consumer().clone()).unwrap();
+    let contexts = manifest_contexts(&source.bound, &effect).unwrap();
+    let mut batch = source
+        .prepare_batch(None, contexts.clone(), &BTreeSet::new(), B)
+        .unwrap();
+    let before = rust.stats().clone();
+    let edit = rust.prepare_batch(&batch, &effect).unwrap();
+    assert_eq!(rust.stats().lower - before.lower, 2);
+    assert_eq!(rust.stats().print - before.print, 2);
+    let stale = rust.prepare_batch(&batch, &effect).unwrap();
+    let receipt = source
+        .prepare_batch_receipt(
+            &mut store,
+            &mut batch,
+            BTreeMap::from([("a2x-rust".into(), rust.prepared_receipt(&edit).unwrap())]),
+        )
+        .unwrap();
+    source.validate_batch(&batch).unwrap();
+    rust.validate(&edit).unwrap();
+    store.publish(&receipt, Some(&old), false).unwrap();
+    source.commit_batch(batch).unwrap();
+    rust.commit(edit).unwrap();
+    assert!(rust.validate(&stale).is_err());
+    assert_eq!(rust.fragment_receipts()[&local], old_local);
+    rust.run_authorized(
+        &mut |_, r| {
+            assert_eq!(r, ["console"]);
+            Ok(())
+        },
+        |a| {
+            rust_value(a, &temp.0.join("effect"), 42);
+            Ok(())
+        },
+    )
+    .unwrap();
+    drop(rust);
+    drop(source);
+    drop(store);
+    drop(product);
+    let mut store = ModuleStore::open(&store_path, "assembly944").unwrap();
+    let recovery = store
+        .restore_with_contexts(&receipt, &inputs, "app", &caps, "pkg", "app", B, &contexts)
+        .unwrap();
+    assert_eq!(recovery.session.counters().solver_runs, 0);
+    assert!(ModuleA2xTarget::restore(
+        &store_path,
+        "assembly944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound
+    )
+    .is_err());
+    let mut rust = ModuleA2xTarget::restore_assembly(
+        &store_path,
+        "assembly944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound,
+        &effect,
+    )
+    .unwrap();
+    assert_eq!(rust.stats().lower, 0);
+    assert_eq!(rust.stats().print, 0);
+    assert!(rust
+        .run_authorized(&mut |_, _| Err("fresh grant required".into()), |_| Err::<
+            (),
+            String,
+        >(
+            "must not dispatch".into()
+        ))
+        .is_err());
+    let mut source = ModuleSession::from_recovery(recovery);
+    let fragment = "pub fn answer() int { return 43 }";
+    inputs[0].source = fragment.into();
+    let mut semantic = effect.semantic().clone();
+    semantic
+        .sources
+        .iter_mut()
+        .find(|s| s.source_id == "modules/std.at")
+        .unwrap()
+        .content_hash = ace_core::runtime_contract::sha256_hex(fragment.as_bytes());
+    let changed = Manifest::freeze(semantic, effect.consumer().clone()).unwrap();
+    let mut batch = source
+        .prepare_batch(
+            Some(("std", "answer", fragment)),
+            contexts.clone(),
+            &BTreeSet::new(),
+            B,
+        )
+        .unwrap();
+    assert_eq!(source.query.counters().solver_runs, 1);
+    let edit = rust.prepare_batch(&batch, &changed).unwrap();
+    assert_eq!(rust.stats().lower, 1);
+    assert_eq!(rust.stats().print, 1);
+    let next = source
+        .prepare_batch_receipt(
+            &mut store,
+            &mut batch,
+            BTreeMap::from([("a2x-rust".into(), rust.prepared_receipt(&edit).unwrap())]),
+        )
+        .unwrap();
+    source.validate_batch(&batch).unwrap();
+    rust.validate(&edit).unwrap();
+    store.publish(&next, Some(&receipt), false).unwrap();
+    source.commit_batch(batch).unwrap();
+    rust.commit(edit).unwrap();
+    assert_eq!(rust.fragment_receipts()[&local], old_local);
+    rust.run_authorized(&mut |_, _| Ok(()), |a| {
+        rust_value(a, &temp.0.join("first-edit"), 43);
+        Ok(())
+    })
+    .unwrap();
+    drop(rust);
+    drop(source);
+    drop(store);
+    let store = ModuleStore::open(&store_path, "assembly944").unwrap();
+    let recovery = store
+        .restore_with_contexts(&next, &inputs, "app", &caps, "pkg", "app", B, &contexts)
+        .unwrap();
+    assert_eq!(recovery.session.counters().solver_runs, 0);
+    let rust = ModuleA2xTarget::restore_assembly(
+        &store_path,
+        "assembly944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound,
+        &changed,
+    )
+    .unwrap();
+    assert_eq!(rust.stats().lower, 0);
+    assert_eq!(rust.stats().print, 0);
+    rust.run_authorized(&mut |_, _| Ok(()), |a| {
+        rust_value(a, &temp.0.join("next-read"), 43);
+        Ok(())
+    })
+    .unwrap();
+}

@@ -92,6 +92,9 @@ pub const LAYER_FRAGMENT: LayerSpec = LayerSpec {
         "backend_version",
         "runtime_sha256",
         "print_version",
+        // Optional only in the explicit module-assembly/1 physical recipe.
+        // Legacy keys omit it; semantic-plan keys never read providers.
+        "assembly_context_v1",
     ],
     ref_kinds: &["provenance"],
     storage: "one printed Rust fragment artifact per function",
@@ -709,6 +712,22 @@ impl A2xSession {
         QueryKey::new(self.layer_fragment(), inputs)
     }
 
+    fn fragment_key_with_context(
+        &self,
+        f: &FnFacts<'_>,
+        sem_fp: &str,
+        runtime_sha: &str,
+        context: Option<&str>,
+    ) -> QueryKey {
+        let mut key = self.fragment_key(f, sem_fp, runtime_sha);
+        if let Some(context) = context {
+            key.components
+                .push(("assembly_context_v1".into(), context.into()));
+            key.components.sort_by(|a, b| a.0.cmp(&b.0));
+        }
+        key
+    }
+
     fn profile_label(&self) -> &'static str {
         match self.profile {
             SourceProfile::Core => "core",
@@ -892,6 +911,29 @@ impl A2xSession {
         read_only: bool,
         publish_source_anchor: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
+        self.assemble_view_with_contexts(
+            view,
+            input_hash,
+            entry,
+            _src,
+            read_only,
+            publish_source_anchor,
+            &BTreeMap::new(),
+        )
+    }
+
+    /// PLAN-944: same producer/resident/store loop, with an explicit per-owner
+    /// physical input extension. Empty inputs preserve every original key.
+    fn assemble_view_with_contexts(
+        &mut self,
+        view: &SemanticView<'_>,
+        input_hash: &str,
+        entry: &str,
+        _src: &str,
+        read_only: bool,
+        publish_source_anchor: bool,
+        contexts: &BTreeMap<String, String>,
+    ) -> Result<Assembly, A2xRejectOrResource> {
         let family = self.family();
         let backend = self.current_backend().to_string();
         let runtime = self
@@ -911,6 +953,7 @@ impl A2xSession {
         for f in view.functions() {
             self.stats.verify += 1;
             let sem_fp = semantic_fingerprint(view, f).map_err(A2xRejectOrResource::Reject)?;
+            let context = contexts.get(f.source_name).map(String::as_str);
 
             // 1) resident reuse (per-target): unchanged function/method →
             //    ZERO production
@@ -918,7 +961,7 @@ impl A2xSession {
                 .resident
                 .get(&(backend.clone(), f.source_name.to_string()))
             {
-                if r.sem_fp == sem_fp {
+                if context.is_none() && r.sem_fp == sem_fp {
                     self.stats.fragments_reused_resident += 1;
                     fragments.push((f.def_index, r.clone()));
                     continue;
@@ -927,7 +970,7 @@ impl A2xSession {
 
             // 2) store hit on the TARGET layer: reuse the checked payload
             //    (A→B→A revisits land here with real historical bytes)
-            let frag_key = self.fragment_key(f, &sem_fp, &runtime_sha);
+            let frag_key = self.fragment_key_with_context(f, &sem_fp, &runtime_sha, context);
             if let Ok(Some(hit)) = self.store.get_artifact(self.layer_fragment().id, &frag_key) {
                 let text = String::from_utf8(hit.payload.clone()).map_err(|_| {
                     A2xRejectOrResource::Reject(A2xReject::new(
@@ -995,7 +1038,12 @@ impl A2xSession {
                         vec![],
                     )?;
                     // fragment layer (provenance edge to its semantic input)
-                    let frag_key = self.fragment_key(f, sem_fp, &runtime_sha);
+                    let frag_key = self.fragment_key_with_context(
+                        f,
+                        sem_fp,
+                        &runtime_sha,
+                        contexts.get(f.source_name).map(String::as_str),
+                    );
                     let frag_id = self.quota_put(
                         self.layer_fragment().id,
                         frag_key,
@@ -2188,7 +2236,19 @@ impl A2xSession {
         runtime_sha: &str,
         read_only: bool,
     ) -> Result<ResidentFragment, A2xRejectOrResource> {
-        let frag_key = self.fragment_key(f, sem_fp, runtime_sha);
+        self.produce_fragment_with_context(view, f, sem_fp, runtime_sha, read_only, None)
+    }
+
+    fn produce_fragment_with_context(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        sem_fp: &str,
+        runtime_sha: &str,
+        read_only: bool,
+        context: Option<&str>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        let frag_key = self.fragment_key_with_context(f, sem_fp, runtime_sha, context);
         if let Ok(Some(hit)) = self.store.get_artifact(self.layer_fragment().id, &frag_key) {
             if let Ok(text) = String::from_utf8(hit.payload) {
                 self.stats.store_hit_fragment += 1;

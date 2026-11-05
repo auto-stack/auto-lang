@@ -57,7 +57,7 @@ fn source(local: bool) -> Vec<ModuleInput> {
         },
     ]
 }
-fn rust_value(assembly: &Assembly, dir: &Path, expected: i32) {
+pub(super) fn rust_value(assembly: &Assembly, dir: &Path, expected: i32) {
     std::fs::create_dir_all(dir).unwrap();
     for (path, content) in &assembly.files {
         std::fs::write(dir.join(path), content).unwrap();

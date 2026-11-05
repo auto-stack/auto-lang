@@ -2,9 +2,13 @@
 //! Preparation writes immutable fragments but never replaces current output.
 use super::*;
 use ace_core::source::modules::BoundModules;
+use ace_semantics_contract::assembly::Manifest;
 use ace_source_query::modules::{ModuleProduct, ModuleReceipt, PreparedModuleEdit};
 use serde::{Deserialize, Serialize};
 const SCHEMA: &str = "a2x-source-modules/1";
+const ASSEMBLY_SCHEMA: &str = "a2x-source-modules/2";
+mod assembly;
+pub use assembly::assembly_consumer;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Fragment {
@@ -13,6 +17,8 @@ struct Fragment {
     sem_fp: String,
     artifact: String,
     digest: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    context: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +33,10 @@ struct Root {
     fragments: Vec<Fragment>,
     files: Vec<(String, String)>,
     manifest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assembly: Option<Manifest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requirements: Vec<String>,
 }
 pub struct ModuleA2xTarget {
     inner: A2xSession,
@@ -117,6 +127,9 @@ fn read_fragments(inner: &A2xSession, root: &Root) -> Result<Vec<String>, String
                 .provider
                 .fragment_key_inputs(&sha256_hex(root.runtime.as_bytes())),
         );
+        if !r.context.is_empty() {
+            inputs.push(("assembly_context_v1".into(), r.context.clone()));
+        }
         let key = QueryKey::new(inner.layer_fragment(), inputs);
         let a = inner
             .store
@@ -142,6 +155,17 @@ impl ModuleA2xTarget {
         provider: P,
         product: &ModuleProduct,
     ) -> Result<Self, String> {
+        Self::cold_inner(path, project, owner, quota, provider, product, None)
+    }
+    fn cold_inner<P: TargetProvider + 'static>(
+        path: &Path,
+        project: &str,
+        owner: &str,
+        quota: u64,
+        provider: P,
+        product: &ModuleProduct,
+        assembly: Option<&Manifest>,
+    ) -> Result<Self, String> {
         let mut inner = A2xSession::open(path, project, owner, quota, provider)?;
         inner.profile = SourceProfile::Scalar;
         inner.caps = product.bound.capabilities.clone();
@@ -151,17 +175,52 @@ impl ModuleA2xTarget {
             .map_err(|e| format!("{e:?}"))?;
         let view =
             SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
+        let runtime = inner
+            .provider
+            .runtime_source(&view, Family::Scalar)
+            .map_err(|e| format!("{e:?}"))?;
+        let contexts: BTreeMap<String, String> = if let Some(manifest) = assembly {
+            self::assembly::admit_manifest(&product.bound, manifest, &*inner.provider, &runtime)?;
+            product
+                .bound
+                .origins
+                .keys()
+                .map(|name| {
+                    ace_source_query::assembly::function_input_version(
+                        &product.bound,
+                        manifest,
+                        name,
+                    )
+                    .map(|v| (name.clone(), v))
+                })
+                .collect::<Result<_, _>>()?
+        } else {
+            BTreeMap::new()
+        };
         // Reuse the existing batched producer/resident/store loop, while the
         // multi-source owner publishes its own source-set anchor below.
         inner
-            .assemble_view_internal(&view, &product.bound.input_hash, "main", "", false, false)
+            .assemble_view_with_contexts(
+                &view,
+                &product.bound.input_hash,
+                "main",
+                "",
+                false,
+                false,
+                &contexts,
+            )
             .map_err(|e| format!("{e:?}"))?;
         let runtime = inner
             .provider
             .runtime_source(&view, Family::Scalar)
             .map_err(|e| format!("{e:?}"))?;
         let mut root = Root {
-            schema: SCHEMA.into(),
+            schema: if assembly.is_some() {
+                ASSEMBLY_SCHEMA
+            } else {
+                SCHEMA
+            }
+            .into(),
             source: product.bound.input_hash.clone(),
             owner: owner.into(),
             backend: inner.current_backend().into(),
@@ -173,10 +232,20 @@ impl ModuleA2xTarget {
             fragments: Vec::new(),
             files: Vec::new(),
             manifest: String::new(),
+            assembly: assembly.cloned(),
+            requirements: assembly
+                .map(|m| ace_source_query::assembly::entry_requirements(&product.bound, m))
+                .transpose()?
+                .unwrap_or_default(),
         };
         for f in view.functions() {
             let r = &inner.resident[&(root.backend.clone(), f.source_name.into())];
-            let key = inner.fragment_key(f, &r.sem_fp, &sha256_hex(root.runtime.as_bytes()));
+            let key = inner.fragment_key_with_context(
+                f,
+                &r.sem_fp,
+                &sha256_hex(root.runtime.as_bytes()),
+                contexts.get(f.source_name).map(String::as_str),
+            );
             let a = inner
                 .store
                 .get_artifact(inner.layer_fragment().id, &key)
@@ -188,6 +257,7 @@ impl ModuleA2xTarget {
                 sem_fp: r.sem_fp.clone(),
                 artifact: a.artifact_id,
                 digest: sha256_hex(&a.payload),
+                context: contexts.get(f.source_name).cloned().unwrap_or_default(),
             });
         }
         root.fragments.sort_by_key(|r| r.index);
@@ -214,6 +284,9 @@ impl ModuleA2xTarget {
             .collect()
     }
     pub fn prepare(&mut self, edit: &PreparedModuleEdit) -> Result<ModuleA2xEdit, String> {
+        if self.root.assembly.is_some() {
+            return Err("assembly.requires-batch-preparation".into());
+        }
         if self.root.source != edit.base_source() {
             return Err("module A2X source base mismatch".into());
         }
@@ -271,13 +344,13 @@ impl ModuleA2xTarget {
         let current = assemble(&self.inner, &root, &edit.bound, &text)?;
         seal_files(&mut root, &current);
         Ok(ModuleA2xEdit {
-            base: self.root.source.clone(),
+            base: root_revision(&self.root),
             root,
             current,
         })
     }
     pub fn validate(&self, edit: &ModuleA2xEdit) -> Result<(), String> {
-        if edit.base != self.root.source {
+        if edit.base != root_revision(&self.root) {
             return Err("stale A2X module edit".into());
         }
         Ok(())
@@ -293,7 +366,7 @@ impl ModuleA2xTarget {
         write_root(&mut self.inner, &self.root)
     }
     pub fn prepared_receipt(&mut self, edit: &ModuleA2xEdit) -> Result<ModuleReceipt, String> {
-        if edit.base != self.root.source {
+        if edit.base != root_revision(&self.root) {
             return Err("stale A2X module receipt".into());
         }
         write_root(&mut self.inner, &edit.root)
@@ -306,6 +379,18 @@ impl ModuleA2xTarget {
         provider: P,
         receipt: &ModuleReceipt,
         bound: &BoundModules,
+    ) -> Result<Self, String> {
+        Self::restore_inner(path, project, owner, quota, provider, receipt, bound, None)
+    }
+    fn restore_inner<P: TargetProvider + 'static>(
+        path: &Path,
+        project: &str,
+        owner: &str,
+        quota: u64,
+        provider: P,
+        receipt: &ModuleReceipt,
+        bound: &BoundModules,
+        expected: Option<&Manifest>,
     ) -> Result<Self, String> {
         let mut inner = A2xSession::open(path, project, owner, quota, provider)?;
         inner.profile = SourceProfile::Scalar;
@@ -320,7 +405,13 @@ impl ModuleA2xTarget {
             return Err("A2X module root receipt mismatch".into());
         }
         let root: Root = serde_json::from_slice(&a.payload).map_err(|e| format!("{e:?}"))?;
-        if root.schema != SCHEMA
+        if root.schema
+            != if expected.is_some() {
+                ASSEMBLY_SCHEMA
+            } else {
+                SCHEMA
+            }
+            || root.assembly.as_ref() != expected
             || root.source != bound.input_hash
             || root.owner != owner
             || root.backend != inner.current_backend()
@@ -331,6 +422,27 @@ impl ModuleA2xTarget {
                     .fragment_key_inputs(&sha256_hex(root.runtime.as_bytes()))
         {
             return Err("A2X module producer/source/runtime identity mismatch".into());
+        }
+        if let Some(manifest) = expected {
+            self::assembly::admit_manifest(bound, manifest, &*inner.provider, &root.runtime)?;
+        }
+        let requirements = expected
+            .map(|m| ace_source_query::assembly::entry_requirements(bound, m))
+            .transpose()?
+            .unwrap_or_default();
+        if root.requirements != requirements {
+            return Err("A2X assembly requirement closure mismatch".into());
+        }
+        for fragment in &root.fragments {
+            let context = expected
+                .map(|m| {
+                    ace_source_query::assembly::function_input_version(bound, m, &fragment.name)
+                })
+                .transpose()?
+                .unwrap_or_default();
+            if fragment.context != context {
+                return Err("A2X assembly fragment context mismatch".into());
+            }
         }
         let names: std::collections::BTreeSet<_> =
             root.fragments.iter().map(|f| f.name.clone()).collect();
@@ -363,6 +475,9 @@ impl ModuleA2xTarget {
         })
     }
 }
+fn root_revision(root: &Root) -> String {
+    sha256_hex(&serde_json::to_vec(root).unwrap())
+}
 fn write_root(inner: &mut A2xSession, root: &Root) -> Result<ModuleReceipt, String> {
     let payload = serde_json::to_vec(root).map_err(|e| format!("{e:?}"))?;
     if payload.len() > 512 * 1024 {
@@ -375,7 +490,7 @@ fn write_root(inner: &mut A2xSession, root: &Root) -> Result<ModuleReceipt, Stri
     let key = QueryKey {
         layer: "AXM950",
         components: vec![
-            ("schema".into(), SCHEMA.into()),
+            ("schema".into(), root.schema.clone()),
             ("digest".into(), digest.clone()),
         ],
     };

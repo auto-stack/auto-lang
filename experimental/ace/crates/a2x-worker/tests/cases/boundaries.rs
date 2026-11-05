@@ -36,6 +36,7 @@ fn manifest_face_only_sanctioned_dependencies() {
         // the same shared consumer door AV/native use. The dependency is
         // consumer-side only: source-query never depends on any a2x crate.
         "ace-source-query",
+        "ace-semantics-contract", // PLAN-944: backend-free assembly facts/codec only
         "auto-tool-execution", // neutral std-only lifecycle: formal compiler tool and test consumers
         "windows-sys",         // probe-only, cfg(windows): process memory counters
         "serde",               // PLAN-950: data-only module root/fragment codec derive;

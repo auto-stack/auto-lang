@@ -48,6 +48,7 @@ dependencies = [
  "ace-a2x-core",
  "ace-artifacts",
  "ace-core",
+ "ace-semantics-contract",
  "ace-source-query",
  "serde",
  "serde_json",
