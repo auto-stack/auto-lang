@@ -352,10 +352,11 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
-        // PLAN-935 (T-04): a declared type parameter reference resolves by
-        // NAME against the enclosing fn's declared type params. An undeclared
-        // spelling is a definitive error (never widened, never a record).
-        core_ast::TypeRef::TyVar(id) => Ok(Ann::Unsupported("type-parameter")),
+        // PLAN-935 (T-04): plain `ann_of` has no type-parameter context — a
+        // TyVar here is outside any template signature (the instances layer
+        // maps declared parameters through `ann_of_tp` before this). Surface
+        // the spelling, never widen to a concrete/record.
+        core_ast::TypeRef::TyVar(_) => Ok(Ann::Unsupported("type-parameter")),
         // PLAN-865: the closures profile adds this AST type, but the limited semantic model does not.
         core_ast::TypeRef::Function { .. } => Ok(Ann::Unsupported("closure-function-type")),
         // PLAN-864: the collections type grammar (?T / Name<..>) is outside
