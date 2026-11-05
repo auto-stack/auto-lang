@@ -44,6 +44,11 @@
 - 自描述：`name`、`logical`、`body_version`、信封四元组、`revision`、`steps`。
 - 节点事实按 **body 结构 id**（规范前序 walk）索引：`kind + PortableTy(i32/bool/void)`；
   binding 事实按声明节点，diagnostic 以节点引用（不持久化 span）。
+- **同 span 多事实**：core parser 给一元表达式与其操作数同一 span（`!1` 两节点都是
+  `30..31`）。solver 的 `expr_types` 按父先子后的出现序产出，walk 用
+  `span_occurrences()` 同序对齐；供给侧 `TypeSupply::expr_tys(span)` 返回该 span 的
+  全部事实，core 安装与本节点规则**相等**的那一条，一条都不等则 `source.fact-mismatch`。
+  错配对不会静默成错类型：core 的逐节点规则检查在 bind 阶段打红。
 - **不含** name/span/intern slot 作为身份；持久 payload 只有 portable 类型与名义引用。
 - 准入（全部通过才可用）：信封（producer/schema/algo/profile）→ body 版本 →
   node id 存在/kind 匹配/无重复 → 覆盖每个表达式节点 → 无诊断。失败即拒，
@@ -57,6 +62,17 @@
 - 发射经 `emit_resolved_parts`（不 resolve、不 typecheck），随后真实 HIR 校验。
 - 共享入口 `compile_via_facts`：parse → 每 body 事实 → 事实供给 bind → emit → verify → `CheckedModule`；
   有限面内与 legacy 入口产出**逐字节相同 HIR**（同一 checked 产物供四端消费）。
+- **产品入口 `compile_scalar_product`**（T-08 起 AV/native/A2X 的默认冷路径）：
+  - 接受路径 = 事实 lane：类型全部来自事实页，`Counters::diagnostic_verdicts == 0`；
+  - **语言拒绝**（某 body 页携带 solver 诊断或缺覆盖）= 由 core 前端自身的诊断路径
+    给出**逐字** stage/code/message/span（19 个冻结反例逐条相同）；事实 lane 不产出
+    HIR、不安装事实、不缓存；若前端口径反而接受该模块则入口硬红
+    （`source.fact-diagnostic`），**不静默回退**到旧类型生产；
+  - 面外/资源/取消 = `source.unsupported`/`source.fact-resource` 受控拒绝，同样不回退。
+  - 产品入口同时返回已准入的 `BodyTypeSupply`，供宿主用
+    `core::source::resolve_env_with_supply` 把**保留环境**从同一批事实种子化
+    （AV warm session / A2X cold assemble）；旧 `compile_*` 入口保持原行为，仅作
+    兼容/差分参照。
 - 只读查询返回绑定本 revision 的 view；命中报告 ≠ 可执行替换。
 
 ## 宿主安装（两阶段）与并发

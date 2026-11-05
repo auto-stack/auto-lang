@@ -126,6 +126,10 @@
   有限面内与 legacy 入口产出**逐字节相同 HIR**（同一 checked 产物）。
 - 结构/计量：事实路径 `typecheck=0`、`type_synth.synth=0 / fact_checks>0`；
   legacy 入口保持原计数（对照）。旧 `compile_*` 仅兼容/差分参照，不再作为正式
-  consumer 的隐藏 fallback 方向（产品默认切换见 934 T-08 余账）。
+  consumer 的隐藏 fallback 方向（**T-08 已收口**：AV driver/session、native
+  driver/incremental、A2X store 与两个 worker 的标量冷路径默认调用
+  `compile_scalar_product`，保留环境经 `resolve_env_with_supply` 从同一批事实种子化）。
+- 语言拒绝的诊断由 core 前端诊断路径逐字给出（事实 lane 只在被接受程序上产出类型，
+  `diagnostic_verdicts` 在被接受程序上恒为 0）；面外/资源/取消是受控拒绝，不回退旧推导。
 - 恢复：来源/CST/声明恢复仍归 929；934 只准入 facts 页（无 solver/无重推导），
   缺页拒绝该恢复车道，显式 cold 另走。
