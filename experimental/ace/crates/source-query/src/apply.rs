@@ -440,7 +440,7 @@ use ace_core::source::SourceProfile;
 /// [`TypeSupply`] and treats the returned type as authoritative.
 #[derive(Clone, Debug, Default)]
 pub struct BodyTypeSupply {
-    exprs: BTreeMap<(u32, u32), VT>,
+    exprs: BTreeMap<(u32, u32), Vec<VT>>,
     bindings: BTreeMap<(u32, u32), VT>,
     admitted: usize,
 }
@@ -456,7 +456,7 @@ impl BodyTypeSupply {
     }
 
     pub fn expr_count(&self) -> usize {
-        self.exprs.len()
+        self.exprs.values().map(|v| v.len()).sum()
     }
 
     pub fn binding_count(&self) -> usize {
@@ -465,6 +465,12 @@ impl BodyTypeSupply {
 
     /// Admit one body's page and add its types. Any shape/coverage/
     /// diagnostic problem is the caller's rejection, not a partial add.
+    ///
+    /// A span may carry more than one fact: the core parser gives a unary
+    /// expression the span of its operand (`!1`), so the parent and child
+    /// facts share it. They are kept as an occurrence list; core installs
+    /// the one matching the node's rule and reports a mismatch when none
+    /// does (PLAN-934 T-08).
     pub fn add_body(&mut self, ast_body: &Block, facts: &InferBodyFacts) -> Result<(), ApplyError> {
         let walk = walk_body(ast_body).map_err(ApplyError::Walk)?;
         facts.admit(&walk).map_err(ApplyError::Facts)?;
@@ -476,7 +482,9 @@ impl BodyTypeSupply {
                         missing: 1,
                     }))?;
             self.exprs
-                .insert((n.span.start as u32, n.span.end as u32), vt_of(ty));
+                .entry((n.span.start as u32, n.span.end as u32))
+                .or_default()
+                .push(vt_of(ty));
         }
         for (decl, b) in walk.lets.iter().zip(facts.bindings.iter()) {
             if decl.node != b.node {
@@ -498,7 +506,14 @@ impl TypeSupply for BodyTypeSupply {
     fn expr_ty(&self, span: CoreSpan) -> Option<VT> {
         self.exprs
             .get(&(span.start as u32, span.end as u32))
-            .copied()
+            .and_then(|v| v.first().copied())
+    }
+
+    fn expr_tys(&self, span: CoreSpan) -> Vec<VT> {
+        self.exprs
+            .get(&(span.start as u32, span.end as u32))
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn binding_ty(&self, span: CoreSpan) -> Option<VT> {

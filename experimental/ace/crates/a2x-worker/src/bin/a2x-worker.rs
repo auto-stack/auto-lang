@@ -32,9 +32,28 @@ use ace_a2x_rust::{
     canonical_execution_config, lower_collections_program, lower_program,
 };
 use ace_core::source::{
-    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
-    compile_text_record_source, compile_text_source,
+    compile_collections_source, compile_record_source, compile_source, compile_text_record_source,
+    compile_text_source,
 };
+
+/// PLAN-934 T-08: ordinary scalar source rides the SQ-A fact entry (the
+/// query facts are the type authority); the other profiles keep their own
+/// authoritative front doors.
+fn compile_scalar_product_934(
+    src: &str,
+    caps: &[String],
+) -> Result<ace_core::source::CompiledSource, Vec<ace_core::atom_text::Diagnostic>> {
+    let mut session = ace_source_query::SourceQuerySession::new("a2x", "a2x-worker");
+    ace_source_query::compile_scalar_product(
+        src,
+        "a2x-worker",
+        caps,
+        "a2x",
+        "a2x-worker",
+        &mut session,
+    )
+    .map(|p| p.compiled)
+}
 
 const PROTOCOL: &str = "a2xworker/1";
 const RECIPE: &str = "ac-a2r/hir-scalar-emit-v1";
@@ -163,7 +182,7 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
     // (PLAN-902: record/text/text-record ride the record-text fileset).
     let compiled = match profile.as_str() {
         "core" => compile_source(&src, "a2x-worker", &caps),
-        "scalar" => compile_scalar_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_product_934(&src, &caps),
         "record" => compile_record_source(&src, "a2x-worker", &caps),
         "text" => compile_text_source(&src, "a2x-worker", &caps),
         "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
@@ -332,7 +351,7 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         .unwrap_or_default();
     let compiled = match profile.as_str() {
         "core" => compile_source(&src, "a2x-worker", &caps),
-        "scalar" => compile_scalar_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_product_934(&src, &caps),
         // PLAN-925: the record/text/text-record source domains ride the
         // C record-text channel
         "record" => compile_record_source(&src, "a2x-worker", &caps),

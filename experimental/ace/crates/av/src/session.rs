@@ -41,7 +41,7 @@ use ace_core::atom_text::Diagnostic;
 use ace_core::hir;
 use ace_core::source::ast::{FnItem, Item};
 use ace_core::source::{
-    compile_scalar_source, parse_program_with, prepare_candidate_document, resolve_env, CheckedEnv,
+    parse_program_with, prepare_candidate_document, resolve_env_with_supply, CheckedEnv,
     FnCandidate, SourceProfile,
 };
 use ace_core::verify::{verify_function, CheckedFunction};
@@ -499,7 +499,6 @@ fn elapsed_us(t: std::time::Instant) -> u64 {
     t.elapsed().as_micros() as u64
 }
 
-
 /// PLAN-929（T-03）：顶层声明名序（文档序）——`tree.decls` 目录 + 子树内
 /// 先序找 `name` 字段（显式栈；镜像 outline.rs 的 find-field 面板，不依赖
 /// 语法 outline spec 的 decl-rule 命中）。
@@ -559,8 +558,15 @@ pub fn warmup_with_codec(
     // Input admission BEFORE any allocation (F-828-R1-09): the same frozen
     // size/nesting front door the 798 driver runs, not a session exemption.
     front_door_admit(src).map_err(|d| d.message)?;
-    let compiled =
-        compile_scalar_source(src, "probe.at", caps).map_err(|ds| render_diags(src, &ds))?;
+    // PLAN-934 T-08: the AV warm session's ONE cold compile goes through
+    // the SQ-A fact entry; the admitted supply then seeds the retained
+    // environment, so no part of this cold path re-derives types with the
+    // legacy synthesis rules.
+    let product =
+        crate::query_entry::compile_scalar_source_product(src, "probe.at", caps, "ace-av")
+            .map_err(|ds| render_diags(src, &ds))?;
+    let compiled = product.compiled;
+    let supply = product.supply;
     let checked = &compiled.checked;
     let bundle = checked.bundle();
     let m = bundle
@@ -618,8 +624,9 @@ pub fn warmup_with_codec(
     // at warm-up (cold path) and published only through candidate commits.
     let core_program =
         parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.render("probe.at", src))?;
-    let env_core = resolve_env(&core_program, caps, SourceProfile::Scalar)
-        .map_err(|ds| render_diags(src, &ds))?;
+    let env_core =
+        resolve_env_with_supply(&core_program, caps, SourceProfile::Scalar, Some(&supply))
+            .map_err(|ds| render_diags(src, &ds))?;
     // PLAN-929（T-03）：暖建声明视图直接消费统一前门的 `core_program`
     // （同一次冷解析的投影——不再有第二套语法投影面；常驻栈只保留
     // 语法增量/outline 检测面）。
@@ -2392,7 +2399,10 @@ impl FunctionIncrementalSession {
             Err(d) => {
                 return Ok(Err(EditOutcome::refused(
                     self.revision,
-                    format!("candidate rejected: fragment `{}`", d.render("probe.at", &new_src)),
+                    format!(
+                        "candidate rejected: fragment `{}`",
+                        d.render("probe.at", &new_src)
+                    ),
                     Vec::new(),
                     RefusalKind::InvalidEdit,
                     None,

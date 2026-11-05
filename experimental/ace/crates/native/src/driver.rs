@@ -55,7 +55,7 @@ fn compile_escalating(
     let mut attempted = Vec::with_capacity(3);
     let mut surface = Vec::new();
     attempted.push(sd::SourceProfile::Scalar);
-    match ace_core::source::compile_scalar_source(src, "mn.at", caps) {
+    match ace_av::query_entry::compile_scalar_source_via_facts(src, "mn.at", caps) {
         Ok(c) => return Ok(Domain::Scalar(c)),
         Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
             profile: sd::SourceProfile::Scalar,
@@ -702,15 +702,14 @@ impl MnDriver {
                             // through the link (T-05 §11 partition).
                             obs.ledger.charge(Partition::Io, b.len() as u64);
                             // The manifest binds the concrete artifact id.
-                            let extra_page_ids =
-                                if unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE
-                                    || unit.profile
-                                        == ace_av_core::contract::AV_CLOSURES_PROFILE
-                                {
-                                    cache::unit_coff_page_ids(store, &meta, b.len())?
-                                } else {
-                                    vec![]
-                                };
+                            let extra_page_ids = if unit.profile
+                                == ace_av_core::contract::AV_COLLECTIONS_PROFILE
+                                || unit.profile == ace_av_core::contract::AV_CLOSURES_PROFILE
+                            {
+                                cache::unit_coff_page_ids(store, &meta, b.len())?
+                            } else {
+                                vec![]
+                            };
                             entry_row = Some(LinkUnitEntry {
                                 sha256: cache::content_hash(&b),
                                 len: b.len(),

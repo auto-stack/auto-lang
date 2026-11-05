@@ -99,6 +99,28 @@ impl BodyWalk {
         }
         Ok(map)
     }
+
+    /// Map `(start,end)` → the expression node ids carrying that span, in
+    /// WALK ORDER (PLAN-934 T-08 corpus finding).
+    ///
+    /// A duplicate span is real: the core parser gives a unary expression
+    /// the span of its operand (`!1` → unary and literal both `30..31`), so
+    /// one source position legitimately describes a parent and its child.
+    /// The solver reports one type fact per expression in the same
+    /// parent-before-child order, so the occurrence order is the mapping
+    /// key. A wrong pairing cannot silently produce a mistyped HIR: core
+    /// re-checks every installed fact against its own rule for THAT node
+    /// (`source.fact-mismatch`), which is exactly the T-04 invariant.
+    pub fn span_occurrences(&self) -> std::collections::BTreeMap<(u32, u32), Vec<NodeId>> {
+        let mut map: std::collections::BTreeMap<(u32, u32), Vec<NodeId>> =
+            std::collections::BTreeMap::new();
+        for n in self.nodes.iter().filter(|n| n.is_expr()) {
+            map.entry((n.span.start as u32, n.span.end as u32))
+                .or_default()
+                .push(n.id);
+        }
+        map
+    }
 }
 
 /// Two expression nodes share one source span — the fact mapping cannot

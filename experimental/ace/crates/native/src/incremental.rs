@@ -169,22 +169,23 @@ fn whole_module_units(
     caps: &[String],
     operation: sd::Operation,
 ) -> Result<Vec<ace_av_core::mir::MirModule>, MnError> {
-    // PLAN-911: this is the incremental session's ONE scalar cold compile
-    // (warm-up) or its recorded whole fallback — a real frontend failure
-    // here is the operation's typed snapshot, not a first-message string.
-    let compiled = ace_core::source::compile_scalar_source(src, "mn.at", caps).map_err(|ds| {
-        sd::mn_error_from_compile_failure(
-            src,
-            "mn.at",
-            sd::CompileFailure {
-                profile: sd::SourceProfile::Scalar,
-                attempted: vec![sd::SourceProfile::Scalar],
-                surface_rejections: Vec::new(),
-                diagnostics: ds,
-            },
-            operation,
-        )
-    })?;
+    // PLAN-934 T-08: the ONE scalar cold compile goes through the SQ-A
+    // fact entry (query facts are the type authority); a frontend failure
+    // is still the operation's typed snapshot.
+    let compiled = ace_av::query_entry::compile_scalar_source_via_facts(src, "mn.at", caps)
+        .map_err(|ds| {
+            sd::mn_error_from_compile_failure(
+                src,
+                "mn.at",
+                sd::CompileFailure {
+                    profile: sd::SourceProfile::Scalar,
+                    attempted: vec![sd::SourceProfile::Scalar],
+                    surface_rejections: Vec::new(),
+                    diagnostics: ds,
+                },
+                operation,
+            )
+        })?;
     let mir = ace_lowering::lower_checked(
         &compiled.checked,
         entry,

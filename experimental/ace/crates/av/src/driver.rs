@@ -22,7 +22,6 @@ use ace_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use ace_av_core::{
     decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
 };
-use ace_core::source::compile_scalar_source;
 use ace_core::verify::CheckedModule;
 use ace_lowering::{lower_checked, AdapterError};
 use serde::{Deserialize, Serialize};
@@ -266,7 +265,12 @@ impl Driver {
             #[cfg(feature = "test-case-batch")]
             o.counter("frontend_compile_calls", 1);
             let result = match self.profile {
-                RequestProfile::Scalar => compile_scalar_source(src, "probe.at", caps),
+                // PLAN-934 T-08: the AV product cold path compiles scalar
+                // source through the SQ-A fact entry (query facts are the
+                // type authority). Diagnostics are the frontend's own.
+                RequestProfile::Scalar => {
+                    crate::query_entry::compile_scalar_source_via_facts(src, "probe.at", caps)
+                }
                 RequestProfile::EntryUnit => {
                     ace_core::source::compile_entry_unit_source(src, "probe.at", caps)
                 }

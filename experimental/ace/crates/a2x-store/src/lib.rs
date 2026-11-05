@@ -30,10 +30,10 @@ use ace_artifacts::identity::{QueryKey, RefKind};
 use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{gc_config_default, run_gc, ManagedStore, PutRequest, SpaceReport};
 use ace_core::source::{
-    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
-    compile_text_record_source, compile_text_source, cst::parse_function_fragment_via_cst,
-    cst::parse_method_fragment_via_cst, parse_program_with, prepare_function_candidate,
-    resolve_env, SourceProfile,
+    compile_collections_source, compile_record_source, compile_source, compile_text_record_source,
+    compile_text_source, cst::parse_function_fragment_via_cst, cst::parse_method_fragment_via_cst,
+    parse_program_with, prepare_function_candidate, resolve_env, resolve_env_with_supply,
+    CompiledSource, SourceProfile,
 };
 use ace_core::text_resources::{param_exclusions_fixpoint, ParamExclusions};
 use ace_core::verify::{verify_function_ref, verify_text_function};
@@ -776,9 +776,29 @@ impl A2xSession {
         self.ensure_target_supports()
             .map_err(A2xRejectOrResource::Reject)?;
         self.stats.parse += 1;
+        // PLAN-934 T-08: the scalar cold path compiles through the SQ-A
+        // fact entry (query facts are the type authority) and keeps the
+        // admitted supply for the retained environment below.
+        let mut scalar_supply = None;
         let compiled = match profile {
             SourceProfile::Core => compile_source(src, "a2x", caps),
-            SourceProfile::Scalar => compile_scalar_source(src, "a2x", caps),
+            SourceProfile::Scalar => {
+                let product = ace_source_query::compile_scalar_product(
+                    src,
+                    "a2x",
+                    caps,
+                    "a2x",
+                    "a2x",
+                    &mut ace_source_query::SourceQuerySession::new("a2x", "a2x"),
+                );
+                match product {
+                    Ok(p) => {
+                        scalar_supply = Some(p.supply);
+                        Ok::<CompiledSource, Vec<ace_core::atom_text::Diagnostic>>(p.compiled)
+                    }
+                    Err(ds) => Err(ds),
+                }
+            }
             SourceProfile::Record => compile_record_source(src, "a2x", caps),
             SourceProfile::Text => compile_text_source(src, "a2x", caps),
             SourceProfile::TextRecord => compile_text_record_source(src, "a2x", caps),
@@ -810,7 +830,14 @@ impl A2xSession {
         let program = parse_program_with(src, profile)
             .map_err(|d| A2xRejectOrResource::Reject(A2xReject::new("a2x.parse", d.message)))?;
         self.stats.parse += 1;
-        let env = resolve_env(&program, caps, profile).map_err(|ds| {
+        // PLAN-934 T-08: a scalar cold assemble seeds its retained
+        // environment from the SAME fact supply the HIR came from; the
+        // other profiles keep their own authoritative path.
+        let env = match scalar_supply.as_ref() {
+            Some(supply) => resolve_env_with_supply(&program, caps, profile, Some(supply)),
+            None => resolve_env(&program, caps, profile),
+        }
+        .map_err(|ds| {
             A2xRejectOrResource::Reject(A2xReject::new("a2x.resolve", render_diag(&ds)))
         })?;
         // PLAN-929（T-08）：声明面环境清单随冷装发布（版本化 required 边——
@@ -1861,7 +1888,10 @@ impl A2xSession {
             ))
         })?;
         let dump = ace_core::source::decl_env::decode_decl_env(&text).map_err(|e| {
-            A2xRejectOrResource::Reject(A2xReject::new("a2x.decl-env", format!("dump decode: {e:?}")))
+            A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.decl-env",
+                format!("dump decode: {e:?}"),
+            ))
         })?;
         let env = ace_core::source::decl_env::decl_env_restore(
             &dump,

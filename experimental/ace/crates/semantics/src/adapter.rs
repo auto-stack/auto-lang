@@ -16,8 +16,8 @@
 //! NAME→POSITION mapping is a frontend concern; inference checks types).
 
 use crate::input::{
-    Ann, BinOpKind, InputArg, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord, InputStmt,
-    SemaInput, Span,
+    Ann, BinOpKind, InputArg, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord,
+    InputStmt, SemaInput, Span,
 };
 #[cfg(feature = "core-ast")]
 use ace_core::source::ast as core_ast;
@@ -222,6 +222,26 @@ pub fn project_body_scoped(
     package: &str,
     module: &str,
 ) -> Result<SemaInput, String> {
+    project_body_scoped_with_caps(prog, target, package, module, &[])
+}
+
+/// PLAN-934 T-08: the body-scoped input for a caller who provided
+/// CAPABILITIES.
+///
+/// Capability-provided intrinsics (`mark_a`/`mark_b` under
+/// `hir.test.trace.v1`) are real callees of a body: without their
+/// signatures the solver reports `unknown-name` on a program the core
+/// frontend accepts. They are injected as signature-only functions when
+/// the capability is present and the module does not shadow the name (a
+/// user declaration always wins, exactly as core resolves it).
+#[cfg(feature = "core-ast")]
+pub fn project_body_scoped_with_caps(
+    prog: &core_ast::Program,
+    target: &str,
+    package: &str,
+    module: &str,
+    capabilities: &[String],
+) -> Result<SemaInput, String> {
     let mut fns = Vec::new();
     let mut records = Vec::new();
     for item in &prog.items {
@@ -243,6 +263,28 @@ pub fn project_body_scoped(
                         .collect::<Result<Vec<_>, _>>()?,
                 });
             }
+        }
+    }
+    // Capability intrinsics: signature-only entries, no body. The name set
+    // matches core's closed intrinsic registry; a source function of the
+    // same name shadows the intrinsic (core resolves user names first).
+    if capabilities
+        .iter()
+        .any(|c| c == ace_core::source::TRACE_CAPABILITY)
+    {
+        for name in ["mark_a", "mark_b"] {
+            if ace_core::source::trace_intrinsic(name).is_none() {
+                continue;
+            }
+            if fns.iter().any(|f| f.name == name) {
+                continue;
+            }
+            fns.push(InputFn {
+                name: name.to_string(),
+                params: Vec::new(),
+                ret: Ann::I32,
+                body: InputBlock { stmts: Vec::new() },
+            });
         }
     }
     Ok(SemaInput {
@@ -267,9 +309,7 @@ fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, Stri
         body: if f.name.name == target {
             project_block(&f.body)?
         } else {
-            InputBlock {
-                stmts: Vec::new(),
-            }
+            InputBlock { stmts: Vec::new() }
         },
     })
 }

@@ -45,6 +45,12 @@ pub struct Counters {
     pub body_misses: u64,
     /// Queries rejected before any solve (disabled solver, rejection).
     pub rejections: u64,
+    /// PLAN-934 T-08: product requests whose fact layer reported a
+    /// LANGUAGE diagnostic (a page carrying solver diagnostics or missing
+    /// coverage) and whose verdict therefore came from the canonical
+    /// diagnostic oracle. Zero on every accepted program: the fact layer
+    /// produces the types, it never asks the legacy engine for a verdict.
+    pub diagnostic_verdicts: u64,
 }
 
 /// Query failure. `SolverDisabled` exists so a negative control can prove
@@ -186,6 +192,13 @@ impl SourceQuerySession {
 
     pub fn counters(&self) -> Counters {
         self.counters
+    }
+
+    /// PLAN-934 T-08: record that one product request left the facts lane
+    /// because the query answered with a language diagnostic verdict
+    /// (never because a fact was missing for an accepted program).
+    pub fn note_diagnostic_verdict(&mut self) {
+        self.counters.diagnostic_verdicts += 1;
     }
 
     pub fn revision(&self) -> u64 {
@@ -398,6 +411,7 @@ impl SourceQuerySession {
             &self.package,
             &self.module,
             name,
+            &self.capabilities,
             self.limits,
             self.cancel.clone(),
         )

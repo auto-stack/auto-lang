@@ -185,7 +185,7 @@ fn sq06_negative_dependency_flips_when_the_name_appears() {
 fn sq07_stale_or_tampered_pages_are_refused() {
     let p1 = parse(A);
     let limits = ProduceLimits::default();
-    let facts = produce_infer_body(&p1, "pkg", "mod", "leaf", limits, None).expect("facts");
+    let facts = produce_infer_body(&p1, "pkg", "mod", "leaf", &[], limits, None).expect("facts");
     let walk1 = walk_body(body_of(&p1, "leaf")).unwrap();
     facts.admit(&walk1).expect("own page admits");
 

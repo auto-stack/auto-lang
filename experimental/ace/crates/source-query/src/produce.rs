@@ -154,6 +154,7 @@ pub fn produce_infer_body(
     package: &str,
     module: &str,
     name: &str,
+    capabilities: &[String],
     limits: ProduceLimits,
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<InferBodyFacts, ProduceError> {
@@ -173,8 +174,14 @@ pub fn produce_infer_body(
     // Body-scoped LAZY input (PLAN-934 T-03): the shared adapter projects
     // ONLY the target function's body; every other function is a
     // signature stub and no AST is cloned or walked.
-    let input = ace_semantics::adapter::project_body_scoped(program, name, package, module)
-        .map_err(ProduceError::Projection)?;
+    let input = ace_semantics::adapter::project_body_scoped_with_caps(
+        program,
+        name,
+        package,
+        module,
+        capabilities,
+    )
+    .map_err(ProduceError::Projection)?;
 
     let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
     if let Some(flag) = cancel {
@@ -187,20 +194,33 @@ pub fn produce_infer_body(
         InferOutcome::Cancelled => return Err(ProduceError::Cancelled),
     };
 
-    let spans = walk.span_index().map_err(|d| ProduceError::DuplicateSpan {
-        start: d.start,
-        end: d.end,
-    })?;
+    // PLAN-934 T-08 corpus finding: the core parser gives a unary
+    // expression the span of its operand, so one span can describe a
+    // parent and its child. The solver reports one fact per expression in
+    // parent-before-child order, so the OCCURRENCE at that span is the
+    // mapping key; a wrong pairing is caught by core's own per-node rule
+    // check at bind (`source.fact-mismatch`), never silently installed.
+    let occurrences = walk.span_occurrences();
+    let mut cursors: std::collections::BTreeMap<(u32, u32), usize> =
+        std::collections::BTreeMap::new();
 
     // Types by structural id; a solver span outside the walk is a
     // controlled infrastructure rejection rather than a silent drop.
     let mut typed: std::collections::BTreeMap<u32, PortableTy> = std::collections::BTreeMap::new();
     let mut unmapped = 0usize;
     for (start, end, td) in &summary.facts.expr_types {
-        let Some(id) = spans.get(&(*start, *end)) else {
+        let key = (*start, *end);
+        let cursor = cursors.entry(key).or_insert(0);
+        let Some(ids) = occurrences.get(&key) else {
             unmapped += 1;
             continue;
         };
+        let Some(id) = ids.get(*cursor).copied() else {
+            unmapped += 1;
+            *cursor += 1;
+            continue;
+        };
+        *cursor += 1;
         let ty = PortableTy::from_type_desc(td).ok_or_else(|| ProduceError::NonPortableType {
             what: format!("{td:?}"),
         })?;
@@ -250,7 +270,9 @@ pub fn produce_infer_body(
         .iter()
         .map(|d| PortableDiag {
             code: d.code.to_string(),
-            node: spans.get(&(d.start, d.end)).copied(),
+            node: occurrences
+                .get(&(d.start, d.end))
+                .and_then(|ids| ids.first().copied()),
             message: d.message.clone(),
         })
         .collect();

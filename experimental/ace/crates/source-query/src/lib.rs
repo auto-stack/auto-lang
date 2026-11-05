@@ -56,7 +56,10 @@ pub use apply::{
 };
 
 pub use catalog::SignatureCatalog;
-pub use consumer::{compile_via_facts, ConsumerError, FactCompiled};
+pub use consumer::{
+    compile_scalar_product, compile_via_facts, CompileLane, ConsumerError, FactCompiled,
+    ProductCompile,
+};
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
     PortableTy,

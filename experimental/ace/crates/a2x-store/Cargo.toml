@@ -9,3 +9,4 @@ publish = false
 ace-a2x-core = { path = "../a2x-core" }
 ace-core = { path = "../core" }
 ace-artifacts = { path = "../artifacts" }
+ace-source-query = { path = "../source-query" }

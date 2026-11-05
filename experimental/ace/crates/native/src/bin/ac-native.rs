@@ -552,7 +552,10 @@ fn compile_profile(
     use ace_core::source::*;
     match p {
         Profile::Core => compile_source(src, "main.at", caps),
-        Profile::Scalar => compile_scalar_source(src, "main.at", caps),
+        // PLAN-934 T-08: ordinary scalar source rides the SQ-A fact entry.
+        Profile::Scalar => {
+            ace_av::query_entry::compile_scalar_source_via_facts(src, "main.at", caps)
+        }
         Profile::Text => compile_text_source(src, "main.at", caps),
         Profile::Record => compile_record_source(src, "main.at", caps),
         Profile::TextRecord => compile_text_record_source(src, "main.at", caps),

@@ -1108,6 +1108,16 @@ pub trait TypeSupply {
     fn expr_ty(&self, span: Span) -> Option<VT>;
     /// Type of the `let`/`var` declaration whose statement span is given.
     fn binding_ty(&self, span: Span) -> Option<VT>;
+    /// Every admitted fact carried by this span (PLAN-934 T-08).
+    ///
+    /// The core parser gives a unary expression the span of its operand, so
+    /// one span can carry a parent and a child fact. Core still treats the
+    /// facts as the authority: it installs the fact that equals this node's
+    /// rule and reports `source.fact-mismatch` when NO fact of the span
+    /// matches. The default keeps single-fact suppliers unchanged.
+    fn expr_tys(&self, span: Span) -> Vec<VT> {
+        self.expr_ty(span).into_iter().collect()
+    }
 }
 
 /// PLAN-934 T-04: bind with the query's facts as the type authority.
@@ -2065,7 +2075,36 @@ pub fn resolve_env(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<CheckedEnv, Vec<Diagnostic>> {
-    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, None)?;
+    resolve_env_with_supply(program, capabilities, surface, None)
+}
+
+/// PLAN-934 T-08: the retained checked environment built from a TYPE FACT
+/// SUPPLY — the same cold resolve as [`resolve_env`], with the query fact
+/// layer as the authority for every expression/declaration type instead of
+/// the resolver's own synthesis.
+///
+/// A consumer that already holds the admitted fact pages (the SQ-A product
+/// entry) passes their supply here, so the warm single-body machinery is
+/// seeded from the same facts as the emitted HIR rather than re-deriving
+/// types with the legacy rules.
+pub fn resolve_env_with_supply(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    supply: Option<&dyn TypeSupply>,
+) -> Result<CheckedEnv, Vec<Diagnostic>> {
+    if supply.is_some() && !surface.is_scalar() {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.fact-profile",
+            format!(
+                "fact-supplied binding supports the scalar surface only, not `{}`",
+                surface.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, supply)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
             fns,
@@ -3651,32 +3690,36 @@ impl<'a, 's> FnResolver<'a, 's> {
                 crate::type_synth::record_synth(&self.owner_name);
                 rule
             }
-            Some(s) => match s.expr_ty(span) {
-                Some(vt) => {
-                    crate::type_synth::record_fact(&self.owner_name);
-                    if vt != rule {
-                        self.bind_err(
-                            "source.fact-mismatch",
-                            format!(
-                                "type fact says {} but the binding rule for this node is {}",
-                                vt.as_str(),
-                                rule.as_str()
-                            ),
-                            span,
-                        );
-                    }
-                    vt
-                }
-                None => {
+            Some(s) => {
+                let facts = s.expr_tys(span);
+                let Some(fact) = facts
+                    .iter()
+                    .copied()
+                    .find(|f| *f == rule)
+                    .or_else(|| facts.first().copied())
+                else {
                     crate::type_synth::record_missing(&self.owner_name);
                     self.bind_err(
                         "source.fact-missing",
                         "no type fact for this expression node",
                         span,
                     );
-                    rule
+                    return rule;
+                };
+                crate::type_synth::record_fact(&self.owner_name);
+                if fact != rule {
+                    self.bind_err(
+                        "source.fact-mismatch",
+                        format!(
+                            "type fact says {} but the binding rule for this node is {}",
+                            fact.as_str(),
+                            rule.as_str()
+                        ),
+                        span,
+                    );
                 }
-            },
+                fact
+            }
         }
     }
 

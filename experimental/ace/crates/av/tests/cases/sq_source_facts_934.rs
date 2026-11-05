@@ -21,8 +21,8 @@ use ace_core::source::resolve::resolve_with_supply;
 use ace_core::source::{
     compile_scalar_source, emit_resolved_parts, parse_program_with, resolve_with, SourceProfile,
 };
-use ace_core::verify::{verify_scalar, CheckedModule};
 use ace_core::type_synth::TypeWork;
+use ace_core::verify::{verify_scalar, CheckedModule};
 use ace_source_query::{
     apply_body_facts, bind_with_facts, AppliedFn, BodyTypeSupply, FactsApplyError, InferBodyFacts,
     PortableTy, SourceQuerySession,
@@ -44,8 +44,8 @@ struct Prepared {
 /// window nests inside it and records where each body's types came from.
 fn prepare(src: &str, session: &mut SourceQuerySession) -> Result<Prepared, String> {
     let (out, work) = body_work::capture_body_work(|| {
-        let (inner, type_work) = ace_core::type_synth::capture(
-            || -> Result<(Vec<AppliedFn>, CheckedModule), String> {
+        let (inner, type_work) =
+            ace_core::type_synth::capture(|| -> Result<(Vec<AppliedFn>, CheckedModule), String> {
                 let program =
                     parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.message)?;
                 let (resolved, applied, _supply) = bind_with_facts(
@@ -62,8 +62,7 @@ fn prepare(src: &str, session: &mut SourceQuerySession) -> Result<Prepared, Stri
                 let checked = verify_scalar(parts.bundle)
                     .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
                 Ok((applied, checked))
-            },
-        );
+            });
         inner.map(|(applied, checked)| (applied, checked, type_work))
     });
     let (applied, checked, type_work) = out?;
@@ -219,7 +218,9 @@ fn sq934_tampered_fact_type_fails_the_real_compile() {
     assert!(
         err.iter().any(|d| d.code == "source.fact-mismatch"),
         "expected a bind-stage fact mismatch, got {:?}",
-        err.iter().map(|d| (&d.code, &d.message)).collect::<Vec<_>>()
+        err.iter()
+            .map(|d| (&d.code, &d.message))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -228,7 +229,10 @@ fn sq934_facts_of_another_owner_are_refused() {
     let program = parse_program_with(SRC, SourceProfile::Scalar).expect("parse");
     let mut resolved = resolve_with(&program, &[], SourceProfile::Scalar).expect("bind");
     let mut session = SourceQuerySession::new("sq934", "main");
-    let leaf_facts = session.infer_body(&program, "leaf").expect("leaf facts").facts;
+    let leaf_facts = session
+        .infer_body(&program, "leaf")
+        .expect("leaf facts")
+        .facts;
     let main_ast = program
         .items
         .iter()
@@ -356,11 +360,15 @@ fn sq934_shared_consumer_entry_feeds_real_execution_without_typecheck() {
 fn sq934_av_product_seam_matches_the_legacy_entry() {
     let via = ace_av::query_entry::compile_scalar_source_via_facts(SRC, "sq934.at", &[])
         .expect("product fact seam");
-    assert_eq!(run_value(&via), Value::I32(42));
+    assert_eq!(run_value(&via.checked), Value::I32(42));
 
     let legacy = compile_scalar_source(SRC, "sq934.at", &[]).expect("legacy");
     assert_eq!(run_value(&legacy.checked), Value::I32(42));
-    // HIR byte identity is proven at the crate level (sq37); here the two
-    // product entries must produce the same executable result.
-    assert_eq!(run_value(&via), run_value(&legacy.checked));
+    // HIR byte identity is proven at the crate level (sq37 and the corpus
+    // parity test); here the two product entries must produce the same
+    // executable result.
+    assert_eq!(
+        via.checked.bundle().modules[0].id_text,
+        legacy.checked.bundle().modules[0].id_text
+    );
 }

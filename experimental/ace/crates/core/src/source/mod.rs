@@ -34,9 +34,9 @@ pub use adapter::{
     compile_entry_unit_source, compile_host_console_source, compile_parts, compile_parts_with,
     compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
     compile_text_record_source, compile_text_source, emit_collections_function_batch,
-    emit_function_body, emit_resolved_parts, prepare_candidate_document, prepare_function_candidate,
-    BodyEmitReceipt,
-    ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    emit_function_body, emit_resolved_parts, prepare_candidate_document,
+    prepare_function_candidate, BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource,
+    FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——
@@ -49,7 +49,8 @@ pub use parser::{
 pub use resolve::{
     env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index,
     env_method_index, env_note_cold_walks, recheck_function, resolve_closures_cached, resolve_env,
-    resolve_with, CachedOwner, CheckedEnv, ClosuresOwnerCache, ResolvedFn, ResolvedProgram, VT,
+    resolve_env_with_supply, resolve_with, CachedOwner, CheckedEnv, ClosuresOwnerCache, ResolvedFn,
+    ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with, typecheck_with_skip};
 
