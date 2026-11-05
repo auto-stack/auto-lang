@@ -479,6 +479,21 @@ impl Frontend {
             .and_then(|i| resolve::env_fn_body_identity(&self.env, i))
     }
 
+    /// Metadata-only size of replacing an owner. Target compositions can apply
+    /// their original stricter source cap before parsing or copying the edit.
+    pub fn replacement_source_bytes(&self, owner: &str, bytes: usize) -> Result<usize, Error> {
+        let old = self
+            .catalog
+            .fns
+            .get(owner)
+            .ok_or_else(|| reject("unknown function"))?;
+        self.source()
+            .len()
+            .checked_sub(old.span.end - old.span.start)
+            .and_then(|n| n.checked_add(bytes))
+            .ok_or_else(|| reject("source size overflow"))
+    }
+
     pub fn prepare(&mut self, owner: &str, declaration: &str) -> Result<Candidate, Error> {
         let old = self
             .catalog
@@ -488,13 +503,7 @@ impl Frontend {
         if declaration == &self.source()[old.span.start..old.span.end] {
             return Err(reject("unchanged edit"));
         }
-        if self
-            .source()
-            .len()
-            .saturating_sub(old.span.end - old.span.start)
-            .saturating_add(declaration.len())
-            > MAX_SOURCE_BYTES
-        {
+        if self.replacement_source_bytes(owner, declaration.len())? > MAX_SOURCE_BYTES {
             return Err(reject("source budget"));
         }
         let mut work = Vec::new();

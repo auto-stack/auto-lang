@@ -44,6 +44,18 @@ pub enum Target {
     C,
 }
 impl Target {
+    pub(crate) fn admit_source_bytes(self, bytes: usize) -> Result<(), String> {
+        let limit = match self {
+            Self::Native => ace_native::config::MAX_INPUT_BYTES,
+            Self::C => ace_source_query::frontend::MAX_SOURCE_BYTES,
+        };
+        if bytes > limit {
+            return Err(format!(
+                "foreign.resource.source: {bytes} source bytes exceed {limit} for {self:?}"
+            ));
+        }
+        Ok(())
+    }
     pub fn identity(self) -> String {
         match self {
             Self::Native => ace_native::foreign_lower::emitter_identity(),
@@ -413,6 +425,7 @@ impl Session {
             target,
             capabilities,
             EnvironmentInput::Admitted(environment),
+            Resources::default(),
         )
     }
     pub fn restore_stored_host(
@@ -422,12 +435,30 @@ impl Session {
         capabilities: &[String],
         host: HostAuthority,
     ) -> Result<Self, String> {
+        Self::restore_stored_host_with_resources(
+            store,
+            stored,
+            target,
+            capabilities,
+            host,
+            Resources::default(),
+        )
+    }
+    pub fn restore_stored_host_with_resources(
+        store: &ManagedStore,
+        stored: &Stored,
+        target: Target,
+        capabilities: &[String],
+        host: HostAuthority,
+        resources: Resources,
+    ) -> Result<Self, String> {
         Self::restore_stored_input(
             store,
             stored,
             target,
             capabilities,
             EnvironmentInput::Host(host),
+            resources,
         )
     }
     fn restore_stored_input(
@@ -436,8 +467,8 @@ impl Session {
         target: Target,
         capabilities: &[String],
         environment: EnvironmentInput,
+        resources: Resources,
     ) -> Result<Self, String> {
-        let resources = Resources::default();
         // Lease BEFORE the first payload read, so GC cannot retire the root
         // while the decoder is traversing its required closure.
         let lease = store
@@ -498,6 +529,7 @@ impl Session {
         provider: Arc<Vec<u8>>,
         target: Target,
     ) -> Result<Self, String> {
+        target.admit_source_bytes(source.len())?;
         admit_provider(&environment, &provider)?;
         let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
             .map_err(|e| e.to_string())?;
@@ -513,6 +545,7 @@ impl Session {
         target: Target,
         store: &ManagedStore,
     ) -> Result<Self, String> {
+        target.admit_source_bytes(source.len())?;
         admit_provider(&environment, &provider)?;
         let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
             .map_err(|e| e.to_string())?;
@@ -555,6 +588,7 @@ impl Session {
         target: Target,
         mut cache: function_cache::FunctionCache,
     ) -> Result<Self, String> {
+        target.admit_source_bytes(front.source().len())?;
         admit_provider(front.foreign(), &provider)?;
         let view = SemanticView::from_checked(&checked).map_err(|e| format!("{e:?}"))?;
         let mut artifacts = BTreeMap::new();
@@ -661,6 +695,13 @@ impl Session {
         name: &str,
         declaration: &str,
     ) -> Result<Candidate, PrepareError> {
+        let bytes = self
+            .front
+            .replacement_source_bytes(name, declaration.len())
+            .map_err(PrepareError::Source)?;
+        self.target
+            .admit_source_bytes(bytes)
+            .map_err(PrepareError::Target)?;
         let source = self
             .front
             .prepare(name, declaration)
@@ -704,6 +745,9 @@ impl Session {
             .map_err(|e| e.to_string())
     }
     pub fn prepare_source_checked(&mut self, source: &str) -> Result<Candidate, PrepareError> {
+        self.target
+            .admit_source_bytes(source.len())
+            .map_err(PrepareError::Target)?;
         let (name, declaration) = self
             .front
             .owner_replacement(source)
@@ -771,6 +815,9 @@ impl Session {
         provider: Arc<Vec<u8>>,
         source: Option<&str>,
     ) -> Result<ForeignCandidate, PrepareError> {
+        self.target
+            .admit_source_bytes(source.map_or(self.front.source().len(), str::len))
+            .map_err(PrepareError::Target)?;
         admit_provider(&environment, &provider).map_err(PrepareError::Target)?;
         self.admit_resident(provider.len())
             .map_err(PrepareError::Target)?;
@@ -1112,6 +1159,7 @@ impl Session {
             resources.clone(),
         )
         .map_err(|e| read_error.unwrap_or_else(|| e.to_string()))?;
+        target.admit_source_bytes(front.source().len())?;
         let mut artifacts = BTreeMap::new();
         for (name, id) in root.functions {
             let page_work = work.begin(&name, "restore-target", Phase::Recovery);

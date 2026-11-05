@@ -1039,9 +1039,9 @@ pub fn run_check(
                     .ok_or("missing source-import report")?;
                 let input: serde_json::Value =
                     serde_json::from_slice(&deck).unwrap_or(serde_json::Value::Null);
-                report.admit(
+                report.admit_query(
                     &abi.leg,
-                    ok.steps[0].outcome == "ok",
+                    &ok.steps[0].outcome,
                     ok.steps[0].pe_exit,
                     input.get("source").and_then(|s| s.as_str()),
                 )?;

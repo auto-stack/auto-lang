@@ -496,6 +496,78 @@ fn source_foreign_both_targets_preserve_status_bool_order_short_circuit_and_mixe
 }
 
 #[test]
+fn source_foreign_target_source_caps_reject_before_production_and_preserve_current() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    let root = scope("target-source-caps");
+    let (object, environment) = provider(&root, 0);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let source = "fn main() int { return foreign_add(20,22) }";
+    for (target, limit) in [(Target::Native, 4 << 20), (Target::C, 8 << 20)] {
+        let mut session = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            environment.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let saved = session.snapshot().unwrap();
+        let counters = session.frontend().meter();
+        let queries = session.frontend().query_counters();
+        let mut over = source.to_string();
+        over.extend(std::iter::repeat_n(' ', limit + 1 - source.len()));
+        // Empty provider bytes distinguish a source preflight refusal from
+        // entering object admission, parsing, lowering or code generation.
+        let cold = Session::cold(
+            &over,
+            "source938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            environment.clone(),
+            Arc::new(Vec::new()),
+            target,
+        );
+        let error = match cold {
+            Ok(_) => panic!("over-budget cold source accepted"),
+            Err(e) => e,
+        };
+        assert!(error.contains("foreign.resource.source"), "{error}");
+        assert!(session
+            .prepare_source(&over)
+            .err()
+            .unwrap()
+            .contains("foreign.resource.source"));
+        assert!(session
+            .prepare("main", &over)
+            .err()
+            .unwrap()
+            .contains("foreign.resource.source"));
+        assert!(session
+            .prepare_foreign_source(environment.clone(), Arc::new(Vec::new()), Some(&over))
+            .err()
+            .unwrap()
+            .contains("foreign.resource.source"));
+        assert_eq!(session.frontend().meter(), counters);
+        assert_eq!(session.frontend().query_counters(), queries);
+        assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+        let repair = session
+            .prepare("main", "fn main() int { return foreign_add(21,22) }")
+            .unwrap();
+        session.commit(repair).unwrap();
+        assert_eq!(
+            session
+                .run(&root.join(format!("{target:?}-repair")))
+                .unwrap()
+                .exit_code,
+            Some(43)
+        );
+    }
+}
+
+#[test]
 fn source_foreign_restore_shares_remaining_mir_budget_and_repairs_after_release() {
     use ace_abi::source_foreign::{Session, Target};
     use ace_source_query::resources::{Charge, Resources};
@@ -544,7 +616,7 @@ fn source_foreign_restore_shares_remaining_mir_budget_and_repairs_after_release(
         &snapshot.digest,
         Target::Native,
         &[SOURCE_CAP.into()],
-        authority.foreign,
+        authority.foreign.clone(),
         |id| snapshot.pages.get(id).cloned(),
         resources.clone(),
     )
@@ -560,6 +632,38 @@ fn source_foreign_restore_shares_remaining_mir_budget_and_repairs_after_release(
         restored.run(&root.join("repaired")).unwrap().exit_code,
         Some(42)
     );
+    let store = ace_artifacts::store::ManagedStore::open(&root.join("store")).unwrap();
+    let stored = snapshot.publish(&store, "938-shared-mir", None).unwrap();
+    let pressure = resources.reserve(Charge::mir((16 << 20) - 64)).unwrap();
+    let rejected = Session::restore_stored_current_with_resources(
+        &store,
+        &stored,
+        Target::Native,
+        &[SOURCE_CAP.into()],
+        &mut || Ok(authority.clone()),
+        resources.clone(),
+    );
+    let error = match rejected {
+        Ok(_) => panic!("stored restore replaced the request account"),
+        Err(e) => e,
+    };
+    assert!(
+        error.contains("foreign.restore.mir") && error.contains("DecodeMemory"),
+        "{error}"
+    );
+    assert_eq!(resources.stats().current.mir, (16 << 20) - 64);
+    drop(pressure);
+    let restored = Session::restore_stored_current_with_resources(
+        &store,
+        &stored,
+        Target::Native,
+        &[SOURCE_CAP.into()],
+        &mut || Ok(authority.clone()),
+        resources.clone(),
+    )
+    .unwrap();
+    assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+    assert_eq!(resources.stats().current.mir, 0);
 }
 
 #[test]
@@ -2202,6 +2306,52 @@ fn source_worker_query(
     let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
     assert!(response.get("error").is_none(), "{response}");
     response
+}
+
+#[test]
+fn source_foreign_formal_request_metadata_budget_preserves_pointer_and_repairs() {
+    let root = scope("formal-request-budget");
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "budget-cold");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let original = std::fs::read(&pointer).unwrap();
+        let mut pressure = deck.clone();
+        pressure["manifest"]["facts"]["effects"] = vec!["checked"; 200_000].into();
+        let wire = serde_json::to_vec(&pressure).unwrap();
+        let allocation =
+            ace_foreign_contract::codec::foreign_request_json_allocation(&wire, 48 << 20).unwrap();
+        assert!(allocation.metadata > 8 << 20);
+        assert!(wire.len() < 3 << 20);
+        eprintln!(
+            "foreign_request_resource wire={} metadata={} index_cap={}",
+            wire.len(),
+            allocation.metadata,
+            8 << 20
+        );
+        let rejected = source_worker_query(&pressure, &store, leg, "budget-reject");
+        let step = &rejected["ok"]["steps"][0];
+        let report = &rejected["ok"]["source_import"];
+        assert_eq!(step["outcome"], "resource", "{rejected}");
+        assert_eq!(step["compute_calls"], 0);
+        assert_eq!(step["cache"], "-");
+        assert_eq!(step["meter"]["rejections"], 1);
+        assert_eq!(step["diagnostics"][0]["code"], "foreign.resource");
+        assert_eq!(report["source_parse"], 0);
+        assert_eq!(report["solver"], 0);
+        assert_eq!(report["provider_digest"], "");
+        assert!(report["actual_exit"].is_null());
+        assert_eq!(std::fs::read(&pointer).unwrap(), original);
+        let repaired = source_worker_query(&deck, &store, leg, "budget-repair");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(repaired["ok"]["source_import"]["source_parse"], 0);
+        assert_eq!(repaired["ok"]["source_import"]["solver"], 0);
+    }
 }
 
 #[test]

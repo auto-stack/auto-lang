@@ -280,9 +280,32 @@ impl Session {
         capabilities: &[String],
         current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
     ) -> Result<Self, String> {
+        Self::restore_stored_current_with_resources(
+            store,
+            stored,
+            target,
+            capabilities,
+            current,
+            Resources::default(),
+        )
+    }
+    pub fn restore_stored_current_with_resources(
+        store: &ManagedStore,
+        stored: &Stored,
+        target: Target,
+        capabilities: &[String],
+        current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
+        resources: Resources,
+    ) -> Result<Self, String> {
         let authority = current()?;
-        let restored =
-            Self::restore_stored_host(store, stored, target, capabilities, authority.foreign)?;
+        let restored = Self::restore_stored_host_with_resources(
+            store,
+            stored,
+            target,
+            capabilities,
+            authority.foreign,
+            resources,
+        )?;
         qualify(
             restored.front.foreign(),
             &restored.runtime_identity,

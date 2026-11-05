@@ -46,6 +46,49 @@ pub(super) struct SourceReport {
     pub diagnostic_stage: String,
 }
 impl SourceReport {
+    /// A resource refusal before source production may not have decoded the
+    /// source field. The enclosing worker envelope still binds the exact deck,
+    /// nonce and request hash. This exception cannot carry compiler/tool work,
+    /// a source verdict or execution evidence, and never grants a PASS.
+    pub fn admit_query(
+        &self,
+        consumer: &str,
+        outcome: &str,
+        exit: Option<i32>,
+        source: Option<&str>,
+    ) -> Result<(), String> {
+        if !matches!(outcome, "ok" | "diags" | "resource" | "infra")
+            || (outcome != "ok" && exit.is_some())
+        {
+            return Err("invalid source outcome or exit on a refusal".into());
+        }
+        let unprocessed = outcome == "resource" && self.source_sha256.is_empty();
+        if unprocessed
+            && (self.source_parse != 0
+                || self.solver != 0
+                || self.hir != 0
+                || self.mir != 0
+                || self.native != 0
+                || self.c_fragment != 0
+                || !self.provider_digest.is_empty()
+                || !self.c_toolchain.is_empty()
+                || self.diagnostic_stage != "parse"
+                || self
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code != "foreign.resource" || d.span.is_some()))
+        {
+            return Err(
+                "unprocessed source resource refusal carried production/provenance claims".into(),
+            );
+        }
+        self.admit(
+            consumer,
+            outcome == "ok",
+            exit,
+            if unprocessed { None } else { source },
+        )
+    }
     pub fn admit(
         &self,
         consumer: &str,
@@ -179,6 +222,63 @@ mod tests {
             "source_parse":2,"solver":1,"hir":1,"mir":1,"native":1,"c_fragment":0,"diagnostic_stage":"","diagnostics":[]
         })).unwrap()
     }
+    #[test]
+    fn predecode_resource_refusal_never_substitutes_for_source_or_execution_evidence() {
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let mut report = valid();
+        report.source_sha256.clear();
+        report.provider_digest.clear();
+        report.c_toolchain.clear();
+        report.source_parse = 0;
+        report.solver = 0;
+        report.hir = 0;
+        report.mir = 0;
+        report.native = 0;
+        report.actual_exit = None;
+        report.reference_exit = None;
+        report.actual_events.clear();
+        report.reference_events.clear();
+        report.actual_stderr.clear();
+        report.reference_stderr.clear();
+        report.diagnostic_stage = "parse".into();
+        report.diagnostics = vec![SourceDiagnostic {
+            stage: "parse".into(),
+            code: "foreign.resource".into(),
+            message: "input model budget".into(),
+            span: None,
+        }];
+        report
+            .admit_query("native", "resource", None, Some(source))
+            .unwrap();
+        assert!(report
+            .admit_query("native", "ok", None, Some(source))
+            .is_err());
+        assert!(report
+            .admit_query("native", "diags", None, Some(source))
+            .is_err());
+        assert!(report
+            .admit_query("native", "resource", Some(42), Some(source))
+            .is_err());
+        for axis in 0..8 {
+            let mut bad = report.clone();
+            match axis {
+                0 => bad.source_parse = 1,
+                1 => bad.provider_digest = "b".repeat(64),
+                2 => bad.c_toolchain = "cl:tool".into(),
+                3 => bad.actual_events.push("provider_add".into()),
+                4 => bad.diagnostics[0].span = Some((0, 1)),
+                5 => bad.diagnostics[0].code = "source.foreign.type-mismatch".into(),
+                6 => bad.source_sha256 = "0".repeat(64),
+                _ => bad.diagnostics.clear(),
+            }
+            assert!(
+                bad.admit_query("native", "resource", None, Some(source))
+                    .is_err(),
+                "axis {axis}"
+            );
+        }
+    }
+
     #[test]
     fn source_report_refuses_cross_recipe_target_missing_calls_and_replayed_source() {
         let source = "fn main() int { return foreign_add(20,22) }";

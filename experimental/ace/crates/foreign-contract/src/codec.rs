@@ -139,7 +139,7 @@ pub fn source_json_allocation(
     bytes: &[u8],
     limit: usize,
 ) -> Result<JsonAllocation, AllocationError> {
-    json_allocation(bytes, limit, true)
+    json_allocation(bytes, limit, true, true)
 }
 /// The finite manual-interface/physical-plan/binding wire contains no payload
 /// byte arrays: e.g. `facts` and `source` are structured objects here. Keep
@@ -148,12 +148,21 @@ pub fn metadata_json_allocation(
     bytes: &[u8],
     limit: usize,
 ) -> Result<JsonAllocation, AllocationError> {
-    json_allocation(bytes, limit, false)
+    json_allocation(bytes, limit, false, false)
+}
+/// Source-import requests carry source text AND structured manifest facts.
+/// Unlike persisted source-session pages, `facts` is not a byte array here.
+pub fn foreign_request_json_allocation(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<JsonAllocation, AllocationError> {
+    json_allocation(bytes, limit, true, false)
 }
 fn json_allocation(
     bytes: &[u8],
     limit: usize,
     source_fields: bool,
+    byte_fields: bool,
 ) -> Result<JsonAllocation, AllocationError> {
     use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Visitor};
     #[derive(Clone, Copy)]
@@ -168,6 +177,7 @@ fn json_allocation(
         limit: usize,
         exhausted: bool,
         source_fields: bool,
+        byte_fields: bool,
     }
     impl Bound {
         fn add(&mut self, mode: Mode, n: usize, factor: usize) -> Result<(), String> {
@@ -343,10 +353,10 @@ fn json_allocation(
                     )
                     .map_err(A::Error::custom)?;
                 map.next_value_seed(Seed {
-                    mode: if self.bound.source_fields {
-                        mode
-                    } else {
-                        Mode::Normal
+                    mode: match mode {
+                        Mode::Source if self.bound.source_fields => Mode::Source,
+                        Mode::Bytes if self.bound.byte_fields => Mode::Bytes,
+                        _ => Mode::Normal,
                     },
                     bound: self.bound,
                     factor: self.factor,
@@ -360,6 +370,7 @@ fn json_allocation(
         limit,
         exhausted: false,
         source_fields,
+        byte_fields,
     };
     let mut d = serde_json::Deserializer::from_slice(bytes);
     if let Err(e) = (Seed {
@@ -447,6 +458,22 @@ pub mod typed_decls_codec {
 mod tests {
     use super::*;
     use crate::plan::tests_support::checksum_facts;
+
+    #[test]
+    fn foreign_request_profile_keeps_text_separate_from_structured_facts() {
+        let bytes = br#"{"source":"abc\n\u4f60","manifest":{"facts":{"source":{"Typed":{"id":"review"}},"effects":["checked"],"functions":[]}}}"#;
+        let bound = foreign_request_json_allocation(bytes, 1 << 20).unwrap();
+        assert_eq!(bound.source, "abc\n你".len());
+        assert_eq!(bound.bytes, 0);
+        assert!(bound.metadata > 0);
+        assert!(matches!(
+            source_json_allocation(bytes, 1 << 20),
+            Err(AllocationError::Decode(_))
+        ));
+        let metadata = metadata_json_allocation(bytes, 1 << 20).unwrap();
+        assert_eq!(metadata.source, 0);
+        assert_eq!(metadata.metadata, bound.metadata + bound.source);
+    }
 
     #[test]
     fn source_json_preflight_splits_payload_from_index_and_bounds_real_wire_representation() {

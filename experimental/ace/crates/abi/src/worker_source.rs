@@ -8,6 +8,7 @@ use crate::{
 use ace_artifacts::store::ManagedStore;
 use ace_foreign_contract::manual::ManualManifest;
 use ace_source_query::frontend::Frontend;
+use ace_source_query::resources::{Charge, Reservation, Resources};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::{path::Path, sync::Arc, time::Instant};
@@ -93,7 +94,9 @@ fn step(
     StepOut {
         op: "query",
         outcome,
-        cache: if outcome == "diags" {
+        cache: if outcome == "resource" {
+            "-".into()
+        } else if outcome == "diags" {
             "diags".into()
         } else if compute == 0 {
             "hit".into()
@@ -109,7 +112,11 @@ fn step(
         meter: MeterOut {
             scratch_peak_disk_bytes: 0,
             hot_bytes: store.space().total,
-            rejections: if outcome == "diags" { 1 } else { 0 },
+            rejections: if matches!(outcome, "diags" | "resource") {
+                1
+            } else {
+                0
+            },
             gc_runs: 0,
             gc_deleted_chunks: 0,
             gc_freed_bytes: 0,
@@ -126,14 +133,32 @@ fn events(bytes: &[u8]) -> Vec<String> {
 fn write(path: &Path, bytes: impl AsRef<[u8]>) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
 }
-fn decode(req: &WorkerRequest) -> Result<Deck, DiagOut> {
+fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservation), DiagOut> {
+    if req.deck_b64.len() > crate::worker::MAX_LINE {
+        return Err(err("deck", "source deck transport budget"));
+    }
+    let decoded_bound = req
+        .deck_b64
+        .len()
+        .saturating_div(4)
+        .saturating_mul(3)
+        .saturating_add(3);
+    let _input = resources
+        .reserve(Charge::io(decoded_bound))
+        .map_err(|e| err("foreign.resource", e))?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&req.deck_b64)
         .map_err(|e| err("deck", e))?;
     if bytes.len() > crate::worker::MAX_LINE {
         return Err(err("deck", "source deck budget"));
     }
-    let deck: Deck = serde_json::from_slice(&bytes).map_err(|e| err("deck", e))?;
+    let (deck, model): (Deck, _) =
+        resources
+            .decode_foreign_request(&bytes)
+            .map_err(|e| match e {
+                ace_source_query::resources::ResourceError::Budget(_) => err("foreign.resource", e),
+                ace_source_query::resources::ResourceError::Decode(_) => err("deck", e),
+            })?;
     if deck.schema != DECK_SCHEMA
         || deck.source.is_empty()
         || deck.module.is_empty()
@@ -145,7 +170,7 @@ fn decode(req: &WorkerRequest) -> Result<Deck, DiagOut> {
             "unsupported source deck schema/module/provider/reference",
         ));
     }
-    Ok(deck)
+    Ok((deck, model))
 }
 pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     if req.recipe != RECIPE || !matches!(req.leg.as_str(), "native" | "c") || req.steps.len() != 1 {
@@ -209,14 +234,34 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         c_fragment: 0,
         diagnostic_stage: String::new(),
     };
-    let deck = match decode(req) {
+    let resources = Resources::default();
+    let (deck, _request_model) = match decode(req, &resources) {
         Ok(d) => d,
         Err(d) => {
             report.diagnostic_stage = "parse".into();
-            let s = step("diags", vec![d], 0, &store, started, None);
+            let outcome = if d.code == "foreign.resource" {
+                "resource"
+            } else {
+                "diags"
+            };
+            let s = step(outcome, vec![d], 0, &store, started, None);
             return Ok(output(s, report));
         }
     };
+    if let Err(e) = target.admit_source_bytes(deck.source.len()) {
+        report.diagnostic_stage = "parse".into();
+        return Ok(output(
+            step(
+                "resource",
+                vec![err("foreign.resource", e)],
+                0,
+                &store,
+                started,
+                None,
+            ),
+            report,
+        ));
+    }
     report.source_sha256 = ace_a2x_core::sha256::sha256_hex(deck.source.as_bytes());
     // Reject unauthorized ABI/declaration candidates before compiling/linking
     // or calling any C provider. No candidate supplies this policy digest.
@@ -280,12 +325,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 emitter: target.identity(),
             })
         };
-        let mut restored = Session::restore_stored_current(
+        let mut restored = Session::restore_stored_current_with_resources(
             &store,
             &previous.stored,
             target,
             &deck.capabilities,
             &mut restore_current,
+            resources.clone(),
         )
         .map_err(|e| err("restore", e))?;
         let changed_source = restored.frontend().source() != deck.source;
@@ -344,13 +390,14 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             )
         });
         let environment = environment.map_err(|e| err("foreign.authority", e))?;
-        let (front, checked) = match Frontend::cold_observed(
+        let (front, checked) = match Frontend::cold_observed_with_resources(
             &deck.source,
             &deck.module,
             "source938",
             &deck.capabilities,
             environment,
             &mut observation,
+            resources.clone(),
         ) {
             Ok(c) => c,
             Err(ace_source_query::frontend::Error::Diagnostics(ds)) => {
@@ -564,4 +611,96 @@ fn source_diagnostics(
         ),
         report,
     )
+}
+
+#[cfg(test)]
+mod request_budget_tests {
+    use super::*;
+    use ace_source_query::resources::Limits;
+
+    fn request(value: &impl Serialize) -> WorkerRequest {
+        WorkerRequest {
+            recipe: RECIPE.into(),
+            nonce: "budget".into(),
+            request_hash: "a".repeat(64),
+            deck_b64: base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(value).unwrap()),
+            leg: "native".into(),
+            store_root: String::new(),
+            steps: vec![],
+        }
+    }
+    fn deck() -> Deck {
+        Deck {
+            schema: DECK_SCHEMA.into(),
+            source: "fn main() int { return foreign_add(20,22) }".into(),
+            module: "source938".into(),
+            manifest: provider::reviewed_add_manifest(),
+            capabilities: vec![ace_foreign_contract::manual::SOURCE_CAP.into()],
+            provider_bias: 0,
+            reference: "add".into(),
+        }
+    }
+    #[test]
+    fn source_request_reserves_base64_model_and_structured_manifest_before_decode() {
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let input = request(&deck());
+        let (decoded, model) = decode(&input, &resources).unwrap();
+        assert_eq!(decoded.manifest, provider::reviewed_add_manifest());
+        assert!(resources.stats().current.index > baseline.index);
+        assert!(resources.stats().current.staging >= decoded.source.capacity());
+        assert_eq!(resources.stats().current.io, 0);
+        drop(decoded);
+        drop(model);
+        assert_eq!(resources.stats().current, baseline);
+
+        let tight = Resources::limited(Limits {
+            index: 1024,
+            ..Limits::default()
+        })
+        .unwrap();
+        assert_eq!(
+            decode(&input, &tight).err().unwrap().code,
+            "foreign.resource"
+        );
+        assert_eq!(tight.stats().current.io, 0);
+        let io = Resources::limited(Limits {
+            io: 128,
+            ..Limits::default()
+        })
+        .unwrap();
+        assert_eq!(decode(&input, &io).err().unwrap().code, "foreign.resource");
+        assert_eq!(io.stats().current.io, 0);
+        let mut malformed = input;
+        malformed.deck_b64 = "%%%".into();
+        assert_eq!(decode(&malformed, &resources).err().unwrap().code, "deck");
+        assert_eq!(resources.stats().current, baseline);
+        let mut unknown = serde_json::to_value(deck()).unwrap();
+        unknown
+            .as_object_mut()
+            .unwrap()
+            .insert("safe".into(), true.into());
+        assert_eq!(
+            decode(&request(&unknown), &resources).err().unwrap().code,
+            "deck"
+        );
+        assert_eq!(resources.stats().current, baseline);
+    }
+
+    #[test]
+    fn source_target_limits_keep_original_native_and_neutral_frontend_caps() {
+        let native = ace_native::config::MAX_INPUT_BYTES;
+        let neutral = ace_source_query::frontend::MAX_SOURCE_BYTES;
+        assert_eq!(native, 4 << 20);
+        assert_eq!(neutral, 8 << 20);
+        assert!(Target::Native.admit_source_bytes(native).is_ok());
+        assert!(Target::Native
+            .admit_source_bytes(native + 1)
+            .unwrap_err()
+            .contains("foreign.resource.source"));
+        assert!(Target::C.admit_source_bytes(native + 1).is_ok());
+        assert!(Target::C.admit_source_bytes(neutral).is_ok());
+        assert!(Target::C.admit_source_bytes(neutral + 1).is_err());
+    }
 }
