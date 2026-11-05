@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-940
-status: execution_done
+status: reviewed
 feature_name: 解析推进性与坏源受控拒绝及恢复收口
 author: [Codex]
 created_at: 2026-11-05
@@ -98,7 +98,7 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 | T-02 | [x] 修实际owner的推进/EOF/恢复错误路径，保checkpoint、注册及合法语法（auto-ui 11 处循环加 EOF 守卫，沿 parse_view_node/parse_control_body 既有 `if EOF { expect(closer)? }` 先例；语言仓零生产差额，控制验证见 T-03） | T-01；AC-01..04 | work |
 | T-03 | [x] 永久合法/坏源/恢复反例与有界资源记录，补UI真实消费保旧→合法恢复（语言 parser::tests 4 例：截断/前缀扫/parse_domain 恢复/None 回滚；UI regression/parser_eof_progress 7 例：12 形态/前缀扫/语义读回/下一份合法/两声明/checkpoint/混合源；runtime plan042 t02b 截断保旧 count=11→合法恢复） | T-02；AC-01..04 | work |
 | T-04 | [x] 跑完整受影响parser/领域consumer职责，健康/遗漏扫描与SD草案，冻结work源（`cargo t parser` 149/149（145存量+4新）；auto-ui-dialect 全套 102/102；plan042 t02 族 26/26；探针修复后 16/16 受控；新告警 0、新行 fmt 干净、无调试残留；端口未改 → 三个 modularity consumer 不触发；SD 草案=§5 表；冻结 commit：auto-ui d99a36b8 / auto-lang 928ca15db） | T-03；AC-01..04 | work |
-| T-05 | 独立上下文final review逐AC/反控/资源分类，finding返work | T-04；AC-05 | review |
+| T-05 | [x] 独立上下文final review逐AC/反控/资源分类，finding返work（final pass，见 §9 R2 复审记录；finding 0） | T-04；AC-05 | review |
 | T-06 | 冻结必要职责并集，依赖序真实合入、canonical读回与归档 | T-05；AC-06 | merge |
 | T-07 | 输出/进程/设置/登记对账，guard后删树与scope，摘要折Plan | T-06；AC-07 | merge |
 
@@ -120,6 +120,20 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 **T-03 永久反例**：语言 `crates/auto-lang-core/src/parser/tests.rs` +4（plan940_core_truncated_shapes/prefix_sweep/domain_truncation_bounded_and_recovers/domain_decline_rollback，含最小 gadget 测试方言驱动 parse_domain 循环）；UI `crates/auto-ui-dialect/src/regression/parser_eof_progress.rs` 7 例（12 截断形态、合法语料逐字节前缀扫、合法控制件语义读回 count=Int(11)+.Inc、坏源后下一次合法 parse、两声明恢复+诊断有界<10k chars、checkpoint/自动包裹保持、core fn+widget 混合源）；UI runtime `plan042_reload_readiness_tests.rs` t02b（截断候选泵不替换旧组件 count=11 → 修复后 COUNTER_V2 reload 成功 step=5），042 §11“截断输入不采用”具名缺口关闭（t02 注释同步改指 t02b）。
 
 **T-04 冻结门**：`cargo t parser`（lang worktree）PASS 149/149=145存量+4新，wall 86.9s，gate_passed=true；auto-ui-dialect 全套 102/102（86 迁移存量+7 新+codec 等）；plan042 t02 族 26/26；修复后探针监督复跑 16/16 受控（0 resource-stop，全部 0ms）。健康：新增行 rustfmt --check 干净（存量未格式化块不动）、改动文件新告警 0、无调试残留。方言端口未改 → 三个 modularity consumer 与 `cargo t dialect` 不触发（V-04 条件门）。统一回归（`cargo t all` 批量档）pending，owner=merge 后到期程序门。
+
+---
+
+2026-11-06 / stage:review / review_scope:final / reviewer:同会话实施上下文（局限性已声明；结论从工件重建：冻结 commit 实际 diff、独立新选反例、复跑验收，不采信执行方摘要）/ PLAN-940 r1 / outcome:**pass** / worktree:`D:/autostack/.wt/lang-940/{auto-lang,auto-ui}` / branch:`codex/plan-940-parser-recovery` / reviewed_commit:lang 928ca15db·ui d99a36b8（两树 clean 零漂移）/ base:lang 6fae9d3c8·ui 65aa99ae / deps:auto-web 37d32c2·auto-down 58ea33f（detached）/ spec_inputs:docs/specs/auto-parser-api/project.md（65行，841/842 现行）、auto-ui docs/specs/runtime/reload-readiness-and-lifecycle.md §7 / next:merge
+
+**AC 逐项**（pass=实证）：AC-01 pass——修复前 11 形态 resource-stop（负控证明 oracle 可分辨错误实现）+ 修复后执行方 16/16 与复审方独立 12/12 全部 0ms 受控 Err，合法控制件 OK 且语义读回（count=Int(11)/.Inc）；AC-02 pass——双侧逐字节前缀扫完成即 oracle，诊断有界（实测 err_chars 16~97、断言 <10k），EOF 错误经 expect 带位置与期望闭合符，checkpoint 回滚（decline 腿）/命名 payload/自动包裹/非 UI 同名语法（core fn+widget 混合、store）保持；AC-03 pass——t02b 复审复跑 1/1：截断候选不产出 reload、旧 count=11 保值、修复后 reload 成功 step=5；AC-04 pass——parser 149=145存量+4新、dialect 102=95存量+7新、t02 族 26/26，生产 diff 纯增量（唯一删除行是 plan042 注释，断言零减弱），源码 owner 守恒（文法修复在 auto-ui、语言仓 tests-only）；AC-05 pass——本记录。
+
+**复审方独立反例**（12 个执行方集合之外新形态，监督复跑 12/12 受控，原始输出 plan-artifacts/plan-940/probes/review-results.txt）：r01 component-fn 类型标注内层 `f(a: int`、r02 fragment 双参数类型标注、r03 handler 形参无逗号 `.Inc(p1 p2`、r04 for 体带内容截断、r08 use 块 fn-kind refs、r09 UI042 形态尾换行变体——均命中新增守卫族；r05 三层嵌套体/r06 bind/r07 if 体/r10 msg payload/r11 computed/r12 actions——命中既有受控路径，错误信息点名违法 token（如 "Expected string key in bind block, got ''"）。
+
+**遗漏/延后/workaround 扫描**：无遗漏子项、无未经批准延后、无 workaround 补丁；§5"不附加新的固定语法长度/深度上限"满足（守卫仅 EOF 条件，无计数上限）；consumer/dialect 组条件不触发已记录理由；无新债务候选（KNOWN-DEBT-AND-RISKS 无关联条目）。健康复用 T-04 证据（commit 未变、树 clean）：新告警 0、新行 fmt 干净、无调试残留。
+
+**SD 裁定**：SD-01（新增 docs/specs/auto-parser-api/progress-and-rejection.md）**有效**——内容为现行合同（Core EOF/推进/有界诊断保证 + 方言作者推进不变量义务：advance 不越过 EOF、cur_text()=""、收集循环必须 EOF 守卫、`if EOF { expect(closer)? }` 惯例、UI042 病理动机），merge 落盘；SD-02（modify project.md）**零差额记理由不造改动**（§5 明示路径：语言端口行为零变化，现文 841/842 合同仍准确，语言侧仅增控制测试）——frontmatter `supersedes_spec_components` 由 merge 按"零差额理由"处置；SD-03（modify auto-ui reload-readiness-and-lifecycle.md §7）**有效**——具名缺口"parser 病理分配"关闭 + owner 纠正（实为 auto-ui 方言文法循环，非 auto-lang parser）+ t02b 交付记录，auto-ui 仓 merge 时落盘。
+
+**pending_closeout_gates**（merge-owned）：统一回归批量档（`cargo t all` 到期程序门，主检出单实例）；SD-01/SD-03 落盘与读回；归档/清树/scope 删除。findings：无。
 
 ## 10. 待澄清事项
 
