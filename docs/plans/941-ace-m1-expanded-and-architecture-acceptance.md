@@ -334,9 +334,15 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 5 | from: work | to
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 6 | from: user | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（F-952-01共享采集器独立修复授权）
 
+2026-11-06 blocked audit（F-952-01同一条件连续第3轮，含发现/待决定原轮5）：上一轮为no progress，仅待答簿记。当前再次核对952 §10与941原问题记录，仍无新增共享采集器独立修复授权或原owner修复交付；941/952树clean，952仍6308a8ca550586f5e9d221483611e991a6db57ba；未出现已分配953/954承接交付，亦无本会话已确认活跃门禁可verified wait。原完整门两次终态红，不能靠未修复原始字节采集器继续当已可信证据或合入952；也不能把952原证书元数据授权解释为共享设施修复授权。按既有待答规则，本轮不实施/测试，停止自动续行并把goal标blocked；941保持executing 0/15，952保持executing 3/6，均不归档/清理。解阻动作=用户明确授权已发F-952-01最小独立修复（原采集器owned-close后重新排空、原错误/停止/进程树分态及永久反例/职责与消费者验证），或原owner交付等价有效修复；原941/952全链授权保留。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 7 | from: user | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（F-952-01独立共享采集器修复授权/原owner有效交付）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
 2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
+
+5. **F-952-01 独立共享采集器修复授权待答**：具体最小范围与确定性反例见952 §9；当前goal blocked，原941/952授权不撤销，工作树与材料在途保护。
