@@ -434,21 +434,56 @@ struct PageWriter {
     cur: Vec<u8>,
     checksum: u64,
     total: usize,
+    expected: Option<usize>,
+    failure: Option<AbcDecodeError>,
 }
 
 impl PageWriter {
-    fn new() -> Self {
-        PageWriter {
-            pages: Vec::new(),
+    fn new(expected: Option<usize>) -> Result<Self, AbcDecodeError> {
+        let mut pages = Vec::new();
+        if let Some(size) = expected {
+            pages
+                .try_reserve_exact(size.div_ceil(crate::contract::MAX_CODEC_PAGE_BYTES) + 1)
+                .map_err(|e| encode_allocation(e.to_string()))?;
+        }
+        Ok(PageWriter {
+            pages,
             cur: Vec::new(),
             // Standard FNV-1a offset basis so decode_abc's fnv1a64 agrees.
             checksum: 0xcbf2_9ce4_8422_2325,
             total: 0,
-        }
+            expected,
+            failure: None,
+        })
     }
 
     fn push(&mut self, bytes: &[u8]) {
+        if self.failure.is_some() {
+            return;
+        }
+        if self.expected.is_none() {
+            self.count(bytes.len());
+            return;
+        }
         for b in bytes {
+            if self.cur.capacity() == 0 {
+                let remaining = self.expected.unwrap().saturating_sub(self.total);
+                if remaining == 0 {
+                    self.failure = Some(encode_allocation("encoder outgrew its preflight".into()));
+                    return;
+                }
+                if let Err(e) = self
+                    .cur
+                    .try_reserve_exact(remaining.min(crate::contract::MAX_CODEC_PAGE_BYTES))
+                {
+                    self.failure = Some(encode_allocation(e.to_string()));
+                    return;
+                }
+            }
+            if self.total + self.cur.len() >= self.expected.unwrap() {
+                self.failure = Some(encode_allocation("encoder outgrew its preflight".into()));
+                return;
+            }
             self.cur.push(*b);
             if self.cur.len() >= crate::contract::MAX_CODEC_PAGE_BYTES {
                 let page = std::mem::take(&mut self.cur);
@@ -458,25 +493,52 @@ impl PageWriter {
         }
     }
 
+    fn count(&mut self, bytes: usize) {
+        self.total = self.total.saturating_add(bytes);
+        if self.total.saturating_add(8) > crate::contract::MAX_INPUT_BYTES {
+            self.failure = Some(AbcDecodeError::Resource {
+                kind: ResourceKind::InputTooLarge,
+                message: "encoded ABC exceeds its original decode input limit".into(),
+            });
+        }
+    }
+
+    fn status(&self) -> Result<(), AbcDecodeError> {
+        self.failure.clone().map_or(Ok(()), Err)
+    }
+
     /// Update running checksum/total for a completed page.
     fn absorb(&mut self, page: &[u8]) {
         self.checksum = fnv1a64_cont(self.checksum, page);
         self.total += page.len();
     }
 
-    fn finish(mut self, family: WireFamily) -> AbcBytes {
+    fn finish(mut self, family: WireFamily) -> Result<AbcBytes, AbcDecodeError> {
+        self.status()?;
         if !self.cur.is_empty() {
             let page = std::mem::take(&mut self.cur);
             self.absorb(&page);
             self.pages.push(page);
         }
-        AbcBytes {
+        if self.expected.is_some_and(|n| n != self.total) {
+            return Err(encode_allocation(
+                "encoder did not fill its preflight".into(),
+            ));
+        }
+        Ok(AbcBytes {
             version: family.version(),
             profile: family.profile_id(),
             pages: self.pages,
             total_len: self.total,
             checksum: self.checksum,
-        }
+        })
+    }
+}
+
+fn encode_allocation(message: String) -> AbcDecodeError {
+    AbcDecodeError::Resource {
+        kind: ResourceKind::CodecPage,
+        message,
     }
 }
 
@@ -532,6 +594,78 @@ fn un_op_code(op: UnOp) -> u8 {
 /// `av.data/1` → AVAD (data-only types/consts/opcodes must not appear in a
 /// core-profile module — that mismatch is an encode rejection).
 pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
+    encode_abc_reserved(m, |_| Ok(()))
+}
+
+/// Reserve the codec's owned buffers before materializing them. The callback
+/// first covers preflight diagnostics, then paged/flat coexistence. It must
+/// keep that reservation alive through the caller's to_flat/ownership handoff.
+pub fn encode_abc_reserved(
+    m: &MirModule,
+    mut reserve: impl FnMut(usize) -> Result<(), AbcDecodeError>,
+) -> Result<AbcBytes, AbcDecodeError> {
+    reserve(encode_preflight_scratch(m))?;
+    let measured = encode_abc_mode(m, None)?;
+    let size = measured.total_len;
+    let page_count = (size - 8).div_ceil(crate::contract::MAX_CODEC_PAGE_BYTES) + 1;
+    let peak = size
+        .saturating_mul(2)
+        .saturating_add(page_count.saturating_mul(std::mem::size_of::<Vec<u8>>()))
+        .saturating_add(std::mem::size_of::<AbcBytes>() + 4096);
+    reserve(peak)?;
+    let encoded = encode_abc_mode(m, Some(size - 8))?;
+    if encoded.total_len != size {
+        return Err(encode_allocation("encoder changed after preflight".into()));
+    }
+    Ok(encoded)
+}
+
+/// Only borrowed names can be copied by preflight diagnostics; ordinary
+/// instructions, constants, spans and effects are scanned without cloning.
+/// Include formatter old/new buffer overlap and the one-function validation
+/// set. Charging the whole MIR again here would reject legal large units.
+fn encode_preflight_scratch(m: &MirModule) -> usize {
+    let mut largest = m.profile.len();
+    let mut name = |text: &str| largest = largest.max(text.len());
+    for capability in &m.capabilities {
+        name(capability);
+    }
+    for import in &m.imports {
+        name(&import.symbol);
+    }
+    for ty in &m.types {
+        match ty {
+            MirType::Record(record) | MirType::RecordView(record) => {
+                name(&record.name);
+                name(&record.owner_module);
+                for field in &record.fields {
+                    name(&field.name);
+                }
+            }
+            MirType::Variant(variant) => {
+                name(&variant.name);
+                name(&variant.owner_module);
+                for arm in &variant.arms {
+                    name(&arm.name);
+                }
+            }
+            _ => {}
+        }
+    }
+    for function in &m.funcs {
+        name(&function.name);
+        for block in &function.blocks {
+            for instruction in &block.instrs {
+                if let MirInstr::ForeignCall { declaration, .. } = instruction {
+                    name(&declaration.function.symbol);
+                }
+            }
+        }
+    }
+    largest.saturating_mul(3).saturating_add(4096)
+}
+
+fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, AbcDecodeError> {
     let family = match m.profile.as_str() {
         crate::contract::AV_PROFILE
             if m.funcs.iter().any(|f| {
@@ -566,7 +700,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             "host imports require AVHC and at most eight declarations".into(),
         ));
     }
-    let mut w = PageWriter::new();
+    let mut w = PageWriter::new(expected)?;
     // Header.
     let magic = family.magic();
     w.push(&magic);
@@ -1062,30 +1196,36 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                                     .into(),
                             ));
                         }
+                        w.status()?;
                         declaration
                             .validate()
                             .map_err(|e| AbcDecodeError::fmt_err("abc.encode.foreign", e))?;
-                        let bytes = ace_foreign_contract::codec::encode_json_bounded(
+                        let size = ace_foreign_contract::codec::json_size(
                             declaration,
                             ace_foreign_contract::codec::MAX_CODEC_BYTES,
                         )
                         .map_err(|e| {
                             AbcDecodeError::fmt_err("abc.encode.foreign-budget", e.to_string())
                         })?;
-                        if bytes.len() > ace_foreign_contract::codec::MAX_CODEC_BYTES {
-                            return Err(AbcDecodeError::fmt_err(
-                                "abc.encode.foreign-budget",
-                                "foreign declaration too large".into(),
-                            ));
-                        }
                         put_u8(&mut w, OP_FOREIGN_CALL);
                         put_u32(&mut w, *dst);
                         put_u8(&mut w, args.len() as u8);
                         for arg in args {
                             put_u32(&mut w, *arg);
                         }
-                        put_u32(&mut w, bytes.len() as u32);
-                        w.push(&bytes);
+                        put_u32(&mut w, size as u32);
+                        if expected.is_none() {
+                            w.count(size);
+                        } else {
+                            let bytes = ace_foreign_contract::codec::encode_json_bounded(
+                                declaration,
+                                ace_foreign_contract::codec::MAX_CODEC_BYTES,
+                            )
+                            .map_err(|e| {
+                                AbcDecodeError::fmt_err("abc.encode.foreign-budget", e.to_string())
+                            })?;
+                            w.push(&bytes);
+                        }
                     }
                     MirInstr::HostCall { host, arg } => {
                         if family != WireFamily::HostConsole {
@@ -1793,32 +1933,40 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     }
     // Source-map sidecar (diagnostics only; logical identity, no paths).
     if has_sidecar {
-        let mut sc: Vec<u8> = Vec::new();
+        w.status()?;
+        let sc_len = m
+            .funcs
+            .iter()
+            .try_fold(0usize, |size, f| {
+                size.checked_add(12)?
+                    .checked_add(f.spans.len().checked_mul(16)?)
+            })
+            .filter(|size| *size <= u32::MAX as usize)
+            .ok_or_else(|| {
+                AbcDecodeError::fmt_err(
+                    "abc.encode.sidecar-length",
+                    "source sidecar exceeds wire width".into(),
+                )
+            })?;
+        put_u32(&mut w, sc_len as u32);
         for f in &m.funcs {
-            sc.extend_from_slice(&(f.source_snapshot).to_le_bytes());
-            sc.extend_from_slice(&(f.spans.len() as u32).to_le_bytes());
+            w.push(&f.source_snapshot.to_le_bytes());
+            put_u32(&mut w, f.spans.len() as u32);
             for (instr, sp) in &f.spans {
-                sc.extend_from_slice(&instr.to_le_bytes());
-                sc.extend_from_slice(&sp.func.to_le_bytes());
-                sc.extend_from_slice(&sp.start.to_le_bytes());
-                sc.extend_from_slice(&sp.end.to_le_bytes());
+                put_u32(&mut w, *instr);
+                put_u32(&mut w, sp.func);
+                put_u32(&mut w, sp.start);
+                put_u32(&mut w, sp.end);
             }
         }
-        if sc.len() > u32::MAX as usize {
-            return Err(AbcDecodeError::fmt_err(
-                "abc.encode.sidecar-length",
-                "source sidecar exceeds wire width".to_string(),
-            ));
-        }
-        put_u32(&mut w, sc.len() as u32);
-        w.push(&sc);
     }
     // Trailer checksum.
-    let mut out = w.finish(family);
-    let mut trailer = out.checksum.to_le_bytes().to_vec();
+    let mut out = w.finish(family)?;
     // Trailer rides as one final page (≤ 8 bytes, page budget trivially ok).
-    out.total_len += trailer.len();
-    out.pages.push(std::mem::take(&mut trailer));
+    out.total_len += 8;
+    if expected.is_some() {
+        out.pages.push(out.checksum.to_le_bytes().to_vec());
+    }
     Ok(out)
 }
 

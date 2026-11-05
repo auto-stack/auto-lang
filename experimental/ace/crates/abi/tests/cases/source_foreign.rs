@@ -540,6 +540,55 @@ fn source_foreign_native_output_reservation_is_live_until_cache_handoff() {
     drop(object);
     drop(charge);
     assert_eq!(resources.stats().current.staging, 0);
+
+    // Enough room for the real facts page and COFF, but not the following
+    // codec preflight. This reaches the composing host's actual encoder port.
+    let shared = Resources::default();
+    let current = fixture_current(&environment, Target::Native);
+    let mut session = Session::restore_host_with_resources(
+        &saved.root,
+        &saved.digest,
+        Target::Native,
+        &[SOURCE_CAP.into()],
+        current.foreign,
+        |id| saved.pages.get(id).cloned(),
+        shared.clone(),
+    )
+    .unwrap();
+    let fact_page: serde_json::Value =
+        serde_json::from_slice(&session.frontend().page("main").unwrap().bytes).unwrap();
+    let allowance = (fact_page["facts"].as_array().unwrap().len() + std::mem::size_of::<Vec<u8>>())
+        .max(expected.len())
+        + 256;
+    assert!(
+        allowance < 4096,
+        "fixture no longer distinguishes facts/COFF from encoder staging"
+    );
+    let pressure = shared
+        .reserve(Charge::staging((24 << 20) - allowance))
+        .unwrap();
+    let error = session
+        .prepare("main", "fn main() int { return foreign_add(21,22) }")
+        .err()
+        .unwrap();
+    assert!(
+        error.contains("foreign.mir-encode") && error.contains("CodecPage"),
+        "{error}"
+    );
+    assert_eq!(session.function_meter("main").native_produced, 1);
+    assert_eq!(session.function_meter("main").page_encodes, 0);
+    assert_eq!(shared.stats().current.staging, (24 << 20) - allowance);
+    assert_eq!(session.snapshot().unwrap().digest, saved.digest);
+    drop(pressure);
+    let repair = session
+        .prepare("main", "fn main() int { return foreign_add(21,22) }")
+        .unwrap();
+    session.commit(repair).unwrap();
+    assert_eq!(shared.stats().current.staging, 0);
+    assert_eq!(
+        session.run(&root.join("encode-repair")).unwrap().exit_code,
+        Some(43)
+    );
 }
 
 #[test]

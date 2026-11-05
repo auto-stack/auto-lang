@@ -1377,9 +1377,26 @@ fn native_artifact(
     let owner_schema = mir.owner.schema.clone();
     let owner_module = mir.owner.module.clone();
     let mut encode = ledger.begin(name, "mir-encode", Phase::Production);
-    let mir = ace_av_core::abc::encode_abc(&mir)
-        .map_err(|e| format!("foreign.mir-encode: {e:?}"))?
-        .to_flat();
+    let mut encoded_charge = resources
+        .reserve(Charge::staging(0))
+        .map_err(|e| e.to_string())?;
+    let paged = ace_av_core::abc::encode_abc_reserved(&mir, |bytes| {
+        encoded_charge.resize(Charge::staging(bytes)).map_err(|e| {
+            ace_av_core::abc::AbcDecodeError::Resource {
+                kind: ace_av_core::contract::ResourceKind::CodecPage,
+                message: e.to_string(),
+            }
+        })
+    })
+    .map_err(|e| format!("foreign.mir-encode: {e:?}"))?;
+    let mir = paged.to_flat();
+    drop(paged);
+    encoded_charge
+        .resize(Charge::staging(mir.capacity()))
+        .map_err(|e| e.to_string())?;
+    let output_charge = output_charge
+        .merge(encoded_charge)
+        .map_err(|e| e.to_string())?;
     encode.produced(1);
     work.push(encode);
     meter.page_encodes += 1;

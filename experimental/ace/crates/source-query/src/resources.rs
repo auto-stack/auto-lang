@@ -454,6 +454,23 @@ pub struct Reservation {
     charge: Option<Charge>,
 }
 impl Reservation {
+    /// Join two already admitted allocations in the SAME live account before
+    /// moving their payloads into one immutable owner. No release/reacquire gap.
+    pub fn merge(mut self, mut other: Self) -> Result<Self, ResourceError> {
+        if !Arc::ptr_eq(&self.resources.0, &other.resources.0) {
+            return Err(ResourceError::Budget(
+                "cannot combine different resource accounts".into(),
+            ));
+        }
+        let combined = self
+            .charge
+            .expect("live reservation")
+            .plus(other.charge.expect("live reservation"))
+            .ok_or_else(|| ResourceError::Budget("reservation merge overflow".into()))?;
+        self.charge = Some(combined);
+        other.charge = None;
+        Ok(self)
+    }
     pub fn retain_foreign_metadata<T: Any + Send + Sync>(
         mut self,
         object: &Arc<T>,
@@ -610,6 +627,33 @@ mod tests {
             Err(ResourceError::Decode(_))
         ));
     }
+    #[test]
+    fn joined_output_tickets_transfer_without_reacquiring_or_mixing_accounts() {
+        let r = Resources::default();
+        let a = r.reserve(Charge::staging(4096)).unwrap();
+        let b = r.reserve(Charge::io(2048)).unwrap();
+        let before = r.stats().current;
+        let mut joined = a.merge(b).unwrap();
+        assert_eq!(r.stats().current, before);
+        joined.resize(Charge::resident(6144)).unwrap();
+        let payload = Arc::new(vec![0u8; 6144]);
+        joined.retain(&payload).unwrap();
+        assert_eq!(r.stats().current.resident, 6144);
+        assert_eq!(r.stats().current.staging, 0);
+        assert_eq!(r.stats().current.io, 0);
+        let pin = payload.clone();
+        drop(payload);
+        assert_eq!(r.stats().current.resident, 6144);
+        drop(pin);
+        assert_eq!(r.stats().current.resident, 0);
+        let other = Resources::default();
+        let a = r.reserve(Charge::staging(100)).unwrap();
+        let b = other.reserve(Charge::staging(200)).unwrap();
+        assert!(a.merge(b).is_err());
+        assert_eq!(r.stats().current.staging, 0);
+        assert_eq!(other.stats().current.staging, 0);
+    }
+
     #[test]
     fn mir_decode_reservation_obeys_both_remaining_partition_and_live_total() {
         let r = Resources::limited(Limits {

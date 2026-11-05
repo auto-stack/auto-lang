@@ -224,6 +224,154 @@ fn pressure_wire(calls: usize) -> Vec<u8> {
     }
     ace_av_core::encode_abc(&module).unwrap().to_flat()
 }
+
+#[test]
+fn abc_encoder_keeps_frozen_scalar_foreign_and_paged_sidecar_bytes() {
+    let mut hashes = [0u64; 2];
+    for (index, foreign) in [false, true].into_iter().enumerate() {
+        let mut module = module();
+        if !foreign {
+            module.funcs[0].blocks[0].instrs.truncate(2);
+            module.funcs[0].blocks[0].term = Terminator::Return { value: 1 };
+        }
+        module.funcs[0].source_snapshot = 93_800;
+        module.funcs[0].spans = vec![
+            (
+                0,
+                ace_av_core::SpanInfo {
+                    func: 0,
+                    start: 0,
+                    end: 1
+                }
+            );
+            60_000
+        ];
+        let wire = ace_av_core::encode_abc(&module).unwrap().to_flat();
+        hashes[index] = ace_av_core::contract::fnv1a64(&wire);
+    }
+    eprintln!("frozen_8j_encoder_wire_hashes={hashes:?}");
+    // Calibrated against the actual pre-reservation producer at commit 8j.
+    assert_eq!(
+        hashes,
+        [6_788_358_879_573_569_296, 15_294_436_905_299_535_179]
+    );
+}
+
+#[test]
+fn abc_encoder_reserves_preflight_and_paged_flat_coexistence_before_materialization() {
+    use ace_av_core::{abc::encode_abc_reserved, AbcDecodeError, ResourceKind};
+    let mut module = module();
+    module.funcs[0].source_snapshot = 93_800;
+    module.funcs[0].spans = vec![
+        (
+            0,
+            ace_av_core::SpanInfo {
+                func: 0,
+                start: 0,
+                end: 1
+            }
+        );
+        60_000
+    ];
+    let mut calls = 0;
+    let (rejected, allocations) = allocations(|| {
+        encode_abc_reserved(&module, |_| {
+            calls += 1;
+            Err(AbcDecodeError::Resource {
+                kind: ResourceKind::CodecPage,
+                message: "budget".into(),
+            })
+        })
+    });
+    assert_eq!(calls, 1);
+    assert!(matches!(
+        rejected,
+        Err(AbcDecodeError::Resource {
+            kind: ResourceKind::CodecPage,
+            ..
+        })
+    ));
+    assert_eq!(
+        allocations, 1,
+        "encoder allocated payloads before the first reservation"
+    );
+
+    let mut bounds = [0usize; 2];
+    let mut calls = 0;
+    let ((paged, flat), _, peak) = memory(|| {
+        let paged = encode_abc_reserved(&module, |bytes| {
+            bounds[calls] = bytes;
+            calls += 1;
+            Ok(())
+        })
+        .unwrap();
+        let flat = paged.to_flat();
+        (paged, flat)
+    });
+    assert_eq!(calls, 2);
+    assert_eq!(paged.total_len, flat.len());
+    assert_eq!(
+        paged.pages.iter().map(Vec::capacity).sum::<usize>(),
+        flat.len()
+    );
+    assert!(paged.pages.iter().all(|p| p.len() == p.capacity()));
+    assert!(
+        peak <= bounds[1],
+        "codec exceeded its reserved buffers: {peak} > {}",
+        bounds[1]
+    );
+    ace_av_core::decode_abc(&flat).unwrap();
+    eprintln!(
+        "abc_encode_paged_flat_peak={peak} reserved={} wire={}",
+        bounds[1],
+        flat.len()
+    );
+
+    module.funcs[0].spans = vec![
+        (
+            0,
+            ace_av_core::SpanInfo {
+                func: 0,
+                start: 0,
+                end: 1
+            }
+        );
+        ace_av_core::contract::MAX_INPUT_BYTES / 16
+    ];
+    let (rejected, _, peak) = memory(|| ace_av_core::encode_abc(&module));
+    assert!(matches!(
+        rejected,
+        Err(AbcDecodeError::Resource {
+            kind: ResourceKind::InputTooLarge,
+            ..
+        })
+    ));
+    assert!(
+        peak < 4096,
+        "oversized wire materialized before its preflight refusal: {peak}"
+    );
+
+    // Large retained declaration metadata is not a second preflight copy.
+    // The original staging share still admits this legal compact wire.
+    let wire = pressure_wire(3);
+    let large = ace_av_core::decode_abc(&wire).unwrap().module;
+    assert!(large.heap_estimate() * 3 > 24 << 20);
+    let mut preflight_calls = 0;
+    let encoded = encode_abc_reserved(&large, |bytes| {
+        preflight_calls += 1;
+        if bytes > 24 << 20 {
+            Err(AbcDecodeError::Resource {
+                kind: ResourceKind::CodecPage,
+                message: "staging".into(),
+            })
+        } else {
+            Ok(())
+        }
+    })
+    .unwrap();
+    assert_eq!(preflight_calls, 2);
+    assert_eq!(encoded.to_flat(), wire);
+}
 #[test]
 fn foreign_decode_reserves_typed_models_and_validation_coexistence_before_deserialize() {
     let accepted = pressure_wire(2);
