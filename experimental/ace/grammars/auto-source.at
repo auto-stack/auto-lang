@@ -35,6 +35,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // 裁剪编译（FRONT_CAPS_VERSION ac-source-front/2）；无能力仍走
         // plain scalar 裁剪 → `<T>`/裸 ident 原语法拒绝面不变。
         profile(name: "scalar-instances") { }
+        profile(name: "scalar-modules") { }
     }
     tokens {
         ws(trivia: true) { charset: " \t\r\n" }
@@ -99,6 +100,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         r-try { literal: "try" }
         r-union { literal: "union" }
         r-use { literal: "use" }
+        r-pub { literal: "pub" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }
@@ -152,7 +154,9 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // 块内语句序列才用 list-nl 的换行/`;` 分隔纪律。
         program { list { item() {} } }
         item {
+            alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
+            alt(profiles: [scalar-modules]) { use-item() {} }
             alt(profiles: [record, text-record, collections]) { type-item() {} }
             alt(profiles: [collections]) { enum-item() {} }
             alt(profiles: [entry-unit, host-console, closures]) { script-item() {} }
@@ -161,6 +165,21 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         fn-item(recover: true) {
             fn(field: "kw")
             fn-tail() {}
+        }
+        public-fn(profiles: [scalar-modules]) {
+            r-pub() {}
+            fn-item(field: "function")
+        }
+        use-item(profiles: [scalar-modules]) {
+            r-use() {}
+            ident(field: "module")
+            dot() {}
+            ident(field: "import")
+        }
+        qualified-name(profiles: [scalar-modules]) {
+            ident(field: "module")
+            dot(same-line: true)
+            ident(field: "member")
         }
         // `fn` 之后的共享形状（自由函数与方法共用；receiver/owner 由投影
         // 从外层 type-item 上下文恢复）
@@ -339,7 +358,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
-            alt(profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console]) { for-cond-stmt() {} }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures]) { for-in-stmt() {} }
             alt(profiles: [collections, closures]) { is-stmt() {} }
             alt { loop-stmt() {} }
@@ -393,7 +412,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             block(field: "body")
         }
         // 条件 for（wide 族；投影复用 While AST 形状）
-        for-cond-stmt(profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console]) {
+        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console]) {
             for(field: "kw")
             expr(field: "cond")
             block(field: "body")
@@ -441,15 +460,15 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // ---- 表达式 ----
         expr {
             alt(profiles: [core]) { pratt(of: "core-ops") }
-            alt(profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console, collections, closures]) { pratt(of: "wide-ops") }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { pratt(of: "wide-ops") }
         }
         // 一元前缀（右结合）：字面量分支先行（`-5` 带符号折叠），`-x`/`!x`
         // 仅 wide 族；core 面经投影保真旧"仅字面量前一元减"拒绝
         unary-expr {
             alt { int-literal() {} }
             // 一元 -/! 操作数锚定同行（旧 anchored(Unary)；负号换行的 e19 拒绝）。
-            alt(profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {
@@ -476,6 +495,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             many { postfix-step() {} }
         }
         atom-expr {
+            alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [collections, closures]) { ctor-expr() {} }
             alt(profiles: [record, text-record]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
@@ -585,7 +605,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(wide-ops, profiles: [scalar, scalar-instances, text, record, text-record, entry-unit, host-console, collections, closures]) {
+    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }

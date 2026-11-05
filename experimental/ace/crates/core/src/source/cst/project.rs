@@ -66,6 +66,21 @@ pub(crate) fn project_program_with_caps(
                 dn
             }
         };
+        // PLAN-950: public visibility is retained in ModuleSyntax, while
+        // the existing function projector consumes the nested fn item.
+        let node = if p
+            .rules
+            .iter()
+            .position(|r| r.name == "public-fn")
+            .is_some_and(|i| {
+                tree.kind(node) == ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+            }) {
+            p.field_id("function")
+                .and_then(|f| tree.field_child(node, f))
+                .unwrap_or(node)
+        } else {
+            node
+        };
         let kind = tree.kind(node);
         // 错误子树跳过乐观投影（结构层映射负责其诊断；干净子树照常投影
         // 以保真能力拒绝的位置序）。PLAN-928（T-04）：脚本区首 token 的
@@ -3907,6 +3922,23 @@ impl<'a> Engine<'a> {
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
             let ck = self.cx.tree.kind(c);
+            // PLAN-950: preserve the qualified source identity for module binding.
+            if self
+                .cx
+                .p
+                .rules
+                .iter()
+                .position(|r| r.name == "qualified-name")
+                .is_some_and(|r| ck == ace_syntax_runtime::program::RULE_KIND_BASE + r as u32)
+            {
+                if let Some(id) = self.first_ident_opt(c) {
+                    self.vals.push(Val::E(Expr {
+                        span: id.span,
+                        kind: ExprKind::Var(id),
+                    }));
+                    return;
+                }
+            }
             // PLAN-928（T-03）：`List<T>.member` 接收原子。
             if ck == self.cx.k.generic_atom.unwrap_or(u32::MAX) {
                 let name_leaf = self.cx.field_child(c, "name").expect("generic atom name");
@@ -4870,6 +4902,23 @@ impl<'a> Engine<'a> {
         // 复用 first_ident 的下降逻辑但返回 Option。
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
+            if self
+                .cx
+                .p
+                .rules
+                .iter()
+                .position(|r| r.name == "qualified-name")
+                .is_some_and(|r| {
+                    self.cx.tree.kind(n) == ace_syntax_runtime::program::RULE_KIND_BASE + r as u32
+                })
+            {
+                let a = self.cx.field_child(n, "module")?;
+                let b = self.cx.field_child(n, "member")?;
+                return Some(Ident {
+                    name: format!("{}.{}", self.cx.spelling(a), self.cx.spelling(b)),
+                    span: self.cx.span_of(a).join(self.cx.span_of(b)),
+                });
+            }
             if self.cx.tree.kind(n) == self.cx.k.tok_ident {
                 let span = self.cx.span_of(n);
                 let name = self.cx.spelling(n);

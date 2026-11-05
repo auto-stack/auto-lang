@@ -184,29 +184,141 @@ pub const INSTANCES_CAPABILITY: &str = "ac.source.instances.scalar/v1";
 
 /// scalar-instances 裁剪编译并缓存（进程内一次）。
 pub fn instances_grammar() -> Result<&'static CachedGrammar, String> {
-    let slot = INSTANCES_GRAMMAR.get_or_init(|| Default::default());
+    capability_grammar(&INSTANCES_GRAMMAR, "scalar-instances")
+}
+
+static MODULES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+fn capability_grammar(
+    cell: &'static OnceLock<OnceLock<CachedGrammar>>,
+    slug: &str,
+) -> Result<&'static CachedGrammar, String> {
+    let slot = cell.get_or_init(OnceLock::new);
     if let Some(g) = slot.get() {
         return Ok(g);
     }
-    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, "scalar-instances")
-        .map_err(|diags| {
-            format!(
-                "auto-source grammar failed to compile for `scalar-instances`: {:?}",
-                diags
-            )
-        })?;
-    let scanner =
-        CompiledScanner::compile(&program).map_err(|e| format!("scanner compile: {e}"))?;
-    let kinds = SourceKinds::from_program(&program).map_err(|missing| {
-        format!("auto-source grammar for `scalar-instances` lacks required kinds: {missing:?}")
-    })?;
-    let cached = CachedGrammar {
+    let program = ace_syntax_grammar::compile_profile(AUTO_SOURCE_GRAMMAR, slug)
+        .map_err(|d| format!("auto-source grammar `{slug}`: {d:?}"))?;
+    let scanner = CompiledScanner::compile(&program).map_err(|e| format!("scanner: {e}"))?;
+    let kinds = SourceKinds::from_program(&program)
+        .map_err(|e| format!("auto-source grammar `{slug}` missing kinds: {e:?}"))?;
+    let _ = slot.set(CachedGrammar {
         program,
         scanner,
         kinds,
-    };
-    let _ = slot.set(cached);
+    });
     Ok(slot.get().expect("just set"))
+}
+
+/// PLAN-950: the module grammar uses the same scanner, parser and strict
+/// projection as every source profile. Metadata is read from CST fields,
+/// never reconstructed by token stripping or source concatenation.
+pub(crate) fn parse_module_front(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    use crate::source::modules::{Import, ModuleSyntax};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let zero = Span { start: 0, end: 0 };
+    let cached = capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
+        .map_err(|e| err("source.infra", e, zero))?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let parsed = parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    )
+    .map_err(|e| match e {
+        ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit } => err(
+            "source.resource",
+            format!("resource exhausted: {what} (limit {limit})"),
+            zero,
+        ),
+        other => err("source.infra", format!("parse: {other}"), zero),
+    })?;
+    let tree = parsed.tree;
+    let program = project::project_program(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        SourceProfile::Scalar,
+    )?;
+    let rule = |name: &str| {
+        cached
+            .program
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    };
+    let field = |n, name: &str| {
+        cached
+            .program
+            .field_id(name)
+            .and_then(|f| tree.field_child(n, f))
+    };
+    let text = |n| {
+        let (a, b) = tree.abs_range(n);
+        snap.read_str(a, b).expect("CST source range")
+    };
+    let mut exports = std::collections::BTreeSet::new();
+    let mut imports = Vec::new();
+    let mut saw_fn = false;
+    for d in &tree.decls {
+        let node = if tree.kind(d.node) == cached.kinds.item {
+            tree.children(d.node)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                .unwrap_or(d.node)
+        } else {
+            d.node
+        };
+        if Some(tree.kind(node)) == rule("use-item") {
+            let (a, b) = tree.abs_range(node);
+            let span = Span {
+                start: a as usize,
+                end: b as usize,
+            };
+            if saw_fn {
+                return Err(err(
+                    "source.module-import-order",
+                    "imports must precede functions".into(),
+                    span,
+                ));
+            }
+            let module = text(field(node, "module").expect("module field"));
+            let name = text(field(node, "import").expect("import field"));
+            if imports.iter().any(|i: &Import| i.name == name) {
+                return Err(err(
+                    "source.module-duplicate-import",
+                    format!("duplicate imported name `{name}`"),
+                    span,
+                ));
+            }
+            imports.push(Import { module, name, span });
+        } else if Some(tree.kind(node)) == rule("public-fn") {
+            saw_fn = true;
+            let function = field(node, "function").expect("public function");
+            let tail = tree
+                .children(function)
+                .into_iter()
+                .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                .expect("fn tail");
+            exports.insert(text(field(tail, "name").expect("fn name")));
+        } else if tree.kind(node) == cached.kinds.fn_item {
+            saw_fn = true;
+        }
+    }
+    Ok(ModuleSyntax {
+        program,
+        exports,
+        imports,
+        grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+    })
 }
 
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，

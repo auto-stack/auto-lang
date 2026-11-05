@@ -45,3 +45,8 @@ pub(crate) fn first_diag(diags: &[Diagnostic]) -> Diagnostic {
         .cloned()
         .expect("diagnostic outcome carries at least one diagnostic")
 }
+
+// PLAN-950: metadata-preserving module projection is consumed only by the module binder.
+pub(crate) use frontdoor::parse_module_front;
+
+pub(crate) use shift::shift_fn_item;

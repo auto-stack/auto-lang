@@ -916,7 +916,42 @@ pub(crate) fn emit_whole_document(
     module_path: &str,
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    let mut em = Emitter::new(program, src.len(), profile);
+    emit_document_source(
+        program,
+        src.len(),
+        fnv1a_hex(src.as_bytes()),
+        &|p| src.is_char_boundary(p),
+        module_path,
+        profile,
+    )
+}
+
+/// PLAN-950: emit the already-resolved module graph using its disjoint
+/// source coordinate map. No synthetic concatenated source is parsed or hashed.
+pub fn emit_resolved_module_parts(
+    program: &ResolvedProgram,
+    sources: &super::modules::BoundModules,
+    module_path: &str,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    emit_document_source(
+        program,
+        sources.source_len(),
+        sources.input_hash.clone(),
+        &|p| sources.is_char_boundary(p),
+        module_path,
+        SourceProfile::Scalar,
+    )
+}
+
+fn emit_document_source(
+    program: &ResolvedProgram,
+    source_len: usize,
+    input_hash: String,
+    boundary: &dyn Fn(usize) -> bool,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let mut em = Emitter::new(program, source_len, profile);
     em.plan_module();
     let atom_text = em.render(module_path);
     let descriptor = match profile.hir_domain() {
@@ -945,10 +980,11 @@ pub(crate) fn emit_whole_document(
             )]);
         }
     };
-    em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
+    em.reanchor_spans_checked(&mut bundle, source_len, boundary)
+        .map_err(|d| vec![d])?;
     Ok(SourceParts {
         profile: profile.as_str(),
-        input_hash: fnv1a_hex(src.as_bytes()),
+        input_hash,
         atom_text,
         bundle,
         planned_fns: em.plans.len(),
@@ -3959,6 +3995,15 @@ impl<'p> Emitter<'p> {
     /// the §5.3 post-conditions (in-bounds, UTF-8 boundaries, no generated
     /// positions left).
     fn reanchor_spans(&self, bundle: &mut crate::hir::Bundle, src: &str) -> Result<(), Diagnostic> {
+        self.reanchor_spans_checked(bundle, src.len(), &|p| src.is_char_boundary(p))
+    }
+
+    fn reanchor_spans_checked(
+        &self,
+        bundle: &mut crate::hir::Bundle,
+        source_len: usize,
+        boundary: &dyn Fn(usize) -> bool,
+    ) -> Result<(), Diagnostic> {
         let Some(spans) = &self.spans else {
             return Err(internal_diag("render output missing".to_string()));
         };
@@ -3976,13 +4021,13 @@ impl<'p> Emitter<'p> {
             acc
         };
         let check = |s: Span| -> Result<Span, Diagnostic> {
-            if s.start > src.len() || s.end > src.len() {
+            if s.start > source_len || s.end > source_len {
                 return Err(internal_diag(format!(
                     "span {:?} escapes the source after projection",
                     s
                 )));
             }
-            if !src.is_char_boundary(s.start) || !src.is_char_boundary(s.end) {
+            if !boundary(s.start) || !boundary(s.end) {
                 return Err(internal_diag(format!(
                     "span {:?} is not on UTF-8 boundaries after projection",
                     s

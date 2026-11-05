@@ -90,3 +90,6 @@ pub use restore::{restore_bind, restore_verify, RestoreError};
 pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
 pub use store::{decode_page, encode_page, store_key, ManagedStoreSink, PageReadError};
 pub use walk::{walk_body, BodyWalk, LetDecl, NodeId, NodeInfo, WalkError};
+
+// PLAN-950 metadata-preserving finite modules, shared by real consumers.
+pub mod modules;
