@@ -409,3 +409,200 @@ pub fn apply_facts_to_resolved(
     }
     Ok(out)
 }
+
+// -- PLAN-934 T-04: fact-supplied bind (legacy synthesis cut) ----------
+
+use ace_core::atom_text::{Diagnostic, Span as CoreSpan};
+use ace_core::source::resolve::{resolve_with_supply, TypeSupply};
+use ace_core::source::SourceProfile;
+
+/// The span-keyed projection of one module's ADMITTED fact pages.
+///
+/// Spans are only the current source map; every entry here came from a
+/// page that was admitted against the body's structural walk first
+/// (version, node ids, kinds, coverage). Core reads this through
+/// [`TypeSupply`] and treats the returned type as authoritative.
+#[derive(Clone, Debug, Default)]
+pub struct BodyTypeSupply {
+    exprs: BTreeMap<(u32, u32), VT>,
+    bindings: BTreeMap<(u32, u32), VT>,
+    admitted: usize,
+}
+
+impl BodyTypeSupply {
+    pub fn new() -> Self {
+        BodyTypeSupply::default()
+    }
+
+    /// Number of admitted bodies whose types this supply carries.
+    pub fn admitted_bodies(&self) -> usize {
+        self.admitted
+    }
+
+    pub fn expr_count(&self) -> usize {
+        self.exprs.len()
+    }
+
+    pub fn binding_count(&self) -> usize {
+        self.bindings.len()
+    }
+
+    /// Admit one body's page and add its types. Any shape/coverage/
+    /// diagnostic problem is the caller's rejection, not a partial add.
+    pub fn add_body(&mut self, ast_body: &Block, facts: &InferBodyFacts) -> Result<(), ApplyError> {
+        let walk = walk_body(ast_body).map_err(ApplyError::Walk)?;
+        facts.admit(&walk).map_err(ApplyError::Facts)?;
+        for n in walk.nodes.iter().filter(|n| n.is_expr()) {
+            let ty = facts
+                .ty_of(n.id)
+                .ok_or(ApplyError::Facts(FactsError::IncompleteCoverage { missing: 1 }))?;
+            self.exprs
+                .insert((n.span.start as u32, n.span.end as u32), vt_of(ty));
+        }
+        for (decl, b) in walk.lets.iter().zip(facts.bindings.iter()) {
+            if decl.node != b.node {
+                return Err(ApplyError::Facts(FactsError::BindingAlignment));
+            }
+            let span = walk.node(b.node).map(|n| n.span).unwrap_or(CoreSpan {
+                start: 0,
+                end: 0,
+            });
+            self.bindings
+                .insert((span.start as u32, span.end as u32), vt_of(b.ty));
+        }
+        self.admitted += 1;
+        Ok(())
+    }
+}
+
+impl TypeSupply for BodyTypeSupply {
+    fn expr_ty(&self, span: CoreSpan) -> Option<VT> {
+        self.exprs
+            .get(&(span.start as u32, span.end as u32))
+            .copied()
+    }
+
+    fn binding_ty(&self, span: CoreSpan) -> Option<VT> {
+        self.bindings
+            .get(&(span.start as u32, span.end as u32))
+            .copied()
+    }
+}
+
+/// Why a fact-driven bind failed. Resolve diagnostics are the CORE's own
+/// bind-stage verdict (bad fact / missing fact / real source error).
+#[derive(Clone, Debug)]
+pub enum BindFactsError {
+    Query(QueryError),
+    Apply(ApplyError),
+    Resolve(Vec<Diagnostic>),
+    Profile(&'static str),
+}
+
+impl std::fmt::Display for BindFactsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BindFactsError::Query(e) => write!(f, "{e}"),
+            BindFactsError::Apply(e) => write!(f, "{e}"),
+            BindFactsError::Resolve(ds) => {
+                let first = ds
+                    .first()
+                    .map(|d| format!("{}: {}", d.code, d.message))
+                    .unwrap_or_else(|| "bind failed".into());
+                write!(f, "{first} ({} diagnostic(s))", ds.len())
+            }
+            BindFactsError::Profile(w) => write!(f, "`{w}` is outside the finite profile"),
+        }
+    }
+}
+
+/// PLAN-934 T-04: the fact-driven bind entry.
+///
+/// Every free function's signature and body page is queried, admitted and
+/// turned into a [`BodyTypeSupply`]; `resolve_with_supply` then BINDS with
+/// those types as the authority (the resolver's rules are checks only).
+/// Signature pages are installed afterwards so parameters/result come from
+/// the same fact layer.
+pub fn bind_with_facts(
+    program: &Program,
+    capabilities: &[String],
+    package: &str,
+    module: &str,
+    session: &mut SourceQuerySession,
+    profile: SourceProfile,
+) -> Result<(ResolvedProgram, Vec<AppliedFn>, BodyTypeSupply), BindFactsError> {
+    let mut names: Vec<String> = Vec::new();
+    for item in &program.items {
+        match item {
+            Item::Fn(f) => names.push(f.name.name.clone()),
+            Item::Type(_) => return Err(BindFactsError::Profile("record declaration")),
+            Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
+        }
+    }
+    if names.is_empty() {
+        return Ok((
+            ResolvedProgram {
+                fns: Vec::new(),
+                records: Vec::new(),
+                lists: Vec::new(),
+                variants: Vec::new(),
+                function_types: Vec::new(),
+            },
+            Vec::new(),
+            BodyTypeSupply::new(),
+        ));
+    }
+
+    let mut supply = BodyTypeSupply::new();
+    let mut sigs: Vec<(String, FnSigFacts, bool)> = Vec::new();
+    let mut applied: Vec<AppliedFn> = Vec::new();
+    for name in &names {
+        let ast_body = program
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(f) if &f.name.name == name => Some(&f.body),
+                _ => None,
+            })
+            .expect("name came from the same program");
+        let sig = session
+            .fn_sig(program, name)
+            .map_err(BindFactsError::Query)?;
+        sig.facts
+            .check_envelope()
+            .map_err(|e| BindFactsError::Apply(ApplyError::Facts(e)))?;
+        let body = session
+            .infer_body(program, name)
+            .map_err(BindFactsError::Query)?;
+        supply
+            .add_body(ast_body, &body.facts)
+            .map_err(BindFactsError::Apply)?;
+        applied.push(AppliedFn {
+            name: name.clone(),
+            sig_hit: sig.hit,
+            body_hit: body.hit,
+            body_version: body.facts.body_version.as_str().to_string(),
+            report: ApplyReport {
+                exprs: body.facts.nodes.len(),
+                bindings: body.facts.bindings.len(),
+            },
+        });
+        sigs.push((name.clone(), sig.facts, sig.hit));
+    }
+
+    let mut resolved = resolve_with_supply(program, capabilities, profile, &supply)
+        .map_err(BindFactsError::Resolve)?;
+
+    // The signature pages are authoritative too: parameters and the result
+    // type are installed (and checked) from the same fact layer.
+    for (name, sig, _) in &sigs {
+        if let Some(rfn) = resolved
+            .fns
+            .iter_mut()
+            .find(|f| &f.name == name && f.owner_rec.is_none())
+        {
+            apply_fn_sig(rfn, sig).map_err(BindFactsError::Apply)?;
+        }
+    }
+    Ok((resolved, applied, supply))
+}

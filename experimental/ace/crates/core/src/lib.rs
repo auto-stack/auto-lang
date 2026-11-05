@@ -249,6 +249,61 @@ pub mod body_work {
     }
 }
 
+/// PLAN-934 T-04: where the types of one body came from.
+///
+/// `synth` counts nodes whose type the resolver's OWN rule produced (the
+/// legacy path); `fact_checks` counts nodes whose type came from the
+/// query's fact supply and was checked against the rule; `fact_missing`
+/// counts nodes the supply did not cover (a bind-stage rejection). A
+/// fact-driven bind must report `synth == 0`.
+pub mod type_synth {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct TypeWork {
+        pub synth: u64,
+        pub fact_checks: u64,
+        pub fact_missing: u64,
+    }
+
+    thread_local! {
+        static COUNTS: RefCell<Option<BTreeMap<String, TypeWork>>> = RefCell::new(None);
+    }
+
+    fn bump(name: &str, f: impl FnOnce(&mut TypeWork)) {
+        COUNTS.with(|c| {
+            if let Some(m) = c.borrow_mut().as_mut() {
+                f(m.entry(name.to_string()).or_default());
+            }
+        });
+    }
+
+    /// The resolver produced this node's type from its own rule.
+    pub fn record_synth(name: &str) {
+        bump(name, |w| w.synth += 1);
+    }
+
+    /// The type came from the fact supply and matched the rule.
+    pub fn record_fact(name: &str) {
+        bump(name, |w| w.fact_checks += 1);
+    }
+
+    /// The fact supply had no type for the node.
+    pub fn record_missing(name: &str) {
+        bump(name, |w| w.fact_missing += 1);
+    }
+
+    /// Run `f` inside a type-work window (nests with the other meters).
+    pub fn capture<T>(f: impl FnOnce() -> T) -> (T, BTreeMap<String, TypeWork>) {
+        let previous = COUNTS.with(|c| c.borrow_mut().replace(BTreeMap::new()));
+        let out = f();
+        let m = COUNTS.with(|c| c.borrow_mut().take()).unwrap_or_default();
+        COUNTS.with(|c| *c.borrow_mut() = previous);
+        (out, m)
+    }
+}
+
 pub const DESCRIPTOR_SCHEMA: &str = include_str!("../schema/core-i32.atom");
 
 /// The versioned scalar descriptor this build accepts (PLAN-767): the

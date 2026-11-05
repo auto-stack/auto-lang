@@ -517,3 +517,46 @@ fn sq18_named_arguments_produce_clean_facts_and_a_distinct_key() {
     let walk_pos = walk_body(body_of(&p2, "main")).unwrap();
     assert_ne!(walk_named.version, walk_pos.version);
 }
+
+// -- T-04: fact-supplied bind (types authoritative during bind) --------
+
+#[test]
+fn sq19_fact_supplied_bind_installs_query_types_and_verifies() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let (resolved, applied, supply) =
+        crate::bind_with_facts(&p, &[], "pkg", "mod", &mut s, SourceProfile::Scalar)
+            .expect("fact-supplied bind");
+    assert_eq!(applied.len(), 2);
+    assert_eq!(supply.admitted_bodies(), 2);
+    assert!(supply.expr_count() >= 5, "all scalar nodes supplied");
+
+    // Every resolved expression type is the QUERY's; nothing was left to
+    // the resolver's own rule (which the meter records as zero on this
+    // path — see the av sq934 checks).
+    for f in &resolved.fns {
+        assert_eq!(f.result, ace_core::source::resolve::VT::I32);
+    }
+    let parts = ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
+        .expect("emit");
+    ace_core::verify::verify_scalar(parts.bundle).expect("fact-bound HIR verifies");
+}
+
+#[test]
+fn sq20_fact_supplied_bind_rejects_a_missing_fact() {
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let facts = s.infer_body(&p, "leaf").expect("leaf facts").facts;
+    let walk = walk_body(body_of(&p, "leaf")).unwrap();
+    facts.admit(&walk).expect("own page");
+
+    // Drop one node fact: the supply no longer covers the body, and the
+    // bind must reject rather than fall back to the resolver's rule.
+    let mut partial = facts.clone();
+    partial.nodes.pop();
+    let mut supply = crate::BodyTypeSupply::new();
+    let err = supply
+        .add_body(body_of(&p, "leaf"), &partial)
+        .expect_err("a partial page must not be admitted");
+    assert!(matches!(err, crate::ApplyError::Facts(_)), "{err:?}");
+}

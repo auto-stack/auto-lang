@@ -1013,6 +1013,7 @@ pub fn resolve_closures_cached(
         capabilities,
         SourceProfile::Closures,
         Some(&mut warm),
+        None,
     )?;
     Ok((
         ResolvedProgram {
@@ -1054,6 +1055,7 @@ pub(crate) fn resolve_closures_env(
         capabilities,
         SourceProfile::Closures,
         Some(&mut warm),
+        None,
     )?;
     Ok((
         CheckedEnv {
@@ -1083,7 +1085,56 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None)?;
+    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None)?;
+    Ok(ResolvedProgram {
+        fns,
+        records,
+        lists: coll.lists,
+        variants: coll.variants,
+        function_types: coll.function_types,
+    })
+}
+
+/// PLAN-934 T-04: the type facts a fact-driven bind installs.
+///
+/// The supply is keyed by the CURRENT source map (span), but spans are not
+/// the fact's identity: the query layer derives this view from a page that
+/// was admitted against the body's STRUCTURAL walk first (body version,
+/// node ids, kinds, coverage). Core treats every returned type as
+/// authoritative and its own rule as the expectation to CHECK — a missing
+/// or mismatching fact is a bind-stage rejection.
+pub trait TypeSupply {
+    /// Type of the expression node at this source span.
+    fn expr_ty(&self, span: Span) -> Option<VT>;
+    /// Type of the `let`/`var` declaration whose statement span is given.
+    fn binding_ty(&self, span: Span) -> Option<VT>;
+}
+
+/// PLAN-934 T-04: bind with the query's facts as the type authority.
+///
+/// Every expression and `let`/`var` type of the finite scalar surface is
+/// taken from `supply`; the resolver's own typing rules become checks
+/// (mismatch/missing fact = `source.fact-mismatch` / `source.fact-missing`
+/// at stage `bind`). No typecheck walk and no post-hoc overwrite runs.
+pub fn resolve_with_supply(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    supply: &dyn TypeSupply,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    if !surface.is_scalar() {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.fact-profile",
+            format!(
+                "fact-supplied binding supports the scalar surface only, not `{}`",
+                surface.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let (fns, records, coll, _) =
+        resolve_detailed(program, capabilities, surface, None, Some(supply))?;
     Ok(ResolvedProgram {
         fns,
         records,
@@ -1146,6 +1197,7 @@ fn resolve_detailed(
     capabilities: &[String],
     surface: SourceProfile,
     mut warm: Option<&mut WarmIo<'_>>,
+    supply: Option<&dyn TypeSupply>,
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -1487,6 +1539,7 @@ fn resolve_detailed(
             &mut closure_fns,
             &mut sites,
             flat.len(),
+            supply,
         ));
         if let (Some(w), Some(fp)) = (warm.as_mut(), text_fp) {
             let lambdas: Vec<ResolvedFn> = closure_fns[lambdas_before..].to_vec();
@@ -2012,7 +2065,7 @@ pub fn resolve_env(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<CheckedEnv, Vec<Diagnostic>> {
-    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None)?;
+    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, None)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
             fns,
@@ -2338,6 +2391,7 @@ pub(crate) fn recheck_swap(
         &mut Vec::new(),
         &mut Vec::new(),
         env.program.fns.len(),
+        None,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -2459,6 +2513,7 @@ pub(crate) fn resolve_lambda_in_context(
             closure_count: site.ordinal,
             lambda_sites: &mut nested_sites,
             reuse: None,
+            supply: None,
         };
         r.lambda_body(params, body, &site.capture_decls, expr.span)
     };
@@ -2645,6 +2700,7 @@ pub(crate) fn resolve_owner_in_env(
         &mut sites,
         env.program.fns.len(),
         Some(&mut reuse),
+        None,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -3363,6 +3419,9 @@ struct FnResolver<'a, 's> {
     lambda_sites: &'a mut Vec<LambdaSiteFacts>,
     /// PLAN-912 T-03: retained lambdas an owner re-resolve may reuse.
     reuse: Option<&'a mut LambdaReuse<'s>>,
+    /// PLAN-934 T-04: the fact supply of a fact-driven bind (`None` = the
+    /// legacy synthetic walk).
+    supply: Option<&'a dyn TypeSupply>,
 }
 
 fn resolve_fn(
@@ -3379,6 +3438,7 @@ fn resolve_fn(
     closure_defs: &mut Vec<ResolvedFn>,
     lambda_sites: &mut Vec<LambdaSiteFacts>,
     closure_base: usize,
+    supply: Option<&dyn TypeSupply>,
 ) -> ResolvedFn {
     resolve_fn_reuse(
         f,
@@ -3395,6 +3455,7 @@ fn resolve_fn(
         lambda_sites,
         closure_base,
         None,
+        supply,
     )
 }
 
@@ -3417,6 +3478,7 @@ fn resolve_fn_reuse<'a, 's>(
     lambda_sites: &'a mut Vec<LambdaSiteFacts>,
     _closure_base: usize,
     reuse: Option<&'a mut LambdaReuse<'s>>,
+    supply: Option<&'a dyn TypeSupply>,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -3451,6 +3513,7 @@ fn resolve_fn_reuse<'a, 's>(
         closure_count: 0,
         lambda_sites,
         reuse,
+        supply,
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -3574,6 +3637,83 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn bind_err(&mut self, code: &str, msg: impl Into<String>, span: Span) {
         self.diags
             .push(Diagnostic::new(Stage::Bind, code, msg, span));
+    }
+
+    /// PLAN-934 T-04: the installed type of one expression node.
+    ///
+    /// Legacy bind: the resolver's own rule produces the type (metered as
+    /// synthesis). Fact-driven bind: the query's fact is authoritative and
+    /// `rule` is only the expectation — a mismatch or a missing fact is a
+    /// BIND-STAGE rejection (before any HIR exists).
+    fn node_ty(&mut self, span: Span, rule: VT) -> VT {
+        match self.supply {
+            None => {
+                crate::type_synth::record_synth(&self.owner_name);
+                rule
+            }
+            Some(s) => match s.expr_ty(span) {
+                Some(vt) => {
+                    crate::type_synth::record_fact(&self.owner_name);
+                    if vt != rule {
+                        self.bind_err(
+                            "source.fact-mismatch",
+                            format!(
+                                "type fact says {} but the binding rule for this node is {}",
+                                vt.as_str(),
+                                rule.as_str()
+                            ),
+                            span,
+                        );
+                    }
+                    vt
+                }
+                None => {
+                    crate::type_synth::record_missing(&self.owner_name);
+                    self.bind_err(
+                        "source.fact-missing",
+                        "no type fact for this expression node",
+                        span,
+                    );
+                    rule
+                }
+            },
+        }
+    }
+
+    /// PLAN-934 T-04: the installed type of one `let`/`var` declaration.
+    fn binding_ty(&mut self, span: Span, rule: VT) -> VT {
+        match self.supply {
+            None => {
+                crate::type_synth::record_synth(&self.owner_name);
+                rule
+            }
+            Some(s) => match s.binding_ty(span) {
+                Some(vt) => {
+                    crate::type_synth::record_fact(&self.owner_name);
+                    if vt != rule {
+                        self.bind_err(
+                            "source.fact-mismatch",
+                            format!(
+                                "binding fact says {} but the declaration's rule is {}",
+                                vt.as_str(),
+                                rule.as_str()
+                            ),
+                            span,
+                        );
+                    }
+                    vt
+                }
+                None => {
+                    crate::type_synth::record_missing(&self.owner_name);
+                    self.bind_err(
+                        "source.fact-missing",
+                        "no binding fact for this declaration",
+                        span,
+                    );
+                    rule
+                }
+            },
+        }
     }
 
     fn lookup(&self, name: &str) -> Option<LocalRef> {
@@ -4763,11 +4903,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                         None => None,
                     };
                     let mut value = self.expr_with_expect(value, ann_vt);
-                    let vt = match ann_vt {
+                    let rule = match ann_vt {
                         Some(v) => v,
                         None => value.vt,
                     };
-                    retag_literal(&mut value, vt);
+                    retag_literal(&mut value, rule);
+                    let vt = self.binding_ty(*span, rule);
                     if self.scopes.last().unwrap().names.contains_key(&name.name) {
                         self.bind_err(
                             "source.duplicate",
@@ -5496,16 +5637,22 @@ impl<'a, 's> FnResolver<'a, 's> {
                     kind: RExprKind::IntLit(0),
                 }
             }
-            ExprKind::IntLit(v) => ResolvedExpr {
-                span: e.span,
-                vt: VT::I32,
-                kind: RExprKind::IntLit(*v),
-            },
-            ExprKind::BoolLit(v) => ResolvedExpr {
-                span: e.span,
-                vt: VT::Bool,
-                kind: RExprKind::BoolLit(*v),
-            },
+            ExprKind::IntLit(v) => {
+                let vt = self.node_ty(e.span, VT::I32);
+                ResolvedExpr {
+                    span: e.span,
+                    vt,
+                    kind: RExprKind::IntLit(*v),
+                }
+            }
+            ExprKind::BoolLit(v) => {
+                let vt = self.node_ty(e.span, VT::Bool);
+                ResolvedExpr {
+                    span: e.span,
+                    vt,
+                    kind: RExprKind::BoolLit(*v),
+                }
+            }
             ExprKind::Var(id) => match self.lookup(&id.name) {
                 Some(l) => {
                     if self.moved_locals.contains(&l) {
@@ -5528,9 +5675,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                             id.span,
                         );
                     }
+                    let rule = self.locals[l.0].vt;
+                    let vt = self.node_ty(e.span, rule);
                     ResolvedExpr {
                         span: e.span,
-                        vt: self.locals[l.0].vt,
+                        vt,
                         kind: RExprKind::ReadLocal(l),
                     }
                 }
@@ -7172,6 +7321,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     } else {
                         vt
                     };
+                    let vt = self.node_ty(span, vt);
                     out[dest] = ResolvedExpr {
                         span,
                         vt,
@@ -7193,6 +7343,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         UnaryOp::Neg => VT::I32,
                         UnaryOp::Not => VT::Bool,
                     };
+                    let vt = self.node_ty(span, vt);
                     out[dest] = ResolvedExpr {
                         span,
                         vt,
@@ -7572,7 +7723,7 @@ impl<'a, 's> FnResolver<'a, 's> {
             );
             return ResolvedExpr {
                 span: call_span,
-                vt: sig.result,
+                vt: self.node_ty(call_span, sig.result),
                 kind: RExprKind::CallFn {
                     fn_index: sig.index,
                     args: rargs,
@@ -7604,7 +7755,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 self.used_intrinsics.insert(symbol);
                 return ResolvedExpr {
                     span: call_span,
-                    vt: VT::I32,
+                    vt: self.node_ty(call_span, VT::I32),
                     kind: RExprKind::CallIntrinsic {
                         symbol,
                         args: Vec::new(),

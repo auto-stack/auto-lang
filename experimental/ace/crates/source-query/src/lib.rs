@@ -46,8 +46,8 @@ pub mod walk;
 mod tests;
 
 pub use apply::{
-    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, AppliedFn, ApplyError, ApplyReport,
-    FactsApplyError,
+    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, bind_with_facts, AppliedFn, ApplyError,
+    ApplyReport, BindFactsError, BodyTypeSupply, FactsApplyError,
 };
 
 pub use catalog::SignatureCatalog;

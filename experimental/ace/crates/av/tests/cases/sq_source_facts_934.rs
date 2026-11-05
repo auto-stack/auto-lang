@@ -17,13 +17,15 @@ use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value, AV_PROFILE};
 use ace_av_core::{abc_verify, decode_abc, encode_abc};
 use ace_core::body_work;
+use ace_core::source::resolve::resolve_with_supply;
 use ace_core::source::{
     compile_scalar_source, emit_resolved_parts, parse_program_with, resolve_with, SourceProfile,
 };
 use ace_core::verify::{verify_scalar, CheckedModule};
+use ace_core::type_synth::TypeWork;
 use ace_source_query::{
-    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, AppliedFn, FactsApplyError,
-    InferBodyFacts, SourceQuerySession,
+    apply_body_facts, bind_with_facts, AppliedFn, BodyTypeSupply, FactsApplyError, InferBodyFacts,
+    PortableTy, SourceQuerySession,
 };
 use std::collections::BTreeMap;
 
@@ -34,28 +36,42 @@ struct Prepared {
     applied: Vec<AppliedFn>,
     checked: CheckedModule,
     work: BTreeMap<String, body_work::BodyWork>,
+    type_work: BTreeMap<String, TypeWork>,
 }
 
 /// The whole fact-driven preparation inside ONE body-work window, so the
-/// recorded producer counts belong to exactly this path.
+/// recorded producer counts belong to exactly this path. The type-work
+/// window nests inside it and records where each body's types came from.
 fn prepare(src: &str, session: &mut SourceQuerySession) -> Result<Prepared, String> {
     let (out, work) = body_work::capture_body_work(|| {
-        let program = parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.message)?;
-        let mut resolved = resolve_with(&program, &[], SourceProfile::Scalar)
-            .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
-        let applied =
-            apply_facts_to_resolved(&program, &mut resolved, session).map_err(|e| e.to_string())?;
-        let parts = emit_resolved_parts(&resolved, src, "sq934.at", SourceProfile::Scalar)
-            .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
-        let checked = verify_scalar(parts.bundle)
-            .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
-        Ok::<_, String>((applied, checked))
+        let (inner, type_work) = ace_core::type_synth::capture(
+            || -> Result<(Vec<AppliedFn>, CheckedModule), String> {
+                let program =
+                    parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.message)?;
+                let (resolved, applied, _supply) = bind_with_facts(
+                    &program,
+                    &[],
+                    "sq934",
+                    "main",
+                    session,
+                    SourceProfile::Scalar,
+                )
+                .map_err(|e| e.to_string())?;
+                let parts = emit_resolved_parts(&resolved, src, "sq934.at", SourceProfile::Scalar)
+                    .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
+                let checked = verify_scalar(parts.bundle)
+                    .map_err(|ds| ds.first().map(|d| d.message.clone()).unwrap_or_default())?;
+                Ok((applied, checked))
+            },
+        );
+        inner.map(|(applied, checked)| (applied, checked, type_work))
     });
-    let (applied, checked) = out?;
+    let (applied, checked, type_work) = out?;
     Ok(Prepared {
         applied,
         checked,
         work,
+        type_work,
     })
 }
 
@@ -89,6 +105,15 @@ fn sq934_scalar_source_runs_from_query_facts_without_legacy_typecheck() {
         assert_eq!(w.typecheck, 0, "{name}: legacy typecheck must not run");
         assert!(w.resolve >= 1, "{name}: binding still runs and is metered");
         assert!(w.plan >= 1, "{name}: the emitter still plans the body");
+        // PLAN-934 T-04: the types came from the fact supply, never from
+        // the resolver's own synthesis.
+        let tw = prep.type_work.get(name).expect("type work recorded");
+        assert_eq!(tw.synth, 0, "{name}: no legacy synthesis on the fact path");
+        assert!(
+            tw.fact_checks > 0,
+            "{name}: every node's type was supplied and checked"
+        );
+        assert_eq!(tw.fact_missing, 0);
     }
 
     // The real value, through HIR verify → MIR → ABC → execution.
@@ -98,10 +123,18 @@ fn sq934_scalar_source_runs_from_query_facts_without_legacy_typecheck() {
 #[test]
 fn sq934_legacy_entry_is_the_metering_control() {
     let (out, work) = body_work::capture_body_work(|| {
-        compile_scalar_source(SRC, "sq934.at", &[]).expect("legacy scalar compile")
+        let (compiled, type_work) = ace_core::type_synth::capture(|| {
+            compile_scalar_source(SRC, "sq934.at", &[]).expect("legacy scalar compile")
+        });
+        (compiled, type_work)
     });
+    let (out, type_work) = out;
     assert_eq!(work.get("leaf").map(|w| w.typecheck), Some(1));
     assert_eq!(work.get("main").map(|w| w.typecheck), Some(1));
+    // The SAME window on the legacy entry records real synthesis, so the
+    // fact path's zero is an observation, not a dead counter.
+    assert!(type_work.get("leaf").map(|w| w.synth).unwrap_or(0) > 0);
+    assert!(type_work.get("main").map(|w| w.synth).unwrap_or(0) > 0);
     assert_eq!(run_value(&out.checked), Value::I32(42));
 }
 
@@ -149,19 +182,10 @@ fn sq934_warm_hit_with_solver_disabled_is_green() {
 fn sq934_tampered_fact_type_fails_the_real_compile() {
     let src = SRC;
     let program = parse_program_with(src, SourceProfile::Scalar).expect("parse");
-    let mut resolved = resolve_with(&program, &[], SourceProfile::Scalar).expect("bind");
     let mut session = SourceQuerySession::new("sq934", "main");
+    let mut supply = BodyTypeSupply::new();
 
     for name in ["leaf", "main"] {
-        let sig = session.fn_sig(&program, name).expect("sig").facts;
-        let rfn = resolved
-            .fns
-            .iter_mut()
-            .find(|f| f.name == name)
-            .expect("bound fn");
-        apply_fn_sig(rfn, &sig).expect("sig applies");
-
-        let body = session.infer_body(&program, name).expect("body");
         let ast_body = program
             .items
             .iter()
@@ -170,33 +194,31 @@ fn sq934_tampered_fact_type_fails_the_real_compile() {
                 _ => None,
             })
             .expect("ast body");
-
-        let mut facts: InferBodyFacts = body.facts;
+        let mut facts: InferBodyFacts = session.infer_body(&program, name).expect("body").facts;
         if name == "leaf" {
             // The body's return value is the binary node: claim it is bool
             // while the declared result is int. Structural identity still
-            // matches, so only the REAL compile can catch it.
+            // matches, so only core's own check can catch it.
             let binary = facts
                 .nodes
                 .iter_mut()
                 .find(|n| n.kind == "expr.binary")
                 .expect("binary fact");
-            binary.ty = ace_source_query::PortableTy::Bool;
+            binary.ty = PortableTy::Bool;
         }
-        let rfn = resolved
-            .fns
-            .iter_mut()
-            .find(|f| f.name == name)
-            .expect("bound fn");
-        apply_body_facts(ast_body, rfn, &facts).expect("shape-valid facts install");
+        supply
+            .add_body(ast_body, &facts)
+            .expect("shape-valid page admits");
     }
 
-    let parts = emit_resolved_parts(&resolved, src, "sq934.at", SourceProfile::Scalar)
-        .expect("emission itself succeeds");
-    let err = verify_scalar(parts.bundle).expect_err("the real compile must reject a bool return");
+    // PLAN-934 T-04: the bad fact is rejected at BIND, before any HIR.
+    let err = match resolve_with_supply(&program, &[], SourceProfile::Scalar, &supply) {
+        Ok(_) => panic!("a bool fact on an i32 node must fail the bind"),
+        Err(e) => e,
+    };
     assert!(
-        err.iter().any(|d| d.code.contains("type")),
-        "expected a type diagnostic, got {:?}",
+        err.iter().any(|d| d.code == "source.fact-mismatch"),
+        "expected a bind-stage fact mismatch, got {:?}",
         err.iter().map(|d| (&d.code, &d.message)).collect::<Vec<_>>()
     );
 }
