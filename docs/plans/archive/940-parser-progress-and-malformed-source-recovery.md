@@ -1,16 +1,16 @@
 ---
 plan_id: PLAN-940
-status: reviewed
+status: archived
 feature_name: 解析推进性与坏源受控拒绝及恢复收口
 author: [Codex]
 created_at: 2026-11-05
 updated_at: 2026-11-06
 plan_revision: 1
-current_step: 4
+current_step: 6
 total_steps: 7
 depends_on: [auto-ui/PLAN-042, PLAN-900, PLAN-906]
-supersedes_spec_components: [docs/specs/auto-parser-api/project.md]
-new_spec_components: [docs/specs/auto-parser-api/progress-and-rejection.md]
+supersedes_spec_components: []
+new_spec_components: [docs/specs/auto-parser-api/progress-and-rejection.md, auto-ui:docs/specs/runtime/reload-readiness-and-lifecycle.md]
 touched_goals: []
 affects: [parser-core, parser-domain-api, auto-ui-dialect-consumer]
 ---
@@ -99,8 +99,8 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 | T-03 | [x] 永久合法/坏源/恢复反例与有界资源记录，补UI真实消费保旧→合法恢复（语言 parser::tests 4 例：截断/前缀扫/parse_domain 恢复/None 回滚；UI regression/parser_eof_progress 7 例：12 形态/前缀扫/语义读回/下一份合法/两声明/checkpoint/混合源；runtime plan042 t02b 截断保旧 count=11→合法恢复） | T-02；AC-01..04 | work |
 | T-04 | [x] 跑完整受影响parser/领域consumer职责，健康/遗漏扫描与SD草案，冻结work源（`cargo t parser` 149/149（145存量+4新）；auto-ui-dialect 全套 102/102；plan042 t02 族 26/26；探针修复后 16/16 受控；新告警 0、新行 fmt 干净、无调试残留；端口未改 → 三个 modularity consumer 不触发；SD 草案=§5 表；冻结 commit：auto-ui d99a36b8 / auto-lang 928ca15db） | T-03；AC-01..04 | work |
 | T-05 | [x] 独立上下文final review逐AC/反控/资源分类，finding返work（final pass，见 §9 R2 复审记录；finding 0） | T-04；AC-05 | review |
-| T-06 | 冻结必要职责并集，依赖序真实合入、canonical读回与归档 | T-05；AC-06 | merge |
-| T-07 | 输出/进程/设置/登记对账，guard后删树与scope，摘要折Plan | T-06；AC-07 | merge |
+| T-06 | [x] 冻结必要职责并集，依赖序真实合入、canonical读回与归档（冻结门 parser 149/149+UI 102/102+26/26 绑定交付基线；rebase range-diff 全等价；两仓 ff-only 合入 lang ec4fb9368/ui eff9ece3；canonical 读回+main 冒烟 4/4；本文件 git mv 归档） | T-05；AC-06 | merge |
+| T-07 | [ ] 输出/进程/设置/登记对账，guard后删树与scope，摘要折Plan | T-06；AC-07 | merge |
 
 ## 9. 复审记录
 
@@ -134,6 +134,17 @@ T-01..T-04 已完成（work 阶段，证据见 §9 与各任务行）；T-05..T-
 **SD 裁定**：SD-01（新增 docs/specs/auto-parser-api/progress-and-rejection.md）**有效**——内容为现行合同（Core EOF/推进/有界诊断保证 + 方言作者推进不变量义务：advance 不越过 EOF、cur_text()=""、收集循环必须 EOF 守卫、`if EOF { expect(closer)? }` 惯例、UI042 病理动机），merge 落盘；SD-02（modify project.md）**零差额记理由不造改动**（§5 明示路径：语言端口行为零变化，现文 841/842 合同仍准确，语言侧仅增控制测试）——frontmatter `supersedes_spec_components` 由 merge 按"零差额理由"处置；SD-03（modify auto-ui reload-readiness-and-lifecycle.md §7）**有效**——具名缺口"parser 病理分配"关闭 + owner 纠正（实为 auto-ui 方言文法循环，非 auto-lang parser）+ t02b 交付记录，auto-ui 仓 merge 时落盘。
 
 **pending_closeout_gates**（merge-owned）：统一回归批量档（`cargo t all` 到期程序门，主检出单实例）；SD-01/SD-03 落盘与读回；归档/清树/scope 删除。findings：无。
+
+---
+
+2026-11-06 / stage:merge / PLAN-940:r1 / outcome:pass（分检查点记录；completion_kind: delivered）
+
+- **prepared**：reviewed 基线 lang 928ca15db·ui d99a36b8（r1 final pass 绑定，两树 clean）；canonical Spec diff=SD-01 新增 `docs/specs/auto-parser-api/progress-and-rejection.md`（37行）+ SD-03 修改 auto-ui `docs/specs/runtime/reload-readiness-and-lifecycle.md` §7（+11/-5）；SD-02 零差额记理由（review 裁定，frontmatter supersedes 清空）；docs-only 后裔 commit lang 8630cc8f3·ui ce08bbde，实现/依赖零变化。冻结门绑定交付基线：`cargo t parser` PASS 149/149 wall 86.9s（run-18cnp0hx）+ auto-ui-dialect 102/102 + t02 族 26/26。
+- **landed**：rebase 后 range-diff 全等价（lang 928ca15db=34e539500、8630cc8f3=ec4fb9368；ui d99a36b8=ad83bac3、ce08bbde=eff9ece3——ui 侧 base 前移为 master 新进的 059/064 四 commit，无冲突、本包文件无交集）；两仓 `git merge --ff-only` 成功零合并提交：**lang master tip=ec4fb9368**、**ui master tip=eff9ece3**（即交付 commit）。rebase 后基线复跑：ui dialect 102/102 + t02 26/26 于 eff9ece3；lang 门内容等价（range-diff，master 增量仅 docs/plans 簿记）。
+- **canonical_verified**：master `git show` 读回——progress-and-rejection.md 在 master（blob 36b0d1ad，内容 sha256 dda0fcc5…）；auto-ui reload spec §7 含"已关闭，PLAN-940"且由 eff9ece3 落盘。main 冒烟：`cargo test -p auto-lang-core --lib parser::tests::plan940` 4/4。
+- **archived**：本文件 git mv 至 `docs/plans/archive/`，status: archived，docs 提交入库（见下方 commit）。
+- **观测项（产物时效）**：auto-lang/auto-ui 为库/工具链仓，本工作流不拥有常驻 backend 二进制或 web bundle 部署面（auto-musk 教训不适用）；下游应用下次构建即取修复。无进程/设置残留（探针均被监督器终止，无长驻进程）。
+- **cleaned**：（清理完成后追加）
 
 ## 10. 待澄清事项
 
