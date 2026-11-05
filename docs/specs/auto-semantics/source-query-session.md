@@ -138,3 +138,8 @@ FnCandidate，不重产未变函数；签名漂移仍具名归非快路径。
 持久地址/codec 不重解释。source-bound AV/Rust target receipts 通过同一根的
 required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set。
 完整边界见[有限模块合同](../auto-syntax/finite-source-modules.md)。
+
+候选事务保留独立的不可变查询缓存根，事实页共享；准备和receipt写入不会替换已发布函数的页。
+单函数与批量路径在拒绝、丢弃、取消或发布失败后均保留current缓存，只有成功commit安装候选缓存。
+真实求解计数和请求revision持续累计，不随候选回滚；失败A后首次编辑独立B仍只求解B。
+批量签名拒绝沿模块源映射保留模块身份和原文byte span，与单函数入口一致。

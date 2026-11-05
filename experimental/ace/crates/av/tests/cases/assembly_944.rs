@@ -918,3 +918,231 @@ fn provider_bytes_are_owner_and_consumer_scoped_and_restored_first_edit_executes
     })
     .unwrap();
 }
+
+#[test]
+fn speculative_owner_never_evicts_current_facts_before_an_independent_first_edit() {
+    use super::module_sources_950::rust_value;
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::ModuleA2xTarget;
+    use ace_source_query::assembly::AssemblyHost;
+    for failure in ["cancel", "drop", "signature", "target", "sql"] {
+        let temp = Temp::new();
+        let path = temp.0.join("store");
+        let inputs = vec![
+            ModuleInput {
+                id: "app".into(),
+                source: "fn main() int { return 7 }".into(),
+            },
+            ModuleInput {
+                id: "std".into(),
+                source: "pub fn unused() int { return 42 }".into(),
+            },
+        ];
+        let caps = vec![SCALAR_MODULES.into()];
+        let bound = bind_modules(&inputs, "app", &caps, B).unwrap();
+        let semantic = SemanticAssembly {
+            profile: SCALAR_MODULES.into(),
+            host: ASSEMBLY_HOST.into(),
+            platform: ASSEMBLY_PLATFORM.into(),
+            sources: source_inputs(&bound),
+            references: vec![],
+            declarations: [("app", "main"), ("std", "unused")]
+                .into_iter()
+                .map(|(module, symbol)| Declaration {
+                    module: module.into(),
+                    symbol: symbol.into(),
+                    semantic_version: 1,
+                    signature: Signature {
+                        parameters: vec![],
+                        modes: vec![],
+                        returns: "i32".into(),
+                    },
+                    requirements: vec![],
+                })
+                .collect(),
+        };
+        let a = Manifest::freeze(semantic, assembly_consumer(vec![])).unwrap();
+        let mut query = SourceQuerySession::new("pkg", "app");
+        let product = compile_assembly_product(&inputs, "app", &caps, &a, &mut query, B).unwrap();
+        let r = Manifest::freeze(
+            a.semantic().clone(),
+            ModuleA2xTarget::consumer_for_product(&product, &RustTargetProvider::v1(), vec![])
+                .unwrap(),
+        )
+        .unwrap();
+        let av = ModuleAvTarget::cold_assembly(&path, &product, &a).unwrap();
+        let rust = ModuleA2xTarget::cold_assembly(
+            &path,
+            "retry944",
+            "pkg",
+            256 * 1024 * 1024,
+            RustTargetProvider::v1(),
+            &product,
+            &r,
+        )
+        .unwrap();
+        let source = ModuleSession::from_product(&product, query).unwrap();
+        let mut host = AssemblyHost::publish_initial(
+            source,
+            ModuleStore::open(&path, "retry944").unwrap(),
+            av,
+            rust,
+        )
+        .unwrap();
+        let factory = |bound: &ace_core::source::modules::BoundModules| {
+            let mut semantic = a.semantic().clone();
+            semantic.sources = source_inputs(bound);
+            Ok((
+                Manifest::freeze(semantic.clone(), a.consumer().clone())?,
+                Manifest::freeze(semantic, r.consumer().clone())?,
+            ))
+        };
+        let old = host.receipt().clone();
+        let old_av = host.targets().0.current().clone();
+        let old_files = host.targets().1.current().files.clone();
+        match failure {
+            "signature" => {
+                let error = host
+                    .prepare(
+                        Some(("std", "unused", "pub fn unused() bool { return true }")),
+                        B,
+                        |bound| {
+                            let mut semantic = a.semantic().clone();
+                            semantic.sources = source_inputs(bound);
+                            semantic
+                                .declarations
+                                .iter_mut()
+                                .find(|d| d.module == "std")
+                                .unwrap()
+                                .signature
+                                .returns = "bool".into();
+                            Ok((
+                                Manifest::freeze(semantic.clone(), a.consumer().clone())?,
+                                Manifest::freeze(semantic, r.consumer().clone())?,
+                            ))
+                        },
+                    )
+                    .err()
+                    .expect("signature fast path must reject");
+                assert!(
+                    error.contains("ModuleDiagnostic { module: \"std\"")
+                        && error.contains("Span { start: 7, end: 13 }"),
+                    "{error}"
+                );
+            }
+            "target" => {
+                let error = host
+                    .prepare(
+                        Some(("std", "unused", "pub fn unused() int { return 43 }")),
+                        B,
+                        |bound| {
+                            let (a, r) = factory(bound)?;
+                            let mut consumer = a.consumer().clone();
+                            consumer.runtime = "stale-runtime".into();
+                            Ok((Manifest::freeze(a.semantic().clone(), consumer)?, r))
+                        },
+                    )
+                    .err()
+                    .expect("target identity must reject");
+                assert!(!error.is_empty());
+            }
+            _ => {
+                let candidate = host
+                    .prepare(
+                        Some(("std", "unused", "pub fn unused() int { return 43 }")),
+                        B,
+                        &factory,
+                    )
+                    .unwrap();
+                match failure {
+                    "cancel" => assert!(host.publish(candidate, true).is_err()),
+                    "drop" => drop(candidate),
+                    "sql" => {
+                        let managed = ace_artifacts::store::ManagedStore::open(&path).unwrap();
+                        managed.db().execute_batch("CREATE TRIGGER fail_retry944 BEFORE DELETE ON roots WHEN OLD.kind='source-modules-current' BEGIN SELECT RAISE(ABORT,'retry944 failure'); END;").unwrap();
+                        assert!(host
+                            .publish(candidate, false)
+                            .unwrap_err()
+                            .contains("retry944 failure"));
+                        managed
+                            .db()
+                            .execute_batch("DROP TRIGGER fail_retry944")
+                            .unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+        assert_eq!(host.receipt(), &old);
+        assert!(Arc::ptr_eq(host.targets().0.current(), &old_av));
+        assert_eq!(host.targets().1.current().files, old_files);
+        assert_eq!(
+            host.targets().0.run_authorized(&mut |_, _| Ok(())).unwrap(),
+            7
+        );
+        let solver = host.source().query.counters().solver_runs;
+        let lower = host.targets().0.lowered;
+        let (rust_lower, rust_print) = (
+            host.targets().1.stats().lower,
+            host.targets().1.stats().print,
+        );
+        let candidate = host
+            .prepare(
+                Some(("app", "main", "fn main() int { return 8 }")),
+                B,
+                &factory,
+            )
+            .unwrap_or_else(|e| panic!("{failure}: {e}"));
+        assert_eq!(
+            host.source().query.counters().solver_runs - solver,
+            1,
+            "{failure}: only main may solve; unused std stays current"
+        );
+        assert_eq!(host.targets().0.lowered - lower, 1, "{failure}");
+        assert_eq!(host.targets().1.stats().lower - rust_lower, 1, "{failure}");
+        assert_eq!(host.targets().1.stats().print - rust_print, 1, "{failure}");
+        host.publish(candidate, false).unwrap();
+        let current = host.receipt().clone();
+        let updated = host
+            .source()
+            .bound
+            .segments
+            .iter()
+            .map(|s| ModuleInput {
+                id: s.module.clone(),
+                source: s.source.clone(),
+            })
+            .collect::<Vec<_>>();
+        let (a, r) = factory(&host.source().bound).unwrap();
+        let contexts = manifest_contexts(&host.source().bound, &a).unwrap();
+        drop(host);
+        let store = ModuleStore::open(&path, "retry944").unwrap();
+        let recovery = store
+            .restore_with_contexts(&current, &updated, "app", &caps, "pkg", "app", B, &contexts)
+            .unwrap();
+        assert_eq!(recovery.session.counters().solver_runs, 0);
+        let av =
+            ModuleAvTarget::restore_assembly(&path, &recovery.targets["av"], &recovery.bound, &a)
+                .unwrap();
+        let rust = ModuleA2xTarget::restore_assembly(
+            &path,
+            "retry944",
+            "pkg",
+            256 * 1024 * 1024,
+            RustTargetProvider::v1(),
+            &recovery.targets["a2x-rust"],
+            &recovery.bound,
+            &r,
+        )
+        .unwrap();
+        assert_eq!(av.lowered, 0);
+        assert_eq!(rust.stats().lower, 0);
+        assert_eq!(rust.stats().print, 0);
+        assert_eq!(av.run_authorized(&mut |_, _| Ok(())).unwrap(), 8);
+        rust.run_authorized(&mut |_, _| Ok(()), |a| {
+            rust_value(a, &temp.0.join("restored"), 8);
+            Ok(())
+        })
+        .unwrap();
+    }
+}

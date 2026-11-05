@@ -1,5 +1,6 @@
 //! Retained module source context and the existing single-body transaction.
 use super::*;
+use crate::session::QueryCacheCheckpoint;
 use ace_core::source::ast::Item;
 use ace_core::source::modules::edit_module_function;
 use ace_core::source::resolve::{reanchor_env_declarations, CheckedEnv};
@@ -16,6 +17,7 @@ pub struct ModuleSession {
     pub targets: std::collections::BTreeMap<String, ModuleReceipt>,
 }
 pub struct PreparedModuleEdit {
+    cache: QueryCacheCheckpoint,
     base_source: String,
     pub bound: BoundModules,
     pub owner: String,
@@ -27,6 +29,7 @@ pub struct PreparedModuleBody {
     pub candidate: FnCandidate,
 }
 pub struct PreparedModuleBatch {
+    cache: QueryCacheCheckpoint,
     pub base_source: String,
     pub bound: Rc<BoundModules>,
     pub bodies: Vec<PreparedModuleBody>,
@@ -83,6 +86,7 @@ impl ModuleSession {
         contexts: BTreeMap<String, String>,
         physical_owners: &BTreeSet<String>,
     ) -> Result<PreparedModuleBatch, String> {
+        let current_cache = self.query.cache_checkpoint();
         let old_contexts = self.query.declaration_contexts().clone();
         self.query
             .set_declaration_contexts(&bound.program, contexts.clone())
@@ -132,11 +136,18 @@ impl ModuleSession {
                     .add_body(&item.body, &page.facts)
                     .map_err(|e| e.to_string())?;
                 let candidate =
-                    prepare_module_candidate(&mut self.env, item, index, &bound, &supply)
-                        .map_err(|e| format!("{e:?}"))?;
+                    prepare_module_candidate(&mut self.env, item, index, &bound, &supply).map_err(
+                        |ds| {
+                            format!(
+                                "{:?}",
+                                ds.into_iter().map(|d| bound.locate(d)).collect::<Vec<_>>()
+                            )
+                        },
+                    )?;
                 bodies.push(PreparedModuleBody { owner, candidate });
             }
             Ok(PreparedModuleBatch {
+                cache: self.query.cache_checkpoint(),
                 base_source: self.bound.input_hash.clone(),
                 bound,
                 bodies,
@@ -145,12 +156,9 @@ impl ModuleSession {
                 edited_owner,
             })
         })();
-        // Candidate preparation never changes the live contract. Cached pages
-        // may contain candidate results; ordinary keys/read checks keep those
-        // from being used against the old inputs after rejection.
-        self.query
-            .set_declaration_contexts(&self.bound.program, old_contexts)
-            .map_err(|e| e.to_string())?;
+        // Speculation owns separate immutable cache roots. Rejected/dropped
+        // candidates cannot evict the published owners' facts.
+        self.query.restore_cache(current_cache);
         result
     }
 
@@ -178,15 +186,11 @@ impl ModuleSession {
         targets: BTreeMap<String, ModuleReceipt>,
     ) -> Result<ModuleReceipt, String> {
         self.validate_batch(batch)?;
-        let current = self.query.declaration_contexts().clone();
-        self.query
-            .set_declaration_contexts(&batch.bound.program, batch.contexts.clone())
-            .map_err(|e| e.to_string())?;
+        let current = self.query.cache_checkpoint();
+        self.query.restore_cache(batch.cache.clone());
         let result =
             store.prepare_context_targets(&batch.bound, &mut self.query, &self.env, &targets);
-        self.query
-            .set_declaration_contexts(&self.bound.program, current)
-            .map_err(|e| e.to_string())?;
+        self.query.restore_cache(current);
         let receipt = result?;
         batch.targets = targets;
         Ok(receipt)
@@ -194,10 +198,6 @@ impl ModuleSession {
 
     pub fn commit_batch(&mut self, batch: PreparedModuleBatch) -> Result<(), String> {
         self.validate_batch(&batch)?;
-        // Validate the new catalog before the infallible body swaps.
-        self.query
-            .set_declaration_contexts(&batch.bound.program, batch.contexts)
-            .map_err(|e| e.to_string())?;
         FnCandidate::commit_batch(
             batch.bodies.into_iter().map(|b| b.candidate).collect(),
             &mut self.env,
@@ -205,6 +205,7 @@ impl ModuleSession {
         .map_err(|e| format!("{e:?}"))?;
         reanchor_env_declarations(&mut self.env, &batch.bound.program)
             .map_err(|e| format!("{e:?}"))?;
+        self.query.restore_cache(batch.cache);
         self.bound = batch.bound;
         self.targets = batch.targets;
         Ok(())
@@ -250,43 +251,49 @@ impl ModuleSession {
             .find(|(_, origin)| origin.0 == module && origin.1 == name)
             .map(|(n, _)| n.clone())
             .ok_or("module edit owner absent")?;
-        let item = bound
-            .program
-            .items
-            .iter()
-            .find_map(|i| match i {
-                Item::Fn(f) if f.name.name == owner => Some(f),
-                _ => None,
-            })
-            .ok_or("module edit item absent")?;
-        let index =
-            env_free_fn_index(&self.env, &owner).ok_or("module edit environment owner absent")?;
-        let page = self
-            .query
-            .infer_body(&bound.program, &owner)
-            .map_err(|e| e.to_string())?;
-        let mut supply = BodyTypeSupply::new();
-        let ds = fact_diagnostics(&bound, &item.body, &page.facts);
-        if !ds.is_empty() {
-            return Err(format!("{ds:?}"));
-        }
-        supply
-            .add_body(&item.body, &page.facts)
-            .map_err(|e| e.to_string())?;
-        let candidate = prepare_module_candidate(&mut self.env, item, index, &bound, &supply)
-            .map_err(|ds| {
+        let current = self.query.cache_checkpoint();
+        let result = (|| {
+            let item = bound
+                .program
+                .items
+                .iter()
+                .find_map(|i| match i {
+                    Item::Fn(f) if f.name.name == owner => Some(f),
+                    _ => None,
+                })
+                .ok_or("module edit item absent")?;
+            let index = env_free_fn_index(&self.env, &owner)
+                .ok_or("module edit environment owner absent")?;
+            let page = self
+                .query
+                .infer_body(&bound.program, &owner)
+                .map_err(|e| e.to_string())?;
+            let mut supply = BodyTypeSupply::new();
+            let ds = fact_diagnostics(&bound, &item.body, &page.facts);
+            if !ds.is_empty() {
+                return Err(format!("{ds:?}"));
+            }
+            supply
+                .add_body(&item.body, &page.facts)
+                .map_err(|e| e.to_string())?;
+            let candidate = prepare_module_candidate(&mut self.env, item, index, &bound, &supply)
+                .map_err(|ds| {
                 format!(
                     "{:?}",
                     ds.into_iter().map(|d| bound.locate(d)).collect::<Vec<_>>()
                 )
             })?;
-        Ok(PreparedModuleEdit {
-            base_source: self.bound.input_hash.clone(),
-            bound,
-            owner,
-            candidate,
-            targets: self.targets.clone(),
-        })
+            Ok(PreparedModuleEdit {
+                cache: self.query.cache_checkpoint(),
+                base_source: self.bound.input_hash.clone(),
+                bound,
+                owner,
+                candidate,
+                targets: self.targets.clone(),
+            })
+        })();
+        self.query.restore_cache(current);
+        result
     }
     pub fn prepare_receipt(
         &mut self,
@@ -296,7 +303,12 @@ impl ModuleSession {
         edit.candidate
             .validate(&self.env)
             .map_err(|e| format!("{e:?}"))?;
-        store.prepare_context_targets(&edit.bound, &mut self.query, &self.env, &edit.targets)
+        let current = self.query.cache_checkpoint();
+        self.query.restore_cache(edit.cache.clone());
+        let result =
+            store.prepare_context_targets(&edit.bound, &mut self.query, &self.env, &edit.targets);
+        self.query.restore_cache(current);
+        result
     }
     pub fn prepare_current_receipt(
         &mut self,
@@ -312,8 +324,12 @@ impl ModuleSession {
         targets: std::collections::BTreeMap<String, ModuleReceipt>,
     ) -> Result<ModuleReceipt, String> {
         self.validate(edit)?;
-        let root =
-            store.prepare_context_targets(&edit.bound, &mut self.query, &self.env, &targets)?;
+        let current = self.query.cache_checkpoint();
+        self.query.restore_cache(edit.cache.clone());
+        let result =
+            store.prepare_context_targets(&edit.bound, &mut self.query, &self.env, &targets);
+        self.query.restore_cache(current);
+        let root = result?;
         edit.targets = targets;
         Ok(root)
     }
@@ -331,6 +347,7 @@ impl ModuleSession {
             .map_err(|e| format!("{e:?}"))?;
         reanchor_env_declarations(&mut self.env, &edit.bound.program)
             .map_err(|e| format!("{e:?}"))?;
+        self.query.restore_cache(edit.cache);
         self.bound = Rc::new(edit.bound);
         self.targets = edit.targets;
         Ok(())

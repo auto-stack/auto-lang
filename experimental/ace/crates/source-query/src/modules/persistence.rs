@@ -1365,4 +1365,104 @@ mod tests {
             )
             .is_ok());
     }
+    #[test]
+    fn single_candidate_receipts_and_rejections_preserve_other_current_owners() {
+        for reject in [false, true] {
+            let temp = Temp::new();
+            let mut source = inputs(42);
+            source[0].source.push_str(" fn helper() int { return 9 }");
+            let mut query = SourceQuerySession::new("pkg", "app");
+            let product = build(&source, &mut query);
+            let mut store = ModuleStore::open(&temp.0, "single-cache").unwrap();
+            let old = store.prepare(&product, &mut query, "app", &caps()).unwrap();
+            store.publish(&old, None, false).unwrap();
+            let mut session = ModuleSession::from_product(&product, query).unwrap();
+            if reject {
+                let error = session
+                    .prepare(
+                        "std",
+                        "answer",
+                        "pub fn answer() bool { return true }",
+                        FrontBudget::WORK_OWNED_64MIB,
+                    )
+                    .err()
+                    .unwrap();
+                assert!(
+                    error.contains("ModuleDiagnostic { module: \"std\""),
+                    "{error}"
+                );
+            } else {
+                let edit = session
+                    .prepare(
+                        "std",
+                        "answer",
+                        "pub fn answer() int { return 43 }",
+                        FrontBudget::WORK_OWNED_64MIB,
+                    )
+                    .unwrap();
+                session.prepare_receipt(&mut store, &edit).unwrap();
+                // A second current receipt must read published facts, not a
+                // speculative body's page left behind by preparing a receipt.
+                let count = session.query.counters().solver_runs;
+                session
+                    .prepare_current_receipt(&mut store, &BTreeMap::new())
+                    .unwrap();
+                assert_eq!(session.query.counters().solver_runs, count);
+                drop(edit);
+            }
+            let before = session.query.counters().solver_runs;
+            let mut next = session
+                .prepare(
+                    "std",
+                    "helper",
+                    "fn helper() int { return 10 }",
+                    FrontBudget::WORK_OWNED_64MIB,
+                )
+                .unwrap();
+            let root = session
+                .prepare_receipt_targets(&mut store, &mut next, BTreeMap::new())
+                .unwrap();
+            assert_eq!(
+                session.query.counters().solver_runs - before,
+                1,
+                "unchanged answer and main cannot solve"
+            );
+            store.publish(&root, Some(&old), false).unwrap();
+            session.commit(next).unwrap();
+            let source = session
+                .bound
+                .segments
+                .iter()
+                .map(|s| ModuleInput {
+                    id: s.module.clone(),
+                    source: s.source.clone(),
+                })
+                .collect::<Vec<_>>();
+            drop(session);
+            drop(store);
+            let store = ModuleStore::open(&temp.0, "single-cache").unwrap();
+            let recovery = store
+                .restore(
+                    &root,
+                    &source,
+                    "app",
+                    &caps(),
+                    "pkg",
+                    "app",
+                    FrontBudget::WORK_OWNED_64MIB,
+                )
+                .unwrap();
+            assert_eq!(recovery.session.counters().solver_runs, 0);
+            assert!(recovery
+                .bound
+                .segments
+                .iter()
+                .any(|s| s.source.contains("return 10")));
+            assert!(recovery
+                .bound
+                .segments
+                .iter()
+                .any(|s| s.source.contains("return 42")));
+        }
+    }
 }

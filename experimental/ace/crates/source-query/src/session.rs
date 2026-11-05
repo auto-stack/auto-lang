@@ -118,6 +118,15 @@ struct BodyPage {
     fn_candidates_fp: String,
 }
 
+/// Immutable cache roots for a speculative transaction. Facts remain shared;
+/// counters and request revisions belong to the live query session.
+#[derive(Clone)]
+pub(crate) struct QueryCacheCheckpoint {
+    declaration_contexts: BTreeMap<String, String>,
+    sigs: BTreeMap<String, Arc<SigPage>>,
+    bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
+}
+
 /// The per-module query session.
 pub struct SourceQuerySession {
     package: String,
@@ -128,12 +137,26 @@ pub struct SourceQuerySession {
     allow_solver: bool,
     cancel: Option<Arc<AtomicBool>>,
     revision: u64,
-    sigs: BTreeMap<String, SigPage>,
-    bodies: BTreeMap<LogicalId, BodyPage>,
+    sigs: BTreeMap<String, Arc<SigPage>>,
+    bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
     counters: Counters,
 }
 
 impl SourceQuerySession {
+    pub(crate) fn cache_checkpoint(&self) -> QueryCacheCheckpoint {
+        QueryCacheCheckpoint {
+            declaration_contexts: self.declaration_contexts.clone(),
+            sigs: self.sigs.clone(),
+            bodies: self.bodies.clone(),
+        }
+    }
+
+    pub(crate) fn restore_cache(&mut self, checkpoint: QueryCacheCheckpoint) {
+        self.declaration_contexts = checkpoint.declaration_contexts;
+        self.sigs = checkpoint.sigs;
+        self.bodies = checkpoint.bodies;
+    }
+
     pub fn new(package: &str, module: &str) -> Self {
         SourceQuerySession {
             package: package.to_string(),
@@ -329,14 +352,14 @@ impl SourceQuerySession {
         }
         self.bodies.insert(
             own,
-            BodyPage {
+            Arc::new(BodyPage {
                 name,
                 facts: page.clone(),
                 key,
                 sig_deps,
                 negatives: page.negatives.clone(),
                 fn_candidates_fp: catalog.candidates_fp().to_string(),
-            },
+            }),
         );
         Ok(())
     }
@@ -384,10 +407,10 @@ impl SourceQuerySession {
         self.counters.sig_misses += 1;
         self.sigs.insert(
             name.to_string(),
-            SigPage {
+            Arc::new(SigPage {
                 facts: current.clone(),
                 key,
-            },
+            }),
         );
         Ok(QueryOutcome {
             facts: current,
@@ -499,7 +522,7 @@ impl SourceQuerySession {
             negatives: facts.negatives.clone(),
             fn_candidates_fp: catalog.candidates_fp().to_string(),
         };
-        self.bodies.insert(logical, page);
+        self.bodies.insert(logical, Arc::new(page));
         Ok(QueryOutcome { facts, hit: false })
     }
 
