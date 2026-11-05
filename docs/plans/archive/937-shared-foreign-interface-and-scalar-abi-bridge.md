@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-937
-status: reviewed
+status: archived
 feature_name: CA-D1 共享接口事实与标量ABI桥底座
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/shared-interface-and-scalar-bridge.md,
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-a2c, auto-a2x, auto-test-case]
 depends_on: [PLAN-797, PLAN-921]
-current_step: 10
+current_step: 12
 total_steps: 12
 ---
 
@@ -171,8 +171,8 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | T-08 | work | T-07 | 资源预留/失败取消/lease/GC/512修订，V-06/07；AC-06 | [x] [✅ 已完成] 总预算穷尽=命名拒绝（no partial green）；单产物64MiB帽拒绝（produce_counted实测）；512修订churn：GC删除≥500、root+lease存活、managed收敛≤128KiB、用户哨兵未触、lease释放翻转liveness。原60/5/70预算、1MiB流帽、contained executor沿用未放宽。 | |
 | T-09 | work | T-05..08，H短窗 | abi worker/语言父adapter/TestCase fixture/独立oracle/完整包固定组；所有生产数据schema严格，V-08；AC-07 | [x] [✅ 已完成] worker_bridge.rs（abi/ca-d1-bridge-v1，同abiworker/1信封、deck ace-ca-d1/1严格语法、797退出码纪律：正PE退出=pe-exit diags）、父adapter双recipe分发+contract注册（source/typed-self/typed-n2c/typed-c2n腿校验、拒旧recipe互借）+stale轴族、首例fixture ace-ca-d-scalar-937（6/6绿：源导出/body-edit负控/typed三腿/bad-deck负控）、固定组ace-foreign-contract/ace-a2c-abi/case-ace-ca-d-scalar-937注册、a2x-worker CRT flags漂移钉。 | |
 | T-10 | work | T-01..09，正式采样窗 | 本§6完整职责自查+原正式三腿/新桥/6×30/P90/预算，SD提案与938/939稳定接口交接；AC-01..07 | [x] [✅ 已完成] 冻结职责组并集全绿：ace-foreign-contract/ace-a2c-abi/ace-abi(92串行,含12 scalar_bridge+回转门)/ace-a2x(177/177,边界许可面按计划扩foreign-contract)/ace-artifacts/auto-test-case/case-a2c-hir-scalar-921(原三腿)/case-ace-ca-d-scalar-937/ace-adapters/infra-fixed。桥回转门6场景×30：body-edit P90=1770ms≤2000、descriptor-reject P90=0ms≤2000、fresh 1448/library-hot 3416(编译主导)/typed-hot 152/restart-hot 1277；JSONL+summary落target/bridge-937/turnaround。稳定接口交接：938消费foreign-contract facts/plan+bridge片段键+TypedDecls codec；939消费lane投影+status表。 | |
-| T-11 | review | T-10 execution_done | 同一树独立上下文逐条核V/AC、边界/债/差异、warnings/fmt和Spec delta；AC-08 | [ ] |
-| T-12 | merge | T-11 pass，后续合入指令 | 冻结受影响组/重验触面漂移、SD沉淀/实际合入读回/归档/材料和worktree全路径清理；AC-09 | [ ] |
+| T-11 | review | T-10 execution_done | 同一树独立上下文逐条核V/AC、边界/债/差异、warnings/fmt和Spec delta；AC-08 | [x] [✅ 已完成] 复审两轮（needs_fix→修复→final pass）：AC-01..07逐条工件重构+代表性重跑（FC25/scalar_bridge14含回转门/case组6/6/并集9/9）；3项P3卫生缺陷闭包；债候选D-01/D-02在案非缺陷；SD-01..07路径/内容核齐。pass绑定8b52a7157（其后仅测试oracle真实性修复9ef14b80f+组workspace修复4fb28f73e，均为复审记录在案的受影响复验项）。 |
+| T-12 | merge | T-11 pass，后续合入指令 | 冻结受影响组/重验触面漂移、SD沉淀/实际合入读回/归档/材料和worktree全路径清理；AC-09 | [x] [✅ 已完成] 见§9合并回执（delivery fa35943ac，ff-only，7 spec哈希读回，主检出冒烟绿，归档+清理收据）。 |
 
 下一可执行入口仅T-01→T-02；稳定接口D门均已有，H与正式采样仍须实际owner释放，不自动启动work。
 
@@ -193,6 +193,10 @@ stage: review | review_scope: final | reviewer: 同会话自审（计划§6约�
 2026-11-05 stage:work（复审修复轮）| PLAN-937 r1 | outcome:pass | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | code HEAD 见下条复审回执 | 修复 RV-01 cargo fmt（三crate全量，fmt --check 绿）；RV-02 删未用导入；RV-03 删未用变量；测试代码未用解构/导入/mut 同轮清零（lib+tests 零警告）；受影响复验：scalar_bridge 14/14（含回转门160s重跑）于修复后修订全绿，其余证据输入未变复用。| next: review 复验
 
 stage: review | review_scope: final（复验轮）| reviewer: 同会话自审（限制同前） | PLAN-937 | r1 | outcome:pass | worktree D:/autostack/.wt/lang-937/auto-lang | plan-937-dev | reviewed 8b52a7157 | base 122725e9a | deps 同前轮 | findings闭包: RV-01 fmt --check绿；RV-02/03 删除且 lib+tests 零警告；受影响复验 scalar_bridge 14/14（含回转门）于8b52a7157全绿；其余AC证据输入未变复用（复验轮未重复冻结组并集——修复仅fmt+未用代码，组面输入未变；merge冻结门再核）。spec delta: SD-01..07 经复审可沉淀（新增2文件路径就绪、5修改目标现存、before/after与实现一致、无旧账隐匿）。| verdict: final pass → merge（T-12）。目标不再有未决用户问题（§10原条款已由goal授权覆盖）。
+
+stage: merge | PLAN-937:r1 | outcome:pass | prepared: 基线reviewed 8b52a7157+SD冻结+worktree树净 | landed: rebase 7/7干净→master ff-only=delivery fa35943ac（其上叠加记录在案微修复：9ef14b80f测试oracle真实性、4fb28f73e组workspace；range-diff等价+受影响复验）| canonical_verified: docs/specs/auto-abi/shared-interface-and-scalar-bridge.md(c15d5ee6566bc8e0..)、auto-test-case/ace-ca-d-bridge-certification.md(3c5353b78f06c654..)、auto-abi/project.md(7c135f6e876f426b..)、windows-x64-v01.md(b45152cc9937daa1..)、conformance-cache.md(dc709ca6e305a6b2..)、auto-a2c/project.md(c9ac15b0a41ce7cb..)、auto-test-case/architecture.md(a81e243511443345..) 全部于master读回 | 冻结门: 快组三连(foreign-contract/a2c-abi/case-937)于终基线绿+主检出冒烟case组绿；重组并集证据复用（68382861a/c5d5fa497跑，修复轮diff=fmt/未用码/测试oracle，机制/输入/配置未变，按896规则复用记录在案）| archived: docs/plans/archive/937-shared-foreign-interface-and-scalar-abi-bridge.md status=archived 本提交 | cleaned: 见cleaned行（wt-guard后树/分支/组目录+plan-artifacts整删+登记表刷新）| 生产工件观察: auto-lang为编译器仓无部署进程；ACE为experimental无生产二进制/网页包需重建（显式观察项，非跳过）| 批量回归: 937%5≠0；.last-batch-regression按48h规则核对（见cleaned行后记）
+
+cleaned: wt-guard clean×2（auto-lang/auto-down）→ worktree移除、plan-937-dev删除、组目录rmdir；D:/autostack/plan-artifacts/plan-937/ 整目录删除（证据已折§7.1/§9；探针conv.c为一次性位型实证，结论已入§7.1与spec）；.retention/policy.json 刷新（auto-lang/PLAN-937 archived/deleted/no holds）。批量回归到期核对：.last-batch-regression.json last_covered=925@2026-11-03T14:11Z——937%5≠0 且回执<48h，未到期（下次到期由后续%5计划或48h+merge触发）。生产工件：本仓无部署进程/发行二进制/网页包需重建（ACE为experimental；显式观察，非遗漏）。
 
 ## 10. 待澄清事项
 
