@@ -338,6 +338,29 @@ impl SyntaxArtifactStore {
         tree: &CstTree,
         required_a02: &str,
     ) -> Result<String, AdapterError> {
+        self.put_cst_impl(p, snap, tree, required_a02, true)
+    }
+
+    /// Persist an immutable candidate without replacing the project's current
+    /// syntax root. Its owner must pin it through a required-data parent before
+    /// releasing the candidate lifecycle (PLAN-950 module graph publication).
+    pub fn put_cst_unpublished(
+        &self,
+        p: &GrammarProgram,
+        snap: &Snapshot,
+        tree: &CstTree,
+        required_a02: &str,
+    ) -> Result<String, AdapterError> {
+        self.put_cst_impl(p, snap, tree, required_a02, false)
+    }
+    fn put_cst_impl(
+        &self,
+        p: &GrammarProgram,
+        snap: &Snapshot,
+        tree: &CstTree,
+        required_a02: &str,
+        publish: bool,
+    ) -> Result<String, AdapterError> {
         let (src_arts, src_chunks, _put_peak) = self.put_source_pages(snap)?;
         let canon = canonicalize(tree)?;
         let mut page_arts: Vec<String> = Vec::with_capacity(canon.pages.len());
@@ -418,7 +441,9 @@ impl SyntaxArtifactStore {
             // 当前性由下方仲裁后的 cst-manifest 硬根表达。
             project: None,
         })?;
-        self.publish_if_current(&art, snap.revision())?;
+        if publish {
+            self.publish_if_current(&art, snap.revision())?;
+        }
         Ok(art)
     }
 
@@ -540,6 +565,7 @@ impl SyntaxArtifactStore {
         // manifest 载入计入读取口径（视图创建即已读取；framed≈payload+头部）。
         let mbytes = payload.len() + 64;
         Ok(Some(CstView {
+            artifact_id,
             store: &self.store,
             manifest,
             declared_total_len: declared_len,
@@ -1206,6 +1232,7 @@ struct GrammarBounds {
 /// 分页只读视图。持有 store lease（manifest artifact）——读期间 GC 不回收
 /// 本版本；drop（lease 释放）后旧版本可被 GC 回收（F787-R1-06）。
 pub struct CstView<'s> {
+    artifact_id: String,
     store: &'s ManagedStore,
     manifest: CstManifest,
     /// 流式视图的 total_len 由调用方声明（与 manifest 一致性在 open 时校验）。
@@ -1226,6 +1253,10 @@ pub struct CstView<'s> {
 }
 
 impl<'s> CstView<'s> {
+    /// Exact immutable manifest admitted by this view (for parent receipts).
+    pub fn artifact_id(&self) -> &str {
+        &self.artifact_id
+    }
     pub fn decl_count(&self) -> usize {
         if self.manifest.decl_count > 0 || !self.manifest.decl_index.is_empty() {
             self.manifest.decl_count as usize

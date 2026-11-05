@@ -315,7 +315,11 @@ dependencies = [
  "ace-core",
  "ace-semantics",
  "ace-semantics-contract",
+ "ace-syntax-artifacts",
+ "ace-syntax-runtime",
  "blake3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

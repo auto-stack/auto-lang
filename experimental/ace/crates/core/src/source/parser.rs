@@ -90,7 +90,7 @@ pub fn capture_syntax_work<T>(f: impl FnOnce() -> T) -> (T, SyntaxWork) {
     drop(restore);
     (result, work)
 }
-fn note_tokenize(span: Span) {
+pub(crate) fn note_tokenize(span: Span) {
     SYNTAX_WORK.with(|slot| {
         if let Some(work) = slot.borrow_mut().as_mut() {
             work.tokenized_ranges.push(span);

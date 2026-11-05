@@ -16,6 +16,11 @@ blake3 = "1.5"
 # T-06: the unified managed store is the page sink (same store every
 # other layer uses; the SQ-A layer id keeps its pages separate).
 ace-artifacts = { path = "../artifacts" }
+# PLAN-950: reuse A01/A02/A03 and the same ManagedStore for module recovery.
+ace-syntax-artifacts = { path = "../syntax-artifacts" }
+ace-syntax-runtime = { path = "../syntax-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # PLAN-934 §2/§3 dependency direction: this crate sits BETWEEN core (it
 # consumes the public AST and the neutral solver) and the consumers

@@ -100,3 +100,6 @@ mod tests {
         assert_eq!(session.counters().solver_runs, before.solver_runs);
     }
 }
+
+mod persistence;
+pub use persistence::{ModuleReceipt, ModuleRecovery, ModuleStore, MODULE_ROOT_SCHEMA};

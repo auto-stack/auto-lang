@@ -188,6 +188,9 @@ pub fn instances_grammar() -> Result<&'static CachedGrammar, String> {
 }
 
 static MODULES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+pub(crate) fn module_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
+}
 
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
@@ -218,11 +221,15 @@ pub(crate) fn parse_module_front(
     budget: FrontBudget,
 ) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
-    use crate::source::modules::{Import, ModuleSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let zero = Span { start: 0, end: 0 };
     let cached = capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
         .map_err(|e| err("source.infra", e, zero))?;
+    crate::source::parser::note_tokenize(Span {
+        start: 0,
+        end: src.len(),
+    });
+    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
     let parsed = parse_snapshot(
@@ -239,14 +246,26 @@ pub(crate) fn parse_module_front(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    let tree = parsed.tree;
-    let program = project::project_program(
-        &cached.program,
-        &cached.kinds,
-        &tree,
-        &snap,
-        SourceProfile::Scalar,
-    )?;
+    let result = project_module_front(src, vec![parsed.tree], Some(parsed.tokens))?;
+    for item in &result.program.items {
+        if let crate::source::ast::Item::Fn(f) = item {
+            crate::source::parser::note_parse(&f.name.name);
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn project_module_front(
+    src: &str,
+    trees: Vec<CstTree>,
+    tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    use crate::source::modules::{Import, ModuleSyntax};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let cached = module_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
     let rule = |name: &str| {
         cached
             .program
@@ -255,69 +274,83 @@ pub(crate) fn parse_module_front(
             .position(|r| r.name == name)
             .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
     };
-    let field = |n, name: &str| {
+    let field = |tree: &CstTree, n, name: &str| {
         cached
             .program
             .field_id(name)
             .and_then(|f| tree.field_child(n, f))
     };
-    let text = |n| {
+    let text = |tree: &CstTree, n| {
         let (a, b) = tree.abs_range(n);
         snap.read_str(a, b).expect("CST source range")
     };
     let mut exports = std::collections::BTreeSet::new();
     let mut imports = Vec::new();
     let mut saw_fn = false;
-    for d in &tree.decls {
-        let node = if tree.kind(d.node) == cached.kinds.item {
-            tree.children(d.node)
-                .into_iter()
-                .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
-                .unwrap_or(d.node)
-        } else {
-            d.node
-        };
-        if Some(tree.kind(node)) == rule("use-item") {
-            let (a, b) = tree.abs_range(node);
-            let span = Span {
-                start: a as usize,
-                end: b as usize,
+    let mut items = Vec::new();
+    for tree in &trees {
+        let program = project::project_program(
+            &cached.program,
+            &cached.kinds,
+            tree,
+            &snap,
+            SourceProfile::Scalar,
+        )?;
+        items.extend(program.items);
+        for d in &tree.decls {
+            let node = if tree.kind(d.node) == cached.kinds.item {
+                tree.children(d.node)
+                    .into_iter()
+                    .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                    .unwrap_or(d.node)
+            } else {
+                d.node
             };
-            if saw_fn {
-                return Err(err(
-                    "source.module-import-order",
-                    "imports must precede functions".into(),
-                    span,
-                ));
+            if Some(tree.kind(node)) == rule("use-item") {
+                let (a, b) = tree.abs_range(node);
+                let span = Span {
+                    start: a as usize,
+                    end: b as usize,
+                };
+                if saw_fn {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede functions".into(),
+                        span,
+                    ));
+                }
+                let module = text(tree, field(tree, node, "module").expect("module field"));
+                let name = text(tree, field(tree, node, "import").expect("import field"));
+                if imports.iter().any(|i: &Import| i.name == name) {
+                    return Err(err(
+                        "source.module-duplicate-import",
+                        format!("duplicate imported name `{name}`"),
+                        span,
+                    ));
+                }
+                imports.push(Import { module, name, span });
+            } else if Some(tree.kind(node)) == rule("public-fn") {
+                saw_fn = true;
+                let function = field(tree, node, "function").expect("public function");
+                let tail = tree
+                    .children(function)
+                    .into_iter()
+                    .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                    .expect("fn tail");
+                exports.insert(text(tree, field(tree, tail, "name").expect("fn name")));
+            } else if tree.kind(node) == cached.kinds.fn_item {
+                saw_fn = true;
             }
-            let module = text(field(node, "module").expect("module field"));
-            let name = text(field(node, "import").expect("import field"));
-            if imports.iter().any(|i: &Import| i.name == name) {
-                return Err(err(
-                    "source.module-duplicate-import",
-                    format!("duplicate imported name `{name}`"),
-                    span,
-                ));
-            }
-            imports.push(Import { module, name, span });
-        } else if Some(tree.kind(node)) == rule("public-fn") {
-            saw_fn = true;
-            let function = field(node, "function").expect("public function");
-            let tail = tree
-                .children(function)
-                .into_iter()
-                .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
-                .expect("fn tail");
-            exports.insert(text(field(tail, "name").expect("fn name")));
-        } else if tree.kind(node) == cached.kinds.fn_item {
-            saw_fn = true;
         }
     }
     Ok(ModuleSyntax {
-        program,
+        program: crate::source::ast::Program { items },
         exports,
         imports,
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+        source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
+        syntax: trees,
+        tokens,
     })
 }
 

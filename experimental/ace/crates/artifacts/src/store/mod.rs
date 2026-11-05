@@ -984,6 +984,22 @@ impl ManagedStore {
 
     // -- roots / pins / leases ------------------------------------------------
 
+    /// Read the required-data closure's direct targets. Parent codecs use
+    /// this to check that their declared dependencies match persisted edges.
+    pub fn required_targets(&self, artifact: &str) -> Result<Vec<String>, StoreError> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT dst FROM edges WHERE src=?1 AND kind=?2 ORDER BY dst")?;
+        let rows = stmt.query_map(
+            [artifact, crate::identity::RefKind::RequiredData.as_str()],
+            |r| r.get(0),
+        )?;
+        let mut targets = Vec::new();
+        for row in rows {
+            targets.push(row?);
+        }
+        Ok(targets)
+    }
+
     pub fn register_root(
         &self,
         project: &str,

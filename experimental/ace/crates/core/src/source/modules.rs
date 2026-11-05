@@ -23,6 +23,10 @@ pub struct ModuleSyntax {
     pub exports: BTreeSet<String>,
     pub imports: Vec<Import>,
     pub grammar_id: String,
+    /// Source binding for store admission; neither addresses nor authority.
+    pub source_hash: String,
+    pub syntax: Vec<ace_syntax_runtime::cst::CstTree>,
+    pub tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
 }
 
 /// The explicit module entry. Old scalar entrypoints never discard metadata
@@ -131,4 +135,41 @@ mod tests {
 }
 
 mod binding;
-pub use binding::{bind_modules, BoundModules, ModuleDiagnostic, ModuleInput, SourceSegment};
+pub use binding::{
+    bind_module_syntax, bind_modules, BoundModules, ModuleDiagnostic, ModuleInput, SourceSegment,
+};
+
+/// The grammar identity for the explicit module capability, shared with the
+/// syntax store rather than compiled by a second frontend.
+pub fn module_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
+    super::cst::module_grammar()
+}
+
+/// Re-project content-verified stored CST declarations. Callers must bind
+/// their store receipt to the expected source and required data closure.
+/// This performs no scanning or parsing and never grants type credentials.
+pub fn project_stored_module(
+    src: &str,
+    trees: Vec<ace_syntax_runtime::cst::CstTree>,
+    grammar_id: &str,
+    budget: FrontBudget,
+) -> Result<ModuleSyntax, Vec<Diagnostic>> {
+    let cached = module_grammar().map_err(|e| {
+        vec![Diagnostic::new(
+            Stage::Text,
+            "source.infra",
+            e,
+            Span { start: 0, end: 0 },
+        )]
+    })?;
+    let actual = format!("{}", cached.program().identity.grammar_id.0);
+    if actual != grammar_id || src.len() > budget.work_bytes {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.module-stale",
+            "stored grammar/source budget mismatch",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    super::cst::project_module_front(src, trees, None)
+}

@@ -21,7 +21,10 @@ pub struct SourceSegment {
 }
 #[derive(Clone, Debug)]
 pub struct BoundModules {
+    pub entry: String,
+    pub capabilities: Vec<String>,
     pub program: Program,
+    pub units: BTreeMap<String, ModuleSyntax>,
     pub segments: Vec<SourceSegment>,
     /// Internal function symbol -> original module and source function name.
     pub origins: BTreeMap<String, (String, String)>,
@@ -85,8 +88,66 @@ pub fn bind_modules(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<BoundModules, ModuleDiagnostic> {
-    let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
+    let mut total_bytes = 0usize;
+    for input in inputs {
+        total_bytes = total_bytes.checked_add(input.source.len()).ok_or_else(|| {
+            fail(
+                &input.id,
+                "source.resource",
+                "module input byte budget",
+                Span { start: 0, end: 0 },
+            )
+        })?;
+        if total_bytes > budget.work_bytes {
+            return Err(fail(
+                &input.id,
+                "source.resource",
+                "module input byte budget",
+                Span { start: 0, end: 0 },
+            ));
+        }
+        if !valid_id(&input.id) || units.contains_key(&input.id) {
+            return Err(fail(
+                &input.id,
+                "source.module-identity",
+                "duplicate module identity",
+                Span { start: 0, end: 0 },
+            ));
+        }
+        let syntax = parse_module_source(&input.source, caps, budget).map_err(|mut ds| {
+            ModuleDiagnostic {
+                module: input.id.clone(),
+                diagnostic: ds.remove(0),
+            }
+        })?;
+        units.insert(input.id.clone(), syntax);
+    }
+    bind_module_syntax(inputs, entry, caps, budget, units)
+}
+
+/// Shared binding of already projected cold, restored or edited source units.
+/// The source/grammar/capability identities are re-admitted before names bind.
+pub fn bind_module_syntax(
+    inputs: &[ModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    units: BTreeMap<String, ModuleSyntax>,
+) -> Result<BoundModules, ModuleDiagnostic> {
+    let zero = Span { start: 0, end: 0 };
+    if !caps.iter().any(|c| c == MODULES_CAPABILITY)
+        || caps.iter().any(|c| c == super::INSTANCES_CAPABILITY)
+    {
+        return Err(fail(
+            entry,
+            "source.module-capability",
+            "module capability mismatch",
+            zero,
+        ));
+    }
+    let grammar = super::module_grammar().map_err(|e| fail(entry, "source.infra", e, zero))?;
+    let grammar_id = format!("{}", grammar.program().identity.grammar_id.0);
     let mut sources = BTreeMap::new();
     let mut bytes = 0usize;
     for input in inputs {
@@ -106,7 +167,7 @@ pub fn bind_modules(
                 zero,
             ));
         }
-        if !valid_id(&input.id) || units.contains_key(&input.id) {
+        if !valid_id(&input.id) || sources.contains_key(&input.id) {
             return Err(fail(
                 &input.id,
                 "source.module-identity",
@@ -114,14 +175,33 @@ pub fn bind_modules(
                 zero,
             ));
         }
-        let parsed = parse_module_source(&input.source, caps, budget).map_err(|mut ds| {
-            ModuleDiagnostic {
-                module: input.id.clone(),
-                diagnostic: ds.remove(0),
-            }
+        let u = units.get(&input.id).ok_or_else(|| {
+            fail(
+                &input.id,
+                "source.module-missing",
+                "source unit absent",
+                zero,
+            )
         })?;
-        units.insert(input.id.clone(), parsed);
+        if u.source_hash != crate::runtime_contract::sha256_hex(input.source.as_bytes())
+            || u.grammar_id != grammar_id
+        {
+            return Err(fail(
+                &input.id,
+                "source.module-stale",
+                "source/grammar identity mismatch",
+                zero,
+            ));
+        }
         sources.insert(input.id.clone(), input.source.clone());
+    }
+    if units.len() != sources.len() {
+        return Err(fail(
+            entry,
+            "source.module-identity",
+            "extraneous projected module",
+            zero,
+        ));
     }
     if !units.contains_key(entry) {
         return Err(fail(
@@ -185,7 +265,15 @@ pub fn bind_modules(
             Ok(symbol(target, name, entry))
         };
     let mut result = BoundModules {
+        entry: entry.into(),
+        capabilities: caps
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         program: Program { items: Vec::new() },
+        units: BTreeMap::new(),
         segments: Vec::new(),
         origins: BTreeMap::new(),
         references: BTreeMap::new(),
@@ -385,6 +473,7 @@ pub fn bind_modules(
         }
     }
     result.input_hash = crate::runtime_contract::sha256_hex(identity.as_bytes());
+    result.units = units;
     Ok(result)
 }
 
