@@ -598,7 +598,7 @@
     "bytes": 56628,
     "tree_sha256": "4f39e2b506310e9a269401ae6436b78e06d747b49919600be9118c5763d4dc52"
   },
-  "cleanup": "all needed results/commands/timings/hashes/reproduce inputs folded into this receipt and PLAN-954; raw scope deletion pending",
+  "cleanup": "batch raw scope deleted after durable receipt/PLAN-954 reproduction records;13365files/7943127877bytes, no links or holds; original admission directory moved/verified then deleted with scope; normal main build caches remain ordinary batch-owner outputs",
   "holds": [],
   "fix_forward": "PLAN-954 records both fixture gaps with original250ms/1500ms/2s and Windows path controls; only drafted, no unrelated production fix or unmerge",
   "timing_note": "prepare/discovery and execution separate per group; fixture teardown within original measured execution; scratch closure separately recorded, no full-queue repetition",
@@ -608,5 +608,8 @@
     "bytes": 7943127877,
     "reparse_points": 0,
     "admission_migration_verified": true
-  }
+  },
+  "raw_scope_deleted": true,
+  "cleanup_completed_at": "2026-11-05T20:28:59.187141+00:00",
+  "cleanup_seconds": 1.8483262
 }

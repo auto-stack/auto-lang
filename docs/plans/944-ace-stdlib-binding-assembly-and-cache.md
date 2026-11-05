@@ -178,6 +178,8 @@ T-01继续执行前置：D943及D950均已正式交付；本目标用户授权�
 
 2026-11-06 due regression已结束：主检出单实例cargo t all完成37组/2828执行/1014原条件排除，702.068s，27组PASS/7组FAIL/3组NA，原raw exit1未改。protected source=config身份固定6b6b191c3。原基线红具名保留；新增heartbeat夹具首红隔离1/1绿，4个HTTP文件首红证实旧fixture路径literal转义失真（Win32 GetTempPathW/2W实际含\r，原源码未改），同scope scratch控制12+3绿。后继PLAN-954仅draft认领夹具，无生产回归确认，也不作本包依赖；.last-batch-regression.json已写真实明细与覆盖到953，不能称all-green。批量scope原材料将按政策清理，复现/结论已折入954与收据。950前置正式完成不变，本包原944树5b71983ba clean，下一实际步骤=auto-plan-work T-01有界闭环与模型冻结，仍r2/0-of-7；未把周期门或草拟954冒作本包产品实现。
 
+2026-11-06 regress closeout：原完整队列/三项定向诊断/归因及原子数已在.last-batch-regression.json持久化，batch scope13365files/7943127877bytes已实际删除（1.848s，无links/hold），原主检出admission-0fm3rxcv 5files/56628bytes先迁入scope并逐内容hash核对后随scope删除。原始反例/输入/预期折入954，未因scratch隔离控制改变生产实现；未重复全仓队列。上一goal回合是progress（D950源码/规范/归档/清理真实完成），本回合也是progress（到期queue真实终态、定位新增夹具观察、登记954与提交新周期收据），原目标944仍active。现在进入944 work，后继不再等待周期门，0/7由实际任务验收推进。
+
 ## 10. 待澄清事项
 
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
