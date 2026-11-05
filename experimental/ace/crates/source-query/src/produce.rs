@@ -180,6 +180,30 @@ pub fn produce_infer_body_with_foreign(
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
 ) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        None,
+    )
+}
+
+pub fn produce_infer_body_with_catalog(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
         return Err(ProduceError::Profile {
             what: "empty node budget",
@@ -205,7 +229,27 @@ pub fn produce_infer_body_with_foreign(
     )
     .map_err(ProduceError::Projection)?;
 
-    if let Some(environment) = foreign {
+    if let Some(catalog) = catalog {
+        for signature in catalog.entries().filter(|s| s.name != name) {
+            let lane = |k| match k {
+                PortableTy::I32 => ace_semantics::input::Ann::I32,
+                PortableTy::Bool => ace_semantics::input::Ann::Bool,
+                _ => ace_semantics::input::Ann::Unsupported("foreign-scalar signature"),
+            };
+            input
+                .external_signatures
+                .push(ace_semantics::input::ExternalSignature {
+                    name: signature.name.clone(),
+                    params: signature
+                        .params
+                        .iter()
+                        .map(|(n, t)| (n.clone(), lane(*t)))
+                        .collect(),
+                    ret: lane(signature.ret),
+                    contract: signature.version.as_str().into(),
+                });
+        }
+    } else if let Some(environment) = foreign {
         let lane = |k| {
             if k == ace_foreign_contract::LaneKind::Bool {
                 ace_semantics::input::Ann::Bool

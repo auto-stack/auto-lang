@@ -257,6 +257,16 @@ pub const LAYER_FRAGMENT_C: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// Checked foreign HIR uses the same target-provider machinery with a
+/// distinct printer namespace; legacy C/Rust fragments never satisfy it.
+pub const LAYER_FRAGMENT_C_FOREIGN: LayerSpec = LayerSpec {
+    id: "AXCF1",
+    name: "a2x-c-foreign-fragment",
+    schema_id: "a2938/axc-foreign-fn/v1",
+    producer: "auto-a2x-c-foreign",
+    ..LAYER_FRAGMENT_C
+};
+
 /// PLAN-925 CA-B: the C (HIR→C11 record-text) fragment layer — its own
 /// namespace beside the Rust record-text layer (AXR2) and the C scalar
 /// one (AXC1). The runtime content input is the C typed resource
@@ -595,6 +605,7 @@ impl A2xSession {
             Ok("AXR2") => &LAYER_FRAGMENT_RT,
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
@@ -624,6 +635,7 @@ impl A2xSession {
             Ok("AXR2") => &LAYER_FRAGMENT_RT,
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
@@ -2383,6 +2395,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXS3" => LAYER_SEMANTIC_COLL.id,
         "AXR3" => LAYER_FRAGMENT_COLL.id,
         "AXC1" => LAYER_FRAGMENT_C.id,
+        "AXCF1" => LAYER_FRAGMENT_C_FOREIGN.id,
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
         "AXC3" => LAYER_FRAGMENT_C_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,

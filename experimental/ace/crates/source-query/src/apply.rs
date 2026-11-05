@@ -448,6 +448,10 @@ pub struct BodyTypeSupply {
 }
 
 impl BodyTypeSupply {
+    pub fn with_foreign(mut self, foreign: ace_foreign_contract::manual::AdmittedForeign) -> Self {
+        self.foreign = Some(foreign);
+        self
+    }
     pub fn new() -> Self {
         BodyTypeSupply::default()
     }

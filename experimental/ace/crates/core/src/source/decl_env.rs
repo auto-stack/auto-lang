@@ -16,6 +16,7 @@ use crate::atom_text::Span;
 use std::collections::BTreeMap;
 
 pub const DECL_ENV_SCHEMA: &str = "core-decl-env/1";
+pub const FOREIGN_DECL_ENV_SCHEMA: &str = "core-decl-env/2";
 
 /// 恢复装配的受控拒绝（使用前；V-05 面）。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub enum DeclEnvError {
 /// 声明面清单（owned；编解码的镜像结构）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DeclEnvDump {
+    pub foreign: Vec<ace_foreign_contract::manual::SourceDecl>,
     pub profile: String,
     pub caps_version: String,
     pub source_sha256: String,
@@ -158,6 +160,7 @@ fn receiver_parse(t: &str) -> Result<ast::Receiver, DeclEnvError> {
 pub fn decl_env_dump(env: &CheckedEnv, caps_version: &str, source_sha256_hex: &str) -> DeclEnvDump {
     let p = &env.program;
     DeclEnvDump {
+        foreign: p.foreign.clone(),
         profile: super::cst::profile_slug(env.profile).to_string(),
         caps_version: caps_version.to_string(),
         source_sha256: source_sha256_hex.to_string(),
@@ -235,11 +238,22 @@ pub fn decl_env_dump(env: &CheckedEnv, caps_version: &str, source_sha256_hex: &s
 /// 确定性行式编码（无空格 token；schema 首行——与清单 codec 同纪律）。
 pub fn encode_decl_env(d: &DeclEnvDump) -> String {
     let mut out = String::new();
-    out.push_str(DECL_ENV_SCHEMA);
+    out.push_str(if d.foreign.is_empty() {
+        DECL_ENV_SCHEMA
+    } else {
+        FOREIGN_DECL_ENV_SCHEMA
+    });
     out.push('\n');
     out.push_str(&format!("profile {}\n", d.profile));
     out.push_str(&format!("caps {}\n", d.caps_version));
     out.push_str(&format!("source {}\n", d.source_sha256));
+    for declaration in &d.foreign {
+        out.push_str("foreign ");
+        out.push_str(
+            &serde_json::to_string(declaration).expect("serializable foreign declaration"),
+        );
+        out.push('\n');
+    }
     for f in &d.fns {
         out.push_str(&format!(
             "fn {} {} {} {} {} {} {} {} {}\n",
@@ -308,7 +322,7 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
     }
     let mut lines = body.split('\n');
     let schema = lines.next().unwrap_or("");
-    if schema != DECL_ENV_SCHEMA {
+    if schema != DECL_ENV_SCHEMA && schema != FOREIGN_DECL_ENV_SCHEMA {
         return Err(DeclEnvError::Schema(schema.to_string()));
     }
     fn header(lines: &mut dyn Iterator<Item = &str>, key: &str) -> Result<String, DeclEnvError> {
@@ -347,6 +361,23 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
         let parts: Vec<&str> = ln.split(' ').collect();
         let kind = parts[0];
         match kind {
+            "foreign" if schema == FOREIGN_DECL_ENV_SCHEMA => {
+                let raw = ln
+                    .strip_prefix("foreign ")
+                    .ok_or_else(|| DeclEnvError::Malformed("foreign declaration missing".into()))?;
+                if raw.len() > ace_foreign_contract::codec::MAX_CODEC_BYTES {
+                    return bad("foreign declaration budget".into());
+                }
+                let declaration: ace_foreign_contract::manual::SourceDecl =
+                    serde_json::from_str(raw).map_err(|e| {
+                        DeclEnvError::Malformed(format!("foreign declaration: {e}"))
+                    })?;
+                declaration.validate().map_err(DeclEnvError::Malformed)?;
+                if d.foreign.iter().any(|old| old.name == declaration.name) {
+                    return bad("duplicate foreign declaration".into());
+                }
+                d.foreign.push(declaration);
+            }
             "fn" => {
                 flush(&mut pending_fn, &mut d)?;
                 if parts.len() != 10 {
@@ -553,6 +584,11 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
     if let Some(v) = cur_var.take() {
         d.variants.push(v);
     }
+    // /2 is the foreign declaration lane, never an alias of /1. Changing
+    // only a legacy page's header must remain a schema rejection.
+    if schema == FOREIGN_DECL_ENV_SCHEMA && d.foreign.is_empty() {
+        return Err(DeclEnvError::Schema(schema.to_string()));
+    }
     Ok(d)
 }
 
@@ -564,6 +600,23 @@ pub fn decl_env_restore(
     caps_version: &str,
     source_sha256_hex: &str,
 ) -> Result<CheckedEnv, DeclEnvError> {
+    decl_env_restore_with_foreign(d, profile, caps_version, source_sha256_hex, None)
+}
+
+pub fn decl_env_restore_with_foreign(
+    d: &DeclEnvDump,
+    profile: super::SourceProfile,
+    caps_version: &str,
+    source_sha256_hex: &str,
+    environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<CheckedEnv, DeclEnvError> {
+    if (environment.is_some() || !d.foreign.is_empty())
+        && environment.map(|e| e.source_declarations()) != Some(d.foreign.clone())
+    {
+        return Err(DeclEnvError::Malformed(
+            "foreign declarations require matching current host authority".into(),
+        ));
+    }
     let expected_slug = super::cst::profile_slug(profile);
     if d.profile != expected_slug {
         return Err(DeclEnvError::Profile {
@@ -749,8 +802,33 @@ pub fn decl_env_restore(
             ),
         );
     }
+    for (index, declaration) in d.foreign.iter().enumerate() {
+        if sigs.contains_key(&declaration.name) {
+            return Err(DeclEnvError::Malformed(
+                "foreign/local signature collision".into(),
+            ));
+        }
+        let lane = |k| {
+            if k == ace_foreign_contract::LaneKind::Bool {
+                super::resolve::VT::Bool
+            } else {
+                super::resolve::VT::I32
+            }
+        };
+        sigs.insert(
+            declaration.name.clone(),
+            super::resolve::fn_sig_from_parts(
+                (0..declaration.params().len())
+                    .map(|i| format!("arg{i}"))
+                    .collect(),
+                declaration.params().iter().copied().map(lane).collect(),
+                lane(declaration.result()),
+                fns.len() + index,
+            ),
+        );
+    }
     let program = super::resolve::ResolvedProgram {
-        foreign: Vec::new(),
+        foreign: d.foreign.clone(),
         fns,
         records,
         lists,

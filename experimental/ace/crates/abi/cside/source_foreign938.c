@@ -32,6 +32,10 @@ int32_t provider_tick(int32_t value) {
     trace_value = trace_value * 10u + (uint32_t)value;
     return value;
 }
-int32_t provider_trace(void) { return bits_to_i32(trace_value); }
-int32_t provider_calls(void) { return call_count; }
+int32_t provider_trace(void) { ++call_count; return bits_to_i32(trace_value); }
+int32_t provider_calls(void) { ++call_count; return call_count; }
+int32_t provider_mix(int32_t a, uint8_t b, int32_t c, uint8_t d, int32_t e) {
+    ++call_count;
+    return bits_to_i32((uint32_t)a + 10u * b + 100u * (uint32_t)c + 1000u * d + 10000u * (uint32_t)e);
+}
 void provider_reset(void) { trace_value = 0; call_count = 0; }

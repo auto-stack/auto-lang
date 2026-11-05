@@ -261,3 +261,152 @@ fn product_entry_consumes_foreign_facts_and_reports_current_source_diagnostics()
         .iter()
         .any(|d| d.code == "source.foreign.unknown-name" && d.span.start > 0));
 }
+
+fn restart(snapshot: &crate::frontend::Checkpoint) -> crate::frontend::Frontend {
+    crate::frontend::Frontend::restore(
+        &snapshot.root,
+        &snapshot.digest,
+        &[SOURCE_CAP.into()],
+        environment(),
+        |digest| {
+            snapshot
+                .pages
+                .values()
+                .find(|p| p.digest == digest)
+                .map(|p| p.bytes.clone())
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn shared_frontend_restores_without_production_and_immediately_edits_one_source_body() {
+    use crate::frontend::{Frontend, Meter};
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let (front, _) =
+        Frontend::cold(source, "m938", "p938", &[SOURCE_CAP.into()], environment()).unwrap();
+    let saved = front.checkpoint().unwrap();
+    let mut restored = restart(&saved);
+    let r = restored.meter();
+    assert!(r.restore_nodes > 0);
+    assert_eq!(
+        r,
+        Meter {
+            restore_pages: 2,
+            restore_nodes: r.restore_nodes,
+            ..Meter::default()
+        }
+    );
+    assert_eq!(restored.query_counters().solver_runs, 0);
+    let untouched = restored.page("independent").unwrap().bytes.clone();
+    let identity = restored.body_identity("independent");
+    let candidate = restored
+        .prepare("main", "fn main() int { return foreign_add(21,22) }")
+        .unwrap();
+    assert_eq!(
+        restored.source(),
+        source,
+        "prepare cannot install source or semantics"
+    );
+    assert_eq!(candidate.parts().planned_fns, 1);
+    restored.commit(candidate).unwrap();
+    assert_eq!(restored.function_meter("independent"), Meter::default());
+    assert_eq!(restored.body_identity("independent"), identity);
+    assert!(std::sync::Arc::ptr_eq(
+        &untouched,
+        &restored.page("independent").unwrap().bytes
+    ));
+    assert_eq!(restored.query_counters().solver_runs, 1);
+    assert_eq!(restored.meter().body_parse_produced, 1);
+    assert_eq!(restored.meter().hir_produced, 1);
+    let saved = restored.checkpoint().unwrap();
+    let mut second = restart(&saved);
+    let edit = second
+        .prepare("independent", "fn independent() int { return 1234567 }")
+        .unwrap();
+    second.commit(edit).unwrap();
+    assert_eq!(second.function_meter("main"), Meter::default());
+    // Prefix growth relocates the untouched owner's structural witness without
+    // reading/encoding its payload. Repeated restart is still R-only.
+    let shifted = second.checkpoint().unwrap();
+    let mut third = restart(&shifted);
+    let candidate = third
+        .prepare("main", "fn main() int { return foreign_add(23,22) }")
+        .unwrap();
+    third.commit(candidate).unwrap();
+    assert_eq!(third.function_meter("independent"), Meter::default());
+    assert_eq!(third.query_counters().solver_runs, 1);
+}
+
+#[test]
+fn shared_frontend_failed_first_edit_stale_candidates_and_bad_required_pages_preserve_root() {
+    use crate::frontend::Frontend;
+    let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";
+    let (front, _) =
+        Frontend::cold(source, "m938", "p938", &[SOURCE_CAP.into()], environment()).unwrap();
+    let saved = front.checkpoint().unwrap();
+    let mut restored = restart(&saved);
+    assert!(restored
+        .prepare("main", "fn main() int { return foreign_add(true,22) }")
+        .is_err());
+    assert_eq!(restored.checkpoint().unwrap().digest, saved.digest);
+    let stale = restored
+        .prepare("main", "fn main() int { return foreign_add(24,22) }")
+        .unwrap();
+    let good = restored
+        .prepare("main", "fn main() int { return foreign_add(25,22) }")
+        .unwrap();
+    restored.commit(good).unwrap();
+    let current = restored.checkpoint().unwrap().digest;
+    assert!(restored.commit(stale).is_err());
+    assert_eq!(restored.checkpoint().unwrap().digest, current);
+    let restore = |root: &[u8], digest: &str, missing: bool| {
+        Frontend::restore(root, digest, &[SOURCE_CAP.into()], environment(), |d| {
+            if missing {
+                None
+            } else {
+                saved
+                    .pages
+                    .values()
+                    .find(|p| p.digest == d)
+                    .map(|p| p.bytes.clone())
+            }
+        })
+    };
+    assert!(restore(&saved.root, &saved.digest, true).is_err());
+    assert!(restore(&saved.root, &"0".repeat(64), false).is_err());
+    let mut corrupted = saved.root.clone();
+    corrupted.push(b' ');
+    assert!(restore(&corrupted, &saved.digest, false).is_err());
+    assert!(Frontend::restore(&saved.root, &saved.digest, &[], environment(), |_| None).is_err());
+    assert!(Frontend::restore(
+        &saved.root,
+        &saved.digest,
+        &[SOURCE_CAP.into()],
+        environment(),
+        |d| {
+            saved.pages.values().find(|p| p.digest == d).map(|p| {
+                let mut bytes = p.bytes.as_ref().clone();
+                bytes.push(0);
+                std::sync::Arc::new(bytes)
+            })
+        }
+    )
+    .is_err());
+}
+
+#[test]
+fn recursive_owner_fact_restore_keeps_one_frozen_self_signature_dependency() {
+    let source="fn recurse(n int) int { if n==0 { return 0 }\nreturn foreign_add(n,recurse(n-1)) }\nfn main() int { return recurse(4) }";
+    let program =
+        ace_core::source::parse_program_with(source, ace_core::source::SourceProfile::Scalar)
+            .unwrap();
+    let mut query = crate::SourceQuerySession::new("p938", "m938").with_capabilities([SOURCE_CAP]);
+    query.set_foreign(Some(environment()));
+    let facts = query.infer_body(&program, "recurse").unwrap().facts;
+    assert!(facts.sig_reads.iter().any(|n| n == "recurse"));
+    query.clear();
+    query.set_allow_solver(false);
+    query.seed(&program, &facts).unwrap();
+    assert!(query.infer_body(&program, "recurse").unwrap().hit);
+}

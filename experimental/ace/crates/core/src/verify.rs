@@ -268,7 +268,7 @@ pub fn verify_function_ref(
             Span { start: 0, end: 0 },
         )]);
     }
-    verify_function_impl(bundle, def_index, None)
+    verify_function_impl(bundle, def_index, None, false)
 }
 
 /// PLAN-912 §5.2: the single-function CLOSURES credential. Same complete
@@ -307,13 +307,14 @@ pub fn verify_closures_function(
         .map(|d| d.id_text.clone())
         .unwrap_or_default();
     crate::body_work::record_attempt(crate::body_work::Stage::HirVerify, &unit);
-    verify_function_impl(bundle, def_index, Some(ctx))
+    verify_function_impl(bundle, def_index, Some(ctx), false)
 }
 
 fn verify_function_impl(
     bundle: &hir::Bundle,
     def_index: usize,
     closures: Option<&ClosuresVerifyContext>,
+    foreign_allowed: bool,
 ) -> Result<CheckedFunction, Vec<Diagnostic>> {
     if bundle.modules.len() != 1 {
         return Err(vec![Diagnostic::new(
@@ -328,7 +329,7 @@ fn verify_function_impl(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
-        foreign_allowed: false,
+        foreign_allowed,
         diags: Vec::new(),
         closures_ctx: closures.map(|c| c.view()),
         domain: bundle.domain,
@@ -1734,6 +1735,15 @@ pub fn verify_foreign_scalar(
     } else {
         Err(verifier.diags)
     }
+}
+
+pub fn verify_foreign_function(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    check_foreign_declarations(bundle, environment)?;
+    verify_function_impl(bundle, def_index, None, true)
 }
 
 fn check_foreign_declarations(

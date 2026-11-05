@@ -38,6 +38,7 @@ pub mod apply;
 pub mod catalog;
 pub mod consumer;
 pub mod facts;
+pub mod frontend;
 pub mod host;
 pub mod ident;
 pub mod keys;

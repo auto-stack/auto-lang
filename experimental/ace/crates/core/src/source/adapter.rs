@@ -717,9 +717,21 @@ pub fn prepare_candidate_document(
     src: &str,
     module_path: &str,
 ) -> Result<FnCandidate, Vec<Diagnostic>> {
+    prepare_candidate_document_with_supply(env, item, fn_index, src, module_path, None)
+}
+
+/// The ordinary single-body transaction with SQ-A facts as type authority.
+pub fn prepare_candidate_document_with_supply(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    fn_index: usize,
+    src: &str,
+    module_path: &str,
+    supply: Option<&dyn super::resolve::TypeSupply>,
+) -> Result<FnCandidate, Vec<Diagnostic>> {
     // Bounded temporary graft (exclusive access): the re-check grafts the
     // candidate body and hands back the displaced CURRENT entry.
-    let current = super::resolve::recheck_swap(env, item, fn_index)?;
+    let current = super::resolve::recheck_swap_with_supply(env, item, fn_index, supply)?;
     match emit_function_body(env, fn_index, src, module_path) {
         Ok((parts, receipt)) => {
             // Restore current and take the candidate BEFORE returning —

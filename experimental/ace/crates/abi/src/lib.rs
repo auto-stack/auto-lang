@@ -30,6 +30,7 @@ pub mod layout;
 pub mod link;
 pub mod run;
 pub mod semref;
+pub mod source_foreign;
 pub mod trace;
 pub mod typed_decl;
 pub mod typed_emit;

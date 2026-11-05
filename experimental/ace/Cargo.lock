@@ -80,6 +80,7 @@ dependencies = [
  "ace-av-core",
  "ace-core",
  "ace-foreign-contract",
+ "ace-lowering",
  "ace-native",
  "ace-semantics-contract",
  "ace-source-query",
@@ -329,6 +330,9 @@ dependencies = [
  "ace-semantics",
  "ace-semantics-contract",
  "blake3",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

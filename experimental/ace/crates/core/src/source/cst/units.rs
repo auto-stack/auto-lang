@@ -1406,7 +1406,7 @@ impl UnitCatalog {
     /// PLAN-928（T-09，V-05/§5.4）：stale（候选基修订 ≠ 当前修订）与
     /// foreign（候选非本目录实例铸造）一律 typed 拒绝（`StaleForeign`），
     /// 目录/源/计量**零变异**后原样返回。
-    pub fn commit_staged(&mut self, cand: StagedCandidate) -> Result<EditReceipt, EditError> {
+    pub fn validate_staged(&self, cand: &StagedCandidate) -> Result<(), EditError> {
         if cand.instance != self.instance {
             return Err(EditError::StaleForeign(format!(
                 "foreign candidate: minted by catalog instance {}, this is {}",
@@ -1420,6 +1420,11 @@ impl UnitCatalog {
                 cand.base_revision, current_revision
             )));
         }
+        Ok(())
+    }
+
+    pub fn commit_staged(&mut self, cand: StagedCandidate) -> Result<EditReceipt, EditError> {
+        self.validate_staged(&cand)?;
         let is_reuse = |cat: &Self, owner: &str, ordinal: u32, sl: &SealedLambda| {
             cat.lambdas
                 .get(&(owner.to_string(), ordinal))
@@ -1594,6 +1599,9 @@ pub struct StagedCandidate {
 }
 
 impl StagedCandidate {
+    pub fn owner_item(&self) -> Option<&FnItem> {
+        self.owner_item.as_deref()
+    }
     pub fn owner(&self) -> &str {
         &self.owner
     }

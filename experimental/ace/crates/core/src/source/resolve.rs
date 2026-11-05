@@ -2342,6 +2342,23 @@ pub(crate) fn recheck_swap(
     item: &ast::FnItem,
     fn_index: usize,
 ) -> Result<BodyState, Vec<Diagnostic>> {
+    recheck_swap_with_supply(env, item, fn_index, None)
+}
+
+pub(crate) fn recheck_swap_with_supply(
+    env: &mut CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+    supply: Option<&dyn TypeSupply>,
+) -> Result<BodyState, Vec<Diagnostic>> {
+    if supply.is_some() && !env.profile.is_scalar() {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.fact-profile",
+            "fact-supplied recheck supports the scalar surface only",
+            item.span,
+        )]);
+    }
     if env.closed {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -2497,7 +2514,7 @@ pub(crate) fn recheck_swap(
         &mut Vec::new(),
         &mut Vec::new(),
         env.program.fns.len(),
-        None,
+        supply,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -2517,8 +2534,12 @@ pub(crate) fn recheck_swap(
         });
     }
     let previous = previous.swap_into(env, fn_index);
-    env.check_walks += 1;
-    let check_diags = super::typecheck::check_body_in(&env.program, fn_index);
+    let check_diags = if supply.is_some() {
+        Vec::new()
+    } else {
+        env.check_walks += 1;
+        super::typecheck::check_body_in(&env.program, fn_index)
+    };
     if !check_diags.is_empty() {
         previous.swap_into(env, fn_index);
         return Err(check_diags);

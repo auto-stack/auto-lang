@@ -34,6 +34,44 @@ pub struct SignatureCatalog {
 }
 
 impl SignatureCatalog {
+    pub fn entries(&self) -> impl Iterator<Item = &FnSigFacts> {
+        self.by_name.values()
+    }
+
+    /// Reconstitute declaration metadata only. The source-bound required page
+    /// owns the stored version; no body, AST projection or solver runs here.
+    pub fn from_entries(
+        package: &str,
+        module: &str,
+        entries: Vec<FnSigFacts>,
+    ) -> Result<Self, ProduceError> {
+        let mut by_name = BTreeMap::new();
+        let mut by_logical = BTreeMap::new();
+        for facts in entries {
+            if facts.check_envelope().is_err()
+                || facts.logical != owner_logical(package, module, &facts.name)
+                || by_name.contains_key(&facts.name)
+                || facts.version.as_str().len() != 64
+            {
+                return Err(ProduceError::Profile {
+                    what: "invalid restored signature catalog",
+                });
+            }
+            by_logical.insert(facts.logical.clone(), facts.name.clone());
+            by_name.insert(facts.name.clone(), facts);
+        }
+        let candidates: Vec<String> = by_name.keys().cloned().collect();
+        let parts: Vec<&[u8]> = candidates.iter().map(|n| n.as_bytes()).collect();
+        let candidates_fp = sq_hash("ac934/candidates/fn/v1", &parts);
+        Ok(Self {
+            package: package.into(),
+            module: module.into(),
+            by_name,
+            by_logical,
+            candidates,
+            candidates_fp,
+        })
+    }
     /// Build the catalog from a parsed module. Declarations outside the
     /// finite signature surface are a controlled rejection.
     pub fn build(program: &Program, package: &str, module: &str) -> Result<Self, ProduceError> {

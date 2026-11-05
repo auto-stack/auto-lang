@@ -8,8 +8,9 @@
     "provider_not": "u8(u8); logical bool only; result 0/1",
     "provider_div": "status-i32(ptr,i32,i32,ptr-out-i32); ctx=&provider_ctx; success=0; failures=-3 ctx,-2 overflow,-1 zero; no out store on failure",
     "provider_tick": "i32(i32); explicit effect and ordered decimal trace",
-    "provider_trace": "i32(); observation",
-    "provider_calls": "i32(); observation"
+    "provider_trace": "i32(); increments call count and observes ordered tick trace",
+    "provider_calls": "i32(); increments and returns call count, including this observation",
+    "provider_mix": "i32(i32,u8,i32,u8,i32); logical bool inputs 0/1; Windows x64 positional mixed slots and stack argument 5; total unsigned weighted sum, bit-preserving result"
   },
   "review_rule": "header and review-table bytes are independently authored; compile provider with the same header; bind their SHA256 and actual object SHA256 at the host composition root; no symbol-name inference of physical signature"
 }
