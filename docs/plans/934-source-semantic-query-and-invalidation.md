@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-semantics/source-query-session.md]
 touched_goals: [GOAL-002]
 affects: [auto-semantics, auto-cte, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-796, PLAN-927, PLAN-928, PLAN-929]
-current_step: 5
+current_step: 6
 total_steps: 13
 ---
 
@@ -163,7 +163,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 | T-03 | work | T-02，拟source-query及semantics adapter必要窗 | 单体懒输入/签名目录/新schema命名空间，V-02/07，AC-02/04 | [x] 2026-11-05：`cc9f9b255`。①**单体懒输入**：`ace_semantics::adapter::project_body_scoped(program,target,…)` —— 目标 body 物化，其余函数仅签名 stub（空 body），**不再 clone 整 Program**，无关 body 的越界构造根本不投影（sq14 直接断言 stub 空/翻转 target 生效/Text 模块的 str body 不被投影）。②**签名目录**：`SignatureCatalog`（name→sig 页、logical↔name、排序候选集+指纹），纯声明面——只改 body 时目录内**所有版本与候选指纹不变**（sq15）；session `fn_sig` 与失效判定改读目录（sq17 一致）。③**命名空间准入**：`validate_against`/`check_envelope` 先验 producer/schema/algo/profile，旧 `ac796` schema 永不命中（sq16：旧 schema/异 producer/错 algo/错 profile 全拒，且 `SQ_SCHEMA != SEMA_PAGE_SCHEMA_V2`）。验证：crate 17/17；av `sq934` 8/8 复跑；`cargo t ace-semantics` PASS（run-bu0_9jsy，冻结提交）。V-02 轴（callee 签名漂移/负依赖/候选集）与 V-07（旧页隔离）在本层成立，正式 V-case 族归 T-09 |
 | T-04 | work | T-03，core事实消费/solver S | 真query事实消费→HIR/legacy综合切断、命名输入差额，V-01/03/09，AC-01/04 | [x] 2026-11-05：**命名实参**（`bac17cb48`：`InputArg{name,value}` 保 source-order、按名绑参/未知/重复/元数/类型诊断、adapter 投影、canonical 含绑定名；`pick(b: true, a: 7)`=7，位置写法准入红）+ **legacy 综合切断**（`a676fce5c`：core `TypeSupply` 端口与 `resolve_with_supply`——每个 scalar 表达式/`let` 的 VT 由事实页安装、core 的规则降为校验（`source.fact-mismatch`/`source.fact-missing` 在 bind 阶段红，HIR 之前）；`type_synth` 计量：事实路径 `synth=0 / fact_checks>0 / fact_missing=0`，legacy 对照 `synth>0`；source-query `BodyTypeSupply`+`bind_with_facts` 统一查页/准入/绑定/签名安装）。验证：crate 20/20、av `sq934` 10/10（42/43/命名 7 + 坏事实 bind 红 + cold/warm 反控）、`cargo t ace-source ace-semantics` PASS（run-dzy4abt8，冻结提交） |
 | T-05 | work | T-03/04，query deps/meta目录 | 完整键/正负/SCC/来源刷新，V-02/03，AC-02/03 | [x] 2026-11-05：`7316e929d`。①**完整键**：`QueryKey` 含 query kind/logical/签名轴/body 轴/profile/algo/schema/producer/target semantics/能力集（排序去重），canonical 为域分离哈希，不含 source hash/span/intern slot；`body_key`/`sig_key` 公开。②**能力失效**：`set_capabilities` 后暖页必 miss 重解（能力集参与键，顺序无关，sq21/22）。③**正负依赖对账**：`audit()` 逐页给 `ok/body-changed/signature-changed/key-changed/dep-changed/negative-flipped`，与命中判定同一函数（sq24：改 body 只标该 owner；负依赖名字出现→`negative-flipped`）。④**SCC**：互递归 even/odd 各自只在签名面读对方，无 query 环；改 odd body 时 even 仍暖（sq23）；自递归同理；前向引用经 stub 签名。⑤**来源刷新**：前缀漂移下 `body_key` 不变、`bind_with_facts` 仍成立并验证（sq25 + av `sq934_source_map_drift_keeps_facts_and_executes` 值 42）。验证：crate 25/25、av `sq934` 11/11、`cargo t ace-semantics` PASS（run-raania71，冻结提交） |
-| T-06 | work | T-05，ManagedStore required/root/会话 | source-query candidate/target宿主安装两阶段、dep重验/取消/single-flight，V-05/11，AC-06 | [ ] 2026-11-05 部分（`25974f89f`）：**宿主安装协议与并发语义完成**——`QueryHost`：`prepare` 只查事实（不安装、不发布页、不建 target）；`commit` 重验 ①取消标志 ②candidate.base 仍为当前 revision（迟到结果不装）③当前源映射出的**完整键**未变 ④全部正依赖版本未变，之后经 `PageSink` 发布页并**一次性**切换 source/semantic/target 的单一 `CurrentRecord`；任何失败/取消/迟到均保旧记录（sq26..28）。target-ready `TargetHandle` 随同一切换；只读 `view` 不安装不建 target（sq30）。single-flight 按完整键：一次计算共享、waiter 取消不污染共享结果、同键异 payload 拒并定位（sq29）。**未完成**：`PageSink` 的 ManagedStore 适配（页作为 required 边发布/读回准入）与真实 AV/A2X target-ready 接线 |
+| T-06 | work | T-05，ManagedStore required/root/会话 | source-query candidate/target宿主安装两阶段、dep重验/取消/single-flight，V-05/11，AC-06 | [x] 2026-11-05：`25974f89f`（宿主协议）+ `9a0baeb43`（统一存储 sink）。①**两阶段**：`prepare` 只查事实（不安装/不发布/不建 target），`commit` 依序重验 取消→base revision（迟到不装）→当前源完整键→全部正依赖版本，之后经 `PageSink` 发布页并**一次**切换 source/semantic/target 的单一 `CurrentRecord`；任何失败保旧（sq26..28）。②**target-ready** `TargetHandle` 随同一切换；只读 `view` 不安装不建 target（sq30）。③**single-flight** 按完整键：一次计算共享、waiter 取消不污染、同键异 payload 拒并定位（sq29）。④**统一 ManagedStore**：页发布于 layer `S934`（carrier SnapshotRecord），store key = 完整 query key canonical；自描述版本化 bounded codec 读回重验信封/kind/type tag/计数/UTF-8/字节上限，截断/尾随/旧 codec/异 schema 全拒（sq32）；按 key 与按 artifact id 双读并带预期键准入（`KeyMismatch`，sq31）；发布页注册为项目 soft root，生命周期/回收归 store 的 lease/GC（sq33）。**归属**：真实 AV/A2X target-ready 接线与 929 required-closure 属 T-07/T-08。验证：crate 33/33、`cargo t ace-semantics` PASS（run-l8c1dj93） |
 | T-07 | work | T-05/06，929已审稳定来源恢复接口 | 929-source与934-facts页分工、深验/首好与首坏编辑修复/历史/坏页，V-04/07/10/11，AC-05 | [ ] |
 | T-08 | work | T-04..07，AV/native/A2X/worker H短窗 | 真实普通源consumer接入与四端认证，V-01/08，AC-08 | [ ] |
 | T-09 | work | T-03..08，case/parent/注册H、933稳定材料 | 使能V-01..11独立oracle/负控，新包职责纳现ace-semantics固定清单，AC-01..06/09 | [ ] |
@@ -180,9 +180,16 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 **T-04 已完成（2026-11-05，`bac17cb48` + `a676fce5c`）**：命名实参按名绑定（保源求值序），以及 **legacy 综合切断**——`resolve_with_supply` 下 HIR 类型全部来自事实页，core 规则降为校验，`type_synth` 计量 `synth=0`（legacy 对照 >0），坏事实在 bind 阶段红。
 
-**T-05 已完成（2026-11-05，`7316e929d`）**：完整查询键（含能力集）+ 能力失效 + 逐页依赖审计（六种 reason）+ 互递归 SCC 非环 + 前缀漂移保持键并仍可 bind/执行。下一入口 T-06。
+**T-05 已完成（2026-11-05，`7316e929d`）**：完整查询键（含能力集）+ 能力失效 + 逐页依赖审计（六种 reason）+ 互递归 SCC 非环 + 前缀漂移保持键并仍可 bind/执行。
+
+**T-06 已完成（2026-11-05，`25974f89f` + `9a0baeb43`）**：宿主两阶段安装（prepare/commit + dep 重验 + 取消/迟到保旧 + target-ready 同切换）、single-flight 与统一 ManagedStore 页持久化（版本化 bounded codec、读回准入、project soft root）。下一入口 T-07。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: in-progress（**T-06 完成**：宿主两阶段/dep 重验/取消/迟到/single-flight + 统一 ManagedStore 页持久与读回准入；T-07 下一入口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `25974f89f` → `9a0baeb43`；主检出簿记 | next: work（T-07 恢复页分工/深验/首好与首坏编辑修复 → V-04/07/10/11）
+  - 存储证据：真实 `ManagedStore` 临时库往返（`get`/`get_by_key` 同页）、按 artifact id + 预期键准入（异键 `KeyMismatch`）、缺页/失败读为 miss、发布页成为项目 soft root（`root_artifacts`）。codec 拒绝矩阵：坏 magic/截断/尾随字节/旧 codec 版本/异 schema 全拒（sq32）。
+  - 验证：`cargo test -p ace-source-query --lib` **33/33**；`cargo t ace-semantics` **PASS**（`target/test-groups/run-l8c1dj93/`，退出 0，冻结提交单实例）。依赖方向仍为 core/semantics/contract/artifacts，无 av/native/a2x。
+  - 归属：真实 AV/A2X `target-ready` 接线与 929 required-closure 发布策略归 T-07/T-08（本任务只提供端口与协议，不另造总事务框架）。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: in-progress（T-06 部分：宿主两阶段/dep 重验/取消/迟到/single-flight 完成；ManagedStore sink 适配未完成，T-06 仍 `[ ]`） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `25974f89f`；主检出簿记 | next: work（T-06 续：ManagedStore `PageSink` 适配 + 读回准入；随后 T-07 恢复页）
   - 证据：`cargo test -p ace-source-query --lib` **30/30**（sq26 prepare/commit 单次切换且 prepare 不发布；sq27 取消/迟到/依赖变更均保旧记录；sq28 target 随同一切换；sq29 single-flight 一次计算 + waiter 取消隔离 + 同键异 payload 拒；sq30 只读 view 不安装）。`cargo t ace-semantics` **PASS**（`target/test-groups/run-0spq2gt6/`，退出 0，冻结提交单实例）。
