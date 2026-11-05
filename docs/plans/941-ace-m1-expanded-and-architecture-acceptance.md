@@ -248,6 +248,11 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: blocked | worktre
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 1 | from: work | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 91968fd403d0bf0c7bf2f5a4e002ae50d44440a6 | next: user
 
+
+2026-11-06 waiting audit：上一goal轮有实际进展（实施检查点91968fd40、14+4冻结验证、真实证书缺陷复现）；本轮复读§9/§10及当前工作树/主线记录，未见§10-4的用户决定或F-941-01独立修复交付。相同阻塞连续第2轮；未运行测试/构建、未推进依赖步骤，原待答问题继续有效。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 2 | from: user | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 91968fd403d0bf0c7bf2f5a4e002ae50d44440a6 | next: user
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
