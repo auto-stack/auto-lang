@@ -19,7 +19,7 @@ fn semantic() -> SemanticAssembly {
         references: vec![],
         sources: vec![SourceInput {
             source_id: "std.at".into(),
-            content_hash: "public-source".into(),
+            content_hash: "1".repeat(64),
         }],
     }
 }
@@ -31,7 +31,7 @@ fn consumer() -> Consumer {
         toolchain: "av/1".into(),
         providers: vec![ProviderInput {
             source_id: "provider.at".into(),
-            content_hash: "body42".into(),
+            content_hash: "2".repeat(64),
             owners: vec!["m3_std_answer".into()],
         }],
     }
@@ -46,7 +46,7 @@ fn common_identity_is_consumer_neutral_but_physical_inputs_are_not() {
     assert_eq!(av.fingerprint(), rust.fingerprint());
     assert_ne!(av.consumer_fingerprint(), rust.consumer_fingerprint());
     let mut next = consumer();
-    next.providers[0].content_hash = "body41".into();
+    next.providers[0].content_hash = "3".repeat(64);
     let next = Manifest::freeze(semantic(), next).unwrap();
     assert_eq!(av.fingerprint(), next.fingerprint());
     assert_ne!(
@@ -122,6 +122,16 @@ fn malformed_forged_or_wrong_domain_envelopes_are_not_admitted() {
         let mut s = semantic();
         s.sources[0].source_id = id.into();
         assert!(Manifest::freeze(s, consumer()).is_err(), "{id}");
+    }
+    for hash in [
+        "a".repeat(63),
+        "g".repeat(64),
+        "A".repeat(64),
+        String::new(),
+    ] {
+        let mut s = semantic();
+        s.sources[0].content_hash = hash;
+        assert!(Manifest::freeze(s, consumer()).is_err());
     }
     let mut v = serde_json::to_value(&current).unwrap();
     v["host_pointer"] = 1.into();

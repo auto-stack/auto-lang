@@ -6,7 +6,7 @@ use super::{
     reference, validate,
 };
 use crate::vm::native::NativeInterface;
-use ace_semantics_contract::assembly::{OperationReference, Signature};
+use ace_semantics_contract::assembly::{OperationReference, ReferenceLevel, Signature};
 
 pub fn current_operation_reference(
     operation: &str,
@@ -69,6 +69,7 @@ pub fn current_operation_reference(
     adapter.producer = producer.clone();
     let contract = serde_json::to_vec(&adapter).map_err(|e| e.to_string())?;
     Ok(OperationReference {
+        verification: ReferenceLevel::SignatureChecked,
         operation: op.id.clone(),
         semantic_version: op.semantic_version,
         module: op.module.clone(),

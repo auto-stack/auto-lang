@@ -39,6 +39,14 @@
   - FnSig 只读声明面；body-only 编辑不得使其失效。
   - 526/新增 record 字段闭包/SCC 属 935/后续，不在本层承诺。
 
+PLAN-944 的显式模块装配可为每个真实 owner 提供声明 context（操作语义
+版本/签名/mode/显式 requirements 的内容版本）。SignatureCatalog 在
+`ac944/declaration-context/v1` 域组合基础签名轴与该 context；默认空映射
+完整保留原934键。正依赖继续读取该 catalog 的当前版本，需求变更使真实
+读者失效；物理 provider/完整 manifest不进入该签名轴。根 `/3` 恢复必须
+匹配调用方当前 context，旧 `/2` 不重解释。跨两端单根发布与候选源图所有权
+见 [ACE绑定与装配](../stdlib/design/ace-binding-and-assembly.md)。
+
 ## 事实页（`InferBodyFacts`）
 
 - 自描述：`name`、`logical`、`body_version`、信封四元组、`revision`、`steps`。

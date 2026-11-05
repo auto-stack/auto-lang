@@ -429,3 +429,492 @@ fn rust_assembly_effect_and_restored_first_body_edit_use_real_fragment_producers
     })
     .unwrap();
 }
+
+#[test]
+fn two_consumer_host_publishes_one_root_and_publication_failure_preserves_both_executables() {
+    use super::module_sources_950::rust_value;
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::ModuleA2xTarget;
+    use ace_source_query::assembly::{AssemblyHost, AssemblyTarget};
+    let temp = Temp::new();
+    let path = temp.0.join("store");
+    let (inputs, caps, av_manifest) = fixture();
+    let mut query = SourceQuerySession::new("pkg", "app");
+    let product =
+        compile_assembly_product(&inputs, "app", &caps, &av_manifest, &mut query, B).unwrap();
+    let rust_manifest = Manifest::freeze(
+        av_manifest.semantic().clone(),
+        ModuleA2xTarget::consumer_for_product(&product, &RustTargetProvider::v1(), vec![]).unwrap(),
+    )
+    .unwrap();
+    let av = ModuleAvTarget::cold_assembly(&path, &product, &av_manifest).unwrap();
+    let rust = ModuleA2xTarget::cold_assembly(
+        &path,
+        "host944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &product,
+        &rust_manifest,
+    )
+    .unwrap();
+    let source = ModuleSession::from_product(&product, query).unwrap();
+    let store = ModuleStore::open(&path, "host944").unwrap();
+    let mut host = AssemblyHost::publish_initial(source, store, av, rust).unwrap();
+    let old = host.receipt().clone();
+    let files = host.targets().1.current().files.clone();
+    let old_av = host.targets().0.current().clone();
+    let before = host.source().query.counters().solver_runs;
+    assert!(host
+        .prepare(None, B, |bound| {
+            let mut semantic = av_manifest.semantic().clone();
+            semantic.sources = source_inputs(bound);
+            semantic
+                .declarations
+                .iter_mut()
+                .find(|d| d.module == "std")
+                .unwrap()
+                .requirements
+                .push("console".into());
+            Ok((
+                Manifest::freeze(semantic, av_manifest.consumer().clone())?,
+                rust_manifest.clone(),
+            ))
+        })
+        .err()
+        .unwrap()
+        .contains("common-identity"));
+    assert_eq!(host.source().query.counters().solver_runs, before);
+    // Empty-body/link-only candidates still belong to one transient host.
+    // Matching root values never substitute for that ownership identity.
+    let other_store = ModuleStore::open(&path, "host944").unwrap();
+    let other_recovery = other_store
+        .restore_with_contexts(
+            &old,
+            &inputs,
+            "app",
+            &caps,
+            "pkg",
+            "app",
+            B,
+            host.source().query.declaration_contexts(),
+        )
+        .unwrap();
+    let other_av = ModuleAvTarget::restore_assembly(
+        &path,
+        &other_recovery.targets["av"],
+        &other_recovery.bound,
+        &av_manifest,
+    )
+    .unwrap();
+    let other_rust = ModuleA2xTarget::restore_assembly(
+        &path,
+        "host944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &other_recovery.targets["a2x-rust"],
+        &other_recovery.bound,
+        &rust_manifest,
+    )
+    .unwrap();
+    let mut other = AssemblyHost::from_recovery(
+        ModuleSession::from_recovery(other_recovery),
+        other_store,
+        other_av,
+        other_rust,
+        old.clone(),
+    )
+    .unwrap();
+    let lowered = host.targets().0.lowered;
+    let printed = host.targets().1.stats().print;
+    let foreign = host
+        .prepare(None, B, |_| {
+            let mut consumer = av_manifest.consumer().clone();
+            consumer
+                .providers
+                .push(ace_semantics_contract::assembly::ProviderInput {
+                    source_id: "providers/link-only".into(),
+                    content_hash: ace_core::runtime_contract::sha256_hex(b"link-only-input"),
+                    owners: vec![],
+                });
+            Ok((
+                Manifest::freeze(av_manifest.semantic().clone(), consumer)?,
+                rust_manifest.clone(),
+            ))
+        })
+        .unwrap();
+    assert_eq!(host.targets().0.lowered, lowered);
+    assert_eq!(host.targets().1.stats().print, printed);
+    assert!(other
+        .publish(foreign, false)
+        .unwrap_err()
+        .contains("foreign-publication"));
+    drop(other);
+    let a = av_manifest.clone();
+    let r = rust_manifest.clone();
+    let factory = |bound: &ace_core::source::modules::BoundModules| {
+        let mut semantic = a.semantic().clone();
+        semantic.sources = source_inputs(bound);
+        Ok((
+            Manifest::freeze(semantic.clone(), a.consumer().clone())?,
+            Manifest::freeze(semantic, r.consumer().clone())?,
+        ))
+    };
+    assert!(host
+        .prepare(
+            Some(("std", "answer", "pub fn answer() int { return missing() }")),
+            B,
+            &factory
+        )
+        .is_err());
+    let cancelled = host
+        .prepare(
+            Some(("std", "answer", "pub fn answer() int { return 43 }")),
+            B,
+            &factory,
+        )
+        .unwrap();
+    assert!(host.publish(cancelled, true).is_err());
+    let failed = host
+        .prepare(
+            Some(("std", "answer", "pub fn answer() int { return 43 }")),
+            B,
+            &factory,
+        )
+        .unwrap();
+    let managed = ace_artifacts::store::ManagedStore::open(&path).unwrap();
+    managed.db().execute_batch("CREATE TRIGGER fail_assembly944 BEFORE DELETE ON roots WHEN OLD.kind='source-modules-current' BEGIN SELECT RAISE(ABORT,'assembly944 transaction failure'); END;").unwrap();
+    assert!(host
+        .publish(failed, false)
+        .unwrap_err()
+        .contains("assembly944 transaction failure"));
+    managed
+        .db()
+        .execute_batch("DROP TRIGGER fail_assembly944")
+        .unwrap();
+    assert_eq!(
+        managed
+            .root_artifacts("host944", "source-modules-current")
+            .unwrap(),
+        vec![old.artifact.clone()]
+    );
+    assert_eq!(host.receipt(), &old);
+    assert_eq!(host.targets().1.current().files, files);
+    assert!(Arc::ptr_eq(host.targets().0.current(), &old_av));
+    assert_eq!(
+        host.targets().0.run_authorized(&mut |_, _| Ok(())).unwrap(),
+        42
+    );
+    host.targets()
+        .1
+        .run_authorized(&mut |_, _| Ok(()), |a| {
+            rust_value(a, &temp.0.join("preserved"), 42);
+            Ok(())
+        })
+        .unwrap();
+    drop(host);
+    drop(product);
+    drop(managed);
+    let store = ModuleStore::open(&path, "host944").unwrap();
+    let contexts = BTreeMap::from(
+        av_manifest
+            .semantic()
+            .declarations
+            .iter()
+            .map(|d| {
+                let owner = if d.module == "app" && d.symbol == "main" {
+                    "main".into()
+                } else {
+                    format!("m{}_{}_{}", d.module.len(), d.module, d.symbol)
+                };
+                (owner, d.version())
+            })
+            .collect::<BTreeMap<_, _>>(),
+    );
+    let recovery = store
+        .restore_with_contexts(&old, &inputs, "app", &caps, "pkg", "app", B, &contexts)
+        .unwrap();
+    let av = ModuleAvTarget::restore_assembly(
+        &path,
+        &recovery.targets["av"],
+        &recovery.bound,
+        &av_manifest,
+    )
+    .unwrap();
+    let rust = ModuleA2xTarget::restore_assembly(
+        &path,
+        "host944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound,
+        &rust_manifest,
+    )
+    .unwrap();
+    assert_eq!(av.lowered, 0);
+    assert_eq!(rust.stats().lower, 0);
+    let mut host =
+        AssemblyHost::from_recovery(ModuleSession::from_recovery(recovery), store, av, rust, old)
+            .unwrap();
+    let current = host
+        .prepare(
+            Some(("std", "answer", "pub fn answer() int { return 43 }")),
+            B,
+            &factory,
+        )
+        .unwrap();
+    host.publish(current, false).unwrap();
+    assert_eq!(
+        host.targets().0.run_authorized(&mut |_, _| Ok(())).unwrap(),
+        43
+    );
+    host.targets()
+        .1
+        .run_authorized(&mut |_, _| Ok(()), |a| {
+            rust_value(a, &temp.0.join("installed"), 43);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        host.targets().0.current_manifest().unwrap().fingerprint(),
+        host.targets().1.current_manifest().unwrap().fingerprint()
+    );
+}
+
+#[test]
+fn provider_bytes_are_owner_and_consumer_scoped_and_restored_first_edit_executes_new_implementation(
+) {
+    use super::module_sources_950::rust_value;
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::ModuleA2xTarget;
+    use ace_semantics_contract::assembly::ProviderInput;
+    use ace_source_query::assembly::{AssemblyHost, AssemblyTarget};
+    let temp = Temp::new();
+    let path = temp.0.join("store");
+    let (mut inputs, caps, initial_av) = fixture();
+    let mut query = SourceQuerySession::new("pkg", "app");
+    let product =
+        compile_assembly_product(&inputs, "app", &caps, &initial_av, &mut query, B).unwrap();
+    let initial_rust = Manifest::freeze(
+        initial_av.semantic().clone(),
+        ModuleA2xTarget::consumer_for_product(&product, &RustTargetProvider::v1(), vec![]).unwrap(),
+    )
+    .unwrap();
+    let av = ModuleAvTarget::cold_assembly(&path, &product, &initial_av).unwrap();
+    let rust = ModuleA2xTarget::cold_assembly(
+        &path,
+        "provider944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &product,
+        &initial_rust,
+    )
+    .unwrap();
+    let source = ModuleSession::from_product(&product, query).unwrap();
+    let mut host = AssemblyHost::publish_initial(
+        source,
+        ModuleStore::open(&path, "provider944").unwrap(),
+        av,
+        rust,
+    )
+    .unwrap();
+    let std_owner = host
+        .source()
+        .bound
+        .origins
+        .iter()
+        .find(|(_, o)| o.0 == "std")
+        .unwrap()
+        .0
+        .clone();
+    let local = host
+        .targets()
+        .0
+        .current()
+        .code()
+        .iter()
+        .find(|c| c.name().ends_with("_local"))
+        .unwrap()
+        .clone();
+    let old_code = host
+        .targets()
+        .0
+        .current()
+        .code()
+        .iter()
+        .find(|c| c.name() == format!("d_{std_owner}"))
+        .unwrap()
+        .clone();
+    let rust_fragments = host.targets().1.fragment_receipts();
+    let before_av = host.targets().0.lowered;
+    let before_rust = host.targets().1.stats().clone();
+    let before_solver = host.source().query.counters().solver_runs;
+    let provider_file = temp.0.join("answer.provider");
+    std::fs::write(
+        &provider_file,
+        b"physical provider revision two, same operation behavior",
+    )
+    .unwrap();
+    let make = |bound: &ace_core::source::modules::BoundModules| {
+        let mut semantic = initial_av.semantic().clone();
+        semantic.sources = source_inputs(bound);
+        let input = ProviderInput {
+            source_id: "providers/answer.provider".into(),
+            content_hash: ace_core::runtime_contract::sha256_hex(
+                &std::fs::read(&provider_file).unwrap(),
+            ),
+            owners: vec![std_owner.clone()],
+        };
+        Ok((
+            Manifest::freeze(semantic.clone(), assembly_consumer(vec![input]))?,
+            Manifest::freeze(semantic, initial_rust.consumer().clone())?,
+        ))
+    };
+    let candidate = host.prepare(None, B, &make).unwrap();
+    assert_eq!(host.source().query.counters().solver_runs, before_solver);
+    assert_eq!(
+        host.targets().0.lowered - before_av,
+        1,
+        "only the AV provider owner is actually lowered"
+    );
+    assert_eq!(host.targets().1.stats().lower, before_rust.lower);
+    assert_eq!(host.targets().1.stats().print, before_rust.print);
+    host.publish(candidate, false).unwrap();
+    assert_eq!(host.targets().1.fragment_receipts(), rust_fragments);
+    assert!(Arc::ptr_eq(
+        &local,
+        host.targets()
+            .0
+            .current()
+            .code()
+            .iter()
+            .find(|c| c.name().ends_with("_local"))
+            .unwrap()
+    ));
+    assert!(!Arc::ptr_eq(
+        &old_code,
+        host.targets()
+            .0
+            .current()
+            .code()
+            .iter()
+            .find(|c| c.name() == format!("d_{std_owner}"))
+            .unwrap()
+    ));
+    assert_eq!(
+        host.targets().0.run_authorized(&mut |_, _| Ok(())).unwrap(),
+        42
+    );
+    host.targets()
+        .1
+        .run_authorized(&mut |_, _| Ok(()), |a| {
+            rust_value(a, &temp.0.join("provider-only"), 42);
+            Ok(())
+        })
+        .unwrap();
+    let receipt = host.receipt().clone();
+    let contexts = host.source().query.declaration_contexts().clone();
+    let (expected_av, expected_rust) = make(&host.source().bound).unwrap();
+    drop(host);
+    drop(product);
+    let store = ModuleStore::open(&path, "provider944").unwrap();
+    let recovery = store
+        .restore_with_contexts(&receipt, &inputs, "app", &caps, "pkg", "app", B, &contexts)
+        .unwrap();
+    assert_eq!(recovery.session.counters().solver_runs, 0);
+    assert!(ModuleAvTarget::restore_assembly(
+        &path,
+        &recovery.targets["av"],
+        &recovery.bound,
+        &initial_av
+    )
+    .is_err());
+    let av = ModuleAvTarget::restore_assembly(
+        &path,
+        &recovery.targets["av"],
+        &recovery.bound,
+        &expected_av,
+    )
+    .unwrap();
+    let rust = ModuleA2xTarget::restore_assembly(
+        &path,
+        "provider944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound,
+        &expected_rust,
+    )
+    .unwrap();
+    assert_eq!(av.lowered, 0);
+    assert_eq!(rust.stats().lower, 0);
+    assert_eq!(rust.stats().print, 0);
+    let mut host = AssemblyHost::from_recovery(
+        ModuleSession::from_recovery(recovery),
+        store,
+        av,
+        rust,
+        receipt,
+    )
+    .unwrap();
+    let fragment = "pub fn answer() int { return 44 }";
+    std::fs::write(&provider_file, fragment.as_bytes()).unwrap();
+    let candidate = host
+        .prepare(Some(("std", "answer", fragment)), B, &make)
+        .unwrap();
+    assert_eq!(host.source().query.counters().solver_runs, 1);
+    assert_eq!(host.targets().0.lowered, 1);
+    assert_eq!(host.targets().1.stats().lower, 1);
+    assert_eq!(host.targets().1.stats().print, 1);
+    host.publish(candidate, false).unwrap();
+    assert_eq!(
+        host.targets().0.run_authorized(&mut |_, _| Ok(())).unwrap(),
+        44
+    );
+    host.targets()
+        .1
+        .run_authorized(&mut |_, _| Ok(()), |a| {
+            rust_value(a, &temp.0.join("provider-and-body"), 44);
+            Ok(())
+        })
+        .unwrap();
+    inputs[0].source = fragment.into();
+    let next = host.receipt().clone();
+    let (a, r) = make(&host.source().bound).unwrap();
+    assert_eq!(a.fingerprint(), r.fingerprint());
+    drop(host);
+    let store = ModuleStore::open(&path, "provider944").unwrap();
+    let recovery = store
+        .restore_with_contexts(&next, &inputs, "app", &caps, "pkg", "app", B, &contexts)
+        .unwrap();
+    let av = ModuleAvTarget::restore_assembly(&path, &recovery.targets["av"], &recovery.bound, &a)
+        .unwrap();
+    let rust = ModuleA2xTarget::restore_assembly(
+        &path,
+        "provider944",
+        "pkg",
+        256 * 1024 * 1024,
+        RustTargetProvider::v1(),
+        &recovery.targets["a2x-rust"],
+        &recovery.bound,
+        &r,
+    )
+    .unwrap();
+    assert_eq!(recovery.session.counters().solver_runs, 0);
+    assert_eq!(av.lowered, 0);
+    assert_eq!(rust.stats().lower, 0);
+    assert_eq!(
+        av.current_manifest().unwrap().consumer().providers[0].content_hash,
+        ace_core::runtime_contract::sha256_hex(fragment.as_bytes())
+    );
+    assert_eq!(av.run_authorized(&mut |_, _| Ok(())).unwrap(), 44);
+    rust.run_authorized(&mut |_, _| Ok(()), |a| {
+        rust_value(a, &temp.0.join("next-provider-read"), 44);
+        Ok(())
+    })
+    .unwrap();
+}

@@ -1,0 +1,22 @@
+[package]
+name = "ace-stdlib-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "Explicit SDK operation-evidence to ACE assembly consumer integration tests; no product compiler or runtime"
+
+[dev-dependencies]
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+ace-semantics-contract = { path = "../../crates/semantics-contract" }
+ace-source-query = { path = "../../crates/source-query" }
+ace-core = { path = "../../crates/core" }
+ace-av = { path = "../../crates/av" }
+ace-a2x-rust = { path = "../../crates/a2x-rust" }
+ace-a2x-store = { path = "../../crates/a2x-store" }
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+serde_json = "1"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

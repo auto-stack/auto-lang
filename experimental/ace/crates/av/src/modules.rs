@@ -189,18 +189,23 @@ impl ModuleAvTarget {
                 .unwrap_or_default(),
         };
         let mut codes = Vec::new();
+        let contexts = assembly
+            .map(|m| ace_source_query::assembly::function_input_versions(&product.bound, m))
+            .transpose()?
+            .unwrap_or_default();
         for unit in split_units(&mir)? {
             let mint = span(&product.bound, &unit.funcs[0].name)?;
             let context = assembly
-                .map(|m| {
-                    ace_source_query::assembly::function_input_version(
-                        &product.bound,
-                        m,
-                        unit.funcs[0]
-                            .name
-                            .strip_prefix("d_")
-                            .ok_or("AV assembly def identity")?,
-                    )
+                .map(|_| {
+                    contexts
+                        .get(
+                            unit.funcs[0]
+                                .name
+                                .strip_prefix("d_")
+                                .ok_or("AV assembly def identity")?,
+                        )
+                        .cloned()
+                        .ok_or("AV assembly context owner absent")
                 })
                 .transpose()?
                 .unwrap_or_default();
@@ -381,16 +386,21 @@ impl ModuleAvTarget {
         }
         let mut codes = Vec::new();
         let mut names = std::collections::BTreeSet::new();
+        let contexts = expected
+            .map(|m| ace_source_query::assembly::function_input_versions(bound, m))
+            .transpose()?
+            .unwrap_or_default();
         for u in &root.units {
             let context = expected
-                .map(|m| {
-                    ace_source_query::assembly::function_input_version(
-                        bound,
-                        m,
-                        u.name
-                            .strip_prefix("d_")
-                            .ok_or("AV assembly def identity")?,
-                    )
+                .map(|_| {
+                    contexts
+                        .get(
+                            u.name
+                                .strip_prefix("d_")
+                                .ok_or("AV assembly def identity")?,
+                        )
+                        .cloned()
+                        .ok_or("AV assembly context owner absent")
                 })
                 .transpose()?
                 .unwrap_or_default();

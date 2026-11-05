@@ -330,6 +330,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-stdlib-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
+ "ace-av",
+ "ace-core",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "auto-lang-core",
+ "auto-tool-execution",
+ "serde_json",
+]
+
+[[package]]
 name = "ace-syntax-artifacts"
 version = "0.1.0"
 dependencies = [

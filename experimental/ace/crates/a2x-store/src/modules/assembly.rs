@@ -5,7 +5,7 @@ use super::*;
 use ace_semantics_contract::assembly::{Consumer, ProviderInput, RUST_PRODUCER};
 use ace_source_query::{
     assembly::{
-        entry_requirements, function_input_version, manifest_contexts, ASSEMBLY_HOST,
+        entry_requirements, function_input_versions, manifest_contexts, ASSEMBLY_HOST,
         ASSEMBLY_PLATFORM,
     },
     modules::PreparedModuleBatch,
@@ -150,9 +150,22 @@ impl ModuleA2xTarget {
         root.assembly = Some(manifest.clone());
         root.requirements = entry_requirements(&batch.bound, manifest)?;
         let mut seen = std::collections::BTreeSet::new();
+        let versions = function_input_versions(&batch.bound, manifest)?;
         for body in &batch.bodies {
             if body.candidate.slot_name() != body.owner || !seen.insert(body.owner.clone()) {
                 return Err("A2X assembly duplicate/foreign owner".into());
+            }
+            let context = versions
+                .get(&body.owner)
+                .ok_or("A2X assembly context owner absent")?
+                .clone();
+            let old = root
+                .fragments
+                .iter()
+                .find(|r| r.name == body.owner)
+                .ok_or("A2X assembly owner absent")?;
+            if !batch.body_edited(&body.owner) && old.context == context {
+                continue;
             }
             let parts = body.candidate.parts();
             let def = format!("d_{}", body.owner);
@@ -180,7 +193,6 @@ impl ModuleA2xTarget {
                 return Err("A2X assembly runtime changed outside body contract".into());
             }
             let sem_fp = semantic_fingerprint(&view, f).map_err(|e| format!("{e:?}"))?;
-            let context = function_input_version(&batch.bound, manifest, &body.owner)?;
             let runtime_hash = sha256_hex(runtime.as_bytes());
             self.inner
                 .produce_fragment_with_context(
@@ -212,7 +224,7 @@ impl ModuleA2xTarget {
             r.context = context;
         }
         for r in &root.fragments {
-            if r.context != function_input_version(&batch.bound, manifest, &r.name)? {
+            if versions.get(&r.name) != Some(&r.context) {
                 return Err("A2X assembly omitted affected owner".into());
             }
         }
@@ -224,5 +236,40 @@ impl ModuleA2xTarget {
             root,
             current,
         })
+    }
+}
+
+impl ace_source_query::assembly::AssemblyTarget for ModuleA2xTarget {
+    type Candidate = ModuleA2xEdit;
+    fn label(&self) -> &'static str {
+        "a2x-rust"
+    }
+    fn current_manifest(&self) -> Result<&Manifest, String> {
+        self.root
+            .assembly
+            .as_ref()
+            .ok_or_else(|| "A2X target has no assembly contract".into())
+    }
+    fn prepare_assembly(
+        &mut self,
+        batch: &PreparedModuleBatch,
+        manifest: &Manifest,
+    ) -> Result<Self::Candidate, String> {
+        self.prepare_batch(batch, manifest)
+    }
+    fn validate_assembly(&self, candidate: &Self::Candidate) -> Result<(), String> {
+        self.validate(candidate)
+    }
+    fn commit_assembly(&mut self, candidate: Self::Candidate) -> Result<(), String> {
+        self.commit(candidate)
+    }
+    fn current_receipt(&mut self) -> Result<ModuleReceipt, String> {
+        self.receipt()
+    }
+    fn current_digest(&self) -> Result<String, String> {
+        Ok(root_revision(&self.root))
+    }
+    fn candidate_receipt(&mut self, candidate: &Self::Candidate) -> Result<ModuleReceipt, String> {
+        self.prepared_receipt(candidate)
     }
 }

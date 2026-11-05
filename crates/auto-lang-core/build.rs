@@ -8,6 +8,7 @@
 // SDK assembly 身份（负控=manifest.rs 测试断言禁入清单 + Cargo.toml
 // 直接 path 依赖全覆盖断言；清单随依赖演进由该断言强制同步）。
 const IDENTITY_SOURCE_CRATES: &[&str] = &[
+    "ace-semantics-contract",
     "a2r-std",
     "auto-ast",
     "auto-atom",
@@ -68,7 +69,9 @@ fn main() {
     // 只覆盖实际存在的源——与旧全扫描"存在即扫"语义对齐；完整检出下
     // 清单全命中）。
     for crate_name in IDENTITY_SOURCE_CRATES {
-        let dir = if *crate_name == "auto-web-contract" {
+        let dir = if *crate_name == "ace-semantics-contract" {
+            root.join("experimental/ace/crates/semantics-contract")
+        } else if *crate_name == "auto-web-contract" {
             std::path::PathBuf::from(
                 std::env::var("DEP_AUTO_WEB_CONTRACT_ROOT")
                     .expect("Cargo-selected auto-web-contract source metadata missing"),
@@ -77,7 +80,12 @@ fn main() {
             root.join("crates").join(crate_name)
         };
         if dir.is_dir() {
-            collect(&dir, &format!("crates/{crate_name}"), &mut inputs);
+            let prefix = if *crate_name == "ace-semantics-contract" {
+                "experimental/ace/crates/semantics-contract".into()
+            } else {
+                format!("crates/{crate_name}")
+            };
+            collect(&dir, &prefix, &mut inputs);
         }
     }
     for (dir, prefix) in IDENTITY_SOURCE_OUT_OF_TREE {

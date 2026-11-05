@@ -181,19 +181,7 @@ impl ModuleA2xTarget {
             .map_err(|e| format!("{e:?}"))?;
         let contexts: BTreeMap<String, String> = if let Some(manifest) = assembly {
             self::assembly::admit_manifest(&product.bound, manifest, &*inner.provider, &runtime)?;
-            product
-                .bound
-                .origins
-                .keys()
-                .map(|name| {
-                    ace_source_query::assembly::function_input_version(
-                        &product.bound,
-                        manifest,
-                        name,
-                    )
-                    .map(|v| (name.clone(), v))
-                })
-                .collect::<Result<_, _>>()?
+            ace_source_query::assembly::function_input_versions(&product.bound, manifest)?
         } else {
             BTreeMap::new()
         };
@@ -433,10 +421,17 @@ impl ModuleA2xTarget {
         if root.requirements != requirements {
             return Err("A2X assembly requirement closure mismatch".into());
         }
+        let contexts = expected
+            .map(|m| ace_source_query::assembly::function_input_versions(bound, m))
+            .transpose()?
+            .unwrap_or_default();
         for fragment in &root.fragments {
             let context = expected
-                .map(|m| {
-                    ace_source_query::assembly::function_input_version(bound, m, &fragment.name)
+                .map(|_| {
+                    contexts
+                        .get(&fragment.name)
+                        .cloned()
+                        .ok_or("A2X assembly context owner absent")
                 })
                 .transpose()?
                 .unwrap_or_default();

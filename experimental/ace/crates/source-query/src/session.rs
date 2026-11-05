@@ -239,23 +239,6 @@ impl SourceQuerySession {
         &self.declaration_contexts
     }
 
-    /// Existing positive read sets identify affected declarations without
-    /// walking, parsing or solving any unrelated body. Used when the host
-    /// changes explicit requirements while source text stays identical.
-    pub fn declaration_readers(
-        &self,
-        changed: &std::collections::BTreeSet<String>,
-    ) -> std::collections::BTreeSet<String> {
-        let mut result = changed.clone();
-        result.extend(
-            self.bodies
-                .values()
-                .filter(|page| page.sig_deps.iter().any(|(name, _)| changed.contains(name)))
-                .map(|page| page.name.clone()),
-        );
-        result
-    }
-
     /// Candidate contexts are validated against current declarations before
     /// replacing the session's inputs. This does not flush unrelated pages.
     pub fn set_declaration_contexts(

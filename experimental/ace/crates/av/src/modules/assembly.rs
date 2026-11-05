@@ -4,7 +4,7 @@ use super::*;
 use ace_semantics_contract::assembly::{Consumer, ProviderInput, AV_PRODUCER};
 use ace_source_query::{
     assembly::{
-        entry_requirements, function_input_version, manifest_contexts, ASSEMBLY_HOST,
+        entry_requirements, function_input_versions, manifest_contexts, ASSEMBLY_HOST,
         ASSEMBLY_PLATFORM,
     },
     modules::PreparedModuleBatch,
@@ -93,6 +93,7 @@ impl ModuleAvTarget {
         root.assembly = Some(manifest.clone());
         root.requirements = entry_requirements(&batch.bound, manifest)?;
         let revision = self.current.revision() + 1;
+        let versions = function_input_versions(&batch.bound, manifest)?;
         let mut codes = self.current.code().to_vec();
         let mut slots = std::collections::BTreeSet::new();
         for body in &batch.bodies {
@@ -107,6 +108,13 @@ impl ModuleAvTarget {
                 .ok_or("AV assembly owner absent")?;
             if !slots.insert(slot) {
                 return Err("duplicate AV assembly body".into());
+            }
+            let context = versions
+                .get(&body.owner)
+                .ok_or("AV assembly context owner absent")?
+                .clone();
+            if !batch.body_edited(&body.owner) && root.units[slot].context == context {
+                continue;
             }
             let parts = body.candidate.parts();
             let index = parts.bundle.modules[0]
@@ -124,7 +132,6 @@ impl ModuleAvTarget {
                 revision,
             )
             .map_err(|e| format!("{e:?}"))?;
-            let context = function_input_version(&batch.bound, manifest, &body.owner)?;
             let (record, code) = persist_unit_with_context(
                 &self.store,
                 &unit,
@@ -141,7 +148,7 @@ impl ModuleAvTarget {
                 .name
                 .strip_prefix("d_")
                 .ok_or("AV assembly def identity")?;
-            if unit.context != function_input_version(&batch.bound, manifest, owner)? {
+            if versions.get(owner) != Some(&unit.context) {
                 return Err("AV assembly omitted affected owner".into());
             }
         }
@@ -151,5 +158,40 @@ impl ModuleAvTarget {
             root,
             snapshot,
         })
+    }
+}
+
+impl ace_source_query::assembly::AssemblyTarget for ModuleAvTarget {
+    type Candidate = ModuleAvEdit;
+    fn label(&self) -> &'static str {
+        "av"
+    }
+    fn current_manifest(&self) -> Result<&Manifest, String> {
+        self.root
+            .assembly
+            .as_ref()
+            .ok_or_else(|| "AV target has no assembly contract".into())
+    }
+    fn prepare_assembly(
+        &mut self,
+        batch: &PreparedModuleBatch,
+        manifest: &Manifest,
+    ) -> Result<Self::Candidate, String> {
+        self.prepare_batch(batch, manifest)
+    }
+    fn validate_assembly(&self, candidate: &Self::Candidate) -> Result<(), String> {
+        self.validate(candidate)
+    }
+    fn commit_assembly(&mut self, candidate: Self::Candidate) -> Result<(), String> {
+        self.commit(candidate)
+    }
+    fn current_receipt(&mut self) -> Result<ModuleReceipt, String> {
+        self.receipt()
+    }
+    fn current_digest(&self) -> Result<String, String> {
+        Ok(root_revision(&self.root))
+    }
+    fn candidate_receipt(&mut self, candidate: &Self::Candidate) -> Result<ModuleReceipt, String> {
+        self.prepared_receipt(candidate)
     }
 }

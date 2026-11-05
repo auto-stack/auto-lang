@@ -158,6 +158,30 @@ fn canonical_caps(caps: &[String]) -> Vec<String> {
 }
 
 impl ModuleStore {
+    /// Read-only check of the already admitted source/target closure. Used by
+    /// an assembly host after genuine recovery; never reparses or repairs it.
+    pub fn verify_snapshot_inputs(
+        &self,
+        receipt: &ModuleReceipt,
+        bound: &BoundModules,
+        contexts: &BTreeMap<String, String>,
+        targets: &BTreeMap<String, ModuleReceipt>,
+        package: &str,
+        module: &str,
+    ) -> Result<(), String> {
+        let root = self.read_root(receipt)?;
+        if root.input_hash != bound.input_hash
+            || root.package != package
+            || root.module != module
+            || root.entry != bound.entry
+            || root.capabilities != canonical_caps(&bound.capabilities)
+            || &root.declaration_contexts != contexts
+            || &root.targets != targets
+        {
+            return Err("assembly.source-snapshot-inputs".into());
+        }
+        Ok(())
+    }
     pub fn open(path: &Path, project: &str) -> Result<Self, String> {
         Ok(Self {
             syntax: SyntaxArtifactStore::open(path, project).map_err(|e| format!("{e:?}"))?,

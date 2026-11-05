@@ -14,6 +14,8 @@ use ace_semantics_contract::assembly::{Manifest, Signature, SourceInput};
 use std::collections::BTreeMap;
 pub const ASSEMBLY_HOST: &str = "ace.explicit-finite-host/1";
 pub const ASSEMBLY_PLATFORM: &str = "x86_64-pc-windows-msvc";
+mod host;
+pub use host::{AssemblyHost, AssemblyTarget, PreparedAssembly};
 
 pub fn source_inputs(bound: &BoundModules) -> Vec<SourceInput> {
     let mut sources: Vec<_> = bound
@@ -21,7 +23,13 @@ pub fn source_inputs(bound: &BoundModules) -> Vec<SourceInput> {
         .iter()
         .map(|s| SourceInput {
             source_id: format!("modules/{}.at", s.module),
-            content_hash: ace_core::runtime_contract::sha256_hex(s.source.as_bytes()),
+            // The admitted immutable CST unit already binds these exact source
+            // bytes; metadata/key queries must not re-hash every large body.
+            content_hash: bound
+                .units
+                .get(&s.module)
+                .map(|u| u.source_hash.clone())
+                .unwrap_or_else(|| ace_core::runtime_contract::sha256_hex(s.source.as_bytes())),
         })
         .collect();
     sources.sort_by(|a, b| a.source_id.cmp(&b.source_id));
@@ -44,23 +52,27 @@ pub fn manifest_contexts(
     }
     let catalog = SignatureCatalog::build(&bound.program, "assembly", "modules")
         .map_err(|e| e.to_string())?;
+    let origins: BTreeMap<_, _> = bound
+        .origins
+        .iter()
+        .map(|(name, (module, symbol))| ((module.as_str(), symbol.as_str()), name.as_str()))
+        .collect();
+    let items: BTreeMap<_, _> = bound
+        .program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Fn(f) => Some((f.name.name.as_str(), f)),
+            _ => None,
+        })
+        .collect();
     let mut result = BTreeMap::new();
     for declaration in &s.declarations {
-        let (owner, _) = bound
-            .origins
-            .iter()
-            .find(|(_, o)| o.0 == declaration.module && o.1 == declaration.symbol)
+        let owner = *origins
+            .get(&(declaration.module.as_str(), declaration.symbol.as_str()))
             .ok_or("assembly.unknown-declaration")?;
         let facts = catalog.get(owner).ok_or("assembly.declaration-signature")?;
-        let item = bound
-            .program
-            .items
-            .iter()
-            .find_map(|i| match i {
-                Item::Fn(f) if &f.name.name == owner => Some(f),
-                _ => None,
-            })
-            .ok_or("assembly.declaration-source")?;
+        let item = items.get(owner).ok_or("assembly.declaration-source")?;
         let actual = Signature {
             parameters: facts
                 .params
@@ -88,7 +100,7 @@ pub fn manifest_contexts(
             ));
         }
         if result
-            .insert(owner.clone(), declaration.version())
+            .insert(owner.to_string(), declaration.version())
             .is_some()
         {
             return Err("assembly.duplicate-owner".into());
@@ -115,6 +127,28 @@ pub fn function_input_version(
     owner: &str,
 ) -> Result<String, String> {
     let contexts = manifest_contexts(bound, manifest)?;
+    input_version(bound, manifest, owner, &contexts)
+}
+
+/// Validate/source-hash/index declarations once for an assembly operation, not
+/// once per function. Only declaration facts and existing read edges are read.
+pub fn function_input_versions(
+    bound: &BoundModules,
+    manifest: &Manifest,
+) -> Result<BTreeMap<String, String>, String> {
+    let contexts = manifest_contexts(bound, manifest)?;
+    bound
+        .origins
+        .keys()
+        .map(|owner| input_version(bound, manifest, owner, &contexts).map(|v| (owner.clone(), v)))
+        .collect()
+}
+fn input_version(
+    bound: &BoundModules,
+    manifest: &Manifest,
+    owner: &str,
+    contexts: &BTreeMap<String, String>,
+) -> Result<String, String> {
     if !contexts.contains_key(owner) {
         return Err("assembly.function-owner".into());
     }
@@ -232,6 +266,56 @@ mod tests {
         (inputs, caps, Manifest::freeze(semantic, consumer).unwrap())
     }
     #[test]
+    fn a_mode_only_signature_change_is_rejected_before_any_body_solver() {
+        let (mut inputs, caps, base) = fixture();
+        inputs[0].source = "pub fn answer(x int) int { return x }".into();
+        inputs[1].source =
+            "fn answer() int { return 7 } fn main() int { return std.answer(42) }".into();
+        let bound = bind_modules(&inputs, "app", &caps, FrontBudget::WORK_OWNED_64MIB).unwrap();
+        let mut semantic = base.semantic().clone();
+        semantic.sources = source_inputs(&bound);
+        let signature = &mut semantic
+            .declarations
+            .iter_mut()
+            .find(|d| d.module == "std")
+            .unwrap()
+            .signature;
+        signature.parameters = vec!["i32".into()];
+        signature.modes = vec!["View".into()];
+        let valid = Manifest::freeze(semantic.clone(), base.consumer().clone()).unwrap();
+        let mut query = SourceQuerySession::new("pkg", "app");
+        compile_assembly_product(
+            &inputs,
+            "app",
+            &caps,
+            &valid,
+            &mut query,
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .unwrap();
+        semantic
+            .declarations
+            .iter_mut()
+            .find(|d| d.module == "std")
+            .unwrap()
+            .signature
+            .modes[0] = "Mut".into();
+        let bad = Manifest::freeze(semantic, base.consumer().clone()).unwrap();
+        let mut query = SourceQuerySession::new("pkg", "app");
+        assert!(compile_assembly_product(
+            &inputs,
+            "app",
+            &caps,
+            &bad,
+            &mut query,
+            FrontBudget::WORK_OWNED_64MIB
+        )
+        .err()
+        .unwrap()
+        .contains("signature-mismatch"));
+        assert_eq!(query.counters().solver_runs, 0);
+    }
+    #[test]
     fn real_readers_and_provider_owners_determine_physical_key_inputs() {
         let (inputs, caps, manifest) = fixture();
         let bound = bind_modules(&inputs, "app", &caps, FrontBudget::WORK_OWNED_64MIB).unwrap();
@@ -266,7 +350,7 @@ mod tests {
             .providers
             .push(ace_semantics_contract::assembly::ProviderInput {
                 source_id: "providers/answer.at".into(),
-                content_hash: "actual-provider-content".into(),
+                content_hash: ace_core::runtime_contract::sha256_hex(b"actual-provider-content"),
                 owners: vec![std_owner.clone()],
             });
         let provider = Manifest::freeze(manifest.semantic().clone(), consumer).unwrap();
@@ -327,7 +411,7 @@ mod tests {
                         .push("i32".into());
                     semantic.declarations[0].signature.modes.push("Mut".into());
                 }
-                "source" => semantic.sources[0].content_hash = "stale".into(),
+                "source" => semantic.sources[0].content_hash = "0".repeat(64),
                 _ => semantic.declarations[0].module = "unknown".into(),
             }
             let bad = Manifest::freeze(semantic, manifest.consumer().clone()).unwrap();

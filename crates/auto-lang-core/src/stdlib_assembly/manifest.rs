@@ -613,6 +613,23 @@ mod plan814_build_input_boundary {
             "path deps missing from IDENTITY_SOURCE_CRATES (update build.rs): {missing:?}"
         );
     }
+    #[test]
+    fn assembly_contract_source_is_in_sdk_identity_without_backend_sources() {
+        assert!(BUILD_INPUTS
+            .iter()
+            .any(|(id, _)| *id == "experimental/ace/crates/semantics-contract/src/assembly.rs"));
+        let offenders: Vec<_> = BUILD_INPUTS
+            .iter()
+            .filter(|(id, _)| {
+                id.starts_with("experimental/ace/")
+                    && !id.starts_with("experimental/ace/crates/semantics-contract/")
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "SDK identity contains non-contract ACE sources: {offenders:?}"
+        );
+    }
 }
 
 /// PLAN-884 V-09：迁移源不得静默缺列——stdlib 域目录（及 http_server/

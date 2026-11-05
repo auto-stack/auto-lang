@@ -7,9 +7,10 @@ use ace_core::source::{
     env_free_fn_index, prepare_module_candidate, resolve_env_with_supply, FnCandidate,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 pub struct ModuleSession {
-    pub bound: BoundModules,
+    pub bound: Rc<BoundModules>,
     pub query: SourceQuerySession,
     env: CheckedEnv,
     pub targets: std::collections::BTreeMap<String, ModuleReceipt>,
@@ -27,10 +28,16 @@ pub struct PreparedModuleBody {
 }
 pub struct PreparedModuleBatch {
     pub base_source: String,
-    pub bound: BoundModules,
+    pub bound: Rc<BoundModules>,
     pub bodies: Vec<PreparedModuleBody>,
     pub contexts: BTreeMap<String, String>,
     targets: BTreeMap<String, ModuleReceipt>,
+    edited_owner: Option<String>,
+}
+impl PreparedModuleBatch {
+    pub fn body_edited(&self, owner: &str) -> bool {
+        self.edited_owner.as_deref() == Some(owner)
+    }
 }
 impl PreparedModuleEdit {
     pub fn base_source(&self) -> &str {
@@ -40,8 +47,8 @@ impl PreparedModuleEdit {
 impl ModuleSession {
     /// One candidate source/contract revision, still unpublished. The physical
     /// owner set comes from a consumer's real provider closure. Contract readers
-    /// come from the query's existing positive dependency pages, not a second
-    /// call-graph/effect solver.
+    /// come from the admitted binder's existing actual call edges. Candidate
+    /// cache pages cannot replace the current graph after a cancelled edit.
     pub fn prepare_batch(
         &mut self,
         edit: Option<(&str, &str, &str)>,
@@ -50,12 +57,32 @@ impl ModuleSession {
         budget: FrontBudget,
     ) -> Result<PreparedModuleBatch, String> {
         let bound = match edit {
-            Some((module, name, fragment)) => {
+            Some((module, name, fragment)) => Rc::new(
                 edit_module_function(&self.bound, module, name, fragment, budget)
-                    .map_err(|e| format!("{e:?}"))?
-            }
+                    .map_err(|e| format!("{e:?}"))?,
+            ),
             None => self.bound.clone(),
         };
+        let edited_owner = edit
+            .map(|(module, name, _)| {
+                bound
+                    .origins
+                    .iter()
+                    .find(|(_, o)| o.0 == module && o.1 == name)
+                    .map(|(n, _)| n.clone())
+                    .ok_or("module batch edit owner absent")
+            })
+            .transpose()?;
+        self.prepare_bound_batch(bound, edited_owner, contexts, physical_owners)
+    }
+
+    pub(crate) fn prepare_bound_batch(
+        &mut self,
+        bound: Rc<BoundModules>,
+        edited_owner: Option<String>,
+        contexts: BTreeMap<String, String>,
+        physical_owners: &BTreeSet<String>,
+    ) -> Result<PreparedModuleBatch, String> {
         let old_contexts = self.query.declaration_contexts().clone();
         self.query
             .set_declaration_contexts(&bound.program, contexts.clone())
@@ -67,17 +94,17 @@ impl ModuleSession {
                 .filter(|name| old_contexts.get(*name) != contexts.get(*name))
                 .cloned()
                 .collect();
-            let mut owners = self.query.declaration_readers(&changed);
-            owners.extend(physical_owners.iter().cloned());
-            if let Some((module, name, _)) = edit {
-                let owner = bound
-                    .origins
+            let mut owners = changed.clone();
+            owners.extend(
+                bound
+                    .references
                     .iter()
-                    .find(|(_, o)| o.0 == module && o.1 == name)
-                    .ok_or("module batch edit owner absent")?
-                    .0
-                    .clone();
-                owners.insert(owner);
+                    .filter(|(_, reads)| reads.iter().any(|name| changed.contains(name)))
+                    .map(|(owner, _)| owner.clone()),
+            );
+            owners.extend(physical_owners.iter().cloned());
+            if let Some(owner) = &edited_owner {
+                owners.insert(owner.clone());
             }
             let mut bodies = Vec::new();
             for owner in owners {
@@ -115,6 +142,7 @@ impl ModuleSession {
                 bodies,
                 contexts,
                 targets: self.targets.clone(),
+                edited_owner,
             })
         })();
         // Candidate preparation never changes the live contract. Cached pages
@@ -193,7 +221,7 @@ impl ModuleSession {
         )
         .map_err(|e| format!("{e:?}"))?;
         Ok(Self {
-            bound: product.bound.clone(),
+            bound: Rc::new(product.bound.clone()),
             query,
             env,
             targets: std::collections::BTreeMap::new(),
@@ -201,7 +229,7 @@ impl ModuleSession {
     }
     pub fn from_recovery(recovery: ModuleRecovery) -> Self {
         Self {
-            bound: recovery.bound,
+            bound: Rc::new(recovery.bound),
             query: recovery.session,
             env: recovery.env,
             targets: recovery.targets,
@@ -303,7 +331,7 @@ impl ModuleSession {
             .map_err(|e| format!("{e:?}"))?;
         reanchor_env_declarations(&mut self.env, &edit.bound.program)
             .map_err(|e| format!("{e:?}"))?;
-        self.bound = edit.bound;
+        self.bound = Rc::new(edit.bound);
         self.targets = edit.targets;
         Ok(())
     }
@@ -360,6 +388,7 @@ mod tests {
                 )
                 .unwrap()
         });
+        assert!(Rc::ptr_eq(&session.bound,&cancelled.bound),"metadata-only preparation retains the admitted graph instead of cloning every AST body");
         assert!(syntax.parsed_functions.is_empty());
         assert!(syntax.tokenized_ranges.is_empty());
         assert_eq!(session.query.counters().solver_runs - before, 2);
@@ -410,6 +439,41 @@ mod tests {
             )
             .unwrap();
         assert!(no_change.bodies.is_empty());
+    }
+    #[test]
+    fn cancelled_body_read_sets_cannot_replace_the_current_binding_graph() {
+        let mut session = session();
+        let owner = session
+            .bound
+            .origins
+            .iter()
+            .find(|(_, o)| o.0 == "std")
+            .unwrap()
+            .0
+            .clone();
+        let discarded = session
+            .prepare_batch(
+                Some(("app", "main", "fn main() int { return 7 }")),
+                BTreeMap::new(),
+                &BTreeSet::new(),
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .unwrap();
+        drop(discarded);
+        let contexts = BTreeMap::from([(owner, "b".repeat(64))]);
+        let batch = session
+            .prepare_batch(
+                None,
+                contexts,
+                &BTreeSet::new(),
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .unwrap();
+        assert_eq!(batch.bodies.len(), 2);
+        assert!(
+            batch.bodies.iter().any(|b| b.owner == "main"),
+            "current main still reads std.answer after cancelled edit"
+        );
     }
     #[test]
     fn batch_duplicate_and_foreign_candidates_fail_before_any_swap() {

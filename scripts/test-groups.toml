@@ -1289,6 +1289,17 @@ domain = "legacy"
 all = false
 
 [[group]]
+name = "ace-stdlib"
+title = "SDK标准操作证明与ACE装配双端集成"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-stdlib-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ffi"
 title = "FFI与互操作"
 runner = "nextest"
@@ -1381,7 +1392,7 @@ name = "ace-workspace"
 title = "ACE独立workspace常规自动测试"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "all() and not test(/::performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"
@@ -1414,7 +1425,7 @@ name = "ace-performance"
 title = "ACE原正式收益与资源专项"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "test(/::performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"

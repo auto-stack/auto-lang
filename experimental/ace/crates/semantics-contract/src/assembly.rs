@@ -38,8 +38,15 @@ impl Declaration {
 /// its final independently registered adapter. Admission re-compares current
 /// evidence; decoding this record cannot establish that comparison by itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceLevel {
+    SignatureChecked,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationReference {
+    pub verification: ReferenceLevel,
     pub operation: String,
     pub semantic_version: u32,
     pub module: String,
@@ -128,6 +135,9 @@ fn portable(id: &str) -> bool {
         && !id.starts_with('/')
         && !id.contains([':', '\\'])
         && id.split('/').all(|s| !matches!(s, "" | "." | ".."))
+}
+fn hex(value: &str, len: usize) -> bool {
+    value.len() == len && value.bytes().all(|b| matches!(b,b'0'..=b'9'|b'a'..=b'f'))
 }
 fn signature(s: &Signature) -> bool {
     s.parameters.len() == s.modes.len()
@@ -255,12 +265,15 @@ impl Manifest {
         }
         for r in &s.references {
             if r.semantic_version == 0
+                || !portable(&r.operation)
+                || !portable(&r.module)
+                || !portable(&r.symbol)
                 || !signature(&r.signature)
                 || !portable(&r.source_id)
                 || !portable(&r.producer)
-                || r.declaration_hash.is_empty()
+                || !hex(&r.declaration_hash, 16)
                 || r.adapter.is_empty()
-                || r.adapter_contract_hash.is_empty()
+                || !hex(&r.adapter_contract_hash, 64)
                 || !sorted_unique(r.requirements.iter().map(String::as_str))
             {
                 return Err("assembly.reference".into());
@@ -272,7 +285,7 @@ impl Manifest {
             .map(|p| (&p.source_id, &p.content_hash))
             .chain(c.providers.iter().map(|p| (&p.source_id, &p.content_hash)))
         {
-            if !portable(id) || hash.is_empty() {
+            if !portable(id) || !hex(hash, 64) {
                 return Err("assembly.input".into());
             }
         }

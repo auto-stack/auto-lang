@@ -30,9 +30,15 @@
   dep_scanner/mode/os_paths。仍支持的上层 `auto_lang::*` 正式路径保持同源类型；四个 `ast/parser/session/error` 过渡模块于 0.2 退役，消费者按迁移规格切换 owner。
 - **禁止边**：不依赖 auto-ui-dialect/auto-ui-compiler/auto-ui-runtime/
   auto-lang（旧包）/auto-man；不提交 UI 注册项、不硬编码 UI factory。
-  777 域=lang-core；build 输入=具名清单（SDK 编译闭包 17 crate +
+  777 域=lang-core；build 输入=具名清单（SDK 编译闭包18 crate +
   vendor/autodown-test-parser + 根锁；UI/Man/旧包/生成器零条目，
   双负控测试钉住；受管投影缺目录即跳过——"存在即扫"）。
+  PLAN-944新增第18项 `ace-semantics-contract`，位于
+  `experimental/ace/crates/semantics-contract`。
+  SDK 仅使用该合同的操作/装配 DTO 与 codec，不依赖 ACE compiler、
+  source-query、store、worker 或任一 backend；构建身份只额外收录该数据
+  合同目录，不扩扫整个 ACE。真实 SDK→ACE 双端集成在显式测试包
+  `ace-stdlib-conformance`/固定组 `ace-stdlib`，不进入普通语言构建闭包。
 - **真实消费者**：auto-vm 直接依赖本 SDK（闭包零旧包/UI）；语言侧
   fixture `test/fixtures/modularity/language-sdk-consumer/`（Core
   parse/compile/VM 真实执行、手工字节码管线、trans_rust 产物、UI 文法
