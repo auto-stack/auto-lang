@@ -50,12 +50,15 @@ use crate::atom_text::{Diagnostic, Span, Stage};
 /// Full-language top-level starter words that this profile rejects with
 /// `source.unsupported` (rather than a plain syntax error) when they appear
 /// in item position. Anything else that is not `fn` is a syntax error.
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 const TOPLEVEL_UNSUPPORTED_WORDS: &[&str] = &[
     "use", "type", "enum", "struct", "trait", "impl", "const", "static", "extern", "pub",
     "checked", "unsafe", "macro", "mod", "import", "package",
 ];
 
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 const I32_MIN_MAG: u128 = 2147483648;
+#[cfg(any(test, feature = "legacy-syntax-oracle"))]
 const I32_MAX: u128 = 2147483647;
 
 /// Optional producer-side syntax evidence. Kept separate from the four-field

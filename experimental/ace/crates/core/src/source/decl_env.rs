@@ -334,7 +334,7 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
     };
     // 两次走：fn 行后随 fnx（receiver/owner）。
     let mut pending_fn: Option<DeclFnStub> = None;
-    let mut flush =
+    let flush =
         |pending: &mut Option<DeclFnStub>, d: &mut DeclEnvDump| -> Result<(), DeclEnvError> {
             if let Some(f) = pending.take() {
                 d.fns.push(f);
@@ -415,10 +415,10 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
                 flush(&mut pending_fn, &mut d)?;
             }
             "rec" => {
-                if let Some(mut r) = cur_rec.take() {
+                if let Some(r) = cur_rec.take() {
                     d.records.push(r.clone());
                 }
-                if let Some(mut v) = cur_var.take() {
+                if let Some(v) = cur_var.take() {
                     d.variants.push(v);
                 }
                 if parts.len() != 4 {
@@ -488,10 +488,10 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
                 d.lists.push(parts[2].to_string());
             }
             "var" => {
-                if let Some(mut r) = cur_rec.take() {
+                if let Some(r) = cur_rec.take() {
                     d.records.push(r);
                 }
-                if let Some(mut v) = cur_var.take() {
+                if let Some(v) = cur_var.take() {
                     d.variants.push(v);
                 }
                 if parts.len() != 4 {
@@ -527,7 +527,7 @@ pub fn decode_decl_env(text: &str) -> Result<DeclEnvDump, DeclEnvError> {
                 ));
             }
             "fty" => {
-                if let Some(mut v) = cur_var.take() {
+                if let Some(v) = cur_var.take() {
                     d.variants.push(v);
                 }
                 if parts.len() != 4 {
