@@ -28,6 +28,23 @@ use crate::store::CtEnvelopeSink;
 use ace_av_core::CancelFlag;
 use ace_core::source::ast::Program;
 
+/// One REAL execution-boundary fact (§5.8.2: the execute hook correlates
+/// every attempt — success AND failure — with its request/ExecKey; the
+/// log is written at the boundary, never reconstructed).
+#[derive(Clone, Debug)]
+pub struct ExecLogEntry {
+    /// The execution key's content hash that owned the attempt.
+    pub key_hash: String,
+    /// 1-based attempt ordinal within this service instance.
+    pub attempt: u64,
+    /// "ok" | "cte.trap/<code>" | "cte.resource/<kind>" | "cte.cancelled" ...
+    pub outcome: String,
+    pub steps: u64,
+    pub wall_ms: u64,
+    /// True when the entry records a frozen-page hit (no AV ran).
+    pub from_cache: bool,
+}
+
 /// The service counters (all real observables; none reconstructed).
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct CtCounters {
@@ -73,6 +90,8 @@ pub struct CtService<S: CtEnvelopeSink> {
     forbid_av: bool,
     cancel: CancelFlag,
     wall_budget: std::time::Duration,
+    /// The real execute-boundary log (correlated to ExecKeys).
+    exec_log: Vec<ExecLogEntry>,
 }
 
 impl<S: CtEnvelopeSink> CtService<S> {
@@ -83,11 +102,18 @@ impl<S: CtEnvelopeSink> CtService<S> {
             forbid_av: false,
             cancel: CancelFlag::new(false),
             wall_budget: crate::MAX_CALL_WALL,
+            exec_log: Vec::new(),
         }
     }
 
     pub fn counters(&self) -> &CtCounters {
         &self.counters
+    }
+
+    /// The execution-boundary log (per key, ordered; attempts recorded
+    /// for successes and AV-reached failures alike).
+    pub fn exec_log(&self) -> &[ExecLogEntry] {
+        &self.exec_log
     }
 
     /// The counter control (a miss must fail, not fold).
@@ -156,6 +182,14 @@ impl<S: CtEnvelopeSink> CtService<S> {
                     });
                 }
                 self.counters.ct_hits += 1;
+                self.exec_log.push(ExecLogEntry {
+                    key_hash: key.hash(),
+                    attempt: 0,
+                    outcome: "hit".into(),
+                    steps: env.exec_steps,
+                    wall_ms: env.exec_wall_ms,
+                    from_cache: true,
+                });
                 return Ok(CtAnswer {
                     value: env.value,
                     from_cache: true,
@@ -180,6 +214,8 @@ impl<S: CtEnvelopeSink> CtService<S> {
             cancel: &self.cancel,
             wall_budget: self.wall_budget,
         };
+        let key_hash = key.hash();
+        let attempt = self.counters.ct_execute + 1;
         match execute_call(
             program,
             src,
@@ -191,6 +227,14 @@ impl<S: CtEnvelopeSink> CtService<S> {
         ) {
             Ok(out) => {
                 self.counters.ct_execute += 1;
+                self.exec_log.push(ExecLogEntry {
+                    key_hash,
+                    attempt,
+                    outcome: "ok".into(),
+                    steps: out.steps,
+                    wall_ms: out.wall_ms,
+                    from_cache: false,
+                });
                 let env = CtExecutedV1 {
                     exec_key_canonical: key.canonical(),
                     value: out.value,
@@ -228,6 +272,162 @@ impl<S: CtEnvelopeSink> CtService<S> {
             Err(e) => {
                 if e.av_reached {
                     self.counters.ct_execute += 1;
+                    self.exec_log.push(ExecLogEntry {
+                        key_hash,
+                        attempt,
+                        outcome: e.code.clone(),
+                        steps: 0,
+                        wall_ms: 0,
+                        from_cache: false,
+                    });
+                }
+                self.counters.ct_rejections += 1;
+                Err(e)
+            }
+        }
+    }
+
+    /// PLAN-936（T-06）：一般表达式 CT 需求——同一缓存/准入/计数/执行
+    /// 日志纪律；键 = 表达式规范哈希 + 调用闭包版本轴
+    /// （[`crate::identity::exec_key_of_expr`]）。
+    pub fn execute_expr_ct(
+        &mut self,
+        program: &Program,
+        src: &str,
+        module_path: &str,
+        expr: &ace_core::source::ast::Expr,
+        expr_is_bool: bool,
+        expect: ExpectTy,
+        binding: &crate::identity::UseBinding,
+    ) -> Result<CtAnswer, CtExecError> {
+        let key = crate::identity::exec_key_of_expr(
+            program,
+            &binding.package,
+            &binding.module,
+            expr,
+            expect,
+            &[crate::CT_PROFILE.to_string()],
+        )
+        .map_err(|m| {
+            self.counters.ct_rejections += 1;
+            CtExecError {
+                code: "cte.query/key".into(),
+                message: m,
+                av_reached: false,
+            }
+        })?;
+        match self.sink.probe(&key) {
+            Ok(Some(env)) => {
+                if env.declared_type != expect {
+                    self.counters.ct_rejections += 1;
+                    return Err(CtExecError {
+                        code: "cte.admission/expect-type".into(),
+                        message: format!(
+                            "frozen value is `{}` but this site expects `{}`",
+                            env.declared_type.as_str(),
+                            expect.as_str()
+                        ),
+                        av_reached: false,
+                    });
+                }
+                self.counters.ct_hits += 1;
+                self.exec_log.push(ExecLogEntry {
+                    key_hash: key.hash(),
+                    attempt: 0,
+                    outcome: "hit".into(),
+                    steps: env.exec_steps,
+                    wall_ms: env.exec_wall_ms,
+                    from_cache: true,
+                });
+                return Ok(CtAnswer {
+                    value: env.value,
+                    from_cache: true,
+                    steps: env.exec_steps,
+                    wall_ms: env.exec_wall_ms,
+                    exec_key: key.canonical(),
+                });
+            }
+            Ok(None) => {}
+            Err(e) => {
+                self.counters.ct_rejections += 1;
+                return Err(CtExecError {
+                    code: "cte.admission/envelope".into(),
+                    message: e.to_string(),
+                    av_reached: false,
+                });
+            }
+        }
+        let ctl = ExecCtl {
+            forbid_av: self.forbid_av,
+            cancel: &self.cancel,
+            wall_budget: self.wall_budget,
+        };
+        let key_hash = key.hash();
+        let attempt = self.counters.ct_execute + 1;
+        match crate::executor::execute_expr(
+            program,
+            src,
+            module_path,
+            expr,
+            expr_is_bool,
+            expect,
+            &ctl,
+        ) {
+            Ok(out) => {
+                self.counters.ct_execute += 1;
+                self.exec_log.push(ExecLogEntry {
+                    key_hash,
+                    attempt,
+                    outcome: "ok".into(),
+                    steps: out.steps,
+                    wall_ms: out.wall_ms,
+                    from_cache: false,
+                });
+                let env = CtExecutedV1 {
+                    exec_key_canonical: key.canonical(),
+                    value: out.value,
+                    declared_type: expect,
+                    callee: crate::identity::CT_EXPR_ENTRY.to_string(),
+                    callee_logical: crate::identity::CT_EXPR_ENTRY.to_string(),
+                    closure: key.closure.clone(),
+                    exec_steps: out.steps,
+                    exec_wall_ms: out.wall_ms,
+                    engine: key.engine.clone(),
+                    schema: crate::identity::CT_SCHEMA,
+                    producer: crate::identity::CT_PRODUCER,
+                    profile: crate::identity::CT_PROFILE,
+                    algo: crate::identity::CT_ALGO,
+                };
+                match self.sink.publish(&key, &env) {
+                    Ok(()) => self.counters.ct_freeze_publishes += 1,
+                    Err(e) => {
+                        self.counters.ct_rejections += 1;
+                        return Err(CtExecError {
+                            code: "cte.freeze/publish".into(),
+                            message: e.to_string(),
+                            av_reached: false,
+                        });
+                    }
+                }
+                Ok(CtAnswer {
+                    value: out.value,
+                    from_cache: false,
+                    steps: out.steps,
+                    wall_ms: out.wall_ms,
+                    exec_key: key.canonical(),
+                })
+            }
+            Err(e) => {
+                if e.av_reached {
+                    self.counters.ct_execute += 1;
+                    self.exec_log.push(ExecLogEntry {
+                        key_hash,
+                        attempt,
+                        outcome: e.code.clone(),
+                        steps: 0,
+                        wall_ms: 0,
+                        from_cache: false,
+                    });
                 }
                 self.counters.ct_rejections += 1;
                 Err(e)

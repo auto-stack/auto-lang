@@ -46,6 +46,7 @@
 pub mod envelope;
 pub mod executor;
 pub mod identity;
+pub mod product;
 pub mod schedule;
 pub mod service;
 pub mod store;
@@ -66,6 +67,7 @@ pub use identity::{
     transitive_closure_versions, CtEngine, CtValue, ExecKey, ExpectTy, UseBinding, CT_ALGO,
     CT_LANE, CT_PRODUCER, CT_PROFILE, CT_SCHEMA,
 };
+pub use product::{compile_scalar_ct, CtProduct, CtProductError};
 pub use schedule::{serve_program, MetaAxis, PlanError, RootBudget, ServedRoot};
-pub use service::{CtAnswer, CtCounters, CtRequest, CtService};
+pub use service::{CtAnswer, CtCounters, CtRequest, CtService, ExecLogEntry};
 pub use store::{CtEnvelopeSink, MemoryEnvelopeSink, CT_LAYER, CT_ROOT_KIND};

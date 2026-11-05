@@ -734,3 +734,289 @@ fn t05_expect_inference_helper() {
     assert_eq!(crate::schedule::expect_of(&mk(BinOp::Lt)), E::Bool);
     assert_eq!(crate::schedule::expect_of(&mk(BinOp::Add)), E::I32);
 }
+
+// -- T-06: real AV boundary — general expression wrappers + exec log -------
+
+/// 一般表达式 CT：`#{ sum(20,22)+1 }` 经一般 wrapper 真实 AV=43；再求值
+/// 同键 hit 零执行。
+#[test]
+fn t06_general_expression_wrapper_executes_for_real() {
+    const SRC: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(20, 22)+1 }
+}
+";
+    let (root, mut svc) = serve(SRC);
+    assert_eq!(root.values.values().next(), Some(&CtValue::I32(43)));
+    let c = svc.counters();
+    assert_eq!(c.ct_execute, 1);
+    assert_eq!(c.ct_freeze_publishes, 1);
+    // 同键重放（同一服务实例/同一 store 的第二个 root）：hit 零执行。
+    let root2 = crate::schedule::serve_program(
+        &mut svc,
+        &parse_ct(SRC, false),
+        SRC,
+        "m.at",
+        "pkg",
+        "mod",
+        &crate::schedule::RootBudget::new(crate::schedule::RootBudget::default_total()),
+    )
+    .expect("replay serves");
+    assert_eq!(root2.values.values().next(), Some(&CtValue::I32(43)));
+    assert_eq!(svc.counters().ct_execute, 1, "still the one real execution");
+    assert_eq!(
+        svc.counters().ct_hits,
+        1,
+        "the replay answered from the frozen page"
+    );
+}
+
+/// 单 Hash 内未走分支的 runtime trap 潜伏：`#{ false && bad(0) }` 短路
+/// 不 trap（AV 控制流决定，host 不预执行）；bool 结果严格。
+#[test]
+fn t06_unexecuted_branch_trap_stays_latent() {
+    const SRC: &str = "\
+fn bad(x int) int {
+    return 10/x
+}
+fn main() int {
+    if #{ false && bad(0) > 0 } { return 1 }
+    return 0
+}
+";
+    let (root, svc) = serve(SRC);
+    assert_eq!(
+        root.values.values().next(),
+        Some(&CtValue::Bool(false)),
+        "short-circuit: the trapping branch never ran"
+    );
+    assert_eq!(svc.counters().ct_execute, 1, "a real AV execution decided");
+}
+
+/// 实际 trap：`#{ bad(0) }` 除零——到达 AV 的失败 attempt 真实计数
+/// （ct_execute+1），typed trap 拒绝，零发布；执行日志记录失败尝试。
+#[test]
+fn t06_actual_trap_counts_the_attempt_and_publishes_nothing() {
+    const SRC: &str = "\
+fn bad(x int) int {
+    return 10/x
+}
+fn main() int {
+    return #{ bad(0) }
+}
+";
+    let program = parse_ct(SRC, false);
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let err = crate::schedule::serve_program(
+        &mut svc,
+        &program,
+        SRC,
+        "m.at",
+        "pkg",
+        "mod",
+        &crate::schedule::RootBudget::new(crate::schedule::RootBudget::default_total()),
+    )
+    .expect_err("a trapping demand is a typed rejection");
+    match &err {
+        crate::schedule::PlanError::Demand { err: e, .. } => {
+            assert!(e.code.contains("trap"), "trap rejection, got {}", e.code);
+            assert!(e.av_reached, "the failure REACHED the AV");
+        }
+        other => panic!("expected a demand failure, got {other:?}"),
+    }
+    assert_eq!(svc.counters().ct_execute, 1, "the failed attempt counts");
+    assert_eq!(svc.counters().ct_freeze_publishes, 0);
+    assert_eq!(svc.counters().ct_rejections, 1);
+    // 执行日志：一次失败 attempt，键相关联。
+    let log = svc.exec_log();
+    assert_eq!(log.len(), 1);
+    assert!(log[0].outcome.contains("trap"));
+    assert_eq!(log[0].attempt, 1);
+    assert!(!log[0].key_hash.is_empty());
+}
+
+/// 执行日志与请求/键关联：成功 attempt 有实测 steps/wall；hit 有
+/// from_cache 标记且 attempt=0（零 AV）。
+#[test]
+fn t06_exec_log_correlates_keys_and_outcomes() {
+    const SRC: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    let a = #{ sum(20, 22) }
+    let b = #{ sum(20, 22) }
+    return a+b
+}
+";
+    let (_root, svc) = serve(SRC);
+    let log = svc.exec_log();
+    assert_eq!(log.len(), 2, "one real attempt + one frozen hit");
+    assert_eq!(log[0].outcome, "ok");
+    assert!(log[0].steps > 0, "measured steps at the real boundary");
+    assert!(!log[0].from_cache);
+    assert_eq!(log[1].outcome, "hit");
+    assert!(log[1].from_cache);
+    assert_eq!(log[1].attempt, 0, "a hit never attempts the AV");
+    assert_eq!(log[0].key_hash, log[1].key_hash, "same ExecKey");
+}
+
+/// bool 一般表达式严格 tag：`#{ 1 < 2 }`=Bool(true)；i32 位给 bool 表达
+/// 式=typed 拒绝（expect 与表达式类不符）。
+#[test]
+fn t06_general_expression_strict_tag() {
+    const SRC: &str = "\
+fn main() int {
+    if #{ 1 < 2 } { return 7 }
+    return 0
+}
+";
+    let (root, svc) = serve(SRC);
+    assert_eq!(root.values.values().next(), Some(&CtValue::Bool(true)));
+    assert_eq!(svc.counters().ct_execute, 1);
+}
+
+// -- T-07: value/type backfill + product compile ---------------------------
+
+use crate::product::compile_scalar_ct;
+
+fn compile_ct(src: &str, meta: bool) -> (crate::product::CtProduct, CtService<MemoryEnvelopeSink>) {
+    let mut caps = vec![ace_core::source::cst::CT_CAPABILITY.to_string()];
+    if meta {
+        caps.push("cte.meta.fields/v1".to_string());
+    }
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let out =
+        compile_scalar_ct(&mut svc, src, "m.at", &caps, "pkg", "mod").expect("ct product compiles");
+    (out, svc)
+}
+
+/// V-01 首例整链：sum HashExpr → 真实 AV 42 → 结构回灌（owner 体常量化）
+/// → 事实车道 bind/emit/verify（HIR 已常量且重新 verify）→ AV 端 main=42。
+/// 只改 sum 体（调用点不改）→ 43。
+#[test]
+fn t07_backfill_product_compiles_and_av_end_observes_42_then_43() {
+    const V1: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    let n = #{ sum(20, 22) }
+    return n
+}
+";
+    const V2: &str = "\
+fn sum(a int, b int) int {
+    return a+b+1
+}
+fn main() int {
+    let n = #{ sum(20, 22) }
+    return n
+}
+";
+    let (p1, svc1) = compile_ct(V1, false);
+    // 服务真实执行过一次。
+    assert_eq!(svc1.counters().ct_execute, 1);
+    assert_eq!(svc1.counters().ct_hits, 0);
+    // 回灌是结构性的：owner 体里 HashExpr 已消失，let n = 42。
+    let main1 = p1
+        .program
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ace_core::source::ast::Item::Fn(f) if f.name.name == "main" => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    use ace_core::source::ast::{ExprKind, Stmt};
+    let Stmt::Let { value, .. } = &main1.body.stmts[0] else {
+        panic!("let site")
+    };
+    assert!(
+        matches!(value.kind, ExprKind::IntLit(42)),
+        "the hash site is the frozen constant, got {:?}",
+        value.kind
+    );
+    // 事实车道已 emit+verify（CheckedModule 存在）→ AV 端观察 42。
+    let (v, _facts) = crate::executor::run_entry_on_av(
+        &p1.checked,
+        "d_main",
+        11,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end observes the backfilled module");
+    assert_eq!(v, ace_av_core::contract::Value::I32(42));
+
+    // 只改 sum 体：整链 43（重执行 + 回灌 + AV 端 43）。
+    let (p2, svc2) = compile_ct(V2, false);
+    assert_eq!(svc2.counters().ct_execute, 1, "the body edit re-executed");
+    let (v2, _) = crate::executor::run_entry_on_av(
+        &p2.checked,
+        "d_main",
+        12,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end observes the edited module");
+    assert_eq!(v2, ace_av_core::contract::Value::I32(43));
+}
+
+/// bool HashExpr 在 if 条件位：回灌 Bool 字面量，分支方向正确（AV 端）。
+#[test]
+fn t07_bool_hash_backfills_into_the_branch() {
+    const SRC: &str = "\
+fn flag() bool {
+    return true
+}
+fn main() int {
+    if #{ flag() } { return 7 }
+    return 9
+}
+";
+    let (p, _svc) = compile_ct(SRC, false);
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        13,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("bool branch executes");
+    assert_eq!(v, ace_av_core::contract::Value::I32(7));
+}
+
+/// 二次编译同源同键：CT hit 零执行（冻结页复用），产物一致。
+#[test]
+fn t07_second_compile_hits_the_frozen_page() {
+    const SRC: &str = "\
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(20, 22) }
+}
+";
+    let caps = [ace_core::source::cst::CT_CAPABILITY.to_string()];
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p1 = compile_scalar_ct(&mut svc, SRC, "m.at", &caps, "pkg", "mod").expect("first");
+    assert_eq!(svc.counters().ct_execute, 1);
+    let p2 = compile_scalar_ct(&mut svc, SRC, "m.at", &caps, "pkg", "mod").expect("second");
+    assert_eq!(svc.counters().ct_execute, 1, "the second compile hit");
+    assert_eq!(svc.counters().ct_hits, 1);
+    // 同产物：两代 CheckedModule 的入口执行一致。
+    for p in [&p1, &p2] {
+        let (v, _) = crate::executor::run_entry_on_av(
+            &p.checked,
+            "d_main",
+            14,
+            &ace_av_core::ExecLimits::default(),
+            &ace_av_core::CancelFlag::new(false),
+        )
+        .expect("run");
+        assert_eq!(v, ace_av_core::contract::Value::I32(42));
+    }
+}

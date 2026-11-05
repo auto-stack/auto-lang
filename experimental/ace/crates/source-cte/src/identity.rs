@@ -236,6 +236,134 @@ pub fn ct_content_version(canonical: &[u8]) -> ContentVersion {
     ContentVersion(ct_hash(EXEC_KEY_DOMAIN, &[canonical]))
 }
 
+/// The general-expression wrapper entry name (T-06; distinct from the
+/// call-form entry so the two can never collide).
+pub const CT_EXPR_ENTRY: &str = "ct936_expr";
+
+/// Canonical structural encoding of one (substituted) CT expression —
+/// spans excluded (whitespace drift keeps the key), structure included.
+pub fn expr_canonical(e: &Expr, out: &mut Vec<u8>) {
+    use ace_core::source::ast::Arg;
+    match &e.kind {
+        ExprKind::IntLit(v) => {
+            out.extend_from_slice(b"int:");
+            out.extend_from_slice(v.to_string().as_bytes());
+        }
+        ExprKind::BoolLit(v) => {
+            out.extend_from_slice(b"bool:");
+            out.extend_from_slice(v.to_string().as_bytes());
+        }
+        ExprKind::Var(id) => {
+            out.extend_from_slice(b"var:");
+            out.extend_from_slice(id.name.as_bytes());
+        }
+        ExprKind::Call { callee, args } => {
+            out.extend_from_slice(b"call:");
+            out.extend_from_slice(callee.name.as_bytes());
+            out.push(b'(');
+            for a in args {
+                match a {
+                    Arg::Pos(x) | Arg::MovePos(x) => expr_canonical(x, out),
+                    _ => out.push(b'?'),
+                }
+                out.push(b',');
+            }
+            out.push(b')');
+        }
+        ExprKind::Binary { op, lhs, rhs } => {
+            out.extend_from_slice(b"bin:");
+            out.extend_from_slice(op.as_str().as_bytes());
+            out.push(b'(');
+            expr_canonical(lhs, out);
+            out.push(b',');
+            expr_canonical(rhs, out);
+            out.push(b')');
+        }
+        ExprKind::Unary { op, operand } => {
+            out.extend_from_slice(b"un:");
+            out.extend_from_slice(op.as_str().as_bytes());
+            out.push(b'(');
+            expr_canonical(operand, out);
+            out.push(b')');
+        }
+        other => {
+            out.extend_from_slice(format!("other:{other:?}").as_bytes());
+        }
+    }
+}
+
+/// Build the execution key for one GENERAL-expression CT demand: the
+/// expression's canonical hash IS the callee-axis identity; the closure
+/// versions of every called function ride the same closure axis (T-06).
+pub fn exec_key_of_expr(
+    program: &Program,
+    package: &str,
+    module: &str,
+    expr: &Expr,
+    expect: ExpectTy,
+    caps: &[String],
+) -> Result<ExecKey, String> {
+    let mut canon = Vec::new();
+    expr_canonical(expr, &mut canon);
+    let expr_hash = ct_hash(EXEC_KEY_DOMAIN, &[&canon]);
+    // The expression's direct callees + their transitive closure.
+    let mut names = Vec::new();
+    walk_expr(expr, &mut names);
+    let mut closure = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut queue = names;
+    while let Some(name) = queue.pop() {
+        if seen.contains(&name) {
+            continue;
+        }
+        seen.push(name.clone());
+        if let Some(f) = program.items.iter().find_map(|i| match i {
+            Item::Fn(f) if f.name.name == name => Some(f),
+            _ => None,
+        }) {
+            let sig = signature_version(f).as_str().to_string();
+            let body = walk_body(&f.body)
+                .map_err(|e| format!("closure member `{name}` body walk failed: {e:?}"))?
+                .version
+                .as_str()
+                .to_string();
+            closure.push(ClosureVersion {
+                logical: owner_logical(package, module, &name).as_str().to_string(),
+                name: name.clone(),
+                sig_version: sig,
+                body_version: body,
+            });
+            let mut next = Vec::new();
+            walk_expr_fn_body(&f.body, &mut next);
+            for n2 in next {
+                if !seen.contains(&n2) {
+                    queue.push(n2);
+                }
+            }
+        }
+    }
+    Ok(ExecKey {
+        package: package.to_string(),
+        module: module.to_string(),
+        callee: CT_EXPR_ENTRY.to_string(),
+        callee_logical: CT_EXPR_ENTRY.to_string(),
+        callee_sig_version: expr_hash.clone(),
+        callee_body_version: expr_hash,
+        closure,
+        args_canonical: String::new(),
+        expect,
+        caps: caps.to_vec(),
+        algo: CT_ALGO,
+        engine: CtEngine::current(),
+    })
+}
+
+fn walk_expr_fn_body(body: &Block, out: &mut Vec<String>) {
+    for stmt in &body.stmts {
+        walk_stmt(stmt, out);
+    }
+}
+
 /// Build the execution key for one CT demand against a parsed program.
 ///
 /// The callee must be a declared free function of the program; its

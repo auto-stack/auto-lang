@@ -368,12 +368,14 @@ fn serve_site_inner<S: CtEnvelopeSink>(
         out.values.insert((span.start as u64, span.end as u64), v);
         return Ok(());
     }
-    let expect = expect_of(&substituted);
+    let expect = expect_of_in(Some(&site_program), &substituted);
     let args = direct_call_args(&substituted);
     let callee = direct_call_callee(&substituted);
-    let req = if let (Some(callee), Some(args)) = (&callee, &args) {
+    svc.set_wall_budget(budget.av_wall());
+    // The demand's value lands in the root map either way.
+    let ans = if let (Some(callee), Some(args)) = (&callee, &args) {
         // the plain call form keeps T-02's key shape
-        CtRequest {
+        let req = CtRequest {
             callee: callee.clone(),
             args: args.clone(),
             expect,
@@ -383,26 +385,35 @@ fn serve_site_inner<S: CtEnvelopeSink>(
                 owner: owner.into(),
                 expect,
             },
-        }
+        };
+        svc.execute_ct(&site_program, src, module_path, &req)
+            .map_err(|e| PlanError::Demand {
+                owner: owner.to_string(),
+                err: e,
+            })?
     } else {
-        return Err(PlanError::Demand {
-            owner: owner.into(),
-            err: CtExecError {
-                code: "cte.plan/unsupported-expr".into(),
-                message: "the bounded T-05 surface serves call-form and literal/meta \
-                          expressions; general expression wrappers land with T-06"
-                    .into(),
-                av_reached: false,
+        // T-06: the general-expression wrapper (same cache/admission/
+        // counter/log discipline; key = expr canonical + closure axes).
+        let expr_is_bool = expect == ExpectTy::Bool;
+        svc.execute_expr_ct(
+            &site_program,
+            src,
+            module_path,
+            &substituted,
+            expr_is_bool,
+            expect,
+            &crate::identity::UseBinding {
+                package: package.into(),
+                module: module.into(),
+                owner: owner.into(),
+                expect,
             },
-        });
-    };
-    svc.set_wall_budget(budget.av_wall());
-    let ans = svc
-        .execute_ct(&site_program, src, module_path, &req)
+        )
         .map_err(|e| PlanError::Demand {
             owner: owner.to_string(),
             err: e,
-        })?;
+        })?
+    };
     out.values
         .insert((span.start as u64, span.end as u64), ans.value);
     Ok(())
@@ -900,6 +911,29 @@ fn lit_value(e: &Expr) -> Option<CtValue> {
 /// call's declared return class, else literal classes, else binary
 /// operator class (arithmetic/comparison per the scalar rules).
 pub fn expect_of(e: &Expr) -> ExpectTy {
+    expect_of_in(None, e)
+}
+
+/// The program-aware form: a direct call's expectation is its callee's
+/// DECLARED return class (the executor re-checks; this is the request's
+/// admission hint).
+pub fn expect_of_in(program: Option<&Program>, e: &Expr) -> ExpectTy {
+    if let Some(p) = program {
+        if let ExprKind::Call { callee, .. } = &e.kind {
+            if let Some(Item::Fn(f)) = p
+                .items
+                .iter()
+                .find(|i| matches!(i, Item::Fn(f) if f.name.name == callee.name))
+            {
+                return match &f.ret.kind {
+                    ace_core::source::ast::TypeRef::Builtin(
+                        ace_core::source::ast::TypeWord::Bool,
+                    ) => ExpectTy::Bool,
+                    _ => ExpectTy::I32,
+                };
+            }
+        }
+    }
     match &e.kind {
         ExprKind::BoolLit(_) => ExpectTy::Bool,
         ExprKind::Binary {

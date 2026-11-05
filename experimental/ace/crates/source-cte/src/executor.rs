@@ -261,6 +261,90 @@ pub struct ExecCtl<'a> {
 /// `src` is the owner's original text, used by the emitter for source
 /// maps of the USER nodes only — the wrapper carries zero spans and no
 /// text is ever re-parsed or synthesized.
+/// PLAN-936（T-06）：一般表达式 CT 需求的真实执行——wrapper 体就是（替换
+/// 后的）inner 表达式本身：i32 型直接 `return <expr>`；bool 型走显式
+/// 0/1 投影（§5.8.3 已审形状）。同一共享尾、同一严格折叠、同一入口
+/// 合同（zero-param i32）；不重 parse、不合成文本。
+pub fn execute_expr(
+    program: &Program,
+    src: &str,
+    module_path: &str,
+    expr: &Expr,
+    expr_is_bool: bool,
+    expect: ExpectTy,
+    ctl: &ExecCtl<'_>,
+) -> Result<CtExecOutcome, CtExecError> {
+    if ctl.forbid_av {
+        return Err(CtExecError::forbidden());
+    }
+    // The expression's class must match the demand's expectation (typed
+    // admission; the resolver re-checks everything inside the wrapper).
+    let expr_class = if expr_is_bool {
+        ExpectTy::Bool
+    } else {
+        ExpectTy::I32
+    };
+    if expr_class != expect {
+        return Err(CtExecError::pre(
+            "cte.type/expect-mismatch",
+            format!(
+                "the expression is `{}` but the CT demand expects `{}`",
+                expr_class.as_str(),
+                expect.as_str()
+            ),
+        ));
+    }
+    let mut entry = crate::identity::CT_EXPR_ENTRY.to_string();
+    let mut n = 1;
+    while program
+        .items
+        .iter()
+        .any(|i| matches!(i, Item::Fn(f) if f.name.name == entry))
+    {
+        n += 1;
+        entry = format!("{}_{}", crate::identity::CT_EXPR_ENTRY, n);
+    }
+    let entry_id = format!("d_{entry}");
+    let wrapper = wrapper_item_from_expr(&entry, expr, expr_is_bool);
+    let mut extended = program.clone();
+    extended.items.push(Item::Fn(wrapper));
+
+    let checked = checked_module_of(&extended, src, module_path)?;
+    if !checked.required_capabilities().is_empty() {
+        return Err(CtExecError::pre(
+            "cte.capability/denied",
+            format!(
+                "the CT expression requires capabilities {:?} — the CT profile grants none",
+                checked.required_capabilities()
+            ),
+        ));
+    }
+    let snapshot = {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in format!("{expr:?}").as_bytes() {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    };
+    let (value, facts) = run_entry_on_av(
+        &checked,
+        &entry_id,
+        snapshot,
+        &ExecLimits {
+            wall: ctl.wall_budget,
+            ..Default::default()
+        },
+        ctl.cancel,
+    )?;
+    let value = strict_fold(&value, expect)?;
+    Ok(CtExecOutcome {
+        value,
+        steps: facts.steps,
+        wall_ms: facts.wall_ms,
+    })
+}
+
 pub fn execute_call(
     program: &Program,
     src: &str,
@@ -378,6 +462,60 @@ pub fn execute_call(
 /// * bool callee: `fn <entry>() int { if <callee>(<args>) { return 1 }
 ///   return 0 }` — the EXPLICIT, lane-versioned bool→i32 projection
 ///   (§5.8.3); the strict fold admits only its 0/1 outputs.
+/// The general wrapper: body = the expression itself (i32) or its
+/// explicit 0/1 bool→i32 projection (§5.8.3).
+fn wrapper_item_from_expr(entry: &str, expr: &Expr, expr_is_bool: bool) -> FnItem {
+    let zero = Span { start: 0, end: 0 };
+    let stmts = if expr_is_bool {
+        vec![
+            Stmt::If {
+                cond: expr.clone(),
+                then: Block {
+                    stmts: vec![Stmt::Return {
+                        value: Expr {
+                            kind: ExprKind::IntLit(1),
+                            span: zero,
+                        },
+                        span: zero,
+                    }],
+                    span: zero,
+                },
+                els: None,
+                span: zero,
+            },
+            Stmt::Return {
+                value: Expr {
+                    kind: ExprKind::IntLit(0),
+                    span: zero,
+                },
+                span: zero,
+            },
+        ]
+    } else {
+        vec![Stmt::Return {
+            value: expr.clone(),
+            span: zero,
+        }]
+    };
+    FnItem {
+        name: Ident {
+            name: entry.to_string(),
+            span: zero,
+        },
+        type_params: Vec::new(),
+        params: Vec::<Param>::new(),
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(TypeWord::Int),
+            span: zero,
+        },
+        body: Block { stmts, span: zero },
+        span: zero,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    }
+}
+
 fn wrapper_item(entry: &str, callee: &str, args: &[CtValue], callee_bool: bool) -> FnItem {
     let zero = Span { start: 0, end: 0 };
     let call_args = || {
