@@ -16,7 +16,7 @@
 //! NAME→POSITION mapping is a frontend concern; inference checks types).
 
 use crate::input::{
-    Ann, BinOpKind, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord, InputStmt,
+    Ann, BinOpKind, InputArg, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord, InputStmt,
     SemaInput, Span,
 };
 #[cfg(feature = "core-ast")]
@@ -431,12 +431,15 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
     })
 }
 
-fn project_arg(a: &core_ast::Arg) -> Option<InputExpr> {
+fn project_arg(a: &core_ast::Arg) -> Option<InputArg> {
     match a {
-        core_ast::Arg::Pos(e) | core_ast::Arg::MovePos(e) => Some(project_expr(e)),
-        // named-argument calls are outside the limited inference surface:
-        // the whole call projects to an explicit unsupported node
-        core_ast::Arg::Named { .. } => None,
+        core_ast::Arg::Pos(e) | core_ast::Arg::MovePos(e) => Some(InputArg::pos(project_expr(e))),
+        // PLAN-934 T-04: a named argument keeps BOTH facts the semantic
+        // layer needs — its parameter name (binding) and its position in
+        // the argument list (source evaluation order).
+        core_ast::Arg::Named { name, value, .. } => {
+            Some(InputArg::named(name.name.clone(), project_expr(value)))
+        }
     }
 }
 
@@ -446,21 +449,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::IntLit(v) => InputExprKind::IntLit(*v),
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
-        core_ast::ExprKind::Call { callee, args } => {
-            if args
-                .iter()
-                .any(|a| matches!(a, core_ast::Arg::Named { .. }))
-            {
-                InputExprKind::Unsupported {
-                    what: "named-arg-call",
-                }
-            } else {
-                InputExprKind::Call {
-                    callee: callee.name.clone(),
-                    args: args.iter().filter_map(project_arg).collect(),
-                }
-            }
-        }
+        core_ast::ExprKind::Call { callee, args } => InputExprKind::Call {
+            callee: callee.name.clone(),
+            args: args.iter().filter_map(project_arg).collect(),
+        },
         // PLAN-865: preserve indirect calls as unsupported instead of treating them as named calls.
         core_ast::ExprKind::CallValue { .. } => InputExprKind::Unsupported {
             what: "closure-call",

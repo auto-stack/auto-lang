@@ -147,6 +147,32 @@ pub struct InputExpr {
     pub span: Span,
 }
 
+/// One call argument (PLAN-934 T-04 named-argument input).
+///
+/// The vector order IS the source evaluation order; `name` carries the
+/// parameter the argument binds to. Binding happens by NAME while the
+/// operand is still evaluated in written order — `f(b: e1, a: e2)` reads
+/// `e1` first and then binds it to `b`. A `None` name keeps the legacy
+/// positional rule (argument i → parameter i).
+#[derive(Clone, Debug)]
+pub struct InputArg {
+    pub name: Option<String>,
+    pub value: InputExpr,
+}
+
+impl InputArg {
+    pub fn pos(value: InputExpr) -> Self {
+        InputArg { name: None, value }
+    }
+
+    pub fn named(name: impl Into<String>, value: InputExpr) -> Self {
+        InputArg {
+            name: Some(name.into()),
+            value,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinOpKind {
     Add,
@@ -191,7 +217,9 @@ pub enum InputExprKind {
     Var(String),
     Call {
         callee: String,
-        args: Vec<InputExpr>,
+        /// Source-ordered arguments (evaluation order), each optionally
+        /// bound to a parameter by name.
+        args: Vec<InputArg>,
     },
     Binary {
         op: BinOpKind,
@@ -256,7 +284,7 @@ impl Drop for InputExpr {
             }
             InputExprKind::Call { args, .. } => {
                 for a in args.iter_mut() {
-                    stack.push(std::mem::replace(a, dummy()));
+                    stack.push(std::mem::replace(&mut a.value, dummy()));
                 }
             }
             _ => {}

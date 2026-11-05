@@ -242,3 +242,20 @@ fn sq934_empty_capabilities_are_honest() {
 /// consumer matrix (T-08) or the restore legs (T-07).
 #[allow(dead_code)]
 fn _assert_error_type_is_send(_: &FactsApplyError) {}
+
+const NAMED: &str = "fn pick(a int, b bool) int { if b { return a }\n  return 0 }\n\nfn main() int { return pick(b: true, a: 7) }\n";
+
+#[test]
+fn sq934_named_arguments_bind_by_name_end_to_end() {
+    let mut session = SourceQuerySession::new("sq934", "main");
+    let prep = prepare(NAMED, &mut session).expect("named-argument chain");
+    assert_eq!(run_value(&prep.checked), Value::I32(7));
+}
+
+#[test]
+fn sq934_named_arguments_positional_control_is_rejected() {
+    let bad = NAMED.replace("pick(b: true, a: 7)", "pick(true, 7)");
+    let mut session = SourceQuerySession::new("sq934", "main");
+    let err = prepare(&bad, &mut session).expect_err("the positional reading is a type error");
+    assert!(err.contains("diagnostic"), "{err}");
+}

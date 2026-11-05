@@ -510,12 +510,51 @@ impl<'a> InferSession<'a> {
                         1 => {
                             let f = cands[0];
                             self.read_sig(callee);
+                            let fret = self.ann_ty(f.ret, e.span);
+                            self.record_expr(e, fret, expected);
+                            // PLAN-934 T-04: arguments bind by NAME when
+                            // written named, by position otherwise; the
+                            // vector order remains the SOURCE evaluation
+                            // order (binding must never reorder reads).
+                            let mut bound: Vec<Option<usize>> = vec![None; f.params.len()];
+                            let mut plan: Vec<(usize, Option<usize>)> = Vec::with_capacity(args.len());
+                            for (i, arg) in args.iter().enumerate() {
+                                let pos = match &arg.name {
+                                    None => Some(i),
+                                    Some(n) => match f.params.iter().position(|(pn, _)| pn == n) {
+                                        Some(p) => Some(p),
+                                        None => {
+                                            self.diag(
+                                                "unknown-parameter",
+                                                arg.value.span,
+                                                format!("`{callee}` has no parameter `{n}`"),
+                                            );
+                                            None
+                                        }
+                                    },
+                                };
+                                if let Some(p) = pos {
+                                    if p < bound.len() {
+                                        match bound[p] {
+                                            Some(prev) => self.diag(
+                                                "duplicate-argument",
+                                                arg.value.span,
+                                                format!(
+                                                    "`{callee}` binds parameter `{}` more than once (also argument {prev})",
+                                                    f.params[p].0
+                                                ),
+                                            ),
+                                            None => bound[p] = Some(i),
+                                        }
+                                    }
+                                }
+                                plan.push((i, pos));
+                            }
                             // ARITY admission (F-796-R4-01): a direct call
-                            // must pass exactly the declared parameter
-                            // count — missing or extra arguments are
-                            // definitive diagnostics, never unsolved
-                            // variables or silently ignored extras
-                            if args.len() != f.params.len() {
+                            // passes exactly the declared parameter count;
+                            // a missing or extra binding is a definitive
+                            // diagnostic, never an unsolved variable.
+                            if args.len() != f.params.len() || bound.iter().any(|b| b.is_none()) {
                                 self.diag(
                                     "arity-mismatch",
                                     e.span,
@@ -526,15 +565,16 @@ impl<'a> InferSession<'a> {
                                     ),
                                 );
                             }
-                            let fret = self.ann_ty(f.ret, e.span);
-                            self.record_expr(e, fret, expected);
-                            for (i, arg) in args.iter().enumerate().rev() {
-                                match f.params.get(i).map(|(_, ann)| *ann) {
-                                    Some(a) => {
-                                        let t = self.ann_ty(a, arg.span);
-                                        stack.push(Task::Check(arg, t));
+                            // Reverse source order on the LIFO stack keeps
+                            // the written evaluation order.
+                            for (i, pos) in plan.into_iter().rev() {
+                                let arg = &args[i];
+                                match pos {
+                                    Some(p) if p < f.params.len() => {
+                                        let t = self.ann_ty(f.params[p].1, arg.value.span);
+                                        stack.push(Task::Check(&arg.value, t));
                                     }
-                                    None => stack.push(Task::Synth(arg)),
+                                    _ => stack.push(Task::Synth(&arg.value)),
                                 }
                             }
                         }
@@ -756,8 +796,8 @@ mod tests {
                         value: expr(InputExprKind::Call {
                             callee: "add".into(),
                             args: vec![
-                                expr(InputExprKind::IntLit(1)),
-                                expr(InputExprKind::IntLit(2)),
+                                crate::input::InputArg::pos(expr(InputExprKind::IntLit(1))),
+                                crate::input::InputArg::pos(expr(InputExprKind::IntLit(2))),
                             ],
                         }),
                         span: Span::new(0, 0),
@@ -1079,6 +1119,159 @@ mod tests {
         match s.infer_function("f") {
             InferOutcome::Ok(_) => {}
             other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    // -- PLAN-934 T-04: named-argument input ---------------------------
+
+    use crate::input::InputArg;
+
+    fn pick() -> InputFn {
+        // pick(a int, b bool) int { if b { return a } return 0 }
+        fn_of(
+            "pick",
+            vec![("a", Ann::I32), ("b", Ann::Bool)],
+            Ann::I32,
+            block(vec![
+                InputStmt::If {
+                    cond: expr(InputExprKind::Var("b".into())),
+                    then: block(vec![InputStmt::Return {
+                        value: expr(InputExprKind::Var("a".into())),
+                        span: Span::new(0, 0),
+                    }]),
+                    els: None,
+                    span: Span::new(0, 0),
+                },
+                InputStmt::Return {
+                    value: expr(InputExprKind::IntLit(0)),
+                    span: Span::new(0, 0),
+                },
+            ]),
+        )
+    }
+
+    fn call_pick(args: Vec<InputArg>) -> SemaInput {
+        input(vec![
+            pick(),
+            fn_of(
+                "main",
+                vec![],
+                Ann::I32,
+                block(vec![InputStmt::Return {
+                    value: expr(InputExprKind::Call {
+                        callee: "pick".into(),
+                        args,
+                    }),
+                    span: Span::new(0, 0),
+                }]),
+            ),
+        ])
+    }
+
+    /// Named binding: `pick(b: true, a: 7)` binds `true` to bool `b` and
+    /// `7` to int `a` — a positional reading would be a type error.
+    #[test]
+    fn infer_core_named_arguments_bind_by_name() {
+        let inp = call_pick(vec![
+            InputArg::named("b", expr(InputExprKind::BoolLit(true))),
+            InputArg::named("a", expr(InputExprKind::IntLit(7))),
+        ]);
+        let mut s = InferSession::new(&inp);
+        match s.infer_function("main") {
+            InferOutcome::Ok(_) => {}
+            other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    /// Control: the SAME operands positionally are a real type error, so
+    /// the passing case above cannot come from ignoring the names.
+    #[test]
+    fn infer_core_named_positional_control_is_a_type_error() {
+        let inp = call_pick(vec![
+            InputArg::pos(expr(InputExprKind::BoolLit(true))),
+            InputArg::pos(expr(InputExprKind::IntLit(7))),
+        ]);
+        let mut s = InferSession::new(&inp);
+        match s.infer_function("main") {
+            InferOutcome::Diags(sum) => assert!(sum
+                .facts
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "type-mismatch")),
+            other => panic!("expected Diags, got {other:?}"),
+        }
+    }
+
+    /// Mixed form: positional first, then a named argument.
+    #[test]
+    fn infer_core_named_mixed_with_positional() {
+        let inp = call_pick(vec![
+            InputArg::pos(expr(InputExprKind::IntLit(7))),
+            InputArg::named("b", expr(InputExprKind::BoolLit(true))),
+        ]);
+        let mut s = InferSession::new(&inp);
+        match s.infer_function("main") {
+            InferOutcome::Ok(_) => {}
+            other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    /// Unknown parameter, duplicate binding and a missing parameter are
+    /// definitive diagnostics (never silently ignored).
+    #[test]
+    fn infer_core_named_admission_diagnostics() {
+        let unknown = call_pick(vec![
+            InputArg::named("a", expr(InputExprKind::IntLit(1))),
+            InputArg::named("zz", expr(InputExprKind::BoolLit(true))),
+        ]);
+        let mut s = InferSession::new(&unknown);
+        match s.infer_function("main") {
+            InferOutcome::Diags(sum) => {
+                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "unknown-parameter"));
+            }
+            other => panic!("expected Diags, got {other:?}"),
+        }
+
+        let duplicate = call_pick(vec![
+            InputArg::named("a", expr(InputExprKind::IntLit(1))),
+            InputArg::named("a", expr(InputExprKind::IntLit(2))),
+        ]);
+        let mut s = InferSession::new(&duplicate);
+        match s.infer_function("main") {
+            InferOutcome::Diags(sum) => {
+                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "duplicate-argument"));
+            }
+            other => panic!("expected Diags, got {other:?}"),
+        }
+
+        let missing = call_pick(vec![InputArg::named(
+            "a",
+            expr(InputExprKind::IntLit(1)),
+        )]);
+        let mut s = InferSession::new(&missing);
+        match s.infer_function("main") {
+            InferOutcome::Diags(sum) => {
+                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "arity-mismatch"));
+            }
+            other => panic!("expected Diags, got {other:?}"),
+        }
+    }
+
+    /// A named argument still checks its TYPE against the bound parameter.
+    #[test]
+    fn infer_core_named_argument_type_is_checked_against_its_parameter() {
+        let inp = call_pick(vec![
+            InputArg::named("a", expr(InputExprKind::BoolLit(true))),
+            InputArg::named("b", expr(InputExprKind::BoolLit(false))),
+        ]);
+        let mut s = InferSession::new(&inp);
+        match s.infer_function("main") {
+            InferOutcome::Diags(sum) => assert!(sum
+                .facts
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "type-mismatch")),
+            other => panic!("expected Diags, got {other:?}"),
         }
     }
 }

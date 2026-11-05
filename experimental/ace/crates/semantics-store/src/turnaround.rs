@@ -210,7 +210,7 @@ fn edit_first_intlit(stmt: &mut ace_semantics::input::InputStmt, v: &i32) -> boo
             }
             InputExprKind::Binary { lhs, rhs, .. } => edit_expr(lhs, v) || edit_expr(rhs, v),
             InputExprKind::Unary { operand, .. } => edit_expr(operand, v),
-            InputExprKind::Call { args, .. } => args.iter_mut().any(|a| edit_expr(a, v)),
+            InputExprKind::Call { args, .. } => args.iter_mut().any(|a| edit_expr(&mut a.value, v)),
             _ => false,
         }
     }
@@ -535,10 +535,10 @@ fn make_caller(input: &mut SemaInput, caller: &str, callee: &str, arg: &str) {
         value: InputExpr {
             kind: InputExprKind::Call {
                 callee: callee.to_string(),
-                args: vec![InputExpr {
+                args: vec![ace_semantics::input::InputArg::pos(InputExpr {
                     kind: InputExprKind::Var(arg.to_string()),
                     span: Span::new(0, 0),
-                }],
+                })],
             },
             span: Span::new(0, 0),
         },
@@ -562,10 +562,10 @@ fn make_f0_call_f1(input: &mut SemaInput) {
         value: InputExpr {
             kind: InputExprKind::Call {
                 callee: "f1".into(),
-                args: vec![InputExpr {
+                args: vec![ace_semantics::input::InputArg::pos(InputExpr {
                     kind: InputExprKind::Var("x".into()),
                     span: Span::new(0, 0),
-                }],
+                })],
             },
             span: Span::new(0, 0),
         },

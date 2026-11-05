@@ -124,8 +124,22 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                     out.extend_from_slice(callee.as_bytes());
                     out.push(0);
                     out.extend_from_slice(&(args.len() as u32).to_le_bytes());
+                    // PLAN-934: the binding NAME is part of the semantic
+                    // content (named vs positional binding of the same
+                    // operand is a different program), written in source
+                    // order before the operands are walked.
+                    for a in args.iter() {
+                        match &a.name {
+                            Some(n) => {
+                                out.push(b'N');
+                                out.extend_from_slice(n.as_bytes());
+                            }
+                            None => out.push(b'P'),
+                        }
+                        out.push(0);
+                    }
                     for a in args.iter().rev() {
-                        stack.push(a);
+                        stack.push(&a.value);
                     }
                 }
                 InputExprKind::Binary { op, lhs, rhs } => {
@@ -518,7 +532,7 @@ pub fn called_names(f: &crate::input::InputFn) -> std::collections::BTreeSet<Str
             InputExprKind::Call { callee, args } => {
                 names.insert(callee.clone());
                 for a in args {
-                    exprs.push(a);
+                    exprs.push(&a.value);
                 }
             }
             InputExprKind::Binary { lhs, rhs, .. } => {

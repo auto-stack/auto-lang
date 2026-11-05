@@ -480,3 +480,40 @@ fn sq17_session_signature_query_matches_the_catalog() {
     assert_eq!(from_session.params, from_catalog.params);
     assert_eq!(from_session.ret, from_catalog.ret);
 }
+
+// -- T-04: named-argument input ---------------------------------------
+
+const NAMED_SRC: &str =
+    "fn pick(a int, b bool) int { if b { return a }\n  return 0 }\n\nfn main() int { return pick(b: true, a: 7) }\n";
+
+#[test]
+fn sq18_named_arguments_produce_clean_facts_and_a_distinct_key() {
+    let p = parse(NAMED_SRC);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let main = s.infer_body(&p, "main").expect("named-arg facts");
+    assert!(
+        main.facts.is_complete() && main.facts.is_clean(),
+        "{:?}",
+        main.facts
+    );
+    assert_eq!(main.facts.sig_reads, vec!["pick".to_string()]);
+
+    // The positional reading of the same operands is a real type error:
+    // the fact page carries diagnostics (never silently mistyped).
+    let pos_src = NAMED_SRC.replace("pick(b: true, a: 7)", "pick(true, 7)");
+    let p2 = parse(&pos_src);
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    let bad = s2.infer_body(&p2, "main").expect("positional facts");
+    assert!(!bad.facts.is_clean(), "{:?}", bad.facts);
+    assert!(bad
+        .facts
+        .diags
+        .iter()
+        .any(|d| d.code == "type-mismatch"));
+
+    // Binding names are part of the structural key: the two spellings can
+    // never share a body version.
+    let walk_named = walk_body(body_of(&p, "main")).unwrap();
+    let walk_pos = walk_body(body_of(&p2, "main")).unwrap();
+    assert_ne!(walk_named.version, walk_pos.version);
+}

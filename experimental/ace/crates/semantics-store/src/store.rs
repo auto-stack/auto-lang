@@ -939,7 +939,12 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
         match &e.kind {
             InputExprKind::Call { callee, args } => {
                 bytes = bytes.saturating_add(callee.len().saturating_mul(4));
-                exprs.extend(args.iter());
+                for a in args {
+                    if let Some(n) = &a.name {
+                        bytes = bytes.saturating_add(n.len().saturating_mul(4));
+                    }
+                    exprs.push(&a.value);
+                }
             }
             InputExprKind::Var(n) => {
                 bytes = bytes.saturating_add(n.len().saturating_mul(4));
