@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-936
-status: executing
+status: execution_done
 feature_name: SQ-C 普通源码真实AV CT查询与冻结回灌恢复闭环
 author: [Codex]
 created_at: 2026-11-04
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-cte/source-query-integration.md]
 touched_goals: [GOAL-002]
 affects: [auto-cte, auto-semantics, auto-ac, auto-av, auto-a2x, auto-test-case]
 depends_on: [PLAN-817, PLAN-934, PLAN-935, PLAN-929]
-current_step: 11
+current_step: 12
 total_steps: 14
 ---
 
@@ -198,13 +198,15 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 | T-09 | work | T-08，929934935稳定来源恢复接缝 | 各包页owner/R复装/首好与首坏修复/真实P-M-R-I/O、坏envelope/缺执行页，V-06/07/14，AC-06/07 | [x] 2026-11-06（462b66b8d+3df59381a 前置）**恢复有界腿已落**：恢复上下文同键零 AV（冻结页 decode+准入）；首个仅改实参编辑=新键真执行 42；体编辑=闭包版本轴真执行 43（全程真字节无预热）；外来 envelope（817 producer/schema）在 sink 写路径准入拒（ManagedSink 补齐与 MemorySink 同纪律的写前再验证——自家 codec 会拒的页不入库）；空 store 恢复车道=真 miss 真执行。R 窗计量已落（sink r_window：probes/payload-bytes/decodes 真实读计数，恢复 hit 断言非零零 AV）；首坏 CT（trap）受控拒零发布→修复→第二有效编辑真执行真发布（3df59381a 承前）。多工程候选/丢 ack 等跨进程 worker 级腿沿 case-worker 面归后续计划 |
 | T-10 | work | T-09，原资源/生命周期与正式采样窗 | 分区/峰值/timeout/GC/最后pin和原规模计量，V-08/09，AC-08 | [x] 2026-11-06（commit fcb8e3951）**原规模有界腿**：817 基线形状（115 fn ≥256KiB+cte_sum 全折叠，生成器内联——服务包不依赖 probe 包）+1 hash 位：1 次真实 AV（执行日志实测 steps/wall）→结构回灌→全模块事实车道→AV 端闭式 42+Σ(4780+81k)；根预算 10s/单 AV 2s/页 512KiB 由车道强制（817 继承资源门经 V-10 全绿；envelope 单串界 64KiB 供 116 成员闭包 canonical，页界仍 512KiB）。**正式 30 样本 ace-performance 单实例窗归 T-12 冻结门（错峰）** |
 | T-11 | work | T-03..10，文件case/worker/父decoder/注册H | 使能V-01..14独立oracle/文件化/反控/四端与旧recipe认证，新服务职责纳ace-comptime固定清单，AC-01..09 | [x] 2026-11-06（462b66b8d+3df59381a）ace-source-cte 入 ace-comptime 固定组（扩展组全 PASS）；**av/native 产品入口 CT 接线**（compile_scalar_source_product 检 CT 能力→compile_scalar_ct，组合根注入服务，产物 ProductCompile 同形——AV driver/session、native driver、A2X 全消费端经既有车道）；`source-cte-936` 文件 case 族（7 case×av+native 闭式 oracle：sum 42/体编辑 43 调用点不改、bool 分支、meta 2→3 字段 42→43、模板 choose 42（V-04）、flag→pick 链 40（V-11））注册 `case-ace-source-cte-936` 组 PASS（14 检查）；复用既有 recipe（ac-av/core-run-v1、ac/mir-native-scalar-v1）——无新 worker/toolchains 面；事实面容忍 fields-only record 声明（catalog/produce/restore/apply 四门） |
-| T-12 | work | T-11，实际D934935929或正式等价交付、冻结提交/错峰 | 完整职责/必要consumer/原正式门、SD/健康与机制余账交接，AC-01..10 | [ ] |
+| T-12 | work | T-11，实际D934935929或正式等价交付、冻结提交/错峰 | 完整职责/必要consumer/原正式门、SD/健康与机制余账交接，AC-01..10 | [x] 2026-11-06 冻结提交职责并集（19 组单实例 run-6uyd5hyb @ fcb8e3951）：ace-comptime(134, 含 source-cte 34)/ace-semantics(181)/ace-source(375)/ace-syntax(132)/ace-artifacts(40)/ace-lowering(5)/ace-av(1012)/ace-native(225)/ace-a2x(180/181——唯一首红 record_text_t04 隔离重放绿=环境归因)/ace-adapters(75)/auto-test-case(111)/infra-fixed(37)+case-ac-cte(6)/ac-semantics(5)/914(15)/866(3)/912(13)/913(5)/934(14)/935(12)/936(14) 全 PASS；SD-01..05 已写（source-query-integration.md 新建+四 modify，commit 56324db36）；817 原正式义务（turnaround 12 腿串行）本会话两轮全绿。**余账（显式 pending）**：新 source lane 的正式 30 样本 ace-performance 错峰单实例窗（P90≤2000ms 口径沿用；t10 已有单样本闭式腿）；跨进程 worker 级 V-14 腿（多工程候选/丢 ack）沿 case-worker 面归后续 |
 | T-13 | review | T-01..12完成，停止实现写入 | 独立逐AC/SD/遗漏/反控复审，AC-11 | [ ] |
 | T-14 | merge | T-13 pass与实施后合入授权 | canonical/交付/归档/全路径scope与树清理，AC-12 | [ ] |
 
 下一入口T-01私有服务图/原反控盘点可与935研究并行，不等935归档；T-02接真实934 query/929来源，T-08/12组合/最终需935实际能力。不能拿模型实例/旧deck替代。本轮未授权work。
 
 ## 9. 复审记录
+
+2026-11-06 stage:work / PLAN-936 r2 / outcome:**pass**（work 阶段收口 → execution_done；T-01..T-12 全落，T-13 独立复审为下一步）/ worktree:`D:/autostack/.wt/lang-936/auto-lang` / branch:`plan-936-dev` / base_commit:61854dfc8 / code_commit:56324db36（链：242d68ac3/1ac52458a/8baa8764a/93828bc78/e7ef98a63/e21fa6cf9/bdd3e0001/cb440928c/c17003140/462b66b8d/3df59381a/fcb8e3951/56324db36）/ dependency_revisions: D934=archived 32bf9c57e、D935=archived edda879ec / task_ids: T-01..T-12[x]（T-09/T-10/T-12 以计划行内显式边界收） / evidence: 34 单元/集成测试（ace-comptime 组承载）；case-ace-source-cte-936 7×2 闭式 oracle PASS；19 组冻结并集 2397 例（18 组直绿+a2x 180/181 首红隔离重放绿=环境归因）；817 turnaround 12 腿两轮串行绿；SD-01..05 已写待 review 验证 / readiness: AC-01..10 work 面证据见各行（AC-01..09 由测试/门禁锚定，AC-10 的"完整职责并集"以 19 组绿+两显式 pending 余账交代：①新 lane 正式 30 样本错峰窗 ②跨进程 worker 级 V-14 腿——均非 blocker，属正式采样排程与后续 case-worker 面）/ 遗留：无未决合同问题；worktree clean 待 review / next_responsible_role: review（T-13 独立复审）
 
 2026-11-06 stage:work / PLAN-936 r2 / outcome:**progress**（第五轮：T-09 全收（R窗计量 r_window+首坏→修复腿）；T-11 全收（av/native 产品入口 CT 接线 compile_scalar_source_product→compile_scalar_ct+source-cte-936 文件 case 族 7×2 全 PASS+事实面 fields-only record 容忍，3df59381a）；T-10 原规模腿（115fn≥256KiB 闭式 oracle，fcb8e3951，34 测试绿）；T-12 冻结职责并集 19 组后台单实例运行中（run-6uyd5hyb，worktree fcb8e3951 基面；正式 30 样本 ace-performance 错峰窗待并集后）；11/14；未到 execution_done，无 blocker）/ worktree:`D:/autostack/.wt/lang-936/auto-lang` / branch:`plan-936-dev` / base_commit:61854dfc8 / code_commits:242d68ac3(T-02)+1ac52458a(T-03)+8baa8764a/93828bc78(T-04)+e7ef98a63/e21fa6cf9(T-05)+bdd3e0001(T-06/07)+c17003140(T-08)+462b66b8d/3df59381a(T-09/T-11)+fcb8e3951(T-10) / dependency_revisions: D934=archived 32bf9c57e、D935=archived edda879ec / task_ids: T-02..T-11[x]（T-09/T-10 以标注边界收） T-12[~ 并集运行中]  / evidence: **T-02**=ace-source-cte crate（10 证明测试全绿：sum 42/43 调用点不改、bool 严格翻转 0/1 投影、helper body 编辑经传递闭包版本轴失效、恢复 hit ct_execute=0 复用真字节+新需求真执行、forbid_av 反控、无环 manifest 断言、碰撞安全 AST 级入口、受控拒绝零 AV）；**T-03**=closure 道执行尾删除委托共享尾+CtExecutor 端口+AvExecFacts，V-10 ace-comptime 族 100 例（94 首窗 92 绿+2 deadline 时序首红→隔离串行重放 2/2 绿=环境归因；6 runner-deadline 截断腿+全 12 turnaround 串行补跑全绿 791s）；D-935-1=935 InputFn.type_params 漏跑 ace-comptime 组致 conformance 编译红（master 先在），本计划修复；**T-04**=scalar-ct 面（6 新测试+profiles_927 更新；ace-source/ace-syntax PASS）。hash 重锚=t02-reanchor-61854dfc8.md（10/37 漂移全归属 934/935/943，零未归属；comptime 系零漂移=817 义务面有效）/ blockers: 无硬阻塞；余量=T-04 meta selector、T-05 DAG/调度、T-06 真实AV边界接线 HashExpr 服务、T-07 四端回灌、T-08 依赖/实例轴、T-09 恢复/R窗、T-10 资源计量、T-11 case 族/组注册、T-12 正式门 / next_responsible_role: work（继续 T-04 meta → T-05）
 
