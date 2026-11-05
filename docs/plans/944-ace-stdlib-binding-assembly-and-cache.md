@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-944
-status: execution_done
+status: reviewed
 feature_name: ACE 标准库绑定、装配与缓存接入
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-binding-and-assembly.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-950]
-current_step: 5
+current_step: 6
 total_steps: 7
 ---
 
@@ -123,7 +123,7 @@ Auto公共源码、现有Rust装配/ACE workspace、既有TestCase与固定Cargo
 - [x] **T-03｜owner_stage: work｜AC-03**：扩展既有 manifest/codec 和 provider 输入闭包；保持双指纹，分离新旧 producer；结构坏 schema/版本/重复声明在消费前拒绝。
 - [x] **T-04｜owner_stage: work｜AC-04**：接既有 query/store 的依赖、恢复与首次编辑：body、合同、provider、授权分别处理；持久化无宿主地址/授权，失败候选保旧可用。
 - [x] **T-05｜owner_stage: work｜AC-04**：补两个真 consumer 的值腿、真实引用证明、坏身份/用户遮蔽、provider/effect变更与恢复首编辑反例，跑职责组及必要下游，核实际生产而非 wrapper 计数。
-- [ ] **T-06｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
+- [x] **T-06｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
 - [ ] **T-07｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
 T-01继续执行前置：D943及D950均已正式交付；本目标用户授权已齐。在原944唯一树同步master后重新T-01冻结，不把前置950的验收替代本包标准操作proof、装配身份/失效和当前运行授权义务。T-02..05依次依赖T-01冻结结果；T-06在work侧AC全闭后，T-07在review pass后。任务与AC引用多对多：T-05覆盖AC-01..04，不以单行对应限制验证。
@@ -275,6 +275,119 @@ review/merge尚待：冻结后独立逐AC/原始反例/Spec delta核验；merge-
 最后实施自查已确认可选context的空映射保934原键、Root2/Root1旧入口保旧义；metadata-only保同一Rc源图，构建版本表复用已准入CST源hash/声明索引，不逐函数重hash正文。当前数据格式明确reference verification仅signature_checked；未知executed无法由cache升格，规范hash位宽不是改旧FNV算法。无Ledger/index写入、无default切换，无Root外新编译器/store/资源分析器。实验ModuleSession.bound以Rc共享所有权；库内真实消费者已编译/定向走通，独立review仍需核复用/兼容状态，不以此断言代替审查。
 
 `stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 4 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: e8cf62cbc1bda879bfc83e6f459dd4e746471f7f | next: review`
+
+### Independent final review r1（r2，2026-11-06）：needs_fix
+
+`stage: review | review_scope: final | reviewer_identity: independent /root/review950 context (本次独立核944，未参与实施；非沿用950 pass) | plan_id: PLAN-944 | plan_revision: 2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-944/auto-lang | branch: plan-944-dev | reviewed_commit: e8cf62cbc1bda879bfc83e6f459dd4e746471f7f | base_commit: aea97d92e1788813a90bec59ce8b7073acbabd67 | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | findings: F944-R1-01/F944-R1-02 | next: work同树有界修复，affected re-review`
+
+已完整读取review技能/verification-contract、AGENTS及主Plan r2，并独立沿实际diff核中立数据合同、真实SDK reference/legacy4 reader、source-query context/批候选/存储恢复、两目标物理key/授权、AssemblyHost单根事务以及永久测试断言。当前HEAD/branch/dependency与交接相同，实施clean，未创建checkout或修代码。以下是正式final review第1轮，不将执行摘要或950 pass提升为944验收。
+
+| AC/任务 | 当前结论 | 证据与边界 |
+|---|---|---|
+| AC-01/T01/T02/T05 | partial | 真实模块/CST→query→Checked→两端原producer执行42/7且无legacy fallback通过；新batch候选拒绝丢原模块/span（F01），未完全保950源码诊断合同 |
+| AC-02/T02/T03/T05 | pass (适用证据保留) | 新common/consumer分轴、SDK当前io.read_line独立adapter proof进入两端manifest、未知身份使用前拒、legacy4独立wire/FNV、数据依赖边界通过；不声称真实str/I/O行为已可调用 |
+| AC-03/T03/T04/T05 | fail | 正常body/effect/provider各轴、恢复首编辑/物理隔离及新组合通过；但取消A候选后首次合法B编辑会重solve未变A并拒绝（F02），不满足无关函数零生产/候选不破坏后续使用 |
+| AC-04/T04/T05 | partial | 单根SQL DELETE失败旧CURRENT/活代码/Rust文件/下一恢复、foreign及空body owner、逐次授权路径实核通过；候选生命周期F02阻止整体关闭 |
+| AC-05/T06 | needs_fix | 全风险面已核，非停首项；两合同内问题不可降级债务或留merge |
+| AC-06/T07 | pending | merge-owned七组冻结门/规范落地/归档与路径清理未执行 |
+
+#### F944-R1-01（P2）：新batch丢失原模块诊断与字节位置
+
+违反复用950前门/模块来源及拒绝语义的既有合同（AC01/T02；保留原source identity/span，不给签名漂移新增支持承诺）。最小输入：app=`fn main() int { return 7 }`；std=`pub fn unused() int { return 42 }`。初始合法两端AssemblyHost。编辑std.unused为`pub fn unused() bool { return true }`，当前两清单同步其bool签名，仍应由原signature-drift guard具名非快路径拒绝。**预期**同原ModuleSession.prepare返回`ModuleDiagnostic { module: "std", ... source.incremental, span7..13 }`；**实际**真实AssemblyHost.prepare返回裸`Diagnostic ... span34..40`且无module，34为虚拟合图坐标（app长度26+间隔1+std局部7）。既有ModuleSession.prepare同输入正确返回std/7..13，证明不是新诊断要求或无效语法。
+
+已确认共享原因：`source-query/src/modules/session.rs:135`的prepare_bound_batch把prepare_module_candidate错误直接format Debug；旧prepare在同文件276起对各Diagnostic调用bound.locate。批路径没经过该来源映射。最小replay=`cargo run --manifest-path D:/autostack/plan-artifacts/plan-944/review-r1/probe/Cargo.toml --bin diag_host --target-dir D:/autostack/.wt/lang-944/auto-lang/experimental/ace/target`（须先删/换其本scope专属store或改唯一slug，避免旧CURRENT重放初始发布冲突），`host-diagnostic-current.log` exit101，SHA256=09627c82fb46d3a8dcd3c273972046571eb93580789fa40769781449604dc12b。更小公共batch对照在bin/diag.rs、batch-diagnostic.log SHA256=54b918b44523b106e702e2e8d57ac61beb662cc4cf9b2391e523dbe6d0d9c203。关闭oracle=真实Host signature-drift拒绝保std/原byte7且合法同签名body编辑仍通过；检查共享candidate诊断映射的同类拒绝，不要求重跑全部consumer/压力。
+
+#### F944-R1-02（P2）：取消候选覆盖当前body页，下一独立编辑首次失败
+
+违反AC03/04、T04/05的“取消候选不替代当前源图/事实有效性；恢复/后续合法单体编辑无关函数零生产”规则。输入同上、两清单当前合法i32。真实Host先prepare std.unused同签名42→43，再publish(cancelled=true)，取消正确拒、当前AV仍7。接着首次prepare app.main同签名7→8，factory按当前实际bound更新source身份且无其它contract变更。**预期**候选成功、solver delta1（仅main），std.unused的solve/emit/lower/print为0。**实际**首次prepare Err=`module preparation unexpectedly produced m3_std_unused`，solver delta2，未改std被重solve后因hit=false拒；程序没有安装8。这不是缓存坏输入或无效source，两个编辑各自均为合法同签名函数。
+
+共享机制已确认：`SourceQuerySession::infer_body_with`（session.rs:502）按logical仅保最近BodyPage；候选查询覆盖当前std页。prepare_bound_batch只恢复declaration_contexts（modules/session.rs:152），不恢复已提交页；`ModuleStore::prepare_context_targets`遍历全bound（persistence.rs:311）对未改std发生solver miss然后以“unexpectedly produced”拒绝。现永久cancel-readset用例下一effect碰巧重新生产相同被覆盖owner，未覆盖cancel A→edit独立B。回滚/恢复策略由work选择，review未修改实施或指定未经验证方案。
+
+复现bin/cancel_retry.rs（真实AssemblyHost），同manifest/target-dir命令改`--bin cancel_retry`；`cancel-retry.log` exit101，SHA256=9d930f45736660db6d7d1ab6616cad23159df6fde44608f9ac5ab954a4b33930。scope/cancel-retry-store需清理/新slug后重放。关闭oracle=取消A后首次不同owner B合法候选成功，未改A零实际production、两端新值8，后续真实恢复读回8；针对prepare失败/发布失败的同一query污染机制选择代表性兄弟反例，不为每个finding附全量回归。首个host-diagnostic.log因我在初始publish前先对同一query执行普通拒绝对照而触发同cache现象，不是F01运行证据；保留原log并用独立初始化host-diagnostic-current.log纠正，不抹除该探针设置边界。
+
+#### 适用绿证据（当前冻结SHA；材料仅scope/review-r1）
+
+所有命令工作目录唯一944树；AUTO_PLAN_ARTIFACTS=scope944，TEMP/TMP=scope944/scratch，AUTO_LANG_ROOT=本树。常规target在树，root SDK单测复用原显式scope/target，无第二输出根。
+
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-semantics-contract --test conformance assembly_944:: -- --nocapture` exit0，3/3、ignored0、过滤11，准备0.13s/运行<0.01s/整0.36s；model.log SHA256=83304fdb525d1859ff5c09a59e03681170196d0f8b20b017d6c27260a579af07。
+- `cargo test ... -p ace-source-query --lib assembly:: -- --nocapture` exit0，3/3、ignored0、过滤50，准备0.14s/运行0.04s/整0.40s；query.log SHA256=f12ceb2ef7f222ef542a2c7a539c748a447d296a166ce869fe14dabe6a3deb96。
+- `cargo test ... -p ace-av --features test-case-batch --test conformance assembly_944:: -- --nocapture` exit0，4/4、ignored0、过滤899，准备0.15s/运行1.75s/整2.13s；targets.log SHA256=e81a9ec8619a7a1a0db9c7546c03faa2accee7df19ab81501044ecc6b418f49c。
+- `cargo test ... -p ace-stdlib-conformance --test conformance -- --nocapture` exit0，1/1、ignored0、过滤0，准备13.03s/运行1.75s；real-sdk.log SHA256=c6ad9e59177a4c081bae8b461710df37179ca913fbc3ea797d3b323fee8b379e。独立实核真实io.read_line signature_checked/io/stdin来源与adapter合同进两端manifest；三store变体42/42/7，typed identity坏输入在cold入口拒，不把toy42冒充真实IO行为。
+- `cargo nextest run -p auto-lang-core --lib --target-dir D:/autostack/plan-artifacts/plan-944/target -E 'test(actual_public_reference_retains_proof) or test(schema4_read_preserves_original) or test(assembly_contract_source_is_in_sdk_identity) or test(declared_path_deps_all_in_identity_sources)'` exit0，4/4、1639非选择，准备39.71s/运行0.300s；sdk-legacy.log SHA256=f6d19bdd075addb5b6a2c1d07b6fcd0e3893ac5396a229a6f7da60e5e73c3f50。逐参数/mode及当前独立adapter负控、独立FNV固定wire通过。
+- `cargo tree -p auto-lang-core -e normal,build,dev --locked --prefix none` exit0，仅数据ace-semantics-contract一项ACE、无compiler/worker/backend反向边；sdk-tree.log SHA256=ce3b85faf7f4317c2943bd17598be4ad29ecddc3563834fc17f4a1a440bee93f。
+- 自选组合bin主程序（`cargo run --manifest-path <scope>/review-r1/probe/Cargo.toml --target-dir <tree>/experimental/ace/target`当时仅一bin，后续须`--bin review944-combined`）exit0：同次std正文42→43+要求console，真实solver/lower/print各2（owner+直接reader），AV/Rust真43；拒授权不dispatch、恢复scanner/parser/solver/lower/print0；要求删除、stale空body候选拒、两端仍43。准备29.49s，组合含两次真实rustc/exe；combined.log SHA256=5332406fc820877bf1695fc9257fdd54ec64817af6a91489b9c9057ca3f30c8c。
+
+健康：全部31个修改Rust文件rustfmt skip_children及git diff --check exit0（fmt.log空文件hash=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855）；未发现新debug或新warning。实际旧SDK lib131/libtest145、AV lib3/test4、query test1 warning保留，probe局部unused变量warning只属于scope审计源码，不伪称产品新增warning。未运行七组完整门、无关GC/scale/performance或cargo t all。
+
+Spec审查SD01..05的4modify+1add路径/impact/GOAL002正确，legacy新旧域/SDK中立依赖/可选context/无授权序列化范围合理；候选生命周期叙述尚被F02违反，不得降规则迁就。冻结hash逐项核同交接：assembly-manifest=e5659cb7d9871af0243335116da60488537a5e5cab330f6e343c8fe4546f8ba5，auto-a2x/incremental-and-cache=b81d076e2feeb46526a1dccec70d4064f76291277d6f5cc4e0879123ef9ad69e，ace-binding-and-assembly=6c8c8b068a3c235c23599e319c37d0a76bd7887901826ed8c4ef679218d77c68，language-sdk/project=78321e409c0a69e13db19d4efa7514c1112c67ba150c64dbb4314b1a60dc90cd，auto-semantics/source-query-session=6fef75ff247d5943d30b6bf8f7e2413bec28807591fa48bbc16a11b7cc520a0f。完整delta冻结spec-delta.diff SHA256=c1ac8bcf847aa24764bead6d2336323e76d7ce74bc953769b349aeb19164f3ca；未写ledger/index/canonical发布。
+
+收敛/路由：两发现为原合同内新batch路径缺陷，记录KNOWN-DEBT候选仅为可追踪开放项，不批准延期。T02/T04/T05重开，保留T01/T03及以上适用绿证据，当前2/7、status executing；T06尚未通过。work修复后重放原反例/合法对照及受影响共享不变量，再affected复审；七组最终并集仍merge-owned pending，不对已知红代码跑全局门。
+
+### r2 repair-r1 execution entry（2026-11-06）
+
+基线e8cf62cbc1bda879bfc83e6f459dd4e746471f7f，唯一施工树lang-944/auto-lang、plan-944-dev，review950已交回写权。合同不变；T02/T04/T05重开。F01沿真实bound.locate恢复批量拒绝的模块/原文span；F02沿SourceQuerySession → 单体/批量候选 → receipt → commit隔离缓存根，页以Arc共享，不复制整body facts/AST，不回滚真实counter/revision。准备成功、局部诊断失败、drop/取消、target拒绝、SQL发布失败均保持current缓存；只有commit安装candidate缓存。关闭须永久断言取消A后首次合法B仅1solver、AV lower1/Rust lower+print1且无关owner0，再真实恢复新值；单体候选/receipt同机制补对照。原review两红日志保留，统一七组门仍由merge在冻结后执行，当前pending。
+
+### r2 repair-r1 work handoff（2026-11-06）
+
+stage: work | plan_id: PLAN-944 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-944/auto-lang | branch: plan-944-dev | base_commit: e8cf62cbc1bda879bfc83e6f459dd4e746471f7f | code_commit: e269f417895ffa09493fd42390d24ef336f503f4 | dependency_revisions: auto-down 58ea33f699efa5cb1194473a2d45dcec51006842（只读） | task_ids: T02/T04/T05 | next_responsible_role: independent final review / review950。
+
+| finding | 共享不变量/覆盖 | 修复及永久断言 | 当前结果/剩余边界 |
+|---|---|---|---|
+| F944-R1-01 | 批量签名非快路径拒绝保原模块/span；与原单体一致 | prepare_bound_batch沿bound.locate投影；assembly_944::speculative_owner… signature支断言ModuleDiagnostic module std +精确Span7..13 | 原diag_host探针隔离store后重放exit0，永久用例绿；无work缺口，待独立确认 |
+| F944-R1-02 | 单体/批量准备及receipt不能驱逐current事实；drop/取消/签名拒绝/target拒绝/SQL失败后独立B首次成功 | QueryCacheCheckpoint只复制Arc页根/声明context、不复制AST/facts，不回滚counter/revision；prepare与receipt无论Result恢复current，成功commit安装candidate。永久host用例五分支各首次main7→8只1solver/AVlower1/Rustlower1print1，并重启0solver/0lowerprint、两端真实8。单体新persistence用例涵盖drop已写receipt、签名拒绝及prepare_current/prepare_receipt_targets与下一真实恢复helper10、answer42 | 原cancel_retry探针隔离store重放exit0、next Err=None、solver delta1；无work缺口，待独立确认 |
+
+修复定向验证（同最终代码；没有重跑全仓）：
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-source-query --lib modules:: --target-dir scope/target` exit0：14执行/14绿、40非选择；准备1.10s、运行0.44s。扩展原因：新共享缓存根影响单体/批量prepare/receipt/commit与Root2/3恢复。
+- `cargo test … -p ace-av --test conformance assembly_944:: --target-dir scope/target` exit0：5执行/5绿、898非选择；准备4.02s、运行3.92s；两端共享cache状态及原四个effect/provider/first-edit/单根发布用例均受影响。
+- 原review两个生产host输入不改，仅store隔离到scope/repair-r1：diag_host_repair exit0，准备22.15s；cancel_retry_repair exit0，准备1.34s。原失败日志/输入不改。
+- 四个修改Rust文件逐文件rustfmt --check及git diff --check exit0。一次cargo fmt --all误及全仓格式且遇既有缺失mem_profile失败；除本修复两文件外所有本次格式改动已完整还原，未纳提交。初次repair编译E0505已局部修复，原失败日志保留。
+- warnings保持已记录source-query test1/AV lib3/test4基线；探针旧unused警告不入产品。SDK/proof/model/边界/固定组选择代码和输入未改，复用r1独立绿，不作全局零warning声明。
+
+Spec仅补current-cache事务/模块诊断规则，source-query-session.md新SHA256=f0bf2556433bb73b7f98f5f282bc9fda4e8d891a39a5b51c38381c96c089af1d；其余四Spec hash不变。没有语义/支持范围修订、ledger/index写入或外仓修改。
+
+证据唯一scope；下列raw在merge摘要折入后删除：
+- `repair-r1-modules.log` SHA256=91e9d9c1602963a21c682500ac1b16f7e9e4462a9f8fb465e02f747c9c9bbd78
+- `repair-r1-targets.log` SHA256=e7253c79da32b4619b508c5c55cc2204798fabe1ac7a759dc0012e45b393f252
+- `repair-r1-diag-replay.log` SHA256=1ee5224d0e8986f550dc54a5d3d0f835e5a3edae3d509055accf55c053eb575d
+- `repair-r1-cancel-replay.log` SHA256=18ef69a432f926bc245888181400871dc6820808bf7b3a31cc1659e21d075963
+
+work readiness：工作侧AC01..04/06及T01..05完成，已提交、树clean；开放in-contract工作缺口/未决合同均为空。F01/F02工作修复完成但最终关闭归独立复审。T06独立复审、T07冻结七组职责门/Spec落地/归档清理仍pending；当前5/7、execution_done，非目标完成。最终门仍`cargo t stdlib ace-source ace-semantics ace-artifacts ace-av ace-a2x ace-stdlib --out scope/<fresh>`由merge所有，不以修复提交反复全跑。
+
+### Independent final re-review r2（plan r2；repair-r1，2026-11-06）：pass
+
+`stage: review | review_scope: final (affected re-review) | reviewer_identity: independent /root/review950 context | plan_id: PLAN-944 | plan_revision: 2 | outcome: pass | reviewed_commit: e269f417895ffa09493fd42390d24ef336f503f4 | repair_base_commit: e8cf62cbc1bda879bfc83e6f459dd4e746471f7f | base_commit: aea97d92e1788813a90bec59ce8b7073acbabd67 | worktree_path: D:/autostack/.wt/lang-944/auto-lang | branch: plan-944-dev | dependency_revisions: auto-down=58ea33f699efa5cb1194473a2d45dcec51006842 | acceptance_results: AC01..05 pass; AC06 merge-owned pending | findings: F944-R1-01/F944-R1-02 closed; no open in-contract findings | next: frozen seven-group merge gate and actual closeout`
+
+已重读完整review技能与最新主Plan/闭合表，检查冻结修复五文件实际diff，未复用实施者自报结论。修复只涉及query cache根、single/batch候选与receipt、永久反例及source-query Spec补充；SDK proof/legacy4/model/physical recipes/host协调/固定组配置与原样本未变。r1中这些未变身份的适用绿证据保留，受影响候选生命周期/真实双端则在本新SHA独立重放。进入/结束HEAD、branch、clean、只读dependency逐项一致；未修代码、未创建新checkout。
+
+| finding/AC | 独立闭合结论 | 共享不变量/回归核验 |
+|---|---|---|
+| F944-R1-01 / AC01/T02 | closed | 原真实Host反例仅换全新scope存储路径，当前返回ModuleDiagnostic std/source.incremental/精确span7..13；新batch映射与原single一致。永久signature支同时保原合同拒绝，不为过测试支持签名漂移 |
+| F944-R1-02 / AC03/04/T04/T05 | closed | cache checkpoint由Arc<SigPage/BodyPage>根+声明contexts组成；不复制AST/整页facts、不回滚counters/revision。single/batch prepare和receipt各Result出口恢复current，只有已验证commit安装candidate cache。取消A→首次不同B的原反例成功且solver delta1 |
+| AC03/04共享失败退出 | pass | 永久host的cancel/drop/signature/target/SQL五分支均旧句柄/字节/receipt保持；首次B只1solver+AVlower1+Rustlower1/print1，再新会话0solver/lower/print实际两端8。单体drop已写receipt/签名拒绝后helper10单solver、旧answer42、下一真实恢复全hit；原batch多body/foreign/stale与Root2/3反控继续绿 |
+| AC01..04其它边界 | pass | r1 SDK proof/双指纹/legacy4和中立依赖证据按输入未变保留；本轮两端effect/provider/first-edit/单根失败原四用例重放，且因single路径改变补原950两真实consumer兼容性，不跑无关全局压力 |
+| AC05/T06 | pass | 原例+共同机制+兄弟失败路径检查完成，无新增遗漏/延期/workaround；KNOWN-DEBT D944-R1关闭，原r1红与本轮绿并存 |
+| AC06/T07 | pending merge | 七组冻结完整并集、landing/Spec/归档/所有输出根清理仍由merge实际执行，review pass不等于D944交付 |
+
+独立命令与实证（cwd均唯一944树；AUTO_LANG_ROOT=本树、AUTO_PLAN_ARTIFACTS=scope944、TEMP/TMP=scope944/scratch；日志唯一scope/review-r2，fixture清理未单独计时）：
+
+- 原diag_host/cancel_retry输入副本与原r1文件仅替换store路径，分别使用scope/review-r2的新store，原失败输入/日志未改。`cargo run --manifest-path D:/autostack/plan-artifacts/plan-944/review-r2/probe/Cargo.toml --bin diag_host --target-dir D:/autostack/.wt/lang-944/auto-lang/experimental/ace/target` exit0，准备9.75s，实际std/byte7..13；diag.log SHA256=21d96692b6518bcf0c0f578ffff2f9efc40c11aa3571766785b68789600b5e42。同命令`--bin cancel_retry` exit0，准备1.28s/整1.63s，next Err=None、solver delta1；cancel.log SHA256=3958a53d237f3958d55b349b43b8ab33da31f4dd2b36b0bcc9a72d84cd359579。
+- `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-source-query --lib modules:: -- --nocapture` exit0，14执行/14通过/ignored0/40非选择；准备4.31s/运行0.98s/整5.53s；modules.log SHA256=180cfa9dc8fc1aeb5ff4f3e6f9df8ace3efb0bdce6fd1c7362f7a0cffaf85cda。扩大到该完整受影响namespace理由=Arc cache根及single/batch prepare/receipt/commit都改变；不是新HEAD机械扩大。
+- `cargo test ... -p ace-av --features test-case-batch --test conformance assembly_944:: -- --nocapture` exit0，5执行/5通过/ignored0/899非选择；准备8.65s/运行5.61s；targets.log SHA256=4fd3e88c29c9040106d761d538547f275522ae5a600a8244ef800e7ef26c5c4d。case内五失败方向均真实恢复执行8；其余四case保真实效果/provider/首次编辑及事务闭环。
+- `cargo test ... -p ace-av --features test-case-batch --test conformance module_sources_950:: -- --nocapture` exit0，2执行/2通过/ignored0/902非选择；准备0.14s/运行2.53s/整2.86s；legacy-consumers.log SHA256=ab525343ea726acf9f59c0ee0351b0492e372f61326d72e21c2cae5321bf5e47。理由=本次修改原single prepare/receipt/commit，需真实旧Root1消费42/7及恢复首编辑对照，未借950 pass直接覆盖新实现。
+
+健康检查：四个修改Rust文件rustfmt skip_children与git diff --check exit0，fmt.log为空；没有新增产品warning/debug。原query test1、AV lib3/test4已具名warning保留；scope探针旧unused只属审计源码，不归产品。cache checkpoint未包含revision/counters/config/cancel字段，真实失败/求解工作继续累计，不能用回滚计数制造无关零生产。共享Rc源图、原FnCandidate generation/slot守卫、单根存储CAS、每次当前授权未绕过。
+
+Spec SD01..05通过：仅source-query-session补已实际实现的cache事务/诊断保真，保持现有语义和阈值，不替换失败要求。最终五文本SHA256：assembly-manifest=e5659cb7d9871af0243335116da60488537a5e5cab330f6e343c8fe4546f8ba5；auto-a2x/incremental-and-cache=b81d076e2feeb46526a1dccec70d4064f76291277d6f5cc4e0879123ef9ad69e；ace-binding-and-assembly=6c8c8b068a3c235c23599e319c37d0a76bd7887901826ed8c4ef679218d77c68；language-sdk/project=78321e409c0a69e13db19d4efa7514c1112c67ba150c64dbb4314b1a60dc90cd；auto-semantics/source-query-session=f0bf2556433bb73b7f98f5f282bc9fda4e8d891a39a5b51c38381c96c089af1d。完整delta冻结scope/review-r2/spec-delta.diff SHA256=6240cb04ece3954f4e372ed67b289119890f86da7274e1c7cb0bac6a589a2ba6。4modify+1add/GOAL002 impact准确，无ledger/index/canonical发布。
+
+pending_closeout_gates：merge独占执行`cargo t stdlib ace-source ace-semantics ace-artifacts ace-av ace-a2x ace-stdlib --out <scope>/<fresh>`，保存子终态/原条件排除/真实输入身份；本轮没有提前跑该七组、全仓/all、无关GC/scale/perf。T06通过6/7，T07未做；scope/review-r1、review-r2全部仍为在途临时材料，merge摘要折Plan后全删，未新增hold。实际清理/归档后才可报告目标交付。
+
+补齐已实际发生的顺序goal路由（不改历史r1裁决）：
+
+`stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 5 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: e8cf62cbc1bda879bfc83e6f459dd4e746471f7f | next: repair F944-R1-01/F944-R1-02`
+
+`stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 6 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: e269f417895ffa09493fd42390d24ef336f503f4 | next: affected independent re-review`
+
+`stage: goal | plan_id: PLAN-944 | plan_revision: 2 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-944/auto-lang | commit: e269f417895ffa09493fd42390d24ef336f503f4 | next: frozen union and actual closeout`
 
 ## 10. 待澄清事项
 
