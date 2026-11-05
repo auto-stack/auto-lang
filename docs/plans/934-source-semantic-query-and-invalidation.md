@@ -176,6 +176,10 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 
 ## 9. 复审记录
 
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 6 | from: user | to: work | status: executing | outcome: in-progress（**解除门槛行动**：按用户指令接管停滞的 929——恢复/重派其 T-11..T-14，以产出 D929） | worktree: 934 未建；929 树 `lang-929` @ `bf8c189c0` 由本会话接管执行 | commit: master `3651146f9`→`a9a485a3a`（929 接管收据） | next: work（929 T-11 并集后台运行中→T-12/T-13/T-14 → D929 落地后回本计划建树 T-02）
+  - 停滞三证：无 cargo/rustc/nextest 进程；worktree 04:03 起零文件活动（≈5h40m）；stale 锁 pid3376 已死。授权链：用户本轮指令 + 929 round-11 已录用户令（T-07..T-14 全链）。
+  - 现场处置：Cargo.lock 非法自依赖（ace-core→ace-core）还原 HEAD；已完成的正式样本（incremental-raw run 1793822173-pid25788，30 样本 pass p90 92.9ms）pid 快照移 plan-artifacts/plan-929/，tracked 刷新随 T-11 冻结提交；stale 单实例锁清除；T-07 漏勾补记。
+
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 5 | from: user | to: user | status: executing | outcome: **blocked**（3 纯等待轮上限：D929 未落地——master 无 929 merge、archive 无 929、929 仍 10/14 @ `bf8c189c0`、WIP 冻结 03:56→09:39） | worktree: 未建 | commit: master `df0f6c57e` | next: user（解除条件与恢复入口见 §10 首条；检查点全保留）
   - 交付状态快照：T-01 1/13 完成；私有层五要素 DRAFT 齐（plan-artifacts/plan-934/）；T-02..T-13 待 D929。无半成品代码/树/scope 泄漏。
 
