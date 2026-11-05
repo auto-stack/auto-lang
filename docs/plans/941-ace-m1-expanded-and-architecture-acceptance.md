@@ -309,6 +309,27 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: progress | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 1b6e524b5a3218199fb788b89b1d9fca715b17d5 | next: work
 
+### 2026-11-06 T-02 双端oracle与显式认证reader；F-941-02转952
+
+上一goal轮为progress：1b6e524b5完成原始wire/Case身份单元。本轮941检查点`55c8b37ea`→`5b2f795fc`→`a834b9cfa`（树clean），继续0/15，未给T-02先行pass。
+
+- 新`ace_m1_scalar_evidence.py`只适配真实首例AV core-run/native scalar：原始request独立重算有序JSON hash、base64/source SHA、FNV、nonce、recipe/protocol/当前工具身份；每端单独对当前正式inventory oracle42，不看Case PASS。真实Q4二端各42绿；同时改两端观察为43，**二者均FAIL**，错nonce/request hash/foreign recipe各拒，reader阶段Popen禁止断言通过。`q4-scalar-admission.json`保原observed/expected/响应hash；全scope reservation1,777,669 bytes。35个治理控制实际通过（原31+新4，不重复继承原测试），合成单元只验边界，真实Q4结果单列。
+- 原a2x-worker的explicit certify/certify-c新增opt-in `execution_observations`，保存**同一原compile/run**的原始stdout/stderr hex及exit_code，actual/reference各独立2进程；不添runner/meter、不重复执行，原默认比较/输出不变。显式identity请求的`certification_target`可在认证准备阶段复用原工具identity helper，先独立冻结rustc-vV/C原cl+vcvars+flags；默认identity/daily仍spawn-zero。新原conformance `cert_execution_941` 3/3：保无效UTF8/NUL/空白原字节、真实Rust/C两端actual/reference输出均value:42\n、工具身份与证书一致；最终定向命令9.400s。C既有证书`version_sha256`键实际承载原locator BLAKE3 image digest，reader保持其原语义，不擅改算法/键名。
+- 新`ace_m1_cert_evidence.py`严格核对原process_capture/native_meter命令+Job终态、冻结request/producer SHA/commit、当前source/reference、完整golden/actual文件、cert/manifest、compiler工具/flags/caps/config与原始compile/run观察。每个actual及reference都单独对独立oracle字节，child PASS/marks布尔不供应正向授权，child明确red不提升。单命令360s/每流原1MiB及4MiB JSON/共48MiB门保持。C scalar manifest /1原本不含profile/domain，依其正式profile与实际bundle域证书绑定；不编造字段，不用Rust schema硬套C。39个治理控制通过（原35+4命令/原始终态反控）；raw ref/计量exit bool/超时/不一致CPU、错producer/request/extra字段均拒。
+
+**F-941-02（真实producer身份缺陷）**：冻结55c8源码的真实Rust Q4认证产物manifest.hir_domain=`scalar-i32-draft`，同一cert.profile=`auto.source.scalar-i32.draft`而cert.hir_domain=`core-i32-draft`。原`domain_of`对profile字符串剥壳后得到scalar-i32，仅匹配scalar而落default core；actual EmitOutcome已经有正确域，C直接消费它。新reader拒该Rust包，合法C正控PASS；两个完整实际+reference原输出均42也不能掩盖身份错误，累计reservation1,072,088 bytes。原旧坏包保留在`q4-cert-55c8-frozen/`，`scalar-cert-before-952-final.json`保拒绝原因与C证据hash。
+
+注意保留首次红/失败：首次build误用package `a2x-worker`被Cargo前置拒，查正式package后改`ace-a2x-worker`；首次显式identity仍命中旧release二进制，缺certification_toolchain在capture前置终止（`capture-q4-cert-55c8.log`、`q4-cert-55c8/identity-rust.*`保留），不冒通过。原因=ace-a2x组tools为空、conformance新测试用CARGO_BIN_EXE debug产物，不自动重建release；显式正确release构建后只在新目录`q4-cert-55c8-frozen/`执行完整认证，未覆盖旧失败证据。后续仍须在D952后新producer身份重放，旧55c8记录仅历史反例。
+
+用户已明确授权“授权独立修复并继续（推荐）”，最小独立**PLAN-952**承接F-941-02：从实际out.hir_domain绑定，6 profile实际认证回归。952独树base1f1e42cb9，修前6例5绿/1scalar红，修后6/6；实现6308a8ca5经冻结独立复读复审pass，正在merge所属完整ace-a2x职责门。无需再次授权，也不将952完成等同941验收完成。941还缺SYN/937域语义与计量归约、四端首链/full registry与/3 AND等，T-03尚未开放。最终D936/D938/D939与旧38cert-gap仍按原合同。
+
+
+2026-11-06 952合入门再次阻塞：两次完整ace-a2x各188/189，失败分别为未改动record/text事件stderr空、collections3072 stdout空，两个单例各重放绿。已停止刷完整组；952通过原std库字节相同副本的确定性private probe实锤共享CaptureWorker“空peek→最后写入/owned关闭→用旧peek判EOF”竞态（F-952-01），生产代码未改。诊断与最小独立修复提案已完整入952 §9；这不是证书元数据修复，需新的明确授权，问题已发且待答。952撤回可合入pass，执行3/6；941保0/15，当前a834b9cfa clean。原问题F-941-02由952持有，未关闭；不得把新reader的C正控或旧Rust拒绝冒完整四端成功。
+
+本轮实际进展收据：原始双端oracle+cert过程观察+strict命令/证书reader提交55c8b37ea/5b2f795fc/a834b9cfa；35/39治理控制与3认证观察控制、真实双端same-wrong反控、真实C严格认证PASS/坏Rust域拒；发现并获授权独立952，6域修前红/修后绿；两次完整门红及原采集器确定性竞态改变下一步，非no-progress。当前新待决定条件首轮出现，goal保active，不提前blocked。
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 5 | from: work | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a834b9cfa | next: user（仅F-952-01新增共享采集器独立修复授权；941/952原授权保持）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
