@@ -64,3 +64,13 @@ caps；逐查询轴：
   受控拒绝/重算；不缓存 PASS 或瞬时取消/资源失败。
 - 旧版本页迁移：语义版本轴隔离新旧键（保留旧页不可达不清库；当前页
   无冲突发布；store 重开可读——永久迁移控制）。
+
+## SQ-A 新命名域（PLAN-934）
+
+- 934 的页/键/失效规则见 [source-query-session.md](source-query-session.md)：
+  新 `producer=plan934/source-sq`、`schema=ac934/source-sq/v1`，
+  逻辑身份与来源授权（928 目录 content_sha）分离，能力集入键。
+- 旧 `ac796/*` 页字节语义、`S796` 层与 796 探针**不变**；两域互不命中，
+  旧页不得作为新暖命中，新页也不得被 796 读回。
+- 统一 ManagedStore 复用：层 `S934`、carrier `SnapshotRecord`、版本化页 codec、
+  读回准入（信封/尺寸/UTF-8/尾随/重复/覆盖）与项目 soft root；GC/lease 归 store。

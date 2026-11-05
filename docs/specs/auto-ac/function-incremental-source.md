@@ -117,3 +117,15 @@
 - 计量轴：`ProductionMeter`（produced/reused/discarded 分账）+
   `StageAttempts`（whole/per-unit 双轴）为正式 P/M 观察面；失败 attempt
   如实计数不默认 0。
+
+## 与 SQ-A 事实源接缝（PLAN-934）
+
+- 冷路径的 parse→bind→typecheck→emit 之外，934 提供**事实驱动**替代入口：
+  每 body 事实（`InferBodyFacts`）→ `resolve_with_supply`（VT 由事实安装、core 规则
+  只校验）→ `emit_resolved_parts` → 真实 HIR 校验。`compile_via_facts` 是共享门，
+  有限面内与 legacy 入口产出**逐字节相同 HIR**（同一 checked 产物）。
+- 结构/计量：事实路径 `typecheck=0`、`type_synth.synth=0 / fact_checks>0`；
+  legacy 入口保持原计数（对照）。旧 `compile_*` 仅兼容/差分参照，不再作为正式
+  consumer 的隐藏 fallback 方向（产品默认切换见 934 T-08 余账）。
+- 恢复：来源/CST/声明恢复仍归 929；934 只准入 facts 页（无 solver/无重推导），
+  缺页拒绝该恢复车道，显式 cold 另走。
