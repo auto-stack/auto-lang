@@ -168,7 +168,7 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 | T-08 | work | T-04..07，AV/native/A2X/worker H短窗 | 真实普通源consumer接入与四端认证，V-01/08，AC-08 | [ ] 2026-11-05 部分（`ee6045a7c`）：**共享消费入口 + 同一 HIR 认证完成**——`compile_via_facts` 是唯一门（parse→每 body 事实→事实供给 bind→emit→真实 HIR 校验→`CheckedModule`）；差分认证：leaf/main、命名实参、local/if/loop、前向引用、互递归五个语料下，事实路径产出与 legacy 入口**逐字节相同的 HIR**（同 profile/input_hash），故 AV/native/A2X/Rust/C 消费的是同一份 checked 产物；av 用该入口真实执行 42 且每函数 `typecheck=0`。**未完成**：把产品冷路径（AV session/native driver/A2X store）默认切到该入口并跑各自端到端 |
 | T-09 | work | T-03..08，case/parent/注册H、933稳定材料 | 使能V-01..11独立oracle/负控，新包职责纳现ace-semantics固定清单，AC-01..06/09 | [ ] |
 | T-10 | work | T-09，冻结提交/正式采样单实例 | 原资源/时间/GC样本与完整职责/必要消费者，AC-01..08 | [ ] |
-| T-11 | work | T-10，真实D929或正式等价接缝 | SD/依赖继承/窗口与余账/健康冻结，AC-09；不能带in-contract pending送审 | [ ] |
+| T-11 | work | T-10，真实D929或正式等价接缝 | SD/依赖继承/窗口与余账/健康冻结，AC-09；不能带in-contract pending送审 | [~] 2026-11-05 部分（`a10d4efac`）：**SD-01..04 已在实施树写好并自检**——新 `docs/specs/auto-semantics/source-query-session.md`（身份/版本轴、事实页身份与准入、事实驱动 HIR、两阶段宿主/single-flight、恢复纪律、预算）；`inference-profile.md`、`query-cache.md`、`auto-ac/function-incremental-source.md` 追加边界节（旧 `ac796` 语义不变、新 `ac934` 域、`S934` 层/准入/soft root、事实入口计量与 929 恢复分工）。`spec-lint` 仅既有 3 个无关 error（ace-migration/design/history 缺 project.md）。**未完成**：依赖继承/窗口与余账清点、健康冻结（依赖 T-08/T-09/T-10 收口） |
 | T-12 | review | T-01..11完成，停止实现写入 | 独立逐AC/SD/遗漏/反控复审，AC-10 | [ ] |
 | T-13 | merge | T-12 pass与实施后合入授权 | canonical/交付/归档/全路径材料与树清理，AC-11 | [ ] |
 
@@ -187,6 +187,10 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 **T-07 已完成（2026-11-05，`2793de9b2`）**：facts 侧恢复契约——页深验（无 solver）、仅页整模块 bind、`seed` 后首个好编辑只解被改 body、坏编辑被准入拒并可修复。下一入口 T-08。
 
 ## 9. 复审记录
+
+- stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: in-progress（T-11 部分：SD-01..04 canonical 规范在实施树落地；T-08 产品冷路径与 T-09/T-10 仍开口） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `a10d4efac`；主检出簿记 | next: work（T-08 产品冷路径接线 / T-09 独立 V 用例族与固定组 / T-10 正式采样，然后 T-11 收口）
+  - 证据：新增/修改 4 个 canonical spec（见 T-11 行）；`python scripts/spec-lint.py` 对新文件无 error/warn（仓库既有 3 error 属 ace-migration/design/history 缺 project.md，与本包无关）。
+  - 说明：规范内容按已实现行为书写（键/页/准入/事务/恢复/预算），未把 T-08/T-09/T-10 的余账写成已交付。
 
 - stage: goal | plan_id: PLAN-934 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: in-progress（T-08 部分：共享消费入口 + 事实/legacy HIR 逐字节同一；产品冷路径切换未完成，T-08 仍 `[ ]`） | worktree: `D:/autostack/.wt/lang-934/auto-lang`（`plan-934-dev`） | commit: `ee6045a7c`；主检出簿记 | next: work（T-08 续：AV session/native driver/A2X store 冷路径接共享入口 + 各端端到端；随后 T-09）
   - 证据：`cargo test -p ace-source-query --lib` **37/37**（sq37 五语料 `atom_text` 与 legacy 逐字节相同、profile/input_hash 一致）；av `sq934` **13/13**（共享入口真实执行 42、每函数 `typecheck=0`）。`cargo t ace-semantics` **PASS**（`target/test-groups/run-b72bh7xf/`，退出 0，冻结提交）。
