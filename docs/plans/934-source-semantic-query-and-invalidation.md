@@ -279,3 +279,10 @@ R读/解码新facts/依赖图先按长度、元素/字符串/映射数量预留�
 **[2026-11-05 09:39 blocked] D929 门控等待（3 纯等待轮上限触发）**：T-02（首个代码任务）按合同须消费 PLAN-929 已审稳定接口（source/CST/decl：`decl_env.rs`、`UnitCatalog::from_restored`、fragment 桥、统一会话）。现况：929 executing 10/14（代码 `bf8c189c0`），T-11 正式采样在途，其 worktree WIP 自 03:56 起 ≈5h44m 无字节变化（可能静机长采样或会话停滞）；本会话按合同不代 resume。**解除条件**：①master 出现 PLAN-929 merge 交付 + `docs/plans/archive/929-*.md` 后 `/goal resume` 本计划（恢复入口：读 D929 交付 SHA → 建树 `lang-934` → T-02）；或 ②若 929 会话确已停滞，用户先恢复/重派 929 的 T-11..T-14。全部检查点已保留可续（T-01 已入库、私有层 DRAFT 在 plan-artifacts、无 worktree 需清理、主检出仅计划簿记）。无需放宽语言/预算/旧批准。
 
 （原）无需放宽语言/预算/旧批准。单体事实应用API、页格式与复用sema-store方式由T-02有界证明；若必须后台全源check或突破原预算，先needs_replan，不能换名M/R。935936机制、CA-D与最终ARCH签章仍各有owner；本包不因只支持有限类型而豁免真实依赖/恢复。
+
+**[2026-11-05 15:05 交接状态：goal 会话中断点]** 本会话交付：T-01..T-07 完成；T-08/T-11 部分。代码链 `d3226ff69` → `e505a665d`（crate→端口→键/审计→宿主协议→ManagedStore→恢复→共享入口→AV seam）；SD-01..04 在实施树 `a10d4efac`。**下一会话按序收口**：
+1. **T-08**：把 `ace_av::query_entry::compile_scalar_source_via_facts` 接入 `ace-av/src/{driver,session}.rs` scalar 冷路径、`ace-native/src/driver.rs`、`ace-a2x-store/src/lib.rs` cold assemble，并跑各端端到端；HIR 逐字节同一性已证（crate sq37），预期零产物差异。产品依赖变更后**尚未**跑整 `ace-av` 固定组（仅定向 `sq934` 14/14），merge 前须补。
+2. **T-09**：`crates/auto-lang/test/cases/ace-m1/source-query-934/` 独立 V 用例族 + `scripts/test-groups.toml` 注册 `case-ace-source-query-934`（`ace-semantics` 组已含 `-p ace-source-query`）。
+3. **T-10**：冻结提交上按原门采样（1MiB/30 编辑、16MiB/页、512 churn、4096 深链、P90≤2000ms），样本不减。
+4. **T-11 收口** → **T-12** 独立 review → **T-13** merge（master 已被其他会话推进，937 已归档；合并前先同步，spec 读回、plan 归档、`wt-guard` 清理与 plan-artifacts 删除）。
+5. 已知欠账：产品冷路径默认切换；ManagedStore required-closure/根注册随 929 协议；T-09/T-10 未执行。最近组证：`cargo t ace-semantics` PASS `run-rjmf5379`（T-07）/`run-b72bh7xf`（T-08 共享入口）。
