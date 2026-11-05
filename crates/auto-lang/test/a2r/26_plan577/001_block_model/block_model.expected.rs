@@ -517,7 +517,7 @@ pub fn pathOf(mut node: BlockNode, id: &str) -> Vec<String> {
         if (sub.len() as i64) > 0 {
             let mut out: Vec<String> = vec![node.id];
             for s in &sub {
-                out.push(s.clone().clone());
+                out.push(s.to_string());
             }
             return out;
         }

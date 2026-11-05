@@ -5,7 +5,7 @@ fn main() {
     let mut msg_count: i64 = 0;
     for msg in &messages {
         msg_count += 1;
-        if msg == "world" {
+        if msg.as_str() == "world" {
             break;
         }
     }

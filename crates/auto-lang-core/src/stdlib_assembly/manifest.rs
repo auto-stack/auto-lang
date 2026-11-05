@@ -478,6 +478,10 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 include_str!("../trans/rust/expr_emit.rs"),
             ),
             (
+                "trans/rust/dynamic_json.rs",
+                include_str!("../trans/rust/dynamic_json.rs"),
+            ),
+            (
                 "trans/rust/project_fixups.rs",
                 include_str!("../trans/rust/project_fixups.rs"),
             ),
