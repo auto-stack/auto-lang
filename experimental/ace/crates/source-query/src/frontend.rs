@@ -2,6 +2,7 @@
 //! solver, catalog and single-body emitter are shared with the product entry.
 //! A restored session retains declaration metadata and required fact pages;
 //! unchanged ASTs remain unmaterialized, including on its very first edit.
+use crate::resources::{Charge, Reservation, Resources};
 use crate::{
     BodyTypeSupply, BodyWalk, FnSigFacts, InferBodyFacts, LetDecl, NodeId, NodeInfo, PortableTy,
     QueryKey, SignatureCatalog, SourceQuerySession,
@@ -40,18 +41,26 @@ const MAX_FUNCTIONS: usize = 8192;
 pub enum Error {
     Diagnostics(Vec<Diagnostic>),
     Reject(String),
+    Resource(String),
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Diagnostics(ds) => write!(f, "source: {ds:?}"),
             Self::Reject(s) => f.write_str(s),
+            Self::Resource(s) => f.write_str(s),
         }
     }
 }
 impl std::error::Error for Error {}
 fn reject(e: impl std::fmt::Debug) -> Error {
     Error::Reject(format!("source.frontend: {e:?}"))
+}
+fn resource_error(e: crate::resources::ResourceError) -> Error {
+    match e {
+        crate::resources::ResourceError::Budget(_) => Error::Resource(e.to_string()),
+        crate::resources::ResourceError::Decode(_) => Error::Reject(e.to_string()),
+    }
 }
 fn syntax_error(e: units::EditError) -> Error {
     match e {
@@ -97,13 +106,21 @@ pub struct Page {
     pub bytes: Arc<Vec<u8>>,
 }
 impl Page {
-    fn new(bytes: Vec<u8>) -> Result<Self, Error> {
-        if bytes.len() > MAX_PAGE_BYTES {
-            return Err(reject("fact page budget"));
-        }
+    fn encode(value: &impl Serialize, resources: &Resources) -> Result<Self, Error> {
+        let size = ace_foreign_contract::codec::json_size(value, MAX_PAGE_BYTES).map_err(reject)?;
+        let reservation = resources
+            .reserve(Charge::resident(
+                size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
+            ))
+            .map_err(resource_error)?;
+        let bytes = Arc::new(
+            ace_foreign_contract::codec::encode_json_bounded(value, MAX_PAGE_BYTES)
+                .map_err(reject)?,
+        );
+        reservation.retain(&bytes).map_err(resource_error)?;
         Ok(Self {
             digest: sha(&bytes),
-            bytes: Arc::new(bytes),
+            bytes,
         })
     }
 }
@@ -114,6 +131,7 @@ pub struct Checkpoint {
     pub root: Vec<u8>,
     pub digest: String,
     pub pages: BTreeMap<String, Page>,
+    pub root_charge: Reservation,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -131,6 +149,7 @@ struct Resident {
 }
 
 pub struct Frontend {
+    resources: Resources,
     catalog: UnitCatalog,
     env: CheckedEnv,
     signatures: SignatureCatalog,
@@ -234,6 +253,25 @@ impl Frontend {
         foreign: AdmittedForeign,
         observation: &mut ColdObservation,
     ) -> Result<(Self, CheckedModule), Error> {
+        Self::cold_observed_with_resources(
+            source,
+            module,
+            package,
+            capabilities,
+            foreign,
+            observation,
+            Resources::default(),
+        )
+    }
+    pub fn cold_observed_with_resources(
+        source: &str,
+        module: &str,
+        package: &str,
+        capabilities: &[String],
+        foreign: AdmittedForeign,
+        observation: &mut ColdObservation,
+        resources: Resources,
+    ) -> Result<(Self, CheckedModule), Error> {
         if source.len() > MAX_SOURCE_BYTES {
             return Err(reject("source budget"));
         }
@@ -308,6 +346,7 @@ impl Frontend {
                 s.span.start,
                 capabilities,
                 &source[s.span.start..s.span.end],
+                &resources,
             )?;
             page_work.complete(1);
             residents.insert(item.name.name.clone(), resident);
@@ -328,6 +367,7 @@ impl Frontend {
         }
         Ok((
             Self {
+                resources,
                 catalog,
                 env,
                 signatures,
@@ -347,6 +387,9 @@ impl Frontend {
 
     pub fn work(&self) -> crate::work::Ledger {
         self.work.clone()
+    }
+    pub fn resources(&self) -> Resources {
+        self.resources.clone()
     }
     pub fn source(&self) -> &str {
         self.catalog.src()
@@ -559,6 +602,7 @@ impl Frontend {
             item.span.start,
             &self.capabilities,
             declaration,
+            &self.resources,
         )?;
         page_work.produced(1);
         work.push(page_work);
@@ -788,6 +832,7 @@ impl Frontend {
                     item.span.start,
                     &self.capabilities,
                     &candidate_source[item.span.start..item.span.end],
+                    &self.resources,
                 )?;
                 page_work.produced(1);
                 body_work.push(page_work);
@@ -975,19 +1020,25 @@ impl Frontend {
             );
             pages.insert(name.clone(), resident.page.clone());
         }
-        let wire = Root {
-            schema: SCHEMA.into(),
-            package: self.package.clone(),
-            module: self.module.clone(),
-            source: source.into(),
+        let wire = RootRef {
+            schema: SCHEMA,
+            package: &self.package,
+            module: &self.module,
+            source,
             source_sha,
-            capabilities: self.capabilities.clone(),
+            capabilities: &self.capabilities,
             catalog: units::encode_manifest(&manifest),
             declarations: decl_env::encode_decl_env(&env),
             signatures,
             edges,
         };
-        let root = serde_json::to_vec(&wire).map_err(reject)?;
+        let size = ace_foreign_contract::codec::json_size(&wire, MAX_ROOT_BYTES).map_err(reject)?;
+        let root_charge = self
+            .resources
+            .reserve(Charge::io(size + std::mem::size_of::<Vec<u8>>()))
+            .map_err(resource_error)?;
+        let root = ace_foreign_contract::codec::encode_json_bounded(&wire, MAX_ROOT_BYTES)
+            .map_err(reject)?;
         if root.len() > MAX_ROOT_BYTES {
             return Err(reject("root budget"));
         }
@@ -997,6 +1048,7 @@ impl Frontend {
             root,
             digest,
             pages,
+            root_charge,
         })
     }
 
@@ -1023,15 +1075,34 @@ impl Frontend {
         expected_digest: &str,
         capabilities: &[String],
         foreign: AdmittedForeign,
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        work: crate::work::Ledger,
+    ) -> Result<Self, Error> {
+        Self::restore_with_resources(
+            root,
+            expected_digest,
+            capabilities,
+            foreign,
+            read,
+            work,
+            Resources::default(),
+        )
+    }
+    pub fn restore_with_resources(
+        root: &[u8],
+        expected_digest: &str,
+        capabilities: &[String],
+        foreign: AdmittedForeign,
         mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
         work: crate::work::Ledger,
+        resources: Resources,
     ) -> Result<Self, Error> {
         let recovery = work.begin("*", "restore-root", crate::work::Phase::Recovery);
         work.io("*", "restore-root", root.len() as u64, 0);
         if root.len() > MAX_ROOT_BYTES || sha(root) != expected_digest {
             return Err(reject("root identity or budget"));
         }
-        let root: Root = serde_json::from_slice(root).map_err(reject)?;
+        let (root, _root_heap): (Root, _) = resources.decode_json(root).map_err(resource_error)?;
         if root.schema != SCHEMA
             || root.source.len() > MAX_SOURCE_BYTES
             || sha(root.source.as_bytes()) != root.source_sha
@@ -1105,11 +1176,22 @@ impl Frontend {
                 .get(&name)
                 .ok_or_else(|| reject("foreign required owner"))?;
             let bytes = read(&edge.digest).ok_or_else(|| reject("missing required fact page"))?;
+            resources
+                .adopt(
+                    &bytes,
+                    Charge::resident(
+                        bytes.capacity()
+                            + std::mem::size_of::<Vec<u8>>()
+                            + 2 * std::mem::size_of::<usize>(),
+                    ),
+                )
+                .map_err(resource_error)?;
             work.io(&name, "restore-facts", bytes.len() as u64, 0);
             if bytes.len() > MAX_PAGE_BYTES || sha(&bytes) != edge.digest {
                 return Err(reject("required fact content identity"));
             }
-            let wire: FactWire = serde_json::from_slice(&bytes).map_err(reject)?;
+            let (wire, _wire_heap): (FactWire, _) =
+                resources.decode_json(&bytes).map_err(resource_error)?;
             if wire.schema != SCHEMA
                 || wire.name != name
                 || wire.origin != edge.mint_origin
@@ -1172,6 +1254,7 @@ impl Frontend {
         }
         recovery.accept();
         Ok(Self {
+            resources,
             catalog,
             env,
             signatures,
@@ -1201,6 +1284,19 @@ struct Root {
     source: String,
     source_sha: String,
     capabilities: Vec<String>,
+    catalog: String,
+    declarations: String,
+    signatures: Vec<SigRow>,
+    edges: BTreeMap<String, Edge>,
+}
+#[derive(Serialize)]
+struct RootRef<'a> {
+    schema: &'a str,
+    package: &'a str,
+    module: &'a str,
+    source: &'a str,
+    source_sha: String,
+    capabilities: &'a [String],
     catalog: String,
     declarations: String,
     signatures: Vec<SigRow>,
@@ -1326,6 +1422,54 @@ struct FactWire {
     facts: Vec<u8>,
     walk: WalkWire,
 }
+#[derive(Serialize)]
+struct FactWireRef<'a> {
+    schema: &'a str,
+    name: &'a str,
+    origin: usize,
+    unit_sha256: String,
+    capabilities: String,
+    candidates: &'a str,
+    dependencies: DepsRef<'a>,
+    facts: &'a [u8],
+    walk: WalkRef<'a>,
+}
+struct DepsRef<'a>(&'a [(String, ContentVersion)]);
+impl Serialize for DepsRef<'_> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(
+            self.0
+                .iter()
+                .map(|(name, version)| (name.as_str(), version.as_str())),
+        )
+    }
+}
+struct WalkRef<'a>(&'a BodyWalk);
+impl Serialize for WalkRef<'_> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        struct Nodes<'a>(&'a [NodeInfo]);
+        impl Serialize for Nodes<'_> {
+            fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.collect_seq(
+                    self.0
+                        .iter()
+                        .map(|n| (n.id.0, n.kind, n.span.start, n.span.end)),
+                )
+            }
+        }
+        struct Lets<'a>(&'a [LetDecl]);
+        impl Serialize for Lets<'_> {
+            fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.collect_seq(self.0.iter().map(|l| (l.node.0, l.name.as_str())))
+            }
+        }
+        let mut fields = s.serialize_struct("WalkWire", 2)?;
+        fields.serialize_field("nodes", &Nodes(&self.0.nodes))?;
+        fields.serialize_field("lets", &Lets(&self.0.lets))?;
+        fields.end()
+    }
+}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WalkWire {
@@ -1333,6 +1477,7 @@ struct WalkWire {
     lets: Vec<(u32, String)>,
 }
 impl WalkWire {
+    #[cfg(test)]
     fn from_walk(w: &BodyWalk) -> Self {
         Self {
             nodes: w
@@ -1428,6 +1573,7 @@ fn encode_resident(
     origin: usize,
     capabilities: &[String],
     unit_source: &str,
+    resources: &Resources,
 ) -> Result<Resident, Error> {
     facts.admit(walk).map_err(reject)?;
     let key = QueryKey::infer_body(
@@ -1438,23 +1584,26 @@ fn encode_resident(
         facts.body_version.clone(),
         capabilities,
     );
+    let payload_size = crate::store::encoded_page_size(&key, facts).map_err(reject)?;
+    let _payload_charge = resources
+        .reserve(Charge::staging(
+            payload_size + std::mem::size_of::<Vec<u8>>(),
+        ))
+        .map_err(resource_error)?;
     let payload = crate::encode_page(&key, facts).map_err(reject)?;
-    let wire = FactWire {
-        schema: SCHEMA.into(),
-        name: facts.name.clone(),
+    let wire = FactWireRef {
+        schema: SCHEMA,
+        name: &facts.name,
         origin,
         unit_sha256: sha(unit_source.as_bytes()),
         capabilities: caps_key(capabilities),
-        candidates: catalog.candidates_fp().into(),
-        dependencies: deps
-            .iter()
-            .map(|(n, v)| (n.clone(), v.as_str().into()))
-            .collect(),
-        facts: payload,
-        walk: WalkWire::from_walk(walk),
+        candidates: catalog.candidates_fp(),
+        dependencies: DepsRef(deps),
+        facts: &payload,
+        walk: WalkRef(walk),
     };
     Ok(Resident {
-        page: Page::new(serde_json::to_vec(&wire).map_err(reject)?)?,
+        page: Page::encode(&wire, resources)?,
         mint_origin: origin,
         dependencies: deps.to_vec(),
         negative_candidates: facts
@@ -1463,4 +1612,27 @@ fn encode_resident(
             .any(|n| n.domain == "fn")
             .then(|| catalog.candidates_fp().to_string()),
     })
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    #[test]
+    fn borrowed_walk_encoding_preserves_original_wire_bytes() {
+        let program = ace_core::source::parse_program_with(
+            "fn f() int { let n = 1\n return n }",
+            SourceProfile::Scalar,
+        )
+        .unwrap();
+        let Item::Fn(item) = &program.items[0] else {
+            panic!("function")
+        };
+        let walk = crate::walk_body(&item.body).unwrap();
+        let original = serde_json::to_vec(&WalkWire::from_walk(&walk)).unwrap();
+        assert_eq!(
+            ace_foreign_contract::codec::encode_json_bounded(&WalkRef(&walk), MAX_PAGE_BYTES)
+                .unwrap(),
+            original
+        );
+    }
 }

@@ -43,6 +43,7 @@ pub mod host;
 pub mod ident;
 pub mod keys;
 pub mod produce;
+pub mod resources;
 pub mod restore;
 pub mod session;
 pub mod store;

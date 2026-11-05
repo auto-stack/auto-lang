@@ -16,6 +16,7 @@ use ace_foreign_contract::manual::AdmittedForeign;
 use ace_source_query::frontend::{
     Candidate as SourceCandidate, ForeignCandidate as SourceForeignCandidate, Frontend,
 };
+use ace_source_query::resources::{Charge, Reservation, Resources};
 use ace_source_query::work::{Ledger, Phase, Work};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -99,16 +100,63 @@ impl Artifact {
             TargetWire::Native { semantic, .. } | TargetWire::C { semantic, .. } => semantic,
         }
     }
-    fn new(decoded: TargetWire) -> Result<Arc<Self>, String> {
-        let bytes = serde_json::to_vec(&decoded).map_err(|e| e.to_string())?;
+    fn decoded_bytes(decoded: &TargetWire) -> usize {
+        std::mem::size_of::<Self>()
+            + 2 * std::mem::size_of::<usize>()
+            + 64
+            + match decoded {
+                TargetWire::Native {
+                    name,
+                    symbol,
+                    owner_schema,
+                    owner_module,
+                    semantic,
+                    mir,
+                    coff,
+                } => {
+                    name.capacity()
+                        + symbol.capacity()
+                        + owner_schema.capacity()
+                        + owner_module.capacity()
+                        + semantic.capacity()
+                        + mir.capacity()
+                        + coff.capacity()
+                }
+                TargetWire::C {
+                    name,
+                    semantic,
+                    text,
+                    ..
+                } => name.capacity() + semantic.capacity() + text.capacity(),
+            }
+    }
+    fn new(decoded: TargetWire, resources: &Resources) -> Result<Arc<Self>, String> {
+        let decoded_charge = resources
+            .reserve(Charge::resident(Self::decoded_bytes(&decoded)))
+            .map_err(|e| e.to_string())?;
+        let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
+            .map_err(|e| e.to_string())?;
+        let bytes_charge = resources
+            .reserve(Charge::resident(
+                size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
+            ))
+            .map_err(|e| e.to_string())?;
+        let bytes = ace_foreign_contract::codec::encode_json_bounded(&decoded, MAX_ARTIFACT)
+            .map_err(|e| e.to_string())?;
         if bytes.len() > MAX_ARTIFACT {
             return Err("foreign.resource.artifact".into());
         }
-        Ok(Arc::new(Self {
+        let bytes = Arc::new(bytes);
+        bytes_charge.retain(&bytes).map_err(|e| e.to_string())?;
+        let artifact = Arc::new(Self {
             digest: hash(&bytes),
-            bytes: Arc::new(bytes),
+            bytes,
             decoded,
-        }))
+        });
+        decoded_charge
+            .retain(&artifact)
+            .map_err(|e| e.to_string())?;
+        Ok(artifact)
     }
 }
 
@@ -162,6 +210,8 @@ pub struct Snapshot {
     pub pages: BTreeMap<String, Arc<Vec<u8>>>,
     work: Ledger,
     page_owners: BTreeMap<String, String>,
+    resources: Resources,
+    _root_charge: Reservation,
 }
 
 /// The original managed store remains the ONLY persistence/GC/lease authority.
@@ -195,6 +245,13 @@ struct StoreRoot {
     root: Vec<u8>,
     pages: BTreeMap<String, String>,
 }
+#[derive(Serialize)]
+struct StoreRootRef<'a> {
+    schema: &'a str,
+    digest: &'a str,
+    root: &'a [u8],
+    pages: &'a BTreeMap<String, String>,
+}
 impl Snapshot {
     /// New content is written once. Unchanged required pages reuse only their
     /// resident artifact ids: no store payload read or extra re-encoding.
@@ -217,6 +274,14 @@ impl Snapshot {
                 ids.insert(digest.clone(), id.clone());
                 continue;
             }
+            let _copy_charge = self
+                .resources
+                .reserve(Charge::io(
+                    (bytes.len() + ace_artifacts::codec::CHUNK_HEADER_LEN)
+                        .checked_mul(3)
+                        .ok_or("foreign.resource.copy-size")?,
+                ))
+                .map_err(|e| e.to_string())?;
             let put = self.work.begin(owner, "store-leaf", Phase::Metadata);
             self.work.io(owner, "store-leaf", 0, bytes.len() as u64);
             let id = store
@@ -238,13 +303,23 @@ impl Snapshot {
             ids.insert(digest.clone(), id);
         }
         let root_work = self.work.begin("*", "store-root", Phase::Metadata);
-        let wire = StoreRoot {
-            schema: SCHEMA.into(),
-            digest: self.digest.clone(),
-            root: self.root.clone(),
-            pages: ids.clone(),
+        let wire = StoreRootRef {
+            schema: SCHEMA,
+            digest: &self.digest,
+            root: &self.root,
+            pages: &ids,
         };
-        let payload = serde_json::to_vec(&wire).map_err(|e| e.to_string())?;
+        let size =
+            ace_foreign_contract::codec::json_size(&wire, MAX_ROOT).map_err(|e| e.to_string())?;
+        let _root_copy_charge = self
+            .resources
+            .reserve(Charge::io(
+                size.checked_mul(3)
+                    .ok_or("foreign.resource.root-copy-size")?,
+            ))
+            .map_err(|e| e.to_string())?;
+        let payload = ace_foreign_contract::codec::encode_json_bounded(&wire, MAX_ROOT)
+            .map_err(|e| e.to_string())?;
         if payload.len() > MAX_ROOT {
             return Err("foreign.resource.store-root".into());
         }
@@ -284,17 +359,18 @@ impl Session {
         capabilities: &[String],
         environment: AdmittedForeign,
     ) -> Result<Self, String> {
-        let root = store
-            .get_artifact_by_id_bounded(
-                &stored.artifact_id,
-                (MAX_ROOT + ace_artifacts::codec::CHUNK_HEADER_LEN) as u64,
-            )
+        let resources = Resources::default();
+        let root = resources
+            .load_payload(MAX_ROOT, ChunkKind::SnapshotRecord, |bound| {
+                store.get_artifact_by_id_bounded(&stored.artifact_id, bound)
+            })
             .map_err(|e| e.to_string())?
             .ok_or("foreign.restore.store-root-missing")?;
-        if hash(&root.payload) != stored.digest {
+        if hash(&root) != stored.digest {
             return Err("foreign.restore.store-root-identity".into());
         }
-        let wire: StoreRoot = serde_json::from_slice(&root.payload).map_err(|e| e.to_string())?;
+        let (wire, _wire_heap): (StoreRoot, _) =
+            resources.decode_json(&root).map_err(|e| e.to_string())?;
         if wire.schema != SCHEMA || wire.pages != stored.pages {
             return Err("foreign.restore.store-index".into());
         }
@@ -302,7 +378,7 @@ impl Session {
             .acquire_lease("source938-restoring", 120, Some(&stored.artifact_id))
             .map_err(|e| e.to_string())?;
         let mut read_error = None;
-        let restored = Self::restore(
+        let restored = Self::restore_with_resources(
             &wire.root,
             &wire.digest,
             target,
@@ -312,11 +388,10 @@ impl Session {
                 let Some(id) = wire.pages.get(digest) else {
                     return None;
                 };
-                match store.get_artifact_by_id_bounded(
-                    id,
-                    (MAX_ARTIFACT + ace_artifacts::codec::CHUNK_HEADER_LEN) as u64,
-                ) {
-                    Ok(Some(page)) => Some(Arc::new(page.payload)),
+                match resources.load_payload(MAX_ARTIFACT, ChunkKind::SnapshotRecord, |bound| {
+                    store.get_artifact_by_id_bounded(id, bound)
+                }) {
+                    Ok(Some(page)) => Some(page),
                     Ok(None) => None,
                     Err(e) => {
                         read_error = Some(e.to_string());
@@ -324,6 +399,7 @@ impl Session {
                     }
                 }
             },
+            resources.clone(),
         )
         .map_err(|e| read_error.unwrap_or(e));
         let mut restored = restored?;
@@ -369,8 +445,12 @@ impl Session {
         target: Target,
         store: &ManagedStore,
     ) -> Result<Self, String> {
-        let mut cache =
-            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
+        let mut cache = function_cache::FunctionCache::new(
+            front.package(),
+            front.module(),
+            front.work(),
+            front.resources(),
+        )?;
         cache.attach(&store.root, front.foreign())?;
         Self::from_frontend_cached(front, checked, provider, target, cache)
     }
@@ -380,8 +460,12 @@ impl Session {
         provider: Arc<Vec<u8>>,
         target: Target,
     ) -> Result<Self, String> {
-        let cache =
-            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
+        let cache = function_cache::FunctionCache::new(
+            front.package(),
+            front.module(),
+            front.work(),
+            front.resources(),
+        )?;
         Self::from_frontend_cached(front, checked, provider, target, cache)
     }
     fn from_frontend_cached(
@@ -408,6 +492,14 @@ impl Session {
             Arc::new(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes().to_vec())
         };
         let runtime_sha = hash(&runtime);
+        cache
+            .resources
+            .adopt(&runtime, Charge::resident(runtime.capacity() + 40))
+            .map_err(|e| e.to_string())?;
+        cache
+            .resources
+            .adopt(&provider, Charge::resident(provider.capacity() + 40))
+            .map_err(|e| e.to_string())?;
         let mut work = Vec::new();
         for f in view.functions() {
             let mut counts = Meter::default();
@@ -702,7 +794,15 @@ impl Session {
             .map(|p| (p.digest.clone(), p.bytes.clone()))
             .collect();
         let front_digest = front.digest;
-        pages.insert(front_digest.clone(), Arc::new(front.root));
+        let resources = self.front.resources();
+        let _arc_header = resources
+            .reserve(Charge::io(16))
+            .map_err(|e| e.to_string())?;
+        let front_root = Arc::new(front.root);
+        resources
+            .adopt(&front_root, Charge::resident(front_root.capacity() + 40))
+            .map_err(|e| e.to_string())?;
+        pages.insert(front_digest.clone(), front_root);
         let mut functions = BTreeMap::new();
         for (name, artifact) in &self.artifacts {
             let artifact = overrides.get(name).unwrap_or(artifact);
@@ -712,6 +812,11 @@ impl Session {
         }
         pages.insert(self.runtime_page_id.clone(), self.runtime.clone());
         pages.insert(provider_id.into(), provider.clone());
+        for page in pages.values() {
+            resources
+                .adopt(page, Charge::resident(page.capacity() + 40))
+                .map_err(|e| e.to_string())?;
+        }
         let root = Root {
             schema: SCHEMA.into(),
             target: self.target,
@@ -725,7 +830,13 @@ impl Session {
             contract: environment.contract_digest().into(),
             functions,
         };
-        let root = serde_json::to_vec(&root).map_err(|e| e.to_string())?;
+        let size =
+            ace_foreign_contract::codec::json_size(&root, MAX_ROOT).map_err(|e| e.to_string())?;
+        let root_charge = resources
+            .reserve(Charge::io(size + std::mem::size_of::<Vec<u8>>()))
+            .map_err(|e| e.to_string())?;
+        let root = ace_foreign_contract::codec::encode_json_bounded(&root, MAX_ROOT)
+            .map_err(|e| e.to_string())?;
         if root.len() > MAX_ROOT {
             return Err("foreign.resource.root".into());
         }
@@ -736,6 +847,8 @@ impl Session {
             pages,
             work,
             page_owners,
+            resources,
+            _root_charge: root_charge,
         })
     }
     /// Required-page decode/deep validation only. The caller supplies the
@@ -746,7 +859,26 @@ impl Session {
         target: Target,
         capabilities: &[String],
         environment: AdmittedForeign,
+        read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+    ) -> Result<Self, String> {
+        Self::restore_with_resources(
+            root,
+            expected,
+            target,
+            capabilities,
+            environment,
+            read,
+            Resources::default(),
+        )
+    }
+    fn restore_with_resources(
+        root: &[u8],
+        expected: &str,
+        target: Target,
+        capabilities: &[String],
+        environment: AdmittedForeign,
         mut read: impl FnMut(&str) -> Option<Arc<Vec<u8>>>,
+        resources: Resources,
     ) -> Result<Self, String> {
         let work = Ledger::default();
         let recovery = work.begin("*", "restore-target-root", Phase::Recovery);
@@ -754,7 +886,8 @@ impl Session {
         if root.len() > MAX_ROOT || hash(root) != expected {
             return Err("foreign.restore.root".into());
         }
-        let root: Root = serde_json::from_slice(root).map_err(|e| e.to_string())?;
+        let (root, _root_heap): (Root, _) =
+            resources.decode_json(root).map_err(|e| e.to_string())?;
         if root.schema != SCHEMA
             || root.target != target
             || root.target_identity != target.identity()
@@ -774,6 +907,9 @@ impl Session {
             if bytes.len() > MAX_ARTIFACT || bytes_read > MAX_RESIDENT || hash(&bytes) != id {
                 return Err("foreign.restore.content-or-budget".into());
             }
+            resources
+                .adopt(&bytes, Charge::resident(bytes.capacity() + 40))
+                .map_err(|e| e.to_string())?;
             Ok(bytes)
         };
         let provider = required(&root.provider)?;
@@ -785,7 +921,7 @@ impl Session {
         work.io("*", "restore-runtime", runtime.len() as u64, 0);
         let front = required(&root.frontend)?;
         let mut read_error = None;
-        let front = Frontend::restore_with_work(
+        let front = Frontend::restore_with_resources(
             &front,
             &root.frontend,
             capabilities,
@@ -798,6 +934,7 @@ impl Session {
                 }
             },
             work.clone(),
+            resources.clone(),
         )
         .map_err(|e| read_error.unwrap_or_else(|| e.to_string()))?;
         let mut artifacts = BTreeMap::new();
@@ -808,23 +945,30 @@ impl Session {
             }
             let bytes = required(&id)?;
             work.io(&name, "restore-target", bytes.len() as u64, 0);
-            let decoded: TargetWire = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            let (decoded, _decoded_heap): (TargetWire, _) =
+                resources.decode_json(&bytes).map_err(|e| e.to_string())?;
             validate_target_artifact(target, &name, &decoded, front.foreign())?;
             page_work.accept();
-            artifacts.insert(
-                name,
-                Arc::new(Artifact {
-                    digest: id,
-                    bytes,
-                    decoded,
-                }),
-            );
+            let allocation = resources
+                .reserve(Charge::resident(Artifact::decoded_bytes(&decoded)))
+                .map_err(|e| e.to_string())?;
+            let artifact = Arc::new(Artifact {
+                digest: id,
+                bytes,
+                decoded,
+            });
+            allocation.retain(&artifact).map_err(|e| e.to_string())?;
+            artifacts.insert(name, artifact);
         }
         if artifacts.len() != front.function_count() {
             return Err("foreign.restore.required-coverage".into());
         }
-        let cache =
-            function_cache::FunctionCache::new(front.package(), front.module(), front.work());
+        let cache = function_cache::FunctionCache::new(
+            front.package(),
+            front.module(),
+            front.work(),
+            front.resources(),
+        )?;
         let count = artifacts.len() as u64;
         let session = Self {
             front,
@@ -973,6 +1117,7 @@ fn native_artifact(
     meter: &mut Meter,
     ledger: &Ledger,
     work: &mut Vec<Work>,
+    resources: &Resources,
 ) -> Result<Arc<Artifact>, String> {
     let mut lower = ledger.begin(name, "mir-lower", Phase::Production);
     meter.mir_attempts += 1;
@@ -1001,15 +1146,18 @@ fn native_artifact(
     work.push(encode);
     meter.page_encodes += 1;
     let mut page = ledger.begin(name, "target-encode", Phase::Production);
-    let artifact = Artifact::new(TargetWire::Native {
-        name: name.into(),
-        symbol: object.symbol,
-        owner_schema,
-        owner_module,
-        semantic: semantic.into(),
-        mir,
-        coff: object.bytes,
-    })?;
+    let artifact = Artifact::new(
+        TargetWire::Native {
+            name: name.into(),
+            symbol: object.symbol,
+            owner_schema,
+            owner_module,
+            semantic: semantic.into(),
+            mir,
+            coff: object.bytes,
+        },
+        resources,
+    )?;
     page.produced(1);
     work.push(page);
     Ok(artifact)
@@ -1170,7 +1318,7 @@ fn cached_artifact(
         .map_err(|e| format!("{e:?}"))?;
     let semantic =
         ace_a2x_core::prepare::semantic_fingerprint(view, f).map_err(|e| format!("{e:?}"))?;
-    let key = cache.key(
+    let (key, _key_charge) = cache.key(
         name,
         &semantic,
         target,
@@ -1180,7 +1328,7 @@ fn cached_artifact(
             "foreign-scalar-runtime-abi/1"
         },
         capabilities,
-    );
+    )?;
     if let Some(artifact) = cache.get(&key, target, name, &semantic, environment, counts)? {
         return Ok(artifact);
     }
@@ -1195,18 +1343,22 @@ fn cached_artifact(
             counts,
             &cache.work,
             work,
+            &cache.resources,
         )?,
         Target::C => {
             let text =
                 cache.c_fragment(view, f, capabilities, runtime, environment, counts, work)?;
             let mut page = cache.work.begin(name, "target-encode", Phase::Production);
             counts.page_encodes += 1;
-            let artifact = Artifact::new(TargetWire::C {
-                name: name.into(),
-                def_index: f.def_index,
-                semantic,
-                text,
-            })?;
+            let artifact = Artifact::new(
+                TargetWire::C {
+                    name: name.into(),
+                    def_index: f.def_index,
+                    semantic,
+                    text,
+                },
+                &cache.resources,
+            )?;
             page.produced(1);
             work.push(page);
             artifact
@@ -1239,10 +1391,15 @@ pub fn runtime_identity(target: Target, runtime_page: &str) -> String {
     )
 }
 /// Independent policy for the explicit no-trace source certification fixture.
+/// Pinned SDK asset identity: qualification/restore must not invoke a runtime
+/// emitter to reconstruct the expected bytes. The source conformance test
+/// compares this pin with the current runtime material.
+pub const CERTIFICATION_C_RUNTIME_SHA256: &str =
+    "c7cf3971f2058ef57ca4d55386336abceb7af60ceb9fcef71ed4641954de6427";
 pub fn certification_runtime_policy(target: Target) -> String {
     let page = match target {
         Target::Native => hash(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes()),
-        Target::C => hash(ace_a2x_c::runtime_source(&[]).as_bytes()),
+        Target::C => CERTIFICATION_C_RUNTIME_SHA256.into(),
     };
     runtime_identity(target, &page)
 }

@@ -2297,6 +2297,14 @@ fn source_foreign_history_hits_before_lowering_and_uses_original_a2x_cache_after
 }
 
 #[test]
+fn source_foreign_runtime_policy_pin_matches_current_sdk_material() {
+    assert_eq!(
+        ace_a2x_core::sha256::sha256_hex(ace_a2x_c::runtime_source(&[]).as_bytes()),
+        ace_abi::source_foreign::CERTIFICATION_C_RUNTIME_SHA256
+    );
+}
+
+#[test]
 fn source_foreign_work_tracks_target_discard_accept_and_unchanged_publication_payload_io() {
     use ace_abi::source_foreign::{Session, Target};
     use std::sync::Arc;

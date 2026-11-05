@@ -280,6 +280,53 @@ fn restart(snapshot: &crate::frontend::Checkpoint) -> crate::frontend::Frontend 
 }
 
 #[test]
+fn live_payload_pressure_refuses_an_edit_preserves_current_and_releases_for_repair() {
+    use crate::{
+        frontend::{ColdObservation, Frontend},
+        resources::{Charge, Limits, Resources},
+    };
+    use std::sync::Arc;
+    let resources = Resources::limited(Limits {
+        total: 64 << 10,
+        ..Limits::default()
+    })
+    .unwrap();
+    let source = "fn main() int { return foreign_add(20,22) }";
+    let (mut front, _) = Frontend::cold_observed_with_resources(
+        source,
+        "m938",
+        "p938",
+        &[SOURCE_CAP.into()],
+        environment(),
+        &mut ColdObservation::default(),
+        resources.clone(),
+    )
+    .unwrap();
+    let saved = front.checkpoint().unwrap();
+    let old = front.page("main").unwrap().bytes.clone();
+    let remaining = (64 << 10) - resources.stats().current.total().unwrap() - 128;
+    let reservation = resources.reserve(Charge::resident(remaining)).unwrap();
+    let pressure = Arc::new(vec![0u8; remaining]);
+    reservation.retain(&pressure).unwrap();
+    assert!(front
+        .prepare("main", "fn main() int { return foreign_add(21,22) }")
+        .err()
+        .expect("budget rejection")
+        .to_string()
+        .contains("resource"));
+    assert_eq!(front.source(), source);
+    assert!(Arc::ptr_eq(&old, &front.page("main").unwrap().bytes));
+    drop(pressure);
+    assert_eq!(front.checkpoint().unwrap().digest, saved.digest);
+    let repaired = front
+        .prepare("main", "fn main() int { return foreign_add(21,22) }")
+        .unwrap();
+    front.commit(repaired).unwrap();
+    assert!(resources.stats().peak_total <= 64 << 10);
+    assert!(resources.stats().rejections > 0);
+}
+
+#[test]
 fn frontend_work_records_rejected_dropped_and_accepted_candidates_without_nonreader_production() {
     use crate::frontend::Frontend;
     let source = "fn independent() int { return 7 }\nfn main() int { return foreign_add(20,22) }";

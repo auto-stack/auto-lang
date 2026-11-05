@@ -1043,6 +1043,24 @@ fn sq32_page_codec_rejects_foreign_truncated_and_tampered_pages() {
 }
 
 #[test]
+fn fact_page_preflight_refuses_oversized_payload_and_count_before_materialization() {
+    let p = parse(A);
+    let mut session = SourceQuerySession::new("pkg", "mod");
+    let mut facts = session.infer_body(&p, "leaf").unwrap().facts;
+    let key = session.body_key(&p, "leaf").unwrap();
+    facts.sig_reads = vec!["x".repeat(4096); 129];
+    assert!(encode_page(&key, &facts)
+        .unwrap_err()
+        .to_string()
+        .contains("before allocation"));
+    facts.sig_reads = vec![String::new(); 8193];
+    assert!(encode_page(&key, &facts)
+        .unwrap_err()
+        .to_string()
+        .contains("count"));
+}
+
+#[test]
 fn sq33_published_page_is_a_project_root() {
     let dir = temp_dir("root");
     let mut sink = ManagedStoreSink::open(&dir, Some("sq934-root")).expect("open store");
