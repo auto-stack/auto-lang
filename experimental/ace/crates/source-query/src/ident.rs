@@ -154,10 +154,23 @@ fn mode_tag(m: ParamMode) -> &'static [u8] {
 /// The SIGNATURE axis: name + parameter names/modes/types + result type.
 /// It deliberately excludes the body: a body-only edit must keep this
 /// version, so signature readers stay warm (V-03).
+///
+/// PLAN-935 (T-03): a TEMPLATE additionally encodes its declared type
+/// parameters — `fn f<T>(n int) int` and `fn f(n int) int` are different
+/// declaration faces. Empty (the plain-face case) encodes nothing, so
+/// every non-template signature version stays byte-stable.
 pub fn signature_version(f: &FnItem) -> ContentVersion {
     let mut c = Vec::new();
     c.extend_from_slice(b"fn:");
     c.extend_from_slice(f.name.name.as_bytes());
+    if !f.type_params.is_empty() {
+        c.extend_from_slice(b"tp<");
+        for tp in &f.type_params {
+            c.extend_from_slice(tp.name.as_bytes());
+            c.push(b',');
+        }
+        c.push(b'>');
+    }
     c.push(b'(');
     for p in &f.params {
         c.extend_from_slice(p.name.name.as_bytes());

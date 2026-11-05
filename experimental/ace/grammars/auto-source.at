@@ -177,6 +177,9 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-935（T-02）：类型参数表 `<T>` / `<T, U>`（投影/实例层先限一
         // 个；>1 由投影具名拒，语法形状此处一次到位）。
+        // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
+        // ——词法上都是 ident ident）语法可识别、投影具名拒——不能当普通
+        // token 跳过。
         type-params(profiles: [scalar-instances]) {
             lt() {}
             type-param() {}
@@ -184,7 +187,12 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             gt() {}
         }
         type-param-tail(profiles: [scalar-instances]) { comma() {} type-param() {} }
-        type-param(profiles: [scalar-instances]) { ident(field: "name") }
+        type-param(profiles: [scalar-instances]) {
+            alt { ident(field: "name") opt(profiles: [scalar-instances]) { type-param-constraint(field: "constraint") } }
+            // `<const N>`（r-const 保留词形状；投影具名拒）
+            alt { r-const(field: "const_kw") {} ident(field: "name") }
+        }
+        type-param-constraint(profiles: [scalar-instances]) { r-has(field: "kw") {} ident(field: "bound") }
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {

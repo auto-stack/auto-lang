@@ -128,6 +128,35 @@ fn finite_surface_named_rejections() {
     }
 }
 
+
+/// PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`——词法
+/// ident+ident）语法可识别、投影具名拒——不能当普通 token 跳过；无能力
+/// 时同一形状仍是原语法拒绝。
+#[test]
+fn constraint_and_const_shapes_named_rejections() {
+    let cases: [&str; 2] = [
+        "fn sort<T has Comparable>(a T) T { return a }
+fn main() int { return 0 }",
+        "fn log2<const N>(n int) int { return n }
+fn main() int { return 0 }",
+    ];
+    for src in cases {
+        match with_caps(src) {
+            FrontOutcome::Diag(ds) => assert!(
+                ds.iter().any(|d| d.code == "source.instances-unsupported"
+                    && d.message.contains("constraints")),
+                "{src}: expected the constraint named rejection, got {ds:?}"
+            ),
+            other => panic!("{src}: expected rejection, got {other:?}"),
+        }
+        // 无能力：原语法拒绝（parse 面）。
+        assert!(
+            matches!(parse_front(req(src)), FrontOutcome::Diag(_)),
+            "{src}: no-cap must stay rejected"
+        );
+    }
+}
+
 /// 类型位裸 ident 只有匹配声明的类型变量才是 TyVar；未匹配的 ident 走
 /// 原 unsupported_ty 拒绝（不猜默认类型、不当 record）。
 #[test]
@@ -165,3 +194,4 @@ fn main() int {
     // 有能力（scalar-instances 裁剪）：同一源码仍 Ok（超集面）。
     assert!(matches!(with_caps(src), FrontOutcome::Ok(_)));
 }
+

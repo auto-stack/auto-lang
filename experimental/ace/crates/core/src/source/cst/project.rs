@@ -3092,6 +3092,25 @@ impl<'a> Engine<'a> {
         for tp in direct {
             let leaf = self.cx.field_child(tp, "name").expect("type param name");
             let id = ident_of(&mut self.cx, leaf);
+            // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
+            // ——r-has/r-const 保留词形状）语法可识别、此处具名拒（覆盖边
+            // 界，不当 token 跳过）。
+            let boundary = self
+                .cx
+                .field_child(tp, "constraint")
+                .or_else(|| self.cx.field_child(tp, "const_kw"));
+            if let Some(cst_n) = boundary {
+                let span = self.cx.span_of(cst_n);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "type parameter constraints (and const parameters) are not part of \
+                         the finite instances surface",
+                        span,
+                    )
+                });
+            }
             if out.iter().any(|p: &Ident| p.name == id.name) {
                 let span = id.span;
                 self.cx.reject(span, || {
