@@ -1187,6 +1187,24 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress（T19通
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:43 | from:work | to:work | status:executing4/19 | outcome:needs_fix（F05关闭，原完整任务继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work 原完整验收证据；F06若获批则new合同
 
+### 2026-11-06 T04原T06诊断位置独立oracle闭环（goal第44轮）
+
+前轮T19关闭为progress。本轮继续原T04（非producer修复），入口唯一941树8c074c17c clean；F06无答复、未实施AV改动。基于第42轮独立责任链证据与canonical native-source-diagnostics合同，落实原源T06借用逃逸span：legacy parser和CST投影均把.to(str)表达式止于type-word末尾（不含右括号）；source adapter按首终结语句以前的live statement span join，text_resources verifier返回该HIR block span。**oracle仅从固定原source的唯一let与return/typeword锚计算，不读取worker输出来设expected**；原字节start19/end62，非大括号13..65或含右括号19..63。
+
+冻结提交 **5f3fff189c5781ee828deea9bd4b30e71532e217**，2个Python文件39新增/6删除，只有ace_m1_data_diagnostics.py与其永久tests；Rust/shared frontend/AV/native/worker源、proto、原源/原oracle错误族与所有预算不变。新2个永久case校验原19..62、Unicode注释前缀按UTF8字节平移、重复/缺锚具名拒；既有native facts控制升级原T06正确span PASS、start偏移/含右括号end+1 FAIL，profile/operation/primary bool等拒绝保持。先写这些回归在旧读取器实跑4 methods，4失败断言（3 methods含subtest）/1 method通过，t06-span-red.log；仅实现独立source锚后4/4 methods绿，t06-span-green.log。不把合成facts测试冒实际compiler执行。
+
+使用原16真实交换做**158 counterfactual_not_execution反控**（156旧场景+T06错end/错大括号），全部符合预先期望：原native T06 PASS，错start/end/大括号以及错stage/code FAIL，坏nonce/cap/source/profile/operation/primary/字段闭包REFUSED，4 AV record原缺code仍UNOBSERVED/父FAIL保。scope/t06-span-admission/raw-reader-controls.json SHA=7d69ae6afd4f7c7e52f7931150e87fee3e1624886681fbbd0365e08922d027b8。正式`cargo t infra-ace-m1-arch --out <scope>/t06-span-admission/controls` **171/171 PASS**，exit0，4.092554s，results SHA=f6227e9837cd2f99f7183c4de40935d6264888ed2ed856c5aa3c82f9385f3082；新只读oracle变更只需相关治理组，生产A2X/full405原冻结证据按未变真实身份复用，未无因重跑。git diff-check通过，源码当前等冻结提交（Git规范化处理常规CRLF/LF）。
+
+冻结5f3fff189受管全组合、Popen禁用，exit0：**615PASS/12FAIL/379UNOBSERVED，1006原登记**；相较第43轮仅`q4-source/original-record-text/T06/AC-native` U→PASS，其余**1005格verdict不变**。prior-verdict-preservation.json SHA=881789ac02d8e210db37514a6d69679ad5316f7abd30c58e4c44030e74ab807f。原16 data诊断最终12PASS/4FAIL（T06原raw span19..62与独立锚一致），closure-audit.json SHA=87beeaef6b818eed9ef04109d3722b774bcc530b6e52d8e751fb96f920ffacd7；**GAP-941-DATA-BLOCK-SPAN-01已关闭**。旧不完整/错误范围探索记录仍保；4 AV缺code/F06、6 A2X typed、9 generic native trap、原8scalar FAIL/299legacy/49ARCH和其余完整机制全部继续开放，required_universe_closed/acceptance_system_delivered/can_claim_expanded_m1仍false。
+
+scope/t06-span-admission/composed-preview/preview.stdout **564879B SHA=317f048a8c01dd4fd3ba7d873a5093d086e673094a11b6827fb4793d7fc35dae**；8306.0515ms、peak process30179328/Job31420416B。同一LiveBudget reserved26406615/全程peak**46867464<50331648B**，原48MiB/单件4MiB/privateΔ128MiB/先预留/流hash/不清峰值不变。B worker仍7b0be842feabdd55a7217ae783ae4af8d9a445b60e7807e5cf1bda67d5b4bb7e、AV e4c2006f…/native5016566c…原值，原292默认/daily+14优化继续真实严格入账。
+
+T04其余适配与原T01..13完整目标未完，**current_step仍4/19**，不把单用例T06误标为任务T-06恢复/编辑工作已完成。下一步继续完整原required/legacy与ARCH/事实/恢复/资源证据；F06归属待用户，已有phase授权不外推。没有存活本包采集进程，无新的用户决定阻本轮独立工作；未进入review/merge。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:5f3fff189c5781ee828deea9bd4b30e71532e217 | task_ids:T04子缺口已闭，原任务未闭 | evidence:原T06独立锚/158反控/171治理/组合615P12F379U仅1格变化；48MiB内 | blockers:原完整证据/具名red仍开放；F06待授权但不阻其他work | next_responsible_role:work 原required/legacy与ARCH全范围对账；若F06获批则new同树phase合同
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:44 | from:work | to:work | status:executing4/19 | outcome:needs_fix（独立诊断位置缺口已闭，原完整任务继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5f3fff189c5781ee828deea9bd4b30e71532e217 | next:work 原完整required/legacy/ARCH证据；F06获批后new
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
