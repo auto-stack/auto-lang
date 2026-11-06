@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 5
+current_step: 6
 total_steps: 21
 ---
 
@@ -181,7 +181,7 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 
 ### 5.10 r4新增phase：F-941-06 AV data结构化诊断透传
 
-**授权与执行入口**：承接§4用户明确授权和§9第43轮最小提案、第48轮收口。基线`330c2534497e90ea6b06c5156382ffda4597aa76`，同树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，5/21为T16..20完成；T21完整冻结并集与当前证据刷新进行中，不等待其他原任务齐。材料仍唯一`D:/autostack/plan-artifacts/plan-941/`。实施/内部自查/最终独立review顺序同树，不派发新agent/chat；最终独立审查仍T14，不以phase回归冒整包review。
+**授权与执行入口**：承接§4用户明确授权和§9第43轮最小提案、第48轮收口。基线`330c2534497e90ea6b06c5156382ffda4597aa76`，同树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，6/21为T16..21完成；F06在第52轮完成实际验证闭环，继续原完整T01..13，不以本phase替代最终T14。材料仍唯一`D:/autostack/plan-artifacts/plan-941/`。实施/内部自查/最终独立review顺序同树，不派发新agent/chat；最终独立审查仍T14，不以phase回归冒整包review。
 
 **规范与已观察事实**：auto-av/data-layout.md规定独立data profile与既有MIR/AVAD验证/资源；auto-test-case/profile-v2-native.md与architecture.md要求父侧以真实stage/code判断，不让I/O/infra满足语言负例。实际`compile_record_source`返回`Vec<ace_core::atom_text::Diagnostic>`，包含stage/code/message/span；`data_driver::request_data`当前将其首项转为String，`av-worker`的data-run Err分支按前缀推断阶段并固定`diag.code=""`。原M09/M10/M11/R09 Case均FAIL，严格reader拒绝从message补code。core已有结构化StageDiag边界；owned仅作原协议兼容参照，其worker仍有字符串前缀/首词提取路径，不作为typed透传的证明，也不是本phase改造面。
 
@@ -264,7 +264,7 @@ r3修复补充验证（T18/T19已按§9第40..43轮执行通过，最终独立�
 
 固定组和专项原ignore/平台/资源/Job/输出帽保留、执行/排除/未执行/首次红/重放绿分别列。性能/压力与其他正式采样错峰，merge冻结提交一次职责并集，输入身份未变的有效证据可复用且逐项写理由；不为纯文档跑构建、不叠无因全experimental/all，周期`cargo t all`只按due在主检出单实例。新增Rust test在autotests=false包要显式Cargo target登记且确认被完整组选中。
 
-r4 F06补充验证（T20定向12项已通过，见§9第50轮；V27完整消费者与V28冻结并集/身份联读仍T21进行中，不据定向绿核销整个phase）：
+r4 F06补充验证（T20定向12项见§9第50轮，T21完整职责1493/当前源408与原data52/严格联读及156反控见第52轮；phase工作完成，最终独立复审仍T14）：
 
 | ID | 不变量/AC | 实际入口与区分oracle | 边界/owner |
 |---|---|---|---|
@@ -323,9 +323,10 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [x] |
 | T-19 | work | T-18冻结提交；实际worker/conformance新身份 | 完整ace-a2x与相关治理组、原3证书闭环/全部受身份影响认证及14原优化配置刷新、旧print缓存miss见证与当前组合读回；F-941-05关闭、SD-08/09交接；AC-02/03/04/09/15，V-24 | [x] |
 | T-20 | work | 用户r4 F06内修授权；§5.10；330c25344同树基线/原4失败 | data_driver具名typed错误边与旧String API兼容；真实worker按类型投影而非文本；新data_diagnostics_941永久注册，原4/合法/失败与分类边界；AC-16，V25..27，SD-10 | [x] |
-| T-21 | work | T-20冻结提交；正式准备后的真实工具/依赖身份 | 完整ace-av/ace-native/infra及原data36+诊断16门；受AV/其他实际hash变化影响的source/wire/证书闭包真实重采，原strict联读与675P12F319U逐格对账；F06具名关闭、SD-10候选交接；AC-02/03/09/16，V-28 | [ ] |
+| T-21 | work | T-20冻结提交；正式准备后的真实工具/依赖身份 | 完整ace-av/ace-native/infra及原data36+诊断16门；受AV/其他实际hash变化影响的source/wire/证书闭包真实重采，原strict联读与675P12F319U逐格对账；F06具名关闭、SD-10候选交接；AC-02/03/09/16，V-28 | [x] |
 
-T-18/19已完成（§9第43轮）；当前依赖就绪入口为T20→T21，之后继续原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；先T20/T21再继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
+T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
+
 
 
 ## 9. 复审记录
@@ -1371,6 +1372,23 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:51 | from:work | to:work | status:executing5/21 | outcome:in_progress（AV完整绿/native live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 同handle27138，禁止重启/并行新门
 
+### 第52轮：T21完整1493门/408重采与当前严格679P8F319U；F06工作闭环（2026-11-06）
+
+- 第51轮AV1031实际通过与身份闭包定位为progress；本轮main r4 executing5/21、be7593e00同树clean核实后续同session27138/Python39216/driver13584，未重启。实际native子用例从32MiB冷对象集/512次编辑与物理GC压力转入原30样本四状态source-diagnostic性能门，原样本与条件保持。其后原完整并集真实**exit0/全部5组PASS**：AV1031（437145.9391ms）、native225（1523882.1005ms）、治理185（4842.1934ms）、原data36（16507.9791ms）、原诊断16（3624.1615ms），合**1493执行**；AV/native均0原条件排除。整2019.480853s，`f94106-frozen-union/results.json` SHA **476fe6fd94d0b3b0d03f421d4d420db2cb007f73294b89eb7dfb340943fef626**。session27138真实terminal，不再有该live句柄。
+- 正式准备的13件工具/库（12工具名有多二进制）在并集终态全部与真before相等，`f94106-frozen-preparation/tools-after-union.json` SHA **81952c96dc6246a93781ff19784fb83a8d32b6cbad302fe36e12c78d9158758d**。不因source code未改而假定工具未变；本次实核稳定才进入新source批。
+- **未变A2X证据实际严格复用**：在禁止Popen的原域readers逐项核完整source/oracle/工具/flags/actual与独立reference/产物/daily（非仅producer哈希），292默认cert+292 daily全部PASS，daily compiler_spawn_zero全true；3域原优化8+4+2=14全部PASS。只读12.16825s、0新工具链/guest执行，原始材料未改；各域新派生报告与总收据只写`f94106-reuse-strict-audit/`，总audit SHA **d736b50ce907fb3e2849b611bde6a40717fcb6185453c59bdc2b63790ddf4d29**。该分域预审不是全组合预算证明；最终同一LiveBudget联读另见下。
+- source脚本执行前增补冻结HEAD/clean和runner无source-state error的末态guard（避免原scalar red掩盖其他失败），新入口收据`next-execution-entry-final.json` SHA **53f336c79ec1a3230c307e5b83fd31f16f38b8ec0bb4c4b91e37c479ea43f00c**。确认前置全5组PASS/所有工具稳定后才启动scope/refresh-f94106-source-cases.py，原**14既有固定Case组/408 checks全执行**，13组PASS；scalar122组仍114P8F，失败case/check/status集合逐项等原8，原formal gate真实exit1、gate_passed=false，未重标PASS/改oracle。整172.6850814s（外capture173482.4554ms）；`f94106-current-source-cases/gate/results.json` SHA **d2a9c789f700fd3579a7fa8d7b443d344abb150a459f7f10a786a4258fdc9f26**，command SHA **237ac6e3d9ba21957597e3b34fd37d40ae029f57718c052e0c49e40c01ff91a6**，capture-audit SHA **e7545c47ebc0094a02f9ddec02dcf34e168c1a1975575455ddf5743d4920f7a6**。原data52复用本次完整并集的新wire，非旧缺码交换；Bridge6因真实全部身份未变继续原严格复用。两次采集均AUTO_CASE_WIRE_EVIDENCE=1，材料单scope，无第二runner/meter。session59208真实terminal。
+- 首次全组合**明确拒绝**本包metadata域封套错误：原data/diagnostic需要rt-q4-dependencies/1，但共用11-pin真before被包装为text-q4-dependencies/1。原`f94106-current-composed-preview`拒绝日志/command保留，不归producer或PASS，不改reader。已证明两域要求的11个实际文件集合完全相同；对真实采集前before及真实after各生成只改schema名称的record/text视图，snapshot阶段和每个pin字节恒等，原文件不覆写、无after回填before。新`composed-bindings-rt-views.json`显式指向这些视图；独立来源/hash对照`f94106-current-source-cases/snapshot-domain-view-audit.json` SHA **bdb1d9f7208365b577329a75eca7a86e9da90fe755199dcc70978a05ea06eca2**。没有为封套错误重跑有效实际Case，也没有放宽准入。
+- **最终当前完整严格联读**：冻结仍be7593e00；正式绑定`<scope>/f94106-current-source-cases/composed-bindings-rt-views.json`。原纯组合器Popen禁用，退出0；`f94106-rt-view-composed-preview/preview.stdout` **594473B / SHA f3c4f01858eea18c518b01dada450d9d8f234455175d9dd6574ef7d7d1ed6ff0**，9579.4788ms，进程峰30621696B/Job31854592B；保留28370407B/全时峰47805468B<50331648B，48MiB/4MiB/privateΔ128MiB/64KiB流hash等原帽不变，无拆预算或隐式重编。整体**679PASS/8FAIL/319UNOBSERVED**，1006登记/24合同指针原样；原16诊断当前全部PASS。
+- 逐1006项与第48轮相较：**仅M09/M10/M11/R09的AV从FAIL→PASS，其余1002项verdict完全不变**，verdict-preservation SHA **46692278f56031a7fc90521976ef50f0a7669d0de351e5177511fd2c33e06bb0**。原required仍74/313（74P/239U），38旧cert-gap守卫及所有原尺度/批准保持；required_universe_closed、acceptance_system_delivered、can_claim_expanded_m1均false，不签系统或M1已交付。
+- 基于这次真实16 Case/wire再做**156原始帧反控全部符合预期**，0新执行：全部original已PASS（包括当前T06 span）；错code/阶段/独立span必须FAIL、错nonce/源/caps/owner/profile/primary/operation与多字段必须拒；即使message填全四正确code，空code仍UNOBSERVED。原控制脚本旧source与旧未知状态不改，当前副本`f94106-current-diagnostic-controls.py`只认新wire；新`f94106-current-source-cases/raw-reader-controls.json` SHA **2657bbbfe235b92bbd5f8e8dc118cf8511d63d735a0d27df37c8a2ac701added**。每个counterfactual独立预算不作全局证明；永久185已有M09正确typed码/错码/缺码/伪PASS反控，未为修复重写这些断言。
+- 工具在prepare before→完整并集after→408source after→最终strict之后全部13件恒等，current-tool-stability SHA **2803a7753f6783505b7af209a79d9e02714b0291680acc6f092d9be4c96c5ce3**；5交付文件Git EOL过滤后blob逐项等冻结HEAD、无脏文件，committed-input-audit SHA **6ff8f2ed3698bf973e1564382667e58a0bfa09b2195ca0243ccb0f432339783c**。
+- **T21完成，F-941-06/GAP-941-AV-DATA-DIAG-01在工作阶段关闭**：V25..28/AC16的实际诊断、兼容/失败边界、完整职责消费者与当前身份严格闭环已具备，SD10候选留同树；T20/21均勾选，当前6/21（T16..21完成）。最终独立review仍T14按r4与冻结提交审，不以此内部工作核查顶review；未合入/归档/删除scope，原T01..15及全部未闭义务继续。无存活本包测试/采集句柄，下一步继续原required/ARCH/源域完整性与其余具名缺口，不重复请求F06授权。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（T21/F06工作闭环，原完整任务未齐） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | task_ids:T21完成，原T01..13继续 | evidence:1493完整门/408实际Case保8红/16诊断严格PASS/156反控/当前679P8F319U | blockers:原required/ARCH及未闭源域机制；无新增用户决定 | next_responsible_role:work 原完整T01/03/04/11所需证据适配/required和ARCH义务；T14最终review仍待
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:52 | from:work | to:work | status:executing6/21 | outcome:in_progress（F06关闭，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 原完整required/ARCH/证据；无待poll句柄
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1388,4 +1406,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:51 | from:work | to:wo
 
 9. **F-941-05已关闭（r3 T18/19，第43轮）**：同树Rust字段写值根修复、参数边界/三代缓存、稳定B工具完整405门、292当前默认证书/daily及原14优化严格联读已闭，原3缺Rust格位转PASS。最终独立复审仍T14；不扩为F06/其他后端修复，原完整任务与全部具名red/unknown保持。
 
-10. **F-941-06已获941内修phase授权（第48轮）**：用户明确回答“授权941新增修复phase（推荐）”；范围为原提案的data链结构化诊断透传及原4例/合法与失败边界/受影响消费者验证。第49轮已修订r4/§5.10/T20/21，T20已完成、T21完整并集/当前身份刷新在途，不再等待或重复请求；此项不扩大到其他后端缺陷。
+10. **F-941-06工作阶段已关闭（r4 T20/21，第52轮）**：用户授权的typed data诊断修复、原4反例/合法与失败边界、1493完整职责/消费者门、408当前Case重采/原16诊断严格PASS及当前全组合679P8F319U已闭。SD10候选已在冻结树；最终独立review仍T14，不再等待授权，不扩为其他后端修复。
