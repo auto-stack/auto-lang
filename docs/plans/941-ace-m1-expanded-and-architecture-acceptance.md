@@ -4,7 +4,7 @@ status: executing
 feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
-updated_at: 2026-11-06
+updated_at: 2026-11-07
 plan_revision: 5
 supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-applicability.md, docs/specs/auto-test-case/unified-source-syntax-admission.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-syntax/source-frontdoor.md, docs/specs/auto-a2r/record-text-hir-backend.md, docs/specs/auto-a2x/incremental-and-cache.md, docs/specs/auto-av/data-layout.md, docs/specs/auto-cte/source-query-integration.md]
 new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
@@ -1665,6 +1665,29 @@ stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（S936磁�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:66 | from:work | to:work | status:executing8/23 | outcome:progress（S936真实恢复证据接入，整项不冒充PASS） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:4466520e6cf7750471c6458fdbdc80c962adbf94 | next:work，711P8F287U当前基面，继续稳定接口其余恢复与架构证据；F07仍待裁定，无待poll
 
+### F-941-09：SQ事实恢复缺失逻辑归属检查（第67轮发现，修复待授权）
+
+- 当前生产基面`4466520e6cf7750471c6458fdbdc80c962adbf94`，原`source-query/src/restore.rs::restore_verify`检查page.name/body/envelope/shape，却不比较`page.logical`与当前`owner_logical(package,module,name)`；返回的QueryKey反而由当前归属重造。`restore_bind`依此准入，将外域页交给真实供给bind/HIR；`SourceQuerySession::seed`已有逻辑归属检查，两个入口不一致。
+- 实际消费者观测：原同结构leaf页分别来自another-project、another.at，及同形twin页仅改advertised name为leaf而保留twin逻辑身份。三者均被seed拒绝，却全部被restore_verify接受，并经restore_bind安装3body、emit与真实verify_scalar通过；HIR BLAKE3与合法页相同不代表身份合法。原合法页、冷禁solver拒绝、暖禁solver真hit及篡改类型事实bind拒绝均保持。
+- 首次观察器导出全HIR超过本地32KiB限制，真实失败保留`sq-facts-iteration/`；改为原HIR实际BLAKE3摘要后`sq-facts-iteration-2/gate/results.json`定向1/1 PASS（这是捕获成功，三外域恢复行为应由父严格reader判FAIL）。原始`<h>/sq-facts-iteration-2/observations.json`3786B SHA256=`e6766d4cd8bd2a894fd117b4732fcbed002250ad59e23b2af388d51a70f9cfd8`；<h>=D:/autostack/plan-artifacts/plan-941。未修改生产实现/阈值/expected。
+- 最小具名修复提案：在restore_verify使用当前package/module/name校验page.logical，失败在供给bind之前返回既有typed Facts拒绝；restore_bind沿同一检查，保seed行为。原owner同名跨package/module、同形不同owner/伪改name必须拒；合法owner页与前缀/空白位置漂移仍可恢复；不补solver回退、不放宽页形/类型/能力/预算，不悄悄重开934。补永久正反例，复验受影响SQ消费者并刷新因此变动的事实/CT等证据身份；最终仍随941独立T14复审。
+- 依据§5.4“已归档能力发现新缺陷默认走具名独立修复流程”，F04/05/06/08例外不自动推广；待用户明确允许941新增修复phase或独立立项。等待不阻止原solver-authority观察与严格事实报告接线。
+
+### 第67轮：T08实际SQ事实权威/恢复身份联读（work，F09真实红已登记）
+
+- 上轮为progress（真实S936恢复分腿已提交/严格入报告）；本轮复核主检出无代码WIP、941树clean并复用`plan-941-dev`，基面`4466520e6`→`5adfe480dc423baf12ba6e7124dd5d0df323b25e`，9文件/1003增10删。无生产SQ/core/solver/store/预算修改，F09仍待具名授权；全目标/原T01..15不缩。D938当前executing6/13、D939 drafting0/14未交付，不消费在途未复审代码。
+- 原实际链`compile_via_facts→bind_with_facts→SourceQuerySession/796→BodyTypeSupply→core bind→emit→verify_scalar`；原源含leaf/twin同形body与main共3函数。冷禁solver在leaf的infer-body处拒绝：solver0/sigmiss1/bodymiss1/reject1；正常冷solver3/3bodymiss/3sigmiss，3body供给；关solver后同session暖编译：solver仍3、3bodyhit/3sighit、diag fallback0，所有applied标记真hit、表达式计数4/4/2、binding1/1/0，实际HIR与原legacy入口BLAKE3相同。篡改leaf类型页为bool、通过既有seed后关solver编译，3body真hit/solver0，被真实bind以5条`source.fact-mismatch`拒绝，无HIR。这些实际反控闭合`ARCH-02/solver-authority`，不是只看query log。
+- F09三组外域页（package/module/同形owner）实际seed拒绝而restore_verify/restore_bind均接收并到真实HIR verifier；严格reader正确判`ARCH-02/facts-before-hir=FAIL`。原因/最小修复/原始反证见上方具名F09条目；第67轮异步授权问题已发出，等待不妨碍本轮观察接线；无授权前不改restore.rs、不借先前F08授权施工。
+- 新永久观察器`ace-source-query::architecture_facts_941::ordinary_source_fact_authority_and_restore_identity_941`不预填外域结果；真实消费路径返回phase/admitted_bodies/hash，native退出0只证明采集终态。初版全HIR导出超过本地上限失败留`sq-facts-iteration/`，改为同一实际HIR的BLAKE3摘要/16KiB有界导出，不扩组合预算；迭代二1P，最终冻结正式`cargo t ace-semantics --test-name ordinary_source_fact_authority_and_restore_identity_941 --out <h>/sq-facts-current/gate`：1/1PASS、13binary实际listing202项中201未选择、0条件排除/0not_run。580输入（原578保守闭包+新源/观察器）、完整原Cargo配置、native listing/argv/terminal、clean revision/source_state、二进制与before/after均稳定；新观察器无warning，原core first_lex_fact dead_code、SQ tests.rs895/instance_host_935105 unused_mut三条存量warning保留未顺修。
+- `ace_m1_sq_facts.py`严格读原源、三body供给/命中/求解计数、禁solver与类型毒化反控、三外域实际身份/恢复终态及真实HIR摘要；通用原native准入增加**有限producer→原固定组**映射，新SQ仅准`ace-semantics`，原CT四observer继续仅准`ace-comptime`。6新治理方法含合法页/各外域误收/后期拒绝伪装/隐藏solver与diagnostic fallback/假命中/缺供给/错HIR/同owner/源与类型/错组等；`cargo t infra-ace-m1-arch --out <h>/sq-facts-governance-precommit` 222/222PASS，rustfmt/diff检查通过。提交身份变化不重跑未受影响全部旧门，治理同最终字节结果复用。
+- 严格组合禁producer启动，新增`sq_fact_mechanisms`绑定，输入合同`sq-fact-contract.json` SHA256=`306ecf66c42aca5c2f12da9001002dc355c18fa143227b18687b10ea612c524b`；29源合同/1006原注册键。当前`712P/9F/285U`；相对第66轮仅solver-authority U→PASS、facts-before-hir U→FAIL，ARCH5P1F43U；原313仍102P211U，旧8scalar红/38cert差异/F07全门红保持，完整AND/acceptance_system_delivered/can_claim仍false。S936三分腿与原source/292cert+daily/14opt、13工具身份完整联读复用不改历史before/raw。实测11783.408ms、reserve30673834B/peak48718671B<48MiB，process30560256B/Job31805440B。
+- 附属closure脚本首次仅因两个变化键的列表顺序断言失败；**严格reader本身已exit0**，原报告原样保留，用新`audit-sq-facts-admission.py`按键映射核对已有报告完成审计，未重复执行producer/reader或改原raw。`<h>=D:/autostack/plan-artifacts/plan-941/`：`sq-facts-current/observations.json`3786B=`e6766d4cd8bd2a894fd117b4732fcbed002250ad59e23b2af388d51a70f9cfd8`（冻结实测与迭代二一致）；同scope`gate/results.json`=`11133ff2062a573c399f6fac60323d2914d09ac81cc9a019638b051705752ba6`、`capture-audit.json`=`c6af7cfbf33daba3af678a3357f9ef5582a16c77ece4410600a9c599d29a9a2a`；治理`sq-facts-governance-precommit/results.json`=`d3199383230e1cf4740c8589f1ded17555c60ff625a1586c901c419e0c559924`；`sq-facts-admitted/preview.stdout`620662B=`a1280f7a170d1535dbee0e4b20a0b2dbb35127493b788e923556e6e0a4f662b1`、`closure-audit.json`=`797227096ba79ea07b1909170c46e8920f24bf8f241670cdd7de041e9843a3c8`。
+- SD01候选补充`<h>/sq-facts-spec-delta-candidate.md`待最终独立T14，当前r5 executing8/23。全部本轮进程终态，无live handle；下一步仍work，F09若授权则具名修订phase，否则继续独立原required/SQ/INST/恢复/资源观测；F07未授权不修，不能据F09问题抹掉已有效证据或替代全目标。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（SQ solver权威闭合、外域恢复缺陷真实FAIL已入报告） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:5adfe480dc423baf12ba6e7124dd5d0df323b25e | evidence:sq-facts-admitted/closure-audit.json | task_ids:T08/V09/SD01候选 | blockers:F09修复待具名授权不阻独立观测、F07仍待裁定、D938/939未交齐 | next_responsible_role:work，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:67 | from:work | to:work | status:executing8/23 | outcome:progress（真实两项ARCH从未观测转PASS/FAIL） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5adfe480dc423baf12ba6e7124dd5d0df323b25e | next:work，712P9F285U当前基面；F09授权后具名phase，否则继续独立原验收义务；F07仍待，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1686,4 +1709,6 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:66 | from:work | to:wo
 
 11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
 
-12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮当前4466520e6同计数，新增S936恢复分腿，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
+12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
+
+13. **F-941-09待授权**：第67轮已实测SQ restore_verify/restore_bind误收异package/module或同形异owner事实页并产出真实已验证HIR；seed入口正确拒绝。具名最小修复与三组反证见§9 F09；拟在941新增恢复逻辑归属检查phase，未获授权前仅做原验收观察/报告，不改生产实现。
