@@ -2,12 +2,17 @@
 #![cfg(windows)]
 use std::{
     alloc::{GlobalAlloc, Layout, System},
-    cell::Cell,
+    cell::{Cell, RefCell},
 };
 struct Allocator;
 thread_local! {
     static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
+    static TRACK_HEAP: Cell<bool> = const { Cell::new(false) };
+    static LIVE: Cell<usize> = const { Cell::new(0) };
+    static PEAK: Cell<usize> = const { Cell::new(0) };
+    static TRACKED: RefCell<[(usize, usize); 128]> = const { RefCell::new([(0, 0); 128]) };
+    static OVERFLOW: Cell<bool> = const { Cell::new(false) };
 }
 fn observe(size: usize) {
     let _ = THRESHOLD.try_with(|threshold| {
@@ -16,22 +21,96 @@ fn observe(size: usize) {
         }
     });
 }
+fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
+    let _ = TRACK_HEAP.try_with(|enabled| {
+        if enabled.get() && !ptr.is_null() {
+            TRACKED.with(|tracked| {
+                let mut tracked = tracked.borrow_mut();
+                let old = replaced
+                    .and_then(|old| tracked.iter().position(|entry| entry.0 == old as usize));
+                let slot = old.or_else(|| tracked.iter().position(|entry| entry.0 == 0));
+                if let Some(slot) = slot {
+                    let old_size = if old.is_some() { tracked[slot].1 } else { 0 };
+                    tracked[slot] = (ptr as usize, size);
+                    LIVE.with(|live| {
+                        let next = live.get().saturating_add(size);
+                        // Include old+new coexistence for realloc. If the old
+                        // pointer predates this window, count the entire new
+                        // buffer even when the allocator kept the same address.
+                        live.set(next - old_size);
+                        PEAK.with(|peak| peak.set(peak.get().max(next)));
+                    });
+                } else {
+                    OVERFLOW.with(|overflow| overflow.set(true));
+                }
+            });
+        }
+    });
+}
+fn freed(ptr: *mut u8) {
+    let _ = TRACK_HEAP.try_with(|enabled| {
+        if enabled.get() {
+            TRACKED.with(|tracked| {
+                let mut tracked = tracked.borrow_mut();
+                if let Some(entry) = tracked.iter_mut().find(|entry| entry.0 == ptr as usize) {
+                    LIVE.with(|live| live.set(live.get() - entry.1));
+                    *entry = (0, 0);
+                }
+                // An older allocation freed in this window cannot reduce
+                // the measured bytes of the new admission allocations.
+            });
+        }
+    });
+}
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         observe(layout.size());
-        System.alloc(layout)
+        let next = System.alloc(layout);
+        allocated(next, layout.size(), None);
+        next
     }
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         observe(layout.size());
-        System.alloc_zeroed(layout)
+        let next = System.alloc_zeroed(layout);
+        allocated(next, layout.size(), None);
+        next
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         observe(size);
-        System.realloc(ptr, layout, size)
+        let next = System.realloc(ptr, layout, size);
+        if !next.is_null() {
+            allocated(next, size, Some(ptr));
+        }
+        next
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        freed(ptr);
         System.dealloc(ptr, layout);
     }
+}
+fn measured_peak<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            TRACK_HEAP.with(|enabled| enabled.set(false));
+        }
+    }
+    LIVE.with(|live| live.set(0));
+    PEAK.with(|peak| peak.set(0));
+    TRACKED.with(|tracked| *tracked.borrow_mut() = [(0, 0); 128]);
+    OVERFLOW.with(|overflow| overflow.set(false));
+    TRACK_HEAP.with(|enabled| enabled.set(true));
+    let guard = Guard;
+    let result = f();
+    drop(guard);
+    (
+        result,
+        if OVERFLOW.with(Cell::get) {
+            usize::MAX
+        } else {
+            PEAK.with(Cell::get)
+        },
+    )
 }
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
@@ -67,6 +146,29 @@ mod source_foreign {
     struct Pointer<'a> {
         stored: &'a Stored,
         payload: &'a str,
+    }
+
+    #[test]
+    fn allocator_window_counts_new_live_buffers_after_older_frees_and_real_reallocation() {
+        let older = vec![1u8; 4096];
+        let ((first, second), peak) = measured_peak(|| {
+            drop(older);
+            let first = vec![2u8; 1024];
+            let second = vec![3u8; 2048];
+            std::hint::black_box((&first, &second));
+            (first, second)
+        });
+        assert!(peak >= first.capacity() + second.capacity());
+        drop((first, second));
+
+        let mut older = vec![4u8; 1024];
+        let ((grown, other), peak) = measured_peak(|| {
+            older.reserve_exact(4096);
+            let other = vec![5u8; 8192];
+            std::hint::black_box((&older, &other));
+            (older, other)
+        });
+        assert!(peak >= grown.capacity() + other.capacity());
     }
 
     #[test]
@@ -110,14 +212,20 @@ mod source_foreign {
         eprintln!("declaration rebind: threshold={threshold} whole_copies={copies}");
     }
 
-    #[test]
-    fn pointer_encoding_reserves_before_output_allocation_and_preserves_current_on_refusal() {
+    fn fixture(
+        tag: &str,
+    ) -> (
+        PathBuf,
+        Arc<Vec<u8>>,
+        ace_foreign_contract::manual::AdmittedForeign,
+        Vec<String>,
+    ) {
         let stamp = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
-            .join(format!("pointer-allocation-{}-{stamp}", std::process::id()));
+            .join(format!("{tag}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("source_foreign938.h"), provider::HEADER).unwrap();
         let source = root.join("provider.c");
@@ -133,6 +241,56 @@ mod source_foreign {
             &caps,
         )
         .unwrap();
+        (root, bytes, environment, caps)
+    }
+
+    #[test]
+    fn actual_provider_rebind_heap_fits_its_precharged_symbol_index_window() {
+        let (_root, bytes, environment, caps) = fixture("provider-index-allocation");
+        let mut session = Session::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "index938",
+            "p938",
+            &caps,
+            environment.clone(),
+            bytes.clone(),
+            Target::C,
+        )
+        .unwrap();
+        let resources = session.frontend().resources();
+        let next = environment
+            .rebind(&provider::authority(&provider::hash(&bytes), 2, &caps).unwrap())
+            .unwrap();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let pressure = resources
+            .reserve(Charge::index(
+                (8 << 20) - resources.stats().current.index - 4096,
+            ))
+            .unwrap();
+        let before = resources.stats();
+        assert_eq!(before.peak.index, before.current.index);
+        let (result, peak) = measured_peak(|| session.rebind_provider(next, bytes));
+        result.unwrap();
+        let charged = resources.stats().peak.index - before.current.index;
+        assert!(
+            peak > 0 && charged > 0,
+            "did not observe real indexed admission"
+        );
+        assert!(
+            peak <= charged,
+            "actual admission heap {peak} exceeded precharge {charged}"
+        );
+        assert!(Arc::ptr_eq(
+            &artifact,
+            session.artifact_bytes("main").unwrap()
+        ));
+        drop(pressure);
+        eprintln!("provider index window: precharged={charged} actual_heap_peak={peak}");
+    }
+
+    #[test]
+    fn pointer_encoding_reserves_before_output_allocation_and_preserves_current_on_refusal() {
+        let (root, bytes, environment, caps) = fixture("pointer-allocation");
         let authority = CurrentAuthority {
             foreign: provider::authority(&provider::hash(&bytes), 1, &caps).unwrap(),
             runtime_digest: ace_abi::source_foreign::certification_runtime_policy(Target::C),

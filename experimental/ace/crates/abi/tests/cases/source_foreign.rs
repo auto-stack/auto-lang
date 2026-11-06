@@ -17,6 +17,84 @@ fn fixture() -> PathBuf {
 }
 
 #[test]
+fn source_foreign_provider_symbol_index_uses_shared_budget_before_rebind_and_repairs() {
+    use ace_abi::source_foreign::{Session, Target};
+    use ace_source_query::resources::Charge;
+    use std::sync::Arc;
+    let root = scope("provider-symbol-index");
+    let old = root.join("old");
+    let new = root.join("new");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::create_dir_all(&new).unwrap();
+    let (old_object, old_environment) = provider(&old, 0);
+    let (new_object, new_environment) = provider(&new, 1);
+    let old_bytes = Arc::new(std::fs::read(old_object).unwrap());
+    let new_bytes = Arc::new(std::fs::read(new_object).unwrap());
+    for target in [Target::Native, Target::C] {
+        let mut session = Session::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "index938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            old_environment.clone(),
+            old_bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let accepted = session.snapshot().unwrap().digest;
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let before = session.frontend().meter();
+        let resources = session.frontend().resources();
+        let baseline = resources.stats().current.index;
+        let prior_resident = resources.stats().current.resident;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 64))
+            .unwrap();
+        let error = session
+            .rebind_provider(new_environment.clone(), new_bytes.clone())
+            .err()
+            .expect("provider index bypassed shared pre-allocation budget");
+        assert!(
+            error.starts_with("foreign.resource.provider-symbol-index:"),
+            "{error}"
+        );
+        assert_eq!(resources.stats().current.index, (8 << 20) - 64);
+        assert_eq!(
+            resources.stats().current.resident,
+            prior_resident + new_bytes.capacity() + 40,
+            "externally pinned candidate provider was not charged on entry"
+        );
+        assert_eq!(
+            session.frontend().foreign().provider_digest(),
+            old_environment.provider_digest()
+        );
+        assert_eq!(session.frontend().meter(), before);
+        assert!(Arc::ptr_eq(
+            &artifact,
+            session.artifact_bytes("main").unwrap()
+        ));
+        drop(pressure);
+        assert_eq!(session.snapshot().unwrap().digest, accepted);
+        session
+            .rebind_provider(new_environment.clone(), new_bytes.clone())
+            .unwrap();
+        assert_eq!(resources.stats().current.index, baseline);
+        assert!(Arc::ptr_eq(
+            &artifact,
+            session.artifact_bytes("main").unwrap()
+        ));
+        assert_eq!(session.frontend().meter(), before);
+        assert_eq!(
+            session
+                .run(&root.join(format!("{target:?}-repaired")))
+                .unwrap()
+                .exit_code,
+            Some(43)
+        );
+    }
+}
+
+#[test]
 fn source_foreign_native_analysis_uses_shared_staging_and_repairs_without_codegen_on_refusal() {
     use ace_source_query::resources::{Charge, Resources};
     let root = scope("native-analysis-budget");

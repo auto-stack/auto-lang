@@ -541,9 +541,18 @@ impl Session {
         target: Target,
     ) -> Result<Self, String> {
         target.admit_source_bytes(source.len())?;
-        admit_provider(&environment, &provider)?;
-        let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
-            .map_err(|e| e.to_string())?;
+        let resources = Resources::default();
+        admit_provider(&environment, &provider, &resources)?;
+        let (front, checked) = Frontend::cold_observed_with_resources(
+            source,
+            module,
+            package,
+            capabilities,
+            environment,
+            &mut ace_source_query::frontend::ColdObservation::default(),
+            resources,
+        )
+        .map_err(|e| e.to_string())?;
         Self::from_frontend(front, checked, provider, target)
     }
     pub fn cold_stored(
@@ -557,9 +566,18 @@ impl Session {
         store: &ManagedStore,
     ) -> Result<Self, String> {
         target.admit_source_bytes(source.len())?;
-        admit_provider(&environment, &provider)?;
-        let (front, checked) = Frontend::cold(source, module, package, capabilities, environment)
-            .map_err(|e| e.to_string())?;
+        let resources = Resources::default();
+        admit_provider(&environment, &provider, &resources)?;
+        let (front, checked) = Frontend::cold_observed_with_resources(
+            source,
+            module,
+            package,
+            capabilities,
+            environment,
+            &mut ace_source_query::frontend::ColdObservation::default(),
+            resources,
+        )
+        .map_err(|e| e.to_string())?;
         Self::from_frontend_stored(front, checked, provider, target, store)
     }
     pub(crate) fn from_frontend_stored(
@@ -600,7 +618,7 @@ impl Session {
         mut cache: function_cache::FunctionCache,
     ) -> Result<Self, String> {
         target.admit_source_bytes(front.source().len())?;
-        admit_provider(front.foreign(), &provider)?;
+        admit_provider(front.foreign(), &provider, &front.resources())?;
         let view = SemanticView::from_checked(&checked).map_err(|e| format!("{e:?}"))?;
         let mut artifacts = BTreeMap::new();
         let mut meter = Meter::default();
@@ -792,7 +810,7 @@ impl Session {
         environment: AdmittedForeign,
         bytes: Arc<Vec<u8>>,
     ) -> Result<(), String> {
-        admit_provider(&environment, &bytes)?;
+        admit_provider(&environment, &bytes, &self.front.resources())?;
         self.admit_resident(bytes.len())?;
         self.front
             .rebind_provider(environment)
@@ -829,7 +847,8 @@ impl Session {
         self.target
             .admit_source_bytes(source.map_or(self.front.source().len(), str::len))
             .map_err(PrepareError::Target)?;
-        admit_provider(&environment, &provider).map_err(PrepareError::Target)?;
+        admit_provider(&environment, &provider, &self.front.resources())
+            .map_err(PrepareError::Target)?;
         self.admit_resident(provider.len())
             .map_err(PrepareError::Target)?;
         let source = self
@@ -1148,7 +1167,7 @@ impl Session {
         let provider = required(&root.provider)?;
         let qualification = work.begin("*", "restore-provider", Phase::Recovery);
         work.io("*", "restore-provider", provider.len() as u64, 0);
-        admit_provider(&environment, &provider)?;
+        admit_provider(&environment, &provider, &resources)?;
         qualification.accept();
         let runtime = required(&root.runtime)?;
         work.io("*", "restore-runtime", runtime.len() as u64, 0);
@@ -1418,37 +1437,69 @@ fn native_artifact(
     work.push(page);
     Ok(artifact)
 }
-fn admit_provider(env: &AdmittedForeign, bytes: &[u8]) -> Result<(), String> {
+fn admit_provider(
+    env: &AdmittedForeign,
+    bytes: &Arc<Vec<u8>>,
+    resources: &Resources,
+) -> Result<(), String> {
     if bytes.len() > MAX_ARTIFACT || blake3::hash(bytes).to_hex().as_str() != env.provider_digest()
     {
         return Err("foreign.provider-content".into());
     }
+    // Caller-owned input is charged as it enters this composition, before
+    // symbol parsing or any source/target producer. Aliases, restored pages
+    // and externally retained candidate inputs share one immutable owner.
+    resources
+        .adopt(bytes, Charge::resident(bytes.capacity() + 40))
+        .map_err(|e| e.to_string())?;
     use object::{Object, ObjectSymbol};
-    let object = object::File::parse(bytes).map_err(|e| format!("foreign.provider-object: {e}"))?;
+    let declarations = env.source_declarations_ref();
+    let names = declarations
+        .iter()
+        .try_fold(0usize, |n, d| {
+            n.checked_add(1 + usize::from(d.context_symbol.is_some()))
+        })
+        .ok_or("foreign.resource.provider-symbol-index-overflow")?;
+    // The current supported libstd B-tree has B=6: at most 11 keys/values and 12
+    // edges per node. 64 bytes covers parent/index/len/alignment. Count
+    // at most one node per inserted key in EACH of these two borrowed
+    // indexes. Explicit insert avoids FromIterator's temporary sort Vec.
+    let node = 64
+        + 11 * (std::mem::size_of::<&str>() + std::mem::size_of::<object::SymbolKind>())
+        + 12 * std::mem::size_of::<usize>();
+    let index_bytes = names
+        .checked_mul(2)
+        .and_then(|n| n.checked_mul(node))
+        .ok_or("foreign.resource.provider-symbol-index-overflow")?;
+    let _index = resources
+        .reserve(Charge::index(index_bytes))
+        .map_err(|e| format!("foreign.resource.provider-symbol-index: {e}"))?;
+    let object = object::File::parse(bytes.as_slice())
+        .map_err(|e| format!("foreign.provider-object: {e}"))?;
     if object.format() != object::BinaryFormat::Coff
         || object.architecture() != object::Architecture::X86_64
         || object.kind() != object::ObjectKind::Relocatable
     {
         return Err("foreign.provider-profile: expected AMD64 relocatable COFF".into());
     }
-    let declarations = env.source_declarations_ref();
-    let needed = declarations
-        .iter()
-        .flat_map(|d| {
-            std::iter::once(d.function.symbol.as_str())
-                .chain(d.context_symbol.iter().map(|s| s.as_str()))
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    let definitions = object
+    let mut needed = std::collections::BTreeSet::new();
+    for declaration in declarations {
+        needed.insert(declaration.function.symbol.as_str());
+        if let Some(context) = &declaration.context_symbol {
+            needed.insert(context.as_str());
+        }
+    }
+    let mut definitions = std::collections::BTreeMap::new();
+    for symbol in object
         .symbols()
         .filter(|s| s.is_definition() && s.is_global())
-        .filter_map(|s| {
-            s.name()
-                .ok()
-                .filter(|name| needed.contains(name))
-                .map(|name| (name, s.kind()))
-        })
-        .collect::<std::collections::BTreeMap<_, _>>();
+    {
+        if let Ok(name) = symbol.name() {
+            if needed.contains(name) {
+                definitions.insert(name, symbol.kind());
+            }
+        }
+    }
     for declaration in declarations {
         for (symbol, kind) in std::iter::once((
             declaration.function.symbol.as_str(),
