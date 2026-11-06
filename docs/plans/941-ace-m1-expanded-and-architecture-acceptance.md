@@ -66,6 +66,8 @@ total_steps: 21
 
 2026-11-06 r4追加授权：用户在第48轮对F-941-06归属问题明确“授权941新增修复phase（推荐）”（call_ad921d1cbddb484085b350b7ee0bc3f5）。本次认领原AV data链结构化诊断丢失的最小提案，新增§5.10/T20/21/AC-16/V25..28/SD-10；继续原941唯一树与完整goal，不新立计划、不增加仓库或提高预算。允许work、原授权独立review及merge；不重复确认。
 
+2026-11-06 F-941-08追加授权已收到：用户对call_f0d62e537ab843b6a2d98593aaf23bcd明确“授权941新增修复phase（推荐）”。本项允许把第59轮具名source-CT meta能力冷/暖/撤销检查提案纳入941修复、复审与合入原链；继续同一树/仓库/原预算，不重复确认。当前r4尚未改生产；下一new阶段冻结r5合同后执行。F-941-07独立test-only提案仍待答复，不能从此授权推定。
+
 ## 5. 详细设计
 
 ### 5.1 登记与不可变义务集合
@@ -1497,6 +1499,20 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（meta/c
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:59 | from:work | to:work | status:executing6/21 | outcome:in_progress（真实机制与独立缺口，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | next:work 其余证据；F07/F08授权到达则new，无待poll
 
+### 第60轮：子CT有效版本正式接线提交；F08已获授权，下一阶段修r5（2026-11-06）
+
+- 第59轮真实meta/child机制观察与新F08定位为progress。本轮入口核main r4 executing6/21、同树154813298 clean、main代码无WIP及归属，无待poll；在F07/F08未答复时先推进独立T08 child接线，未修F07测试或F08生产能力。
+- 新`source-cte/tests/architecture_child_941.rs`及跟踪pick42.at沿原pick40只改flag true→false；复用既有compile_scalar_ct、CtService、MemoryEnvelopeSink及真实owner AV。RecordingSink只在原publish成功后观察原ExecKey，未复制producer/store。冷代真实AV2/value40；编辑后AV4/value42、无误hit；forbid后两级真hit、AV保持4/hits2/owner42。原InstanceRecord完整相等、inner/outer逻辑和签名稳定，而两级实际callee_body_version和执行key均改变。新目标实际nextest **1/1PASS、0skip，0.033s**（build1.16s、外1.9547234s）；原core first_lex_fact warning仍保留，未冒健康完成。
+- 新只读`ace_m1_ct_child.py`以原/变体精确源字节、3次独立owner值40/42/42、声明实例身份不变、4个成功发布key、每代真实attempt/正steps、日志前缀守恒和hit继承事实交叉判定，不从返回值推版本。复用已有native raw admission，只允许原observer与新child两个有限binary/test对，完整参数/二进制/源/终态准入仍在。每项raw精确字段、16KiB原payload帽/同预算保留。新合同581 pins/26th registry pointer（原578+child测试/true源/false源），SHA **02470c7bdaabce07b1f64fcc6c78ebe89a840f150d848a4553cbfcba15355329**，原49 ARCH分母不改、声明execution U。多adapter用带来源map的独立architecture-execution/1归并，拒重复认领；发现表不冒执行。
+- 新5条永久父侧反控：模板/实例声明误换key、有效checked key不变/逻辑或签名错误/实参或callee错误；相同错误结果/假计数无日志/发布key不对；hit伪执行/attempt/step/时长/归属错；错源/bool计数/额外PASS；原parent native目标不能冒child。控制初版给hit改key时误写成它本来就持有的c*64，测试如实红；改为不同f*64，未削弱断言/实现。**完整治理204/204PASS，4.468s**；与7组旧CT native反控共存，未改变旧199判定。最后删除一个未用的Python局部length绑定/候选Spec文字不改逻辑；复用204证据，不为提交重复全组。
+- 冻结提交 **3b364267bcdc4bd0492f67718f55a51d640b1d54**，10文件，树clean；581合同物理输入再次核全相等。新reader/native/export的最终原始Case/严格全组合取证尚未做，**不能把child第三ARCH格位提前计PASS**。当前最近实际组合仍154813298上的709P8F289U/ARCH2P47U/原102P211U313；本轮只新增已测实施接线与治理，不冒完整T08/T11闭合。基于随后收到F08修复授权，生产source-CT身份将变；把新child正式取证与F08最终冻结并集一起做，避免先采一轮随即因生产修复失效。原134P1F及F07红仍原样保留。
+- **用户新授权**：本轮中收到F08答复“授权941新增修复phase（推荐）”，question call_f0d62e537ab843b6a2d98593aaf23bcd。已记§4并关闭F08待决定状态；授权仅F08，F07尚未答复。下一阶段按auto-plan:new修订r5：把第59轮冷/暖/撤销cap与普通同名函数兼容的最小修复纳入当前941合同，保原目标/预算/已完成T16..21，补明确AC/V/SD/执行入口与真实受影响consumer/身份刷新；不再询问相同授权，不在当前work阶段先改生产。未批准F07保持独立，不能把test-only和F08混授权。
+- 本轮scope资料仍在途，未清理/未改主线生产。next阶段**new**而非继续先修；按r5合同就绪后work处理F08，最终独立review/T14及merge/T15仍待。所有原缺口/8 scalar red/38 cert-gap/D938939/健康与旧义务保持，current_step仍6/21直到新合同落地。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（child接线/204治理提交；F08授权到达需new） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:3b364267bcdc4bd0492f67718f55a51d640b1d54 | task_ids:T08/T11 child adapter部分 | evidence:新native1PASS/204治理PASS/581输入稳定；F08用户明确授权 | blockers:child正式取证并入F08冻结；F07仍独立待裁定 | next_responsible_role:new F08 r5合同，继承原全链授权再work
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:60 | from:work | to:new | status:executing6/21 | outcome:in_progress（child实施提交，F08授权驱动合同修订） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:3b364267bcdc4bd0492f67718f55a51d640b1d54 | next:new r5 F08 phase；F07无授权不动，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1518,4 +1534,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:59 | from:work | to:wo
 
 11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
 
-12. **F-941-08待裁定**：source-CT产品在缺meta能力时仍执行/发布，暖态撤销能力仍命中；HasField也复现。product先serve/substitute后bind使原权限检查失去原需求，原因及同名普通函数兼容正控见第59轮。提请941新增具名修复phase：在执行/命中前按既有语义校验meta/保护名，保普通同名用户函数与合法meta/CT/实例；补冷/暖/撤销cap/四端及身份回归，不在组合器遮蔽。§5.4需独立具名授权；F07仍是独立test-only项，不互相套用。
+12. **F-941-08已授权，r5合同待落**：用户在第60轮明确“授权941新增修复phase（推荐）”（call_f0d62e537ab843b6a2d98593aaf23bcd）；不再等待确认。按第59轮最小提案，下一new阶段纳入r5后实施source-CT meta能力冷/暖/撤销检查与普通名兼容/四端身份回归。当前仅child接线已提交、F08生产修复尚未开始；F07仍独立待裁定，不能互相套用。
