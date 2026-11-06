@@ -681,7 +681,12 @@ fn entry_wrapper_output_has_the_original_bytes_and_keeps_its_fee_until_real_deal
         ace_native::emit::emit_wrapper_coff("p938_entry").unwrap()
     );
     assert_eq!(resources.output_stats().unwrap().produced, size as u64);
-    assert_eq!(resources.stats().current.staging, size);
+    // Since the PLAN-938 wrapper-workspace port the returned ticket carries
+    // BOTH the Cranelift workspace admission and the exact wrapper output.
+    assert!(
+        resources.stats().current.staging >= size + (96 << 10),
+        "the wrapper workspace admission is missing from the ticket"
+    );
     let ptr = wrapper.bytes().as_ptr() as usize;
     let (_, frees, covered) =
         with_free_category_probe(ptr, &resources, Charge::staging(size), || drop(wrapper));
@@ -704,6 +709,58 @@ fn entry_wrapper_output_has_the_original_bytes_and_keeps_its_fee_until_real_deal
     assert_eq!(refused.stats().current.staging, 0);
 }
 
+/// PLAN-938 wrapper workspace: the startup wrapper's whole Cranelift window
+/// is admitted on the shared staging account BEFORE `make_isa`, the ticket
+/// joins the wrapper's output reservation, the admitted staging covers the
+/// real allocation peak, and a staging refusal precedes the backend.
+#[test]
+fn native_wrapper_workspace_is_admitted_across_the_emit_window() {
+    use ace_source_query::resources::{Charge, OutputLimits, Resources};
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits::default())
+        .unwrap();
+    let before = resources.stats().current.staging;
+    let (result, peak) =
+        measured_peak(|| ace_native::emit::emit_wrapper_coff_reserved("p938_w", &resources));
+    let wrapper = result.unwrap();
+    let admitted = resources.stats().current.staging - before;
+    assert!(
+        admitted as usize >= peak,
+        "wrapper window allocation peak {peak} exceeded the admitted staging {admitted}"
+    );
+    assert!(wrapper.bytes().len() > 0);
+    drop(wrapper);
+    assert_eq!(
+        resources.stats().current.staging,
+        before,
+        "the wrapper workspace/output staging outlived its ticket"
+    );
+    // Refusal: 64 KiB of staging room (below the fixed bound) — the
+    // backend allocations never start.
+    let denied = Resources::default();
+    denied
+        .enable_output_budget(OutputLimits::default())
+        .unwrap();
+    let d_used = denied.stats().current.staging;
+    let pressure = denied
+        .reserve(Charge::staging((24 << 20) - d_used - (64 << 10)))
+        .unwrap();
+    let (result, peak) =
+        measured_peak(|| ace_native::emit::emit_wrapper_coff_reserved("p938_w", &denied));
+    let error = result.err().expect("wrapper workspace admission missing");
+    assert!(
+        error.to_string().contains("codegen-memory")
+            || error.to_string().contains("foreign.resource"),
+        "{error}"
+    );
+    assert!(
+        peak <= 4096,
+        "backend allocations preceded the wrapper workspace admission ({peak} bytes)"
+    );
+    drop(pressure);
+    ace_native::emit::emit_wrapper_coff_reserved("p938_w", &denied).unwrap();
+}
 #[test]
 fn real_coff_request_quota_counts_discarded_outputs_and_refuses_before_buffer_allocation() {
     use ace_source_query::resources::{OutputLimits, Resources};
@@ -5356,7 +5413,7 @@ mod source_foreign {
     fn native_codegen_workspace_is_admitted_across_the_cranelift_emit_window() {
         use ace_source_query::resources::{OutputLimits, Resources};
         let (_root, provider, environment, caps) = fixture("codegen-workspace");
-        let mut session = Session::cold(
+        let session = Session::cold(
             "fn main() int { return foreign_add(20,22) }",
             "source938",
             "p938",

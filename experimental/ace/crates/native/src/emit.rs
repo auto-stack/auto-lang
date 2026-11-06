@@ -491,10 +491,26 @@ pub fn emit_wrapper_coff_reserved(
         _allocation: allocation.expect("reserved wrapper output"),
     })
 }
+/// Conservative bound of the startup wrapper's Cranelift window: the same
+/// fixed ISA/object-module/context cost as the unit emit (measured ~53 KiB,
+/// base doubled) plus slack for the fixed two-import function shape
+/// (PLAN-938; the wrapper is emitted per request, never cached).
+const WRAPPER_WORKSPACE_BOUND: usize = (96 << 10) + (8 << 10);
+
 fn emit_wrapper_coff_impl(
     entry_symbol: &str,
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<(Vec<u8>, Option<ace_source_query::resources::Reservation>), MnError> {
+    let mut workspace = match resources {
+        Some(resources) => Some(
+            resources
+                .reserve(ace_source_query::resources::Charge::staging(
+                    WRAPPER_WORKSPACE_BOUND,
+                ))
+                .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+        ),
+        None => None,
+    };
     let isa = make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn8-ac-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -534,7 +550,19 @@ fn emit_wrapper_coff_impl(
         .map_err(|e| MnError::Backend(format!("define {}: {e}", START_SYMBOL)))?;
     let product = om.finish();
     if resources.is_some() {
-        coff_buffer::emit(&product.object, resources)
+        // The workspace ticket joins the wrapper's output ticket in ONE
+        // account entry, held through the wrapper bytes' last use.
+        let (bytes, reservation) = coff_buffer::emit(&product.object, resources)?;
+        let reservation = match (workspace.take(), reservation) {
+            (Some(workspace), Some(output)) => Some(
+                workspace
+                    .merge(output)
+                    .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+            ),
+            (Some(workspace), None) => Some(workspace),
+            (None, reservation) => reservation,
+        };
+        Ok((bytes, reservation))
     } else {
         // Preserve the original legacy wrapper path and its acceptance.
         product
