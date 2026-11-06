@@ -5346,4 +5346,95 @@ mod source_foreign {
         .unwrap();
         drop(root);
     }
+
+    /// PLAN-938 Cranelift workspace: the whole emit window (ISA, object
+    /// module, CLIF context, codegen, COFF write) of a real source unit is
+    /// admitted on the shared staging account BEFORE `make_isa`, the ticket
+    /// joins the returned COFF reservation, the admitted staging covers the
+    /// real allocation peak, and a refusal precedes the backend allocations.
+    #[test]
+    fn native_codegen_workspace_is_admitted_across_the_cranelift_emit_window() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (_root, provider, environment, caps) = fixture("codegen-workspace");
+        let mut session = Session::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider,
+            Target::Native,
+        )
+        .unwrap();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        drop(session);
+        let wire: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        let mir: Vec<u8> = wire["mir"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b.as_u64().unwrap() as u8)
+            .collect();
+        let decoded = ace_av_core::abc::decode_abc_limited(&mir, 16 << 20).unwrap();
+        // Success: holding the merged ticket, the admitted staging covers
+        // the window's real allocation peak; dropping it releases staging.
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let before = resources.stats().current.staging;
+        let (result, peak) = measured_peak(|| {
+            ace_native::emit::emit_foreign_unit_coff_reserved(
+                &decoded.module,
+                &environment,
+                &resources,
+            )
+        });
+        let (object, ticket) = result.expect("emit failed");
+        let coff = object.bytes.len();
+        drop(object);
+        let admitted = resources.stats().current.staging - before;
+        assert!(
+            admitted as usize >= peak,
+            "codegen window allocation peak {peak} exceeded the admitted staging {admitted}"
+        );
+        assert!(coff > 0);
+        drop(ticket);
+        assert_eq!(
+            resources.stats().current.staging,
+            before,
+            "the workspace/COFF staging outlived its tickets"
+        );
+        // Refusal: 64 KiB of staging room (below the workspace's fixed
+        // part) — the backend allocations never start; only the verifier's
+        // analysis workspace (a few KiB) may allocate before the refusal.
+        let denied = Resources::default();
+        denied
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let d_used = denied.stats().current.staging;
+        let pressure = denied
+            .reserve(Charge::staging((24 << 20) - d_used - (64 << 10)))
+            .unwrap();
+        let (result, peak) = measured_peak(|| {
+            ace_native::emit::emit_foreign_unit_coff_reserved(
+                &decoded.module,
+                &environment,
+                &denied,
+            )
+        });
+        let error = result.err().expect("codegen workspace admission missing");
+        assert!(
+            error.to_string().contains("codegen-memory")
+                || error.to_string().contains("foreign.resource"),
+            "{error}"
+        );
+        assert!(
+            peak <= 8 << 10,
+            "backend allocations preceded the workspace admission ({peak} bytes)"
+        );
+        drop(pressure);
+        ace_native::emit::emit_foreign_unit_coff_reserved(&decoded.module, &environment, &denied)
+            .unwrap();
+    }
 }

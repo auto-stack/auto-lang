@@ -954,7 +954,11 @@ fn source_foreign_native_output_reservation_is_live_until_cache_handoff() {
         ace_native::emit::emit_foreign_unit_coff_reserved(&decoded, &environment, &resources)
             .unwrap();
     assert_eq!(object.bytes, expected);
-    assert_eq!(resources.stats().current.staging, object.bytes.capacity());
+    // Since the PLAN-938 codegen-workspace port the returned ticket carries
+    // BOTH the Cranelift workspace admission and the exact COFF output
+    // charge (merged in ONE account entry); both release at the handoff.
+    let staging = resources.stats().current.staging;
+    assert!(staging >= object.bytes.capacity() + (96 << 10));
     drop(object);
     drop(charge);
     assert_eq!(resources.stats().current.staging, 0);
@@ -975,13 +979,17 @@ fn source_foreign_native_output_reservation_is_live_until_cache_handoff() {
     .unwrap();
     let fact_page: serde_json::Value =
         serde_json::from_slice(&session.frontend().page("main").unwrap().bytes).unwrap();
-    let allowance = (fact_page["facts"].as_array().unwrap().len() + std::mem::size_of::<Vec<u8>>())
+    let base = (fact_page["facts"].as_array().unwrap().len() + std::mem::size_of::<Vec<u8>>())
         .max(expected.len())
         + 256;
     assert!(
-        allowance < 4096,
+        base < 4096,
         "fixture no longer distinguishes facts/COFF from encoder staging"
     );
+    // Since the PLAN-938 codegen-workspace port the emit path's workspace
+    // admission (96 KiB base + element allowances, with slack) precedes the
+    // codec preflight on the same account; keep refusing AT the preflight.
+    let allowance = base + (96 << 10) + (8 << 10);
     let pressure = shared
         .reserve(Charge::staging((24 << 20) - allowance))
         .unwrap();

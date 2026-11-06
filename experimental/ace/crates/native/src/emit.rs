@@ -277,6 +277,24 @@ pub fn emit_foreign_unit_coff_reserved(
 #[path = "coff_buffer.rs"]
 mod coff_buffer;
 
+/// Conservative bound of the Cranelift emit workspace (PLAN-938): the
+/// ISA/object-module/context fixed cost (measured ~53 KiB for a minimal
+/// scalar unit on the pinned cranelift; the base doubles it) plus
+/// per-element allowances for the CLIF working set of a verified scalar
+/// unit. Reserved on the shared staging account BEFORE `make_isa` and held
+/// through the whole window (merged into the returned COFF reservation).
+fn codegen_workspace_bound(unit: &MirModule) -> Option<usize> {
+    let f = unit.funcs.first()?;
+    let instrs: usize = f.blocks.iter().map(|b| b.instrs.len()).sum();
+    let bound = 96usize << 10;
+    let bound = bound.checked_add(instrs.checked_mul(1024)?)?;
+    let bound = bound.checked_add(f.blocks.len().checked_mul(1024)?)?;
+    let bound = bound.checked_add(unit.imports.len().checked_mul(2048)?)?;
+    let bound = bound.checked_add(unit.types.len().checked_mul(256)?)?;
+    let bound = bound.checked_add(unit.consts.len().checked_mul(256)?)?;
+    bound.checked_add(f.slots.len().checked_mul(64)?)
+}
+
 fn emit_unit_coff_impl(
     unit: &MirModule,
     environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
@@ -293,6 +311,19 @@ fn emit_unit_coff_impl(
     } else {
         admit_unit(unit)?;
     }
+    let mut workspace = match resources {
+        Some(resources) => {
+            let bound = codegen_workspace_bound(unit).ok_or_else(|| {
+                MnError::Resource("codegen-memory", "workspace bound overflow".into())
+            })?;
+            Some(
+                resources
+                    .reserve(ace_source_query::resources::Charge::staging(bound))
+                    .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+            )
+        }
+        None => None,
+    };
     let f = &unit.funcs[0];
     let isa = make_isa()?;
     let obj_name = format!("mn8-{}", f.name);
@@ -394,6 +425,18 @@ fn emit_unit_coff_impl(
 
     let product = om.finish();
     let (bytes, reservation) = coff_buffer::emit(&product.object, resources)?;
+    // The emit workspace's ticket joins the output ticket in ONE account
+    // entry (no release/reacquire gap); the caller holds both through its
+    // cache handoff.
+    let reservation = match (workspace.take(), reservation) {
+        (Some(workspace), Some(output)) => Some(
+            workspace
+                .merge(output)
+                .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+        ),
+        (Some(workspace), None) => Some(workspace),
+        (None, reservation) => reservation,
+    };
     Ok((
         UnitObject {
             symbol,
