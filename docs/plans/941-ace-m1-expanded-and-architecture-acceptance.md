@@ -733,6 +733,31 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:23 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原任务未完/真实覆盖红保留） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ea4243fd332b252dbd0eef3a12cf35163570e7cd | next:work 原完整目标，先补剩余四端/独立reference与机制证据
 
+### 2026-11-06 原61标量源独立Rust/C reference与默认配置认证（goal第24轮）
+
+上一轮106标量AV/native严格观察为progress。本轮继续T03/04/05/10/11，唯一941树提交 **aa125c8a1667fed8692934ee6ab8d8045c5fa547**，132文件（含122永久reference）已提交且树clean；未修改编译器/worker/生产语义，原总任务仍executing2/17。
+
+- 新61源×Rust/C **122独立手平移参考程序**，不读取/复制actual发射代码，不以oracle值生成函数体，不另造Auto编译器。各源独立保运算、调用、循环、递归、22项比较表、所有条件/短路分支与命名实参源序；原core-f11虽名100实际为300个1，独立checked累加300；语法深括号的reference按相同值规范化，原被编译源深度/字节不改。Rust用标准checked_*，C用int64范围检查及独立div/rem零/最小值溢出规则；输出仍原value/trap协议，C stdout/stderr明确binary，避免CRT换行混淆。
+- 永久scalar-reference-contracts.tsv 61行，SHA=`4d4c5a3904f0a5955855f6127aa388ba6ae1a14cc4df8858b00b05aa6d53a094`；逐行再对原scalar-obligations与原provider表hash验证源、profile、caps、值/5类trap、marks与Rust debug61/release8/C61配置，122参考文件各自SHA固定。新strict `ace_m1_scalar_cert_evidence.py` +原cert/daily reader有界扩展支持**原Core/Scalar**身份、checked trap与trace，不以C的Scalar身份代Core，原text/CT/首例读法守恒。
+- 实际原a2x-worker顺序执行**122默认认证+122对应daily发射+122工具身份请求**，actual/reference各实际编译与运行，故有效认证共**244编译+244运行**。Rust原--edition2021默认配置，C保原-nologo/-std:c11/-TC/-W4/-WX/-O2/-MT；每case daily actual_files在cert前冻结，完整main/runtime/generated/manifest均真实重hash，原Job/meter/argv/stdout/stderr与失败尝试只留同一scope/scalar-q4-certifications。当前strict 122默认认证/daily全部通过，原**40Core/21Scalar**及三while源Rust/C原Oracle均通过；两AV深度预算/六AV/native while拒仍是上一轮真实覆盖红，不因本轮另两腿绿消失。
+
+首次自写C reference中10条被原-W4/-WX拒：8条trap的常量传播导致C4702不可达警告，另两条短路常量表达式C4127。明确是**新reference编译失败/INFRA**，不冒Auto trap或原语言缺陷。保首次112认证成功+10失败原输出；只修这10个C参考，用volatile输入读取保持checked操作动态、显式动态bool保持短路，不改flags/oracle/source/实际target。新尝试独立目录，仅重跑10受影响C目标（原112已通过且字节/工具不变则复用），10全通过，未覆盖失败材料。最后122被选择的reference compile stderr审计**零未处理warning**。旧失败10个仍具名保scope/attempt-failures.json及各attempt；它们不充244有效编译/运行数字。
+
+配置义务不偷换：原worker标量cert接口只会使用默认Rust flags，不能靠传未实现mode或改环境wrapper冒release。本reader把**8条原Rust release要求继续UNOBSERVED**：122默认cert皆实过，但新Rust/C目标登记仅**114PASS/0FAIL/8UNOBSERVED**，certification_complete=false。release8单列需下一步沿原真实producer/完整产物与独立reference取得-O编译执行证据；本轮未补或减样本，亦未声称原Rust69/C61配置全完成。
+
+第23轮文字更正：该轮“两个trace源”只描述末尾bd两个示例，原61源trace=true实际为**4源**：sc-short-circuit-contexts、sc-short-circuit-trace、bd-named-source-order、bd-or-skips-rhs，对应独立marks数13/5/2/0。上一轮实施Case与strict reader本来就逐原TSV为四源带cap并验证全marks，没有漏执行；本轮Rust/C四源同样与手平移reference及独立marks逐字节通过。该表述更正不变旧源/分母/配置。
+
+- **18原认证帧反控**：Core值、Overflow、命名实参副作用三个源×两target，逐一原合法PASS、双方同错值/错trap/反marks→FAIL、重hash未知response字段→REFUSED；修改后同步raw显示/命令/meter与摘要哈希，保原oracle/源码/完整产物，明确counterfactual_not_execution。scope/scalar-cert-raw-controls/results.json SHA=`b9558deca5091d896f916ccb4d48bc14c872aeebf68c283e694bb71fbcc03ee2`，6原正控+6同错FAIL+6REFUSED，不充新语言覆盖。
+- 新2永久配置反控证明默认绿不核销release8、default FAIL不被pending改绿、C原配置不被误算Rust release，且拒未知target/计数/布尔verdict；既有daily正控新增Core双target。冻结aa125c8 `cargo t infra-ace-m1-arch --out <scope>/scalar-cert-frozen-controls` **148/148**、exit0、3.4805118s，results SHA=`a3c2395bc759f1d3cca3bc3b53107ff7073ba3986252cf34692b6ce9674e0763`。py_compile/diff-check通过；不因Python/fixture提交重复1779原压力，实际122当前源/工具/配置/完整文件及原69消费者/文字20旧有效证据已由新reader重新逐项准入。
+- 新reader先按原严格边界拒了过期budget source pin（cert reader扩展导致SHA变），在确认16条政策/全部数字与原HEAD逐项相同后，仅刷新该**唯一**源pin；原budget合同内容hash更新为`8f3ab799eb1bbbb3e7bde62f8849af3cd438577e3e9fb5a9e1ac2539e3d939f0`，其余25pin及阈值未改。没有用忽略STALE或放大预算让报告过关。
+- 冻结全组合原受管Job/Popen禁用重读：**322PASS/8FAIL/556UNOBSERVED**，原登记886及required分母不变，新增scalar_reference第9合同指针；system_delivered/expanded claim/full_registry_closed仍false。输出345303B SHA=`6912823b3d4c276d7239010d318173045bce2de305627fa9ce86ce1cd5c2e0d6`，scope/scalar-cert-frozen-preview，5144.6472ms、peak process28717056/Job29970432B，单共享LiveBudget reservation28876098/峰值**47245787<50331648B**；原4MiB单件/private128MiB/不重置峰值/先预留后解码守恒。
+
+这轮158（原36+新122）默认认证与daily有当前完整严格证据，不能替原release8/剩余复合及SQ/实例/ARCH/旧313/38/938939。下一入口先补8原Rust release的真实producer/独立reference观察，再继续其余原范围。无活运行遗留、无新增用户决定；原T01..15不提前勾选。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:aa125c8a1667fed8692934ee6ab8d8045c5fa547 | task_ids:T03/04/05/10/11（未关闭） | evidence:122独立reference/122实际默认cert+daily严格通过，8Rust release仍UNOBSERVED；18反控；148冻结；全组合322PASS8FAIL556UNOBSERVED | blockers:原release8/其他完整任务未完；无新增用户决定 | next_responsible_role:work 原配置/完整Q4/机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:24 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，默认认证不冒release） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:aa125c8a1667fed8692934ee6ab8d8045c5fa547 | next:work 原8Rust release真实观察及其余四端/机制/ARCH
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
