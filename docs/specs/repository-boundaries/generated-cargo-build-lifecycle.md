@@ -117,3 +117,24 @@ unique=file-ID 去重（非 CoW 物理块）；NTFS 分配=unique（无压缩/�
 - 保持语言→UI/Web 零依赖方向；发现改收据优先；`auto build -d <dir> -r rust`
   仍走 pac 分支（既有 CLI 缺陷，债务候选）。
 - 007 须重跑其 V-09/10 与受影响 fresh/locked（本页 V-01/02/03/08/09 为基线）。
+
+## 8. 集中 workspace 研究附注（PLAN-942，2026-11-06）
+
+本节附研究事实；**910 默认（受管共享 target + 各应用独立生成 ws）保持不变**，
+不声称任何新默认已生效。完整方法/证据见
+[generated-workspace-sharing-study](generated-workspace-sharing-study.md)与归档 PLAN-942。
+
+- 增量收益未获证明：同兼容族集中 workspace/锁（候选）相对本规范的臂内共享
+  target，主口径 ΔAB 为 −286,600B（UI，B 反大）/ +557,736B（Web 累计，超匹配
+  重建界仅 12,008B 且分量不可归因），ε_meter=0、E_delta=545,728B。可归因的
+  UI 分量为负——不为空间目的切换生产布局。
+- 归因限制：Web 域逐阶段锁复演未采纳集中解析的 9+ 传递依赖选择，其差额仅
+  描述性；UI 域复演完全采纳（分量可归因）。
+- 候选导出实证边界：PLAN-792 交付入口在 producer 921bfa518 生成/主题腿可用，
+  但 bundle 未收 `experimental/ace/crates/semantics-contract` → 消费侧
+  `--locked` 红（P1，930 原 oracle 同红）；Web 成员移根受 workspace 继承的
+  开发根路径依赖阻断（P2）。两者关闭前，交付链消费侧验证以
+  [generated-delivery-regression](generated-delivery-regression.md) 的既有
+  绿基线为准，不以上述红推断本规范行为回归。
+- 迁移：ctx8 不变时集中 ws 复用既有共享 target、id8 不变，净新增 ~0（假设
+  列明于研究页）；未实施、未迁移任何用户目录。
