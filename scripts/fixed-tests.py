@@ -422,7 +422,7 @@ def execute_plan(plan, output, summary, args):
     cpu_started = time.process_time()
     suites = sorted({g['suite'] for g in plan if g['runner'] == 'case'})
     if suites:
-        diagnostics = Path(tempfile.mkdtemp(prefix='admission-', dir=ROOT / 'target/test-groups'))
+        diagnostics = Path(tempfile.mkdtemp(prefix='fixed-admission-'))
         summary['output_admission'] = audit_suite_outputs(ROOT, suites, output, diagnostics, prepared)
     output.mkdir(parents=True, exist_ok=True)
     write(output / 'selection.json', summary)

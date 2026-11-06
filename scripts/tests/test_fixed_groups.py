@@ -138,11 +138,14 @@ class FixedGroups(unittest.TestCase):
     def test_case_owner_rejection_precedes_all_final_output_writes(self):
         with tempfile.TemporaryDirectory() as temp,                 mock.patch.object(fixed, 'execution_lease', lambda: contextlib.nullcontext()):
             output = Path(temp) / 'protected-output'
-            with mock.patch.object(fixed, 'audit_suite_outputs', side_effect=ValueError('protected source domain')) as audit:
+            with mock.patch.object(fixed, 'audit_suite_outputs', side_effect=ValueError('protected source domain')) as audit, \
+                    mock.patch.object(fixed.tempfile, 'mkdtemp', return_value=str(Path(temp) / 'diagnostics')) as admission_scope:
                 with self.assertRaisesRegex(ValueError, 'protected source domain'):
                     fixed.main(['case-pilot', '--out', str(output)])
                 self.assertEqual(audit.call_count, 1)
                 self.assertFalse(output.exists())
+                requested_home = admission_scope.call_args.kwargs.get('dir') or tempfile.gettempdir()
+                self.assertEqual(Path(requested_home).resolve(), Path(tempfile.gettempdir()).resolve())
 
     def test_case_static_preview_never_writes_without_owner_admission(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(fixed, 'capture', side_effect=AssertionError('static preview must not build')):
