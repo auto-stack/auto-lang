@@ -1404,6 +1404,20 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（原rec
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:53 | from:work | to:work | status:executing6/21 | outcome:in_progress（原required74→102；原尺度保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:880c1a94d5251e7c721c564927297459bb5fa588 | next:work 原完整required/ARCH/证据，无待poll句柄
 
+### 第54轮：CT真实观察接口接线，完整CT职责门仍运行（2026-11-06）
+
+- 上轮原28格实际闭合及707P8F291U为progress；入口复核main r4 executing6/21、同树880c1a94d clean/归属plan-941-dev、main无代码WIP，继续T08/T06真实机制观察。源CT四端值与认证已齐，但原reader明确未观察execute/hit/ExecUse/restore，不能把42→43数值差直接冒ARCH通过。本轮未修改生产CT语义、core/HIR/worker或协议。
+- 冻结新增永久观察测试提交 **5b3501b2aeae0b8ba7845f7afd8fca3726220166**，仅`experimental/ace/crates/source-cte/tests/architecture_941.rs`，自动进入原ace-comptime固定职责组。直接调用既有compile_scalar_ct/CtService/MemoryEnvelopeSink及原run_entry_on_av：原sum42/sum43 include_str字节、fn main后缀完全一致；空sink且forbid AV先实拒、ct_execute0/publish0；新空sink冷态真AV=1/publish1/正steps/checked owner42；forbid AV下相同源真hit而execute不增长/owner42；callee edit在forbid下拒且不发布；恢复AV后新key/execute2/publish2/owner43。原执行日志的key/attempt/from_cache/steps/wall与原计数逐态导出；没有第二执行器、host fold或从最终值倒填计数。
+- 可选导出只在显式AUTO_PLAN_941_CT_OBSERVATIONS提供时生效，原断言无env仍执行；scope规范化核对、create_new拒覆盖、16KiB固定小报表及sync_all，字符串按hex输出、无新增serde依赖/锁文件变动。已运行原nextest新目标：1/1 PASS、0skip、真实exit0，测试0.023s/准备4.59s（外命令5.5128064s）；原core first_lex_fact warning保留，T13未冒健康完成。rustfmt与diff --check通过，冻结树clean。
+- **完整职责门正在运行，未计PASS**：scope/capture-ct-source-mechanisms.py先正式prepare/list该唯一目标，冻结debug test binary **a77fa2fdddb8f546efac9334e08403fc5466c966cefd133e5a277cd1d879c654**；随后原`cargo t ace-comptime --out <scope>/ct-source-mechanisms-frozen/gate`，原ignore/平台/资源/性能/样本保留。句柄 **session84298**、capture Python **PID1912**、fixed driver Python **35420**。20:30实核子进程 **11612**在跑原`cte_resources_tests::performance::resources_real_watermark_gc_physical_delete_and_converge`（CPU196.98s、工作集29245440B），非仅锁文件推断；不重启、不改冻结source、不并行其他build。正式raw观察文件尚未生成，不能提前读/声称strict接纳或新ARCH verdict。
+- 准备的220件候选source pins真before SHA **f76fd1e8b999c839f411c747f729dbc4e44f5eb522e240e1977d42c90d4cfef2**，其范围不是完整依赖闭包。另递归现Cargo path依赖取得**16本地包/557跟踪输入**，逐实际文件SHA与Git EOL过滤后blob核冻结提交一致；`ct-source-mechanisms-frozen/source-closure-committed.json` **140140B / SHA 1f87a4ba62836bd52ba395bd43612a2c1de276f0989455fffe2da408035b0907**，明确phase为从冻结已提交输入导出，绝不改名/回填成before。其只读派生句柄9156已terminal exit0。正式driver仍负责实际窗口全代码/config/input source_state守恒；完整门terminal后还须after及二进制/13工具稳定审计。
+- 本轮观察适用于ARCH-04 cold-real-av-and-hit与callee-body-change候选，不证明managed-store恢复、Use页深验、meta/真实实例/资源/四端冻结HIR或其余ARCH；strict父reader/独立错计数/错log/错source/伪PASS/原始terminal等准入仍待接线。**当前有效报告仍第53轮707P8F291U，原102P/211U/313、ARCH49U及所有claim false，任务6/21不变**。8源域red/38旧cert-gap/D938/939与T13继续具名未闭，无新增用户决定。
+- 下一轮必须先续**同session84298**至真实终态，再读gate/results、原观察raw、current input/binary/tool audit；不得因观察超时另起门。若原门完成并稳定，按原48MiB预算使能CT专用strict reader/原始反控与组合关联；未观察的其他机制继续U。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（CT真实观察永久测试1PASS；完整原职责门live） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | base_commit:880c1a94d5251e7c721c564927297459bb5fa588 | code_commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | task_ids:T08/T06机制观察部分 | evidence:原源冷AV/hit/forbid/callee新key回归；16包557冻结输入；session84298真实live | blockers:完整CT职责终态/strict reader尚未齐；无新增用户决定 | next_responsible_role:work 先poll同session84298，不重启或并行新门
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:54 | from:work | to:work | status:executing6/21 | outcome:in_progress（真实CT观察接线，原门live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 同session84298/PID1912与35420，终态后strict准入
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
