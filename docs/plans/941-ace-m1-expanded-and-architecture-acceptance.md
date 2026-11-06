@@ -440,7 +440,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-23 | work | T-22冻结；正确Cargo feature/config与真实当前工具先prepare | 完整ace-comptime/治理与具名真实consumer联合；原14CT/四CLI与受实际身份变化影响的raw/cert/daily/优化严格重验，child/原CT机制同窗采；守恒其余red/U、保F07真实终态；SD11候选与最终T14交接；AC-02/03/07/09/17、V32 | [✅ 已完成] 第64轮续录81c10fcc9；原并集731P1旧F07红，当前292 cert/daily+14优化+466 Case+3 CT机制严格联读710P8F288U；完整941仍未齐，最终T14待 |
 | T-24 | work | 第67轮用户F09内phase授权；§5.12/5adfe480d基面/已存三轴误收；原Specs | 先新restore_identity_941永久反例baseline红/合法绿，再修restore_verify当前逻辑归属typed拒，restore_bind/seed口径一致；补合法/codec/位置漂移/失败保旧与实际AV f94109_消费反控；AC-18、V33..35、SD12 | [x] 第69轮73cdf4871：SDK4/AV3永久例通过、修前三轴SDK/AV各3红，合法/codec/位置漂移与失败保旧闭合；完整职责与当前身份联读仍T25 |
 | T-25 | work | T-24冻结，正确Cargo配置/工具先prepare与逐项影响对账 | 一次完整ace-semantics/infra-ace-m1-arch及AV具名消费；五native源合同/当前观察重采、变化身份source/cert/daily/优化真实刷新、其余严格复用，当前组合逐键守恒；F09工作关闭/SD12候选交T14；AC-02/05/07/09/18、V36 | [x] 第70轮50fc3f770：完整206/222与实际AV、五native、466Case/292cert+daily/14原优化严格联读713P8F285U；F09工作阶段闭合，最终T14待 |
-| T-26 | work | 第75轮用户F10内phase授权；§5.13/3bf48bd03基面与原两次坐标失败 | 新source_positions_941先重放红/合法绿，再修UnitCatalog lambda诊断坐标；补冷/恢复/UTF-8前缀/词法结构/失败原子性/修复再恢复/tiny与相邻API；AC-19、V37..39、SD13 | [ ] 未实现/未执行；下一依赖就绪任务 |
+| T-26 | work | 第75轮用户F10内phase授权；§5.13/3bf48bd03基面与原两次坐标失败 | 新source_positions_941先重放红/合法绿，再修UnitCatalog lambda诊断坐标；补冷/恢复/UTF-8前缀/词法结构/失败原子性/修复再恢复/tiny与相邻API；AC-19、V37..39、SD13 | [ ] 第76轮6eaf693af已提交最小坐标修复/新9例与原42联合PASS；保留F11整源/片段/手写首诊断差异，不以相邻绿关闭T26 |
 | T-27 | work | T-26冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；五native当前合同与真实观察重采、13工具/变化身份source/cert/daily/优化刷新，其他证据strict复用，当前组合逐键守恒；F10工作关闭/SD13候选交T14；AC-04/05/07/09/19、V40 | [ ] 未执行；不能由规划或原716P顶当前验证 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
@@ -1886,6 +1886,22 @@ stage: new | plan_id:PLAN-941 | plan_revision:r7 | outcome:pass（具名授权�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:75 | from:work只读调查/用户steer | to:work | status:executing10/27 | outcome:progress（F10授权落为具名r7契约，尚未修复） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:3bf48bd03ee14981bfdf91870b746710621f14ff | next:work T26最小修复，F07仍独立待批，无live handle
 
+### 第76轮：work F10最小坐标修复与永久回归；发现独立前门诊断差异F-941-11
+
+- r7/唯一941树/授权及main无代码WIP已核；本轮按T26先加入新core conformance::source_positions_941。初次测试编译因StagedCandidate没有Debug而不能unwrap_err，改为模式匹配后原实现真实**2P5F**：冷/恢复结构坐标39..42对fresh53..56、词法58..59对72..73、空片段37..38对50..50等失败；预算与相邻owner/公共fragment控制PASS。补非lambda形状拒绝`1`原跨度0..0的独立原反例亦真实1F，全部原输出保留，不把编译失败当业务反例。
+- 已提交代码`6eaf693af169daa3108dd83921a66469edfcc48c`：3文件312增5删（284行新永久回归）。生产最小改动仅core `cst/units.rs`：私有lambda helper接收当前源起点，遍历每条Diag扣36字节prefix、按replacement长度饱和并加当前UTF-8字节origin；消费/形状拒绝改用当前replacement span；ResourceExhausted/Infra及调用者原FrontBudget原样保留。未调用固定64MiB兼容桥、未加整源parse/预热/新parser，成功表达式/单元编辑路径不改。
+- 最终新**9/9PASS**：冷与codec恢复首结构错、中文/换行/前置函数、词法错、首拒保旧/Rc/headless/事件/独立discarded、合法修复恰1目标/兄弟零生产、再codec恢复后首错采用已漂移当前span、tiny typed资源、空片段/非lambda拒绝、owner/staged-owner、公用ClosuresFunctionFrontend真实cold/edit_body消费者等。最终字节对原source_units_928/source_units_928_t09/source_restore_929_t02与新用例一次nextest定向联合**42/42PASS，327过滤未执行**，原样本不减；rustfmt/check与diff通过。原core first_lex_fact dead_code仍为既有告警，不冒T13健康全绿。
+- **没有丢掉首次修后7P1F的结构反例**：多lambda中先修f、再恢复后首坏g，当前片段诊断100..103，而全源fresh错误落到前一个合法f的53..56。最终9例中的第二次恢复采用词法错来独立验证已漂移当前坐标；这不关闭原结构错，它的完整source/attempted_source与原fresh/fragment/handwritten三面已落独立真实探针。不能用改成词法后的9P当结构问题消失，**T26仍未勾选**。
+- **F-941-11已确认不是F10偏移修复造成**：相同坏g源码，CST整源为53..56/`expected )`，CST片段为100..103/`expected )`，已归档手写差分oracle实际为124..125/`expected expression, found }`；stage/code均text/source.syntax，但位置与message违反主检出canonical“反例首诊断四元组逐字节全等”。相同合法当前源两parser均接受、恢复失败保旧。project.rs/frontdoor.rs/parser.rs相对修前3bf48bd03字节完全未动，故不是通过修F10新改了whole parser。
+- 根因定位：`cst/project.rs::structural_first_diag→walk_expectations→Walker::walk_expr_context`的普通`(`分支直接入Br::Paren，未按已有closure_header_ahead_tokens识别普通lambda头；该前瞻目前只用于async拒绝分支。整源出现后续错误时，期望游走重新经过早先合法lambda而把参数注解当括号表达式失败，片段则把本lambda头同样误判。F10修的是包装→当前字节转换，F11涉及**前门首诊断选择/文本与手写oracle保真**，不能在已批准F10最小写面中悄悄重写此归档能力或修改oracle。
+- **F11最小提案**：在941新增具名phase，先永久差分反例固定整源/自由函数/闭包片段的合法前置lambda+坏后续lambda及单lambda、中文/位置漂移；在现期望游走器接入既有lambda头/参数/body上下文，复用同一规则/诊断权威、保原profile/预算/资源分态，不引生产手写parser回退/第二语法/新语法限制，不为绿色改expected。补合法lambda/嵌套lambda、词法优先、async与普通括号等邻接反控，复验source/syntax与按实际触面必要consumer；冻结当前源合同/工具与所有受身份影响证据。依§5.4需用户具名授权，当前仅提案与真实反证，没有改project/grammar。等待期间可继续其他独立工作。
+- 现**仍executing10/27**，T26部分实现在冻结commit可审，T27完整ace-source/ace-syntax/治理/必要consumer与当前身份闭包未执行。core units生产字节已变，五native正式声明pin旧units，**不能再把修前716P8F282U当当前新代码完整报告**；它是保留的pre-F10基线，待T27真实刷新/严格重读，13旧工具未重标hash。最终独立T14及原完整任务继续，F07仍待批。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`；全部原baseline/首修后失败/最终9例/42原联合命令输出及当前12源/工具/探针文件hash入`f94110-implementation-audit.json` SHA256=`3aba2344361eae3b085fd39fe1941aeedd80e8b4f4eaecbd35a09b13b986efcf`；原三面完整反例`f94110-context-probe/result-final.json`=`da43facaf7d1d1bee582a18a388b73d768fdc19fefc74c03f4d717d51fd8789b`，target为登记可删cache。SD13部分候选`f94110-sd13-partial-candidate.md`=`bcd40f6596db2e538448ad6ff770b54270e9c90e377c813c7bd6c308bc28cf86`，未发布/未自签关闭。所有本轮进程终态，无live handle。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r7 | outcome:progress（F10最小修复已提交/42目标PASS，完整fresh结构诊断保真仍有具名F11待批） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6eaf693af169daa3108dd83921a66469edfcc48c | task_ids:T26部分，不勾选；T27待 | evidence:f94110-implementation-audit.json及f94110-context-probe/result-final.json | next_responsible_role:work其他独立required/证据；F11提案待答，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:76 | from:work | to:work | status:executing10/27 | outcome:progress（生产坐标修复/永久9例/原42目标与F11实际反证，未降目标） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6eaf693af169daa3108dd83921a66469edfcc48c | next:work独立未闭任务，F07/F11具名提案待批；F10授权有效不重问，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1911,4 +1927,6 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:75 | from:work只读�
 
 13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮519dd0d15/714P8F284U；第72轮当前a2b27fc66同完整判定，独立首例20P非全门，executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
 
-14. **F-941-10已获r7内phase授权（第75轮）**：用户对call_b5e7efa002154a8fbecf471a80b07029明确授权；已落实§5.13/T26/27/AC19/V37..40/SD13、executing10/27。下一步T26先红控后修复，尚未实现/关闭，不再等待或重复申请F10授权；F07仍独立待批。
+14. **F-941-10已获r7内phase授权（第75轮）**：用户对call_b5e7efa002154a8fbecf471a80b07029明确授权；已落实§5.13/T26/27/AC19/V37..40/SD13、executing10/27。第76轮6eaf693af已提交最小坐标修复，新9例/原42目标联合PASS，但F11诊断保真差异及T27当前身份闭包未闭，T26仍未勾选；不再等待或重复申请F10授权；F07仍独立待批。
+
+15. **F-941-11待裁定**：第76轮已确认CST期望游走把lambda头当普通括号，后续结构错可诊断到前一个合法lambda，且片段/整源与手写oracle的首诊断位置/message不符。最小phase提案与同源三面/合法控制、未改生产源码身份均在§9；依据§5.4等待具名授权。当前未改project/grammar，其他独立验收继续；F10原授权仍有效但不以新9P掩掉这条实际结构反例。
