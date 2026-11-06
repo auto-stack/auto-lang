@@ -13,7 +13,7 @@ fn mean(data: &[i64]) -> Option<f64> {
 }
 
 fn std_deviation(data: &[i64]) -> Option<f64> {
-    let data_mean = mean(data)?;
+    let data_mean = mean(&(data))?;
     let count = (data.len() as i64);
     let mut variance: f64 = 0.0;
     for val in &data {

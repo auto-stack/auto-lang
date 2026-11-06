@@ -1783,6 +1783,24 @@ impl Codegen {
         } else {
             self.stream_vars.remove(&name_str);
         }
+        // json.parse materializes dynamic VM values, although its historical
+        // rust_fn declaration returns String. Do not retain that declaration's
+        // inferred string type: a JSON field named `bytes` would dispatch to
+        // str.bytes instead of GET_FIELD and never reach the byte writer.
+        if matches!(store.ty, Type::Unknown) {
+            if let Expr::Call(call) = &store.expr {
+                if let Expr::Dot(base, method) = call.name.as_ref() {
+                    if matches!(base.as_ref(), Expr::Ident(module)
+                        if matches!(module.as_str(), "json" | "Json")
+                            && self.lookup_var(module.as_str()).is_none())
+                        && method == "parse"
+                    {
+                        self.var_types.insert(name_str, Type::Unknown);
+                        return;
+                    }
+                }
+            }
+        }
         // Plan 080: Track variable type for instance method support
         // Plan 198 Phase 4: Replaced 120-line hardcoded if-chain with resolve_constructor_type()
         if let Expr::Call(call) = &store.expr {

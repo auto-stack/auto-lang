@@ -2,6 +2,65 @@
 use super::*;
 
 impl RustTrans {
+    /// File bytes have three real Rust representations: typed Vec/slice,
+    /// dynamic JSON Value, and the legacy Vec<Value> (including empty lists).
+    /// Choose the boundary from the producer's type rather than literal shape.
+    fn emit_file_write_bytes(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        self.a2r_std_used.set(true);
+        let data = call.args.args.get(1).and_then(|arg| match arg {
+            Arg::Pos(expr) => Some(expr),
+            _ => None,
+        });
+        let ty = data.map(|expr| self.infer_type_from_expr(expr));
+        let json = data.is_some_and(|expr| {
+            self.expr_is_dynamic_json(expr) || self.expr_is_json_value_read(expr)
+        }) || ty.as_ref().is_some_and(Self::is_json_type);
+        let element = match &ty {
+            Some(Type::List(elem)) => Some(elem.as_ref()),
+            Some(Type::Slice(slice)) => Some(slice.elem.as_ref()),
+            Some(Type::Array(array)) => Some(array.elem.as_ref()),
+            _ => None,
+        };
+        let typed = element.is_some_and(|elem| !matches!(elem, Type::Unknown));
+        let helper = if json {
+            "write_bytes_json"
+        } else if typed {
+            "write_bytes_slice"
+        } else {
+            "write_bytes_list"
+        };
+        write!(out, "a2r_std::fs::{helper}(")?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            if let Arg::Pos(expr) = arg {
+                if i == 1 {
+                    if json || typed {
+                        write!(out, "&(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                    } else {
+                        // A concrete Vec<Value> result preserves inference for
+                        // [] through locals/branches, and does not move a source
+                        // list that the caller may use after writing it.
+                        write!(out, "(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ").to_vec()")?;
+                    }
+                } else {
+                    write!(out, "&(")?;
+                    self.expr(expr, out)?;
+                    write!(out, ")")?;
+                }
+            } else {
+                self.arg(arg, out)?;
+            }
+        }
+        write!(out, ")")?;
+        Ok(())
+    }
+
     /// PLAN-884 T-05：自 call_inner 顺序链按深度0语句边界原样迁入的分支族
     /// （审计图 attachments/884/t01-audit-call.md）。Miss=未命中落穿；
     /// Handled=已发射。首匹配序是 a2r 金样的载荷，不得重排。
@@ -652,25 +711,7 @@ impl RustTrans {
                                     return Ok(CallShape::Handled);
                                 }
                                 ("File", "write_bytes") => {
-                                    self.a2r_std_used.set(true);
-                                    write!(out, "a2r_std::fs::write_bytes_list(")?;
-                                    for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 {
-                                            write!(out, ", ")?;
-                                        }
-                                        if let Arg::Pos(expr) = arg {
-                                            if i == 1
-                                                && matches!(expr, Expr::Array(items) if items.is_empty())
-                                            {
-                                                write!(out, "Vec::<i64>::new()")?;
-                                            } else {
-                                                self.expr(expr, out)?;
-                                            }
-                                        } else {
-                                            self.arg(arg, out)?;
-                                        }
-                                    }
-                                    write!(out, ")")?;
+                                    self.emit_file_write_bytes(call, out)?;
                                     return Ok(CallShape::Handled);
                                 }
                                 ("env", "set") => {
@@ -1917,25 +1958,7 @@ impl RustTrans {
                                 return Ok(CallShape::Handled);
                             }
                             "write_bytes" => {
-                                self.a2r_std_used.set(true);
-                                write!(out, "a2r_std::fs::write_bytes_list(")?;
-                                for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 {
-                                        write!(out, ", ")?;
-                                    }
-                                    if let Arg::Pos(expr) = arg {
-                                        if i == 1
-                                            && matches!(expr, Expr::Array(items) if items.is_empty())
-                                        {
-                                            write!(out, "Vec::<i64>::new()")?;
-                                        } else {
-                                            self.expr(expr, out)?;
-                                        }
-                                    } else {
-                                        self.arg(arg, out)?;
-                                    }
-                                }
-                                write!(out, ")")?;
+                                self.emit_file_write_bytes(call, out)?;
                                 return Ok(CallShape::Handled);
                             }
                             // PLAN-687: chunked-read envelope — true chunked

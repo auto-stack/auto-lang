@@ -814,22 +814,34 @@ pub mod fs {
         std::fs::remove_dir(path.as_ref()).is_ok()
     }
 
-    /// Accept generated typed integer lists and dynamic JSON lists alike.
-    /// Validate every element before opening the target; bad
-    /// members must not be silently zeroed or truncate an existing file.
-    pub fn write_bytes_list<T: Into<serde_json::Value>>(
+    /// Keep the concrete list signature: it also constrains untyped empty
+    /// lists at generated call sites. All representations share validation.
+    pub fn write_bytes_list(path: impl AsRef<str>, data: Vec<serde_json::Value>) -> i64 {
+        write_byte_values(path.as_ref(), data.into_iter())
+    }
+
+    /// Typed arrays and borrowed language []T parameters need no ownership
+    /// transfer. Do not use this generic entry for unconstrained empty lists.
+    pub fn write_bytes_slice<T: Clone + Into<serde_json::Value>>(
         path: impl AsRef<str>,
-        data: Vec<T>,
+        data: &[T],
     ) -> i64 {
-        let bytes: Option<Vec<u8>> = data
-            .into_iter()
-            .map(|value| {
-                let value: serde_json::Value = value.into();
-                value.as_i64().map(|n| n as u8)
-            })
-            .collect();
+        write_byte_values(path.as_ref(), data.iter().cloned().map(Into::into))
+    }
+
+    /// json.parse produces a Value, not a Vec<Value>. Reject non-array input
+    /// before any filesystem operation, including null and malformed JSON.
+    pub fn write_bytes_json(path: impl AsRef<str>, data: &serde_json::Value) -> i64 {
+        match data.as_array() {
+            Some(values) => write_byte_values(path.as_ref(), values.iter().cloned()),
+            None => -1,
+        }
+    }
+
+    fn write_byte_values(path: &str, data: impl Iterator<Item = serde_json::Value>) -> i64 {
+        let bytes: Option<Vec<u8>> = data.map(|value| value.as_i64().map(|n| n as u8)).collect();
         match bytes {
-            Some(bytes) => ::a2r_std::fs::write_bytes(path.as_ref(), &bytes) as i64,
+            Some(bytes) => ::a2r_std::fs::write_bytes(path, &bytes) as i64,
             None => -1,
         }
     }
@@ -1402,7 +1414,10 @@ mod plan988_byte_tests {
         let typed = dir.path().join("typed.bin");
         let dynamic = dir.path().join("dynamic.bin");
         assert_eq!(
-            super::fs::write_bytes_list(typed.to_str().unwrap(), (0i64..=255).collect()),
+            super::fs::write_bytes_slice(
+                typed.to_str().unwrap(),
+                &(0i64..=255).collect::<Vec<_>>()
+            ),
             0
         );
         assert_eq!(
@@ -1443,7 +1458,7 @@ mod plan988_byte_tests {
         }
         // Preserve the existing Rust i64-to-u8 truncation for integer inputs.
         assert_eq!(
-            super::fs::write_bytes_list(path.to_str().unwrap(), vec![i64::MIN, i64::MAX, 256]),
+            super::fs::write_bytes_slice(path.to_str().unwrap(), &[i64::MIN, i64::MAX, 256]),
             0
         );
         assert_eq!(std::fs::read(&path).unwrap(), [0, 255, 0]);

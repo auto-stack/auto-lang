@@ -135,6 +135,30 @@ impl RustTrans {
         };
 
         for (i, arg) in call.args.args.iter().enumerate() {
+            // []T parameters are emitted as &[T]. Borrow arrays, locals and
+            // returned Vecs at the actual call boundary; passing an existing
+            // slice is also valid through Rust's reference coercion.
+            let slice_param = param_types
+                .as_ref()
+                .and_then(|types| types.get(i))
+                .is_some_and(|ty| matches!(ty, Type::Slice(_)));
+            let mutable_param = mut_param_flags
+                .as_ref()
+                .and_then(|flags| flags.get(i))
+                .copied()
+                .unwrap_or(false);
+            if slice_param && !mutable_param {
+                if let Arg::Pos(expr) = arg {
+                    write!(out, "&(")?;
+                    self.expr(expr, out)?;
+                    write!(out, ")")?;
+                    if i + 1 < call.args.args.len() {
+                        write!(out, ", ")?;
+                    }
+                    continue;
+                }
+            }
+
             let is_str_param = str_flags
                 .as_ref()
                 .and_then(|f| f.get(i))
@@ -886,7 +910,6 @@ impl RustTrans {
         Ok(CallShape::Handled)
     }
 }
-
 
 impl RustTrans {
     /// PLAN-914: detect a FULLY-NAMED direct call whose argument names are
