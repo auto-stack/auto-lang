@@ -1131,6 +1131,14 @@ where
         &toolchain.value,
         resources,
     )?;
+    let canonical_size = query.value.canonical_len().ok_or_else(|| {
+        StoreError::ResourceExhausted("C cache canonical key size overflow".into())
+    })?;
+    // The shared store creates one exact canonical String, either for its
+    // SQL parameter or for the returned Conflict. Retain its separate fee
+    // until that last owner is gone; key components remain charged above.
+    let canonical_allocation = reserve_c_metadata(resources, canonical_size)
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache canonical key: {e}")))?;
     let (payload, encoded_allocation) = if let Some(resources) = resources {
         let size = ace_foreign_contract::codec::json_size(&entry, 64 << 20).map_err(|e| {
             StoreError::ResourceExhausted(format!("C cache entry encode size: {e}"))
@@ -1185,7 +1193,12 @@ where
     drop(key_allocation);
     match stored {
         Ok(_) => Ok((obj, false)),
-        Err(StoreError::Conflict { .. }) => {
+        Err(conflict @ StoreError::Conflict { .. }) => {
+            // Ignoring a scrutinee's fields can keep them alive through the
+            // arm. Explicitly drop the canonical error text before its fee
+            // and before re-discovery allocates a different candidate.
+            drop(conflict);
+            drop(canonical_allocation);
             // Same generation identity, different bytes: cl objects
             // embed a compile timestamp, so this is a CONCURRENT compile
             // race (a legal recompile after an applicability change now

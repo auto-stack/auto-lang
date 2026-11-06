@@ -6,6 +6,15 @@ use std::{
     cell::{Cell, RefCell},
 };
 struct Allocator;
+struct LayoutPressure {
+    size: usize,
+    remaining: usize,
+    resources: ace_source_query::resources::Resources,
+    active: bool,
+    triggered: bool,
+    failed: bool,
+    allocation: Option<ace_source_query::resources::Reservation>,
+}
 // Compile the private production implementation under this target's allocator;
 // no public testing hook or alternate path algorithm is introduced.
 #[path = "../src/cache_paths.rs"]
@@ -17,6 +26,7 @@ mod ctool_dependencies;
 #[path = "../src/ctool_text.rs"]
 mod ctool_text;
 thread_local! {
+    static LAYOUT_PRESSURE: RefCell<Option<LayoutPressure>> = const { RefCell::new(None) };
     static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
     static TRACK_HEAP: Cell<bool> = const { Cell::new(false) };
@@ -28,6 +38,73 @@ thread_local! {
     static RESIDENT_HITS: Cell<usize> = const { Cell::new(0) };
     static RESIDENT_ADMITTED: Cell<bool> = const { Cell::new(true) };
 }
+fn apply_layout_pressure(size: usize) {
+    let _ = LAYOUT_PRESSURE.try_with(|slot| {
+        // Release this borrow before touching Resources: allocator callbacks
+        // can nest. Mark first so that none can apply the pressure twice.
+        let action = slot.try_borrow_mut().ok().and_then(|mut state| {
+            let state = state.as_mut()?;
+            if !state.active || state.triggered || state.size != size {
+                return None;
+            }
+            state.triggered = true;
+            Some((state.resources.clone(), state.remaining))
+        });
+        if let Some((resources, remaining)) = action {
+            let current = resources.stats().current;
+            let available = (8usize << 20)
+                .saturating_sub(current.index)
+                .min((48usize << 20).saturating_sub(current.total().unwrap_or(usize::MAX)));
+            let allocation = available.checked_sub(remaining).and_then(|bytes| {
+                resources
+                    .reserve(ace_source_query::resources::Charge::index(bytes))
+                    .ok()
+            });
+            if let Ok(mut state) = slot.try_borrow_mut() {
+                if let Some(state) = state.as_mut() {
+                    state.failed = allocation.is_none();
+                    state.allocation = allocation;
+                }
+            }
+        }
+    });
+}
+fn with_layout_pressure<T>(
+    size: usize,
+    remaining: usize,
+    resources: &ace_source_query::resources::Resources,
+    f: impl FnOnce() -> T,
+) -> (T, bool) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            LAYOUT_PRESSURE.with(|state| {
+                state.borrow_mut().take();
+            });
+        }
+    }
+    LAYOUT_PRESSURE.with(|state| {
+        assert!(state.borrow().is_none());
+        *state.borrow_mut() = Some(LayoutPressure {
+            size,
+            remaining,
+            resources: resources.clone(),
+            active: false,
+            triggered: false,
+            failed: false,
+            allocation: None,
+        });
+    });
+    let reset = Reset;
+    let value = f();
+    let applied = LAYOUT_PRESSURE.with(|state| {
+        let state = state.borrow();
+        let state = state.as_ref().unwrap();
+        state.triggered && !state.failed
+    });
+    drop(reset);
+    (value, applied)
+}
 fn observe(size: usize) {
     let _ = THRESHOLD.try_with(|threshold| {
         if size >= threshold.get() {
@@ -37,6 +114,7 @@ fn observe(size: usize) {
 }
 fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
     if !ptr.is_null() {
+        apply_layout_pressure(size);
         let _ = RESIDENT_PROBE.try_with(|probe| {
             let probe = probe.borrow();
             if let Some((expected_size, resources, minimum)) = &*probe {
@@ -730,6 +808,113 @@ mod source_foreign {
                 String::from_utf8_lossy(&run.stderr)
             );
         }
+    }
+
+    #[test]
+    fn c_cache_canonical_text_admission_precedes_store_publication_and_repairs() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _, _) = fixture("c-canonical-admission");
+        let source = root.join("provider.c");
+        let artifacts = [root.join("provider.obj")];
+        let header = root.join("source_foreign938.h");
+        let store = ManagedStore::open(&root.with_extension("store")).unwrap();
+        let source_identity = ace_abi::cache::c_source_identity(&source).unwrap();
+        // Generation is always the original 64-byte digest; its content does
+        // not affect the canonical output length. Compute the expected layout
+        // via the public legacy key, outside the observed production window.
+        let standin = ace_abi::cache::c_object_key(&source_identity, &"00".repeat(32));
+        let canonical = standin.canonical_len().unwrap();
+        let resources = Resources::default();
+        let produced_bytes = bytes.clone();
+        let deps = vec![header.clone()];
+        let ((denied, text_allocations, _), applied) = with_layout_pressure(
+            5 * std::mem::size_of::<(String, String)>(),
+            canonical - 1,
+            &resources,
+            || {
+                with_charge_probe(canonical, &resources, Charge::default(), || {
+                    ace_abi::cache::produce_c_object_with_resources(
+                        &store,
+                        &source,
+                        &root,
+                        &artifacts,
+                        &resources,
+                        || {
+                            // Apply pressure at the next fixed key-array
+                            // allocation, after its entire key fee was paid.
+                            LAYOUT_PRESSURE
+                                .with(|state| state.borrow_mut().as_mut().unwrap().active = true);
+                            Ok((produced_bytes, deps))
+                        },
+                    )
+                })
+            },
+        );
+        assert!(applied, "did not reach the admitted key allocation");
+        let published = store
+            .db()
+            .query_row("SELECT COUNT(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        eprintln!("canonical boundary: accepted={} text_allocations={text_allocations} published={published} expected_text_bytes={canonical}", denied.is_ok());
+        assert!(
+            matches!(denied, Err(StoreError::ResourceExhausted(ref message)) if message.contains("canonical key")),
+            "canonical output was not rejected at its admission boundary"
+        );
+        assert_eq!(
+            text_allocations, 0,
+            "store allocated canonical text before admission"
+        );
+        assert_eq!(published, 0, "resource refusal published an artifact");
+        assert_eq!(store.space().blocks, 0);
+        assert_eq!(resources.stats().current.io, 0);
+        let mut produced = 0;
+        let ((repaired, text_allocations, admitted), applied) = with_layout_pressure(
+            5 * std::mem::size_of::<(String, String)>(),
+            canonical,
+            &resources,
+            || {
+                with_charge_probe(canonical, &resources, Charge::index(8 << 20), || {
+                    ace_abi::cache::produce_c_object_with_resources(
+                        &store,
+                        &source,
+                        &root,
+                        &artifacts,
+                        &resources,
+                        || {
+                            produced += 1;
+                            LAYOUT_PRESSURE
+                                .with(|state| state.borrow_mut().as_mut().unwrap().active = true);
+                            Ok((bytes.clone(), vec![header]))
+                        },
+                    )
+                })
+            },
+        );
+        let (repaired, hit) = repaired.unwrap();
+        assert!(applied);
+        assert_eq!(
+            text_allocations, 1,
+            "did not observe the store's canonical text allocation"
+        );
+        assert!(
+            admitted,
+            "store text allocated after its reservation was released"
+        );
+        assert!(!hit);
+        assert_eq!(produced, 1);
+        assert_eq!(repaired, bytes);
+        let (cached, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("repaired canonical publication was not reusable"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(cached, bytes);
     }
 
     #[test]
