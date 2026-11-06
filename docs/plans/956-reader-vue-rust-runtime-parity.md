@@ -4,8 +4,8 @@ status: executing
 feature_name: Reader Vue Rust backend parity
 created_at: 2026-11-06
 updated_at: 2026-11-06
-plan_revision: 3
-current_step: 2
+plan_revision: 4
+current_step: 3
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/trans/rust-semantic-admission.md, docs/specs/stdlib/design/primitive-type-of.md, docs/specs/stdlib/design/primitive-str-byte-len.md, docs/specs/auto-vm/zip-natives.md]
 new_spec_components: []
@@ -39,7 +39,7 @@ T04 双轨永久对拍与真实默认Vue+Rust运行/生产构建。
 | SD01 | modify | docs/specs/auto-lang/trans/rust-semantic-admission.md | type_of/Reader原先VM-only边界按实际完成能力更新；严格未知符号不变 | Rust真实支持 | AC01/02 |
 | SD02 | modify | docs/specs/stdlib/design/primitive-type-of.md, primitive-str-byte-len.md; docs/specs/auto-vm/zip-natives.md | type_of 原生Rust/宽整数；字节索引迁移；共享纯Rust ZIP | 双轨合同 | AC02/04 |
 | SD03 | modify | auto-web/docs/specs/http-contracts.md | 多路径捕获按路由顺序/精确名称 | 实际文件端点 | AC01/03 |
-| SD04 | modify | auto-ui/docs/specs/runtime/document-surface-boundary.md | strict schema 登记既有宿主 leaf，原生 feature/partial 边界保留 | 默认前端构建 | AC04 |
+| SD04 | modify | auto-ui/docs/specs/runtime/document-surface-boundary.md; docs/specs/build/desktop-api-surfaces.md | strict schema 与既有宿主 leaf；Cargo 构建先于 ready、原生发布镜像从应用根运行 | 默认前端构建/冷启动 | AC01/04 |
 | SD05 | modify | auto-reader/docs/specs/reader/real-library.md | 默认Rust、显式类型/修改约定、保留旧ph1的i32回绕定义、永久HTTP门 | 已有数据兼容 | AC01/03 |
 ## 6. 测试设计
 V01：真实Reader生成物cargo check/build及原生server ready+42routes，HTTP不是VM进程；无AUTO_A2R_BODY=0/scaffold绕过。
@@ -51,8 +51,8 @@ V04：必要完整固定组至少a2r、a2r-std、auto-generation-core与实际�
 AC01~05均须真实通过；只生成Rust或只过compile不满足行为一致。新旧tool/源码身份绑定，失败不记PASS。
 ## 8. 执行步骤
 - [x] T01(work) 真实缺口清单与机制决策。
-- [ ] T02(work) 语言/标准库能力修复与永久原语反例。
-- [ ] T03(work) RustAPI实际生成/构建/启动。
+- [x] T02(work) 语言/标准库能力修复与永久原语反例。
+- [x] T03(work) RustAPI实际生成/构建/启动。
 - [ ] T04(work) Reader双轨对拍/重启/前端构建。
 - [ ] T05(review) 冻结最终验收与规范复核。
 - [ ] T06(merge) 完整职责门、合入与安全收尾。
@@ -70,3 +70,13 @@ r2 有界扩展：实际严格前端构建遇到既有 doc-surface 未登记（9
 r3 运行实证：generate-rust-06 + rust-build-04 已真实构建完整 Rust API。parity-01 发现可选 null 拼接被误写为文本 null；按 VM 的 null 拼接可捕获 TypeError 修复。parity-02 发现 ph1 依赖 VM int 32 位回绕，不能改已有身份；Reader 纯 .at 安全分解运算保留该定义，独立 Python 数学 oracle 与旧 VM 三夹具黄金值完全一致。parity-03：40 HTTP case + 42 route 清单 + 冷重启 + 23 个持久化文件字节一致，仅规范化 ID/时钟/隔离根/导出文件名。该轮为开发实证，格式化/最终提交后重跑。
 类型谓词保留原规范 JSON 数组 object 标签；补齐原先未分类的 VM i64/u64/BigInt 整数标签到 int，直接纳入双轨值域测试。types-parity-01 首次暴露旧byte_len测试i32/i64比较未扩大，已无损修正；02单测执行绿但期间继续修订源，身份门无效，待冻结完整组。
 前端严格校验已越过 doc-surface；默认完整构建先因 JsonValue 参数被误选 as_int_str 触发签名证据门，已修正 Value 分派，保留门而不降级。CLI 自动创建 deps 链接，不再在 worktree 继续做前端包安装；使用 scope 下经69文件逐SHA核对的 default-consumer 快照做真实默认入口复验，产物仍归同一scope。已有工作树自动生成deps链接需具名保留/安全处理，禁止递归穿透。
+
+### r4 冻结门与默认冷启动收口
+- Lang 功能冻结 58a1dcb9206a9b747cd18225002557a5b8e60fd8（92320ae4 后仅补新模块指纹登记与三行借用金样）；Web 0550aadd8be9362c89487ffcc0864842c13b85d5。
+- frozen-groups-01：首次红四项。F01 dynamic_json.rs 漏显式 Vm provider 登记（BUILD_INPUTS 虽已有闭包，域目录完整性门仍要求具名登记），已补；F02 三行文字金样变化分别为 String loop owned coercion、&String comparison as_str、Version::parse 显式借用，逐行审查后只更新三行，不改测试源/oracle意图。
+- frozen-groups-02：cargo t a2r a2r-std stdlib vm api http auto-generation-core；gate_passed=true、source/config/inputs 未漂移；1508 + 115 + 32 = 1655 实际执行全绿，原 ignored 保留。279.82s 整命令；准备/执行明细随最终收据折叠。额外 core-value-helper-frozen-02：1/1 PASS，gate_passed=true。
+- Web api_gen 单元53 PASS、1原ignored。UI schema_loader 7 PASS；扩大 auto-ui-compiler lib 为1144 PASS/3 FAIL/2 ignored。F03 三红为原生Rust UI前端（非Rust API）：outlet_multi_route_loud_reject / test_bare_popover_point_anchor_codegen / test_display_family_codegen_arm_fixture。用 UI eff9ece3 源归档 + main Lang 基线（a786/523之间仅941簿记）重放 rust子集77 PASS/同3 FAIL/2 ignored；三份生成码 SHA 完全相同（0a34bee7、9bc95722、9b13aa98），判既有外围问题，作为auto-ui候选债，不弱化断言。
+- 严格真实 auto build -r vue 已成功，vite生产打包8.77s；无lenient，无server覆盖。副本69输入逐文件SHA与产品源一致。
+- F04 默认 CLI 冷启动首次红：start_api_server 把Cargo冷构建算入120秒ready，编译中被杀，不能以热缓存重跑当作关闭。F05 同查发现服务cwd为生成工作区，Reader相对引擎资产应按应用根。r4必要运行时修复：复用既有Cargo JSON artifact与发布设施，先构建（既有build/cancel预算）再启动成员自有原生镜像、再开始原120s ready；构建cwd保持workspace，运行cwd改应用根；保留人类compiler diagnostics，启动错误直接传播。UI提交59b725b754c6c35ae3862092a1891e4b61777ed0。
+- 新增UI实际Cargo build/publish/错误旧镜像负控1/1 PASS；Reader永久冷启动/相对资产/原生监听/真实Vue页面驱动 vue_rust_default.py（9a347c3）；全新目标根复验待完成。双轨门补段落锚、emoji+CRLF/UTF16锚、ID形状和时钟类型约束，不能靠规范化掩盖无效ID/恒零新书时钟。
+当前仍 executing：T04 的冷启动/浏览器与最终46-case对拍尚未完结，不签发review pass。
