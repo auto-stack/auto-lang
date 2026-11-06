@@ -1466,10 +1466,12 @@ pub fn lower_function_unit(
 }
 
 /// The same unit lowering with pre-allocation admission for the emitted
-/// instruction and source-span arrays. The callback receives their combined
-/// live capacity (including old/new buffer coexistence while growing). The
-/// caller retains its ticket through the returned MIR's last use. Other MIR
-/// tables and lowering workspace keep their own admission responsibilities.
+/// instruction/span/block/slot arrays and traversal indices. The callback
+/// receives their combined live capacity, including old/new buffers while
+/// growing and all three slot arrays during the final merge. Traversal fees
+/// are released after their owners drop; the caller retains the remaining
+/// ticket through the returned MIR's last use. Module tables, call metadata
+/// and other profile-specific workspace retain their admission obligations.
 pub fn lower_function_unit_with_emission_reservation(
     bundle: &hir::Bundle,
     def_id_text: &str,
@@ -2467,15 +2469,27 @@ fn grow_emission<T>(
     if values.len() < values.capacity() {
         return Ok(());
     }
-    let overflow = || AdapterError::resource("emission capacity overflow".into());
-    let old = values
-        .capacity()
-        .checked_mul(std::mem::size_of::<T>())
-        .ok_or_else(overflow)?;
     let capacity = values
         .capacity()
         .checked_mul(2)
         .map(|n| n.max(4))
+        .ok_or_else(|| AdapterError::resource("emission capacity overflow".into()))?;
+    reserve_emission_capacity(values, capacity, live, reserve)
+}
+
+fn reserve_emission_capacity<T>(
+    values: &mut Vec<T>,
+    capacity: usize,
+    live: &mut usize,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<(), AdapterError> {
+    if capacity <= values.capacity() {
+        return Ok(());
+    }
+    let overflow = || AdapterError::resource("emission capacity overflow".into());
+    let old = values
+        .capacity()
+        .checked_mul(std::mem::size_of::<T>())
         .ok_or_else(overflow)?;
     let bytes = capacity
         .checked_mul(std::mem::size_of::<T>())
@@ -2489,6 +2503,20 @@ fn grow_emission<T>(
     *live = temporary - old;
     reserve(*live).map_err(AdapterError::resource)?;
     Ok(())
+}
+
+fn emission_vec<T>(
+    capacity: usize,
+    live: &mut usize,
+    reserve: &mut Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+) -> Result<Vec<T>, AdapterError> {
+    if let Some(reserve) = reserve {
+        let mut values = Vec::new();
+        reserve_emission_capacity(&mut values, capacity, live, *reserve)?;
+        Ok(values)
+    } else {
+        Ok(Vec::with_capacity(capacity))
+    }
 }
 
 struct FnLower<'a, 'budget> {
@@ -2562,6 +2590,14 @@ struct FnLower<'a, 'budget> {
 }
 
 impl<'a, 'budget> FnLower<'a, 'budget> {
+    fn push_task(&mut self, stack: &mut Vec<Task>, task: Task) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(stack, &mut self.emission_bytes, *reserve)?;
+        }
+        stack.push(task);
+        Ok(())
+    }
+
     /// The HIR TypeUse of an expression (declared type).
     fn expr_ty_hir(&self, eid: hir::ExprId) -> Result<hir::TypeUse, AdapterError> {
         self.body
@@ -2651,14 +2687,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         }
     }
 
-    fn new_block(&mut self) -> BlockId {
+    fn new_block(&mut self) -> Result<BlockId, AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.blocks, &mut self.emission_bytes, *reserve)?;
+        }
         self.blocks.push(MirBlock {
             instrs: vec![],
             // Placeholder; every created block is the target of exactly one
             // task and receives a real terminator before the walk ends.
             term: Terminator::Jump { target: u32::MAX },
         });
-        (self.blocks.len() - 1) as BlockId
+        Ok((self.blocks.len() - 1) as BlockId)
     }
 
     fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
@@ -2681,13 +2720,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
     }
 
     /// Allocate (once) the join block of an on-demand join cell.
-    fn join_block(&mut self, slot: usize) -> BlockId {
+    fn join_block(&mut self, slot: usize) -> Result<BlockId, AdapterError> {
         if let Some(b) = self.pending_joins[slot] {
-            return b;
+            return Ok(b);
         }
-        let b = self.new_block();
+        let b = self.new_block()?;
         self.pending_joins[slot] = Some(b);
-        b
+        Ok(b)
     }
 
     fn set_term(&mut self, term: Terminator) {
@@ -2698,7 +2737,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         }
     }
 
-    fn temp(&mut self, shape: ScalarShape) -> SlotId {
+    fn temp(&mut self, shape: ScalarShape) -> Result<SlotId, AdapterError> {
         let ty = match shape {
             ScalarShape::I32 => self.t_i32,
             ScalarShape::Bool => self.t_bool,
@@ -2709,14 +2748,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
 
     /// Allocate a temp slot of an arbitrary (possibly record) MIR type.
     /// A temp of an already-interned type index (write-back unwrap).
-    fn temp_ty_from_cache(&mut self, ty: TypeIdx) -> SlotId {
-        let idx = self.base_slots as usize + self.extra_slots.len();
-        self.extra_slots.push(MirSlot {
-            kind: SlotKind::Temp,
-            ty,
-            name: None,
-        });
-        idx as SlotId
+    fn temp_ty_from_cache(&mut self, ty: TypeIdx) -> Result<SlotId, AdapterError> {
+        self.temp_ty(ty)
     }
 
     /// R3-F08: text receivers take a VIEW. An owned-Str operand (e.g. an
@@ -2732,7 +2765,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         let src_ty = self.expr_ty(*operand)?;
         if matches!(self.out.types.get(src_ty as usize), Some(MirType::Str)) {
             let view_ty = self.out.intern_type(MirType::StrView);
-            let view = self.temp_ty_from_cache(view_ty);
+            let view = self.temp_ty_from_cache(view_ty)?;
             let sp = None;
             self.emit(MirInstr::View { dst: view, src: v }, sp)?;
             Ok(view)
@@ -2822,14 +2855,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         }
     }
 
-    fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
+    fn temp_ty(&mut self, ty: TypeIdx) -> Result<SlotId, AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.extra_slots, &mut self.emission_bytes, *reserve)?;
+        }
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
         self.extra_slots.push(MirSlot {
             kind: SlotKind::Temp,
             ty,
             name: None,
         });
-        idx
+        Ok(idx)
     }
 
     /// End every StrView TEMP minted since the statement watermark (774
@@ -2863,7 +2899,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
     /// PLAN-909: a fresh i32 constant slot holding the cell element index
     /// (single-element cells read/write index 0).
     fn cell_index_slot(&mut self, t_i32: TypeIdx) -> Result<SlotId, AdapterError> {
-        let idx = self.temp_ty(t_i32);
+        let idx = self.temp_ty(t_i32)?;
         let c = self.const_i32(0);
         self.emit(MirInstr::Const { dst: idx, value: c }, None)?;
         Ok(idx)
@@ -2968,7 +3004,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     // PLAN-909: a cell read observes the CURRENT shared
                     // value (never a snapshot): LIST_GET element 0 of the
                     // creator/callee-shared buffer.
-                    let dst = self.temp_ty(ty);
+                    let dst = self.temp_ty(ty)?;
                     let index = self.cell_index_slot(self.t_i32)?;
                     self.emit(
                         MirInstr::ListGet {
@@ -2988,9 +3024,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             // to write). `verify_mir` treats Unit slots as initialized by
             // width and admits this slot only as the Unit entry's return
             // operand.
-            hir::ExprKind::Unit => Ok(self.temp_ty(ty)),
+            hir::ExprKind::Unit => Ok(self.temp_ty(ty)?),
             hir::ExprKind::Constant { value } => {
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let c = self.const_i32(*value);
                 self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
@@ -3001,7 +3037,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // dispatch as the str ops.
                 let l = self.text_view_operand(lhs, depth + 1)?;
                 let r = self.text_view_operand(rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrCmp {
                         eq: matches!(op, hir::BinOp::Eq),
@@ -3016,7 +3052,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let mop = map_binop(*op)?;
                 self.emit(
                     MirInstr::Bin {
@@ -3031,7 +3067,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::Unary { op, operand } => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let mop = match op {
                     hir::UnaryOp::NegI32 => UnOp::NegI32,
                     hir::UnaryOp::NotBool => UnOp::NotBool,
@@ -3049,10 +3085,10 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // Short-circuit: the result slot is defined in BOTH arms.
                 let l = self.eval_expr(*lhs, depth + 1)?;
-                let result = self.temp(ScalarShape::Bool);
-                let rhs_b = self.new_block();
-                let skip_b = self.new_block();
-                let join = self.new_block();
+                let result = self.temp(ScalarShape::Bool)?;
+                let rhs_b = self.new_block()?;
+                let skip_b = self.new_block()?;
+                let join = self.new_block()?;
                 let (then_b, else_b) = match op {
                     hir::LogicOp::And => (rhs_b, skip_b),
                     hir::LogicOp::Or => (skip_b, rhs_b),
@@ -3109,7 +3145,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     for binding in bindings {
                         actuals[binding.param as usize] = arg_slots[binding.arg as usize];
                     }
-                    let dst = self.temp_ty(ty);
+                    let dst = self.temp_ty(ty)?;
                     self.emit(
                         MirInstr::ForeignCall {
                             declaration: Box::new(declaration),
@@ -3162,7 +3198,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     let symbol = self.out.imports[imp as usize].symbol.clone();
                     if !symbol.starts_with("fn:") {
                         // Test marks: trace event + frozen i32 result.
-                        let dst = self.temp_ty(self.t_i32);
+                        let dst = self.temp_ty(self.t_i32)?;
                         let (event, value) = match symbol.as_str() {
                             "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
                             "hir.test.mark_b" => (TraceEvent::MarkB, 2),
@@ -3302,7 +3338,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 if let Some((wrap_ty, fields)) = wrapper_fields {
                     // The call result IS the wrapper: dst gets the WRAPPER
                     // type; then f0 = the source result, wb* write back.
-                    let wrap_dst = self.temp_ty_from_cache(wrap_ty);
+                    let wrap_dst = self.temp_ty_from_cache(wrap_ty)?;
                     self.emit(
                         MirInstr::Call {
                             callee: callee_ref,
@@ -3317,7 +3353,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     // ownership exit (R3-F08: FieldGet of a Str field only
                     // ever mints a view).
                     let f0_owned = ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
-                    let v = self.temp_ty(ty);
+                    let v = self.temp_ty(ty)?;
                     if f0_owned {
                         self.emit(
                             MirInstr::FieldMove {
@@ -3347,7 +3383,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     // wrapper's field count).
                     let mut wb_idx = 1usize;
                     for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
-                        let back = self.temp_ty_from_cache(fields[wb_idx].ty);
+                        let back = self.temp_ty_from_cache(fields[wb_idx].ty)?;
                         // PLAN-881 V-09: a COPYABLE wb field copies out and
                         // copies back (data profile / copyable records on
                         // owned); an owned one keeps the transfer pair.
@@ -3408,7 +3444,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     );
                     return Ok(v);
                 }
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::Call {
                         callee: callee_ref,
@@ -3427,7 +3463,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 for arg in eval_args {
                     args.push(self.eval_expr(*arg, depth + 1)?);
                 }
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::CallClosure { dst, closure, args }, sp)?;
                 Ok(dst)
             }
@@ -3489,7 +3525,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 // WRITES it, the snapshot seeds a fresh
                                 // PRIVATE cell the env alone owns.
                                 let elem = self.cell_elem_of(source_ty).unwrap_or(source_ty);
-                                let value = self.temp_ty_from_cache(elem);
+                                let value = self.temp_ty_from_cache(elem)?;
                                 let index = self.cell_index_slot(self.t_i32)?;
                                 self.emit(
                                     MirInstr::ListGet {
@@ -3500,7 +3536,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     sp,
                                 )?;
                                 if child_writes {
-                                    let cell = self.temp_ty(source_ty);
+                                    let cell = self.temp_ty(source_ty)?;
                                     self.emit(
                                         MirInstr::ListNew {
                                             dst: cell,
@@ -3527,7 +3563,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 // scalar into a FRESH one-element list the
                                 // environment alone owns; the source stays
                                 // live and is never written back.
-                                let copied = self.temp_ty_from_cache(source_ty);
+                                let copied = self.temp_ty_from_cache(source_ty)?;
                                 self.emit(
                                     MirInstr::Copy {
                                         dst: copied,
@@ -3538,7 +3574,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 let cell_ty = self.out.intern_type(MirType::List(
                                     ace_av_core::mir::ListTypeRef { elem: source_ty },
                                 ));
-                                let cell = self.temp_ty(cell_ty);
+                                let cell = self.temp_ty(cell_ty)?;
                                 self.emit(
                                     MirInstr::ListNew {
                                         dst: cell,
@@ -3565,7 +3601,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 // a fresh temp, then transfer that temp into
                                 // the closure env so CREATE_CLOSURE retains
                                 // one uniform ownership contract.
-                                let copied = self.temp_ty_from_cache(source_ty);
+                                let copied = self.temp_ty_from_cache(source_ty)?;
                                 self.emit(
                                     MirInstr::Copy {
                                         dst: copied,
@@ -3584,7 +3620,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     };
                     operands.push(CaptureOperand { kind, src: source });
                 }
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::CreateClosure {
                         dst,
@@ -3600,7 +3636,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // Destination kind follows the expression's HIR type: an
                 // owning context materializes a fresh buffer; a borrowing
                 // context gets the immortal static view (770).
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let c = self
                     .out
                     .intern_const(MirConst::Str(value.as_bytes().to_vec().into_boxed_slice()));
@@ -3608,7 +3644,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 Ok(dst)
             }
             hir::ExprKind::CharLit { scalar } if self.owned => {
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let ch = char::from_u32(*scalar).ok_or_else(|| {
                     AdapterError::inv(
                         "lower.char-domain",
@@ -3621,20 +3657,20 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::TextLen { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextLenBytes { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::StrLenBytes { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextCharAt { operand, index } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrCharAt {
                         dst,
@@ -3653,7 +3689,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let v = self.text_view_operand(operand, depth)?;
                 let a = self.eval_expr(*start, depth + 1)?;
                 let b = self.eval_expr(*end, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrSlice {
                         dst,
@@ -3671,7 +3707,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // first, the same dispatch as the str ops.
                 let l = self.text_view_operand(lhs, depth + 1)?;
                 let r = self.text_view_operand(rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrConcat {
                         dst,
@@ -3691,7 +3727,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // owned copy of its range (770 AP-2 over both receivers).
                 let src_ty = self.expr_ty(*operand)?;
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::StrView) => {
                         self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
@@ -3704,13 +3740,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::ClosureClone { operand } if self.out.is_closures_profile() => {
                 let src = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::Clone { dst, src }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToOwned { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                 Ok(dst)
             }
@@ -3719,7 +3755,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // view it is the identity borrow (a legal view share).
                 let src_ty = self.expr_ty(*operand)?;
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::Str) => {
                         self.emit(MirInstr::View { dst, src: v }, sp)?;
@@ -3732,20 +3768,20 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::CharToCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CharFromCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::RecordClone { base, .. } if self.owned => {
                 let v = self.eval_expr(*base, depth + 1)?;
                 let src_ty = self.slot_ty_all(v);
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 // PLAN-871 T-05 gap (782 TP02): the base of a record clone can
                 // be a READ-ONLY VIEW — a plain `t: Tok` parameter is typed as
                 // `RecordView` (R1-F08). CLONE requires an owned value, so a
@@ -3769,7 +3805,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             // comes from `StrToOwned` over that view.
                             if matches!(self.out.types.get(f.ty as usize), Some(MirType::Str)) {
                                 let str_view_t = self.out.intern_type(MirType::StrView);
-                                let view = self.temp_ty(str_view_t);
+                                let view = self.temp_ty(str_view_t)?;
                                 self.emit(
                                     MirInstr::FieldGet {
                                         dst: view,
@@ -3778,7 +3814,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     },
                                     sp,
                                 )?;
-                                let owned = self.temp_ty(f.ty);
+                                let owned = self.temp_ty(f.ty)?;
                                 self.emit(MirInstr::StrToOwned { dst: owned, view }, sp)?;
                                 operands.push(owned);
                                 continue;
@@ -3799,7 +3835,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     ),
                                 ));
                             }
-                            let got = self.temp_ty(f.ty);
+                            let got = self.temp_ty(f.ty)?;
                             self.emit(
                                 MirInstr::FieldGet {
                                     dst: got,
@@ -3833,7 +3869,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 match &self.body.exprs[inner.0 as usize].kind {
                     hir::ExprKind::ReadLocal { local } => {
                         let src = self.slot_of_local[local.0 as usize];
-                        let dst = self.temp_ty(ty);
+                        let dst = self.temp_ty(ty)?;
                         self.emit(MirInstr::Move { dst, src }, sp)?;
                         Ok(dst)
                     }
@@ -3873,7 +3909,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         )
                     })?;
                 let ty = self.slot_ty_cache[slot as usize];
-                let tmp = self.temp_ty(ty);
+                let tmp = self.temp_ty(ty)?;
                 self.mut_borrow_temps.push((tmp, slot));
                 let owned_ty = ace_av_core::ownership::type_is_owned(self.out, ty);
                 if owned_ty {
@@ -3928,7 +3964,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         matches!(self.out.types.get(t as usize), Some(MirType::Record(_)))
                             && !ace_av_core::ownership::type_is_owned(self.out, t);
                     if copyable_record {
-                        let snap = self.temp_ty(t);
+                        let snap = self.temp_ty(t)?;
                         self.emit(MirInstr::Copy { dst: snap, src: s }, sp)?;
                         arg_slots.push(snap);
                     } else {
@@ -4000,7 +4036,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     }
                     operands[b.field as usize] = arg_slots[b.arg as usize];
                 }
-                let dst = self.temp_ty(rec_ty);
+                let dst = self.temp_ty(rec_ty)?;
                 self.emit(
                     MirInstr::Aggregate {
                         dst,
@@ -4014,7 +4050,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             // -- PLAN-864 collections surface ------------------------------
             hir::ExprKind::ListNew { list } if self.collections() => {
                 let ty = self.expr_ty(eid)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListNew {
                         dst,
@@ -4027,7 +4063,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::ListLen { list } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::ListLen { dst, src: l }, sp)?;
                 Ok(dst)
             }
@@ -4080,7 +4116,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 }
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListGet {
                         dst,
@@ -4094,7 +4130,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::ExprKind::ListRemove { list, index } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst,
@@ -4130,15 +4166,15 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let owned_elem = self.hir_elem_owned(*list)?;
                 let t_i32 = self.out.intern_type(MirType::I32);
                 let t_bool = self.out.intern_type(MirType::Bool);
-                let header = self.new_block();
-                let body_b = self.new_block();
-                let exit_b = self.new_block();
+                let header = self.new_block()?;
+                let body_b = self.new_block()?;
+                let exit_b = self.new_block()?;
                 self.set_term(Terminator::Jump { target: header });
                 self.cur = header;
                 self.terminated = false;
-                let n = self.temp_ty(t_i32);
+                let n = self.temp_ty(t_i32)?;
                 self.emit(MirInstr::ListLen { dst: n, src: l }, sp)?;
-                let zero = self.temp_ty(t_i32);
+                let zero = self.temp_ty(t_i32)?;
                 let c0 = self.out.intern_const(MirConst::I32(0));
                 self.emit(
                     MirInstr::Const {
@@ -4147,7 +4183,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     },
                     sp,
                 )?;
-                let c = self.temp_ty(t_bool);
+                let c = self.temp_ty(t_bool)?;
                 self.emit(
                     MirInstr::Bin {
                         op: BinOp::GtI32,
@@ -4164,7 +4200,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 });
                 self.cur = body_b;
                 self.terminated = false;
-                let one = self.temp_ty(t_i32);
+                let one = self.temp_ty(t_i32)?;
                 let c1 = self.out.intern_const(MirConst::I32(1));
                 self.emit(
                     MirInstr::Const {
@@ -4173,7 +4209,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     },
                     sp,
                 )?;
-                let idx = self.temp_ty(t_i32);
+                let idx = self.temp_ty(t_i32)?;
                 self.emit(
                     MirInstr::Bin {
                         op: BinOp::SubI32,
@@ -4183,7 +4219,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     },
                     sp,
                 )?;
-                let e = self.temp_ty(elem_ty.unwrap_or(t_i32));
+                let e = self.temp_ty(elem_ty.unwrap_or(t_i32))?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst: e,
@@ -4210,7 +4246,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     Some(p) => Some(self.eval_expr(*p, depth + 1)?),
                     None => None,
                 };
-                let dst = self.temp_ty(vt);
+                let dst = self.temp_ty(vt)?;
                 self.emit(
                     MirInstr::VariantPack {
                         dst,
@@ -4224,7 +4260,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::VariantGuardTest { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::VariantGuard {
                         dst,
@@ -4237,7 +4273,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::VariantProject { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::VariantProject {
                         dst,
@@ -4256,7 +4292,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let Some((list_e, index_e, path)) = proj else {
                     // plain receiver (a local Str / literal): owned path
                     let v = self.text_view_operand(operand, depth)?;
-                    let dst = self.temp_ty(ty);
+                    let dst = self.temp_ty(ty)?;
                     self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                     return Ok(dst);
                 };
@@ -4267,7 +4303,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let view_ty = self.out.intern_type(MirType::StrView);
                 // 1. move the element OUT (single extraction)
                 let evty = self.elem_vt_of(list_e)?;
-                let e = self.temp_ty(evty);
+                let e = self.temp_ty(evty)?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst: e,
@@ -4285,7 +4321,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     e
                 } else {
                     let str_ty = self.out.intern_type(MirType::Str);
-                    let tmp = self.temp_ty(str_ty);
+                    let tmp = self.temp_ty(str_ty)?;
                     let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                     self.emit(
                         MirInstr::FieldGet {
@@ -4298,7 +4334,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     tmp
                 };
                 // 3. view + read
-                let v = self.temp_ty(view_ty);
+                let v = self.temp_ty(view_ty)?;
                 self.emit(
                     MirInstr::View {
                         dst: v,
@@ -4306,7 +4342,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     },
                     sp,
                 )?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 // end the view BEFORE the restore — an insert of a value
                 // under an active borrow is a mut-conflict in the lattice.
@@ -4332,7 +4368,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     if self.hir_elem_owned(list)? {
                         let l = self.eval_expr(list, depth + 1)?;
                         let i = self.eval_expr(index, depth + 1)?;
-                        let dst = self.temp_ty(ty);
+                        let dst = self.temp_ty(ty)?;
                         let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                         self.emit(
                             MirInstr::ListFieldGet {
@@ -4348,7 +4384,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     }
                 }
                 let b = self.eval_expr(*base, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                 self.emit(
                     MirInstr::FieldGet {
@@ -4368,7 +4404,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     ));
                 }
                 let b = self.eval_expr(*base, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                 // PLAN-871 T-05 gap (782 HP01): hand-authored HIR reads an
                 // OWNED field as its owned type after the whole record was
@@ -4413,7 +4449,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             };
                             if matches!(self.out.types.get(fty as usize), Some(MirType::Str)) {
                                 let str_view_t = self.out.intern_type(MirType::StrView);
-                                let view = self.temp_ty(str_view_t);
+                                let view = self.temp_ty(str_view_t)?;
                                 self.emit(
                                     MirInstr::FieldGet {
                                         dst: view,
@@ -4622,7 +4658,7 @@ fn lower_function_with_emission(
     owned: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
     closure_facts: &dyn ClosureFacts,
-    emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+    mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -4676,8 +4712,18 @@ fn lower_function_with_emission(
 
     // Base slots: params lead in signature order (HIR verify guarantees the
     // param locals lead the local table in order), then the other locals.
-    let mut slots: Vec<MirSlot> = Vec::with_capacity(body.locals.len());
-    let mut slot_of_local = vec![0u32; body.locals.len()];
+    let mut emission_bytes = 0;
+    let mut slots: Vec<MirSlot> = emission_vec(
+        body.locals.len(),
+        &mut emission_bytes,
+        &mut emission_reserve,
+    )?;
+    let mut slot_of_local = emission_vec(
+        body.locals.len(),
+        &mut emission_bytes,
+        &mut emission_reserve,
+    )?;
+    slot_of_local.resize(body.locals.len(), 0u32);
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
@@ -4702,6 +4748,12 @@ fn lower_function_with_emission(
             }
         }
         let idx = slots.len() as SlotId;
+        if let Some(reserve) = emission_reserve.as_mut() {
+            emission_bytes = emission_bytes
+                .checked_add(l.name.len())
+                .ok_or_else(|| AdapterError::resource("slot name capacity overflow".into()))?;
+            reserve(emission_bytes).map_err(AdapterError::resource)?;
+        }
         slots.push(MirSlot {
             kind: if l.role == hir::LocalRole::Param {
                 SlotKind::Param
@@ -4714,7 +4766,11 @@ fn lower_function_with_emission(
         slot_of_local[li] = idx;
     }
     let base_slots = slots.len() as u32;
-    let slot_ty_cache: Vec<TypeIdx> = slots.iter().map(|s| s.ty).collect();
+    let mut slot_ty_cache = emission_vec(slots.len(), &mut emission_bytes, &mut emission_reserve)?;
+    slot_ty_cache.extend(slots.iter().map(|s| s.ty));
+    let mut loop_targets =
+        emission_vec(body.loops.len(), &mut emission_bytes, &mut emission_reserve)?;
+    loop_targets.resize(body.loops.len(), (0, 0));
 
     // R2-F08': mut record params — plain OWNED record slots (move-in);
     // their final values wrap into the t_MutRet result at Return.
@@ -4762,7 +4818,7 @@ fn lower_function_with_emission(
         blocks: vec![],
         cur: 0,
         terminated: false,
-        loop_targets: vec![(0, 0); body.loops.len()],
+        loop_targets,
         func_index: def_index,
         flat: 0,
         mut_wrap_ty,
@@ -4776,9 +4832,9 @@ fn lower_function_with_emission(
         cell_locals,
         closure_facts,
         emission_reserve,
-        emission_bytes: 0,
+        emission_bytes,
     };
-    let entry_b = lower.new_block();
+    let entry_b = lower.new_block()?;
     debug_assert_eq!(entry_b, 0);
 
     // A HIR function referenced by CREATE_CLOSURE is a closure body. The
@@ -4811,12 +4867,17 @@ fn lower_function_with_emission(
         env = Some(layout);
     }
 
-    let mut stack: Vec<Task> = vec![Task {
-        hir_block: body.entry,
-        stmt_idx: 0,
-        mir_block: Start::Block(0),
-        exit: None,
-    }];
+    let mut stack: Vec<Task> =
+        emission_vec(1, &mut lower.emission_bytes, &mut lower.emission_reserve)?;
+    lower.push_task(
+        &mut stack,
+        Task {
+            hir_block: body.entry,
+            stmt_idx: 0,
+            mir_block: Start::Block(0),
+            exit: None,
+        },
+    )?;
     while let Some(mut task) = stack.pop() {
         // F798-R7-05: an after-if continuation whose join was never
         // allocated (both arms terminated) and that has no remaining
@@ -4833,7 +4894,7 @@ fn lower_function_with_emission(
                 if lower.pending_joins[slot].is_none() && !has_stmts {
                     continue;
                 }
-                lower.join_block(slot)
+                lower.join_block(slot)?
             }
         };
         lower.cur = start_block;
@@ -5050,7 +5111,7 @@ fn lower_function_with_emission(
                         for p in &lower.mut_param_slots {
                             operands.push(*p);
                         }
-                        let w = lower.temp_ty(wrap_ty);
+                        let w = lower.temp_ty(wrap_ty)?;
                         lower.emit(
                             MirInstr::Aggregate {
                                 dst: w,
@@ -5069,15 +5130,22 @@ fn lower_function_with_emission(
                 hir::Stmt::If { cond, then, els } => {
                     let c = lower.eval_expr(*cond, 0)?;
                     lower.end_stmt_temp_views()?;
-                    let then_b = lower.new_block();
+                    let then_b = lower.new_block()?;
                     let then_exit;
                     match els {
                         Some(else_hir) => {
                             // F798-R7-05: with both arms present the join
                             // is ON DEMAND — `if a { return } else { return }`
                             // never materializes an unreachable join block.
-                            let else_b = lower.new_block();
+                            let else_b = lower.new_block()?;
                             let slot = lower.pending_joins.len();
+                            if let Some(reserve) = lower.emission_reserve.as_mut() {
+                                grow_emission(
+                                    &mut lower.pending_joins,
+                                    &mut lower.emission_bytes,
+                                    *reserve,
+                                )?;
+                            }
                             lower.pending_joins.push(None);
                             then_exit = Some(Exit::Join(slot));
                             lower.set_term(Terminator::Branch {
@@ -5086,69 +5154,87 @@ fn lower_function_with_emission(
                                 else_: else_b,
                             });
                             // LIFO: continuation processed last.
-                            stack.push(Task {
-                                hir_block: task.hir_block,
-                                stmt_idx: task.stmt_idx,
-                                mir_block: Start::JoinOnDemand(slot),
-                                exit: task.exit,
-                            });
-                            stack.push(Task {
-                                hir_block: *else_hir,
-                                stmt_idx: 0,
-                                mir_block: Start::Block(else_b),
-                                exit: Some(Exit::Join(slot)),
-                            });
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: task.hir_block,
+                                    stmt_idx: task.stmt_idx,
+                                    mir_block: Start::JoinOnDemand(slot),
+                                    exit: task.exit,
+                                },
+                            )?;
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: *else_hir,
+                                    stmt_idx: 0,
+                                    mir_block: Start::Block(else_b),
+                                    exit: Some(Exit::Join(slot)),
+                                },
+                            )?;
                         }
                         None => {
                             // No else: the branch's false edge targets the
                             // join, so it is required eagerly.
-                            let join = lower.new_block();
+                            let join = lower.new_block()?;
                             then_exit = Some(Exit::Block(join));
                             lower.set_term(Terminator::Branch {
                                 cond: c,
                                 then: then_b,
                                 else_: join,
                             });
-                            stack.push(Task {
-                                hir_block: task.hir_block,
-                                stmt_idx: task.stmt_idx,
-                                mir_block: Start::Block(join),
-                                exit: task.exit,
-                            });
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: task.hir_block,
+                                    stmt_idx: task.stmt_idx,
+                                    mir_block: Start::Block(join),
+                                    exit: task.exit,
+                                },
+                            )?;
                         }
                     }
-                    stack.push(Task {
-                        hir_block: *then,
-                        stmt_idx: 0,
-                        mir_block: Start::Block(then_b),
-                        exit: then_exit,
-                    });
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: *then,
+                            stmt_idx: 0,
+                            mir_block: Start::Block(then_b),
+                            exit: then_exit,
+                        },
+                    )?;
                     break;
                 }
                 hir::Stmt::Loop {
                     id,
                     body: loop_body,
                 } => {
-                    let header = lower.new_block();
-                    let body_b = lower.new_block();
-                    let exit = lower.new_block();
+                    let header = lower.new_block()?;
+                    let body_b = lower.new_block()?;
+                    let exit = lower.new_block()?;
                     lower.loop_targets[id.0 as usize] = (header, exit);
                     lower.set_term(Terminator::Jump { target: header });
                     lower.cur = header;
                     lower.terminated = false;
                     lower.set_term(Terminator::Jump { target: body_b });
-                    stack.push(Task {
-                        hir_block: task.hir_block,
-                        stmt_idx: task.stmt_idx,
-                        mir_block: Start::Block(exit),
-                        exit: task.exit,
-                    });
-                    stack.push(Task {
-                        hir_block: *loop_body,
-                        stmt_idx: 0,
-                        mir_block: Start::Block(body_b),
-                        exit: Some(Exit::Block(header)),
-                    });
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: task.hir_block,
+                            stmt_idx: task.stmt_idx,
+                            mir_block: Start::Block(exit),
+                            exit: task.exit,
+                        },
+                    )?;
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: *loop_body,
+                            stmt_idx: 0,
+                            mir_block: Start::Block(body_b),
+                            exit: Some(Exit::Block(header)),
+                        },
+                    )?;
                     break;
                 }
                 hir::Stmt::Break { target } => {
@@ -5206,7 +5292,7 @@ fn lower_function_with_emission(
                     lower.set_term(Terminator::Jump { target: b });
                 }
                 Some(Exit::Join(slot)) => {
-                    let j = lower.join_block(slot);
+                    let j = lower.join_block(slot)?;
                     lower.set_term(Terminator::Jump { target: j });
                 }
                 // exit == None (root): the placeholder stays; rejected below.
@@ -5237,7 +5323,38 @@ fn lower_function_with_emission(
 
     let owner = lower.out.owner.clone();
     let mut slots_final = slots;
+    if let Some(reserve) = lower.emission_reserve.as_mut() {
+        let capacity = slots_final
+            .len()
+            .checked_add(lower.extra_slots.len())
+            .ok_or_else(|| AdapterError::resource("final slot capacity overflow".into()))?;
+        reserve_emission_capacity(
+            &mut slots_final,
+            capacity,
+            &mut lower.emission_bytes,
+            *reserve,
+        )?;
+    }
     slots_final.append(&mut lower.extra_slots);
+    // The temporary slot array and traversal indices are not part of the
+    // returned MIR. Release their fees only after their actual owners drop.
+    if lower.emission_reserve.is_some() {
+        let scratch = lower.extra_slots.capacity() * std::mem::size_of::<MirSlot>()
+            + lower.slot_of_local.capacity() * std::mem::size_of::<SlotId>()
+            + lower.slot_ty_cache.capacity() * std::mem::size_of::<TypeIdx>()
+            + lower.loop_targets.capacity() * std::mem::size_of::<(BlockId, BlockId)>()
+            + lower.pending_joins.capacity() * std::mem::size_of::<Option<BlockId>>()
+            + stack.capacity() * std::mem::size_of::<Task>();
+        drop(lower.extra_slots);
+        drop(lower.slot_of_local);
+        drop(lower.slot_ty_cache);
+        drop(lower.loop_targets);
+        drop(lower.pending_joins);
+        drop(stack);
+        lower.emission_bytes -= scratch;
+        lower.emission_reserve.as_mut().unwrap()(lower.emission_bytes)
+            .map_err(AdapterError::resource)?;
+    }
     Ok(MirFunction {
         owner,
         name,

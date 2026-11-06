@@ -812,7 +812,10 @@ mod source_foreign {
 
     #[test]
     fn native_lower_emission_reserves_instruction_and_span_capacity_before_allocation() {
-        use ace_av_core::{contract::SpanInfo, mir::MirInstr};
+        use ace_av_core::{
+            contract::SpanInfo,
+            mir::{MirBlock, MirInstr, MirSlot},
+        };
         use ace_lowering::hir_adapter::{
             lower_function_unit, lower_function_unit_with_emission_reservation,
         };
@@ -828,7 +831,12 @@ mod source_foreign {
         let original_wire = ace_av_core::abc::encode_abc(&original).unwrap().to_flat();
         let instruction = std::mem::size_of::<MirInstr>();
         let span = std::mem::size_of::<(u32, SpanInfo)>();
-        let allowed = 96 * instruction + 32 * span - 1;
+        // At instruction 33 this fixture has one named base slot, two
+        // one-element slot indices, 32 temp slots, four block cells and
+        // one x64 traversal task (48B). These are simultaneous owners.
+        let scaffold =
+            33 * std::mem::size_of::<MirSlot>() + 1 + 8 + 4 * std::mem::size_of::<MirBlock>() + 48;
+        let allowed = scaffold + 96 * instruction + 32 * span - 1;
         eprintln!("emission layout: instruction={instruction} span={span} next_array={} allowance={allowed}", 64 * instruction);
         eprintln!(
             "other initial layouts: block={} type={}",
@@ -866,7 +874,7 @@ mod source_foreign {
         );
         assert_eq!(
             resources.stats().current.mir,
-            pressured.mir + 32 * instruction + 32 * span
+            pressured.mir + scaffold + 32 * instruction + 32 * span
         );
         // The caller owns the ticket on an error path as well: partial arrays
         // have dropped inside lowering, then its ticket may be released.
@@ -877,7 +885,7 @@ mod source_foreign {
         let (mir, hits, admitted) = with_charge_probe(
             64 * instruction,
             &resources,
-            Charge::mir(96 * instruction + 32 * span),
+            Charge::mir(scaffold + 96 * instruction + 32 * span),
             || {
                 lower_function_unit_with_emission_reservation(
                     bundle,
@@ -907,6 +915,13 @@ mod source_foreign {
                     .map(|b| b.instrs.capacity() * instruction)
                     .sum::<usize>()
                     + f.spans.capacity() * span
+                    + f.blocks.capacity() * std::mem::size_of::<MirBlock>()
+                    + f.slots.capacity() * std::mem::size_of::<MirSlot>()
+                    + f.slots
+                        .iter()
+                        .filter_map(|s| s.name.as_ref())
+                        .map(|s| s.capacity())
+                        .sum::<usize>()
             })
             .sum();
         assert_eq!(resources.stats().current.mir, retained);
@@ -926,7 +941,9 @@ mod source_foreign {
             &[],
         )
         .unwrap();
-        let allowed = 4 * instruction + 4 * span - 1;
+        let scaffold =
+            4 * std::mem::size_of::<MirBlock>() + 48 + 4 * std::mem::size_of::<MirSlot>();
+        let allowed = scaffold + 4 * instruction + 4 * span - 1;
         let pressure = resources
             .reserve(Charge::mir((16 << 20) - allowed))
             .unwrap();
@@ -952,11 +969,223 @@ mod source_foreign {
         assert_eq!(span_arrays, 0, "span array allocated before reservation");
         assert_eq!(
             resources.stats().current.mir,
-            (16 << 20) - allowed + 4 * instruction
+            (16 << 20) - allowed + scaffold + 4 * instruction
         );
         drop(allocation);
         drop(pressure);
         assert_eq!(resources.stats().current, baseline);
+    }
+
+    #[test]
+    fn native_lower_container_admission_covers_blocks_stack_slots_and_final_copy() {
+        use ace_av_core::mir::{MirBlock, MirInstr, MirSlot};
+        use ace_lowering::hir_adapter::{
+            lower_function_unit, lower_function_unit_with_emission_reservation,
+        };
+        use ace_source_query::resources::Resources;
+
+        fn reject_before_array(
+            bundle: &ace_core::hir::Bundle,
+            available: usize,
+            array: usize,
+            retained_on_error: usize,
+        ) {
+            let resources = Resources::default();
+            let baseline = resources.stats().current;
+            let pressure = resources
+                .reserve(Charge::mir((16 << 20) - available))
+                .unwrap();
+            let pressured = resources.stats().current;
+            let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            let (result, forbidden, _) =
+                with_charge_probe(array, &resources, Charge::default(), || {
+                    lower_function_unit_with_emission_reservation(
+                        bundle,
+                        "d_main",
+                        &[],
+                        17,
+                        &mut |bytes| {
+                            allocation
+                                .resize(Charge::mir(bytes))
+                                .map_err(|e| e.to_string())
+                        },
+                    )
+                });
+            assert!(
+                matches!(result, Err(ace_lowering::AdapterError::Resource { .. })),
+                "array {array}: expected a typed resource refusal"
+            );
+            assert_eq!(forbidden, 0, "array {array} allocated before admission");
+            assert_eq!(
+                resources.stats().current.mir,
+                pressured.mir + retained_on_error,
+                "array {array}: wrong lifetime for the caller's error ticket"
+            );
+            drop(allocation);
+            assert_eq!(resources.stats().current, pressured);
+            drop(pressure);
+            assert_eq!(resources.stats().current, baseline);
+        }
+
+        let block_array = 4 * std::mem::size_of::<MirBlock>();
+        // The Windows-x64 traversal task owns an HIR block id, a statement
+        // index, a tagged start and a tagged optional exit: 48 bytes.
+        let task = 48;
+        let basic = ace_core::source::compile_scalar_source(
+            "fn main() int { return 1 }",
+            "container.at",
+            &[],
+        )
+        .unwrap();
+        reject_before_array(basic.checked.bundle(), block_array - 1, block_array, 0);
+        reject_before_array(
+            basic.checked.bundle(),
+            block_array + task - 1,
+            task,
+            block_array,
+        );
+
+        // A real if/else queues continuation + else + then. The second
+        // pending task grows the original one-element stack to four cells.
+        let branched = ace_core::source::compile_scalar_source(
+            "fn main() int { if 1 < 2 { return 1 } else { return 2 } }",
+            "task-growth.at",
+            &[],
+        )
+        .unwrap();
+        let before_stack_growth = block_array
+            + task
+            + 4 * std::mem::size_of::<MirSlot>()
+            + 4 * std::mem::size_of::<MirInstr>()
+            + 4 * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
+            + 4 * std::mem::size_of::<Option<u32>>();
+        reject_before_array(
+            branched.checked.bundle(),
+            before_stack_growth + 4 * task - 1,
+            4 * task,
+            before_stack_growth,
+        );
+        let resources = Resources::default();
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (mir, hits, admitted) = with_charge_probe(
+            4 * task,
+            &resources,
+            Charge::mir(before_stack_growth + 4 * task),
+            || {
+                lower_function_unit_with_emission_reservation(
+                    branched.checked.bundle(),
+                    "d_main",
+                    &[],
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            },
+        );
+        let mir = mir.unwrap();
+        assert_eq!(hits, 1);
+        assert!(
+            admitted,
+            "old and new traversal stacks must coexist in the reservation"
+        );
+        assert_eq!(
+            ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
+            ace_av_core::abc::encode_abc(
+                &lower_function_unit(branched.checked.bundle(), "d_main", &[], 17).unwrap()
+            )
+            .unwrap()
+            .to_flat()
+        );
+        drop(mir);
+        drop(allocation);
+        assert_eq!(resources.stats().current.mir, 0);
+
+        let source = format!(
+            "fn main() int {{ {} return x249 }}",
+            (0..250)
+                .map(|n| format!("let x{n:03} = 1; "))
+                .collect::<String>()
+        );
+        let many = ace_core::source::compile_scalar_source(&source, "base-slots.at", &[]).unwrap();
+        let base_array = 250 * std::mem::size_of::<MirSlot>();
+        reject_before_array(many.checked.bundle(), base_array - 1, base_array, 0);
+
+        let source = format!(
+            "fn main() int {{ var x = 0; {} return x }}",
+            "x = x + 1; ".repeat(40)
+        );
+        let compiled =
+            ace_core::source::compile_scalar_source(&source, "final-slots.at", &[]).unwrap();
+        let original = lower_function_unit(compiled.checked.bundle(), "d_main", &[], 17).unwrap();
+        let f = &original.funcs[0];
+        assert_eq!(f.slots.len(), 82);
+        let names: usize = f
+            .slots
+            .iter()
+            .filter_map(|s| s.name.as_ref())
+            .map(|s| s.capacity())
+            .sum();
+        let emitted = f
+            .blocks
+            .iter()
+            .map(|b| b.instrs.capacity() * std::mem::size_of::<MirInstr>())
+            .sum::<usize>()
+            + f.spans.capacity() * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
+            + block_array;
+        let final_array = f.slots.len() * std::mem::size_of::<MirSlot>();
+        // Original base, the 128-capacity temporary slot array, both base
+        // indices and the stack still coexist with the new final array.
+        let before_final = emitted + names + 129 * std::mem::size_of::<MirSlot>() + 8 + task;
+        reject_before_array(
+            compiled.checked.bundle(),
+            before_final + final_array - 1,
+            final_array,
+            before_final,
+        );
+
+        let resources = Resources::default();
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (accepted, hits, admitted) = with_charge_probe(
+            final_array,
+            &resources,
+            Charge::mir(before_final + final_array),
+            || {
+                lower_function_unit_with_emission_reservation(
+                    compiled.checked.bundle(),
+                    "d_main",
+                    &[],
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            },
+        );
+        let accepted = accepted.unwrap();
+        assert_eq!(hits, 1);
+        assert!(
+            admitted,
+            "final copy did not reserve all coexisting slot arrays and traversal indices"
+        );
+        assert_eq!(
+            resources.stats().current.mir,
+            emitted + names + final_array,
+            "traversal and intermediate slot buffers must be released after their owners drop"
+        );
+        assert_eq!(
+            ace_av_core::abc::encode_abc(&accepted).unwrap().to_flat(),
+            ace_av_core::abc::encode_abc(&original).unwrap().to_flat()
+        );
+        ace_av_core::mir_verify::validate_mir(&accepted).unwrap();
+        drop(accepted);
+        drop(allocation);
+        assert_eq!(resources.stats().current.mir, 0);
+        eprintln!("container admission: block={block_array}, task={task}, base={base_array}, final={final_array}, final temporary={}", before_final + final_array);
     }
 
     #[test]
