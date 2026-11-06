@@ -4016,3 +4016,11 @@ owner=auto-tool-execution；PLAN-953 r2已交付65db88be2150991b9c3bbe79d527891f
 PLAN-944 repair-r1工作修复提交e269f417895ffa09493fd42390d24ef336f503f4：F944-R1-01/02原反例重放绿、共享生命周期永久用例绿，待独立复审确认关闭；不作延期或merge豁免，证据见944 §9。
 
 D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根事务与bound.locate已独立复审r2 pass；原两个Host反例std/7..13与cancel A→B首次delta1均绿，五失败分支/单体receipt兄弟路径及真实下一恢复8、旧42/7消费者均通过。实际输入/红绿日志hash、共享机制与适用边界见PLAN-944 §9；未批准延期，原r1红保留。当前仅七组merge门及实际交付清理pending，无原始材料hold。
+
+
+### D-956-1 — auto-ui 既有原生前端/独立交付包检查红项（2026-11-06，未关闭）
+
+- owner=auto-ui 原生前端生成器、交付包投影；与 Reader Vue + Rust API 执行路径不同。PLAN-956 不降低断言，不将这些红项计为PASS。
+- 原生UI三个既有红：outlet_multi_route_loud_reject、test_bare_popover_point_anchor_codegen、test_display_family_codegen_arm_fixture。UI eff9ece3 基线与956候选逐项同红，生成码SHA分别0a34bee712c4a4d081ce2249c5b3b4044fb65686c2caa74848c5aa2204f9f9af、9bc95722c392358fcaabab9f0a1ed5daa67bce43b9dedbcea305ae049d964acf、9b13aa98c16899a3f3962e63711b8bab64742d8ff2c850fb894cea360eff596b。候选全compiler库1144PASS/3FAIL/2ignored；基线Rust子集77PASS/同3FAIL/2ignored。
+- 独立delivery_crates_path_closure_is_complete：auto-lang-core path依赖experimental未入DELIVERY_CRATES/未投影剥除。956启动器串行58PASS/1FAIL/1ignored；未改UI eff9ece3归档+主线原样manifest副本的单项基线复现同一断言，排除本轮启动器修复引入。首次基线全跑缺组内兄弟路径而报环境红，不用作同因证明；具名manifest对照才有效。
+- 另有5项启动器并发首红，串行原断言均PASS（共享进程环境变量干扰），测试隔离待owner处理。关闭条件：对应机制独立修复、原反例/完整owner职责门通过；详PLAN-956最终收据。无本任务功能延期/VM fallback。

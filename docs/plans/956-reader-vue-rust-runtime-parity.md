@@ -80,3 +80,7 @@ r3 运行实证：generate-rust-06 + rust-build-04 已真实构建完整 Rust AP
 - F04 默认 CLI 冷启动首次红：start_api_server 把Cargo冷构建算入120秒ready，编译中被杀，不能以热缓存重跑当作关闭。F05 同查发现服务cwd为生成工作区，Reader相对引擎资产应按应用根。r4必要运行时修复：复用既有Cargo JSON artifact与发布设施，先构建（既有build/cancel预算）再启动成员自有原生镜像、再开始原120s ready；构建cwd保持workspace，运行cwd改应用根；保留人类compiler diagnostics，启动错误直接传播。UI提交59b725b754c6c35ae3862092a1891e4b61777ed0。
 - 新增UI实际Cargo build/publish/错误旧镜像负控1/1 PASS；Reader永久冷启动/相对资产/原生监听/真实Vue页面驱动 vue_rust_default.py（9a347c3）；全新目标根复验待完成。双轨门补段落锚、emoji+CRLF/UTF16锚、ID形状和时钟类型约束，不能靠规范化掩盖无效ID/恒零新书时钟。
 当前仍 executing：T04 的冷启动/浏览器与最终46-case对拍尚未完结，不签发review pass。
+
+
+r4补证：UI最终22a925c7（只删除重复清端口）；启动器60项串行58PASS/1FAIL/1ignored，余一delivery闭包在eff9ece3原样源码+主线44份manifest副本具名重放同断言，五个并发红串行转绿，D-956-1登记。旧基线归档缺兄弟布局的8环境红不作语义证明。
+冷门02首次失败是driver未创建显式target根，已修脚本3e69594；03在业务源码变更后主动终止自身进程，不计PASS。expanded-01对拍正向检查发现新书created_at仍由历史业务代码写0；TXT/MD与EPUB导入已改time.now_sec（旧记录时间保持），最终Reader d10225b，所有新鲜夹具created_at>0强断言保留。全新04目标根正在跑，未签最终通过。
