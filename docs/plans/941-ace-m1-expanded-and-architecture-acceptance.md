@@ -978,6 +978,23 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:35 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，26原data源已补登记/55原入口重放） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6003a4817b6bfc10d58d2f7f09817cb6e050f6af | next:work 原data源严格四端语义/认证及其余完整范围
 
+### 2026-11-06 原18个method/record/text合法与陷阱源的双端严格观察（goal第36轮）
+
+前轮26漏源104目标登记/55原入口为progress。本轮继续T03/04/08/10/11，941唯一树提交 **b32de0ff6e48346237d15516ed21770c6ae08951**，10文件，树clean；仍executing2/17，生产worker/语言/降级源未改。
+
+- 对26原源中的**全部17值+1 TextIndex陷阱源**建立永久显式固定组/Case，原源码直接引用，按冻结record/text/text-record与共同caps（record=[]、text/text-record=ac.runtime.text.v1）重新真实执行AV/native，**36/36父PASS**。这与前轮原cap=[]父证据分开，不把cap不同的旧帧当同身份复用。`cargo t case-ace-m1-original-data-q4-941 --out <scope>/original-data-q4-source/gate` exit0、24.8359746s，results SHA=`b456907da5be437ec6fe9294b7b1d1ce86094aa193e7217d14ddc01786ae42a5`；完整wire环境显式开启、scope单一。另8诊断源/32目标仍required，不伪造非法源码exe，不把只运行18源说成26源通过。
+- 新永久便携/2合同81161B SHA=`e881a1f80c35cf9a36be29535abde1470085dbce0416656a712b658862259d82`；原26源表、原126/四补源及1006登记键不改，新增为第21合同指针。专属只读adapter验证全部36inventory/CaseCopy完整清理与产物、原正式group/执行数、三实际prepared工具和library、11依赖pin、每源profile/caps/独立值或具名trap、原START/TERMINAL/nonce/FNV/闭合response、AV canonical值与拥有ledger/native真实link/run与释放事件；原父PASS只保parent_status，不供语义权威。生产11依赖从**既存且真实早于本轮的**record-text-q4-source/dependencies-before.json（SHA=`022f065bb59be18d3b71b1636f1cc90f5fef46aeb836c99368d2e68d32df41ed`，13:06记录）到本轮15:04后快照全部稳定，after SHA=`7036da96920d4f937c27bfb187e8a89127adee9a206327744c24fadbed9f3a0b`；显式复用旧before，不回填假执行前时间/哈希。
+- 严格首读**35PASS/1FAIL**：本包新写的T08 native辅助事件oracle错误地要求owned LIT/free。原源码是`let s str = "中"`，按source-text借用表示、hir_adapter.rs StrLit处“borrowing context immortal static view”的实际分派及text-runtime `ac_rt_own_from_lit`/`rt_fail`责任，**静态borrow不分配/不free，仅越界失败RT-FAIL code=-10**。据独立源码/合同纠正本包辅助事件预期为精确单行，不改原TextIndex oracle/源/值/生产实现，也不放宽接受任意事件。首读保scope/original-data-q4-source/first-oracle-observations.json SHA=`806e30ef5ae18258139079ea7adc1fe8d9a6a832431db284433b10c432a88134`；同一原始帧修正后严格**36PASS**，strict-observations.json SHA=`760734fca31811d9fbc25bfefc688d757f94d4c56372468f4ebc6c709d966b51`。T08的具名runtime失败与原9个只generic70的scalar trap分开，绝不互相顶替。
+- **217原帧反控**：36原合法PASS、36同错值/错具名trap FAIL、144 nonce/未知field/caps/source变更且重hash仍REFUSED，另1T08加完整多余owned alloc/free即FAIL；scope/original-data-q4-source/raw-reader-controls.json SHA=`202d3546bd34a69a70be6d8ebaef40ee08687a2188ab0fbcef6dd16794e8074a`，counterfactual_not_execution。新增永久静态借用trap回归保精确具名事件正控，缺事件/错trap/额外alloc-free均FAIL；非模板镜像计数测试。`cargo t infra-ace-m1-arch --out <scope>/original-data-q4-source/final-controls` **166/166 PASS**、5.3907877s、exit0，results SHA=`3ae5a6747c7630163be23323b2afd14d7a3892ccaf304ef405dfef56b311ac64`。py_compile/diff-check通过，冻结10变更文件等Git blob留scope/original-data-source-frozen-preview/committed-input-audit.json。生产身份未变旧256默认cert/daily、14优化与各source严格重读复用，未重复原1779压力冒最终职责并集。
+
+冻结b32de0f全组合原Job/Popen禁用只读重验：**567PASS/8FAIL/431UNOBSERVED**，1006登记/21合同指针，完整范围/系统交付/expanded claim仍false。scope/original-data-source-frozen-preview/preview.stdout 523273B SHA=`f1d85489276d948f09d2605d0ff3b73e959fadd6287ea3093bb4a5ddfd823350`，11065.3995ms、peak process29392896/Job30633984B；同一LiveBudget reservation37131637/全程peak**49397208<50331648B**，原48MiB/单件4MiB/privateΔ128MiB/先预留解码/64KiB流hash/不清峰值保持，新源域512KiB有界摘要。原8FAIL、9scalar native具名trap缺口、6A2X typed负例、299legacy/49ARCH与健康基线保留。新26源剩**36 Rust/C正源认证+32四端诊断**共68格均UNOBSERVED，不因本轮36绿核销。
+
+原T01..15未闭；下一入口为18正源真实完整Rust/C独立参考认证及8诊断源的typed消费，随后仍有其余源/机制/事实/恢复/资源/正式规模、ARCH/legacy。938/939尚未D，最终独立review/merge仍待；无新增用户决定或存活验证进程，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:b32de0ff6e48346237d15516ed21770c6ae08951 | task_ids:T03/04/08/10/11（未关闭） | evidence:18原正源36新caps实际AV/native严格绿；217反控；166回归；整体567PASS8FAIL431UNOBSERVED | blockers:原完整范围/机制与具名观测/健康边界未闭，无新增用户决定 | next_responsible_role:work 原18源Rust/C认证及8源诊断与机制/ARCH/legacy
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:36 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，18原data正源36双端观察已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:b32de0ff6e48346237d15516ed21770c6ae08951 | next:work 原data源Rust/C独立认证及诊断/其余完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
