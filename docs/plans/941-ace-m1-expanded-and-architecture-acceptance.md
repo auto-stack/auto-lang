@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 1
+current_step: 2
 total_steps: 17
 ---
 
@@ -250,7 +250,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-14 | review | T-01..13及T-16/17完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
 | T-15 | merge | T-14 pass与后续合入指令 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
-| T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [ ] |
+| T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
 
 下一入口T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
 
@@ -688,6 +688,28 @@ T16完成/T17未关闭，r2 executing1/17；原36cert/组合仅历史身份，�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:21 | from:work | to:work | status:executing1/17 | outcome:needs_fix（T17原并集尚活，无新语义失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（原session50141 native→文字20；终态后精确迁移原日志/输出路由及当前身份认证刷新）
 
+### 2026-11-06 T17原冻结全并集/当前认证准入完成（goal第22轮）
+
+前轮AV终态与日志归属审计为progress，本轮始终接原session50141，最终exit0且原父PID35700实际退出；无重启/降载/改ignore。冻结实现a8cc58bd368dfcdccecae000a2877086e64718d0的明确并集source383+syntax132+AV1019+native225+文字20＝**1779实际PASS，1原条件排除**，未执行不充绿。总命令2958.4283208s（含准备/发现/原完整负载/清理），各段原meter独立保留，不能与组合器1477ms混同。
+
+- native `conditional-941-frozen-union/3/result.json` **225/225、not_run=[]、0排除**，原Job执行1510523.2084ms、7199进程，SHA=`d05dabf0be17678d95de640cbf73e196050368c234cfd2c1831c58400010cbf9`；保原闭包/collections/资源收敛/诊断四状态各30/GC与热更新原样本，全部原P90断言由正式原入口执行。
+- 原十源文字20实际全绿，`4/result.json` SHA=`c32f5b8547911fb8e5bf61fd1560a740ac43992c24f0dd66976b0778dd4b7821`，原Job11130.8839ms，源码/Case/独立oracle未改。原eq_full_bytes源SHA仍c88f8407c7235a1042d062575aa52c68a258eca8752e49844620ab3dfd1358c7，两原FAIL现在分别实际AV/native返回值1；其余值与TextIndex/InvalidScalar三陷阱保持。整并集results SHA=`e60e2aeb14302b4f4701dd216e305de3e61325b3b57b3d07f1baaa3c53c3e29c`。
+- 执行前后11实际依赖SHA逐件不变；当前text binding指原group4真实artifact-copy与原before/after快照，after SHA=`45bcc22a8cf31c211320782fda5027bbba5beaaa4afeb10c2f60b9e44bb41fbb`。当前/2正式identity-exporter原producerSHA与原Case合同对账通过，不只换旧binding数字。
+
+原日志落点已按前轮归属清单精确修正：原writer/父进程退出后，复制当次pointer15447B、负控1181B，移动唯一新immutable15419B，总3件**32047B**至同一scope/av-827-report-migration；三件SHA前后一致，清单after-migration.json SHA=`f2522fa6a43da91c0cff5a8583328236c63f2055c6d4931654cae71e7f37d450`。tracked pointer用已核HEAD原字节恢复（SHA826c614810e9afc2e61d07250447489b6f2d1f465562b49384f41e0bf9a094aa），原已归档报告不改；无链接/共享hardlink、源/目标均严格核定归属范围，无盲删。测试report_file采用现有AUTO_PLAN_ARTIFACTS→temp约定、子目录ace-av-plan827；仅输出位置变化，原raw格式/样本/计时窗/P90守恒。既有具名负控`cargo t ace-av --test-name av_source_incremental_failing_verdict_still_writes_raw --out <scope>/av-827-report-migration/routing-check`通过，实际scope新raw1181B SHA48649c6debcb840fe39c95854f03a3043d6b90d1eee19e15d6df31c4a0127d5c，包含两样本与预期FAIL/2100ms；原仓baseline仍HEAD字节。gate SHA=`036a29de7a5ad29a155148886a6f030dbcc1ee266900ce541db95ba6c787af4e`、9.8130831s。rustfmt/diff-check通过，提交**27457e6b3**，树clean。此输出路由不改生产二进制/解析/原消费者，已逐件核11依赖不变，复用上述冻结全并集，不为logger目的重跑1019/原压力。
+
+新身份后已顺序重建全部受影响数据：
+
+- current-certifications包含**36实际认证+36 daily emit+36工具身份请求**，每认证actual与独立reference各编译/运行，共72编译/72运行；保原CT14、文字20、首scalar2，独立reference与源不改。daily的完整actual_files在cert前冻结，不以cert回填伪造daily；本轮真实原命令/nonce/Job/stdout/stderr均留统一scope/conditional-941-current-certifications。
+- `cargo t case-ace-m1-q4-941 case-ace-unified-source-929 case-ace-ca-d-scalar-937 case-ace-m1-legacy-941 case-ac-av case-ace-m1-typed-native-891 case-ace-source-cte-936 --out <scope>/conditional-941-consumer-refresh`原7组**69/69 PASS**、42.7570281s，results SHA=`8e1609287f4a43c5dc58faefaba89172173178c7145645406fe9119c2a90d6b9`。新7个/2 inventory与parent-inventory实际捕获，严格reader重新核对原字段/当前工具/ABI/source/hash/完整产物/独立oracle/真实终态与原trap字节。
+- 整组合在禁止subprocess.Popen的独立原受管Job重读通过：**102PASS/0FAIL/784UNOBSERVED**（仍登记886且full_registry_closed=false）；first_slice_evidence/source_case_reports=true，原legacy313/38认证缺口、完整分母与ARCH仍阻断，can_claim_expanded_m1=false、acceptance_system_delivered=false。当前preview169200B SHA=`2e7934d2643068a1657c217469311fce760b553a2146b12c30eaf5fe12ad447f`，1477.7109ms，peak process27406336/Job28672000B，共享reservation37584805/峰值**49998531<50331648B（48MiB）**，原单件4MiB/private128MiB帽未改，未重置峰值。scope/conditional-941-current-preview保原meter/空stderr。
+
+**T17完成，current_step2/17**；F04实现与真实原例消费者闭环完成，最终独立review仍T14未执行，不能以本phase自测冒review/merge，也不单独归档941。SD07候选仍在同树source-frontdoor.md。原T01..15完整任务继续；新五worker身份的36cert/当前数据已刷新，旧pre-repair100/2只保历史。当前无新增用户决定，后续继续完整登记、剩余Q4/原313/机制/ARCH证据适配。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress（T16/T17完成，原完整任务未闭） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:27457e6b3 | task_ids:T17/T11材料落点 | evidence:原1779PASS/1排除、69消费者、36daily/cert严格准入、当前102PASS0FAIL784UNOBSERVED | blockers:无待用户决定，原任务继续 | next_responsible_role:work T01..13
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:22 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完成，非phase失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:27457e6b3 | next:work 原T01..13完整验收（F04 phase验证完成；最终独立review待T14）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -701,4 +723,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:21 | from:work | to:wo
 
 7. **F-941-03 已关闭（D958=06251b0cc）**：用户授权的独立修复完成review/全196门/ff合入/Spec/归档/清理6/6；941已合入并新worker重放原8操作全通过。dead-owner目录及958所有清理均实际完成，无待清理/重授项；941其余验收继续。
 
-8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；原失败仍在，未提前关闭，修复/完整并集/独立review均须真实完成。
+8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；T16/T17实现与原例/完整并集/当前严格认证验证已完成（第22轮）；最终独立review仍待T14，不以phase自测顶review。
